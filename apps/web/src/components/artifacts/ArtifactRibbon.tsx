@@ -6,9 +6,7 @@ type RibbonTab<T extends string = string> = {
   label: string
 }
 
-/** A labelled command group inside a ribbon tab, like Office's Clipboard or Font group.
- *  A `wide` group (a whole formatting toolbar) takes a row of its own and wraps inside it;
- *  the others keep their width and move to the next row whole. */
+/** Labelled ribbon command group; `wide` takes its own row, others wrap whole. */
 export function RibbonGroup({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
   return (
     <section aria-label={label} data-wide={wide ? '' : undefined} className={cn('flex items-center px-1.5 first:pl-0 last:pr-0', wide ? 'min-w-0 max-w-full' : 'min-w-max')}>
@@ -19,7 +17,7 @@ export function RibbonGroup({ label, wide, children }: { label: string; wide?: b
   )
 }
 
-/** Word/PowerPoint-style command surface shared by reports and slide decks. */
+/** Office-style command surface for reports and decks. */
 export function ArtifactRibbon<T extends string>({
   label,
   tabs,
@@ -94,8 +92,7 @@ export function ArtifactRibbon<T extends string>({
         <div
           role="toolbar"
           aria-label={tabs.find((tab) => tab.id === active)?.label}
-          // Groups wrap onto a second row when the panel is narrow (저장 lives in the
-          // header, so nothing essential hides); a phone keeps one row that scrolls sideways.
+          // Narrow: groups wrap (저장 in the header); phone: one sideways-scrolling row.
           className="flex min-w-full items-center gap-y-1 overflow-visible bg-transparent divide-x divide-line/80 sm:flex-wrap [&>div]:flex [&>div]:shrink-0 sm:[&>div:has([data-wide])]:min-w-0 sm:[&>div:has([data-wide])]:basis-full sm:[&>div:has([data-wide])]:border-l-0"
         >
           {commands.map((child, index) => (
@@ -107,7 +104,7 @@ export function ArtifactRibbon<T extends string>({
   )
 }
 
-/** Small permanent actions beside the title; labels collapse before icons do. */
+/** Permanent actions beside the title; labels collapse before icons. */
 export function QuickAccess({ children, label }: { children: ReactNode; label: string }) {
   return <div aria-label={label} className="flex shrink-0 items-center gap-0.5 [&_button]:h-8 max-sm:[&_button]:h-10 max-sm:[&_button]:w-10 max-sm:[&_button]:px-0 max-sm:[&_button]:text-[0px]">{children}</div>
 }

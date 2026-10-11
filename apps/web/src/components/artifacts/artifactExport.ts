@@ -2,22 +2,22 @@ import { sectionText } from '@/components/report/SectionBody'
 import { downloadArtifact, fileUrl } from '@/lib/api'
 import type { Artifact, ChartArtifact, DeckArtifact, ReportArtifact, ReportSection, Slide } from '@/types'
 
-/** Every file an artifact leaves as, the same set the server's `export_formats` offers. */
+/** Export formats; mirrors server `export_formats`. */
 export type ExportFormat = 'pdf' | 'docx' | 'hwpx' | 'pptx' | 'md' | 'html' | 'source' | 'csv' | 'file'
 
 export interface ExportChoice {
   format: ExportFormat
-  /** Korean label, translated where it is shown. */
+  /** Korean label, translated where shown. */
   label: string
   hint: string
 }
 
-/** Whether an HTML artifact is a deck: by its template kind, else by its markup (the server's rule). */
+/** HTML deck by template kind, else markup (server's rule). */
 export function htmlIsDeck(content: string, templateKind?: string): boolean {
   return templateKind ? templateKind === 'deck' : content.includes('class="slide')
 }
 
-/** The download menu of an artifact, most used first. Empty when nothing can be taken away. */
+/** Download menu, most used first; empty when nothing exports. */
 export function exportChoices(artifact: Artifact, templateKind?: string): ExportChoice[] {
   switch (artifact.kind) {
     case 'report':
@@ -51,7 +51,7 @@ export function exportChoices(artifact: Artifact, templateKind?: string): Export
     case 'code':
       return [{ format: 'source', label: '원본 파일', hint: (artifact.language ?? 'TXT').toUpperCase() }]
     case 'chart':
-      // PNG and SVG are drawn from the chart on screen; the panel offers them.
+      // PNG/SVG drawn from the on-screen chart: offered by the panel.
       return [{ format: 'csv', label: '데이터', hint: 'CSV' }]
     case 'image':
     case 'audio':
@@ -60,12 +60,12 @@ export function exportChoices(artifact: Artifact, templateKind?: string): Export
   }
 }
 
-/** One thing to look at before a file leaves: 「근거 확인 필요 2장」. */
+/** Pre-export warning, e.g. 「근거 확인 필요 2장」. */
 export interface ExportCheck {
   /** Korean label with `{n}`. */
   label: string
   count: number
-  /** Report: the section; deck: the slide index. */
+  /** Report: section; deck: slide index. */
   target?: string | number
 }
 
@@ -84,7 +84,7 @@ export interface NumericEvidenceGap {
   excerpts: string[]
 }
 
-/** Numeric claims that have no `[n]` marker in the same sentence. */
+/** Numeric claims without an `[n]` in the same sentence. */
 export function numericEvidenceGaps(sections: ReportSection[]): NumericEvidenceGap[] {
   const numericFact = /\d[\d,.]*\s*(?:%|％|원|명|건|개|배|년|월|일|시간|분|초|점|대|회|쪽|페이지|GB|MB|km|kg)/i
   const marker = /(?:\[|［)\s*\d+\s*(?:\]|］)/
@@ -106,7 +106,7 @@ export function numericEvidenceGaps(sections: ReportSection[]): NumericEvidenceG
   return gaps
 }
 
-/** Cheap overflow estimate for the whole deck; the selected slide is measured in pixels. */
+/** Rough overflow estimate for the whole deck; selected slide measured in pixels. */
 export function overflowRisk(slide: Slide): boolean {
   const titleLoad = Math.ceil((slide.title?.length ?? 0) / 34)
   const bulletLoad = (slide.bullets ?? []).reduce((sum, row) => sum + Math.max(1, Math.ceil(row.length / 38)), 0)
@@ -118,7 +118,7 @@ export function overflowRisk(slide: Slide): boolean {
   return (titleLoad * 1.5 + bulletLoad + tableLoad + pairLoad + columnLoad + chartLoad) * scale > 10
 }
 
-/** Citations with no source behind them plus numeric claims with no citation. */
+/** Unbacked citations plus uncited numeric claims. */
 export function reportEvidenceWarnings(report: ReportArtifact): number {
   const known = new Set(report.sources.map((source) => source.ordinal))
   return (
@@ -127,14 +127,14 @@ export function reportEvidenceWarnings(report: ReportArtifact): number {
   )
 }
 
-/** Slides whose fact check found an unsupported claim, by index. */
+/** Slide indices with an unsupported fact-check claim. */
 export function weakSlideIndexes(deck: DeckArtifact): number[] {
   return deck.slides
     .map((s, i) => (s.factCheck?.claims.some((c) => c.verdict !== 'supported') ? i : -1))
     .filter((i) => i >= 0)
 }
 
-/** What the ribbon's export menu asks about first, without the panel open. */
+/** What the ribbon's export menu warns about, panel closed. */
 export function exportChecks(artifact: Artifact): ExportCheck[] {
   if (artifact.kind === 'report') {
     const count = reportEvidenceWarnings(artifact)
@@ -153,7 +153,7 @@ export function exportChecks(artifact: Artifact): ExportCheck[] {
   return []
 }
 
-/** The table as CSV; the BOM makes Excel decode Korean as UTF-8. */
+/** CSV; BOM so Excel reads Korean as UTF-8. */
 export function csvSource(chart: ChartArtifact): string {
   const escape = (v: string | number) => {
     const text = String(v)
@@ -165,7 +165,7 @@ export function csvSource(chart: ChartArtifact): string {
 }
 
 
-/** A file name stem a download can carry. */
+/** Download-safe file name stem. */
 function stem(title: string): string {
   return title.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'download'
 }
@@ -179,7 +179,7 @@ function saveBlob(blob: Blob, name: string) {
   URL.revokeObjectURL(url)
 }
 
-/** Takes an artifact away as `format`, by the same endpoint the panel's menu uses. */
+/** Exports as `format` via the panel menu's endpoint. */
 export async function takeArtifact(artifact: Artifact, format: ExportFormat): Promise<void> {
   const title = artifact.title || 'document'
   if (format === 'csv' && artifact.kind === 'chart') {

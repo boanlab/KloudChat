@@ -63,8 +63,7 @@ const placeholders: Record<SessionKind, string> = {
   av: '만들고 싶은 영상이나 오디오를 설명하세요',
 }
 
-// Mirrors `imagegen.STYLE_CHOICES`.
-// 구조도 · 흐름도 · 개념도 draw a figure with the deck export's shapes (`FIGURE_STYLES`), never the image model.
+// Mirrors `imagegen.STYLE_CHOICES`; 구조도·흐름도·개념도 are drawn as deck-export shapes, not by the image model.
 const STYLES = ['자동', '구조도', '흐름도', '개념도', '인포그래픽', '차트', '사진', '일러스트', '미니멀', '3D 렌더', '수채화', '없음']
 const LABELS: { id: 'auto' | 'ko' | 'en' | 'none'; label: string }[] = [
   { id: 'auto', label: '자동' },
@@ -107,7 +106,7 @@ const SOURCE_LABEL: Record<string, string> = {
   tool_definitions: '도구 정의',
 }
 
-/** Compact chip-style selector used by the image and a/v option bars. */
+/** Chip selector for the image and a/v option bars. */
 function OptionGroup<T extends string | number>({
   label,
   value,
@@ -208,8 +207,7 @@ function AvOptions() {
   const avModel = models.find((m) => m.id === modelByKind.av)
   const hasVideoModel = models.some((m) => m.kinds.includes('av') && m.modality === 'video')
   const shapedFor = useRef<string | null>(null)
-  // When the model changes, snap the chips to a shape it prices; a chip
-  // turned afterwards stands.
+  // Model change snaps the chips to a priced shape; later picks stand.
   useEffect(() => {
     if (audio || !avModel) return
     if (avModel.modality !== 'video') {
@@ -335,8 +333,7 @@ function ToolItem({
   )
 }
 
-// Composer state carried across the remount that creating a session causes.
-// Read once by the new composer and cleared.
+// State carried across the session-creating remount; read once, then cleared.
 type ComposerSnapshot = {
   sessionId: string
   value: string
@@ -348,10 +345,7 @@ let carriedComposer: ComposerSnapshot | null = null
 // Editing a past question must not replace the ordinary draft of its conversation.
 const editBackups = new Map<string, ComposerSnapshot>()
 
-// Unsent text keyed by session id, or `new:<kind>` on the home screen. Held in
-// memory and mirrored to this browser's storage under the account, so a reload
-// (or a crash) does not lose a half-typed question; storage may be unavailable
-// (private window, blocked site data), and then memory alone serves.
+// Unsent text by session id (or `new:<kind>`), mirrored to per-account storage; memory alone when storage is unavailable.
 const drafts = new Map<string, string>()
 const draftKeyFor = (sessionId: string | null, kind: SessionKind) => sessionId ?? `new:${kind}`
 const draftStore = {
@@ -388,10 +382,7 @@ const MESSAGE_LIMIT = 200_000
 const MESSAGE_WARN = 150_000
 const ATTACH_EVENT = 'kloudchat:attach-to-session'
 
-/**
- * A file whose upload finished after its composer moved to another conversation: it joins the
- * state carried into that conversation's composer, or that composer once it is on screen.
- */
+/** Upload finished after its composer moved on: joins that conversation's carried state or live composer. */
 function attachLate(sessionId: string, row: FileRow) {
   if (carriedComposer?.sessionId === sessionId) {
     carriedComposer = { ...carriedComposer, attachments: [...carriedComposer.attachments, row] }
@@ -423,7 +414,6 @@ export function fillComposer(text: string) {
   window.dispatchEvent(new CustomEvent(FILL_EVENT, { detail: text }))
 }
 
-/** Whether a session has unsent text. */
 export function hasUnsentDraft(sessionId: string) {
   return !!draftStore.get(sessionId)?.trim()
 }
@@ -476,9 +466,7 @@ export function Composer({
 
   const draft = useStore((s) => s.draft)
   const setDraft = useStore((s) => s.setDraft)
-  // A gallery sentence is appended to the box, never written over it, and
-  // arrives selected so one keystroke removes it.
-  // Selection applied after React commits the value.
+  // Gallery sentence appended, never overwriting, and selected for one-keystroke removal; selection applied after commit.
   const pendingSelection = useRef<[number, number] | null>(null)
   useEffect(() => {
     if (!draft) return
@@ -489,8 +477,7 @@ export function Composer({
     setValue(next)
     setDraft('')
     ref.current?.focus()
-    // Into an empty box the caret goes to the end. Applied in the layout
-    // effect: the controlled textarea's next commit collapses an earlier selection.
+    // Empty box: caret to the end. Set in the layout effect; the controlled commit collapses an earlier selection.
     pendingSelection.current = [kept ? next.length - draft.length : next.length, next.length]
   }, [draft, setDraft])
   useEffect(() => {
@@ -513,7 +500,6 @@ export function Composer({
     pendingSelection.current = null
     ref.current?.setSelectionRange(range[0], range[1])
   }, [value])
-  /** Uploaded files; the turn sends their ids. */
   const [attachments, setAttachments] = useState<FileRow[]>([])
   const liveAttachments = useRef(attachments)
   const liveSessionId = useRef(sessionId)
@@ -582,7 +568,7 @@ export function Composer({
       target?.focus()
     })
     return () => cancelAnimationFrame(frame)
-    // Only a change of view moves focus; opening is the menu's own business.
+    // Only a view change moves focus.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plusView])
   const setSessionTemplate = useStore((s) => s.setSessionTemplate)
@@ -612,8 +598,7 @@ export function Composer({
     if (!composerRestore || composerRestore.sessionId !== sessionId) return
     setComposerRestore(null)
     if (composerRestore.error) setChatError(composerRestore.error)
-    // Skills are not "newer input": they stay on after a send, so their presence
-    // says nothing about whether the person has started typing something else.
+    // Skills persist after a send, so they are not newer input.
     if (liveValue.current || liveAttachments.current.length > 0) {
       return
     }
@@ -635,8 +620,7 @@ export function Composer({
   const [ownUploading, setUploading] = useState(false)
   /** Names of files whose upload failed, shown until the next upload attempt. */
   const [uploadFailed, setUploadFailed] = useState<string[]>([])
-  // A file picked while an agent's conversation was opening uploads under the composer that
-  // picked it; this conversation's composer shows it on its way, and says if it failed.
+  // File picked while an agent's conversation opened: uploaded by the picking composer; shown here with its failure.
   const [carriedUploads, setCarriedUploads] = useState(() => (sessionId ? lateUploads.get(sessionId) ?? 0 : 0))
   useEffect(() => {
     const sync = () => {
@@ -654,8 +638,7 @@ export function Composer({
   }, [sessionId])
   const uploading = ownUploading || carriedUploads > 0
   const fileInput = useRef<HTMLInputElement>(null)
-  // Dictation goes to the deployment's own Whisper, never to the browser
-  // vendor's recognizer; the recording is not kept.
+  // Dictation via the deployment's Whisper only, never the browser's recognizer; recording not kept.
   const dictationEnabled = useStore((s) => s.dictationEnabled)
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
@@ -700,9 +683,7 @@ export function Composer({
       setChatError(t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'))
     }
   }
-  // Push to talk, when switched on in 환경설정: hold space in the empty box, release to have
-  // the words put in the box (never sent). Off, space is just a space.
-  // `pushToTalk` marks a held-key recording.
+  // Push to talk (환경설정): hold space in an empty box, release to fill the box, never send.
   const spaceToTalk = useStore((s) => s.user?.preferences.spaceToTalk === true)
   const pushToTalk = useRef(false)
   const holdToTalk = (e: { key: string; repeat: boolean; preventDefault: () => void }) => {
@@ -718,7 +699,7 @@ export function Composer({
     if (e.key !== ' ' || !pushToTalk.current) return false
     e.preventDefault()
     pushToTalk.current = false
-    // Transcribed into the box; the person reads it and sends it.
+    // Fills the box; never sends.
     void stopRecording()
     return true
   }
@@ -733,9 +714,7 @@ export function Composer({
     window.addEventListener(DICTATION_EVENT, toggle)
     return () => window.removeEventListener(DICTATION_EVENT, toggle)
   })
-  // 「자동」 by default: the web tools are offered and the server searches when the words
-  // call for it; 「켬」 searches every turn, 「끔」 offers nothing. `searchBlocked` still
-  // overrides per turn.
+  // 자동 (default): tools offered, server decides; 켬 searches every turn; 끔 offers none. `searchBlocked` overrides.
   const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>('auto')
   const webSearch = webSearchMode !== 'off'
   const webSearchModeLabels: Record<WebSearchMode, string> = { auto: t('자동'), on: t('항상'), off: t('끔') }
@@ -790,9 +769,7 @@ export function Composer({
       return
     }
     if (sessionId && carriedComposer?.sessionId === sessionId) {
-      // Only non-empty fields are put back: on a send the composer was cleared
-      // before the session existed, and a refusal may already have restored
-      // the real draft through the store.
+      // Only non-empty fields: the composer was cleared before the session existed, and a refusal may already have restored the draft.
       const held = carriedComposer
       carriedComposer = null
       if (held.value) {
@@ -810,8 +787,7 @@ export function Composer({
       setWebSearchMode(held.webSearchMode)
       return
     }
-    // The conversation's standing skills come back with it; a new one starts clean.
-    // Read once here, not subscribed: a later change to them is hydrated below.
+    // Standing skills return with the conversation; read once, later changes hydrated below.
     const standing = sessionId
       ? useStore.getState().sessions.find((c) => c.id === sessionId)?.skillIds ?? []
       : []
@@ -821,8 +797,7 @@ export function Composer({
     setAttachments([])
     setWebSearchMode('auto')
   }, [sessionId, kind, messageEdit?.sessionId, accountEpoch])
-  // The session row may arrive after the composer mounted (a fresh load of /s/:id):
-  // its standing skills fill an empty picker once, never overriding a live choice.
+  // Session row may arrive after mount: its skills fill an empty picker once, never overriding a live choice.
   const standingSkillIds = useStore((s) =>
     sessionId ? s.sessions.find((c) => c.id === sessionId)?.skillIds : undefined,
   )
@@ -868,8 +843,7 @@ export function Composer({
   // A generation awaiting an answer or approval (document surfaces only).
   const pending = session?.pending ?? null
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
-  // The picked template, else the one the session already wears. Derived:
-  // the server is what makes the choice sticky.
+  // Picked template, else the session's; derived, the server keeps it sticky.
   const shownTemplate =
     (pendingTemplate?.surface === kind ? pendingTemplate : null) ??
     designTemplates.find((row) => row.id === session?.renderTemplateId) ??
@@ -885,7 +859,6 @@ export function Composer({
   // A strict-local model gets no network tool; the control follows the turn, not the stored preference.
   const searchBlocked = Boolean(model?.strictLocal)
   const effectiveWebSearch = webSearch && !searchBlocked
-  // What this turn sends: the mode, unless something blocks search altogether.
   const sentWebSearch: WebSearchSetting = !effectiveWebSearch
     ? false
     : webSearchMode === 'auto'
@@ -960,15 +933,12 @@ export function Composer({
         (effectiveWebSearch && webSearchMode === 'on') ||
         activeSkills.length > 0,
     )
-  // Empty `kinds` means every surface.
-  // A person's own copy and the catalogue original it came from show once (of those switched on).
+  // Empty `kinds` = every surface; an own copy and its catalogue original shown once.
   const pickableAgents = distinctAgents(agents.filter((a) => a.enabled), user?.id)
   const usableAgents = pickableAgents.filter(
     (a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(kind)),
   )
-  // 「+」 › 에이전트 lists every agent the person can start: those of this screen first, then
-  // the rest, each opening on its own screen.
-  // A picture or sound screen keeps to its own.
+  // 「+」 › 에이전트: this screen's agents first, then the rest on their own screens; media screens keep to their own.
   const menuAgents = isMedia
     ? usableAgents
     : [...usableAgents, ...pickableAgents.filter((a) => a.enabled && !usableAgents.includes(a))]
@@ -976,8 +946,7 @@ export function Composer({
     (c) => c.installed && (c.kinds.length === 0 || c.kinds.includes(kind)),
   )
   const activeConnectors = usableConnectors.filter((c) => c.enabled && c.status === 'connected')
-  // Per picture, per second by (resolution, sound), or per call; never
-  // `creditCost`, which is per 1k output tokens.
+  // Per picture, per second by (resolution, sound), or per call — never `creditCost` (per 1k tokens).
   const videoRate =
     model?.creditPerSecond?.[`${avOptions.resolution}:${avOptions.withAudio ? 'sound' : 'silent'}`]
   // The submit endpoint refuses shapes the model does not price (Sora has no silent price).
@@ -995,8 +964,7 @@ export function Composer({
   )
   // This session's own turn only.
   const streaming = !!sessionId && !!running[sessionId]
-  // The gateway notice stands only until the turn it was about shows up: a running
-  // turn, or an answer growing in this conversation, means the request went through.
+  // Gateway notice stands until the turn shows: running, or an answer growing.
   const lastAnswerLength = useStore((s) => {
     const last = s.sessions.find((c) => c.id === sessionId)?.messages.at(-1)
     return last?.role === 'assistant' ? last.content.length + (last.steps?.length ?? 0) : 0
@@ -1066,7 +1034,7 @@ export function Composer({
     liveAttachments.current = files
     setAttachments(files)
     requestAnimationFrame(() => { ref.current?.focus(); ref.current?.scrollIntoView({ block: 'nearest' }) })
-    // A message edit is an explicit one-time injection, not an ordinary draft update.
+    // One-time injection, not a draft update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messageEdit, sessionId])
 
@@ -1135,8 +1103,7 @@ export function Composer({
             editContext.current = null
             clearMessageEdit()
           }
-          // A branch from an edit is pushed, so Back returns to the conversation it
-          // came from; a brand-new conversation replaces its /new/:kind address.
+          // Edit branch pushed (Back returns); a new conversation replaces /new/:kind.
           navigate(`/s/${id}`, branched ? undefined : { replace: true })
         },
       })
@@ -1171,9 +1138,7 @@ export function Composer({
       }
       setReusableSessionId((current) => current ?? attemptedSessionId)
       if (editScope) throw error
-      // A gateway timeout is not a refusal: the request may have reached the server and
-      // its turn may be running. The draft is not handed back (sending it again would
-      // ask twice); the conversation is reloaded so a running turn shows.
+      // Gateway timeout is not a refusal: the turn may be running. Draft not handed back (a resend would ask twice); reload shows it.
       if (error instanceof ApiError && [502, 503, 504].includes(error.status) && attemptedSessionId) {
         setComposerRestore({
           sessionId: attemptedSessionId,
@@ -1191,8 +1156,7 @@ export function Composer({
           ? t('Auto에 사용할 품질 모델을 다시 선택하세요. 초안과 첨부 파일은 그대로 보관했습니다.')
           : (refusalSentence(errorCode(error), t) ??
             errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.')))
-      // Through the store: the composer that sent a session-creating turn is
-      // unmounted by the time a refusal lands.
+      // Via the store: the sending composer is unmounted by the time a refusal lands.
       setComposerRestore({
         sessionId: attemptedSessionId,
         value: text,
@@ -1206,8 +1170,7 @@ export function Composer({
 
   const dismissPrivacyDecision = () => {
     if (!pendingPrivacy || privacyRetrying) return
-    // Only the submission that still owns the cleared composer may restore it;
-    // a newer edit or upload revokes that.
+    // Only the submission owning the cleared composer restores it; a newer edit or upload revokes that.
     if (activeRestoreToken.current === pendingPrivacy.restoreToken) {
       activeRestoreToken.current = null
       liveValue.current = pendingPrivacy.text
@@ -1221,8 +1184,7 @@ export function Composer({
     setPendingPrivacy(null)
   }
 
-  // Grows with its text up to the cap; a scrollbar only once the text is past it. Measured again
-  // when the box changes width (panel, rotation) or the web font arrives, which re-wrap the text.
+  // Grows to the cap, then scrolls; remeasured on width change or web-font load.
   useEffect(() => {
     const el = ref.current
     if (!el) return
@@ -1230,8 +1192,7 @@ export function Composer({
     const fit = () => {
       el.style.height = 'auto'
       const full = el.scrollHeight
-      // On a short screen (a phone, or 200% zoom) the box keeps to a quarter of it and scrolls
-      // inside, so the answer above stays readable.
+      // Short screen (phone, 200% zoom): at most a quarter of it, so the answer stays readable.
       const most = Math.max(72, Math.min(COMPOSER_MAX_PX, Math.round(window.innerHeight * 0.25)))
       el.style.height = `${Math.min(full, most)}px`
       el.style.overflowY = full > most ? 'auto' : 'hidden'
@@ -1288,8 +1249,7 @@ export function Composer({
         if (!row || editContext.current !== editScope) continue
         if (editScope && useStore.getState().activeSessionId !== uploadSession) continue
         if (movedOn()) {
-          // The composer moved on to the new conversation (or was replaced by its own);
-          // the file follows the conversation it was uploaded for.
+          // Composer moved on: the file follows the conversation it was uploaded for.
           attachLate(uploadSession!, row)
           continue
         }
@@ -1313,8 +1273,7 @@ export function Composer({
     !isMedia && !editPending,
   )
   const onPasteFiles = usePasteFiles((files) => void addFiles(files))
-  // A long paste folds into a chip (「붙여 넣은 텍스트 · 37,200자」) instead of flooding the box;
-  // it goes with the message, or is opened into the box, or attached as a file.
+  // Long paste folds into a chip: sent with the message, opened into the box, or attached as a file.
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     onPasteFiles(e)
     if (e.defaultPrevented || editing) return
@@ -1444,18 +1403,14 @@ export function Composer({
     setChatError(null)
     const restoreToken = ++restoreSequence.current
     activeRestoreToken.current = kind === 'chat' ? restoreToken : null
-    // In a conversation the turn shows at once under the transcript, so the box empties now.
-    // A new conversation has nothing to show it in yet: the text stays (read-only) until the
-    // server takes the turn, so a slow start or a refusal never loses what was typed.
-    // Skills stay on: picked once, they apply to the conversation's later turns too.
+    // In a conversation the box empties at once; a new one keeps the text read-only until the server takes the turn. Skills stay on.
     const startSettled = () => {
       holdingStart.current = false
       submitting.current = false
       setStartPending(false)
     }
     submitting.current = true
-    // No sign of the turn after 15 s: the conversation is read again from the server, so a
-    // turn that started (or never did) shows as it is.
+    // No sign of the turn after 15 s: reload the conversation from the server.
     const resyncFrom = sessionId
     window.setTimeout(() => {
       if (!submitting.current) return
@@ -1506,10 +1461,7 @@ export function Composer({
       }).finally(startSettled)
       return
     }
-    // A document request typed into chat starts a new conversation on the
-    // report or slides surface. An agent chat moves
-    // only to a surface the agent names, and keeps the agent and the conversation.
-    // A conversation that runs a user pipeline answers here: the pipeline is what it is for.
+    // Document request in chat starts a report/slides conversation; an agent chat moves only to a surface it names; a pipeline conversation answers here.
     const movable = kind === 'chat' && !session?.pipelineId && !sessionAgent?.pipelineId
     const detected = movable ? handoffSurface(text) : null
     const agentHandoff =
@@ -1517,9 +1469,7 @@ export function Composer({
         ? agentHandoffSurface(text, sessionAgent.kinds, agentDocumentNames(sessionAgent, designTemplates))
         : null
     const generalHandoff = detected && !session?.agentId ? detected : null
-    // A conversation with turns behind it goes along as the document's material (its words as
-    // 「대화 기록.txt」, its files as they are); a deck asked for 「위에서 계산한 값으로」
-    // must not start from nothing and invent another example.
+    // Earlier turns go along as material (「대화 기록.txt」 plus files), so a deck can reuse values computed above.
     const carried = agentHandoff ?? (sessionId && (session?.messages.length ?? 0) > 0 ? generalHandoff : null)
     if (carried && sessionId) {
       void handOff(sessionId, carried, text, {
@@ -1598,8 +1548,7 @@ export function Composer({
     })
       .finally(startSettled)
       .catch((error: unknown) => {
-        // A refusal happens before the server stores the turn; restore the
-        // draft through the store (see `deliverChat`).
+        // Refused before the server stored it: restore the draft via the store (see `deliverChat`).
         setComposerRestore({
           sessionId: landedSessionId,
           value: text,
@@ -1610,8 +1559,7 @@ export function Composer({
               ? refusalSentence(errorCode(error), t) ?? ''
               : '',
         })
-        // The session row was rolled back with the refused turn; hand the
-        // pick back unless a newer one was chosen meanwhile.
+        // Session row rolled back with the refusal: hand the pick back unless a newer one exists.
         if (sentTemplate && !livePendingTemplate.current) setPendingTemplate(sentTemplate)
       })
   }
@@ -1620,7 +1568,7 @@ export function Composer({
   useEffect(() => {
     if (!queuedSend || uploading || awaitingModels) return
     submit()
-    // `submit` reads the latest render; only the gates decide when to fire.
+    // `submit` reads the latest render; the gates decide when.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queuedSend, uploading, awaitingModels])
   // Another conversation or surface: nothing held from the last one applies.
@@ -1639,12 +1587,10 @@ export function Composer({
       : [...activeSkills.map((skill) => skill.id), id]
     liveActivatedSkillIds.current = next
     setActivatedSkillIds(next)
-    // In a conversation the change is the conversation's, kept on the server —
-    // except while a message is being edited, where cancel must undo it.
+    // Saved server-side in a conversation — except while editing, where cancel must undo it.
     if (sessionId && kind === 'chat' && !editing) void setSessionSkills(sessionId, next)
   }
-  // Everything but dictation, the model and send sits behind 「+」 (a bottom sheet on a phone);
-  // what is switched on shows as a chip above the input.
+  // Everything but dictation, model and send sits behind 「+」; active options show as chips.
   const showTemplates = hasTemplates && (started || !sessionId) && !editing
   // Offered before any skill is added, so a new account can find them from here.
   const showSkills = !isMedia
@@ -1917,8 +1863,7 @@ export function Composer({
               return (
                 <MenuItem
                   key={a.id}
-                  // The name is the agent's own: the screen it opens on is a badge beside it, never
-                  // read as part of the name (「개조식 보고서」 is not 「개조식 보고서 보고서」).
+                  // Screen shown as a badge, never read as part of the agent's name.
                   label={elsewhere ? t('{name} — {kind} 화면에서 열림').replace('{name}', a.name).replace('{kind}', t(kindMeta[startOn].label)) : a.name}
                   hint={
                     elsewhere ? (
@@ -1935,8 +1880,7 @@ export function Composer({
                   }
                   onClick={() => {
                     closePlus()
-                    // An agent belongs to the session, so choosing one starts a conversation.
-                    // What is typed or attached while it opens goes along with it.
+                    // Agent belongs to the session: picking one starts a conversation, carrying what was typed or attached.
                     const starting = newSession(startOn, { agentId: a.id, projectId })
                     agentStart.current = starting
                     void starting

@@ -1,8 +1,4 @@
-/**
- * What a project's 참고 파일 can read: the file picker offers only these, and a file the
- * server could never read (empty, or a program) is refused before it is uploaded rather than
- * listed with 「내용을 읽지 못함」 afterwards. Mirrors `extract_text` in the API's files service.
- */
+/** What a project's 참고 파일 can read; unreadable files refused before upload. Mirrors `extract_text`. */
 
 const READABLE = [
   '.pdf', '.docx', '.pptx', '.xlsx', '.csv', '.tsv', '.hwp', '.hwpx',

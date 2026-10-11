@@ -3,11 +3,7 @@ import { artifactsApi } from '@/lib/api'
 import { FRAMES, drawIntoFitting, frameElement, rasterise, theme } from '@/lib/mermaid'
 import { useT } from '@/lib/useT'
 
-/**
- * Renders a mermaid diagram and posts the rasterised PNG back for the
- * exporters (the server has no browser). A render failure shows the source
- * and stores nothing.
- */
+/** Mermaid render; PNG posted back for the exporters (no browser on the server). Failure shows the source, stores nothing. */
 export function Diagram({
   source,
   artifactId,
@@ -16,12 +12,12 @@ export function Diagram({
   stored,
 }: {
   source: string
-  /** Absent while streaming; nothing to store onto yet. */
+  /** Absent while streaming. */
   artifactId?: string
   sectionId?: string
-  /** `report_export.diagram_key` of this source. */
+  /** `report_export.diagram_key`. */
   diagramKey?: string
-  /** Picture already stored on the section. */
+  /** Already stored on the section. */
   stored?: string
 }) {
   const t = useT()
@@ -32,7 +28,7 @@ export function Diagram({
     let live = true
     const node = host.current
     if (!node || stored) return
-    // A new source is a new attempt; a streamed fragment may have failed before.
+    // New source, new attempt; a streamed fragment may have failed.
     setFailed(false)
     if (!source.trim()) return
 
@@ -43,7 +39,7 @@ export function Diagram({
           if (live) setFailed(true)
           return
         }
-        // Every figure on a page has the same width and a shape between 4:3 and 16:9.
+        // Same width per page; shape between 4:3 and 16:9.
         const frame = frameElement(drawn, FRAMES.page)
         const picture = new XMLSerializer().serializeToString(frame)
         frame.removeAttribute('width')

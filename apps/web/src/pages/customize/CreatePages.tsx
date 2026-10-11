@@ -12,17 +12,14 @@ import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { Agent, AgentDraft, DistillState } from '@/types'
 
-/** What the draft's 지시 is waiting for: the distillation arrives after the rest of the form. */
+/** Distillation arrives after the rest of the form. */
 interface Decided {
   state: DistillState
-  /** The 지시 section to add once it arrives; empty until then and when nothing was settled. */
+  /** 지시 section to add on arrival; empty until then or when nothing settled. */
   prompt: string
 }
 
-/** 「에이전트로 저장」: `?from=session:<id>` reads the conversation as a draft. Nothing is saved
- *  until the form is. `undefined` while it loads, `null` without one. The draft comes without
- *  its 지시 first (no model call), then the distillation fills it; a failure says so and can be
- *  asked again. */
+/** 「에이전트로 저장」: `?from=session:<id>` drafts from the conversation; nothing saved until the form is; 지시 filled later by distillation (retryable). */
 function useSessionDraft(): {
   draft: AgentDraft | null | undefined
   error: string | null
@@ -44,7 +41,7 @@ function useSessionDraft(): {
       .then((draft) => {
         if (!current) return
         setState({ id: sessionId, draft, error: null })
-        // A server that already distilled (no `pending`) has the 지시 in the draft itself.
+        // Already distilled (no `pending`): 지시 in the draft.
         if (draft.distilled !== 'pending')
           setDecided({ id: sessionId, state: draft.distilled ?? (draft.systemPrompt ? 'ok' : 'empty'), prompt: '' })
       })
@@ -75,7 +72,7 @@ function useSessionDraft(): {
   return { draft: state.draft, error: state.error, decided: shown, retry }
 }
 
-/** The banner above a draft: what it says is what the 지시 holds, never 「filled」 when it is not. */
+/** Says what the 지시 holds; never 「filled」 when it is not. */
 function DraftNotice({ decided, onRetry }: { decided: Decided; onRetry: () => void }) {
   const t = useT()
   const box = 'mb-6 rounded-control border px-3 py-2 text-base text-fg'
@@ -117,7 +114,7 @@ function fromDraft(base: Agent, d: AgentDraft): Agent {
   }
 }
 
-/** /customize/agents/new — four essentials, the rest folded; saving opens the agent. */
+/** Four essentials, rest folded; saving opens the agent. */
 export function AgentCreatePage() {
   const t = useT()
   const navigate = useNavigate()
@@ -129,12 +126,11 @@ export function AgentCreatePage() {
     void ensureDesignTemplates()
   }, [ensureWorkspace, ensureDesignTemplates])
 
-  // Cheapest chat model, the same rule the surface defaults use.
+  // Cheapest chat model, as the surface defaults.
   const defaultModel =
     [...models].filter((m) => m.kinds.includes('chat')).sort((a, b) => a.creditCost - b.creditCost)[0]?.id ?? ''
   const { draft, error, decided, retry } = useSessionDraft()
-  // The form opens without waiting for the models: only its 모델 field waits, and fills in the
-  // default when they arrive (`AgentForm`'s `defaultModel`).
+  // Form opens without waiting for models; 모델 fills on arrival (`defaultModel`).
   const initial = useMemo(() => {
     if (draft === undefined) return null
     const blank = emptyAgent('')
@@ -178,7 +174,7 @@ export function AgentCreatePage() {
   )
 }
 
-/** /customize/skills/new — 이름, 설명 and the steps; saving opens the skill. */
+/** 이름, 설명, steps; saving opens the skill. */
 export function SkillCreatePage() {
   const t = useT()
   const navigate = useNavigate()

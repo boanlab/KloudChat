@@ -91,10 +91,7 @@ import { counters } from '@/lib/usage'
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = (text: string) => translate(currentLang(), text)
 
-/**
- * Send options per user-message id for an immediate retry. The server also
- * persists the durable subset so retry keeps its behaviour after a reload.
- */
+/** Send options per user message, for an immediate retry; the server persists the durable subset. */
 const sentWith = new Map<string, SendOptions>()
 /** Answers a rerun is replacing, by question id, until the new answer row takes them. */
 const earlierAnswers = new Map<string, NonNullable<Message['superseded']>>()
@@ -151,11 +148,7 @@ function endRun(set: Set, sessionId: string) {
   void reconcileSession(set, sessionId)
 }
 
-/**
- * Merges the stored transcript over the on-screen one: the server decides which
- * messages exist and what they say; a field it left empty keeps the screen's value
- * (streamed steps and privacy notices are not all stored).
- */
+/** Stored transcript over the on-screen one: the server decides messages and text; empty fields keep the screen's value. */
 async function reconcileSession(set: Set, sessionId: string) {
   const row = await sessionsApi.get(sessionId).catch(() => null)
   if (!row) return
@@ -163,8 +156,7 @@ async function reconcileSession(set: Set, sessionId: string) {
   set((s) => {
     const held = s.sessions.find((c) => c.id === sessionId)
     if (!held || sessionId in s.running) return {}
-    // Pair by id where one matches, else by position from the front: only the
-    // chat path adopts server ids, and a short server list is short at the end.
+    // Pair by id, else by position: only chat adopts server ids, and a short server list is short at the end.
     const byId = new Map(held.messages.map((m) => [m.id, m]))
     const mineAt = (index: number) => held.messages[index]
     const paired = fresh.messages.map((message, index) => {
@@ -357,10 +349,7 @@ interface State {
   openSession: (id: string) => Promise<boolean>
   /** `openSession` without the sharing of a request already in flight. */
   fetchSession: (id: string) => Promise<boolean>
-  /**
-   * Continues an agent chat on the report or slides surface with the same agent: opens the
-   * session, then sends `text` with the conversation (as a file) and the chat's files.
-   */
+  /** Continues an agent chat on report/slides with the same agent, sending the conversation and its files. */
   handOff: (
     fromSessionId: string,
     kind: 'report' | 'slides',
@@ -494,9 +483,7 @@ interface State {
   setPendingTemplate: (template: DesignTemplateRow | null) => void
   /** An empty logo draws the default mark. */
   brand: { name: string; logo: string }
-  /** Re-reads `/auth/config` — brand, enabled surfaces and the rest of what
-   *  `bootstrap` seeded from it — so a change an admin just saved shows up
-   *  in this tab without a reload. */
+  /** Re-reads `/auth/config` so an admin's saved change shows without a reload. */
   refreshConfig: () => Promise<void>
   /** Chat is always among them. */
   enabledKinds: SessionKind[]
@@ -528,12 +515,9 @@ interface State {
   noteArtifactVersion: (id: string, version: number) => void
 
   // ── workspace ─────────────────────────────────────────────────────────
-  /** One call after sign-in; each screen also refreshes its own slice. A call made while a
-   * load is running waits for one more load after it (shared by every such call), so what
-   * it gets is newer than the call; there are never two loads at once. */
+  /** One load at a time; a call during a load waits for one more shared load, so its result is newer than the call. */
   loadWorkspace: () => Promise<void>
-  /** A screen opening: the load already running when there is one, nothing when one finished
-   * a moment ago (a deep link mounts its screen as the sign-in load lands), else a fresh load. */
+  /** Reuses a running load, skips one just finished, else loads. */
   ensureWorkspace: () => Promise<void>
   /** The server defaults `emoji` to 📁. */
   createProject: (
@@ -765,8 +749,7 @@ function cancelRefresh() {
   refreshTimer = null
 }
 
-// Idle sign-out: the silent refresh would otherwise keep a session alive forever.
-// `pointerdown`/`keydown`/`scroll` count as activity; `mousemove` does not.
+// Idle sign-out, else the silent refresh keeps a session alive forever; pointerdown/keydown/scroll count, mousemove does not.
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 let idleTeardown: (() => void) | null = null
 
@@ -816,10 +799,7 @@ function handToTheComposer(set: Set, text: string) {
   set({ draft: text })
 }
 
-/**
- * Per surface: the remembered pick if the catalogue still serves it there, else the
- * surface/instance default, else the cheapest. Storage is never rewritten here.
- */
+/** Remembered pick if still served on the surface, else surface/instance default, else cheapest; storage untouched. */
 function reconcileDefaults(
   current: Record<SessionKind, string>,
   available: ModelInfo[],
@@ -907,8 +887,7 @@ export const useStore = create<State>((set, get) => ({
   bootstrap: async () => {
     if (inFlight) return inFlight
     inFlight = (async () => {
-      // A browser that signed out (or whose refresh already failed) has no cookie
-      // to present; asking anyway only logs a 401 on every load.
+      // No cookie after a sign-out or failed refresh: asking only logs a 401.
       if (knownSignedOut()) {
         set({ authenticated: false, user: null, authLoading: false })
         inFlight = null
@@ -936,8 +915,7 @@ export const useStore = create<State>((set, get) => ({
           })
           .catch(() => {})
         scheduleRefresh(session.expiresIn, () => void get().bootstrap())
-        // A conversation opened by its address is asked for first, before the workspace's
-        // dozen requests take the browser's connections.
+        // Address-opened conversation first, before the workspace requests take the connections.
         const opened = window.location.pathname.match(/^\/s\/([^/]+)/)?.[1]
         if (opened && session.user.status === 'active' &&
             !get().sessions.some((row) => row.id === opened && row.messages.length > 0)) {
@@ -1267,8 +1245,7 @@ export const useStore = create<State>((set, get) => ({
           s.user?.preferences.modelByKind,
         ),
       }))
-      // An account with no picks of its own adopts this browser's, once; from then
-      // on the account copy leads and every browser opens on the same model.
+      // An account without picks adopts this browser's once; then the account copy leads.
       const prefs = get().user?.preferences
       if (prefs && !Object.keys(prefs.modelByKind ?? {}).length) {
         const local = readRememberedModels()
@@ -1368,8 +1345,7 @@ export const useStore = create<State>((set, get) => ({
   },
   setActiveSession: (id) => {
     const session = id ? get().sessions.find((s) => s.id === id) : null
-    // Media already shown in the transcript does not also open the panel;
-    // sessions with no messages predate message recording and still do.
+    // Media shown in the transcript does not open the panel; sessions without messages still do.
     const shownInTranscript =
       (session?.kind === 'image' || session?.kind === 'av') && session.messageCount > 0
     const artifactId = shownInTranscript ? null : (session?.artifactId ?? null)
@@ -1760,9 +1736,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   stopStreaming: (sessionId) => {
-    // A closed response is deliberately *not* a stop on the server. Wait for
-    // the explicit stop request to be acknowledged before closing it; the
-    // timeout keeps a broken control request from trapping the UI forever.
+    // A closed response is not a server stop: wait for the stop acknowledgement; the timeout keeps a broken request from trapping the UI.
     const abort = get().running[sessionId]
     if (!abort) return
     const fallback = window.setTimeout(abort, 2_000)
@@ -1932,8 +1906,7 @@ export const useStore = create<State>((set, get) => ({
     const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
     beginRun(set, id)
     try {
-      // A 구조도·흐름도·개념도 chip goes to a language model as a flowchart, drawn by the server
-      // with the deck export's shapes and kept with its source; never the image model.
+      // Figure chips go to a language model as a flowchart drawn with the deck-export shapes; never the image model.
       const figure = opts.raw ? undefined : FIGURE_STYLES[imageOptions.style]
       if (figure) {
         try {
@@ -2615,9 +2588,7 @@ async function applyUserChange(set: Set, pending: Promise<User>) {
 type Set = (u: Partial<State> | ((s: State) => Partial<State>)) => void
 type Get = () => State
 
-/** A document draft's title while it is written: the request's opening words, but on an
- *  approval the outline's own title (or a placeholder) — the approval message says what
- *  to do, not what the document is called. */
+/** Draft title while writing: the request's opening words, or on approval the outline's title. */
 function draftTitle(
   text: string,
   gate: { approve?: boolean; plan?: Record<string, unknown> },
@@ -2704,9 +2675,7 @@ function adoptServerId(set: Set, sessionId: string, localId: string, serverId: s
 /** Deletes whose requests have not been sent yet, so the page can flush them. */
 const pendingDeletes = new Set<() => void>()
 
-/** Sends every held delete now: the page is going away (closed, reloaded, or put away on a
- * phone, where `beforeunload` may never fire but `pagehide` does). The requests go out with
- * `keepalive`. */
+/** Flushes held deletes as the page goes away (`pagehide` on phones), with `keepalive`. */
 export function flushHeldDeletes() {
   for (const flush of [...pendingDeletes]) flush()
   pendingDeletes.clear()
@@ -3251,8 +3220,7 @@ async function streamTurn(
   // With streaming off, text is buffered and shown in one piece; steps stay live.
   const live = get().user?.preferences.streamResponses !== false
   let buffered = ''
-  // Tokens arrive faster than the screen needs them: live deltas are joined and
-  // painted once per frame, so a long answer is not re-parsed per token.
+  // Deltas joined and painted once per frame, so a long answer is not re-parsed per token.
   let pendingDelta = ''
   let flushHandle: ReturnType<typeof setTimeout> | number | null = null
   const paintSoon = (fn: () => void) =>
@@ -3495,8 +3463,7 @@ async function streamTurn(
     } else {
       settled = true
       patch((m) => ({ ...m, error: tr(turnFailure(err)) }))
-      // The server deliberately survives a dropped response. Its durable
-      // answer may still land after this tab has lost the stream.
+      // The server survives a dropped response; its answer may still land.
       followDetachedTurn = accepted
       // A stall is swallowed: the failed turn carries its own retry.
       if (err instanceof StreamStalledError) return
@@ -3561,8 +3528,7 @@ async function streamReport(
   const draft: Artifact = {
     id: draftId,
     kind: 'report',
-    // An approval's text is an instruction (「고친 구성으로 생성해 주세요」), not a title:
-    // the approved outline's title stands in until the server names the document.
+    // Approval text is an instruction, not a title: the outline's title stands in until the server names it.
     title: draftTitle(text, gate, tr('보고서 작성 중')),
     version: 1,
     createdAt: now,
@@ -3578,8 +3544,7 @@ async function streamReport(
 
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
-  // The approved outline is spent: its card must not stay live to write the document again.
-  // A new proposal arrives as its own event.
+  // Approved outline spent; a new proposal arrives as its own event.
   if (gate.approve === true) setPending(set, sessionId, () => null)
   const targetId = gate.rerun
     ? (get().sessions.find((c) => c.id === sessionId)?.artifactId ?? draftId)
@@ -3667,8 +3632,7 @@ async function streamReport(
           patchReport((a) => ({ ...a, title: e.title }))
           break
         case 'design':
-          // The look the saved report keeps; without it the draft wears the panel's default
-          // and changes under the reader when the document arrives.
+          // Saved report's look, so the draft does not change under the reader when the document arrives.
           patchReport((a) => ({ ...a, design: e.design }))
           break
         case 'sources':
@@ -3817,8 +3781,7 @@ async function streamDeck(
   const draft: Artifact = {
     id: draftId,
     kind: 'deck',
-    // An approval's text is an instruction (「고친 구성으로 생성해 주세요」), not a title:
-    // the approved outline's title stands in until the server names the document.
+    // Approval text is an instruction, not a title: the outline's title stands in until the server names it.
     title: draftTitle(text, gate, tr('슬라이드 작성 중')),
     version: 1,
     createdAt: now,
@@ -3832,8 +3795,7 @@ async function streamDeck(
 
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
-  // The approved outline is spent: its card must not stay live to write the document again.
-  // A new proposal arrives as its own event.
+  // Approved outline spent; a new proposal arrives as its own event.
   if (gate.approve === true) setPending(set, sessionId, () => null)
   const targetId = gate.rerun
     ? (get().sessions.find((c) => c.id === sessionId)?.artifactId ?? draftId)
@@ -4118,10 +4080,7 @@ function dropMediaTurn(set: Set, sessionId: string, ...ids: string[]) {
   }))
 }
 
-/**
- * Polls a transcript that ends on a user message until the server-side turn
- * answers it, the person leaves the session, or ten minutes pass.
- */
+/** Polls a transcript ending on a user message until answered, the person leaves, or ten minutes pass. */
 async function watchForTheAnswer(set: Set, get: Get, sessionId: string) {
   const answered = () => {
     const session = get().sessions.find((c) => c.id === sessionId)
@@ -4156,11 +4115,7 @@ async function watchForTheAnswer(set: Set, get: Get, sessionId: string) {
   }
 }
 
-/**
- * A response connection may disappear while the detached server turn keeps
- * working. Poll the authoritative transcript and replace the provisional
- * error bubble as soon as that turn is durable.
- */
+/** Response dropped while the detached turn works: poll the transcript and replace the provisional error once durable. */
 async function watchForDetachedAnswer(set: Set, get: Get, sessionId: string) {
   for (let waited = 0; waited < 600_000; waited += 3_000) {
     await new Promise((done) => setTimeout(done, 3_000))
@@ -4198,11 +4153,7 @@ export const FIGURE_STYLES: Record<string, 'method' | 'flow' | 'concept' | undef
 export const FIGURE_UNDRAWABLE = '이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.'
 export const FIGURE_UNRENDERED = '지금은 도식을 그릴 수 없습니다. 잠시 뒤 다시 시도해 주세요.'
 
-/**
- * Description → flowchart → PNG, drawn by the server with the .pptx export's own shapes and
- * kept as an image artifact with its source. A figure the shapes cannot draw is refused; no
- * browser drawing stands in (only a chat answer's mermaid is drawn here).
- */
+/** Description → flowchart → PNG drawn with the .pptx export's shapes, kept with its source; undrawable figures refused. */
 export async function drawFigure(
   sessionId: string,
   description: string,

@@ -1,7 +1,7 @@
 import { uid } from '@/lib/utils'
 import type { Agent, Skill, SkillServer } from '@/types'
 
-/** A blank agent on the cheapest chat model, the rule the surface defaults use. */
+/** Blank agent on the cheapest chat model (surface-default rule). */
 export function emptyAgent(model: string): Agent {
   return {
     id: uid('ag'),
@@ -39,7 +39,7 @@ export function emptyAgent(model: string): Agent {
   }
 }
 
-/** Mirrors the server's slug rule for preview and early collision checks; the server still decides. */
+/** Server's slug rule mirrored for preview and early collision checks; server decides. */
 export function slugify(text: string): string {
   const base = text
     .trim()
@@ -69,7 +69,7 @@ export const blankSkill = (): SkillDraft => ({
   enabled: true,
 })
 
-/** A skill that asks the server for nothing. */
+/** Skill requiring nothing from the server. */
 export const blankServer = (): SkillServer => ({
   stage: '',
   entry: '',

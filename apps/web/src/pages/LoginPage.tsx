@@ -14,7 +14,6 @@ import { useT } from '@/lib/useT'
 
 type FieldKey = 'name' | 'email' | 'password'
 
-/** Backend `detail` codes mapped to user-facing messages. */
 const ERRORS: Record<string, string> = {
   invalid_credentials: '이메일 또는 비밀번호가 올바르지 않습니다.',
   invalid_reset_token: '재설정 링크가 올바르지 않습니다. 다시 요청하세요.',
@@ -38,7 +37,7 @@ export function LoginPage() {
   const lang = useStore((s) => s.lang)
   const { login, signup, authError, bootstrap, signedOutReason, adoptSession } = useStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
-  // No router while signed out: `?token=` on `/verify` is signup confirmation, elsewhere a password reset.
+  // No router while signed out: `?token=` on `/verify` confirms signup, elsewhere resets a password.
   const [resetToken, setResetToken] = useState(() =>
     window.location.pathname === '/verify'
       ? null
@@ -57,7 +56,7 @@ export function LoginPage() {
   } | null>(null)
   const [passwordMin, setPasswordMin] = useState(DEFAULT_PASSWORD_MIN)
   const [lockout, setLockout] = useState({ maxFailures: 5, lockoutMinutes: 15 })
-  /** Wrong passwords in a row for the address typed, counted here to warn before the lock. */
+  /** Consecutive wrong passwords for this address: warn before the lock. */
   const [failures, setFailures] = useState(0)
   const [fieldError, setFieldError] = useState<{ key: FieldKey; message: string } | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -67,7 +66,7 @@ export function LoginPage() {
   const [sent, setSent] = useState(false)
   const [resetDone, setResetDone] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
-  // Null until the public config answers; nothing is rendered on a guess.
+  // Null until the public config answers: no render on a guess.
   const [resetEnabled, setResetEnabled] = useState<boolean | null>(null)
   const [enabledKinds, setEnabledKinds] = useState<SessionKind[] | null>(null)
   const [brand, setBrand] = useState({ name: 'KloudChat', logo: '' })
@@ -80,7 +79,7 @@ export function LoginPage() {
         if (c.signup) setSignupPolicy(c.signup)
         if (c.password?.minLength) setPasswordMin(c.password.minLength)
         if (c.login) setLockout(c.login)
-        // Ordered as in the sidebar.
+        // Sidebar order.
         setEnabledKinds(kindOrder.filter((kind) => c.enabledKinds.includes(kind)))
         if (c.brand) {
           setBrand(c.brand)
@@ -100,7 +99,7 @@ export function LoginPage() {
     void authConfig
       .verifyEmail(token)
       .then(({ status, session }) => {
-        // Token is spent; drop it from the address bar.
+        // Token spent: dropped from the address bar.
         window.history.replaceState(null, '', '/')
         setVerifying(null)
         if (session) adoptSession(session)
@@ -112,7 +111,7 @@ export function LoginPage() {
         const code = err instanceof ApiError ? err.detail : ''
         setLocalError(ERRORS[code] ?? t('주소를 확인하지 못했습니다. 로그인해서 확인 메일을 다시 받으세요.'))
       })
-    // Run once: re-running would spend the token twice.
+    // Once: a rerun would spend the token twice.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -151,7 +150,7 @@ export function LoginPage() {
     try {
       await authConfig.forgotPassword(email).catch(() => null)
     } finally {
-      // Same outcome either way: must not disclose whether the address is registered.
+      // Same outcome either way: no disclosure of registration.
       setSent(true)
       setBusy(false)
     }
@@ -178,7 +177,7 @@ export function LoginPage() {
       else await signup(email, password, name)
       setFailures(0)
     } catch (err) {
-      // Reason is in `authError`. A wrong password is cleared so the next try starts empty.
+      // Reason in `authError`; wrong password cleared.
       if (err instanceof ApiError && err.detail === 'invalid_credentials') {
         setFailures((n) => n + 1)
         setPassword('')
@@ -189,7 +188,7 @@ export function LoginPage() {
     }
   }
 
-  /** The sign-in error as a sentence: a known code, the server's own sentence, or a general one. */
+  /** Known code, the server's sentence, or a general one. */
   const authText = authError
     ? ERRORS[authError]
       ? t(ERRORS[authError])
@@ -255,7 +254,6 @@ export function LoginPage() {
         <ThemeToggle className="absolute top-5 right-5" />
 
         <div className="w-full max-w-sm">
-          {/* Brand column is hidden on narrow screens. */}
           <div className="mb-7 lg:hidden">
             <Brand name={brand.name} logo={brand.logo} size="md" />
           </div>
@@ -348,7 +346,7 @@ export function LoginPage() {
             <div className="mt-6">
               {sent ? (
                 <>
-                  {/* Must not disclose whether the address has an account. */}
+                  {/* No disclosure of whether the address has an account. */}
                   <div className="flex items-start gap-2 rounded-control border border-success/25 bg-success/5 px-3 py-2.5 text-base text-success">
                     <CircleCheck size={14} className="mt-0.5 shrink-0" />
                     <span>
@@ -398,7 +396,7 @@ export function LoginPage() {
             </div>
           )}
 
-          {/* Shown only when the reset succeeded but the session cookie did not take. */}
+          {/* Reset succeeded but the session cookie did not take. */}
           {resetDone && (
             <div className="mt-6 flex items-start gap-2 rounded-control border border-success/25 bg-success/5 px-3 py-2.5 text-base text-success">
               <CircleCheck size={14} className="mt-0.5 shrink-0" />
@@ -496,7 +494,7 @@ export function LoginPage() {
               />
             </Field>
 
-            {/* Reset link only when mail is configured. */}
+            {/* Only with mail configured. */}
             {mode === 'login' &&
               (resetEnabled ? (
                 <div className="flex justify-end">

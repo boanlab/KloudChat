@@ -86,13 +86,13 @@ const FONTS = [
   { label: '고정폭', value: "'D2Coding', 'Consolas', monospace" },
 ]
 const SIZES = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '36']
-// h3/h4 only: matches StarterKit's levels and the server's allowed tags.
+// h3/h4 only: StarterKit levels and the server's allowed tags.
 const HEADINGS = [
   { label: '본문', value: 0 },
   { label: '소제목', value: 3 },
   { label: '작은 제목', value: 4 },
 ] as const
-// Multipliers, not pt, so they track font size.
+// Multipliers, not pt: track font size.
 const LINE_HEIGHTS = ['1.3', '1.5', '1.7', '2.0']
 const ALIGNMENTS = [
   { value: 'left', icon: AlignLeft, label: '왼쪽 맞춤' },
@@ -105,7 +105,6 @@ function Sep() {
   return <span className="mx-1.5 h-5 w-px shrink-0 bg-line" />
 }
 
-/** Toolbar toggle with pressed state. */
 function Tool({
   on,
   label,
@@ -122,8 +121,7 @@ function Tool({
   return (
     <button
       type="button"
-      // `onMouseDown` with preventDefault keeps the caret in the document; a
-      // keyboard press arrives only as a click with `detail` 0, so it runs there.
+      // mousedown+preventDefault keeps the caret; keyboard arrives as click with `detail` 0.
       onMouseDown={(e) => {
         e.preventDefault()
         if (!disabled) onClick()
@@ -146,7 +144,7 @@ function Tool({
   )
 }
 
-/** Re-renders on every selection change and transaction; Tiptap 3 does not re-render React by itself. */
+/** Tiptap 3 does not re-render React itself: re-render per selection change and transaction. */
 function useEditorTick(editor: Editor | null) {
   const [, tick] = useState(0)
   useEffect(() => {
@@ -180,7 +178,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
     input.onchange = () => {
       const file = input.files?.[0]
       if (!file) return
-      // Embedded as a data URI so the exported file carries it.
+      // Data URI: the exported file carries it.
       const reader = new FileReader()
       reader.onload = () => editor.chain().focus().setImage({ src: String(reader.result) }).run()
       reader.readAsDataURL(file)
@@ -195,7 +193,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
   return (
     <div className={cn(
       'flex flex-wrap items-center gap-0.5 gap-y-1',
-      // Inside the ribbon the ribbon draws the chrome.
+      // The ribbon draws the chrome.
       bare ? 'px-0 py-0' : 'border-b border-line bg-panel px-3 py-1.5 max-sm:px-1.5',
     )}>
       <select
@@ -413,7 +411,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
       >
         <ListOrdered size={15} />
       </Tool>
-      {/* Indent is list nesting, which survives save and export. */}
+      {/* Indent = list nesting, which survives save and export. */}
       <Tool
         label={t('한 단계 들여쓰기')}
         disabled={off || !editor?.can().sinkListItem('listItem')}
@@ -448,7 +446,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
       >
         <TableIcon size={15} />
       </Tool>
-      {/* Table commands appear only with the caret inside a table. */}
+      {/* Only with the caret inside a table. */}
       {editor?.isActive('table') && (
         <>
           <Tool
@@ -562,7 +560,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
   )
 }
 
-/** Dashed estimated page-break guides over the continuous sheet. */
+/** Estimated page-break guides over the continuous sheet. */
 function PageGuides({ breaks }: { breaks: number[] }) {
   const t = useT()
   if (!breaks.length) return null
@@ -591,16 +589,10 @@ const escapePagedText = (text: string) => text
   .replace(/"/g, '&quot;')
 
 
-/** Class on the element every paginated page is inside; the scope for Paged.js rules. Shared with `index.css`. */
+/** Scope for Paged.js rules; shared with `index.css`. */
 const PAGED_SCOPE = 'paged-report-preview'
 
-/**
- * The editor's continuous sheet laid out like the printed page: A4 wide with the page margins
- * as padding, the cover at its print size, sections spaced as in print. Line breaks, type
- * and the position of the body then match the page view; only the sheet being one long
- * page differs. The seed's `body` typography is repeated on the sheet, since a shadow root
- * has no body. `.page.paginated` outranks the seed's own `.paginated` rules.
- */
+/** Continuous sheet with print geometry (A4, margins, cover, section spacing); seed `body` typography repeated, shadow root has no body. */
 function sheetGeometryCss(margins: PageSettings['margins']): string {
   return `
   .page.paginated { box-sizing: border-box; width: ${A4_WIDTH_PX}px; max-width: ${A4_WIDTH_PX}px; margin: 0 auto; padding: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm; min-height: ${A4_HEIGHT_PX}px; }
@@ -623,7 +615,7 @@ function sheetGeometryCss(margins: PageSettings['margins']): string {
 `
 }
 
-// Installed into the DocumentShell shadow root, where global CSS cannot reach.
+// Shadow root: global CSS cannot reach.
 const EDITOR_PAGE_BREAK_CSS = `
   .ProseMirror .page-break { position: relative; display: block; height: 24px; margin: 14px 0; border-top: 1px dashed #9ca3af; cursor: pointer; }
   .ProseMirror .page-break::after { content: '쪽 나누기'; position: absolute; top: -9px; right: 8px; padding: 0 6px; background: white; color: #777; font-size: 11px; line-height: 18px; }
@@ -638,7 +630,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
   const [pages, setPages] = useState(0)
   const [pageSize, setPageSize] = useState({ width: A4_WIDTH_PX, height: A4_HEIGHT_PX })
   const [pageScale, setPageScale] = useState(1)
-  // 'fit' follows the viewport width; a number is a zoom the reader chose.
+  // 'fit': follows viewport width; number: reader's zoom.
   const [zoom, setZoom] = useState<'fit' | number>('fit')
   const [failure, setFailure] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -650,10 +642,10 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
     setBusy(true)
     setFailure(null)
     target.replaceChildren()
-    // Paged.js lays out at A4 width; the viewport scales the finished stack.
+    // Paged.js lays out at A4 width; the viewport scales the stack.
     target.style.width = `${A4_WIDTH_PX}px`
     const sheet = URL.createObjectURL(new Blob([pagedSheetCss(css, settings)], { type: 'text/css' }))
-    // Armed before Paged.js runs, which appends the template stylesheet to `document.head`.
+    // Armed before Paged.js appends the template stylesheet to `document.head`.
     const unscope = scopePagedStyles(`.${PAGED_SCOPE}`)
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeoutMs = (window as Window & { __KLOUDCHAT_PAGINATION_TIMEOUT_MS__?: number })
@@ -688,7 +680,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
         URL.revokeObjectURL(sheet)
       })
     return () => { live = false; if (timer) clearTimeout(timer); URL.revokeObjectURL(sheet); unscope(); target.replaceChildren() }
-  // `t` is a new function per render; depending on it would loop.
+  // `t` is new per render; depending on it would loop.
   }, [html, css, settings, attempt])
 
   useEffect(() => {
@@ -722,7 +714,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
             <button type="button" aria-label={t('확대')} title={t('확대')} disabled={pageScale >= 2} onClick={() => step(1)} className="grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg disabled:opacity-40"><ZoomIn size={15} /></button>
           </div>
         )}
-        {/* In the ribbon when it gives a slot; above the page only as a fallback. */}
+        {/* In the ribbon slot when given; above the page otherwise. */}
         {settingsOpen && !settingsSlot && (
           <div className="basis-full rounded-card border border-line bg-panel p-3 shadow-sm" aria-label={t('페이지 설정 도구')}>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -790,7 +782,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
   )
 }
 
-/** Page-view editor for a report; sections stay the stored unit. */
+/** Page-view editor; sections stay the stored unit. */
 export function DocumentEditor({
   report,
   templateId,
@@ -805,7 +797,7 @@ export function DocumentEditor({
   settingsSlot,
 }: {
   report: ReportArtifact
-  /** Design template; empty renders the plain document seed. */
+  /** Empty: plain document seed. */
   templateId: string
   tokens?: DesignTokens | null
   editable: boolean
@@ -813,7 +805,7 @@ export function DocumentEditor({
   settingsOpen: boolean
   onLayoutMode?: (mode: 'pages' | 'edit') => void
   onWebView?: () => void
-  /** Called with the edited sections on every change; title, page settings and comments when those changed. */
+  /** Edited sections on every change; title, page settings and comments when changed. */
   onDirty?: (
     sections: ReportSection[],
     title?: string,
@@ -821,9 +813,9 @@ export function DocumentEditor({
     reviewComments?: ReportArtifact['reviewComments'],
     titleBlock?: ReportTitleBlock,
   ) => void
-  /** Ribbon slot the formatting bar is portalled into; rendered in place when absent. */
+  /** Formatting-bar portal slot; in place when absent. */
   toolbarSlot?: HTMLElement | null
-  /** Ribbon slot the page settings are portalled into; above the page when absent. */
+  /** Page-settings portal slot; above the page when absent. */
   settingsSlot?: HTMLElement | null
 }) {
   const t = useT()
@@ -842,25 +834,23 @@ export function DocumentEditor({
   const [comments, setComments] = useState<NonNullable<ReportArtifact['reviewComments']>>(report.reviewComments ?? [])
   const [commentQuote, setCommentQuote] = useState('')
   const [commentDraft, setCommentDraft] = useState('')
-  // State, not a ref: the page appears a render late, inside the shadow root.
+  // State, not ref: the page appears a render late, inside the shadow root.
   const [page, setPage] = useState<HTMLDivElement | null>(null)
-  // Edited bodies by section id; absent means untouched.
+  // By section id; absent = untouched.
   const [edits, setEdits] = useState<Record<string, string>>({})
   const editsRef = useRef<Record<string, string>>({})
-  // Re-measure when the stylesheet lands or the document is edited.
   const { usable, height, breaks } = usePagination(
     page,
     `${style?.css.length ?? 0}:${Object.keys(edits).length}`,
   )
   const viewport = useRef<HTMLDivElement>(null)
-  // The viewport mounts after the loading returns below, so the observer is armed
-  // from a callback ref rather than once on first render.
+  // Viewport mounts after loading returns: observer armed from a callback ref.
   const [viewportNode, setViewportNode] = useState<HTMLDivElement | null>(null)
   const attachViewport = useCallback((node: HTMLDivElement | null) => {
     viewport.current = node
     setViewportNode(node)
   }, [])
-  // Zoom to fit the A4 page across the panel, capped at 1.
+  // Fit A4 across the panel, capped at 1.
   const [scale, setScale] = useState(1)
   useEffect(() => {
     const node = viewportNode
@@ -884,7 +874,7 @@ export function DocumentEditor({
     designTemplatesApi
       .style(templateId, tokens)
       .then((row) => live && setStyle(row))
-      // Stored untranslated; `t` is a new function per render.
+      // Stored untranslated; `t` is new per render.
       .catch((err) => live && setError(errorMessage(err, '템플릿을 불러오지 못했습니다.')))
     return () => {
       live = false
@@ -893,7 +883,7 @@ export function DocumentEditor({
 
   const pictures = useDiagramPictures(report.sections, report.id, page)
 
-  // Retyped headings and title; text, not markup, so kept apart from `edits`.
+  // Text, not markup: kept apart from `edits`.
   const [renamed, setRenamed] = useState<Record<string, string>>({})
   const renamedRef = useRef<Record<string, string>>({})
   const [editedTitle, setTitle] = useState<string | null>(null)
@@ -917,7 +907,7 @@ export function DocumentEditor({
     }))
 
   const change = (section: ReportSection, html: string) => {
-    // Several editors can update in one event (Replace all); the ref accumulates synchronously.
+    // Several editors may update in one event (Replace all); ref accumulates synchronously.
     const next = { ...editsRef.current, [section.id]: html }
     editsRef.current = next
     setEdits(next)
@@ -932,14 +922,14 @@ export function DocumentEditor({
     onDirty?.(compose(editsRef.current, next))
   }
 
-  // The document's head by purpose; its field values are edited in place.
+  // Purpose head; field values edited in place.
   const [titleBlock, setTitleBlock] = useState<ReportTitleBlock | null>(() => cleanTitleBlock(report.titleBlock))
   const reblock = (next: ReportTitleBlock) => {
     setTitleBlock(next)
     onDirty?.(compose(editsRef.current, renamedRef.current), undefined, undefined, undefined, next)
   }
   const numbering = titleBlock?.numbering ?? 'none'
-  // The section 「끝.」 closes, when the format closes; its body ends in it in every view.
+  // Section closed by 「끝.」 when the format closes; ends its body in every view.
   const closingAt = closingIndex(titleBlock, report.sections.length)
   const bodyOf = useCallback(
     (section: ReportSection) => edits[section.id] ?? htmlOf(
@@ -949,7 +939,7 @@ export function DocumentEditor({
     ),
     [edits, pictures, titleBlock, closingAt, report.sections],
   )
-  // The paged preview also closes an edited body; the editor shows it as typed.
+  // Paged preview closes an edited body; the editor shows it as typed.
   const previewBody = (section: ReportSection, index: number) =>
     index === closingAt && edits[section.id] !== undefined ? closeHtml(bodyOf(section)) : bodyOf(section)
   const numbers = sectionNumbers(
@@ -957,7 +947,7 @@ export function DocumentEditor({
     numbering,
     titleBlock?.lists,
   )
-  // The 개조식 붙임 closes the body: no heading of its own in the page or the preview.
+  // 개조식 붙임 closes the body: no heading of its own.
   const attachment = (section: ReportSection) => isAttachment({ heading: renamed[section.id] ?? section.heading }, titleBlock?.lists)
 
   const retitle = (next: string) => {
@@ -1072,8 +1062,8 @@ export function DocumentEditor({
     sectionNodes.current[comment.sectionId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
-  // Bracket placeholders (「[담당자]」) are marked in the paged preview and print.
-  // Figure columns flush right (`.fig`), as the template preview and the exporters set them.
+  // Bracket placeholders (「[담당자]」) marked in the paged preview and print.
+  // Figure columns flush right (`.fig`), as in the template preview and exporters.
   const previewHtml = markFigureColumns(markPlaceholders(titleBlock
     ? `<main class="page paginated-preview ${fmtClass(titleBlock)}">${titleBlockHtml(titleBlock, editedTitle ?? report.title)}${report.sections.map((section, index) => `<section>${attachment(section) ? '' : !(renamed[section.id] ?? section.heading ?? '').trim() ? '' : `<h2${numbers[index].label ? ` data-num="${escapePagedText(numbers[index].label)}"` : ''}>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>`}${numberHtmlHeadings(previewBody(section, index), numbering, numbers[index])}</section>`).join('')}</main>`
     : `<main class="page paginated-preview"><div class="cover"><h1>${escapePagedText(editedTitle ?? report.title)}</h1></div>${report.sections.map((section) => `<section>${(renamed[section.id] ?? section.heading ?? '').trim() ? `<h2>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>` : ''}${bodyOf(section)}</section>`).join('')}</main>`))
@@ -1083,7 +1073,7 @@ export function DocumentEditor({
     : visualStyle === 'minimal'
       ? `.page .cover{min-height:0;padding:10mm 8mm 8mm;background:color-mix(in srgb,var(--accent) 7%,#fff)}.page .cover h1{font-size:22pt;font-weight:600;max-width:22ch}.page section>h2{font-size:12pt;font-weight:650;letter-spacing:.08em;border:0;color:var(--muted)}.page section{margin-bottom:9mm}`
       : ''
-  // The design's typeface, unless a template stylesheet has its own say.
+  // Design typeface unless the template stylesheet sets its own.
   const fontCss = !style?.css && fontFamilyFor(tokens?.font) ? `.page{font-family:${fontFamilyFor(tokens?.font)}}` : ''
   const formatRules = titleBlock ? `\n${formatCss(titleBlock)}` : ''
   const pageCss = `${style?.css ?? ''}\n${visualCss}\n${fontCss}${formatRules}\n${PLACEHOLDER_CSS}`
@@ -1158,8 +1148,7 @@ export function DocumentEditor({
           </nav>
         )}
         <div ref={attachViewport} aria-label={t('보고서 편집 페이지')} className="min-h-0 min-w-0 flex-1 overflow-auto bg-elevated p-6 max-sm:p-2">
-        {/* The A4 sheet is scaled, never narrowed. The outer box carries the
-            scaled size so the scrollbar matches. */}
+        {/* Sheet scaled, never narrowed; outer box carries the scaled size for the scrollbar. */}
         <div
           className="mx-auto"
           style={{ width: A4_WIDTH_PX * scale, height: Math.max(height, A4_HEIGHT_PX) * scale }}
@@ -1175,7 +1164,7 @@ export function DocumentEditor({
           >
           <div className="relative">
             <DocumentShell css={`${pageCss}\n${EDITOR_PAGE_BREAK_CSS}\n${sheetGeometryCss(pageSettings.margins)}`} className="report-page-shell">
-              {/* `paginated` tells the template the sheet is drawn here; `--sheet-h` is the usable page height. */}
+              {/* `paginated`: sheet drawn here; `--sheet-h`: usable page height. */}
               <div
                 ref={setPage}
                 className={cn('page paginated', fmtClass(titleBlock))}
@@ -1222,7 +1211,7 @@ export function DocumentEditor({
                       }}
                       onMount={(editor) => {
                         sectionEditors.current[section.id] = editor
-                        // The first editor becomes the toolbar target so it opens live.
+                        // First editor is the toolbar target, so it opens live.
                         setFocused((current) => current ?? editor)
                         setFocusedSection((current) => current ?? section.id)
                       }}
@@ -1274,13 +1263,10 @@ export function DocumentEditor({
   )
 }
 
-/**
- * A section's body as HTML; a small Markdown subset (headings, lists, tables, quotes, images, fences).
- * `gaejo` keeps list nesting (two spaces a level) and marks ※ and 붙임 paragraphs for `GAEJO_CSS`.
- */
+/** Section body as HTML from a small Markdown subset; `gaejo` keeps list nesting (two spaces a level) and marks ※/붙임 for `GAEJO_CSS`. */
 function htmlOf(section: ReportSection, pictures: Map<string, string>, gaejo = false): string {
   if (section.format === 'html') return section.content
-  // Escapes `"` too: the output goes into attribute values (`data-source`).
+  // Escapes `"` too: output goes into attribute values (`data-source`).
   const escape = (s: string) =>
     s
       .replace(/&/g, '&amp;')
@@ -1294,10 +1280,10 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>, gaejo = f
       .replace(/`(.+?)`/g, '<code>$1</code>')
 
   const out: string[] = []
-  // Pending list items, table rows and fence lines; flushed when something else turns up.
+  // Pending list items, table rows, fence lines; flushed on anything else.
   let items: string[] = []
   let ordered = false
-  // 개조식 items with their depth (1–4), drawn nested at flush.
+  // 개조식 items with depth (1–4), nested at flush.
   let nested: { depth: number; ordered: boolean; html: string; note?: boolean }[] = []
   let attaching = false
   let rows: string[][] = []
@@ -1367,11 +1353,11 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>, gaejo = f
       continue
     }
     if (!line) {
-      // A blank line does not end a table; models put one between rows.
+      // Blank line does not end a table; models put one between rows.
       if (!rows.length) flush()
       continue
     }
-    // A table row; the `| --- |` rule carries no cells.
+    // `| --- |` rule carries no cells.
     const row = /^\|(.+)\|$/.exec(line)
     if (row) {
       if (!/^[\s:|-]+$/.test(row[1])) {
@@ -1402,10 +1388,10 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>, gaejo = f
       }
       attaching = false
       if (bullet || numbered) {
-        // A table read before the list goes out first; the list itself keeps growing.
+        // Pending table goes out first; the list keeps growing.
         if (rows.length || items.length) flush()
         const text = (bullet ?? numbered)![1]
-        // A ※ item is a note at its depth: ※ is its marker (`GAEJO_CSS`).
+        // ※ item: note at its depth, ※ as marker (`GAEJO_CSS`).
         nested.push({ depth, ordered: !bullet, html: inline(text), note: Boolean(bullet) && text.startsWith('※') })
         continue
       }
@@ -1418,7 +1404,7 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>, gaejo = f
     }
     if (heading) {
       flush()
-      // The wrapper draws the section heading, so body headings start at h3.
+      // Wrapper draws the section heading: body headings start at h3.
       const level = Math.min(heading[1].length + 1, 6)
       out.push(`<h${level}>${inline(heading[2])}</h${level}>`)
     } else if (bullet) {
@@ -1437,13 +1423,13 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>, gaejo = f
       out.push(`<p>${inline(line)}</p>`)
     }
   }
-  // An unterminated fence (mid-stream) is drawn with what arrived.
+  // Unterminated fence (mid-stream) drawn with what arrived.
   if (fence !== null) out.push(fenceHtml(fenceLang, fence.join('\n'), escape, pictures))
   flush()
   return out.join('')
 }
 
-/** One fenced block as the markup the template styles; unknown fences render nothing. */
+/** Fenced block as template-styled markup; unknown fences render nothing. */
 function fenceHtml(
   lang: string,
   source: string,
@@ -1471,8 +1457,7 @@ function fenceHtml(
     return items ? `<ol class="steps">${items}</ol>` : ''
   }
   if (lang === 'cards') {
-    // `<section>`, not `<div>`: `richtext` reads this back with a lazy close,
-    // so the wrapper tag must differ from its children's.
+    // `<section>`, not `<div>`: `richtext` reads back with a lazy close, so wrapper and children tags must differ.
     const grid = parseCards(source)
       .map(
         (card) =>
@@ -1497,7 +1482,7 @@ function fenceHtml(
     )
   }
   if (lang === 'chart') {
-    // Source only; the exporters build the chart from it.
+    // Source only; exporters build the chart from it.
     return `<figure class="chart" data-source="${escape(source)}"></figure>`
   }
   if (lang === 'mermaid') {
@@ -1511,17 +1496,14 @@ function fenceHtml(
   return ''
 }
 
-/**
- * Picture per mermaid source in these sections, keyed by source text. Missing
- * ones are drawn off-screen (outside ProseMirror's subtree) and stored.
- */
+/** Picture per mermaid source, keyed by source text; missing ones drawn off-screen (outside ProseMirror) and stored. */
 function useDiagramPictures(
   sections: ReportSection[],
   artifactId: string,
   look: HTMLElement | null,
 ): Map<string, string> {
   const [pictures, setPictures] = useState<Map<string, string>>(() => new Map())
-  // Signature of the last resolve; without it every keystroke would loop.
+  // Last-resolve signature; else every keystroke loops.
   const resolved = useRef('')
 
   useEffect(() => {
@@ -1551,7 +1533,7 @@ function useDiagramPictures(
       setPictures(found)
       if (!missing.length || !look) return
 
-      // Drawn off-screen inside the template's shadow root, so it takes the document's theme.
+      // Off-screen inside the template's shadow root: takes the document's theme.
       const easel = document.createElement('div')
       easel.style.cssText = 'position:absolute;left:-99999px;top:0;width:700px'
       look.appendChild(easel)
@@ -1560,7 +1542,7 @@ function useDiagramPictures(
           const svg = await drawFitting(source, theme(easel), FRAMES.page)
           if (!live) return
           if (!svg) continue
-          // The same frame the page view shows, so the export matches the screen.
+          // Same frame as the page view: export matches the screen.
           const png = await rasterise(framed(svg, FRAMES.page), 1)
           if (!live) return
           if (!png) continue
@@ -1582,7 +1564,6 @@ function useDiagramPictures(
   return pictures
 }
 
-/** Every mermaid fence in a Markdown section body, in order. */
 function mermaidSources(section: ReportSection): string[] {
   if (section.format === 'html') return []
   const out: string[] = []

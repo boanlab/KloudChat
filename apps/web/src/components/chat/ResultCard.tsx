@@ -41,10 +41,7 @@ function CardFace({
   )
 }
 
-/**
- * What a turn made, under the answer that made it: kind, size, version, and the three things
- * people do next — open it, take it away, or start again from it.
- */
+/** What a turn made, under its answer: kind, size, version; open, take away, or start again from it. */
 export function ResultCard({ artifact, version }: { artifact: Artifact; version?: number }) {
   const t = useT()
   const openArtifactAt = useStore((s) => s.openArtifactAt)

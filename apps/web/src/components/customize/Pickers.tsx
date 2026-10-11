@@ -16,11 +16,11 @@ interface Option {
   disabled?: boolean
   /** Why it cannot be picked. */
   why?: string
-  /** The raw identifier, shown only on hover and under 「기술 정보」. */
+  /** Raw identifier: hover and 「기술 정보」 only. */
   tech?: string
 }
 
-/** 「기본값 따르기」 / 「직접 고르기」 as one pair of pressed buttons. */
+/** 「기본값 따르기」 / 「직접 고르기」 as pressed-button pair. */
 function ModeSwitch({
   inherit,
   labels,
@@ -55,7 +55,7 @@ function ModeSwitch({
   )
 }
 
-/** A searchable, grouped checklist that opens under its button. */
+/** Searchable grouped checklist under its button. */
 function PickerPanel({
   label,
   options,
@@ -174,7 +174,7 @@ function PickerPanel({
   )
 }
 
-/** Chips for what is chosen, each with a remove button. */
+/** Chosen chips with remove buttons. */
 function ChosenChips({ options, chosen, onRemove }: { options: Option[]; chosen: string[]; onRemove: (id: string) => void }) {
   const t = useT()
   if (chosen.length === 0) return null
@@ -205,7 +205,7 @@ function ChosenChips({ options, chosen, onRemove }: { options: Option[]; chosen:
   )
 }
 
-/** The person-facing name of a tool row, for servers that predate `title` and `group`. */
+/** Display name of a tool row, for servers without `title` and `group`. */
 function toolOption(tool: ToolCatalogEntry, hasKnowledge = false, t: (s: string) => string = (s) => s): Option {
   const connector = tool.name.startsWith('mcp__')
   const runtime = tool.name === 'search_knowledge' ? hasKnowledge : tool.available
@@ -223,17 +223,14 @@ function toolOption(tool: ToolCatalogEntry, hasKnowledge = false, t: (s: string)
   }
 }
 
-/** Groups 기본 도구 first, then each connector by name. */
+/** 기본 도구 first, then connectors by name. */
 function orderTools(options: Option[]): Option[] {
   return [...options].sort((a, b) =>
     a.group === b.group ? 0 : a.group === BUILTIN ? -1 : b.group === BUILTIN ? 1 : a.group.localeCompare(b.group),
   )
 }
 
-/**
- * An agent's tools (null inherits, a list is a hard allowlist) or a skill's required tools
- * (`inheritable` false: always a list). Raw names show only on hover and under 「기술 정보」.
- */
+/** Agent tools (null inherits, list is a hard allowlist) or skill's required tools (`inheritable` false). */
 export function ToolPicker({
   value,
   onChange,
@@ -298,7 +295,7 @@ export function ToolPicker({
   )
 }
 
-/** An agent's skill allowlist: null follows the turn's own selection. */
+/** Agent skill allowlist; null follows the turn's selection. */
 export function SkillPicker({
   value,
   onChange,

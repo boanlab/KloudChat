@@ -6,10 +6,7 @@ import { useFileDrop } from '@/lib/useFileDrop'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import { useT } from '@/lib/useT'
 
-/**
- * Documents an agent searches via tool call (unlike project files, which are
- * pushed into every turn). Attaching requires a saved agent id.
- */
+/** Documents the agent searches by tool call (project files go into every turn); needs a saved agent. */
 export function AgentKnowledge({
   agentId,
   onKnowledgeChange,
@@ -17,7 +14,7 @@ export function AgentKnowledge({
 }: {
   agentId: string | null
   onKnowledgeChange?: (available: boolean) => void
-  /** Saves an unsaved agent so its first file can attach; resolves to its id, or null when it cannot. */
+  /** Saves an unsaved agent for its first file; resolves to its id, or null. */
   onNeedAgent?: () => Promise<string | null>
 }) {
   const t = useT()
@@ -25,12 +22,11 @@ export function AgentKnowledge({
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState<'file' | 'url' | 'reindex' | null>(null)
   const [error, setError] = useState<string | null>(null)
-  /** Said once the first file saved the agent: leaving now keeps it. */
+  /** Shown once the first file saved the agent. */
   const [savedNote, setSavedNote] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const rowsRef = useRef<FileRow[]>([])
-  // The drop hook must run above the unsaved-agent early return; the uploader
-  // it calls is defined below it, so a ref bridges the two.
+  // Drop hook above the early return; its uploader below, bridged by a ref.
   const addFilesRef = useRef<(files: File[]) => void>(() => {})
   const { over: dragging, handlers: dropHandlers } = useFileDrop(
     (files) => addFilesRef.current(files),
@@ -46,7 +42,7 @@ export function AgentKnowledge({
     [onKnowledgeChange],
   )
 
-  // A scanned document is read in the background; its row follows the pages.
+  // Scanned document read in the background; row follows the pages.
   useOcrProgress(rows, (row) =>
     replaceRows(rowsRef.current.map((item) => (item.id === row.id ? row : item))),
   )
@@ -69,7 +65,7 @@ export function AgentKnowledge({
 
   if (!agentId) {
     if (onNeedAgent) {
-      // The first file saves the agent, then attaches to it; the saved id re-renders this list.
+      // First file saves the agent, then attaches; saved id re-renders.
       const attachFirst = async (picked: File) => {
         setBusy('file')
         setError(null)
@@ -132,7 +128,7 @@ export function AgentKnowledge({
     }
   }
 
-  // Sequential so rows keep drop order.
+  // Sequential: rows keep drop order.
   const addFiles = async (picked: File[]) => {
     for (const file of picked) await addFile(file)
   }
@@ -156,7 +152,7 @@ export function AgentKnowledge({
     setBusy('reindex')
     setError(null)
     try {
-      // Force all rows, so vectors from a previous embedding model are rebuilt too.
+      // All rows: rebuilds vectors from an older embedding model.
       await agentsApi.knowledge.reindex(agentId, true)
       replaceRows(await agentsApi.knowledge.list(agentId))
     } catch (err) {
@@ -251,7 +247,7 @@ export function AgentKnowledge({
                 ) : (
                   <FileText size={13} className="shrink-0 text-faint" />
                 )}
-                {/* A URL row has no blob; its name links to the source page. */}
+                {/* URL row: no blob; name links to the source. */}
                 {f.sourceUrl ? (
                   <a
                     href={f.sourceUrl}
@@ -294,7 +290,7 @@ export function AgentKnowledge({
                         </span>
                       ) : null
                     })()}
-                    {/* Un-indexed rows are found by word search only. */}
+                    {/* Un-indexed rows: word search only. */}
                     {f.indexed === false && !isReading(f) && (
                       <span
                         title={t('낱말 검색으로는 찾지만, 뜻으로 찾는 검색에는 아직 안 들어갔습니다')}

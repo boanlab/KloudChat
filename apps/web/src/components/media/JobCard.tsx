@@ -5,7 +5,7 @@ import { useStore } from '@/store/useStore'
 import type { Job } from '@/types'
 import { useT } from '@/lib/useT'
 
-/** Progress, failure and retry for a running media job; a finished one renders nothing (the turn shows the clip). */
+/** Running media job: progress, failure, retry; finished renders nothing (the turn shows the clip). */
 export function JobCard({ job }: { job: Job }) {
   const t = useT()
   const { cancelJob, retryJob } = useStore()

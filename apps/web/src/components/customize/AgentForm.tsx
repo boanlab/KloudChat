@@ -23,7 +23,7 @@ import { slugify } from './formModel'
 import { isListed } from '@/lib/listed'
 import { SkillPicker, ToolPicker } from './Pickers'
 
-/** The draft with `kinds`, minus the bindings those kinds no longer offer. */
+/** Draft with `kinds`, minus bindings those kinds don't offer. */
 function withinKinds(draft: Agent, kinds: SessionKind[]): Agent {
   const next = { ...draft, kinds }
   const offered = agentKinds(next)
@@ -37,7 +37,7 @@ function withinKinds(draft: Agent, kinds: SessionKind[]): Agent {
   }
 }
 
-/** One folded group of the longer settings. Closed until opened. */
+/** Folded settings group, closed by default. */
 export function Group({
   title,
   hint,
@@ -65,7 +65,7 @@ export function Group({
   )
 }
 
-/** A labelled block that is not a `<label>`: pickers and button rows live inside. */
+/** Labelled block, not a `<label>`: holds pickers and button rows. */
 export function Block({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
@@ -92,7 +92,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   )
 }
 
-/** 나만 / 모두에게, and for a shared original whether copies may read its instructions. */
+/** 나만 / 모두에게; for a shared original, whether copies read its instructions. */
 export function AgentSharing({ draft, onChange }: { draft: Agent; onChange: (next: Agent) => void }) {
   const t = useT()
   return (
@@ -164,16 +164,10 @@ export function AgentSharing({ draft, onChange }: { draft: Agent; onChange: (nex
   )
 }
 
-/** A swatch row for the agent's colour on cards and its avatar. */
 const COLORS = ['#5b53e8', '#2563eb', '#0f766e', '#334155', '#ea580c', '#db2777', '#7c3aed', '#0369a1']
 
-/**
- * The agent form: name, instructions, 진행 과정 and 추가로 할 일 in view, the rest in folded
- * groups (아티팩트, 대화 시작, 자료, 스킬과 도구, 고급, 공유). The same form creates an agent (from
- * scratch, or prefilled by 「에이전트로 저장」) and edits one in its detail screen's 「설정」.
- * Nothing is saved before 저장.
- */
-/** The folded group (or block) of the form each kind of refusal points to. */
+/** Agent form for create (blank or 「에이전트로 저장」) and edit; nothing saved before 저장. */
+/** Form group each refusal points to. */
 const PLACE_TESTID: Record<AgentErrorPlace, string> = {
   name: 'agent-form',
   gap: 'agent-gap-group',
@@ -199,7 +193,7 @@ export function AgentForm({
   creating: boolean
   onSaved: (saved: Agent) => void
   onCancel?: () => void
-  /** A detail screen's phone action bar sits below; the save bar stops above it. */
+  /** Phone action bar below: save bar stops above it. */
   aboveBottomBar?: boolean
   /** 「에이전트로 저장」: the 진행 과정 the conversation suggests. */
   initialProcess?: ProcessDraft
@@ -207,7 +201,7 @@ export function AgentForm({
   draftFiles?: { id: string; name: string; size: number }[]
   /** 「에이전트로 저장」: the 지시 section distilled after the form opened, added once. */
   addedPrompt?: string
-  /** A new agent's model once the list arrives; set only while nobody has picked one. */
+  /** New agent's model once the list arrives; only while unpicked. */
   defaultModel?: string
 }) {
   const t = useT()
@@ -224,14 +218,14 @@ export function AgentForm({
   const english = currentLang() === 'en'
 
   const [draft, setDraft] = useState<Agent>(initial)
-  // Set once the agent exists on the server: a first knowledge file saves it early.
+  // Set once created: a first knowledge file saves early.
   const [savedId, setSavedId] = useState<string | null>(creating ? null : initial.id)
   const [editingSlug, setEditingSlug] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [nameError, setNameError] = useState<string | null>(null)
-  // The agent a lost first save already made, offered to open instead of saving again.
+  // Agent a lost first save made: offered instead of saving again.
   const [twin, setTwin] = useState<Agent | null>(null)
   // 빠진 정보 질문 fields a save stopped on, by question id.
   const [gapErrors, setGapErrors] = useState<Record<string, GapProblem>>({})
@@ -250,9 +244,9 @@ export function AgentForm({
   const slugTaken = agents.some((a) => a.id !== draft.id && a.slug === draftSlug)
   const offered = agentKinds(draft)
   const pickedBase = process.mode === 'base' ? catalogue?.bases.find((b) => b.key === process.base) : undefined
-  // A base fixes the surface a conversation opens on: its templates are offered too.
+  // A base fixes the surface: its templates offered too.
   const templateSurfaces = pickedBase ? [...new Set([pickedBase.surface, ...offered])] : offered
-  // A hidden 서식 or theme (`listed: false`) is not offered; the one the agent already has stays.
+  // Hidden template or theme (`listed: false`) not offered; the agent's current one stays.
   const boundTemplates = designTemplates.filter(
     (row) =>
       row.kind !== 'image' &&
@@ -261,14 +255,14 @@ export function AgentForm({
   )
   const pickableDesigns = designs.filter((d) => isListed(d) || d.id === draft.designSystemId)
   const surface: SessionKind = draft.surface ?? offered[0] ?? 'chat'
-  // A format retired with its agent stays where it is set; nothing new picks it.
+  // Retired format stays where set; not newly pickable.
   const formats = DOC_FORMATS.filter((f) => !RETIRED_FORMATS.includes(f.id) || f.id === initial.docFormat)
   const edit = (next: Agent) => {
     setDone(false)
     setDraft(next)
   }
 
-  // The model list may arrive after the form opened: its default fills the untouched field once.
+  // Late model list: default fills the untouched field once.
   const modelPicked = useRef(!creating)
   useEffect(() => {
     if (modelPicked.current || !defaultModel) return
@@ -276,7 +270,7 @@ export function AgentForm({
     setDraft((d) => (d.model ? d : { ...d, model: defaultModel }))
   }, [defaultModel])
 
-  // The distillation arrives after the form is usable: added below whatever is written by then.
+  // Late distillation: appended below what's written.
   const added = useRef('')
   useEffect(() => {
     if (!addedPrompt || added.current === addedPrompt) return
@@ -288,7 +282,7 @@ export function AgentForm({
     )
   }, [addedPrompt])
 
-  /** Opens the part of the form a refusal points to, and brings it into view. */
+  /** Opens and scrolls to the part a refusal points to. */
   const reveal = useCallback((place: AgentErrorPlace | undefined, focusId?: string) => {
     if (!place) return
     if (place === 'name') {
@@ -297,7 +291,7 @@ export function AgentForm({
     }
     const box = formRef.current?.querySelector<HTMLElement>(`[data-testid="${PLACE_TESTID[place]}"]`)
     if (box instanceof HTMLDetailsElement) box.open = true
-    // After the group opens, so the field can take focus.
+    // After opening, so the field can focus.
     window.requestAnimationFrame(() => {
       const field = focusId ? document.getElementById(focusId) : null
       ;(field ?? box)?.scrollIntoView({ block: 'center' })
@@ -311,7 +305,7 @@ export function AgentForm({
       nameRef.current?.focus()
       return null
     }
-    // The questions are checked here first, each field said beside it, never as a code.
+    // Questions checked first, errors beside each field, never as codes.
     const gaps = gapProblems(draft.gapQuestions ?? [])
     setGapErrors(gaps)
     const firstGap = (draft.gapQuestions ?? []).find((q) => gaps[q.id])
@@ -323,7 +317,7 @@ export function AgentForm({
     setSaving(true)
     setError(null)
     try {
-      // The on/off switch lives in the detail header; the form never overrides it.
+      // On/off switch lives in the detail header; never overridden here.
       const live = useStore.getState().agents.find((a) => a.id === draft.id)
       const saved = await upsertAgent({
         ...draft,
@@ -335,8 +329,7 @@ export function AgentForm({
       setSavedId(saved.id)
       return saved
     } catch (err) {
-      // A first save whose answer was lost, sent again: the handle is taken by the agent that
-      // first save made. Offer that one instead of 「이미 쓰는 핸들」.
+      // Retried first save: handle taken by that save's agent — offer it, not 「이미 쓰는 핸들」.
       if (creating && !savedId && errorCode(err) === 'slug_taken') {
         const twin = await justMadeTwin(draftSlug, loadWorkspace)
         if (twin) {
@@ -387,12 +380,11 @@ export function AgentForm({
     onSaved(useStore.getState().agents.find((a) => a.id === saved.id) ?? saved)
   }
 
-  // Stable: the knowledge list reloads whenever this callback changes.
+  // Stable: knowledge list reloads on change.
   const knowledgeChanged = useCallback(
     (hasKnowledge: boolean) => {
       setDraft((d) => (d.hasKnowledge === hasKnowledge ? d : { ...d, hasKnowledge }))
-      // The composer reads the saved agent: refreshed only when the list differs from it,
-      // not on every read of the list.
+      // Refresh composer's agents only when the saved list differs.
       const stored = useStore.getState().agents.find((a) => a.id === savedId)
       if (savedId && stored?.hasKnowledge !== hasKnowledge) void loadWorkspace()
     },
@@ -461,7 +453,7 @@ export function AgentForm({
             {nameError}
           </p>
         )}
-        {/* The handle follows the name until someone changes it. */}
+        {/* Handle follows the name until edited. */}
         {editingSlug ? (
           <Field label={t('핸들')} hint={t('입력창의 @ 버튼과 목록에서 이 이름으로 부릅니다.')}>
             <Input
@@ -514,7 +506,7 @@ export function AgentForm({
         onSurface={(next) => {
           const before = draft
           edit({ ...withinKinds(draft, draft.kinds.includes(next) ? draft.kinds : [...draft.kinds, next]), surface: next })
-          // What the switch may have changed, as it was.
+          // Pre-switch state, for undo.
           return () => {
             setDone(false)
             setDraft((d) => ({
@@ -591,7 +583,7 @@ export function AgentForm({
           detectors={catalogue?.gapDetectors ?? []}
           problems={gapErrors}
           onChange={(next) => {
-            // A field said to be missing stops being said once it is filled.
+            // Filled field drops its missing note.
             if (Object.keys(gapErrors).length > 0) {
               const still = gapProblems(next)
               setGapErrors(Object.fromEntries(Object.entries(still).filter(([id]) => id in gapErrors)))
@@ -759,7 +751,7 @@ export function AgentForm({
             </Field>
             <Field label={t('모델')}>
               {models.length === 0 ? (
-                // Only this field waits for the list; a failed load says so and can be asked again.
+                // Only this field waits for the list; failure says so, retryable.
                 <ResourceStatus
                   compact
                   resource={{
@@ -844,7 +836,7 @@ export function AgentForm({
   )
 }
 
-/** My agent with `slug` made in the last ten minutes, read fresh from the server; else null. */
+/** My agent with `slug` made in the last ten minutes, fresh from the server; else null. */
 async function justMadeTwin(slug: string, reload: () => Promise<void>): Promise<Agent | null> {
   try {
     await reload()

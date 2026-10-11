@@ -57,10 +57,7 @@ export function agentKinds(agent: Pick<Agent, 'kinds'>): SessionKind[] {
   return agent.kinds.length ? kindOrder.filter((k) => agent.kinds.includes(k)) : kindOrder
 }
 
-/**
- * The surface a new conversation with this agent opens on: its bound surface, else the
- * screen the person is on when the agent offers it, else its first surface.
- */
+/** Surface a new conversation with this agent opens on: bound surface, else the current one if offered, else the first. */
 export function agentStartKind(agent: Pick<Agent, 'kinds' | 'surface'>, current?: SessionKind): SessionKind {
   const offered = agentKinds(agent)
   if (agent.surface && offered.includes(agent.surface)) return agent.surface
@@ -68,11 +65,7 @@ export function agentStartKind(agent: Pick<Agent, 'kinds' | 'surface'>, current?
   return offered[0] ?? 'chat'
 }
 
-/**
- * Pickers show a person's own copy and the catalogue original it came from as one row, the
- * person's own kept. Agents the person wrote themselves are never folded together, whatever
- * their names.
- */
+/** A copy and its catalogue original fold into one row (the copy kept); self-written agents never fold. */
 export function distinctAgents<T extends Pick<Agent, 'name' | 'ownerId' | 'catalogKey' | 'official'>>(
   agents: T[],
   me?: string | null,

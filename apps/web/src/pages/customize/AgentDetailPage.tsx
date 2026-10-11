@@ -19,7 +19,7 @@ import { useT, useTIn } from '@/lib/useT'
 import { uid } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 
-/** /customize/agents/:id — what an agent does, its instructions, and (for its owner) its settings. */
+/** Agent description, instructions, and (for the owner) settings. */
 export function AgentDetailPage() {
   const t = useT()
   const tHub = useTIn('hub')
@@ -64,7 +64,7 @@ export function AgentDetailPage() {
 
   const item = agentItem(agent, me)
   const mine = agent.ownerId === me
-  // A sealed copy runs the original's instructions without being able to read them.
+  // Sealed copy runs the original's instructions without reading them.
   const hidden = agent.sealed || (!mine && agent.shareMode === 'sealed')
   const editable = mine && !agent.sealed
 
@@ -81,10 +81,9 @@ export function AgentDetailPage() {
 
   const menu: MenuAction[] = []
   if (editable) menu.push({ label: '공유', icon: <Share2 size={14} />, run: () => setSharing(true) })
-  // A chat agent of one's own, opened to members as a bot (공개 챗봇).
+  // Own chat agent, publishable as a bot (공개 챗봇).
   const chatAgent = (agent.surface ?? agent.kinds[0] ?? 'chat') === 'chat'
-  // Publishing is the owner's next step, so it is the main button rather than under ⋯; once
-  // published, the 챗봇 section below manages it.
+  // Publishing: the owner's main button; once published, the 챗봇 section manages it.
   const canPublish = editable && chatAgent && !agent.publication
   if (editable) {
     menu.push({
@@ -142,7 +141,7 @@ export function AgentDetailPage() {
         }
       >
         <DetailSection title={tHub('개요')}>
-          {/* The description is the header's line; it is not said twice. */}
+          {/* Description is the header line; not repeated. */}
           {agent.guide && (
             <div className="rounded-card border border-line bg-panel px-4 py-3">
               <p className="mb-1 text-sm font-medium text-faint">{t('사용법')}</p>
@@ -193,7 +192,7 @@ export function AgentDetailPage() {
           </DetailSection>
         )}
 
-        {/* The form below holds the 지시 when it can be edited; it is not shown twice. */}
+        {/* Editable 지시 lives in the form below; not repeated. */}
         {!editable && (
         <DetailSection title={t('지시')}>
           {hidden ? (

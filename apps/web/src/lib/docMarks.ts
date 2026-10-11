@@ -2,10 +2,7 @@ import { useEffect, useState } from 'react'
 import { artifactsApi } from '@/lib/api'
 import type { DocMarks, ReportArtifact } from '@/types'
 
-/**
- * The document's marks: stored with the version, then re-located live against the body (manual
- * edits move them). Only documents saved with marks ask; older ones keep the placeholder scan.
- */
+/** Stored marks, re-located live against the body; documents saved without marks keep the placeholder scan. */
 export function useDocMarks(report: ReportArtifact, writing: boolean): DocMarks | null {
   const [live, setLive] = useState<{ version: number; marks: DocMarks } | null>(null)
   const stored = report.marks ?? null
@@ -31,10 +28,7 @@ export function fillBlank(content: string, text: string, nth: number, value: str
   return content.slice(0, at) + value + content.slice(at + text.length)
 }
 
-/**
- * What a flagged sentence looks like once rendered, without whitespace: a stored span is source
- * text, so a table row loses its pipes and a line its list mark, heading mark and emphasis.
- */
+/** Flagged sentence as rendered, whitespace-free: source spans lose table pipes and list, heading and emphasis marks. */
 export function findingProbe(text: string): string {
   let line = text.trim()
   if (line.startsWith('|')) line = line.split('|').join(' ')

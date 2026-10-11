@@ -4,12 +4,7 @@ import { blankFor, draftRows, fieldRows, onePage, paperLineLabelled, titleBlockC
 import { useT } from '@/lib/useT'
 import { isBlank } from '@/lib/placeholders'
 
-/**
- * A document's head by purpose (`docFormats.ts`): cover page, field table, memo rows,
- * press header, paper header or 간이기안문 head with its 결재란. The same markup `titleBlockHtml` writes for the paged
- * preview; `TITLE_BLOCK_CSS` styles both. A blank field shows its name in brackets (「[작성자]」), marked; with
- * `onChange` every field is an input and a blank is its placeholder.
- */
+/** Purpose head (`docFormats.ts`), same markup as `titleBlockHtml` (`TITLE_BLOCK_CSS` styles both); blank fields show 「[이름]」; `onChange` makes fields inputs. */
 export function TitleBlock({
   block,
   title,
@@ -19,11 +14,11 @@ export function TitleBlock({
 }: {
   block: ReportTitleBlock
   title: string
-  /** Inside a page view: a cover is also `.cover`, so it owns its page. */
+  /** Page view: a cover is also `.cover`, so it owns its page. */
   paged?: boolean
-  /** Makes the fields editable; called with the whole block on every change. */
+  /** Whole block on every change. */
   onChange?: (next: ReportTitleBlock) => void
-  /** The title element; the page editor passes its own editable line. */
+  /** Page editor passes its own editable line. */
   titleNode?: ReactNode
 }) {
   const t = useT()
@@ -62,7 +57,7 @@ export function TitleBlock({
 
   let inner: ReactNode
   if (onePage(block)) {
-    // The 1쪽 보고: the title boxed, the head fields one line under it, right.
+    // 1쪽 보고: title boxed, head fields on one line under it, right.
     inner = (
       <>
         <div className="tb-box">{heading}</div>

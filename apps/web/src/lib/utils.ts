@@ -38,8 +38,7 @@ export function relativeTime(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString(currentLocale(), { month: 'short', day: 'numeric' })
 }
 
-/** The service's own day (the API's `TIMEZONE`): a refill or a limit that turns at its
- * midnight, stored as 15:00 UTC, is the 1st there, not the 31st in a UTC browser. */
+/** Service time zone (API `TIMEZONE`): refills turn at its midnight, not the browser's. */
 const SERVICE_TIME_ZONE = 'Asia/Seoul'
 
 export function formatDate(iso: string | null | undefined) {
@@ -81,10 +80,7 @@ export function fileSize(bytes: number): string {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
 }
 
-/**
- * Readable name for a `User-Agent` string, or `''` when unrecognised. Order
- * matters: Edge before Chrome, Chrome before Safari, since each UA claims the others.
- */
+/** Readable browser name from a UA, or ''. Order matters: each UA claims the others. */
 export function browserName(ua: string): string {
   if (!ua) return ''
   const browser =

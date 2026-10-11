@@ -1,9 +1,4 @@
-/**
- * What the composer's file picker offers, and what it turns away before uploading. The server
- * (`services/files.py` `extract_text`) reads documents, text and code, pictures and recordings;
- * anything else is tried as text there, so only plainly binary programs and archives are refused
- * here, and empty files, which have nothing to read.
- */
+/** Composer picker filter and pre-upload refusals; the server reads most types, so only binaries, archives and empty files are refused. */
 
 const DOCUMENTS = ['.pdf', '.hwp', '.hwpx', '.docx', '.pptx', '.xlsx', '.doc', '.ppt', '.xls', '.csv', '.tsv']
 const TEXT = [

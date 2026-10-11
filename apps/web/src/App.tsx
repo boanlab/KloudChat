@@ -51,10 +51,7 @@ const PublicationPage = lazy(() =>
   import('@/pages/customize/PublicationPage').then((m) => ({ default: m.PublicationPage })),
 )
 
-/**
- * Earlier addresses of the 사용자 지정 hub's screens, each landing on its tab with the query it
- * carried: workflows on the 에이전트 tab, themes and memory in 설정.
- */
+/** Old hub addresses → their tab, keeping the query. */
 function ToHub({ tab }: { tab: string }) {
   const { search } = useLocation()
   const from = new URLSearchParams(search)
@@ -105,9 +102,7 @@ function useHomeAfterApproval(status: string | undefined) {
   }, [status, navigate])
 }
 
-/** A sign-in lands where this account may go. The tab keeps the address the last person
- *  left it on (an admin who approved this account and signed out on /admin/users), and a
- *  member arriving there would meet 「권한 없음」 as the first page. */
+/** Sign-in lands where this account may go, not on the previous user's address. */
 function useLandingAfterSignIn(authenticated: boolean, role: string | undefined) {
   const navigate = useNavigate()
   const was = useRef(authenticated)
@@ -119,8 +114,7 @@ function useLandingAfterSignIn(authenticated: boolean, role: string | undefined)
   }, [authenticated, role, navigate])
 }
 
-/** A share link: open to anyone it is shared with; a link for signed-in people offers 로그인
- *  in place and opens once signed in, on the same address. */
+/** Share link; a members-only link offers 로그인 in place, same address. */
 function ShareRoute() {
   const authenticated = useStore((s) => s.authenticated)
   const authLoading = useStore((s) => s.authLoading)
@@ -129,9 +123,7 @@ function ShareRoute() {
   return <SharedPage onSignIn={() => setSigningIn(true)} />
 }
 
-/** A published bot's page: its own screen, no app shell. Members open any bot they may see;
- *  a bot an administrator opened outside needs no account. Signing in is offered when the
- *  address does not open without one. */
+/** Published bot page without the app shell; sign-in offered when required. */
 function BotRoute() {
   const authenticated = useStore((s) => s.authenticated)
   const authLoading = useStore((s) => s.authLoading)
@@ -145,15 +137,13 @@ function BotRoute() {
   )
 }
 
-/** A bot framed on another site (`/embed/b/:slug`): always without an account, its calls
- *  marked so the server keeps the frame's own cookie. */
+/** Bot framed on another site: always accountless, calls marked to keep the frame's cookie. */
 function EmbedRoute() {
   useState(() => {
     setBotEmbedded(true)
     return true
   })
-  // The loader on the host page (`/embed/widget.js`) hears that the bot drew, and Esc pressed
-  // in here — where its own key listener cannot hear it — unless a dialog of the bot's is open.
+  // Tells the host loader (`/embed/widget.js`) the bot drew, and forwards Esc unless a bot dialog is open.
   useEffect(() => {
     if (window.parent === window) return
     window.parent.postMessage({ type: 'kloudchat:ready' }, '*')
@@ -254,8 +244,7 @@ function Authenticated() {
 export default function App() {
   const bootstrap = useStore((s) => s.bootstrap)
 
-  // Access token is memory-only; a reload asks the refresh cookie. A frame on another site
-  // never signs in, so it does not ask.
+  // Access token is memory-only: a reload asks the refresh cookie (not in an embed frame).
   useEffect(() => {
     if (!window.location.pathname.startsWith('/embed/')) void bootstrap()
   }, [bootstrap])

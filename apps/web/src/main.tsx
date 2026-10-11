@@ -4,11 +4,7 @@ import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './index.css'
 
-/**
- * A deploy replaces the hashed chunks an open page was built against; the next lazy screen then
- * fails to load. Reload once to pick up the new build, instead of showing the failure. The mark
- * stops a loop when the reload does not help, and clears once the page has run a while.
- */
+/** After a deploy, a missing lazy chunk reloads once; the mark prevents loops and clears after a while. */
 const RELOADED = 'kchat-chunk-reload'
 window.addEventListener('vite:preloadError', (event) => {
   try {

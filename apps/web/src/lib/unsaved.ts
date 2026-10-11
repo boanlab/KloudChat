@@ -1,10 +1,7 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
 
-/**
- * Settings sections with changes not saved yet, by key: a screen with tabs asks before it
- * leaves them (관리 › 시스템), and closing the tab asks the browser's own question.
- */
+/** Unsaved settings sections by key: tabbed screens and tab close ask first. */
 export const useUnsaved = create<{ dirty: Record<string, boolean>; mark: (key: string, on: boolean) => void; clear: () => void }>(
   (set) => ({
     dirty: {},

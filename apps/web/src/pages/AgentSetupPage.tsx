@@ -16,7 +16,7 @@ function priceLabel(m: ModelInfo, t: (s: string) => string): string {
     .replace('{out}', m.creditCost.toLocaleString())
 }
 
-/** Coding-agent setup snippets; address and model come from the live origin and catalogue. */
+/** Address and model from the live origin and catalogue. */
 export function AgentSetupPage() {
   const t = useT()
   const { models } = useStore()
@@ -44,7 +44,7 @@ export function AgentSetupPage() {
 
         <Card className="mt-6 flex flex-wrap items-center gap-3 p-4">
           <KeyRound size={18} className="text-muted" />
-          {/* Wide enough to read; on a phone the button goes under it. */}
+          {/* Phone: button below. */}
           <div className="min-w-0 flex-1 basis-56">
             <p className="text-base font-medium">{t('먼저 키를 발급하세요')}</p>
             <p className="text-base text-muted">

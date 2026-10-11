@@ -7,7 +7,7 @@ import { useStore } from '@/store/useStore'
 import type { Preferences } from '@/types'
 import { useT } from '@/lib/useT'
 
-/** Per-surface default models and behaviour switches, stored on the account. */
+/** Per-surface defaults and switches, stored on the account. */
 export function PreferencesTab() {
   const t = useT()
   const { user, updateProfile } = useStore()
@@ -16,7 +16,7 @@ export function PreferencesTab() {
   const models = useStore((s) => s.models)
   const modelsSettled = useStore((s) => s.modelsSettled)
   const enabledKinds = useStore((s) => s.enabledKinds)
-  // A surface this account has no model for is not offered as a default to pick.
+  // No model for a surface: not offered.
   const offered = (kind: (typeof kindOrder)[number], modality?: 'audio' | 'video') =>
     !modelsSettled || (enabledKinds.includes(kind) &&
       models.some((m) => m.kinds.includes(kind) && (!modality || m.modality === modality)))
@@ -41,7 +41,7 @@ export function PreferencesTab() {
           {kindOrder.flatMap((kind) => {
             const meta = kindMeta[kind]
             const Icon = meta.icon
-            // The av surface has separate audio and video defaults.
+            // av: separate audio and video defaults.
             const fields =
               kind === 'av'
                 ? ([

@@ -68,13 +68,13 @@ const kindLabel: Record<ArtifactKind, string> = {
   html: 'HTML',
 }
 
-/** Icon by template kind; unknown kinds fall back to the artifact's icon. */
+/** Unknown kinds: the artifact's icon. */
 const templateIcon: Record<string, typeof FileText> = {
   deck: Presentation,
   document: FileText,
 }
 
-/** The template a document was written into, if still in the catalogue. */
+/** Null once gone from the catalogue. */
 function templateOf(artifact: Artifact, templates: DesignTemplateRow[]) {
   const id = artifact.kind === 'html' || artifact.kind === 'code' ? artifact.templateId : undefined
   return id ? templates.find((row) => row.id === id) : undefined
@@ -82,7 +82,7 @@ function templateOf(artifact: Artifact, templates: DesignTemplateRow[]) {
 
 type Filter = ArtifactKind | 'all'
 
-/** Card thumbnail; partial HTML/code bodies are fetched when the card nears the viewport. */
+/** Partial HTML/code bodies fetched near the viewport. */
 function CardThumb({ artifact }: { artifact: Artifact }) {
   const refreshArtifact = useStore((s) => s.refreshArtifact)
   const ref = useRef<HTMLDivElement>(null)
@@ -151,7 +151,7 @@ export function ArtifactsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
 
-  // Server-side filter and search; debounced while typing.
+  // Server-side filter and search; debounced.
   useEffect(() => {
     const timer = setTimeout(
       () => void loadArtifacts({ kind: filter === 'all' ? undefined : filter, q: query }),
@@ -159,14 +159,14 @@ export function ArtifactsPage() {
     )
     return () => clearTimeout(timer)
   }, [loadArtifacts, filter, query])
-  // By id, not by copy: the panel edits the artifact in place.
+  // By id: the panel edits in place.
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [previewMode, setPreviewMode] = useState<PanelMode>('wide')
   const [previewDirty, setPreviewDirty] = useState(false)
   const [confirmPreviewClose, setConfirmPreviewClose] = useState(false)
   const [confirming, setConfirming] = useState<Artifact | null>(null)
 
-  // `?open=<id>`: search opens a result made outside any conversation here, in the panel.
+  // `?open=<id>`: a result made outside any conversation, opened in the panel.
   const [params, setParams] = useSearchParams()
   const openId = params.get('open')
   useEffect(() => {
@@ -174,7 +174,7 @@ export function ArtifactsPage() {
     setParams({}, { replace: true })
     setPreviewId(openId)
   }, [openId, setParams])
-  // A page of the gallery may not hold it; fetched whole, it joins the list.
+  // Not on the current page: fetched and joined.
   const previewListed = artifacts.some((a) => a.id === previewId)
   useEffect(() => {
     if (previewId && !previewListed && !artifactsLoading) void refreshArtifact(previewId)
@@ -187,7 +187,7 @@ export function ArtifactsPage() {
     setPreviewDirty(false)
   }
   const requestPreviewClose = () => previewDirty ? setConfirmPreviewClose(true) : closePreview()
-  // Undefined until counts arrive, so tabs show no number rather than 0.
+  // Undefined until counts arrive: no number rather than 0.
   const count = (k: ArtifactKind) => (artifactCounts ? (artifactCounts[k] ?? 0) : undefined)
   const total = artifactCounts
     ? Object.values(artifactCounts).reduce((sum, n) => sum + n, 0)
@@ -225,7 +225,7 @@ export function ArtifactsPage() {
             { id: 'image', label: t('이미지'), count: count('image') },
             { id: 'audio', label: t('오디오'), count: count('audio') },
             { id: 'video', label: t('동영상'), count: count('video') },
-            // A kind with nothing in it is left out, unless it is the one open.
+            // Empty kinds hidden, unless open.
           ] as { id: Filter; label: string; count?: number }[]).filter((tab) => tab.id === 'all' || tab.id === filter || tab.count !== 0)}
         />
 
@@ -271,7 +271,7 @@ export function ArtifactsPage() {
                   <Card key={a.id} className="overflow-hidden">
                     <button
                       aria-label={t('{name} 열기').replace('{name}', a.title)}
-                      // Refetch on open: the list copy may be stale.
+                      // Refetch on open: list copy may be stale.
                       onClick={() => {
                         setPreviewId(a.id)
                         void refreshArtifact(a.id)

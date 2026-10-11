@@ -23,7 +23,7 @@ const typeHelp: Record<MemoryType, string> = {
   reference: '참고할 외부 자료 — 주소, 대시보드, 티켓',
 }
 
-/** A blank memory. `scope` is preset by whoever opened the form. */
+/** Blank memory; `scope` preset by the opener. */
 export const emptyMemory = (scope = 'global'): MemoryEntry => ({
   id: uid('m'),
   name: '',
@@ -46,7 +46,7 @@ export function MemoryEditor({
   draft: MemoryEntry | null
   onDraft: (m: MemoryEntry) => void
   onClose: () => void
-  /** Hides the scope select and keeps the draft's own scope. */
+  /** Hides the scope select; keeps the draft's scope. */
   lockScope?: boolean
 }) {
   const t = useT()
@@ -92,7 +92,7 @@ export function MemoryEditor({
                 await upsertMemory({ ...draft, updatedAt: new Date().toISOString() })
                 close()
               } catch (err) {
-                // The form stays open with what was typed.
+                // Form stays open with the typed text.
                 setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
               } finally {
                 setSaving(false)

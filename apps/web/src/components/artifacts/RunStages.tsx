@@ -7,7 +7,7 @@ import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { Message } from '@/types'
 
-/** The latest run in the session that wrote or revised the document (not a waiting card). */
+/** Latest run in the session that wrote or revised the document (not a waiting card). */
 function latestRun(messages: Message[]) {
   for (let i = messages.length - 1; i >= 0; i--) {
     const run = messages[i].run
@@ -16,10 +16,7 @@ function latestRun(messages: Message[]) {
   return null
 }
 
-/**
- * 「작업 단계」 on a document's 검토 tab: the stages of the run that made this version, each with
- * its evidence and 「이 단계부터 다시」. A rerun's stages replace the list as they arrive.
- */
+/** 「작업 단계」 on the 검토 tab: this version's run stages with evidence and 「이 단계부터 다시」. */
 export function RunStagesButton({ sessionId }: { sessionId: string | null }) {
   const t = useT()
   const [open, setOpen] = useState(false)

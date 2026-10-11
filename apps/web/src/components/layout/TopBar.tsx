@@ -24,7 +24,7 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
         <PanelLeft size={16} />
       </Button>
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">{left}</div>
-      {/* On phones the buttons collapse to icons; aria-label/title keep the full name. */}
+      {/* Phones: icon buttons; aria-label/title keep the name. */}
       <div className="flex shrink-0 items-center gap-1.5 max-sm:gap-0.5 max-sm:[&>button]:w-8 max-sm:[&>button]:overflow-hidden max-sm:[&>button]:px-0 max-sm:[&>button]:text-[0px] max-sm:[&>span]:hidden">
         {right}
         <InstallButton />
@@ -32,7 +32,7 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
           variant="ghost"
           size="sm"
           onClick={toggleLang}
-          /* aria-label carries the visible text too, since it replaces it. */
+          /* aria-label includes the visible text it replaces. */
           aria-label={`${t('언어 전환')} · ${lang === 'ko' ? 'EN' : '한'}`}
           title={t('언어 전환')}
         >

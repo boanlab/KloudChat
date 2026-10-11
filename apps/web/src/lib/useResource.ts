@@ -3,10 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 /** How long a load may take before the screen says it is slow. */
 export const SLOW_MS = 10_000
 
-/**
- * Something a screen fetches, in one of three states. A failed load is `error`, never an
- * endless 「불러오는 중…」; past `SLOW_MS` the loading state says so (`slow`).
- */
+/** Fetched resource in three states; failures are `error`, slow loads flagged past `SLOW_MS`. */
 export interface Resource<T> {
   status: 'loading' | 'error' | 'ok'
   data: T | null
@@ -15,10 +12,7 @@ export interface Resource<T> {
   reload: () => void
 }
 
-/**
- * Runs `load` now and whenever `deps` change or `reload` is called; a late answer to a
- * superseded call is dropped. `load` may read the latest props: only `deps` start a new call.
- */
+/** Runs `load` on `deps` change or `reload`; late answers dropped. Only `deps` restart. */
 export function useResource<T>(load: () => Promise<T>, deps: readonly unknown[]): Resource<T> {
   const [state, setState] = useState<{ status: Resource<T>['status']; data: T | null; error: unknown }>({
     status: 'loading',

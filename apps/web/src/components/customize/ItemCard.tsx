@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { STATUS_LABEL, itemMeta, type HubItem } from './hubItems'
 import { itemIcon } from './itemIcons'
 
-/** Icon tile: a keyword icon, tinted with the agent's color when it has one. */
+/** Keyword icon tile, tinted with the agent's color if any. */
 export function ItemIconTile({ item, size = 'md' }: { item: HubItem; size?: 'md' | 'lg' }) {
   const t = useT()
   const icon = itemIcon(item.type, `${item.name} ${t(item.name)} ${item.summary}`, item.surfaces)
@@ -47,7 +47,7 @@ export function StatusPill({ item }: { item: HubItem }) {
   )
 }
 
-/** One card, the same on every tab. The whole card opens the item; the buttons act on it. */
+/** Hub card: whole card opens the item; buttons act on it. */
 export function ItemCard({
   item,
   view,
@@ -63,7 +63,7 @@ export function ItemCard({
   view: 'mine' | 'explore'
   onTry: (item: HubItem) => Promise<void>
   onAdd?: (item: HubItem) => Promise<void>
-  /** Overrides the card's own link (a shipped flow has no detail screen). */
+  /** Overrides the card's link (a shipped flow has no detail screen). */
   onOpen?: (item: HubItem) => void
   picking?: boolean
   picked?: boolean
@@ -78,7 +78,7 @@ export function ItemCard({
     if (onOpen) onOpen(item)
     else if (item.to) navigate(item.to)
   }
-  // A small glyph per writing surface, only when the item is not for every one of them.
+  // Surface glyphs, only when not for every surface.
   const writing = item.surfaces.filter((k) => k === 'report' || k === 'slides')
   const glyphs = writing.length === 2 && item.surfaces.includes('chat') ? [] : writing
 
@@ -103,7 +103,7 @@ export function ItemCard({
       )}
       <ItemIconTile item={item} />
       <div className="min-w-0 flex-1">
-        {/* The name is the card's link for keyboard and screen readers. */}
+        {/* Name is the card's link for keyboard and screen readers. */}
         <p className="flex min-w-0 items-center gap-1.5">
           <button
             type="button"
@@ -127,7 +127,7 @@ export function ItemCard({
         {item.summary && <p className="mt-0.5 line-clamp-2 text-base text-muted">{t(item.summary)}</p>}
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-faint">
           <span>{itemMeta(item, view, t)}</span>
-          {/* On a phone the status sits here, so the name keeps the width. */}
+          {/* Phone: status here, name keeps the width. */}
           {view === 'mine' && (
             <span className={cn('rounded-full border px-1.5 text-xs sm:hidden', pillTone[item.status])}>
               {t(STATUS_LABEL[item.status])}

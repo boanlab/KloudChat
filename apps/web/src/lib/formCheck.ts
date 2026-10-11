@@ -1,8 +1,4 @@
-/**
- * The one way a form refuses to send: the submit button stays enabled, and pressing it with a
- * required field empty puts focus on that field and says what is missing, under the field.
- * A disabled button gives no reason and drops out of the tab order.
- */
+/** Forms never disable submit: an empty required field gets focus and a message under it. */
 
 import { translate, type Lang } from './i18n'
 
@@ -38,16 +34,13 @@ export function missingMessage(lang: Lang, label: string): string {
 
 export interface RequiredField<K extends string = string> {
   key: K
-  /** The field's label as shown. */
   label: string
   value: string
   /** The control to focus when this is the first one empty. */
   control: { current: HTMLElement | null }
 }
 
-/**
- * The first required field left blank, focused, with its message; null when all are filled.
- */
+/** First empty required field, focused, with its message; null when all are filled. */
 export function checkRequired<K extends string>(
   lang: Lang,
   fields: RequiredField<K>[],

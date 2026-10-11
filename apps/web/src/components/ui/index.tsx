@@ -45,7 +45,7 @@ export function Button({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }) {
   return (
     <button
-      // Read by the ribbon's CSS, which restyles every variant but primary.
+      // Ribbon CSS restyles every non-primary variant.
       data-variant={variant}
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap transition-colors',
@@ -85,17 +85,13 @@ export function ButtonLink({
 
 const fieldBase =
   'w-full rounded-control border border-line bg-panel px-3 py-2 text-base text-fg placeholder:text-faint ' +
-  // A 1px border change alone is too faint to find (WCAG 2.4.11): a 2px halo with it.
+  // 1px border change too faint (WCAG 2.4.11): 2px halo too.
   'transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 ' +
-  // A control that cannot take input must not look like one that can.
+  // Disabled must not look editable.
   'disabled:cursor-not-allowed disabled:bg-elevated disabled:opacity-60 ' +
   'aria-invalid:border-danger'
 
-/**
- * What the enclosing `Field` tells its control: the hint and error to describe it with, and
- * whether it is required or refused. Read by `Input`, `Textarea` and `Select`, so a form need
- * not wire `aria-describedby` by hand.
- */
+/** Field → control context (hint, error, required, invalid); spares hand-wired `aria-describedby`. */
 interface FieldState {
   describedBy?: string
   invalid: boolean
@@ -129,7 +125,7 @@ export function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
   return <textarea className={cn(fieldBase, 'resize-y leading-relaxed', className)} {...props} {...aria} />
 }
 
-/** Native `<select>` styled like `Input`; only the chrome is replaced. */
+/** Native `<select>` in `Input` chrome. */
 export function Select({ className, children, ...props }: ComponentProps<'select'>) {
   const aria = useFieldAria(props)
   return (
@@ -150,10 +146,7 @@ export function Select({ className, children, ...props }: ComponentProps<'select
   )
 }
 
-/**
- * A labelled control. The label alone names it; the hint and the error describe it
- * (`aria-describedby`), so a screen reader hears the name first and the advice after.
- */
+/** Labelled control; hint and error via `aria-describedby`, heard after the name. */
 export function Field({
   label,
   hint,
@@ -164,10 +157,10 @@ export function Field({
 }: {
   label: string
   hint?: ReactNode
-  /** Why the value was refused: shown under the control, announced, and marks it invalid. */
+  /** Refusal reason: shown, announced, marks invalid. */
   error?: string | null
   children: ReactNode
-  /** Marks the field as one that must be filled (a red *, left out of the name read aloud). */
+  /** Required: red *, kept out of the accessible name. */
   required?: boolean
   className?: string
 }) {
@@ -238,7 +231,7 @@ export function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        // The button is the 44x36 hit area; the 36x20 track is drawn in `::before`.
+        // 44x36 hit area; 36x20 track in `::before`.
         'relative h-9 w-11 shrink-0 border-0 bg-transparent p-0',
         'disabled:pointer-events-none disabled:opacity-45',
         "before:absolute before:top-1/2 before:left-1 before:h-5 before:w-9 before:-translate-y-1/2 before:rounded-full before:transition-colors before:content-['']",
@@ -247,7 +240,7 @@ export function Switch({
     >
       <span
         className={cn(
-          // Track 36, knob 16, inset 2: 16px of travel. Vertical position via `top`, not transform.
+          // Track 36, knob 16, inset 2 → 16px travel; `top`, not transform.
           'absolute top-2.5 left-1.5 h-4 w-4 rounded-full bg-white shadow-raised transition-transform',
           checked ? 'translate-x-4' : 'translate-x-0',
         )}
@@ -309,7 +302,6 @@ export function Card({
 
 /* ── Modal ──────────────────────────────────────────────────────────── */
 
-/** Focusable elements, for the focus trap. */
 const FOCUSABLE =
   'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), ' +
   'select:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -343,13 +335,11 @@ export function Modal({
     closeRef.current = onClose
   }, [onClose])
 
-  // Focus trap and restore.
   useEffect(() => {
     if (!open) return
     returnTo.current = document.activeElement as HTMLElement | null
     const panel = panelRef.current
-    // The first thing to fill, not the title bar's 닫기: a control marked `autofocus`, else the
-    // first one in the body or footer, else the close button.
+    // Initial focus: `autofocus` control, else first body/footer control, else close button.
     const marked = panel?.querySelector<HTMLElement>('[data-autofocus], [autofocus]')
     const inBody = panel?.querySelector<HTMLElement>(
       ':scope > [data-modal-body] :is(input, textarea, select):not([disabled]):not([type="hidden"])',
@@ -383,10 +373,8 @@ export function Modal({
 
   if (!open) return null
   return (
-    /* `my-auto` on the panel, not `items-center`: a centred flex item taller
-       than the scroll container gets its top clipped. */
-    // Above every popover (dropdown menus are z-[100]): a menu left open under a
-    // dialog must not take the dialog's clicks.
+    /* `my-auto`, not `items-center`: a centred item taller than the scroller loses its top. */
+    // Above dropdowns (z-[100]): a stray open menu must not take dialog clicks.
     <div className="fixed inset-0 z-[150] flex justify-center overflow-y-auto p-4 max-sm:p-2">
       <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px]" onClick={onClose} />
       <div
@@ -490,7 +478,7 @@ export function Dropdown({
   children: ReactNode
   align?: 'left' | 'right'
   className?: string
-  /** Controlled open state; the menu still closes itself and reports it through `onOpenChange`. */
+  /** Controlled open state; self-closing still reported via `onOpenChange`. */
   open?: boolean
   onOpenChange?: (open: boolean) => void
   /** Opens as a sheet along the bottom edge instead of beside the trigger (phones). */
@@ -547,8 +535,7 @@ export function Dropdown({
     if (open) measure()
   }, [open, measure])
 
-  // Choosing an item unmounts the menu; unless the item moved focus somewhere of
-  // its own (a dialog, a pane), focus comes back to the trigger as Escape does.
+  // Focus back to the trigger after a choice, unless the item moved it.
   const wasOpen = useRef(false)
   useEffect(() => {
     const was = wasOpen.current
@@ -565,8 +552,7 @@ export function Dropdown({
         trigger.focus()
         return
       }
-      // The choice is being saved and the trigger is disabled meanwhile: focus it
-      // as soon as it is enabled again, within a bounded wait.
+      // Trigger disabled while saving: refocus once enabled, bounded wait.
       observer = new MutationObserver(() => {
         if (trigger.disabled) return
         observer?.disconnect()
@@ -596,7 +582,6 @@ export function Dropdown({
     return () => cancelAnimationFrame(frame)
   }, [open])
 
-  // Outside-click close and arrow-key navigation.
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
@@ -800,10 +785,7 @@ export function LoadingState({ label }: { label?: string }) {
   )
 }
 
-/**
- * The loading and failed states of a `useResource`, in one place: a spinner that says when it
- * is taking long, or 「불러오지 못했습니다」 with 다시 시도. Renders nothing once loaded.
- */
+/** `useResource` loading/failed states: slow-load spinner or 다시 시도; nothing once loaded. */
 export function ResourceStatus({
   resource,
   label,

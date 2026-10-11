@@ -65,7 +65,7 @@ function draftOf(pub: Publication): SettingsDraft {
 
 const day = (iso: string | null | undefined) => (iso ? formatDate(iso) : '')
 
-/** /customize/publications/:id — a published bot's owner screen. */
+/** Owner screen of a published bot. */
 export function PublicationPage() {
   const t = useT()
   const navigate = useNavigate()
@@ -84,7 +84,7 @@ export function PublicationPage() {
   const load = useCallback(async () => {
     try {
       setPub(await publicationsApi.get(publicationId))
-      // Opening the page is seeing what changed: the badge follows.
+      // Opening = seeing what changed: badge follows.
       void refreshBadge()
     } catch {
       setMissing(true)
@@ -94,7 +94,7 @@ export function PublicationPage() {
     void load()
   }, [load])
 
-  // A second click before the first answer re-renders the button would publish twice.
+  // Double click before re-render would publish twice.
   const running = useRef(false)
   const run = async (work: () => Promise<Publication | void>) => {
     if (running.current) return
@@ -303,7 +303,7 @@ export function PublicationPage() {
   )
 }
 
-/** Who the bot is open to: narrowing applies at once, widening is asked of an administrator. */
+/** Narrowing applies at once; widening goes to an administrator. */
 function ScopeCard({
   pub,
   busy,
@@ -502,7 +502,7 @@ function visitorName(visitor: BotVisitor, t: (s: string) => string): string {
   return `${t('방문자 {label}').replace('{label}', visitor.label)} · ${who}`
 }
 
-/** Who sent the conversation, as far as the owner may know, and blocking them. */
+/** Sender as far as the owner may know; block. */
 function VisitorBar({ visitor, onBlock }: { visitor: BotVisitor; onBlock: () => Promise<void> }) {
   const t = useT()
   const [asking, setAsking] = useState(false)
@@ -529,7 +529,7 @@ function VisitorBar({ visitor, onBlock }: { visitor: BotVisitor; onBlock: () => 
   )
 }
 
-/** The visitors the owner blocked, and unblocking them. */
+/** Blocked visitors; unblock. */
 function BlockedVisitors({ pub }: { pub: Publication }) {
   const t = useT()
   const [rows, setRows] = useState<BotVisitor[] | null>(null)

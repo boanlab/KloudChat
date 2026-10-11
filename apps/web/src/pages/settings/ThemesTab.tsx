@@ -5,11 +5,7 @@ import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { DesignsSection } from './DesignsSection'
 
-/**
- * 설정 › 테마: the person's own themes (colour, typeface, writing rules a document or deck wears)
- * and the ones others shared. A theme is picked in the agent form and in the panel's 편집 ›
- * 테마; this is where they are made and kept.
- */
+/** 설정 › 테마: own and shared themes (colour, typeface, writing rules); picked in the agent form and 편집 › 테마. */
 export function ThemesTab() {
   const t = useT()
   const [params] = useSearchParams()

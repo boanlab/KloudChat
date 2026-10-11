@@ -8,7 +8,7 @@ type Roles = NonNullable<SystemSettings['modelRoles']>
 type Choice = Roles['choices']['chat'][number]
 type ModelKey = 'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video' | 'title' | 'code' | 'codeFallback'
 
-/** Each picker: its label, the list it picks from, and what an empty choice means (none: required). */
+/** Label, source list, and what empty means (none: required). */
 const SURFACES: { key: ModelKey; label: string; from: keyof Roles['choices']; empty?: string }[] = [
   { key: 'chat', label: '대화 기본 모델', from: 'chat' },
   { key: 'report', label: '보고서 기본 모델', from: 'report', empty: '대화 기본 모델을 따름' },
@@ -51,7 +51,7 @@ const FIELD: Record<ModelKey, string> = {
   codeFallback: 'modelCodeFallback',
 }
 
-/** Server refusals (`model_title_invalid`, …) as sentences. */
+/** Server refusals (`model_title_invalid`, …). */
 function refusal(detail: string, t: (s: string) => string): string {
   if (detail === 'model_chat_required') return t('대화 기본 모델은 비워 둘 수 없습니다.')
   if (/^model_(title|code|code_fallback)_invalid$/.test(detail))
@@ -80,7 +80,7 @@ function ModelSelect({
     <Field label={label} hint={hint}>
       <Select value={value} onChange={(e) => onChange(e.target.value)}>
         {empty !== undefined && <option value="">{empty}</option>}
-        {/* A stored model missing from the catalogue stays selectable so the choice is not misread. */}
+        {/* Stored model missing from the catalogue stays selectable, so the choice is not misread. */}
         {value && !choices.some((m) => m.id === value) && (
           <option value={value}>
             {value} · {t('현재 사용 불가')}
@@ -96,7 +96,7 @@ function ModelSelect({
   )
 }
 
-/** Which model does which job, and whether models think: the administrator's choice. */
+/** Model per job and thinking switches. */
 export function ModelRolesSection({
   settings,
   onSaved,
@@ -111,7 +111,7 @@ export function ModelRolesSection({
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Choosing wins over a fetch that lands late.
+  // Choosing wins over a late fetch.
   const dirty = useRef(false)
   const roles = settings?.modelRoles
 

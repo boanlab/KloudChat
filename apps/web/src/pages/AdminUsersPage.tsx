@@ -93,14 +93,14 @@ export function AdminUsersPage() {
   const [filter, setFilter] = useState<UserStatus | 'all'>('all')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<User | null>(null)
-  // 정보 수정: name, address and a password reset, one dialog.
+  // 정보 수정: name, address, password reset.
   const [profile, setProfile] = useState<User | null>(null)
   const [draftName, setDraftName] = useState('')
   const [draftEmail, setDraftEmail] = useState('')
   const [draftPassword, setDraftPassword] = useState('')
   const [profileNote, setProfileNote] = useState<string | null>(null)
   const [profileError, setProfileError] = useState<string | null>(null)
-  // 키 관리: KloudChat's own key (reissue or replace) and the keys the person issued (revoke).
+  // 키 관리: own key (reissue/replace) and the person's keys (revoke).
   const [keysFor, setKeysFor] = useState<User | null>(null)
   const [keys, setKeys] = useState<AdminKeys | null>(null)
   const [keyDraft, setKeyDraft] = useState('')
@@ -125,18 +125,16 @@ export function AdminUsersPage() {
     setConfirmRotate(false)
     void loadKeys(u.id)
   }
-  // The whole catalogue for the restriction picker; the store's list is the caller's own.
+  // Whole catalogue for the restriction picker; the store holds the caller's own.
   const [catalogue, setCatalogue] = useState<{ id: string; label: string }[] | null>(null)
   const [deleting, setDeleting] = useState<User | null>(null)
-  // 정지 asks first: it signs the person out and stops the bots they published.
+  // 정지 asks first: signs the person out, stops their bots.
   const [suspending, setSuspending] = useState<User | null>(null)
   const [purgeFiles, setPurgeFiles] = useState(true)
   const [restricting, setRestricting] = useState<User | null>(null)
   const [draftCredits, setDraftCredits] = useState('')
-  // Ids with an in-flight mutation.
   const [busy, setBusy] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
-  // Placeholder until the API answers.
   const [economics, setEconomics] = useState({ perUsd: 100_000, budgetHeadroom: 0.2 })
 
   useEffect(() => {
@@ -148,7 +146,7 @@ export function AdminUsersPage() {
       .catch(() => {})
   }, [loadUsers])
 
-  /** Runs one row action, guarding against double-fire and surfacing failure. */
+  /** Guards double-fire, surfaces failure. */
   const run = async (id: string, action: () => Promise<void>) => {
     if (busy.includes(id)) return
     setBusy((b) => [...b, id])
@@ -235,8 +233,7 @@ export function AdminUsersPage() {
         </div>
 
         <Card className="overflow-hidden">
-          {/* The scroll box sits inside the card: the card keeps `overflow-hidden` for its
-              rounded corners, and a narrow screen scrolls the row to its last button. */}
+          {/* Scroll box inside the card: card keeps `overflow-hidden` for rounded corners. */}
           <div className="overflow-x-auto">
             <table className="w-full text-base">
             <thead className="bg-elevated text-xs tracking-wide text-faint uppercase">
@@ -753,7 +750,7 @@ export function AdminUsersPage() {
       />
 
       <CreditDialog
-        // A fresh dialog per person: no warning or error carried over from the last one.
+        // Fresh dialog per person: no carried-over state.
         key={editing?.id ?? 'none'}
         user={editing}
         draft={draftCredits}
@@ -775,24 +772,21 @@ export function AdminUsersPage() {
   )
 }
 
-/** Proxy budget for an allowance; mirrors `budget_usd` on the API. */
+/** Mirrors the API's `budget_usd`. */
 function proxyBudget(credits: number, economics: { perUsd: number; budgetHeadroom: number }) {
   return `$${(Math.ceil((credits / economics.perUsd) * (1 + economics.budgetHeadroom) * 100) / 100).toFixed(2)}`
 }
 
-/** The largest monthly allowance the server takes (`SetCreditsRequest`). */
+/** Server maximum (`SetCreditsRequest`). */
 const CREDIT_MAX = 100_000_000
 
-/** `으로` or `로` after `n` read aloud in Korean: 로 after a vowel or ㄹ (1·2·4·5·7·8·9), else 으로. */
+/** 로 after a vowel or ㄹ (1·2·4·5·7·8·9), else 으로. */
 function directionParticle(n: number): string {
   const last = String(n).slice(-1)
   return last === '0' || last === '3' || last === '6' ? '으로' : '로'
 }
 
-/**
- * 월 크레딧: the value is checked before it is sent, the dialog stays open until the server
- * takes it, and 0 asks once more because it stops the person using any model until the refill.
- */
+/** 월 크레딧: checked before send, open until the server takes it; 0 confirms (no model use until refill). */
 function CreditDialog({
   user,
   draft,
@@ -815,7 +809,7 @@ function CreditDialog({
   const [confirmZero, setConfirmZero] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // 「2,000,000」 as written in the list is taken as is.
+  // 「2,000,000」 as listed is taken as is.
   const trimmed = draft.trim().replace(/,/g, '')
   const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : NaN
   const valid = Number.isSafeInteger(parsed) && parsed <= CREDIT_MAX

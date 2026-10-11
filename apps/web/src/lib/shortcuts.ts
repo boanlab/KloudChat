@@ -1,9 +1,4 @@
-/**
- * Keyboard shortcuts: the list the dialog prints is the list the handler
- * matches. `mod` is ⌘ on a Mac and Ctrl elsewhere. No chord a browser keeps for itself:
- * Shift+Esc (Chrome's task manager), Ctrl+Shift+C/I (developer tools) and Ctrl+Shift+O
- * (bookmarks) never reach the page, so those actions use Alt+Shift or a bare key.
- */
+/** Shortcut list shared by the dialog and the handler; `mod` = ⌘/Ctrl; browser-reserved chords avoided (hence Alt+Shift). */
 
 type ShortcutId =
   | 'new-chat'

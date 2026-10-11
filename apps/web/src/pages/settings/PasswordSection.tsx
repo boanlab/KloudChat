@@ -10,7 +10,7 @@ import { useT } from '@/lib/useT'
 
 type Key = 'current' | 'next' | 'confirm'
 
-/** 비밀번호 변경, at the top of 보안: the rule is the server's, and a refusal names the field. */
+/** Server rule; a refusal names the field. */
 export function PasswordSection() {
   const t = useT()
   const { changePassword, lang, passwordMinLength } = useStore()
@@ -25,7 +25,7 @@ export function PasswordSection() {
     confirm: useRef<HTMLInputElement>(null),
   }
   const { hash } = useLocation()
-  // Arriving from 프로필's link: straight to the first field.
+  // From 프로필's link: focus the first field.
   useEffect(() => {
     if (hash !== '#password') return
     refs.current.current?.scrollIntoView?.({ block: 'center' })

@@ -10,7 +10,7 @@ import { useT } from '@/lib/useT'
 
 const RANGES = [7, 30, 90]
 
-/** The caller's own usage; never another account's. */
+/** Own usage only. */
 export function MyUsagePage() {
   const t = useT()
   const [days, setDays] = useState(30)
@@ -35,12 +35,12 @@ export function MyUsagePage() {
 
   const cycle = data?.cycle
   const pct = cycle && cycle.allowance > 0 ? Math.min(100, (cycle.used / cycle.allowance) * 100) : 0
-  // Free models bill nothing, so with zero credits the chart plots requests instead.
+  // Free models bill nothing: zero credits → plot requests.
   const byCredits = (data?.totals.credits ?? 0) > 0
   const daily = (data?.daily ?? []).map((d) => ({ ...d, value: byCredits ? d.credits : d.requests }))
   const peak = Math.max(1, ...daily.map((d) => d.value))
   const other = data?.totals.otherCredits ?? 0
-  // Charges outside any conversation have no kind entry.
+  // Charges outside a conversation: no kind entry.
   const surface = (kind: string) =>
     kind === 'bot' ? t('공개 챗봇') : kind in kindMeta ? t(kindMeta[kind as keyof typeof kindMeta].label) : t('기타')
 
@@ -96,7 +96,7 @@ export function MyUsagePage() {
         </Card>
       )}
 
-      {/* A failed load says so; an empty layout would read as no usage. */}
+      {/* Failed load said; an empty layout would read as no usage. */}
       {failed && !data ? (
         <div className="mt-6">
           <EmptyState
@@ -129,8 +129,7 @@ export function MyUsagePage() {
                 </span>
               )}
             </p>
-            {/* `items-stretch`: bar heights are percentages, so each column needs the full height.
-                One column per day; the server fills empty days. */}
+            {/* Percent bar heights need full-height columns; server fills empty days. */}
             <div className="mt-3 flex h-32 items-stretch gap-px sm:gap-1">
               {daily.map((d, i) => {
                 const dated = i === daily.length - 1 || (daily.length - 1 - i) % 7 === 0
@@ -152,7 +151,7 @@ export function MyUsagePage() {
                         style={{ height: d.value > 0 ? `${Math.max(3, (d.value / peak) * 100)}%` : 0 }}
                       />
                     </div>
-                    {/* Overflows rather than truncates: `MM-DD` is wider than a column, and neighbours are empty. */}
+                    {/* Overflows rather than truncates: `MM-DD` wider than a column, neighbours empty. */}
                     <span className="h-4 shrink-0 overflow-visible text-center text-2xs whitespace-nowrap tabular-nums text-faint">
                       {dated ? d.date.slice(5) : ''}
                     </span>
@@ -241,7 +240,7 @@ export function MyUsagePage() {
   )
 }
 
-/** Work done by free models: seconds transcribed, chunks embedded, pages read. */
+/** Free-model work: seconds transcribed, chunks embedded, pages read. */
 function unitsLabel(units: number | undefined, unit: string | undefined, t: (s: string) => string): string {
   if (!units) return ''
   if (unit === 'seconds') return t('{n}초 받아씀').replace('{n}', units.toLocaleString())

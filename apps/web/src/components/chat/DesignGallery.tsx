@@ -275,8 +275,7 @@ export function DesignGalleryModal({
     null
 
   const english = currentLang() === 'en'
-  // A hidden 서식 (`listed: false`) is not offered; the one this conversation wears stays, and an
-  // administrator may show the rest (숨김 포함).
+  // Hidden template (`listed: false`) not offered; the conversation's own stays; admins may show the rest (숨김 포함).
   const hiddenHere = rows.some((r) => r.surface === kind && !isListed(r))
   const forSurface = useMemo(
     () =>
@@ -390,9 +389,7 @@ export function DesignGalleryModal({
           </div>
         </div>
 
-        {/* Fixed-height window so the dialog does not resize between pages.
-            The scrolling element and the grid are separate so an expanded
-            card can grow its row. */}
+        {/* Fixed-height window, no resize between pages; scroller and grid apart so an expanded card can grow its row. */}
         <div className="h-[58vh] min-h-80 overflow-y-auto pr-1">
         <div className="grid content-start gap-3 sm:grid-cols-2">
           {shown.map(({ row }) => (
@@ -441,8 +438,7 @@ export function DesignGalleryModal({
   )
 }
 
-/** Whether a surface offers the picker; one gate for the gallery and composer buttons. Only
- * the writing surfaces have 서식. */
+/** Whether a surface offers the picker (writing surfaces only); one gate for the gallery and composer buttons. */
 export function offersTemplates(kind: SessionKind): boolean {
   return kind === 'report' || kind === 'slides'
 }

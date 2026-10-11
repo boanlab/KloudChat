@@ -302,8 +302,7 @@ function cleanInlineHtml(html: string): string {
       Array.from(node.childNodes).forEach((child) => { const next = clean(child); if (next) fragment.append(next) })
       return fragment
     }
-    // `execCommand(fontSize)` emits `<font size>`; converted to a relative size
-    // so it scales with the slide.
+    // `execCommand(fontSize)` emits `<font size>`; converted to a relative size that scales with the slide.
     const element = document.createElement(node.tagName === 'FONT' ? 'span' : node.tagName.toLowerCase())
     if (node.tagName === 'FONT') {
       const size = node.getAttribute('size')
@@ -332,7 +331,6 @@ function inlineText(html: string): string {
   return new DOMParser().parseFromString(html, 'text/html').body.textContent ?? ''
 }
 
-/** The slide's paired layout, or `null`. */
 function pairedLayout(slide: Slide): Paired | null {
   return (PAIRED as readonly string[]).includes(slide.layout)
     ? (slide.layout as Paired)
@@ -473,10 +471,7 @@ function slideFor(slides: Slide[], where: string): Slide | undefined {
   return slides.find((s) => loose(s.title) === loose(where))
 }
 
-/**
- * One slide in a 400x225 unit space, scaled. Geometry matches `deck_export.py`.
- * Also draws gallery thumbnails.
- */
+/** One slide in a 400x225 unit space, scaled; geometry matches `deck_export.py`. Also draws gallery thumbnails. */
 export function SlideView({
   slide,
   scale = 1,
@@ -515,8 +510,7 @@ export function SlideView({
   // The slide as typed; a ref so re-renders do not move the caret.
   const working = useRef(slide)
   const canvas = useRef<HTMLDivElement>(null)
-  // Every edit reaches the parent through `onEdit`, so a slide object the parent has not
-  // seen before (a layout picked, a row typed in the data editor) is newer than the copy.
+  // Every edit reaches the parent via `onEdit`, so an unseen slide object is newer than the copy.
   const seen = useRef(slide)
   if (!editable || slide !== seen.current) {
     working.current = slide
@@ -563,8 +557,7 @@ export function SlideView({
   // `mono` uses ink for the accent.
   const accent = visualStyle === 'mono' ? look.ink : (slide.accent ?? brand?.accent ?? 'var(--accent)')
   const px = (n: number) => `${n * scale}px`
-  // Type size only; `textScale` does not touch padding or gaps. `deck_export` applies the same factor.
-  // Never under 12pt, whatever the scale; `deck_export` floors the same way.
+  // Type size only, never under 12pt; `deck_export` applies the same factor and floor.
   const type = (n: number) => `${Math.max(n * (slide.textScale ?? 1), units(FLOOR_PT)) * scale}px`
   // A size from the shared table, in points.
   const pt = (points: number) => type(units(points))
@@ -605,12 +598,10 @@ export function SlideView({
           ? 'cards'
           : 'content'
   const pending = !hasContent(slide)
-  // A figure the deck drew for itself is a band across the body; the words sit under it,
-  // set compact. Beside it they would narrow the figure until it cannot be read.
+  // Deck-drawn figure is a band across the body, compact words under it; beside it the figure becomes unreadable.
   const figured = Boolean(slide.diagram?.source)
   const figureAlone = figured && !hasWords(slide)
-  // A picture with no words beside it is the slide: it takes the whole content area,
-  // as the exporters already give it.
+  // A picture without words takes the whole content area, as in the exporters.
   const imageAlone = Boolean(slide.image?.src) && !figured && !hasWords(slide)
   useLayoutEffect(() => {
     if (!onOverflow || !canvas.current) return
@@ -628,8 +619,7 @@ export function SlideView({
   const twoColumn = slide.layout === 'two-column' && (slide.bullets?.length ?? 0) >= 5
   // Table type size from the row count, so it stays on the slide; `deck_export` scales the same way.
   const dense = { size: tableSize(rows.length), pad: tablePad(rows.length), shares: columnShares(rows) }
-  // Band and timeline rows divide the body height; matches `deck_export`
-  // (`min(72, room/n)` and `min(56, room/n)` in its 540-unit slide).
+  // Band and timeline rows divide the body height; matches `deck_export` (`min(72, room/n)`, `min(56, room/n)` of 540 units).
   const stack = (() => {
     const body = BODY_BOTTOM - BODY_TOP - 4
     const count = Math.max(pairs.length, 1)
@@ -638,8 +628,7 @@ export function SlideView({
     const band = Math.max(units(TYPE.bandMin), Math.min(units(TYPE.bandMax), height / 3))
     const step = Math.min(23, body / count)
     const line = Math.max(units(TYPE.lineMin), Math.min(units(TYPE.lineMax), step / 2.3))
-    // Left label width from character count (a Korean glyph is about 1em),
-    // bounded between the floor and a third of the slide.
+    // Left label width from character count (Korean glyph ≈ 1em), between the floor and a third of the slide.
     const widest = (index: number, floor: number, size: number) =>
       Math.round(
         Math.max(
@@ -862,8 +851,7 @@ export function SlideView({
             <div
               className={cn(
                 'flex min-w-0 flex-1 flex-col',
-                // Paired shapes cannot overflow (see `stack`), so they centre;
-                // bullets can, and a centred overflow clips at both ends.
+                // Paired shapes cannot overflow (see `stack`), so they centre; bullets can, and centred overflow clips both ends.
                 (PAIRED.includes(slide.layout as (typeof PAIRED)[number]) || pattern) && 'justify-center',
                 figured && 'hidden',
               )}
@@ -1364,11 +1352,7 @@ export function SlideView({
   )
 }
 
-/**
- * A figure the deck drew for itself, rendered live from its mermaid so it stays crisp at any
- * scale. On the editor's stage (`artifactId` set) the raster is stored once for the exporters,
- * which have no browser; a stored raster is not sent again.
- */
+/** Deck-drawn figure, live from its mermaid; on the editor's stage the raster is stored once for the exporters. */
 function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent: string; look: Look; artifactId?: string }) {
   const t = useT()
   const host = useRef<HTMLDivElement>(null)
@@ -1526,11 +1510,7 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
   )
 }
 
-/**
- * The slide as editable lines: title, then bullets/body, then rows, metrics
- * and pairs as `| a | b |`. A paired slide omits bullets and body, which
- * `SlideView` does not draw.
- */
+/** Slide as editable lines: title, bullets/body, then rows, metrics and pairs as `| a | b |`; paired slides omit bullets and body. */
 function toLines(slide: Slide): string {
   const pattern = patternOf(slide.layout)
   if (pattern) {
@@ -1808,8 +1788,7 @@ export function PresentStage({
     <div ref={stageRef} role="dialog" aria-label={t('발표 모드')} className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="flex items-center gap-2 px-4 py-2 text-white/70">
         <Presentation size={14} className="shrink-0" />
-        {/* The title gives way first: on a phone at the larger type the controls after it
-            must stay on screen. */}
+        {/* Title gives way first, so the controls stay on a phone screen. */}
         <span className="min-w-0 flex-1 truncate text-base">{title}</span>
         <span className="shrink-0 text-base tabular-nums">
           {index + 1} / {count}
@@ -2116,8 +2095,7 @@ export function DeckPanel({
   const [reviewComments, setReviewComments] = useState(deck.reviewComments ?? [])
   const [reviewSaving, setReviewSaving] = useState(false)
   const [rail, setRail] = useState<'thumbs' | 'outline'>('thumbs')
-  // The rail is a drawer (closed by default) on a narrow panel and a column
-  // (open by default) otherwise; the toggle flips whichever default applies.
+  // Rail: closed drawer on a narrow panel, open column otherwise; the toggle flips the default.
   const [railToggled, setRailToggled] = useState(false)
   const railShown = panel.narrow ? railToggled : !railToggled
   const [bulkMode, setBulkMode] = useState(false)
@@ -2348,7 +2326,6 @@ export function DeckPanel({
     setNotes(next.notes ?? '')
   }
 
-  /** Rewrites only the selected slide. */
   const regenerateSlide = async () => {
     if (!slide || rewritingSlide) return
     setRewritingSlide(true)
@@ -2760,9 +2737,7 @@ export function DeckPanel({
     setRailToggled(false)
   }
 
-  // Up/Down (and Left/Right, PageUp/PageDown, Home/End) step through the slides while the
-  // deck is shown and nothing else has the keys: not while a slide is being edited,
-  // presented (the show has its own keys), typed into, or covered by a menu or dialog.
+  // Arrow/Page/Home/End step slides while nothing else has the keys (not editing, presenting, typing, or under a menu or dialog).
   const goRef = useRef(go)
   goRef.current = go
   useEffect(() => {
@@ -2935,7 +2910,7 @@ export function DeckPanel({
     if (intent.pane === 'review') setReviewOpen(true)
     if (intent.version !== undefined) setHistoryRequest({ nonce: intent.nonce, version: intent.version })
     clearIntent()
-    // `go` is recreated every render; only a new request acts.
+    // Only a new request acts; `go` changes every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intent, clearIntent])
 
@@ -3335,8 +3310,7 @@ export function DeckPanel({
               void startEditing()
               return
             }
-            // Leaving 「글자」 with nothing changed ends the edit, so the next tab shows
-            // its own commands; unsaved changes keep the editor (and 저장·취소) around.
+            // Leaving 「글자」 unchanged ends the edit; unsaved changes keep the editor and 저장·취소.
             if (tab !== 'text' && editing && !bulkMode && !hasUnsavedEdit) {
               setEditing(false)
               setSlideDraft(null)
@@ -3480,7 +3454,6 @@ export function DeckPanel({
             onClick={() => setRailToggled(false)}
           />
         )}
-        {/* Slide rail. */}
         <nav
           className={cn(
             'w-[132px] shrink-0 flex-col border-r border-line bg-sidebar/40',

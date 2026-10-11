@@ -1,8 +1,4 @@
-/**
- * Storage key for one diagram's source: first 16 hex chars of SHA-256 over the
- * trimmed source with trailing whitespace stripped per line. Must match
- * `report_export.diagram_key` on the server exactly.
- */
+/** First 16 hex of SHA-256 over the trimmed, line-trimmed source; must match `report_export.diagram_key`. */
 export async function diagramKey(source: string): Promise<string> {
   const normalised = (source ?? '')
     .trim()

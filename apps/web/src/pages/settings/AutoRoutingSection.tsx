@@ -6,7 +6,7 @@ import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 import { tokenRate } from '@/lib/utils'
 
-/** User-facing text for the server's routing-policy refusal codes. */
+/** Routing-policy refusal codes. */
 const ROUTING_REFUSALS: Record<string, string> = {
   adaptive_classifier_required: '난이도 분류 모델을 골라 주세요.',
   adaptive_classifier_must_be_zero_cost_strict_local:
@@ -69,9 +69,9 @@ export function AutoRoutingSection() {
       !model.privacyOnly &&
       model.dataBoundary !== 'unknown',
   )
-  // Unfiltered by price: the ordering is the quality judgement.
+  // Unfiltered by price: order is the quality judgement.
   const qualityModels = models.filter((model) => model.kinds.includes('chat'))
-  // Each lane validates only itself.
+  // Each lane validates itself.
   const canSave =
     (!enabled || Boolean(classifierModelId && economyModelIds.length > 0)) &&
     (!qualityEnabled || Boolean(classifierModelId && qualityModelIds.length > 0))
@@ -433,7 +433,7 @@ export function AutoRoutingSection() {
               await saveGovernance({
                 adaptiveRoutingEnabled: enabled,
                 adaptiveQualityEnabled: qualityEnabled,
-                // The classifier is shared by both lanes; each list follows its own switch.
+                // Shared classifier; each list follows its own switch.
                 ...(enabled || qualityEnabled
                   ? { adaptiveClassifierModelId: classifierModelId || null }
                   : {}),

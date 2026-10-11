@@ -13,7 +13,7 @@ import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 import { isListed } from '@/lib/listed'
 
-/** Craft rules; keys must match `CRAFT` in the API's design service, unknown keys are dropped on save. */
+/** Keys match the API design service's `CRAFT`; unknown keys dropped on save. */
 const CRAFT: { key: string; label: string; hint: string }[] = [
   {
     key: 'restraint',
@@ -34,7 +34,7 @@ const FONTS: { key: DesignTokens['font']; label: string }[] = [
 
 const BODY_MAX = 400
 
-/** Blank design with the API's default tokens. */
+/** API default tokens. */
 const blank = (): Partial<DesignRow> => ({
   name: '',
   description: '',
@@ -76,7 +76,7 @@ function Swatch({
   )
 }
 
-/** User-facing text for the extract endpoint's 4xx codes; other errors fall through as-is. */
+/** Extract endpoint 4xx codes; others fall through. */
 const REFUSAL: Record<string, string> = {
   file_unreadable: '이 파일에서는 글자를 읽지 못했습니다.',
   url_unreadable: '그 주소에서 내용을 읽지 못했습니다.',
@@ -177,7 +177,7 @@ function ExtractForm({
   )
 }
 
-/** Design systems this account can attach to a project: tokens plus style prose. */
+/** Themes: tokens plus style prose. */
 export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract' } = {}) {
   const t = useT()
   const isAdmin = useStore((s) => s.user?.role === 'admin')
@@ -185,16 +185,15 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
   const ensureWorkspace = useStore((s) => s.ensureWorkspace)
   const projects = useStore((s) => s.projects)
   const [rows, setRows] = useState<DesignRow[]>([])
-  // 숨김 포함: a shipped theme kept for what already wears it (`listed: false`) is folded away.
+  // 숨김 포함: shipped themes kept for existing users (`listed: false`) folded away.
   const [showHidden, setShowHidden] = useState(false)
   const hiddenCount = rows.filter((r) => !isListed(r)).length
   const shownRows = showHidden ? rows : rows.filter(isListed)
   const deleteMany = useStore((s) => s.deleteMany)
   const pick = useBulkSelect(rows.filter((r) => r.mine))
-  // 「+ 추가」 in the hub opens straight into the form or the reader.
+  // Hub 「+ 추가」 opens the form or reader directly.
   const [draft, setDraft] = useState<Partial<DesignRow> | null>(initialMode === 'new' ? blank() : null)
   const [extracting, setExtracting] = useState(initialMode === 'extract')
-  // Source the draft was extracted from.
   const [readFrom, setReadFrom] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirming, setConfirming] = useState<DesignRow | null>(null)
@@ -203,7 +202,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
   const load = async () => setRows(await designsApi.list().catch(() => []))
   useEffect(() => {
     void load()
-    // Projects are needed for the delete confirmation count.
+    // For the delete confirmation count.
     void ensureWorkspace()
   }, [ensureWorkspace])
 
@@ -223,7 +222,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
       setRows((r) => (draft.id ? r.map((x) => (x.id === row.id ? row : x)) : [...r, row]))
       setDraft(null)
       setReadFrom('')
-      // Projects read designs from the store.
+      // Projects read themes from the store.
       void loadWorkspace()
     } catch (e) {
       setError(errorMessage(e, t('저장하지 못했습니다.')))
@@ -232,7 +231,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
     }
   }
 
-  /** Delete confirmation text, counting projects that use the design. */
+  /** Counts projects using the theme. */
   const wearing = (row: DesignRow | null) => {
     const n = row ? projects.filter((p) => p.designSystemId === row.id).length : 0
     return n === 0

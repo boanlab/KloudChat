@@ -1,13 +1,6 @@
 import type { Slide } from '@/types'
 
-/**
- * Slide patterns beyond the base layouts. The mirror of
- * `apps/api/app/services/slide_patterns.wire()`: same order, same fields. A test keeps the
- * two equal, so keep this a plain literal and change both together.
- *
- * A pattern is a data shape (what the slide carries) drawn by a general arrangement
- * (`render`); `PatternView` implements the arrangements once.
- */
+/** Slide patterns beyond the base layouts; mirrors `slide_patterns.wire()` (order and fields, test-enforced) — keep a plain literal, change both. Drawn by `PatternView` per `render`. */
 
 export type PatternShape = 'pairs' | 'columns' | 'metrics' | 'chart' | 'text'
 export type PatternRender =

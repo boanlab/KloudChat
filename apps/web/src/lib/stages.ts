@@ -1,7 +1,4 @@
-/**
- * Pipeline stage records as the person reads them: one status per row and the waiting card's
- * place.
- */
+/** Stage records as read: one status per row and the waiting card's place. */
 import type { Message, PipelineRun, PipelineStage, Session } from '@/types'
 
 /** What a row's icon says: ✓ done, ! findings, ? waiting, – skipped, ✕ failed. */
@@ -119,11 +116,7 @@ export function hasEvidence(stage: PipelineStage): boolean {
   )
 }
 
-/**
- * The message whose stage list holds the open question card: the last assistant message, when
- * its run is waiting and the session's pending card is a clarify card. Elsewhere the card keeps
- * its old place in the transcript.
- */
+/** Message holding the open question card: the last assistant message when its run waits on a clarify card. */
 export function waitingCardMessageId(session: Session | undefined): string | null {
   if (!session || session.pending?.stage !== 'clarify') return null
   const last = [...session.messages].reverse().find((m: Message) => m.role === 'assistant')
@@ -162,11 +155,7 @@ export const RERUN_ERROR: Record<string, string> = {
   model_unavailable: '이 작업에 쓴 모델을 지금은 쓸 수 없습니다.',
 }
 
-/**
- * The server's `reason` is short internal English; the person reads a Korean sentence. Known
- * reasons map by pattern, anything else by the stage's status. The raw text stays in the
- * expanded details.
- */
+/** Server `reason` (internal English) to a Korean sentence by pattern, else by status; raw text in details. */
 const REASONS: [RegExp, string][] = [
   [/^stopped at /, '앞 단계에서 멈춰 실행하지 않음'],
   [/timed? ?out|timeout/i, '시간이 초과됨'],

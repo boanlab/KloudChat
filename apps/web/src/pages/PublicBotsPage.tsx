@@ -6,10 +6,7 @@ import { botsApi, type PublicBotItem } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
-/**
- * /b — the bots an administrator opened to everyone, for anyone: no account, no app shell,
- * no owner names. A member also finds these on 「챗봇」.
- */
+/** /b: bots opened to everyone; no account, no app shell, no owner names. */
 export function PublicBotsPage() {
   const t = useT()
   const authenticated = useStore((s) => s.authenticated)

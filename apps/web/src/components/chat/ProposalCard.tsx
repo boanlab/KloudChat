@@ -33,8 +33,7 @@ export function ProposalCard({
   const streaming = useStore((s) => !!s.running[sessionId])
   const [picked, setPicked] = useState<Record<string, string>>({})
 
-  // Hooks stay above the stage-specific early returns.
-  // The person's edits to the outline, or null if untouched.
+  // Hooks above the stage-specific early returns. Outline edits, or null if untouched.
   const [edited, setEdited] = useState<{ title: string; layout?: string }[] | null>(null)
   // Null means the plan decides, however late it arrives (the card mounts while streaming).
   const [pickedDensity, setPickedDensity] = useState<string | null>(null)
@@ -276,8 +275,7 @@ export function ProposalCard({
           </li>
         ))}
       </ol>
-      {/* No look picker here: the outline is about what is said. The design is chosen,
-          and changed, from the document's own ribbon (홈 › 디자인). */}
+      {/* No look picker: the outline is about content; the look is chosen from the document's ribbon. */}
       {plan.slides && (
         <fieldset className="mt-4">
           <legend className="mb-2 text-sm font-medium text-fg">{t('어떻게 사용할 자료인가요?')}</legend>

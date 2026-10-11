@@ -3,12 +3,7 @@ import { ApiError } from '@/lib/api'
 /** Where in the agent form a refusal points: the form opens that part and focuses it. */
 export type AgentErrorPlace = 'name' | 'gap' | 'settings' | 'output' | 'tools' | 'advanced' | 'process'
 
-/**
- * What each refusal of `POST/PATCH /agents` and `PUT /agents/{id}/process` says to the person,
- * and where. Every code those endpoints raise (`routers/workspace.py` agent save,
- * `services/gap_questions.py`, `services/process_settings.py`, `routers/user_pipelines.py`
- * `put_process`) has a line here; `tests/test_agent_save_errors.py` holds them to it.
- */
+/** Message and place for every agent-save refusal code; `tests/test_agent_save_errors.py` checks coverage. */
 export const AGENT_SAVE_ERRORS: Record<string, { message: string; place?: AgentErrorPlace }> = {
   slug_taken: { message: '이미 쓰는 핸들입니다. 다른 핸들을 붙이세요.', place: 'name' },
   not_found: { message: '에이전트를 찾을 수 없습니다. 목록을 새로 고친 뒤 다시 여세요.' },
@@ -68,11 +63,7 @@ export const AGENT_SAVE_ERRORS: Record<string, { message: string; place?: AgentE
 const CODE = /^([a-z][a-z0-9_]*)(?::.*)?$/
 const HANGUL = /[가-힣]/
 
-/**
- * The sentence a failed agent save shows, and where it points. Never a machine code: a code
- * this map does not know reads as a plain Korean failure, and a server sentence (Korean) is
- * shown as it is.
- */
+/** A failed agent save's sentence and place; never a machine code. */
 export function agentSaveError(err: unknown, fallback: string): { message: string; place?: AgentErrorPlace } {
   if (!(err instanceof ApiError)) return { message: fallback }
   const code = CODE.exec(err.detail ?? '')?.[1] ?? ''

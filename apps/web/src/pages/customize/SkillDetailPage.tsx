@@ -13,7 +13,7 @@ import { downloadSkill, errorMessage } from '@/lib/api'
 import { useT, useTIn } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
-/** /customize/skills/:id — an installed skill or a store one: what it does and its steps. */
+/** Installed or store skill: what it does, its steps. */
 export function SkillDetailPage() {
   const t = useT()
   const tHub = useTIn('hub')
@@ -133,7 +133,7 @@ export function SkillDetailPage() {
         }
       >
         <DetailSection title={tHub('개요')}>
-          {/* The description is the header's line; it is not said twice. */}
+          {/* Description is the header line; not repeated. */}
           {skill.whenToUse && skill.whenToUse !== skill.description && (
             <div className="rounded-card border border-line bg-panel px-4 py-3">
               <p className="mb-1 text-sm font-medium text-faint">{t('사용 시점')}</p>

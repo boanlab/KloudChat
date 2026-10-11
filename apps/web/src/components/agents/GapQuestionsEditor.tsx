@@ -6,7 +6,7 @@ import type { GapDetector, GapQuestion } from '@/types'
 
 const MAX_QUESTIONS = 12
 
-/** What each detector type means, in the form's words. */
+/** Detector types in the form's words. */
 const TYPE_LABEL: Record<GapDetector['type'], string> = {
   keyword: '낱말이 있으면 답한 것으로',
   builtin: '기본 제공 판단',
@@ -20,7 +20,7 @@ const words = (text: string) =>
     .map((w) => w.trim())
     .filter(Boolean)
 
-/** The next free id: q1, q2, … */
+/** Next free id: q1, q2, … */
 function nextId(rows: GapQuestion[]): string {
   const taken = new Set(rows.map((r) => r.id))
   let n = rows.length + 1
@@ -37,7 +37,7 @@ const blankQuestion = (rows: GapQuestion[]): GapQuestion => ({
   detector: { type: 'keyword', words: [] },
 })
 
-/** One question read back as a line: what it asks and how it decides. */
+/** A question as one line: what it asks, how it decides. */
 function detectorLine(d: GapDetector, labels: Record<string, string>, t: (s: string) => string): string {
   if (d.type === 'builtin') return `${t('기본 제공 판단')} · ${t(labels[d.name ?? ''] ?? d.name ?? '')}`
   if (d.type === 'keyword') return `${t('낱말')} · ${(d.words ?? []).join(', ')}`
@@ -45,7 +45,7 @@ function detectorLine(d: GapDetector, labels: Record<string, string>, t: (s: str
   return t('모델이 자료를 읽고 판단')
 }
 
-/** The questions an agent inherits: read only, so a person sees what is asked already. */
+/** Inherited questions, read-only. */
 export function InheritedQuestions({ rows, labels }: { rows: GapQuestion[]; labels: Record<string, string> }) {
   const t = useT()
   if (rows.length === 0) return null
@@ -64,11 +64,7 @@ export function InheritedQuestions({ rows, labels }: { rows: GapQuestion[]; labe
   )
 }
 
-/**
- * 「빠진 정보 질문」: what this agent asks before writing when the material does not answer it,
- * on top of what its 템플릿 asks. Each question says how it decides the material answers it.
- * The server asks at most four on one card, only when 「빠진 정보 먼저 묻기」 is on.
- */
+/** 「빠진 정보 질문」 on top of the template's; server asks at most four per card, only with 「빠진 정보 먼저 묻기」. */
 export function GapQuestionsEditor({
   value,
   onChange,
@@ -78,7 +74,7 @@ export function GapQuestionsEditor({
   value: GapQuestion[]
   onChange: (next: GapQuestion[]) => void
   detectors: { name: string; label: string }[]
-  /** Fields a save stopped on, by question id (`gapProblems`). */
+  /** Fields a save stopped on, by question id. */
   problems?: Record<string, GapProblem>
 }) {
   const t = useT()
@@ -206,7 +202,7 @@ export function GapQuestionsEditor({
                       defaultValue={(d.words ?? []).join(', ')}
                       aria-required
                       {...invalid(q.id, 'words')}
-                      // Kept as typed: a save right after typing reads the words too.
+                      // Kept as typed: an immediate save reads the words too.
                       onChange={(e) => setDetector(i, { words: words(e.target.value) })}
                       placeholder={t('예: 장소, 강당, 회의실')}
                     />

@@ -165,7 +165,6 @@ function Evidence({ evidence }: { evidence: StageEvidence }) {
 
 /** How long a stage took, in seconds; nothing for one that took no measurable time (「0ms」). */
 function seconds(ms?: number) {
-  // A step that took no measurable time says nothing with 「0ms」.
   if (ms === undefined || ms < 1) return null
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
 }
@@ -324,10 +323,7 @@ function StageRow({
   )
 }
 
-/**
- * A pipeline run's stages, one row each. `compact` is the chat form: no rerun menu, smaller rows.
- * Skipped stages fold behind one line, so a long write flow reads as what it did.
- */
+/** A run's stages, one row each; `compact` = chat form (no rerun menu). Skipped stages fold behind one line. */
 export function StageList({
   sessionId,
   run,

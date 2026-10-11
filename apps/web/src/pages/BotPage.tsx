@@ -35,12 +35,11 @@ import type { Step } from '@/types'
 import { isImeKey } from '@/lib/ime'
 
 interface Turn extends BotTranscriptMessage {
-  /** Still streaming. */
   live?: boolean
   error?: string
 }
 
-/** Keeps search engines off a bot that is not listed for everyone (a member's or a link's). */
+/** noindex unless listed for everyone. */
 function useNoIndex(on: boolean) {
   useEffect(() => {
     if (!on) return
@@ -52,9 +51,7 @@ function useNoIndex(on: boolean) {
   }, [on])
 }
 
-/** A chat bot someone opened — a member, or anyone once an administrator opened it outside:
- *  the notice first, then questions to the bot's fixed version. `embedded`: framed on a site
- *  an administrator approved, always without an account. */
+/** A published bot: notice first, then questions to its fixed version; `embedded`: framed on an approved site, no account. */
 export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void; embedded?: boolean }) {
   const t = useT()
   const { slug = '' } = useParams()
@@ -98,7 +95,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
     return () => {
       live = false
     }
-    // Signing in on this page reopens it as a member.
+    // Signing in here reopens it as a member.
   }, [slug, loadList, t, authenticated])
 
   useNoIndex(bot?.visibility !== 'external')
@@ -133,7 +130,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
     try {
       await botsApi.consent(slug, bot.consentVersion)
       setBot({ ...bot, consented: true })
-      // Straight on to the question; the box was disabled until now.
+      // The box was disabled until now.
       window.requestAnimationFrame(() => input.current?.focus())
     } catch (err) {
       setError(botErrorMessage(err, t))
@@ -198,7 +195,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
         if (err instanceof ApiError && err.detail === 'consent_required') setBot({ ...bot, consented: false })
         if (err instanceof ApiError && err.detail === 'bot_paused') setBot({ ...bot, status: 'paused' })
         if (err instanceof ApiError && err.detail === 'visitor_blocked') setBot({ ...bot, blocked: true })
-        // The question did not go through: it goes back in the box.
+        // Failed question goes back in the box.
         setTurns((all) => all.filter((turn) => turn.id !== answerId && turn.id !== questionId))
         setText(question)
       }
@@ -207,7 +204,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
       setBusy(false)
       update((turn) => ({ ...turn, live: false }))
       if (conversation) {
-        // The stored turn: its id for 👍👎, its words as kept.
+        // Stored turn: id for 👍👎, words as kept.
         try {
           const got = await botsApi.conversation(slug, conversation.id)
           setTurns(got.messages)
@@ -216,7 +213,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
           /* the streamed text stays */
         }
       }
-      // After the turn is stored, so a first conversation shows up in 「내 대화」 with its title.
+      // After storing, so a first conversation appears in 「내 대화」 titled.
       void loadList()
     }
   }
@@ -305,9 +302,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
 
   const paused = bot.status !== 'approved'
   const closed = paused || bot.blocked
-  // A member goes back to the members' list; a visitor without an account to the public one
-  // when the bot is listed there, and nowhere when it is reached by link only.
-  // Framed on another site, the frame is the whole page: nowhere to go back to.
+  // Back: member → members' list; visitor → public list if listed; link-only or framed → nowhere.
   const backTo = embedded ? null : bot.signedIn ? '/bots' : bot.visibility === 'external' ? '/b' : null
   const prompts = bot.branding.suggestedPrompts
   const list = (
@@ -520,7 +515,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
             </div>
           </div>
 
-          {/* A bot that cannot answer now takes no question: only the notice above. */}
+          {/* A bot that cannot answer takes no question. */}
           {!closed && (
           <footer className="border-t border-line px-4 pt-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
             <div className="mx-auto max-w-3xl">

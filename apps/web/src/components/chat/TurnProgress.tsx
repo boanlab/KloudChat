@@ -18,10 +18,7 @@ function clock(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-/**
- * What the turn is doing and for how long: 「답을 쓰는 중… 0:06」. The agent's name when one runs
- * it; the model is named on the answer's own line, and the composer's ■ stops the turn.
- */
+/** Turn status and elapsed time (「답을 쓰는 중… 0:06」), with the agent's name when one runs it. */
 export function TurnProgress({
   sessionId,
   startedAt,

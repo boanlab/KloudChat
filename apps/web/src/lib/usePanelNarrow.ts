@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-/**
- * Whether this panel is narrower than `floor`, measured on the panel itself
- * rather than the window. The default floor is the panels' own `min-w-[460px]`.
- */
+/** Panel narrower than `floor`, measured on the panel; default matches `min-w-[460px]`. */
 export function usePanelNarrow<T extends HTMLElement>(floor = 460) {
   const ref = useRef<T>(null)
   const [narrow, setNarrow] = useState(false)

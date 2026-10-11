@@ -1,10 +1,4 @@
-/**
- * Translation dictionary keyed on the Korean source string.
- *
- * No synthetic keys (`settings.save` and the like): the key *is* the text, so
- * call sites stay readable. A string missing from the dictionary renders as the
- * Korean original, which leaves a screen intact rather than blank.
- */
+/** Dictionary keyed on the Korean source string; missing entries render the Korean. */
 
 export type Lang = 'ko' | 'en'
 
@@ -2130,7 +2124,7 @@ const EN: Record<string, string> = {
   '다음 슬라이드': 'Next slide',
   '{n}번 슬라이드': 'Slide {n}',
   '슬라이드 목록': 'Slides',
-  // ── 서식 · 버전 · 프로젝트 자료 ─────────────────────────
+  // ── 템플릿 · 버전 · 프로젝트 자료 ─────────────────────────
   '어떤 인상으로 만들까요?': 'What impression should it make?',
   '강한 인상': 'Bold',
   '어떻게 사용할 자료인가요?': 'How will this be used?',
@@ -3291,7 +3285,7 @@ const EN: Record<string, string> = {
   '한 칸 아래로 내려 더 나중에 시도합니다': 'Move it down, so it is tried later',
   '이 모델을 절약 목록에서 뺍니다': 'Take this model off the economy list',
 
-  // ── 서식 갤러리 ─────────────────────────────────────────────────
+  // ── 템플릿 갤러리 ─────────────────────────────────────────────────
   '이전 쪽': 'Previous page',
   '다음 쪽': 'Next page',
 
@@ -3376,7 +3370,7 @@ const EN: Record<string, string> = {
   '기능': 'Features',
   '메일': 'Mail',
 
-  // ── 서식 카탈로그 ───────────────────────────────────────────────
+  // ── 템플릿 카탈로그 ───────────────────────────────────────────────
   '서식': 'Formatting',
   '파일 첨부': 'A file attached',
   '도식을 만들지 못했습니다.': 'The figure could not be made.',
@@ -3395,7 +3389,7 @@ const EN: Record<string, string> = {
   '장 목록을 접었다 폅니다': 'Show or hide the slide list',
   '편집하기 좋은 한 줄 문서로 봅니다': 'Show it as one flowing document, easier to edit',
 
-  // ── 프로젝트의 기본 서식 ────────────────────────────────────────
+  // ── 프로젝트의 기본 템플릿 ────────────────────────────────────────
   '이 프로젝트에서 새로 시작하는 작업이 어떤 템플릿으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.':
     'Sets the template work started in this project comes out in. Each conversation can still pick its own.',
 
@@ -4215,11 +4209,7 @@ export function translate(lang: Lang, text: string): string {
   return EN[text] ?? text
 }
 
-/**
- * Words whose English depends on where they stand, keyed `context|Korean`: the 사용자 지정 hub's
- * 「탐색」 is a catalog to explore, not the document panel's navigation; its 「개요」 is an
- * overview, not a document outline. The Korean stays the same.
- */
+/** Context-dependent English, keyed `context|Korean` (hub 「탐색」 = explore, 「개요」 = overview). */
 const EN_IN: Record<string, string> = {
   'hub|탐색': 'Explore',
   'hub|개요': 'Overview',

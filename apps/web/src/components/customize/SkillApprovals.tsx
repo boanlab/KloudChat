@@ -5,11 +5,7 @@ import { adminSkillsApi, errorMessage, type SkillReview } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { ScriptRow } from './SkillServerFields'
 
-/**
- * 「스킬 검토」: skills with scripts asking to be shared. A skill is not a 진행 과정, so it has a
- * queue of its own beside 「진행 과정 검토」, with the same approve / reject-with-reason steps;
- * the administrator reads each script here before anyone else can take a copy.
- */
+/** 「스킬 검토」: skills with scripts awaiting sharing; admin reads each script before anyone copies it. */
 export function SkillApprovals() {
   const t = useT()
   const [rows, setRows] = useState<SkillReview[] | null>(null)

@@ -1,7 +1,4 @@
-/**
- * Slide chart as SVG. Same arithmetic as the `.pptx` and `.pdf` renderers:
- * zero floor, four gridlines, the deck's accent.
- */
+/** Slide chart as SVG; same arithmetic as the `.pptx`/`.pdf` renderers (zero floor, four gridlines, accent). */
 export function SlideChart({
   chart,
   accent,
@@ -10,7 +7,6 @@ export function SlideChart({
 }: {
   chart: NonNullable<import('@/types').Slide['chart']>
   accent: string
-  /** Preview scale factor. */
   scale: number
   /** Label colour for the pie and horizontal-bar drawers; the look's ink on a pattern slide. */
   ink?: string

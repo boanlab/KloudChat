@@ -8,7 +8,7 @@ import { useStore } from '@/store/useStore'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
 
-/** Personal API keys; the full key is shown once at creation, only the last four characters after. */
+/** Full key shown once at creation, last four after. */
 export function KeysTab() {
   const t = useT()
   const { apiKeys, loadApiKeys, createApiKey, revokeApiKey, user } = useStore()

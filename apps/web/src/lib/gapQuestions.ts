@@ -6,10 +6,7 @@ export type GapProblem = { field: 'question' | 'words' | 'name' | 'pattern'; mes
 /** Unbounded repeats the server refuses (`gap_questions.regex_ok`): `*`, `+`, `{n,}`. */
 const UNBOUNDED = /(?<!\\)[*+]|\{\d{1,4},\}/
 
-/**
- * What each question still needs, by its id: 「물어볼 것」 always, and what its way of
- * deciding needs (낱말, a built-in detector, a bounded pattern). Empty: it can be saved.
- */
+/** What each question still needs, by id; empty when it can be saved. */
 export function gapProblems(rows: GapQuestion[]): Record<string, GapProblem> {
   const out: Record<string, GapProblem> = {}
   for (const q of rows) {

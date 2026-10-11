@@ -13,11 +13,7 @@ export interface OcrFields {
 export const isReading = (file: OcrFields) =>
   file.ocrState === 'queued' || file.ocrState === 'running'
 
-/**
- * One short line for a file's reading, or null when there is nothing to say:
- * 「글자 읽는 중 3/10쪽」, 「OCR로 읽음 · 확인 필요 2쪽」. A failure is told by the file's
- * own error.
- */
+/** One short line on a file's reading, or null; failures shown by the file's own error. */
 export function ocrNote(
   file: OcrFields,
   t: (key: string) => string,
@@ -45,10 +41,7 @@ export function ocrNote(
 /** How often a screen asks after files still being read. */
 const POLL_MS = 3000
 
-/**
- * Follows the rows still being read: asks the server for each every few seconds and hands
- * back the fresh row, until none is left reading. Stops when the screen goes away.
- */
+/** Polls rows still being read until none remain; stops on unmount. */
 export function useOcrProgress(rows: OcrFields[], onRow: (row: FileRow) => void) {
   const onRowRef = useRef(onRow)
   useEffect(() => {

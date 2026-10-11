@@ -1,4 +1,4 @@
-// `cards` and `callout` fences; `report_export` reads the same fences.
+// `cards` and `callout` fences, also read by `report_export`.
 //
 //     ```cards
 //     ## 산출물
@@ -24,7 +24,7 @@ export function parseCards(source: string, limit = 6): Card[] {
   return cards.filter((card) => card.title).slice(0, limit)
 }
 
-/** First line is the title, the rest are body lines. */
+/** First line title, rest body. */
 export function parseCallout(source: string): Card | null {
   const lines = (source ?? '')
     .split('\n')

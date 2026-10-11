@@ -7,7 +7,7 @@ import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import type { DocMarks, DocMarkSpan } from '@/types'
 
-/** Stage names a mark can come from, in words; anything else shows as named. */
+/** Stage names in words; others shown as named. */
 const STAGE_LABEL: Record<string, string> = {
   'check:grounding': '근거 확인',
   'check:grounding-again': '근거 다시 확인',
@@ -18,15 +18,15 @@ const STAGE_LABEL: Record<string, string> = {
 type Target = {
   key: string
   kind: 'placeholder' | 'ungrounded' | 'finding'
-  /** The highlighted element, or for a finding the element its sentence starts in. */
+  /** For a finding: the element its sentence starts in. */
   el: HTMLElement
-  /** Offset from the top of the scrolled content. */
+  /** From the top of the scrolled content. */
   top: number
   height: number
   left: number
   sectionId: string | null
   text: string
-  /** Which of the same blanks in its section, counted from 0. */
+  /** Index among identical blanks in its section. */
   nth: number
   tip: string
 }
@@ -45,7 +45,7 @@ function spanTip(span: DocMarkSpan, t: (s: string) => string) {
   return [why, stage].filter(Boolean).join(' · ')
 }
 
-/** The element a flagged sentence starts in: the section's text is searched without whitespace. */
+/** Section text searched without whitespace. */
 function locate(scope: HTMLElement, needle: string): HTMLElement | null {
   const probe = findingProbe(needle)
   if (!probe) return null
@@ -62,11 +62,7 @@ function locate(scope: HTMLElement, needle: string): HTMLElement | null {
   return hit?.node.parentElement ?? null
 }
 
-/**
- * 「빈칸 n개 · 확인할 곳 m개」 over the document, with previous/next; blanks are highlighted by
- * the renderer, values the grounding check blanked get a dotted underline, flagged sentences a
- * margin marker. A blank in the web view is filled where it stands.
- */
+/** 「빈칸 n개 · 확인할 곳 m개」 with prev/next: blanks highlighted, grounding blanks dotted, flagged sentences margin-marked; web-view blanks filled in place. */
 export function DocMarksLayer({
   root,
   marks,
@@ -75,14 +71,14 @@ export function DocMarksLayer({
   margin,
   onFill,
 }: {
-  /** The scrolling container the document renders in (positioned). */
+  /** Positioned scrolling container. */
   root: HTMLElement | null
   marks: DocMarks | null
-  /** Changes whenever the rendered document may have: version, view, pane. */
+  /** Changes whenever the render may have (version, view, pane). */
   scanKey: string
-  /** The web view, not writing or editing: blanks are clickable. */
+  /** Web view (not writing or editing): blanks clickable. */
   canFill: boolean
-  /** Margin markers need the web view's own geometry. */
+  /** Margin markers need web-view geometry. */
   margin: boolean
   onFill: (sectionId: string, text: string, nth: number, value: string) => Promise<boolean>
 }) {
@@ -106,7 +102,7 @@ export function DocMarksLayer({
     }
     const found: Target[] = []
     const seen = new Map<string, number>()
-    // Ungrounded replacements per section, used up in order as their blanks are met.
+    // Ungrounded replacements per section, consumed in order.
     const pending = new Map<string, DocMarkSpan[]>()
     for (const section of marks?.sections ?? []) {
       pending.set(section.sectionId, section.spans.filter((s) => s.kind === 'ungrounded-replaced'))
@@ -167,7 +163,7 @@ export function DocMarksLayer({
     }
   }, [root, marks, canFill, margin, t])
 
-  // Rescan when the document changes under the layer, or the panel is resized.
+  // Rescan on document change or panel resize.
   useLayoutEffect(() => {
     scan()
   }, [scan, scanKey])
@@ -192,7 +188,6 @@ export function DocMarksLayer({
     }
   }, [root, scan])
 
-  // Clicks, keys and hovers on the document's own blanks.
   useEffect(() => {
     if (!root) return
     const blankOf = (event: Event) =>
@@ -243,7 +238,6 @@ export function DocMarksLayer({
     }
   }, [root, targets])
 
-  // The current target is outlined; the outline moves with it.
   useEffect(() => {
     const el = targets[current]?.el
     if (!el || targets[current].kind === 'finding') return
@@ -275,7 +269,7 @@ export function DocMarksLayer({
     if (ok) setFilling(null)
     else setError(t('저장하지 못했습니다.'))
   }
-  // Markers sit in the gutter just left of the column.
+  // Gutter just left of the column.
   const column = root.querySelector<HTMLElement>('article.doc-web')
   const gutter = column ? column.offsetLeft + 2 : 4
 

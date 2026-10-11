@@ -11,7 +11,7 @@ import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
-/** Example requests per surface, shown under the greeting; a click fills the composer. */
+/** Per-surface examples under the greeting; click fills the composer. */
 const EXAMPLES: Record<SessionKind, string[]> = {
   chat: [
     '첨부한 문서를 세 줄로 요약해 줘',
@@ -25,7 +25,7 @@ const EXAMPLES: Record<SessionKind, string[]> = {
     '두 가지 안을 기준별로 비교하는 의사결정 보고서',
     '첨부한 자료로 연구 과제 중간 보고서 초안을 써 줘',
   ],
-  // Only what the shown deck template (사내 브리핑) makes: no lecture, proposal or seminar decks.
+  // Only what the shown deck template (사내 브리핑) makes.
   slides: [
     '다음 주 회의 전에 돌릴 사내 브리핑 5장',
     '프로젝트 결과 보고 15분 발표',
@@ -45,14 +45,14 @@ const EXAMPLES: Record<SessionKind, string[]> = {
   ],
 }
 
-/** Composer-first home screen and `/new/:kind` entry point. */
+/** Also the `/new/:kind` entry. */
 export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
   const navigate = useNavigate()
   const { user, sessions, jobs, enabledKinds } = useStore()
   const [kind, setKind] = useState<SessionKind>(initialKind ?? 'chat')
 
-  // `/` and `/new/:kind` share this mounted component, so a route change must resync the kind.
+  // `/` and `/new/:kind` share the mount: resync the kind on route change.
   useEffect(() => {
     if (initialKind) setKind(initialKind)
   }, [initialKind])
@@ -63,7 +63,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   }, [openArtifact])
 
   const surfaces = kindOrder.filter((k) => enabledKinds.includes(k))
-  // A disabled kind requested by URL gets an explanation, not a silent fallback.
+  // Disabled kind by URL: explained, no silent fallback.
   const offHere = initialKind !== undefined && !enabledKinds.includes(initialKind)
   const active = surfaces.includes(kind) ? kind : (surfaces[0] ?? 'chat')
 
@@ -108,11 +108,10 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   return (
     <>
       <TopBar left={<span className="text-base font-medium">{t('홈')}</span>} />
-      {/* Like a session: what there is to read scrolls, the composer stays docked at the bottom
-          with the surface chips on it. */}
+      {/* As a session: content scrolls, composer docked with the surface chips. */}
       <div className="min-h-0 flex-1 overflow-y-auto" data-testid="home-scroll">
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-6 sm:px-6 sm:py-8">
-        {/* Top-aligned with room above; whatever is short leaves its space below, over the dock. */}
+        {/* Top-aligned; short content leaves space below, over the dock. */}
         <div className="mt-[min(8vh,4rem)] mb-5 text-center phone:mt-[min(14vh,7rem)]">
           <h1 className="text-2xl font-semibold tracking-tight">
             {t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')}
@@ -120,7 +119,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
           <p className="mt-1 text-base text-muted">{t('무엇을 만들까요?')}</p>
         </div>
 
-        {/* A few ways to start on the chosen surface; a click fills the box and sends nothing. */}
+        {/* Click fills the box, sends nothing. */}
         <section aria-label={t('예시')} className="mx-auto mb-8 w-full max-w-3xl sm:px-4">
           <div className="grid gap-2 sm:grid-cols-2">
             {EXAMPLES[active].map((example, index) => (
@@ -128,7 +127,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
                 key={example}
                 type="button"
                 onClick={() => fillComposer(t(example))}
-                // A phone shows three; the fourth would push the composer's neighbours off screen.
+                // Phone shows three; a fourth pushes the composer's neighbours off screen.
                 className={cn(
                   'flex min-h-11 items-center gap-2 rounded-card border border-line bg-panel px-3 py-2 text-left text-base text-muted transition-colors hover:bg-elevated hover:text-fg',
                   index >= 3 && 'phone:hidden',
@@ -207,7 +206,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             )
           })}
         </div>
-        {/* `key` remounts on a surface change: draft, attachments and skill pick are per surface. */}
+        {/* `key` remount per surface: draft, attachments, skill pick are per surface. */}
         <Composer key={active} sessionId={null} kind={active} autoFocus />
       </div>
     </>

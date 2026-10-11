@@ -28,10 +28,10 @@ import {
 import { kindMeta } from '@/lib/kinds'
 import type { SessionKind } from '@/types'
 
-/** What a hub item is; decides the last-resort icon. */
+/** Hub item type; decides the fallback icon. */
 export type ItemType = 'agent' | 'skill' | 'workflow' | 'design'
 
-/** First matching keyword wins; Korean and English both, lower-cased before the test. */
+/** First matching keyword wins; Korean and English, lower-cased. */
 const KEYWORDS: [RegExp, LucideIcon][] = [
   [/슬라이드|발표|덱|deck|slide|presentation/, Presentation],
   [/논문|연구|학회|강의|수업|교육|paper|research|lecture/, GraduationCap],
@@ -63,7 +63,7 @@ const BY_TYPE: Record<ItemType, LucideIcon> = {
   design: Palette,
 }
 
-/** An icon for an item from its name and summary, else its first surface, else its type. */
+/** Icon from name and summary, else first surface, else type. */
 export function itemIcon(type: ItemType, text: string, surfaces: SessionKind[] = []): LucideIcon {
   const needle = text.toLowerCase()
   for (const [pattern, icon] of KEYWORDS) if (pattern.test(needle)) return icon

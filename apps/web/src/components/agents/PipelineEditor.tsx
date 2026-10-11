@@ -72,7 +72,7 @@ function useCatalogue() {
   return value
 }
 
-/** A step's Korean name: the server's, else what the catalogue and agents say. */
+/** Step's Korean name: server's, else catalogue's. */
 function stepTitle(step: PipelineStep, agents: Agent[], cat: PipelineCatalogue | null): string {
   if (step.kind === 'agent') return agents.find((a) => a.id === step.ref)?.name ?? step.title ?? '에이전트'
   if (step.kind === 'skill') return cat?.skills.find((s) => s.ref === step.ref)?.name ?? step.title ?? step.ref
@@ -88,10 +88,7 @@ function newId(steps: PipelineStep[]) {
   return `s${n}`
 }
 
-/**
- * The steps of an agent's 직접 구성 or of a 묶음, in order, each with its settings. Controlled:
- * the caller saves. `selfName` offers the agent's own step (`@self`) in 「+ 단계 추가」.
- */
+/** Ordered steps of a 직접 구성 or 묶음; controlled; `selfName` offers `@self` in 「+ 단계 추가」. */
 export function StepList({
   steps,
   onChange,
@@ -101,10 +98,10 @@ export function StepList({
 }: {
   steps: PipelineStep[]
   onChange: (next: PipelineStep[]) => void
-  /** The server's verdict on this order; none for a bundle, which is checked on save. */
+  /** Server's verdict on this order; none for a bundle (checked on save). */
   verdict?: PipelineVerdict | null
   selfName?: string
-  /** What to offer under a problem: a way to the control that fixes it. */
+  /** Fix control offered under a problem. */
   actionFor?: (problem: PipelineProblem, step: PipelineStep | null) => ReactNode
 }) {
   const t = useT()
@@ -332,7 +329,7 @@ function StepSettings({
   )
 }
 
-/** 「+ 단계 추가」: every kind of step, grouped. */
+/** 「+ 단계 추가」: every step kind, grouped. */
 function StepPicker({
   open,
   onClose,
@@ -429,14 +426,14 @@ function StepPicker({
   )
 }
 
-/** What a review request is: a person's 묶음, an agent's 직접 구성, or an order made before. */
+/** Review request kind: 묶음, 직접 구성, or an earlier order. */
 function reviewKind(p: UserPipeline): string {
   if (p.kind === 'bundle') return '묶음'
   if (p.agentId) return '에이전트의 직접 구성'
   return '저장한 순서'
 }
 
-/** 「진행 과정 검토」: the administrator's queue of 직접 구성 and 묶음 asking to be shared. */
+/** 「진행 과정 검토」: admin queue of 직접 구성 and 묶음 awaiting sharing. */
 export function PipelineApprovals() {
   const t = useT()
   const [rows, setRows] = useState<UserPipeline[] | null>(null)

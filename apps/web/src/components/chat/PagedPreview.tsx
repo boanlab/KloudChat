@@ -3,14 +3,13 @@ import { DEFAULT_PAGE_SETTINGS, pagedSheetCss } from '@/components/report/pagedS
 import { A4_HEIGHT_PX, A4_WIDTH_PX } from '@/components/report/usePagination'
 import { useT } from '@/lib/useT'
 
-/** The Paged.js polyfill as a file the frame loads by URL; the package exports no subpath for it,
- *  so it is named by path and Vite emits it as an asset. */
+/** Paged.js polyfill loaded by URL; no package subpath, so named by path and emitted as an asset. */
 const PAGED_POLYFILL = new URL('../../../node_modules/pagedjs/dist/paged.polyfill.min.js', import.meta.url).href
 
 /** Room around the pages in the full view, in frame pixels; the gap between two pages is the same. */
 const GUTTER = 24
 
-/** The preview page of a 서식, fetched once per id: the frame lays it out itself. */
+/** A template's preview page, fetched once per id; the frame lays it out. */
 const pages = new Map<string, Promise<string>>()
 const previewPage = (id: string) => {
   let found = pages.get(id)
@@ -25,11 +24,7 @@ const previewPage = (id: string) => {
   return found
 }
 
-/**
- * The preview page laid out as the page view lays out a report: Paged.js with the same sheet
- * (`pagedSheetCss`), A4 pages on a grey backdrop. It runs inside the frame, which may run
- * scripts but has no origin of its own; it reports the page count and height back.
- */
+/** Preview laid out like the report page view: Paged.js, same sheet (`pagedSheetCss`), A4 on grey; runs in an originless frame, reports page count and height. */
 function pagedFrame(page: string, polyfill: string, firstOnly: boolean): string {
   const parsed = new DOMParser().parseFromString(page, 'text/html')
   const css = [...parsed.querySelectorAll('style')].map((node) => node.textContent ?? '').join('\n')
@@ -40,8 +35,7 @@ function pagedFrame(page: string, polyfill: string, firstOnly: boolean): string 
     : `html, body { background: #e3e6ec !important; overflow: hidden !important; }
       .pagedjs_pages { display: flex; flex-direction: column; align-items: center; gap: ${GUTTER}px; padding: ${GUTTER}px 0; }
       .pagedjs_page { flex: none; background: white; box-shadow: 0 2px 12px rgb(0 0 0 / 14%); }`
-  // The result is kept and sent again when the app asks: a frame that finishes before the
-  // app listens (a cached pager is fast) would otherwise stay hidden for good.
+  // Result resent on request: a frame finishing before the app listens would stay hidden.
   const done = `window.__kcPaged = null
     const report = () => window.__kcPaged && parent.postMessage(window.__kcPaged, '*')
     addEventListener('message', (e) => { if (e.data && e.data.kind === 'kc-paged-ask') report() })
@@ -54,10 +48,7 @@ function pagedFrame(page: string, polyfill: string, firstOnly: boolean): string 
 </head><body>${parsed.body.innerHTML}</body></html>`
 }
 
-/**
- * A document 서식's sample as its pages: the whole document in the full view (scrolled by the
- * box around it, with 「n / m쪽」), or page 1 alone on a card.
- */
+/** A document template's sample as pages: whole in the full view (「n / m쪽」), page 1 alone on a card. */
 export function PagedPreview({ id, firstOnly = false }: { id: string; firstOnly?: boolean }) {
   const t = useT()
   const box = useRef<HTMLDivElement>(null)
@@ -93,8 +84,7 @@ export function PagedPreview({ id, firstOnly = false }: { id: string; firstOnly?
     return () => window.removeEventListener('message', onMessage)
   }, [srcDoc])
 
-  // Ask the frame for its result after it loads, and again for a while: covers a message
-  // sent before the listener was there.
+  // Ask after load, and again for a while, for a message sent before the listener existed.
   useEffect(() => {
     if (!srcDoc || laid) return
     const ask = () => frame.current?.contentWindow?.postMessage({ kind: 'kc-paged-ask' }, '*')

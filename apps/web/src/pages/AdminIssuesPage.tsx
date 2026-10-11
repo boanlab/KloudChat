@@ -30,7 +30,7 @@ const UPDATE_ERROR: Record<string, string> = {
   assignee_not_admin: '담당자는 관리자만 맡을 수 있습니다.',
 }
 
-/** The day after `date` (YYYY-MM-DD) at local midnight, for an inclusive end date. */
+/** Next local midnight after `date`: inclusive end. */
 function dayAfter(date: string): string {
   const d = new Date(`${date}T00:00:00`)
   d.setDate(d.getDate() + 1)
@@ -71,7 +71,7 @@ function IssueList() {
     )
   }, [kind, status, since, until, user, q, assignee, page])
 
-  // Text filters wait for typing to pause.
+  // Debounced text filters.
   useEffect(() => {
     const timer = setTimeout(load, 250)
     return () => clearTimeout(timer)

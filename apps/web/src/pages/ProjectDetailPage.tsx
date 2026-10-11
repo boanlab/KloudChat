@@ -41,7 +41,7 @@ import { KNOWLEDGE_ACCEPT, knowledgeRefusal } from '@/lib/knowledgeFiles'
 
 type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
 
-/** Emoji picker grid; closes the menu on pick. */
+/** Closes the menu on pick. */
 function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
   const close = useMenuClose()
   return (
@@ -62,7 +62,7 @@ function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
   )
 }
 
-/** Mirrors the server's project delete: knowledge files go, sessions are detached, artifacts and memories stay. */
+/** Mirrors server delete: knowledge files go, sessions detached, artifacts and memories stay. */
 const DELETE_SCOPE =
   '되돌릴 수 없습니다. 지침과 지식 파일이 사라집니다. 대화는 지워지지 않고 프로젝트 밖으로 나오며, 아티팩트와 메모리는 그대로 남습니다.'
 
@@ -91,7 +91,7 @@ export function ProjectDetailPage() {
     refreshProjectFile,
   } = useStore()
   const project = projects.find((p) => p.id === projectId)
-  // Scanned knowledge files are read in the background; their rows follow the pages.
+  // Scanned files read in the background; rows follow the pages.
   useOcrProgress(project?.files ?? [], refreshProjectFile)
   const [tab, setTab] = useState<Tab>('sessions')
   const [instructions, setInstructions] = useState(project?.instructions ?? '')
@@ -112,7 +112,7 @@ export function ProjectDetailPage() {
   const [urlBusy, setUrlBusy] = useState(false)
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
-  // Hook must sit above the early return; the uploader is defined after it.
+  // Hook above the early return; uploader defined after.
   const addKnowledgeRef = useRef<(files: File[]) => void>(() => {})
   const knowledgeDrop = useFileDrop(
     (files) => addKnowledgeRef.current(files),
@@ -123,7 +123,7 @@ export function ProjectDetailPage() {
     void loadWorkspace()
   }, [loadWorkspace])
 
-  // Fill the instructions box once the project arrives, unless already edited.
+  // Fill once loaded, unless already edited.
   useEffect(() => {
     if (project && !dirty) setInstructions(project.instructions)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,7 +150,7 @@ export function ProjectDetailPage() {
   )
   const projectMemories = memories.filter((m) => m.scope === project.id)
   const selectedDesign = designs.find((d) => d.id === project.designSystemId)
-  // Only document-shaped templates are offered as formats.
+  // Document-shaped templates only.
   const english = currentLang() === 'en'
   const formats = designTemplates.filter((row) => row.kind === 'deck' || row.kind === 'document')
   const formatSurfaces = kindOrder.filter((kind) => formats.some((row) => row.surface === kind))
@@ -209,7 +209,7 @@ export function ProjectDetailPage() {
       setUrlOpen(false)
     } catch (err) {
       setUrlError(urlFailure(err, t))
-      // Back to the address, selected, so it can be corrected in place.
+      // Back to the address, selected, for in-place correction.
       urlInputRef.current?.focus()
       urlInputRef.current?.select()
     } finally {
@@ -480,7 +480,7 @@ export function ProjectDetailPage() {
                   value={project.renderTemplates[kind] ?? ''}
                   onChange={(e) =>
                     void updateProject(project.id, {
-                      // Sent whole; an empty value removes the surface from the map.
+                      // Sent whole; empty value removes the surface.
                       renderTemplates: {
                         ...project.renderTemplates,
                         [kind]: e.target.value,
@@ -867,7 +867,7 @@ export function ProjectDetailPage() {
   )
 }
 
-/** Why a web page could not be kept, with what to do instead; said inside the dialog. */
+/** Why a page could not be kept, and what instead; inside the dialog. */
 function urlFailure(err: unknown, t: (text: string) => string): string {
   const detail = err instanceof ApiError ? err.detail : ''
   if (detail === '주소의 호스트를 찾을 수 없습니다.') {

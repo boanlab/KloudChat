@@ -12,7 +12,7 @@ const MODE_LABEL: Record<Ocr['mode'], string> = {
   vision: '비전 모델만',
 }
 
-/** Text from scanned pages: on or off, which readers, which model may see a page. */
+/** On/off, readers, which model may see a page. */
 export function OcrSection({
   settings,
   onSaved,

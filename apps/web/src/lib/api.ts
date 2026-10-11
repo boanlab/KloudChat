@@ -1,9 +1,4 @@
-/**
- * The seam between the app and its backend.
- *
- * The browser talks to the KloudChat API and nothing else — never to LiteLLM. The
- * master key and every virtual key stay on the server.
- */
+/** Single backend seam; the browser never reaches LiteLLM and keys stay server-side. */
 
 import type {
   AgentDraft,
@@ -57,12 +52,9 @@ import { currentLang, currentLocale, translate } from './i18n'
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
-/**
- * In memory only; the refresh token is an httpOnly cookie. A reload starts with
- * no token and recovers via `auth.refresh()` — see `bootstrap()` in the store.
- */
+/** In memory only; refresh token is an httpOnly cookie, recovered via `auth.refresh()`. */
 let accessToken: string | null = null
-/** The web-search toggle as sent: on, off, or left to the words. */
+/** `auto`: decided from the message. */
 export type WebSearchSetting = boolean | 'auto'
 
 export const setAccessToken = (t: string | null) => {
@@ -84,15 +76,13 @@ export class ApiError extends Error {
   }
 }
 
-/** Shape of a machine code (`not_found`, `http_502`): a sentence for a reader has spaces or is Korean. */
+/** Machine code shape; reader sentences have spaces or are Korean. */
 const MACHINE_CODE = /^[a-z][a-z0-9_]*$/
 
-/** Whether `detail` is a sentence meant for a reader rather than a machine code. */
 export function isSentence(detail: string | null | undefined): detail is string {
   return Boolean(detail) && !MACHINE_CODE.test(detail as string)
 }
 
-/** The machine code behind a failure, or `''`. */
 export function errorCode(err: unknown): string {
   if (err instanceof ApiError && err.detail && MACHINE_CODE.test(err.detail)) {
     return err.detail
@@ -100,10 +90,7 @@ export function errorCode(err: unknown): string {
   return ''
 }
 
-/**
- * Text for the screen: a 4xx `detail` that is a sentence, else `fallback`.
- * 5xx bodies may carry proxy or exception text and never reach a reader.
- */
+/** Screen text: a 4xx sentence `detail`, else `fallback`; 5xx bodies never shown. */
 export function errorMessage(err: unknown, fallback: string): string {
   if (
     err instanceof ApiError &&
@@ -175,10 +162,7 @@ const FIELD_NAMES: Record<string, string> = {
   monthlyCredits: '월 크레딧',
 }
 
-/**
- * A Korean sentence for a refused form, from the first field problem. The validator's own
- * English (「String should have at most 200000 characters」) never reaches the screen.
- */
+/** Korean sentence for a refused form; the validator's English never shown. */
 export function validationMessage(problems: FieldProblem[]): string {
   const first = problems[0] ?? {}
   const wire = String([...(first.loc ?? [])].reverse().find((part) => typeof part === 'string' && part !== 'body') ?? '')
@@ -215,8 +199,7 @@ export function validationMessage(problems: FieldProblem[]): string {
 async function readDetail(res: Response): Promise<string> {
   try {
     const body = await res.json()
-    // FastAPI: a string in `detail` for explicit raises, an array of field
-    // errors for validation failures.
+    // FastAPI: string `detail` for raises, array for validation.
     if (typeof body?.detail === 'string') return body.detail
     if (Array.isArray(body?.detail)) return validationMessage(body.detail as FieldProblem[])
     // A refused order of steps (`invalid_pipeline`): its first problem, already a sentence.
@@ -230,8 +213,7 @@ async function readDetail(res: Response): Promise<string> {
   return `http_${res.status}`
 }
 
-/** Set by the page framed on another site: its bot calls go out without an account, marked
- *  so the server keeps that frame's own visitor cookie. */
+/** Framed on another site: bot calls go out accountless, keeping the frame's visitor cookie. */
 let botEmbedded = false
 export function setBotEmbedded(on: boolean) {
   botEmbedded = on
@@ -262,10 +244,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const body = (v: unknown) => ({ method: 'POST', body: JSON.stringify(v) })
 
-/* ── auth — KloudChat's own ─────────────────────────────────────────────────
- * argon2id hashes, a short-lived JWT access token, a rotating refresh cookie.
- * Signup lands in `pending` until an admin approves and funds the account.
- */
+/* ── auth: argon2id, short-lived JWT, rotating refresh cookie; signup pending until approved ── */
 
 export interface AuthSession {
   accessToken: string
@@ -301,13 +280,9 @@ export const auth = {
 
 export interface ModelCatalogue {
   models: ModelInfo[]
-  /**
-   * False when the proxy did not answer. Adapter-backed models are still
-   * listed, so the UI can distinguish "proxy down" from "empty catalogue".
-   */
+  /** False when the proxy did not answer; adapter models still listed. */
   litellmAvailable: boolean
-  /** Model used when the user has not chosen one. Empty when it is not in
-   *  the catalogue. */
+  /** Empty when absent from the catalogue. */
   defaultChatModel?: string
   /** Per-surface instance default; absent keys fall back to `defaultChatModel`. */
   defaultModelByKind?: Partial<Record<SessionKind, string>>
@@ -327,7 +302,7 @@ export interface ModelCatalogue {
 }
 
 export const modelsApi = {
-  /** Merged view: LiteLLM `/model/info` plus locally-configured adapter models. */
+  /** LiteLLM `/model/info` plus adapter models. */
   list: () => call<ModelCatalogue>('/models'),
   /** Admin-only. Drops the server's 30-second cache. */
   refresh: () => call<ModelCatalogue>('/models/refresh', { method: 'POST' }),
@@ -338,15 +313,14 @@ export const modelsApi = {
 export interface SystemSettings {
   litellm: {
     baseUrl: string
-    /** Where the value came from. `backend` means it was derived from the
-     *  gateway address rather than typed into this field. */
+    /** `backend`: derived from the gateway address. */
     baseUrlSource: 'database' | 'backend' | 'environment'
     masterKeySet: boolean
     /** Last four characters. The key itself is never sent. */
     masterKeyPreview: string
     masterKeySource: 'database' | 'environment'
   }
-  /** Outgoing mail. Empty host means it is off, and the password reset with it. */
+  /** Empty host: mail and password reset off. */
   smtp: {
     host: string
     port: string
@@ -358,18 +332,15 @@ export interface SystemSettings {
     passwordSet: boolean
     passwordPreview: string
     hostSource: 'database' | 'environment'
-    /** What the sign-in page keys its reset link off. */
     passwordResetEnabled: boolean
   }
   status: 'ok' | 'unavailable'
-  /** Service name and logo URL to render. */
   brand: { name: string; logo: string }
   /** Where 관리자에게 문의 goes; `admin` means the first administrator's own. */
   contact: { email: string; source: 'database' | 'admin' }
-  /** Enabled surfaces. Chat is always included. */
+  /** Chat always included. */
   enabledKinds: string[]
-  /** Who may register: the mode, the mail domains allowed (empty = any), and
-   *  whether the address is confirmed by a mailed link first. */
+  /** Empty `domains`: any; `verifyEmail`: mailed link first. */
   signup: {
     mode: 'open' | 'approval' | 'closed'
     modeSource: 'database' | 'environment'
@@ -378,22 +349,19 @@ export interface SystemSettings {
     /** `verifyEmail` with a mail server behind it. */
     verificationActive: boolean
   }
-  /** Feature integration: one gateway address fans out into the features. */
+  /** One gateway address fans out into the features. */
   tools: {
-    /** Gateway address. Empty means each feature was configured on its own,
-     *  or the environment is supplying them. */
+    /** Empty: features set individually or by the environment. */
     backendBaseUrl: string
     features: {
       key: 'search' | 'fetch' | 'exec' | 'research' | 'stt' | 'index' | 'ocr'
       label: string
       url: string
-      /** `backend` means derived from the gateway address rather than typed
-       *  into this field. */
+      /** `backend`: derived from the gateway address. */
       source: 'database' | 'backend' | 'environment'
     }[]
   }
-  /** Text from scanned pages: as stored, and as in force once the readers that are
-   *  actually reachable are taken into account. */
+  /** Stored, and as in force given the reachable readers. */
   ocr: {
     enabled: boolean
     mode: 'both' | 'engine' | 'vision'
@@ -406,9 +374,7 @@ export interface SystemSettings {
     /** Strict-local models that declare vision: the only ones a page may go to. */
     visionChoices: { id: string; label: string }[]
   }
-  /** Which model does what, as in force: the administrator's choice, seeded once from the
-   *  environment. An empty string is a choice too (follow the chat default, the session's
-   *  own model, no fallback). Absent from an older server. */
+  /** As in force; an empty string is a choice (follow the default or session model). Absent from older servers. */
   modelRoles?: {
     chat: string
     report: string
@@ -422,13 +388,13 @@ export interface SystemSettings {
     selfHostedThinking: boolean
     externalThinking: boolean
     defaultMonthlyCredits: number
-    /** The models each job may name; `helper` is chat models this instance runs (self-hosted, or `local/` with a strict-local twin). */
+    /** `helper`: chat models this instance runs (self-hosted, or `local/` with a strict-local twin). */
     choices: Record<
       'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video' | 'helper',
       { id: string; label: string; strictLocal: boolean }[]
     >
   }
-  /** Instance economics, served so the screens quoting them cannot drift. */
+  /** Served so quoting screens cannot drift. */
   credits: {
     /** Credits to one US dollar. */
     perUsd: number
@@ -439,7 +405,7 @@ export interface SystemSettings {
   unpricedModels: { id: string; provider: string }[]
 }
 
-/** The composer's microphone: a recording in, its words out. Not stored. */
+/** Composer microphone; not stored. */
 export const transcriptionsApi = {
   transcribe: async (
     blob: Blob,
@@ -464,8 +430,7 @@ export const transcriptionsApi = {
 }
 
 export const authConfig = {
-  /** What the sign-in page may offer. Public because the browser cannot read
-   *  the admin settings, and a dead reset link is worse than none. */
+  /** Public: the browser cannot read admin settings. */
   get: () =>
     call<{
       passwordResetEnabled: boolean
@@ -476,11 +441,11 @@ export const authConfig = {
       contactEmail: string
       enabledKinds: string[]
       privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
-      /** Minutes of inactivity before the browser ends the session. 0 is off. */
+      /** Idle minutes before sign-out; 0 off. */
       idleTimeoutMinutes: number
       /** What the signup form should say before somebody is refused. */
       signup: { mode: 'open' | 'approval' | 'closed'; domains: string[]; emailVerification: boolean }
-      /** The rule every password form enforces; absent from an older server. */
+      /** Absent from older servers. */
       password?: { minLength: number }
       /** Wrong passwords in a row that lock an address, and for how long. */
       login?: { maxFailures: number; lockoutMinutes: number }
@@ -499,16 +464,13 @@ export const authConfig = {
 
 export interface MyUsage {
   days: number
-  /** `otherCredits` is spend no single model can be named for — a comparison
-   *  that ran several on one charge — not the part the breakdown forgot. */
+  /** `otherCredits`: spend no single model owns (multi-model charges). */
   totals: { credits: number; requests: number; searches: number; otherCredits: number }
-  /** This month's allowance and what is left of it. */
   cycle: { allowance: number; used: number; remaining: number }
   daily: { date: string; credits: number; requests: number; searches: number }[]
   byModel: { model: string; credits: number; requests: number; units?: number; unit?: string }[]
   bySurface: { kind: string; credits: number; requests: number }[]
-  /** Spend through issued keys, aggregated by the proxy — shown beside the
-   *  number above rather than added to it. */
+  /** Proxy-aggregated key spend; shown beside the total, not added. */
   apiKeys: {
     id: string
     name: string
@@ -520,7 +482,7 @@ export interface MyUsage {
 }
 
 export const meApi = {
-  /** The caller's own spending. `/admin/usage` answers for everyone. */
+  /** Own spend; `/admin/usage` covers everyone. */
   usage: (days = 30) => call<MyUsage>(`/me/usage?days=${days}`),
 }
 
@@ -572,7 +534,7 @@ export const adminApi = {
     call<{ ok: boolean; models?: number; detail?: string }>('/admin/settings/test', {
       method: 'POST',
     }),
-  /** Logo image. multipart, so it does not go through call()'s JSON path. */
+  /** Multipart; bypasses call()'s JSON path. */
   uploadLogo: async (file: File) => {
     const form = new FormData()
     form.append('file', file)
@@ -586,18 +548,15 @@ export const adminApi = {
     return (await res.json()) as { logo: string }
   },
   deleteLogo: () => call<void>('/admin/branding/logo', { method: 'DELETE' }),
-  /** Sends a real request to one feature's address. */
   testTool: (feature: string) =>
     call<{ ok: boolean; detail?: string }>(`/admin/settings/test-tool/${feature}`, {
       method: 'POST',
     }),
-  /** Sends a real message: a connection check passes with a sender the relay
-   *  refuses, which is the failure operators hit. */
+  /** Real message: a connection check passes with a sender the relay refuses. */
   testSmtp: (to?: string) =>
     call<{ ok: boolean; detail?: string }>('/admin/settings/smtp-test', body({ to: to ?? null })),
   users: () => call<User[]>('/admin/users'),
-  /** Approval and the allowance are one action: an active account with no
-   *  credits reads as a bug. */
+  /** Approval and allowance together: an active account without credits reads as a bug. */
   approve: (id: string, monthlyCredits?: number) =>
     call<User>(`/admin/users/${id}/approve`, body({ monthlyCredits: monthlyCredits ?? null })),
   /** Turns down a pending signup. Suspends rather than deletes — see the router. */
@@ -609,8 +568,7 @@ export const adminApi = {
     call<void>(`/admin/users/${id}?purgeFiles=${purgeFiles ? 'true' : 'false'}`, {
       method: 'DELETE',
     }),
-  /** Issues a fresh LiteLLM key, retiring the old one. Also the first key for
-   *  an account that signed up while the proxy was unreachable. */
+  /** Fresh LiteLLM key; also the first for an account created while the proxy was down. */
   rotateLitellmKey: (id: string) =>
     call<User>(`/admin/users/${id}/litellm-key`, { method: 'POST' }),
   /** Restricts an account to a set of models. Pushed to every key it holds. */
@@ -629,7 +587,6 @@ export const adminApi = {
   catalogue: () => call<{ id: string; label: string; kinds: string[] }[]>('/admin/models'),
   /** Every key an account holds: KloudChat's own (preview only) and the ones the person issued. */
   userKeys: (id: string) => call<AdminKeys>(`/admin/users/${id}/keys`),
-  /** Revokes one key the person issued. */
   revokeUserKey: (id: string, keyId: string) =>
     call<void>(`/admin/users/${id}/keys/${keyId}`, { method: 'DELETE' }),
   /** Binds a LiteLLM key the administrator already holds as the account's KloudChat key. */
@@ -642,10 +599,7 @@ export interface AdminKeys {
   named: { id: string; name: string; preview: string; createdAt: string; lastUsedAt: string | null }[]
 }
 
-/* ── admin: usage & audit ──────────────────────────────────────────────
- * Both from stored rows — turns for usage, the audit table for the trail. No
- * seeded fallback: an empty instance reports empty.
- */
+/* ── admin: usage & audit, from stored rows; no seeded fallback ── */
 
 export interface UsageReport {
   days: number
@@ -669,8 +623,7 @@ export interface UsageReport {
     units?: number
     unit?: string
   }[]
-  /** `'other'` beside the five surfaces: spend charged against no session,
-   *  which is how the bars keep adding up to the total. */
+  /** `other`: spend with no session, so the bars sum to the total. */
   bySurface: { kind: SessionKind | 'other' | 'bot'; credits: number; requests: number }[]
   /** Every account with activity in the window, most spent first. */
   topUsers: {
@@ -697,7 +650,6 @@ export interface AccessEventRow {
   severity: string
 }
 
-/** One browser this account is currently signed in on. */
 export interface ActiveSessionRow {
   /** The refresh-token family. Stable for the life of the sign-in. */
   familyId: string
@@ -749,7 +701,7 @@ export interface AuditRow {
   region: string
   userAgent: string
   severity: string
-  /** `changes` is `{field: [old, new]}` on events written since the diff; secrets come masked. */
+  /** `changes`: `{field: [old, new]}`; secrets masked. */
   metadata?: (Record<string, unknown> & { changes?: Record<string, [unknown, unknown]> }) | null
 }
 
@@ -826,10 +778,7 @@ export async function fetchArtifactExport(
   return res
 }
 
-/**
- * Downloads an artifact export. A plain link cannot carry the access token, so
- * the file is fetched and handed to the browser as a blob.
- */
+/** Fetched as a blob: a plain link cannot carry the access token. */
 export async function downloadArtifact(
   id: string,
   format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md' | 'html' | 'source',
@@ -839,8 +788,7 @@ export async function downloadArtifact(
 
   let filename = `${title.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'report'}.${format === 'source' ? 'txt' : format}`
   if (format === 'source') {
-    // The owner-scoped endpoint chooses the extension from stored language,
-    // never from content sniffing in the browser.
+    // Extension from the server, never sniffed.
     const encoded = res.headers.get('Content-Disposition')?.match(/(?:^|;)\s*filename\*=UTF-8''([^;]+)/i)?.[1]
     if (encoded) {
       try {
@@ -858,13 +806,7 @@ export async function downloadArtifact(
   URL.revokeObjectURL(url)
 }
 
-/**
- * URL for a stored file, used as the `src` of `<img>`, `<audio>` and `<video>`.
- *
- * Those elements cannot attach an Authorization header and the token lives in
- * memory rather than a cookie, so it goes in the query string. With no token,
- * the bare path is returned.
- */
+/** `src` for media elements: token in the query string, since they cannot send a header. */
 export function fileUrl(src: string | null | undefined): string | undefined {
   if (!src) return undefined
   if (!accessToken || !src.startsWith(`${BASE_URL}/files/`)) return src
@@ -898,7 +840,6 @@ export type SharedPayload =
       messages: MessageRow[]
       /** Absent on older shares. */
       startedWith?: SharedContext | null
-      /** What the conversation produced, when it produced something. */
       artifact: {
         title: string
         artifactKind: string
@@ -908,7 +849,6 @@ export type SharedPayload =
       updatedAt: string
     }
 
-/** One visit to a shared link. */
 export interface ShareViewRow {
   id: string
   at: string
@@ -974,10 +914,7 @@ export const usageApi = {
   },
 }
 
-/* ── sessions ───────────────────────────────────────────────────────────
- * One resource for all five surfaces, discriminated by `kind`. Chat, report and
- * slides stream; image and a/v run as jobs.
- */
+/* ── sessions: one resource for all five surfaces, by `kind` ── */
 
 /** Server shape. Differs from `Message` in `steps` and `attachments` — see `toMessage`. */
 export interface MessageRow {
@@ -993,9 +930,9 @@ export interface MessageRow {
   usage: Message['usage'] | null
   model: string | null
   routing: MessageRouting | null
-  /** Legacy: the retired 시작점 an old turn began from, with its title as it read then. */
+  /** Retired 시작점 an old turn began from, title as it read then. */
   startedFrom: { templateId: string; title: string } | null
-  /** What the reader thought of this answer. Null until somebody says. */
+  /** Null until rated. */
   rating: 'up' | 'down' | null
   /** Artifacts that are the answer (a picture, a clip); null when the turn answered in words. */
   artifactIds: string[] | null
@@ -1056,8 +993,7 @@ export const sessionsApi = {
       `/sessions${params ? `?${new URLSearchParams(params as Record<string, string>)}` : ''}`,
     ),
   get: (id: string) => call<SessionRow>(`/sessions/${id}`),
-  /** Many at once. `all` is resolved server-side, so a conversation started in
-   *  another tab is not silently spared. */
+  /** `all` resolved server-side, so a conversation from another tab is not spared. */
   deleteMany: (payload: { ids?: string[]; all?: boolean; artifacts?: boolean }) =>
     call<{ deleted: number; artifactsDeleted: number }>('/sessions/delete', body(payload)),
   /** Proposes a caption and prompt for a figure; draws nothing and costs nothing. */
@@ -1070,7 +1006,6 @@ export const sessionsApi = {
       prompt: string
       /** `flow` / `method` / `concept` when this place wants a figure drawn as shapes; empty for a picture. */
       figure?: string
-      /** What to draw, for the diagram path. */
       description?: string
       /** The style chip the picture should be drawn with. */
       style?: string
@@ -1078,7 +1013,7 @@ export const sessionsApi = {
       `/sessions/${sessionId}/figure-suggestion`,
       body(payload),
     ),
-  /** Pictures. Synchronous: the upstream answers with a PNG, so there is nothing to poll. */
+  /** Synchronous: upstream answers with a PNG. */
   images: (
     sessionId: string,
     payload: {
@@ -1086,7 +1021,6 @@ export const sessionsApi = {
       model?: string
       aspect: string
       style: string
-      /** How the words in the picture are handled. */
       labels?: 'auto' | 'ko' | 'en' | 'none'
       count: number
       /** Send the prompt as typed, skipping the planner. */
@@ -1095,7 +1029,7 @@ export const sessionsApi = {
       figure?: boolean
     },
   ) => call<ArtifactRow[]>(`/sessions/${sessionId}/images`, body(payload)),
-  /** A labelled figure written as a flowchart and drawn by the server with the .pptx export's shapes, kept as an image artifact. See `diagram.py`. */
+  /** Flowchart drawn server-side with the .pptx shapes; stored as an image artifact. */
   diagram: (
     sessionId: string,
     payload: {
@@ -1149,10 +1083,7 @@ export const sessionsApi = {
     }),
 }
 
-/* ── workspace ──────────────────────────────────────────────────────────
- * Projects, files, artifacts, skills, memories, agents. All owned by the
- * caller; anything else answers 404.
- */
+/* ── workspace: owned by the caller; anything else 404 ── */
 
 export interface FileRow {
   id: string
@@ -1243,10 +1174,9 @@ export interface ProjectRow {
   emoji: string
   instructions: string
   skillIds: string[]
-  /** The design system everything in this project wears. Null is the default look. */
+  /** Theme the project wears; null: default look. */
   designSystemId: string | null
-  /** Surface → rendering template. Sent whole: a missing key is that surface
-   *  going back to the built-in track. */
+  /** Surface → template; sent whole, a missing key means the built-in track. */
   renderTemplates: Record<string, string>
   files: FileRow[]
   sessionIds: string[]
@@ -1287,10 +1217,7 @@ export const artifactsApi = {
   /** Several at once. Ids this account does not own are skipped. */
   removeMany: (ids: string[]) =>
     call<{ deleted: number }>('/artifacts/delete', body({ ids })),
-  /**
-   * One page of the gallery, newest first, with the bodies cut down to what a
-   * card shows. `partial` marks those rows; `get` is the whole document.
-   */
+  /** One gallery page, newest first, bodies cut to card size (`partial`); `get` for the whole. */
   list: (params?: ArtifactQuery) => call<ArtifactRow[]>(`/artifacts${artifactParams(params)}`),
   /** How many of each kind exist, which a page of rows cannot say. */
   counts: (q?: string) =>
@@ -1300,8 +1227,7 @@ export const artifactsApi = {
   get: (id: string) => call<ArtifactRow>(`/artifacts/${id}`),
   create: (payload: { kind: string; title?: string; data?: unknown; sessionId?: string | null }) =>
     call<ArtifactRow>('/artifacts', body(payload)),
-  /** `expectedVersion` makes the write conditional; the server answers 409 if
-   *  somebody else got there first. */
+  /** `expectedVersion`: conditional write; 409 if someone else got there first. */
   update: (
     id: string,
     patch: { title?: string; data?: unknown; summary?: string; expectedVersion?: number },
@@ -1316,7 +1242,7 @@ export const artifactsApi = {
   /** The same check on one report section. Same cost, same verdict shape. */
   factcheckSection: (id: string, sectionId: string) =>
     call<ArtifactRow>(`/artifacts/${id}/sections/factcheck`, body({ sectionId })),
-  /** Stores this browser's render of a mermaid diagram for the exporters (the API has no headless browser). Free, adds no version. */
+  /** This browser's diagram render, stored for the exporters. Free, no version. */
   storeDiagram: (id: string, sectionId: string, key: string, src: string) =>
     call<ArtifactRow>(`/artifacts/${id}/sections/diagram`, body({ sectionId, key, src })),
   /** Rewrites one section. Costs a model call and snapshots the old text. */
@@ -1337,7 +1263,7 @@ export const artifactsApi = {
   /** The same, for a slide of a JSON deck. Addressed by slide id, not position. */
   addSlideImage: (id: string, slideId: string, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/image`, body({ slideId, artifactId, caption })),
-  /** Stores this browser's raster of a slide's own figure (`slide.diagram`) as the slide picture for the exporters. Free, adds no version. */
+  /** This browser's raster of `slide.diagram`, stored for the exporters. Free, no version. */
   storeSlideDiagram: (id: string, slideId: string, key: string, src: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/diagram`, body({ slideId, key, src })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
@@ -1371,7 +1297,7 @@ export interface ArtifactRow {
   partial?: boolean
 }
 
-/** One page of the gallery. The cursor is simply the last row it returned. */
+/** One gallery page; the cursor is the last row returned. */
 interface ArtifactQuery {
   kind?: string
   projectId?: string
@@ -1404,7 +1330,7 @@ export interface DesignRow {
   updatedAt: string
 }
 
-/** A design system read out of a document — a proposal, not a row. */
+/** A theme read out of a document: a proposal, not a row. */
 interface DesignDraftRow {
   name: string
   description: string
@@ -1432,7 +1358,7 @@ export const designsApi = {
   remove: (id: string) => call<void>(`/designs/${id}`, { method: 'DELETE' }),
 }
 
-/** A rendering 서식. Read-only: the catalogue ships inside the API image. */
+/** A rendering template; read-only, shipped in the API image. */
 export interface DesignTemplateRow {
   id: string
   /** `deck` · `document` */
@@ -1463,7 +1389,7 @@ export interface DesignTemplateRow {
   /** A person's template (`ut-<id>`): the caller's own when `mine`. */
   user?: boolean
   mine?: boolean
-  /** Shown in the pickers; false for a shipped 서식 still chosen by id but not offered. */
+  /** Shown in pickers; false for a shipped template still chosen by id but not offered. */
   listed?: boolean
 }
 
@@ -1489,7 +1415,7 @@ export interface TemplateStyle {
 export const designTemplatesApi = {
   list: (surface?: SessionKind) =>
     call<DesignTemplateRow[]>(`/design-templates${surface ? `?surface=${surface}` : ''}`),
-  /** The stylesheet the editor's shadow root draws the document in; a shadow root takes CSS, not a URL. */
+  /** Stylesheet for the editor's shadow root (CSS, not a URL). */
   style: (id: string, tokens?: DesignTokens | null) => {
     const query = tokens
       ? `?${new URLSearchParams({
@@ -1520,10 +1446,7 @@ export const skillsApi = {
   install: (id: string) => call<SkillRow>(`/skills/${id}/install`, { method: 'POST' }),
   /** The shipped scripts and checks a skill's server fields may name. */
   serverCatalogue: () => call<SkillServerCatalogue>('/skills/server-catalogue'),
-  /**
-   * SKILL.md, .zip or .skill files read into skills. `dryRun` only previews (findings
-   * included); otherwise every file must pass and each becomes a personal skill.
-   */
+  /** SKILL.md, .zip or .skill import; `dryRun` previews, else every file must pass. */
   importFiles: async (files: File[], opts: { dryRun?: boolean; draft?: boolean } = {}) => {
     const form = new FormData()
     for (const file of files) form.append('files', file)
@@ -1803,9 +1726,7 @@ export interface AgentRow {
   inheritedSettings?: ProcessSettings
 }
 
-/* ── connectors (MCP) ───────────────────────────────────────────────────
- * Credentials live server-side only; nothing here ever carries one.
- */
+/* ── connectors (MCP): credentials stay server-side ── */
 
 interface ConnectorToolRow {
   name: string
@@ -1903,8 +1824,7 @@ export interface JobRow {
 }
 
 export const jobsApi = {
-  /** Also the recovery point: the server restarts a poll loop for anything
-   *  left running, so a reload picks a clip in flight back up. */
+  /** Also the recovery point: the server resumes polling, so a reload picks up a clip in flight. */
   list: (sessionId: string) => call<JobRow[]>(`/sessions/${sessionId}/jobs`),
   create: (
     sessionId: string,
@@ -2087,10 +2007,7 @@ export async function* streamSession(
     privacyDecisionToken?: string
     /** Write the outline waiting on this session instead of planning another. */
     approve?: boolean
-    /**
-     * The outline as the person edited it on the card. Sanitised server-side:
-     * titles and order are theirs, layouts stay the planner's.
-     */
+    /** Outline as edited on the card; titles and order theirs, layouts the planner's. */
     plan?: Record<string, unknown>
     /** The figure card's answer — the second of the two questions. */
     includeFigures?: boolean
@@ -2104,10 +2021,7 @@ export async function* streamSession(
   yield* postStream(`/sessions/${sessionId}/messages`, payload, signal)
 }
 
-/**
- * Silence budget before a turn is called stalled. Generous on purpose: the
- * server heartbeats every 15 s during a healthy turn, so this long is a gone connection.
- */
+/** Silence budget before a stall; the server heartbeats every 15 s. */
 const STALL_MS = 120_000
 
 /** Rejects when the stream has produced nothing for {@link STALL_MS}. */
@@ -2130,8 +2044,7 @@ async function* postStream(
   payload: unknown,
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
-  // Own controller so the stall guard can abort; the caller's signal is
-  // forwarded, since the server tells 중단 from a dropped tab by it.
+  // Own controller for the stall guard; caller's signal forwarded (the server tells 중단 from a dropped tab by it).
   const controller = new AbortController()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
@@ -2171,8 +2084,7 @@ async function* postStream(
     const wait = Number(res.headers.get('Retry-After'))
     throw new ApiError(res.status, resolved, res.status === 429 && wait > 0 ? wait : undefined)
   }
-  // A turn that stopped to ask (`_ask_before_writing`) answers in JSON, not a
-  // stream; translated into events here so the runners need not know.
+  // A turn that stopped to ask answers in JSON; translated into events here.
   if (res.headers.get('content-type')?.includes('application/json')) {
     const answered = (await res.json()) as {
       pending?: PendingPlan | null; message?: string; runId?: string; stage?: PipelineStage
@@ -2233,8 +2145,7 @@ export interface BotBranding {
   placeholder: string
 }
 
-/** What a bot runs under; the owner may lower each, never raise it. The per-address ones
- *  count visitors without an account only. */
+/** What a bot runs under; the owner may only lower. Per-address limits: accountless visitors only. */
 export interface BotLimits {
   perVisitorPerMinute: number
   perVisitorPerDay: number
@@ -2925,10 +2836,7 @@ export const perfApi = {
   overview: (range: PerfRange) => call<PerfOverview>(`/admin/perf/overview?range=${range}`),
 }
 
-/* ── search (⌘K, 대화 기록) ───────────────────────────────────────────────
- * The caller's own conversations and results, by title and by what they say. Answered from
- * the app's own database; nothing is sent to a model.
- */
+/* ── search (⌘K, 대화 기록): own conversations and artifacts, from the database; no model ── */
 
 /** A run of a title or excerpt; `hit` marks the query's words. */
 export interface SearchRun {

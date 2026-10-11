@@ -52,7 +52,7 @@ export function ArtifactPreview({
   interactive = false,
 }: {
   artifact: Artifact
-  /** True for the one full-size panel a person opens to use the artifact, not a gallery card — lets scripts run. */
+  /** The full-size panel, not a gallery card: scripts run. */
   interactive?: boolean
 }) {
   const t = useT()
@@ -66,7 +66,7 @@ export function ArtifactPreview({
         />
       )
     case 'video':
-      // No thumbnailer: `posterSrc` is empty, so a `<video>` shows the first frame.
+      // No thumbnailer: empty `posterSrc`, `<video>` shows the first frame.
       return (
         <video
           src={fileUrl(artifact.src)}
@@ -78,7 +78,7 @@ export function ArtifactPreview({
         />
       )
     case 'audio':
-      // `waveform` is stored empty; nothing analyses the PCM.
+      // `waveform` stored empty; no PCM analysis.
       return (
         <div className="flex size-full items-center gap-2 bg-elevated px-4 text-muted">
           {artifact.waveform.length > 0 ? (
@@ -110,8 +110,7 @@ export function ArtifactPreview({
         />
       )
     case 'report':
-      // Drawn as a printed page: fixed white background and literal colours,
-      // independent of the theme. #6b6b6b on white is 5.3:1 (WCAG AA).
+      // Printed page: fixed white and literal colours, theme-independent; #6b6b6b on white 5.3:1 (AA).
       return (
         <div className="size-full overflow-hidden bg-white px-5 py-4 text-[#1a1a1a]">
           <p className="mb-0.5 truncate text-lg font-semibold">{artifact.title}</p>
@@ -150,7 +149,7 @@ export function ArtifactPreview({
   }
 }
 
-/** Whether an HTML artifact is a deck: by template kind, else by markup (same rule as the server). */
+/** HTML deck by template kind, else markup (server's rule). */
 function useIsDeck(artifact: CodeArtifact) {
   const templates = useStore((s) => s.designTemplates)
   const template = templates.find((row) => row.id === artifact.templateId)
@@ -160,7 +159,7 @@ function useIsDeck(artifact: CodeArtifact) {
 /** One slide of an HTML deck. */
 interface PageSlide {
   title: string
-  /** The whole document with only this slide left in it. */
+  /** Whole document with only this slide. */
   doc: string
 }
 
@@ -169,7 +168,7 @@ function splitSlides(html: string): PageSlide[] {
   const page = new DOMParser().parseFromString(html, 'text/html')
   const count = page.querySelectorAll('section.slide').length
   return Array.from({ length: count }, (_, keep) => {
-    // Whole page minus the other slides, so the stylesheet and wrapper survive.
+    // Page minus other slides: stylesheet and wrapper kept.
     const one = page.cloneNode(true) as Document
     const sections = Array.from(one.querySelectorAll('section.slide'))
     sections.forEach((section, i) => {
@@ -182,7 +181,7 @@ function splitSlides(html: string): PageSlide[] {
   })
 }
 
-/** Presents an HTML deck one section at a time in a sandboxed frame. */
+/** HTML deck, one section at a time, sandboxed frame. */
 function PagePresent({ artifact }: { artifact: CodeArtifact }) {
   const t = useT()
   const [presenting, setPresenting] = useState(false)
@@ -231,10 +230,7 @@ function PagePresent({ artifact }: { artifact: CodeArtifact }) {
   )
 }
 
-/**
- * Export menu for an HTML artifact. Never opens the markup in a tab: a `blob:`
- * URL would run model-written markup under this origin.
- */
+/** HTML export menu; never a `blob:` tab, which would run model markup under this origin. */
 function PageExport({ artifact }: { artifact: CodeArtifact }) {
   const t = useT()
   const [busy, setBusy] = useState<string | null>(null)
@@ -287,7 +283,7 @@ function PageExport({ artifact }: { artifact: CodeArtifact }) {
   )
 }
 
-/** Rewrites one block of an HTML artifact; the server re-renders from the same seed. */
+/** Rewrites one HTML block; server re-renders from the same seed. */
 function RewriteBlock({ artifact }: { artifact: CodeArtifact }) {
   const t = useT()
   const [target, setTarget] = useState<number | null>(null)
@@ -297,7 +293,7 @@ function RewriteBlock({ artifact }: { artifact: CodeArtifact }) {
   const loadArtifacts = useStore((s) => s.loadArtifacts)
 
   const blocks = artifact.blocks ?? []
-  // The server refuses artifacts written before blocks kept their markup.
+  // Server refuses artifacts predating stored block markup.
   if (blocks.length === 0) return null
 
   const rewrite = async () => {
@@ -375,7 +371,7 @@ function RewriteBlock({ artifact }: { artifact: CodeArtifact }) {
   )
 }
 
-/** Inserts an image artifact into one block; the server inlines its bytes. */
+/** Inserts an image into one block; server inlines its bytes. */
 function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
   const t = useT()
   const [target, setTarget] = useState<number | null>(null)
@@ -469,7 +465,7 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
   )
 }
 
-/** HTML or code artifact with its controls; also used by the artifacts gallery dialog. */
+/** HTML or code artifact with controls; also the gallery dialog. */
 export function CodePanel({
   artifact,
   headerControls,
@@ -550,8 +546,7 @@ export function CodePanel({
       <div className="min-h-0 flex-1">
         {tab === 'preview' && artifact.kind === 'html' ? (
           isDeck ? (
-            /* The deck seed sizes a slide to the viewport, so it is framed 16:9
-               here. No `max-h`: a height cap would break the ratio; the column scrolls. */
+            /* Deck seed sizes slides to the viewport: framed 16:9, no `max-h` (breaks ratio); column scrolls. */
             <div className="h-full overflow-auto p-4">
               <div className="mx-auto aspect-video w-full max-w-6xl overflow-hidden rounded-card border border-line shadow-raised">
                 <ArtifactPreview artifact={artifact} interactive />
@@ -604,7 +599,7 @@ export function MediaPanel({
     artifact.kind === 'image'
       ? [
           [t('프롬프트'), artifact.prompt],
-          // The model honours the ratio only approximately; show the actual one when it differs.
+          // Model honours the ratio loosely: show the actual one when it differs.
           [
             t('비율'),
             artifact.actualAspect && artifact.actualAspect !== artifact.aspect
@@ -615,7 +610,7 @@ export function MediaPanel({
             ? [[t('크기'), `${artifact.width}×${artifact.height}`]]
             : []),
           [t('스타일'), artifact.style],
-          // No seed row: the upstream ignores the seed.
+          // No seed row: upstream ignores the seed.
           [t('모델'), artifact.model],
         ]
       : artifact.kind === 'audio'
@@ -632,7 +627,7 @@ export function MediaPanel({
             [t('모델'), artifact.model],
           ]
 
-  // Frame follows the file's actual aspect, not the requested one.
+  // Frame follows actual aspect, not requested.
   const shape =
     artifact.kind === 'image'
       ? artifact.actualAspect || artifact.aspect
@@ -701,7 +696,7 @@ export function MediaPanel({
 
 /** localStorage key for the dragged panel width. */
 const WIDTH_KEY = 'kchat-panel-width'
-/** Minimum px left of the panel: 268px sidebar plus a usable composer. */
+/** Min px left of the panel: 268px sidebar plus a usable composer. */
 const CHAT_EDGE_MIN = 560
 
 /** Draggable panel width, remembered across reloads. */
@@ -716,7 +711,7 @@ function useSplit(enabled: boolean) {
     if (!enabled) return
     const onMove = (e: PointerEvent) => {
       if (!dragging.current) return
-      // Width is measured from the right edge.
+      // Measured from the right edge.
       const next = Math.round(window.innerWidth - e.clientX)
       const min = 320
       const max = Math.max(min, window.innerWidth - CHAT_EDGE_MIN)
@@ -742,7 +737,7 @@ function useSplit(enabled: boolean) {
 
   const start = () => {
     dragging.current = true
-    // On the body: the pointer leaves the handle immediately while dragging.
+    // On body: pointer leaves the handle while dragging.
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
   }
@@ -761,7 +756,7 @@ function useSplit(enabled: boolean) {
 
 export function ArtifactPanel() {
   const t = useT()
-  // Below this width the panel overlays the chat instead of sharing the row.
+  // Narrower: panel overlays the chat.
   const narrow = useMediaQuery('(max-width: 1359px)')
   // Hooks stay above the early return below.
   const [mode, setMode] = useState<PanelMode>('wide')
@@ -772,14 +767,13 @@ export function ArtifactPanel() {
 
   const selfWide =
     artifact.kind === 'report' || artifact.kind === 'deck' || artifact.kind === 'chart'
-  // Reports, decks and charts own their panel chrome; the rest share a header.
+  // Reports, decks, charts own their chrome; the rest share a header.
   const selfChrome = selfWide
 
-  // A dragged width wins over every mode default.
+  // Dragged width beats mode defaults.
   const dragged = !narrow && split.width !== null
 
-  // A mode change discards the dragged width; a repeat of the current mode
-  // (a panel announcing `wide` on mount) must not.
+  // Mode change drops dragged width; a repeat (panel announcing `wide` on mount) does not.
   const changeMode = (next: PanelMode) => {
     if (next !== mode) split.reset()
     setMode(next)
@@ -796,7 +790,7 @@ export function ArtifactPanel() {
           : dragged
             ? 'min-w-0'
             : mode === 'full'
-              // Overlays the row rather than squeezing the transcript to a sliver.
+              // Overlay rather than squeezing the transcript.
               ? '!absolute inset-0 z-20 w-full min-w-0'
               : mode === 'wide'
                 ? 'w-[60%] min-w-[720px]'

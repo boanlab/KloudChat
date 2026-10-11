@@ -1,10 +1,4 @@
-/**
- * Screen words for the audit log: what each action code means, what each recorded
- * field is called on its settings screen, and how a recorded value reads.
- *
- * Every code in `ACTIONS` (apps/api/app/services/audit.py) needs a label here;
- * `tests/test_audit_log.py` checks it. Strings are Korean keys for `t()`.
- */
+/** Audit log screen words: action, field and value labels. Every `ACTIONS` code needs a label (`tests/test_audit_log.py`). */
 import { kindMeta } from '@/lib/kinds'
 import type { AuditRow } from '@/lib/api'
 import type { SessionKind } from '@/types'
@@ -238,10 +232,7 @@ export function changedFields(row: AuditRow): string[] {
     .filter(Boolean)
 }
 
-/**
- * The row's target as words. A settings change names its sections (recorded, else derived
- * from the changed fields) rather than its stored target.
- */
+/** Row target as words; settings changes name their sections. */
 export function targetParts(row: AuditRow): string[] {
   if (row.action === 'settings.update') {
     const recorded = row.metadata?.sections

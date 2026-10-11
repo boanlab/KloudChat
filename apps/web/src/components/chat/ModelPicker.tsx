@@ -66,10 +66,7 @@ function boundary(
   return null
 }
 
-/**
- * The model on a phone's chip: the name without its family and boundary suffix, then where it
- * runs — 「27b · 로컬」, 「27b · 내부 전용」 — so the part that tells two models apart survives.
- */
+/** Phone chip: the name without family and boundary suffix, then where it runs (「27b · 로컬」). */
 function phoneModelLabel(m: ModelInfo, t: (s: string) => string): string {
   const bare = (m.name || m.label).replace(/\s*\([^)]*\)\s*$/, '').trim()
   const words = bare.split(/\s+/)
@@ -131,8 +128,7 @@ export function ModelPicker({
     (m) => m.kinds.includes(kind) && (!modality || m.modality === modality),
   )
 
-  // Inside a session, what it will run on; outside one, an av picker with a
-  // modality shows the model remembered for that mode.
+  // In a session, what it runs on; outside, an av picker shows the model remembered for that mode.
   const currentId =
     !session && kind === 'av' && (modality === 'audio' || modality === 'video')
       ? avModelByMode[modality] || effectiveModelId(session, kind, agents, modelByKind)
@@ -145,9 +141,7 @@ export function ModelPicker({
   const unresolvedAgentModel = !autoActive &&
     (kind === 'chat' || kind === 'report' || kind === 'slides') &&
     Boolean(session?.agentId && !session.model && !agents.some((agent) => agent.id === session.agentId))
-  // Auto belongs to a session, so it needs one or a caller that can create one.
-  // Chat, report and deck writers can be routed; the server settles a document's lane
-  // after keeping internal material strict-local.
+  // Auto needs a session or a caller that creates one; the server settles a document's lane after the strict-local rule.
   const canRouteAuto = (kind === 'chat' || kind === 'report' || kind === 'slides') &&
     (Boolean(sessionId) || Boolean(onEnableAuto))
   const persistSelection = async (action: () => void | Promise<void>) => {
@@ -280,7 +274,6 @@ function ModelMenu({
 }) {
   const t = useT()
   const closeMenu = useMenuClose()
-  // Search matches label and id.
   const [query, setQuery] = useState('')
   const needle = query.trim().toLowerCase()
   const shown = needle

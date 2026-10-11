@@ -1,7 +1,4 @@
-/**
- * KloudChat domain types: a `Session` of some `SessionKind` produces an `Artifact`; slow kinds carry a `Job`.
- * No proxy credential appears here: virtual keys are issued and used server-side only.
- */
+/** Domain types: a `Session` of a `SessionKind` produces `Artifact`s; no proxy credential here. */
 
 import type { PatternName } from '@/components/slides/patterns'
 
@@ -144,7 +141,7 @@ export interface Session {
   title: string
   projectId: string | null
   agentId: string | null
-  /** The user pipeline this conversation runs (「이 워크플로로 시작」); its turns stay here. */
+  /** The composed pipeline this conversation runs; its turns stay here. */
   pipelineId?: string | null
   model: string
   /** Under `auto`, `model` is the quality ceiling. */
@@ -424,7 +421,7 @@ export interface PipelineCatalogue {
 /** A unit of visible work inside an assistant turn. */
 export interface Step {
   id: string
-  /** `pipeline`: a stage record without the rich `stage` object (older servers, or a fallback). */
+  /** `pipeline`: a stage record without the rich `stage` object. */
   type: 'thinking' | 'tool' | 'artifact' | 'pipeline'
   label: string
   status: 'running' | 'done' | 'error'
@@ -447,7 +444,7 @@ export interface Step {
   memoriesWritten?: number
   /** Files a sandbox tool made and stored for the user, downloadable by id. */
   outputs?: { id: string; name: string; size: number }[]
-  /** The code a sandbox tool ran last (bounded, masked); absent on older steps. */
+  /** Code a sandbox tool ran last (bounded, masked). */
   code?: string
   /** Which attempt wrote `code`, when the tool retried. */
   codeAttempt?: number
@@ -493,7 +490,7 @@ export interface Message {
   artifactVersion?: number
   /** `id` names the stored blob; absent only on the optimistic row while the upload is in flight. */
   attachments?: { id?: string; name: string; size: number | string; type: string }[]
-  /** `estimated` on a stopped turn, whose final usage chunk never arrives. Also `outlineInputTokens`, `model:<id>:inputTokens` … when a planner or reviewer ran (`lib/usage.ts`). */
+  /** `estimated` on a stopped turn; planner and reviewer counters too (`lib/usage.ts`). */
   usage?: {
     inputTokens: number
     outputTokens: number
@@ -502,7 +499,7 @@ export interface Message {
     [counter: string]: number | boolean | undefined
   }
   liked?: 'up' | 'down' | null
-  /** Legacy: the retired 시작점 an old turn began from. */
+  /** Retired 시작점 an old turn began from. */
   startedFrom?: { templateId: string; title: string }
   /** Separate from `content`: a turn can fail after writing something. */
   error?: string
@@ -656,7 +653,7 @@ export interface ReportArtifact extends ArtifactBase {
     status: 'open' | 'resolved'
     createdAt: string
   }[]
-  /** 서식 the page view is drawn in; absent is the plain report seed. */
+  /** Template the page view is drawn in; absent: the plain report seed. */
   templateId?: string
   design?: DesignTokens | null
   /** Head of a document by purpose (`services/doc_formats.py`); absent is a plain title. */
@@ -762,7 +759,7 @@ export interface Slide {
   notes?: string
   accent?: string
   factCheck?: FactCheck
-  /** Text size as a multiple of the 서식's own; `deck_export` applies the same factor. */
+  /** Text size as a multiple of the template's; `deck_export` applies the same. */
   textScale?: number
   /** Sanitised inline HTML keyed by text slot (`title`, `bullets.0`, `rows.1.2`, …); the plain fields stay canonical. */
   richText?: Record<string, string>
@@ -780,8 +777,7 @@ export interface Slide {
     renderer?: string
     key?: string
   }
-  /** A structure, flow, comparison or concept figure the deck drew for itself as mermaid.
-   *  The panel renders it live; its raster travels in `image` for the exporters. */
+  /** Figure the deck drew for itself as mermaid; rendered live, its raster in `image` for the exporters. */
   diagram?: {
     figure: 'method' | 'flow' | 'compare' | 'concept'
     description: string
@@ -796,7 +792,7 @@ export interface DeckArtifact extends ArtifactBase {
   kind: 'deck'
   theme: string
   slides: Slide[]
-  /** Deck 서식 this was written under; the export builds on its PowerPoint half. */
+  /** Deck template written under; the export builds on its PowerPoint half. */
   templateId?: string
   /** Copied on when the deck was made. */
   design?: DesignTokens | null
@@ -888,7 +884,7 @@ export interface Project {
   files: ProjectFile[]
   sessionIds: string[]
   skillIds: string[]
-  /** The design system this project's output wears. Null is the default look. */
+  /** Theme this project's output wears; null: default look. */
   designSystemId: string | null
   /** Surface → rendering template id; a surface with no entry uses the built-in track. */
   renderTemplates: Record<string, string>
@@ -963,8 +959,7 @@ export interface Skill {
   /** Sharing with scripts: '' · pending · approved · rejected. */
   review?: string
   reviewNote?: string
-  /** Shown in the lists people pick from; false for a shipped skill kept only as a part. It
-   *  still runs by name, in bundles and in old conversations. Absent means shown. */
+  /** Shown in pick lists; false for a shipped skill kept as a part (still runs by name). */
   listed?: boolean
 }
 
@@ -1029,7 +1024,7 @@ export interface Agent {
   installs: number
   /** Stable key for shipped agents; null for user-authored ones. */
   catalogKey: string | null
-  /** The owner's user pipeline this agent's turns run; null runs its own flow. */
+  /** The owner's composed pipeline these turns run; null: its own flow. */
   pipelineId?: string | null
   originId: string | null
   /** Published by an administrator; meaningful on store rows. */
@@ -1058,11 +1053,11 @@ export interface Agent {
   kinds: SessionKind[]
   /** Surface a new conversation opens on; null takes the first of `kinds`. */
   surface: SessionKind | null
-  /** 서식 for sessions on that 서식's surface; wins over the project's default. */
+  /** Template for sessions on its surface; wins over the project's default. */
   renderTemplateId: string | null
-  /** `doc_formats` id for report sessions whose 서식 fixes none. */
+  /** `doc_formats` id for report sessions whose template fixes none. */
   docFormat: string | null
-  /** Wins over the project's design. */
+  /** Theme; wins over the project's. */
   designSystemId: string | null
   /** That design's name, for a viewer who cannot see the row. */
   designName?: string
@@ -1248,8 +1243,7 @@ export interface ToolCatalogEntry {
   description?: string
 }
 
-/** 진행 과정 설정 (`services/process_settings.py`): what writing a document does besides
- * writing. Every key is optional on the wire; an agent's own (null: its template's). */
+/** 진행 과정 설정 (`services/process_settings.py`); keys optional, an agent's own (null: its template's). */
 export interface ProcessStructure {
   sections: string[]
   tables: { columns: string[]; heading?: string }[]
@@ -1340,8 +1334,7 @@ export interface TemplateCatalogue {
   starts: { id: string; name: string; description: string }[]
 }
 
-/** An entry of the connector catalogue administrators keep. `env` values come back only as
- * placeholders; anything else is `null` (set, never shown). */
+/** Connector catalogue entry; `env` values only as placeholders, else `null` (set, never shown). */
 export interface CatalogEntryAdmin {
   id: string
   slug: string

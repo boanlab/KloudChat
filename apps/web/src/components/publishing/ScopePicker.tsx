@@ -7,10 +7,7 @@ import { cn } from '@/lib/utils'
 
 const ICON: Record<BotVisibility, typeof Users> = { internal: Users, link: Link2, external: Globe2 }
 
-/**
- * Who a bot is open to: members at once, or — asked of an administrator — whoever holds the
- * link, or everyone. Opening it outside needs the owner's daily credit cap.
- */
+/** Bot audience: members at once; link or everyone by admin request, needing a daily credit cap. */
 export function ScopePicker({
   value,
   onChange,
@@ -21,11 +18,11 @@ export function ScopePicker({
 }: {
   value: BotVisibility
   onChange: (next: BotVisibility) => void
-  /** The daily credit cap as typed. */
+  /** Daily credit cap as typed. */
   credits: string
   onCredits: (next: string) => void
   creditsRemaining?: number
-  /** The audience in force, on a bot already published: a wider choice is a request. */
+  /** Audience in force on a published bot; a wider choice is a request. */
   current?: BotVisibility
 }) {
   const t = useT()

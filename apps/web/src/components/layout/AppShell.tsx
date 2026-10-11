@@ -13,7 +13,7 @@ import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 import { useT } from '@/lib/useT'
 
-/** Undo toast for a pending delete; lives in the shell so it survives navigation. */
+/** Undo toast for a pending delete; in the shell to survive navigation. */
 function UndoBar() {
   const t = useT()
   const pending = useStore((s) => s.pendingDelete)
@@ -36,7 +36,7 @@ function UndoBar() {
   )
 }
 
-/** A passing, neutral message (「체험하려고 내 스킬에 추가했어요 · 빼기」); outlives navigation. */
+/** Passing neutral message (「체험하려고 내 스킬에 추가했어요 · 빼기」); outlives navigation. */
 function ToastBar() {
   const t = useT()
   const toast = useStore((s) => s.toast)
@@ -76,7 +76,7 @@ function ToastBar() {
   )
 }
 
-/** Transient error toast for failures with no screen of their own. */
+/** Error toast for failures with no screen of their own. */
 function NoticeBar() {
   const t = useT()
   const notice = useStore((s) => s.notice)
@@ -113,14 +113,13 @@ export function AppShell() {
   useIssueBadge()
   useBotAttentionBadge()
 
-  // On narrow layouts the sidebar overlays the content, so navigation closes it.
+  // Narrow layout: sidebar overlays, so navigation closes it.
   useEffect(() => {
     if (narrow && open) cycleSidebar()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, narrow])
 
-  // The phone drawer is a modal: focus moves into it, Escape closes it, and focus returns to
-  // what opened it. The page behind is `inert` meanwhile, so Tab cannot wander there.
+  // Phone drawer is modal: focus in, Escape closes, focus restored; page behind `inert`.
   const drawer = useRef<HTMLDivElement>(null)
   const mainRef = useRef<HTMLElement>(null)
   const drawerOpen = narrow && open
@@ -130,7 +129,7 @@ export function AppShell() {
     drawer.current?.querySelector<HTMLElement>('a[href], button:not([disabled]), input:not([disabled])')?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return
-      // A menu or dialog opened from the drawer takes this Escape for itself.
+      // A menu or dialog from the drawer owns this Escape.
       const above = [...document.querySelectorAll('[role="menu"], [aria-modal="true"]')]
       if (above.some((el) => el !== drawer.current)) return
       e.preventDefault()
@@ -145,7 +144,7 @@ export function AppShell() {
 
   return (
     <div className="relative flex h-full overflow-hidden bg-bg text-fg">
-      {/* First stop for a keyboard: past the sidebar's links to the screen itself. */}
+      {/* Skip link past the sidebar. */}
       <a
         href="#main"
         onClick={(e) => {
@@ -156,12 +155,11 @@ export function AppShell() {
       >
         {t('본문으로 건너뛰기')}
       </a>
-      {/* The drawer stays mounted and slides; transitions collapse under the reduced-motion guard in index.css. */}
+      {/* Drawer stays mounted and slides; reduced-motion guard in index.css. */}
       {narrow && (
         <button
           aria-label={t('사이드바 닫기')}
-          // Out of the Tab order (Escape closes the drawer from a keyboard); a screen reader's
-          // swipe still reaches it while the drawer is open.
+          // Out of Tab order (Escape closes); screen-reader swipe still reaches it while open.
           tabIndex={-1}
           aria-hidden={!open}
           className={cn(
@@ -184,7 +182,7 @@ export function AppShell() {
               )
             : cn(
                 'shrink-0 transition-[width] duration-300',
-                // `overflow-hidden` only when hidden; it would clip the rail's menus.
+                // `overflow-hidden` only when hidden; would clip the rail's menus.
                 sidebar === 'hidden'
                   ? 'w-0 overflow-hidden'
                   : sidebar === 'rail'
@@ -192,7 +190,7 @@ export function AppShell() {
                     : 'w-[268px]',
               )
         }
-        // Keeps the collapsed panel out of the tab order.
+        // Collapsed panel out of tab order.
         inert={!open ? true : undefined}
       >
         <Sidebar />
@@ -233,7 +231,7 @@ export function PageBody({
   )
 }
 
-/** A management page's top bar and scroll body; inside another screen (the 사용자 지정 hub), neither. */
+/** Management page top bar and scroll body; neither inside the 사용자 지정 hub. */
 export function PageFrame({
   title,
   embedded = false,

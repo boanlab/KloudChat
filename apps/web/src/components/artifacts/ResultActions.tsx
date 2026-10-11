@@ -10,17 +10,14 @@ import { useStore } from '@/store/useStore'
 import type { Artifact } from '@/types'
 import { exportChoices, takeArtifact, type ExportFormat } from './artifactExport'
 
-/** One thing the menu asks about before a file leaves, and where pressing it goes. */
+/** Pre-export warning and where pressing it goes. */
 export interface DownloadCheck {
   label: string
   icon?: ReactNode
   onClick: () => void
 }
 
-/**
- * 「⤓ 내려받기 ▾」: every format the artifact leaves as, through the export endpoint. What to
- * look at first (unsupported numbers, a slide that may be cut off) is listed above the formats.
- */
+/** 「⤓ 내려받기 ▾」: every export format, warnings (unsupported numbers, cut-off slide) above. */
 export function DownloadMenu({
   artifact,
   checks,
@@ -35,16 +32,16 @@ export function DownloadMenu({
   label,
 }: {
   artifact: Artifact
-  /** Accessible name when 「내려받기」 alone would be ambiguous on the page (a card per answer). */
+  /** Accessible name when 「내려받기」 is ambiguous (a card per answer). */
   label?: string
   checks?: DownloadCheck[]
-  /** Translated heading over `checks`, e.g. 「내보내기 전 근거 확인 2건」. */
+  /** Heading over `checks`, e.g. 「내보내기 전 근거 확인 2건」. */
   checksHeading?: string
-  /** Replaces the plain download, e.g. a panel that saves pending edits first. */
+  /** Replaces the plain download (e.g. save pending edits first). */
   take?: (format: ExportFormat) => Promise<void>
-  /** Further items under the formats (인쇄). */
+  /** Extra items under the formats (인쇄). */
   extra?: ReactNode
-  /** Icon only; the label stays as the accessible name. */
+  /** Icon only; label kept as accessible name. */
   compact?: boolean
   disabled?: boolean
   onError?: (message: string) => void
@@ -118,7 +115,7 @@ export function DownloadMenu({
   )
 }
 
-/** 「이걸로 새로 시작」 and 「새 대화에 첨부」 as menu items, for any ⋯ menu that holds an artifact. */
+/** 「이걸로 새로 시작」 and 「새 대화에 첨부」 for any artifact ⋯ menu. */
 export function ReuseItems({ artifact }: { artifact: Artifact }) {
   const t = useT()
   const navigate = useNavigate()
@@ -133,7 +130,7 @@ export function ReuseItems({ artifact }: { artifact: Artifact }) {
         {t('새 대화에 첨부')}
       </MenuItem>
       {artifact.sessionId && (
-        // The conversation that made it, as an agent's form to review; nothing is saved yet.
+        // The conversation as an agent form to review; nothing saved yet.
         <MenuItem icon={<Bot size={14} />} onClick={() => navigate(`/customize/agents/new?from=session:${artifact.sessionId}`)}>
           {t('에이전트로 저장')}
         </MenuItem>

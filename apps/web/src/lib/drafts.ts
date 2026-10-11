@@ -1,8 +1,4 @@
-/** Unsent composer text mirrored to this browser's storage, keyed by account and conversation.
- *
- * Storage may be unavailable (private window, blocked site data) or full; every call
- * swallows that, and the composer's in-memory copy carries on alone.
- */
+/** Unsent composer text in browser storage, per account and conversation; storage failures swallowed. */
 
 const PREFIX = 'kc.draft.'
 
@@ -32,7 +28,6 @@ export function forgetStoredDraft(userId: string | undefined, key: string): void
   try {
     localStorage.removeItem(draftStorageKey(userId, key))
   } catch {
-    // Nothing to forget where nothing could be stored.
   }
 }
 
@@ -47,6 +42,5 @@ export function purgeStoredDrafts(userId: string | undefined): void {
     }
     doomed.forEach((name) => localStorage.removeItem(name))
   } catch {
-    // Storage unavailable: there is nothing stored to purge.
   }
 }

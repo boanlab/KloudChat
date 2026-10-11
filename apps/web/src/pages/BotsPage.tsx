@@ -8,11 +8,7 @@ import { botsApi, type BotListItem } from '@/lib/api'
 import { STATUS_LABEL, VISIBILITY_LABEL } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 
-/**
- * 「챗봇」: the bots members of this instance published, to open and ask; and the caller's
- * own, to manage. One place for both, outside 사용자 지정 (where agents are made), so a
- * member who only wants to ask never has to look among the makers' tools.
- */
+/** 「챗봇」: members' published bots to ask, and own bots to manage; outside 사용자 지정 so askers need not browse maker tools. */
 export function BotsPage() {
   const t = useT()
   const [rows, setRows] = useState<BotListItem[] | null>(null)

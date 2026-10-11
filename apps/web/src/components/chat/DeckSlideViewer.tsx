@@ -8,7 +8,7 @@ import { useT } from '@/lib/useT'
 const SLIDE_W = 1280
 const SLIDE_H = 720
 
-/** One slide of a deck 서식's sample, scaled into a 16:9 box; sandboxed with no permissions. */
+/** One slide of a deck template's sample in a 16:9 box; sandboxed, no permissions. */
 export function SlideFrame({ id, n, lazy = true }: { id: string; n: number; lazy?: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(0)

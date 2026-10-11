@@ -6,10 +6,7 @@ import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { HubItem } from './hubItems'
 
-/**
- * 「체험」 and 「+」 for every kind of hub item: 체험 opens a conversation with the item in it,
- * 「+」 takes a copy into 내 항목. Both report a failure through the shell's notice.
- */
+/** 「체험」 (conversation with the item) and 「+」 (copy into 내 항목); failures via the shell notice. */
 export function useItemActions(onChanged?: () => void) {
   const t = useT()
   const navigate = useNavigate()
@@ -39,7 +36,7 @@ export function useItemActions(onChanged?: () => void) {
           await chatWithSkill(item.skill.id)
           return
         }
-        // A store skill runs from a copy: take one, say so, and offer to give it back.
+        // Store skill runs from a copy: take one, say so, offer removal.
         const before = new Set(useStore.getState().skills.map((s) => s.id))
         await installSkill(item.skill.id)
         const held = useStore.getState().skills
@@ -59,7 +56,7 @@ export function useItemActions(onChanged?: () => void) {
     }
   }
 
-  /** Takes a copy; resolves to where the copy can be opened, when it has a screen. */
+  /** Takes a copy; resolves to its screen, when it has one. */
   const addItem = async (item: HubItem): Promise<string | null> => {
     try {
       if (item.agent) {

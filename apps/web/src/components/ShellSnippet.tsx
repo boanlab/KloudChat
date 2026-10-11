@@ -4,7 +4,6 @@ import { Button, Tabs } from '@/components/ui'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
 
-/** A command block with a copy button. */
 export function Snippet({ text }: { text: string }) {
   const t = useT()
   const [copied, setCopied] = useState(false)
@@ -40,7 +39,7 @@ const SHELLS: { id: Shell; label: string }[] = [
   { id: 'windows', label: 'Windows' },
 ]
 
-/** The shell the visitor is most likely typing into, from the browser's platform. */
+/** Visitor's likely shell, from the browser platform. */
 function detectShell(): Shell {
   const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent
   if (/Windows/i.test(ua)) return 'windows'
@@ -58,20 +57,14 @@ function initialShell(): Shell {
   return detectShell()
 }
 
-/**
- * Environment-variable assignments for each shell. Linux and macOS both take
- * `export`; Windows is written for PowerShell (`$env:NAME = "value"`).
- */
+/** Env assignments per shell; Windows as PowerShell `$env:NAME = "value"`. */
 export function envCommands(vars: [name: string, value: string][]): Record<Shell, string> {
   const bash = vars.map(([k, v]) => `export ${k}=${v}`).join('\n')
   const powershell = vars.map(([k, v]) => `$env:${k} = "${v}"`).join('\n')
   return { linux: bash, mac: bash, windows: powershell }
 }
 
-/**
- * One snippet per shell behind Linux / macOS / Windows tabs. The tab opens on
- * the visitor's own platform and the last choice is remembered in this browser.
- */
+/** Snippets behind Linux / macOS / Windows tabs; opens on the visitor's platform, remembers the choice. */
 export function ShellSnippet({
   commands,
   note,

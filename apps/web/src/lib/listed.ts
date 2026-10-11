@@ -1,5 +1,4 @@
-/** 숨김: a shipped skill, 서식 or theme kept as a part but not offered in the lists people pick
- *  from (`listed: false` on the row). It still resolves by id everywhere it is already used. */
+/** 숨김: shipped item kept as a part, not offered (`listed: false`); still resolves by id. */
 
 export function isListed(row: { listed?: boolean }): boolean {
   return row.listed !== false

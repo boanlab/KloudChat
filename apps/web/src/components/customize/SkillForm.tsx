@@ -12,7 +12,7 @@ import { blankServer, blankSkill, type SkillDraft } from './formModel'
 import { ToolPicker } from './Pickers'
 import { SkillServerFields } from './SkillServerFields'
 
-/** A monospace editor with line numbers; the numbers scroll with the text. */
+/** Monospace editor; line numbers scroll with the text. */
 export function LineNumberedEditor({
   value,
   onChange,
@@ -27,7 +27,7 @@ export function LineNumberedEditor({
   label: string
   placeholder?: string
   rows?: number
-  /** Set with a visible `<label htmlFor>`; the aria-label then stays off. */
+  /** With a visible `<label htmlFor>`; aria-label off. */
   id?: string
   describedBy?: string
 }) {
@@ -64,21 +64,18 @@ export function LineNumberedEditor({
   )
 }
 
-/**
- * 이름, 설명, one editor for the steps; 「초안」 keeps it out of the composer. 사용 시점 follows the
- * description unless written under 「더 설정하기」. Editing adds the required tools.
- */
+/** Skill form; 「초안」 keeps it out of the composer, 사용 시점 follows the description unless set. */
 export function SkillForm({
   current,
   onSaved,
   onCancel,
   aboveBottomBar = false,
 }: {
-  /** The skill being edited; none creates one. */
+  /** Skill being edited; none creates. */
   current?: Skill
   onSaved: (saved: Skill) => void
   onCancel?: () => void
-  /** A detail screen's phone action bar sits below; the save bar stops above it. */
+  /** Phone action bar below: save bar stops above it. */
   aboveBottomBar?: boolean
 }) {
   const t = useT()
@@ -97,11 +94,10 @@ export function SkillForm({
         }
       : blankSkill(),
   )
-  // What the server runs for it; sent only once changed, so a shipped copy keeps following
-  // its package.
+  // Server-run checks; sent only when changed, so a shipped copy keeps following its package.
   const [server, setServer] = useState(() => current?.server ?? blankServer())
   const [serverDirty, setServerDirty] = useState(false)
-  // 사용 시점 follows the description until someone writes it.
+  // 사용 시점 follows the description until written.
   const [ownWhen, setOwnWhen] = useState(!!current && current.whenToUse !== current.description)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -125,7 +121,7 @@ export function SkillForm({
     setSaving(true)
     setError(null)
     try {
-      // Blank id means create; edits keep fields the form does not cover.
+      // Blank id creates; edits keep fields the form lacks.
       const saved = await upsertSkill({
         id: current?.id ?? '',
         slug: current?.slug ?? '',

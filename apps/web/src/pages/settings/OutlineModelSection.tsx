@@ -6,7 +6,7 @@ import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 import { tokenRate } from '@/lib/utils'
 
-/** Model for the single outline call that plans a document; per-block calls keep the surface model. */
+/** Single outline call that plans a document; per-block calls keep the surface model. */
 export function OutlineModelSection() {
   const t = useT()
   const { governance, loadGovernance, saveGovernance, models, loadModels } = useStore()
@@ -74,7 +74,7 @@ export function OutlineModelSection() {
             }}
           >
             <option value="">{t('화면의 모델을 그대로 사용')}</option>
-            {/* A stored model missing from the catalogue stays selectable so the policy is not misread. */}
+            {/* Stored model missing from the catalogue stays selectable, so the policy is not misread. */}
             {modelId && !planners.some((model) => model.id === modelId) && (
               <option value={modelId}>
                 {modelId} · {t('현재 사용 불가')}

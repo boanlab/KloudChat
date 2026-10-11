@@ -1,6 +1,4 @@
-/**
- * `steps` fence: a numbered procedure, kept as text through every export.
- *
+/** `steps` fence: numbered procedure, text through every export.
  *     ```steps
  *     자료 수집 | 공개 데이터와 내부 로그를 모은다
  *     정제 | 중복과 결측을 걸러낸다
@@ -26,7 +24,7 @@ export function StepList({ source }: { source: string }) {
   )
 }
 
-/** `[left, right]` per line, split on the first `|`; mirrors `report_export._kpi_rows`. Lines without a separator are dropped. */
+/** `[left, right]` split on the first `|` (mirrors `report_export._kpi_rows`); lines without one dropped. */
 export function parse(source: string, limit = 4): [string, string][] {
   return source
     .split('\n')

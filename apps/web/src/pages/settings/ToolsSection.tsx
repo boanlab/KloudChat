@@ -36,7 +36,7 @@ export function ToolsSection({
   const [busy, setBusy] = useState(false)
   const [probes, setProbes] = useState<Partial<Record<Feature['key'], ProbeResult>>>({})
 
-  // Derived values leave their field empty so they read as inherited, not typed.
+  // Derived values left empty: read as inherited, not typed.
   useEffect(() => {
     if (!settings) return
     setBackendUrl(settings.tools.backendBaseUrl)
