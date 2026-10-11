@@ -33,6 +33,24 @@ After changing the agent, use **Versions** → **Publish new version** on the ma
 
 On a chatbot open to people without an account, a new version is also reviewed by an administrator before it answers. Until then the approved version keeps answering, and the new one shows as **Awaiting approval** in the version list. Rolling back to a version that was approved before applies at once.
 
+## Channels: other sites, API, MCP
+
+A chatbot open to people without an account can also be reached through these channels besides its own page. Switch them under **Channels** on the dashboard's **Overview**. Switching one on opens once an administrator approves; switching off applies at once.
+
+| Channel | What it does | Available at |
+|---|---|---|
+| Embed on other sites | Puts the chat on your own sites, such as your institution's homepage | Open to everyone |
+| API | Calls the bot from your service or program, OpenAI-compatible | By link, open to everyone |
+| MCP | Connects the bot as a tool in AI tools such as Claude | By link, open to everyone |
+
+- **Embed on other sites**: list the sites (starting with `https://`, up to 10) and ask. Once approved, paste the one-line embed code before `</body>`: a chat button appears in the corner and opens the chat (full screen on a phone). The chat shows only on approved sites, and inside them it always acts as a visitor without an account.
+- **API and MCP**: on the dashboard's **API** tab, make a key that calls this bot only. A key is shown once, when it is made; keep it then. **Revoke** a key you no longer use and it stops at once.
+  - Call the API at `/api/bots/v1/chat/completions` with the bot's address as `model`. Only checked answers go out, so with `stream` on the answer arrives once it is finished. Cited material is in `kloudchat.citations`.
+  - Connect MCP at `/api/bots/mcp/<bot address>` with the same key; it offers one tool, `ask`.
+  - Questions through a key have per-minute and per-day limits for that key, and the daily credit cap and the bot's own limits still apply.
+- The **API** tab and **Statistics** show questions by channel (bot page, other sites, API, MCP).
+- When an administrator closes the outside audience, or the audience is narrowed, the channels it can no longer carry close with it.
+
 ## What the publisher sees
 
 The management page (**Chatbots** → **Manage** on your chatbot) shows:
@@ -40,6 +58,8 @@ The management page (**Chatbots** → **Manage** on your chatbot) shows:
 - **Statistics**: questions, conversations, visitors, frequent topics, unanswered questions (sentences with personal details masked), 👍👎.
 - **Sent conversations**: only conversations a visitor sent with **Send to the maker**, personal details masked. With **Conversation access** on, conversations after the visitor's consent show too. Turn it on only for chatbots whose conversations are the work itself, such as counselling or complaints.
 - Visitors show as "Visitor ABC123" with only whether they signed in. **Block this visitor** on a sent conversation stops them from asking; unblock them under **Settings** → **Blocked visitors**.
+
+When an administrator reads conversations to check abuse, the date and reason appear under **Administrator reads** on **Overview**.
 
 When a chatbot stops (credits used up, paused by an administrator and so on) or an administrator decides a request, a number appears next to **Chatbots** in the sidebar.
 

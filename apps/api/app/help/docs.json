@@ -17,6 +17,20 @@
 "lang": "ko",
 "path": "admin/bots",
 "title": "공개 챗봇 승인",
+"heading": "채널 요청",
+"text": "외부 공개·링크 공개 챗봇의 공개한 사람은 **다른 사이트에 넣기**, **API**, **MCP** 채널을 요청할 수 있습니다. 요청은 같은 승인 대기 목록에 「채널 요청」으로 보이고, 검토 화면에 요청한 채널과 넣을 사이트 주소가 나옵니다.\n\n- **승인**하면 요청한 채널이 열립니다. 다른 사이트에 넣기는 승인한 사이트 주소에서만 대화창이 보입니다. 사이트를 더하는 것도 다시 승인을 거칩니다.\n- **외부 공개 닫기**는 다른 사이트·API·MCP 채널도 함께 닫습니다. 그 뒤로는 사이트의 대화창, API, MCP 모두 바로 거부됩니다.\n- 열린 채널은 검토 화면 오른쪽 **열린 채널**에서 봅니다."
+},
+{
+"lang": "ko",
+"path": "admin/bots",
+"title": "공개 챗봇 승인",
+"heading": "대화 열람",
+"text": "검토 화면의 **대화 열람**은 남용 신고를 확인할 때만 씁니다. 사유를 적어야 대화 목록과 내용이 열리고, 개인정보는 가려서 보입니다. 열람한 날과 사유는 감사 기록과 공개한 사람의 관리 화면(**관리자 열람 기록**)에 남습니다. API·MCP 키로 온 대화는 「API·MCP 키」로 표시됩니다."
+},
+{
+"lang": "ko",
+"path": "admin/bots",
+"title": "공개 챗봇 승인",
 "heading": "닫기와 중지",
 "text": "| 동작 | 결과 |\n|---|---|\n| 외부 공개 닫기 | 구성원 공개로 돌립니다. 로그인하지 않은 방문자는 다음 요청부터 챗봇을 열 수 없습니다 |\n| 일시 중지 / 다시 열기 | 모든 방문자가 질문할 수 없게 멈추거나 다시 엽니다 |\n| 챗봇 닫기 | 공개한 사람 외에는 아무도 열 수 없습니다 |\n\n모든 동작에는 사유를 적고, 감사 기록에 남습니다. 공개 챗봇의 대화를 남용 확인 목적으로 열람할 때도 사유가 필요하며 기록됩니다."
 },
@@ -367,8 +381,15 @@
 "lang": "ko",
 "path": "chat/bots",
 "title": "챗봇 공개",
+"heading": "채널: 다른 사이트·API·MCP",
+"text": "로그인하지 않은 사람에게도 열린 챗봇은 챗봇 페이지 말고도 다음 채널로 쓸 수 있습니다. 관리 화면 **개요**의 **채널**에서 켜고 끕니다. 켜는 것은 관리자가 승인하면 열리고, 끄는 것은 바로 적용됩니다.\n\n| 채널 | 무엇을 하나 | 쓸 수 있는 공개 범위 |\n|---|---|---|\n| 다른 사이트에 넣기 | 기관 홈페이지 같은 내 사이트에 대화창을 넣습니다 | 외부 공개 |\n| API | 내 서비스나 프로그램에서 OpenAI 호환 방식으로 부릅니다 | 링크 공개, 외부 공개 |\n| MCP | Claude 같은 AI 도구에 이 챗봇을 도구로 연결합니다 | 링크 공개, 외부 공개 |\n\n- **다른 사이트에 넣기**: 넣을 사이트 주소(`https://`로 시작, 최대 10개)를 적어 요청합니다. 승인되면 나오는 삽입 코드 한 줄을 사이트의 `` 앞에 붙이면 오른쪽 아래에 말풍선 버튼이 생기고, 누르면 대화창이 열립니다(휴대전화에서는 전체 화면). 승인된 사이트에서만 대화창이 보입니다. 사이트 안의 대화창은 늘 로그인하지 않은 방문자로 동작합니다.\n- **API·MCP**: 관리 화면 **API** 탭에서 이 챗봇만 부를 수 있는 키를 만듭니다. 키는 만들 때 한 번만 보이니 바로 보관합니다. 쓰지 않는 키는 **폐기**하면 바로 막힙니다.\n  - API는 `/api/bots/v1/chat/completions`에 `model`로 챗봇 주소를 넣어 부릅니다. 검사를 마친 답만 보내므로 `stream`을 켜도 답이 다 만들어진 뒤에 이어서 옵니다. 인용한 자료는 응답의 `kloudchat.citations`에 있습니다.\n  - MCP는 `/api/bots/mcp/<챗봇 주소>`에 같은 키로 연결하고, `ask` 도구 하나를 씁니다.\n  - 키로 부르는 질문은 키마다 분·하루 한도가 있고, 하루 최대 크레딧과 챗봇 전체 한도도 그대로 적용됩니다.\n- **API** 탭과 **통계**에서 채널별 질문 수(챗봇 페이지, 다른 사이트, API, MCP)를 봅니다.\n- 관리자가 외부 공개를 닫거나 공개 범위를 좁히면, 그 범위에서 쓸 수 없는 채널도 함께 닫힙니다."
+},
+{
+"lang": "ko",
+"path": "chat/bots",
+"title": "챗봇 공개",
 "heading": "만든 사람이 보는 것",
-"text": "관리 화면(**챗봇** → 내 챗봇의 **관리**)에는 다음이 보입니다.\n\n- **통계**: 질문 수, 대화 수, 방문자 수, 자주 나온 주제, 답하지 못한 질문(개인정보를 가린 문장), 👍👎.\n- **보낸 대화**: 방문자가 **만든 사람에게 보내기**로 보낸 대화만, 개인정보를 가린 채. **대화 열람**을 켠 챗봇은 방문자가 동의한 뒤의 대화도 보입니다. 상담·민원처럼 대화 기록이 업무인 챗봇에만 켭니다.\n- 방문자는 이름 대신 「방문자 ABC123」처럼 보이고, 로그인했는지만 표시됩니다. 보낸 대화에서 **이 방문자 차단**을 누르면 그 방문자는 더 이상 질문할 수 없습니다. **설정**의 **차단한 방문자**에서 풉니다.\n\n챗봇이 멈추거나(크레딧 소진, 관리자 중지 등) 관리자가 요청을 결정하면 사이드바 **챗봇**에 숫자가 붙습니다."
+"text": "관리 화면(**챗봇** → 내 챗봇의 **관리**)에는 다음이 보입니다.\n\n- **통계**: 질문 수, 대화 수, 방문자 수, 자주 나온 주제, 답하지 못한 질문(개인정보를 가린 문장), 👍👎.\n- **보낸 대화**: 방문자가 **만든 사람에게 보내기**로 보낸 대화만, 개인정보를 가린 채. **대화 열람**을 켠 챗봇은 방문자가 동의한 뒤의 대화도 보입니다. 상담·민원처럼 대화 기록이 업무인 챗봇에만 켭니다.\n- 방문자는 이름 대신 「방문자 ABC123」처럼 보이고, 로그인했는지만 표시됩니다. 보낸 대화에서 **이 방문자 차단**을 누르면 그 방문자는 더 이상 질문할 수 없습니다. **설정**의 **차단한 방문자**에서 풉니다.\n\n관리자가 남용 확인을 위해 대화를 열람하면 **개요**의 **관리자 열람 기록**에 날짜와 사유가 남습니다.\n\n챗봇이 멈추거나(크레딧 소진, 관리자 중지 등) 관리자가 요청을 결정하면 사이드바 **챗봇**에 숫자가 붙습니다."
 },
 {
 "lang": "ko",
@@ -1144,6 +1165,20 @@
 "lang": "en",
 "path": "admin/bots",
 "title": "Approving published chatbots",
+"heading": "Channel requests",
+"text": "The publisher of a chatbot open by link or to everyone can ask for the **Embed on other sites**, **API** and **MCP** channels. A request appears in the same review queue as \"Channel request\", and the review shows the channels and sites asked for.\n\n- **Approve** opens the channels asked for. An embedded chat shows only on the sites you approved; adding a site is reviewed again.\n- **Close to people without an account** closes the embed, API and MCP channels too. From then on the embedded chat, the API and MCP are refused at once.\n- The channels open now are listed under **Open channels** on the review screen."
+},
+{
+"lang": "en",
+"path": "admin/bots",
+"title": "Approving published chatbots",
+"heading": "Reading conversations",
+"text": "**Conversation access** on the review screen is for checking abuse reports only. The list and the conversations open after you give a reason, with personal details masked. The date and reason go to the audit log and to the publisher's dashboard (**Administrator reads**). Conversations through an API or MCP key are marked \"API/MCP key\"."
+},
+{
+"lang": "en",
+"path": "admin/bots",
+"title": "Approving published chatbots",
 "heading": "Closing and pausing",
 "text": "| Action | Result |\n|---|---|\n| Close to people without an account | Returns it to members only. Visitors without an account cannot open it from their next request |\n| Pause / Reopen | Stops or resumes questions from every visitor |\n| Close chatbot | Nobody but the publisher can open it |\n\nEvery action needs a reason and is recorded in the audit log. Reading a published chatbot's conversations for an abuse review also needs a reason and is recorded."
 },
@@ -1494,8 +1529,15 @@
 "lang": "en",
 "path": "chat/bots",
 "title": "Publishing a chatbot",
+"heading": "Channels: other sites, API, MCP",
+"text": "A chatbot open to people without an account can also be reached through these channels besides its own page. Switch them under **Channels** on the dashboard's **Overview**. Switching one on opens once an administrator approves; switching off applies at once.\n\n| Channel | What it does | Available at |\n|---|---|---|\n| Embed on other sites | Puts the chat on your own sites, such as your institution's homepage | Open to everyone |\n| API | Calls the bot from your service or program, OpenAI-compatible | By link, open to everyone |\n| MCP | Connects the bot as a tool in AI tools such as Claude | By link, open to everyone |\n\n- **Embed on other sites**: list the sites (starting with `https://`, up to 10) and ask. Once approved, paste the one-line embed code before ``: a chat button appears in the corner and opens the chat (full screen on a phone). The chat shows only on approved sites, and inside them it always acts as a visitor without an account.\n- **API and MCP**: on the dashboard's **API** tab, make a key that calls this bot only. A key is shown once, when it is made; keep it then. **Revoke** a key you no longer use and it stops at once.\n  - Call the API at `/api/bots/v1/chat/completions` with the bot's address as `model`. Only checked answers go out, so with `stream` on the answer arrives once it is finished. Cited material is in `kloudchat.citations`.\n  - Connect MCP at `/api/bots/mcp/` with the same key; it offers one tool, `ask`.\n  - Questions through a key have per-minute and per-day limits for that key, and the daily credit cap and the bot's own limits still apply.\n- The **API** tab and **Statistics** show questions by channel (bot page, other sites, API, MCP).\n- When an administrator closes the outside audience, or the audience is narrowed, the channels it can no longe"
+},
+{
+"lang": "en",
+"path": "chat/bots",
+"title": "Publishing a chatbot",
 "heading": "What the publisher sees",
-"text": "The management page (**Chatbots** → **Manage** on your chatbot) shows:\n\n- **Statistics**: questions, conversations, visitors, frequent topics, unanswered questions (sentences with personal details masked), 👍👎.\n- **Sent conversations**: only conversations a visitor sent with **Send to the maker**, personal details masked. With **Conversation access** on, conversations after the visitor's consent show too. Turn it on only for chatbots whose conversations are the work itself, such as counselling or complaints.\n- Visitors show as \"Visitor ABC123\" with only whether they signed in. **Block this visitor** on a sent conversation stops them from asking; unblock them under **Settings** → **Blocked visitors**.\n\nWhen a chatbot stops (credits used up, paused by an administrator and so on) or an administrator decides a request, a number appears next to **Chatbots** in the sidebar."
+"text": "The management page (**Chatbots** → **Manage** on your chatbot) shows:\n\n- **Statistics**: questions, conversations, visitors, frequent topics, unanswered questions (sentences with personal details masked), 👍👎.\n- **Sent conversations**: only conversations a visitor sent with **Send to the maker**, personal details masked. With **Conversation access** on, conversations after the visitor's consent show too. Turn it on only for chatbots whose conversations are the work itself, such as counselling or complaints.\n- Visitors show as \"Visitor ABC123\" with only whether they signed in. **Block this visitor** on a sent conversation stops them from asking; unblock them under **Settings** → **Blocked visitors**.\n\nWhen an administrator reads conversations to check abuse, the date and reason appear under **Administrator reads** on **Overview**.\n\nWhen a chatbot stops (credits used up, paused by an administrator and so on) or an administrator decides a request, a number appears next to **Chatbots** in the sidebar."
 },
 {
 "lang": "en",

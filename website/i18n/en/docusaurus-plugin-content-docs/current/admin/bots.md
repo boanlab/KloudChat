@@ -18,6 +18,18 @@ Opening a request shows the version that would answer once approved:
 
 When a new version arrives on a chatbot open to people without an account, it is reviewed the same way. Until approved, the approved version answers.
 
+## Channel requests
+
+The publisher of a chatbot open by link or to everyone can ask for the **Embed on other sites**, **API** and **MCP** channels. A request appears in the same review queue as "Channel request", and the review shows the channels and sites asked for.
+
+- **Approve** opens the channels asked for. An embedded chat shows only on the sites you approved; adding a site is reviewed again.
+- **Close to people without an account** closes the embed, API and MCP channels too. From then on the embedded chat, the API and MCP are refused at once.
+- The channels open now are listed under **Open channels** on the review screen.
+
+## Reading conversations
+
+**Conversation access** on the review screen is for checking abuse reports only. The list and the conversations open after you give a reason, with personal details masked. The date and reason go to the audit log and to the publisher's dashboard (**Administrator reads**). Conversations through an API or MCP key are marked "API/MCP key".
+
 ## Closing and pausing
 
 | Action | Result |
