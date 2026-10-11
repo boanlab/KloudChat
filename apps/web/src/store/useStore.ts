@@ -1158,44 +1158,29 @@ export const useStore = create<State>((set, get) => ({
       const epoch = ++workspaceEpoch
       // Artifacts load through their own (deduplicated) action.
       void get().loadArtifacts({})
+      // Each list is shown as soon as it arrives: the slowest one (a busy connector
+      // catalogue) used to hold back the agent list in the composer's menu for 15~45 s.
+      const fresh = () => epoch === workspaceEpoch
+      const each = <T,>(load: Promise<T>, apply: (value: T) => Partial<State>) =>
+        load.then((value) => {
+          if (fresh()) set(apply(value))
+        })
       const results = await Promise.allSettled([
-        projectsApi.list(),
-        skillsApi.list(),
-        designsApi.list(),
-        designTemplatesApi.list(),
-        memoryApi.list(),
-        agentsApi.list(),
-        connectorsApi.list(),
-        connectorsApi.catalog(),
-        toolsApi.list(),
+        each(agentsApi.list(), (rows) => ({ agents: rows.map(toAgent) })),
+        each(projectsApi.list(), (rows) => ({ projects: rows.map(toProject) })),
+        each(skillsApi.list(), (rows) => ({ skills: rows.map(toSkill) })),
+        each(designsApi.list(), (rows) => ({ designs: rows })),
+        each(designTemplatesApi.list(), (rows) => ({ designTemplates: rows })),
+        each(memoryApi.list(), (rows) => ({ memories: rows.map(toMemory) })),
+        each(connectorsApi.list(), (rows) => ({ connectors: rows.map(toConnector) })),
+        each(connectorsApi.catalog(), (rows) => ({ connectorCatalog: rows })),
+        each(toolsApi.list(), (rows) => ({ availableTools: rows })),
       ])
-      const [
-        projects,
-        skills,
-        designs,
-        designTemplates,
-        memories,
-        agents,
-        connectors,
-        catalog,
-        tools,
-      ] = results
-      if (epoch !== workspaceEpoch) return
-      set((s) => ({
+      if (!fresh()) return
+      set({
         workspaceLoading: false,
         workspaceFailed: results.some((r) => r.status === 'rejected'),
-        projects: projects.status === 'fulfilled' ? projects.value.map(toProject) : s.projects,
-        skills: skills.status === 'fulfilled' ? skills.value.map(toSkill) : s.skills,
-        designs: designs.status === 'fulfilled' ? designs.value : s.designs,
-        designTemplates:
-          designTemplates.status === 'fulfilled' ? designTemplates.value : s.designTemplates,
-        availableTools: tools.status === 'fulfilled' ? tools.value : s.availableTools,
-        memories: memories.status === 'fulfilled' ? memories.value.map(toMemory) : s.memories,
-        agents: agents.status === 'fulfilled' ? agents.value.map(toAgent) : s.agents,
-        connectors:
-          connectors.status === 'fulfilled' ? connectors.value.map(toConnector) : s.connectors,
-        connectorCatalog: catalog.status === 'fulfilled' ? catalog.value : s.connectorCatalog,
-      }))
+      })
     }
     workspaceLoad = fetchWorkspace().finally(() => {
       workspaceLoad = null
