@@ -453,6 +453,12 @@ def material_complete(request: str, format_id: str | None, *, has_files: bool = 
         return False
     named = (format_id or "") in _MATERIAL_FORMATS or bool(
         _GRANT_APPLICATION.search(lead_instruction(request)))
+    if (format_id or "") == "comparison" and not named:
+        # A comparison whose options come priced in the request or its files is decided on
+        # them: a search turned S10's 「정보보호 인증(ISMS)」 into ISMS-P with a made-up gloss
+        # (quality Q7). Options named with nothing about them are still looked up.
+        priced = len(_MONEY.findall(request)) >= 2
+        return has_files or (priced and _carries_material(request))
     return named and (has_files or _carries_material(request))
 
 
