@@ -12,6 +12,8 @@ An agent is an assistant with a role, instructions, tools, and material already 
 
 **+** → **Agents** in the composer and **Run** in the agent list both start a new conversation with that agent.
 
+Jobs such as minutes or a bullet-point report have no menu of their own; they are agents. For minutes, choose **+** → **Agents** → **회의록** (Minutes) in the composer, attach or paste the recording transcript or notes, and send 「회의록으로 정리해 주세요」.
+
 - The first screen of the conversation shows the agent's **How to use** text and its **opening prompts**, up to six of them. Select an opening prompt to send it as it is.
 - An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.
 - Within the same project, other conversations reference the conclusions that the agent left through **Shared notes**.
