@@ -629,8 +629,7 @@ test('the publishing screens read in English', async ({ page }, testInfo) => {
 
   await page.goto(`/customize/agents/${AGENT}`)
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: 'Show more' }).first().click()
-  await page.getByRole('menuitem', { name: 'Publish as a chatbot' }).click()
+  await page.getByRole('button', { name: 'Publish as a chatbot' }).filter({ visible: true }).first().click()
   const dialog = page.getByRole('dialog', { name: 'Publish as a chatbot' })
   await expect(dialog.getByTestId('publish-model')).toBeVisible()
   await dialog.getByRole('radio', { name: /Anyone with the link/ }).click()
