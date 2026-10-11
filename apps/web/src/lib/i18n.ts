@@ -9,6 +9,17 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // 입력 확인 · 필수 칸
+  '표시는 꼭 채워야 하는 칸입니다.': 'marks a field that must be filled.',
+  '{field}{을} 입력하세요.': 'Enter {field}{을}.',
+  '질문은 {n}자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.': 'A question can be up to {n} characters. Attach longer material with "Attach files or photos".',
+  '비밀번호는 {n}자 이상이어야 합니다.': 'The password must be at least {n} characters.',
+  '{field}{은} {n}자 이상이어야 합니다.': '{field}{은} must be at least {n} characters.',
+  '{field}{은} {n}자까지 쓸 수 있습니다.': '{field}{은} can be up to {n} characters.',
+  '이메일 주소 형식이 올바르지 않습니다.': 'That is not a valid email address.',
+  '{field} 값을 확인하세요.': 'Check the {field}.',
+  '입력한 값을 확인하세요.': 'Check what you entered.',
+  '제목': 'Title',
   // 공개 챗봇 · 규정·업무 안내
   // 공개 챗봇 채널 · 키 · 관리자 열람
   'API·MCP 채널이 아직 열리지 않았습니다. 개요의 채널에서 켜고 관리자 승인을 받으면 아래 키로 부를 수 있습니다. 키는 미리 만들어 둘 수 있습니다.': 'The API and MCP channels are not open yet. Switch them on under Channels in Overview; once an administrator approves, call the bot with a key below. You can make keys ahead of time.',

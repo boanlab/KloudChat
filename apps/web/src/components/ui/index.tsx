@@ -6,12 +6,12 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useId,
   useState,
   type AnchorHTMLAttributes,
   type ButtonHTMLAttributes,
   type ComponentProps,
   type ReactNode,
-  type TextareaHTMLAttributes,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
@@ -85,29 +85,58 @@ export function ButtonLink({
 
 const fieldBase =
   'w-full rounded-control border border-line bg-panel px-3 py-2 text-base text-fg placeholder:text-faint ' +
-  'transition-colors focus:border-accent focus:outline-none'
+  'transition-colors focus:border-accent focus:outline-none ' +
+  // A control that cannot take input must not look like one that can.
+  'disabled:cursor-not-allowed disabled:bg-elevated disabled:opacity-60 ' +
+  'aria-invalid:border-danger'
+
+/**
+ * What the enclosing `Field` tells its control: the hint and error to describe it with, and
+ * whether it is required or refused. Read by `Input`, `Textarea` and `Select`, so a form need
+ * not wire `aria-describedby` by hand.
+ */
+interface FieldState {
+  describedBy?: string
+  invalid: boolean
+  required: boolean
+}
+const FieldCtx = createContext<FieldState | null>(null)
+
+/** The ARIA a control inside a `Field` carries; its own props win. */
+function useFieldAria(props: {
+  'aria-describedby'?: string
+  'aria-invalid'?: boolean | 'true' | 'false' | 'grammar' | 'spelling'
+  'aria-required'?: boolean | 'true' | 'false'
+}) {
+  const field = useContext(FieldCtx)
+  if (!field) return {}
+  return {
+    'aria-describedby': props['aria-describedby'] ?? field.describedBy,
+    'aria-invalid': props['aria-invalid'] ?? (field.invalid || undefined),
+    'aria-required': props['aria-required'] ?? (field.required || undefined),
+  }
+}
 
 // `ComponentProps` carries `ref`.
 export function Input({ className, ...props }: ComponentProps<'input'>) {
-  return <input className={cn(fieldBase, 'h-9', className)} {...props} />
+  const aria = useFieldAria(props)
+  return <input className={cn(fieldBase, 'h-9', className)} {...props} {...aria} />
 }
 
-export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn(fieldBase, 'resize-y leading-relaxed', className)} {...props} />
+export function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
+  const aria = useFieldAria(props)
+  return <textarea className={cn(fieldBase, 'resize-y leading-relaxed', className)} {...props} {...aria} />
 }
 
 /** Native `<select>` styled like `Input`; only the chrome is replaced. */
 export function Select({ className, children, ...props }: ComponentProps<'select'>) {
+  const aria = useFieldAria(props)
   return (
     <div className="relative">
       <select
-        className={cn(
-          fieldBase,
-          'h-9 cursor-pointer appearance-none pr-9',
-          'disabled:cursor-not-allowed disabled:opacity-60',
-          className,
-        )}
+        className={cn(fieldBase, 'h-9 cursor-pointer appearance-none pr-9', className)}
         {...props}
+        {...aria}
       >
         {children}
       </select>
@@ -120,31 +149,67 @@ export function Select({ className, children, ...props }: ComponentProps<'select
   )
 }
 
+/**
+ * A labelled control. The label alone names it; the hint and the error describe it
+ * (`aria-describedby`), so a screen reader hears the name first and the advice after.
+ */
 export function Field({
   label,
   hint,
+  error,
   children,
   required = false,
+  className,
 }: {
   label: string
-  hint?: string
+  hint?: ReactNode
+  /** Why the value was refused: shown under the control, announced, and marks it invalid. */
+  error?: string | null
   children: ReactNode
   /** Marks the field as one that must be filled (a red *, left out of the name read aloud). */
   required?: boolean
+  className?: string
 }) {
+  const id = useId()
+  const hintId = hint ? `${id}-hint` : undefined
+  const errorId = error ? `${id}-error` : undefined
+  const describedBy = [errorId, hintId].filter(Boolean).join(' ') || undefined
   return (
-    <label className="block space-y-1.5">
-      <span className="text-base font-medium text-fg">
-        {label}
-        {required && (
-          <span aria-hidden className="ml-0.5 text-danger">
-            *
+    <FieldCtx.Provider value={{ describedBy, invalid: Boolean(error), required }}>
+      <div className={cn('space-y-1.5', className)}>
+        <label className="block space-y-1.5">
+          <span className="block text-base font-medium text-fg">
+            {label}
+            {required && (
+              <span aria-hidden className="ml-0.5 text-danger">
+                *
+              </span>
+            )}
           </span>
+          {children}
+        </label>
+        {error && (
+          <p id={errorId} role="alert" className="text-sm text-danger">
+            {error}
+          </p>
         )}
-      </span>
-      {children}
-      {hint && <span className="block text-sm text-faint">{hint}</span>}
-    </label>
+        {hint && (
+          <div id={hintId} className="text-sm text-faint">
+            {hint}
+          </div>
+        )}
+      </div>
+    </FieldCtx.Provider>
+  )
+}
+
+/** The note a form with required fields carries once, above its fields. */
+export function RequiredNote() {
+  const t = useT()
+  return (
+    <p className="text-sm text-muted">
+      <span aria-hidden className="text-danger">*</span> {t('표시는 꼭 채워야 하는 칸입니다.')}
+    </p>
   )
 }
 
@@ -278,8 +343,15 @@ export function Modal({
     if (!open) return
     returnTo.current = document.activeElement as HTMLElement | null
     const panel = panelRef.current
+    // The first thing to fill, not the title bar's 닫기: a control marked `autofocus`, else the
+    // first one in the body or footer, else the close button.
+    const marked = panel?.querySelector<HTMLElement>('[data-autofocus], [autofocus]')
+    const inBody = panel?.querySelector<HTMLElement>(
+      ':scope > [data-modal-body] :is(input, textarea, select):not([disabled]):not([type="hidden"])',
+    )
     const first = panel?.querySelector<HTMLElement>(FOCUSABLE)
-    ;(first ?? panel)?.focus()
+    // A child's own `autoFocus` already ran during commit; keep it.
+    if (!panel?.contains(document.activeElement)) (marked ?? inBody ?? first ?? panel)?.focus()
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -327,13 +399,17 @@ export function Modal({
         {!bare && <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 max-sm:px-3 max-sm:py-3">
           <div className="min-w-0 flex-1">
             <h2 className="truncate whitespace-nowrap text-md font-semibold" title={title}>{title}</h2>
-            {description && <p className="mt-0.5 truncate whitespace-nowrap text-base text-muted" title={description}>{description}</p>}
+            {description && <p className="mt-0.5 line-clamp-2 text-base text-muted" title={description}>{description}</p>}
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('닫기')}>
             <X size={16} />
           </Button>
         </header>}
-        {children && <div className={bare ? 'min-w-0' : 'min-w-0 space-y-4 px-5 py-4 max-sm:px-3'}>{children}</div>}
+        {children && (
+          <div data-modal-body className={bare ? 'min-w-0' : 'min-w-0 space-y-4 px-5 py-4 max-sm:px-3'}>
+            {children}
+          </div>
+        )}
         {footer && (
           <footer className="flex flex-wrap justify-end gap-2 border-t border-line px-5 py-3.5 max-sm:px-3 max-sm:py-3">
             {footer}

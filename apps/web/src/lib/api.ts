@@ -53,6 +53,9 @@ import type {
   User,
 } from '@/types'
 
+import { objectParticle, topicParticle } from './formCheck'
+import { currentLang, currentLocale, translate } from './i18n'
+
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
 /**
@@ -81,6 +84,11 @@ export class ApiError extends Error {
 
 /** Shape of a machine code (`not_found`, `http_502`): a sentence for a reader has spaces or is Korean. */
 const MACHINE_CODE = /^[a-z][a-z0-9_]*$/
+
+/** Whether `detail` is a sentence meant for a reader rather than a machine code. */
+export function isSentence(detail: string | null | undefined): detail is string {
+  return Boolean(detail) && !MACHINE_CODE.test(detail as string)
+}
 
 /** The machine code behind a failure, or `''`. */
 export function errorCode(err: unknown): string {
@@ -143,13 +151,72 @@ export class PrivacyDecisionError extends ApiError {
   }
 }
 
+/** One entry of FastAPI's 422 `detail` array. */
+interface FieldProblem {
+  type?: string
+  loc?: (string | number)[]
+  msg?: string
+  ctx?: { min_length?: number; max_length?: number; ge?: number; le?: number }
+}
+
+/** What a field is called on screen, by the wire name the server refused. */
+const FIELD_NAMES: Record<string, string> = {
+  content: '질문',
+  password: '비밀번호',
+  newPassword: '비밀번호',
+  currentPassword: '현재 비밀번호',
+  email: '이메일',
+  name: '이름',
+  title: '제목',
+  description: '설명',
+  url: '주소',
+  monthlyCredits: '월 크레딧',
+}
+
+/**
+ * A Korean sentence for a refused form, from the first field problem. The validator's own
+ * English (「String should have at most 200000 characters」) never reaches the screen.
+ */
+export function validationMessage(problems: FieldProblem[]): string {
+  const first = problems[0] ?? {}
+  const wire = String([...(first.loc ?? [])].reverse().find((part) => typeof part === 'string' && part !== 'body') ?? '')
+  const field = FIELD_NAMES[wire]
+  const lang = currentLang()
+  const max = first.ctx?.max_length
+  const min = first.ctx?.min_length
+  const number = (n: number) => n.toLocaleString(currentLocale())
+  if (wire === 'content' && first.type === 'string_too_long' && max) {
+    return translate(lang, '질문은 {n}자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.')
+      .replace('{n}', number(max))
+  }
+  if (field === '비밀번호' && first.type === 'string_too_short' && min) {
+    return translate(lang, '비밀번호는 {n}자 이상이어야 합니다.').replace('{n}', number(min))
+  }
+  /** `template` with the field's name, its particle (Korean only) and `n` filled in. */
+  const say = (template: string, particle: (word: string) => string, n = 0) =>
+    translate(lang, template)
+      .replace('{field}', translate(lang, field ?? ''))
+      .replace(/\{[을은]\}/, lang === 'ko' && field ? particle(field) : '')
+      .replace('{n}', number(n))
+  if (field && first.type === 'string_too_short' && min === 1) return say('{field}{을} 입력하세요.', objectParticle)
+  if (field && first.type === 'string_too_short' && min) return say('{field}{은} {n}자 이상이어야 합니다.', topicParticle, min)
+  if (field && first.type === 'string_too_long' && max) return say('{field}{은} {n}자까지 쓸 수 있습니다.', topicParticle, max)
+  if (wire === 'email' || (first.type === 'value_error' && /email/i.test(first.msg ?? ''))) {
+    return translate(lang, '이메일 주소 형식이 올바르지 않습니다.')
+  }
+  if (field) {
+    return translate(lang, '{field} 값을 확인하세요.').replace('{field}', translate(lang, field))
+  }
+  return translate(lang, '입력한 값을 확인하세요.')
+}
+
 async function readDetail(res: Response): Promise<string> {
   try {
     const body = await res.json()
     // FastAPI: a string in `detail` for explicit raises, an array of field
     // errors for validation failures.
     if (typeof body?.detail === 'string') return body.detail
-    if (Array.isArray(body?.detail)) return body.detail[0]?.msg ?? 'invalid_request'
+    if (Array.isArray(body?.detail)) return validationMessage(body.detail as FieldProblem[])
     // A refused order of steps (`invalid_pipeline`): its first problem, already a sentence.
     const problem = body?.detail?.problems?.[0]?.message
     if (typeof problem === 'string' && problem) return problem
@@ -388,6 +455,10 @@ export const authConfig = {
       idleTimeoutMinutes: number
       /** What the signup form should say before somebody is refused. */
       signup: { mode: 'open' | 'approval' | 'closed'; domains: string[]; emailVerification: boolean }
+      /** The rule every password form enforces; absent from an older server. */
+      password?: { minLength: number }
+      /** Wrong passwords in a row that lock an address, and for how long. */
+      login?: { maxFailures: number; lockoutMinutes: number }
     }>('/auth/config'),
   forgotPassword: (email: string) => call<void>('/auth/password/forgot', body({ email })),
   resetPassword: (token: string, newPassword: string) =>
@@ -2057,7 +2128,7 @@ async function* postStream(
         if (payload.code === 'privacy_decision_required') throw new PrivacyDecisionError(payload)
         if (typeof payload.detail === 'string') detail = payload.detail
         else if (Array.isArray(payload.detail)) {
-          detail = (payload.detail[0] as { msg?: string } | undefined)?.msg ?? 'invalid_request'
+          detail = validationMessage(payload.detail as FieldProblem[])
         }
       } catch (error) {
         if (error instanceof PrivacyDecisionError) throw error
