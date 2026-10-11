@@ -386,6 +386,8 @@ class Outline(Base):
         )
         if fixed:
             headings = fixed
+        # A fixed outline of one or two sections (a 서식's 「본문」) is the person's own shape.
+        least = 1 if (wanted or fixed) else report._MIN_SECTIONS
         headings = [
             report.without_instruction_aside(h, request)
             for h in report.with_listed_sections(headings, request)
@@ -431,9 +433,9 @@ class Outline(Base):
                         report.without_instruction_aside(h, request)
                         for h in report.with_listed_sections(json_headings, request)
                     ]
-                    if len(json_headings) >= (1 if wanted else report._MIN_SECTIONS):
+                    if len(json_headings) >= least:
                         title, headings, text = json_title or title, json_headings, json_text
-        if len(headings) < (1 if wanted else report._MIN_SECTIONS):
+        if len(headings) < least:
             # One more ask before giving up: an outline that came back cut off or in another
             # shape is usually fine the second time.
             log.warning("report outline too short (%d), asking again: %r", len(headings),
@@ -454,7 +456,7 @@ class Outline(Base):
                 ]
                 if len(again_headings) > len(headings):
                     title, headings, text = again_title or title, again_headings, again_text
-        if len(headings) < (1 if wanted else report._MIN_SECTIONS):
+        if len(headings) < least:
             log.warning("report outline too short (%d): %r", len(headings), text[:1500])
             yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}
             yield {

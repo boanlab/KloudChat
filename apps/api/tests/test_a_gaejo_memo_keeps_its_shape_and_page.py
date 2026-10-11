@@ -104,3 +104,20 @@ async def test_a_condense_round_that_loses_a_number_is_dropped_whole():
                                        model="m", api_key="k")
     assert out == sections
     assert report_checks.CONDENSE_ROUNDS == 2
+
+
+async def test_a_fixed_outline_of_one_section_is_offered_not_refused(monkeypatch):
+    # Quality lane Q10: a person's 서식 with `fixed_outline` and sections 「본문」 ended every run
+    # in 「보고서 개요를 만들지 못했습니다」 (the outline floor of three sections).
+    async def complete(model, messages, api_key, max_tokens, **kwargs):
+        return json.dumps({"title": "협조 요청", "sections": ["본문"]}, ensure_ascii=False), {
+            "inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(report, "_complete", complete)
+    events = [e async for e in report.write(
+        request="각 학과에 보낼 협조 요청 공문을 써 줘.", model="m", api_key="k", web_search=False,
+        may_ask=False, process={"fixed_outline": True, "structure": {"sections": ["본문"]}},
+    )]
+    assert not any(e["type"] == "error" for e in events)
+    plan = next(e["plan"] for e in events if e["type"] == "proposal")
+    assert plan["sections"] == ["본문"]

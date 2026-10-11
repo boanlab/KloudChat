@@ -7337,6 +7337,23 @@ def _report_turn(*, user_id: str, model: dict, outline_model: dict | None,
     }
 
 
+async def _mark_unanswered(session_id: str) -> None:
+    """The latest question with no answer after it carries the failure, so a reload shows
+    the turn ended without a document (and offers the retry) instead of nothing at all."""
+    try:
+        async with SessionLocal() as db:
+            last = (await db.exec(
+                select(Message).where(Message.session_id == session_id)
+                .order_by(col(Message.created_at).desc()).limit(1)
+            )).first()
+            if last is not None and last.role is Role.user and last.failure is None:
+                last.failure = TurnFailure.no_answer
+                db.add(last)
+                await db.commit()
+    except Exception:  # noqa: BLE001 — the stream has already said it failed
+        log.exception("could not mark the unanswered report turn in session %s", session_id)
+
+
 async def _report_tail(work: PipelineBundle | None, *, recorder: pipeline_runs.Recorder | None,
                        session_id: str, user_id: str, usage: dict, parent: Any = None,
                        from_stage: str | None = None) -> AsyncIterator[str]:
@@ -7357,6 +7374,7 @@ async def _report_tail(work: PipelineBundle | None, *, recorder: pipeline_runs.R
             "보고서 본문을 쓰지 못했습니다. 다시 시도하거나 다른 모델을 골라 주세요.",
             code="empty_report",
         ))
+        await _mark_unanswered(session_id)
     credits = int(saved.get("credits") or 0)
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
     yield chat_service.sse({"type": "done"})
