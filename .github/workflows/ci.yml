@@ -116,6 +116,9 @@ jobs:
       - name: Test 공개 챗봇 (publish dialog, bot page, dashboard, members' list)
         run: npx playwright test --config playwright.publishing.config.ts --workers=1
 
+      - name: Test 글자 읽기 (scanned attachment progress, admin OCR card)
+        run: npx playwright test --config playwright.ocr.config.ts --workers=1
+
   api:
     name: API · lint, tests
     runs-on: ubuntu-latest
