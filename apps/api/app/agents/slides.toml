@@ -1,5 +1,4 @@
-# 발표 자료 — a new lineup agent (2026-10). Ships as a draft: offered only to the catalogue
-# owner until it passes the lineup evaluation, then `draft` is removed. Slides run the deck
+# 발표 자료 — a draft (`draft`): offered only to the catalogue owner. Slides run the deck
 # flow (`app/pipelines/deck.toml`): no 추가로 할 일 and no 직접 구성.
 
 key = "slides"

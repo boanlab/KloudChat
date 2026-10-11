@@ -1575,7 +1575,7 @@ async def _conversation_summary(
     through = str(cached.get("through") or "")
     previous = str(cached.get("text") or "") or None
     if previous and through == rows[-1].id:
-        # The cache was written under an earlier policy; today's masking applies to it.
+        # The cache may predate the current policy; current masking applies to it.
         return (masker(previous)[0] if masker else previous), 0
     covered = next((i for i, row in enumerate(rows) if row.id == through), None)
     if previous is None or covered is None:
@@ -2436,8 +2436,8 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
         )
     moved_project = "project_id" in changes and changes["project_id"] != session.project_id
     if changes.get("title") is not None:
-        # Theirs from now on: the document's title no longer renames the conversation.
-        # Clearing the name hands it back to the document.
+        # A title set here sticks: the document's title stops renaming the conversation.
+        # Clearing it hands the name back to the document.
         changes["title"] = " ".join(changes["title"].split())[:200]
         changes["title_set_by_user"] = bool(changes["title"])
     else:
@@ -2590,7 +2590,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         db.add(user)
         await db.commit()
     base_url, api_key = await litellm_service.credentials_for(user)
-    # Image 서식 are retired; a client that still names one draws a plain picture.
+    # A retired image 서식 draws a plain picture; any other id is refused.
     if payload.template_id and not design_templates.is_retired_media(payload.template_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
@@ -4873,10 +4873,9 @@ async def send_message(
         and not preflight_tool
         and "search_knowledge" in tool_names
     ):
-        # An agent's material reaches the model only through `search_knowledge`, and a
-        # model left to choose answered from memory instead (a bot said 연체료 하루 100원
-        # where its FAQ says there is none). The server searches with the question first,
-        # as it does a forced web search; the model may search again in other words.
+        # An agent's material reaches the model only through `search_knowledge`, which a
+        # model left to choose may skip and answer from memory. The server searches with the
+        # question first, as for a forced web search; the model may search again.
         preset_call = ("search_knowledge", {"query": content})
         contact = agent_row.contact.strip() if agent_row is not None else ""
         if published is not None:

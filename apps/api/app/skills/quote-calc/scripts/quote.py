@@ -262,7 +262,7 @@ def table(result: dict) -> str:
         rows.append(f"| {line['name']} | {line['qty']} | {line['unit']} | {price} | {line['amount']:,} | {note} |")
     if result["discount"]:
         rows.append(f"| 할인 |  |  |  | -{result['discount']:,} |  |")
-    # Every amount names its VAT basis: a bare 「총액」 was read as VAT included (client-proposal-3).
+    # Every amount names its VAT basis; a bare 「총액」 reads as VAT included.
     rows.append(f"| 공급가액(VAT 별도) |  |  |  | {result['supply']:,} |  |")
     rows.append(f"| 부가세(10%) |  |  |  | {result['vat']:,} | 원 미만 절사 |")
     rows.append(f"| 합계(VAT 포함) |  |  |  | {result['total']:,} |  |")

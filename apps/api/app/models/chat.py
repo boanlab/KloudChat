@@ -166,8 +166,7 @@ class Message(SQLModel, table=True):
     #: only: artifacts are versioned and deleted on their own.
     artifact_ids: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
-    #: Legacy: the retired 시작점 an old turn began from, `{"templateId", "title"}`.
-    #: No longer written; kept so old transcripts still name it.
+    #: Retired 시작점 a turn began from, `{"templateId", "title"}`; read only, never written.
     started_from: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
     model: str | None = Field(default=None)

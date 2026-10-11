@@ -110,8 +110,8 @@ def pipelines() -> dict[str, Pipeline]:
     return out
 
 
-#: Pipelines folded into `report` (their stages and options are 진행 과정 설정 now) and
-#: `chat`: a run stored under one of these names reruns on what it became.
+#: Retired pipeline names a stored run may carry; such a run reruns on `report` (plus
+#: `chat`'s finish), whose 진행 과정 설정 hold their stages and options.
 LEGACY = ("gaejo-report", "minutes", "comparison-report", "dated", "career-docs",
           "client-proposal", "data-analysis")
 

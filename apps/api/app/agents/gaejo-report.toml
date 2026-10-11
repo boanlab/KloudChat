@@ -1,9 +1,9 @@
-# 개조식 보고 (formerly 개조식 보고서, then 요약·정리) — specs: lineup v1 `gaejo-report`.
+# 개조식 보고.
 
 key = "gaejo-report"
 order = 1
 name = "개조식 보고"
-# Earlier shipped names: an untouched copy still wearing one is renamed on sync.
+# Names an untouched copy may still carry; renamed on sync.
 former_names = ["개조식 보고서", "요약·정리"]
 description = "긴 메모·메일·회의 내용을 윗사람이 한 장에서 판단할 개조식 요약 보고(□ ○ - ㆍ)로 정리할 때"
 kinds = ["report"]

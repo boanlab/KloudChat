@@ -592,11 +592,7 @@ class ConnectorCredential(SQLModel, table=True):
 
 
 class Template(SQLModel, table=True):
-    """Legacy: a user-authored 시작점 (starting point), optionally carrying a form file.
-
-    The feature is retired; nothing reads or writes this table. The model stays so
-    the schema and existing rows are kept until a migration decides their fate.
-    """
+    """Retired user-authored 시작점 with an optional form file; unread, kept for its rows."""
 
     __tablename__ = "templates"
 
@@ -728,7 +724,7 @@ class UserPipeline(SQLModel, table=True):
     base: str | None = Field(default=None)
     origin_id: str | None = Field(default=None, index=True)
     #: The agent whose own 진행 과정 this is (`PUT /agents/{id}/process`); its `@self` steps run
-    #: that agent. Null for a pipeline composed on its own (the earlier 워크플로).
+    #: that agent. Null for a standalone pipeline (워크플로).
     agent_id: str | None = Field(default=None, index=True)
     #: "" for a pipeline; `bundle` for a person's own 묶음 (`services/bundles.py`), whose
     #: stages are the items an agent form ticks.

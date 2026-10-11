@@ -55,7 +55,7 @@ class Wait(Stop):
         self.evidence = dict(evidence or {})
 
 
-#: Words a record's legacy label adds for a status other than done.
+#: Words the `step` label adds for a status other than done.
 STATUS_WORDS = {"skipped": "해당 없음", "stopped": "멈춤", "failed": "실패", "waiting": "답 기다림",
                 "cancelled": "중단"}
 
@@ -108,8 +108,8 @@ class StepRecord:
         return out
 
     def wire(self) -> dict[str, Any]:
-        """The record as a surface `step` event (status `done` or `error`), in the shape the
-        surface has always read; `stage` carries the whole record."""
+        """The record as a surface `step` event (status `done` or `error`); `stage` carries
+        the whole record."""
         name = self.label or self.stage
         if self.status == "done":
             label = f"{name} · {self.summary}" if self.summary else name

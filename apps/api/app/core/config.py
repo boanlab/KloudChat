@@ -186,8 +186,7 @@ class Settings(BaseSettings):
     web_search_scrape: int = 3
     # Names conversations, extracts memories and writes the running summary of a long
     # conversation. Empty falls back to the session's own model; a strict-local turn always
-    # uses its own. Flash: the summary kept 8.5 of 11 key facts against the 27B's 6.5, titles
-    # and memories came out the same, and it keeps this side work off the chat model's node.
+    # uses its own. Flash keeps this side work off the chat model's node.
     title_model: str = "local/qwen3.8-flash"
     #: Conversation model when the user has not chosen one; absent from the
     #: catalogue, the surface falls back to its cheapest. `local/`, not

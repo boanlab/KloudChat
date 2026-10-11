@@ -1,9 +1,9 @@
-# 자료 추출·집계 (formerly 데이터 분석) — specs: lineup v1 `data-analysis`.
+# 자료 추출·집계.
 
 key = "data-analysis"
 order = 3
 name = "자료 추출·집계"
-# Earlier shipped names: an untouched copy still wearing one is renamed on sync.
+# Names an untouched copy may still carry; renamed on sync.
 former_names = ["데이터 분석"]
 description = "내부 엑셀·CSV에서 정한 열을 뽑아 모으고 항목별로 집계한 표와, 지우거나 바꾼 행의 변경 내역이 필요할 때"
 kinds = ["chat"]

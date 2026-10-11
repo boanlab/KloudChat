@@ -36,7 +36,7 @@ class MessageOut(Wire):
     artifact_ids: list | None = None
     #: The version of `artifact_ids[0]` this turn wrote, from its pipeline run; null when unknown.
     artifact_version: int | None = None
-    #: Legacy: the retired 시작점 an old turn began from, as `{templateId, title}`.
+    #: Retired 시작점 a turn began from, as `{templateId, title}`; read only.
     started_from: dict | None = None
     rating: MessageRating | None = None
     #: How the turn ended when it did not end in an answer.
@@ -61,7 +61,7 @@ class ImageRequest(Wire):
     model: str | None = None
     aspect: str = "1:1"
     style: str = ""
-    #: A retired image 서식 an older client may still name; ignored, anything else is refused.
+    #: A retired image 서식 id is ignored; any other id is refused.
     template_id: str | None = Field(default=None, max_length=60)
     #: Each picture is a separate upstream call and charge.
     count: int = Field(default=1, ge=1, le=4)
@@ -169,7 +169,7 @@ class SessionBulkDelete(Wire):
 
     ids: list[str] = []
     all: bool = False
-    #: Accepted from older clients and ignored: a conversation's artifacts always go with it.
+    #: Accepted and ignored: a conversation's artifacts always go with it.
     artifacts: bool = True
 
 

@@ -1,7 +1,7 @@
-# 고객 맞춤 제안서 — specs: lineup v1 `client-proposal`.
+# 고객 맞춤 제안서.
 
 key = "client-proposal"
-# Retired (2026-10): offered nowhere and installed by nobody; the rows stay so the
+# Retired: offered nowhere and installed by nobody; the rows stay so the
 # conversations and documents made with it still open and export.
 retired = true
 order = 91

@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
     # Catalogue renames and hidden flags apply at deploy, not at the owner's next sign-in.
     try:
         await starter.sync_catalog_at_startup(SessionLocal)
-    except Exception as exc:  # noqa: BLE001 — the owner's sign-in syncs it as before
+    except Exception as exc:  # noqa: BLE001 — the owner's next sign-in syncs it
         log.warning("catalogue not synced at startup: %s", exc)
     # Reclaims deleted accounts' files when the disk fills; see services/storage.py.
     sweeper = asyncio.create_task(storage.watch())
