@@ -189,9 +189,12 @@ def with_references(
     """Return export sections with the report's reference list appended."""
     if not sources:
         return sections
+    from app.services.citations import drop_restated_references
+
     entries = [citation_text(source, style) for source in sources]
     return [
-        *sections,
+        # One list: the writer's restatement of these sources is not printed beside it.
+        *drop_restated_references(sections, sources),
         {
             "id": "references",
             "heading": "참고문헌",
