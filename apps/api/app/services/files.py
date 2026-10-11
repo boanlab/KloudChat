@@ -285,72 +285,220 @@ def _member(archive: zipfile.ZipFile, name: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
+def _local(tag: str) -> str:
+    """An element's tag without its `{namespace}`: producers vary the prefixes."""
+    return tag.rsplit("}", 1)[-1]
+
+
+def _xml_root(archive: zipfile.ZipFile, name: str):
+    """One member parsed, or None when it is not well-formed XML."""
+    import xml.etree.ElementTree as ET
+
+    try:
+        return ET.fromstring(_member(archive, name))
+    except ET.ParseError:
+        return None
+
+
+def _part_targets(archive: zipfile.ZipFile, owner: str) -> dict[str, str]:
+    """Relationship id → archive path for one part (e.g. xl/workbook.xml)."""
+    folder, _, base = owner.rpartition("/")
+    rels = f"{folder}/_rels/{base}.rels"
+    if rels not in archive.namelist():
+        return {}
+    root = _xml_root(archive, rels)
+    if root is None:
+        return {}
+    out: dict[str, str] = {}
+    for rel in root:
+        rid, target = rel.get("Id"), rel.get("Target") or ""
+        if not rid or rel.get("TargetMode") == "External":
+            continue
+        if target.startswith("/"):
+            path = target.lstrip("/")
+        else:
+            parts = folder.split("/") if folder else []
+            for piece in target.split("/"):
+                if piece == "..":
+                    if parts:
+                        parts.pop()
+                elif piece and piece != ".":
+                    parts.append(piece)
+            path = "/".join(parts)
+        out[rid] = path
+    return out
+
+
+def _numbered(names: list[str], pattern: str) -> list[str]:
+    """Members matching `pattern` (one number group) in numeric, not text, order."""
+    found = [(int(m.group(1)), n) for n in names if (m := re.fullmatch(pattern, n))]
+    return [n for _, n in sorted(found)]
+
+
+def _ordered_parts(archive: zipfile.ZipFile, owner: str, list_tag: str, pattern: str):
+    """(name attribute, path) of the parts `owner` lists under `list_tag`, in its order.
+
+    Falls back to numeric file order when the listing is missing or unreadable.
+    """
+    names = archive.namelist()
+    root = _xml_root(archive, owner) if owner in names else None
+    targets = _part_targets(archive, owner)
+    out: list[tuple[str, str]] = []
+    if root is not None:
+        for el in root.iter():
+            if _local(el.tag) != list_tag:
+                continue
+            rid = next((v for k, v in el.attrib.items() if _local(k) == "id" and "}" in k), None)
+            path = targets.get(rid or "")
+            if path and path in names:
+                out.append((el.get("name") or "", path))
+    return out or [("", n) for n in _numbered(names, pattern)]
+
+
+def _run_text(el) -> str:
+    """Text of a WordprocessingML/DrawingML subtree: runs, tabs and breaks."""
+    parts: list[str] = []
+    for node in el.iter():
+        tag = _local(node.tag)
+        if tag == "t" and node.text:
+            parts.append(node.text)
+        elif tag == "tab":
+            parts.append("\t")
+        elif tag in {"br", "cr"}:
+            parts.append("\n")
+    return "".join(parts)
+
+
 def _from_docx(data: bytes) -> str:
-    """Paragraph text from word/document.xml."""
+    """Paragraph text from word/document.xml; a table row reads as tab-separated cells."""
     with _open_zip(data) as archive:
         try:
-            xml = _member(archive, "word/document.xml")
+            root = _xml_root(archive, "word/document.xml")
         except KeyError:
             raise RuntimeError("docx 구조를 읽지 못했습니다.") from None
-    # Paragraph boundaries first, then drop every remaining tag.
-    xml = re.sub(r"</w:p>", "\n", xml)
-    xml = re.sub(r"<w:tab[^>]*/>", "\t", xml)
-    text = re.sub(r"<[^>]+>", "", xml)
+    if root is None:
+        raise RuntimeError("docx 구조를 읽지 못했습니다.")
+    lines: list[str] = []
+
+    def walk(el) -> None:
+        for child in el:
+            tag = _local(child.tag)
+            if tag == "p":
+                lines.append(_run_text(child))
+            elif tag == "tbl":
+                for row in (r for r in child.iter() if _local(r.tag) == "tr"):
+                    cells = [c for c in row if _local(c.tag) == "tc"]
+                    lines.append(
+                        "\t".join(
+                            " ".join(_run_text(p) for p in c.iter() if _local(p.tag) == "p").strip()
+                            for c in cells
+                        )
+                    )
+            else:
+                walk(child)
+
+    walk(root)
+    text = "\n".join(lines)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def _from_pptx(data: bytes) -> str:
+    """Slide text in presentation order."""
     with _open_zip(data) as archive:
-        slides = sorted(
-            n for n in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)
+        slides = _ordered_parts(
+            archive, "ppt/presentation.xml", "sldId", r"ppt/slides/slide(\d+)\.xml"
         )
         out = []
-        for i, name in enumerate(slides, 1):
-            xml = _member(archive, name)
-            xml = re.sub(r"</a:p>", "\n", xml)
-            body = re.sub(r"<[^>]+>", "", xml).strip()
+        for i, (_, name) in enumerate(slides, 1):
+            root = _xml_root(archive, name)
+            if root is None:
+                continue
+            paragraphs = [_run_text(p) for p in root.iter() if _local(p.tag) == "p"]
+            body = "\n".join(p for p in paragraphs if p.strip()).strip()
             if body:
                 out.append(f"[슬라이드 {i}]\n{body}")
     return "\n\n".join(out).strip()
 
 
+def _column_index(ref: str) -> int | None:
+    """0-based column of a cell reference like `C7`, or None."""
+    m = re.match(r"([A-Z]{1,3})\d", ref or "")
+    if not m:
+        return None
+    n = 0
+    for ch in m.group(1):
+        n = n * 26 + (ord(ch) - 64)
+    return n - 1
+
+
+def _string_item(si) -> str:
+    """A shared or inline string: its runs' text, leaving out phonetic guides."""
+    parts: list[str] = []
+
+    def walk(el) -> None:
+        for child in el:
+            tag = _local(child.tag)
+            if tag == "rPh":
+                continue
+            if tag == "t":
+                parts.append(child.text or "")
+            else:
+                walk(child)
+
+    walk(si)
+    return "".join(parts)
+
+
 def _from_xlsx(data: bytes) -> str:
-    """Sheet values via the shared-strings table. Formulas are not evaluated."""
+    """Sheet values under their sheet names, in workbook order. Formulas are not evaluated.
+
+    Parsed as XML, so entity-escaped text (Korean is often written as `&#50672;`)
+    reads as characters, and empty cells keep their column so values stay under
+    their headers.
+    """
     with _open_zip(data) as archive:
         shared: list[str] = []
         if "xl/sharedStrings.xml" in archive.namelist():
-            raw = _member(archive, "xl/sharedStrings.xml")
-            shared = [re.sub(r"<[^>]+>", "", m) for m in re.findall(r"<si>(.*?)</si>", raw, re.S)]
+            root = _xml_root(archive, "xl/sharedStrings.xml")
+            if root is not None:
+                shared = [_string_item(si) for si in root if _local(si.tag) == "si"]
 
-        sheets = sorted(
-            n for n in archive.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n)
+        sheets = _ordered_parts(
+            archive, "xl/workbook.xml", "sheet", r"xl/worksheets/sheet(\d+)\.xml"
         )
         out = []
-        for index, name in enumerate(sheets, 1):
-            xml = archive.read(name).decode("utf-8", errors="replace")
+        for index, (title, name) in enumerate(sheets, 1):
+            root = _xml_root(archive, name)
+            if root is None:
+                continue
             rows = []
-            for row in re.findall(r"<row[^>]*>(.*?)</row>", xml, re.S):
-                cells = []
-                for cell in re.findall(r"<c([^>]*)>(.*?)</c>", row, re.S):
-                    attrs, body = cell
-                    value = re.search(r"<v>(.*?)</v>", body, re.S)
-                    if not value:
-                        # An inline string has no <v>; its text sits in <is><t>.
-                        inline = re.findall(r"<t[^>]*>(.*?)</t>", body, re.S)
-                        cells.append("".join(inline) if 't="inlineStr"' in attrs else "")
-                        continue
-                    raw = value.group(1)
-                    if 't="s"' in attrs:  # index into the shared-strings table
+            for row in (r for r in root.iter() if _local(r.tag) == "row"):
+                cells: list[str] = []
+                for cell in (c for c in row if _local(c.tag) == "c"):
+                    col = _column_index(cell.get("r", ""))
+                    if col is not None and col > len(cells):
+                        cells.extend([""] * (col - len(cells)))
+                    kind = cell.get("t", "")
+                    value = next((v for v in cell if _local(v.tag) == "v"), None)
+                    if kind == "inlineStr":
+                        inline = next((v for v in cell if _local(v.tag) == "is"), None)
+                        cells.append(_string_item(inline) if inline is not None else "")
+                    elif value is None:
+                        cells.append("")
+                    elif kind == "s":  # index into the shared-strings table
                         try:
-                            cells.append(shared[int(raw)])
+                            cells.append(shared[int(value.text or "")])
                         except (ValueError, IndexError):
                             cells.append("")
+                    elif kind == "b":
+                        cells.append("TRUE" if (value.text or "") == "1" else "FALSE")
                     else:
-                        cells.append(raw)
+                        cells.append(value.text or "")
                 if any(c.strip() for c in cells):
-                    rows.append("\t".join(cells))
+                    rows.append("\t".join(cells).rstrip("\t"))
             if rows:
-                out.append(f"[시트 {index}]\n" + "\n".join(rows))
+                label = f"[시트 {index}: {title}]" if title else f"[시트 {index}]"
+                out.append(label + "\n" + "\n".join(rows))
     return "\n\n".join(out).strip()
 
 
@@ -377,6 +525,7 @@ def _from_hwpx(data: bytes) -> str:
             root = ET.fromstring(archive.read(name))
         except ET.ParseError:
             continue
+
         # Namespaces vary by producer version, so match on the local name. A
         # table cell holds its own paragraphs, so each run is read once — from
         # its nearest paragraph, not again from every paragraph above it.
