@@ -237,11 +237,14 @@ export function ApiTab({ pub }: { pub: Publication }) {
 
   const key = made?.key ?? 'kcb_YOUR_KEY'
   const base = apiBase()
+  // The bot's own first suggested question, as a JSON string (and safe inside the shell's '…').
+  const question = JSON.stringify(pub.branding?.suggestedPrompts?.[0]?.trim() || t('무엇을 도와줄 수 있나요?'))
+  const shellQuestion = question.replace(/'/g, "'\\''")
   const curl = [
     `curl ${base}/bots/v1/chat/completions \\`,
     `  -H "Authorization: Bearer ${key}" \\`,
     `  -H "Content-Type: application/json" \\`,
-    `  -d '{"model": "${pub.slug}", "messages": [{"role": "user", "content": "휴학은 언제까지 신청하나요?"}]}'`,
+    `  -d '{"model": "${pub.slug}", "messages": [{"role": "user", "content": ${shellQuestion}}]}'`,
   ].join('\n')
   const python = [
     'from openai import OpenAI',
@@ -249,7 +252,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
     `client = OpenAI(base_url="${base}/bots/v1", api_key="${key}")`,
     'reply = client.chat.completions.create(',
     `    model="${pub.slug}",`,
-    '    messages=[{"role": "user", "content": "휴학은 언제까지 신청하나요?"}],',
+    `    messages=[{"role": "user", "content": ${question}}],`,
     ')',
     'print(reply.choices[0].message.content)',
     '# citations: reply.model_extra["kloudchat"]["citations"]',

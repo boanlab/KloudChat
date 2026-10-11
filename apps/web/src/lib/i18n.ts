@@ -259,6 +259,7 @@ const EN: Record<string, string> = {
   '1부터 {max}까지의 정수로 적어 주세요.': 'Enter a whole number from 1 to {max}.',
   '질문을 너무 자주 보냈습니다. {n}초 뒤에 다시 보내 주세요.': 'Too many questions in a row. Send again in {n} seconds.',
   '지난 판과 달라진 것이 없어 새 판을 만들지 않았습니다.': 'Nothing changed since the last version, so no new version was made.',
+  '무엇을 도와줄 수 있나요?': 'What can you help me with?',
   '승인하면 요청한 채널이 열려, 봇 키를 가진 프로그램이나 승인한 사이트에서도 이 챗봇이 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.': 'Approving opens the channels asked for: programs holding a bot key, or the approved sites, reach this chatbot too. The cost comes from the maker\'s credits, at most {n} credits a day.',
   '승인하면 아래 판이 지금 공개 범위와 채널에서 답합니다. 승인 전까지는 지금 판이 답합니다.': 'Approving lets the version below answer in the current audience and channels. Until then the current version answers.',
   '범위 요청': 'Audience request',
