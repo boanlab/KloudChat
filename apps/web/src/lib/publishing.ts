@@ -121,9 +121,13 @@ export function noticeLines(view: 'off' | 'on', days: number, t: (s: string) => 
 /** A refused question, in words a visitor can act on. */
 export function botErrorMessage(err: unknown, t: (s: string) => string, maxChars?: number): string {
   const code = err instanceof ApiError ? err.detail : ''
+  const wait = err instanceof ApiError ? err.retryAfter : undefined
   switch (code) {
     case 'visitor_rate_limited':
-      return t('질문을 너무 자주 보냈습니다. 잠시 뒤 다시 보내 주세요.')
+      // The minute's limit says how long is left; a day's says tomorrow.
+      return wait && wait <= 120
+        ? t('질문을 너무 자주 보냈습니다. {n}초 뒤에 다시 보내 주세요.').replace('{n}', String(wait))
+        : t('질문을 너무 자주 보냈습니다. 잠시 뒤 다시 보내 주세요.')
     case 'visitor_daily_limit':
       return t('오늘 보낼 수 있는 질문을 다 보냈습니다. 내일 다시 이용해 주세요.')
     case 'daily_credits_reached':

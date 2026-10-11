@@ -70,12 +70,15 @@ export const setAccessToken = (t: string | null) => {
 export class ApiError extends Error {
   readonly status: number
   readonly detail: string
+  /** Seconds the server asked to wait (`Retry-After` on a 429), when it said. */
+  readonly retryAfter?: number
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, retryAfter?: number) {
     super(detail)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.retryAfter = retryAfter
   }
 }
 
@@ -2066,7 +2069,8 @@ async function* postStream(
     // The 409 body was consumed above; reading it twice loses the code.
     const resolved = detail ?? (res.status === 409 ? `http_${res.status}` : await readDetail(res))
     if (res.status === 401) throw new UnauthorizedError(resolved)
-    throw new ApiError(res.status, resolved)
+    const wait = Number(res.headers.get('Retry-After'))
+    throw new ApiError(res.status, resolved, res.status === 429 && wait > 0 ? wait : undefined)
   }
   // A turn that stopped to ask (`_ask_before_writing`) answers in JSON, not a
   // stream; translated into events here so the runners need not know.

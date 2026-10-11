@@ -6,6 +6,7 @@ Real HTTP and SQLite; the model is a fake agent loop that reads the bot's tools.
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 from datetime import timedelta
 from pathlib import Path
@@ -460,6 +461,21 @@ async def test_the_limits_refuse_with_429_and_say_when_to_come_back(world):
     assert long.status_code == 422 and long.json()["detail"]["code"] == "too_long"
     # The owner may lower a limit, never raise it.
     assert publishing.clean_limits({"perBotPerMinute": 10_000}) == {"perBotPerMinute": 60}
+
+
+async def test_a_question_while_the_answer_is_still_written_is_refused_uncounted(world):
+    pub = await _publish(world, limits={"perVisitorPerMinute": 2})
+    slug = pub["slug"]
+    sid, _ = await _ask(world, slug, "휴학 기한")
+    sessions._STOPPING[sid] = {asyncio.Event()}
+    busy = await world.client.post(f"/b/{slug}/conversations/{sid}/messages",
+                                   json={"content": "복학은요?"})
+    assert busy.status_code == 409 and busy.json()["detail"] == "session_busy"
+    sessions._STOPPING.pop(sid)
+    # The refused question took none of the minute's two.
+    again = await world.client.post(f"/b/{slug}/conversations/{sid}/messages",
+                                    json={"content": "복학은요?"})
+    assert again.status_code == 200
 
 
 async def test_a_free_model_still_counts_one_credit_a_turn_against_the_daily_cap(world):

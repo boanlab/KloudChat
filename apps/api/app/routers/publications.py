@@ -1230,6 +1230,10 @@ async def run_published_turn(db: DbSession, pub: Publication, visitor: Publicati
     session.model = version.model
     session.publication_version_id = version.id
     db.add(session)
+    if session.kind is SessionKind.chat and sessions.turn_running_here(session.id):
+        # Refused before it is counted: a question sent while the last answer is still being
+        # written spends none of the visitor's limits.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_busy")
     try:
         await publishing.admit(db, pub, visitor.id, ip_key=ip_key, channel=channel,
                                by_key=by_key)

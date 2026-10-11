@@ -5011,6 +5011,12 @@ async def _routed(record: StepRecord, events: AsyncIterator[str]) -> AsyncIterat
 _STOPPING: dict[str, set[asyncio.Event]] = {}
 
 
+def turn_running_here(session_id: str) -> bool:
+    """Whether this process is still writing an answer in the conversation (and nobody
+    pressed stop): a new question would be refused as `session_busy`."""
+    return any(not signal.is_set() for signal in _STOPPING.get(session_id, set()))
+
+
 def fire_stop_locally(session_id: str) -> None:
     """Sets every stop signal this process holds for `session_id` — called
     directly by `stop_turn` and by the cross-process broadcast listener."""
