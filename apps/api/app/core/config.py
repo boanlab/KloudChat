@@ -234,7 +234,7 @@ class Settings(BaseSettings):
     #: Where the `/metrics/<name>` targets are read. Empty: `<backend address>/metrics`.
     perf_metrics_url: str = ""
     #: Gateway `/metrics/<name>` targets: `vllm-*` are vLLM servers, `gpu-*` gpu-exporter.
-    perf_targets: str = "vllm-27b,vllm-122b,vllm-bgem3,vllm-rerank,vllm-whisper,gpu-1,gpu-2"
+    perf_targets: str = "vllm-27b,vllm-flashnext,vllm-bgem3,vllm-rerank,vllm-whisper,gpu-1,gpu-2"
     #: Per-model latency and errors from LiteLLM's request log (master key).
     perf_model_logs: bool = True
     #: Minute rows kept this long, then folded into 10-minute rows; all gone after
