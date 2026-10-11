@@ -57,3 +57,8 @@ export function checkRequired<K extends string>(
   missing.control.current?.focus()
   return { key: missing.key, message: missingMessage(lang, missing.label) }
 }
+
+/** 「비밀번호는 10자 이상이어야 합니다.」, or null when `value` meets the rule. */
+export function passwordProblem(t: (text: string) => string, value: string, minLength: number): string | null {
+  return value.length >= minLength ? null : t('비밀번호는 {n}자 이상이어야 합니다.').replace('{n}', String(minLength))
+}

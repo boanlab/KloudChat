@@ -1,7 +1,6 @@
 import { Check, Circle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
 import { useT } from '@/lib/useT'
 
 /**
@@ -25,9 +24,4 @@ export function PasswordRule({ value, minLength }: { value: string; minLength: n
       </li>
     </ul>
   )
-}
-
-/** 「비밀번호는 10자 이상이어야 합니다.」, or null when `value` meets the rule. */
-export function passwordProblem(t: (text: string) => string, value: string, minLength: number): string | null {
-  return value.length >= minLength ? null : t('비밀번호는 {n}자 이상이어야 합니다.').replace('{n}', String(minLength))
 }

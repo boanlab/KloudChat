@@ -64,7 +64,7 @@ function boundary(m: ModelInfo, t: (s: string) => string): { text: string; tone:
  * The model on a phone's chip: the name without its family and boundary suffix, then where it
  * runs — 「27b · 로컬」, 「27b · 내부 전용」 — so the part that tells two models apart survives.
  */
-export function phoneModelLabel(m: ModelInfo, t: (s: string) => string): string {
+function phoneModelLabel(m: ModelInfo, t: (s: string) => string): string {
   const bare = (m.name || m.label).replace(/\s*\([^)]*\)\s*$/, '').trim()
   const words = bare.split(/\s+/)
   // 「Qwen3.8 27b」 → 「27b」; a single word, or a first word that is not a family name, stays.

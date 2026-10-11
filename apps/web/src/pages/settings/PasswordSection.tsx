@@ -1,10 +1,10 @@
 import { Loader2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { PasswordRule, passwordProblem } from '@/components/auth/PasswordRule'
+import { PasswordRule } from '@/components/auth/PasswordRule'
 import { Button, Field, Input, RequiredNote } from '@/components/ui'
 import { ApiError, errorMessage } from '@/lib/api'
-import { checkRequired } from '@/lib/formCheck'
+import { checkRequired, passwordProblem } from '@/lib/formCheck'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 

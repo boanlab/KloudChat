@@ -739,6 +739,8 @@ export function AdminUsersPage() {
       />
 
       <CreditDialog
+        // A fresh dialog per person: no warning or error carried over from the last one.
+        key={editing?.id ?? 'none'}
         user={editing}
         draft={draftCredits}
         setDraft={setDraftCredits}
@@ -798,13 +800,6 @@ function CreditDialog({
   const [failed, setFailed] = useState<string | null>(null)
   const [confirmZero, setConfirmZero] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    setInvalid(false)
-    setFailed(null)
-    setConfirmZero(false)
-    setSaving(false)
-  }, [user?.id])
 
   const trimmed = draft.trim()
   const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : NaN
