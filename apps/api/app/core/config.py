@@ -155,7 +155,7 @@ class Settings(BaseSettings):
     #: only while the catalogue lists it as strict-local with vision; otherwise the first
     #: such model is. Measured on 68 scanned pages against `strict-local/qwen3.8-27b`: the
     #: same error rate, fewer words "corrected" and slightly faster.
-    ocr_vision_model: str = "strict-local/qwen3.8-flash-next"
+    ocr_vision_model: str = "strict-local/qwen3.8-flash"
     #: OpenAI-compatible `/v1/audio/transcriptions`, the only place audio is sent.
     #: Empty: transcription is unavailable and dictation hidden. There is no
     #: outside-model fallback; a leftover `STT_OR_MODEL` env is ignored.
