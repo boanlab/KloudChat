@@ -278,6 +278,10 @@ def test_spacing_and_table_marks_do_not_count_as_disagreement():
     assert not ocr.disagree(engine, vision)
 
 
+def test_a_date_read_without_its_spaces_is_the_same_date():
+    assert not ocr.disagree("시행일은 2025. 3. 1.부터 한다", "시행일은2025.3.1.부터한다")
+
+
 def test_any_differing_number_is_a_disagreement():
     assert ocr.disagree("등록금 4,200,000원 반환", "등록금 4,800,000원 반환")
     assert ocr.disagree("제12조", "제13조")

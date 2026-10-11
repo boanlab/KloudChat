@@ -434,8 +434,10 @@ def normalised(text: str) -> str:
 
 
 def numbers(text: str) -> Counter:
-    """Every number in the text, thousands separators dropped."""
-    return Counter(match.replace(",", "") for match in _NUMBER.findall(text))
+    """Every number in the text, thousands separators dropped, read with the spacing taken
+    out: the engine often drops the spaces of 「2025. 3. 1.」, which must not count as a
+    different date."""
+    return Counter(match.replace(",", "") for match in _NUMBER.findall(normalised(text)))
 
 
 def agreement(a: str, b: str) -> float:
