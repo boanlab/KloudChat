@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.services import flow_layout
+
 MAX_NODES = 18
 
 _HEAD = re.compile(r"^\s*(?:flowchart|graph)\s+(TB|TD|BT|LR|RL)\b", re.I)
@@ -53,6 +55,10 @@ class Graph:
     nodes: dict[str, Node] = field(default_factory=dict)
     edges: list[Edge] = field(default_factory=list)
     groups: dict[str, tuple[str, list[str]]] = field(default_factory=dict)
+    #: A group's own `direction` line, when it has one ("LR" or "TB").
+    group_dirs: dict[str, str] = field(default_factory=dict)
+    #: Whether boxes carry icons; a layout turns them off when they would cost text size.
+    icons: bool = True
 
 
 def _shape_of(opener: str | None) -> str:
@@ -99,6 +105,9 @@ def parse(source: str) -> Graph | None:
         return nid
 
     for line in lines[1:]:
+        if (m := re.match(r"^direction\s+(TB|TD|BT|LR|RL)\b", line, re.I)) and stack:
+            graph.group_dirs[stack[-1]] = "LR" if m.group(1).upper() in ("LR", "RL") else "TB"
+            continue
         if line.startswith("%%") or re.match(r"^(classDef|style|linkStyle|direction)\b", line):
             continue
         if m := re.match(r"^class\s+([\w,가-힣 ]+?)\s+hot\b", line):
@@ -178,6 +187,14 @@ class Placed:
     y: float
     w: float
     h: float
+    # In a flow laid out in rows (`flow_layout`): the row, the column in it, the place in
+    # the column's stack, how many share the column, and whether the column ends its row.
+    # Row and column are -1 elsewhere.
+    row: int = -1
+    col: int = -1
+    lane: int = 0
+    lanes: int = 1
+    last: bool = False  # the last column of its row
 
 
 def _compares(graph: Graph) -> bool:
@@ -196,7 +213,10 @@ def _compares(graph: Graph) -> bool:
 
 def layout(graph: Graph, width: float, height: float) -> dict[str, Placed]:
     """Node centres and sizes inside a `width` × `height` box: layers along the flow
-    (longest path from the sources), ordered within a layer by their parents' positions."""
+    (longest path from the sources), ordered within a layer by their parents' positions.
+    A flow goes to `flow_layout`, which folds it into rows that keep its text readable."""
+    if (rows := flow_layout.place(graph, width, height)) is not None:
+        return rows
     ids = list(graph.nodes)
     preds: dict[str, list[str]] = {n: [] for n in ids}
     succs: dict[str, list[str]] = {n: [] for n in ids}
@@ -539,12 +559,60 @@ def _tint(rgb: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
     return tuple(int(round(c + (255 - c) * amount)) for c in rgb)  # type: ignore[return-value]
 
 
+def text_area(
+    node: Node, w: float, h: float, icons: bool = True
+) -> tuple[float, float, str | None]:
+    """`(width, height, icon)` a node's label has in a `w` × `h` box: a diamond's text sits
+    in its inner part, and an icon, when one fits, takes the left of the box."""
+    text_w = w * (0.6 if node.shape == "diamond" else 0.9 if node.shape == "circle" else 1)
+    text_h = h * (0.6 if node.shape == "diamond" else 0.9 if node.shape == "circle" else 1)
+    if node.shape in ("box", "round"):
+        # A rounded rectangle's text area stops short of its corners (OOXML roundRect:
+        # inset = radius × 0.29), on every side.
+        inset = (0.12 if node.shape == "box" else 0.3) * min(w, h) * 0.29289
+        text_w, text_h = text_w - 2 * inset, text_h - 2 * inset
+    elif node.shape == "diamond":
+        text_w = w * 0.5  # its text area is the inner half across (taller text still reads)
+    icon = icon_for(node.label) if icons and node.shape in ("box", "round") else None
+    icon_size = min(h * 0.42, 22.0)
+    if icon and w - icon_size - 16 >= 48:
+        # Icon on the left, text beside it: the text frame starts after the icon.
+        return text_w - (icon_size + 6), text_h, icon
+    return text_w, text_h, None
+
+
+def _ems(text: str) -> float:
+    """A text's width in ems: a Hangul or CJK glyph a little under one (measured on
+    LibreOffice's Pretendard), a Latin letter or digit about 0.6, a space 0.3."""
+    return sum(
+        0.92 if ord(ch) >= 0x1100 else 0.3 if ch == " " else 0.6 for ch in text
+    )
+
+
+def _lines(part: str, room: float) -> int | None:
+    """How many lines `part` takes wrapped at spaces in `room` ems, or None when one of
+    its words alone is wider (it would break inside the word: 「라벨/링」)."""
+    lines, used = 0, 0.0
+    for word in part.split() or [""]:
+        width = _ems(word)
+        if width > room:
+            return None
+        if lines and used + 0.3 + width <= room:
+            used += 0.3 + width
+        else:
+            lines, used = lines + 1, width
+    return lines
+
+
 def _font_size(label: str, width: float, height: float) -> int:
-    """The largest size from 14 pt down to 8 pt at which `label` wraps inside the box."""
+    """The largest size from 14 pt down to 8 pt at which `label` wraps inside the box
+    between words; at 8 pt, wherever it must."""
     for size in range(14, 7, -1):
-        per_line = max(1, int((width - 8) / (size * 1.0)))  # a Hangul glyph is about 1 em
-        lines = sum(-(-max(1, len(part)) // per_line) for part in label.split("\n"))
-        if lines * size * 1.25 <= height - 6:
+        room = (width - 8) / size
+        counts = [_lines(part, room) for part in label.split("\n")]
+        if any(c is None for c in counts):
+            continue
+        if sum(counts) * size * 1.25 <= height - 6:
             return size
     return 8
 
@@ -631,7 +699,7 @@ def draw_pptx(
     # Group backgrounds first, so they sit under their members.
     pad, title_room = 8.0, 16.0
     frames: list[tuple[float, float, float, float]] = []
-    for label, members in graph.groups.values():
+    for label, members in flow_layout.frames(graph, placed):
         inside = [placed[m] for m in members if m in placed]
         if not inside:
             continue
@@ -659,7 +727,9 @@ def draw_pptx(
         g.line.width = pt(0.75)
         g.line.dash_style = MSO_LINE_DASH_STYLE.DASH
         flat(g)
-        set_text(g, label, 9, label_grey, bold=True, anchor=MSO_ANCHOR.TOP)
+        # In rows the figure is printed at its own size: the title keeps a readable 10 pt.
+        title_pt = 10 if any(p.row >= 0 for p in placed.values()) else 9
+        set_text(g, label, title_pt, label_grey, bold=True, anchor=MSO_ANCHOR.TOP)
 
     shapes = {}
     kinds = {
@@ -679,15 +749,8 @@ def draw_pptx(
         s.line.fill.background()  # no outline: the fill carries the shape
         flat(s)
         # A diamond's text area is its inner half: size the text for that.
-        text_w = p.w * (0.6 if node.shape == "diamond" else 0.9 if node.shape == "circle" else 1)
-        text_h = p.h * (0.6 if node.shape == "diamond" else 0.9 if node.shape == "circle" else 1)
-        icon = icon_for(node.label) if node.shape in ("box", "round") else None
+        text_w, text_h, icon = text_area(node, p.w, p.h, graph.icons)
         icon_size = min(p.h * 0.42, 22.0)
-        if icon and p.w - icon_size - 16 >= 48:
-            # Icon on the left, text beside it: the text frame starts after the icon.
-            text_w -= icon_size + 6
-        else:
-            icon = None
         set_text(
             s, node.label, _font_size(node.label, text_w, text_h),
             text_light if node.hot else text_dark, bold=node.hot,
@@ -711,10 +774,17 @@ def draw_pptx(
     }
     used: dict[tuple[int, int], set[str]] = {}
     placed_labels: list[tuple[float, float, float, float]] = []
+    back_marks: list[tuple[Edge, Placed]] = []
     for edge in graph.edges:
         a_box, b_box = boxes[edge.a], boxes[edge.b]
         a, b = placed[edge.a], placed[edge.b]
-        sa, sb = _sides(a, b, lr)
+        rows = a.row >= 0 and b.row >= 0
+        if rows and flow_layout.kind(a, b) == "mark":
+            # A step back across the figure, or on past a whole row: a short stub at its
+            # source and a note naming where it goes, not a line over everything between.
+            back_marks.append((edge, a))
+            continue
+        sa, sb = flow_layout.sides(a, b) if rows else _sides(a, b, lr)
         path = _route(
             a_box, sa, b_box, sb,
             obstacles=[box for nid, box in boxes.items() if nid not in (edge.a, edge.b)],
@@ -737,7 +807,10 @@ def draw_pptx(
         if edge.label:
             # Beside a run of the line, longest runs first, at the first spot that covers
             # no box and no label already placed.
-            tw = min(150.0, 9.0 * len(edge.label) + 12)
+            # A long label takes two lines rather than a wider gap.
+            two = len(edge.label) > 8
+            tw = min(150.0, 9.0 * (-(-len(edge.label) // 2) if two else len(edge.label)) + 12)
+            th = 24.0 if two else 14.0
             runs = sorted(
                 zip(path, path[1:], strict=False),
                 key=lambda s: -(abs(s[1][0] - s[0][0]) + abs(s[1][1] - s[0][1])),
@@ -746,15 +819,45 @@ def draw_pptx(
             for (x0, y0), (x1, y1) in runs:
                 mx, my = (x0 + x1) / 2, (y0 + y1) / 2
                 if abs(y1 - y0) < 1:  # horizontal: above, then below
-                    spots += [(mx - tw / 2, my - 16), (mx - tw / 2, my + 3)]
+                    spots += [(mx - tw / 2, my - th - 2), (mx - tw / 2, my + 3)]
                 else:  # vertical: right, then left
-                    spots += [(mx + 4, my - 7), (mx - tw - 4, my - 7)]
-            def clear(x: float, y: float, tw: float = tw) -> bool:
+                    spots += [(mx + 4, my - th / 2), (mx - tw - 4, my - th / 2)]
+            def clear(x: float, y: float, tw: float = tw, th: float = th) -> bool:
                 return not any(
-                    x < bx1 and x + tw > bx0 and y < by1 and y + 14 > by0
+                    x < bx1 and x + tw > bx0 and y < by1 and y + th > by0
                     for bx0, by0, bx1, by1 in [*boxes.values(), *placed_labels]
                 )
             x, y = next((spot for spot in spots if clear(*spot)), spots[0])
-            placed_labels.append((x, y, x + tw, y + 14))
-            tb = slide.shapes.add_textbox(pt(x), pt(y), pt(tw), pt(14))
+            placed_labels.append((x, y, x + tw, y + th))
+            tb = slide.shapes.add_textbox(pt(x), pt(y), pt(tw), pt(th))
             set_text(tb, edge.label, 8, label_grey)
+    for edge, a in back_marks:
+        text = flow_layout.marker_text(edge.label, graph.nodes[edge.b].label)
+        tw = min(max(a.w + 40, 60.0), 9.0 * len(text) + 14)
+        below = a.lane == a.lanes - 1
+        cx = left + a.x
+        y0 = top + a.y + (a.h / 2 if below else -a.h / 2)
+        y1 = y0 + (8 if below else -8)
+        stub = slide.shapes.build_freeform(pt(cx), pt(y0), scale=1.0)
+        stub.add_line_segments([(pt(cx), pt(y1))], close=False)
+        line = stub.convert_to_shape()
+        line.fill.background()
+        line.line.color.rgb = line_grey
+        line.line.width = pt(1.25)
+        if edge.dashed:
+            line.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+        flat(line)
+        note = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE, pt(cx - tw / 2), pt(y1 if below else y1 - 14),
+            pt(tw), pt(14),
+        )
+        note.adjustments[0] = 0.5
+        note.fill.solid()
+        note.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        note.line.color.rgb = line_grey
+        note.line.width = pt(0.75)
+        if edge.dashed:
+            note.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+        flat(note)
+        set_text(note, text, 8, label_grey)
+        note.text_frame.margin_top = note.text_frame.margin_bottom = pt(0)
