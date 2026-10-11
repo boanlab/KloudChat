@@ -17,7 +17,7 @@ export function PasswordRule({ value, minLength }: { value: string; minLength: n
         <span>
           {t('{n}자 이상').replace('{n}', String(minLength))}
           {value.length > 0 && !met && (
-            <span className="ml-1">· {t('지금 {n}자').replace('{n}', String(value.length))}</span>
+            <span> · {t('지금 {n}자').replace('{n}', String(value.length))}</span>
           )}
           {met && <span className="sr-only"> · {t('충족')}</span>}
         </span>
