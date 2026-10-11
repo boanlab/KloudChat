@@ -76,7 +76,7 @@ from app.schemas.publishing import (
     VisitorRating,
     WithdrawIn,
 )
-from app.services import governance, publishing, stop_signal
+from app.services import governance, publishing, skill_packages, stop_signal
 from app.services import models as model_service
 
 log = logging.getLogger(__name__)
@@ -1369,6 +1369,55 @@ async def _admin_pub(db: DbSession, publication_id: str) -> Publication:
     return pub
 
 
+def _request_kind(pub: Publication) -> str:
+    """What an open review is about: `visibility`, `channels`, or a new `version`."""
+    if pub.requested_visibility:
+        return "visibility"
+    if pub.requested_channels is not None and not pub.pending_version_id:
+        return "channels"
+    return "version"
+
+
+def _check_names(keys: list[str]) -> list[str]:
+    """Check skills as people know them: 「근거 없는 답 보류」, not `answer-hold`."""
+    out = []
+    for key in keys:
+        package = skill_packages.package_for(key)
+        out.append(package.name if package is not None and package.name else key)
+    return out
+
+
+async def _snapshot_facts(db: DbSession, version: PublicationVersion | None) -> dict[str, Any]:
+    """What one version answers with, for comparing two of them."""
+    snap = await db.get(Agent, version.agent_snapshot_id) if version else None
+    if snap is None:
+        return {}
+    files = (await db.exec(select(StoredFile).where(StoredFile.agent_id == snap.id)
+                           .order_by(col(StoredFile.created_at)))).all()
+    return {
+        "instructions": snap.system_prompt or "", "contact": snap.contact or "",
+        "model": snap.model or "", "tools": sorted(snap.tools or []),
+        "checks": _check_names(list(snap.check_skills or [])),
+        "knowledge": [f"{f.name} · {len(f.text or ''):,}자" for f in files],
+    }
+
+
+async def _version_changes(db: DbSession, pub: Publication) -> list[dict[str, Any]]:
+    """What the version waiting changes against the one answering now, field by field."""
+    if not pub.pending_version_id or not pub.active_version_id \
+            or pub.pending_version_id == pub.active_version_id:
+        return []
+    before = await _snapshot_facts(db, await db.get(PublicationVersion, pub.active_version_id))
+    after = await _snapshot_facts(db, await db.get(PublicationVersion, pub.pending_version_id))
+    return [{"field": key, "before": before.get(key), "after": after.get(key)}
+            for key in ("instructions", "contact", "model", "tools", "checks", "knowledge")
+            if before and after and before.get(key) != after.get(key)]
+
+
+#: Characters of each material file an administrator sees, personal details masked.
+_PREVIEW_CHARS = 1500
+
+
 @router.get("/admin/publications/{publication_id}/review")
 async def admin_review(publication_id: str, admin: AdminUser, db: DbSession):
     """What an administrator decides on: the version that would answer people without an
@@ -1394,7 +1443,9 @@ async def admin_review(publication_id: str, admin: AdminUser, db: DbSession):
         found = governance.findings({"knowledge": row.text}, scope="egress")
         knowledge.append({"name": row.name, "chars": len(row.text or ""),
                           "findings": [{"category": f.category, "count": f.count}
-                                       for f in found]})
+                                       for f in found],
+                          "preview": governance.mask((row.text or "")[:_PREVIEW_CHARS],
+                                                     scope="egress")[0]})
     return {
         "publication": _pub_out(pub, versions=await _versions(db, pub),
                                 owner_name=owner.name if owner else ""),
@@ -1406,13 +1457,17 @@ async def admin_review(publication_id: str, admin: AdminUser, db: DbSession):
             "instructions": snap.system_prompt, "contact": snap.contact or "",
             "guide": snap.guide or "", "starters": list(snap.starters or []),
             "tools": list(snap.tools or []), "checks": list(snap.check_skills or []),
+            "checkNames": _check_names(list(snap.check_skills or [])),
             "model": snap.model,
         } if snap else None,
+        "request": _request_kind(pub) if pub.review_state == ReviewState.pending.value else None,
+        "changes": await _version_changes(db, pub),
         "knowledge": knowledge,
         "history": [{"action": e.action, "at": e.at, "actorId": e.actor_id,
                      "metadata": {k: v for k, v in (e.event_metadata or {}).items()
                                   if k in ("visibility", "version", "decision", "reason",
-                                           "status", "previous", "pending", "channels")}}
+                                           "status", "previous", "pending", "channels",
+                                           "asked")}}
                     for e in history],
     }
 
@@ -1426,6 +1481,8 @@ async def admin_decide(publication_id: str, payload: ReviewIn, request: Request,
     if pub.review_state != ReviewState.pending.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="nothing_to_review")
     now = utcnow()
+    # What was asked, on the record: an audience, channels, or a new version to check.
+    asked = _request_kind(pub)
     if payload.decision == "approve":
         candidate_id = pub.pending_version_id or pub.active_version_id
         version = await db.get(PublicationVersion, candidate_id) if candidate_id else None
@@ -1459,7 +1516,7 @@ async def admin_decide(publication_id: str, payload: ReviewIn, request: Request,
     publishing.flag_owner(pub)
     db.add(pub)
     _audit(db, admin, "publication.reviewed", pub, request, severity="warn",
-           decision=payload.decision, **detail)
+           decision=payload.decision, asked=asked, **detail)
     await db.commit()
     return _pub_out(pub)
 

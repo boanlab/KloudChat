@@ -2444,9 +2444,15 @@ export interface PublicationReview {
     starters: string[]
     tools: string[]
     checks: string[]
+    /** The checks by the names people know (「근거 없는 답 보류」). */
+    checkNames?: string[]
     model: string
   } | null
-  knowledge: { name: string; chars: number; findings: { category: string; count: number }[] }[]
+  /** What the open review is about. */
+  request?: 'visibility' | 'channels' | 'version' | null
+  /** What the version waiting changes against the one answering now. */
+  changes?: { field: 'instructions' | 'contact' | 'model' | 'tools' | 'checks' | 'knowledge'; before: unknown; after: unknown }[]
+  knowledge: { name: string; chars: number; findings: { category: string; count: number }[]; preview?: string }[]
   history: { action: string; at: string; actorId: string | null; metadata: Record<string, unknown> }[]
 }
 

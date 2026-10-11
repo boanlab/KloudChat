@@ -99,6 +99,11 @@ async def test_a_link_waits_for_an_administrator_and_needs_a_daily_credit_cap(wo
     assert review["knowledge"][0]["name"] == "학사규정.pdf"
     assert review["owner"]["email"] == "owner@example.test"
     assert review["version"]["number"] == 1 and review["version"]["approvedAt"] is None
+    # Checks by the names people know, the material readable with personal details masked,
+    # and what is asked.
+    assert review["agent"]["checkNames"] == ["근거 없는 답 보류", "담당 부서 안내", "개인정보 가리기"]
+    assert review["knowledge"][0]["preview"].startswith(test_publishing._RULES[:20])
+    assert review["request"] == "visibility" and review["changes"] == []
 
 
 async def test_approval_opens_the_bot_to_people_without_an_account(world):
@@ -204,6 +209,12 @@ async def test_a_new_version_waits_while_the_approved_one_answers(world):
     v2 = next(v for v in waiting["versions"] if v["number"] == 2)
     assert waiting["activeVersionId"] == v1["id"] and waiting["pendingVersionId"] == v2["id"]
     assert waiting["reviewState"] == "pending" and v2["pending"] and not v2["active"]
+    world.as_("admin")
+    review = (await world.client.get(f"/admin/publications/{pub['id']}/review")).json()
+    # The version waiting against the one answering now: only what changed.
+    assert review["request"] == "version"
+    assert review["changes"] == [{"field": "instructions", "before": "규정에서 찾아 답한다.",
+                                  "after": "검토 전 새 지시"}]
     await _visit(world, pub["slug"])
     assert "검토 전 새 지시" not in str(world.calls[-1]["messages"])
     # Rolling forward to a version nobody approved waits too.
@@ -214,6 +225,10 @@ async def test_a_new_version_waits_while_the_approved_one_answers(world):
     await _approve(world, pub["id"])
     await _visit(world, pub["slug"])
     assert "검토 전 새 지시" in str(world.calls[-1]["messages"])
+    async with world.local() as db:
+        reviewed = (await db.exec(select(AuditEvent).where(
+            AuditEvent.action == "publication.reviewed"))).all()
+        assert [e.event_metadata["asked"] for e in reviewed] == ["visibility", "version"]
     # Back to an approved version: at once.
     world.as_("owner")
     back = (await world.client.post(

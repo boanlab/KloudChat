@@ -161,7 +161,9 @@ async function botRoutes(
         version: { ...publication().versions[0], pending: false, approvedAt: null },
         agent: { name: '학사 안내', description: '', instructions: '학칙에서 찾아 근거 조항과 함께 답한다.', contact: '학사지원팀 02-760-1234',
           guide: '', starters: [], tools: ['calculate', 'search_knowledge'], checks: ['answer-hold'], model: 'strict-local/qwen' },
-        knowledge: [{ name: '학칙.pdf', chars: 12000, findings: [{ category: 'phone', count: 1 }] }],
+        request: 'visibility',
+        changes: [{ field: 'instructions', before: '학칙에서 찾아 답한다.', after: '학칙에서 찾아 근거 조항과 함께 답한다.' }],
+        knowledge: [{ name: '학칙.pdf', chars: 12000, findings: [{ category: 'phone', count: 1 }], preview: '제12조(휴학) 문의 [전화번호]' }],
         history: [{ action: 'publication.requested', at, actorId: 'owner', metadata: { visibility: 'link' } }],
       })
     }
@@ -448,6 +450,11 @@ test('an administrator reviews a request and refuses it with a reason', async ({
   await expect(page.getByTestId('admin-review-agent')).toContainText('학칙에서 찾아 근거 조항과 함께 답한다.')
   await expect(page.getByTestId('admin-review-knowledge')).toContainText('휴대전화 번호 1')
   await expect(page.getByTestId('admin-review-request')).toContainText('하루 최대 3,000크레딧')
+  // Tools by their screen names, what changed against the version answering now, the material.
+  await expect(page.getByTestId('admin-review-agent')).toContainText('계산기, 자료 찾기')
+  await expect(page.getByTestId('admin-review-changes')).toContainText('근거 조항과 함께')
+  await page.getByText('내용 보기 (개인정보는 가림)').click()
+  await expect(page.getByTestId('admin-review-preview')).toContainText('제12조(휴학)')
   await shot(page, 'admin-review', testInfo.project.name)
   await page.getByTestId('admin-review-request').getByRole('button', { name: '반려' }).click()
   const modal = page.getByRole('dialog', { name: '반려' })
