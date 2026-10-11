@@ -52,11 +52,13 @@ function useNoIndex(on: boolean) {
 }
 
 /** A chat bot someone opened — a member, or anyone once an administrator opened it outside:
- *  the notice first, then questions to the bot's fixed version. */
-export function BotPage({ onSignIn }: { onSignIn?: () => void }) {
+ *  the notice first, then questions to the bot's fixed version. `embedded`: framed on a site
+ *  an administrator approved, always without an account. */
+export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void; embedded?: boolean }) {
   const t = useT()
   const { slug = '' } = useParams()
-  const authenticated = useStore((s) => s.authenticated)
+  const signedIn = useStore((s) => s.authenticated)
+  const authenticated = signedIn && !embedded
   const [bot, setBot] = useState<BotPageData | null>(null)
   const [missing, setMissing] = useState(false)
   const [rows, setRows] = useState<BotConversationRow[]>([])
@@ -263,9 +265,11 @@ export function BotPage({ onSignIn }: { onSignIn?: () => void }) {
         <Bot size={22} className="mx-auto mb-3 text-faint" aria-hidden />
         <h1 className="text-lg font-semibold">{t('열 수 없는 챗봇입니다')}</h1>
         <p className="mt-1.5 text-base text-muted">
-          {authenticated ? t('닫혔거나 주소가 올바르지 않습니다.') : t('닫혔거나 주소가 올바르지 않습니다. 구성원에게만 열린 챗봇이면 로그인해야 합니다.')}
+          {authenticated || embedded
+            ? t('닫혔거나 주소가 올바르지 않습니다.')
+            : t('닫혔거나 주소가 올바르지 않습니다. 구성원에게만 열린 챗봇이면 로그인해야 합니다.')}
         </p>
-        {authenticated ? (
+        {embedded ? null : authenticated ? (
           <Link to="/bots" className="mt-4 text-base text-accent hover:underline">
             {t('챗봇 목록으로')}
           </Link>
@@ -298,7 +302,8 @@ export function BotPage({ onSignIn }: { onSignIn?: () => void }) {
   const closed = paused || bot.blocked
   // A member goes back to the members' list; a visitor without an account to the public one
   // when the bot is listed there, and nowhere when it is reached by link only.
-  const backTo = bot.signedIn ? '/bots' : bot.visibility === 'external' ? '/b' : null
+  // Framed on another site, the frame is the whole page: nowhere to go back to.
+  const backTo = embedded ? null : bot.signedIn ? '/bots' : bot.visibility === 'external' ? '/b' : null
   const prompts = bot.branding.suggestedPrompts
   const list = (
     <nav aria-label={t('내 대화')} className="flex h-full flex-col gap-2">

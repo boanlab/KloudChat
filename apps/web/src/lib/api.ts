@@ -53,7 +53,7 @@ import type {
   User,
 } from '@/types'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
 /**
  * In memory only; the refresh token is an httpOnly cookie. A reload starts with
@@ -161,13 +161,25 @@ async function readDetail(res: Response): Promise<string> {
   return `http_${res.status}`
 }
 
+/** Set by the page framed on another site: its bot calls go out without an account, marked
+ *  so the server keeps that frame's own visitor cookie. */
+let botEmbedded = false
+export function setBotEmbedded(on: boolean) {
+  botEmbedded = on
+}
+
+function who(path: string): Record<string, string> {
+  if (botEmbedded && path.startsWith('/b/')) return { 'X-KloudChat-Embed': '1' }
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+}
+
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...who(path),
       ...init.headers,
     },
   })
@@ -2003,7 +2015,7 @@ async function* postStream(
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...who(path),
       },
       body: JSON.stringify(payload),
     }),
@@ -2104,6 +2116,9 @@ export interface BotLimits {
   maxInputChars: number
   turnsPerConversation: number
   concurrency: number
+  /** A key's calls (API, MCP): per minute and per day. */
+  perKeyPerMinute: number
+  perKeyPerDay: number
   /** The owner's own daily credit cap; required before the bot opens outside. */
   creditsPerDay?: number
 }
@@ -2133,6 +2148,33 @@ export interface BotVisitor {
   member: boolean
   blocked: boolean
   blockedAt: string | null
+  /** A key of the owner's (API, MCP) rather than a person. */
+  byKey?: boolean
+}
+
+/** Where a bot reaches beyond its own page, each opened by an administrator. */
+export type BotChannel = 'embed' | 'api' | 'mcp'
+export interface BotChannels {
+  embed?: { origins: string[] }
+  api?: Record<string, never>
+  mcp?: Record<string, never>
+}
+
+/** A key for the API and MCP channels; `key` only in the response that made it. */
+export interface BotKey {
+  id: string
+  name: string
+  preview: string
+  createdAt: string
+  lastUsedAt: string | null
+  key?: string
+}
+
+/** When an administrator read the bot's conversations, and why. */
+export interface BotAdminRead {
+  at: string
+  kind: 'list' | 'read'
+  reason: string
 }
 
 export interface Publication {
@@ -2151,6 +2193,9 @@ export interface Publication {
   reviewNote: string
   reviewedAt: string | null
   pendingVersionId: string | null
+  /** Channels open now, and the whole set asked for while a review is pending. */
+  channels: BotChannels
+  requestedChannels: BotChannels | null
   /** Something happened since the owner last opened this page. */
   needsLook: boolean
   /** Why it is paused: `owner`, `admin`, `credits`, `account`, `model`. */
@@ -2203,6 +2248,8 @@ export interface PublicationStats {
   totals: { turns: number; answers: number; conversations: number; visitors: number; tokens: number; unanswered: number; up: number; down: number; shared: number; failed: number; visitorsAll: number }
   topics: { word: string; count: number }[]
   unanswered: { text: string; at: string }[]
+  /** Questions by where they came from. */
+  channels?: Record<'web' | BotChannel, number>
 }
 
 export interface BotConversationRow {
@@ -2261,6 +2308,8 @@ export interface BotPage {
   mine: boolean
   signedIn: boolean
   visibility: BotVisibility
+  /** Opened in a frame on another site. */
+  embedded?: boolean
   /** The owner blocked this visitor. */
   blocked: boolean
   status: PublicationStatus
@@ -2313,6 +2362,13 @@ export const publicationsApi = {
   conversations: (id: string) => call<BotConversationRow[]>(`/publications/${id}/conversations`),
   conversation: (id: string, sessionId: string) =>
     call<BotConversationRow & { messages: BotTranscriptMessage[] }>(`/publications/${id}/conversations/${sessionId}`),
+  /** The channels wanted, as a whole: closing applies at once, opening is asked of an administrator. */
+  setChannels: (id: string, wanted: { embed?: { on: boolean; origins: string[] }; api?: boolean; mcp?: boolean }) =>
+    call<Publication>(`/publications/${id}/channels`, body(wanted)),
+  keys: (id: string) => call<BotKey[]>(`/publications/${id}/keys`),
+  createKey: (id: string, name: string) => call<BotKey>(`/publications/${id}/keys`, body({ name })),
+  revokeKey: (id: string, keyId: string) => call<void>(`/publications/${id}/keys/${keyId}`, { method: 'DELETE' }),
+  adminReads: (id: string) => call<BotAdminRead[]>(`/publications/${id}/admin-reads`),
 }
 
 export const botsApi = {
@@ -2375,6 +2431,13 @@ export const adminPublicationsApi = {
   withdraw: (id: string, reason: string) => call<Publication>(`/admin/publications/${id}/withdraw`, body({ reason })),
   setStatus: (id: string, status: 'approved' | 'paused' | 'revoked', reason: string) =>
     call<Publication>(`/admin/publications/${id}/status`, body({ status, reason })),
+  /** Every conversation of the bot, for an abuse review; the reason is recorded and the owner sees it. */
+  conversations: (id: string, reason: string) =>
+    call<BotConversationRow[]>(`/admin/publications/${id}/conversations?reason=${encodeURIComponent(reason)}`),
+  conversation: (id: string, sessionId: string, reason: string) =>
+    call<BotConversationRow & { messages: BotTranscriptMessage[] }>(
+      `/admin/publications/${id}/conversations/${sessionId}?reason=${encodeURIComponent(reason)}`,
+    ),
 }
 
 /** A visitor's question, streamed as the bot answers. */

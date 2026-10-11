@@ -1,11 +1,29 @@
-import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ExternalLink, PauseCircle, PlayCircle, XCircle } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ExternalLink, Eye, PauseCircle, PlayCircle, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
+import { Markdown } from '@/components/chat/Markdown'
 import { Badge, Button, Card, EmptyState, Field, LoadingState, Modal, PageHeader, ReloadNotice, Tabs, Textarea } from '@/components/ui'
-import { adminPublicationsApi, errorMessage, type AdminPublication, type PublicationReview } from '@/lib/api'
-import { FINDING_LABEL, PAUSE_LABEL, STATUS_LABEL, useBotAttention, VISIBILITY_HINT, VISIBILITY_LABEL } from '@/lib/publishing'
+import {
+  adminPublicationsApi,
+  errorMessage,
+  type AdminPublication,
+  type BotChannels,
+  type BotConversationRow,
+  type BotTranscriptMessage,
+  type PublicationReview,
+} from '@/lib/api'
+import {
+  CHANNEL_LABEL,
+  CHANNELS,
+  FINDING_LABEL,
+  PAUSE_LABEL,
+  STATUS_LABEL,
+  useBotAttention,
+  VISIBILITY_HINT,
+  VISIBILITY_LABEL,
+} from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { formatDateTime } from '@/lib/utils'
 
@@ -20,6 +38,15 @@ const ACTION_LABEL: Record<string, string> = {
   'publication.version': '새 판',
   'publication.request_withdrawn': '요청 취소',
   'publication.admin_status': '관리자 상태 변경',
+  'publication.channels_requested': '채널 요청',
+  'publication.channels_closed': '채널 닫음',
+}
+
+/** The channels in a set, as words: 「다른 사이트에 넣기(https://…) · API」. */
+function channelWords(set: BotChannels | null | undefined, t: (s: string) => string): string {
+  return CHANNELS.filter((c) => set?.[c])
+    .map((c) => (c === 'embed' ? `${t(CHANNEL_LABEL[c])} (${(set?.embed?.origins ?? []).join(', ')})` : t(CHANNEL_LABEL[c])))
+    .join(' · ')
 }
 
 /** What the reason box is for: each needs words the owner (and the audit log) will read. */
@@ -28,7 +55,7 @@ type Decision = 'approve' | 'reject' | 'withdraw' | 'paused' | 'approved' | 'rev
 const DECISION: Record<Decision, { title: string; hint: string; required: boolean; danger?: boolean }> = {
   approve: { title: '승인', hint: '만든 사람에게 보일 메모(선택)', required: false },
   reject: { title: '반려', hint: '만든 사람에게 보일 반려 사유', required: true, danger: true },
-  withdraw: { title: '외부 공개 닫기', hint: '구성원에게만 열린 상태로 돌립니다. 만든 사람에게 보일 사유', required: true, danger: true },
+  withdraw: { title: '외부 공개 닫기', hint: '구성원에게만 열린 상태로 돌리고, 다른 사이트·API·MCP 채널도 함께 닫습니다. 만든 사람에게 보일 사유', required: true, danger: true },
   paused: { title: '일시 중지', hint: '만든 사람에게 보일 사유', required: true },
   approved: { title: '다시 열기', hint: '감사 기록에 남길 사유', required: true },
   revoked: { title: '챗봇 닫기', hint: '누구도 쓸 수 없게 닫습니다. 만든 사람에게 보일 사유', required: true, danger: true },
@@ -107,7 +134,9 @@ function PublicationList() {
                       <Badge tone="accent">
                         {row.requestedVisibility
                           ? t('{scope} 요청').replace('{scope}', t(VISIBILITY_LABEL[row.requestedVisibility]))
-                          : t('새 판 확인')}
+                          : row.requestedChannels && !row.pendingVersionId
+                            ? t('채널 요청')
+                            : t('새 판 확인')}
                       </Badge>
                     )}
                     {row.reviewState === 'rejected' && <Badge tone="danger">{t('반려')}</Badge>}
@@ -216,10 +245,18 @@ function ReviewView({ id }: { id: string }) {
             <p className="text-base font-medium">
               {pub.requestedVisibility
                 ? t('{scope} 요청').replace('{scope}', t(VISIBILITY_LABEL[pub.requestedVisibility]))
-                : t('새 판 확인 요청')}
+                : pub.requestedChannels && !pub.pendingVersionId
+                  ? t('채널 요청')
+                  : t('새 판 확인 요청')}
               {data.version && ` · ${t('{n}판').replace('{n}', String(data.version.number))}`}
             </p>
             {pub.requestedVisibility && <p className="text-sm text-muted">{t(VISIBILITY_HINT[pub.requestedVisibility])}</p>}
+            {pub.requestedChannels && (
+              <p className="text-sm" data-testid="admin-review-channels">
+                <span className="text-faint">{t('요청한 채널')}: </span>
+                {channelWords(pub.requestedChannels, t) || t('없음')}
+              </p>
+            )}
             <p className="text-sm text-muted">
               {t('승인하면 아래 판이 로그인하지 않은 사람에게도 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.').replace(
                 '{n}',
@@ -293,8 +330,13 @@ function ReviewView({ id }: { id: string }) {
                 </ul>
               )}
             </Card>
+            <ConversationsCard id={pub.id} />
           </div>
           <div className="space-y-4">
+            <Card className="space-y-1 p-4" data-testid="admin-open-channels">
+              <p className="text-sm text-faint">{t('열린 채널')}</p>
+              <p className="text-sm">{channelWords(pub.channels, t) || t('없음')}</p>
+            </Card>
             <Card className="space-y-2 p-4">
               <p className="text-sm text-faint">{t('관리')}</p>
               <div className="flex flex-wrap gap-2">
@@ -361,5 +403,113 @@ function ReviewView({ id }: { id: string }) {
         </Field>
       </Modal>
     </>
+  )
+}
+
+
+/**
+ * Reading a bot's conversations for an abuse review: a reason first, recorded in the audit log
+ * and shown to the bot's owner; personal details stay masked.
+ */
+function ConversationsCard({ id }: { id: string }) {
+  const t = useT()
+  const [asking, setAsking] = useState(false)
+  const [reason, setReason] = useState('')
+  const [given, setGiven] = useState('')
+  const [rows, setRows] = useState<BotConversationRow[] | null>(null)
+  const [open, setOpen] = useState<(BotConversationRow & { messages: BotTranscriptMessage[] }) | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const start = async () => {
+    setError(null)
+    try {
+      setRows(await adminPublicationsApi.conversations(id, reason.trim()))
+      setGiven(reason.trim())
+      setAsking(false)
+    } catch (err) {
+      setError(errorMessage(err, t('대화를 열지 못했습니다.')))
+    }
+  }
+
+  return (
+    <Card className="space-y-3 p-4" data-testid="admin-conversations">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="min-w-0 flex-1 text-sm text-faint">{t('대화 열람')}</p>
+        {rows === null && (
+          <Button size="sm" onClick={() => setAsking(true)} data-testid="admin-conversations-open">
+            <Eye size={13} />
+            {t('대화 열람')}
+          </Button>
+        )}
+      </div>
+      <p className="text-sm text-muted">
+        {t('남용 신고를 확인할 때만 엽니다. 사유와 열람한 날은 감사 기록과 만든 사람의 화면에 남고, 개인정보는 가려서 보입니다.')}
+      </p>
+      {rows !== null &&
+        (rows.length === 0 ? (
+          <p className="text-sm text-faint">{t('대화가 없습니다.')}</p>
+        ) : (
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+            <ul className="space-y-1" data-testid="admin-conversation-list">
+              {rows.map((row) => (
+                <li key={row.id}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void adminPublicationsApi
+                        .conversation(id, row.id, given)
+                        .then(setOpen, (err) => setError(errorMessage(err, t('대화를 열지 못했습니다.'))))
+                    }
+                    className={
+                      'w-full rounded-control border px-3 py-2 text-left text-sm transition-colors ' +
+                      (open?.id === row.id ? 'border-accent bg-accent-soft' : 'border-line hover:bg-elevated')
+                    }
+                  >
+                    <span className="block truncate">{row.title || t('제목 없음')}</span>
+                    <span className="block text-xs text-faint">
+                      {formatDateTime(row.updatedAt)} · {t('질문 {n}개').replace('{n}', String(row.turns ?? 0))}
+                      {row.visitor?.byKey && ` · ${t('API·MCP 키')}`}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="min-w-0 space-y-3" data-testid="admin-conversation-transcript">
+              {open ? (
+                open.messages.map((m) => (
+                  <div key={m.id} className={m.role === 'user' ? 'rounded-card bg-elevated px-3 py-2' : ''}>
+                    <p className="mb-1 text-xs font-medium text-faint">{m.role === 'user' ? t('질문') : t('답변')}</p>
+                    <Markdown>{m.content}</Markdown>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-faint">{t('대화를 고르세요.')}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      {error && (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      )}
+      <Modal
+        open={asking}
+        onClose={() => setAsking(false)}
+        title={t('대화 열람')}
+        footer={
+          <>
+            <Button onClick={() => setAsking(false)}>{t('취소')}</Button>
+            <Button variant="primary" disabled={reason.trim().length < 4} onClick={() => void start()} data-testid="admin-conversations-confirm">
+              {t('열람')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('열람 사유 (감사 기록과 만든 사람의 화면에 남습니다)')}>
+          <Textarea rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} data-testid="admin-conversations-reason" />
+        </Field>
+      </Modal>
+    </Card>
   )
 }

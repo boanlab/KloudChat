@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Markdown } from '@/components/chat/Markdown'
 import { HubTopBar } from '@/components/customize/DetailLayout'
 import { PageBody } from '@/components/layout/AppShell'
+import { AdminReadsCard, ApiTab, ChannelsCard } from '@/components/publishing/BotChannels'
 import { PublicationSettingsForm } from '@/components/publishing/PublicationSettingsForm'
 import { ScopePicker } from '@/components/publishing/ScopePicker'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, LoadingState, Select, Tabs } from '@/components/ui'
@@ -36,12 +37,13 @@ import {
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 
-type Tab = 'overview' | 'stats' | 'conversations' | 'versions' | 'settings'
-const TABS: Tab[] = ['overview', 'stats', 'conversations', 'versions', 'settings']
+type Tab = 'overview' | 'stats' | 'conversations' | 'api' | 'versions' | 'settings'
+const TABS: Tab[] = ['overview', 'stats', 'conversations', 'api', 'versions', 'settings']
 const TAB_LABEL: Record<Tab, string> = {
   overview: '개요',
   stats: '통계',
   conversations: '보낸 대화',
+  api: 'API',
   versions: '버전',
   settings: '설정',
 }
@@ -219,6 +221,7 @@ export function PublicationPage() {
           {tab === 'overview' && (
             <div className="space-y-4">
               <ScopeCard key={pub.updatedAt} pub={pub} busy={busy} onSave={(visibility, credits) => run(() => publicationsApi.setScope(pub.id, visibility, credits))} />
+              <ChannelsCard key={`channels-${pub.updatedAt}`} pub={pub} onChange={setPub} />
               <Card className="space-y-2 p-4">
                 <p className="text-sm text-faint">{t('주소')}</p>
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -257,8 +260,10 @@ export function PublicationPage() {
                   {t('답은 공개한 판의 지시와 자료로만 하고, 내 메모리·개인 맞춤 설정·다른 파일은 쓰지 않습니다. 사용량은 내 크레딧으로 계산됩니다.')}
                 </p>
               </Card>
+              <AdminReadsCard pub={pub} />
             </div>
           )}
+          {tab === 'api' && <ApiTab pub={pub} />}
           {tab === 'stats' && <StatsTab id={pub.id} />}
           {tab === 'conversations' && <ConversationsTab pub={pub} />}
           {tab === 'versions' && (
@@ -488,7 +493,8 @@ function ConversationsTab({ pub }: { pub: Publication }) {
 }
 
 function visitorName(visitor: BotVisitor, t: (s: string) => string): string {
-  return `${t('방문자 {label}').replace('{label}', visitor.label)} · ${visitor.member ? t('구성원') : t('로그인하지 않음')}`
+  const who = visitor.member ? t('구성원') : visitor.byKey ? t('API·MCP 키') : t('로그인하지 않음')
+  return `${t('방문자 {label}').replace('{label}', visitor.label)} · ${who}`
 }
 
 /** Who sent the conversation, as far as the owner may know, and blocking them. */

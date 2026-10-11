@@ -3,6 +3,7 @@ import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { Navigate, Route, BrowserRouter as Router, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { RoleRoute } from '@/components/auth/RoleRoute'
 import { AppShell } from '@/components/layout/AppShell'
+import { setBotEmbedded } from '@/lib/api'
 import { kindOrder } from '@/lib/kinds'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -135,6 +136,20 @@ function BotRoute() {
   )
 }
 
+/** A bot framed on another site (`/embed/b/:slug`): always without an account, its calls
+ *  marked so the server keeps the frame's own cookie. */
+function EmbedRoute() {
+  useState(() => {
+    setBotEmbedded(true)
+    return true
+  })
+  return (
+    <Suspense fallback={<Spinner />}>
+      <BotPage embedded />
+    </Suspense>
+  )
+}
+
 function Authenticated() {
   const authenticated = useStore((s) => s.authenticated)
   const authLoading = useStore((s) => s.authLoading)
@@ -217,9 +232,10 @@ function Authenticated() {
 export default function App() {
   const bootstrap = useStore((s) => s.bootstrap)
 
-  // Access token is memory-only; a reload asks the refresh cookie.
+  // Access token is memory-only; a reload asks the refresh cookie. A frame on another site
+  // never signs in, so it does not ask.
   useEffect(() => {
-    void bootstrap()
+    if (!window.location.pathname.startsWith('/embed/')) void bootstrap()
   }, [bootstrap])
 
   return (
@@ -230,6 +246,7 @@ export default function App() {
           <Route path="/share/:token" element={<SharedPage />} />
           <Route path="/b" element={<PublicBotsPage />} />
           <Route path="/b/:slug" element={<BotRoute />} />
+          <Route path="/embed/b/:slug" element={<EmbedRoute />} />
           <Route path="*" element={<Authenticated />} />
         </Routes>
       </Suspense>
