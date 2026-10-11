@@ -86,7 +86,7 @@ export function PreferencesTab() {
             )}
           </Select>
           <span className="block text-sm text-faint">
-            {t('모델 전환은 외부 fallback이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.')}
+            {t('모델 전환은 외부 대체 모델이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.')}
           </span>
         </label>
       </section>

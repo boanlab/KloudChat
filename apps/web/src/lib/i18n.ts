@@ -1567,10 +1567,10 @@ const EN: Record<string, string> = {
   '보고서 주제와 넣고 싶은 절을 적으세요': 'Give the report topic and the sections you want',
   '발표 주제와 시간을 적으세요': 'Give the talk topic and length',
   'Enter 전송, Shift+Enter 줄바꿈': 'Enter to send, Shift+Enter for a new line',
-  'Enter 로 생성 · 만든 그림은 아티팩트에 쌓입니다': 'Enter to generate — images are kept as artifacts',
-  'Enter 로 생성 · 음성과 음악은 아티팩트에 쌓입니다': 'Enter to generate — audio is kept as artifacts',
-  'Enter 로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다': 'Enter to generate — the outline comes first, then each slide',
-  'Enter 로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다': 'Enter to generate — video takes minutes and progress shows on the card',
+  'Enter로 생성 · 만든 그림은 아티팩트에 쌓입니다': 'Enter to generate — images are kept as artifacts',
+  'Enter로 생성 · 음성과 음악은 아티팩트에 쌓입니다': 'Enter to generate — audio is kept as artifacts',
+  'Enter로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다': 'Enter to generate — the outline comes first, then each slide',
+  'Enter로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다': 'Enter to generate — video takes minutes and progress shows on the card',
   '받아쓰지 못했습니다.': 'Could not transcribe.',
   '생성 중입니다 — 완료되면 위 카드가 결과로 바뀝니다': 'Generating — the card above becomes the result when it finishes',
   '이 모델은 이 조합을 만들지 않습니다': 'This model does not produce that combination',
@@ -2667,7 +2667,7 @@ const EN: Record<string, string> = {
   '만들지 못했습니다.': 'Could not make it.',
   '매번 확인': 'Ask every time',
   '모델 설정 저장 중…': 'Saving the model setting…',
-  '모델 전환은 외부 fallback이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.':
+  '모델 전환은 외부 대체 모델이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.':
     'Switching models applies only when a strict-local model with no external fallback is actually available.',
   '모델의 데이터 경계 또는 가격 정보를 확인할 수 없습니다':
     'This model\'s data boundary or price could not be established',
@@ -2716,7 +2716,7 @@ const EN: Record<string, string> = {
   '크게 보기': 'View larger',
   '탐지된 개인정보 범주': 'Categories found',
   '편집으로 돌아가기': 'Back to editing',
-  '프록시가 self-hosted이며 외부 fallback이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.':
+  '프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.':
     'Only models the proxy declares self-hosted with no external fallback can be chosen. Used top to bottom in the order of the current catalogue.',
   '현재 프록시가 strict-local로 선언한 모델이 없습니다. 사용자는 마스킹 또는 편집만 선택할 수 있습니다.':
     'The proxy currently declares no strict-local model, so masking and editing are the only choices.',

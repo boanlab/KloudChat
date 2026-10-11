@@ -107,7 +107,7 @@ export function AdminGovernancePage() {
                   <div className="border-t border-line pt-3">
                     <p className="text-base font-medium">{t('strict-local 안전 모델')}</p>
                     <p className="text-sm text-muted">
-                      {t('프록시가 self-hosted이며 외부 fallback이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.')}
+                      {t('프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.')}
                     </p>
                     <div className="mt-2 space-y-1.5">
                       {strictModels.map((model) => {
