@@ -9,6 +9,18 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // 용어 · 사이드바 · 모델 고르기 · 챗봇
+  '사용자가 누구인지 — 역할, 전문성, 선호': 'Who you are — role, expertise, preferences',
+  '작업 방식에 대한 지시 — 왜 그런지 함께': 'How to work — with the reason why',
+  '진행 중인 일과 지켜야 할 조건 — 자료만 봐서는 모르는 것': 'Work in progress and conditions to keep — what the material alone does not say',
+  '참고할 외부 자료 — 주소, 대시보드, 티켓': 'Outside material to consult — addresses, dashboards, tickets',
+  '예: 답은 짧게': 'e.g. Keep answers short',
+  '위 안내를 확인하면 질문할 수 있습니다': 'Confirm the notice above to ask a question',
+  '{title} 메뉴': '{title} menu',
+  '내부 전용': 'Internal only',
+  '로컬': 'Local',
+  '외부': 'External',
+  '이 모델이 답하지 못하면 외부 모델로 넘길 수 있습니다.': 'If this model cannot answer, the request may go to an external model.',
   // 에이전트 · 두 번 저장
   '같은 이름의 에이전트를 방금 만들었습니다.': 'You just made an agent with this name.',
   '다른 이름으로': 'Use another name',
@@ -2686,8 +2698,7 @@ const EN: Record<string, string> = {
   '엔드포인트 URL': 'Endpoint URL',
   '연결됨 · 모델 {n}종': 'Connected · {n} models',
   '열 수 없는 링크입니다': 'This link cannot be opened',
-  '영문 소문자와 하이픈으로 짓습니다. 다른 메모리에서 [[이름]]으로 불러옵니다.':
-    'Lowercase letters and hyphens. Other memories link to it with [[name]].',
+  '나중에 찾기 쉬운 짧은 이름': 'A short name that is easy to find later',
   '예: 기술 검토 도우미': 'e.g. Technical review assistant',
   '예: 모든 코드는 PyTorch 2.x 기준으로 작성한다. 수식은 LaTeX로.':
     'e.g. Write all code against PyTorch 2.x. Equations in LaTeX.',
@@ -2724,7 +2735,7 @@ const EN: Record<string, string> = {
   '만들지 못했습니다.': 'Could not make it.',
   '매번 확인': 'Ask every time',
   '모델 설정 저장 중…': 'Saving the model setting…',
-  '모델 전환은 외부 fallback이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.':
+  '모델 전환은 외부 모델로 넘기는 예비 경로가 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.':
     'Switching models applies only when a strict-local model with no external fallback is actually available.',
   '모델의 데이터 경계 또는 가격 정보를 확인할 수 없습니다':
     'This model\'s data boundary or price could not be established',
@@ -2773,7 +2784,7 @@ const EN: Record<string, string> = {
   '크게 보기': 'View larger',
   '탐지된 개인정보 범주': 'Categories found',
   '편집으로 돌아가기': 'Back to editing',
-  '프록시가 self-hosted이며 외부 fallback이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.':
+  '프록시가 self-hosted이며 외부 모델로 넘기는 예비 경로가 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.':
     'Only models the proxy declares self-hosted with no external fallback can be chosen. Used top to bottom in the order of the current catalogue.',
   '현재 프록시가 strict-local로 선언한 모델이 없습니다. 사용자는 마스킹 또는 편집만 선택할 수 있습니다.':
     'The proxy currently declares no strict-local model, so masking and editing are the only choices.',
@@ -3484,8 +3495,8 @@ const EN: Record<string, string> = {
   '명조 — 보고서·인쇄': 'Serif — reports and print',
   '내보내는 파일에 실제로 쓰이는 두 가지입니다.': 'The two faces the exported files actually use.',
   '문체 규율': 'Voice',
-  '이 프로젝트의 모든 턴에 함께 전달됩니다. 길어질 내용은 프로젝트 지침에 적으세요.':
-    'Sent with every turn in the project. Anything longer belongs in the project instructions.',
+  '이 테마를 쓰는 모든 답에 함께 전달됩니다. 길어질 내용은 프로젝트 지침에 적으세요.':
+    'Sent with every answer that uses this theme. Anything longer belongs in the project instructions.',
   '예: 제목은 명사구로 쓴다. 한 문장에 한 사실만 담는다.': 'e.g. Write headings as noun phrases. One fact per sentence.',
   '이미지 스타일': 'Image style',
   '이미지 프롬프트 뒤에 그대로 붙습니다. 영어로 적는 편이 잘 통합니다.':

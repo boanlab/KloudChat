@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button, Field, Input, Modal, Select, Textarea } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
+import { missingMessage } from '@/lib/formCheck'
 import { NAME_LIMIT } from '@/lib/limits'
 import { cn, uid } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -18,8 +19,8 @@ export const memoryTypeTone: Record<MemoryType, 'accent' | 'success' | 'warn' | 
 const typeHelp: Record<MemoryType, string> = {
   user: '사용자가 누구인지 — 역할, 전문성, 선호',
   feedback: '작업 방식에 대한 지시 — 왜 그런지 함께',
-  project: '진행 중인 일과 제약 — 코드에서 유추할 수 없는 것',
-  reference: '외부 자료 포인터 — URL, 대시보드, 티켓',
+  project: '진행 중인 일과 지켜야 할 조건 — 자료만 봐서는 모르는 것',
+  reference: '참고할 외부 자료 — 주소, 대시보드, 티켓',
 }
 
 /** A blank memory. `scope` is preset by whoever opened the form. */
@@ -55,8 +56,13 @@ export function MemoryEditor({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  const lang = useStore((s) => s.lang)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const [nameError, setNameError] = useState<string | null>(null)
+
   const close = () => {
     setSaveError(null)
+    setNameError(null)
     onClose()
   }
 
@@ -72,9 +78,14 @@ export function MemoryEditor({
           <Button onClick={close}>{t('취소')}</Button>
           <Button
             variant="primary"
-            disabled={saving || !draft?.name.trim()}
+            aria-busy={saving || undefined}
             onClick={async () => {
-              if (!draft) return
+              if (!draft || saving) return
+              if (!draft.name.trim()) {
+                setNameError(missingMessage(lang, t('이름')))
+                nameRef.current?.focus()
+                return
+              }
               setSaving(true)
               setSaveError(null)
               try {
@@ -103,16 +114,16 @@ export function MemoryEditor({
               {saveError}
             </p>
           )}
-          <Field
-            label={t('이름')}
-            hint={t('영문 소문자와 하이픈으로 짓습니다. 다른 메모리에서 [[이름]]으로 불러옵니다.')}
-          >
+          <Field label={t('이름')} hint={t('나중에 찾기 쉬운 짧은 이름')} required error={nameError}>
             <Input
+              ref={nameRef}
               value={draft.name}
               maxLength={NAME_LIMIT}
-              onChange={(e) => onDraft({ ...draft, name: e.target.value })}
-              placeholder="user-prefers-terse-answers"
-              className="font-mono"
+              onChange={(e) => {
+                setNameError(null)
+                onDraft({ ...draft, name: e.target.value })
+              }}
+              placeholder={t('예: 답은 짧게')}
             />
           </Field>
           <Field label={t('유형')} hint={t(typeHelp[draft.type])}>
@@ -120,6 +131,8 @@ export function MemoryEditor({
               {(['user', 'feedback', 'project', 'reference'] as MemoryType[]).map((kind) => (
                 <button
                   key={kind}
+                  type="button"
+                  aria-pressed={draft.type === kind}
                   onClick={() => onDraft({ ...draft, type: kind })}
                   className={cn(
                     'rounded-control border px-2.5 py-1.5 text-base transition-colors',
