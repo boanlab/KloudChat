@@ -122,7 +122,8 @@ def cite_order(sections: list[dict], sources: list[dict] | None
 #: Venues a writer may put where a work's author goes.
 _VENUE_WORDS = (
     "MDPI", "arXiv", "ACM", "IEEE", "ACL Anthology", "ACL", "NeurIPS", "OpenReview",
-    "Springer", "Elsevier", "PMLR", "AAAI", "KCI", "DBpia", "Nature", "ScienceDirect",
+    "Springer", "Elsevier", "PMLR", "AAAI", "KCI", "DBpia", "RISS", "KISS", "ScienceON",
+    "KoreaScience", "earticle", "Nature", "ScienceDirect",
 )
 
 

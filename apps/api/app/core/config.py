@@ -174,9 +174,6 @@ class Settings(BaseSettings):
     #: private to the catalogue's administrator, never shared, and runnable by
     #: `run_skill_script`. Off, drafts are neither seeded nor runnable.
     skill_drafts: bool = False
-    #: KCI Open API key (open.kci.go.kr), for Korean scholarly search (`services/kci.py`).
-    #: Empty: KCI is searched through the search backend within site:kci.go.kr.
-    kci_api_key: str = ""
     # Hits scraped in full; each is a page fetch.
     web_search_results: int = 5
     web_search_scrape: int = 3

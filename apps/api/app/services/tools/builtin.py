@@ -22,8 +22,8 @@ from app.core.config import settings
 from app.services import (
     credibility,
     index_client,
-    kci,
     knowledge,
+    korean_papers,
     netguard,
     sandbox,
     settings_store,
@@ -469,30 +469,27 @@ async def _searxng(
     return _select(hits, query, count)
 
 
-async def _scrape(base_url: str, url: str) -> str:
-    """Page body as Markdown through the shim; empty string on failure.
-
-    The gateway replaces the Authorization header; the key is still sent for bare-shim deployments.
-    """
+async def _read(base_url: str, url: str, formats: list[str], **options: Any) -> dict[str, Any]:
+    """The shim's `data` for `url` in `formats`; `{}` on failure."""
     if not base_url:
-        return ""
+        return {}
     # Search results and model-picked addresses pass through here too: nothing on the
     # deployment's own network is fetched on a reader's behalf.
     if reason := await netguard.refusal(url):
         log.info("scrape refused: %s", reason)
-        return ""
+        return {}
     try:
         async with tools_gateway.client(timeout=_FETCH_TIMEOUT) as client:
             response = await client.post(
                 f"{base_url.rstrip('/')}/v1/scrape",
                 headers={"Authorization": f"Bearer {settings.scraper_api_key}"},
-                json={"url": url, "formats": ["markdown"]},
+                json={"url": url, "formats": formats, **options},
             )
             response.raise_for_status()
             payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:
         log.info("scrape failed: %s", logs.safe(exc))
-        return ""
+        return {}
     if isinstance(payload, dict) and payload.get("success") is False:
         # The reader answered but could not read (its browser died, the page refused):
         # said loudly, since every search would otherwise read zero pages in silence.
@@ -506,10 +503,25 @@ async def _scrape(base_url: str, url: str) -> str:
                 "the page reader has failed %d times in a row — searches are reading no "
                 "pages; check the crawl4ai shim", _SCRAPE_ALARM,
             )
-        return ""
+        return {}
     _scrape_failures[0] = 0
-    data = payload.get("data") or payload
-    return (data.get("markdown") or data.get("content") or "").strip()
+    data = payload.get("data") or payload if isinstance(payload, dict) else {}
+    return data if isinstance(data, dict) else {}
+
+
+async def _scrape(base_url: str, url: str) -> str:
+    """Page body as Markdown through the shim; empty string on failure.
+
+    The gateway replaces the Authorization header; the key is still sent for bare-shim deployments.
+    """
+    data = await _read(base_url, url, ["markdown"])
+    return str(data.get("markdown") or data.get("content") or "").strip()
+
+
+async def scrape_html(base_url: str, url: str) -> str:
+    """The page's own HTML, head included (for its meta tags); empty string on failure."""
+    data = await _read(base_url, url, ["rawHtml"], onlyMainContent=False)
+    return str(data.get("rawHtml") or "")
 
 
 #: Reader failures in a row, and the count at which they are reported as an outage.
@@ -646,8 +658,8 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     if not query:
         return ToolResult(content="오류: query 가 비었습니다.", failed=True)
     kind = str(args.get("kind") or "web")
-    if kind == "kci":
-        return await _kci_search(query)
+    if kind in ("korean_papers", "kci"):  # `kci`: the earlier name
+        return await _korean_papers_search(query)
     if kind not in ("web", *_LANES):
         kind = "web"
     if kind == "web" and _PAPER_CUES.search(query):
@@ -701,9 +713,9 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
             )
     except (httpx.HTTPError, ValueError) as exc:
         return ToolResult(content=f"오류: 검색에 실패했습니다 ({exc}).", failed=True)
-    if kind == "papers" and kci.wanted(query):
-        # A question about Korean research: KCI's papers first.
-        found = await kci.search(kci.query_for(query) or query, 4)
+    if kind == "papers" and korean_papers.wanted(query):
+        # A question about Korean research: Korean papers (KCI·DBpia·RISS) first.
+        found = await korean_papers.search(query, 4)
         seen = {str(h.get("url") or "") for h in found}
         hits = [*found, *(h for h in hits if str(h.get("url") or "") not in seen)]
     hits = [
@@ -769,19 +781,22 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     )
 
 
-async def _kci_search(query: str) -> ToolResult:
-    """Korean scholarly papers from KCI, each with its authors, year, journal and DOI when
-    the Open API key is set (`services/kci.py`)."""
-    hits = await kci.search(kci.query_for(query) or query, max(settings.web_search_results, 8))
+async def _korean_papers_search(query: str) -> ToolResult:
+    """Korean scholarly papers (KCI·DBpia·RISS …) found through the search backend, each with
+    the authors, year, venue and DOI its landing page gives (`services/korean_papers.py`)."""
+    hits = await korean_papers.search(query, max(settings.web_search_results, 8))
     if not hits:
-        return ToolResult(content=f"'{query}' 에 대한 KCI 검색 결과가 없습니다.",
-                          detail="KCI 0개 결과", empty=True)
-    lines = [f"'{query}' KCI(한국학술지인용색인) 검색 결과:\n"]
+        return ToolResult(content=f"'{query}' 에 대한 국내 학술 논문 검색 결과가 없습니다.",
+                          detail="국내 논문 0개 결과", empty=True)
+    lines = [f"'{query}' 국내 학술 논문(KCI·DBpia·RISS 등) 검색 결과:\n"]
     usable: list[str] = []
     for i, hit in enumerate(hits, 1):
+        volume = str(hit.get("volume") or "")
+        venue = str(hit.get("journal") or "") + (
+            f" {volume}권" if volume and hit.get("journal") else "") + (
+            f" {hit['issue']}호" if volume and hit.get("journal") and hit.get("issue") else "")
         meta = " · ".join(x for x in (
-            ", ".join(hit.get("authors") or []), str(hit.get("published") or ""),
-            str(hit.get("journal") or ""),
+            ", ".join(hit.get("authors") or []), str(hit.get("published") or ""), venue,
             f"DOI {hit['doi']}" if hit.get("doi") else "") if x)
         lines.append(f"[{i}] {hit['title']}\n{hit['url']}\n" + (f"{meta}\n" if meta else "")
                      + str(hit.get("snippet") or ""))
@@ -790,7 +805,7 @@ async def _kci_search(query: str) -> ToolResult:
             usable.append(url)
     return ToolResult(
         content="\n".join(lines),
-        detail=f"KCI {len(hits)}개 결과" + ("" if kci.configured() else " · 웹 검색으로 찾음"),
+        detail=f"국내 논문 {len(hits)}개 결과",
         search_evidence=SearchEvidence(tuple(usable)) if usable else None,
     )
 
@@ -818,8 +833,9 @@ WEB_SEARCH = Tool(
         "바깥세상의 사실을 확인할 때 사용하세요. 이 대화 안의 내용이나 사용자가 준 "
         "자료를 찾는 데는 쓰지 않습니다. 논문·학술 자료는 kind=papers, "
         "코드·라이브러리·오류 메시지는 kind=code, 시사·사건은 kind=news 로 검색하면 "
-        "그 분야 엔진이 함께 답합니다. 국내 학술 논문(한국 연구·국내 동향)은 kind=kci 로 "
-        "KCI(한국학술지인용색인)를 찾습니다. 공식 출처가 필요하면 site 나 official 을, "
+        "그 분야 엔진이 함께 답합니다. 국내 학술 논문(한국 연구·국내 동향)은 "
+        "kind=korean_papers 로 KCI·DBpia·RISS 등의 논문을 저자·연도·학술지와 함께 찾습니다. "
+        "공식 출처가 필요하면 site 나 official 을, "
         "최근 것만 필요하면 time_range 를, 해외 자료는 language=en 을 주세요."
     ),
     parameters={
@@ -831,10 +847,11 @@ WEB_SEARCH = Tool(
             },
             "kind": {
                 "type": "string",
-                "enum": ["web", "news", "papers", "kci", "code"],
+                "enum": ["web", "news", "papers", "korean_papers", "code"],
                 "description": (
                     "검색 종류. web: 일반(기본). news: 뉴스·시사. papers: 논문·학술 "
-                    "(Google Scholar, OpenAlex, arXiv 등). kci: 국내 학술 논문(KCI). "
+                    "(Google Scholar, OpenAlex, arXiv 등). korean_papers: 국내 학술 논문 "
+                    "(KCI·DBpia·RISS 등). "
                     "code: 개발 (GitHub, Stack Overflow 등)."
                 ),
             },

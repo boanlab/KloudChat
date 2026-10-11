@@ -117,9 +117,6 @@ services:
       # Sent as X-Tools-Key to the tool addresses only; KloudChat-LLM's gateway
       # refuses /tools/* without it. Same value as TOOLS_GATEWAY_KEY there.
       TOOLS_GATEWAY_KEY: ${KCHAT_TOOLS_GATEWAY_KEY:-}
-      # KCI Open API key (open.kci.go.kr) for Korean scholarly search. Blank: KCI is
-      # searched through the search backend within site:kci.go.kr (no authors or DOI).
-      KCI_API_KEY: ${KCHAT_KCI_API_KEY:-}
       # Blank disables the printer; PDFs then come from the structural renderer.
       PRINT_BASE_URL: ${KCHAT_PRINT_BASE_URL:-http://kloudchat-print:8200}
       FILE_STORAGE_DIR: /srv/data/files
