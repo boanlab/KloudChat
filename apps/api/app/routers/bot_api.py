@@ -39,6 +39,7 @@ from app.models.chat import ChatSession, Message, Role, RoutingMode, SessionKind
 from app.models.publishing import (
     Publication,
     PublicationKey,
+    PublicationStatus,
     PublicationVersion,
     PublicationVisitor,
 )
@@ -126,6 +127,10 @@ async def keyed(request: Request, db: DbSession) -> tuple[Publication, Publicati
 
 
 def _channel(pub: Publication, name: str) -> None:
+    if pub.status == PublicationStatus.paused.value and name in publishing.channels_of(pub):
+        # The channel is open; the bot is not. Said as such, so the caller does not go
+        # asking for a channel that was never closed.
+        raise Failed(403, "bot_paused", _MESSAGES["bot_paused"], kind="permission_error")
     if not publishing.channel_open(pub, name):
         raise Failed(403, "channel_closed",
                      f"The bot's {name.upper()} channel is not open.",

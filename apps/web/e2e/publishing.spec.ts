@@ -500,9 +500,11 @@ test('a paused bot says so and takes no question', async ({ page }, testInfo) =>
   await hubFixture(page, testInfo)
   await botRoutes(page, { paused: true })
   await page.goto(`/b/${SLUG}`)
-  await page.getByRole('button', { name: '확인하고 시작' }).click()
   await expect(page.getByTestId('bot-paused')).toContainText('지금은 이 챗봇을 쓸 수 없습니다.')
-  await expect(page.getByLabel('질문 입력')).toBeDisabled()
+  // Nothing to agree to or type into while it cannot answer: the notice alone.
+  await expect(page.getByTestId('bot-notice')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '확인하고 시작' })).toHaveCount(0)
+  await expect(page.getByLabel('질문 입력')).toHaveCount(0)
   await expect(page.getByTestId('bot-prompts')).toHaveCount(0)
   await shot(page, 'bot-paused', testInfo.project.name)
 })

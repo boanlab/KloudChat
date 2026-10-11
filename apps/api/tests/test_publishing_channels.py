@@ -444,7 +444,9 @@ async def test_a_paused_or_revoked_bot_answers_no_channel(world):
     await world.client.post(f"/admin/publications/{pub['id']}/status",
                             json={"status": "paused", "reason": "확인 중입니다"})
     world.user = None
-    assert (await _complete(world, key, pub["slug"])).status_code == 403
+    paused = await _complete(world, key, pub["slug"])
+    # The bot is paused, not the channel closed: said as such.
+    assert paused.status_code == 403 and paused.json()["error"]["code"] == "bot_paused"
     world.as_("admin")
     await world.client.post(f"/admin/publications/{pub['id']}/status",
                             json={"status": "revoked", "reason": "닫습니다"})
