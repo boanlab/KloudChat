@@ -32,7 +32,7 @@ import { useStore } from '@/store/useStore'
 import type { CostRouting, LengthCheck, Message, ModelInfo } from '@/types'
 import { Markdown } from './Markdown'
 import { RetryActions } from './RetryActions'
-import { StepTimeline } from './StepTimeline'
+import { OutputFiles, StepTimeline } from './StepTimeline'
 import { ProposalCard } from './ProposalCard'
 import { doingPhrase, waitingCardMessageId } from '@/lib/stages'
 import { TurnProgress } from './TurnProgress'
@@ -487,6 +487,9 @@ function MessageItemInner({
   // Media is shown inline; documents are named as chips.
   const shown = linked.filter(isMedia)
   const named = linked.filter((a) => !isMedia(a))
+  const madeFiles = (message.steps ?? [])
+    .flatMap((step) => step.outputs ?? [])
+    .filter((file, i, all) => all.findIndex((f) => f.id === file.id) === i)
   const failed = turnFailureNotice(message, madeHere, t)
   const stopped = !message.error && message.failure === 'stopped'
   // One progress line per turn: the step header when there is one, else the waiting line.
@@ -619,7 +622,19 @@ function MessageItemInner({
                 {t('이전 답변')} · {(drafts[viewing]?.model && models.find((m) => m.id === drafts[viewing]?.model)?.label) || drafts[viewing]?.model || ''}
               </Badge>
             )}
-            <Markdown>{shownContent}</Markdown>
+            {failed && !stopped && !madeHere && viewing === null ? (
+              // A turn that broke off: what streamed so far may claim work it never finished.
+              <div data-testid="partial-answer">
+                <Badge tone="warn" className="mb-2">
+                  {t('끊긴 답 · 끝까지 쓰지 못했습니다')}
+                </Badge>
+                <div className="opacity-70">
+                  <Markdown>{shownContent}</Markdown>
+                </div>
+              </div>
+            ) : (
+              <Markdown>{shownContent}</Markdown>
+            )}
           </>
         ) : (
           // Only while the turn is running and nothing is there to read yet.
@@ -682,6 +697,13 @@ function MessageItemInner({
                 kind={sessionKind ?? 'chat'}
               />
             )}
+          </div>
+        )}
+
+        {!streaming && madeFiles.length > 0 && (
+          // The files code wrote, where the answer that talks about them is read.
+          <div className="mt-2" data-testid="made-files">
+            <OutputFiles files={madeFiles} />
           </div>
         )}
 

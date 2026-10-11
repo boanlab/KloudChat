@@ -3414,6 +3414,7 @@ const EN: Record<string, string> = {
   // ── 테마 ───────────────────────────────────────────────
   '사용 안 함 — 기본 모양': 'None — the default look',
   '사용 안 함 — 기본 템플릿': 'None — the default template',
+  '끊긴 답 · 끝까지 쓰지 못했습니다': 'Cut off · this answer was not finished',
   '문서 형식도 여기서 고릅니다': 'The document format is chosen here too',
   '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다.':
     'Attach one to a project and its slides, reports and images come out in the same colour and type.',

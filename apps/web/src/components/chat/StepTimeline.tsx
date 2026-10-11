@@ -149,7 +149,7 @@ function RunTrace({ step }: { step: Step }) {
 }
 
 /** Download chips for the files a tool step made. */
-function OutputFiles({ files }: { files: NonNullable<Step['outputs']> }) {
+export function OutputFiles({ files }: { files: NonNullable<Step['outputs']> }) {
   const t = useT()
   const [failed, setFailed] = useState(false)
   const take = async (id: string, name: string) => {
