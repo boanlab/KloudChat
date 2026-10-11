@@ -6,6 +6,8 @@ title: Agents and skills
 
 An agent is an assistant with a role, instructions, tools, and material already configured. You make your own for work you do often, such as English conversation practice, meeting minutes, or paper review, or import one a colleague has published.
 
+Field-by-field examples are in [Agent and template examples](agent-examples).
+
 ![The agent selection menu](/img/guide/at-menu.png)
 
 ## Starting a conversation with an agent
