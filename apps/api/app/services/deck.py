@@ -3269,6 +3269,55 @@ async def _draw_figures(
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
 
+#: A request to show each term's original beside it: 「영어 원문 병기」, 「원어 병기」.
+_BILINGUAL = re.compile(
+    r"(?:영어|영문|원문|원어)\s{0,3}(?:원문\s{0,3})?(?:을|를)?\s{0,3}(?:함께\s{0,3})?"
+    r"(?:병기|같이\s{0,3}(?:적|써|표기)|나란히)"
+    r"|(?:keep|show|give)\s+the\s+English\s+terms?",
+    re.I,
+)
+_STOP_WORDS = frozenset(
+    "the of and to in for on with by from is are was were be this that we our it its as at "
+    "or an a not can which these those has have had than".split()
+)
+
+
+def bilingual_terms_rule(request: str, material: list[str]) -> str:
+    """A system rule to write terms as 한국어(English) when the request asks for it.
+
+    The research lane's seminar deck was asked 「용어는 영어 원문을 병기해 줘」 and showed
+    none, coining 「단문」 and 「추록」 instead. The material's own repeated English terms are
+    listed so the writer pairs those rather than inventing Korean ones.
+    """
+    if not _BILINGUAL.search(request or ""):
+        return ""
+    counts: dict[str, int] = {}
+    for text in material:
+        tokens = re.findall(r"[A-Za-z]+|[^A-Za-z\s]", text or "")
+        for size in (3, 2):
+            for i in range(len(tokens) - size + 1):
+                words = tokens[i : i + size]
+                if all(
+                    w.isalpha() and len(w) > 2 and w.lower() not in _STOP_WORDS for w in words
+                ):
+                    phrase = " ".join(words)
+                    counts[phrase] = counts.get(phrase, 0) + 1
+    repeated = [t for t, n in counts.items() if n >= 2]
+    # The longest form: 「Natural Language Inference」, not also 「Natural Language」.
+    terms = [t for t in repeated if not any(t != o and t in o for o in repeated)][:15]
+    rule = (
+        "The user asked for each technical term with its English original. On every slide, "
+        "write a technical term the first time it appears as 한국어 용어(English term), e.g. "
+        "원자적 주장(atomic claim), 자연어 추론(NLI). Use the Korean term the material or the "
+        "field already uses (초록 for abstract, 주장 for claim); if there is none, keep the "
+        "English term as is rather than coining a Korean word. Keep the same pair on every "
+        "slide and in the notes."
+    )
+    if terms:
+        rule += " English terms in the material to pair: " + ", ".join(terms) + "."
+    return rule
+
+
 async def write(
     *,
     request: str,
@@ -3305,6 +3354,8 @@ async def write(
         "outlineInputTokens": 0,
         "outlineOutputTokens": 0,
     }
+    if rule := bilingual_terms_rule(request, untrusted_context or []):
+        trusted_context = [*(trusted_context or []), rule]
     wanted = requested_slides(request)
     span = slide_range(request)
     fixed_accent = (tokens or {}).get("accent") or ""
