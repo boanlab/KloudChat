@@ -122,6 +122,41 @@ def from_sections(sections: list[dict]) -> list[Part]:
     return parts
 
 
+def _line_key(line: str) -> str:
+    """A line as `check` compares it for 「repeat」: markers and punctuation gone."""
+    return re.sub(r"\W", "", re.sub(r"^[-*\d.>#\s]+", "", line).strip())
+
+
+def drop_repeats(sections: list[dict]) -> tuple[list[dict], list[str]]:
+    """`(sections, the lines dropped)`: a prose line a later section repeats word for word
+    from an earlier one goes from the later one, so `check` has no 「repeat」 left to report.
+    Table rows, headings and fenced blocks stay, and a section is never emptied."""
+    seen: set[str] = set()
+    out: list[dict] = []
+    dropped: list[str] = []
+    for section in sections:
+        body = str(section.get("content") or "")
+        kept: list[str] = []
+        cut: list[str] = []
+        fenced = False
+        for line in body.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                fenced = not fenced
+            key = _line_key(line)
+            prose = not fenced and stripped and not stripped.startswith(("|", "#", "```"))
+            if prose and len(key) >= 8 and key in seen:
+                cut.append(stripped)
+                continue
+            kept.append(line)
+        if cut and any(_line_key(x) for x in kept if not x.strip().startswith("#")):
+            body = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+            dropped += cut
+        seen |= {k for k in map(_line_key, body.split("\n")) if len(k) >= 8}
+        out.append({**section, "content": body} if body != section.get("content") else section)
+    return out, dropped
+
+
 def from_slides(slides: list[dict]) -> list[Part]:
     """A JSON deck: one part per slide, reading every field that can hold words or numbers."""
     parts = []

@@ -43,6 +43,7 @@ from app.services import (
     hangul,
     internal_words,
     key_figures,
+    lint,
     placeholders,
     process_settings,
     quality_gate,
@@ -1717,7 +1718,12 @@ class Quality(Base):
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, f = _report(), bundle.findings
-        sections = bundle.document.sections
+        # A line said word for word in an earlier section goes from the later one, before the
+        # reader and the saved lint see it twice.
+        sections, repeated = lint.drop_repeats(bundle.document.sections)
+        if repeated:
+            log.info("dropped %d repeated line(s) across sections", len(repeated))
+            bundle.document.sections = sections
         format_codes = set(report_checks.LABELS)
         findings = quality_gate.report_findings(sections, _material_text(bundle),
                                                 bundle.computed.settled)
