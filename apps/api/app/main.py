@@ -39,6 +39,7 @@ from app.routers import (
 from app.services import (
     bootstrap,
     litellm,
+    ocr_jobs,
     publishing,
     settings_store,
     starter,
@@ -86,6 +87,8 @@ async def lifespan(app: FastAPI):
     # Published bots: retention of their conversations, and pausing a bot whose owner can no
     # longer carry it (services/publishing.py).
     bots = asyncio.create_task(publishing.watch())
+    # Scanned pages and document photos queued at upload (services/ocr_jobs.py).
+    reader = asyncio.create_task(ocr_jobs.watch())
     # Cross-process stop-button delivery: only with more than one API replica,
     # so the single-instance default holds no extra Postgres connection open.
     stop_listener = (
@@ -98,6 +101,7 @@ async def lifespan(app: FastAPI):
     yield
     sweeper.cancel()
     bots.cancel()
+    reader.cancel()
     if stop_listener is not None:
         stop_listener.cancel()
     if perf_task is not None:

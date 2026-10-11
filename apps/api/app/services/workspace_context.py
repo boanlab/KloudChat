@@ -81,13 +81,17 @@ class ContextFile:
 
     name: str
     #: "included", "truncated", "omitted" (over budget), "unreadable" (extraction
-    #: failed), "picture" (handed to the model) or "picture_unseen" (model lacks vision).
+    #: failed), "picture" (handed to the model), "picture_unseen" (model lacks vision) or
+    #: "reading" (scanned pages still being read; what is read so far may be included).
     state: str
     kept_chars: int
     total_chars: int
     id: str = ""
     source_url: str | None = None
     locations: tuple[str, ...] = ()
+    #: For "reading": pages read so far and pages to read.
+    pages_done: int = 0
+    pages_total: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -687,6 +691,12 @@ def _file_report(
                 f"- {name} — 그림으로 전달됨. 보이는 것만 말하고 "
                 "보이지 않는 것을 지어내지 마라."
             )
+        elif file.state == "reading":
+            lines.append(
+                f"- {name} — 스캔한 쪽의 글자를 읽는 중 ({file.pages_done}/{file.pages_total}쪽). "
+                "아직 읽지 않은 쪽의 내용은 알 수 없으므로 지어내지 말고, 다 읽은 뒤 "
+                "다시 물어 달라고 안내하라."
+            )
         elif file.state == "picture_unseen":
             lines.append(
                 f"- {name} — 그림이며 파일은 온전하나, 지금 모델은 그림을 "
@@ -831,8 +841,10 @@ async def assemble(
         ordered = [by_id[file_id] for file_id in attachment_ids if file_id in by_id]
         looked_at: dict[str, TurnPicture] = {}
         if vision:
+            # A picture is shown to a model that can see it, even when its words were read
+            # out of it: the picture says more than the words.
             for stored in ordered:
-                if stored.text or not pictures.can_be_seen(stored.mime, stored.size):
+                if not pictures.can_be_seen(stored.mime, stored.size):
                     continue
                 try:
                     blob = file_service.read_blob(stored.storage_key)
@@ -846,8 +858,15 @@ async def assemble(
         def is_picture(stored) -> bool:
             return not stored.text and pictures.can_be_seen(stored.mime, stored.size)
 
-        readable = [stored for stored in ordered if stored.text]
-        unreadable = [stored for stored in ordered if not stored.text and not is_picture(stored)]
+        def being_read(stored) -> bool:
+            return stored.ocr_state in ("queued", "running")
+
+        readable = [stored for stored in ordered if stored.text and stored.id not in looked_at]
+        unreadable = [
+            stored
+            for stored in ordered
+            if not stored.text and not is_picture(stored) and not being_read(stored)
+        ]
         attached, used = _knowledge_block(
             readable, header="# 이번 요청에 첨부된 파일", focus=focus, budget=file_budget
         )
@@ -855,11 +874,22 @@ async def assemble(
         spent = iter(used)
 
         def _fate(stored) -> ContextFile:
+            if stored.id in looked_at:
+                return ContextFile(stored.name, "picture", 0, 0)
+            if being_read(stored):
+                kept = next(spent) if stored.text else None
+                return ContextFile(
+                    stored.name,
+                    "reading",
+                    kept.kept_chars if kept else 0,
+                    kept.total_chars if kept else 0,
+                    pages_done=stored.ocr_done,
+                    pages_total=stored.ocr_total,
+                )
             if stored.text:
                 return next(spent)
             if is_picture(stored):
-                state = "picture" if stored.id in looked_at else "picture_unseen"
-                return ContextFile(stored.name, state, 0, 0)
+                return ContextFile(stored.name, "picture_unseen", 0, 0)
             return ContextFile(stored.name, "unreadable", 0, 0)
 
         attached_files = tuple(_fate(stored) for stored in ordered)

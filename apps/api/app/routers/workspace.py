@@ -90,6 +90,7 @@ from app.services import (
     index_client,
     lint,
     netguard,
+    ocr_jobs,
     page_export,
     pictures,
     printing,
@@ -472,6 +473,12 @@ async def list_files(
     return [FileOut.of(f) for f in rows]
 
 
+@router.get("/files/{file_id}", response_model=FileOut)
+async def get_file(file_id: str, user: CurrentUser, db: DbSession):
+    """One file of the caller's, for a screen following its pages being read."""
+    return FileOut.of(await _own(db, StoredFile, "user_id", user, file_id))
+
+
 @router.post("/files", response_model=FileOut, status_code=status.HTTP_201_CREATED)
 async def upload_file(
     user: CurrentUser,
@@ -507,10 +514,15 @@ async def upload_file(
     except Exception as exc:  # noqa: BLE001
         log.info("extraction failed for %s: %s", stored.name, exc)
         stored.error = str(exc)
+    # Scanned pages and document photos are read in the background; what the text layer
+    # held is kept meanwhile.
+    reading = await ocr_jobs.queue_if_scanned(stored, data)
 
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
+    if reading:
+        ocr_jobs.wake()
     # An upload joins the retrieval index like agent knowledge does, so
     # `search_knowledge` can find it by meaning on later turns. Never blocks the upload.
     if stored.text.strip():
@@ -3121,10 +3133,13 @@ async def add_agent_file(
     except Exception as exc:  # noqa: BLE001
         log.info("extraction failed for %s: %s", stored.name, exc)
         stored.error = str(exc)
+    reading = await ocr_jobs.queue_if_scanned(stored, data)
 
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
+    if reading:
+        ocr_jobs.wake()
     await _index(db, agent, stored)
     return FileOut.of(stored)
 
@@ -3149,7 +3164,13 @@ async def add_agent_files_from(agent_id: str, payload: KnowledgeFromFiles, user:
             continue
         copy = StoredFile(user_id=user.id, agent_id=agent.id, name=source.name,
                           size=source.size, mime=source.mime, text=source.text,
-                          tokens=source.tokens, error=source.error)
+                          tokens=source.tokens, error=source.error,
+                          # Pages still being read are read again for the copy.
+                          ocr_state="queued" if source.ocr_state in ocr_jobs.OPEN_STATES
+                          else source.ocr_state,
+                          ocr_total=source.ocr_total, ocr_done=0
+                          if source.ocr_state in ocr_jobs.OPEN_STATES else source.ocr_done,
+                          ocr_review=source.ocr_review)
         try:
             copy.storage_key = file_service.copy_blob(user.id, copy.id, copy.name,
                                                       source.storage_key)
@@ -3159,6 +3180,8 @@ async def add_agent_files_from(agent_id: str, payload: KnowledgeFromFiles, user:
         db.add(copy)
         made.append(copy)
     await db.commit()
+    if any(copy.ocr_state == "queued" for copy in made):
+        ocr_jobs.wake()
     for copy in made:
         await db.refresh(copy)
         await _index(db, agent, copy)
@@ -3210,6 +3233,32 @@ async def _index(db: DbSession, agent: Agent, stored: StoredFile) -> bool:
     if not stored.text.strip() or not await index_client.available():
         return False
     return await _index_document(db, agent.owner_id, await _shelf_key(db, agent), stored)
+
+
+async def reindex_file(db: DbSession, stored: StoredFile) -> bool:
+    """After a file's text changed (its scanned pages were read): the index entry for it is
+    replaced in the collection its owner searches — the agent's, the project's, or the
+    conversation's."""
+    if not stored.text.strip():
+        return False
+    if stored.agent_id:
+        agent = await db.get(Agent, stored.agent_id)
+        return bool(agent) and await _index(db, agent, stored)
+    if stored.project_id:
+        project = await db.get(Project, stored.project_id)
+        if project is None:
+            return False
+        return await _index_document(
+            db, stored.user_id, await _project_shelf_key(db, project), stored
+        )
+    if stored.session_id:
+        session = await db.get(ChatSession, stored.session_id)
+        if session is None or session.user_id != stored.user_id:
+            return False
+        return await _index_document(
+            db, stored.user_id, await _session_shelf_key(db, session), stored
+        )
+    return False
 
 
 async def _index_document(

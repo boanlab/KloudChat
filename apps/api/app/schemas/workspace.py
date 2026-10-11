@@ -63,6 +63,12 @@ class FileOut(Wire):
     error: str | None = None
     #: Whether the vector index covers this document.
     indexed: bool = False
+    #: Scanned pages being read: null when none were needed, else
+    #: "queued" | "running" | "done" | "failed", with pages to read, read, and to check.
+    ocr_state: str | None = None
+    ocr_total: int = 0
+    ocr_done: int = 0
+    ocr_review: int = 0
     created_at: datetime
 
     @classmethod

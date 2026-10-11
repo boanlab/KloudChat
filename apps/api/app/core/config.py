@@ -148,6 +148,9 @@ class Settings(BaseSettings):
     #: Vector index for agent knowledge. Empty: retrieval uses only the lexical
     #: scorer in `services/knowledge.py`.
     index_url: str = ""
+    #: ocr-shim root (`/ocr`, `/render`). Empty: scanned pages are read by the vision
+    #: model alone when one is set, otherwise not at all.
+    ocr_url: str = ""
     #: OpenAI-compatible `/v1/audio/transcriptions`, the only place audio is sent.
     #: Empty: transcription is unavailable and dictation hidden. There is no
     #: outside-model fallback; a leftover `STT_OR_MODEL` env is ignored.

@@ -1320,6 +1320,8 @@ _FILE_NOTE = {
     "unreadable": "{name} 읽지 못함",
     # Readable file, but this model cannot see pictures.
     "picture_unseen": "{name} 그림 · 이 모델은 보지 못함",
+    # Scanned pages still being read; what is read so far was used.
+    "reading": "{name} 글자 읽는 중",
 }
 
 #: Names listed before the rest are counted.
@@ -1342,8 +1344,11 @@ def _file_context_step(step_id: str, subject: str, files: tuple[ContextFile, ...
     whole = {"included", "picture"}
     short = [file for file in files if file.state not in whole]
     cut = sum(1 for file in short if file.state == "truncated")
-    dropped = len(short) - cut
+    reading = sum(1 for file in short if file.state == "reading")
+    dropped = len(short) - cut - reading
     fates = [f"{cut}개 잘림"] if cut else []
+    if reading:
+        fates.append(f"{reading}개 글자 읽는 중")
     if dropped:
         fates.append(f"{dropped}개 빠짐")
     label = (

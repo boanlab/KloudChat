@@ -42,7 +42,7 @@ def under(url: str | httpx.URL, base: str) -> bool:
     return target.path == prefix or target.path.startswith(prefix + "/")
 
 
-FEATURES = ("search", "fetch", "exec", "research", "stt", "index")
+FEATURES = ("search", "fetch", "exec", "research", "stt", "index", "ocr")
 
 
 async def is_tools_url(url: str | httpx.URL, features: tuple[str, ...] = FEATURES) -> bool:

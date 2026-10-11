@@ -118,6 +118,42 @@ class StoredFile(SQLModel, table=True):
     indexed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     #: The collection that write went to, so a move or a delete forgets the right one.
     index_collection: str | None = Field(default=None)
+    #: Reading scanned pages (`services/ocr_jobs.py`): null when the file needed none,
+    #: else "queued" | "running" | "done" | "failed". `text` holds what is read so far.
+    ocr_state: str | None = Field(default=None, max_length=16)
+    #: Pages to read, pages read, and pages whose two readings disagreed.
+    ocr_total: int = Field(default=0)
+    ocr_done: int = Field(default=0)
+    ocr_review: int = Field(default=0)
+    ocr_attempts: int = Field(default=0)
+    #: When a worker last claimed or advanced the job; a stale one is taken over.
+    ocr_claimed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
+class FilePage(SQLModel, table=True):
+    """One page of a file that went through OCR: what was read, by which reader, and how
+    sure it is. The file's `text` is these pages joined in order."""
+
+    __tablename__ = "file_pages"
+    __table_args__ = (UniqueConstraint("file_id", "page", name="uq_file_pages_file_page"),)
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    file_id: str = Field(foreign_key="files.id", ondelete="CASCADE", index=True)
+    #: 1-based page (or TIFF frame).
+    page: int
+    #: "text" (the PDF's own text layer), "engine" (ocr-shim) or "vision" (a vision model).
+    source: str = Field(default="text", max_length=16)
+    text: str = Field(default="", sa_column=Column(Text, nullable=False, server_default=""))
+    #: The engine's mean recognition score; null when the engine did not read the page.
+    confidence: float | None = Field(default=None)
+    #: The engine and the vision model disagreed (words or numbers), or the reader said
+    #: part of the page could not be read.
+    needs_review: bool = Field(default=False)
+    has_table: bool = Field(default=False)
+    #: Lines with boxes in page pixels, the render dpi and size, and the engine's own
+    #: text when the vision model's was kept. For pointing at a passage later.
+    layout: dict | None = Field(default=None, sa_column=_json(nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 

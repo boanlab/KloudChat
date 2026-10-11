@@ -38,6 +38,7 @@ TOOLS_EXEC_URL = "tools.exec_url"
 TOOLS_RESEARCH_URL = "tools.research_url"
 TOOLS_STT_URL = "tools.stt_url"
 TOOLS_INDEX_URL = "tools.index_url"
+TOOLS_OCR_URL = "tools.ocr_url"
 
 #: Paths appended to the backend address to derive each feature's address.
 _TOOL_PATHS: dict[str, str] = {
@@ -48,6 +49,7 @@ _TOOL_PATHS: dict[str, str] = {
     "research": "/tools/research",
     "stt": "/tools/stt",
     "index": "/tools/index",
+    "ocr": "/tools/ocr",
 }
 
 # ── branding ───────────────────────────────────────────────────────────
@@ -66,6 +68,16 @@ ENABLED_KINDS = "kinds.enabled"
 #: Everything except chat. Image and video default to off.
 OPTIONAL_KINDS = ("report", "slides", "image", "av")
 DEFAULT_ENABLED_KINDS = ("report", "slides")
+
+# ── text from scanned pages ────────────────────────────────────────────
+#: "1" or "0"; unset is on whenever a reader is available.
+OCR_ENABLED = "ocr.enabled"
+#: "both" (engine, then a vision model for unsure pages), "engine" or "vision".
+OCR_MODE = "ocr.mode"
+#: The vision model that re-reads pages; only a strict-local one with vision is accepted.
+OCR_VISION_MODEL = "ocr.vision_model"
+#: Pages of one document read at most.
+OCR_MAX_PAGES = "ocr.max_pages"
 
 # ── outgoing mail ──────────────────────────────────────────────────────
 SMTP_HOST = "smtp.host"
@@ -284,6 +296,8 @@ class ToolBackends:
     stt: str = ""
     #: Vector retrieval for agent knowledge; empty falls back to the lexical index.
     index: str = ""
+    #: Text from scanned pages on CPU (ocr-shim); empty leaves only a vision model.
+    ocr: str = ""
 
     def get(self, name: str) -> str:
         return getattr(self, name, "")
@@ -314,6 +328,7 @@ async def tools_config() -> ToolBackends:
         research=resolve(TOOLS_RESEARCH_URL, "research", env_settings.deep_research_url),
         stt=resolve(TOOLS_STT_URL, "stt", env_settings.whisper_url),
         index=resolve(TOOLS_INDEX_URL, "index", env_settings.index_url),
+        ocr=resolve(TOOLS_OCR_URL, "ocr", env_settings.ocr_url),
     )
 
 

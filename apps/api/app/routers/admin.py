@@ -62,7 +62,7 @@ from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import mail as mail_service
 from app.services import models as model_service
-from app.services import settings_store, starter, tools_gateway
+from app.services import ocr, settings_store, starter, tools_gateway
 from app.services.credits import grant_initial_allowance, set_allowance
 from app.services.litellm import provision_user
 
@@ -78,6 +78,7 @@ _TOOL_FEATURES: list[tuple[str, str, str]] = [
     ("research", "심층 조사", settings_store.TOOLS_RESEARCH_URL),
     ("stt", "음성 전사", settings_store.TOOLS_STT_URL),
     ("index", "자료 검색", settings_store.TOOLS_INDEX_URL),
+    ("ocr", "글자 읽기(OCR)", settings_store.TOOLS_OCR_URL),
 ]
 
 #: Per-feature probe path. Each service exposes its health check differently.
@@ -88,6 +89,7 @@ _TOOL_PROBES: dict[str, str] = {
     "research": "/mcp",
     "stt": "/health",
     "index": "/health",
+    "ocr": "/health",
 }
 
 
@@ -142,6 +144,11 @@ _SETTING_SECTION: dict[str, str] = {
     "tools_research_url": "tools",
     "tools_stt_url": "tools",
     "tools_index_url": "tools",
+    "tools_ocr_url": "tools",
+    "ocr_enabled": "ocr",
+    "ocr_mode": "ocr",
+    "ocr_vision_model": "ocr",
+    "ocr_max_pages": "ocr",
     "smtp_host": "mail",
     "smtp_port": "mail",
     "smtp_security": "mail",
@@ -153,6 +160,46 @@ _SETTING_SECTION: dict[str, str] = {
     "signup_domains": "signup",
     "signup_verify_email": "signup",
 }
+
+
+async def _ocr_settings(values: dict[str, str]) -> dict:
+    """The OCR section: what is stored, what is in force, and the models a page may go to."""
+    in_force = await ocr.config()
+    catalogue = await model_service.list_models()
+    return {
+        "enabled": (values.get(settings_store.OCR_ENABLED) or "1") != "0",
+        "mode": values.get(settings_store.OCR_MODE) or "both",
+        "visionModel": values.get(settings_store.OCR_VISION_MODEL) or "",
+        "maxPages": in_force.max_pages,
+        # Narrowed to the readers actually reachable; null when none is.
+        "modeInForce": in_force.mode,
+        "visionModelInForce": in_force.vision_model,
+        "engineConfigured": bool(in_force.engine_url),
+        "visionChoices": [
+            {"id": model["id"], "label": model.get("label") or model["id"]}
+            for model in ocr.vision_choices(catalogue)
+        ],
+    }
+
+
+async def _check_ocr(payload: SystemSettingsIn) -> None:
+    """Refuses OCR values that would be unsafe or meaningless before anything is written: a
+    page may only ever go to a strict-local model that declares vision."""
+    if payload.ocr_enabled is not None and payload.ocr_enabled.strip() not in ("", "0", "1"):
+        raise HTTPException(status_code=422, detail="ocr_enabled_invalid")
+    if payload.ocr_mode is not None and payload.ocr_mode.strip() not in ("", *ocr.MODES):
+        raise HTTPException(status_code=422, detail="ocr_mode_invalid")
+    if payload.ocr_max_pages is not None and payload.ocr_max_pages.strip():
+        raw = payload.ocr_max_pages.strip()
+        if not raw.isdigit() or not 1 <= int(raw) <= ocr.MAX_PAGES_CEILING:
+            raise HTTPException(status_code=422, detail="ocr_max_pages_invalid")
+    if payload.ocr_vision_model is not None and payload.ocr_vision_model.strip():
+        allowed = {
+            model["id"]
+            for model in ocr.vision_choices(await model_service.list_models_for_egress())
+        }
+        if payload.ocr_vision_model.strip() not in allowed:
+            raise HTTPException(status_code=422, detail="ocr_vision_model_not_strict_local")
 
 
 @router.get("/settings")
@@ -224,6 +271,7 @@ async def get_settings(admin: AdminUser, db: DbSession):
                 for feature, label, setting_key in _TOOL_FEATURES
             ],
         },
+        "ocr": await _ocr_settings(values),
         "credits": {
             "perUsd": settings.credits_per_usd,
             "budgetHeadroom": settings.litellm_budget_headroom,
@@ -241,6 +289,7 @@ async def put_settings(
     payload: SystemSettingsIn, request: Request, admin: AdminUser, db: DbSession
 ):
     """Writes the supplied fields; omitted keeps the stored value, "" clears it."""
+    await _check_ocr(payload)
     before_stored = await settings_store.stored(db)
     before: dict[str, str] = {}
     after: dict[str, str] = {}
@@ -267,6 +316,11 @@ async def put_settings(
         ("tools_research_url", settings_store.TOOLS_RESEARCH_URL),
         ("tools_stt_url", settings_store.TOOLS_STT_URL),
         ("tools_index_url", settings_store.TOOLS_INDEX_URL),
+        ("tools_ocr_url", settings_store.TOOLS_OCR_URL),
+        ("ocr_enabled", settings_store.OCR_ENABLED),
+        ("ocr_mode", settings_store.OCR_MODE),
+        ("ocr_vision_model", settings_store.OCR_VISION_MODEL),
+        ("ocr_max_pages", settings_store.OCR_MAX_PAGES),
         ("smtp_host", settings_store.SMTP_HOST),
         ("smtp_port", settings_store.SMTP_PORT),
         ("smtp_security", settings_store.SMTP_SECURITY),

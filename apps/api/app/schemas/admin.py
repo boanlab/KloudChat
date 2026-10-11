@@ -30,6 +30,17 @@ class SystemSettingsIn(Wire):
     tools_research_url: str | None = None
     tools_stt_url: str | None = None
     tools_index_url: str | None = None
+    tools_ocr_url: str | None = None
+
+    # ── text from scanned pages ────────────────────────────────────────
+    #: "1" on, "0" off.
+    ocr_enabled: str | None = None
+    #: "both" | "engine" | "vision".
+    ocr_mode: str | None = None
+    #: A strict-local model that declares vision; "" picks the first such model.
+    ocr_vision_model: str | None = None
+    #: Pages of one document read at most (1–2000).
+    ocr_max_pages: str | None = None
 
     # ── outgoing mail ──────────────────────────────────────────────────
     smtp_host: str | None = None
