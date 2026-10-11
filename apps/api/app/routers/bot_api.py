@@ -478,8 +478,9 @@ def _ask_tool(pub: Publication) -> dict[str, Any]:
         "name": "ask",
         "title": pub.title,
         "description": (f"{pub.title}: {about} " if about else f"{pub.title}. ")
-        + "Answers from the material this bot was published with, citing it; says so when "
-          "the material does not cover the question.",
+        + "The bot looks the question up in the material it was published with and answers "
+          "from what it finds; the passages it cites are listed in citations. An answer "
+          "without citations rests on no passage of that material.",
         "inputSchema": {
             "type": "object",
             "properties": {

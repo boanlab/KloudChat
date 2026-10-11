@@ -330,7 +330,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
           {t('API로 부르기')}
         </p>
         <p className="text-sm text-muted">
-          {t('OpenAI 호환 방식입니다. model에는 챗봇 주소를 씁니다. 검사를 마친 답만 보내므로 stream을 켜도 답이 끝난 뒤 한 번에 이어서 옵니다. 인용한 자료는 kloudchat.citations에 있습니다.')}
+          {t('OpenAI 호환 방식입니다. model에는 챗봇 주소를 씁니다. 답을 다 쓴 뒤에 보내므로 stream을 켜도 답이 한 번에 이어서 옵니다. 인용한 자료는 kloudchat.citations에 있습니다.')}
         </p>
         <CodeBlock code={curl} testId="api-curl" />
         <CodeBlock code={python} testId="api-python" />

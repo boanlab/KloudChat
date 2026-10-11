@@ -14,7 +14,7 @@ const EN: Record<string, string> = {
   'API·MCP 채널이 아직 열리지 않았습니다. 개요의 채널에서 켜고 관리자 승인을 받으면 아래 키로 부를 수 있습니다. 키는 미리 만들어 둘 수 있습니다.': 'The API and MCP channels are not open yet. Switch them on under Channels in Overview; once an administrator approves, call the bot with a key below. You can make keys ahead of time.',
   'API로 부르기': 'Call it through the API',
   'MCP로 연결하기': 'Connect it over MCP',
-  'OpenAI 호환 방식입니다. model에는 챗봇 주소를 씁니다. 검사를 마친 답만 보내므로 stream을 켜도 답이 끝난 뒤 한 번에 이어서 옵니다. 인용한 자료는 kloudchat.citations에 있습니다.': 'OpenAI-compatible. Use the bot\'s address as the model. Only checked answers go out, so with stream on the answer arrives in one run once it is finished. Cited material is in kloudchat.citations.',
+  'OpenAI 호환 방식입니다. model에는 챗봇 주소를 씁니다. 답을 다 쓴 뒤에 보내므로 stream을 켜도 답이 한 번에 이어서 옵니다. 인용한 자료는 kloudchat.citations에 있습니다.': 'OpenAI-compatible. Use the bot\'s address as the model. The answer is sent once it is written, so with stream on it arrives in one run. Cited material is in kloudchat.citations.',
   'ask 도구 하나를 제공합니다. 같은 키로 연결합니다.': 'Offers one tool, ask. Connect with the same key.',
   '관리자 열람 기록': 'Administrator reads',
   '관리자가 승인할 때까지 지금 열린 채널만 씁니다.': 'Until an administrator approves, only the channels open now are used.',
