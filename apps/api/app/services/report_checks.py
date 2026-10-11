@@ -2594,6 +2594,25 @@ def _slot(name: str) -> re.Pattern[str] | None:
     return next((value for pattern, value in _SLOTS if pattern.search(name)), None)
 
 
+#: An option's label in a comparison: 「A안」, 「B안의」, 「1안」.
+_OPTION_LABEL = re.compile(r"(?<![가-힣A-Za-z0-9])([A-Z]|[1-9])안")
+
+
+def _option_part(src: str, option: str) -> str:
+    """The stretch of a material line about one option, when the line describes several
+    (「A안: … B안: …」); the whole line otherwise."""
+    marks = [m for m in _OPTION_LABEL.finditer(src)]
+    if len({m.group(1) for m in marks}) < 2:
+        return src
+    starts = [m.start() for m in marks if m.group(1) == option]
+    if not starts:
+        return ""
+    start = starts[0]
+    after = next((m.start() for m in marks if m.start() > start and m.group(1) != option),
+                 len(src))
+    return src[start:after]
+
+
 def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, str, str, list[str]]]:
     """Blanks whose value the material states near the same words: `(section, sentence or
     row, blank, evidence lines)`. minutes-4 r2 wrote 「회당 [인원] 규모를 대강당 [석수]와 체육관
@@ -2607,6 +2626,12 @@ def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, st
                 continue
             pieces = [line] if line.lstrip().startswith("|") else [
                 p for p in units.SENTENCE_BREAK.split(line) if placeholders.PLACEHOLDER.search(p)]
+            # A paragraph about one option reads only that option's part of a material line
+            # that describes several: the GPU report's 「A안 … 연간 집행 비용 [금액]」 was filled
+            # with B안's 900만원 from the same request line (verify1 R-03).
+            named_options = {m.group(1) for m in _OPTION_LABEL.finditer(line)}
+            option = (next(iter(named_options)) if len(named_options) == 1
+                      and not line.lstrip().startswith("|") else "")
             for piece in pieces:
                 own = _words(placeholders.PLACEHOLDER.sub(" ", piece)) - _COMMON
                 for m in placeholders.PLACEHOLDER.finditer(piece):
@@ -2618,6 +2643,10 @@ def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, st
                     near = _words(piece[max(0, m.start() - 12):m.start()]) - _COMMON
                     evidence = []
                     for src in lines:
+                        if option:
+                            src = _option_part(src, option)
+                            if not src:
+                                continue
                         if placeholders.PLACEHOLDER.search(src) and not labelled.search(src):
                             continue
                         if labelled.search(src):

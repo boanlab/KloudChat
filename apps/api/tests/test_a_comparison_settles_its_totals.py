@@ -586,3 +586,16 @@ async def test_the_gpu_decision_keeps_the_settled_option_s_totals_when_the_other
     partial = next(b for b in pre.blocks if b.startswith("# 총비용 계산(코드): 일부만 확정"))
     assert "B안 147,000,000원" in partial and "B안 129,000,000원" in partial
     assert "Not settled: A안" in partial
+
+
+def test_a_blank_about_one_option_is_not_answered_from_another_option_s_figures():
+    # verify1 R-03: 「A안 … 연간 집행 비용 역시 [금액]」 was filled with B안's 900만원.
+    line = ("A안의 비용은 사용량에 비례합니다. 이 안은 초기비용이 없으므로 첫해와 이듬해 이후 "
+            "비용이 같습니다. 연간 유지비 역시 [금액]으로 한도 3,000만원 이내 여부는 확인이 "
+            "필요합니다.")
+    found = report_checks.answerable_blanks([{"heading": "비용", "content": line}], GPU)
+    assert all("900만원" not in src for *_, evidence in found for src in evidence)
+    # About B안, the same line's 900만원 is B안's own.
+    b_line = line.replace("A안의", "B안의")
+    found = report_checks.answerable_blanks([{"heading": "비용", "content": b_line}], GPU)
+    assert found and "900만원" in found[0][3][0] and "12,000원" not in found[0][3][0]
