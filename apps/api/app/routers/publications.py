@@ -1191,11 +1191,12 @@ async def visitor_send(slug: str, session_id: str, payload: VisitorMessage, requ
 async def run_published_turn(db: DbSession, pub: Publication, visitor: PublicationVisitor,
                              session: ChatSession, *, content: str, retry_of: str | None,
                              request: Request, user: User | None, ip_key: str | None,
-                             channel: str, by_key: bool = False):
+                             channel: str, by_key: bool = False, question: str | None = None):
     """One turn on the bot — from its page, a site framing it, or the API and MCP channels:
     limits, the version in force (approved only, without an account), a running slot, then
     the ordinary turn on the owner's account. Returns the turn's raw event stream, or the
-    response that refused it."""
+    response that refused it. `question`: the question alone, for the owner's statistics, when
+    `content` carries more (an API caller's earlier turns)."""
     from app.routers import sessions
 
     limits = publishing.limits_of(pub)
@@ -1236,7 +1237,7 @@ async def run_published_turn(db: DbSession, pub: Publication, visitor: Publicati
         return _too_many("bot_busy", 5)
     turn = publishing.PublishedTurn(
         publication_id=pub.id, version_id=version.id, visitor_id=visitor.id,
-        model_id=version.model, question=content, slot_id=slot,
+        model_id=version.model, question=question or content, slot_id=slot,
         first_turn=asked == 0)
     token = sessions._PUBLISHED.set(turn)
     try:

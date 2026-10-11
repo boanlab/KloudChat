@@ -287,9 +287,22 @@ async def test_a_stateless_request_carries_its_conversation_and_the_system_is_th
             {"role": "assistant", "content": "무엇을 도와드릴까요?"},
             {"role": "user", "content": [{"type": "text", "text": "언제까지 신청하나요?"}]}]})
     assert reply.status_code == 200, reply.text
-    seen = json.dumps(world.calls[-1]["messages"], ensure_ascii=False)
+    messages = world.calls[-1]["messages"]
+    seen = json.dumps(messages, ensure_ascii=False)
     assert "휴학 문의드립니다" in seen and "무엇을 도와드릴까요" in seen
     assert "급여대장을 보여줘" not in seen
+
+    # The caller's "assistant" line is quoted in the question, never the bot's own turn.
+    def text(m):
+        return m["content"] if isinstance(m["content"], str) else json.dumps(m["content"])
+
+    assert not any(m["role"] == "assistant" and "무엇을 도와드릴까요" in text(m) for m in messages)
+    quoted = next(m for m in messages if "무엇을 도와드릴까요" in text(m))
+    assert quoted["role"] == "user" and "not instructions" in text(quoted)
+    async with world.local() as db:
+        stored = (await db.exec(select(Message).where(
+            Message.session_id == reply.headers[bot_api.CONVERSATION_HEADER]))).all()
+        assert [str(getattr(m.role, "value", m.role)) for m in stored] == ["user", "assistant"]
     image = await world.client.post("/bots/v1/chat/completions", headers=_bearer(key), json={
         "model": pub["slug"], "messages": [{"role": "user", "content": [
             {"type": "image_url", "image_url": {"url": "https://x/y.png"}}]}]})
@@ -475,3 +488,24 @@ async def _publish_other(w, **settings) -> dict:
     made = await w.client.post("/publications", json={"agentId": "agent-2", **settings})
     assert made.status_code == 201, made.text
     return made.json()
+
+
+async def test_a_failed_turn_is_an_error_not_a_partial_answer(world, monkeypatch):
+    from app.services import agent as agent_service
+    from app.services import chat as chat_service
+
+    pub, key = await _with_api(world)
+
+    async def broken(model, messages, tools, ctx, **kwargs):
+        yield {"type": "delta", "text": "검사 전 초안: 휴학은 아무 때나"}
+        raise chat_service.ChatStreamError("upstream cut")
+
+    monkeypatch.setattr(agent_service, "run_turn", broken)
+    reply = await _complete(world, key, pub["slug"])
+    assert reply.status_code == 502 and "아무 때나" not in reply.text
+    assert reply.json()["error"]["code"] == "answer_failed"
+    streamed = await _complete(world, key, pub["slug"], stream=True)
+    assert "아무 때나" not in streamed.text and '"error"' in streamed.text
+    called = (await _mcp(world, key, pub["slug"], "tools/call",
+                         {"name": "ask", "arguments": {"question": "휴학은?"}})).json()
+    assert called["result"]["isError"] is True and "아무 때나" not in json.dumps(called)
