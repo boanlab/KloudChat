@@ -461,7 +461,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()
       await page.getByRole('button', { name: /Mock · Premium/ }).click()
       await captureAutoRouting(page, `${mode}-model-picker.png`)
-      await page.getByRole('button', { name: laneName }).click()
+      await page.getByRole('menuitemradio', { name: laneName }).click()
 
       await expect(page).toHaveURL(`/s/${sessionId}`)
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('전환 후에도 남을 초안')

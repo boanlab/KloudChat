@@ -115,7 +115,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await attachDraft(page)
       if (search === '끔') await setWebSearch(page, '끔')
       await page.getByRole('button', { name: /Fixture base/ }).click()
-      await page.getByRole('button', { name: mode === 'auto' ? /Auto · 비용 절약/ : /Auto · 품질 우선/ }).click()
+      await page.getByRole('menuitemradio', { name: mode === 'auto' ? /Auto · 비용 절약/ : /Auto · 품질 우선/ }).click()
       await expect(page).toHaveURL(`/s/${id}`)
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('전환 후에도 보존할 초안')
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()
