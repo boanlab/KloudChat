@@ -310,3 +310,21 @@ def test_documents_of_other_formats_keep_their_lists(kind: str):
     block = doc_formats.title_block(doc_formats.BY_ID["status"], {}, "")
     text = _text(kind, WRITERS[kind]("현황", SECTIONS[:1], title_block=block))
     assert "□" not in text and "○" not in text and "끝." not in text
+
+
+def test_a_grant_application_has_its_own_format_not_the_research_plan():
+    # verify1 S13: 「사업계획서 … 공모사업 신청용」 got the 연구자·연구 기간 cover.
+    ask = ("아래 메모로 「2027 지역 상생 디지털 배움터」 사업계획서 써 줘. 한빛시 공모사업 "
+           "신청용이고, 심사위원이 읽는 문서야.")
+    fmt = doc_formats.detect(ask)
+    assert fmt.id == "grant" and "연구자" not in fmt.fields and "신청 기관" in fmt.fields
+    assert doc_formats.detect("한국연구재단 연구계획서 초안을 써 줘.").id == "plan"
+    assert doc_formats.detect("창업 사업계획서 써 줘").id != "grant"
+
+
+def test_a_grant_application_s_cover_reads_its_institution_and_period():
+    memo = ("- 신청 기관: 한빛대학교 평생교육원 / 사업 기간: 2027. 3. ~ 2027. 12. (10개월)\n"
+            "- 목적: 한빛시 60세 이상 주민과 소상공인의 디지털 역량 격차 해소\n")
+    got = doc_formats.head_values(doc_formats.BY_ID["grant"], memo)
+    assert got["신청 기관"] == "한빛대학교 평생교육원"
+    assert got["사업 기간"].startswith("2027. 3. ~ 2027. 12.")
