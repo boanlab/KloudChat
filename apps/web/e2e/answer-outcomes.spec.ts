@@ -120,3 +120,20 @@ test('슬라이드 개요 카드는 배치를 사람 말로 부른다', async ({
   }
   for (const raw of ['bands', 'cards-3']) await expect(page.getByText(raw, { exact: true })).toHaveCount(0)
 })
+
+test('a planning turn that asked questions says it asked, not that it showed an outline', async ({ page }, testInfo) => {
+  const stage = (name: string, status: string, reason?: string) => ({
+    id: `r1:${name}:1`, name, label: name, kind: 'model', status, ...(reason ? { reason } : {}),
+    startedAt: at, finishedAt: at, ms: 0,
+  })
+  await sessionFixture(page, testInfo, [{ ...question, content: '연구계획서 초안을 써 줘.' }, {
+    id: 'm2', role: 'assistant', content: '시작하기 전에 확인할 것이 있습니다.', createdAt: at, model: 'fixture/model',
+    routing: { run: { id: 'r1', flow: 'plan', status: 'stopped', stages: [stage('outline', 'stopped', 'needs')] } },
+  }], { kind: 'report' })
+  await page.goto(`/s/${id}`)
+  await expect(page.getByText('확인할 것을 여쭸습니다')).toBeVisible()
+  await expect(page.getByText('개요를 보여 드렸습니다')).toHaveCount(0)
+  // A step that took no measurable time shows no 「0ms」.
+  await page.getByText('확인할 것을 여쭸습니다').click()
+  await expect(page.getByText('0ms')).toHaveCount(0)
+})
