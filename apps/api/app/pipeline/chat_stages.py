@@ -42,6 +42,8 @@ class Normalize(Base):
         normalized = units.fix_unit_labels(normalized, first)
         # An amount the person gave, copied a power of ten off into a calculation.
         normalized = units.fix_magnitude_slips(normalized, first)
+        # An amount the person gave, written in won and then scaled again (「10,000,000만 원」).
+        normalized = units.fix_double_scale(normalized, first)
         # A written 「A × B = D」 whose D is not the product (a 만/억 slip, a dropped zero).
         normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized))
         if req.skill_keys or req.check_keys:

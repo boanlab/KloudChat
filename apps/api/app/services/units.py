@@ -147,6 +147,35 @@ def fix_magnitude_slips(text: str, request: str) -> str:
     return text
 
 
+#: An amount with a scale word: 「10,000,000만 원」, 「3억원」.
+_SCALED_WON = re.compile(
+    r"(?<![\d.,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}(억|천만|백만|만|천)\s{0,1}원")
+
+
+def fix_double_scale(text: str, request: str) -> str:
+    """An amount the person gave, written in won and then scaled again: 「1,000만원」 came out
+    「10,000,000만 원」 (quality lane Q20). The digits already are the won amount, so the
+    scale word made it ten thousand times too large; it is written back as the person did."""
+    given = _given(request)
+    if not given or not text:
+        return text
+
+    def one(m: re.Match) -> str:
+        try:
+            digits = float(m.group(1).replace(",", ""))
+        except ValueError:
+            return m.group(0)
+        scale = _scale(m.group(2))
+        if digits < 10_000 or round(digits * scale, 2) in given or round(digits, 2) not in given:
+            return m.group(0)
+        shown = digits / scale
+        number = (f"{int(shown):,}" if shown == int(shown)
+                  else f"{shown:,.2f}".rstrip("0").rstrip("."))
+        return f"{number}{m.group(2)} 원"
+
+    return _SCALED_WON.sub(one, text)
+
+
 #: A Korean amount: 「1억 8천만」, 「3,000만」, 「5천」, 「1.2조」, or a bare number.
 #: 「천」 must be matched inside a 만/억 group, or 「1억 8천만」 reads as 「1억 8」.
 _TERM = (
