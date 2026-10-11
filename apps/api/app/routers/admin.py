@@ -234,8 +234,20 @@ _MAX_DEFAULT_CREDITS = 1_000_000_000
 
 def _model_choices(catalogue: dict) -> dict[str, list[dict]]:
     """The models each role may name. Side work that reads the conversation (titles,
-    memories, the code that reads files) stays on self-hosted models."""
+    memories, the code that reads files) stays on models this instance runs: a self-hosted
+    one, or a `local/` one whose `strict-local/` twin the gateway serves (the gateway marks
+    `local/` hybrid; a strict-local turn runs the twin, or the turn's own model)."""
     models = catalogue.get("models") or []
+    self_hosted = {
+        m["id"] for m in models
+        if m.get("dataBoundary") == "self_hosted" and "chat" in (m.get("kinds") or [])
+    }
+
+    def runs_here(model: dict) -> bool:
+        if model["id"] in self_hosted:
+            return True
+        name = model["id"].removeprefix("local/")
+        return model["id"].startswith("local/") and f"strict-local/{name}" in self_hosted
 
     def row(model: dict) -> dict:
         return {
@@ -259,11 +271,7 @@ def _model_choices(catalogue: dict) -> dict[str, list[dict]]:
         "image": of_kind("image"),
         "audio": of_kind("av", "audio"),
         "video": of_kind("av", "video"),
-        "helper": [
-            row(m)
-            for m in models
-            if "chat" in (m.get("kinds") or []) and m.get("dataBoundary") == "self_hosted"
-        ],
+        "helper": [row(m) for m in models if "chat" in (m.get("kinds") or []) and runs_here(m)],
     }
 
 
