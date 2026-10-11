@@ -4,7 +4,7 @@
 
 **An open-source generative AI workspace that does not end at the conversation.**
 
-Chat · Reports · Slides · Images · Audio &amp; Video
+Chat · Reports · Slides · Images · Audio &amp; Video · Agents · Chatbots
 
 [![CI](https://github.com/boanlab/KloudChat/actions/workflows/ci.yml/badge.svg)](https://github.com/boanlab/KloudChat/actions/workflows/ci.yml)
 [![Release](https://github.com/boanlab/KloudChat/actions/workflows/release.yml/badge.svg)](https://github.com/boanlab/KloudChat/actions/workflows/release.yml)
@@ -20,87 +20,87 @@ Chat · Reports · Slides · Images · Audio &amp; Video
 
 ## What it is
 
-KloudChat is a self-hosted workspace for generative AI that treats the *output* as
-the unit of work rather than the conversation. It brings its own
-authentication, credit accounting and workspace, and delegates every model call
-and tool to a single backend URL you configure at runtime.
+KloudChat is a self-hosted generative AI workspace for an organisation. It
+brings its own authentication, credit accounting and workspace, and reaches
+every model and tool through one backend gateway address configured at
+runtime ([KloudChat-LLM][backend]). The browser only ever talks to the
+KloudChat API.
 
-Four decisions shape it.
+**Five surfaces, one workspace.** Chat, 보고서 (reports), 슬라이드 (slides),
+이미지 and 오디오/동영상 share the same projects, knowledge files, memories,
+agents and skills. Everything a turn produces — a document, a deck, a chart, a
+picture, a clip — is an **아티팩트**, kept in its own gallery and exportable:
 
-**1. Output kinds are first-class.** Chat is not the only axis with everything
-else buried inside it. Five surfaces sit side by side: reports stream section
-by section and cite the sources they searched, slides export as `.pptx` and
-`.pdf`, audio and video report progress on job cards. All five share the same
-project context — instructions, knowledge files and memories — and start from a
-template gallery you can add to. A project can also wear a design system, so
-its deck, its report and its cover image come out in one colour and one
-typeface instead of three.
+| Artifact | Exports |
+| --- | --- |
+| Report / document | PDF, DOCX, HWPX, Markdown |
+| Deck | PDF, PPTX, Markdown |
+| Chart | PNG, SVG, CSV |
 
-Alongside the prompt gallery there is a **rendering catalogue**: shapes the
-answer comes out in. Picking one replaces the surface's built-in track — a
-slides session writes a single-file HTML deck, a report session writes a laid
-out document — and the model fills a fixed vocabulary of blocks rather than
-writing layout. Those files carry no script and do carry print rules. The
-`.pdf` is that file printed by a headless browser, so it matches the screen;
-`.pptx`, `.docx` and `.hwpx` are read back out of the markup, which is possible
-because it came out of a closed vocabulary.
+**Structure and look are separate choices.** A **템플릿** fixes a document's
+structure (sections, title block, numbering — minutes, 개조식 보고, comparison,
+기안문, briefing deck and so on), and code keeps the model inside it. A
+**테마** fixes the look — colour, type, voice — and the same theme dresses a
+report, a deck and a cover image alike. Flowcharts and structure diagrams in
+reports and decks are laid out by code and drawn with python-pptx: native
+shapes in the `.pptx`, the same drawing as a picture in the report.
 
-On the media surfaces the same catalogue holds prompt templates: a sentence
-with blanks, a small form to fill them, and the settings that shape implies —
-aspect, duration, voice — applied when you pick it. The finished sentence lands
-in the composer, where it is still yours to change.
+**Documents are checked, and the checks are shown.** Code checks (numbers,
+figures stated two ways, placeholders nobody filled, references to a source the
+reader lacks) and model checks (claims against the material, figure sentences)
+name the sentences they find wrong; one repair pass rewrites only those, and
+whatever is still found is listed with the answer rather than passed off as
+done. Facts missing from the material are asked for before writing, or left as
+`[대괄호]` blanks — never invented.
 
-A report is verified before it is shown. Code checks (numbers, a metric stated
-two ways, settled figures, references to a source the reader lacks) and model
-checks (a judge on figure sentences, claims checked against the web, assessment
-items worked through) name the sentences they find wrong; one repair pass
-rewrites only those, and the code checks run again. What is still found is
-listed in the turn's steps, never passed off as done. Every document is also
-linted when it is stored — for placeholders nobody replaced, figures nobody
-could have sourced, lines repeated from another section — at no model cost.
-Beside it, a review can be asked for: one reading by somebody who did not
-write the thing, scored out of ten against the shape it was written into. The
-lint and the review correct nothing; they hand you a list.
+**Agents are the way into a job.** An agent fixes its instructions, model,
+knowledge files, templates, skills and 진행 과정 (answer directly, start from a
+built-in process, or compose one), plus the bundles of extra steps around the
+writing (prepare · review · finish). Skills are scripts and checks that change
+the result (calculation check, date and quote calculation, spreadsheet clean-up,
+PDF tables, source check, PII masking…). An agent's knowledge is searched
+through a tool when it needs it — lexically by default, adding vector search
+when the backend serves an embedding model. Everything shipped is built with
+the same features a user has, so a user can build the same thing.
 
-**2. An agent can search its own documents.** Attach files or URLs to an agent
-and it looks them up through a tool when it needs background, rather than
-having everything pushed into every turn. Retrieval is lexical by default and
-adds vector search when the backend serves an embedding model — with neither,
-it still works. See [Architecture §8](docs/architecture.md).
+**Agents can be published.** An agent opens as a chatbot to every member of
+the instance at once; opening it to people without an account — by link or on
+the public bot list — and its embed, OpenAI-compatible API and MCP channels
+are approved by an administrator. A bot answers on the strict-local model with
+its approved version, under the owner's credits and policies.
 
-**3. External systems attach as MCP connectors.** The catalogue is short by
-design — a clock, YouTube transcription, a deep-research agent — because every
-enabled tool ships its schema on every turn and tool-choice degrades well
-before twenty of them. Any other MCP server is added by its own address, over
-stdio or HTTP. Permissions are per tool, write tools start off, and credentials
-stay on the server.
+**Data stays inside when it should.** Models are labelled by boundary in the
+LiteLLM catalogue (self-hosted, `strictLocal`, hybrid, external). Turns that
+carry the organisation's own material — attachments, project files, memories —
+run on strict-local models by default; a privacy guard and PII masking decide
+what may go to an external model. Scanned PDFs and document photos are read by
+an OCR engine and, for pages it is unsure of, a strict-local vision model —
+never anything else.
 
-**4. Authentication is ours; models and tools are one URL.** Users, credits and
-sessions live in KloudChat's own Postgres. Models and tools all live in
-[`KloudChat-LLM`][backend] and are connected by pasting one gateway address
-into the admin screen. The browser only ever sees the KloudChat API.
+**Accounting is per person.** An approved account gets its own LiteLLM
+virtual key, so spend and audit logs on the proxy are per person; the master
+key never leaves the API container. Credits are an administrator-assigned
+monthly allowance that refills — no top-up, no rollover, and failed jobs are
+not charged. KloudChat enforces the limit before every turn; the LiteLLM-side
+budget is a backstop 20% above it, attached to the account rather than to a
+key. An administrator can also offer **Auto** routing, which a person selects
+per conversation: a strict-local classifier sends clearly simple turns to a
+cheaper model (`Auto · 비용 절약`) or clearly hard ones to a stronger model
+(`Auto · 품질 우선`); the requested and executed models stay visible on the
+answer.
 
-When an account is approved it gets its own LiteLLM virtual key, and every
-model call afterwards goes out under that key — so spend and audit logs on the
-proxy side are per person. The master key is used only to create users and
-keys, and is never included in any response. Monthly limits are enforced by
-KloudChat, checked before every turn; the LiteLLM-side budget tracks the same
-number plus 20% headroom. That budget is a backstop against an accounting bug,
-not a limit anyone is meant to hit, and it is attached to the account rather
-than to a key — issuing extra keys for coding agents splits one allowance, it
-does not multiply it.
+### The self-hosted models
 
-Credits are an administrator-assigned monthly allowance that refills. There is
-no top-up, no refund and no rollover, and failed jobs are never charged in the
-first place.
+The default configuration expects two self-hosted models behind the gateway:
 
-For ordinary chat, an administrator can also offer **Auto cost routing**. The
-person keeps a real model as the conversation's quality ceiling and explicitly
-selects Auto for that conversation. A zero-cost, strict-local classifier routes
-only high-confidence simple turns to an administrator-approved cheaper model;
-complex, ambiguous, privacy-sensitive turns and requests that explicitly use
-attachments, web search, skills, agents or projects keep the quality model. The
-requested, selected and actually executed models remain visible on the answer.
+| Model | Does |
+| --- | --- |
+| `local/qwen3.8-27b` | Chat answers, report and deck prose, file-reading code (`run_code`) |
+| `local/qwen3.8-flash` | Outlines and plans, judging and checks, the Auto classifier, titles, memories and conversation summaries, re-reading scanned pages (as `strict-local/qwen3.8-flash`) |
+
+Which model does which job is chosen in the admin screen (**System › 모델**
+and **System › 라우팅**); the `.env` values only seed a fresh install. See
+[Which model does what](docs/configuration.md#which-model-does-what).
 
 ## Deployment shape
 
@@ -108,7 +108,7 @@ requested, selected and actually executed models remain visible on the answer.
 ┌─ KloudChat (this repository) ──────┐        ┌─ KloudChat-LLM ─────────────────────┐
 │  kloudchat-web   :5173  /api /llm  │        │  gateway :8080                      │
 │   └▶ api × N     (internal :8100)  │──URL──▶│   /litellm  /tools/{search,fetch,   │
-│  kloudchat-db    :5433             │        │      exec,research,stt,index}       │
+│  kloudchat-db    :5433             │        │    exec,research,stt,index,ocr}     │
 │  kloudchat-print (internal :8200)  │        │                                     │
 └────────────────────────────────────┘        └─────────────────────────────────────┘
 ```
@@ -118,7 +118,7 @@ The web container is the only entry point: it serves the bundle and proxies
 replicas (default 1) and publishes no host port. A one-shot `migrate`
 container applies database migrations before any replica starts.
 
-The boundary is **one address and one master key**. If the backend goes down,
+The boundary is **one address, one master key and one tools key**. If the backend goes down,
 sign-in, history, workspace and settings keep working; only model calls and
 tools fail, and they fail honestly with "not connected".
 
@@ -156,10 +156,11 @@ accounts at all, so changing them later never resets an existing password.
 
 ### Connecting the backend
 
-In the account menu, open **System → Features** and paste the backend gateway
-address into **Feature integrations → Server address**, then save. The LiteLLM
-address and the feature endpoints are derived from it by appending their paths.
-Print the address from the backend:
+In the account menu, open **시스템 › 기능** and paste the backend gateway
+address into **기능 연동 › 서버 주소**, then save. The LiteLLM address and the
+seven tool endpoints (web search, document fetch, code execution, deep
+research, speech-to-text, retrieval index, OCR) are derived from it by
+appending their paths. Print the address from the backend:
 
 ```bash
 ./scripts/setup.sh urls    # run this in KloudChat-LLM
@@ -169,32 +170,46 @@ If you host one feature elsewhere, override that single field. Each field has a
 connection test, and a feature with an empty address drops quietly out of the
 tool list — conversation, files, projects, memory and agents are unaffected.
 
-The LiteLLM master key is entered under **System → Proxy**, which also holds
+The LiteLLM master key is entered under **시스템 › 프록시**, which also holds
 an explicit LiteLLM address when it is not behind the gateway. The tool
-endpoints need no key.
+endpoints are authenticated by a shared key set in `.env`
+(`KCHAT_TOOLS_GATEWAY_KEY`), never in the screen.
 
 ## What an administrator controls
 
-Under **System** (`/admin/system`, in the account menu):
+The account menu's 관리 section:
 
-| | |
-|---|---|
-| **Proxy** | LiteLLM address and master key, connection test, model list refresh, models hidden for an unknown price. |
-| **Routing** | Auto cost routing — the strict-local classifier and the ordered economy models — and the outline model that plans documents. |
-| **Features** | Enabled surfaces, and the feature integrations: one server address plus per-feature tool endpoints with connection tests. Chat is always on. Images and audio/video cost credits per generation, so they default to off. A disabled surface disappears from the UI *and* the server refuses to create sessions of that kind. |
-| **Shared templates** | Starting points every account sees. |
-| **Branding** | Name and logo for the sidebar and the sign-in screen. PNG, JPG or WebP up to 2 MB. |
-| **Mail** | SMTP for password reset and email verification. |
-| **Signup** | Mode, allowed mail domains, email verification. |
+| Entry | Route | Contents |
+| --- | --- | --- |
+| 사용자 · 크레딧 | `/admin/users` | Signup approval, monthly credit allowance, suspension, API keys of an account |
+| 사용량 | `/admin/usage` | Organisation-wide usage by person, model and surface |
+| 공개 챗봇 | `/admin/publications` | Review queue for bots opened to people without an account, and their channels |
+| 보안 · 감사 | `/admin/governance` | Privacy guard and PII masking, internal material on strict-local, intent filter, retention, idle sign-out, audit log |
+| 문의·신고 | `/admin/issues` | Reports and questions sent from the app |
+| 시스템 | `/admin/system` | The tabs below |
+| 성능 모니터링 | `/admin/performance` | API, host, GPU node and per-model latency figures |
 
-Users and credits, organisation usage, and security and audit
-(`/admin/governance`: privacy routing, PII masking, intent filters, retention,
-audit log) are separate entries in the same menu.
+**시스템** tabs:
+
+| Tab | Contents |
+| --- | --- |
+| 프록시 | LiteLLM address and master key, connection test, model list refresh, models hidden for an unknown price |
+| 모델 | The default model of each surface, the models for side work (titles and memories, `run_code` programs), whether models think before answering |
+| 라우팅 | Auto routing — the classifier, economy and upgrade models — and the outline model that plans documents |
+| 기능 | Enabled surfaces; feature integrations (server address, per-feature endpoints); OCR mode, vision model and page limit |
+| 브랜딩 | Name and logo for the sidebar and the sign-in screen |
+| 메일 | SMTP for password reset and email verification |
+| 회원 가입 | Signup mode, allowed mail domains, email verification, a new account's monthly credits |
+| 커넥터 카탈로그 | The MCP connectors users can install |
+
+Chat is always on. Images and audio/video cost credits per generation, so they
+default to off; a disabled surface disappears from the UI *and* the server
+refuses to create sessions of that kind.
 
 ## Connecting coding agents
 
 Tools like Claude Code and Codex can use this instance's models. The account
-menu has an **AI agent integration** page with the configuration to paste.
+menu's **AI 에이전트 연동** page has the configuration to paste.
 
 ```bash
 export ANTHROPIC_BASE_URL=https://<this-server>/llm      # Claude Code
@@ -206,59 +221,53 @@ virtual key, so spend and the model allow-list follow it, and usage is
 aggregated under "API keys" on `/usage`. The monthly limit is attached to the
 account rather than to the key, so issuing several keys does not raise it.
 LiteLLM itself is reachable only on the private network, which makes this route
-the only way in.
+the only way in. **API 연동** (`/api-setup`) covers calling the KloudChat API
+itself.
 
 ## Language
 
 Korean and English, switched from the top right. The choice is stored in the
 browser, and a first-time visitor follows their browser language. Strings
-without a translation fall back to Korean.
+without a translation fall back to Korean. The user guide is published at
+<https://boanlab.github.io/KloudChat> (source under `website/`).
 
 ## Screens
 
 | Route | Contents |
 | --- | --- |
-| `/` | Home — entry to the five surfaces, running jobs, recent work |
-| `/new/:kind` · `/s/:id` | The shared work surface. `kind` = chat, report, slides, image, av |
-| `/projects` · `/projects/:id` | Project instructions, knowledge files, member sessions, linked skills and memories |
-| `/artifacts` | Gallery of every output. Filter by kind, jump back to the originating session |
-| `/customize?tab=designs` · `?tab=templates` | 디자인 (designs) you make — colour, type, voice — and the 양식 (template) catalogue the product ships, grouped by surface. The old `/designs` and `/designs?tab=template` addresses redirect here |
-| `/agents` | System prompt, model, tool permissions, surfaces — plus the workspace store, where shared agents are copied into your own account |
-| `/skills` | `SKILL.md` front matter, applicable surfaces, enable toggle, and the same store for shared procedures |
-| `/memory` | user / feedback / project / reference types, global or project scope, `[[links]]` |
-| `/connectors` | MCP servers — verified catalogue, per-tool permissions, custom server registration |
+| `/` · `/new/:kind` | Home and a new conversation on a surface (`chat`, `report`, `slides`, `image`, `av`) |
+| `/s/:id` | A conversation, with its artifacts in the right-hand panel |
+| `/projects` · `/projects/:id` | Project instructions, knowledge files, conversations and memories |
+| `/artifacts` | Every artifact, filtered by kind, with a way back to its conversation |
+| `/bots` | Chatbots published on this instance; `/b/:slug` is a bot's own page, `/embed/b/:slug` its embeddable frame |
+| `/customize` | 사용자 지정 — agents, skills and connectors (`?tab=agents\|skills\|connectors`), including what others shared; bundles at `/customize/bundles` |
 | `/history` | Conversation history — selective and bulk deletion |
 | `/usage` | Your own usage, by day, model and surface |
-| `/admin/users` | Signup approval, monthly credit allowance, suspension (admin) |
-| `/admin/usage` | Organisation-wide usage (admin) |
-| `/admin/governance` | External-model privacy routing, PII masking, intent filters, retention, audit log (admin) |
-| `/settings` · `/settings/preferences` · `/settings/personalization` · `/settings/keys` · `/settings/access` | Profile and password / defaults / personalization / API keys / sign-ins and security changes |
-| `/agent-setup` · `/api-setup` | Coding-agent and API connection guides (account menu) |
-| `/admin/system` · `/routing` · `/features` · `/templates` · `/branding` · `/mail` · `/signup` | LiteLLM proxy / automatic model routing / enabled surfaces and feature integrations / shared templates / branding / SMTP / signup policy (admin) |
+| `/issues` | Questions and reports you sent, with the answers |
+| `/settings` · `/preferences` · `/personalization` · `/memory` · `/themes` · `/keys` · `/access` | Profile and password / defaults / about-me and response style / memories / 테마 / API keys / sign-ins |
+| `/agent-setup` · `/api-setup` | Coding-agent and API connection guides |
+| `/share/:token` | A read-only shared link |
+| `/admin/…` | See [What an administrator controls](#what-an-administrator-controls) |
 
 ### What each surface does differently
 
-- **Chat** — real streaming. Tool calls appear inline while they run
-  (`searching…`, `reading document…`) and collapse to one line when the turn
-  settles. When the model calls `create_artifact` or `create_chart`, the result
-  opens in the right-hand panel.
-- **Report** — the outline is proposed first and writing starts once you
-  approve it; then a table-of-contents sidebar with section-by-section streaming.
-  The **whole document is editable as Markdown**, and saving accumulates
-  versions. Exports to docx, PDF, **HWPX** and Markdown.
-- **Slides** — the outline is proposed and approved first, then each slide is filled in.
-  Thumbnail grid, speaker notes, per-slide text editing. Exports to pptx, PDF
-  and Markdown — preview and both exports share one 960×540 geometry, so what
-  you saw is what the file contains.
-- **Image** — an option bar above the composer (aspect ratio, style, count).
-  The prompt and the picture read as an ordinary turn: the sentence where it
-  was typed, the picture under it.
-- **Audio / video** — chosen with a type toggle. The same turn shape, with a
-  job card standing in the answer's place while a clip is made. Picking
-  resolution, audio and duration updates the quote in place. A failure states
-  the cause and that **nothing was charged**.
+- **Chat** — real streaming. Tool calls appear inline while they run and
+  collapse to one line when the turn settles. A file, chart or HTML page the
+  model makes opens in the right-hand panel.
+- **보고서** — the outline is proposed first and writing starts once you
+  approve it; sections stream in order. The document is edited in place on
+  page-sized paper, and saving keeps versions.
+- **슬라이드** — the outline is approved first, then each slide is filled in.
+  Thumbnail grid, speaker notes, per-slide editing; preview and exports share
+  one 16:9 geometry, so what you saw is what the file contains.
+- **이미지** — an option bar above the composer (aspect ratio, style, count).
+  The prompt and the picture read as an ordinary turn.
+- **오디오/동영상** — the same turn shape, with a job card standing in the
+  answer's place while a clip is made. Picking resolution, audio and duration
+  updates the quote in place. A failure states the cause and that nothing was
+  charged.
 
-**Outputs can be shared by link** — either to anyone with an account on this
+**Artifacts can be shared by link** — to anyone with an account on this
 instance or to people without one. Links are read-only, revocable at any time,
 and record who opened them. Project files and memories are never included.
 
@@ -275,14 +284,15 @@ connection, and the partial answer is kept and marked as cut off.
 ```
 KloudChat/
 ├── apps/
-│   ├── web/                          React 19 + Vite + Tailwind v4
+│   ├── web/                          React 19 + Vite + Tailwind v4 — see apps/web/README.md
 │   ├── api/                          FastAPI — see apps/api/README.md
-│   └── print/                        Browser-based HTML-to-PDF renderer
+│   └── print/                        Headless-browser HTML-to-PDF renderer
 ├── docs/                             Architecture and operator guides
-├── scripts/                          Integration checks against a live stack
+├── website/                          User guide (Docusaurus, Korean and English)
+├── scripts/                          Integration checks against a running stack
 ├── mcp/                              MCP stdio server scripts
 ├── docker-compose.yml                Runs the published images
-├── docker-compose.build.yml          Builds application images from this checkout
+├── docker-compose.build.yml          Builds the images from this checkout
 ├── docker-compose.dev.yml            Serves the web app from Vite
 └── .env.example
 ```
@@ -290,31 +300,28 @@ KloudChat/
 ```
 apps/web/src/
 ├── components/
-│   ├── artifacts/ArtifactPanel.tsx   Right-hand panel, branching by kind
-│   ├── chat/                         Composer, MessageItem, StepTimeline, Markdown
-│   ├── media/JobCard.tsx             Asynchronous generation card (progress → result)
-│   ├── report/ReportPanel.tsx        TOC, section streaming, sources, export
-│   ├── slides/DeckPanel.tsx          Slide renderer, thumbnail grid, per-slide editing
-│   ├── chart/ChartPanel.tsx          Chart, underlying-data tab, PNG/SVG/CSV
-│   ├── layout/                       AppShell, Sidebar, TopBar, Brand
-│   └── ui/index.tsx                  Button, Modal, Dropdown, Badge, …
+│   ├── artifacts/                    Right-hand artifact panel, ribbon, versions, checks
+│   ├── chat/                         Composer, MessageItem, StepTimeline, ModelPicker
+│   ├── report/                       Document editor, paged preview, figures
+│   ├── slides/                       Deck renderer, slide patterns, type scale
+│   ├── chart/ChartPanel.tsx          Chart, underlying data, PNG/SVG/CSV
+│   ├── media/                        Generation job card and media results
+│   ├── customize/                    Agent and skill forms, the 사용자 지정 hub
+│   ├── publishing/                   Publish dialog, audience, bot channels
+│   ├── layout/                       AppShell, Sidebar, AccountMenu, shortcuts
+│   └── ui/                           Button, Modal, Dropdown, Badge, …
 ├── lib/
-│   ├── api.ts                        ★ the single backend seam
-│   ├── kinds.ts                      Single source of truth for the five surfaces
+│   ├── api.ts                        The single backend seam
+│   ├── kinds.ts                      The five surfaces
 │   ├── i18n.ts                       Dictionary keyed on the Korean source string
-│   ├── useT.ts                       Hook translating into the current language
-│   ├── clipboard.ts                  Copy, with a fallback outside secure contexts
-│   └── reportMarkdown.ts             Markdown round-trip for the document editor
+│   └── useT.ts                       Hook translating into the current language
 ├── pages/                            One per route
 ├── store/useStore.ts                 Single zustand store
-└── types.ts                          Domain types (discriminated unions)
+└── types.ts                          Domain types
 ```
 
 React 19 · TypeScript · Vite · Tailwind v4 · zustand · react-router ·
 lucide-react · react-markdown.
-
-Adding a sixth surface starts at `SessionKind` in `types.ts` and the metadata
-table in `lib/kinds.ts`.
 
 ## Documentation
 
@@ -324,7 +331,9 @@ table in `lib/kinds.ts`.
 | [docs/configuration.md](docs/configuration.md) | Every environment variable and runtime setting |
 | [docs/deployment.md](docs/deployment.md) | Production deployment, TLS, backups, upgrades |
 | [docs/development.md](docs/development.md) | Local setup, tests, migrations |
-| [apps/api/README.md](apps/api/README.md) | API endpoints and backend design notes |
+| [apps/web/README.md](apps/web/README.md) | Frontend development and end-to-end tests |
+| [apps/api/README.md](apps/api/README.md) | API layout, endpoints and tests |
+| [User guide](https://boanlab.github.io/KloudChat) | How to use the product (source in `website/`) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [SECURITY.md](SECURITY.md) | Reporting vulnerabilities, and what is in scope |
 

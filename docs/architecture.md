@@ -1,8 +1,8 @@
 # Architecture
 
 What the system does, and why the load-bearing decisions are the way they are.
-Everything here is in the code and most of it is covered by the specs under
-`apps/web/e2e/`.
+Everything here is in the code; most of it is covered by the tests under
+`apps/api/tests/` and the specs under `apps/web/e2e/`.
 
 ---
 
@@ -39,7 +39,8 @@ browser ──── KloudChat API ──┬── backend gateway ───┬�
    │           │         │                      ├── /tools/exec      code execution
    │           │         │                      ├── /tools/research  deep research (MCP)
    │           │         │                      ├── /tools/stt       speech-to-text
-   │           │         │                      └── /tools/index     retrieval index (§8)
+   │           │         │                      ├── /tools/index     retrieval index (§8)
+   │           │         │                      └── /tools/ocr       text from scanned pages
    │           ├── Postgres
    │           ├── file store (local disk)
    │           └── MCP connectors (stdio · http)
@@ -54,9 +55,9 @@ backstop.
 The browser reaches the API only through the web container, whose nginx
 serves the bundle and proxies `/api` and `/llm` to the `api` service (one or
 more replicas, no published port). The backend address is stored through the
-admin screen (System → Features → Feature integrations). One address derives
-the LiteLLM address and the six tool endpoints by appending paths; hosting one feature elsewhere means overriding
-that one field. A feature left blank drops out of the tool list and everything
+admin screen (System › 기능 › 기능 연동). One address derives the LiteLLM
+address and the seven tool endpoints by appending paths; hosting one feature
+elsewhere means overriding that one field. A feature left blank drops out of the tool list and everything
 else keeps working.
 
 ---
@@ -146,16 +147,26 @@ Migrations live under `alembic/versions/`. The principal tables:
   `api_keys` · `audit_events`
 - `sessions` · `messages` — conversation. `messages.usage` is JSONB
 - `credit_ledger` — the ledger
-- `projects` · `files` · `artifacts` · `artifact_versions` · `skills` ·
-  `memories` · `agents` · `connectors`
-- `templates` — legacy: the retired 시작점 (starting points) people added. Nothing
-  reads or writes it; the rows stay until a migration decides their fate
-- `design_systems` — the look a project's output wears. `projects.design_system_id`
-  is nullable and null by default, and `ON DELETE SET NULL`: removing a look
-  costs the projects their look, not the projects
-- `sessions.render_template_id` — the rendering template a session writes into.
+- `projects` · `files` · `file_pages` (OCR text per page) · `artifacts` ·
+  `artifact_versions` · `skills` · `memories` · `agents` · `connectors` ·
+  `connector_tools` · `connector_credentials` · `connector_catalog`
+- `design_systems` — themes (테마): the look a project's or agent's output wears.
+  `projects.design_system_id` is nullable and null by default, and
+  `ON DELETE SET NULL`: removing a theme costs the projects their look, not the
+  projects
+- `user_templates` — templates (템플릿) people make in the editor (§6 Templates)
+- `user_pipelines` · `pipeline_runs` — composed step lists and bundles, and the
+  recorded runs of every writing pass (§6 Pipelines)
+- `publications` · `publication_versions` · `publication_visitors` ·
+  `publication_counters` · `publication_slots` · `publication_questions` ·
+  `publication_keys` — published agents (§6 Publishing agents)
+- `issue_reports` · `issue_replies` — 문의·신고 and the administrators' replies
+- `metric_samples` — the performance monitor's series
+- `templates` — not read or written by the application; the table and its rows
+  remain in the schema
+- `sessions.render_template_id` — the template a session writes into.
   A plain string, not a foreign key: the catalogue ships inside the API image,
-  and an id that disappears in an upgrade degrades to "no template"
+  and an id it does not know degrades to "no template"
 - `projects.render_templates` — surface → template id, the format work started
   in this project begins in. A JSONB map rather than a column per surface,
   because the reader holds a session kind and only two surfaces have a
@@ -182,8 +193,8 @@ Migrations live under `alembic/versions/`. The principal tables:
 - `jobs` — video only. Without `provider_job_id`, a restart orphans a
   half-generated clip
 - `system_settings` — LiteLLM address and master key, backend and tool
-  addresses, enabled surfaces, branding, SMTP, signup policy. Database values
-  override environment variables
+  addresses, model roles, enabled surfaces, OCR, branding, SMTP, signup policy.
+  Database values override environment variables
 - `governance` — the one instance-wide policy row: privacy guard and masking,
   internal-material routing, Auto routing lanes, outline model, intent filter,
   idle sign-out, retention
@@ -193,8 +204,9 @@ Migrations live under `alembic/versions/`. The principal tables:
 shelf. `source_url` marks text read from a page rather than uploaded, and
 `indexed_at` whether the vector index covers it.
 
-Artifacts outlive conversations: clearing history detaches them
-(`session_id = NULL`) rather than deleting them.
+A conversation and its artifacts are one record: deleting a conversation,
+singly or in bulk, deletes the artifacts it produced with their versions and
+shares (`sessions._delete_artifacts_of`).
 
 ---
 
@@ -277,12 +289,12 @@ read-only under `skills/own-<id>/`; the server never imports them. Sharing a ski
 scripts waits for an administrator (`/admin/skills`, 「스킬 검토」). A person's check skill
 (`stage`) is attached through the 「내 검사 스킬」 bundle as `skill:<id>`.
 
-**빠진 정보 질문** are data (`services/gap_questions.py`): a 서식 lists the questions its
+**빠진 정보 질문** are data (`services/gap_questions.py`): a template lists the questions its
 format needs (`[[questions]]` in `template.toml`), an agent adds its own
 (`agents.gap_questions`, the agent form; a shipped agent's come from its file). Each names
 a detector — a built-in one from `gap-check/scripts/gaps.py`, keywords, a bounded pattern,
-or the judge model, which must quote the answer from the material. A 서식's document format
-(`doc_format`) and genre rule (`genre.md`) are carried by the 서식 too. The sandbox sits in
+or the judge model, which must quote the answer from the material. A template's document format
+(`doc_format`) and genre rule (`genre.md`) are carried by the template too. The sandbox sits in
 the self-hosted stack with networking off, so with `SANDBOX_IN_BOUNDARY` (on) both tools
 are offered to strict-local turns, and `run_code` then writes on the `strict-local/`
 twin of the code model.
@@ -378,13 +390,17 @@ instructions, memories, skills, and any file attached to the turn — so a
 request naming an uploaded form is written against that form.
 
 Reports search the web before writing and cite what they found; with no search
-backend the shelf is empty and the citation rule drops out of the prompts.
+backend the shelf is empty and the citation rule drops out of the prompts. A
+request about Korean scholarship also looks for KCI, DBpia and RISS papers
+through the same search backend (`services/korean_papers.py`; there is no
+separate KCI API or key) and reads each landing page's bibliographic meta tags,
+so a reference carries its authors, year, venue and DOI.
 
 Slide layouts are listed in `services/deck.py` (`title`, `agenda`, `section`,
 `bullets`, `quote`, `two-column`, `table`, `metrics`, `chart`, …), each
 implemented in all three renderers (preview, `.pptx`, `.pdf`). The outline
 also picks the deck's accent from a fixed palette — unless the project wears a
-design system, in which case the palette rule is dropped from the prompt
+theme, in which case the palette rule is dropped from the prompt
 entirely and the accent arrives from the project. A slide count stated in the
 request is honoured up to 50.
 
@@ -495,22 +511,24 @@ is 「—」, never an invented value.
 pass whatever the planner picked (`revise.notes_everywhere`), and a notes-only
 rewrite (`revise.notes_only`) changes nothing on the slide but its notes.
 
-### Design templates
+### Templates (템플릿)
 
-The rendering catalogue: shapes the model writes into. They ship inside the API image
-under `app/design_templates/<id>/`: a `template.toml`, a `seed.html` and a
+A template is a document or deck structure the model writes into; a theme
+(below) is its look. Shipped templates live inside the API image under
+`app/design_templates/<id>/`: a `template.toml`, a `seed.html` and a
 `sample.html` always, plus the `instructions.md` and `checklist.md` a writing
-turn reads.
+turn reads. The catalogue is a short list of `deck-*` and `doc-*` entries,
+written against this product's constraints: no script and no parent-relative
+assets, because artifacts render in a `sandbox=""` iframe. Templates apply to
+the report and slides surfaces only; the image and audio/video surfaces take a
+plain prompt.
 
-The catalogue is a few dozen entries — `deck-*` and `doc-*` only — written
-against this product's constraints: no script and no parent-relative assets,
-because artifacts render in a `sandbox=""` iframe. The number is meant to stay
-readable. The image, audio and video recipes (`image-*`, `audio-*`, `video-*`)
-were retired (`design_templates.RETIRED_MEDIA`, migration 0058 clears them from
-agents, starting points, conversations and project defaults): none ever shaped a
-stored file, so pictures and clips made with one open as before, and a request
-that still names one draws a plain picture. The composer's ▦ picker is on the
-report and slides surfaces only.
+A person's own template (`user_templates`, `/user-templates`, the editor at
+`/customize/templates`) holds every field a shipped one sets — what to bring,
+instructions and checklist, genre rule, document format, 빠진 정보 질문 and
+진행 과정 설정 — and is drawn in the shared document seed (`_document`) with
+the theme's tokens: no HTML or CSS of its own. A form file it was made from is
+kept as reference text only. Sessions and agents name it `ut-<id>`.
 
 Picking one **replaces the surface's built-in track**. A slides session with
 `render_template_id` set produces an `html` artifact through `services/page.py`
@@ -542,19 +560,18 @@ wrote that heading and a second one prints the title twice.
 (`services/diagrams.py`) names up to three parts where a structure, flow,
 comparison or concept figure (구조도·흐름도·비교도·개념도) says more than the
 words; a report writer can also place one inline with a `[[그림: …]]` mark.
-`services/diagram.py` writes each as a mermaid flowchart in the house style and
-`diagram.draw_native` draws it: `diagram_render` lays the flowchart out with the
-deck renderer's own shapes (`diagram_shapes`) on a one-slide deck and has the
-print sidecar render it to PNG, so the panel, the PDF, the report and the
-`.pptx` show the same picture; the `.pptx` itself carries native, editable
-shapes. A source the shapes cannot read (not a flowchart, more than
+`services/diagram.py` writes each as a mermaid flowchart source in the house
+style and `diagram.draw_native` draws it: code lays the flowchart out
+(`flow_layout`), `diagram_shapes` draws it as native python-pptx shapes on a
+one-slide deck (`diagram_render`), and the print sidecar renders that slide to
+PNG through LibreOffice (`POST /pptx/png`). The panel, the PDF and the report
+show that picture, and the deck's `.pptx` carries the same shapes, editable. A source the shapes cannot read (not a flowchart, more than
 `diagram_shapes.MAX_NODES` nodes) goes back to the writer once, told why; still
 unreadable, or with no sidecar answering (logged as a warning), the figure is
 left out — a report drops the mark and the 〔그림〕 pointing at it, a deck slide
-keeps its words. There is no mermaid fence or browser drawing in its place for a
-new figure; only chat answers draw mermaid in the browser, and documents stored
-before this rule keep their fences and browser rasters and still open and
-export. The same path serves a figure made by hand: the picture picker in a
+keeps its words. Documents get no browser-drawn figure in its place; only chat
+answers draw mermaid in the browser, and a document that already carries a
+mermaid fence still opens and exports. The same path serves a figure made by hand: the picture picker in a
 report or deck and the image surface's 구조도 · 흐름도 · 개념도 chips call
 `POST /sessions/{id}/diagrams`, which stores the PNG as an image artifact with
 its source, or answers 422 (`diagram_not_drawable` / `diagram_unrendered`). Placed
@@ -608,7 +625,7 @@ a deck. The preview draws it where the exporters do, so what the panel shows
 is what the room sees. `services/pictures.py` owns the one rule underneath all
 of it: raster only, embedded only, never fetched.
 
-A 양식's (template's) typesetting is two files. `seed.html` — shared, named by `seed_from` —
+A template's typesetting is two files. `seed.html` — shared, named by `seed_from` —
 is correctness: the tokens, the whole closed vocabulary `assemble` can emit, the
 `@page` rule, the print rules, the shadow-root `:host`. `design.css` is
 identity: 회의록 packs a compact grey head, 신호 presents white on black. It is spliced in as a second `<style>`
@@ -618,12 +635,13 @@ document editor's shadow root by the same route. Two of them have no `design.css
 at all: `_document/seed.html` is the plain document's own design and `_deck/seed.html` is
 editorial's, which is what makes the shared file somebody's rather than nobody's.
 
-Retired document 양식 (`design_templates.RETIRED`) are gone from the catalogue,
-the gallery and every choice (migration 0055 clears them from agents, starting
-points and project defaults), but documents and conversations may still name
-one. `design_templates.rendering` draws those in `_document` alone, with its
-`template.docx`, so they keep opening, taking pictures and exporting; the page
-view of a report with no 양식 asks for the same seed by the id `_document`.
+Stored documents and conversations may name an id the catalogue does not
+offer. `design_templates.RETIRED` lists document ids drawn in `_document` alone,
+with its `template.docx` (`design_templates.rendering`), so they keep opening,
+taking pictures and exporting; `RETIRED_KEPT` lists ids still drawn in their
+own design but chosen by nothing new; `RETIRED_MEDIA` lists image, audio and
+video ids, read as naming no template. The page view of a report with no
+template asks for the shared seed by the id `_document`.
 
 `test_a_template_has_a_face.py` checks that every `var(--x)` a seed uses is
 declared: an undeclared custom property is not an error anywhere, and
@@ -667,8 +685,8 @@ division of labour: the `.pdf` carries the design because a browser draws it,
 and the `.docx`/`.pptx` carry the structure because Word and PowerPoint have no
 CSS to draw into. A design that survived the trip as a picture would open as a
 document nobody can edit, which is not what somebody who brought their
-organisation's 양식 came for. The deck opens in PowerPoint as real slides in the
-right order with the design system's accent and face, laid out by this
+organisation's template came for. The deck opens in PowerPoint as real slides in the
+right order with the theme's accent and face, laid out by this
 product's own deck renderer — not by the template's stylesheet. `deck_export`
 carries a `table` layout, because flattening a table into bullets leaves the
 reader to reassemble it, and an explicit `columns` field, because an HTML deck
@@ -676,7 +694,7 @@ knows which column each line was in. A JSON deck, which has neither, halves
 its own list.
 
 A template marked `dark` presents on a dark ground, and its `.pptx` follows —
-the design system's ink is a colour chosen for paper and would be unreadable
+the theme's ink is a colour chosen for paper and would be unreadable
 there, so the two neutrals swap. The `.pdf` stays light, which is the same
 decision that seed's own print rules already make: a projector and a printer
 want opposite things.
@@ -694,31 +712,8 @@ frame is `sandbox=""` and opaque to the app, which is the same property that
 makes it safe. An artifact whose blocks carry no markup is refused rather than
 rebuilt out of whichever pieces happened to be stored.
 
-**Media templates are prompt templates.** Image, video and audio produce no
-document, so what a template gives them is the sentence itself: an
-`example_prompt` with blanks written `{name}`, and an `[[arguments]]` entry per
-blank carrying a label, a default and — where the answer is a closed set — the
-options. The gallery renders those as a small form, substitutes them, and puts
-the finished sentence **in the composer**. On these surfaces the prompt is the
-entire input, so a template that sent something the person never read would be
-one they could not correct.
-
-A `[defaults]` table carries the settings the shape implies — aspect, duration,
-resolution, voice, whether the clip has sound — and picking the card sets those
-chips. Only the keys it names: a template silent about duration leaves whatever
-was last chosen rather than resetting it.
-
-Image templates additionally carry an English `prompt_suffix`, folded into
-`imagegen.compose_prompt` after the style chip and before the project's design
-system. That is the one thing kept out of the composer, and the rule is:
-**guardrails invisible, brief visible.** `no lettering, no logos` is true of
-every picture that template makes and would be noise in a sentence somebody is
-editing. Video and audio templates have no such standing rule and therefore no
-suffix — their whole expertise is in the prompt.
-
 `GET /design-templates` lists the catalogue with both a Korean and an English
-half — names, descriptions, example prompts, argument labels and their option
-lists — and the client picks by language. `GET /design-templates/{id}/preview`
+half — names, descriptions and example prompts — and the client picks by language. `GET /design-templates/{id}/preview`
 renders the seed around its own sample and is **unauthenticated**, like the
 branding logo: the body is a constant that ships in this image, an iframe `src`
 cannot carry an Authorization header, and `current_viewer`'s `?t=` escape hatch
@@ -726,8 +721,8 @@ would put a live access token in the proxy log for a static asset.
 
 That preview takes the four tokens as query parameters — `accent`, `ink`,
 `muted`, `font` — because a card is only worth looking at if it is in the look
-the file will come out in: the gallery opened inside a project asks for that
-project's design system, and the design editor asks for whatever the form
+the file will come out in: a picker opened inside a project asks for that
+project's theme, and the theme editor asks for whatever the form
 currently holds, which is what makes three hex fields into something you can
 see. The values go through `design.normalise_tokens` on the way in, the same
 call the renderers make, so a bad one falls back per field and nothing but a
@@ -807,19 +802,18 @@ bundle**. A fix to one step lives in one stage with its own tests; every stage o
 is recorded, run or not; and which stages a document runs is data, not an if-chain.
 
 **Where things are.** `app/pipeline/` holds the machinery: `bundle.py` (the work bundle),
-`stage.py` (the contract), `runner.py`, `registry.py`, and the stages by flow —
-`report_stages.py`, `check_stages.py`, `chat_stages.py`, `revise_stages.py`,
-`export_stages.py`, `save_stages.py` (the `io` stages that load and store a document),
-`make_stages.py` (deck, page), `route_stages.py`; `runs.py` keeps a run across
+`stage.py` (the contract), `runner.py`, `registry.py`, `compose.py` (composed step lists),
+and the stages by flow — `report_stages.py`, `check_stages.py`, `chat_stages.py`,
+`revise_stages.py`, `export_stages.py`, `save_stages.py` (the `io` stages that load and store
+a document), `make_stages.py` (deck, page), `route_stages.py`; `runs.py` keeps a run across
 requests, `marks.py` the spans a document's reader should look at, `labels.py` the stages'
-Korean names. `app/pipelines/*.toml` declares the pipelines, one file per shipped
-agent (`minutes`, `gaejo-report`, `client-proposal`, `comparison-report`, `career-docs`,
-`data-analysis`) plus the defaults `report` (any format no file claims), `dated`
-(`event_plan`, `result_report`), `chat`, `deck` and `page`.
+Korean names. `app/pipelines/*.toml` declares four pipelines: `report` (every document),
+`chat` (a chat answer's finish), `deck` and `page`.
 
-**A pipeline file** names the formats and agents it serves and its flows:
+**A pipeline file** names the agents it serves, its flows, and a `[summary]` of plain lines
+for the drawn chain:
 
-| key | what it lists | who runs it |
+| flow | what it lists | who runs it |
 |---|---|---|
 | `pre` | stages before the first draft (`check:gaps`, `gap-card`) | `sessions._gaps` |
 | `plan` | the planning pass, ending with the offered outline | `report.write` without an approved plan |
@@ -827,17 +821,17 @@ agent (`minutes`, `gaejo-report`, `client-proposal`, `comparison-report`, `caree
 | `finish` | a chat answer after the agent loop | `sessions._run_turn` |
 | `revise` | a follow-up applied to the document on screen, `revise-load` … `revise-save` | `sessions._revise_document` |
 | `make` | a one-pass writer: deck, page | `sessions._make_pass` |
-| `prepass` | the pre-pass steps (`report_checks.PREPASS_STEPS`) | `report_checks.prepare` |
-| `checks` | the format's code checks (`report_checks.CHECK_FAMILIES`) | `report_checks.checks` |
-| `judged` | the format's judged checks (`report_checks.JUDGED_CHECKS`) | `report_checks.model_checks` |
-| `[options]` | switches the stages read: `search`, `fixed_outline`, `draws`, `prepass_always`, `prepass_quiet` | `ctx.options` |
 
-A report picks its pipeline by its format (`registry.for_report(doc_format.id)`, after
-`doc_formats.detect`), a chat answer by its catalogue agent (`registry.for_chat`), a
-revision by the document's `titleBlock.format` (a deck by `deck`).
-`tests/test_pipelines.py` holds every format to what the if-chains these files replaced
-selected — the same pre-pass steps in the same order, the same check families, the same
-format stages and options.
+What a document does besides writing is not in the file. The template's and the agent's
+**진행 과정 설정** (`services/process_settings.py`; `[process]` in a shipped `template.toml`,
+`user_templates.process`, `agents.process_settings`) name the pre-pass calculations, the optional
+format-repair stages (each listed in `report.toml` and skipped unless named), the code and
+judged checks, structure rules (sections, tables, summary lines, 개조식 style, page limit),
+written 검토 규칙 and options such as `search`, `fixed_outline` and `draws`. Every name is from a
+closed list the code ships, so a person who sets the same values as a shipped template gets
+the same run. `tests/test_pipelines.py` holds every shipped format to its expected pre-pass
+steps, check families, stages and options. Runs stored under the names of earlier per-format
+pipeline files still open (`registry.LEGACY`).
 
 **The bundle** (`Bundle`) has narrow, typed parts: `request` (what the turn was asked,
 never written), `spec` (format and genre), `material` (each `Part` with its origin:
@@ -855,21 +849,19 @@ It ends the pipeline on purpose by raising `Stop(reason)` (an outline offered, a
 card, a revision with nothing to do), after yielding its own closing events.
 
 **The runner** records one `StepRecord` per stage: `done`, `skipped` with the stage's
-reason, `stopped`, `failed` (the exception goes on to the caller, as it did before the
-move) or `cancelled` (the turn was closed under it); the stages after a stop are recorded
+reason, `stopped`, `failed` (the exception goes on to the caller) or `cancelled` (the turn was closed under it); the stages after a stop are recorded
 as skipped. The records go to the log (`pipeline minutes.write: research:done,
 calc:skipped(nothing to compute…), …`), onto the bundle, and to `report.write(trace=[…])`.
 `run(start="verify")` resumes from a stage on a bundle the earlier ones filled.
 `StepRecord.wire()` is the record as a surface `step` (category `pipeline`, the whole record
 under `stage`: Korean label, summary, evidence, times, attempt); `KLOUDCHAT_PIPELINE_STEPS`
-sends them, on unless set to `0` (the test suite sets `0`; its recorded streams predate
-the records, and the replay test holds the stream with records to the same events plus one
-record per stage). `KLOUDCHAT_PIPELINE_STRICT=1` (the test suite sets it, `tests/conftest.py`)
+sends them, on unless set to `0` (the test suite sets `0`; the replay test holds the stream
+with records to the same events plus one record per stage). `KLOUDCHAT_PIPELINE_STRICT=1` (the test suite sets it, `tests/conftest.py`)
 refuses a stage that changed a field it did not declare.
 
 **Runs are kept.** A writing pass (report `write`, `revise`, a deck's or page's `make` on an
 approved outline) runs with a `runs.Recorder`: the bundle encoded before the first stage and,
-after each stage, the fields it changed. The run is a `PipelineRun` row (migration 0053;
+after each stage, the fields it changed. The run is a `PipelineRun` row (kept
 apart from `messages`, which the transcript reads whole) and a compact copy of its records
 on the message it settled (`routing.run`). `runs.restore` gives the bundle as it stood
 before any recorded stage; `POST /sessions/{id}/runs/{run}/rerun {fromStage, answers}` runs
@@ -907,7 +899,7 @@ replaces one reaches the stage. Register it, list it in the pipelines that run i
 its own test. A format-specific behaviour is a stage listed only in that format's file, or
 an `[options]` switch — not a format comparison inside a stage.
 
-**Replay tests.** `tests/test_pipeline_replay.py` replays recorded turns — one lineup
+**Replay tests.** `tests/test_pipeline_replay.py` replays recorded turns — one
 acceptance run per format (minutes, 개조식, client proposal, comparison, career history,
 a long-form proposal through the parallel gate), the data-analysis and career-docs chat
 turns, and two revisions (one that widens, settles again and aligns) — and requires the
@@ -919,11 +911,9 @@ re-records a case from an acceptance run against a scripted model (the run's out
 sections, readings of its material); rebuild only when a change in behaviour is meant, and
 say so.
 
-**User pipelines** (`app/pipeline/compose.py`, `app/routers/user_pipelines.py`, migration
-0054). The shipped files stay locked; a person copies one (「복제해서 편집」 on an agent's 「워크플로」
-tab → `POST /user-pipelines {fromAgentId}`, or a shared one from the store `{fromId}`) into a
-`UserPipeline` row of their own: a list of at most twelve coarse **steps**
-`{id, kind, ref, settings}` —
+**Composed pipelines** (`app/pipeline/compose.py`, `app/routers/user_pipelines.py`). The
+shipped files stay locked. An agent's 진행 과정 › 직접 구성 (고급) edits a `user_pipelines` row: a
+list of at most twelve coarse **steps** `{id, kind, ref, settings}` —
 
 | kind | ref / settings | needs | leaves |
 |---|---|---|---|
@@ -966,19 +956,18 @@ step** raises `Wait`: what the run spent is billed, the card (`needs`) or the ou
 next message resumes the run from that step with the answers or the approved outline.
 
 **An agent's 진행 과정** (`app/services/bases.py`, `app/services/bundles.py`,
-`PUT /agents/{id}/process`, migration 0060). Pipelines stopped being a thing people make on
-their own: the agent form offers 「진행 과정」 — 바로 답하기 (no base), 기본 과정에서 시작 (a
+`PUT /agents/{id}/process`). The agent form offers 「진행 과정」 — 바로 답하기 (no base), 기본 과정에서 시작 (a
 **base**: an offered catalogue agent, `agents.base_key`) or 직접 구성 (고급, the step editor
 above, not offered for 발표 자료) — and 「추가로 할 일」, one checkbox per **묶음** (bundle).
 
-- A **base** is any non-retired agent file (`starter.offered_agents`; drafts for
+- A **base** is any offered agent file (`starter.offered_agents`; drafts for
   administrators only). Its plain steps are its pipeline's `[summary]` lines (at most five);
   `sessions._agent_catalog_key` resolves `catalog_key`, then `base_key`, then the original's,
   so a person's agent with a base runs that base's question card, format, template and
   pipeline. Picking a base sets `surface`, `doc_format` and (when the agent has none that
   fits) `render_template_id`.
-- A **bundle** is data: `app/bundles/{prepare,review,finish}.toml` ship 쓰기 전에 준비하기 ·
-  다 쓴 뒤 검토하기 · 마무리하기; a person's own is a `user_pipelines` row with `kind = "bundle"`
+- A **bundle** is data: `app/bundles/{prepare,review,finish,publish-check}.toml` ship 쓰기 전에
+  준비하기 · 다 쓴 뒤 검토하기 · 마무리하기 · 공개 전 점검; a person's own is a `user_pipelines` row with `kind = "bundle"`
   in the same item shape (`{id, kind, ref, settings, label, default}`; `GET/POST/PUT/DELETE
   /bundles`, `POST /bundles/{id}/share`). Where an item runs is decided by its kind alone
   (`bundles.target`): a check skill with a stage is an `Agent.check_skills` entry, run inside
@@ -1001,8 +990,8 @@ above, not offered for 발표 자료) — and 「추가로 할 일」, one check
   below); until then others run the agent on its base (`user_pipelines.runs_for_others`).
   Installing a copy carries `base_key`, `bundles`, `check_skills`, `check_options` and, when
   it runs for others, a clone of the pipeline; deleting an agent deletes its own pipeline.
-- `GET /user-pipelines` lists only the pipelines made before on their own (unbound, no
-  `agent_id`, not bundles), for 「예전에 만든 순서 가져오기」 in 직접 구성.
+- `GET /user-pipelines` lists a person's unbound pipelines (no `agent_id`, not bundles), which
+  a 직접 구성 can start from.
 
 **「에이전트로 저장」** (`GET /sessions/{id}/agent-draft`, `services/agent_draft.py`): the result
 card's and the panel's ⋯ open `/customize/agents/new?from=session:<id>` prefilled; nothing is
@@ -1043,7 +1032,7 @@ Reviewing rules are kept apart from writing rules on purpose: folded into the
 brief, a rubric becomes a checklist the model writes *to* rather than one it
 can be measured by.
 
-### Reading a design system out of a document
+### Reading a theme out of a document
 
 Four colours and a paragraph of house style are usually already on hand — the
 공문 template everything is filed on, an earlier report, a page on the
@@ -1065,7 +1054,7 @@ obviously unfinished.
 
 Costs one call on the cheapest chat model, charged like any other.
 
-### Design systems
+### Themes (테마)
 
 One look, read by every surface that produces a document. Split in two, and the
 split is the whole design:
@@ -1082,15 +1071,15 @@ effect. Image is the exception — there the colour is the instruction, so it
 travels as an English phrase (`design.image_clause`) appended to the prompt
 beside the style chip.
 
-`craft` names brand-agnostic rules the design system opts into, filtered per
+`craft` names brand-agnostic rules the theme opts into, filtered per
 surface: a rule about heading depth reaches a report and not a chat turn.
 
 The tokens are **copied onto the artifact** when it is made, and the exporters
 read them from there. A deck presented last month does not repaint itself
-because the project changed its design system since — the same rule the
+because the project changed its theme since — the same rule the
 per-slide accent already followed.
 
-A project with no design system renders with the default palette, down to the
+A project with no theme renders with the default palette, down to the
 greys in the PDF. The export tests pin that output.
 
 ### The artifact gallery
@@ -1151,50 +1140,86 @@ account.
 The router sits **above** the auth gate, or a share link would land on the
 sign-in screen.
 
+### Publishing agents
+
+An agent can be published as a chatbot (공개 챗봇: `routers/publications.py`,
+`services/publishing.py`, the owner's screen at `/customize/publications/:id`, the
+members' list at `/bots`). A bot opens to the members of this instance as soon as it is
+published. Opening it to people without an account — by link (`link`) or listed on the
+public page `/b` (`external`) — waits for an administrator (`/admin/publications`), who
+approves the audience and the version together; on a bot open outside, each new version
+waits for the same review while the approved one keeps answering.
+
+**A bot answers as its owner.** A visitor's conversation is a `sessions` row owned by the
+publisher and marked with the publication, and the ordinary turn runs it, so credits,
+policy, masking and retention are the owner's. The turn is constrained on the session
+rather than on the caller: the model is a strict-local one fixed with the version (refused
+when none exists); the agent is the version's hidden copy (`Agent.snapshot_of`) with its
+knowledge text; the tools are 자료 찾기 and 계산 only, and none of the owner's memories,
+personalisation, projects, connectors, skills or other files reach the turn. Limits apply
+per visitor, per address, per bot and per day, plus the owner's daily credit cap and a
+concurrency cap per bot and across the instance, with a short queue before 429. A visitor
+without an account is a signed browser cookie and nothing more.
+
+**What the owner sees.** Counts, frequent topics, unanswered questions (personal details
+masked) and 👍👎 — not conversations, except one a visitor sent with 「만든 사람에게
+보내기」 or, with 「대화 열람」 on, those started after the visitor's consent, both masked
+when read. An administrator may read a conversation for an abuse review, with a recorded
+reason.
+
+**Channels.** A bot open outside reaches further through channels the owner asks for and an
+administrator opens with the audience (`Publication.channels`): an embed on the owner's sites
+(`/embed/b/<slug>`; `GET /embed/frame-policy` gives nginx the `frame-ancestors` list for
+that bot, every other page keeps `'self'`), an OpenAI-compatible API (`/bots/v1/models`,
+`/bots/v1/chat/completions`, the model is the bot's address) and an MCP server
+(`/bots/mcp/{slug}`, streamable HTTP, one tool `ask`), both called with a key the owner
+issued for that bot (`/publications/{id}/keys`; `routers/bot_api.py`). Earlier `messages`
+an API caller sends are the caller's word, quoted inside the question, never replayed as
+the bot's own turns; `X-KloudChat-Conversation` continues a conversation the key started.
+An answer goes out only once the turn settled normally, so a failure is an error, never a
+partial answer. Closing the outside audience closes every channel with it.
+
 ### The workspace store
 
 Agents and skills live in one account — the oldest administrator's, resolved by
 `starter.catalog_owner_id`, derived rather than stored — shared to the
-workspace, and taken from `/agents` and `/skills/store` a copy at a time.
+workspace, and taken from the store tabs of 사용자 지정 (`/customize`) a copy at a time.
 `POST /agents/{id}/install` and `POST /skills/{id}/install` do the copying, and
 both are idempotent: pressing 가져오기 twice returns the row you already have
 rather than a second one with the same name.
 
-The shipped catalogue is `starter._SKILLS` plus `starter._AGENTS`, the lineup
+The shipped catalogue is `starter._SKILLS` plus `starter._AGENTS`, the
 agents read from `app/agents/<key>.toml` (prompt, guide, starters, kinds,
 bindings, an explicit tool list — `[]` denies every tool — skill keys and the 묶음
-they run). Offered: 규정·업무 안내 (`regulation-guide`), 개조식 보고 (`gaejo-report`), 비교·결정 (`comparison-report`), 자료
-추출·집계 (`data-analysis`), 회의록 (`minutes`), and as drafts (`draft = true`,
-administrators only until they pass the lineup evaluation) 공문·기안 초안 (`document`) and
-발표 자료 (`slides`). `former_names` renames untouched copies on sync.
+they run). Offered: 규정·업무 안내 (`regulation-guide`), 개조식 보고 (`gaejo-report`), 비교·결정
+(`comparison-report`), 자료 추출·집계 (`data-analysis`), 회의록 (`minutes`), and as drafts
+(`draft = true`, visible to administrators only) 공문·기안 초안 (`document`) and 발표 자료
+(`slides`).
 
-Hidden is not retired: `listed: false` (a SKILL.md, a `template.toml`, a `_DESIGNS` entry)
-or `connector_catalog.listed` (migration 0063) keeps a shipped part out of the lists people
-pick from — the skill hub and store, the 서식 and theme pickers, the members' connector
-catalogue — while it still runs by name, in 묶음, in the editors that name it, and in the
-conversations and documents that already use it. Unlike `draft`, it does not gate
+**Listed, hidden, retired.** `listed: false` (a SKILL.md, a `template.toml`, a
+`starter._DESIGNS` entry) or `connector_catalog.listed` keeps a shipped part out of the lists
+people pick from — the skill hub and store, the template and theme pickers, the members'
+connector catalogue — while it still runs by name, in 묶음, in the editors that name it, and in
+the conversations and documents that already use it. Unlike `draft`, it does not gate
 `run_skill_script`. The wire carries `listed`; administrators see hidden rows behind 「숨김
-포함」. Shown now: skills 근거 대조·빠진 정보 묻기·계산·단위 검증·날짜 계산·견적 계산·엑셀
-정리·PDF 표 → 엑셀; every document 서식 still offered and the 브리핑 deck; themes 기본 and
-문서용 명조; the time connector (deep-research is disabled, YouTube unlisted). 마무리하기's
-export item names `by_format`: a 공문-family format (`internal_draft`, `official`,
+포함」. Listed: the skills 근거 대조·빠진 정보 묻기·계산·단위 검증·날짜 계산·견적 계산·엑셀
+정리·PDF 표 → 엑셀·개인정보 가리기; the offered document templates and the 브리핑 deck; the themes
+기본 and 문서용 명조; the time connector (deep research disabled, YouTube unlisted).
+마무리하기's export item names `by_format`: a 공문-family format (`internal_draft`, `official`,
 `event_plan`, `result_report`, `gaejo`) exports HWPX when ticked without a format, anything
-else its first `formats` (`bundles.export_default`). Retired (`retired = true`):
-자기소개서·경력기술서 (`career-docs`) and 고객 맞춤 제안서 (`client-proposal`) with their 서식
-`doc-career-history` and `doc-client-proposal` (`design_templates.RETIRED_KEPT`: still drawn
-and exported, chosen by nothing new) and formats (`doc_formats.RETIRED`). A retired agent is
-never seeded afresh; its rows and every copy get `agents.retired`, are listed nowhere, refuse
-install and new conversations (410 `agent_retired`), and keep their conversations and
-documents. A
+else its first `formats` (`bundles.export_default`). An agent file with `retired = true`
+(자기소개서·경력기술서 `career-docs`, 고객 맞춤 제안서 `client-proposal`) is never seeded afresh; its
+rows and every copy get `agents.retired`, are listed nowhere, refuse install and new
+conversations (410 `agent_retired`), and keep their conversations and documents. Their
+templates are in `design_templates.RETIRED_KEPT` and their formats in `doc_formats.RETIRED`.
+A
 prompt's `[채팅에서]` / `[보고서에서]` / `[슬라이드에서]` lines open parts read
 on that surface only (`workspace_context.surface_prompt`).
 `seed_catalog` syncs the catalogue on the owner's sign-in and deletes the
-owner's rows whose `catalog_key` is no longer shipped at all (a key still in a file with
-`retired = true` is kept, hidden); copies people installed are theirs and stay. Sharing is set on the first run only. That run is told
-apart by a catalogue agent, or a shipped skill that is shared or has been
-installed — skills seeded per account before the store carry keys too but were
-private and never installed — so a skill the administrator made private stays
-private.
+owner's rows whose `catalog_key` is not shipped at all (a key still in a file with
+`retired = true` is kept, hidden); copies people installed are theirs and stay. Sharing is set on the first run only (told apart by a
+catalogue agent, or a shipped skill that is shared or has been installed), so a
+skill the administrator made private stays private. `former_names` in an agent file renames untouched copies on sync.
 
 **Sharing means copyable, not usable in place.** A skill is only ever resolved
 out of its owner's account (`workspace_context._resolve_skills`), so a shared
@@ -1247,10 +1272,52 @@ model-restriction picker reads `GET /admin/models`, the whole catalogue, rather
 than the administrator's own (possibly restricted) list. Reissuing a LiteLLM key
 asks first, since the old key is revoked at once.
 
+**Model roles** are product choices stored in `system_settings` (`models.*`,
+`thinking.*`; `services/settings_store.py`) and edited under System › 모델: each surface's
+default model, the title·memory·summary model, the `run_code` model and its fallback, and
+whether self-hosted and external models think. The outline model and the Auto classifier
+sit in the `governance` row (System › 라우팅). The `.env` values of the same names only seed
+a fresh install; deployment facts — addresses, secrets, which served models think unless
+told not to — stay in `.env` (see [configuration.md](configuration.md)). The defaults use
+the two self-hosted models: `local/qwen3.8-27b` writes chat answers, reports, decks and
+`run_code` programs; `local/qwen3.8-flash` plans outlines, judges and checks, classifies for
+Auto, writes titles, memories and summaries, and (as `strict-local/qwen3.8-flash`) reads
+scanned pages. See [Which model does what](configuration.md#which-model-does-what).
+
 **Branding** logos are served without authentication, because the sign-in
 screen renders one before anybody is authenticated. The filename carries a
 content hash, so replacing the logo changes its URL. SVG is rejected: it can
 carry script, and that file loads for every visitor.
+
+**문의·신고** (`routers/issues.py`, `/issues`, `/admin/issues`): a person reports a fault
+or asks for something, optionally attaching a read-only copy of a conversation
+(`services/issue_snapshot.py`; a strict-local conversation needs an explicit
+confirmation); administrators work the queue with status, assignee and replies, and
+every open of an attached conversation is an audit event.
+
+**Performance monitoring** (`/admin/performance`, `services/perf/`) samples each replica,
+the host, the GPU nodes and LiteLLM's request log once a minute into `metric_samples`;
+its settings are in [configuration.md](configuration.md#performance-monitoring).
+
+### Reading scanned pages (OCR)
+
+An upload whose pages carry no text layer is stored at once with what could be read
+without OCR (`files.ocr_state = "queued"`), and a background loop on every API replica
+reads its pages (`services/ocr_jobs.py`). The claim is a row lock taken with
+`SKIP LOCKED`, and every finished page is committed (`file_pages`) with a fresh claim
+time, so a replica that stops mid-file leaves a stale claim the next one resumes after
+the last committed page.
+
+Two readers, both inside the deployment (`services/ocr.py`): the engine (ocr-shim behind
+`/tools/ocr`, CPU), which returns every line with a score and a box, and a vision model
+through LiteLLM that must be strict-local and declare vision — checked against an
+uncached catalogue right before each page is sent, or the page is not sent. The reading
+mode (`both` by default, `engine`, `vision`), the vision model (자동 takes
+`OCR_VISION_MODEL`, `strict-local/qwen3.8-flash`), on/off and a page limit are set under
+System › 기능 › 글자 읽기(OCR). With both, the engine reads every page and a page it scored
+low or that holds a ruled table is read again by the vision model, whose text is kept;
+when the two readings differ in words or in any number the page is marked for review.
+Pages read are recorded on the ledger as units.
 
 ### Transcription and fact-checking
 
@@ -1283,7 +1350,7 @@ what arrived and marks the reply `interrupted`.
 
 Image generation is a single upstream call with a prompt rather than a turn
 with a system message, so it never goes through `assemble`. It resolves the
-project's design system on its own (`workspace_context.design_for`).
+project's theme on its own (`workspace_context.design_for`).
 
 Both call OpenRouter through LiteLLM via `chat/completions`. Audio **requires
 `stream: true`**, and streaming yields only `pcm16`, which a 44-byte RIFF header
@@ -1316,7 +1383,7 @@ default-length clip at twice the quoted price.
 ## 7. Context assembly
 
 What goes into one turn, in order: the system prompt (per surface) → agent
-instructions → project instructions → design system → memories → skills → files
+instructions → project instructions → theme → memories → skills → files
 attached to this turn → files attached earlier in the conversation → project
 knowledge → tool rules → conversation history.
 
@@ -1366,7 +1433,7 @@ the exact OpenAI tool-schema array first and includes it in the same scan and
 decision-token hash; every model hop reuses that detached snapshot. A masked
 external retry drops a tool whose definition is sensitive instead of rewriting
 function or property names and breaking its runtime mapping. The deterministic
-v1 detector covers high-confidence identifiers and secrets; it does not guess
+detector covers high-confidence identifiers and secrets; it does not guess
 at names or postal addresses.
 
 An external, hybrid or unknown-boundary model with findings requires one of
@@ -1599,11 +1666,15 @@ which travels in URLs and API responses. Deleting an agent drops its collection.
 
 ```
 apps/web/src/
-  pages/        one per route, plus settings/ — the five account tabs and
-                the admin System screen's sections
-  components/   chat · report · slides · chart · artifacts · media · layout · ui
+  pages/        one per route; settings/ holds the account tabs and the admin
+                System screen's sections, customize/ the agent, skill, template
+                and publication editors
+  components/   chat · report · slides · chart · artifacts · media · agents ·
+                customize · publishing · issues · memory · share · auth ·
+                layout · ui
   store/        useStore.ts — a single zustand store
-  lib/          api.ts (the backend seam) · kinds.ts · i18n.ts · reportMarkdown.ts
+  lib/          api.ts (the backend seam) · kinds.ts · i18n.ts · useT.ts ·
+                reportMarkdown.ts · mermaid.ts · shortcuts.ts
 ```
 
 **The store has an epoch guard.** Every action that writes to the workspace

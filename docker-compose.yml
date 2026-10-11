@@ -3,8 +3,7 @@
 #   docker compose up -d
 #
 # Models and tools live in KloudChat-LLM, reached through one gateway URL
-# (BACKEND_BASE_URL in .env, or the address saved under Settings → System →
-# Integrations). With that backend down, sign-in, history, workspace and
+# (BACKEND_BASE_URL in .env, or the address saved under 시스템 › 기능 › 기능 연동). With that backend down, sign-in, history, workspace and
 # settings keep working; model calls and tools report "not connected".
 #
 # `latest` moves with every push to main. Pin a version tag in production.
@@ -13,7 +12,7 @@ name: kloudchat
 
 # Product choices — which model does which job, whether models think, a new account's
 # credits — are decided in the admin screen (System › 모델, System › 회원 가입) and stored
-# in the database. These variables only seed a fresh install: migration 0068 writes them
+# in the database. These variables only seed a fresh install: a migration writes them
 # there once, and the stored values win from then on. `migrate` and `api` both get them.
 x-first-install-seeds: &first-install-seeds
   DEFAULT_CHAT_MODEL: ${KCHAT_DEFAULT_CHAT_MODEL:-local/qwen3.8-27b}
