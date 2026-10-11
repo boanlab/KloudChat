@@ -2549,8 +2549,8 @@ const EN: Record<string, string> = {
   '찾는 아티팩트가 없습니다': 'Nothing matches',
   '제목의 다른 부분으로 찾아보세요.': 'Try another part of the title.',
   '구성 단계 모델': 'Planning model',
-  '보고서·슬라이드는 구성을 한 번 잡고 그 뒤에 한 절씩 씁니다. 구성 호출은 문서당 한 번뿐이라 여기만 다른 모델로 두어도 비용은 거의 그대로입니다. 다만 이 인스턴스에서 재어 보니 레이아웃 다양성 같은 구조 지표는 달라지지 않았습니다 — 그 부분은 프롬프트 쪽에서 이미 해결됐습니다.':
-    'Reports and decks are planned once and then written a section at a time. The planning call happens once per document, so another model here costs almost nothing extra. Measured on this instance, though, the structural numbers — layout variety and the like — did not move: the prompt had already fixed that part.',
+  '보고서·슬라이드는 구성을 한 번 잡고 그 뒤에 한 절씩 씁니다. 구성 호출은 문서당 한 번뿐이라 여기만 다른 모델로 두어도 비용은 거의 그대로입니다.':
+    'Reports and decks are planned once and then written a section at a time. The planning call happens once per document, so another model here costs almost nothing extra.',
   '구성에 쓸 모델': 'Model that plans',
   '비워 두면 각 화면이 쓰는 모델이 구성까지 맡습니다. 본문은 언제나 화면의 모델이 씁니다. 개인정보 때문에 strict-local 로 보낸 대화, 그리고 본문 모델보다 데이터 경계가 넓은 경우에는 이 설정이 적용되지 않습니다.':
     'Left empty, each surface plans with its own model. The body is always written by the surface’s model. This setting does not apply to a turn privacy routed to a strict-local model, nor to a planner whose data boundary is wider than the writer’s.',
