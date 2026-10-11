@@ -219,15 +219,12 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
 
 async def _knowledge_shelf(
     db: AsyncSession, user: User, session: ChatSession, agent: WorkspaceAgent | None
-) -> tuple[list[tuple[str, str, str | None]], str, bool]:
-    """Documents `search_knowledge` can look through this turn, their index collection, and
-    whether the agent's own material is among them.
+) -> tuple[list[tuple[str, str, str | None]], str]:
+    """Documents `search_knowledge` can look through this turn, and their index collection.
 
     An agent's knowledge and the files uploaded into this conversation, whole text
     because the tool runs inside the stream with no DB session. The collection is
     the agent's when there is one — the tool searches one — else the conversation's.
-    The agent's material is the one shelf nothing else puts in the prompt (uploads and
-    project knowledge are carried by `assemble`), so its turns search it first.
     """
     rows = (
         await db.exec(
@@ -255,14 +252,11 @@ async def _knowledge_shelf(
             or (row.project_id and row.project_id == session.project_id and row.agent_id is None)
         )
     ]
-    agent_material = bool(session.agent_id) and any(
-        row.text and row.agent_id and row.agent_id == session.agent_id for row in rows
-    )
     if session.agent_id:
         # The vector collection is the owner's; someone running a shared agent
         # searches the lexical shelf of their own uploads only.
         owned = agent is not None and agent.owner_id == user.id
-        return shelf, (agent.index_key or "") if owned else "", agent_material
+        return shelf, (agent.index_key or "") if owned else ""
     if session.project_id:
         # Project knowledge and the project's conversations' uploads share one
         # collection; uploads indexed before the project had one live under the
@@ -270,8 +264,26 @@ async def _knowledge_shelf(
         project = await db.get(Project, session.project_id)
         if project is not None and project.index_key:
             keys = [project.index_key] + ([session.index_key] if session.index_key else [])
-            return shelf, ",".join(keys), agent_material
-    return shelf, session.index_key or "", agent_material
+            return shelf, ",".join(keys)
+    return shelf, session.index_key or ""
+
+
+async def _has_agent_material(db: AsyncSession, user: User, session: ChatSession) -> bool:
+    """Whether the conversation's agent has material of its own on the shelf: the one shelf
+    nothing else puts in the prompt (uploads and project knowledge are carried by
+    `assemble`), so its turns search it first."""
+    if not session.agent_id:
+        return False
+    found = (
+        await db.exec(
+            select(StoredFile.id).where(
+                StoredFile.user_id == user.id,
+                StoredFile.agent_id == session.agent_id,
+                StoredFile.text != "",
+            ).limit(1)
+        )
+    ).first()
+    return found is not None
 
 
 #: Skills offered to the model per turn; the description must stay a paragraph, not a catalogue.
@@ -3828,7 +3840,8 @@ async def send_message(
         # The standing set, pruned of skills removed or barred since they were switched on.
         active_skill_ids = await _standing_skill_ids(db, user, session, agent_row)
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
-        shelf, shelf_key, agent_material = await _knowledge_shelf(db, user, session, agent_row)
+        shelf, shelf_key = await _knowledge_shelf(db, user, session, agent_row)
+        agent_material = bool(shelf) and await _has_agent_material(db, user, session)
 
     requested_is_strict = _strict_model(requested_model)
     strict_candidate_available = _strict_route_possible(
