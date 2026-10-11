@@ -203,3 +203,41 @@ async def test_a_written_report_is_traced_and_the_step_records_it(monkeypatch):
     assert "2026-10-21(수)" in text
     steps = {e["id"]: e for e in events if e["type"] == "step"}
     assert "근거 없는 값 1개 → 빈칸" in steps["format_checks"]["detail"]
+
+
+_TOOL_NUMBERS = check_skills.options_for(None, {"tool_numbers": True})
+
+
+def test_a_rate_in_a_long_request_is_the_person_s_value():
+    # The request's prose commas and 「11,000」 used to make it read as a CSV row, so the
+    # rate it gives was blanked as a number no tool printed.
+    trace = skill_scripts.entry("grounding-check")
+    request = ("근로장학생 근무현황 엑셀이에요. 학생별로 9월 근무시간 합계 내 주시고, 시간당 "
+               "11,000원 곱해서 지급액도 계산해 주세요. 이상한 행(중복, 학번 오류, 날짜 누락 등)은 "
+               "따로 표시해 주세요.")
+    rows = "학번\t성명\t근무일자\t근무시간\n32221045\t김민지\t2026-09-03\t4\n"
+    computed = ["김민지 12.0"]
+    text = "시간당 11,000원으로 계산했습니다. 김민지 12시간, 지급액 132,000원."
+    assert trace.check(text, f"{request}\n{rows}", computed, _TOOL_NUMBERS) == []
+    # A product with a number no tool printed is still the model's own arithmetic.
+    found = trace.check("지급액 140,000원", f"{request}\n{rows}", computed, _TOOL_NUMBERS)
+    assert [f["text"] for f in found] == ["140,000원"]
+
+
+def test_a_data_cell_counts_on_the_line_that_names_its_row():
+    # An anomaly list quotes the rows it flags; a mean that equals some cell does not pass.
+    trace = skill_scripts.entry("grounding-check")
+    rows = ("학번\t성명\t근무일자\t근무시간\n32201533\t이하늘\t2026-09-05\t22\n"
+            "32211876\t박서연\t9/1\t3.5\n32211876\t박서연\t2026-09-08\t3\n")
+    text = ("| 9 | 이하늘 | 32201533 | 2026-09-05 | 22시간 | 하루 근무가 깁니다 |\n"
+            "| 2 | 박서연 | 32211876 | 9/1 | 3.5시간 | 날짜 형식 불일치 |")
+    assert trace.check(text, rows, ["n=3"], _TOOL_NUMBERS) == []
+    found = trace.check("하루 평균 근무시간은 3.5시간입니다.", rows, ["n=3"], _TOOL_NUMBERS)
+    assert [f["text"] for f in found] == ["3.5시간"]
+
+
+def test_a_year_and_a_count_is_not_a_month():
+    trace = skill_scripts.entry("grounding-check")
+    material = "연도\tSCIE\tKCI\t학회발표\n2022\t2\t3\t5\n"
+    assert trace.check("2022년 5건으로 가장 적었다.", material, ["5"], _TOOL_NUMBERS) == []
+    assert [f["kind"] for f in trace.check("2022년 5월에 시작했다.", material, [])] == ["month"]

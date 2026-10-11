@@ -101,8 +101,10 @@ MONTH_DAY = re.compile(
 #: 「10/9(금)」, 「10. 9.(금)」: a short day, read only with its weekday or 「까지」 after it.
 SHORT_DAY = re.compile(
     rf"(?<![\d./])(?P<m>\d{{1,2}})\s{{0,1}}[/.]\s{{0,1}}(?P<d>\d{{1,2}})\.?(?=\s{{0,2}}(?:\([{_WD}]\)|까지))")
+#: 「2026년 5월」, 「2026.05」. After 「년」 the month needs its 「월」: 「2022년 5건」 is a count.
 YEAR_MONTH = re.compile(
-    r"(?<![\d.])(?P<y>(?:19|20)\d{2})\s{0,2}(?:년\s{0,2}|[.-]\s{0,2})(?P<m>\d{1,2})(?:\s{0,2}월|\.)?(?![\d-]|\s{0,2}\d|\s{0,2}[A-Za-z])")
+    r"(?<![\d.])(?P<y>(?:19|20)\d{2})\s{0,2}(?:년\s{0,2}(?=\d{1,2}\s{0,2}월)|[.-]\s{0,2})(?P<m>\d{1,2})"
+    r"(?:\s{0,2}월|\.)?(?![\d-]|\s{0,2}\d|\s{0,2}[A-Za-z]|\s{0,2}(?:건|명|개|편|회|권|곳|차|위|점|%))")
 #: A span of months in the material: 「2026. 12. ~ 2027. 5.」, 「2026.1~3」, 「2019.03 ~ 2022.08」.
 MONTH_RANGE = re.compile(
     r"(?P<y1>(?:19|20)\d{2})\s{0,2}(?:년|[.-])\s{0,2}(?P<m1>\d{1,2})(?:\s{0,2}월|\.)?(?:\s{0,2}\d{1,2}\s{0,2}(?:일|\.))?"
@@ -394,6 +396,17 @@ class Sources:
             # A price or a distance times a count: 「20만 원 × 2팀」, 「15,000km × 5대」.
             counts = sorted({abs(v) for v in pool if 1 < abs(v) < 100 and v == int(v)})
             self.derived += [a * c for a in figures for c in counts if a >= 1000]
+        #: An attached data file's rows, each as (the cells that name it, its values): a value
+        #: counts from a row only on a line that also names that row (「행 9 · 32201533 · 22시간」),
+        #: so a mean cannot pass as a cell it happens to equal. And a rate the person gave times
+        #: a computed value (「12시간 × 11,000원」) is the tool's result priced, not new arithmetic.
+        #: Both only where numbers must come from the tools; otherwise the rows are material.
+        self.rows: list[tuple[list[tuple[str, ...]], set[float]]] = []
+        self.priced: set[float] = set()
+        if numbers != "all":
+            self.rows = _row_keys(_data_rows(material))
+            rates = {abs(v) for v in self._person_values(material) if abs(v) >= 100}
+            self.priced = {round(r * abs(x), 6) for r in rates for x in pool if x}
         self.skill_only: set[str] = set()
         lines = text.splitlines()
         for line in lines:
@@ -405,6 +418,16 @@ class Sources:
                     continue
                 if not any(word in other.lower() and not SKILL_LINE.search(other) for other in lines):
                     self.skill_only.add(word)
+
+    @staticmethod
+    def _person_values(material: str) -> list[float]:
+        out = []
+        for m in NUMBER.finditer(_native_digits(_said_by_person(material))):
+            try:
+                out.append(ko_number(m.group("num")))
+            except ValueError:
+                continue
+        return out
 
     def _day(self, year: int | None, month: int, day: int) -> None:
         if 1 <= month <= 12 and 1 <= day <= 31:
@@ -429,6 +452,8 @@ class Sources:
         for known, known_unit, kp in self.values:
             if (not known_unit or not family or known_unit == family) and near(value, known, places, kp):
                 return known
+        if round(abs(value), 6) in self.priced:
+            return value
         if value >= 10 and any(near(value, d, places) for d in self.derived):
             return value
         return None
@@ -436,15 +461,72 @@ class Sources:
     def has_number(self, value: float, unit: str, places: int) -> bool:
         return self.match(value, unit, places) is not None
 
+    def quoted(self, value: float, line: str) -> bool:
+        """Whether `line` names a data row that holds `value` exactly as written."""
+        compact = re.sub(r"\s+", "", line)
+        return any(abs(value) in values and any(all(part in compact for part in key) for key in keys)
+                   for keys, values in self.rows)
+
     def has_text(self, words: str) -> bool:
         return re.sub(r"\s+", "", words).lower() in self.lower
 
 
+#: A thousands separator (「11,000」), not a field break.
+_THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+
+
+def _data_row(line: str) -> bool:
+    """Whether a line is an attached data file's raw row (CSV, a tab-separated sheet row, a
+    markdown table row) rather than something the person said. Prose commas (「주시고, 」) and
+    thousands separators do not make a row."""
+    stripped = line.strip()
+    if stripped.startswith("|") or line.count("\t") >= 2:
+        return True
+    return len(re.findall(r",(?!\s)", _THOUSANDS.sub("", line))) >= 3
+
+
 def _said_by_person(material: str) -> str:
-    """The request and the person's answers without an attached data file's raw rows: lines that
-    look like CSV rows or table rows are left out (their cells are data, not results)."""
-    return "\n".join(line for line in (material or "").splitlines()
-                     if line.count(",") < 3 and not line.strip().startswith("|"))
+    """The request and the person's answers without an attached data file's raw rows (their
+    cells are data, not results)."""
+    return "\n".join(line for line in (material or "").splitlines() if not _data_row(line))
+
+
+def _data_rows(material: str) -> str:
+    return "\n".join(line for line in (material or "").splitlines() if _data_row(line))
+
+
+#: A cell that can name its row: an ID with letters and digits (「T0224」), a long number
+#: (학번 「32201533」), a date, a year, or a word.
+_KEY_CELL = re.compile(r"(?=.*[A-Za-z가-힣])[\w.-]{2,40}|\d{5,15}|(?:19|20)\d{2}(?:[-./]\d{1,2}){0,2}")
+
+
+def _row_keys(rows: str) -> list[tuple[list[tuple[str, ...]], set[float]]]:
+    """Each data row's naming cells and values. A cell names a row when at most two rows hold
+    it; a common one (「공과대학」, 「Y」) names a row only with a second naming cell beside it."""
+    table: list[list[str]] = []
+    for line in rows.splitlines():
+        if not re.sub(r"[\s:|-]", "", line):
+            continue
+        cut = "|" if line.strip().startswith("|") else ("\t" if "\t" in line else ",")
+        table.append([re.sub(r"\s+", "", c.strip().strip('"')) for c in line.strip().strip("|").split(cut)])
+    counts: dict[str, int] = {}
+    for cells in table:
+        for c in set(cells):
+            counts[c] = counts.get(c, 0) + 1
+    out: list[tuple[list[tuple[str, ...]], set[float]]] = []
+    for cells in table:
+        values: set[float] = set()
+        for c in cells:
+            if re.fullmatch(r"[+-]?\d[\d,]{0,15}(?:\.\d{1,10})?", c):
+                values.add(abs(float(c.replace(",", ""))))
+        keys = [c for c in cells if _KEY_CELL.fullmatch(c)]
+        rare = [c for c in keys if counts[c] <= 2]
+        if rare:
+            out.append(([(c,) for c in rare], values))
+        elif len(keys) >= 2:
+            # Two common cells together: 「김민지」 with 「2026-09-03」.
+            out.append(([(a, b) for i, a in enumerate(keys) for b in keys[i + 1:]], values))
+    return out
 
 
 # ── finding ───────────────────────────────────────────────────────────────
@@ -535,7 +617,7 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
                             "checked": checked or (bare and ("." in m.group("num") or value >= 10)
                                                    and not (value == int(value) and 1900 <= value <= 2100)),
                             "known": sources.match(value, unit, _decimals(m.group("num")))})
-            numbers[-1]["ok"] = numbers[-1]["known"] is not None
+            numbers[-1]["ok"] = numbers[-1]["known"] is not None or sources.quoted(value, line)
     # Plain arithmetic of grounded numbers written together (a line, a table) is grounded too,
     # and so are sums, differences and shares of the big figures anywhere (a total and its
     # change); a value already grounded elsewhere in the text may be repeated. A difference
