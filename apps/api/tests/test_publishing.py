@@ -319,6 +319,13 @@ async def test_the_turn_runs_strict_local_on_the_owners_account_with_nothing_els
     # The visitor's stream carries the answer and none of the owner's routing or credits.
     assert "휴학은 학기 개시일 전까지" in stream and "credits" not in stream
     assert "privacy_route" not in stream
+    # Stages that did not apply are not steps of the visitor's answer.
+    assert "해당 없음" not in stream
+    shown = publications._visible_steps([
+        {"id": "h0_0", "label": "자료 찾기", "status": "done"},
+        {"id": "stage:check:copy", "label": "카피 점검 · 해당 없음", "status": "done",
+         "stage": {"status": "skipped"}}], "summary")
+    assert [s["label"] for s in shown] == ["자료 찾기"]
     async with world.local() as db:
         session = await db.get(ChatSession, sid)
         assert session.user_id == "owner" and session.publication_id == pub["id"]

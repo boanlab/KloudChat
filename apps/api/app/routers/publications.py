@@ -1083,9 +1083,19 @@ def _value(raw: Any) -> str:
     return str(getattr(raw, "value", raw))
 
 
+def _happened(step: Any) -> bool:
+    """A step that ran: a pipeline stage that did not apply (「카피 점검 · 해당 없음」) is the
+    working of the server, not a step of the visitor's answer."""
+    if not isinstance(step, dict):
+        return False
+    stage = step.get("stage")
+    return not (isinstance(stage, dict) and stage.get("status") == "skipped")
+
+
 def _visible_steps(steps: list | None, show: str) -> list | None:
     if show == "none" or not steps:
         return None
+    steps = [s for s in steps if _happened(s)]
     if show == "summary":
         return [{k: s.get(k) for k in _STEP_KEEP if k in s} for s in steps if isinstance(s, dict)]
     return [{k: v for k, v in s.items() if k != "outputs"} for s in steps if isinstance(s, dict)]
