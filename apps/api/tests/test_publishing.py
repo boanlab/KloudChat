@@ -32,6 +32,7 @@ from app.models.governance import Governance
 from app.models.publishing import (
     Publication,
     PublicationCounter,
+    PublicationKey,
     PublicationQuestion,
     PublicationSlot,
     PublicationVersion,
@@ -39,7 +40,7 @@ from app.models.publishing import (
 )
 from app.models.user import AuditEvent, CreditLedger, User, UserRole, UserStatus, utcnow
 from app.models.workspace import Agent, Memory, StoredFile
-from app.routers import publications, search, sessions
+from app.routers import bot_api, publications, search, sessions
 from app.routers import workspace as ws
 from app.services import agent as agent_service
 from app.services import publishing, settings_store
@@ -78,7 +79,8 @@ async def world(monkeypatch, tmp_path):
              "artifact_versions", "credit_ledger", "audit_events", "skills", "pipeline_runs",
              "memories", "projects", "design_systems", "user_pipelines", "jobs",
              "user_templates", "publications", "publication_versions", "publication_visitors",
-             "publication_counters", "publication_slots", "publication_questions"]
+             "publication_counters", "publication_slots", "publication_questions",
+             "publication_keys"]
     async with engine.begin() as conn:
         await conn.run_sync(metadata.create_all, tables=[metadata.tables[n] for n in names])
 
@@ -169,7 +171,8 @@ async def world(monkeypatch, tmp_path):
         await db.commit()
 
     app = FastAPI()
-    for router in (sessions.router, publications.router, ws.router, search.router):
+    for router in (sessions.router, publications.router, ws.router, search.router,
+                   bot_api.router):
         app.include_router(router)
 
     async def db_session():
@@ -615,8 +618,10 @@ def _migration(name: str = "0064_agent_publishing"):
 
 def test_the_migrations_add_and_drop_what_publishing_needs_on_sqlite():
     first, outside = _migration(), _migration("0065_publishing_outside")
+    channels = _migration("0066_publishing_channels")
     assert (first.revision, first.down_revision) == ("0064", "0063")
     assert (outside.revision, outside.down_revision) == ("0065", "0064")
+    assert (channels.revision, channels.down_revision) == ("0066", "0065")
     engine = sa.create_engine("sqlite://")
     with engine.begin() as conn:
         for ddl in ("CREATE TABLE users (id VARCHAR PRIMARY KEY)",
@@ -628,9 +633,10 @@ def test_the_migrations_add_and_drop_what_publishing_needs_on_sqlite():
         with Operations.context(MigrationContext.configure(conn)):
             first.upgrade()
             outside.upgrade()
+            channels.upgrade()
         inspector = sa.inspect(conn)
         for model in (Publication, PublicationVersion, PublicationVisitor, PublicationCounter,
-                      PublicationSlot, PublicationQuestion):
+                      PublicationSlot, PublicationQuestion, PublicationKey):
             assert {c.name for c in model.__table__.columns} == {
                 c["name"] for c in inspector.get_columns(model.__tablename__)}
         assert {"publication_id", "visitor_id", "publication_version_id", "shared_at",
@@ -639,6 +645,11 @@ def test_the_migrations_add_and_drop_what_publishing_needs_on_sqlite():
         conn.execute(sa.text(
             "INSERT INTO publications (id, owner_id, slug, visibility, created_at, updated_at) "
             "VALUES ('p', 'u', 's', 'link', '2026-10-10', '2026-10-10')"))
+        with Operations.context(MigrationContext.configure(conn)):
+            channels.downgrade()
+        inspector = sa.inspect(conn)
+        assert "publication_keys" not in inspector.get_table_names()
+        assert "channels" not in {c["name"] for c in inspector.get_columns("publications")}
         with Operations.context(MigrationContext.configure(conn)):
             outside.downgrade()
         inspector = sa.inspect(conn)

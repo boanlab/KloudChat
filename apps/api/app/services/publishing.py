@@ -79,6 +79,8 @@ DEFAULT_LIMITS: dict[str, int] = {
     "maxInputChars": 8000,
     "turnsPerConversation": 100,
     "concurrency": 4,
+    "perKeyPerMinute": 30,
+    "perKeyPerDay": 2000,
 }
 #: The owner's own cap on what the bot may spend a day, in credits (`limits.creditsPerDay`).
 #: Required before the bot is opened outside; no default, since only the owner knows it.
@@ -209,16 +211,21 @@ async def credits_today(db: AsyncSession, publication_id: str,
 
 
 async def admit(db: AsyncSession, pub: Publication, visitor_id: str, *,
-                ip_key: str | None = None, now: datetime | None = None) -> None:
+                ip_key: str | None = None, channel: str = "web", by_key: bool = False,
+                now: datetime | None = None) -> None:
     """Raises `Refused` (429) when the visitor, their address (a visitor without an account,
-    `ip_key`), the bot or the day is over its limit; else counts the turn. Caller commits."""
+    `ip_key`), the bot or the day is over its limit; else counts the turn, and the channel it
+    came through. A key's caller (`by_key`) is a program: it has the key's limits instead of
+    a person's. Caller commits."""
     now = now or utcnow()
     limits = limits_of(pub)
     minute, day = minute_window(now), day_window(now)
     next_minute, midnight = _seconds_to_next_minute(now), _seconds_to_local_midnight(now)
-    if await counted(db, pub.id, minute, f"turns:v:{visitor_id}") >= limits["perVisitorPerMinute"]:
+    per_minute = limits["perKeyPerMinute" if by_key else "perVisitorPerMinute"]
+    per_day = limits["perKeyPerDay" if by_key else "perVisitorPerDay"]
+    if await counted(db, pub.id, minute, f"turns:v:{visitor_id}") >= per_minute:
         raise Refused("visitor_rate_limited", 429, next_minute)
-    if await counted(db, pub.id, day, f"turns:v:{visitor_id}") >= limits["perVisitorPerDay"]:
+    if await counted(db, pub.id, day, f"turns:v:{visitor_id}") >= per_day:
         raise Refused("visitor_daily_limit", 429, midnight)
     if ip_key:
         if await counted(db, pub.id, minute, f"turns:ip:{ip_key}") >= limits["perIpPerMinute"]:
@@ -240,6 +247,7 @@ async def admit(db: AsyncSession, pub: Publication, visitor_id: str, *,
         await bump(db, pub.id, day, f"turns:ip:{ip_key}")
     await bump(db, pub.id, minute, "turns")
     await bump(db, pub.id, day, "turns")
+    await bump(db, pub.id, day, f"channel:{channel if channel in CHANNEL_NAMES else 'web'}")
 
 
 async def admit_anonymous(db: AsyncSession, pub: Publication, ip_key: str, what: str,
@@ -259,6 +267,8 @@ async def admit_anonymous(db: AsyncSession, pub: Publication, ip_key: str, what:
 
 #: The browser cookie that names a visitor without an account: `<id>.<signature>`.
 VISITOR_COOKIE = "kchat_bot_visitor"
+#: The same, in a frame on another site: `SameSite=None; Secure; Partitioned`.
+EMBED_VISITOR_COOKIE = "kchat_bot_visitor_embed"
 VISITOR_COOKIE_DAYS = 365
 _ANON_ID = re.compile(r"[A-Za-z0-9_-]{22,43}")
 
@@ -562,6 +572,137 @@ async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: A
     return version
 
 
+# ── channels ───────────────────────────────────────────────────────────
+
+
+#: Where a turn came from, for the statistics: the bot's own page and the channels.
+CHANNEL_NAMES = ("web", "embed", "api", "mcp")
+#: Channels an administrator opens. `embed` needs the bot listed for everyone (`external`);
+#: `api` and `mcp` need it open outside at all.
+CHANNELS = ("embed", "api", "mcp")
+EMBED_ORIGINS_MAX = 10
+#: `https://host[:port]`, or `https://*.host` for one level of subdomains. Lower case only.
+_ORIGIN = re.compile(r"https://(\*\.)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+                     r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?::\d{1,5})?")
+
+
+def clean_origin(raw: str) -> str | None:
+    """An origin as a frame-ancestors source, or None when it is not one this accepts."""
+    value = (raw or "").strip().lower().rstrip("/")
+    if len(value) > 200 or not _ORIGIN.fullmatch(value):
+        return None
+    host = value.split("://", 1)[1].split(":", 1)[0]
+    # A wildcard covers a site's subdomains, never a whole top-level domain.
+    if host.startswith("*.") and host.count(".") < 2:
+        return None
+    return value
+
+
+def clean_origins(raw: Any) -> list[str]:
+    """The sites an owner listed, cleaned; raises ValueError naming the first bad one."""
+    out: list[str] = []
+    for item in raw if isinstance(raw, list) else []:
+        origin = clean_origin(str(item))
+        if origin is None:
+            raise ValueError(str(item)[:200])
+        if origin not in out:
+            out.append(origin)
+    if len(out) > EMBED_ORIGINS_MAX:
+        raise ValueError("too_many")
+    return out
+
+
+def channel_allowed(visibility: str, name: str) -> bool:
+    """Whether an audience can carry the channel at all."""
+    if name == "embed":
+        return visibility == PublicationVisibility.external.value
+    return visibility in (PublicationVisibility.link.value, PublicationVisibility.external.value)
+
+
+def channels_of(pub: Publication) -> dict[str, dict]:
+    """The channels in force: opened by an administrator and carried by the audience."""
+    return {name: dict(value or {}) for name, value in (pub.channels or {}).items()
+            if name in CHANNELS and channel_allowed(pub.visibility, name)}
+
+
+def channel_open(pub: Publication, name: str) -> bool:
+    """Whether a request through the channel may reach the bot now."""
+    return pub.status == PublicationStatus.approved.value and name in channels_of(pub)
+
+
+def embed_origins(pub: Publication) -> list[str]:
+    """The sites that may frame the bot now; none unless the embed channel is open."""
+    if not channel_open(pub, "embed"):
+        return []
+    return [o for o in (pub.channels or {}).get("embed", {}).get("origins") or []
+            if clean_origin(o) == o][:EMBED_ORIGINS_MAX]
+
+
+def channels_cover(current: dict | None, wanted: dict) -> bool:
+    """Whether `wanted` asks for nothing `current` does not already have (closing a channel or
+    dropping a site never needs review)."""
+    current = current or {}
+    for name, value in wanted.items():
+        if name not in current:
+            return False
+        if name == "embed":
+            have = set((current.get("embed") or {}).get("origins") or [])
+            if not set((value or {}).get("origins") or []) <= have:
+                return False
+    return True
+
+
+def narrow_channels(current: dict | None, wanted: dict) -> dict | None:
+    """What of `current` stays when the owner asks for `wanted`: a channel or site closes at
+    once; nothing new opens here."""
+    out: dict[str, dict] = {}
+    for name, value in (current or {}).items():
+        if name not in wanted:
+            continue
+        if name == "embed":
+            asked = (wanted.get("embed") or {}).get("origins") or []
+            keep = [o for o in (value or {}).get("origins") or [] if o in asked]
+            if keep:
+                out["embed"] = {"origins": keep}
+        else:
+            out[name] = {}
+    return out or None
+
+
+def fit_channels(channels: dict | None, visibility: str) -> dict | None:
+    """The channels an audience can carry; None when none is left."""
+    kept = {name: value for name, value in (channels or {}).items()
+            if name in CHANNELS and channel_allowed(visibility, name)}
+    return kept or None
+
+
+# ── keys for the API and MCP channels ──────────────────────────────────
+
+
+KEY_PREFIX = "kcb_"
+KEYS_MAX = 10
+_KEY = re.compile(r"kcb_[A-Za-z0-9_-]{40,64}")
+
+
+def new_key() -> tuple[str, str, str]:
+    """A fresh key, its hash (what is stored) and the preview shown afterwards."""
+    key = KEY_PREFIX + secrets.token_urlsafe(32)
+    return key, key_hash(key), f"{key[:8]}…{key[-4:]}"
+
+
+def key_hash(key: str) -> str:
+    return hashlib.sha256((key or "").encode()).hexdigest()
+
+
+def key_shaped(key: str) -> bool:
+    return bool(_KEY.fullmatch(key or ""))
+
+
+def key_visitor(key_id: str) -> str:
+    """The visitor id a key's calls are kept under: never a cookie's (those have no colon)."""
+    return f"key:{key_id}"
+
+
 def opens_outside(pub: Publication) -> bool:
     """Whether people without an account reach the bot: its versions are then reviewed."""
     return pub.visibility in (PublicationVisibility.link.value,
@@ -823,11 +964,28 @@ async def watch() -> None:
 
 
 __all__ = [
+    "CHANNELS",
+    "CHANNEL_NAMES",
+    "KEYS_MAX",
+    "channel_allowed",
+    "channel_open",
+    "channels_cover",
+    "channels_of",
+    "clean_origin",
+    "clean_origins",
+    "embed_origins",
+    "fit_channels",
+    "key_hash",
+    "key_shaped",
+    "key_visitor",
+    "narrow_channels",
+    "new_key",
     "ANON_CONVERSATIONS_PER_IP_DAY",
     "ANON_VISITORS_PER_IP_DAY",
     "CREDITS_PER_DAY",
     "DEFAULT_LIMITS",
     "PUBLISHABLE_TOOLS",
+    "EMBED_VISITOR_COOKIE",
     "VISITOR_COOKIE",
     "PublishedTurn",
     "Refused",

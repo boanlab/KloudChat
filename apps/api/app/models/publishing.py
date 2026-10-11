@@ -9,6 +9,11 @@ Members may open a bot as soon as it is published (`visibility = internal`). Ope
 people without an account — whoever holds the link (`link`) or anyone, listed on the public
 page (`external`) — waits for an administrator: the request sits in `review_state`, and only a
 version an administrator approved answers outside.
+
+A bot open outside can also be reached through channels, each opened by an administrator the
+same way (`channels`, asked in `requested_channels`): `embed` — framed on the owner's own sites
+(`origins`), `api` — the OpenAI-compatible endpoint, `mcp` — an MCP server. API and MCP callers
+hold a key the owner issued for that bot (`PublicationKey`).
 """
 
 from __future__ import annotations
@@ -124,6 +129,11 @@ class Publication(SQLModel, table=True):
     #: owner last opened the bot's page: the badge is the difference.
     attention_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     owner_seen_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    #: Channels an administrator opened: `{"embed": {"origins": [...]}, "api": {}, "mcp": {}}`;
+    #: a key present is a channel open.
+    channels: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: The whole set of channels asked for while a review is pending; None otherwise.
+    requested_channels: dict | None = Field(default=None, sa_column=_json(nullable=True))
 
 
 class PublicationVersion(SQLModel, table=True):
@@ -214,11 +224,31 @@ class PublicationQuestion(SQLModel, table=True):
     at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 
+class PublicationKey(SQLModel, table=True):
+    """A key the owner issued for one bot's API and MCP channels. Only its hash is kept: the
+    key itself is shown once, when it is made."""
+
+    __tablename__ = "publication_keys"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    publication_id: str = Field(foreign_key="publications.id", index=True, ondelete="CASCADE")
+    name: str = Field(default="", max_length=80)
+    #: SHA-256 of the key, hex.
+    key_hash: str = Field(max_length=64, unique=True, index=True)
+    #: `kcb_ab12…yz89`, to tell keys apart.
+    preview: str = Field(default="", max_length=40)
+    created_by: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    last_used_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    revoked_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+
+
 __all__ = [
     "CONVERSATION_VIEW",
     "SHOW_PROCESS",
     "Publication",
     "PublicationCounter",
+    "PublicationKey",
     "PublicationQuestion",
     "PublicationSlot",
     "PublicationStatus",

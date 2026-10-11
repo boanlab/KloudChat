@@ -18,6 +18,12 @@ each new version waits for the same review while the approved one keeps answerin
 - `/admin/publications…` — administrators: the review queue, approving or refusing a request
   (a refusal's reason reaches the owner), closing an outside audience, pausing or closing a
   bot, and reading a conversation for an abuse review, with a reason that is recorded.
+
+A bot open outside reaches further through channels the owner asks for and an administrator
+opens with the audience (`/publications/{id}/channels`): framed on the owner's sites (the
+embed page sends `X-KloudChat-Embed` and keeps its own partitioned cookie), and the API and
+MCP channels in `routers/bot_api`, called with a key the owner issued for the bot
+(`/publications/{id}/keys`). Closing the outside audience closes every channel with it.
 """
 
 from __future__ import annotations
@@ -42,6 +48,7 @@ from app.models.publishing import (
     VISIBILITY_RANK,
     Publication,
     PublicationCounter,
+    PublicationKey,
     PublicationQuestion,
     PublicationSlot,
     PublicationStatus,
@@ -55,7 +62,9 @@ from app.models.workspace import Agent, StoredFile
 from app.schemas.chat import SendMessage
 from app.schemas.publishing import (
     AdminStatusIn,
+    ChannelsIn,
     ConsentIn,
+    KeyIn,
     PreflightIn,
     PublicationPatch,
     PublicationSettings,
@@ -159,6 +168,8 @@ def _pub_out(pub: Publication, *, versions: list[PublicationVersion] | None = No
         "requestedVisibility": pub.requested_visibility, "reviewState": pub.review_state,
         "reviewNote": pub.review_note, "reviewedAt": pub.reviewed_at,
         "pendingVersionId": pub.pending_version_id, "needsLook": _needs_look(pub),
+        "channels": publishing.channels_of(pub),
+        "requestedChannels": pub.requested_channels,
         "createdAt": pub.created_at, "updatedAt": pub.updated_at,
         "publishedAt": pub.published_at,
     }
@@ -216,7 +227,7 @@ async def _remove(db: DbSession, pub: Publication) -> None:
     await publishing.delete_sessions(db, ids)
     await publishing.drop_versions(db, await _versions(db, pub))
     for model in (PublicationVersion, PublicationVisitor, PublicationQuestion, PublicationSlot,
-                  PublicationCounter):
+                  PublicationCounter, PublicationKey):
         await db.exec(delete(model).where(model.publication_id == pub.id))
     await db.delete(pub)
 
@@ -398,10 +409,13 @@ async def set_scope(publication_id: str, payload: ScopeIn, request: Request, use
                    previous=pub.visibility)
         pub.visibility = target
         pub.requested_visibility = ""
+        # A channel the narrower audience cannot carry closes with it, asked or open.
+        pub.channels = publishing.fit_channels(pub.channels, target)
+        pub.requested_channels = publishing.fit_channels(pub.requested_channels, target)
         if target == PublicationVisibility.internal.value and pub.pending_version_id:
             # Members only: a version waiting for review needs none, so it answers now.
             pub.active_version_id, pub.pending_version_id = pub.pending_version_id, None
-        if pub.pending_version_id is None:
+        if pub.pending_version_id is None and not pub.requested_channels:
             pub.review_state = ReviewState.none.value
         pub.updated_at = utcnow()
     db.add(pub)
@@ -418,6 +432,7 @@ async def withdraw_request(publication_id: str, request: Request, user: CurrentU
         _audit(db, user, "publication.request_withdrawn", pub, request,
                visibility=pub.requested_visibility)
     pub.requested_visibility = ""
+    pub.requested_channels = None
     pub.pending_version_id = None
     pub.review_state = ReviewState.none.value
     pub.updated_at = utcnow()
@@ -476,6 +491,126 @@ async def activate_version(publication_id: str, version_id: str, request: Reques
     return await get_publication(publication_id, user, db)
 
 
+# ── channels and keys ──────────────────────────────────────────────────
+
+
+@router.post("/publications/{publication_id}/channels")
+async def set_channels(publication_id: str, payload: ChannelsIn, request: Request,
+                       user: CurrentUser, db: DbSession):
+    """The channels the owner wants, as a whole set. Closing one (or dropping a site) applies
+    at once; opening one is asked of an administrator with the audience it needs, and the
+    daily credit cap stays required."""
+    pub = await _mine(db, user, publication_id)
+    if pub.status == PublicationStatus.revoked.value:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="revoked")
+    wanted: dict[str, dict] = {}
+    if payload.embed is not None and payload.embed.on:
+        try:
+            origins = publishing.clean_origins(payload.embed.origins)
+        except ValueError as bad:
+            raise HTTPException(status_code=422,
+                                detail={"code": "bad_origin", "origin": str(bad)}) from None
+        if not origins:
+            raise HTTPException(status_code=422, detail="origins_required")
+        wanted["embed"] = {"origins": origins}
+    if payload.api:
+        wanted["api"] = {}
+    if payload.mcp:
+        wanted["mcp"] = {}
+    # The audience in force, or the one asked for alongside: a channel needs one to carry it.
+    audience = pub.requested_visibility or pub.visibility
+    for name in wanted:
+        if not publishing.channel_allowed(audience, name):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail={"code": "channel_needs_audience", "channel": name})
+    before = publishing.channels_of(pub)
+    current = pub.channels
+    pub.channels = publishing.narrow_channels(current, wanted)
+    if publishing.channels_cover(current, wanted):
+        pub.requested_channels = None
+        if pub.review_state == ReviewState.pending.value and not pub.requested_visibility \
+                and pub.pending_version_id is None:
+            pub.review_state = ReviewState.none.value
+        if publishing.channels_of(pub) != before:
+            _audit(db, user, "publication.channels_closed", pub, request,
+                   channels=sorted(publishing.channels_of(pub)))
+    else:
+        _require_cap(pub)
+        pub.requested_channels = wanted
+        pub.review_state = ReviewState.pending.value
+        pub.review_note = ""
+        _audit(db, user, "publication.channels_requested", pub, request,
+               channels=sorted(wanted),
+               origins=(wanted.get("embed") or {}).get("origins") or [])
+    pub.updated_at = utcnow()
+    db.add(pub)
+    await db.commit()
+    return await get_publication(publication_id, user, db)
+
+
+def _key_out(row: PublicationKey) -> dict[str, Any]:
+    return {"id": row.id, "name": row.name, "preview": row.preview, "createdAt": row.created_at,
+            "lastUsedAt": row.last_used_at}
+
+
+@router.get("/publications/{publication_id}/keys")
+async def list_keys(publication_id: str, user: CurrentUser, db: DbSession):
+    pub = await _mine(db, user, publication_id)
+    rows = (await db.exec(select(PublicationKey).where(
+        PublicationKey.publication_id == pub.id, col(PublicationKey.revoked_at).is_(None))
+        .order_by(col(PublicationKey.created_at).desc()))).all()
+    return [_key_out(k) for k in rows]
+
+
+@router.post("/publications/{publication_id}/keys", status_code=status.HTTP_201_CREATED)
+async def create_key(publication_id: str, payload: KeyIn, request: Request, user: CurrentUser,
+                     db: DbSession):
+    """A key for this bot's API and MCP channels, returned once; only its hash is kept."""
+    pub = await _mine(db, user, publication_id)
+    if pub.status == PublicationStatus.revoked.value:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="revoked")
+    live = int((await db.exec(select(func.count()).select_from(PublicationKey).where(
+        PublicationKey.publication_id == pub.id,
+        col(PublicationKey.revoked_at).is_(None)))).one())
+    if live >= publishing.KEYS_MAX:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="too_many_keys")
+    key, hashed, preview = publishing.new_key()
+    row = PublicationKey(publication_id=pub.id, name=" ".join(payload.name.split())[:80],
+                         key_hash=hashed, preview=preview, created_by=user.id)
+    db.add(row)
+    _audit(db, user, "publication.key_created", pub, request, keyId=row.id, name=row.name)
+    await db.commit()
+    # The only response that carries the key.
+    return {**_key_out(row), "key": key}
+
+
+@router.delete("/publications/{publication_id}/keys/{key_id}",
+               status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_key(publication_id: str, key_id: str, request: Request, user: CurrentUser,
+                     db: DbSession):
+    """Stops the key at once; kept as a revoked row for the audit trail."""
+    pub = await _mine(db, user, publication_id)
+    row = await db.get(PublicationKey, key_id)
+    if row is None or row.publication_id != pub.id or row.revoked_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="key_not_found")
+    row.revoked_at = utcnow()
+    db.add(row)
+    _audit(db, user, "publication.key_revoked", pub, request, keyId=row.id, name=row.name)
+    await db.commit()
+
+
+@router.get("/publications/{publication_id}/admin-reads")
+async def admin_reads(publication_id: str, user: CurrentUser, db: DbSession):
+    """When an administrator read the bot's conversations, and why: the owner sees each one."""
+    pub = await _mine(db, user, publication_id)
+    rows = (await db.exec(select(AuditEvent).where(
+        AuditEvent.target == pub.id,
+        col(AuditEvent.action).in_(["publication.admin_list", "publication.admin_read"]))
+        .order_by(col(AuditEvent.at).desc()).limit(100))).all()
+    return [{"at": e.at, "kind": "list" if e.action == "publication.admin_list" else "read",
+             "reason": str((e.event_metadata or {}).get("reason") or "")} for e in rows]
+
+
 def _days(days: int) -> list[str]:
     now = utcnow()
     return [publishing.day_window(now - timedelta(days=i)) for i in range(days - 1, -1, -1)]
@@ -494,9 +629,12 @@ async def stats(publication_id: str, user: CurrentUser, db: DbSession,
             "down", "shared", "failed")
     by_day: dict[str, dict[str, int]] = {w: dict.fromkeys(keys, 0) for w in windows}
     topics: dict[str, int] = {}
+    by_channel: dict[str, int] = dict.fromkeys(publishing.CHANNEL_NAMES, 0)
     for row in rows:
         if row.key.startswith("topic:"):
             topics[row.key[6:]] = topics.get(row.key[6:], 0) + int(row.value)
+        elif row.key.startswith("channel:") and row.key[8:] in by_channel:
+            by_channel[row.key[8:]] += int(row.value)
         elif row.key in keys:
             by_day[row.window][row.key] += int(row.value)
     totals = {k: sum(d[k] for d in by_day.values()) for k in keys}
@@ -509,6 +647,8 @@ async def stats(publication_id: str, user: CurrentUser, db: DbSession,
         "days": days,
         "daily": [{"date": f"{w[1:5]}-{w[5:7]}-{w[7:9]}", **d} for w, d in by_day.items()],
         "totals": {**totals, "visitorsAll": visitors},
+        # Questions by where they came from: the bot's page, a site framing it, API, MCP.
+        "channels": by_channel,
         "topics": [{"word": w, "count": c}
                    for w, c in sorted(topics.items(), key=lambda kv: (-kv[1], kv[0]))[:15]],
         "unanswered": [{"text": q.text, "at": q.at} for q in questions],
@@ -522,7 +662,9 @@ def _visitor_out(visitor: PublicationVisitor | None) -> dict[str, Any] | None:
         return None
     return {"id": visitor.id, "label": visitor.id[:6].upper(),
             "member": visitor.user_id is not None, "blocked": visitor.blocked,
-            "blockedAt": visitor.blocked_at}
+            "blockedAt": visitor.blocked_at,
+            # A key of the owner's (API or MCP) rather than a person.
+            "byKey": (visitor.anon_id or "").startswith("key:")}
 
 
 def _conversation_row(session: ChatSession, turns: int,
@@ -632,10 +774,22 @@ async def unblock_visitor(publication_id: str, visitor_id: str, request: Request
 # ── visitors ───────────────────────────────────────────────────────────
 
 
+#: Sent by the page framed on another site: the caller is always a visitor without an
+#: account there, with its own cookie. A custom header, so another site cannot send it
+#: with a visitor's cookie without passing CORS.
+EMBED_HEADER = "X-KloudChat-Embed"
+
+
+def _embedded(request: Request) -> bool:
+    return request.headers.get(EMBED_HEADER) == "1"
+
+
 async def bot_caller(request: Request, db: DbSession) -> User | None:
     """The signed-in member opening a bot, or None for a visitor without an account (and for
     an account not cleared to act: pending or suspended). Resolved by hand, never required:
-    a bot open outside needs no account."""
+    a bot open outside needs no account. Framed on another site, never a member."""
+    if _embedded(request):
+        return None
     scheme, _, token = request.headers.get("Authorization", "").partition(" ")
     if scheme.lower() != "bearer" or not token:
         return None
@@ -661,10 +815,14 @@ def _open_to(pub: Publication, user: User | None) -> bool:
     return user is not None or publishing.opens_outside(pub)
 
 
-async def _bot(db: DbSession, slug: str, user: User | None) -> Publication:
-    # One answer for unknown, closed and not-for-you: the address gives nothing away.
+async def _bot(db: DbSession, slug: str, user: User | None,
+               request: Request | None = None) -> Publication:
+    # One answer for unknown, closed and not-for-you: the address gives nothing away. Framed
+    # on another site, the bot must have that channel open.
     pub = (await db.exec(select(Publication).where(Publication.slug == slug[:80]))).first()
-    if pub is None or not _open_to(pub, user):
+    if pub is None or not _open_to(pub, user) or (
+            request is not None and _embedded(request)
+            and "embed" not in publishing.channels_of(pub)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bot_not_found")
     return pub
 
@@ -674,8 +832,12 @@ def _refused(refused: publishing.Refused) -> HTTPException:
                          headers={"Retry-After": str(refused.retry_after or 5)})
 
 
+def _cookie_name(request: Request) -> str:
+    return publishing.EMBED_VISITOR_COOKIE if _embedded(request) else publishing.VISITOR_COOKIE
+
+
 def _anon_id(request: Request) -> str | None:
-    return publishing.visitor_from_cookie(request.cookies.get(publishing.VISITOR_COOKIE))
+    return publishing.visitor_from_cookie(request.cookies.get(_cookie_name(request)))
 
 
 def _ip_key(request: Request, user: User | None) -> str | None:
@@ -802,6 +964,16 @@ def _keep_visitor_cookie(request: Request, response: Response) -> None:
     if _anon_id(request) is not None:
         return
     _, value = publishing.new_visitor_cookie()
+    if _embedded(request):
+        # Framed on another site: sent there only as a third-party cookie, kept apart per
+        # site (partitioned), so the frame on one site is not the visitor on another.
+        # Written by hand: the cookie library takes `Partitioned` only from Python 3.14.
+        response.headers.append(
+            "set-cookie",
+            f"{publishing.EMBED_VISITOR_COOKIE}={value}; "
+            f"Max-Age={publishing.VISITOR_COOKIE_DAYS * 86400}; Path=/; HttpOnly; Secure; "
+            "SameSite=None; Partitioned")
+        return
     response.set_cookie(publishing.VISITOR_COOKIE, value,
                         max_age=publishing.VISITOR_COOKIE_DAYS * 86400, httponly=True,
                         secure=settings.cookie_secure, samesite="lax", path="/")
@@ -810,7 +982,7 @@ def _keep_visitor_cookie(request: Request, response: Response) -> None:
 @router.get("/b/{slug}")
 async def bot_page(slug: str, request: Request, response: Response, user: BotCaller,
                    db: DbSession):
-    pub = await _bot(db, slug, user)
+    pub = await _bot(db, slug, user, request)
     visitor = await _visitor(db, pub, user, request, create=False)
     if user is None:
         _keep_visitor_cookie(request, response)
@@ -828,6 +1000,7 @@ async def bot_page(slug: str, request: Request, response: Response, user: BotCal
         # Members see who answers for the bot; people without an account see the bot.
         "ownerName": owner.name if owner and user is not None else "", "mine": mine,
         "signedIn": user is not None, "visibility": pub.visibility,
+        "embedded": _embedded(request),
         "status": pub.status, "pauseReason": pub.pause_reason if mine else "",
         "branding": _branding(pub.branding), "showSources": pub.show_sources,
         "showProcess": pub.show_process, "conversationView": pub.conversation_view,
@@ -843,7 +1016,7 @@ async def bot_page(slug: str, request: Request, response: Response, user: BotCal
 async def consent(slug: str, payload: ConsentIn, request: Request, user: BotCaller,
                   db: DbSession):
     """The visitor read the notice (and, with 「대화 열람」 on, agreed to it)."""
-    pub = await _bot(db, slug, user)
+    pub = await _bot(db, slug, user, request)
     if payload.version != pub.consent_version:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="consent_outdated")
     visitor = await _visitor_now(db, pub, user, request)
@@ -869,7 +1042,7 @@ async def _visited(db: DbSession, pub: Publication, user: User | None, request: 
 
 @router.get("/b/{slug}/conversations")
 async def my_conversations(slug: str, request: Request, user: BotCaller, db: DbSession):
-    pub = await _bot(db, slug, user)
+    pub = await _bot(db, slug, user, request)
     visitor = await _visitor(db, pub, user, request, create=False)
     if visitor is None:
         return []
@@ -883,7 +1056,7 @@ async def my_conversations(slug: str, request: Request, user: BotCaller, db: DbS
 
 @router.post("/b/{slug}/conversations", status_code=status.HTTP_201_CREATED)
 async def start_conversation(slug: str, request: Request, user: BotCaller, db: DbSession):
-    pub = await _bot(db, slug, user)
+    pub = await _bot(db, slug, user, request)
     visitor = await _visitor_now(db, pub, user, request)
     _ready(pub, visitor)
     version = await _answering(db, pub, user)
@@ -925,7 +1098,7 @@ def _visible_content(content: str, pub: Publication) -> str:
 @router.get("/b/{slug}/conversations/{session_id}")
 async def my_conversation(slug: str, session_id: str, request: Request, user: BotCaller,
                           db: DbSession):
-    pub = await _bot(db, slug, user)
+    pub = await _bot(db, slug, user, request)
     _, session = await _visited(db, pub, user, request, session_id)
     messages = (await db.exec(select(Message).where(Message.session_id == session.id)
                               .order_by(col(Message.created_at), col(Message.id)))).all()
@@ -945,7 +1118,7 @@ async def my_conversation(slug: str, session_id: str, request: Request, user: Bo
 @router.delete("/b/{slug}/conversations/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_my_conversation(slug: str, session_id: str, request: Request,
                                  user: BotCaller, db: DbSession):
-    pub = await _bot(db, slug, user)
+    pub = await _bot(db, slug, user, request)
     _, session = await _visited(db, pub, user, request, session_id)
     await publishing.delete_sessions(db, [session.id])
     await db.commit()
@@ -1003,18 +1176,35 @@ def _too_many(code: str, retry_after: int | None) -> JSONResponse:
 async def visitor_send(slug: str, session_id: str, payload: VisitorMessage, request: Request,
                        user: BotCaller, db: DbSession):
     """A visitor's question, answered by the bot's fixed version on its owner's account."""
-    from app.routers import sessions
-
-    pub = await _bot(db, slug, user)
+    pub = await _bot(db, slug, user, request)
     visitor, session = await _visited(db, pub, user, request, session_id)
     _ready(pub, visitor)
+    response = await run_published_turn(
+        db, pub, visitor, session, content=payload.content, retry_of=payload.retry_of,
+        request=request, user=user, ip_key=_ip_key(request, user),
+        channel="embed" if _embedded(request) else "web")
+    if isinstance(response, StreamingResponse):
+        response.body_iterator = _visitor_stream(response.body_iterator, pub)
+    return response
+
+
+async def run_published_turn(db: DbSession, pub: Publication, visitor: PublicationVisitor,
+                             session: ChatSession, *, content: str, retry_of: str | None,
+                             request: Request, user: User | None, ip_key: str | None,
+                             channel: str, by_key: bool = False):
+    """One turn on the bot — from its page, a site framing it, or the API and MCP channels:
+    limits, the version in force (approved only, without an account), a running slot, then
+    the ordinary turn on the owner's account. Returns the turn's raw event stream, or the
+    response that refused it."""
+    from app.routers import sessions
+
     limits = publishing.limits_of(pub)
-    if len(payload.content) > limits["maxInputChars"]:
+    if len(content) > limits["maxInputChars"]:
         raise HTTPException(status_code=422,
                             detail={"code": "too_long", "max": limits["maxInputChars"]})
     asked = int((await db.exec(select(func.count()).select_from(Message).where(
         Message.session_id == session.id, Message.role == Role.user))).one())
-    if payload.retry_of is None and asked >= limits["turnsPerConversation"]:
+    if retry_of is None and asked >= limits["turnsPerConversation"]:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="conversation_full")
     owner = await db.get(User, pub.owner_id)
     if reason := publishing.owner_blocks(owner):
@@ -1028,7 +1218,8 @@ async def visitor_send(slug: str, session_id: str, payload: VisitorMessage, requ
     session.publication_version_id = version.id
     db.add(session)
     try:
-        await publishing.admit(db, pub, visitor.id, ip_key=_ip_key(request, user))
+        await publishing.admit(db, pub, visitor.id, ip_key=ip_key, channel=channel,
+                               by_key=by_key)
     except publishing.Refused as refused:
         await db.rollback()
         return _too_many(refused.code, refused.retry_after)
@@ -1045,12 +1236,12 @@ async def visitor_send(slug: str, session_id: str, payload: VisitorMessage, requ
         return _too_many("bot_busy", 5)
     turn = publishing.PublishedTurn(
         publication_id=pub.id, version_id=version.id, visitor_id=visitor.id,
-        model_id=version.model, question=payload.content, slot_id=slot,
+        model_id=version.model, question=content, slot_id=slot,
         first_turn=asked == 0)
     token = sessions._PUBLISHED.set(turn)
     try:
         response = await sessions.send_message(
-            session.id, SendMessage(content=payload.content, retry_of=payload.retry_of),
+            session.id, SendMessage(content=content, retry_of=retry_of),
             request, owner, db)
     except HTTPException as exc:
         await turn.release()
@@ -1071,8 +1262,6 @@ async def visitor_send(slug: str, session_id: str, payload: VisitorMessage, requ
             await db.commit()
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                                 detail="published_model_unavailable")
-        return response
-    response.body_iterator = _visitor_stream(response.body_iterator, pub)
     return response
 
 
@@ -1081,7 +1270,7 @@ async def visitor_stop(slug: str, session_id: str, request: Request, user: BotCa
                        db: DbSession):
     from app.routers import sessions
 
-    pub = await _bot(db, slug, user)
+    pub = await _bot(db, slug, user, request)
     _, session = await _visited(db, pub, user, request, session_id)
     await db.commit()
     sessions.fire_stop_locally(session.id)
@@ -1093,7 +1282,7 @@ async def visitor_stop(slug: str, session_id: str, request: Request, user: BotCa
 async def visitor_rate(slug: str, message_id: str, payload: VisitorRating, request: Request,
                        user: BotCaller, db: DbSession):
     """👍👎 on one answer; the owner sees the counts, not the answer."""
-    pub = await _bot(db, slug, user)
+    pub = await _bot(db, slug, user, request)
     message = await db.get(Message, message_id)
     if message is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -1117,7 +1306,7 @@ async def visitor_share(slug: str, session_id: str, request: Request, user: BotC
                         db: DbSession):
     """「만든 사람에게 보내기」: this one conversation becomes readable to the bot's maker,
     personal details masked."""
-    pub = await _bot(db, slug, user)
+    pub = await _bot(db, slug, user, request)
     visitor, session = await _visited(db, pub, user, request, session_id)
     if session.shared_at is None:
         session.shared_at = utcnow()
@@ -1132,7 +1321,7 @@ async def visitor_share(slug: str, session_id: str, request: Request, user: BotC
 @router.delete("/b/{slug}/conversations/{session_id}/share")
 async def visitor_unshare(slug: str, session_id: str, request: Request, user: BotCaller,
                           db: DbSession):
-    pub = await _bot(db, slug, user)
+    pub = await _bot(db, slug, user, request)
     _, session = await _visited(db, pub, user, request, session_id)
     session.shared_at = None
     db.add(session)
@@ -1186,7 +1375,8 @@ async def admin_review(publication_id: str, admin: AdminUser, db: DbSession):
         AuditEvent.target == pub.id, col(AuditEvent.action).in_([
             "publication.published", "publication.requested", "publication.reviewed",
             "publication.withdrawn", "publication.narrowed", "publication.version",
-            "publication.request_withdrawn", "publication.admin_status"]))
+            "publication.request_withdrawn", "publication.admin_status",
+            "publication.channels_requested", "publication.channels_closed"]))
         .order_by(col(AuditEvent.at).desc()).limit(30))).all()
     knowledge = []
     for row in files:
@@ -1211,7 +1401,7 @@ async def admin_review(publication_id: str, admin: AdminUser, db: DbSession):
         "history": [{"action": e.action, "at": e.at, "actorId": e.actor_id,
                      "metadata": {k: v for k, v in (e.event_metadata or {}).items()
                                   if k in ("visibility", "version", "decision", "reason",
-                                           "status", "previous", "pending")}}
+                                           "status", "previous", "pending", "channels")}}
                     for e in history],
     }
 
@@ -1236,15 +1426,23 @@ async def admin_decide(publication_id: str, payload: ReviewIn, request: Request,
         if pub.requested_visibility:
             pub.visibility = pub.requested_visibility
         pub.requested_visibility = ""
+        # The channels asked for open with the audience; what it cannot carry stays shut.
+        if pub.requested_channels is not None:
+            pub.channels = pub.requested_channels
+        pub.channels = publishing.fit_channels(pub.channels, pub.visibility)
+        pub.requested_channels = None
         pub.review_state = ReviewState.none.value
         pub.review_note = " ".join(payload.reason.split())[:300]
-        detail = {"version": version.number, "visibility": pub.visibility}
+        detail = {"version": version.number, "visibility": pub.visibility,
+                  "channels": sorted(publishing.channels_of(pub))}
     else:
         reason = _reason(payload.reason)
         pub.review_state = ReviewState.rejected.value
         pub.review_note = reason
         pub.pending_version_id = None
-        detail = {"visibility": pub.requested_visibility, "reason": reason}
+        detail = {"visibility": pub.requested_visibility, "reason": reason,
+                  "channels": sorted(pub.requested_channels or {})}
+        pub.requested_channels = None
     pub.reviewed_at, pub.reviewed_by = now, admin.id
     pub.updated_at = now
     publishing.flag_owner(pub)
@@ -1265,6 +1463,9 @@ async def admin_withdraw(publication_id: str, payload: WithdrawIn, request: Requ
     previous = pub.visibility
     pub.visibility = PublicationVisibility.internal.value
     pub.requested_visibility = ""
+    # Every channel goes with the outside audience: frames, the API and MCP stop at once.
+    pub.channels = None
+    pub.requested_channels = None
     pub.review_state = ReviewState.none.value
     pub.review_note = reason
     if pub.pending_version_id:
@@ -1318,9 +1519,11 @@ async def admin_conversations(publication_id: str, request: Request, admin: Admi
     rows = (await db.exec(select(ChatSession).where(ChatSession.publication_id == pub.id)
                           .order_by(col(ChatSession.updated_at).desc()).limit(200))).all()
     counts = await _turn_counts(db, [s.id for s in rows])
+    visitors = await _visitors_of(db, list(rows))
     _audit(db, admin, "publication.admin_list", pub, request, severity="warn", reason=why)
     await db.commit()
-    return [_conversation_row(s, int(counts.get(s.id, 0))) for s in rows]
+    return [_conversation_row(s, int(counts.get(s.id, 0)), visitors.get(s.visitor_id or ""))
+            for s in rows]
 
 
 @router.get("/admin/publications/{publication_id}/conversations/{session_id}")
@@ -1338,9 +1541,12 @@ async def admin_conversation(publication_id: str, session_id: str, request: Requ
            sessionId=session.id, reason=why)
     log.info("administrator read a bot conversation (publication %s)", logs.safe(pub.id))
     await db.commit()
-    return {**_conversation_row(session, sum(1 for m in messages if m.role is Role.user)),
+    visitor = await db.get(PublicationVisitor, session.visitor_id) if session.visitor_id \
+        else None
+    return {**_conversation_row(session, sum(1 for m in messages if m.role is Role.user),
+                                visitor),
             "messages": publishing.masked_transcript(list(messages))}
 
 
-__all__ = ["router"]
+__all__ = ["EMBED_HEADER", "bot_caller", "router", "run_published_turn"]
 

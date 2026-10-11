@@ -14,6 +14,7 @@ from app.core.db import SessionLocal
 from app.routers import (
     admin,
     auth,
+    bot_api,
     branding,
     connectors,
     issues,
@@ -144,6 +145,8 @@ app.include_router(keys.router, prefix=settings.api_prefix)
 app.include_router(transcriptions.router, prefix=settings.api_prefix)
 app.include_router(shares.router, prefix=settings.api_prefix)
 app.include_router(publications.router, prefix=settings.api_prefix)
+# A published bot's channels for programs and other sites: the API, MCP and frame policy.
+app.include_router(bot_api.router, prefix=settings.api_prefix)
 app.include_router(issues.router, prefix=settings.api_prefix)
 app.include_router(perf.router, prefix=settings.api_prefix)
 

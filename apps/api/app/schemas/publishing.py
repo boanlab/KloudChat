@@ -88,6 +88,24 @@ class VisitorRating(Wire):
     rating: MessageRating | None = None
 
 
+class EmbedChannel(Wire):
+    on: bool = False
+    #: `https://host[:port]` or `https://*.host`; up to ten.
+    origins: list[str] = Field(default_factory=list, max_length=10)
+
+
+class ChannelsIn(Wire):
+    """The channels the owner wants, as a whole: what is left out closes."""
+
+    embed: EmbedChannel | None = None
+    api: bool = False
+    mcp: bool = False
+
+
+class KeyIn(Wire):
+    name: str = Field(min_length=1, max_length=80)
+
+
 class AdminStatusIn(Wire):
     status: Literal["approved", "paused", "revoked"]
     reason: str = Field(min_length=4, max_length=300)
@@ -96,7 +114,10 @@ class AdminStatusIn(Wire):
 __all__ = [
     "AdminStatusIn",
     "Branding",
+    "ChannelsIn",
     "ConsentIn",
+    "EmbedChannel",
+    "KeyIn",
     "PreflightIn",
     "PublicationPatch",
     "PublicationSettings",

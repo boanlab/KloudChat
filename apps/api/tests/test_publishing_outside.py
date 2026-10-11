@@ -447,7 +447,8 @@ async def test_the_owner_blocks_a_visitor_from_a_conversation_they_sent(world):
     world.as_("owner")
     (row,) = (await world.client.get(f"/publications/{pub['id']}/conversations")).json()
     assert row["visitor"]["member"] is False and row["visitor"]["blocked"] is False
-    assert set(row["visitor"]) == {"id", "label", "member", "blocked", "blockedAt"}
+    assert set(row["visitor"]) == {"id", "label", "member", "blocked", "blockedAt",
+                                  "byKey"}
     blocked = await world.client.post(f"/publications/{pub['id']}/conversations/{sid}/block")
     assert blocked.json()["blocked"] is True
     listed = (await world.client.get(f"/publications/{pub['id']}/visitors")).json()
