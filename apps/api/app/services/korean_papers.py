@@ -89,6 +89,33 @@ def wanted(request: str) -> bool:
     return bool(_WANTED.search(request or ""))
 
 
+#: Words that name the document or its funding programme, not its subject: 「연구계획서」,
+#: 「한국연구재단」, 「개인기초연구」, 「중견연구」, 「공모사업」, 「초안」 (verify1 R-09 searched
+#: 「한국연구재단 개인기초연구 중견연구 연구계획서」 and found nothing).
+_DOC_WORD = re.compile(
+    r"(?:계획서|보고서|제안서|신청서|기획서|초안|요약본|발표문)$|연구재단|재단$|기초연구|중견연구|"
+    r"신진연구|리더연구|우수연구|개인연구|공모|사업$|과제$|연구기간|연구비")
+#: The topic the request names in quotes: 「주제는 "…"」, 『…』, 「…」.
+_TOPIC = re.compile(
+    r"주제(?:는|은|가|:|：)?\s{0,3}[\"“'‘「『]([^\"”'’」』\n]{4,120})[\"”'’」』]"
+    r"|[\"“「『]([^\"”」』\n]{6,120})[\"”」』]")
+
+
+def topic(text: str) -> str:
+    """The topic the request quotes, or `""`."""
+    m = _TOPIC.search(text or "")
+    return (m.group(1) or m.group(2)).strip() if m else ""
+
+
+def none_found(query: str) -> str:
+    """The note a document's sources carry when the Korean paper search found nothing."""
+    return (f"[국내 논문 검색 결과 없음] 「{query}」로 KCI·DBpia·RISS 등을 찾았으나 국내 논문을 "
+            "찾지 못했다. The sources above are not Korean research: do not call any of them "
+            "domestic (국내) work, and do not describe Korean studies from memory. Where the "
+            "document covers 국내 동향, write that this search found no Korean papers "
+            "(「이번 검색에서 국내 논문은 찾지 못했다」) and leave it to the author to add them.")
+
+
 def terms(text: str, limit: int = 3) -> list[str]:
     """The subject words of `text`, in order: Hangul words without their particles and the
     request words, and Latin names (「LLM」)."""
@@ -98,7 +125,7 @@ def terms(text: str, limit: int = 3) -> list[str]:
         if re.match(r"[가-힣]", raw) and len(stem := _PARTICLE.sub("", raw)) >= 2:
             word = stem  # 「교육과」 → 「교육」; 「평가」 stays
         if len(word) < 2 or word in _STOP or raw in _STOP or word in out or (
-                len(raw) >= 3 and _VERB.search(raw)):
+                len(raw) >= 3 and _VERB.search(raw)) or _DOC_WORD.search(raw):
             continue
         out.append(word)
         if len(out) >= limit:
@@ -107,9 +134,11 @@ def terms(text: str, limit: int = 3) -> list[str]:
 
 
 def query_for(request: str, planned: list[str] | None = None) -> str:
-    """The subject words (up to four) to search Korean papers by: a planned Korean query's, else the
-    request's."""
-    for candidate in [*(q for q in planned or [] if re.search(r"[가-힣]", q)), request]:
+    """The subject words (up to four) to search Korean papers by: the topic the request quotes,
+    else a planned Korean query's, else the request's."""
+    quoted = topic(request)
+    for candidate in [*([quoted] if _hangul(quoted) else []),
+                      *(q for q in planned or [] if re.search(r"[가-힣]", q)), request]:
         if found := terms(candidate, 4):
             return " ".join(found)
     return ""
