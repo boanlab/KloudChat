@@ -1042,6 +1042,19 @@ def ground_cells(
                 return m.group(0) if digits in facts or amounts & facts else ""
 
             cleaned = " ".join(_COUNTED.sub(keep, text).split()).strip(" ,·")
+            # Item by item: 「검토 150편, LLM 5개」 losing both amounts is not 「검토 , LLM」
+            # — an item left a bare word goes with its amount.
+            items = re.split(r"\s*(;|,(?!\d))\s*", text)
+            kept_items, bare = [], False
+            for item in items[::2]:
+                left = " ".join(_COUNTED.sub(keep, item).split())
+                if left != " ".join(item.split()) and len(left.split()) < 2:
+                    bare = True
+                    continue
+                if left:
+                    kept_items.append(left)
+            if bare:
+                cleaned = ", ".join(kept_items)
             cells.append(cleaned or ("—" if text.strip() else text))
         out.append(cells)
     return out
