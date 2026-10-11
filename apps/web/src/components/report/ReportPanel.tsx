@@ -269,7 +269,8 @@ function PrintDocument({ report }: { report: ReportArtifact }) {
       {report.sections.map((s, index) => (
         <section key={s.id} style={numbers[index].label ? counterStyle(numbers[index]) : undefined}>
           {/* The 개조식 붙임 closes the body: its lines carry the 붙임 label. */}
-          {!isAttachment(s, block?.lists) && <h2>{numbers[index].label && `${numbers[index].label} `}{s.heading}</h2>}
+          {/* A one-section body with no heading (a 공문's items) prints no chapter title. */}
+          {!isAttachment(s, block?.lists) && (s.heading || '').trim() !== '' && <h2>{numbers[index].label && `${numbers[index].label} `}{s.heading}</h2>}
           {/* No owner: printing must not store diagrams. */}
           {block ? <div className="tb-counted"><SectionBody section={shapedSection(s, block, index === closingAt)} /></div> : <SectionBody section={s} />}
         </section>

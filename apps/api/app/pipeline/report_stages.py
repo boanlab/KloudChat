@@ -1779,7 +1779,8 @@ class Quality(Base):
             **({"detail": detail} if detail else {}),
         }
         # The repair pass rewrites sentences; the list shape is set again after it.
-        bundle.document.sections = report.gaejo_body(sections, bundle.spec.format)
+        bundle.document.sections = report.untitled_body(
+            report.gaejo_body(sections, bundle.spec.format), bundle.spec.settings.outline)
         yield {"type": "report", "sections": bundle.document.sections}
         yield _usage(bundle)
 

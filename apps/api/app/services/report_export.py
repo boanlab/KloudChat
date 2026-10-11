@@ -2217,7 +2217,8 @@ def to_docx(
     closing_at = _last_body(sections)
     for at, section in enumerate(sections):
         number = numbers.section(section)
-        if not _is_attachment(section, head_block):
+        # A body with no heading (a 공문's single 「본문」) adds no empty heading line.
+        if not _is_attachment(section, head_block) and str(section.get("heading") or "").strip():
             section_heading = document.add_heading(
                 f"{number}{section.get('heading') or ''}" if section.get("heading") else "",
                 level=1,
@@ -3184,8 +3185,8 @@ def to_pdf(
         )
 
     for index, section in enumerate(sections):
-        if _is_attachment(section, head_block):
-            pass  # no heading: the 붙임 lines close the body
+        if _is_attachment(section, head_block) or not str(section.get("heading") or "").strip():
+            pass  # no heading: the 붙임 lines close the body, or a body with no chapters
         else:
             if index and space is None:
                 story.append(Spacer(1, 4 * mm))

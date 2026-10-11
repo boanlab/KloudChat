@@ -869,6 +869,19 @@ def plain_blocks(text: str) -> str:
     return _BOX.sub(one, text or "")
 
 
+#: A 서식's one fixed section named only 「본문」: the document has no chapters (a 공문's 1. 가.
+#: items, a 보도자료's lead and body), so the section prints without a heading.
+_BODY_ONLY = re.compile(r"^\s*(?:본문|내용|body)\s*$", re.I)
+
+
+def untitled_body(sections: list[dict], outline: tuple[str, ...] | list[str]) -> list[dict]:
+    """`sections` with the heading taken off when the fixed outline is one 「본문」 section
+    (quality lane Q11: a 공문 template's body came out as 「1. 협조 요청 사항 및 목적」 chapters)."""
+    if len(outline) != 1 or not _BODY_ONLY.match(outline[0]) or len(sections) != 1:
+        return sections
+    return [{**sections[0], "heading": ""}]
+
+
 #: Placeholder for an empty source list; an empty block makes the model invent citations.
 _NO_REFS = "(none. Do not use numbered citations.)"
 

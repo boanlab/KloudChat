@@ -88,3 +88,19 @@ def test_plain_work_documents_draw_only_when_asked_and_keep_no_tiles():
         "※ 잔액 처리: 285만원 반납 여부 결정 필요\n끝.")
     bundle = report_stages.bundle_for(request=_S09, model="m", api_key="k")
     assert bundle.spec.settings.draws == "when-asked"
+
+
+def test_a_single_body_section_prints_without_a_chapter_heading():
+    # Quality lane Q11: a 공문 template's body was always written under chapter titles.
+    from app.services import report_export
+
+    body = [{"id": "s0", "heading": "본문",
+             "content": "1. 협조를 요청합니다.\n  가. 기한: 2026. 11. 6.(금)"}]
+    assert report.untitled_body(body, ("본문",))[0]["heading"] == ""
+    assert report.untitled_body(body, ("요청 사항",)) == body
+    assert report.untitled_body(body, ()) == body
+    sections = report.untitled_body(body, ("본문",))
+    pdf = report_export.to_pdf("협조 요청", sections)
+    assert pdf.startswith(b"%PDF")
+    docx = report_export.to_docx("협조 요청", sections)
+    assert docx[:2] == b"PK"
