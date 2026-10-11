@@ -594,7 +594,12 @@ def excluded_items(data: dict | None) -> list[dict]:
             *(data.get("set_aside") or [])]
 
 
-def _quote_block(result: dict, excluded: list[dict] | None = None, assumed: bool = False) -> str:
+#: The material speaks of VAT: only then is a quote with no stated basis worth flagging.
+_VAT_WORD = re.compile(r"부가세|부가가치세|VAT", re.I)
+
+
+def _quote_block(result: dict, excluded: list[dict] | None = None, assumed: bool = False,
+                 material: str = "") -> str:
     lines = ["# 견적 확정 블록(코드 계산)",
              "The code calculated the amounts below from the material's unit prices and quantities (in "
              "won, VAT truncated below one won). For the quote table's 소계·공급가액(VAT 별도)·부가세·합계(VAT "
@@ -641,8 +646,11 @@ def _quote_block(result: dict, excluded: list[dict] | None = None, assumed: bool
             if "within_budget" in row:
                 ok = f", 예산 {'안' if row['within_budget'] else '초과'}({row['headroom']:,}원)"
             lines.append(f"- 견적 {row['vendor']}: 부가세 별도 {row['excl']:,}원 / 포함 {row['incl']:,}원{ok}")
-        else:
+        elif _VAT_WORD.search(material):
             lines.append(f"- 견적 {row['vendor']}: {row['amount']:,}원(부가세 기준 불분명)")
+        else:
+            # A memo that never mentions VAT gets no VAT question raised from it (S17).
+            lines.append(f"- 견적 {row['vendor']}: {row['amount']:,}원 (as the material writes it)")
     return "\n".join(lines)
 
 
@@ -1315,7 +1323,8 @@ async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
                 pre.quote_input, pre.quote = data, result
                 pre.staff = staffing(material, data)
                 left_out = excluded_items(data)
-                pre.blocks.append(_quote_block(result, left_out, bool(data.get("basis_assumed"))))
+                pre.blocks.append(_quote_block(result, left_out, bool(data.get("basis_assumed")),
+                                               material))
                 if "quote-totals" in settings.code_checks:
                     # A document whose totals are checked holds them as settled figures.
                     pre.figures.extend(_quote_figures(result))
