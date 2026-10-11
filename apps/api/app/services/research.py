@@ -444,6 +444,7 @@ async def run(
     sources: list[dict[str, Any]] = []
     seen_hosts: set[str] = set()
     seen_urls: set[str] = set()
+    seen_works: list[tuple[str, ...]] = []
     ranked: list[list[tuple[float, dict[str, str]]]] = []
     dropped: dict[str, int] = {"차단": 0, "저신뢰": 0, "무관": 0}
     for query_index, hits in enumerate(hit_lists):
@@ -491,11 +492,17 @@ async def run(
             url = hit["url"]
             if url in seen_urls:
                 continue
+            # The same paper on arXiv and in the ACL Anthology is one work, cited once.
+            work = _work_key(hit["title"])
+            if work and any(_same_work(work, other) for other in seen_works):
+                continue
             host = _publisher(url)
             if host in seen_hosts and not (scholarly and _scholarly_host(url)):
                 continue
             seen_urls.add(url)
             seen_hosts.add(host)
+            if work:
+                seen_works.append(work)
             picks.append((query_index, hit))
             if len(picks) >= max_sources:
                 break
@@ -530,6 +537,7 @@ async def run(
                 "origin": "web",
                 "originLabel": "웹 검색",
                 "quote": (hit.get("snippet") or "")[:300],
+                **bibliography(hit),
             }
         )
         lines = [
@@ -710,6 +718,71 @@ UNRESEARCHED_RULE = (
     "최신 정보나 제품명·버전·수치를 단정하지 말고, 확인하지 못한 항목은 "
     "확인이 필요하다고 밝히세요."
 )
+
+
+def _work_key(title: str) -> tuple[str, ...]:
+    """A title's words, lowercased, for telling one work in two places; () when too short to
+    tell (under four words)."""
+    words = tuple(w.lower() for w in re.findall(r"[0-9A-Za-z가-힣]+", title or ""))
+    return words if len(words) >= 4 else ()
+
+
+def _same_work(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
+    """Whether two title keys name one work: equal, or one a cut-off start of the other."""
+    short, long_ = sorted((a, b), key=len)
+    return long_[: len(short)] == short
+
+
+#: Hosts whose name says the venue better than the bare domain does.
+_VENUES = {
+    "arxiv.org": "arXiv", "aclanthology.org": "ACL Anthology", "dl.acm.org": "ACM",
+    "ieeexplore.ieee.org": "IEEE", "proceedings.neurips.cc": "NeurIPS",
+    "papers.nips.cc": "NeurIPS", "openreview.net": "OpenReview", "mdpi.com": "MDPI",
+    "link.springer.com": "Springer", "sciencedirect.com": "Elsevier",
+    "proceedings.mlr.press": "PMLR", "aaai.org": "AAAI", "ojs.aaai.org": "AAAI",
+    "kci.go.kr": "KCI", "dbpia.co.kr": "DBpia", "nature.com": "Nature",
+}
+#: Where a paper's URL carries its year: arXiv ids (2104.14839), ACL Anthology ids
+#: (2024.acl-long.677), and a /2023/ path segment.
+_URL_YEAR = (
+    re.compile(r"arxiv\.org/(?:abs|pdf)/(\d{2})(?:0[1-9]|1[0-2])\.\d{4,5}"),
+    re.compile(r"aclanthology\.org/(\d{4})\.[a-z]"),
+    re.compile(r"/((?:19|20)\d{2})/"),
+)
+_DOI = re.compile(r"(?:doi\.org/|/doi/(?:abs/|full/|pdf/)?)(10\.\d{4,9}/[^\s?#]{1,120})", re.I)
+
+
+def bibliography(hit: dict) -> dict[str, str]:
+    """What a search hit says about the work itself: authors, year, venue, DOI. Read from the
+    search engine's own fields and the link; nothing is looked up or guessed."""
+    out: dict[str, str] = {}
+    url = str(hit.get("url") or "")
+    authors = hit.get("authors")
+    if isinstance(authors, (list, tuple)):
+        names = [str(a).strip() for a in authors if str(a).strip()]
+        if names:
+            out["author"] = ", ".join(names[:3]) + (" 외" if len(names) > 3 else "")
+    elif isinstance(authors, str) and authors.strip():
+        out["author"] = authors.strip()[:200]
+    published = str(hit.get("published") or "")
+    year = published[:4] if re.fullmatch(r"(?:19|20)\d{2}", published[:4]) else ""
+    if not year:
+        for pattern in _URL_YEAR:
+            if m := pattern.search(url):
+                year = m.group(1) if len(m.group(1)) == 4 else f"20{m.group(1)}"
+                break
+    if year:
+        out["year"] = year
+    venue = str(hit.get("journal") or "").strip()
+    host = _publisher(url)
+    venue = venue or next((name for key, name in _VENUES.items()
+                           if host == key or host.endswith("." + key)), "")
+    if venue:
+        out["publisher"] = venue[:120]
+    doi = str(hit.get("doi") or "").strip() or (m.group(1) if (m := _DOI.search(url)) else "")
+    if doi:
+        out["doi"] = doi.rstrip(".")
+    return out
 
 
 def _title_terms(text: str) -> set[str]:

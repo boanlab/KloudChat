@@ -438,6 +438,9 @@ async def _searxng(
                     "url": row.get("url") or "",
                     "snippet": row.get("content") or "",
                     "published": str(row.get("publishedDate") or "")[:10],
+                    # Scholarly engines name the work's authors, venue and DOI.
+                    **{key: row[key] for key in ("authors", "journal", "doi")
+                       if row.get(key)},
                     **({"lane": lane, "lane_query": lane_query} if lane else {}),
                 }
             )

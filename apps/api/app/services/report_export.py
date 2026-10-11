@@ -116,6 +116,10 @@ def citation_text(source: dict[str, Any], style: str = "APA") -> str:
     publisher = str(source.get("publisher") or "").strip()
     year = str(source.get("year") or "").strip()
     url = str(source.get("url") or "").strip()
+    doi = str(source.get("doi") or "").strip()
+    if doi:
+        # A DOI is the link that outlives the landing page.
+        url = f"https://doi.org/{doi}"
     style = style.upper()
 
     if style == "IEEE":
@@ -138,11 +142,13 @@ def citation_text(source: dict[str, Any], style: str = "APA") -> str:
             lead + f"“{title}.”" + (f" {details}." if details else "") + (f" {url}" if url else "")
         )
 
-    # APA is the fallback for unknown styles.
-    lead = f"{author}. " if author else ""
+    # APA is the fallback for unknown styles. With no author the title takes its place:
+    # 「Title. (2024). Venue. URL」.
     dated = f"({year}). " if year else ""
     tail = ". ".join(part for part in (publisher, url) if part)
-    return lead + dated + title + (f". {tail}" if tail else "")
+    if author:
+        return f"{author}. {dated}{title}" + (f". {tail}" if tail else "")
+    return (f"{title}. {dated}" + tail).rstrip() if tail or dated else title
 
 
 def with_references(
@@ -1267,6 +1273,44 @@ _DOCX_FOOTNOTE_HEAD = (
 )
 
 
+#: A web address written out in the text (a reference entry's link).
+_URL = re.compile(r"https?://[^\s<>()\[\]「」]{1,500}[^\s<>()\[\]「」.,;:]")
+
+
+def _linked_runs(paragraph, text: str) -> None:
+    """`text` as runs, each web address in it a live hyperlink (blue, underlined)."""
+    from docx.opc.constants import RELATIONSHIP_TYPE
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    cursor = 0
+    for found in _URL.finditer(text):
+        if before := text[cursor : found.start()]:
+            paragraph.add_run(before)
+        url = found.group(0)
+        rel = paragraph.part.relate_to(url, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+        link = OxmlElement("w:hyperlink")
+        link.set(qn("r:id"), rel)
+        run = OxmlElement("w:r")
+        props = OxmlElement("w:rPr")
+        color = OxmlElement("w:color")
+        color.set(qn("w:val"), "1F4E99")
+        underline = OxmlElement("w:u")
+        underline.set(qn("w:val"), "single")
+        props.append(color)
+        props.append(underline)
+        run.append(props)
+        written = OxmlElement("w:t")
+        written.text = url
+        written.set(qn("xml:space"), "preserve")
+        run.append(written)
+        link.append(run)
+        paragraph._p.append(link)
+        cursor = found.end()
+    if rest := text[cursor:]:
+        paragraph.add_run(rest)
+
+
 class _Footnotes:
     """The document's footnote part, written by hand: python-docx has no footnote API.
 
@@ -1281,12 +1325,12 @@ class _Footnotes:
         cursor = 0
         for found in _MARK.finditer(text):
             if before := text[cursor : found.start()]:
-                paragraph.add_run(before)
+                _linked_runs(paragraph, before)
             if note := notes.get(found.group(1)):
                 self.add(paragraph, note)
             cursor = found.end()
         if rest := text[cursor:]:
-            paragraph.add_run(rest)
+            _linked_runs(paragraph, rest)
 
     def add(self, paragraph, text: str) -> None:
         """One note, and the mark in the prose that points at it."""
