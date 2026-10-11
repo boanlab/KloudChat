@@ -4126,7 +4126,10 @@ function dropMediaTurn(set: Set, sessionId: string, ...ids: string[]) {
  */
 async function watchForTheAnswer(set: Set, get: Get, sessionId: string) {
   const answered = () => {
-    const messages = get().sessions.find((c) => c.id === sessionId)?.messages ?? []
+    const session = get().sessions.find((c) => c.id === sessionId)
+    // A plan waiting on the person (outline, questions) is the turn's answer, not a turn in flight.
+    if (session?.pending) return true
+    const messages = session?.messages ?? []
     const last = messages[messages.length - 1]
     return !last || last.role !== 'user'
   }
