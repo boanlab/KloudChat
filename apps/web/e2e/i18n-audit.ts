@@ -243,7 +243,8 @@ export async function auditEnglishMode(page: Page, routes = AUDIT_ROUTES): Promi
     await visit(page, path, userId)
     findings.push(...(await scan(page, name)))
 
-    const tabs = page.getByRole('tab')
+    // Tabs, and the settings menu's links (a nav of pages, not a tablist).
+    const tabs = page.locator(`[role="tab"], main nav[aria-label="${t('설정 메뉴')}"] a[href]`)
     const count = await tabs.count()
     for (let i = 0; i < count; i++) {
       const tab = tabs.nth(i)
