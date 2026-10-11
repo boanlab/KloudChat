@@ -297,8 +297,64 @@ def _resolve_match(kind: str, m: re.Match[str], base: dt.date, *, count: int = 4
     raise ValueError(kind)
 
 
-def find(text: str, base: dt.date, *, absolute: bool = True) -> list[dict]:
-    """Every date expression in `text`, resolved against `base`, left to right."""
+#: An event a date is given for, and an offset counted from it: 「개강이 2027년 3월 2일」,
+#: 「3월 2일 개강」, 「개강 30일 전」, 「학기 개시 30일 전」.
+_EVENT = r"[가-힣]{2,6}(?:\s[가-힣]{2,4})?"
+_EVENT_BEFORE = re.compile(rf"({_EVENT})\s{{0,2}}(?:일)?(?:이|가|은|는|:|=)?\s{{0,3}}$")
+_EVENT_AFTER = re.compile(rf"^\s{{0,2}}(?:\([월화수목금토일]\))?\s{{1,2}}({_EVENT})")
+_OFFSET_EVENT = re.compile(rf"({_EVENT})\s{{0,2}}(?:일)?\s{{0,2}}$")
+#: What joins two offsets from one day: 「30일 전부터 14일 전까지」, 「30일 ~ 14일 전」.
+_CHAIN = re.compile(r"^\s{0,2}(?:부터|에서)?\s{0,2}(?:~|∼|-|,|와|과|및)?\s{0,2}$")
+#: Names of one event: a term's start is 개강 whichever way it is said.
+_EVENT_ALIASES = {"개학": "개강", "학기개시": "개강", "학기시작": "개강", "학기개강": "개강"}
+#: Words before an offset that name no event of their own.
+_NOT_EVENT = re.compile(r"^(?:부터|까지|에서|기준|기준일|으로|및|매|각|약|그|이번|다음|지난|오늘|내일|이후|이전)$")
+
+
+def _event(words: str) -> str:
+    """「학기 개시」, 「1학기 개강이」, 「개강일은」 → 「개강」: the event's last word, without its
+    particle or 「일」, under its usual name."""
+    def bare(word: str) -> str:
+        word = re.sub(r"(?<=[가-힣]{2})(?:이|가|은|는)$", "", word)
+        return re.sub(r"(?<=[가-힣]{2})일$", "", word)
+
+    parts = [bare(w) for w in words.split()]
+    compact = "".join(parts)
+    for key, name in _EVENT_ALIASES.items():
+        if compact.endswith(key):
+            return name
+    return _EVENT_ALIASES.get(parts[-1], parts[-1]) if parts else ""
+
+
+def named_dates(text: str, base: dt.date) -> dict[str, dt.date]:
+    """The events `text` dates, each with its one date (an event given two dates names none)."""
+    out: dict[str, set[dt.date]] = {}
+    for line in (text or "").splitlines():
+        for row in find(line, base, named={}):
+            if row["kind"] not in ("full_date", "month_day") or row.get("status") != "ok":
+                continue
+            start = row["at"]
+            end = start + len(row["text"])
+            head = line[:start]
+            cut = max((m.end() for m in _SENTENCE_END.finditer(head)), default=0)
+            names = []
+            if before := _EVENT_BEFORE.search(head[cut:]):
+                names.append(before.group(1))
+            if after := _EVENT_AFTER.match(line[end:]):
+                names.append(after.group(1))
+            for name in map(_event, names):
+                if name and not _NOT_EVENT.match(name):
+                    out.setdefault(name, set()).add(dt.date.fromisoformat(row["date"]))
+    return {name: next(iter(days)) for name, days in out.items() if len(days) == 1}
+
+
+def find(text: str, base: dt.date, *, absolute: bool = True,
+         named: dict[str, dt.date] | None = None,
+         anchors: set[str] | None = None) -> list[dict]:
+    """Every date expression in `text`, resolved against `base`, left to right.
+
+    An offset counts from the date said before it in its sentence (only a date in `anchors`,
+    when given), else from the event it names when `text` (or `named`) dates that event."""
     taken: list[tuple[int, int]] = []
     found: list[dict] = []
     matches: dict[int, tuple[re.Match[str], int]] = {}
@@ -321,19 +377,36 @@ def find(text: str, base: dt.date, *, absolute: bool = True) -> list[dict]:
     # 「개강 2027-03-02, 30일 전부터 14일 전까지」: an offset said right after a date in the same
     # sentence counts from that date, not from the meeting or today.
     anchor: dict | None = None
+    chained: tuple[int, dt.date, str] | None = None
+    events = named if named is not None else None
     for row in found:
         m, end = matches[id(row)]
         if row["kind"] in ("full_date", "month_day") and row.get("status") == "ok":
-            anchor = {**row, "end": end}
+            if anchors is None or row["date"] in anchors:
+                anchor = {**row, "end": end}
             continue
-        if (anchor is None or row["kind"] != "offset"
-                or not re.search(r"(?:전|후|뒤)\s{0,2}$", m.group(0))
-                or _SENTENCE_END.search(text[anchor["end"]:row["at"]])):
+        if row["kind"] != "offset" or not re.search(r"(?:전|후|뒤)\s{0,2}$", m.group(0)):
             continue
-        day = dt.date.fromisoformat(anchor["date"])
+        if anchor is not None and not _SENTENCE_END.search(text[anchor["end"]:row["at"]]):
+            day, said = dt.date.fromisoformat(anchor["date"]), anchor["text"]
+        elif chained is not None and _CHAIN.match(text[chained[0]:row["at"]]):
+            # 「개강 30일 전부터 14일 전까지」: the second offset counts from the same day.
+            day, said = chained[1], chained[2]
+        else:
+            # 「개강 30일 전」: the event's own date, wherever the text gave it.
+            before = _OFFSET_EVENT.search(text[max(0, row["at"] - 16):row["at"]])
+            if before is None:
+                continue
+            if events is None:
+                events = named_dates(text, base)
+            name = _event(before.group(1))
+            if _NOT_EVENT.match(name) or name not in events:
+                continue
+            day, said = events[name], before.group(1).strip()
         kept = {k: v for k, v in row.items() if k in ("text", "at", "kind")}
         row.clear()
-        row.update({**kept, **_resolve_match("offset", m, day), "anchor": anchor["text"]})
+        row.update({**kept, **_resolve_match("offset", m, day), "anchor": said})
+        chained = (end, day, said)
     return found
 
 
@@ -381,6 +454,8 @@ def scan(text: str, base: dt.date | None = None, *, absolute: bool = True) -> li
     line on. Without any base, only full dates are read."""
     out: list[dict] = []
     current, kind = base, "meeting" if base else ""
+    # Events the whole text dates (「개강은 3월 2일」 in the request, 「학기 개시 30일 전」 in a rule).
+    events = named_dates(text, base) if base else {}
     for number, line in enumerate((text or "").splitlines(), start=1):
         if not line.strip():
             continue
@@ -389,7 +464,7 @@ def scan(text: str, base: dt.date | None = None, *, absolute: bool = True) -> li
             current, kind = stamped, stamp_kind
         if current is None:
             continue
-        for row in find(line, current, absolute=absolute):
+        for row in find(line, current, absolute=absolute, named=events):
             row.pop("at", None)
             row.update({"source_line": line.strip()[:300], "line": number,
                         "base_date": current.isoformat(), "base_kind": kind or "given"})
@@ -611,11 +686,20 @@ def post(text: str, args: dict) -> dict:
     except ValueError:
         today = dt.date.today()
     source = "\n".join(str(args.get(k) or "") for k in ("request", "material"))
-    worked = [r for r in scan(source, today)
-              if r.get("status") == "ok" and r.get("date") and r.get("kind") in _WORKED_KINDS]
+    scanned = scan(source, today)
+    # `anchored_only`: only an offset counted from a date the person gave, never from today.
+    worked = [r for r in scanned
+              if r.get("status") == "ok" and r.get("date") and r.get("kind") in _WORKED_KINDS
+              and (not args.get("anchored_only") or r.get("anchor"))]
+    stated = {r["date"] for r in scanned if r.get("kind") in ("full_date", "month_day")
+              and r.get("status") == "ok"}
+    # The answer's own working from a date the person gave: 「3월 2일에서 30일 전은 …」.
+    if stated and text:
+        worked += [r for r in find(text, today, anchors=stated, named={})
+                   if r["kind"] == "offset" and r.get("anchor") and r.get("status") == "ok"
+                   and r["date"] not in stated]
     if not worked or not text:
         return out
-    stated = {r["date"] for r in scan(source, today) if r.get("kind") in ("full_date", "month_day")}
     expected = {r["date"]: r for r in worked}
     # A blank left where the person's words had a worked-out date: 「30일 전은 [일자]」.
     for row in worked:

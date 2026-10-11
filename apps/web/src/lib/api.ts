@@ -423,7 +423,7 @@ export interface SystemSettings {
     selfHostedThinking: boolean
     externalThinking: boolean
     defaultMonthlyCredits: number
-    /** The models each job may name; `helper` is self-hosted chat models only. */
+    /** The models each job may name; `helper` is chat models this instance runs (self-hosted, or `local/` with a strict-local twin). */
     choices: Record<
       'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video' | 'helper',
       { id: string; label: string; strictLocal: boolean }[]

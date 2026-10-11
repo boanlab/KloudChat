@@ -21,12 +21,18 @@ from app.services.tools import sandbox_tools
 CATALOGUE = {
     "litellmAvailable": True,
     "models": [
+        # The gateway marks `local/` hybrid (it may fall back outside); its twins are self-hosted.
         {"id": "local/qwen3.8-27b", "label": "27B", "kinds": ["chat", "report", "slides"],
-         "modality": "chat", "dataBoundary": "self_hosted", "strictLocal": False},
+         "modality": "chat", "dataBoundary": "hybrid", "strictLocal": False},
         {"id": "local/qwen3.8-flash", "label": "Flash", "kinds": ["chat", "report", "slides"],
-         "modality": "chat", "dataBoundary": "self_hosted", "strictLocal": False},
+         "modality": "chat", "dataBoundary": "hybrid", "strictLocal": False},
         {"id": "strict-local/qwen3.8-flash", "label": "Flash (strict)", "kinds": ["chat"],
          "modality": "chat", "dataBoundary": "self_hosted", "strictLocal": True},
+        {"id": "strict-local/qwen3.8-27b", "label": "27B (strict)", "kinds": ["chat"],
+         "modality": "chat", "dataBoundary": "self_hosted", "strictLocal": True},
+        # A hybrid model with no strict-local twin is not one this instance runs.
+        {"id": "local/borrowed", "label": "Borrowed", "kinds": ["chat"],
+         "modality": "chat", "dataBoundary": "hybrid", "strictLocal": False},
         {"id": "openai/gpt-x", "label": "GPT", "kinds": ["chat", "report", "slides"],
          "modality": "chat", "dataBoundary": "external", "strictLocal": False},
         {"id": "google/img", "label": "Img", "kinds": ["image"], "modality": "image",
@@ -136,6 +142,7 @@ def test_the_code_models_are_the_stored_ones(monkeypatch):
         # Side work that reads the conversation stays on self-hosted models.
         ("model_title", "openai/gpt-x", "model_title_invalid"),
         ("model_code", "openai/gpt-x", "model_code_invalid"),
+        ("model_code_fallback", "local/borrowed", "model_code_fallback_invalid"),
         ("thinking_self_hosted", "yes", "thinking_self_hosted_invalid"),
         ("default_monthly_credits", "-5", "default_monthly_credits_invalid"),
         ("default_monthly_credits", "9999999999", "default_monthly_credits_invalid"),
@@ -168,6 +175,7 @@ async def test_fitting_choices_and_the_model_in_force_are_accepted(stored):
     assert shown["title"] == "local/retired"
     assert [m["id"] for m in shown["choices"]["helper"]] == [
         "local/qwen3.8-27b", "local/qwen3.8-flash", "strict-local/qwen3.8-flash",
+        "strict-local/qwen3.8-27b",
     ]
     assert [m["id"] for m in shown["choices"]["video"]] == ["google/film"]
 
