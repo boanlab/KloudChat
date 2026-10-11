@@ -75,6 +75,13 @@ def _agent_specs() -> list[dict]:
             from app.services import gap_questions
 
             spec["questions"] = gap_questions.clean(spec["questions"])
+        if "process" in spec:
+            # 진행 과정 설정, checked and stored the way the agent form's 세부 설정 stores a
+            # person's (`Agent.process_settings`).
+            from app.services import process_settings
+
+            spec["process"] = process_settings.stored_form(
+                process_settings.clean(spec["process"])) or None
         specs.append(spec)
     return sorted(specs, key=lambda spec: (spec.get("order", 99), spec["key"]))
 
@@ -107,6 +114,12 @@ def _questions(spec: dict) -> list[dict] | None:
     """A shipped agent's own 빠진 정보 질문 as its row stores them; None when it declares none
     (its 서식's are asked)."""
     return [dict(q) for q in spec["questions"]] if spec.get("questions") else None
+
+
+def _process(spec: dict) -> dict | None:
+    """A shipped agent's own 진행 과정 설정 as its row stores them; None when it sets none (its
+    서식's apply)."""
+    return dict(spec["process"]) if spec.get("process") else None
 
 
 def _hidden_design(name: str | None) -> bool:
@@ -358,6 +371,14 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                     copy.guide = spec.get("guide", "")
                     copy.starters = list(spec.get("starters", []))
                     db.add(copy)
+            # The same for its 진행 과정 설정: copies still holding the shipped settings follow.
+            if agent.process_settings != _process(spec):
+                kept = await db.exec(select(Agent).where(col(Agent.origin_id) == agent.id))
+                for copy in kept.all():
+                    if copy.process_settings == agent.process_settings:
+                        copy.process_settings = _process(spec)
+                        db.add(copy)
+                agent.process_settings = _process(spec)
             agent.name = spec["name"]
             agent.description = spec["description"]
             agent.system_prompt = spec["system_prompt"]
@@ -406,6 +427,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                 check_options=dict(spec.get("check_options") or {}) or None,
                 bundles=list(spec.get("bundles") or []),
                 gap_questions=_questions(spec),
+                process_settings=_process(spec),
                 # Never inherit: missing or `[]` denies every tool, a list is a hard allowlist.
                 tools=list(spec.get("tools", [])),
                 temperature=spec.get("temperature", 0.5),

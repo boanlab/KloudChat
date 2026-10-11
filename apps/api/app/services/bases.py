@@ -54,6 +54,9 @@ class Base:
     #: its own, so 빠진 정보 먼저 묻기 is offered either way.
     asks: bool = False
     draft: bool = False
+    #: The official agent's own 진행 과정 설정 (`[process]` in its file), over its 서식's; an
+    #: agent started on it without settings of its own takes them (`put_process`).
+    process: dict | None = None
 
     @property
     def custom(self) -> bool:
@@ -97,7 +100,8 @@ def _base(spec: dict) -> Base:
     summary = dict(spec.get("summary") or {}) or _pipeline_for(spec).summary
     steps = tuple((k, summary[k]) for k in _SUMMARY_ORDER if summary.get(k))[:5]
     process = process_settings.resolve(template_id=spec.get("template"),
-                                       format_id=spec.get("doc_format"))
+                                       format_id=spec.get("doc_format"),
+                                       own=spec.get("process"))
     checks = tuple(check_name(k) for k in process.code_checks) if surface == "report" else ()
     return Base(
         key=spec["key"], name=spec["name"], description=spec.get("description", ""),
@@ -108,6 +112,7 @@ def _base(spec: dict) -> Base:
                                         template_id=spec.get("template"),
                                         doc_format=spec.get("doc_format"))),
         draft=bool(spec.get("draft")),
+        process=dict(spec["process"]) if spec.get("process") else None,
     )
 
 

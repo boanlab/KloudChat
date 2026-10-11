@@ -677,6 +677,9 @@ def _apply_base(agent: Agent, base: bases.Base) -> None:
 
     agent.doc_format = fixed if fixed in doc_formats.BY_ID else (
         None if fixed else base.doc_format)
+    # The official agent's own 세부 설정 come with it unless the agent set its own.
+    if agent.process_settings is None and base.process:
+        agent.process_settings = dict(base.process)
 
 
 def _process_refused(code: str, message: str) -> HTTPException:

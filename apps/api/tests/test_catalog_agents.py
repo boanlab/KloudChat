@@ -295,3 +295,32 @@ async def test_with_no_agents_a_skill_made_private_stays_private_across_syncs(db
     assert citation.visibility is Visibility.private
     others = (await db.exec(select(Skill).where(Skill.id != citation.id))).all()
     assert others and all(skill.visibility is Visibility.org for skill in others)
+
+
+@pytest.mark.asyncio
+async def test_a_shipped_agents_settings_reach_its_row_and_the_copies_that_kept_them(
+        db, monkeypatch):
+    shipped = {"search": False, "draws": "when-asked"}
+    monkeypatch.setattr(starter, "_AGENTS", [{**_COACH, "process": shipped}])
+    admin, learner, original, _ = await _catalogue(db)
+    # Seeded as the agent form's 세부 설정 stores a person's.
+    assert original.process_settings == shipped
+    kept = await db.get(Agent, (await ws.install_agent(original.id, learner, db)).id)
+    other = User(email="coach-other@example.com", name="Other", password_hash="x")
+    db.add(other)
+    await db.commit()
+    edited = await db.get(Agent, (await ws.install_agent(original.id, other, db)).id)
+    assert kept.process_settings == edited.process_settings == shipped
+    # An earlier shipped value on the row and on both copies; one copy then edited by hand.
+    earlier = {"search": True}
+    original.process_settings = dict(earlier)
+    kept.process_settings = dict(earlier)
+    edited.process_settings = {"draws": "auto"}
+    db.add_all([original, kept, edited])
+    await db.commit()
+    ids = original.id, kept.id, edited.id
+    await starter.seed_catalog(db, admin.id)
+    await db.commit()
+    db.expire_all()
+    rows = [await db.get(Agent, i) for i in ids]
+    assert [row.process_settings for row in rows] == [shipped, shipped, {"draws": "auto"}]
