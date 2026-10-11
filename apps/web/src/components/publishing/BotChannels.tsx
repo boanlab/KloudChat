@@ -199,6 +199,7 @@ export function AdminReadsCard({ pub }: { pub: Publication }) {
                 .replace('{date}', formatDateTime(row.at))
                 .replace('{reason}', row.reason)}
               {row.kind === 'list' && <span className="text-faint"> · {t('대화 목록')}</span>}
+              {(row.count ?? 1) > 1 && <span className="text-faint"> · {t('{n}건').replace('{n}', String(row.count))}</span>}
             </li>
           ))}
         </ul>

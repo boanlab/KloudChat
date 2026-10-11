@@ -467,13 +467,21 @@ async def test_the_owner_sees_when_and_why_an_administrator_read_conversations(w
     world.as_("admin")
     refused = await world.client.get(f"/admin/publications/{pub['id']}/conversations")
     assert refused.status_code == 422
+    for empty in ("ㅋㅋㅋㅋ", "1234", "...."):
+        said = await world.client.get(f"/admin/publications/{pub['id']}/conversations",
+                                      params={"reason": empty})
+        assert said.status_code == 422, empty
     listed = await world.client.get(f"/admin/publications/{pub['id']}/conversations",
                                     params={"reason": "신고 확인"})
     rows = listed.json()
     assert rows and rows[0]["visitor"]["byKey"] is True
+    # The list opened twice in a minute for the same reason: one line, counted.
+    await world.client.get(f"/admin/publications/{pub['id']}/conversations",
+                           params={"reason": "신고 확인"})
     world.as_("owner")
     reads = (await world.client.get(f"/publications/{pub['id']}/admin-reads")).json()
     assert reads[0]["kind"] == "list" and reads[0]["reason"] == "신고 확인"
+    assert len(reads) == 1 and reads[0]["count"] == 2
 
 
 # ── a second bot, someone else's ───────────────────────────────────────

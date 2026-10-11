@@ -618,8 +618,18 @@ async def admin_reads(publication_id: str, user: CurrentUser, db: DbSession):
         AuditEvent.target == pub.id,
         col(AuditEvent.action).in_(["publication.admin_list", "publication.admin_read"]))
         .order_by(col(AuditEvent.at).desc()).limit(100))).all()
-    return [{"at": e.at, "kind": "list" if e.action == "publication.admin_list" else "read",
-             "reason": str((e.event_metadata or {}).get("reason") or "")} for e in rows]
+    out: list[dict[str, Any]] = []
+    for e in rows:
+        kind = "list" if e.action == "publication.admin_list" else "read"
+        reason = str((e.event_metadata or {}).get("reason") or "")
+        last = out[-1] if out else None
+        # One look at the list opens several conversations within the minute: one line.
+        if last is not None and last["kind"] == kind and last["reason"] == reason \
+                and abs((last["at"] - e.at).total_seconds()) < 60:
+            last["count"] += 1
+            continue
+        out.append({"at": e.at, "kind": kind, "reason": reason, "count": 1})
+    return out
 
 
 def _days(days: int) -> list[str]:
@@ -1585,7 +1595,9 @@ async def admin_status(publication_id: str, payload: AdminStatusIn, request: Req
 
 def _reason(reason: str) -> str:
     reason = " ".join((reason or "").split())[:300]
-    if len(reason) < publishing.ADMIN_REASON_MIN:
+    # Words, not a key held down: 「ㅋㅋㅋㅋ」 or 「1234」 says nothing the owner can read.
+    if len(reason) < publishing.ADMIN_REASON_MIN \
+            or len({ch for ch in reason if ch.isalpha()}) < 2:
         raise HTTPException(status_code=422,
                             detail="reason_required")
     return reason

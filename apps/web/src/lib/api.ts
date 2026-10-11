@@ -2206,6 +2206,8 @@ export interface BotAdminRead {
   at: string
   kind: 'list' | 'read'
   reason: string
+  /** Reads of the same kind and reason within a minute, shown as one line. */
+  count?: number
 }
 
 export interface Publication {
