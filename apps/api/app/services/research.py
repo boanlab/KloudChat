@@ -16,7 +16,7 @@ from typing import Any
 
 import httpx
 
-from app.services import credibility, kci, settings_store, thinking
+from app.services import credibility, korean_papers, settings_store, thinking
 from app.services.tools.builtin import scrape, searxng
 
 log = logging.getLogger(__name__)
@@ -435,16 +435,18 @@ async def run(
     queries, spent = await _plan(request, model, api_key, scholarly=scholarly)
     if scholarly:
         max_sources = max(max_sources, _SCHOLAR_SOURCES)
-    # A request about Korean scholarship (「국내 동향」, 「국내외 연구」, 「KCI」) asks KCI too,
-    # as a query of its own: papers with their authors, year, journal and DOI.
-    kci_query = kci.query_for(request, queries) if kci.wanted(request) else ""
-    hit_lists, kci_hits = await asyncio.gather(
+    # A request about Korean scholarship (「국내 동향」, 「국내외 연구」, 「KCI」) looks for
+    # Korean papers too, as a query of its own: KCI·DBpia·RISS papers with their authors,
+    # year, journal and DOI read from each landing page.
+    korean_query = (korean_papers.query_for(request, queries)
+                    if korean_papers.wanted(request) else "")
+    hit_lists, korean_hits = await asyncio.gather(
         asyncio.gather(*(_gather(backends.search, q, scholarly=scholarly) for q in queries)),
-        kci.search(kci_query) if kci_query else asyncio.sleep(0, []),
+        korean_papers.search(korean_query) if korean_query else asyncio.sleep(0, []),
     )
     hit_lists = list(hit_lists)
-    if kci_hits:
-        queries, hit_lists = [*queries, kci_query], [*hit_lists, kci_hits]
+    if korean_hits:
+        queries, hit_lists = [*queries, korean_query], [*hit_lists, korean_hits]
 
     # Filtered and ranked per query before anything is fetched; picked
     # round-robin across queries, one publisher and one URL at most.
@@ -505,7 +507,7 @@ async def run(
                 continue
             host = _publisher(url)
             if host in seen_hosts and not (scholarly and _scholarly_host(url)) \
-                    and hit.get("lane") != "kci":
+                    and hit.get("lane") != korean_papers.LANE:
                 continue
             seen_urls.add(url)
             seen_hosts.add(host)
@@ -790,7 +792,9 @@ _VENUES = {
     "papers.nips.cc": "NeurIPS", "openreview.net": "OpenReview", "mdpi.com": "MDPI",
     "link.springer.com": "Springer", "sciencedirect.com": "Elsevier",
     "proceedings.mlr.press": "PMLR", "aaai.org": "AAAI", "ojs.aaai.org": "AAAI",
-    "kci.go.kr": "KCI", "dbpia.co.kr": "DBpia", "nature.com": "Nature",
+    "kci.go.kr": "KCI", "dbpia.co.kr": "DBpia", "nature.com": "Nature", "riss.kr": "RISS",
+    "earticle.net": "earticle", "kiss.kstudy.com": "KISS", "scienceon.kisti.re.kr": "ScienceON",
+    "koreascience.kr": "KoreaScience", "koreascience.or.kr": "KoreaScience",
 }
 #: Where a paper's URL carries its year: arXiv ids (2104.14839), ACL Anthology ids
 #: (2024.acl-long.677), and a /2023/ path segment.
@@ -828,6 +832,10 @@ def bibliography(hit: dict) -> dict[str, str]:
     venue = venue or next((name for key, name in _VENUES.items()
                            if host == key or host.endswith("." + key)), "")
     if venue:
+        # 「한국산학기술학회 논문지, 25(3)」 when the hit names its volume and issue.
+        volume, issue = (str(hit.get(k) or "").strip() for k in ("volume", "issue"))
+        if volume and hit.get("journal"):
+            venue = f"{venue}, {volume}" + (f"({issue})" if issue else "")
         out["publisher"] = venue[:120]
     doi = str(hit.get("doi") or "").strip() or (m.group(1) if (m := _DOI.search(url)) else "")
     if doi:
