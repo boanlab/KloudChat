@@ -205,12 +205,6 @@ def _cleaned(reply: str) -> str:
     return text
 
 
-#: Skills that narrow what the copy check looks at (`copy_kinds` in SKILL.md): a content
-#: plan's numbers, dates, scores and ranks are its decisions, so only statements of fact,
-#: health claims and guarantees are checked when such skills are the only ones on.
-NARROWED = {k: p.copy_kinds for k, p in skill_packages.packages().items() if p.copy_kinds}
-
-
 async def run(answer: str, *, request: str, material: str, complete: Complete, model: str,
               judge: str, api_key: str, usage: dict | None = None,
               skills: frozenset[str] | set[str] = frozenset(), specs: Specs = None) -> Outcome:

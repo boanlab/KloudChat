@@ -72,11 +72,6 @@ def _formal(stem: str) -> str | None:
     return None
 
 
-def _particle(word: str, with_final: str, without: str) -> str:
-    j = _jong(word[-1]) if word else -1
-    return with_final if j > 0 else without
-
-
 # ── the phrase list ──────────────────────────────────────────────────────
 
 Replace = Callable[[re.Match], "str | None"] | str | None

@@ -96,14 +96,6 @@ class Config:
     vision_model: str
     max_pages: int
 
-    @property
-    def uses_engine(self) -> bool:
-        return self.mode in ("both", "engine")
-
-    @property
-    def uses_vision(self) -> bool:
-        return self.mode in ("both", "vision")
-
 
 def vision_choices(catalogue: dict[str, Any]) -> list[dict[str, Any]]:
     """Models a page may be shown to: strict-local and declaring vision, nothing else."""

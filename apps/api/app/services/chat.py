@@ -1,11 +1,10 @@
-"""LiteLLM chat streaming translated into KloudChat SSE events, plus titles and media-turn messages.
-"""
+"""Chat stream helpers: tool step labels, SSE framing, session titles and media-turn messages."""
 
 from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -109,125 +108,6 @@ def media_answer(
         usage={"credits": credits},
         failure=TurnFailure.interrupted if partial else None,
     )
-
-
-async def stream_completion(
-    model: str,
-    messages: list[dict[str, Any]],
-    user_id: str,
-    api_key: str,
-    *,
-    strict_local: bool = False,
-    redact_logging: bool = False,
-) -> AsyncIterator[dict[str, Any]]:
-    """Yields KloudChat stream events. The caller owns persistence and billing.
-
-    Emits, in order: any number of `step`/`delta`, then exactly one `usage`
-    (possibly with zeroed counts when the upstream withheld it), then nothing.
-    `done` is the caller's to send, after it has settled credits.
-    """
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": True,
-        "stream_options": {"include_usage": True},  # else the final chunk carries no usage
-        "user": user_id,  # tags the spend row even when a call fell back to the master key
-    }
-    if strict_local:
-        payload["disable_fallbacks"] = True
-
-    usage: dict[str, int] | None = None
-    reported_model: str | None = None
-    # Tool call fragments arrive across chunks, keyed by index.
-    open_steps: dict[int, dict[str, Any]] = {}
-
-    try:
-        base, _ = await settings_store.litellm_config()
-        async with httpx.AsyncClient(
-            base_url=base.rstrip("/"),
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                **({"x-litellm-enable-message-redaction": "true"} if redact_logging else {}),
-            },
-            timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
-        ) as client:
-            async with client.stream("POST", "/v1/chat/completions", json=payload) as response:
-                if response.status_code >= 400:
-                    body = (await response.aread()).decode(errors="replace")[:400]
-                    detail = "response redacted" if redact_logging else body
-                    raise ChatStreamError(f"upstream_{response.status_code}: {detail}")
-
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    raw = line[5:].strip()
-                    if not raw or raw == "[DONE]":
-                        continue
-                    try:
-                        chunk = json.loads(raw)
-                    except json.JSONDecodeError:
-                        log.warning("undecodable chunk from litellm: %r", raw[:200])
-                        continue
-
-                    if chunk.get("usage"):
-                        u = chunk["usage"]
-                        usage = {
-                            "inputTokens": int(u.get("prompt_tokens") or 0),
-                            "outputTokens": int(u.get("completion_tokens") or 0),
-                        }
-
-                    actual_model = chunk.get("model")
-                    if (
-                        isinstance(actual_model, str)
-                        and actual_model
-                        and actual_model != reported_model
-                    ):
-                        reported_model = actual_model
-                        yield {
-                            "type": "model_route",
-                            "routedModel": model,
-                            "actualModel": actual_model,
-                        }
-
-                    for choice in chunk.get("choices") or []:
-                        delta = choice.get("delta") or {}
-
-                        for call in delta.get("tool_calls") or []:
-                            index = call.get("index", 0)
-                            step = open_steps.get(index)
-                            name = (call.get("function") or {}).get("name")
-                            if step is None and name:
-                                step = {"id": f"step{index}", "label": step_label(name)}
-                                open_steps[index] = step
-                                yield {
-                                    "type": "step",
-                                    "id": step["id"],
-                                    "label": step["label"],
-                                    "status": "running",
-                                }
-
-                        text = delta.get("content")
-                        if text:
-                            # First visible token: every open tool call has answered.
-                            for step in open_steps.values():
-                                if not step.get("closed"):
-                                    step["closed"] = True
-                                    yield {
-                                        "type": "step",
-                                        "id": step["id"],
-                                        "label": step["label"],
-                                        "status": "done",
-                                    }
-                            yield {"type": "delta", "text": text}
-
-    except httpx.HTTPError as exc:
-        raise ChatStreamError(f"upstream_unreachable: {exc}") from exc
-
-    for step in open_steps.values():
-        if not step.get("closed"):
-            yield {"type": "step", "id": step["id"], "label": step["label"], "status": "done"}
-
-    yield {"type": "usage", **(usage or {"inputTokens": 0, "outputTokens": 0})}
 
 
 async def generate_title(

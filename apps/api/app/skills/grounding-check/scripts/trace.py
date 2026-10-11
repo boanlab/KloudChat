@@ -537,9 +537,6 @@ class Sources:
             return None
         return float(m.group(1).replace(",", ""))
 
-    def has_number(self, value: float, unit: str, places: int) -> bool:
-        return self.match(value, unit, places) is not None
-
     def quoted(self, value: float, line: str) -> bool:
         """Whether `line` names a data row that holds `value` exactly as written."""
         compact = re.sub(r"\s+", "", line)
@@ -796,7 +793,7 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
     lines = (text or "").split("\n")
     skip: set[int] = set()
     # Code and diagrams are skipped; a 「```callout」 box is prose and is read, and so are a
-    # 「```kpi」 block's 「값 | 이름」 rows (quality lane Q14: a KPI's 「이듬해 차이 96,000원」).
+    # 「```kpi」 block's 「값 | 이름」 rows.
     fenced, prose = False, False
     for k, line in enumerate(lines):
         stripped = line.strip()
