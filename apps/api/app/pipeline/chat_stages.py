@@ -9,6 +9,7 @@ and storage that follow stay with the router.
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
@@ -16,7 +17,7 @@ from typing import Any
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle, Document, Material, Request
 from app.pipeline.stage import Base, Context
-from app.services import cover_letter, freshness, internal_words, units
+from app.services import cover_letter, freshness, internal_words, units, weekdays
 from app.services.chat_format import normalize_raw_payload
 
 log = logging.getLogger("app.routers.sessions")
@@ -27,7 +28,7 @@ class Normalize(Base):
     model slips on mended by code, and — when skills were on — the script reports taken out."""
 
     name = "answer-normalize"
-    reads = ("request",)
+    reads = ("request", "material.given")
     writes = ("document.answer",)
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
@@ -46,6 +47,12 @@ class Normalize(Base):
         if req.skill_keys or req.check_keys:
             # A skill's script ran: its report lines are not the person's answer.
             normalized = internal_words.strip_reports(normalized)
+        # The writer's apology for its own tool call is not the person's answer; the steps say it.
+        normalized = internal_words.strip_tool_apologies(normalized)
+        # A weekday counted in the head (「10월 15일(수)」 for a Thursday) set to the calendar's.
+        normalized, _ = weekdays.fix_weekdays(
+            normalized, context=f"{req.text}\n{bundle.material.given}",
+            today=req.today if isinstance(req.today, dt.date) else None)
         bundle.document.answer = normalized
 
 

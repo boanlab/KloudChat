@@ -1652,10 +1652,10 @@ const EN: Record<string, string> = {
   '보고서 주제와 넣고 싶은 절을 적으세요': 'Give the report topic and the sections you want',
   '발표 주제와 시간을 적으세요': 'Give the talk topic and length',
   'Enter 전송, Shift+Enter 줄바꿈': 'Enter to send, Shift+Enter for a new line',
-  'Enter 로 생성 · 만든 그림은 아티팩트에 쌓입니다': 'Enter to generate — images are kept as artifacts',
-  'Enter 로 생성 · 음성과 음악은 아티팩트에 쌓입니다': 'Enter to generate — audio is kept as artifacts',
-  'Enter 로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다': 'Enter to generate — the outline comes first, then each slide',
-  'Enter 로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다': 'Enter to generate — video takes minutes and progress shows on the card',
+  'Enter로 생성 · 만든 그림은 아티팩트에 쌓입니다': 'Enter to generate — images are kept as artifacts',
+  'Enter로 생성 · 음성과 음악은 아티팩트에 쌓입니다': 'Enter to generate — audio is kept as artifacts',
+  'Enter로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다': 'Enter to generate — the outline comes first, then each slide',
+  'Enter로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다': 'Enter to generate — video takes minutes and progress shows on the card',
   '받아쓰지 못했습니다.': 'Could not transcribe.',
   '생성 중입니다 — 완료되면 위 카드가 결과로 바뀝니다': 'Generating — the card above becomes the result when it finishes',
   '이 모델은 이 조합을 만들지 않습니다': 'This model does not produce that combination',
@@ -1935,9 +1935,10 @@ const EN: Record<string, string> = {
   '녹음 끝내기': 'Stop recording',
   '누르면 녹음을 끝내고 받아씁니다': 'Press to stop and transcribe',
   '마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다': 'Speak and it is typed for you; edit before sending',
-  '마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다':
-    'Speak and it is typed for you; edit before sending. With the box empty, hold Space while you talk and it is sent when you let go',
-  '듣고 있습니다. 스페이스를 떼면 보냅니다': 'Listening. Release Space to send',
+  '듣고 있습니다. 스페이스를 떼면 받아 적습니다': 'Listening. Release Space to type it in',
+  '스페이스로 말하기': 'Hold Space to dictate',
+  '빈 입력창에서 스페이스를 누른 채 말하면, 떼는 순간 받아 적어 입력창에 넣습니다. 보내지는 않습니다.':
+    'Hold Space in an empty composer and speak; on release the words are typed into the box, not sent.',
   '앱 설치': 'Install app',
   'KloudChat 을 앱으로 설치합니다': 'Install KloudChat as an app',
   'Dock 에 추가하기': 'Add to Dock',
@@ -2336,6 +2337,8 @@ const EN: Record<string, string> = {
   '어느 장을 고쳐야 하는지 알 수 없습니다.': 'Nothing says which slide to fix.',
   '검사에서 지적된 문제를 고쳐 주세요: {message}': 'Fix what the check raised: {message}',
   '최신 내용을 불러오지 못했습니다.': 'Could not load the latest.',
+  '잠시 후 다시 불러옵니다.': 'Trying again shortly.',
+  '대화를 불러오는 중…': 'Loading the conversation…',
   '(계속)': '(cont.)',
   '자동으로 나눌 항목을 찾지 못했습니다. 문장을 줄이거나 새 장을 추가해 주세요.': 'Nothing here divides cleanly. Shorten the text or add a slide.',
   '{n}장을 두 장으로 나눔': 'Split slide {n} in two',
@@ -2765,7 +2768,7 @@ const EN: Record<string, string> = {
   '만들지 못했습니다.': 'Could not make it.',
   '매번 확인': 'Ask every time',
   '모델 설정 저장 중…': 'Saving the model setting…',
-  '모델 전환은 외부 fallback이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.':
+  '모델 전환은 외부 대체 모델이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.':
     'Switching models applies only when a strict-local model with no external fallback is actually available.',
   '모델의 데이터 경계 또는 가격 정보를 확인할 수 없습니다':
     'This model\'s data boundary or price could not be established',
@@ -2814,7 +2817,7 @@ const EN: Record<string, string> = {
   '크게 보기': 'View larger',
   '탐지된 개인정보 범주': 'Categories found',
   '편집으로 돌아가기': 'Back to editing',
-  '프록시가 self-hosted이며 외부 fallback이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.':
+  '프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.':
     'Only models the proxy declares self-hosted with no external fallback can be chosen. Used top to bottom in the order of the current catalogue.',
   '현재 프록시가 strict-local로 선언한 모델이 없습니다. 사용자는 마스킹 또는 편집만 선택할 수 있습니다.':
     'The proxy currently declares no strict-local model, so masking and editing are the only choices.',
@@ -2940,8 +2943,8 @@ const EN: Record<string, string> = {
     'Anyone signed in to this instance can open it.',
   '이 인스턴스에 로그인한 사람은 누구나 이 대화를 열 수 있습니다.':
     'Anyone signed in to this instance can open this conversation.',
-  '로그인해야 열 수 있는 자료입니다. 로그인한 뒤 다시 열어 주세요.':
-    'This one needs you signed in. Sign in and open it again.',
+  '로그인해야 열 수 있는 자료입니다. 로그인하면 이 화면에서 바로 열립니다.':
+    'This one needs you signed in. Sign in and it opens right here.',
   '모두에게 공개': 'Open to everyone',
   '공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.':
     'Once open, anyone signed in to this instance can copy it from the store. The original stays yours.',
@@ -3258,7 +3261,35 @@ const EN: Record<string, string> = {
   '이 대화의 이름 바꾸기·고정·삭제': 'Rename, pin or delete this conversation',
   '생성을 멈춥니다': 'Stop generating',
   '보낼 내용을 먼저 입력하세요': 'Type something to send',
-  'Enter 로도 보낼 수 있습니다': 'Enter sends it too',
+  'Enter로도 보낼 수 있습니다': 'Enter sends it too',
+  '보내는 중…': 'Sending…',
+  '앞 질문을 보내는 중입니다.': 'Still sending the previous question.',
+  '템플릿: {name}': 'Template: {name}',
+  '이 대화의 템플릿': 'This conversation\'s template',
+  '질문과 자료가 이 기관 밖으로 나가지 않는 모델입니다': 'Questions and files never leave this organisation with this model',
+  '기관이 운영하지만 외부로 넘기지 않는다는 확인은 없는 모델입니다': 'Run by the organisation, but not confirmed to keep everything inside',
+  '개인정보가 없으면 외부 모델로 바꿔 답할 수 있는 모델입니다': 'May hand the question to an external model when it holds no personal data',
+  '외부 업체가 운영하는 모델입니다': 'Run by an outside provider',
+  '자료가 어디서 처리되는지 확인되지 않은 모델입니다': 'Where this model processes data is not confirmed',
+  '첨부한 자료로 썼습니다: {names}': 'Written from the attached files: {names}',
+  '웹 검색으로 붙은 출처는 없습니다.': 'No web sources were added.',
+  '붙여넣은-텍스트.txt': 'pasted-text.txt',
+  '붙여 넣은 텍스트 · {n}자': 'Pasted text · {n} characters',
+  '펼치기': 'Expand',
+  '파일로 첨부': 'Attach as a file',
+  '붙여 넣은 텍스트 제거': 'Remove the pasted text',
+  '질문은 200,000자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.':
+    'A message can hold up to 200,000 characters. Upload long material with Attach files.',
+  '긴 자료는 「파일·사진 첨부」로 올리세요.': 'Upload long material with Attach files.',
+  '빈 파일입니다': 'The file is empty',
+  '읽을 수 없는 형식입니다. {formats} 파일을 올려 주세요.': 'This format cannot be read. Upload a {formats} file.',
+  'PDF·한글(HWP·HWPX)·워드·엑셀·파워포인트·텍스트·CSV·그림·녹음': 'PDF, Hangul (HWP/HWPX), Word, Excel, PowerPoint, text, CSV, picture or recording',
+  '첨부를 올리는 중입니다. 다 올리면 보낼 수 있습니다': 'Uploading the attachment. You can send once it is up',
+  '모델을 불러오는 중입니다. 불러오면 보낼 수 있습니다': 'Loading the models. You can send once they are in',
+  '첨부 글자를 읽는 중입니다({done}/{total}쪽). 지금 보내면 읽은 쪽까지만 씁니다':
+    'Reading the attachment ({done}/{total} pages). Sending now uses only the pages read so far',
+  '첨부를 다 올리면 바로 보냅니다': 'Sends as soon as the attachment is up',
+  '모델을 불러오면 바로 보냅니다': 'Sends as soon as the models are in',
   '사용자 검색': 'Search users',
   '차단할 주제': 'Topic to block',
   '도구 백엔드 주소': 'Tool backend URL',

@@ -298,7 +298,7 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "에이전트로 대화 시작",
-"text": "입력창의 **+** → **에이전트**, 에이전트 목록의 **실행** 중 어느 쪽을 선택해도 해당 에이전트와 새 대화가 시작됩니다.\n\n- 대화 첫 화면에 에이전트의 **사용법**과 **시작 문장**(최대 6개)이 표시됩니다. 시작 문장을 누르면 그대로 전송됩니다.\n- 에이전트 대화는 에이전트에 지정된 모델, 도구, 자료를 사용합니다. 자료가 등록되어 있으면 모델이 **자료 찾기** 도구로 검색합니다. 요청마다 자료 전체를 전달하지는 않습니다.\n- 같은 프로젝트 안에서는 에이전트가 **노트 공유**로 남긴 결론을 다른 대화가 참조합니다.\n\n기본으로 제공하는 에이전트는 **규정·업무 안내**, **개조식 보고**, **비교·결정**, **자료 추출·집계**, **회의록**(회의·인터뷰·강의)입니다. 개조식 보고와 회의록은 기관 서식으로 바로 쓰고, 다 쓴 뒤 형식 검사 결과를 보여 줍니다. 자료 추출·집계는 내부 엑셀·CSV에서 정한 열을 뽑아 모으고 항목별로 집계하며, 지우거나 바꾼 행을 변경 내역으로 남깁니다. 규정·업무 안내는 올려 둔 규정·지침에서 찾아 근거 조항을 [n]으로 달아 답하고, 자료에 없는 내용은 에이전트에 적어 둔 담당 부서·연락처로 안내합니다. **공문·기안 초안**과 **발표 자료**는 평가를 통과하면 공개됩니다(그 전에는 관리자에게만 보입니다)."
+"text": "입력창의 **+** → **에이전트**, 에이전트 목록의 **실행** 중 어느 쪽을 선택해도 해당 에이전트와 새 대화가 시작됩니다.\n\n회의록·개조식 보고 같은 일은 따로 메뉴가 있는 것이 아니라 에이전트로 합니다. 예를 들어 회의록은 입력창의 **+** → **에이전트** → **회의록**을 고른 뒤, 녹취·메모 파일을 첨부하거나 붙여 넣고 「회의록으로 정리해 주세요」라고 보냅니다.\n\n- 대화 첫 화면에 에이전트의 **사용법**과 **시작 문장**(최대 6개)이 표시됩니다. 시작 문장을 누르면 그대로 전송됩니다.\n- 에이전트 대화는 에이전트에 지정된 모델, 도구, 자료를 사용합니다. 자료가 등록되어 있으면 모델이 **자료 찾기** 도구로 검색합니다. 요청마다 자료 전체를 전달하지는 않습니다.\n- 같은 프로젝트 안에서는 에이전트가 **노트 공유**로 남긴 결론을 다른 대화가 참조합니다.\n\n기본으로 제공하는 에이전트는 **규정·업무 안내**, **개조식 보고**, **비교·결정**, **자료 추출·집계**, **회의록**(회의·인터뷰·강의)입니다. 개조식 보고와 회의록은 기관 서식으로 바로 쓰고, 다 쓴 뒤 형식 검사 결과를 보여 줍니다. 자료 추출·집계는 내부 엑셀·CSV에서 정한 열을 뽑아 모으고 항목별로 집계하며, 지우거나 바꾼 행을 변경 내역으로 남깁니다. 규정·업무 안내는 올려 둔 규정·지침에서 찾아 근거 조항을 [n]으로 달아 답하고, 자료에 없는 내용은 에이전트에 적어 둔 담당 부서·연락처로 안내합니다. **공문·기안 초안**과 **발표 자료**는 평가를 통과하면 공개됩니다(그 전에는 관리자에게만 보입니다)."
 },
 {
 "lang": "ko",
@@ -782,6 +782,13 @@
 "title": "설정",
 "heading": "환경설정",
 "text": "| 항목 | 설명 |\n|---|---|\n| 화면별 기본 모델 | 챗, 보고서, 슬라이드 등 화면마다 새 대화에 적용할 모델입니다. 계정에 저장되므로 모든 기기에서 동일하게 적용됩니다. |\n| 개인정보가 감지된 요청 → 기본 처리 방법 | 매번 확인, strict-local로 전환, 마스킹, 원문 전송(관리자가 허용한 경우) 중에서 선택합니다. 개인정보 보호 |\n| 응답 스트리밍 | 끄면 답변이 완성된 후 한 번에 표시됩니다. |\n| 메모리 자동 저장 | 답변마다 지속적으로 유효한 정보를 자동으로 저장합니다. |\n| 토큰·크레딧 표시 | 답변 하단의 사용량 표시 여부를 설정합니다. |\n\n테마와 언어는 이 탭이 아니라 화면 오른쪽 위의 버튼에서 전환합니다."
+},
+{
+"lang": "ko",
+"path": "personal/settings",
+"title": "설정",
+"heading": "글씨·글자 크기 키우기",
+"text": "KloudChat에는 글자 크기 설정이 따로 없습니다. 화면 글씨를 크게 보려면 브라우저 확대를 씁니다: Windows는 `Ctrl` + `+`(줄이기 `Ctrl` + `-`, 원래대로 `Ctrl` + `0`), Mac은 `Cmd` + `+`. 200%로 키워도 화면이 줄을 바꿔 맞추므로 그대로 쓸 수 있습니다. 휴대폰에서는 두 손가락으로 벌려 키웁니다."
 },
 {
 "lang": "ko",
@@ -1530,7 +1537,7 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Starting a conversation with an agent",
-"text": "**+** → **Agents** in the composer and **Run** in the agent list both start a new conversation with that agent.\n\n- The first screen of the conversation shows the agent's **How to use** text and its **opening prompts**, up to six of them. Select an opening prompt to send it as it is.\n- An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.\n- Within the same project, other conversations reference the conclusions that the agent left through **Shared notes**.\n\nThe built-in agents are **Regulations and procedures** (규정·업무 안내), **Bullet-style briefing** (개조식 보고), **Compare and decide** (비교·결정), **Extract and tally** (자료 추출·집계) and **Minutes** (회의록: meetings, interviews, lectures). Bullet-style briefing and Minutes write straight into the institution's format and show the format check results when done. Extract and tally pulls set columns out of internal Excel and CSV files, totals them by item, and keeps a change log of the rows it removed or changed. Regulations and procedures answers from the regulations and guidelines you upload, citing the article as [n], and points anything the material does not cover to the department and contact written on the agent. **Official letter and draft** (공문·기안 초안) and **Presentation** (발표 자료) are published once they pass evaluation; until then only administrators see them."
+"text": "**+** → **Agents** in the composer and **Run** in the agent list both start a new conversation with that agent.\n\nJobs such as minutes or a bullet-point report have no menu of their own; they are agents. For minutes, choose **+** → **Agents** → **회의록** (Minutes) in the composer, attach or paste the recording transcript or notes, and send 「회의록으로 정리해 주세요」.\n\n- The first screen of the conversation shows the agent's **How to use** text and its **opening prompts**, up to six of them. Select an opening prompt to send it as it is.\n- An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.\n- Within the same project, other conversations reference the conclusions that the agent left through **Shared notes**.\n\nThe built-in agents are **Regulations and procedures** (규정·업무 안내), **Bullet-style briefing** (개조식 보고), **Compare and decide** (비교·결정), **Extract and tally** (자료 추출·집계) and **Minutes** (회의록: meetings, interviews, lectures). Bullet-style briefing and Minutes write straight into the institution's format and show the format check results when done. Extract and tally pulls set columns out of internal Excel and CSV files, totals them by item, and keeps a change log of the rows it removed or changed. Regulations and procedures answers from the regulations and guidelines you upload, citing the article as [n], and points anything the material does not cover to the department and contact written on the agent. **Official letter and draft** (공문·기안 초안) and **Presentation** (발표 자료) are published once they pass evaluation; until then only administrators see them."
 },
 {
 "lang": "en",
@@ -2014,6 +2021,13 @@
 "title": "Settings",
 "heading": "Preferences",
 "text": "| Item | Description |\n|---|---|\n| Default model per screen | The model applied to new conversations on each screen, such as Chat, Reports, and Slides. It is saved to the account, so it applies the same way on every device. |\n| A request with personal data in it → What to do by default | Choose from asking every time, switching to strict-local, masking, and sending the original text (when the administrator allows it). Privacy |\n| Response streaming | When it is off, the answer is shown all at once after it is complete. |\n| Save memory automatically | Automatically saves information that stays valid, for each answer. |\n| Token and credit display | Sets whether usage is shown at the bottom of the answer. |\n\nThe theme and the language are switched with the buttons at the top right of the screen, not in this tab."
+},
+{
+"lang": "en",
+"path": "personal/settings",
+"title": "Settings",
+"heading": "Text size",
+"text": "KloudChat has no text-size setting of its own. To read larger text, zoom the browser: `Ctrl` + `+` on Windows (`Ctrl` + `-` to shrink, `Ctrl` + `0` to reset), `Cmd` + `+` on a Mac. At 200% the screen reflows and stays usable. On a phone, pinch to zoom."
 },
 {
 "lang": "en",

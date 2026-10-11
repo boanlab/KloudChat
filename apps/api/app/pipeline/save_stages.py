@@ -173,7 +173,7 @@ class ReportSave(Base):
                         session_id=session_id,
                         role=Role.assistant,
                         content=(rerun_note(turn)
-                                 or f"{len(written)}개 섹션으로 보고서를 작성했습니다."),
+                                 or _written_note(len(written), title_block)),
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=host._prelude_steps(turn.get("skills_event"),
@@ -373,4 +373,18 @@ for _stage in (ReportSave(), ReviseLoad(), ReviseSave()):
     registry.register(_stage)
 
 
+def _written_note(count: int, title_block: dict | None) -> str:
+    """The turn's line under a finished document, in the document's own genre word:
+    「5개 절로 회의록 작성을 마쳤습니다.」; a plain report keeps 「5개 섹션으로 보고서를
+    작성했습니다.」."""
+    from app.services import doc_formats
+
+    found = doc_formats.BY_ID.get(str((title_block or {}).get("format") or ""))
+    genre = found.label if found else ""
+    if not genre or genre == "보고서":
+        return f"{count}개 섹션으로 보고서를 작성했습니다."
+    return f"{count}개 절로 {genre} 작성을 마쳤습니다."
+
+
 __all__ = ["rerun_note"]
+

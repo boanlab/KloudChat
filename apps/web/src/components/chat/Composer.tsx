@@ -3,6 +3,7 @@ import {
   AtSign,
   Boxes,
   Check,
+  FileText,
   ChevronLeft,
   ChevronRight,
   Gauge,
@@ -44,6 +45,8 @@ import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
 import { isListed } from '@/lib/listed'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
+import { ATTACH_ACCEPT, attachRefusal } from '@/lib/attachable'
+import { isImeKey } from '@/lib/ime'
 
 /** Shown when a send timed out at the gateway: the turn may be running on the server. */
 const GATEWAY_NOTICE =
@@ -378,6 +381,24 @@ useStore.subscribe((state, previous) => {
 })
 
 const FILL_EVENT = 'kloudchat:fill-composer'
+/** A paste longer than this folds into a chip. */
+const PASTE_FOLD = 2000
+/** What one message may hold (the API's own limit), and where the counter appears. */
+const MESSAGE_LIMIT = 200_000
+const MESSAGE_WARN = 150_000
+const ATTACH_EVENT = 'kloudchat:attach-to-session'
+
+/**
+ * A file whose upload finished after its composer moved to another conversation: it joins the
+ * state carried into that conversation's composer, or that composer once it is on screen.
+ */
+function attachLate(sessionId: string, row: FileRow) {
+  if (carriedComposer?.sessionId === sessionId) {
+    carriedComposer = { ...carriedComposer, attachments: [...carriedComposer.attachments, row] }
+    return
+  }
+  window.dispatchEvent(new CustomEvent(ATTACH_EVENT, { detail: { sessionId, row } }))
+}
 
 /** Puts `text` in the composer in place of what is there, without sending it. */
 export function fillComposer(text: string) {
@@ -477,6 +498,29 @@ export function Composer({
   /** Uploaded files; the turn sends their ids. */
   const [attachments, setAttachments] = useState<FileRow[]>([])
   const liveAttachments = useRef(attachments)
+  const liveSessionId = useRef(sessionId)
+  liveSessionId.current = sessionId
+  const composerMounted = useRef(true)
+  useEffect(() => {
+    composerMounted.current = true
+    return () => { composerMounted.current = false }
+  }, [])
+  useEffect(() => {
+    const late = (event: Event) => {
+      const { sessionId: target, row } = (event as CustomEvent<{ sessionId: string; row: FileRow }>).detail
+      if (target !== liveSessionId.current) return
+      setAttachments((current) => {
+        if (current.some((file) => file.id === row.id)) return current
+        const next = [...current, row]
+        liveAttachments.current = next
+        return next
+      })
+    }
+    window.addEventListener(ATTACH_EVENT, late)
+    return () => window.removeEventListener(ATTACH_EVENT, late)
+  }, [])
+  /** The conversation an agent pick is opening; files picked meanwhile wait for it. */
+  const agentStart = useRef<Promise<string> | null>(null)
   // A scanned attachment is read in the background; its chip follows the pages.
   useOcrProgress(attachments, (row) =>
     setAttachments((current) => {
@@ -487,6 +531,10 @@ export function Composer({
   )
   liveAttachments.current = attachments
   const [pendingPrivacy, setPendingPrivacy] = useState<PendingPrivacy | null>(null)
+  /** Long pastes held as chips; they join the message on send. */
+  const [pasted, setPasted] = useState<string[]>([])
+  const livePasted = useRef(pasted)
+  livePasted.current = pasted
   const [reusableSessionId, setReusableSessionId] = useState<string | null>(null)
   const [privacyRetrying, setPrivacyRetrying] = useState(false)
   const [modelSelectionPending, setModelSelectionPending] = useState(false)
@@ -616,11 +664,13 @@ export function Composer({
       setChatError(t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'))
     }
   }
-  // Push to talk: hold space in an empty box, release to transcribe and send.
-  // `pushToTalk` marks a held-key recording; the mic button's recording waits for send.
+  // Push to talk, when switched on in 환경설정: hold space in the empty box, release to have
+  // the words put in the box (never sent). Off, space is just a space.
+  // `pushToTalk` marks a held-key recording.
+  const spaceToTalk = useStore((s) => s.user?.preferences.spaceToTalk === true)
   const pushToTalk = useRef(false)
   const holdToTalk = (e: { key: string; repeat: boolean; preventDefault: () => void }) => {
-    if (e.key !== ' ' || !canRecord || busy || transcribing) return false
+    if (e.key !== ' ' || !spaceToTalk || !canRecord || busy || transcribing) return false
     if (liveValue.current.trim()) return false
     e.preventDefault()
     if (e.repeat || recorder.current) return true
@@ -632,9 +682,8 @@ export function Composer({
     if (e.key !== ' ' || !pushToTalk.current) return false
     e.preventDefault()
     pushToTalk.current = false
-    void stopRecording().then((text) => {
-      if (text.trim()) submit(text)
-    })
+    // Transcribed into the box; the person reads it and sends it.
+    void stopRecording()
     return true
   }
   // Cmd/Ctrl+Shift+M toggles the mic; unlike push-to-talk it waits for send.
@@ -647,28 +696,6 @@ export function Composer({
     }
     window.addEventListener(DICTATION_EVENT, toggle)
     return () => window.removeEventListener(DICTATION_EVENT, toggle)
-  })
-  useEffect(() => {
-    if (!canRecord) return
-    // Also outside any field, but never on a control, where space is a click.
-    const idle = (target: EventTarget | null) => {
-      const el = target as HTMLElement | null
-      if (!el || el === document.body) return true
-      if (el.isContentEditable) return false
-      return !['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A', 'SUMMARY'].includes(el.tagName)
-    }
-    const down = (e: KeyboardEvent) => {
-      if (idle(e.target)) holdToTalk(e)
-    }
-    const up = (e: KeyboardEvent) => {
-      if (idle(e.target)) releaseToTalk(e)
-    }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-    }
   })
   // 「자동」 by default: the web tools are offered and the server searches when the words
   // call for it; 「켬」 searches every turn, 「끔」 offers nothing. `searchBlocked` still
@@ -942,6 +969,34 @@ export function Composer({
     if (chatError === t(GATEWAY_NOTICE) && (streaming || lastAnswerLength > 0)) setChatError(null)
   }, [chatError, streaming, lastAnswerLength, t])
   const busy = isMedia ? jobRunning : streaming
+  // Before the model list has answered, a send would go out on a guessed model; it waits.
+  const modelsSettled = useStore((s) => s.modelsSettled)
+  const modelCount = useStore((s) => s.models.length)
+  const awaitingModels = !modelsSettled && modelCount === 0
+  const readingAttachment = attachments.find(isReading)
+  /** Enter pressed while a file uploads or the models load: sent as soon as that ends. */
+  const [queuedSend, setQueuedSend] = useState(false)
+  /** A new conversation's first turn: the text stays in the box until the server takes it. */
+  const [startPending, setStartPending] = useState(false)
+  const holdingStart = useRef(false)
+  /** A send is on its way and its turn has not shown yet: a second Enter waits for it. */
+  const submitting = useRef(false)
+  const [secondSend, setSecondSend] = useState(false)
+  useEffect(() => {
+    if (busy) submitting.current = false
+  }, [busy])
+  /** The server took the first turn: the box empties before its state is carried over. */
+  const releaseStart = () => {
+    if (!holdingStart.current) return
+    holdingStart.current = false
+    liveValue.current = ''
+    liveAttachments.current = []
+    livePasted.current = []
+    draftStore.set(draftKeyFor(null, kind), '')
+    setValue('')
+    setAttachments([])
+    setPasted([])
+  }
 
   useEffect(() => {
     if (!editing) {
@@ -1037,6 +1092,7 @@ export function Composer({
           if (!ownsView()) return
           acceptedHere = true
           attemptedSessionId = id
+          releaseStart()
           carriedComposer = heldComposer(id)
           const branched = editContext.current?.forkId === id
           if (branched) {
@@ -1062,6 +1118,8 @@ export function Composer({
         return
       }
       if (error instanceof PrivacyDecisionError) {
+        // The decision dialog holds the turn now; the box is free again.
+        releaseStart()
         const decisionSessionId = error.sessionId ?? resolvedSessionId
         setReusableSessionId(decisionSessionId)
         setPendingPrivacy({
@@ -1136,8 +1194,11 @@ export function Composer({
     const fit = () => {
       el.style.height = 'auto'
       const full = el.scrollHeight
-      el.style.height = `${Math.min(full, COMPOSER_MAX_PX)}px`
-      el.style.overflowY = full > COMPOSER_MAX_PX ? 'auto' : 'hidden'
+      // On a short screen (a phone, or 200% zoom) the box keeps to a quarter of it and scrolls
+      // inside, so the answer above stays readable.
+      const most = Math.max(72, Math.min(COMPOSER_MAX_PX, Math.round(window.innerHeight * 0.25)))
+      el.style.height = `${Math.min(full, most)}px`
+      el.style.overflowY = full > most ? 'auto' : 'hidden'
     }
     fit()
     const resized = new ResizeObserver(() => {
@@ -1155,33 +1216,49 @@ export function Composer({
   }, [value])
 
   /** Shared picker, drop, and paste upload path. */
-  const addFiles = async (picked: File[]) => {
-    if (!picked.length || isMedia || editPending) return
+  const addFiles = async (offered: File[]) => {
+    if (!offered.length || isMedia || editPending) return
     const editScope = editContext.current
-    const uploadSession = sessionId
+    // Refused before uploading: an empty file or a program has nothing to read.
+    const refused = offered.flatMap((file) => {
+      const reason = attachRefusal(file, t)
+      return reason ? [`${file.name} — ${reason}`] : []
+    })
+    const picked = offered.filter((file) => !attachRefusal(file, t))
+    setUploadFailed(refused)
+    if (!picked.length) return
     setUploading(true)
-    setUploadFailed([])
     try {
+      // A file picked while an agent's conversation is being opened belongs to that conversation.
+      const starting = agentStart.current
+      const uploadSession = starting ? (await starting.catch(() => null)) ?? sessionId : sessionId
       for (const file of picked) {
         const row = await uploadFile(file, {
           projectId: editing ? undefined : projectId ?? undefined,
-          sessionId: editing ? undefined : sessionId ?? undefined,
+          sessionId: editing ? undefined : uploadSession ?? undefined,
         }).catch(() => {
           // Said where the chips are: a file that never arrived must not look attached.
           setUploadFailed((current) => [...current, file.name])
           return null
         })
-        if (row && editContext.current === editScope && (!editScope || useStore.getState().activeSessionId === uploadSession)) {
-          setAttachments((current) => {
-            activeRestoreToken.current = null
-            const next = [...current, row]
-            liveAttachments.current = next
-            return next
-          })
+        if (!row || editContext.current !== editScope) continue
+        if (editScope && useStore.getState().activeSessionId !== uploadSession) continue
+        if (uploadSession && (!composerMounted.current || liveSessionId.current !== uploadSession)) {
+          // The composer moved on to the new conversation (or was replaced by its own);
+          // the file follows the conversation it was uploaded for.
+          attachLate(uploadSession, row)
+          continue
         }
+        if (!composerMounted.current) continue
+        setAttachments((current) => {
+          activeRestoreToken.current = null
+          const next = [...current, row]
+          liveAttachments.current = next
+          return next
+        })
       }
     } finally {
-      setUploading(false)
+      if (composerMounted.current) setUploading(false)
     }
   }
 
@@ -1191,10 +1268,61 @@ export function Composer({
     !isMedia && !editPending,
   )
   const onPasteFiles = usePasteFiles((files) => void addFiles(files))
+  // A long paste folds into a chip (「붙여 넣은 텍스트 · 37,200자」) instead of flooding the box;
+  // it goes with the message, or is opened into the box, or attached as a file.
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    onPasteFiles(e)
+    if (e.defaultPrevented || editing) return
+    const text = e.clipboardData?.getData('text/plain') ?? ''
+    if (text.length <= PASTE_FOLD) return
+    e.preventDefault()
+    activeRestoreToken.current = null
+    setPasted((current) => {
+      const next = [...current, text]
+      livePasted.current = next
+      return next
+    })
+  }
+  const dropPasted = (index: number) =>
+    setPasted((current) => {
+      const next = current.filter((_, at) => at !== index)
+      livePasted.current = next
+      return next
+    })
+  const openPasted = (index: number) => {
+    const text = livePasted.current[index] ?? ''
+    dropPasted(index)
+    const next = liveValue.current.trim() ? `${liveValue.current.replace(/\s+$/, '')}\n\n${text}` : text
+    liveValue.current = next
+    if (!editing) draftStore.set(draftKey, next)
+    setValue(next)
+    requestAnimationFrame(() => ref.current?.focus())
+  }
+  const attachPasted = (index: number) => {
+    const text = livePasted.current[index] ?? ''
+    dropPasted(index)
+    void addFiles([new File([text], t('붙여넣은-텍스트.txt'), { type: 'text/plain' })])
+  }
+  const typedLength = value.length + pasted.reduce((sum, text) => sum + text.length + 2, 0)
 
   const submit = (spoken?: string) => {
-    const text = (spoken ?? value).trim()
-    if (!text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
+    const text = (spoken ?? [value.trim(), ...livePasted.current].filter(Boolean).join('\n\n')).trim()
+    if (text.length > MESSAGE_LIMIT) {
+      setChatError(t('질문은 200,000자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.'))
+      return
+    }
+    if (text && !spoken && !editing && !busy && (uploading || awaitingModels)) {
+      setQueuedSend(true)
+      return
+    }
+    setQueuedSend(false)
+    if (text && !editing && (submitting.current || holdingStart.current)) {
+      // 「Enter」 twice before the first turn showed: one question, said so.
+      setSecondSend(true)
+      window.setTimeout(() => setSecondSend(false), 3000)
+      return
+    }
+    if (startPending || !text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
     if (editing && editContext.current) {
       if (sessionId && useStore.getState().running[sessionId]) return
       const context = editContext.current
@@ -1262,42 +1390,75 @@ export function Composer({
       return
     }
     clearMediaError()
-    const attachmentIds = attachments.map((f) => f.id)
-    const attachmentLabels = attachments.map((f) => f.name)
-    const sentAttachments = attachments
+    // A file the server could not read adds nothing to the turn; its chip goes with the send.
+    const readableAttachments = attachments.filter((f) => !f.error)
+    const attachmentIds = readableAttachments.map((f) => f.id)
+    const attachmentLabels = readableAttachments.map((f) => f.name)
+    const sentAttachments = readableAttachments
     const sentSkillIds = activeSkills.map((skill) => skill.id)
     setChatError(null)
     const restoreToken = ++restoreSequence.current
     activeRestoreToken.current = kind === 'chat' ? restoreToken : null
-    // Clear the composer first: the session is created server-side, so awaiting
-    // the round trip would leave the sent text sitting in the box.
-    liveValue.current = ''
-    liveAttachments.current = []
+    // In a conversation the turn shows at once under the transcript, so the box empties now.
+    // A new conversation has nothing to show it in yet: the text stays (read-only) until the
+    // server takes the turn, so a slow start or a refusal never loses what was typed.
     // Skills stay on: picked once, they apply to the conversation's later turns too.
-    setValue('')
-    setAttachments([])
+    const startSettled = () => {
+      holdingStart.current = false
+      submitting.current = false
+      setStartPending(false)
+    }
+    submitting.current = true
+    // No sign of the turn after 15 s: the conversation is read again from the server, so a
+    // turn that started (or never did) shows as it is.
+    const resyncFrom = sessionId
+    window.setTimeout(() => {
+      if (!submitting.current) return
+      submitting.current = false
+      if (resyncFrom) void useStore.getState().openSession(resyncFrom)
+    }, 15_000)
+    if (sessionId) {
+      liveValue.current = ''
+      liveAttachments.current = []
+      livePasted.current = []
+      setValue('')
+      setAttachments([])
+      setPasted([])
+    } else {
+      holdingStart.current = true
+      setStartPending(true)
+    }
     if (kind === 'av' && avOptions.mode === 'video') {
       // Video is a job; the card tracks it.
       void generateVideo(sessionId, text, {
         projectId,
-        onSession: (id) => navigate(`/s/${id}`, { replace: true }),
-      })
+        onSession: (id) => {
+          releaseStart()
+          navigate(`/s/${id}`, { replace: true })
+        },
+      }).finally(startSettled)
       return
     }
     if (kind === 'av' && avOptions.mode === 'audio') {
       // Audio returns inside its call; only video becomes a job.
       void generateAudio(sessionId, text, {
         projectId,
-        onSession: (id) => navigate(`/s/${id}`, { replace: true }),
-      })
+        onSession: (id) => {
+          releaseStart()
+          navigate(`/s/${id}`, { replace: true })
+        },
+      }).finally(startSettled)
       return
     }
     if (kind === 'image') {
       // Not streamed: `generateImages` writes both halves from one call.
       void generateImages(sessionId, text, {
         projectId,
-        onSession: (id) => navigate(`/s/${id}`, { replace: true }),
-      })
+        onSession: (id) => {
+          releaseStart()
+          navigate(`/s/${id}`, { replace: true })
+        },
+      }).finally(startSettled)
       return
     }
     // A document request typed into chat starts a new conversation on the
@@ -1310,12 +1471,17 @@ export function Composer({
       movable && sessionId && sessionAgent
         ? agentHandoffSurface(text, sessionAgent.kinds, agentDocumentNames(sessionAgent, designTemplates))
         : null
-    if (agentHandoff && sessionId) {
-      void handOff(sessionId, agentHandoff, text, {
+    const generalHandoff = detected && !session?.agentId ? detected : null
+    // A conversation with turns behind it goes along as the document's material (its words as
+    // 「대화 기록.txt」, its files as they are); a deck asked for 「위에서 계산한 값으로」
+    // must not start from nothing and invent another example.
+    const carried = agentHandoff ?? (sessionId && (session?.messages.length ?? 0) > 0 ? generalHandoff : null)
+    if (carried && sessionId) {
+      void handOff(sessionId, carried, text, {
         attachments: sentAttachments,
         webSearch: sentWebSearch,
         onSession: (id) => navigate(`/s/${id}`),
-      }).catch((error: unknown) => {
+      }).finally(startSettled).catch((error: unknown) => {
         setComposerRestore({
           sessionId,
           value: text,
@@ -1326,7 +1492,7 @@ export function Composer({
       })
       return
     }
-    const handoff = detected && !session?.agentId ? detected : null
+    const handoff = generalHandoff
     if (handoff) {
       let landedHandoffSessionId = sessionId
       void send(null, handoff, text, {
@@ -1336,10 +1502,11 @@ export function Composer({
         attachmentNames: attachmentLabels,
         onSession: (id) => {
           landedHandoffSessionId = id
+          releaseStart()
           carriedComposer = heldComposer(id)
           navigate(`/s/${id}`, { replace: !sessionId })
         },
-      }).catch((error: unknown) => {
+      }).finally(startSettled).catch((error: unknown) => {
         const freshnessRefusal = errorCode(error) === 'freshness_verification_unavailable'
         setComposerRestore({
           sessionId: freshnessRefusal ? landedHandoffSessionId : sessionId,
@@ -1361,7 +1528,7 @@ export function Composer({
         undefined,
         undefined,
         restoreToken,
-      ).catch(() => undefined)
+      ).finally(startSettled).catch(() => undefined)
       return
     }
     // The pick is spent on this turn; the session row is the record from here.
@@ -1379,10 +1546,12 @@ export function Composer({
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         landedSessionId = id
+        releaseStart()
         carriedComposer = heldComposer(id)
         navigate(`/s/${id}`, { replace: true })
       },
     })
+      .finally(startSettled)
       .catch((error: unknown) => {
         // A refusal happens before the server stores the turn; restore the
         // draft through the store (see `deliverChat`).
@@ -1401,6 +1570,22 @@ export function Composer({
         if (sentTemplate && !livePendingTemplate.current) setPendingTemplate(sentTemplate)
       })
   }
+
+  // A queued Enter goes out once the upload or the model list is done.
+  useEffect(() => {
+    if (!queuedSend || uploading || awaitingModels) return
+    submit()
+    // `submit` reads the latest render; only the gates decide when to fire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queuedSend, uploading, awaitingModels])
+  // Another conversation or surface: nothing held from the last one applies.
+  useEffect(() => {
+    holdingStart.current = false
+    setStartPending(false)
+    setQueuedSend(false)
+    livePasted.current = []
+    setPasted([])
+  }, [sessionId, kind])
 
   const toggleSkill = (id: string, selected: boolean) => {
     activeRestoreToken.current = null
@@ -1706,9 +1891,18 @@ export function Composer({
                   onClick={() => {
                     closePlus()
                     // An agent belongs to the session, so choosing one starts a conversation.
-                    void newSession(startOn, { agentId: a.id, projectId })
-                      .then((id) => navigate(`/s/${id}`))
+                    // What is typed or attached while it opens goes along with it.
+                    const starting = newSession(startOn, { agentId: a.id, projectId })
+                    agentStart.current = starting
+                    void starting
+                      .then((id) => {
+                        carriedComposer = heldComposer(id)
+                        navigate(`/s/${id}`)
+                      })
                       .catch((err: unknown) => setNotice(startFailure(err, t)))
+                      .finally(() => {
+                        if (agentStart.current === starting) agentStart.current = null
+                      })
                   }}
                 >
                   {a.name}
@@ -1743,7 +1937,7 @@ export function Composer({
       title={
         recording
           ? t('누르면 녹음을 끝내고 받아씁니다')
-          : `${t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다')} (${isMac() ? '⌘' : 'Ctrl'}+Shift+M)`
+          : `${t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다')} (${isMac() ? '⌘' : 'Ctrl'}+Shift+M)`
       }
     >
       {transcribing ? (
@@ -1785,7 +1979,7 @@ export function Composer({
   const sendButton = (
     <button
       onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
-      disabled={(!value.trim() && !streaming) || modelSelectionPending || editPending || uploading || !!pendingPrivacy}
+      disabled={(!value.trim() && !pasted.length && !streaming) || typedLength > MESSAGE_LIMIT || modelSelectionPending || editPending || startPending || queuedSend || !!pendingPrivacy}
       className={cn(
         'grid size-9 shrink-0 place-items-center rounded-full transition-colors',
         streaming
@@ -1796,16 +1990,34 @@ export function Composer({
       title={
         streaming
           ? t('생성을 멈춥니다')
+          : startPending
+            ? t('보내는 중…')
           : modelSelectionPending
             ? t('모델 설정 저장 중…')
-          : !value.trim()
+          : !value.trim() && !pasted.length
             ? t('보낼 내용을 먼저 입력하세요')
+          : typedLength > MESSAGE_LIMIT
+            ? t('질문은 200,000자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.')
             : unsupportedVideo
               ? t('이 모델은 이 조합을 만들지 않습니다')
-              : t('Enter 로도 보낼 수 있습니다')
+              : uploading
+                ? t('첨부를 올리는 중입니다. 다 올리면 보낼 수 있습니다')
+                : awaitingModels
+                  ? t('모델을 불러오는 중입니다. 불러오면 보낼 수 있습니다')
+                  : readingAttachment
+                    ? t('첨부 글자를 읽는 중입니다({done}/{total}쪽). 지금 보내면 읽은 쪽까지만 씁니다')
+                        .replace('{done}', String(readingAttachment.ocrDone ?? 0))
+                        .replace('{total}', String(readingAttachment.ocrTotal ?? 0))
+                    : t('Enter로도 보낼 수 있습니다')
       }
     >
-      {streaming ? <Square size={13} fill="currentColor" /> : <ArrowUp size={16} />}
+      {streaming ? (
+        <Square size={13} fill="currentColor" />
+      ) : startPending || queuedSend ? (
+        <Loader2 size={16} className="animate-spin" />
+      ) : (
+        <ArrowUp size={16} />
+      )}
     </button>
   )
 
@@ -1832,6 +2044,7 @@ export function Composer({
         )}
         {(project ||
           attachments.length > 0 ||
+          pasted.length > 0 ||
           uploadFailed.length > 0 ||
           webSearchChip ||
           sessionAgent ||
@@ -1882,9 +2095,10 @@ export function Composer({
               </Badge>
             )}
             {shownTemplate && (
-              <Badge tone="accent">
+              <Badge tone="accent" title={t('이 대화의 템플릿')}>
                 <LayoutGrid size={11} />
-                {templateText(shownTemplate, currentLang() === 'en').name}
+                {/* Named by its role: beside an agent of the same name (「@회의록」) it reads as the form. */}
+                {t('템플릿: {name}').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)}
                 <button
                   type="button"
                   onClick={() => {
@@ -1926,7 +2140,7 @@ export function Composer({
                 </button>
               </Badge>
             ))}
-            {attachments.map((f) => {
+            {attachments.map((f, at) => {
               const reading = ocrNote(f, t)
               return (
               <span
@@ -1958,14 +2172,25 @@ export function Composer({
                 )}
                 {f.error && <TriangleAlert size={10} />}
                 <button
-                  onClick={() =>
+                  onClick={() => {
+                    // Focus moves to the next chip's ×, else the box: never lost to the page.
+                    const neighbour = attachments[at + 1] ?? attachments[at - 1]
                     setAttachments((current) => {
                       activeRestoreToken.current = null
                       const next = current.filter((item) => item.id !== f.id)
                       liveAttachments.current = next
                       return next
                     })
-                  }
+                    requestAnimationFrame(() => {
+                      const label = neighbour ? t('{name} 제거').replace('{name}', neighbour.name) : ''
+                      const chip = label
+                        ? [...document.querySelectorAll<HTMLButtonElement>('[data-attachment-remove]')]
+                          .find((button) => button.getAttribute('aria-label') === label)
+                        : undefined
+                      ;(chip ?? ref.current)?.focus()
+                    })
+                  }}
+                  data-attachment-remove=""
                   className="text-faint hover:text-fg"
                   aria-label={t('{name} 제거').replace('{name}', f.name)}
                 >
@@ -1974,6 +2199,32 @@ export function Composer({
               </span>
               )
             })}
+            {pasted.map((text, at) => (
+              <span
+                key={`pasted-${at}`}
+                className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs"
+              >
+                <FileText size={10} className="text-faint" />
+                {t('붙여 넣은 텍스트 · {n}자').replace('{n}', text.length.toLocaleString())}
+                <button type="button" onClick={() => openPasted(at)} className="text-accent hover:underline">
+                  {t('펼치기')}
+                </button>
+                <button type="button" onClick={() => attachPasted(at)} className="text-accent hover:underline">
+                  {t('파일로 첨부')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    dropPasted(at)
+                    requestAnimationFrame(() => ref.current?.focus())
+                  }}
+                  className="text-faint hover:text-fg"
+                  aria-label={t('붙여 넣은 텍스트 제거')}
+                >
+                  <X size={10} />
+                </button>
+              </span>
+            ))}
             {uploading && (
               <span className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs text-faint">
                 <Loader2 size={10} className="animate-spin" />
@@ -1981,7 +2232,11 @@ export function Composer({
               </span>
             )}
             {attachments.some((f) => f.error) && (
-              <p role="status" className="w-full text-xs text-warn">
+              <p
+                role="status"
+                className="w-full truncate text-xs text-warn"
+                title={attachments.filter((f) => f.error).map((f) => `${f.name} — ${f.error}`).join('\n')}
+              >
                 {attachments
                   .filter((f) => f.error)
                   .map((f) => `${f.name} — ${f.error}`)
@@ -2023,7 +2278,7 @@ export function Composer({
             autoFocus={autoFocus}
             rows={1}
             value={value}
-            readOnly={editPending}
+            readOnly={editPending || startPending}
             onCompositionStart={() => { composing.current = true }}
             onCompositionEnd={() => { composing.current = false }}
             onChange={(e) => {
@@ -2040,23 +2295,23 @@ export function Composer({
               setValue(e.target.value)
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Escape' && editing && !e.nativeEvent.isComposing) {
+              if (e.key === 'Escape' && editing && !isImeKey(e)) {
                 e.preventDefault()
                 cancelEditing()
                 return
               }
               if (holdToTalk(e)) return
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (e.key === 'Enter' && !e.shiftKey && !isImeKey(e)) {
                 e.preventDefault()
                 submit()
               }
             }}
             onKeyUp={releaseToTalk}
             // File pastes only; text pastes are untouched.
-            onPaste={onPasteFiles}
+            onPaste={onPaste}
             placeholder={
               recording && pushToTalk.current
-                ? t('듣고 있습니다. 스페이스를 떼면 보냅니다')
+                ? t('듣고 있습니다. 스페이스를 떼면 받아 적습니다')
                 : transcribing
                   ? t('받아쓰는 중…')
                   : pending
@@ -2086,6 +2341,7 @@ export function Composer({
             ref={fileInput}
             type="file"
             multiple
+            accept={ATTACH_ACCEPT}
             className="hidden"
             aria-label={t('파일 선택')}
             onChange={(e) => {
@@ -2122,6 +2378,34 @@ export function Composer({
           </button>
         </p>
       )}
+      {typedLength >= MESSAGE_WARN && (
+        <p
+          className={cn('mt-1 px-1 text-right text-xs', typedLength > MESSAGE_LIMIT ? 'text-danger' : 'text-faint')}
+          aria-live="polite"
+        >
+          {`${typedLength.toLocaleString()} / ${MESSAGE_LIMIT.toLocaleString()}${t('자')}`}
+          {typedLength > MESSAGE_LIMIT && ` · ${t('긴 자료는 「파일·사진 첨부」로 올리세요.')}`}
+        </p>
+      )}
+      {secondSend && (
+        <p role="status" className="mt-2 flex items-center gap-2 px-1 text-sm text-muted">
+          <Loader2 size={13} className="shrink-0 animate-spin" />
+          {t('앞 질문을 보내는 중입니다.')}
+        </p>
+      )}
+      {queuedSend && (
+        <p role="status" className="mt-2 flex items-center gap-2 px-1 text-sm text-muted">
+          <Loader2 size={13} className="shrink-0 animate-spin" />
+          <span className="min-w-0 flex-1">
+            {uploading
+              ? t('첨부를 다 올리면 바로 보냅니다')
+              : t('모델을 불러오면 바로 보냅니다')}
+          </span>
+          <button type="button" onClick={() => setQueuedSend(false)} className="shrink-0 underline">
+            {t('취소')}
+          </button>
+        </p>
+      )}
       {chatError && !pendingPrivacy && (
         <p
           role="alert"
@@ -2139,13 +2423,13 @@ export function Composer({
         {busy && isMedia
             ? t('생성 중입니다 — 완료되면 위 카드가 결과로 바뀝니다')
             : kind === 'image'
-              ? t('Enter 로 생성 · 만든 그림은 아티팩트에 쌓입니다')
+              ? t('Enter로 생성 · 만든 그림은 아티팩트에 쌓입니다')
               : kind === 'av' && avOptions.mode === 'audio'
-                ? t('Enter 로 생성 · 음성과 음악은 아티팩트에 쌓입니다')
+                ? t('Enter로 생성 · 음성과 음악은 아티팩트에 쌓입니다')
                 : kind === 'av'
-                  ? t('Enter 로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다')
+                  ? t('Enter로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다')
                   : kind === 'slides'
-                    ? t('Enter 로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다')
+                    ? t('Enter로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다')
                     : `${t('Enter 전송, Shift+Enter 줄바꿈')}, ${isMac() ? 'Cmd' : 'Ctrl'}+/ ${t('단축키 보기')}`}
       </p>
 

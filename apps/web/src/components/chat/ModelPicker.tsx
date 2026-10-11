@@ -48,15 +48,21 @@ function rateLabel(m: ModelInfo, t: (s: string) => string): string {
 const SEARCHABLE_FROM = 8
 
 /** Data-boundary label and tone for a model. */
-function boundary(m: ModelInfo, t: (s: string) => string): { text: string; tone: string } | null {
-  if (m.strictLocal) return { text: 'strict-local', tone: 'text-success' }
+function boundary(
+  m: ModelInfo, t: (s: string) => string,
+): { text: string; tone: string; hint: string } | null {
+  if (m.strictLocal) {
+    return { text: 'strict-local', tone: 'text-success', hint: t('질문과 자료가 이 기관 밖으로 나가지 않는 모델입니다') }
+  }
   if (m.dataBoundary === 'self_hosted') {
-    return { text: t('self-hosted · strict 미확인'), tone: 'text-warn' }
+    return { text: t('self-hosted · strict 미확인'), tone: 'text-warn', hint: t('기관이 운영하지만 외부로 넘기지 않는다는 확인은 없는 모델입니다') }
   }
   // hybrid, external and unknown share a tone: the server ranks them together.
-  if (m.dataBoundary === 'hybrid') return { text: t('외부 전환 가능'), tone: 'text-warn' }
-  if (m.dataBoundary === 'external') return { text: t('외부 제공'), tone: 'text-warn' }
-  if (m.dataBoundary === 'unknown') return { text: t('경계 미확인'), tone: 'text-warn' }
+  if (m.dataBoundary === 'hybrid') {
+    return { text: t('외부 전환 가능'), tone: 'text-warn', hint: t('개인정보가 없으면 외부 모델로 바꿔 답할 수 있는 모델입니다') }
+  }
+  if (m.dataBoundary === 'external') return { text: t('외부 제공'), tone: 'text-warn', hint: t('외부 업체가 운영하는 모델입니다') }
+  if (m.dataBoundary === 'unknown') return { text: t('경계 미확인'), tone: 'text-warn', hint: t('자료가 어디서 처리되는지 확인되지 않은 모델입니다') }
   return null
 }
 
@@ -392,12 +398,12 @@ function ModelMenu({
             <span className="mt-1 flex items-center gap-2 text-xs text-faint">
               <span className="flex items-center gap-1">
                 {boundaryOf && (
-                  <span className={cn('flex items-center gap-1', boundaryOf.tone)}>
+                  <span className={cn('flex items-center gap-1', boundaryOf.tone)} title={boundaryOf.hint}>
                     {m.strictLocal && <ShieldCheck size={11} />}
                     {boundaryOf.text}
                   </span>
                 )}
-                {boundaryOf && <span aria-hidden>/</span>}
+                {boundaryOf && <span aria-hidden>·</span>}
                 <span className={cn(free && 'text-free')}>{rateLabel(m, t)}</span>
               </span>
               {m.contextWindow && <span>{formatTokens(m.contextWindow)} ctx</span>}

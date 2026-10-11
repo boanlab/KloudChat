@@ -34,6 +34,7 @@ from app.services import (
     settings_store,
     thinking,
     units,
+    weekdays,
 )
 from app.services import outline as plan_rules
 from app.services.context import (
@@ -1995,6 +1996,9 @@ def normalize_document(
     except Exception:  # noqa: BLE001 — a mend that fails leaves the text as it was
         log.exception("final tidy failed; the sections are kept as written")
     out = caption_figures_and_tables(out)
+    # Weekdays beside dates are the calendar's, whatever the writer counted.
+    out = [{**sec, "content": weekdays.fix_weekdays(
+        str(sec.get("content") or ""), context=f"{request}\n{context}")[0]} for sec in out]
     out = [
         sec if _REFERENCE_HEADING.search(str(sec.get("heading") or ""))
         else {**sec, "content": collapse_repeated_citations(str(sec.get("content") or ""))}
@@ -2278,6 +2282,98 @@ def unfence_pictures(body: str) -> str:
 _JSON_PROSE_FENCE = re.compile(r"```json[ \t]{0,8}\n(\{[\s\S]{0,200000}?\})\s{0,8}\n```")
 
 
+#: One KPI row: a short value, a bar, a short name (「120만 원 | 안2 연간 비용」).
+_KPI_ROW = re.compile(r"^\s{0,3}(?![|`#>*-])[^|\n`]{1,24}?\s\|\s[^|\n`]{1,48}$")
+#: A lone backtick or two where a ```kpi fence was meant (「`」, 「``kpi」).
+_KPI_EDGE = re.compile(r"^\s{0,3}`{1,2}\s{0,2}(?:kpi)?\s{0,2}$", re.I)
+
+
+def mend_kpi_fences(body: str) -> str:
+    """A KPI block written with a lone backtick (or none) around its 「값 | 이름」 rows becomes a
+    ```kpi fence, so it renders as KPI tiles and never as stray 「`」 and 「a | b」 lines."""
+    if " | " not in (body or ""):
+        return body
+    lines = body.split("\n")
+    out: list[str] = []
+    fenced = False
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            out.append(line)
+            i += 1
+            continue
+        if fenced:
+            out.append(line)
+            i += 1
+            continue
+        opened = bool(_KPI_EDGE.match(line))
+        j = i + 1 if opened else i
+        rows: list[str] = []
+        while j < len(lines) and (_KPI_ROW.match(lines[j]) or not lines[j].strip()):
+            if lines[j].strip():
+                rows.append(lines[j].strip())
+            j += 1
+        closed = opened and j < len(lines) and bool(_KPI_EDGE.match(lines[j]))
+        # Fenced by stray backticks, or two to four bare rows that start with a figure.
+        bare = not opened and 2 <= len(rows) <= 4 and all(re.match(r"[\d+\-−]", r) for r in rows)
+        if rows and len(rows) <= 4 and (closed or bare):
+            out += ["```kpi", *rows, "```"]
+            i = j + 1 if closed else j
+            if not closed and i < len(lines) and not lines[i - 1].strip():
+                out.append("")
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
+
+
+#: Columns that say nothing when every cell is empty; a 확인·서명 column left for a pen stays.
+_DROPPABLE_COLUMN = re.compile(r"기한|마감|완료\s{0,2}(?:예정)?일|일정|비고")
+
+
+def drop_empty_columns(body: str) -> str:
+    """A 기한·비고 column empty in every row (회의록의 「기한」 left blank throughout) goes, and its
+    name leaves a 「표 n. 항목·내용·기한」 caption next to the table."""
+    if "|" not in (body or ""):
+        return body
+    lines = body.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if not lines[i].lstrip().startswith("|"):
+            out.append(lines[i])
+            i += 1
+            continue
+        j = i
+        while j < len(lines) and lines[j].lstrip().startswith("|"):
+            j += 1
+        block = lines[i:j]
+        rows = [[c.strip() for c in line.strip().strip("|").split("|")] for line in block]
+        rule = next((k for k, row in enumerate(rows)
+                     if row and all(re.fullmatch(r":?-{2,}:?", c) for c in row if c)), None)
+        body_rows = rows[rule + 1:] if rule == 1 else []
+        width = len(rows[0])
+        empty = [c for c in range(width)
+                 if len(body_rows) >= 2 and c > 0 and _DROPPABLE_COLUMN.search(rows[0][c])
+                 and all(c >= len(r) or r[c] in ("", "-", "—") for r in body_rows)]
+        if empty and len(empty) < width - 1 and all(len(r) == width for r in rows):
+            gone = {rows[0][c] for c in empty}
+            block = ["| " + " | ".join(c for k, c in enumerate(r) if k not in empty) + " |"
+                     for r in rows]
+            for at in (len(out) - 1, len(out) - 2):
+                if 0 <= at < len(out) and _CAPTION_LINE.match(out[at] or ""):
+                    for name in gone:
+                        out[at] = re.sub(rf"\s{{0,2}}[·,/]\s{{0,2}}{re.escape(name)}(?=\s|$|[·,/])", "", out[at])
+            if j < len(lines) and _CAPTION_LINE.match(lines[j] or ""):
+                for name in gone:
+                    lines[j] = re.sub(rf"\s{{0,2}}[·,/]\s{{0,2}}{re.escape(name)}(?=\s|$|[·,/])", "", lines[j])
+        out += block
+        i = j
+    return "\n".join(out)
+
+
 def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
     """The deterministic mends run again after the rewriting passes, which can undo them."""
     tidied = []
@@ -2292,7 +2388,8 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
             body = re.sub(r'\n?\s{0,200}"\s{0,200}\}\s{0,200}\}?\s{0,200}$', "", unwrap_json_prose(body).replace(
                 '\\n', "\n"))
         if not _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
-            body = unfence_pictures(_LONE_LANGUAGE.sub(r"```\1", body))
+            body = unfence_pictures(_LONE_LANGUAGE.sub(r"```\1", mend_kpi_fences(body)))
+            body = drop_empty_columns(body)
             # 「<br>」 written for a line break: a cell keeps its parts with 「 · 」.
             body = "\n".join(
                 re.sub(r"\s{0,32}<\s{0,8}br\s{0,8}/?\s{0,8}>\s{0,32}", " · " if line.lstrip().startswith("|") else " ",

@@ -175,6 +175,8 @@ export interface Preferences {
   autoMemory: boolean
   /** The model · token · credit line under each answer. */
   showUsage: boolean
+  /** Hold space in the empty composer to dictate (off unless switched on). */
+  spaceToTalk?: boolean
   privacyDefaultAction: PrivacyAction | 'ask'
   /** 개인 맞춤 설정; empty strings when unset. */
   aboutMe?: string

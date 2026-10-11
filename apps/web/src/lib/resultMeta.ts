@@ -29,7 +29,11 @@ export function sizeLine(
   data: Record<string, unknown> | null | undefined,
   t: (text: string) => string,
 ): string {
-  const count = (key: string) => (Array.isArray(data?.[key]) ? (data![key] as unknown[]).length : 0)
+  // A listing card carries only its first few sections or slides; `partCount` is the whole.
+  const count = (key: string) =>
+    (key === 'sections' || key === 'slides') && typeof data?.partCount === 'number'
+      ? data.partCount
+      : Array.isArray(data?.[key]) ? (data![key] as unknown[]).length : 0
   switch (kind) {
     case 'report':
       return t('{n}개 절').replace('{n}', String(count('sections')))

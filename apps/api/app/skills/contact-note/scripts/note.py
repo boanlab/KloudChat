@@ -23,6 +23,13 @@ _SHORT = re.compile(
     r"|자료[^\n.]{0,40}?(?:명시되어|포함되어|나와|언급되어)\s{0,2}있지\s{0,2}않"
 )
 _SOURCES = re.compile(r"\n#{2,3} ?출처[ \t]{0,4}\n")
+#: The answer's own pointer to the department; said after a full answer, it sends the reader
+#: away for nothing.
+_REFERRAL = re.compile(r"담당\s{0,2}부서에\s{0,2}(?:문의|확인)")
+#: 「담당 부서에 문의해 주세요.」 standing alone as a sentence or a line.
+_BARE = re.compile(r"(?:^|(?<=[.!?。]))[ \t]{0,4}(?:자세한\s{0,2}(?:사항|내용)은\s{0,2})?"
+                   r"담당\s{0,2}부서에\s{0,2}문의(?:해|하여|하시기|하십시오)[^.\n]{0,12}[.!]?[ \t]{0,4}$",
+                   re.M)
 
 
 def line_for(contact: str) -> str:
@@ -35,7 +42,13 @@ def check(text: str, material: str = "", computed=None, options=None) -> list[di
     if opts.get("surface") not in (None, "", "chat"):
         return []
     body = _SOURCES.split(text or "", maxsplit=1)[0]
-    if not _SHORT.search(body[:6000]):
+    short = _SHORT.search(_REFERRAL.sub("", body[:6000]))
+    if not short:
+        # A full answer that still ends by sending the reader to 「담당 부서」 with no one named.
+        bare = _BARE.search(body)
+        if bare and not str(opts.get("contact") or "").strip():
+            return [{"kind": "drop", "text": bare.group(0), "line": 0, "start": bare.start(),
+                     "end": bare.end(), "placeholder": ""}]
         return []
     contact = str(opts.get("contact") or "").strip()
     if (contact and contact in body) or (not contact and NO_CONTACT in body):
@@ -47,6 +60,10 @@ def check(text: str, material: str = "", computed=None, options=None) -> list[di
 def fix(text: str, findings: list[dict]) -> str:
     if not findings:
         return text
+    if findings[0].get("kind") == "drop":
+        found = findings[0]
+        kept = (text[:found["start"]] + text[found["end"]:]).rstrip()
+        return re.sub(r"\n{3,}", "\n\n", kept)
     line = str(findings[0].get("placeholder") or "")
     parts = _SOURCES.split(text or "", maxsplit=1)
     if len(parts) == 2:
@@ -56,6 +73,8 @@ def fix(text: str, findings: list[dict]) -> str:
 
 
 def summary(findings: list[dict]) -> str:
+    if findings and findings[0].get("kind") == "drop":
+        return "다 답한 뒤 붙은 「담당 부서에 문의」를 뺌"
     return "담당 부서·연락처를 덧붙임" if findings else ""
 
 

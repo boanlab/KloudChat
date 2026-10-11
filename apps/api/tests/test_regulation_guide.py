@@ -204,6 +204,20 @@ def test_a_partial_answer_gets_the_contact_as_written_once():
     assert note.check(worded, "", [], _options())
 
 
+def test_a_full_answer_does_not_end_by_sending_the_reader_to_a_department():
+    """Staff sweep STAFF-10: a complete, cited answer ended 「담당 부서에 문의해 주세요.」 with no
+    department named; an answer that says the material falls short keeps it."""
+    note = skill_scripts.entry("contact-note")
+    bare = check_skills.options_for(None, {}, surface="chat")
+    answer = ("장학금은 등록금의 50%입니다 [3]. 중복 지급은 하지 않습니다 [5].\n\n"
+              "담당 부서에 문의해 주세요.\n\n### 출처\n- [3] 장학금지급규정")
+    fixed = note.fix(answer, note.check(answer, "", [], bare))
+    assert fixed == ("장학금은 등록금의 50%입니다 [3]. 중복 지급은 하지 않습니다 [5].\n\n"
+                     "### 출처\n- [3] 장학금지급규정")
+    short = "제공된 자료에서 이 질문에 대한 내용을 찾지 못했습니다. 담당 부서에 문의해 주세요."
+    assert note.check(short, "", [], bare) == []
+
+
 def test_personal_details_are_masked_and_the_contact_kept():
     mask = skill_scripts.entry("pii-mask")
     # On the server it is the instance's own detector.
@@ -247,7 +261,9 @@ def test_the_contact_reaches_the_model_word_for_word():
 def test_the_official_agent_is_a_chat_agent_on_its_material_with_the_publishing_checks():
     spec = starter.agent_spec("regulation-guide")
     assert not spec.get("draft") and "regulation-guide" not in starter.draft_agents()
-    assert spec["tools"] == ["search_knowledge", "calculate"] and spec["skills"] == []
+    # 날짜 계산 works out 「개강 30일 전」 and checks the answer's dates (staff sweep STAFF-10).
+    assert spec["tools"] == ["search_knowledge", "calculate", "run_skill_script"]
+    assert spec["skills"] == ["date-calc"]
     assert spec["checks"] == ["grounding-check", "answer-hold", "contact-note", "pii-mask"]
     assert [b["bundle"] for b in spec["bundles"]] == ["review", "publish-check"]
     prompt = spec["system_prompt"]
@@ -303,7 +319,8 @@ async def test_an_agent_made_in_the_form_is_the_official_one(local):
         await db.commit()
         made = await ws.create_agent(AgentIn(
             name="우리 학과 규정 안내", system_prompt=spec["system_prompt"], kinds=["chat"],
-            surface="chat", tools=["search_knowledge", "calculate"], skill_ids=[],
+            surface="chat", tools=["search_knowledge", "calculate", "run_skill_script"],
+            skill_ids=[],
             temperature=spec["temperature"], contact=_CONTACT), admin, db)
         await up.put_process(made.id, up.ProcessIn(mode="direct", bundles=[
             {"bundle": "review", "items": {}}, {"bundle": "publish-check", "items": {}}]),

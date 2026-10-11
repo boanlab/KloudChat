@@ -293,6 +293,7 @@ function PrintDocument({ report }: { report: ReportArtifact }) {
 function SourceList({
   sources,
   research,
+  attachedNames = [],
   style,
   onStyle,
   sections,
@@ -302,6 +303,8 @@ function SourceList({
 }: {
   sources: Source[]
   research?: ReportArtifact['research']
+  /** Files the conversation attached: the material the document was written from. */
+  attachedNames?: string[]
   style: ReportArtifact['citationStyle']
   onStyle: (style: ReportArtifact['citationStyle']) => void
   sections: ReportSection[]
@@ -361,11 +364,24 @@ function SourceList({
       <div className="space-y-3">
         {researchSummary}
         <div className="rounded-card border border-dashed border-line px-4 py-8 text-center">
-          <p className="text-base text-muted">{t('참고한 자료가 없습니다.')}</p>
-          <p className="mt-1 text-sm text-faint">
-            {t('웹 검색을 켜고 다시 쓰면 찾은 자료가 여기 출처로 붙습니다. 검색 없이 쓴 글에는 붙일 출처가 없습니다.')}
-          </p>
-          {numericGaps.length > 0 && (
+          {attachedNames.length > 0 ? (
+            <>
+              <p className="text-base text-muted">
+                {t('첨부한 자료로 썼습니다: {names}').replace('{names}', attachedNames.join(', '))}
+              </p>
+              <p className="mt-1 text-sm text-faint">
+                {t('웹 검색으로 붙은 출처는 없습니다.')}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-base text-muted">{t('참고한 자료가 없습니다.')}</p>
+              <p className="mt-1 text-sm text-faint">
+                {t('웹 검색을 켜고 다시 쓰면 찾은 자료가 여기 출처로 붙습니다. 검색 없이 쓴 글에는 붙일 출처가 없습니다.')}
+              </p>
+            </>
+          )}
+          {numericGaps.length > 0 && attachedNames.length === 0 && (
             <div className="mt-4 flex flex-wrap justify-center gap-2 text-sm text-danger">
               <span>
                 {t('근거 표시가 필요한 수치 문장 {count}개').replace(
@@ -572,6 +588,15 @@ export function ReportPanel({
   const [citationError, setCitationError] = useState<string | null>(null)
   const [addingSource, setAddingSource] = useState(false)
   const [sourceDraft, setSourceDraft] = useState({ title: '', url: '', author: '', publisher: '', year: '' })
+  // The files the conversation's questions carried: what a document with no web source was written from.
+  const attachedKey = useStore((s) => {
+    const session = s.sessions.find((row) => row.id === report.sessionId)
+    const names = (session?.messages ?? [])
+      .filter((m) => m.role === 'user')
+      .flatMap((m) => (m.attachments ?? []).map((file) => file.name))
+    return [...new Set(names)].join('\u0000')
+  })
+  const attachedNames = useMemo(() => (attachedKey ? attachedKey.split('\u0000') : []), [attachedKey])
   // Opens wide; the parent starts narrow, so the initial mode is announced once.
   useEffect(() => {
     onModeChange?.('wide')
@@ -1926,6 +1951,7 @@ export function ReportPanel({
               <SourceList
                 sources={report.sources}
                 research={report.research}
+                attachedNames={attachedNames}
                 style={report.citationStyle}
                 onStyle={(style) => void chooseCitationStyle(style)}
                 sections={report.sections}

@@ -13,9 +13,10 @@ import json
 import logging
 import re
 from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
+from app.services import diagram_render, figure_facts
 from app.services.report_export import diagram_key
 
 log = logging.getLogger(__name__)
@@ -95,6 +96,10 @@ class Planned:
     figure: str
     description: str
     caption: str
+    #: The part's own text: a drawn figure must agree with its tables (`figure_facts`).
+    context: str = ""
+    #: The whole document, for the option it recommends.
+    document: str = ""
 
 
 async def plan(
@@ -168,7 +173,9 @@ async def plan(
             planned = parse(text, count=len(parts), limit=limit, eligible=allowed)
         except Exception as exc:  # noqa: BLE001
             log.info("figure planning retry failed: %s", exc)
-    return planned, usage
+    document = "\n\n".join(text for _, text in parts)[:40000]
+    return [replace(row, context=parts[row.index][1], document=document)
+            for row in planned], usage
 
 
 _ASKS_DIAGRAM = re.compile(
@@ -241,6 +248,17 @@ async def make(
         slide=slide,
         accent=accent or diagram.ACCENT,
     )
+    if planned.context:
+        # A box that says what the part's own table does not (안1 「중복 방지: 충족」 beside
+        # 「중복 예약 월 6건 발생」) leaves the figure out; a highlight on an option the document
+        # does not recommend comes off.
+        checked = figure_facts.check(source, context=planned.context, document=planned.document)
+        if checked.problems:
+            raise figure_facts.Contradicted("; ".join(checked.problems))
+        if checked.source != source:
+            redrawn = await diagram_render.render_png(checked.source, accent or diagram.ACCENT)
+            if redrawn:
+                source, png = checked.source, redrawn
     return {
         "figure": planned.figure,
         "description": planned.description,

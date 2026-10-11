@@ -64,6 +64,20 @@ def test_the_guide_answers_how_to_make_an_agent():
     assert english and english[0]["lang"] == "en"
 
 
+_SENIOR = "글씨를 좀 크게 볼수 있나요? 그리고 회의록 만드는 기능이 있다던데 어디서 하는거에요"
+
+
+def test_a_question_about_the_screen_reads_the_text_size_and_agent_pages():
+    """Staff sweep STAFF-09: 글씨·기능 questions were not taken for app questions, and the model
+    sent the person to a font-size setting that does not exist."""
+    assert app_help.about_app(_SENIOR)
+    found = [(row["path"], row["heading"]) for row in app_help.search(_SENIOR)]
+    assert ("personal/settings", "글씨·글자 크기 키우기") in found
+    assert ("chat/agents", "에이전트로 대화 시작") in found
+    block = app_help.block(_SENIOR)
+    assert "브라우저 확대" in block and "**+** → **에이전트** → **회의록**" in block
+
+
 def test_the_pattern_stays_fast_on_a_long_message():
     started = time.perf_counter()
     app_help.about_app("에이전트 " * 5000 + "어" * 5000)

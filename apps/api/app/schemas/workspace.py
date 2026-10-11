@@ -154,6 +154,8 @@ def _card_data(kind: ArtifactKind, data: dict[str, Any] | None) -> dict[str, Any
     if kind is ArtifactKind.deck:
         return {
             **data,
+            # The card carries a few; the size line counts them all.
+            "partCount": len(data.get("slides") or []),
             "slides": [
                 {k: v for k, v in (slide or {}).items() if k in ("id", "title", "layout")}
                 for slide in (data.get("slides") or [])[:_CARD_PARTS]
@@ -162,6 +164,7 @@ def _card_data(kind: ArtifactKind, data: dict[str, Any] | None) -> dict[str, Any
     if kind is ArtifactKind.report:
         return {
             **data,
+            "partCount": len(data.get("sections") or []),
             "sources": [],
             "sections": [
                 {

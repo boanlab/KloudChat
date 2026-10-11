@@ -32,6 +32,7 @@ import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Step } from '@/types'
+import { isImeKey } from '@/lib/ime'
 
 interface Turn extends BotTranscriptMessage {
   /** Still streaming. */
@@ -253,7 +254,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   }
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.key === 'Enter' && !e.shiftKey && !isImeKey(e)) {
       e.preventDefault()
       void ask(text)
     }

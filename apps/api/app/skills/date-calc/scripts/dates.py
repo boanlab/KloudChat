@@ -111,6 +111,8 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         r"|(?<![\d./:-])(?P<m2>\d{1,2})/(?P<d2>\d{1,2})(?![\d/])(?!\s{0,2}(?:학기|분기|쪽|페이지))")),
     ("weekday", re.compile(r"(?<![가-힣])(?<!일 )(?<!\) )(?P<wd>[월화수목금토일])요일")),
 ]
+#: Where one sentence ends and the next begins: an offset past it no longer leans on the date.
+_SENTENCE_END = re.compile(r"[.!?。]\s|다\.|\n|;")
 _MAIL_HEAD = re.compile(r"^\s{0,4}[\[(<]?\s{0,4}(?:메일|e-?mail|mail|회신|답장|공지)", re.I)
 _MEETING_HEAD = re.compile(r"회의|미팅|일시|녹음|전사|간담회|위원회")
 
@@ -299,6 +301,7 @@ def find(text: str, base: dt.date, *, absolute: bool = True) -> list[dict]:
     """Every date expression in `text`, resolved against `base`, left to right."""
     taken: list[tuple[int, int]] = []
     found: list[dict] = []
+    matches: dict[int, tuple[re.Match[str], int]] = {}
     for kind, pattern in _PATTERNS:
         if not absolute and kind in ("full_date", "month_day"):
             continue
@@ -313,7 +316,25 @@ def find(text: str, base: dt.date, *, absolute: bool = True) -> list[dict]:
             except (ValueError, KeyError) as exc:
                 row.update({"status": "unresolved", "reason": str(exc)})
             found.append(row)
-    return sorted(found, key=lambda r: r["at"])
+            matches[id(row)] = (m, end)
+    found.sort(key=lambda r: r["at"])
+    # 「개강 2027-03-02, 30일 전부터 14일 전까지」: an offset said right after a date in the same
+    # sentence counts from that date, not from the meeting or today.
+    anchor: dict | None = None
+    for row in found:
+        m, end = matches[id(row)]
+        if row["kind"] in ("full_date", "month_day") and row.get("status") == "ok":
+            anchor = {**row, "end": end}
+            continue
+        if (anchor is None or row["kind"] != "offset"
+                or not re.search(r"(?:전|후|뒤)\s{0,2}$", m.group(0))
+                or _SENTENCE_END.search(text[anchor["end"]:row["at"]])):
+            continue
+        day = dt.date.fromisoformat(anchor["date"])
+        kept = {k: v for k, v in row.items() if k in ("text", "at", "kind")}
+        row.clear()
+        row.update({**kept, **_resolve_match("offset", m, day), "anchor": anchor["text"]})
+    return found
 
 
 def resolve(text: str, base: dt.date) -> dict:
@@ -560,6 +581,75 @@ def run(options: dict) -> dict:
     if op == "add_business_days":
         return {"ok": True, "op": op, **_dated(add_business_days(parse_day(options["date"]), int(options["days"])))}
     raise ValueError(f"모르는 op: {op}")
+
+
+#: What the person's relative dates resolve to, as a post check compares them with the answer.
+_WORKED_KINDS = ("offset", "day_word", "week_day", "business", "month_part", "month_end",
+                 "named_month_end", "quarter", "year_end")
+_BLANK_AFTER = r"\s{0,2}(?:은|는|이|가|:|=|→)?\s{0,3}(\[[^\]\n]{1,12}\])"
+
+
+def _redate(written: str, old: dt.date, new: dt.date) -> str:
+    """`written` (「2027-02-01」, 「2027년 2월 1일」, 「2월 1일」) saying `new` in the same shape."""
+    numbers = list(re.finditer(r"\d+", written))
+    values = [new.year, new.month, new.day] if len(numbers) >= 3 else [new.month, new.day]
+    out, last = [], 0
+    for m, value in zip(numbers, values, strict=False):
+        width = len(m.group(0)) if m.group(0).startswith("0") else 0
+        out.append(written[last:m.start()] + str(value).zfill(width))
+        last = m.end()
+    return "".join(out) + written[last:]
+
+
+def post(text: str, args: dict) -> dict:
+    """The answer's dates against the script: a date the person's relative words resolve to
+    (「개강 2027-03-02, 30일 전」 → 2027-01-31) that the answer missed by a day or three, or
+    left as a blank, is set to the worked-out date with its weekday (code)."""
+    out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
+    try:
+        today = parse_day(str(args.get("today") or "")) if args.get("today") else dt.date.today()
+    except ValueError:
+        today = dt.date.today()
+    source = "\n".join(str(args.get(k) or "") for k in ("request", "material"))
+    worked = [r for r in scan(source, today)
+              if r.get("status") == "ok" and r.get("date") and r.get("kind") in _WORKED_KINDS]
+    if not worked or not text:
+        return out
+    stated = {r["date"] for r in scan(source, today) if r.get("kind") in ("full_date", "month_day")}
+    expected = {r["date"]: r for r in worked}
+    # A blank left where the person's words had a worked-out date: 「30일 전은 [일자]」.
+    for row in worked:
+        pattern = re.compile(re.escape(row["text"]) + _BLANK_AFTER)
+        match = pattern.search(text)
+        if match:
+            text = text[:match.start(1)] + row["shown"] + text[match.end(1):]
+            out["fixed"].append({"kind": "date", "text": match.group(0),
+                                 "why": f"{row['text']} → {row['shown']}"})
+    said = [r for r in find(text, today) if r["kind"] in ("full_date", "month_day")
+            and r.get("status") == "ok" and r.get("date")]
+    present = {r["date"] for r in said}
+    for row in sorted(said, key=lambda r: r["at"], reverse=True):
+        if row["date"] in expected or row["date"] in stated:
+            continue
+        day = dt.date.fromisoformat(row["date"])
+        near = [d for d in expected if d not in present
+                and 1 <= abs((dt.date.fromisoformat(d) - day).days) <= 3]
+        if len(near) != 1:
+            continue
+        new = dt.date.fromisoformat(near[0])
+        start, end = row["at"], row["at"] + len(row["text"])
+        written = text[start:end]
+        fixed = _redate(written, day, new)
+        tail = re.match(r"\s{0,2}\(\s{0,2}[월화수목금토일](?:요일)?\s{0,2}\)", text[end:])
+        if tail:
+            end += tail.end()
+            fixed += f"({WEEKDAYS[new.weekday()]})"
+        out["fixed"].append({"kind": "date", "text": text[start:end],
+                             "why": f"{expected[near[0]]['text']} → {iso_weekday(new)}"})
+        text = text[:start] + fixed + text[end:]
+        present.add(near[0])
+    out["text"] = text
+    return out
 
 
 def _line(row: dict) -> str:

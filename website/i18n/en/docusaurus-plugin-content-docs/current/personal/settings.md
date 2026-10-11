@@ -26,6 +26,10 @@ You can change your name and your password. To change the password, enter the cu
 
 The theme and the language are switched with the buttons at the top right of the screen, not in this tab.
 
+## Text size
+
+KloudChat has no text-size setting of its own. To read larger text, zoom the browser: `Ctrl` + `+` on Windows (`Ctrl` + `-` to shrink, `Ctrl` + `0` to reset), `Cmd` + `+` on a Mac. At 200% the screen reflows and stays usable. On a phone, pinch to zoom.
+
 ## Personalization
 
 ![Personalization tab](/img/guide/settings-personalization.png)
