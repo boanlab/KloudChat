@@ -4,11 +4,21 @@ title: System settings
 
 # System settings
 
-The **System** screen in the Manage menu is made up of seven tabs.
+The **System** screen in the Manage menu is made up of eight tabs.
 
 ## Proxy
 
 The model gateway (LiteLLM) address and master key (stored encrypted, never shown again), **Connection test** (confirms n models), **Refresh model list**, and revert to the environment variable values. If models are listed as hidden for lack of price information, enter the model prices in the gateway settings.
+
+## Models
+
+Decides which model does which job when the user has not chosen one. The values in the server's `.env` file are used once, at installation; after that, what is saved here takes precedence.
+
+- **Default model for each screen**: chat, report, slides, image, audio and video. Left empty, report and slides follow the chat default, and image, audio and video use the cheapest model. A model the user chose always comes first.
+- **Side-work models**: the model for titles, memories and summaries, the code-writing model and its fallback. These read the conversation, so only models this instance runs itself (self-hosted) can be chosen. In a strict-local conversation the strict-local version of the chosen model does the work.
+- **Thinking**: whether self-hosted and external models reason before answering. On makes judgements more exact but adds tens of seconds to minutes to each call. Both are off by default.
+
+The **planning model** for reports and slides and Auto's **classifier model** are on the **Routing** tab.
 
 ## Routing
 
@@ -35,6 +45,7 @@ The SMTP host, port, security, account, and sender address, the service address 
 - **Sign-up method**: Use after approval / Use immediately / Not accepted. The value chosen on this screen overrides the `SIGNUP_MODE` environment variable.
 - **Email domains allowed to sign up**: Several, separated by commas. Subdomains have to be listed separately.
 - **Email verification**: Not effective without a mail server.
+- **Monthly credits for new accounts**: granted at sign-up or approval. You can change it for each account when approving.
 
 ## Connector catalogue
 

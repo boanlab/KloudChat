@@ -1997,15 +1997,19 @@ def test_self_hosted_chat_models_are_told_not_to_think_unless_configured(monkeyp
     import inspect
 
     from app.core.config import settings
-    from app.services import agent
+    from app.services import agent, settings_store
 
     source = inspect.getsource(agent._stream_once)
-    assert "thinking.template_switch(model)" in source and "self_hosted_chat_thinking" in source
+    # The switches are the administrator's (System › 모델), seeded from the environment.
+    assert "thinking.template_switch(model)" in source and "roles.self_hosted_thinking" in source
     assert settings.self_hosted_chat_thinking is False
+    assert settings_store.model_roles_from({}).self_hosted_thinking is False
+    assert settings_store.model_roles_from({"thinking.self_hosted": "1"}).self_hosted_thinking
     # External chat models get the OpenRouter switch, and a refusal is retried without it.
-    assert "external_chat_thinking" in source and "thinking.switch(model)" in source
+    assert "roles.external_thinking" in source and "thinking.switch(model)" in source
     assert "thinking.refused(model, _Refusal(400, body))" in source
     assert settings.external_chat_thinking is False
+    assert settings_store.model_roles_from({}).external_thinking is False
 
 
 def test_the_default_local_model_plans_for_a_different_writer_but_not_for_itself():

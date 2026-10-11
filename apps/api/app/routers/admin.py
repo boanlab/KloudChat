@@ -149,6 +149,18 @@ _SETTING_SECTION: dict[str, str] = {
     "ocr_mode": "ocr",
     "ocr_vision_model": "ocr",
     "ocr_max_pages": "ocr",
+    "model_chat": "models",
+    "model_report": "models",
+    "model_slides": "models",
+    "model_image": "models",
+    "model_audio": "models",
+    "model_video": "models",
+    "model_title": "models",
+    "model_code": "models",
+    "model_code_fallback": "models",
+    "thinking_self_hosted": "models",
+    "thinking_external": "models",
+    "default_monthly_credits": "signup",
     "smtp_host": "mail",
     "smtp_port": "mail",
     "smtp_security": "mail",
@@ -200,6 +212,122 @@ async def _check_ocr(payload: SystemSettingsIn) -> None:
         }
         if payload.ocr_vision_model.strip() not in allowed:
             raise HTTPException(status_code=422, detail="ocr_vision_model_not_strict_local")
+
+
+#: Model-role fields of `SystemSettingsIn`: stored key, the choice list it must come from,
+#: and whether "" is allowed.
+_MODEL_ROLE_FIELDS: tuple[tuple[str, str, str, bool], ...] = (
+    ("model_chat", settings_store.MODEL_CHAT, "chat", False),
+    ("model_report", settings_store.MODEL_REPORT, "report", True),
+    ("model_slides", settings_store.MODEL_SLIDES, "slides", True),
+    ("model_image", settings_store.MODEL_IMAGE, "image", True),
+    ("model_audio", settings_store.MODEL_AUDIO, "audio", True),
+    ("model_video", settings_store.MODEL_VIDEO, "video", True),
+    ("model_title", settings_store.MODEL_TITLE, "helper", True),
+    ("model_code", settings_store.MODEL_CODE, "helper", True),
+    ("model_code_fallback", settings_store.MODEL_CODE_FALLBACK, "helper", True),
+)
+
+#: Most monthly credits a new account may be granted by default (≈ $10,000).
+_MAX_DEFAULT_CREDITS = 1_000_000_000
+
+
+def _model_choices(catalogue: dict) -> dict[str, list[dict]]:
+    """The models each role may name. Side work that reads the conversation (titles,
+    memories, the code that reads files) stays on self-hosted models."""
+    models = catalogue.get("models") or []
+
+    def row(model: dict) -> dict:
+        return {
+            "id": model["id"],
+            "label": model.get("label") or model["id"],
+            "strictLocal": bool(model.get("strictLocal")),
+        }
+
+    def of_kind(kind: str, modality: str | None = None) -> list[dict]:
+        return [
+            row(m)
+            for m in models
+            if kind in (m.get("kinds") or [])
+            and (modality is None or m.get("modality") == modality)
+        ]
+
+    return {
+        "chat": of_kind("chat"),
+        "report": of_kind("report"),
+        "slides": of_kind("slides"),
+        "image": of_kind("image"),
+        "audio": of_kind("av", "audio"),
+        "video": of_kind("av", "video"),
+        "helper": [
+            row(m)
+            for m in models
+            if "chat" in (m.get("kinds") or []) and m.get("dataBoundary") == "self_hosted"
+        ],
+    }
+
+
+async def _model_role_settings() -> dict:
+    """The 모델 section: the choice in force for each job and what each may be."""
+    roles = await settings_store.model_roles()
+    return {
+        "chat": roles.chat,
+        "report": roles.report,
+        "slides": roles.slides,
+        "image": roles.image,
+        "audio": roles.audio,
+        "video": roles.video,
+        "title": roles.title,
+        "code": roles.code,
+        "codeFallback": roles.code_fallback,
+        "selfHostedThinking": roles.self_hosted_thinking,
+        "externalThinking": roles.external_thinking,
+        "defaultMonthlyCredits": await settings_store.default_monthly_credits(),
+        "choices": _model_choices(await model_service.list_models()),
+    }
+
+
+async def _check_model_roles(payload: SystemSettingsIn) -> None:
+    """Refuses a model a job may not use before anything is written. The value already in
+    force is always accepted, so a section that is saved whole does not fail on a model the
+    gateway stopped serving."""
+    wanted = [
+        (field, key, role, optional, getattr(payload, field).strip())
+        for field, key, role, optional in _MODEL_ROLE_FIELDS
+        if getattr(payload, field) is not None
+    ]
+    if wanted:
+        stored = await settings_store.all_values(force=True)
+        in_force = settings_store.model_roles_from(stored)
+        choices = _model_choices(await model_service.list_models())
+        current = {
+            settings_store.MODEL_CHAT: in_force.chat,
+            settings_store.MODEL_REPORT: in_force.report,
+            settings_store.MODEL_SLIDES: in_force.slides,
+            settings_store.MODEL_IMAGE: in_force.image,
+            settings_store.MODEL_AUDIO: in_force.audio,
+            settings_store.MODEL_VIDEO: in_force.video,
+            settings_store.MODEL_TITLE: in_force.title,
+            settings_store.MODEL_CODE: in_force.code,
+            settings_store.MODEL_CODE_FALLBACK: in_force.code_fallback,
+        }
+        for field, key, role, optional, value in wanted:
+            if not value:
+                if not optional:
+                    raise HTTPException(status_code=422, detail=f"{field}_required")
+                continue
+            if value == current[key]:
+                continue
+            if value not in {model["id"] for model in choices[role]}:
+                raise HTTPException(status_code=422, detail=f"{field}_invalid")
+    for field in ("thinking_self_hosted", "thinking_external"):
+        value = getattr(payload, field)
+        if value is not None and value.strip() not in ("", "0", "1"):
+            raise HTTPException(status_code=422, detail=f"{field}_invalid")
+    if payload.default_monthly_credits is not None and payload.default_monthly_credits.strip():
+        raw = payload.default_monthly_credits.strip()
+        if not raw.isdigit() or int(raw) > _MAX_DEFAULT_CREDITS:
+            raise HTTPException(status_code=422, detail="default_monthly_credits_invalid")
 
 
 @router.get("/settings")
@@ -272,6 +400,7 @@ async def get_settings(admin: AdminUser, db: DbSession):
             ],
         },
         "ocr": await _ocr_settings(values),
+        "modelRoles": await _model_role_settings(),
         "credits": {
             "perUsd": settings.credits_per_usd,
             "budgetHeadroom": settings.litellm_budget_headroom,
@@ -290,6 +419,7 @@ async def put_settings(
 ):
     """Writes the supplied fields; omitted keeps the stored value, "" clears it."""
     await _check_ocr(payload)
+    await _check_model_roles(payload)
     before_stored = await settings_store.stored(db)
     before: dict[str, str] = {}
     after: dict[str, str] = {}
@@ -321,6 +451,10 @@ async def put_settings(
         ("ocr_mode", settings_store.OCR_MODE),
         ("ocr_vision_model", settings_store.OCR_VISION_MODEL),
         ("ocr_max_pages", settings_store.OCR_MAX_PAGES),
+        *((field, key) for field, key, _role, _optional in _MODEL_ROLE_FIELDS),
+        ("thinking_self_hosted", settings_store.THINKING_SELF_HOSTED),
+        ("thinking_external", settings_store.THINKING_EXTERNAL),
+        ("default_monthly_credits", settings_store.CREDITS_DEFAULT_MONTHLY),
         ("smtp_host", settings_store.SMTP_HOST),
         ("smtp_port", settings_store.SMTP_PORT),
         ("smtp_security", settings_store.SMTP_SECURITY),
@@ -468,7 +602,7 @@ async def approve(
     allowance = (
         payload.monthly_credits
         if payload.monthly_credits is not None
-        else (user.monthly_credits or settings.default_monthly_credits)
+        else (user.monthly_credits or await settings_store.default_monthly_credits())
     )
     user.status = UserStatus.active
     # Approval counts as verification.
@@ -563,7 +697,8 @@ async def reinstate(user_id: str, request: Request, admin: AdminUser, db: DbSess
     user.status = UserStatus.active
     await litellm_service.set_key_blocked(user, False)
     if user.cycle_resets_at is None:
-        grant_initial_allowance(db, user, user.monthly_credits or settings.default_monthly_credits)
+        allowance = user.monthly_credits or await settings_store.default_monthly_credits()
+        grant_initial_allowance(db, user, allowance)
     await litellm_service.sync_budget(user)
     db.add(user)
     _audit(

@@ -11,7 +11,7 @@ When you sign in with an administrator account, a **Manage** item appears in the
 | Users · Credits | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management |
 | Usage | Usage by period, by model, and by user, CSV, storage space |
 | Security · Audit | The **Policy** tab (personal data protection, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |
-| System | The **Proxy · Routing · Features · Branding · Mail · Sign-up** tabs |
+| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up** tabs |
 
 ## Order of initial setup
 

@@ -79,6 +79,41 @@ OCR_VISION_MODEL = "ocr.vision_model"
 #: Pages of one document read at most.
 OCR_MAX_PAGES = "ocr.max_pages"
 
+# ── which model does what ─────────────────────────────────────────────
+# Product choices, not deployment: the environment variable of the same name only seeds
+# a fresh install (migration 0068 writes it here once); the stored value wins afterwards.
+# Presence, not truthiness, decides: a stored "" is a choice ("follow the chat default",
+# "the session's own model", "no fallback").
+MODEL_CHAT = "models.chat"
+MODEL_REPORT = "models.report"
+MODEL_SLIDES = "models.slides"
+MODEL_IMAGE = "models.image"
+MODEL_AUDIO = "models.audio"
+MODEL_VIDEO = "models.video"
+#: Titles, memories and the running summary of a long conversation.
+MODEL_TITLE = "models.title"
+#: Writes the Python behind `run_code`; the fallback gets one more try.
+MODEL_CODE = "models.code"
+MODEL_CODE_FALLBACK = "models.code_fallback"
+#: "1" lets the models think before answering, "0" asks them not to.
+THINKING_SELF_HOSTED = "thinking.self_hosted"
+THINKING_EXTERNAL = "thinking.external"
+#: Monthly credits a new account is granted.
+CREDITS_DEFAULT_MONTHLY = "credits.default_monthly"
+
+#: Stored key → the `Settings` field that seeds it.
+MODEL_ROLE_ENV: dict[str, str] = {
+    MODEL_CHAT: "default_chat_model",
+    MODEL_REPORT: "default_report_model",
+    MODEL_SLIDES: "default_slides_model",
+    MODEL_IMAGE: "default_image_model",
+    MODEL_AUDIO: "default_audio_model",
+    MODEL_VIDEO: "default_video_model",
+    MODEL_TITLE: "title_model",
+    MODEL_CODE: "code_model",
+    MODEL_CODE_FALLBACK: "code_fallback_model",
+}
+
 # ── outgoing mail ──────────────────────────────────────────────────────
 SMTP_HOST = "smtp.host"
 SMTP_PORT = "smtp.port"
@@ -369,6 +404,66 @@ async def enabled_kinds() -> list[str]:
         # An empty string means all off, and must not fall back to the defaults.
         chosen = [k.strip() for k in raw.split(",") if k.strip() in OPTIONAL_KINDS]
     return ["chat", *chosen]
+
+
+@dataclass(frozen=True)
+class ModelRoles:
+    """Which model does which job, as in force now. See `MODEL_CHAT` and below."""
+
+    chat: str
+    report: str
+    slides: str
+    image: str
+    audio: str
+    video: str
+    title: str
+    code: str
+    code_fallback: str
+    self_hosted_thinking: bool
+    external_thinking: bool
+
+
+def model_roles_from(values: dict[str, str]) -> ModelRoles:
+    """The stored choice where there is one, else the environment's seed value."""
+
+    def pick(key: str) -> str:
+        if key in values:
+            return (values[key] or "").strip()
+        return str(getattr(env_settings, MODEL_ROLE_ENV[key]) or "").strip()
+
+    def flag(key: str, env_value: bool) -> bool:
+        raw = values.get(key)
+        return env_value if raw is None else raw.strip() == "1"
+
+    return ModelRoles(
+        chat=pick(MODEL_CHAT),
+        report=pick(MODEL_REPORT),
+        slides=pick(MODEL_SLIDES),
+        image=pick(MODEL_IMAGE),
+        audio=pick(MODEL_AUDIO),
+        video=pick(MODEL_VIDEO),
+        title=pick(MODEL_TITLE),
+        code=pick(MODEL_CODE),
+        code_fallback=pick(MODEL_CODE_FALLBACK),
+        self_hosted_thinking=flag(THINKING_SELF_HOSTED, env_settings.self_hosted_chat_thinking),
+        external_thinking=flag(THINKING_EXTERNAL, env_settings.external_chat_thinking),
+    )
+
+
+async def model_roles() -> ModelRoles:
+    return model_roles_from(await all_values())
+
+
+def cached_model_roles() -> ModelRoles:
+    """`model_roles()` for synchronous callers: the values last read (at most a TTL old on a
+    process that is serving model calls, which read the settings on every call), else the
+    environment."""
+    return model_roles_from(_cache["values"] or {})
+
+
+async def default_monthly_credits() -> int:
+    raw = ((await all_values()).get(CREDITS_DEFAULT_MONTHLY) or "").strip()
+    return int(raw) if raw.isdigit() else env_settings.default_monthly_credits
 
 
 async def smtp_config() -> dict[str, str]:

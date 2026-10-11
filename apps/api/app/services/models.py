@@ -16,7 +16,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from app.core.config import settings
-from app.services import imagegen, litellm
+from app.services import imagegen, litellm, settings_store
 from app.services.adapters import (
     ADAPTER_MODELS,
     FREE_PROVIDERS,
@@ -431,25 +431,26 @@ async def list_models(force: bool = False) -> dict[str, Any]:
         ok = any(m["id"] == model_id and kind in m["kinds"] for m in merged)
         return model_id if ok else ""
 
-    default_chat = served(settings.default_chat_model, "chat")
+    roles = await settings_store.model_roles()
+    default_chat = served(roles.chat, "chat")
     by_kind = {
         # The chat fallback is re-checked against each surface.
         kind: served(chosen, kind) or served(default_chat, kind)
         for kind, chosen in (
-            ("report", settings.default_report_model),
-            ("slides", settings.default_slides_model),
+            ("report", roles.report),
+            ("slides", roles.slides),
         )
     }
     # No chat fallback for images: the client takes the cheapest image model.
-    if image_default := served(settings.default_image_model, "image"):
+    if image_default := served(roles.image, "image"):
         by_kind["image"] = image_default
     # One default per modality on the audio/video surface, served only if the
     # model is of that modality. The surface's own default is the video one.
     by_mode = {
         mode: chosen
         for mode, chosen in (
-            ("audio", served(settings.default_audio_model, "av")),
-            ("video", served(settings.default_video_model, "av")),
+            ("audio", served(roles.audio, "av")),
+            ("video", served(roles.video, "av")),
         )
         if chosen and any(m["id"] == chosen and m["modality"] == mode for m in merged)
     }
@@ -472,7 +473,7 @@ _MISSING_ENRICHMENT: set[str] = set()
 
 async def resolve_enrichment_model() -> str:
     """`title_model` if the gateway serves it for chat, otherwise ""."""
-    configured = settings.title_model
+    configured = (await settings_store.model_roles()).title
     if not configured:
         return ""
     catalogue = await list_models()

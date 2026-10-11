@@ -200,7 +200,7 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
         ) from None
 
     if user_status is UserStatus.active:
-        grant_initial_allowance(db, user, settings.default_monthly_credits)
+        grant_initial_allowance(db, user, await settings_store.default_monthly_credits())
         await provision_user(user)
         await starter.seed_designs(db, user.id)
         # Only the administrator holds the shared catalogue.
@@ -256,7 +256,7 @@ async def _mail_verification(user: User, token: str) -> None:
 async def _activate(db: AsyncSession, user: User) -> None:
     """Activates an account: allowance, proxy user, starter designs."""
     user.status = UserStatus.active
-    grant_initial_allowance(db, user, settings.default_monthly_credits)
+    grant_initial_allowance(db, user, await settings_store.default_monthly_credits())
     await provision_user(user)
     await starter.seed_designs(db, user.id)
     db.add(user)

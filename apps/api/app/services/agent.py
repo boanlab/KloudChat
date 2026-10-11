@@ -183,10 +183,11 @@ async def _stream_once(
     if temperature is not None:
         payload["temperature"] = temperature
     self_hosted = model.startswith(("local/", "strict-local/"))
-    if self_hosted and not settings.self_hosted_chat_thinking:
+    roles = await settings_store.model_roles()
+    if self_hosted and not roles.self_hosted_thinking:
         # See `config.self_hosted_chat_thinking` and `thinking.template_switch`.
         payload.update(thinking.template_switch(model))
-    if not self_hosted and not settings.external_chat_thinking:
+    if not self_hosted and not roles.external_thinking:
         # See `config.external_chat_thinking`; `thinking.switch` skips a provider that refused.
         payload.update(thinking.switch(model))
     if tools:

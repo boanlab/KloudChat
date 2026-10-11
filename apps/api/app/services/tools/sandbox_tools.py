@@ -72,8 +72,9 @@ class CodeModelError(RuntimeError):
 
 def code_models(strict_local: bool) -> list[str]:
     """The writer then the fallback; a strict-local turn gets only `strict-local/` ids."""
+    roles = settings_store.cached_model_roles()
     out: list[str] = []
-    for model in (settings.code_model, settings.code_fallback_model):
+    for model in (roles.code, roles.code_fallback):
         model = (model or "").strip()
         if not model:
             continue
@@ -414,6 +415,7 @@ async def run_code(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     task = str(args.get("task") or "").strip()
     if not task:
         return ToolResult(content="오류: task 가 비었습니다. 무엇을 할지 한국어로 적으세요.", failed=True)
+    await settings_store.model_roles()  # refreshes the values `code_models` reads
     models = code_models(ctx.strict_local)
     if not models:
         return ToolResult(content="오류: 코드를 쓸 모델이 설정되지 않았습니다.", failed=True)
