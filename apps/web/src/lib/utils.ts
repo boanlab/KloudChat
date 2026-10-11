@@ -39,6 +39,10 @@ export function relativeTime(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString(currentLocale(), { month: 'short', day: 'numeric' })
 }
 
+/** The service's own day (the API's `TIMEZONE`): a refill or a limit that turns at its
+ * midnight, stored as 15:00 UTC, is the 1st there, not the 31st in a UTC browser. */
+const SERVICE_TIME_ZONE = 'Asia/Seoul'
+
 export function formatDate(iso: string | null | undefined) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -47,6 +51,7 @@ export function formatDate(iso: string | null | undefined) {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: SERVICE_TIME_ZONE,
   })
 }
 
