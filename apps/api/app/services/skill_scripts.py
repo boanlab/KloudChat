@@ -8,15 +8,15 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from functools import lru_cache
+from functools import cache
 from types import ModuleType
 
 from app.services import skill_packages
 
 
-@lru_cache(maxsize=16)
+@cache
 def module(key: str, script: str) -> ModuleType:
-    """`app/skills/<key>/scripts/<script>.py` as a module."""
+    """`app/skills/<key>/scripts/<script>.py` as a module, loaded once per process."""
     package = skill_packages.package_for(key)
     if package is None or script not in package.scripts:
         raise LookupError(f"no script {key}/{script}")
