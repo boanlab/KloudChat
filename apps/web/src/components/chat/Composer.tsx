@@ -1194,8 +1194,11 @@ export function Composer({
     const fit = () => {
       el.style.height = 'auto'
       const full = el.scrollHeight
-      el.style.height = `${Math.min(full, COMPOSER_MAX_PX)}px`
-      el.style.overflowY = full > COMPOSER_MAX_PX ? 'auto' : 'hidden'
+      // On a short screen (a phone, or 200% zoom) the box keeps to a quarter of it and scrolls
+      // inside, so the answer above stays readable.
+      const most = Math.max(72, Math.min(COMPOSER_MAX_PX, Math.round(window.innerHeight * 0.25)))
+      el.style.height = `${Math.min(full, most)}px`
+      el.style.overflowY = full > most ? 'auto' : 'hidden'
     }
     fit()
     const resized = new ResizeObserver(() => {
@@ -2078,9 +2081,10 @@ export function Composer({
               </Badge>
             )}
             {shownTemplate && (
-              <Badge tone="accent">
+              <Badge tone="accent" title={t('이 대화의 템플릿')}>
                 <LayoutGrid size={11} />
-                {templateText(shownTemplate, currentLang() === 'en').name}
+                {/* Named by its role: beside an agent of the same name (「@회의록」) it reads as the form. */}
+                {t('템플릿: {name}').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)}
                 <button
                   type="button"
                   onClick={() => {
@@ -2214,7 +2218,11 @@ export function Composer({
               </span>
             )}
             {attachments.some((f) => f.error) && (
-              <p role="status" className="w-full text-xs text-warn">
+              <p
+                role="status"
+                className="w-full truncate text-xs text-warn"
+                title={attachments.filter((f) => f.error).map((f) => `${f.name} — ${f.error}`).join('\n')}
+              >
                 {attachments
                   .filter((f) => f.error)
                   .map((f) => `${f.name} — ${f.error}`)
