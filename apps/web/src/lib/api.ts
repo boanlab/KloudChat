@@ -336,6 +336,28 @@ export interface SystemSettings {
     /** Strict-local models that declare vision: the only ones a page may go to. */
     visionChoices: { id: string; label: string }[]
   }
+  /** Which model does what, as in force: the administrator's choice, seeded once from the
+   *  environment. An empty string is a choice too (follow the chat default, the session's
+   *  own model, no fallback). Absent from an older server. */
+  modelRoles?: {
+    chat: string
+    report: string
+    slides: string
+    image: string
+    audio: string
+    video: string
+    title: string
+    code: string
+    codeFallback: string
+    selfHostedThinking: boolean
+    externalThinking: boolean
+    defaultMonthlyCredits: number
+    /** The models each job may name; `helper` is self-hosted chat models only. */
+    choices: Record<
+      'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video' | 'helper',
+      { id: string; label: string; strictLocal: boolean }[]
+    >
+  }
   /** Instance economics, served so the screens quoting them cannot drift. */
   credits: {
     /** Credits to one US dollar. */
@@ -459,6 +481,18 @@ export const adminApi = {
     signupMode?: string
     signupDomains?: string
     signupVerifyEmail?: string
+    modelChat?: string
+    modelReport?: string
+    modelSlides?: string
+    modelImage?: string
+    modelAudio?: string
+    modelVideo?: string
+    modelTitle?: string
+    modelCode?: string
+    modelCodeFallback?: string
+    thinkingSelfHosted?: string
+    thinkingExternal?: string
+    defaultMonthlyCredits?: string
   }) => call<SystemSettings>('/admin/settings', { method: 'PUT', body: JSON.stringify(patch) }),
   testSettings: () =>
     call<{ ok: boolean; models?: number; detail?: string }>('/admin/settings/test', {

@@ -60,7 +60,7 @@ from app.models.publishing import (
 )
 from app.models.user import AuditEvent, CreditLedger, User, UserStatus, utcnow
 from app.models.workspace import Agent, StoredFile, Visibility
-from app.services import governance, skill_specs
+from app.services import governance, settings_store, skill_specs
 
 log = logging.getLogger(__name__)
 
@@ -409,7 +409,7 @@ def pick_model(agent: Agent, catalogue: list[dict], owner: User, safe_ids: list[
             return by_id.get("strict-local/" + model_id.split("/", 1)[1])
         return None
 
-    for candidate in (agent.model, settings.default_chat_model):
+    for candidate in (agent.model, settings_store.cached_model_roles().chat):
         if found := strict(candidate or ""):
             return found
     for model_id in safe_ids or []:

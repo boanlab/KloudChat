@@ -7,10 +7,21 @@ KloudChat is configured in two places, and the split matters:
 | **Bootstrap** | `.env`, read by `docker compose` | At container start |
 | **Runtime** | Admin screens, stored in `system_settings` | Immediately, no restart |
 
+The rule for what goes where: **what the deployment needs lives in `.env`;
+everything else is decided in the admin screen.** Addresses, ports, secrets,
+the database, replicas, cookies and storage paths are deployment. Which model
+does which job, whether models think, and policy such as a new account's
+credits are product choices, stored in the database. See
+[Deployment settings and product settings](#deployment-settings-and-product-settings)
+for every setting's side.
+
 Resolution order is **database → environment → code default**. The environment
 is a working bootstrap so that a fresh deployment runs before anyone opens the
 admin screen; anything an administrator saves afterwards takes precedence and
 keeps taking precedence. Editing `.env` will not undo a value set in the UI.
+For the product choices the environment is only the first-install seed:
+migration `0068` writes it into the database once, so from then on the `.env`
+line does nothing and can be removed.
 
 Most runtime values are cached in-process — they are read on every model call —
 and the cache is invalidated on write. With more than one API replica, those
@@ -23,6 +34,60 @@ send path return `503 governance_unavailable` before reading the
 model catalogue, creating a message, issuing a key, charging credit or calling
 an upstream model. A cached policy remains useful for display, but never
 authorizes raw, masked or strict-local egress.
+
+---
+
+## Deployment settings and product settings
+
+| Side | Settings | Why there |
+| --- | --- | --- |
+| Deployment | `JWT_SECRET`, `SECRET_KEY`, `LITELLM_MASTER_KEY`, `TOOLS_GATEWAY_KEY`, `KCI_API_KEY`, `CODE_INTERPRETER_API_KEY`, `SCRAPER_API_KEY`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_ADMIN_NAME` | Secrets and keys. Never in a screen a browser can read; the master key can be replaced in **System › 프록시** but is never shown. |
+| Deployment | `BACKEND_BASE_URL`, `LITELLM_BASE_URL`, `PRINT_BASE_URL`, `SEARXNG_URL`, `SCRAPER_URL`, `CODE_INTERPRETER_URL`, `DEEP_RESEARCH_URL`, `INDEX_URL`, `OCR_URL`, `WHISPER_URL`, `PERF_METRICS_URL`, `GUIDE_BASE_URL`, `APP_BASE_URL` | Addresses of services this stack talks to. The gateway, LiteLLM, tool and mail-link addresses can also be overridden in **System** (they move without a redeploy); the environment is their boot value. |
+| Deployment | `DATABASE_URL`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `API_REPLICAS`, `ENV`, `API_PREFIX` | Database and processes. |
+| Deployment | `CORS_ORIGINS`, `COOKIE_SECURE`, `COOKIE_DOMAIN`, `REFRESH_COOKIE_NAME`, `KCHAT_TRUSTED_PROXIES`, `KCHAT_WEB_PORT`, `KCHAT_API_URL` | Network, proxy and cookie security: they depend on how the host is exposed. |
+| Deployment | `FILE_STORAGE_DIR`, `MAX_UPLOAD_MB`, `STORAGE_RECLAIM_AT`, `GEOIP_DATABASE` | Storage paths and what the volume can hold (the upload limit must agree with the proxy's body limit). |
+| Deployment | `JWT_ALGORITHM`, `ACCESS_TOKEN_TTL_MIN`, `REFRESH_TOKEN_TTL_DAYS`, `REFRESH_GRACE_SEC`, `LOGIN_MAX_FAILURES`, `LOGIN_LOCKOUT_MIN`, `ARGON2_TIME_COST`, `ARGON2_MEMORY_COST`, `ARGON2_PARALLELISM` | Sign-in mechanics, tuned to the host's CPU and the threat model, not a product choice. |
+| Deployment | `CHAT_TIMEOUT_SEC`, `CHAT_STALL_SEC`, `TOOL_TIMEOUT_SEC`, `MAX_TOOL_HOPS`, `TITLE_TIMEOUT_SEC`, `AGENT_DRAFT_TIMEOUT_SEC`, `LITELLM_TIMEOUT_SEC`, `LITELLM_PROBE_TIMEOUT_SEC`, `AUTO_ROUTING_CLASSIFIER_TIMEOUT_SEC`, `FILE_CONTEXT_CHARS`, `WEB_SEARCH_RESULTS`, `WEB_SEARCH_SCRAPE` | Timeouts and per-turn load, set by how fast the GPU nodes and the search backend are. |
+| Deployment | `SANDBOX_IN_BOUNDARY`, `SELF_HOSTED_THINKING_MODELS`, `OCR_VISION_MODEL`, `SKILL_DRAFTS`, `TIMEZONE` | Facts about the infrastructure: whether the sandbox is inside the boundary, which served models think unless told not to, which served vision model reads pages best when the administrator picked **자동**, whether this is an evaluation instance, the install's time zone. |
+| Deployment | `CREDITS_PER_USD`, `LITELLM_BUDGET_HEADROOM` | Accounting constants (shown read-only under **System › 프록시**). |
+| Deployment | `PERF_*` | Performance monitoring: mounts, targets and thresholds of this host. |
+| Product, new in the admin screen | `DEFAULT_CHAT_MODEL`, `DEFAULT_REPORT_MODEL`, `DEFAULT_SLIDES_MODEL`, `DEFAULT_IMAGE_MODEL`, `DEFAULT_AUDIO_MODEL`, `DEFAULT_VIDEO_MODEL`, `TITLE_MODEL`, `CODE_MODEL`, `CODE_FALLBACK_MODEL`, `SELF_HOSTED_CHAT_THINKING`, `EXTERNAL_CHAT_THINKING` | **System › 모델** (`models.*`, `thinking.*` in `system_settings`). The environment seeds a fresh install once (migration `0068`). |
+| Product, new in the admin screen | `DEFAULT_MONTHLY_CREDITS` | **System › 회원 가입** (`credits.default_monthly`). Seeded once the same way. |
+| Product, already in the admin screen | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `OUTLINE_MODEL_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › 라우팅** and **보안 · 감사** (`governance` row). The environment only fills the row when it is first created. |
+| Product, already in the admin screen | `BRAND_NAME`, `SIGNUP_MODE`, `SMTP_HOST` … `SMTP_FROM` | **System › 브랜딩 / 회원 가입 / 메일**. A stored value wins; with none stored the environment applies. |
+| Product, admin screen only | enabled surfaces, OCR on/off, reading mode, vision model, page limit, contact address, signup domains and verification, logo, governance policies | No environment variable. |
+
+### After upgrading an existing install
+
+Migration `0068` copies the product choices in force into `system_settings`, so
+nothing changes on upgrade:
+
+- `models.chat`, `models.report`, `models.slides`, `models.image`,
+  `models.audio`, `models.video`, `models.code`, `models.code_fallback`,
+  `thinking.self_hosted`, `thinking.external` and `credits.default_monthly`
+  take the values of the environment the `migrate` container runs with
+  (compose passes it the same seed variables as `api`). An empty report or
+  slides default stays empty, which follows the chat default.
+- `models.title` takes `TITLE_MODEL`, except that an earlier code default
+  (`local/qwen3.8-27b`, `local/qwen3.6-35b`, `local/glm-4.7-flash`) was never a
+  choice and becomes `local/qwen3.8-flash`.
+- A key already stored is left alone.
+- Governance: an Auto classifier still on the earlier default
+  `strict-local/qwen3.8-27b` moves to `strict-local/qwen3.8-flash`, and an
+  outline model still on `local/qwen3.5-122b` to `local/qwen3.8-flash`, unless
+  the audit log shows an administrator saved that field. `qwen3.8-flash-next`,
+  the earlier name of `qwen3.8-flash`, is renamed in the classifier, outline,
+  economy and upgrade lists and the OCR vision model.
+- Downgrading removes the seeded rows (the environment applies again); the
+  governance moves and the rename stay.
+
+Once it has run, these `.env` lines do nothing and can be deleted:
+`KCHAT_DEFAULT_CHAT_MODEL`, `KCHAT_DEFAULT_REPORT_MODEL`,
+`KCHAT_DEFAULT_SLIDES_MODEL`, `KCHAT_DEFAULT_IMAGE_MODEL`,
+`KCHAT_DEFAULT_AUDIO_MODEL`, `KCHAT_DEFAULT_VIDEO_MODEL`, `KCHAT_TITLE_MODEL`,
+`KCHAT_DEFAULT_MONTHLY_CREDITS`, `KCHAT_SELF_HOSTED_CHAT_THINKING` and
+`KCHAT_EXTERNAL_CHAT_THINKING`. Change these in **System › 모델** and
+**System › 회원 가입** instead.
 
 ---
 
@@ -119,8 +184,8 @@ it when nobody is mid-turn):
 | `KCHAT_ADMIN_EMAIL` | `BOOTSTRAP_ADMIN_EMAIL` | — | Applied only when the database has no accounts at all. Blank means the first signup becomes administrator. |
 | `KCHAT_ADMIN_PASSWORD` | `BOOTSTRAP_ADMIN_PASSWORD` | — | Set both to create an administrator on first boot. Never commit a value — this file is published. |
 | `KCHAT_SIGNUP_MODE` | `SIGNUP_MODE` | `approval` | `open` (active immediately), `approval` (admin approves), `closed` (signup disabled). |
-| `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `500000` in `.env.example` (compose falls back to `1000000` when the variable is unset) | Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 500,000 ≈ $5/month. |
-| `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.8-27b` | Falls back to the surface's cheapest model when absent from the catalogue. |
+| `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `500000` in `.env.example` (compose falls back to `1000000` when the variable is unset) | First-install seed of **System › 회원 가입 › 새 계정의 월 크레딧**, which then decides. Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 500,000 ≈ $5/month. |
+| `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.8-27b` | First-install seed of **System › 모델 › 대화 기본 모델** (as are the four rows below). Falls back to the surface's cheapest model when absent from the catalogue. |
 | `KCHAT_DEFAULT_REPORT_MODEL` / `KCHAT_DEFAULT_SLIDES_MODEL` | `DEFAULT_REPORT_MODEL` / `DEFAULT_SLIDES_MODEL` | — | Per-surface defaults for 보고서 and 발표 자료. Empty falls back to the chat default. |
 | `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `google/gemini-2.5-flash-image` | Default picture model. Gemini's image models take the aspect ratio as a parameter; the OpenAI ones return a square whatever is asked. Absent from the catalogue → cheapest image model. |
 | `KCHAT_DEFAULT_AUDIO_MODEL` / `KCHAT_DEFAULT_VIDEO_MODEL` | `DEFAULT_AUDIO_MODEL` / `DEFAULT_VIDEO_MODEL` | `openai/gpt-audio-mini` / `google/veo-3.1-lite` | The 오디오/동영상 surface keeps one default per modality. Absent from the catalogue → cheapest model of that modality. |
@@ -196,11 +261,14 @@ Not exposed in `.env.example`; set them directly on the `api` service in
 `docker-compose.yml` when you need to. Defaults live in
 [`apps/api/app/core/config.py`](../apps/api/app/core/config.py).
 
-Four of them compose already passes through from `.env`: `ENV` as
-`KCHAT_ENV`, `TITLE_MODEL` as `KCHAT_TITLE_MODEL`, `TIMEZONE` as
-`KCHAT_TIMEZONE` and `GEOIP_DATABASE` as `KCHAT_GEOIP_DATABASE`. The others,
-including the thinking switches listed in `.env.example`, take effect only
-when added to the `api` service's `environment:`.
+Some of them compose already passes through from `.env`: `ENV` as
+`KCHAT_ENV`, `TIMEZONE` as `KCHAT_TIMEZONE`, `GEOIP_DATABASE` as
+`KCHAT_GEOIP_DATABASE`, `SELF_HOSTED_THINKING_MODELS` as
+`KCHAT_SELF_HOSTED_THINKING_MODELS`, and the first-install seeds (`TITLE_MODEL`
+and the two thinking switches, in `x-first-install-seeds`, which both `migrate`
+and `api` receive). The others take effect only when added to the `api`
+service's `environment:` — or, for `CODE_MODEL` and `CODE_FALLBACK_MODEL`, to
+`x-first-install-seeds` before the first install.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
@@ -220,8 +288,8 @@ when added to the `api` service's `environment:`.
 | `CREDITS_PER_USD` | `100000` | The single exchange rate. Adjust this when provider prices move, rather than re-cutting everyone's allowance. |
 | `LITELLM_BUDGET_HEADROOM` | `0.2` | How far above the KloudChat allowance the proxy-side budget sits. A backstop that sits exactly on the limit fires first, blocking someone with a number no screen shows them. |
 | `ARGON2_TIME_COST` / `ARGON2_MEMORY_COST` / `ARGON2_PARALLELISM` | `3` / `65536` / `4` | `memory_cost` is in KiB. |
-| `TITLE_MODEL` | `local/qwen3.8-flash` | Names conversations, extracts memories and writes the running summary of a long conversation. A strict-local turn uses its own model instead. Empty falls back to the session's own model — correct, but wasteful on an expensive one. Set through `KCHAT_TITLE_MODEL`. |
-| `CODE_MODEL` / `CODE_FALLBACK_MODEL` | `local/qwen3.8-27b` / `local/qwen3.8-flash` | Write the Python behind `run_code`: the first gets a try and a repair, the second one more try. The fallback also settles two cost readings of a comparison that disagree. A strict-local turn uses the `strict-local/` twin of a `local/` id and drops any other. |
+| `TITLE_MODEL` | `local/qwen3.8-flash` | First-install seed of **System › 모델 › 제목·기억·요약 모델**. Names conversations, extracts memories and writes the running summary of a long conversation. A strict-local turn uses its own model instead. Empty falls back to the session's own model — correct, but wasteful on an expensive one. Set through `KCHAT_TITLE_MODEL`. |
+| `CODE_MODEL` / `CODE_FALLBACK_MODEL` | `local/qwen3.8-27b` / `local/qwen3.8-flash` | First-install seeds of **System › 모델 › 코드 작성 모델** and its fallback. Write the Python behind `run_code`: the first gets a try and a repair, the second one more try. The fallback also settles two cost readings of a comparison that disagree. A strict-local turn uses the `strict-local/` twin of a `local/` id and drops any other. |
 | `OUTLINE_MODEL_DEFAULT` / `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT` | `local/qwen3.8-flash` / `strict-local/qwen3.8-flash` | The outline model and the Auto classifier of a fresh governance row; once an administrator saves **System → Routing**, the saved values win. |
 | `WEB_SEARCH_RESULTS` / `WEB_SEARCH_SCRAPE` | `5` / `3` | Each scrape is a page fetch; this trades answer quality against turn latency. |
 | `APP_BASE_URL` | — | Origin used to build password reset links. Never taken from the request `Host`, which is attacker-controlled. |
@@ -231,9 +299,9 @@ when added to the `api` service's `environment:`.
 | `LITELLM_TIMEOUT_SEC` / `LITELLM_PROBE_TIMEOUT_SEC` | `20` / `4` | The master-key client — provisioning a user, issuing a key, listing the catalogue — and the probe behind the admin connection test. **Not the model call**, which is `CHAT_TIMEOUT_SEC` above; raising this one will not help a generation that is being cut off. |
 | `AUTO_ROUTING_CLASSIFIER_TIMEOUT_SEC` | `8` | Auto's classification call. On timeout the quality model answers. |
 | `FILE_STORAGE_DIR` | `/srv/data/files` | Where uploads and generated media are written. Mount it, or a container rebuild loses every picture. |
-| `SELF_HOSTED_CHAT_THINKING` | `false` | Whether self-hosted chat models may think before answering. Off sends `enable_thinking: false` to the models named below. Set through `KCHAT_SELF_HOSTED_CHAT_THINKING`. |
+| `SELF_HOSTED_CHAT_THINKING` | `false` | First-install seed of **System › 모델**'s thinking switch. Whether self-hosted chat models may think before answering. Off sends `enable_thinking: false` to the models named below. Set through `KCHAT_SELF_HOSTED_CHAT_THINKING`. |
 | `SELF_HOSTED_THINKING_MODELS` | `qwen3.8-flash` | Comma-separated name fragments of self-hosted models that think unless told not to. Set through `KCHAT_SELF_HOSTED_THINKING_MODELS`. |
-| `EXTERNAL_CHAT_THINKING` | `false` | The same for external chat models; off sends OpenRouter's `reasoning` switch. Set through `KCHAT_EXTERNAL_CHAT_THINKING`. |
+| `EXTERNAL_CHAT_THINKING` | `false` | First-install seed, as above. The same for external chat models; off sends OpenRouter's `reasoning` switch. Set through `KCHAT_EXTERNAL_CHAT_THINKING`. |
 | `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | `true` | Default of the governance switch that keeps turns carrying internal material (attachments, project files, memories) on strict-local models. The admin screen's value wins once saved. |
 | `API_REPLICAS` / `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `1` / `10` / `20` | Set through `KCHAT_API_REPLICAS`, `KCHAT_DB_POOL_SIZE`, `KCHAT_DB_MAX_OVERFLOW` (above). |
 | `SMTP_HOST` … `SMTP_FROM` | — | Seed values for **System → Mail**; the admin screen wins. |
@@ -361,12 +429,27 @@ reset they asked for, or the confirmation of an address they signed up with.
 - **Mode** — `open` / `approval` / `closed`, overriding `SIGNUP_MODE` when set.
 - **Allowed domains** — a comma-separated list of mail domains that may
   register; empty allows any. Subdomains are not implied.
+- **New accounts' monthly credits** — granted at signup (open mode) or
+  approval; the approval dialog can still set a different number per account.
 - **Email verification** — when on, a new account is `pending` until the link
   in the confirmation mail is clicked (24 hours, single use); then `open`
   activates it and `approval` hands it to an administrator. Approving an
   account counts as confirming its address. Needs SMTP: without a mail server
   the switch is inert and signups go through unverified, and the screen says
   so.
+
+### Models
+
+Which model does which job when the person has not chosen one: the default of
+each surface (chat, report, slides, image, audio, video), the model for
+titles, memories and the running summary, the model that writes `run_code`
+programs and its fallback, and whether self-hosted and external models think
+before answering. Report and slides left empty follow the chat default; image,
+audio and video left empty take the cheapest model of their kind. The
+side-work models read the conversation, so only self-hosted chat models can be
+chosen (`422 model_title_invalid` and the like otherwise); a strict-local turn
+uses the `strict-local/` twin. A model the gateway stopped serving stays
+selectable as it is, marked unavailable, and is not swapped silently.
 
 ### Routing
 
@@ -382,14 +465,14 @@ prompts; blind pairs judged twice):
 
 | Work | Model | Set by |
 | --- | --- | --- |
-| Chat answers, report and deck prose | `local/qwen3.8-27b` | the person's choice; `DEFAULT_CHAT_MODEL` (and the per-surface defaults) |
+| Chat answers, report and deck prose | `local/qwen3.8-27b` | the person's choice; else **System → 모델 → 대화·보고서·발표 자료 기본 모델** |
 | Outline, research plan, figure proposals | `local/qwen3.8-flash` | **Routing → 구성에 쓸 모델** (`outline_model_id`) |
 | Judging: key figures, cost and score readings, checks, repairs, title block | the outline model, else the writer | follows the outline model |
 | Calculation programs for a document (`calc`) | the outline model, else the writer | follows the outline model |
 | 빠진 정보 질문 judged against the material | the outline model's `strict-local/` twin, else the first strict-local model | follows the outline model |
 | Auto classifier | `strict-local/qwen3.8-flash` | **Routing → 난이도 분류 모델** |
-| Titles, memories, running summary | `local/qwen3.8-flash` | `TITLE_MODEL` |
-| `run_code` file programs | `local/qwen3.8-27b`, then Flash | `CODE_MODEL`, `CODE_FALLBACK_MODEL` |
+| Titles, memories, running summary | `local/qwen3.8-flash` | **System → 모델 → 제목·기억·요약 모델** |
+| `run_code` file programs | `local/qwen3.8-27b`, then Flash | **System → 모델 → 코드 작성 모델**, its fallback |
 | Re-reading scanned pages | `strict-local/qwen3.8-flash` | **System → Features → Text from scans** |
 
 Why this split:

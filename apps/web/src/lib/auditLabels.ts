@@ -129,6 +129,18 @@ export const FIELD_LABEL: Record<string, string> = {
   signup_mode: '가입 방식',
   signup_domains: '가입 가능한 이메일 도메인',
   signup_verify_email: '이메일 인증',
+  model_chat: '대화 기본 모델',
+  model_report: '보고서 기본 모델',
+  model_slides: '발표 자료 기본 모델',
+  model_image: '그림 기본 모델',
+  model_audio: '오디오 기본 모델',
+  model_video: '동영상 기본 모델',
+  model_title: '제목·기억·요약 모델',
+  model_code: '코드 작성 모델',
+  model_code_fallback: '코드 작성 대체 모델',
+  thinking_self_hosted: '자체 호스팅 모델 생각',
+  thinking_external: '외부 모델 생각',
+  default_monthly_credits: '새 계정 월 크레딧',
   // accounts and reviews
   status: '상태',
   role: '권한',
@@ -165,6 +177,18 @@ const SETTING_SECTION: Record<string, string> = {
   signup_mode: 'signup',
   signup_domains: 'signup',
   signup_verify_email: 'signup',
+  model_chat: 'models',
+  model_report: 'models',
+  model_slides: 'models',
+  model_image: 'models',
+  model_audio: 'models',
+  model_video: 'models',
+  model_title: 'models',
+  model_code: 'models',
+  model_code_fallback: 'models',
+  thinking_self_hosted: 'models',
+  thinking_external: 'models',
+  default_monthly_credits: 'signup',
 }
 
 const SECTION_LABEL: Record<string, string> = {
@@ -174,6 +198,7 @@ const SECTION_LABEL: Record<string, string> = {
   tools: '기능 서버',
   mail: '메일 발송',
   signup: '가입',
+  models: '모델',
   other: '기타',
 }
 

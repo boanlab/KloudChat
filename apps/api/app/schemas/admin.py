@@ -42,6 +42,27 @@ class SystemSettingsIn(Wire):
     #: Pages of one document read at most (1–2000).
     ocr_max_pages: str | None = None
 
+    # ── which model does what (System › 모델) ───────────────────────────
+    #: Conversation default; required, a chat model this install serves.
+    model_chat: str | None = None
+    #: "" follows the chat default.
+    model_report: str | None = None
+    model_slides: str | None = None
+    #: "" lets the surface take its cheapest model.
+    model_image: str | None = None
+    model_audio: str | None = None
+    model_video: str | None = None
+    #: Titles, memories, running summary. A self-hosted chat model, or "" for the session's own.
+    model_title: str | None = None
+    #: Writes the Python behind `run_code`, then the fallback. Self-hosted chat models; "" none.
+    model_code: str | None = None
+    model_code_fallback: str | None = None
+    #: "1" lets the models think before answering, "0" asks them not to.
+    thinking_self_hosted: str | None = None
+    thinking_external: str | None = None
+    #: Monthly credits a new account is granted (0–1,000,000,000).
+    default_monthly_credits: str | None = None
+
     # ── outgoing mail ──────────────────────────────────────────────────
     smtp_host: str | None = None
     smtp_port: str | None = None

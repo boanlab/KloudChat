@@ -72,7 +72,8 @@ class Settings(BaseSettings):
     bootstrap_admin_email: str = ""
     bootstrap_admin_password: str = ""
     bootstrap_admin_name: str = "관리자"
-    # Granted at approval unless the admin sets another number.
+    # Granted at approval unless the admin sets another number. First-install seed of
+    # System › 회원 가입's 「새 계정의 월 크레딧」.
     default_monthly_credits: int = 500_000
     # Provider USD → credits (100_000 → 1 credit = $0.00001). Used only by
     # `services/models.py`; fine-grained so cheap models do not round onto one floor.
@@ -161,6 +162,12 @@ class Settings(BaseSettings):
     #: outside-model fallback; a leftover `STT_OR_MODEL` env is ignored.
     whisper_url: str = ""
     code_interpreter_api_key: str = ""
+    # ── first-install seeds of product choices ─────────────────────────
+    # `code_model` … `default_video_model`, the thinking switches and
+    # `default_monthly_credits` are decided in the admin screen (System › 모델,
+    # System › 회원 가입; `settings_store.MODEL_CHAT` and below). Migration 0068
+    # writes these values into `system_settings` once; a stored value always wins.
+
     #: Writes the Python behind `run_code`; the fallback gets one try after it fails.
     #: A strict-local turn uses the `strict-local/` twin of a `local/` id, never another.
     #: The 27B: on file tasks (messy CSV, mixed date formats) its pandas code was right in 8

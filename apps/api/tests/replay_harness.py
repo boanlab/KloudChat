@@ -146,9 +146,18 @@ RECORDED_DEFAULTS = {
 
 def pin_recorded_defaults(patch: Patch) -> None:
     from app.core.config import settings
+    from app.services import settings_store
 
     for name, value in RECORDED_DEFAULTS.items():
         patch(settings, name, value)
+
+    # Model roles are read from the database first; a replay has none, so the pinned
+    # environment above is what is in force, whatever another test left in the cache.
+    async def model_roles():
+        return settings_store.model_roles_from({})
+
+    patch(settings_store, "model_roles", model_roles)
+    patch(settings_store, "cached_model_roles", lambda: settings_store.model_roles_from({}))
 
 
 # ── a fixed clock and fixed ids ─────────────────────────────────────────

@@ -535,7 +535,7 @@ def _local_planner(
     if strict_local or writer.get("dataBoundary") in ("self_hosted", "hybrid"):
         return None
     return _planner_model(
-        settings.default_chat_model, user=user, catalogue=catalogue, kind=kind,
+        settings_store.cached_model_roles().chat, user=user, catalogue=catalogue, kind=kind,
         writer=writer, strict_local=strict_local,
     )
 
@@ -4464,7 +4464,7 @@ async def send_message(
     # Unset, it is the default local model: an outline, a proposal and a revision plan
     # are judgements, and the model that writes the prose need not be the one making them.
     outline_model = _planner_model(
-        policy.outline_model_id or settings.default_chat_model,
+        policy.outline_model_id or (await settings_store.model_roles()).chat,
         user=user,
         catalogue=catalogue_models,
         kind=session.kind.value,

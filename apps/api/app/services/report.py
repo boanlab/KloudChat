@@ -867,7 +867,7 @@ _MOST_TOKENS = 16000
 def _tiebreak_model(model: str) -> str:
     """The larger self-hosted model that settles two pre-pass readings that differ, on the
     turn's own route: a strict-local turn gets its `strict-local/` twin, or its own model."""
-    big = (settings.code_fallback_model or "").strip()
+    big = settings_store.cached_model_roles().code_fallback
     if model.startswith("strict-local/"):
         if big.startswith("local/"):
             return "strict-local/" + big.split("/", 1)[1]

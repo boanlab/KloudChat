@@ -11,6 +11,7 @@ import { BrandingSection } from './settings/BrandingSection'
 import { ConnectorCatalogSection } from './settings/ConnectorCatalogSection'
 import { FeaturesSection } from './settings/FeaturesSection'
 import { MailSection } from './settings/MailSection'
+import { ModelRolesSection } from './settings/ModelRolesSection'
 import { OutlineModelSection } from './settings/OutlineModelSection'
 import { ProxySection } from './settings/ProxySection'
 import { SignupSection } from './settings/SignupSection'
@@ -19,6 +20,7 @@ import { OcrSection } from './settings/OcrSection'
 
 const tabs = [
   { to: '/admin/system', label: '프록시', end: true },
+  { to: '/admin/system/models', label: '모델', end: false },
   { to: '/admin/system/routing', label: '라우팅', end: false },
   { to: '/admin/system/features', label: '기능', end: false },
   { to: '/admin/system/branding', label: '브랜딩', end: false },
@@ -92,6 +94,17 @@ export function AdminSystemPage() {
 
         <Routes>
           <Route index element={<ProxySection settings={settings} reload={reload} />} />
+          <Route
+            path="models"
+            element={
+              <Group
+                title={t('모델')}
+                description={t('어떤 모델이 어떤 일을 맡을지 정합니다. 서버 설정 파일(.env)의 값은 처음 설치할 때 한 번만 쓰이고, 여기서 저장한 값이 우선합니다.')}
+              >
+                <ModelRolesSection settings={settings} onSaved={reload} />
+              </Group>
+            }
+          />
           <Route
             path="routing"
             element={

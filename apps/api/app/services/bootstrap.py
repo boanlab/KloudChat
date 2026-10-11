@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.models.user import User, UserRole, UserStatus
-from app.services import starter
+from app.services import settings_store, starter
 from app.services.credits import grant_initial_allowance
 from app.services.litellm import provision_user
 
@@ -65,7 +65,7 @@ async def seed_admin() -> None:
         db.add(user)
         await db.flush()
 
-        grant_initial_allowance(db, user, settings.default_monthly_credits)
+        grant_initial_allowance(db, user, await settings_store.default_monthly_credits())
         await provision_user(user)
         await starter.seed_designs(db, user.id)
         # The administrator owns the shared catalogue of agents and skills.
