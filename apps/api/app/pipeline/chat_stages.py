@@ -18,7 +18,7 @@ from app.pipeline import registry
 from app.pipeline.bundle import Bundle, Document, Material, Request
 from app.pipeline.stage import Base, Context
 from app.services import cover_letter, freshness, internal_words, superlatives, units, weekdays
-from app.services.chat_format import normalize_raw_payload
+from app.services.chat_format import normalize_raw_payload, unlink_local_targets
 
 log = logging.getLogger("app.routers.sessions")
 
@@ -53,6 +53,11 @@ class Normalize(Base):
             normalized = internal_words.strip_reports(normalized)
         # The writer's apology for its own tool call is not the person's answer; the steps say it.
         normalized = internal_words.strip_tool_apologies(normalized)
+        # A picture or link into the sandbox (`sandbox:chart.png`, `결과.xlsx`, `artifact:…`)
+        # opens nothing in the browser: the file it names is in the chips under the answer.
+        made = {str(out.get("name") or "") for step in bundle.document.kept_steps
+                for out in (step.get("outputs") or []) if isinstance(out, dict)}
+        normalized = unlink_local_targets(normalized, made - {""})
         # A weekday counted in the head (「10월 15일(수)」 for a Thursday) set to the calendar's.
         normalized, _ = weekdays.fix_weekdays(
             normalized, context=f"{req.text}\n{bundle.material.given}",
