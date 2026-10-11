@@ -179,6 +179,14 @@ def _pub_out(pub: Publication, *, versions: list[PublicationVersion] | None = No
     return out
 
 
+async def _named_out(db: DbSession, pub: Publication) -> dict[str, Any]:
+    """The bot as `_pub_out` gives it, with its agent's and its owner's names."""
+    agent = await db.get(Agent, pub.agent_id) if pub.agent_id else None
+    owner = await db.get(User, pub.owner_id)
+    return _pub_out(pub, agent_name=agent.name if agent is not None else "",
+                    owner_name=owner.name if owner is not None else "")
+
+
 async def _mine(db: DbSession, user: User, publication_id: str) -> Publication:
     pub = await db.get(Publication, publication_id)
     if pub is None or pub.owner_id != user.id:
@@ -329,7 +337,8 @@ async def publish(payload: PublishIn, request: Request, user: CurrentUser, db: D
         _audit(db, user, "publication.requested", pub, request,
                visibility=pub.requested_visibility, version=version.number)
     await db.commit()
-    return _pub_out(pub, versions=await _versions(db, pub), agent_name=agent.name)
+    return _pub_out(pub, versions=await _versions(db, pub), agent_name=agent.name,
+                    owner_name=user.name)
 
 
 @router.get("/publications/{publication_id}")
@@ -337,7 +346,7 @@ async def get_publication(publication_id: str, user: CurrentUser, db: DbSession)
     pub = await _mine(db, user, publication_id)
     agent = await db.get(Agent, pub.agent_id) if pub.agent_id else None
     out = _pub_out(pub, versions=await _versions(db, pub),
-                   agent_name=agent.name if agent is not None else "")
+                   agent_name=agent.name if agent is not None else "", owner_name=user.name)
     # The owner has now seen what changed: the badge clears.
     pub.owner_seen_at = utcnow()
     db.add(pub)
@@ -1524,7 +1533,7 @@ async def admin_decide(publication_id: str, payload: ReviewIn, request: Request,
     _audit(db, admin, "publication.reviewed", pub, request, severity="warn",
            decision=payload.decision, asked=asked, **detail)
     await db.commit()
-    return _pub_out(pub)
+    return await _named_out(db, pub)
 
 
 @router.post("/admin/publications/{publication_id}/withdraw")
@@ -1551,7 +1560,7 @@ async def admin_withdraw(publication_id: str, payload: WithdrawIn, request: Requ
     _audit(db, admin, "publication.withdrawn", pub, request, severity="warn",
            previous=previous, reason=reason)
     await db.commit()
-    return _pub_out(pub)
+    return await _named_out(db, pub)
 
 
 @router.post("/admin/publications/{publication_id}/status")
@@ -1571,7 +1580,7 @@ async def admin_status(publication_id: str, payload: AdminStatusIn, request: Req
     _audit(db, admin, "publication.admin_status", pub, request, severity="warn",
            status=payload.status, reason=payload.reason)
     await db.commit()
-    return _pub_out(pub)
+    return await _named_out(db, pub)
 
 
 def _reason(reason: str) -> str:

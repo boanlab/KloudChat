@@ -109,8 +109,10 @@ async def test_a_link_waits_for_an_administrator_and_needs_a_daily_credit_cap(wo
 
 async def test_approval_opens_the_bot_to_people_without_an_account(world):
     pub = await _publish(world, visibility="link", **_CAP)
+    assert pub["ownerName"] == "만든 사람" and pub["agentName"] == "학사 안내"
     approved = await _approve(world, pub["id"])
     assert approved["visibility"] == "link" and approved["reviewState"] == ""
+    assert approved["ownerName"] == "만든 사람" and approved["agentName"] == "학사 안내"
     _fresh_browser(world)
     page = await world.client.get(f"/b/{pub['slug']}")
     assert page.status_code == 200
