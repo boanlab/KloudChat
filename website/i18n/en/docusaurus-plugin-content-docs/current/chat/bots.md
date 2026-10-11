@@ -8,7 +8,7 @@ Publish an agent that answers in chat as a **chatbot**, and other people can ask
 
 ## Publishing
 
-On the agent's page, **Show more** → **Publish as a chatbot**. Before publishing you see:
+The **Publish as a chatbot** button at the top of your agent's page. Before publishing you see:
 
 - The internal model it will answer with. Without an internal model you can use, it cannot be published.
 - What a chatbot does not use: your memory, personal settings, other files and projects, connectors, web search, documents and slides, skills. A chatbot uses only **material search** and **calculation**.

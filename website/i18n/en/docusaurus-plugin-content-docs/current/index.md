@@ -15,7 +15,7 @@ KloudChat is an AI assistant your organization runs on its own servers. It answe
 | Purpose | Feature used | Reference |
 |---|---|---|
 | Questions and answers, code review, proofreading | Home → **Chat** | [Conversation basics](chat/basics.md) |
-| Getting answers grounded in a document you attach | **+** → Attach in the composer | [Attaching files](chat/files.md) |
+| Getting answers grounded in a document you attach | **+** → **Attach files or photos** in the composer | [Attaching files](chat/files.md) |
 | Getting answers based on up-to-date information | **+** → Web search in the composer | [Web search and tools](chat/web-search.md) |
 | Writing a report | Home → **Report** | [Writing reports](write/report.md) |
 | Writing a slide deck | Home → **Slides** | [Writing slides](write/slides.md) |
@@ -24,10 +24,12 @@ KloudChat is an AI assistant your organization runs on its own servers. It answe
 | Passing an artifact on as a link | **Share** at the top of the conversation | [Sharing](write/share.md) |
 | Grouping files and instructions for repeated use | Sidebar → **Projects** | [Projects](personal/projects.md) |
 | Delegating to an assistant with a defined role | **+** → Agents in the composer | [Agents and skills](chat/agents.md) |
-| Getting an artifact in a set template | **+** → **Pick a template** in the composer | [Templates and designs](chat/starters.md) |
+| Opening an agent to others as a chatbot | Agent page → **Publish as a chatbot** | [Publishing a chatbot](chat/bots.md) |
+| Getting an artifact in a set template | **+** → **Pick a template** in the composer | [Templates and themes](chat/starters.md) |
 | Storing information you have to repeat often | Account menu → **Memory** | [Memory](personal/memory.md) |
 | Calling models from external tools and code | Account menu → **API access** | [API and coding tool integration](api.md) |
 | Checking usage and tidying up conversations | Account menu → **Usage**, **Conversation history** | [Usage and conversation history](personal/usage-history.md) |
+| Reporting a bug or requesting a feature | Account menu → **Feedback & issues** | [Feedback and issues](personal/issues.md) |
 
 ## Reading order
 
@@ -39,6 +41,6 @@ This guide covers the full feature set of the product. The following items depen
 - **Available screens**: Chat is always provided. Report, Slides, Image and Audio/Video appear only when the administrator enables them.
 - **Model list and charging**: The models on offer, their names, data boundaries and credit rates differ between organizations.
 - **Sign-up method and email domains**: The administrator sets the approval procedure and the permitted domains.
-- **Integrated features**: Web search, code execution, dictation and file search work only when the administrator has connected a server.
+- **Integrated features**: Web search, code execution, dictation, file search and text reading (OCR) work only when the administrator has connected a server.
 - **Service name and logo**: The administrator can change these, so the names on screen may differ from this guide.
 :::

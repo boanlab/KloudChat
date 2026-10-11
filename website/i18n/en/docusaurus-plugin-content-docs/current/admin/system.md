@@ -4,7 +4,7 @@ title: System settings
 
 # System settings
 
-The **System** screen in the Manage menu is made up of eight tabs.
+The **System** screen in the Manage menu is made up of eight tabs. Saved changes apply at once, without a restart.
 
 ## Proxy
 
@@ -19,6 +19,17 @@ Decides which model does which job when the user has not chosen one. The values 
 - **Thinking**: whether self-hosted and external models reason before answering. On makes judgements more exact but adds tens of seconds to minutes to each call. Both are off by default.
 
 The **planning model** for reports and slides and Auto's **classifier model** are on the **Routing** tab.
+
+### Self-hosted models of the default install
+
+The defaults use two models the organization runs itself. Each is registered in the gateway under a `local/` name (may use tools such as web search) and a `strict-local/` name (no outside connection).
+
+| Model | Jobs |
+|---|---|
+| `qwen3.8-27b` | Default chat model, code model |
+| `qwen3.8-flash` | Planning model (outline and judgments for reports and slides), titles, memory and summaries, Auto classifier and cost-saving model, vision model for text reading, code fallback model |
+
+All of them can be changed on this tab and on the **Routing** and **Features** tabs.
 
 ## Routing
 
@@ -56,4 +67,5 @@ The MCP servers people can install from **Customize** › **Connectors**. **Add 
 - The **Usage** screen: charts by period, by model, by screen, and by user, CSV export, and storage space (disk usage, orphan file cleanup, and automatic cleanup from the oldest when it fills up).
 - **Theme**: An administrator can **provide a theme to every user** (shared, read only).
 - **Store**: Agents and skills published by an administrator account carry an **Official** badge. Built-in skills hidden from the lists (kept only as parts) show to administrators only with **Show hidden** (숨김 포함).
+- **Performance** screen: first-token and full-answer latency and error rate per model, turns in progress, API replica, host and GPU metrics, with items past their thresholds flagged as warning or overload. The thresholds are set with the API's `PERF_*` environment variables.
 - The trusted proxy range, the file size limit, and similar settings are configured through environment variables rather than the screen. See `docs/configuration.md` in the repository.

@@ -4,7 +4,7 @@ title: Attaching files
 
 # Attaching files
 
-Attach files from **+** → **Attach** in the composer, and the model answers from their content. You can attach several files at once, and you can drag and drop them or paste them in. The Images and Audio/Video screens do not offer attachments.
+Attach files from **+** → **Attach files or photos** in the composer, and the model answers from their content. You can attach several files at once, and you can drag and drop them or paste them in. The Images and Audio/Video screens do not offer attachments.
 
 ![A conversation answered from an attached document](/img/guide/chat-with-file.png)
 
@@ -27,7 +27,7 @@ An attached file stays available to later requests in the same conversation. It 
 - If the answer is not in the part that was sent, the model searches inside the file with the **Find in files** tool.
 - The processing steps mark each attachment as used, truncated, or omitted.
 
-The Reports and Slides screens do not carry over attachments from earlier requests, so attach the material for the document to that request directly. Files attached in another conversation are not referenced either. To use the same material in several conversations, register it in a [project](../personal/projects).
+The Reports and Slides screens do not carry over attachments from earlier requests, so attach the material for the document to that request directly. Files attached in another conversation are not referenced either. To use the same material in several conversations, register it in a [project](../personal/projects). Where the administrator has turned on **Internal material stays strict-local**, a request with attachments is answered by the strict-local twin of the same model. [Privacy](../privacy)
 
 ## Improving recognition accuracy
 

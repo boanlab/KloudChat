@@ -27,7 +27,7 @@ If the deck runs to more than 6 slides, a table of contents is inserted as the s
 
 ## Slide types
 
-The model chooses the type that suits the content. It uses cover, table of contents, item list, table (comparison), metrics (key figures), chart (when the material contains figures), diagram (flow and structure), and closing. You can set them in your request, for example "use a table for the comparison" or "include a flow chart".
+The model chooses the type that suits the content. It uses cover, table of contents, item list, table (comparison), metrics (key figures), chart (when the material contains figures), diagram (flow and structure), and closing. You can set them in your request, for example "use a table for the comparison" or "include a flow chart". The server draws diagrams as shapes, and a PPTX export carries them as editable PowerPoint shapes.
 
 ## Changing the theme
 

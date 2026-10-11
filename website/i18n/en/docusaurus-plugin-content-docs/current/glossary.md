@@ -9,8 +9,8 @@ title: Glossary
 | Screen (Chat · Report · Slides · Image · Audio/Video) | The screen you choose on the home page. Administrators turn each one on and off |
 | Conversation (대화) | The record of one piece of work. One row in the sidebar |
 | Artifact (아티팩트) | A document, deck, chart or other file produced in a conversation. The right-hand panel and the gallery |
-| Template (템플릿) | The structure and shape of the artifact (built in). It stays for the whole conversation |
-| Theme (테마) | A bundle of colors, typefaces, and tone. Attached to an agent or a project, kept in Settings › Themes |
+| Template (템플릿) | The structure of the artifact (structure rules, typesetting, check items). It stays for the whole conversation |
+| Theme (테마) | The look of the artifact (colors, typefaces, tone). Attached to an agent or a project, kept in Settings › Themes |
 | Project (프로젝트) | A workspace that groups material, instructions, and conversations |
 | Agent (에이전트) | A helper with set instructions, process, tools, and material. Start one from **+** → **Agents** in the composer |
 | How it works (진행 과정) | The order an agent works in: Answer directly · Start from a base process · Set it up yourself (advanced) |
@@ -28,3 +28,5 @@ title: Glossary
 | Image · picture · diagram | An image file you attach or generate · a picture you place in a document (UI label) · a flow chart or structure chart a text model draws |
 | Outline card (개요 카드) | The card that confirms the structure before a report or slide deck is written |
 | Masking (마스킹) | Replacing personal data with a placeholder before sending |
+| Chatbot (챗봇) | An agent published so others can ask it. Member, link or external publishing |
+| Feedback & issues (문의·신고) | Bug reports, feature requests and questions sent to the administrators |

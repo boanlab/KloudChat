@@ -12,12 +12,12 @@ Signing in opens the home screen. Use the sidebar on the left to find past conve
 
 | Area | Description |
 |---|---|
-| Search | Searches past conversations by **title**. Shortcut `Ctrl+K`. |
+| Search | Searches past conversations (titles and messages) and artifacts. Shortcut `Ctrl+K`. |
 | New chat | Goes to the home screen so you can start new work. Shortcut `Alt+Shift+N`. |
-| Projects · Artifacts | Goes to the workspace that holds your grouped files and to the gallery of generated artifacts. |
-| Conversation list | Shown in the order **Pinned**, **conversation list** (recent conversations) and **Earlier conversations … Show more**. Icons show the type of each item. The `…` menu on an item lets you rename it, pin it, remove it from a project and delete it. |
+| Projects · Artifacts · Chatbots · Customize | Goes to the workspace that holds your grouped files, the gallery of generated artifacts, the list of published chatbots, and the place to manage agents, skills and connectors. |
+| Conversation list | Shown in the order **Pinned**, **Recent**. **All conversations** opens the history page. Icons show the type of each item. The `…` menu on an item lets you rename it, pin it, remove it from a project and delete it. |
 | Credit this month | The usage you have left. Press it to go to the usage screen. A model marked **Free** does not consume credit. |
-| Account menu | Customize (agents and bundles, skills, connectors), conversation history, account (integration guide, usage, settings including memory and themes, shortcuts), administrator menu, sign out. |
+| Account menu | Customize, History, Agent setup, API access, Usage, Settings (including memory and themes), Feedback & issues, Keyboard shortcuts, the Manage menu (administrators), Sign out. |
 
 ## Choosing a screen and using the composer
 
@@ -33,10 +33,10 @@ If you ask for a document in Chat, for example "Write a report" or "Make a slide
 
 | Feature | Description | Applies to |
 |---|---|---|
-| **+** | One menu holding Attach, Pick a template, Skills, Web search, Connectors and Agents. On a phone it opens as a bottom sheet. | — |
-| Attach | Uploads a file. You can drag and drop files or paste them. | The whole conversation |
+| **+** | One menu holding Attach files or photos, Pick a template, Skills, Web search, Connectors and Agents. On a phone it opens as a bottom sheet. | — |
+| Attach files or photos | Uploads a file. You can drag and drop files or paste them. Pasting long text turns it into a **Pasted text** chip. | The whole conversation |
 | 🎤 Dictate | Turns speech into text. Shown only when the administrator has connected speech transcription. | That input |
-| Pick a template | Selects the output template for reports and slides. Not offered in Chat, Image or Audio/Video. | That conversation |
+| Pick a template | Selects the template for reports and slides. Not offered in Chat, Image or Audio/Video. | That conversation |
 | Skills | Selects up to three skills to apply to the request. | That request |
 | Web search: Auto · Always · Off | Chooses the web search mode. **Always** or **Off** shows as a chip in the composer. | That request. A new conversation resets it automatically |
 | Connectors | Turns the connectors you have installed on and off. | Your whole account |
@@ -57,7 +57,7 @@ There are **Share** (on the conversation screen), **Install app** (installs a sh
 
 ## Mobile screen
 
-Press **+** in the composer to open Attach, Pick a template, Skills, Web search, Connectors and Agents in a bottom sheet. The processing details of an answer are collapsed as "n processing details".
+Press **+** in the composer to open Attach files or photos, Pick a template, Skills, Web search, Connectors and Agents in a bottom sheet. The processing details of an answer are collapsed as "n processing details".
 
 ![Mobile home screen](/img/guide/mobile-home.png)
 ![Mobile conversation screen](/img/guide/mobile-chat.png)

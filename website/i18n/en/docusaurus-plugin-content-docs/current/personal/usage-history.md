@@ -37,7 +37,7 @@ Check it in the account menu → **Conversation history**.
 
 ![Conversation history screen](/img/guide/history.png)
 
-- View all conversations by date and search them by title.
+- View all conversations by date and search them by title and message text.
 - You can use **Select all** on the listed items and then **Delete selected**, or run **Delete all conversations**. A confirmation dialog is shown before it runs.
 - Deleting a conversation also deletes the artifacts created in that conversation and its share links. Projects and memory are kept.
 - Where the administrator has set a retention period, the body of a conversation past that period is deleted automatically. Sign-in history and usage totals are kept.
