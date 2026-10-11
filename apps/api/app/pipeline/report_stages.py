@@ -128,8 +128,12 @@ class Research(Base):
         report, req = _report(), bundle.request
         findings = research.Findings()
         web_search = req.web_search
-        # A document on the person's own material is not searched; a 경력기술서 never is.
-        if web_search and (report._own_material(req.text) or not bundle.spec.settings.search):
+        # A document on the person's own material is not searched; a 경력기술서 never is. A
+        # work document (보도자료, 공문, 결과보고서, 공모 신청서) whose material came with it is
+        # not either, unless the words ask for the web.
+        if web_search and (report._own_material(req.text) or not bundle.spec.settings.search
+                           or report.material_complete(req.text, bundle.spec.format_id,
+                                                       has_files=bool(req.untrusted))):
             web_search = False
         if web_search and await research.available():
             yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
@@ -492,7 +496,9 @@ class Outline(Base):
             plan["frame"] = True
         if unverified:
             plan["unverified"] = True
-        if req.image_model:
+        # Pictures are offered only where the 서식 draws by itself, or when asked.
+        if req.image_model and not (bundle.spec.settings.draws == "when-asked"
+                                    and not diagrams.asks_for_diagrams(instruction_part(request))):
             drawn = await figures.propose(
                 request=request,
                 title=title,
@@ -1333,7 +1339,11 @@ class Normalize(Base):
             bundle.document.sections, settled=bundle.computed.settled,
             sources=bundle.material.sources, request=bundle.request.text,
             context=_material_text(bundle))
-        bundle.document.sections = report.gaejo_body(sections, bundle.spec.format)
+        sections = report.gaejo_body(sections, bundle.spec.format)
+        if bundle.spec.format_id in report.PLAIN_FORMATS:
+            sections = [{**s, "content": report.plain_blocks(str(s.get("content") or ""))}
+                        for s in sections]
+        bundle.document.sections = sections
 
 
 class TitleBlock(Base):

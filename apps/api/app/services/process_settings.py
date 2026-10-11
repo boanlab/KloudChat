@@ -367,12 +367,22 @@ def governing_template(template_id: str | None, format_id: str | None):
     return None
 
 
+#: What a format does unless its 서식 or the agent says otherwise. A 공문, a 보도자료, minutes,
+#: a result report and an internal draft are read as plain text: pictures only when asked
+#: (quality lane Q13: 그림 2~3장 in a 공문 and a 보도자료).
+FORMAT_DEFAULTS: dict[str, dict[str, Any]] = {
+    fmt: {"draws": "when-asked"}
+    for fmt in ("official", "press", "minutes", "result_report", "internal_draft")
+}
+
+
 def resolve(*, template_id: str | None, format_id: str | None,
             own: dict[str, Any] | None = None) -> Process:
-    """What a document's writing does: the defaults, then its 서식's settings, then the
-    agent's own (`Agent.process`)."""
+    """What a document's writing does: the defaults (the format's own among them), then its
+    서식's settings, then the agent's own (`Agent.process`)."""
     template = governing_template(template_id, format_id)
-    out = apply(DEFAULT, of_template(template) if template is not None else None)
+    out = apply(DEFAULT, FORMAT_DEFAULTS.get(format_id or ""))
+    out = apply(out, of_template(template) if template is not None else None)
     return apply(out, stored(own) if own else None)
 
 
@@ -396,6 +406,6 @@ def catalogue() -> dict[str, Any]:
             "defaults": DEFAULT.wire()}
 
 
-__all__ = ["AMENDS", "CHECKS", "DEFAULT", "HEADS", "JUDGED", "KEYS", "PREPASS", "STAGES",
-           "Process", "ProcessError", "Structure", "apply", "catalogue", "clean", "for_format",
-           "governing_template", "of_template", "resolve", "stored", "stored_form"]
+__all__ = ["AMENDS", "CHECKS", "DEFAULT", "FORMAT_DEFAULTS", "HEADS", "JUDGED", "KEYS", "PREPASS",
+           "STAGES", "Process", "ProcessError", "Structure", "apply", "catalogue", "clean",
+           "for_format", "governing_template", "of_template", "resolve", "stored", "stored_form"]

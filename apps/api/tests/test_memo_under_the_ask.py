@@ -52,3 +52,39 @@ def test_a_grant_application_is_not_a_start_up_business_plan():
     assert report._genre_rule("사업계획서 써 줘. 창업 아이템은 밀키트 구독.").startswith(business)
     genres = Path(report.__file__).resolve().parent.parent / "genres.toml"
     assert "grant-plan" in genres.read_text(encoding="utf-8")
+
+
+def test_a_work_document_with_its_material_is_not_searched():
+    # Quality lane Q7: a press release and a grant application written from the person's
+    # notes cited unrelated web pages (a 한국코드페어 notice, a 경북 수산물 기획전) as grounds.
+    memo = "\n".join(f"- 항목 {n}: 자료 내용 {n}번째 줄, 참가 {n * 10}명" for n in range(1, 15))
+    press = f"아래 내용으로 보도자료 써 줘.\n\n{memo}"
+    assert report.material_complete(press, "press")
+    grant = f"아래 메모로 사업계획서 써 줘. 한빛시 공모사업 신청용이야.\n\n{memo}"
+    assert report.material_complete(grant, "plan")
+    # Asked for the web, a short request with no material, or a research plan: searched.
+    searched = press.replace("써 줘.", "관련 사례도 검색해서 써 줘.")
+    assert not report.material_complete(searched, "press")
+    assert not report.material_complete("보도자료 써 줘.", "press")
+    assert not report.material_complete(f"아래 메모로 연구계획서 써 줘.\n\n{memo}", "plan")
+    assert report.material_complete("보도자료 써 줘.", "press", has_files=True)
+
+
+def test_plain_work_documents_draw_only_when_asked_and_keep_no_tiles():
+    # Quality lane Q13: a 공문 with two generated pictures, a 보도자료 with KPI tiles and a
+    # callout, a 회의록 with KPI 「42명·50만원·9편」.
+    from app.services import process_settings
+
+    for fmt in ("official", "press", "minutes", "result_report", "internal_draft"):
+        assert process_settings.resolve(template_id=None, format_id=fmt).draws == "when-asked"
+    assert process_settings.resolve(template_id=None, format_id="paper").draws == "auto"
+    # The agent's own setting still wins.
+    own = process_settings.resolve(template_id=None, format_id="press", own={"draws": "auto"})
+    assert own.draws == "auto"
+    text = ("행사를 마쳤다.\n```kpi\n172명 | 참가자\n4.5점 | 만족도\n```\n"
+            "```callout\n잔액 처리\n285만원 반납 여부 결정 필요\n```\n끝.")
+    assert report.plain_blocks(text) == (
+        "행사를 마쳤다.\n- 참가자: 172명\n- 만족도: 4.5점\n"
+        "※ 잔액 처리: 285만원 반납 여부 결정 필요\n끝.")
+    bundle = report_stages.bundle_for(request=_S09, model="m", api_key="k")
+    assert bundle.spec.settings.draws == "when-asked"

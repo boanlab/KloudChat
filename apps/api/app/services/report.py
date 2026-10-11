@@ -42,6 +42,7 @@ from app.services.context import (
     instruction_part,
     lead_instruction,
     pasted_material,
+    requests_web_search,
 )
 
 log = logging.getLogger(__name__)
@@ -432,6 +433,29 @@ def _own_material(request: str) -> bool:
     return bool(_OWN_GENRES.search(instruction)) and _carries_material(request)
 
 
+#: Work documents whose facts all come from the person: a 보도자료 from the event's notes, a
+#: 공문 from the request, a 결과보고서 from the figures. The web brings nothing to them but
+#: unrelated references cited as grounds (quality lane Q7: 한국코드페어 공지·대학 게시판 in a
+#: press release, a 경북 수산물 기획전 in a grant application).
+_MATERIAL_FORMATS = frozenset({
+    "press", "official", "result_report", "minutes", "internal_draft", "gaejo", "event_plan",
+    "status", "incident",
+})
+#: A public grant application, which the person writes from their own plan.
+_GRANT_APPLICATION = re.compile(r"공모|지원\s{0,3}사업|보조\s{0,3}사업|보조금|사업\s{0,3}신청")
+
+
+def material_complete(request: str, format_id: str | None, *, has_files: bool = False) -> bool:
+    """Whether a work document is written from the person's material alone, so the web is not
+    searched unless they ask for it (「관련 사례도 찾아서」)."""
+    instruction = instruction_part(request)
+    if requests_web_search(instruction) or _SCHOLARLY_DOC.search(instruction):
+        return False
+    named = (format_id or "") in _MATERIAL_FORMATS or bool(
+        _GRANT_APPLICATION.search(lead_instruction(request)))
+    return named and (has_files or _carries_material(request))
+
+
 #: A document whose related work is the literature: a paper draft, a survey.
 _SCHOLARLY_DOC = re.compile(
     r"논문\s{0,3}초안|논문을\s{0,3}써|투고|학회\s{0,3}논문|워크숍\s{0,3}논문|관련\s{0,3}연구|"
@@ -820,6 +844,29 @@ def _section_role(heading: str, index: int, total: int, written: str) -> tuple[s
             "kinds allowed below, at most one per section.")
     rules = "\n".join(_BLOCK_SYNTAX[one] for one in seen)
     return role, "- Blocks this section may use:\n" + rules
+
+
+#: Formats read as plain text — a 공문, a 보도자료, minutes, a result report, an internal
+#: draft: a KPI tile or a callout box is a briefing's device, not theirs (quality lane Q13).
+PLAIN_FORMATS = frozenset({"official", "press", "minutes", "result_report", "internal_draft"})
+_BOX = re.compile(r"^```(?P<kind>kpi|callout)[ \t]*\n(?P<body>.*?)^```[ \t]*$\n?", re.S | re.M)
+
+
+def plain_blocks(text: str) -> str:
+    """```kpi rows as 「- 이름: 값」 lines and a ```callout as one 「※ 제목: 내용」 line."""
+    def one(m: re.Match) -> str:
+        lines = [line.strip() for line in m.group("body").splitlines() if line.strip()]
+        if not lines:
+            return ""
+        if m.group("kind") == "kpi":
+            rows = []
+            for line in lines:
+                value, _, name = line.partition("|")
+                rows.append(f"- {name.strip()}: {value.strip()}" if name.strip() else f"- {value.strip()}")
+            return "\n".join(rows) + "\n"
+        head, rest = lines[0], " ".join(lines[1:])
+        return f"※ {head}" + (f": {rest}" if rest else "") + "\n"
+    return _BOX.sub(one, text or "")
 
 
 #: Placeholder for an empty source list; an empty block makes the model invent citations.
