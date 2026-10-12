@@ -115,6 +115,14 @@ async function app(page: Page, testInfo: TestInfo, { signedIn = true, signupMode
     }
     if (method === 'GET' && path === '/artifacts/counts') return json({ counts: {}, total: 0 })
     if (method === 'GET' && path === '/admin/users') return json(users)
+    if (method === 'GET' && path === '/admin/users/page') {
+      const count = (status: string) => users.filter((u) => u.status === status).length
+      return json({
+        items: users, total: users.length, page: 1, limit: 50,
+        counts: { all: users.length, pending: count('pending'), active: count('active'), suspended: count('suspended') },
+        summary: { users: users.length, pending: count('pending'), creditsGranted: 0, creditsUsed: 0, nextReset: null },
+      })
+    }
     if (method === 'GET' && path === '/admin/settings') return json({})
     const suspend = path.match(/^\/admin\/users\/([^/]+)\/suspend$/)
     if (suspend && method === 'POST') {
