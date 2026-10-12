@@ -133,7 +133,10 @@ export function skillItem(s: Skill | StoreSkill, store: boolean): HubItem {
     summary: s.description,
     surfaces: s.kinds,
     color: null,
-    maker: store ? row.ownerName : s.originOwnerName || (s.source === 'workspace' ? '워크스페이스' : ''),
+    // an administrator's shared skill names the role, not the person
+    maker: official
+      ? '관리자'
+      : store ? row.ownerName : s.originOwnerName || (s.source === 'workspace' ? '워크스페이스' : ''),
     official,
     installs: s.installs,
     runs: null,
