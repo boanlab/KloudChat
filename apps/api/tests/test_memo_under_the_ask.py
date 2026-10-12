@@ -190,3 +190,13 @@ def test_forms_and_notices_are_text_documents():
 def test_an_untitled_body_exports_without_an_empty_heading():
     out = report.to_markdown("안내", [{"heading": "", "content": "1. 개강: 2027. 3. 2.(화)"}])
     assert out == "# 안내\n\n1. 개강: 2027. 3. 2.(화)\n"
+
+
+def test_a_short_guide_with_figures_gets_no_word_table_of_contents():
+    from app.services import report_export
+
+    picture = "![흐름](data:image/png;base64," + "A" * 20000 + ")"
+    sections = [{"heading": f"절 {n}", "content": f"짧은 안내 {n}.\n\n{picture}"} for n in range(6)]
+    assert not report_export._wants_toc(sections)
+    assert report_export._wants_toc([{"heading": f"절 {n}", "content": "가" * 1200}
+                                     for n in range(6)])

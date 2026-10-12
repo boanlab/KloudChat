@@ -889,7 +889,9 @@ _TOC_CHARS = 6_000
 
 
 def _wants_toc(sections: list[dict]) -> bool:
-    length = sum(len(str(s.get("content") or "")) for s in sections)
+    # text only: an embedded figure's data URI is no reading length
+    length = sum(len(re.sub(r"data:[\w/+.-]{1,40};base64,[A-Za-z0-9+/=]+", "",
+                            str(s.get("content") or ""))) for s in sections)
     return len(sections) >= _TOC_SECTIONS and length >= _TOC_CHARS
 
 
