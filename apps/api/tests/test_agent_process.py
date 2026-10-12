@@ -89,14 +89,17 @@ def test_the_shipped_bundles_are_data_in_the_users_shape():
 
 
 def test_the_bases_are_the_offered_agents_with_their_steps_and_bundles():
-    everyone = [b.key for b in bases.bases()]
-    admins = [b.key for b in bases.bases(drafts=True)]
+    # The shipped agents are withdrawn (skills now): no base is offered anew, while an agent
+    # already built on one keeps it.
+    assert bases.bases() == [] and bases.bases(drafts=True) == []
+    everyone = [b.key for b in bases.bases(withdrawn=True)]
+    admins = [b.key for b in bases.bases(drafts=True, withdrawn=True)]
     assert everyone == ["regulation-guide", "gaejo-report", "comparison-report", "data-analysis",
                         "minutes"]
     assert admins == ["regulation-guide", "gaejo-report", "comparison-report", "data-analysis",
                       "minutes", "document", "slides"]
     assert bases.get("career-docs") is None and bases.get("client-proposal") is None
-    for base in bases.bases(drafts=True):
+    for base in bases.bases(drafts=True, withdrawn=True):
         assert 1 <= len(base.steps) <= 5
     minutes = bases.get("minutes")
     assert minutes.steps[1] == ("question", "회의 날짜처럼 빠진 정보가 있으면 먼저 물어봅니다")
@@ -460,14 +463,14 @@ async def test_the_bases_endpoint_offers_drafts_to_administrators_only(wired):
     me, _, admin = await _people(wired.local)
     async with wired.local() as db:
         mine = await up.list_bases(me, db)
-        assert "document" not in [b["key"] for b in mine["bases"]]
-        assert "document" in [b["key"] for b in (await up.list_bases(admin, db))["bases"]]
+        # every shipped agent is withdrawn: nothing to pick anew, drafts included
+        assert mine["bases"] == [] and (await up.list_bases(admin, db))["bases"] == []
         assert [b["ref"] for b in mine["bundles"]] == ["prepare", "review", "finish",
                                                        "publish-check"]
     assert set(starter.draft_agents()) == {"document", "slides"}
 
 
-@pytest.mark.parametrize("key", [b.key for b in bases.bases(drafts=True)])
+@pytest.mark.parametrize("key", [b.key for b in bases.bases(drafts=True, withdrawn=True)])
 async def test_a_user_agent_on_a_base_with_its_bundles_is_the_official_agent(wired, key):
     """A person picking the base and ticking the same bundles gets the same agent: the same
     checks, strictness, format, template and pipeline, with no pipeline of its own."""

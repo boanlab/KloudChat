@@ -72,9 +72,11 @@ def test_a_question_about_the_screen_reads_the_text_size_and_agent_pages():
     assert app_help.about_app(_SENIOR)
     found = [(row["path"], row["heading"]) for row in app_help.search(_SENIOR)]
     assert ("personal/settings", "글씨·글자 크기 키우기") in found
-    assert ("chat/agents", "에이전트로 대화 시작") in found
+    # 회의록 is an official skill: the agent page's opening or the skill page says where
+    assert {("chat/agents", "에이전트로 대화 시작"), ("chat/skill-recipes", "대화에서 바로 쓰기"),
+            ("chat/skill-recipes", "스킬로 에이전트 짜기")} & set(found)
     block = app_help.block(_SENIOR)
-    assert "브라우저 확대" in block and "**+** → **에이전트** → **회의록**" in block
+    assert "브라우저 확대" in block and "회의록 작성" in block
 
 
 def test_the_pattern_stays_fast_on_a_long_message():

@@ -1,6 +1,9 @@
 # 개조식 보고.
 
 key = "gaejo-report"
+# Withdrawn (D21): offered to no one for new use; its abilities are the 「gaejo-briefing」 skill.
+# The rows, copies, conversations and published bots built on it keep working.
+withdrawn = true
 order = 1
 name = "개조식 보고"
 # Names an untouched copy may still carry; renamed on sync.

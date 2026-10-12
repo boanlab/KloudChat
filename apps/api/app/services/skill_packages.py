@@ -18,7 +18,8 @@ RENAMED = {"calculation-unit-check": "calc-check"}
 
 _FIELDS = ("name", "description", "when_to_use", "kinds", "required_tools", "version", "status",
            "stage", "entry", "post_check", "post_judge", "copy_check", "copy_kinds", "tables",
-           "own_stage", "uses", "listed")
+           "own_stage", "uses", "listed", "template", "checks", "check_options", "questions",
+           "process")
 #: check-skill stage: before (pre) or after (post) writing
 STAGES = ("pre", "post")
 
@@ -67,6 +68,16 @@ class SkillPackage:
     judge_focus: str = ""
     #: shown in pickers
     listed: bool = True
+    #: 템플릿 a document turn with this skill on writes into, when none is picked
+    template: str = ""
+    #: check skills attached while it is on (as an agent's `check_skills`)
+    checks: tuple[str, ...] = ()
+    #: trace strictness while it is on (`check_skills.CHECK_OPTIONS` names)
+    check_options: tuple[str, ...] = ()
+    #: 빠진 정보 질문 asked while it is on (`gap_questions.clean` rows)
+    questions: tuple = ()
+    #: 진행 과정 설정 while it is on, under an agent's own (`process_settings.clean`)
+    process: dict | None = field(default=None, hash=False, compare=False)
 
     @property
     def draft(self) -> bool:
@@ -180,7 +191,24 @@ def load(root: Path) -> SkillPackage:
         judge_focus=(" ".join(str(meta["post_judge"]).split())
                      if isinstance(meta.get("post_judge"), str) else ""),
         listed=meta.get("listed", True) is not False,
+        **_document_fields(root.name, meta),
     )
+
+
+def _document_fields(key: str, meta: dict) -> dict:
+    """`template`, `checks`, `check_options`, `questions`, `process` as `skill_specs` validates
+    them for a person's skill; a bad value fails the package."""
+    from app.services import skill_specs
+
+    raw = {name: meta[name] for name in skill_specs.DOCUMENT_FIELDS if name in meta}
+    if not raw:
+        return {}
+    fields, errors = skill_specs.validate_document(raw)
+    if errors:
+        raise PackageError(f"{key}: {errors[0]}")
+    return {"template": fields["template"], "checks": tuple(fields["checks"]),
+            "check_options": tuple(fields["check_options"]),
+            "questions": tuple(fields["questions"]), "process": fields["process"] or None}
 
 
 def _post_checks(key: str, raw) -> tuple[str, ...]:

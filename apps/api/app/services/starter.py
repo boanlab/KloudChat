@@ -88,15 +88,23 @@ def retired_agents() -> frozenset[str]:
     return frozenset(spec["key"] for spec in _AGENTS if spec.get("retired"))
 
 
+def withdrawn_agents() -> frozenset[str]:
+    """Withdrawn catalogue keys (`withdrawn = true`): offered to no one for new use — not
+    listed, installed or picked as a base — while the rows, their copies, conversations and
+    published bots keep working. Their abilities are skills now (D21)."""
+    return frozenset(spec["key"] for spec in _AGENTS if spec.get("withdrawn"))
+
+
 def draft_agents() -> frozenset[str]:
     """Draft catalogue keys: admin-only until evaluated."""
     return frozenset(spec["key"] for spec in _AGENTS if spec.get("draft"))
 
 
-def offered_agents(*, drafts: bool = False) -> list[dict]:
-    """Pickable shipped agents in catalogue order; drafts on request."""
+def offered_agents(*, drafts: bool = False, withdrawn: bool = False) -> list[dict]:
+    """Pickable shipped agents in catalogue order; drafts and withdrawn ones on request."""
     return [spec for spec in _AGENTS
-            if not spec.get("retired") and (drafts or not spec.get("draft"))]
+            if not spec.get("retired") and (drafts or not spec.get("draft"))
+            and (withdrawn or not spec.get("withdrawn"))]
 
 
 def agent_spec(key: str | None) -> dict | None:
@@ -533,6 +541,7 @@ __all__ = [
     "estimate_tokens",
     "offered_agents",
     "retired_agents",
+    "withdrawn_agents",
     "runtime_metadata",
     "seed_catalog",
     "seed_designs",

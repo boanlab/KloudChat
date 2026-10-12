@@ -1191,10 +1191,8 @@ rather than a second one with the same name.
 The shipped catalogue is `starter._SKILLS` plus `starter._AGENTS`, the
 agents read from `app/agents/<key>.toml` (prompt, guide, starters, kinds,
 bindings, an explicit tool list — `[]` denies every tool — skill keys and the 묶음
-they run). Offered: 규정·업무 안내 (`regulation-guide`), 개조식 보고 (`gaejo-report`), 비교·결정
-(`comparison-report`), 자료 추출·집계 (`data-analysis`), 회의록 (`minutes`), and as drafts
-(`draft = true`, visible to administrators only) 공문·기안 초안 (`document`) and 발표 자료
-(`slides`).
+they run). No agent is offered: every shipped agent is withdrawn (below, 「Skills instead of
+shipped agents」), and what they did ships as skills.
 
 **Listed, hidden, retired.** `listed: false` (a SKILL.md, a `template.toml`, a
 `starter._DESIGNS` entry) or `connector_catalog.listed` keeps a shipped part out of the lists
@@ -1203,7 +1201,8 @@ connector catalogue — while it still runs by name, in 묶음, in the editors t
 the conversations and documents that already use it. Unlike `draft`, it does not gate
 `run_skill_script`. The wire carries `listed`; administrators see hidden rows behind 「숨김
 포함」. Listed: the skills 근거 대조·빠진 정보 묻기·계산·단위 검증·날짜 계산·견적 계산·엑셀
-정리·PDF 표 → 엑셀·개인정보 가리기; the offered document templates and the 브리핑 deck; the themes
+정리·PDF 표 → 엑셀·개인정보 가리기, the work skills that replaced the shipped agents and the
+two connector companions; the offered document templates and the 브리핑 deck; the themes
 기본 and 문서용 명조; the time connector (deep research disabled, YouTube unlisted).
 마무리하기's export item names `by_format`: a 공문-family format (`internal_draft`, `official`,
 `event_plan`, `result_report`, `gaejo`) exports HWPX when ticked without a format, anything
@@ -1253,6 +1252,72 @@ after the administrator who published it was demoted.
 
 `_copy_of` matches an account's existing copies by catalogue key — and, for
 agents, by slug — so seeded copies count as installed.
+
+### Skills instead of shipped agents
+
+There are no built-in agents (D21). Each thing a shipped agent did is an admin-owned shared
+skill (`app/skills/<key>/`, seeded and followed like every package), which a person switches
+on in a conversation or builds into an agent of their own. The skill package format gained
+five fields, the same ones a person sets in the skill form (「서버가 돌리는 점검」) or an uploaded
+SKILL.md, stored on `skills.server_fields` and validated in `skill_specs`:
+
+| field | what it brings to a turn the skill is on | an agent's equivalent |
+|---|---|---|
+| `template` | the 템플릿 a report/deck writes into when none is picked (the composer shows it as soon as the skill is picked; the server sets it on the session otherwise) | `render_template_id` (with its `doc_format`, questions, `[process]`, checks) |
+| `checks` | check skills attached to the turn (`gap-check`, `grounding-check`, `generic-language-killer`, …) | `check_skills` (compiled from 묶음) |
+| `check_options` | trace strictness (`tool_numbers`, `titles`) | `check_options` |
+| `questions` | 빠진 정보 질문 added to the template's | `gap_questions` |
+| `process` | 진행 설정 (`search`, `draws`, …) under the agent's own | `process_settings` |
+
+`services/skill_turn.py` merges what the turn's skills bring — the picked or standing skills,
+then the agent's always-on ones: the first skill's template and settings win, checks and
+questions add up, and the agent's own fields sit on top. Skills stay on for a report or deck
+conversation as they do for chat (`sessions._STANDING_KINDS`), so the plan's approval, which
+carries no picks, writes with them. The composer lists the official (administrator-shared)
+skills a person has not added under 「공식 스킬」; picking one adds the copy and switches it on.
+
+**An agent is built from skills.** `agents.active_skill_ids` (「켜 둘 스킬」, at most six,
+migration 0072) are on in every turn of the agent's conversations, apart from the three a
+person picks per turn; `skill_ids` stays the allow-list of what the composer may add. They are
+resolved where the agent runs (`workspace_context.agent_skill_rows`): the agent owner's rows,
+the person's own, or shared ones — a skill the owner built into a shared agent travels with it
+the way its prompt does, while a hand-picked skill is still only ever the person's own copy.
+Installing such an agent copies the shared skills it is built from. A published bot never runs
+skills; its version freezes the agent's prompt with each built-from skill's instructions
+appended and adds the skills' `post` checks (`publishing.built_from`). A composed pipeline's
+agent step gets the same prompt.
+
+| withdrawn agent | skill (`app/skills/`) | template | checks | own questions / settings | to rebuild the agent |
+|---|---|---|---|---|---|
+| 회의록 `minutes` | 회의록 작성 `minutes-writing` (report) | `doc-minutes` | gap-check, grounding-check, generic-language-killer | — (the template's: 회의 일시·참석자·기한; date pre-pass from the meeting date) | 켜 둘 스킬 회의록 작성 · 테마 문서용 명조 · 사용할 화면 보고서 |
+| 비교·결정 `comparison-report` | 비교·결정 보고 `option-comparison` (report) | `doc-comparison` | same | — (the template's: 가격·필수 조건; cost and score pre-pass) | 켜 둘 스킬 비교·결정 보고 |
+| 개조식 보고 `gaejo-report` | 개조식 보고 `gaejo-briefing` (report) | `doc-gaejo-report` | same | — (the template's: 보고 대상·보고자; fixed outline, 1쪽) | 켜 둘 스킬 개조식 보고 · 테마 문서용 명조 |
+| 공문·기안 초안 `document` (draft) | 공문·기안 초안 `document-drafting` (report) | none (format from the words) | same | `process`: search off, pictures when asked | 켜 둘 스킬 공문·기안 초안 |
+| 자료 추출·집계 `data-analysis` | 자료 추출·집계 `data-tabulation` (chat, needs `run_code`) | — | gap-check, grounding-check; `tool_numbers` | 기한 기준·기간 구분·분모 기준 | 켜 둘 스킬 자료 추출·집계 · 도구 파일 작업·차트·수치 계산 |
+| 규정·업무 안내 `regulation-guide` | 규정 근거 답변 `regulation-answer` (chat) | — | grounding-check | — | 켜 둘 스킬 규정 근거 답변 + 날짜 계산 · 자료(규정 파일) · 담당 부서·연락처 · 묶음 공개 전 점검 (근거 없는 답 보류·담당 부서 안내·개인정보 가리기, which need an agent's shelf and contact) |
+| 발표 자료 `slides` (draft) | 발표 자료 구성 `deck-writing` (slides) | — (deck flow) | — | — | 켜 둘 스킬 발표 자료 구성 · 사용할 화면 슬라이드 |
+
+The skill's body is the agent's prompt as it was; the 묶음 the agents ticked compiled to the
+checks above (prepare's date and amount pre-passes and review's format checks and repair run
+inside the report flow for every template that sets them). What a skill does not carry is the
+look — the theme stays a choice of the person or the agent — and the agent's 0.3 temperature
+(a turn without an agent writes at 0.4).
+
+Two skills tell the model when and how to use the default connectors: YouTube 영상 전사·요약
+`youtube-summary` (needs `mcp__youtube__transcript`: summarise from the transcript only, mark
+doubtful words) and 심층 조사 `deep-research` (needs `mcp__deep-research__quick_research`; the
+lightest research tool that answers, said to take minutes). 시간 joins 날짜 계산: with no date
+in the material, today comes from `mcp__time__get_current_time`. Connector tool panels show a
+Korean line per shipped tool (`tools/blurbs.py`), not the server's model-facing docstring, and a
+connector asks for credentials only for env values the person enters — `{{...}}` identity
+placeholders and `${VAR}` values the server fills (YouTube's `WHISPER_URL`) are not theirs.
+
+**Withdrawn, not retired.** An agent file with `withdrawn = true` stays in the catalogue: the
+sync keeps its owner row and keeps untouched copies following it, `bases.get` still resolves
+it for the agents built on it as a base, existing conversations and published bots run as
+before. It is left out of `GET /agents`, the base picker (`bases.bases()` without
+`withdrawn=True`) and install (410 `agent_retired`). Nothing in the database changes for it;
+a member's own copy (which carries `origin_id`) stays listed and theirs.
 
 ### Coding agents
 

@@ -834,6 +834,10 @@ export function Composer({
     newSession,
     setSessionSkills,
     setSessionRoutingMode,
+    skillStore,
+    skillStoreLoaded,
+    loadSkillStore,
+    installSkill,
     generateImages,
     generateAudio,
     generateVideo,
@@ -1589,15 +1593,46 @@ export function Composer({
     setPasted([])
   }, [sessionId, kind])
 
-  const toggleSkill = (id: string, selected: boolean) => {
+  const toggleSkill = (id: string, selected: boolean, picked?: Skill) => {
     activeRestoreToken.current = null
     const next = selected
       ? activeSkills.filter((skill) => skill.id !== id).map((skill) => skill.id)
       : [...activeSkills.map((skill) => skill.id), id]
     liveActivatedSkillIds.current = next
     setActivatedSkillIds(next)
+    // A skill that writes into a template brings it when none is picked; the chip shows it.
+    const template = selected ? '' : (picked ?? usableSkills.find((skill) => skill.id === id))?.server?.template
+    if (template && !shownTemplate && offersTemplates(kind)) {
+      const row = designTemplates.find((candidate) => candidate.id === template && candidate.surface === kind)
+      if (row) setPendingTemplate(row)
+    }
     // Saved server-side in a conversation — except while editing, where cancel must undo it.
-    if (sessionId && kind === 'chat' && !editing) void setSessionSkills(sessionId, next)
+    if (sessionId && kind !== 'image' && kind !== 'av' && !editing) void setSessionSkills(sessionId, next)
+  }
+  // 공식 스킬 not added yet: picking one adds it to the person's skills and switches it on.
+  const officialToAdd = skillStore.filter(
+    (s) =>
+      s.official &&
+      !s.installed &&
+      s.enabled &&
+      isListed(s) &&
+      !skills.some((mine) => mine.originId === s.id) &&
+      (s.kinds.length === 0 || s.kinds.includes(kind)) &&
+      (agentSkillAllowlist === undefined || agentSkillAllowlist === null),
+  )
+  const [adding, setAdding] = useState<string | null>(null)
+  const addOfficial = async (s: Skill) => {
+    if (adding) return
+    setAdding(s.id)
+    try {
+      await installSkill(s.id)
+      const copy = useStore.getState().skills.find((mine) => mine.originId === s.id)
+      if (copy) toggleSkill(copy.id, false, copy)
+    } catch {
+      setNotice(t('스킬을 추가하지 못했습니다.'))
+    } finally {
+      setAdding(null)
+    }
   }
   // Everything but dictation, model and send sits behind 「+」; active options show as chips.
   const showTemplates = hasTemplates && (started || !sessionId) && !editing
@@ -1616,10 +1651,14 @@ export function Composer({
   const openPlusView = (view: PlusView) => {
     setPlusView(view)
     setSkillQuery('')
+    if (view === 'skills' && !skillStoreLoaded) void loadSkillStore()
   }
   const shownSkills = skillQuery.trim()
     ? usableSkills.filter((s) => s.name.toLowerCase().includes(skillQuery.trim().toLowerCase()))
     : usableSkills
+  const shownOfficial = skillQuery.trim()
+    ? officialToAdd.filter((s) => s.name.toLowerCase().includes(skillQuery.trim().toLowerCase()))
+    : officialToAdd
   const webSearchHelp: Record<WebSearchMode, string> = {
     auto: t('최신 사실이나 날씨를 물으면 찾아봅니다'),
     on: t('매번 웹에서 찾아봅니다'),
@@ -1763,7 +1802,7 @@ export function Composer({
                 className="h-8 w-full rounded-control border border-line bg-panel px-2.5 text-sm text-fg outline-none placeholder:text-faint focus:border-accent"
               />
             </div>
-            {shownSkills.length === 0 && (
+            {shownSkills.length === 0 && shownOfficial.length === 0 && (
               <p className="px-2.5 py-1.5 text-sm text-faint">
                 {usableSkills.length === 0 ? t('아직 추가한 스킬이 없습니다.') : t('맞는 스킬이 없습니다.')}
               </p>
@@ -1792,6 +1831,28 @@ export function Composer({
                 </MenuItem>
               )
             })}
+            {shownOfficial.length > 0 && (
+              <>
+                <p className="px-2.5 pt-1.5 pb-0.5 text-xs text-faint">{t('공식 스킬 · 고르면 내 스킬에 추가됩니다')}</p>
+                {shownOfficial.map((s) => {
+                  const unavailable = skillUnavailableReason(s)
+                  const limitReached = activeSkills.length >= 3
+                  return (
+                    <MenuItem
+                      key={s.id}
+                      checked={false}
+                      keepOpen
+                      disabled={!!unavailable || limitReached || adding !== null}
+                      title={limitReached ? t('최대 3개까지 선택할 수 있습니다.') : undefined}
+                      hint={unavailable ?? (adding === s.id ? t('추가하는 중…') : t('공식'))}
+                      onClick={() => void addOfficial(s)}
+                    >
+                      {s.name}
+                    </MenuItem>
+                  )
+                })}
+              </>
+            )}
             <MenuSeparator />
             {usableSkills.length === 0 ? (
               <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills&view=explore')}>
