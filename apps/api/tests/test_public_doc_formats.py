@@ -319,7 +319,21 @@ def test_a_grant_application_has_its_own_format_not_the_research_plan():
     fmt = doc_formats.detect(ask)
     assert fmt.id == "grant" and "연구자" not in fmt.fields and "신청 기관" in fmt.fields
     assert doc_formats.detect("한국연구재단 연구계획서 초안을 써 줘.").id == "plan"
-    assert doc_formats.detect("창업 사업계획서 써 줘").id != "grant"
+    assert doc_formats.detect("창업 사업계획서 써 줘") is None
+
+
+@pytest.mark.parametrize("ask", [
+    "창업 사업계획서 써 줘", "밀키트 구독 사업 계획서를 써 줘.", "내년 사업계획서 초안 작성해 줘",
+])
+def test_a_business_plan_gets_no_default_format(ask: str):
+    assert doc_formats.detect(ask) is None
+
+
+def test_a_business_plan_keeps_a_named_format():
+    assert doc_formats.detect("사업계획서 써 줘", fixed="biz").id == "biz"
+    assert doc_formats.detect("한빛시 공모사업 신청용 사업계획서 써 줘").id == "grant"
+    assert doc_formats.detect("조사 계획서와 사업계획서를 써 줘").id == "plan"
+    assert doc_formats.detect("현장 점검 계획서 써 줘").id == "plan"
 
 
 def test_a_grant_application_s_cover_reads_its_institution_and_period():

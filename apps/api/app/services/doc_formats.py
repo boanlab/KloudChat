@@ -161,8 +161,11 @@ BY_ID: dict[str, DocFormat] = {f.id: f for f in FORMATS}
 #: Retired formats: kept by existing agents, never newly chosen.
 RETIRED = frozenset({"client_proposal", "career_history"})
 _COMPILED = [(f, re.compile(f.match, re.I)) for f in FORMATS]
-#: Last-resort matches for bare 「계획서」 / 「제안서」.
-_FALLBACKS = [(BY_ID["plan"], re.compile(r"계획서")), (BY_ID["proposal"], re.compile(r"제안서"))]
+#: Last-resort matches for bare 「계획서」 / 「제안서」; 「사업계획서」 stays a plain report.
+_FALLBACKS = [
+    (BY_ID["plan"], re.compile(r"(?<!사업)(?<!사업\s)(?<!사업\s\s)계획서")),
+    (BY_ID["proposal"], re.compile(r"제안서")),
+]
 
 #: `draft` 결재란 columns in signing order.
 APPROVERS = ("기안자", "검토자", "결재권자")
