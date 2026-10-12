@@ -1,8 +1,4 @@
-"""Governance policy: PII masking, intent filtering, retention, and privacy decision tokens.
-
-Masking runs before the model call and before the write. Retention clears
-message bodies only; rows and metadata stay for the audit trail.
-"""
+"""PII masking (pre-call, pre-write), intent filtering, retention, privacy tokens."""
 
 from __future__ import annotations
 
@@ -39,7 +35,7 @@ _TOKEN_TTL_SEC = 300
 
 
 class GovernanceUnavailable(RuntimeError):
-    """The authoritative policy row could not be read for an egress decision."""
+    """Policy row unreadable for an egress decision."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +48,7 @@ class _Detection:
 
 @dataclass(frozen=True, slots=True)
 class Finding:
-    """Value-free aggregate safe to return to a browser or audit log."""
+    """Value-free aggregate, safe for browser or audit log."""
 
     category: str
     source: str
@@ -62,8 +58,7 @@ class Finding:
         return {"category": self.category, "source": self.source, "count": self.count}
 
 
-# Narrow candidates followed by format/checksum validation; deterministic, no
-# semantic name/address detection.
+# narrow candidates + format/checksum validation; no semantic name/address detection
 _EMAIL_LOCAL = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-")
 _EMAIL_DOMAIN = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
 _EMAIL_TLD = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -72,18 +67,17 @@ _KR_LANDLINE = re.compile(
     r"(?<!\d)(?:\(0(?:2|3[1-3]|4[1-4]|5[1-5]|6[1-4])\)\s*|"
     r"0(?:2|3[1-3]|4[1-4]|5[1-5]|6[1-4])[- ])\d{3,4}[- ]\d{4}(?!\d)"
 )
-# NANP area and exchange codes cannot start with 0 or 1; separators or a
-# parenthesised area code are required.
+# NANP: area/exchange can't start 0/1; separators or (area) required
 _NANP = re.compile(
     r"(?<!\d)(?:\+?1[ .-])?(?:\([2-9]\d{2}\)\s*|[2-9]\d{2}[ .-])"
     r"[2-9]\d{2}[ .-]\d{4}(?!\d)"
 )
-# Candidate only; `_valid_international_phone` checks digit count and parentheses.
+# candidate only; _valid_international_phone validates
 _INTERNATIONAL_PHONE = re.compile(r"(?<![\w+])\+[1-9][0-9 .()-]{5,28}[0-9](?!\w)")
 _RRN = re.compile(r"(?<!\d)\d{6}[- ]?[1-8]\d{6}(?!\d)")
 _CARD = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
 _IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
-# Candidate only; `ipaddress` validates. At least two colons required.
+# candidate only; ipaddress validates (≥2 colons)
 _IPV6 = re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])")
 _LEGACY_RRN = re.compile(r"\b\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])-[1-4]\d{6}\b")
 _LEGACY_CARD = re.compile(r"\b(?:\d{4}[- ]){3}\d{4}\b")
@@ -133,32 +127,27 @@ _LABELS = {
     "api_key": "[API키]",
     "jwt": "[JWT]",
     "private_key": "[개인키]",
-    # Organisational, not personal: a switchboard, a role mailbox, a private-range
-    # address. Detected so the scopes below can leave them readable.
+    # organisational, not personal; detected so scopes can keep them readable
     "landline": "[전화번호]",
     "role_email": "[이메일]",
     "private_ip": "[IP주소]",
 }
 
-#: Details that identify a person. Masked before leaving for an external model.
+#: personal identifiers, masked before external models
 PERSONAL = frozenset({"email", "phone", "government_id", "payment_card", "ip_address"})
-#: Details whose mere exposure is an incident, wherever they turn up.
+#: secrets: exposure anywhere is an incident
 SECRETS = frozenset({"government_id", "payment_card", "api_key", "jwt", "private_key"})
 
-#: What each place in the pipeline masks. `egress`: the user's own words and
-#: files on their way to an external model. `tool`: pages fetched from the
-#: public web — a company's switchboard is the answer, not a leak. `answer`:
-#: the model's reply at rest, where only the user's own details and secrets
-#: are taken out (see `mask(protected=...)`).
+#: per-stage masking: egress (to external model), tool (public pages), answer (at rest)
 SCOPES: dict[str, frozenset[str]] = {
     "egress": PERSONAL | SECRETS,
     "tool": SECRETS,
     "answer": SECRETS,
 }
 
-#: Service and toll-free numbers: 15xx/16xx/18xx-xxxx and 080.
+#: service/toll-free numbers: 15xx/16xx/18xx, 080
 _KR_SERVICE = re.compile(r"(?<!\d)(?:1[568]\d{2}[- ]?\d{4}|080[- ]\d{3,4}[- ]\d{4})(?!\d)")
-#: A mailbox that belongs to a desk, not a person.
+#: desk mailbox, not a person
 _ROLE_MAILBOXES = frozenset(
     {
         "info",
@@ -215,7 +204,7 @@ _ROLE_MAILBOXES = frozenset(
         "enquiries",
     }
 )
-#: Well-known public resolvers that appear in every network how-to.
+#: well-known public resolvers
 _WELL_KNOWN_IPS = frozenset({"8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "9.9.9.9"})
 
 
@@ -227,7 +216,7 @@ def _valid_rrn(value: str) -> bool:
     digits = _digits(value)
     if len(digits) != 13:
         return False
-    # The seventh digit encodes sex and century.
+    # 7th digit: sex and century
     century = 1900 if digits[6] in "1256" else 2000
     try:
         date(century + int(digits[:2]), int(digits[2:4]), int(digits[4:6]))
@@ -272,14 +261,12 @@ def _valid_international_phone(value: str) -> bool:
 
 
 def _is_word_character(value: str) -> bool:
-    r"""Regex ``\w`` membership."""
+    r"""Regex \w membership."""
     return value == "_" or value.isalnum()
 
 
 def _email_spans(text: str) -> Iterator[tuple[int, int]]:
-    """High-confidence email spans in linear time, anchored on each ``@`` to avoid regex
-    backtracking.
-    """
+    """Linear-time email spans anchored on @ (no regex backtracking)."""
     resume = 0
     at = text.find("@")
     while at >= 0:
@@ -318,7 +305,7 @@ def _email_spans(text: str) -> Iterator[tuple[int, int]]:
             and trailing_boundary
         ):
             yield start, end
-            # Resume after the match so touching addresses do not overlap.
+            # resume after match: no overlap
             resume = end
 
         at = text.find("@", at + 1)
@@ -333,7 +320,7 @@ def _is_legacy_domain_character(value: str) -> bool:
 
 
 def _legacy_email_spans(text: str) -> Iterator[tuple[int, int]]:
-    r"""``\b[\w.+-]+@[\w-]+\.[\w.-]+\b`` without backtracking; accepts Unicode word characters."""
+    r"""Backtracking-free \b[\w.+-]+@[\w-]+\.[\w.-]+\b (Unicode word chars)."""
     resume = 0
     at = text.find("@")
     while at >= 0:
@@ -360,7 +347,7 @@ def _legacy_email_spans(text: str) -> Iterator[tuple[int, int]]:
             while scan_end < len(text) and _is_legacy_domain_character(text[scan_end]):
                 scan_end += 1
 
-        # The trailing ``\b`` trims final dots and hyphens.
+        # trailing \b trims final dots/hyphens
         end = scan_end
         while end > suffix_start and not _is_word_character(text[end - 1]):
             end -= 1
@@ -378,8 +365,7 @@ def _is_role_mailbox(address: str) -> bool:
 
 
 def _is_non_personal_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    """Loopback, private, link-local, documentation and reserved ranges, and the
-    resolvers every how-to mentions: an address, not a person's location."""
+    """Non-personal IPs: private/reserved ranges and well-known resolvers."""
     return (
         address.is_private
         or address.is_loopback
@@ -433,8 +419,7 @@ def _detections(text: str) -> list[_Detection]:
         for match in pattern.finditer(text):
             add(category, match)
 
-    # Same-start longer matches win (a private-key block contains token-like
-    # fragments); later overlapping candidates are skipped.
+    # same-start longer match wins (key blocks contain token fragments); later overlaps skipped
     accepted: list[_Detection] = []
     covered_until = -1
     for item in sorted(candidates, key=lambda d: (d.start, -(d.end - d.start), d.category)):
@@ -446,8 +431,7 @@ def _detections(text: str) -> list[_Detection]:
 
 
 async def current(force: bool = False) -> Governance:
-    """Cached policy snapshot for non-authorizing work; egress decisions use
-    `current_for_egress`."""
+    """Cached policy for non-authorizing work; egress uses current_for_egress."""
     now = time.monotonic()
     if not force and _cache["value"] is not None and now - _cache["at"] < _TTL:
         return _cache["value"]
@@ -456,7 +440,7 @@ async def current(force: bool = False) -> Governance:
             row = await db.get(Governance, "default")
             policy = row or Governance()
     except Exception as exc:  # noqa: BLE001
-        # Never report guard-off / raw delivery after a read failure.
+        # never report guard-off/raw after a read failure
         log.warning("governance unreadable, enabling external data guard: %s", exc)
         stale = _cache["value"]
         if stale is not None:
@@ -472,11 +456,7 @@ async def current(force: bool = False) -> Governance:
 
 
 async def current_for_egress() -> Governance:
-    """Uncached policy read for egress authorization; the cache is process-local and multi-worker
-    revocation must be immediate.
-
-    Raises `GovernanceUnavailable` on a read failure; callers answer 503.
-    """
+    """Uncached policy for egress (immediate revocation); GovernanceUnavailable → 503."""
     now = time.monotonic()
     try:
         async with SessionLocal() as db:
@@ -496,12 +476,11 @@ def invalidate() -> None:
     _cache.update(at=0.0, value=None)
 
 
-#: Categories compared by their digits alone, so 010-1234-5678 written back as
-#: 01012345678 or 010 1234 5678 is still the same number.
+#: digit-only comparison (010-1234-5678 ≡ 01012345678)
 _NUMERIC = frozenset({"phone", "landline", "payment_card", "government_id"})
 _NUMBER_URL = re.compile(r"https?://[^\s<>\[\]()\"']+", re.I)
 _PATH_TIMESTAMP = re.compile(r"(?<=/)(?:19|20)[0-9]{12}(?=/|$)")
-# Separate whitespace repeats with a required delimiter to avoid quadratic backtracking.
+# delimited whitespace repeats: no quadratic backtracking
 _YEAR_SEQUENCE = re.compile(
     r"(?:\byears?\b|연도|년도)[ \t]*(?:[:：|][ \t]*)?"
     r"(?P<years>(?:19|20)[0-9]{2}(?:[ -](?:19|20)[0-9]{2}){3})"
@@ -523,7 +502,7 @@ def _normalised(category: str, value: str) -> str:
 
 
 def _public_number_spans(text: str) -> set[tuple[int, int]]:
-    """Recognize narrow public-number syntax, never exempt a whole URL or tool."""
+    """Narrow public-number syntax; never exempts a whole URL or tool."""
     spans: set[tuple[int, int]] = set()
     for match in _NUMBER_URL.finditer(text):
         raw_url = match.group()
@@ -554,7 +533,7 @@ def _public_number_spans(text: str) -> set[tuple[int, int]]:
 
 
 def _number_secret_context(text: str, hit: _Detection) -> bool:
-    # A separate preceding row must not taint all following public references.
+    # a separate preceding row must not taint later public refs
     start = max(text.rfind("\n", 0, hit.start) + 1, hit.start - 120)
     line_end = text.find("\n", hit.end)
     end = min(len(text) if line_end < 0 else line_end, hit.end + 80)
@@ -565,9 +544,7 @@ def _in_scope(
     hits: list[_Detection], text: str, scope: str, protected: frozenset[str] | set[str],
     *, preserve_public_numbers: bool = False,
 ) -> list[_Detection]:
-    """The hits `scope` masks: its categories, plus any span whose value the user
-    had masked on the way out (`protected`), so it does not resurface at rest —
-    however the model re-spaced or re-cased it."""
+    """Hits scope masks, plus egress-protected values however re-spaced/re-cased."""
     wanted = SCOPES[scope]
     guarded = {_normalised(category, value) for category, value in _split_protected(protected)}
     public_spans = (
@@ -582,7 +559,7 @@ def _in_scope(
         user_value = _normalised(hit.category, raw) in guarded
         if hit.category not in wanted and not user_value:
             continue
-        # A candidate may include its trailing space; it is not part of the value.
+        # trailing space not part of the value
         span = (hit.start, hit.start + len(raw.rstrip(" ")))
         if (
             hit.category == "payment_card" and not user_value and span in public_spans
@@ -594,7 +571,7 @@ def _in_scope(
 
 
 def _split_protected(protected: frozenset[str] | set[str]) -> list[tuple[str, str]]:
-    """`protected` holds raw spans; re-detect each to learn how to normalise it."""
+    """Re-detect protected spans to learn their normalisation."""
     pairs: list[tuple[str, str]] = []
     for value in protected:
         hits = _detections(value)
@@ -603,7 +580,7 @@ def _split_protected(protected: frozenset[str] | set[str]) -> list[tuple[str, st
 
 
 def mask(text: str, *, scope: str = "egress", protected: set[str] | None = None) -> tuple[str, int]:
-    """`(masked text, hit count)` for `scope` — see `SCOPES`."""
+    """(masked text, hit count) for scope (see SCOPES)."""
     hits = _in_scope(
         _detections(text), text, scope, protected or frozenset(), preserve_public_numbers=True,
     )
@@ -611,8 +588,7 @@ def mask(text: str, *, scope: str = "egress", protected: set[str] | None = None)
 
 
 def protected_values(text: str, *, legacy: bool = False) -> set[str]:
-    """The raw spans `egress` masking takes out of `text` — carried to the
-    answer's at-rest masking so the user's own details never come back."""
+    """Raw spans egress masking removes, carried to at-rest answer masking."""
     detector = _legacy_detections if legacy else _detections
     return {
         text[hit.start : hit.end]
@@ -622,7 +598,7 @@ def protected_values(text: str, *, legacy: bool = False) -> set[str]:
 
 
 def _render_masked(text: str, hits: list[_Detection]) -> str:
-    """Replaces each hit's span with its label."""
+    """Replace each hit span with its label."""
     if not hits:
         return text
     parts: list[str] = []
@@ -659,7 +635,7 @@ def _legacy_detections(text: str) -> list[_Detection]:
 def mask_legacy(
     text: str, *, scope: str = "egress", protected: set[str] | None = None
 ) -> tuple[str, int]:
-    """Mask with the broader legacy patterns; used when `pii_masking` is on."""
+    """Broader legacy masking (pii_masking on)."""
     hits = _in_scope(_legacy_detections(text), text, scope, protected or frozenset())
     return _render_masked(text, hits), len(hits)
 
@@ -671,9 +647,7 @@ def findings(
     scope: str = "egress",
     protected: set[str] | None = None,
 ) -> list[Finding]:
-    """Scans source-labelled text and aggregates without retaining values.
-    Only what `scope` would mask counts, so a page that names a switchboard
-    is not a finding."""
+    """Value-free scan aggregate of what scope would mask."""
     counts: dict[tuple[str, str], int] = {}
     for source, raw in sources.items():
         values = raw if isinstance(raw, list) else [raw]
@@ -747,7 +721,7 @@ def finding_metadata(rows: list[Finding]) -> dict[str, Any]:
 
 
 def blocked_by(text: str, categories: list[str]) -> str | None:
-    """The first configured category found as a substring of `text`, or None."""
+    """First configured category found in text, or None."""
     lowered = text.lower()
     for category in categories:
         needle = str(category).strip().lower()
@@ -757,7 +731,7 @@ def blocked_by(text: str, categories: list[str]) -> str | None:
 
 
 async def sweep_expired(db: AsyncSession) -> int:
-    """Blanks message bodies (not metadata) past the retention window. Returns how many."""
+    """Blank message bodies past retention (metadata kept); returns count."""
     policy = await current(force=True)
     if policy.retention_days <= 0:
         return 0

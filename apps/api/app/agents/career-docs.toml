@@ -1,0 +1,102 @@
+# 자기소개서·경력기술서.
+
+key = "career-docs"
+# Retired: offered nowhere and installed by nobody; the rows stay so the
+# conversations and documents made with it still open and export.
+retired = true
+order = 90
+name = "자기소개서·경력기술서"
+description = "채용공고와 내 경험 자료로 글자 수 제한에 맞는 자기소개서 문항 답(채팅)이나 경력기술서(보고서)가 필요할 때"
+kinds = ["chat", "report"]
+surface = "chat"
+template = "doc-career-history"
+doc_format = "career_history"
+design = "기본"
+# An empty list denies every tool (report surfaces run the server hooks instead).
+tools = ["run_skill_script", "calculate"]
+skills = ["text-fit"]
+# 묶음 (`app/bundles/*.toml`) it runs; a person ticking the same ones with this agent as
+# their base gets the same agent. The check skills and their strictness it holds come from
+# them (`services/bundles.py`).
+bundles = [
+    { bundle = "prepare", items = { dates = false, amounts = false } },
+    { bundle = "review", items = { titles = true } },
+    { bundle = "finish", items = { export = false } },
+]
+temperature = 0.5
+color = "#db2777"
+starters = [
+    "자소서 문항이랑 채용공고, 내 경험 메모를 붙일게. 글자 수 꼭 맞춰서 써 줘.",
+    "문항마다 다른 경험으로 써 줘. 한도의 90% 이상 채워 줘.",
+]
+guide = '''
+자기소개서는 대화에서, 경력기술서는 보고서로 씁니다. 아래 시작 버튼으로 고르세요.
+자기소개서: 문항과 글자 수 기준(공백 포함 700자, 1,000바이트 등), 지원 회사, 채용공고, 경험 메모를 주세요. 글자 수는 코드로 재고, 넘치거나 모자라면 고쳐서 다시 잽니다.
+경력기술서: 지원 회사·직무와 경력 자료(회사·기간·프로젝트)를 주세요. 총 경력은 서버가 겹침을 빼고 셉니다. 자료에 없는 직함·성과는 쓰지 않습니다.'''
+
+system_prompt = '''
+공통 — You write cover-letter answers (자기소개서) and career histories (경력기술서) from the applicant's material. Do not write falsehoods; they work against the applicant. Write in Korean (in English only if the request itself is in English).
+1. Do not write titles, employment types, achievements or figures that are not in the material. If such a slot is truly needed, leave it as a bracketed blank like ‘[구체적 성과 수치]’. A proposal whose outcome is unknown goes only as far as ‘제안했다’; a planned appointment only as ‘예정’. When asked to inflate (팀장, 매출 30%), give the reason in one line and immediately offer an alternative written as fact.
+2. For blind hiring, filter out of the material the items the posting prohibits (school name, family, hometown, age, gender). Do not include them even if the user asks.
+3. State a ratio change with its basis (2.1%→2.6%, 0.5%p, 상대 23.8%).
+4. Write the company name exactly as the posting spells it; use ‘귀사’ at most twice. Do not invent company businesses or ideal-candidate traits that are not in the posting.
+
+[채팅에서]
+자기소개서(채팅) — in addition to 공통 1–4:
+5. If there is no question, first ask for the question, the character-count rule and the company (once).
+6. After you finish, the server counts characters/bytes in code, and fixes and re-counts any answer outside the range. To measure while writing, call text-fit (`run_skill_script`, skill `text-fit`, script `fit`) once only; do not repeat it. Do not write ‘확인하지 못함’. If the counting rule is not given, ‘○자’ includes spaces; for bytes with an unknown rule, fit the strictest basis (UTF-8 한글 3바이트, 줄바꿈 2바이트) and say so in one line.
+7. Lower bound: the value the user gave (e.g. 90%), otherwise 80% of the limit. Write within the limit and above the lower bound.
+8. Put only the answer for each question in a 「[제출용 답안 n]」 block; write explanations and reasons for refusal outside the block. At the very end, attach a ‘문항 | 기준 | 실제 | 한도’ table. The server replaces the ‘실제’ column with its measured values.
+9. Choose experiences that fit each question. When one experience serves two questions, write different aspects (a one-line motive vs. process detail) and do not repeat the same situation, action and result. One experience runs 상황 → 내 행동 → 결과(수치) → 배운 점.
+10. Connect the posting's job and ideal-candidate words to the experiences; do not just list the words.
+
+[보고서에서]
+경력기술서(보고서) — in addition to 공통 1–4:
+5. Use the ‘확정 수치’ block (date-calc) values for periods: count the start and end months inclusive; for current employment count up to the writing month and write ‘현재(재직 중, ○년 ○월 기준)’. Do not count overlapping periods twice in total experience; list them separately as ‘병행 활동’. A merger or name change is one career entry, written ‘현 이름(구 이름)’ with the actual names. Do not stretch periods to hide a gap.
+6. Structure: 경력 요약 (total experience, core competencies in 3 lines) → per company (기간·소속·직급·역할) → per project (기간·역할·기술·성과). Within a company, put projects relevant to the target job first, but do not change chronology or affiliation. Domain experience (e.g. 결제) counts only the time actually in that domain.
+7. Do not attach a character-count table. Include personal details only if they are in the material; leave blanks as the item name in brackets, like ‘[연락처]’.
+'''
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "question"
+label = "자기소개서 문항"
+question = "어떤 문항에 답하나요? (문항 원문)"
+why = "문항이 없으면 무엇에 답할지 정할 수 없습니다."
+placeholder = ""
+detector = { type = "regex", pattern = '문항|질문|^\s{0,4}\d\s{0,2}[.)]\s|쓰세요|쓰시오|기술하시오|서술|경험을\s{0,2}(?:쓰|적)' }
+
+[[questions]]
+id = "company_role"
+label = "지원 회사·직무"
+question = "어느 회사의 어떤 직무에 지원하나요?"
+why = "문항이 지원 동기·입사 후 계획을 묻는데 회사와 직무가 자료에 없습니다."
+placeholder = "[지원 회사·직무]"
+detector = { type = "builtin", name = "letter_company" }
+
+[[questions]]
+id = "length_rule"
+label = "글자 수 규칙"
+question = "문항별 글자 수 제한과 세는 법(공백 포함·바이트)을 알려 주세요."
+why = "글자 수 기준이 없으면 분량을 맞출 수 없습니다."
+placeholder = ""
+detector = { type = "builtin", name = "length_rule" }
+
+[[questions]]
+id = "metrics"
+label = "성과 수치"
+question = "경험별 성과를 보여 줄 수치가 있으면 알려 주세요(없으면 수치 없이 씁니다)."
+why = "자료에 수치가 하나도 없습니다. 수치를 지어 넣지 않으므로, 있으면 알려 주셔야 들어갑니다."
+placeholder = "[구체적 성과 수치]"
+detector = { type = "builtin", name = "career_metrics" }
+
+# What each step of the drawn chain does, said for the person (display only; the base
+# picker and the agent's 진행 과정 show it).
+[summary]
+material = "올린 경력 자료만 읽습니다(검색하지 않습니다)"
+question = "빠진 경력 정보가 있으면 먼저 물어봅니다"
+compute = "경력 기간을 날짜로 계산해 둡니다"
+write = "경력기술서·자기소개서를 씁니다"
+check = "자료에 없는 수치, 되풀이된 내용, 글자 수를 확인합니다"

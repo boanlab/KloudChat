@@ -15,7 +15,7 @@ const AS_USER = `async (path, init) => {
   return r.ok ? await r.json() : null
 }`
 
-test('결과물 목록은 한 페이지씩 오고, 개수와 검색은 전체를 본다', async ({ page }) => {
+test('아티팩트 목록은 한 페이지씩 오고, 개수와 검색은 전체를 본다', async ({ page }) => {
   test.setTimeout(240_000)
   await signIn(page)
 
@@ -71,7 +71,7 @@ test('결과물 목록은 한 페이지씩 오고, 개수와 검색은 전체를
   const cards = page.getByRole('button', { name: /열기$/ })
   await expect(cards).toHaveCount(rows.length, { timeout: 20_000 })
 
-  // Anchored: the sidebar has its own "이전 대화 N개 더 보기".
+  // Anchored: the sidebar links to 「모든 대화 보기」, which is not this button.
   const more = page.getByRole('button', { name: /^\d+개 더 보기$/ })
   await expect(more).toBeVisible({ timeout: 20_000 })
   await more.click()

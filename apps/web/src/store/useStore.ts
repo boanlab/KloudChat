@@ -1,5 +1,6 @@
 import type { WebSearchSetting } from '@/lib/api'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
+import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
 import { create } from 'zustand'
 import { applyBrand } from '@/lib/brand'
 import {
@@ -22,7 +23,6 @@ import {
   connectorsApi,
   designsApi,
   designTemplatesApi,
-  promptTemplatesApi,
   keysApi,
   filesApi,
   memoryApi,
@@ -31,7 +31,7 @@ import {
   sessionsApi,
   setAccessToken,
   skillsApi,
-  streamComparison,
+  streamRerun,
   streamSession,
   toolsApi,
   usageApi,
@@ -41,7 +41,6 @@ import type {
   ApiKeyRow,
   AuthSession,
   ArtifactRow,
-  AuditRow,
   GovernancePolicy,
   CatalogEntry,
   ConnectorRow,
@@ -53,7 +52,6 @@ import type {
   MessageRow,
   ModelCatalogue,
   ProjectRow,
-  PromptTemplateRow,
   SessionRow,
   SkillRow,
   StoreSkillRow,
@@ -62,6 +60,8 @@ import type {
 import type {
   Agent,
   Artifact,
+  PipelineRun,
+  PipelineStage,
   Connector,
   Job,
   MemoryEntry,
@@ -78,24 +78,21 @@ import type {
   ReportArtifact,
   ReportSection,
   SessionKind,
-  StartingPoint,
-  Variant,
   Skill,
   Step,
   StoreSkill,
   ToolCatalogEntry,
   User,
 } from '@/types'
-import { uid } from '@/lib/utils'
+import { fileSize, uid } from '@/lib/utils'
+import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
 import { currentLang, translate, type Lang } from '@/lib/i18n'
+import { counters } from '@/lib/usage'
 
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = (text: string) => translate(currentLang(), text)
 
-/**
- * Send options per user-message id for an immediate retry. The server also
- * persists the durable subset so retry keeps its behaviour after a reload.
- */
+/** Send options per user message, for an immediate retry; the server persists the durable subset. */
 const sentWith = new Map<string, SendOptions>()
 /** Answers a rerun is replacing, by question id, until the new answer row takes them. */
 const earlierAnswers = new Map<string, NonNullable<Message['superseded']>>()
@@ -103,7 +100,7 @@ const earlierAnswers = new Map<string, NonNullable<Message['superseded']>>()
 type Theme = 'light' | 'dark' | 'system'
 type SidebarMode = 'full' | 'rail' | 'hidden'
 
-/** A client refusal is returned before send/compare writes its first Message. */
+/** A client refusal is returned before send writes its first Message. */
 const isClientRefusal = (error: unknown): error is ApiError =>
   error instanceof ApiError && error.status >= 400 && error.status < 500
 
@@ -120,6 +117,15 @@ export class ChatSendRecoveryError extends Error {
 
 /** Per-session PATCH queue for model/routing changes; a send waits for the latest one. */
 const sessionPersistence = new Map<string, Promise<void>>()
+
+type UnsentPatch = { title?: string; pinned?: boolean; renderTemplateId?: string; skillIds?: string[] }
+/** Settings changed on an unsent conversation, applied right after it is created. */
+const unsentPatches = new Map<string, UnsentPatch>()
+/** When each conversation's own row last arrived, against `loadSessions` started before it. */
+let rowsFetched = 0
+const rowFetchedAt = new Map<string, number>()
+/** One creation per unsent conversation, however many sends and uploads ask for it. */
+const creatingSessions = new Map<string, Promise<string>>()
 
 /** Jobs already polled by this tab, so opening the session does not start a second loop. */
 const followedJobs = new Set<string>()
@@ -152,11 +158,7 @@ function endRun(set: Set, sessionId: string) {
   void reconcileSession(set, sessionId)
 }
 
-/**
- * Merges the stored transcript over the on-screen one: the server decides which
- * messages exist and what they say; a field it left empty keeps the screen's value
- * (streamed steps and privacy notices are not all stored).
- */
+/** Stored transcript over the on-screen one: the server decides messages and text; empty fields keep the screen's value. */
 async function reconcileSession(set: Set, sessionId: string) {
   const row = await sessionsApi.get(sessionId).catch(() => null)
   if (!row) return
@@ -164,8 +166,7 @@ async function reconcileSession(set: Set, sessionId: string) {
   set((s) => {
     const held = s.sessions.find((c) => c.id === sessionId)
     if (!held || sessionId in s.running) return {}
-    // Pair by id where one matches, else by position from the front: only the
-    // chat path adopts server ids, and a short server list is short at the end.
+    // Pair by id, else by position: only chat adopts server ids, and a short server list is short at the end.
     const byId = new Map(held.messages.map((m) => [m.id, m]))
     const mineAt = (index: number) => held.messages[index]
     const paired = fresh.messages.map((message, index) => {
@@ -201,11 +202,12 @@ function same(held: Session, merged: Session): boolean {
       mine.role === theirs.role &&
       mine.content === theirs.content &&
       (mine.steps?.length ?? 0) === (theirs.steps?.length ?? 0) &&
-      (mine.attachments?.length ?? 0) === (theirs.attachments?.length ?? 0) &&
-      Boolean(mine.variants) === Boolean(theirs.variants)
+      (mine.attachments?.length ?? 0) === (theirs.attachments?.length ?? 0)
     )
   })
 }
+
+const openingSessions = new Map<string, Promise<boolean>>()
 
 async function waitForSessionPersistence(sessionId: string): Promise<void> {
   // Loop until the awaited promise is still the last one queued for this session.
@@ -228,8 +230,6 @@ type SendOptions = {
   activatedSkillIds?: string[]
   /** Sent with the turn (the session may not exist yet); the server makes it sticky. */
   renderTemplateId?: string
-  /** Only the id goes on the wire; the title names the bubble until the server's copy arrives. */
-  startingTemplate?: StartingPoint
   privacyAction?: PrivacyAction
   privacyDecisionToken?: string
   /** Write the pending outline instead of planning again (이대로 생성). */
@@ -248,6 +248,19 @@ type SendOptions = {
   onSession?: (id: string) => void
   /** Edited forks must reconcile an unaccepted request before allowing a retry. */
   reconcileBeforeRetry?: boolean
+}
+
+/** What the result card asks of the panel it opens. */
+export interface ArtifactIntent {
+  artifactId: string
+  /** Changes on every request, so the same request twice is seen twice. */
+  nonce: number
+  /** The review pane: a report's sources and checks, a deck's review notes. */
+  pane?: 'review'
+  /** A deck slide by index. */
+  slide?: number
+  /** An earlier version, previewed from the version history. */
+  version?: number
 }
 
 interface State {
@@ -298,13 +311,13 @@ interface State {
   /** Shared skills not yet copied into this account; loaded separately from the workspace. */
   skillStore: StoreSkill[]
   skillStoreLoading: boolean
+  /** Whether the shared skill list has answered once; until then 탐색 is loading, not empty. */
+  skillStoreLoaded: boolean
   /** The last listing failed; distinct from empty. */
   skillStoreError: boolean
   designs: DesignRow[]
   /** Server-shipped, read-only. */
   designTemplates: DesignTemplateRow[]
-  /** Built-in 시작점. */
-  promptTemplates: PromptTemplateRow[]
   availableTools: ToolCatalogEntry[]
   memories: MemoryEntry[]
   agents: Agent[]
@@ -312,6 +325,8 @@ interface State {
   // ── models ────────────────────────────────────────────────────────────
   models: ModelInfo[]
   modelsLoading: boolean
+  /** The model list has answered at least once (or failed): before that, an empty list means "not yet". */
+  modelsSettled: boolean
   /** Per collection: still loading (an empty list alone cannot say). */
   workspaceLoading: boolean
   artifactsLoading: boolean
@@ -340,7 +355,17 @@ interface State {
   setActiveSession: (id: string | null) => void
   /** Titles only; transcripts arrive with `openSession`. */
   loadSessions: () => Promise<void>
-  openSession: (id: string) => Promise<void>
+  /** Fetches the transcript; false when it could not be fetched (never throws). */
+  openSession: (id: string) => Promise<boolean>
+  /** `openSession` without the sharing of a request already in flight. */
+  fetchSession: (id: string) => Promise<boolean>
+  /** Continues an agent chat on report/slides with the same agent, sending the conversation and its files. */
+  handOff: (
+    fromSessionId: string,
+    kind: 'report' | 'slides',
+    text: string,
+    opts?: Pick<SendOptions, 'webSearch' | 'onSession'> & { attachments?: FileRow[] },
+  ) => Promise<string>
   forkBeforeMessage: (sessionId: string, messageId: string) => Promise<{
     sessionId: string; attachments: FileRow[]; attachmentIdMap: Record<string, string>
   }>
@@ -357,6 +382,8 @@ interface State {
       routingMode?: Session['routingMode']
     },
   ) => Promise<string>
+  /** Creates an unsent conversation on the server (same id); resolves to the id to use. */
+  ensureSession: (id: string) => Promise<string>
   send: (
     sessionId: string | null,
     kind: SessionKind,
@@ -364,6 +391,13 @@ interface State {
     opts?: SendOptions,
   ) => Promise<string>
   stopStreaming: (sessionId: string) => void
+  /** 「이 단계부터 다시」: reruns a stored run from one stage; the result is a new version. */
+  rerunStage: (
+    sessionId: string,
+    runId: string,
+    stage: { name: string; label: string },
+    answers?: Record<string, string>,
+  ) => Promise<void>
   renameSession: (id: string, title: string) => Promise<void>
   /** Sets the skills that stay on for a conversation; `[]` switches them all off. */
   setSessionSkills: (id: string, skillIds: string[]) => Promise<void>
@@ -409,20 +443,11 @@ interface State {
     rating: 'up' | 'down' | null,
   ) => Promise<void>
 
-  // ── model comparison ──────────────────────────────────────────────────
-  compareMode: boolean
-  compareModels: string[]
-  toggleCompareMode: () => void
-  toggleCompareModel: (id: string) => void
-  /** Keeps one variant's answer and continues the conversation from it. */
-  chooseVariant: (sessionId: string, messageId: string, model: string) => Promise<void>
 
   // ── governance (admin) ────────────────────────────────────────────────
   /** Null until fetched. */
   usage: UsageReport | null
-  audit: AuditRow[] | null
   loadUsage: (days?: number) => Promise<void>
-  loadAudit: () => Promise<void>
   /** Null until fetched. */
   apiKeys: ApiKeyRow[] | null
   loadApiKeys: () => Promise<void>
@@ -435,41 +460,46 @@ interface State {
   saveGovernance: (patch: Partial<GovernancePolicy>) => Promise<number>
 
   // ── image / audio-video ───────────────────────────────────────────────
-  /** The media 서식 whose defaults the option chips show; any manual chip change clears it. */
-  optionTemplate: DesignTemplateRow | null
-  setOptionTemplate: (template: DesignTemplateRow | null) => void
   imageOptions: { aspect: string; style: string; labels: 'auto' | 'ko' | 'en' | 'none'; count: number }
   setImageOptions: (patch: Partial<State['imageOptions']>) => void
   /** Text to drop into the composer; never sent on the user's behalf. */
   draft: string
-  setDraft: (text: string) => void
+  /** The composer `draft` is for (`composerKey`); null: whichever is mounted. */
+  draftTo: string | null
+  setDraft: (text: string, to?: string | null) => void
+  /** Where an opened artifact should land: its review pane, a slide, an earlier version. Read once by the panel. */
+  artifactIntent: ArtifactIntent | null
+  /** Opens the panel on `id` and hands it `intent`. */
+  openArtifactAt: (id: string, intent: Omit<ArtifactIntent, 'artifactId' | 'nonce'>) => void
+  clearArtifactIntent: () => void
   /** Form file a picked template carries to the composer. Consumed once. */
   pendingAttachment: FileRow | null
-  setPendingAttachment: (file: FileRow | null) => void
+  /** The composer `pendingAttachment` is for (`composerKey`); null: whichever is mounted. */
+  pendingAttachmentTo: string | null
+  setPendingAttachment: (file: FileRow | null, to?: string | null) => void
   /** A refused turn's draft, addressed to the session it was sent to; the sending composer may already be unmounted. */
   composerRestore: {
     sessionId: string | null
     value: string
     attachments: FileRow[]
     activatedSkillIds: string[]
-    startingTemplate: StartingPoint | null
     error: string
   } | null
   setComposerRestore: (restore: State['composerRestore']) => void
   /** Shell-level failure sentence for actions with no screen of their own. Cleared by the bar that shows it. */
   notice: string | null
   setNotice: (notice: string | null) => void
+  /** A neutral, passing message with at most one action (「빼기」); outlives navigation. */
+  toast: { text: string; action?: { label: string; run: () => void } } | null
+  /** The server's password rule (`/auth/config`), for every form that sets one. */
+  passwordMinLength: number
+  setToast: (toast: { text: string; action?: { label: string; run: () => void } } | null) => void
   /** Rendering template picked in the gallery, waiting for the turn that will use it. */
   pendingTemplate: DesignTemplateRow | null
   setPendingTemplate: (template: DesignTemplateRow | null) => void
-  /** 시작점 picked in the gallery, handed to the composer. Consumed once. */
-  pendingStartingTemplate: StartingPoint | null
-  setPendingStartingTemplate: (template: StartingPoint | null) => void
   /** An empty logo draws the default mark. */
   brand: { name: string; logo: string }
-  /** Re-reads `/auth/config` — brand, enabled surfaces and the rest of what
-   *  `bootstrap` seeded from it — so a change an admin just saved shows up
-   *  in this tab without a reload. */
+  /** Re-reads `/auth/config` so an admin's saved change shows without a reload. */
   refreshConfig: () => Promise<void>
   /** Chat is always among them. */
   enabledKinds: SessionKind[]
@@ -496,10 +526,15 @@ interface State {
   clearMediaError: () => void
   /** Replaces the store's copy with the server's, and returns it. */
   refreshArtifact: (id: string) => Promise<Artifact | null>
+  /** The newest saved version of an artifact the panels saved in place; the answer's card reads it. */
+  artifactVersions: Record<string, number>
+  noteArtifactVersion: (id: string, version: number) => void
 
   // ── workspace ─────────────────────────────────────────────────────────
-  /** One call after sign-in; each screen also refreshes its own slice. */
+  /** One load at a time; a call during a load waits for one more shared load, so its result is newer than the call. */
   loadWorkspace: () => Promise<void>
+  /** Reuses a running load, skips one just finished, else loads. */
+  ensureWorkspace: () => Promise<void>
   /** The server defaults `emoji` to 📁. */
   createProject: (
     p: Pick<Project, 'name' | 'description' | 'instructions'> & Partial<Pick<Project, 'emoji'>>,
@@ -512,6 +547,8 @@ interface State {
     ids: string[],
   ) => Promise<number>
   uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
+  /** A fresher copy of a project file (its scanned pages were read meanwhile). */
+  refreshProjectFile: (row: FileRow) => void
   addProjectUrl: (projectId: string, url: string) => Promise<FileRow>
   deleteFile: (id: string) => Promise<void>
   /** Fetches the template list only if it is not already held. */
@@ -546,14 +583,16 @@ interface State {
 
   // ── workspace ─────────────────────────────────────────────────────────
   toggleSkill: (id: string) => Promise<void>
-  upsertSkill: (s: Skill) => Promise<void>
+  /** Resolves to the saved row (a new one carries the server's id). */
+  upsertSkill: (s: Skill) => Promise<Skill>
   deleteSkill: (id: string) => Promise<void>
   loadSkillStore: () => Promise<void>
   installSkill: (id: string) => Promise<void>
   upsertMemory: (m: MemoryEntry) => Promise<void>
   deleteMemory: (id: string) => Promise<void>
   togglePinMemory: (id: string) => Promise<void>
-  upsertAgent: (a: Agent) => Promise<void>
+  /** Resolves to the saved row (a new one carries the server's id). */
+  upsertAgent: (a: Agent) => Promise<Agent>
   /** Copies a shared agent and the skills it runs on. */
   installAgent: (a: Agent) => Promise<void>
   deleteAgent: (id: string) => Promise<void>
@@ -577,7 +616,17 @@ interface State {
 
 /** Bumped on every workspace write, so a stale fetch cannot overwrite newer state. */
 let workspaceEpoch = 0
-const touchWorkspace = () => ++workspaceEpoch
+/** A change here (or a sign-out): a load in flight is stale, and so is the last one. */
+const touchWorkspace = () => {
+  workspaceLoadedAt = 0
+  return ++workspaceEpoch
+}
+/** The workspace load running now, and the one queued behind it (`loadWorkspace`). */
+let workspaceLoad: Promise<void> | null = null
+let workspaceAgain: Promise<void> | null = null
+/** When the last workspace load finished (`ensureWorkspace` reuses it this long). */
+let workspaceLoadedAt = 0
+const WORKSPACE_FRESH_MS = 5_000
 
 /** Matches the server's page size. */
 const ARTIFACT_PAGE = 60
@@ -716,8 +765,7 @@ function cancelRefresh() {
   refreshTimer = null
 }
 
-// Idle sign-out: the silent refresh would otherwise keep a session alive forever.
-// `pointerdown`/`keydown`/`scroll` count as activity; `mousemove` does not.
+// Idle sign-out, else the silent refresh keeps a session alive forever; pointerdown/keydown/scroll count, mousemove does not.
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 let idleTeardown: (() => void) | null = null
 
@@ -764,13 +812,10 @@ function disarmIdleWatch() {
 
 /** A prompt sent to a job surface through chat goes back to the composer, where its options live. */
 function handToTheComposer(set: Set, text: string) {
-  set({ draft: text })
+  set({ draft: text, draftTo: null })
 }
 
-/**
- * Per surface: the remembered pick if the catalogue still serves it there, else the
- * surface/instance default, else the cheapest. Storage is never rewritten here.
- */
+/** Remembered pick if still served on the surface, else surface/instance default, else cheapest; storage untouched. */
 function reconcileDefaults(
   current: Record<SessionKind, string>,
   available: ModelInfo[],
@@ -804,6 +849,14 @@ function reconcileDefaults(
 }
 
 /** The model a turn will run on: session, then agent, then surface default (turn overrides excluded). */
+/**
+ * Which composer a hand-off is for: the conversation's id, or `new:<kind>` before it exists.
+ * Navigation renders as a transition, so the composer being left still sees the store first.
+ */
+export function composerKey(sessionId: string | null, kind: SessionKind): string {
+  return sessionId ?? `new:${kind}`
+}
+
 export function effectiveModelId(
   session: Pick<Session, 'model' | 'agentId'> | undefined,
   kind: SessionKind,
@@ -823,16 +876,6 @@ function pickedModel(
 ): string | undefined {
   const session = s.sessions.find((c) => c.id === sessionId)
   return effectiveModelId(session, kind, s.agents, s.modelByKind) || undefined
-}
-
-function reconcileCompareModels(current: string[], available: ModelInfo[]): string[] {
-  const chatIds = available.filter((model) => model.kinds.includes('chat')).map((model) => model.id)
-  const valid = current.filter((id, index) => chatIds.includes(id) && current.indexOf(id) === index)
-  for (const id of chatIds) {
-    if (valid.length >= 2) break
-    if (!valid.includes(id)) valid.push(id)
-  }
-  return valid.slice(0, 3)
 }
 
 const SIGNED_OUT_KEY = 'kchat-signed-out'
@@ -868,8 +911,7 @@ export const useStore = create<State>((set, get) => ({
   bootstrap: async () => {
     if (inFlight) return inFlight
     inFlight = (async () => {
-      // A browser that signed out (or whose refresh already failed) has no cookie
-      // to present; asking anyway only logs a 401 on every load.
+      // No cookie after a sign-out or failed refresh: asking only logs a 401.
       if (knownSignedOut()) {
         set({ authenticated: false, user: null, authLoading: false })
         inFlight = null
@@ -877,6 +919,8 @@ export const useStore = create<State>((set, get) => ({
       }
       try {
         const session = await auth.refresh()
+        // No refresh cookie: signed out, said with 204 rather than a logged 401.
+        if (!session) throw new Error('signed_out')
         rememberSignedOut(false)
         setAccessToken(session.accessToken)
         set({ authenticated: true, user: session.user, authLoading: false, authError: null })
@@ -889,19 +933,31 @@ export const useStore = create<State>((set, get) => ({
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
               idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
               dictationEnabled: Boolean(c.dictationEnabled),
+              passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
             })
             armIdleWatch(c.idleTimeoutMinutes ?? 0, () => void get().logout('idle'))
           })
           .catch(() => {})
         scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+        // Address-opened conversation first, before the workspace requests take the connections.
+        const opened = window.location.pathname.match(/^\/s\/([^/]+)/)?.[1]
+        if (opened && session.user.status === 'active' &&
+            !get().sessions.some((row) => row.id === opened && row.messages.length > 0)) {
+          void get().openSession(opened)
+        }
         void get().loadModels()
         void get().loadSessions()
         void get().loadWorkspace()
-      } catch {
+      } catch (err) {
         cancelRefresh()
         disarmIdleWatch()
         setAccessToken(null)
-        rememberSignedOut(true)
+        // Remembered only when the server said so. A refresh cut off by a reload or a
+        // network error says nothing about the cookie; remembering it would skip the
+        // refresh on the next load and show sign-in to a signed-in person.
+        if ((err instanceof Error && err.message === 'signed_out') || err instanceof UnauthorizedError) {
+          rememberSignedOut(true)
+        }
         set({ authenticated: false, user: null, authLoading: false })
       } finally {
         inFlight = null
@@ -965,9 +1021,10 @@ export const useStore = create<State>((set, get) => ({
   logout: async (reason) => {
     // Half-typed questions must not outlive the account on a shared machine.
     purgeStoredDrafts(get().user?.id)
+    purgeUnsent(get().user?.id)
     set((state) => ({ accountEpoch: state.accountEpoch + 1,
       messageEdit: null, messageEditBusy: false, composerRestore: null,
-      pendingAttachment: null, draft: '' }))
+      pendingAttachment: null, pendingAttachmentTo: null, draft: '', draftTo: null }))
     try {
       await auth.logout()
     } catch {
@@ -992,9 +1049,9 @@ export const useStore = create<State>((set, get) => ({
       artifacts: [],
       skills: [],
       skillStore: [],
+      skillStoreLoaded: false,
       designs: [],
       designTemplates: [],
-      promptTemplates: [],
       availableTools: [],
       memories: [],
       agents: [],
@@ -1055,6 +1112,7 @@ export const useStore = create<State>((set, get) => ({
   usersLoading: false,
   models: [],
   modelsLoading: false,
+  modelsSettled: false,
   workspaceLoading: true,
   artifactsLoading: true,
   artifactsLoadingMore: false,
@@ -1084,74 +1142,71 @@ export const useStore = create<State>((set, get) => ({
   skills: [],
   skillStore: [],
   skillStoreLoading: false,
+  skillStoreLoaded: false,
   skillStoreError: false,
   designs: [],
   designTemplates: [],
-  promptTemplates: [],
   availableTools: [],
   memories: [],
   agents: [],
   connectorCatalog: [],
 
-  /** A partial failure still renders the rest. */
-  loadWorkspace: async () => {
-    const epoch = ++workspaceEpoch
-    // Artifacts load through their own (deduplicated) action.
-    void get().loadArtifacts({})
-    const results = await Promise.allSettled([
-      projectsApi.list(),
-      skillsApi.list(),
-      designsApi.list(),
-      designTemplatesApi.list(),
-      promptTemplatesApi.list(),
-      memoryApi.list(),
-      agentsApi.list(),
-      connectorsApi.list(),
-      connectorsApi.catalog(),
-      toolsApi.list(),
-    ])
-    const [
-      projects,
-      skills,
-      designs,
-      designTemplates,
-      promptTemplates,
-      memories,
-      agents,
-      connectors,
-      catalog,
-      tools,
-    ] = results
-    if (epoch !== workspaceEpoch) return
-    set((s) => ({
-      workspaceLoading: false,
-      workspaceFailed: results.some((r) => r.status === 'rejected'),
-      projects: projects.status === 'fulfilled' ? projects.value.map(toProject) : s.projects,
-      skills: skills.status === 'fulfilled' ? skills.value.map(toSkill) : s.skills,
-      designs: designs.status === 'fulfilled' ? designs.value : s.designs,
-      designTemplates:
-        designTemplates.status === 'fulfilled' ? designTemplates.value : s.designTemplates,
-      promptTemplates:
-        promptTemplates.status === 'fulfilled' ? promptTemplates.value : s.promptTemplates,
-      availableTools: tools.status === 'fulfilled' ? tools.value : s.availableTools,
-      memories: memories.status === 'fulfilled' ? memories.value.map(toMemory) : s.memories,
-      agents: agents.status === 'fulfilled' ? agents.value.map(toAgent) : s.agents,
-      connectors:
-        connectors.status === 'fulfilled' ? connectors.value.map(toConnector) : s.connectors,
-      connectorCatalog: catalog.status === 'fulfilled' ? catalog.value : s.connectorCatalog,
-    }))
+  loadWorkspace: () => {
+    if (workspaceLoad) {
+      // One load in flight at a time; a second request queues behind it.
+      workspaceAgain ??= workspaceLoad.then(() => {
+        workspaceAgain = null
+        return get().loadWorkspace()
+      })
+      return workspaceAgain
+    }
+    /** A partial failure still renders the rest. */
+    const fetchWorkspace = async () => {
+      const epoch = ++workspaceEpoch
+      // Artifacts load through their own (deduplicated) action.
+      void get().loadArtifacts({})
+      // Each list is shown as soon as it arrives, so a slow one holds back no other.
+      const fresh = () => epoch === workspaceEpoch
+      const each = <T,>(load: Promise<T>, apply: (value: T) => Partial<State>) =>
+        load.then((value) => {
+          if (fresh()) set(apply(value))
+        })
+      const results = await Promise.allSettled([
+        each(agentsApi.list(), (rows) => ({ agents: rows.map(toAgent) })),
+        each(projectsApi.list(), (rows) => ({ projects: rows.map(toProject) })),
+        each(skillsApi.list(), (rows) => ({ skills: rows.map(toSkill) })),
+        each(designsApi.list(), (rows) => ({ designs: rows })),
+        each(designTemplatesApi.list(), (rows) => ({ designTemplates: rows })),
+        each(memoryApi.list(), (rows) => ({ memories: rows.map(toMemory) })),
+        each(connectorsApi.list(), (rows) => ({ connectors: rows.map(toConnector) })),
+        each(connectorsApi.catalog(), (rows) => ({ connectorCatalog: rows })),
+        each(toolsApi.list(), (rows) => ({ availableTools: rows })),
+      ])
+      if (!fresh()) return
+      set({
+        workspaceLoading: false,
+        workspaceFailed: results.some((r) => r.status === 'rejected'),
+      })
+    }
+    workspaceLoad = fetchWorkspace().finally(() => {
+      workspaceLoad = null
+      workspaceLoadedAt = Date.now()
+    })
+    return workspaceLoad
   },
+  ensureWorkspace: () =>
+    workspaceLoad ??
+    (Date.now() - workspaceLoadedAt < WORKSPACE_FRESH_MS ? Promise.resolve() : get().loadWorkspace()),
 
   usage: null,
-  audit: null,
   loadUsage: async (days = 7) => {
     const report = await usageApi.report(days).catch(() => null)
     if (report) set({ usage: report })
   },
   apiKeys: null,
   loadApiKeys: async () => {
-    const rows = await keysApi.list().catch(() => null)
-    if (rows) set({ apiKeys: rows })
+    // Throws: the 키 screen shows the failure with 다시 시도 instead of loading forever.
+    set({ apiKeys: await keysApi.list() })
   },
   createApiKey: async (name) => {
     const row = await keysApi.create(name)
@@ -1179,10 +1234,6 @@ export const useStore = create<State>((set, get) => ({
     const result = await usageApi.setGovernance(patch)
     await get().loadGovernance()
     return result.clearedMessages
-  },
-  loadAudit: async () => {
-    const rows = await usageApi.audit(200).catch(() => null)
-    if (rows) set({ audit: rows })
   },
 
   loadModels: async () => {
@@ -1215,6 +1266,7 @@ export const useStore = create<State>((set, get) => ({
           qualityModelIds: [],
         },
         modelsLoading: false,
+        modelsSettled: true,
         modelByKind: reconcileDefaults(
           s.modelByKind,
           live,
@@ -1222,10 +1274,8 @@ export const useStore = create<State>((set, get) => ({
           defaultModelByKind,
           s.user?.preferences.modelByKind,
         ),
-        compareModels: reconcileCompareModels(s.compareModels, live),
       }))
-      // An account with no picks of its own adopts this browser's, once; from then
-      // on the account copy leads and every browser opens on the same model.
+      // An account without picks adopts this browser's once; then the account copy leads.
       const prefs = get().user?.preferences
       if (prefs && !Object.keys(prefs.modelByKind ?? {}).length) {
         const local = readRememberedModels()
@@ -1235,6 +1285,7 @@ export const useStore = create<State>((set, get) => ({
       // Keep what is loaded. `litellmAvailable` describes the list, not this request.
       set((s) => ({
         modelsLoading: false,
+        modelsSettled: true,
         litellmAvailable: s.models.length > 0 ? s.litellmAvailable : false,
       }))
     }
@@ -1274,6 +1325,7 @@ export const useStore = create<State>((set, get) => ({
       }
     }),
   setSessionModel: async (sessionId, modelId) => {
+    if (holdUnsent(set, get, sessionId, { model: modelId, routingMode: 'manual' })) return
     const previous = get().sessions.find((session) => session.id === sessionId)
     set((s) => ({
       sessions: s.sessions.map((c) =>
@@ -1299,6 +1351,7 @@ export const useStore = create<State>((set, get) => ({
     }
   },
   setSessionRoutingMode: async (sessionId, mode) => {
+    if (holdUnsent(set, get, sessionId, { routingMode: mode })) return
     const previous = get().sessions.find((session) => session.id === sessionId)?.routingMode
     set((s) => ({
       sessions: s.sessions.map((session) =>
@@ -1324,17 +1377,11 @@ export const useStore = create<State>((set, get) => ({
   },
   setActiveSession: (id) => {
     const session = id ? get().sessions.find((s) => s.id === id) : null
-    // Media already shown in the transcript does not also open the panel;
-    // sessions with no messages predate message recording and still do.
+    // Media shown in the transcript does not open the panel; sessions without messages still do.
     const shownInTranscript =
       (session?.kind === 'image' || session?.kind === 'av') && session.messageCount > 0
     const artifactId = shownInTranscript ? null : (session?.artifactId ?? null)
-    set((state) => ({
-      activeSessionId: id,
-      openArtifactId: artifactId,
-      // Comparison mode belongs to the conversation it was turned on in.
-      compareMode: id === state.activeSessionId ? state.compareMode : false,
-    }))
+    set({ activeSessionId: id, openArtifactId: artifactId })
     // The panel needs the whole document, not the listing's card.
     const held = artifactId ? get().artifacts.find((a) => a.id === artifactId) : null
     if (artifactId && (!held || held.partial)) void get().refreshArtifact(artifactId)
@@ -1344,16 +1391,20 @@ export const useStore = create<State>((set, get) => ({
     const owner = get().user?.id
     const epoch = get().accountEpoch
     const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
+    // A row fetched on its own after the list was asked for is newer than the list's snapshot.
+    const asked = rowsFetched
     try {
       const rows = await sessionsApi.list()
       if (!ownsAccount()) return
       set((s) => ({
         sessionsLoading: false,
         sessionsFailed: false,
-        // The list carries no transcripts, so held messages are kept.
-        sessions: rows.map((row) =>
-          toSession(row, s.sessions.find((c) => c.id === row.id)?.messages),
-        ),
+        // The list carries no transcripts, so held messages are kept; unsent ones are the browser's.
+        sessions: [
+          ...s.sessions.filter((c) => !rows.some((row) => row.id === c.id) &&
+            (c.unsent || (rowFetchedAt.get(c.id) ?? 0) > asked)),
+          ...rows.map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
+        ],
       }))
     } catch {
       if (!ownsAccount()) return
@@ -1361,15 +1412,38 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  openSession: async (id) => {
+  openSession: (id) => {
+    // One request per conversation at a time: the boot's early fetch and the page's own share it.
+    const pending = openingSessions.get(id)
+    if (pending) return pending
+    const started = get().fetchSession(id).finally(() => openingSessions.delete(id))
+    openingSessions.set(id, started)
+    return started
+  },
+
+  fetchSession: async (id) => {
     const owner = get().user?.id
     const epoch = get().accountEpoch
     const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
     const accountSet: Set = (patch) => { if (ownsAccount()) set(patch) }
+    if (get().sessions.find((c) => c.id === id)?.unsent) return true
+    // Opened before a reload and never sent: nothing on the server yet.
+    const kept = findUnsent(owner, id)
+    if (kept) {
+      set((s) => ({ sessions: [{ ...kept, messages: [], unsent: true }, ...s.sessions.filter((c) => c.id !== id)] }))
+      return true
+    }
+    let row: Awaited<ReturnType<typeof sessionsApi.get>>
     try {
-      const row = await sessionsApi.get(id)
-      if (!ownsAccount()) return
+      row = await sessionsApi.get(id)
+    } catch {
+      // Deleted, not ours, or the network: the page tells these apart by the session row.
+      return false
+    }
+    try {
+      if (!ownsAccount()) return true
       const session = toSession(row)
+      rowFetchedAt.set(id, ++rowsFetched)
       set((s) => ({
         sessions: s.sessions.some((c) => c.id === id)
           ? s.sessions.map((c) => (c.id === id ? session : c))
@@ -1381,7 +1455,7 @@ export const useStore = create<State>((set, get) => ({
 
       // Job cards are server rows, so a reload has to fetch them.
       const jobRows = await jobsApi.list(id).catch(() => null)
-      if (!ownsAccount()) return
+      if (!ownsAccount()) return true
       if (jobRows) {
         set((s) => ({
           jobs: [
@@ -1399,41 +1473,78 @@ export const useStore = create<State>((set, get) => ({
       if (session.artifactId) wanted.add(session.artifactId)
       for (const m of session.messages) for (const a of m.artifactIds ?? []) wanted.add(a)
       const missing = [...wanted].filter((a) => !get().artifacts.some((x) => x.id === a))
-      if (missing.length === 0) return
+      if (missing.length === 0) return true
       const rows = await Promise.all(missing.map((a) => artifactsApi.get(a).catch(() => null)))
-      if (!ownsAccount()) return
+      if (!ownsAccount()) return true
       const found = rows.filter((r) => r !== null).map(toArtifact)
       if (found.length) set((s) => ({ artifacts: [...found, ...s.artifacts] }))
     } catch {
-      // Deleted or not ours; the page renders its empty state.
+      // The transcript is in; a job or artifact lookup that broke is not a failed load.
     }
+    return true
   },
 
   newSession: async (
     kind,
     { projectId = null, agentId = null, routingMode = 'manual' } = {},
   ) => {
-    touchWorkspace()
-    const row = await sessionsApi.create({
-      kind,
-      projectId,
-      agentId,
+    // Held in the browser: the server row comes with the first send (`ensureSession`).
+    const state = get()
+    const agent = state.agents.find((a) => a.id === agentId)
+    const now = new Date().toISOString()
+    const session: Session = {
+      id: unsentId(), kind, title: tr('새 작업'), projectId, agentId, pipelineId: null,
       // A session model outranks the agent's, so an agent that pins one gets none here.
-      model: get().agents.find((a) => a.id === agentId)?.model ? null : get().modelByKind[kind],
-      routingMode,
-    })
-    const session = toSession(row, [])
+      model: agent?.model ? '' : (state.modelByKind[kind] ?? ''),
+      routingMode, createdAt: now, updatedAt: now, pinned: false, messages: [], preview: null,
+      messageCount: 0, made: null, artifactId: null, pending: null, skillIds: [],
+      renderTemplateId: startingTemplate(state, kind, agent, projectId), unsent: true,
+    }
+    keepUnsent(state.user?.id, session)
     set((s) => ({
       sessions: [session, ...s.sessions],
       activeSessionId: session.id,
       openArtifactId: null,
-      projects: projectId
-        ? s.projects.map((p) =>
-            p.id === projectId ? { ...p, sessionIds: [session.id, ...p.sessionIds] } : p,
-          )
-        : s.projects,
     }))
     return session.id
+  },
+
+  ensureSession: (id) => {
+    const row = get().sessions.find((c) => c.id === id)
+    if (!row?.unsent) return Promise.resolve(id)
+    const pending = creatingSessions.get(id)
+    if (pending) return pending
+    const owner = get().user?.id
+    const started = (async () => {
+      touchWorkspace()
+      let made = await sessionsApi.create({
+        id, kind: row.kind, projectId: row.projectId, agentId: row.agentId,
+        model: row.model || null, routingMode: row.routingMode,
+      })
+      const patch = unsentPatches.get(id)
+      if (patch && Object.keys(patch).length) made = await sessionsApi.update(made.id, patch)
+      unsentPatches.delete(id)
+      forgetUnsent(owner, id)
+      if (owner !== get().user?.id) return made.id
+      const held = get().sessions.find((c) => c.id === id)
+      const session = toSession(made, held?.messages ?? [])
+      set((s) => ({
+        sessions: s.sessions.some((c) => c.id === id)
+          ? s.sessions.filter((c) => c.id !== session.id || c.id === id).map((c) => (c.id === id ? session : c))
+          : [session, ...s.sessions.filter((c) => c.id !== session.id)],
+        activeSessionId: s.activeSessionId === id ? session.id : s.activeSessionId,
+        projects: session.projectId
+          ? s.projects.map((p) =>
+              p.id === session.projectId && !p.sessionIds.includes(session.id)
+                ? { ...p, sessionIds: [session.id, ...p.sessionIds] }
+                : p,
+            )
+          : s.projects,
+      }))
+      return session.id
+    })().finally(() => creatingSessions.delete(id))
+    creatingSessions.set(id, started)
+    return started
   },
 
   messageEdit: null,
@@ -1446,6 +1557,32 @@ export const useStore = create<State>((set, get) => ({
     if (session?.kind !== 'chat' || state.running[sessionId] || state.messageEditBusy) return
     if (!session.messages.some((message) => message.id === messageId && message.role === 'user' && message.persisted)) return
     set({ messageEdit: { sessionId, messageId } })
+  },
+  handOff: async (fromSessionId, kind, text, opts = {}) => {
+    const owner = get().user?.id
+    const epoch = get().accountEpoch
+    const result = await sessionsApi.handoff(fromSessionId, kind)
+    if (!owner || owner !== get().user?.id || epoch !== get().accountEpoch || !get().authenticated) {
+      throw new Error('account_changed')
+    }
+    const row = toSession(result.session, [])
+    set((state) => ({
+      sessions: [row, ...state.sessions.filter((c) => c.id !== row.id)],
+      projects: row.projectId
+        ? state.projects.map((p) =>
+            p.id === row.projectId ? { ...p, sessionIds: [row.id, ...p.sessionIds] } : p,
+          )
+        : state.projects,
+    }))
+    const files = [...result.attachments, ...(opts.attachments ?? [])]
+      .filter((file, at, all) => all.findIndex((other) => other.id === file.id) === at)
+    return get().send(row.id, kind, text, {
+      projectId: row.projectId,
+      webSearch: opts.webSearch,
+      attachments: files.map((file) => file.id),
+      attachmentNames: files.map((file) => file.name),
+      onSession: opts.onSession,
+    })
   },
   forkBeforeMessage: async (sessionId, messageId) => {
     const owner = get().user?.id
@@ -1467,7 +1604,14 @@ export const useStore = create<State>((set, get) => ({
     // A retry resends the original turn's options, not just its sentence.
     const again = opts.retryOf ? sentWith.get(opts.retryOf) : undefined
     if (again) opts = { ...again, ...opts }
-    const id = sessionId ?? (await get().newSession(kind, { projectId: opts.projectId ?? null }))
+    const fresh = sessionId ? null : await get().newSession(kind, { projectId: opts.projectId ?? null })
+    let id: string
+    try {
+      id = await get().ensureSession(sessionId ?? fresh!)
+    } catch (error) {
+      if (fresh) void get().deleteSession(fresh)
+      throw error
+    }
     await waitForSessionPersistence(id)
     if (!ownsAccount()) throw new Error('account_changed')
     // Chat keeps the originating composer until the first SSE event; other surfaces navigate at once.
@@ -1505,9 +1649,6 @@ export const useStore = create<State>((set, get) => ({
         size: '',
         type: '',
       })),
-      startedFrom: opts.startingTemplate
-        ? { templateId: opts.startingTemplate.id, title: opts.startingTemplate.title }
-        : undefined,
     }
 
     // A retry replaces what failed under the question; a stale id falls back to appending.
@@ -1521,7 +1662,6 @@ export const useStore = create<State>((set, get) => ({
       attachmentNames: opts.attachmentNames,
       activatedSkillIds: opts.activatedSkillIds,
       renderTemplateId: opts.renderTemplateId,
-      startingTemplate: opts.startingTemplate,
       approve: opts.approve,
       includeFigures: opts.includeFigures,
       plan: opts.plan,
@@ -1571,7 +1711,6 @@ export const useStore = create<State>((set, get) => ({
           text,
           model,
           opts.activatedSkillIds,
-          opts.startingTemplate?.id,
           {
             approve: opts.approve,
             answers: opts.answers,
@@ -1593,7 +1732,6 @@ export const useStore = create<State>((set, get) => ({
           text,
           model,
           opts.activatedSkillIds,
-          opts.startingTemplate?.id,
           {
             approve: opts.approve,
             answers: opts.answers,
@@ -1621,27 +1759,14 @@ export const useStore = create<State>((set, get) => ({
 
       if (get().running[id]) return id
 
-      if (get().compareMode && get().compareModels.length >= 2) {
-        await runComparison(turnSet, get, id, text, {
-          activatedSkillIds: opts.activatedSkillIds,
-          startingTemplateId: opts.startingTemplate?.id,
-          attachments: opts.attachments,
-          attachmentNames: opts.attachmentNames,
-          privacyAction: opts.privacyAction,
-          privacyDecisionToken: opts.privacyDecisionToken,
-          onAccepted: acceptSession,
-        })
-        return id
-      }
-
       await streamTurn(turnSet, get, id, text, model, {
         model: opts.model,
+        answers: opts.answers,
         retryOf,
         webSearch: opts.webSearch,
         attachments: opts.attachments,
         attachmentNames: opts.attachmentNames,
         activatedSkillIds: opts.activatedSkillIds,
-        startingTemplateId: opts.startingTemplate?.id,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
         onAccepted: acceptSession,
@@ -1688,10 +1813,17 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  rerunStage: async (sessionId, runId, stage, answers) => {
+    const session = get().sessions.find((c) => c.id === sessionId)
+    if (!session || get().running[sessionId]) return
+    const rerun = { runId, fromStage: stage.name, label: stage.label, answers }
+    const model = effectiveModelId(session, session.kind, get().agents, get().modelByKind)
+    if (session.kind === 'slides') await streamDeck(set, get, sessionId, '', model, undefined, { rerun })
+    else await streamReport(set, get, sessionId, '', model, undefined, { rerun })
+  },
+
   stopStreaming: (sessionId) => {
-    // A closed response is deliberately *not* a stop on the server. Wait for
-    // the explicit stop request to be acknowledged before closing it; the
-    // timeout keeps a broken control request from trapping the UI forever.
+    // A closed response is not a server stop: wait for the stop acknowledgement; the timeout keeps a broken request from trapping the UI.
     const abort = get().running[sessionId]
     if (!abort) return
     const fallback = window.setTimeout(abort, 2_000)
@@ -1702,6 +1834,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setSessionTemplate: async (id, templateId) => {
+    if (holdUnsent(set, get, id, { renderTemplateId: templateId }, { renderTemplateId: templateId ?? '' })) return
     set((s) => ({
       sessions: s.sessions.map((c) =>
         c.id === id ? { ...c, renderTemplateId: templateId } : c,
@@ -1714,6 +1847,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   moveSessionToProject: async (id, projectId) => {
+    if (holdUnsent(set, get, id, { projectId })) return
     set((s) => ({
       sessions: s.sessions.map((c) => (c.id === id ? { ...c, projectId } : c)),
     }))
@@ -1721,10 +1855,12 @@ export const useStore = create<State>((set, get) => ({
   },
 
   renameSession: async (id, title) => {
+    if (holdUnsent(set, get, id, { title }, { title })) return
     set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, title } : c)) }))
     await sessionsApi.update(id, { title }).catch(() => get().loadSessions())
   },
   setSessionSkills: async (id, skillIds) => {
+    if (holdUnsent(set, get, id, { skillIds }, { skillIds })) return
     set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, skillIds } : c)) }))
     await sessionsApi.update(id, { skillIds }).catch(() => get().loadSessions())
   },
@@ -1742,16 +1878,16 @@ export const useStore = create<State>((set, get) => ({
 
   generateVideo: async (sessionId, prompt, opts = {}) => {
     const { avOptions } = get()
-    let id = sessionId
-    if (!id) {
-      try {
-        id = await get().newSession('av', { projectId: opts.projectId ?? null })
-      } catch (err) {
-        set({ mediaError: errorMessage(err, '영상 작업을 시작하지 못했습니다.') })
-        return
-      }
-      opts.onSession?.(id)
+    const fresh = sessionId ? null : await get().newSession('av', { projectId: opts.projectId ?? null })
+    let id: string
+    try {
+      id = await get().ensureSession(sessionId ?? fresh!)
+    } catch (err) {
+      if (fresh) void get().deleteSession(fresh)
+      set({ mediaError: errorMessage(err, '영상 작업을 시작하지 못했습니다.') })
+      return
     }
+    if (fresh) opts.onSession?.(id)
     const { promptId } = beginMediaTurn(set, id, prompt, false)
     try {
       const job = await jobsApi.create(id, {
@@ -1819,11 +1955,10 @@ export const useStore = create<State>((set, get) => ({
   },
   generateAudio: async (sessionId, prompt, opts = {}) => {
     const { avOptions } = get()
-    let id = sessionId
-    if (!id) {
-      id = await get().newSession('av', { projectId: opts.projectId ?? null })
-      opts.onSession?.(id)
-    }
+    const id = await get().ensureSession(
+      sessionId ?? (await get().newSession('av', { projectId: opts.projectId ?? null })),
+    )
+    if (!sessionId) opts.onSession?.(id)
     // Audio returns inside this call: no job card.
     const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
     beginRun(set, id)
@@ -1848,25 +1983,21 @@ export const useStore = create<State>((set, get) => ({
   },
   generateImages: async (sessionId, prompt, opts = {}) => {
     const { imageOptions, modelByKind } = get()
-    let id = sessionId
-    if (!id) {
-      try {
-        id = await get().newSession('image', { projectId: opts.projectId ?? null })
-      } catch (err) {
-        set({ mediaError: errorMessage(err, '이미지를 만들지 못했습니다.') })
-        return
-      }
-      opts.onSession?.(id)
+    const fresh = sessionId ? null : await get().newSession('image', { projectId: opts.projectId ?? null })
+    let id: string
+    try {
+      id = await get().ensureSession(sessionId ?? fresh!)
+    } catch (err) {
+      if (fresh) void get().deleteSession(fresh)
+      set({ mediaError: errorMessage(err, '이미지를 만들지 못했습니다.') })
+      return
     }
+    if (fresh) opts.onSession?.(id)
     const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
     beginRun(set, id)
-    // An image template is consumed by the turn; no session row ever holds it.
-    const picked = get().pendingTemplate
-    const templateId = picked?.kind === 'image' ? picked.id : undefined
-    if (picked) set({ pendingTemplate: null })
     try {
-      // A `figure` template goes to a language model as mermaid, drawn here with its source kept.
-      const figure = picked?.kind === 'image' ? picked.figure : undefined
+      // Figure chips go to a language model as a flowchart drawn with the deck-export shapes; never the image model.
+      const figure = opts.raw ? undefined : FIGURE_STYLES[imageOptions.style]
       if (figure) {
         try {
           const rows = [await drawFigure(id, prompt, figure, modelByKind.chat || undefined)]
@@ -1897,7 +2028,6 @@ export const useStore = create<State>((set, get) => ({
         style: opts.raw ? '없음' : imageOptions.style,
         labels: imageOptions.labels,
         count: imageOptions.count,
-        templateId,
         raw: opts.raw,
       })
       set((s) => ({ artifacts: [...rows.map(toArtifact), ...s.artifacts] }))
@@ -1929,6 +2059,16 @@ export const useStore = create<State>((set, get) => ({
     return deleted
   },
   deleteSession: async (id) => {
+    if (get().sessions.find((c) => c.id === id)?.unsent && !creatingSessions.has(id)) {
+      unsentPatches.delete(id)
+      forgetUnsent(get().user?.id, id)
+      forgetStoredDraft(get().user?.id, id)
+      set((s) => ({
+        sessions: s.sessions.filter((c) => c.id !== id),
+        activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
+      }))
+      return
+    }
     touchWorkspace()
     const before = get()
     const row = before.sessions.find((c) => c.id === id)
@@ -1971,6 +2111,7 @@ export const useStore = create<State>((set, get) => ({
   },
   togglePinSession: async (id) => {
     const pinned = !get().sessions.find((c) => c.id === id)?.pinned
+    if (holdUnsent(set, get, id, { pinned }, { pinned })) return
     set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, pinned } : c)) }))
     await sessionsApi.update(id, { pinned }).catch(() => get().loadSessions())
   },
@@ -1996,65 +2137,28 @@ export const useStore = create<State>((set, get) => ({
     await sessionsApi.rate(messageId, next).catch(() => show(before))
   },
 
-  compareMode: false,
-  compareModels: [],
-  toggleCompareMode: () => set((s) => ({ compareMode: !s.compareMode })),
-  toggleCompareModel: (id) =>
-    set((s) => {
-      const has = s.compareModels.includes(id)
-      if (has && s.compareModels.length <= 2) return s
-      if (!has && s.compareModels.length >= 3) return s
-      return {
-        compareModels: has
-          ? s.compareModels.filter((m) => m !== id)
-          : [...s.compareModels, id],
-      }
-    }),
-  chooseVariant: async (sessionId, messageId, model) => {
-    // Sets this conversation's model only, never the surface default.
-    set((s) => ({
-      sessions: s.sessions.map((c) =>
-        c.id === sessionId
-          ? {
-              ...c,
-              model,
-              messages: c.messages.map((m) =>
-                m.id === messageId
-                  ? {
-                      ...m,
-                      model,
-                      content: m.variants?.find((v) => v.model === model)?.content ?? m.content,
-                      variants: m.variants?.map((v) => ({ ...v, chosen: v.model === model })),
-                    }
-                  : m,
-              ),
-            }
-          : c,
-      ),
-    }))
-    await sessionsApi
-      .chooseVariant(sessionId, messageId, model)
-      .catch(() => get().openSession(sessionId))
-  },
-
-  optionTemplate: null,
-  setOptionTemplate: (optionTemplate) => set({ optionTemplate }),
   imageOptions: { aspect: '16:9', style: '자동', labels: 'auto', count: 1 },
-  // A manual chip change drops the 서식 that authored the values.
-  setImageOptions: (patch) =>
-    set((s) => ({ imageOptions: { ...s.imageOptions, ...patch }, optionTemplate: null })),
+  setImageOptions: (patch) => set((s) => ({ imageOptions: { ...s.imageOptions, ...patch } })),
   draft: '',
-  setDraft: (draft) => set({ draft }),
+  draftTo: null,
+  setDraft: (draft, to = null) => set({ draft, draftTo: to }),
   pendingAttachment: null,
-  setPendingAttachment: (pendingAttachment) => set({ pendingAttachment }),
+  pendingAttachmentTo: null,
+  setPendingAttachment: (pendingAttachment, to = null) => set({ pendingAttachment, pendingAttachmentTo: to }),
+  artifactIntent: null,
+  openArtifactAt: (id, intent) => {
+    set({ artifactIntent: { ...intent, artifactId: id, nonce: Date.now() } })
+    get().openArtifact(id)
+  },
+  clearArtifactIntent: () => set({ artifactIntent: null }),
   composerRestore: null,
   setComposerRestore: (composerRestore) => set({ composerRestore }),
   notice: null,
   setNotice: (notice) => set({ notice }),
+  toast: null,
+  setToast: (toast) => set({ toast }),
   pendingTemplate: null,
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
-  pendingStartingTemplate: null,
-  setPendingStartingTemplate: (pendingStartingTemplate) => set({ pendingStartingTemplate }),
   brand: { name: 'KloudChat', logo: '' },
   refreshConfig: async () => {
     const c = await authConfig.get().catch(() => null)
@@ -2065,8 +2169,10 @@ export const useStore = create<State>((set, get) => ({
       enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
       idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
       dictationEnabled: Boolean(c.dictationEnabled),
+      passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
     })
   },
+  passwordMinLength: DEFAULT_PASSWORD_MIN,
   enabledKinds: ['chat', 'report', 'slides'],
   avOptions: {
     mode: 'video',
@@ -2080,8 +2186,7 @@ export const useStore = create<State>((set, get) => ({
   setAvOptions: (patch) =>
     set((s) => {
       const avOptions = { ...s.avOptions, ...patch }
-      // A manual chip change drops the 서식 that authored the values.
-      const next = { avOptions, optionTemplate: null }
+      const next = { avOptions }
       if (!patch.mode) return next
       // The av model follows the mode unless the current one already suits it.
       const wanted = patch.mode === 'video' ? 'video' : 'audio'
@@ -2125,6 +2230,9 @@ export const useStore = create<State>((set, get) => ({
     if (id) void get().refreshArtifact(id)
   },
 
+  artifactVersions: {},
+  noteArtifactVersion: (id, version) =>
+    set((s) => (s.artifactVersions[id] === version ? s : { artifactVersions: { ...s.artifactVersions, [id]: version } })),
   refreshArtifact: async (id) => {
     const row = await artifactsApi.get(id).catch(() => null)
     if (!row) return null
@@ -2197,6 +2305,8 @@ export const useStore = create<State>((set, get) => ({
 
   uploadFile: async (file, opts) => {
     touchWorkspace()
+    // A file for an unsent conversation creates it: the file belongs to that conversation.
+    if (opts?.sessionId) opts = { ...opts, sessionId: await get().ensureSession(opts.sessionId) }
     const row = await filesApi.upload(file, opts)
     if (opts?.projectId) {
       set((s) => ({
@@ -2207,6 +2317,14 @@ export const useStore = create<State>((set, get) => ({
     }
     return row
   },
+  refreshProjectFile: (row) =>
+    set((s) => ({
+      projects: s.projects.map((p) =>
+        p.files.some((f) => f.id === row.id)
+          ? { ...p, files: p.files.map((f) => (f.id === row.id ? toProjectFile(row) : f)) }
+          : p,
+      ),
+    })),
   addProjectUrl: async (projectId, url) => {
     touchWorkspace()
     const row = await filesApi.addProjectUrl(projectId, url)
@@ -2380,14 +2498,18 @@ export const useStore = create<State>((set, get) => ({
       requiredTools: skill.requiredTools,
       enabled: skill.enabled,
       visibility: skill.visibility,
+      // Only what the form changed: a shipped copy's package fields stay unstored.
+      ...(skill.server ? { server: skill.server } : {}),
     }
     const exists = get().skills.some((s) => s.id === skill.id)
     const row = exists ? await skillsApi.update(skill.id, payload) : await skillsApi.create(payload)
+    const saved = toSkill(row)
     set((s) => ({
       skills: exists
-        ? s.skills.map((x) => (x.id === skill.id ? toSkill(row) : x))
-        : [toSkill(row), ...s.skills],
+        ? s.skills.map((x) => (x.id === skill.id ? saved : x))
+        : [saved, ...s.skills],
     }))
+    return saved
   },
   loadSkillStore: async () => {
     set({ skillStoreLoading: true, skillStoreError: false })
@@ -2396,6 +2518,7 @@ export const useStore = create<State>((set, get) => ({
       skillStore: rows ? rows.map(toStoreSkill) : st.skillStore,
       skillStoreError: rows === null,
       skillStoreLoading: false,
+      skillStoreLoaded: true,
     }))
   },
   installSkill: async (id) => {
@@ -2495,21 +2618,32 @@ export const useStore = create<State>((set, get) => ({
       tools: a.tools,
       skillIds: a.skillIds,
       kinds: a.kinds,
+      surface: a.surface,
+      renderTemplateId: a.renderTemplateId,
+      docFormat: a.docFormat,
+      designSystemId: a.designSystemId,
       guide: a.guide,
+      contact: (a.contact ?? '').trim(),
       starters: a.starters.map((x) => x.trim()).filter(Boolean),
       shareMode: a.shareMode,
       temperature: a.temperature,
       color: a.color,
       enabled: a.enabled,
       visibility: a.visibility,
+      // Only once the form holds a list: null keeps asking what the base asks.
+      ...(a.gapQuestions !== undefined ? { gapQuestions: a.gapQuestions } : {}),
+      // Its own 진행 과정 설정, or null to follow its template's.
+      ...(a.processSettings !== undefined ? { processSettings: a.processSettings } : {}),
     }
     const exists = get().agents.some((x) => x.id === a.id)
     const row = exists ? await agentsApi.update(a.id, payload) : await agentsApi.create(payload)
+    const saved = toAgent(row)
     set((s) => ({
       agents: exists
-        ? s.agents.map((x) => (x.id === a.id ? toAgent(row) : x))
-        : [toAgent(row), ...s.agents],
+        ? s.agents.map((x) => (x.id === a.id ? saved : x))
+        : [saved, ...s.agents],
     }))
+    return saved
   },
   deleteAgent: async (id) => {
     touchWorkspace()
@@ -2559,9 +2693,30 @@ async function applyUserChange(set: Set, pending: Promise<User>) {
 type Set = (u: Partial<State> | ((s: State) => Partial<State>)) => void
 type Get = () => State
 
-/** A document draft's title while it is written: the request's opening words, but on an
- *  approval the outline's own title (or a placeholder) — the approval message says what
- *  to do, not what the document is called. */
+/**
+ * A change to a conversation not yet created: applied on screen and kept for its creation.
+ * True when it was one (the caller sends nothing).
+ */
+function holdUnsent(set: Set, get: Get, id: string, change: Partial<Session>, patch?: UnsentPatch): boolean {
+  const row = get().sessions.find((c) => c.id === id)
+  if (!row?.unsent) return false
+  const next = { ...row, ...change }
+  set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? next : c)) }))
+  if (patch) unsentPatches.set(id, { ...unsentPatches.get(id), ...patch })
+  keepUnsent(get().user?.id, next)
+  return true
+}
+
+/** The template a new conversation starts with: the agent's for this surface, else the project's. */
+function startingTemplate(state: State, kind: SessionKind, agent: Agent | undefined, projectId: string | null): string | null {
+  const usable = (id: string | null | undefined) =>
+    !!id && state.designTemplates.some((row) => row.id === id && row.surface === kind)
+  if (usable(agent?.renderTemplateId)) return agent!.renderTemplateId!
+  const fromProject = state.projects.find((p) => p.id === projectId)?.renderTemplates?.[kind]
+  return usable(fromProject) ? fromProject! : null
+}
+
+/** Draft title while writing: the request's opening words, or on approval the outline's title. */
 function draftTitle(
   text: string,
   gate: { approve?: boolean; plan?: Record<string, unknown> },
@@ -2573,7 +2728,44 @@ function draftTitle(
 }
 
 /** The UI's step categories; anything else is a tool call. */
-const STEP_TYPES = new Set<Step['type']>(['thinking', 'tool', 'artifact'])
+const STEP_TYPES = new Set<Step['type']>(['thinking', 'tool', 'artifact', 'pipeline'])
+
+/** The run a message streams: announced by a `run` event, filled stage by stage. */
+function runStarted(
+  m: Message,
+  e: { runId: string; pipeline?: string; flow?: string; parentId?: string | null; fromStage?: string | null },
+): Message {
+  const kept = m.run?.id === e.runId ? m.run.stages : []
+  return {
+    ...m,
+    run: {
+      id: e.runId, pipeline: e.pipeline, flow: e.flow, status: 'running',
+      parentId: e.parentId ?? null, fromStage: e.fromStage ?? null, stages: kept,
+    },
+  }
+}
+
+/** One stage record onto the message's run; a later attempt of the same stage replaces it. */
+function withStage(m: Message, stage: PipelineStage): Message {
+  const run: PipelineRun = m.run ?? { id: stage.runId ?? '', status: 'running', stages: [] }
+  const at = run.stages.findIndex((x) => x.name === stage.name)
+  const stages = at >= 0 ? run.stages.map((x, i) => (i === at ? stage : x)) : [...run.stages, stage]
+  const status: PipelineRun['status'] =
+    stage.status === 'waiting' ? 'waiting' : stage.status === 'failed' ? 'failed'
+      : stage.status === 'stopped' ? 'stopped' : run.status
+  return { ...m, run: { ...run, status, stages } }
+}
+
+/** A stored `routing.run`, when the message carries one. */
+function storedRun(routing: unknown): PipelineRun | undefined {
+  const run = (routing as { run?: PipelineRun } | null)?.run
+  return run && typeof run.id === 'string' && Array.isArray(run.stages) ? run : undefined
+}
+
+/** A live run is settled once its stream ends; what it was waiting on stays. */
+function settleRun(m: Message): Message {
+  return m.run && m.run.status === 'running' ? { ...m, run: { ...m.run, status: 'done' } } : m
+}
 
 /** Every turn ends with `usage` or `error`; a stream that ends with neither was cut off. */
 const CUT_OFF = '연결이 끊겨 답변이 중간에 멈췄습니다. 다시 시도해 주세요.'
@@ -2611,11 +2803,15 @@ function adoptServerId(set: Set, sessionId: string, localId: string, serverId: s
 /** Deletes whose requests have not been sent yet, so the page can flush them. */
 const pendingDeletes = new Set<() => void>()
 
+/** Flushes held deletes as the page goes away (`pagehide` on phones), with `keepalive`. */
+export function flushHeldDeletes() {
+  for (const flush of [...pendingDeletes]) flush()
+  pendingDeletes.clear()
+}
+
 if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    for (const flush of pendingDeletes) flush()
-    pendingDeletes.clear()
-  })
+  window.addEventListener('beforeunload', flushHeldDeletes)
+  window.addEventListener('pagehide', flushHeldDeletes)
 }
 
 /** Whatever the row calls itself: artifacts have titles, the rest have names. */
@@ -2671,6 +2867,11 @@ function toStep(raw: Record<string, unknown>): Step {
     memories: raw.memories as Step['memories'],
     files: raw.files as Step['files'],
     memoriesWritten: raw.memoriesWritten as number | undefined,
+    outputs: raw.outputs as Step['outputs'],
+    code: typeof raw.code === 'string' ? raw.code : undefined,
+    codeAttempt: typeof raw.codeAttempt === 'number' ? raw.codeAttempt : undefined,
+    stdout: typeof raw.stdout === 'string' ? raw.stdout : undefined,
+    stderr: typeof raw.stderr === 'string' ? raw.stderr : undefined,
     totalMemories: raw.totalMemories as number | undefined,
     personal: raw.personal as string[] | undefined,
     estimatedTokens: raw.estimatedTokens as number | undefined,
@@ -2737,22 +2938,27 @@ function retold(step: Step): Partial<Step> {
         : step.id === 'context-earlier'
           ? tr('이전 턴 첨부')
           : tr('첨부 파일')
-    const short = step.files.filter((file) => file.state !== 'included')
+    // A picture the model saw counts as included, as on the server.
+    const short = step.files.filter((file) => file.state !== 'included' && file.state !== 'picture')
     const cut = short.filter((file) => file.state === 'truncated').length
-    const dropped = short.length - cut
+    const reading = short.filter((file) => file.state === 'reading').length
+    const dropped = short.length - cut - reading
     const fates = [
       ...(cut ? [tr('{n}개 잘림').replace('{n}', String(cut))] : []),
+      ...(reading ? [tr('{n}개 글자 읽는 중').replace('{n}', String(reading))] : []),
       ...(dropped ? [tr('{n}개 빠짐').replace('{n}', String(dropped))] : []),
     ]
+    const notes: Record<string, string> = {
+      omitted: '{name} 분량을 넘겨 제외',
+      reading: '{name} 글자 읽는 중',
+      picture_unseen: '{name} 그림 · 이 모델은 보지 못함',
+    }
     const note = (file: NonNullable<Step['files']>[number]) =>
       file.state === 'truncated'
         ? tr('{name} {kept}자만 반영')
             .replace('{name}', file.name)
             .replace('{kept}', file.keptChars.toLocaleString())
-        : tr(file.state === 'omitted' ? '{name} 분량을 넘겨 제외' : '{name} 읽지 못함').replace(
-            '{name}',
-            file.name,
-          )
+        : tr(notes[file.state] ?? '{name} 읽지 못함').replace('{name}', file.name)
     return {
       label: fates.length
         ? `${tr('{subject} {n}개 중').replace('{subject}', subject).replace('{n}', String(step.files.length))} ${fates.join(', ')}`
@@ -2806,11 +3012,13 @@ function toMessage(raw: MessageRow): Message {
     id: raw.id,
     persisted: true,
     role: raw.role,
-    content: raw.content,
+    // A turn from the retired model comparison keeps the answer it chose; failing that, its first.
+    content: raw.content || raw.variants?.find((v) => v.content)?.content || '',
     createdAt: raw.createdAt,
     model: raw.model,
     routing: raw.routing ?? undefined,
     steps: raw.steps?.map((s) => toStep(s as Record<string, unknown>)),
+    run: storedRun(raw.routing),
     attachments: raw.attachments?.map((a) =>
       typeof a === 'string'
         ? { name: a, size: '', type: '' }
@@ -2819,21 +3027,10 @@ function toMessage(raw: MessageRow): Message {
     usage: raw.usage ?? undefined,
     startedFrom: raw.startedFrom ?? undefined,
     artifactIds: raw.artifactIds ?? undefined,
+    artifactVersion: raw.artifactVersion ?? undefined,
     failure: raw.failure ?? undefined,
     liked: raw.rating ?? null,
     superseded: raw.superseded ?? undefined,
-    variants: raw.variants?.map((v) => ({
-      model: v.model,
-      routedModel: v.routedModel,
-      actualModel: v.actualModel,
-      dataBoundary: v.dataBoundary,
-      content: v.content,
-      status: v.error ? ('error' as const) : ('done' as const),
-      chosen: v.chosen ?? false,
-      usage: v.usage
-        ? { ...v.usage, credits: v.credits }
-        : { inputTokens: 0, outputTokens: 0, credits: v.credits },
-    })),
   }
 }
 
@@ -2844,6 +3041,7 @@ function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
     title: raw.title || tr('새 작업'),
     projectId: raw.projectId,
     agentId: raw.agentId,
+    pipelineId: raw.pipelineId ?? null,
     model: raw.model,
     routingMode: raw.routingMode ?? 'manual',
     artifactId: raw.artifactId,
@@ -2862,8 +3060,8 @@ function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
 
 /* ── wire row → component shape ──────────────────────────────────────── */
 
-const bytes = (n: number) =>
-  n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
+/** Exact for small files: an empty one reads 「0 B」, not 「1 KB」. */
+const bytes = (n: number) => fileSize(n)
 
 function toProjectFile(f: FileRow): ProjectFile {
   return {
@@ -2876,6 +3074,10 @@ function toProjectFile(f: FileRow): ProjectFile {
     sourceUrl: f.sourceUrl,
     preview: f.preview,
     error: f.error,
+    ocrState: f.ocrState,
+    ocrTotal: f.ocrTotal,
+    ocrDone: f.ocrDone,
+    ocrReview: f.ocrReview,
   }
 }
 
@@ -2966,8 +3168,15 @@ function toSkill(s: SkillRow): Skill {
     visibility: (s.visibility as Skill['visibility']) ?? 'private',
     installs: s.installs ?? 0,
     originId: s.originId ?? null,
+    originOwnerName: s.originOwnerName ?? '',
     version: s.version,
     updatedAt: s.updatedAt,
+    scripts: s.scripts ?? [],
+    server: s.server,
+    scriptFiles: s.scriptFiles ?? [],
+    review: s.review ?? '',
+    reviewNote: s.reviewNote ?? '',
+    listed: s.listed !== false,
   }
 }
 
@@ -3008,7 +3217,14 @@ function toAgent(a: AgentRow): Agent {
     tools: a.tools,
     skillIds: a.skillIds,
     kinds: a.kinds as SessionKind[],
+    surface: (a.surface ?? null) as SessionKind | null,
+    renderTemplateId: a.renderTemplateId ?? null,
+    docFormat: a.docFormat ?? null,
+    designSystemId: a.designSystemId ?? null,
+    designName: a.designName ?? '',
     guide: a.guide ?? '',
+    contact: a.contact ?? '',
+    publication: a.publication ?? null,
     starters: a.starters ?? [],
     shareMode: a.shareMode ?? 'open',
     sealed: a.sealed ?? false,
@@ -3018,12 +3234,23 @@ function toAgent(a: AgentRow): Agent {
     visibility: a.visibility as Agent['visibility'],
     installs: a.installs,
     catalogKey: a.catalogKey ?? null,
+    pipelineId: a.pipelineId ?? null,
     originId: a.originId ?? null,
     official: a.official ?? false,
     installed: a.installed ?? false,
     runs: a.runs,
     hasKnowledge: a.hasKnowledge,
     updatedAt: a.updatedAt,
+    baseKey: a.baseKey ?? null,
+    checkSkills: a.checkSkills ?? null,
+    checkOptions: a.checkOptions ?? null,
+    bundles: a.bundles ?? null,
+    gapQuestions: a.gapQuestions ?? null,
+    inheritedQuestions: a.inheritedQuestions ?? [],
+    processSettings: a.processSettings ?? null,
+    inheritedSettings: a.inheritedSettings,
+    baseQuestions: a.baseQuestions ?? [],
+    process: a.process ?? null,
   }
 }
 
@@ -3049,6 +3276,7 @@ function toConnector(c: ConnectorRow): Connector {
     })),
     envKeys: c.envKeys ?? [],
     official: c.official,
+    byDefault: !!c.byDefault,
     icon: '🔌',
     color: '#6b7280',
     lastSyncAt: c.lastSyncAt,
@@ -3070,14 +3298,19 @@ async function streamTurn(
     attachments?: string[]
     attachmentNames?: string[]
     activatedSkillIds?: string[]
-    startingTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
     retryOf?: string
+    /** Answers to the agent's question card; `{}` goes on with what was given. */
+    answers?: Record<string, string>
     onAccepted?: () => void
   } = {},
 ) {
   let assistantId = uid('m')
+  // Any reply answers the question card; the server clears it with this turn.
+  if (get().sessions.find((c) => c.id === sessionId)?.pending?.stage === 'clarify') {
+    setPending(set, sessionId, () => null)
+  }
   const controller = new AbortController()
   const superseded = opts.retryOf ? earlierAnswers.get(opts.retryOf) : undefined
   if (opts.retryOf) earlierAnswers.delete(opts.retryOf)
@@ -3117,8 +3350,7 @@ async function streamTurn(
   // With streaming off, text is buffered and shown in one piece; steps stay live.
   const live = get().user?.preferences.streamResponses !== false
   let buffered = ''
-  // Tokens arrive faster than the screen needs them: live deltas are joined and
-  // painted once per frame, so a long answer is not re-parsed per token.
+  // Deltas joined and painted once per frame, so a long answer is not re-parsed per token.
   let pendingDelta = ''
   let flushHandle: ReturnType<typeof setTimeout> | number | null = null
   const paintSoon = (fn: () => void) =>
@@ -3157,10 +3389,10 @@ async function streamTurn(
         webSearch: opts.webSearch,
         attachments: opts.attachments,
         activatedSkillIds: opts.activatedSkillIds,
-        startingTemplateId: opts.startingTemplateId,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
         retryOf: opts.retryOf,
+        answers: opts.answers,
       },
       controller.signal,
     )) {
@@ -3208,14 +3440,20 @@ async function streamTurn(
                         ? m.routing.costRouting ?? event.costRouting
                         : event.costRouting,
                   }
-                : m.routing && 'action' in m.routing
-                  ? {
-                      ...m.routing,
-                      initialAction: m.routing.initialAction ?? m.routing.action,
-                      action: event.action,
-                      toolOutputMasked: event.count,
-                    }
-                  : m.routing,
+                : 'source' in event
+                  ? m.routing && 'action' in m.routing
+                    ? {
+                        ...m.routing,
+                        initialAction: m.routing.initialAction ?? m.routing.action,
+                        action: event.action,
+                        toolOutputMasked: event.count,
+                      }
+                    : m.routing
+                  : event.lengthCheck
+                    ? // No privacy routing on this turn: the measured lengths still go under the
+                      // answer now, as they will after a reload.
+                      ({ ...(m.routing ?? {}), lengthCheck: event.lengthCheck } as PrivacyRouting)
+                    : m.routing,
           }))
           break
         case 'model_route': {
@@ -3260,7 +3498,15 @@ async function streamTurn(
             },
           )
           break
+        case 'run':
+          patch((m) => runStarted(m, event))
+          break
         case 'step':
+          if (event.stage) {
+            const stage = event.stage
+            patch((m) => withStage(m, stage))
+            break
+          }
           patch((m) => {
             const step = toStep(event as unknown as Record<string, unknown>)
             const steps = m.steps ?? []
@@ -3275,7 +3521,9 @@ async function streamTurn(
           settled = true
           patch((m) => ({
             ...m,
+            // Planner's and reviewers' counters too; the line under the answer adds them up.
             usage: {
+              ...counters(event),
               inputTokens: event.inputTokens,
               outputTokens: event.outputTokens,
               credits: event.credits,
@@ -3293,6 +3541,17 @@ async function streamTurn(
         case 'error':
           settled = true
           patch((m) => ({ ...m, error: streamFailureSentence(event, tr) }))
+          break
+        // The agent stopped to ask before answering; its card holds the questions.
+        case 'needs':
+          settled = true
+          setPending(set, sessionId, (p) => ({
+            stage: 'clarify',
+            request: text,
+            attachments: opts.attachments ?? p?.attachments ?? [],
+            answers: p?.answers ?? {},
+            questions: event.questions,
+          }))
           break
         case 'done':
           if (event.messageId) {
@@ -3334,8 +3593,7 @@ async function streamTurn(
     } else {
       settled = true
       patch((m) => ({ ...m, error: tr(turnFailure(err)) }))
-      // The server deliberately survives a dropped response. Its durable
-      // answer may still land after this tab has lost the stream.
+      // The server survives a dropped response; its answer may still land.
       followDetachedTurn = accepted
       // A stall is swallowed: the failed turn carries its own retry.
       if (err instanceof StreamStalledError) return
@@ -3344,6 +3602,7 @@ async function streamTurn(
   } finally {
     flushDeltas()
     if (!live && buffered) patch((m) => ({ ...m, content: buffered }))
+    patch(settleRun)
     if (!settled) {
       patch((m) => ({ ...m, error: tr(CUT_OFF) }))
       followDetachedTurn = accepted
@@ -3354,186 +3613,6 @@ async function streamTurn(
     }
     endRun(set, sessionId)
     if (followDetachedTurn) void watchForDetachedAnswer(set, get, sessionId)
-    void get().loadSessions()
-  }
-}
-
-/** One prompt to several models, stored as a single turn; columns arrive interleaved on one stream. */
-async function runComparison(
-  set: Set,
-  get: Get,
-  sessionId: string,
-  text: string,
-  opts: {
-    activatedSkillIds?: string[]
-    startingTemplateId?: string
-    attachments?: string[]
-    attachmentNames?: string[]
-    privacyAction?: PrivacyAction
-    privacyDecisionToken?: string
-    onAccepted?: () => void
-  } = {},
-) {
-  const models = get().compareModels
-  let assistantId = uid('m')
-  const variants: Variant[] = models.map((model) => ({ model, content: '', status: 'streaming' }))
-
-  set((s) => ({
-    running: { ...s.running, [sessionId]: noop },
-    sessions: s.sessions.map((c) =>
-      c.id === sessionId
-        ? {
-            ...c,
-            messages: [
-              ...c.messages,
-              {
-                id: assistantId,
-                role: 'assistant' as const,
-                content: '',
-                createdAt: new Date().toISOString(),
-                variants,
-              },
-            ],
-          }
-        : c,
-    ),
-  }))
-
-  const patch = (model: string, next: Partial<Variant>) =>
-    set((s) => ({
-      sessions: s.sessions.map((c) =>
-        c.id === sessionId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === assistantId
-                  ? { ...m, variants: m.variants?.map((v) => (v.model === model ? { ...v, ...next } : v)) }
-                  : m,
-              ),
-            }
-          : c,
-      ),
-    }))
-
-  const controller = new AbortController()
-  beginRun(set, sessionId, () => controller.abort())
-  let accepted = false
-  try {
-    for await (const e of streamComparison(
-      sessionId,
-      {
-        content: text,
-        models,
-        activatedSkillIds: opts.activatedSkillIds,
-        startingTemplateId: opts.startingTemplateId,
-        attachments: opts.attachments,
-        privacyAction: opts.privacyAction,
-        privacyDecisionToken: opts.privacyDecisionToken,
-      },
-      controller.signal,
-    )) {
-      if (!accepted) {
-        accepted = true
-        opts.onAccepted?.()
-      }
-      if (e.type === 'privacy_route') {
-        if ('effectiveModels' in e) {
-          if (e.findingCounts?.length) {
-            const { type: _type, ...routing } = e
-            markPrompt(set, sessionId, routing)
-          }
-          set((s) => ({
-            sessions: s.sessions.map((c) =>
-              c.id === sessionId
-                ? {
-                    ...c,
-                    messages: c.messages.map((m) =>
-                      m.id === assistantId
-                        ? {
-                            ...m,
-                            routing: e,
-                            variants: e.effectiveModels.map((model) => {
-                              const existing = m.variants?.find((v) => v.model === model)
-                              const route = e.modelRoutes?.find(
-                                (candidate) => candidate.routedModel === model,
-                              )
-                              return {
-                                model,
-                                content: existing?.content ?? '',
-                                status: existing?.status ?? ('streaming' as const),
-                                usage: existing?.usage,
-                                routedModel: model,
-                                actualModel: route?.actualModel ?? existing?.actualModel,
-                                dataBoundary: route?.dataBoundary ?? existing?.dataBoundary,
-                              }
-                            }),
-                          }
-                        : m,
-                    ),
-                  }
-                : c,
-            ),
-          }))
-        }
-      } else if (e.type === 'variant') {
-        const current = get()
-          .sessions.find((c) => c.id === sessionId)
-          ?.messages.find((m) => m.id === assistantId)
-          ?.variants?.find((v) => v.model === e.model)
-        patch(e.model, { content: (current?.content ?? '') + e.text })
-      } else if (e.type === 'variant_retract') {
-        const current = get()
-          .sessions.find((c) => c.id === sessionId)
-          ?.messages.find((m) => m.id === assistantId)
-          ?.variants?.find((v) => v.model === e.model)
-        patch(e.model, { content: (current?.content ?? '').replace(e.text, '') })
-      } else if (e.type === 'variant_done') {
-        patch(e.model, {
-          routedModel: e.routedModel ?? e.model,
-          actualModel: e.actualModel,
-          status: e.error ? 'error' : 'done',
-          usage: {
-            inputTokens: e.inputTokens,
-            outputTokens: e.outputTokens,
-            credits: e.credits,
-          },
-        })
-      } else if (e.type === 'done') {
-        chargeCredits(set, e.credits ?? 0)
-        if (e.messageId) {
-          adoptServerId(set, sessionId, assistantId, e.messageId)
-          assistantId = e.messageId
-        }
-      } else if (e.type === 'skills_applied') {
-        patchMessage(set, sessionId, assistantId, (message) => ({
-          ...message,
-          steps: upsertStep(message.steps, appliedSkillsStep(e)),
-        }))
-      } else if (e.type === 'step') {
-        patchMessage(set, sessionId, assistantId, (message) => ({
-          ...message,
-          steps: upsertStep(message.steps, toStep(e as unknown as Record<string, unknown>)),
-        }))
-      }
-    }
-  } catch (err) {
-    if (err instanceof PrivacyDecisionError) {
-      set((s) => ({
-        sessions: s.sessions.map((c) =>
-          c.id === sessionId
-            ? { ...c, messages: c.messages.filter((m) => m.id !== assistantId) }
-            : c,
-        ),
-      }))
-      throw err
-    }
-    if (!(err instanceof DOMException && err.name === 'AbortError')) {
-      for (const m of models) patch(m, { status: 'error' })
-      throw err
-    }
-    if (isClientRefusal(err)) throw err
-  } finally {
-    endRun(set, sessionId)
     void get().loadSessions()
   }
 }
@@ -3558,7 +3637,6 @@ async function streamReport(
   text: string,
   model: string,
   activatedSkillIds?: string[],
-  startingTemplateId?: string,
   /** `approve` turns a proposal into a document and decides whether a draft artifact is shown at all. */
   gate: {
     approve?: boolean
@@ -3569,17 +3647,18 @@ async function streamReport(
     /** Resent with the approval: the server assembles context fresh per request. */
     attachments?: string[]
     renderTemplateId?: string
+    /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
+    rerun?: { runId: string; fromStage: string; label: string; answers?: Record<string, string> }
   } = {},
 ) {
   const draftId = uid('a')
-  const assistantId = uid('m')
+  let assistantId = uid('m')
   const now = new Date().toISOString()
 
   const draft: Artifact = {
     id: draftId,
     kind: 'report',
-    // An approval's text is an instruction (「고친 구성으로 생성해 주세요」), not a title:
-    // the approved outline's title stands in until the server names the document.
+    // Approval text is an instruction, not a title: the outline's title stands in until the server names it.
     title: draftTitle(text, gate, tr('보고서 작성 중')),
     version: 1,
     createdAt: now,
@@ -3593,8 +3672,13 @@ async function streamReport(
     wordCount: 0,
   }
 
-  // A planning pass produces no document, so it opens none.
-  const willWrite = gate.approve === true
+  // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
+  const willWrite = gate.approve === true && !gate.rerun
+  // Approved outline spent; a new proposal arrives as its own event.
+  if (gate.approve === true) setPending(set, sessionId, () => null)
+  const targetId = gate.rerun
+    ? (get().sessions.find((c) => c.id === sessionId)?.artifactId ?? draftId)
+    : draftId
   set((s) => ({
     running: { ...s.running, [sessionId]: noop },
     ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
@@ -3615,7 +3699,7 @@ async function streamReport(
   const patchReport = (fn: (a: ReportArtifact) => ReportArtifact) =>
     set((s) => ({
       artifacts: s.artifacts.map((a) =>
-        a.id === draftId && a.kind === 'report' ? fn(a) : a,
+        a.id === targetId && a.kind === 'report' ? fn(a) : a,
       ),
     }))
 
@@ -3625,13 +3709,17 @@ async function streamReport(
   let settled = false
 
   try {
-    for await (const e of streamSession(
+    for await (const e of gate.rerun ? streamRerun(
+      sessionId,
+      gate.rerun.runId,
+      { fromStage: gate.rerun.fromStage, ...(gate.rerun.answers ? { answers: gate.rerun.answers } : {}) },
+      controller.signal,
+    ) : streamSession(
       sessionId,
       {
         content: text,
         model,
         activatedSkillIds,
-        startingTemplateId,
         renderTemplateId: gate.renderTemplateId,
         approve: gate.approve,
         answers: gate.answers,
@@ -3673,6 +3761,10 @@ async function streamReport(
         case 'title':
           patchReport((a) => ({ ...a, title: e.title }))
           break
+        case 'design':
+          // Saved report's look, so the draft does not change under the reader when the document arrives.
+          patchReport((a) => ({ ...a, design: e.design }))
+          break
         case 'sources':
           patchReport((a) => ({ ...a, sources: e.sources }))
           break
@@ -3700,7 +3792,21 @@ async function streamReport(
             }
           })
           break
+        case 'run':
+          patchMessage(set, sessionId, assistantId, (m) => runStarted(m, e))
+          break
+        case 'done':
+          if (gate.rerun && e.messageId) {
+            adoptServerId(set, sessionId, assistantId, e.messageId)
+            assistantId = e.messageId
+          }
+          break
         case 'step':
+          if (e.stage) {
+            const stage = e.stage
+            patchMessage(set, sessionId, assistantId, (m) => withStage(m, stage))
+            break
+          }
           set((s) => ({
             sessions: s.sessions.map((c) =>
               c.id === sessionId
@@ -3732,6 +3838,8 @@ async function streamReport(
         case 'artifact':
           // The server's copy replaces the draft; fetched in full since the panel needs the document.
           await Promise.all([get().loadArtifacts(), get().refreshArtifact(e.artifactId)])
+          // The answer names what it made, so its result card shows before a reload.
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, artifactIds: [e.artifactId] }))
           set((s) => ({
             artifacts: s.artifacts.filter((a) => a.id !== draftId),
             openArtifactId: e.artifactId,
@@ -3744,6 +3852,15 @@ async function streamReport(
     }
   } catch (err) {
     settled = true
+    // A refused rerun stored nothing: its placeholder answer goes, and the stage row says why.
+    if (gate.rerun && isClientRefusal(err)) {
+      set((s) => ({
+        sessions: s.sessions.map((c) =>
+          c.id === sessionId ? { ...c, messages: c.messages.filter((m) => m.id !== assistantId) } : c,
+        ),
+      }))
+      throw err
+    }
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
@@ -3753,6 +3870,13 @@ async function streamReport(
     if (isClientRefusal(err)) throw err
   } finally {
     if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    patchMessage(set, sessionId, assistantId, (m) => {
+      const settledRun = settleRun(m)
+      // The server words the rerun's message the same way; shown until the transcript reloads.
+      return gate.rerun && !settledRun.content && !settledRun.error
+        ? { ...settledRun, content: tr('「{stage}」 단계부터 다시 만들었습니다.').replace('{stage}', gate.rerun.label) }
+        : settledRun
+    })
     endRun(set, sessionId)
     void get().loadSessions()
   }
@@ -3766,7 +3890,6 @@ async function streamDeck(
   text: string,
   model: string,
   activatedSkillIds?: string[],
-  startingTemplateId?: string,
   /** `approve` turns a proposal into a document and decides whether a draft artifact is shown at all. */
   gate: {
     approve?: boolean
@@ -3777,17 +3900,18 @@ async function streamDeck(
     /** Resent with the approval: the server assembles context fresh per request. */
     attachments?: string[]
     renderTemplateId?: string
+    /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
+    rerun?: { runId: string; fromStage: string; label: string; answers?: Record<string, string> }
   } = {},
 ) {
   const draftId = uid('a')
-  const assistantId = uid('m')
+  let assistantId = uid('m')
   const now = new Date().toISOString()
 
   const draft: Artifact = {
     id: draftId,
     kind: 'deck',
-    // An approval's text is an instruction (「고친 구성으로 생성해 주세요」), not a title:
-    // the approved outline's title stands in until the server names the document.
+    // Approval text is an instruction, not a title: the outline's title stands in until the server names it.
     title: draftTitle(text, gate, tr('슬라이드 작성 중')),
     version: 1,
     createdAt: now,
@@ -3799,8 +3923,13 @@ async function streamDeck(
     draft: true,
   }
 
-  // A planning pass produces no document, so it opens none.
-  const willWrite = gate.approve === true
+  // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
+  const willWrite = gate.approve === true && !gate.rerun
+  // Approved outline spent; a new proposal arrives as its own event.
+  if (gate.approve === true) setPending(set, sessionId, () => null)
+  const targetId = gate.rerun
+    ? (get().sessions.find((c) => c.id === sessionId)?.artifactId ?? draftId)
+    : draftId
   set((s) => ({
     running: { ...s.running, [sessionId]: noop },
     ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
@@ -3820,7 +3949,7 @@ async function streamDeck(
 
   const patchDeck = (fn: (a: DeckArtifact) => DeckArtifact) =>
     set((s) => ({
-      artifacts: s.artifacts.map((a) => (a.id === draftId && a.kind === 'deck' ? fn(a) : a)),
+      artifacts: s.artifacts.map((a) => (a.id === targetId && a.kind === 'deck' ? fn(a) : a)),
     }))
 
   const controller = new AbortController()
@@ -3829,13 +3958,17 @@ async function streamDeck(
   let settled = false
 
   try {
-    for await (const e of streamSession(
+    for await (const e of gate.rerun ? streamRerun(
+      sessionId,
+      gate.rerun.runId,
+      { fromStage: gate.rerun.fromStage, ...(gate.rerun.answers ? { answers: gate.rerun.answers } : {}) },
+      controller.signal,
+    ) : streamSession(
       sessionId,
       {
         content: text,
         model,
         activatedSkillIds,
-        startingTemplateId,
         renderTemplateId: gate.renderTemplateId,
         approve: gate.approve,
         answers: gate.answers,
@@ -3889,7 +4022,21 @@ async function streamDeck(
             }
           })
           break
+        case 'run':
+          patchMessage(set, sessionId, assistantId, (m) => runStarted(m, e))
+          break
+        case 'done':
+          if (gate.rerun && e.messageId) {
+            adoptServerId(set, sessionId, assistantId, e.messageId)
+            assistantId = e.messageId
+          }
+          break
         case 'step':
+          if (e.stage) {
+            const stage = e.stage
+            patchMessage(set, sessionId, assistantId, (m) => withStage(m, stage))
+            break
+          }
           set((s) => ({
             sessions: s.sessions.map((c) =>
               c.id === sessionId
@@ -3921,6 +4068,7 @@ async function streamDeck(
           break
         case 'artifact':
           await Promise.all([get().loadArtifacts(), get().refreshArtifact(e.artifactId)])
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, artifactIds: [e.artifactId] }))
           set((s) => ({
             artifacts: s.artifacts.filter((a) => a.id !== draftId),
             openArtifactId: e.artifactId,
@@ -3933,6 +4081,15 @@ async function streamDeck(
     }
   } catch (err) {
     settled = true
+    // A refused rerun stored nothing: its placeholder answer goes, and the stage row says why.
+    if (gate.rerun && isClientRefusal(err)) {
+      set((s) => ({
+        sessions: s.sessions.map((c) =>
+          c.id === sessionId ? { ...c, messages: c.messages.filter((m) => m.id !== assistantId) } : c,
+        ),
+      }))
+      throw err
+    }
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
@@ -3942,6 +4099,13 @@ async function streamDeck(
     if (isClientRefusal(err)) throw err
   } finally {
     if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    patchMessage(set, sessionId, assistantId, (m) => {
+      const settledRun = settleRun(m)
+      // The server words the rerun's message the same way; shown until the transcript reloads.
+      return gate.rerun && !settledRun.content && !settledRun.error
+        ? { ...settledRun, content: tr('「{stage}」 단계부터 다시 만들었습니다.').replace('{stage}', gate.rerun.label) }
+        : settledRun
+    })
     endRun(set, sessionId)
     void get().loadSessions()
   }
@@ -4046,13 +4210,13 @@ function dropMediaTurn(set: Set, sessionId: string, ...ids: string[]) {
   }))
 }
 
-/**
- * Polls a transcript that ends on a user message until the server-side turn
- * answers it, the person leaves the session, or ten minutes pass.
- */
+/** Polls a transcript ending on a user message until answered, the person leaves, or ten minutes pass. */
 async function watchForTheAnswer(set: Set, get: Get, sessionId: string) {
   const answered = () => {
-    const messages = get().sessions.find((c) => c.id === sessionId)?.messages ?? []
+    const session = get().sessions.find((c) => c.id === sessionId)
+    // A plan waiting on the person (outline, questions) is the turn's answer, not a turn in flight.
+    if (session?.pending) return true
+    const messages = session?.messages ?? []
     const last = messages[messages.length - 1]
     return !last || last.role !== 'user'
   }
@@ -4081,11 +4245,7 @@ async function watchForTheAnswer(set: Set, get: Get, sessionId: string) {
   }
 }
 
-/**
- * A response connection may disappear while the detached server turn keeps
- * working. Poll the authoritative transcript and replace the provisional
- * error bubble as soon as that turn is durable.
- */
+/** Response dropped while the detached turn works: poll the transcript and replace the provisional error once durable. */
 async function watchForDetachedAnswer(set: Set, get: Get, sessionId: string) {
   for (let waited = 0; waited < 600_000; waited += 3_000) {
     await new Promise((done) => setTimeout(done, 3_000))
@@ -4112,57 +4272,35 @@ function chargeCredits(set: Set, credits: number) {
   }))
 }
 
-/** Description → mermaid → PNG (2× for print), drawn off-screen with the app's tokens; the source is stored with it. */
+/** Image-surface style chips that draw a figure instead of a picture, by figure kind. */
+export const FIGURE_STYLES: Record<string, 'method' | 'flow' | 'concept' | undefined> = {
+  구조도: 'method',
+  흐름도: 'flow',
+  개념도: 'concept',
+}
+
+/** Why a figure came back undrawn, in the person's words. */
+export const FIGURE_UNDRAWABLE = '이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.'
+export const FIGURE_UNRENDERED = '지금은 도식을 그릴 수 없습니다. 잠시 뒤 다시 시도해 주세요.'
+
+/** Description → flowchart → PNG drawn with the .pptx export's shapes, kept with its source; undrawable figures refused. */
 export async function drawFigure(
   sessionId: string,
   description: string,
   figure: string,
   model: string | undefined,
 ): Promise<ArtifactRow> {
-  const { drawOrExplain, paperStyles, paperTheme, rasterise } = await import('@/lib/mermaid')
   // The card writes 「이름표 언어: 영어」 into the request.
   const language = /이름표 언어\s*[:：]\s*영어|Label language\s*[:：]\s*English/i.test(description)
     ? 'en'
     : 'ko'
-  let written = await sessionsApi.diagram(sessionId, { description, figure, model, language })
-  const host = document.createElement('div')
-  host.style.position = 'absolute'
-  host.style.left = '-10000px'
-  host.style.width = '1200px'
-  document.body.appendChild(host)
   try {
-    const look = paperTheme(host)
-    const { hot, ...config } = look
-    let drawn = await drawOrExplain(written.source, config)
-    if ('error' in drawn) {
-      // One repair round: mermaid's error goes back to the writer with its source.
-      written = await sessionsApi.diagram(sessionId, {
-        description, figure, model, language,
-        broken: written.source, error: drawn.error,
-      })
-      drawn = await drawOrExplain(written.source, config)
-    }
-    if ('error' in drawn) throw new Error(tr('도식을 그리지 못했습니다. 설명을 조금 바꿔 다시 해 보세요.'))
-    let svg = drawn.svg
-    // Mermaid theme variables do not reach `:::hot`; inject a stylesheet.
-    svg = svg.replace(/<svg([^>]*)>/, (m) => `${m}<style>${paperStyles(hot)}</style>`)
-    const png = await rasterise(svg)
-    if (!png) throw new Error(tr('도식을 그림으로 저장하지 못했습니다.'))
-    // `width`/`height` may be percentages or absent; the viewBox is the layout.
-    const box = /viewBox="[\d.-]+ [\d.-]+ ([\d.]+) ([\d.]+)"/.exec(svg)
-    const size = box ?? /width="([\d.]+)[^"]*"[^>]*height="([\d.]+)/.exec(svg)
-    return await sessionsApi.storeDiagram(sessionId, {
-      source: written.source,
-      caption: written.caption,
-      description,
-      figure,
-      title: written.caption || description.split('\n')[0].slice(0, 80),
-      model: written.model,
-      png: png.replace(/^data:image\/png;base64,/, ''),
-      width: size ? Math.round(Number(size[1]) * 2) : 0,
-      height: size ? Math.round(Number(size[2]) * 2) : 0,
-    })
-  } finally {
-    host.remove()
+    const written = await sessionsApi.diagram(sessionId, { description, figure, model, language })
+    if (!written.artifact) throw new Error(tr(FIGURE_UNRENDERED))
+    return written.artifact
+  } catch (err) {
+    if (err instanceof ApiError && err.detail === 'diagram_not_drawable') throw new Error(tr(FIGURE_UNDRAWABLE))
+    if (err instanceof ApiError && err.detail === 'diagram_unrendered') throw new Error(tr(FIGURE_UNRENDERED))
+    throw err
   }
 }

@@ -40,13 +40,18 @@ import { createPortal } from 'react-dom'
 import { DocumentShell } from '@/components/report/DocumentShell'
 import { EditableLine } from '@/components/report/EditableLine'
 import { TitleBlock } from '@/components/report/TitleBlock'
+import { markFigureColumns } from '@/components/report/figureColumns'
 import {
-  TITLE_BLOCK_CSS,
   cleanTitleBlock,
+  closeHtml,
+  closingIndex,
   counterStyle,
+  fmtClass,
+  formatCss,
+  isAttachment,
   numberHtmlHeadings,
-  numberingCss,
   sectionNumbers,
+  shapedSection,
   titleBlockHtml,
 } from '@/components/report/docFormats'
 import { artifactsApi } from '@/lib/api'
@@ -70,6 +75,8 @@ import { cn } from '@/lib/utils'
 import type { ReportArtifact, ReportSection, ReportTitleBlock, Source } from '@/types'
 import { useT } from '@/lib/useT'
 import { scopePagedStyles } from '@/components/report/scopePagedStyles'
+import { DEFAULT_PAGE_SETTINGS, pagedSheetCss, type PageSettings } from '@/components/report/pagedSheet'
+import { PLACEHOLDER_CSS, markPlaceholders } from '@/lib/placeholders'
 
 const FONTS = [
   { label: '문서 기본', value: '' },
@@ -79,13 +86,13 @@ const FONTS = [
   { label: '고정폭', value: "'D2Coding', 'Consolas', monospace" },
 ]
 const SIZES = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '36']
-// h3/h4 only: matches StarterKit's levels and the server's allowed tags.
+// h3/h4 only: StarterKit levels and the server's allowed tags.
 const HEADINGS = [
   { label: '본문', value: 0 },
   { label: '소제목', value: 3 },
   { label: '작은 제목', value: 4 },
 ] as const
-// Multipliers, not pt, so they track font size.
+// Multipliers, not pt: track font size.
 const LINE_HEIGHTS = ['1.3', '1.5', '1.7', '2.0']
 const ALIGNMENTS = [
   { value: 'left', icon: AlignLeft, label: '왼쪽 맞춤' },
@@ -98,7 +105,6 @@ function Sep() {
   return <span className="mx-1.5 h-5 w-px shrink-0 bg-line" />
 }
 
-/** Toolbar toggle with pressed state. */
 function Tool({
   on,
   label,
@@ -115,8 +121,7 @@ function Tool({
   return (
     <button
       type="button"
-      // `onMouseDown` with preventDefault keeps the caret in the document; a
-      // keyboard press arrives only as a click with `detail` 0, so it runs there.
+      // mousedown+preventDefault keeps the caret; keyboard arrives as click with `detail` 0.
       onMouseDown={(e) => {
         e.preventDefault()
         if (!disabled) onClick()
@@ -139,7 +144,7 @@ function Tool({
   )
 }
 
-/** Re-renders on every selection change and transaction; Tiptap 3 does not re-render React by itself. */
+/** Tiptap 3 does not re-render React itself: re-render per selection change and transaction. */
 function useEditorTick(editor: Editor | null) {
   const [, tick] = useState(0)
   useEffect(() => {
@@ -173,7 +178,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
     input.onchange = () => {
       const file = input.files?.[0]
       if (!file) return
-      // Embedded as a data URI so the exported file carries it.
+      // Data URI: the exported file carries it.
       const reader = new FileReader()
       reader.onload = () => editor.chain().focus().setImage({ src: String(reader.result) }).run()
       reader.readAsDataURL(file)
@@ -188,7 +193,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
   return (
     <div className={cn(
       'flex flex-wrap items-center gap-0.5 gap-y-1',
-      // Inside the ribbon the ribbon draws the chrome.
+      // The ribbon draws the chrome.
       bare ? 'px-0 py-0' : 'border-b border-line bg-panel px-3 py-1.5 max-sm:px-1.5',
     )}>
       <select
@@ -406,7 +411,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
       >
         <ListOrdered size={15} />
       </Tool>
-      {/* Indent is list nesting, which survives save and export. */}
+      {/* Indent = list nesting, which survives save and export. */}
       <Tool
         label={t('한 단계 들여쓰기')}
         disabled={off || !editor?.can().sinkListItem('listItem')}
@@ -441,7 +446,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
       >
         <TableIcon size={15} />
       </Tool>
-      {/* Table commands appear only with the caret inside a table. */}
+      {/* Only with the caret inside a table. */}
       {editor?.isActive('table') && (
         <>
           <Tool
@@ -555,7 +560,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
   )
 }
 
-/** Dashed estimated page-break guides over the continuous sheet. */
+/** Estimated page-break guides over the continuous sheet. */
 function PageGuides({ breaks }: { breaks: number[] }) {
   const t = useT()
   if (!breaks.length) return null
@@ -583,35 +588,25 @@ const escapePagedText = (text: string) => text
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;')
 
-const escapeCssContent = (text: string) => text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, ' ')
 
-type PageSettings = NonNullable<ReportArtifact['pageSettings']>
-const DEFAULT_PAGE_SETTINGS: Required<PageSettings> = {
-  header: '', footer: 'KloudChat', pageNumbers: 'page-total', firstPageHeader: false,
-  margins: { top: 18, right: 16, bottom: 20, left: 16 },
-}
-
-/** Class on the element every paginated page is inside; the scope for Paged.js rules. Shared with `index.css`. */
+/** Scope for Paged.js rules; shared with `index.css`. */
 const PAGED_SCOPE = 'paged-report-preview'
 
-/**
- * The editor's continuous sheet laid out like the printed page: A4 wide with the page margins
- * as padding, the cover at its print size, sections spaced as in print. Line breaks, type
- * and the position of the body then match the page view; only the sheet being one long
- * page differs. The seed's `body` typography is repeated on the sheet, since a shadow root
- * has no body. `.page.paginated` outranks the seed's own `.paginated` rules.
- */
-function sheetGeometryCss(margins: Required<PageSettings>['margins']): string {
+/** Continuous sheet with print geometry (A4, margins, cover, section spacing); seed `body` typography repeated, shadow root has no body. */
+function sheetGeometryCss(margins: PageSettings['margins']): string {
   return `
   .page.paginated { box-sizing: border-box; width: ${A4_WIDTH_PX}px; max-width: ${A4_WIDTH_PX}px; margin: 0 auto; padding: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm; min-height: ${A4_HEIGHT_PX}px; }
   .page.paginated { color: var(--ink); font-family: var(--font-body); font-size: var(--doc-body); line-height: var(--doc-leading-body); }
   .page.paginated .cover { min-height: 0; padding: 0 0 4mm; margin: 0 0 8mm; }
+  /* A cover page fills its sheet, and its margin carries the next block past the page gap. */
+  .page.paginated :is(.cover.tb-cover, .cover.cover-page) { min-height: ${297 - margins.top - margins.bottom}mm; padding: 72mm 0 0; margin: 0 0 ${margins.top + margins.bottom}mm; }
   .page.paginated section { margin: 0 0 12mm; }
   /* The editor keeps a paragraph inside every cell; the finished file has bare text there. */
   .page.paginated td > p, .page.paginated th > p { margin: 0; }
   /* Justified like a printed report; Korean words are not broken mid-word. */
   .page.paginated p, .page.paginated li { text-align: justify; word-break: keep-all; overflow-wrap: anywhere; }
   .page.paginated td > p, .page.paginated th > p { text-align: left; }
+  .page.paginated :is(td, th).fig > p { text-align: right; }
   /* Figures fit the column of a printed report: centred, at most 85% wide and 110 mm tall. */
   .page.paginated img { display: block; margin: 6mm auto 2mm; max-width: 85%; max-height: 110mm; width: auto; height: auto; object-fit: contain; }
   .page.paginated figure { margin: 6mm 0; text-align: center; }
@@ -620,14 +615,14 @@ function sheetGeometryCss(margins: Required<PageSettings>['margins']): string {
 `
 }
 
-// Installed into the DocumentShell shadow root, where global CSS cannot reach.
+// Shadow root: global CSS cannot reach.
 const EDITOR_PAGE_BREAK_CSS = `
   .ProseMirror .page-break { position: relative; display: block; height: 24px; margin: 14px 0; border-top: 1px dashed #9ca3af; cursor: pointer; }
   .ProseMirror .page-break::after { content: '쪽 나누기'; position: absolute; top: -9px; right: 8px; padding: 0 6px; background: white; color: #777; font-size: 11px; line-height: 18px; }
   .ProseMirror .page-break.ProseMirror-selectednode { border-color: var(--accent, #5b5bd6); }
 `
 
-function PagedDocument({ html, css, settings, onSettings, settingsOpen, settingsSlot, onEdit, onWebView }: { html: string; css: string; settings: Required<PageSettings>; onSettings: (next: Required<PageSettings>) => void; settingsOpen: boolean; settingsSlot?: HTMLElement | null; onEdit: () => void; onWebView: () => void }) {
+function PagedDocument({ html, css, settings, onSettings, settingsOpen, settingsSlot, onEdit, onWebView }: { html: string; css: string; settings: PageSettings; onSettings: (next: PageSettings) => void; settingsOpen: boolean; settingsSlot?: HTMLElement | null; onEdit: () => void; onWebView: () => void }) {
   const t = useT()
   const host = useRef<HTMLDivElement>(null)
   const viewport = useRef<HTMLDivElement>(null)
@@ -635,7 +630,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
   const [pages, setPages] = useState(0)
   const [pageSize, setPageSize] = useState({ width: A4_WIDTH_PX, height: A4_HEIGHT_PX })
   const [pageScale, setPageScale] = useState(1)
-  // 'fit' follows the viewport width; a number is a zoom the reader chose.
+  // 'fit': follows viewport width; number: reader's zoom.
   const [zoom, setZoom] = useState<'fit' | number>('fit')
   const [failure, setFailure] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -647,47 +642,10 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
     setBusy(true)
     setFailure(null)
     target.replaceChildren()
-    // Paged.js lays out at A4 width; the viewport scales the finished stack.
+    // Paged.js lays out at A4 width; the viewport scales the stack.
     target.style.width = `${A4_WIDTH_PX}px`
-    const sheet = URL.createObjectURL(new Blob([`
-      html, body { margin: 0; padding: 0; background: white; }
-      h1 { string-set: document-title content(text); }
-      ${css}
-      /* After the template's css: its own @page (20mm 18mm) would otherwise outrank these
-         margins, and the page settings would have no effect. */
-      @page {
-        size: A4;
-        margin: ${settings.margins.top}mm ${settings.margins.right}mm ${settings.margins.bottom}mm ${settings.margins.left}mm;
-        @top-left { content: ${settings.header ? `"${escapeCssContent(settings.header)}"` : 'string(document-title)'}; color: #777; font-size: 8pt; }
-        @bottom-left { content: "${escapeCssContent(settings.footer)}"; color: #777; font-size: 8pt; }
-        @bottom-right { content: ${settings.pageNumbers === 'none' ? 'none' : settings.pageNumbers === 'page' ? 'counter(page)' : 'counter(page) " / " counter(pages)'}; color: #777; font-size: 8pt; }
-      }
-      @page:first { @top-left { content: ${settings.firstPageHeader ? (settings.header ? `"${escapeCssContent(settings.header)}"` : 'string(document-title)') : 'none'}; } }
-      /* The sheet's screen box (viewport-high, padded) must not reach Paged.js, or the cover
-         inside it is pushed to page two and page one comes out blank. The cover keeps the
-         seed's print size (232mm); what puts the first section on page two is a break
-         *before* it — Paged.js honours break-before, as the manual page breaks below show,
-         but not the cover's break-after. */
-      .page { min-height: 0 !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
-      /* The seed repeats the document name on every printed sheet as a fixed element; Paged.js
-         pulls fixed elements into the flow of each page and the running header above already
-         carries the name, so the copy would only push the text down page by page. */
-      .doc-foot { display: none !important; }
-      /* A cover taller than the page cannot be split, and Paged.js retries it forever: a
-         template's extra top room (기말 리포트's 30vh) is clipped to the sheet. */
-      .cover { margin: 0 !important; box-sizing: border-box; max-height: ${297 - settings.margins.top - settings.margins.bottom - 4}mm !important; overflow: hidden; }
-      /* No cover page: whatever a template's cover asks for, the title heads page one. */
-      .cover { min-height: 0 !important; break-after: auto !important; }
-      section { break-inside: auto; }
-      h1, h2, h3, h4 { break-after: avoid; }
-      p, li { orphans: 2; widows: 2; }
-      table, tbody { break-inside: auto !important; page-break-inside: auto !important; }
-      thead { display: table-header-group; }
-      tr { break-inside: avoid; page-break-inside: avoid; }
-      figure, img, pre, blockquote { break-inside: avoid; }
-      [data-page-break="true"] { break-before: page; height: 0; }
-    `], { type: 'text/css' }))
-    // Armed before Paged.js runs, which appends the template stylesheet to `document.head`.
+    const sheet = URL.createObjectURL(new Blob([pagedSheetCss(css, settings)], { type: 'text/css' }))
+    // Armed before Paged.js appends the template stylesheet to `document.head`.
     const unscope = scopePagedStyles(`.${PAGED_SCOPE}`)
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeoutMs = (window as Window & { __KLOUDCHAT_PAGINATION_TIMEOUT_MS__?: number })
@@ -722,7 +680,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
         URL.revokeObjectURL(sheet)
       })
     return () => { live = false; if (timer) clearTimeout(timer); URL.revokeObjectURL(sheet); unscope(); target.replaceChildren() }
-  // `t` is a new function per render; depending on it would loop.
+  // `t` is new per render; depending on it would loop.
   }, [html, css, settings, attempt])
 
   useEffect(() => {
@@ -756,13 +714,13 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
             <button type="button" aria-label={t('확대')} title={t('확대')} disabled={pageScale >= 2} onClick={() => step(1)} className="grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg disabled:opacity-40"><ZoomIn size={15} /></button>
           </div>
         )}
-        {/* In the ribbon when it gives a slot; above the page only as a fallback. */}
+        {/* In the ribbon slot when given; above the page otherwise. */}
         {settingsOpen && !settingsSlot && (
           <div className="basis-full rounded-card border border-line bg-panel p-3 shadow-sm" aria-label={t('페이지 설정 도구')}>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <label className="text-xs text-muted">{t('머리말')}<input aria-label={t('머리말')} value={settings.header} onChange={(event) => onSettings({ ...settings, header: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
               <label className="text-xs text-muted">{t('꼬리말')}<input aria-label={t('꼬리말')} value={settings.footer} onChange={(event) => onSettings({ ...settings, footer: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
-              <label className="text-xs text-muted">{t('쪽 번호')}<select aria-label={t('쪽 번호')} value={settings.pageNumbers} onChange={(event) => onSettings({ ...settings, pageNumbers: event.target.value as Required<PageSettings>['pageNumbers'] })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm"><option value="page-total">{t('현재 / 전체')}</option><option value="page">{t('현재 쪽')}</option><option value="none">{t('표시 안 함')}</option></select></label>
+              <label className="text-xs text-muted">{t('쪽 번호')}<select aria-label={t('쪽 번호')} value={settings.pageNumbers} onChange={(event) => onSettings({ ...settings, pageNumbers: event.target.value as PageSettings['pageNumbers'] })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm"><option value="page-total">{t('현재 / 전체')}</option><option value="page">{t('현재 쪽')}</option><option value="none">{t('표시 안 함')}</option></select></label>
               <label className="flex items-end gap-2 pb-2 text-xs text-muted"><input type="checkbox" checked={settings.firstPageHeader} onChange={(event) => onSettings({ ...settings, firstPageHeader: event.target.checked })} />{t('첫 쪽에도 머리말 표시')}</label>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -775,7 +733,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <label className="text-xs text-muted">{t('머리말')}<input aria-label={t('머리말')} value={settings.header} onChange={(event) => onSettings({ ...settings, header: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
               <label className="text-xs text-muted">{t('꼬리말')}<input aria-label={t('꼬리말')} value={settings.footer} onChange={(event) => onSettings({ ...settings, footer: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
-              <label className="text-xs text-muted">{t('쪽 번호')}<select aria-label={t('쪽 번호')} value={settings.pageNumbers} onChange={(event) => onSettings({ ...settings, pageNumbers: event.target.value as Required<PageSettings>['pageNumbers'] })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm"><option value="page-total">{t('현재 / 전체')}</option><option value="page">{t('현재 쪽')}</option><option value="none">{t('표시 안 함')}</option></select></label>
+              <label className="text-xs text-muted">{t('쪽 번호')}<select aria-label={t('쪽 번호')} value={settings.pageNumbers} onChange={(event) => onSettings({ ...settings, pageNumbers: event.target.value as PageSettings['pageNumbers'] })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm"><option value="page-total">{t('현재 / 전체')}</option><option value="page">{t('현재 쪽')}</option><option value="none">{t('표시 안 함')}</option></select></label>
               <label className="flex items-end gap-2 pb-2 text-xs text-muted"><input type="checkbox" checked={settings.firstPageHeader} onChange={(event) => onSettings({ ...settings, firstPageHeader: event.target.checked })} />{t('첫 쪽에도 머리말 표시')}</label>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -824,7 +782,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
   )
 }
 
-/** Page-view editor for a report; sections stay the stored unit. */
+/** Page-view editor; sections stay the stored unit. */
 export function DocumentEditor({
   report,
   templateId,
@@ -839,7 +797,7 @@ export function DocumentEditor({
   settingsSlot,
 }: {
   report: ReportArtifact
-  /** Design template; empty renders the plain document seed. */
+  /** Empty: plain document seed. */
   templateId: string
   tokens?: DesignTokens | null
   editable: boolean
@@ -847,7 +805,7 @@ export function DocumentEditor({
   settingsOpen: boolean
   onLayoutMode?: (mode: 'pages' | 'edit') => void
   onWebView?: () => void
-  /** Called with the edited sections on every change; title, page settings and comments when those changed. */
+  /** Edited sections on every change; title, page settings and comments when changed. */
   onDirty?: (
     sections: ReportSection[],
     title?: string,
@@ -855,9 +813,9 @@ export function DocumentEditor({
     reviewComments?: ReportArtifact['reviewComments'],
     titleBlock?: ReportTitleBlock,
   ) => void
-  /** Ribbon slot the formatting bar is portalled into; rendered in place when absent. */
+  /** Formatting-bar portal slot; in place when absent. */
   toolbarSlot?: HTMLElement | null
-  /** Ribbon slot the page settings are portalled into; above the page when absent. */
+  /** Page-settings portal slot; above the page when absent. */
   settingsSlot?: HTMLElement | null
 }) {
   const t = useT()
@@ -876,25 +834,23 @@ export function DocumentEditor({
   const [comments, setComments] = useState<NonNullable<ReportArtifact['reviewComments']>>(report.reviewComments ?? [])
   const [commentQuote, setCommentQuote] = useState('')
   const [commentDraft, setCommentDraft] = useState('')
-  // State, not a ref: the page appears a render late, inside the shadow root.
+  // State, not ref: the page appears a render late, inside the shadow root.
   const [page, setPage] = useState<HTMLDivElement | null>(null)
-  // Edited bodies by section id; absent means untouched.
+  // By section id; absent = untouched.
   const [edits, setEdits] = useState<Record<string, string>>({})
   const editsRef = useRef<Record<string, string>>({})
-  // Re-measure when the stylesheet lands or the document is edited.
   const { usable, height, breaks } = usePagination(
     page,
     `${style?.css.length ?? 0}:${Object.keys(edits).length}`,
   )
   const viewport = useRef<HTMLDivElement>(null)
-  // The viewport mounts after the loading returns below, so the observer is armed
-  // from a callback ref rather than once on first render.
+  // Viewport mounts after loading returns: observer armed from a callback ref.
   const [viewportNode, setViewportNode] = useState<HTMLDivElement | null>(null)
   const attachViewport = useCallback((node: HTMLDivElement | null) => {
     viewport.current = node
     setViewportNode(node)
   }, [])
-  // Zoom to fit the A4 page across the panel, capped at 1.
+  // Fit A4 across the panel, capped at 1.
   const [scale, setScale] = useState(1)
   useEffect(() => {
     const node = viewportNode
@@ -918,24 +874,20 @@ export function DocumentEditor({
     designTemplatesApi
       .style(templateId, tokens)
       .then((row) => live && setStyle(row))
-      // Stored untranslated; `t` is a new function per render.
-      .catch((err) => live && setError(errorMessage(err, '서식을 불러오지 못했습니다.')))
+      // Stored untranslated; `t` is new per render.
+      .catch((err) => live && setError(errorMessage(err, '템플릿을 불러오지 못했습니다.')))
     return () => {
       live = false
     }
   }, [templateId, tokens])
 
   const pictures = useDiagramPictures(report.sections, report.id, page)
-  const bodyOf = useCallback(
-    (section: ReportSection) => edits[section.id] ?? htmlOf(section, pictures),
-    [edits, pictures],
-  )
 
-  // Retyped headings and title; text, not markup, so kept apart from `edits`.
+  // Text, not markup: kept apart from `edits`.
   const [renamed, setRenamed] = useState<Record<string, string>>({})
   const renamedRef = useRef<Record<string, string>>({})
   const [editedTitle, setTitle] = useState<string | null>(null)
-  const [pageSettings, setPageSettings] = useState<Required<PageSettings>>({
+  const [pageSettings, setPageSettings] = useState<PageSettings>({
     ...DEFAULT_PAGE_SETTINGS,
     ...report.pageSettings,
     margins: { ...DEFAULT_PAGE_SETTINGS.margins, ...report.pageSettings?.margins },
@@ -955,7 +907,7 @@ export function DocumentEditor({
     }))
 
   const change = (section: ReportSection, html: string) => {
-    // Several editors can update in one event (Replace all); the ref accumulates synchronously.
+    // Several editors may update in one event (Replace all); ref accumulates synchronously.
     const next = { ...editsRef.current, [section.id]: html }
     editsRef.current = next
     setEdits(next)
@@ -970,17 +922,33 @@ export function DocumentEditor({
     onDirty?.(compose(editsRef.current, next))
   }
 
-  // The document's head by purpose; its field values are edited in place.
+  // Purpose head; field values edited in place.
   const [titleBlock, setTitleBlock] = useState<ReportTitleBlock | null>(() => cleanTitleBlock(report.titleBlock))
   const reblock = (next: ReportTitleBlock) => {
     setTitleBlock(next)
     onDirty?.(compose(editsRef.current, renamedRef.current), undefined, undefined, undefined, next)
   }
   const numbering = titleBlock?.numbering ?? 'none'
+  // Section closed by 「끝.」 when the format closes; ends its body in every view.
+  const closingAt = closingIndex(titleBlock, report.sections.length)
+  const bodyOf = useCallback(
+    (section: ReportSection) => edits[section.id] ?? htmlOf(
+      shapedSection(section, titleBlock, report.sections[closingAt]?.id === section.id),
+      pictures,
+      titleBlock?.lists === 'gaejo',
+    ),
+    [edits, pictures, titleBlock, closingAt, report.sections],
+  )
+  // Paged preview closes an edited body; the editor shows it as typed.
+  const previewBody = (section: ReportSection, index: number) =>
+    index === closingAt && edits[section.id] !== undefined ? closeHtml(bodyOf(section)) : bodyOf(section)
   const numbers = sectionNumbers(
     report.sections.map((s) => (edits[s.id] === undefined ? s : { ...s, content: edits[s.id], format: 'html' as const })),
     numbering,
+    titleBlock?.lists,
   )
+  // 개조식 붙임 closes the body: no heading of its own.
+  const attachment = (section: ReportSection) => isAttachment({ heading: renamed[section.id] ?? section.heading }, titleBlock?.lists)
 
   const retitle = (next: string) => {
     if (!next || next === (editedTitle ?? report.title)) return
@@ -1094,19 +1062,21 @@ export function DocumentEditor({
     sectionNodes.current[comment.sectionId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
-  const previewHtml = titleBlock
-    ? `<main class="page paginated-preview fmt">${titleBlockHtml(titleBlock, editedTitle ?? report.title)}${report.sections.map((section, index) => `<section><h2${numbers[index].label ? ` data-num="${escapePagedText(numbers[index].label)}"` : ''}>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>${numberHtmlHeadings(bodyOf(section), numbering, numbers[index])}</section>`).join('')}</main>`
-    : `<main class="page paginated-preview"><div class="cover"><h1>${escapePagedText(editedTitle ?? report.title)}</h1></div>${report.sections.map((section) => `<section><h2>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>${bodyOf(section)}</section>`).join('')}</main>`
+  // Bracket placeholders (「[담당자]」) marked in the paged preview and print.
+  // Figure columns flush right (`.fig`), as in the template preview and exporters.
+  const previewHtml = markFigureColumns(markPlaceholders(titleBlock
+    ? `<main class="page paginated-preview ${fmtClass(titleBlock)}">${titleBlockHtml(titleBlock, editedTitle ?? report.title)}${report.sections.map((section, index) => `<section>${attachment(section) ? '' : !(renamed[section.id] ?? section.heading ?? '').trim() ? '' : `<h2${numbers[index].label ? ` data-num="${escapePagedText(numbers[index].label)}"` : ''}>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>`}${numberHtmlHeadings(previewBody(section, index), numbering, numbers[index])}</section>`).join('')}</main>`
+    : `<main class="page paginated-preview"><div class="cover"><h1>${escapePagedText(editedTitle ?? report.title)}</h1></div>${report.sections.map((section) => `<section>${(renamed[section.id] ?? section.heading ?? '').trim() ? `<h2>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>` : ''}${bodyOf(section)}</section>`).join('')}</main>`))
   const visualStyle = tokens?.visualStyle ?? 'editorial'
   const visualCss = visualStyle === 'poster'
     ? `.page .cover{background:linear-gradient(145deg,var(--accent),color-mix(in srgb,var(--accent) 48%,#111827));color:#fff;padding:30mm 22mm}.page .cover h1{color:#fff;font-size:30pt;max-width:15ch}.page section>h2{font-size:18pt;border:0;padding:0 0 4mm;color:var(--accent)}.page section{margin-bottom:14mm}.page blockquote,.page .callout{border-radius:3mm;background:color-mix(in srgb,var(--accent) 8%,#fff)}`
     : visualStyle === 'minimal'
       ? `.page .cover{min-height:0;padding:10mm 8mm 8mm;background:color-mix(in srgb,var(--accent) 7%,#fff)}.page .cover h1{font-size:22pt;font-weight:600;max-width:22ch}.page section>h2{font-size:12pt;font-weight:650;letter-spacing:.08em;border:0;color:var(--muted)}.page section{margin-bottom:9mm}`
       : ''
-  // The design's typeface, unless a template stylesheet has its own say.
+  // Design typeface unless the template stylesheet sets its own.
   const fontCss = !style?.css && fontFamilyFor(tokens?.font) ? `.page{font-family:${fontFamilyFor(tokens?.font)}}` : ''
-  const formatCss = titleBlock ? `\n${TITLE_BLOCK_CSS}\n${numberingCss(numbering)}` : ''
-  const pageCss = `${style?.css ?? ''}\n${visualCss}\n${fontCss}${formatCss}`
+  const formatRules = titleBlock ? `\n${formatCss(titleBlock)}` : ''
+  const pageCss = `${style?.css ?? ''}\n${visualCss}\n${fontCss}${formatRules}\n${PLACEHOLDER_CSS}`
 
   if (error) return <p className="p-4 text-sm text-danger">{t(error)}</p>
   if (templateId && !style) {
@@ -1178,8 +1148,7 @@ export function DocumentEditor({
           </nav>
         )}
         <div ref={attachViewport} aria-label={t('보고서 편집 페이지')} className="min-h-0 min-w-0 flex-1 overflow-auto bg-elevated p-6 max-sm:p-2">
-        {/* The A4 sheet is scaled, never narrowed. The outer box carries the
-            scaled size so the scrollbar matches. */}
+        {/* Sheet scaled, never narrowed; outer box carries the scaled size for the scrollbar. */}
         <div
           className="mx-auto"
           style={{ width: A4_WIDTH_PX * scale, height: Math.max(height, A4_HEIGHT_PX) * scale }}
@@ -1195,10 +1164,10 @@ export function DocumentEditor({
           >
           <div className="relative">
             <DocumentShell css={`${pageCss}\n${EDITOR_PAGE_BREAK_CSS}\n${sheetGeometryCss(pageSettings.margins)}`} className="report-page-shell">
-              {/* `paginated` tells the template the sheet is drawn here; `--sheet-h` is the usable page height. */}
+              {/* `paginated`: sheet drawn here; `--sheet-h`: usable page height. */}
               <div
                 ref={setPage}
-                className={cn('page paginated', titleBlock && 'fmt')}
+                className={cn('page paginated', fmtClass(titleBlock))}
                 style={{ ['--sheet-h' as string]: `${usable}px` } as React.CSSProperties}
               >
                 {titleBlock ? (
@@ -1221,12 +1190,14 @@ export function DocumentEditor({
                 )}
                 {report.sections.map((section, index) => (
                   <section key={section.id} ref={(node) => { sectionNodes.current[section.id] = node }} style={numbers[index].label ? counterStyle(numbers[index]) : undefined}>
-                    <EditableLine
-                      value={renamed[section.id] ?? section.heading}
-                      editable={editable}
-                      onChange={(heading) => rename(section, heading)}
-                      numberLabel={numbers[index].label}
-                    />
+                    {!attachment(section) && (
+                      <EditableLine
+                        value={renamed[section.id] ?? section.heading}
+                        editable={editable}
+                        onChange={(heading) => rename(section, heading)}
+                        numberLabel={numbers[index].label}
+                      />
+                    )}
                     <SectionEditor
                       html={bodyOf(section)}
                       editable={editable}
@@ -1240,7 +1211,7 @@ export function DocumentEditor({
                       }}
                       onMount={(editor) => {
                         sectionEditors.current[section.id] = editor
-                        // The first editor becomes the toolbar target so it opens live.
+                        // First editor is the toolbar target, so it opens live.
                         setFocused((current) => current ?? editor)
                         setFocusedSection((current) => current ?? section.id)
                       }}
@@ -1292,10 +1263,10 @@ export function DocumentEditor({
   )
 }
 
-/** A section's body as HTML; a small Markdown subset (headings, lists, tables, quotes, images, fences). */
-function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
+/** Section body as HTML from a small Markdown subset; `gaejo` keeps list nesting (two spaces a level) and marks ※/붙임 for `GAEJO_CSS`. */
+function htmlOf(section: ReportSection, pictures: Map<string, string>, gaejo = false): string {
   if (section.format === 'html') return section.content
-  // Escapes `"` too: the output goes into attribute values (`data-source`).
+  // Escapes `"` too: output goes into attribute values (`data-source`).
   const escape = (s: string) =>
     s
       .replace(/&/g, '&amp;')
@@ -1309,13 +1280,38 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
       .replace(/`(.+?)`/g, '<code>$1</code>')
 
   const out: string[] = []
-  // Pending list items, table rows and fence lines; flushed when something else turns up.
+  // Pending list items, table rows, fence lines; flushed on anything else.
   let items: string[] = []
   let ordered = false
+  // 개조식 items with depth (1–4), nested at flush.
+  let nested: { depth: number; ordered: boolean; html: string; note?: boolean }[] = []
+  let attaching = false
   let rows: string[][] = []
   let fence: string[] | null = null
   let fenceLang = ''
   const flush = () => {
+    if (nested.length) {
+      const open: string[] = []
+      let html = ''
+      for (const item of nested) {
+        if (item.depth > open.length) {
+          while (open.length < item.depth) {
+            const tag = item.ordered ? 'ol' : 'ul'
+            html += `<${tag}>`
+            open.push(tag)
+            // A skipped level still needs an item to hold the deeper list.
+            if (open.length < item.depth) html += '<li>'
+          }
+        } else {
+          while (open.length > item.depth) html += `</li></${open.pop()}>`
+          html += '</li>'
+        }
+        html += item.note ? `<li class="gaejo-note">${item.html}` : `<li>${item.html}`
+      }
+      while (open.length) html += `</li></${open.pop()}>`
+      out.push(html)
+      nested = []
+    }
     if (items.length) {
       const tag = ordered ? 'ol' : 'ul'
       out.push(`<${tag}>${items.map((i) => `<li>${i}</li>`).join('')}</${tag}>`)
@@ -1357,11 +1353,11 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
       continue
     }
     if (!line) {
-      // A blank line does not end a table; models put one between rows.
+      // Blank line does not end a table; models put one between rows.
       if (!rows.length) flush()
       continue
     }
-    // A table row; the `| --- |` rule carries no cells.
+    // `| --- |` rule carries no cells.
     const row = /^\|(.+)\|$/.exec(line)
     if (row) {
       if (!/^[\s:|-]+$/.test(row[1])) {
@@ -1384,9 +1380,31 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
     const bullet = /^[-*+]\s+(.*)$/.exec(line)
     const numbered = /^\d{1,9}[.)]\s+(.*)$/.exec(line)
     const quote = /^>\s*(.*)$/.exec(line)
+    if (gaejo && !heading) {
+      const depth = Math.min(Math.floor(raw.replace(/\t/g, '    ').search(/\S/) / 2) + 1, 4)
+      if (attaching && /^\d{1,3}\.\s/.test(line)) {
+        out.push(`<p class="gaejo-attach">${inline(line)}</p>`)
+        continue
+      }
+      attaching = false
+      if (bullet || numbered) {
+        // Pending table goes out first; the list keeps growing.
+        if (rows.length || items.length) flush()
+        const text = (bullet ?? numbered)![1]
+        // ※ item: note at its depth, ※ as marker (`GAEJO_CSS`).
+        nested.push({ depth, ordered: !bullet, html: inline(text), note: Boolean(bullet) && text.startsWith('※') })
+        continue
+      }
+      if (line.startsWith('※') || line.startsWith('붙임')) {
+        flush()
+        attaching = line.startsWith('붙임')
+        out.push(`<p class="${attaching ? 'gaejo-attach' : 'gaejo-note'}">${inline(line)}</p>`)
+        continue
+      }
+    }
     if (heading) {
       flush()
-      // The wrapper draws the section heading, so body headings start at h3.
+      // Wrapper draws the section heading: body headings start at h3.
       const level = Math.min(heading[1].length + 1, 6)
       out.push(`<h${level}>${inline(heading[2])}</h${level}>`)
     } else if (bullet) {
@@ -1405,13 +1423,13 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
       out.push(`<p>${inline(line)}</p>`)
     }
   }
-  // An unterminated fence (mid-stream) is drawn with what arrived.
+  // Unterminated fence (mid-stream) drawn with what arrived.
   if (fence !== null) out.push(fenceHtml(fenceLang, fence.join('\n'), escape, pictures))
   flush()
   return out.join('')
 }
 
-/** One fenced block as the markup the template styles; unknown fences render nothing. */
+/** Fenced block as template-styled markup; unknown fences render nothing. */
 function fenceHtml(
   lang: string,
   source: string,
@@ -1439,8 +1457,7 @@ function fenceHtml(
     return items ? `<ol class="steps">${items}</ol>` : ''
   }
   if (lang === 'cards') {
-    // `<section>`, not `<div>`: `richtext` reads this back with a lazy close,
-    // so the wrapper tag must differ from its children's.
+    // `<section>`, not `<div>`: `richtext` reads back with a lazy close, so wrapper and children tags must differ.
     const grid = parseCards(source)
       .map(
         (card) =>
@@ -1465,7 +1482,7 @@ function fenceHtml(
     )
   }
   if (lang === 'chart') {
-    // Source only; the exporters build the chart from it.
+    // Source only; exporters build the chart from it.
     return `<figure class="chart" data-source="${escape(source)}"></figure>`
   }
   if (lang === 'mermaid') {
@@ -1479,17 +1496,14 @@ function fenceHtml(
   return ''
 }
 
-/**
- * Picture per mermaid source in these sections, keyed by source text. Missing
- * ones are drawn off-screen (outside ProseMirror's subtree) and stored.
- */
+/** Picture per mermaid source, keyed by source text; missing ones drawn off-screen (outside ProseMirror) and stored. */
 function useDiagramPictures(
   sections: ReportSection[],
   artifactId: string,
   look: HTMLElement | null,
 ): Map<string, string> {
   const [pictures, setPictures] = useState<Map<string, string>>(() => new Map())
-  // Signature of the last resolve; without it every keystroke would loop.
+  // Last-resolve signature; else every keystroke loops.
   const resolved = useRef('')
 
   useEffect(() => {
@@ -1519,7 +1533,7 @@ function useDiagramPictures(
       setPictures(found)
       if (!missing.length || !look) return
 
-      // Drawn off-screen inside the template's shadow root, so it takes the document's theme.
+      // Off-screen inside the template's shadow root: takes the document's theme.
       const easel = document.createElement('div')
       easel.style.cssText = 'position:absolute;left:-99999px;top:0;width:700px'
       look.appendChild(easel)
@@ -1528,7 +1542,7 @@ function useDiagramPictures(
           const svg = await drawFitting(source, theme(easel), FRAMES.page)
           if (!live) return
           if (!svg) continue
-          // The same frame the page view shows, so the export matches the screen.
+          // Same frame as the page view: export matches the screen.
           const png = await rasterise(framed(svg, FRAMES.page), 1)
           if (!live) return
           if (!png) continue
@@ -1550,7 +1564,6 @@ function useDiagramPictures(
   return pictures
 }
 
-/** Every mermaid fence in a Markdown section body, in order. */
 function mermaidSources(section: ReportSection): string[] {
   if (section.format === 'html') return []
   const out: string[] = []

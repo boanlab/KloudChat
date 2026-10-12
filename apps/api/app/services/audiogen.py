@@ -1,8 +1,4 @@
-"""Speech and music generation via `chat/completions` with `modalities: ["text", "audio"]`.
-
-Both require `stream: true`. Music (Lyria) arrives as a finished file; speech
-(GPT Audio) arrives as raw 24 kHz PCM16 and is wrapped in a WAV header here.
-"""
+"""Speech/music via chat/completions audio modality (stream required); speech PCM wrapped as WAV."""
 
 from __future__ import annotations
 
@@ -20,10 +16,10 @@ from app.services import files as file_service
 
 log = logging.getLogger(__name__)
 
-#: Speech is generated in real time.
+#: speech is real-time
 _TIMEOUT = 240.0
 
-#: PCM format GPT Audio streams; the WAV header is built from these.
+#: GPT Audio PCM format, for the WAV header
 _PCM_RATE = 24_000
 _PCM_CHANNELS = 1
 _PCM_BITS = 16
@@ -32,7 +28,7 @@ VOICES = ("alloy", "echo", "fable", "onyx", "nova", "shimmer")
 
 
 class AudioError(RuntimeError):
-    """Generation failed; the message is user-facing."""
+    """Generation failed; user-facing message."""
 
 
 @dataclass(slots=True)
@@ -42,12 +38,12 @@ class GeneratedAudio:
     extension: str
     input_tokens: int
     output_tokens: int
-    #: Stored as the artifact's transcript; empty when the model sends none.
+    #: transcript; empty when none sent
     transcript: str
 
 
 def _wav(pcm: bytes) -> bytes:
-    """A 44-byte RIFF header around raw PCM samples."""
+    """44-byte RIFF header around raw PCM."""
     byte_rate = _PCM_RATE * _PCM_CHANNELS * _PCM_BITS // 8
     block_align = _PCM_CHANNELS * _PCM_BITS // 8
     return (
@@ -64,8 +60,7 @@ def _wav(pcm: bytes) -> bytes:
 
 
 def compose_prompt(prompt: str, *, speech: bool, seconds: int = 0) -> str:
-    """The prompt as sent; neither endpoint takes a length parameter, so it is asked for in words.
-    """
+    """Prompt as sent; length asked in words (no length parameter)."""
     text = prompt.strip()
     if seconds > 0:
         text += f" 약 {seconds}초 분량으로 읽어라." if speech else f" 길이는 약 {seconds}초."
@@ -82,12 +77,12 @@ async def generate(
     voice: str = "alloy",
     seconds: int = 0,
 ) -> GeneratedAudio:
-    """One clip, or `AudioError`."""
+    """One clip, or AudioError."""
     payload: dict = {
         "model": model,
         "modalities": ["text", "audio"],
-        "stream": True,  # required by the audio endpoints
-        "stream_options": {"include_usage": True},  # else the stream carries no usage
+        "stream": True,
+        "stream_options": {"include_usage": True},  # else no usage in the stream
         "messages": [
             {"role": "user", "content": compose_prompt(prompt, speech=speech, seconds=seconds)}
         ],
@@ -142,7 +137,7 @@ async def generate(
     if speech:
         data, mime, extension = _wav(body), "audio/wav", "wav"
     else:
-        # Lyria sends no `format` field; sniff the container.
+        # Lyria sends no format; sniff the container
         if body[:3] == b"ID3" or body[:2] == b"\xff\xfb":
             data, mime, extension = body, "audio/mpeg", "mp3"
         elif body[:4] == b"RIFF":
@@ -163,7 +158,7 @@ async def generate(
 
 
 def duration_seconds(audio: GeneratedAudio) -> int:
-    """Exact for the WAV built here; 0 for other containers."""
+    """Exact for our WAV; 0 otherwise."""
     if audio.mime != "audio/wav":
         return 0
     samples = max(0, len(audio.data) - 44)

@@ -10,7 +10,7 @@ type SkillRow = {
   whenToUse: string
   body: string
   catalogKey: string | null
-  source: 'built-in' | 'personal'
+  source: 'workspace' | 'personal'
   kinds: string[]
   requiredTools: string[]
   estimatedTokens: number
@@ -34,7 +34,7 @@ const skill = (
   whenToUse: `${name} 절차가 필요할 때`,
   body: options.body ?? `${name}의 원본 절차를 순서대로 따른다.`,
   catalogKey: options.catalogKey ?? null,
-  source: options.source ?? 'built-in',
+  source: options.source ?? 'workspace',
   kinds: ['chat', 'report', 'slides'],
   requiredTools: options.requiredTools ?? [],
   estimatedTokens: name === '의사결정 메모' ? 123 : 80,
@@ -175,7 +175,8 @@ async function mockSkillWorkspace(page: Page, initial = catalogue) {
 async function openSkillMenu(page: Page) {
   const menu = page.getByRole('menu')
   if ((await menu.count()) === 0) {
-    await page.getByRole('button', { name: '스킬', exact: true }).click()
+    await page.getByRole('button', { name: '도구', exact: true }).click()
+    await page.getByRole('menuitem', { name: '스킬' }).click()
   }
   await expect(menu).toBeVisible()
   return menu
@@ -204,25 +205,14 @@ test('입력창은 스킬을 세 개까지만 고르고 네 번째 이유를 설
   await expect(page.getByRole('button', { name: / 제거$/ })).toHaveCount(3)
 })
 
-test('도구가 필요한 스킬은 보고서와 비교 모드에서 이유와 함께 비활성화된다', async ({
+test('도구가 필요한 스킬은 보고서에서 이유와 함께 비활성화된다', async ({
   page,
 }) => {
   await mockSkillWorkspace(page)
 
   await page.goto('/new/report')
-  let menu = await openSkillMenu(page)
-  let calculation = menu.getByRole('menuitemcheckbox').filter({ hasText: '계산·단위 검증' })
-  await expect(calculation).toBeDisabled()
-  await expect(calculation).toContainText(
-    '이 화면에서는 도구가 필요한 스킬을 실행할 수 없습니다.',
-  )
-
-  await page.goto('/new/chat')
-  await page.getByRole('button', { name: '모델 비교', exact: true }).click()
-  await page.getByRole('menuitem').filter({ hasText: '비교 모드' }).click()
-
-  menu = await openSkillMenu(page)
-  calculation = menu.getByRole('menuitemcheckbox').filter({ hasText: '계산·단위 검증' })
+  const menu = await openSkillMenu(page)
+  const calculation = menu.getByRole('menuitemcheckbox').filter({ hasText: '계산·단위 검증' })
   await expect(calculation).toBeDisabled()
   await expect(calculation).toContainText(
     '이 화면에서는 도구가 필요한 스킬을 실행할 수 없습니다.',
@@ -601,7 +591,7 @@ test('422로 거절된 턴은 입력 상태를 복원하고 재시도해도 한 
   await expect(page.getByRole('button', { name: '의사결정 메모 제거' })).toBeVisible()
   await expect(page.getByRole('button', { name: `${fileName} 제거` })).toBeVisible()
   await expect(page.getByRole('button', { name: '프롬프트 복사' })).toHaveCount(0)
-  await expect(page.getByText('생각하는 중…')).toHaveCount(0)
+  await expect(page.getByText('답을 쓰는 중…')).toHaveCount(0)
 
   await composer.press('Enter')
   const timeline = page.getByRole('button').filter({ hasText: '스킬 1개 적용' })

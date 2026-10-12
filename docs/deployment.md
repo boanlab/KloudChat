@@ -38,6 +38,9 @@ web container (`localhost:5173/api/…`), or one instance with
 ./data/uv-cache     MCP connector dependency cache
 ```
 
+The API also mounts the host's `/proc` and `/sys/fs/cgroup` read-only for the
+admin 성능 모니터링 page; remove both mounts to run without host figures.
+
 The `kloudchat-init` container runs once before the API and exits.
 Docker creates bind-mount directories as root and the API runs as uid 1000, so
 it creates `files` and `uv-cache` and hands them over — without it, uploads
@@ -77,7 +80,12 @@ KCHAT_COOKIE_SECURE=true                   # you are behind TLS
 KCHAT_CORS_ORIGINS=["https://kchat.example.com"]
 KCHAT_DB_PASSWORD=<something long>
 BACKEND_BASE_URL=http://<llm-host-ip>:8080        # the KloudChat-LLM gateway
+KCHAT_TOOLS_GATEWAY_KEY=<TOOLS_GATEWAY_KEY of KloudChat-LLM>   # /tools/* refuse requests without it
 ```
+
+Every variable is described in [configuration.md](configuration.md). Which
+model does which job, credits and policies are not `.env` settings: they are
+chosen in the admin screen after the first start.
 
 Then pin the images. `docker-compose.yml` ships `:latest`, which moves with
 every push to main; a deployment wants a version tag:
@@ -105,9 +113,11 @@ administrator) or by setting `KCHAT_ADMIN_EMAIL` and `KCHAT_ADMIN_PASSWORD`
 before the first start. Those two apply **only** when the database has no
 accounts, so they cannot be used to reset a forgotten password later.
 
-Finish in the UI, from the account menu's **System** screen: paste the gateway
-address under **Features → Feature integrations**, the LiteLLM master key under
-**Proxy**, and use each field's connection test.
+Finish in the UI, from the account menu's **시스템** screen: paste the gateway
+address under **기능 › 기능 연동**, the LiteLLM master key under **프록시**,
+and use each field's connection test. Then check **모델** (which model does
+which job) and **라우팅** (the outline model and Auto) against the models the
+gateway actually serves.
 
 ## TLS and reverse proxy
 

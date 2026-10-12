@@ -5,31 +5,37 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { Composer, hasUnsentDraft } from '@/components/chat/Composer'
 import { ProposalCard } from '@/components/chat/ProposalCard'
+import { waitingCardMessageId } from '@/lib/stages'
 import { MessageItem } from '@/components/chat/MessageItem'
 import { ShareButton } from '@/components/share/ShareButton'
 import { DesignGallery } from '@/components/chat/DesignGallery'
 import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
 import { Badge, Button, LoadingState } from '@/components/ui'
-import { kindMeta } from '@/lib/kinds'
+import { agentKinds, kindMeta } from '@/lib/kinds'
+import { templateText } from '@/lib/api'
+import { currentLang } from '@/lib/i18n'
+import { startFailure } from '@/lib/failures'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
-/** Within this many pixels of the bottom the transcript still follows new text. */
+/** Automatic transcript retries before asking the reader. */
+const LOAD_RETRIES = 3
+/** Follow distance from the bottom, px. */
 const FOLLOW_GAP_PX = 120
-/** Further than this from the bottom, the 「맨 아래로」 button shows. */
+/** 「맨 아래로」 threshold, px. */
 const AWAY_GAP_PX = 320
 
-/** What a design system changes on each surface; audio and video are unaffected. */
+/** Theme effect per surface; audio and video unaffected. */
 const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
-  chat: '이 대화의 말투를 이 디자인에 맞춥니다',
-  report: '보고서의 말투와 색, 서체를 이 디자인에 맞춥니다',
-  slides: '슬라이드의 말투와 색, 서체를 이 디자인에 맞춥니다',
-  image: '그림의 색과 스타일을 이 디자인에 맞춥니다',
+  chat: '이 대화의 말투를 이 테마에 맞춥니다',
+  report: '보고서의 말투와 색, 서체를 이 테마에 맞춥니다',
+  slides: '슬라이드의 말투와 색, 서체를 이 테마에 맞춥니다',
+  image: '그림의 색과 스타일을 이 테마에 맞춥니다',
 }
 
-/** Agent, project and design this empty session carries; the 서식 chip lives in the composer instead. */
+/** Agent, project and theme of an empty session; the template chip lives in the composer. */
 function StartingFrom({
   sessionId,
   kind,
@@ -37,7 +43,6 @@ function StartingFrom({
 }: {
   sessionId?: string | null
   kind: SessionKind
-  /** Omit the agent row when the agent is already the headline. */
   withoutAgent?: boolean
 }) {
   const t = useT()
@@ -45,11 +50,15 @@ function StartingFrom({
   const found = useStore((s) => s.agents.find((a) => a.id === session?.agentId))
   const agent = withoutAgent ? undefined : found
   const project = useStore((s) => s.projects.find((p) => p.id === session?.projectId))
-  // The design comes with the project.
-  const design = useStore((s) => s.designs.find((d) => d.id === project?.designSystemId))
+  // Agent's theme (or the viewer's own of that name), else the project's: the server's order.
+  const design = useStore((s) =>
+    s.designs.find((d) => d.id === found?.designSystemId) ??
+    (found?.designName ? s.designs.find((d) => d.name === found.designName) : undefined) ??
+    s.designs.find((d) => d.id === project?.designSystemId),
+  )
   const designReach = DESIGN_REACHES[kind]
 
-  if (!agent && !project) return null
+  if (!agent && !project && !(design && designReach)) return null
 
   const rows = [
     agent && {
@@ -114,7 +123,7 @@ function StartingFrom({
   )
 }
 
-/** The agent's guide text and starter sentences; a starter is sent as-is. */
+/** Starters sent as-is. */
 function AgentGuide({
   agent,
   sessionId,
@@ -128,9 +137,11 @@ function AgentGuide({
   const navigate = useNavigate()
   const send = useStore((s) => s.send)
   const streaming = useStore((s) => !!sessionId && !!s.running[sessionId])
-  if (!agent.guide && agent.starters.length === 0) return null
+  const surfaces = agent.kinds.length > 1 ? agentKinds(agent) : []
+  if (!agent.guide && agent.starters.length === 0 && surfaces.length === 0) return null
   return (
     <div className="animate-fade-up mx-auto mb-6 w-full max-w-2xl">
+      {surfaces.length > 0 && <AgentSurfaces agent={agent} sessionId={sessionId} kind={kind} />}
       {agent.guide && (
         <div className="flex items-start gap-3 rounded-card border border-line bg-panel px-4 py-3 text-base leading-relaxed text-muted">
           <Info size={15} className="mt-1 shrink-0 text-faint" />
@@ -164,7 +175,97 @@ function AgentGuide({
   )
 }
 
-/** Empty state shown before the first prompt of a fresh session. */
+/** One start button per agent surface: current marked, others open a new conversation with the same agent. */
+function AgentSurfaces({
+  agent,
+  sessionId,
+  kind,
+}: {
+  agent: Agent
+  sessionId: string | null
+  kind: SessionKind
+}) {
+  const t = useT()
+  const navigate = useNavigate()
+  const newSession = useStore((s) => s.newSession)
+  const setNotice = useStore((s) => s.setNotice)
+  const projectId = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.projectId ?? null)
+  const template = useStore((s) => s.designTemplates.find((row) => row.id === agent.renderTemplateId))
+  return (
+    <div className="mb-3 flex flex-wrap justify-center gap-2" role="group" aria-label={t('시작할 화면')}>
+      {agentKinds(agent).map((k) => {
+        const Icon = kindMeta[k].icon
+        const name =
+          template && template.surface === k
+            ? t('{name} 만들기').replace('{name}', templateText(template, currentLang() === 'en').name)
+            : t('{kind}로 시작').replace('{kind}', t(kindMeta[k].label))
+        return (
+          <Button
+            key={k}
+            size="sm"
+            variant={k === kind ? 'primary' : 'secondary'}
+            aria-pressed={k === kind}
+            onClick={() => {
+              if (k === kind) return
+              void newSession(k, { agentId: agent.id, projectId })
+                .then((id) => navigate(`/s/${id}`, { replace: true }))
+                .catch((err: unknown) => setNotice(startFailure(err, t)))
+            }}
+          >
+            <Icon size={13} />
+            {name}
+          </Button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Agent chat → its document: report or slides session with the same agent, conversation as material; only surfaces the agent names. */
+function HandOffButtons({ agent, sessionId }: { agent: Agent; sessionId: string }) {
+  const t = useT()
+  const navigate = useNavigate()
+  const handOff = useStore((s) => s.handOff)
+  const setNotice = useStore((s) => s.setNotice)
+  const streaming = useStore((s) => !!s.running[sessionId])
+  const template = useStore((s) => s.designTemplates.find((row) => row.id === agent.renderTemplateId))
+  const [busy, setBusy] = useState(false)
+  const targets = (['report', 'slides'] as const).filter((k) => agent.kinds.includes(k))
+  return (
+    <>
+      {targets.map((k) => {
+        const Icon = kindMeta[k].icon
+        const name =
+          template && template.surface === k
+            ? templateText(template, currentLang() === 'en').name
+            : t(kindMeta[k].label)
+        return (
+          <Button
+            key={k}
+            size="sm"
+            disabled={busy || streaming}
+            title={t('이 대화를 자료로 같은 에이전트가 {name}을 씁니다').replace('{name}', name)}
+            onClick={() => {
+              setBusy(true)
+              void handOff(
+                sessionId,
+                k,
+                t('지금까지 나눈 대화로 {name} 초안을 만들어 주세요.').replace('{name}', name),
+                { onSession: (id) => navigate(`/s/${id}`) },
+              )
+                .catch((err: unknown) => setNotice(startFailure(err, t)))
+                .finally(() => setBusy(false))
+            }}
+          >
+            <Icon size={14} />
+            {t('{name} 만들기').replace('{name}', name)}
+          </Button>
+        )
+      })}
+    </>
+  )
+}
+
 function Intro({
   kind,
   sessionId,
@@ -220,7 +321,7 @@ function Intro({
 export function SessionPage() {
   const t = useT()
   const { sessionId } = useParams()
-  // Selectors, not the whole store: `MessageItem`'s memo keys on these rows.
+  // Selectors, not the store: `MessageItem`'s memo keys on these rows.
   const jobs = useStore((s) => s.jobs)
   const projects = useStore((s) => s.projects)
   const agents = useStore((s) => s.agents)
@@ -232,7 +333,7 @@ export function SessionPage() {
   const openArtifact = useStore((s) => s.openArtifact)
 
   const [searchParams, setSearchParams] = useSearchParams()
-  // `?artifact=` opens a specific document instead of the session's latest.
+  // `?artifact=` opens that document instead of the latest.
   const requestedArtifactId = searchParams.get('artifact')
   const session = useStore((s) => s.sessions.find((c) => c.id === sessionId) ?? null)
   const kind: SessionKind = session?.kind ?? 'chat'
@@ -242,8 +343,7 @@ export function SessionPage() {
     setActiveSession(session?.id ?? null)
   }, [session?.id, setActiveSession])
 
-  // Deletes an empty session on leave, unless it holds an unsent draft.
-  // Deferred a tick so StrictMode's mount/cleanup/mount and a return to the same id cancel it.
+  // Left empty (never sent, or its first send refused): dropped on leave unless it holds a draft; deferred a tick for StrictMode remounts and same-id returns.
   const pendingCleanup = useRef<{ id: string; timer: number } | null>(null)
   useEffect(() => {
     const id = sessionId
@@ -270,25 +370,47 @@ export function SessionPage() {
     }
   }, [sessionId])
 
-  // The session list carries no transcript; a session opened by URL fetches its own.
+  // List carries no transcript; a session opened by URL fetches its own.
   const loaded = session !== null && session.messages.length > 0
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [failedLoad, setFailedLoad] = useState<{ id: string; attempt: number } | null>(null)
+  /** Transcript fetched at least once on this page. */
+  const [fetchedId, setFetchedId] = useState<string | null>(null)
+  /** Automatic retries spent. */
+  const autoRetries = useRef<{ id: string | undefined; count: number }>({ id: undefined, count: 0 })
   useEffect(() => {
     let current = true
     if (sessionId && !loaded) {
-      const completed = () => {
-        // openSession retains its shared, non-throwing contract; absence is not a new chat.
-        if (current && !useStore.getState().sessions.some((row) => row.id === sessionId)) {
-          setFailedLoad({ id: sessionId, attempt: loadAttempt })
-        }
+      const completed = (fetched: boolean) => {
+        if (!current) return
+        // Gone row or missing transcript: not a new chat.
+        if (fetched && useStore.getState().sessions.some((row) => row.id === sessionId)) setFetchedId(sessionId)
+        else setFailedLoad({ id: sessionId, attempt: loadAttempt })
       }
-      void openSession(sessionId).then(completed, completed)
+      void openSession(sessionId).then(completed, () => completed(false))
     }
     return () => { current = false }
   }, [sessionId, loaded, openSession, loadAttempt])
+  if (autoRetries.current.id !== sessionId) autoRetries.current = { id: sessionId, count: 0 }
+  const loadFailed = failedLoad?.id === sessionId && failedLoad?.attempt === loadAttempt
+  // Dropped request retried a few times with backoff.
+  const retrying = loadFailed && autoRetries.current.count < LOAD_RETRIES
+  useEffect(() => {
+    if (!retrying) return
+    const wait = 1500 * 2 ** autoRetries.current.count
+    const timer = window.setTimeout(() => {
+      autoRetries.current.count += 1
+      setLoadAttempt((attempt) => attempt + 1)
+    }, wait)
+    return () => window.clearTimeout(timer)
+  }, [retrying])
+  const retryLoad = () => setLoadAttempt((attempt) => attempt + 1)
+  // Turns on the server: no empty greeting while loading.
+  const awaitingTranscript =
+    session !== null && session !== undefined && session.messages.length === 0 &&
+    (session.messageCount > 0 || !!session.pending) && fetchedId !== session.id
 
-  // Messages and jobs share one timeline, ordered by creation.
+  // Messages and jobs: one timeline by creation.
   const timeline = useMemo(() => {
     if (!session) return []
     const sessionJobs = jobs.filter((j) => j.sessionId === session.id)
@@ -299,7 +421,7 @@ export function SessionPage() {
     return items.sort((a, b) => +new Date(a.t) - +new Date(b.t)).map((i) => i.node)
   }, [session, jobs])
 
-  // Outline card index: end of the transcript while pending, above the running turn once accepted.
+  // Outline card: transcript end while pending, above the running turn once accepted.
   const proposalAt = useMemo(() => {
     if (!session?.pending) return -1
     if (!streaming) return timeline.length
@@ -309,7 +431,8 @@ export function SessionPage() {
     }
     return timeline.length
   }, [session?.pending, streaming, timeline])
-  const proposal = session?.pending ? (
+  // Not twice when the waiting stage shows it.
+  const proposal = session?.pending && !waitingCardMessageId(session) ? (
     <ProposalCard sessionId={session.id} pending={session.pending} kind={kind} />
   ) : null
 
@@ -318,12 +441,9 @@ export function SessionPage() {
   const runningProgress = jobs.find(
     (j) => j.sessionId === session?.id && j.status === 'running',
   )?.progress
-  // The transcript follows new text only while the reader is at (or near) the
-  // bottom. Scrolling up to re-read an earlier answer stops the following; a
-  // button offers the way back, and a newly sent question re-engages it.
+  // Follow only near the bottom; scrolling up stops it, a button or a new question re-engages.
   const following = useRef(true)
-  // Set while the component's own smooth scroll is in flight: those scroll events
-  // are not the reader leaving the bottom.
+  // Own smooth scroll in flight: not the reader leaving the bottom.
   const settling = useRef(false)
   const [awayFromBottom, setAwayFromBottom] = useState(false)
   const measureFollowing = useCallback(() => {
@@ -344,25 +464,25 @@ export function SessionPage() {
     setAwayFromBottom(false)
     settling.current = behavior === 'smooth'
     el.scrollTo({ top: el.scrollHeight, behavior })
-    // A smooth scroll that never reaches the bottom (content kept growing) must not pin this.
+    // A smooth scroll that never reaches the bottom must not pin this.
     if (settling.current) window.setTimeout(() => { settling.current = false }, 800)
   }, [])
   const lastMessageId = session?.messages.at(-1)?.id
   const lastRole = session?.messages.at(-1)?.role
   useLayoutEffect(() => {
-    // A question the reader just sent always brings the bottom into view.
+    // A just-sent question brings the bottom into view.
     if (lastRole === 'user') following.current = true
   }, [lastMessageId, lastRole])
   useLayoutEffect(() => {
     if (!following.current) return
     scrollToBottom(streaming ? 'auto' : 'smooth')
   }, [timeline.length, lastLength, runningProgress, streaming, scrollToBottom])
-  // A new conversation opens at the bottom.
+  // New conversation opens at the bottom.
   useEffect(() => {
     following.current = true
     setAwayFromBottom(false)
   }, [session?.id])
-  // Screen readers hear when an answer has landed; the text itself is read on demand.
+  // Screen readers hear an answer land; text read on demand.
   const wasStreaming = useRef(false)
   const [announcement, setAnnouncement] = useState('')
   const lastError = session?.messages.at(-1)?.error
@@ -373,7 +493,7 @@ export function SessionPage() {
     wasStreaming.current = !!streaming
   }, [streaming, lastError, t])
 
-  // Applied once the session is loaded, then cleared so a closed panel stays closed.
+  // Applied once loaded, then cleared, so a closed panel stays closed.
   useEffect(() => {
     if (!requestedArtifactId || !session) return
     openArtifact(requestedArtifactId)
@@ -385,7 +505,7 @@ export function SessionPage() {
       },
       { replace: true },
     )
-    // Session by id: its identity changes on every streamed token.
+    // Session by id: identity changes per streamed token.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedArtifactId, session?.id, openArtifact, setSearchParams])
 
@@ -396,22 +516,26 @@ export function SessionPage() {
   )
   const Icon = meta.icon
 
+  const loadingTranscript = (
+    <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      {loadFailed ? (
+        <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
+          <p className="text-base text-muted">{t('최신 내용을 불러오지 못했습니다.')}</p>
+          {retrying && <p className="text-sm text-faint">{t('잠시 후 다시 불러옵니다.')}</p>}
+          <Button onClick={retryLoad}>
+            <RotateCw size={14} />
+            {t('다시 시도')}
+          </Button>
+        </div>
+      ) : <LoadingState label={t('대화를 불러오는 중…')} />}
+    </div>
+  )
+
   if (!session) {
-    const failed = failedLoad?.id === sessionId && failedLoad?.attempt === loadAttempt
     return (
       <>
         <TopBar left={<span className="text-base font-medium">{t('작업')}</span>} />
-        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-          {failed ? (
-            <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
-              <p className="text-base text-muted">{t('최신 내용을 불러오지 못했습니다.')}</p>
-              <Button onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
-                <RotateCw size={14} />
-                {t('다시 시도')}
-              </Button>
-            </div>
-          ) : <LoadingState />}
-        </div>
+        {loadingTranscript}
       </>
     )
   }
@@ -441,7 +565,10 @@ export function SessionPage() {
         }
         right={
           <>
-            {session && <ShareButton session={session} />}
+            {session.kind === 'chat' && agent && session.messages.length > 0 && (
+              <HandOffButtons agent={agent} sessionId={session.id} />
+            )}
+            {session && !session.unsent && <ShareButton session={session} />}
             {sessionArtifact && !openArtifactId && (
               <Button size="sm" onClick={() => openArtifact(sessionArtifact.id)}>
                 <PanelRight size={14} />
@@ -457,7 +584,9 @@ export function SessionPage() {
           {announcement}
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
-          {session && timeline.length > 0 ? (
+          {awaitingTranscript ? (
+            loadingTranscript
+          ) : session && (timeline.length > 0 || proposal) ? (
             <>
               <div
                 ref={scrollRef}
@@ -466,7 +595,7 @@ export function SessionPage() {
                 data-testid="transcript"
               >
                 <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
-                  {/* Per-message boundary: one malformed turn loses only its own bubble. */}
+                  {/* Per-message boundary: one malformed turn loses only its bubble. */}
                   {timeline.map((item, i) =>
                     item.type === 'message' ? (
                       <Fragment key={item.m.id}>
@@ -511,7 +640,7 @@ export function SessionPage() {
           ) : (
             <>
               <Intro kind={kind} sessionId={session?.id ?? sessionId ?? null} />
-              {/* URL id first: the row may not have arrived yet, and `null` would start a new session. */}
+              {/* URL id first: the row may not have arrived, and `null` would start a new session. */}
               <Composer
                 sessionId={session?.id ?? sessionId ?? null}
                 kind={kind}

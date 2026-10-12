@@ -1,11 +1,4 @@
-"""The merged model catalogue the picker reads.
-
-Sources, in precedence order: `MODEL_OVERRIDES`, LiteLLM `/model/info`,
-`ADAPTER_MODELS`. Also the only module that knows the USD→credit rate.
-
-Fail closed on price: a remote model priced at zero is hidden and recorded in
-`unpriced()`; `MODEL_OVERRIDES` brings it back.
-"""
+"""Merged model catalogue; zero-priced remote models hidden (fail closed)."""
 
 from __future__ import annotations
 
@@ -16,7 +9,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from app.core.config import settings
-from app.services import imagegen, litellm
+from app.services import imagegen, litellm, settings_store
 from app.services.adapters import (
     ADAPTER_MODELS,
     FREE_PROVIDERS,
@@ -26,8 +19,7 @@ from app.services.adapters import (
 
 log = logging.getLogger(__name__)
 
-#: Output tokens per generated image. Measured for gemini-2.5-flash-image and
-#: gpt-5-image-mini; the rest inferred from their family.
+#: output tokens per image (measured on gemini-2.5-flash-image, gpt-5-image-mini; rest by family)
 _IMAGE_TOKENS_DEFAULT = 5450
 _IMAGE_TOKENS = {
     "google/gemini-2.5-flash-image": 1290,
@@ -36,16 +28,16 @@ _IMAGE_TOKENS = {
     "openai/gpt-5-image": 5450,
 }
 
-#: Models hidden for want of a price, `{model_id: provider}`, rebuilt per refresh.
+#: `{model_id: provider}` hidden for missing price, rebuilt per refresh
 _unpriced: dict[str, str] = {}
 
 
 def unpriced() -> dict[str, str]:
-    """Models hidden for want of a price, from the latest catalogue build."""
+    """Models hidden for missing price, latest build."""
     return dict(_unpriced)
 
 
-#: LiteLLM `mode` → KloudChat modality. Unlisted modes are infrastructure.
+#: LiteLLM `mode` → modality; unlisted = infrastructure
 _MODE_MAP: dict[str, str] = {
     "chat": "chat",
     "completion": "chat",
@@ -53,7 +45,7 @@ _MODE_MAP: dict[str, str] = {
     "audio_speech": "audio",
 }
 
-#: Modality → surfaces it can be selected on.
+#: modality → selectable surfaces
 _KINDS_FOR: dict[str, list[str]] = {
     "chat": ["chat", "report", "slides"],
     "image": ["image"],
@@ -61,10 +53,10 @@ _KINDS_FOR: dict[str, list[str]] = {
     "video": ["av"],
 }
 
-#: Tokens kept upper-case in a generated label.
+#: upper-case label tokens
 _ACRONYMS = {"gpt", "ai", "llm", "xtts", "ltx", "tts", "stt", "hd", "sd", "vl", "glm"}
 
-#: Vendor display names by id prefix; absent ones fall back to a title-cased slug.
+#: vendor names by id prefix; else title-cased slug
 _VENDORS = {
     "openai": "OpenAI",
     "anthropic": "Anthropic",
@@ -82,7 +74,7 @@ _VENDORS = {
     "minimax": "MiniMax",
 }
 
-#: Vendor of a `local/<name>` model, by substring of the name.
+#: `local/<name>` vendor by name substring
 _LOCAL_VENDORS = (
     ("qwen", "Qwen"),
     ("glm", "Z.ai"),
@@ -93,13 +85,12 @@ _LOCAL_VENDORS = (
 )
 
 
-#: Route prefixes: where a model runs, not who built it. Named on the label so
-#: the same weights served two ways are distinguishable.
+#: route prefixes (where it runs), shown on the label
 _ROUTES = ("local", "strict-local")
 
 
 def _vendor(model_id: str, provider: str) -> str:
-    """Company that built the model, for display next to its name."""
+    """Model vendor for display."""
     head = model_id.split("/")[0] if "/" in model_id else ""
     if head and head not in _ROUTES:
         return _VENDORS.get(head, head.replace("-", " ").title())
@@ -112,7 +103,7 @@ def _vendor(model_id: str, provider: str) -> str:
 
 _CACHE: dict[str, Any] = {"at": 0.0, "value": None}
 _CACHE_TTL_SEC = 30.0
-#: How soon a failed refresh is tried again while the last catalogue is served.
+#: retry delay after a failed refresh (last catalogue served)
 _RETRY_AFTER_FAILURE_SEC = 5.0
 
 _DATA_BOUNDARIES = {"self_hosted", "hybrid", "external"}
@@ -120,7 +111,7 @@ _CUTOFF_FORMAT = re.compile(r"[0-9]{4}-[0-9]{2}(?:-[0-9]{2})?")
 
 
 def _knowledge_cutoff(info: dict[str, Any]) -> str | None:
-    """Validated proxy-declared cutoff month, not an attestation of model weights."""
+    """Validated proxy-declared cutoff month (not an attestation)."""
     declared = [info[key] for key in ("knowledge_cutoff", "training_cutoff") if key in info]
     if not declared:
         return None
@@ -140,11 +131,7 @@ def _knowledge_cutoff(info: dict[str, Any]) -> str | None:
 
 
 def _data_boundary(info: dict[str, Any]) -> tuple[str, bool, bool]:
-    """`(boundary, strict_local, privacy_only)` from proxy-declared metadata only.
-
-    Ids and API-base heuristics are ignored: a `local/*` alias may still fall
-    back to an external provider. Missing metadata is `unknown`.
-    """
+    """`(boundary, strict_local, privacy_only)` from declared metadata only."""
     raw = info.get("kchat_data_boundary")
     boundary = raw if isinstance(raw, str) and raw in _DATA_BOUNDARIES else "unknown"
     strict = boundary == "self_hosted" and info.get("kchat_strict_local") is True
@@ -152,17 +139,22 @@ def _data_boundary(info: dict[str, Any]) -> tuple[str, bool, bool]:
     return boundary, strict, privacy_only
 
 
+def contained(info: dict[str, Any]) -> bool:
+    """Whether declared metadata makes it strict-local."""
+    return _data_boundary(info)[1]
+
+
 def _credits(usd: float) -> int:
-    """USD → credits, rounded up so a priced model never shows as free."""
+    """USD → credits, rounded up (priced never free)."""
     if usd <= 0:
         return 0
     return max(1, round(usd * settings.credits_per_usd))
 
 
 def _label(model_id: str) -> str:
-    """`anthropic/claude-opus-4.8` → `Claude Opus 4.8`; route prefixes are kept in brackets."""
+    """`anthropic/claude-opus-4.8` → `Claude Opus 4.8`; route prefixes in brackets."""
     head, _, tail = model_id.rpartition("/")
-    # OpenRouter's `:free` suffix is a price, conveyed as a cost of 0.
+    # OpenRouter `:free` = zero cost
     if tail.endswith(":free"):
         tail = tail[: -len(":free")]
     if not tail:
@@ -175,7 +167,7 @@ def _label(model_id: str) -> str:
         if word.lower() in _ACRONYMS:
             out.append(word.upper())
         elif any(ch.isdigit() for ch in word):
-            # Version-ish tokens keep their shape (4.8, v2, 122b).
+            # version-ish tokens keep shape (4.8, v2, 122b)
             out.append(word[0].upper() + word[1:] if word[0].isalpha() else word)
         else:
             out.append(word.capitalize())
@@ -183,7 +175,7 @@ def _label(model_id: str) -> str:
 
 
 def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
-    """One `/model/info` row → a KloudChat `ModelInfo`, or None if it should not be listed."""
+    """`/model/info` row → `ModelInfo`, or None if unlisted."""
     model_id = entry.get("model_name")
     if not model_id:
         return None
@@ -191,11 +183,11 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
     info = entry.get("model_info") or {}
     override = MODEL_OVERRIDES.get(model_id, {})
 
-    # Routing-only deployments (failover twins) opt out.
+    # routing-only deployments (failover twins) opt out
     if info.get("kchat_hidden"):
         return None
 
-    # Modality: override, then LiteLLM's `mode`, then chat.
+    # override, then LiteLLM `mode`, then chat
     if "modality" in override:
         modality = override["modality"]
     else:
@@ -213,7 +205,7 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         or (model_id.split("/")[0] if "/" in model_id else "unknown")
     )
 
-    # Input is priced and billed separately from output.
+    # input billed separately
     input_credit_cost = 0
     if "input_credit_cost" in override:
         input_credit_cost = int(override["input_credit_cost"])
@@ -223,25 +215,22 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
     if "credit_cost" in override:
         credit_cost = int(override["credit_cost"])
     elif modality == "chat":
-        # Credits per 1k output tokens.
+        # per 1k output tokens
         credit_cost = _credits(float(info.get("output_cost_per_token") or 0) * 1000)
     elif modality == "image":
-        # Same unit as chat; picture models charge output tokens and
-        # `output_cost_per_image` is zero for all of them.
+        # picture models bill output tokens; `output_cost_per_image` is zero
         credit_cost = _credits(float(info.get("output_cost_per_image") or 0)) or _credits(
             float(info.get("output_cost_per_token") or 0) * 1000
         )
     else:
-        # Audio pricing shapes: per character (TTS, 900 characters ≈ one
-        # minute), per output token, flat per request.
+        # audio: per char (TTS, 900 ≈ 1 min), per output token, per request
         credit_cost = (
             _credits(float(info.get("output_cost_per_character") or 0) * 900)
             or _credits(float(info.get("output_cost_per_token") or 0) * 1000)
             or _credits(float(info.get("output_cost_per_request") or 0))
         )
 
-    # Zero is believed only for self-hosting providers, internal `api_base`,
-    # OpenRouter `:free`, or an explicit override.
+    # zero trusted only for self-hosting, internal api_base, `:free`, or override
     self_hosted = (
         provider in FREE_PROVIDERS
         or model_id.endswith(":free")
@@ -265,8 +254,7 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
     )
     supported = info.get("supported_openai_params") or []
 
-    # `label` is "Vendor · Model"; `name`/`vendor` stay separate for callers
-    # that lay them out themselves.
+    # `label` = "Vendor · Model"; `name`/`vendor` kept separate
     name = override.get("label") or _label(model_id)
     vendor = override.get("vendor") or _vendor(model_id, provider)
     data_boundary, strict_local, privacy_only = _data_boundary(info)
@@ -282,7 +270,7 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         "knowledgeCutoff": _knowledge_cutoff(info),
         "modality": modality,
         "kinds": kinds,
-        # Per-call and per-image prices for models that emit almost no output tokens.
+        # per-call/per-image prices for near-zero-output models
         "creditPerCall": _credits(float(info.get("output_cost_per_request") or 0)),
         "creditPerImage": (
             _credits(
@@ -292,14 +280,14 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
             if modality == "image"
             else 0
         ),
-        # Credits per second by (resolution, audio).
+        # credits per second by (resolution, audio)
         "creditPerSecond": _video_rates(model_id) if modality == "video" else {},
         "aspects": imagegen.aspects_for(model_id) if modality == "image" else [],
         "creditCost": credit_cost,
         "inputCreditCost": input_credit_cost,
         "contextWindow": context,
         "supportsVision": bool(override.get("supports_vision", info.get("supports_vision"))),
-        # `supported_openai_params` lists `tools` even for image endpoints.
+        # `supported_openai_params` lists `tools` even for image endpoints
         "supportsTools": bool(
             override.get(
                 "supports_tools",
@@ -327,7 +315,7 @@ def _adapter_entries() -> list[dict[str, Any]]:
             "modality": m["modality"],
             "kinds": m["kinds"],
             "creditCost": m["credit_cost"],
-            # Adapter models are billed per asset; there is no input rate.
+            # adapters billed per asset
             "inputCreditCost": 0,
             "contextWindow": None,
             "supportsVision": False,
@@ -344,7 +332,7 @@ def _adapter_entries() -> list[dict[str, Any]]:
 
 
 def _video_rates(model_id: str) -> dict[str, int]:
-    """`{"720p:silent": 3000, …}`: credits per second per clip shape; unpriced shapes absent."""
+    """`{"720p:silent": 3000, …}` credits per second; unpriced shapes absent."""
     from app.services import videogen
 
     alias = videogen.ALIASES.get(model_id)
@@ -361,12 +349,7 @@ _MODALITY_ORDER = {"chat": 0, "image": 1, "audio": 2, "video": 3}
 
 
 def fallback_order(model: dict[str, Any]) -> tuple[int, float]:
-    """Sort key for the default model: non-strict-local first, then cheapest, then id.
-
-    Strict-local is a route somebody picks on purpose, so it never wins a price
-    tie. The id breaks ties deterministically; `KCHAT_DEFAULT_CHAT_MODEL` is
-    where a preference belongs.
-    """
+    """Default-model sort key: non-strict-local, cheapest, id."""
     return (1 if model.get("strictLocal") else 0, model["creditCost"], model["id"])
 
 
@@ -375,10 +358,7 @@ def find(models: list[dict[str, Any]], model_id: str) -> dict[str, Any] | None:
 
 
 async def list_models(force: bool = False) -> dict[str, Any]:
-    """Merged catalogue plus whether LiteLLM answered.
-
-    `litellmAvailable: false` is a result, not an error: adapter models are still listed.
-    """
+    """Merged catalogue plus LiteLLM availability (unavailable is a result, not an error)."""
     now = time.monotonic()
     if not force and _CACHE["value"] is not None and now - _CACHE["at"] < _CACHE_TTL_SEC:
         return _CACHE["value"]
@@ -387,8 +367,7 @@ async def list_models(force: bool = False) -> dict[str, Any]:
     available = True
     _unpriced.clear()
     try:
-        # First row wins except cutoff: every deployment, including hidden
-        # routing twins, must agree before an alias can declare one month.
+        # first row wins, except cutoff: all deployments (incl. hidden twins) must agree
         proxied_ids: set[str] = set()
         declared_cutoffs: dict[str, set[str | None]] = {}
         for entry in await litellm.model_info():
@@ -407,10 +386,7 @@ async def list_models(force: bool = False) -> dict[str, Any]:
     except litellm.LiteLLMError as exc:
         cached = _CACHE["value"]
         if not force and cached is not None and cached.get("litellmAvailable"):
-            # (A forced read is an egress decision and fails closed instead.)
-            # The gateway is restarting or briefly overloaded. The catalogue it gave a
-            # moment ago is still the truth about what this install serves; dropping
-            # every proxied model would turn a hiccup into 503s for every open chat.
+            # keep last catalogue on transient gateway failure (forced reads fail closed)
             log.warning("model catalogue refresh failed, keeping the last one: %s", exc)
             _CACHE["at"] = now - _CACHE_TTL_SEC + _RETRY_AFTER_FAILURE_SEC
             return cached
@@ -422,29 +398,29 @@ async def list_models(force: bool = False) -> dict[str, Any]:
     merged.sort(key=lambda m: (_MODALITY_ORDER.get(m["modality"], 9), m["provider"], m["id"]))
 
     def served(model_id: str, kind: str) -> str:
-        """`model_id` if this install serves it for `kind`, else ``."""
+        """`model_id` if served for `kind`, else ``."""
         ok = any(m["id"] == model_id and kind in m["kinds"] for m in merged)
         return model_id if ok else ""
 
-    default_chat = served(settings.default_chat_model, "chat")
+    roles = await settings_store.model_roles()
+    default_chat = served(roles.chat, "chat")
     by_kind = {
-        # The chat fallback is re-checked against each surface.
+        # chat fallback rechecked per surface
         kind: served(chosen, kind) or served(default_chat, kind)
         for kind, chosen in (
-            ("report", settings.default_report_model),
-            ("slides", settings.default_slides_model),
+            ("report", roles.report),
+            ("slides", roles.slides),
         )
     }
-    # No chat fallback for images: the client takes the cheapest image model.
-    if image_default := served(settings.default_image_model, "image"):
+    # no chat fallback for images
+    if image_default := served(roles.image, "image"):
         by_kind["image"] = image_default
-    # One default per modality on the audio/video surface, served only if the
-    # model is of that modality. The surface's own default is the video one.
+    # one default per audio/video modality; surface default = video
     by_mode = {
         mode: chosen
         for mode, chosen in (
-            ("audio", served(settings.default_audio_model, "av")),
-            ("video", served(settings.default_video_model, "av")),
+            ("audio", served(roles.audio, "av")),
+            ("video", served(roles.video, "av")),
         )
         if chosen and any(m["id"] == chosen and m["modality"] == mode for m in merged)
     }
@@ -461,13 +437,13 @@ async def list_models(force: bool = False) -> dict[str, Any]:
     return result
 
 
-#: Enrichment models already reported as absent, so the warning is logged once.
+#: enrichment models already warned about
 _MISSING_ENRICHMENT: set[str] = set()
 
 
 async def resolve_enrichment_model() -> str:
-    """`title_model` if the gateway serves it for chat, otherwise ""."""
-    configured = settings.title_model
+    """`title_model` if served for chat, else ""."""
+    configured = (await settings_store.model_roles()).title
     if not configured:
         return ""
     catalogue = await list_models()
@@ -484,11 +460,7 @@ async def resolve_enrichment_model() -> str:
 
 
 async def list_models_for_egress() -> dict[str, Any]:
-    """Uncached catalogue for privacy and routing decisions.
-
-    An alias can be remapped within the cache window, so the gateway is asked
-    again. If it cannot answer, the catalogue is empty and the turn fails closed.
-    """
+    """Uncached catalogue for privacy/routing; empty on gateway failure (fail closed)."""
     catalogue = await list_models(force=True)
     if catalogue.get("litellmAvailable") is not True:
         return {

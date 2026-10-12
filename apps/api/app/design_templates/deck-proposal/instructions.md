@@ -1,34 +1,35 @@
-이 발표는 **제안 덱** 템플릿으로 만든다. 듣는 사람은 감상하는 청중이 아니라
-승인 여부를 정하는 심사자다. 문제 → 접근 → 근거 → 요청 순으로 놓고, 마지막
-장에서 무엇을 요청하는지 밝힌다. 레이아웃과 색은 이미 정해져 있으니 내용만 쓴다.
+Build this presentation with the **제안 덱** template. The audience is not spectators but
+reviewers deciding whether to approve. Order it problem → approach → evidence → request,
+and state on the last slide what you are requesting. Layout and colors are already set;
+write only the content.
 
-이 서식에서 **장 제목은 왼쪽 여백 열에 따로 세워지고, 본문보다 작게 놓인다.**
-제목은 그 장의 이름이지 헤드라인이 아니다. 16자 안쪽의 명사구로 쓰고, 문장으로
-쓰지 않는다. 심사자는 제목만 위에서 아래로 훑어도 제안의 뼈대를 볼 수 있어야
-한다 — `현황`, `무엇이 달라지는가`, `근거`, `요청` 처럼.
+In this format, **the slide title stands apart in the left margin column, set smaller than
+the body.** The title is the slide's name, not a headline. Write it as a noun phrase of at
+most 16 characters, not a sentence. A reviewer skimming only the titles from top to bottom
+should see the skeleton of the proposal — like `현황`, `무엇이 달라지는가`, `근거`, `요청`.
 
-각 장은 `layout` 하나와 그 장의 본문 HTML 조각으로 이루어진다. 쓸 수 있는
-layout 은 여섯 가지다.
+Each slide is one `layout` plus that slide's body HTML fragment. There are six layouts.
 
-- `cover` — 표지. `<p class="lead">` 한 줄로 무엇을 제안하는지, `<p class="meta">` 한 줄로 누구에게 내는 자료인지 적는다. 제목이 크게 놓이는 유일한 장이다.
-- `bullets` — 기본 장. `<ul><li>` 3~5개. 한 항목은 한 줄.
-- `compare` — 현행과 제안을 나란히 놓는다. `<div class="cols"><div><h3>현행</h3>…</div><div><h3>제안</h3>…</div></div>` 왼쪽이 현행, 오른쪽이 제안이다. 순서를 바꾸면 색이 반대쪽을 가리킨다. 두 쪽은 같은 항목을 같은 수, 같은 순서로 견준다.
-- `figure` — 근거 한 가지를 크게 세운다. `<p class="claim">표본 340명</p>` 하나와 그 아래 `<p class="note">` 한 줄로 그 값이 어디서 나왔는지 적는다. `claim` 은 12자 안쪽이어야 크게 선다.
-- `table` — 항목이 여럿일 때. `<table>` 하나. 이 장만 화면 전체 폭을 쓰므로 열은 네 개까지 놓을 수 있다.
-- `ask` — 마지막 장. `<ul><li><strong>필요한 것</strong> — …</li></ul>` 꼴로 요청 사항, 결정 주체, 기한을 적는다. `<strong>` 안의 말이 각 줄의 이름이 된다.
+- `cover` — the cover. One `<p class="lead">` line on what is proposed, and one `<p class="meta">` line on whom the material is submitted to. The only slide where the title is set large.
+- `bullets` — the default slide. 3–5 `<ul><li>`. One item is one line.
+- `compare` — current vs. proposed, side by side. `<div class="cols"><div><h3>현행</h3>…</div><div><h3>제안</h3>…</div></div>` — left is current, right is proposed. Swapping the order makes the colors point to the wrong side. The two sides compare the same items, in the same number and the same order.
+- `figure` — sets one piece of evidence large. One `<p class="claim">표본 340명</p>` and below it one `<p class="note">` line saying where the value came from. A `claim` must be at most 12 characters to stand large.
+- `table` — when there are several items. One `<table>`. Only this slide uses the full screen width, so it can hold up to four columns.
+- `ask` — the last slide. In the form `<ul><li><strong>필요한 것</strong> — …</li></ul>`, state the requests, the deciding party and the deadline. The words inside `<strong>` become each line's name.
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
-tbody, tr, th, td, div, small` 뿐이다. `<h2>` 는 쓰지 마라 — 제목은 따로 붙는다.
-쓸 수 있는 `class` 는 `lead`, `meta`, `claim`, `note`, `cols` 다섯뿐이고, 그
-밖의 태그와 `class`, `style`, 링크, 이미지는 버려진다.
+The only allowed tags are `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
+tbody, tr, th, td, div, small`. Do not use `<h2>` — the title is added separately.
+The only allowed `class` values are the five `lead`, `meta`, `claim`, `note`, `cols`; any
+other tag, `class`, `style`, links and images are discarded.
 
-명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
-감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
-가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.
+Wrap anything whose meaning survives only when copied **character for character** —
+commands, paths, identifiers, exception names — in `<code>`. `<code>` is a single
+fragment — this format has no multi-line code blocks, so if it is long, copy only the
+most important line and describe the rest in words.
 
-- 마지막 장은 반드시 `ask` 다. 요청 없이 끝나는 제안은 심사받을 수 없다.
-- 지어낸 수치를 쓰지 않는다. 아직 없는 값은 `표본 340명`, `2026년 1학기 집계`처럼 무엇을 셌는지만 적고 결과는 비워 둔다.
-- `figure` 는 전체에서 최대 2장. 셋 이상 크게 세우면 어느 것도 크지 않다.
-- 제안하는 쪽만 말하지 않는다. `compare` 의 현행 칸은 지금 무엇이 되고 있는지도 그대로 적는다.
-- 비용·인원·기간처럼 요청에 값이 붙는 것은 `ask` 장에 모은다. 앞 장에 흩어 두면 심사자가 합산해야 한다.
-- `note` 는 바로 위의 것을 설명하는 자리다. 새 주장을 여기에 숨기지 않는다.
+- The last slide must be `ask`. A proposal that ends without a request cannot be reviewed.
+- Do not write invented figures. For a value that does not exist yet, write only what was counted, like `표본 340명` or `2026년 1학기 집계`, and leave the result empty.
+- At most 2 `figure` slides in total. Set three or more large and none of them is large.
+- Do not speak only for the proposing side. In the `compare` current column, state plainly what is working now as well.
+- Gather everything in the request that carries a value — cost, headcount, duration — on the `ask` slide. Scattered over earlier slides, the reviewer has to add them up.
+- `note` explains what is directly above it. Do not hide a new claim there.

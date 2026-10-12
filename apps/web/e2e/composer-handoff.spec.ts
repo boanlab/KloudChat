@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
+import { shellRead } from './shell-mocks'
+import { setWebSearch } from './composer-tools'
 
 const id = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 const otherId = 'cccccccccccccccccccccccccccccccc'
@@ -68,9 +70,11 @@ async function handoffFixture(page: Page) {
         mime: 'text/plain', size: 5, tokens: 2, preview: 'draft', error: null,
         projectId: null, sessionId: null, createdAt: at } })
     }
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && ['/projects', '/artifacts', '/skills', '/memory', '/agents',
-      '/tools', '/templates', '/connectors', '/connectors/catalog', '/jobs',
-      '/designs', '/design-templates', '/prompt-templates'].includes(path)) {
+      '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/designs', '/design-templates'].includes(path)) {
       return route.fulfill({ json: [] })
     }
     if (method !== 'GET') writes.push({ path, body: request.postDataJSON() ?? {} })
@@ -100,28 +104,28 @@ async function attachDraft(page: Page) {
     name: 'draft.txt', mimeType: 'text/plain', buffer: Buffer.from('draft'),
   })
   await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()
-  await page.getByRole('button', { name: '웹 검색: 자동', exact: true }).click()
+  await setWebSearch(page, '항상')
 }
 
 for (const mode of ['auto', 'auto_quality'] as const) {
-  for (const search of ['켬', '끔']) {
+  for (const search of ['항상', '끔'] as const) {
     test(`${mode} 새 세션 전환은 첨부와 검색 ${search} 상태를 한 번 복원한다`, async ({ page }, testInfo) => {
       const writes = await handoffFixture(page)
       await page.goto('/new/chat')
       await attachDraft(page)
-      if (search === '끔') await page.getByRole('button', { name: '웹 검색: 켬', exact: true }).click()
+      if (search === '끔') await setWebSearch(page, '끔')
       await page.getByRole('button', { name: /Fixture base/ }).click()
-      await page.getByRole('button', { name: mode === 'auto' ? /Auto · 비용 절약/ : /Auto · 품질 우선/ }).click()
+      await page.getByRole('menuitemradio', { name: mode === 'auto' ? /Auto · 비용 절약/ : /Auto · 품질 우선/ }).click()
       await expect(page).toHaveURL(`/s/${id}`)
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('전환 후에도 보존할 초안')
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()
-      await expect(page.getByRole('button', { name: `웹 검색: ${search}`, exact: true })).toBeVisible()
+      await expect(page.getByText(`웹 검색: ${search}`, { exact: true })).toBeVisible()
       expect(writes).toEqual([{ path: '/sessions', body: expect.objectContaining({ routingMode: mode }) }])
       // Repeated renders must not consume or reset the restored state again.
       await page.getByLabel('프롬프트 입력').fill('전환 후 다시 수정한 초안')
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()
-      await expect(page.getByRole('button', { name: `웹 검색: ${search}`, exact: true })).toBeVisible()
-      if (process.env.QA_CAPTURE_HANDOFF === '1' && mode === 'auto_quality' && search === '켬') {
+      await expect(page.getByText(`웹 검색: ${search}`, { exact: true })).toBeVisible()
+      if (process.env.QA_CAPTURE_HANDOFF === '1' && mode === 'auto_quality' && search === '항상') {
         await page.evaluate(() => document.fonts.ready)
         await expect.poll(() => page.evaluate(() => document.getAnimations()
           .filter((animation) => animation.playState === 'running'
@@ -131,11 +135,11 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await openSavedSession(page, '다른 대화')
       await expect(page).toHaveURL(`/s/${otherId}`)
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: '웹 검색: 자동', exact: true })).toBeVisible()
+      await expect(page.getByText(/^웹 검색: /)).toHaveCount(0)
       await openSavedSession(page, '복원 검증')
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('전환 후 다시 수정한 초안')
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: '웹 검색: 자동', exact: true })).toBeVisible()
+      await expect(page.getByText(/^웹 검색: /)).toHaveCount(0)
     })
   }
 }
@@ -148,7 +152,7 @@ for (const target of [{ id: reportId, title: '다른 보고서' }, { id: otherCh
     await openSavedSession(page, target.title)
     await expect(page).toHaveURL(`/s/${target.id}`)
     await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '웹 검색: 자동', exact: true })).toBeVisible()
+    await expect(page.getByText(/^웹 검색: /)).toHaveCount(0)
     await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
   })
 }

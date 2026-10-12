@@ -7,6 +7,7 @@ import {
   workScenarios,
 } from './work-scenario-catalog'
 import { signIn } from './helpers'
+import { toolNames } from './composer-tools'
 
 test.beforeEach(async ({ page }) => {
   await signIn(page)
@@ -43,10 +44,11 @@ test('모든 업무 시나리오가 사용 가능한 작업 화면으로 연결�
     await page.goto(route)
     await expect(page).toHaveURL(new RegExp(`${route}$`))
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-    // One entry point on every surface: a 시작점 carries the 서식 it needs.
-    await expect(page.getByRole('button', { name: '작업 시작하기' })).toBeVisible()
+    // Report and slides offer their 양식 in 「+」; chat and media have none.
+    const tools = await toolNames(page)
+    expect(tools.includes('양식 고르기'), surface).toBe(surface === 'report' || surface === 'slides')
     if (surface !== 'image' && surface !== 'av') {
-      await expect(page.getByRole('button', { name: '웹 검색' })).toBeVisible()
+      expect(tools.some((name) => name.startsWith('웹 검색')), surface).toBe(true)
     }
   }
 
@@ -57,8 +59,9 @@ test('모든 업무 시나리오가 사용 가능한 작업 화면으로 연결�
 
 test('근거와 후속 작업에 필요한 공통 UI가 실제 계정에서 발견된다', async ({ page }) => {
   await page.goto('/new/chat')
-  await expect(page.getByRole('button', { name: '첨부' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '웹 검색' })).toBeVisible()
+  const tools = await toolNames(page)
+  expect(tools).toContain('파일·사진 첨부')
+  expect(tools.some((name) => name.startsWith('웹 검색'))).toBe(true)
 
   await page.goto('/history')
   await expect(page.getByRole('heading', { name: /기록|대화/ })).toBeVisible()

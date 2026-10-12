@@ -1,5 +1,6 @@
 import { LogOut } from 'lucide-react'
-import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, PageHeader } from '@/components/ui'
@@ -10,12 +11,16 @@ import { KeysTab } from './settings/KeysTab'
 import { PersonalizationTab } from './settings/PersonalizationTab'
 import { PreferencesTab } from './settings/PreferencesTab'
 import { ProfileTab } from './settings/ProfileTab'
+import { ThemesTab } from './settings/ThemesTab'
+import { MemoryPage } from './MemoryPage'
 import { useT } from '@/lib/useT'
 
 const tabs = [
   { to: '/settings', label: '프로필', end: true },
   { to: '/settings/preferences', label: '환경설정', end: false },
   { to: '/settings/personalization', label: '개인 맞춤 설정', end: false },
+  { to: '/settings/memory', label: '메모리', end: false },
+  { to: '/settings/themes', label: '테마', end: false },
   { to: '/settings/keys', label: 'API 키', end: false },
   { to: '/settings/access', label: '보안', end: false },
 ]
@@ -24,6 +29,12 @@ export function SettingsPage() {
   const t = useT()
   const { logout } = useStore()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const strip = useRef<HTMLElement>(null)
+  // Phone: tabs scroll; keep the open one in view.
+  useEffect(() => {
+    strip.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [pathname])
 
   return (
     <>
@@ -45,13 +56,13 @@ export function SettingsPage() {
           }
         />
 
-        <div role="tablist" className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
+        {/* Page links, not tabs: own addresses; NavLink sets aria-current. */}
+        <nav ref={strip} aria-label={t('설정 메뉴')} className="mb-5 flex gap-1 overflow-x-auto border-b border-line [scrollbar-width:none]">
           {tabs.map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}
               end={tab.end}
-              role="tab"
               className={({ isActive }) =>
                 cn(
                   '-mb-px shrink-0 border-b-2 px-3 py-2 text-base font-medium whitespace-nowrap transition-colors',
@@ -64,12 +75,14 @@ export function SettingsPage() {
               {t(tab.label)}
             </NavLink>
           ))}
-        </div>
+        </nav>
 
         <Routes>
           <Route index element={<ProfileTab />} />
           <Route path="preferences" element={<PreferencesTab />} />
           <Route path="personalization" element={<PersonalizationTab />} />
+          <Route path="memory" element={<MemoryPage embedded />} />
+          <Route path="themes" element={<ThemesTab />} />
           <Route path="keys" element={<KeysTab />} />
           <Route path="access" element={<AccessTab />} />
           <Route path="*" element={<Navigate to="/settings" replace />} />

@@ -1,9 +1,4 @@
-"""Extracts durable facts about the user from a finished turn into Memory rows.
-
-At most two facts per turn. Existing memories go into the prompt so the model
-avoids rewordings; the string check below catches only near-identical text.
-Failures are swallowed so the turn still returns.
-"""
+"""Durable user facts from a finished turn into Memory rows; ≤2 per turn, failures swallowed."""
 
 from __future__ import annotations
 
@@ -47,7 +42,7 @@ JSON 배열로만 답하라. 없으면 빈 배열 []. 최대 2개.
 
 
 def _norm(text: str) -> str:
-    """Loose key for duplicate detection: letters and digits only."""
+    """Loose dedup key: letters and digits only."""
     return re.sub(r"[^0-9a-z가-힣]+", "", text.lower())
 
 
@@ -57,8 +52,7 @@ def _shingles(text: str) -> set[str]:
     return {n[i : i + 2] for i in range(len(n) - 1)} or {n}
 
 
-#: Bigram overlap threshold. Facts sharing a frame but differing in the value
-#: overlap around 0.60, so this must stay well above that.
+#: bigram overlap threshold; same-frame different-value facts sit near 0.60
 _NEAR_IDENTICAL = 0.9
 
 
@@ -85,10 +79,7 @@ async def extract(
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
 ) -> tuple[int, dict[str, int]]:
-    """Writes any new facts and returns `(count, usage)`. Caller commits.
-
-    Usage is non-zero even when nothing is written.
-    """
+    """Write new facts; `(count, usage)`. Caller commits."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     if not user_message.strip() or not assistant_message.strip():
         return 0, spent
@@ -154,7 +145,7 @@ async def extract(
         "outputTokens": int(raw.get("completion_tokens") or 0),
     }
 
-    # Small models fence their JSON however they like.
+    # small models fence JSON arbitrarily
     match = re.search(r"\[.*\]", content, re.S)
     if not match:
         return 0, spent

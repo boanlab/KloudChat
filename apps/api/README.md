@@ -27,37 +27,59 @@ the first account to sign up becomes administrator and later signups follow
 For local work without Docker, see
 [docs/development.md](../../docs/development.md).
 
+## Tests
+
+```bash
+pip install -e '.[dev]'
+ruff check .
+pytest -q
+```
+
+Tests run without services: model replies are faked, and database tests use
+in-memory SQLite through `aiosqlite` (part of `.[dev]`). Three suites guard the
+screens and the guide as well as the code: `test_screens_use_one_set_of_words.py`
+(one vocabulary — 아티팩트, 템플릿, 테마), `test_the_app_does_not_narrate_its_own_changes.py`
+and `test_app_help.py` (`app/help/docs.json` matches `website/`; rebuild it with
+`python scripts/build_help.py`).
+
 ## Endpoints
 
-All under `/api` except `/llm`.
+All under `/api` except `/llm`. The complete list is the OpenAPI document at
+`/docs` (`ENV=dev`).
 
 | | |
 | --- | --- |
-| `POST /auth/signup` · `login` · `refresh` · `logout` · `password` | Self-hosted authentication and password change |
+| `POST /auth/signup` · `login` · `logout` · `password` | Self-hosted authentication and password change |
 | `GET /auth/config` | Public configuration the sign-in screen reads — branding, enabled surfaces, whether password reset exists |
 | `POST /auth/password/forgot` · `reset` · `POST /auth/verify-email` · `verify-email/resend` | Active only when SMTP is configured |
 | `GET/PATCH /auth/me` · `GET /auth/me/access` · `GET /auth/me/sessions` · `DELETE /auth/me/sessions/{family}` · `POST /auth/me/sessions/revoke-others` | Profile and preferences, own sign-in history, own refresh-token families and their revocation |
 | `GET /models` · `POST /models/refresh` · `GET /credits` | Catalogue (LiteLLM merged with adapter declarations), remaining credits |
-| `GET /sessions` · `POST` · `GET/PATCH/DELETE {id}` · `POST /sessions/delete` | Shared by all five surfaces. The list returns titles; the detail returns the conversation; bulk delete |
+| `GET /sessions` · `/sessions/paged` · `POST` · `GET/PATCH/DELETE {id}` · `POST /sessions/delete` | Conversations of all five surfaces; bulk delete removes their artifacts too |
 | `POST /sessions/{id}/messages` → SSE · `POST /sessions/{id}/stop` | Streaming turn for chat, report and slides; stop keeps the partial answer |
 | `POST /sessions/{id}/messages/{mid}/fork` · `PATCH /messages/{id}/rating` | Branch a conversation before a message; rate an answer |
-| `POST /sessions/{id}/compare` · `POST /sessions/{id}/messages/{mid}/variant` | Model comparison and the chosen variant |
-| `POST /sessions/{id}/figure-suggestion` · `diagrams` · `diagrams/store` | Figure proposals and mermaid figures for a document |
+| `GET /sessions/{id}/runs` · `…/runs/{run}` · `…/rerun` | The stages a document turn ran through, and rerunning one |
+| `POST /sessions/{id}/figure-suggestion` · `diagrams` | Figure proposals and flowcharts for a document |
 | `POST /sessions/{id}/images` · `audio` | Image and audio, generated inside the request |
 | `POST /sessions/{id}/jobs` · `POST /jobs/{id}/cancel` | Video — the only asynchronous work |
-| `GET /artifacts` · `GET /artifacts/counts` · `GET/PATCH/DELETE {id}` · `GET {id}/export` · `GET {id}/versions` · `POST {id}/restore` | Outputs as a page of cards, version history and restore, document export |
-| `POST /artifacts/{id}/sections/…` · `slides/…` · `blocks/…` · `critique` | Rewrite, fact-check, picture, diagram and review on a finished document |
-| `GET /projects` · `files` · `skills` · `memory` · `agents` · `templates` · `designs` | Workspace |
-| `POST /files/{id}/open-as-document` · `POST /designs/extract` | Open an uploaded `.hwpx` as an editable report; draft a design system from a file or URL |
-| `POST /projects/{id}/knowledge/url` · `…/reindex` · `POST /agents/{id}/knowledge` · `…/url` · `…/reindex` | Project and agent knowledge, and backfilling the vector index |
-| `GET /skills/store` · `POST /skills/{id}/install` · `POST /agents/{id}/install` | The shared store and copying from it |
-| `GET /design-templates` · `usage` · `{id}/preview` · `{id}/style` · `{id}/form` · `GET /prompt-templates` | The rendering catalogue (preview is unauthenticated) and prompt starters |
+| `GET /search` | Search across conversations and artifacts |
+| `GET /artifacts` · `counts` · `GET/PATCH/DELETE {id}` · `GET {id}/export` · `GET {id}/versions` · `POST {id}/restore` | Artifacts as a page of cards, version history and restore, export |
+| `POST /artifacts/{id}/sections/…` · `slides/…` · `blocks/…` · `critique` · `GET {id}/marks` | Rewrite, fact-check, picture and figure on a finished document; review; check marks |
+| `GET /projects` · `files` · `skills` · `memory` · `agents` · `designs` | Workspace (`designs` are 테마) |
+| `POST /files/{id}/open-as-document` · `POST /designs/extract` | Open an uploaded `.hwpx` as an editable report; draft a theme from a file or URL |
+| `POST /projects/{id}/knowledge/url` · `…/reindex` · `POST /agents/{id}/knowledge` · `…/url` · `…/from-files` · `…/reindex` | Project and agent knowledge, and backfilling the vector index |
+| `GET /skills/store` · `POST /skills/{id}/install` · `POST /agents/{id}/install` · `POST /skills/import` · `GET /skills/{id}/export` | What others shared, copying from it, skill packages |
+| `GET /pipelines` · `GET /agents/{id}/pipeline` · `GET /agent-bases` · `PUT /agents/{id}/process` | Built-in processes and an agent's 진행 과정 |
+| `/user-pipelines…` · `/bundles…` | Composed processes and 묶음 (bundles); sharing ones that export or review goes through administrator approval |
+| `GET /design-templates` · `usage` · `{id}/preview` · `{id}/style` · `{id}/form` · `/user-templates…` | 템플릿: the shipped catalogue (preview is unauthenticated) and users' own |
 | `GET /connectors` · `/connectors/catalog` · `POST /connectors/install/{slug}` | MCP connectors |
 | `POST /shares` · `GET /shared/{token}` · `GET /shares/{id}/views` | Read-only sharing. Reading a `link`-scoped share needs no authentication |
+| `/publications…` · `/bots` · `/bots/{slug}/copy` · `/public/bots` · `/b/{slug}…` | Published chatbots: the owner's screens, members' list and copy (shown as shared agents), and the visitors' |
+| `/bots/v1/models` · `/bots/v1/chat/completions` · `/bots/mcp/{slug}` · `/embed/frame-policy` | A bot's API (OpenAI-compatible), MCP and embed channels |
 | `GET /keys` · `POST` · `DELETE {id}` | API keys users take away with them |
 | `GET /me/usage` | Own usage |
 | `POST /transcriptions` | Composer microphone → speech-to-text |
-| `GET /admin/users` · `settings` · `models` · `usage` · `audit` · `governance` · `storage` | Administration; `POST /admin/storage/reclaim` and `POST /credits/refill` are its manual triggers |
+| `/issues…` | Questions and reports sent from the app, and the answers |
+| `/admin/users…` · `settings` · `models` · `usage` · `audit` · `governance` · `storage` · `publications` · `issues` · `skills` · `user-pipelines` · `connector-catalog` · `perf` | Administration; `POST /admin/storage/reclaim` and `POST /credits/refill` are its manual triggers |
 | `POST /admin/branding/logo` · `DELETE` | Logo upload and removal (`GET /branding/logo` is public) |
 | `/llm/*` | LiteLLM passthrough. Authenticates **by API key, not by session** |
 | `GET /health` | Reports KloudChat and LiteLLM status separately |
@@ -88,9 +110,8 @@ dropped and why.
 
 **Credit conversion.** `credits_per_usd` (default 100,000, so 1 credit =
 $0.00001) is the single exchange rate. When provider prices move, adjust this
-rather than re-cutting everyone's allowance. The code default grant of 500,000
-credits is about $5/month; `docker-compose.yml` passes 1,000,000 when
-`KCHAT_DEFAULT_MONTHLY_CREDITS` is unset.
+rather than re-cutting everyone's allowance. The default grant of 500,000
+credits is about $5/month.
 
 Resolution matters more than magnitude: provider prices span four orders of
 magnitude, and a coarse unit rounds the cheapest models up onto the same floor
@@ -143,12 +164,19 @@ app/
 │   ├── user.py             users, refresh_tokens, credit_ledger, audit_events
 │   ├── chat.py             sessions, messages, jobs
 │   ├── workspace.py        projects, files, artifacts, skills, memories, agents, connectors
+│   ├── publishing.py       Published chatbots, versions, visitors, keys
+│   ├── issues.py           Questions and reports from the app
+│   ├── metrics.py          Performance samples
 │   ├── governance.py       Instance-wide policy, one row
 │   └── settings.py         Runtime settings an administrator edits
 ├── schemas/                camelCase wire format (1:1 with src/types.ts)
-├── routers/                auth, admin, models, sessions, jobs, workspace, connectors,
-│                           keys, shares, usage, branding, transcriptions, llm
-├── design_templates/       The rendering catalogue: template.toml, seed.html, sample.html per entry
+├── routers/                auth, admin, models, sessions, runs, search, jobs, workspace,
+│                           pipelines, user_pipelines, user_templates, skill_files,
+│                           connectors, keys, shares, publications, bot_api, issues,
+│                           usage, perf, branding, transcriptions, llm
+├── agents/ · skills/ · bundles/ · pipelines/   Shipped agents, skills, bundles and processes (data)
+├── design_templates/       템플릿 catalogue: template.toml, seed.html, sample.html per entry
+├── help/docs.json          The user guide, as the in-app help reads it (scripts/build_help.py)
 └── services/
     ├── credits.py          Allowance, monthly refill (1st, KST), pre-flight check, settlement
     ├── litellm.py          Master-key client — the only point of contact with LiteLLM
@@ -156,7 +184,7 @@ app/
     ├── adapters.py         Model facts LiteLLM does not know (adapters and overrides)
     ├── chat.py             chat/completions stream → SSE events, title generation
     ├── agent.py            Tool-calling loop (model ↔ tool round trips)
-    ├── calculation_policy.py · ncs_submission.py   Required-arithmetic detection and answer syntax
+    ├── calculation_policy.py   Required-arithmetic detection
     ├── context.py          System prompt assembly — surface defaults and tool rules
     ├── freshness.py · current_evidence.py   Grounded-answer guidance and the no-evidence display contract
     ├── workspace_context.py  Projects, skills, memories and design → system prompt blocks
@@ -173,12 +201,12 @@ app/
     ├── credibility.py      Source trust tiers for citations
     ├── answer_plan.py · conversation_summary.py · stop_signal.py   Chat answer plan, long-conversation summary, cross-replica stop
     ├── slide_patterns.py · doc_formats.py   Slide pattern table; per-purpose document heads and numbering
-    ├── design.py · design_templates.py · design_extract.py   Design systems, the catalogue, extraction
+    ├── design.py · design_templates.py · design_extract.py   테마, the 템플릿 catalogue, theme extraction
     ├── doc_type.py · deck_type.py   Type scale shared by every renderer of a report or a deck
-    ├── prompt_templates.py Prompt starters
     ├── report_export.py · deck_export.py · page_export.py   DOCX/PDF/HWPX, PPTX/PDF, HTML read-back
     ├── printing.py         PDF via the print service; None when it is absent
-    ├── pictures.py · figures.py · diagram.py · diagrams.py · diagram_render.py · diagram_shapes.py · charts.py · chart_code.py   Pictures, document figures (mermaid, drawn as native shapes), charts
+    ├── pictures.py · figures.py · diagrams.py · diagram.py · flow_layout.py · diagram_shapes.py · diagram_render.py   Pictures and document figures: a planned flowchart is laid out by code and drawn with python-pptx (native shapes in a deck, a rendered picture in a report)
+    ├── charts.py · chart_code.py   Charts
     ├── richtext.py · hwpx_import.py · hangul.py · arithmetic.py   Editing and text fixes
     ├── imagegen.py · audiogen.py   Synchronous media producers
     ├── videogen.py         Video: submit, poll, fetch — the one job kind
@@ -186,14 +214,18 @@ app/
     ├── artifact_extract.py Hoisting substantial code out of a transcript — after the turn
     ├── auto_memory.py      Durable facts written from a finished conversation
     ├── thinking.py         Reasoning-model answer starvation
-    ├── transcribe.py       Composer microphone → Whisper, chat-model fallback
+    ├── transcribe.py       Composer microphone → internal Whisper only
     ├── files.py · storage.py   Upload storage, text extraction, reclaim of deleted accounts' files
+    ├── ocr.py · ocr_jobs.py   Scanned pages: OCR engine, then a strict-local vision model; background queue
+    ├── korean_papers.py    Korean scholarly papers (KCI, DBpia, RISS) through the ordinary search backend
+    ├── publishing.py       A published bot's turn: approved version, strict-local model, owner's credits
+    ├── bundles.py · process_settings.py   묶음 and an agent's 진행 과정
     ├── knowledge.py · index_client.py   Agent shelves: lexical retrieval and the vector index
     ├── fonts.py            The Korean face every reportlab PDF embeds
     ├── mcp.py              MCP client (stdio and streamable-http)
     ├── mail.py             Account mail — one message, no queue, no retry
     ├── geoip.py            Offline region lookup from a MaxMind file
-    ├── starter.py          Shared catalogue of agents and skills; seeded at approval
+    ├── starter.py          Shipped agents, skills and themes; seeded at approval
     ├── bootstrap.py        First administrator, created when there are no users
     ├── settings_store.py   Database-first settings — swap the proxy without a restart
     └── tools/              Built-in tools, MCP tools, connector catalogue

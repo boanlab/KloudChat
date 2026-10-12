@@ -32,7 +32,7 @@ When the administrator enables it on the Chat screen, two modes appear at the to
 | Auto · Quality first | Only the requests judged complex switch to the higher model the administrator set. Everything else uses the model you selected. |
 | Auto · Cost saving | Switches simple requests to a cheaper model. Everything else uses the model you selected. |
 
-Auto does not apply to requests that use files, projects, agents, skills, web search set to On, or model comparison. Those requests use the model you selected. A badge above the composer then shows that Auto was not applied. Each answer also shows the reason for the decision and an estimate of the credits saved.
+Auto does not apply to requests that use files, projects, agents, skills, or web search set to Always. Those requests use the model you selected. A badge above the composer then shows that Auto was not applied. Each answer also shows the reason for the decision and an estimate of the credits saved.
 
 ## Scope of a model selection
 
@@ -41,8 +41,3 @@ Auto does not apply to requests that use files, projects, agents, skills, web se
 - An agent conversation uses the model set on the agent.
 - When the administrator limits which models an account may use, only the allowed models appear.
 
-## Model comparison
-
-Turn on ⫼ **Model comparison** in the composer and select two or three models. The answers to the same question appear side by side. Credits are shown for each model. Select **Continue with this answer** below the answer you want, and the conversation continues from that answer.
-
-During a comparison, web search and Auto do not apply, and skills that require tools cannot be used. Model comparison is not available on mobile screens.

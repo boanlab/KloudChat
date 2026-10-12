@@ -1,8 +1,4 @@
-"""Checks one passage's factual claims against SearXNG results.
-
-Verdicts: `supported` and `unsupported` require a cited source; `uncertain`
-is the default and where every failure lands.
-"""
+"""Passage fact check against SearXNG; failures → uncertain."""
 
 from __future__ import annotations
 
@@ -16,13 +12,13 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
-from app.services import settings_store
+from app.services import settings_store, tools_gateway
 
 log = logging.getLogger(__name__)
 
-#: Claims per passage; each costs one search plus one judgement.
+#: claims per passage; each = one search + one judgement
 MAX_CLAIMS = 4
-#: Search results the judge reads.
+#: search results given to the judge
 _RESULTS = 5
 _TIMEOUT = 30.0
 
@@ -115,12 +111,12 @@ async def _complete(
 
 
 async def _search(query: str) -> list[dict[str, str]]:
-    """SearXNG, same instance the `web_search` tool uses. `[]` on any failure."""
+    """SearXNG results (same instance as `web_search`); `[]` on failure."""
     backends = await settings_store.tools_config()
     if not backends.search:
         return []
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_TIMEOUT) as client:
             response = await client.get(
                 f"{backends.search.rstrip('/')}/search",
                 params={"q": query, "format": "json", "language": "ko-KR"},
@@ -153,7 +149,7 @@ def slide_text(slide: dict) -> str:
 
 
 async def check_slide(*, slide: dict, model: str, api_key: str) -> tuple[dict, dict[str, int]]:
-    """One slide's claims. Thin wrapper over `check_text`."""
+    """One slide's claims via `check_text`."""
     return await check_text(
         title=str(slide.get("title") or ""),
         body=slide_text(slide),
@@ -165,7 +161,7 @@ async def check_slide(*, slide: dict, model: str, api_key: str) -> tuple[dict, d
 async def check_text(
     *, title: str, body: str, model: str, api_key: str, limit: int = MAX_CLAIMS
 ) -> tuple[dict, dict[str, int]]:
-    """`(factCheck, usage)` for one passage; always `done`, possibly with no claims."""
+    """`(factCheck, usage)` for one passage; always `done`."""
     usage = _spend()
     if not body.strip():
         return {"status": "done", "claims": []}, usage
@@ -207,7 +203,7 @@ async def check_text(
 
 
 async def _judge(claim: str, model: str, api_key: str) -> tuple[dict, dict[str, int]]:
-    """One claim → `(verdict, usage)`. Every failure path returns `uncertain`."""
+    """One claim → `(verdict, usage)`; failures → `uncertain`."""
     hits = await _search(claim)
     if not hits:
         return {
@@ -246,7 +242,7 @@ async def _judge(claim: str, model: str, api_key: str) -> tuple[dict, dict[str, 
     if isinstance(index, (int, float)) and 1 <= int(index) <= len(hits):
         url = hits[int(index) - 1]["url"]
 
-    # A confident verdict without a citable source collapses to uncertain.
+    # confident verdict without citable source → uncertain
     if verdict in ("supported", "unsupported") and not url:
         verdict = "uncertain"
         note_suffix = " (근거로 지목된 자료가 없어 판정을 보류합니다)"

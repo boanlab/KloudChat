@@ -29,7 +29,7 @@ def test_every_deck_form_opens_on_one_of_the_faces_the_stage_draws(template_id: 
 
 
 def test_a_document_form_has_no_face() -> None:
-    doc = design_templates.get("doc-report")
+    doc = design_templates.rendering("_document")
     assert doc is not None and doc.look == ""
 
 
@@ -41,7 +41,8 @@ def test_a_form_that_names_a_face_the_stage_cannot_draw_is_refused() -> None:
 
 def test_the_deck_writer_wears_the_form() -> None:
     """The 서식's face, id and instructions all reach the deck writer."""
-    source = inspect.getsource(sessions._run_deck)
+    # The deck is written by `_run_deck` and stored by its `deck-save` stage.
+    source = inspect.getsource(sessions._run_deck) + inspect.getsource(sessions._deck_save)
     assert '"visualStyle": template.look' in source
     assert '"templateId": template.id' in source
     assert "template.instructions" in source

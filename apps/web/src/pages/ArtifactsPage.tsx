@@ -4,12 +4,13 @@ import {
   FileText,
   Image as ImageIcon,
   Layers,
+  MoreHorizontal,
   Presentation,
   Video,
   Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArtifactPreview, CodePanel, MediaPanel } from '@/components/artifacts/ArtifactPanel'
 import {
   PanelControls,
@@ -21,11 +22,14 @@ import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { DeckPanel } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
+import { ReuseItems } from '@/components/artifacts/ResultActions'
+import { reusable } from '@/lib/reuse'
 import {
   Badge,
   Button,
   Card,
   ConfirmDialog,
+  Dropdown,
   EmptyState,
   Input,
   LoadingState,
@@ -64,13 +68,13 @@ const kindLabel: Record<ArtifactKind, string> = {
   html: 'HTML',
 }
 
-/** Icon by template kind; unknown kinds fall back to the artifact's icon. */
+/** Unknown kinds: the artifact's icon. */
 const templateIcon: Record<string, typeof FileText> = {
   deck: Presentation,
   document: FileText,
 }
 
-/** The template a document was written into, if still in the catalogue. */
+/** Null once gone from the catalogue. */
 function templateOf(artifact: Artifact, templates: DesignTemplateRow[]) {
   const id = artifact.kind === 'html' || artifact.kind === 'code' ? artifact.templateId : undefined
   return id ? templates.find((row) => row.id === id) : undefined
@@ -78,7 +82,7 @@ function templateOf(artifact: Artifact, templates: DesignTemplateRow[]) {
 
 type Filter = ArtifactKind | 'all'
 
-/** Card thumbnail; partial HTML/code bodies are fetched when the card nears the viewport. */
+/** Partial HTML/code bodies fetched near the viewport. */
 function CardThumb({ artifact }: { artifact: Artifact }) {
   const refreshArtifact = useStore((s) => s.refreshArtifact)
   const ref = useRef<HTMLDivElement>(null)
@@ -147,7 +151,7 @@ export function ArtifactsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
 
-  // Server-side filter and search; debounced while typing.
+  // Server-side filter and search; debounced.
   useEffect(() => {
     const timer = setTimeout(
       () => void loadArtifacts({ kind: filter === 'all' ? undefined : filter, q: query }),
@@ -155,12 +159,26 @@ export function ArtifactsPage() {
     )
     return () => clearTimeout(timer)
   }, [loadArtifacts, filter, query])
-  // By id, not by copy: the panel edits the artifact in place.
+  // By id: the panel edits in place.
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [previewMode, setPreviewMode] = useState<PanelMode>('wide')
   const [previewDirty, setPreviewDirty] = useState(false)
   const [confirmPreviewClose, setConfirmPreviewClose] = useState(false)
   const [confirming, setConfirming] = useState<Artifact | null>(null)
+
+  // `?open=<id>`: a result made outside any conversation, opened in the panel.
+  const [params, setParams] = useSearchParams()
+  const openId = params.get('open')
+  useEffect(() => {
+    if (!openId) return
+    setParams({}, { replace: true })
+    setPreviewId(openId)
+  }, [openId, setParams])
+  // Not on the current page: fetched and joined.
+  const previewListed = artifacts.some((a) => a.id === previewId)
+  useEffect(() => {
+    if (previewId && !previewListed && !artifactsLoading) void refreshArtifact(previewId)
+  }, [previewId, previewListed, artifactsLoading, refreshArtifact])
 
   const preview = artifacts.find((a) => a.id === previewId) ?? null
   const closePreview = () => {
@@ -169,7 +187,7 @@ export function ArtifactsPage() {
     setPreviewDirty(false)
   }
   const requestPreviewClose = () => previewDirty ? setConfirmPreviewClose(true) : closePreview()
-  // Undefined until counts arrive, so tabs show no number rather than 0.
+  // Undefined until counts arrive: no number rather than 0.
   const count = (k: ArtifactKind) => (artifactCounts ? (artifactCounts[k] ?? 0) : undefined)
   const total = artifactCounts
     ? Object.values(artifactCounts).reduce((sum, n) => sum + n, 0)
@@ -182,7 +200,7 @@ export function ArtifactsPage() {
       <PageBody>
         <PageHeader
           title={t('아티팩트')}
-          description={t('만든 결과물이 모두 여기 모입니다. 수정할 때마다 버전이 쌓이고, 만든 대화로 바로 돌아갈 수 있습니다.')}
+          description={t('만든 아티팩트가 모두 여기 모입니다. 수정할 때마다 버전이 쌓이고, 만든 대화로 바로 돌아갈 수 있습니다.')}
         />
 
         <div className="mb-3 max-w-sm">
@@ -197,7 +215,7 @@ export function ArtifactsPage() {
         <Tabs<Filter>
           value={filter}
           onChange={setFilter}
-          tabs={[
+          tabs={([
             { id: 'all', label: t('전체'), count: total },
             { id: 'code', label: t('코드'), count: count('code') },
             { id: 'html', label: 'HTML', count: count('html') },
@@ -207,7 +225,8 @@ export function ArtifactsPage() {
             { id: 'image', label: t('이미지'), count: count('image') },
             { id: 'audio', label: t('오디오'), count: count('audio') },
             { id: 'video', label: t('동영상'), count: count('video') },
-          ]}
+            // Empty kinds hidden, unless open.
+          ] as { id: Filter; label: string; count?: number }[]).filter((tab) => tab.id === 'all' || tab.id === filter || tab.count !== 0)}
         />
 
         {artifactsFailed && <ReloadNotice onRetry={() => void loadArtifacts()} />}
@@ -218,11 +237,11 @@ export function ArtifactsPage() {
           ) : artifacts.length === 0 ? (
             <EmptyState
               icon={<Layers size={18} />}
-              title={query ? t('찾는 결과물이 없습니다') : t('아직 아티팩트가 없습니다')}
+              title={query ? t('찾는 아티팩트가 없습니다') : t('아직 아티팩트가 없습니다')}
               description={
                 query
                   ? t('제목의 다른 부분으로 찾아보세요.')
-                  : t('챗·보고서·슬라이드·이미지·오디오/동영상에서 만든 결과물이 여기에 저장됩니다.')
+                  : t('챗·보고서·슬라이드·이미지·오디오/동영상에서 만든 아티팩트가 여기에 저장됩니다.')
               }
             />
           ) : (
@@ -232,8 +251,8 @@ export function ArtifactsPage() {
               allPicked={pick.allPicked}
               onToggleAll={pick.toggleAll}
               onClear={pick.clear}
-              title={t('결과물')}
-              note={t('결과물을 만든 대화는 그대로 남습니다.')}
+              title={t('아티팩트')}
+              note={t('아티팩트를 만든 대화는 그대로 남습니다.')}
               onDelete={async () => {
                 await deleteMany('artifacts', pick.ids)
                 pick.clear()
@@ -252,7 +271,7 @@ export function ArtifactsPage() {
                   <Card key={a.id} className="overflow-hidden">
                     <button
                       aria-label={t('{name} 열기').replace('{name}', a.title)}
-                      // Refetch on open: the list copy may be stale.
+                      // Refetch on open: list copy may be stale.
                       onClick={() => {
                         setPreviewId(a.id)
                         void refreshArtifact(a.id)
@@ -270,12 +289,23 @@ export function ArtifactsPage() {
                         />
                         <Icon size={14} className="shrink-0 text-accent" />
                         <p className="min-w-0 flex-1 truncate text-base font-medium">{a.title}</p>
-                        <Badge>v{a.version}</Badge>
+                        {reusable(a) && (
+                          <Dropdown
+                            align="right"
+                            trigger={() => (
+                              <Button variant="ghost" size="icon" aria-label={t('{name} 더보기').replace('{name}', a.title)} title={t('더보기')}>
+                                <MoreHorizontal size={14} />
+                              </Button>
+                            )}
+                          >
+                            <ReuseItems artifact={a} />
+                          </Dropdown>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
                           aria-label={t('{name} 삭제').replace('{name}', a.title)}
-                          title={t('이 결과물을 삭제합니다')}
+                          title={t('이 아티팩트를 삭제합니다')}
                           onClick={() => setConfirming(a)}
                         >
                           <Trash2 size={14} />
@@ -283,6 +313,7 @@ export function ArtifactsPage() {
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-faint">
                         <Badge>{label}</Badge>
+                        <Badge>v{a.version}</Badge>
                         {project && (
                           <span>
                             {project.emoji} {project.name}
@@ -393,7 +424,7 @@ export function ArtifactsPage() {
         open={confirmPreviewClose}
         onClose={() => setConfirmPreviewClose(false)}
         title={t('저장하지 않은 변경 내용이 있습니다')}
-        description={t('계속하면 결과물에서 바꾼 내용이 사라집니다.')}
+        description={t('계속하면 아티팩트에서 바꾼 내용이 사라집니다.')}
         confirmLabel={t('저장하지 않고 닫기')}
         onConfirm={closePreview}
       />

@@ -14,7 +14,7 @@ test('전체 선택 다음의 삭제는 몇 개인지 말하고 물어본다', a
   const before = await page.locator('main input[type="checkbox"]').count()
   test.skip(before < 2, '대화가 적어 확인할 것이 없습니다')
 
-  await page.getByRole('button', { name: '보이는 항목 전체 선택' }).click()
+  await page.getByRole('button', { name: '이 페이지 전체 선택' }).click()
   await page.waitForTimeout(500)
 
   // The count is on the button.

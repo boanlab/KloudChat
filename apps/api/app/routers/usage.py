@@ -1,9 +1,4 @@
-"""Usage, storage, audit and governance routes.
-
-Usage is one stream of billable events: assistant turns carry the request and
-the model, credit-ledger rows carry the cost. Every breakdown is that stream
-grouped a different way, so totals and bars always agree.
-"""
+"""Usage, storage, audit and governance routes; one billable event stream for all breakdowns."""
 
 from __future__ import annotations
 
@@ -12,7 +7,7 @@ import shutil
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from sqlalchemy import DateTime, String, case, cast, func, literal, or_, union_all
+from sqlalchemy import DateTime, String, case, cast, false, func, literal, or_, union_all
 from sqlmodel import col, select
 
 from app.core.config import settings
@@ -22,6 +17,7 @@ from app.models.governance import Governance
 from app.models.user import ApiKey, AuditEvent, CreditLedger, User, UserStatus, utcnow
 from app.schemas.admin import GovernanceIn
 from app.services import adaptive_routing, geoip, governance, settings_store
+from app.services import audit as audit_service
 from app.services import credits as credits_service
 from app.services import files as file_service
 from app.services import litellm as litellm_service
@@ -29,32 +25,31 @@ from app.services import models as model_service
 from app.services import storage as storage_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-#: Caller-scoped usage. Separate router so no admin-only route can land here by mistake.
+#: caller-scoped; separate so no admin route lands here
 me_router = APIRouter(prefix="/me", tags=["usage"])
 
-#: Ledger reasons with no assistant turn behind them; each row counts as one request.
+#: ledger reasons without a turn; one request per row
 MEDIA_REASONS = ("image.generate", "image.chart", "audio.generate", "video.generate")
 
-#: Free work measured in `units` (seconds, chunks); each row counts as one request.
-UNIT_REASONS = ("speech.transcribe", "index.embed", "index.search")
+#: free work in `units` (seconds, chunks, pages); one request per row
+UNIT_REASONS = ("speech.transcribe", "index.embed", "index.search", "ocr.engine", "ocr.vision")
 
-#: Web searches ride on the turn that ran them: `units` searches, no request of
-#: their own, no model, so they reach the totals and the days but not the bars.
+#: web searches ride on their turn: in totals/days, not bars
 SEARCH_REASON = credits_service.SEARCH_REASON
 
 
-#: Cycle boundary is local midnight, not a UTC month boundary.
+#: cycle boundary = local midnight
 _cycle_start = credits_service.cycle_start
 
 
 def _since(days: int) -> datetime:
-    """Midnight `days-1` days ago, so a 7-day window is seven whole days."""
+    """Midnight `days-1` days ago (whole days)."""
     start = datetime.now(UTC) - timedelta(days=days - 1)
     return start.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def _every_day(since: datetime, days: int, rows) -> list[dict]:
-    """One entry per day of the window, in order, zeros where nothing happened."""
+    """One zero-filled entry per window day."""
     by_date = {day.date().isoformat(): (int(c), int(n), int(s)) for day, c, n, s in rows}
     return [
         {
@@ -67,8 +62,7 @@ def _every_day(since: datetime, days: int, rows) -> list[dict]:
     ]
 
 
-#: Model a ledger row paid. Rows without one fall back to the session model
-#: for media reasons only; a conversation's stored model is just the current one.
+#: ledger row's model; session model fallback for media only (stored model = current only)
 _SPEND_MODEL = func.nullif(
     func.coalesce(
         col(CreditLedger.model),
@@ -81,25 +75,31 @@ _SPEND_MODEL = func.nullif(
     "",
 )
 
-#: Surface a ledger row came from; rows without one fall back to the session.
-#: `sessions.kind` is a Postgres enum, so it is cast to match the text column.
-_SPEND_SURFACE = func.coalesce(col(CreditLedger.surface), cast(col(ChatSession.kind), String))
+#: bot spend surface: billed to owner, shown apart
+BOT_SURFACE = "bot"
+
+#: row surface, session fallback; enum cast to text
+_SPEND_SURFACE = case(
+    (col(CreditLedger.publication_id).is_not(None), literal(BOT_SURFACE)),
+    else_=func.coalesce(col(CreditLedger.surface), cast(col(ChatSession.kind), String)),
+)
 
 
 def _events(since: datetime, user_id: str | None = None):
-    """Union of assistant turns and ledger spend, both shaped as
-    (day, model, kind, user_id, credits, requests, units, searches).
-    """
+    """Turns ∪ ledger spend as (day, model, kind, user_id, credits, requests, units, searches)."""
     turns = (
         select(
             func.date_trunc("day", col(Message.created_at), type_=DateTime(timezone=True)).label(
                 "day"
             ),
             col(Message.model).label("model"),
-            # Enum cast to text so both halves of the union agree.
-            cast(col(ChatSession.kind), String).label("kind"),
+            # enum → text for union; bot turns apart
+            case(
+                (col(ChatSession.publication_id).is_not(None), literal(BOT_SURFACE)),
+                else_=cast(col(ChatSession.kind), String),
+            ).label("kind"),
             col(ChatSession.user_id).label("user_id"),
-            # Credits come only from the ledger; counting the turn's copy would double it.
+            # credits from ledger only (no double count)
             literal(0).label("credits"),
             literal(1).label("requests"),
             literal(0).label("units"),
@@ -131,9 +131,9 @@ def _events(since: datetime, user_id: str | None = None):
             ).label("searches"),
         )
         .select_from(CreditLedger)
-        # Outer join: some charges belong to no conversation.
+        # outer join: some charges have no conversation
         .join(ChatSession, col(CreditLedger.session_id) == col(ChatSession.id), isouter=True)
-        # Spend or measured free work; never a refill.
+        # spend or measured free work; never refills
         .where(
             or_(CreditLedger.delta < 0, col(CreditLedger.units).is_not(None)),
             CreditLedger.created_at >= since,
@@ -146,8 +146,10 @@ def _events(since: datetime, user_id: str | None = None):
 
 
 def _unit_of(model: str | None) -> str:
-    """Unit name for a model's `units` column: seconds for STT, chunks for embeddings."""
+    """`units` name: seconds (STT), chunks (embeddings), pages (OCR)."""
     name = (model or "").lower()
+    if name.startswith("ocr-"):
+        return "pages"
     if "whisper" in name or "stt" in name:
         return "seconds"
     if "bge" in name or "embed" in name:
@@ -156,7 +158,7 @@ def _unit_of(model: str | None) -> str:
 
 
 def _kind(kind) -> str:
-    """Surface name; some drivers hand the enum back raw from a union."""
+    """Surface name; some drivers return the raw enum from a union."""
     return getattr(kind, "value", kind)
 
 
@@ -200,7 +202,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
         )
     ).all()
 
-    # Residues: spend with no single model, and spend outside any conversation.
+    # residues: no single model / no conversation
     other_credits, loose_credits, loose_requests = (
         await db.exec(
             select(
@@ -235,7 +237,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
         )
     ).all()
 
-    # Active accounts only.
+    # active accounts only
     allocated = (
         await db.exec(
             select(func.coalesce(func.sum(User.monthly_credits), 0)).where(
@@ -259,7 +261,6 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
             "searches": int(search_count),
             "activeUsers": int(active_users),
             "allocatedCredits": int(allocated),
-            # Spend no single model can be named for.
             "otherCredits": int(other_credits),
         },
         "daily": _every_day(since, days, daily),
@@ -275,7 +276,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
             for m, c, n, u, x in by_model
         ],
         "bySurface": surfaces,
-        # Every account with activity in the window, most spent first.
+        # active accounts in window, top spend first
         "topUsers": [
             {
                 "id": uid,
@@ -293,7 +294,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
 
 @router.get("/storage")
 async def storage(admin: AdminUser, db: DbSession):
-    """Disk use per user under `file_storage_dir/<user id>/`, walked on request."""
+    """Per-user disk use, walked on request."""
     root = file_service.storage_root()
     per_user: dict[str, tuple[int, int]] = {}
     for directory in root.iterdir():
@@ -340,7 +341,7 @@ async def storage(admin: AdminUser, db: DbSession):
 
 @router.post("/storage/reclaim")
 async def reclaim_storage(admin: AdminUser, db: DbSession, request: Request):
-    """Removes the files of deleted accounts now, regardless of the fill mark."""
+    """Deleted accounts' files removed now, regardless of fill mark."""
     result = await storage_service.reclaim(db, threshold=1e-9)
     db.add(
         AuditEvent(
@@ -362,7 +363,7 @@ async def reclaim_storage(admin: AdminUser, db: DbSession, request: Request):
 
 
 async def _api_key_spend(db: DbSession, user: User) -> list[dict]:
-    """Spend per key the user issued. Empty when the proxy does not answer."""
+    """Spend per issued key; empty if proxy unreachable."""
     rows = (
         await db.exec(
             select(ApiKey)
@@ -396,7 +397,7 @@ async def _api_key_spend(db: DbSession, user: User) -> list[dict]:
 
 @me_router.get("/usage")
 async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1, le=90)):
-    """The caller's own spending, from the same event stream as the admin view."""
+    """Caller's own spend from the shared event stream."""
     since = _since(days)
     events = _events(since, user_id=user.id)
     credits = func.coalesce(func.sum(events.c.credits), 0)
@@ -448,7 +449,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
         )
     ).one()
 
-    # Cycle figure is independent of the window.
+    # cycle figure independent of window
     cycle_used = (
         await db.exec(
             select(-func.coalesce(func.sum(CreditLedger.delta), 0))
@@ -457,7 +458,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
             .where(CreditLedger.created_at >= _cycle_start())
         )
     ).one()
-    # Scalar on some drivers, one-element row on others.
+    # scalar or one-element row, by driver
     cycle_used = int(cycle_used if not hasattr(cycle_used, "__len__") else cycle_used[0])
 
     surfaces = [{"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface]
@@ -469,13 +470,12 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
     return {
         "days": days,
         "since": since,
-        # Proxy-side spend through issued keys; shown beside, never added to, the ledger figures.
+        # proxy-side key spend: shown beside, never added to ledger
         "apiKeys": await _api_key_spend(db, user),
         "totals": {
             "credits": int(spent),
             "requests": int(request_count),
             "searches": int(search_count),
-            # Spend no single model can be named for.
             "otherCredits": int(other_credits),
         },
         "cycle": {
@@ -502,14 +502,68 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
 async def audit_log(
     admin: AdminUser,
     db: DbSession,
-    limit: int = Query(100, ge=1, le=500),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
     severity: str | None = None,
+    action: str | None = Query(None, max_length=2000),
+    account: str | None = Query(None, max_length=200),
+    q: str | None = Query(None, max_length=200),
+    q_actions: str | None = Query(None, alias="qActions", max_length=2000),
+    since: datetime | None = None,
+    until: datetime | None = None,
 ):
-    """Audit events, newest first."""
-    query = select(AuditEvent).order_by(col(AuditEvent.at).desc()).limit(limit)
+    """Audit events, newest first, paged; `action` comma list (`x.*` prefix), `until` exclusive."""
+    conds = []
     if severity:
-        query = query.where(AuditEvent.severity == severity)
-    rows = (await db.exec(query)).all()
+        conds.append(AuditEvent.severity == severity)
+    if action:
+        picks = []
+        for code in (c.strip() for c in action.split(",")):
+            if code.endswith(".*"):
+                picks.append(col(AuditEvent.action).startswith(code[:-1]))
+            elif code:
+                picks.append(AuditEvent.action == code)
+        if picks:
+            conds.append(or_(*picks))
+    if account and account.strip():
+        needle = account.strip()
+        ids = await _actor_ids(db, needle)
+        conds.append(
+            or_(
+                col(AuditEvent.target).ilike(f"%{_like(needle)}%", escape="\\"),
+                col(AuditEvent.actor_id).in_(ids) if ids else false(),
+            )
+        )
+    if q and q.strip():
+        needle = q.strip()
+        pattern = f"%{_like(needle)}%"
+        ids = await _actor_ids(db, needle)
+        coded = [c.strip() for c in (q_actions or "").split(",") if c.strip()]
+        conds.append(
+            or_(
+                col(AuditEvent.action).ilike(pattern, escape="\\"),
+                col(AuditEvent.target).ilike(pattern, escape="\\"),
+                col(AuditEvent.detail).ilike(pattern, escape="\\"),
+                col(AuditEvent.ip).ilike(pattern, escape="\\"),
+                col(AuditEvent.actor_id).in_(ids) if ids else false(),
+                col(AuditEvent.action).in_(coded) if coded else false(),
+            )
+        )
+    if since:
+        conds.append(col(AuditEvent.at) >= since)
+    if until:
+        conds.append(col(AuditEvent.at) < until)
+
+    total = (await db.exec(select(func.count()).select_from(AuditEvent).where(*conds))).one()
+    rows = (
+        await db.exec(
+            select(AuditEvent)
+            .where(*conds)
+            .order_by(col(AuditEvent.at).desc(), col(AuditEvent.id).desc())
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+    ).all()
 
     actor_ids = {r.actor_id for r in rows if r.actor_id}
     actors: dict[str, str] = {}
@@ -519,23 +573,47 @@ async def audit_log(
             for u in (await db.exec(select(User).where(col(User.id).in_(actor_ids)))).all()
         }
 
-    return [
-        {
-            "id": r.id,
-            "at": r.at,
-            "actor": actors.get(r.actor_id or "", r.actor_id or "시스템"),
-            "action": r.action,
-            "target": r.target,
-            "detail": r.detail,
-            "metadata": r.event_metadata,
-            "ip": r.ip,
-            # Empty unless a GeoLite2 database is configured.
-            "region": geoip.lookup(r.ip),
-            "userAgent": r.user_agent,
-            "severity": r.severity,
-        }
-        for r in rows
-    ]
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "at": r.at,
+                "actor": actors.get(r.actor_id or "", r.actor_id or "시스템"),
+                "action": r.action,
+                "target": r.target,
+                "detail": r.detail,
+                "metadata": r.event_metadata,
+                "ip": r.ip,
+                # empty unless GeoLite2 configured
+                "region": geoip.lookup(r.ip),
+                "userAgent": r.user_agent,
+                "severity": r.severity,
+            }
+            for r in rows
+        ],
+        "total": int(total),
+        "page": page,
+        "size": size,
+    }
+
+
+def _like(text: str) -> str:
+    """LIKE wildcards escaped."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def _actor_ids(db: DbSession, needle: str) -> list[str]:
+    """Account ids whose address or name contains `needle`."""
+    pattern = f"%{_like(needle)}%"
+    found = await db.exec(
+        select(User.id).where(
+            or_(
+                col(User.email).ilike(pattern, escape="\\"),
+                col(User.name).ilike(pattern, escape="\\"),
+            )
+        )
+    )
+    return list(found.all())
 
 
 @router.get("/governance")
@@ -573,11 +651,11 @@ async def get_governance(admin: AdminUser, db: DbSession):
 
 @router.put("/governance")
 async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUser, db: DbSession):
-    """Writes the policy and applies retention retroactively."""
+    """Policy write; retention applied retroactively."""
     policy = await db.get(Governance, "default") or Governance(id="default")
     patch = payload.model_dump(exclude_unset=True)
     if "outline_model_id" in patch:
-        # Empty clears it; a model that cannot write documents is refused here.
+        # empty clears; non-document models refused
         wanted = (patch["outline_model_id"] or "").strip()
         patch["outline_model_id"] = wanted or None
         if wanted:
@@ -680,7 +758,6 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="adaptive_economy_models_invalid",
             )
-        # The quality lane is validated on its own.
         if quality_on and not classifier_id:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -714,11 +791,12 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
                 detail="adaptive_quality_models_invalid",
             )
     if patch.get("pii_masking", policy.pii_masking):
-        # Masking admits no raw-delivery exception; persist that so turning
-        # masking off later cannot resurrect a stale allowance.
+        # masking: no raw-delivery exception, persisted so unmasking can't revive it
         patch["allow_user_raw_external"] = False
+    before = {field: getattr(policy, field, None) for field in patch}
     for field, value in patch.items():
         setattr(policy, field, value)
+    changes = audit_service.diff(before, patch)
 
     invalidated_raw_preferences = 0
     if ("pii_masking" in patch or "allow_user_raw_external" in patch) and (
@@ -741,20 +819,23 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
     policy.updated_at = utcnow()
     policy.updated_by = admin.id
     db.add(policy)
-    db.add(
-        AuditEvent(
-            actor_id=admin.id,
-            action="governance.update",
-            target="정책",
-            detail=", ".join(sorted(patch)),
-            event_metadata={
-                "rawPreferencesInvalidated": invalidated_raw_preferences,
-                "policyVersion": governance.POLICY_VERSION,
-            },
-            ip=client_ip(request),
-            user_agent=request.headers.get("User-Agent", "")[:400],
+    # no-op save is not an event
+    if changes or invalidated_raw_preferences:
+        db.add(
+            AuditEvent(
+                actor_id=admin.id,
+                action="governance.update",
+                target="정책",
+                detail=", ".join(changes),
+                event_metadata={
+                    "changes": changes,
+                    "rawPreferencesInvalidated": invalidated_raw_preferences,
+                    "policyVersion": governance.POLICY_VERSION,
+                },
+                ip=client_ip(request),
+                user_agent=request.headers.get("User-Agent", "")[:400],
+            )
         )
-    )
     await db.commit()
     governance.invalidate()
 

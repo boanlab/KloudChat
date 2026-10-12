@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import re
 import time
 from html.parser import HTMLParser
@@ -16,7 +17,7 @@ from app.routers import sessions as sessions_router
 from app.routers import workspace as workspace_router
 from app.schemas.workspace import DesignTemplateOut
 from app.services import design_templates as dt
-from app.services import imagegen, page, research
+from app.services import page, research
 
 # ── the shipped catalogue ──────────────────────────────────────────────
 
@@ -25,9 +26,6 @@ from app.services import imagegen, page, research
 _PREFIX = {
     "deck": "deck-",
     "document": "doc-",
-    "image": "image-",
-    "video": "video-",
-    "audio": "audio-",
 }
 
 
@@ -47,37 +45,28 @@ def test_a_template_lands_on_the_surface_its_kind_names(template):
 def test_a_shipped_template_is_complete(template):
     assert template.name and template.description and template.category
     assert template.example_prompt.strip()
-    # Only writing templates carry instructions and a seed.
-    if template.kind in dt.HTML_KINDS:
-        assert template.instructions.strip()
-    else:
-        assert not template.instructions
+    # Every 서식 left is a writing one, with instructions and a seed.
+    assert template.kind in dt.HTML_KINDS
+    assert template.instructions.strip()
     assert template.name_en and template.description_en and template.category_en
     assert template.example_prompt_en.strip()
-    if template.kind in dt.HTML_KINDS:
-        assert template.seed
-        assert "{{TOKENS}}" in template.seed and "{{BODY}}" in template.seed
-    else:
-        assert not template.seed
+    assert template.seed
+    assert "{{TOKENS}}" in template.seed and "{{BODY}}" in template.seed
 
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
 def test_a_writing_template_says_what_it_will_be_read_against(template):
-    """Writing templates ship at least three unbulleted checks; media templates ship none."""
-    if template.kind in dt.HTML_KINDS:
-        assert len(template.checks) >= 3, template.id
-        assert not any(line.startswith("-") for line in template.checks), template.id
-    else:
-        assert not template.checks
+    """Writing templates ship at least three unbulleted checks."""
+    assert len(template.checks) >= 3, template.id
+    assert not any(line.startswith("-") for line in template.checks), template.id
 
 
 def test_the_card_carries_the_rules_the_result_will_be_read_against():
-    """`DesignTemplateOut.checks` carries the template's checks; an image template's is empty."""
+    """`DesignTemplateOut.checks` carries the template's checks."""
     card = DesignTemplateOut.of(dt.get("doc-minutes"))
     assert card.checks == list(dt.get("doc-minutes").checks)
     assert any("실행 항목" in line for line in card.checks)
     assert card.model_dump(by_alias=True)["checks"] == card.checks
-    assert DesignTemplateOut.of(dt.get("image-poster")).checks == []
 
 
 @pytest.mark.parametrize(
@@ -163,34 +152,6 @@ def test_no_seed_justifies_korean(template):
     assert "text-align: justify" not in template.seed
 
 
-@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
-def test_every_blank_is_one_the_prompt_actually_has(template):
-    """Every argument appears in both example prompts with labels, defaults and matching options."""
-    for argument in template.arguments:
-        assert f"{{{argument.name}}}" in template.example_prompt, argument.name
-        assert f"{{{argument.name}}}" in template.example_prompt_en, argument.name
-        assert argument.label and argument.label_en
-        assert argument.default and argument.default_en
-        assert len(argument.options) == len(argument.options_en)
-        assert not argument.options or argument.default in argument.options
-
-
-@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
-def test_a_prompt_has_no_blank_without_an_argument_behind_it(template):
-    named = {a.name for a in template.arguments}
-    for placeholder in re.findall(r"\{([a-z_]+)\}", template.example_prompt):
-        assert placeholder in named, placeholder
-
-
-@pytest.mark.parametrize(
-    "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
-)
-def test_a_writing_arguments_are_only_for_media(template):
-    """Writing templates have no arguments or defaults."""
-    assert not template.arguments
-    assert not template.defaults
-
-
 @pytest.mark.parametrize(
     "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
 )
@@ -198,27 +159,6 @@ def test_a_writing_template_can_print(template):
     """Every writing seed has print and `@page` rules."""
     assert "@media print" in template.seed
     assert "@page" in template.seed
-
-
-def test_only_image_templates_hide_a_clause_from_the_composer():
-    """Only picture (non-figure) image templates carry a hidden `prompt_suffix`."""
-    for template in dt.all_templates():
-        if template.kind == "image" and not template.figure:
-            assert template.prompt_suffix.strip(), template.id
-        elif template.kind == "image":
-            # Figures do not go to an image model, so there is no style phrase to hide.
-            assert not template.prompt_suffix, template.id
-        else:
-            assert not template.prompt_suffix, template.id
-
-
-def test_media_templates_carry_the_settings_they_imply():
-    """Media templates ship the settings their shape implies."""
-    assert dt.get("video-product").defaults["aspect"] == "16:9"
-    assert dt.get("video-opening").defaults["resolution"] == "1080p"
-    assert dt.get("audio-narration").defaults["audioKind"] == "narration"
-    assert dt.get("audio-bed").defaults["audioKind"] == "music"
-    assert dt.get("image-poster").defaults["aspect"] == "9:16"
 
 
 def test_a_script_is_removed_with_its_payload():
@@ -248,7 +188,7 @@ class _Markup(HTMLParser):
 @pytest.mark.parametrize(
     "payload",
     [
-        # Attributes a regex pass did not know about.
+        # Attributes a regex pass would miss.
         '<table><tr><td background="javascript:alert(1)">셀</td></tr></table>',
         '<p title="x" onmouseover="alert(1)" data-x="javascript:alert(1)">본문</p>',
         '<img srcset="x onerror=alert(1)" src="data:image/png;base64,iVBORw0KGgo=">',
@@ -308,21 +248,25 @@ def test_blocks_land_inside_the_structure_the_seed_styles():
     assert '<span class="num">2</span>' in body
 
 
-def test_a_one_pager_puts_its_sections_in_the_grid_and_its_cover_outside():
+def test_a_group_wrapper_holds_the_sections_and_leaves_the_cover_outside():
+    # No shipped 서식 groups its sections; the wrapper is still read from `template.toml`.
+    grouped = dataclasses.replace(
+        dt.rendering(dt.GENERIC_ID), wrap_group='<div class="grid">{blocks}</div>'
+    )
     body = dt.assemble(
-        dt.get("doc-brief"),
+        grouped,
         [
             {"layout": "cover", "title": "제목", "html": "<p>한 줄</p>"},
             {"layout": "section", "title": "배경", "html": "<p>본문</p>"},
         ],
     )
-    assert body.index('<div class="cover">') < body.index('<div class="grid">')
+    assert body.index('<div class="cover cover-page">') < body.index('<div class="grid">')
     assert body.count('<div class="grid">') == 1
 
 
 def test_an_empty_block_is_left_out_rather_than_rendered_hollow():
     body = dt.assemble(
-        dt.get("doc-report"),
+        dt.rendering("_document"),
         [
             {"layout": "cover", "title": "제목", "html": "<p>한 줄</p>"},
             {"layout": "section", "title": "빈 절", "html": ""},
@@ -336,7 +280,7 @@ def test_an_empty_block_is_left_out_rather_than_rendered_hollow():
 
 def test_the_design_system_reaches_the_document_as_css_variables():
     html = dt.render(
-        dt.get("doc-report"),
+        dt.rendering("_document"),
         title="제목",
         tokens={"accent": "#7a1f3d", "ink": "#111827", "muted": "#6b7280", "font": "serif"},
         body="<section><h2>절</h2><p>본문</p></section>",
@@ -348,7 +292,9 @@ def test_the_design_system_reaches_the_document_as_css_variables():
 
 
 def test_a_title_cannot_break_out_of_the_document():
-    html = dt.render(dt.get("doc-report"), title="</title><script>x()</script>", tokens={}, body="")
+    html = dt.render(
+        dt.rendering("_document"), title="</title><script>x()</script>", tokens={}, body=""
+    )
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
 
@@ -377,7 +323,7 @@ def test_a_card_shows_the_shape_the_form_actually_has():
                 f"양식에는 그런 절이 없다 — {sorted(headings)}"
             )
         checked += 1
-    assert checked >= 10, "문서 서식이 이만큼은 있어야 이 시험이 무언가를 지킨다"
+    assert checked >= 8, "문서 서식이 이만큼은 있어야 이 시험이 무언가를 지킨다"
 
 
 # ── the outline ────────────────────────────────────────────────────────
@@ -421,30 +367,7 @@ def test_a_count_stated_in_the_request_is_honoured_within_bounds():
     deck = dt.get("deck-lecture")
     assert page.requested_blocks("30장", deck) == 30
     assert page.requested_blocks("200장", deck) == 50
-    assert page.requested_blocks("30쪽", dt.get("doc-report")) == 24
-
-
-# ── image templates ────────────────────────────────────────────────────
-
-
-def test_an_image_template_shapes_the_prompt_after_the_chip_and_before_the_design():
-    composed = imagegen.compose_prompt(
-        "행사 그림",
-        aspect="16:9",
-        style="사진",
-        template=dt.get("image-poster").prompt_suffix,
-        design="primary colour #7a1f3d",
-    )
-    assert composed.index("photorealistic") < composed.index("poster composition")
-    assert composed.index("poster composition") < composed.index("#7a1f3d")
-    # Orientation is spelled out as well as the ratio.
-    assert composed.endswith("aspect ratio 16:9, landscape orientation, wider than it is tall")
-
-
-def test_without_a_template_the_image_prompt_is_unchanged():
-    assert imagegen.compose_prompt("표지", aspect="1:1", style="사진") == imagegen.compose_prompt(
-        "표지", aspect="1:1", style="사진", template="", design=""
-    )
+    assert page.requested_blocks("30쪽", dt.rendering("_document")) == 24
 
 
 # ── one whole turn ─────────────────────────────────────────────────────
@@ -557,7 +480,9 @@ async def test_a_failed_block_leaves_a_gap_and_the_rest_still_lands(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_an_outline_that_cannot_be_parsed_ends_the_turn_without_billing(monkeypatch):
-    events, posts = await _write(monkeypatch, dt.get("doc-report"), ["설명만 하고 JSON 은 없음"])
+    events, posts = await _write(
+        monkeypatch, dt.rendering("_document"), ["설명만 하고 JSON 은 없음"]
+    )
 
     assert len(posts) == 1  # no block calls were made
     assert not any(e["type"] == "page" for e in events)
@@ -644,9 +569,10 @@ def test_a_template_is_resolved_for_the_surface_that_can_use_it():
     ("template_id", "kind", "expected"),
     [
         ("nope", SessionKind.slides, 404),
+        # A retired image 서식 is as unknown as any other id.
         ("image-poster", SessionKind.image, 404),
         ("deck-editorial", SessionKind.report, 422),
-        ("doc-brief", SessionKind.slides, 422),
+        ("doc-comparison", SessionKind.slides, 422),
     ],
 )
 def test_a_template_the_surface_cannot_use_is_refused(template_id, kind, expected):
@@ -673,7 +599,7 @@ def test_a_plan_is_salvaged_out_of_malformed_json():
         '{"title: "이행 리스크", "layout": "section"}, '
         '{"title": "다음 행동", "layout": "section"}]'
     )
-    title, blocks = page._parse_outline(mangled, dt.get("doc-brief"))
+    title, blocks = page._parse_outline(mangled, dt.get("doc-comparison"))
 
     assert title == "학과 서버 교체"
     assert [b["title"] for b in blocks] == ["학과 서버 교체", "이행 리스크", "다음 행동"]
@@ -682,7 +608,7 @@ def test_a_plan_is_salvaged_out_of_malformed_json():
 
 def test_nothing_is_salvaged_from_prose():
     """Prose salvages to no plan."""
-    title, blocks = page._parse_outline("구성을 만들 수 없습니다.", dt.get("doc-brief"))
+    title, blocks = page._parse_outline("구성을 만들 수 없습니다.", dt.get("doc-comparison"))
     assert not blocks and not title
 
 
@@ -863,11 +789,11 @@ def test_a_project_starts_with_no_format_of_its_own():
 
 def test_a_default_reaches_the_surface_it_was_set_for_and_no_other():
     """`default_for` answers per surface and None for a surface not set."""
-    defaults = {"report": "doc-notice", "slides": "deck-proposal"}
-    assert dt.default_for(defaults, SessionKind.report) == "doc-notice"
+    defaults = {"report": "doc-minutes", "slides": "deck-proposal"}
+    assert dt.default_for(defaults, SessionKind.report) == "doc-minutes"
     assert dt.default_for(defaults, SessionKind.slides) == "deck-proposal"
     assert dt.default_for(defaults, SessionKind.image) is None
-    assert dt.default_for({"report": "doc-notice"}, SessionKind.slides) is None
+    assert dt.default_for({"report": "doc-minutes"}, SessionKind.slides) is None
 
 
 @pytest.mark.parametrize(
@@ -875,7 +801,7 @@ def test_a_default_reaches_the_surface_it_was_set_for_and_no_other():
     [
         None,
         {},
-        # Stored ids the catalogue no longer has, or has on another surface.
+        # Stored ids the catalogue does not have, or has on another surface.
         {"report": "doc-gone"},
         {"report": "deck-editorial"},
     ],
@@ -886,10 +812,10 @@ def test_a_default_the_catalogue_cannot_place_is_the_built_in_track(defaults):
 
 async def test_a_new_session_begins_in_its_projects_format():
     """A new session takes its project's format for that surface only."""
-    db = _Rows({"p1": _project(render_templates={"report": "doc-notice"})})
+    db = _Rows({"p1": _project(render_templates={"report": "doc-minutes"})})
 
     started = await sessions_router._project_render_template(db, "p1", SessionKind.report)
-    assert started == "doc-notice"
+    assert started == "doc-minutes"
     assert await sessions_router._project_render_template(db, "p1", SessionKind.slides) is None
 
 
@@ -900,17 +826,18 @@ async def test_work_outside_a_project_is_not_a_lookup():
 
 async def test_the_composer_still_decides_this_conversation():
     """The project seeds the session; the composer's choice still resolves on its own."""
-    db = _Rows({"p1": _project(render_templates={"report": "doc-notice"})})
+    db = _Rows({"p1": _project(render_templates={"report": "doc-minutes"})})
 
     seeded = await sessions_router._project_render_template(db, "p1", SessionKind.report)
-    assert seeded == "doc-notice"
-    assert sessions_router._resolved_template_id("doc-brief", SessionKind.report) == "doc-brief"
+    assert seeded == "doc-minutes"
+    resolved = sessions_router._resolved_template_id("doc-comparison", SessionKind.report)
+    assert resolved == "doc-comparison"
 
 
 def test_clearing_one_surface_leaves_the_other_alone():
     assert workspace_router._validated_render_templates(None) is None
-    kept = workspace_router._validated_render_templates({"report": "doc-notice", "slides": ""})
-    assert kept == {"report": "doc-notice"}
+    kept = workspace_router._validated_render_templates({"report": "doc-minutes", "slides": ""})
+    assert kept == {"report": "doc-minutes"}
 
 
 @pytest.mark.parametrize(
@@ -919,7 +846,7 @@ def test_clearing_one_surface_leaves_the_other_alone():
         ({"report": "nope"}, 404),
         ({"image": "image-poster"}, 404),
         ({"report": "deck-editorial"}, 422),
-        ({"chat": "doc-brief"}, 422),
+        ({"chat": "doc-comparison"}, 422),
     ],
 )
 def test_a_project_format_the_surface_cannot_use_is_refused_like_the_composers(defaults, expected):
@@ -942,43 +869,6 @@ def test_an_attribute_stripper_cannot_be_stalled_by_whitespace():
     assert "href=" not in cleaned
 
 
-def test_the_research_figures_ask_for_a_paper_figure_not_a_picture() -> None:
-    """Research diagram templates declare `figure` and take a description; the teaser does not."""
-    from app.services import design_templates
-
-    family = {
-        template.id: template
-        for template in design_templates.all_templates()
-        if template.kind == "image" and template.category == "연구"
-    }
-    assert {"image-diagram", "image-method", "image-pipeline", "image-teaser"} <= set(family)
-
-    figures = {"image-diagram": "concept", "image-pipeline": "flow", "image-method": "method"}
-    drawn = {t.id: t for t in design_templates.all_templates() if t.kind == "image"}
-    assert drawn["image-infographic"].figure == "flow"
-    assert drawn["image-architecture"].figure == "method"
-    for template_id, figure in figures.items():
-        template = family[template_id]
-        assert template.figure == figure, template_id
-        assert not template.prompt_suffix, template_id
-        assert template.arguments[0].name == "description", template_id
-        assert template.arguments[0].long, template_id
-        names = [argument.name for argument in template.arguments]
-        assert names == ["description", "highlight", "language"], template_id
-        for argument in template.arguments[1:]:
-            assert len(argument.options) >= 2, f"{template_id}.{argument.name}"
-        for argument in template.arguments:
-            assert f"{{{argument.name}}}" in template.example_prompt, argument.name
-
-    teaser = family["image-teaser"]
-    assert not teaser.figure
-    suffix = teaser.prompt_suffix.lower()
-    for banned in ("no text", "no lettering", "no logos"):
-        assert banned in suffix, f"image-teaser: {banned}"
-    assert "flat even lighting" in suffix
-    assert "no drop shadows" in suffix
-
-
 def test_a_research_figure_prompt_carries_both_halves() -> None:
     """Diagram rules go in the system message and the description in the user message."""
     from app.services import diagram
@@ -988,3 +878,38 @@ def test_a_research_figure_prompt_carries_both_halves() -> None:
     assert "flowchart" in system and "subgraph" in system
     assert "인코더가 입력을 임베딩으로 바꾼다." in user
     assert "subgraph" not in user
+
+
+# ── 개조식: the body face follows the design ───────────────────────────
+
+
+def test_the_gaejo_body_face_follows_the_design_in_html_and_word():
+    import io
+
+    from docx import Document
+    from docx.oxml.ns import qn
+
+    from app.services import report_export
+
+    gaejo = dt.get("doc-gaejo-report")
+    assert gaejo is not None and gaejo.body_face_from_design and gaejo.no_skills
+    assert dt.get("doc-minutes").no_skills
+    assert ".page {\n  font-family: var(--font-body);" in gaejo.seed
+    serif = dt.render(gaejo, title="t", tokens={"font": "serif"}, body="")
+    assert "--font-body: 'Nanum Myeongjo'" in serif
+
+    def faces(tokens):
+        data = report_export.to_docx(
+            "보고", [{"heading": "현황", "content": "- 항목 하나."}], tokens=tokens,
+            template=gaejo.docx_template, body_from_design=True,
+        )
+        styles = Document(io.BytesIO(data)).styles
+        return {
+            name: styles[name].element.rPr.find(qn("w:rFonts")).get(qn("w:eastAsia"))
+            for name in ("Body Text", "Normal", "Heading 1")
+        }
+
+    assert faces({"font": "serif"}) == {
+        "Body Text": "바탕", "Normal": "바탕", "Heading 1": "맑은 고딕"
+    }
+    assert faces({"font": "gothic"})["Body Text"] == "맑은 고딕"

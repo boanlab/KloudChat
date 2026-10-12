@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services import diagram, prompt_templates
+from app.services import diagram
 
 
 def test_the_source_and_the_caption_come_apart() -> None:
@@ -35,19 +35,6 @@ def test_colour_the_model_was_told_not_to_write_is_stripped() -> None:
     assert "classDef" not in source
     assert "linkStyle" not in source
     assert "a --> b" in source
-
-
-def test_every_built_in_says_how_to_fill_each_blank() -> None:
-    # 「기간·언어」 alone is a noun. The example beside it is the instruction.
-    for row in prompt_templates.all_templates():
-        assert len(row.examples) == len(row.fills), row.id
-
-
-def test_a_survey_needs_the_web_and_a_reading_needs_the_file() -> None:
-    by_id = {row.id: row for row in prompt_templates.all_templates()}
-    assert "web" in by_id["t_report_literature"].needs
-    assert "file" in by_id["t_paper_read"].needs
-    assert "citation" in by_id["t_report_literature"].skills
 
 
 def test_an_edit_recomputes_the_findings() -> None:
@@ -178,9 +165,10 @@ def test_a_results_report_with_nothing_to_report_is_asked_for_its_data() -> None
 def test_the_cost_table_advice_is_kept_for_decisions() -> None:
     from app.services.report import _facts_line
 
-    assert "비교표의 행" in _facts_line("서버 교체와 클라우드 이전 대안을 비교해 주세요.", [])
-    assert "비교표의 행" not in _facts_line("학과 세미나 회의록을 써 주세요.", [])
-    assert "쓰지 마라" in _facts_line("학과 세미나 회의록을 써 주세요.", [])
+    decision = "서버 교체와 클라우드 이전 대안을 비교해 주세요."
+    assert "comparison table's rows" in _facts_line(decision, [])
+    assert "comparison table's rows" not in _facts_line("학과 세미나 회의록을 써 주세요.", [])
+    assert "write no amounts" in _facts_line("학과 세미나 회의록을 써 주세요.", [])
 
 
 def test_material_pasted_into_the_request_is_not_asked_for() -> None:
@@ -404,7 +392,7 @@ def test_an_english_question_puts_the_english_rule_in_the_chat_system_turn() -> 
     messages = build_messages(SessionKind.chat, history)
     assert "entire answer in English" in messages[0]["content"]
     korean = build_messages(SessionKind.chat, history[:1])
-    assert "in English" not in korean[0]["content"].split("글 쓰는 법")[0]
+    assert "in English" not in korean[0]["content"].split("Writing (the default")[0]
 
 
 def test_a_bullet_with_a_quantity_the_request_never_gave_is_dropped() -> None:
@@ -481,7 +469,7 @@ def test_money_in_a_document_with_no_figures_becomes_undetermined() -> None:
     )
     out = _without_invented_money(text)
     assert "380만 원" not in out and "1,140만 원" not in out and "2,400 만 원" not in out
-    assert out.count("(미정)") == 4 and "2026년" in out
+    assert out.count("[금액]") == 4 and "2026년" in out
 
 
 def test_a_proposal_with_nothing_behind_it_is_asked_about() -> None:
@@ -494,7 +482,7 @@ def test_a_proposal_with_nothing_behind_it_is_asked_about() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_diagram_path(
+async def test_a_suggestion_names_its_figure_kind_and_a_figure_takes_the_diagram_path(
     monkeypatch,
 ) -> None:
     from app.services import figures
@@ -530,7 +518,7 @@ async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_di
         figures.httpx,
         "AsyncClient",
         lambda **_kw: _Client(
-            '{"template": "image-architecture", "caption": "수집·분석·집행", "prompt": "", '
+            '{"figure": "method", "caption": "수집·분석·집행", "prompt": "", '
             '"description": "수집기가 이벤트를 분석 엔진으로 보내고 집행기가 정책을 적용한다."}'
         ),
     )
@@ -543,7 +531,7 @@ async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_di
         look="minimal",
     )
     assert figure is not None
-    assert figure.template_id == "image-architecture" and figure.figure == "method"
+    assert figure.figure == "method"
     assert figure.description.startswith("수집기가") and figure.prompt == ""
     assert figure.style == "미니멀"
 
@@ -551,16 +539,18 @@ async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_di
         figures.httpx,
         "AsyncClient",
         lambda **_kw: _Client(
-            '{"template": "image-nope", "caption": "무균실", "prompt": "a cleanroom technician", '
+            '{"figure": "nope", "caption": "무균실", "prompt": "a cleanroom technician", '
             '"description": ""}'
         ),
     )
     picture = await figures.suggest(
         title="공정", about="작업 환경", context="…", model="m", api_key="k", look="editorial"
     )
-    # A 서식 name not in the catalogue is not a 서식; the picture is drawn as asked.
-    assert picture is not None and picture.template_id == "" and picture.figure == ""
+    # A kind the diagram path does not draw is a picture, drawn as asked.
+    assert picture is not None and picture.figure == ""
     assert picture.prompt == "a cleanroom technician"
+    # No catalogue is offered any more: the kinds are the prompt's own.
+    assert "{catalogue}" not in figures._ONE_PROMPT and '"figure"' in figures._ONE_PROMPT
 
 
 def test_a_genre_gets_its_own_shape_and_a_decision_report_gets_none() -> None:

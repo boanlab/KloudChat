@@ -1,7 +1,4 @@
-"""Checks `verify` runs on a written report; they only find, `verify.repair` rewrites.
-
-Code checks run before and after the repair; model checks run once, before it.
-"""
+"""Report checks for verify (find only; verify.repair rewrites)."""
 
 from __future__ import annotations
 
@@ -10,7 +7,7 @@ from app.services.verify import Check, Doc, Finding, model_check
 
 
 def _report():
-    from app.services import report  # the report's readers; imported late, report imports us
+    from app.services import report  # imported late: circular import
 
     return report
 
@@ -20,7 +17,7 @@ def _one(sentence: str) -> list[dict]:
 
 
 async def numbers(doc: Doc):
-    """A weekly rate against its yearly total, a CAGR its own figures do not give."""
+    """Weekly rate vs yearly total; CAGR not derivable from its own figures."""
     report = _report()
     found = [
         Finding(i, sentence, "numeric", why, rank=1,
@@ -31,10 +28,13 @@ async def numbers(doc: Doc):
 
 
 async def metrics(doc: Doc):
-    """One metric stated with two values in two places: each place is told the other."""
+    """One metric with two values in two places."""
     report = _report()
     found = []
-    for group in report.metric_conflicts(doc.sections)[:4]:
+    # material's own paired values shown on purpose
+    groups = [g for g in report.metric_conflicts(doc.sections)
+              if not key_figures.explains([s for _, s in g], doc.conflicts)]
+    for group in groups[:4]:
         sentences = [s for _, s in group]
         for index, sentence in group:
             others = " / ".join(s[:120] for s in sentences if s != sentence)
@@ -45,7 +45,7 @@ async def metrics(doc: Doc):
 
 
 async def innards(doc: Doc):
-    """「매뉴얼 제2장」 and 「해당 자료」: a source's insides the reader does not have."""
+    """References to source internals the reader lacks (「매뉴얼 제2장」)."""
     report = _report()
     found = [
         Finding(i, sentence, "source_innards",
@@ -67,7 +67,7 @@ def _placeholder(s: str) -> bool:
 
 
 async def figures(doc: Doc):
-    """Changed settled figures, unit-slipped formulas, scaled amounts and placeholders."""
+    """Changed figures, unit-slipped formulas, scaled amounts, placeholders."""
     report = _report()
 
     def changed(s: str) -> bool:
@@ -91,7 +91,7 @@ async def figures(doc: Doc):
 
 
 def judge_figures(judge: str, api_key: str) -> Check:
-    """The figure sentences the code let through, put to the judge model."""
+    """Code-passed figure sentences, sent to the judge model."""
 
     @model_check
     async def check(doc: Doc):
@@ -99,10 +99,9 @@ def judge_figures(judge: str, api_key: str) -> Check:
         if not doc.settled:
             return [], {}
         flagged, spent = await report.judge_figure_sentences(
-            doc.sections, doc.settled, judge=judge, api_key=api_key
+            doc.sections, doc.settled, judge=judge, api_key=api_key, material=doc.material
         )
-        # Shown, not rewritten: the judge also flags passing mentions, and no rule can
-        # confirm its rewrite.
+        # shown, not rewritten: judge over-flags, rewrite unverifiable
         return [Finding(i, s, "judged_figure", why, rank=1, auto=False,
                         still=lambda t, s=doc.settled: bool(key_figures.conflicts(t, s)))
                 for i, s, why in flagged], spent
@@ -111,7 +110,7 @@ def judge_figures(judge: str, api_key: str) -> Check:
 
 
 async def scaled_metrics(doc: Doc):
-    """A named metric (CAC, ARPU …) written a power of ten off its value elsewhere."""
+    """Named metric off by a power of ten elsewhere."""
     whole = "\n".join(str(sec.get("content") or "") for sec in doc.sections)
     found = []
     for sentence, name, written, usual in quality_gate.scaled_metric_slips(whole):
@@ -120,7 +119,6 @@ async def scaled_metrics(doc: Doc):
         if index is None:
             continue
         usual_text = f"{usual:,.0f}"
-        # Fixed once the sentence, read beside the usual value twice, raises nothing.
         found.append(Finding(
             index, sentence, "scaled_metric",
             f"「{name}」을 이 문서의 다른 곳에서는 모두 {usual_text}(으)로 적었는데 이 문장은 "

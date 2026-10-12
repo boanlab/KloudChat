@@ -1,6 +1,4 @@
-"""Owned-resource CRUD: projects, files, artifacts, skills, memories, agents,
-templates, design systems, and message ratings.
-"""
+"""Owned-resource CRUD: projects, files, artifacts, skills, memories, agents, designs, ratings."""
 
 from __future__ import annotations
 
@@ -10,7 +8,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
@@ -20,7 +18,7 @@ from sqlmodel import col, delete, select, update
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, CurrentViewer, DbSession
-from app.models.chat import ChatSession, Message, Role, SessionKind
+from app.models.chat import ChatSession, Message, Role, SessionKind, follow_document_title
 from app.models.user import User, UserRole, utcnow
 from app.models.workspace import (
     Agent,
@@ -33,9 +31,10 @@ from app.models.workspace import (
     Skill,
     SkillSource,
     StoredFile,
-    Template,
+    UserPipeline,
     Visibility,
 )
+from app.pipeline import compose
 from app.schemas.chat import MessageOut, MessageRatingIn
 from app.schemas.workspace import (
     AgentIn,
@@ -64,7 +63,6 @@ from app.schemas.workspace import (
     ProjectIn,
     ProjectOut,
     ProjectPatch,
-    PromptTemplateOut,
     SectionFactCheck,
     SectionImage,
     SectionRewrite,
@@ -75,8 +73,6 @@ from app.schemas.workspace import (
     SlideImage,
     SlideRewrite,
     StoreSkillOut,
-    TemplateIn,
-    TemplateOut,
     ToolCatalogOut,
 )
 from app.services import (
@@ -84,20 +80,25 @@ from app.services import (
     deck_export,
     design_extract,
     design_templates,
+    diagram_render,
+    doc_formats,
     factcheck,
     hangul,
     hwpx_import,
     index_client,
     lint,
     netguard,
+    ocr_jobs,
     page_export,
     pictures,
     printing,
-    prompt_templates,
     report_export,
     richtext,
     settings_store,
+    skill_import,
+    skill_packages,
     starter,
+    user_templates,
 )
 from app.services import deck as deck_service
 from app.services import design as design_service
@@ -115,7 +116,7 @@ router = APIRouter(tags=["workspace"])
 
 
 def _slug(name: str) -> str:
-    """Slug from a name; Hangul characters are kept."""
+    """Name slug; Hangul kept."""
     base = re.sub(r"[^\w가-힣]+", "-", name.strip().lower()).strip("-")
     return base[:60] or "item"
 
@@ -123,7 +124,7 @@ def _slug(name: str) -> str:
 async def _claim_slug(
     db: DbSession, owner_id: str, wanted: str, *, except_id: str | None = None
 ) -> str:
-    """Slug for an agent, unique among this owner's agents (409 otherwise)."""
+    """Owner-unique agent slug (409 otherwise)."""
     slug = _slug(wanted)
     rows = (await db.exec(select(Agent).where(Agent.owner_id == owner_id))).all()
     if any(row.slug == slug and row.id != except_id for row in rows):
@@ -133,13 +134,24 @@ async def _claim_slug(
 
 async def _own(db: DbSession, model, owner_field: str, user: User, item_id: str):
     row = await db.get(model, item_id)
-    if row is None or getattr(row, owner_field) != user.id:
+    # published bot copies and their knowledge: immutable, owner included
+    if row is None or getattr(row, owner_field) != user.id or await _bot_owned(db, row):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     return row
 
 
+async def _bot_owned(db: DbSession, row) -> bool:
+    """Published version's agent copy or its file."""
+    if isinstance(row, Agent):
+        return bool(row.snapshot_of)
+    if isinstance(row, StoredFile) and row.agent_id:
+        agent = await db.get(Agent, row.agent_id)
+        return agent is not None and bool(agent.snapshot_of)
+    return False
+
+
 async def _owned_many(db: DbSession, model, owner_field: str, user: User, ids: list[str]):
-    """Rows among `ids` owned by `user`; unknown or foreign ids are skipped, not 404."""
+    """Owned rows among `ids`; unknown/foreign skipped, not 404."""
     if not ids:
         return []
     rows = (
@@ -147,7 +159,7 @@ async def _owned_many(db: DbSession, model, owner_field: str, user: User, ids: l
             select(model).where(col(model.id).in_(ids), getattr(model, owner_field) == user.id)
         )
     ).all()
-    return list(rows)
+    return [row for row in rows if not await _bot_owned(db, row)]
 
 
 async def _validate_skill_ids(
@@ -157,7 +169,7 @@ async def _validate_skill_ids(
     *,
     grandfathered: set[str] | None = None,
 ) -> None:
-    """Every skill id is owned, enabled, and unique; no cross-account references."""
+    """Skill ids owned, enabled, unique; no cross-account refs."""
     if skill_ids is None:
         return
     if len(skill_ids) != len(set(skill_ids)):
@@ -196,11 +208,56 @@ async def _validate_tool_names(
         raise HTTPException(status_code=422, detail=f"unknown_tools:{','.join(unknown)}")
 
 
-# ══ projects ═══════════════════════════════════════════════════════════
+# ══ projects ══
+
+
+async def _validated_checks(db: DbSession, user: User,
+                            values: dict[str, Any]) -> dict[str, Any]:
+    """Runnable check keys (shipped key or own `skill:<id>`), deduped; known `check_options` on."""
+    from app.services import check_skills, skill_packages, skill_specs
+
+    out: dict[str, Any] = {}
+    if "check_skills" in values and values["check_skills"] is not None:
+        keys = [str(k) for k in values["check_skills"]]
+        own = [k.removeprefix(skill_specs.USER) for k in keys if k.startswith(skill_specs.USER)]
+        mine = {row.id: row for row in (await db.exec(select(Skill).where(
+            col(Skill.id).in_(own), Skill.owner_id == user.id))).all()} if own else {}
+
+        def runnable(key: str) -> bool:
+            if key.startswith(skill_specs.USER):
+                row = mine.get(key.removeprefix(skill_specs.USER))
+                return row is not None and bool(skill_specs.of_row(row).stage)
+            return bool((p := skill_packages.package_for(key)) and p.stage)
+
+        if not all(runnable(k) for k in keys):
+            raise HTTPException(status_code=422, detail="check_skill_unknown")
+        out["check_skills"] = list(dict.fromkeys(keys))
+    if "check_options" in values:
+        out["check_options"] = check_skills.clean_options(values["check_options"]) or None
+    if "gap_questions" in values:
+        from app.services import gap_questions
+
+        raw = values["gap_questions"]
+        try:
+            out["gap_questions"] = None if raw is None else gap_questions.clean(raw)
+        except gap_questions.QuestionError as exc:
+            raise HTTPException(status_code=422, detail=exc.code) from exc
+    if "process_settings" in values:
+        from app.services import process_settings
+
+        raw = values["process_settings"]
+        try:
+            out["process_settings"] = (process_settings.clean(raw) or None) if raw is not None \
+                else None
+        except process_settings.ProcessError as exc:
+            raise HTTPException(status_code=422, detail=exc.code) from exc
+        if out["process_settings"] is not None:
+            out["process_settings"] = process_settings.stored_form(out["process_settings"])
+    return out
 
 
 async def _validate_design_system_id(db: DbSession, user: User, design_id: str | None) -> None:
-    """Design system must be owned by the caller or shared."""
+    """Design system owned or shared."""
     if design_id is None:
         return
     row = await db.get(DesignSystem, design_id)
@@ -208,17 +265,63 @@ async def _validate_design_system_id(db: DbSession, user: User, design_id: str |
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="design_system_not_found")
 
 
+#: agent fields binding a new conversation's opening
+_AGENT_BINDINGS = ("surface", "render_template_id", "doc_format", "design_system_id")
+
+
+async def _validate_agent_bindings(
+    db: DbSession, user: User, values: dict[str, Any], *, check_design: bool = True,
+    keep_format: str | None = None,
+) -> dict[str, Any]:
+    """Bindings with blanks → None, cross-checked against `kinds`."""
+    out = {name: (values.get(name) or None) for name in _AGENT_BINDINGS}
+    kinds = [str(k) for k in (values.get("kinds") or [])]
+    allowed = set(kinds) if kinds else {kind.value for kind in SessionKind}
+    if (surface := out["surface"]) is not None:
+        if surface not in {kind.value for kind in SessionKind}:
+            raise HTTPException(status_code=422, detail="agent_surface_unknown")
+        if surface not in allowed:
+            raise HTTPException(status_code=422, detail="agent_surface_not_in_kinds")
+    if (template_id := out["render_template_id"]) is not None:
+        # usable template: own or shared
+        if not await user_templates.usable(db, user.id, template_id):
+            raise HTTPException(status_code=404, detail="design_template_not_found")
+        chosen = design_templates.choosable(template_id)
+        if chosen is None or chosen.kind not in design_templates.HTML_KINDS:
+            raise HTTPException(status_code=404, detail="design_template_not_found")
+        if chosen.surface.value not in allowed:
+            raise HTTPException(status_code=422, detail="design_template_surface_mismatch")
+    if (format_id := out["doc_format"]) is not None:
+        if format_id not in doc_formats.BY_ID or (
+                format_id in doc_formats.RETIRED and format_id != keep_format):
+            raise HTTPException(status_code=422, detail="doc_format_unknown")
+        if SessionKind.report.value not in allowed:
+            raise HTTPException(status_code=422, detail="doc_format_needs_report")
+    if check_design:
+        await _validate_design_system_id(db, user, out["design_system_id"])
+    return _format_of_template(out)
+
+
+def _format_of_template(bindings: dict[str, Any]) -> dict[str, Any]:
+    """Stored format never contradicts a format-fixing template (same rule as `_apply_base`)."""
+    template_id = bindings.get("render_template_id")
+    chosen = design_templates.choosable(template_id) if template_id else None
+    fixed = chosen.doc_format if chosen is not None else ""
+    if fixed and bindings.get("doc_format") not in (None, fixed):
+        bindings["doc_format"] = fixed if fixed in doc_formats.BY_ID \
+            and fixed not in doc_formats.RETIRED else None
+    return bindings
+
+
 def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | None:
-    """Per-surface render template ids, validated. An unknown id is an error;
-    an empty value removes that surface from the map.
-    """
+    """Validated per-surface template ids; unknown errors, empty removes."""
     if raw is None:
         return None
     chosen: dict[str, str] = {}
     for surface, template_id in raw.items():
         if not template_id:
             continue
-        template = design_templates.get(template_id)
+        template = design_templates.choosable(template_id)
         if template is None or template.kind not in design_templates.HTML_KINDS:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
@@ -230,23 +333,6 @@ def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | 
             )
         chosen[template.surface.value] = template.id
     return chosen
-
-
-def _validated_starting_format(template_id: str, kind: str) -> str:
-    """Render template id for a prompt template, validated against `kind`. Empty is allowed."""
-    if not template_id:
-        return ""
-    template = design_templates.get(template_id)
-    if template is None or template.kind not in design_templates.HTML_KINDS:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
-        )
-    if template.surface.value != kind:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="design_template_surface_mismatch",
-        )
-    return template.id
 
 
 async def _project_out(db: DbSession, project: Project) -> ProjectOut:
@@ -318,14 +404,14 @@ async def patch_project(project_id: str, payload: ProjectPatch, user: CurrentUse
 
 
 async def _remove_project(db: DbSession, project: Project) -> None:
-    """Deletes a project and its knowledge files; sessions are detached. Uncommitted."""
+    """Project and knowledge files deleted; sessions detached. Uncommitted."""
     for stored in (
         await db.exec(select(StoredFile).where(StoredFile.project_id == project.id))
     ).all():
         file_service.delete_blob(stored.storage_key)
         await db.delete(stored)
     if project.index_key:
-        # Its documents and its conversations' uploads were indexed together.
+        # docs and conversation uploads share the collection
         await index_client.forget_collection(collection=project.index_key)
     for session in (
         await db.exec(select(ChatSession).where(ChatSession.project_id == project.id))
@@ -343,7 +429,7 @@ async def delete_project(project_id: str, user: CurrentUser, db: DbSession):
 
 @router.post("/projects/delete")
 async def delete_projects(payload: BulkDelete, user: CurrentUser, db: DbSession):
-    """Bulk delete. Returns the number removed."""
+    """Bulk delete; returns count."""
     rows = await _owned_many(db, Project, "user_id", user, payload.ids)
     for row in rows:
         await _remove_project(db, row)
@@ -351,20 +437,32 @@ async def delete_projects(payload: BulkDelete, user: CurrentUser, db: DbSession)
     return {"deleted": len(rows)}
 
 
-# ══ files ══════════════════════════════════════════════════════════════
+# ══ files ══
 
 
 @router.get("/files", response_model=list[FileOut])
 async def list_files(
     user: CurrentUser, db: DbSession, project_id: str | None = None, session_id: str | None = None
 ):
-    query = select(StoredFile).where(StoredFile.user_id == user.id)
+    # published knowledge copies belong to the bot
+    copies = select(Agent.id).where(col(Agent.snapshot_of).is_not(None),
+                                    Agent.owner_id == user.id)
+    query = select(StoredFile).where(
+        StoredFile.user_id == user.id,
+        or_(col(StoredFile.agent_id).is_(None), col(StoredFile.agent_id).not_in(copies)),
+    )
     if project_id:
         query = query.where(StoredFile.project_id == project_id)
     if session_id:
         query = query.where(StoredFile.session_id == session_id)
     rows = (await db.exec(query.order_by(col(StoredFile.created_at).desc()))).all()
     return [FileOut.of(f) for f in rows]
+
+
+@router.get("/files/{file_id}", response_model=FileOut)
+async def get_file(file_id: str, user: CurrentUser, db: DbSession):
+    """One own file (page-reading progress screen)."""
+    return FileOut.of(await _own(db, StoredFile, "user_id", user, file_id))
 
 
 @router.post("/files", response_model=FileOut, status_code=status.HTTP_201_CREATED)
@@ -390,24 +488,27 @@ async def upload_file(
         session_id=session_id,
         name=file_service.safe_name(file.filename or "file"),
         size=len(data),
-        # The client's `Content-Type` is a claim; the bytes decide.
+        # Content-Type is a claim; bytes decide
         mime=file_service.detected_mime(file.filename or "file", file.content_type, data),
     )
     stored.storage_key = file_service.write_blob(user.id, stored.id, stored.name, data)
 
-    # Extraction failure is recorded, not raised — the upload itself succeeded.
+    # extraction failure recorded, not raised
     try:
         stored.text = await file_service.text_of(stored.name, stored.mime, data)
         stored.tokens = file_service.estimate_tokens(stored.text)
     except Exception as exc:  # noqa: BLE001
         log.info("extraction failed for %s: %s", stored.name, exc)
         stored.error = str(exc)
+    # scanned pages read in background; text layer kept meanwhile
+    reading = await ocr_jobs.queue_if_scanned(stored, data)
 
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
-    # An upload joins the retrieval index like agent knowledge does, so
-    # `search_knowledge` can find it by meaning on later turns. Never blocks the upload.
+    if reading:
+        ocr_jobs.wake()
+    # indexed for `search_knowledge`; never blocks the upload
     if stored.text.strip():
         if project_id:
             project = await db.get(Project, project_id)
@@ -421,8 +522,7 @@ async def upload_file(
 
 
 async def reindex_session_files(db: DbSession, user_id: str, session: ChatSession) -> int:
-    """After a conversation moved projects: its uploads leave the collection they were
-    in and join the one its new home searches. Returns how many were moved."""
+    """Moved conversation's uploads re-indexed into the new collection; returns count."""
     rows = (
         await db.exec(
             select(StoredFile).where(
@@ -437,8 +537,7 @@ async def reindex_session_files(db: DbSession, user_id: str, session: ChatSessio
         if stored.index_collection and not await index_client.forget_document(
             collection=stored.index_collection, doc_id=stored.id
         ):
-            # The old entry could not be removed: leave the record pointing at it, so a
-            # later delete still knows where it is, and do not add a second copy.
+            # old entry not removed: record kept pointing at it, no second copy
             log.warning(
                 "file %s stays in %s: index delete failed", stored.id, stored.index_collection
             )
@@ -449,8 +548,7 @@ async def reindex_session_files(db: DbSession, user_id: str, session: ChatSessio
 
 
 async def forget_session_files(db: DbSession, session_ids: list[str]) -> int:
-    """Before conversations are deleted: their uploads' vectors leave whatever collection
-    holds them (a project's outlives the conversation). The rows stay in the file box."""
+    """Pre-delete vector removal for conversation uploads; rows stay in file box."""
     if not session_ids:
         return 0
     rows = (
@@ -462,7 +560,7 @@ async def forget_session_files(db: DbSession, session_ids: list[str]) -> int:
             if not await index_client.forget_document(
                 collection=stored.index_collection, doc_id=stored.id
             ):
-                # Still in the index: the record keeps saying so, for the next attempt.
+                # still indexed: record kept for retry
                 log.warning(
                     "file %s stays in %s: index delete failed", stored.id, stored.index_collection
                 )
@@ -475,7 +573,7 @@ async def forget_session_files(db: DbSession, session_ids: list[str]) -> int:
 
 
 async def _project_shelf_key(db: DbSession, project: Project) -> str:
-    """The project's index collection key, minted on first use."""
+    """Project collection key, minted on first use."""
     if not project.index_key:
         project.index_key = index_client.new_collection_key()
         db.add(project)
@@ -485,9 +583,7 @@ async def _project_shelf_key(db: DbSession, project: Project) -> str:
 
 
 async def _session_shelf_key(db: DbSession, session: ChatSession) -> str:
-    """The collection a conversation's uploads are indexed in: its project's when it
-    has one (one search covers the project's knowledge and the chat's uploads), else
-    its own, minted on first use."""
+    """Conversation upload collection: project's if any, else own (minted on first use)."""
     if session.project_id:
         project = await db.get(Project, session.project_id)
         if project is not None:
@@ -506,7 +602,7 @@ async def _session_shelf_key(db: DbSession, session: ChatSession) -> str:
     status_code=status.HTTP_201_CREATED,
 )
 async def add_project_url(project_id: str, payload: KnowledgeUrl, user: CurrentUser, db: DbSession):
-    """Read a web page now and retain that snapshot as project knowledge."""
+    """Web page snapshot as project knowledge."""
     await _own(db, Project, "user_id", user, project_id)
     url = payload.url.strip()
     if not url.startswith(("http://", "https://")):
@@ -547,8 +643,7 @@ async def download_file(file_id: str, user: CurrentViewer, db: DbSession):
         data = file_service.read_blob(stored.storage_key)
     except OSError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
-    # Inline only for what the bytes prove to be a picture, PDF or media; the stored type is
-    # not trusted for this, and a rendered response gets no script and no origin.
+    # inline only for byte-proven picture/PDF/media; no script, no origin
     media, inline = file_service.served_as(stored.name, stored.mime, data)
     return Response(
         content=data,
@@ -559,7 +654,7 @@ async def download_file(file_id: str, user: CurrentViewer, db: DbSession):
 
 @router.post("/files/{file_id}/open-as-document", response_model=OpenedDocument)
 async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
-    """Opens an uploaded `.hwpx` as an editable report session. No model call, no charge."""
+    """Uploaded `.hwpx` → editable report session; no model call or charge."""
     stored = await _own(db, StoredFile, "user_id", user, file_id)
     if not stored.name.lower().endswith(".hwpx"):
         raise HTTPException(
@@ -581,7 +676,6 @@ async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="no_document_body"
         )
 
-    # Document title, else the filename without extension.
     title = document.title[:200] or re.sub(r"\.hwpx$", "", stored.name, flags=re.I)[:200]
     title = title or "한글 문서"
     session = ChatSession(
@@ -624,12 +718,26 @@ async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
 
 @router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_file(file_id: str, user: CurrentUser, db: DbSession):
-    stored = await _own(db, StoredFile, "user_id", user, file_id)
+    owned = await _own(db, StoredFile, "user_id", user, file_id)
+    # shelf (key mint commits) before row lock: nothing commits between lock and delete
+    shelf = await shelf_of(db, owned) if owned.ocr_state else None
+    # locked fresh read: concurrent page reader is seen here or sees the row gone
+    stored = (
+        await db.exec(
+            select(StoredFile)
+            .where(StoredFile.id == file_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).first()
+    if stored is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     file_service.delete_blob(stored.storage_key)
+    if shelf and not stored.indexed_at:
+        # read pages may be heading into the shelf
+        await index_client.forget_document(collection=shelf, doc_id=stored.id)
     if stored.indexed_at:
-        # The collection the write went to, when recorded; otherwise every collection the
-        # document may sit in (a project conversation's upload: the project's, or, if
-        # indexed before the project had one, the conversation's).
+        # recorded collection, else every candidate (project's or conversation's)
         collections: list[str] = [stored.index_collection] if stored.index_collection else []
         if stored.project_id and not collections:
             project = await db.get(Project, stored.project_id)
@@ -651,10 +759,9 @@ async def delete_file(file_id: str, user: CurrentUser, db: DbSession):
     await db.commit()
 
 
-# ══ artifacts ══════════════════════════════════════════════════════════
+# ══ artifacts ══
 
 
-#: Default page size for the artifact gallery.
 _ARTIFACT_PAGE = 60
 
 
@@ -669,8 +776,8 @@ async def list_artifacts(
     before_at: datetime | None = None,
     before_id: str | None = None,
 ):
-    """A page of the caller's artifacts as cards, newest first; `q` matches the title."""
-    # Keyset pagination: `(before_at, before_id)` is the last row the client has.
+    """Artifact cards page, newest first; `q` matches title."""
+    # keyset pagination on (before_at, before_id)
     query = select(Artifact).where(Artifact.user_id == user.id)
     if kind:
         query = query.where(Artifact.kind == kind)
@@ -694,7 +801,7 @@ async def list_artifacts(
 
 @router.get("/artifacts/counts")
 async def artifact_counts(user: CurrentUser, db: DbSession, q: str | None = None):
-    """Artifact count per kind across all pages, for the gallery's filter tabs."""
+    """Per-kind artifact counts for gallery tabs."""
     query = (
         select(Artifact.kind, func.count())
         .where(Artifact.user_id == user.id)
@@ -710,7 +817,7 @@ async def artifact_counts(user: CurrentUser, db: DbSession, q: str | None = None
 @router.post("/artifacts", response_model=ArtifactOut, status_code=status.HTTP_201_CREATED)
 async def create_artifact(payload: ArtifactIn, user: CurrentUser, db: DbSession):
     fields = payload.model_dump()
-    # Same boundary as the update path: no HTML reaches storage unsanitised.
+    # no unsanitised HTML reaches storage
     fields["data"] = _clean_report_data(fields.get("data"))
     artifact = Artifact(user_id=user.id, **fields)
     db.add(artifact)
@@ -725,7 +832,7 @@ async def get_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
 
 
 def _clean_report_data(data: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Report data with every `format: "html"` section body sanitised before storage."""
+    """Report data with HTML section bodies sanitised."""
     if not data or not isinstance(data.get("sections"), list):
         return data
     cleaned = []
@@ -740,7 +847,7 @@ def _clean_report_data(data: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _relint(kind: ArtifactKind, data: dict) -> dict:
-    """Data with `lint` findings recomputed from the current body."""
+    """Data with `lint` recomputed."""
     try:
         if kind is ArtifactKind.report:
             parts = lint.from_sections(list(data.get("sections") or []))
@@ -753,7 +860,7 @@ def _relint(kind: ArtifactKind, data: dict) -> dict:
             findings = lint.check(parts, slides=bool(data.get("kind") == "deck"))
         else:
             return data
-    except Exception:  # noqa: BLE001 — a checker that cannot read the data must not block a save
+    except Exception:  # noqa: BLE001 — unreadable data must not block a save
         log.warning("relint failed for %s", kind, exc_info=True)
         return data
     return {**data, "lint": lint.wire(findings)}
@@ -768,24 +875,28 @@ async def patch_artifact(
     summary = changes.pop("summary", "")
     expected = changes.pop("expected_version", None)
 
-    # Optimistic concurrency: the version check has to happen in this transaction.
+    # optimistic concurrency: check in this transaction
     if expected is not None and expected != artifact.version:
         raise HTTPException(
             status_code=409,
             detail=(
-                "이 결과물은 다른 곳에서 이미 수정되었습니다. 최신 내용을 받은 뒤 다시 저장하세요."
+                "이 아티팩트는 다른 곳에서 이미 수정되었습니다. "
+                "최신 내용을 받은 뒤 다시 저장하세요."
             ),
         )
 
+    if changes.get("project_id"):
+        # own project only; foreign → 404
+        await _own(db, Project, "user_id", user, changes["project_id"])
+
     if "data" in changes and artifact.kind is ArtifactKind.report:
-        # Browser-supplied HTML is sanitised here, the only boundary it crosses.
+        # browser HTML sanitised at its only boundary
         changes["data"] = _clean_report_data(changes["data"])
 
     if "data" in changes and isinstance(changes["data"], dict):
         changes["data"] = _relint(artifact.kind, changes["data"])
 
     if "data" in changes:
-        # Snapshot before overwriting.
         db.add(
             ArtifactVersion(
                 artifact_id=artifact.id,
@@ -801,16 +912,32 @@ async def patch_artifact(
         setattr(artifact, field, value)
     artifact.updated_at = utcnow()
     db.add(artifact)
+    if "title" in changes:
+        await _name_session_after(db, user, artifact)
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)
+
+
+async def _name_session_after(db: DbSession, user: User, artifact: Artifact) -> None:
+    """Owning report/slides conversation retitled."""
+    if not artifact.session_id:
+        return
+    session = await db.get(ChatSession, artifact.session_id)
+    if (
+        session is not None
+        and session.user_id == user.id
+        and session.artifact_id == artifact.id
+        and follow_document_title(session, artifact.title)
+    ):
+        db.add(session)
 
 
 @router.post("/artifacts/{artifact_id}/slides/factcheck", response_model=ArtifactOut)
 async def factcheck_slide(
     artifact_id: str, payload: SlideFactCheck, user: CurrentUser, db: DbSession
 ):
-    """Fact-checks one slide against the web and stores the verdicts. Charged."""
+    """Web fact-check of one slide; verdicts stored. Charged."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.deck:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_deck")
@@ -851,7 +978,7 @@ async def factcheck_slide(
     artifact.data = data
     artifact.updated_at = utcnow()
     db.add(artifact)
-    # No version snapshot: a verdict annotates the deck rather than editing it.
+    # no version snapshot: annotation only
 
     credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
     settle(
@@ -872,13 +999,13 @@ async def factcheck_slide(
 async def store_diagram(
     artifact_id: str, payload: DiagramPicture, user: CurrentUser, db: DbSession
 ):
-    """Stores a browser-rendered mermaid diagram image for the exporters."""
-    # A cache keyed by diagram source: no version snapshot and no charge.
+    """Browser-rendered mermaid image stored for exporters."""
+    # source-keyed cache: no snapshot, no charge
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.report:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_report")
     if not pictures.decode(payload.src):
-        # Only embedded `data:` images; never fetched.
+        # embedded `data:` only; never fetched
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_embedded")
 
     data = dict(artifact.data or {})
@@ -905,7 +1032,7 @@ async def store_diagram(
 async def factcheck_section(
     artifact_id: str, payload: SectionFactCheck, user: CurrentUser, db: DbSession
 ):
-    """Fact-checks one report section against the web and stores the verdicts. Charged."""
+    """Web fact-check of one report section; verdicts stored. Charged."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.report:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_report")
@@ -951,7 +1078,7 @@ async def factcheck_section(
     artifact.data = data
     artifact.updated_at = utcnow()
     db.add(artifact)
-    # No version snapshot: a verdict annotates the report rather than editing it.
+    # no version snapshot: annotation only
 
     credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
     settle(
@@ -969,17 +1096,16 @@ async def factcheck_section(
 
 
 def _reviewable(artifact: Artifact) -> tuple[str, str]:
-    """`(body, rubric)` for the critique model, or `("", "")` when there is nothing."""
+    """`(body, rubric)` for critique, or `("", "")`."""
     data = artifact.data or {}
     if artifact.kind is ArtifactKind.report:
-        # Markdown, not raw HTML, so the reviewer reads prose rather than tags.
+        # Markdown, not raw HTML, for the reviewer
         parts = [
             {"heading": s.get("heading") or "", "text": richtext.as_markdown(s)}
             for s in (data.get("sections") or [])
         ]
         return critique.document(parts), ""
     if artifact.kind is ArtifactKind.deck:
-        # Every field a slide can carry, via the linter's reader.
         parts = [
             {"heading": part.title, "text": " · ".join([*part.labels, *part.lines]).strip(" ·")}
             for part in lint.from_slides(data.get("slides") or [])
@@ -997,7 +1123,7 @@ def _reviewable(artifact: Artifact) -> tuple[str, str]:
 
 @router.post("/artifacts/{artifact_id}/critique", response_model=ArtifactOut)
 async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
-    """Model review of a finished artifact, stored as `data.critique`. Charged; blocks nothing."""
+    """Model critique stored as `data.critique`. Charged; non-blocking."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     body, rubric = _reviewable(artifact)
     if not body.strip():
@@ -1039,14 +1165,14 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
-    except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
+    except Exception as exc:  # noqa: BLE001 — reason, not a 500
         log.warning("critique failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="critique_failed"
         ) from exc
 
     data = dict(artifact.data or {})
-    # No version snapshot: a review annotates the document rather than editing it.
+    # no version snapshot: annotation only
     data["critique"] = {**result, "model": model["id"], "at": utcnow().isoformat()}
     artifact.data = data
     artifact.updated_at = utcnow()
@@ -1067,16 +1193,16 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
     return ArtifactOut.of(artifact)
 
 
-#: Largest image inlined as base64 into an artifact body.
+#: max inlined base64 image
 _MAX_EMBED_BYTES = 3 * 1024 * 1024
 
 
 async def _picture_bytes(db: DbSession, user: User, artifact_id: str) -> tuple[str, bytes]:
-    """`(mime, bytes)` of an owned `image` artifact that is embeddable and under the size cap."""
+    """`(mime, bytes)` of an owned embeddable image under the cap."""
     picture = await _own(db, Artifact, "user_id", user, artifact_id)
     if picture.kind is not ArtifactKind.image:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_an_image")
-    # `src` is this server's own download URL: /api/files/{id}/content
+    # `src` = /api/files/{id}/content
     match = re.search(r"/files/([0-9a-f]{32})/content", str((picture.data or {}).get("src") or ""))
     stored = await db.get(StoredFile, match.group(1)) if match else None
     if stored is None or stored.user_id != user.id:
@@ -1100,9 +1226,19 @@ async def _picture_bytes(db: DbSession, user: User, artifact_id: str) -> tuple[s
     return mime, blob
 
 
+async def _figure_of(db: DbSession, user: User, artifact_id: str) -> dict | None:
+    """Owned drawn-figure image data (keeps flowchart source), else None."""
+    picture = await db.get(Artifact, artifact_id)
+    if picture is None or picture.user_id != user.id or picture.kind is not ArtifactKind.image:
+        return None
+    data = picture.data or {}
+    source = str(data.get("source") or "")
+    return data if data.get("style") == "figure" and source.strip() else None
+
+
 @router.post("/artifacts/{artifact_id}/slides/image", response_model=ArtifactOut)
 async def add_slide_image(artifact_id: str, payload: SlideImage, user: CurrentUser, db: DbSession):
-    """Embeds an owned image artifact on one slide as a `data:` URI. Snapshotted, no charge."""
+    """Owned image on one slide as `data:` URI. Snapshotted, no charge."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.deck:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_deck")
@@ -1114,12 +1250,39 @@ async def add_slide_image(artifact_id: str, payload: SlideImage, user: CurrentUs
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slide_not_found")
 
     mime, blob = await _picture_bytes(db, user, payload.artifact_id)
-    target["image"] = {
-        "src": pictures.encode(mime, blob),
-        "caption": payload.caption.strip(),
-    }
-    # A picture placed by hand replaces the figure the deck drew for itself.
-    target.pop("diagram", None)
+    figure = await _figure_of(db, user, payload.artifact_id)
+    if figure is not None:
+        # drawn figure keeps source: .pptx shapes; picture redrawn in slide accent
+        source = str(figure.get("source") or "")
+        key = report_export.diagram_key(source)
+        caption = payload.caption.strip() or str(figure.get("caption") or "")
+        png = await diagram_render.render_png(
+            source, str(target.get("accent") or "") or "#2563EB"
+        )
+        target["diagram"] = {
+            "figure": str(figure.get("figure") or "method"),
+            "description": str(figure.get("prompt") or ""),
+            "source": source,
+            "caption": caption,
+            "key": key,
+        }
+        target["image"] = {
+            "src": diagram_render.data_uri(png) if png else pictures.encode(mime, blob),
+            "caption": caption,
+            "fit": "contain",
+            "position": "right",
+            "size": "full",
+            "diagram": True,
+            **({"renderer": "pptx", "key": key} if png or figure.get("renderer") == "pptx"
+               else {}),
+        }
+    else:
+        target["image"] = {
+            "src": pictures.encode(mime, blob),
+            "caption": payload.caption.strip(),
+        }
+        # hand-placed picture replaces deck's own figure
+        target.pop("diagram", None)
 
     db.add(
         ArtifactVersion(
@@ -1144,8 +1307,8 @@ async def add_slide_image(artifact_id: str, payload: SlideImage, user: CurrentUs
 async def store_slide_diagram(
     artifact_id: str, payload: SlideDiagramPicture, user: CurrentUser, db: DbSession
 ):
-    """Stores the browser's raster of a slide's own figure as the slide picture."""
-    # Read by the exporters as `image.src`; no version snapshot and no charge.
+    """Browser raster of a slide's figure stored as its picture."""
+    # exporters read `image.src`; no snapshot, no charge
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.deck:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_deck")
@@ -1165,11 +1328,10 @@ async def store_slide_diagram(
 
     current = dict(target.get("image") or {})
     if current.get("src") and not current.get("diagram"):
-        # A person put a picture here; the figure's raster does not replace it.
+        # user picture wins over figure raster
         return ArtifactOut.of(artifact)
     if current.get("renderer") == "pptx" and current.get("key") == payload.key:
-        # The server drew this figure from the deck's shapes; a browser's mermaid raster
-        # of the same source does not replace it.
+        # server-drawn figure wins over browser mermaid raster
         return ArtifactOut.of(artifact)
     if current.get("src") == payload.src:
         return ArtifactOut.of(artifact)
@@ -1192,7 +1354,7 @@ async def store_slide_diagram(
 
 @router.post("/artifacts/{artifact_id}/blocks/image", response_model=ArtifactOut)
 async def add_block_image(artifact_id: str, payload: BlockImage, user: CurrentUser, db: DbSession):
-    """Embeds an owned image artifact into one block of an HTML page. Snapshotted, no charge."""
+    """Owned image into one HTML block. Snapshotted, no charge."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.html:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_page")
@@ -1201,7 +1363,7 @@ async def add_block_image(artifact_id: str, payload: BlockImage, user: CurrentUs
     blocks = [dict(b) for b in (data.get("blocks") or [])]
     if payload.index >= len(blocks):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="block_not_found")
-    template = design_templates.get(str(data.get("templateId") or ""))
+    template = design_templates.rendering(str(data.get("templateId") or ""))
     if template is None or not template.seed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="design_template_missing"
@@ -1228,7 +1390,7 @@ async def add_block_image(artifact_id: str, payload: BlockImage, user: CurrentUs
             summary=f"{blocks[payload.index].get('title')} 에 그림 넣음",
         )
     )
-    # Same sanitiser as model output.
+    # same sanitiser as model output
     blocks[payload.index]["html"] = design_templates.sanitise(
         f"{blocks[payload.index].get('html') or ''}{markup}"
     )
@@ -1252,7 +1414,7 @@ async def add_block_image(artifact_id: str, payload: BlockImage, user: CurrentUs
 async def add_section_image(
     artifact_id: str, payload: SectionImage, user: CurrentUser, db: DbSession
 ):
-    """Appends an owned image artifact to one report section. Snapshotted, no charge."""
+    """Owned image appended to a report section. Snapshotted, no charge."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.report:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_report")
@@ -1276,7 +1438,7 @@ async def add_section_image(
         figure += "</figure>"
         target["content"] = design_templates.sanitise(f"{body}{figure}", editable_styles=True)
     else:
-        # Exporters print the alt text as the caption.
+        # alt text = exported caption
         target["content"] = f"{body}\n\n![{caption}]({src})\n"
 
     db.add(
@@ -1300,7 +1462,7 @@ async def add_section_image(
 
 @router.post("/artifacts/{artifact_id}/blocks/rewrite", response_model=ArtifactOut)
 async def rewrite_block(artifact_id: str, payload: BlockRewrite, user: CurrentUser, db: DbSession):
-    """Rewrites one block of an HTML artifact and re-renders `content`. Charged, snapshotted."""
+    """One HTML block rewrite, `content` re-rendered. Charged, snapshotted."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.html:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_page")
@@ -1309,13 +1471,13 @@ async def rewrite_block(artifact_id: str, payload: BlockRewrite, user: CurrentUs
     blocks = [dict(b) for b in (data.get("blocks") or [])]
     if payload.index >= len(blocks):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="block_not_found")
-    template = design_templates.get(str(data.get("templateId") or ""))
+    template = design_templates.rendering(str(data.get("templateId") or ""))
     if template is None or not template.seed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="design_template_missing"
         )
     if "html" not in blocks[payload.index]:
-        # Blocks without stored markup cannot be re-rendered without loss.
+        # no stored markup: lossless re-render impossible
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="blocks_not_editable")
 
     catalogue = await model_service.list_models()
@@ -1352,7 +1514,7 @@ async def rewrite_block(artifact_id: str, payload: BlockRewrite, user: CurrentUs
             api_key=api_key,
             note=payload.note,
         )
-    except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
+    except Exception as exc:  # noqa: BLE001 — reason, not a 500
         log.warning("block rewrite failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="rewrite_failed"
@@ -1370,7 +1532,7 @@ async def rewrite_block(artifact_id: str, payload: BlockRewrite, user: CurrentUs
             summary=f"{blocks[payload.index].get('title')} 다시 씀",
         )
     )
-    # Pictures embedded in the block survive the rewrite.
+    # embedded pictures survive the rewrite
     blocks[payload.index]["html"] = fragment + design_templates.pictures_in(
         blocks[payload.index].get("html") or ""
     )
@@ -1412,7 +1574,7 @@ async def rewrite_block(artifact_id: str, payload: BlockRewrite, user: CurrentUs
 async def rewrite_section(
     artifact_id: str, payload: SectionRewrite, user: CurrentUser, db: DbSession
 ):
-    """Rewrites one report section. Charged and snapshotted."""
+    """One report section rewrite. Charged, snapshotted."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.report:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_report")
@@ -1428,7 +1590,7 @@ async def rewrite_section(
         (m for m in catalogue["models"] if "report" in m["kinds"]),
         key=model_service.fallback_order,
     )
-    # The session's model if any, else the cheapest that can write a report.
+    # session model, else cheapest report-capable
     session = await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
     model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
         usable[0] if usable else None
@@ -1458,8 +1620,9 @@ async def rewrite_section(
             api_key=api_key,
             note=payload.note,
             sources=list(data.get("sources") or []),
+            doc_format=str((data.get("titleBlock") or {}).get("format") or ""),
         )
-    except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
+    except Exception as exc:  # noqa: BLE001 — reason, not a 500
         log.warning("section rewrite failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="rewrite_failed"
@@ -1478,7 +1641,7 @@ async def rewrite_section(
         )
     )
     target["content"] = hangul.tidy_spacing(hangul.read_back(body)[0])
-    # The model writes Markdown, whatever format the section had before.
+    # model output is Markdown
     target["format"] = "markdown"
     target["status"] = "done"
     data["sections"] = sections
@@ -1506,7 +1669,7 @@ async def rewrite_section(
 
 @router.post("/artifacts/{artifact_id}/slides/rewrite", response_model=ArtifactOut)
 async def rewrite_slide(artifact_id: str, payload: SlideRewrite, user: CurrentUser, db: DbSession):
-    """Rewrites one slide of a deck. Charged and snapshotted."""
+    """One slide rewrite. Charged, snapshotted."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.deck:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_deck")
@@ -1550,7 +1713,7 @@ async def rewrite_slide(artifact_id: str, payload: SlideRewrite, user: CurrentUs
             api_key=api_key,
             note=payload.note,
         )
-    except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
+    except Exception as exc:  # noqa: BLE001 — reason, not a 500
         log.warning("slide rewrite failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="rewrite_failed"
@@ -1624,7 +1787,7 @@ async def get_artifact_version(artifact_id: str, version: int, user: CurrentUser
 async def restore_artifact(
     artifact_id: str, payload: ArtifactRestore, user: CurrentUser, db: DbSession
 ):
-    """Restores a superseded revision as a new version; the current body is snapshotted first."""
+    """Old revision restored as new version; current snapshotted first."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     target = (
         await db.exec(
@@ -1648,9 +1811,10 @@ async def restore_artifact(
     artifact.version += 1
     artifact.data = _clean_report_data(target.data)
     artifact.storage_key = target.storage_key
-    # Reports carry their title inside `data`.
+    # reports keep title in `data`
     if isinstance(target.data, dict) and str(target.data.get("title") or "").strip():
         artifact.title = str(target.data["title"])[:200]
+        await _name_session_after(db, user, artifact)
     artifact.updated_at = utcnow()
     db.add(artifact)
     await db.commit()
@@ -1668,7 +1832,7 @@ async def delete_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
 
 @router.post("/artifacts/delete")
 async def delete_artifacts(payload: BulkDelete, user: CurrentUser, db: DbSession):
-    """Bulk delete. The sessions that produced them are left alone."""
+    """Bulk delete; source sessions untouched."""
     rows = await _owned_many(db, Artifact, "user_id", user, payload.ids)
     if not rows:
         return {"deleted": 0}
@@ -1679,13 +1843,11 @@ async def delete_artifacts(payload: BulkDelete, user: CurrentUser, db: DbSession
     return {"deleted": len(ids)}
 
 
-# ══ skills and the store ═══════════════════════════════════════════════
-#
-# Agents and skills share the same publish/install helpers.
+# ══ skills, store (shared publish/install helpers) ══
 
 
 async def _admin_ids(db: DbSession, owner_ids: set[str]) -> set[str]:
-    """Subset of `owner_ids` that are administrators, read live rather than stored."""
+    """Admin subset of `owner_ids`, read live."""
     if not owner_ids:
         return set()
     rows = await db.exec(
@@ -1702,7 +1864,7 @@ async def _owner_names(db: DbSession, owner_ids: set[str]) -> dict[str, str]:
 
 
 async def _shared(db: DbSession, model, user: User, item_id: str):
-    """An org-shared row owned by somebody else; 409 on the caller's own row."""
+    """Org-shared row owned by another; 409 on own."""
     row = await db.get(model, item_id)
     if row is None or row.visibility is not Visibility.org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -1712,11 +1874,7 @@ async def _shared(db: DbSession, model, user: User, item_id: str):
 
 
 def _copy_of(rows: list, origin) -> Any | None:
-    """This account's copy of a shared row, if any.
-
-    Matched on `origin_id`, then `catalog_key`, then slug: seeded catalogue
-    copies carry neither an origin nor (for agents) a key.
-    """
+    """This account's copy: by `origin_id`, then `catalog_key`, then slug (seeded copies)."""
     for row in rows:
         if row.origin_id == origin.id:
             return row
@@ -1731,7 +1889,7 @@ def _copy_of(rows: list, origin) -> Any | None:
 
 
 async def _install_skill(db: DbSession, user: User, origin: Skill) -> Skill:
-    """Copies a shared skill into this account, or returns the existing copy. Uncommitted."""
+    """Shared skill copied in, or existing copy. Uncommitted."""
     mine = list((await db.exec(select(Skill).where(Skill.owner_id == user.id))).all())
     if (existing := _copy_of(mine, origin)) is not None:
         return existing
@@ -1744,9 +1902,7 @@ async def _install_skill(db: DbSession, user: User, origin: Skill) -> Skill:
         when_to_use=origin.when_to_use,
         body=origin.body,
         catalog_key=origin.catalog_key,
-        source=(
-            SkillSource.built_in if origin.source is SkillSource.built_in else SkillSource.workspace
-        ),
+        source=SkillSource.workspace,
         kinds=list(origin.kinds or []),
         required_tools=list(origin.required_tools or []),
         estimated_tokens=origin.estimated_tokens
@@ -1755,6 +1911,10 @@ async def _install_skill(db: DbSession, user: User, origin: Skill) -> Skill:
         enabled=True,
         visibility=Visibility.private,
         origin_id=origin.id,
+        # server fields/scripts travel (pre-approved); shipped copies store none, follow package
+        server_fields=dict(origin.server_fields)
+        if origin.server_fields is not None and not origin.catalog_key else None,
+        script_files=[dict(f) for f in origin.script_files or []] or None,
     )
     db.add(copy)
     origin.installs += 1
@@ -1767,7 +1927,20 @@ async def list_skills(user: CurrentUser, db: DbSession):
     rows = (
         await db.exec(select(Skill).where(Skill.owner_id == user.id).order_by(col(Skill.name)))
     ).all()
-    return [SkillOut.of(s) for s in rows]
+    # copies say whose shared skill they came from
+    origin_ids = [s.origin_id for s in rows if s.origin_id]
+    owners: dict[str, str] = {}
+    if origin_ids:
+        origins = await db.exec(select(Skill.id, Skill.owner_id).where(
+            col(Skill.id).in_(origin_ids)))
+        owners = {row[0]: row[1] for row in origins.all()}
+    names = await _owner_names(db, set(owners.values()))
+    out = []
+    for s in rows:
+        item = SkillOut.of(s)
+        item.origin_owner_name = names.get(owners.get(s.origin_id or "", ""), "")
+        out.append(item)
+    return out
 
 
 @router.get("/tools", response_model=list[ToolCatalogOut])
@@ -1777,7 +1950,7 @@ async def list_tool_catalog(user: CurrentUser, db: DbSession):
 
 @router.get("/skills/store", response_model=list[StoreSkillOut])
 async def list_skill_store(user: CurrentUser, db: DbSession):
-    """Org-shared skills owned by others; `GET /skills` lists only owned ones."""
+    """Org-shared skills of others; unlisted shipped ones admin-only (「숨김 포함」)."""
     rows = (
         await db.exec(
             select(Skill)
@@ -1785,6 +1958,8 @@ async def list_skill_store(user: CurrentUser, db: DbSession):
             .order_by(col(Skill.name))
         )
     ).all()
+    if user.role is not UserRole.admin:
+        rows = [row for row in rows if skill_packages.listed(row.catalog_key)]
     owner_ids = {row.owner_id for row in rows}
     names = await _owner_names(db, owner_ids)
     admins = await _admin_ids(db, owner_ids)
@@ -1812,10 +1987,30 @@ async def install_skill(skill_id: str, user: CurrentUser, db: DbSession):
     return SkillOut.of(copy)
 
 
+def _server_fields(raw: Any, *, own_scripts: tuple[str, ...] = ()) -> dict[str, Any] | None:
+    """`server` fields vs shipped allowlists; 422 on first refusal; None if empty."""
+    from app.services import skill_specs
+
+    data = raw.model_dump() if hasattr(raw, "model_dump") else raw
+    fields, errors = skill_specs.validate(data, own_scripts=own_scripts)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors[0].code)
+    return None if skill_specs.empty(fields) else fields
+
+
+@router.get("/skills/server-catalogue")
+async def skill_server_catalogue(user: CurrentUser):
+    """Allowed skill server-field values, each with its shipped user."""
+    from app.services import skill_specs
+
+    return skill_specs.catalogue()
+
+
 @router.post("/skills", response_model=SkillOut, status_code=status.HTTP_201_CREATED)
 async def create_skill(payload: SkillIn, user: CurrentUser, db: DbSession):
     await _validate_tool_names(db, user, payload.required_tools)
-    values = payload.model_dump()
+    values = payload.model_dump(exclude={"server"})
+    values["server_fields"] = _server_fields(payload.server) if payload.server else None
     skill = Skill(
         owner_id=user.id,
         slug=_slug(payload.name),
@@ -1830,6 +2025,29 @@ async def create_skill(payload: SkillIn, user: CurrentUser, db: DbSession):
     return SkillOut.of(skill)
 
 
+_SHARED_TEXT = ("visibility", "name", "description", "when_to_use", "body")
+
+
+def _script_names(skill: Skill) -> tuple[str, ...]:
+    return tuple(str(f.get("name") or "") for f in skill.script_files or []
+                 if isinstance(f, dict))
+
+
+def _check_skill_share(skill: Skill, changes: dict[str, Any]) -> None:
+    """Share guard: import scan re-run; block-level findings (secrets, bidi controls) refused."""
+    shared = changes.get("visibility", skill.visibility) == Visibility.org
+    if not shared or not any(field in changes for field in _SHARED_TEXT):
+        return
+    found = skill_import.blocking_on_share(
+        *(str(changes.get(f, getattr(skill, f)) or "") for f in _SHARED_TEXT[1:])
+    )
+    if found:
+        codes = ",".join(sorted({f.code for f in found}))
+        raise HTTPException(
+            status_code=422, detail=f"skill_share_blocked:{codes}"
+        )
+
+
 @router.patch("/skills/{skill_id}", response_model=SkillOut)
 async def patch_skill(skill_id: str, payload: SkillIn, user: CurrentUser, db: DbSession):
     skill = await _own(db, Skill, "owner_id", user, skill_id)
@@ -1841,6 +2059,18 @@ async def patch_skill(skill_id: str, payload: SkillIn, user: CurrentUser, db: Db
             changes["required_tools"],
             grandfathered=set(skill.required_tools or []),
         )
+    _check_skill_share(skill, changes)
+    if "server" in changes:
+        changes.pop("server")
+        skill.server_fields = _server_fields(
+            payload.server or {}, own_scripts=_script_names(skill))
+    if changes.get("visibility") == Visibility.org and skill.script_files \
+            and skill.review != "approved":
+        # scripts: shared only after admin approval
+        changes["visibility"] = Visibility.private
+        skill.review, skill.review_note = "pending", ""
+    elif changes.get("visibility") == Visibility.private and skill.review == "pending":
+        skill.review = ""
     for field, value in changes.items():
         setattr(skill, field, value)
     skill.slug = _slug(skill.name)
@@ -1880,7 +2110,7 @@ async def delete_skills(payload: BulkDelete, user: CurrentUser, db: DbSession):
     return {"deleted": len(rows)}
 
 
-# ══ memories ═══════════════════════════════════════════════════════════
+# ══ memories ══
 
 
 @router.get("/memory", response_model=list[MemoryOut])
@@ -1933,7 +2163,7 @@ async def delete_memory(memory_id: str, user: CurrentUser, db: DbSession):
     await db.commit()
 
 
-# ══ agents ═════════════════════════════════════════════════════════════
+# ══ agents ══
 
 
 async def _agent_has_knowledge(db: DbSession, user_id: str, agent_id: str) -> bool:
@@ -1952,10 +2182,7 @@ async def _agent_has_knowledge(db: DbSession, user_id: str, agent_id: str) -> bo
 
 
 def _without_legacy_copies(rows: list[Agent], *, user_id: str) -> list[Agent]:
-    """Hides an org-shared agent when the user holds a seeded copy of the same name.
-
-    Seeded copies have no `origin_id`; store installs do, and those keep both rows.
-    """
+    """Org agents hidden when a same-name seeded copy (no `origin_id`) is held."""
     legacy = {
         row.name
         for row in rows
@@ -1969,17 +2196,21 @@ async def list_agents(user: CurrentUser, db: DbSession):
     rows = (
         await db.exec(
             select(Agent)
-            .where((Agent.owner_id == user.id) | (Agent.visibility == "org"))
+            .where((Agent.owner_id == user.id) | (Agent.visibility == "org"),
+                   col(Agent.snapshot_of).is_(None))
             .order_by(col(Agent.name))
         )
     ).all()
     rows = _without_legacy_copies(rows, user_id=user.id)
+    # retired agents hidden; drafts admin-only
+    drafts = starter.draft_agents() if user.role is not UserRole.admin else frozenset()
+    rows = [a for a in rows if not a.retired and (a.catalog_key or "") not in drafts]
 
     owner_ids = {a.owner_id for a in rows}
     names = await _owner_names(db, owner_ids)
     admins = await _admin_ids(db, owner_ids)
     mine = [a for a in rows if a.owner_id == user.id]
-    # `has_knowledge` counts only the caller's own files; a shared agent's shelf is not readable.
+    # `has_knowledge`: own files only (shared shelves unreadable)
     readable_shelves = set(
         (
             await db.exec(
@@ -1991,31 +2222,103 @@ async def list_agents(user: CurrentUser, db: DbSession):
             )
         ).all()
     )
+    design_ids = {a.design_system_id for a in rows if a.design_system_id}
+    design_names = (
+        dict(
+            (
+                await db.exec(
+                    select(DesignSystem.id, DesignSystem.name).where(
+                        col(DesignSystem.id).in_(design_ids)
+                    )
+                )
+            ).all()
+        )
+        if design_ids
+        else {}
+    )
+    processes = await _processes(db, rows, viewer_id=user.id)
+    published = await _published(db, user, mine)
     return [
         AgentOut.of(
             agent,
             owner_name=names.get(agent.owner_id, ""),
+            design_name=design_names.get(agent.design_system_id or "", ""),
             has_knowledge=agent.id in readable_shelves,
             official=agent.owner_id in admins,
             installed=(agent.owner_id != user.id and _copy_of(mine, agent) is not None),
             viewer_id=user.id,
+            process=processes.get(agent.id),
+            publication=published.get(agent.id),
         )
         for agent in rows
     ]
+
+
+async def _published(db: DbSession, user: User, mine: list[Agent]) -> dict[str, dict]:
+    """Owner's bots by source agent."""
+    from app.models.publishing import Publication, PublicationStatus
+
+    if not mine:
+        return {}
+    rows = (await db.exec(select(Publication).where(
+        Publication.owner_id == user.id, col(Publication.agent_id).in_([a.id for a in mine]),
+        Publication.status != PublicationStatus.revoked.value))).all()
+    return {p.agent_id: {"id": p.id, "slug": p.slug, "status": p.status} for p in rows}
+
+
+async def _processes(db: DbSession, rows: list[Agent], *, viewer_id: str) -> dict[str, dict]:
+    """Each agent's 진행 과정, pipelines in one query."""
+    from app.routers.user_pipelines import _output, bundles_named
+    from app.services import bases
+
+    ids = {a.pipeline_id for a in rows if a.pipeline_id}
+    pipes = {
+        p.id: p
+        for p in (
+            await db.exec(select(UserPipeline).where(col(UserPipeline.id).in_(ids)))
+        ).all()
+    } if ids else {}
+    named = {a.id: compose.AgentInfo(id=a.id, name=a.name, output=_output(a)) for a in rows}
+    known = await bundles_named(db, [s for a in rows for s in (a.bundles or [])], viewer_id)
+    out = {}
+    for agent in rows:
+        row = pipes.get(agent.pipeline_id or "")
+        if row is not None and row.owner_id != agent.owner_id:
+            row = None
+        titles = None
+        if row is not None:
+            agents = {**named, compose.SELF: compose.AgentInfo(
+                id=compose.SELF, name=agent.name, output=_output(agent))}
+            titles = {s["id"]: compose.step_title(s, agents)
+                      for s in compose.normalize(row.stages)}
+        process = bases.process_of(agent, row, owner=agent.owner_id == viewer_id,
+                                   titles=titles, known=known)
+        if process.get("steps"):
+            process["steps"] = [{**s, "title": (titles or {}).get(s["id"], "")}
+                                for s in process["steps"]]
+        out[agent.id] = process
+    return out
 
 
 @router.post("/agents", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
 async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     await _validate_skill_ids(db, user, payload.skill_ids)
     await _validate_tool_names(db, user, payload.tools)
+    bindings = await _validate_agent_bindings(db, user, payload.model_dump())
+    checks = await _validated_checks(db, user, payload.model_dump())
     slug = await _claim_slug(db, user.id, payload.slug or payload.name)
-    agent = Agent(owner_id=user.id, slug=slug, **payload.model_dump(exclude={"slug"}))
+    agent = Agent(
+        owner_id=user.id,
+        slug=slug,
+        **{**payload.model_dump(exclude={"slug"}), **bindings, **checks},
+    )
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
     return AgentOut.of(
         agent,
         has_knowledge=await _agent_has_knowledge(db, user.id, agent.id),
+        process=(await _processes(db, [agent], viewer_id=user.id)).get(agent.id),
     )
 
 
@@ -2025,8 +2328,14 @@ async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     status_code=status.HTTP_201_CREATED,
 )
 async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
-    """Copies a shared agent and its shared skills into this account, without knowledge files."""
+    """Shared agent and shared skills copied in, no knowledge; takes original's 진행 과정."""
+    from app.routers import user_pipelines
+
     origin = await _shared(db, Agent, user, agent_id)
+    if origin.retired:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="agent_retired")
+    if (origin.catalog_key or "") in starter.draft_agents() and user.role is not UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     mine = list((await db.exec(select(Agent).where(Agent.owner_id == user.id))).all())
     if (existing := _copy_of(mine, origin)) is not None:
         return AgentOut.of(
@@ -2044,7 +2353,7 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         copied: list[str] = []
         for skill_id in wanted:
             source = by_id.get(skill_id)
-            # Unshared or deleted skills are dropped, not refused.
+            # unshared/deleted skills dropped, not refused
             if source is None or source.visibility is not Visibility.org:
                 continue
             if source.owner_id == user.id:
@@ -2053,16 +2362,16 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
             copy = await _install_skill(db, user, source)
             await db.flush()
             copied.append(copy.id)
-        # `[]` is a hard deny; an allow-list emptied by the copy becomes inherit (`None`).
+        # `[]` = hard deny; emptied allow-list → inherit (None)
         skill_ids = copied if copied or not wanted else None
 
-    # Note the missing knowledge on the copy's description, where it can be edited away.
+    # missing-knowledge note in editable description
     description = origin.description
     if await _agent_has_knowledge(db, origin.owner_id, origin.id):
         note = "지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 올려 주세요."
         description = f"{description} · {note}" if description else note
 
-    # A sealed original's copy carries no prompt; it reads the original's at run time.
+    # sealed: no prompt copied; original's read at run time
     sealed = origin.share_mode == "sealed"
     copy = Agent(
         owner_id=user.id,
@@ -2073,18 +2382,29 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         system_prompt="" if sealed else origin.system_prompt,
         sealed=sealed,
         guide=origin.guide,
+        contact=origin.contact,
         starters=list(origin.starters or []),
         tools=None if origin.tools is None else list(origin.tools),
         skill_ids=skill_ids,
         kinds=list(origin.kinds or []),
+        # same bindings; invisible design ignored at run time, not dropped
+        **{name: getattr(origin, name) for name in _AGENT_BINDINGS},
         temperature=origin.temperature,
         color=origin.color,
+        check_skills=list(origin.check_skills) if origin.check_skills is not None else None,
+        check_options=dict(origin.check_options) if origin.check_options else None,
+        gap_questions=[dict(q) for q in origin.gap_questions]
+        if origin.gap_questions is not None else None,
+        process_settings=dict(origin.process_settings)
+        if origin.process_settings is not None else None,
         enabled=True,
         visibility=Visibility.private,
         catalog_key=origin.catalog_key,
         origin_id=origin.id,
     )
     db.add(copy)
+    await db.flush()
+    await user_pipelines.clone_process(db, origin, copy, user)
     origin.installs += 1
     db.add(origin)
     await db.commit()
@@ -2092,6 +2412,7 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
     return AgentOut.of(
         copy,
         has_knowledge=await _agent_has_knowledge(db, user.id, copy.id),
+        process=(await _processes(db, [copy], viewer_id=user.id)).get(copy.id),
     )
 
 
@@ -2113,30 +2434,53 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
             changes["tools"],
             grandfathered=set(agent.tools or []),
         )
+    if "kinds" in changes or any(name in changes for name in _AGENT_BINDINGS):
+        final = {
+            name: changes[name] if name in changes else getattr(agent, name)
+            for name in ("kinds", *_AGENT_BINDINGS)
+        }
+        # kept design not re-checked
+        keeps_design = final["design_system_id"] == agent.design_system_id
+        changes.update(
+            await _validate_agent_bindings(db, user, final, check_design=not keeps_design,
+                                           keep_format=agent.doc_format)
+        )
+    changes.update(await _validated_checks(db, user, changes))
     wanted = changes.pop("slug", None)
     if agent.sealed:
-        # A sealed copy has no prompt of its own and cannot be unsealed.
+        # sealed copy: no own prompt, no unsealing
         changes.pop("system_prompt", None)
         changes.pop("share_mode", None)
+    shared_now = (changes.get("visibility") == Visibility.org
+                  and agent.visibility is not Visibility.org)
     for field, value in changes.items():
         setattr(agent, field, value)
-    # Explicit slug wins; blank re-derives it from the name.
+    # explicit slug wins; blank → from name
     agent.slug = await _claim_slug(db, user.id, wanted or agent.name, except_id=agent.id)
     agent.updated_at = utcnow()
     db.add(agent)
+    if shared_now:
+        # shared 직접 구성 needing review → admins
+        from app.routers import user_pipelines
+
+        await user_pipelines.submit_shared_process(db, user, agent)
     await db.commit()
     await db.refresh(agent)
     return AgentOut.of(
         agent,
         has_knowledge=await _agent_has_knowledge(db, user.id, agent.id),
+        process=(await _processes(db, [agent], viewer_id=user.id)).get(agent.id),
     )
 
 
 @router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_agent(agent_id: str, user: CurrentUser, db: DbSession):
+    from app.routers import user_pipelines
+
     agent = await _own(db, Agent, "owner_id", user, agent_id)
-    # The index collection must go too, or its documents stay searchable.
+    # drop index collection too (else still searchable)
     key = agent.index_key
+    await user_pipelines.drop_processes(db, [agent.id])
     await db.delete(agent)
     await db.commit()
     if key:
@@ -2145,22 +2489,25 @@ async def delete_agent(agent_id: str, user: CurrentUser, db: DbSession):
 
 @router.post("/agents/delete")
 async def delete_agents(payload: BulkDelete, user: CurrentUser, db: DbSession):
-    """Bulk delete; index collections are dropped after the commit."""
+    """Bulk delete; index collections dropped after commit."""
+    from app.routers import user_pipelines
+
     rows = await _owned_many(db, Agent, "owner_id", user, payload.ids)
     keys = [row.index_key for row in rows if row.index_key]
+    await user_pipelines.drop_processes(db, [row.id for row in rows])
     for row in rows:
         await db.delete(row)
     await db.commit()
     for key in keys:
         try:
             await index_client.forget_collection(collection=key)
-        except Exception:  # noqa: BLE001 — the rows are already gone
+        except Exception:  # noqa: BLE001 — rows already gone
             log.exception("index collection %s outlived its agent", key)
     return {"deleted": len(rows)}
 
 
 def _attachment(body: bytes, media: str, stem: str, suffix: str) -> Response:
-    # RFC 5987 so a Korean filename survives the header.
+    # RFC 5987 for Korean filenames
     filename = quote(f"{stem}.{suffix}")
     return Response(
         content=body,
@@ -2185,7 +2532,7 @@ _SOURCE_MEDIA = {
 
 
 def _export_code_source(artifact: Artifact) -> Response:
-    """Download stored source, with no execution, conversion or language inference."""
+    """Stored source download; no execution or conversion."""
     data = artifact.data or {}
     content = data.get("content")
     if not isinstance(content, str):
@@ -2202,7 +2549,7 @@ def _export_code_source(artifact: Artifact) -> Response:
 
 
 def _export_deck(artifact: Artifact, format: str) -> Response:
-    """A deck as `.pptx`, `.pdf` or Markdown."""
+    """Deck as `.pptx`, `.pdf` or Markdown."""
     slides = list((artifact.data or {}).get("slides") or [])
     tokens = (artifact.data or {}).get("design") or None
     title = artifact.title or "슬라이드"
@@ -2221,7 +2568,7 @@ def _export_deck(artifact: Artifact, format: str) -> Response:
             deck_export.to_pdf(title, slides, tokens=tokens), "application/pdf", stem, "pdf"
         )
     if format in ("pptx", "docx"):
-        # `docx` is the endpoint default; for a deck it means `.pptx`.
+        # `docx` default → `.pptx` for decks
         return _attachment(
             deck_export.to_pptx(
                 title,
@@ -2237,12 +2584,7 @@ def _export_deck(artifact: Artifact, format: str) -> Response:
 
 
 async def _export_page(artifact: Artifact, format: str) -> Response:
-    """An HTML artifact as a file.
-
-    `html` is the stored content; `pdf` is printed via `services/printing.py`,
-    falling back to the structural exporters; Office formats go through
-    `page_export`. Deck templates take deck formats, documents take report formats.
-    """
+    """HTML artifact export: `html` stored, `pdf` via printing, Office via `page_export`."""
     data = artifact.data or {}
     content = str(data.get("content") or "")
     page_settings = data.get("pageSettings") or None
@@ -2252,13 +2594,13 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
     if format == "html":
         return _attachment(content.encode(), "text/html; charset=utf-8", stem, "html")
 
-    template = design_templates.get(str(data.get("templateId") or ""))
+    template = design_templates.rendering(str(data.get("templateId") or ""))
     tokens = dict(data.get("design") or {})
-    # The template's look drives the Office exporters, not only the CSS.
+    # template look drives Office exporters too
     if template and template.look:
         tokens.setdefault("visualStyle", template.look)
     tokens = tokens or None
-    # A missing template is still exportable; the markup says which kind it is.
+    # no template: kind inferred from markup
     is_deck = template.kind == "deck" if template else 'class="slide' in content
 
     if is_deck:
@@ -2279,7 +2621,7 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
                 "pdf",
             )
         if format in ("pptx", "docx"):
-            # `docx` is the endpoint default; for a deck it means `.pptx`.
+            # `docx` default → `.pptx` for decks
             return _attachment(
                 deck_export.to_pptx(
                     title,
@@ -2331,22 +2673,47 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
 
 @router.get("/artifacts/{artifact_id}/export")
 async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, format: str = "docx"):
-    """An owned artifact as a file in the requested format."""
-    # Reports take `docx`, `pdf`, `hwpx` or `md`; decks take `pptx`, `pdf` or `md`;
-    # HTML artifacts take `html` plus the set matching their template; code takes `source`.
+    """Owned artifact export in requested format."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is ArtifactKind.code and format == "source":
         return _export_code_source(artifact)
     if artifact.kind not in (ArtifactKind.report, ArtifactKind.deck, ArtifactKind.html):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_exportable")
+    return await _export_document(artifact, format)
 
+
+def export_formats(artifact: Artifact) -> tuple[str, ...]:
+    """Export formats, most common first."""
+    data = artifact.data or {}
+    if artifact.kind is ArtifactKind.deck:
+        return ("pdf", "pptx", "md")
+    if artifact.kind is ArtifactKind.html:
+        template = design_templates.rendering(str(data.get("templateId") or ""))
+        content = str(data.get("content") or "")
+        is_deck = template.kind == "deck" if template else 'class="slide' in content
+        return ("pdf", "pptx", "md") if is_deck else ("pdf", "docx", "hwpx", "md")
+    if artifact.kind is ArtifactKind.report:
+        return ("pdf", "docx", "hwpx", "md")
+    return ()
+
+
+async def artifact_file(artifact: Artifact, format: str) -> tuple[bytes, str]:
+    """Export via the 파일 탭 path: (bytes, filename)."""
+    response = await _export_document(artifact, format)
+    disposition = response.headers.get("content-disposition", "")
+    name = unquote(disposition.split("''", 1)[-1]) if "''" in disposition else f"문서.{format}"
+    return bytes(response.body), name
+
+
+async def _export_document(artifact: Artifact, format: str) -> Response:
+    """Report, deck or HTML artifact as a file."""
     if artifact.kind is ArtifactKind.html:
         return await _export_page(artifact, format)
 
     if artifact.kind is ArtifactKind.deck:
         return _export_deck(artifact, format)
 
-    # Exporters read Markdown; HTML-edited sections are converted first.
+    # exporters read Markdown; HTML sections converted first
     data = artifact.data or {}
     sections = richtext.normalise(list(data.get("sections") or []))
     sections = report_export.with_references(
@@ -2356,12 +2723,12 @@ async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, fo
     )
     tokens = data.get("design") or None
     page_settings = data.get("pageSettings") or None
-    #: The head of a document by purpose (`doc_formats`): cover, field table, memo rows.
+    #: purpose-specific head (`doc_formats`): cover, field table, memo rows
     title_block = data.get("titleBlock") or None
     title = artifact.title or "보고서"
     stem = re.sub(r'[\\/:*?"<>|]+', "_", title)[:60] or "report"
 
-    chosen = design_templates.get(str(data.get("templateId") or ""))
+    chosen = design_templates.rendering(str(data.get("templateId") or ""))
     docx_template = chosen.docx_template if chosen else ""
 
     if format == "md":
@@ -2382,6 +2749,7 @@ async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, fo
             template=docx_template,
             page_settings=page_settings,
             title_block=title_block,
+            body_from_design=bool(chosen and chosen.body_face_from_design),
         )
         media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         suffix = "docx"
@@ -2397,46 +2765,8 @@ async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, fo
     return _attachment(body, media, stem, suffix)
 
 
-# ══ templates ══════════════════════════════════════════════════════════
-#
-# Built-in prompt templates ship in the image and are read-only; user-written
-# ones live in the `templates` table. Both share one wire shape.
-
-
-@router.get("/prompt-templates", response_model=list[PromptTemplateOut])
-async def list_prompt_templates(user: CurrentUser, surface: str | None = None):
-    """Built-in prompt templates, optionally for one surface."""
-    rows = prompt_templates.all_templates()
-    if surface:
-        rows = [t for t in rows if t.kind.value == surface]
-    return [PromptTemplateOut.of(t) for t in rows]
-
-
-@router.get("/templates", response_model=list[TemplateOut])
-async def list_templates(user: CurrentUser, db: DbSession):
-    """The caller's templates plus every shared one."""
-    rows = (
-        await db.exec(
-            select(Template)
-            .where(or_(Template.owner_id == user.id, col(Template.shared).is_(True)))
-            .order_by(col(Template.shared).desc(), col(Template.created_at).desc())
-        )
-    ).all()
-    ids = {t.file_id for t in rows if t.file_id}
-    found: dict[str, StoredFile] = {}
-    if ids:
-        files = (await db.exec(select(StoredFile).where(col(StoredFile.id).in_(ids)))).all()
-        found = {f.id: f for f in files}
-    return [TemplateOut.of(t, found.get(t.file_id or ""), owner_id=user.id) for t in rows]
-
-
-async def _form_file(db: DbSession, template: Template) -> StoredFile | None:
-    """The template's attached form, or `None`. Ownership was checked on write."""
-    return await db.get(StoredFile, template.file_id) if template.file_id else None
-
-
 async def _shelf_key(db: DbSession, agent: Agent) -> str:
-    """The agent's index collection key, minted on first use."""
+    """Agent collection key, minted on first use."""
     if not agent.index_key:
         agent.index_key = index_client.new_collection_key()
         db.add(agent)
@@ -2445,87 +2775,13 @@ async def _shelf_key(db: DbSession, agent: Agent) -> str:
     return agent.index_key
 
 
-#: Default gallery groups; a shared template defaulting to the private group is refiled.
-_OWN_GROUP = "내 템플릿"
-_SHARED_GROUP = "공용"
-
-
 def _may_share(user: User, requested: bool) -> None:
-    """403 when a non-administrator asks for `shared`."""
+    """403 on `shared` for non-admins."""
     if requested and user.role is not UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin_required")
 
 
-async def _own_file(db: DbSession, user: User, file_id: str | None) -> str | None:
-    """`file_id` if the caller owns that file; `None` stays `None`; 404 otherwise."""
-    if not file_id:
-        return None
-    stored = await db.get(StoredFile, file_id)
-    if stored is None or stored.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="file_not_found")
-    return stored.id
-
-
-@router.post("/templates", response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
-async def create_template(payload: TemplateIn, user: CurrentUser, db: DbSession):
-    data = payload.model_dump()
-    _may_share(user, bool(data.get("shared")))
-    data["file_id"] = await _own_file(db, user, data.get("file_id"))
-    data["render_template_id"] = _validated_starting_format(
-        str(data.get("render_template_id") or ""), str(data.get("kind") or "")
-    )
-    if data.get("shared") and data.get("group") == _OWN_GROUP:
-        data["group"] = _SHARED_GROUP
-    template = Template(owner_id=user.id, **data)
-    db.add(template)
-    await db.commit()
-    await db.refresh(template)
-    return TemplateOut.of(template, await _form_file(db, template), owner_id=user.id)
-
-
-async def _own_or_shared(db: DbSession, user: User, template_id: str) -> Template:
-    """A template the caller owns, or any shared one when the caller is an administrator."""
-    row = await db.get(Template, template_id)
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    if row.owner_id != user.id and not (row.shared and user.role is UserRole.admin):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    return row
-
-
-@router.patch("/templates/{template_id}", response_model=TemplateOut)
-async def patch_template(template_id: str, payload: TemplateIn, user: CurrentUser, db: DbSession):
-    template = await _own_or_shared(db, user, template_id)
-    fields = payload.model_dump(exclude_unset=True)
-    if "shared" in fields:
-        _may_share(user, bool(fields["shared"]))
-    if "file_id" in fields:
-        fields["file_id"] = await _own_file(db, user, fields["file_id"])
-    if "render_template_id" in fields:
-        # Validated against the kind being saved, which this patch may change.
-        fields["render_template_id"] = _validated_starting_format(
-            str(fields["render_template_id"] or ""),
-            str(fields.get("kind") or template.kind),
-        )
-    for field, value in fields.items():
-        setattr(template, field, value)
-    template.updated_at = utcnow()
-    db.add(template)
-    await db.commit()
-    await db.refresh(template)
-    return TemplateOut.of(template, await _form_file(db, template), owner_id=user.id)
-
-
-@router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_template(template_id: str, user: CurrentUser, db: DbSession):
-    template = await _own_or_shared(db, user, template_id)
-    await db.delete(template)
-    await db.commit()
-
-
-# ══ design systems ═════════════════════════════════════════════════════
-#
-# Same ownership shape as templates. A project points at one.
+# ══ design systems ══
 
 
 @router.get("/designs", response_model=list[DesignSystemOut])
@@ -2537,12 +2793,13 @@ async def list_designs(user: CurrentUser, db: DbSession):
             .order_by(col(DesignSystem.shared).desc(), col(DesignSystem.created_at))
         )
     ).all()
-    return [DesignSystemOut.of(d, owner_id=user.id) for d in rows]
+    owner = await starter.catalog_owner_id(db)
+    return [DesignSystemOut.of(d, owner_id=user.id, catalog_owner=owner) for d in rows]
 
 
 @router.post("/designs/extract", response_model=DesignExtractOut)
 async def extract_design(payload: DesignExtractIn, user: CurrentUser, db: DbSession):
-    """Proposes a design system read from a file or URL. Nothing is stored. Charged."""
+    """Design system proposal from file or URL; not stored. Charged."""
     if bool(payload.file_id) == bool(payload.url):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="file_or_url")
 
@@ -2599,7 +2856,7 @@ async def extract_design(payload: DesignExtractIn, user: CurrentUser, db: DbSess
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
-    except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
+    except Exception as exc:  # noqa: BLE001 — reason, not a 500
         log.warning("design extraction failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="extract_failed"
@@ -2621,7 +2878,8 @@ async def create_design(payload: DesignSystemIn, user: CurrentUser, db: DbSessio
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    return DesignSystemOut.of(row, owner_id=user.id)
+    return DesignSystemOut.of(row, owner_id=user.id,
+                              catalog_owner=await starter.catalog_owner_id(db))
 
 
 @router.patch("/designs/{design_id}", response_model=DesignSystemOut)
@@ -2640,15 +2898,19 @@ async def patch_design(design_id: str, payload: DesignSystemIn, user: CurrentUse
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    return DesignSystemOut.of(row, owner_id=user.id)
+    return DesignSystemOut.of(row, owner_id=user.id,
+                              catalog_owner=await starter.catalog_owner_id(db))
 
 
 @router.delete("/designs/{design_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_design(design_id: str, user: CurrentUser, db: DbSession):
-    """Deletes a design system; projects using it are detached in the same transaction."""
+    """Design system delete; users detached in one transaction."""
     row = await _own(db, DesignSystem, "owner_id", user, design_id)
     await db.exec(
         update(Project).where(col(Project.design_system_id) == row.id).values(design_system_id=None)
+    )
+    await db.exec(
+        update(Agent).where(col(Agent.design_system_id) == row.id).values(design_system_id=None)
     )
     await db.delete(row)
     await db.commit()
@@ -2656,7 +2918,7 @@ async def delete_design(design_id: str, user: CurrentUser, db: DbSession):
 
 @router.post("/designs/delete")
 async def delete_designs(payload: BulkDelete, user: CurrentUser, db: DbSession):
-    """Bulk delete; projects using any of them are detached."""
+    """Bulk delete; users detached."""
     rows = await _owned_many(db, DesignSystem, "owner_id", user, payload.ids)
     if not rows:
         return {"deleted": 0}
@@ -2664,29 +2926,39 @@ async def delete_designs(payload: BulkDelete, user: CurrentUser, db: DbSession):
     await db.exec(
         update(Project).where(col(Project.design_system_id).in_(ids)).values(design_system_id=None)
     )
+    await db.exec(
+        update(Agent).where(col(Agent.design_system_id).in_(ids)).values(design_system_id=None)
+    )
     await db.exec(delete(DesignSystem).where(col(DesignSystem.id).in_(ids)))
     await db.commit()
     return {"deleted": len(ids)}
 
 
-# ══ design templates ═══════════════════════════════════════════════════
-#
-# The rendering catalogue ships in the image and is read-only.
+# ══ design templates (shipped, read-only) ══
 
 
 @router.get("/design-templates", response_model=list[DesignTemplateOut])
-async def list_design_templates(user: CurrentUser, surface: str | None = None):
-    """Every rendering template, or those for one surface."""
-    rows = design_templates.all_templates()
+async def list_design_templates(user: CurrentUser, db: DbSession = None,
+                                surface: str | None = None):
+    """Choosable templates (optionally per surface): shipped, then own and shared (`user: true`)."""
+    from app.models.workspace import UserTemplate
+
+    own = (await db.exec(select(UserTemplate).where(
+        (UserTemplate.owner_id == user.id) | (UserTemplate.visibility == "org"))
+        .order_by(col(UserTemplate.updated_at).desc()))).all() \
+        if db is not None and user is not None else []
+    await user_templates.ensure(db, [user_templates.template_id(r) for r in own])
+    people = [t for r in own if (t := design_templates.get(user_templates.template_id(r)))]
+    rows = [*design_templates.offered(), *people]
     if surface:
         rows = [t for t in rows if t.surface.value == surface]
-    return [DesignTemplateOut.of(t) for t in rows]
+    return [DesignTemplateOut.of(t, user.id if user is not None else "") for t in rows]
 
 
 @router.get("/design-templates/usage", response_model=DesignTemplateUsageOut)
 async def design_template_usage(user: CurrentUser, db: DbSession):
-    """Sessions started per rendering template, for the caller and across the installation."""
-    # Aggregates only; no user is identifiable.
+    """Sessions per template: caller's and installation-wide."""
+    # aggregates only; no user identifiable
     counts: dict[str, dict[str, int]] = {"mine": {}, "popular": {}}
     for key, mine_only in (("mine", True), ("popular", False)):
         query = (
@@ -2701,20 +2973,21 @@ async def design_template_usage(user: CurrentUser, db: DbSession):
 
 
 @router.get("/design-templates/{template_id}/preview")
-async def design_template_preview(template_id: str):
-    """The template's seed rendered around its sample, for the gallery card's iframe."""
-    # Unauthenticated: an iframe `src` cannot carry a header, and all of this ships in the image.
-    template = design_templates.get(template_id)
+async def design_template_preview(template_id: str, slide: int | None = None):
+    """Seed + sample render for gallery iframe; `slide` (1-based) renders one slide."""
+    # unauthenticated (iframe src can't carry headers); shipped templates only
+    template = None if user_templates.is_user(template_id) else design_templates.get(template_id)
     if template is None or not template.sample or not template.seed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
         )
-    html = design_templates.render(
-        template,
-        title=template.name,
-        tokens=design_service.normalise_tokens(None),
-        body=template.sample,
-    )
+    tokens = design_service.normalise_tokens(None)
+    if slide is not None:
+        html = design_templates.render_slide(template, tokens=tokens, n=slide)
+        if html is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slide_not_found")
+    else:
+        html = design_templates.preview(template, tokens)
     return HTMLResponse(
         html,
         headers={"Cache-Control": "public, max-age=86400"},
@@ -2730,8 +3003,8 @@ async def design_template_style(
     muted: str | None = None,
     font: str | None = None,
 ):
-    """The template's stylesheet and section wrappers, for the document editor's shadow root."""
-    template = design_templates.get(template_id)
+    """Template stylesheet and wrappers for editor shadow root."""
+    template = design_templates.rendering(template_id)
     if template is None or not template.seed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
@@ -2755,7 +3028,7 @@ _FORM_MEDIA = {
 
 @router.get("/design-templates/{template_id}/form")
 async def download_design_template_form(template_id: str, user: CurrentUser):
-    """The template's blank Office form file."""
+    """Blank Office form file."""
     chosen = design_templates.get(template_id)
     if chosen is None or not chosen.form_file:
         raise HTTPException(
@@ -2798,7 +3071,7 @@ async def add_agent_file(
     db: DbSession,
     file: UploadFile = File(...),
 ):
-    """An uploaded document, extracted and shelved."""
+    """Uploaded document, extracted and shelved."""
     agent = await _own(db, Agent, "owner_id", user, agent_id)
     data = await file.read()
     if len(data) > settings.max_upload_mb * 1024 * 1024:
@@ -2811,23 +3084,69 @@ async def add_agent_file(
         agent_id=agent_id,
         name=file_service.safe_name(file.filename or "file"),
         size=len(data),
-        # The client's `Content-Type` is a claim; the bytes decide.
+        # Content-Type is a claim; bytes decide
         mime=file_service.detected_mime(file.filename or "file", file.content_type, data),
     )
     stored.storage_key = file_service.write_blob(user.id, stored.id, stored.name, data)
-    # Extraction failure is recorded, not raised.
+    # extraction failure recorded, not raised
     try:
         stored.text = await file_service.text_of(stored.name, stored.mime, data)
         stored.tokens = file_service.estimate_tokens(stored.text)
     except Exception as exc:  # noqa: BLE001
         log.info("extraction failed for %s: %s", stored.name, exc)
         stored.error = str(exc)
+    reading = await ocr_jobs.queue_if_scanned(stored, data)
 
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
+    if reading:
+        ocr_jobs.wake()
     await _index(db, agent, stored)
     return FileOut.of(stored)
+
+
+class KnowledgeFromFiles(BulkDelete):
+    """Own files (conversation uploads) to shelve as agent knowledge."""
+
+
+@router.post("/agents/{agent_id}/knowledge/from-files", response_model=list[FileOut],
+             status_code=status.HTTP_201_CREATED)
+async def add_agent_files_from(agent_id: str, payload: KnowledgeFromFiles, user: CurrentUser,
+                               db: DbSession):
+    """「에이전트로 저장」: own conversation files copied to agent shelf (independent copies)."""
+    agent = await _own(db, Agent, "owner_id", user, agent_id)
+    ids = list(dict.fromkeys(payload.ids))[:20]
+    rows = (await db.exec(select(StoredFile).where(
+        col(StoredFile.id).in_(ids), StoredFile.user_id == user.id))).all() if ids else []
+    made: list[StoredFile] = []
+    for source in rows:
+        if not source.storage_key:
+            continue
+        copy = StoredFile(user_id=user.id, agent_id=agent.id, name=source.name,
+                          size=source.size, mime=source.mime, text=source.text,
+                          tokens=source.tokens, error=source.error,
+                          # pages still being read: re-read for copy
+                          ocr_state="queued" if source.ocr_state in ocr_jobs.OPEN_STATES
+                          else source.ocr_state,
+                          ocr_total=source.ocr_total, ocr_done=0
+                          if source.ocr_state in ocr_jobs.OPEN_STATES else source.ocr_done,
+                          ocr_review=source.ocr_review)
+        try:
+            copy.storage_key = file_service.copy_blob(user.id, copy.id, copy.name,
+                                                      source.storage_key)
+        except OSError:
+            log.info("file %s not copied to an agent: its blob is gone", source.id)
+            continue
+        db.add(copy)
+        made.append(copy)
+    await db.commit()
+    if any(copy.ocr_state == "queued" for copy in made):
+        ocr_jobs.wake()
+    for copy in made:
+        await db.refresh(copy)
+        await _index(db, agent, copy)
+    return [FileOut.of(f) for f in made]
 
 
 @router.post(
@@ -2836,7 +3155,7 @@ async def add_agent_file(
     status_code=status.HTTP_201_CREATED,
 )
 async def add_agent_url(agent_id: str, payload: KnowledgeUrl, user: CurrentUser, db: DbSession):
-    """Reads a web page once and shelves the snapshot as agent knowledge."""
+    """Web page snapshot as agent knowledge."""
     agent = await _own(db, Agent, "owner_id", user, agent_id)
     url = payload.url.strip()
     if not url.startswith(("http://", "https://")):
@@ -2871,19 +3190,39 @@ async def add_agent_url(agent_id: str, payload: KnowledgeUrl, user: CurrentUser,
 
 
 async def _index(db: DbSession, agent: Agent, stored: StoredFile) -> bool:
-    """Indexes one agent document under the agent's collection."""
+    """One agent document indexed in its collection."""
     if not stored.text.strip() or not await index_client.available():
         return False
     return await _index_document(db, agent.owner_id, await _shelf_key(db, agent), stored)
 
 
+async def shelf_of(db: DbSession, stored: StoredFile) -> str | None:
+    """File's searching collection (agent, project or conversation), or None."""
+    if stored.agent_id:
+        agent = await db.get(Agent, stored.agent_id)
+        return await _shelf_key(db, agent) if agent is not None else None
+    if stored.project_id:
+        project = await db.get(Project, stored.project_id)
+        return await _project_shelf_key(db, project) if project is not None else None
+    if stored.session_id:
+        session = await db.get(ChatSession, stored.session_id)
+        if session is None or session.user_id != stored.user_id:
+            return None
+        return await _session_shelf_key(db, session)
+    return None
+
+
+async def reindex_file(db: DbSession, stored: StoredFile, collection: str) -> bool:
+    """Index entry replaced in `collection` after text change."""
+    if not stored.text.strip():
+        return False
+    return await _index_document(db, stored.user_id, collection, stored)
+
+
 async def _index_document(
     db: DbSession, owner_id: str, collection: str, stored: StoredFile
 ) -> bool:
-    """Sends one document to the retrieval index; stamps `indexed_at` on success.
-
-    Called after the row is committed; a failed embed leaves the row attached.
-    """
+    """One document to retrieval index; `indexed_at` on success. Post-commit."""
     if not stored.text.strip() or not await index_client.available():
         return False
     ok = await index_client.put_document(
@@ -2897,7 +3236,7 @@ async def _index_document(
         stored.indexed_at = utcnow()
         stored.index_collection = collection
         db.add(stored)
-        # Embedded chunk count goes to the usage ledger at zero credits.
+        # chunk count to ledger at zero credits
         if index_client.last_chunks:
             record_units(
                 db,
@@ -2913,7 +3252,7 @@ async def _index_document(
 
 
 def _page_name(url: str) -> str:
-    """A readable name for a page: host plus the last path segment."""
+    """Readable page name: host + last path segment."""
     stripped = re.sub(r"^https?://", "", url).rstrip("/")
     host, _, path = stripped.partition("/")
     tail = path.rsplit("/", 1)[-1] if path else ""
@@ -2924,7 +3263,7 @@ def _page_name(url: str) -> str:
 async def reindex_project_knowledge(
     project_id: str, user: CurrentUser, db: DbSession, force: bool = False
 ) -> dict[str, Any]:
-    """Indexes this project's unindexed documents; `force=true` re-sends all. Returns counts."""
+    """Index unindexed project docs (`force=true`: all); returns counts."""
     project = await _own(db, Project, "user_id", user, project_id)
     if not await index_client.available():
         raise HTTPException(
@@ -2949,7 +3288,7 @@ async def reindex_project_knowledge(
 async def reindex_agent_knowledge(
     agent_id: str, user: CurrentUser, db: DbSession, force: bool = False
 ) -> dict[str, Any]:
-    """Indexes this agent's unindexed documents; `force=true` re-sends all. Returns counts."""
+    """Index unindexed agent docs (`force=true`: all); returns counts."""
     agent = await _own(db, Agent, "owner_id", user, agent_id)
     if not await index_client.available():
         raise HTTPException(
@@ -2982,15 +3321,16 @@ async def delete_agent_knowledge(agent_id: str, file_id: str, user: CurrentUser,
         await index_client.forget_document(collection=agent.index_key, doc_id=file_id)
 
 
-# ══ message rating ═════════════════════════════════════════════════════
+# ══ message rating ══
 
 
 @router.patch("/messages/{message_id}/rating", response_model=MessageOut)
 async def rate_message(message_id: str, payload: MessageRatingIn, user: CurrentUser, db: DbSession):
-    """Sets or clears the rating on one assistant message. Ownership is checked via the session."""
+    """Set/clear one assistant message rating; ownership via session."""
     message = await db.get(Message, message_id)
     session = await db.get(ChatSession, message.session_id) if message else None
-    if message is None or session is None or session.user_id != user.id:
+    if (message is None or session is None or session.user_id != user.id
+            or session.publication_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     if message.role is not Role.assistant:
         raise HTTPException(status_code=422, detail="not_an_answer")

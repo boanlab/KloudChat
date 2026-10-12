@@ -1,0 +1,41 @@
+kind = "document"
+# The document format it fixes (`doc_formats`): head fields, numbering, the format's
+# pipeline, and its genre rule in `genre.md`.
+doc_format = "event_plan"
+cover_page = false
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = []
+# Run by the server after writing (app/skills/README.md).
+check_skills = ["grounding-check"]
+
+name = "추진 계획(안)"
+description = "행사·사업·교육 추진 계획 · 개요 표, 산출 근거가 붙은 예산 표, 일정 표"
+category = "업무"
+fills = ["행사·사업 이름", "일시·장소·대상", "예산과 일정"]
+example_prompt = "아래 행사의 추진 계획(안)을 써 줘. 추진 배경 및 목적, 추진 개요(일시·장소·대상·인원·주관), 세부 추진 내용, 소요 예산(항목·산출 근거·금액), 추진 일정, 기대 효과 순서로 개조식으로 쓰고, 자료에 없는 것은 [일시]·[금액]처럼 대괄호로 둬.\n\n행사 내용: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Implementation plan (draft)"
+description_en = "Plan for an event, project or training · overview table, budget with workings, schedule"
+category_en = "Work"
+fills_en = ["Event or project", "When, where, who", "Budget and schedule"]
+example_prompt_en = "Write the implementation plan (draft) for this event: background and purpose, overview (date, place, audience, headcount, organiser), details, budget (item, workings, amount), schedule and expected effects, in Korean bullet style. Leave anything the material does not give as a bracket blank such as [일시].\n\nThe event: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'
+
+# 진행 과정 설정 (`services/process_settings.py`): what writing in this 서식 does besides
+# writing. A person's agent or template sets the same keys in its form.
+[process]
+prepass = ["date-calc"]
+checks = ["lead-dates", "material-blanks"]
+# A plan is read from its tables: no picture unless asked.
+draws = "when-asked"

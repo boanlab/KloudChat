@@ -1,0 +1,11 @@
+<!-- 갤러리 미리보기: 이 서식으로 다 쓴 문서 한 벌의 예시다(가상의 기관·인물).
+     머리(header.tb)는 `docFormats.ts` titleBlockHtml 이 그리는 그대로이고, 절 번호·개조식
+     기호·빈칸 표시는 미리보기가 제품과 같은 규칙으로 붙인다(`format_css.preview`).
+     절 이름은 이 서식의 기본 목차, 표의 합계·부가세·한글 금액·요일은
+     `tests/test_template_previews.py` 가 확인한다. -->
+<header class="tb tb-header"><p class="tb-label">경력기술서</p><h1 class="tb-title">경력기술서</h1><table class="tb-fields"><tbody><tr><th>이름</th><td>홍길동</td><th>연락처</th><td><span class="tb-blank doc-placeholder">[연락처]</span></td></tr><tr><th>이메일</th><td><span class="tb-blank doc-placeholder">[이메일]</span></td><th>지원 회사</th><td>(주)누리페이</td></tr><tr><th>지원 직무</th><td>백엔드 개발(결제)</td><th>작성일</th><td>2026. 10. 8.</td></tr></tbody></table></header>
+<section><h2>경력 요약</h2><ul><li>총 경력 9년 4개월 — 결제·정산·주문 백엔드</li><li>결제 시스템 전환을 리드해 결제 실패율을 1.8%에서 0.6%로 낮춤</li><li>Kafka 기반 비동기 처리와 대용량 정산 배치 설계·운영</li></ul></section>
+<section><h2>경력 사항</h2><table><thead><tr><th>회사</th><th>기간</th><th>소속·직급</th><th>담당 업무</th></tr></thead><tbody><tr><td>가람소프트</td><td>2021.03–현재</td><td>플랫폼팀 · 책임</td><td>결제·정산 API 설계와 운영</td></tr><tr><td>한울데이터</td><td>2017.07–2021.02</td><td>서비스개발팀 · 선임</td><td>주문 시스템 백엔드 개발</td></tr></tbody></table><small>가람소프트 5년 8개월(2021.03–2026.10), 한울데이터 3년 8개월. 겹치는 기간 없음.</small></section>
+<section><h2>주요 프로젝트</h2><h3>가람소프트 — 결제 시스템 전환</h3><p>2023.01–2023.09 · 백엔드 리드(4명)</p><ul><li>단일 결제 서버를 결제·승인·정산 세 서비스로 나누고 PG 연동을 어댑터로 묶음</li><li>성과: 결제 실패율 1.8% → 0.6%, 신규 PG 연동 기간 6주 → 2주</li></ul><h3>가람소프트 — 정산 배치 재작성</h3><p>2024.03–2024.08 · 설계·개발</p><ul><li>일 정산 배치를 파티션 단위 병렬 처리로 바꿈</li><li>성과: 처리 시간 3시간 10분 → 40분</li></ul><h3>한울데이터 — 주문 조회 API 분리</h3><p>2019.04–2019.12 · 개발</p><ul><li>주문 조회를 읽기 전용 복제본과 캐시로 분리해 피크 시간 응답 지연을 줄임</li></ul></section>
+<section><h2>보유 기술</h2><ul><li>언어·프레임워크: Java, Kotlin, Spring Boot</li><li>데이터: PostgreSQL, Redis, Kafka</li><li>운영: Kubernetes, Prometheus, Grafana</li></ul></section>
+<section><h2>자격·교육</h2><table><thead><tr><th>이름</th><th>기관</th><th>취득 연월</th></tr></thead><tbody><tr><td>정보처리기사</td><td>한국산업인력공단</td><td>2017.05</td></tr><tr><td>AWS Certified Solutions Architect – Associate</td><td>Amazon Web Services</td><td>2022.11</td></tr></tbody></table></section>

@@ -1,0 +1,20 @@
+key = "finish"
+order = 3
+name = "마무리하기"
+description = "상투적인 표현을 걷어내고, 다 쓰면 파일로 내보냅니다."
+
+[[items]]
+id = "plain"
+kind = "check"
+ref = "generic-language-killer"
+label = "상투적인 표현 걷어내기"
+default = true
+
+[[items]]
+id = "export"
+kind = "export"
+label = "다 쓰면 파일로 내보내기"
+default = true
+# A 공문-family document (간이기안문·공문·추진 계획·결과 보고·개조식) goes out as HWPX, the
+# file 기관 결재 systems take; anything else as DOCX. A format the person picks wins.
+settings = { formats = ["docx"], by_format = { internal_draft = "hwpx", official = "hwpx", event_plan = "hwpx", result_report = "hwpx", gaejo = "hwpx" } }

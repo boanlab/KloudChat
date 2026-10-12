@@ -9,7 +9,7 @@ from test_privacy import _external_model, _NoWriteDb, _patch_guard_dependencies,
 from app.models.chat import ChatSession, Message, RoutingMode, SessionKind
 from app.models.user import AuditEvent, User
 from app.routers import sessions
-from app.schemas.chat import CompareRequest, SendMessage
+from app.schemas.chat import SendMessage
 from app.services import agent, current_evidence
 from app.services.context import search_plan
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult
@@ -97,7 +97,6 @@ def _capture_normal_route(monkeypatch):
         return "synthetic-origin", "synthetic-noncredential"
 
     monkeypatch.setattr(sessions, "_run_turn", run)
-    monkeypatch.setattr(sessions, "_run_comparison", run)
     monkeypatch.setattr(sessions, "has_headroom", lambda *_args: True)
     monkeypatch.setattr(sessions.litellm_service, "ensure_key", key)
     monkeypatch.setattr(sessions.litellm_service, "credentials_for", credentials)
@@ -161,27 +160,6 @@ async def test_unavailable_verification_keeps_best_effort_route_and_permissions(
     assert [row.content for row in db.added if isinstance(row, Message)] == [question]
     if unavailable == "strict":
         assert captured["model"]["strictLocal"] is True
-
-
-@pytest.mark.asyncio
-async def test_comparison_reaches_its_models_for_current_facts(monkeypatch):
-    user = User(email="synthetic@example.test", password_hash="hash", name="Synthetic")
-    session = ChatSession(user_id=user.id)
-    models = [_external_model("synthetic/one"), _external_model("synthetic/two")]
-    await _patch_guard_dependencies(monkeypatch, session=session, models=models, blocks=[])
-    captured = _capture_normal_route(monkeypatch)
-    db = _RouteDb()
-    response = await sessions.compare_models(
-        session.id,
-        CompareRequest(content=QUESTION, models=[m["id"] for m in models]),
-        _request(),
-        user,
-        db,
-    )
-    assert isinstance(response, StreamingResponse)
-    await _events(response)
-    assert [model["id"] for model in captured["models"]] == [model["id"] for model in models]
-    assert [row.content for row in db.added if isinstance(row, Message)] == [QUESTION]
 
 
 @pytest.mark.asyncio

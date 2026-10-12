@@ -1,4 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { shellRead } from './shell-mocks'
+import { openTool } from './composer-tools'
+import { viewport } from './project'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -210,9 +213,11 @@ async function fixture(page: Page, info: TestInfo, options: {
       ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') })
     }
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: {}, total: 0 } })
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && (path.endsWith('/jobs') || ['/projects', '/skills', '/memory', '/tools',
-      '/templates', '/connectors', '/connectors/catalog', '/designs', '/design-templates',
-      '/prompt-templates', '/shares', '/artifacts', '/agents'].includes(path))) {
+      '/connectors', '/connectors/catalog', '/designs', '/design-templates',
+      '/shares', '/artifacts', '/agents'].includes(path))) {
       return route.fulfill({ json: [] })
     }
     unexpected.push(`${method} ${path}`)
@@ -238,10 +243,25 @@ async function beginEdit(page: Page, index = 1) {
 }
 
 async function openSidebarControl(page: Page, name: string | RegExp) {
-  const button = page.getByRole('button', { name, exact: typeof name === 'string' })
-  const bounds = await button.boundingBox()
+  // Conversations in the sidebar are links; the account menu is a button.
+  const exact = typeof name === 'string'
+  const button = page.getByRole('link', { name, exact }).or(page.getByRole('button', { name, exact })).first()
+  await expect(button).toBeAttached()
+  // Phone drawer slides; decide only once its position has settled.
+  const settled = async () => {
+    let last = ''
+    for (let i = 0; i < 40; i++) {
+      const box = JSON.stringify(await button.boundingBox())
+      if (box === last) return JSON.parse(box) as { x: number; width: number } | null
+      last = box
+      await page.waitForTimeout(50)
+    }
+    return JSON.parse(last) as { x: number; width: number } | null
+  }
+  const bounds = await settled()
   if (!bounds || bounds.x < 0 || bounds.x + bounds.width > (page.viewportSize()?.width ?? 0)) {
     await page.getByRole('button', { name: '사이드바 토글', exact: true }).click()
+    await settled()
   }
   await button.click()
 }
@@ -251,11 +271,11 @@ async function settleUi(page: Page) {
 }
 
 for (const index of [1, 2]) {
-  test(`${index === 1 ? 'middle' : 'last'} edit forks a prefix and survives reload without changing the original`, async ({ page }, info) => {
+  test(`${index === 1 ? 'middle' : 'last'} edit forks a prefix and survives reload without changing the original`, { tag: '@phone' }, async ({ page }, info) => {
     const state = await fixture(page, info)
     await beginEdit(page, index)
     await page.getByLabel('프롬프트 입력').fill(edited)
-    await page.screenshot({ path: info.outputPath(`editing-${info.project.name}.png`), animations: 'disabled' })
+    await page.screenshot({ path: info.outputPath(`editing-${viewport(info)}.png`), animations: 'disabled' })
     await page.getByRole('button', { name: '수정 후 다시 보내기', exact: true }).click()
     await expect(page).toHaveURL(new RegExp(`/s/${forkId}$`))
     await expect(page.getByText(freshAnswer, { exact: true })).toBeVisible()
@@ -273,7 +293,7 @@ for (const index of [1, 2]) {
     await expect(page.getByText(freshAnswer, { exact: true })).toBeVisible()
     await expect(page.getByText(prompts[index], { exact: true })).toHaveCount(0)
     if (index === 1) await expect(page.getByText(prompts[2], { exact: true })).toHaveCount(0)
-    await page.screenshot({ path: info.outputPath(`edited-fork-${info.project.name}.png`), animations: 'disabled' })
+    await page.screenshot({ path: info.outputPath(`edited-fork-${viewport(info)}.png`), animations: 'disabled' })
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
     await page.goto(`/s/${sourceId}`)
     for (const original of [...prompts, ...answers]) await expect(page.getByText(original, { exact: true })).toBeVisible()
@@ -302,6 +322,8 @@ for (const action of ['cancel', 'Escape'] as const) {
 test('blank edits and composing Enter do not fork or send', async ({ page }, info) => {
   const state = await fixture(page, info)
   await beginEdit(page)
+  // Said before sending: the edit goes on in a new conversation and this one is kept.
+  await expect(page.getByText('메시지 수정 · 보내면 새 대화로 이어지고, 지금 대화는 그대로 남습니다')).toBeVisible()
   const input = page.getByLabel('프롬프트 입력')
   const submit = page.getByRole('button', { name: '수정 후 다시 보내기', exact: true })
   await input.fill('   \n  ')
@@ -326,9 +348,7 @@ test('cancel restores draft files and selected skills changed during editing', a
     name: 'additional.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic draft attachment.'),
   })
   await expect(page.getByRole('button', { name: 'additional.txt 제거', exact: true })).toBeVisible()
-  const moreTools = page.getByRole('button', { name: '도구 더보기', exact: true })
-  if (await moreTools.isVisible()) await moreTools.click()
-  await page.getByRole('button', { name: '스킬', exact: true }).click()
+  await openTool(page, '스킬')
   await page.getByRole('menuitemcheckbox', { name: /초안 검토/ }).click()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: '초안 검토 제거', exact: true })).toBeVisible()
@@ -556,7 +576,7 @@ test('a newly sent message becomes editable after stored IDs reconcile without r
   state.assertClean()
 })
 
-test('moving to another session does not carry the edit target or edited draft', async ({ page }, info) => {
+test('moving to another session does not carry the edit target or edited draft', { tag: '@phone' }, async ({ page }, info) => {
   const state = await fixture(page, info)
   await beginEdit(page)
   await page.getByLabel('프롬프트 입력').fill(edited)
@@ -618,8 +638,8 @@ test('a fork started by account A cannot populate account B after login', async 
     await settleUi(page)
     await expect(page).toHaveURL(new RegExp(`/s/${otherId}$`))
     await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
-    await expect(page.getByRole('button', { name: '원본 대화', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '수정된 대화', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '원본 대화', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '수정된 대화', exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '수정 후 다시 보내기', exact: true })).toHaveCount(0)
     for (const text of [...prompts, edited, freshAnswer]) await expect(page.getByText(text, { exact: true })).toHaveCount(0)
     expect(state.sendCalls()).toHaveLength(0)
@@ -649,9 +669,9 @@ test('a post-send session list from account A cannot replace account B workspace
     await settleUi(page)
     await expect(page).toHaveURL(new RegExp(`/s/${otherId}$`))
     await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
-    await expect(page.getByRole('button', { name: '원본 대화', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '수정된 대화', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '다른 대화', exact: true })).toHaveCount(1)
+    await expect(page.getByRole('link', { name: '원본 대화', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '수정된 대화', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '다른 대화', exact: true })).toHaveCount(1)
     for (const text of [...prompts, edited, freshAnswer]) await expect(page.getByText(text, { exact: true })).toHaveCount(0)
     expect(state.sendCalls()).toHaveLength(1)
     state.assertPreserved()

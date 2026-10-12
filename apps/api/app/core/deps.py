@@ -29,12 +29,7 @@ def _bearer(request: Request) -> str | None:
 
 
 async def current_identity(request: Request, db: DbSession) -> User:
-    """Resolves the access token to a live user row, blocking only suspension.
-
-    Status comes from the row, not the claims, so suspension is immediate.
-    Pending accounts pass: the waiting screen polls with them; `current_user`
-    gates everything else.
-    """
+    """Live user for the access token; blocks suspension only (row status, not claims)."""
     token = _bearer(request)
     if not token:
         raise UNAUTHORIZED
@@ -48,7 +43,7 @@ async def current_identity(request: Request, db: DbSession) -> User:
     if user.status is UserStatus.suspended:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account_suspended")
 
-    # A due credit cycle is refilled on the account's first request after it.
+    # due credit cycle refilled on first request
     refill_if_due(db, user)
 
     user.last_active_at = utcnow()
@@ -61,12 +56,7 @@ CurrentIdentity = Annotated[User, Depends(current_identity)]
 
 
 async def current_viewer(request: Request, db: DbSession) -> User:
-    """Like `current_user`, but also accepts the access token as `?t=`.
-
-    Only for the route serving raw bytes into `<img>`/`<audio>`/`<video>`, which
-    cannot send a header. A query token lands in the proxy access log, so this
-    is not the default dependency.
-    """
+    """`current_user` plus `?t=` token, for media routes only (query token hits proxy logs)."""
     token = _bearer(request) or request.query_params.get("t")
     if not token:
         raise UNAUTHORIZED
@@ -87,7 +77,7 @@ CurrentViewer = Annotated[User, Depends(current_viewer)]
 
 
 async def current_user(user: CurrentIdentity) -> User:
-    """An account cleared to actually do things."""
+    """Approved, non-pending account."""
     if user.status is UserStatus.pending:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account_pending")
     return user
@@ -111,7 +101,7 @@ async def user_count(db: AsyncSession) -> int:
 
 
 def client_ip(request: Request) -> str:
-    """First hop of `X-Forwarded-For`; KloudChat sits behind a reverse proxy."""
+    """First `X-Forwarded-For` hop (behind reverse proxy)."""
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()

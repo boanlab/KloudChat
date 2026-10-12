@@ -1,7 +1,4 @@
-"""Admin routes: signup approval, allowances, suspension, system settings.
-
-The LiteLLM user is provisioned at approval, not signup.
-"""
+"""Admin routes: signup approval, allowances, suspension, settings; LiteLLM user at approval."""
 
 from __future__ import annotations
 
@@ -57,11 +54,12 @@ from app.schemas.admin import (
 )
 from app.schemas.auth import UserOut
 from app.schemas.workspace import ApiKeyOut
+from app.services import audit as audit_service
+from app.services import connector_defaults, ocr, settings_store, starter, tools_gateway
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import mail as mail_service
 from app.services import models as model_service
-from app.services import settings_store, starter
 from app.services.credits import grant_initial_allowance, set_allowance
 from app.services.litellm import provision_user
 
@@ -69,7 +67,6 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-#: (feature key, UI label, settings_store key).
 _TOOL_FEATURES: list[tuple[str, str, str]] = [
     ("search", "웹 검색", settings_store.TOOLS_SEARCH_URL),
     ("fetch", "문서 가져오기", settings_store.TOOLS_FETCH_URL),
@@ -77,9 +74,10 @@ _TOOL_FEATURES: list[tuple[str, str, str]] = [
     ("research", "심층 조사", settings_store.TOOLS_RESEARCH_URL),
     ("stt", "음성 전사", settings_store.TOOLS_STT_URL),
     ("index", "자료 검색", settings_store.TOOLS_INDEX_URL),
+    ("ocr", "글자 읽기(OCR)", settings_store.TOOLS_OCR_URL),
 ]
 
-#: Per-feature probe path. Each service exposes its health check differently.
+#: per-feature health probe path
 _TOOL_PROBES: dict[str, str] = {
     "search": "/healthz",
     "fetch": "/health",
@@ -87,6 +85,7 @@ _TOOL_PROBES: dict[str, str] = {
     "research": "/mcp",
     "stt": "/health",
     "index": "/health",
+    "ocr": "/health",
 }
 
 
@@ -97,25 +96,238 @@ async def _load(db: DbSession, user_id: str) -> User:
     return user
 
 
-def _audit(db, request: Request, admin: User, action: str, target: str, detail: str = "") -> None:
+def _audit(
+    db,
+    request: Request,
+    admin: User,
+    action: str,
+    target: str,
+    detail: str = "",
+    *,
+    changes: dict[str, list] | None = None,
+    metadata: dict | None = None,
+) -> None:
+    """One admin audit event; `changes` = `{field: [old, new]}`."""
+    extra = dict(metadata or {})
+    if changes:
+        extra["changes"] = changes
     db.add(
         AuditEvent(
             actor_id=admin.id,
             action=action,
             target=target,
             detail=detail,
+            event_metadata=extra or None,
             ip=client_ip(request),
             user_agent=request.headers.get("User-Agent", "")[:400],
         )
     )
 
 
-# ── system settings ────────────────────────────────────────────────────
+#: settings section per audited field (audit target)
+_SETTING_SECTION: dict[str, str] = {
+    "baseUrl": "proxy",
+    "masterKey": "proxy",
+    "brand_name": "branding",
+    "contact_email": "branding",
+    "enabled_kinds": "features",
+    "backend_base_url": "tools",
+    "tools_search_url": "tools",
+    "tools_fetch_url": "tools",
+    "tools_exec_url": "tools",
+    "tools_research_url": "tools",
+    "tools_stt_url": "tools",
+    "tools_index_url": "tools",
+    "tools_ocr_url": "tools",
+    "ocr_enabled": "ocr",
+    "ocr_mode": "ocr",
+    "ocr_vision_model": "ocr",
+    "ocr_max_pages": "ocr",
+    "model_chat": "models",
+    "model_report": "models",
+    "model_slides": "models",
+    "model_image": "models",
+    "model_audio": "models",
+    "model_video": "models",
+    "model_title": "models",
+    "model_code": "models",
+    "model_code_fallback": "models",
+    "thinking_self_hosted": "models",
+    "thinking_external": "models",
+    "default_monthly_credits": "signup",
+    "smtp_host": "mail",
+    "smtp_port": "mail",
+    "smtp_security": "mail",
+    "smtp_username": "mail",
+    "smtp_password": "mail",
+    "smtp_from": "mail",
+    "app_base_url": "mail",
+    "signup_mode": "signup",
+    "signup_domains": "signup",
+    "signup_verify_email": "signup",
+}
+
+
+async def _ocr_settings(values: dict[str, str]) -> dict:
+    """OCR section: stored, in force, allowed page models."""
+    in_force = await ocr.config()
+    catalogue = await model_service.list_models()
+    return {
+        "enabled": (values.get(settings_store.OCR_ENABLED) or "1") != "0",
+        "mode": values.get(settings_store.OCR_MODE) or "both",
+        "visionModel": values.get(settings_store.OCR_VISION_MODEL) or "",
+        "maxPages": in_force.max_pages,
+        # narrowed to reachable readers; null if none
+        "modeInForce": in_force.mode,
+        "visionModelInForce": in_force.vision_model,
+        "engineConfigured": bool(in_force.engine_url),
+        "visionChoices": [
+            {"id": model["id"], "label": model.get("label") or model["id"]}
+            for model in ocr.vision_choices(catalogue)
+        ],
+    }
+
+
+async def _check_ocr(payload: SystemSettingsIn) -> None:
+    """OCR guard: pages only to strict-local vision models."""
+    if payload.ocr_enabled is not None and payload.ocr_enabled.strip() not in ("", "0", "1"):
+        raise HTTPException(status_code=422, detail="ocr_enabled_invalid")
+    if payload.ocr_mode is not None and payload.ocr_mode.strip() not in ("", *ocr.MODES):
+        raise HTTPException(status_code=422, detail="ocr_mode_invalid")
+    if payload.ocr_max_pages is not None and payload.ocr_max_pages.strip():
+        raw = payload.ocr_max_pages.strip()
+        if not raw.isdigit() or not 1 <= int(raw) <= ocr.MAX_PAGES_CEILING:
+            raise HTTPException(status_code=422, detail="ocr_max_pages_invalid")
+    if payload.ocr_vision_model is not None and payload.ocr_vision_model.strip():
+        allowed = {
+            model["id"]
+            for model in ocr.vision_choices(await model_service.list_models_for_egress())
+        }
+        if payload.ocr_vision_model.strip() not in allowed:
+            raise HTTPException(status_code=422, detail="ocr_vision_model_not_strict_local")
+
+
+#: (stored key, choice list, "" allowed) per model-role field
+_MODEL_ROLE_FIELDS: tuple[tuple[str, str, str, bool], ...] = (
+    ("model_chat", settings_store.MODEL_CHAT, "chat", False),
+    ("model_report", settings_store.MODEL_REPORT, "report", True),
+    ("model_slides", settings_store.MODEL_SLIDES, "slides", True),
+    ("model_image", settings_store.MODEL_IMAGE, "image", True),
+    ("model_audio", settings_store.MODEL_AUDIO, "audio", True),
+    ("model_video", settings_store.MODEL_VIDEO, "video", True),
+    ("model_title", settings_store.MODEL_TITLE, "helper", True),
+    ("model_code", settings_store.MODEL_CODE, "helper", True),
+    ("model_code_fallback", settings_store.MODEL_CODE_FALLBACK, "helper", True),
+)
+
+#: default monthly credit cap (≈ $10,000)
+_MAX_DEFAULT_CREDITS = 1_000_000_000
+
+
+def _model_choices(catalogue: dict) -> dict[str, list[dict]]:
+    """Allowed models per role; conversation-reading side work stays on instance-run models."""
+    models = catalogue.get("models") or []
+    self_hosted = {
+        m["id"] for m in models
+        if m.get("dataBoundary") == "self_hosted" and "chat" in (m.get("kinds") or [])
+    }
+
+    def runs_here(model: dict) -> bool:
+        if model["id"] in self_hosted:
+            return True
+        name = model["id"].removeprefix("local/")
+        return model["id"].startswith("local/") and f"strict-local/{name}" in self_hosted
+
+    def row(model: dict) -> dict:
+        return {
+            "id": model["id"],
+            "label": model.get("label") or model["id"],
+            "strictLocal": bool(model.get("strictLocal")),
+        }
+
+    def of_kind(kind: str, modality: str | None = None) -> list[dict]:
+        return [
+            row(m)
+            for m in models
+            if kind in (m.get("kinds") or [])
+            and (modality is None or m.get("modality") == modality)
+        ]
+
+    return {
+        "chat": of_kind("chat"),
+        "report": of_kind("report"),
+        "slides": of_kind("slides"),
+        "image": of_kind("image"),
+        "audio": of_kind("av", "audio"),
+        "video": of_kind("av", "video"),
+        "helper": [row(m) for m in models if "chat" in (m.get("kinds") or []) and runs_here(m)],
+    }
+
+
+async def _model_role_settings() -> dict:
+    """모델 section: in-force choice and options per job."""
+    roles = await settings_store.model_roles()
+    return {
+        "chat": roles.chat,
+        "report": roles.report,
+        "slides": roles.slides,
+        "image": roles.image,
+        "audio": roles.audio,
+        "video": roles.video,
+        "title": roles.title,
+        "code": roles.code,
+        "codeFallback": roles.code_fallback,
+        "selfHostedThinking": roles.self_hosted_thinking,
+        "externalThinking": roles.external_thinking,
+        "defaultMonthlyCredits": await settings_store.default_monthly_credits(),
+        "choices": _model_choices(await model_service.list_models()),
+    }
+
+
+async def _check_model_roles(payload: SystemSettingsIn) -> None:
+    """Model-role guard; in-force value always accepted (no fail on retired models)."""
+    wanted = [
+        (field, key, role, optional, getattr(payload, field).strip())
+        for field, key, role, optional in _MODEL_ROLE_FIELDS
+        if getattr(payload, field) is not None
+    ]
+    if wanted:
+        stored = await settings_store.all_values(force=True)
+        in_force = settings_store.model_roles_from(stored)
+        choices = _model_choices(await model_service.list_models())
+        current = {
+            settings_store.MODEL_CHAT: in_force.chat,
+            settings_store.MODEL_REPORT: in_force.report,
+            settings_store.MODEL_SLIDES: in_force.slides,
+            settings_store.MODEL_IMAGE: in_force.image,
+            settings_store.MODEL_AUDIO: in_force.audio,
+            settings_store.MODEL_VIDEO: in_force.video,
+            settings_store.MODEL_TITLE: in_force.title,
+            settings_store.MODEL_CODE: in_force.code,
+            settings_store.MODEL_CODE_FALLBACK: in_force.code_fallback,
+        }
+        for field, key, role, optional, value in wanted:
+            if not value:
+                if not optional:
+                    raise HTTPException(status_code=422, detail=f"{field}_required")
+                continue
+            if value == current[key]:
+                continue
+            if value not in {model["id"] for model in choices[role]}:
+                raise HTTPException(status_code=422, detail=f"{field}_invalid")
+    for field in ("thinking_self_hosted", "thinking_external"):
+        value = getattr(payload, field)
+        if value is not None and value.strip() not in ("", "0", "1"):
+            raise HTTPException(status_code=422, detail=f"{field}_invalid")
+    if payload.default_monthly_credits is not None and payload.default_monthly_credits.strip():
+        raw = payload.default_monthly_credits.strip()
+        if not raw.isdigit() or int(raw) > _MAX_DEFAULT_CREDITS:
+            raise HTTPException(status_code=422, detail="default_monthly_credits_invalid")
 
 
 @router.get("/settings")
 async def get_settings(admin: AdminUser, db: DbSession):
-    """Current system settings with the source of each value; never the master key itself."""
+    """Settings with value sources; master key never returned."""
     values = await settings_store.all_values(force=True)
     smtp = await settings_store.smtp_config()
     signup = await settings_store.signup_policy()
@@ -160,7 +372,7 @@ async def get_settings(admin: AdminUser, db: DbSession):
             "modeSource": signup.mode_source,
             "domains": signup.domains,
             "verifyEmail": signup.verify_email,
-            # False when verification is requested but no mail server is set.
+            # False if verification requested but no mail server
             "verificationActive": signup.verification,
         },
         "enabledKinds": await settings_store.enabled_kinds(),
@@ -182,11 +394,13 @@ async def get_settings(admin: AdminUser, db: DbSession):
                 for feature, label, setting_key in _TOOL_FEATURES
             ],
         },
+        "ocr": await _ocr_settings(values),
+        "modelRoles": await _model_role_settings(),
         "credits": {
             "perUsd": settings.credits_per_usd,
             "budgetHeadroom": settings.litellm_budget_headroom,
         },
-        # Served by the proxy but without a price; withheld from users.
+        # served but unpriced: withheld from users
         "unpricedModels": [
             {"id": model_id, "provider": provider}
             for model_id, provider in sorted(model_service.unpriced().items())
@@ -198,18 +412,24 @@ async def get_settings(admin: AdminUser, db: DbSession):
 async def put_settings(
     payload: SystemSettingsIn, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Writes the supplied fields; omitted keeps the stored value, "" clears it."""
-    changed: list[str] = []
+    """Supplied fields written; omitted kept, "" clears."""
+    await _check_ocr(payload)
+    await _check_model_roles(payload)
+    before_stored = await settings_store.stored(db)
+    before: dict[str, str] = {}
+    after: dict[str, str] = {}
     if payload.base_url is not None:
         await settings_store.put(
             db, settings_store.LITELLM_BASE_URL, payload.base_url.strip(), admin.id
         )
-        changed.append("baseUrl")
+        before["baseUrl"] = before_stored.get(settings_store.LITELLM_BASE_URL, "")
+        after["baseUrl"] = payload.base_url.strip()
     if payload.master_key is not None:
         await settings_store.put(
             db, settings_store.LITELLM_MASTER_KEY, payload.master_key.strip(), admin.id
         )
-        changed.append("masterKey")
+        before["masterKey"] = before_stored.get(settings_store.LITELLM_MASTER_KEY, "")
+        after["masterKey"] = payload.master_key.strip()
 
     for field, key in (
         ("brand_name", settings_store.BRAND_NAME),
@@ -221,6 +441,15 @@ async def put_settings(
         ("tools_research_url", settings_store.TOOLS_RESEARCH_URL),
         ("tools_stt_url", settings_store.TOOLS_STT_URL),
         ("tools_index_url", settings_store.TOOLS_INDEX_URL),
+        ("tools_ocr_url", settings_store.TOOLS_OCR_URL),
+        ("ocr_enabled", settings_store.OCR_ENABLED),
+        ("ocr_mode", settings_store.OCR_MODE),
+        ("ocr_vision_model", settings_store.OCR_VISION_MODEL),
+        ("ocr_max_pages", settings_store.OCR_MAX_PAGES),
+        *((field, key) for field, key, _role, _optional in _MODEL_ROLE_FIELDS),
+        ("thinking_self_hosted", settings_store.THINKING_SELF_HOSTED),
+        ("thinking_external", settings_store.THINKING_EXTERNAL),
+        ("default_monthly_credits", settings_store.CREDITS_DEFAULT_MONTHLY),
         ("smtp_host", settings_store.SMTP_HOST),
         ("smtp_port", settings_store.SMTP_PORT),
         ("smtp_security", settings_store.SMTP_SECURITY),
@@ -236,9 +465,23 @@ async def put_settings(
         value = getattr(payload, field)
         if value is not None:
             await settings_store.put(db, key, value.strip(), admin.id)
-            changed.append(field)
+            before[field] = before_stored.get(key, "")
+            after[field] = value.strip()
 
-    _audit(db, request, admin, "settings.update", "litellm", ",".join(changed))
+    # moved fields only; screens save whole sections
+    changes = audit_service.diff(before, after)
+    if changes:
+        sections = sorted({_SETTING_SECTION.get(f, "other") for f in changes})
+        _audit(
+            db,
+            request,
+            admin,
+            "settings.update",
+            "시스템 설정",
+            ",".join(changes),
+            changes=changes,
+            metadata={"sections": sections},
+        )
     await db.commit()
 
     settings_store.invalidate()
@@ -248,13 +491,13 @@ async def put_settings(
 
 @router.post("/settings/test")
 async def test_settings(admin: AdminUser):
-    """Probes the proxy with the settings currently in effect."""
+    """Proxy probe with settings in effect."""
     if not await litellm_service.health(quick=True):
         return {"ok": False, "detail": "연결하지 못했습니다. 주소와 마스터 키를 확인하세요."}
     try:
         entries = await litellm_service.model_info()
     except litellm_service.LiteLLMError as exc:
-        # Logged, not returned: the message carries the upstream URL.
+        # logged, not returned: message carries upstream URL
         log.warning("model listing failed during settings test: %s", exc)
         return {
             "ok": False,
@@ -265,8 +508,8 @@ async def test_settings(admin: AdminUser):
 
 @router.post("/settings/test-tool/{feature}")
 async def test_tool(feature: str, admin: AdminUser):
-    """Probes one tool backend."""
-    # Any status below 500 counts as reachable: an MCP endpoint answers GET with 405.
+    """Single tool backend probe."""
+    # <500 = reachable (MCP GET → 405), except gateway 401 (tools key)
     if feature not in _TOOL_PROBES:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_feature")
 
@@ -277,11 +520,18 @@ async def test_tool(feature: str, admin: AdminUser):
 
     url = base.rstrip("/") + _TOOL_PROBES[feature]
     try:
-        async with httpx.AsyncClient(timeout=settings.litellm_probe_timeout_sec) as client:
+        async with tools_gateway.client(timeout=settings.litellm_probe_timeout_sec) as client:
             response = await client.get(url)
     except httpx.HTTPError:
         return {"ok": False, "detail": "연결하지 못했습니다. 주소를 확인하세요."}
 
+    if response.status_code == 401 and await tools_gateway.is_tools_url(url):
+        detail = (
+            "게이트웨이가 도구 키를 거부했습니다. 양쪽 TOOLS_GATEWAY_KEY가 같은지 확인하세요."
+            if settings.tools_gateway_key
+            else "게이트웨이가 도구 키를 요구합니다. API의 TOOLS_GATEWAY_KEY를 설정하세요."
+        )
+        return {"ok": False, "detail": detail}
     if response.status_code < 500:
         return {"ok": True, "detail": f"연결됨 (http {response.status_code})"}
     if response.status_code in (502, 503):
@@ -291,8 +541,8 @@ async def test_tool(feature: str, admin: AdminUser):
 
 @router.post("/settings/smtp-test")
 async def test_smtp(payload: SmtpTestRequest, admin: AdminUser):
-    """Sends one real message with the stored SMTP settings; defaults to the requesting admin."""
-    # A missing service address is reported after the send, not used to refuse it.
+    """Real test mail via stored SMTP; default recipient = requesting admin."""
+    # missing service address reported after send, not a refusal
     config = await settings_store.smtp_config()
     missing = [
         label
@@ -326,7 +576,6 @@ async def test_smtp(payload: SmtpTestRequest, admin: AdminUser):
 
 @router.get("/users", response_model=list[UserOut])
 async def list_users(admin: AdminUser, db: DbSession):
-    # Pending first.
     users = (await db.exec(select(User).order_by(User.created_at.desc()))).all()
     rank = {UserStatus.pending: 0, UserStatus.active: 1, UserStatus.suspended: 2}
     users.sort(key=lambda u: rank.get(u.status, 3))
@@ -340,21 +589,34 @@ async def approve(
     user = await _load(db, user_id)
     if user.status is UserStatus.active:
         return UserOut.of(user)
+    old_status, old_credits = user.status.value, user.monthly_credits
 
     allowance = (
         payload.monthly_credits
         if payload.monthly_credits is not None
-        else (user.monthly_credits or settings.default_monthly_credits)
+        else (user.monthly_credits or await settings_store.default_monthly_credits())
     )
     user.status = UserStatus.active
-    # Approval counts as verification.
+    # approval counts as verification
     user.email_verified_at = user.email_verified_at or utcnow()
     grant_initial_allowance(db, user, allowance)
     await provision_user(user)
     await starter.seed_designs(db, user.id)
+    await connector_defaults.provide(db, user)
     db.add(user)
 
-    _audit(db, request, admin, "user.approve", user.email, f"credits={allowance}")
+    _audit(
+        db,
+        request,
+        admin,
+        "user.approve",
+        user.email,
+        f"credits={allowance}",
+        changes=audit_service.diff(
+            {"status": old_status, "monthly_credits": old_credits},
+            {"status": user.status.value, "monthly_credits": allowance},
+        ),
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -366,11 +628,12 @@ async def suspend(user_id: str, request: Request, admin: AdminUser, db: DbSessio
     if user.id == admin.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot_suspend_self")
 
+    old_status = user.status.value
     user.status = UserStatus.suspended
     await litellm_service.set_key_blocked(user, True)
     db.add(user)
 
-    # Access tokens stay valid until expiry; refresh must stop now.
+    # access tokens live until expiry; refresh stops now
     tokens = (
         await db.exec(
             select(RefreshToken).where(
@@ -384,7 +647,15 @@ async def suspend(user_id: str, request: Request, admin: AdminUser, db: DbSessio
         token.revoked_reason = RevokeReason.suspended
         db.add(token)
 
-    _audit(db, request, admin, "user.suspend", user.email, f"sessions_revoked={len(tokens)}")
+    _audit(
+        db,
+        request,
+        admin,
+        "user.suspend",
+        user.email,
+        f"sessions_revoked={len(tokens)}",
+        changes=audit_service.diff({"status": old_status}, {"status": user.status.value}),
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -392,16 +663,18 @@ async def suspend(user_id: str, request: Request, admin: AdminUser, db: DbSessio
 
 @router.post("/users/{user_id}/reject", response_model=UserOut)
 async def reject(user_id: str, request: Request, admin: AdminUser, db: DbSession):
-    """Turns down a pending signup. Lands in `suspended`, keeping the email taken."""
+    """Pending signup rejection → `suspended` (email stays taken)."""
     user = await _load(db, user_id)
     if user.status is not UserStatus.pending:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_pending")
 
     user.status = UserStatus.suspended
-    # A key exists only if signup ran in `open` mode.
+    # key exists only after `open`-mode signup
     await litellm_service.revoke_key(user)
     db.add(user)
-    _audit(db, request, admin, "user.reject", user.email)
+    _audit(
+        db, request, admin, "user.reject", user.email, changes={"status": ["pending", "suspended"]}
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -409,7 +682,7 @@ async def reject(user_id: str, request: Request, admin: AdminUser, db: DbSession
 
 @router.post("/users/{user_id}/reinstate", response_model=UserOut)
 async def reinstate(user_id: str, request: Request, admin: AdminUser, db: DbSession):
-    """Undo of suspend. Lands in `active`, not `pending`."""
+    """Suspend undo → `active`."""
     user = await _load(db, user_id)
     if user.status is not UserStatus.suspended:
         return UserOut.of(user)
@@ -417,10 +690,18 @@ async def reinstate(user_id: str, request: Request, admin: AdminUser, db: DbSess
     user.status = UserStatus.active
     await litellm_service.set_key_blocked(user, False)
     if user.cycle_resets_at is None:
-        grant_initial_allowance(db, user, user.monthly_credits or settings.default_monthly_credits)
+        allowance = user.monthly_credits or await settings_store.default_monthly_credits()
+        grant_initial_allowance(db, user, allowance)
     await litellm_service.sync_budget(user)
     db.add(user)
-    _audit(db, request, admin, "user.reinstate", user.email)
+    _audit(
+        db,
+        request,
+        admin,
+        "user.reinstate",
+        user.email,
+        changes={"status": ["suspended", "active"]},
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -435,9 +716,18 @@ async def set_role(
     if user.id == admin.id and payload.role is not UserRole.admin:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot_demote_self")
 
+    old_role = user.role.value
     user.role = payload.role
     db.add(user)
-    _audit(db, request, admin, "user.role", user.email, f"role={payload.role.value}")
+    _audit(
+        db,
+        request,
+        admin,
+        "user.role",
+        user.email,
+        f"role={payload.role.value}",
+        changes=audit_service.diff({"role": old_role}, {"role": payload.role.value}),
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -447,9 +737,10 @@ async def set_role(
 async def update_user(
     user_id: str, payload: UpdateUserRequest, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Corrects a name or address. An address already in use is refused."""
+    """Name/address fix; in-use address refused."""
     user = await _load(db, user_id)
     changes: list[str] = []
+    before = {"name": user.name, "email": user.email}
     if payload.name is not None and payload.name.strip() != user.name:
         user.name = payload.name.strip()
         changes.append("name")
@@ -463,7 +754,15 @@ async def update_user(
             changes.append("email")
     if changes:
         db.add(user)
-        _audit(db, request, admin, "user.update", user.email, ",".join(changes))
+        _audit(
+            db,
+            request,
+            admin,
+            "user.update",
+            user.email,
+            ",".join(changes),
+            changes=audit_service.diff(before, {"name": user.name, "email": user.email}),
+        )
         await db.commit()
         await db.refresh(user)
     return UserOut.of(user)
@@ -473,7 +772,7 @@ async def update_user(
 async def reset_password(
     user_id: str, payload: ResetPasswordRequest, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Sets a new password and ends every sign-in the account holds."""
+    """New password; all sign-ins ended."""
     user = await _load(db, user_id)
     user.password_hash = hash_password(payload.password)
     db.add(user)
@@ -486,7 +785,7 @@ async def reset_password(
 
 @router.get("/users/{user_id}/keys", response_model=AdminKeysOut)
 async def list_user_keys(user_id: str, admin: AdminUser, db: DbSession):
-    """Every key the account holds: KloudChat's own (preview only) and the live named keys."""
+    """All account keys: KloudChat's (preview only) and live named keys."""
     user = await _load(db, user_id)
     rows = (
         await db.exec(
@@ -509,7 +808,7 @@ async def list_user_keys(user_id: str, admin: AdminUser, db: DbSession):
 async def revoke_user_key(
     user_id: str, key_id: str, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Revokes a key the person issued: deleted on the proxy, kept as a revoked row."""
+    """User-issued key revoke: proxy delete, revoked row kept."""
     user = await _load(db, user_id)
     row = await db.get(ApiKey, key_id)
     if row is None or row.user_id != user.id or row.revoked_at is not None:
@@ -525,7 +824,7 @@ async def revoke_user_key(
 async def replace_litellm_key(
     user_id: str, payload: ReplaceKeyRequest, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Binds a key the proxy already knows as the account's KloudChat key, revoking the old one."""
+    """Bind a proxy-known key as the account's key; old one revoked."""
     user = await _load(db, user_id)
     if not await litellm_service.health():
         raise HTTPException(
@@ -551,7 +850,7 @@ async def replace_litellm_key(
 
 @router.get("/models")
 async def catalogue(admin: AdminUser):
-    """The whole model catalogue, for restricting accounts: not narrowed to the caller."""
+    """Full catalogue, not caller-narrowed."""
     rows = (await model_service.list_models())["models"]
     return [
         {"id": m["id"], "label": m.get("label") or m["id"], "kinds": list(m.get("kinds") or [])}
@@ -561,15 +860,15 @@ async def catalogue(admin: AdminUser):
 
 @router.post("/users/{user_id}/litellm-key", response_model=UserOut)
 async def rotate_litellm_key(user_id: str, request: Request, admin: AdminUser, db: DbSession):
-    """Issues a new virtual key and revokes the old one first."""
+    """New virtual key; old revoked first."""
     user = await _load(db, user_id)
-    # Full timeout, not the quick probe used by the settings screen.
+    # full timeout, not the quick probe
     if not await litellm_service.health():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="litellm_unavailable"
         )
 
-    # Revoke first so the old key is never left live on the proxy.
+    # revoke first: old key never left live
     await litellm_service.revoke_key(user)
     await litellm_service.ensure_user(user)
     await litellm_service.issue_key(user)
@@ -577,7 +876,7 @@ async def rotate_litellm_key(user_id: str, request: Request, admin: AdminUser, d
     if not user.litellm_key:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="key_issuance_failed")
     if user.status is UserStatus.suspended:
-        # A rotation must not re-enable a suspended account.
+        # rotation must not unblock a suspended account
         await litellm_service.set_key_blocked(user, True)
 
     db.add(user)
@@ -595,7 +894,7 @@ async def delete_user(
     db: DbSession,
     purge_files: bool = Query(True, alias="purgeFiles"),
 ):
-    """Removes an account and everything it owns; `purgeFiles=false` leaves files to the sweep."""
+    """Account and owned data removal; `purgeFiles=false` leaves files to the sweep."""
     user = await _load(db, user_id)
     if user.id == admin.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot_delete_self")
@@ -613,7 +912,7 @@ async def delete_user(
     await litellm_service.revoke_key(user)
     email = user.email
 
-    # Messages and jobs reference sessions; delete them first.
+    # messages/jobs reference sessions: delete first
     owned_sessions = (
         await db.exec(select(ChatSession).where(ChatSession.user_id == user.id))
     ).all()
@@ -664,7 +963,7 @@ async def delete_user(
     await db.delete(user)
     _audit(db, request, admin, "user.delete", email if not purge_files else f"{email} (파일 포함)")
     await db.commit()
-    # Only after the commit: rows must never outlive their bytes.
+    # after commit only: rows never outlive bytes
     if purge_files:
         removed = file_service.remove_user_files(user.id)
         if removed:
@@ -675,9 +974,10 @@ async def delete_user(
 async def set_allowed_models(
     user_id: str, payload: AllowedModelsRequest, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Restricts an account to a list of models; empty means the whole catalogue."""
-    # Pushed to every key the account holds so the proxy enforces it too.
+    """Model allowlist; empty = whole catalogue."""
+    # pushed to every key for proxy enforcement
     user = await _load(db, user_id)
+    old_models = list(user.allowed_models or [])
     user.allowed_models = list(payload.models)
     db.add(user)
 
@@ -692,7 +992,17 @@ async def set_allowed_models(
     await litellm_service.sync_allowed_models(user, secrets)
 
     detail = f"{len(payload.models)}개" if payload.models else "전체"
-    _audit(db, request, admin, "user.models", user.email, detail)
+    _audit(
+        db,
+        request,
+        admin,
+        "user.models",
+        user.email,
+        detail,
+        changes=audit_service.diff(
+            {"allowed_models": old_models}, {"allowed_models": list(payload.models)}
+        ),
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -703,10 +1013,21 @@ async def set_credits(
     user_id: str, payload: SetCreditsRequest, request: Request, admin: AdminUser, db: DbSession
 ):
     user = await _load(db, user_id)
+    old_allowance = user.monthly_credits
     set_allowance(db, user, payload.monthly_credits)
-    # The proxy budget mirrors the allowance.
+    # proxy budget mirrors allowance
     await litellm_service.sync_budget(user)
-    _audit(db, request, admin, "credits.set", user.email, f"monthly={payload.monthly_credits}")
+    _audit(
+        db,
+        request,
+        admin,
+        "credits.set",
+        user.email,
+        f"monthly={payload.monthly_credits}",
+        changes=audit_service.diff(
+            {"monthly_credits": old_allowance}, {"monthly_credits": payload.monthly_credits}
+        ),
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)

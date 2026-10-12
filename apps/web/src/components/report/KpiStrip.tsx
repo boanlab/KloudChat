@@ -1,18 +1,18 @@
 import { parse } from '@/components/report/StepList'
 
-// `kpi` fence: `32% | 오탐 감소` per line. The exporters draw it as a table.
+// `kpi` fence: `32% | 오탐 감소` per line; exporters draw a table.
 const isFigure = (text: string) => /\d/.test(text)
 
 export function KpiStrip({ source }: { source: string }) {
   const pairs = parse(source, 4)
   if (!pairs.length) return null
 
-  // Either order is accepted; the side with digits is the figure.
+  // Either order; the side with digits is the figure.
   const rows = pairs.map(([left, right]) =>
     isFigure(right) && !isFigure(left) ? ([right, left] as const) : ([left, right] as const),
   )
 
-  // With no figures at all, show the pairs as a definition list.
+  // No figures: definition list.
   if (!rows.some(([value]) => isFigure(value))) {
     return (
       <dl className="my-5 grid gap-x-6 gap-y-2 border-y border-line py-4 sm:grid-cols-2">

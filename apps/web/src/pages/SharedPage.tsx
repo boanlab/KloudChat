@@ -1,20 +1,22 @@
-import { Bot, Boxes, FileText, Layers, LayoutGrid, Lock } from 'lucide-react'
+import { Bot, Boxes, FileText, Layers, LayoutGrid, Lock, LogIn } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Markdown } from '@/components/chat/Markdown'
 import { SectionBody } from '@/components/report/SectionBody'
 import { cn } from '@/lib/utils'
 import { TitleBlock } from '@/components/report/TitleBlock'
-import { TITLE_BLOCK_CSS, cleanTitleBlock, counterStyle, numberingCss, sectionNumbers } from '@/components/report/docFormats'
+import { cleanTitleBlock, closingIndex, counterStyle, fmtClass, formatCss, sectionNumbers, shapedSection } from '@/components/report/docFormats'
 import { fontFamilyFor } from '@/components/report/docType'
-import { Badge } from '@/components/ui'
-import { ApiError, sharesApi, type SharedContext, type SharedPayload } from '@/lib/api'
+import { Badge, Button } from '@/components/ui'
+import { useStore } from '@/store/useStore'
+import { ApiError, sharesApi, type MessageRow, type SharedContext, type SharedPayload } from '@/lib/api'
+import { SharedResultCard } from '@/components/chat/ResultCard'
 import { currentLang, translate } from '@/lib/i18n'
 import { useT } from '@/lib/useT'
 import { SlideView } from '@/components/slides/DeckPanel'
 import type { DesignTokens, Slide } from '@/types'
 
-/** Agent, project and format the shared conversation started with; wording matches `StartingFrom` in SessionPage. */
+/** Starting agent, project, format; wording matches SessionPage's `StartingFrom`. */
 function StartedWithPanel({ context }: { context: SharedContext }) {
   const t = useT()
   const english = currentLang() === 'en'
@@ -35,7 +37,7 @@ function StartedWithPanel({ context }: { context: SharedContext }) {
       key: 'format',
       icon: <LayoutGrid size={13} />,
       name: (english && context.format.nameEn) || context.format.name,
-      label: t('결과물이 이 서식으로 나옵니다'),
+      label: t('아티팩트가 이 템플릿으로 나옵니다'),
     },
   ].filter(Boolean) as { key: string; icon: React.ReactNode; name: string; label: string }[]
 
@@ -63,18 +65,24 @@ function StartedWithPanel({ context }: { context: SharedContext }) {
   )
 }
 
-/** Read-only view of a shared artifact or conversation; outside the app shell, the URL is the whole permission. */
-export function SharedPage() {
+/** Outside the app shell; the URL is the whole permission. */
+export function SharedPage({ onSignIn }: { onSignIn?: () => void } = {}) {
   const t = useT()
   const { token = '' } = useParams()
   const [payload, setPayload] = useState<SharedPayload | null>(null)
   const [error, setError] = useState<'gone' | 'signin' | 'failed' | null>(null)
+  // Member-only link: asked again once sign-in (or refresh cookie) lands.
+  const authenticated = useStore((s) => s.authenticated)
 
   useEffect(() => {
     let live = true
     sharesApi
       .read(token)
-      .then((p) => live && setPayload(p))
+      .then((p) => {
+        if (!live) return
+        setError(null)
+        setPayload(p)
+      })
       .catch((err) => {
         if (!live) return
         if (err instanceof ApiError && err.status === 401) setError('signin')
@@ -84,7 +92,7 @@ export function SharedPage() {
     return () => {
       live = false
     }
-  }, [token])
+  }, [token, authenticated])
 
   if (error) {
     return (
@@ -95,10 +103,16 @@ export function SharedPage() {
         </h1>
         <p className="mt-1.5 text-base text-muted">
           {error === 'signin'
-            ? t('로그인해야 열 수 있는 자료입니다. 로그인한 뒤 다시 열어 주세요.')
+            ? t('로그인해야 열 수 있는 자료입니다. 로그인하면 이 화면에서 바로 열립니다.')
             : /* Expired, revoked and mistyped are not distinguished: that would confirm a link existed. */
               t('링크가 철회되었거나 주소가 올바르지 않습니다.')}
         </p>
+        {error === 'signin' && onSignIn && (
+          <Button className="mx-auto mt-4" onClick={onSignIn}>
+            <LogIn size={14} />
+            {t('로그인')}
+          </Button>
+        )}
       </div>
     )
   }
@@ -111,25 +125,39 @@ export function SharedPage() {
     )
   }
 
-  const conversation =
-    payload.kind === 'artifact'
-      ? ''
-      : payload.messages
-          .map((m) => {
-            const from =
-              m.role === 'user' && m.startedFrom
-                ? `\n\n_${t('시작점 {name}').replace('{name}', m.startedFrom.title)}_`
-                : ''
-            return `**${m.role === 'user' ? t('질문') : t('답변')}**${from}\n\n${m.content}`
-          })
-          .join('\n\n---\n\n')
+  const turn = (m: MessageRow) => {
+    const from =
+      m.role === 'user' && m.startedFrom
+        ? `\n\n_${t('시작점 {name}').replace('{name}', m.startedFrom.title)}_`
+        : ''
+    return `**${m.role === 'user' ? t('질문') : t('답변')}**${from}\n\n${m.content}`
+  }
+  const shared = payload.kind === 'artifact' ? null : payload.artifact
+  // Each turn alone, so the producing answer carries its card.
+  const conversation = payload.kind === 'artifact' ? null : (
+    <div className="space-y-6">
+      {payload.messages.map((m, index) => (
+        <div key={m.id} className={cn(index > 0 && 'border-t border-line pt-6')}>
+          <Markdown>{turn(m)}</Markdown>
+          {m.role === 'assistant' && shared && (m.artifactIds?.length ?? 0) > 0 && (
+            <SharedResultCard
+              kind={shared.artifactKind}
+              title={shared.title}
+              data={shared.data}
+              onOpen={() => document.getElementById('shared-result')?.scrollIntoView({ behavior: 'smooth' })}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  )
 
   const startedWith =
     payload.kind === 'artifact'
       ? null
       : (payload.startedWith ?? null)
 
-  // Result first, then the conversation that produced it.
+  // Result first, then its conversation.
   const artifact = payload.kind === 'artifact' ? payload : payload.artifact
 
   return (
@@ -137,17 +165,21 @@ export function SharedPage() {
       <header className="mb-6 border-b border-line pb-5">
         <div className="mb-2 flex items-center gap-2">
           {payload.kind === 'artifact' ? <FileText size={15} /> : <Layers size={15} />}
-          <Badge>{payload.kind === 'artifact' ? t('공유된 결과물') : t('공유된 대화')}</Badge>
+          <Badge>{payload.kind === 'artifact' ? t('공유된 아티팩트') : t('공유된 대화')}</Badge>
           <Badge>{t('읽기 전용')}</Badge>
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">{payload.title}</h1>
         {startedWith && <StartedWithPanel context={startedWith} />}
       </header>
-      {artifact ? <SharedArtifact payload={artifact} title={payload.title} /> : <Markdown>{conversation}</Markdown>}
+      {artifact ? (
+        <div id="shared-result" className="scroll-mt-6">
+          <SharedArtifact payload={artifact} title={payload.title} />
+        </div>
+      ) : conversation}
       {payload.kind !== 'artifact' && payload.artifact && (
         <section className="mt-10 border-t border-line pt-8">
           <h2 className="mb-5 text-lg font-semibold">{t('대화 기록')}</h2>
-          <Markdown>{conversation}</Markdown>
+          {conversation}
         </section>
       )}
       <footer className="mt-10 border-t border-line pt-4 text-xs text-faint">
@@ -172,7 +204,7 @@ function SharedSlide({ slide, design, index, total, title }: { slide: Slide; des
   return <div ref={ref} className="aspect-video w-full overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10"><SlideView slide={slide} scale={scale} writing={false} deckTitle={title} brand={design ?? undefined} index={index} total={total} /></div>
 }
 
-function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: string }; title: string }) {
+export function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: string }; title: string }) {
   const data = (payload.data ?? {}) as {
     sections?: { heading: string; content: string; level?: 1 | 2; format?: 'markdown' | 'html' }[]
     titleBlock?: unknown
@@ -189,9 +221,10 @@ function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: 
     const accent = data.design?.accent ?? '#5b5bd6'
     const block = cleanTitleBlock(data.titleBlock)
     const numbers = sectionNumbers(data.sections, block?.numbering ?? 'none')
+    const closingAt = closingIndex(block, data.sections.length)
     return (
-      <article className={cn('overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10', block && 'fmt')}>
-        {block && <style>{`${TITLE_BLOCK_CSS}\n${numberingCss(block.numbering)}`}</style>}
+      <article className={cn('overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10', fmtClass(block))}>
+        {block && <style>{formatCss(block)}</style>}
         <div className={visual === 'poster' ? 'px-8 py-16 text-white' : visual === 'minimal' ? 'px-8 py-12' : 'border-t-8 px-8 py-12'} style={visual === 'poster' ? { background: `linear-gradient(145deg,${accent},color-mix(in srgb,${accent} 48%,#111827))` } : visual === 'minimal' ? { background: `color-mix(in srgb,${accent} 7%,#fff)` } : { borderColor: accent }}>
           {block
             ? <TitleBlock block={block} title={artifactTitle} />
@@ -201,7 +234,7 @@ function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: 
           {data.sections.map((section, index) => (
             <section key={index} style={numbers[index].label ? counterStyle(numbers[index]) : undefined}>
               <h3 className={visual === 'poster' ? 'mb-4 text-2xl font-bold' : visual === 'minimal' ? 'mb-3 text-sm font-semibold tracking-widest text-muted' : 'mb-4 border-b pb-2 text-xl font-semibold'} style={visual === 'poster' ? { color: accent } : undefined}>{numbers[index].label && `${numbers[index].label} `}{section.heading}</h3>
-              <SectionBody section={section} className={block ? 'tb-counted' : undefined} />
+              <SectionBody section={shapedSection(section, block, index === closingAt)} className={block ? 'tb-counted' : undefined} />
             </section>
           ))}
         </div>
@@ -209,5 +242,5 @@ function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: 
     )
   }
   if (data.content) return <Markdown>{`\`\`\`\n${data.content}\n\`\`\``}</Markdown>
-  return <p className="text-muted">{translate(currentLang(), '이 종류의 결과물은 아직 공유 화면에서 보여 줄 수 없습니다.')}</p>
+  return <p className="text-muted">{translate(currentLang(), '이 종류의 아티팩트는 아직 공유 화면에서 보여 줄 수 없습니다.')}</p>
 }

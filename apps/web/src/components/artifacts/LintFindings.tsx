@@ -7,10 +7,7 @@ import { useStore } from '@/store/useStore'
 import type { Artifact, Critique, LintFinding } from '@/types'
 import { useT } from '@/lib/useT'
 
-/**
- * Groups findings by `where` so each part is rewritten once with all its findings.
- * Findings with no location land under `''`.
- */
+/** Findings by `where` (none → `''`), so each part is rewritten once. */
 export function byWhere(findings: LintFinding[]): Map<string, LintFinding[]> {
   const groups = new Map<string, LintFinding[]>()
   for (const finding of findings) {
@@ -22,7 +19,7 @@ export function byWhere(findings: LintFinding[]): Map<string, LintFinding[]> {
   return groups
 }
 
-/** One fix instruction naming every finding for a part. */
+/** One fix instruction naming a part's findings. */
 export function fixNote(findings: LintFinding[], one: string, many: string): string {
   if (findings.length === 1) return one.replace('{message}', findings[0].message)
   return many.replace(
@@ -88,10 +85,7 @@ function Finding({ finding, onFix }: { finding: LintFinding; onFix?: () => Promi
   )
 }
 
-/**
- * Lint findings plus the on-demand model review, as a badge and a list.
- * The badge counts P0 findings when there are any.
- */
+/** Lint findings and on-demand model review; badge counts P0 when any. */
 export function LintFindings({
   findings,
   artifact,
@@ -99,11 +93,11 @@ export function LintFindings({
   onFixAll,
 }: {
   findings?: LintFinding[]
-  /** Enables the model review; omitted, this shows lint only. */
+  /** Enables the model review; omitted: lint only. */
   artifact?: Artifact
-  /** Sends one finding to the surface's revision path; omitted where there is none. */
+  /** Sends one finding to the revision path; omitted where none. */
   onFix?: (finding: LintFinding) => Promise<void>
-  /** Fixes all findings, one instruction per part (see `byWhere`). */
+  /** Fixes all, one instruction per part. */
   onFixAll?: (findings: LintFinding[]) => Promise<void>
 }) {
   const t = useT()
@@ -140,7 +134,7 @@ export function LintFindings({
     setError(null)
     try {
       const row = await artifactsApi.critique(artifact.id)
-      // Also written onto the prop: the artifacts screen renders a copy, not the store row.
+      // Also onto the prop: the artifacts screen renders a copy, not the store row.
       artifact.critique = (row.data as { critique?: Critique } | null)?.critique
       void loadArtifacts()
     } catch (err) {
@@ -152,7 +146,7 @@ export function LintFindings({
 
   return (
     <Dropdown
-      // Opens rightward: leftward, the 320px list would be clipped by the panel.
+      // Opens rightward: leftward the 320px list gets clipped.
       align="left"
       trigger={() => (
         <button type="button" aria-label={t('검사 결과')}>
@@ -168,7 +162,7 @@ export function LintFindings({
       )}
     >
       <div className="w-80">
-        {/* Above the list so it stays visible when the list scrolls. */}
+        {/* Above the list: stays visible while it scrolls. */}
         {onFixAll && all.length > 1 && (
           <div className="border-b border-line px-2 py-2">
             {fixedAll ? (

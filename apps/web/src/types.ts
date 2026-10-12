@@ -1,7 +1,4 @@
-/**
- * KloudChat domain types: a `Session` of some `SessionKind` produces an `Artifact`; slow kinds carry a `Job`.
- * No proxy credential appears here: virtual keys are issued and used server-side only.
- */
+/** Domain types: a `Session` of a `SessionKind` produces `Artifact`s; no proxy credential here. */
 
 import type { PatternName } from '@/components/slides/patterns'
 
@@ -102,6 +99,12 @@ export interface PendingQuestion {
   /** Suggested answers; free text is always accepted too. */
   options: string[]
   detail: string
+  /** Gap questions: the fact key, its name, why it matters and what stays if unanswered. */
+  fact?: string
+  label?: string
+  why?: string
+  placeholder?: string
+  freeText?: boolean
 }
 
 /** A generation waiting on the person who asked for it. */
@@ -117,6 +120,8 @@ export interface PendingPlan {
   request: string
   attachments: string[]
   answers: Record<string, string>
+  /** The waiting pipeline run this card belongs to. */
+  runId?: string
   questions?: PendingQuestion[]
   plan?: {
     title?: string
@@ -136,6 +141,8 @@ export interface Session {
   title: string
   projectId: string | null
   agentId: string | null
+  /** The composed pipeline this conversation runs; its turns stay here. */
+  pipelineId?: string | null
   model: string
   /** Under `auto`, `model` is the quality ceiling. */
   routingMode: RoutingMode
@@ -156,6 +163,8 @@ export interface Session {
   skillIds: string[]
   /** Sticky rendering template; null is the surface's built-in track. */
   renderTemplateId: string | null
+  /** Opened but not sent: the browser holds it until the first send creates it under this id. */
+  unsent?: boolean
 }
 
 export interface Preferences {
@@ -165,6 +174,8 @@ export interface Preferences {
   autoMemory: boolean
   /** The model · token · credit line under each answer. */
   showUsage: boolean
+  /** Hold space in the empty composer to dictate (off unless switched on). */
+  spaceToTalk?: boolean
   privacyDefaultAction: PrivacyAction | 'ask'
   /** 개인 맞춤 설정; empty strings when unset. */
   aboutMe?: string
@@ -208,7 +219,6 @@ export interface PrivacyRouting {
   detectorVersion?: string
   policyVersion?: string
   findingCounts?: { category: string; source: string; count: number }[]
-  compareCollapsed?: boolean
   toolOutputMasked?: number
   toolOutputFindings?: { category: string; source: string; count: number }[]
   initialAction?: PrivacyAction | 'strict_local' | 'none'
@@ -218,6 +228,28 @@ export interface PrivacyRouting {
     knowledgeCutoff: string | null
     cutoffSource: 'model_catalogue' | 'unknown'
   }
+  lengthCheck?: LengthCheck
+  /** The model that ran a required calculation the answer model skipped. */
+  calculationModel?: string
+}
+
+/** A cover letter's 「[제출용 답안 n]」 blocks as the server measured them (text-fit). */
+export interface LengthCheck {
+  rows: {
+    number: number
+    unit: 'chars_with_spaces' | 'chars_no_spaces' | 'bytes_utf8' | 'bytes_ko2'
+    value: number
+    limit: number | null
+    min: number | null
+    status: 'ok' | 'over' | 'under'
+    newline?: number
+    rewritten?: boolean
+    assumed?: string
+  }[]
+  /** Numbers, titles or blind-hiring words the person's material does not carry. */
+  flags: string[]
+  /** The judge's 「same experience told the same way」 candidates, for the person to check. */
+  repeats?: string[]
 }
 
 /** A server policy reply found in stored transcripts; current turns answer through a model with caveats. */
@@ -242,10 +274,157 @@ export type MessageRouting = PrivacyRouting | FreshnessAbstention | ToolResultAn
 
 export type Role = 'user' | 'assistant' | 'system'
 
+/* ── pipeline runs ──────────────────────────────────────────────────── */
+
+export type StageKind = 'compute' | 'model' | 'check' | 'io'
+export type StageStatus = 'done' | 'skipped' | 'stopped' | 'failed' | 'waiting' | 'cancelled'
+
+/** What a stage computed, found, changed or ran; present on live records and the full run. */
+export interface StageEvidence {
+  computed?: { name: string; value: string }[]
+  computedBlock?: string
+  findings?: { before?: string[]; after?: string[] }
+  changes?: { sectionId?: string; heading?: string; old: string; new: string }[]
+  code?: { code: string; stdout?: string; stderr?: string }[]
+  questions?: PendingQuestion[]
+}
+
+/** One stage of a pipeline run, as it ended. */
+export interface PipelineStage {
+  /** runId:stage:attempt. */
+  id: string
+  runId?: string
+  name: string
+  label: string
+  kind: StageKind
+  status: StageStatus
+  reason?: string
+  summary?: string
+  startedAt?: string
+  finishedAt?: string
+  ms?: number
+  attempt?: number
+  rerunnable?: boolean
+  evidence?: StageEvidence
+}
+
+/** A pipeline run a message settled (`routing.run`), or the one streaming now. */
+export interface PipelineRun {
+  id: string
+  pipeline?: string
+  flow?: string
+  status: 'running' | 'done' | 'stopped' | 'failed' | 'waiting' | 'cancelled'
+  parentId?: string | null
+  fromStage?: string | null
+  stages: PipelineStage[]
+}
+
+/** A highlighted span in a document: a blank, a value the grounding check blanked, a flagged sentence. */
+export interface DocMarkSpan {
+  kind: 'placeholder' | 'ungrounded-replaced' | 'check-finding'
+  start?: number
+  end?: number
+  text: string
+  original?: string
+  reason?: string
+  stage?: string
+  code?: string
+}
+
+export interface DocMarks {
+  artifactId?: string
+  version?: number
+  runId?: string
+  sections: { sectionId: string; heading?: string; spans: DocMarkSpan[] }[]
+}
+
+/* ── user pipelines ─────────────────────────────────────────────────── */
+
+/** What a step of a user pipeline is. */
+export type PipelineStepKind = 'agent' | 'skill' | 'check' | 'review' | 'human' | 'export'
+
+/** One step of a user pipeline, as stored. */
+export interface PipelineStep {
+  id: string
+  kind: PipelineStepKind
+  ref: string
+  settings: {
+    instruction?: string
+    catalogKey?: string
+    model?: string
+    repair?: boolean
+    focus?: string
+    formats?: string[]
+    /** An export item's file per document format (마무리하기: HWPX for the 공문 family). */
+    by_format?: Record<string, string>
+  }
+  /** Korean name, from the server. */
+  title?: string
+  /** An agent step: `document` or `answer`. */
+  output?: string
+}
+
+/** One problem with a pipeline's order; `step` is 1-based, 0 for the whole pipeline. */
+export interface PipelineProblem {
+  step: number
+  code: string
+  message: string
+}
+
+export interface PipelineVerdict {
+  ok: boolean
+  surface: '' | 'report' | 'chat'
+  problems: PipelineProblem[]
+  warnings: PipelineProblem[]
+  titles?: string[]
+}
+
+/** A pipeline a person composed; shared through approval. */
+export interface UserPipeline {
+  id: string
+  /** `pipeline`, or `bundle` for a person's 묶음. */
+  kind?: 'pipeline' | 'bundle'
+  /** The agent whose own 직접 구성 this is. */
+  agentId?: string | null
+  name: string
+  description: string
+  base: string | null
+  originId: string | null
+  stages: PipelineStep[]
+  visibility: 'private' | 'org'
+  review: '' | 'pending' | 'approved' | 'rejected'
+  reviewNote: string
+  reviewedAt: string | null
+  version: number
+  installs: number
+  ownerId: string
+  ownerName: string
+  surface?: '' | 'report' | 'chat'
+  problems?: PipelineProblem[]
+  warnings?: PipelineProblem[]
+  boundAgents: { id: string; name: string }[]
+  createdAt: string | null
+  updatedAt: string | null
+  /** Store rows only. */
+  installed?: boolean
+  mine?: boolean
+}
+
+/** What 「+ 단계 추가」 offers besides agents. */
+export interface PipelineCatalogue {
+  maxSteps: number
+  skills: { ref: string; name: string; description: string; summary: string }[]
+  checks: { ref: string; name: string; description: string; needs: string[] }[]
+  human: { ref: string; name: string; description: string }[]
+  exportFormats: string[]
+  reviewModels: { id: string; label: string }[]
+}
+
 /** A unit of visible work inside an assistant turn. */
 export interface Step {
   id: string
-  type: 'thinking' | 'tool' | 'artifact'
+  /** `pipeline`: a stage record without the rich `stage` object. */
+  type: 'thinking' | 'tool' | 'artifact' | 'pipeline'
   label: string
   status: 'running' | 'done' | 'error'
   detail?: string
@@ -260,11 +439,20 @@ export interface Step {
   memories?: string[]
   files?: {
     name: string
-    state: 'included' | 'truncated' | 'omitted' | 'unreadable'
+    state: 'included' | 'truncated' | 'omitted' | 'unreadable' | 'picture' | 'picture_unseen' | 'reading'
     keptChars: number
     totalChars: number
   }[]
   memoriesWritten?: number
+  /** Files a sandbox tool made and stored for the user, downloadable by id. */
+  outputs?: { id: string; name: string; size: number }[]
+  /** Code a sandbox tool ran last (bounded, masked). */
+  code?: string
+  /** Which attempt wrote `code`, when the tool retried. */
+  codeAttempt?: number
+  /** Heads of what that run printed. */
+  stdout?: string
+  stderr?: string
   /** Total memories, when only the most recent were loaded. */
   totalMemories?: number
   /** Which halves of 개인 맞춤 설정 shaped the turn. */
@@ -274,38 +462,6 @@ export interface Step {
   summarisedTurns?: number
   /** Whether a summary was actually written for them. */
   summarised?: boolean
-}
-
-/** One model's answer inside a comparison turn. */
-export interface Variant {
-  model: string
-  routedModel?: string
-  actualModel?: string
-  dataBoundary?: ModelInfo['dataBoundary']
-  content: string
-  status: 'streaming' | 'done' | 'error'
-  usage?: { inputTokens: number; outputTokens: number; credits: number }
-  /** Set on the variant the user kept; the conversation continues from it. */
-  chosen?: boolean
-}
-
-/** A 시작점 selected for the next turn; the prompt framing is the server's. */
-export interface StartingPoint {
-  id: string
-  title: string
-  fills: string[]
-  /** The request as the card's form assembled it, placed in the composer. */
-  text?: string
-  /** One example per blank, in `fills` order. */
-  examples?: string[]
-  /** 'web' | 'file'. */
-  needs?: string[]
-  /** Workspace skills to switch on, by name. */
-  skills?: string[]
-  /** Per blank, in `fills` order: options → picker, long → textarea, else a line. */
-  blanks?: { name: string; options?: string[]; long?: boolean }[]
-  /** Media 서식 only: the sentence the blanks fill, `{name}` per blank; an empty blank keeps its example. */
-  examplePrompt?: string
 }
 
 /** An answer a rerun replaced; kept so the reader can page back to it. */
@@ -323,21 +479,29 @@ export interface Message {
   persisted?: boolean
   role: Role
   content: string
-  /** Present instead of `content` when the turn was run as a model comparison. */
-  variants?: Variant[]
   /** Earlier answers to the same question, oldest first; the conversation continues from this one. */
   superseded?: EarlierAnswer[]
   createdAt: string
   model?: string | null
   routing?: MessageRouting
   steps?: Step[]
+  /** The pipeline run this answer settled, from `routing.run` or the live stream. */
+  run?: PipelineRun
   artifactIds?: string[]
+  /** The version of `artifactIds[0]` this turn wrote; absent on media turns and live rows. */
+  artifactVersion?: number
   /** `id` names the stored blob; absent only on the optimistic row while the upload is in flight. */
   attachments?: { id?: string; name: string; size: number | string; type: string }[]
-  /** `estimated` on a stopped turn: the server counts tokens itself since the proxy's final chunk never arrives. */
-  usage?: { inputTokens: number; outputTokens: number; credits: number; estimated?: boolean }
+  /** `estimated` on a stopped turn; planner and reviewer counters too (`lib/usage.ts`). */
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    credits: number
+    estimated?: boolean
+    [counter: string]: number | boolean | undefined
+  }
   liked?: 'up' | 'down' | null
-  /** The 시작점 this turn began from. */
+  /** Retired 시작점 an old turn began from. */
   startedFrom?: { templateId: string; title: string }
   /** Separate from `content`: a turn can fail after writing something. */
   error?: string
@@ -491,24 +655,30 @@ export interface ReportArtifact extends ArtifactBase {
     status: 'open' | 'resolved'
     createdAt: string
   }[]
-  /** 서식 the page view is drawn in; absent is the plain report seed. */
+  /** Template the page view is drawn in; absent: the plain report seed. */
   templateId?: string
   design?: DesignTokens | null
   /** Head of a document by purpose (`services/doc_formats.py`); absent is a plain title. */
   titleBlock?: ReportTitleBlock | null
+  /** Blanks and check findings stored at save; `GET /artifacts/{id}/marks` re-locates them live. */
+  marks?: DocMarks | null
 }
 
 /** A document's head by purpose: cover page, field table, memo rows, press or paper header. */
 export interface ReportTitleBlock {
   format: string
   label: string
-  head: 'cover' | 'header' | 'memo' | 'press' | 'paper'
+  head: 'cover' | 'header' | 'memo' | 'press' | 'paper' | 'draft'
   numbering: 'decimal' | 'roman' | 'korean' | 'official' | 'none'
-  /** `[label, value]`; an empty value is a blank the person fills in, shown as 「(기입)」. */
+  /** `[label, value]`; an empty value is a blank the person fills in, shown as its name in brackets (「[작성자]」). */
   fields: [string, string][]
   subtitle?: string
   abstract?: string
   keywords?: string[]
+  /** `gaejo`: lists drawn as □ / ○ / - / ㆍ and ※ lines as notes (개조식). */
+  lists?: 'gaejo'
+  /** The renderers end the body with 「끝.」. */
+  closing?: boolean
 }
 
 export interface ChartArtifact extends ArtifactBase {
@@ -591,7 +761,7 @@ export interface Slide {
   notes?: string
   accent?: string
   factCheck?: FactCheck
-  /** Text size as a multiple of the 서식's own; `deck_export` applies the same factor. */
+  /** Text size as a multiple of the template's; `deck_export` applies the same. */
   textScale?: number
   /** Sanitised inline HTML keyed by text slot (`title`, `bullets.0`, `rows.1.2`, …); the plain fields stay canonical. */
   richText?: Record<string, string>
@@ -609,8 +779,7 @@ export interface Slide {
     renderer?: string
     key?: string
   }
-  /** A structure, flow, comparison or concept figure the deck drew for itself as mermaid.
-   *  The panel renders it live; its raster travels in `image` for the exporters. */
+  /** Figure the deck drew for itself as mermaid; rendered live, its raster in `image` for the exporters. */
   diagram?: {
     figure: 'method' | 'flow' | 'compare' | 'concept'
     description: string
@@ -625,7 +794,7 @@ export interface DeckArtifact extends ArtifactBase {
   kind: 'deck'
   theme: string
   slides: Slide[]
-  /** Deck 서식 this was written under; the export builds on its PowerPoint half. */
+  /** Deck template written under; the export builds on its PowerPoint half. */
   templateId?: string
   /** Copied on when the deck was made. */
   design?: DesignTokens | null
@@ -717,7 +886,7 @@ export interface Project {
   files: ProjectFile[]
   sessionIds: string[]
   skillIds: string[]
-  /** The design system this project's output wears. Null is the default look. */
+  /** Theme this project's output wears; null: default look. */
   designSystemId: string | null
   /** Surface → rendering template id; a surface with no entry uses the built-in track. */
   renderTemplates: Record<string, string>
@@ -734,6 +903,32 @@ export interface ProjectFile {
   sourceUrl?: string | null
   preview: string
   error?: string | null
+  ocrState?: 'queued' | 'running' | 'done' | 'failed' | null
+  ocrTotal?: number
+  ocrDone?: number
+  ocrReview?: number
+}
+
+/** A skill's server fields (`services/skill_specs.py`): each names shipped scripts only. */
+export interface SkillServer {
+  stage: '' | 'pre' | 'post'
+  entry: string
+  postCheck: string[]
+  /** True, or what the judge looks at in particular. */
+  postJudge: boolean | string
+  copyCheck: boolean
+  copyKinds: string[]
+  tables: boolean
+  ownStage: boolean
+  uses: string[]
+}
+
+/** One of a person's own skill scripts: run only in the code sandbox. */
+export interface SkillScript {
+  name: string
+  summary: string
+  size: number
+  source: string
 }
 
 export interface Skill {
@@ -743,20 +938,34 @@ export interface Skill {
   description: string
   whenToUse: string
   body: string
-  /** Stable key for shipped skills; null for user-authored ones. */
+  /** Package a shipped skill and its copies come from; null for others. */
   catalogKey: string | null
   requiredTools: string[]
   /** Approximate prompt cost. */
   estimatedTokens: number
-  source: 'built-in' | 'workspace' | 'personal'
+  /** `workspace`: a copy of a shared skill; `personal`: authored here. */
+  source: 'workspace' | 'personal'
   kinds: SessionKind[]
   enabled: boolean
   /** `org` lists it in the store for the workspace to copy. */
   visibility: 'private' | 'org'
   installs: number
   originId: string | null
+  /** A copy: who shared the skill it came from. */
+  originOwnerName?: string
   version: string
   updatedAt: string
+  /** Fixed scripts its package ships; empty for a plain skill. */
+  scripts?: string[]
+  /** What the server runs for it (shipped scripts only); a shipped copy shows its package's. */
+  server?: SkillServer
+  /** Its own scripts, run only in the sandbox. */
+  scriptFiles?: SkillScript[]
+  /** Sharing with scripts: '' · pending · approved · rejected. */
+  review?: string
+  reviewNote?: string
+  /** Shown in pick lists; false for a shipped skill kept as a part (still runs by name). */
+  listed?: boolean
 }
 
 /* ── MCP connectors ─────────────────────────────────────────────────── */
@@ -789,6 +998,8 @@ export interface Connector {
   /** Credential names only, never values. */
   envKeys?: string[]
   official: boolean
+  /** 기본 제공: can be switched off, not removed. */
+  byDefault: boolean
   icon: string
   color: string
   lastSyncAt: string | null
@@ -820,6 +1031,8 @@ export interface Agent {
   installs: number
   /** Stable key for shipped agents; null for user-authored ones. */
   catalogKey: string | null
+  /** The owner's composed pipeline these turns run; null: its own flow. */
+  pipelineId?: string | null
   originId: string | null
   /** Published by an administrator; meaningful on store rows. */
   official: boolean
@@ -831,6 +1044,10 @@ export interface Agent {
   model: string
   systemPrompt: string
   guide: string
+  /** 담당 부서·연락처: said as written when the material does not answer the question. */
+  contact?: string
+  /** The owner's published bot of this agent (공개 챗봇): its dashboard id, address and state. */
+  publication?: { id: string; slug: string; status: string } | null
   starters: string[]
   /** `sealed`: copies run the author's prompt without being able to read it. */
   shareMode: 'open' | 'sealed'
@@ -841,12 +1058,176 @@ export interface Agent {
   /** null inherits turn selection; [] denies all selected skills. */
   skillIds: string[] | null
   kinds: SessionKind[]
+  /** Surface a new conversation opens on; null takes the first of `kinds`. */
+  surface: SessionKind | null
+  /** Template for sessions on its surface; wins over the project's default. */
+  renderTemplateId: string | null
+  /** `doc_formats` id for report sessions whose template fixes none. */
+  docFormat: string | null
+  /** Theme; wins over the project's. */
+  designSystemId: string | null
+  /** That design's name, for a viewer who cannot see the row. */
+  designName?: string
   temperature: number
   color: string
   enabled: boolean
   runs: number
   hasKnowledge: boolean
   updatedAt: string
+  /** The official agent whose process a person's own agent runs (기본 과정). */
+  baseKey?: string | null
+  /** Check skills run around its writing, and how strict the trace is. */
+  checkSkills?: string[] | null
+  checkOptions?: Record<string, boolean> | null
+  /** The 묶음 ticked in the form. */
+  bundles?: BundleSelection[] | null
+  /** 진행 과정 as the server reads it. */
+  process?: AgentProcess | null
+  /** 빠진 정보 질문 of its own; null asks what its base asks. */
+  gapQuestions?: GapQuestion[] | null
+  /** What its 템플릿 asks — read only in the form, asked alongside its own. */
+  inheritedQuestions?: GapQuestion[]
+  /** With none of its own, what its base asks: the form's own list starts from these. */
+  baseQuestions?: GapQuestion[]
+  /** 진행 과정 설정 of its own; null follows its template's. */
+  processSettings?: Partial<ProcessSettings> | null
+  /** What its template sets: the form's defaults. */
+  inheritedSettings?: ProcessSettings
+}
+
+/** How a 빠진 정보 질문 decides that the material already answers it. */
+export interface GapDetector {
+  type: 'builtin' | 'keyword' | 'regex' | 'judge'
+  /** builtin: one of the shipped detectors. */
+  name?: string
+  /** keyword: any of these present answers it. */
+  words?: string[]
+  /** keyword: ask only when the request has one of these words; regex: a pattern. */
+  when?: string[] | string
+  /** regex: a bounded pattern. */
+  pattern?: string
+}
+
+/** The bases, the 묶음 a person may tick, and the built-in 빠진 정보 detectors. */
+export interface ProcessCatalogue {
+  bases: AgentBase[]
+  bundles: Bundle[]
+  exportFormats: string[]
+  gapDetectors?: { name: string; label: string }[]
+}
+
+/** One 빠진 정보 질문 (`services/gap_questions.py`). */
+export interface GapQuestion {
+  id: string
+  label: string
+  question: string
+  why: string
+  placeholder: string
+  detector: GapDetector
+}
+
+/** One ticked 묶음 and its items' ticks (an export's tick is its format, "" for off). */
+export interface BundleSelection {
+  bundle: string
+  items: Record<string, boolean | string>
+}
+
+export type ProcessMode = 'direct' | 'base' | 'custom'
+
+/** An agent's 진행 과정: 바로 답하기, a base with 묶음, or a 직접 구성. */
+export interface AgentProcess {
+  mode: ProcessMode
+  base: string | null
+  bundles: BundleSelection[]
+  /** What it does, one plain line each. */
+  chain: string[]
+  review: '' | 'pending' | 'approved' | 'rejected'
+  needsReview: boolean
+  /** Owner only: a 직접 구성's steps. */
+  steps?: PipelineStep[]
+  pipelineId?: string
+  warnings?: PipelineProblem[]
+}
+
+/** Where a bundle item runs on a surface (`services/bundles.py`); null: nothing there runs it. */
+export type BundleTarget = 'check' | 'option' | 'flow' | 'before' | 'after' | 'self' | null
+
+export interface BundleItem {
+  id: string
+  kind: string
+  ref: string
+  settings: PipelineStep['settings']
+  label: string
+  default: boolean | string
+  targets: { report: BundleTarget; chat: BundleTarget }
+}
+
+/** A 묶음: shipped (data) or a person's own. */
+export interface Bundle {
+  ref: string
+  name: string
+  description: string
+  items: BundleItem[]
+  shipped: boolean
+  ownerId: string | null
+  visibility: 'private' | 'org'
+  review: '' | 'pending' | 'approved' | 'rejected'
+  risky: boolean
+  /** A person's own bundle row. */
+  id?: string
+  mine?: boolean
+  stages?: PipelineStep[]
+  reviewNote?: string
+}
+
+/** An official process an agent can start from. */
+export interface AgentBase {
+  key: string
+  name: string
+  description: string
+  surface: SessionKind
+  docFormat: string | null
+  template: string | null
+  steps: string[]
+  draft: boolean
+  /** Whether 직접 구성 may start from it. */
+  custom: boolean
+  bundles: BundleSelection[]
+  formatChecks: string[]
+  asks: boolean
+  /** What it makes, as the template list calls it (「회의록」). */
+  templateName?: string
+}
+
+/** 「에이전트로 저장」: a conversation as a form to review; nothing is saved yet. */
+export interface AgentDraft {
+  name: string
+  description: string
+  systemPrompt: string
+  decided: string[]
+  kinds: SessionKind[]
+  surface: SessionKind
+  renderTemplateId: string | null
+  designSystemId: string | null
+  skillIds: string[]
+  mode: ProcessMode
+  base: string | null
+  bundles: BundleSelection[]
+  files: { id: string; name: string; size: number }[]
+  fromAgentId: string | null
+  strictLocal: boolean
+  /** Whether 「이 대화에서 정한 것」 was read: `pending` when the draft was asked without it. */
+  distilled?: DistillState
+}
+
+/** 「ok」 lines found, 「empty」 read but nothing settled, 「failed」 the model could not be read. */
+export type DistillState = 'pending' | 'ok' | 'empty' | 'failed'
+
+/** `GET /sessions/{id}/agent-draft/decided`: the 지시 section a draft adds when it arrives. */
+export interface AgentDraftDecided {
+  decided: string[]
+  prompt: string
+  distilled: DistillState
 }
 
 /** A store row: somebody else's skill, kept out of the composer's own list. */
@@ -861,4 +1242,124 @@ export interface ToolCatalogEntry {
   name: string
   label: string
   available: boolean
+  /** 「기본 도구」 or the connector's name; older servers send none. */
+  group?: string
+  /** Short name a person reads; the raw `name` is technical detail. */
+  title?: string
+  /** One line on what it does. */
+  description?: string
+}
+
+/** 진행 과정 설정 (`services/process_settings.py`); keys optional, an agent's own (null: its template's). */
+export interface ProcessStructure {
+  sections: string[]
+  tables: { columns: string[]; heading?: string }[]
+  summary_lines: number
+  style: '' | 'gaejo'
+  page_limit: number
+  page_limit_rfp: boolean
+}
+export interface ProcessSettings {
+  prepass: string[]
+  date_base: 'text' | 'meeting'
+  stages: string[]
+  checks: string[]
+  judged: string[]
+  amend: string[]
+  head: string[]
+  rules: string[]
+  structure: ProcessStructure
+  search: boolean
+  fixed_outline: boolean
+  draws: 'auto' | 'when-asked'
+  prepass_always: boolean
+  prepass_quiet: boolean
+  conflict_rule: string
+}
+/** A built-in name the settings may pick, with what it reads first. */
+export interface ProcessName {
+  name: string
+  label: string
+  needs: string
+}
+export interface ProcessCatalogue {
+  prepass: ProcessName[]
+  stages: ProcessName[]
+  checks: ProcessName[]
+  judged: ProcessName[]
+  amend: ProcessName[]
+  head: ProcessName[]
+  limits: { prepass: number; rules: number; sections: number; tables: number; columns: number; pages: number; rule: number; summary: number }
+  defaults: ProcessSettings
+}
+
+/** 문서 형식 a person's template sets (the exporters' own choices). */
+export interface TemplateFormat {
+  label: string
+  fields: string[]
+  numbering: 'decimal' | 'roman' | 'korean' | 'official' | 'none'
+  head: 'cover' | 'header' | 'memo' | 'press' | 'paper' | 'draft'
+  lists: '' | 'gaejo'
+  closing: boolean
+  subtitle: boolean
+}
+
+/** A person's template (`ut-<id>`), as the editor reads and writes it. */
+export interface UserTemplate {
+  id: string
+  name: string
+  description: string
+  category: string
+  fills: string[]
+  examplePrompt: string
+  instructions: string
+  checklist: string
+  genre: string
+  docFormat: TemplateFormat
+  coverPage: boolean
+  bodyFace: '' | 'design'
+  checkSkills: string[]
+  checkOptions: string[]
+  questions: GapQuestion[]
+  process: Partial<ProcessSettings>
+  formName: string
+  hasForm: boolean
+  visibility: 'private' | 'org'
+  mine: boolean
+  ownerName: string
+  updatedAt: string | null
+}
+
+export interface TemplateCatalogue {
+  numberings: TemplateFormat['numbering'][]
+  heads: TemplateFormat['head'][]
+  lists: string[]
+  checkSkills: { key: string; name: string; stage: string }[]
+  checkOptions: string[]
+  detectors: { name: string; label: string }[]
+  process: ProcessCatalogue
+  starts: { id: string; name: string; description: string }[]
+}
+
+/** Connector catalogue entry; `env` values only as placeholders, else `null` (set, never shown). */
+export interface CatalogEntryAdmin {
+  id: string
+  slug: string
+  name: string
+  description: string
+  category: string
+  transport: 'stdio' | 'http' | 'sse'
+  endpoint: string
+  env: Record<string, string | null>
+  requiredEnv: { key: string; label: string; hint: string; secret: boolean }[]
+  toolsKeyVar: string
+  toolsKeyFeature: string
+  kinds: string[]
+  enabled: boolean
+  /** Shown in the members' catalogue; false keeps it installable and working, not offered. */
+  listed: boolean
+  /** 기본 제공: installed for every active person, who can switch it off but not remove it. */
+  byDefault: boolean
+  position: number
+  updatedAt: string | null
 }

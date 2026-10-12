@@ -69,7 +69,7 @@ def test_the_planner_is_handed_the_current_skeleton():
     block = revise.outline_block(PARTS)
     assert "1. 서론" in block
     assert "4. 권고와 다음 행동" in block
-    assert "출발점" in block
+    assert "starting from this one" in block
 
 
 # ── the sentences that are plainly not a revision ──────────────────────
@@ -110,3 +110,33 @@ def test_the_step_names_the_parts_being_worked_on():
 
 def test_a_whole_document_pass_says_so():
     assert revise.label(_plan('{"scope": "whole"}'), PARTS) == "문서 전체 고치는 중"
+
+
+# ── an edit inside named parts is not a new outline ────────────────────
+
+GAEJO_PARTS = ["현황", "문제점 및 검토", "향후 조치 및 결정 요청", "붙임"]
+#: A 개조식 follow-up a judge may call `outline`; a re-plan must keep the memo.
+GAEJO_FOLLOW_UP = (
+    "처장님이 예산 부족분 얘기를 맨 위로 올리래. 그리고 붙임에 ‘불량 실험실 13곳 조치 계획’도 "
+    "하나 추가해 줘(내가 따로 만들 거야, 제목만)."
+)
+
+
+def test_moving_content_and_adding_into_a_named_part_revises_the_document():
+    judged = revise.Plan(scope="outline", note="예산 부족분을 맨 앞으로, 붙임에 항목 추가")
+    plan = revise.within_named_parts(judged, GAEJO_PARTS, GAEJO_FOLLOW_UP)
+    assert plan.scope == "whole" and plan.targets == [0, 1, 2, 3]
+    assert plan.note == judged.note
+
+
+def test_a_change_to_the_skeleton_stays_an_outline():
+    judged = revise.Plan(scope="outline", note="붙임을 둘로 나눈다")
+    for message in ("붙임에 있는 걸 두 절로 나눠 줘", "3장을 맨 앞으로 옮기고 붙임에 표 추가",
+                    "현황에 표 넣고 목차 순서도 바꿔 줘"):
+        assert revise.within_named_parts(judged, GAEJO_PARTS, message).scope == "outline"
+
+
+def test_an_outline_naming_no_part_is_left_to_the_judge():
+    judged = revise.Plan(scope="outline", note="결론을 앞으로")
+    plan = revise.within_named_parts(judged, GAEJO_PARTS, "결론을 맨 앞으로 올려 줘")
+    assert plan.scope == "outline"

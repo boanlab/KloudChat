@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { signIn, ribbonTab } from './helpers'
 
 /** Version history works on html, deck and report panels; a restore is itself an edit. */
 
@@ -121,7 +121,7 @@ test('덱도 같은 버튼으로 되돌린다', async ({ page }) => {
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('고친 제목').first()).toBeVisible({ timeout: 20_000 })
 
-  await dialog.getByRole('tab', { name: '검토', exact: true }).click()
+  await ribbonTab(page, '검토')
   const history = dialog.getByRole('button', { name: '버전 기록' })
   await expect(history).toContainText('v2')
   await history.click()
@@ -161,7 +161,7 @@ test('보고서의 되돌리기는 옮겨진 뒤에도 그대로다', async ({ p
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('고쳐 쓴 본문입니다.')).toBeVisible({ timeout: 20_000 })
 
-  await dialog.getByRole('tab', { name: '검토', exact: true }).click()
+  await ribbonTab(page, '검토')
   const history = dialog.getByRole('button', { name: '버전 기록' })
   await history.click()
   await page.getByRole('button', { name: 'v1 로 되돌리기' }).click()

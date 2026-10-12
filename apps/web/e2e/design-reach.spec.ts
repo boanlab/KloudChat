@@ -8,7 +8,7 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
 
   const name = `말투 검증 ${Date.now()}`
   await page.goto('/designs')
-  const designs = page.getByRole('region', { name: '디자인 시스템' })
+  const designs = page.getByRole('region', { name: '내 디자인' })
   await designs.getByRole('button', { name: '디자인 추가' }).click()
   await designs.getByLabel('이름', { exact: true }).fill(name)
   await designs.getByLabel('한 줄 설명').fill('짧게, 명사구로')
@@ -45,7 +45,7 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
     ['이미지', '그림의 색과 스타일을 이 디자인에 맞춥니다'],
   ] as const) {
     await page.goto(`/projects/${projectId}`)
-    await page.getByRole('button', { name: '이 프로젝트에서 새로 만들기' }).click()
+    await page.getByRole('button', { name: '새로 시작', exact: true }).click()
     const entry = page.getByRole('menuitem', { name: surface, exact: true })
     // A switched-off surface (`image`, `av` by default) has no entry here.
     if ((await entry.count()) === 0 || !(await entry.isEnabled().catch(() => false))) {
@@ -63,7 +63,7 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
 
   // Nothing where it does not reach: the clip renderer never sees the design.
   await page.goto(`/projects/${projectId}`)
-  await page.getByRole('button', { name: '이 프로젝트에서 새로 만들기' }).click()
+  await page.getByRole('button', { name: '새로 시작', exact: true }).click()
   const clips = page.getByRole('menuitem', { name: '오디오/동영상', exact: true })
   if ((await clips.count()) > 0 && (await clips.isEnabled().catch(() => false))) {
     await clips.click()

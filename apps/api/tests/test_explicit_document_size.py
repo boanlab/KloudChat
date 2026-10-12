@@ -271,8 +271,8 @@ async def test_approved_deck_is_not_replanned_or_trimmed(monkeypatch):
     [
         ("동아리 신청 안내, 표지 포함 4장", 4, 4),
         ("동아리 신청 안내, 표지 포함 4장", 5, 5),
-        ("동아리 신청 안내", 4, 3),
-        ("2026년 동아리 신청 안내, 3분 발표", 4, 3),
+        ("동아리 신청 안내", 4, 4),
+        ("2026년 동아리 신청 안내, 3분 발표", 4, 4),
     ],
 )
 async def test_explicit_total_preserves_retold_slots_through_writing_and_export(
@@ -310,7 +310,20 @@ async def test_explicit_total_preserves_retold_slots_through_writing_and_export(
     # The real overlap detector prefers the table and would remove the earlier steps.
     assert deck._retold(plan, drafted) == {1}
 
-    calls = _planner(monkeypatch, deck, [draft])
+    calls = []
+    own = {"title": "Application steps", "layout": "steps", "steps": [
+        ["Fill in", "Download the form from the club page"],
+        ["Submit", "Hand it to the student union office"],
+    ], "notes": "Two steps. The office answers within a week."}
+
+    async def complete(model, messages, api_key, max_tokens, **kwargs):
+        calls.append(messages)
+        # The retold slide's own pass gets its own slide; every other call the draft.
+        alone = 'writing only the "Application steps" slide' in str(messages[-1]["content"])
+        reply = own if alone and len(calls) > 1 else json.loads(draft)
+        return json.dumps(reply, ensure_ascii=False), {"inputTokens": 2, "outputTokens": 1}
+
+    monkeypatch.setattr(deck, "_complete", complete)
 
     async def no_figures(**kwargs):
         return [], {"inputTokens": 0, "outputTokens": 0}
@@ -327,16 +340,17 @@ async def test_explicit_total_preserves_retold_slots_through_writing_and_export(
         )
     ]
     slides = next(event["slides"] for event in events if event["type"] == "deck")
-    expected_titles = [row["title"] for row in plan]
-    if expected_count != approved_count:
-        expected_titles.pop(1)
-    assert [slide["title"] for slide in slides] == expected_titles
-    assert len(slides) == expected_count
-    # One draft writes the deck; the only further calls ask for notes a body slide lacks,
-    # and none of them touches the slide count.
-    assert len(calls) >= 1
-    assert all("노트" in str(call) for call in calls[1:])
-    assert len([e for e in events if e["type"] == "slide" and e.get("done")]) == expected_count
+    # Every approved slide ships, with or without a stated total: the retold one is
+    # written again on its own, shown what the rest of the deck already says.
+    assert expected_count == approved_count
+    assert [slide["title"] for slide in slides] == [row["title"] for row in plan]
+    assert slides[1]["steps"][0][0] == "Fill in"
+    alone = next(call for call in calls[1:]
+                 if 'writing only the "Application steps" slide' in str(call[-1]["content"]))
+    # Told what the rest of the deck says, the table slide after it included.
+    assert "Roles:" in str(alone[-1]["content"]).split("Already said")[1]
+    assert len({e["slide"]["id"] for e in events
+                if e["type"] == "slide" and e.get("done")}) == expected_count
     assert all(e["progress"]["total"] == expected_count for e in events if "progress" in e)
     assert all(deck.has_content(slide) or slide["layout"] in deck._STRUCTURAL for slide in slides)
     pptx = Presentation(io.BytesIO(deck_export.to_pptx("Guide", slides)))

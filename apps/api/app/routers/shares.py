@@ -1,9 +1,4 @@
-"""Read-only share links.
-
-The public route returns exactly the shared thing: no owner, sibling artifacts
-or walkable ids. Agent/project/format are sent as names only, never their
-bodies. `workspace` scope needs a signed-in member; `link` scope needs nothing.
-"""
+"""Read-only share links; public read returns names only, no owner or walkable ids."""
 
 from __future__ import annotations
 
@@ -17,24 +12,22 @@ from app.core.deps import CurrentUser, DbSession, client_ip, current_user
 from app.models.chat import ChatSession, Message
 from app.models.user import utcnow
 from app.models.workspace import Agent, Artifact, Project, Share, ShareScope, ShareView
-from app.schemas.chat import MessageOut
 from app.schemas.workspace import ShareIn, ShareOut, ShareViewOut
-from app.services import design_templates
+from app.services import design_templates, message_links
 
 router = APIRouter(tags=["shares"])
 
-#: The token is the entire authorisation.
+#: token = entire authorisation
 _TOKEN_BYTES = 32
 
-#: Repeat opens inside this window count as one visit.
+#: repeat opens within window = one visit
 _VISIT_WINDOW = timedelta(hours=1)
 
 
 async def _record_view(db: DbSession, share: Share, request: Request, viewer) -> None:
-    """Records the view: a signed-in reader by copied name/email, an anonymous one by address."""
+    """View record: signed-in by name/email, anonymous by address."""
     ip = client_ip(request)
     since = utcnow() - _VISIT_WINDOW
-    # "Same reader" is the account when signed in, else the address.
     same = (
         (ShareView.viewer_id == viewer.id)
         if viewer is not None
@@ -74,7 +67,8 @@ async def _owned_target(db: DbSession, user, payload: ShareIn):
         return row, None
     if payload.session_id:
         row = await db.get(ChatSession, payload.session_id)
-        if row is None or row.user_id != user.id:
+        # published bot's conversation not shareable by owner
+        if row is None or row.user_id != user.id or row.publication_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
         return None, row
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="nothing_to_share")
@@ -82,7 +76,7 @@ async def _owned_target(db: DbSession, user, payload: ShareIn):
 
 @router.post("/shares", response_model=ShareOut, status_code=status.HTTP_201_CREATED)
 async def create_share(payload: ShareIn, user: CurrentUser, db: DbSession):
-    """Makes a link, or returns the live one for the same (thing, scope)."""
+    """New link, or the live one for same (thing, scope)."""
     await _owned_target(db, user, payload)
 
     existing = (
@@ -126,7 +120,7 @@ async def list_shares(user: CurrentUser, db: DbSession):
 
 @router.get("/shares/{share_id}/views", response_model=list[ShareViewOut])
 async def list_share_views(share_id: str, user: CurrentUser, db: DbSession):
-    """Who has opened this link; owner only, newest first. A revoked link keeps its visits."""
+    """Link visits; owner only, newest first."""
     share = await db.get(Share, share_id)
     if share is None or share.owner_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -143,7 +137,7 @@ async def list_share_views(share_id: str, user: CurrentUser, db: DbSession):
 
 @router.delete("/shares/{share_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_share(share_id: str, user: CurrentUser, db: DbSession):
-    """Revokes the link; the row stays."""
+    """Revoke; row kept."""
     share = await db.get(Share, share_id)
     if share is None or share.owner_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -154,12 +148,12 @@ async def revoke_share(share_id: str, user: CurrentUser, db: DbSession):
 
 @router.get("/shared/{token}")
 async def read_shared(token: str, request: Request, db: DbSession):
-    """The public read. Revoked and unknown tokens give the same 404."""
+    """Public read; revoked and unknown tokens both 404."""
     share = (await db.exec(select(Share).where(Share.token == token))).first()
     if share is None or share.revoked_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
-    # Resolved by hand, never required: a dependency would 401 `link` readers.
+    # optional auth by hand: a dependency would 401 `link` readers
     try:
         viewer = await current_user(await _identity(request, db))
     except HTTPException:
@@ -195,16 +189,17 @@ async def read_shared(token: str, request: Request, db: DbSession):
             .order_by(col(Message.created_at), col(Message.id))
         )
     ).all()
-    # Read through the session's own `artifact_id`, never by listing.
+    # via session's own artifact_id only, never listing
     artifact = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
     if artifact is not None and artifact.user_id != session.user_id:
         artifact = None
-    # Names only: `agent.system_prompt` and `project.instructions` never leave here.
+    # names only: system_prompt/instructions never leave
     agent = await db.get(Agent, session.agent_id) if session.agent_id else None
     project = await db.get(Project, session.project_id) if session.project_id else None
     if project is not None and project.user_id != session.user_id:
         project = None
     shape = design_templates.get(session.render_template_id)
+    links = await message_links.run_links(db, session.id)
     await db.commit()
     return {
         "kind": "session",
@@ -213,12 +208,12 @@ async def read_shared(token: str, request: Request, db: DbSession):
         "startedWith": {
             "agent": agent.name if agent is not None else None,
             "project": f"{project.emoji} {project.name}".strip() if project is not None else None,
-            # Both languages; the page picks by the UI language.
+            # both languages; page picks by UI language
             "format": (
                 {"name": shape.name, "nameEn": shape.name_en} if shape is not None else None
             ),
         },
-        "messages": [MessageOut.of(m) for m in messages],
+        "messages": [message_links.linked(m, links) for m in messages],
         "artifact": (
             {
                 "title": artifact.title,

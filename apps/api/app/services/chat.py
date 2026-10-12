@@ -1,11 +1,10 @@
-"""LiteLLM chat streaming translated into KloudChat SSE events, plus titles and media-turn messages.
-"""
+"""Chat stream helpers: tool step labels, SSE framing, session titles and media-turn messages."""
 
 from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -21,7 +20,7 @@ class ChatStreamError(RuntimeError):
     pass
 
 
-# Tool name → progress label shown while it runs.
+# tool → running progress label
 _STEP_LABELS: dict[str, str] = {
     "web_search": "웹 검색 중",
     "search": "웹 검색 중",
@@ -41,7 +40,7 @@ def step_label(tool_name: str) -> str:
     return _STEP_LABELS.get(base, base.replace("_", " "))
 
 
-# Tool name → noun form shown on a finished step.
+# tool → finished-step noun
 _STEP_TITLES: dict[str, str] = {
     "web_search": "웹 검색",
     "search": "웹 검색",
@@ -69,16 +68,12 @@ TITLE_CHARS = 40
 
 
 def provisional_title(prompt: str) -> str:
-    """Session title from the prompt's first `TITLE_CHARS`; final on media surfaces, replaced by
-    `generate_title` elsewhere.
-    """
+    """Session title from the prompt; final on media surfaces, else replaced by `generate_title`."""
     return " ".join((prompt or "").split())[:TITLE_CHARS]
 
 
 def media_prompt(session_id: str, prompt: str, *, unanswered: bool = False) -> Message:
-    """The user turn of a media (image/audio/video) session; `unanswered` marks a request that
-    produced nothing.
-    """
+    """User turn of a media session; `unanswered` = produced nothing."""
     return Message(
         session_id=session_id,
         role=Role.user,
@@ -95,11 +90,7 @@ def media_answer(
     credits: int = 0,
     partial: bool = False,
 ) -> Message:
-    """The assistant turn of a media session: artifact ids, no prose.
-
-    `content` must stay empty; the transcript renders the artifacts. `partial`
-    marks a batch that failed midway and is stored as `interrupted`.
-    """
+    """Assistant turn of a media session: artifact ids, empty `content`."""
     return Message(
         session_id=session_id,
         role=Role.assistant,
@@ -109,125 +100,6 @@ def media_answer(
         usage={"credits": credits},
         failure=TurnFailure.interrupted if partial else None,
     )
-
-
-async def stream_completion(
-    model: str,
-    messages: list[dict[str, Any]],
-    user_id: str,
-    api_key: str,
-    *,
-    strict_local: bool = False,
-    redact_logging: bool = False,
-) -> AsyncIterator[dict[str, Any]]:
-    """Yields KloudChat stream events. The caller owns persistence and billing.
-
-    Emits, in order: any number of `step`/`delta`, then exactly one `usage`
-    (possibly with zeroed counts when the upstream withheld it), then nothing.
-    `done` is the caller's to send, after it has settled credits.
-    """
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": True,
-        "stream_options": {"include_usage": True},  # else the final chunk carries no usage
-        "user": user_id,  # tags the spend row even when a call fell back to the master key
-    }
-    if strict_local:
-        payload["disable_fallbacks"] = True
-
-    usage: dict[str, int] | None = None
-    reported_model: str | None = None
-    # Tool call fragments arrive across chunks, keyed by index.
-    open_steps: dict[int, dict[str, Any]] = {}
-
-    try:
-        base, _ = await settings_store.litellm_config()
-        async with httpx.AsyncClient(
-            base_url=base.rstrip("/"),
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                **({"x-litellm-enable-message-redaction": "true"} if redact_logging else {}),
-            },
-            timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
-        ) as client:
-            async with client.stream("POST", "/v1/chat/completions", json=payload) as response:
-                if response.status_code >= 400:
-                    body = (await response.aread()).decode(errors="replace")[:400]
-                    detail = "response redacted" if redact_logging else body
-                    raise ChatStreamError(f"upstream_{response.status_code}: {detail}")
-
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    raw = line[5:].strip()
-                    if not raw or raw == "[DONE]":
-                        continue
-                    try:
-                        chunk = json.loads(raw)
-                    except json.JSONDecodeError:
-                        log.warning("undecodable chunk from litellm: %r", raw[:200])
-                        continue
-
-                    if chunk.get("usage"):
-                        u = chunk["usage"]
-                        usage = {
-                            "inputTokens": int(u.get("prompt_tokens") or 0),
-                            "outputTokens": int(u.get("completion_tokens") or 0),
-                        }
-
-                    actual_model = chunk.get("model")
-                    if (
-                        isinstance(actual_model, str)
-                        and actual_model
-                        and actual_model != reported_model
-                    ):
-                        reported_model = actual_model
-                        yield {
-                            "type": "model_route",
-                            "routedModel": model,
-                            "actualModel": actual_model,
-                        }
-
-                    for choice in chunk.get("choices") or []:
-                        delta = choice.get("delta") or {}
-
-                        for call in delta.get("tool_calls") or []:
-                            index = call.get("index", 0)
-                            step = open_steps.get(index)
-                            name = (call.get("function") or {}).get("name")
-                            if step is None and name:
-                                step = {"id": f"step{index}", "label": step_label(name)}
-                                open_steps[index] = step
-                                yield {
-                                    "type": "step",
-                                    "id": step["id"],
-                                    "label": step["label"],
-                                    "status": "running",
-                                }
-
-                        text = delta.get("content")
-                        if text:
-                            # First visible token: every open tool call has answered.
-                            for step in open_steps.values():
-                                if not step.get("closed"):
-                                    step["closed"] = True
-                                    yield {
-                                        "type": "step",
-                                        "id": step["id"],
-                                        "label": step["label"],
-                                        "status": "done",
-                                    }
-                            yield {"type": "delta", "text": text}
-
-    except httpx.HTTPError as exc:
-        raise ChatStreamError(f"upstream_unreachable: {exc}") from exc
-
-    for step in open_steps.values():
-        if not step.get("closed"):
-            yield {"type": "step", "id": step["id"], "label": step["label"], "status": "done"}
-
-    yield {"type": "usage", **(usage or {"inputTokens": 0, "outputTokens": 0})}
 
 
 async def generate_title(
@@ -241,9 +113,7 @@ async def generate_title(
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
 ) -> tuple[str | None, dict[str, int]]:
-    """`(title, usage)` from one short non-streaming call; title is None on failure, usage is
-    reported either way.
-    """
+    """`(title, usage)`; title None on failure."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     if masker is not None:
         first_user_message, user_hits = masker(first_user_message)

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
-import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn } from './helpers'
+import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn, ribbonTab, panelHeader } from './helpers'
 import { personas } from './personas'
+import { toolNames } from './composer-tools'
 
 /** Persona coverage: every `test.step` is one `Need` id from `personas.ts`. */
 
@@ -20,7 +21,7 @@ async function openNewest(page: import('@playwright/test').Page, tab: string) {
   await page.waitForURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
 }
 
-/** Needs recorded as open rather than as regressions, with the reason. */
+/** Needs that a clean account cannot check, with the reason. */
 const KNOWN_OPEN: Record<string, string> = {
   // Controls on a finished deck; a clean account has none (slides.spec.ts covers creation).
   'biz-pptx': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
@@ -121,17 +122,8 @@ test.describe('페르소나 커버리지', () => {
               case 'hum-upload':
               case 'soc-csv':
                 await gotoSurface(page, 'chat')
-                await probe(page.getByRole('button', { name: '첨부' }).first()).toBeVisible()
+                await probe(page.getByRole('button', { name: '도구', exact: true }).first()).toBeVisible()
                 await probe(page.locator('input[type="file"]').first()).toBeAttached()
-                break
-
-              /* model comparison */
-              case 'hum-compare':
-              case 'res-compare':
-                await gotoSurface(page, 'chat')
-                await page.getByRole('button', { name: '모델 비교' }).click()
-                await probe(page.getByText('비교 모드')).toBeVisible()
-                await page.keyboard.press('Escape')
                 break
 
               /* slide fact-checking */
@@ -176,10 +168,10 @@ test.describe('페르소나 커버리지', () => {
               case 'off-voice':
                 // A recording arrives as an attached file.
                 await gotoSurface(page, 'report')
-                await probe(page.getByRole('button', { name: '첨부' }).first()).toBeVisible()
+                await probe(page.getByRole('button', { name: '도구', exact: true }).first()).toBeVisible()
                 break
 
-              /* templates and starting points */
+              /* 서식 */
               case 'hum-template':
               case 'off-template':
               case 'sal-template':
@@ -188,7 +180,7 @@ test.describe('페르소나 커버리지', () => {
                   page,
                   need.id === 'hum-template' || need.id === 'off-template' ? 'report' : 'slides',
                 )
-                await probe(page.getByRole('button', { name: '작업 시작하기' })).toBeVisible()
+                probe(await toolNames(page)).toContain('양식 고르기')
                 break
 
               /* maths */
@@ -245,13 +237,15 @@ test.describe('페르소나 커버리지', () => {
               /* report */
               case 'eng-report-toc':
                 await openNewest(page, '보고서')
-                await page.getByRole('tab', { name: '보기', exact: true }).click()
-                await probe(page.getByRole('button', { name: /^목차/ }).first()).toBeVisible()
+                // 목차 sits in the panel header's ⋯ menu.
+                await panelHeader(page).getByRole('button', { name: '더보기' }).click()
+                await probe(page.getByRole('menuitem', { name: /^목차/ }).first()).toBeVisible()
+                await page.keyboard.press('Escape')
                 break
               case 'hum-sources':
               case 'res-sources':
                 await openNewest(page, '보고서')
-                await page.getByRole('tab', { name: '검토', exact: true }).click()
+                await ribbonTab(page, '검토')
                 await probe(page.getByRole('button', { name: /출처/ })).toBeVisible()
                 break
               case 'grad-section-regen':
@@ -270,8 +264,7 @@ test.describe('페르소나 커버리지', () => {
               case 'off-docx':
               case 'res-export-pdf':
                 await openNewest(page, '보고서')
-                await page.getByRole('tab', { name: '파일', exact: true }).click()
-                await page.getByRole('button', { name: '내보내기', exact: true }).click()
+                await page.getByRole('button', { name: '내려받기', exact: true }).click()
                 await probe(page.getByText(/Word|PDF/).first()).toBeVisible()
                 break
 
@@ -283,8 +276,7 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'biz-pptx':
                 await openNewest(page, '슬라이드')
-                await page.getByRole('tab', { name: '파일', exact: true }).click()
-                await page.getByRole('button', { name: '내보내기', exact: true }).click()
+                await page.getByRole('button', { name: '내려받기', exact: true }).click()
                 await probe(page.getByText('PowerPoint')).toBeVisible()
                 break
               case 'biz-notes':
@@ -368,7 +360,7 @@ test.describe('페르소나 커버리지', () => {
               case 'grad-version': {
                 await openNewest(page, '보고서')
                 // `.first()`: a conversation may show several artifacts, each with its own history.
-                await page.getByRole('tab', { name: '검토', exact: true }).click()
+                await ribbonTab(page, '검토')
                 const history = page.getByRole('button', { name: '버전 기록' }).first()
                 await probe(history).toBeVisible()
                 await history.click()

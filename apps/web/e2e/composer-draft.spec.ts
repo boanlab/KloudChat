@@ -1,31 +1,29 @@
 import { expect, test } from '@playwright/test'
-import { signIn, surfaceOn } from './helpers'
+import { signIn } from './helpers'
+import { openTemplates } from './composer-tools'
 
-/** Picking a 서식 or switching surface never overwrites a draft. Image requests stubbed. */
-test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', async ({ page }) => {
+/** Picking a 서식 or switching surface never overwrites a draft. */
+test('서식을 고르면 쓰던 문장은 그대로 두고 칩만 붙는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
-  await page.route('**/api/sessions/*/images', (route) => route.fulfill({ json: [] }))
+  await page.goto('/new/report')
 
-  test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   const composer = page.getByLabel('프롬프트 입력')
-  const mine = '골목 어귀에서 손을 흔드는 아이. 늦은 오후 빛으로.'
+  const mine = '3월 운영위원회 회의 내용을 정리해 줘.'
   await composer.fill(mine)
 
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await openTemplates(page)
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 20_000 })
   // Searched: the gallery pages.
-  await dialog.getByPlaceholder(/검색/).fill('포스터')
-  const search = dialog.getByLabel(/서식 검색|시작점 검색/)
-  if (await search.count()) await search.fill('포스터')
-  const poster = dialog.locator('div.group', { hasText: '포스터' }).first()
-  await expect(poster).toBeVisible({ timeout: 20_000 })
-  await poster.getByRole('button', { name: '이 서식으로 시작' }).click()
+  await dialog.getByLabel('양식 검색').fill('회의록')
+  const minutes = dialog.locator('div.group', { hasText: '회의록' }).first()
+  await expect(minutes).toBeVisible({ timeout: 20_000 })
+  await minutes.getByRole('button', { name: '이 양식으로 시작' }).click()
 
-  // The draft stays; the 서식's questions open above the box.
+  // The draft stays; the 서식 is a chip.
   await expect(composer).toHaveValue(mine)
-  await expect(page.getByRole('group', { name: '포스터 시작점 질문' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '회의록 양식 해제' })).toBeVisible()
 })
 
 /** A draft belongs to the surface it was typed on; a document surface's box starts empty. */

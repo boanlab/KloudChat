@@ -13,7 +13,7 @@
   boxes, no tints, no bar down the side of a heading. Sections are separated by
   space and by an accent section number, and by nothing else.
 
-  Accent appears exactly four times — the rule at the foot of the cover, the
+  Accent appears exactly four times — the bar at the head of the cover, the
   section number, the underline under a table head, and the list marker. Every
   other non-colour is derived from `--ink`, so any accent hue and either body
   face land the same way.
@@ -21,11 +21,11 @@
   No script. Artifacts render in a `sandbox=""` iframe and the file is also
   downloaded and opened offline. See `services/design_templates.py`.
 
-  This file is the shared shape. It is 보고 문서's own design — the first line
-  above says so — and every other document 서식 borrows it by naming it in
-  `seed_from`, then adds its own `design.css`: 안내문·공지 centres its title
-  under a double rule, 한 장 요약 runs two columns, 학기말 글 indents its first
-  lines and stops leaving space between paragraphs. What belongs here is what
+  This file is the shared shape. Every document 서식 borrows it by naming it
+  in `seed_from`, then adds its own `design.css` (회의록 packs a compact grey
+  head). A document written in a 서식 since taken out of
+  the catalogue renders in this seed alone (`design_templates.rendering`).
+  What belongs here is what
   every one of them needs and none of them is different for — the tokens, the
   whole vocabulary `assemble` can emit, the `@page` rule, the print rules, and
   the shadow-root `:host`. What belongs there is the forty lines that make one
@@ -102,23 +102,17 @@
     margin: 0 auto;
     padding: 0 3.5rem 6rem;
     background: var(--paper);
-    min-height: var(--page-h, 100vh);
+    min-height: var(--page-h, 297mm);
     counter-reset: sec;
   }
 
   /* ── cover ─────────────────────────────────────────────────────────
-     A page of its own. The title block sits on the one-third line, the facts
-     of the review sit under it, and the accent rule waits at the foot of the
-     page rather than under the title — the reader's eye is meant to arrive at
-     the title, not be stopped there. */
+     The title block. By default it heads the first page, the accent rule under
+     it and the first section right after; a 서식 with a memo or field-table head
+     keeps it that way and restyles it in its own `design.css`. */
   .cover {
     display: flex;
     flex-direction: column;
-    /* Padding, content and the margin below add up to exactly one sheet, so on the
-       editor's continuous page the second sheet starts with the first section rather
-       than with the tail of the cover. Print measures the cover in millimetres below. */
-    /* No cover page: a title block at the head of the first page, the rule under it,
-       and the first section right after. */
     min-height: 0;
     padding: 2.4rem 0 1.1rem;
     margin: 0 0 2.2rem;
@@ -126,8 +120,7 @@
   }
   .cover h1 {
     margin: 0 0 0.9rem;
-    /* The title heads the first page now, not a cover: it takes the full measure and
-       wraps only when it is longer than a line. */
+    /* It takes the full measure and wraps only when it is longer than a line. */
     max-width: none;
     font-size: var(--doc-title);
     font-weight: 650;
@@ -164,6 +157,37 @@
     height: 3px;
     background: var(--accent);
   }
+
+  /* ── cover page ────────────────────────────────────────────────────
+     A page of its own: the shared seed's cover (`cover-page`) and a format's
+     cover head (`tb-cover`, drawn by `docFormats.ts`). The accent bar at the head
+     of the sheet, the kind label and the title on the upper third, centred, the
+     facts under them, and nothing else; the body starts on the next page.
+     Lengths are millimetres of the A4 page, never `vh`: inside a tall preview
+     frame `vh` is the frame, not the paper. */
+  .cover.cover-page, .cover.tb-cover {
+    box-sizing: border-box;
+    align-items: center;
+    text-align: center;
+    min-height: 250mm;
+    padding: 72mm 0 0;
+    margin: 0;
+    /* A 서식 sets its own weight with `--cover-bar`. */
+    border-top: var(--cover-bar, 3px) solid var(--accent);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    break-after: page;
+    page-break-after: always;
+  }
+  .cover.cover-page h1 {
+    max-width: 24ch;
+    margin: 0 auto 1rem;
+    font-size: var(--doc-cover);
+    word-break: keep-all;
+  }
+  .cover.cover-page .lead, .cover.cover-page > p { margin-inline: auto; }
+  .cover.cover-page dl { margin: 12mm auto 0; text-align: left; }
+  .cover.cover-page::after, .cover.tb-cover::after { content: none; display: none; }
 
   /* ── 채워진 표지 ────────────────────────────────────────────────────
      같은 표지의 다른 얼굴. 흰 종이 위 제목 대신, 색이 깔린 띠 위에 흰 글씨가
@@ -273,6 +297,24 @@
   ul, ol { margin: 0 0 1.05rem; padding-left: 1.25rem; }
   li { margin: 0 0 0.35rem; }
   li::marker { color: var(--accent); }
+  /* 개조식 (`titleBlock.lists`): □ ○ - ㆍ by depth, each depth 2타 (one Hangul) in from
+     its parent's marker, the marker hung so a wrapped line meets the text; a ※ note is
+     smaller and set in, the 붙임 lines stand under their first item. The web app's
+     `GAEJO_CSS` and the file exporters draw the same. */
+  .gaejo ul { list-style: none; margin: 0.3em 0; padding-left: 0; }
+  .gaejo ul ul { margin: 0.15em 0 0 -0.5em; }
+  .gaejo ul > li { position: relative; margin: 0.15em 0; padding-left: 1.5em; }
+  .gaejo ul > li > p { margin: 0; }
+  .gaejo ul > li::before { content: "□"; position: absolute; left: 0; top: 0; }
+  .gaejo ul ul > li::before { content: "○"; }
+  .gaejo ul ul ul > li::before { content: "-"; }
+  .gaejo ul ul ul ul > li::before { content: "ㆍ"; }
+  .gaejo p.gaejo-note { margin: 0.2em 0 0.4em; padding-left: 2.5em; text-indent: -1.5em; font-size: 0.86em; }
+  /* A ※ under an item stands at that item's depth, ※ its own marker (no ○ before it). */
+  .gaejo ul > li.gaejo-note { padding-left: 1.5em; text-indent: -1.5em; font-size: 0.86em; }
+  .gaejo ul > li.gaejo-note::before { content: none; }
+  .gaejo p.gaejo-attach { margin: 0.5em 0 0; padding-left: 2.6em; text-indent: -2.6em; }
+  .gaejo p.gaejo-attach + p.gaejo-attach { margin-top: 0; text-indent: 0; }
   blockquote {
     margin: 1.3rem 0;
     padding: 0.1rem 0 0.1rem 1.1rem;
@@ -302,6 +344,9 @@
     vertical-align: top;
     font-variant-numeric: tabular-nums;
   }
+  /* A column of figures (`table_figures.mark_html` marks it `.fig`) sits flush right, its
+     head with it; a column of words stays left whatever its position. */
+  th.fig, td.fig { text-align: right; }
 
   /* ── the subordinate voice ─────────────────────────────────────────
      One size, one colour, one measure, everywhere in the catalogue: 0.84em,
@@ -507,7 +552,7 @@
      paper still breaks across two pages with nothing on the second. */
   /* A figure sits in the text column like a word processor's: centred, at most four
      fifths of the column wide and about a third of an A4 page tall. */
-  figure img { display: block; margin: 0 auto; max-width: 82%; max-height: min(95mm, calc(var(--page-h, 100vh) * 0.38)); width: auto; height: auto; object-fit: contain; }
+  figure img { display: block; margin: 0 auto; max-width: 82%; max-height: min(95mm, calc(var(--page-h, 297mm) * 0.38)); width: auto; height: auto; object-fit: contain; }
   figcaption { text-align: center; }
   figcaption { margin-top: 0.5rem; }
 
@@ -522,7 +567,6 @@
      on exactly the output the shape is for. */
   @media screen and (max-width: 900px) {
     .page { padding: 0 1.4rem 4rem; }
-    .cover { padding-top: calc(var(--page-h, 100vh) * 0.22); }
   }
 
   @page { size: A4 portrait; margin: 20mm 18mm; }
@@ -530,15 +574,20 @@
     html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { background: #fff; }
     .page { max-width: none; margin: 0; padding: 0; min-height: 0; }
-    /* `vh` is the page box on paper, so the cover is measured in millimetres
-       instead: a third of the way down A4, with the accent rule at the foot. */
-    /* No cover page: the title heads the first page and the text follows under it. */
     .cover {
       min-height: 0;
       padding: 0 0 4mm;
       margin: 0 0 8mm;
       page-break-after: auto;
       break-after: auto;
+    }
+    /* The cover page's own break ends it; a min-height could spill a blank sheet. */
+    .cover.cover-page, .cover.tb-cover {
+      min-height: 0;
+      padding: 72mm 0 0;
+      margin: 0;
+      page-break-after: always;
+      break-after: page;
     }
     section { margin: 0 0 12mm; }
     /* 발치의 문서 이름. 인쇄된 두 번째 장부터는 이 종이가 무엇의 일부인지
@@ -559,7 +608,11 @@
     /* 각주는 자기 절과 같은 쪽에 있어야 뜻이 있다. */
     section > small { break-inside: avoid; break-before: avoid; }
     h2 { page-break-after: avoid; break-after: avoid; }
-    table, figure, blockquote { break-inside: avoid; }
+    figure, blockquote { break-inside: avoid; }
+    /* A table may run onto the next sheet, a row at a time, its head row repeated. */
+    table { break-inside: auto; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; }
   }
 
   /* ── 편집기 ─────────────────────────────────────────────────────────
@@ -640,10 +693,7 @@
     margin: 0;
     min-height: 0;
   }
-  .paginated .cover {
-    min-height: var(--sheet-h, 1123px);
-    padding-top: calc(var(--sheet-h, 1123px) * 0.3);
-  }
+  .paginated :is(.cover.cover-page, .cover.tb-cover) { min-height: var(--sheet-h, 250mm); }
   .paginated figure img { max-height: calc(var(--sheet-h, 1123px) * 0.5); }
 
   @media print {

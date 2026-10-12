@@ -1,32 +1,35 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Navigate, NavLink, Route, Routes } from 'react-router-dom'
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { PageHeader } from '@/components/ui'
+import { Button, Modal, PageHeader } from '@/components/ui'
 import { adminApi, type SystemSettings } from '@/lib/api'
+import { useUnsaved } from '@/lib/unsaved'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { AutoRoutingSection } from './settings/AutoRoutingSection'
 import { BrandingSection } from './settings/BrandingSection'
+import { ConnectorCatalogSection } from './settings/ConnectorCatalogSection'
 import { FeaturesSection } from './settings/FeaturesSection'
 import { MailSection } from './settings/MailSection'
+import { ModelRolesSection } from './settings/ModelRolesSection'
 import { OutlineModelSection } from './settings/OutlineModelSection'
 import { ProxySection } from './settings/ProxySection'
 import { SignupSection } from './settings/SignupSection'
-import { TemplatesSection } from './settings/TemplatesSection'
 import { ToolsSection } from './settings/ToolsSection'
+import { OcrSection } from './settings/OcrSection'
 
 const tabs = [
   { to: '/admin/system', label: '프록시', end: true },
+  { to: '/admin/system/models', label: '모델', end: false },
   { to: '/admin/system/routing', label: '라우팅', end: false },
   { to: '/admin/system/features', label: '기능', end: false },
-  { to: '/admin/system/templates', label: '공용 템플릿', end: false },
   { to: '/admin/system/branding', label: '브랜딩', end: false },
   { to: '/admin/system/mail', label: '메일', end: false },
   { to: '/admin/system/signup', label: '회원 가입', end: false },
+  { to: '/admin/system/connectors', label: '커넥터 카탈로그', end: false },
 ]
 
-/** Titled section with a one-line description. */
 function Group({
   title,
   description,
@@ -47,7 +50,7 @@ function Group({
 
 export function AdminSystemPage() {
   const t = useT()
-  // Shared by several tabs; a save in one refreshes the others.
+  // Shared by tabs; a save in one refreshes the others.
   const [settings, setSettings] = useState<SystemSettings | null>(null)
   const reload = useCallback(async () => {
     const data = await adminApi.settings().catch(() => null)
@@ -58,6 +61,13 @@ export function AdminSystemPage() {
     void reload()
   }, [reload])
 
+  // Unsaved section on tab change: asked first.
+  const unsaved = useUnsaved((s) => Object.values(s.dirty).some(Boolean))
+  const clearUnsaved = useUnsaved((s) => s.clear)
+  const navigate = useNavigate()
+  const here = useLocation().pathname.replace(/\/$/, '')
+  const [leavingTo, setLeavingTo] = useState<string | null>(null)
+
   return (
     <>
       <TopBar left={<span className="text-base font-medium">{t('시스템')}</span>} />
@@ -67,7 +77,7 @@ export function AdminSystemPage() {
           description={t('이 인스턴스 전체에 적용되는 설정입니다. 저장 즉시 적용되며 재시작이 필요하지 않습니다.')}
         />
 
-        {/* Scrolls horizontally: the labels overflow a phone width. */}
+        {/* Labels overflow a phone width. */}
         <div role="tablist" className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
           {tabs.map((tab) => (
             <NavLink
@@ -75,6 +85,11 @@ export function AdminSystemPage() {
               to={tab.to}
               end={tab.end}
               role="tab"
+              onClick={(event) => {
+                if (!unsaved || tab.to === here) return
+                event.preventDefault()
+                setLeavingTo(tab.to)
+              }}
               className={({ isActive }) =>
                 cn(
                   '-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-base font-medium transition-colors',
@@ -91,6 +106,17 @@ export function AdminSystemPage() {
 
         <Routes>
           <Route index element={<ProxySection settings={settings} reload={reload} />} />
+          <Route
+            path="models"
+            element={
+              <Group
+                title={t('모델')}
+                description={t('어떤 모델이 어떤 일을 맡을지 정합니다. 서버 설정 파일(.env)의 값은 처음 설치할 때 한 번만 쓰이고, 여기서 저장한 값이 우선합니다.')}
+              >
+                <ModelRolesSection settings={settings} onSaved={reload} />
+              </Group>
+            }
+          />
           <Route
             path="routing"
             element={
@@ -117,22 +143,17 @@ export function AdminSystemPage() {
                 </Group>
                 <Group
                   title={t('기능 연동')}
-                  description={t('웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사를 연결합니다.')}
+                  description={t('웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사, 글자 읽기를 연결합니다.')}
                 >
                   <ToolsSection settings={settings} onSaved={reload} />
                 </Group>
+                <Group
+                  title={t('글자 읽기(OCR)')}
+                  description={t('스캔본과 문서 사진의 글자를 읽는 방식과 모델을 정합니다.')}
+                >
+                  <OcrSection settings={settings} onSaved={reload} />
+                </Group>
               </div>
-            }
-          />
-          <Route
-            path="templates"
-            element={
-              <Group
-                title={t('공용 템플릿')}
-                description={t('기관 양식처럼 모두가 같은 형식으로 시작해야 하는 것을 한 번만 등록합니다.')}
-              >
-                <TemplatesSection />
-              </Group>
             }
           />
           <Route
@@ -158,9 +179,42 @@ export function AdminSystemPage() {
               </Group>
             }
           />
+          <Route
+            path="connectors"
+            element={
+              <Group
+                title={t('커넥터 카탈로그')}
+                description={t('사용자가 사용자 지정 › 커넥터에서 설치할 수 있는 MCP 서버입니다. 명령으로 실행하는 서버(stdio)는 여기서만 추가할 수 있습니다.')}
+              >
+                <ConnectorCatalogSection />
+              </Group>
+            }
+          />
           <Route path="*" element={<Navigate to="/admin/system" replace />} />
         </Routes>
       </PageBody>
+      <Modal
+        open={leavingTo !== null}
+        onClose={() => setLeavingTo(null)}
+        title={t('저장하지 않은 변경 내용이 있습니다')}
+        description={t('다른 탭으로 옮기면 이 탭에서 바꾼 내용이 사라집니다.')}
+        footer={
+          <>
+            <Button onClick={() => setLeavingTo(null)}>{t('머물기')}</Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                const to = leavingTo
+                setLeavingTo(null)
+                clearUnsaved()
+                if (to) navigate(to)
+              }}
+            >
+              {t('버리고 옮기기')}
+            </Button>
+          </>
+        }
+      />
     </>
   )
 }

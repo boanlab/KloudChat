@@ -32,7 +32,7 @@ test('분할선은 끌어 옮긴 자리를 새로고침 뒤에도 지킨다', as
       ) ?? null
     )
   }, AS_USER)
-  test.skip(!session, '결과물이 붙은 대화가 아직 없습니다.')
+  test.skip(!session, '아티팩트가 붙은 대화가 아직 없습니다.')
 
   await page.goto(`/s/${session.id}`)
   const panel = page.locator('[data-panel="artifact"]')

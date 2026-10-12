@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { signIn } from './helpers'
+import { openTool, setWebSearch, toolNames } from './composer-tools'
 
 /** Composer toolbar switches say what the turn will do and which of them are account-wide. */
 
@@ -92,17 +93,17 @@ test('웹 검색은 strict-local 모델에서 켜진 척하지 않는다', async
   })
 
   await page.goto('/new/chat')
-  const search = page.getByRole('button', { name: '웹 검색' })
-  await search.click()
-  await expect(search).toHaveAttribute('aria-pressed', 'true')
+  await setWebSearch(page, '항상')
+  await expect(page.getByText('웹 검색: 항상', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: /External One/ }).click()
   await page.getByRole('button', { name: /Local Strict/ }).click()
 
-  // The wish stays on file; the row says what the turn will do.
-  await expect(search).toBeDisabled()
-  await expect(search).toHaveAttribute('aria-pressed', 'false')
+  // The wish stays on file; the row says what the turn will do, and the choices are off.
   await expect(page.getByText('웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다')).toBeVisible()
+  await openTool(page, /^웹 검색/)
+  await expect(page.getByRole('menuitemradio', { name: /^항상/ })).toBeDisabled()
+  await page.keyboard.press('Escape')
 
   const composer = page.getByLabel('프롬프트 입력')
   await composer.fill('오늘 환율')
@@ -146,7 +147,7 @@ test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 
   await signIn(page)
 
   await page.goto('/new/chat')
-  await page.getByRole('button', { name: '커넥터' }).click()
+  await openTool(page, /^커넥터/)
   await expect(
     page.getByText('계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.'),
   ).toBeVisible()
@@ -173,15 +174,16 @@ test('웹 검색 토글은 글을 쓰는 모든 화면에 있다', async ({ page
   })
   await signIn(page)
 
-  const search = page.getByRole('button', { name: '웹 검색' })
+  const offersSearch = async () => (await toolNames(page)).filter((name) => name.startsWith('웹 검색')).length
   await page.goto('/new/chat')
-  await expect(search).toHaveCount(1)
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  expect(await offersSearch()).toBe(1)
 
   // Document surfaces can search too (`canWebSearch` in `Composer`).
   for (const kind of ['report', 'slides']) {
     await page.goto(`/new/${kind}`)
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-    await expect(search).toHaveCount(1)
+    expect(await offersSearch()).toBe(1)
   }
 
   // Media surfaces hide it; asserted in `disabled-surface.spec.ts`, since they are off by default.

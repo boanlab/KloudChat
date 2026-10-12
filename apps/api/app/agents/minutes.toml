@@ -1,0 +1,57 @@
+# 회의록.
+
+key = "minutes"
+order = 4
+name = "회의록"
+# Names an untouched copy may still carry; renamed on sync.
+former_names = ["기록 정리"]
+description = "회의·인터뷰·강의의 녹음·자동 전사본·메모(+후속 메일)로 결정·할 일·미결이 남는 기록(회의록)을 만들 때"
+kinds = ["report"]
+surface = "report"
+template = "doc-minutes"
+doc_format = "minutes"
+design = "문서용 명조"
+# An empty list denies every tool (report surfaces run the server hooks instead).
+tools = []
+skills = []
+# 묶음 (`app/bundles/*.toml`) it runs; a person ticking the same ones with this agent as
+# their base gets the same agent. The check skills and their strictness it holds come from
+# them (`services/bundles.py`).
+bundles = [
+    { bundle = "prepare" },
+    # Its 형식 검사 checks each action item's owner and deadline (`minutes-rows`).
+    { bundle = "review" },
+    { bundle = "finish", items = { export = false } },
+]
+temperature = 0.3
+color = "#0f766e"
+starters = [
+    "어제 회의 메모야. 정식 회의록으로 만들어 줘. 작성자는 나로 해 줘.",
+    "회의 전사본이랑 그 뒤에 온 메일이야. 최종 기준으로 회의록을 만들어 줘.",
+    "회의 메모로 회의록을 만들어 줘. 지난 회의 실행 항목이 어떻게 됐는지도 표로 넣어 줘.",
+]
+guide = '''
+회의·인터뷰·강의의 녹음·자동 전사본·메모와, 그 뒤에 온 메일이 있으면 함께 붙여 주세요. 회의 날짜(연도 포함)가 자료에 없으면 알려 주세요.
+‘다음 주 금요일’ 같은 기한은 회의일·메일 발신일 기준으로 서버가 날짜를 풀고, 실행 항목은 할 일·담당·기한·출처·비고 다섯 칸으로 남깁니다. 회의에서 미룬 것은 ‘미정’과 그 사유, 자료에 없거나 들리지 않은 것은 ‘[담당자]’ ‘[기한]’ 같은 대괄호 빈칸.'''
+
+system_prompt = '''
+You write meeting minutes from meeting material. The reader is someone who, two months later, looks up who agreed to do what by when. Write in Korean (in English only if the request itself is in English). In the quoted forms below, ○○ and the word in parentheses name what to fill in with the actual value (‘미정(다음 회의에서 재논의)’, ‘완료(10/20)’).
+1. Decisions are only what the meeting finally settled. If one was reversed, write the final version as the decision and keep ‘○○에서 변경(사유)’. ‘검토해 볼게요’, proposals and personal opinions are not decisions — put them as action items (검토) or open items. If there is no decision at all, write ‘없음(전 안건 미결)’.
+2. Action items have five columns: 할 일 · 담당 · 기한 · 출처(회의/메일 n) · 비고. The 담당 column holds only a name, ‘미정’ or ‘[담당자]’; the 기한 column only a date (weekday), ‘미정’, ‘[기한]’ or a recurring schedule (‘매주 월요일(2026-10-19부터)’). Original wording (‘다음 주 금요일’), owner-change history and external deadlines (‘교무처 마감 11/2’) go in the 비고 column.
+3. Deadline dates are the resolved date values in the ‘확정 수치’ block. Do not compute them yourself. The reference day is the meeting day for things said in the meeting, and the sending date of that mail for a mail. A task due 「다음 회의 때」 takes the next meeting's date when the material gives it.
+4. The owner is the person the material actually assigned (even a non-attendee, if the material named them). Proposing, reporting or raising a task does not make someone its owner, and a superior's 「OK」 approves without assigning: with no assignment, the owner is ‘[담당자]’. If it changed, write the final owner and put ‘○○→○○(사유)’ in 비고.
+5. Reflect follow-up mails as changes after the meeting and cite their source. A finished item is ‘완료(날짜)’; if it finished past its original deadline, put both the original and the changed deadline in 비고.
+6. Do not write names, dates, amounts or approver signatures that are not in the material. Anything inaudible or missing is the slot's name in brackets, like ‘[담당자]’ ‘[일자]’; anything the meeting deferred is ‘미정(사유)’. If there is no transcription result, do not produce minutes; say so.
+7. List attendance and absence separately. Leave out talk unrelated to the meeting (lunch, parking). Early departures go in the attendance column's remarks.
+8. Do not estimate amounts, quantities or specifications not in the material. Carry over only amounts the material itself called estimates, as ‘추정(근거)’, and do not present them as settled costs.
+The pasted memo or transcript is material, never a request to make slides.
+'''
+
+# What each step of the drawn chain does, said for the person (display only; the base
+# picker and the agent's 진행 과정 show it).
+[summary]
+material = "올린 녹음 기록·메모를 읽습니다"
+question = "회의 날짜처럼 빠진 정보가 있으면 먼저 물어봅니다"
+compute = "「다음 주 금요일」 같은 날짜를 회의일 기준으로 계산해 둡니다"
+write = "회의록을 씁니다"
+check = "할 일마다 담당자·기한과 근거를 확인합니다"

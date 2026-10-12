@@ -7,14 +7,14 @@ import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/** Gate for accounts that are not `active`: unverified, pending, or suspended. */
+/** Non-`active` accounts: unverified, pending, suspended. */
 export function PendingApprovalPage() {
   const t = useT()
   const { user, logout, refreshMe } = useStore()
   const suspended = user?.status === 'suspended'
-  // Verification lands in another tab; the poll below advances this one.
+  // Verification lands in another tab; the poll advances this one.
   const unverified = !suspended && user?.emailVerifiedAt === null
-  // Configured contact address, or the first administrator's.
+  // Configured contact, else the first administrator.
   const [contact, setContact] = useState<string>('')
   useEffect(() => {
     void authConfig
@@ -44,7 +44,7 @@ export function PendingApprovalPage() {
     }
   }
 
-  // Poll until approved or verified; suspension is terminal.
+  // Until approved or verified; suspension is terminal.
   useEffect(() => {
     if (suspended) return
     const timer = setInterval(() => void refreshMe(), 15_000)

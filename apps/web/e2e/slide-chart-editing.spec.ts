@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, signIn } from './helpers'
+import { E2E_ADMIN, signIn, ribbonTab } from './helpers'
 
 test('차트의 축·계열·수치를 고치면 차트 레이아웃과 데이터가 함께 저장된다', async ({ page }) => {
   test.setTimeout(90_000)
@@ -28,7 +28,7 @@ test('차트의 축·계열·수치를 고치면 차트 레이아웃과 데이�
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: /^슬라이드/ }).click()
   await page.locator('button.aspect-video').first().click()
-  await page.getByRole('tab', { name: '편집', exact: true }).click()
+  await ribbonTab(page, '편집')
   await page.locator('[data-slide-element="chart"]').click()
   await expect(page.getByText('차트 선택됨')).toBeVisible()
   await expect(page.getByLabel('차트 종류')).toBeVisible()
@@ -66,7 +66,7 @@ test('차트의 축·계열·수치를 고치면 차트 레이아웃과 데이�
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: /^슬라이드/ }).click()
   await page.locator('button.aspect-video').first().click()
-  await page.getByRole('tab', { name: '편집', exact: true }).click()
+  await ribbonTab(page, '편집')
   await page.locator('[data-slide-element="table"]').click()
   await expect(page.getByText('표 선택됨')).toBeVisible()
   await page.getByLabel('2행 2열').fill('25')

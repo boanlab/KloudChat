@@ -14,7 +14,7 @@ On the home screen select **Chat**, enter a request, and press `Enter`. The answ
 
 | Element | Details |
 |---|---|
-| Processing complete · N steps | The items referenced while the answer was generated. Expand it to see steps such as using attachments, carrying over attachments from earlier turns, applying personalization settings, referring to memory, searching the web, reading documents, running code, and searching files. Files that were truncated or could not be read also appear here. |
+| Answered · N steps | The steps the answer went through. Reports and slides name what was done instead, such as "Wrote the report". Expand it to see steps such as using attachments, carrying over attachments from earlier turns, applying personalization settings, referring to memory, searching the web, reading documents, running code, and searching files. Files that were truncated or could not be read also appear here. |
 | Processing detail badge | Shows whether Auto switched the model, whether personal data was masked, and which model actually answered. On mobile it collapses to "n processing details". |
 | Usage line | Shows the model name, input and output tokens, and credits. Free models are marked **Free**. You can hide this line in Settings → Preferences. |
 | Sources | When a web search runs, numbers in the form `[1]` appear in the text and a source list appears below it. |
@@ -35,7 +35,7 @@ In Chat, select **Edit message** (the pencil icon) next to a message you sent. T
 
 ## Keeping conversation context
 
-Within the same conversation, earlier questions, answers, and attached files stay available. Short follow-ups such as "So what happens next?" or "Explain that in more detail" work fine. When the topic changes, start a new conversation with **New**. Earlier context does not mix in, so the answer is more accurate.
+Within the same conversation, earlier questions, answers, and attached files stay available. Short follow-ups such as "So what happens next?" or "Explain that in more detail" work fine. When the topic changes, press **New chat** in the sidebar. Earlier context does not mix in, so the answer is more accurate.
 
 ## Dictating a request
 
@@ -52,7 +52,7 @@ Recordings are not stored. If there is no microphone or no permission, the messa
 
 - Use the `…` menu on a sidebar item to rename, pin, remove from a project, or delete. The title is generated automatically after the first answer.
 - A new conversation with nothing sent is deleted automatically when you leave the screen.
-- **Deleting a conversation also deletes the outputs and share links created in it.** Projects and memory are kept.
+- **Deleting a conversation also deletes the artifacts and share links created in it.** Projects and memory are kept.
 - To tidy up several conversations at once, use the account menu → **Conversation history**. [Usage and conversation history](../personal/usage-history)
 
 ## Adjusting answer length

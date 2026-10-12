@@ -67,7 +67,8 @@ class _Gateway:
         self.outline_asks = 0
 
     def answer(self, prompt: str) -> str:
-        if "JSON 객체로만 답하라" in prompt or "앞선 답은 JSON 이 아니었다" in prompt:
+        if ("Answer with a JSON object only" in prompt
+                or "The previous answer was not JSON" in prompt):
             self.outline_asks += 1
             if self.outline_asks == 1:  # notes, not the JSON asked for
                 return ('1. **제목**: "AI 보안 동향"\n2. **Sections**:\n   - 구조:\n'
@@ -76,9 +77,9 @@ class _Gateway:
                 "요약", "시장 현황", "배포 방식 비교", "주요 기능", "결론"]}, ensure_ascii=False)
         if "Write the whole report in one pass" in prompt:
             return DRAFT
-        if "보고서의 문장들에 문제가 있다" in prompt:
+        if "Some sentences in the report have problems" in prompt:
             # The one repair: each flagged sentence mended as the model would have.
-            items = json.loads(prompt[prompt.index("항목:") + len("항목:"):].strip())
+            items = json.loads(prompt[prompt.index("Items:") + len("Items:"):].strip())
             mended = []
             for item in items:
                 s = item["sentence"]
@@ -122,10 +123,11 @@ def model(monkeypatch):
         prompt = "\n".join(str(m.get("content") or "") for m in messages)
         return gateway.answer(prompt), {"inputTokens": 1, "outputTokens": 1}
 
-    async def make(planned, *, model, api_key, slide):
+    async def make(planned, *, model, api_key, slide, accent=""):
         source = "flowchart LR\n  a[사용자 요청] --> b[게이트웨이] --> c[마스킹] --> d[LLM 서버]"
         return ({"figure": planned.figure, "description": planned.description, "source": source,
-                 "caption": planned.caption, "key": "k"}, {"inputTokens": 0, "outputTokens": 0})
+                 "caption": planned.caption, "key": "k"}, {"inputTokens": 0, "outputTokens": 0},
+                b"\x89PNG\r\n\x1a\n")
 
     monkeypatch.setattr(report.settings_store, "litellm_config", litellm_config)
     monkeypatch.setattr(report, "_complete", complete)
@@ -143,7 +145,9 @@ async def test_the_finished_report_passes_the_quality_gate(model):
     assert findings == [], findings
     text = "\n\n".join(s["content"] for s in sections)
     assert "**표 1. 배포 방식 비교**" in text and "표 1과 같은 차이" in text
-    assert "그림 1과 같이" in text and "```mermaid" in text
+    # Figures are drawn as shapes and carried as pictures; no mermaid reaches a report.
+    assert "그림 1과 같이" in text and "data:image/png;base64," in text
+    assert "```mermaid" not in text
     assert "프롬프트 인젝션" in text and "생성형 AI 보안 시장은" in text
     assert "『AI 보안 위협 대응 매뉴얼』" in text
     # The kpi repeats a figure the text gives, so it goes (drop_redundant_kpi); either way
@@ -162,7 +166,7 @@ async def test_the_assumptions_are_written_first_and_given_to_every_other_sectio
 
     async def complete(_model, messages, _api_key, max_tokens):
         prompt = "\n".join(str(m.get("content") or "") for m in messages)
-        if "JSON 객체로만 답하라" in prompt:
+        if "Answer with a JSON object only" in prompt:
             return json.dumps({"title": "밀키트 기획안", "sections": [
                 "사업 개요", "핵심 가정", "수익 모델", "실행 로드맵", "리스크"]},
                 ensure_ascii=False), {"inputTokens": 1, "outputTokens": 1}
@@ -181,8 +185,8 @@ async def test_the_assumptions_are_written_first_and_given_to_every_other_sectio
     await both_passes(report, request="신사업 기획안을 써 줘", model="m", api_key="k")
     assert order[0] == "핵심 가정"
     for heading in ("사업 개요", "수익 모델", "실행 로드맵", "리스크"):
-        assert "확정된 핵심 가정" in prompts[heading] and "3,000만 원" in prompts[heading]
-    assert "확정된 핵심 가정" not in prompts["핵심 가정"]
+        assert "settled key assumptions" in prompts[heading] and "3,000만 원" in prompts[heading]
+    assert "settled key assumptions" not in prompts["핵심 가정"]
 
 
 def test_the_rewriting_passes_cannot_leave_what_the_final_tidy_mends():
@@ -418,7 +422,7 @@ def test_a_flagged_sentence_is_mended_once_and_kept_only_when_the_finding_is_gon
 
     async def complete(model, messages, api_key, max_tokens):
         prompt = messages[0]["content"]
-        items = json.loads(prompt[prompt.index("항목:") + len("항목:"):].strip())
+        items = json.loads(prompt[prompt.index("Items:") + len("Items:"):].strip())
         answers = [replies["120만" if "자릿수" in i["problem"] else "미정"] for i in items]
         return json.dumps(answers, ensure_ascii=False), {"inputTokens": 1, "outputTokens": 1}
 

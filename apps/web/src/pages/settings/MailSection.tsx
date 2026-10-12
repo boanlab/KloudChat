@@ -4,7 +4,7 @@ import { Button, Field, Input } from '@/components/ui'
 import { ApiError, adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
-/** SMTP relay settings with their own save and test. */
+/** Own save and test. */
 export function MailSection({
   settings,
   reload,
@@ -25,7 +25,7 @@ export function MailSection({
     appBaseUrl: '',
   })
   const [mailProbe, setMailProbe] = useState<{ ok: boolean; detail: string } | null>(null)
-  // Typing wins over a fetch that lands late.
+  // Typing wins over a late fetch.
   const dirty = useRef(false)
 
   const save = async () => {
@@ -50,7 +50,7 @@ export function MailSection({
       port: settings.smtp.port,
       security: settings.smtp.security || 'starttls',
       username: settings.smtp.username,
-      // Empty password means "keep the stored one".
+      // Empty password keeps the stored one.
       password: '',
       from: settings.smtp.from,
       appBaseUrl: settings.smtp.appBaseUrl,
@@ -77,7 +77,7 @@ export function MailSection({
             setMailProbe(null)
             setError(null)
             try {
-              // The test uses stored values, so save first.
+              // Test uses stored values: save first.
               if (dirty.current) {
                 await save()
               }

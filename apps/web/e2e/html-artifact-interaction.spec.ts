@@ -113,7 +113,7 @@ async function calculate(surface: FrameLocator | Page) {
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
-  test.describe(`HTML 결과물 ${viewport.width}x${viewport.height}`, () => {
+  test.describe(`HTML 아티팩트 ${viewport.width}x${viewport.height}`, () => {
     test.use({ viewport })
 
     test('계산기는 미리보기·재접속·오프라인 HTML 파일에서 작동한다', async ({ page, browser, seedArtifact }, testInfo) => {
@@ -135,7 +135,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       expect(await dialog.frameLocator('iframe').locator('html').evaluate((node) => node.scrollWidth <= innerWidth)).toBe(true)
 
       const downloadReady = page.waitForEvent('download')
-      await dialog.getByRole('button', { name: '내보내기', exact: true }).click()
+      await dialog.getByRole('button', { name: '내려받기', exact: true }).click()
       await page.getByRole('menuitem', { name: /원본 HTML/ }).click()
       const download = await downloadReady
       expect(download.suggestedFilename()).toMatch(/\.html$/)

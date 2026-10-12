@@ -1,10 +1,10 @@
-"""Korean money amounts: parsing, table unit labels, and re-working written calculations."""
+"""Korean money amounts: parsing, table unit labels, written-calculation fixes."""
 
 from __future__ import annotations
 
 import re
 
-#: Unit words and their size in won, longest first so 「백만」 wins over 「만」.
+#: unit words → won, longest first (백만 before 만)
 _SCALE = (("천만", 1e7), ("백만", 1e6), ("억", 1e8), ("만", 1e4), ("천", 1e3), ("", 1.0))
 _GIVEN = re.compile(r"(?<![\d.])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}(억|천만|백만|만|천)?\s{0,1}원")
 _LABEL_SPOT = re.compile(
@@ -12,6 +12,11 @@ _LABEL_SPOT = re.compile(
     r"|단위\s{0,2}[:：]\s{0,2}((?:천만|백만|억|만|천)?\s{0,1}원)"
 )
 _CELL_NUMBER = re.compile(r"^\**\s{0,2}(-?\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}\**$")
+
+#: zero-width after sentence marks, never inside dotted dates/number runs
+NO_NUMBER_DOT_BREAK = r"(?!(?<=\d\.)\s{0,8}[\d(])(?<!\d\.\s\d\.)(?<!\d\.\s\d\d\.)"
+#: sentence-ending whitespace outside dotted runs
+SENTENCE_BREAK = re.compile(r"(?<=[.!?。])" + NO_NUMBER_DOT_BREAK + r"\s+")
 
 
 def _scale(word: str) -> float:
@@ -29,13 +34,27 @@ def _given(request: str) -> set[float]:
     return out
 
 
+#: digits the person wrote before a scale word (「4,215만」 → 4215)
+_SCALED_DIGITS = re.compile(r"(?<![\d.])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}(?:억|천만|백만|만|천)")
+
+
+def _scaled_digits(request: str) -> set[float]:
+    out = set()
+    for number in _SCALED_DIGITS.findall(request or ""):
+        try:
+            out.add(round(float(number.replace(",", "")), 2))
+        except ValueError:
+            continue
+    return out
+
+
 def _label(scale: float) -> str:
     word = next(w for w, s in _SCALE if s == scale)
     return f"{word} 원" if word else "원"
 
 
 def fix_unit_labels(text: str, request: str) -> str:
-    """A money table's unit label set to the unit the person's amounts fit; figures kept."""
+    """Money table unit label fitted to the person's amounts; figures kept."""
     given = _given(request)
     if len(given) < 2 or "|" not in (text or ""):
         return text
@@ -71,7 +90,7 @@ def fix_unit_labels(text: str, request: str) -> str:
     return "\n".join(lines)
 
 
-#: 「40,500,000 ÷ 3,000,000 = 13.5」 or a table row 「| 40,500,000 ÷ 3,000,000 | 13.5 |」.
+#: 「A ÷ B = C」 in prose or a table row
 _EXPRESSION = re.compile(
     r"(?<![\d.,])(?P<a>\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}(?P<op>[÷/×*x])\s{0,2}"
     r"(?P<b>\d[\d,]{0,15}(?:\.\d{1,6})?)(?![\d.,]\d)"
@@ -84,7 +103,7 @@ def _num(text: str) -> float:
 
 
 def _like(value: float, template: str) -> str:
-    """`value` written like `template`: same thousands commas and significant digits."""
+    """value formatted like template (commas, significant digits)."""
     digits = len(re.sub(r"[^\d]", "", template).lstrip("0")) or 1
     if value and abs(value) < 1:
         text = f"{value:.{max(digits, 2)}g}"
@@ -97,21 +116,25 @@ def _like(value: float, template: str) -> str:
 
 
 def _swap(text: str, old: str, new: str) -> str:
-    return re.sub(rf"(?<![\d.,]){re.escape(old)}(?![\d]|[.,]\d)", new, text)
+    # 「4,215만」 is already scaled
+    scaled = r"\s?(?:억|천만|백만|만|천)"
+    return re.sub(rf"(?<![\d.,]){re.escape(old)}(?![\d]|[.,]\d|{scaled})", new, text)
 
 
 def fix_magnitude_slips(text: str, request: str) -> str:
-    """Operands a power of ten off one of the person's amounts are reset; results recomputed."""
+    """Operands a power of ten off the person's amounts reset; results recomputed."""
     given = _given(request)
     if not given or not text:
         return text
     exact = {round(g, 2) for g in given}
+    # the person's own digits (「4,215만원」 → 4,215) are in their unit, not slipped
+    own = _scaled_digits(request)
     fixes: dict[str, str] = {}
     for m in _EXPRESSION.finditer(text):
         for key in ("a", "b"):
             raw = m.group(key)
             value = _num(raw)
-            if value < 1000 or round(value, 2) in exact or raw in fixes:
+            if value < 1000 or round(value, 2) in exact or round(value, 2) in own or raw in fixes:
                 continue
             for g in given:
                 if any(abs(value * 10**k - g) < 0.5 or abs(value - g * 10**k) < 0.5
@@ -140,16 +163,61 @@ def fix_magnitude_slips(text: str, request: str) -> str:
     return text
 
 
-#: A Korean amount: 「1억 8천만」, 「3,000만」, 「5천」, 「1.2조」, or a bare number.
-#: 「천」 must be matched inside a 만/억 group, or 「1억 8천만」 reads as 「1억 8」.
+#: amount with a scale word: 「10,000,000만 원」
+_SCALED_WON = re.compile(
+    r"(?<![\d.,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}(억|천만|백만|만|천)\s{0,1}원")
+
+
+def fix_double_scale(text: str, request: str) -> str:
+    """Double-scaled amount (「10,000,000만 원」) rewritten as the person wrote it."""
+    given = _given(request)
+    if not given or not text:
+        return text
+
+    def one(m: re.Match) -> str:
+        try:
+            digits = float(m.group(1).replace(",", ""))
+        except ValueError:
+            return m.group(0)
+        scale = _scale(m.group(2))
+        if digits < 10_000 or round(digits * scale, 2) in given or round(digits, 2) not in given:
+            return m.group(0)
+        shown = digits / scale
+        number = (f"{int(shown):,}" if shown == int(shown)
+                  else f"{shown:,.2f}".rstrip("0").rstrip("."))
+        return f"{number}{m.group(2)} 원"
+
+    return _SCALED_WON.sub(one, text)
+
+
+#: same scale word twice after digits: 「4,200만만 원」
+_REPEATED_SCALE = re.compile(r"(?<=\d)(억|천만|백만|만|천)\1+(?=\s{0,1}원)")
+#: scaled amount the person wrote without 원 (「강사비 4,200만 /」)
+_SCALED_BARE = re.compile(
+    r"(?<![\d.,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}(억|천만|백만|만|천)(?=\s{0,2}(?:[/,)·]|$))",
+    re.M)
+
+
+def restore_material_scale(text: str, material: str) -> str:
+    """Amount scaled twice (「45,000,000만 원」, 「4,200만만 원」) in the material's form."""
+    if not text or not material:
+        return text
+    text = _REPEATED_SCALE.sub(r"\1", text)
+    extra = []
+    for number, word in _SCALED_BARE.findall(material):
+        extra.append(f"{number}{word}원")
+    return fix_double_scale(text, "\n".join([material, *extra]))
+
+
+#: Korean amount; 천 matched inside 만/억 groups (else 「1억 8」)
 _TERM = (
     r"\d[\d,]*(?:\.\d+)?\s?(?:조|억|천만|만|천)(?:\s?\d[\d,]*(?:\.\d+)?\s?(?:억|천만|만|천))*"
     r"|\d[\d,]*(?:\.\d+)?"
 )
-#: 「원/박스」, 「박스/월」: a per-unit amount reads as its amount.
+#: per-unit amount reads as its amount
 _UNIT_WORD = (r"(?:\s?(?:원|명|박스|회차|회|개월|개|건|세트|가구|%|배)"
               r"(?:\s?/\s?(?:월|년|연|박스|개|명|회|건|가구|세트|주|일))?)?")
-#: A short name between an operator and its amount: 「× 마진 12,000원」.
+#: short name between operator and amount
 _NAMED = r"(?:[가-힣]{1,6}\s)?"
 _KO_EXPRESSION = re.compile(
     rf"(?P<lhs>(?:{_TERM}){_UNIT_WORD}(?:\s?[×x*÷]\s?{_NAMED}(?:{_TERM}){_UNIT_WORD}){{1,5}})"
@@ -162,7 +230,7 @@ def _ko_number(raw: str) -> float:
     """「4억 8,000만」 → 480000000; 「3%」 → 0.03; 「1.2조」 → 1.2e12."""
     text = raw.replace(" ", "")
     percent = text.endswith("%")
-    # 「8천만」 → 「8000만」, 「5천」 → 「5000」: a thousand of the digit before it.
+    # 「8천만」 → 「8000만」
     text = re.sub(
         r"(\d[\d,]{0,20}(?:\.\d{1,15})?)천",
         lambda m: f"{float(m.group(1).replace(',', '')) * 1000:g}",
@@ -180,7 +248,7 @@ def _ko_number(raw: str) -> float:
 
 
 def _ko_written(value: float, like: str) -> str:
-    """`value` in the style of `like`: Korean 만/억/조 when it used them, else digits."""
+    """value in like's style (만/억/조 or digits)."""
     if re.search(r"[조억만]", like):
         if value >= 1e12:
             return f"{value / 1e12:,.2f}".rstrip("0").rstrip(".") + "조"
@@ -194,7 +262,7 @@ def _ko_written(value: float, like: str) -> str:
 
 
 def slipped_formulas(text: str) -> list[str]:
-    """Written 「A × B = D」 whose D is a thousandfold or more off: an operand's unit slipped."""
+    """「A × B = D」 with D ≥1000× off: slipped operand unit."""
     found = []
     for m in _KO_EXPRESSION.finditer(text or ""):
         parts = re.split(r"\s?([×x*÷])\s?", m.group("lhs"))
@@ -215,9 +283,7 @@ def slipped_formulas(text: str) -> list[str]:
 
 
 def fix_written_arithmetic(text: str) -> str:
-    """Wrong results of written products 「A × B = D」 replaced, here and where D repeats.
-
-    Sums, differences and percentage results are left to other passes."""
+    """Wrong 「A × B = D」 results replaced everywhere D repeats; sums/percentages elsewhere."""
     if not text or ("×" not in text and "÷" not in text):
         return text
     fixes: dict[str, str] = {}
@@ -225,6 +291,9 @@ def fix_written_arithmetic(text: str) -> str:
     def work(m: re.Match) -> str:
         lhs, rhs = m.group("lhs"), m.group("rhs")
         if "%" in (m.group("rhs_unit") or ""):
+            return m.group(0)
+        # product inside a sum is one term
+        if re.search(r"[+\-−±]\s{0,3}$", m.string[max(0, m.start() - 4):m.start()]):
             return m.group(0)
         parts = re.split(r"\s?([×x*÷])\s?", lhs)
         try:
@@ -237,15 +306,21 @@ def fix_written_arithmetic(text: str) -> str:
             return m.group(0)
         if not stated or abs(value - stated) / max(abs(stated), 1e-9) < 0.005:
             return m.group(0)
-        # A rounded result written to fewer places is still right (「≈ 3.3」 for 3.33).
+        # rounded result to fewer places still right
         if abs(value - stated) / max(abs(stated), 1e-9) < 0.02 and "." in rhs:
             return m.group(0)
-        # A thousandfold or more off is a slipped operand unit; left for the checks to report.
+        # ≥1000× off: slipped unit, left for checks
         ratio = abs(value / stated)
         if any(abs(ratio - 10**k) < 1e-6 * 10**k or abs(ratio - 10**-k) < 1e-6 * 10**-k
                for k in range(3, 9)):
             return m.group(0)
+        # plain-digit left side under 1만 beside 만/억 result: other scale, not wrong
+        if re.search(r"[조억만]", rhs) and not re.search(r"[조억만천]", lhs) and abs(value) < 1e4:
+            return m.group(0)
         right = _ko_written(value, rhs)
+        # never 「0만」
+        if not re.search(r"[1-9]", right):
+            return m.group(0)
         fixes[rhs.strip()] = right
         return _swap_rhs(m, right)
 
@@ -254,7 +329,7 @@ def fix_written_arithmetic(text: str) -> str:
         return whole[: m.start("rhs") - start] + right + whole[m.end("rhs") - start:]
 
     def keep(m: re.Match) -> str:
-        # Collect correct results so restatements a power of ten off can be made to agree.
+        # collect correct results to align restatements
         try:
             stated = _ko_number(m.group("rhs"))
         except ValueError:
@@ -275,7 +350,7 @@ def fix_written_arithmetic(text: str) -> str:
             if written not in sentence:
                 return sentence
             pattern = rf"(?<![\d.,])({_TERM})\s?{re.escape(unit)}"
-            # A formula's own operands are not restatements of its result.
+            # formula operands aren't restatements
             operands = [(e.start("lhs"), e.end("lhs")) for e in _KO_EXPRESSION.finditer(sentence)]
             for figure in reversed(list(re.finditer(pattern, sentence))):
                 if any(a <= figure.start() < b for a, b in operands):
@@ -290,17 +365,16 @@ def fix_written_arithmetic(text: str) -> str:
                     sentence = sentence[: figure.start(1)] + written + sentence[figure.end(1):]
             return sentence
         out = re.sub(r"[^.!?\n]{0,2000}(?:\([^)]{0,500}\)[^.!?\n]{0,2000}){0,20}[.!?]?", agree, out)
-    # A figure that is also an operand somewhere (「4,000만원 × 2회」) is not the result.
+    # figure that is also an operand isn't the result
     operands = " ".join(m.group("lhs") for m in _KO_EXPRESSION.finditer(out))
     for wrong, right in fixes.items():
         if re.search(r"[조억만]", wrong) and wrong not in operands:
-            # Korean-unit figures only, matched whole (not 「1억 8」 inside 「1억 8,000만」).
+            # Korean-unit figures only, whole-matched
             out = re.sub(rf"(?<![\d.,]){re.escape(wrong)}(?![\d,.]|\s?[천만억조])", right, out)
     return out
 
 
-#: A written calculation with sums or differences and parentheses, and its result;
-#: a short word between 「=」 and the result (「영업이익」) is skipped.
+#: written calc with +/− and parens; short word after 「=」 skipped
 _OPERAND = rf"\(?\s?(?:{_TERM}){_UNIT_WORD}\s?\)?"
 _SUM_EXPRESSION = re.compile(
     rf"(?P<lhs>{_OPERAND}(?:\s?[×x*÷+\-−]\s?{_OPERAND}){{1,6}})"
@@ -311,7 +385,7 @@ _TOKEN = re.compile(rf"\s*(?:(?P<num>{_TERM}){_UNIT_WORD}|(?P<op>[×x*÷+\-−()
 
 
 def _evaluate(lhs: str) -> float | None:
-    """The value of a written calculation in Korean amounts, by the usual precedence."""
+    """Value of a written Korean-amount calculation (usual precedence)."""
     tokens: list[object] = []
     pos = 0
     while pos < len(lhs):
@@ -365,9 +439,7 @@ def _evaluate(lhs: str) -> float | None:
 
 
 def fix_written_sums(text: str) -> str:
-    """Wrong results of written sums and differences replaced.
-
-    A result a thousandfold or more off is a slipped operand and is left as written."""
+    """Wrong sum/difference results replaced; ≥1000× off left as written."""
     if not text or "=" not in text:
         return text
 
@@ -376,7 +448,7 @@ def fix_written_sums(text: str) -> str:
         if not re.search(r"[+\-−]", lhs) or "%" in (m.group("rhs_unit") or ""):
             return m.group(0)
         value = _evaluate(lhs)
-        # Terms a thousandfold apart with no product are missing a quantity; skipped.
+        # terms 1000× apart without a product: missing quantity, skip
         added = [_ko_number(t.group("num")) for t in _TOKEN.finditer(lhs) if t.group("num")]
         apart = added and min(added) and max(added) / min(added) >= 1000
         if apart and not re.search(r"[×x*÷]", lhs):
@@ -387,9 +459,9 @@ def fix_written_sums(text: str) -> str:
             return m.group(0)
         if value is None or not value or not stated:
             return m.group(0)
-        # A loss is written as its size, so compare without sign.
+        # losses written unsigned
         value = abs(value)
-        # Sums are exact; any gap beyond rounding noise is a slip.
+        # sums exact: any gap beyond rounding is a slip
         if abs(value - stated) <= 1e-4 * abs(stated):
             return m.group(0)
         ratio = value / stated

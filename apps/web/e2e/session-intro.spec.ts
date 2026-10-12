@@ -7,11 +7,9 @@ test('에이전트로 시작하면 그 에이전트가 화면의 주어가 된�
   test.setTimeout(120_000)
   await signIn(page)
 
-  await page.goto('/agents')
-  if ((await page.getByRole('button', { name: '실행' }).count()) === 0) {
-    await page.getByRole('tab', { name: /스토어/ }).click()
-  }
-  const run = page.getByRole('button', { name: '실행' }).first()
+  // The hub opens on 내 항목 when there are any, else on 탐색; either way each card has 바로 쓰기.
+  await page.goto('/customize?tab=agents')
+  const run = page.getByTestId('item-card').getByRole('button', { name: / 바로 쓰기$/ }).first()
   await expect(run).toBeVisible({ timeout: 30_000 })
   await run.click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })

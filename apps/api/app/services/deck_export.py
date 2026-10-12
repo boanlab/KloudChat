@@ -1,8 +1,4 @@
-"""Deck export to `.pptx` and `.pdf`, one 16:9 slide per page from the stored artifact fields.
-
-Both share the 960×540 pt geometry (13.333×7.5 in). Speaker notes go to the
-.pptx notes pane only.
-"""
+"""Deck export to `.pptx` and `.pdf`: one 16:9 slide per page, shared 960×540 pt geometry."""
 
 from __future__ import annotations
 
@@ -40,7 +36,7 @@ log = logging.getLogger(__name__)
 
 
 class _InlineRuns(HTMLParser):
-    """Reads the editor's sanitised inline HTML into `(text, style)` runs."""
+    """Editor's sanitised inline HTML → `(text, style)` runs."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -97,13 +93,10 @@ def _inline_runs(html: str | None, fallback: str) -> list[tuple[str, dict]]:
     return parser.runs or [(fallback, {})]
 
 
-#: 16:9 in points (EMU/12700, reportlab's default unit); drives both exporters.
+#: 16:9 in points (EMU/12700, reportlab's unit); both exporters.
 _W, _H = 960.0, 540.0
 
-#: Body-slide geometry from the shared type scale (`deck_type`), in points: the panel's
-#: 400x225 units times `K`. The title starts at `_TITLE_TOP`; the body box runs from
-#: `_BODY_TOP` (lower by one title line for each extra line) to `_BODY_BOTTOM`, above the
-#: foot rule.
+#: Body geometry from `deck_type` (panel 400x225 units × `K`); body top drops per extra title line.
 _K = deck_type.K
 _TITLE_TOP = 24 * _K
 _BODY_TOP = deck_type.BODY_TOP * _K
@@ -112,24 +105,23 @@ _FOOT_RULE = 32 * _K
 
 
 def _u(name: str) -> float:
-    """A size from the shared type scale, in points."""
+    """Type-scale size in points."""
     return deck_type.TYPE[name]
 
 
-#: Default width of a picture sharing the slide with text.
+#: Default width of a picture beside text.
 _PICTURE_SPAN = 300.0
 
 
 def _has_words(data: dict) -> bool:
-    """Whether the slide says anything besides its title and picture."""
+    """Whether the slide has words besides title and picture."""
     return any(
         data.get(key) for key in ("bullets", "body", "rows", "metrics", "chart", *_PAIRED)
     ) or _has_pattern_words(data, slide_patterns.BY_NAME.get(str(data.get("layout") or "")))
 
 
 def _picture_span(data: dict) -> float:
-    """Width of a picture sharing a slide with words, in export points. Unsized pictures
-    take the large column: a photo beside three bullets is the slide's point, not an icon."""
+    """Picture width beside words; unsized pictures take the large column."""
     return {"small": 230.0, "medium": _PICTURE_SPAN, "large": 390.0}.get(
         str((data.get("image") or {}).get("size") or "large"), 390.0
     )
@@ -137,11 +129,12 @@ def _picture_span(data: dict) -> float:
 
 _EMU_PER_PT = 12700
 
-#: (latin, East Asian) faces keyed by `design.FONTS`; see `_font`.
+
 class _Drawn(Exception):
-    """The figure was drawn as shapes; its picture is not placed."""
+    """Figure drawn as shapes; picture not placed."""
 
 
+#: (latin, East Asian) faces by `design.FONTS`; see `_font`.
 _FACES = {
     "gothic": ("Segoe UI", "맑은 고딕"),
     "serif": ("Georgia", "바탕"),
@@ -150,19 +143,19 @@ _FACES = {
 _INK = RGBColor(0x1A, 0x1A, 0x1A)
 _MUTED = RGBColor(0x66, 0x66, 0x66)
 
-#: Dark-template ground and neutrals; not design tokens.
+#: Dark-template ground and neutrals (not design tokens).
 _DARK_BG = RGBColor(0x0E, 0x11, 0x16)
 _WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 _DARK_INK = RGBColor(0xF5, 0xF6, 0xF7)
 _DARK_MUTED = RGBColor(0x9A, 0xA0, 0xA6)
 
-#: PDF fallbacks when no design system is attached (not exactly `#1a1a1a`).
+#: PDF fallbacks without a design system.
 _PDF_INK = (0.1, 0.1, 0.1)
 _PDF_MUTED = (0.4, 0.4, 0.4)
 
 
 def _rgb(value: str | None) -> RGBColor:
-    """`#rrggbb` or `#rgb` → RGBColor; the default accent for anything else."""
+    """`#rrggbb`/`#rgb` → RGBColor; default accent otherwise."""
     text = (value or "").strip().lstrip("#")
     if len(text) == 3 and re.fullmatch(r"[0-9a-fA-F]{3}", text):
         text = "".join(c * 2 for c in text)
@@ -174,13 +167,13 @@ def _rgb(value: str | None) -> RGBColor:
 def _mix(
     colour: RGBColor, percent: float, *, onto: RGBColor = RGBColor(0xFF, 0xFF, 0xFF)
 ) -> RGBColor:
-    """`percent`% of `colour` over `onto`, matching the preview's CSS `color-mix`."""
+    """`percent`% of `colour` over `onto`, as CSS `color-mix`."""
     weight = max(0.0, min(1.0, percent / 100))
     return RGBColor(*(round(colour[i] * weight + onto[i] * (1 - weight)) for i in range(3)))
 
 
 def _block(slide, *, left: float, top: float, width: float, height: float, colour: RGBColor):
-    """A filled rectangle with no line and no shadow."""
+    """Filled rectangle, no line, no shadow."""
     shape = slide.shapes.add_shape(
         MSO_SHAPE.RECTANGLE,
         Emu(int(left * _EMU_PER_PT)),
@@ -202,16 +195,14 @@ def _hex_floats(value: str | None) -> tuple[float, float, float]:
 
 @dataclass(frozen=True)
 class Look:
-    """A visual style, matching the panel's `LOOKS`: ground, neutrals, cover, ornament, card
-    style, body line height.
-    """
+    """Visual style matching the panel's `LOOKS`."""
 
     bg: str
     ink: str
     muted: str
     faint: str
     hair: str
-    #: How much accent goes into a tint, onto the ground.
+    #: Accent share in a tint.
     tint: int
     card: str  # filled | outlined
     radius: float
@@ -219,9 +210,9 @@ class Look:
     cover: str  # gradient | wash | glow | split | paper | brackets
     #: top-band | left-bar | corner-circle | bottom-rule | gutter | frame | bottom-band
     ornament: str
-    #: Whether the neutrals above replace the design system's.
+    #: Neutrals above replace the design system's.
     own_neutrals: bool = False
-    #: Body line height; the panel's `leading`.
+    #: Body line height (panel `leading`).
     leading: float = 1.6
 
 
@@ -413,11 +404,11 @@ def _box(
     fill: RGBColor,
     line: RGBColor,
 ):
-    """A card, band or metric box, filled or outlined and rounded as the look says."""
+    """Card, band or metric box per the look."""
     kind = MSO_SHAPE.ROUNDED_RECTANGLE if look.radius else MSO_SHAPE.RECTANGLE
     shape = _shape(slide, kind, left=left, top=top, width=width, height=height)
     if look.radius:
-        # The adjustment is a fraction of the shorter side.
+        # fraction of the shorter side
         shape.adjustments[0] = min(0.5, (look.radius * 2.4) / max(1.0, min(width, height)))
     shape.fill.solid()
     if look.card == "outlined":
@@ -432,7 +423,7 @@ def _box(
 
 
 def _badge(slide, look: Look, *, left: float, top: float, side: float, colour: RGBColor):
-    """The numbered mark on a step or a tile: a square, or a disc."""
+    """Numbered mark: square or disc."""
     kind = MSO_SHAPE.OVAL if look.badge == "circle" else MSO_SHAPE.RECTANGLE
     shape = _shape(slide, kind, left=left, top=top, width=side, height=side)
     shape.fill.solid()
@@ -448,7 +439,7 @@ def _mix_floats(
     *,
     onto: tuple[float, float, float] = (1.0, 1.0, 1.0),
 ) -> tuple[float, float, float]:
-    """`_mix` for reportlab, which works in 0–1 floats rather than bytes."""
+    """`_mix` in reportlab 0–1 floats."""
     weight = max(0.0, min(1.0, percent / 100))
     return tuple(colour[i] * weight + onto[i] * (1 - weight) for i in range(3))  # type: ignore[return-value]
 
@@ -461,7 +452,7 @@ def _font(
     colour: RGBColor = _INK,
     faces: tuple[str, str] = _FACES["gothic"],
 ) -> None:
-    """Sets a run's font; `font.name` writes only `a:latin`, Hangul is drawn from `a:ea`."""
+    """Sets a run's font; `font.name` writes only `a:latin`, Hangul needs `a:ea`."""
     latin, east_asian = faces
     run.font.size = Pt(size)
     run.font.bold = bold
@@ -492,13 +483,7 @@ def _pptx_pairs(
     measure: str | None = None,
     compact: bool = False,
 ) -> None:
-    """Draws a paired layout: bands, tiles, steps, cards, or timeline.
-
-    `compact`: the strip under a figure band — cards at 14/12 pt in the room that is left.
-
-    `scale` is the slide's text scale, for exact line spacing; `measure` the `.pdf` face
-    that tells how many lines a card name takes.
-    """
+    """Paired layout (bands, tiles, steps, cards, timeline); `compact`: strip under a figure."""
     look = look or _LOOKS["editorial"]
     hair = hair or RGBColor(0xE6, 0xE6, 0xE6)
     if layout == "bands":
@@ -511,7 +496,6 @@ def _pptx_pairs(
                 slide, look, left=left, top=y, width=label, height=height, fill=accent, line=accent
             )
             if look.card == "outlined":
-                # The name chip stays filled.
                 _block(slide, left=left, top=y, width=label, height=height, colour=accent)
             _box(
                 slide,
@@ -568,7 +552,7 @@ def _pptx_pairs(
         span = (width - gap * (len(pairs) - 1)) / max(len(pairs), 1)
         side = 44.0
         if len(pairs) > 1:
-            # Rule from the first badge's centre to the last's.
+            # rule from first to last badge centre
             _block(
                 slide,
                 left=left + side / 2,
@@ -601,12 +585,12 @@ def _pptx_pairs(
     if layout == "cards":
         gap = 18.0
         span = (width - gap * (len(pairs) - 1)) / max(len(pairs), 1)
-        # Compact cards take what their two lines need and leave the foot of the slide clear.
+        # compact: two lines' height, foot kept clear
         height = min((42 if compact else 100) * _K, room - (24 if compact else 10))
         name_pt = 14.0 if compact else _u("cardName")
         text_pt = 12.0 if compact else _u("cardText")
         if compact and measure:
-            # Under a figure the cards grow to their longest text, so no sentence spills out.
+            # under a figure: grow to longest text (no spill)
             need = max(
                 26
                 + name_pt * scale * 1.3
@@ -683,7 +667,7 @@ def _pptx_chart(
     top: float = _BODY_TOP,
     room: float = _BODY_BOTTOM - _BODY_TOP,
 ) -> None:
-    """A native PowerPoint chart (editable worksheet), styled by `services.charts`."""
+    """Native PowerPoint chart (editable worksheet), styled by `services.charts`."""
     from pptx.chart.data import CategoryChartData
     from pptx.enum.chart import XL_CHART_TYPE
 
@@ -711,11 +695,7 @@ def _pptx_chart(
 
 
 def _cell_rule(cell, colour: RGBColor, points: float) -> None:
-    """A bottom rule on one table cell, written as `a:lnB` XML.
-
-    `a:tcPr` is schema-ordered with line elements first; inserted at the
-    front, or PowerPoint offers to repair the file.
-    """
+    """Bottom rule as `a:lnB`, inserted first in `a:tcPr` (schema order, else repair prompt)."""
     from pptx.oxml import parse_xml
     from pptx.oxml.ns import nsdecls, qn
 
@@ -733,8 +713,7 @@ def _cell_rule(cell, colour: RGBColor, points: float) -> None:
     )
 
 
-#: Placeholder mark PowerPoint reads for the outline pane and screen readers.
-#: Indices are per slide: title 0, body 1.
+#: Placeholder mark for outline pane and screen readers; per-slide idx: title 0, body 1.
 _PH = (
     '<p:ph xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
     ' type="{kind}" idx="{index}"/>'
@@ -742,7 +721,7 @@ _PH = (
 
 
 def _placeholder(box, kind: str, index: int) -> None:
-    """Marks a drawn textbox as a placeholder of `kind`; only placeholders are outline text."""
+    """Marks a textbox as a `kind` placeholder (outline text)."""
     from pptx.oxml import parse_xml
 
     box._element.nvSpPr.nvPr.append(parse_xml(_PH.format(kind=kind, index=index)))
@@ -771,24 +750,21 @@ def _textbox(
 
 
 def _outline_placeholder(slide, kind: str, index: int, text: str, colour: RGBColor) -> None:
-    """A hidden 1×1 placeholder carrying the outline text; masters re-apply placeholder geometry, so
-    the visible box stays a plain textbox.
-    """
+    """Hidden 1×1 placeholder for outline text (masters re-apply placeholder geometry)."""
     frame = _textbox(slide, left=0, top=0, width=1, height=1, placeholder=(kind, index))
     frame.clear()
     for line_index, line in enumerate(text.splitlines() or [text]):
         paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
         run = paragraph.add_run()
         run.text = line
-        # LibreOffice ignores `cNvPr hidden` on placeholders; 1pt in the
-        # ground colour keeps it invisible there.
+        # LibreOffice ignores `cNvPr hidden`: 1 pt in ground colour
         run.font.size = Pt(1)
         run.font.color.rgb = colour
     frame._parent.element.nvSpPr.cNvPr.set("hidden", "1")
 
 
 def _columns_of(data: dict, bullets: list[str], layout: str) -> list[list[str]]:
-    """Columns to lay side by side: explicit `columns` when given, else the bullets halved."""
+    """Side-by-side columns: explicit `columns`, else bullets halved."""
     given = [list(c) for c in (data.get("columns") or []) if c]
     if layout == "two-column" and len(given) >= 2:
         return given
@@ -796,20 +772,20 @@ def _columns_of(data: dict, bullets: list[str], layout: str) -> list[list[str]]:
 
 
 def _split_columns(bullets: list[str]) -> list[list[str]]:
-    """A list in two columns, top-to-bottom then across; one column below five items."""
+    """Two columns, top-to-bottom then across; one column under five items."""
     if len(bullets) < 5:
         return [bullets]
     half = (len(bullets) + 1) // 2
     return [bullets[:half], bullets[half:]]
 
 
-#: Logo height in the foot, and its width cap.
+#: Foot logo height and width cap.
 _LOGO_HEIGHT = 18.0
 _LOGO_MAX_WIDTH = 120.0
 
 
 def _logo_of(tokens: dict[str, str] | None) -> tuple[bytes, float, float] | None:
-    """`(bytes, width, height)` for the design system's logo drawn to `_LOGO_HEIGHT`, or None."""
+    """`(bytes, width, height)` of the logo at `_LOGO_HEIGHT`, or None."""
     raw = (tokens or {}).get("logo") or ""
     if not raw.startswith("data:image/"):
         return None
@@ -817,7 +793,7 @@ def _logo_of(tokens: dict[str, str] | None) -> tuple[bytes, float, float] | None
         blob = base64.b64decode(raw.split(",", 1)[1], validate=False)
         with PIL.Image.open(io.BytesIO(blob)) as picture:
             width, height = picture.size
-    except Exception:  # noqa: BLE001 — a mark that will not decode is no mark
+    except Exception:  # noqa: BLE001 — undecodable mark: none
         log.warning("could not read the design system's logo")
         return None
     if not width or not height:
@@ -834,7 +810,7 @@ _COVERS = ("title", "section", "closing")
 
 
 def _written(slides: list[dict]) -> list[dict]:
-    """Slides minus those still marked `deck.UNWRITTEN`; numbering is by position."""
+    """Slides minus `deck.UNWRITTEN` ones; numbering by position."""
     return [
         slide
         for slide in slides
@@ -843,7 +819,7 @@ def _written(slides: list[dict]) -> list[dict]:
 
 
 def _filled(slide: dict) -> bool:
-    """Whether anything but the placeholder is on this slide."""
+    """Whether the slide has more than the placeholder."""
     return any(
         slide.get(key) for key in ("bullets", "rows", "metrics", "chart", "image", *_PAIRED)
     ) or _has_pattern_words(slide, slide_patterns.BY_NAME.get(str(slide.get("layout") or "")))
@@ -852,8 +828,7 @@ def _filled(slide: dict) -> bool:
 def _strip_need(
     pairs: list[tuple[str, str]], layout: str, width: float, font: str, bold: str, scale: float
 ) -> float:
-    """The height the compact card strip under a figure needs for its longest card, so the
-    figure band above gives it that much and no sentence is cut."""
+    """Height the compact card strip needs, so no sentence is cut."""
     if layout != "cards" or not pairs:
         return 0.0
     gap = 18.0
@@ -869,7 +844,7 @@ def _strip_need(
 
 
 def _pairs_of(slide: dict, layout: str) -> list[tuple[str, str]]:
-    """`[(왼쪽, 오른쪽)]` for a paired layout with both halves filled; empty otherwise."""
+    """`[(왼쪽, 오른쪽)]` with both halves filled; else empty."""
     if layout not in _PAIRED:
         return []
     out: list[tuple[str, str]] = []
@@ -881,7 +856,7 @@ def _pairs_of(slide: dict, layout: str) -> list[tuple[str, str]]:
 
 
 def _chart_of(slide: dict) -> dict | None:
-    """A drawable chart, or None; categories and series are cut to the shortest paired length."""
+    """Drawable chart or None; series cut to the shortest paired length."""
     chart = slide.get("chart")
     if not isinstance(chart, dict):
         return None
@@ -912,9 +887,7 @@ def _chart_of(slide: dict) -> dict | None:
 
 
 def _picture_of(slide: dict) -> tuple[bytes, str] | None:
-    """`(bytes, caption)` from `image.data` (bytes, via `page_export`) or `image.src` (a `data:`
-    URI).
-    """
+    """`(bytes, caption)` from `image.data` or a `data:` `image.src`."""
     raw = slide.get("image")
     if not isinstance(raw, dict):
         return None
@@ -927,12 +900,12 @@ def _picture_of(slide: dict) -> tuple[bytes, str] | None:
 
 
 def _fit(data: bytes, *, box: tuple[float, float]) -> tuple[float, float]:
-    """The size a picture takes inside `box`, in points, keeping its aspect."""
+    """Picture size within `box` (pt), aspect kept."""
     max_width, max_height = box
     try:
         with PIL.Image.open(io.BytesIO(data)) as picture:
             width, height = picture.size
-    except Exception:  # noqa: BLE001 — a picture we cannot measure gets the box
+    except Exception:  # noqa: BLE001 — unmeasurable picture gets the box
         return max_width, max_height
     if not width or not height:
         return max_width, max_height
@@ -943,14 +916,12 @@ def _fit(data: bytes, *, box: tuple[float, float]) -> tuple[float, float]:
 def _fill(
     data: bytes, *, box: tuple[float, float]
 ) -> tuple[float, float, float, float, float, float]:
-    """`(width, height, left, top, right, bottom)`: the cover-fit size and PowerPoint's 0–1 crop
-    fractions.
-    """
+    """`(width, height, left, top, right, bottom)`: cover-fit size and 0–1 crop fractions."""
     box_width, box_height = box
     try:
         with PIL.Image.open(io.BytesIO(data)) as picture:
             width, height = picture.size
-    except Exception:  # noqa: BLE001 — the caller already handles bad bytes
+    except Exception:  # noqa: BLE001 — caller handles bad bytes
         return box_width, box_height, 0.0, 0.0, 0.0, 0.0
     if not width or not height:
         return box_width, box_height, 0.0, 0.0, 0.0, 0.0
@@ -961,27 +932,24 @@ def _fill(
     return drawn_width, drawn_height, horizontal, vertical, horizontal, vertical
 
 
-# ---------------------------------------------------------------------------------------------
-# Pattern slides (`slide_patterns`): one drawing per arrangement, laid out once as a scene of
-# rectangles, ovals, polygons and fitted text in page points (top-down), then painted into the
-# .pptx or onto the .pdf canvas. Both files therefore share the geometry and the wrapping.
+# ── Pattern slides: one scene per arrangement, painted to .pptx or .pdf ──
 
 _Colour = tuple[float, float, float]
 
 _WHITE_F: _Colour = (1.0, 1.0, 1.0)
 _DARK_F: _Colour = (0.1, 0.1, 0.1)
 
-#: SWOT quadrant colours: strengths, weaknesses, opportunities, threats.
+#: SWOT colours: S, W, O, T.
 _SWOT = (
     ("S", (0.18, 0.62, 0.42)),
     ("W", (0.86, 0.58, 0.16)),
     ("O", (0.23, 0.51, 0.96)),
     ("T", (0.85, 0.30, 0.30)),
 )
-#: Positive and negative panel colours for `posneg` columns.
+#: `posneg` panel colours.
 _POSITIVE: _Colour = (0.18, 0.62, 0.42)
 _NEGATIVE: _Colour = (0.85, 0.33, 0.31)
-#: Column titles that mark the negative side of a `posneg` pair.
+#: Column titles marking the negative `posneg` side.
 _NEGATIVE_WORDS = (
     "오해",
     "단점",
@@ -996,18 +964,18 @@ _NEGATIVE_WORDS = (
     "Con",
 )
 
-#: How far a slice or series moves from the accent: (percent of accent, toward dark?).
+#: Shade steps: (percent of accent, toward dark?).
 _SHADES = ((100, False), (55, False), (68, True), (30, False), (45, True), (78, False))
 
 
 def _shade(accent: _Colour, index: int) -> _Colour:
-    """The `index`-th distinct shade of the accent for slices, series and steps."""
+    """`index`-th distinct accent shade."""
     percent, dark = _SHADES[index % len(_SHADES)]
     return _mix_floats(accent, percent, onto=_DARK_F if dark else _WHITE_F)
 
 
 def _floats(colour) -> _Colour:
-    """An RGBColor (0–255) as reportlab floats."""
+    """RGBColor (0–255) → reportlab floats."""
     return (colour[0] / 255, colour[1] / 255, colour[2] / 255)
 
 
@@ -1018,12 +986,7 @@ def _rgb_of(colour: _Colour) -> RGBColor:
 def _fit_text(
     text: str, face: str, size: float, width: float, height: float, leading: float, floor: float
 ) -> tuple[float, list[str], bool]:
-    """`(size, lines, cut)`: the largest size from `size` down to `floor` at which `text`
-    wraps into `height`; at the floor the lines that fit, the last one ending in an ellipsis.
-
-    The measured width keeps a margin, since PowerPoint's faces run a little wider than the
-    PDF's.
-    """
+    """`(size, lines, cut)`: largest size ≥ `floor` fitting `height`; ellipsis at the floor."""
     measure = max(1.0, width * 0.94)
     current = size
     while True:
@@ -1056,7 +1019,7 @@ class _Text:
 
 
 class _Scene:
-    """Shapes and fitted text in page points, top-down, for either exporter."""
+    """Shapes and fitted text in page points (top-down) for either exporter."""
 
     def __init__(self, *, font: str, bold: str, scale: float, look: Look, ground: _Colour):
         self.font, self.bold_face, self.scale = font, bold, scale
@@ -1073,7 +1036,7 @@ class _Scene:
         self.items.append(("poly", [tuple(p) for p in points], fill, line, width, closed))
 
     def panel(self, x, y, w, h, *, fill, line) -> None:
-        """A card in the look's manner: filled, or outlined on the ground."""
+        """Card per the look: filled or outlined."""
         radius = self.look.radius * 1.2 if self.look.radius else 0.0
         if self.look.card == "outlined":
             self.rect(x, y, w, h, fill=self.ground, line=line, radius=radius)
@@ -1081,14 +1044,14 @@ class _Scene:
             self.rect(x, y, w, h, fill=fill, radius=radius)
 
     def badge(self, x, y, side, *, fill) -> None:
-        """The look's mark: a disc or a square."""
+        """Look's mark: disc or square."""
         if self.look.badge == "circle":
             self.oval(x, y, side, side, fill=fill)
         else:
             self.rect(x, y, side, side, fill=fill)
 
     def size(self, size: float) -> float:
-        """A type-scale size at the slide's text scale, never under the floor."""
+        """Type-scale size at the slide scale, floored."""
         return max(float(deck_type.FLOOR_PT), size * self.scale)
 
     def text(
@@ -1108,8 +1071,7 @@ class _Scene:
         fixed: bool = False,
         floor: float | None = None,
     ) -> float:
-        """Text fitted into the box; returns the height it takes. `fixed` sizes skip the
-        slide's text scale (marks inside badges)."""
+        """Fitted text; returns its height. `fixed` skips the slide scale."""
         text = str(text or "").strip()
         if not text or w <= 4 or h <= 4:
             return 0.0
@@ -1138,7 +1100,7 @@ class _Scene:
         dot: _Colour,
         leading: float = 1.35,
     ) -> None:
-        """A list of short items with a dot each, shrunk together until all fit."""
+        """Dotted short items, shrunk together to fit."""
         current = self.size(size)
         least = min(current, float(deck_type.FLOOR_PT))
         while True:
@@ -1170,7 +1132,7 @@ class _Scene:
             cursor += len(lines) * line_height + current * 0.55
 
     def arrow(self, x1, y, x2, *, colour, head=9.0, width=2.5) -> None:
-        """A horizontal arrow from `x1` to `x2` at height `y`."""
+        """Horizontal arrow `x1` → `x2` at `y`."""
         self.poly([(x1, y), (x2 - head, y)], line=colour, width=width, closed=False)
         self.poly(
             [(x2 - head - 1, y - head * 0.7), (x2, y), (x2 - head - 1, y + head * 0.7)], fill=colour
@@ -1178,7 +1140,7 @@ class _Scene:
 
 
 def _pattern_items(data: dict) -> list[tuple[str, str]]:
-    """`items` as `(left, right)`; the right may be empty (a checklist entry)."""
+    """`items` as `(left, right)`; right may be empty."""
     out: list[tuple[str, str]] = []
     for item in data.get("items") or []:
         if isinstance(item, dict):
@@ -1193,7 +1155,7 @@ def _pattern_items(data: dict) -> list[tuple[str, str]]:
 
 
 def _pattern_columns(data: dict) -> list[tuple[str, list[str]]]:
-    """`columns` as `(title, items)`; the pattern shape is `{"title", "items"}`."""
+    """`columns` as `(title, items)`."""
     out: list[tuple[str, list[str]]] = []
     for column in data.get("columns") or []:
         if not isinstance(column, dict):
@@ -1214,7 +1176,7 @@ def _pattern_metrics(data: dict) -> list[tuple[str, str]]:
 
 
 def _has_pattern_words(data: dict, pattern) -> bool:
-    """Whether a pattern slide carries the field its shape is drawn from."""
+    """Whether the slide has its shape's field."""
     if pattern is None:
         return False
     if pattern.shape == "pairs":
@@ -1224,12 +1186,12 @@ def _has_pattern_words(data: dict, pattern) -> bool:
     return False
 
 
-#: Chart kinds the pattern slides draw beyond `bar` and `line`.
+#: Chart kinds beyond `bar` and `line`.
 _MORE_CHARTS = ("pie", "donut", "hbar", "stacked")
 
 
 def _pattern_chart_of(data: dict, pattern) -> dict | None:
-    """`_chart_of` with the chart's own kind kept when a pattern draws it, else the pattern's."""
+    """`_chart_of` keeping the chart's own kind, else the pattern's."""
     chart = _chart_of(data)
     if chart is None:
         return None
@@ -1240,7 +1202,7 @@ def _pattern_chart_of(data: dict, pattern) -> dict | None:
 
 
 def _percent(value: str) -> float:
-    """`"72%"` → 72; a bare number above 1 is read as a percentage, below as a fraction."""
+    """`"72%"` → 72; bare >1 is a percentage, ≤1 a fraction."""
     found = re.search(r"-?\d+(?:[.,]\d+)?", value.replace(",", ""))
     if not found:
         return 0.0
@@ -1280,7 +1242,7 @@ def _pattern_scene(
     bold: str,
     scale: float,
 ) -> _Scene | None:
-    """The pattern slide's body laid out in the body box, or None when its field is empty."""
+    """Pattern body laid out in the body box, or None when empty."""
     import math
 
     sc = _Scene(font=font, bold=bold, scale=scale, look=look, ground=ground)
@@ -1496,8 +1458,7 @@ def _pattern_scene(
         for position, (name, items) in enumerate(columns):
             x = L + position * (span + gap)
             if tone == "posneg":
-                # The negative panel is whichever one its title marks so (오해·단점·하지 말 것),
-                # else the second.
+                # negative panel: title-marked (오해·단점·하지 말 것), else the second
                 negative = any(word in name for word in _NEGATIVE_WORDS) or (
                     position == 1 and not any(word in columns[0][0] for word in _NEGATIVE_WORDS)
                 )
@@ -2036,7 +1997,7 @@ def _pattern_scene(
             angle = -math.pi / 2 + 2 * math.pi * position / count
             px, py = cx + rx * math.cos(angle), cy + ry * math.sin(angle)
             x, y = px - node_w / 2, py - node_h / 2
-            # Opaque even in an outlined look, so the ring passes behind the node.
+            # opaque even when outlined: ring passes behind
             sc.rect(
                 x,
                 y,
@@ -2218,7 +2179,7 @@ def _pptx_scene(slide, scene: _Scene, faces: tuple[str, str]) -> None:
 
 
 def _pdf_scene(pdf, scene: _Scene) -> None:
-    """Paints a scene onto the canvas; reportlab's y runs up, so every top is flipped."""
+    """Paints a scene on the canvas (reportlab y flipped)."""
     for item in scene.items:
         kind = item[0]
         if kind in ("rect", "oval"):
@@ -2295,7 +2256,7 @@ def _pptx_pattern(
     bold: str,
     scale: float,
 ) -> bool:
-    """Draws a pattern slide's body by its arrangement; False when it has nothing to draw."""
+    """Pattern body by arrangement; False when nothing to draw."""
     scene = _pattern_scene(
         pattern,
         data,
@@ -2340,7 +2301,7 @@ def _pdf_pattern(
     bold: str,
     scale: float,
 ) -> bool:
-    """The `.pdf` twin of `_pptx_pattern`; `top` is from the top of the page, as there."""
+    """`.pdf` twin of `_pptx_pattern`; `top` from page top."""
     scene = _pattern_scene(
         pattern,
         data,
@@ -2379,7 +2340,7 @@ def _pptx_chart_more(
     top: float,
     room: float,
 ) -> None:
-    """Pie, donut, horizontal bar and stacked column as native charts."""
+    """Pie, donut, hbar and stacked column as native charts."""
     from pptx.chart.data import CategoryChartData
     from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION, XL_LEGEND_POSITION
     from pptx.oxml import parse_xml
@@ -2392,7 +2353,7 @@ def _pptx_chart_more(
     if round_chart:
         series = series[:1]
     if kind == "hbar":
-        # PowerPoint draws bar categories bottom-up; reversed, the first reads at the top.
+        # PowerPoint bars draw bottom-up: reversed
         categories = categories[::-1]
         series = [(name, values[::-1]) for name, values in series]
     payload = CategoryChartData()
@@ -2450,7 +2411,7 @@ def _pptx_chart_more(
     else:
         charts._text(labels.font, RGBColor(0xFF, 0xFF, 0xFF), 14, faces)
         labels.font.bold = True
-    # The round plot sits in a square on the left; the legend keeps the right.
+    # round plot in a left square, legend right
     side = room * 0.86
     plot_area = graph._chartSpace.find(qn("c:chart")).find(qn("c:plotArea"))
     for existing in plot_area.findall(qn("c:layout")):
@@ -2481,7 +2442,7 @@ def _pptx_chart_more(
 
 
 def _divisions(ceiling: float) -> int:
-    """Gridline count whose steps read as whole numbers: four, else five."""
+    """Gridline count with whole-number steps: 4, else 5."""
     return 4 if ceiling < 10 or (ceiling / 4) == int(ceiling / 4) else 5
 
 
@@ -2499,7 +2460,7 @@ def _pdf_chart_more(
     bold: str,
     left: float = 72.0,
 ) -> None:
-    """The `.pdf` twin of `_pptx_chart_more`, drawn by hand; `top` is a canvas y."""
+    """`.pdf` twin of `_pptx_chart_more`; `top` is a canvas y."""
     import math
 
     kind = chart["kind"]
@@ -2559,7 +2520,6 @@ def _pdf_chart_more(
                 pdf.setFillColorRGB(*ink)
             x, y = cx + reach * math.cos(angle), cy + reach * math.sin(angle)
             pdf.drawCentredString(x, y - 5, label)
-        # Legend on the right.
         legend_x = cx + radius + 60
         line = 26.0
         y = cy + line * (len(categories) - 1) / 2
@@ -2666,8 +2626,7 @@ _WRITTEN_NUMBER = re.compile(r"^\s*(?:\d{1,2}|[IVX]{1,4})\s?[.)．:]\s*")
 
 
 def _without_written_numbers(slides: list[dict]) -> list[dict]:
-    """A divider and the agenda print their own 「01」; a 「01.」 the model wrote into a
-    divider's title or an agenda line would print the number twice."""
+    """Strips model-written 「01.」 from dividers/agenda (they print their own)."""
     def bare(text: object) -> str:
         return _WRITTEN_NUMBER.sub("", str(text or "")).strip() or str(text or "")
 
@@ -2689,26 +2648,22 @@ def to_pptx(
     dark: bool = False,
     template: str = "",
 ) -> bytes:
-    """The deck as a PowerPoint file, drawn on the blank layout.
-
-    `tokens` is the design system copied onto the artifact; `template` is the
-    서식's `.pptx`, whose master and theme the file is built on.
-    """
+    """Deck as .pptx on the blank layout; `template` supplies master and theme."""
     slides = _without_written_numbers(slides)
     style = design.normalise_tokens(tokens) if tokens else None
     faces = _FACES[style["font"]] if style else _FACES["gothic"]
     ink = _rgb(style["ink"]) if style else _INK
     muted = _rgb(style["muted"]) if style else _MUTED
     if dark:
-        # Design-system ink is for paper; on a dark ground the neutrals swap.
+        # dark ground: neutrals swap
         ink, muted = _DARK_INK, _DARK_MUTED
 
     mark = _logo_of(style)
     footer = (style or {}).get("footer") or ""
 
-    #: Current slide's `textScale`; a list so `paint` can read the rebinding.
+    #: Current slide `textScale` (list so `paint` sees rebinding).
     typescale = [1.0]
-    #: The `.pdf` face, for measuring how many lines a title takes.
+    #: `.pdf` face for measuring title lines.
     measure = fonts.korean(style["font"] if style else "gothic")
     measure_bold = fonts.korean(style["font"] if style else "gothic", bold=True)
 
@@ -2720,8 +2675,7 @@ def to_pptx(
         colour: RGBColor | None = None,
         fixed: bool = False,
     ) -> None:
-        # Titles keep their size; everything else follows the slide's scale, never
-        # under the floor.
+        # titles fixed; rest scaled, floored
         factor = 1.0 if fixed else typescale[0]
         _font(
             run,
@@ -2735,7 +2689,7 @@ def to_pptx(
         slide, data: dict, *, left: float, top: float, width: float, height: float,
         accent: RGBColor,
     ) -> bool:
-        """The slide's own figure drawn as shapes in the box; False leaves the picture."""
+        """Slide's own figure as shapes; False keeps the picture."""
         made = data.get("diagram")
         source = made.get("source") if isinstance(made, dict) else None
         graph = diagram_shapes.parse(str(source or ""))
@@ -2746,7 +2700,7 @@ def to_pptx(
                 slide, graph, left=left, top=top, width=width, height=height,
                 accent=accent, font=faces[1],
             )
-        except Exception as exc:  # noqa: BLE001 — the picture is the fallback
+        except Exception as exc:  # noqa: BLE001 — picture is the fallback
             log.warning("figure not drawn as shapes, keeping the picture: %s", exc)
             return False
         return True
@@ -2784,7 +2738,7 @@ def to_pptx(
             run.font.italic = bool(inline.get("italic"))
             run.font.underline = bool(inline.get("underline"))
 
-    # Slides are drawn as free shapes, not placed in the template's placeholders.
+    # free shapes, not template placeholders
     presentation = Presentation(template) if template else Presentation()
     presentation.slide_width = Emu(int(_W * _EMU_PER_PT))
     presentation.slide_height = Emu(int(_H * _EMU_PER_PT))
@@ -2800,7 +2754,7 @@ def to_pptx(
         look = _look_of(visual_style)
         if look.own_neutrals and not dark:
             ink, muted = _rgb(look.ink), _rgb(look.muted)
-        # The slide's own accent, else the design system's.
+        # slide accent, else design system's
         accent = _rgb(data.get("accent") or (style or {}).get("accent"))
         if visual_style == "mono":
             accent = ink
@@ -2810,7 +2764,7 @@ def to_pptx(
         layout = data.get("layout") or "bullets"
 
         cover = layout in _COVERS
-        #: Cover text on the accent (white ink) rather than the look's ground.
+        #: Cover text on the accent (white ink).
         on_accent = look.cover in ("gradient", "glow")
         if cover:
             fill = slide.background.fill
@@ -2928,7 +2882,7 @@ def to_pptx(
             and (bullets or rows or metrics or chart or body or pattern_words)
             and str((data.get("image") or {}).get("position") or "") == "left"
         )
-        # A picture beside text narrows the text column; alone, it is centred.
+        # picture beside text narrows it; alone, centred
         text_width = (
             _W
             - 144
@@ -2949,7 +2903,7 @@ def to_pptx(
             if visual_style == "mono"
             else "cover"
         )
-        #: Body box for this slide; a long title lowers its top.
+        #: Body box; long titles lower its top.
         body_top, room = _BODY_TOP, _BODY_BOTTOM - _BODY_TOP
         if layout == "closing":
             cover_ink = _WHITE if on_accent else ink
@@ -3147,15 +3101,13 @@ def to_pptx(
             paint_rich(
                 frame.paragraphs[0], data, "title", heading, size=title_size, bold=True, fixed=True
             )
-            # The tab under the title; the body box starts below it and loses one line for
-            # each extra title line.
+            # tab under the title; body loses a line per extra title line
             tab_top = _TITLE_TOP + title_line * title_lines + 6 * _K
             _block(slide, left=text_left, top=tab_top, width=62, height=5, colour=accent)
             body_top = _BODY_TOP + title_line * (title_lines - 1)
             room = _BODY_BOTTOM - body_top
 
-            # A figure the deck drew for itself is a band above the words, full width;
-            # the words beneath are set compact. `picture` is spent here.
+            # self-drawn figure: full-width band, words compact below
             compact = False
             if picture and (data.get("image") or {}).get("diagram") and _has_words(data):
                 image_bytes, _caption = picture
@@ -3183,7 +3135,7 @@ def to_pptx(
                     )
                 except _Drawn:
                     pass
-                except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
+                except Exception as exc:  # noqa: BLE001 — bad picture, export continues
                     log.warning("could not place a figure band into the deck: %s", exc)
                 body_top += band_height + 8
                 room -= band_height + 8
@@ -3282,7 +3234,6 @@ def to_pptx(
                     )
                     paint_rich(under.paragraphs[0], data, "body", body, size=_u("bigNumberBody"))
             elif bullets and layout == "agenda":
-                # Two columns above four entries.
                 columns = _split_columns(bullets) if len(bullets) > 4 else [bullets]
                 span = (text_width - 24 * (len(columns) - 1)) / len(columns)
                 per = max(len(column) for column in columns)
@@ -3352,15 +3303,14 @@ def to_pptx(
                     Emu(int(row_height * len(rows) * _EMU_PER_PT)),
                 )
                 table = shape.table
-                # Columns by their widest cell, rows by the shared row height; the panel
-                # draws the same shares.
+                # column shares by widest cell, same as the panel
                 for column_index, share in enumerate(deck_type.column_shares(rows)):
                     table.columns[column_index].width = Emu(int(text_width * share * _EMU_PER_PT))
                 for table_row in table.rows:
                     table_row.height = Emu(int(row_height * _EMU_PER_PT))
                 cell_size = deck_type.table_size(len(rows)) * _K
                 cell_pad = deck_type.table_pad(len(rows)) * _K
-                # Off, or PowerPoint applies its theme's banded table style.
+                # off: avoids theme's banded style
                 table.first_row = False
                 table.horz_banding = False
                 for r, row in enumerate(rows):
@@ -3395,7 +3345,7 @@ def to_pptx(
                             colour=_WHITE if r == 0 else ink,
                         )
             elif bullets:
-                # PowerPoint has no column flow, so columns are separate boxes.
+                # no column flow in PowerPoint: separate boxes
                 columns = _columns_of(data, bullets, layout)
                 span = (text_width - (24 * (len(columns) - 1))) / len(columns)
                 size = _u("bodyNarrow") if len(columns) > 1 else _u("body")
@@ -3410,7 +3360,6 @@ def to_pptx(
                         top=body_top,
                         width=span,
                         height=room,
-                        # Only the first column is the body placeholder.
                         placeholder=("body", 1) if column_index == 0 else None,
                     )
                     for position, text in enumerate(column):
@@ -3493,7 +3442,7 @@ def to_pptx(
                     run = frame.paragraphs[0].add_run()
                     run.text = image_caption
                     paint(run, size=_u("caption"), colour=muted)
-            except Exception as exc:  # noqa: BLE001 — one bad picture, not a failed export
+            except Exception as exc:  # noqa: BLE001 — bad picture, export continues
                 log.warning("could not place a picture in the pptx: %s", exc)
             else:
                 if image_caption:
@@ -3504,7 +3453,7 @@ def to_pptx(
                     run.text = image_caption
                     paint(run, size=_u("caption"), colour=muted)
 
-        # Foot: logo, deck title and footer on the left, slide number on the right.
+        # foot: logo, title, footer left; number right
         if not cover:
             _block(slide, left=72, top=_H - 58, width=_W - 144, height=0.75, colour=hair)
             edge = 72.0
@@ -3564,7 +3513,7 @@ def _pdf_box(
     line,
     bg,
 ) -> None:
-    """The `.pdf` twin of `_box`."""
+    """`.pdf` twin of `_box`."""
     if look.card == "outlined":
         pdf.setFillColorRGB(*bg)
         pdf.setStrokeColorRGB(*line)
@@ -3610,7 +3559,7 @@ def _pdf_pairs(
     bold: str | None = None,
     compact: bool = False,
 ) -> None:
-    """The `.pdf` twin of `_pptx_pairs`: same geometry, explicit wrapping."""
+    """`.pdf` twin of `_pptx_pairs` (explicit wrapping)."""
     bold = bold or font
     room = room if room is not None else top - (_H - _BODY_BOTTOM)
     look = look or _LOOKS["editorial"]
@@ -3707,14 +3656,14 @@ def _pdf_pairs(
     if layout == "cards":
         gap = 18.0
         span = (width - gap * (len(pairs) - 1)) / max(len(pairs), 1)
-        # Compact cards take what their two lines need and leave the foot of the slide clear.
+        # compact: two lines' height, foot kept clear
         height = min((42 if compact else 100) * _K, room - (24 if compact else 10))
         card_top = top - 10
         name_size = S(14.0 if compact else _u("cardName"))
         text_size = S(12.0 if compact else _u("cardText"))
         text_lead = text_size * deck_type.LEADING["cardText"]
         if compact:
-            # Under a figure the cards grow to their longest text, so no sentence is cut.
+            # under a figure: grow to longest text (no cut)
             need = max(
                 20
                 + name_size * (1 + 1.3 * (len(_wrap(name, bold, name_size, span - 28)[:2]) - 1))
@@ -3784,7 +3733,7 @@ def _pdf_chart(
     font: str,
     left: float = 72.0,
 ) -> None:
-    """The `.pdf` twin of `_pptx_chart`, drawn by hand over a zero floor."""
+    """`.pdf` twin of `_pptx_chart`, drawn over a zero floor."""
     bottom = _H - _BODY_BOTTOM + 6
     height = top - bottom - 30
     if height < 60 or width < 100:
@@ -3826,7 +3775,7 @@ def _pdf_chart(
             for x, y in points:
                 pdf.circle(x, y, 3, stroke=0, fill=1)
         else:
-            # Series share the category slot side by side.
+            # series side by side in the slot
             count = len(chart["series"])
             span = step * 0.6 / count
             pdf.setFillColorRGB(*colour)
@@ -3852,7 +3801,7 @@ def _pdf_chart(
 
 
 def _nice_ceiling(highest: float) -> float:
-    """Top of scale rounded up to 1, 2, 2.5, 5 or 10 × a power of ten, as PowerPoint does."""
+    """Scale top rounded to 1/2/2.5/5/10 × 10ⁿ, as PowerPoint."""
     import math
 
     if highest <= 0:
@@ -3865,12 +3814,12 @@ def _nice_ceiling(highest: float) -> float:
 
 
 def _tick_label(value: float) -> str:
-    """A gridline's number: integer at 10 and above, one decimal below."""
+    """Gridline label: integer ≥ 10, one decimal below."""
     return f"{value:,.0f}" if abs(value) >= 10 else f"{value:,.1f}".rstrip("0").rstrip(".")
 
 
 def _typescale(slide: dict) -> float:
-    """The slide's `textScale` clamped to 0.5–2.0; it arrives on a PATCHable artifact."""
+    """`textScale` clamped to 0.5–2.0 (client-PATCHable)."""
     try:
         value = float(slide.get("textScale") or 1.0)
     except (TypeError, ValueError):
@@ -3879,7 +3828,7 @@ def _typescale(slide: dict) -> float:
 
 
 def _wrap(text: str, font: str, size: float, width: float) -> list[str]:
-    """Greedy wrap by measured width, breaking between characters (Korean has no spaces)."""
+    """Greedy wrap by measured width, between characters (Korean)."""
     lines: list[str] = []
     current = ""
     for char in text:
@@ -3889,7 +3838,7 @@ def _wrap(text: str, font: str, size: float, width: float) -> list[str]:
             continue
         candidate = current + char
         if pdfmetrics.stringWidth(candidate, font, size) > width and current:
-            # Prefer the last space, so Latin text still breaks on words.
+            # prefer last space for Latin words
             cut = current.rfind(" ")
             if cut > len(current) * 0.6:
                 lines.append(current[:cut])
@@ -3905,11 +3854,14 @@ def _wrap(text: str, font: str, size: float, width: float) -> list[str]:
 
 
 def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = None) -> bytes:
-    """The deck as a PDF, one slide per page, without notes."""
+    """Deck as PDF, one slide per page, no notes."""
     slides = _without_written_numbers(slides)
     style = design.normalise_tokens(tokens) if tokens else None
     font = fonts.korean(style["font"] if style else "gothic")
     bold = fonts.korean(style["font"] if style else "gothic", bold=True)
+    # glyph-less signs → look-alikes (else boxes)
+    slides = fonts.drawable_tree(slides, font, bold)
+    title = fonts.drawable(title, font, bold)
     ink = _hex_floats(style["ink"]) if style else _PDF_INK
     muted = _hex_floats(style["muted"]) if style else _PDF_MUTED
     mark = _logo_of(style)
@@ -3950,7 +3902,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             and (bullets or rows or metrics or chart or body or pattern_words)
             and str((data.get("image") or {}).get("position") or "") == "left"
         )
-        # Same split as the .pptx.
+        # same split as .pptx
         text_width = (
             _W
             - 144
@@ -4042,12 +3994,10 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 pdf.setFillColorRGB(*tint)
                 pdf.rect(0, 0, _W, 53, stroke=0, fill=1)
 
-        # `textScale` applies to sizes and line advances alike: this canvas
-        # does not reflow.
+        # `textScale` scales sizes and advances (no reflow)
         ts = _typescale(data)
 
         def S(n: float, _ts: float = ts) -> float:
-            # A size at the slide's scale, never under the floor.
             return max(float(deck_type.FLOOR_PT), n * _ts)
 
         cover_size = _u(
@@ -4057,7 +4007,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             if visual_style == "mono"
             else "cover"
         )
-        #: Body box for this slide; a long title lowers its top.
+        #: Body box; long titles lower its top.
         body_top, room = _BODY_TOP, _BODY_BOTTOM - _BODY_TOP
 
         if layout == "closing":
@@ -4163,15 +4113,14 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             for line in title_lines:
                 pdf.drawString(text_left, y, line)
                 y -= title_line
-            # The tab under the title; the body box starts below it and loses one line for
-            # each extra title line.
+            # tab under the title; body loses a line per extra title line
             pdf.setFillColorRGB(*accent)
             tab_top = _TITLE_TOP + title_line * len(title_lines) + 6 * _K
             pdf.rect(text_left, _H - tab_top - 5, 62, 5, stroke=0, fill=1)
             body_top = _BODY_TOP + title_line * (len(title_lines) - 1)
             room = _BODY_BOTTOM - body_top
 
-            # The figure band, as in the pptx renderer.
+            # figure band, as in pptx
             compact = False
             if picture and (data.get("image") or {}).get("diagram") and _has_words(data):
                 image_bytes, _caption = picture
@@ -4188,7 +4137,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                         height=band_height,
                         mask="auto",
                     )
-                except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
+                except Exception as exc:  # noqa: BLE001 — bad picture, export continues
                     log.warning("could not place a figure band into the deck pdf: %s", exc)
                 body_top += band_height + 8
                 room -= band_height + 8
@@ -4315,8 +4264,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                         left + 14, y - 8 - 14 - figure_size * 1.1 - 6 - label_size, label
                     )
             elif rows:
-                # Columns by their widest cell and rows by the shared row height, as in the
-                # panel; a cell that wraps makes its row taller, up to two lines.
+                # panel's column shares; wrapped cells grow rows (≤ 2 lines)
                 widths = [text_width * share for share in deck_type.column_shares(rows)]
                 cell_size = S(deck_type.table_size(len(rows)) * _K)
                 cell_pad = S(deck_type.table_pad(len(rows)) * _K)
@@ -4379,7 +4327,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                             pdf.drawString(
                                 left + 64, line_y - agenda_size - offset * agenda_size * 1.3, line
                             )
-                        # The rule under the entry; a wrapped entry pushes the next one down.
+                        # rule under entry; wraps push the next down
                         rule_y = line_y - agenda_size - (len(lines) - 1) * agenda_size * 1.3 - 12
                         pdf.setFillColorRGB(*hair)
                         pdf.rect(left, rule_y, span, 0.75, stroke=0, fill=1)
@@ -4458,7 +4406,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 )
                 if fill:
                     pdf.restoreState()
-            except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
+            except Exception as exc:  # noqa: BLE001 — bad picture, export continues
                 if fill:
                     try:
                         pdf.restoreState()
@@ -4475,7 +4423,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                         _wrap(image_caption, font, S(_u("caption")), box_width)[0],
                     )
 
-        # Foot: logo, deck title and footer on the left, slide number on the right.
+        # foot: logo, title, footer left; number right
         if not cover:
             pdf.setStrokeColorRGB(*hair)
             pdf.setLineWidth(0.75)

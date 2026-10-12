@@ -1,9 +1,4 @@
-"""The tool-calling loop: model asks for a tool, the loop runs it and asks again, until prose or
-`max_tool_hops`.
-
-Tool results go back as `tool` role messages, never as instructions. A failing
-tool returns its error as the result. Usage accumulates across hops.
-"""
+"""Tool-calling loop until prose or `max_tool_hops`; tool results never instructions."""
 
 from __future__ import annotations
 
@@ -18,7 +13,7 @@ from typing import Any, Literal, TypedDict
 import httpx
 
 from app.core.config import settings
-from app.services import current_evidence, settings_store, thinking
+from app.services import calc_check, current_evidence, internal_words, settings_store, thinking
 from app.services.chat import ChatStreamError, step_label, step_title
 from app.services.context import literature_request
 from app.services.tools import arithmetic
@@ -51,7 +46,7 @@ def _literal_zero_division_answer(
     literal_preset: bool,
     model_attempted: bool,
 ) -> ToolResultAnswerEvent | None:
-    # Missing usage/model metadata does not prove that no provider was called.
+    # Missing usage metadata ≠ no provider call.
     if (
         model_attempted or not literal_preset or tool is None
         or tool.name != "calculate" or tool.source != "builtin"
@@ -68,9 +63,7 @@ def _literal_zero_division_answer(
 
 
 async def _client(api_key: str, *, redact_logging: bool = False) -> httpx.AsyncClient:
-    """Client for the caller's virtual key; built per turn so the proxy URL follows the settings
-    store.
-    """
+    """Per-turn client for the caller's virtual key (proxy URL from settings)."""
     base, _ = await settings_store.litellm_config()
     return httpx.AsyncClient(
         base_url=base.rstrip("/"),
@@ -78,8 +71,7 @@ async def _client(api_key: str, *, redact_logging: bool = False) -> httpx.AsyncC
             "Authorization": f"Bearer {api_key}",
             **({"x-litellm-enable-message-redaction": "true"} if redact_logging else {}),
         },
-        # `read` is the gap between chunks: a stream that stops sending is given up
-        # long before the whole-turn budget runs out.
+        # `read` = inter-chunk gap; stalled streams fail before the turn budget.
         timeout=httpx.Timeout(
             settings.chat_timeout_sec, connect=10.0, read=settings.chat_stall_sec
         ),
@@ -87,7 +79,7 @@ async def _client(api_key: str, *, redact_logging: bool = False) -> httpx.AsyncC
 
 
 class _Accumulator:
-    """Reassembles one streamed choice; tool-call fragments arrive keyed by index."""
+    """Reassembles one streamed choice; tool-call fragments keyed by index."""
 
     def __init__(self) -> None:
         self.content: list[str] = []
@@ -95,14 +87,13 @@ class _Accumulator:
         self.usage = {"inputTokens": 0, "outputTokens": 0}
         self.finish_reason: str | None = None
         self.actual_model: str | None = None
-        #: Stream cut off by `_is_looping`.
+        #: Cut off by `_is_looping`.
         self.looped = False
-        #: Stream cut off by `_runaway`: the run of one repeated character
-        #: that was already emitted and has to be taken back.
+        #: Cut off by `_runaway`: emitted repeated run to take back.
         self.runaway: str | None = None
 
     def add_chunk(self, chunk: dict[str, Any]) -> str | None:
-        """Returns newly emitted visible text, if any."""
+        """Newly emitted visible text, if any."""
         actual_model = chunk.get("model")
         if isinstance(actual_model, str) and actual_model:
             self.actual_model = actual_model
@@ -135,7 +126,7 @@ class _Accumulator:
         return text
 
     def assistant_message(self) -> dict[str, Any]:
-        """The turn so far, in the shape the next request expects it back."""
+        """Turn so far in request-message shape."""
         message: dict[str, Any] = {"role": "assistant", "content": "".join(self.content) or None}
         if self.calls:
             message["tool_calls"] = [
@@ -150,7 +141,7 @@ class _Accumulator:
 
 
 class _Refusal:
-    """A read response, in the shape `thinking.refused` inspects."""
+    """Read response in `thinking.refused` shape."""
 
     def __init__(self, status_code: int, text: str) -> None:
         self.status_code = status_code
@@ -171,7 +162,7 @@ async def _stream_once(
     redact_logging: bool = False,
     force_tool: str | None = None,
 ) -> AsyncIterator[tuple[str, Any]]:
-    """Yields `('delta', text)` while streaming, then `('done', _Accumulator)`."""
+    """Yields `('delta', text)`, then `('done', _Accumulator)`."""
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -179,15 +170,15 @@ async def _stream_once(
         "stream_options": {"include_usage": True},
         "user": user_id,
     }
-    # Omitted, not defaulted: the model's own sampling applies.
+    # Omitted, not defaulted: model's own sampling.
     if temperature is not None:
         payload["temperature"] = temperature
     self_hosted = model.startswith(("local/", "strict-local/"))
-    if self_hosted and not settings.self_hosted_chat_thinking:
-        # See `config.self_hosted_chat_thinking` and `thinking.template_switch`.
+    roles = await settings_store.model_roles()
+    if self_hosted and not roles.self_hosted_thinking:
         payload.update(thinking.template_switch(model))
-    if not self_hosted and not settings.external_chat_thinking:
-        # See `config.external_chat_thinking`; `thinking.switch` skips a provider that refused.
+    if not self_hosted and not roles.external_thinking:
+        # `thinking.switch` skips providers that refused.
         payload.update(thinking.switch(model))
     if tools:
         payload["tools"] = tool_definitions if tool_definitions is not None else to_openai(tools)
@@ -197,7 +188,7 @@ async def _stream_once(
             else "auto"
         )
     if strict_local or disable_fallbacks:
-        # Defence in depth beside the strict alias, which has no fallback.
+        # Defence in depth beside the no-fallback strict alias.
         payload["disable_fallbacks"] = True
 
     acc = _Accumulator()
@@ -207,14 +198,14 @@ async def _stream_once(
                 opened = client.stream("POST", "/v1/chat/completions", json=payload)
                 response = await opened.__aenter__()
                 if response.status_code == 429 and attempt < len(_RETRY_AFTER):
-                    # Per-key token limits refresh by the minute.
+                    # Per-key token limits refresh per minute.
                     await opened.__aexit__(None, None, None)
                     await asyncio.sleep(_RETRY_AFTER[attempt])
                     continue
                 if response.status_code == 400 and "reasoning" in payload:
                     body = (await response.aread()).decode(errors="replace")
                     if thinking.refused(model, _Refusal(400, body)):
-                        # The provider will not turn thinking off: once more without asking.
+                        # Provider won't disable thinking: retry without asking.
                         await opened.__aexit__(None, None, None)
                         payload.pop("reasoning", None)
                         payload.update(thinking.switch(model))
@@ -241,7 +232,7 @@ async def _stream_once(
                     if text:
                         yield "delta", text
                         if _is_looping(acc.content):
-                            # The stream is closed here; `run_turn` adds a note.
+                            # Stream closed; `run_turn` adds a note.
                             acc.looped = True
                             break
                         run = _runaway(acc.content)
@@ -249,7 +240,7 @@ async def _stream_once(
                             acc.runaway = run
                             break
                     elif acc.calls and _arguments_runaway(acc.calls):
-                        # A tool call whose arguments never end: same treatment.
+                        # Never-ending tool-call arguments: same.
                         acc.looped = True
                         break
             finally:
@@ -260,13 +251,13 @@ async def _stream_once(
     yield "done", acc
 
 
-#: Text shorter than this, written in a hop that then called tools, is
-#: narration (「검색해 보겠습니다」), not an answer.
+#: Shorter pre-tool text is narration, not an answer.
 _NARRATION_CHARS = 400
+_DIGIT = re.compile(r"\d")
 
-#: `web_search` calls per turn; other tools keep the normal hop budget.
+#: Per-turn `web_search` cap.
 MAX_WEB_SEARCHES = 3
-#: `fetch_url` calls per turn; each page is a slow round trip.
+#: Per-turn `fetch_url` cap (slow).
 MAX_FETCHES = 6
 
 _SEARCH_GROUNDING_INSTRUCTION = (
@@ -286,8 +277,7 @@ _SEARCH_GROUNDING_INSTRUCTION = (
 
 
 def _add_system_instruction(conversation: list[dict], instruction: str) -> None:
-    # Some local chat templates reject system messages anywhere but the start.
-    # Copy the dict so a tool hop cannot mutate the caller's shared envelope.
+    # Local templates reject non-leading system messages; copy protects shared envelope.
     if conversation and conversation[0].get("role") == "system":
         conversation[0] = {
             **conversation[0],
@@ -298,7 +288,7 @@ def _add_system_instruction(conversation: list[dict], instruction: str) -> None:
 
 
 def _repeats(earlier: str, later: str) -> bool:
-    """Whether `later` says what `earlier` said — same opening, or most of its lines."""
+    """`later` repeats `earlier` (same opening or most lines)."""
     head = re.sub(r"\s+", " ", earlier.strip())[:80]
     if head and head in re.sub(r"\s+", " ", later):
         return True
@@ -308,18 +298,16 @@ def _repeats(earlier: str, later: str) -> bool:
     return sum(1 for ln in lines if ln in later) * 2 > len(lines)
 
 
-#: Seconds to wait before retrying a 429, one per retry.
+#: 429 retry delays.
 _RETRY_AFTER = (5.0, 15.0)
 
 
-#: Tool-call arguments longer than this are a decoder that never closes the
-#: JSON; a document body handed to `create_artifact` stays well under it.
+#: Arguments past this = unclosed JSON; documents fit well under.
 _ARGS_LIMIT = 60_000
 
 
 def _arguments_runaway(calls: dict[int, dict[str, Any]]) -> bool:
-    """A streamed tool call whose arguments repeat, run on one character, or
-    outgrow any real payload — invisible to the text checks, so checked here."""
+    """Runaway tool-call arguments (repeat, one-char run, oversize)."""
     for call in calls.values():
         arguments = call.get("arguments") or ""
         if len(arguments) > _ARGS_LIMIT:
@@ -330,11 +318,7 @@ def _arguments_runaway(calls: dict[int, dict[str, Any]]) -> bool:
 
 
 def _tail(pieces: list[str], chars: int) -> str:
-    """The last `chars` characters of the stream, however the chunks were cut.
-
-    A decoder stuck on one token streams one character at a time; counting
-    chunks would then look at a few hundred characters and miss the loop.
-    """
+    """Last `chars` of the stream regardless of chunking (one-char chunks on stuck decoders)."""
     kept: list[str] = []
     total = 0
     for piece in reversed(pieces):
@@ -351,9 +335,7 @@ _OTHER_LANGUAGE_ASK = re.compile(r"영어|english|영문|번역|translate|in eng
 
 
 def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str] | None:
-    """`(kind, nudge)` when `text` is not an answer to the last question: the previous
-    answer repeated word for word, or a Latin-script answer to a Korean question that
-    asked for no other language. `None` for an ordinary answer."""
+    """`(kind, nudge)` for a verbatim repeat or an unrequested Latin answer to Korean; else None."""
     squeeze = lambda t: " ".join(str(t or "").split())  # noqa: E731
     def last(role: str) -> dict[str, Any] | None:
         return next(
@@ -384,13 +366,161 @@ def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str
     return None
 
 
-def _repeated_tail(text: str) -> str:
-    """The redundant second copy when `text` is one block written twice in a row
-    (`A\\n\\n\\nA`), else ''.
+#: Data-fillable numeric blank.
+_COMPUTABLE_BLANK = re.compile(r"\[(?:수치|측정값|비율|평균|합계|건수|일수|값)\]")
+_COMPUTE_BLANKS = (
+    "답에 「[수치]」 같은 빈칸이 남았습니다. 첨부 데이터로 셀 수 있는 값(이상치를 뺀 평균, "
+    "비율 등)이면 run_code 로 계산해 그 출력으로 채운 답을 처음부터 다시 쓰세요. 데이터로 셀 수 "
+    "없는 값만 빈칸으로 둡니다."
+)
 
-    Whitespace is ignored in the comparison; the string returned is the exact trailing
-    text to take back.
-    """
+
+#: Code tools; printed lines = computed values.
+_CODE_TOOLS = frozenset({"run_code", "execute_code"})
+#: Stated decimal (not versions or codes).
+_DECIMAL = re.compile(r"(?<![A-Za-z0-9_.])\d{1,9}\.\d{1,6}(?![A-Za-z0-9_.])")
+_ANY_NUMBER = re.compile(r"(?<![A-Za-z0-9_.])-?\d[\d,]{0,15}(?:\.\d{1,10})?")
+_FENCED = re.compile(r"```.*?(?:```|\Z)", re.S)
+#: Claim that code hit a run limit.
+_LIMIT_CLAIM = re.compile(
+    r"(?:코드|도구|툴|실행|계산\s{0,2}도구)[^.!?\n]{0,30}(?:한도|제한|횟수)[^.!?\n]{0,12}"
+    r"(?:막혀|막혔|걸려|걸렸|닿아|닿았|초과|넘어|넘겨)"
+)
+_COMPUTE_UNVERIFIED = (
+    "답에 적은 다음 값은 이번 턴의 코드 실행 출력에 없습니다: {values}. 손으로 셈한 값을 쓰지 "
+    "말고, run_code 로 그 값을 구하는 코드를 실행해 출력한 다음, 위의 코드 출력값만으로 답을 "
+    "처음부터 다시 쓰세요. 코드가 이미 출력한 값이 있으면 그 값을 그대로 옮기세요."
+)
+
+
+#: The answer setting the code's printed values aside as wrong and working them by hand:
+#: 「코드 출력의 P1 대기시간 11은 … 잘못 잡은 결과」 「수동 추적으로 수정한 값」.
+_OVERRIDE_CLAIM = re.compile(
+    r"(?:코드|프로그램|시뮬레이션)\s{0,2}(?:의\s{0,2})?(?:실행\s{0,2})?(?:출력|결과|값)"
+    r"[^.!?\n]{0,80}(?:잘못|틀렸|틀린|틀립|틀려|오류|버그|맞지\s{0,2}않|부정확|반영하지\s{0,2}못)"
+    r"|(?:수동|손)\s{0,2}(?:으로)?\s{0,2}(?:직접\s{0,2})?(?:추적|계산|셈)[^.!?\n]{0,20}"
+    r"(?:수정|고친|고쳐|바로잡|한\s{0,2}값|구한\s{0,2}값|채운|채웠|대신)"
+    r"|(?:수동|손)\s{0,2}(?:으로)?\s{0,2}(?:수정|고친|고쳐|바로잡)"
+    r"|(?:code|program|simulation)(?:'s)?\s+(?:output|result)s?[^.!?\n]{0,80}"
+    r"(?:wrong|incorrect|buggy|\bbug\b|mistaken)"
+    r"|\b(?:hand|manually)[\s-]{0,2}(?:traced|computed|calculated|corrected)"
+    r"|(?:traced|computed|calculated|corrected)\s+(?:it\s+|them\s+)?(?:by\s+hand|manually)",
+    re.I,
+)
+_CODE_OVERRIDE = (
+    "답이 코드 실행 출력값을 틀렸다며 손으로 셈한 값으로 바꿨습니다. 코드 출력은 손 계산으로 "
+    "고칠 수 없습니다. 코드가 틀렸다고 보면, 틀린 곳을 고친 코드를 run_code 로 다시 실행해 그 "
+    "출력값으로 답을 처음부터 다시 쓰세요(출력이 잘렸다면 필요한 값만 다시 출력하세요). 다시 "
+    "실행하지 않을 거면 코드 출력값을 그대로 쓰고, 코드가 틀렸다는 말이나 손으로 고친 값은 쓰지 "
+    "마세요."
+)
+_REVERTED = (
+    "_이 답은 코드 실행 출력값을 틀렸다며 손으로 셈한 값으로 바꿨지만, 고친 코드를 다시 실행하지 "
+    "않았습니다. 손으로 셈한 답을 거두고 코드가 출력한 값을 그대로 보입니다. 코드가 틀렸다고 "
+    "보이면 어디가 틀렸는지 알려 주세요. 코드를 고쳐 다시 실행하겠습니다._"
+)
+#: Revert block: the code's printed text, newest runs kept within this many characters.
+_REVERT_CHARS = 6000
+
+
+#: A sentence saying the hand check agrees with the code, or that the code had no error.
+_AGREES = re.compile(
+    r"일치|같습|같은\s{0,2}값|동일|오류\s{0,2}(?:가|는)?\s{0,2}없|틀린\s{0,2}곳\s{0,2}(?:이|은)?\s{0,2}없"
+    r"|\b(?:match|matches|agree|agrees|same)\b", re.I)
+
+
+def override_claims(text: str) -> list[str]:
+    """Sentences of `text` (outside code blocks) setting the code's output aside by hand."""
+    plain = _FENCED.sub(" ", text or "")
+    return [sentence.strip() for sentence in re.split(r"(?<=[.!?。])\s+|\n", plain)
+            if _OVERRIDE_CLAIM.search(sentence) and not _AGREES.search(sentence)]
+
+
+def printed_text(content: str) -> str:
+    """The printed (stdout) part of a code tool result; the whole text when it has no part."""
+    m = re.search(r"(?:^|\n)stdout:\n(.*?)(?=\n\n(?:stderr:|만든 파일|요약\(JSON\))|\Z)",
+                  content or "", re.S)
+    return (m.group(1) if m else content or "").strip()
+
+
+def reverted_answer(code_outputs: list[str]) -> str:
+    """The answer when a hand-worked override was not backed by a new run: what code printed."""
+    printed: list[str] = []
+    used = 0
+    for output in reversed(code_outputs):
+        text = printed_text(output)
+        if not text or text in printed:
+            continue
+        if printed and used + len(text) > _REVERT_CHARS:
+            break
+        printed.insert(0, text[-_REVERT_CHARS:])
+        used += len(text)
+    body = "\n\n".join(printed).replace("```", "ˋˋˋ")
+    return _REVERTED + "\n\n```text\n" + body + "\n```"
+
+
+def code_checked(answer: str, code_outputs: list[str]) -> tuple[str, list[str]]:
+    """`answer` with numbers naming a value the code printed set to that value (the latest
+    run's value for a quantity printed twice): `(answer, corrections)`."""
+    stated = calc_check.printed_values([printed_text(o) for o in code_outputs])
+    return calc_check.check_markdown(answer, stated)
+
+
+def _text_of(message: dict) -> str:
+    content = message.get("content")
+    if isinstance(content, list):
+        return "\n".join(str(p.get("text") or "") for p in content if isinstance(p, dict))
+    return str(content or "")
+
+
+def _numbers(text: str) -> list[float]:
+    out = []
+    for token in _ANY_NUMBER.findall(text or ""):
+        try:
+            out.append(float(token.replace(",", "")))
+        except ValueError:
+            continue
+    return out
+
+
+def _unverified_figures(answer: str, known_text: str) -> list[str]:
+    """Answer decimals absent from given text (rounding/percent allowed): hand-worked values."""
+    known = _numbers(known_text)
+    missing: list[str] = []
+    for token in _DECIMAL.findall(_FENCED.sub(" ", answer or "")):
+        value = float(token)
+        places = len(token.split(".", 1)[1])
+        tolerance = 0.5 * 10 ** -places + 1e-9
+        if any(abs(value - k) <= tolerance or abs(value - k * 100) <= tolerance
+               or abs(value * 100 - k) <= tolerance * 100 for k in known):
+            continue
+        if token not in missing:
+            missing.append(token)
+    return missing
+
+
+def strip_limit_claims(text: str) -> str:
+    """`text` minus code-limit claims."""
+    if not text or not _LIMIT_CLAIM.search(text):
+        return text
+    out: list[str] = []
+    fenced = False
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            fenced = not fenced
+        if fenced or stripped.startswith(("```", "#", "|")) or not _LIMIT_CLAIM.search(line):
+            out.append(line)
+            continue
+        kept = [piece for piece in re.split(r"(?<=[.!?])\s{1,8}", line)
+                if piece.strip() and not _LIMIT_CLAIM.search(piece)]
+        if kept:
+            out.append(" ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip("\n")
+
+
+def _repeated_tail(text: str) -> str:
+    """Redundant second copy of a doubled block, else ''; whitespace-insensitive."""
     body = text.rstrip()
     if len(body.strip()) < 40:
         return ""
@@ -402,7 +532,7 @@ def _repeated_tail(text: str) -> str:
 
 
 def _is_looping(pieces: list[str], *, window: int = 160, times: int = 4) -> bool:
-    """True when the last `window` characters already appear `times` times in the recent text."""
+    """Last `window` chars occur `times` times in recent text."""
     text = _tail(pieces, window * times * 4)
     if len(text) < window * times:
         return False
@@ -410,25 +540,19 @@ def _is_looping(pieces: list[str], *, window: int = 160, times: int = 4) -> bool
     return len(needle) >= window // 2 and text.count(needle) >= times
 
 
-#: One character repeated this often in a row is a stuck decoder. Banner and
-#: box-drawing characters (「*」 「=」 「─」, U+2500–U+259F) are excluded: code
-#: output and diagrams repeat them by design.
+#: Stuck-decoder run length; banner/box-drawing chars excluded.
 _RUN_LIMIT = 40
 _RUN_RE = re.compile(rf"([^\s*=\-#/_~.+|\u2500-\u259f])\1{{{_RUN_LIMIT - 1},}}$")
 
 
 def _runaway(pieces: list[str]) -> str | None:
-    """The run of one repeated character the recent text ends in, once it is too long."""
+    """Too-long trailing repeated-character run."""
     match = _RUN_RE.search(_tail(pieces, 2_000))
     return match.group(0) if match else None
 
 
 def _repair_runaway(answer: str, run: str, seen_urls: set[str]) -> tuple[str, str, str]:
-    """Takes the `run` off the end of `answer`: returns the prefix to keep, the
-    text to add after it, and what happened — `completed` (the run broke a
-    URL exactly one tool result knows, which is finished, closing bracket
-    included), `dropped` (a URL nothing knows is removed whole, a link's text
-    kept) or `cut` (the run was not in a URL)."""
+    """Remove `run` from `answer`: `completed` (known URL), `dropped` (unknown URL) or `cut`."""
     if not answer.endswith(run):
         return answer, "", "cut"
     answer = answer[: -len(run)]
@@ -437,8 +561,7 @@ def _repair_runaway(answer: str, run: str, seen_urls: set[str]) -> tuple[str, st
         return answer, "", "cut"
     prefix, char = match.group(0), run[0]
     linked = answer[max(match.start() - 2, 0) : match.start()] == "]("
-    # Some of the repeated character may be the model's own: try the prefix
-    # as written, then with its trailing copies of that character trimmed.
+    # Try prefix as written, then with trailing copies trimmed.
     cut = len(prefix)
     while cut > 0:
         head = prefix[:cut]
@@ -461,19 +584,30 @@ _URL = re.compile(r"https?://[^\s)\]>\"'」』,]+")
 
 
 def _urls_in(text: str) -> list[str]:
-    """Every http(s) URL in `text`, trailing punctuation dropped."""
+    """http(s) URLs in `text`, trailing punctuation dropped."""
     return [u.rstrip(".,;:") for u in _URL.findall(text or "")]
 
 
-#: A numbered entry in a tool result: 「[3] 제목」 with the URL on the next line.
+#: Numbered tool-result entry.
 _NUMBERED = re.compile(r"^\[(\d+)\] (.*)$")
+#: Own-material passage (`knowledge.render`).
+_MATERIAL = re.compile(r"^\[(\d{1,3})\] 자료: (.{1,300})$")
+#: Source marker for material (no URL).
+MATERIAL_SOURCE = "material:"
 
 
-def _number_sources(content: str, sources: list[str], call: dict[str, Any]) -> str:
-    """Renumbers the `[n]` entries of a tool result so the numbers run across
-    the whole turn, registering each URL in `sources`; a page fetched by URL
-    gets a number of its own at the top. The model cites these numbers."""
+def _number_sources(
+    content: str, sources: list[str], call: dict[str, Any], titles: dict[str, str] | None = None
+) -> str:
+    """Renumber tool-result `[n]` turn-wide and register URLs in `sources`."""
     lines = content.split("\n")
+    if call["name"] == "search_knowledge":
+        # Same article keeps one number across the turn.
+        for i, line in enumerate(lines):
+            if match := _MATERIAL.match(line):
+                label = match.group(2).strip()
+                lines[i] = f"[{_source_number(MATERIAL_SOURCE + label, sources)}] 자료: {label}"
+        return "\n".join(lines)
     for i, line in enumerate(lines[:-1]):
         match = _NUMBERED.match(line)
         if not match:
@@ -481,6 +615,8 @@ def _number_sources(content: str, sources: list[str], call: dict[str, Any]) -> s
         url = lines[i + 1].strip().rstrip(".,;:")
         if _URL.fullmatch(url):
             lines[i] = f"[{_source_number(url, sources)}] {match.group(2)}"
+            if titles is not None and (title := match.group(2).strip()) and url not in titles:
+                titles[url] = title
     content = "\n".join(lines)
     if call["name"] == "fetch_url" and not content.startswith("오류:"):
         try:
@@ -498,13 +634,12 @@ def _source_number(url: str, sources: list[str]) -> int:
     return sources.index(url) + 1
 
 
-#: 「[1]」「[2, 5]」「[3-4]」 not already part of a markdown link.
+#: `[n]` citations not already linked.
 _CITATION = re.compile(r"(?<!\[)\[(\d{1,2}(?:\s*[,，\-–]\s*\d{1,2})*)\](?!\()")
 
 
 def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
-    """Turns the model's `[n]` citations into links to the numbered sources
-    (code blocks untouched); returns the answer and the numbers it cited."""
+    """Link `[n]` citations to sources (code blocks untouched); returns answer and cited numbers."""
     cited: list[int] = []
 
     def numbers(spec: str) -> list[int]:
@@ -524,7 +659,9 @@ def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
         for n in wanted:
             if n not in cited:
                 cited.append(n)
-        return "".join(f"[[{n}]]({sources[n - 1]})" for n in wanted)
+        # Material passages keep plain numbers.
+        return "".join(f"[{n}]" if sources[n - 1].startswith(MATERIAL_SOURCE)
+                       else f"[[{n}]]({sources[n - 1]})" for n in wanted)
 
     pieces = answer.split("```")
     for i in range(0, len(pieces), 2):
@@ -532,7 +669,7 @@ def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
     return "```".join(pieces), sorted(cited)
 
 
-#: A path that is a front page under another name.
+#: Front-page paths.
 _INDEX_LEAVES = {
     "index",
     "index.html",
@@ -545,7 +682,7 @@ _INDEX_LEAVES = {
 
 
 def _looks_like_a_source(url: str) -> bool:
-    """A URL with a path, as opposed to a home page."""
+    """URL with a path, not a home page."""
     from urllib.parse import urlparse
 
     parsed = urlparse(url)
@@ -562,21 +699,22 @@ def _is_homepage(url: str) -> bool:
     return bool(parsed.netloc) and parsed.path in ("", "/")
 
 
-def _source_label(url: str) -> str:
-    """`host · last path segment` for a source list entry."""
+def _source_label(url: str, title: str = "") -> str:
+    """`title · host`, else `host · last segment`."""
     from urllib.parse import unquote, urlparse
 
     parsed = urlparse(url)
     host = parsed.netloc.removeprefix("www.")
+    title = re.sub(r"\s+", " ", title or "").strip().replace("[", "(").replace("]", ")")
+    if title and not _URL.fullmatch(title) and title != url:
+        return f"{title[:90]}{'…' if len(title) > 90 else ''} · {host}"
     leaf = unquote(parsed.path.rstrip("/").rsplit("/", 1)[-1]).replace("-", " ")
     leaf = re.sub(r"\s+", " ", leaf).strip()
     return f"{host} · {leaf[:48]}" if leaf and leaf.lower() not in {"index.html", "index"} else host
 
 
 def _without_duplicate_paragraphs(text: str, *, minimum: int = 80) -> tuple[str, list[str]]:
-    """`(text, removed)`: exact repeats of paragraphs at least `minimum` characters long are
-    dropped.
-    """
+    """`(text, removed)`: exact repeated paragraphs ≥ `minimum` chars dropped."""
     pieces = re.split(r"(\n\s*\n)", text)
     seen: set[str] = set()
     removed: list[str] = []
@@ -604,8 +742,7 @@ async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
     if not isinstance(parsed, dict):
         return ToolResult(content="오류: 인자는 객체여야 합니다.", failed=True)
     if tool.name == "web_search" and literature_request(ctx.request):
-        # A literature question: the model's plain web search also reads the science
-        # lane (arXiv, OpenAlex, Semantic Scholar) and brings back more hits.
+        # Literature question: web search also via science lane.
         if str(parsed.get("kind") or "web") == "web":
             parsed["kind"] = "papers"
         parsed["scholarly"] = True
@@ -618,8 +755,7 @@ async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
             content=f"오류: {tool.name} 도구가 시간 안에 응답하지 않았습니다.", failed=True
         )
     except Exception as exc:  # noqa: BLE001 — a broken tool must not end the turn
-        # The exception text may embed an unsanitised response body: log the
-        # type only.
+        # Exception text may hold unsanitised response body: log type only.
         error_type = type(exc).__name__
         log.warning("tool %s failed (%s)", tool.name, error_type)
         return ToolResult(
@@ -645,33 +781,26 @@ async def run_turn(
     redact_logging: bool = False,
     tool_definitions: list[dict[str, Any]] | None = None,
     temperature: float | None = None,
-    #: A tool the first ordinary hop must call, after any successful preflight.
-    #: A named `tool_choice` is only a request some providers ignore, so a search
-    #: the toggle demands goes through `preset_call` instead.
+    #: Forced first ordinary tool; via `preset_call` since named tool_choice may be ignored.
     force_tool: str | None = None,
-    #: Required gate; only eligible arithmetic reads may precede it. Hop prose stays private.
+    #: Required gate; only eligible arithmetic reads before it. Hop prose private.
     preflight_tool: str | None = None,
-    #: A non-arithmetic NCS decision must not unlock a required numeric answer.
+    #: Only verified arithmetic unlocks a required numeric answer.
     calculation_required: bool = False,
-    #: A ballpark question about a changing value: answered from knowledge, streamed
-    #: live, and closed with the caveat — no hold, no forced lookup.
+    #: Ballpark question: answered from knowledge with caveat, no forced lookup.
     caveat_request: str | None = None,
-    #: A complete literal expression validated from the user's request, not inferred.
+    #: Literal expression validated from the request, not inferred.
     calculation_expression: str | None = None,
-    #: `(tool name, arguments)` the server calls itself before the model is
-    #: asked anything; the model then starts with the result in hand. A required
-    #: calculation may need this trusted read first. Other gates remain first.
+    #: Server-run `(tool, args)` before the first model call.
     preset_call: tuple[str, dict[str, Any]] | None = None,
-    #: The request when the question asks for a current fact; the answer is then
-    #: dated and marked unverified until a read tool returns material.
+    #: Whole answer when preset knowledge search finds nothing (published bots).
+    preset_empty_answer: str | None = None,
+    #: Current-fact request: answer dated and unverified until a read returns material.
     freshness_request: str | None = None,
+    #: Hand-off model for a calculation the writer won't delegate; billed as `model:<id>:*Tokens`.
+    calculation_handoff_model: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Drives one assistant turn to a final answer.
-
-    Emits `step`, `delta`, `retract`, `model_route`, `privacy_route`,
-    optional `tool_result_answer` (no answer-model call), and exactly one `usage`.
-    `done` belongs to the caller, after credits settle.
-    """
+    """One assistant turn to a final answer; exactly one `usage`, `done` left to caller."""
     by_name = {t.name: t for t in tools}
     search_tool = by_name.get("web_search")
     if (
@@ -682,8 +811,7 @@ async def run_turn(
         or (ctx.allowed and "web_search" not in ctx.allowed)
         or settings.max_tool_hops < 1
     ):
-        # Best-effort answering never expands permission to search. Keep both
-        # the schema and dispatch table closed even if a model invents a call.
+        # Best-effort mode never adds search; schema and dispatch both closed.
         tools = [tool for tool in tools if tool.name != "web_search"]
         by_name.pop("web_search", None)
         if tool_definitions is not None:
@@ -696,7 +824,7 @@ async def run_turn(
             preset_call = None
         if force_tool == "web_search":
             force_tool = None
-    if calculation_required and preflight_tool not in {"calculate", "check_ncs_answer"}:
+    if calculation_required and preflight_tool != "calculate":
         raise ChatStreamError("preflight_tool_unavailable")
     if calculation_expression is not None and (
         not calculation_required
@@ -722,9 +850,7 @@ async def run_turn(
     ):
         raise ChatStreamError("preflight_tool_unavailable")
     conversation = list(messages)
-    # A present-state question with no retrieved evidence yet: the answer is given
-    # from knowledge, dated and marked unverified (cleared once a read tool returns
-    # material). Exact arithmetic cannot verify a guessed current operand.
+    # No evidence yet: dated, unverified; arithmetic can't verify guessed operands.
     unverified_current = (
         bool(freshness_request) and (not preflight_tool or calculation_required)
     ) or bool(caveat_request)
@@ -745,14 +871,15 @@ async def run_turn(
         calculation_required and preflight_tool == "calculate"
         and calculation_expression is None and preset_call is None
     ):
-        # Reuse the caller's configured read contract, never infer effects from a name.
-        # The existing metadata is not a proof of a connector's actual behavior.
+        # Caller's read contract only; never infer effects from names.
         read_prerequisites = {
             tool.name for tool in tools
             if tool.read_only is True
             and tool.name not in {
-                "calculate", "check_ncs_answer", "execute_code",
+                "calculate", "execute_code",
                 "create_artifact", "create_chart", "share_note",
+                # Instructions, not operands: failure must not end the turn.
+                "use_skill",
             }
             and (not ctx.allowed or tool.name in ctx.allowed)
         }
@@ -767,7 +894,7 @@ async def run_turn(
     model_attempted = False
 
     def visible_label(tool: Tool | None, name: str, *, done: bool = False) -> str:
-        # Progress form while running (웹 검색 중), noun when done (웹 검색).
+        # Progress form while running, noun when done.
         if done:
             label = (tool.title or tool.label) if tool else step_title(name)
         else:
@@ -776,27 +903,56 @@ async def run_turn(
             label, _ = sanitize_step_detail(label)
         return label
 
-    #: The next call is the last: no tools, answer from what it has.
+    #: Next call is last: no tools.
     closing = False
-    #: Every URL a tool returned this turn.
+    #: URLs tools returned this turn.
     seen_urls: set[str] = set()
-    #: (tool name, raw arguments) already dispatched, so a repeated call is refused
-    #: instead of burning a round trip each hop.
+    #: Dispatched (tool, raw args); repeats refused.
     called: set[tuple[str, str]] = set()
-    # Only the pending arithmetic gate can reuse evidence. Futures coalesce
-    # concurrent duplicates; stored results are detached before output masking.
+    # Arithmetic gate evidence only; futures coalesce duplicates, results detached before masking.
     arithmetic_evidence: dict[tuple[str, str], asyncio.Future[ToolResult | None]] = {}
-    #: URLs the tools returned, in the order the model saw them numbered.
+    #: Tool URLs in numbering order.
     sources: list[str] = []
+    #: Search titles by URL for 출처.
+    source_titles: dict[str, str] = {}
     answer_text: list[str] = []
     searches = 0
     empty_searches = 0
     fetches = 0
-    #: Long text written in a hop that then called tools; retracted at the end
-    #: if the final answer repeats it.
+    #: Long pre-tool text; retracted if the final answer repeats it.
     held: list[str] = []
+    #: Long pre-tool text with figures; dropped.
+    provisional: list[str] = []
     anomaly_retried = False
+    blanks_retried = False
+    #: Successful code-run outputs; refused-code flag.
+    code_outputs: list[str] = []
+    code_refused = False
+    #: Hand-worked values retried once.
+    figures_retried = False
+    #: Answer set the code's output aside by hand: retried once; code runs seen at the first
+    #: such answer (a later run backs the correction, none means the code's values stand).
+    override_retried = False
+    override_at: int | None = None
+    #: Extra hops past the cap (max one, for computing values).
+    extra_hops = 0
+    #: Next call is last after this hop's tools.
+    close_after_tools = False
+    #: Given text, to tell computed numbers apart.
+    given_text = "\n".join(_text_of(m) for m in messages)
+    #: Hand-off model took the gate.
+    handed_off = False
+    if calculation_handoff_model == model or not (
+        calculation_required and preflight_tool == "calculate"
+    ):
+        calculation_handoff_model = None
     while True:
+        # Hand-off model holds the gate until verified.
+        hop_model = (
+            calculation_handoff_model
+            if handed_off and calculation_handoff_model and not preflight_completed
+            else model
+        )
         acc: _Accumulator | None = None
         hop_text: list[str] = []
         stream_kwargs: dict[str, Any] = {
@@ -807,8 +963,7 @@ async def run_turn(
         hop_definitions = [] if closing else tool_definitions
         pending_reads = read_prerequisites if not calculation_started else set()
         if preflight_tool and not preflight_completed and not closing:
-            # Reads may supply missing operands; neither a read nor its prose
-            # satisfies verification. Other tools remain unavailable until it succeeds.
+            # Reads may supply operands but don't verify; other tools blocked until success.
             gate_names = {preflight_tool, *pending_reads}
             hop_tools = [tool for tool in tools if tool.name in gate_names]
             if hop_definitions is not None:
@@ -818,7 +973,7 @@ async def run_turn(
                 ]
         if disable_fallbacks:
             stream_kwargs["disable_fallbacks"] = True
-        # Without `tool_definitions`, `_stream_once` converts `tools` itself.
+        # Without `tool_definitions`, `_stream_once` converts `tools`.
         if hop_definitions is not None:
             stream_kwargs["tool_definitions"] = hop_definitions
         if temperature is not None:
@@ -835,12 +990,12 @@ async def run_turn(
             and not post_preflight_force_sent
             and not closing
         ):
-            # Keep an explicit search toggle after, never ahead of, a successful gate.
+            # Search toggle only after a successful gate.
             stream_kwargs["force_tool"] = force_tool
             post_preflight_force_sent = True
         running_preset = hop < len(preset_calls) and not closing
         if running_preset:
-            # Trusted lookup and literal arithmetic need no model argument guess.
+            # Trusted presets: no model argument guessing.
             name, arguments = preset_calls[hop]
             acc = _Accumulator()
             acc.calls[0] = {"id": f"preset_{hop}", "name": name, "arguments": json.dumps(arguments)}
@@ -848,25 +1003,32 @@ async def run_turn(
                 post_preflight_force_sent = True
         else:
             model_attempted = True
-            async for kind, value in _stream_once(
-                model,
-                conversation,
-                hop_tools,
-                ctx.user_id,
-                ctx.api_key,
-                **stream_kwargs,
-            ):
-                if kind == "delta":
-                    hop_text.append(value)
-                    if not preflight_tool and not freshness_request:
-                        answer_text.append(value)
-                        yield {"type": "delta", "text": value}
-                else:
-                    acc = value
+            try:
+                async for kind, value in _stream_once(
+                    hop_model,
+                    conversation,
+                    hop_tools,
+                    ctx.user_id,
+                    ctx.api_key,
+                    **stream_kwargs,
+                ):
+                    if kind == "delta":
+                        hop_text.append(value)
+                        if not preflight_tool and not freshness_request:
+                            answer_text.append(value)
+                            yield {"type": "delta", "text": value}
+                    else:
+                        acc = value
+            except ChatStreamError as exc:
+                if hop_model == model:
+                    raise
+                # Hand-off failure → note, not error.
+                log.info("calculation hand-off to %s failed: %s", hop_model, exc)
+                acc = _Accumulator()
         assert acc is not None
 
         if not running_preset and not acc.calls and hop_text:
-            # The same answer written twice in a row is one answer.
+            # Doubled answer counts once.
             spoken = "".join(hop_text)
             redundant = _repeated_tail(spoken)
             if redundant:
@@ -879,9 +1041,21 @@ async def run_turn(
                     answer_text.append(kept)
                     yield {"type": "retract", "text": redundant}
 
-        usage["inputTokens"] += acc.usage["inputTokens"]
-        usage["outputTokens"] += acc.usage["outputTokens"]
-        if acc.actual_model and acc.actual_model not in reported_models:
+        if hop_model != model:
+            # Other model's tokens at its own price.
+            for key in ("inputTokens", "outputTokens"):
+                counter = f"model:{hop_model}:{key}"
+                usage[counter] = usage.get(counter, 0) + acc.usage[key]
+            actual = acc.actual_model or hop_model
+            ran = bool(acc.actual_model or any(acc.usage.values()) or acc.calls or acc.content)
+            if ran and f"handoff:{actual}" not in reported_models:
+                reported_models.add(f"handoff:{actual}")
+                yield {"type": "calculation_handoff", "routedModel": hop_model,
+                       "actualModel": actual}
+        else:
+            usage["inputTokens"] += acc.usage["inputTokens"]
+            usage["outputTokens"] += acc.usage["outputTokens"]
+        if hop_model == model and acc.actual_model and acc.actual_model not in reported_models:
             reported_models.add(acc.actual_model)
             yield {
                 "type": "model_route",
@@ -891,8 +1065,7 @@ async def run_turn(
 
         prerequisite_batch = False
         if preflight_tool:
-            # Operands cannot come from an unread result in the same parallel batch.
-            # Complete-hop validation also keeps drafts and disallowed calls private.
+            # No operands from unread same-batch results; drafts and disallowed calls stay private.
             gate_calls = list(acc.calls.values())
             valid_gate_calls = bool(gate_calls) and all(
                 call["name"] == preflight_tool for call in gate_calls
@@ -913,8 +1086,7 @@ async def run_turn(
                 missed_preflight and calculation_required and not preflight_repaired
                 and not acc.calls and not acc.looped and not acc.runaway and not closing
             ):
-                # Some providers ignore named tool_choice. Retry once with only
-                # a protocol reminder, never the unverified numeric draft.
+                # Named tool_choice may be ignored: one retry with protocol reminder, no draft.
                 preflight_repaired = True
                 conversation.append({
                     "role": "user",
@@ -930,6 +1102,15 @@ async def run_turn(
                         "원래 질문의 값과 단위를 보존하여 검산할 식을 전달하세요."
                     ),
                 })
+                continue
+            if (
+                missed_preflight and calculation_handoff_model and not handed_off
+                and not acc.looped and not acc.runaway and not closing
+            ):
+                # Writer won't delegate: outline model takes the calculation; draft stays private.
+                handed_off = True
+                log.info("calculator skipped by %s, handing the calculation to %s",
+                         model, calculation_handoff_model)
                 continue
             if missed_preflight or acc.looped or acc.runaway or (closing and acc.calls):
                 if calculation_required and preflight_tool == "calculate":
@@ -952,7 +1133,7 @@ async def run_turn(
                 yield {"type": "delta", "text": note}
                 break
             if acc.calls:
-                # A discarded calculation draft must not reinforce the next model hop.
+                # Discarded draft must not reinforce the next hop.
                 acc.content.clear()
             else:
                 answer_text.extend(hop_text)
@@ -961,8 +1142,7 @@ async def run_turn(
 
         if not preflight_tool and freshness_request:
             if acc.calls:
-                # A guess written before retrieval must not anchor the next hop or
-                # briefly appear as the answer while its supporting tool is pending.
+                # Pre-retrieval guess must not anchor or show while the tool is pending.
                 acc.content.clear()
             elif not acc.looped and not acc.runaway:
                 answer_text.extend(hop_text)
@@ -976,12 +1156,17 @@ async def run_turn(
             and not closing
             and "".join(hop_text).strip()
         ):
-            # Text spoken while calling tools: short is narration and goes now;
-            # long may be the answer and is held until the end.
+            # Short pre-tool text is narration; long text held.
             spoken = "".join(hop_text)
             if len(spoken) < _NARRATION_CHARS:
                 del answer_text[len(answer_text) - len(hop_text) :]
                 yield {"type": "retract", "text": spoken}
+            elif _DIGIT.search(spoken):
+                # Pre-result figures are a draft: removed; restored only if no answer follows.
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": spoken}
+                provisional.append(spoken)
+                acc.content.clear()
             else:
                 held.append(spoken)
         if acc.looped:
@@ -993,8 +1178,7 @@ async def run_turn(
             yield {"type": "delta", "text": note}
             break
         if acc.runaway:
-            # One character repeating without end: take the run back, and
-            # when it ate a URL the tools saw, finish that URL properly.
+            # Runaway run taken back; eaten known URL finished.
             before = "".join(answer_text)
             kept, tail, outcome = _repair_runaway(before, acc.runaway, seen_urls)
             if retracted := before[len(kept) :]:
@@ -1018,6 +1202,38 @@ async def run_turn(
             yield {"type": "delta", "text": note}
             answer_text[:] = [kept + tail + note]
             break
+        if not acc.calls and code_outputs and not preflight_tool and "run_code" in by_name:
+            # A code turn's answer, closing hop included: values the code printed are not set
+            # aside or worked by hand. Each is sent back once, with a tool hop past the cap.
+            spoken_now = "".join(acc.content).strip()
+            claims = override_claims(
+                spoken_now if code_refused else strip_limit_claims(spoken_now))
+            if claims and override_at is None:
+                override_at = len(code_outputs)
+            ask = ""
+            if claims and not override_retried:
+                # 「코드 출력의 P1 대기시간 11은 잘못 … 수동 추적으로 수정」: rerun or use it.
+                override_retried = True
+                log.info("answer set the code's output aside by hand, asking once to rerun")
+                ask = _CODE_OVERRIDE
+            elif (spoken_now and not figures_retried and len(
+                    missing := _unverified_figures(
+                        spoken_now, "\n".join([given_text, *code_outputs]))) >= 2):
+                # Hand-worked values the code did not print.
+                figures_retried = True
+                log.info("answer values missing from the code outputs, asking once to compute")
+                ask = _COMPUTE_UNVERIFIED.format(values=", ".join(missing[:12]))
+            if ask:
+                streamed = "".join(hop_text)
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": streamed}
+                conversation.append(acc.assistant_message())
+                conversation.append({"role": "user", "content": ask})
+                if closing or hop >= settings.max_tool_hops:
+                    extra_hops = max(extra_hops, hop + 1 - settings.max_tool_hops)
+                    close_after_tools = True
+                closing = False
+                continue
         if closing:
             break
         if not acc.calls:
@@ -1025,8 +1241,7 @@ async def run_turn(
             if spoken_now and not anomaly_retried and not preflight_tool and not freshness_request:
                 anomaly = _answer_anomaly(spoken_now, messages)
                 if anomaly:
-                    # An answer that is the previous answer again, or in a language the
-                    # person did not use, is taken back and asked for once more.
+                    # Repeat or wrong-language answer: retracted, retried once.
                     anomaly_retried = True
                     log.info("answer anomaly (%s), asking once more without tools", anomaly[0])
                     streamed = "".join(hop_text)
@@ -1036,8 +1251,19 @@ async def run_turn(
                     conversation.append({"role": "user", "content": anomaly[1]})
                     closing = True
                     continue
+            if (spoken_now and hop and not blanks_retried and "run_code" in by_name
+                    and hop < settings.max_tool_hops and _COMPUTABLE_BLANK.search(spoken_now)):
+                # Computable 「[수치]」 blank: retracted, retried once.
+                blanks_retried = True
+                log.info("numeric blank in a run_code answer, asking once to compute it")
+                streamed = "".join(hop_text)
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": streamed}
+                conversation.append(acc.assistant_message())
+                conversation.append({"role": "user", "content": _COMPUTE_BLANKS})
+                continue
             if hop and not spoken_now:
-                # Tools ran but the answer is empty: ask once more without tools.
+                # Empty answer after tools: retry once without tools.
                 conversation.append(acc.assistant_message())
                 conversation.append(
                     {
@@ -1053,8 +1279,15 @@ async def run_turn(
             break
 
         hop += 1
-        if hop > settings.max_tool_hops:
-            # Hop cap: one last call with no tools, answering from what it has.
+        cap_code = (hop > settings.max_tool_hops + extra_hops and not close_after_tools
+                    and bool(acc.calls) and "run_code" in by_name
+                    and all(call["name"] in _CODE_TOOLS for call in acc.calls.values()))
+        if cap_code:
+            # Cap hit on needed code: calls run, next call last.
+            close_after_tools = True
+        elif hop > settings.max_tool_hops + extra_hops:
+            # Hop cap: one final no-tool call.
+            code_refused |= any(call["name"] in _CODE_TOOLS for call in acc.calls.values())
             conversation.append(acc.assistant_message())
             for index, call in sorted(acc.calls.items()):
                 conversation.append(
@@ -1078,7 +1311,7 @@ async def run_turn(
 
         conversation.append(acc.assistant_message())
 
-        # Tool calls within a hop run concurrently.
+        # Same-hop tool calls run concurrently.
         planned = [
             (index, call, by_name.get(call["name"])) for index, call in sorted(acc.calls.items())
         ]
@@ -1106,7 +1339,7 @@ async def run_turn(
             reuse_arithmetic = bool(
                 arithmetic_gate_pending
                 and tool.name == preflight_tool
-                and tool.name in {"calculate", "check_ncs_answer"}
+                and tool.name == "calculate"
                 and tool.source == "builtin"
                 and tool.read_only
             )
@@ -1136,14 +1369,12 @@ async def run_turn(
                     except (ValueError, TypeError):
                         evidence = None
                     verified = isinstance(evidence, dict) and "exact" in evidence
-                    if tool.name == "check_ncs_answer":
-                        verified = verified and evidence.get("arithmetic_verified") is True
                     if verified:
                         pending.set_result(deepcopy(result))
                 return result
             finally:
                 if pending is not None and not pending.done():
-                    # Failure or cancellation must not strand a duplicate waiter.
+                    # Don't strand duplicate waiters.
                     pending.set_result(None)
 
         results = await asyncio.gather(*(execute(item) for item in planned))
@@ -1163,7 +1394,7 @@ async def run_turn(
                         "확인할 수 있는 수치와 조건을 제공해 주세요."
                     )
                 else:
-                    # A read can supply operands, but cannot terminate a numeric answer.
+                    # Reads supply operands but can't end a numeric answer.
                     result.final_text = None
             result_origin = _literal_zero_division_answer(
                 tool, result,
@@ -1171,8 +1402,7 @@ async def run_turn(
                 model_attempted=model_attempted,
             )
             if result_origin is not None:
-                # Only a copied user literal, evaluated by our in-process calculator,
-                # can establish this fact. Never echo arguments or tool error prose.
+                # Only a copied user literal via in-process calculator; no args/errors echoed.
                 result.final_text = (
                     "0으로 나누는 계산은 정의되지 않으므로 값을 구할 수 없습니다."
                 )
@@ -1185,6 +1415,11 @@ async def run_turn(
                     "확인할 수 있는 수치와 조건을 제공해 주세요."
                 )
             if (
+                running_preset and preset_empty_answer and call["name"] == "search_knowledge"
+                and result.empty and not result.failed
+            ):
+                result.final_text = preset_empty_answer
+            if (
                 verifying_arithmetic
                 and call["name"] == preflight_tool and not result.failed
             ):
@@ -1193,8 +1428,6 @@ async def run_turn(
                 except (ValueError, TypeError):
                     evidence = None
                 verified = isinstance(evidence, dict) and "exact" in evidence
-                if call["name"] == "check_ncs_answer":
-                    verified = verified and evidence.get("arithmetic_verified") is True
                 if not verified:
                     result.failed = True
                     result.detail = "수치 검산 미완료"
@@ -1227,6 +1460,14 @@ async def run_turn(
                 collect(result.detail)
             if result.final_text is not None:
                 collect(result.final_text)
+            if result.trace:
+                # Step-only text: masked like `detail`, never fed back.
+                trace_masker = sanitize_tool_output or sanitize_step_detail
+                if trace_masker is not None:
+                    result.trace = {
+                        key: trace_masker(value)[0] if isinstance(value, str) else value
+                        for key, value in result.trace.items()
+                    }
             if sanitize_tool_output is not None:
                 result.content, protected = sanitize_tool_output(result.content)
                 if result.detail:
@@ -1236,7 +1477,7 @@ async def run_turn(
                     result.final_text, terminal_protected = sanitize_tool_output(result.final_text)
                     protected += terminal_protected
                 if protected:
-                    # The next request carries privacy labels: redact its log.
+                    # Next request carries privacy labels: redact its log.
                     redact_next_request = True
                     yield {
                         "type": "privacy_route",
@@ -1249,14 +1490,13 @@ async def run_turn(
                         ],
                     }
             elif sanitize_step_detail is not None:
-                # Strict-local: the model sees the raw result, but the
-                # persisted timeline detail and direct terminal answer are sanitised.
+                # Strict-local: model sees raw result; persisted detail and direct answer sanitised.
                 if result.detail:
                     result.detail, _ = sanitize_step_detail(result.detail)
                 if result.final_text is not None:
                     result.final_text, _ = sanitize_step_detail(result.final_text)
             if finding_counts and sanitize_tool_output is None:
-                # Strict-local hop with findings: LiteLLM's log must still redact it.
+                # Strict-local findings: LiteLLM log still redacted.
                 redact_next_request = True
                 yield {
                     "type": "privacy_route",
@@ -1282,8 +1522,14 @@ async def run_turn(
                 "label": visible_label(tool, call["name"], done=True),
                 "status": "error" if result.failed else "done",
                 **({"detail": result.detail} if result.detail else {}),
+                **({"outputs": result.outputs} if result.outputs else {}),
+                **(result.trace or {}),
             }
-            result.content = _number_sources(result.content, sources, call)
+            if not result.failed and call["name"] != "web_search":
+                ctx.outputs.append(result.content)
+            if not result.failed and call["name"] in _CODE_TOOLS:
+                code_outputs.append(result.content)
+            result.content = _number_sources(result.content, sources, call, source_titles)
             conversation.append(
                 {
                     "role": "tool",
@@ -1293,7 +1539,7 @@ async def run_turn(
                 }
             )
             if not result.failed:
-                # A failed call's own content is an error message, not a source.
+                # Failed call content is an error, not a source.
                 seen_urls.update(_urls_in(result.content))
             if call["name"] == "web_search":
                 searches += 1
@@ -1321,8 +1567,7 @@ async def run_turn(
                 terminal_origin = result_origin
 
         if lookup_unverified:
-            # A failed lookup is context, not permission to invent evidence or to
-            # skip the normal result masking and tool-budget boundaries.
+            # Failed lookup ≠ permission to invent evidence or skip masking/budgets.
             _add_system_instruction(
                 conversation,
                 "A web search in this turn did not provide usable evidence for at "
@@ -1335,7 +1580,7 @@ async def run_turn(
             )
 
         if lookup_has_material:
-            # Presence of a linked excerpt is not claim verification.
+            # Linked excerpt ≠ claim verification.
             _add_system_instruction(conversation, _SEARCH_GROUNDING_INSTRUCTION)
 
         if arithmetic_results:
@@ -1346,6 +1591,15 @@ async def run_turn(
                 yield terminal_origin
             yield {"type": "delta", "text": terminal_text}
             break
+
+        if close_after_tools:
+            close_after_tools = False
+            closing = True
+            conversation.append({"role": "user", "content": (
+                "도구는 더 쓸 수 없습니다. 위 코드 실행 출력의 값으로 답을 쓰세요. 코드가 출력하지 "
+                "않은 값을 손으로 셈해 채우지 말고, 그 항목은 코드로 구하지 못했다고 밝히세요."
+            )})
+            continue
 
         if searches >= MAX_WEB_SEARCHES or fetches >= MAX_FETCHES:
             conversation.append(
@@ -1366,7 +1620,7 @@ async def run_turn(
             closing = True
 
     if unverified_current and "".join(answer_text).strip():
-        # The model answered from knowledge: it stays, with the caveat when it lacks one.
+        # Knowledge answer stays, caveat added if missing.
         spoken = "".join(answer_text)
         if not current_evidence.has_caveat(spoken):
             note = current_evidence.caveat(freshness_request or caveat_request or "")
@@ -1374,8 +1628,7 @@ async def run_turn(
             yield {"type": "delta", "text": note}
 
     if freshness_request and not "".join(answer_text).strip():
-        # A closing hop may ignore tools=[] or return no prose. Its buffered
-        # guess stays private, but the completed turn must not be silently empty.
+        # Closing hop may ignore tools=[] or be empty; guess private, turn not silently empty.
         note = (
             "현재 정보를 뒷받침하는 답변을 완성하지 못했습니다. "
             "확인되지 않은 값을 추측하지 않겠습니다. 자료를 제공하거나 다시 시도해 주세요."
@@ -1386,9 +1639,15 @@ async def run_turn(
         answer_text.append(note)
         yield {"type": "delta", "text": note}
 
-    # Post-processing: retract repeated held text and duplicate paragraphs,
-    # then annotate the answer's URLs against `seen_urls`.
+    # Post-processing: retract repeats and duplicate paragraphs, annotate URLs.
     answer = "".join(answer_text)
+    if provisional and len(answer.strip()) < min(300, len(provisional[-1].strip()) // 2):
+        # Near-empty final hop: last draft was the answer.
+        restored = provisional[-1].rstrip() + ("\n\n" + answer.lstrip() if answer.strip() else "")
+        if answer:
+            yield {"type": "retract", "text": answer}
+        yield {"type": "delta", "text": restored}
+        answer = restored
     for spoken in held:
         at = answer.find(spoken)
         final = answer[at + len(spoken) :] if at >= 0 else ""
@@ -1398,9 +1657,39 @@ async def run_turn(
     answer, duplicate_paragraphs = _without_duplicate_paragraphs(answer)
     for paragraph in duplicate_paragraphs:
         yield {"type": "retract", "text": paragraph}
+    scrubbed = internal_words.scrub(answer, document=False)
+    if scrubbed != answer:
+        # Internal block/step names stripped; answer re-sent.
+        yield {"type": "retract", "text": answer}
+        yield {"type": "delta", "text": scrubbed}
+        answer = scrubbed
+    if code_outputs and not code_refused and (unclaimed := strip_limit_claims(answer)) != answer:
+        # All code ran: limit claims are false.
+        yield {"type": "retract", "text": answer}
+        yield {"type": "delta", "text": unclaimed}
+        answer = unclaimed
+    if code_outputs and not preflight_tool:
+        if override_claims(answer) and (override_at is None or len(code_outputs) <= override_at):
+            # The code's output set aside by hand and no corrected run after: its values stand.
+            log.warning("answer kept setting the code's output aside without a new run; "
+                        "showing the printed values instead")
+            reverted = reverted_answer(code_outputs)
+            yield {"type": "retract", "text": answer}
+            yield {"type": "delta", "text": reverted}
+            answer = reverted
+        else:
+            checked, fixes = code_checked(answer, code_outputs)
+            if fixes:
+                # A number naming a printed value is that value (a later run's, if rerun).
+                log.info("answer values set back to the code's printed ones: %s", fixes[:12])
+                checked += ("\n\n_코드 출력과 다르게 적힌 값을 코드가 출력한 값으로 "
+                            "바로잡았습니다: " + "; ".join(fixes[:8]) + "_")
+                yield {"type": "retract", "text": answer}
+                yield {"type": "delta", "text": checked}
+                answer = checked
     linked, cited = _link_citations(answer, sources)
     if linked != answer:
-        # The citations sit mid-text, so the answer is re-sent whole.
+        # Mid-text citations: answer re-sent whole.
         yield {"type": "retract", "text": answer}
         yield {"type": "delta", "text": linked}
         answer = linked
@@ -1417,10 +1706,22 @@ async def run_turn(
         yield {"type": "delta", "text": note}
     if cited:
         appendix = "\n\n### 출처\n" + "\n".join(
-            f"- [{n}] [{_source_label(sources[n - 1])}]({sources[n - 1]})" for n in cited
+            f"- [{n}] {sources[n - 1].removeprefix(MATERIAL_SOURCE)}"
+            if sources[n - 1].startswith(MATERIAL_SOURCE)
+            else f"- [{n}] [{_source_label(sources[n - 1], source_titles.get(sources[n - 1], ''))}]"
+            f"({sources[n - 1]})"
+            for n in cited
         )
         answer_text.append(appendix)
         yield {"type": "delta", "text": appendix}
+    if code_outputs and not preflight_tool and len(
+            hand := _unverified_figures(answer, "\n".join([given_text, *code_outputs]))) >= 2:
+        note = (
+            "\n\n_다음 값은 이번 코드 실행 출력에 없어 코드로 확인하지 못했습니다: "
+            + ", ".join(hand[:12]) + "_"
+        )
+        answer_text.append(note)
+        yield {"type": "delta", "text": note}
     unverified = [u for u in _urls_in(answer) if u not in seen_urls and _looks_like_a_source(u)]
     if unverified and seen_urls:
         note = (

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 const sessionId = 'calculator-answer-origin'
 const now = '2026-09-12T00:00:00.000Z'
@@ -106,10 +107,12 @@ async function mockAnswer(
       }
     }
     if (path === '/artifacts/counts') return json({ counts: {}, total: 0 })
+    const shell = shellRead(request.method(), path)
+    if (shell) return route.fulfill(shell)
     if (request.method() === 'GET' && [
-      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools', '/templates',
+      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
       '/connectors', '/connectors/catalog', '/jobs', '/designs', '/design-templates',
-      '/prompt-templates', '/shares', `/sessions/${sessionId}/jobs`,
+      '/shares', `/sessions/${sessionId}/jobs`,
     ].includes(path)) return json([])
     unexpected.push(`${request.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })
@@ -148,7 +151,8 @@ for (const viewport of [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'mobile', width: 390, height: 844 },
 ]) {
-  for (const mode of ['saved', 'streamed'] as const) {
+  // A streamed answer is reloaded and read back saved, so at phone width it covers both.
+  for (const mode of viewport.name === 'desktop' ? ['saved', 'streamed'] as const : ['streamed'] as const) {
     test(`${viewport.name} ${mode}: 계산기 답변은 모델 생성과 Auto 선택을 구분하며 재조회 후에도 유지한다`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
       const state = await mockAnswer(page, mode === 'saved')
@@ -200,7 +204,6 @@ test('텍스트 스트리밍을 꺼도 출처 이벤트를 처리하고 답변 �
 })
 
 const calculationHold = '계산기의 검산을 완료하지 못해 수치 답변을 확정할 수 없습니다. 필요한 값과 계산 조건을 확인해 주세요.'
-const ncsHold = '문항 검산 절차를 완료하지 못해 정답이나 채점을 확정할 수 없습니다. 다시 시도해 주세요.'
 
 function developmentHmrSocket(baseURL: string, contentType: string, client: string): string | null {
   const origin = new URL(baseURL)
@@ -243,14 +246,13 @@ for (const viewport of [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'mobile', width: 390, height: 844 },
 ]) {
-  for (const context of ['calculation', 'ncs'] as const) {
+  for (const context of ['calculation'] as const) {
     test(`${viewport.name} ${context}: 검산 보류 문구를 스트림과 재조회에서 그대로 표시한다`, async ({ page, baseURL }) => {
       await page.setViewportSize(viewport)
-      const isCalculation = context === 'calculation'
       const fixture = {
-        prompt: isCalculation ? '자료에서 수량을 찾아 합계를 계산해 줘.' : 'NCS 문항을 검산하고 채점해 줘.',
-        answer: isCalculation ? calculationHold : ncsHold,
-        step: isCalculation ? '계산 확인' : '문항 검산',
+        prompt: '자료에서 수량을 찾아 합계를 계산해 줘.',
+        answer: calculationHold,
+        step: '계산 확인',
       }
       const state = await mockAnswer(page, false, true, true, fixture)
       const client = await page.request.get(new URL('/@vite/client', baseURL).href)
@@ -275,7 +277,6 @@ for (const viewport of [
       const hold = page.getByText(fixture.answer, { exact: true })
       await expect(hold).toBeVisible()
       await expect(hold).toBeInViewport()
-      await expect(page.getByText(isCalculation ? ncsHold : calculationHold, { exact: true })).toHaveCount(0)
       await expect(page.getByText(badgeText, { exact: true })).toHaveCount(0)
       await expect(page.getByText('답변 모델 생성 없음', { exact: false })).toHaveCount(0)
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
@@ -288,7 +289,6 @@ for (const viewport of [
       }
       await page.reload()
       await expect(hold).toBeVisible()
-      await expect(page.getByText(isCalculation ? ncsHold : calculationHold, { exact: true })).toHaveCount(0)
       expect(state.requests.map((request) => request.content)).toEqual([fixture.prompt])
       expect(state.unexpected).toEqual([])
     })

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
+from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList, Grouping
 
 from app.models.user import User, UserRole
 from app.models.workspace import Agent, Skill, SkillSource, StoredFile, Visibility
@@ -23,6 +23,8 @@ def _bound(element):
 def _matches(row, clause) -> bool:
     if clause is None:
         return True
+    if isinstance(clause, Grouping):
+        return _matches(row, clause.element)
     if isinstance(clause, BooleanClauseList):
         results = [_matches(row, part) for part in clause.clauses]
         return all(results) if clause.operator.__name__ == "and_" else any(results)
@@ -37,6 +39,10 @@ def _matches(row, clause) -> bool:
         return actual == expected
     if op == "ne":
         return actual != expected
+    if op == "is_":
+        return actual is None
+    if op == "is_not":
+        return actual is not None
     raise AssertionError(f"unsupported operator: {op}")
 
 
@@ -60,6 +66,7 @@ class _Db:
             "agents": list(agents or []),
             "users": list(users or []),
             "files": list(files or []),
+            "publications": [],
         }
         self.commits = 0
 
@@ -116,7 +123,7 @@ def _skill(**kwargs) -> Skill:
             "when_to_use": "제출용 글을 쓸 때",
             "body": "절차",
             "catalog_key": "citation",
-            "source": SkillSource.built_in,
+            "source": SkillSource.personal,
             "kinds": ["chat"],
             "required_tools": [],
             "estimated_tokens": 40,
@@ -131,15 +138,15 @@ def _agent(**kwargs) -> Agent:
         **{
             "id": "agent-1",
             "owner_id": "admin-1",
-            "name": "논문 리뷰어",
-            "slug": "논문-리뷰어",
+            "name": "예시 에이전트",
+            "slug": "예시-에이전트",
             "description": "설명",
             "system_prompt": "프롬프트",
             "kinds": ["chat"],
             "tools": ["fetch_url"],
             "skill_ids": ["skill-1"],
             "visibility": Visibility.org,
-            "catalog_key": "paper-reviewer",
+            "catalog_key": "practice-coach",
             **kwargs,
         }
     )

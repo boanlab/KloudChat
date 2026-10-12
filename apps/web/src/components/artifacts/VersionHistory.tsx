@@ -1,5 +1,5 @@
 import { History } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Badge, Button, ConfirmDialog, Modal } from '@/components/ui'
 import { artifactsApi, errorMessage } from '@/lib/api'
 import type { ArtifactVersionRow } from '@/lib/api'
@@ -83,12 +83,18 @@ export function VersionHistory({
   onRestored,
   hasUnsavedChanges = false,
   currentData,
+  bare = false,
+  request = null,
 }: {
   artifact: { id: string; title: string; version: number }
-  /** Called after a restore so the panel can drop local drafts. */
+  /** After a restore, so the panel drops local drafts. */
   onRestored?: () => void
   hasUnsavedChanges?: boolean
   currentData?: unknown
+  /** No own button: opened by `request`. */
+  bare?: boolean
+  /** Opens history (new `nonce` each time), previewing an earlier `version`. */
+  request?: { nonce: number; version?: number } | null
 }) {
   const t = useT()
   const refreshArtifact = useStore((s) => s.refreshArtifact)
@@ -117,7 +123,7 @@ export function VersionHistory({
     setRestoring(version)
     setError(null)
     try {
-      // A restore snapshots the current revision first, so it stays restorable.
+      // Restore snapshots the current revision first: stays restorable.
       await artifactsApi.restore(artifact.id, version)
       await refreshArtifact(artifact.id)
       onRestored?.()
@@ -146,17 +152,27 @@ export function VersionHistory({
     }
   }
 
+  const asked = request?.nonce
+  useEffect(() => {
+    if (!asked || !request) return
+    void openHistory().then(() => {
+      if (request.version !== undefined && request.version < artifact.version) void previewVersion(request.version)
+    })
+    // Only a new request opens it; functions recreated every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asked])
+
   return (
     <>
-      {/* aria-label carries both names, since it replaces the visible text. */}
-      <Button
+      {/* aria-label carries both names: replaces the visible text. */}
+      {!bare && <Button
         size="sm"
         aria-label={`${t('버전 기록')} · ${t('저장 시점')} v${artifact.version}`}
         onClick={() => void openHistory()}
       >
         <History size={13} />
         {t('저장 시점')} v{artifact.version}
-      </Button>
+      </Button>}
 
       <Modal
         open={open}
@@ -169,7 +185,7 @@ export function VersionHistory({
           {versions?.length === 0 && !error && (
             <p className="text-base text-faint">{t('아직 저장된 이전 판이 없습니다.')}</p>
           )}
-          {/* The server returns superseded revisions only. */}
+          {/* Server returns superseded revisions only. */}
           {versions?.map(({ version: v, summary, createdAt }) => (
             <div
               key={v}

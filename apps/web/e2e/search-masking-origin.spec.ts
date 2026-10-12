@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 const sessionId = 'masking-source-fixture'
 const now = '2026-09-13T00:00:00.000Z'
@@ -141,10 +142,12 @@ async function mockMasking(page: Page, scenario: Scenario, saved: boolean, live 
       }
     }
     if (path === '/artifacts/counts') return json({ counts: {}, total: 0 })
+    const shell = shellRead(request.method(), path)
+    if (shell) return route.fulfill(shell)
     if (request.method() === 'GET' && [
-      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools', '/templates',
+      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
       '/connectors', '/connectors/catalog', '/jobs', '/designs', '/design-templates',
-      '/prompt-templates', '/shares', `/sessions/${sessionId}/jobs`,
+      '/shares', `/sessions/${sessionId}/jobs`,
     ].includes(path)) return json([])
     unexpected.push(`${request.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })
@@ -191,7 +194,8 @@ async function assertBadges(page: Page, scenario: Scenario) {
 }
 
 for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
-  for (const mode of ['saved', 'streamed'] as const) {
+  // A streamed answer is reloaded and read back saved, so at phone width it covers both.
+  for (const mode of viewport.name === 'desktop' ? ['saved', 'streamed'] as const : ['streamed'] as const) {
     test(`${viewport.name} ${mode}: 도구만 마스킹한 경우 요청 마스킹으로 표시하지 않는다`, async ({ page }) => {
       await page.setViewportSize(viewport)
       const state = await mockMasking(page, 'tool', mode === 'saved')

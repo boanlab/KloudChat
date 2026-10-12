@@ -250,7 +250,7 @@ def test_a_part_asked_for_but_only_named_on_its_slide_is_sent_back():
          "notes": "문항 1: 산소는 원소입니까? 정답은 원소."},
     ]
     needs = deck.requested_contents(slides, lesson)
-    assert set(needs) == {1, 2} and "퀴즈" in needs[2] and "45분" in needs[1]
+    assert set(needs) == {1, 2} and "quiz" in needs[2] and "45분" in needs[1]
     # Questions on screen (a Korean question ending, no 「?」) and a time plan: nothing to do.
     slides[2]["bullets"] = ["O는 원소입니까, 화합물입니까", "CO2의 2가 뜻하는 것은 무엇입니까"]
     slides[1]["bullets"] = ["도입 5분", "개념 15분", "활동 15분", "정리 10분"]

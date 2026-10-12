@@ -1,0 +1,22 @@
+/* 추진 계획(안) — 가운데 제목, 표 셋(개요·예산·일정), 개조식 본문.
+ *
+ * 결재권자는 이 문서에서 세 가지를 찾는다: 언제 어디서 누구와, 얼마가 드는지,
+ * 누가 언제 무엇을 하는지. 그 셋이 표로 서 있고 나머지는 개조식 계단이다.
+ * 금액 열은 오른쪽으로 맞춰 자릿수끼리 읽히게 한다. */
+
+.page { font-family: 'Malgun Gothic', 'Nanum Gothic', 'NanumGothic', 'Pretendard', sans-serif; }
+.cover { min-height: 0; padding: 0.6rem 0 0; margin: 0 0 1.6rem; text-align: center; align-items: center; }
+.cover::after { display: none; }
+.cover h1 { max-width: none; margin: 0 0 0.6rem; padding-bottom: 0.7rem; border-bottom: 3px double var(--ink); font-weight: 800; }
+
+h2 { font-weight: 800; color: var(--ink); margin-bottom: 0.4rem; }
+h2::before { color: var(--ink); }
+section { margin-bottom: 1.4rem; }
+table thead th { border-top: 2px solid var(--ink); border-bottom: 1px solid var(--ink); color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
+/* 표의 첫 열은 항목 이름: 좁고 굵게. 금액은 마지막 열에 온다. */
+table td:first-child { font-weight: 600; white-space: nowrap; }
+table td:last-child { font-variant-numeric: tabular-nums; }
+
+@media print {
+  .cover { min-height: 0; padding: 0.6rem 0 0; page-break-after: auto; break-after: auto; }
+}

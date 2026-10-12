@@ -10,7 +10,7 @@ A project is a workspace that binds materials, instructions, and conversations t
 
 ## Creating
 
-Go to the sidebar → **Projects** → New project, then enter a name, a description, and **project instructions**. After creation, the detail screen lets you set the icon, the design system, and the **default format** for each screen (reports, slide decks).
+Go to the sidebar → **Projects** → New project, then enter a name, a description, and **project instructions**. After creation, the detail screen lets you set the icon, the theme, and the **default template** for each screen (reports, slide decks).
 
 ## Tabs
 
@@ -18,7 +18,7 @@ Go to the sidebar → **Projects** → New project, then enter a name, a descrip
 |---|---|
 | Conversations | Start a new conversation in this project, and add existing conversations to the project or remove them from it. |
 | Knowledge | Add files and register addresses as **web material**. Web material stores the content as it was at registration time. It shows how many tokens each file uses and how much of the context it takes up. You can check the recognized content, download the original, and delete it. |
-| Skills | Designated recommended skills are shown first in the input box of this project. |
+| Skills | Skills you pick with **Choose skills** appear first in this project's composer. |
 | Memory | Memory shared at the project level. Conclusions that an agent leaves through **Share note** also accumulate here. |
 
 ## How knowledge is delivered
@@ -31,7 +31,7 @@ Describe rules that apply to every conversation, such as "answer in polite langu
 
 ## Deleting a project
 
-Deleting a project deletes its instructions and knowledge files. Conversations are detached from the project and kept, and outputs and memory also remain.
+Deleting a project deletes its instructions and knowledge files. Conversations are detached from the project and kept, and artifacts and memory also remain.
 
 ## Comparison with conversation attachments
 

@@ -1,6 +1,4 @@
-"""Chart images for the 차트 style: a model writes matplotlib code, the code sandbox
-runs it, the PNG is kept with the code.
-"""
+"""차트 style images: model-written matplotlib run in the code sandbox; PNG kept with code."""
 
 from __future__ import annotations
 
@@ -12,13 +10,13 @@ from dataclasses import dataclass
 import httpx
 
 from app.core.config import settings
-from app.services import settings_store, thinking
+from app.services import settings_store, thinking, tools_gateway
 
 log = logging.getLogger(__name__)
 
 
 class ChartError(RuntimeError):
-    """Drawing failed; the message is user-facing."""
+    """Drawing failure; user-facing message."""
 
 
 @dataclass(slots=True)
@@ -29,7 +27,7 @@ class Chart:
     output_tokens: int
 
 
-#: NanumGothic is the Korean face installed in the sandbox.
+#: NanumGothic: Korean face in the sandbox.
 _PROMPT = """너는 matplotlib 로 차트를 그리는 파이썬 코드를 쓴다. 아래 요청의 차트 하나를 그리는
 완전한 파이썬 스크립트를 출력하라.
 
@@ -59,7 +57,6 @@ _RETRY = """앞의 코드가 실행 중 오류를 냈다. 고쳐서 전체 코�
 앞의 코드:
 {code}"""
 
-#: Figure size in inches by aspect.
 _SIZES = {
     "16:9": (9.6, 5.4),
     "4:3": (8.0, 6.0),
@@ -78,11 +75,7 @@ async def draw(
     api_key: str,
     code: str | None = None,
 ) -> Chart:
-    """The chart for `request`, or `ChartError`.
-
-    `code`, when given, runs as-is; otherwise the model writes it and gets one
-    retry with the error.
-    """
+    """Chart for `request`, or `ChartError`; model writes `code` if absent, one retry."""
     width, height = _SIZES.get(aspect, _SIZES["16:9"])
     tokens = {"in": 0, "out": 0}
     if code is None:
@@ -127,7 +120,7 @@ async def _write(prompt: str, model: str, api_key: str, tokens: dict[str, int]) 
                 },
             )
             if thinking.refused(model, response):
-                # The same request without the switch the provider refused.
+                # retry without the refused switch
                 body = json.loads(response.request.content or b"{}")
                 body.pop("reasoning", None)
                 body.update(thinking.switch(model))
@@ -150,14 +143,14 @@ def _unfenced(text: str) -> str:
 
 
 async def _run(code: str) -> tuple[bytes | None, str]:
-    """`(png, "")` when the script saved its chart, else `(None, what went wrong)`."""
+    """`(png, "")` on success, else `(None, error)`."""
     backends = await settings_store.tools_config()
     if not backends.exec:
         raise ChartError("코드 실행이 설정되지 않아 차트를 그릴 수 없습니다.")
     root = backends.exec.rstrip("/")
     headers = {"x-api-key": settings.code_interpreter_api_key}
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+        async with tools_gateway.client(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
             response = await client.post(
                 f"{root}/exec", headers=headers, json={"code": code, "lang": "py"}
             )

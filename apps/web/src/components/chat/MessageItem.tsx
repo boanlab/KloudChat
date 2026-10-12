@@ -1,6 +1,4 @@
 import {
-  AudioLines,
-  BarChart3,
   Calculator,
   Check,
   ChevronLeft,
@@ -9,59 +7,38 @@ import {
   Copy,
   Download,
   FilePenLine,
-  FileText,
-  Image as ImageIcon,
+  Flag,
   Loader2,
   Paperclip,
   Pencil,
-  Presentation,
   RotateCcw,
   ShieldAlert,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
   TriangleAlert,
-  Video,
 } from 'lucide-react'
 import { memo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button } from '@/components/ui'
 import { MediaResult } from '@/components/media/MediaResult'
+import { ResultCard } from './ResultCard'
 import { downloadFile, errorMessage, filesApi, templateText } from '@/lib/api'
+import { useIssues } from '@/lib/issues'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL, maskingCategories, requestMaskingLabel } from '@/lib/privacy'
 import { cn, fileSize, formatTokens, isMedia } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { ArtifactKind, CostRouting, Message, ModelInfo } from '@/types'
-import { CompareView } from './CompareView'
+import type { CostRouting, LengthCheck, Message, ModelInfo } from '@/types'
 import { Markdown } from './Markdown'
 import { RetryActions } from './RetryActions'
-import { StepTimeline } from './StepTimeline'
+import { OutputFiles, StepTimeline } from './StepTimeline'
+import { ProposalCard } from './ProposalCard'
+import { doingPhrase, waitingCardMessageId } from '@/lib/stages'
 import { TurnProgress } from './TurnProgress'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
-
-const artifactIcon: Record<ArtifactKind, typeof FileText> = {
-  report: FileText,
-  deck: Presentation,
-  chart: BarChart3,
-  image: ImageIcon,
-  audio: AudioLines,
-  video: Video,
-  code: FileText,
-  html: FileText,
-}
-
-const artifactLabel: Record<ArtifactKind, string> = {
-  report: '보고서',
-  deck: '슬라이드',
-  chart: '차트',
-  image: '이미지',
-  audio: '오디오',
-  video: '동영상',
-  code: '코드',
-  html: 'HTML',
-}
+import { tokenTotals } from '@/lib/usage'
 
 function costRouteDecisionLabel(
   route: CostRouting,
@@ -196,6 +173,48 @@ function turnFailureNotice(
 }
 
 /** One turn of the transcript. Memoised; reads the store through narrow selectors so streaming re-renders one row. */
+const LENGTH_UNIT: Record<LengthCheck['rows'][number]['unit'], [string, string]> = {
+  chars_with_spaces: ['공백 포함', '자'],
+  chars_no_spaces: ['공백 제외', '자'],
+  bytes_utf8: ['UTF-8', '바이트'],
+  bytes_ko2: ['한글 2바이트', '바이트'],
+}
+
+/** 「답안 1: 공백 포함 692자 / 700자」 per submit block, as the server measured it. */
+function LengthLine({ check }: { check: LengthCheck }) {
+  const t = useT()
+  return (
+    <p className="mt-2 text-xs text-faint" aria-label={t('글자 수(코드 측정)')}>
+      <span>{t('글자 수(코드 측정)')}</span>
+      {check.rows.map((row) => {
+        const [counted, suffix] = LENGTH_UNIT[row.unit]
+        const off = row.status !== 'ok'
+        return (
+          <span key={row.number} className={cn('ml-2', off && 'text-danger')} title={row.assumed ? t(row.assumed) : undefined}>
+            {t('답안 {n}').replace('{n}', String(row.number))}: {t(counted)}{' '}
+            {row.value.toLocaleString()}{t(suffix)}
+            {row.limit !== null && <> / {row.limit.toLocaleString()}{t(suffix)}</>}
+            {row.status === 'over' && <> · {t('초과')}</>}
+            {row.status === 'under' && <> · {t('하한 미달')}</>}
+            {row.rewritten && !off && <> · {t('다시 씀')}</>}
+            {row.rewritten && off && <> · {t('다시 써도 범위 밖 — 직접 맞춰 주세요')}</>}
+          </span>
+        )
+      })}
+      {check.flags.length > 0 && (
+        <span className="ml-2 text-danger">
+          {t('자료에 없는 항목')}: {check.flags.join(', ')} — {t('지어내지 말고 [구체적 성과 수치]처럼 비워 두세요')}
+        </span>
+      )}
+      {(check.repeats?.length ?? 0) > 0 && (
+        <span className="ml-2 text-danger">
+          {t('같은 경험 반복(확인 필요)')}: {check.repeats?.join(' / ')}
+        </span>
+      )}
+    </p>
+  )
+}
+
 function MessageItemInner({
   message,
   sessionId,
@@ -210,13 +229,23 @@ function MessageItemInner({
 }) {
   const t = useT()
   const artifacts = useStore((s) => s.artifacts)
-  const openArtifact = useStore((s) => s.openArtifact)
   const rateMessage = useStore((s) => s.rateMessage)
+  const openReport = useIssues((s) => s.openReport)
   const retryMediaTurn = useStore((s) => s.retryMediaTurn)
   const models = useStore((s) => s.models)
   const user = useStore((s) => s.user)
   const designTemplates = useStore((s) => s.designTemplates)
   const sessionKind = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.kind)
+  // The question card sits in this message's waiting stage when its run is the one waiting.
+  const waitingPending = useStore((s) => {
+    const session = s.sessions.find((c) => c.id === sessionId)
+    return waitingCardMessageId(session) === message.id ? session?.pending ?? null : null
+  })
+  // The card this answer still waits on, said in its header (「개요를 확인해 주세요」).
+  const awaiting = useStore((s) => {
+    if (!last) return null
+    return s.sessions.find((c) => c.id === sessionId)?.pending?.stage ?? null
+  })
   const editMessage = useStore((s) => s.editMessage)
   const editBlocked = useStore((s) => !!s.running[sessionId] || s.messageEditBusy)
   const renderTemplateId = useStore(
@@ -234,8 +263,7 @@ function MessageItemInner({
   const madeHere = sessionKind === 'image' || sessionKind === 'av'
   const [copied, setCopied] = useState(false)
   const [badgesOpen, setBadgesOpen] = useState(false)
-  // Earlier answers to the same question (‹ k/n ›); `null` shows the current one.
-  // The choice is keyed to the row and its draft count, so a new answer shows itself.
+  // Earlier answers (‹ k/n ›); `null` = current. Keyed to row and draft count, so a new answer shows itself.
   const drafts = message.superseded ?? []
   const draftsKey = `${message.id}:${drafts.length}`
   const [view, setView] = useState<{ key: string; index: number | null }>({ key: draftsKey, index: null })
@@ -274,6 +302,9 @@ function MessageItemInner({
   const toolAnswer = message.routing && 'answerOrigin' in message.routing &&
     message.routing.answerOrigin === 'tool_result' ? message.routing : null
   const routing = message.routing && 'action' in message.routing ? message.routing : null
+  const lengthCheck = message.routing && 'lengthCheck' in message.routing
+    ? message.routing.lengthCheck
+    : undefined
   const requestAction = routing?.initialAction ?? routing?.action
   const requestProtection = requestAction && requestAction !== 'none'
     ? requestAction === 'route_strict_local' || requestAction === 'strict_local'
@@ -321,8 +352,7 @@ function MessageItemInner({
     const shape = designTemplates.find((row) => row.id === renderTemplateId)
     const failed = turnFailureNotice(message, madeHere, t)
     const startedFrom = message.startedFrom
-    // The stored copy is masked whenever there is a finding; the bubble holds
-    // the typed original until the session is reopened.
+    // Stored copy masked on any finding; the bubble holds the typed original until reopen.
     const redacted = (routing?.findingCounts ?? []).filter(
       (finding) => finding.source === 'current_input',
     )
@@ -341,7 +371,7 @@ function MessageItemInner({
           {startedFrom && (
             <p className="text-right text-xs text-faint">
               {shape
-                ? t('시작점 {name} · 서식 {title}')
+                ? t('시작점 {name} · 템플릿 {title}')
                     .replace('{name}', startedFrom.title)
                     .replace('{title}', templateText(shape, currentLang() === 'en').name)
                 : t('시작점 {name}').replace('{name}', startedFrom.title)}
@@ -455,8 +485,14 @@ function MessageItemInner({
   // Media is shown inline; documents are named as chips.
   const shown = linked.filter(isMedia)
   const named = linked.filter((a) => !isMedia(a))
+  const madeFiles = (message.steps ?? [])
+    .flatMap((step) => step.outputs ?? [])
+    .filter((file, i, all) => all.findIndex((f) => f.id === file.id) === i)
   const failed = turnFailureNotice(message, madeHere, t)
   const stopped = !message.error && message.failure === 'stopped'
+  // One progress line per turn: the step header when there is one, else the waiting line.
+  const timelineShown =
+    (message.steps && message.steps.length > 0) || (message.run && message.run.stages.length > 0)
   // How many routing badges the row holds; a phone shows the count until tapped.
   const routingBadges = routing
     ? [
@@ -469,8 +505,9 @@ function MessageItemInner({
     : 0
 
   return (
-    <div className="animate-fade-up group flex gap-3">
-      <div className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-control bg-accent text-accent-fg">
+    // A phone gives the answer the full width; the mark beside it would take a quarter.
+    <div className="animate-fade-up group flex gap-3 phone:block">
+      <div className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-control bg-accent text-accent-fg phone:hidden">
         {toolAnswer ? <Calculator size={14} /> : <Sparkles size={14} />}
       </div>
       <div className="min-w-0 flex-1">
@@ -558,29 +595,44 @@ function MessageItemInner({
               )}
           </div>
         )}
-        {message.steps && message.steps.length > 0 && (
+        {timelineShown && (
           <StepTimeline
-            steps={message.steps}
+            steps={message.steps ?? []}
             live={!!streaming}
             failed={!!failed}
+            stopped={stopped}
+            kind={sessionKind}
+            awaiting={streaming ? null : awaiting}
             startedAt={new Date(message.createdAt).getTime()}
+            sessionId={sessionId}
+            run={message.run}
+            rerunnable={sessionKind === 'report' || sessionKind === 'slides'}
+            waitingSlot={waitingPending && sessionKind ? (
+              <ProposalCard sessionId={sessionId} pending={waitingPending} kind={sessionKind} />
+            ) : undefined}
           />
         )}
 
-        {message.variants ? (
-          <CompareView
-            variants={message.variants}
-            sessionId={sessionId}
-            messageId={message.id}
-          />
-        ) : message.content ? (
+        {message.content ? (
           <>
             {viewing !== null && (
               <Badge className="mb-2">
                 {t('이전 답변')} · {(drafts[viewing]?.model && models.find((m) => m.id === drafts[viewing]?.model)?.label) || drafts[viewing]?.model || ''}
               </Badge>
             )}
-            <Markdown>{shownContent}</Markdown>
+            {failed && !stopped && !madeHere && viewing === null ? (
+              // A turn that broke off: what streamed so far may claim work it never finished.
+              <div data-testid="partial-answer">
+                <Badge tone="warn" className="mb-2">
+                  {t('끊긴 답 · 끝까지 쓰지 못했습니다')}
+                </Badge>
+                <div className="opacity-70">
+                  <Markdown>{shownContent}</Markdown>
+                </div>
+              </div>
+            ) : (
+              <Markdown>{shownContent}</Markdown>
+            )}
           </>
         ) : (
           // Only while the turn is running and nothing is there to read yet.
@@ -588,18 +640,23 @@ function MessageItemInner({
           !freshness &&
           !toolAnswer &&
           streaming &&
+          !timelineShown &&
           shown.length === 0 &&
           named.length === 0 && (
             <TurnProgress
               sessionId={sessionId}
               startedAt={new Date(message.createdAt).getTime()}
-              label={madeHere ? t('만드는 중…') : t('생각하는 중…')}
-              model={message.model ?? undefined}
+              label={t(doingPhrase(sessionKind))}
             />
           )
         )}
         {streaming && message.content && (
           <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-blink bg-accent" />
+        )}
+
+        {lengthCheck && (lengthCheck.rows.length > 0 || lengthCheck.flags.length > 0 ||
+          (lengthCheck.repeats?.length ?? 0) > 0) && (
+          <LengthLine check={lengthCheck} />
         )}
 
         {shown.length > 0 && (
@@ -641,33 +698,23 @@ function MessageItemInner({
           </div>
         )}
 
-        {named.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {named.map((a) => {
-              const Icon = artifactIcon[a.kind]
-              return (
-                <button
-                  key={a.id}
-                  onClick={() => openArtifact(a.id)}
-                  className="flex items-center gap-2 rounded-card border border-line bg-panel px-3 py-2 text-left transition-colors hover:border-accent hover:bg-elevated"
-                >
-                  <span className="grid size-7 place-items-center rounded-control bg-accent-soft text-accent">
-                    <Icon size={14} />
-                  </span>
-                  <span>
-                    <span className="block text-base font-medium">{a.title}</span>
-                    <span className="block text-xs text-faint">
-                      {t(artifactLabel[a.kind])} · v{a.version}
-                    </span>
-                  </span>
-                </button>
-              )
-            })}
+        {!streaming && madeFiles.length > 0 && (
+          // The files code wrote, where the answer that talks about them is read.
+          <div className="mt-2" data-testid="made-files">
+            <OutputFiles files={madeFiles} />
           </div>
         )}
 
-        {!streaming && message.content && !message.variants && (
-          <div className={cn('mt-2 flex items-center gap-1 text-faint', toolAnswer && 'max-sm:flex-wrap')}>
+        {named.map((a, i) => (
+          <ResultCard
+            key={a.id}
+            artifact={a}
+            version={i === 0 ? message.artifactVersion : undefined}
+          />
+        ))}
+
+        {!streaming && message.content && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-faint">
             <span className="flex items-center gap-1">
             {copyButton(t('복사'))}
             <Button
@@ -692,6 +739,24 @@ function MessageItemInner({
             >
               <ThumbsDown size={14} />
             </Button>
+            {message.liked === 'down' && (
+              // After a 👎: report it, with this answer (and what it made) pinned.
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                onClick={() => openReport({
+                  sessionId,
+                  messageId: message.id,
+                  messageSnippet: message.content.slice(0, 80),
+                  artifactId: linked[0]?.id,
+                  artifactTitle: linked[0]?.title,
+                })}
+              >
+                <Flag size={13} />
+                {t('신고하기')}
+              </Button>
+            )}
             </span>
             {drafts.length > 0 && (
               <span
@@ -738,15 +803,22 @@ function MessageItemInner({
               </span>
             )}
             {message.usage && user?.preferences.showUsage !== false && (
-              <span className={cn('ml-1 text-xs', toolAnswer && 'max-sm:ml-0 max-sm:basis-full')}>
+              <span className={cn('ml-1 text-xs', toolAnswer && 'max-sm:ml-0 max-sm:basis-full')} data-testid="usage-line">
                 {freshness
                   ? t('모델 실행 없음')
                   : toolAnswer
                     ? t('답변 모델 생성 없음')
-                    : model?.label ?? message.model} ·{' '}
+                    : model?.label ?? message.model}
+                {routing?.calculationModel
+                  ? ` + ${t('검산')} ${
+                      models.find((m) => m.id === routing.calculationModel)?.label ??
+                      routing.calculationModel
+                    }`
+                  : ''}{' '}
+                ·{' '}
                 {message.usage.estimated ? '≈ ' : ''}
-                {formatTokens(message.usage.inputTokens)} in ·{' '}
-                {formatTokens(message.usage.outputTokens)} out ·{' '}
+                {formatTokens(tokenTotals(message.usage).input)} in ·{' '}
+                {formatTokens(tokenTotals(message.usage).output)} out ·{' '}
                 {toolAnswer ? (
                   <span className="whitespace-nowrap">
                     {t('답변 {n} 크레딧').replace('{n}', message.usage.credits.toLocaleString())}

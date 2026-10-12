@@ -3,6 +3,7 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { answerText, artifactIds, pickToolModel, signIn, storedArtifacts } from './helpers'
+import { openTool } from './composer-tools'
 
 // Retried: these assertions are on what a small model wrote.
 test.describe.configure({ retries: 2 })
@@ -58,7 +59,7 @@ test('대학원생 — 프로젝트 지식을 올리고 그 안에서만 아는 
   })
   await expect(page.getByText('results.csv')).toBeVisible({ timeout: 30_000 })
 
-  await page.getByRole('button', { name: /이 프로젝트에서 새로 만들기/ }).click()
+  await page.getByRole('button', { name: '새로 시작', exact: true }).click()
   await page.getByRole('menuitem', { name: '챗' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible({ timeout: 20_000 })
@@ -155,8 +156,7 @@ test('영업직 — 만든 에이전트로 대화하면 그 지침이 적용된�
 
   try {
   await page.goto('/new/chat')
-  // Exact: the sidebar's account button label contains an email address.
-  await page.getByRole('button', { name: '@', exact: true }).click()
+  await openTool(page, '에이전트')
   await page.getByRole('menuitem', { name: agentName }).first().click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   // The agent badge proves the session committed with that agent attached.
@@ -224,7 +224,7 @@ async function waitForArtifact(
   )
 }
 
-test('기획직 — 대화에서 한 페이지 문서를 만들어 달라고 하면 결과물로 남는다', async ({ page }) => {
+test('기획직 — 대화에서 한 페이지 문서를 만들어 달라고 하면 아티팩트로 남는다', async ({ page }) => {
   test.setTimeout(300_000)
   const token = `PLAN-${stamp().toUpperCase()}`
   await page.goto('/new/chat')
@@ -255,7 +255,7 @@ test('기획직 — 대화에서 한 페이지 문서를 만들어 달라고 하
   await expect(page.getByText(String(stored.title)).first()).toBeVisible({ timeout: 30_000 })
 })
 
-test('분석직 — 대화에서 준 숫자로 차트를 그리면 그 숫자가 결과물에 남는다', async ({ page }) => {
+test('분석직 — 대화에서 준 숫자로 차트를 그리면 그 숫자가 아티팩트에 남는다', async ({ page }) => {
   test.setTimeout(300_000)
   await page.goto('/new/chat')
   await useLocalModel(page)

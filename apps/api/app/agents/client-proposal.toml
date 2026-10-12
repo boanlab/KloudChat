@@ -1,0 +1,57 @@
+# 고객 맞춤 제안서.
+
+key = "client-proposal"
+# Retired: offered nowhere and installed by nobody; the rows stay so the
+# conversations and documents made with it still open and export.
+retired = true
+order = 91
+name = "고객 맞춤 제안서"
+description = "고객사의 RFP·미팅 메모·메일로 그 고객에게 낼 제안서(견적 포함) 초안이 필요할 때"
+kinds = ["report"]
+surface = "report"
+template = "doc-client-proposal"
+doc_format = "client_proposal"
+design = "기본"
+# An empty list denies every tool (report surfaces run the server hooks instead).
+tools = []
+skills = []
+# 묶음 (`app/bundles/*.toml`) it runs; a person ticking the same ones with this agent as
+# their base gets the same agent. The check skills and their strictness it holds come from
+# them (`services/bundles.py`).
+bundles = [
+    { bundle = "prepare" },
+    { bundle = "review" },
+    { bundle = "finish", items = { export = false } },
+]
+temperature = 0.3
+color = "#2563eb"
+starters = [
+    "RFP 발췌와 우리 회사 정보, 투입 계획을 붙일게. 이 고객에게 낼 제안서를 써 줘. 견적은 투입 계획대로 계산하고, 요구사항마다 어디서 대응하는지 표로 보여 줘.",
+    "고객사와 미팅한 메모로 제안서 초안을 만들어 줘. 1인당 비용도 보여 줘.",
+    "고객이 범위를 줄여 달라고 메일을 보냈어. 지난 제안 요약과 메일로 수정 제안서를 만들고, 앞에 바뀐 것 대조표를 넣어 줘.",
+]
+guide = '''
+고객의 RFP 발췌·미팅 메모·메일을 붙여 주세요. 제안사 정보(회사명·실적·투입 인력)와 견적 근거(단가·투입 계획 또는 총액), 예산과 부가세 기준이 있으면 함께 주세요.
+견적·날짜는 쓰기 전에 서버가 계산하고, 다 쓴 뒤에는 요구 ID 누락·견적 합계·고객사명·일정·쪽수를 코드가 검사해 한 번 고칩니다. 자료에 없는 실적·인증은 ‘[수행 실적]’처럼 대괄호 빈칸으로 남깁니다.'''
+
+system_prompt = '''
+You write a proposal tailored to the client. The readers are the client's evaluators and approvers. Write in Korean (in English only if the request itself is in English).
+1. The client's material wins on structure. If the RFP sets the table of contents, evaluation items, length or annex forms, use those names and that order exactly. Only when nothing is specified, use the default 9 sections (제안 요약 → 고객 과제 이해 → 제안 내용 → 요구사항 대응표 → 추진 일정 → 수행 조직·투입 인력 → 견적 → 전제·제외 범위·위험 → 요청 사항). Keep any page limit.
+2. Requirements response table (요구사항 대응표): do not leave out a single requirement ID from the material. Columns: 요구 ID · 요구 내용 · 대응 방안 · 제안서 위치. Its place: the RFP annex form > the matching section of the RFP's table of contents > default section 4. 대응 방안 is one line: what and how + how it is verified. Example: 「REQ-03 | 분류 정확도 85% 이상 | 표본 500건 정답 라벨로 주 1회 측정, 85% 미만이면 오분류 상위 유형 재학습 | 3.2」.
+3. Quote figures come only from the ‘견적 확정 블록’ (server-computed). Do not multiply or add yourself. If the RFP asks for a separate price proposal, write no amounts in the body and split them off at the end as ‘가격 제안서(별도 제출)’. State VAT 포함/별도 in the table header and the total row, and compare with the budget only on the same basis. If the budget is exceeded, say so; do not change unit prices — offer a separate scope/period adjustment (its amounts are block values too).
+4. 고객 과제 이해 opens by quoting at least one of the client's own words (RFP wording, meeting remarks) in quotation marks.
+5. Write track record, certifications, awards and staffing only as found in the proposer's material. If missing, leave bracketed blanks like ‘[수행 실적]’ ‘[인증]’. Do not write promises such as ‘보장’ or ‘100%’.
+6. If a client requirement conflicts with the proposer's default setup (e.g. 국외 이전 금지 vs 해외 API), switch to a setup that meets the requirement. For the changed setup's performance and cost, write only values in the material, with sources; if absent, leave ‘검증 필요’ with the verification method (시범 측정).
+7. When sources disagree (period, amount), do not silently pick one: state which one you assumed and add it to ‘제안요청 질의’. If the quote changes with the assumption, also give the block's amount for each assumption.
+8. Put the client's own tasks (providing data, issuing accounts, acceptance testing) in the schedule; dates not in the material stay ‘협의’.
+9. End with one line stating the decision you ask the client to make (when following the RFP's table of contents, at the end of the last section).
+'''
+
+# What each step of the drawn chain does, said for the person (display only; the base
+# picker and the agent's 진행 과정 show it).
+[summary]
+material = "제안요청서와 올린 자료를 읽습니다"
+question = "기간·인력·단가처럼 빠진 정보가 있으면 먼저 물어봅니다"
+compute = "견적 합계·일정·투입 인력을 계산해 둡니다"
+write = "제안서를 씁니다"
+check = "견적 합계·일정·인원과 쪽수 제한을 확인합니다"

@@ -1,0 +1,58 @@
+kind = "document"
+# The document format it fixes (`doc_formats`): head fields, numbering, the format's
+# pipeline, and its genre rule in `genre.md`.
+doc_format = "comparison"
+cover_page = false
+
+# 규칙은 서식 지침과 에이전트 지침에 둔다. 점수 재계산·빈칸 검사는 뒤에 서버 훅으로 붙는다.
+skills = []
+# Run by the server before and after writing (app/skills/README.md).
+check_skills = ["gap-check", "grounding-check"]
+name = "비교·분석 보고서"
+description = "대안을 같은 기준으로 견주고 조건과 함께 권고 · 가중치·점수식이 보이는 비교표"
+category = "업무"
+fills = ["비교할 대안", "필수 조건과 가중치", "대안별 자료"]
+example_prompt = "아래 대안들을 비교·분석 보고서로 정리해 줘. 필수 조건을 먼저 적용하고, 가중치와 점수식을 밝힌 비교표를 만들고, 자료끼리 값이 다르면 출처와 날짜를 나란히 적어 줘. 권고는 조건과 함께.\n\n대안: \n필수 조건·가중치: \n자료: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Comparison report"
+description_en = "Weigh options on the same criteria and recommend with conditions · weights and scoring shown"
+category_en = "Work"
+fills_en = ["Options", "Must-haves and weights", "Material per option"]
+example_prompt_en = "Turn the options below into a comparison report. Apply the must-haves first, build a comparison table with the weights and the scoring formula, and where sources disagree show both values with their dates. Recommend with conditions.\n\nOptions: \nMust-haves and weights: \nMaterial: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "prices"
+label = "대안별 가격"
+question = "대안별 가격(요금·견적)을 알려 주세요."
+why = "비용으로 고르라고 하셨는데 자료에 금액이 없습니다. 가격을 지어 넣지 않습니다."
+placeholder = "[가격]"
+detector = { type = "builtin", name = "prices" }
+
+[[questions]]
+id = "musts"
+label = "필수 조건"
+question = "꼭 맞아야 하는 조건은 무엇인가요?"
+why = "필수 조건으로 거르라고 하셨는데 어떤 조건인지 자료에 없습니다."
+placeholder = "[필수 조건]"
+detector = { type = "builtin", name = "musts" }
+
+# 진행 과정 설정 (`services/process_settings.py`): what writing in this 서식 does besides
+# writing. A person's agent or template sets the same keys in its form.
+[process]
+prepass = ["quote-calc", "staffing", "compare-cost", "compare-check"]
+checks = ["lead-dates", "compare-cells", "staff-counts", "material-blanks"]
+judged = ["judge-bindings"]
+amend = ["option-status", "conflict-values", "unverified-options"]
+conflict_rule = "In the 「자료와 충돌」 section, write the two values side by side with their source, time and measurement conditions, and state in one line which value you followed and why (같은 조건 측정 > 최신 > 소개서). If the conditions differ, adopt neither and leave 「조건 다름」."

@@ -48,16 +48,38 @@ function rateLabel(m: ModelInfo, t: (s: string) => string): string {
 const SEARCHABLE_FROM = 8
 
 /** Data-boundary label and tone for a model. */
-function boundary(m: ModelInfo, t: (s: string) => string): { text: string; tone: string } | null {
-  if (m.strictLocal) return { text: 'strict-local', tone: 'text-success' }
+function boundary(
+  m: ModelInfo, t: (s: string) => string,
+): { text: string; tone: string; hint: string } | null {
+  if (m.strictLocal) {
+    return { text: 'strict-local', tone: 'text-success', hint: t('질문과 자료가 이 기관 밖으로 나가지 않는 모델입니다') }
+  }
   if (m.dataBoundary === 'self_hosted') {
-    return { text: t('self-hosted · strict 미확인'), tone: 'text-warn' }
+    return { text: t('self-hosted · strict 미확인'), tone: 'text-warn', hint: t('기관이 운영하지만 외부로 넘기지 않는다는 확인은 없는 모델입니다') }
   }
   // hybrid, external and unknown share a tone: the server ranks them together.
-  if (m.dataBoundary === 'hybrid') return { text: t('외부 전환 가능'), tone: 'text-warn' }
-  if (m.dataBoundary === 'external') return { text: t('외부 제공'), tone: 'text-warn' }
-  if (m.dataBoundary === 'unknown') return { text: t('경계 미확인'), tone: 'text-warn' }
+  if (m.dataBoundary === 'hybrid') {
+    return { text: t('외부 전환 가능'), tone: 'text-warn', hint: t('개인정보가 없으면 외부 모델로 바꿔 답할 수 있는 모델입니다') }
+  }
+  if (m.dataBoundary === 'external') return { text: t('외부 제공'), tone: 'text-warn', hint: t('외부 업체가 운영하는 모델입니다') }
+  if (m.dataBoundary === 'unknown') return { text: t('경계 미확인'), tone: 'text-warn', hint: t('자료가 어디서 처리되는지 확인되지 않은 모델입니다') }
   return null
+}
+
+/** Phone chip: the name without family and boundary suffix, then where it runs (「27b · 로컬」). */
+function phoneModelLabel(m: ModelInfo, t: (s: string) => string): string {
+  const bare = (m.name || m.label).replace(/\s*\([^)]*\)\s*$/, '').trim()
+  const words = bare.split(/\s+/)
+  // 「Qwen3.8 27b」 → 「27b」; a single word, or a first word that is not a family name, stays.
+  const core = words.length > 1 && /^[A-Za-z]+[\d.]*$/.test(words[0]) ? words.slice(1).join(' ') : bare
+  const place = m.strictLocal
+    ? t('내부 전용')
+    : m.dataBoundary === 'self_hosted' || m.dataBoundary === 'hybrid'
+      ? t('로컬')
+      : m.dataBoundary === 'external'
+        ? t('외부')
+        : ''
+  return place ? `${core} · ${place}` : core
 }
 
 export function ModelPicker({
@@ -106,8 +128,7 @@ export function ModelPicker({
     (m) => m.kinds.includes(kind) && (!modality || m.modality === modality),
   )
 
-  // Inside a session, what it will run on; outside one, an av picker with a
-  // modality shows the model remembered for that mode.
+  // In a session, what it runs on; outside, an av picker shows the model remembered for that mode.
   const currentId =
     !session && kind === 'av' && (modality === 'audio' || modality === 'video')
       ? avModelByMode[modality] || effectiveModelId(session, kind, agents, modelByKind)
@@ -120,9 +141,7 @@ export function ModelPicker({
   const unresolvedAgentModel = !autoActive &&
     (kind === 'chat' || kind === 'report' || kind === 'slides') &&
     Boolean(session?.agentId && !session.model && !agents.some((agent) => agent.id === session.agentId))
-  // Auto belongs to a session, so it needs one or a caller that can create one.
-  // Chat, report and deck writers can be routed; the server settles a document's lane
-  // after keeping internal material strict-local.
+  // Auto needs a session or a caller that creates one; the server settles a document's lane after the strict-local rule.
   const canRouteAuto = (kind === 'chat' || kind === 'report' || kind === 'slides') &&
     (Boolean(sessionId) || Boolean(onEnableAuto))
   const persistSelection = async (action: () => void | Promise<void>) => {
@@ -151,6 +170,9 @@ export function ModelPicker({
     )
   }
   const modelLabel = unresolvedAgentModel ? t('Agent 기본 모델') : active.label
+  const triggerText = autoActive
+    ? `${autoLane === 'auto_quality' ? t('Auto · 품질 우선') : t('Auto · 비용 절약')} · ${modelLabel}`
+    : modelLabel
 
   return (
     <Dropdown
@@ -165,7 +187,9 @@ export function ModelPicker({
           type="button"
           disabled={selectionPending}
           aria-busy={selectionPending}
-          aria-label={label ? `${label}: ${modelLabel}` : undefined}
+          // The full name, also where a phone shows the short one.
+          aria-label={label ? `${label}: ${modelLabel}` : triggerText}
+          title={!field ? triggerText : undefined}
           className={cn(
             'flex h-9 items-center gap-1.5 rounded-control text-base font-medium transition-colors',
             field
@@ -181,11 +205,17 @@ export function ModelPicker({
         >
           <span className="flex min-w-0 items-center gap-1.5">
             {autoActive ? <Gauge size={14} /> : <Cpu size={14} />}
-            <span className={cn('truncate', !field && 'max-w-[220px] phone:max-w-[38vw]')}>
-              {autoActive
-                ? `${autoLane === 'auto_quality' ? t('Auto · 품질 우선') : t('Auto · 비용 절약')} · ${modelLabel}`
-                : modelLabel}
-            </span>
+            <span className={cn('truncate', !field && 'max-w-[220px] phone:hidden')}>{triggerText}</span>
+            {!field && (
+              // A phone keeps what tells models apart; the menu has the full name.
+              <span className="hidden min-w-[120px] truncate phone:inline">
+                {autoActive
+                  ? `Auto · ${unresolvedAgentModel ? modelLabel : phoneModelLabel(active, t)}`
+                  : unresolvedAgentModel
+                    ? modelLabel
+                    : phoneModelLabel(active, t)}
+              </span>
+            )}
           </span>
           {!compact && <ChevronDown size={14} className="shrink-0 text-faint" />}
         </button>
@@ -244,7 +274,6 @@ function ModelMenu({
 }) {
   const t = useT()
   const closeMenu = useMenuClose()
-  // Search matches label and id.
   const [query, setQuery] = useState('')
   const needle = query.trim().toLowerCase()
   const shown = needle
@@ -286,14 +315,18 @@ function ModelMenu({
         : qualityReason,
     },
   ]
+  // A lane the administrator has not made usable is not offered; the one in use stays visible.
+  const offeredLanes = showAuto ? lanes.filter((lane) => lane.available || autoLane === lane.mode) : []
   return (
     <>
-      {showAuto && (
-        <div className="border-b border-line p-1.5">
-          {lanes.map((lane) => (
+      {offeredLanes.length > 0 && (
+        <div className="border-b border-line p-1.5" role="group" aria-label={t('Auto')}>
+          {offeredLanes.map((lane) => (
             <button
               key={lane.mode}
               type="button"
+              role="menuitemradio"
+              aria-checked={autoLane === lane.mode}
               disabled={!lane.available || selectionPending}
               onClick={() => {
                 void onAuto(lane.mode)
@@ -321,7 +354,7 @@ function ModelMenu({
         </div>
       )}
       <div className="px-2.5 pt-2 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-        {showAuto ? t('모델 직접 선택') : t('모델')}
+        {offeredLanes.length > 0 ? t('모델 직접 선택') : t('모델')}
       </div>
       {usable.length > SEARCHABLE_FROM && (
         <div className="px-1.5 pb-1">
@@ -365,6 +398,8 @@ function ModelMenu({
         <button
           key={m.id}
           type="button"
+          role="menuitemradio"
+          aria-checked={!unresolvedAgentModel && m.id === active.id}
           onClick={() => {
             void onPick(m.id)
             closeMenu()
@@ -392,12 +427,12 @@ function ModelMenu({
             <span className="mt-1 flex items-center gap-2 text-xs text-faint">
               <span className="flex items-center gap-1">
                 {boundaryOf && (
-                  <span className={cn('flex items-center gap-1', boundaryOf.tone)}>
+                  <span className={cn('flex items-center gap-1', boundaryOf.tone)} title={boundaryOf.hint}>
                     {m.strictLocal && <ShieldCheck size={11} />}
                     {boundaryOf.text}
                   </span>
                 )}
-                {boundaryOf && <span aria-hidden>/</span>}
+                {boundaryOf && <span aria-hidden>·</span>}
                 <span className={cn(free && 'text-free')}>{rateLabel(m, t)}</span>
               </span>
               {m.contextWindow && <span>{formatTokens(m.contextWindow)} ctx</span>}

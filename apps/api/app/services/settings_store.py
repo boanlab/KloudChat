@@ -1,8 +1,4 @@
-"""Admin-editable settings: database, then environment, then code default.
-
-Cached in-process for `_TTL` seconds and invalidated on write; other replicas
-see a change within the TTL.
-"""
+"""Admin settings: database, then env, then code default; per-process TTL cache."""
 
 from __future__ import annotations
 
@@ -29,8 +25,7 @@ log = logging.getLogger(__name__)
 LITELLM_BASE_URL = "litellm.base_url"
 LITELLM_MASTER_KEY = "litellm.master_key"
 
-# ── feature integration ─────────────────────────────────────────────────
-# One gateway exposes every feature by path; a per-feature URL overrides it.
+# one gateway for every feature path; per-feature URL overrides
 BACKEND_BASE_URL = "backend.base_url"
 TOOLS_SEARCH_URL = "tools.search_url"
 TOOLS_FETCH_URL = "tools.fetch_url"
@@ -38,8 +33,9 @@ TOOLS_EXEC_URL = "tools.exec_url"
 TOOLS_RESEARCH_URL = "tools.research_url"
 TOOLS_STT_URL = "tools.stt_url"
 TOOLS_INDEX_URL = "tools.index_url"
+TOOLS_OCR_URL = "tools.ocr_url"
 
-#: Paths appended to the backend address to derive each feature's address.
+#: per-feature paths on the backend address
 _TOOL_PATHS: dict[str, str] = {
     "litellm": "/litellm",
     "search": "/tools/search",
@@ -48,44 +44,80 @@ _TOOL_PATHS: dict[str, str] = {
     "research": "/tools/research",
     "stt": "/tools/stt",
     "index": "/tools/index",
+    "ocr": "/tools/ocr",
 }
 
-# ── branding ───────────────────────────────────────────────────────────
-#: Service name shown in the UI. Empty falls back to the code default.
+#: UI service name; empty → code default
 BRAND_NAME = "brand.name"
-#: Logo filename and MIME type. The file itself lives in the file store.
+#: logo filename and MIME; file in the file store
 BRAND_LOGO = "brand.logo"
 BRAND_LOGO_MIME = "brand.logo_mime"
-#: Where 관리자에게 문의 goes. Empty falls back to the oldest administrator.
+#: 관리자에게 문의 target; empty → oldest admin
 CONTACT_EMAIL = "contact.email"
 
-# ── enabled surfaces ───────────────────────────────────────────────────
-#: CSV of the enabled surfaces. Chat is never listed: it is always on.
+#: enabled surfaces CSV; chat always on
 ENABLED_KINDS = "kinds.enabled"
 
-#: Everything except chat. Image and video default to off.
+#: non-chat surfaces; image/video default off
 OPTIONAL_KINDS = ("report", "slides", "image", "av")
 DEFAULT_ENABLED_KINDS = ("report", "slides")
 
-# ── outgoing mail ──────────────────────────────────────────────────────
+#: "1"/"0"; unset = on when a reader exists
+OCR_ENABLED = "ocr.enabled"
+#: "both" (engine, then vision for unsure pages), "engine", "vision"
+OCR_MODE = "ocr.mode"
+#: strict-local vision models only
+OCR_VISION_MODEL = "ocr.vision_model"
+#: max pages per document
+OCR_MAX_PAGES = "ocr.max_pages"
+
+# model roles: env seeds a fresh install only (migration 0068); stored "" is a choice
+MODEL_CHAT = "models.chat"
+MODEL_REPORT = "models.report"
+MODEL_SLIDES = "models.slides"
+MODEL_IMAGE = "models.image"
+MODEL_AUDIO = "models.audio"
+MODEL_VIDEO = "models.video"
+#: titles, memories, running summary
+MODEL_TITLE = "models.title"
+#: `run_code` Python writer; fallback gets one more try
+MODEL_CODE = "models.code"
+MODEL_CODE_FALLBACK = "models.code_fallback"
+#: "1" think, "0" don't
+THINKING_SELF_HOSTED = "thinking.self_hosted"
+THINKING_EXTERNAL = "thinking.external"
+#: new-account monthly credits
+CREDITS_DEFAULT_MONTHLY = "credits.default_monthly"
+
+#: stored key → seeding `Settings` field
+MODEL_ROLE_ENV: dict[str, str] = {
+    MODEL_CHAT: "default_chat_model",
+    MODEL_REPORT: "default_report_model",
+    MODEL_SLIDES: "default_slides_model",
+    MODEL_IMAGE: "default_image_model",
+    MODEL_AUDIO: "default_audio_model",
+    MODEL_VIDEO: "default_video_model",
+    MODEL_TITLE: "title_model",
+    MODEL_CODE: "code_model",
+    MODEL_CODE_FALLBACK: "code_fallback_model",
+}
+
 SMTP_HOST = "smtp.host"
 SMTP_PORT = "smtp.port"
-#: "starttls" | "ssl" | "none".
+#: "starttls" | "ssl" | "none"
 SMTP_SECURITY = "smtp.security"
 SMTP_USERNAME = "smtp.username"
 SMTP_PASSWORD = "smtp.password"
 SMTP_FROM = "smtp.from"
-#: Where mailed links point. Not derived from the request Host, which is attacker-controlled.
+#: mailed link base; never from attacker-controlled Host
 APP_BASE_URL = "app.base_url"
 
-#: Who may sign up: mode (overrides the `SIGNUP_MODE` env), CSV of allowed
-#: mail domains (empty = any), and whether a mailed link must be clicked.
+#: signup mode (overrides env), allowed domains CSV, link click required
 SIGNUP_MODE = "signup.mode"
 SIGNUP_DOMAINS = "signup.domains"
 SIGNUP_VERIFY_EMAIL = "signup.verify_email"
 
-#: Keys holding secrets: encrypted at rest, never returned by the API — only
-#: whether one is set, and its last four characters.
+#: encrypted at rest; API returns only set flag and last four chars
 SECRET_KEYS = {LITELLM_MASTER_KEY, SMTP_PASSWORD}
 
 _TTL = 15.0
@@ -100,11 +132,7 @@ _rings: dict[tuple[str, str], tuple[MultiFernet, Fernet]] = {}
 
 
 def _ring() -> tuple[MultiFernet, Fernet]:
-    """`(opens, seals)`: secrets are sealed with `SECRET_KEY` and opened with it or, for rows
-    written before it was set, with the key derived from `JWT_SECRET`.
-
-    Without `SECRET_KEY` both are the derived key; `has_own_key` says which.
-    """
+    """`(opens, seals)`: seal with `SECRET_KEY`; open with it or the `JWT_SECRET`-derived key."""
     pair = (env_settings.secret_key, env_settings.jwt_secret)
     ring = _rings.get(pair)
     if ring is None:
@@ -115,13 +143,12 @@ def _ring() -> tuple[MultiFernet, Fernet]:
 
 
 def has_own_key() -> bool:
-    """Whether stored secrets have a key of their own rather than one derived from `JWT_SECRET`."""
+    """Whether secrets have their own key (not `JWT_SECRET`-derived)."""
     return bool(env_settings.secret_key)
 
 
 def encrypt_secret(value: str) -> str:
-    """Seals a secret at rest: secret settings, LiteLLM keys, issued API keys, connector
-    credentials."""
+    """Seal a secret at rest."""
     return _ring()[1].encrypt(value.encode()).decode()
 
 
@@ -129,35 +156,31 @@ def decrypt_secret(value: str) -> str:
     try:
         return _ring()[0].decrypt(value.encode()).decode()
     except InvalidToken:
-        # Almost always a rotated key; empty reads as "not configured".
+        # usually a rotated key; empty = not configured
         log.warning(
             "stored secret could not be decrypted — SECRET_KEY or JWT_SECRET may have changed"
         )
         return ""
 
 
-#: Every Fernet token starts with the version byte 0x80, base64 `gAAAAA`.
+#: Fernet token prefix (version byte 0x80)
 _SEALED = "gAAAAA"
 
 
 def is_sealed(value: str) -> bool:
-    """Whether `value` is a sealed secret rather than something written in the clear."""
+    """Whether `value` is sealed."""
     return value.startswith(_SEALED)
 
 
 def encrypt_env(env: dict[str, str] | None) -> dict[str, str] | None:
-    """A connector's environment with every value sealed.
-
-    Everything is sealed, placeholders included, so a row never says which of its values
-    is the credential.
-    """
+    """Connector env with every value sealed (hides which one is the credential)."""
     if env is None:
         return None
     return {key: encrypt_secret(str(value)) for key, value in env.items()}
 
 
 def decrypt_env(env: dict[str, str] | None) -> dict[str, str]:
-    """A connector's environment in the clear. A value written before sealing passes through."""
+    """Connector env in the clear; pre-sealing values pass through."""
     return {
         key: decrypt_secret(str(value)) if is_sealed(str(value)) else str(value)
         for key, value in (env or {}).items()
@@ -165,11 +188,7 @@ def decrypt_env(env: dict[str, str] | None) -> dict[str, str]:
 
 
 def resealed(value: str, *, plain: bool = False) -> str | None:
-    """`value` sealed under `SECRET_KEY`, or None when it already is, cannot be opened, or
-    `SECRET_KEY` is unset.
-
-    `plain`: a value in the clear is sealed too; connector environments may hold one.
-    """
+    """`value` sealed under `SECRET_KEY`, or None if sealed already, unopenable, or no key."""
     if not value or not has_own_key():
         return None
     opens, seals = _ring()
@@ -188,11 +207,7 @@ def resealed(value: str, *, plain: bool = False) -> str | None:
 
 
 async def rotate_secrets(db: AsyncSession) -> int:
-    """Re-seals stored secrets under `SECRET_KEY`: rows sealed with the `JWT_SECRET`-derived key
-    and connector credentials written in the clear. Returns how many rows changed.
-
-    Run at startup; nothing happens without `SECRET_KEY`.
-    """
+    """Re-seal stored secrets under `SECRET_KEY` at startup; changed row count."""
     if not has_own_key():
         return 0
     changed = 0
@@ -232,6 +247,11 @@ async def _load(db: AsyncSession) -> dict[str, str]:
     return out
 
 
+async def stored(db: AsyncSession) -> dict[str, str]:
+    """Stored values on `db`, bypassing the cache."""
+    return await _load(db)
+
+
 async def all_values(force: bool = False) -> dict[str, str]:
     now = time.monotonic()
     if not force and _cache["values"] is not None and now - _cache["at"] < _TTL:
@@ -251,13 +271,11 @@ def invalidate() -> None:
 
 
 async def litellm_config() -> tuple[str, str]:
-    """`(base_url, master_key)`: explicit setting, then environment, then derived
-    from the backend address."""
+    """`(base_url, master_key)`: setting, env, then derived from backend."""
     values = await all_values()
     base = (
         (values.get(LITELLM_BASE_URL) or "").strip()
-        # Environment before derivation: the derived address is a guess off the
-        # public domain and must not outrank a configured internal one.
+        # env before derivation: derived public-domain guess must not outrank internal
         or env_settings.litellm_base_url
         or derive_url(
             (values.get(BACKEND_BASE_URL) or "").strip() or env_settings.backend_base_url,
@@ -270,22 +288,24 @@ async def litellm_config() -> tuple[str, str]:
 
 @dataclass(frozen=True)
 class ToolBackends:
-    """Tool addresses in effect. An empty string means the tool is not offered."""
+    """Tool addresses in effect; empty = not offered."""
 
     search: str = ""
     fetch: str = ""
     exec: str = ""
     research: str = ""
     stt: str = ""
-    #: Vector retrieval for agent knowledge; empty falls back to the lexical index.
+    #: vector retrieval; empty → lexical index
     index: str = ""
+    #: CPU OCR (ocr-shim); empty → vision model only
+    ocr: str = ""
 
     def get(self, name: str) -> str:
         return getattr(self, name, "")
 
 
 def derive_url(base: str, feature: str) -> str:
-    """Backend address plus the feature path. Empty if the backend is unset."""
+    """Backend address plus feature path; empty if unset."""
     base = (base or "").strip().rstrip("/")
     if not base:
         return ""
@@ -293,8 +313,7 @@ def derive_url(base: str, feature: str) -> str:
 
 
 async def tools_config() -> ToolBackends:
-    """Per-feature addresses: explicit setting, then derived from the backend
-    address, then the environment."""
+    """Per-feature addresses: setting, then derived, then env."""
     values = await all_values()
     base = (values.get(BACKEND_BASE_URL) or "").strip() or env_settings.backend_base_url
 
@@ -309,22 +328,23 @@ async def tools_config() -> ToolBackends:
         research=resolve(TOOLS_RESEARCH_URL, "research", env_settings.deep_research_url),
         stt=resolve(TOOLS_STT_URL, "stt", env_settings.whisper_url),
         index=resolve(TOOLS_INDEX_URL, "index", env_settings.index_url),
+        ocr=resolve(TOOLS_OCR_URL, "ocr", env_settings.ocr_url),
     )
 
 
 async def brand() -> dict[str, str]:
-    """Name and logo URL for the UI. The logo is empty when none is set."""
+    """UI name and logo URL (empty if none)."""
     values = await all_values()
     logo = values.get(BRAND_LOGO, "")
     return {
         "name": (values.get(BRAND_NAME) or "").strip() or env_settings.brand_name,
-        # Filename in the query string, so replacing the logo changes the URL.
+        # filename in query: new logo, new URL
         "logo": f"/api/branding/logo?v={logo}" if logo else "",
     }
 
 
 async def contact_email(db: AsyncSession) -> str:
-    """Contact address: the stored one, else the oldest active administrator's."""
+    """Contact address: stored, else oldest active admin's."""
     values = await all_values()
     stored = (values.get(CONTACT_EMAIL) or "").strip()
     if stored:
@@ -340,19 +360,77 @@ async def contact_email(db: AsyncSession) -> str:
 
 
 async def enabled_kinds() -> list[str]:
-    """The enabled surfaces. Chat is always included."""
+    """Enabled surfaces; chat always included."""
     values = await all_values()
     raw = values.get(ENABLED_KINDS)
     if raw is None:
         chosen = list(DEFAULT_ENABLED_KINDS)
     else:
-        # An empty string means all off, and must not fall back to the defaults.
+        # empty = all off, no default fallback
         chosen = [k.strip() for k in raw.split(",") if k.strip() in OPTIONAL_KINDS]
     return ["chat", *chosen]
 
 
+@dataclass(frozen=True)
+class ModelRoles:
+    """Model roles in force; see `MODEL_CHAT`."""
+
+    chat: str
+    report: str
+    slides: str
+    image: str
+    audio: str
+    video: str
+    title: str
+    code: str
+    code_fallback: str
+    self_hosted_thinking: bool
+    external_thinking: bool
+
+
+def model_roles_from(values: dict[str, str]) -> ModelRoles:
+    """Stored choice, else env seed."""
+
+    def pick(key: str) -> str:
+        if key in values:
+            return (values[key] or "").strip()
+        return str(getattr(env_settings, MODEL_ROLE_ENV[key]) or "").strip()
+
+    def flag(key: str, env_value: bool) -> bool:
+        raw = values.get(key)
+        return env_value if raw is None else raw.strip() == "1"
+
+    return ModelRoles(
+        chat=pick(MODEL_CHAT),
+        report=pick(MODEL_REPORT),
+        slides=pick(MODEL_SLIDES),
+        image=pick(MODEL_IMAGE),
+        audio=pick(MODEL_AUDIO),
+        video=pick(MODEL_VIDEO),
+        title=pick(MODEL_TITLE),
+        code=pick(MODEL_CODE),
+        code_fallback=pick(MODEL_CODE_FALLBACK),
+        self_hosted_thinking=flag(THINKING_SELF_HOSTED, env_settings.self_hosted_chat_thinking),
+        external_thinking=flag(THINKING_EXTERNAL, env_settings.external_chat_thinking),
+    )
+
+
+async def model_roles() -> ModelRoles:
+    return model_roles_from(await all_values())
+
+
+def cached_model_roles() -> ModelRoles:
+    """Sync `model_roles()`: last-read values (≤ TTL old), else env."""
+    return model_roles_from(_cache["values"] or {})
+
+
+async def default_monthly_credits() -> int:
+    raw = ((await all_values()).get(CREDITS_DEFAULT_MONTHLY) or "").strip()
+    return int(raw) if raw.isdigit() else env_settings.default_monthly_credits
+
+
 async def smtp_config() -> dict[str, str]:
-    """Mail settings in effect, as plain strings. An empty `host` means mail is off."""
+    """Mail settings as plain strings; empty `host` = mail off."""
     values = await all_values()
     return {
         "host": values.get(SMTP_HOST, "") or env_settings.smtp_host,
@@ -383,12 +461,12 @@ def parse_domains(raw: str) -> list[str]:
 @dataclass(frozen=True)
 class SignupPolicy:
     mode: str
-    #: "database" | "environment".
+    #: "database" | "environment"
     mode_source: str
     domains: list[str]
-    #: What the administrator asked for.
+    #: admin's request
     verify_email: bool
-    #: What actually happens: verification needs mail to be enabled.
+    #: effective: needs mail enabled
     verification: bool
 
     def allows(self, email: str) -> bool:
@@ -399,7 +477,7 @@ class SignupPolicy:
 
 
 async def signup_policy() -> SignupPolicy:
-    """How signup behaves: mode, allowed domains, and whether mail is checked."""
+    """Signup behaviour: mode, domains, mail check."""
     values = await all_values()
     stored_mode = (values.get(SIGNUP_MODE) or "").strip()
     mode = (
@@ -427,12 +505,12 @@ async def put(db: AsyncSession, key: str, value: str, actor_id: str) -> None:
         row.updated_at = utcnow()
         row.updated_by = actor_id
         db.add(row)
-    # The writing process must not serve the old value for another TTL.
+    # writer must not serve the stale value for another TTL
     _cache["at"] = 0.0
 
 
 def preview(value: str) -> str:
-    """Last four characters of a secret, for display."""
+    """Last four chars of a secret, for display."""
     if not value:
         return ""
     return f"…{value[-4:]}" if len(value) > 4 else "…"

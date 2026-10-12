@@ -1,6 +1,5 @@
-import { Loader2, Square } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
 /** Seconds since `since`, ticking once a second. */
@@ -19,22 +18,18 @@ function clock(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-/** Active model or agent, elapsed time, and cancellation control. */
+/** Turn status and elapsed time (「답을 쓰는 중… 0:06」), with the agent's name when one runs it. */
 export function TurnProgress({
   sessionId,
   startedAt,
   label,
-  model,
 }: {
   sessionId: string
   /** Epoch ms of the turn's start. */
   startedAt: number
   label: string
-  model?: string
 }) {
-  const t = useT()
   const elapsed = useElapsed(startedAt)
-  const stopStreaming = useStore((s) => s.stopStreaming)
   const agents = useStore((s) => s.agents)
   const sessions = useStore((s) => s.sessions)
   const session = sessions.find((s) => s.id === sessionId)
@@ -46,17 +41,8 @@ export function TurnProgress({
         <Loader2 size={13} className="shrink-0 animate-spin text-accent" />
         <span className="animate-blink">{label}</span>
       </span>
-      {(agent || model) && (
-        <span className="truncate text-sm text-faint">{agent ? agent.name : model}</span>
-      )}
+      {agent && <span className="truncate text-sm text-faint">{agent.name}</span>}
       <span className="text-sm text-faint tabular-nums">{clock(elapsed)}</span>
-      <button
-        onClick={() => stopStreaming(sessionId)}
-        className="flex items-center gap-1 rounded-control px-1.5 py-0.5 text-sm text-faint transition-colors hover:bg-elevated hover:text-fg"
-      >
-        <Square size={9} fill="currentColor" />
-        {t('중단')}
-      </button>
     </div>
   )
 }

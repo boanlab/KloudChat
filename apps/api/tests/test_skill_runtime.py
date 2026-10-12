@@ -4,6 +4,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+from catalog_text_skills import use_text_skills
 from conftest import both_passes
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.testclient import TestClient
@@ -33,7 +34,7 @@ from app.models.workspace import (
 )
 from app.routers import auth as auth_router
 from app.routers import sessions as sessions_router
-from app.schemas.chat import CompareRequest, SendMessage
+from app.schemas.chat import SendMessage
 from app.schemas.workspace import AgentIn, SkillIn
 from app.services import deck as deck_service
 from app.services import report as report_service
@@ -93,7 +94,7 @@ class _SeedDb:
     async def exec(self, query):
         table = _query_table(query)
         if table == "skills":
-            return _Result(rows=self.rows)
+            return _Result(rows=[row for row in self.rows if _matches(row, query.whereclause)])
         if table == "agents":
             clause = query.whereclause
             if clause is not None and "origin_id" in str(clause):
@@ -107,6 +108,10 @@ class _SeedDb:
             self.rows.append(row)
         if isinstance(row, Agent) and all(existing is not row for existing in self.agents):
             self.agents.append(row)
+
+    async def delete(self, row):
+        table = self.rows if isinstance(row, Skill) else self.agents
+        table[:] = [existing for existing in table if existing is not row]
 
 
 class _GetDb:
@@ -165,7 +170,7 @@ class _RefreshDb:
 
 
 class _RouteDb:
-    """Records durable side effects while serving the real send/compare routes."""
+    """Records durable side effects while serving the real send route."""
 
     def __init__(
         self,
@@ -321,12 +326,14 @@ async def test_required_tool_and_surface_are_enforced():
 
 
 @pytest.mark.asyncio
-async def test_catalog_backfill_is_idempotent_and_preserves_edited_body():
+async def test_catalog_backfill_is_idempotent_and_preserves_edited_body(monkeypatch):
+    use_text_skills(monkeypatch)
     legacy = _skill(
+        owner_id="admin-1",
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
         body="내가 고친 절차",
-        source=SkillSource.built_in,
+        source=SkillSource.workspace,
         catalog_key=None,
         required_tools=None,
         estimated_tokens=0,
@@ -341,17 +348,19 @@ async def test_catalog_backfill_is_idempotent_and_preserves_edited_body():
     assert legacy.catalog_key == "citation"
     keys = [row.catalog_key for row in db.rows if row.catalog_key]
     assert len(keys) == len(set(keys))
-    calculation = next(row for row in db.rows if row.catalog_key == "calculation-unit-check")
-    assert calculation.required_tools == ["execute_code"]
+    calculation = next(row for row in db.rows if row.catalog_key == "calc-check")
+    assert calculation.required_tools == ["run_skill_script"]
 
 
 @pytest.mark.asyncio
-async def test_catalog_only_upgrades_an_exact_untouched_catalog_body():
+async def test_catalog_only_upgrades_an_exact_untouched_catalog_body(monkeypatch):
+    use_text_skills(monkeypatch)
     legacy = _skill(
+        owner_id="admin-1",
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
         body=starter._LEGACY_CATALOG_BODIES[("citation", "1.0.0")],
-        source=SkillSource.built_in,
+        source=SkillSource.workspace,
         catalog_key=None,
         version="1.0.0",
         estimated_tokens=0,
@@ -364,44 +373,86 @@ async def test_catalog_only_upgrades_an_exact_untouched_catalog_body():
 
 
 @pytest.mark.asyncio
-async def test_the_catalog_is_published_and_its_agents_point_at_its_skills():
+async def test_a_skill_that_became_a_package_keeps_its_row_and_gets_the_new_body():
+    old = _skill(
+        owner_id="admin-1",
+        name="계산·단위 검증",
+        slug="계산-단위-검증",
+        body=starter._LEGACY_CATALOG_BODIES[("calc-check", "1.0.0")],
+        source=SkillSource.personal,
+        catalog_key="calculation-unit-check",
+        required_tools=["execute_code"],
+        version="1.0.0",
+    )
+    db = _SeedDb([old])
+    await starter.seed_catalog(db, "admin-1")
+
+    assert old.catalog_key == "calc-check"
+    assert old.required_tools == ["run_skill_script"]
+    assert "run_skill_script" in old.body and old.version == "2.0.0"
+    assert [row.catalog_key for row in db.rows].count("calc-check") == 1
+
+
+#: A test-local catalogue agent; the product ships none for now.
+_CATALOGUE_AGENT = {
+    "key": "practice-coach",
+    "name": "연습 코치",
+    "description": "연습 문제를 내고 풀이를 점검합니다.",
+    "system_prompt": "너는 연습 코치다. 한 문항씩 내고 풀이를 점검한다.",
+    "guide": "문제를 요청하면 한 문항씩 냅니다.",
+    "starters": ["문제 하나 내 줘"],
+    "kinds": ["chat"],
+    "skills": ["quiz-writer", "calc-check"],
+}
+
+
+@pytest.mark.asyncio
+async def test_the_catalog_seeds_exactly_the_agents_it_ships_even_none():
     db = _SeedDb([])
     assert await starter.seed_catalog(db, "admin-1") > 0
 
-    assert db.agents, "the catalogue ships agents, not only skills"
+    # A retired agent is never seeded afresh.
+    assert len(db.agents) == len(starter.offered_agents(drafts=True))
+    assert db.rows and all(row.visibility is Visibility.org for row in db.rows)
+
+
+@pytest.mark.asyncio
+async def test_the_catalog_is_published_and_its_agents_point_at_its_skills(monkeypatch):
+    use_text_skills(monkeypatch)
+    monkeypatch.setattr(starter, "_AGENTS", [_CATALOGUE_AGENT])
+    db = _SeedDb([])
+    assert await starter.seed_catalog(db, "admin-1") > 0
+
+    assert [agent.catalog_key for agent in db.agents] == ["practice-coach"]
     assert all(row.visibility is Visibility.org for row in db.rows)
     assert all(agent.visibility is Visibility.org for agent in db.agents)
-    assert all(agent.catalog_key for agent in db.agents)
     # Allow-lists name row ids, not seeder slugs.
-    ids = {row.id for row in db.rows}
-    referenced = {skill_id for agent in db.agents for skill_id in (agent.skill_ids or [])}
-    assert referenced and referenced <= ids
+    ids = {row.catalog_key: row.id for row in db.rows}
+    assert db.agents[0].skill_ids == [ids["quiz-writer"], ids["calc-check"]]
 
 
 @pytest.mark.asyncio
-async def test_the_catalog_adopts_rows_seeded_before_it_existed():
-    """Existing admin copies become the catalogue instead of being duplicated."""
-    legacy_agent = Agent(
-        id="agent-1",
-        owner_id="admin-1",
-        name="논문 리뷰어",
-        slug="논문-리뷰어",
-        system_prompt="내가 고친 프롬프트",
+async def test_a_retired_catalogue_agent_is_removed_and_the_owners_own_agent_stays(monkeypatch):
+    monkeypatch.setattr(starter, "_AGENTS", [])
+    retired = Agent(
+        id="agent-1", owner_id="admin-1", name="옛 카탈로그", slug="옛-카탈로그",
+        system_prompt="옛 프롬프트", catalog_key="paper-reviewer", visibility=Visibility.org,
     )
-    db = _SeedDb([], agents=[legacy_agent])
+    own = Agent(id="agent-2", owner_id="admin-1", name="논문 리뷰어", slug="논문-리뷰어")
+    db = _SeedDb([], agents=[retired, own])
     await starter.seed_catalog(db, "admin-1")
 
-    assert len(db.agents) == len(starter._AGENTS)
-    assert legacy_agent.catalog_key == "paper-reviewer"
-    assert legacy_agent.visibility is Visibility.org
-    assert legacy_agent.system_prompt == "내가 고친 프롬프트"
+    assert db.agents == [own]
+    assert own.catalog_key is None
+    assert own.visibility is Visibility.private
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("catalog_key", ["english-tutor", "opic-master"])
-async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays(catalog_key):
+async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays(monkeypatch):
     """An unedited copy follows catalogue rewording; an edited one is left alone."""
-    spec = next(row for row in starter._AGENTS if row["key"] == catalog_key)
+    monkeypatch.setattr(starter, "_AGENTS", [_CATALOGUE_AGENT])
+    spec = _CATALOGUE_AGENT
+    catalog_key = spec["key"]
     catalogue = Agent(
         id="agent-1",
         owner_id="admin-1",
@@ -435,13 +486,15 @@ async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays(c
 
 
 @pytest.mark.asyncio
-async def test_an_upgrading_instance_publishes_the_skills_it_already_had():
+async def test_an_upgrading_instance_publishes_the_skills_it_already_had(monkeypatch):
     """Admin copies that already carry catalogue keys are still published."""
+    use_text_skills(monkeypatch)
     existing = _skill(
+        owner_id="admin-1",
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
         catalog_key="citation",
-        source=SkillSource.built_in,
+        source=SkillSource.personal,
     )
     db = _SeedDb([existing])
     await starter.seed_catalog(db, "admin-1")
@@ -451,8 +504,9 @@ async def test_an_upgrading_instance_publishes_the_skills_it_already_had():
 
 
 @pytest.mark.asyncio
-async def test_an_entry_retired_after_setup_stays_retired():
+async def test_an_entry_retired_after_setup_stays_retired(monkeypatch):
     """An entry switched back to 개인 is not republished on the next sign-in."""
+    use_text_skills(monkeypatch)
     db = _SeedDb([])
     await starter.seed_catalog(db, "admin-1")
     retired = next(row for row in db.rows if row.catalog_key == "citation")
@@ -461,6 +515,33 @@ async def test_an_entry_retired_after_setup_stays_retired():
     await starter.seed_catalog(db, "admin-1")
 
     assert retired.visibility is Visibility.private
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("installs", "published"),
+    [(0, True), (1, False)],
+    ids=["never-shared", "taken-from-the-store"],
+)
+async def test_the_first_run_is_told_apart_without_any_agents(installs, published, monkeypatch):
+    """With no agents to mark the catalogue, a shared or installed skill does.
+
+    Rows seeded per account before the shared catalogue are private and never
+    installed, so they are published once; after that, an entry the
+    administrator made private stays private even when all of them are.
+    """
+    monkeypatch.setattr(starter, "_AGENTS", [])
+    db = _SeedDb([])
+    await starter.seed_catalog(db, "admin-1")
+    for row in db.rows:
+        row.visibility = Visibility.private
+    db.rows[0].installs = installs
+
+    await starter.seed_catalog(db, "admin-1")
+    await starter.seed_catalog(db, "admin-1")
+
+    expected = Visibility.org if published else Visibility.private
+    assert all(row.visibility is expected for row in db.rows)
 
 
 @pytest.mark.asyncio
@@ -600,12 +681,6 @@ def test_untrusted_workspace_data_is_not_placed_in_system_prompt():
 def test_wire_contract_rejects_more_than_three_skills():
     with pytest.raises(ValidationError):
         SendMessage(content="hello", activated_skill_ids=["1", "2", "3", "4"])
-    with pytest.raises(ValidationError):
-        CompareRequest(
-            content="hello",
-            models=["a", "b"],
-            activated_skill_ids=["1", "2", "3", "4"],
-        )
 
 
 def test_a_new_agent_inherits_rather_than_denies():
@@ -671,27 +746,14 @@ def _patch_route_services(monkeypatch, upstream: dict[str, int]) -> None:
 
 
 async def _call_turn_route(
-    route: str,
     db: _RouteDb,
     user: User,
     activated_skill_ids: list[str],
 ):
-    if route == "send":
-        return await sessions_router.send_message(
-            db.session.id,
-            SendMessage(content="hello", activated_skill_ids=activated_skill_ids),
-            _request(f"/sessions/{db.session.id}/messages"),
-            user,
-            db,
-        )
-    return await sessions_router.compare_models(
+    return await sessions_router.send_message(
         db.session.id,
-        CompareRequest(
-            content="hello",
-            models=["model-a", "model-b"],
-            activated_skill_ids=activated_skill_ids,
-        ),
-        _request(f"/sessions/{db.session.id}/compare"),
+        SendMessage(content="hello", activated_skill_ids=activated_skill_ids),
+        _request(f"/sessions/{db.session.id}/messages"),
         user,
         db,
     )
@@ -704,7 +766,7 @@ async def test_valid_refresh_leaves_an_ordinary_account_catalog_alone(monkeypatc
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
         body="내가 고친 절차",
-        source=SkillSource.built_in,
+        source=SkillSource.workspace,
         catalog_key=None,
         required_tools=None,
         estimated_tokens=0,
@@ -753,7 +815,6 @@ async def test_valid_refresh_leaves_an_ordinary_account_catalog_alone(monkeypatc
     assert db.commits == 2
 
 
-@pytest.mark.parametrize("route", ["send", "compare"])
 @pytest.mark.parametrize(
     ("scenario", "detail"),
     [
@@ -765,9 +826,8 @@ async def test_valid_refresh_leaves_an_ordinary_account_catalog_alone(monkeypatc
     ],
 )
 @pytest.mark.asyncio
-async def test_send_and_compare_reject_workspace_bypass_before_writes_or_upstream(
+async def test_send_rejects_workspace_bypass_before_writes_or_upstream(
     monkeypatch,
-    route: str,
     scenario: str,
     detail: str,
 ):
@@ -803,7 +863,7 @@ async def test_send_and_compare_reject_workspace_bypass_before_writes_or_upstrea
     _patch_route_services(monkeypatch, upstream)
 
     with pytest.raises(HTTPException) as exc_info:
-        await _call_turn_route(route, db, user, skill_ids)
+        await _call_turn_route(db, user, skill_ids)
 
     assert exc_info.value.detail == detail
     assert not any(isinstance(row, (Message, CreditLedger)) for row in db.added)
@@ -824,7 +884,7 @@ async def test_document_routes_reject_tool_skills_before_writes_or_upstream(
     _patch_route_services(monkeypatch, upstream)
 
     with pytest.raises(HTTPException) as exc_info:
-        await _call_turn_route("send", db, user, [skill.id])
+        await _call_turn_route(db, user, [skill.id])
 
     assert exc_info.value.detail == "skill_tools_unavailable:execute_code"
     assert not any(isinstance(row, (Message, CreditLedger)) for row in db.added)
@@ -878,7 +938,7 @@ async def test_document_routes_propagate_separate_context_after_prewrite_validat
     monkeypatch.setattr(sessions_router, "assemble", assemble_context)
     monkeypatch.setattr(sessions_router, runner_name, run_document)
 
-    response = await _call_turn_route("send", db, user, [])
+    response = await _call_turn_route(db, user, [])
     async for _chunk in response.body_iterator:
         pass
 
@@ -1040,7 +1100,7 @@ def _assert_document_payload_boundaries(
         assert untrusted not in system_text
         assert untrusted in reference_text
         assert untrusted not in service_prompt
-        assert reference_text.startswith("# 참고 데이터")
+        assert reference_text.startswith("# Reference data")
         assert service_prompt.strip()
 
 
@@ -1140,17 +1200,9 @@ async def test_deck_upstream_payloads_keep_workspace_context_role_separated(monk
             "/sessions/session-1/messages",
             {"content": "hello", "activatedSkillIds": ["1", "2", "3", "4"]},
         ),
-        (
-            "/sessions/session-1/compare",
-            {
-                "content": "hello",
-                "models": ["model-a", "model-b"],
-                "activatedSkillIds": ["1", "2", "3", "4"],
-            },
-        ),
     ],
 )
-def test_send_and_compare_http_contract_rejects_four_skills_before_route(
+def test_send_http_contract_rejects_four_skills_before_route(
     monkeypatch, path: str, body: dict
 ):
     user = _route_user()
@@ -1185,3 +1237,59 @@ def test_an_installed_copy_passes_the_agents_allowlist():
 
     source = inspect.getsource(workspace_context._resolve_skills)
     assert "origin_id" in source
+
+
+# ── a research skill with search declined keeps to the given material ─────
+
+
+@pytest.mark.asyncio
+async def test_a_search_skill_runs_on_the_material_when_search_is_declined(monkeypatch):
+    from app.services import workspace_context
+
+    research = _skill(catalog_key="company-research",
+                      required_tools=["run_skill_script", "web_search", "fetch_url"])
+    # 「웹 검색 없이」: the turn offers no web_search, fetch is configured.
+    resolved = await _resolve_skills(
+        _SkillDb([research]), _user(), _session(), None, [research.id],
+        {"run_skill_script", "fetch_url"}, material_given=True)
+    assert resolved[0][1]["material_only"] is True
+    block = workspace_context._skill_blocks(resolved)[0].text
+    assert "주신 자료만으로 정리했습니다" in block and "출처 미확인" in block
+
+    async def configured():
+        return True
+
+    monkeypatch.setattr(workspace_context, "_search_configured", configured)
+    # Search configured but switched off, nothing given: still the skill, material-only.
+    again = await _resolve_skills(
+        _SkillDb([research]), _user(), _session(), None, [research.id], {"run_skill_script"})
+    assert again[0][1]["material_only"] is True
+
+
+@pytest.mark.asyncio
+async def test_research_with_no_search_backend_and_no_material_is_refused_plainly(monkeypatch):
+    from app.services import workspace_context
+
+    async def missing():
+        return False
+
+    monkeypatch.setattr(workspace_context, "_search_configured", missing)
+    research = _skill(catalog_key="company-research",
+                      required_tools=["run_skill_script", "web_search", "fetch_url"])
+    with pytest.raises(WorkspaceContextError, match="^skill_search_unavailable$"):
+        await _resolve_skills(
+            _SkillDb([research]), _user(), _session(), None, [research.id],
+            {"run_skill_script"})
+    # Any other missing tool gets the plain refusal.
+    coder = _skill(catalog_key="x", required_tools=["web_search", "execute_code"])
+    with pytest.raises(WorkspaceContextError, match="skill_tools_unavailable"):
+        await _resolve_skills(_SkillDb([coder]), _user(), _session(), None, [coder.id], set())
+
+
+def test_a_pasted_pack_or_a_file_is_material():
+    from app.services import workspace_context
+
+    assert workspace_context.gives_material("조사해 줘", ["f1"])
+    assert workspace_context.gives_material(
+        "경쟁사 분석해 줘. 웹 검색 없이.\n\n" + "[자료 1] 다글로 요금 9,900원 " * 8, None)
+    assert not workspace_context.gives_material("한빛로지텍 조사해 줘", None)

@@ -1,8 +1,4 @@
-"""Client for the retrieval index behind `/tools/index`.
-
-Never raises: writes return a boolean, a failed search returns no passages.
-The index is derived from `StoredFile.text` and can be rebuilt.
-"""
+"""Retrieval index client (`/tools/index`); never raises."""
 
 from __future__ import annotations
 
@@ -14,31 +10,30 @@ from typing import Any
 import httpx
 
 from app.core import logs
-from app.services import settings_store
+from app.services import settings_store, tools_gateway
 
-#: Stored file id: 32 hex characters (`uuid4().hex`).
+#: stored file id (`uuid4().hex`)
 _ID = re.compile(r"[0-9a-f]{32}")
 
-#: Collection key as `new_collection_key` writes it. Lands in a URL path.
+#: collection key; lands in a URL path
 _KEY = re.compile(r"[A-Za-z0-9_-]{32}")
 
 log = logging.getLogger(__name__)
 
-#: Write embeds every chunk; read is one embedding and one query.
+#: write embeds every chunk; read = one embedding + one query
 _WRITE_TIMEOUT = httpx.Timeout(180.0, connect=8.0)
 _READ_TIMEOUT = httpx.Timeout(25.0, connect=5.0)
 
 
 def new_collection_key() -> str:
-    """Unguessable collection name; never derived from `agent_id`, which is public."""
+    """Unguessable collection name; never from public `agent_id`."""
     return secrets.token_urlsafe(24)
 
 
-#: Name recorded on usage rows for index embeddings. The shim does not report its
-#: embedder, so this is the deployment's first configured one.
+#: usage-row embedder name; shim doesn't report it
 EMBED_MODEL = "local/bge-m3"
 
-#: Chunks the last `put_document` embedded, read by the caller that records usage.
+#: chunks embedded by the last `put_document`, for usage recording
 last_chunks = 0
 
 
@@ -53,12 +48,12 @@ async def _base() -> str:
 async def put_document(
     *, collection: str, doc_id: str, name: str, text: str, source_url: str | None = None
 ) -> bool:
-    """Index one document, replacing whatever was there under the same id."""
+    """Index one document, replacing the same id."""
     base = await _base()
     if not base or not collection:
         return False
     try:
-        async with httpx.AsyncClient(timeout=_WRITE_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_WRITE_TIMEOUT) as client:
             response = await client.put(
                 f"{base}/documents",
                 json={
@@ -82,12 +77,12 @@ async def put_document(
 
 
 async def search(*, collection: str, query: str, limit: int = 4) -> list[dict[str, Any]]:
-    """Nearest passages, or `[]` when the index cannot answer."""
+    """Nearest passages, or `[]` on failure."""
     base = await _base()
     if not base or not collection:
         return []
     try:
-        async with httpx.AsyncClient(timeout=_READ_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_READ_TIMEOUT) as client:
             response = await client.post(
                 f"{base}/search",
                 json={"collection": collection, "query": query[:4000], "limit": limit},
@@ -101,7 +96,7 @@ async def search(*, collection: str, query: str, limit: int = 4) -> list[dict[st
 
 
 async def forget_document(*, collection: str, doc_id: str) -> bool:
-    # The id goes into the URL path, so it must be a well-formed id.
+    # id goes into the URL path
     if not _ID.fullmatch(doc_id):
         log.warning("index delete refused a malformed id: %s", logs.safe(doc_id))
         return False
@@ -109,7 +104,7 @@ async def forget_document(*, collection: str, doc_id: str) -> bool:
     if not base or not collection:
         return False
     try:
-        async with httpx.AsyncClient(timeout=_READ_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_READ_TIMEOUT) as client:
             response = await client.delete(
                 f"{base}/documents/{doc_id}", params={"collection": collection}
             )
@@ -121,7 +116,7 @@ async def forget_document(*, collection: str, doc_id: str) -> bool:
 
 
 async def forget_collection(*, collection: str) -> bool:
-    """Drop a whole collection; a leftover stays searchable by whoever holds the key."""
+    """Drop a whole collection."""
     if not _KEY.fullmatch(collection):
         log.warning("index drop refused a malformed key: %s", logs.safe(collection))
         return False
@@ -129,7 +124,7 @@ async def forget_collection(*, collection: str) -> bool:
     if not base:
         return False
     try:
-        async with httpx.AsyncClient(timeout=_READ_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_READ_TIMEOUT) as client:
             response = await client.delete(f"{base}/collections/{collection}")
             response.raise_for_status()
     except httpx.HTTPError as exc:

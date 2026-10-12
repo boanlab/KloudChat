@@ -3,7 +3,6 @@ import type {
   Artifact,
   AudioArtifact,
   ImageArtifact,
-  SessionMade,
   VideoArtifact,
 } from '@/types'
 import { currentLang, currentLocale } from './i18n'
@@ -39,6 +38,9 @@ export function relativeTime(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString(currentLocale(), { month: 'short', day: 'numeric' })
 }
 
+/** Service time zone (API `TIMEZONE`): refills turn at its midnight, not the browser's. */
+const SERVICE_TIME_ZONE = 'Asia/Seoul'
+
 export function formatDate(iso: string | null | undefined) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -47,6 +49,7 @@ export function formatDate(iso: string | null | undefined) {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: SERVICE_TIME_ZONE,
   })
 }
 
@@ -58,46 +61,9 @@ export function formatDateTime(iso: string | null | undefined) {
   return d.toLocaleString(currentLocale())
 }
 
-/**
- * The line under a media session's title: count, length and aspect, e.g.
- * "영상 4초 · 16:9". Interface text, so built here in the current language;
- * unknown parts are left out rather than defaulted.
- */
-export function madeLine(made: SessionMade | null | undefined, t: (s: string) => string) {
-  if (!made || made.count < 1) return null
-  const counted: Record<SessionMade['kind'], string> = {
-    image: '이미지 {n}장',
-    video: '영상 {n}개',
-    narration: '내레이션 {n}개',
-    music: '음악 {n}곡',
-  }
-  const bare: Record<SessionMade['kind'], string> = {
-    image: '이미지',
-    video: '영상',
-    narration: '내레이션',
-    music: '음악',
-  }
-  const head =
-    made.count === 1
-      ? t(bare[made.kind])
-      : t(counted[made.kind]).replace('{n}', String(made.count))
-  const seconds = made.seconds > 0 ? t('{n}초').replace('{n}', String(made.seconds)) : ''
-  // One item: the length qualifies it ("영상 4초"). Several: the count comes first, parts are dotted.
-  const parts = made.count === 1 && seconds ? [`${head} ${seconds}`] : [head, seconds]
-  // A ratio reads the same in both languages, so it goes through untranslated.
-  return [...parts, made.aspect].filter(Boolean).join(' · ')
-}
-
 /** Image, audio and video artifacts render inline in the turn; reports and decks are offered as chips. */
 export function isMedia(a: Artifact): a is ImageArtifact | AudioArtifact | VideoArtifact {
   return a.kind === 'image' || a.kind === 'audio' || a.kind === 'video'
-}
-
-/** Replaces the row with the same id in place, or prepends it when new. */
-export function upsertById<T extends { id: string }>(rows: T[], row: T): T[] {
-  return rows.some((r) => r.id === row.id)
-    ? rows.map((r) => (r.id === row.id ? row : r))
-    : [row, ...rows]
 }
 
 /** Byte count in binary units; one decimal below 10. */
@@ -114,10 +80,7 @@ export function fileSize(bytes: number): string {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
 }
 
-/**
- * Readable name for a `User-Agent` string, or `''` when unrecognised. Order
- * matters: Edge before Chrome, Chrome before Safari, since each UA claims the others.
- */
+/** Readable browser name from a UA, or ''. Order matters: each UA claims the others. */
 export function browserName(ua: string): string {
   if (!ua) return ''
   const browser =
@@ -138,4 +101,12 @@ export function browserName(ua: string): string {
     : /Linux/.test(ua) ? 'Linux'
     : ''
   return [browser, platform].filter(Boolean).join(' · ')
+}
+
+/** A model's token price as a picker shows it: credits per 1,000 tokens, in and out. */
+export function tokenRate(model: { inputCreditCost?: number; creditCost?: number }, t: (s: string) => string) {
+  const input = model.inputCreditCost ?? 0
+  const output = model.creditCost ?? 0
+  if (!input && !output) return t('크레딧 없음')
+  return t('1천 토큰당 입력 {in} · 출력 {out}크레딧').replace('{in}', String(input)).replace('{out}', String(output))
 }

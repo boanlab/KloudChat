@@ -1,22 +1,23 @@
 import { Code2,
   Bot,
-  Brain,
   ChartColumn,
   ChevronDown,
+  Activity,
+  Flag,
   History,
   LogOut,
-  Palette,
-  Plug,
   Server,
   Keyboard,
   Settings,
   Shield,
+  SlidersHorizontal,
   ShieldCheck,
-  Sparkles,
   Terminal as TerminalIcon,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useMatch, useNavigate } from 'react-router-dom'
 import { Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
+import { useIssues } from '@/lib/issues'
+import { useBotAttention } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { isMac } from '@/lib/shortcuts'
 import { useStore } from '@/store/useStore'
@@ -30,24 +31,16 @@ function AccountItems() {
   const users = useStore((s) => s.users)
   const logout = useStore((s) => s.logout)
   const pendingUsers = users.filter((u) => u.status === 'pending').length
+  const unreadIssues = useIssues((s) => s.unread)
+  const reviews = useBotAttention((s) => s.reviews)
+  // Current conversation, attachable to a 「문의·신고」 report.
+  const sessionId = useMatch('/s/:sessionId')?.params.sessionId
 
   return (
     <>
       <MenuLabel>{t('워크스페이스')}</MenuLabel>
-      <MenuItem icon={<Bot size={14} />} onClick={() => navigate('/agents')}>
-        {t('에이전트')}
-      </MenuItem>
-      <MenuItem icon={<Sparkles size={14} />} onClick={() => navigate('/skills')}>
-        {t('스킬')}
-      </MenuItem>
-      <MenuItem icon={<Plug size={14} />} onClick={() => navigate('/connectors')}>
-        {t('커넥터')}
-      </MenuItem>
-      <MenuItem icon={<Brain size={14} />} onClick={() => navigate('/memory')}>
-        {t('메모리')}
-      </MenuItem>
-      <MenuItem icon={<Palette size={14} />} onClick={() => navigate('/designs')}>
-        {t('디자인')}
+      <MenuItem icon={<SlidersHorizontal size={14} />} onClick={() => navigate('/customize')}>
+        {t('사용자 지정')}
       </MenuItem>
       <MenuItem icon={<History size={14} />} onClick={() => navigate('/history')}>
         {t('대화 기록')}
@@ -66,6 +59,13 @@ function AccountItems() {
       <MenuItem icon={<Settings size={14} />} onClick={() => navigate('/settings')}>
         {t('설정')}
       </MenuItem>
+      <MenuItem
+        icon={<Flag size={14} />}
+        onClick={() => navigate('/issues', { state: sessionId ? { sessionId } : null })}
+        hint={unreadIssues > 0 ? `${t('새 답변')} ${unreadIssues}` : undefined}
+      >
+        {t('문의·신고')}
+      </MenuItem>
       <MenuItem icon={<Keyboard size={14} />} onClick={openShortcuts} hint={`${isMac() ? '⌘' : 'Ctrl'} /`}>
         {t('키보드 단축키')}
       </MenuItem>
@@ -83,11 +83,24 @@ function AccountItems() {
           <MenuItem icon={<ChartColumn size={14} />} onClick={() => navigate('/admin/usage')}>
             {t('사용량')}
           </MenuItem>
+          <MenuItem
+            icon={<Bot size={14} />}
+            onClick={() => navigate('/admin/publications')}
+            hint={reviews > 0 ? `${t('승인')} ${reviews}` : undefined}
+          >
+            {t('공개 챗봇')}
+          </MenuItem>
           <MenuItem icon={<ShieldCheck size={14} />} onClick={() => navigate('/admin/governance')}>
             {t('보안 · 감사')}
           </MenuItem>
+          <MenuItem icon={<Flag size={14} />} onClick={() => navigate('/admin/issues')}>
+            {t('문의·신고')}
+          </MenuItem>
           <MenuItem icon={<Server size={14} />} onClick={() => navigate('/admin/system')}>
             {t('시스템')}
+          </MenuItem>
+          <MenuItem icon={<Activity size={14} />} onClick={() => navigate('/admin/performance')}>
+            {t('성능 모니터링')}
           </MenuItem>
         </>
       )}
@@ -104,7 +117,8 @@ export function AccountMenu() {
   const t = useT()
   const user = useStore((s) => s.user)
   const users = useStore((s) => s.users)
-  const pendingUsers = users.filter((u) => u.status === 'pending').length
+  const pendingUsers = users.filter((u) => u.status === 'pending').length + useBotAttention((s) => s.reviews)
+  const unreadIssues = useIssues((s) => s.unread)
 
   return (
     <Dropdown
@@ -133,6 +147,14 @@ export function AccountMenu() {
               {pendingUsers}
             </span>
           )}
+          {unreadIssues > 0 && (
+            <span
+              aria-label={t('신고 답변 {n}건').replace('{n}', String(unreadIssues))}
+              className="shrink-0 rounded-control bg-accent px-1.5 text-xs font-medium text-white"
+            >
+              {unreadIssues}
+            </span>
+          )}
           <ChevronDown size={14} className="shrink-0 text-faint" />
         </button>
       )}
@@ -147,7 +169,8 @@ export function AccountMenuCompact() {
   const t = useT()
   const user = useStore((s) => s.user)
   const users = useStore((s) => s.users)
-  const pendingUsers = users.filter((u) => u.status === 'pending').length
+  const pendingUsers = users.filter((u) => u.status === 'pending').length + useBotAttention((s) => s.reviews)
+  const unreadIssues = useIssues((s) => s.unread)
 
   return (
     <Dropdown
@@ -161,8 +184,8 @@ export function AccountMenuCompact() {
           style={{ background: user?.avatarColor }}
         >
           {user?.name?.[0] ?? 'U'}
-          {user?.role === 'admin' && pendingUsers > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-warn ring-2 ring-bg" />
+          {((user?.role === 'admin' && pendingUsers > 0) || unreadIssues > 0) && (
+            <span className={`absolute -top-0.5 -right-0.5 size-2 rounded-full ring-2 ring-bg ${unreadIssues > 0 ? 'bg-accent' : 'bg-warn'}`} />
           )}
         </button>
       )}

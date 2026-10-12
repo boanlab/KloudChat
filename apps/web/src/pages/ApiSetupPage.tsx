@@ -16,7 +16,7 @@ function priceLabel(m: ModelInfo, t: (s: string) => string): string {
     .replace('{out}', m.creditCost.toLocaleString())
 }
 
-/** Code snippets for calling this instance; address and model come from the live origin and catalogue. */
+/** Address and model from the live origin and catalogue. */
 export function ApiSetupPage() {
   const t = useT()
   const { models } = useStore()
@@ -75,8 +75,7 @@ export function ApiSetupPage() {
     `  -d '{"model": "${modelId}", "messages": [{"role": "user", "content": "ping"}]}'`,
   ].join('\n')
 
-  // PowerShell: backtick continues a line, and `curl` there is an alias of
-  // Invoke-WebRequest, so the real binary is called as curl.exe.
+  // PowerShell: backtick continues; `curl` aliases Invoke-WebRequest, hence curl.exe.
   const curlPowershell = [
     `curl.exe ${base}/v1/chat/completions \``,
     `  -H "Authorization: Bearer <${t('발급받은 키')}>" \``,
@@ -95,7 +94,8 @@ export function ApiSetupPage() {
 
         <Card className="mt-6 flex flex-wrap items-center gap-3 p-4">
           <KeyRound size={18} className="text-muted" />
-          <div className="min-w-0 flex-1">
+          {/* Phone: button below. */}
+          <div className="min-w-0 flex-1 basis-56">
             <p className="text-base font-medium">{t('먼저 키를 발급하세요')}</p>
             <p className="text-base text-muted">
               {t('발급 직후 한 번만 보이고 다시 확인할 수 없습니다.')}

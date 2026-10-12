@@ -1,7 +1,4 @@
-"""Form defects a finished report or deck must not carry, checked on the final artifact.
-
-Each finding is `{"code", "where", "detail"}`; an empty list is a pass.
-"""
+"""Form defects on a final report or deck; findings {code, where, detail}, empty = pass."""
 
 from __future__ import annotations
 
@@ -22,7 +19,7 @@ _PLACEHOLDER = re.compile(
     r"\((?:미정|TBD|N/A)\)|\[(?:TBD|미정|xx+|XX+)\]|○○|XXX"
     r"|\(여기에[^)\n]{0,60}\)|\[여기에[^\]\n]{0,60}\]|여기에\s?[가-힣 ]{0,20}(?:입력|작성)하"
 )
-#: A model's JSON wrapper left in the words: 「{ "slide_notes": …」, a closing 「" }」.
+#: leaked model JSON wrapper (「{ "slide_notes": …」)
 _JSON_RESIDUE = re.compile(r'\{\s*\\?"[a-z_]{3,30}\\?"\s*:|\\?"\s*\}\s*$', re.M)
 _INNARDS = re.compile(
     r"(?:매뉴얼|보고서|백서|가이드라인|가이드|안내서|지침)\s?(?:의\s?)?제\s?\d{1,3}\s?(?:장|절)"
@@ -41,8 +38,8 @@ def _wrong_particle(number: str, particle: str) -> bool:
 def report_findings(
     sections: list[dict[str, Any]], material: str = "", settled: list | None = None
 ) -> list[dict[str, str]]:
-    """Findings on a finished report's sections (Markdown bodies)."""
-    from app.services import report  # the report's own readers, so the two never drift
+    """Findings on report sections (Markdown)."""
+    from app.services import report  # shared readers, no drift
 
     out: list[dict[str, str]] = []
 
@@ -110,33 +107,34 @@ def report_findings(
                               ("prompt_talk", report._PROMPT_TALK),
                               ("fence_language_apart", report._LONE_LANGUAGE)):
             fenced = body
-            if code == "pipe_rows_not_a_table":  # a ```kpi row is 「value | label」
+            if code == "pipe_rows_not_a_table":  # ```kpi rows are 「value | label」
                 fenced = re.sub(r"(?ms)^```.*?^```", "", body)
             if m := pattern.search(fenced):
                 add(code, heading, fenced[max(0, m.start() - 30): m.end() + 30])
         for block in re.split(r"\n\s*\n", body):
             text = block.strip()
             if (len(text) > 650 and "\n" not in text
-                    and not re.match(r"^(?:\||#|>|[-*+]\s|\d{1,3}[.)]\s|```|!\[)", text)):
+                    and not re.match(
+                        r"^(?:\||#|>|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s|```|!\[)", text)):
                 add("long_paragraph", heading, f"{len(text)}자")
         heads = ("|", "!", "```", "#", "**표", "*그림")
         prose = [b for b in re.split(r"\n\s*\n", body)
                  if b.strip() and "\n" not in b.strip() and not b.strip().startswith(heads)]
         for block in prose:
-            sentences = re.split(r"(?<=[.!?])\s+", block)
+            sentences = units.SENTENCE_BREAK.split(block)
             cites = [report._cited(s) for s in sentences]
             for i in range(len(sentences) - 1):
                 bare = report._TRAILING_CITE.sub("", sentences[i])
                 if cites[i] and cites[i] == cites[i + 1] and not re.search(r"\d", bare):
                     add("repeated_citation", heading, sentences[i])
-    # One row label, two different figures in two tables: one of them is wrong.
+    # same row label, two figures: one is wrong
     seen: dict[str, tuple[str, str]] = {}
     for sec in sections:
         for label, value, _, _ in report._table_rows(str(sec.get("content") or "")):
             if not re.search(r"\d", value) or report._UNDECIDED.match(value):
                 continue
             number = re.sub(r"[^\d.]", "", value)
-            # Generic labels repeat by design (도입·전개·정리, month numbers); skip them.
+            # generic labels repeat by design; skipped
             generic = r"[\d.]+(?:개월|차시|주|월|일)?(?:차)?|도입|전개|정리|합계|소계|계|평균"
             if re.fullmatch(generic, label):
                 continue
@@ -167,7 +165,7 @@ def report_findings(
 
 
 def _strings(value: Any) -> list[str]:
-    """Every string inside a slide, so a check reads the words and not JSON quoting."""
+    """Every string in a slide (words, not JSON quoting)."""
     if isinstance(value, str):
         return [value]
     if isinstance(value, dict):
@@ -177,7 +175,7 @@ def _strings(value: Any) -> list[str]:
     return []
 
 
-#: A counted or priced amount: 「12만 가구」, 「864억 원」, 「2,500박스」.
+#: counted/priced amount
 _COUNTED = re.compile(rf"(?P<amount>{units._TERM})\s?(?P<unit>가구|명|박스|개|건|원)")
 
 
@@ -192,7 +190,7 @@ def _counted(text: str) -> list[tuple[str, str, float]]:
 
 
 def scaled_numbers(slides: list[dict[str, Any]], material: str) -> list[tuple[int, str, str]]:
-    """`(slide index, slide figure, material figure)` for amounts a power of ten off."""
+    """(slide index, slide figure, material figure) a power of ten off."""
     known: dict[str, dict[float, str]] = {}
     for written, unit, value in _counted(material or ""):
         if value:
@@ -213,7 +211,7 @@ def scaled_numbers(slides: list[dict[str, Any]], material: str) -> list[tuple[in
 
 
 def deck_findings(slides: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """Findings on a finished deck's slides (the stored JSON)."""
+    """Findings on deck slides (stored JSON)."""
     out: list[dict[str, str]] = []
 
     def add(code: str, where: str, detail: str = "") -> None:
@@ -226,7 +224,7 @@ def deck_findings(slides: list[dict[str, Any]]) -> list[dict[str, str]]:
         layout = str(slide.get("layout") or "")
         if str(slide.get("body") or "").strip() == deck_service.UNWRITTEN:
             add("unwritten_slide", where)
-        # Joined with spaces so a placeholder split across cells still matches.
+        # space-joined: placeholders split across cells still match
         words = {k: v for k, v in slide.items() if k not in ("image", "diagram")}
         text = " ".join(_strings(words))
         if layout == "section" and _NUMBERED.match(str(slide.get("title") or "")):
@@ -248,7 +246,7 @@ def deck_findings(slides: list[dict[str, Any]]) -> list[dict[str, str]]:
 __all__ = ["deck_findings", "report_findings"]
 
 
-#: A numbered run a plan is made of: lessons, months, steps.
+#: numbered plan runs: lessons, months, steps
 _SEQUENCES = (
     ("차시", re.compile(r"(?<!\d)([1-9])\s?차시")),
     ("월", re.compile(r"(?<!\d)(1[0-2]|[1-9])\s?월(?![가-힣])")),
@@ -264,14 +262,14 @@ def _member(kind: str, n: int) -> str:
 
 
 def missing_sequence(material: str, written: str) -> list[tuple[str, list[str]]]:
-    """`(kind, missing members)` for each run (1~3차시, M1~M6) the document drops from."""
+    """(kind, missing members) per run the document drops from."""
     out = []
     for kind, pattern in _SEQUENCES:
         given = {int(n) for n in pattern.findall(material or "")}
         if len(given) < 3:
             continue
         run = sorted(given)
-        if run[-1] - run[0] + 1 != len(run):  # not a consecutive run: dates, not a plan
+        if run[-1] - run[0] + 1 != len(run):  # non-consecutive: dates, not a plan
             continue
         have = {int(n) for n in pattern.findall(written or "")}
         missing = [n for n in run if n not in have]
@@ -280,7 +278,7 @@ def missing_sequence(material: str, written: str) -> list[tuple[str, list[str]]]
     return out
 
 
-#: A question's stem: 「**4.** (2차시) 이산화 탄소 분자를 옳게 설명한 것은?」.
+#: question stem
 _QUESTION_STEM = re.compile(
     r"^\s*(?:\*\*)?(?:서술형\s?)?\d{1,2}\s?[.)번]?(?:\*\*)?\s*(?:\([^)]{0,20}\)\s*)?"
     r"(?P<stem>[^\n①]{8,300}?(?:[?？]|시오\.?|은\?|는\?))", re.M)
@@ -291,7 +289,7 @@ def _key(text: str) -> str:
 
 
 def question_choices(material: str) -> list[tuple[str, str, list[str], list[tuple[str, str]]]]:
-    """`(stem, key, choice lines, [(mark, text)])` for each question with choices ①, ② …"""
+    """(stem, key, choice lines, [(mark, text)]) per ①②-question."""
     stems = list(_QUESTION_STEM.finditer(material or ""))
     out = []
     for i, m in enumerate(stems):
@@ -300,11 +298,11 @@ def question_choices(material: str) -> list[tuple[str, str, list[str], list[tupl
             continue
         end = stems[i + 1].start() if i + 1 < len(stems) else len(material)
         rest = material[m.end():end].split("\n")
-        # The stem's own line may run on (「…것은? (관찰·하)」) or hold the choices.
+        # stem line may run on or hold the choices
         lines = ([rest[0][rest[0].index("①"):]] if "①" in rest[0] else []) + rest[1:9]
         block: list[str] = []
         for line in lines:
-            # A choice line starts with its mark; an answer line like 「정답 ③」 does not.
+            # choice lines start with a mark (「정답 ③」 doesn't)
             if re.match(r"\s{0,16}(?:[-*]\s{0,8})?[①-⑩]", line):
                 block.append(line)
             elif block or line.strip():
@@ -316,7 +314,7 @@ def question_choices(material: str) -> list[tuple[str, str, list[str], list[tupl
 
 
 def lost_question_parts(material: str, written: str) -> list[tuple[str, list[str]]]:
-    """`(stem, lost parts)` for each question whose stem `written` keeps but not all its choices."""
+    """(stem, lost parts) for questions missing choices in written."""
     if not material or not written:
         return []
     flat = re.sub(r"[^가-힣A-Za-z0-9①-⑩]", "", written)
@@ -325,9 +323,9 @@ def lost_question_parts(material: str, written: str) -> list[tuple[str, list[str
     for i, (stem, key, _, choices) in enumerate(questions):
         at = flat.find(key)
         if at < 0:
-            continue  # a test the document did not carry, or rewrote: not this check's
+            continue  # not carried or rewritten: out of scope
         after = flat[at + len(key):]
-        # Only as far as the next question: its choices are not this one's.
+        # stop at the next question
         following = questions[i + 1][1] if i + 1 < len(questions) else ""
         stop = after.find(following) if following else -1
         after = after[:stop] if stop >= 0 else after[:600]
@@ -338,27 +336,27 @@ def lost_question_parts(material: str, written: str) -> list[tuple[str, list[str
     return out
 
 
-#: Metrics a plan states as one amount each: 「CAC 5만 원」, 「TAM 7.2조 원」.
+#: single-amount plan metrics (CAC, TAM)
 _NAMED_METRIC = re.compile(
     r"(?P<name>CAC|LTV|ARPU|ARPPU|TAM|SAM|SOM|객단가|구독료|고객\s?획득\s?비용|고객\s?생애\s?가치)"
     r"[^0-9\n.|×]{0,14}?(?P<value>\d[\d,]{0,15}(?:\.\d{1,6})?\s?(?:조|억|천만|만|천)?(?:\s?\d[\d,]{0,15}\s?(?:만|천))?)"
     r"\s?(?P<unit>원|가구|명)(?!\s?[×x*])"
 )
-#: A sentence about a total, not the per-unit figure: 「CAC 총액」, 「누적 CAC」.
+#: total-not-per-unit sentences (총액, 누적)
 _TOTAL_WORDS = re.compile(r"총|합계|누적|전체|연간|한 해|월간 총|예산|집행|×")
 
 
 def scaled_metric_slips(text: str) -> list[tuple[str, str, float, float]]:
-    """`(sentence, metric, written, usual)` for a named metric 100× or more off its usual value."""
+    """(sentence, metric, written, usual) ≥100× off."""
     from app.services.units import _ko_number
 
     seen: dict[tuple[str, str], list[tuple[float, str]]] = {}
     for line in (text or "").split("\n"):
         if line.lstrip().startswith(("```", "!", "#")):
             continue
-        for sentence in re.split(r"(?<=[.!?])\s+|\s\|\s", line):
+        for sentence in re.split(r"(?<=[.!?])" + units.NO_NUMBER_DOT_BREAK + r"\s+|\s\|\s", line):
             for m in _NAMED_METRIC.finditer(sentence):
-                # A total's words (누적, 총액) sit right by the name.
+                # total words sit beside the name
                 if _TOTAL_WORDS.search(sentence[max(0, m.start() - 6):m.start("value")]):
                     continue
                 try:
@@ -383,12 +381,12 @@ def scaled_metric_slips(text: str) -> list[tuple[str, str, float, float]]:
     return out
 
 
-#: A table column header with its unit: 「CAC(천 원)」.
+#: column header with unit: 「CAC(천 원)」
 _COLUMN_UNIT = re.compile(r"^(?P<name>[^()]{1,20}?)\s?\((?P<scale>천|만|백만|억)\s?원\)$")
 
 
 def mislabelled_columns(text: str) -> list[tuple[str, str]]:
-    """`(header, name)` for a 「(천 원)」-style column whose cells hold the prose's won amounts."""
+    """(header, name) for unit columns holding won amounts."""
     out = []
     lines = (text or "").split("\n")
     for i, line in enumerate(lines):
@@ -415,7 +413,7 @@ def mislabelled_columns(text: str) -> list[tuple[str, str]]:
 
 
 def lesson_time_gaps(text: str) -> list[tuple[str, int, int]]:
-    """`(first row, summed minutes, lesson length)` for a lesson table off the set length."""
+    """(first row, summed minutes, lesson length) for off-length lesson tables."""
     length = re.search(r"(?:각\s?차시|한\s?차시|차시당|수업)[은는이가]?\s?(\d{2})\s?분", text or "")
     if not length:
         return []

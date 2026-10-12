@@ -1,7 +1,6 @@
 import { Brain, Pin, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { PageBody } from '@/components/layout/AppShell'
-import { TopBar } from '@/components/layout/TopBar'
+import { PageFrame } from '@/components/layout/AppShell'
 import {
   Badge,
   Button,
@@ -14,20 +13,21 @@ import {
   Tabs,
 } from '@/components/ui'
 import { MemoryEditor, emptyMemory, memoryTypeTone } from '@/components/memory/MemoryEditor'
+import { memoryTypeLabel } from '@/lib/memoryTypes'
 import { cn, relativeTime } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
 import type { MemoryEntry, MemoryType } from '@/types'
 import { useT } from '@/lib/useT'
 
-export function MemoryPage() {
+export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT()
-  const { memories, projects, deleteMemory, togglePinMemory, loadWorkspace, workspaceLoading, workspaceFailed } =
+  const { memories, projects, deleteMemory, togglePinMemory, loadWorkspace, ensureWorkspace, workspaceLoading, workspaceFailed } =
     useStore()
 
   useEffect(() => {
-    void loadWorkspace()
-  }, [loadWorkspace])
+    void ensureWorkspace()
+  }, [ensureWorkspace])
   const [filter, setFilter] = useState<MemoryType | 'all'>('all')
   const [draft, setDraft] = useState<MemoryEntry | null>(null)
   const [confirming, setConfirming] = useState<MemoryEntry | null>(null)
@@ -38,9 +38,9 @@ export function MemoryPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('메모리')}</span>} />
-      <PageBody>
+      <PageFrame title={t('메모리')} embedded={embedded}>
         <PageHeader
+          embedded={embedded}
           title={t('메모리')}
           description={t('대화에서 알게 된 사실을 하나씩 저장해 두면, 다음 대화에서 관련 있는 것만 골라 참고합니다.')}
           action={
@@ -56,10 +56,10 @@ export function MemoryPage() {
           onChange={setFilter}
           tabs={[
             { id: 'all', label: t('전체'), count: memories.length },
-            { id: 'user', label: t('사용자') },
-            { id: 'feedback', label: t('피드백') },
-            { id: 'project', label: t('프로젝트') },
-            { id: 'reference', label: t('참조') },
+            { id: 'user', label: t(memoryTypeLabel.user) },
+            { id: 'feedback', label: t(memoryTypeLabel.feedback) },
+            { id: 'project', label: t(memoryTypeLabel.project) },
+            { id: 'reference', label: t(memoryTypeLabel.reference) },
           ]}
         />
 
@@ -94,7 +94,7 @@ export function MemoryPage() {
                       >
                         {m.name}
                       </button>
-                      <Badge tone={memoryTypeTone[m.type]}>{m.type}</Badge>
+                      <Badge tone={memoryTypeTone[m.type]}>{t(memoryTypeLabel[m.type])}</Badge>
                       {project && <Badge>{project.emoji} {project.name}</Badge>}
                       {m.pinned && (
                         <Badge tone="accent">
@@ -145,14 +145,14 @@ export function MemoryPage() {
           })}
         </div>
         <ShowMore hidden={hidden} onMore={more} />
-      </PageBody>
+      </PageFrame>
 
       <ConfirmDialog
         open={!!confirming}
         onClose={() => setConfirming(null)}
         onConfirm={() => confirming && deleteMemory(confirming.id)}
         title={t('{name} 삭제').replace('{name}', confirming?.name ?? '')}
-        description={t('되돌릴 수 없습니다. 다음 대화부터는 이 내용을 참고하지 않습니다.')}
+        description={t('지운 뒤 몇 초 동안은 화면 아래에서 되돌릴 수 있습니다. 그 뒤에는 완전히 지워지고, 다음 대화부터 이 내용을 참고하지 않습니다.')}
       />
 
       <MemoryEditor draft={draft} onDraft={setDraft} onClose={() => setDraft(null)} />

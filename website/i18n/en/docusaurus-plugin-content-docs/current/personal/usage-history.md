@@ -29,7 +29,7 @@ A credit is the unit that expresses model usage, and the basis differs by type.
 
 Models marked **Free** do not consume credits. Most of them are models the organization runs itself, but models that an external service offers free of charge are marked the same way. In that case the request is sent outside the organization. Check the data boundary label in the model list as well.
 
-Credits are reset to the allowance on the first day of each month and do not carry over. When they are used up, you cannot send new requests until the next refill, but outputs already created are kept. A request whose generation was stopped is recorded as an estimate.
+Credits are reset to the allowance on the first day of each month and do not carry over. When they are used up, you cannot send new requests until the next refill, but artifacts already created are kept. A request whose generation was stopped is recorded as an estimate.
 
 ## Conversation history
 
@@ -37,7 +37,7 @@ Check it in the account menu → **Conversation history**.
 
 ![Conversation history screen](/img/guide/history.png)
 
-- View all conversations by date and search them by title.
+- View all conversations by date and search them by title and message text.
 - You can use **Select all** on the listed items and then **Delete selected**, or run **Delete all conversations**. A confirmation dialog is shown before it runs.
-- Deleting a conversation also deletes the outputs created in that conversation and its share links. Projects and memory are kept.
+- Deleting a conversation also deletes the artifacts created in that conversation and its share links. Projects and memory are kept.
 - Where the administrator has set a retention period, the body of a conversation past that period is deleted automatically. Sign-in history and usage totals are kept.

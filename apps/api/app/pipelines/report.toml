@@ -1,0 +1,36 @@
+# The report writer: every document, whatever its 서식.
+#
+# `plan` runs when no outline is approved yet (it offers one and stops); `write` runs on the
+# approved outline. Stage names are `app.pipeline` registry names; see
+# docs/architecture.md § Pipelines.
+#
+# What a document does besides writing is not set here: the 서식's and the agent's 진행 과정
+# 설정 (`services/process_settings.py`) name the pre-pass calculations, the 서식 보정 stages
+# (`minutes-repair`, `minutes-reground`, `career-periods-tidy`, `page-limit`, each skipped
+# unless named), the checks, and the options. A shipped 서식 sets them in its `template.toml`
+# `[process]`; a person sets the same keys in the agent form or their own template.
+
+name = "report"
+# Catalogue agents of no fixed format whose report turns it writes.
+agents = ["document"]
+pre = ["check:gaps", "gap-card"]
+plan = ["research", "material", "outline"]
+write = [
+    "research", "material", "approved-plan", "calc", "announce", "settle", "prepass",
+    "writer-notes", "draft", "sections", "figures", "additions", "normalize", "title-block",
+    "checks-plan", "minutes-repair", "check:grounding", "format-find", "verify",
+    "minutes-reground", "check:grounding-again", "format-amend", "career-periods-tidy",
+    "page-limit", "format-step", "quality", "report-save",
+]
+revise = [
+    "revise-load", "revise-route", "revise-widen", "revise-rewrite", "consistency",
+    "revise-save",
+]
+
+# What each step of the drawn chain does, said for the person (display only).
+[summary]
+material = "올린 자료를 읽고, 필요하면 자료를 찾아 모읍니다"
+question = "빠진 정보가 있으면 먼저 물어봅니다"
+compute = "날짜·수치를 미리 계산해 둡니다"
+write = "개요를 잡은 뒤 보고서를 씁니다"
+check = "자료에 근거가 없는 값은 빈칸으로 남기고 확인합니다"

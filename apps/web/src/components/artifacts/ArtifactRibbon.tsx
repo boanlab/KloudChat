@@ -6,20 +6,18 @@ type RibbonTab<T extends string = string> = {
   label: string
 }
 
-/** A labelled command group inside a ribbon tab, like Office's Clipboard or Font group.
- *  A `wide` group (a whole formatting toolbar) takes a row of its own and wraps inside it;
- *  the others keep their width and move to the next row whole. */
+/** Labelled ribbon command group; `wide` takes its own row, others wrap whole. */
 export function RibbonGroup({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
   return (
     <section aria-label={label} data-wide={wide ? '' : undefined} className={cn('flex items-center px-1.5 first:pl-0 last:pr-0', wide ? 'min-w-0 max-w-full' : 'min-w-max')}>
-      <div className={cn('flex items-center gap-px', wide && 'flex-wrap gap-y-1', '[&_button]:h-8 [&_button]:min-w-8 [&_button]:flex-row [&_button]:gap-1.5 [&_button]:rounded-sm [&_button]:border-0 [&_button:not([data-variant=primary])]:bg-transparent [&_button]:px-2 [&_button]:py-1 [&_button]:text-xs [&_button]:font-medium [&_button]:leading-none [&_button]:shadow-none [&_button:not([data-variant=primary]):hover]:bg-elevated [&_button[aria-pressed=true]]:bg-accent/10 [&_button[aria-pressed=true]]:text-accent [&_button:not([data-variant=primary]):disabled]:bg-transparent [&_svg]:shrink-0 max-sm:[&_button]:h-10 max-sm:[&_button]:min-w-10')}>
+      <div className={cn('flex items-center gap-px', wide && 'gap-y-1 sm:flex-wrap', '[&_button]:h-8 [&_button]:min-w-8 [&_button]:flex-row [&_button]:gap-1.5 [&_button]:rounded-sm [&_button]:border-0 [&_button:not([data-variant=primary])]:bg-transparent [&_button]:px-2 [&_button]:py-1 [&_button]:text-xs [&_button]:font-medium [&_button]:leading-none [&_button]:shadow-none [&_button:not([data-variant=primary]):hover]:bg-elevated [&_button[aria-pressed=true]]:bg-accent/10 [&_button[aria-pressed=true]]:text-accent [&_button:not([data-variant=primary]):disabled]:bg-transparent [&_svg]:shrink-0 max-sm:[&_button]:h-10 max-sm:[&_button]:min-w-10')}>
         {children}
       </div>
     </section>
   )
 }
 
-/** Word/PowerPoint-style command surface shared by reports and slide decks. */
+/** Office-style command surface for reports and decks. */
 export function ArtifactRibbon<T extends string>({
   label,
   tabs,
@@ -44,7 +42,7 @@ export function ArtifactRibbon<T extends string>({
   }, [active])
 
   return (
-    <div className="-mx-4 -mb-2.5 min-w-0 basis-full border-t border-line bg-elevated max-sm:-mx-2">
+    <div className="-mx-4 -mb-2 min-w-0 basis-[calc(100%+2rem)] border-t border-line bg-elevated max-sm:-mx-2 max-sm:basis-[calc(100%+1rem)]">
       <div
         role="tablist"
         aria-label={label}
@@ -94,9 +92,8 @@ export function ArtifactRibbon<T extends string>({
         <div
           role="toolbar"
           aria-label={tabs.find((tab) => tab.id === active)?.label}
-          // Groups wrap onto a second row when the panel is narrow: a command past the
-          // edge, 저장 above all, is a command the person never finds.
-          className="flex min-w-full flex-wrap items-center gap-y-1 overflow-visible bg-transparent divide-x divide-line/80 [&>div]:flex [&>div]:shrink-0 [&>div:has([data-wide])]:min-w-0 [&>div:has([data-wide])]:basis-full [&>div:has([data-wide])]:border-l-0"
+          // Narrow: groups wrap (저장 in the header); phone: one sideways-scrolling row.
+          className="flex min-w-full items-center gap-y-1 overflow-visible bg-transparent divide-x divide-line/80 sm:flex-wrap [&>div]:flex [&>div]:shrink-0 sm:[&>div:has([data-wide])]:min-w-0 sm:[&>div:has([data-wide])]:basis-full sm:[&>div:has([data-wide])]:border-l-0"
         >
           {commands.map((child, index) => (
             <div key={index}>{child}</div>
@@ -107,7 +104,7 @@ export function ArtifactRibbon<T extends string>({
   )
 }
 
-/** Small permanent actions beside the title; labels collapse before icons do. */
+/** Permanent actions beside the title; labels collapse before icons. */
 export function QuickAccess({ children, label }: { children: ReactNode; label: string }) {
   return <div aria-label={label} className="flex shrink-0 items-center gap-0.5 [&_button]:h-8 max-sm:[&_button]:h-10 max-sm:[&_button]:w-10 max-sm:[&_button]:px-0 max-sm:[&_button]:text-[0px]">{children}</div>
 }

@@ -29,8 +29,7 @@
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
-/* A phone: a touch screen up to 1024px wide (foldables and landscape included), or any
-   viewport under 640px. Width alone would miss wide phones. */
+/* Phone: touch screen up to 1024px or any viewport under 640px. */
 @custom-variant phone {
   @media (pointer: coarse) and (max-width: 64rem), (max-width: 40rem) {
     @slot;
@@ -146,8 +145,7 @@
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* On a phone the whole type scale steps up with the root: the desktop's compact
-   13px base reads as 18px, menus and captions with it, and running text as 22px. */
+/* Phone: the type scale steps up with the root (13px base reads as 18px). */
 @media (pointer: coarse) and (max-width: 64rem), (max-width: 40rem) {
   html {
     font-size: 137.5%;
@@ -365,6 +363,30 @@ body {
   .report-prose p:has(> img:only-child) {
     text-align: center;
   }
+  /* A bracket placeholder (「[담당자]」): a gap left for the person to fill, marked in every view. */
+  .doc-placeholder {
+    background: color-mix(in srgb, var(--color-warn) 20%, transparent);
+    border-radius: 2px;
+    padding: 0 0.1em;
+  }
+  /* A blank the person can fill in place, and a value the grounding check blanked. */
+  .doc-placeholder[data-mark-fill] { cursor: text; }
+  .doc-placeholder[data-mark-fill]:hover,
+  .doc-placeholder[data-mark-fill]:focus-visible {
+    outline: 1px solid var(--color-warn);
+    outline-offset: 1px;
+  }
+  .doc-ungrounded {
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: var(--color-danger);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 3px;
+  }
+  .doc-mark-current {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
   .doc-html table {
     width: 100%;
     margin: 0.75rem 0;
@@ -457,8 +479,7 @@ body {
 .doc-web section button > img { width: 100%; }
 .doc-web section button:has(> img) { width: 100%; }
 
-/* Code highlighting (highlight.js classes). Plain token colours on the panel
-   surfaces; the dark set is re-tuned, not inverted, for contrast. */
+/* highlight.js token colours; the dark set re-tuned for contrast. */
 .hljs { color: var(--fg); }
 .hljs-comment, .hljs-quote { color: var(--faint); font-style: italic; }
 .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type, .hljs-built_in,

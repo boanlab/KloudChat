@@ -11,7 +11,9 @@ import {
   UserX,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { PipelineApprovals } from '@/components/agents/PipelineEditor'
+import { SkillApprovals } from '@/components/customize/SkillApprovals'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import {
@@ -31,6 +33,7 @@ import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
 import type { User, UserStatus } from '@/types'
 import { useT } from '@/lib/useT'
+import { USER_STATUS_LABEL } from '@/lib/userStatus'
 
 const statusTone = {
   active: 'success',
@@ -38,11 +41,7 @@ const statusTone = {
   suspended: 'danger',
 } as const
 
-const statusLabel: Record<UserStatus, string> = {
-  active: '활성',
-  pending: '승인 대기',
-  suspended: '정지',
-}
+const statusLabel = USER_STATUS_LABEL
 
 /** Preset allowances; 1 credit = $0.00001. */
 const PLANS = [
@@ -87,18 +86,21 @@ export function AdminUsersPage() {
     updateUser,
     resetUserPassword,
     replaceLitellmKey,
+    setToast,
+    lang,
+    passwordMinLength,
   } = useStore()
   const [filter, setFilter] = useState<UserStatus | 'all'>('all')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<User | null>(null)
-  // 정보 수정: name, address and a password reset, one dialog.
+  // 정보 수정: name, address, password reset.
   const [profile, setProfile] = useState<User | null>(null)
   const [draftName, setDraftName] = useState('')
   const [draftEmail, setDraftEmail] = useState('')
   const [draftPassword, setDraftPassword] = useState('')
   const [profileNote, setProfileNote] = useState<string | null>(null)
   const [profileError, setProfileError] = useState<string | null>(null)
-  // 키 관리: KloudChat's own key (reissue or replace) and the keys the person issued (revoke).
+  // 키 관리: own key (reissue/replace) and the person's keys (revoke).
   const [keysFor, setKeysFor] = useState<User | null>(null)
   const [keys, setKeys] = useState<AdminKeys | null>(null)
   const [keyDraft, setKeyDraft] = useState('')
@@ -123,16 +125,16 @@ export function AdminUsersPage() {
     setConfirmRotate(false)
     void loadKeys(u.id)
   }
-  // The whole catalogue for the restriction picker; the store's list is the caller's own.
+  // Whole catalogue for the restriction picker; the store holds the caller's own.
   const [catalogue, setCatalogue] = useState<{ id: string; label: string }[] | null>(null)
   const [deleting, setDeleting] = useState<User | null>(null)
+  // 정지 asks first: signs the person out, stops their bots.
+  const [suspending, setSuspending] = useState<User | null>(null)
   const [purgeFiles, setPurgeFiles] = useState(true)
   const [restricting, setRestricting] = useState<User | null>(null)
   const [draftCredits, setDraftCredits] = useState('')
-  // Ids with an in-flight mutation.
   const [busy, setBusy] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
-  // Placeholder until the API answers.
   const [economics, setEconomics] = useState({ perUsd: 100_000, budgetHeadroom: 0.2 })
 
   useEffect(() => {
@@ -144,11 +146,7 @@ export function AdminUsersPage() {
       .catch(() => {})
   }, [loadUsers])
 
-  /** Proxy budget for an allowance; mirrors `budget_usd` on the API. */
-  const proxyBudget = (credits: number) =>
-    `$${(Math.ceil((credits / economics.perUsd) * (1 + economics.budgetHeadroom) * 100) / 100).toFixed(2)}`
-
-  /** Runs one row action, guarding against double-fire and surfacing failure. */
+  /** Guards double-fire, surfaces failure. */
   const run = async (id: string, action: () => Promise<void>) => {
     if (busy.includes(id)) return
     setBusy((b) => [...b, id])
@@ -194,7 +192,7 @@ export function AdminUsersPage() {
           </p>
         )}
 
-        <div className="mb-5 grid gap-3 sm:grid-cols-4">
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: t('전체 사용자'), value: String(users.length) },
             { label: t('승인 대기'), value: String(pendingCount) },
@@ -206,7 +204,7 @@ export function AdminUsersPage() {
           ].map((s) => (
             <Card key={s.label} className="px-4 py-3">
               <p className="text-xs tracking-wide text-faint uppercase">{s.label}</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{s.value}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums sm:text-xl">{s.value}</p>
             </Card>
           ))}
         </div>
@@ -235,8 +233,7 @@ export function AdminUsersPage() {
         </div>
 
         <Card className="overflow-hidden">
-          {/* The scroll box sits inside the card: the card keeps `overflow-hidden` for its
-              rounded corners, and a narrow screen scrolls the row to its last button. */}
+          {/* Scroll box inside the card: card keeps `overflow-hidden` for rounded corners. */}
           <div className="overflow-x-auto">
             <table className="w-full text-base">
             <thead className="bg-elevated text-xs tracking-wide text-faint uppercase">
@@ -382,17 +379,6 @@ export function AdminUsersPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-danger hover:bg-danger/10 hover:text-danger"
-                        aria-label={t('계정 삭제')}
-                        title={t('계정과 그 계정이 만든 모든 것을 지웁니다. 되돌릴 수 없습니다.')}
-                        disabled={busy.includes(u.id) || u.id === user?.id}
-                        onClick={() => setDeleting(u)}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
                         aria-label={t('{name} 키 관리').replace('{name}', u.name)}
                         title={t('KloudChat 키를 재발급·교체하고, 이 사용자가 발급한 키를 확인·삭제합니다')}
                         disabled={busy.includes(u.id)}
@@ -404,10 +390,10 @@ export function AdminUsersPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          aria-label={t('정지')}
+                          aria-label={t('{name} 정지').replace('{name}', u.name)}
                           title={t('이 계정의 접속을 막습니다')}
-                          disabled={busy.includes(u.id)}
-                          onClick={() => void run(u.id, () => suspendUser(u.id))}
+                          disabled={busy.includes(u.id) || u.id === user?.id}
+                          onClick={() => setSuspending(u)}
                         >
                           <UserX size={14} />
                         </Button>
@@ -415,7 +401,7 @@ export function AdminUsersPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          aria-label={t('정지 해제')}
+                          aria-label={t('{name} 정지 해제').replace('{name}', u.name)}
                           title={t('다시 접속할 수 있게 합니다')}
                           disabled={busy.includes(u.id)}
                           onClick={() => void run(u.id, () => reinstateUser(u.id))}
@@ -423,6 +409,19 @@ export function AdminUsersPage() {
                           <RefreshCw size={14} />
                         </Button>
                       )}
+                      {/* Last and set apart: the one action that cannot be undone. */}
+                      <span aria-hidden className="mx-1 w-px self-stretch bg-line" />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-danger hover:bg-danger/10 hover:text-danger"
+                        aria-label={t('{name} 계정 삭제').replace('{name}', u.name)}
+                        title={t('계정과 그 계정이 만든 모든 것을 지웁니다. 되돌릴 수 없습니다.')}
+                        disabled={busy.includes(u.id) || u.id === user?.id}
+                        onClick={() => setDeleting(u)}
+                      >
+                        <Trash2 size={14} />
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -432,6 +431,8 @@ export function AdminUsersPage() {
           </div>
         </Card>
         <ShowMore hidden={hidden} onMore={more} />
+        <PipelineApprovals />
+        <SkillApprovals />
       </PageBody>
 
       <Modal
@@ -565,7 +566,7 @@ export function AdminUsersPage() {
                   <Input
                     value={draftPassword}
                     onChange={(e) => setDraftPassword(e.target.value)}
-                    placeholder={t('8자 이상')}
+                    placeholder={t('{n}자 이상').replace('{n}', String(passwordMinLength))}
                     aria-label={t('새 비밀번호')}
                     autoComplete="off"
                     className="font-mono"
@@ -583,7 +584,7 @@ export function AdminUsersPage() {
                   <Button
                     variant="danger"
                     size="sm"
-                    disabled={busy.includes(profile.id) || draftPassword.length < 8}
+                    disabled={busy.includes(profile.id) || draftPassword.length < passwordMinLength}
                     onClick={() => {
                       const id = profile.id
                       const password = draftPassword
@@ -714,6 +715,18 @@ export function AdminUsersPage() {
       </Modal>
 
       <ConfirmDialog
+        open={!!suspending}
+        onClose={() => setSuspending(null)}
+        onConfirm={() => {
+          const target = suspending
+          setSuspending(null)
+          if (target) void run(target.id, () => suspendUser(target.id))
+        }}
+        title={t('{name}님의 접속을 막을까요?').replace('{name}', suspending?.name ?? '')}
+        description={t('바로 로그아웃되고 키도 막힙니다. 이 사람이 공개한 챗봇도 함께 멈춥니다. 「정지 해제」로 되돌릴 수 있습니다.')}
+        confirmLabel={t('정지')}
+      />
+      <ConfirmDialog
         open={!!revokingKey}
         onClose={() => setRevokingKey(null)}
         onConfirm={() => {
@@ -736,76 +749,199 @@ export function AdminUsersPage() {
         description={t('되돌릴 수 없습니다. 이 키로 호출하던 도구나 스크립트는 즉시 멈춥니다.')}
       />
 
-      <Modal
-        open={!!editing}
+      <CreditDialog
+        // Fresh dialog per person: no carried-over state.
+        key={editing?.id ?? 'none'}
+        user={editing}
+        draft={draftCredits}
+        setDraft={setDraftCredits}
+        economics={economics}
         onClose={() => setEditing(null)}
-        title={t('월 크레딧 한도')}
-        description={
-          editing
-            ? `${editing.name} · ${t('매달 1일에 이 값으로 리필됩니다. 남은 크레딧은 이월되지 않습니다.')}`
-            : undefined
-        }
-        footer={
-          <>
-            <Button onClick={() => setEditing(null)}>{t('취소')}</Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                if (editing)
-                  void run(editing.id, () =>
-                    setUserCredits(editing.id, Number(draftCredits) || 0),
-                  )
-                setEditing(null)
-              }}
-            >
-              {t('저장')}
-            </Button>
-          </>
-        }
+        onSave={async (target, credits) => {
+          await setUserCredits(target.id, credits)
+          setToast({
+            text: t('{name}의 월 크레딧을 {n}{로} 바꿨습니다.')
+              .replace('{name}', target.name)
+              .replace('{n}', credits.toLocaleString())
+              .replace('{로}', lang === 'ko' ? directionParticle(credits) : ''),
+          })
+          setEditing(null)
+        }}
+      />
+    </>
+  )
+}
+
+/** Mirrors the API's `budget_usd`. */
+function proxyBudget(credits: number, economics: { perUsd: number; budgetHeadroom: number }) {
+  return `$${(Math.ceil((credits / economics.perUsd) * (1 + economics.budgetHeadroom) * 100) / 100).toFixed(2)}`
+}
+
+/** Server maximum (`SetCreditsRequest`). */
+const CREDIT_MAX = 100_000_000
+
+/** 로 after a vowel or ㄹ (1·2·4·5·7·8·9), else 으로. */
+function directionParticle(n: number): string {
+  const last = String(n).slice(-1)
+  return last === '0' || last === '3' || last === '6' ? '으로' : '로'
+}
+
+/** 월 크레딧: checked before send, open until the server takes it; 0 confirms (no model use until refill). */
+function CreditDialog({
+  user,
+  draft,
+  setDraft,
+  economics,
+  onClose,
+  onSave,
+}: {
+  user: User | null
+  draft: string
+  setDraft: (value: string) => void
+  economics: { perUsd: number; budgetHeadroom: number }
+  onClose: () => void
+  onSave: (user: User, credits: number) => Promise<void>
+}) {
+  const t = useT()
+  const [saving, setSaving] = useState(false)
+  const [invalid, setInvalid] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
+  const [confirmZero, setConfirmZero] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // 「2,000,000」 as listed is taken as is.
+  const trimmed = draft.trim().replace(/,/g, '')
+  const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : NaN
+  const valid = Number.isSafeInteger(parsed) && parsed <= CREDIT_MAX
+
+  const save = async () => {
+    if (!user || saving) return
+    if (!valid) {
+      setInvalid(true)
+      inputRef.current?.focus()
+      return
+    }
+    if (parsed === 0 && user.monthlyCredits !== 0 && !confirmZero) {
+      setConfirmZero(true)
+      return
+    }
+    setSaving(true)
+    setFailed(null)
+    try {
+      await onSave(user, parsed)
+    } catch (err) {
+      setFailed(errorMessage(err, t('월 크레딧을 바꾸지 못했습니다. 잠시 후 다시 시도하세요.')))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={!!user}
+      onClose={onClose}
+      title={t('월 크레딧 한도')}
+      description={
+        user ? `${user.name} · ${t('매달 1일에 이 값으로 리필됩니다. 남은 크레딧은 이월되지 않습니다.')}` : undefined
+      }
+      footer={
+        <>
+          <Button onClick={onClose}>{t('취소')}</Button>
+          <Button variant="primary" aria-busy={saving || undefined} onClick={() => void save()}>
+            {saving ? (
+              <>
+                <Loader2 size={14} className="animate-spin" aria-hidden />
+                {t('저장 중…')}
+              </>
+            ) : confirmZero ? (
+              t('0으로 저장')
+            ) : (
+              t('저장')
+            )}
+          </Button>
+        </>
+      }
+    >
+      <form
+        className="space-y-4"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault()
+          void save()
+        }}
       >
         <Field label={t('프리셋')}>
           <div className="flex flex-wrap gap-1.5">
             {PLANS.map((p) => (
               <button
                 key={p.label}
-                onClick={() => setDraftCredits(String(p.credits))}
+                type="button"
+                aria-pressed={parsed === p.credits}
+                onClick={() => {
+                  setDraft(String(p.credits))
+                  setInvalid(false)
+                  setConfirmZero(false)
+                }}
                 className={cn(
                   'rounded-control border px-2.5 py-1.5 text-base transition-colors',
-                  Number(draftCredits) === p.credits
+                  parsed === p.credits
                     ? 'border-accent bg-accent-soft text-accent'
                     : 'border-line text-muted hover:bg-elevated',
                 )}
               >
                 {t(p.label)}
-                <span className="ml-1.5 text-xs text-faint">
-                  ${(p.credits / economics.perUsd).toFixed(0)}
-                </span>
+                <span className="ml-1.5 text-xs text-faint">{p.credits.toLocaleString()}</span>
               </button>
             ))}
           </div>
         </Field>
-        <Field label={t('월 크레딧')} hint={t('이번 달 사용량은 그대로 유지됩니다.')}>
+        <Field
+          label={t('월 크레딧')}
+          hint={
+            valid
+              ? t('{n} 크레딧 · 0~100,000,000 · 이번 달 사용량은 그대로 유지됩니다.').replace('{n}', parsed.toLocaleString())
+              : t('0~100,000,000 크레딧 · 이번 달 사용량은 그대로 유지됩니다.')
+          }
+          error={invalid ? t('0부터 100,000,000 사이의 정수로 입력하세요.') : null}
+        >
           <Input
-            type="number"
-            value={draftCredits}
-            onChange={(e) => setDraftCredits(e.target.value)}
+            ref={inputRef}
+            inputMode="numeric"
+            autoComplete="off"
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              setInvalid(false)
+              setConfirmZero(false)
+              setFailed(null)
+            }}
           />
         </Field>
-        {editing && (
+        {confirmZero && (
+          <p role="alert" className="rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-base text-warn">
+            {t('이 사용자는 다음 리필까지 모델을 쓸 수 없습니다.')}
+          </p>
+        )}
+        {failed && (
+          <p role="alert" className="text-base text-danger">
+            {failed}
+          </p>
+        )}
+        {user && (
           <div className="space-y-1.5 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
             <p>
-              {t('현재 주기 사용량 {n} 크레딧').replace('{n}', editing.creditsUsed.toLocaleString())} ·{' '}
-              {t('{date} 리필').replace('{date}', formatDate(editing.cycleResetsAt))}
+              {t('현재 주기 사용량 {n} 크레딧').replace('{n}', user.creditsUsed.toLocaleString())} ·{' '}
+              {t('{date} 리필').replace('{date}', formatDate(user.cycleResetsAt))}
             </p>
             {/* The proxy copy sits above the real limit as a backstop. */}
             <p className="text-xs text-faint">
               {t('LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).')
-                .replace('{limit}', proxyBudget(Number(draftCredits) || 0))
+                .replace('{limit}', proxyBudget(valid ? parsed : 0, economics))
                 .replace('{pct}', String(Math.round(economics.budgetHeadroom * 100)))}
             </p>
           </div>
         )}
-      </Modal>
-    </>
+      </form>
+    </Modal>
   )
 }

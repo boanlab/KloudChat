@@ -1,9 +1,4 @@
-"""Deterministic read-back checks on generated documents.
-
-Visual rules are enforced by construction (the seed owns styling and `sanitise`
-drops `class`/`style`), so only the words are checked. `P0` means the document
-is wrong; `P1` means a person should look.
-"""
+"""Deterministic word checks on generated documents; P0 wrong, P1 look."""
 
 from __future__ import annotations
 
@@ -12,21 +7,21 @@ from dataclasses import dataclass, field
 
 from app.services import arithmetic
 
-#: Text below this is an unwritten block, not a terse one.
+#: below this: unwritten block
 _MIN_BLOCK_CHARS = 12
 
-#: Slide bounds; the deck prompt asks for five bullets of forty characters.
+#: slide bounds (prompt asks 5 × 40 chars)
 _MAX_BULLETS = 7
 _MAX_BULLET_CHARS = 45
 
-#: A run of ideographs; a parenthesised gloss such as `분산(分散)` is legitimate.
+#: ideograph run; bracketed glosses allowed
 _HANJA = re.compile(r"[\u4e00-\u9fff]+")
-#: A gloss: ideographs inside brackets, wherever the brackets sit.
+#: ideographs inside brackets
 _GLOSSED = re.compile(r"[(\[][^)\]]*[\u4e00-\u9fff][^)\]]*[)\]]")
 
 
 def _stray_hanja(text: str) -> str:
-    """The first run of ideographs that is not a parenthesised gloss, or `''`."""
+    """First ideograph run outside a gloss, or `''`."""
     glosses = [(m.start(), m.end()) for m in _GLOSSED.finditer(text)]
     for found in _HANJA.finditer(text):
         if any(start <= found.start() < end for start, end in glosses):
@@ -35,43 +30,42 @@ def _stray_hanja(text: str) -> str:
     return ""
 
 
-#: Template or draft leftovers nobody meant to submit.
+#: template/draft leftovers
 _PLACEHOLDER = re.compile(
-    r"lorem ipsum|\{\{|\[REPLACE\]|\bTODO\b|\bTBD\b|여기에\s*\S*\s*(입력|작성|붙여)|"
+    # 「여기에 입력하세요」 at line end only
+    r"lorem ipsum|\{\{|\[REPLACE\]|\bTODO\b|\bTBD\b|"
+    r"여기에\s*(?:\S+\s*)?(?:입력|작성|붙여\s*넣)"
+    r"(?=(?:하세요|하십시오|해\s*주세요|하시오|하기|기)?\s*(?:$|[.…)\]」』<>:]|[-—]))|"
     r"내용을\s*(입력|작성)|항목\s*[1-3]\s*$|샘플\s*(텍스트|내용)",
     re.I | re.M,
 )
 
-#: Unsourced marketing figures. Narrow on purpose: ordinary "12% 증가" is fine.
+#: unsourced marketing figures; deliberately narrow
 _INVENTED_METRIC = re.compile(
     r"(\d+\s*배\s*(빠르|향상|개선|증가|절감|단축))|"
     r"(99[.,]9\s*%)|(100\s*%\s*(보장|정확|안전))|(24/7)|"
     r"(업계\s*(최고|최초|유일))",
 )
 
-#: Markdown emphasis left unrendered in HTML output: paired `**`, closed on the
-#: same line, carrying a space or a Hangul syllable so `<code>` samples,
-#: multiplication signs and footnote stars do not match.
+#: unrendered `**` pairs on one line with a space or Hangul (not code/stars)
 _STRAY_MARKDOWN = re.compile(r"\*\*(?=\S)(?=[^*\n]*[\s\uac00-\ud7a3])[^*\n]{1,80}?(?<=\S)\*\*")
 
-#: A line starting as the JSON envelope: a block cut off at the token limit.
-#: Line-anchored, since a JSON fragment inside a sentence is legitimate.
+#: line-anchored JSON envelope start: block cut at the token limit
 _ENVELOPE = re.compile(r'^\s*\{\s*"(?:layout|body)"\s*:')
 
-#: Filler words. `P1`: the fix is a rewrite, not a correction.
+#: filler words; P1 (needs rewrite)
 _FILLER = re.compile(
     r"혁신적|차별화된|최적의|획기적|압도적|최고의\s*품질|seamless|cutting[- ]edge|"
     r"game[- ]chang|state[- ]of[- ]the[- ]art",
     re.I,
 )
 
-#: Emoji leading a heading or a list item.
+#: emoji leading a heading or list item
 _LEADING_EMOJI = re.compile(r"^\s*[\U0001F300-\U0001FAFF✀-➿☀-⛿⬀-⯿]")
 
 _TAGS = re.compile(r"<[^>]{1,2000}>")
 
-#: Where one line of an HTML block ends. `h3` is a column label, not an item,
-#: so it is lifted out by `_LABEL` instead of counted here.
+#: HTML line end; `h3` labels lifted by `_LABEL`
 _LINE_END = re.compile(r"</(?:li|p|blockquote|td)>")
 _LABEL = re.compile(r"<h3\b[^>]*>(.*?)</h3\s*>", re.S | re.I)
 
@@ -81,7 +75,7 @@ class Finding:
     severity: str
     rule: str
     message: str
-    #: Heading of the part concerned; empty for a whole-document finding.
+    #: part heading; empty = whole document
     where: str = ""
 
     def wire(self) -> dict[str, str]:
@@ -95,12 +89,11 @@ class Finding:
 
 @dataclass(slots=True)
 class Part:
-    """One heading and the lines under it, whatever surface it came from."""
+    """One heading and its lines, any surface."""
 
     title: str
     lines: list[str] = field(default_factory=list)
-    #: Headings inside the part (column labels, sub-headings). Read by the word
-    #: rules, never counted as items by the shape rules.
+    #: inner headings; read by word rules, not counted as items
     labels: list[str] = field(default_factory=list)
 
     @property
@@ -113,7 +106,7 @@ def _plain(markup: str) -> str:
 
 
 def from_sections(sections: list[dict]) -> list[Part]:
-    """A markdown report: one part per section, one line per markdown line."""
+    """Markdown report: part per section, line per line."""
     parts = []
     for section in sections:
         body = str(section.get("content") or "")
@@ -122,14 +115,47 @@ def from_sections(sections: list[dict]) -> list[Part]:
     return parts
 
 
+def _line_key(line: str) -> str:
+    """Line normalised for 「repeat」 comparison."""
+    return re.sub(r"\W", "", re.sub(r"^[-*\d.>#\s]+", "", line).strip())
+
+
+def drop_repeats(sections: list[dict]) -> tuple[list[dict], list[str]]:
+    """`(sections, dropped)`: later verbatim prose repeats removed."""
+    seen: set[str] = set()
+    out: list[dict] = []
+    dropped: list[str] = []
+    for section in sections:
+        body = str(section.get("content") or "")
+        kept: list[str] = []
+        cut: list[str] = []
+        fenced = False
+        for line in body.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                fenced = not fenced
+            key = _line_key(line)
+            prose = not fenced and stripped and not stripped.startswith(("|", "#", "```"))
+            if prose and len(key) >= 8 and key in seen:
+                cut.append(stripped)
+                continue
+            kept.append(line)
+        if cut and any(_line_key(x) for x in kept if not x.strip().startswith("#")):
+            body = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+            dropped += cut
+        seen |= {k for k in map(_line_key, body.split("\n")) if len(k) >= 8}
+        out.append({**section, "content": body} if body != section.get("content") else section)
+    return out, dropped
+
+
 def from_slides(slides: list[dict]) -> list[Part]:
-    """A JSON deck: one part per slide, reading every field that can hold words or numbers."""
+    """JSON deck: part per slide, every word/number field."""
     parts = []
     for slide in slides:
         lines = [str(b) for b in (slide.get("bullets") or []) if str(b).strip()]
         if body := str(slide.get("body") or "").strip():
             lines.append(body)
-        # A table row is one line: a claim in a table is the row, not the cell.
+        # table row = one claim
         for row in slide.get("rows") or []:
             if line := " ".join(str(cell) for cell in row if str(cell).strip()):
                 lines.append(line)
@@ -138,7 +164,7 @@ def from_slides(slides: list[dict]) -> list[Part]:
                 lines.append(f"{pair[0]} {pair[1]}")
         if chart := slide.get("chart"):
             lines.extend(_chart_lines(chart))
-        # Paired layouts read like table rows: the claim is the pair.
+        # paired layouts read as rows
         for key in ("bands", "tiles", "timeline", "steps", "cards"):
             for pair in slide.get(key) or []:
                 if isinstance(pair, (list, tuple)) and len(pair) >= 2:
@@ -147,20 +173,20 @@ def from_slides(slides: list[dict]) -> list[Part]:
                 elif isinstance(pair, dict):
                     if line := " ".join(str(v) for v in pair.values() if str(v).strip()):
                         lines.append(line)
-        # Every other field a pattern fills holds words too.
+        # other pattern fields hold words too
         for key, value in slide.items():
             if key in _NOT_WORDS or key in ("bullets", "body", "rows", "metrics", "chart",
                                             "bands", "tiles", "timeline", "steps", "cards"):
                 continue
             lines.extend(_leaf_lines(value))
         if slide.get("layout") in ("section", "agenda"):
-            # A divider carries only its title, which is shorter than the emptiness floor.
+            # divider: title only, below emptiness floor
             continue
         parts.append(Part(str(slide.get("title") or ""), lines))
     return parts
 
 
-#: Slide fields that describe the slide rather than say something on it.
+#: slide meta fields, not content
 _NOT_WORDS = frozenset({
     "id", "layout", "title", "notes", "accent", "image", "diagram", "textScale", "number",
     "pattern", "theme", "visualStyle", "density", "factCheck", "status",
@@ -168,7 +194,7 @@ _NOT_WORDS = frozenset({
 
 
 def _leaf_lines(value) -> list[str]:
-    """A field's words as lines: a list entry (or a pair, or a record) is one line."""
+    """Field words as lines; list entry, pair, or record = one line."""
     if isinstance(value, str):
         return [value.strip()] if value.strip() else []
     if isinstance(value, dict):
@@ -188,7 +214,7 @@ def _leaf_lines(value) -> list[str]:
 
 
 def _chart_lines(chart: dict) -> list[str]:
-    """A chart's numbers as `<category> <series> <value><unit>` lines the checks can read."""
+    """Chart numbers as `<category> <series> <value><unit>` lines."""
     if not isinstance(chart, dict):
         return []
     categories = [str(c) for c in (chart.get("categories") or [])]
@@ -209,7 +235,7 @@ def _chart_lines(chart: dict) -> list[str]:
 
 
 def from_blocks(blocks: list[dict]) -> list[Part]:
-    """An HTML artifact: one part per block, its markup reduced to lines."""
+    """HTML artifact: part per block."""
     parts = []
     for block in blocks:
         markup = str(block.get("html") or "")
@@ -231,11 +257,7 @@ def check(
     slides: bool = False,
     limits: dict[str, int] | None = None,
 ) -> list[Finding]:
-    """Every finding, worst first.
-
-    `slides` enables the two shape rules. `limits` (`max_bullets`,
-    `max_bullet_chars`) lets a template override the general bounds.
-    """
+    """Every finding, worst first; `slides` enables shape rules, `limits` overrides bounds."""
     max_bullets = (limits or {}).get("max_bullets") or _MAX_BULLETS
     max_bullet_chars = (limits or {}).get("max_bullet_chars") or _MAX_BULLET_CHARS
     findings: list[Finding] = []
@@ -260,7 +282,8 @@ def check(
             )
         for wrong in arithmetic.findings(text, where=where):
             findings.append(Finding("P0", "arithmetic", wrong["message"], where))
-        if found := _PLACEHOLDER.search(text):
+        # per line: joined text hides line-end leftovers
+        if found := _PLACEHOLDER.search("\n".join([part.title, *part.labels, *part.lines])):
             findings.append(
                 Finding(
                     "P0",

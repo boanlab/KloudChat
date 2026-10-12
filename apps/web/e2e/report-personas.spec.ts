@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { inflateRawSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
-import { approvePlan, ribbonTab, signIn } from './helpers'
+import { approvePlan, ribbonTab, signIn, panelHeader, moreMenu } from './helpers'
 
 // Retried: the content is model-written.
 test.describe.configure({ retries: 2 })
@@ -59,7 +59,7 @@ async function openNewestReport(page: import('@playwright/test').Page) {
   await page.getByRole('tab', { name: /^보고서/ }).click()
   await page.getByText('원본 작업 열기').first().click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
-  await expect(page.getByRole('button', { name: '원문 편집' })).toBeVisible({ timeout: 20_000 })
+  await expect(panelHeader(page).getByRole('button', { name: '더보기' })).toBeVisible({ timeout: 20_000 })
   return page.evaluate(async () => {
     const login = await fetch('/api/auth/login', {
       method: 'POST',
@@ -81,8 +81,8 @@ async function openNewestReport(page: import('@playwright/test').Page) {
 /** Replaces the whole document through the editor and saves. */
 async function rewrite(page: import('@playwright/test').Page, markdown: string) {
   // A freshly generated panel may still be drawing.
-  await expect(page.getByRole('button', { name: '원문 편집' })).toBeVisible({ timeout: 60_000 })
-  await page.getByRole('button', { name: '원문 편집' }).click()
+  await expect(panelHeader(page).getByRole('button', { name: '더보기' })).toBeVisible({ timeout: 60_000 })
+  await moreMenu(page, /원문 편집/)
   await page.getByLabel('문서 원본').fill(markdown)
   // Two buttons are named 저장; the editor's shortcut is unambiguous.
   await page.getByLabel('문서 원본').press('Control+Enter')
@@ -103,12 +103,13 @@ test('대학원생 — 만들어진 보고서의 제목이 내가 친 요청 문
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
   // Nothing is written until the plan is approved.
   await approvePlan(page, 480_000)
-  // The section count is on the 목차 button in the 보기 tab.
+  // The section count is on 목차 in the header's ⋯ menu.
   await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 180_000 })
-  await ribbonTab(page, '보기')
-  await expect(page.getByRole('button', { name: /목차 \d+\/[3-8]/ })).toBeVisible({
+  await panelHeader(page).getByRole('button', { name: '더보기' }).click()
+  await expect(page.getByRole('menuitem', { name: /목차\s*\d+\/[3-8]/ })).toBeVisible({
     timeout: 180_000,
   })
+  await page.keyboard.press('Escape')
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
 
   const id = await page.evaluate(async () => {
@@ -139,9 +140,7 @@ test('대학원생 — 만들어진 보고서의 제목이 내가 친 요청 문
 test('사무직 — 보고서를 한글 문서로 받으면 한글이 여는 파일이다', async ({ page }) => {
   test.setTimeout(180_000)
   await openNewestReport(page)
-
-  await ribbonTab(page, '파일')
-  await page.getByRole('button', { name: '내보내기', exact: true }).click()
+  await page.getByRole('button', { name: '내려받기', exact: true }).click()
   const download = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('menuitem', { name: '한글 문서' }).click()
   const file = await download
@@ -168,9 +167,7 @@ test('연구직 — 번호를 매긴 절차가 내보낸 문서에서 번호를 
     page,
     `# ${title}\n\n## 측정 절차\n\n아래 순서로 수행한다.\n\n1. 시료를 준비한다\n1. 온도를 25℃ 로 맞춘다\n1. 3회 반복 측정한다\n\n## 재시작 절차\n\n8. 여덟 번째 단계\n9. 아홉 번째 단계\n10. 열 번째 단계\n`,
   )
-
-  await ribbonTab(page, '파일')
-  await page.getByRole('button', { name: '내보내기', exact: true }).click()
+  await page.getByRole('button', { name: '내려받기', exact: true }).click()
   const hwpxDownload = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('menuitem', { name: '한글 문서' }).click()
   const submitted = hwpxText(readFileSync((await (await hwpxDownload).path())!))
@@ -184,8 +181,7 @@ test('연구직 — 번호를 매긴 절차가 내보낸 문서에서 번호를 
   expect(submitted).toContain(title)
 
   // The Markdown export is the source, `1. 1. 1.` included.
-  await ribbonTab(page, '파일')
-  await page.getByRole('button', { name: '내보내기', exact: true }).click()
+  await page.getByRole('button', { name: '내려받기', exact: true }).click()
   const mdDownload = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('menuitem', { name: '마크다운 원문' }).click()
   const md = readFileSync((await (await mdDownload).path())!, 'utf-8')

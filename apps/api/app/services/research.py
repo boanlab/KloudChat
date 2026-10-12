@@ -1,8 +1,4 @@
-"""Web research step for the document surfaces: plan queries, search, read pages.
-
-Never raises. `Findings.searched` is False when no search backend ran, and the
-document prompts say so.
-"""
+"""Document-surface web research: plan, search, read. Never raises."""
 
 from __future__ import annotations
 
@@ -16,20 +12,20 @@ from typing import Any
 
 import httpx
 
-from app.services import credibility, settings_store, thinking
+from app.services import credibility, korean_papers, settings_store, thinking
 from app.services.tools.builtin import scrape, searxng
 
 log = logging.getLogger(__name__)
 
 #: Planned queries per document.
 MAX_QUERIES = 4
-#: Results kept per query, before cross-query de-duplication.
+#: Results per query before cross-query dedupe.
 _PER_QUERY = 5
-#: Bodies fetched per query; the rest stay as title and snippet.
+#: Bodies fetched per query; rest title+snippet.
 _BODIES = 2
-#: Characters of any one page body handed to the writer.
+#: Max chars per page body.
 _BODY_CHARS = 6_000
-#: Sources kept across every query.
+#: Sources kept overall.
 MAX_SOURCES = 10
 
 _PLAN_PROMPT = """다음 요청으로 문서를 쓰려고 한다. 사실 확인이 필요한 지점을 찾아
@@ -48,7 +44,7 @@ _PLAN_PROMPT = """다음 요청으로 문서를 쓰려고 한다. 사실 확인�
 JSON 배열로만 답하라. 예: ["검색어1", "검색어2"]"""
 
 
-#: A page's frame, not its text: sign-in prompts, menus, share and skip links.
+#: Page chrome: sign-in, menus, share/skip links.
 _CHROME = re.compile(
     r"로그인|회원가입|비밀번호|아이디 찾기|바로가기|메뉴|공유하기|구독하기|카카오톡|페이스북|"
     r"Copyright|All rights reserved|쿠키|cookie|Sign in|Log in|Subscribe|Skip to", re.I
@@ -57,7 +53,7 @@ _LINK_ONLY = re.compile(r"^[\s*>#-]*(?:\[[^\]]*\]\([^)]*\)[\s|·,/]*)+$")
 
 
 def page_text(markdown: str) -> str:
-    """A scraped page without its frame: link-only lines, site chrome and menu runs."""
+    """Scraped page minus chrome."""
     kept: list[str] = []
     run: list[str] = []
 
@@ -84,12 +80,12 @@ def page_text(markdown: str) -> str:
 
 
 def _publisher(url: str) -> str:
-    """Host without `www.`, truncated to 80 characters."""
+    """Host without `www.`, max 80 chars."""
     host = re.sub(r"^https?://", "", url).split("/")[0]
     return re.sub(r"^www\.", "", host)[:80]
 
 
-#: Host substrings never cited in a work, study or research document.
+#: Hosts never cited.
 _NEVER = (
     # Video and music.
     "youtube.com",
@@ -130,7 +126,7 @@ _NEVER = (
     "studocu.com",
 )
 
-#: Host substrings ranked first; a boost, never a requirement.
+#: Preferred hosts; boost only.
 _PREFERRED = (
     ".go.kr",
     ".or.kr",
@@ -154,7 +150,7 @@ _PREFERRED = (
     "kisa.or.kr",
 )
 
-#: Relevance below which a hit is dropped as unrelated.
+#: Relevance floor.
 _FLOOR = 0.34
 _SCHOLAR_FLOOR = 0.5
 
@@ -166,7 +162,7 @@ def _terms(text: str) -> set[str]:
 
 
 def relevance(query: str, hit: dict[str, str]) -> float:
-    """Fraction of the query's terms found in the hit's title and snippet, 0 to 1."""
+    """Fraction of query terms in title+snippet."""
     wanted = _terms(query)
     if not wanted:
         return 1.0
@@ -175,7 +171,7 @@ def relevance(query: str, hit: dict[str, str]) -> float:
 
 
 def _carries(text: str, term: str) -> bool:
-    """Substring match; a trailing Korean particle on the term is also tried without."""
+    """Substring match, also without a trailing Korean particle."""
     if term in text:
         return True
     return len(term) >= 3 and term[-1] in "의은는이가을를과와에로도들" and term[:-1] in text
@@ -186,13 +182,13 @@ def _host(url: str) -> str:
 
 
 def _rejected(url: str) -> str:
-    """Why this host cannot be a source, or `''` when it can."""
+    """Why the host can't be a source, or ''."""
     host = _host(url)
     return "never" if any(bad in host for bad in _NEVER) else ""
 
 
 def score(query: str, hit: dict[str, str]) -> float:
-    """Rank above the floor: relevance, plus preferred hosts and credibility tier."""
+    """Rank: relevance plus preferred host and credibility tier."""
     base = relevance(query, hit)
     url = hit.get("url", "")
     preferred = 0.4 if any(good in _host(url) for good in _PREFERRED) else 0.0
@@ -201,31 +197,31 @@ def score(query: str, hit: dict[str, str]) -> float:
 
 @dataclass(slots=True)
 class Findings:
-    """What research produced: the numbered source shelf and the same material as prose."""
+    """Numbered source shelf plus the same material as prose."""
 
     sources: list[dict[str, Any]] = field(default_factory=list)
     context: str = ""
     queries: list[str] = field(default_factory=list)
-    #: False means no search backend ran and the document is written from memory.
+    #: False = no search ran; written from memory.
     searched: bool = False
-    #: Hits thrown away by selection.
+    #: Hits dropped by selection.
     dropped: int = 0
     usage: dict[str, int] = field(default_factory=lambda: {"inputTokens": 0, "outputTokens": 0})
 
     @property
     def detail(self) -> str:
-        """Step subtitle: the publishers, joined."""
+        """Step subtitle: joined publishers."""
         return " · ".join(str(s["publisher"]) for s in self.sources)
 
 
 async def available() -> bool:
-    """Whether a search backend is configured at all."""
+    """Search backend configured."""
     backends = await settings_store.tools_config()
     return bool(backends.search)
 
 
 def _parse_queries(text: str, request: str) -> list[str]:
-    """Planned queries, or the request itself when the planner gave nothing."""
+    """Planned queries, else the request."""
     block = text[text.find("[") : text.rfind("]") + 1] if "[" in text and "]" in text else ""
     try:
         parsed = json.loads(block)
@@ -238,7 +234,7 @@ def _parse_queries(text: str, request: str) -> list[str]:
 
 
 async def literature_queries(request: str, model: str, api_key: str) -> list[str]:
-    """English keyword queries for a literature question; `[]` when the planner gave none."""
+    """English literature queries; [] if none."""
     queries, _ = await _plan(request, model, api_key, scholarly=True)
     return [q for q in queries if q.strip() and q.strip() != request[:300].strip()]
 
@@ -246,7 +242,7 @@ async def literature_queries(request: str, model: str, api_key: str) -> list[str
 async def _plan(
     request: str, model: str, api_key: str, *, scholarly: bool = False
 ) -> tuple[list[str], dict[str, int]]:
-    """Search terms for this request; the request itself on any failure."""
+    """Search terms; request on failure."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     if not model:
         return [request[:300]], spent
@@ -290,7 +286,7 @@ async def _plan(
     text = (payload["choices"][0]["message"]["content"] or "").strip()
     queries = _parse_queries(text, request)
     if scholarly:
-        # The planner's cap is the literature mode's own.
+        # Planner cap = literature mode's.
         block = text[text.find("[") : text.rfind("]") + 1] if "[" in text else ""
         try:
             parsed = [str(q).strip()[:200] for q in json.loads(block) if str(q).strip()]
@@ -300,7 +296,7 @@ async def _plan(
     return queries, spent
 
 
-#: The literature mode: more English keyword queries, each also through the science lane.
+#: Literature-mode query count (each also via science lane).
 _SCHOLAR_QUERIES = 6
 _SCHOLAR_SOURCES = 16
 _SCHOLAR_PLAN_PROMPT = """다음 요청으로 학술 문서(논문 초안·문헌 정리)를 쓰려고 한다. 관련 연구를
@@ -318,7 +314,7 @@ _SCHOLAR_PLAN_PROMPT = """다음 요청으로 학술 문서(논문 초안·문�
 
 JSON 배열 하나만 답하라. 예: ["...", "..."]"""
 
-#: Scholarly hosts: one paper per host would leave a single arXiv paper.
+#: Scholarly hosts exempt from one-per-host.
 _SCHOLAR_HOSTS = (
     "arxiv.org", "aclanthology.org", "openreview.net", "proceedings.", "dl.acm.org",
     "usenix.org", "ieeexplore.ieee.org", "semanticscholar.org", "doi.org", "openalex.org",
@@ -347,7 +343,7 @@ async def _on_subject(
     model: str,
     api_key: str,
 ) -> tuple[list[list[tuple[float, dict[str, str]]]], dict[str, int]]:
-    """`ranked` without the hits the model judged off-subject; unchanged if judging fails."""
+    """`ranked` minus model-judged off-subject hits; unchanged on failure."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     order: list[str] = []
     for keep in ranked:
@@ -395,7 +391,7 @@ async def _on_subject(
     kept_urls = {order[n - 1] for n in chosen if 1 <= n <= len(order)}
     if not kept_urls:
         return ranked, spent
-    # Hits below the judged window were not shown; they stay out too.
+    # Unjudged lower hits stay out.
     judged = [[(sc, hit) for sc, hit in keep if hit["url"] in kept_urls] for keep in ranked]
     log.info("research kept %d of %d candidates on subject", len(kept_urls), len(order))
     return judged, spent
@@ -406,7 +402,7 @@ def _scholarly_host(url: str) -> bool:
 
 
 async def _gather(base_url: str, query: str, *, scholarly: bool = False) -> list[dict[str, str]]:
-    """One query's hits; `[]` on any failure."""
+    """One query's hits; [] on failure."""
     try:
         if scholarly:
             return await searxng(base_url, query, 8, kind="papers")
@@ -424,10 +420,7 @@ async def run(
     max_sources: int = MAX_SOURCES,
     scholarly: bool = False,
 ) -> Findings:
-    """Plan queries, search them concurrently, read the top pages. Never raises.
-
-    `scholarly`: the literature mode — English keyword queries through the science lane
-    too, more sources, and several papers from one scholarly host."""
+    """Plan, search concurrently, read top pages. Never raises."""
     backends = await settings_store.tools_config()
     if not backends.search:
         return Findings()
@@ -435,15 +428,22 @@ async def run(
     queries, spent = await _plan(request, model, api_key, scholarly=scholarly)
     if scholarly:
         max_sources = max(max_sources, _SCHOLAR_SOURCES)
-    hit_lists = await asyncio.gather(
-        *(_gather(backends.search, q, scholarly=scholarly) for q in queries)
+    # Korean-scholarship requests add a Korean papers query.
+    korean_query = (korean_papers.query_for(request, queries)
+                    if korean_papers.wanted(request) else "")
+    hit_lists, korean_hits = await asyncio.gather(
+        asyncio.gather(*(_gather(backends.search, q, scholarly=scholarly) for q in queries)),
+        korean_papers.search(korean_query) if korean_query else asyncio.sleep(0, []),
     )
+    hit_lists = list(hit_lists)
+    if korean_hits:
+        queries, hit_lists = [*queries, korean_query], [*hit_lists, korean_hits]
 
-    # Filtered and ranked per query before anything is fetched; picked
-    # round-robin across queries, one publisher and one URL at most.
+    # Per-query filter and rank before fetch; round-robin, one per publisher/URL.
     sources: list[dict[str, Any]] = []
     seen_hosts: set[str] = set()
     seen_urls: set[str] = set()
+    seen_works: list[tuple[str, ...]] = []
     ranked: list[list[tuple[float, dict[str, str]]]] = []
     dropped: dict[str, int] = {"차단": 0, "저신뢰": 0, "무관": 0}
     for query_index, hits in enumerate(hit_lists):
@@ -457,10 +457,10 @@ async def run(
                 dropped["차단"] += 1
                 continue
             if credibility.tier(url) == 0:
-                # A blog or content site is not something a document can cite.
+                # Blogs/content sites uncitable.
                 dropped["저신뢰"] += 1
                 continue
-            # Papers need more of the query's terms to count as relevant.
+            # Papers need higher relevance.
             if relevance(query, hit) < (_SCHOLAR_FLOOR if scholarly else _FLOOR):
                 dropped["무관"] += 1
                 continue
@@ -477,7 +477,7 @@ async def run(
             dropped["무관"],
         )
 
-    # Shared words do not make a hit on-subject; the model reviews the titles once.
+    # Word overlap ≠ on-subject; one model title review.
     if model and sum(len(keep) for keep in ranked) > 3:
         ranked, judge_spent = await _on_subject(request, ranked, model, api_key)
         spent = {k: spent[k] + judge_spent[k] for k in spent}
@@ -491,18 +491,29 @@ async def run(
             url = hit["url"]
             if url in seen_urls:
                 continue
+            # Same paper across hosts cited once.
+            work = _work_key(hit["title"])
+            if work and any(_same_work(work, other) for other in seen_works):
+                continue
             host = _publisher(url)
-            if host in seen_hosts and not (scholarly and _scholarly_host(url)):
+            if host in seen_hosts and not (scholarly and _scholarly_host(url)) \
+                    and hit.get("lane") != korean_papers.LANE:
                 continue
             seen_urls.add(url)
             seen_hosts.add(host)
+            if work:
+                seen_works.append(work)
             picks.append((query_index, hit))
             if len(picks) >= max_sources:
                 break
         if len(picks) >= max_sources:
             break
 
-    # Bodies for the first `_BODIES` picks of each query, fetched together.
+    # Truncated titles completed from another hit of the same work.
+    every = [hit for hits in hit_lists for hit in hits]
+    picks = [(q, _fuller(hit, every)) for q, hit in picks]
+
+    # Bodies for top `_BODIES` per query, fetched together.
     wanted = [
         index
         for index, (query_index, _) in enumerate(picks)
@@ -520,6 +531,7 @@ async def run(
     for index, (query_index, hit) in enumerate(picks):
         ordinal = len(sources) + 1
         body = (bodies.get(index) or "").strip()
+        hit = _titled_from_page(hit, body)
         sources.append(
             {
                 "id": f"src{index}_{uuid.uuid4().hex[:6]}",
@@ -530,6 +542,7 @@ async def run(
                 "origin": "web",
                 "originLabel": "웹 검색",
                 "quote": (hit.get("snippet") or "")[:300],
+                **bibliography(hit),
             }
         )
         lines = [
@@ -543,6 +556,9 @@ async def run(
             lines.append(f"본문 발췌:\n{page_text(body)[:_BODY_CHARS]}")
         blocks.append("\n".join(lines))
 
+    if korean_query and not any(hit.get("lane") == korean_papers.LANE for _, hit in picks):
+        # None found: stated, so the writer doesn't invent 국내 동향.
+        blocks.append(korean_papers.none_found(korean_query))
     return Findings(
         sources=sources,
         context="\n\n".join(blocks),
@@ -553,7 +569,7 @@ async def run(
     )
 
 
-#: A request comparing products: 「AI 보안 솔루션 … 배포 방법, 주요 기능 … 분석」.
+#: Product comparison request.
 _PRODUCTS = re.compile(r"솔루션|제품|도구|툴|서비스|플랫폼|벤더|프레임워크")
 _COMPARES = re.compile(r"비교|동향|분석|조사")
 _PRODUCTS_PER_REQUEST = 4
@@ -594,18 +610,18 @@ async def _ask(prompt: str, model: str, api_key: str, max_tokens: int) -> tuple[
     return (payload["choices"][0]["message"]["content"] or "").strip(), spent
 
 
-#: The axes a comparison is asked along: 「대상 환경, 배포 방법, 주요 기능 등을 … 분석」.
+#: Comparison axis.
 _AXIS = r"[가-힣A-Za-z0-9]{1,10}(?: [가-힣A-Za-z0-9]{1,10})?"
 _AXES = re.compile(
     rf"((?:{_AXIS},\s?){{2,}}{_AXIS}?)\s?"
     r"(?:등을|등의|을|를)\s?(?:종합적으로\s?|중심으로\s?)?(?:비교|분석|조사|정리)"
 )
-#: A clause ending, not a thing compared: 「…등장하고 있는데,」.
+#: Clause ending, not an axis.
 _CONNECTIVE = re.compile(r"(?:는데|하고|하며|지만|으며|이며|는|고|며|서)$")
 
 
 def comparison_axes(request: str) -> list[str]:
-    """The axes a product comparison is asked along; `[]` when no products are compared."""
+    """Product comparison axes; [] if none."""
     if not (_PRODUCTS.search(request) and _COMPARES.search(request)):
         return []
     m = _AXES.search(request)
@@ -622,9 +638,7 @@ def comparison_axes(request: str) -> list[str]:
 async def deepen_for_products(
     request: str, findings: Findings, *, model: str, api_key: str
 ) -> Findings:
-    """Products found by the first search, each searched again for its own pages.
-
-    Returns `findings` with the new pages appended; never raises."""
+    """Re-search each found product for its own pages; appends to `findings`. Never raises."""
     axes = comparison_axes(request)
     if not findings.sources or not model or not axes:
         return findings
@@ -640,7 +654,7 @@ async def deepen_for_products(
         log.info("product discovery failed: %s", exc)
         return findings
     lowered = findings.context.lower()
-    # A name the pages do not carry is the model's, not the sources'.
+    # Names absent from pages are the model's; dropped.
     names = [n for n in names if re.split(r"[\s(]", n.lower())[0] in lowered]
     names = names[:_PRODUCTS_PER_REQUEST]
     findings.usage = {k: findings.usage.get(k, 0) + spent.get(k, 0) for k in spent}
@@ -681,7 +695,7 @@ async def deepen_for_products(
     return findings
 
 
-#: Header of the user-role data block; names the provenance as a web search.
+#: Untrusted data block header, provenance web search.
 CONTEXT_HEADER = (
     "# 웹 검색 결과\n"
     "아래는 이 문서를 쓰기 위해 방금 웹에서 찾은 자료입니다. "
@@ -691,20 +705,20 @@ CONTEXT_HEADER = (
 
 
 def context_block(findings: Findings) -> str:
-    """The findings as one untrusted-context entry, or `''` when empty."""
+    """Findings as one untrusted-context entry, or ''."""
     if not findings.context:
         return ""
     return CONTEXT_HEADER + "\n" + findings.context
 
 
-#: Told to the writer when a search ran and found nothing worth citing.
+#: Writer rule: search found nothing citable.
 EMPTY_RULE = (
     "웹을 검색했지만 인용할 만한 자료를 찾지 못했습니다. "
     "확인되지 않은 수치나 제품명을 단정하지 말고, 확인하지 못했다는 사실을 "
     "본문에 밝히세요."
 )
 
-#: Told to the writer when no search backend could run.
+#: Writer rule: no search backend.
 UNRESEARCHED_RULE = (
     "웹 검색을 쓸 수 없어 이 문서는 검색 없이 작성됩니다. "
     "최신 정보나 제품명·버전·수치를 단정하지 말고, 확인하지 못한 항목은 "
@@ -712,14 +726,114 @@ UNRESEARCHED_RULE = (
 )
 
 
+def _work_key(title: str) -> tuple[str, ...]:
+    """Lowercased title words for work matching; () under four words."""
+    words = tuple(w.lower() for w in re.findall(r"[0-9A-Za-z가-힣]+", title or ""))
+    return words if len(words) >= 4 else ()
+
+
+def _same_work(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
+    """Same work: equal keys or one a truncated prefix."""
+    short, long_ = sorted((a, b), key=len)
+    return long_[: len(short)] == short
+
+
+def _fuller(hit: dict, others: list[dict]) -> dict:
+    """`hit` with the longest title for its work."""
+    title = str(hit.get("title") or "").strip()
+    work = _work_key(title)
+    if not work:
+        return hit
+    longer = [str(o.get("title") or "").strip() for o in others
+              if len(str(o.get("title") or "").strip()) > len(title)]
+    best = max((t for t in longer if (key := _work_key(t)) and _same_work(work, key)),
+               key=len, default="")
+    return {**hit, "title": best} if best else hit
+
+
+#: Dangling last word of a cut-off title.
+_DANGLING = re.compile(
+    r"(?:\b(?:of|for|and|the|in|on|with|to|a|an|via|from|by|using)|[:,\-–]|\.\.\.|…)$", re.I)
+
+
+def _titled_from_page(hit: dict, body: str) -> dict:
+    """Cut-off title completed from the read page."""
+    title = str(hit.get("title") or "").strip()
+    if not body or not _DANGLING.search(title):
+        return hit
+    stem = re.sub(r"\s*(?:\.\.\.|…)$", "", title).strip()
+    if len(stem) < 12:
+        return hit
+    for line in body[:6000].splitlines():
+        line = line.strip(" #*\t")
+        if (line.lower().startswith(stem.lower()) and len(stem) < len(line) <= 250
+                and not _DANGLING.search(line)):
+            return {**hit, "title": line}
+    return hit
+
+
+#: Hosts mapped to venue names.
+_VENUES = {
+    "arxiv.org": "arXiv", "aclanthology.org": "ACL Anthology", "dl.acm.org": "ACM",
+    "ieeexplore.ieee.org": "IEEE", "proceedings.neurips.cc": "NeurIPS",
+    "papers.nips.cc": "NeurIPS", "openreview.net": "OpenReview", "mdpi.com": "MDPI",
+    "link.springer.com": "Springer", "sciencedirect.com": "Elsevier",
+    "proceedings.mlr.press": "PMLR", "aaai.org": "AAAI", "ojs.aaai.org": "AAAI",
+    "kci.go.kr": "KCI", "dbpia.co.kr": "DBpia", "nature.com": "Nature", "riss.kr": "RISS",
+    "earticle.net": "earticle", "kiss.kstudy.com": "KISS", "scienceon.kisti.re.kr": "ScienceON",
+    "koreascience.kr": "KoreaScience", "koreascience.or.kr": "KoreaScience",
+}
+#: Year in a paper URL (arXiv, ACL Anthology, /YYYY/).
+_URL_YEAR = (
+    re.compile(r"arxiv\.org/(?:abs|pdf)/(\d{2})(?:0[1-9]|1[0-2])\.\d{4,5}"),
+    re.compile(r"aclanthology\.org/(\d{4})\.[a-z]"),
+    re.compile(r"/((?:19|20)\d{2})/"),
+)
+_DOI = re.compile(r"(?:doi\.org/|/doi/(?:abs/|full/|pdf/)?)(10\.\d{4,9}/[^\s?#]{1,120})", re.I)
+
+
+def bibliography(hit: dict) -> dict[str, str]:
+    """Authors, year, venue, DOI from search fields and link only; nothing guessed."""
+    out: dict[str, str] = {}
+    url = str(hit.get("url") or "")
+    authors = hit.get("authors")
+    if isinstance(authors, (list, tuple)):
+        names = [str(a).strip() for a in authors if str(a).strip()]
+        if names:
+            out["author"] = ", ".join(names[:3]) + (" 외" if len(names) > 3 else "")
+    elif isinstance(authors, str) and authors.strip():
+        out["author"] = authors.strip()[:200]
+    published = str(hit.get("published") or "")
+    year = published[:4] if re.fullmatch(r"(?:19|20)\d{2}", published[:4]) else ""
+    if not year:
+        for pattern in _URL_YEAR:
+            if m := pattern.search(url):
+                year = m.group(1) if len(m.group(1)) == 4 else f"20{m.group(1)}"
+                break
+    if year:
+        out["year"] = year
+    venue = str(hit.get("journal") or "").strip()
+    host = _publisher(url)
+    venue = venue or next((name for key, name in _VENUES.items()
+                           if host == key or host.endswith("." + key)), "")
+    if venue:
+        # Volume/issue when given.
+        volume, issue = (str(hit.get(k) or "").strip() for k in ("volume", "issue"))
+        if volume and hit.get("journal"):
+            venue = f"{venue}, {volume}" + (f"({issue})" if issue else "")
+        out["publisher"] = venue[:120]
+    doi = str(hit.get("doi") or "").strip() or (m.group(1) if (m := _DOI.search(url)) else "")
+    if doi:
+        out["doi"] = doi.rstrip(".")
+    return out
+
+
 def _title_terms(text: str) -> set[str]:
     return {w.lower() for w in re.findall(r"[0-9A-Za-z가-힣]{2,}", text or "")}
 
 
 async def verify_titles(titles: list[str]) -> dict[str, bool]:
-    """Whether each title turns up in a search (70% of its words in a hit).
-
-    Titles that could not be searched are left out rather than called unverified."""
+    """Title found in search (70% word overlap); unsearchable titles omitted."""
     backends = await settings_store.tools_config()
     if not backends.search or not titles:
         return {}

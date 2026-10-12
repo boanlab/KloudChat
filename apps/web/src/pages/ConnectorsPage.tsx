@@ -11,8 +11,7 @@ import {
   KeyRound,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { PageBody } from '@/components/layout/AppShell'
-import { TopBar } from '@/components/layout/TopBar'
+import { PageFrame } from '@/components/layout/AppShell'
 import {
   Badge,
   Button,
@@ -43,7 +42,10 @@ const statusMeta: Record<ConnectorStatus, { label: string; tone: 'success' | 'wa
   disconnected: { label: '미연결', tone: 'neutral' },
 }
 
-/** An installed connector; catalogue entries are a separate shape with no id. */
+/** Surfaces narrow the offer: all of chat/report/slides (or none) deserve no chip. */
+const narrowed = (kinds: readonly string[]) =>
+  kinds.length > 0 && !['chat', 'report', 'slides'].every((k) => kinds.includes(k))
+
 function ConnectorCard({
   connector,
   onOpen,
@@ -69,12 +71,15 @@ function ConnectorCard({
     // `data-connector` is the e2e hook.
     <Card className="flex flex-col p-4" data-connector={connector.slug}>
       <div className="flex items-start gap-3">
-        <PickBox
-          checked={picked}
-          onChange={onPick}
-          label={t('{name} 선택').replace('{name}', connector.name)}
-          className="mt-2.5"
-        />
+        {/* 기본 제공: switched off, never removed */}
+        {!connector.byDefault && (
+          <PickBox
+            checked={picked}
+            onChange={onPick}
+            label={t('{name} 선택').replace('{name}', connector.name)}
+            className="mt-2.5"
+          />
+        )}
         <span
           className="grid size-9 shrink-0 place-items-center rounded-card text-lg"
           style={{ background: `${connector.color}1a` }}
@@ -90,6 +95,7 @@ function ConnectorCard({
                 {t('공식')}
               </Badge>
             )}
+            {connector.byDefault && <Badge tone="accent">{t('기본 제공')}</Badge>}
             <Badge tone={status.tone}>{t(status.label)}</Badge>
           </span>
           <span className="mt-1 block text-base text-muted">{t(connector.description)}</span>
@@ -111,7 +117,6 @@ function ConnectorCard({
       )}
 
       <div className="mb-3 mt-3 flex flex-wrap gap-1.5">
-        <Badge>{t(connector.category)}</Badge>
         <Badge>{t('도구 {n}').replace('{n}', String(connector.tools.length))}</Badge>
         {writeTools > 0 && (
           <Badge tone="warn">
@@ -119,12 +124,11 @@ function ConnectorCard({
             {t('쓰기 {n}').replace('{n}', String(writeTools))}
           </Badge>
         )}
-        {connector.kinds.map((k) => (
-          <Badge key={k}>{t(kindMeta[k].label)}</Badge>
-        ))}
+        {narrowed(connector.kinds) &&
+          connector.kinds.map((k) => <Badge key={k}>{t(kindMeta[k].label)}</Badge>)}
       </div>
 
-      {/* `mt-auto` keeps the foot aligned across a row of cards. */}
+      {/* `mt-auto`: foot aligned across a row. */}
       <div className="mt-auto flex items-center justify-between border-t border-line pt-3">
         <span className="text-xs text-faint">
           {connector.lastSyncAt
@@ -166,7 +170,6 @@ function ConnectorCard({
   )
 }
 
-/** A catalogue entry that is not installed yet. */
 function CatalogCard({ entry, onNeedsCredentials }: {
   entry: CatalogEntry
   onNeedsCredentials: (entry: CatalogEntry) => void
@@ -192,6 +195,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
                 {t('공식')}
               </Badge>
             )}
+            {entry.byDefault && <Badge tone="accent">{t('기본 제공')}</Badge>}
           </span>
           <span className="mt-1 block text-base text-muted">{t(entry.description)}</span>
         </div>
@@ -204,13 +208,13 @@ function CatalogCard({ entry, onNeedsCredentials }: {
         </p>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <Badge>{t(entry.category)}</Badge>
-        <Badge>{entry.transport}</Badge>
-        {entry.kinds.map((k) => (
-          <Badge key={k}>{t(kindMeta[k as keyof typeof kindMeta]?.label ?? k)}</Badge>
-        ))}
-      </div>
+      {narrowed(entry.kinds) && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {entry.kinds.map((k) => (
+            <Badge key={k}>{t(kindMeta[k as keyof typeof kindMeta]?.label ?? k)}</Badge>
+          ))}
+        </div>
+      )}
 
       <div className="mt-3 flex items-center justify-end border-t border-line pt-3">
         <Button
@@ -247,7 +251,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
   )
 }
 
-/** Re-supplies credentials for an installed connector. Stored values never leave the server. */
+/** Re-supplies credentials; stored values never leave the server. */
 function ReCredentialModal({
   connector,
   entry,
@@ -268,7 +272,7 @@ function ReCredentialModal({
     setError(null)
   }, [connector?.id])
 
-  // A self-registered server has no catalogue entry; fall back to its env keys.
+  // Self-registered server: no catalogue entry, env keys instead.
   const fields =
     entry?.requiredEnv?.length
       ? entry.requiredEnv
@@ -321,7 +325,7 @@ function ReCredentialModal({
   )
 }
 
-/** Asks for the credentials a catalogue entry declares. Stored values never leave the server. */
+/** Credentials a catalogue entry declares; stored values never leave the server. */
 function CredentialsModal({
   entry,
   onClose,
@@ -393,7 +397,7 @@ function CredentialsModal({
   )
 }
 
-/** `KEY=value` per line to an env map; blank and malformed lines are dropped. */
+/** Blank and malformed lines dropped. */
 function parseEnv(text: string): Record<string, string> {
   const out: Record<string, string> = {}
   for (const line of text.split('\n')) {
@@ -405,12 +409,13 @@ function parseEnv(text: string): Record<string, string> {
   return out
 }
 
-export function ConnectorsPage() {
+export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT()
   const {
     connectors,
     connectorCatalog,
     loadWorkspace,
+    ensureWorkspace,
     toggleConnectorTool,
     uninstallConnector,
     deleteMany,
@@ -420,8 +425,8 @@ export function ConnectorsPage() {
   } = useStore()
 
   useEffect(() => {
-    void loadWorkspace()
-  }, [loadWorkspace])
+    void ensureWorkspace()
+  }, [ensureWorkspace])
   const [tab, setTab] = useState<'installed' | 'catalog'>('installed')
   const [detail, setDetail] = useState<Connector | null>(null)
   const [credentialsFor, setCredentialsFor] = useState<CatalogEntry | null>(null)
@@ -436,25 +441,24 @@ export function ConnectorsPage() {
   })
 
   const installed = connectors.filter((c) => c.installed)
-  const pick = useBulkSelect(installed)
+  // 기본 제공 copies cannot be removed, so they cannot be picked.
+  const pick = useBulkSelect(installed.filter((c) => !c.byDefault))
   // Installed entries stay in the catalogue, marked.
   const catalog = connectorCatalog
   const current = detail ? (connectors.find((c) => c.id === detail.id) ?? detail) : null
 
-  const groupBy = <T extends { category: string }>(items: T[]) =>
-    items.reduce<Record<string, T[]>>((acc, item) => {
-      ;(acc[item.category] ??= []).push(item)
-      return acc
-    }, {})
-  const installedByCategory = groupBy(installed)
-  const catalogByCategory = groupBy(catalog)
+  // Official first, then by name.
+  const ordered = <T extends { name: string; official?: boolean }>(items: T[]) =>
+    [...items].sort((a, b) => Number(!!b.official) - Number(!!a.official) || t(a.name).localeCompare(t(b.name), 'ko'))
+  const installedList = ordered(installed)
+  const catalogList = ordered(catalog)
   const empty = tab === 'installed' ? installed.length === 0 : catalog.length === 0
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('커넥터')}</span>} />
-      <PageBody>
+      <PageFrame title={t('커넥터')} embedded={embedded}>
         <PageHeader
+          embedded={embedded}
           title={t('커넥터')}
           description={t('MCP 서버를 붙여 외부 시스템을 도구로 씁니다. 인증 정보는 서버에만 저장되고, 도구 단위로 켜고 끌 수 있습니다.')}
           action={
@@ -499,18 +503,13 @@ export function ConnectorsPage() {
                 pick.clear()
               }}
             />
-            {Object.entries(installedByCategory).map(([category, items]) => (
-              <section key={category}>
-                <h2 className="mb-2.5 text-xs font-semibold tracking-wide text-faint uppercase">
-                  {t(category)}
-                </h2>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {items.map((c) => (
+            <div className="grid gap-3 sm:grid-cols-2" data-testid="connector-list">
+                  {installedList.map((c) => (
                     <ConnectorCard
                       key={c.id}
                       connector={c}
                       onOpen={() => setDetail(c)}
-                      // From the row first: a self-registered server has no catalogue entry.
+                      // Row first: a self-registered server has no catalogue entry.
                       needsCredentials={
                         (c.envKeys?.length ?? 0) > 0 ||
                         (catalog.find((e) => e.slug === c.slug)?.requiredEnv?.length ?? 0) > 0
@@ -520,26 +519,17 @@ export function ConnectorsPage() {
                       onEditCredentials={() => setReCredential(c)}
                     />
                   ))}
-                </div>
-              </section>
-            ))}
+            </div>
             </>
           ) : (
-            Object.entries(catalogByCategory).map(([category, items]) => (
-              <section key={category}>
-                <h2 className="mb-2.5 text-xs font-semibold tracking-wide text-faint uppercase">
-                  {t(category)}
-                </h2>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {items.map((e) => (
-                    <CatalogCard key={e.slug} entry={e} onNeedsCredentials={setCredentialsFor} />
-                  ))}
-                </div>
-              </section>
-            ))
+            <div className="grid gap-3 sm:grid-cols-2" data-testid="connector-catalog">
+              {catalogList.map((e) => (
+                <CatalogCard key={e.slug} entry={e} onNeedsCredentials={setCredentialsFor} />
+              ))}
+            </div>
           )}
         </div>
-      </PageBody>
+      </PageFrame>
 
       <CredentialsModal entry={credentialsFor} onClose={() => setCredentialsFor(null)} />
       <ReCredentialModal
@@ -556,7 +546,7 @@ export function ConnectorsPage() {
         width="max-w-2xl"
         footer={
           <>
-            {current?.installed && (
+            {current?.installed && !current.byDefault && (
               <Button
                 variant="danger"
                 className="mr-auto"
@@ -568,6 +558,11 @@ export function ConnectorsPage() {
                 <Trash2 size={14} />
                 {t('제거')}
               </Button>
+            )}
+            {current?.byDefault && (
+              <p className="mr-auto text-sm text-muted">
+                {t('기본 제공 커넥터는 지울 수 없습니다. 쓰지 않으려면 끄세요.')}
+              </p>
             )}
             <Button onClick={() => setDetail(null)}>{t('닫기')}</Button>
           </>

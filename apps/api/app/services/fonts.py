@@ -1,9 +1,4 @@
-"""Korean font registration for reportlab PDFs.
-
-A Nanum TTF is embedded when installed; otherwise the non-embedded CID font
-`HYSMyeongJo-Medium` is used, which renders blank in viewers without the
-Adobe-Korea1 CMaps. `embedded()` reports which happened.
-"""
+"""Korean fonts for reportlab: embedded Nanum TTF, else CID fallback (blank without CMaps)."""
 
 from __future__ import annotations
 
@@ -16,7 +11,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 log = logging.getLogger(__name__)
 
-#: Installed by `fonts-nanum` in the image, in order of preference.
+#: fonts-nanum files, by preference
 _CANDIDATES = {
     "gothic": (
         "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
@@ -26,7 +21,7 @@ _CANDIDATES = {
         "/usr/share/fonts/truetype/nanum/NanumMyeongjo.ttf",
         "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
     ),
-    # Bold faces, for titles and table heads; the regular face stands in when absent.
+    # bold faces; regular as fallback
     "gothic-bold": (
         "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
         "/usr/share/fonts/truetype/nanum/NanumBarunGothicBold.ttf",
@@ -37,17 +32,14 @@ _CANDIDATES = {
     ),
 }
 
-#: reportlab's bundled CID fonts; never embedded in the PDF.
+#: reportlab CID fonts, never embedded
 _CID_FALLBACK = {"gothic": "HYSMyeongJo-Medium", "serif": "HYSMyeongJo-Medium"}
 
 _resolved: dict[str, str] = {}
 
 
 def korean(style: str = "gothic", *, bold: bool = False) -> str:
-    """Registered font name for `setFont`; registration is global, so the result is cached.
-
-    `bold=True` names the bold face, or the regular one when no bold file is installed.
-    """
+    """Cached registered font name for setFont (bold falls back to regular)."""
     if bold:
         face = f"{style}-bold"
         if face not in _resolved:
@@ -72,7 +64,7 @@ def korean(style: str = "gothic", *, bold: bool = False) -> str:
 
 
 def _register(style: str) -> str | None:
-    """Registers the first installed candidate for `style`; None when none is."""
+    """Register the first installed candidate for style, or None."""
 
     for path in _CANDIDATES.get(style, ()):
         file = Path(path)
@@ -81,8 +73,7 @@ def _register(style: str) -> str | None:
         name = f"Nanum-{style}"
         try:
             pdfmetrics.registerFont(TTFont(name, str(file)))
-            # `<b>`/`<i>` markup looks up family variants; map all to the
-            # regular face rather than raise a missing-family error.
+            # map <b>/<i> variants to regular to avoid missing-family errors
             pdfmetrics.registerFontFamily(
                 name, normal=name, bold=name, italic=name, boldItalic=name
             )
@@ -94,8 +85,42 @@ def _register(style: str) -> str | None:
 
 
 def embedded(style: str = "gothic") -> bool:
-    """Whether `korean(style)` resolved to an embedded TTF; read by the health check."""
+    """Whether korean(style) is an embedded TTF (health check)."""
     return korean(style).startswith("Nanum-")
 
 
-__all__ = ["embedded", "korean"]
+#: stand-ins for glyphs Korean faces may lack (− drew □)
+_STAND_INS = {
+    "\u2212": "-", "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2015": "—",
+    "\u2009": " ", "\u202f": " ", "\u2007": " ", "\u200a": " ", "\u2044": "/", "\u2215": "/",
+    "\u2264": "<=", "\u2265": ">=", "\u2248": "≒", "\u2260": "!=", "\u2032": "'", "\u2033": '"',
+}
+
+
+def drawable(text: str, *names: str) -> str:
+    """text with undrawable characters replaced by stand-ins."""
+    if not text or not any(ch in _STAND_INS for ch in text):
+        return text
+    maps = []
+    for name in names:
+        face = getattr(pdfmetrics.getFont(name), "face", None)
+        maps.append(getattr(face, "charToGlyph", None))
+    if any(m is None for m in maps):
+        # CID fonts: no glyph table, stand-ins always safe
+        return "".join(_STAND_INS.get(ch, ch) for ch in text)
+    return "".join(_STAND_INS[ch] if ch in _STAND_INS and any(ord(ch) not in m for m in maps)
+                   else ch for ch in text)
+
+
+def drawable_tree(value, *names: str):
+    """Every string in value made drawable."""
+    if isinstance(value, str):
+        return drawable(value, *names)
+    if isinstance(value, list):
+        return [drawable_tree(v, *names) for v in value]
+    if isinstance(value, dict):
+        return {k: drawable_tree(v, *names) for k, v in value.items()}
+    return value
+
+
+__all__ = ["drawable", "drawable_tree", "embedded", "korean"]

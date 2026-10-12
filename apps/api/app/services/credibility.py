@@ -1,16 +1,4 @@
-"""How far a source can be trusted as a citation, by its host. Tier 0 is never cited.
-
-Tiers:
-
-- 3 — official and scholarly: government and public bodies, statistics, law, standards,
-  DOI-registered papers, journal and university publishers, preprint servers, academic
-  databases (KCI, RISS, DBpia).
-- 2 — news of record and reference works: wire services, national newspapers and
-  broadcasters, encyclopedias edited by institutions.
-- 1 — anything else not known to be weak: company and product documentation, Wikipedia,
-  author uploads.
-- 0 — weak: personal blogs, Q&A and content sites, user-edited wikis, essay mills.
-"""
+"""Citation trust tier by host: 3 official/scholarly … 0 weak (never cited)."""
 
 from __future__ import annotations
 
@@ -69,7 +57,7 @@ def _matches(host: str, marks: tuple[str, ...]) -> bool:
 
 
 def tier(url: str) -> int:
-    """0 (weak) to 3 (official or scholarly); unknown hosts are 1."""
+    """0 (weak) to 3 (official/scholarly); unknown hosts 1."""
     host = _host(url)
     if not host:
         return 1

@@ -16,6 +16,7 @@ import { diagramKey } from '@/lib/diagramKey'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
+import { rehypePlaceholders } from '@/lib/placeholders'
 
 // Embedded raster pictures only; the same rule as `services/pictures.py`.
 const EMBEDDED_PICTURE =
@@ -126,8 +127,7 @@ function loadHighlighter(): Promise<Highlighter> {
   return highlighterPromise
 }
 
-// Highlighting waits for the text to stop changing: while an answer streams, the
-// block grows every frame and re-tokenising it each time is wasted work.
+// Highlight once the text stops changing; re-tokenising a streaming block every frame is waste.
 const SETTLE_MS = 300
 
 // Above this, highlighting is skipped: a pasted log is not worth the parse.
@@ -135,8 +135,7 @@ const HIGHLIGHT_LIMIT = 20_000
 
 /** Highlighted HTML for `text`, or null until the highlighter is in and the language known. */
 function useHighlighted(text: string, lang: string | undefined): string | null {
-  // Keyed by the source, so a block whose text changed shows plain text until its
-  // own highlight arrives rather than the previous block's colours.
+  // Keyed by source: changed text shows plain until its own highlight arrives.
   const key = `${lang ?? ''}\u0000${text}`
   const [done, setDone] = useState<{ key: string; html: string } | null>(null)
   useEffect(() => {
@@ -254,11 +253,10 @@ export function MarkdownBody({
       )}
     >
       <ReactMarkdown
-        // remark-cjk-friendly: CommonMark will not close `**` before a Korean particle.
-        // A single tilde is a range in Korean prose (「100~500 Hz」), not strikethrough:
-        // only `~~text~~` strikes.
+        // remark-cjk-friendly: CommonMark won't close `**` before a Korean particle. A single tilde is a range (「100~500 Hz」); only `~~text~~` strikes.
         remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkCjkFriendly, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        // A bracket placeholder (「[담당자]」) is marked as a gap to fill.
+        rehypePlugins={[rehypeKatex, rehypePlaceholders]}
         // react-markdown blanks `data:` URLs by default; embedded rasters pass.
         urlTransform={(url, key, node) =>
           key === 'src' && node.tagName === 'img' && EMBEDDED_PICTURE.test(url)
@@ -266,7 +264,20 @@ export function MarkdownBody({
             : defaultUrlTransform(url)
         }
         components={{
-          p: ({ children }) => <p className="my-2.5 first:mt-0 last:mb-0">{children}</p>,
+          // A ※ note and a 붙임 line are marked for the 개조식 rules (`GAEJO_CSS`); unstyled elsewhere.
+          p: ({ children }) => {
+            const lead = Array.isArray(children) ? children[0] : children
+            const text = typeof lead === 'string' ? lead : ''
+            return (
+              <p
+                className="my-2.5 first:mt-0 last:mb-0"
+                data-note={text.startsWith('※') ? '' : undefined}
+                data-attach={text.startsWith('붙임') ? '' : undefined}
+              >
+                {children}
+              </p>
+            )
+          },
           h1: ({ children }) => <h1 className="mt-5 mb-2 text-xl font-semibold">{children}</h1>,
           h2: ({ children }) => <h2 className="mt-5 mb-2 text-lg font-semibold">{children}</h2>,
           h3: ({ children }) => (
@@ -281,7 +292,12 @@ export function MarkdownBody({
               {children}
             </ol>
           ),
-          li: ({ children }) => <li className="pl-0.5">{children}</li>,
+          // A ※ item is a note at its depth (`GAEJO_CSS`); unstyled elsewhere.
+          li: ({ children }) => {
+            const lead = Array.isArray(children) ? children[0] : children
+            const text = typeof lead === 'string' ? lead : ''
+            return <li className="pl-0.5" data-note={text.startsWith('※') ? '' : undefined}>{children}</li>
+          },
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           a: ({ children, href }) => {
             // A source citation the server linked: `[[3]](url)` renders as a small badge.
@@ -340,7 +356,8 @@ export function MarkdownBody({
             </td>
           ),
           code: ({ className, children, ...props }) => {
-            const isBlock = /language-/.test(className ?? '')
+            // A fenced block's text ends in a newline even without a language; inline code never does.
+            const isBlock = /language-/.test(className ?? '') || String(children).endsWith('\n')
             // Block fences the exporters also read: chart, steps, kpi, cards, callout, mermaid.
             if (/language-chart/.test(className ?? '')) {
               return <ChartBlock source={String(children).trimEnd()} owner={owner} />

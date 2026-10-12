@@ -4,17 +4,21 @@ title: Connectors
 
 # Connectors
 
-A connector is an external tool (an MCP server) that the model can call. Install one from the account menu → **Connectors**, and turn it on or off with 🔌 in the composer. The on or off state applies to your **whole account**.
+A connector is an external tool (an MCP server) that the model can call. Install one from the account menu → **Connectors**, and turn it on or off from **+** → **Connectors** in the composer. The on or off state applies to your **whole account**.
 
 ![The Connectors screen](/img/guide/connectors.png)
 
 ## Built-in connectors
 
+Connectors the administrator marks **Built in** are installed for everyone and appear under **My connectors** with a Built in badge. If you do not use one, switch it off, or switch off single tools. A built-in connector cannot be removed; one you switched off comes back as it was when you switch it on again.
+
 | Connector | What it does |
 |---|---|
 | Time | Looks up the current time and date. Available in Chat, Reports, and Slides. |
-| YouTube transcript | Fetches the subtitles of a video. If there are no subtitles, it transcribes the audio. |
-| Deep research | Investigates by repeating searches and page reads. It takes from a few minutes to a few tens of minutes, and it is available only when the administrator has connected a deep research server. |
+| YouTube transcription | Fetches a video's captions from its address, or transcribes the audio when there are none. Available in Chat and Reports. |
+| Deep research | Searches and reads the web over several rounds and sums up what it found. It can take minutes. Available in Chat and Reports. |
+
+The catalogue shows only the entries the administrator made visible in the connector catalogue. A connector hidden from the list keeps working for anyone who already installed it.
 
 ## Adding a server directly
 

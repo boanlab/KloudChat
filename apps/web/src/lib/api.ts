@@ -1,15 +1,29 @@
-/**
- * The seam between the app and its backend.
- *
- * The browser talks to the KloudChat API and nothing else — never to LiteLLM. The
- * master key and every virtual key stay on the server.
- */
+/** Single backend seam; the browser never reaches LiteLLM and keys stay server-side. */
 
 import type {
+  AgentDraft,
+  AgentDraftDecided,
+  CatalogEntryAdmin,
+  ProcessSettings,
+  TemplateCatalogue,
+  UserTemplate,
+  AgentProcess,
+  ArtifactKind,
+  Bundle,
+  BundleSelection,
+  ProcessMode,
   CostRouting,
   DesignTokens,
+  DocMarks,
+  PipelineCatalogue,
+  PipelineStep,
+  PipelineVerdict,
+  UserPipeline,
+  PipelineRun,
+  PipelineStage,
   EarlierAnswer,
   FreshnessAbstention,
+  LengthCheck,
   Message,
   MessageRouting,
   ModelInfo,
@@ -22,6 +36,10 @@ import type {
   Session,
   SessionKind,
   SessionMade,
+  GapQuestion,
+  ProcessCatalogue,
+  SkillScript,
+  SkillServer,
   Slide,
   Source,
   Step,
@@ -29,14 +47,14 @@ import type {
   User,
 } from '@/types'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+import { objectParticle, topicParticle } from './formCheck'
+import { currentLang, currentLocale, translate } from './i18n'
 
-/**
- * In memory only; the refresh token is an httpOnly cookie. A reload starts with
- * no token and recovers via `auth.refresh()` — see `bootstrap()` in the store.
- */
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+
+/** In memory only; refresh token is an httpOnly cookie, recovered via `auth.refresh()`. */
 let accessToken: string | null = null
-/** The web-search toggle as sent: on, off, or left to the words. */
+/** `auto`: decided from the message. */
 export type WebSearchSetting = boolean | 'auto'
 
 export const setAccessToken = (t: string | null) => {
@@ -46,19 +64,25 @@ export const setAccessToken = (t: string | null) => {
 export class ApiError extends Error {
   readonly status: number
   readonly detail: string
+  /** Seconds the server asked to wait (`Retry-After` on a 429), when it said. */
+  readonly retryAfter?: number
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, retryAfter?: number) {
     super(detail)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.retryAfter = retryAfter
   }
 }
 
-/** Shape of a machine code (`not_found`, `http_502`): a sentence for a reader has spaces or is Korean. */
+/** Machine code shape; reader sentences have spaces or are Korean. */
 const MACHINE_CODE = /^[a-z][a-z0-9_]*$/
 
-/** The machine code behind a failure, or `''`. */
+export function isSentence(detail: string | null | undefined): detail is string {
+  return Boolean(detail) && !MACHINE_CODE.test(detail as string)
+}
+
 export function errorCode(err: unknown): string {
   if (err instanceof ApiError && err.detail && MACHINE_CODE.test(err.detail)) {
     return err.detail
@@ -66,10 +90,7 @@ export function errorCode(err: unknown): string {
   return ''
 }
 
-/**
- * Text for the screen: a 4xx `detail` that is a sentence, else `fallback`.
- * 5xx bodies may carry proxy or exception text and never reach a reader.
- */
+/** Screen text: a 4xx sentence `detail`, else `fallback`; 5xx bodies never shown. */
 export function errorMessage(err: unknown, fallback: string): string {
   if (
     err instanceof ApiError &&
@@ -119,17 +140,88 @@ export class PrivacyDecisionError extends ApiError {
   }
 }
 
+/** One entry of FastAPI's 422 `detail` array. */
+interface FieldProblem {
+  type?: string
+  loc?: (string | number)[]
+  msg?: string
+  ctx?: { min_length?: number; max_length?: number; ge?: number; le?: number }
+}
+
+/** What a field is called on screen, by the wire name the server refused. */
+const FIELD_NAMES: Record<string, string> = {
+  content: '질문',
+  password: '비밀번호',
+  newPassword: '비밀번호',
+  currentPassword: '현재 비밀번호',
+  email: '이메일',
+  name: '이름',
+  title: '제목',
+  description: '설명',
+  url: '주소',
+  monthlyCredits: '월 크레딧',
+}
+
+/** Korean sentence for a refused form; the validator's English never shown. */
+export function validationMessage(problems: FieldProblem[]): string {
+  const first = problems[0] ?? {}
+  const wire = String([...(first.loc ?? [])].reverse().find((part) => typeof part === 'string' && part !== 'body') ?? '')
+  const field = FIELD_NAMES[wire]
+  const lang = currentLang()
+  const max = first.ctx?.max_length
+  const min = first.ctx?.min_length
+  const number = (n: number) => n.toLocaleString(currentLocale())
+  if (wire === 'content' && first.type === 'string_too_long' && max) {
+    return translate(lang, '질문은 {n}자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.')
+      .replace('{n}', number(max))
+  }
+  if (field === '비밀번호' && first.type === 'string_too_short' && min) {
+    return translate(lang, '비밀번호는 {n}자 이상이어야 합니다.').replace('{n}', number(min))
+  }
+  /** `template` with the field's name, its particle (Korean only) and `n` filled in. */
+  const say = (template: string, particle: (word: string) => string, n = 0) =>
+    translate(lang, template)
+      .replace('{field}', translate(lang, field ?? ''))
+      .replace(/\{[을은]\}/, lang === 'ko' && field ? particle(field) : '')
+      .replace('{n}', number(n))
+  if (field && first.type === 'string_too_short' && min === 1) return say('{field}{을} 입력하세요.', objectParticle)
+  if (field && first.type === 'string_too_short' && min) return say('{field}{은} {n}자 이상이어야 합니다.', topicParticle, min)
+  if (field && first.type === 'string_too_long' && max) return say('{field}{은} {n}자까지 쓸 수 있습니다.', topicParticle, max)
+  if (wire === 'email' || (first.type === 'value_error' && /email/i.test(first.msg ?? ''))) {
+    return translate(lang, '이메일 주소 형식이 올바르지 않습니다.')
+  }
+  if (field) {
+    return translate(lang, '{field} 값을 확인하세요.').replace('{field}', translate(lang, field))
+  }
+  return translate(lang, '입력한 값을 확인하세요.')
+}
+
 async function readDetail(res: Response): Promise<string> {
   try {
     const body = await res.json()
-    // FastAPI: a string in `detail` for explicit raises, an array of field
-    // errors for validation failures.
+    // FastAPI: string `detail` for raises, array for validation.
     if (typeof body?.detail === 'string') return body.detail
-    if (Array.isArray(body?.detail)) return body.detail[0]?.msg ?? 'invalid_request'
+    if (Array.isArray(body?.detail)) return validationMessage(body.detail as FieldProblem[])
+    // A refused order of steps (`invalid_pipeline`): its first problem, already a sentence.
+    const problem = body?.detail?.problems?.[0]?.message
+    if (typeof problem === 'string' && problem) return problem
+    // A refusal with its own shape (`{code, ...}`): its machine code.
+    if (typeof body?.detail?.code === 'string') return body.detail.code
   } catch {
     /* non-JSON error body */
   }
   return `http_${res.status}`
+}
+
+/** Framed on another site: bot calls go out accountless, keeping the frame's visitor cookie. */
+let botEmbedded = false
+export function setBotEmbedded(on: boolean) {
+  botEmbedded = on
+}
+
+function who(path: string): Record<string, string> {
+  if (botEmbedded && path.startsWith('/b/')) return { 'X-KloudChat-Embed': '1' }
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -138,7 +230,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...who(path),
       ...init.headers,
     },
   })
@@ -152,10 +244,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const body = (v: unknown) => ({ method: 'POST', body: JSON.stringify(v) })
 
-/* ── auth — KloudChat's own ─────────────────────────────────────────────────
- * argon2id hashes, a short-lived JWT access token, a rotating refresh cookie.
- * Signup lands in `pending` until an admin approves and funds the account.
- */
+/* ── auth: argon2id, short-lived JWT, rotating refresh cookie; signup pending until approved ── */
 
 export interface AuthSession {
   accessToken: string
@@ -175,7 +264,8 @@ export const auth = {
     call<AuthSession>('/auth/login', body({ email, password })),
   signup: (email: string, password: string, name: string) =>
     call<SignupResult>('/auth/signup', body({ email, password, name })),
-  refresh: () => call<AuthSession>('/auth/refresh', { method: 'POST' }),
+  /** `undefined` (204) when the browser holds no refresh cookie: signed out. */
+  refresh: () => call<AuthSession | undefined>('/auth/refresh', { method: 'POST' }),
   logout: () => call<void>('/auth/logout', { method: 'POST' }),
   /** Reachable while `pending` — the approval-waiting screen polls it. */
   me: () => call<User>('/auth/me'),
@@ -190,13 +280,9 @@ export const auth = {
 
 export interface ModelCatalogue {
   models: ModelInfo[]
-  /**
-   * False when the proxy did not answer. Adapter-backed models are still
-   * listed, so the UI can distinguish "proxy down" from "empty catalogue".
-   */
+  /** False when the proxy did not answer; adapter models still listed. */
   litellmAvailable: boolean
-  /** Model used when the user has not chosen one. Empty when it is not in
-   *  the catalogue. */
+  /** Empty when absent from the catalogue. */
   defaultChatModel?: string
   /** Per-surface instance default; absent keys fall back to `defaultChatModel`. */
   defaultModelByKind?: Partial<Record<SessionKind, string>>
@@ -216,7 +302,7 @@ export interface ModelCatalogue {
 }
 
 export const modelsApi = {
-  /** Merged view: LiteLLM `/model/info` plus locally-configured adapter models. */
+  /** LiteLLM `/model/info` plus adapter models. */
   list: () => call<ModelCatalogue>('/models'),
   /** Admin-only. Drops the server's 30-second cache. */
   refresh: () => call<ModelCatalogue>('/models/refresh', { method: 'POST' }),
@@ -227,15 +313,14 @@ export const modelsApi = {
 export interface SystemSettings {
   litellm: {
     baseUrl: string
-    /** Where the value came from. `backend` means it was derived from the
-     *  gateway address rather than typed into this field. */
+    /** `backend`: derived from the gateway address. */
     baseUrlSource: 'database' | 'backend' | 'environment'
     masterKeySet: boolean
     /** Last four characters. The key itself is never sent. */
     masterKeyPreview: string
     masterKeySource: 'database' | 'environment'
   }
-  /** Outgoing mail. Empty host means it is off, and the password reset with it. */
+  /** Empty host: mail and password reset off. */
   smtp: {
     host: string
     port: string
@@ -247,18 +332,15 @@ export interface SystemSettings {
     passwordSet: boolean
     passwordPreview: string
     hostSource: 'database' | 'environment'
-    /** What the sign-in page keys its reset link off. */
     passwordResetEnabled: boolean
   }
   status: 'ok' | 'unavailable'
-  /** Service name and logo URL to render. */
   brand: { name: string; logo: string }
   /** Where 관리자에게 문의 goes; `admin` means the first administrator's own. */
   contact: { email: string; source: 'database' | 'admin' }
-  /** Enabled surfaces. Chat is always included. */
+  /** Chat always included. */
   enabledKinds: string[]
-  /** Who may register: the mode, the mail domains allowed (empty = any), and
-   *  whether the address is confirmed by a mailed link first. */
+  /** Empty `domains`: any; `verifyEmail`: mailed link first. */
   signup: {
     mode: 'open' | 'approval' | 'closed'
     modeSource: 'database' | 'environment'
@@ -267,21 +349,52 @@ export interface SystemSettings {
     /** `verifyEmail` with a mail server behind it. */
     verificationActive: boolean
   }
-  /** Feature integration: one gateway address fans out into six features. */
+  /** One gateway address fans out into the features. */
   tools: {
-    /** Gateway address. Empty means each feature was configured on its own,
-     *  or the environment is supplying them. */
+    /** Empty: features set individually or by the environment. */
     backendBaseUrl: string
     features: {
-      key: 'search' | 'fetch' | 'exec' | 'research' | 'stt' | 'index'
+      key: 'search' | 'fetch' | 'exec' | 'research' | 'stt' | 'index' | 'ocr'
       label: string
       url: string
-      /** `backend` means derived from the gateway address rather than typed
-       *  into this field. */
+      /** `backend`: derived from the gateway address. */
       source: 'database' | 'backend' | 'environment'
     }[]
   }
-  /** Instance economics, served so the screens quoting them cannot drift. */
+  /** Stored, and as in force given the reachable readers. */
+  ocr: {
+    enabled: boolean
+    mode: 'both' | 'engine' | 'vision'
+    /** Stored choice; empty means the first of `visionChoices`. */
+    visionModel: string
+    maxPages: number
+    modeInForce: 'both' | 'engine' | 'vision' | null
+    visionModelInForce: string
+    engineConfigured: boolean
+    /** Strict-local models that declare vision: the only ones a page may go to. */
+    visionChoices: { id: string; label: string }[]
+  }
+  /** As in force; an empty string is a choice (follow the default or session model). Absent from older servers. */
+  modelRoles?: {
+    chat: string
+    report: string
+    slides: string
+    image: string
+    audio: string
+    video: string
+    title: string
+    code: string
+    codeFallback: string
+    selfHostedThinking: boolean
+    externalThinking: boolean
+    defaultMonthlyCredits: number
+    /** `helper`: chat models this instance runs (self-hosted, or `local/` with a strict-local twin). */
+    choices: Record<
+      'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video' | 'helper',
+      { id: string; label: string; strictLocal: boolean }[]
+    >
+  }
+  /** Served so quoting screens cannot drift. */
   credits: {
     /** Credits to one US dollar. */
     perUsd: number
@@ -292,7 +405,7 @@ export interface SystemSettings {
   unpricedModels: { id: string; provider: string }[]
 }
 
-/** The composer's microphone: a recording in, its words out. Not stored. */
+/** Composer microphone; not stored. */
 export const transcriptionsApi = {
   transcribe: async (
     blob: Blob,
@@ -317,8 +430,7 @@ export const transcriptionsApi = {
 }
 
 export const authConfig = {
-  /** What the sign-in page may offer. Public because the browser cannot read
-   *  the admin settings, and a dead reset link is worse than none. */
+  /** Public: the browser cannot read admin settings. */
   get: () =>
     call<{
       passwordResetEnabled: boolean
@@ -329,10 +441,14 @@ export const authConfig = {
       contactEmail: string
       enabledKinds: string[]
       privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
-      /** Minutes of inactivity before the browser ends the session. 0 is off. */
+      /** Idle minutes before sign-out; 0 off. */
       idleTimeoutMinutes: number
       /** What the signup form should say before somebody is refused. */
       signup: { mode: 'open' | 'approval' | 'closed'; domains: string[]; emailVerification: boolean }
+      /** Absent from older servers. */
+      password?: { minLength: number }
+      /** Wrong passwords in a row that lock an address, and for how long. */
+      login?: { maxFailures: number; lockoutMinutes: number }
     }>('/auth/config'),
   forgotPassword: (email: string) => call<void>('/auth/password/forgot', body({ email })),
   resetPassword: (token: string, newPassword: string) =>
@@ -348,16 +464,13 @@ export const authConfig = {
 
 export interface MyUsage {
   days: number
-  /** `otherCredits` is spend no single model can be named for — a comparison
-   *  that ran several on one charge — not the part the breakdown forgot. */
+  /** `otherCredits`: spend no single model owns (multi-model charges). */
   totals: { credits: number; requests: number; searches: number; otherCredits: number }
-  /** This month's allowance and what is left of it. */
   cycle: { allowance: number; used: number; remaining: number }
   daily: { date: string; credits: number; requests: number; searches: number }[]
   byModel: { model: string; credits: number; requests: number; units?: number; unit?: string }[]
   bySurface: { kind: string; credits: number; requests: number }[]
-  /** Spend through issued keys, aggregated by the proxy — shown beside the
-   *  number above rather than added to it. */
+  /** Proxy-aggregated key spend; shown beside the total, not added. */
   apiKeys: {
     id: string
     name: string
@@ -369,7 +482,7 @@ export interface MyUsage {
 }
 
 export const meApi = {
-  /** The caller's own spending. `/admin/usage` answers for everyone. */
+  /** Own spend; `/admin/usage` covers everyone. */
   usage: (days = 30) => call<MyUsage>(`/me/usage?days=${days}`),
 }
 
@@ -388,6 +501,11 @@ export const adminApi = {
     toolsResearchUrl?: string
     toolsSttUrl?: string
     toolsIndexUrl?: string
+    toolsOcrUrl?: string
+    ocrEnabled?: string
+    ocrMode?: string
+    ocrVisionModel?: string
+    ocrMaxPages?: string
     smtpHost?: string
     smtpPort?: string
     smtpSecurity?: string
@@ -399,12 +517,24 @@ export const adminApi = {
     signupMode?: string
     signupDomains?: string
     signupVerifyEmail?: string
+    modelChat?: string
+    modelReport?: string
+    modelSlides?: string
+    modelImage?: string
+    modelAudio?: string
+    modelVideo?: string
+    modelTitle?: string
+    modelCode?: string
+    modelCodeFallback?: string
+    thinkingSelfHosted?: string
+    thinkingExternal?: string
+    defaultMonthlyCredits?: string
   }) => call<SystemSettings>('/admin/settings', { method: 'PUT', body: JSON.stringify(patch) }),
   testSettings: () =>
     call<{ ok: boolean; models?: number; detail?: string }>('/admin/settings/test', {
       method: 'POST',
     }),
-  /** Logo image. multipart, so it does not go through call()'s JSON path. */
+  /** Multipart; bypasses call()'s JSON path. */
   uploadLogo: async (file: File) => {
     const form = new FormData()
     form.append('file', file)
@@ -418,18 +548,15 @@ export const adminApi = {
     return (await res.json()) as { logo: string }
   },
   deleteLogo: () => call<void>('/admin/branding/logo', { method: 'DELETE' }),
-  /** Sends a real request to one feature's address. */
   testTool: (feature: string) =>
     call<{ ok: boolean; detail?: string }>(`/admin/settings/test-tool/${feature}`, {
       method: 'POST',
     }),
-  /** Sends a real message: a connection check passes with a sender the relay
-   *  refuses, which is the failure operators hit. */
+  /** Real message: a connection check passes with a sender the relay refuses. */
   testSmtp: (to?: string) =>
     call<{ ok: boolean; detail?: string }>('/admin/settings/smtp-test', body({ to: to ?? null })),
   users: () => call<User[]>('/admin/users'),
-  /** Approval and the allowance are one action: an active account with no
-   *  credits reads as a bug. */
+  /** Approval and allowance together: an active account without credits reads as a bug. */
   approve: (id: string, monthlyCredits?: number) =>
     call<User>(`/admin/users/${id}/approve`, body({ monthlyCredits: monthlyCredits ?? null })),
   /** Turns down a pending signup. Suspends rather than deletes — see the router. */
@@ -441,8 +568,7 @@ export const adminApi = {
     call<void>(`/admin/users/${id}?purgeFiles=${purgeFiles ? 'true' : 'false'}`, {
       method: 'DELETE',
     }),
-  /** Issues a fresh LiteLLM key, retiring the old one. Also the first key for
-   *  an account that signed up while the proxy was unreachable. */
+  /** Fresh LiteLLM key; also the first for an account created while the proxy was down. */
   rotateLitellmKey: (id: string) =>
     call<User>(`/admin/users/${id}/litellm-key`, { method: 'POST' }),
   /** Restricts an account to a set of models. Pushed to every key it holds. */
@@ -461,7 +587,6 @@ export const adminApi = {
   catalogue: () => call<{ id: string; label: string; kinds: string[] }[]>('/admin/models'),
   /** Every key an account holds: KloudChat's own (preview only) and the ones the person issued. */
   userKeys: (id: string) => call<AdminKeys>(`/admin/users/${id}/keys`),
-  /** Revokes one key the person issued. */
   revokeUserKey: (id: string, keyId: string) =>
     call<void>(`/admin/users/${id}/keys/${keyId}`, { method: 'DELETE' }),
   /** Binds a LiteLLM key the administrator already holds as the account's KloudChat key. */
@@ -474,10 +599,7 @@ export interface AdminKeys {
   named: { id: string; name: string; preview: string; createdAt: string; lastUsedAt: string | null }[]
 }
 
-/* ── admin: usage & audit ──────────────────────────────────────────────
- * Both from stored rows — turns for usage, the audit table for the trail. No
- * seeded fallback: an empty instance reports empty.
- */
+/* ── admin: usage & audit, from stored rows; no seeded fallback ── */
 
 export interface UsageReport {
   days: number
@@ -501,9 +623,8 @@ export interface UsageReport {
     units?: number
     unit?: string
   }[]
-  /** `'other'` beside the five surfaces: spend charged against no session,
-   *  which is how the bars keep adding up to the total. */
-  bySurface: { kind: SessionKind | 'other'; credits: number; requests: number }[]
+  /** `other`: spend with no session, so the bars sum to the total. */
+  bySurface: { kind: SessionKind | 'other' | 'bot'; credits: number; requests: number }[]
   /** Every account with activity in the window, most spent first. */
   topUsers: {
     id: string
@@ -529,7 +650,6 @@ export interface AccessEventRow {
   severity: string
 }
 
-/** One browser this account is currently signed in on. */
 export interface ActiveSessionRow {
   /** The refresh-token family. Stable for the life of the sign-in. */
   familyId: string
@@ -544,9 +664,24 @@ export interface ActiveSessionRow {
   current: boolean
 }
 
+/** One page of a settings list, newest first. */
+export interface AccessPage<T> {
+  items: T[]
+  total: number
+  page: number
+  size: number
+}
+
+/** The caller's own sign-in leads page 1; `others` counts every sign-in but that one. */
+export interface ActiveSessionPage extends AccessPage<ActiveSessionRow> {
+  others: number
+}
+
 export const accessApi = {
-  mine: () => call<AccessEventRow[]>('/auth/me/access'),
-  sessions: () => call<ActiveSessionRow[]>('/auth/me/sessions'),
+  mine: (page = 1, size = 20) =>
+    call<AccessPage<AccessEventRow>>(`/auth/me/access?page=${page}&size=${size}`),
+  sessions: (page = 1, size = 10) =>
+    call<ActiveSessionPage>(`/auth/me/sessions?page=${page}&size=${size}`),
   endSession: (familyId: string) =>
     call<{ revoked: number }>(`/auth/me/sessions/${familyId}`, { method: 'DELETE' }),
   /** Everywhere but here. */
@@ -566,7 +701,29 @@ export interface AuditRow {
   region: string
   userAgent: string
   severity: string
-  metadata?: Record<string, unknown> | null
+  /** `changes`: `{field: [old, new]}`; secrets masked. */
+  metadata?: (Record<string, unknown> & { changes?: Record<string, [unknown, unknown]> }) | null
+}
+
+export interface AuditPage {
+  items: AuditRow[]
+  total: number
+  page: number
+  size: number
+}
+
+export interface AuditQuery {
+  page: number
+  size: number
+  /** Comma list of codes; `x.*` takes a prefix. */
+  action?: string
+  account?: string
+  q?: string
+  /** Codes whose screen label matched `q`, searched with it. */
+  qActions?: string
+  /** ISO instants; `until` is exclusive. */
+  since?: string
+  until?: string
 }
 
 export interface GovernancePolicy {
@@ -608,25 +765,30 @@ export const keysApi = {
   revoke: (id: string) => call<void>(`/keys/${id}`, { method: 'DELETE' }),
 }
 
-/**
- * Downloads an artifact export. A plain link cannot carry the access token, so
- * the file is fetched and handed to the browser as a blob.
- */
-export async function downloadArtifact(
+/** One export of an owned artifact, as the response, for a download or a reuse. */
+export async function fetchArtifactExport(
   id: string,
   format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md' | 'html' | 'source',
-  title: string,
-) {
+): Promise<Response> {
   const res = await fetch(`${BASE_URL}/artifacts/${id}/export?format=${format}`, {
     credentials: 'include',
     headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
   })
   if (!res.ok) throw new ApiError(res.status, await readDetail(res))
+  return res
+}
+
+/** Fetched as a blob: a plain link cannot carry the access token. */
+export async function downloadArtifact(
+  id: string,
+  format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md' | 'html' | 'source',
+  title: string,
+) {
+  const res = await fetchArtifactExport(id, format)
 
   let filename = `${title.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'report'}.${format === 'source' ? 'txt' : format}`
   if (format === 'source') {
-    // The owner-scoped endpoint chooses the extension from stored language,
-    // never from content sniffing in the browser.
+    // Extension from the server, never sniffed.
     const encoded = res.headers.get('Content-Disposition')?.match(/(?:^|;)\s*filename\*=UTF-8''([^;]+)/i)?.[1]
     if (encoded) {
       try {
@@ -644,13 +806,7 @@ export async function downloadArtifact(
   URL.revokeObjectURL(url)
 }
 
-/**
- * URL for a stored file, used as the `src` of `<img>`, `<audio>` and `<video>`.
- *
- * Those elements cannot attach an Authorization header and the token lives in
- * memory rather than a cookie, so it goes in the query string. With no token,
- * the bare path is returned.
- */
+/** `src` for media elements: token in the query string, since they cannot send a header. */
 export function fileUrl(src: string | null | undefined): string | undefined {
   if (!src) return undefined
   if (!accessToken || !src.startsWith(`${BASE_URL}/files/`)) return src
@@ -684,7 +840,6 @@ export type SharedPayload =
       messages: MessageRow[]
       /** Absent on older shares. */
       startedWith?: SharedContext | null
-      /** What the conversation produced, when it produced something. */
       artifact: {
         title: string
         artifactKind: string
@@ -694,7 +849,6 @@ export type SharedPayload =
       updatedAt: string
     }
 
-/** One visit to a shared link. */
 export interface ShareViewRow {
   id: string
   at: string
@@ -751,13 +905,16 @@ export const usageApi = {
       '/admin/storage/reclaim',
       { method: 'POST' },
     ),
-  audit: (limit = 100) => call<AuditRow[]>(`/admin/audit?limit=${limit}`),
+  audit: (query: AuditQuery) => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    }
+    return call<AuditPage>(`/admin/audit?${params}`)
+  },
 }
 
-/* ── sessions ───────────────────────────────────────────────────────────
- * One resource for all five surfaces, discriminated by `kind`. Chat, report and
- * slides stream; image and a/v run as jobs.
- */
+/* ── sessions: one resource for all five surfaces, by `kind` ── */
 
 /** Server shape. Differs from `Message` in `steps` and `attachments` — see `toMessage`. */
 export interface MessageRow {
@@ -766,31 +923,21 @@ export interface MessageRow {
   content: string
   steps: unknown[] | null
   attachments: unknown[] | null
-  /** Present only on comparison turns — one entry per model that answered. */
-  variants:
-    | {
-        model: string
-        routedModel?: string
-        actualModel?: string
-        dataBoundary?: ModelInfo['dataBoundary']
-        content: string
-        credits: number
-        usage: { inputTokens: number; outputTokens: number } | null
-        error: string | null
-        chosen?: boolean
-      }[]
-    | null
+  /** Stored on turns from the retired model comparison; read only for their text. */
+  variants?: { content: string }[] | null
   /** Answers a rerun replaced, oldest first. */
   superseded?: EarlierAnswer[] | null
   usage: Message['usage'] | null
   model: string | null
   routing: MessageRouting | null
-  /** The 시작점 this turn began from, with its title as it read then; the template may since be deleted. */
+  /** Retired 시작점 an old turn began from, title as it read then. */
   startedFrom: { templateId: string; title: string } | null
-  /** What the reader thought of this answer. Null until somebody says. */
+  /** Null until rated. */
   rating: 'up' | 'down' | null
   /** Artifacts that are the answer (a picture, a clip); null when the turn answered in words. */
   artifactIds: string[] | null
+  /** The version of `artifactIds[0]` this turn wrote, from its pipeline run; absent when unknown. */
+  artifactVersion?: number | null
   /** How the turn ended when it did not end in an answer. */
   failure: 'no_answer' | 'interrupted' | null
   createdAt: string
@@ -802,6 +949,7 @@ export interface SessionRow {
   title: string
   projectId: string | null
   agentId: string | null
+  pipelineId?: string | null
   model: string
   routingMode: Session['routingMode']
   artifactId: string | null
@@ -823,22 +971,29 @@ export interface SessionRow {
 }
 
 export const sessionsApi = {
+  /** 「에이전트로 저장」: this conversation as a draft agent. Nothing is saved. */
+  agentDraft: (sessionId: string, distill = true) =>
+    call<AgentDraft>(`/sessions/${sessionId}/agent-draft${distill ? '' : '?distill=false'}`),
+  /** 「에이전트로 저장」's 지시 alone: what the conversation settled, asked after the rest. */
+  agentDraftDecided: (sessionId: string) =>
+    call<AgentDraftDecided>(`/sessions/${sessionId}/agent-draft/decided`),
+  /** A report or slides session continuing this chat with its agent; the files carry the conversation. */
+  handoff: (sessionId: string, kind: 'report' | 'slides') =>
+    call<{ session: SessionRow; attachments: FileRow[] }>(
+      `/sessions/${sessionId}/handoff`, body({ kind }),
+    ),
   forkBeforeMessage: (sessionId: string, messageId: string) =>
     call<{ session: SessionRow; attachments: FileRow[]; attachmentIdMap: Record<string, string> }>(
       `/sessions/${sessionId}/messages/${messageId}/fork`, { method: 'POST' },
     ),
   /** Asks the running turn to stop. Sent before the fetch is aborted: a closed socket alone looks like a changed tab. */
   stop: (sessionId: string) => call<void>(`/sessions/${sessionId}/stop`, { method: 'POST' }),
-  /** Which of a comparison's answers the conversation continues from. */
-  chooseVariant: (sessionId: string, messageId: string, model: string) =>
-    call<MessageRow>(`/sessions/${sessionId}/messages/${messageId}/variant`, body({ model })),
   list: (params?: { kind?: string; projectId?: string }) =>
     call<SessionRow[]>(
       `/sessions${params ? `?${new URLSearchParams(params as Record<string, string>)}` : ''}`,
     ),
   get: (id: string) => call<SessionRow>(`/sessions/${id}`),
-  /** Many at once. `all` is resolved server-side, so a conversation started in
-   *  another tab is not silently spared. */
+  /** `all` resolved server-side, so a conversation from another tab is not spared. */
   deleteMany: (payload: { ids?: string[]; all?: boolean; artifacts?: boolean }) =>
     call<{ deleted: number; artifactsDeleted: number }>('/sessions/delete', body(payload)),
   /** Proposes a caption and prompt for a figure; draws nothing and costs nothing. */
@@ -849,11 +1004,8 @@ export const sessionsApi = {
     call<{
       caption: string
       prompt: string
-      /** The image 서식 chosen for this place; empty when none fit. */
-      templateId?: string
-      /** `flow` / `method` / `concept` when the 서식 draws as mermaid. */
+      /** `flow` / `method` / `concept` when this place wants a figure drawn as shapes; empty for a picture. */
       figure?: string
-      /** What to draw, for the diagram path. */
       description?: string
       /** The style chip the picture should be drawn with. */
       style?: string
@@ -861,7 +1013,7 @@ export const sessionsApi = {
       `/sessions/${sessionId}/figure-suggestion`,
       body(payload),
     ),
-  /** Pictures. Synchronous: the upstream answers with a PNG, so there is nothing to poll. */
+  /** Synchronous: upstream answers with a PNG. */
   images: (
     sessionId: string,
     payload: {
@@ -869,18 +1021,15 @@ export const sessionsApi = {
       model?: string
       aspect: string
       style: string
-      /** How the words in the picture are handled. */
       labels?: 'auto' | 'ko' | 'en' | 'none'
       count: number
-      /** An `image` design template. Shapes the prompt; produces no file of its own. */
-      templateId?: string
       /** Send the prompt as typed, skipping the planner. */
       raw?: boolean
       /** Asked for from inside a document: comes back as a figure, not a picture of a whole slide. */
       figure?: boolean
     },
   ) => call<ArtifactRow[]>(`/sessions/${sessionId}/images`, body(payload)),
-  /** A labelled figure as mermaid source in the house style; the client draws it. See `diagram.py`. */
+  /** Flowchart drawn server-side with the .pptx shapes; stored as an image artifact. */
   diagram: (
     sessionId: string,
     payload: {
@@ -888,29 +1037,11 @@ export const sessionsApi = {
       figure: string
       model?: string
       language?: string
-      /** The source that would not draw, and mermaid's reason — asks for a repair. */
-      broken?: string
-      error?: string
     },
-  ) => call<{ source: string; caption: string; model: string; credits: number }>(
+  ) => call<{ source: string; caption: string; model: string; credits: number; artifact: ArtifactRow | null }>(
     `/sessions/${sessionId}/diagrams`,
     body(payload),
   ),
-  /** The drawn figure, kept as an image artifact with its source beside it. */
-  storeDiagram: (
-    sessionId: string,
-    payload: {
-      source: string
-      caption: string
-      description: string
-      figure: string
-      title: string
-      model: string
-      png: string
-      width: number
-      height: number
-    },
-  ) => call<ArtifactRow>(`/sessions/${sessionId}/diagrams/store`, body(payload)),
   /** One sound clip. Speech and music are different models behind `audioKind`. */
   audio: (
     sessionId: string,
@@ -925,6 +1056,8 @@ export const sessionsApi = {
     },
   ) => call<ArtifactRow>(`/sessions/${sessionId}/audio`, body(payload)),
   create: (payload: {
+    /** The unsent conversation's own id: created under it. */
+    id?: string
     kind: string
     projectId?: string | null
     agentId?: string | null
@@ -952,10 +1085,7 @@ export const sessionsApi = {
     }),
 }
 
-/* ── workspace ──────────────────────────────────────────────────────────
- * Projects, files, artifacts, skills, memories, agents. All owned by the
- * caller; anything else answers 404.
- */
+/* ── workspace: owned by the caller; anything else 404 ── */
 
 export interface FileRow {
   id: string
@@ -975,6 +1105,12 @@ export interface FileRow {
   error: string | null
   /** False when the vector index does not cover this document yet. */
   indexed?: boolean
+  /** Scanned pages being read: null when none were needed. */
+  ocrState?: 'queued' | 'running' | 'done' | 'failed' | null
+  /** Pages to read (past the limit included), pages read, pages whose two readings differ. */
+  ocrTotal?: number
+  ocrDone?: number
+  ocrReview?: number
   createdAt: string
 }
 
@@ -1002,6 +1138,8 @@ export const filesApi = {
     }
     return (await res.json()) as FileRow
   },
+  /** One file, for a screen following its scanned pages being read. */
+  get: (id: string) => call<FileRow>(`/files/${id}`),
   addProjectUrl: (projectId: string, url: string) =>
     call<FileRow>(`/projects/${projectId}/knowledge/url`, body({ url })),
   downloadUrl: (id: string) => `${BASE_URL}/files/${id}/content`,
@@ -1038,10 +1176,9 @@ export interface ProjectRow {
   emoji: string
   instructions: string
   skillIds: string[]
-  /** The design system everything in this project wears. Null is the default look. */
+  /** Theme the project wears; null: default look. */
   designSystemId: string | null
-  /** Surface → rendering template. Sent whole: a missing key is that surface
-   *  going back to the built-in track. */
+  /** Surface → template; sent whole, a missing key means the built-in track. */
   renderTemplates: Record<string, string>
   files: FileRow[]
   sessionIds: string[]
@@ -1077,13 +1214,12 @@ function artifactParams(params: ArtifactQuery = {}) {
 }
 
 export const artifactsApi = {
+  /** Blanks and findings re-located against the current body. */
+  marks: (id: string) => call<DocMarks>(`/artifacts/${id}/marks`),
   /** Several at once. Ids this account does not own are skipped. */
   removeMany: (ids: string[]) =>
     call<{ deleted: number }>('/artifacts/delete', body({ ids })),
-  /**
-   * One page of the gallery, newest first, with the bodies cut down to what a
-   * card shows. `partial` marks those rows; `get` is the whole document.
-   */
+  /** One gallery page, newest first, bodies cut to card size (`partial`); `get` for the whole. */
   list: (params?: ArtifactQuery) => call<ArtifactRow[]>(`/artifacts${artifactParams(params)}`),
   /** How many of each kind exist, which a page of rows cannot say. */
   counts: (q?: string) =>
@@ -1093,8 +1229,7 @@ export const artifactsApi = {
   get: (id: string) => call<ArtifactRow>(`/artifacts/${id}`),
   create: (payload: { kind: string; title?: string; data?: unknown; sessionId?: string | null }) =>
     call<ArtifactRow>('/artifacts', body(payload)),
-  /** `expectedVersion` makes the write conditional; the server answers 409 if
-   *  somebody else got there first. */
+  /** `expectedVersion`: conditional write; 409 if someone else got there first. */
   update: (
     id: string,
     patch: { title?: string; data?: unknown; summary?: string; expectedVersion?: number },
@@ -1109,7 +1244,7 @@ export const artifactsApi = {
   /** The same check on one report section. Same cost, same verdict shape. */
   factcheckSection: (id: string, sectionId: string) =>
     call<ArtifactRow>(`/artifacts/${id}/sections/factcheck`, body({ sectionId })),
-  /** Stores this browser's render of a mermaid diagram for the exporters (the API has no headless browser). Free, adds no version. */
+  /** This browser's diagram render, stored for the exporters. Free, no version. */
   storeDiagram: (id: string, sectionId: string, key: string, src: string) =>
     call<ArtifactRow>(`/artifacts/${id}/sections/diagram`, body({ sectionId, key, src })),
   /** Rewrites one section. Costs a model call and snapshots the old text. */
@@ -1130,7 +1265,7 @@ export const artifactsApi = {
   /** The same, for a slide of a JSON deck. Addressed by slide id, not position. */
   addSlideImage: (id: string, slideId: string, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/image`, body({ slideId, artifactId, caption })),
-  /** Stores this browser's raster of a slide's own figure (`slide.diagram`) as the slide picture for the exporters. Free, adds no version. */
+  /** This browser's raster of `slide.diagram`, stored for the exporters. Free, no version. */
   storeSlideDiagram: (id: string, slideId: string, key: string, src: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/diagram`, body({ slideId, key, src })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
@@ -1164,7 +1299,7 @@ export interface ArtifactRow {
   partial?: boolean
 }
 
-/** One page of the gallery. The cursor is simply the last row it returned. */
+/** One gallery page; the cursor is the last row returned. */
 interface ArtifactQuery {
   kind?: string
   projectId?: string
@@ -1172,58 +1307,6 @@ interface ArtifactQuery {
   limit?: number
   beforeAt?: string
   beforeId?: string
-}
-
-/** A 시작점 the instance ships with. Server-side, so a template carried by id resolves. */
-export interface PromptTemplateRow {
-  id: string
-  kind: SessionKind
-  group: string
-  title: string
-  /** What you get. One line, no feature list. */
-  description: string
-  /** What you have to bring. The composer asks for these by name. */
-  fills: string[]
-  /** The framing the turn carries. Shown only on the two media surfaces, where the sentence is the prompt. */
-  prompt: string
-  /** The 서식 this job comes out wearing, or `''` when the surface chooses one from the subject. */
-  renderTemplateId: string
-  /** One worked example per blank, in `fills` order. Missing ones are ''. */
-  examples?: string[]
-  /** What the job cannot run without: 'web' | 'file'. */
-  needs?: string[]
-  /** Workspace skills to switch on for the turn, by name. */
-  skills?: string[]
-}
-
-export const promptTemplatesApi = {
-  list: () => call<PromptTemplateRow[]>('/prompt-templates'),
-}
-
-/**
- * A 시작점 somebody added. Same fields as a built-in one so the gallery can
- * concatenate the two lists instead of branching on origin.
- */
-export interface TemplateRow extends PromptTemplateRow {
-  /** An uploaded form this template writes into, when there is one. */
-  fileId: string | null
-  fileName: string
-  fileTokens: number
-  fileError: string | null
-  /** Offered to every account. Administrators only. */
-  shared: boolean
-  /** Whether the caller may edit or remove it. */
-  mine: boolean
-  updatedAt: string
-}
-
-export const templatesApi = {
-  list: () => call<TemplateRow[]>('/templates'),
-  create: (payload: Omit<Partial<TemplateRow>, 'kind'> & { kind: SessionKind; title: string }) =>
-    call<TemplateRow>('/templates', body(payload)),
-  update: (id: string, patch: Partial<TemplateRow>) =>
-    call<TemplateRow>(`/templates/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
-  remove: (id: string) => call<void>(`/templates/${id}`, { method: 'DELETE' }),
 }
 
 // Re-exported for callers that only import from this module.
@@ -1244,10 +1327,12 @@ export interface DesignRow {
   shared: boolean
   /** Whether the caller may edit or remove it. */
   mine: boolean
+  /** Shown in the pickers; false for a shipped theme kept for what already wears it. */
+  listed?: boolean
   updatedAt: string
 }
 
-/** A design system read out of a document — a proposal, not a row. */
+/** A theme read out of a document: a proposal, not a row. */
 interface DesignDraftRow {
   name: string
   description: string
@@ -1275,26 +1360,12 @@ export const designsApi = {
   remove: (id: string) => call<void>(`/designs/${id}`, { method: 'DELETE' }),
 }
 
-/** One blank in a media template's prompt, written `{name}` in the sentence. */
-interface DesignArgumentRow {
-  name: string
-  label: string
-  labelEn: string
-  default: string
-  defaultEn: string
-  /** A closed list renders as a picker; empty renders as a text field. */
-  options: string[]
-  optionsEn: string[]
-  /** A paragraph field rather than a one-line one. */
-  long?: boolean
-}
-
-/** A rendering 서식. Read-only: the catalogue ships inside the API image. */
+/** A rendering template; read-only, shipped in the API image. */
 export interface DesignTemplateRow {
   id: string
-  /** `deck` · `document` · `image` */
+  /** `deck` · `document` */
   kind: string
-  /** The surface it is offered on — `slides`, `report` or `image`. */
+  /** The surface it is offered on — `slides` or `report`. */
   surface: SessionKind
   name: string
   description: string
@@ -1309,31 +1380,19 @@ export interface DesignTemplateRow {
   categoryEn: string
   fillsEn: string[]
   examplePromptEn: string
-  /** `method` · `flow` · `concept` when this image 서식 is drawn by the diagram path. */
-  figure?: string
-  /** Rubric lines a critique scores against. Korean only; media templates send an empty list. */
+  /** Rubric lines a critique scores against. Korean only. */
   checks: string[]
-  /** Blanks to fill before the sentence reaches the composer. */
-  arguments: DesignArgumentRow[]
-  /**
-   * Composer settings this template implies — aspect, duration, voice. Keys
-   * match the option stores: `aspect`, `style`, `count` for image; `mode`,
-   * `aspect`, `seconds`, `resolution`, `audio`, `audioKind` for audio/video.
-   */
-  defaults: Record<string, string | number | boolean>
   /** Extension of the downloadable blank Office form, when present. */
   formFormat: string
   /** Whether `/design-templates/{id}/preview` has a miniature to show. */
   hasPreview: boolean
-}
-
-/** One argument's text in the language on screen. */
-export function argumentText(argument: DesignArgumentRow, english: boolean) {
-  return {
-    label: (english && argument.labelEn) || argument.label,
-    initial: (english && argument.defaultEn) || argument.default,
-    options: english && argument.optionsEn.length ? argument.optionsEn : argument.options,
-  }
+  /** Slides in a deck's sample, each at `/preview?slide=N`; 0 for any other kind. */
+  slideCount: number
+  /** A person's template (`ut-<id>`): the caller's own when `mine`. */
+  user?: boolean
+  mine?: boolean
+  /** Shown in pickers; false for a shipped template still chosen by id but not offered. */
+  listed?: boolean
 }
 
 /** One card's text in the language on screen, falling back rather than blanking. */
@@ -1358,7 +1417,7 @@ export interface TemplateStyle {
 export const designTemplatesApi = {
   list: (surface?: SessionKind) =>
     call<DesignTemplateRow[]>(`/design-templates${surface ? `?surface=${surface}` : ''}`),
-  /** The stylesheet the editor's shadow root draws the document in; a shadow root takes CSS, not a URL. */
+  /** Stylesheet for the editor's shadow root (CSS, not a URL). */
   style: (id: string, tokens?: DesignTokens | null) => {
     const query = tokens
       ? `?${new URLSearchParams({
@@ -1387,6 +1446,109 @@ export const skillsApi = {
   store: () => call<StoreSkillRow[]>('/skills/store'),
   /** Takes a copy. Idempotent — a second press returns the copy you have. */
   install: (id: string) => call<SkillRow>(`/skills/${id}/install`, { method: 'POST' }),
+  /** The shipped scripts and checks a skill's server fields may name. */
+  serverCatalogue: () => call<SkillServerCatalogue>('/skills/server-catalogue'),
+  /** SKILL.md, .zip or .skill import; `dryRun` previews, else every file must pass. */
+  importFiles: async (files: File[], opts: { dryRun?: boolean; draft?: boolean } = {}) => {
+    const form = new FormData()
+    for (const file of files) form.append('files', file)
+    const query = new URLSearchParams()
+    if (opts.dryRun) query.set('dryRun', 'true')
+    if (opts.draft) query.set('draft', 'true')
+    const res = await fetch(`${BASE_URL}/skills/import${query.size ? `?${query}` : ''}`, {
+      method: 'POST',
+      credentials: 'include',
+      // No Content-Type — the browser has to set the multipart boundary.
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      body: form,
+    })
+    if (!res.ok) {
+      const detail = await readDetail(res)
+      if (res.status === 401) throw new UnauthorizedError(detail)
+      throw new ApiError(res.status, detail)
+    }
+    return (await res.json()) as SkillImportResult
+  },
+}
+
+export interface SkillImportFinding {
+  /** `block` stops the upload; `warn` is shown and the upload may go on. */
+  severity: 'block' | 'warn'
+  code: string
+  message: string
+  file: string
+  line: number | null
+}
+
+export interface SkillImportPreview {
+  filename: string
+  ok: boolean
+  name: string
+  description: string
+  whenToUse: string
+  kinds: string[]
+  requiredTools: string[]
+  version: string
+  bodyChars: number
+  estimatedTokens: number
+  kept: string[]
+  excluded: { path: string; reason: 'script' | 'binary' | 'unused' | 'too_long' }[]
+  findings: SkillImportFinding[]
+  /** What the server would run for it; null when nothing. */
+  server?: SkillServer | null
+  /** Its own Python scripts, kept for the sandbox. */
+  scripts?: SkillScript[]
+}
+
+/** One shipped script a skill may name, with the shipped skill that uses it. */
+export interface ServerRef {
+  ref: string
+  skill: string
+  summary: string
+}
+
+export interface SkillServerCatalogue {
+  postChecks: ServerRef[]
+  entries: Record<'pre' | 'post', ServerRef[]>
+  scripts: ServerRef[]
+  copyKinds: { kind: string; label: string }[]
+}
+
+export interface SkillReview {
+  skill: SkillRow
+  ownerName: string
+}
+
+/** The administrators' queue of skills with scripts asking to be shared. */
+export const adminSkillsApi = {
+  list: (review = 'pending') => call<SkillReview[]>(`/admin/skills?review=${review}`),
+  approve: (id: string) => call<SkillReview>(`/admin/skills/${id}/approve`, { method: 'POST' }),
+  reject: (id: string, note: string) => call<SkillReview>(`/admin/skills/${id}/reject`, body({ note })),
+}
+
+export interface SkillImportResult {
+  dryRun: boolean
+  items: SkillImportPreview[]
+  created: SkillRow[]
+}
+
+/** Downloads one of your skills as SKILL.md. */
+export async function downloadSkill(id: string, name: string) {
+  const res = await fetch(`${BASE_URL}/skills/${id}/export`, {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  })
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail)
+  }
+  const url = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${name.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'skill'}-SKILL.md`
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 export interface SkillRow {
@@ -1406,7 +1568,19 @@ export interface SkillRow {
   visibility: string
   installs: number
   originId: string | null
+  originOwnerName?: string
   updatedAt: string
+  /** Fixed scripts its package ships, run by `run_skill_script`. */
+  scripts?: string[]
+  /** What the server runs for it, naming shipped scripts only. */
+  server?: SkillServer
+  /** Its own scripts, run only in the sandbox; `source` for the owner. */
+  scriptFiles?: SkillScript[]
+  /** Sharing with scripts: '' · pending · approved · rejected. */
+  review?: string
+  reviewNote?: string
+  /** Shown in the lists people pick from; false for a shipped skill kept only as a part. */
+  listed?: boolean
 }
 
 export interface StoreSkillRow extends SkillRow {
@@ -1420,6 +1594,10 @@ interface ToolCatalogRow {
   name: string
   label: string
   available: boolean
+  /** 「기본 도구」 or the connector's name. */
+  group?: string
+  title?: string
+  description?: string
 }
 
 export const toolsApi = {
@@ -1433,7 +1611,8 @@ export const memoryApi = {
   update: (id: string, patch: Partial<MemoryRow>) =>
     call<MemoryRow>(`/memory/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   pin: (id: string) => call<MemoryRow>(`/memory/${id}/pin`, { method: 'POST' }),
-  remove: (id: string) => call<void>(`/memory/${id}`, { method: 'DELETE' }),
+  // `keepalive`: a delete flushed as the page closes still reaches the server.
+  remove: (id: string) => call<void>(`/memory/${id}`, { method: 'DELETE', keepalive: true }),
 }
 
 export interface MemoryRow {
@@ -1478,6 +1657,9 @@ export const agentsApi = {
     },
     addUrl: (agentId: string, url: string) =>
       call<FileRow>(`/agents/${agentId}/knowledge/url`, body({ url })),
+    /** A conversation's own files, copied onto the agent's shelf (「에이전트로 저장」). */
+    fromFiles: (agentId: string, ids: string[]) =>
+      call<FileRow[]>(`/agents/${agentId}/knowledge/from-files`, body({ ids })),
     remove: (agentId: string, fileId: string) =>
       call<void>(`/agents/${agentId}/knowledge/${fileId}`, { method: 'DELETE' }),
     /** `force` re-sends everything — what an embedding-model change needs. */
@@ -1502,8 +1684,18 @@ export interface AgentRow {
   tools: string[] | null
   skillIds: string[] | null
   kinds: string[]
+  surface: string | null
+  renderTemplateId: string | null
+  docFormat: string | null
+  designSystemId: string | null
+  /** That design's name; the viewer's own design of this name stands in for one they cannot see. */
+  designName?: string
   /** How to use it, shown on the empty screen. */
   guide: string
+  /** 담당 부서·연락처, said as written when the material does not answer. */
+  contact?: string
+  /** The owner's published bot of this agent. */
+  publication?: { id: string; slug: string; status: string } | null
   /** First messages offered as buttons there. */
   starters: string[]
   /** How a shared original may be taken. */
@@ -1516,6 +1708,7 @@ export interface AgentRow {
   visibility: string
   installs: number
   catalogKey: string | null
+  pipelineId?: string | null
   originId: string | null
   official: boolean
   installed: boolean
@@ -1523,11 +1716,20 @@ export interface AgentRow {
   /** True only when this caller has readable documents on this agent's shelf. */
   hasKnowledge: boolean
   updatedAt: string
+  baseKey?: string | null
+  retired?: boolean
+  checkSkills?: string[] | null
+  checkOptions?: Record<string, boolean> | null
+  gapQuestions?: GapQuestion[] | null
+  inheritedQuestions?: GapQuestion[]
+  baseQuestions?: GapQuestion[]
+  bundles?: BundleSelection[] | null
+  process?: AgentProcess | null
+  processSettings?: Partial<ProcessSettings> | null
+  inheritedSettings?: ProcessSettings
 }
 
-/* ── connectors (MCP) ───────────────────────────────────────────────────
- * Credentials live server-side only; nothing here ever carries one.
- */
+/* ── connectors (MCP): credentials stay server-side ── */
 
 interface ConnectorToolRow {
   name: string
@@ -1555,6 +1757,8 @@ export interface ConnectorRow {
   tools: ConnectorToolRow[]
   lastSyncAt: string | null
   error: string | null
+  /** 기본 제공: can be switched off, not removed. */
+  byDefault?: boolean
 }
 
 interface RequiredEnvField {
@@ -1575,6 +1779,8 @@ export interface CatalogEntry {
   kinds: string[]
   official: boolean
   installed: boolean
+  /** 기본 제공: everyone has it installed. */
+  byDefault?: boolean
   /** Credentials the server needs before it can start. */
   requiredEnv: RequiredEnvField[]
 }
@@ -1625,8 +1831,7 @@ export interface JobRow {
 }
 
 export const jobsApi = {
-  /** Also the recovery point: the server restarts a poll loop for anything
-   *  left running, so a reload picks a clip in flight back up. */
+  /** Also the recovery point: the server resumes polling, so a reload picks up a clip in flight. */
   list: (sessionId: string) => call<JobRow[]>(`/sessions/${sessionId}/jobs`),
   create: (
     sessionId: string,
@@ -1642,10 +1847,112 @@ export const jobsApi = {
   cancel: (id: string) => call<JobRow>(`/jobs/${id}/cancel`, { method: 'POST' }),
 }
 
+/* ── pipeline runs ─────────────────────────────────────────────────────── */
+
+/** A run as stored: every stage with its evidence. */
+export interface RunRow extends PipelineRun {
+  sessionId: string
+  messageId: string | null
+  artifactId: string | null
+  artifactVersion: number | null
+  createdAt: string
+  updatedAt: string
+}
+
+export const runsApi = {
+  get: (sessionId: string, runId: string) =>
+    call<RunRow>(`/sessions/${sessionId}/runs/${runId}`),
+  list: (sessionId: string, limit = 20) =>
+    call<RunRow[]>(`/sessions/${sessionId}/runs?limit=${limit}`),
+}
+
+/** 「이 단계부터 다시」: the same events as a normal turn of that surface. */
+export async function* streamRerun(
+  sessionId: string,
+  runId: string,
+  payload: { fromStage: string; answers?: Record<string, string> },
+  signal?: AbortSignal,
+): AsyncGenerator<StreamEvent> {
+  yield* postStream(`/sessions/${sessionId}/runs/${runId}/rerun`, payload, signal)
+}
+
+export const userPipelinesApi = {
+  list: () => call<UserPipeline[]>('/user-pipelines'),
+  store: () => call<UserPipeline[]>('/user-pipelines/store'),
+  catalogue: () => call<PipelineCatalogue>('/user-pipelines/catalogue'),
+  get: (id: string) => call<UserPipeline>(`/user-pipelines/${id}`),
+  /** A new one: from an agent's shipped flow, from another pipeline, or from steps. */
+  create: (payload: { name?: string; description?: string; stages?: PipelineStep[]; fromAgentId?: string; fromId?: string }) =>
+    call<UserPipeline>('/user-pipelines', body(payload)),
+  update: (id: string, payload: { name?: string; description?: string; stages: PipelineStep[] }) =>
+    call<UserPipeline>(`/user-pipelines/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  remove: (id: string) => call<void>(`/user-pipelines/${id}`, { method: 'DELETE' }),
+  validate: (
+    stages: PipelineStep[],
+    id?: string,
+    agentId?: string,
+    self?: { surface: string; name: string },
+    /** The form's 빠진 정보 질문 as they stand: a 확인 질문 step is judged with them. */
+    questions?: GapQuestion[],
+  ) =>
+    call<PipelineVerdict>(
+      '/user-pipelines/validate',
+      body({ stages, id, agentId, selfSurface: self?.surface, selfName: self?.name, questions }),
+    ),
+  submit: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/submit`, { method: 'POST' }),
+  withdraw: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/withdraw`, { method: 'POST' }),
+  bind: (agentId: string, pipelineId: string | null) =>
+    call<{ agentId: string; pipelineId: string | null }>(`/agents/${agentId}/user-pipeline`, {
+      method: 'PUT',
+      body: JSON.stringify({ pipelineId }),
+    }),
+  start: (id: string) =>
+    call<{ sessionId: string; kind: 'report' | 'chat'; pipelineId: string }>(`/user-pipelines/${id}/start`, { method: 'POST' }),
+  adminList: (review = 'pending') => call<UserPipeline[]>(`/admin/user-pipelines?review=${review}`),
+  approve: (id: string) => call<UserPipeline>(`/admin/user-pipelines/${id}/approve`, { method: 'POST' }),
+  reject: (id: string, note: string) => call<UserPipeline>(`/admin/user-pipelines/${id}/reject`, body({ note })),
+}
+
+/** An agent's 진행 과정 and the 묶음 it ticks. */
+export const processApi = {
+  bases: () => call<ProcessCatalogue>('/agent-bases'),
+  put: (
+    agentId: string,
+    payload: { mode: ProcessMode; base?: string | null; bundles?: BundleSelection[]; stages?: PipelineStep[]; importId?: string },
+  ) =>
+    call<AgentProcess & { agent: Partial<AgentRow> }>(`/agents/${agentId}/process`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+}
+
+/** A person's own 묶음. */
+export const bundlesApi = {
+  list: () => call<{ shipped: Bundle[]; mine: Bundle[]; shared: Bundle[] }>('/bundles'),
+  create: (payload: { name: string; description?: string; stages: PipelineStep[] }) =>
+    call<Bundle>('/bundles', body(payload)),
+  update: (id: string, payload: { name: string; description?: string; stages: PipelineStep[] }) =>
+    call<Bundle>(`/bundles/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  remove: (id: string) => call<void>(`/bundles/${id}`, { method: 'DELETE' }),
+  share: (id: string, visibility: 'org' | 'private') => call<Bundle>(`/bundles/${id}/share`, body({ visibility })),
+}
+
 /* ── streaming ──────────────────────────────────────────────────────────*/
 
 export type StreamEvent =
-  | { type: 'step'; id: string; label: string; status: Step['status']; detail?: string }
+  | {
+      type: 'step'; id: string; label: string; status: Step['status']; detail?: string
+      outputs?: Step['outputs']; code?: string; codeAttempt?: number; stdout?: string; stderr?: string
+      /** `pipeline` for stage records; tool steps carry none or their own. */
+      category?: string
+      /** The rich stage record; absent on older servers and on tool steps. */
+      stage?: PipelineStage
+    }
+  /** A pipeline run announcing itself before its first stage record. */
+  | {
+      type: 'run'; runId: string; pipeline?: string; flow?: string
+      parentId?: string | null; fromStage?: string | null
+    }
   | { type: 'delta'; text: string }
   /** Text the agent took back — narration written before a tool ran, or an answer it then repeated. */
   | { type: 'retract'; text: string }
@@ -1662,6 +1969,8 @@ export type StreamEvent =
   /** The finished single file. Arrives once, after the last block. */
   | { type: 'page'; html: string; blocks: { title: string; layout: string }[]; templateId: string }
   | { type: 'title'; title: string }
+  /** The design a report will be saved with, sent before its first section so the draft wears it. */
+  | { type: 'design'; design: DesignTokens }
   /** The outline a document intends to write, offered before it writes it. */
   | { type: 'proposal'; plan: NonNullable<PendingPlan['plan']> }
   /** What it needs to know before it can plan at all. */
@@ -1676,26 +1985,15 @@ export type StreamEvent =
       /** True when the model set out to make this rather than the server extracting a long fence; only then does the panel open. */
       deliberate?: boolean
     }
-  | { type: 'usage'; inputTokens: number; outputTokens: number; credits: number }
+  | { type: 'usage'; inputTokens: number; outputTokens: number; credits: number; [counter: string]: number | string }
   | { type: 'error'; message: string; code?: string; reason?: string }
   | ({ type: 'privacy_route' } & PrivacyRouting)
   | { type: 'privacy_route'; action: 'mask_external'; source: 'tool_output'; count: number }
+  /** A turn with no privacy routing still closes with what the server measured. */
+  | { type: 'privacy_route'; lengthCheck?: LengthCheck; accuracy?: PrivacyRouting['accuracy'] }
   | ({ type: 'model_route' } & CostRouting)
   | ({ type: 'freshness_abstention' } & FreshnessAbstention)
   | ({ type: 'tool_result_answer' } & ToolResultAnswer)
-  /** Model comparison: one column's text, then that column's final bill. */
-  | { type: 'variant'; model: string; text: string; actualModel?: string }
-  | { type: 'variant_retract'; model: string; text: string }
-  | {
-      type: 'variant_done'
-      model: string
-      routedModel?: string
-      actualModel?: string
-      credits: number
-      inputTokens: number
-      outputTokens: number
-      error: string | null
-    }
   /** `messageId` is the stored answer's id — the one every later call must use. */
   | { type: 'done'; credits?: number; messageId?: string }
 
@@ -1712,16 +2010,11 @@ export async function* streamSession(
     activatedSkillIds?: string[]
     /** A rendering template. Sticky on the session; `''` clears it. */
     renderTemplateId?: string
-    /** A 시작점 carried by this turn only; never stored on the session. */
-    startingTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
     /** Write the outline waiting on this session instead of planning another. */
     approve?: boolean
-    /**
-     * The outline as the person edited it on the card. Sanitised server-side:
-     * titles and order are theirs, layouts stay the planner's.
-     */
+    /** Outline as edited on the card; titles and order theirs, layouts the planner's. */
     plan?: Record<string, unknown>
     /** The figure card's answer — the second of the two questions. */
     includeFigures?: boolean
@@ -1735,30 +2028,7 @@ export async function* streamSession(
   yield* postStream(`/sessions/${sessionId}/messages`, payload, signal)
 }
 
-/**
- * Model comparison. Two or three real completions, interleaved on one
- * connection so the turn is stored and billed as one thing.
- */
-export async function* streamComparison(
-  sessionId: string,
-  payload: {
-    content: string
-    models: string[]
-    activatedSkillIds?: string[]
-    startingTemplateId?: string
-    attachments?: string[]
-    privacyAction?: PrivacyAction
-    privacyDecisionToken?: string
-  },
-  signal?: AbortSignal,
-): AsyncGenerator<StreamEvent> {
-  yield* postStream(`/sessions/${sessionId}/compare`, payload, signal)
-}
-
-/**
- * Silence budget before a turn is called stalled. Generous on purpose: the
- * server heartbeats every 15 s during a healthy turn, so this long is a gone connection.
- */
+/** Silence budget before a stall; the server heartbeats every 15 s. */
 const STALL_MS = 120_000
 
 /** Rejects when the stream has produced nothing for {@link STALL_MS}. */
@@ -1781,8 +2051,7 @@ async function* postStream(
   payload: unknown,
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
-  // Own controller so the stall guard can abort; the caller's signal is
-  // forwarded, since the server tells 중단 from a dropped tab by it.
+  // Own controller for the stall guard; caller's signal forwarded (the server tells 중단 from a dropped tab by it).
   const controller = new AbortController()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
@@ -1795,7 +2064,7 @@ async function* postStream(
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...who(path),
       },
       body: JSON.stringify(payload),
     }),
@@ -1810,7 +2079,7 @@ async function* postStream(
         if (payload.code === 'privacy_decision_required') throw new PrivacyDecisionError(payload)
         if (typeof payload.detail === 'string') detail = payload.detail
         else if (Array.isArray(payload.detail)) {
-          detail = (payload.detail[0] as { msg?: string } | undefined)?.msg ?? 'invalid_request'
+          detail = validationMessage(payload.detail as FieldProblem[])
         }
       } catch (error) {
         if (error instanceof PrivacyDecisionError) throw error
@@ -1819,15 +2088,25 @@ async function* postStream(
     // The 409 body was consumed above; reading it twice loses the code.
     const resolved = detail ?? (res.status === 409 ? `http_${res.status}` : await readDetail(res))
     if (res.status === 401) throw new UnauthorizedError(resolved)
-    throw new ApiError(res.status, resolved)
+    const wait = Number(res.headers.get('Retry-After'))
+    throw new ApiError(res.status, resolved, res.status === 429 && wait > 0 ? wait : undefined)
   }
-  // A turn that stopped to ask (`_ask_before_writing`) answers in JSON, not a
-  // stream; translated into events here so the runners need not know.
+  // A turn that stopped to ask answers in JSON; translated into events here.
   if (res.headers.get('content-type')?.includes('application/json')) {
-    const answered = (await res.json()) as { pending?: PendingPlan | null; message?: string }
+    const answered = (await res.json()) as {
+      pending?: PendingPlan | null; message?: string; runId?: string; stage?: PipelineStage
+    }
     const pending = answered.pending
     // What the turn said, before what it asks; otherwise the bubble stays empty with a spinner.
     if (answered.message) yield { type: 'delta', text: answered.message }
+    // The waiting run and its card stage, as the stream would have said them.
+    if (answered.runId && answered.stage) {
+      yield { type: 'run', runId: answered.runId, flow: 'pre' }
+      yield {
+        type: 'step', category: 'pipeline', id: `stage:${answered.stage.name}`,
+        label: answered.stage.label, status: 'done', stage: answered.stage,
+      }
+    }
     if (pending?.stage === 'clarify' && pending.questions) {
       yield { type: 'needs', questions: pending.questions }
     } else if (pending?.stage === 'outline' && pending.plan) {
@@ -1860,4 +2139,843 @@ async function* postStream(
   } finally {
     signal?.removeEventListener('abort', abort)
   }
+}
+
+/* ── published agents (공개 챗봇) ──────────────────────────────────────── */
+
+export type PublicationStatus = 'draft' | 'pending' | 'approved' | 'paused' | 'rejected' | 'revoked'
+export type ShowProcess = 'none' | 'summary' | 'full'
+
+export interface BotBranding {
+  greeting: string
+  suggestedPrompts: string[]
+  placeholder: string
+}
+
+/** What a bot runs under; the owner may only lower. Per-address limits: accountless visitors only. */
+export interface BotLimits {
+  perVisitorPerMinute: number
+  perVisitorPerDay: number
+  perBotPerMinute: number
+  perIpPerMinute: number
+  perIpPerDay: number
+  turnsPerDay: number
+  tokensPerDay: number
+  maxInputChars: number
+  turnsPerConversation: number
+  concurrency: number
+  /** A key's calls (API, MCP): per minute and per day. */
+  perKeyPerMinute: number
+  perKeyPerDay: number
+  /** The owner's own daily credit cap; required before the bot opens outside. */
+  creditsPerDay?: number
+}
+
+/** Who reaches a bot: members (`internal`), whoever holds the link, or everyone (listed). */
+export type BotVisibility = 'internal' | 'link' | 'external'
+/** A request for a wider audience, or for a new version on one: '' when none. */
+export type ReviewState = '' | 'pending' | 'rejected'
+
+export interface PublicationVersion {
+  id: string
+  number: number
+  model: string
+  note: string
+  summary: { agentName?: string; knowledge?: { name: string; chars: number }[]; tools?: string[]; checks?: string[]; contact?: boolean }
+  active: boolean
+  /** Waiting for an administrator before it answers people without an account. */
+  pending?: boolean
+  approvedAt?: string | null
+  createdAt: string
+}
+
+/** A visitor as the owner may know them: never who they are. */
+export interface BotVisitor {
+  id: string
+  label: string
+  member: boolean
+  blocked: boolean
+  blockedAt: string | null
+  /** A key of the owner's (API, MCP) rather than a person. */
+  byKey?: boolean
+}
+
+/** Where a bot reaches beyond its own page, each opened by an administrator. */
+export type BotChannel = 'embed' | 'api' | 'mcp'
+export interface BotChannels {
+  embed?: { origins: string[] }
+  api?: Record<string, never>
+  mcp?: Record<string, never>
+}
+
+/** A key for the API and MCP channels; `key` only in the response that made it. */
+export interface BotKey {
+  id: string
+  name: string
+  preview: string
+  createdAt: string
+  lastUsedAt: string | null
+  key?: string
+}
+
+/** When an administrator read the bot's conversations, and why. */
+export interface BotAdminRead {
+  at: string
+  kind: 'list' | 'read'
+  reason: string
+  /** Reads of the same kind and reason within a minute, shown as one line. */
+  count?: number
+}
+
+export interface Publication {
+  id: string
+  slug: string
+  title: string
+  description: string
+  agentId: string
+  agentName: string
+  ownerName: string
+  visibility: BotVisibility
+  status: PublicationStatus
+  requestedVisibility: '' | BotVisibility
+  reviewState: ReviewState
+  /** The administrator's words on the last decision; a refusal's reason. */
+  reviewNote: string
+  reviewedAt: string | null
+  pendingVersionId: string | null
+  /** Channels open now, and the whole set asked for while a review is pending. */
+  channels: BotChannels
+  requestedChannels: BotChannels | null
+  /** Something happened since the owner last opened this page. */
+  needsLook: boolean
+  /** Why it is paused: `owner`, `admin`, `credits`, `account`, `model`. */
+  pauseReason: string
+  activeVersionId: string | null
+  branding: BotBranding
+  showProcess: ShowProcess
+  showSources: boolean
+  /** 「복사 허용」: members may copy it, instructions included, as their own agent. */
+  allowCopy: boolean
+  retentionDays: number
+  conversationView: 'off' | 'on'
+  consentVersion: number
+  limits: BotLimits
+  defaults: BotLimits
+  createdAt: string
+  updatedAt: string
+  publishedAt: string | null
+  versions?: PublicationVersion[]
+  turnsToday?: number
+}
+
+export interface PublishPreflight {
+  ok: boolean
+  /** `no_local_model`, `not_chat`, `sealed`, `own_process`, `credits`, `account`, `retired`, `not_owner`. */
+  problems: string[]
+  model: { id: string; label: string } | null
+  tools: string[]
+  checks: string[]
+  /** What a bot leaves out: `memory`, `personal`, `files`, `connectors`, `web`, `documents`, `tools`, `skills`, `questions`, `own_checks`. */
+  disabled: string[]
+  knowledge: { name: string; chars: number; findings: { category: string; count: number }[] }[]
+  creditsRemaining: number
+  existingId: string | null
+  defaults: BotLimits
+}
+
+export interface PublicationSettings {
+  title?: string
+  description?: string
+  branding?: BotBranding
+  limits?: Partial<BotLimits>
+  showProcess?: ShowProcess
+  showSources?: boolean
+  allowCopy?: boolean
+  retentionDays?: number
+  conversationView?: 'off' | 'on'
+}
+
+export interface PublicationStats {
+  days: number
+  daily: { date: string; turns: number; answers: number; conversations: number; visitors: number; tokens: number; unanswered: number; up: number; down: number; shared: number; failed: number }[]
+  totals: { turns: number; answers: number; conversations: number; visitors: number; tokens: number; unanswered: number; up: number; down: number; shared: number; failed: number; visitorsAll: number }
+  topics: { word: string; count: number }[]
+  unanswered: { text: string; at: string }[]
+  /** Questions by where they came from. */
+  channels?: Record<'web' | BotChannel, number>
+}
+
+export interface BotConversationRow {
+  id: string
+  title: string
+  sharedAt: string | null
+  viewable?: boolean
+  updatedAt: string
+  createdAt?: string
+  turns?: number
+  /** The owner's view only. */
+  visitor?: BotVisitor | null
+}
+
+export interface BotTranscriptMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  rating: 'up' | 'down' | null
+  createdAt: string
+  steps?: Step[] | null
+  failure?: string | null
+  model?: string | null
+}
+
+export interface BotListItem {
+  slug: string
+  title: string
+  description: string
+  ownerName: string
+  mine: boolean
+  /** The owner's own bot: the dashboard's id. */
+  id: string | null
+  status: PublicationStatus
+  visibility: BotVisibility
+  needsLook?: boolean
+  color: string
+  publishedAt: string | null
+  /** Source agent the org also shares: the app lists that agent instead. */
+  sharedAgentId?: string | null
+  /** The caller already holds an agent copied from it. */
+  copied?: boolean
+  /** The publisher allows copies (and the agent's prompt is not private). */
+  copyable?: boolean
+}
+
+/** A bot open to everyone, as the public list shows it: no owner names. */
+export interface PublicBotItem {
+  slug: string
+  title: string
+  description: string
+  color: string
+  publishedAt: string | null
+}
+
+export interface BotPage {
+  slug: string
+  title: string
+  description: string
+  /** Empty for a visitor without an account. */
+  ownerName: string
+  mine: boolean
+  signedIn: boolean
+  visibility: BotVisibility
+  /** Opened in a frame on another site. */
+  embedded?: boolean
+  /** The owner blocked this visitor. */
+  blocked: boolean
+  status: PublicationStatus
+  pauseReason: string
+  branding: BotBranding
+  showSources: boolean
+  showProcess: ShowProcess
+  conversationView: 'off' | 'on'
+  retentionDays: number
+  consentVersion: number
+  consented: boolean
+  color: string
+  maxInputChars: number
+}
+
+/** What a visitor's turn streams: the answer and, as the owner chose, its working. */
+export type BotStreamEvent =
+  | { type: 'delta'; text: string }
+  | { type: 'retract'; text: string }
+  | { type: 'step'; id?: string; label?: string; status?: string; category?: string; detail?: string }
+  | { type: 'usage'; inputTokens: number; outputTokens: number }
+  | { type: 'model'; models: string[] }
+  | { type: 'title'; title: string }
+  | { type: 'error'; code?: string; message?: string }
+  | { type: 'done'; messageId?: string }
+
+export const publicationsApi = {
+  list: () => call<Publication[]>('/publications'),
+  preflight: (agentId: string) => call<PublishPreflight>('/publications/preflight', body({ agentId })),
+  publish: (agentId: string, settings: PublicationSettings & { note?: string; visibility?: BotVisibility }) =>
+    call<Publication>('/publications', body({ agentId, visibility: 'internal', ...settings })),
+  /** Widening is asked of an administrator; narrowing applies at once. */
+  setScope: (id: string, visibility: BotVisibility, creditsPerDay?: number) =>
+    call<Publication>(`/publications/${id}/scope`, body({ visibility, creditsPerDay })),
+  withdrawRequest: (id: string) => call<Publication>(`/publications/${id}/review`, { method: 'DELETE' }),
+  attention: () => call<{ bots: number; reviews: number }>('/publications/attention'),
+  block: (id: string, sessionId: string) =>
+    call<BotVisitor>(`/publications/${id}/conversations/${sessionId}/block`, { method: 'POST' }),
+  blocked: (id: string) => call<BotVisitor[]>(`/publications/${id}/visitors`),
+  unblock: (id: string, visitorId: string) =>
+    call<BotVisitor>(`/publications/${id}/visitors/${visitorId}/block`, { method: 'DELETE' }),
+  get: (id: string) => call<Publication>(`/publications/${id}`),
+  update: (id: string, patch: PublicationSettings & { status?: 'approved' | 'paused' }) =>
+    call<Publication>(`/publications/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  remove: (id: string) => call<void>(`/publications/${id}`, { method: 'DELETE' }),
+  newVersion: (id: string, note: string) => call<Publication>(`/publications/${id}/versions`, body({ note })),
+  activate: (id: string, versionId: string) =>
+    call<Publication>(`/publications/${id}/versions/${versionId}/activate`, { method: 'POST' }),
+  stats: (id: string, days = 30) => call<PublicationStats>(`/publications/${id}/stats?days=${days}`),
+  conversations: (id: string) => call<BotConversationRow[]>(`/publications/${id}/conversations`),
+  conversation: (id: string, sessionId: string) =>
+    call<BotConversationRow & { messages: BotTranscriptMessage[] }>(`/publications/${id}/conversations/${sessionId}`),
+  /** The channels wanted, as a whole: closing applies at once, opening is asked of an administrator. */
+  setChannels: (id: string, wanted: { embed?: { on: boolean; origins: string[] }; api?: boolean; mcp?: boolean }) =>
+    call<Publication>(`/publications/${id}/channels`, body(wanted)),
+  keys: (id: string) => call<BotKey[]>(`/publications/${id}/keys`),
+  createKey: (id: string, name: string) => call<BotKey>(`/publications/${id}/keys`, body({ name })),
+  revokeKey: (id: string, keyId: string) => call<void>(`/publications/${id}/keys/${keyId}`, { method: 'DELETE' }),
+  adminReads: (id: string) => call<BotAdminRead[]>(`/publications/${id}/admin-reads`),
+}
+
+export const botsApi = {
+  list: () => call<BotListItem[]>('/bots'),
+  /** The bot's answering version as the caller's own agent; knowledge stays with the owner. */
+  copy: (slug: string) => call<AgentRow>(`/bots/${encodeURIComponent(slug)}/copy`, { method: 'POST' }),
+  /** Bots open to everyone; needs no account. */
+  publicList: () => call<PublicBotItem[]>('/public/bots'),
+  page: (slug: string) => call<BotPage>(`/b/${encodeURIComponent(slug)}`),
+  consent: (slug: string, version: number) =>
+    call<void>(`/b/${encodeURIComponent(slug)}/consent`, body({ version })),
+  conversations: (slug: string) => call<BotConversationRow[]>(`/b/${encodeURIComponent(slug)}/conversations`),
+  start: (slug: string) => call<BotConversationRow>(`/b/${encodeURIComponent(slug)}/conversations`, { method: 'POST' }),
+  conversation: (slug: string, id: string) =>
+    call<BotConversationRow & { messages: BotTranscriptMessage[] }>(`/b/${encodeURIComponent(slug)}/conversations/${id}`),
+  remove: (slug: string, id: string) =>
+    call<void>(`/b/${encodeURIComponent(slug)}/conversations/${id}`, { method: 'DELETE' }),
+  stop: (slug: string, id: string) =>
+    call<void>(`/b/${encodeURIComponent(slug)}/conversations/${id}/stop`, { method: 'POST' }),
+  rate: (slug: string, messageId: string, rating: 'up' | 'down' | null) =>
+    call<{ id: string; rating: string | null }>(`/b/${encodeURIComponent(slug)}/messages/${messageId}/rating`, {
+      method: 'PATCH',
+      body: JSON.stringify({ rating }),
+    }),
+  share: (slug: string, id: string) =>
+    call<{ id: string; sharedAt: string | null }>(`/b/${encodeURIComponent(slug)}/conversations/${id}/share`, { method: 'POST' }),
+  unshare: (slug: string, id: string) =>
+    call<{ id: string; sharedAt: string | null }>(`/b/${encodeURIComponent(slug)}/conversations/${id}/share`, { method: 'DELETE' }),
+}
+
+/** An administrator's row: a bot with its owner and how many conversations it holds. */
+export interface AdminPublication extends Publication {
+  ownerEmail: string
+  conversations: number
+}
+
+/** What an administrator decides on before a bot answers people without an account. */
+export interface PublicationReview {
+  publication: Publication
+  owner: { name: string; email: string }
+  version: PublicationVersion | null
+  agent: {
+    name: string
+    description: string
+    instructions: string
+    contact: string
+    guide: string
+    starters: string[]
+    tools: string[]
+    checks: string[]
+    /** The checks by the names people know (「근거 없는 답 보류」). */
+    checkNames?: string[]
+    model: string
+  } | null
+  /** What the open review is about. */
+  request?: 'visibility' | 'channels' | 'version' | null
+  /** What the version waiting changes against the one answering now. */
+  changes?: { field: 'instructions' | 'contact' | 'model' | 'tools' | 'checks' | 'knowledge'; before: unknown; after: unknown }[]
+  knowledge: { name: string; chars: number; findings: { category: string; count: number }[]; preview?: string }[]
+  history: { action: string; at: string; actorId: string | null; metadata: Record<string, unknown> }[]
+}
+
+export const adminPublicationsApi = {
+  list: (pendingOnly = false) => call<AdminPublication[]>(`/admin/publications${pendingOnly ? '?review=pending' : ''}`),
+  review: (id: string) => call<PublicationReview>(`/admin/publications/${id}/review`),
+  decide: (id: string, decision: 'approve' | 'reject', reason: string) =>
+    call<Publication>(`/admin/publications/${id}/review`, body({ decision, reason })),
+  withdraw: (id: string, reason: string) => call<Publication>(`/admin/publications/${id}/withdraw`, body({ reason })),
+  setStatus: (id: string, status: 'approved' | 'paused' | 'revoked', reason: string) =>
+    call<Publication>(`/admin/publications/${id}/status`, body({ status, reason })),
+  /** Every conversation of the bot, for an abuse review; the reason is recorded and the owner sees it. */
+  conversations: (id: string, reason: string) =>
+    call<BotConversationRow[]>(`/admin/publications/${id}/conversations?reason=${encodeURIComponent(reason)}`),
+  conversation: (id: string, sessionId: string, reason: string) =>
+    call<BotConversationRow & { messages: BotTranscriptMessage[] }>(
+      `/admin/publications/${id}/conversations/${sessionId}?reason=${encodeURIComponent(reason)}`,
+    ),
+}
+
+/** A visitor's question, streamed as the bot answers. */
+export async function* streamBot(
+  slug: string,
+  conversationId: string,
+  content: string,
+  signal?: AbortSignal,
+): AsyncGenerator<BotStreamEvent> {
+  const events = postStream(`/b/${encodeURIComponent(slug)}/conversations/${conversationId}/messages`, { content }, signal)
+  for await (const event of events) yield event as unknown as BotStreamEvent
+}
+
+/* ── issue reports (「문의·신고」) ───────────────────────────────────────── */
+
+export type IssueKind = 'bug' | 'feature' | 'other'
+export type IssueStatus = 'received' | 'checking' | 'resolved' | 'on_hold'
+
+/** What the snapshot left out to stay under its size cap. */
+export interface IssueCut {
+  code: 'evidence' | 'versions' | 'steps' | 'content' | 'artifacts' | 'messages' | 'bodies'
+  count?: number
+}
+
+export interface IssueRow {
+  id: string
+  kind: IssueKind
+  status: IssueStatus
+  body: string
+  holdReason: string
+  sessionId: string | null
+  messageId: string | null
+  artifactId: string | null
+  sessionShared: boolean
+  hasScreenshot: boolean
+  snapshot: {
+    title: string
+    kind: string
+    messages: number
+    artifacts: number
+    files: number
+    bytes: number
+    truncated: IssueCut[]
+  } | null
+  /** An administrator replied or changed the status since the reporter last looked. */
+  unread: boolean
+  assignee: { id: string; name: string } | null
+  /** Administrator views only. */
+  reporter: { id: string; name: string; email: string } | null
+  replies: number | null
+  createdAt: string
+  updatedAt: string
+  adminUpdatedAt: string | null
+}
+
+export interface IssueReply {
+  id: string
+  authorRole: 'admin' | 'user'
+  authorName: string
+  body: string
+  /** Set when the entry records a status change. */
+  status: IssueStatus | null
+  createdAt: string
+}
+
+/** Recorded with every report; never message text. */
+export interface IssueContext {
+  client?: Record<string, string>
+  apiVersion?: string
+  session?: {
+    id: string
+    kind: string
+    model: string
+    routingMode: string
+    agent: string | null
+    pipeline: string | null
+    renderTemplateId: string | null
+    messageCount: number
+    strictLocal: boolean
+  }
+  models?: string[]
+  failures?: { messageId: string; failure: string }[]
+  runs?: RunRow[]
+  artifacts?: { id: string; kind: string; version: number; versionIds: string[] }[]
+  pinned?: { messageId: string | null; artifactId: string | null }
+}
+
+export interface IssueDetail extends IssueRow {
+  thread: IssueReply[]
+  context?: IssueContext
+  admins?: { id: string; name: string }[]
+  transitions?: IssueStatus[]
+}
+
+export interface IssueSessionInfo {
+  id: string
+  title: string
+  kind: string
+  messageCount: number
+  artifactCount: number
+  fileCount: number
+  runCount: number
+  /** A turn ran on the strict-local (internal data) route: sharing asks once more. */
+  strictLocal: boolean
+  models: string[]
+  agent: string | null
+  pipeline: string | null
+}
+
+/** The read-only copy of a session, as an administrator opens it. */
+export interface IssueSnapshot {
+  session: {
+    id: string
+    title: string
+    kind: string
+    model: string
+    agent: string | null
+    project: string | null
+    pipeline: string | null
+    artifactId: string | null
+    createdAt: string | null
+    updatedAt: string | null
+  }
+  messages: MessageRow[]
+  runs: RunRow[]
+  artifacts: {
+    id: string
+    kind: string
+    title: string
+    version: number
+    data: unknown
+    updatedAt: string | null
+    versions: { id: string; version: number; summary: string; createdAt: string | null; data?: unknown }[]
+    blobCopied: boolean
+  }[]
+  files: { id: string; name: string; mime: string; size: number; createdAt: string | null; copied: boolean }[]
+  pinned: { messageId: string | null; artifactId: string | null }
+  truncated: IssueCut[]
+}
+
+export interface IssueCreate {
+  kind: IssueKind
+  body: string
+  sessionId?: string
+  shareSession: boolean
+  confirmInternal?: boolean
+  messageId?: string
+  artifactId?: string
+  screenshotFileId?: string
+  client: Record<string, string>
+}
+
+export interface AdminIssueFilters {
+  kind?: string
+  status?: string
+  since?: string
+  until?: string
+  user?: string
+  q?: string
+  assignee?: string
+  page?: number
+  size?: number
+}
+
+async function issueBlob(path: string): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  })
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail)
+  }
+  return res.blob()
+}
+
+export const issuesApi = {
+  sessionInfo: (sessionId: string) => call<IssueSessionInfo>(`/issues/session-info/${sessionId}`),
+  create: (payload: IssueCreate) => call<IssueRow>('/issues', body(payload)),
+  list: () => call<IssueRow[]>('/issues'),
+  unread: () => call<{ count: number }>('/issues/unread'),
+  get: (id: string) => call<IssueDetail>(`/issues/${id}`),
+  markRead: (id: string) => call<{ ok: boolean }>(`/issues/${id}/read`, { method: 'POST' }),
+  reply: (id: string, text: string) => call<IssueReply>(`/issues/${id}/replies`, body({ body: text })),
+  screenshot: (id: string) => issueBlob(`/issues/${id}/screenshot`),
+  adminList: (filters: AdminIssueFilters) => {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== '') query.set(key, String(value))
+    }
+    return call<{
+      items: IssueRow[]
+      total: number
+      page: number
+      size: number
+      counts: Record<IssueStatus, number>
+      admins: { id: string; name: string }[]
+    }>(`/admin/issues?${query}`)
+  },
+  adminGet: (id: string) => call<IssueDetail>(`/admin/issues/${id}`),
+  adminUpdate: (id: string, patch: { status?: IssueStatus; holdReason?: string; assigneeId?: string }) =>
+    call<IssueDetail>(`/admin/issues/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  adminReply: (id: string, text: string) => call<IssueReply>(`/admin/issues/${id}/replies`, body({ body: text })),
+  /** Each open is written to the audit trail. */
+  adminSnapshot: (id: string) => call<IssueSnapshot>(`/admin/issues/${id}/snapshot`),
+  adminScreenshot: (id: string) => issueBlob(`/admin/issues/${id}/screenshot`),
+  adminFile: (id: string, index: number, artifact = false) =>
+    issueBlob(`/admin/issues/${id}/files/${index}${artifact ? '?artifact=true' : ''}`),
+}
+
+/* ── performance monitoring (admin) ───────────────────────────────────── */
+
+export type PerfRange = '1h' | '24h' | '7d' | '30d'
+export type PerfLevel = 'ok' | 'warn' | 'critical' | 'info'
+/** `[epoch ms, mean, peak]` per bucket. */
+export type PerfPoint = [number, number, number]
+
+export interface PerfEvidence {
+  source: string
+  name: string
+  subject: string
+  windowMin: number
+  threshold: number | null
+  latest: number | null
+  peak: number | null
+  points: [number, number][]
+}
+
+export interface PerfVerdict {
+  level: PerfLevel
+  code: string
+  title: string
+  detail: string
+  action: string
+  evidence: PerfEvidence[]
+}
+
+export interface PerfChart {
+  key: string
+  title: string
+  unit: string
+  series: { name: string; axis: 'left' | 'right'; unit?: string; points: PerfPoint[] }[]
+}
+
+type N = number | null
+
+export interface PerfOverview {
+  generatedAt: string
+  range: PerfRange
+  stepSec: number
+  status: 'ok' | 'warn' | 'critical'
+  verdicts: PerfVerdict[]
+  collector: {
+    enabled: boolean
+    lastSampleAt: string | null
+    hostAvailable: boolean
+    modelLogAt: string | null
+    targets: string[]
+  }
+  host: {
+    cpuPercent: N
+    cpus: N
+    memPercent: N
+    memUsed: N
+    memTotal: N
+    load1: N
+    netRx: N
+    netTx: N
+    cpuPeak: N
+    memPeak: N
+    disks: { label: string; usedPercent: number; free: N }[]
+    devices: { device: string; busyPercent: number; read: N; write: N }[]
+  }
+  components: {
+    name: string
+    cpuPercent: N
+    cpuCores: N
+    cpuLimitPercent: N
+    cpuCoresPeak: N
+    memBytes: N
+    memLimitPercent: N
+    memPeak: N
+    netRx: N
+    netTx: N
+    ioRead: N
+    ioWrite: N
+  }[]
+  models: {
+    model: string
+    calls: number
+    errors: number
+    errorRate: number
+    latencyP50: N
+    latencyP95: N
+    latencyP95Peak: N
+    ttftP50: N
+    outTokens: number
+  }[]
+  vllm: {
+    model: string
+    up: boolean
+    running: N
+    waiting: N
+    kvCache: N
+    ttftP95: N
+    e2eP95: N
+    genTps: N
+    waitingPeak: N
+    runningPeak: N
+    kvPeak: N
+    ttftP95Peak: N
+    preemptions: number
+    requests: number
+  }[]
+  gpus: {
+    node: string
+    up: boolean
+    util: N
+    memPercent: N
+    temp: N
+    power: N
+    nodeMemPercent: N
+    nodeCpuPercent: N
+    utilPeak: N
+  }[]
+  replicas: { name: string; streams: number; turns: N; requests: N; errors: N; httpP95Ms: N; streamsPeak: N }[]
+  pipeline: { stage: string; runs: number; p50: number; p95: number; max: number }[]
+  charts: PerfChart[]
+  thresholds: {
+    waitingMax: number
+    kvCacheMax: number
+    ttftP95MaxSec: number
+    apiCpuMax: number
+    memMax: number
+    diskWarn: number
+    diskCritical: number
+    errorRateMax: number
+    gpuTempMax: number
+    gpuNodeMemMax: number
+    sustainMin: number
+    apiCpuSustainMin: number
+  }
+}
+
+export const perfApi = {
+  overview: (range: PerfRange) => call<PerfOverview>(`/admin/perf/overview?range=${range}`),
+}
+
+/* ── search (⌘K, 대화 기록): own conversations and artifacts, from the database; no model ── */
+
+/** A run of a title or excerpt; `hit` marks the query's words. */
+export interface SearchRun {
+  text: string
+  hit: boolean
+}
+
+export interface SessionSearchHit {
+  id: string
+  kind: SessionKind
+  title: string
+  titleParts: SearchRun[]
+  matchedIn: 'title' | 'message'
+  /** A window of the newest message that holds every word; empty for a title match. */
+  snippet: SearchRun[]
+  messageId: string | null
+  role: 'user' | 'assistant' | null
+  projectId: string | null
+  artifactId: string | null
+  updatedAt: string
+}
+
+export interface ArtifactSearchHit {
+  id: string
+  kind: ArtifactKind
+  title: string
+  titleParts: SearchRun[]
+  matchedIn: 'title' | 'text'
+  snippet: SearchRun[]
+  sessionId: string | null
+  projectId: string | null
+  updatedAt: string
+}
+
+export interface SearchResult {
+  query: string
+  terms: string[]
+  sessions: SessionSearchHit[]
+  artifacts: ArtifactSearchHit[]
+  sessionsMore: boolean
+  artifactsMore: boolean
+  /** Conversations matching across every page; only when asked with `count`. */
+  sessionsTotal: number | null
+}
+
+export type SearchScope = 'all' | 'sessions' | 'artifacts'
+
+export const searchApi = {
+  query: (
+    q: string,
+    {
+      scope = 'all', limit = 8, offset = 0, count = false, signal,
+    }: { scope?: SearchScope; limit?: number; offset?: number; count?: boolean; signal?: AbortSignal } = {},
+  ) => {
+    const params = new URLSearchParams({ q: q.slice(0, 200), scope, limit: String(limit), offset: String(offset) })
+    if (count) params.set('count', 'true')
+    return call<SearchResult>(`/search?${params}`, { signal })
+  },
+}
+
+/** One page of 대화 기록, newest first; `page` is the one served (the last when asked past it). */
+export interface SessionPage {
+  items: SessionRow[]
+  total: number
+  page: number
+  size: number
+}
+
+export const historyApi = {
+  page: (page: number, size = 50, signal?: AbortSignal) =>
+    call<SessionPage>(`/sessions/paged?page=${page}&size=${size}`, { signal }),
+}
+
+/** The editor's payload for a person's template. */
+export type UserTemplateIn = Omit<UserTemplate, 'id' | 'formName' | 'hasForm' | 'mine' | 'ownerName' | 'updatedAt'>
+
+const templateBody = (t: UserTemplateIn) => JSON.stringify({ ...t, process: t.process as Partial<ProcessSettings> })
+
+/** A person's own templates (`/user-templates`). */
+export const userTemplatesApi = {
+  list: () => call<{ mine: UserTemplate[]; shared: UserTemplate[] }>('/user-templates'),
+  catalogue: () => call<TemplateCatalogue>('/user-templates/catalogue'),
+  /** A shipped document template as the editor's fields (snake_case, as the server stores). */
+  start: (templateId: string) => call<Record<string, unknown>>(`/user-templates/start/${encodeURIComponent(templateId)}`),
+  get: (id: string) => call<UserTemplate>(`/user-templates/${encodeURIComponent(id)}`),
+  create: (t: UserTemplateIn) => call<UserTemplate>('/user-templates', { method: 'POST', body: templateBody(t) }),
+  update: (id: string, t: UserTemplateIn) =>
+    call<UserTemplate>(`/user-templates/${encodeURIComponent(id)}`, { method: 'PUT', body: templateBody(t) }),
+  remove: (id: string) => call<void>(`/user-templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  uploadForm: async (id: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(`${BASE_URL}/user-templates/${encodeURIComponent(id)}/form`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      body: form,
+    })
+    if (!res.ok) {
+      const detail = await readDetail(res)
+      if (res.status === 401) throw new UnauthorizedError(detail)
+      throw new ApiError(res.status, detail)
+    }
+    return (await res.json()) as UserTemplate
+  },
+  removeForm: (id: string) => call<UserTemplate>(`/user-templates/${encodeURIComponent(id)}/form`, { method: 'DELETE' }),
+}
+
+/** The connector catalogue administrators keep (관리 › 커넥터 카탈로그). */
+export type CatalogEntryIn = Omit<CatalogEntryAdmin, 'id' | 'updatedAt'>
+export interface CatalogAdmin {
+  entries: CatalogEntryAdmin[]
+  kinds: string[]
+  transports: string[]
+  features: string[]
+  placeholders: string[]
+}
+export const connectorCatalogApi = {
+  list: () => call<CatalogAdmin>('/admin/connector-catalog'),
+  add: (entry: CatalogEntryIn) => call<{ entries: CatalogEntryAdmin[] }>('/admin/connector-catalog', body(entry)),
+  edit: (id: string, entry: CatalogEntryIn) =>
+    call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(entry) }),
+  remove: (id: string) => call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }

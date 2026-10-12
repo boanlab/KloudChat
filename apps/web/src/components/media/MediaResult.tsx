@@ -35,14 +35,14 @@ function Waveform({ peaks }: { peaks: number[] }) {
   )
 }
 
-/** Inline media reply: pictures, clips and players, with download and regenerate actions. */
+/** Inline media reply with download and regenerate. */
 export function MediaResult({
   artifacts,
   credits,
   sessionId,
 }: {
   artifacts: (ImageArtifact | AudioArtifact | VideoArtifact)[]
-  /** Credits charged for the turn; zero prints nothing. */
+  /** Credits charged; zero prints nothing. */
   credits: number
   /** Session for regenerate actions. */
   sessionId?: string
@@ -51,7 +51,7 @@ export function MediaResult({
   const { models, openArtifact } = useStore()
   const generateImages = useStore((s) => s.generateImages)
   const setComposerRestore = useStore((s) => s.setComposerRestore)
-  // Edited composed prompt; a ref so the textarea is uncontrolled.
+  // Edited composed prompt; ref keeps the textarea uncontrolled.
   const edited = useRef('')
   const images = artifacts.filter((a): a is ImageArtifact => a.kind === 'image')
   const audios = artifacts.filter((a): a is AudioArtifact => a.kind === 'audio')
@@ -80,7 +80,7 @@ export function MediaResult({
                 title={t('크게 보기')}
                 className={cn(
                   'group relative overflow-hidden rounded-card border border-line bg-elevated',
-                  // Frame follows the file's own pixel ratio; nothing is cropped.
+                  // Frame follows the file's pixel ratio; no crop.
                   img.source ? 'bg-white' : img.width && img.height ? undefined : (aspectClass[img.actualAspect || img.aspect] ?? 'aspect-square'),
                 )}
                 style={img.width && img.height ? { aspectRatio: `${img.width} / ${img.height}` } : undefined}
@@ -96,7 +96,7 @@ export function MediaResult({
               </button>
             ))}
           </div>
-          {/* Figures carry a caption and their mermaid source. */}
+          {/* Figures: caption and mermaid source. */}
           {images.some((img) => img.source) && (
             <div className="mt-2 max-w-md space-y-1">
               {images.filter((img) => img.caption).map((img) => (
@@ -151,13 +151,12 @@ export function MediaResult({
                   variant="ghost"
                   size="sm"
                   onClick={() =>
-                    // The composer's only way in from outside: the refused-turn restore channel.
+                    // Composer's only outside entry: the refused-turn restore channel.
                     setComposerRestore({
                       sessionId,
                       value: images[0].prompt,
                       attachments: [],
                       activatedSkillIds: [],
-                      startingTemplate: null,
                       error: '',
                     })
                   }
@@ -172,7 +171,7 @@ export function MediaResult({
             t('{n}장').replace('{n}', String(images.length)),
             modelLabel(images[0].model),
           ])}
-          {/* The composed prompt actually sent; editable and resendable as-is. */}
+          {/* Prompt actually sent; editable, resendable. */}
           {images[0].composedPrompt && images[0].composedPrompt !== images[0].prompt && (
             <details className="mt-2 max-w-2xl rounded-control border border-line bg-panel px-3 py-2 text-xs">
               <summary className="cursor-pointer font-medium text-muted">
@@ -217,7 +216,7 @@ export function MediaResult({
       {videos.map((v) => (
         <div key={v.id}>
           <div className="max-w-md overflow-hidden rounded-panel border border-line bg-panel">
-            {/* No thumbnailer: `posterSrc` is empty and the first frame shows. */}
+            {/* No thumbnailer: empty `posterSrc`, first frame shows. */}
             <video
               controls
               src={fileUrl(v.src)}

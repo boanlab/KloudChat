@@ -1,9 +1,4 @@
-"""Minimal MCP client: `initialize`, `tools/list` and `tools/call` over stdio or streamable HTTP.
-
-A stdio server is spawned per call with the caller's substituted environment
-(`{{USER_ID}}`, `{{USER_EMAIL}}`); a shared process would leak one person's
-credentials to another. Server output is data, never an instruction.
-"""
+"""Minimal MCP client; stdio spawned per call so credentials never cross users."""
 
 from __future__ import annotations
 
@@ -16,9 +11,8 @@ import re
 import shlex
 from typing import Any
 
-import httpx
-
 from app.core.config import settings
+from app.services import tools_gateway
 
 log = logging.getLogger(__name__)
 
@@ -34,11 +28,7 @@ _ENV_REF = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
 
 
 def substitute(env: dict[str, str] | None, *, user_id: str, user_email: str) -> dict[str, str]:
-    """Resolves a connector's environment for one caller.
-
-    `{{USER_ID}}`/`{{USER_EMAIL}}` carry the caller's identity; `${VAR}` reads
-    deployment secrets from the API's own environment at spawn time.
-    """
+    """Connector env for one caller: identity placeholders, `${VAR}` from API env."""
     values = {
         "{{USER_ID}}": user_id,
         "{{USER_EMAIL}}": user_email,
@@ -48,26 +38,22 @@ def substitute(env: dict[str, str] | None, *, user_id: str, user_email: str) -> 
         text = str(raw)
         for token, value in values.items():
             text = text.replace(token, value)
-        # Unset becomes empty, not a literal `${FOO}`.
+        # unset → empty, not literal
         text = _ENV_REF.sub(lambda m: os.environ.get(m.group(1), ""), text)
         out[key] = text
     return out
 
 
-# ── stdio ──────────────────────────────────────────────────────────────
-
-
-#: Environment keys a stdio server inherits; everything else (DB URL, master key, …) stays.
+#: env keys a stdio server inherits; never DB URL, master key, …
 _INHERITED_ENV = frozenset({"PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR", "PYTHONIOENCODING"})
 
 
 class _StdioSession:
-    """One server process for the life of a `with` block."""
+    """One server process per `with` block."""
 
     def __init__(self, command: str, env: dict[str, str]):
         self.command = command
-        # Only what a child needs to run — never the API's own secrets. The server's
-        # own vars win over these.
+        # never the API's own secrets; server's vars win
         self.env = {**{k: v for k, v in os.environ.items() if k in _INHERITED_ENV}, **env}
         self.proc: asyncio.subprocess.Process | None = None
         self._id = 0
@@ -132,24 +118,21 @@ class _StdioSession:
             try:
                 message = json.loads(line)
             except json.JSONDecodeError:
-                # Servers print banners to stdout before speaking JSON-RPC.
+                # banners before JSON-RPC
                 continue
             if message.get("id") != request_id:
-                continue  # a notification or an out-of-band response
+                continue  # notification or out-of-band response
             if "error" in message:
                 raise McpError(str(message["error"].get("message") or message["error"]))
             return message.get("result")
 
 
-# ── http / sse ─────────────────────────────────────────────────────────
-
-
 async def _http_request(url: str, method: str, params: dict[str, Any] | None = None) -> Any:
-    """One MCP call over streamable HTTP, handshake included.
-
-    A server may return `Mcp-Session-Id` on `initialize` and reject requests without it.
-    """
-    async with httpx.AsyncClient(timeout=settings.tool_timeout_sec) as client:
+    """One MCP call over streamable HTTP, handshake included; keeps `Mcp-Session-Id`."""
+    # gateway key only to the deep-research address
+    async with tools_gateway.client(
+        timeout=settings.tool_timeout_sec, features=("research",)
+    ) as client:
         headers = {"Accept": "application/json, text/event-stream"}
 
         init = await client.post(
@@ -173,7 +156,7 @@ async def _http_request(url: str, method: str, params: dict[str, Any] | None = N
         if session:
             headers["Mcp-Session-Id"] = session
 
-        # Notification: no id, no response expected; some servers require it.
+        # notification: no id/response; required by some servers
         await client.post(
             url,
             json={"jsonrpc": "2.0", "method": "notifications/initialized"},
@@ -190,7 +173,7 @@ async def _http_request(url: str, method: str, params: dict[str, Any] | None = N
 
 
 def _parse(body: str) -> Any:
-    """A streamable-http server may answer as SSE even for a single request."""
+    """Streamable-http may answer as SSE even for one request."""
     if body.lstrip().startswith("event:") or body.lstrip().startswith("data:"):
         for line in body.splitlines():
             if line.startswith("data:"):
@@ -205,11 +188,8 @@ def _parse(body: str) -> Any:
     return message.get("result")
 
 
-# ── public API ─────────────────────────────────────────────────────────
-
-
 def _flatten(result: Any) -> str:
-    """MCP returns a content array; the model wants text."""
+    """MCP content array → text."""
     if result is None:
         return ""
     content = result.get("content") if isinstance(result, dict) else None
@@ -226,13 +206,13 @@ def _flatten(result: Any) -> str:
             resource = item.get("resource") or {}
             parts.append(resource.get("text") or resource.get("uri") or "")
         else:
-            # Non-text content is named rather than dropped.
+            # non-text content named, not dropped
             parts.append(f"[{item.get('type')} 콘텐츠]")
     return "\n".join(p for p in parts if p).strip()
 
 
 def expand(endpoint: str, env: dict[str, str] | None) -> str:
-    """Substitutes `${VAR}` inside the command line, for servers that take credentials in argv."""
+    """`${VAR}` substitution in the command line (argv credentials)."""
     merged = {**os.environ, **(env or {})}
     return _ENV_REF.sub(lambda m: merged.get(m.group(1), ""), endpoint)
 

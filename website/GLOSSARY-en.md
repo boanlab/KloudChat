@@ -8,7 +8,7 @@
 | 관리자 | administrator | admin 축약 금지 |
 | 대화 | conversation | 화면 이름으로 쓰일 때만 Chat |
 | 챗 | Chat | 화면 이름 |
-| 작업 목록 | conversation list | 왼쪽 목록 |
+| 최근 | Recent | 사이드바의 대화 목록 |
 | 요청 / 턴 | request / turn | |
 | 답변 | answer | response 쓰지 않음 |
 | 다시 시도 | Retry | 버튼 |
@@ -28,9 +28,8 @@
 | 커넥터 | connector | |
 | 에이전트 | agent | |
 | 스킬 | skill | |
-| 시작점 | starting point | |
-| 서식 | format | 보고서·슬라이드의 서식 |
-| 디자인 | design | 슬라이드 디자인 |
+| 템플릿 | template | 아티팩트의 구조 (글자 꾸밈의 「서식」은 formatting) |
+| 테마 | theme | 아티팩트의 모양(색·글꼴·문체) |
 | 프로젝트 | project | |
 | 메모리 | memory | |
 | 보고서 | report | |
@@ -44,9 +43,11 @@
 | 잘림 위험 | overflow risk | |
 | 버전 기록 | version history | |
 | 내보내기 | Export | 메뉴일 때 대문자 |
-| 아티팩트 | artifact | |
+| 아티팩트 | artifact | 사이드바·화면 이름은 Artifacts |
 | 공유 | sharing / Share | |
 | 사용량 | usage | |
+| 챗봇 | chatbot | 사이드바·화면 이름은 Chatbots |
+| 문의·신고 | Feedback & issues | 화면 이름 |
 | 접속 기록 | sign-in history | |
 | 제한 사항 | limits | |
 | 용어 | glossary | |

@@ -1,8 +1,4 @@
-"""Outgoing account mail: password reset and signup verification.
-
-No queue and no retry; a failed send is reported to the caller. `smtplib` is
-blocking, so every send goes through a worker thread.
-"""
+"""Account mail (password reset, signup verification); no queue/retry, sent via worker thread."""
 
 from __future__ import annotations
 
@@ -21,8 +17,7 @@ _TIMEOUT = 15.0
 
 
 class MailError(RuntimeError):
-    """Delivery failed. `detail` is written for an administrator to act on — one of the
-    sentences in `_describe`, never the underlying exception's text."""
+    """Delivery failure; detail is an admin-facing sentence, never the exception text."""
 
     def __init__(self, detail: str):
         super().__init__(detail)
@@ -30,7 +25,7 @@ class MailError(RuntimeError):
 
 
 def _describe(exc: Exception) -> str:
-    """Administrator-readable message for an SMTP failure."""
+    """Admin-readable SMTP failure message."""
     if isinstance(exc, smtplib.SMTPAuthenticationError):
         return "인증에 실패했습니다. 사용자 이름과 비밀번호를 확인하세요."
     if isinstance(exc, smtplib.SMTPRecipientsRefused):
@@ -69,7 +64,7 @@ def _send_blocking(config: dict[str, str], message: EmailMessage) -> None:
 
 
 async def send(*, to: str, subject: str, body: str) -> None:
-    """Delivers one plain-text message, or raises `MailError`."""
+    """Send one plain-text message or raise MailError."""
     config = await settings_store.smtp_config()
     if not config["host"] or not config["sender"]:
         raise MailError("메일 서버가 설정되지 않았습니다.")
@@ -92,7 +87,7 @@ async def send(*, to: str, subject: str, body: str) -> None:
 
 
 def reset_message(*, name: str, link: str, minutes: int) -> tuple[str, str]:
-    """Subject and body for a password reset."""
+    """Password-reset subject and body."""
     subject = "KloudChat 비밀번호 재설정"
     body = (
         f"{name}님,\n\n"
@@ -105,7 +100,7 @@ def reset_message(*, name: str, link: str, minutes: int) -> tuple[str, str]:
 
 
 def verification_message(*, name: str, link: str, minutes: int) -> tuple[str, str]:
-    """Subject and body for confirming a signup address."""
+    """Signup-confirmation subject and body."""
     subject = "KloudChat 가입 확인"
     body = (
         f"{name}님,\n\n"

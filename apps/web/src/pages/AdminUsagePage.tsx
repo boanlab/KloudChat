@@ -89,10 +89,10 @@ export function AdminUsagePage() {
   }
 
   const cr = (v: number) => `${v.toLocaleString()} cr`
-  // Charges outside any conversation have no kind entry.
+  // Charges outside a conversation: no kind entry.
   const surface = (kind: string) =>
-    kind in kindMeta ? t(kindMeta[kind as SessionKind].label) : t('기타')
-  // Free models bill nothing, so with zero credits the chart plots requests instead.
+    kind === 'bot' ? t('공개 챗봇') : kind in kindMeta ? t(kindMeta[kind as SessionKind].label) : t('기타')
+  // Free models bill nothing: zero credits → plot requests.
   const byCredits = (usage?.totals.credits ?? 0) > 0
   const daily = (usage?.daily ?? []).map((d) => ({
     ...d,
@@ -168,7 +168,7 @@ export function AdminUsagePage() {
               <Stat label={t('사용 크레딧')} value={usage.totals.credits.toLocaleString()} />
               <Stat
                 label={t('배정 대비')}
-                // Denominator is the active roster only.
+                // Active roster only.
                 value={
                   usage.totals.allocatedCredits > 0
                     ? `${((usage.totals.credits / usage.totals.allocatedCredits) * 100).toFixed(2)}%`
@@ -180,7 +180,7 @@ export function AdminUsagePage() {
               <Stat
                 label={t('웹 검색')}
                 value={usage.totals.searches.toLocaleString()}
-                // Per answer, so a jump in searches is read against the traffic.
+                // Per answer: search jumps read against traffic.
                 hint={t('응답 1건당 {n}회').replace(
                   '{n}',
                   (usage.totals.searches / Math.max(1, usage.totals.requests)).toFixed(1),
@@ -199,7 +199,7 @@ export function AdminUsagePage() {
                   </span>
                 )}
               </p>
-              {/* Fixed height: bar heights are percentages of this box. */}
+              {/* Fixed height: bar heights are percentages of it. */}
               <div className="flex h-40 items-stretch gap-1.5">
                 {daily.map((d) => (
                   <div key={d.date} className="flex min-w-0 flex-1 flex-col items-center gap-1">
@@ -213,7 +213,7 @@ export function AdminUsagePage() {
                         title={`${t('{n}건').replace('{n}', String(d.requests))} · ${d.credits.toLocaleString()} cr · ${t('웹 검색 {n}회').replace('{n}', String(d.searches))}`}
                       />
                     </div>
-                    {/* Overflows rather than truncates: `MM-DD` is wider than a column. */}
+                    {/* Overflows rather than truncates: `MM-DD` wider than a column. */}
                     <span className="overflow-visible text-2xs whitespace-nowrap text-faint">
                       {d.date.slice(5)}
                     </span>
@@ -236,7 +236,9 @@ export function AdminUsagePage() {
                         ? t('{n}초 받아씀').replace('{n}', m.units.toLocaleString())
                         : m.units && m.unit === 'chunks'
                           ? t('{n}청크 색인').replace('{n}', m.units.toLocaleString())
-                          : '',
+                          : m.units && m.unit === 'pages'
+                            ? t('{n}쪽 글자 읽음').replace('{n}', m.units.toLocaleString())
+                            : '',
                     ]
                       .filter(Boolean)
                       .join(' · '),

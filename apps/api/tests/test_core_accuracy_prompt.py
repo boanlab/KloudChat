@@ -43,8 +43,11 @@ def test_only_explicit_research_language_implies_web_search():
 
 def test_search_contract_prefers_the_issuing_agencys_original_material():
     prompt = system_prompt(SessionKind.chat, web_search=True, web_search_available=True)
-    assert "정부·공공기관의 보도자료, 원문 보고서, 통계표를 1차 근거" in prompt
-    assert "언론·대학 소개 글은 원문을 찾지 못했을 때의 보조 근거" in prompt
-    assert "기관 홈페이지 첫 화면은 특정 주장의 근거가 아닙니다" in prompt
-    assert "사용자가 제시한 주장을 따옴표로 그대로 검색" in prompt
-    assert "나오지 않은 비율, 연도, 조사명, 척도 문항은 기억으로 보태지 마세요" in prompt
+    assert ("press releases, original reports and statistical tables of government and "
+            "public agencies as primary evidence") in prompt
+    assert ("media or university write-ups only as secondary evidence when the original "
+            "cannot be found") in prompt
+    assert "An agency's home page is not evidence for a specific claim" in prompt
+    assert "search the user's claim verbatim in quotes" in prompt
+    assert ("Do not add from memory any ratio, year, survey name or scale item that does "
+            "not actually appear") in prompt

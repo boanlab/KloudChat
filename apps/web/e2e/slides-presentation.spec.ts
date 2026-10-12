@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
 import deck from './fixtures/presentation-deck.json' with { type: 'json' }
+import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -60,14 +61,15 @@ async function fixture(page: Page, testInfo: TestInfo, html = false) {
     if (method === 'GET' && path === '/artifacts') return route.fulfill({ json: [artifact] })
     if (method === 'GET' && path === `/artifacts/${artifactId}`) return route.fulfill({ json: artifact })
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: { [data.kind]: 1 }, total: 1 } })
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && [`/sessions/${sessionId}/messages`, `/sessions/${sessionId}/jobs`, '/projects',
-      '/skills', '/memory', '/agents', '/tools', '/templates', '/connectors', '/connectors/catalog', '/jobs',
-      '/designs', '/design-templates', '/prompt-templates', '/shares'].includes(path)) return route.fulfill({ json: [] })
+      '/skills', '/memory', '/agents', '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/designs', '/design-templates', '/shares'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.abort('blockedbyclient')
   })
   await page.goto(`/s/${sessionId}?artifact=${artifactId}`)
-  if (!html) await page.getByRole('tab', { name: '슬라이드 쇼', exact: true }).click()
   await page.getByRole('button', { name: '발표', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '발표 모드', exact: true })).toBeVisible()
   await page.evaluate(() => document.fonts.ready)
@@ -228,7 +230,7 @@ test('JSON navigation and rotation retain the fitted slide without mutating its 
   await expect(dialog(page).getByText(deck.data.slides[2].notes!, { exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(dialog(page)).toHaveCount(0)
-  await expect(page.getByRole('tab', { name: '슬라이드 쇼', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '발표', exact: true })).toBeVisible()
   expect(unexpected).toEqual([])
 })
 

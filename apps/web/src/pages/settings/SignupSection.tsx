@@ -33,9 +33,10 @@ export function SignupSection({
   const [mode, setMode] = useState<'open' | 'approval' | 'closed'>('approval')
   const [domains, setDomains] = useState('')
   const [verify, setVerify] = useState(false)
+  const [credits, setCredits] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Typing wins over a fetch that lands late.
+  // Typing wins over a late fetch.
   const dirty = useRef(false)
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export function SignupSection({
     setMode(settings.signup.mode)
     setDomains(settings.signup.domains.join(', '))
     setVerify(settings.signup.verifyEmail)
+    setCredits(String(settings.modelRoles?.defaultMonthlyCredits ?? ''))
   }, [settings])
 
   if (!settings) return null
@@ -51,7 +53,10 @@ export function SignupSection({
   const changed =
     mode !== stored.mode ||
     domains.trim() !== stored.domains.join(', ') ||
-    verify !== stored.verifyEmail
+    verify !== stored.verifyEmail ||
+    (settings.modelRoles !== undefined &&
+      credits.trim() !== String(settings.modelRoles.defaultMonthlyCredits))
+  const creditsValid = /^\d{1,10}$/.test(credits.trim()) && Number(credits.trim()) <= 1_000_000_000
 
   const save = async () => {
     setBusy(true)
@@ -61,6 +66,7 @@ export function SignupSection({
         signupMode: mode,
         signupDomains: domains,
         signupVerifyEmail: verify ? 'on' : '',
+        ...(settings.modelRoles ? { defaultMonthlyCredits: credits.trim() } : {}),
       })
       dirty.current = false
       await onSaved()
@@ -151,6 +157,31 @@ export function SignupSection({
         )}
       </Field>
 
+      {settings.modelRoles && (
+        <Field
+          label={t('새 계정의 월 크레딧')}
+          hint={t('가입하거나 승인될 때 주는 월 크레딧입니다. 약 {usd}달러에 해당하며, 승인할 때 계정마다 바꿀 수 있습니다.').replace(
+            '{usd}',
+            (Number(credits.trim() || 0) / (settings.credits.perUsd || 1)).toLocaleString(undefined, {
+              maximumFractionDigits: 2,
+            }),
+          )}
+        >
+          <Input
+            type="number"
+            min={0}
+            max={1_000_000_000}
+            step={1000}
+            value={credits}
+            onChange={(e) => {
+              dirty.current = true
+              setCredits(e.target.value)
+            }}
+            className="font-mono text-base"
+          />
+        </Field>
+      )}
+
       {error && (
         <p className="flex items-start gap-1.5 rounded-control border border-danger/25 bg-danger/5 px-3 py-2 text-base text-danger">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
@@ -160,7 +191,7 @@ export function SignupSection({
 
       <div className="flex items-center gap-2">
         <Button
-          disabled={busy || !changed}
+          disabled={busy || !changed || (settings.modelRoles !== undefined && !creditsValid)}
           title={!changed ? t('바뀐 내용이 없습니다') : busy ? t('저장 중…') : undefined}
           onClick={() => void save()}
         >

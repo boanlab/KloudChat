@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
-import { openSidebar, signIn } from './helpers'
+import { openSidebar, signIn, moreMenu } from './helpers'
 
 /** Durability sweep: offline navigation, concurrent edits, a 400-row list. Writes `audit/durability-audit.json`; never fails. */
 
@@ -117,7 +117,7 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
     }
 
     const rewrite = async (p: typeof page, body: string) => {
-      await p.getByRole('button', { name: '원문 편집' }).click()
+      await moreMenu(p, /원문 편집/)
       await p.getByLabel('문서 원본').fill(`# ${report.title}\n\n## 한 절\n\n${body}\n`)
       await p.getByRole('button', { name: '저장', exact: true }).click()
       await p.waitForTimeout(1200)

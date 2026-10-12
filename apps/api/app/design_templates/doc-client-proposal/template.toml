@@ -1,0 +1,79 @@
+kind = "document"
+# The document format it fixes (`doc_formats`): head fields, numbering, the format's
+# pipeline, and its genre rule in `genre.md`.
+doc_format = "client_proposal"
+
+# 규칙은 서식 지침과 에이전트 지침에 둔다. 견적·요구 ID 검사는 뒤에 서버 훅으로 붙는다.
+skills = []
+# Run by the server before and after writing (app/skills/README.md).
+check_skills = ["gap-check", "grounding-check"]
+name = "고객 제안서"
+description = "RFP 목차를 따르는 고객 제안 · 요구사항 대응표와 부가세까지 맞는 견적"
+category = "업무"
+fills = ["고객사와 사업명", "RFP·미팅 메모", "견적 근거"]
+example_prompt = "아래 RFP와 미팅 메모로 고객 제안서를 써 줘. RFP에 목차가 있으면 그 순서를 따르고, 요구 ID마다 대응 방안을 표로 정리하고, 견적은 공급가액·부가세·합계로 맞춰 줘. 우리 회사 자료에 없는 실적은 쓰지 마.\n\n고객사와 사업명: \n제안사 정보: \nRFP·메모: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Client proposal"
+description_en = "A proposal that follows the client's RFP · requirement matrix and a quote with VAT"
+category_en = "Work"
+fills_en = ["Client and project", "RFP or meeting notes", "Pricing basis"]
+example_prompt_en = "Write a client proposal from the RFP and meeting notes below. Follow the RFP's table of contents if it gives one, answer every requirement ID in a table, and total the quote as supply price, VAT and total. Do not claim references our company material does not list.\n\nClient and project: \nOur company: \nRFP or notes: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "client"
+label = "고객사"
+question = "제안서를 받을 고객사는 어디인가요?"
+why = "자료에서 고객사 이름을 찾지 못했습니다. 표지와 본문 수신처에 들어갑니다."
+placeholder = "[고객사]"
+detector = { type = "builtin", name = "client" }
+
+[[questions]]
+id = "period"
+label = "사업 기간"
+question = "사업(과업) 기간은 얼마인가요?"
+why = "기간이 없으면 일정과 투입 MM, 견적을 맞출 수 없습니다."
+placeholder = "[사업 기간]"
+detector = { type = "builtin", name = "period" }
+
+[[questions]]
+id = "staffing"
+label = "투입 인력·MM·단가"
+question = "투입 인력(역할·인원·MM)과 단가를 알려 주세요."
+why = "견적을 코드로 계산하려면 인력·MM·단가(또는 총액)가 필요합니다. 없으면 금액을 빈칸으로 둡니다."
+placeholder = "[투입 인력·단가]"
+detector = { type = "builtin", name = "staffing" }
+
+[[questions]]
+id = "vat"
+label = "부가세 기준"
+question = "금액은 부가세 포함인가요, 별도인가요?"
+why = "부가세 기준이 없으면 예산과 견적을 같은 기준으로 비교할 수 없습니다."
+placeholder = "[부가세 기준]"
+detector = { type = "builtin", name = "vat" }
+
+# 진행 과정 설정 (`services/process_settings.py`): what writing in this 서식 does besides
+# writing. A person's agent or template sets the same keys in its form.
+[process]
+prepass = ["date-calc", "proposal-rfp", "quote-calc", "staffing"]
+stages = ["page-limit"]
+checks = ["quote-totals", "proposal-schedule", "lead-dates", "staff-counts", "material-blanks"]
+judged = ["judge-bindings"]
+amend = ["requirement-ids", "quote-validity"]
+head = ["rfp-client"]
+conflict_rule = "State which value you took as the premise, and leave what must be checked in 「전제·제외 범위·위험」 or the question list."
+
+[process.structure]
+# The RFP's body page limit, counted and said (not cut).
+page_limit_rfp = true

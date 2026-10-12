@@ -1,8 +1,4 @@
-"""Edited-section HTML (`format: "html"`) back to the Markdown the exporters read.
-
-The vocabulary is `design_templates._ALLOWED_TAGS`; `design_templates.sanitise`
-runs first. Markdown → HTML is the browser's job.
-"""
+"""Edited-section HTML (`format: "html"`) to exporter Markdown; input already `sanitise`d."""
 
 from __future__ import annotations
 
@@ -12,14 +8,14 @@ from dataclasses import dataclass, field
 from html import unescape
 from html.parser import HTMLParser
 
-#: Block tags that end a paragraph; everything else is inline.
+#: paragraph-ending block tags
 _BLOCK = re.compile(
     r"</?(p|div|section|h[1-6]|ul|ol|li|blockquote|table|thead|tbody|tr|th|td|figure"
     r"|figcaption|dl|dt|dd|hr|br)\b[^>]*>",
     re.I,
 )
 _TAG = re.compile(r"<[^>]{1,2000}>")
-#: `<strong>가</strong>` → `**가**`. Nested emphasis keeps only the outer mark.
+#: `<strong>가</strong>` → `**가**`; nested keeps outer mark only
 _EMPHASIS = (
     (re.compile(r"<(strong|b)\b[^>]*>(.*?)</\1\s*>", re.S | re.I), r"**\2**"),
     (re.compile(r"<(em|i)\b[^>]*>(.*?)</\1\s*>", re.S | re.I), r"*\2*"),
@@ -29,7 +25,7 @@ _EMPHASIS = (
 
 @dataclass(slots=True)
 class Cell:
-    """One table cell; `text` may hold newlines, spans are what GFM cannot say."""
+    """Table cell; `text` may hold newlines, spans are beyond GFM."""
 
     text: str
     colspan: int = 1
@@ -38,17 +34,13 @@ class Cell:
 
 @dataclass(slots=True)
 class Grid:
-    """A table as anchor cells: each row holds only the cells that begin in it.
-
-    Cells covered by a span are not repeated, matching how docx, PDF and OWPML
-    describe a merge.
-    """
+    """Table as anchor cells (spanned cells not repeated, like docx/PDF/OWPML)."""
 
     rows: list[list[Cell]] = field(default_factory=list)
 
     @property
     def width(self) -> int:
-        """Column count, walked with span occupancy rather than the widest anchor row."""
+        """Column count by span occupancy."""
         taken: set[tuple[int, int]] = set()
         width = 0
         for index, row in enumerate(self.rows):
@@ -64,7 +56,7 @@ class Grid:
         return width
 
     def flat(self, newline: str = " ") -> list[list[str]]:
-        """Plain rows: text in the anchor cell, covered cells empty, newlines replaced."""
+        """Plain rows: anchor text, covered cells empty, newlines replaced."""
         width = self.width
         out: list[list[str]] = []
         taken: set[tuple[int, int]] = set()
@@ -117,7 +109,7 @@ def _style_map(value: str) -> dict[str, str]:
 
 
 class _FormatReader(HTMLParser):
-    """Prose blocks as block styles and inline runs: formatting Markdown cannot carry."""
+    """Prose block styles and inline runs Markdown can't carry."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -182,7 +174,7 @@ class _FormatReader(HTMLParser):
 
 
 def formatted_blocks(fragment: str) -> list[dict]:
-    """Ordinary editable prose blocks with the presentation a person set."""
+    """Editable prose blocks with their set presentation."""
     if not fragment or "<" not in fragment:
         return []
     reader = _FormatReader()
@@ -192,13 +184,13 @@ def formatted_blocks(fragment: str) -> list[dict]:
 
 
 def _span(markup: str, name: str) -> int:
-    """A `colspan`/`rowspan` attribute, clamped to something a page can hold."""
+    """Clamped `colspan`/`rowspan`."""
     found = re.search(rf'{name}\s*=\s*["\']?(\d+)', markup, re.I)
     return max(1, min(int(found.group(1)), 40)) if found else 1
 
 
 def _cell_text(body: str) -> str:
-    """One cell's text, keeping the line breaks the writer put in it."""
+    """Cell text with the writer's line breaks."""
     body = re.sub(r"<br\s*/?>", "\n", body, flags=re.I)
     body = re.sub(r"</(p|div|li)\s*>", "\n", body, flags=re.I)
     lines = [_inline(line) for line in body.split("\n")]
@@ -214,19 +206,18 @@ def _grid(markup: str) -> Grid:
             for open_tag, body in re.findall(r"<t[hd]\b([^>]*)>(.*?)</t[hd]\s*>", row, re.S | re.I)
         ]
         grid.rows.append(cells)
-    # An empty anchor row can be covered by a rowspan that starts above it.
-    # Keep the writer's row positions, including ordinary empty rows.
+    # keep the writer's row positions, empty rows too
     return grid
 
 
 def grids(fragment: str) -> list[Grid]:
-    """Every table in an HTML body, in order; exporters match them to GFM tables by position."""
+    """Every table in order; exporters match GFM tables by position."""
     found = re.findall(r"<table\b.*?</table\s*>", fragment, re.S | re.I)
     return [_grid(markup) for markup in found]
 
 
 def _inline(fragment: str) -> str:
-    """One run of inline markup as Markdown text."""
+    """Inline markup run as Markdown."""
     text = fragment
     for pattern, replacement in _EMPHASIS:
         text = pattern.sub(replacement, text)
@@ -236,7 +227,7 @@ def _inline(fragment: str) -> str:
 
 
 def _table(markup: str) -> str:
-    """A table as a GFM table, or `''` when it has no rows. Cell line breaks become `<br>`."""
+    """GFM table, or `''` without rows; cell breaks → `<br>`."""
     rows = _grid(markup).flat(newline="<br>")
     if not any(cell for row in rows for cell in row):
         return ""
@@ -251,19 +242,15 @@ def _table(markup: str) -> str:
     return "\n".join(lines)
 
 
-#: List open/close edges; group 1 is `/` on a close, so nesting can be counted.
+#: list edges; group 1 `/` on close
 _LIST_EDGE = re.compile(r"<(/?)(ul|ol)\b[^>]*>", re.I)
-#: The same for `<div>`, for the KPI strip.
+#: same for `<div>` (KPI strip)
 _DIV_EDGE = re.compile(r"<(/?)div\b[^>]*>", re.I)
 _ITEM_OPEN = re.compile(r"<li\b[^>]*>", re.I)
 
 
 def _items(markup: str) -> list[tuple[str, str]]:
-    """`(text, nested)` for each item of the outermost list in `markup`.
-
-    Nesting is counted, not regex-matched. The fragment may be truncated
-    (`sanitise` does not balance tags); a list that never closes runs to the end.
-    """
+    """`(text, nested)` per outermost list item; nesting counted, unclosed list runs to the end."""
     opened = markup.index(">") + 1
     depth = 1
     stop = len(markup)
@@ -285,12 +272,12 @@ def _items(markup: str) -> list[tuple[str, str]]:
 
 
 def _depth(text: str) -> int:
-    """How many lists are open at the end of `text`."""
+    """Lists open at the end of `text`."""
     return sum(-1 if edge.group(1) else 1 for edge in _LIST_EDGE.finditer(text))
 
 
 def _item_end(body: str, start: int, limit: int) -> int:
-    """Where this item's own content ends — its `</li>`, at nesting depth zero."""
+    """End of this item's content: its depth-zero `</li>`."""
     for close in re.finditer(r"</li\s*>", body[start:limit], re.I):
         if _depth(body[start : start + close.start()]) == 0:
             return start + close.start()
@@ -298,7 +285,7 @@ def _item_end(body: str, start: int, limit: int) -> int:
 
 
 def _list(markup: str, ordered: bool, depth: int = 0) -> str:
-    """A list as Markdown lines, sub-lists indented two spaces per level."""
+    """List as Markdown lines, two-space indent per level."""
     lines: list[str] = []
     pad = "  " * depth
     number = 0
@@ -315,7 +302,7 @@ def _list(markup: str, ordered: bool, depth: int = 0) -> str:
 
 
 def _sublists(markup: str) -> list[str]:
-    """The lists directly inside one item, each whole."""
+    """Lists directly inside one item, whole."""
     out: list[str] = []
     while (opened := _LIST_EDGE.search(markup)) and not opened.group(1):
         start = opened.start()
@@ -332,10 +319,7 @@ def _sublists(markup: str) -> list[str]:
     return out
 
 
-#: One top-level construct. Order matters: structured blocks (page break, KPI
-#: strip, steps, cards, callout, diagram, chart, footnote) before the plain
-#: table, list, heading and figure they are built from. The KPI strip and the
-#: lists match their opening tag only; `_balanced` finds where they close.
+#: top-level construct; structured blocks before plain ones (order matters), closes via `_balanced`
 _CONSTRUCT = re.compile(
     r"<div\b[^>]*\bdata-page-break=(?:\"true\"|'true'|true)[^>]*>\s*</div\s*>"
     r"|<div\b[^>]*\bclass=\"[^\"]*\bkpi\b[^\"]*\"[^>]*>"
@@ -361,7 +345,7 @@ def _render(match: re.Match[str], notes: int = 0) -> str:
     markup = match.group(0)
     lowered = markup[:12].lower()
     if re.search(r"\bdata-page-break=(?:\"true\"|'true'|true)", markup, re.I):
-        # The Pandoc page-break comment: inert in Markdown readers, kept by exporters.
+        # Pandoc page-break comment
         return "<!-- pagebreak -->"
     if _KPI_OPEN.match(markup):
         return _pairs_fence("kpi", markup, r"<div\b[^>]*>(.*?)</div\s*>")
@@ -396,21 +380,21 @@ def _render(match: re.Match[str], notes: int = 0) -> str:
         return _picture(markup)
     level = int(lowered[2])
     body = _inline(markup)
-    # `##` at minimum: a heading inside a section body is always a sub-heading.
+    # `##` minimum: always a sub-heading
     return f"{'#' * max(level, 2)} {body}" if body else ""
 
 
-#: A footnote's leading mark (`*`, `**`, `1.`); stripped, the exporters number notes.
+#: footnote mark, stripped; exporters number notes
 _NOTE_MARK = re.compile(r"^\s*(\*{1,4}|\d{1,3}[).]?)\s+")
 
 
 def _note(markup: str, number: int) -> str:
-    """A footnote body as a GFM footnote line `[^n]: …`, numbered by order of appearance."""
+    """GFM footnote line `[^n]: …`, numbered by appearance."""
     text = _NOTE_MARK.sub("", _inline(markup))
     return f"[^{number}]: {text}" if text else ""
 
 
-#: Structured-block openers, told apart from a plain `<div>`, `<ol>`, `<section>` or `<figure>`.
+#: structured-block openers vs plain tags
 _KPI_OPEN = re.compile(r"<div\b[^>]*\bclass=\"[^\"]*\bkpi\b", re.I)
 _STEPS_OPEN = re.compile(r"<ol\b[^>]*\bclass=\"[^\"]*\bsteps\b", re.I)
 _STRONG = re.compile(r"<strong\b[^>]*>(.*?)</strong\s*>", re.S | re.I)
@@ -426,7 +410,7 @@ _DIAGRAM_SOURCE = re.compile(r"\bdata-source=(\"[^\"]*\"|'[^']*')", re.I)
 
 
 def _cards_fence(markup: str) -> str:
-    """A card grid as a `cards` fence: `##` per card, `- ` per line."""
+    """Card grid as a `cards` fence."""
     out: list[str] = []
     body = markup[markup.index(">") + 1 :]
     for card in _CARD.finditer(body):
@@ -438,14 +422,14 @@ def _cards_fence(markup: str) -> str:
         out.append(f"## {title}")
         seen = _CARD_TITLE.sub("", inner)
         lines = [_inline(one.group(1)) for one in _LI.finditer(seen)]
-        # A card typed as paragraphs rather than a list.
+        # card typed as paragraphs
         lines = lines or [_inline(one.group(1)) for one in _P.finditer(seen)]
         out.extend(f"- {line}" for line in lines if line)
     return "```cards\n" + "\n".join(out) + "\n```" if out else ""
 
 
 def _callout_fence(markup: str) -> str:
-    """A callout as a `callout` fence: title first, then its paragraphs."""
+    """Callout as a `callout` fence."""
     body = markup[markup.index(">") + 1 :]
     found = _CARD_TITLE.search(body)
     title = _inline(found.group(1)) if found else ""
@@ -455,7 +439,7 @@ def _callout_fence(markup: str) -> str:
 
 
 def _diagram_fence(markup: str) -> str:
-    """A diagram as a `mermaid` fence from its `data-source`; without one it is a plain picture."""
+    """Diagram as a `mermaid` fence from `data-source`, else a plain picture."""
     found = _DIAGRAM_SOURCE.search(markup)
     if not found:
         return _picture(markup)
@@ -467,9 +451,9 @@ _SPAN = re.compile(r"<span\b[^>]*>(.*?)</span\s*>", re.S | re.I)
 
 
 def _pairs_fence(lang: str, markup: str, row_pattern: str) -> str:
-    """A KPI strip or steps procedure as a `name | detail` fence; `|` in text becomes `／`."""
+    """KPI strip or steps as a `name | detail` fence; `|` → `／`."""
     rows: list[str] = []
-    # Skip the wrapper tag, which the row pattern would otherwise match first.
+    # skip the wrapper tag
     body = markup[markup.index(">") + 1 :]
     for row in re.finditer(row_pattern, body, re.S | re.I):
         inner = row.group(1)
@@ -485,13 +469,13 @@ def _pairs_fence(lang: str, markup: str, row_pattern: str) -> str:
     return "```" + lang + "\n" + "\n".join(rows) + "\n```"
 
 
-#: A picture and, when it has one, the caption under it.
+#: picture with optional caption
 _IMG = re.compile(r"<img\b[^>]*?src=(\"[^\"]*\"|'[^']*'|[^\s>]+)[^>]*>", re.I)
 _CAPTION = re.compile(r"<figcaption\b[^>]*>(.*?)</figcaption\s*>", re.S | re.I)
 
 
 def _picture(markup: str) -> str:
-    """A figure as a Markdown image, caption as alt text; caption alone without an `<img>`."""
+    """Figure as a Markdown image (caption as alt); caption alone without `<img>`."""
     found = _IMG.search(markup)
     caption = _CAPTION.search(markup)
     label = _inline(caption.group(1)) if caption else ""
@@ -502,7 +486,7 @@ def _picture(markup: str) -> str:
 
 
 def _balanced(fragment: str, start: int, edges: re.Pattern[str] = _LIST_EDGE) -> int:
-    """End offset of the construct opening at `start`; `edges` group 1 is `/` on a close."""
+    """End offset of the construct at `start`."""
     depth = 0
     for edge in edges.finditer(fragment, start):
         depth += -1 if edge.group(1) else 1
@@ -512,7 +496,7 @@ def _balanced(fragment: str, start: int, edges: re.Pattern[str] = _LIST_EDGE) ->
 
 
 def to_markdown(fragment: str) -> str:
-    """One section's sanitised HTML as Markdown. Inline `style=` is dropped."""
+    """One section's sanitised HTML as Markdown; `style=` dropped."""
     if not fragment or "<" not in fragment:
         return (fragment or "").strip()
 
@@ -523,7 +507,7 @@ def to_markdown(fragment: str) -> str:
     notes = 0
     for match in _CONSTRUCT.finditer(fragment):
         if match.start() < cursor:
-            # Inside a construct already consumed whole.
+            # inside a consumed construct
             continue
         parts.extend(_paragraphs(fragment[cursor : match.start()]))
         if match.group(0)[:6].lower().startswith("<small"):
@@ -546,33 +530,33 @@ def to_markdown(fragment: str) -> str:
     return "\n\n".join(part for part in parts if part.strip())
 
 
-#: A footnote mark in the prose: `<sup>*</sup>`, `<sup>**</sup>`.
+#: prose footnote mark
 _SUP = re.compile(r"<sup\b[^>]*>.*?</sup\s*>", re.S | re.I)
 
 
 def _numbered_marks(fragment: str) -> str:
-    """`<sup>*</sup>` → `[^1]`, numbered by order of appearance, independently of the notes."""
+    """`<sup>*</sup>` → `[^1]` by appearance, independent of notes."""
     counter = iter(range(1, 1000))
     return _SUP.sub(lambda _m: f"[^{next(counter)}]", fragment)
 
 
 def _paragraphs(fragment: str) -> list[str]:
-    """Whatever sits between two constructs, split on block boundaries."""
+    """Text between constructs, split on block boundaries."""
     if not fragment.strip():
         return []
     chunks = _BLOCK.split(fragment)
-    # `re.split` with a group interleaves the tag names; keep only the text between.
+    # drop tag names interleaved by `re.split`
     text_chunks = chunks[::2] if len(chunks) > 1 else chunks
     out = [_inline(chunk) for chunk in text_chunks]
     return [line for line in out if line]
 
 
-#: A GFM table row. The rule row under the head matches too.
+#: GFM row (rule row too)
 _PIPE_ROW = re.compile(r"^\s*\|.*\|\s*$")
 
 
 def tidy_tables(text: str) -> str:
-    """Removes blank lines between GFM table rows; a blank line after the last row stays."""
+    """Remove blank lines between GFM rows; trailing one stays."""
     lines = (text or "").split("\n")
     out: list[str] = []
     for index, line in enumerate(lines):
@@ -580,21 +564,24 @@ def tidy_tables(text: str) -> str:
             out.append(line)
             continue
         before = next((out[i] for i in range(len(out) - 1, -1, -1) if out[i].strip()), "")
-        after = next((lines[i] for i in range(index + 1, len(lines)) if lines[i].strip()), "")
-        if _PIPE_ROW.match(before) and _PIPE_ROW.match(after):
+        at = next((i for i in range(index + 1, len(lines)) if lines[i].strip()), len(lines))
+        after = lines[at] if at < len(lines) else ""
+        # a header and rule after the gap start another table: the gap stays
+        starts_table = at + 1 < len(lines) and _SEPARATOR_ROW.match(lines[at + 1])
+        if _PIPE_ROW.match(before) and _PIPE_ROW.match(after) and not starts_table:
             continue
         out.append(line)
     return "\n".join(out)
 
 
 def as_markdown(section: dict) -> str:
-    """One section's body as Markdown, whichever `format` it was stored in."""
+    """Section body as Markdown, any stored `format`."""
     body = str(section.get("content") or "")
     return to_markdown(body) if section.get("format") == "html" else body
 
 
 def normalise(sections: list[dict]) -> list[dict]:
-    """Sections with every body as Markdown; HTML sections also carry `tables` and `_formatting`."""
+    """Sections as Markdown; HTML ones also carry `tables` and `_formatting`."""
     out: list[dict] = []
     for section in sections:
         body = str(section.get("content") or "")
@@ -619,10 +606,9 @@ __all__ = [
 ]
 
 
-#: 「… 같습니다. | 주파수 (Hz) | 측정 이득 |」 — a table's header glued to the sentence
-#: before it, so Markdown reads the whole table as one paragraph.
+#: table header glued to the preceding sentence
 _GLUED_HEADER = re.compile(
-    r"^(?P<prose>[^|\n]{0,4000}\S)[ \t]{0,8}(?P<head>\|(?:[^|\n]{0,200}\|){2,40})[ \t]{0,8}$"
+    r"^(?P<prose>[^|\n]{0,4000}[^|\s])[ \t]{0,8}(?P<head>\|(?:[^|\n]{0,200}\|){2,40})[ \t]{0,8}$"
 )
 _SEPARATOR_ROW = re.compile(
     r"^[ \t]{0,8}\|?(?:[ \t]{0,8}:?-{2,}:?[ \t]{0,8}\|){1,40}[ \t]{0,8}(?::?-{2,}:?)?[ \t]{0,8}$"
@@ -630,8 +616,7 @@ _SEPARATOR_ROW = re.compile(
 
 
 def detach_tables(text: str) -> str:
-    """A table header written on the same line as prose moves to its own line, a blank
-    line between, when the next line is the table's separator row."""
+    """Glued table header moved to its own line before a separator row."""
     lines = (text or "").split("\n")
     out: list[str] = []
     for index, line in enumerate(lines):

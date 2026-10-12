@@ -8,10 +8,13 @@ When you sign in with an administrator account, a **Manage** item appears in the
 
 | Screen | What it does |
 |---|---|
-| Users · Credits | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management |
+| Users · Credits | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management, review of shared processes and skills |
 | Usage | Usage by period, by model, and by user, CSV, storage space |
-| Security · Audit | The **Policy** tab (personal data protection, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |
-| System | The **Proxy · Routing · Features · Shared templates · Branding · Mail · Sign-up** tabs |
+| Published chatbots | Approve link and external publishing and channels (other sites, API, MCP), close or pause, abuse-check viewing |
+| Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |
+| Feedback & issues | Read bug reports, feature requests and questions from users, set the assignee and status, reply |
+| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up · Connector catalogue** tabs |
+| Performance | Model latency and error rate, turns in progress, API replica, host and GPU metrics, with overload flags |
 
 ## Order of initial setup
 
@@ -24,4 +27,4 @@ When you sign in with an administrator account, a **Manage** item appears in the
 7. **System → Routing**: Decide whether to use Auto mode.
 8. **Users · Credits**: Process the accounts waiting for approval.
 
-For the details of each item, see [Users and credits](users.md), [Policy and routing](policy.md), and [System settings](system.md).
+For the details of each item, see [Users and credits](users.md), [Policy and routing](policy.md), [Approving published chatbots](bots.md), and [System settings](system.md).

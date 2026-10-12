@@ -1,8 +1,4 @@
-/**
- * Records the microphone as 16 kHz mono PCM WAV. Whisper (vLLM) rejects
- * MediaRecorder's WebM/Opus and MP4/AAC, and the API image has no ffmpeg, so
- * the browser writes the WAV itself.
- */
+/** Microphone as 16 kHz mono WAV: Whisper rejects WebM/MP4 and the API has no ffmpeg. */
 
 const SAMPLE_RATE = 16_000
 

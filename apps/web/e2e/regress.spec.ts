@@ -1,7 +1,8 @@
 /** Regressions from real use, against a real backend and model. */
 
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, approvePlan, openSidebar, pickToolModel, ribbonTab, seedPendingUser, signIn, surfaceOn } from './helpers'
+import { E2E_ADMIN, approvePlan, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn, panelHeader } from './helpers'
+import { toolNames } from './composer-tools'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -163,19 +164,11 @@ test('컴포저 메뉴가 화면 밖으로 나가지 않는다', async ({ page }
   const opens: [string, () => Promise<void>][] = [
     ['모델', () =>
       page.getByRole('button').filter({ hasText: /qwen|glm|claude|gpt|gemini|grok/i }).last().click()],
-    ['스킬', () => page.getByRole('button', { name: '스킬', exact: true }).first().click()],
-    ['커넥터', () => page.getByRole('button', { name: '커넥터', exact: true }).first().click()],
-    ['모델 비교', () => page.getByRole('button', { name: '모델 비교', exact: true }).first().click()],
+    // Skills, web search, connectors and agents open inside the 「+」 menu.
+    ['도구', () => page.getByRole('button', { name: '도구', exact: true }).first().click()],
   ]
 
   for (const [label, open] of opens) {
-    // The connector menu exists only once the account has a usable connector.
-    if (
-      label === '커넥터' &&
-      (await page.getByRole('button', { name: '커넥터', exact: true }).count()) === 0
-    ) {
-      continue
-    }
     await open()
     const menu = page.getByRole('menu').first()
     await expect(menu, label).toBeVisible({ timeout: 10_000 })
@@ -270,19 +263,18 @@ test('보고서를 만들면 섹션이 채워지고 내보낼 수 있다', async
   // Nothing is written until the plan is approved.
   await approvePlan(page, 480_000)
 
-  // The outline lands first, so the 목차 button (보기 tab) has a denominator; then the count completes.
+  // The outline lands first, so 목차 (header ⋯ menu) has a denominator; then the count completes.
   await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 180_000 })
-  await ribbonTab(page, '보기')
-  const counter = page.getByRole('button', { name: /목차 \d+\/[3-8]/ })
+  await panelHeader(page).getByRole('button', { name: '더보기' }).click()
+  const counter = page.getByRole('menuitem', { name: /목차\s*\d+\/[3-8]/ })
   await expect(counter).toBeVisible({ timeout: 180_000 })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
 
   const progress = await counter.innerText()
   const [done, total] = progress.match(/(\d+)\/(\d+)/)!.slice(1).map(Number)
   expect(done, '작성되지 않은 섹션').toBe(total)
-
-  await ribbonTab(page, '파일')
-  await page.getByRole('button', { name: '내보내기', exact: true }).click()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '내려받기', exact: true }).click()
   await expect(page.getByRole('menuitem', { name: 'Word 문서' })).toBeVisible()
   const download = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('menuitem', { name: 'Word 문서' }).click()
@@ -292,18 +284,20 @@ test('보고서를 만들면 섹션이 채워지고 내보낼 수 있다', async
 test('그림·클립 화면에는 보낼 곳 없는 첨부·스킬 버튼이 없다', async ({ page }) => {
   // The image/av endpoints take a prompt and option chips only; an attachment or skill would be dropped.
   await page.goto('/new/chat')
-  await expect(page.getByRole('button', { name: '첨부' }).first()).toBeVisible()
-  await expect(page.getByRole('button', { name: '스킬', exact: true }).first()).toBeVisible()
+  const chatTools = await toolNames(page)
+  expect(chatTools).toContain('파일·사진 첨부')
+  expect(chatTools).toContain('스킬')
 
   for (const surface of ['image', 'av'] as const) {
     // Both default to off.
     if (!(await surfaceOn(page, surface))) continue
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-    await expect(page.getByRole('button', { name: '첨부' })).toHaveCount(0)
+    const tools = await toolNames(page)
+    expect(tools).not.toContain('파일·사진 첨부')
     // A hidden file input is still reachable.
     await expect(page.locator('input[type="file"]')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '스킬', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '웹 검색' })).toHaveCount(0)
+    expect(tools).not.toContain('스킬')
+    expect(tools.some((name) => name.startsWith('웹 검색'))).toBe(false)
   }
 })
 

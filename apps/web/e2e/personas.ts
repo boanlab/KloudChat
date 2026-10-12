@@ -1,7 +1,7 @@
 /** Personas for coverage and layout review: each need is a task the UI must make possible.
  *  `personas.spec.ts` asserts the `needs`. */
 
-export type Surface = 'chat' | 'report' | 'slides' | 'image' | 'av'
+type Surface = 'chat' | 'report' | 'slides' | 'image' | 'av'
 
 export interface Need {
   /** Stable id used in the coverage report. */
@@ -38,8 +38,7 @@ export const personas: Persona[] = [
       { id: 'hum-citation', task: '인용 형식(시카고)을 만든다', where: '커넥터 · Zotero' },
       { id: 'hum-sources', task: '보고서 본문의 주장이 어디서 왔는지 확인한다', where: '보고서 패널 출처' },
       { id: 'hum-export-docx', task: '제출용 워드 파일로 내려받는다', where: '보고서 내보내기' },
-      { id: 'hum-template', task: '리포트 형식을 처음부터 잡지 않고 시작한다', where: '시작점' },
-      { id: 'hum-compare', task: '같은 질문을 두 모델에 물어 답을 비교한다', where: '입력창 모델 비교' },
+      { id: 'hum-template', task: '리포트 형식을 처음부터 잡지 않고 시작한다', where: '양식 고르기' },
     ],
   },
   {
@@ -54,7 +53,7 @@ export const personas: Persona[] = [
       { id: 'biz-chart', task: '분석 결과를 차트로 만든다', where: '아티팩트 종류' },
       { id: 'biz-deck', task: '발표 시간에 맞춰 덱을 만든다', where: '슬라이드' },
       { id: 'biz-pptx', task: '.pptx로 내려받아 팀 템플릿에 붙인다', where: '슬라이드 내보내기' },
-      { id: 'biz-share', task: '팀원에게 결과물 링크를 보낸다', where: '공유' },
+      { id: 'biz-share', task: '팀원에게 아티팩트 링크를 보낸다', where: '공유' },
       { id: 'biz-notes', task: '발표자 노트를 확인한다', where: '슬라이드 패널' },
       { id: 'biz-factcheck', task: '발표에서 읽을 수치에 근거가 있는지 확인한다', where: '슬라이드 팩트체크' },
     ],
@@ -123,7 +122,6 @@ export const personas: Persona[] = [
       { id: 'res-agent', task: '검토 관점을 고정한 작업자를 만든다', where: '에이전트' },
       { id: 'res-export-pdf', task: '보고서를 PDF로 배포한다', where: '보고서 내보내기' },
       { id: 'res-apikey', task: '분석 스크립트에서 API로 호출한다', where: 'API 키' },
-      { id: 'res-compare', task: '비싼 모델이 이 작업에 값하는지 비교한다', where: '입력창 모델 비교' },
       { id: 'res-agent-share', task: '검토 에이전트를 팀에 공유한다', where: '에이전트 스토어' },
     ],
   },
@@ -137,7 +135,7 @@ export const personas: Persona[] = [
     viewport: 'laptop',
     needs: [
       { id: 'off-voice', task: '회의 녹음을 올려 회의록으로 옮긴다', where: '입력창 첨부' },
-      { id: 'off-template', task: '공문 양식을 골라 시작한다', where: '시작점' },
+      { id: 'off-template', task: '공문 양식을 골라 시작한다', where: '양식 고르기' },
       { id: 'off-drive', task: '드라이브 문서를 불러온다', where: '커넥터 · Drive' },
       { id: 'off-docx', task: '워드로 내보내 결재 올린다', where: '보고서 내보내기' },
       { id: 'off-search', task: '지난 회의록을 찾는다', where: '검색' },
@@ -158,7 +156,7 @@ export const personas: Persona[] = [
       { id: 'dev-github', task: 'PR과 이슈를 읽어 온다', where: '커넥터 · GitHub' },
       { id: 'dev-db', task: 'DB 스키마를 확인하고 쿼리한다', where: '커넥터 · PostgreSQL' },
       { id: 'dev-tool-scope', task: '쓰기 권한이 있는 도구를 구분해 끈다', where: '커넥터 도구 권한' },
-      { id: 'dev-code-artifact', task: '코드 결과물을 옆 패널에서 본다', where: '아티팩트 패널' },
+      { id: 'dev-code-artifact', task: '코드 아티팩트를 옆 패널에서 본다', where: '아티팩트 패널' },
       { id: 'dev-apikey', task: 'CLI에서 쓸 키를 발급한다', where: 'API 키' },
       { id: 'dev-steps', task: '어떤 도구를 왜 호출했는지 추적한다', where: '스텝 타임라인' },
     ],
@@ -173,9 +171,9 @@ export const personas: Persona[] = [
     viewport: 'tablet',
     needs: [
       { id: 'sal-deck', task: '고객 맞춤 제안 덱을 만든다', where: '슬라이드' },
-      { id: 'sal-template', task: '제안서 양식으로 바로 시작한다', where: '시작점' },
+      { id: 'sal-template', task: '제안서 양식으로 바로 시작한다', where: '양식 고르기' },
       { id: 'sal-mobile', task: '태블릿에서 좁은 화면으로 쓴다', where: '반응형 레이아웃' },
-      { id: 'sal-share', task: '고객에게 결과물을 공유한다', where: '공유' },
+      { id: 'sal-share', task: '고객에게 아티팩트를 공유한다', where: '공유' },
     ],
   },
 ]

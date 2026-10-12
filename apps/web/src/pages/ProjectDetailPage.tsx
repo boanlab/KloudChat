@@ -1,4 +1,4 @@
-import { ArrowLeft, Brain, ExternalLink, FileText, Link2, MoreHorizontal, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Brain, ExternalLink, FileText, Link2, Loader2, MoreHorizontal, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
@@ -20,10 +20,12 @@ import {
   Textarea,
   useMenuClose,
 } from '@/components/ui'
-import { downloadFile, errorMessage, templateText } from '@/lib/api'
+import { ApiError, downloadFile, errorMessage, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
-import { formatTokens, relativeTime } from '@/lib/utils'
+import { memoryTypeLabel } from '@/lib/memoryTypes'
+import { cn, formatTokens, relativeTime } from '@/lib/utils'
+import { ocrNote, useOcrProgress } from '@/lib/ocr'
 import {
   MemoryEditor,
   emptyMemory,
@@ -34,10 +36,12 @@ import { useStore } from '@/store/useStore'
 import { startFailure } from '@/lib/failures'
 import type { MemoryEntry } from '@/types'
 import { useT } from '@/lib/useT'
+import { isListed } from '@/lib/listed'
+import { KNOWLEDGE_ACCEPT, knowledgeRefusal } from '@/lib/knowledgeFiles'
 
 type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
 
-/** Emoji picker grid; closes the menu on pick. */
+/** Closes the menu on pick. */
 function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
   const close = useMenuClose()
   return (
@@ -58,7 +62,7 @@ function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
   )
 }
 
-/** Mirrors the server's project delete: knowledge files go, sessions are detached, artifacts and memories stay. */
+/** Mirrors server delete: knowledge files go, sessions detached, artifacts and memories stay. */
 const DELETE_SCOPE =
   '되돌릴 수 없습니다. 지침과 지식 파일이 사라집니다. 대화는 지워지지 않고 프로젝트 밖으로 나오며, 아티팩트와 메모리는 그대로 남습니다.'
 
@@ -84,8 +88,11 @@ export function ProjectDetailPage() {
     deleteFile,
     moveSessionToProject,
     deleteMemory,
+    refreshProjectFile,
   } = useStore()
   const project = projects.find((p) => p.id === projectId)
+  // Scanned files read in the background; rows follow the pages.
+  useOcrProgress(project?.files ?? [], refreshProjectFile)
   const [tab, setTab] = useState<Tab>('sessions')
   const [instructions, setInstructions] = useState(project?.instructions ?? '')
   const [dirty, setDirty] = useState(false)
@@ -99,11 +106,13 @@ export function ProjectDetailPage() {
   const [uploading, setUploading] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
   const [urlOpen, setUrlOpen] = useState(false)
+  const [urlError, setUrlError] = useState<string | null>(null)
+  const urlInputRef = useRef<HTMLInputElement>(null)
   const [urlDraft, setUrlDraft] = useState('')
   const [urlBusy, setUrlBusy] = useState(false)
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
-  // Hook must sit above the early return; the uploader is defined after it.
+  // Hook above the early return; uploader defined after.
   const addKnowledgeRef = useRef<(files: File[]) => void>(() => {})
   const knowledgeDrop = useFileDrop(
     (files) => addKnowledgeRef.current(files),
@@ -114,7 +123,7 @@ export function ProjectDetailPage() {
     void loadWorkspace()
   }, [loadWorkspace])
 
-  // Fill the instructions box once the project arrives, unless already edited.
+  // Fill once loaded, unless already edited.
   useEffect(() => {
     if (project && !dirty) setInstructions(project.instructions)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,8 +140,8 @@ export function ProjectDetailPage() {
     )
   }
 
-  const projectSessions = sessions.filter((c) => c.projectId === project.id)
-  const outsideSessions = [...sessions.filter((c) => c.projectId !== project.id)].sort(
+  const projectSessions = sessions.filter((c) => c.projectId === project.id && !c.unsent)
+  const outsideSessions = sessions.filter((c) => c.projectId !== project.id && !c.unsent).sort(
     (a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt),
   )
   const projectSkills = skills.filter((s) => project.skillIds.includes(s.id))
@@ -141,7 +150,7 @@ export function ProjectDetailPage() {
   )
   const projectMemories = memories.filter((m) => m.scope === project.id)
   const selectedDesign = designs.find((d) => d.id === project.designSystemId)
-  // Only document-shaped templates are offered as formats.
+  // Document-shaped templates only.
   const english = currentLang() === 'en'
   const formats = designTemplates.filter((row) => row.kind === 'deck' || row.kind === 'document')
   const formatSurfaces = kindOrder.filter((kind) => formats.some((row) => row.surface === kind))
@@ -149,13 +158,24 @@ export function ProjectDetailPage() {
 
   const addKnowledgeFiles = async (picked: File[]) => {
     if (!picked.length) return
+    const problems: string[] = []
+    const readable = picked.filter((file) => {
+      const refusal = knowledgeRefusal(file, t)
+      if (refusal) problems.push(refusal)
+      return !refusal
+    })
+    setFileError(problems.length ? problems.join(' ') : null)
+    if (!readable.length) return
     setUploading(true)
     try {
-      for (const file of picked) {
-        await uploadFile(file, { projectId: project.id }).catch(() => null)
+      for (const file of readable) {
+        await uploadFile(file, { projectId: project.id }).catch((err) => {
+          problems.push(`${file.name}: ${errorMessage(err, t('올리지 못했습니다.'))}`)
+        })
       }
     } finally {
       setUploading(false)
+      setFileError(problems.length ? problems.join(' ') : null)
     }
   }
   addKnowledgeRef.current = addKnowledgeFiles
@@ -170,16 +190,28 @@ export function ProjectDetailPage() {
   }
 
   const saveUrl = async () => {
+    if (urlBusy) return
     const url = urlDraft.trim()
-    if (!/^https?:\/\//i.test(url)) return
+    if (!/^https?:\/\/\S+/i.test(url)) {
+      setUrlError(
+        url
+          ? t('http:// 또는 https://로 시작하는 주소를 입력하세요.')
+          : t('웹페이지 주소를 입력하세요.'),
+      )
+      urlInputRef.current?.focus()
+      return
+    }
     setUrlBusy(true)
-    setFileError(null)
+    setUrlError(null)
     try {
       await addProjectUrl(project.id, url)
       setUrlDraft('')
       setUrlOpen(false)
     } catch (err) {
-      setFileError(errorMessage(err, t('웹페이지를 읽어 오지 못했습니다.')))
+      setUrlError(urlFailure(err, t))
+      // Back to the address, selected, for in-place correction.
+      urlInputRef.current?.focus()
+      urlInputRef.current?.select()
     } finally {
       setUrlBusy(false)
     }
@@ -200,21 +232,45 @@ export function ProjectDetailPage() {
       />
       <Modal
         open={urlOpen}
-        onClose={() => !urlBusy && setUrlOpen(false)}
+        onClose={() => {
+          if (urlBusy) return
+          setUrlOpen(false)
+          setUrlError(null)
+        }}
         title={t('웹 자료 추가')}
         description={t('페이지를 지금 읽어 프로젝트에 보관합니다. 이후 원문이 바뀌어도 작업에는 저장된 내용이 사용됩니다.')}
         footer={
           <>
             <Button onClick={() => setUrlOpen(false)} disabled={urlBusy}>{t('취소')}</Button>
-            <Button variant="primary" onClick={() => void saveUrl()} disabled={urlBusy || !/^https?:\/\//i.test(urlDraft.trim())}>
+            <Button variant="primary" onClick={() => void saveUrl()} aria-busy={urlBusy || undefined}>
+              {urlBusy && <Loader2 size={14} className="animate-spin" aria-hidden />}
               {urlBusy ? t('읽는 중…') : t('읽어서 보관')}
             </Button>
           </>
         }
       >
-        <Field label={t('웹페이지 주소')}>
-          <Input value={urlDraft} onChange={(event) => setUrlDraft(event.target.value)} placeholder="https://example.com/report" autoFocus />
-        </Field>
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault()
+            void saveUrl()
+          }}
+        >
+          <Field label={t('웹페이지 주소')} required error={urlError}>
+            <Input
+              ref={urlInputRef}
+              type="url"
+              inputMode="url"
+              value={urlDraft}
+              onChange={(event) => {
+                setUrlDraft(event.target.value)
+                setUrlError(null)
+              }}
+              placeholder="https://example.com/report"
+              autoFocus
+            />
+          </Field>
+        </form>
       </Modal>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
@@ -246,7 +302,7 @@ export function ProjectDetailPage() {
               trigger={() => (
                 <Button variant="primary" size="sm">
                   <Plus size={14} />
-                  {t('이 프로젝트에서 새로 만들기')}
+                  {t('새로 시작')}
                 </Button>
               )}
             >
@@ -372,7 +428,7 @@ export function ProjectDetailPage() {
 
         <Card className="space-y-3 p-4">
           <div>
-            <p className="text-base font-medium">{t('디자인')}</p>
+            <p className="text-base font-medium">{t('테마')}</p>
             <p className="text-sm text-muted">
               {t('말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.')}
             </p>
@@ -386,7 +442,7 @@ export function ProjectDetailPage() {
               />
             )}
             <select
-              aria-label={t('디자인')}
+              aria-label={t('테마')}
               value={project.designSystemId ?? ''}
               onChange={(e) =>
                 void updateProject(project.id, { designSystemId: e.target.value || null })
@@ -394,7 +450,7 @@ export function ProjectDetailPage() {
               className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
             >
               <option value="">{t('사용 안 함 — 기본 모양')}</option>
-              {designs.map((d) => (
+              {designs.filter((d) => isListed(d) || d.id === project.designSystemId).map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
                 </option>
@@ -409,9 +465,9 @@ export function ProjectDetailPage() {
         {formatSurfaces.length > 0 && (
           <Card className="space-y-3 p-4">
             <div>
-              <p className="text-base font-medium">{t('기본 서식')}</p>
+              <p className="text-base font-medium">{t('기본 템플릿')}</p>
               <p className="text-sm text-muted">
-                {t('이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.')}
+                {t('이 프로젝트에서 새로 시작하는 작업이 어떤 템플릿으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.')}
               </p>
             </div>
             {formatSurfaces.map((kind) => (
@@ -420,11 +476,11 @@ export function ProjectDetailPage() {
                   {t(kindMeta[kind].label)}
                 </span>
                 <select
-                  aria-label={t('{kind} 서식').replace('{kind}', t(kindMeta[kind].label))}
+                  aria-label={t('{kind} 템플릿').replace('{kind}', t(kindMeta[kind].label))}
                   value={project.renderTemplates[kind] ?? ''}
                   onChange={(e) =>
                     void updateProject(project.id, {
-                      // Sent whole; an empty value removes the surface from the map.
+                      // Sent whole; empty value removes the surface.
                       renderTemplates: {
                         ...project.renderTemplates,
                         [kind]: e.target.value,
@@ -433,9 +489,9 @@ export function ProjectDetailPage() {
                   }
                   className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
                 >
-                  <option value="">{t('사용 안 함 — 기본 모양')}</option>
+                  <option value="">{t('사용 안 함 — 기본 템플릿')}</option>
                   {formats
-                    .filter((row) => row.surface === kind)
+                    .filter((row) => row.surface === kind && (isListed(row) || row.id === project.renderTemplates[kind]))
                     .map((row) => (
                       <option key={row.id} value={row.id}>
                         {templateText(row, english).name}
@@ -508,7 +564,7 @@ export function ProjectDetailPage() {
                     }
                   >
                     <Plus size={16} />
-                    {t('새 채팅 시작')}
+                    {t('새 대화')}
                   </Button>
                 </div>
               ) : (
@@ -573,6 +629,7 @@ export function ProjectDetailPage() {
                   ref={fileInput}
                   type="file"
                   multiple
+                  accept={KNOWLEDGE_ACCEPT}
                   className="hidden"
                   aria-label={t('지식 파일 선택')}
                   onChange={(e) => {
@@ -619,6 +676,21 @@ export function ProjectDetailPage() {
                           {t('내용을 읽지 못함: {error}').replace('{error}', f.error)}
                         </span>
                       )}
+                      {(() => {
+                        const reading = ocrNote(f, t)
+                        return reading ? (
+                          <span
+                            data-ocr={f.ocrState ?? undefined}
+                            className={cn(
+                              'flex items-center gap-1 text-xs',
+                              reading.tone === 'warn' ? 'text-warn' : 'text-faint',
+                            )}
+                          >
+                            {reading.tone === 'busy' && <Loader2 size={11} className="animate-spin" />}
+                            {reading.text}
+                          </span>
+                        ) : null
+                      })()}
                     </span>
                     {f.preview && (
                       <Button variant="ghost" size="sm" onClick={() => setExpandedFile((id) => id === f.id ? null : f.id)}>
@@ -643,7 +715,7 @@ export function ProjectDetailPage() {
                   </Card>
                 ))
               )}
-              {fileError && <p className="text-base text-danger">{fileError}</p>}
+              {fileError && <p role="alert" className="text-base text-danger">{fileError}</p>}
             </div>
           )}
 
@@ -657,12 +729,12 @@ export function ProjectDetailPage() {
                     <p className="text-sm text-muted">{s.description}</p>
                   </div>
                   <Badge tone={s.enabled ? 'success' : 'neutral'}>
-                    {s.enabled ? t('추천') : t('사용 중지')}
+                    {s.enabled ? t('사용 중') : t('사용 중지')}
                   </Badge>
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label={t('{name} 추천 해제').replace('{name}', s.name)}
+                    aria-label={t('{name} 빼기').replace('{name}', s.name)}
                     onClick={() =>
                       void updateProject(project.id, {
                         skillIds: validProjectSkillIds.filter((id) => id !== s.id),
@@ -678,13 +750,13 @@ export function ProjectDetailPage() {
                 trigger={() => (
                   <Button size="sm">
                     <Plus size={14} />
-                    {t('추천 스킬 설정')}
+                    {t('스킬 고르기')}
                   </Button>
                 )}
               >
                 <MenuLabel>{t('입력창에서 먼저 보여 줄 스킬')}</MenuLabel>
                 {skills
-                  .filter((skill) => skill.enabled)
+                  .filter((skill) => skill.enabled && (isListed(skill) || validProjectSkillIds.includes(skill.id)))
                   .map((skill) => {
                     const selected = validProjectSkillIds.includes(skill.id)
                     return (
@@ -736,7 +808,7 @@ export function ProjectDetailPage() {
                         <span className="min-w-0 truncate font-mono text-sm text-accent">
                           {m.name}
                         </span>
-                        <Badge tone={memoryTypeTone[m.type]}>{m.type}</Badge>
+                        <Badge tone={memoryTypeTone[m.type]}>{t(memoryTypeLabel[m.type])}</Badge>
                         <span className="ml-auto flex shrink-0 items-center gap-0.5">
                           <Button
                             variant="ghost"
@@ -793,4 +865,22 @@ export function ProjectDetailPage() {
       />
     </>
   )
+}
+
+/** Why a page could not be kept, and what instead; inside the dialog. */
+function urlFailure(err: unknown, t: (text: string) => string): string {
+  const detail = err instanceof ApiError ? err.detail : ''
+  if (detail === '주소의 호스트를 찾을 수 없습니다.') {
+    return t('이 주소를 열 수 없습니다(호스트 없음). 주소를 확인하거나 PDF로 저장해 올리세요.')
+  }
+  if (detail === '내부 네트워크 주소는 읽을 수 없습니다.') {
+    return t('내부 네트워크 주소는 읽을 수 없습니다. 페이지를 PDF로 저장해 올리세요.')
+  }
+  if (detail === 'page_unreadable') {
+    return t('이 페이지에서 글을 읽지 못했습니다. 페이지를 PDF로 저장해 올리세요.')
+  }
+  if (detail === 'fetch_unavailable') {
+    return t('웹페이지 읽기가 꺼져 있습니다. 관리자에게 문의하거나 PDF로 저장해 올리세요.')
+  }
+  return errorMessage(err, t('웹페이지를 읽어 오지 못했습니다. 주소를 확인하거나 PDF로 저장해 올리세요.'))
 }

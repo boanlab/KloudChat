@@ -1,27 +1,17 @@
-import { Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
-import { recencyBucket } from '@/lib/days'
+import { ArrowRight, Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { ConfirmDialog, Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
+import { useBotAttention } from '@/lib/publishing'
+import { isMac } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Project, Session } from '@/types'
 import { useT } from '@/lib/useT'
 import { AccountMenu, AccountMenuCompact } from './AccountMenu'
 import { Brand } from './Brand'
-
-/** `visible` split into consecutive recency buckets, in the order the rows already have. */
-function groupByRecency(rows: Session[], t: (s: string) => string): [string, Session[]][] {
-  const groups: [string, Session[]][] = []
-  for (const row of rows) {
-    const bucket = recencyBucket(row.updatedAt, t)
-    const last = groups[groups.length - 1]
-    if (last && last[0] === bucket) last[1].push(row)
-    else groups.push([bucket, [row]])
-  }
-  return groups
-}
+import { openSearch } from './SearchDialog'
 
 const rowBase =
   'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors'
@@ -31,8 +21,8 @@ const rowState = (active: boolean) =>
     ? 'bg-selected font-medium text-fg'
     : 'text-muted hover:bg-elevated hover:text-fg'
 
-/** Unpinned conversations rendered per page. */
-const PAGE = 40
+/** Unpinned conversations kept in view; rest on 대화 기록. */
+const RECENT = 15
 
 interface NavRow {
   to: string
@@ -40,10 +30,11 @@ interface NavRow {
   icon: typeof Bot
 }
 
-// The rest of the workspace (agents, skills, connectors, memory, designs) lives in the account menu.
+// Agents (own and shared), skills, connectors in 「사용자 지정」; memory and themes in 설정.
 const workspaceNav: NavRow[] = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
   { to: '/artifacts', label: '아티팩트', icon: Layers },
+  { to: '/customize', label: '사용자 지정', icon: SlidersHorizontal },
 ]
 
 function SessionRow({
@@ -51,7 +42,6 @@ function SessionRow({
   active,
   emoji,
   projects,
-  onOpen,
   onRename,
   onTogglePin,
   onMove,
@@ -61,7 +51,6 @@ function SessionRow({
   active: boolean
   emoji?: string
   projects: Project[]
-  onOpen: () => void
   onRename: (title: string) => void
   onTogglePin: () => void
   onMove: (projectId: string | null) => void
@@ -91,6 +80,8 @@ function SessionRow({
         onKeyDown={(e) => {
           if (e.key === 'Enter') commit()
           if (e.key === 'Escape') {
+            // Ends the rename only, not the drawer.
+            e.preventDefault()
             setDraft(session.title)
             setEditing(false)
           }
@@ -109,17 +100,19 @@ function SessionRow({
           : 'text-muted hover:bg-elevated hover:text-fg',
       )}
     >
-      <button
-        onClick={onOpen}
+      {/* A link: opens in a new tab, reads as a place. */}
+      <Link
+        to={`/s/${session.id}`}
+        aria-current={active ? 'page' : undefined}
         className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-left"
         title={`${t(meta.label)} · ${session.title}`}
       >
-        <Icon size={13} className="shrink-0" style={{ color: meta.color }} />
+        <Icon size={13} className="shrink-0" style={{ color: meta.color }} aria-hidden />
         <span className="min-w-0 flex-1 truncate">
-          {emoji && <span className="mr-1 opacity-70">{emoji}</span>}
+          {emoji && <span className="mr-1 opacity-70" aria-hidden>{emoji}</span>}
           {session.title}
         </span>
-      </button>
+      </Link>
       <Dropdown
         align="right"
         trigger={({ open }) => (
@@ -128,7 +121,7 @@ function SessionRow({
               'mr-1 grid size-8 shrink-0 place-items-center rounded-control text-faint transition-colors hover:bg-line hover:text-fg',
               open && 'opacity-100',
             )}
-            aria-label={t('메뉴')}
+            aria-label={t('{title} 메뉴').replace('{title}', session.title)}
             title={t('이 대화의 이름 바꾸기·고정·삭제')}
           >
             <MoreHorizontal size={14} />
@@ -181,7 +174,8 @@ export function Sidebar() {
   const navigate = useNavigate()
   const t = useT()
   const brand = useStore((s) => s.brand)
-  const [query, setQuery] = useState('')
+  // My bots with news: a pause, an admin decision.
+  const botNews = useBotAttention((s) => s.bots)
   const {
     sessions,
     projects,
@@ -192,35 +186,24 @@ export function Sidebar() {
     user,
   } = useStore()
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const list = q ? sessions.filter((s) => s.title.toLowerCase().includes(q)) : sessions
-    return [...list].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt))
-  }, [sessions, query])
+  const filtered = useMemo(
+    // An unsent conversation is listed once its first send creates it.
+    () => sessions.filter((c) => !c.unsent).sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)),
+    [sessions],
+  )
 
   const pinned = filtered.filter((s) => s.pinned)
   const unpinned = filtered.filter((s) => !s.pinned)
-  // Rendered unpinned rows are capped; search still covers all of them.
-  const [shown, setShown] = useState(PAGE)
-  // Row awaiting delete confirmation.
   const [confirming, setConfirming] = useState<Session | null>(null)
-  // The next page loads when the "more" button scrolls into view.
-  const moreRef = useRef<HTMLButtonElement>(null)
-  useEffect(() => {
-    const el = moreRef.current
-    if (!el) return
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) setShown((n) => n + PAGE)
-      },
-      { rootMargin: '200px' },
-    )
-    io.observe(el)
-    return () => io.disconnect()
-  }, [shown, query])
 
-  const visible = unpinned.slice(0, shown)
-  const hidden = unpinned.length - visible.length
+  // Most recent few, then 모든 대화 보기; search (⌘K) covers the rest.
+  const cap = RECENT
+  const recent = unpinned.slice(0, cap)
+  // From the route: `activeSessionId` outlives the conversation screen.
+  const openSessionId = useLocation().pathname.match(/^\/s\/([^/]+)/)?.[1] ?? null
+  // Open conversation stays in view even if older than the recent few.
+  const openOlder = unpinned.slice(cap).find((s) => s.id === openSessionId)
+  const visible = openOlder ? [...recent, openOlder] : recent
 
   const renderRow = (session: Session) => (
     <SessionRow
@@ -229,7 +212,6 @@ export function Sidebar() {
       active={openSessionId === session.id}
       emoji={projects.find((p) => p.id === session.projectId)?.emoji}
       projects={projects}
-      onOpen={() => navigate(`/s/${session.id}`)}
       onRename={(title) => void renameSession(session.id, title)}
       onTogglePin={() => togglePinSession(session.id)}
       onMove={(projectId) => void moveSessionToProject(session.id, projectId)}
@@ -237,8 +219,6 @@ export function Sidebar() {
     />
   )
 
-  // From the route, not `activeSessionId`, which outlives the conversation screen.
-  const openSessionId = useLocation().pathname.match(/^\/s\/([^/]+)/)?.[1] ?? null
 
   const rail = useStore((s) => s.sidebar) === 'rail'
 
@@ -251,7 +231,7 @@ export function Sidebar() {
       <aside className="flex h-full w-16 shrink-0 flex-col items-center border-r border-line bg-sidebar py-3 transition-[width] duration-300">
         <Brand name={brand.name} logo={brand.logo} markOnly />
         <nav className="mt-3 flex flex-col items-center gap-1">
-          {[{ to: '/', label: '새로 만들기', icon: Plus, end: true }, ...workspaceNav].map(
+          {[{ to: '/', label: '새 대화', icon: Plus, end: true }, ...workspaceNav].map(
             ({ to, label, icon: Icon, ...rest }) => (
               <NavLink
                 key={to}
@@ -287,17 +267,19 @@ export function Sidebar() {
       </div>
 
       <div className="px-3 pb-2">
-        <div className="relative">
-          <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('검색')}
-            aria-label={t('대화 빠른 검색')}
-            data-session-search=""
-            className="h-8 bg-transparent pl-8 text-base"
-          />
-        </div>
+        {/* Box-styled trigger for the search dialog. */}
+        <button
+          type="button"
+          onClick={openSearch}
+          aria-label={t('대화 빠른 검색')}
+          aria-haspopup="dialog"
+          data-session-search=""
+          className="flex h-8 w-full items-center gap-2 rounded-control border border-line px-2.5 text-left text-base text-faint transition-colors hover:border-line-strong hover:text-muted"
+        >
+          <Search size={14} className="shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate">{t('검색')}</span>
+          <kbd className="shrink-0 font-sans text-xs text-faint">{isMac() ? '⌘K' : 'Ctrl K'}</kbd>
+        </button>
       </div>
 
       <nav className="space-y-0.5 px-3 pb-2">
@@ -309,7 +291,7 @@ export function Sidebar() {
           }
         >
           <Plus size={15} />
-          {t('새로 만들기')}
+          {t('새 대화')}
         </NavLink>
         {workspaceNav.map(({ to, label, icon: Icon }) => (
           <NavLink
@@ -321,11 +303,19 @@ export function Sidebar() {
           >
             <Icon size={15} />
             {t(label)}
+            {to === '/customize' && botNews > 0 && (
+              <span
+                aria-label={t('확인할 챗봇 {n}개').replace('{n}', String(botNews))}
+                className="ml-auto rounded-control bg-accent px-1.5 text-xs font-medium text-white"
+              >
+                {botNews}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
 
-      {/* `min-h-0` so a short window shrinks the list, not the footer. */}
+      {/* `min-h-0`: a short window shrinks the list, not the footer. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="border-t border-line px-3 py-2">
           {pinned.length > 0 && (
@@ -336,28 +326,27 @@ export function Sidebar() {
               <div className="space-y-0.5">{pinned.map(renderRow)}</div>
             </section>
           )}
-          {visible.length > 0 &&
-            // Newest first, under 오늘 · 어제 · 지난 7일 · 지난 30일 · 이전 headings.
-            groupByRecency(visible, t).map(([bucket, rows]) => (
-              <section key={bucket} className="mb-3">
-                <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-                  {bucket}
-                </p>
-                <div className="space-y-0.5">{rows.map(renderRow)}</div>
-              </section>
-            ))}
-          {hidden > 0 && (
-            <button
-              ref={moreRef}
-              onClick={() => setShown((n) => n + PAGE)}
-              className="mt-1 min-h-8 w-full rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+          {visible.length > 0 && (
+            // One heading: day buckets would mostly hold one row.
+            <section className="mb-2">
+              <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
+                {t('최근')}
+              </p>
+              <div className="space-y-0.5">{visible.map(renderRow)}</div>
+            </section>
+          )}
+          {unpinned.length > 0 && (
+            <NavLink
+              to="/history"
+              className="flex min-h-8 items-center gap-1 rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
             >
-              {t('이전 대화')} {hidden.toLocaleString()}{t('개 더 보기')}
-            </button>
+              {t('모든 대화 보기')}
+              <ArrowRight size={13} aria-hidden />
+            </NavLink>
           )}
           {filtered.length === 0 && (
             <p className="px-2.5 py-6 text-center text-base text-faint">
-              {query.trim() ? t('검색 결과가 없습니다') : t('아직 대화가 없습니다')}
+              {t('아직 대화가 없습니다')}
             </p>
           )}
         </div>
@@ -397,7 +386,7 @@ export function Sidebar() {
         onClose={() => setConfirming(null)}
         onConfirm={() => confirming && void deleteSession(confirming.id)}
         title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
-        description={t('되돌릴 수 없습니다. 이 대화가 만든 결과물도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화가 만든 아티팩트도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
       />
     </aside>
   )

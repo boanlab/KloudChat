@@ -1,5 +1,4 @@
-"""Auth wire shapes: camelCase on the wire (alias generator), snake_case in Python.
-Mirrored by the web client's types."""
+"""Auth wire shapes: camelCase on the wire, snake_case in Python; mirrored by web types."""
 
 from __future__ import annotations
 
@@ -21,10 +20,15 @@ class Wire(BaseModel):
     model_config = ConfigDict(alias_generator=_camel, populate_by_name=True)
 
 
+# single password rule for every path; exposed via `/auth/config`
+PASSWORD_MIN_LENGTH = 10
+PASSWORD_MAX_LENGTH = 200
+
+
 class SignupRequest(Wire):
     email: EmailStr
-    # Upper bound keeps argon2 from becoming a DoS vector.
-    password: str = Field(min_length=10, max_length=200)
+    # upper bound: argon2 DoS guard
+    password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
     name: str = Field(min_length=1, max_length=80)
 
 
@@ -34,7 +38,7 @@ class LoginRequest(Wire):
 
 
 def _model_picks(value: dict[str, str], keys: set[str]) -> dict[str, str]:
-    """`{surface: model id}` with only known surfaces; an empty id forgets the pick."""
+    """Known surfaces only; empty id drops the pick."""
     unknown = set(value) - keys
     if unknown:
         raise ValueError(f"unknown surface: {', '.join(sorted(unknown))}")
@@ -43,26 +47,21 @@ def _model_picks(value: dict[str, str], keys: set[str]) -> dict[str, str]:
 
 
 class Preferences(Wire):
-    """Settings-screen switches. Every field has a default for accounts with nothing stored."""
+    """Settings-screen switches, all defaulted."""
 
-    #: Off: the answer appears in one piece when the turn ends.
+    #: off: answer delivered whole at turn end
     stream_responses: bool = True
-    #: Extract durable facts from finished turns into memory.
     auto_memory: bool = False
-    #: The model / token / credit line under each answer.
     show_usage: bool = True
-    #: Default action when protected data would leave for an external model;
-    #: the administrator's policy is the upper bound for raw delivery.
+    #: hold space to dictate; fills box, doesn't send
+    space_to_talk: bool = False
+    #: protected-data default; admin policy caps raw delivery
     privacy_default_action: Literal[
         "ask", "route_strict_local", "mask_external", "send_raw_external"
     ] = "ask"
-    #: Personalisation: what every conversation should know about the person,
-    #: and how answers should be written. Free text.
     about_me: str = Field(default="", max_length=1500)
     response_style: str = Field(default="", max_length=1500)
-    #: The model picked on each surface, and per a/v mode. Kept with the account so
-    #: a second browser opens on the same one instead of the instance default. Ids
-    #: only: one no longer served falls back on screen, as a browser-kept pick does.
+    #: per-surface/per-a/v-mode picks, synced across browsers; unserved ids fall back on screen
     model_by_kind: dict[str, str] = Field(default_factory=dict)
     av_model_by_mode: dict[str, str] = Field(default_factory=dict)
 
@@ -78,7 +77,7 @@ class Preferences(Wire):
 
     @classmethod
     def of(cls, user: User) -> Preferences:
-        """Stored values over defaults; accepts both field and alias spellings."""
+        """Stored over defaults; field or alias keys."""
         stored = user.preferences or {}
         known = set(cls.model_fields) | {f.alias for f in cls.model_fields.values() if f.alias}
         return cls(**{k: v for k, v in stored.items() if k in known})
@@ -92,7 +91,7 @@ class ProfilePatch(Wire):
 
 class PasswordChange(Wire):
     current_password: str = Field(max_length=200)
-    new_password: str = Field(min_length=10, max_length=200)
+    new_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
 
 
 class PasswordForgot(Wire):
@@ -101,7 +100,7 @@ class PasswordForgot(Wire):
 
 class PasswordReset(Wire):
     token: str = Field(max_length=200)
-    new_password: str = Field(min_length=10, max_length=200)
+    new_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
 
 
 class EmailVerify(Wire):
@@ -120,13 +119,13 @@ class UserOut(Wire):
     avatar_color: str
     created_at: datetime
     last_active_at: datetime | None
-    #: Null while a mailed verification link is still out.
+    #: null while verification link outstanding
     email_verified_at: datetime | None = None
-    #: Last four characters of the account's LiteLLM key; no route returns the key.
+    #: last four chars; the key itself never returned
     litellm_key_preview: str | None = None
     litellm_key_issued_at: datetime | None = None
     preferences: Preferences = Preferences()
-    #: Empty means the whole catalogue.
+    #: empty = whole catalogue
     allowed_models: list[str] = []
 
     @classmethod
@@ -138,8 +137,7 @@ class UserOut(Wire):
 
 
 class SessionOut(Wire):
-    """Login/refresh result. The refresh token travels as an httpOnly cookie, not here;
-    `expiresIn` schedules the SPA's silent refresh."""
+    """Login/refresh result; refresh token in httpOnly cookie, `expiresIn` drives silent refresh."""
 
     access_token: str
     expires_in: int
@@ -147,26 +145,21 @@ class SessionOut(Wire):
 
 
 class SignupResponse(Wire):
-    """`session` is null when approval is required (`status == "pending"`)."""
+    """`session` null when approval pending."""
 
     user: UserOut
     session: SessionOut | None = None
 
 
 class EmailVerifyResponse(Wire):
-    """`active` with a session when verifying was the last step; `pending` when
-    an administrator still has to approve."""
+    """`active` + session when verification was last step; `pending` awaiting approval."""
 
     status: UserStatus
     session: SessionOut | None = None
 
 
 class AccessEventOut(Wire):
-    """One line of the user's own access log.
-
-    `action` is the stored verb; the client localises it. `region` is empty
-    without a GeoLite2 database or for an uncovered address, never guessed.
-    """
+    """Own access-log line; client localises `action`, `region` empty when unknown."""
 
     id: str
     at: datetime
@@ -192,10 +185,7 @@ class AccessEventOut(Wire):
 
 
 class ActiveSessionOut(Wire):
-    """One live sign-in, keyed on the refresh-token family (tokens rotate; the
-    family is the session). `current` marks the caller's own; ending it signs
-    the caller out. `ip`/`region`/`userAgent` may be empty, never guessed.
-    """
+    """Live sign-in per refresh-token family; `current` = caller's; fields never guessed."""
 
     family_id: str
     started_at: datetime
@@ -207,7 +197,26 @@ class ActiveSessionOut(Wire):
     current: bool
 
 
+class AccessEventPage(Wire):
+    """Access-log page, newest first, with total."""
+
+    items: list[AccessEventOut]
+    total: int
+    page: int
+    size: int
+
+
+class ActiveSessionPage(Wire):
+    """Live sign-ins page, caller's first; `others` excludes caller."""
+
+    items: list[ActiveSessionOut]
+    total: int
+    others: int
+    page: int
+    size: int
+
+
 class SessionRevokeResult(Wire):
-    """How many sign-ins the revoke ended."""
+    """Sign-ins ended."""
 
     revoked: int

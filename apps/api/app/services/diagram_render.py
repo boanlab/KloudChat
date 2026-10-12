@@ -1,8 +1,4 @@
-"""A document's mermaid flowchart drawn with `diagram_shapes`, rendered to PNG by the sidecar.
-
-The picture matches the .pptx export's native shapes. None when the chart cannot be drawn
-or no sidecar is configured; the caller then keeps the mermaid.
-"""
+"""Mermaid flowchart drawn with `diagram_shapes`, PNG via sidecar; None → caller keeps mermaid."""
 
 
 from __future__ import annotations
@@ -14,17 +10,19 @@ import logging
 import httpx
 
 from app.core.config import settings
-from app.services import diagram_shapes
+from app.services import diagram_shapes, flow_layout
 
 log = logging.getLogger(__name__)
 
 _TIMEOUT = httpx.Timeout(90.0, connect=5.0)
-#: Margin around the figure on its slide, in points.
+#: figure margin on its slide (pt)
 _MARGIN = 18.0
 
 
 def figure_size(graph: diagram_shapes.Graph) -> tuple[float, float]:
-    """The figure's box in points, sized to its layers and inside a 16:9 slide."""
+    """Figure box in points within a 16:9 slide; flows sized in rows for the text column."""
+    if (rows := flow_layout.frame_size(graph)) is not None:
+        return rows
     placed = diagram_shapes.layout(graph, 100, 100)
     layers = len({round(p.x if graph.direction == "LR" else p.y, 3) for p in placed.values()})
     across = max(
@@ -45,7 +43,7 @@ def figure_size(graph: diagram_shapes.Graph) -> tuple[float, float]:
 
 
 def figure_deck(source: str, accent: str = "#2563EB") -> bytes | None:
-    """The one-slide .pptx of the figure, or None when `source` is not drawable."""
+    """One-slide .pptx of the figure, or None if not drawable."""
     from pptx import Presentation
     from pptx.dml.color import RGBColor
     from pptx.util import Pt
@@ -72,7 +70,7 @@ def figure_deck(source: str, accent: str = "#2563EB") -> bytes | None:
 
 
 async def render_png(source: str, accent: str = "#2563EB") -> bytes | None:
-    """The figure as a PNG rendered from its python-pptx slide, or None."""
+    """Figure PNG from its python-pptx slide, or None."""
     base = settings.print_base_url.strip().rstrip("/")
     if not base:
         return None
@@ -92,7 +90,7 @@ async def render_png(source: str, accent: str = "#2563EB") -> bytes | None:
 
 
 def _trimmed(png: bytes, pad: int = 24) -> bytes:
-    """The picture cropped to its drawing plus `pad` pixels of white; the slide is oversized."""
+    """Picture cropped to its drawing plus `pad` px; the slide is oversized."""
 
     import PIL.Image
     import PIL.ImageChops

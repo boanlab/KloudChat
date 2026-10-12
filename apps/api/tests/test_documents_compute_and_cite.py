@@ -52,6 +52,13 @@ async def test_code_output_becomes_the_writers_fixed_values(monkeypatch):
     assert usage == {"inputTokens": 10, "outputTokens": 14}
 
 
+def test_a_program_whose_block_was_never_closed_is_still_read():
+    # The 27B stops right after the code in about half its answers.
+    assert calc._code_of("```python\nimport math\nprint('a = 1')") == "import math\nprint('a = 1')"
+    assert calc._code_of("```python\nprint(1)\n```\n설명") == "print(1)"
+    assert calc._code_of("코드 없음") == ""
+
+
 @pytest.mark.asyncio
 async def test_no_sandbox_leaves_the_document_alone(monkeypatch):
     class Backends:
@@ -116,7 +123,7 @@ def test_an_empty_reference_section_is_rebuilt_from_cited_works():
     out = report.fill_reference_list(sections, material)[1]["content"].split("\n\n")
     assert out[0] == "김상현, 『동아일보의 역사』, 동아일보사, 1990년."
     assert out[1] == "이영호, 『조선일보의 역사』, 조선일보사, 1995년."
-    assert out[2].strip() == "박재순 (1986). (서지 확인 필요)"
+    assert out[2].strip() == "박재순 (1986). [서지 정보]"
     # A list with entries is left as it is.
     entry = {"heading": "참고문헌", "content": "김상현 (1990). 『동아일보의 역사』."}
     listed = [sections[0], entry]
@@ -269,7 +276,7 @@ async def test_one_metric_stated_two_ways_is_reconciled_against_the_sources(monk
 
     async def complete(model, messages, api_key, max_tokens):
         prompt = messages[0]["content"]
-        items = json.loads(prompt[prompt.index("항목:") + len("항목:"):].strip())
+        items = json.loads(prompt[prompt.index("Items:") + len("Items:"):].strip())
         scoped = [
             i["sentence"].replace("글로벌 AI 보안 시장은", "AI 사이버보안 시장 전체는", 1)
             if i["sentence"].startswith("글로벌")
@@ -333,3 +340,63 @@ def test_a_monthly_pnl_row_is_worked_out_from_the_documents_own_inputs():
     # Two prices in the document: the inputs are not settled, nothing is corrected.
     two = {"heading": "제품", "content": "| 항목 | 값 |\n|---|---|\n| 판매가 | 12,000원 |"}
     assert report.fix_pnl_tables([assumptions, two, pnl])[2] == pnl
+
+
+def test_a_product_inside_a_sum_is_not_rewritten_to_zero():
+    from app.services.units import fix_written_arithmetic
+
+    for text in (
+        "3.2 + 0.9×5 = 7.7억 원입니다.",
+        "총비용은 1.2 + 0.09 × 3 = 1.47억 원이다.",
+        "| A안 5년 총비용 | 3.2 − 0.9×5 = 7.7억 원 |",
+    ):
+        assert fix_written_arithmetic(text) == text
+    # Plain digits under 1만 beside a 억 result: another scale, not a wrong product.
+    assert fix_written_arithmetic("0.9×5 = 4.5억 원") == "0.9×5 = 4.5억 원"
+    assert fix_written_arithmetic("0.9 × 5 = 4억 원") == "0.9 × 5 = 4억 원"
+    # A wrong product standing alone is still corrected.
+    wrong = "400명 × 48,000원 = 1,500만 원"
+    assert fix_written_arithmetic(wrong) == "400명 × 48,000원 = 1,920만 원"
+
+
+#: A proposal whose method 「가중 평균」s, answered with citation marks.
+PROPOSAL = (
+    "한국연구재단 개인기초연구(중견연구) 연구계획서 초안을 써 줘. 연구기간은 3년.\n\n"
+    "덧붙인 조건: 제공된 검색 자료([1]~[10])의 범위 내에서만 인용 및 구성. "
+    "요약문을 원자적 주장으로 분해하고 NLI로 함의 여부를 판정해 주장별 점수를 가중 평균한다. "
+    "아직 실험 결과는 없다.")
+SEARCH_PAGE = "SummaC 0.72, QAGS 0.61, FactCC 0.55, 2023, 2024, 1,200 summaries [3][4]"
+
+
+def test_a_proposal_s_method_and_search_pages_ask_for_no_calculation():
+    from app.pipeline.bundle import Bundle, Part, Request
+    from app.pipeline.report_stages import Calc
+
+    assert not calc.needed(PROPOSAL)
+    bundle = Bundle(request=Request(text=PROPOSAL, model="m", api_key="k"))
+    bundle.material.parts = [Part(SEARCH_PAGE, "research")]
+    assert Calc().skip(bundle) == "nothing to compute in the request"
+    # The person's own figures still ask for it.
+    bundle.request.untrusted = ["측정 1: 12.0, 측정 2: 13.5, 측정 3: 11.8, 측정 4: 12.6"]
+    assert Calc().skip(bundle) == ""
+
+
+@pytest.mark.asyncio
+async def test_calculation_runs_stop_at_the_deadline(monkeypatch):
+    import asyncio
+
+    class Backends:
+        exec = "sandbox"
+
+    async def tools_config():
+        return Backends()
+
+    async def complete(model, messages, api_key, max_tokens=0):
+        await asyncio.sleep(5)
+        return "", {}
+
+    monkeypatch.setattr(calc.settings_store, "tools_config", tools_config)
+    block, usage, status = await calc.computed_values(
+        ENGINEERING, [], complete=complete, model="m", api_key="k", deadline=0.05
+    )
+    assert (block, status) == ("", "timeout")

@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-/**
- * Files dragged onto a region, and whether one is hovering it. `dragover` and
- * `drop` are cancelled on the window, not only the target: the browser default
- * navigates to the dropped file. `over` is a depth counter because
- * `dragenter`/`dragleave` fire on every child crossing.
- */
+/** Files dropped on a region; drag events cancelled on the window (the browser navigates otherwise); `over` is a depth counter. */
 export function useFileDrop(onFiles: (files: File[]) => void, enabled = true) {
   const [over, setOver] = useState(false)
   const depth = useRef(0)

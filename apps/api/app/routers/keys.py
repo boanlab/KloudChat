@@ -1,8 +1,4 @@
-"""API keys a user holds themselves.
-
-The secret leaves the server once, at creation; no route returns it again.
-Spend, budget and the model allowlist follow the key on the proxy.
-"""
+"""User-held API keys; secret returned once at creation only."""
 
 from __future__ import annotations
 
@@ -34,7 +30,7 @@ async def list_keys(user: CurrentUser, db: DbSession):
 
 @router.post("", response_model=ApiKeyOut, status_code=status.HTTP_201_CREATED)
 async def create_key(payload: ApiKeyCreate, request: Request, user: CurrentUser, db: DbSession):
-    """Mints a key and returns it once. `secret` is absent from every later read."""
+    """Key mint; secret in this response only."""
     live = (
         await db.exec(
             select(ApiKey).where(ApiKey.user_id == user.id, col(ApiKey.revoked_at).is_(None))
@@ -72,7 +68,6 @@ async def create_key(payload: ApiKeyCreate, request: Request, user: CurrentUser,
     await db.refresh(row)
 
     out = ApiKeyOut.of(row)
-    # The only response that carries the secret.
     out.secret = secret
     return out
 
@@ -84,7 +79,7 @@ async def revoke_key(key_id: str, request: Request, user: CurrentUser, db: DbSes
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="key_not_found")
 
     await litellm_service.delete_key(settings_store.decrypt_secret(row.secret))
-    # Kept as a revoked row for the audit trail.
+    # revoked row kept for audit
     row.revoked_at = utcnow()
     db.add(row)
     db.add(

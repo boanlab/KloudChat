@@ -1,38 +1,31 @@
 ---
-title: Starting points, formats, and designs
+title: Templates and themes
 ---
 
-# Starting points, formats, and designs
+# Templates and themes
 
-These three features have similar names, but each has a different role and scope.
+A template is the structure of an artifact; a theme is its look. Work you do often belongs to [agents](agents.md). Neither is a Customize tab: you pick each where it is used.
 
-| Feature | Role | Where to select it | Scope |
+| Feature | Role | Where to pick it | Scope |
 |---|---|---|---|
-| **Starting point** | A card that asks for the items a repeated task needs. It builds the request from what you enter. | ▦ Start a task, and "Start from something you do often" on the home screen | That request |
-| **Format** | The form of the output. The product includes 11 report formats, 7 slide formats, and 14 image formats. | ▦ Start a task → Output format, and the account menu → Design → Formats tab | That conversation. Clear it with × on the chip |
-| **Design system** | A setting that bundles colors, typefaces, and writing style. You link it to a project. | The account menu → Design | Every output in that project |
+| **Template** | The structure of the artifact (structure rules, typesetting, check items). There are built-in templates and your own. | **+** → **Pick a template** in the composer; **Template & theme** › **Template** in the agent settings | That conversation (clear it with × on the chip), or the conversations that agent opens |
+| **Theme** | A setting that bundles colors, typefaces, and writing style. | **Template & theme** › **Theme** in the agent settings, **Edit › Theme** in the report or slides panel, the project settings | That agent's or project's artifacts |
 
-## Starting points
+## Templates
 
-Select a card and fields such as title, audience, and material appear above the composer. What you enter is added in front of your request. If a starting point requires web search or a file, that feature is turned on automatically, or a note appears asking you to attach the file. A starting point that includes a template file attaches that file automatically when you select it.
+A template defines the structure rules and the typesetting of reports and slides. Select one and the **What this template checks** list appears. You edit a document in a template by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Create your own document template with **New template** in the template picker or the agent settings ([Agents and skills](agents.md)). Images, audio and video have no templates.
 
-- 78 starting points are built in across Chat, Reports, and Slides. They include concept summaries, material reviews, root cause analysis, weekly reports, and meeting minutes.
-- **Create my starting point** lets you set the name, description, category, input fields, examples, required features, instructions sent only to the model, and a template file.
-- A starting point registered by an administrator is marked **Shared**.
-- Some starting points, such as experiment records and weekly reports, do not invent figures that are absent from the material. They show **(TBD)** instead.
+The built-in templates in the picker are six documents (internal draft 간이기안문, plan 추진 계획(안), result report 결과 보고서, bullet-style briefing 개조식 보고서, comparison report 비교·분석 보고서, minutes 회의록) and the **Briefing** deck. They write straight into the institution's format and show that format's check results when done. Conversations and agents that use a hidden template keep writing and exporting with it.
 
-## Formats
+## Themes
 
-A format defines the structure rules and the typesetting of reports and slides. Select one and the **What this format checks** list appears. You edit a formatted document by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Formats are built into the product, so you cannot create new ones.
+Manage them in **Settings** → **Themes** (also opened by **Manage themes** in the agent settings). Themes other people shared appear under **Shared themes** on the same tab.
 
-## Design systems
-
-Manage them in the account menu → **Design**.
-
-![The design system screen](/img/guide/designs.png)
+![The theme screen](/img/guide/designs.png)
 
 - Set the name, the accent color, the body color, the secondary color, the typeface (sans-serif or serif), the writing style rules, the image style, and the rules to apply alongside them.
 - **Import from a document** extracts a draft from an existing hwpx, docx, or pdf file, or from a web address. It calls the model once, and you can review the content before saving.
 - The writing style applies to conversations, reports, and slides. Colors and typefaces apply to slides and report covers. The image style applies to images. Nothing applies to audio and video.
-- Design settings are copied into an output when it is generated. Changing the design later does not change outputs that already exist.
-- An administrator can distribute a read-only shared design with **Provide to all users**.
+- Theme settings are copied into an artifact when it is generated. Changing the theme later does not change artifacts that already exist.
+- An administrator can distribute a read-only shared theme with **Provide to all users**.
+- Of the built-in themes, the pickers show **Default** (기본) and **Document serif** (문서용 명조).

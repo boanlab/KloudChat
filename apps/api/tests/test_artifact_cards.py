@@ -101,6 +101,7 @@ def test_the_full_row_is_still_the_full_row():
     ],
 )
 def test_a_card_keeps_every_field_and_only_shrinks_it(kind, data):
-    """A card keeps every key of the full data; fields are emptied, never dropped."""
+    """A card keeps every key of the full data; fields are emptied, never dropped. The one key
+    it adds, `partCount`, says how many sections or slides the whole has."""
     card = ArtifactOut.card(Artifact(user_id="u", kind=kind, title="t", data=data))
-    assert set(card.data) == set(data)
+    assert set(card.data) - {"partCount"} == set(data)

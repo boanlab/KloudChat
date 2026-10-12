@@ -1,15 +1,20 @@
 import { Loader2, LogOut, MapPin, Monitor, ShieldAlert } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Badge, Button, Card, ConfirmDialog } from '@/components/ui'
+import { Pager } from '@/components/ui/Pager'
 import {
   accessApi,
   errorMessage,
   type AccessEventRow,
+  type AccessPage,
+  type ActiveSessionPage,
   type ActiveSessionRow,
 } from '@/lib/api'
-import { browserName, formatDateTime } from '@/lib/utils'
+import { pageCount } from '@/lib/paging'
+import { browserName, formatDateTime, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { PasswordSection } from './PasswordSection'
 
 const ACTION_LABEL: Record<string, string> = {
   login: '로그인',
@@ -21,35 +26,63 @@ const ACTION_LABEL: Record<string, string> = {
   'key.revoke': 'API 키 폐기',
 }
 
-/** Live sign-ins, newest activity first; ending the current one signs the reader out. */
+const SESSIONS_PER_PAGE = 10
+const EVENTS_PER_PAGE = 20
+
+/** 「로그인된 기기 23」. */
+function Heading({ title, total }: { title: string; total: number | null }) {
+  return (
+    <h3 className="flex items-baseline gap-2 text-base font-medium">
+      {title}
+      {total !== null && (
+        <span className="text-sm font-normal tabular-nums text-faint">
+          {total.toLocaleString()}
+        </span>
+      )}
+    </h3>
+  )
+}
+
+/** Ten a page; own sign-in leads page 1, rest by latest activity; ending the current one signs out. */
 function ActiveSessions() {
   const t = useT()
   const idleTimeoutMinutes = useStore((s) => s.idleTimeoutMinutes)
-  const [rows, setRows] = useState<ActiveSessionRow[] | null>(null)
+  const [page, setPage] = useState(1)
+  const [data, setData] = useState<ActiveSessionPage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<ActiveSessionRow | 'others' | null>(null)
+  const [reloads, setReloads] = useState(0)
 
-  const load = useCallback(() => {
+  useEffect(() => {
+    let live = true
     accessApi
-      .sessions()
-      .then(setRows)
-      .catch((err) => setError(errorMessage(err, t('로그인 목록을 불러오지 못했습니다.'))))
-  }, [t])
-
-  useEffect(load, [load])
+      .sessions(page, SESSIONS_PER_PAGE)
+      .then((res) => {
+        if (!live) return
+        // Emptied page: step back to the last one.
+        const last = pageCount(res.total, SESSIONS_PER_PAGE)
+        if (res.items.length === 0 && page > last) return setPage(last)
+        setData(res)
+      })
+      .catch((err) => live && setError(errorMessage(err, t('로그인 목록을 불러오지 못했습니다.'))))
+    return () => {
+      live = false
+    }
+  }, [page, reloads, t])
 
   const end = async (target: ActiveSessionRow | 'others') => {
     setBusy(target === 'others' ? 'others' : target.familyId)
     try {
       if (target === 'others') {
         await accessApi.endOtherSessions()
+        setPage(1)
       } else {
         await accessApi.endSession(target.familyId)
-        // The cookie is burned; tear down locally.
+        // Cookie burned: tear down locally.
         if (target.current) return void useStore.getState().logout()
       }
-      load()
+      setReloads((n) => n + 1)
     } catch (err) {
       setError(errorMessage(err, t('로그아웃하지 못했습니다.')))
     } finally {
@@ -57,10 +90,12 @@ function ActiveSessions() {
     }
   }
 
-  const others = (rows ?? []).filter((r) => !r.current).length
+  const rows = data?.items ?? null
+  const total = data?.total ?? null
 
   return (
-    <div className="space-y-3">
+    <section className="space-y-3" data-testid="active-sessions">
+      <Heading title={t('로그인된 기기')} total={total} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-base text-muted">
           {t('이 계정이 지금 로그인되어 있는 브라우저입니다. 실습실이나 도서관 PC처럼 기억나지 않는 항목이 있으면 여기서 바로 종료하세요.')}
@@ -74,7 +109,7 @@ function ActiveSessions() {
             </>
           )}
         </p>
-        {others > 0 && (
+        {(data?.others ?? 0) > 0 && (
           <Button
             size="sm"
             onClick={() => setConfirming('others')}
@@ -95,28 +130,35 @@ function ActiveSessions() {
       ) : (
         <Card className="divide-y divide-line">
           {rows.map((r) => (
-            <div key={r.familyId} className="flex items-center gap-3 px-4 py-3">
-              <Monitor size={15} className="shrink-0 text-faint" />
+            <div
+              key={r.familyId}
+              data-testid="session-row"
+              className="flex min-h-14 items-center gap-3 px-4 py-2"
+            >
+              <Monitor size={14} className="shrink-0 text-faint" />
               <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-2 text-base">
+                <p className="flex items-center gap-2 text-sm leading-5">
                   <span className="truncate" title={r.userAgent}>
                     {browserName(r.userAgent) || t('알 수 없는 브라우저')}
                   </span>
                   {r.current && <Badge tone="success">{t('현재 기기')}</Badge>}
                 </p>
-                <p className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-sm text-faint">
-                  <span className="font-mono text-xs tabular-nums">
-                    {r.ip || t('주소 없음')}
-                  </span>
+                <p className="flex flex-wrap items-center gap-x-2.5 text-xs leading-4 text-faint">
+                  <span className="font-mono tabular-nums">{r.ip || t('주소 없음')}</span>
                   {r.region && (
                     <span className="inline-flex items-center gap-1">
-                      <MapPin size={11} />
+                      <MapPin size={10} />
                       {t(r.region)}
                     </span>
                   )}
-                  <span>
-                    {t('최근 사용')} {formatDateTime(r.lastSeenAt)}
-                  </span>
+                  {/* Relative: one line on a phone; exact time in the tooltip. */}
+                  <time
+                    dateTime={r.lastSeenAt}
+                    title={formatDateTime(r.lastSeenAt)}
+                    className="whitespace-nowrap"
+                  >
+                    {t('최근 사용')} {relativeTime(r.lastSeenAt)}
+                  </time>
                 </p>
               </div>
               <Button
@@ -134,6 +176,17 @@ function ActiveSessions() {
             </div>
           ))}
         </Card>
+      )}
+
+      {data && data.total > SESSIONS_PER_PAGE && (
+        <Pager
+          page={page}
+          size={SESSIONS_PER_PAGE}
+          total={data.total}
+          onPage={setPage}
+          label={t('로그인된 기기 페이지')}
+          className=""
+        />
       )}
 
       <ConfirmDialog
@@ -154,104 +207,121 @@ function ActiveSessions() {
           if (target) void end(target)
         }}
       />
-    </div>
+    </section>
   )
 }
 
-export function AccessTab() {
+/** Twenty a page, newest first. */
+function AccessLog() {
   const t = useT()
-  const [rows, setRows] = useState<AccessEventRow[] | null>(null)
+  const [page, setPage] = useState(1)
+  const [data, setData] = useState<AccessPage<AccessEventRow> | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
     accessApi
-      .mine()
-      .then((r) => live && setRows(r))
+      .mine(page, EVENTS_PER_PAGE)
+      .then((r) => live && setData(r))
       .catch((err) => live && setError(errorMessage(err, t('접속 기록을 불러오지 못했습니다.'))))
     return () => {
       live = false
     }
-  }, [t])
+  }, [page, t])
+
+  const rows = data?.items ?? null
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-3">
-        <h3 className="text-base font-medium">{t('로그인된 기기')}</h3>
-        <ActiveSessions />
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="text-base font-medium">{t('접속 기록')}</h3>
-        <p className="text-base text-muted">
-          {t('이 계정에 대한 접속과 보안 변경 기록입니다. 최근 100건까지 남습니다. 기억나지 않는 접속이 있으면 비밀번호를 바꾸세요.')}
-        </p>
-        {error ? (
-          <Card className="p-8 text-center text-base text-danger">{error}</Card>
-        ) : rows === null ? (
-          <Card className="grid place-items-center p-10">
-            <Loader2 size={16} className="animate-spin text-faint" />
-          </Card>
-        ) : rows.length === 0 ? (
-          <Card className="p-10 text-center text-base text-muted">
-            {t('아직 기록이 없습니다.')}
-          </Card>
-        ) : (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-base">
-                <thead className="border-b border-line text-left text-xs tracking-wide text-faint uppercase">
-                  <tr>
-                    <th className="px-4 py-2.5 font-medium">{t('시각')}</th>
-                    <th className="px-4 py-2.5 font-medium">{t('행위')}</th>
-                    <th className="px-4 py-2.5 font-medium">{t('접속 위치')}</th>
-                    <th className="px-4 py-2.5 font-medium">{t('브라우저')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {rows.map((e) => {
-                    const failed = e.detail === 'failed' || e.severity === 'warn'
-                    return (
-                      <tr key={e.id} className="hover:bg-elevated">
-                        <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-muted">
-                          {formatDateTime(e.at)}
-                        </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap">
-                          {failed ? (
-                            <Badge tone="warn">
-                              <ShieldAlert size={10} />
-                              {t('로그인 실패')}
-                            </Badge>
-                          ) : (
-                            t(ACTION_LABEL[e.action] ?? e.action)
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5 text-sm whitespace-nowrap">
-                          <span className="font-mono text-xs tabular-nums text-faint">
-                            {e.ip || t('주소 없음')}
+    <section className="space-y-3" data-testid="access-log">
+      <Heading title={t('접속 기록')} total={data?.total ?? null} />
+      <p className="text-base text-muted">
+        {t('이 계정에 대한 접속과 보안 변경 기록입니다. 기억나지 않는 접속이 있으면 비밀번호를 바꾸세요.')}
+      </p>
+      {error ? (
+        <Card className="p-8 text-center text-base text-danger">{error}</Card>
+      ) : rows === null ? (
+        <Card className="grid place-items-center p-10">
+          <Loader2 size={16} className="animate-spin text-faint" />
+        </Card>
+      ) : rows.length === 0 ? (
+        <Card className="p-10 text-center text-base text-muted">
+          {t('아직 기록이 없습니다.')}
+        </Card>
+      ) : (
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-base">
+              <thead className="border-b border-line text-left text-xs tracking-wide text-faint uppercase">
+                <tr>
+                  <th className="px-4 py-2.5 font-medium">{t('시각')}</th>
+                  <th className="px-4 py-2.5 font-medium">{t('행위')}</th>
+                  <th className="px-4 py-2.5 font-medium">{t('접속 위치')}</th>
+                  <th className="px-4 py-2.5 font-medium">{t('브라우저')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {rows.map((e) => {
+                  const failed = e.detail === 'failed' || e.severity === 'warn'
+                  return (
+                    <tr key={e.id} className="hover:bg-elevated">
+                      <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-muted">
+                        {formatDateTime(e.at)}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        {failed ? (
+                          <Badge tone="warn">
+                            <ShieldAlert size={10} />
+                            {t('로그인 실패')}
+                          </Badge>
+                        ) : (
+                          t(ACTION_LABEL[e.action] ?? e.action)
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-sm whitespace-nowrap">
+                        <span className="font-mono text-xs tabular-nums text-faint">
+                          {e.ip || t('주소 없음')}
+                        </span>
+                        {e.region && (
+                          <span className="ml-2 inline-flex items-center gap-1 text-muted">
+                            <MapPin size={11} className="text-faint" />
+                            {t(e.region)}
                           </span>
-                          {e.region && (
-                            <span className="ml-2 inline-flex items-center gap-1 text-muted">
-                              <MapPin size={11} className="text-faint" />
-                              {t(e.region)}
-                            </span>
-                          )}
-                        </td>
-                        <td
-                          className="px-4 py-2.5 text-sm whitespace-nowrap text-muted"
-                          title={e.userAgent}
-                        >
-                          {browserName(e.userAgent) || t('알 수 없음')}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        )}
-      </section>
+                        )}
+                      </td>
+                      <td
+                        className="px-4 py-2.5 text-sm whitespace-nowrap text-muted"
+                        title={e.userAgent}
+                      >
+                        {browserName(e.userAgent) || t('알 수 없음')}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+      {data && data.total > EVENTS_PER_PAGE && (
+        <Pager
+          page={page}
+          size={EVENTS_PER_PAGE}
+          total={data.total}
+          onPage={setPage}
+          label={t('접속 기록 페이지')}
+          className=""
+        />
+      )}
+    </section>
+  )
+}
+
+export function AccessTab() {
+  return (
+    <div className="space-y-8">
+      <PasswordSection />
+      <ActiveSessions />
+      <AccessLog />
     </div>
   )
 }

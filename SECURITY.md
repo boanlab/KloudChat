@@ -36,6 +36,12 @@ In scope, and treated as vulnerabilities:
   or that bills one account for another's usage.
 - Share links that expose more than the shared artifact, or that survive
   revocation.
+- Published chatbots that reach past their approved version and fixed
+  material, expose another visitor's conversation, answer on an audience or
+  channel (link, embed, API, MCP) an administrator has not approved, or can be
+  framed by a site outside their embed list.
+- Turns carrying internal material, or detected personal data, reaching an
+  external model against the governance policy.
 - Server-side request forgery through connector, gateway, or fetch URLs.
 - Path traversal or unauthorised reads against the file store.
 - Stored XSS in rendered Markdown, artifacts, or branding assets.
@@ -65,8 +71,9 @@ Several protections are the operator's, not the application's:
 - **Keep LiteLLM off the public network.** KloudChat's `/llm` route is the only
   intended path to it, and that route authenticates with per-user API keys.
 - **Set `KCHAT_CORS_ORIGINS`** to the exact origins that serve the app.
-- **Treat `.env` as a credential file.** It holds `KCHAT_JWT_SECRET` and, if
-  you bootstrap it there, the LiteLLM master key. Rotating `KCHAT_JWT_SECRET`
+- **Treat `.env` as a credential file.** It holds `KCHAT_JWT_SECRET`,
+  `KCHAT_SECRET_KEY`, `KCHAT_TOOLS_GATEWAY_KEY` and, if you bootstrap it there,
+  the LiteLLM master key. Rotating `KCHAT_JWT_SECRET`
   invalidates every issued access token, which is the intended effect after a
   suspected compromise.
 

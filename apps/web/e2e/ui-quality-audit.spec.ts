@@ -35,7 +35,6 @@ const ADMIN_ROUTES = [
   '/admin/system',
   '/admin/system/routing',
   '/admin/system/features',
-  '/admin/system/templates',
   '/admin/system/branding',
   '/admin/system/mail',
   '/admin/governance',
@@ -312,9 +311,9 @@ test('문서와 덱 패널의 레이아웃 품질', async ({ page }) => {
     }
   }
 
-  console.log('\n===== 결과물 화면 =====')
+  console.log('\n===== 아티팩트 화면 =====')
   console.log(defects.length ? defects.join('\n') : '잘린 곳 없음')
-  expect([...new Set(defects)], '결과물 화면에서 잘린 글자').toEqual([])
+  expect([...new Set(defects)], '아티팩트 화면에서 잘린 글자').toEqual([])
 })
 
 test('관리자 화면의 레이아웃 품질', async ({ page }) => {

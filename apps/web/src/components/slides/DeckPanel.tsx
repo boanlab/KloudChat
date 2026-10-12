@@ -5,9 +5,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
-  Download,
   Eraser,
   Grid2x2,
+  History,
   ImagePlus,
   Italic,
   LayoutTemplate,
@@ -15,9 +15,11 @@ import {
   Loader2,
   Maximize,
   MessageSquare,
+  MoreHorizontal,
   PanelLeft,
   PanelRight,
   Palette,
+  Pencil,
   Play,
   Presentation,
   Rows3,
@@ -41,18 +43,21 @@ import {
   type PanelMode,
 } from '@/components/artifacts/PanelControls'
 import { usePanelNarrow } from '@/lib/usePanelNarrow'
-import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
-import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
+import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, MenuSeparator, Modal, Textarea } from '@/components/ui'
+import { DownloadMenu, ReuseItems } from '@/components/artifacts/ResultActions'
+import { artifactsApi, errorMessage } from '@/lib/api'
 import { FRAMES, drawIntoFitting, frameElement, paperStyles, rasterise, slideTheme } from '@/lib/mermaid'
 import { cn } from '@/lib/utils'
 import type { DeckArtifact, LintFinding, Slide } from '@/types'
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
 import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindings'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
+import { overflowRisk } from '@/components/artifacts/artifactExport'
+import { RunStagesButton } from '@/components/artifacts/RunStages'
 import { useStore } from '@/store/useStore'
 import { SlideChart } from '@/components/slides/SlideChart'
 import { PatternView } from '@/components/slides/PatternView'
-import { PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
+import { BASE_LAYOUTS, PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
 import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, TYPE, columnShares, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
 import { useT } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
@@ -101,18 +106,6 @@ function hasWords(slide: Slide): boolean {
       slide.items?.length ||
       slide.columns?.length,
   )
-}
-
-/** Cheap overflow estimate for the whole deck; the selected slide is measured in pixels. */
-function overflowRisk(slide: Slide): boolean {
-  const titleLoad = Math.ceil((slide.title?.length ?? 0) / 34)
-  const bulletLoad = (slide.bullets ?? []).reduce((sum, row) => sum + Math.max(1, Math.ceil(row.length / 38)), 0)
-  const tableLoad = (slide.rows ?? []).length * 1.35
-  const pairLoad = Math.max(slide.metrics?.length ?? 0, slide.bands?.length ?? 0, slide.tiles?.length ?? 0, slide.timeline?.length ?? 0, slide.steps?.length ?? 0, slide.cards?.length ?? 0, slide.items?.length ?? 0) * 1.6
-  const columnLoad = Math.max(0, ...(slide.columns ?? []).map((column) => column.items.length)) * 1.2
-  const chartLoad = (slide.chart?.categories.length ?? 0) * 0.8 + (slide.chart?.series.length ?? 0) * 0.8
-  const scale = slide.textScale ?? 1
-  return (titleLoad * 1.5 + bulletLoad + tableLoad + pairLoad + columnLoad + chartLoad) * scale > 10
 }
 
 function splitStructuredSlide(slide: Slide, continuation: string): [Slide, Slide] | null {
@@ -216,25 +209,6 @@ const LOOKS: Record<VisualStyle, Look> = {
 }
 type Paired = (typeof PAIRED)[number]
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
-const BASE_LAYOUTS: { id: Slide['layout']; label: string }[] = [
-  { id: 'title', label: '표지' },
-  { id: 'agenda', label: '목차' },
-  { id: 'section', label: '구분 장' },
-  { id: 'bullets', label: '글머리표' },
-  { id: 'two-column', label: '두 단' },
-  { id: 'quote', label: '인용문' },
-  { id: 'statement', label: '핵심 메시지' },
-  { id: 'table', label: '표' },
-  { id: 'metrics', label: '핵심 수치' },
-  { id: 'big-number', label: '큰 숫자' },
-  { id: 'chart', label: '차트' },
-  { id: 'bands', label: '항목과 설명' },
-  { id: 'cards', label: '카드' },
-  { id: 'steps', label: '단계' },
-  { id: 'tiles', label: '표식' },
-  { id: 'timeline', label: '연표' },
-  { id: 'closing', label: '마무리' },
-]
 
 /** Picker groups for the patterns, by arrangement; `slide_patterns.py` holds the table. */
 const PATTERN_GROUPS: { label: string; renders: Pattern['render'][] }[] = [
@@ -328,8 +302,7 @@ function cleanInlineHtml(html: string): string {
       Array.from(node.childNodes).forEach((child) => { const next = clean(child); if (next) fragment.append(next) })
       return fragment
     }
-    // `execCommand(fontSize)` emits `<font size>`; converted to a relative size
-    // so it scales with the slide.
+    // `execCommand(fontSize)` emits `<font size>`; converted to a relative size that scales with the slide.
     const element = document.createElement(node.tagName === 'FONT' ? 'span' : node.tagName.toLowerCase())
     if (node.tagName === 'FONT') {
       const size = node.getAttribute('size')
@@ -358,7 +331,6 @@ function inlineText(html: string): string {
   return new DOMParser().parseFromString(html, 'text/html').body.textContent ?? ''
 }
 
-/** The slide's paired layout, or `null`. */
 function pairedLayout(slide: Slide): Paired | null {
   return (PAIRED as readonly string[]).includes(slide.layout)
     ? (slide.layout as Paired)
@@ -499,10 +471,7 @@ function slideFor(slides: Slide[], where: string): Slide | undefined {
   return slides.find((s) => loose(s.title) === loose(where))
 }
 
-/**
- * One slide in a 400x225 unit space, scaled. Geometry matches `deck_export.py`.
- * Also draws gallery thumbnails.
- */
+/** One slide in a 400x225 unit space, scaled; geometry matches `deck_export.py`. Also draws gallery thumbnails. */
 export function SlideView({
   slide,
   scale = 1,
@@ -541,8 +510,7 @@ export function SlideView({
   // The slide as typed; a ref so re-renders do not move the caret.
   const working = useRef(slide)
   const canvas = useRef<HTMLDivElement>(null)
-  // Every edit reaches the parent through `onEdit`, so a slide object the parent has not
-  // seen before (a layout picked, a row typed in the data editor) is newer than the copy.
+  // Every edit reaches the parent via `onEdit`, so an unseen slide object is newer than the copy.
   const seen = useRef(slide)
   if (!editable || slide !== seen.current) {
     working.current = slide
@@ -589,8 +557,7 @@ export function SlideView({
   // `mono` uses ink for the accent.
   const accent = visualStyle === 'mono' ? look.ink : (slide.accent ?? brand?.accent ?? 'var(--accent)')
   const px = (n: number) => `${n * scale}px`
-  // Type size only; `textScale` does not touch padding or gaps. `deck_export` applies the same factor.
-  // Never under 12pt, whatever the scale; `deck_export` floors the same way.
+  // Type size only, never under 12pt; `deck_export` applies the same factor and floor.
   const type = (n: number) => `${Math.max(n * (slide.textScale ?? 1), units(FLOOR_PT)) * scale}px`
   // A size from the shared table, in points.
   const pt = (points: number) => type(units(points))
@@ -631,12 +598,10 @@ export function SlideView({
           ? 'cards'
           : 'content'
   const pending = !hasContent(slide)
-  // A figure the deck drew for itself is a band across the body; the words sit under it,
-  // set compact. Beside it they would narrow the figure until it cannot be read.
+  // Deck-drawn figure is a band across the body, compact words under it; beside it the figure becomes unreadable.
   const figured = Boolean(slide.diagram?.source)
   const figureAlone = figured && !hasWords(slide)
-  // A picture with no words beside it is the slide: it takes the whole content area,
-  // as the exporters already give it.
+  // A picture without words takes the whole content area, as in the exporters.
   const imageAlone = Boolean(slide.image?.src) && !figured && !hasWords(slide)
   useLayoutEffect(() => {
     if (!onOverflow || !canvas.current) return
@@ -654,8 +619,7 @@ export function SlideView({
   const twoColumn = slide.layout === 'two-column' && (slide.bullets?.length ?? 0) >= 5
   // Table type size from the row count, so it stays on the slide; `deck_export` scales the same way.
   const dense = { size: tableSize(rows.length), pad: tablePad(rows.length), shares: columnShares(rows) }
-  // Band and timeline rows divide the body height; matches `deck_export`
-  // (`min(72, room/n)` and `min(56, room/n)` in its 540-unit slide).
+  // Band and timeline rows divide the body height; matches `deck_export` (`min(72, room/n)`, `min(56, room/n)` of 540 units).
   const stack = (() => {
     const body = BODY_BOTTOM - BODY_TOP - 4
     const count = Math.max(pairs.length, 1)
@@ -664,8 +628,7 @@ export function SlideView({
     const band = Math.max(units(TYPE.bandMin), Math.min(units(TYPE.bandMax), height / 3))
     const step = Math.min(23, body / count)
     const line = Math.max(units(TYPE.lineMin), Math.min(units(TYPE.lineMax), step / 2.3))
-    // Left label width from character count (a Korean glyph is about 1em),
-    // bounded between the floor and a third of the slide.
+    // Left label width from character count (Korean glyph ≈ 1em), between the floor and a third of the slide.
     const widest = (index: number, floor: number, size: number) =>
       Math.round(
         Math.max(
@@ -888,8 +851,7 @@ export function SlideView({
             <div
               className={cn(
                 'flex min-w-0 flex-1 flex-col',
-                // Paired shapes cannot overflow (see `stack`), so they centre;
-                // bullets can, and a centred overflow clips at both ends.
+                // Paired shapes cannot overflow (see `stack`), so they centre; bullets can, and centred overflow clips both ends.
                 (PAIRED.includes(slide.layout as (typeof PAIRED)[number]) || pattern) && 'justify-center',
                 figured && 'hidden',
               )}
@@ -1390,11 +1352,7 @@ export function SlideView({
   )
 }
 
-/**
- * A figure the deck drew for itself, rendered live from its mermaid so it stays crisp at any
- * scale. On the editor's stage (`artifactId` set) the raster is stored once for the exporters,
- * which have no browser; a stored raster is not sent again.
- */
+/** Deck-drawn figure, live from its mermaid; on the editor's stage the raster is stored once for the exporters. */
 function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent: string; look: Look; artifactId?: string }) {
   const t = useT()
   const host = useRef<HTMLDivElement>(null)
@@ -1552,11 +1510,7 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
   )
 }
 
-/**
- * The slide as editable lines: title, then bullets/body, then rows, metrics
- * and pairs as `| a | b |`. A paired slide omits bullets and body, which
- * `SlideView` does not draw.
- */
+/** Slide as editable lines: title, bullets/body, then rows, metrics and pairs as `| a | b |`; paired slides omit bullets and body. */
 function toLines(slide: Slide): string {
   const pattern = patternOf(slide.layout)
   if (pattern) {
@@ -1834,8 +1788,7 @@ export function PresentStage({
     <div ref={stageRef} role="dialog" aria-label={t('발표 모드')} className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="flex items-center gap-2 px-4 py-2 text-white/70">
         <Presentation size={14} className="shrink-0" />
-        {/* The title gives way first: on a phone at the larger type the controls after it
-            must stay on screen. */}
+        {/* Title gives way first, so the controls stay on a phone screen. */}
         <span className="min-w-0 flex-1 truncate text-base">{title}</span>
         <span className="shrink-0 text-base tabular-nums">
           {index + 1} / {count}
@@ -2068,6 +2021,7 @@ export function DeckPanel({
     // Written onto the prop too: the artifacts screen renders a copy, not the store row.
     if (data.slides) deck.slides = data.slides
     deck.version = row.version
+    useStore.getState().noteArtifactVersion(deck.id, row.version)
   }
   // One rewrite per slide (see `byWhere`), sequential because they share a version.
   const fixAllFindings = async (findings: LintFinding[]) => {
@@ -2091,6 +2045,7 @@ export function DeckPanel({
         const data = (row.data ?? {}) as { slides?: Slide[] }
         if (data.slides) deck.slides = data.slides
         deck.version = row.version
+        useStore.getState().noteArtifactVersion(deck.id, row.version)
       } catch {
         failed.push(where)
       }
@@ -2106,7 +2061,12 @@ export function DeckPanel({
   const stage = useStageScale()
   const fit = useFitWidth()
   const [selected, setSelected] = useState(0)
-  const [ribbon, setRibbon] = useState<'home' | 'edit' | 'insert' | 'review' | 'view' | 'show' | 'file'>('home')
+  // Reading shows a calm header; 「편집」 opens the ribbon, which holds only the editing tabs.
+  const [editMode, setEditMode] = useState(false)
+  const [ribbon, setRibbon] = useState<'text' | 'insert' | 'design' | 'review'>('text')
+  // The header folds its labels and the slide list into ⋯ below this width.
+  const head = usePanelNarrow<HTMLDivElement>(540)
+  const [historyRequest, setHistoryRequest] = useState<{ nonce: number; version?: number } | null>(null)
   const [editing, setEditing] = useState(false)
   // Ribbon slot for the edit tools; without it they render in place.
   const [editToolbarSlot, setEditToolbarSlot] = useState<HTMLElement | null>(null)
@@ -2135,8 +2095,7 @@ export function DeckPanel({
   const [reviewComments, setReviewComments] = useState(deck.reviewComments ?? [])
   const [reviewSaving, setReviewSaving] = useState(false)
   const [rail, setRail] = useState<'thumbs' | 'outline'>('thumbs')
-  // The rail is a drawer (closed by default) on a narrow panel and a column
-  // (open by default) otherwise; the toggle flips whichever default applies.
+  // Rail: closed drawer on a narrow panel, open column otherwise; the toggle flips the default.
   const [railToggled, setRailToggled] = useState(false)
   const railShown = panel.narrow ? railToggled : !railToggled
   const [bulkMode, setBulkMode] = useState(false)
@@ -2165,6 +2124,7 @@ export function DeckPanel({
       const next = (row.data as { slides?: Slide[] } | null)?.slides
       if (next) deck.slides = next
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
     } catch (err) {
       setError(errorMessage(err, t('확인하지 못했습니다.')))
     } finally {
@@ -2189,10 +2149,6 @@ export function DeckPanel({
     if (writing) setEditing(false)
   }, [writing])
 
-  // The edit tab has nothing to show once the editor closes; go back to 홈.
-  useEffect(() => {
-    if (!editing && !bulkMode) setRibbon((tab) => (tab === 'edit' ? 'home' : tab))
-  }, [editing, bulkMode])
 
   useEffect(() => {
     setOverflowing(false)
@@ -2326,12 +2282,14 @@ export function DeckPanel({
   const startEditing = async () => {
     if (!slide) return
     setError(null)
-    setRibbon('edit')
+    setRibbon('text')
+    setEditMode(true)
     const latest = await artifactsApi.get(deck.id).catch(() => null)
     const onServer = (latest?.data as { slides?: Slide[] } | null)?.slides
     if (latest && onServer) {
       deck.slides = onServer
       deck.version = latest.version
+      useStore.getState().noteArtifactVersion(deck.id, latest.version)
     }
     const current = deck.slides[index]
     if (!current) return
@@ -2368,7 +2326,6 @@ export function DeckPanel({
     setNotes(next.notes ?? '')
   }
 
-  /** Rewrites only the selected slide. */
   const regenerateSlide = async () => {
     if (!slide || rewritingSlide) return
     setRewritingSlide(true)
@@ -2379,6 +2336,7 @@ export function DeckPanel({
       if (!data.slides) throw new Error(t('다시 쓰지 못했습니다.'))
       deck.slides = data.slides
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(data.slides)
     } catch (err) {
       setError(errorMessage(err, t('다시 쓰지 못했습니다.')))
@@ -2503,6 +2461,7 @@ export function DeckPanel({
       deck.slides = slides
       if (savedDesign) deck.design = savedDesign
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(slides)
       setSlideDraft(null)
       setEditing(false)
@@ -2530,6 +2489,7 @@ export function DeckPanel({
       const slides = data.slides ?? []
       deck.slides = slides
       deck.version = latest.version
+      useStore.getState().noteArtifactVersion(deck.id, latest.version)
       if (data.design) deck.design = data.design
       baseline.current = JSON.stringify(slides)
       const current = slides[Math.min(index, Math.max(slides.length - 1, 0))]
@@ -2578,6 +2538,7 @@ export function DeckPanel({
       deck.slides = next
       if (savedDesign) deck.design = savedDesign
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(next)
       setEditing(false)
       setSlideDraft(null)
@@ -2629,6 +2590,7 @@ export function DeckPanel({
       deck.slides = next
       if (design) deck.design = design
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(next)
     } catch (err) {
       setError(errorMessage(err, t('저장하지 못했습니다.')))
@@ -2666,6 +2628,7 @@ export function DeckPanel({
       deck.design = design
       setBulkAccent(nextAccent)
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(deck.slides)
     } catch (err) {
       setError(errorMessage(err, t('저장하지 못했습니다.')))
@@ -2695,14 +2658,15 @@ export function DeckPanel({
       }
       const row = await artifactsApi.update(deck.id, {
         data: { ...latestData, kind: 'deck', theme: deck.theme, slides: latestData.slides ?? deck.slides, design },
-        summary: t('덱 디자인 변경'),
+        summary: t('덱 테마 변경'),
         expectedVersion: latest.version,
       })
       deck.design = design
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       setVisualStyle(nextStyle)
     } catch (err) {
-      setError(errorMessage(err, t('디자인을 바꾸지 못했습니다.')))
+      setError(errorMessage(err, t('테마를 바꾸지 못했습니다.')))
     } finally {
       savingLock.current = false
       setSaving(false)
@@ -2759,7 +2723,7 @@ export function DeckPanel({
 
   const removeSlide = () => {
     if (deck.slides.length <= 1) {
-      setError(t('마지막 한 장은 지울 수 없습니다. 덱 자체를 지우려면 결과물 목록에서 지우세요.'))
+      setError(t('마지막 한 장은 지울 수 없습니다. 덱 자체를 지우려면 아티팩트 목록에서 지우세요.'))
       return
     }
     const next = deck.slides.filter((_, i) => i !== index)
@@ -2773,9 +2737,7 @@ export function DeckPanel({
     setRailToggled(false)
   }
 
-  // Up/Down (and Left/Right, PageUp/PageDown, Home/End) step through the slides while the
-  // deck is shown and nothing else has the keys: not while a slide is being edited,
-  // presented (the show has its own keys), typed into, or covered by a menu or dialog.
+  // Arrow/Page/Home/End step slides while nothing else has the keys (not editing, presenting, typing, or under a menu or dialog).
   const goRef = useRef(go)
   goRef.current = go
   useEffect(() => {
@@ -2824,6 +2786,7 @@ export function DeckPanel({
       })
       deck.reviewComments = comments
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       setReviewComments(comments)
     } catch (err) {
       setError(errorMessage(err, t('검토 메모를 저장하지 못했습니다.')))
@@ -2912,6 +2875,84 @@ export function DeckPanel({
     if (action === 'close') onClose?.()
     else { setEditing(false); setSlideDraft(null) }
   }
+
+  /** Drops the open editor after a version is restored; it still holds the pre-restore slide. */
+  const restoredVersion = () => {
+    setEditing(false)
+    setSlideDraft(null)
+    setDraft('')
+    setNotes('')
+    baseline.current = ''
+    setError(null)
+  }
+  /** 「편집」: the slide editor on this slide, with the editing ribbon over it. */
+  const enterEditMode = () => {
+    setEditMode(true)
+    setRibbon('text')
+    if (!editing && !bulkMode) void startEditing()
+  }
+  /** Back to reading; unsaved changes ask first and keep the editor until answered. */
+  const leaveEditMode = () => {
+    if (hasUnsavedEdit) return discardOr('cancel')
+    setEditing(false)
+    setSlideDraft(null)
+    setSelectedElement(null)
+    setBulkMode(false)
+    setBulkSelected(new Set())
+    setEditMode(false)
+  }
+  // A result card asked for a slide, the review pane or an earlier version.
+  const intent = useStore((st) => (st.artifactIntent?.artifactId === deck.id ? st.artifactIntent : null))
+  const clearIntent = useStore((st) => st.clearArtifactIntent)
+  useEffect(() => {
+    if (!intent) return
+    if (intent.slide !== undefined) go(intent.slide)
+    if (intent.pane === 'review') setReviewOpen(true)
+    if (intent.version !== undefined) setHistoryRequest({ nonce: intent.nonce, version: intent.version })
+    clearIntent()
+    // Only a new request acts; `go` changes every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent, clearIntent])
+
+  // What 「검토」 holds, in the ribbon while editing and atop the review pane while reading.
+  const reviewTools = (
+    <>
+      {weakSlides.length > 0 && (
+        <Button
+          size="sm"
+          onClick={() => go(weakSlides[0])}
+          title={t('{list}번 장').replace('{list}', weakSlides.map((i) => i + 1).join(', '))}
+        >
+          <TriangleAlert size={13} className="text-warn" />
+          {t('확인 필요 {n}장').replace('{n}', String(weakSlides.length))}
+        </Button>
+      )}
+      {overflowRisks.length > 0 && (
+        <Button
+          size="sm"
+          onClick={() => go(overflowRisks.find((candidate) => candidate > index) ?? overflowRisks[0])}
+          title={t('잘림 위험: {list}번 장').replace('{list}', overflowRisks.map((i) => i + 1).join(', '))}
+          aria-label={t('잘림 위험 장으로 이동')}
+        >
+          <TriangleAlert size={13} className="text-warn" />
+          {t('잘림 위험 {n}장').replace('{n}', String(overflowRisks.length))}
+        </Button>
+      )}
+      <LintFindings
+        findings={deck.lint}
+        artifact={deck}
+        onFix={fixFinding}
+        onFixAll={fixAllFindings}
+      />
+      {deck.sessionId && <RunStagesButton sessionId={deck.sessionId} />}
+      <VersionHistory
+        artifact={deck}
+        hasUnsavedChanges={hasUnsavedEdit}
+        currentData={deck}
+        onRestored={restoredVersion}
+      />
+    </>
+  )
 
   // Edit tools, portalled into the ribbon slot when there is one.
   const editBar = !slide ? null : (
@@ -3122,33 +3163,155 @@ export function DeckPanel({
         if (hasUnsavedEdit) void save()
       }}
     >
-      <header className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2.5 max-sm:px-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2 max-sm:basis-full">
+      <header className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2 max-sm:px-2">
+        <div ref={head.ref} className="flex w-full min-w-0 items-center gap-1.5">
           <Presentation size={15} className="shrink-0 text-accent" />
           <p className="min-w-0 flex-1 truncate whitespace-nowrap text-base font-medium" title={deck.title}>
             {deck.title}
           </p>
+          {!head.narrow && (
+            <span className="shrink-0 text-xs text-faint tabular-nums" title={t('저장된 판')}>v{deck.version}</span>
+          )}
+          <QuickAccess label={t('빠른 도구')}>
+            {!head.narrow && (
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={t('장 목록')}
+                aria-pressed={railShown}
+                title={t('장 목록을 접었다 폅니다')}
+                onClick={() => setRailToggled((pressed) => !pressed)}
+              >
+                <Rows3 size={13} />
+                {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={writing}
+              aria-label={t('발표')}
+              title={t('슬라이드 쇼')}
+              onClick={() => setPresenting(true)}
+            >
+              <Play size={13} />
+              {!head.narrow && t('발표')}
+            </Button>
+            <Button
+              size="sm"
+              variant={reviewOpen ? 'primary' : 'ghost'}
+              aria-pressed={reviewOpen}
+              aria-label={exportWarningCount > 0
+                ? t('검토 · 확인 {count}').replace('{count}', String(exportWarningCount))
+                : t('검토')}
+              title={t('확인할 장, 문서 검사, 검토 메모, 버전 기록')}
+              onClick={() => setReviewOpen((open) => !open)}
+            >
+              <ShieldQuestion size={14} className={exportWarningCount > 0 && !reviewOpen ? 'text-warn' : undefined} />
+              {head.narrow ? (exportWarningCount > 0 ? <span className="text-2xs font-semibold text-warn">{exportWarningCount}</span> : null) : t('검토')}
+              {!head.narrow && exportWarningCount > 0 && (
+                <span className="rounded-full bg-warn/15 px-1.5 text-2xs font-semibold text-warn">{exportWarningCount}</span>
+              )}
+            </Button>
+            {editing && (
+              <>
+                <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
+                  <X size={14} />{!head.narrow && t('취소')}
+                </Button>
+                <Button variant="primary" size="sm" disabled={saving} onClick={() => void save()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
+                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{!head.narrow && t('저장')}
+                </Button>
+              </>
+            )}
+            <DownloadMenu
+              artifact={deck}
+              compact={head.narrow}
+              disabled={writing || editing}
+              checksHeading={t('내보내기 전 확인 {n}건').replace('{n}', String(exportWarningCount))}
+              checks={[
+                ...(overflowRisks.length > 0 ? [{
+                  label: t('잘림 위험 {n}장 확인').replace('{n}', String(overflowRisks.length)),
+                  icon: <TriangleAlert size={14} />,
+                  onClick: () => go(overflowRisks[0]),
+                }] : []),
+                ...(weakSlides.length > 0 ? [{
+                  label: t('근거 확인 필요 {n}장').replace('{n}', String(weakSlides.length)),
+                  icon: <ShieldQuestion size={14} />,
+                  onClick: () => go(weakSlides[0]),
+                }] : []),
+                ...(unresolvedReviews.length > 0 ? [{
+                  label: t('미해결 검토 메모 {n}개').replace('{n}', String(unresolvedReviews.length)),
+                  icon: <MessageSquare size={14} />,
+                  onClick: () => {
+                    const target = deck.slides.findIndex((candidate) => candidate.id === unresolvedReviews[0].slideId)
+                    if (target >= 0) go(target)
+                    setReviewOpen(true)
+                  },
+                }] : []),
+              ]}
+            />
+            <Button
+              size="sm"
+              variant={editMode ? 'primary' : 'ghost'}
+              aria-pressed={editMode}
+              aria-label={t('편집')}
+              title={editMode ? t('편집 도구를 닫고 읽기로 돌아갑니다') : t('이 장을 고칩니다')}
+              disabled={writing}
+              onClick={() => (editMode ? leaveEditMode() : enterEditMode())}
+            >
+              <Pencil size={13} />
+              {!head.narrow && t('편집')}
+            </Button>
+            <Dropdown
+              align="right"
+              trigger={() => (
+                <Button size="sm" variant="ghost" aria-label={t('더보기')} title={t('더보기')}>
+                  <MoreHorizontal size={15} />
+                </Button>
+              )}
+            >
+              {head.narrow && (
+                <MenuItem icon={<Rows3 size={14} />} checked={railShown} onClick={() => setRailToggled((pressed) => !pressed)} hint={`${deck.slides.length ? index + 1 : 0}/${deck.slides.length}`}>
+                  {t('장 목록')}
+                </MenuItem>
+              )}
+              <MenuItem icon={<RefreshCw size={14} />} disabled={writing || rewritingSlide || editing} onClick={() => void regenerateSlide()}>
+                {t('이 장 다시 만들기')}
+              </MenuItem>
+              <MenuItem icon={<History size={14} />} onClick={() => setHistoryRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1 }))}>
+                {t('버전 기록')}
+              </MenuItem>
+              <MenuSeparator />
+              <ReuseItems artifact={deck} />
+            </Dropdown>
+            <span className="max-sm:hidden">
+              <PanelControls mode={width.mode} onCycle={width.cycle} />
+            </span>
+            <PanelControls mode={width.mode} onClose={() => discardOr('close')} />
+          </QuickAccess>
+          <VersionHistory
+            bare
+            request={historyRequest}
+            artifact={deck}
+            hasUnsavedChanges={hasUnsavedEdit}
+            currentData={deck}
+            onRestored={restoredVersion}
+          />
         </div>
-        <QuickAccess label={t('빠른 도구')}>
-          <PanelControls mode={width.mode} onCycle={width.cycle} onClose={() => discardOr('close')} />
-        </QuickAccess>
-        <ArtifactRibbon
+        {editMode && <ArtifactRibbon
           label={t('슬라이드 메뉴')}
-          // The same tabs whether or not a slide is being edited: 「편집」 holds the editor.
           tabs={[
-            { id: 'home', label: t('홈') }, { id: 'edit', label: t('편집') }, { id: 'insert', label: t('삽입') },
-            { id: 'review', label: t('검토') }, { id: 'view', label: t('보기') },
-            { id: 'show', label: t('슬라이드 쇼') }, { id: 'file', label: t('파일') },
-          ] as Array<{ id: 'home' | 'edit' | 'insert' | 'review' | 'view' | 'show' | 'file'; label: string }>}
+            { id: 'text', label: t('글자') }, { id: 'insert', label: t('삽입') },
+            { id: 'design', label: t('테마') }, { id: 'review', label: t('검토') },
+          ] as Array<{ id: 'text' | 'insert' | 'design' | 'review'; label: string }>}
           active={ribbon}
           onChange={(tab) => {
-            if (tab === 'edit' && !editing && !bulkMode) {
+            if (tab === 'text' && !editing && !bulkMode) {
               void startEditing()
               return
             }
-            // Leaving 「편집」 with nothing changed ends the edit, so the next tab shows
-            // its own commands; unsaved changes keep the editor (and 저장·취소) around.
-            if (tab !== 'edit' && editing && !bulkMode && !hasUnsavedEdit) {
+            // Leaving 「글자」 unchanged ends the edit; unsaved changes keep the editor and 저장·취소.
+            if (tab !== 'text' && editing && !bulkMode && !hasUnsavedEdit) {
               setEditing(false)
               setSlideDraft(null)
               setSelectedElement(null)
@@ -3156,38 +3319,40 @@ export function DeckPanel({
             setRibbon(tab)
           }}
         >
-        {ribbon === 'review' && (weakSlides.length > 0 || overflowRisks.length > 0) && <RibbonGroup label={t('검사')}>
-        {weakSlides.length > 0 && (
-          <Button
-            size="sm"
-            onClick={() => go(weakSlides[0])}
-            title={t('{list}번 장').replace('{list}', weakSlides.map((i) => i + 1).join(', '))}
-          >
-            <TriangleAlert size={13} className="text-warn" />
-            {t('확인 필요 {n}장').replace('{n}', String(weakSlides.length))}
-          </Button>
-        )}
-        {overflowRisks.length > 0 && (
-          <Button
-            size="sm"
-            onClick={() => go(overflowRisks.find((candidate) => candidate > index) ?? overflowRisks[0])}
-            title={t('잘림 위험: {list}번 장').replace('{list}', overflowRisks.map((i) => i + 1).join(', '))}
-            aria-label={t('잘림 위험 장으로 이동')}
-          >
-            <TriangleAlert size={13} className="text-warn" />
-            {t('잘림 위험 {n}장').replace('{n}', String(overflowRisks.length))}
-          </Button>
-        )}
-        </RibbonGroup>}
-        {ribbon === 'edit' && (editing || bulkMode) && (
+        {ribbon === 'text' && (editing || bulkMode) && (
           <RibbonGroup wide label={t('슬라이드 편집')}>
-            <div ref={setEditToolbarSlot} className="flex items-center" />
+            <div ref={setEditToolbarSlot} className="peer flex items-center" />
+            <span className="hidden px-2 text-xs text-muted peer-empty:inline">
+              {t('슬라이드의 글자를 누르면 글자 도구가 나옵니다')}
+            </span>
           </RibbonGroup>
         )}
-        {ribbon === 'home' && !editing && <RibbonGroup label={t('디자인')}><Dropdown
+        {ribbon === 'text' && !editing && !bulkMode && <RibbonGroup label={t('슬라이드 작업')}>
+          <Button size="sm" disabled={writing || !slide} onClick={() => void startEditing()}>
+            <Pencil size={13} />
+            {t('직접 고치기')}
+          </Button>
+          <Button
+            size="sm"
+            variant={slide?.bullets?.includes('이 장을 쓰지 못했습니다.') || slide?.body?.includes('이 장을 쓰지 못했습니다.') ? 'primary' : 'secondary'}
+            disabled={writing || rewritingSlide}
+            onClick={() => void regenerateSlide()}
+            aria-label={t('이 장 다시 만들기')}
+          >
+            <RefreshCw size={14} className={rewritingSlide ? 'animate-spin' : undefined} />
+            {rewritingSlide ? t('다시 만드는 중…') : t('이 장 다시 만들기')}
+          </Button>
+        </RibbonGroup>}
+        {ribbon === 'insert' && !editing && slide && <RibbonGroup label={t('콘텐츠')}>
+          <SlidePicture deck={deck} slide={slide} />
+        </RibbonGroup>}
+        {ribbon === 'insert' && editing && <RibbonGroup label={t('콘텐츠')}>
+          <p className="px-2 text-xs text-muted">{t('저장하거나 취소한 뒤 그림을 넣을 수 있습니다')}</p>
+        </RibbonGroup>}
+        {ribbon === 'design' && !editing && <RibbonGroup label={t('테마')}><Dropdown
           align="left"
           trigger={() => (
-            <Button size="sm" disabled={saving} aria-label={t('슬라이드 디자인 고르기')} title={t(LOOK_CHOICES.find((c) => c.id === visualStyle)?.why ?? '')}>
+            <Button size="sm" disabled={saving} aria-label={t('슬라이드 테마 고르기')} title={t(LOOK_CHOICES.find((c) => c.id === visualStyle)?.why ?? '')}>
               <LookSwatch look={LOOKS[visualStyle]} accent={bulkAccent} />
               {t(LOOK_CHOICES.find((c) => c.id === visualStyle)?.label ?? visualStyle)}
               <ChevronDown size={13} className="text-muted" />
@@ -3207,7 +3372,7 @@ export function DeckPanel({
             </MenuItem>
           ))}
         </Dropdown></RibbonGroup>}
-        {ribbon === 'home' && !editing && <RibbonGroup label={t('강조색')}><Dropdown
+        {ribbon === 'design' && !editing && <RibbonGroup label={t('강조색')}><Dropdown
           align="left"
           trigger={() => (
             <Button size="sm" disabled={saving} aria-label={t('강조색 고르기')} title={t('제목 밑줄, 표 머리, 번호, 표지에 쓰는 색')}>
@@ -3228,117 +3393,11 @@ export function DeckPanel({
             {t('직접 고르기')}
           </label>
         </Dropdown></RibbonGroup>}
-        {ribbon === 'home' && !editing && <RibbonGroup label={t('슬라이드 작업')}><Button
-          size="sm"
-          variant={slide?.bullets?.includes('이 장을 쓰지 못했습니다.') || slide?.body?.includes('이 장을 쓰지 못했습니다.') ? 'primary' : 'secondary'}
-          disabled={writing || rewritingSlide}
-          onClick={() => void regenerateSlide()}
-          aria-label={t('이 장 다시 만들기')}
-        >
-          <RefreshCw size={14} className={rewritingSlide ? 'animate-spin' : undefined} />
-          {rewritingSlide ? t('다시 만드는 중…') : t('이 장 다시 만들기')}
-        </Button></RibbonGroup>}
-        {ribbon === 'insert' && !editing && slide && <RibbonGroup label={t('콘텐츠')}>
-          <SlidePicture deck={deck} slide={slide} />
+        {ribbon === 'design' && editing && <RibbonGroup label={t('테마')}>
+          <p className="px-2 text-xs text-muted">{t('저장하거나 취소한 뒤 테마를 바꿀 수 있습니다')}</p>
         </RibbonGroup>}
-        {ribbon === 'review' && !editing && <RibbonGroup label={t('문서 검사')}><LintFindings
-          findings={deck.lint}
-          artifact={deck}
-          onFix={fixFinding}
-          onFixAll={fixAllFindings}
-        /></RibbonGroup>}
-        {ribbon === 'review' && !editing && <RibbonGroup label={t('메모')}><Button
-          size="sm"
-          aria-label={t('검토 메모')}
-          aria-pressed={reviewOpen}
-          onClick={() => setReviewOpen((open) => !open)}
-        >
-          <MessageSquare size={13} />
-          {t('검토')} {reviewComments.filter((comment) => comment.status === 'open').length}
-        </Button></RibbonGroup>}
-        {ribbon === 'view' && <RibbonGroup label={t('탐색')}>
-          <Button
-            size="sm"
-            aria-label={t('장 목록')}
-            aria-pressed={railShown}
-            title={t('장 목록을 접었다 폅니다')}
-            onClick={() => setRailToggled((pressed) => !pressed)}
-          >
-            <Rows3 size={13} />
-            {t('장 목록')} {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
-          </Button>
-        </RibbonGroup>}
-        {ribbon === 'show' && !editing && <RibbonGroup label={t('재생')}><Button size="sm" disabled={writing} onClick={() => setPresenting(true)}>
-          <Play size={13} />
-          {t('발표')}
-        </Button></RibbonGroup>}
-        {ribbon === 'file' && !editing && <RibbonGroup label={t('내보내기')}><Dropdown
-          align="right"
-          trigger={() => (
-            <Button size="sm" disabled={writing}>
-              <Download size={14} />
-              {t('내보내기')}
-            </Button>
-          )}
-        >
-          {exportWarningCount > 0 && (
-            <>
-              <MenuLabel>{t('내보내기 전 확인 {n}건').replace('{n}', String(exportWarningCount))}</MenuLabel>
-              {overflowRisks.length > 0 && (
-                <MenuItem icon={<TriangleAlert size={14} />} onClick={() => go(overflowRisks[0])}>
-                  {t('잘림 위험 {n}장 확인').replace('{n}', String(overflowRisks.length))}
-                </MenuItem>
-              )}
-              {weakSlides.length > 0 && (
-                <MenuItem icon={<ShieldQuestion size={14} />} onClick={() => go(weakSlides[0])}>
-                  {t('근거 확인 필요 {n}장').replace('{n}', String(weakSlides.length))}
-                </MenuItem>
-              )}
-              {unresolvedReviews.length > 0 && (
-                <MenuItem icon={<MessageSquare size={14} />} onClick={() => {
-                  const target = deck.slides.findIndex((candidate) => candidate.id === unresolvedReviews[0].slideId)
-                  if (target >= 0) go(target)
-                  setReviewOpen(true)
-                }}>
-                  {t('미해결 검토 메모 {n}개').replace('{n}', String(unresolvedReviews.length))}
-                </MenuItem>
-              )}
-            </>
-          )}
-          <MenuLabel>{t('형식 선택')}</MenuLabel>
-          <MenuItem hint="PPTX" onClick={() => void download(deck.id, 'pptx', deck.title)}>
-            PowerPoint
-          </MenuItem>
-          <MenuItem hint="PDF" onClick={() => void download(deck.id, 'pdf', deck.title)}>
-            {t('PDF (발표용)')}
-          </MenuItem>
-          <MenuItem hint="MD" onClick={() => void download(deck.id, 'md', deck.title)}>
-            {t('텍스트 (노트 포함)')}
-          </MenuItem>
-        </Dropdown></RibbonGroup>}
-        {ribbon === 'review' && <RibbonGroup label={t('버전')}><VersionHistory
-          artifact={deck}
-          hasUnsavedChanges={hasUnsavedEdit}
-          currentData={deck}
-          // An open editor still holds the pre-restore slide; drop it.
-          onRestored={() => {
-            setEditing(false)
-            setSlideDraft(null)
-            setDraft('')
-            setNotes('')
-            baseline.current = ''
-            setError(null)
-          }}
-        /></RibbonGroup>}
-        {editing && <RibbonGroup label={t('저장')}>
-          <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
-            <X size={14} />{t('취소')}
-          </Button>
-          <Button variant="primary" size="sm" disabled={saving} onClick={() => void save()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
-            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{t('저장')}
-          </Button>
-        </RibbonGroup>}
-        </ArtifactRibbon>
+        {ribbon === 'review' && <RibbonGroup label={t('검토')}>{reviewTools}</RibbonGroup>}
+        </ArtifactRibbon>}
       </header>
 
       <div className="relative flex min-h-0 flex-1">
@@ -3346,11 +3405,16 @@ export function DeckPanel({
           <aside aria-label={t('검토 메모')} className="absolute inset-y-0 right-0 z-30 flex w-80 max-w-full flex-col border-l border-line bg-panel shadow-float">
             <div className="flex items-center gap-2 border-b border-line p-3">
               <MessageSquare size={14} className="text-accent" />
-              <h3 className="flex-1 text-sm font-semibold">{t('검토 메모')}</h3>
+              <h3 className="flex-1 text-sm font-semibold">{t('검토')}</h3>
               <button aria-label={t('검토 메모 닫기')} onClick={() => setReviewOpen(false)} className="rounded-control p-1 hover:bg-elevated">
                 <X size={15} />
               </button>
             </div>
+            {!(editMode && ribbon === 'review') && (
+              <div aria-label={t('검토 도구')} className="flex flex-wrap items-center gap-1.5 border-b border-line p-3">
+                {reviewTools}
+              </div>
+            )}
             <div className="border-b border-line p-3">
               <p className="mb-2 text-xs text-faint">{t('{n}번 장에 메모').replace('{n}', String(index + 1))}</p>
               <Textarea rows={3} value={reviewDraft} onChange={(event) => setReviewDraft(event.target.value)} aria-label={t('메모 내용')} placeholder={t('수정할 점이나 확인할 내용을 적으세요')} />
@@ -3390,7 +3454,6 @@ export function DeckPanel({
             onClick={() => setRailToggled(false)}
           />
         )}
-        {/* Slide rail. */}
         <nav
           className={cn(
             'w-[132px] shrink-0 flex-col border-r border-line bg-sidebar/40',
@@ -3423,7 +3486,7 @@ export function DeckPanel({
               </button>
             ))}
             <button
-              onClick={() => { const next = !bulkMode; setBulkMode(next); setBulkSelected(new Set()); if (next) setRibbon('edit') }}
+              onClick={() => { const next = !bulkMode; setBulkMode(next); setBulkSelected(new Set()); if (next) { setRibbon('text'); setEditMode(true) } }}
               aria-pressed={bulkMode}
               aria-label={t('여러 장 선택')}
               title={t('여러 장 선택')}
@@ -3558,7 +3621,7 @@ export function DeckPanel({
               <div className="flex items-center gap-2">
                   <StickyNote size={13} className="shrink-0 text-faint" />
                   <span className="flex-1 text-xs font-semibold tracking-wide text-faint uppercase">
-                    {t('발표 노트')}
+                    {editing ? t('이 장 편집') : t('발표 노트')}
                   </span>
                   {!editing && (
                     <Dropdown
@@ -3638,6 +3701,7 @@ export function DeckPanel({
 
                 {editing ? (
                   <div className="mt-2 space-y-2">
+                    <p className="text-xs font-semibold text-muted">{t('슬라이드 텍스트')}</p>
                     <Textarea
                       rows={5}
                       value={draft}
@@ -3647,7 +3711,8 @@ export function DeckPanel({
                     <p className="text-xs text-faint">
                       {t('위 슬라이드에서 글자를 눌러 바로 고칠 수 있습니다. 아래 상자는 한 번에 훑어 고칠 때 씁니다 — 첫 줄이 제목, 나머지 줄이 각각 한 항목이고, | 로 나눈 줄은 표의 한 행입니다.')}
                     </p>
-                    {slideDraft && ['table', 'metrics', 'cards'].includes(selectedElement ?? '') && (
+                    {/* A table's cells are edited here; clicking one on the slide does not open them. */}
+                    {slideDraft && (['table', 'metrics', 'cards'].includes(selectedElement ?? '') || slideDraft.layout === 'table') && (
                       <SlideDataEditor
                         slide={slideDraft}
                         onChange={(next) => {
@@ -3775,6 +3840,7 @@ export function DeckPanel({
                         </Button>
                       </div>
                     )}
+                    <p className="text-xs font-semibold text-muted">{t('발표 노트')}</p>
                     <Textarea
                       rows={3}
                       value={notes}

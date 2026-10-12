@@ -12,7 +12,6 @@ from app.services.tools.base import Tool, ToolResult
 
 _BUILTINS = (
     builtin.CALCULATE,
-    builtin.CHECK_NCS_ANSWER,
     builtin.WEB_SEARCH,
     builtin.FETCH_URL,
     builtin.EXECUTE_CODE,

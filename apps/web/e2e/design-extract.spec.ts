@@ -21,7 +21,7 @@ test('올린 공문에서 디자인 시스템 초안을 읽고, 확인한 뒤에
   await signIn(page)
   await page.goto('/designs')
 
-  const designs = page.getByRole('region', { name: '디자인 시스템' })
+  const designs = page.getByRole('region', { name: '내 디자인' })
   // Count after the list has loaded.
   await expect(designs.locator('li').first()).toBeVisible({ timeout: 20_000 })
   const before = await designs.locator('li').count()
@@ -36,7 +36,7 @@ test('올린 공문에서 디자인 시스템 초안을 읽고, 확인한 뒤에
   })
 
   // The editor opens on the draft, naming its source.
-  const editor = page.getByRole('region', { name: '디자인 시스템' })
+  const editor = page.getByRole('region', { name: '내 디자인' })
   await expect(editor.getByLabel('이름', { exact: true })).not.toHaveValue('', {
     timeout: 240_000,
   })
@@ -81,7 +81,7 @@ test('읽을 수 없는 파일은 이유를 말하고 아무것도 저장하지 
   await signIn(page)
   await page.goto('/designs')
 
-  const designs = page.getByRole('region', { name: '디자인 시스템' })
+  const designs = page.getByRole('region', { name: '내 디자인' })
   await expect(designs.locator('li').first()).toBeVisible({ timeout: 20_000 })
   const before = await designs.locator('li').count()
   await designs.getByRole('button', { name: '문서에서 가져오기' }).click()

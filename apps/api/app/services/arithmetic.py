@@ -1,16 +1,16 @@
-"""Recomputes spelled-out equations (`62만 원 × 36개월 = 2,232만 원`); reports wrong ones."""
+"""Recompute spelled-out equations (`62만 원 × 36개월 = 2,232만 원`); report wrong ones."""
 
 from __future__ import annotations
 
 import re
 
-#: A quantity as documents write it: 2,400만 원, 380만원, 62만, 36개월, 3년, 0.707, 12%.
+#: quantity as written: 2,400만 원, 380만원, 36개월, 0.707, 12%
 _NUMBER = (
     r"(\d[\d,]*(?:\.\d+)?)\s*(억|만|천)?\s*(?:원|개월|년|월|일|주|시간|명|석|회|건|대|개|%|배)?"
 )
 _OP = r"(\+|-|−|×|x|X|\*|÷|/)"
 _EQ = r"(=|≈|≒|약)"
-#: `A op B = C`, with either side allowed to carry a unit word.
+#: `A op B = C`, unit words allowed
 _EQUATION = re.compile(rf"{_NUMBER}\s*{_OP}\s*{_NUMBER}\s*{_EQ}\s*{_NUMBER}")
 
 _SCALE = {"억": 100_000_000, "만": 10_000, "천": 1_000, None: 1}
@@ -32,24 +32,51 @@ def _compute(a: float, op: str, b: float) -> float | None:
     return None
 
 
+#: term chain before the answer: 「500 + 300 × 2 = 1,100」
+_TERM = re.compile(_NUMBER)
+_CHAIN = re.compile(rf"{_NUMBER}(?:\s*{_OP}\s*{_NUMBER}){{1,12}}\s*{_EQ}\s*{_NUMBER}")
+
+
+def _evaluate(values: list[float], ops: list[str]) -> float | None:
+    """`values` joined by `ops`, × ÷ before + −."""
+    terms, signs = [values[0]], []
+    for op, value in zip(ops, values[1:], strict=True):
+        if op in ("×", "x", "X", "*", "÷", "/"):
+            got = _compute(terms[-1], op, value)
+            if got is None:
+                return None
+            terms[-1] = got
+        else:
+            terms.append(value)
+            signs.append(op)
+    total = terms[0]
+    for op, value in zip(signs, terms[1:], strict=True):
+        total = _compute(total, op, value)
+    return total
+
+
 def findings(text: str, *, where: str = "") -> list[dict[str, str]]:
-    """Findings for every equation in `text` that does not hold within 1%, after scale words."""
+    """Findings for equations off by >1% after scale words; chains computed whole."""
     out: list[dict[str, str]] = []
-    for m in _EQUATION.finditer(text):
-        # The tail of a longer chain is not an equation of its own.
-        if re.search(rf"{_OP}\s*$", text[max(0, m.start() - 3):m.start()]):
+    for m in _CHAIN.finditer(text):
+        whole = m.group(0)
+        eq = list(re.finditer(_EQ, whole))[-1]
+        left, right = whole[:eq.start()], whole[eq.end():]
+        terms = list(_TERM.finditer(left))
+        ops = re.findall(_OP, re.sub(_NUMBER, " ", left))
+        answer = _TERM.search(right)
+        if answer is None or len(ops) != len(terms) - 1:
             continue
-        a = _value(m.group(1), m.group(2))
-        b = _value(m.group(4), m.group(5))
-        c = _value(m.group(7), m.group(8))
-        got = _compute(a, m.group(3), b)
+        values = [_value(t.group(1), t.group(2)) for t in terms]
+        got = _evaluate(values, ops)
         if got is None:
             continue
-        # Unscaled operands beside a scaled answer may be in the answer's scale
-        # (「2,400 + 1,140 = 3,540만 원」) or plain (「2,500×20,000원=5,000만 원」).
+        c = _value(answer.group(1), answer.group(2))
+        scale = answer.group(2)
+        # unscaled operands may be in the answer's scale or plain
         readings = [got]
-        if m.group(8) and not m.group(2) and not m.group(5):
-            readings.append(got * _SCALE[m.group(8)])
+        if scale and not any(t.group(2) for t in terms):
+            readings.append(got * _SCALE[scale])
         if all(abs(r - c) > max(abs(c), 1.0) * 0.01 for r in readings):
             got = readings[-1]
             out.append(
@@ -58,8 +85,8 @@ def findings(text: str, *, where: str = "") -> list[dict[str, str]]:
                     "rule": "arithmetic",
                     "where": where,
                     "message": (
-                        f"「{m.group(0).strip()}」— 식이 맞지 않습니다. "
-                        f"계산하면 {_pretty(got, m.group(8))}입니다."
+                        f"「{whole.strip()}」— 식이 맞지 않습니다. "
+                        f"계산하면 {_pretty(got, answer.group(2))}입니다."
                     ),
                 }
             )
@@ -67,7 +94,7 @@ def findings(text: str, *, where: str = "") -> list[dict[str, str]]:
 
 
 def _pretty(value: float, scale: str | None) -> str:
-    """A number in the scale the document used: 3,540만 원, 1,308만 원, 3.2."""
+    """Number in the document's scale: 3,540만 원, 3.2."""
     if scale in ("만", "억"):
         scaled = value / _SCALE[scale]
         text = f"{scaled:,.1f}".rstrip("0").rstrip(".")

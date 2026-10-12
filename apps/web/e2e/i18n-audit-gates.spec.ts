@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { E2E_ADMIN } from './helpers'
 import { auditEnglishMode } from './i18n-audit'
+import { shellRead } from './shell-mocks'
 
 type Scenario = 'admin' | '401' | 'pending' | 'nonadmin' | 'malformed' | 'refresh-loss'
 
@@ -16,9 +17,10 @@ async function mockAudit(page: Page, scenario: Scenario = 'admin') {
     preferences: { autoMemory: false }, allowedModels: [],
   }
   const session = { accessToken: 'synthetic-audit-token', expiresIn: 3600, user }
+  const origin = new URL(String(test.info().project.use.baseURL)).origin
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url())
-    if (url.origin !== 'http://127.0.0.1:5193') {
+    if (url.origin !== origin) {
       state.forbidden.push('external origin')
       await route.abort('blockedbyclient')
       return
@@ -53,6 +55,9 @@ async function mockAudit(page: Page, scenario: Scenario = 'admin') {
       privacySafeModelIds: [], intentFilter: false, blockedCategories: [], retentionDays: 0,
     } })
     state.protectedRequests += 1
+    if (path === '/api/admin/audit') return route.fulfill({ json: { items: [], total: 0, page: 1, size: 50 } })
+    const shell = shellRead(method, path.slice(4))
+    if (shell) return route.fulfill(shell)
     if (path === '/api/models') return route.fulfill({ json: { models: [], litellmAvailable: false } })
     return route.fulfill({ json: [] })
   })
@@ -138,7 +143,7 @@ test('a required tab click that does not navigate fails closed', async ({ page }
   const state = await mockAudit(page)
   await page.addInitScript(() => {
     document.addEventListener('click', (event) => {
-      if ((event.target as Element).closest('[role="tab"][href]')) {
+      if ((event.target as Element).closest('main nav a[href^="/settings"]')) {
         event.preventDefault()
         event.stopImmediatePropagation()
       }

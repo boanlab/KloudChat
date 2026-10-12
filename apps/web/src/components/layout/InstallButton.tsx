@@ -11,7 +11,7 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-// The event fires once, early, usually before this component mounts.
+// Fires once, early, usually before mount.
 let deferred: BeforeInstallPromptEvent | null = null
 const listeners = new Set<() => void>()
 if (typeof window !== 'undefined') {
@@ -28,10 +28,10 @@ if (typeof window !== 'undefined') {
 
 const isIOS = () =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-  // iPadOS reports itself as a Mac; the touch points give it away.
+  // iPadOS reports as Mac; touch points give it away.
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
-/** Desktop Safari installs from File → Add to Dock; it never fires the prompt. */
+/** Desktop Safari: File → Add to Dock, no prompt. */
 const isMacSafari = () =>
   navigator.platform === 'MacIntel' &&
   navigator.maxTouchPoints <= 1 &&
@@ -49,11 +49,7 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
   )
 }
 
-/**
- * PWA install button. Chromium (desktop and Android) exposes a deferred prompt;
- * Safari has none, so iOS gets Share-menu steps and macOS gets File-menu steps.
- * Firefox offers no install at all and shows nothing.
- */
+/** PWA install: Chromium deferred prompt; Safari Share/File-menu steps; nothing on Firefox. */
 export function InstallButton() {
   const t = useT()
   const standalone = useMediaQuery('(display-mode: standalone)')

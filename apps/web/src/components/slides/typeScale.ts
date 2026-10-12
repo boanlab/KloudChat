@@ -1,17 +1,8 @@
-/**
- * One type scale for the deck, in the 400x225 slide units `SlideView` draws in.
- *
- * `apps/api/app/services/deck_type.py` carries the same table for the `.pptx` and `.pdf`
- * exporters (multiplied by 2.4 for their 960x540-point page); a test keeps the two equal,
- * so what fits in the panel fits in the file. Change a number in both.
- */
+/** Deck type scale in 400x225 slide units; mirrors `deck_type.py` (×2.4 for the 960x540-pt exports), test-enforced — change both. */
 /** Points per slide unit: the exporters' 960-point page over this 400-unit panel. */
 export const K = 2.4
 
-/**
- * Sizes in PowerPoint points. Slide titles are 32pt; the body starts at 22pt and steps
- * down `STEPS` when a slide overflows, never up; nothing is drawn under 12pt.
- */
+/** Sizes in points: titles 32, body 22 stepping down `STEPS` on overflow, never up; floor 12. */
 export const TYPE = {
   // Covers.
   cover: 36,

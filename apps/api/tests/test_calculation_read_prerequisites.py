@@ -13,7 +13,6 @@ from app.services.tools import registry
 from app.services.tools.arithmetic import CALCULATE
 from app.services.tools.base import Tool, ToolContext, ToolResult, openai_snapshot
 from app.services.tools.builtin import knowledge_tool
-from app.services.tools.ncs_check import CHECK_NCS_ANSWER
 
 READ = "mcp__inventory__stock"
 QUESTION = "재고 조회 도구에서 상품 101과 102의 재고 수량을 읽어서 총합을 계산해줘."
@@ -182,17 +181,6 @@ async def test_literal_uses_exact_preset_without_prerequisite_or_model_equation(
 
 
 @pytest.mark.asyncio
-async def test_ncs_gate_stays_exclusive(monkeypatch):
-    reads = []
-    ctx, seen, text, _ = await _run(monkeypatch, [[_call(READ, {})]],
-                                    [CHECK_NCS_ANSWER, _read(reads)],
-                                    preflight_tool="check_ncs_answer")
-    assert seen[0]["tools"] == ["check_ncs_answer"]
-    assert reads == [] and ctx.tool_calls == {}
-    assert "확정할 수 없습니다" in text
-
-
-@pytest.mark.asyncio
 async def test_bounded_repair_still_allows_required_read(monkeypatch):
     reads = []
     ctx, seen, text, _ = await _run(monkeypatch, [
@@ -272,3 +260,15 @@ async def test_knowledge_no_passages_preserves_no_operand_evidence(monkeypatch):
                                 [CALCULATE, read], strict_local=True)
     assert ctx.tool_calls == {"search_knowledge": 1}
     assert "확정할 수 없습니다" in text
+
+
+@pytest.mark.asyncio
+async def test_a_skill_lookup_is_not_a_read_that_can_end_the_turn(monkeypatch):
+    # A market-sizing turn: the model asks for the skill already on and gets 「없습니다」.
+    lookups = []
+    ctx, seen, text, _ = await _run(monkeypatch, [
+        [_call("calculate", {"expression": "7+9"})], "16",
+    ], [CALCULATE, _read(lookups, name="use_skill",
+                         result=ToolResult(content="없습니다", failed=True))])
+    assert seen[0]["tools"] == ["calculate"]
+    assert lookups == [] and text == "16"

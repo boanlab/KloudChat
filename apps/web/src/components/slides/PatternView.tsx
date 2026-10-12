@@ -59,10 +59,7 @@ const SWOT: [string, string | null][] = [['S', null], ['W', '#b45309'], ['O', '#
 /** The second panel of a pros/cons pair. */
 const NEGATIVE = '#b91c1c'
 
-/**
- * A pattern slide's body, drawn by its arrangement (`render`) and parameters. The title
- * above it is `SlideView`'s, as for every body layout.
- */
+/** Pattern slide body, drawn by its arrangement (`render`); the title is `SlideView`'s. */
 export function PatternView({ slide, pattern, kit }: { slide: Slide; pattern: Pattern; kit: PatternKit }) {
   const items = (slide.items ?? []).filter(([left, right]) => left?.trim() || right?.trim())
   switch (pattern.render) {
@@ -132,8 +129,7 @@ function Grid({ items, pattern, kit }: { items: Pairs; pattern: Pattern; kit: Pa
   const cols = Math.max(1, Math.min(items.length === 4 && want === 3 ? 2 : want, items.length))
   const rows = Math.ceil(items.length / cols)
   const size = sizesFor(rows, cols)
-  // One row of cards sits at its own height, as the cards layout does; people and
-  // two-row grids fill the body.
+  // One row of cards at its own height; people and two-row grids fill the body.
   const fill = rows > 1 || style === 'person'
   return (
     <div
@@ -354,8 +350,7 @@ function Stack({ items, pattern, kit }: { items: Pairs; pattern: Pattern; kit: P
   const gap = 3
   const bar = Math.min(28, (BODY_HEIGHT - gap * (n - 1)) / n)
   const size = n <= 3 ? { name: 18, text: 16 } : { name: 16, text: 14 }
-  // Each band's top and bottom widths as a share of the shape's column; the whole reads
-  // as one triangle (pyramid) or one inverted one (funnel).
+  // Band top/bottom widths as shares of the column, reading as one triangle (pyramid) or inverted (funnel).
   const edge = (k: number) => 0.3 + 0.7 * (k / n)
   return (
     <div className="flex flex-col justify-center" style={{ gap: px(gap) }}>

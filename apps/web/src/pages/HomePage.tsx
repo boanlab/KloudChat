@@ -1,26 +1,58 @@
-import { ArrowRight, Bot, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
-import { Composer } from '@/components/chat/Composer'
-import { DesignGallery } from '@/components/chat/DesignGallery'
+import { Composer, fillComposer } from '@/components/chat/Composer'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import { startFailure } from '@/lib/failures'
 import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
-/** Composer-first home screen and `/new/:kind` entry point. */
+/** Per-surface examples under the greeting; click fills the composer. */
+const EXAMPLES: Record<SessionKind, string[]> = {
+  chat: [
+    '첨부한 문서를 세 줄로 요약해 줘',
+    '다음 주 회의 안건 초안을 같이 잡아 줘',
+    '이 문장을 더 자연스럽게 다듬어 줘',
+    '엑셀 수식이 왜 오류가 나는지 찾아 줘',
+  ],
+  report: [
+    '신규 서비스 도입을 검토하는 보고서를 써 줘',
+    '지난 분기 사업 실적 보고서 — 요약, 성과, 남은 과제',
+    '두 가지 안을 기준별로 비교하는 의사결정 보고서',
+    '첨부한 자료로 연구 과제 중간 보고서 초안을 써 줘',
+  ],
+  // Only what the shown deck template (사내 브리핑) makes.
+  slides: [
+    '다음 주 회의 전에 돌릴 사내 브리핑 5장',
+    '프로젝트 결과 보고 15분 발표',
+    '새 제도 시행을 팀에 알리는 사내 브리핑',
+    '이번 분기 진행 현황과 결정할 것을 정리한 발표',
+  ],
+  image: [
+    '봄 행사 포스터에 쓸 밝은 파스텔 톤 일러스트',
+    '홈페이지 메인 배너용 사무실 풍경 사진',
+    '사용자 → 게이트웨이 → 모델로 이어지는 흐름도',
+    '미니멀한 제품 아이콘 네 개',
+  ],
+  av: [
+    '제품을 소개하는 30초 내레이션',
+    '발표 시작에 틀 잔잔한 배경 음악 30초',
+    '바다 위로 해가 뜨는 6초 영상',
+  ],
+}
+
+/** Also the `/new/:kind` entry. */
 export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
   const navigate = useNavigate()
-  const { user, sessions, jobs, agents, enabledKinds, newSession, setNotice } = useStore()
+  const { user, sessions, jobs, enabledKinds } = useStore()
   const [kind, setKind] = useState<SessionKind>(initialKind ?? 'chat')
 
-  // `/` and `/new/:kind` share this mounted component, so a route change must resync the kind.
+  // `/` and `/new/:kind` share the mount: resync the kind on route change.
   useEffect(() => {
     if (initialKind) setKind(initialKind)
   }, [initialKind])
@@ -31,15 +63,12 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   }, [openArtifact])
 
   const surfaces = kindOrder.filter((k) => enabledKinds.includes(k))
-  // A disabled kind requested by URL gets an explanation, not a silent fallback.
+  // Disabled kind by URL: explained, no silent fallback.
   const offHere = initialKind !== undefined && !enabledKinds.includes(initialKind)
   const active = surfaces.includes(kind) ? kind : (surfaces[0] ?? 'chat')
 
   const running = jobs.filter((j) => j.status === 'running' || j.status === 'queued')
-  // Enabled agents that accept the active surface.
-  const usableAgents = agents
-    .filter((a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(active)))
-    .slice(0, 6)
+  const ActiveIcon = kindMeta[active].icon
 
   if (offHere) {
     const meta = kindMeta[initialKind]
@@ -79,104 +108,37 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   return (
     <>
       <TopBar left={<span className="text-base font-medium">{t('홈')}</span>} />
-      <PageBody className="phone:flex phone:min-h-full phone:flex-col">
-        {/* On a phone the greeting sits in the upper half and the composer at the bottom,
-            where the thumb and the keyboard are; the desk keeps its top-down order. */}
-        <div className="mb-5 text-center phone:mt-auto">
+      {/* As a session: content scrolls, composer docked with the surface chips. */}
+      <div className="min-h-0 flex-1 overflow-y-auto" data-testid="home-scroll">
+      <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-6 sm:px-6 sm:py-8">
+        {/* Top-aligned; short content leaves space below, over the dock. */}
+        <div className="mt-[min(8vh,4rem)] mb-5 text-center phone:mt-[min(14vh,7rem)]">
           <h1 className="text-2xl font-semibold tracking-tight">
             {t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')}
           </h1>
           <p className="mt-1 text-base text-muted">{t('무엇을 만들까요?')}</p>
         </div>
 
-        <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4">
-          {surfaces.map((k) => {
-            const meta = kindMeta[k]
-            const Icon = meta.icon
-            const on = k === active
-            return (
+        {/* Click fills the box, sends nothing. */}
+        <section aria-label={t('예시')} className="mx-auto mb-8 w-full max-w-3xl sm:px-4">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {EXAMPLES[active].map((example, index) => (
               <button
-                key={k}
-                onClick={() => setKind(k)}
-                aria-pressed={on}
-                title={t(meta.tagline)}
+                key={example}
+                type="button"
+                onClick={() => fillComposer(t(example))}
+                // Phone shows three; a fourth pushes the composer's neighbours off screen.
                 className={cn(
-                  'flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
-                  on
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-line text-muted hover:bg-elevated hover:text-fg',
+                  'flex min-h-11 items-center gap-2 rounded-card border border-line bg-panel px-3 py-2 text-left text-base text-muted transition-colors hover:bg-elevated hover:text-fg',
+                  index >= 3 && 'phone:hidden',
                 )}
               >
-                <Icon size={14} style={{ color: on ? undefined : meta.color }} />
-                {t(meta.label)}
+                <ActiveIcon size={14} className="shrink-0 text-faint" />
+                <span className="min-w-0 flex-1">{t(example)}</span>
               </button>
-            )
-          })}
-        </div>
-
-        {/* `key` remounts on a surface change: draft, attachments and skill pick are per surface. */}
-        <div className="phone:mt-auto phone:pb-2">
-          <Composer key={active} sessionId={null} kind={active} autoFocus />
-        </div>
-
-        {/* A phone keeps the greeting, the surface chips and the composer; the rest is desk work. */}
-        <div className="mx-auto mb-8 mt-3 w-full max-w-3xl px-4 phone:hidden">
-          <section className="flex flex-col gap-3 rounded-card border border-line bg-panel p-4 sm:flex-row sm:items-center">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-base font-semibold">{t('자주 하는 일로 시작하기')}</h2>
-              <p className="mt-0.5 text-sm text-muted">
-                {active === 'chat'
-                  ? t('개념 배우기, 논문 읽기, 문제 원인 분석 등 일을 고르면 그 일에 필요한 것만 묻고 요청을 대신 씁니다.')
-                  : active === 'image'
-                    ? t('개념도, 처리 흐름도, 표지 그림 등 그림의 쓰임을 고르면 빈칸 몇 개로 요청이 완성됩니다.')
-                    : t('과제 보고서, 논문 서론, 임원 보고 등 일을 고르면 필요한 것만 묻고 결과물 모양까지 정해 줍니다.')}
-              </p>
-            </div>
-            <DesignGallery key={active} kind={active} />
-          </section>
-        </div>
-
-        {usableAgents.length > 0 && (
-          <section className="mx-auto mb-8 w-full max-w-3xl px-4 phone:hidden">
-            <div className="mb-2 flex items-baseline justify-between">
-              <h2 className="text-base font-semibold">{t('에이전트에게 맡기기')}</h2>
-              <button
-                onClick={() => navigate('/agents')}
-                className="min-h-8 px-1 text-sm text-muted hover:text-fg"
-              >
-                {t('전체 보기')}
-              </button>
-            </div>
-            <p className="mb-2.5 text-sm text-muted">
-              {t('지침·도구·자료를 갖춘 에이전트가 대신 진행합니다. 같은 프로젝트 안에서는 서로의 결론을 이어받습니다.')}
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {usableAgents.map((a) => (
-                <Card
-                  key={a.id}
-                  onClick={() =>
-                    void newSession(a.kinds[0] ?? active, { agentId: a.id })
-                      .then((id) => navigate(`/s/${id}`))
-                      .catch((err: unknown) => setNotice(startFailure(err, t)))
-                  }
-                  className="flex cursor-pointer items-center gap-2.5 px-3 py-2.5 transition-colors hover:bg-elevated"
-                >
-                  <span
-                    className="grid size-7 shrink-0 place-items-center rounded-control text-white"
-                    style={{ background: a.color }}
-                  >
-                    <Bot size={14} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-base font-medium">{a.name}</span>
-                    <span className="block truncate text-xs text-muted">{a.description}</span>
-                  </span>
-                  <ArrowRight size={14} className="shrink-0 text-faint" />
-                </Card>
-              ))}
-            </div>
-          </section>
-        )}
+            ))}
+          </div>
+        </section>
 
         {running.length > 0 && (
           <section className="mb-8">
@@ -214,8 +176,39 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             </div>
           </section>
         )}
+      </div>
+      </div>
 
-      </PageBody>
+      <div className="shrink-0 pt-2" data-testid="home-dock">
+        <div role="group"
+          aria-label={t('만들 것')}
+          className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none]">
+          {surfaces.map((k) => {
+            const meta = kindMeta[k]
+            const Icon = meta.icon
+            const on = k === active
+            return (
+              <button
+                key={k}
+                onClick={() => setKind(k)}
+                aria-pressed={on}
+                title={t(meta.tagline)}
+                className={cn(
+                  'flex shrink-0 items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
+                  on
+                    ? 'border-accent bg-accent-soft text-accent'
+                    : 'border-line text-muted hover:bg-elevated hover:text-fg',
+                )}
+              >
+                <Icon size={14} style={{ color: on ? undefined : meta.color }} />
+                {t(meta.label)}
+              </button>
+            )
+          })}
+        </div>
+        {/* `key` remount per surface: draft, attachments, skill pick are per surface. */}
+        <Composer key={active} sessionId={null} kind={active} autoFocus />
+      </div>
     </>
   )
 }

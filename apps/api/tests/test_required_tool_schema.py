@@ -7,7 +7,6 @@ import pytest
 from app.services import agent
 from app.services.tools.arithmetic import CALCULATE
 from app.services.tools.base import Tool, ToolContext, ToolResult, to_openai
-from app.services.tools.ncs_check import CHECK_NCS_ANSWER
 
 
 @pytest.mark.asyncio
@@ -82,42 +81,6 @@ async def test_only_required_schema_is_offered_until_verification_succeeds(monke
         "running",
         "done",
     ]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("decision", ["not_applicable", "needs_input"])
-async def test_required_arithmetic_cannot_be_satisfied_by_skipping_the_calculation(
-    monkeypatch, decision
-):
-    model_calls = []
-
-    async def stream(*_args, **_kwargs):
-        model_calls.append(True)
-        assert len(model_calls) == 1, "a non-calculation decision unlocked an answer hop"
-        acc = agent._Accumulator()
-        acc.calls[0] = {
-            "id": "skip",
-            "name": "check_ncs_answer",
-            "arguments": '{"decision":"' + decision + '","reason":"synthetic decision"}',
-        }
-        yield "done", acc
-
-    monkeypatch.setattr(agent, "_stream_once", stream)
-    events = [
-        event
-        async for event in agent.run_turn(
-            "synthetic/model",
-            [],
-            [CHECK_NCS_ANSWER],
-            ToolContext(user_id="qa", session_id="qa"),
-            preflight_tool="check_ncs_answer",
-            calculation_required=True,
-        )
-    ]
-    text = "".join(event["text"] for event in events if event["type"] == "delta")
-    assert "확정할 수 없습니다" in text
-    assert "synthetic decision" not in text
-    assert [event["status"] for event in events if event["type"] == "step"] == ["running", "error"]
 
 
 @pytest.mark.asyncio

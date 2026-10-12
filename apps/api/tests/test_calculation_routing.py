@@ -12,12 +12,11 @@ from app.models.user import User
 from app.routers import sessions
 from app.schemas.chat import SendMessage
 from app.services.tools.arithmetic import CALCULATE
-from app.services.tools.ncs_check import CHECK_NCS_ANSWER
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", [RoutingMode.manual, RoutingMode.auto, RoutingMode.auto_quality])
-@pytest.mark.parametrize("tool", [CALCULATE, CHECK_NCS_ANSWER, None])
+@pytest.mark.parametrize("tool", [CALCULATE, None])
 @pytest.mark.parametrize(
     "request_kind", ["word_problem", "literal", "followup_add", "followup_percent"],
 )
@@ -62,10 +61,7 @@ async def test_calculation_requirement_precedes_tool_free_routing_and_key_issue(
     literal = request_kind == "literal"
     if request_kind.startswith("followup"):
         history = [
-            Message(session_id=session.id, role=Role.user, content=(
-                "NCS 수리 문제: 25 * 16을 계산해줘."
-                if tool is CHECK_NCS_ANSWER else "25 * 16은 얼마야?"
-            )),
+            Message(session_id=session.id, role=Role.user, content="25 * 16은 얼마야?"),
             Message(
                 session_id=session.id, role=Role.assistant,
                 content="25 * 16 = 400", model=model["id"],
@@ -137,10 +133,8 @@ async def test_calculation_requirement_precedes_tool_free_routing_and_key_issue(
             if request_kind == "followup_add" else
             "그 합계의 20%는 얼마야? 계산식과 답만 짧게 써줘. 파일은 만들지 마."
             if request_kind == "followup_percent" else
-            ("NCS 수리 문제: " if tool is CHECK_NCS_ANSWER else "") + (
             "17 * 23은 얼마야? 계산식과 답만 짧게 써줘. 파일은 만들지 마."
             if literal else "A팀 7명의 평균 68점, B팀 3명의 평균 92점이면 전체 평균은?"
-            )
         ),
         web_search=False,
     )

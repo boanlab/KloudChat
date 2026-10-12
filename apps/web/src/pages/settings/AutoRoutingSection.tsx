@@ -4,8 +4,9 @@ import { Badge, Button, Card, Field, Select, Switch } from '@/components/ui'
 import { errorCode, errorMessage } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { tokenRate } from '@/lib/utils'
 
-/** User-facing text for the server's routing-policy refusal codes. */
+/** Routing-policy refusal codes. */
 const ROUTING_REFUSALS: Record<string, string> = {
   adaptive_classifier_required: '난이도 분류 모델을 골라 주세요.',
   adaptive_classifier_must_be_zero_cost_strict_local:
@@ -68,9 +69,9 @@ export function AutoRoutingSection() {
       !model.privacyOnly &&
       model.dataBoundary !== 'unknown',
   )
-  // Unfiltered by price: the ordering is the quality judgement.
+  // Unfiltered by price: order is the quality judgement.
   const qualityModels = models.filter((model) => model.kinds.includes('chat'))
-  // Each lane validates only itself.
+  // Each lane validates itself.
   const canSave =
     (!enabled || Boolean(classifierModelId && economyModelIds.length > 0)) &&
     (!qualityEnabled || Boolean(classifierModelId && qualityModelIds.length > 0))
@@ -112,7 +113,7 @@ export function AutoRoutingSection() {
         <div className="min-w-0 flex-1">
           <p className="text-base font-medium">{t('Auto 비용 절약 라우팅')}</p>
           <p className="text-sm text-muted">
-            {t('간단한 일반 채팅만 순서대로 지정한 절약 모델로 보내고, 복잡하거나 지원하지 않는 요청은 사용자가 선택한 품질 모델을 유지합니다.')}
+            {t('간단한 일반 대화만 순서대로 지정한 절약 모델로 보내고, 복잡하거나 지원하지 않는 요청은 사용자가 선택한 품질 모델을 유지합니다.')}
           </p>
         </div>
         <Switch
@@ -182,7 +183,7 @@ export function AutoRoutingSection() {
               .filter((model) => !economyModelIds.includes(model.id))
               .map((model) => (
                 <option key={model.id} value={model.id}>
-                  {model.label} · {model.inputCreditCost}/{model.creditCost}
+                  {model.label} · {tokenRate(model, t)}
                 </option>
               ))}
           </Select>
@@ -319,7 +320,7 @@ export function AutoRoutingSection() {
               .filter((model) => !qualityModelIds.includes(model.id))
               .map((model) => (
                 <option key={model.id} value={model.id}>
-                  {model.label} · {model.inputCreditCost}/{model.creditCost}
+                  {model.label} · {tokenRate(model, t)}
                 </option>
               ))}
           </Select>
@@ -432,7 +433,7 @@ export function AutoRoutingSection() {
               await saveGovernance({
                 adaptiveRoutingEnabled: enabled,
                 adaptiveQualityEnabled: qualityEnabled,
-                // The classifier is shared by both lanes; each list follows its own switch.
+                // Shared classifier; each list follows its own switch.
                 ...(enabled || qualityEnabled
                   ? { adaptiveClassifierModelId: classifierModelId || null }
                   : {}),

@@ -9,6 +9,9 @@ const ADMIN = { email: 'admin@kloud.zone', password: 'KloudChat-Admin-2026' }
 async function ribbonOf(page: Page): Promise<Record<string, string[]>> {
   const panel = page.locator('[data-panel="artifact"]')
   await expect(panel).toBeVisible({ timeout: 30_000 })
+  // The ribbon shows only while editing.
+  const toggle = panel.locator('header').first().getByRole('button', { name: '편집', exact: true })
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle.click()
   const tabs = await panel.getByRole('tab').allInnerTexts()
   const map: Record<string, string[]> = {}
   for (const tab of tabs.map((one) => one.trim()).filter(Boolean)) {
@@ -47,7 +50,7 @@ test('두 패널의 리본이 같은 말을 쓴다', async ({ page }) => {
   for (const [tab, groups] of Object.entries(deck)) console.log(`  ${tab}: ${groups.join(' · ')}`)
 
   // Tabs both surfaces have must share a name; surface-specific tabs are fine.
-  const shared = ['홈', '삽입', '검토', '보기', '파일']
+  const shared = ['글자', '삽입', '디자인', '검토']
   for (const tab of shared) {
     expect(Object.keys(report), `보고서에 ${tab} 탭이 없습니다`).toContain(tab)
     expect(Object.keys(deck), `슬라이드에 ${tab} 탭이 없습니다`).toContain(tab)
@@ -60,11 +63,11 @@ test('두 패널의 리본이 같은 말을 쓴다', async ({ page }) => {
     }
   }
 
-  // Same job, same tab: 버전 under 검토, 내보내기 under 파일.
+  // Same job, same tab: 디자인 and 강조색 under 디자인; 내려받기 is in the header, not a tab.
   for (const [where, map] of [['보고서', report], ['슬라이드', deck]] as const) {
-    expect(map['검토'], `${where}: 저장 시점이 검토에 없습니다`).toContain('버전')
-    expect(map['파일'], `${where}: 내보내기가 파일에 없습니다`).toContain('내보내기')
-    expect(map['파일'], `${where}: 저장 시점이 아직 파일에 있습니다`).not.toContain('버전')
+    expect(map['디자인'], `${where}: 디자인이 디자인 탭에 없습니다`).toContain('디자인')
+    expect(map['디자인'], `${where}: 강조색이 디자인 탭에 없습니다`).toContain('강조색')
+    expect(Object.keys(map), `${where}: 파일 탭이 남아 있습니다`).not.toContain('파일')
   }
 })
 

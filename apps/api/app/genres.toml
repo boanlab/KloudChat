@@ -1,0 +1,98 @@
+# Genre shape rules (`services/report.py`): matched in this order on the person's instruction,
+# the first that matches given to the outline and the draft.
+#
+# An entry is either a rule of its own (`match`: a pattern on the instruction, `rule`: the
+# text), or `format = "<doc_formats id>"`: the rule the 서식 bound to that format carries in its
+# `genre.md`, matched on the same words `doc_formats` reads (case-insensitive). A 서식 picked
+# for the document (shipped or a person's) gives its own rule directly and skips this list.
+
+[[genres]]
+id = "peer-review"
+match = '피어\s{0,3}리뷰|peer\s{0,3}review|리뷰어|심사\s{0,3}(?:의견|보고)|프로그램\s{0,3}위원|메타\s{0,3}리뷰'
+rule = '''Genre: 학회 피어리뷰. This evaluates a manuscript — do not rewrite it or make tables or figures it does not have. Strengths and weaknesses as numbered lists — each item opens with its point as one bold sentence, then the grounds. Weaknesses in order of importance, each saying which section or claim of the manuscript is at fault and how to fix it. Always cover novelty (the difference from the closest prior work) and the soundness of the method (threat-model assumptions, fairness of baselines, adaptive attacks, metrics and statistics). If the manuscript says it is pre-experiment, do not mark it down merely for having no results; judge whether the design can answer the question. Make questions specific enough for the authors to answer.'''
+
+[[genres]]
+id = "paper"
+match = '논문\s{0,3}초안|논문을\s{0,3}써|투고|학회\s{0,3}논문|워크숍\s{0,3}논문|paper\s{0,3}draft'
+rule = '''Genre: 학술 논문 초안. Sections in the order the request gives. In related work cite only confirmed real papers, with authors and year, and say in one sentence per work how it differs from this paper. Use tables only for the experimental design and the results frame; related work, threat model and method are prose. If the experiments are not done yet, do not describe results — write hypotheses and plans, and leave the results table empty as 「실험 예정」. The references are the list of papers cited in the text — no unconfirmed bibliographic entries. Register: 「~다」 throughout (「제안한다」, 「필요하다」), never 「~합니다」.'''
+
+[[genres]]
+id = "term-report"
+match = '리포트|레포트|기말\s{0,3}(?:과제|보고서)|중간\s{0,3}(?:과제|보고서)|과제\s{0,3}보고서|에세이'
+rule = '''Genre: 대학 과제 리포트. State the thesis in one sentence at the end of the introduction; each body section develops one strand of that thesis with evidence — do not just list theories. Cite studies, books and sources from the material in the text as (저자 연도), and collect them in the references at the end as 「저자 (연도). 『제목』. 출판사.」. Write no bibliographic entries, page numbers or quotations the material does not give. The conclusion restates the thesis and ends with one open question. Register: 「~다」 throughout (「제안한다」, 「필요하다」), never 「~합니다」.'''
+
+[[genres]]
+id = "research-plan"
+match = '연구\s{0,3}계획서|조사\s{0,3}계획서|연구\s{0,3}제안서'
+rule = '''Genre: 연구·조사 계획서. The research has not been done, so write no results. Number research questions and hypotheses like RQ1·H1; method in the order sample, instruments, procedure, analysis; variables and items as tables. Cite prior surveys and studies from the material as (기관 또는 저자 연도) and collect them in the references. Statistics only as the material gives them, with the source year. Register: 「~다」 throughout (「제안한다」, 「필요하다」), never 「~합니다」.'''
+
+[[genres]]
+format = "internal_draft"
+
+[[genres]]
+format = "result_report"
+
+[[genres]]
+format = "event_plan"
+
+[[genres]]
+format = "gaejo"
+
+[[genres]]
+format = "client_proposal"
+
+[[genres]]
+format = "comparison"
+
+[[genres]]
+format = "career_history"
+
+[[genres]]
+id = "lesson-plan"
+match = '지도안|교안|수업\s{0,3}계획|교수\s{0,3}[·ㆍ]?\s{0,3}학습\s{0,3}(?:지도|과정)안'
+rule = '''Genre: 교수·학습 지도안. Write learning objectives as behavioural objectives ending in 「~할 수 있다」. The per-lesson plan is one table per lesson — columns 단계(도입·전개·정리) | 교수 활동 | 학생 활동 | 시간(분) | 자료 및 유의점, and the times must add up to the lesson length. If the assessment plan calls for items, write the items themselves, numbered (multiple choice with options and answer; open-ended with a model answer and scoring criteria) — never describe the items and leave them out. Items already written in the material are carried over as they are.'''
+
+[[genres]]
+id = "grant-plan"
+match = '공모\s{0,3}(?:사업)?[^\n]{0,30}?(?:계획|신청)|(?:지원|보조|위탁|공모)\s{0,3}사업[^\n]{0,30}?(?:계획서|신청서)|(?:계획서|신청서)[^\n]{0,40}?(?:공모|지원\s{0,3}사업|보조\s{0,3}사업|보조금|심사\s{0,3}위원)|(?:공모|지원\s{0,3}사업|보조\s{0,3}사업|보조금)[^\n]{0,40}?(?:계획서|신청서)'
+rule = '''Genre: 공모·지원사업 계획서 (a public grant application a funder's 심사위원 scores). Write as the applicant (「~하고자 합니다」, 「~를 운영합니다」), never as a reviewer recommending approval. Build each section around a table whose columns are given in brackets, with one row per item the memo lists, none merged or left out: 추진 배경 및 필요성 (근거 | 수치 | 시사점), 사업 목표 및 성과지표 (성과 지표 | 목표 | 측정 방법), 세부 프로그램 (프로그램 | 대상 | 내용 | 규모; a row per program), 추진 일정 (단계 | 기간 | 주요 내용; rows 준비, 운영, 평가 over the 사업 기간), 추진 체계 (역할 | 주체 | 내용), 예산 계획 (항목 | 금액 | 비율 | 산출 근거; a row per budget line, then a 합계 row the rows add up to exactly). There is no 요약 or 권고 section and no recommendation to approve: the applicant asks, the 심사위원 decide. This is a public program, not a business: no 핵심 가정, monthly profit-and-loss, revenue or break-even tables. Copy every number from the material; a unit price or measurement method it does not give stays as 「[단가]」, 「[측정 시점]」. Never state fractional head counts (「22.5명」).'''
+
+[[genres]]
+id = "business-plan"
+match = '신\s{0,3}사업\s{0,3}기획|사업\s{0,3}(?:계획|기획)(?:서|안)|기획안'
+rule = '''Genre: 사업 기획안. Put one 「핵심 가정」 table near the front (판매가·원가·ARPU·CAC·이탈률·용량·고정비, with values and grounds), and compute every later figure from that table — never two values for the same assumption. Write calculations as 「A × B = C」 with units. Profit and loss as a monthly table (박스·매출·공헌이익·고정비·영업이익), the execution plan as a monthly table (목표·KPI·예산), risks as a table of 리스크·영향·대응·확인 시점. Do not leave out the funding plan (초기 투자·운전자금·손익분기 시점) or operational risks (품질·안전·물류). Do not repeat the same plan in text, table and list.'''
+
+[[genres]]
+id = "project-proposal"
+match = '캡스톤|프로젝트\s{0,3}제안서|기획서'
+rule = '''Genre: 프로젝트 제안서. Requirements as a table with IDs (FR-01, NFR-01); system design as tables of components and APIs (메서드·경로·설명); schedule as a table of 주차·마일스톤·산출물; roles as a table of 이름·담당·산출물; risks as a table of 위험·영향·대응. A team member's name the material does not give stays as 「[팀원 이름]」.'''
+
+[[genres]]
+id = "status-report"
+match = '주간|월간|업무 ?보고|진행 ?상황|현황 ?보고|진척'
+rule = '''Genre: 현황·주간 보고. It reads on one page — three or four short-sentence items per section, never more than two paragraphs. Instead of a 「요약」 section, the first line of the first section is this week's conclusion in one sentence. No recommendation section; what needs a decision goes under 「이슈」 as a question. Add no causes, interpretations or outlooks the material does not give (「~때문으로 판단됩니다」「달성 가능성 높음」).'''
+
+[[genres]]
+id = "minutes"
+match = '회의록|녹취|미팅 ?메모|회의 ?메모'
+rule = '''Genre: 회의록. Decisions, actions and open items as tables (항목·담당·기한). Summarise remarks without adding judgement, and make no summary or recommendation section. An owner or deadline the material does not give is 「[담당자]」 「[기한]」; what the meeting agreed to postpone is written in the material's words, like 「미정(다음 회의에서 결정)」.'''
+
+[[genres]]
+id = "incident"
+match = '장애(?!인)|사고|incident|포스트모템|post-?mortem'
+rule = '''Genre: 장애 보고서. Give the timeline as a table of 시각·사건·조치. Impact in numbers — who, how much, for how long; causes split into confirmed and presumed; prevention as a table paired with the causes (조치·담당·기한). The response section gives only what the timeline does not (why a decision was made, temporary measures) and does not repeat the timeline. If a date in the material has no year, do not add one. Write no sentences assigning blame.'''
+
+[[genres]]
+id = "lab"
+match = '실험|측정|시험 결과'
+rule = '''Genre: 실험 보고서. Measured data as a table, with the computed columns added. State a difference by computing it next to the theoretical value, and do not invent procedures the request does not give (number of repetitions, equipment settings).'''
+
+[[genres]]
+id = "official-letter"
+match = '공문|시행\s{0,3}문|협조\s{0,3}요청'
+rule = '''Genre: 공문(시행문), in the form of the 행정업무운영 편람. Typesetting draws the head (수신·참조·발신·시행일) and the title, and appends 「끝.」, so write none of them. The body is one run of numbered items with no headings and no prose paragraphs: 「1.」 holds the purpose and the request in one sentence ending 「~하오니 … 주시기 바랍니다」 (or 「~하고자 하오니 …」); its details follow as one-line 「가. <항목>: <값>」 items (나. 다. …), a condition under an item as one 「※ …」 line; then one numbered item for what follows if it is not done, only when the material says so, and a last numbered item for the contact (「3. 문의: 기획예산팀 윤서영(내선 2214)」). An attachment goes last as 「붙임  <서식명> 1부.」. Put each item on its own line, unindented. Endings in 공문체 (「~하오니」 「~하여 주시기 바랍니다」 「~할 수 있습니다」), never an essay's 「~합니다」 explanation; no greeting, no reasons why a rule exists, no figures, no KPI or callout boxes, a table only when the material lists many rows. Copy every date, time, amount, address, e-mail and extension from the material character for character. Never add conditions, penalties, reasons or procedures the material does not state; what a 공문 usually carries but the material does not give (관련 문서 번호) is left out.'''
+
+[[genres]]
+id = "notice"
+match = '안내문|공지|가이드라인|규정|정책'
+rule = '''Genre: 안내·정책 문서. For each item, principle, allowed, forbidden and an example, briefly. No recommendation or summary section; put the effective date and contact at the end.'''

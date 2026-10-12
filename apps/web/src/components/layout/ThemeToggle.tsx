@@ -6,12 +6,12 @@ import { useStore } from '@/store/useStore'
 const icons = { system: Monitor, light: Sun, dark: Moon }
 
 const labels = {
-  system: '테마: 시스템 설정 따름',
-  light: '테마: 밝게',
-  dark: '테마: 어둡게',
+  system: '화면 밝기: 시스템 설정 따름',
+  light: '화면 밝기: 밝게',
+  dark: '화면 밝기: 어둡게',
 }
 
-/** Cycles system, light, dark; the icon shows the current state. */
+/** Cycles system, light, dark; icon shows the current one. */
 export function ThemeToggle({ className }: { className?: string }) {
   const t = useT()
   const { theme, toggleTheme } = useStore()

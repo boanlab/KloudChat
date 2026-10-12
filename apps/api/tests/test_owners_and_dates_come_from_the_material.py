@@ -19,10 +19,15 @@ TABLE = """### 재발 방지 대책
 """
 
 
-def test_invented_owners_and_dates_become_undecided() -> None:
+def test_invented_owners_and_dates_become_blanks_named_by_the_column() -> None:
     rows = _unsourced_owner_dates(TABLE, SOURCE).splitlines()
-    assert rows[3] == "| 재색인 절차 자동화 | 미정 | 미정 |"
-    assert rows[4] == "| 재시도 횟수 제한 | 미정 | 9월 10일 |"
+    assert rows[3] == "| 재색인 절차 자동화 | [담당자] | [기한] |"
+    assert rows[4] == "| 재시도 횟수 제한 | [담당자] | 9월 10일 |"
+
+
+def test_a_blank_already_written_is_left_as_it_is() -> None:
+    table = "| 조치 | 담당 | 기한 |\n| :--- | :--- | :--- |\n| 재색인 | [담당자] | [기한] |\n"
+    assert _unsourced_owner_dates(table, SOURCE) == table
 
 
 def test_named_owners_and_dates_survive_in_any_spelling() -> None:

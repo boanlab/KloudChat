@@ -1,6 +1,7 @@
 import { expect, test, type Download, type Page, type TestInfo } from '@playwright/test'
 import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -61,9 +62,11 @@ async function fixture(page: Page, testInfo: TestInfo, options: {
       } })
     }
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: { [kind]: 1 }, total: 1 } })
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && [`/sessions/${sessionId}/messages`, `/sessions/${sessionId}/jobs`, '/projects',
-      '/skills', '/memory', '/agents', '/tools', '/templates', '/connectors', '/connectors/catalog', '/jobs',
-      '/designs', '/design-templates', '/prompt-templates', '/shares'].includes(path)) return route.fulfill({ json: [] })
+      '/skills', '/memory', '/agents', '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/designs', '/design-templates', '/shares'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.abort('blockedbyclient')
   })
@@ -92,7 +95,7 @@ for (const width of [1440, 390]) {
     expect(await downloadedText(download)).toBe(source)
     expect(state.exports).toEqual([{ format: 'source', authorization: 'Bearer fixture-only' }])
     await expect(button).toBeEnabled()
-    await expect(page.getByRole('button', { name: '내보내기', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '내려받기', exact: true })).toHaveCount(0)
     const bounds = await button.boundingBox()
     expect(bounds!.x).toBeGreaterThanOrEqual(0)
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
@@ -152,7 +155,7 @@ test('HTML keeps its preview, source tabs and existing export formats', async ({
   await expect(page.locator('pre')).toHaveText(state.content)
   await page.getByRole('button', { name: '미리보기', exact: true }).click()
   await expect(page.locator('iframe').first()).toBeVisible()
-  await page.getByRole('button', { name: '내보내기', exact: true }).click()
+  await page.getByRole('button', { name: '내려받기', exact: true }).click()
   const pending = page.waitForEvent('download')
   await page.getByRole('menuitem').filter({ hasText: 'HTML' }).click()
   const download = await pending

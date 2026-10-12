@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 // A screenshot on the clipboard pasted into the composer is attached and sent with the
 // next message; a text paste stays text. The backend is a fixture: nothing leaves the page.
@@ -83,9 +84,11 @@ async function fixture(page: Page, reply = '에러 코드는 503입니다.', sen
         body: `data: ${JSON.stringify({ type: 'delta', text: reply })}\n\ndata: {"type":"done"}\n\n`,
       })
     }
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && ['/projects', '/artifacts', '/skills', '/memory', '/agents',
-      '/tools', '/templates', '/connectors', '/connectors/catalog', '/jobs',
-      '/designs', '/design-templates', '/prompt-templates', '/artifacts/counts'].includes(path)) {
+      '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/designs', '/design-templates', '/artifacts/counts'].includes(path)) {
       return route.fulfill({ json: path === '/artifacts/counts' ? { counts: {}, total: 0 } : [] })
     }
     if (method !== 'GET') unexpected.push(`${method} ${path}`)

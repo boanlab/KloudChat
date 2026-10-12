@@ -1,4 +1,4 @@
-/** Service name and logo; takes props because the sign-in screen renders before the store is filled. */
+/** Service name and logo; props, since sign-in renders before the store fills. */
 export function Brand({
   name,
   logo,
@@ -21,7 +21,7 @@ export function Brand({
           src={logo}
           alt=""
           className={`${box} object-contain`}
-          // A missing logo file renders nothing rather than a broken image.
+          // Missing logo file: nothing, not a broken image.
           onError={(e) => {
             e.currentTarget.style.display = 'none'
           }}

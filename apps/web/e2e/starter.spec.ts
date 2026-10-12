@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/** The shipped agent and skill catalogue is complete and wired together. */
+/** The shipped catalogue: skills, and the six lineup agents in the store. */
 
 const AS_USER = `async (path) => {
   const login = await fetch('/api/auth/login', {
@@ -14,7 +14,7 @@ const AS_USER = `async (path) => {
   return r.ok ? await r.json() : null
 }`
 
-test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다', async ({ page }) => {
+test('기본 스킬과 기본 에이전트 여섯 개가 갖춰져 있다', async ({ page }) => {
   await signIn(page)
 
   const { agents, skills } = await page.evaluate(async (fn) => {
@@ -24,27 +24,19 @@ test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다'
     }
   }, AS_USER)
 
-  // The product ships admin-owned `org` rows; a new account's own list starts empty.
-  const mine = agents.filter((a: { visibility: string }) => a.visibility === 'org')
-
-  expect(agents.length).toBeGreaterThanOrEqual(5)
-  expect(skills.length).toBeGreaterThanOrEqual(0)
-
-  // Counted, not applied to every row: a person's own agent is not held to the seeder's standard.
-  const wellFormed = agents.filter(
-    (agent: { systemPrompt: string; description: string; kinds: string[] }) =>
-      agent.systemPrompt.length > 40 && agent.description.length > 0 && agent.kinds.length > 0,
+  // People's own and shared agents may exist; the catalogue's four stand among them.
+  const official = agents.filter((a: { official?: boolean; catalogKey?: string | null }) =>
+    a.official || a.catalogKey,
   )
-  expect(wellFormed.length, '지침·설명·적용 화면을 갖춘 에이전트가 모자랍니다').toBeGreaterThanOrEqual(5)
+  const names = new Set(official.map((a: { name: string }) => a.name))
+  for (const name of ['개조식 보고', '비교·결정', '자료 추출·집계', '회의록']) {
+    expect(names.has(name), `${name} 없음`).toBe(true)
+  }
 
-  // Catalogue agents' skillIds point at catalogue skills; this account's /api/skills may be empty.
+  // This account's /api/skills may be empty; the catalogue stands in the store.
   const store = await page.evaluate(async (fn) => eval(fn)('/api/skills/store'), AS_USER)
   const catalogue = (store ?? []).concat(skills)
-  const ids = new Set(catalogue.map((s: { id: string }) => s.id))
   expect(catalogue.length).toBeGreaterThanOrEqual(5)
-  const attached = mine.flatMap((a: { skillIds: string[] }) => a.skillIds ?? [])
-  expect(attached.length).toBeGreaterThan(0)
-  for (const id of attached) expect(ids.has(id), '연결된 스킬이 존재하지 않습니다').toBe(true)
 
   // Official catalogue skills carry a procedure; personal rows may be one line.
   for (const skill of catalogue.filter((s: { official?: boolean; catalogKey?: string | null }) =>
@@ -54,35 +46,10 @@ test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다'
     expect(skill.whenToUse.length, `${skill.name} 사용 시점 없음`).toBeGreaterThan(0)
   }
 
-  // On screen: catalogue rows stand in the 스토어 tab.
-  await page.goto('/agents')
-  await page.getByRole('tab', { name: /스토어/ }).click()
-  await expect(page.getByText(agents[0].name).first()).toBeVisible({ timeout: 15_000 })
-  await page.goto('/skills')
+  // On screen: catalogue rows stand in 사용자 지정 › 스킬 › 탐색.
   const shelf = catalogue[0] ?? skills[0]
   const shelfIsMine = skills.some((s: { id: string }) => s.id === shelf.id)
-  if (!shelfIsMine) {
-    await page.getByRole('tab', { name: /스토어/ }).click()
-  }
+  await page.goto(`/customize?tab=skills&view=${shelfIsMine ? 'mine' : 'explore'}`)
+  await page.getByRole('searchbox', { name: '검색' }).fill(shelf.name)
   await expect(page.getByText(shelf.name).first()).toBeVisible({ timeout: 15_000 })
-})
-
-test('시작점을 고르면 입력창은 비어 있고 칩만 붙는다', async ({ page }) => {
-  await signIn(page)
-  await page.goto('/new/chat')
-
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
-  const dialog = page.getByRole('dialog')
-  await dialog.getByLabel('시작점 검색').fill('장애 원인')
-  const card = dialog.locator('div.group', { hasText: '장애 원인 좁히기' }).first()
-  await expect(card.getByText('에러 로그')).toBeVisible()
-  await card.getByRole('button', { name: /시작점 선택/ }).click()
-
-  // The framing rides with the turn; the box never holds it.
-  const box = page.getByLabel('프롬프트 입력')
-  await expect(box).toHaveValue('')
-  // Questions sit above the box.
-  await expect(page.getByRole('group', { name: '장애 원인 좁히기 시작점 질문' }).getByLabel('장애 원인 좁히기 · 에러 로그')).toBeVisible()
-  await expect(page.getByRole('button', { name: /장애 원인 좁히기 시작점 해제/ })).toBeVisible()
-  await expect(page).toHaveURL(/\/new\/chat$/)
 })

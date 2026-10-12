@@ -3,28 +3,30 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Field, Input } from '@/components/ui'
 import { agentsApi, downloadFile, errorMessage, type FileRow } from '@/lib/api'
 import { useFileDrop } from '@/lib/useFileDrop'
+import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import { useT } from '@/lib/useT'
 
-/**
- * Documents an agent searches via tool call (unlike project files, which are
- * pushed into every turn). Attaching requires a saved agent id.
- */
+/** Documents the agent searches by tool call (project files go into every turn); needs a saved agent. */
 export function AgentKnowledge({
   agentId,
   onKnowledgeChange,
+  onNeedAgent,
 }: {
   agentId: string | null
   onKnowledgeChange?: (available: boolean) => void
+  /** Saves an unsaved agent for its first file; resolves to its id, or null. */
+  onNeedAgent?: () => Promise<string | null>
 }) {
   const t = useT()
   const [rows, setRows] = useState<FileRow[]>([])
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState<'file' | 'url' | 'reindex' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** Shown once the first file saved the agent. */
+  const [savedNote, setSavedNote] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const rowsRef = useRef<FileRow[]>([])
-  // The drop hook must run above the unsaved-agent early return; the uploader
-  // it calls is defined below it, so a ref bridges the two.
+  // Drop hook above the early return; its uploader below, bridged by a ref.
   const addFilesRef = useRef<(files: File[]) => void>(() => {})
   const { over: dragging, handlers: dropHandlers } = useFileDrop(
     (files) => addFilesRef.current(files),
@@ -38,6 +40,11 @@ export function AgentKnowledge({
       onKnowledgeChange?.(next.some((row) => !row.error && row.tokens > 0))
     },
     [onKnowledgeChange],
+  )
+
+  // Scanned document read in the background; row follows the pages.
+  useOcrProgress(rows, (row) =>
+    replaceRows(rowsRef.current.map((item) => (item.id === row.id ? row : item))),
   )
 
   useEffect(() => {
@@ -57,6 +64,47 @@ export function AgentKnowledge({
   }, [agentId, replaceRows])
 
   if (!agentId) {
+    if (onNeedAgent) {
+      // First file saves the agent, then attaches; saved id re-renders.
+      const attachFirst = async (picked: File) => {
+        setBusy('file')
+        setError(null)
+        try {
+          const id = await onNeedAgent()
+          if (id) {
+            await agentsApi.knowledge.upload(id, picked)
+            setSavedNote(true)
+          }
+        } catch (err) {
+          setError(errorMessage(err, t('파일을 올리지 못했습니다.')))
+        } finally {
+          setBusy(null)
+          if (fileInput.current) fileInput.current.value = ''
+        }
+      }
+      return (
+        <div className="space-y-2">
+          <p className="text-sm text-faint">
+            {t('파일을 붙이면 에이전트를 먼저 저장합니다. 이 에이전트가 그 안에서 찾아 답합니다.')}
+          </p>
+          <input
+            ref={fileInput}
+            type="file"
+            className="hidden"
+            aria-label={t('자료 파일')}
+            onChange={(e) => {
+              const picked = e.target.files?.[0]
+              if (picked) void attachFirst(picked)
+            }}
+          />
+          <Button size="sm" disabled={busy !== null} onClick={() => fileInput.current?.click()}>
+            {busy === 'file' ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />}
+            {t('파일 붙이기')}
+          </Button>
+          {error && <p role="status" className="text-sm text-danger">{error}</p>}
+        </div>
+      )
+    }
     return (
       <Field label={t('자료')} hint={t('에이전트를 저장하면 자료를 붙일 수 있습니다')}>
         <p className="text-base text-faint">
@@ -80,7 +128,7 @@ export function AgentKnowledge({
     }
   }
 
-  // Sequential so rows keep drop order.
+  // Sequential: rows keep drop order.
   const addFiles = async (picked: File[]) => {
     for (const file of picked) await addFile(file)
   }
@@ -104,7 +152,7 @@ export function AgentKnowledge({
     setBusy('reindex')
     setError(null)
     try {
-      // Force all rows, so vectors from a previous embedding model are rebuilt too.
+      // All rows: rebuilds vectors from an older embedding model.
       await agentsApi.knowledge.reindex(agentId, true)
       replaceRows(await agentsApi.knowledge.list(agentId))
     } catch (err) {
@@ -135,9 +183,14 @@ export function AgentKnowledge({
   return (
     <Field
       label={t('자료')}
-      hint={t('이 에이전트가 검색해서 근거로 쓸 문서입니다. 대화마다 통째로 들어가지 않고, 필요할 때 찾아 씁니다.')}
+      hint={t('이 에이전트가 근거로 쓸 문서입니다. 질문마다 먼저 이 자료에서 찾아 답합니다. 짧은 자료는 통째로, 긴 자료는 질문과 맞는 대목만 들어갑니다.')}
     >
       <div className="relative space-y-2" {...dropHandlers}>
+        {savedNote && (
+          <p role="status" className="text-sm text-muted" data-testid="agent-saved-for-file">
+            {t('자료를 붙이려고 에이전트를 저장했습니다. 이 화면을 떠나도 에이전트는 남습니다.')}
+          </p>
+        )}
         {dragging && (
           <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-card border-2 border-dashed border-accent bg-accent-soft/90 text-base font-medium text-accent">
             {t('여기에 놓으면 자료로 추가됩니다')}
@@ -194,7 +247,7 @@ export function AgentKnowledge({
                 ) : (
                   <FileText size={13} className="shrink-0 text-faint" />
                 )}
-                {/* A URL row has no blob; its name links to the source page. */}
+                {/* URL row: no blob; name links to the source. */}
                 {f.sourceUrl ? (
                   <a
                     href={f.sourceUrl}
@@ -221,8 +274,24 @@ export function AgentKnowledge({
                   </span>
                 ) : (
                   <>
-                    {/* Un-indexed rows are found by word search only. */}
-                    {f.indexed === false && (
+                    {(() => {
+                      const reading = ocrNote(f, t)
+                      return reading ? (
+                        <span
+                          data-ocr={f.ocrState ?? undefined}
+                          className={
+                            reading.tone === 'warn'
+                              ? 'flex shrink-0 items-center gap-1 text-xs text-warn'
+                              : 'flex shrink-0 items-center gap-1 text-xs text-faint'
+                          }
+                        >
+                          {isReading(f) && <Loader2 size={11} className="animate-spin" />}
+                          {reading.text}
+                        </span>
+                      ) : null
+                    })()}
+                    {/* Un-indexed rows: word search only. */}
+                    {f.indexed === false && !isReading(f) && (
                       <span
                         title={t('낱말 검색으로는 찾지만, 뜻으로 찾는 검색에는 아직 안 들어갔습니다')}
                         className="flex shrink-0 items-center gap-1 text-xs text-faint"

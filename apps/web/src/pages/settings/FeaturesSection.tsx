@@ -5,6 +5,7 @@ import { adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
+import { useMarkUnsaved } from '@/lib/unsaved'
 
 /** Surfaces that can be switched off; chat cannot. */
 const OPTIONAL: SessionKind[] = ['report', 'slides', 'image', 'av']
@@ -30,11 +31,13 @@ export function FeaturesSection({
     if (settings) setEnabled(settings.enabledKinds as SessionKind[])
   }, [settings])
 
-  if (!settings) return null
-
   const dirty =
+    !!settings &&
     JSON.stringify([...enabled].sort()) !==
-    JSON.stringify([...(settings.enabledKinds as SessionKind[])].sort())
+      JSON.stringify([...(settings.enabledKinds as SessionKind[])].sort())
+  useMarkUnsaved('system.features', dirty)
+
+  if (!settings) return null
 
   const toggle = (kind: SessionKind) =>
     setEnabled((prev) =>

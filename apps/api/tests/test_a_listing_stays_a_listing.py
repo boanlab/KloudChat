@@ -67,3 +67,12 @@ def test_a_deck_card_carries_no_slide_pictures_either() -> None:
     )
     assert card is not None
     assert "image" not in card["slides"][0]
+
+
+def test_a_card_says_how_many_sections_and_slides_the_whole_has() -> None:
+    """The card counts the whole document, not the four sections it carries (no 「4개 절」)."""
+    card = _card_data(ArtifactKind.report, _report(sections=7))
+    assert card is not None and len(card["sections"]) == 4 and card["partCount"] == 7
+    slides = [{"id": str(i)} for i in range(9)]
+    deck = _card_data(ArtifactKind.deck, {"kind": "deck", "slides": slides})
+    assert deck is not None and len(deck["slides"]) == 4 and deck["partCount"] == 9

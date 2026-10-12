@@ -1,40 +1,44 @@
-이 발표는 **편집형 덱** 템플릿으로 만든다. 레이아웃과 색은 이미 정해져 있으니
-내용만 쓴다. 장 번호는 자동으로 붙는다.
+Build this presentation with the **편집형 덱** template. Layout and colors are already
+set; write only the content. Slide numbers are added automatically.
 
-이 서식은 화면 폭의 절반 남짓만 쓴다. 제목 아래를 가로지르는 룰 하나가 장을 열고,
-본문은 그 아래 왼쪽 일곱 칸에만 놓이며 오른쪽 다섯 칸은 끝까지 비어 있다. 그 빈
-자리가 인쇄본에서는 메모 여백이 된다. 그러니 한 줄은 짧고, 한 장은 하나만 말한다.
+This format uses only a little over half the screen width. A single rule across the
+slide under the title opens each slide; the body sits only in the left seven columns
+below it, and the right five columns stay empty to the end. In print that empty space
+becomes the note margin. So lines are short, and each slide says one thing.
 
-각 장은 `layout` 하나와 그 장의 본문 HTML 조각으로 이루어진다. 쓸 수 있는
-layout 은 다섯 가지이고, 폭과 짜임이 저마다 다르다.
+Each slide is one `layout` plus that slide's body HTML fragment. There are five
+layouts, each with its own width and structure.
 
-- `cover` — 표지. 룰이 제목 위에 놓이고 제목 블록이 화면 아래로 내려앉는
-  유일한 장이다. `<p class="lead">` 한 줄로 이 발표가 누구에게 무엇을 말하는지,
-  그리고 무엇으로 쓰이는지(발표 시간·배포 여부) 적는다.
-- `bullets` — 기본 장. `<ul><li>` 3~5개. 한 항목은 한 문장이다. 점 대신 대시가
-  붙고 넘친 줄은 들여쓰기로 걸리니 두 행까지는 괜찮지만, 세 행이 되면 그
-  항목은 둘로 나뉘어야 할 말이다.
-- `quote` — 이 발표에서 가장 남길 한 문장. `<blockquote>` 하나만 쓰고, 출처나
-  누가 한 말인지는 그 아래 `<small>` 한 줄로 적는다. 앞에 줄표(—)는 붙이지
-  않는다 — 서식이 붙인다. 전체에서 최대 2장.
-- `split` — 둘을 나란히 견줄 때. `<div class="cols"><div>…</div><div>…</div></div>`
-  이고 각 칸은 `<h3>` 한 단어짜리 라벨로 연다. `<h3>` 는 작은 글씨의 이름표이지
-  작은 제목이 아니니 한 줄을 넘기지 않는다.
-- `table` — 수치나 항목 비교. 이 장만 화면 전체 폭을 쓴다. `<table>` 하나,
-  열 3~4개에 행 4개 안쪽. 지어낸 숫자는 쓰지 않는다.
+- `cover` — the cover. The only slide where the rule sits above the title and the title
+  block settles to the bottom of the screen. In one `<p class="lead">` line, state who
+  this presentation addresses and what it tells them, and what it is used for
+  (presentation length, whether it is distributed).
+- `bullets` — the default slide. 3–5 `<ul><li>`. One item is one sentence. Items get a
+  dash instead of a dot and overflow lines hang indented, so two lines are fine; at
+  three lines the item is really two points and must be split.
+- `quote` — the one sentence to leave from this presentation. Use a single
+  `<blockquote>`; put its source or speaker in one `<small>` line below it. Do not prefix
+  an em dash (—) — the format adds it. At most 2 such slides in total.
+- `split` — to set two things side by side. `<div class="cols"><div>…</div><div>…</div></div>`;
+  open each column with a one-word `<h3>` label. `<h3>` is a small name tag, not a
+  subheading, so keep it to one line.
+- `table` — comparing figures or items. Only this slide uses the full screen width. One
+  `<table>`, 3–4 columns and at most 4 rows. Do not write invented numbers.
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, blockquote, small, table,
-thead, tbody, tr, th, td, div` 뿐이다. `<h2>` 는 쓰지 마라 — 장 제목은 따로
-붙는다. 그 밖의 태그와 링크, 이미지는 버려진다. `class` 는 위에 적은 `lead` 와
-`cols` 만 뜻이 있고 나머지는 무시된다.
+The only allowed tags are `p, h3, ul, ol, li, strong, em, code, blockquote, small, table,
+thead, tbody, tr, th, td, div`. Do not use `<h2>` — the slide title is added separately.
+Any other tag, links and images are discarded. Of `class`, only `lead` and `cols` above
+mean anything; the rest are ignored.
 
-명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
-감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
-가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.
+Wrap anything whose meaning survives only when copied **character for character** —
+commands, paths, identifiers, exception names — in `<code>`. `<code>` is a single
+fragment — this format has no multi-line code blocks, so if it is long, copy only the
+most important line and describe the rest in words.
 
-- 슬라이드는 읽는 글이 아니라 보는 화면이다. 문단을 늘어놓지 않는다.
-- 같은 layout 이 세 장 넘게 이어지면 폭이 바뀌지 않아 발표가 한 장처럼 보인다.
-  `split` 이나 `table` 로 한 번씩 폭을 바꾼다.
-- 강조는 `<strong>` 뿐이고 한 장에 한 곳까지다. 색이나 기호로 강조하지 않는다.
-- 근거 없는 수치를 쓰지 않는다. 없으면 숫자 없이 쓴다.
-- 이모지를 제목이나 항목 앞에 붙이지 않는다.
+- A slide is a screen to look at, not text to read. Do not string paragraphs together.
+- When the same layout runs for more than three slides, the width never changes and the
+  presentation looks like one slide. Change the width now and then with `split` or `table`.
+- Emphasis is `<strong>` only, at most one place per slide. Do not emphasize with color
+  or symbols.
+- Do not write figures without grounds. If there are none, write without numbers.
+- Do not put emoji in front of titles or items.

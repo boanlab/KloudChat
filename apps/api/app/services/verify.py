@@ -1,7 +1,4 @@
-"""Verify-and-repair for a written report: checks find, one repair rewrites, checks rerun.
-
-A rewrite is kept only when the check that raised it no longer does.
-"""
+"""Report verify-and-repair; a rewrite kept only if its check clears."""
 
 from __future__ import annotations
 
@@ -14,48 +11,54 @@ from dataclasses import dataclass, field
 
 log = logging.getLogger(__name__)
 
-#: Sentences rewritten per report, worst first.
+#: rewrites per report, worst first
 MAX_REPAIRS = 16
 
 _CITE = re.compile(r"\[\d{1,3}\]")
 
-_REPAIR_PROMPT = """보고서의 문장들에 문제가 있다. 항목마다 그 문장만 고쳐서, 고친 문장들을 같은
-순서의 JSON 문자열 배열로만 답하라. 다른 말은 쓰지 마라.
+_REPAIR_PROMPT = """Some sentences in the report have problems. Fix only that sentence for each
+item, and answer only with the fixed sentences as a JSON array of strings in the same
+order. Write nothing else.
 
-규칙:
-- 문제로 지적된 부분만 고친다. 나머지 내용·어조·길이는 그대로 둔다.
-- 인용 번호 [n]은 그대로 둔다. 근거 자료가 주어진 항목은 그 자료의 번호를 붙여도 된다.
-- 표의 행(「|」로 시작)은 같은 칸 수의 행으로 답한다.
-- 지적이 틀렸다고 판단되면(다른 경우를 말하는 문장 등) 원문을 그대로 답한다.
+Rules:
+- Fix only the part pointed out as the problem. Keep the rest of the content, tone and
+  length as they are.
+- Keep citation numbers [n] as they are. An item given evidence may add that evidence's
+  number.
+- Answer a table row (starting with 「|」) with a row of the same number of cells.
+- Do not make up names, dates, amounts or figures that are not in the material; put the
+  slot's name in brackets, like 「[담당자]」 「[기한]」 「[금액]」. Keep existing bracket blanks
+  as they are.
+- If you judge the finding wrong (e.g. the sentence is about a different case), answer
+  with the original sentence unchanged.
 
-자료(요청과 앞 대화에서 정한 값):
+Material (values set in the request and the earlier conversation):
 {material}
 
-참고 자료 목록(번호는 문서의 인용 번호):
+Sources (numbers are the document's citation numbers):
 {sources}
 
-항목:
+Items:
 {items}"""
 
 
 @dataclass(slots=True)
 class Finding:
-    """A sentence (or a table row) a check found wrong, exactly as it stands in a section."""
+    """Sentence or table row a check found wrong, verbatim."""
 
     section: int
     sentence: str
     code: str
     why: str
-    #: A source excerpt that settles it, shown to the repair.
+    #: settling source excerpt for the repair
     evidence: str = ""
-    #: Citation numbers the repair may add because the evidence is that source.
+    #: citations the repair may add (evidence's source)
     may_cite: list[int] = field(default_factory=list)
-    #: True while a rewrite is still wrong by this check; None keeps any careful rewrite.
+    #: True while still wrong; None accepts any careful rewrite
     still: Callable[[str], bool] | None = None
-    #: Lower comes first when the repair budget is short.
+    #: lower first under a short budget
     rank: int = 5
-    #: False for a finding no check can confirm a rewrite of (a web claim, a teaching
-    #: judgement): shown to the reader, never rewritten on a judge's word alone.
+    #: False: unconfirmable (web claim, judgement); shown, never rewritten
     auto: bool = True
 
 
@@ -66,11 +69,12 @@ class Doc:
     request: str = ""
     sources: list[dict] = field(default_factory=list)
     settled: list = field(default_factory=list)
+    #: `key_figures.Conflict`s from the material; never merged
+    conflicts: list = field(default_factory=list)
 
 
-#: A check reads the document and names what it finds; a model check may spend tokens.
 Check = Callable[[Doc], Awaitable[tuple[list[Finding], dict]]]
-#: `(model, messages, api_key, max_tokens) -> (text, usage)`.
+#: `(model, messages, api_key, max_tokens) -> (text, usage)`
 Complete = Callable[..., Awaitable[tuple[str, dict]]]
 
 
@@ -80,10 +84,10 @@ def _add(usage: dict, spent: dict | None) -> None:
 
 
 async def find(doc: Doc, checks: list[Check]) -> tuple[list[Finding], dict]:
-    """Every check's findings merged to one per sentence, worst first."""
+    """Findings merged per sentence, worst first."""
     usage: dict[str, int] = {"inputTokens": 0, "outputTokens": 0}
     results = await asyncio.gather(*(check(doc) for check in checks), return_exceptions=True)
-    merged: dict[tuple[int, str], Finding] = {}
+    merged: dict[tuple[int, str, bool], Finding] = {}
     for check, result in zip(checks, results, strict=True):
         if isinstance(result, BaseException):
             log.warning("check %s failed: %r", getattr(check, "__name__", check), result)
@@ -91,7 +95,8 @@ async def find(doc: Doc, checks: list[Check]) -> tuple[list[Finding], dict]:
         findings, spent = result
         _add(usage, spent)
         for f in findings:
-            key = (f.section, f.sentence)
+            # judged findings never folded into auto-rewrite ones
+            key = (f.section, f.sentence, f.auto)
             if key not in merged:
                 merged[key] = f
             elif f.why not in merged[key].why:
@@ -107,7 +112,7 @@ async def find(doc: Doc, checks: list[Check]) -> tuple[list[Finding], dict]:
 
 
 def _acceptable(old: str, new: str, finding: Finding) -> bool:
-    # A multi-line item (an assessment question with its options) may come back multi-line.
+    # multi-line items (question with options) may stay multi-line
     if not new or ("\n" in new and "\n" not in old) or len(new) > 2 * len(old) + 120:
         return False
     row = old.lstrip().startswith("|")
@@ -125,9 +130,7 @@ async def repair(
     doc: Doc, findings: list[Finding], *, complete: Complete, model: str, api_key: str,
     clean: Callable[[str], str] = lambda s: s,
 ) -> tuple[list[dict], list[Finding], dict]:
-    """One model call per section; a rewrite is kept only when it passes `_acceptable`.
-
-    Returns (sections, unrepaired findings, usage)."""
+    """One model call per section; `(sections, unrepaired findings, usage)`."""
     usage: dict[str, int] = {"inputTokens": 0, "outputTokens": 0}
     out = [dict(sec) for sec in doc.sections]
     fixable = [f for f in findings if f.auto]
@@ -193,9 +196,7 @@ async def verify_and_repair(
     clean: Callable[[str], str] = lambda s: s,
     normalize: Callable[[list[dict]], list[dict]] = lambda sections: sections,
 ) -> tuple[list[dict], list[Finding], dict]:
-    """Find, repair, normalize, find again.
-
-    Returns (sections, findings still standing after the repair, usage)."""
+    """Find, repair, normalize, find again; `(sections, remaining findings, usage)`."""
     usage: dict[str, int] = {"inputTokens": 0, "outputTokens": 0}
     findings, spent = await find(doc, checks)
     _add(usage, spent)
@@ -208,18 +209,18 @@ async def verify_and_repair(
     )
     _add(usage, spent)
     sections = normalize(sections)
-    # Model-only findings no check can confirm are reported, not fixed.
+    # unconfirmable model findings reported, not fixed
     shown = [f for f in left if not f.auto and f.sentence in "\n".join(
         str(s.get("content") or "") for s in sections)]
-    # Re-check with the free code checks only.
-    again = Doc(sections, doc.material, doc.request, doc.sources, doc.settled)
+    # recheck with free code checks only
+    again = Doc(sections, doc.material, doc.request, doc.sources, doc.settled, doc.conflicts)
     remaining, spent = await find(again, [c for c in checks if not getattr(c, "uses_model", False)])
     _add(usage, spent)
     return sections, remaining + shown, usage
 
 
 def model_check(fn: Callable[[Doc], Awaitable[tuple[list[Finding], dict]]]) -> Check:
-    """Marks a check that calls a model: it runs once, before the repair."""
+    """Mark a model-calling check (runs once, before repair)."""
     fn.uses_model = True  # type: ignore[attr-defined]
     return fn
 

@@ -107,12 +107,12 @@ reflect.
 
 ## Tests
 
-Three layers, in increasing cost:
+Four layers, in increasing cost:
 
 | Layer | Command | Needs |
 | --- | --- | --- |
 | Unit | `pytest -q` in `apps/api` | nothing |
-| Web focused | `npx playwright test --config playwright.<name>.config.ts` in `apps/web` | nothing — each starts its own Vite server and stubs the API, as in CI |
+| Web fixture suite | `npm run test:e2e:ci` in `apps/web` (one file: `npx playwright test -c playwright.ci.config.ts e2e/<name>.spec.ts`) | nothing — it serves a build and stubs the API, as in CI |
 | API integration | `bash scripts/smoke-test.sh` | a running stack + an admin account |
 | Browser | `npx playwright test` in `apps/web` | a running stack + a seeded account |
 
@@ -167,9 +167,22 @@ guarding nothing.
 **Comments explain the non-obvious why, and nothing else.** The code says what
 it does. A comment is a short English noun phrase or sentence recording a
 reason the code cannot show — a unit, an ordering constraint, a fail-closed
-default. No history or provenance ("was", "used to", "after the incident"), no
-anecdotes, no commented-out code. Documentation describes the current state,
-not how it got there. All comments and documentation are written in English.
+default. No history or provenance ("was", "used to", "after the incident"),
+no issue or PR numbers, dates or work notes, no anecdotes, no commented-out
+code. Documentation describes the current state, not how it got there.
+Comments and developer documentation are in English; a Korean comment is a
+brief noun phrase (명사형).
+
+**Screens speak one vocabulary.** What a turn produces is an **아티팩트**; a
+**템플릿** is a document's structure and a **테마** its look.
+`apps/api/tests/test_screens_use_one_set_of_words.py` fails on retired words,
+and `test_the_app_does_not_narrate_its_own_changes.py` on screens or guide
+pages that describe a reorganisation ("옮겼습니다", "예전 이름") instead of the
+current state.
+
+**The user guide feeds the in-app help.** After editing `website/docs/` or its
+English translation, run `python apps/api/scripts/build_help.py`;
+`tests/test_app_help.py` fails while `app/help/docs.json` is out of date.
 
 **Fail closed on anything priced.** A provider reporting a cost of zero means
 "unknown", not "free". Unknown prices are dropped from the catalogue with a
@@ -210,6 +223,7 @@ KloudChat/
 │   ├── api/          FastAPI — auth, sessions, jobs, artifacts, the master key
 │   └── print/        Headless Chromium — HTML in, PDF out
 ├── docs/             Architecture and operator guides
+├── website/          User guide (Docusaurus, Korean and English)
 ├── scripts/          Integration checks against a running stack
 ├── mcp/              MCP stdio server scripts mounted into the API container
 └── docker-compose*.yml

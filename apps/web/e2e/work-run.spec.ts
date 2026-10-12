@@ -3,6 +3,7 @@ import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { approvePlan, signInAs } from './helpers'
 import { workScenarios, type WorkScenario } from './work-scenario-catalog'
+import { openTool } from './composer-tools'
 
 /** Runs a slice of the work scenario catalogue end to end and reads what came out.
  *  Slice: `WORK_COUNT` rows, chosen by coverage or by `WORK_FROM`/`WORK_STRIDE`; `WORK_SHARD`/`WORK_SHARDS`
@@ -243,13 +244,8 @@ async function followUp(page: Page, scenario: WorkScenario): Promise<string> {
 
   if (scenario.followUpId === 'export') {
     if (!documentSurface) return ''
-    // 내보내기 lives in the 파일 tab; the format is a menu under it.
-    const fileTab = page.getByRole('tab', { name: '파일' }).first()
-    if (await fileTab.isVisible().catch(() => false)) {
-      await fileTab.click()
-      await page.waitForTimeout(600)
-    }
-    const menu = page.getByRole('button', { name: '내보내기' }).first()
+    // 내려받기 sits in the panel header; the format is a menu under it.
+    const menu = page.getByRole('button', { name: '내려받기' }).first()
     if (!(await menu.isVisible().catch(() => false))) return '내보내기 버튼이 없습니다'
     await menu.click()
     await page.waitForTimeout(900)
@@ -364,10 +360,10 @@ async function runOne(page: Page, scenario: WorkScenario): Promise<Finding> {
     if (!(await composer.count())) return done('ok', '이 워크스페이스에서 꺼진 화면 — 건너뜀')
 
     if (scenario.evidenceId === 'attachment') {
-      const attach = page.getByRole('button', { name: '첨부' })
+      const attach = page.getByRole('button', { name: '도구', exact: true })
       if (await attach.isVisible().catch(() => false)) {
         const chooser = page.waitForEvent('filechooser', { timeout: 10_000 }).catch(() => null)
-        await attach.click()
+        await openTool(page, '파일·사진 첨부')
         const picked = await chooser
         if (picked) await picked.setFiles(evidenceFile())
         await page.waitForTimeout(2_500)
@@ -431,7 +427,7 @@ async function runOne(page: Page, scenario: WorkScenario): Promise<Finding> {
   }
 }
 
-test('업무 시나리오를 실제로 수행하고 결과물을 읽는다', async ({ page }) => {
+test('업무 시나리오를 실제로 수행하고 아티팩트를 읽는다', async ({ page }) => {
   const chosen = slice()
   test.setTimeout(chosen.length * 480_000 + 120_000)
   fs.mkdirSync(OUT, { recursive: true })
@@ -478,5 +474,5 @@ test('업무 시나리오를 실제로 수행하고 결과물을 읽는다', asy
   const broken = findings.filter((f) =>
     ['empty', 'no-artifact', 'follow-up', 'stalled', 'error'].includes(f.verdict),
   )
-  expect(broken.map((f) => `${f.id}: ${f.verdict} ${f.detail}`), '앱이 결과물을 내놓지 못한 시나리오').toEqual([])
+  expect(broken.map((f) => `${f.id}: ${f.verdict} ${f.detail}`), '앱이 아티팩트를 내놓지 못한 시나리오').toEqual([])
 })

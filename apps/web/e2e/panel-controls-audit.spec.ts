@@ -56,7 +56,13 @@ async function open(page: Page, kind: string, least = 1): Promise<boolean> {
 }
 
 async function ribbon(page: Page, name: string) {
-  const tab = page.getByRole('tab', { name, exact: true })
+  // 파일, 보기 and 슬라이드 쇼 became header buttons; the rest are editing tabs behind 「편집」.
+  if (['파일', '보기', '슬라이드 쇼'].includes(name)) return
+  const target = ({ 홈: '디자인', 레이아웃: '디자인', 편집: '글자' } as Record<string, string>)[name] ?? name
+  const toggle = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first()
+    .getByRole('button', { name: '편집', exact: true })
+  if ((await toggle.getAttribute('aria-pressed').catch(() => null)) === 'false') await toggle.click()
+  const tab = page.getByRole('tab', { name: target, exact: true })
   if (await tab.isVisible().catch(() => false)) await tab.click()
 }
 
@@ -80,16 +86,18 @@ function item(page: Page, label: string): Locator {
 test('보고서 패널이 약속한 컨트롤을 내놓는다', async ({ page }) => {
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
   const named: string[] = []
-  for (const tab of ['홈', '삽입', '레이아웃', '검토', '보기', '파일']) {
+  // Reading header first, then each editing tab.
+  named.push(...await controls(page.getByRole('dialog')))
+  await page.getByRole('dialog').locator('header').first().getByRole('button', { name: '편집', exact: true }).click()
+  for (const tab of ['글자', '삽입', '디자인', '검토']) {
     await ribbon(page, tab)
     named.push(...await controls(page.getByRole('dialog')))
   }
-  for (const label of ['내보내기', '페이지뷰', '검사 결과']) {
+  for (const label of ['내려받기', '페이지뷰', '검사 결과']) {
     expect(named, `${label} 가 사라졌다`).toContain(label)
   }
-  // 인쇄 lives inside 내보내기.
-  await ribbon(page, '파일')
-  await page.getByRole('button', { name: '내보내기', exact: true }).click()
+  // 인쇄 lives inside 내려받기.
+  await page.getByRole('button', { name: '내려받기', exact: true }).click()
   await expect(page.getByRole('menuitem', { name: '인쇄' })).toBeVisible()
 })
 
@@ -97,28 +105,26 @@ test('페이지뷰 토글이 두 방향 모두 간다', async ({ page }) => {
   // Its own document: a report with a `templateId` opens in the page view already.
   await openAndSeedReport(page, ['## 현황', '', '지금은 이렇다.'].join('\n'))
 
-  await ribbon(page, '홈')
-  const home = page.getByRole('toolbar', { name: '홈' })
+  const home = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first()
   const webView = home.getByRole('button', { name: '웹뷰' })
   const pageView = home.getByRole('button', { name: '페이지뷰' })
-  // Both buttons name their own mode and are always present; the active one
-  // carries the highlight, so direction is read off that, not presence.
+  // Both segments name their own mode and are always present; the active one
+  // is pressed, so direction is read off that, not presence.
   await pageView.click()
-  await expect(pageView).toHaveAttribute('data-variant', 'primary')
-  await expect(webView).toHaveAttribute('data-variant', 'secondary')
+  await expect(pageView).toHaveAttribute('aria-pressed', 'true')
+  await expect(webView).toHaveAttribute('aria-pressed', 'false')
   await webView.click()
-  await expect(webView).toHaveAttribute('data-variant', 'primary')
-  await expect(pageView).toHaveAttribute('data-variant', 'secondary')
+  await expect(webView).toHaveAttribute('aria-pressed', 'true')
+  await expect(pageView).toHaveAttribute('aria-pressed', 'false')
 })
 
 test('좁은 패널에서 목차 서랍이 열리고 닫힌다', async ({ page }) => {
   // The drawer button exists only when the panel is too narrow for a side TOC.
   await page.setViewportSize({ width: 900, height: 800 })
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
-  await ribbon(page, '보기')
-  const toc = page.getByRole('button', { name: '목차', exact: true })
-  test.skip((await toc.count()) === 0, '이 폭에서는 목차가 이미 펼쳐져 있습니다')
-  await toc.click()
+  // 목차 sits in the header's ⋯ menu.
+  await page.getByRole('dialog').locator('header').first().getByRole('button', { name: '더보기' }).click()
+  await page.getByRole('menuitem', { name: /목차/ }).click()
   const close = page.getByRole('button', { name: '목차 닫기' })
   await expect(close).toBeVisible({ timeout: 10_000 })
   await close.click()
@@ -129,7 +135,7 @@ test('보고서 내보내기의 모든 형식이 파일을 준다', async ({ pag
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
   await ribbon(page, '파일')
   for (const [label, extension] of [['PDF', 'pdf'], ['Word 문서', 'docx'], ['한글 문서', 'hwpx'], ['마크다운 원문', 'md']] as const) {
-    await page.getByRole('button', { name: '내보내기' }).click()
+    await page.getByRole('button', { name: '내려받기' }).click()
     await expect(item(page, label).first()).toBeVisible({ timeout: 10_000 })
     const download = page.waitForEvent('download', { timeout: 90_000 })
     await item(page, label).first().click()
@@ -152,12 +158,12 @@ test('검사 결과가 열리고 내용을 보여준다', async ({ page }) => {
 test('페이지뷰의 편집 토글이 편집기를 연다', async ({ page }) => {
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
   await ribbon(page, '홈')
-  const home = page.getByRole('toolbar', { name: '홈' })
+  const home = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first()
   const pageView = home.getByRole('button', { name: '페이지뷰' })
   test.skip((await pageView.count()) === 0, '이 보고서는 아직 쓰는 중입니다')
   await pageView.click()
-  const edit = home.getByRole('button', { name: '편집' })
-  if ((await edit.getAttribute('data-variant')) !== 'primary') await edit.click()
+  const edit = home.getByRole('button', { name: '편집', exact: true })
+  if ((await edit.getAttribute('aria-pressed')) !== 'true') await edit.click()
   await expect(page.locator('textarea, .ProseMirror').first()).toBeVisible({ timeout: 15_000 })
 })
 
@@ -166,12 +172,12 @@ test('페이지뷰의 편집 토글이 편집기를 연다', async ({ page }) =>
 test('슬라이드 패널이 약속한 컨트롤을 내놓는다', async ({ page }) => {
   test.skip(!(await open(page, 'deck')), '덱 아티팩트가 없습니다')
   const named: string[] = []
-  for (const tab of ['홈', '삽입', '검토', '보기', '슬라이드 쇼', '파일']) {
+  named.push(...await controls(page.getByRole('dialog')))
+  for (const tab of ['글자', '삽입', '디자인', '검토']) {
     await ribbon(page, tab)
     named.push(...await controls(page.getByRole('dialog')))
   }
-  // `장 목록` lives in the presentation header, not the panel toolbar.
-  for (const label of ['내보내기', '발표', '검사 결과']) {
+  for (const label of ['내려받기', '발표', '검사 결과']) {
     expect(named, `${label} 가 사라졌다`).toContain(label)
   }
 })
@@ -179,8 +185,7 @@ test('슬라이드 패널이 약속한 컨트롤을 내놓는다', async ({ page
 test('발표 모드가 켜지고, 넘어가고, 장 목록을 열고, 꺼진다', async ({ page }) => {
   // At least two slides, or the arrow keys have nowhere to go.
   test.skip(!(await open(page, 'deck', 2)), '두 장 이상인 덱이 없습니다')
-  await ribbon(page, '슬라이드 쇼')
-  await page.getByRole('toolbar', { name: '슬라이드 쇼' }).getByRole('button', { name: '발표', exact: true }).click()
+  await page.getByLabel('빠른 도구').getByRole('button', { name: '발표', exact: true }).click()
   const end = page.getByRole('button', { name: '발표 끝내기' })
   await expect(end).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('button', { name: '발표 시간 다시 시작' })).toBeVisible()
@@ -208,7 +213,7 @@ test('슬라이드 내보내기가 파일을 준다', async ({ page }) => {
   test.skip(!(await open(page, 'deck')), '덱 아티팩트가 없습니다')
   await ribbon(page, '파일')
   for (const [label, extension] of [['PowerPoint', 'pptx'], ['PDF (발표용)', 'pdf'], ['텍스트 (노트 포함)', 'md']] as const) {
-    await page.getByRole('button', { name: '내보내기' }).click()
+    await page.getByRole('button', { name: '내려받기' }).click()
     await expect(item(page, label).first()).toBeVisible({ timeout: 10_000 })
     const download = page.waitForEvent('download', { timeout: 90_000 })
     await item(page, label).first().click()

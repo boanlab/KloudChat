@@ -1,0 +1,25 @@
+key = "prepare"
+order = 1
+name = "쓰기 전에 준비하기"
+description = "빠진 정보를 먼저 묻고, 날짜·금액을 미리 계산해 둡니다."
+
+[[items]]
+id = "ask"
+kind = "check"
+ref = "gap-check"
+label = "빠진 정보 먼저 묻기"
+default = true
+
+[[items]]
+id = "dates"
+kind = "skill"
+ref = "date-calc"
+label = "날짜 미리 계산하기"
+default = true
+
+[[items]]
+id = "amounts"
+kind = "skill"
+ref = "quote-calc"
+label = "금액·합계 미리 계산하기"
+default = true

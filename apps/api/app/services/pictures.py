@@ -1,8 +1,4 @@
-"""Pictures inside documents: embedded `data:` URIs only, raster only.
-
-Documents are downloaded and shared by link, so a remote address would be a
-request made on the reader's behalf. SVG is excluded because it can carry script.
-"""
+"""Document pictures: embedded raster `data:` URIs only (no remote fetch, no SVG script)."""
 
 from __future__ import annotations
 
@@ -10,15 +6,15 @@ import base64
 import binascii
 import re
 
-#: MIME types a document may carry; also what the embedding endpoint accepts.
+#: embeddable MIME types (also the embedding endpoint's)
 EMBEDDABLE = ("image/png", "image/jpeg", "image/gif", "image/webp")
 
-#: Largest picture a turn will hand to a model.
+#: max picture size handed to a model
 MAX_PICTURE_BYTES = 4_000_000
 
 
 def can_be_seen(mime: str, size: int) -> bool:
-    """Whether a model could be handed this file as a picture."""
+    """Whether this file can go to a model as a picture."""
     return (mime or "").lower() in EMBEDDABLE and 0 < size <= MAX_PICTURE_BYTES
 
 
@@ -26,12 +22,11 @@ _DATA_URI = re.compile(r"^data:(image/(?:png|jpeg|jpg|gif|webp));base64,([A-Za-z
 
 
 def is_embedded(src: str) -> bool:
-    """Whether this address is a picture already inside the file."""
+    """Whether `src` is an embedded picture."""
     return bool(_DATA_URI.match((src or "").strip()))
 
 
 def data_uri(mime: str, encoded: str) -> str:
-    """The `<img src>` form."""
     return f"data:{mime};base64,{encoded}"
 
 
@@ -40,7 +35,7 @@ def encode(mime: str, data: bytes) -> str:
 
 
 def decode(src: str) -> tuple[str, bytes] | None:
-    """`(mime, bytes)` for an embedded picture, or `None` for anything else (never fetched)."""
+    """`(mime, bytes)` for an embedded picture, else `None` (never fetched)."""
     match = _DATA_URI.match((src or "").strip())
     if not match:
         return None

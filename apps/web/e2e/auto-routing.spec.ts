@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { CostRouting, RoutingMode } from '../src/types'
+import { setWebSearch } from './composer-tools'
+import { viewport } from './project'
 
 const now = '2026-08-18T00:00:00.000Z'
 const sessionId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -8,15 +10,14 @@ const screenshotDir = process.env.AUTO_ROUTING_SCREENSHOT_DIR
 async function captureAutoRouting(page: Page, filename: string) {
   if (!screenshotDir) return
   await page.screenshot({
-    path: `${screenshotDir}/${test.info().project.name}-${filename}`,
+    path: `${screenshotDir}/${viewport(test.info())}-${filename}`,
     animations: 'disabled',
   })
 }
 
 async function disableWebSearch(page: Page) {
-  await page.getByRole('button', { name: '웹 검색: 자동', exact: true }).click()
-  await page.getByRole('button', { name: '웹 검색: 켬', exact: true }).click()
-  await expect(page.getByRole('button', { name: '웹 검색: 끔', exact: true })).toBeVisible()
+  await setWebSearch(page, '끔')
+  await expect(page.getByText('웹 검색: 끔', { exact: true })).toBeVisible()
 }
 
 async function openRoutingDetails(page: Page) {
@@ -426,12 +427,13 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await mockApp(page, mode)
       await page.goto(`/s/${sessionId}`)
       await expect(page.getByRole('button', { name: laneName })).toBeVisible()
-      await expect(page.getByRole('button', { name: '웹 검색: 자동', exact: true })).toBeVisible()
+      // 자동 is the default and shows no chip.
+      await expect(page.getByText(/^웹 검색: /)).toHaveCount(0)
       await expect(page.getByText(bypassHint)).toHaveCount(0)
 
-      await page.getByRole('button', { name: '웹 검색: 자동', exact: true }).click()
+      await setWebSearch(page, '항상')
       await expect(page.getByText(bypassHint)).toBeVisible()
-      await page.getByRole('button', { name: '웹 검색: 켬', exact: true }).click()
+      await setWebSearch(page, '끔')
       await expect(page.getByText(bypassHint)).toHaveCount(0)
 
       if ((page.viewportSize()?.width ?? 1440) >= 640) {
@@ -441,10 +443,6 @@ for (const mode of ['auto', 'auto_quality'] as const) {
           buffer: Buffer.from('draft'),
         })
         await expect(page.getByText(bypassHint)).toBeVisible()
-        await page.getByRole('button', { name: '모델 비교' }).click()
-        await page.getByRole('menuitem').filter({ hasText: '비교 모드' }).click()
-        await expect(page.getByText('Auto 일시 중지 · 비교할 모델을 직접 실행')).toBeVisible()
-        await expect(page.getByText(bypassHint)).toHaveCount(0)
       }
     })
 
@@ -464,7 +462,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()
       await page.getByRole('button', { name: /Mock · Premium/ }).click()
       await captureAutoRouting(page, `${mode}-model-picker.png`)
-      await page.getByRole('button', { name: laneName }).click()
+      await page.getByRole('menuitemradio', { name: laneName }).click()
 
       await expect(page).toHaveURL(`/s/${sessionId}`)
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('전환 후에도 남을 초안')
@@ -580,7 +578,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
         buffer: Buffer.from('draft'),
       })
       await page.getByRole('button', { name: /Mock · Premium/ }).click()
-      await page.getByRole('button', { name: laneName }).click()
+      await page.getByRole('menuitemradio', { name: laneName }).click()
 
       await expect(page.getByText('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')).toBeVisible()
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('생성 실패 후 남을 초안')
@@ -623,7 +621,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
         buffer: Buffer.from('draft'),
       })
       await page.getByRole('button', { name: /Mock · Premium/ }).click()
-      await page.getByRole('button', { name: laneName }).click()
+      await page.getByRole('menuitemradio', { name: laneName }).click()
 
       await expect(page.getByText('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')).toBeVisible()
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('PATCH 실패 후 남을 초안')
@@ -636,7 +634,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await page.goto(`/s/${sessionId}`)
 
       await page.getByRole('button', { name: laneName }).click()
-      await page.getByRole('button', { name: /Mock · Economy B/ }).click()
+      await page.getByRole('menuitemradio', { name: /Mock · Economy B/ }).click()
 
       await expect.poll(() => state.patches.length).toBe(1)
       expect(state.patches[0]).toEqual({ model: 'external/economy-b', routingMode: 'manual' })
@@ -685,7 +683,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await page.goto(`/s/${sessionId}`)
       await page.getByLabel('프롬프트 입력').fill('설정 저장 뒤 전송')
       await page.getByRole('button', { name: /Mock · Premium/ }).click()
-      await page.getByRole('button', { name: laneName }).click()
+      await page.getByRole('menuitemradio', { name: laneName }).click()
       await expect.poll(() => state.patches.length).toBe(1)
 
       await page.getByLabel('프롬프트 입력').press('Enter')
@@ -699,23 +697,6 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await expect.poll(() => state.messageRequests.length).toBe(1)
       expect(state.patches[0]).toEqual({ routingMode: mode })
       expect(state.sessions[0].routingMode).toBe(mode)
-    })
-
-    test('비교 모드는 Auto를 바꾸지 않고 품질 모델 유지 이유를 표시한다', async ({ page }) => {
-      test.skip(
-        (page.viewportSize()?.width ?? 1440) < 640,
-        '모델 비교 전환 버튼은 데스크톱에서만 제공됨',
-      )
-      const state = await mockApp(page, mode)
-      await page.goto(`/s/${sessionId}`)
-
-      await page.getByRole('button', { name: '모델 비교' }).click()
-      await page.getByRole('menuitem').filter({ hasText: '비교 모드' }).click()
-
-      await expect(page.getByText('Auto 일시 중지 · 비교할 모델을 직접 실행')).toBeVisible()
-      await expect(page.getByRole('button', { name: laneName })).toHaveCount(0)
-      expect(state.patches).toHaveLength(0)
-      await captureAutoRouting(page, `${mode}-compare-paused.png`)
     })
   })
 }
@@ -737,7 +718,7 @@ test('품질 상향 응답은 절약 모드로 오표시하지 않고 모드를 
   await expect(routeBadge).toContainText('예상 39 크레딧 절약')
 
   await page.getByRole('button', { name: /Auto · 품질 우선/ }).click()
-  await page.getByRole('button', { name: /Mock · Economy B/ }).click()
+  await page.getByRole('menuitemradio', { name: /Mock · Economy B/ }).click()
   await page.reload()
   await openRoutingDetails(page)
   await expect(page.getByRole('button', { name: 'Mock · Economy B', exact: true })).toBeVisible()
@@ -839,7 +820,7 @@ test('절약에서 품질로 전환을 저장하지 못하면 이전 절약 모�
   await page.goto(`/s/${sessionId}`)
   await page.getByLabel('프롬프트 입력').fill('모드 변경 실패 후에도 남을 초안')
   await page.getByRole('button', { name: /Auto · 비용 절약/ }).click()
-  await page.getByRole('button', { name: /Auto · 품질 우선/ }).click()
+  await page.getByRole('menuitemradio', { name: /Auto · 품질 우선/ }).click()
 
   await expect(page.getByText('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')).toBeVisible()
   await expect(page.getByRole('button', { name: /Auto · 비용 절약/ })).toBeVisible()

@@ -6,12 +6,12 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useId,
   useState,
   type AnchorHTMLAttributes,
   type ButtonHTMLAttributes,
   type ComponentProps,
   type ReactNode,
-  type TextareaHTMLAttributes,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
@@ -45,7 +45,7 @@ export function Button({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }) {
   return (
     <button
-      // Read by the ribbon's CSS, which restyles every variant but primary.
+      // Ribbon CSS restyles every non-primary variant.
       data-variant={variant}
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap transition-colors',
@@ -85,29 +85,55 @@ export function ButtonLink({
 
 const fieldBase =
   'w-full rounded-control border border-line bg-panel px-3 py-2 text-base text-fg placeholder:text-faint ' +
-  'transition-colors focus:border-accent focus:outline-none'
+  // 1px border change too faint (WCAG 2.4.11): 2px halo too.
+  'transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 ' +
+  // Disabled must not look editable.
+  'disabled:cursor-not-allowed disabled:bg-elevated disabled:opacity-60 ' +
+  'aria-invalid:border-danger'
+
+/** Field → control context (hint, error, required, invalid); spares hand-wired `aria-describedby`. */
+interface FieldState {
+  describedBy?: string
+  invalid: boolean
+  required: boolean
+}
+const FieldCtx = createContext<FieldState | null>(null)
+
+/** The ARIA a control inside a `Field` carries; its own props win. */
+function useFieldAria(props: {
+  'aria-describedby'?: string
+  'aria-invalid'?: boolean | 'true' | 'false' | 'grammar' | 'spelling'
+  'aria-required'?: boolean | 'true' | 'false'
+}) {
+  const field = useContext(FieldCtx)
+  if (!field) return {}
+  return {
+    'aria-describedby': props['aria-describedby'] ?? field.describedBy,
+    'aria-invalid': props['aria-invalid'] ?? (field.invalid || undefined),
+    'aria-required': props['aria-required'] ?? (field.required || undefined),
+  }
+}
 
 // `ComponentProps` carries `ref`.
 export function Input({ className, ...props }: ComponentProps<'input'>) {
-  return <input className={cn(fieldBase, 'h-9', className)} {...props} />
+  const aria = useFieldAria(props)
+  return <input className={cn(fieldBase, 'h-9', className)} {...props} {...aria} />
 }
 
-export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn(fieldBase, 'resize-y leading-relaxed', className)} {...props} />
+export function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
+  const aria = useFieldAria(props)
+  return <textarea className={cn(fieldBase, 'resize-y leading-relaxed', className)} {...props} {...aria} />
 }
 
-/** Native `<select>` styled like `Input`; only the chrome is replaced. */
+/** Native `<select>` in `Input` chrome. */
 export function Select({ className, children, ...props }: ComponentProps<'select'>) {
+  const aria = useFieldAria(props)
   return (
     <div className="relative">
       <select
-        className={cn(
-          fieldBase,
-          'h-9 cursor-pointer appearance-none pr-9',
-          'disabled:cursor-not-allowed disabled:opacity-60',
-          className,
-        )}
+        className={cn(fieldBase, 'h-9 cursor-pointer appearance-none pr-9', className)}
         {...props}
+        {...aria}
       >
         {children}
       </select>
@@ -120,21 +146,64 @@ export function Select({ className, children, ...props }: ComponentProps<'select
   )
 }
 
+/** Labelled control; hint and error via `aria-describedby`, heard after the name. */
 export function Field({
   label,
   hint,
+  error,
   children,
+  required = false,
+  className,
 }: {
   label: string
-  hint?: string
+  hint?: ReactNode
+  /** Refusal reason: shown, announced, marks invalid. */
+  error?: string | null
   children: ReactNode
+  /** Required: red *, kept out of the accessible name. */
+  required?: boolean
+  className?: string
 }) {
+  const id = useId()
+  const hintId = hint ? `${id}-hint` : undefined
+  const errorId = error ? `${id}-error` : undefined
+  const describedBy = [errorId, hintId].filter(Boolean).join(' ') || undefined
   return (
-    <label className="block space-y-1.5">
-      <span className="text-base font-medium text-fg">{label}</span>
-      {children}
-      {hint && <span className="block text-sm text-faint">{hint}</span>}
-    </label>
+    <FieldCtx.Provider value={{ describedBy, invalid: Boolean(error), required }}>
+      <div className={cn('space-y-1.5', className)}>
+        <label className="block space-y-1.5">
+          <span className="block text-base font-medium text-fg">
+            {label}
+            {required && (
+              <span aria-hidden className="ml-0.5 text-danger">
+                *
+              </span>
+            )}
+          </span>
+          {children}
+        </label>
+        {error && (
+          <p id={errorId} role="alert" className="text-sm text-danger">
+            {error}
+          </p>
+        )}
+        {hint && (
+          <div id={hintId} className="text-sm text-faint">
+            {hint}
+          </div>
+        )}
+      </div>
+    </FieldCtx.Provider>
+  )
+}
+
+/** The note a form with required fields carries once, above its fields. */
+export function RequiredNote() {
+  const t = useT()
+  return (
+    <p className="text-sm text-muted">
+      <span aria-hidden className="text-danger">*</span> {t('표시는 꼭 채워야 하는 칸입니다.')}
+    </p>
   )
 }
 
@@ -143,11 +212,14 @@ export function Switch({
   onChange,
   label,
   disabled = false,
+  describedBy,
 }: {
   checked: boolean
   onChange: (v: boolean) => void
   label?: string
   disabled?: boolean
+  /** Id of the text that says what on and off mean. */
+  describedBy?: string
 }) {
   return (
     <button
@@ -155,10 +227,11 @@ export function Switch({
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      aria-describedby={describedBy}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        // The button is the 44x36 hit area; the 36x20 track is drawn in `::before`.
+        // 44x36 hit area; 36x20 track in `::before`.
         'relative h-9 w-11 shrink-0 border-0 bg-transparent p-0',
         'disabled:pointer-events-none disabled:opacity-45',
         "before:absolute before:top-1/2 before:left-1 before:h-5 before:w-9 before:-translate-y-1/2 before:rounded-full before:transition-colors before:content-['']",
@@ -167,7 +240,7 @@ export function Switch({
     >
       <span
         className={cn(
-          // Track 36, knob 16, inset 2: 16px of travel. Vertical position via `top`, not transform.
+          // Track 36, knob 16, inset 2 → 16px travel; `top`, not transform.
           'absolute top-2.5 left-1.5 h-4 w-4 rounded-full bg-white shadow-raised transition-transform',
           checked ? 'translate-x-4' : 'translate-x-0',
         )}
@@ -229,7 +302,6 @@ export function Card({
 
 /* ── Modal ──────────────────────────────────────────────────────────── */
 
-/** Focusable elements, for the focus trap. */
 const FOCUSABLE =
   'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), ' +
   'select:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -263,13 +335,18 @@ export function Modal({
     closeRef.current = onClose
   }, [onClose])
 
-  // Focus trap and restore.
   useEffect(() => {
     if (!open) return
     returnTo.current = document.activeElement as HTMLElement | null
     const panel = panelRef.current
+    // Initial focus: `autofocus` control, else first body/footer control, else close button.
+    const marked = panel?.querySelector<HTMLElement>('[data-autofocus], [autofocus]')
+    const inBody = panel?.querySelector<HTMLElement>(
+      ':scope > [data-modal-body] :is(input, textarea, select):not([disabled]):not([type="hidden"])',
+    )
     const first = panel?.querySelector<HTMLElement>(FOCUSABLE)
-    ;(first ?? panel)?.focus()
+    // A child's own `autoFocus` already ran during commit; keep it.
+    if (!panel?.contains(document.activeElement)) (marked ?? inBody ?? first ?? panel)?.focus()
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -296,10 +373,8 @@ export function Modal({
 
   if (!open) return null
   return (
-    /* `my-auto` on the panel, not `items-center`: a centred flex item taller
-       than the scroll container gets its top clipped. */
-    // Above every popover (dropdown menus are z-[100]): a menu left open under a
-    // dialog must not take the dialog's clicks.
+    /* `my-auto`, not `items-center`: a centred item taller than the scroller loses its top. */
+    // Above dropdowns (z-[100]): a stray open menu must not take dialog clicks.
     <div className="fixed inset-0 z-[150] flex justify-center overflow-y-auto p-4 max-sm:p-2">
       <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px]" onClick={onClose} />
       <div
@@ -317,13 +392,17 @@ export function Modal({
         {!bare && <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 max-sm:px-3 max-sm:py-3">
           <div className="min-w-0 flex-1">
             <h2 className="truncate whitespace-nowrap text-md font-semibold" title={title}>{title}</h2>
-            {description && <p className="mt-0.5 truncate whitespace-nowrap text-base text-muted" title={description}>{description}</p>}
+            {description && <p className="mt-0.5 line-clamp-2 text-base text-muted" title={description}>{description}</p>}
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('닫기')}>
             <X size={16} />
           </Button>
         </header>}
-        {children && <div className={bare ? 'min-w-0' : 'min-w-0 space-y-4 px-5 py-4 max-sm:px-3'}>{children}</div>}
+        {children && (
+          <div data-modal-body className={bare ? 'min-w-0' : 'min-w-0 space-y-4 px-5 py-4 max-sm:px-3'}>
+            {children}
+          </div>
+        )}
         {footer && (
           <footer className="flex flex-wrap justify-end gap-2 border-t border-line px-5 py-3.5 max-sm:px-3 max-sm:py-3">
             {footer}
@@ -390,13 +469,37 @@ export function Dropdown({
   children,
   align = 'left',
   className,
+  open: controlledOpen,
+  onOpenChange,
+  sheet = false,
+  label,
 }: {
   trigger: (props: { open: boolean }) => ReactNode
   children: ReactNode
   align?: 'left' | 'right'
   className?: string
+  /** Controlled open state; self-closing still reported via `onOpenChange`. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Opens as a sheet along the bottom edge instead of beside the trigger (phones). */
+  sheet?: boolean
+  /** Accessible name of the menu. */
+  label?: string
 }) {
-  const [open, setOpen] = useState(false)
+  const [ownOpen, setOwnOpen] = useState(false)
+  const open = controlledOpen ?? ownOpen
+  const openChange = useRef(onOpenChange)
+  const openNow = useRef(open)
+  useLayoutEffect(() => {
+    openChange.current = onOpenChange
+    openNow.current = open
+  })
+  const setOpen = useCallback((next: boolean | ((was: boolean) => boolean)) => {
+    const value = typeof next === 'function' ? next(openNow.current) : next
+    openNow.current = value
+    setOwnOpen(value)
+    openChange.current?.(value)
+  }, [])
   // Opening direction and height cap, measured against the viewport.
   const [placement, setPlacement] = useState<{ up: boolean; maxHeight: number; left: number; top: number; bottom: number }>({
     up: false,
@@ -432,8 +535,7 @@ export function Dropdown({
     if (open) measure()
   }, [open, measure])
 
-  // Choosing an item unmounts the menu; unless the item moved focus somewhere of
-  // its own (a dialog, a pane), focus comes back to the trigger as Escape does.
+  // Focus back to the trigger after a choice, unless the item moved it.
   const wasOpen = useRef(false)
   useEffect(() => {
     const was = wasOpen.current
@@ -450,8 +552,7 @@ export function Dropdown({
         trigger.focus()
         return
       }
-      // The choice is being saved and the trigger is disabled meanwhile: focus it
-      // as soon as it is enabled again, within a bounded wait.
+      // Trigger disabled while saving: refocus once enabled, bounded wait.
       observer = new MutationObserver(() => {
         if (trigger.disabled) return
         observer?.disconnect()
@@ -481,7 +582,6 @@ export function Dropdown({
     return () => cancelAnimationFrame(frame)
   }, [open])
 
-  // Outside-click close and arrow-key navigation.
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
@@ -526,7 +626,7 @@ export function Dropdown({
       document.removeEventListener('keydown', onKey)
       window.removeEventListener('resize', measure)
     }
-  }, [open, measure])
+  }, [open, measure, setOpen])
 
   return (
     <div ref={ref} className={cn('relative shrink-0', open && 'z-50')}>
@@ -537,18 +637,28 @@ export function Dropdown({
       </div>
       {open && typeof document !== 'undefined' && createPortal(
         <MenuCtx.Provider value={{ close: () => setOpen(false) }}>
+          {sheet && <div className="fixed inset-0 z-[99] bg-black/30" aria-hidden />}
           <div
             ref={menuRef}
             role="menu"
-            style={{
-              position: 'fixed',
-              maxHeight: placement.maxHeight || undefined,
-              left: placement.left,
-              ...(placement.up ? { bottom: placement.bottom } : { top: placement.top }),
-            }}
+            aria-label={label}
+            style={
+              sheet
+                ? undefined
+                : {
+                    position: 'fixed',
+                    maxHeight: placement.maxHeight || undefined,
+                    left: placement.left,
+                    ...(placement.up ? { bottom: placement.bottom } : { top: placement.top }),
+                  }
+            }
             className={cn(
-              'animate-fade-up z-[100] min-w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-card border border-line bg-panel p-1 shadow-overlay',
-              className,
+              sheet
+                ? 'animate-fade-up fixed inset-x-0 bottom-0 z-[100] max-h-[80dvh] overflow-y-auto rounded-t-panel border-t border-line bg-panel p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-overlay'
+                : cn(
+                    'animate-fade-up z-[100] min-w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-card border border-line bg-panel p-1 shadow-overlay',
+                    className,
+                  ),
             )}
           >
             {children}
@@ -570,6 +680,7 @@ export function MenuItem({
   checked,
   keepOpen,
   title,
+  label,
 }: {
   children: ReactNode
   onClick?: () => void
@@ -582,12 +693,15 @@ export function MenuItem({
   /** Leaves the menu open after the click (multi-select). */
   keepOpen?: boolean
   title?: string
+  /** Accessible name when the visible row says more than the name (a badge, a hint). */
+  label?: string
 }) {
   const { close } = useContext(MenuCtx)
   return (
     <button
       role={checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
       aria-checked={checked}
+      aria-label={label}
       disabled={disabled}
       title={title}
       onClick={() => {
@@ -671,6 +785,45 @@ export function LoadingState({ label }: { label?: string }) {
   )
 }
 
+/** `useResource` loading/failed states: slow-load spinner or 다시 시도; nothing once loaded. */
+export function ResourceStatus({
+  resource,
+  label,
+  failed,
+  compact = false,
+}: {
+  resource: { status: 'loading' | 'error' | 'ok'; slow: boolean; reload: () => void }
+  /** While loading, e.g. 「모델 목록을 불러오는 중…」. */
+  label?: string
+  /** On failure; 「불러오지 못했습니다.」 when not given. */
+  failed?: string
+  /** One line, for a single field rather than a whole section. */
+  compact?: boolean
+}) {
+  const t = useT()
+  if (resource.status === 'ok') return null
+  const box = compact
+    ? 'flex flex-wrap items-center gap-2 py-1.5 text-sm'
+    : 'flex flex-wrap items-center justify-center gap-2 px-6 py-12 text-base'
+  if (resource.status === 'error') {
+    return (
+      <div role="alert" className={cn(box, 'text-danger')}>
+        <span>{failed ?? t('불러오지 못했습니다.')}</span>
+        <Button type="button" size="sm" onClick={resource.reload}>
+          {t('다시 시도')}
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <div role="status" className={cn(box, 'text-faint')}>
+      <span className="size-3 animate-spin rounded-full border-2 border-line-strong border-t-transparent" aria-hidden />
+      <span>{label ?? t('불러오는 중…')}</span>
+      {resource.slow && <span>{t('평소보다 오래 걸립니다.')}</span>}
+    </div>
+  )
+}
+
 /** Stale-list notice with a retry. */
 export function ReloadNotice({ onRetry }: { onRetry: () => void }) {
   const t = useT()
@@ -693,16 +846,19 @@ export function PageHeader({
   title,
   description,
   action,
+  embedded = false,
 }: {
   title: string
   description?: string
   action?: ReactNode
+  /** Inside another screen that owns the heading: description and action only. */
+  embedded?: boolean
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 pb-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description && <p className="mt-1 text-base text-muted">{description}</p>}
+    <div className={cn('flex flex-wrap justify-between gap-4', embedded ? 'items-center pb-4' : 'items-end pb-6')}>
+      <div className="min-w-0 flex-1">
+        {!embedded && <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>}
+        {description && <p className={cn('text-base text-muted', !embedded && 'mt-1')}>{description}</p>}
       </div>
       {action}
     </div>
@@ -727,7 +883,8 @@ export function Tabs<T extends string>({
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
           className={cn(
-            '-mb-px border-b-2 px-3 py-2 text-base font-medium transition-colors',
+            // One line per tab, even at phone width.
+            '-mb-px border-b-2 px-3 py-2 text-base font-medium whitespace-nowrap transition-colors max-sm:px-2.5',
             value === t.id
               ? 'border-accent text-fg'
               : 'border-transparent text-muted hover:text-fg',

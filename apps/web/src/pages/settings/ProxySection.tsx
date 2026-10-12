@@ -5,10 +5,7 @@ import { ApiError, adminApi, modelsApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
-/**
- * LiteLLM proxy settings. The master key is never shown again: blank keeps the
- * stored value. A cleared base URL falls back to the environment.
- */
+/** Master key never shown again (blank keeps it); cleared base URL falls back to the environment. */
 export function ProxySection({
   settings,
   reload,
@@ -24,7 +21,7 @@ export function ProxySection({
   const [error, setError] = useState<string | null>(null)
   const [probe, setProbe] = useState<{ ok: boolean; detail: string } | null>(null)
   const [refreshing, setRefreshing] = useState(false)
-  // Typing wins over a fetch that lands late.
+  // Typing wins over a late fetch.
   const dirty = useRef(false)
 
   useEffect(() => {
@@ -43,7 +40,7 @@ export function ProxySection({
   return (
     <div className="space-y-5">
       <Card className="flex flex-wrap items-center gap-3 p-4">
-        {/* Null settings means not fetched yet, not disconnected. */}
+        {/* Null: not fetched yet, not disconnected. */}
         <Server
           size={18}
           className={!settings ? 'text-muted' : connected ? 'text-success' : 'text-danger'}
@@ -231,7 +228,7 @@ export function ProxySection({
             try {
               await adminApi.updateSettings({
                 baseUrl,
-                // Omitted, not empty: an empty string clears the key.
+                // Omitted, not empty: empty clears the key.
                 ...(masterKey ? { masterKey } : {}),
               })
               await resetForm()
@@ -251,7 +248,7 @@ export function ProxySection({
           onClick={async () => {
             setBusy(true)
             try {
-              // Empty base URL clears the override; the key is untouched.
+              // Empty base URL clears the override; key untouched.
               await adminApi.updateSettings({ baseUrl: '' })
               await resetForm()
               await loadModels()

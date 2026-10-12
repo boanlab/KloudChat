@@ -2,7 +2,7 @@
  *  nodes, no phantom edits, recovery from pagination failure, 서식 and page settings persisted. */
 
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, openAndSeedReport, signIn } from './helpers'
+import { E2E_ADMIN, openAndSeedReport, signIn, ribbonTab } from './helpers'
 
 async function openPageView(page: import('@playwright/test').Page) {
   await signIn(page)
@@ -17,8 +17,7 @@ async function openPageView(page: import('@playwright/test').Page) {
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 30_000 })
 
   // Idempotent: a report with a `templateId` may already be showing the page view.
-  await page.getByRole('tab', { name: '홈', exact: true }).click()
-  const home = page.getByRole('toolbar', { name: '홈' })
+  const home = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first()
   await home.getByRole('button', { name: '페이지뷰' }).click()
   await expect(page.getByLabel('실제 페이지 미리보기')).toBeVisible({ timeout: 30_000 })
   await expect(page.locator('.pagedjs_page').first()).toBeVisible({ timeout: 30_000 })
@@ -34,8 +33,7 @@ async function failFirstPagination(page: import('@playwright/test').Page) {
 test('페이지 조판 실패에서 재시도해 문서를 복구한다', async ({ page }) => {
   await failFirstPagination(page)
   await openAndSeedReport(page, '조판 실패 뒤에도 남아야 할 본문')
-  await page.getByRole('tab', { name: '홈', exact: true }).click()
-  await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' }).click()
+  await page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '페이지뷰' }).click()
   const failure = page.getByRole('alert')
   await expect(failure).toContainText('페이지뷰를 만들지 못했습니다')
   await expect(failure).toContainText('문서 내용은 그대로 보존되어 있습니다')
@@ -51,8 +49,7 @@ test('페이지 조판 실패에서 재시도해 문서를 복구한다', async 
 test('페이지 조판 실패에서 내용 편집으로 빠져나간다', async ({ page }) => {
   await failFirstPagination(page)
   await openAndSeedReport(page, '편집 화면에서 복구할 본문')
-  await page.getByRole('tab', { name: '홈', exact: true }).click()
-  await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' }).click()
+  await page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '페이지뷰' }).click()
   const failure = page.getByRole('alert')
   await failure.getByRole('button', { name: '내용 편집' }).click()
   await expect(page.locator('.ProseMirror').first()).toContainText('편집 화면에서 복구할 본문')
@@ -61,12 +58,11 @@ test('페이지 조판 실패에서 내용 편집으로 빠져나간다', async 
 test('페이지 조판 실패에서 웹뷰로 돌아간다', async ({ page }) => {
   await failFirstPagination(page)
   await openAndSeedReport(page, '웹뷰에서 복구할 본문')
-  await page.getByRole('tab', { name: '홈', exact: true }).click()
-  await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' }).click()
+  await page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '페이지뷰' }).click()
   const failure = page.getByRole('alert')
   await failure.getByRole('button', { name: '웹뷰로 보기' }).click()
   await expect(page.getByText('웹뷰에서 복구할 본문', { exact: false }).first()).toBeVisible()
-  await expect(page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' })).toBeVisible()
+  await expect(page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '페이지뷰' })).toBeVisible()
   await expect(page.getByLabel('실제 페이지 미리보기')).toHaveCount(0)
 })
 
@@ -79,7 +75,7 @@ test('종이는 패널이 좁아도 A4 폭이다', async ({ page }) => {
 
 test('쪽 나눔을 흉내 내려고 문서를 건드리지 않는다', async ({ page }) => {
   await openPageView(page)
-  await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '편집' }).click()
+  await page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '편집', exact: true }).click()
   await expect(page.locator('.ProseMirror').first()).toBeVisible()
 
   // Nothing writes layout onto ProseMirror's own nodes.
@@ -121,8 +117,7 @@ test('긴 단락과 표와 목록을 여러 페이지로 나눈다', async ({ pa
   const list = Array.from({ length: 24 }, (_, i) => `${i + 1}. 이어지는 목록 ${i + 1}`).join('\n')
   await openAndSeedReport(page, `${paragraphs}\n\n${table}\n\n${list}`)
 
-  await page.getByRole('tab', { name: '홈', exact: true }).click()
-  const toPageView = page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' })
+  const toPageView = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '페이지뷰' })
   if (await toPageView.isVisible().catch(() => false)) await toPageView.click()
   await expect(page.locator('.pagedjs_page').nth(1)).toBeVisible({ timeout: 30_000 })
   expect(await page.locator('.pagedjs_page').count()).toBeGreaterThan(1)
@@ -158,8 +153,7 @@ test('서식의 색이 실제로 적용된다', async ({ page }) => {
 test('서식을 바꾸면 문서가 그 양식으로 나간다', async ({ page }) => {
   // The 서식 determines the exported file, so the choice is stored on the document.
   const seeded = await openAndSeedReport(page, ['## 현황', '', '지금은 이렇다.'].join('\n'))
-  await page.getByRole('tab', { name: '홈', exact: true }).click()
-  await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' }).click()
+  await page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '페이지뷰' }).click()
   await expect(page.locator('.page').first()).toBeVisible({ timeout: 30_000 })
 
   await page.getByRole('button', { name: '보고 문서', exact: true }).click()
@@ -191,8 +185,8 @@ test('서식을 바꾸면 문서가 그 양식으로 나간다', async ({ page }
 
 test('페이지 설정을 저장하고 실제 페이지와 DOCX·PDF·HWPX에 적용한다', async ({ page }) => {
   await openPageView(page)
-  await page.getByRole('tab', { name: '레이아웃', exact: true }).click()
-  await page.getByRole('toolbar', { name: '레이아웃' }).getByRole('button', { name: '페이지 설정' }).click()
+  await ribbonTab(page, '레이아웃')
+  await page.getByRole('toolbar', { name: '디자인' }).getByRole('button', { name: '페이지 설정' }).click()
   await page.getByRole('textbox', { name: '머리말', exact: true }).fill('대외비 검토본')
   await page.getByRole('textbox', { name: '꼬리말', exact: true }).fill('전략기획실')
   await page.getByLabel('쪽 번호').selectOption('page')

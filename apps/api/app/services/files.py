@@ -1,8 +1,4 @@
-"""Upload storage (local disk, per-user directory) and text extraction.
-
-Every format is read with the stdlib or a small pure-Python reader; scans
-needing OCR are reported as unreadable.
-"""
+"""Upload storage (per-user dirs) and stdlib/pure-Python text extraction."""
 
 from __future__ import annotations
 
@@ -24,7 +20,7 @@ from app.services import pictures, transcribe
 
 log = logging.getLogger(__name__)
 
-#: Rough characters per token for mixed Korean/English; used for warnings only.
+#: chars per token estimate (warnings only)
 _CHARS_PER_TOKEN = 3.0
 
 
@@ -35,9 +31,9 @@ def storage_root() -> Path:
 
 
 def remove_user_files(user_id: str) -> int:
-    """Deletes one account's whole directory. Returns the bytes it held."""
+    """Delete one account's directory; returns bytes freed."""
     root = storage_root()
-    # `user_id` came off a URL: only a directory directly under the root qualifies.
+    # user_id from URL: only direct children of the root
     directory = os.path.normpath(os.path.join(root, user_id))
     if os.path.dirname(directory) != os.path.normpath(root) or not os.path.isdir(directory):
         return 0
@@ -47,14 +43,14 @@ def remove_user_files(user_id: str) -> int:
 
 
 def safe_name(name: str) -> str:
-    """Keeps the original name readable while making it useless as a path."""
+    """Readable original name, useless as a path."""
     cleaned = unicodedata.normalize("NFC", name).replace("\x00", "")
     cleaned = re.sub(r"[/\\]", "_", cleaned).strip() or "file"
     return cleaned[:200]
 
 
 def write_blob(user_id: str, file_id: str, name: str, data: bytes) -> str:
-    """Writes the blob and returns its storage key (`<user_id>/<file_id>_<name>`)."""
+    """Write the blob; returns <user_id>/<file_id>_<name>."""
     directory = storage_root() / user_id
     directory.mkdir(parents=True, exist_ok=True)
     key = f"{user_id}/{file_id}_{safe_name(name)}"
@@ -67,12 +63,12 @@ def read_blob(key: str) -> bytes:
 
 
 def blob_size(key: str) -> int:
-    """Size on disk, independent of the upload's recorded metadata."""
+    """Size on disk."""
     return (storage_root() / key).stat().st_size
 
 
 def copy_blob(user_id: str, file_id: str, name: str, source_key: str) -> str:
-    """Copy a stored blob to an independent key without re-reading it into memory."""
+    """Copy a blob to a new key without loading it."""
     root = storage_root()
     key = f"{user_id}/{file_id}_{safe_name(name)}"
     destination = root / key
@@ -92,18 +88,17 @@ def delete_blob(key: str) -> None:
         log.warning("could not remove blob %s: %s", key, exc)
 
 
-#: What a browser may render in place: raster pictures, PDF and media. Never SVG
-#: or HTML, which can carry script and would run on the API's own origin.
+#: inline-renderable types; never SVG/HTML (script on the API origin)
 INLINE_TYPES = frozenset(
     {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "application/pdf"}
 )
 
-#: Types a browser would execute or style rather than display as data.
+#: types a browser would execute or style
 _ACTIVE_TYPES = frozenset(
     {"text/html", "application/xhtml+xml", "image/svg+xml", "text/xml", "application/xml"}
 )
 
-#: Zip and OLE containers are told apart by the name; the bytes alone cannot.
+#: zip/OLE containers: told apart by name only
 _ZIP_SUFFIXES = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -117,7 +112,7 @@ _OLE_SUFFIXES = {
     ".ppt": "application/vnd.ms-powerpoint",
 }
 
-#: Leading bytes that settle the type on their own.
+#: leading bytes that settle the type
 _SIGNATURES: tuple[tuple[bytes, str], ...] = (
     (b"\x89PNG\r\n\x1a\n", "image/png"),
     (b"\xff\xd8\xff", "image/jpeg"),
@@ -138,11 +133,7 @@ _MARKUP_HEAD = re.compile(rb"<!doctype\s+html|<html[\s>]|<head[\s>]|<body[\s>]|<
 
 
 def sniff(name: str, data: bytes) -> str | None:
-    """The MIME type the first bytes say, or None when they say nothing.
-
-    The browser's `Content-Type` is whatever the client chose to send; what is stored and
-    served is decided here so a script dressed as a picture is never rendered as one.
-    """
+    """MIME from magic bytes, or None; client Content-Type never trusted."""
     head = data[:2048]
     for magic, mime in _SIGNATURES:
         if head.startswith(magic):
@@ -174,16 +165,11 @@ def sniff(name: str, data: bytes) -> str | None:
 
 
 def detected_mime(name: str, declared: str | None, data: bytes) -> str:
-    """The type to record for an upload: what the bytes say, else the declared type when it
-    is harmless.
-
-    A declared picture type the bytes do not confirm becomes `application/octet-stream`, so
-    nothing downstream (the model's picture hand-off, inline serving) trusts it.
-    """
+    """Recorded type: sniffed, else declared if harmless; unconfirmed images → octet-stream."""
     declared = (declared or "").split(";")[0].strip().lower()
     found = sniff(name, data)
     if found:
-        # An `.m4a`/`.webm` audio file shares its container with video; the client knows.
+        # m4a/webm audio shares a video container
         if found.startswith("video/") and declared.startswith("audio/"):
             return "audio/" + found.split("/", 1)[1]
         return found
@@ -193,12 +179,7 @@ def detected_mime(name: str, declared: str | None, data: bytes) -> str:
 
 
 def served_as(name: str, mime: str, data: bytes) -> tuple[str, bool]:
-    """`(media type, inline)` for a download: inline only when the bytes prove a type a browser
-    renders as data.
-
-    Anything else goes as an attachment; a type a browser would execute (HTML, SVG) is
-    served as an opaque stream.
-    """
+    """(media type, inline): inline only for sniffed data types; executables opaque."""
     found = sniff(name, data)
     if found and (found in INLINE_TYPES or found.startswith(("audio/", "video/"))):
         return found, True
@@ -209,8 +190,8 @@ def served_as(name: str, mime: str, data: bytes) -> tuple[str, bool]:
 
 
 def download_headers(media: str, inline: bool, filename: str) -> dict[str, str]:
-    """Headers for a stored file's bytes: disposition, no type sniffing, no script or origin."""
-    # RFC 5987: non-ASCII filenames are percent-encoded in this header.
+    """Stored-file headers: disposition, nosniff, no script/origin."""
+    # RFC 5987 filename encoding
     headers = {
         "Content-Disposition": (
             f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(filename)}"
@@ -218,8 +199,7 @@ def download_headers(media: str, inline: bool, filename: str) -> dict[str, str]:
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",
     }
-    # `sandbox` denies a rendered response script, forms and its origin. A PDF is exempt:
-    # browsers show PDFs through a plugin that a sandboxed document may not load.
+    # sandbox CSP denies script/forms/origin; PDF exempt (plugin blocked in sandbox)
     if media != "application/pdf":
         headers["Content-Security-Policy"] = "sandbox"
     return headers
@@ -227,9 +207,6 @@ def download_headers(media: str, inline: bool, filename: str) -> dict[str, str]:
 
 def estimate_tokens(text: str) -> int:
     return int(len(text) / _CHARS_PER_TOKEN)
-
-
-# ── extraction ─────────────────────────────────────────────────────────
 
 
 def _from_pdf(data: bytes) -> str:
@@ -249,7 +226,7 @@ def _from_pdf(data: bytes) -> str:
         try:
             body = (page.extract_text() or "").strip()
             if body:
-                # Page markers survive chunking and let citations name the page.
+                # page markers survive chunking for citations
                 pages.append(f"[페이지 {i + 1}]\n{body}")
         except Exception as exc:  # noqa: BLE001 — one bad page must not lose the rest
             log.info("pdf page %d unreadable: %s", i, exc)
@@ -259,15 +236,14 @@ def _from_pdf(data: bytes) -> str:
     return text
 
 
-#: An Office or HWPX archive may unpack to this much, over this many entries; more
-#: is a zip bomb, not a document.
+#: Office/HWPX unpack limits (zip bomb)
 _MAX_UNPACKED = 64 * 1024 * 1024
 _MAX_ENTRIES = 4_000
 _MAX_MEMBER = 32 * 1024 * 1024
 
 
 def _open_zip(data: bytes) -> zipfile.ZipFile:
-    """The archive, after its declared sizes were checked against the limits above."""
+    """Archive after declared-size checks."""
     archive = zipfile.ZipFile(io.BytesIO(data))
     infos = archive.infolist()
     if len(infos) > _MAX_ENTRIES or sum(info.file_size for info in infos) > _MAX_UNPACKED:
@@ -277,7 +253,7 @@ def _open_zip(data: bytes) -> zipfile.ZipFile:
 
 
 def _member(archive: zipfile.ZipFile, name: str) -> str:
-    """One member's text, read no further than `_MAX_MEMBER` whatever its header says."""
+    """One member's text, capped at _MAX_MEMBER."""
     with archive.open(name) as handle:
         raw = handle.read(_MAX_MEMBER + 1)
     if len(raw) > _MAX_MEMBER:
@@ -285,77 +261,217 @@ def _member(archive: zipfile.ZipFile, name: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
+def _local(tag: str) -> str:
+    """Tag without namespace."""
+    return tag.rsplit("}", 1)[-1]
+
+
+def _xml_root(archive: zipfile.ZipFile, name: str):
+    """Parsed member, or None if not well-formed."""
+    import xml.etree.ElementTree as ET
+
+    try:
+        return ET.fromstring(_member(archive, name))
+    except ET.ParseError:
+        return None
+
+
+def _part_targets(archive: zipfile.ZipFile, owner: str) -> dict[str, str]:
+    """Relationship id → archive path for one part."""
+    folder, _, base = owner.rpartition("/")
+    rels = f"{folder}/_rels/{base}.rels"
+    if rels not in archive.namelist():
+        return {}
+    root = _xml_root(archive, rels)
+    if root is None:
+        return {}
+    out: dict[str, str] = {}
+    for rel in root:
+        rid, target = rel.get("Id"), rel.get("Target") or ""
+        if not rid or rel.get("TargetMode") == "External":
+            continue
+        if target.startswith("/"):
+            path = target.lstrip("/")
+        else:
+            parts = folder.split("/") if folder else []
+            for piece in target.split("/"):
+                if piece == "..":
+                    if parts:
+                        parts.pop()
+                elif piece and piece != ".":
+                    parts.append(piece)
+            path = "/".join(parts)
+        out[rid] = path
+    return out
+
+
+def _numbered(names: list[str], pattern: str) -> list[str]:
+    """Members matching pattern, numeric order."""
+    found = [(int(m.group(1)), n) for n in names if (m := re.fullmatch(pattern, n))]
+    return [n for _, n in sorted(found)]
+
+
+def _ordered_parts(archive: zipfile.ZipFile, owner: str, list_tag: str, pattern: str):
+    """(name, path) of parts owner lists, falling back to numeric order."""
+    names = archive.namelist()
+    root = _xml_root(archive, owner) if owner in names else None
+    targets = _part_targets(archive, owner)
+    out: list[tuple[str, str]] = []
+    if root is not None:
+        for el in root.iter():
+            if _local(el.tag) != list_tag:
+                continue
+            rid = next((v for k, v in el.attrib.items() if _local(k) == "id" and "}" in k), None)
+            path = targets.get(rid or "")
+            if path and path in names:
+                out.append((el.get("name") or "", path))
+    return out or [("", n) for n in _numbered(names, pattern)]
+
+
+def _run_text(el) -> str:
+    """Text of a WordprocessingML/DrawingML subtree."""
+    parts: list[str] = []
+    for node in el.iter():
+        tag = _local(node.tag)
+        if tag == "t" and node.text:
+            parts.append(node.text)
+        elif tag == "tab":
+            parts.append("\t")
+        elif tag in {"br", "cr"}:
+            parts.append("\n")
+    return "".join(parts)
+
+
 def _from_docx(data: bytes) -> str:
-    """Paragraph text from word/document.xml."""
+    """Paragraphs from word/document.xml; table rows tab-separated."""
     with _open_zip(data) as archive:
         try:
-            xml = _member(archive, "word/document.xml")
+            root = _xml_root(archive, "word/document.xml")
         except KeyError:
             raise RuntimeError("docx 구조를 읽지 못했습니다.") from None
-    # Paragraph boundaries first, then drop every remaining tag.
-    xml = re.sub(r"</w:p>", "\n", xml)
-    xml = re.sub(r"<w:tab[^>]*/>", "\t", xml)
-    text = re.sub(r"<[^>]+>", "", xml)
+    if root is None:
+        raise RuntimeError("docx 구조를 읽지 못했습니다.")
+    lines: list[str] = []
+
+    def walk(el) -> None:
+        for child in el:
+            tag = _local(child.tag)
+            if tag == "p":
+                lines.append(_run_text(child))
+            elif tag == "tbl":
+                for row in (r for r in child.iter() if _local(r.tag) == "tr"):
+                    cells = [c for c in row if _local(c.tag) == "tc"]
+                    lines.append(
+                        "\t".join(
+                            " ".join(_run_text(p) for p in c.iter() if _local(p.tag) == "p").strip()
+                            for c in cells
+                        )
+                    )
+            else:
+                walk(child)
+
+    walk(root)
+    text = "\n".join(lines)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def _from_pptx(data: bytes) -> str:
+    """Slide text in order."""
     with _open_zip(data) as archive:
-        slides = sorted(
-            n for n in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)
+        slides = _ordered_parts(
+            archive, "ppt/presentation.xml", "sldId", r"ppt/slides/slide(\d+)\.xml"
         )
         out = []
-        for i, name in enumerate(slides, 1):
-            xml = _member(archive, name)
-            xml = re.sub(r"</a:p>", "\n", xml)
-            body = re.sub(r"<[^>]+>", "", xml).strip()
+        for i, (_, name) in enumerate(slides, 1):
+            root = _xml_root(archive, name)
+            if root is None:
+                continue
+            paragraphs = [_run_text(p) for p in root.iter() if _local(p.tag) == "p"]
+            body = "\n".join(p for p in paragraphs if p.strip()).strip()
             if body:
                 out.append(f"[슬라이드 {i}]\n{body}")
     return "\n\n".join(out).strip()
 
 
+def _column_index(ref: str) -> int | None:
+    """0-based column of a cell ref like C7, or None."""
+    m = re.match(r"([A-Z]{1,3})\d", ref or "")
+    if not m:
+        return None
+    n = 0
+    for ch in m.group(1):
+        n = n * 26 + (ord(ch) - 64)
+    return n - 1
+
+
+def _string_item(si) -> str:
+    """Shared/inline string text, phonetic guides omitted."""
+    parts: list[str] = []
+
+    def walk(el) -> None:
+        for child in el:
+            tag = _local(child.tag)
+            if tag == "rPh":
+                continue
+            if tag == "t":
+                parts.append(child.text or "")
+            else:
+                walk(child)
+
+    walk(si)
+    return "".join(parts)
+
+
 def _from_xlsx(data: bytes) -> str:
-    """Sheet values via the shared-strings table. Formulas are not evaluated."""
+    """Sheet values by sheet, workbook order; formulas unevaluated, empty cells keep columns."""
     with _open_zip(data) as archive:
         shared: list[str] = []
         if "xl/sharedStrings.xml" in archive.namelist():
-            raw = _member(archive, "xl/sharedStrings.xml")
-            shared = [re.sub(r"<[^>]+>", "", m) for m in re.findall(r"<si>(.*?)</si>", raw, re.S)]
+            root = _xml_root(archive, "xl/sharedStrings.xml")
+            if root is not None:
+                shared = [_string_item(si) for si in root if _local(si.tag) == "si"]
 
-        sheets = sorted(
-            n for n in archive.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n)
+        sheets = _ordered_parts(
+            archive, "xl/workbook.xml", "sheet", r"xl/worksheets/sheet(\d+)\.xml"
         )
         out = []
-        for index, name in enumerate(sheets, 1):
-            xml = archive.read(name).decode("utf-8", errors="replace")
+        for index, (title, name) in enumerate(sheets, 1):
+            root = _xml_root(archive, name)
+            if root is None:
+                continue
             rows = []
-            for row in re.findall(r"<row[^>]*>(.*?)</row>", xml, re.S):
-                cells = []
-                for cell in re.findall(r"<c([^>]*)>(.*?)</c>", row, re.S):
-                    attrs, body = cell
-                    value = re.search(r"<v>(.*?)</v>", body, re.S)
-                    if not value:
-                        # An inline string has no <v>; its text sits in <is><t>.
-                        inline = re.findall(r"<t[^>]*>(.*?)</t>", body, re.S)
-                        cells.append("".join(inline) if 't="inlineStr"' in attrs else "")
-                        continue
-                    raw = value.group(1)
-                    if 't="s"' in attrs:  # index into the shared-strings table
+            for row in (r for r in root.iter() if _local(r.tag) == "row"):
+                cells: list[str] = []
+                for cell in (c for c in row if _local(c.tag) == "c"):
+                    col = _column_index(cell.get("r", ""))
+                    if col is not None and col > len(cells):
+                        cells.extend([""] * (col - len(cells)))
+                    kind = cell.get("t", "")
+                    value = next((v for v in cell if _local(v.tag) == "v"), None)
+                    if kind == "inlineStr":
+                        inline = next((v for v in cell if _local(v.tag) == "is"), None)
+                        cells.append(_string_item(inline) if inline is not None else "")
+                    elif value is None:
+                        cells.append("")
+                    elif kind == "s":  # shared-strings index
                         try:
-                            cells.append(shared[int(raw)])
+                            cells.append(shared[int(value.text or "")])
                         except (ValueError, IndexError):
                             cells.append("")
+                    elif kind == "b":
+                        cells.append("TRUE" if (value.text or "") == "1" else "FALSE")
                     else:
-                        cells.append(raw)
+                        cells.append(value.text or "")
                 if any(c.strip() for c in cells):
-                    rows.append("\t".join(cells))
+                    rows.append("\t".join(cells).rstrip("\t"))
             if rows:
-                out.append(f"[시트 {index}]\n" + "\n".join(rows))
+                label = f"[시트 {index}: {title}]" if title else f"[시트 {index}]"
+                out.append(label + "\n" + "\n".join(rows))
     return "\n\n".join(out).strip()
 
 
 def _from_hwpx(data: bytes) -> str:
-    """OWPML: `<hp:t>` runs per `<hp:p>` in `Contents/section*.xml`."""
+    """OWPML <hp:t> runs per <hp:p> in section*.xml."""
     import xml.etree.ElementTree as ET
 
     try:
@@ -377,9 +493,8 @@ def _from_hwpx(data: bytes) -> str:
             root = ET.fromstring(archive.read(name))
         except ET.ParseError:
             continue
-        # Namespaces vary by producer version, so match on the local name. A
-        # table cell holds its own paragraphs, so each run is read once — from
-        # its nearest paragraph, not again from every paragraph above it.
+
+        # local-name match (namespaces vary); each run read once from its nearest paragraph
         def local(tag: str) -> str:
             return tag.rsplit("}", 1)[-1]
 
@@ -405,18 +520,16 @@ def _from_hwpx(data: bytes) -> str:
     return "\n".join(paragraphs)
 
 
-#: HWP 5.x record header: 32 bits — tag 10, level 10, size 12; size 0xFFF means
-#: the real size follows as 32 bits.
+#: HWP 5.x record header: tag 10, level 10, size 12 bits; 0xFFF → 32-bit size follows
 _HWPTAG_PARA_TEXT = 67
 
-#: Control characters interleaved with body text. Extended controls (tables,
-#: images) occupy 16 bytes.
+#: inline control chars; extended controls take 16 bytes
 _HWP_EXTENDED_CONTROLS = frozenset({1, 2, 3, 11, 12, 14, 15, 16, 17, 18, 21, 22, 23})
 _HWP_INLINE_CONTROLS = frozenset({4, 5, 6, 7, 8, 19, 20})
 
 
 def _hwp_records(stream: bytes):
-    """Yields `(tag, payload)` in order."""
+    """Yield (tag, payload) in order."""
     offset, size = 0, len(stream)
     while offset + 4 <= size:
         header = int.from_bytes(stream[offset : offset + 4], "little")
@@ -435,7 +548,7 @@ def _hwp_records(stream: bytes):
 
 
 def _hwp_paragraph(body: bytes) -> str:
-    """Decodes one HWPTAG_PARA_TEXT record: UTF-16LE with control characters mixed in."""
+    """Decode HWPTAG_PARA_TEXT (UTF-16LE with controls)."""
     out: list[str] = []
     index, count = 0, len(body) // 2
     while index < count:
@@ -455,7 +568,7 @@ def _hwp_paragraph(body: bytes) -> str:
 
 
 def _from_hwp(data: bytes) -> str:
-    """HWP 5.x body text from the OLE compound file's BodyText streams."""
+    """HWP 5.x body text from BodyText streams."""
     import olefile
 
     try:
@@ -471,8 +584,7 @@ def _from_hwp(data: bytes) -> str:
         if not ole.exists("FileHeader"):
             raise RuntimeError("한글 문서(.hwp) 형식이 아닙니다. 5.0 이상인지 확인해 주세요.")
         header = ole.openstream("FileHeader").read()
-        # 32 bytes signature, 4 version, then flags: bit 0 compression,
-        # bit 1 encryption.
+        # 32-byte signature, 4 version, flags: bit0 compressed, bit1 encrypted
         flags = int.from_bytes(header[36:40], "little") if len(header) >= 40 else 0
         if flags & 0x02:
             raise RuntimeError("암호가 걸린 한글 문서(.hwp)는 읽을 수 없습니다.")
@@ -559,17 +671,17 @@ _TEXT_SUFFIXES = {
 
 
 def is_speech(mime: str) -> bool:
-    """Whether the MIME type is audio or video."""
+    """Whether MIME is audio or video."""
     return mime.startswith(("audio/", "video/"))
 
 
 async def text_of(name: str, mime: str, data: bytes) -> str:
-    """The file as text, transcribing audio/video when a backend is configured. Routes call this."""
+    """File as text, transcribing audio/video if configured."""
     if not is_speech(mime):
-        # CPU-bound parsing in a worker thread: one big upload must not stall the loop.
+        # CPU-bound parse in a worker thread
         return await asyncio.to_thread(extract_text, name, mime, data)
     if not await transcribe.available():
-        # CPU-bound parsing in a worker thread: one big upload must not stall the loop.
+        # CPU-bound parse in a worker thread
         return await asyncio.to_thread(extract_text, name, mime, data)
     if len(data) > transcribe.MAX_BYTES:
         limit = transcribe.MAX_BYTES // (1024 * 1024)
@@ -578,7 +690,7 @@ async def text_of(name: str, mime: str, data: bytes) -> str:
 
 
 def extract_text(name: str, mime: str, data: bytes) -> str:
-    """Best-effort text for the model. Raises with a Korean reason on failure."""
+    """Best-effort model text; raises with a Korean reason."""
     suffix = Path(name).suffix.lower()
 
     if suffix == ".pdf" or mime == "application/pdf":
@@ -600,21 +712,20 @@ def extract_text(name: str, mime: str, data: bytes) -> str:
     if suffix in {".doc", ".ppt", ".xls"}:
         raise RuntimeError("구형 오피스 형식입니다. docx/pptx/xlsx 또는 PDF 로 변환해 주세요.")
     if mime.startswith("image/"):
-        # A viewable picture has no text; `workspace_context.reads_pictures`
-        # decides per turn whether it is sent.
+        # pictures have no text; reads_pictures decides per turn
         if pictures.can_be_seen(mime, len(data)):
             return ""
         raise RuntimeError(
             "이 그림은 읽을 수 없습니다. PNG·JPEG·GIF·WebP 로, 4MB 이하로 올려 주세요."
         )
     if is_speech(mime):
-        # Reached only when transcription is unavailable; see `text_of`.
+        # only when transcription is unavailable
         raise RuntimeError(
             "말소리를 글로 옮기는 기능이 꺼져 있어 이 파일을 읽지 못했습니다. "
             "관리자에게 요청하거나, 회의록 텍스트를 올려 주세요."
         )
 
-    # Unknown extension: try text, rejected if mostly unprintable.
+    # unknown extension: try text, reject if mostly unprintable
     text = _from_text(data)
     printable = sum(1 for ch in text[:2000] if ch.isprintable() or ch.isspace())
     if printable < len(text[:2000]) * 0.8:

@@ -1,7 +1,7 @@
 /** Writing a report end to end: request, approve, page view, hand edit, save, fact-check, export. */
 
 import { expect, test, type Page } from '@playwright/test'
-import { approvePlan, artifactReady, ribbonTab, signIn } from './helpers'
+import { approvePlan, artifactReady, signIn } from './helpers'
 
 // Retried: the content is model-written.
 test.describe.configure({ retries: 1, mode: 'serial' })
@@ -50,9 +50,9 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
   test('3. 문단을 눌러 그 자리에서 고칠 수 있다', async ({ page }) => {
     await signIn(page)
     await openReport(page)
-    // 페이지뷰 + 편집 edits in place; 페이지뷰 alone is read-only.
+    // 페이지뷰 + 편집 (header) edits in place; 페이지뷰 alone is read-only.
     await page.getByRole('button', { name: '페이지뷰' }).click()
-    await page.getByRole('button', { name: '편집' }).click()
+    await page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '편집', exact: true }).click()
     await expect(sheet(page)).toBeVisible({ timeout: 30_000 })
 
     const paragraph = page.locator('.ProseMirror p').first()
@@ -67,7 +67,7 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
     await signIn(page)
     await openReport(page)
     await page.getByRole('button', { name: '페이지뷰' }).click()
-    await page.getByRole('button', { name: '편집' }).click()
+    await page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '편집', exact: true }).click()
     await expect(sheet(page)).toBeVisible({ timeout: 30_000 })
 
     const mark = `수기수정-${Date.now()}`
@@ -93,7 +93,7 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
     await page
       .getByRole('complementary')
       .last()
-      .getByRole('button', { name: /보고 문서|서식/ })
+      .getByRole('button', { name: /보고 문서|양식/ })
       .click()
     // `menuitemcheckbox`: the switcher marks the current 서식.
     await page.getByRole('menuitemcheckbox', { name: '한 장 요약' }).click()
@@ -118,10 +118,8 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
   test('7. 제출할 파일이 나온다', async ({ page }) => {
     await signIn(page)
     await openReport(page)
-
-    await ribbonTab(page, '파일')
     const download = page.waitForEvent('download', { timeout: 120_000 })
-    await page.getByRole('button', { name: '내보내기' }).click()
+    await page.getByRole('button', { name: '내려받기' }).click()
     await page.getByRole('menuitem', { name: /docx/i }).click()
     const file = await download
 

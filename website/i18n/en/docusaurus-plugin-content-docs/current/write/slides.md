@@ -13,7 +13,7 @@ On the home screen, select **Slides** and enter the presentation topic and the a
 - Slide titles and their order
 - **How will this be used?**: presenting with narration, or handing over the material only
 
-The design is not chosen on the structure card. After writing, choose it in the panel from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome.
+The theme is not chosen on the structure card. After writing, choose it in the panel from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome.
 
 ## Setting the number of slides
 
@@ -27,11 +27,11 @@ If the deck runs to more than 6 slides, a table of contents is inserted as the s
 
 ## Slide types
 
-The model chooses the type that suits the content. It uses cover, table of contents, item list, table (comparison), metrics (key figures), chart (when the material contains figures), diagram (flow and structure), and closing. You can set them in your request, for example "use a table for the comparison" or "include a flow chart".
+The model chooses the type that suits the content. It uses cover, table of contents, item list, table (comparison), metrics (key figures), chart (when the material contains figures), diagram (flow and structure), and closing. You can set them in your request, for example "use a table for the comparison" or "include a flow chart". The server draws diagrams as shapes, and a PPTX export carries them as editable PowerPoint shapes.
 
-## Changing the design
+## Changing the theme
 
-In the **Home** tab of the panel you can change the design and the accent color, and run **Redo this slide**. If a design system is linked to the project, the deck follows its colors and typefaces.
+In the panel's **Edit › Theme** tab you can change the theme and the accent color, and run **Redo this slide**. If a theme is linked to the project, the deck follows its colors and typefaces.
 
 ## Presentation mode
 
@@ -43,4 +43,4 @@ In **File → Export**, choose PowerPoint (PPTX), PDF (for presenting), or text 
 
 ## Revising
 
-If you ask for something like "make slide 2 more concise", only that slide is written again. A request that changes the structure, such as "extend it to 20 slides" or "add a case study slide", proposes the structure again and waits for your approval. For details, see [Revising by request](revise). To edit sentences yourself or reorder slides, use the [Output editor](editor).
+If you ask for something like "make slide 2 more concise", only that slide is written again. A request that changes the structure, such as "extend it to 20 slides" or "add a case study slide", proposes the structure again and waits for your approval. For details, see [Revising by request](revise). To edit sentences yourself or reorder slides, use the [Artifact editor](editor).

@@ -4,7 +4,7 @@ import { Button, Modal } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
-/** Row selection by id, pruned against the rows on screen. */
+/** Row selection by id, pruned to rows on screen. */
 export function useBulkSelect<T extends { id: string }>(rows: T[]) {
   const [picked, setPicked] = useState<Set<string>>(new Set())
 
@@ -30,7 +30,7 @@ export function useBulkSelect<T extends { id: string }>(rows: T[]) {
   return { picked, ids, count: ids.length, toggle, clear, allPicked, toggleAll }
 }
 
-/** Card checkbox; stops the click reaching the card. */
+/** Card checkbox; click doesn't reach the card. */
 export function PickBox({
   checked,
   onChange,
@@ -76,9 +76,9 @@ export function BulkBar({
   onToggleAll: () => void
   onClear: () => void
   onDelete: () => Promise<unknown>
-  /** Noun for what is deleted: "프로젝트", "결과물". */
+  /** Noun for what is deleted: 「프로젝트」, 「아티팩트」. */
   title: string
-  /** What the delete takes with it, shown in the confirmation. */
+  /** What the delete also takes, shown in the confirmation. */
   note?: string
 }) {
   const t = useT()

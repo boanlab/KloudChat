@@ -50,7 +50,7 @@ def test_the_page_seed_draws_its_type_from_the_variables() -> None:
         assert f"var(--doc-{name})" in seed, f"seed does not read --doc-{name}"
     for css in root.glob("doc-*/design.css"):
         assert "font-size" not in css.read_text(encoding="utf-8"), f"{css.parent.name} sets sizes"
-    template = design_templates.get("doc-report")
+    template = design_templates.rendering("_document")
     assert template is not None
     sheet = design_templates.stylesheet(template, {})
     assert "--doc-body: 10.5pt;" in sheet and "--doc-title: 20pt;" in sheet
@@ -76,13 +76,13 @@ def test_the_docx_styles_carry_the_scale_and_cells_have_room() -> None:
     table = built.tables[0]
     margins = table._tbl.tblPr.find(qn("w:tblCellMar"))
     assert margins is not None and margins.find(qn("w:left")).get(qn("w:w")) == "120"
+    # The table size comes from the cell paragraphs' styles (표 머리·표 본문·표 숫자).
     sizes = {
-        run.font.size.pt
+        (run.font.size or paragraph.style.font.size).pt
         for row in table.rows
         for cell in row.cells
         for paragraph in cell.paragraphs
         for run in paragraph.runs
-        if run.font.size
     }
     assert sizes == {doc_type.TYPE["table"]}
 

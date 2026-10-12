@@ -18,8 +18,8 @@ from app.routers import auth as auth_router
 from app.routers import sessions as sessions_router
 from app.routers.sessions import _PrivacyResolution, _resolve_privacy
 from app.schemas.auth import ProfilePatch
-from app.schemas.chat import CompareRequest, SendMessage
-from app.services import agent, auto_memory, chat, governance, index_client
+from app.schemas.chat import SendMessage
+from app.services import agent, auto_memory, chat, governance, index_client, settings_store
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services.models import _shape
@@ -1081,68 +1081,6 @@ async def test_governance_unavailable_blocks_send_before_catalogue_or_write(
 
 
 @pytest.mark.asyncio
-async def test_governance_unavailable_blocks_compare_before_catalogue_or_fanout(
-    monkeypatch,
-) -> None:
-    class BrokenPolicySession:
-        async def __aenter__(self):
-            raise RuntimeError("database unavailable")
-
-        async def __aexit__(self, *_args):
-            return None
-
-    user = User(email="person@example.test", password_hash="hash", name="Person")
-    session = ChatSession(user_id=user.id)
-    catalogue_calls = 0
-
-    async def owned(*_args, **_kwargs):
-        return session
-
-    async def catalogue(*_args, **_kwargs):
-        nonlocal catalogue_calls
-        catalogue_calls += 1
-        return {"models": []}
-
-    previous = dict(governance._cache)
-    governance._cache.update(
-        at=time.monotonic(),
-        value=Governance(
-            external_data_guard=False,
-            allow_user_raw_external=True,
-        ),
-    )
-    monkeypatch.setattr(governance, "SessionLocal", BrokenPolicySession)
-    monkeypatch.setattr(sessions_router, "_owned", owned)
-    monkeypatch.setattr(
-        sessions_router.model_service,
-        "list_models_for_egress",
-        catalogue,
-    )
-    db = _NoWriteDb()
-    try:
-        with pytest.raises(Exception) as caught:
-            await sessions_router.compare_models(
-                session.id,
-                CompareRequest(
-                    content="clean request",
-                    models=["external/one", "external/two"],
-                ),
-                _request(),
-                user,
-                db,
-            )
-    finally:
-        governance._cache.clear()
-        governance._cache.update(previous)
-
-    assert getattr(caught.value, "status_code", None) == 503
-    assert getattr(caught.value, "detail", None) == "governance_unavailable"
-    assert catalogue_calls == 0
-    assert db.added == []
-    assert db.commits == 0
-
-
-@pytest.mark.asyncio
 async def test_raw_external_default_save_returns_503_when_policy_is_unavailable(
     monkeypatch,
 ) -> None:
@@ -1374,6 +1312,12 @@ async def test_privacy_bypass_keeps_auto_mode_in_messages_events_and_audit(
     monkeypatch.setattr(socket.socket, "connect", no_network)
     monkeypatch.setattr(socket, "create_connection", no_network)
     monkeypatch.setattr(httpx, "AsyncClient", no_network)
+
+    # No database here: the stored settings (model roles among them) are empty.
+    async def no_stored_settings(force: bool = False) -> dict:
+        return {}
+
+    monkeypatch.setattr(settings_store, "all_values", no_stored_settings)
     user = User(
         email="fixture@example.test",
         password_hash="hash",
@@ -1668,7 +1612,7 @@ async def test_auto_routed_economy_turn_strips_exposed_tools_and_fallback(
     assert captured["tools"] == []
     assert captured["tool_definitions"] == []
     assert captured["disable_fallbacks"] is True
-    assert "도구 사용 규칙" not in captured["messages"][0]["content"]
+    assert "Tool rules:" not in captured["messages"][0]["content"]
 
 
 @pytest.mark.asyncio
@@ -1712,6 +1656,12 @@ async def test_auto_context_fit_uses_the_envelope_retained_by_the_lane(
     monkeypatch.setattr(socket.socket, "connect", no_network)
     monkeypatch.setattr(socket, "create_connection", no_network)
     monkeypatch.setattr(httpx, "AsyncClient", no_network)
+
+    # No database here: the stored settings (model roles among them) are empty.
+    async def no_stored_settings(force: bool = False) -> dict:
+        return {}
+
+    monkeypatch.setattr(settings_store, "all_values", no_stored_settings)
     monkeypatch.setattr(context, "_today", lambda: "Synthetic calendar context.")
     question = "Explain a difficult abstraction in careful detail."
 
@@ -2100,92 +2050,6 @@ async def test_tool_schema_is_preflighted_and_mask_retry_sends_only_clean_snapsh
     encoded = json.dumps(captured["tool_definitions"], ensure_ascii=False)
     assert raw_email not in encoded
     assert raw_key not in encoded
-
-
-@pytest.mark.asyncio
-async def test_compare_context_finding_blocks_every_column_before_write(monkeypatch) -> None:
-    user = User(email="person@example.test", password_hash="hash", name="Person")
-    session = ChatSession(user_id=user.id)
-    models = [_external_model("external/one"), _external_model("external/two")]
-    await _patch_guard_dependencies(
-        monkeypatch,
-        session=session,
-        models=models,
-        blocks=[_block("project_instructions", "owner person@example.com")],
-    )
-    db = _NoWriteDb()
-
-    response = await sessions_router.compare_models(
-        session.id,
-        CompareRequest(content="clean request", models=[model["id"] for model in models]),
-        _request(),
-        user,
-        db,
-    )
-
-    assert isinstance(response, JSONResponse)
-    contract = json.loads(response.body)
-    assert contract["findings"] == [
-        {"category": "email", "source": "project_instructions", "count": 1}
-    ]
-    assert db.added == []
-    assert db.commits == 0
-
-
-@pytest.mark.asyncio
-async def test_compare_attachment_only_finding_blocks_before_write_or_fanout(
-    monkeypatch,
-) -> None:
-    user = User(email="person@example.test", password_hash="hash", name="Person")
-    session = ChatSession(user_id=user.id)
-    models = [_external_model("external/one"), _external_model("external/two")]
-    await _patch_guard_dependencies(
-        monkeypatch,
-        session=session,
-        models=models,
-        blocks=[],
-    )
-    stored = StoredFile(
-        id="attachment-1",
-        user_id=user.id,
-        name="notes.txt",
-        text="owner person@example.com",
-    )
-    seen_ids: list[str] | None = None
-
-    async def owned_attachments(_db, _user, attachment_ids):
-        return [stored], [{"id": stored.id, "name": stored.name, "size": 0, "type": "text/plain"}]
-
-    async def exact_context(_db, _user, _session, *, attachment_ids=None, **_kwargs):
-        nonlocal seen_ids
-        seen_ids = attachment_ids
-        return _workspace([_block("attachments", stored.text)])
-
-    monkeypatch.setattr(sessions_router, "_owned_attachments", owned_attachments)
-    monkeypatch.setattr(sessions_router, "assemble", exact_context)
-    db = _NoWriteDb()
-
-    response = await sessions_router.compare_models(
-        session.id,
-        CompareRequest(
-            content="clean request",
-            models=[model["id"] for model in models],
-            attachments=[stored.id],
-        ),
-        _request(),
-        user,
-        db,
-    )
-
-    assert isinstance(response, JSONResponse)
-    assert response.status_code == 409
-    assert json.loads(response.body)["findings"] == [
-        {"category": "email", "source": "attachments", "count": 1}
-    ]
-    assert seen_ids == [stored.id]
-    assert stored.session_id is None
-    assert db.added == []
-    assert db.commits == 0
 
 
 @pytest.mark.asyncio
@@ -2590,7 +2454,7 @@ async def test_strict_local_turn_admits_it_could_not_search(monkeypatch) -> None
 
     assert response.status_code == 200
     prompt = captured["messages"][0]["content"]
-    assert "검색 도구가 없습니다" in prompt
+    assert "this request has no search tool" in prompt
     assert "web_search 를 최소 한 번" not in prompt
 
 
@@ -2771,47 +2635,10 @@ async def test_strict_registry_does_not_resolve_remote_tools_or_backends(
 
     assert [tool.name for tool in tools] == [
         "calculate",
-        "check_ncs_answer",
         "create_artifact",
         "create_chart",
         "search_knowledge",
     ]
-
-
-@pytest.mark.asyncio
-async def test_compare_rejects_any_missing_or_disallowed_model(monkeypatch) -> None:
-    user = User(
-        email="person@example.test",
-        password_hash="hash",
-        name="Person",
-        allowed_models=["external/one", "external/two"],
-    )
-    session = ChatSession(user_id=user.id)
-    models = [
-        _external_model("external/one"),
-        _external_model("external/two"),
-        _external_model("external/blocked"),
-    ]
-    await _patch_guard_dependencies(
-        monkeypatch,
-        session=session,
-        models=models,
-        blocks=[],
-    )
-
-    for requested, expected in (
-        (["external/one", "external/two", "missing/model"], "models_unavailable"),
-        (["external/one", "external/blocked"], "model_not_allowed"),
-    ):
-        with pytest.raises(Exception) as caught:
-            await sessions_router.compare_models(
-                session.id,
-                CompareRequest(content="clean", models=requested),
-                _request(),
-                user,
-                _NoWriteDb(),
-            )
-        assert getattr(caught.value, "detail", None) == expected
 
 
 def test_migration_backfills_only_an_existing_install_without_policy(monkeypatch) -> None:
@@ -3171,6 +2998,72 @@ async def test_strict_tool_detail_is_masked_for_storage_but_raw_result_stays_loc
         {"category": "email", "source": "tool_output", "count": 1},
         {"category": "phone", "source": "tool_output", "count": 1},
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hook", ["sanitize_step_detail", "sanitize_tool_output"])
+async def test_a_masked_turn_masks_the_step_code_and_output(monkeypatch, hook) -> None:
+    hops = 0
+
+    async def fake_stream_once(model, messages, tools, user_id, api_key, **_kwargs):
+        nonlocal hops
+        hops += 1
+        acc = agent._Accumulator()
+        acc.actual_model = "provider/strict-model"
+        if hops == 1:
+            acc.calls[0] = {"id": "call_0", "name": "run_code", "arguments": "{}"}
+        else:
+            acc.content.append("답")
+        yield "done", acc
+
+    async def run_tool(_arguments):
+        return ToolResult(
+            content="done",
+            detail="시도 1회",
+            trace={
+                "code": "print('owner person@example.com')",
+                "codeAttempt": 1,
+                "stdout": "owner person@example.com +1 (415) 555-2671",
+            },
+        )
+
+    async def plain_tool(_arguments):
+        return ToolResult(content="plain", detail="d")
+
+    monkeypatch.setattr(agent, "_stream_once", fake_stream_once)
+    tool = Tool(name="run_code", description="t", parameters={"type": "object"},
+                run=run_tool, label="파일 작업")
+    events = [
+        event
+        async for event in agent.run_turn(
+            "strict-local/model",
+            [{"role": "user", "content": "go"}],
+            [tool],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+            **{hook: governance.mask},
+            strict_local=hook == "sanitize_step_detail",
+        )
+    ]
+    done = next(e for e in events if e["type"] == "step" and e.get("status") == "done")
+    assert "person@example.com" not in json.dumps(done)
+    assert "555-2671" not in done["stdout"]
+    assert done["codeAttempt"] == 1 and done["code"].startswith("print(")
+
+    # A tool without a trace yields the plain step shape.
+    hops = 0
+    plain = Tool(name="run_code", description="t", parameters={"type": "object"},
+                 run=plain_tool, label="파일 작업")
+    events = [
+        event
+        async for event in agent.run_turn(
+            "strict-local/model",
+            [{"role": "user", "content": "go"}],
+            [plain],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    done = next(e for e in events if e["type"] == "step" and e.get("status") == "done")
+    assert not {"code", "codeAttempt", "stdout", "stderr"} & done.keys()
 
 
 @pytest.mark.asyncio
@@ -3613,125 +3506,6 @@ async def test_clean_answer_under_the_guard_announces_no_answer_findings(
     }
 
 
-@pytest.mark.asyncio
-async def test_comparison_masks_variants_and_persists_provider_actual_model(
-    monkeypatch,
-) -> None:
-    routed = _external_model("hybrid/alias")
-    routed["dataBoundary"] = "hybrid"
-    user = User(
-        id="user",
-        email="person@example.test",
-        password_hash="hash",
-        name="Person",
-        monthly_credits=10_000,
-    )
-    added: list[object] = []
-    raw_key = "sk-abcdefghijklmnopqrstuvwxyz123456"
-    raw_actual = "provider/model-owner@example.com"
-
-    async def stream_completion(*_args, **_kwargs):
-        yield {
-            "type": "model_route",
-            "routedModel": routed["id"],
-            "actualModel": raw_actual,
-        }
-        yield {
-            "type": "delta",
-            "text": f"reply person@example.com credential {raw_key}",
-        }
-        yield {"type": "usage", "inputTokens": 1, "outputTokens": 1}
-
-    class ComparisonDb:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        def add(self, value):
-            added.append(value)
-
-        async def get(self, model, _id):
-            return user if model is User else None
-
-        async def commit(self):
-            return None
-
-    monkeypatch.setattr(
-        sessions_router.chat_service,
-        "stream_completion",
-        stream_completion,
-    )
-    monkeypatch.setattr(sessions_router, "SessionLocal", ComparisonDb)
-    routing = {
-        "requestedModels": [routed["id"]],
-        "routedModels": [routed["id"]],
-        "effectiveModels": [routed["id"]],
-        "actualModels": [],
-        "action": "mask_external",
-        "dataBoundary": "hybrid",
-        "modelRoutes": [
-            {
-                "routedModel": routed["id"],
-                "actualModel": None,
-                "dataBoundary": "hybrid",
-            }
-        ],
-    }
-
-    events = "".join(
-        [
-            event
-            async for event in sessions_router._run_comparison(
-                user_id=user.id,
-                api_key="key",
-                session_id="session",
-                models=[routed],
-                messages=[{"role": "user", "content": "clean request"}],
-                skills_event={
-                    "type": "skills_applied",
-                    "skills": [
-                        {
-                            "id": "skill",
-                            "name": "review owner@example.com",
-                            "catalogKey": "review",
-                            "estimatedTokens": 12,
-                        }
-                    ],
-                    "estimatedTokens": 12,
-                },
-                routing=routing,
-                mask_at_rest=True,
-                # Carried from egress as the user's own; the answer scope masks
-                # these wherever they resurface — variants, steps, model ids.
-                protected_values=frozenset(
-                    {"person@example.com", "model-owner@example.com", "owner@example.com"}
-                ),
-            )
-        ]
-    )
-
-    message = next(
-        row
-        for row in added
-        if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.assistant
-    )
-    assert "person@example.com" not in message.content
-    assert "person@example.com" not in json.dumps(message.variants)
-    assert raw_key not in message.content
-    assert raw_actual not in json.dumps(message.variants)
-    assert raw_actual not in json.dumps(message.routing)
-    assert "owner@example.com" not in json.dumps(message.steps)
-    assert "review [이메일]" in json.dumps(message.steps, ensure_ascii=False)
-    assert message.model == "provider/[이메일]"
-    assert message.variants[0]["routedModel"] == routed["id"]
-    assert message.variants[0]["actualModel"] == "provider/[이메일]"
-    assert message.routing["dataBoundary"] == "hybrid"
-    assert message.routing["actualModels"] == ["provider/[이메일]"]
-    assert raw_actual in events
-
-
 # ── log lines ──────────────────────────────────────────────────────────
 
 
@@ -3904,3 +3678,19 @@ def test_a_session_that_handled_internal_material_stays_strict_local():
     plain = Message(id="m3", session_id="s2", role="assistant", content="…")
     plain.routing = {"action": "none"}
     assert not sessions._internal_data_present(session, [], None, [plain])
+
+
+def test_a_turn_internal_material_can_move_gets_its_strict_tools_ready():
+    """Data analysis on an attachment runs strict-local; run_code must still be offered."""
+    from app.routers import sessions
+
+    user = User(id="u-tools", email="tools@example.test", password_hash="hash", name="Tools")
+    hybrid = {**_external_model("local/qwen"), "dataBoundary": "hybrid"}
+    strict = {**_external_model("strict-local/qwen"), "dataBoundary": "self_hosted",
+              "strictLocal": True}
+    on = Governance(internal_data_strict_local=True)
+    off = Governance(internal_data_strict_local=False)
+    assert sessions._strict_route_possible(hybrid, [hybrid, strict], on, user, auto_turn=False)
+    assert not sessions._strict_route_possible(hybrid, [hybrid, strict], off, user, auto_turn=False)
+    assert not sessions._strict_route_possible(hybrid, [hybrid], on, user, auto_turn=False)
+    assert sessions._strict_route_possible(strict, [strict], off, user, auto_turn=False)

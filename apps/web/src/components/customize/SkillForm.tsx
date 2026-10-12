@@ -1,0 +1,285 @@
+import { useId, useRef, useState } from 'react'
+import { Button, Field, Input, RequiredNote, Switch, Textarea } from '@/components/ui'
+import { errorMessage } from '@/lib/api'
+import { missingMessage } from '@/lib/formCheck'
+import { NAME_LIMIT } from '@/lib/limits'
+import { useT } from '@/lib/useT'
+import { cn } from '@/lib/utils'
+import { useStore } from '@/store/useStore'
+import type { Skill } from '@/types'
+import { Block, Group } from './AgentForm'
+import { blankServer, blankSkill, type SkillDraft } from './formModel'
+import { ToolPicker } from './Pickers'
+import { SkillServerFields } from './SkillServerFields'
+
+/** Monospace editor; line numbers scroll with the text. */
+export function LineNumberedEditor({
+  value,
+  onChange,
+  label,
+  placeholder,
+  rows = 18,
+  id,
+  describedBy,
+}: {
+  value: string
+  onChange: (next: string) => void
+  label: string
+  placeholder?: string
+  rows?: number
+  /** With a visible `<label htmlFor>`; aria-label off. */
+  id?: string
+  describedBy?: string
+}) {
+  const gutter = useRef<HTMLDivElement>(null)
+  const lines = Math.max(1, value.split('\n').length)
+  return (
+    <div className="flex overflow-hidden rounded-card border border-line bg-elevated focus-within:border-accent">
+      <div
+        ref={gutter}
+        aria-hidden
+        className="shrink-0 overflow-hidden border-r border-line py-3 pr-2 pl-3 text-right font-mono text-sm leading-6 text-faint select-none"
+        style={{ height: `calc(${rows} * 1.5rem + 1.5rem)` }}
+      >
+        {Array.from({ length: lines }, (_, i) => (
+          <div key={i}>{i + 1}</div>
+        ))}
+      </div>
+      <textarea
+        id={id}
+        aria-label={id ? undefined : label}
+        aria-describedby={describedBy}
+        value={value}
+        rows={rows}
+        spellCheck={false}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        onScroll={(e) => {
+          if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop
+        }}
+        className="min-w-0 flex-1 resize-none bg-transparent px-3 py-3 font-mono text-sm leading-6 text-fg placeholder:text-faint focus:outline-none"
+        style={{ height: `calc(${rows} * 1.5rem + 1.5rem)` }}
+      />
+    </div>
+  )
+}
+
+/** Skill form; 「초안」 keeps it out of the composer, 사용 시점 follows the description unless set. */
+export function SkillForm({
+  current,
+  onSaved,
+  onCancel,
+  aboveBottomBar = false,
+}: {
+  /** Skill being edited; none creates. */
+  current?: Skill
+  onSaved: (saved: Skill) => void
+  onCancel?: () => void
+  /** Phone action bar below: save bar stops above it. */
+  aboveBottomBar?: boolean
+}) {
+  const t = useT()
+  const upsertSkill = useStore((s) => s.upsertSkill)
+  const availableTools = useStore((s) => s.availableTools)
+  const [draft, setDraft] = useState<SkillDraft>(() =>
+    current
+      ? {
+          name: current.name,
+          description: current.description,
+          whenToUse: current.whenToUse,
+          body: current.body,
+          requiredTools: current.requiredTools,
+          visibility: current.visibility,
+          enabled: current.enabled,
+        }
+      : blankSkill(),
+  )
+  // Server-run checks; sent only when changed, so a shipped copy keeps following its package.
+  const [server, setServer] = useState(() => current?.server ?? blankServer())
+  const [serverDirty, setServerDirty] = useState(false)
+  // 사용 시점 follows the description until written.
+  const [ownWhen, setOwnWhen] = useState(!!current && current.whenToUse !== current.description)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+  const lang = useStore((s) => s.lang)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const [nameError, setNameError] = useState<string | null>(null)
+  const stepsId = useId()
+  const edit = (patch: Partial<SkillDraft>) => {
+    setDone(false)
+    setDraft((d) => ({ ...d, ...patch }))
+  }
+
+  const save = async () => {
+    if (saving) return
+    if (!draft.name.trim()) {
+      setNameError(missingMessage(lang, t('이름')))
+      nameRef.current?.focus()
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      // Blank id creates; edits keep fields the form lacks.
+      const saved = await upsertSkill({
+        id: current?.id ?? '',
+        slug: current?.slug ?? '',
+        source: current?.source ?? 'personal',
+        catalogKey: current?.catalogKey ?? null,
+        kinds: current?.kinds ?? ['chat', 'report', 'slides'],
+        version: current?.version ?? '1.0.0',
+        estimatedTokens: current?.estimatedTokens ?? 0,
+        installs: current?.installs ?? 0,
+        originId: current?.originId ?? null,
+        updatedAt: new Date().toISOString(),
+        ...draft,
+        whenToUse: ownWhen ? draft.whenToUse : draft.description,
+        ...(serverDirty ? { server } : {}),
+      })
+      setServerDirty(false)
+      setDone(true)
+      onSaved(saved)
+    } catch (err) {
+      setError(errorMessage(err, t('저장하지 못했습니다.')))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form
+      className="space-y-4"
+      data-testid="skill-form"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault()
+        void save()
+      }}
+    >
+      {error && (
+        <p role="status" className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger">
+          {error}
+        </p>
+      )}
+      <RequiredNote />
+      <Field label={t('이름')} required error={nameError}>
+        <Input
+          ref={nameRef}
+          value={draft.name}
+          maxLength={NAME_LIMIT}
+          onChange={(e) => {
+            setNameError(null)
+            edit({ name: e.target.value })
+          }}
+          placeholder={t('예: 주간 현황 보고')}
+        />
+      </Field>
+      <Field label={t('설명')} hint={t('무엇을 하는지, 언제 쓰는지. 모델이 이 설명을 보고 스킬을 고릅니다.')}>
+        <Textarea
+          rows={2}
+          value={draft.description}
+          onChange={(e) => edit({ description: e.target.value })}
+          placeholder={t('예: 지난주 작업을 성과·막힌 점·다음 할 일로 정리합니다. 진행 상황 요약을 부탁받았을 때 씁니다.')}
+        />
+      </Field>
+      <div className="space-y-1.5">
+        <label htmlFor={stepsId} className="block text-base font-medium text-fg">
+          {t('절차')}
+        </label>
+        <LineNumberedEditor
+          id={stepsId}
+          describedBy={`${stepsId}-hint`}
+          label={t('절차')}
+          value={draft.body}
+          onChange={(body) => edit({ body })}
+          placeholder={t('1. 입력 자료와 판단 기준을 확인한다\n2. 결과와 근거, 미확인 항목을 구분한다')}
+          rows={current ? 14 : 16}
+        />
+        <p id={`${stepsId}-hint`} className="text-sm text-faint">
+          {t('모델이 이 순서대로 따릅니다. 한 줄에 한 단계씩 번호를 붙여 적습니다.')}
+        </p>
+      </div>
+
+      <Group title={t('더 설정하기')} hint={current ? t('사용 시점, 필요한 도구') : t('사용 시점')}>
+        <Field label={t('사용 시점')} hint={t('비워 두면 설명을 그대로 씁니다.')}>
+          <Textarea
+            rows={2}
+            value={ownWhen ? draft.whenToUse : ''}
+            onChange={(e) => {
+              setOwnWhen(e.target.value.trim() !== '')
+              edit({ whenToUse: e.target.value })
+            }}
+            placeholder={draft.description || t('사용자가 의사결정 자료를 붙여넣고 리스크 검토를 요청할 때')}
+          />
+        </Field>
+        {current && (
+          <Block label={t('필요한 도구')} hint={t('고른 도구를 지금 쓸 수 있을 때만 이 스킬을 실행합니다.')}>
+            <ToolPicker
+              value={draft.requiredTools}
+              onChange={(next) => edit({ requiredTools: next ?? [] })}
+              tools={availableTools}
+              inheritable={false}
+            />
+          </Block>
+        )}
+      </Group>
+
+      <Group
+        title={t('서버가 돌리는 점검')}
+        hint={t('기본 제공 스크립트로 답을 점검하거나, 검사 스킬로 쓰거나, 스크립트를 실행합니다.')}
+        testId="skill-server-group"
+        open={serverDirty || !!current?.scriptFiles?.length || undefined}
+      >
+        {current?.review === 'pending' && (
+          <p role="status" className="rounded-control border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn">
+            {t('스크립트가 있어 관리자가 승인한 뒤에 다른 사람에게 공유됩니다.')}
+          </p>
+        )}
+        {current?.review === 'rejected' && (
+          <p role="status" className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+            {t('공유가 반려됐습니다.')} {current.reviewNote}
+          </p>
+        )}
+        <SkillServerFields
+          value={server}
+          scripts={current?.scriptFiles ?? []}
+          onChange={(next) => {
+            setDone(false)
+            setServer(next)
+            setServerDirty(true)
+          }}
+        />
+      </Group>
+
+      <div className={cn('sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-2 border-t border-line bg-bg/95 px-4 py-3 sm:-mx-6 sm:px-6', aboveBottomBar && 'max-sm:bottom-[4.25rem]')}>
+        <span className="mr-auto flex items-center gap-1">
+          <Switch
+            checked={!draft.enabled}
+            onChange={(v) => edit({ enabled: !v })}
+            label={t('초안으로 두기')}
+            describedBy={`${stepsId}-draft`}
+          />
+          <span id={`${stepsId}-draft`} className="text-sm text-muted">
+            {draft.enabled
+              ? t('초안 꺼짐 · 입력창에서 고를 수 있습니다')
+              : t('초안 켜짐 · 입력창에 나오지 않습니다')}
+          </span>
+        </span>
+        {done && current && (
+          <span role="status" className="text-sm text-success">
+            {t('저장했습니다.')}
+          </span>
+        )}
+        {onCancel && (
+          <Button type="button" onClick={onCancel}>
+            {t('취소')}
+          </Button>
+        )}
+        <Button type="submit" variant="primary" aria-busy={saving || undefined}>
+          {saving ? t('저장 중…') : current ? t('저장') : t('만들기')}
+        </Button>
+      </div>
+    </form>
+  )
+}

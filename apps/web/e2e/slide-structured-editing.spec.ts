@@ -8,7 +8,6 @@ test('슬라이드를 복제하고 내용을 유지한 채 레이아웃을 바�
   await page.getByRole('tab', { name: /^슬라이드/ }).click()
   await page.locator('button.aspect-video').first().click()
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 })
-  await page.getByRole('tab', { name: '보기', exact: true }).click()
 
   // The 장 목록 button reads 「current/total」.
   const count = page.getByRole('button', { name: '장 목록' })
@@ -35,7 +34,6 @@ test('슬라이드를 복제하고 내용을 유지한 채 레이아웃을 바�
   await page.getByRole('tab', { name: /^슬라이드/ }).click()
   await page.locator('button.aspect-video').first().click()
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 })
-  await page.getByRole('tab', { name: '보기', exact: true }).click()
   await expect(page.getByText(`${before + 1}장`, { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '2번 장' }).click()
   await page.getByRole('button', { name: '장 편집' }).click()

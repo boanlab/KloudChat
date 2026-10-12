@@ -1,0 +1,15 @@
+<!-- 갤러리 미리보기: 이 서식으로 다 쓴 문서 한 벌의 예시다(가상의 기관·인물).
+     머리(header.tb)는 `docFormats.ts` titleBlockHtml 이 그리는 그대로이고, 절 번호·개조식
+     기호·빈칸 표시는 미리보기가 제품과 같은 규칙으로 붙인다(`format_css.preview`).
+     절 이름은 이 서식의 기본 목차, 표의 합계·부가세·한글 금액·요일은
+     `tests/test_template_previews.py` 가 확인한다. -->
+<header class="tb tb-cover cover"><p class="tb-label">고객 제안서</p><h1 class="tb-title">민원 상담 챗봇 구축 제안서</h1><table class="tb-fields"><tbody><tr><th>고객사</th><td>한결시 시민소통과</td></tr><tr><th>사업명</th><td>민원 상담 챗봇 구축</td></tr><tr><th>제안사</th><td>(주)새솔테크</td></tr><tr><th>제안일</th><td>2026. 10. 8.</td></tr><tr><th>담당자</th><td><span class="tb-blank doc-placeholder">[담당자]</span></td></tr><tr><th>연락처</th><td><span class="tb-blank doc-placeholder">[연락처]</span></td></tr><tr><th>유효기간</th><td>2026. 12. 7.(제안일부터 60일)</td></tr></tbody></table></header>
+<section><h2>제안 요약</h2><p>야간·주말에 쌓이는 반복 문의를 챗봇이 먼저 받아 상담원이 처리할 민원에 집중하게 한다. 18주 안에 구축하며 총액은 55,660,000원(부가세 포함)으로 예산 60,000,000원 안에 든다.</p></section>
+<section><h2>고객 과제 이해</h2><p>「전화 문의의 절반 이상이 같은 질문인데, 업무 시간이 끝나면 답할 사람이 없다.」(제안요청서 2쪽) 월평균 전화 문의 6,200건 중 54%가 제증명·쓰레기 배출·주차 같은 반복 문의이고, 18시 이후 문의는 다음 날로 넘어간다.</p></section>
+<section><h2>제안 내용</h2><p>상담 이력 3년분으로 자주 묻는 질문 120개를 시나리오로 만들고, 답하지 못한 질문은 상담원에게 넘긴다. 민원 처리 시스템과 연동해 접수 번호로 진행 상황을 조회하며, 개인정보는 대화 기록에 남기지 않는다.</p></section>
+<section><h2>요구사항 대응표</h2><table><thead><tr><th>요구 ID</th><th>요구 내용</th><th>대응 방안</th><th>제안서 위치</th></tr></thead><tbody><tr><td>REQ-01</td><td>상담 이력 연동</td><td>이력 DB 읽기 전용 연동</td><td>3절</td></tr><tr><td>REQ-03</td><td>개인정보 비저장</td><td>대화 기록 마스킹 후 저장</td><td>3절, 8절</td></tr></tbody></table></section>
+<section><h2>추진 일정</h2><table><thead><tr><th>단계</th><th>기간</th><th>제안사</th><th>고객사가 할 일</th></tr></thead><tbody><tr><td>착수·분석</td><td>1~4주</td><td>질문 분류, 시나리오 목록</td><td>상담 이력 자료 제공</td></tr><tr><td>설계·개발</td><td>5~14주</td><td>시나리오 120개, 시스템 연동</td><td>연동 계정 발급</td></tr><tr><td>시범 운영</td><td>15~18주</td><td>오답 보정, 교육 2회</td><td>검수, 착수일 확정(협의)</td></tr></tbody></table></section>
+<section><h2>수행 조직·투입 인력</h2><ul><li>상담 시나리오 설계 1명, 2MM — 질문 분류, 답변 검수</li><li>연동 개발 2명, 3MM — 민원 시스템 연동, 운영 환경</li></ul></section>
+<section><h2>견적</h2><table><thead><tr><th>항목</th><th>수량</th><th>단위</th><th>단가(원)</th><th>금액(원)</th><th>비고</th></tr></thead><tbody><tr><td>챗봇 엔진 라이선스</td><td>1</td><td>식</td><td>18,000,000</td><td>18,000,000</td><td>1년</td></tr><tr><td>상담 시나리오 설계</td><td>2</td><td>MM</td><td>6,500,000</td><td>13,000,000</td><td></td></tr><tr><td>민원 시스템 연동 개발</td><td>3</td><td>MM</td><td>6,000,000</td><td>18,000,000</td><td></td></tr><tr><td>운영 교육</td><td>2</td><td>회</td><td>800,000</td><td>1,600,000</td><td></td></tr><tr><td>공급가액</td><td></td><td></td><td></td><td>50,600,000</td><td></td></tr><tr><td>부가세</td><td></td><td></td><td></td><td>5,060,000</td><td>10%</td></tr><tr><td>합계</td><td></td><td></td><td></td><td>55,660,000</td><td></td></tr></tbody></table></section>
+<section><h2>전제·제외 범위·위험</h2><p>상담 이력 자료를 착수 2주 안에 받는 것을 전제로 한다. 전화 음성 상담(ARS) 연동과 2년 차 이후 라이선스는 제외한다. 연동 규격이 바뀌면 공수가 늘 수 있어 착수 회의에서 확정한다.</p></section>
+<section><h2>요청 사항</h2><p>2026. 10. 30.(금)까지 우선협상 여부를 알려 주시면, 11월 둘째 주에 착수 회의를 열 수 있습니다.</p></section>

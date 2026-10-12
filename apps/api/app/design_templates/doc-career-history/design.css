@@ -1,0 +1,21 @@
+/* 경력기술서 — 회사별, 그 아래 프로젝트별.
+ *
+ * 채용 사이트에 올려 글자를 읽히는 문서다. 색 상자·배경·그림 글자를 쓰지 않고,
+ * 검은 글자와 가는 선만 둔다. 표지 없이 이름과 머리 표가 맨 위에 앉고, 절 번호도
+ * 붙이지 않는다. */
+
+.page { font-family: 'Malgun Gothic', 'Nanum Gothic', 'NanumGothic', 'Pretendard', sans-serif; }
+
+.cover { min-height: 0; padding: 0 0 0.6rem; margin: 0 0 1.2rem; }
+.cover::after { display: none; }
+
+h2 { font-weight: 700; color: var(--ink); border-bottom: 1px solid var(--ink); padding-bottom: 0.2rem; }
+h2::before { color: var(--ink); }
+h3 { font-weight: 700; color: var(--ink); }
+
+section table thead th { background: transparent; border-top: 1.5px solid var(--ink); border-bottom: 1px solid var(--ink); color: var(--ink); }
+section table td { font-variant-numeric: tabular-nums; }
+
+@media print {
+  .cover { min-height: 0; page-break-after: auto; break-after: auto; }
+}

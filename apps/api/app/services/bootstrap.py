@@ -1,8 +1,4 @@
-"""Creates the first administrator on an instance with no accounts.
-
-Unconfigured, it does nothing and the first account to sign up becomes
-administrator. It never touches an instance that already has accounts.
-"""
+"""First-administrator creation on an empty instance."""
 
 from __future__ import annotations
 
@@ -15,18 +11,18 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.models.user import User, UserRole, UserStatus
-from app.services import starter
+from app.services import settings_store, starter
 from app.services.credits import grant_initial_allowance
 from app.services.litellm import provision_user
 
 log = logging.getLogger(__name__)
 
-#: The same validator behind `LoginRequest.email`, so bootstrap and sign-in agree.
+#: same validator as LoginRequest.email
 _EMAIL = TypeAdapter(EmailStr)
 
 
 def usable_email(value: str) -> bool:
-    """Whether `POST /auth/login` would accept this address."""
+    """Whether POST /auth/login accepts this address."""
     try:
         _EMAIL.validate_python((value or "").strip())
     except ValidationError:
@@ -45,8 +41,7 @@ async def seed_admin() -> None:
             return
 
         if not usable_email(email):
-            # An administrator that cannot sign in would also block the
-            # first-signup-becomes-admin path, so refuse instead.
+            # unloginnable admin would also block first-signup-admin path
             log.error(
                 "BOOTSTRAP_ADMIN_EMAIL=%r is not an address this instance can sign in "
                 "with, so no administrator was created. Correct it, or leave it blank "
@@ -65,10 +60,9 @@ async def seed_admin() -> None:
         db.add(user)
         await db.flush()
 
-        grant_initial_allowance(db, user, settings.default_monthly_credits)
+        grant_initial_allowance(db, user, await settings_store.default_monthly_credits())
         await provision_user(user)
         await starter.seed_designs(db, user.id)
-        # The administrator owns the shared catalogue of agents and skills.
         await starter.seed_catalog(db, user.id)
         db.add(user)
         await db.commit()

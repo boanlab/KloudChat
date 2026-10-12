@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 const sessionId = 'phone-variant-fixture'
 const now = '2026-09-12T00:00:00.000Z'
@@ -65,10 +66,12 @@ async function mockChat(page: Page) {
     if (path === `/sessions/${sessionId}` && request.method() === 'GET') return json(row)
     if (path === `/sessions/${sessionId}/messages` && request.method() === 'GET') return json(row.messages)
     if (path === '/artifacts/counts') return json({ counts: {}, total: 0 })
+    const shell = shellRead(request.method(), path)
+    if (shell) return route.fulfill(shell)
     if (request.method() === 'GET' && [
-      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools', '/templates',
+      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
       '/connectors', '/connectors/catalog', '/jobs', '/designs', '/design-templates',
-      '/prompt-templates', '/shares', `/sessions/${sessionId}/jobs`,
+      '/shares', `/sessions/${sessionId}/jobs`, '/skills/store', '/user-pipelines', '/user-pipelines/store',
     ].includes(path)) return json([])
     unexpected.push(`${request.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })
@@ -146,6 +149,40 @@ for (const scenario of [
         await toggle.click()
         await expect(badgeList).toBeHidden()
       }
+      expect(unexpected).toEqual([])
+    } finally {
+      await context.close()
+    }
+  })
+}
+
+for (const width of [390, 360]) {
+  test(`${width}: the 사용자 지정 hub fits the phone on every tab`, async ({ browser }, testInfo) => {
+    const context = await browser.newContext({
+      baseURL: String(testInfo.project.use.baseURL),
+      viewport: { width, height: 844 },
+      hasTouch: true,
+      locale: 'ko-KR',
+    })
+    try {
+      const page = await context.newPage()
+      const unexpected = await mockChat(page)
+      for (const tab of ['agents', 'skills', 'connectors']) {
+        await page.goto(`/customize?tab=${tab}`)
+        await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible()
+        await expect(page.getByRole('tab', { name: /./ }).first()).toBeVisible()
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), tab).toBeLessThanOrEqual(0)
+        const main = page.getByRole('main')
+        expect(await main.evaluate((el) => el.scrollWidth - el.clientWidth), tab).toBeLessThanOrEqual(0)
+      }
+      // The drawer: 새 대화 · 프로젝트 · 아티팩트 · 사용자 지정, no separate 챗봇.
+      await page.getByRole('button', { name: '사이드바 토글' }).click()
+      await expect(page.locator('aside nav').first().getByRole('link')).toHaveText(['새 대화', '프로젝트', '아티팩트', '사용자 지정'])
+      // The phone keeps 추가 in the top bar and filter and sort in one sheet.
+      await page.goto('/customize?tab=agents&view=explore')
+      await expect(page.locator('header').getByRole('button', { name: '추가' })).toBeVisible()
+      await page.getByRole('button', { name: '필터·정렬' }).click()
+      await expect(page.getByRole('dialog', { name: '필터·정렬' })).toBeVisible()
       expect(unexpected).toEqual([])
     } finally {
       await context.close()

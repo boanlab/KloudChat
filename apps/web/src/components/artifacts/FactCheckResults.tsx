@@ -22,13 +22,13 @@ const verdictMeta = {
   uncertain: { icon: CircleHelp, tone: 'warn' as const, label: '확인 필요', color: 'text-warn' },
 }
 
-/** Per-claim fact-check verdicts with their sources; shared by deck and report. */
+/** Per-claim verdicts with sources; deck and report. */
 export function FactCheckResults({
   check,
   onFix,
 }: {
   check: FactCheck
-  /** Sends one weak claim to the surface's revision path; omitted where there is none. */
+  /** Sends a weak claim to the revision path; omitted where none. */
   onFix?: (claim: FactCheck['claims'][number]) => void
 }) {
   const t = useT()

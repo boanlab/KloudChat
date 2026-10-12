@@ -9,18 +9,17 @@ import {
   type PanelMode,
 } from '@/components/artifacts/PanelControls'
 import { useT } from '@/lib/useT'
+import { csvSource } from '@/components/artifacts/artifactExport'
 
-/** Model-provided series points with an empty fallback. */
 function pointsOf(one: ChartArtifact['series'][number]) {
   return Array.isArray(one?.points) ? one.points : []
 }
 
-/** Series with an empty fallback. */
 function seriesOf(chart: ChartArtifact) {
   return Array.isArray(chart.series) ? chart.series : []
 }
 
-/** Every x across every series, in first-appearance order. */
+/** All x values, first-appearance order. */
 function categories(chart: ChartArtifact): string[] {
   const out: string[] = []
   for (const one of seriesOf(chart)) {
@@ -29,7 +28,7 @@ function categories(chart: ChartArtifact): string[] {
   return out
 }
 
-/** Snaps the tick interval to a round number so labels never repeat. */
+/** Round tick interval so labels never repeat. */
 function niceStep(range: number, count: number): number {
   if (range <= 0) return 1
   const rough = range / count
@@ -47,7 +46,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
   const keys = categories(chart)
   const series = seriesOf(chart)
 
-  // Legend is drawn inside the SVG so exports carry series names.
+  // Legend inside the SVG: exports keep series names.
   const legend = series.length > 1
   const W = 560
   const H = 280
@@ -63,13 +62,13 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
   const valueAt = (index: number, key: string) =>
     pointsOf(series[index]).find((p) => p.x === key)?.y
 
-  // Stacked bars scale to the whole stack, grouped ones to the tallest bar.
+  // Stacked: scale to stack; grouped: to tallest bar.
   const totals = keys.map((key) =>
     series.reduce((sum, _, i) => sum + Math.max(valueAt(i, key) ?? 0, 0), 0),
   )
   const values = series.flatMap((one) => pointsOf(one).map((p) => p.y))
   const hi = Math.max(stacked ? Math.max(...totals, 0) : Math.max(...values, 0), 0)
-  // Zero baseline: SVG does not draw a bar of negative height.
+  // Zero baseline: SVG draws no negative height.
   const lo = Math.min(...values, 0)
   const step = niceStep(hi - lo || 1, 4)
   const top = Math.ceil(hi / step) * step || step
@@ -81,7 +80,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
 
   const ticks: number[] = []
   for (let v = bottom; v <= top + step / 2; v += step) ticks.push(Number(v.toFixed(6)))
-  // Enough decimals to tell two ticks apart, and no more.
+  // Fewest decimals that tell ticks apart.
   const decimals = Math.max(0, Math.min(4, -Math.floor(Math.log10(step))))
   const label = (v: number) =>
     v.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
@@ -147,7 +146,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
 
       {legend &&
         series.map((one, si) => {
-          // Laid out by approximate width — SVG has no flexbox.
+          // Approximate-width layout; SVG has no flexbox.
           const offset = series
             .slice(0, si)
             .reduce((x, prior) => x + prior.name.length * 7 + 26, padL)
@@ -181,7 +180,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
                   strokeLinecap="round"
                   points={drawn.map((d) => `${centre(d.i)},${y(d.v)}`).join(' ')}
                 />
-                {/* Points make a single-value series visible. */}
+                {/* Points make single-value series visible. */}
                 {drawn.map((d) => (
                   <circle key={d.i} cx={centre(d.i)} cy={y(d.v)} r={3} fill={one.color} />
                 ))}
@@ -277,7 +276,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
   )
 }
 
-/** Static, non-interactive render for cards and previews. */
+/** Static render for cards and previews. */
 export function ChartThumb({ chart }: { chart: ChartArtifact }) {
   return (
     <div className="pointer-events-none flex size-full flex-col justify-center bg-panel px-4 py-3">
@@ -294,7 +293,6 @@ export function ChartThumb({ chart }: { chart: ChartArtifact }) {
   )
 }
 
-/** Hands `data` to the browser as a file download. */
 function save(data: BlobPart, mime: string, filename: string) {
   const url = URL.createObjectURL(new Blob([data], { type: mime }))
   const anchor = document.createElement('a')
@@ -308,7 +306,7 @@ function stem(title: string) {
   return title.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'chart'
 }
 
-/** Serialises the SVG with theme variables resolved to literal colours. */
+/** SVG with theme variables resolved to literal colours. */
 function svgSource(node: SVGSVGElement): string {
   const clone = node.cloneNode(true) as SVGSVGElement
   const computed = getComputedStyle(document.documentElement)
@@ -340,17 +338,6 @@ function svgSource(node: SVGSVGElement): string {
   return new XMLSerializer().serializeToString(clone)
 }
 
-/** The table as CSV; the BOM makes Excel decode Korean as UTF-8. */
-function csvSource(chart: ChartArtifact): string {
-  const escape = (v: string | number) => {
-    const text = String(v)
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-  }
-  const lines = [chart.table.columns.map(escape).join(',')]
-  for (const row of chart.table.rows) lines.push(row.map(escape).join(','))
-  return `\ufeff${lines.join('\n')}\n`
-}
-
 export function ChartPanel({
   chart,
   onClose,
@@ -372,7 +359,7 @@ export function ChartPanel({
     if (node) save(svgSource(node), 'image/svg+xml', `${stem(chart.title)}.svg`)
   }
 
-  // Rasterised through a canvas at 2x.
+  // Canvas at 2x.
   const exportPng = () => {
     const node = svg()
     if (!node) return
@@ -408,7 +395,7 @@ export function ChartPanel({
           trigger={() => (
             <Button size="sm">
               <Download size={14} />
-              {t('내보내기')}
+              {t('내려받기')}
             </Button>
           )}
         >

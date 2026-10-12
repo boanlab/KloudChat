@@ -1,50 +1,60 @@
 import {
   ArrowUp,
+  AtSign,
   Boxes,
-  Columns2,
+  Check,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
   Gauge,
   Globe,
   LayoutGrid,
-  LayoutTemplate,
   Mic,
-  MoreHorizontal,
   Paperclip,
   Pencil,
   Plug,
   Loader2,
   Plus,
-  ShieldCheck,
   Sparkles,
   Square,
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { FileRow, PrivacyDecision, WebSearchSetting } from '@/lib/api'
 import { ApiError, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure } from '@/lib/failures'
-import { handoffSurface } from '@/lib/documentRequest'
+import { agentDocumentNames, agentHandoffSurface, handoffSurface } from '@/lib/documentRequest'
 import { DICTATION_EVENT, isMac } from '@/lib/shortcuts'
 import { currentLang } from '@/lib/i18n'
 import { readStoredDraft, writeStoredDraft } from '@/lib/drafts'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useNavigate } from 'react-router-dom'
+import { agentStartKind, distinctAgents, kindMeta } from '@/lib/kinds'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import { ChatSendRecoveryError, effectiveModelId, useStore } from '@/store/useStore'
-import type { ModelInfo, PrivacyAction, SessionKind, Skill, StartingPoint } from '@/types'
-import { ASPECTS, servedAspect, servedAspects } from '@/lib/aspects'
+import { ChatSendRecoveryError, FIGURE_STYLES, composerKey, effectiveModelId, useStore } from '@/store/useStore'
+import type { ModelInfo, PrivacyAction, SessionKind, Skill } from '@/types'
+import { servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
+import { SharedBotItems } from './SharedBotItems'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
+import { isListed } from '@/lib/listed'
+import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
+import { ATTACH_ACCEPT, attachRefusal } from '@/lib/attachable'
+import { isImeKey } from '@/lib/ime'
 
 /** Shown when a send timed out at the gateway: the turn may be running on the server. */
 const GATEWAY_NOTICE =
   '응답이 늦어 연결이 끊겼습니다. 답이 진행 중이면 이 대화에 이어서 표시됩니다.'
+
+/** The prompt box grows to this height, then scrolls. */
+const COMPOSER_MAX_PX = 280
 
 const placeholders: Record<SessionKind, string> = {
   chat: '무엇이든 물어보세요',
@@ -54,8 +64,8 @@ const placeholders: Record<SessionKind, string> = {
   av: '만들고 싶은 영상이나 오디오를 설명하세요',
 }
 
-// Mirrors `imagegen.STYLE_CHOICES`.
-const STYLES = ['자동', '도식', '인포그래픽', '차트', '사진', '일러스트', '미니멀', '3D 렌더', '수채화', '없음']
+// Mirrors `imagegen.STYLE_CHOICES`; 구조도·흐름도·개념도 are drawn as deck-export shapes, not by the image model.
+const STYLES = ['자동', '구조도', '흐름도', '개념도', '인포그래픽', '차트', '사진', '일러스트', '미니멀', '3D 렌더', '수채화', '없음']
 const LABELS: { id: 'auto' | 'ko' | 'en' | 'none'; label: string }[] = [
   { id: 'auto', label: '자동' },
   { id: 'ko', label: '한국어' },
@@ -80,7 +90,6 @@ type PendingPrivacy = {
   text: string
   attachments: FileRow[]
   activatedSkillIds: string[]
-  startingTemplate: StartingPoint | null
   webSearch: WebSearchSetting
   restoreToken: number
 }
@@ -98,7 +107,7 @@ const SOURCE_LABEL: Record<string, string> = {
   tool_definitions: '도구 정의',
 }
 
-/** Compact chip-style selector used by the image and a/v option bars. */
+/** Chip selector for the image and a/v option bars. */
 function OptionGroup<T extends string | number>({
   label,
   value,
@@ -132,27 +141,6 @@ function OptionGroup<T extends string | number>({
         </MenuItem>
       ))}
     </Dropdown>
-  )
-}
-
-/** Names the media template whose values fill the option chips; gone once a chip is changed by hand. */
-function TemplateOptionNote({ kinds }: { kinds: readonly string[] }) {
-  const t = useT()
-  const template = useStore((s) => s.optionTemplate)
-  // Hidden while the template chip above already names it.
-  const chipped = useStore((s) => s.pendingTemplate)
-  if (!template || !kinds.includes(template.kind) || chipped?.id === template.id) return null
-  return (
-    <span
-      className="flex items-center gap-1 text-xs text-faint"
-      title={t('값을 직접 바꾸면 이 표시는 사라집니다')}
-    >
-      <LayoutGrid size={11} />
-      {t('{name} 서식이 정한 값').replace(
-        '{name}',
-        templateText(template, currentLang() === 'en').name,
-      )}
-    </span>
   )
 }
 
@@ -190,7 +178,6 @@ function ImageOptions({ model }: { model: ModelInfo | undefined }) {
         onChange={(v) => setImageOptions({ count: v })}
         format={(v) => t('{n}장').replace('{n}', String(v))}
       />
-      <TemplateOptionNote kinds={['image']} />
     </>
   )
 }
@@ -221,8 +208,7 @@ function AvOptions() {
   const avModel = models.find((m) => m.id === modelByKind.av)
   const hasVideoModel = models.some((m) => m.kinds.includes('av') && m.modality === 'video')
   const shapedFor = useRef<string | null>(null)
-  // When the model changes, snap the chips to a shape it prices; a chip
-  // turned afterwards stands.
+  // Model change snaps the chips to a priced shape; later picks stand.
   useEffect(() => {
     if (audio || !avModel) return
     if (avModel.modality !== 'video') {
@@ -298,35 +284,71 @@ function AvOptions() {
         onChange={(v) => setAvOptions({ durationSec: v })}
         format={(v) => t('{n}초').replace('{n}', String(v))}
       />
-      <TemplateOptionNote kinds={['video', 'audio']} />
     </>
   )
 }
 
-/** The toggle's three positions; `auto` is sent as `'auto'`, the others as booleans. */
+/** The three positions (자동·항상·끔); `auto` is sent as `'auto'`, the others as booleans. */
 type WebSearchMode = 'auto' | 'on' | 'off'
 
-// Composer state carried across the remount that creating a session causes.
-// Read once by the new composer and cleared.
+/** What the 「+」 menu shows: its list, or one tool's own choices in its place. */
+type PlusView = 'main' | 'skills' | 'web' | 'connectors' | 'agents'
+
+/** A row of the 「+」 menu; `submenu` rows open their tool's choices in place. */
+function ToolItem({
+  icon,
+  children,
+  hint,
+  label,
+  submenu,
+  back,
+  disabled,
+  onClick,
+}: {
+  icon: ReactNode
+  children: ReactNode
+  hint?: ReactNode
+  label?: string
+  submenu?: boolean
+  /** The 뒤로 row, which focus skips when a submenu opens. */
+  back?: boolean
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      aria-label={label}
+      aria-haspopup={submenu ? 'menu' : undefined}
+      data-back={back ? '' : undefined}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-control px-2.5 py-1.5 text-left text-base text-fg transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-55 phone:py-2"
+    >
+      <span className="shrink-0 text-muted">{icon}</span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {hint && <span className="max-w-[45%] shrink-0 truncate text-sm text-faint">{hint}</span>}
+      {submenu && <ChevronRight size={14} className="shrink-0 text-faint" />}
+    </button>
+  )
+}
+
+// State carried across the session-creating remount; read once, then cleared.
 type ComposerSnapshot = {
   sessionId: string
   value: string
   attachments: FileRow[]
-  startingTemplate: StartingPoint | null
   activatedSkillIds: string[]
   webSearchMode: WebSearchMode
-  startingValues?: Record<number, string>
 }
 let carriedComposer: ComposerSnapshot | null = null
 // Editing a past question must not replace the ordinary draft of its conversation.
 const editBackups = new Map<string, ComposerSnapshot>()
 
-// Unsent text keyed by session id, or `new:<kind>` on the home screen. Held in
-// memory and mirrored to this browser's storage under the account, so a reload
-// (or a crash) does not lose a half-typed question; storage may be unavailable
-// (private window, blocked site data), and then memory alone serves.
+// Unsent text by session id (or `new:<kind>`), mirrored to per-account storage; memory alone when storage is unavailable.
 const drafts = new Map<string, string>()
-const draftKeyFor = (sessionId: string | null, kind: SessionKind) => sessionId ?? `new:${kind}`
+const draftKeyFor = composerKey
 const draftStore = {
   /** Memory first; one storage read per key, misses cached as '' so list renders stay cheap. */
   get(key: string): string | undefined {
@@ -353,7 +375,46 @@ useStore.subscribe((state, previous) => {
   draftStore.clear()
 })
 
-/** Whether a session has unsent text. */
+const FILL_EVENT = 'kloudchat:fill-composer'
+/** A paste longer than this folds into a chip. */
+const PASTE_FOLD = 2000
+/** What one message may hold (the API's own limit), and where the counter appears. */
+const MESSAGE_LIMIT = 200_000
+const MESSAGE_WARN = 150_000
+const ATTACH_EVENT = 'kloudchat:attach-to-session'
+
+/** Upload finished after its composer moved on: joins that conversation's carried state or live composer. */
+function attachLate(sessionId: string, row: FileRow) {
+  if (carriedComposer?.sessionId === sessionId) {
+    carriedComposer = { ...carriedComposer, attachments: [...carriedComposer.attachments, row] }
+    return
+  }
+  window.dispatchEvent(new CustomEvent(ATTACH_EVENT, { detail: { sessionId, row } }))
+}
+
+/** Uploads still on their way to a conversation a composer has moved to, by session id. */
+const lateUploads = new Map<string, number>()
+/** Names of those uploads that failed before that conversation's composer could say so. */
+const lateFailures = new Map<string, string[]>()
+const LATE_UPLOADS_EVENT = 'kloudchat:late-uploads'
+
+function countLateUpload(sessionId: string, delta: 1 | -1) {
+  const next = (lateUploads.get(sessionId) ?? 0) + delta
+  if (next > 0) lateUploads.set(sessionId, next)
+  else lateUploads.delete(sessionId)
+  window.dispatchEvent(new CustomEvent(LATE_UPLOADS_EVENT))
+}
+
+function failLate(sessionId: string, name: string) {
+  lateFailures.set(sessionId, [...(lateFailures.get(sessionId) ?? []), name])
+  window.dispatchEvent(new CustomEvent(LATE_UPLOADS_EVENT))
+}
+
+/** Puts `text` in the composer in place of what is there, without sending it. */
+export function fillComposer(text: string) {
+  window.dispatchEvent(new CustomEvent(FILL_EVENT, { detail: text }))
+}
+
 export function hasUnsentDraft(sessionId: string) {
   return !!draftStore.get(sessionId)?.trim()
 }
@@ -404,14 +465,14 @@ export function Composer({
   const restoreSequence = useRef(0)
   const activeRestoreToken = useRef<number | null>(null)
 
-  const draft = useStore((s) => s.draft)
+  // A hand-off addressed to another composer (the one a navigation is opening) waits for it.
+  const draft = useStore((s) => (s.draftTo === null || s.draftTo === draftKey ? s.draft : ''))
   const setDraft = useStore((s) => s.setDraft)
-  // A gallery sentence is appended to the box, never written over it, and
-  // arrives selected so one keystroke removes it.
-  // Selection applied after React commits the value.
+  // Gallery sentence appended, never overwriting, and selected for one-keystroke removal; selection applied after commit.
   const pendingSelection = useRef<[number, number] | null>(null)
   useEffect(() => {
-    if (!draft) return
+    // Taken once: StrictMode replays a mount's effects with the render's (already consumed) value.
+    if (!draft || useStore.getState().draft !== draft) return
     activeRestoreToken.current = null
     const kept = liveValue.current.replace(/\s*$/, '')
     const next = kept ? `${kept}\n\n${draft}` : draft
@@ -419,74 +480,113 @@ export function Composer({
     setValue(next)
     setDraft('')
     ref.current?.focus()
-    // Into an empty box the caret goes to the end. Applied in the layout
-    // effect: the controlled textarea's next commit collapses an earlier selection.
+    // Empty box: caret to the end. Set in the layout effect; the controlled commit collapses an earlier selection.
     pendingSelection.current = [kept ? next.length - draft.length : next.length, next.length]
   }, [draft, setDraft])
+  useEffect(() => {
+    const fill = (event: Event) => {
+      const text = (event as CustomEvent<string>).detail
+      if (typeof text !== 'string' || editing) return
+      activeRestoreToken.current = null
+      liveValue.current = text
+      draftStore.set(draftKey, text)
+      setValue(text)
+      ref.current?.focus()
+      pendingSelection.current = [text.length, text.length]
+    }
+    window.addEventListener(FILL_EVENT, fill)
+    return () => window.removeEventListener(FILL_EVENT, fill)
+  }, [draftKey, editing])
   useLayoutEffect(() => {
     const range = pendingSelection.current
     if (!range) return
     pendingSelection.current = null
     ref.current?.setSelectionRange(range[0], range[1])
   }, [value])
-  /** Uploaded files; the turn sends their ids. */
   const [attachments, setAttachments] = useState<FileRow[]>([])
   const liveAttachments = useRef(attachments)
+  const liveSessionId = useRef(sessionId)
+  liveSessionId.current = sessionId
+  const composerMounted = useRef(true)
+  useEffect(() => {
+    composerMounted.current = true
+    return () => { composerMounted.current = false }
+  }, [])
+  useEffect(() => {
+    const late = (event: Event) => {
+      const { sessionId: target, row } = (event as CustomEvent<{ sessionId: string; row: FileRow }>).detail
+      if (target !== liveSessionId.current) return
+      setAttachments((current) => {
+        if (current.some((file) => file.id === row.id)) return current
+        const next = [...current, row]
+        liveAttachments.current = next
+        return next
+      })
+    }
+    window.addEventListener(ATTACH_EVENT, late)
+    return () => window.removeEventListener(ATTACH_EVENT, late)
+  }, [])
+  /** The conversation an agent pick opened or is opening; files picked meanwhile go to it. */
+  const agentStart = useRef<Promise<string> | null>(null)
+  // A scanned attachment is read in the background; its chip follows the pages.
+  useOcrProgress(attachments, (row) =>
+    setAttachments((current) => {
+      const next = current.map((item) => (item.id === row.id ? row : item))
+      liveAttachments.current = next
+      return next
+    }),
+  )
   liveAttachments.current = attachments
   const [pendingPrivacy, setPendingPrivacy] = useState<PendingPrivacy | null>(null)
+  /** Long pastes held as chips; they join the message on send. */
+  const [pasted, setPasted] = useState<string[]>([])
+  const livePasted = useRef(pasted)
+  livePasted.current = pasted
   const [reusableSessionId, setReusableSessionId] = useState<string | null>(null)
   const [privacyRetrying, setPrivacyRetrying] = useState(false)
   const [modelSelectionPending, setModelSelectionPending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   // A form a picked template brought with it; taken once and cleared.
-  const pendingAttachment = useStore((s) => s.pendingAttachment)
-  // Held here, not in the store, so a refused turn can be handed back whole.
-  const [startingTemplate, setStartingTemplate] = useState<StartingPoint | null>(null)
-  const liveStartingTemplate = useRef(startingTemplate)
-  liveStartingTemplate.current = startingTemplate
-  const pendingStartingTemplate = useStore((s) => s.pendingStartingTemplate)
-  const setPendingStartingTemplate = useStore((s) => s.setPendingStartingTemplate)
+  const pendingAttachment = useStore((s) =>
+    s.pendingAttachmentTo === null || s.pendingAttachmentTo === draftKey ? s.pendingAttachment : null)
   const pendingTemplate = useStore((s) => s.pendingTemplate)
   const setPendingTemplate = useStore((s) => s.setPendingTemplate)
   const livePendingTemplate = useRef(pendingTemplate)
   livePendingTemplate.current = pendingTemplate
   const designTemplates = useStore((s) => s.designTemplates)
-  const promptTemplates = useStore((s) => s.promptTemplates)
   const [galleryOpen, setGalleryOpen] = useState(false)
-  // A phone shows attach, dictation and web search; the rest sits behind 「더보기」,
-  // and model comparison — answers side by side — is not offered at all.
+  // A phone opens 「+」 as a bottom sheet.
   const phone = useMediaQuery('(pointer: coarse) and (max-width: 64rem), (max-width: 40rem)')
-  const [moreOpen, setMoreOpen] = useState(false)
-  const folded = phone && !moreOpen
+  const [plusOpen, setPlusOpen] = useState(false)
+  const [plusView, setPlusView] = useState<PlusView>('main')
+  const [skillQuery, setSkillQuery] = useState('')
+  const plusViewRef = useRef<HTMLDivElement>(null)
+  // A submenu replaces the list it was opened from; focus moves into it.
+  useEffect(() => {
+    if (!plusOpen) return
+    const frame = requestAnimationFrame(() => {
+      const root = plusViewRef.current
+      const target = plusView === 'skills'
+        ? root?.querySelector<HTMLElement>('input')
+        : root?.querySelector<HTMLElement>('button:not(:disabled):not([data-back])')
+      target?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+    // Only a view change moves focus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plusView])
   const setSessionTemplate = useStore((s) => s.setSessionTemplate)
+  const handOff = useStore((s) => s.handOff)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
   const composerRestore = useStore((s) => s.composerRestore)
   const setComposerRestore = useStore((s) => s.setComposerRestore)
-  useEffect(() => {
-    if (!pendingAttachment) return
-    // Media surfaces take no attachments; drop it rather than leave it for the next chat turn.
-    if (isMedia) {
-      setPendingAttachment(null)
-      return
-    }
-    activeRestoreToken.current = null
-    setAttachments((current) => {
-      const next = current.some((f) => f.id === pendingAttachment.id)
-        ? current
-        : [...current, pendingAttachment]
-      liveAttachments.current = next
-      return next
-    })
-    setPendingAttachment(null)
-  }, [isMedia, pendingAttachment, setPendingAttachment])
   /** Refused-turn restoration without overwriting newer input. */
   useEffect(() => {
     if (!composerRestore || composerRestore.sessionId !== sessionId) return
     setComposerRestore(null)
     if (composerRestore.error) setChatError(composerRestore.error)
-    // Skills are not "newer input": they stay on after a send, so their presence
-    // says nothing about whether the person has started typing something else.
-    if (liveValue.current || liveAttachments.current.length > 0 || liveStartingTemplate.current) {
+    // Skills persist after a send, so they are not newer input.
+    if (liveValue.current || liveAttachments.current.length > 0) {
       return
     }
     activeRestoreToken.current = null
@@ -498,45 +598,34 @@ export function Composer({
     liveValue.current = composerRestore.value
     liveAttachments.current = composerRestore.attachments
     liveActivatedSkillIds.current = skills
-    liveStartingTemplate.current = composerRestore.startingTemplate
     setValue(composerRestore.value)
     setAttachments(composerRestore.attachments)
     setActivatedSkillIds(skills)
-    setStartingTemplate(composerRestore.startingTemplate)
     requestAnimationFrame(() => ref.current?.focus())
   }, [composerRestore, sessionId, setComposerRestore])
 
-  // Values typed into the starting point's blanks, keyed by blank index.
-  const [startingValues, setStartingValues] = useState<Record<number, string>>({})
-
-  useEffect(() => {
-    if (!pendingStartingTemplate) return
-    activeRestoreToken.current = null
-    liveStartingTemplate.current = pendingStartingTemplate
-    setStartingTemplate(pendingStartingTemplate)
-    setStartingValues({})
-    setPendingStartingTemplate(null)
-    if (pendingStartingTemplate.text) setValue(pendingStartingTemplate.text)
-    // A starting point turns on what it declares it needs; both stay switchable.
-    if (pendingStartingTemplate.needs?.includes('web')) setWebSearchMode('on')
-    const wanted = pendingStartingTemplate.skills ?? []
-    if (wanted.length) {
-      const ids = usableSkills
-        .filter((skill) => wanted.includes(skill.name))
-        .map((skill) => skill.id)
-        .slice(0, 3)
-      if (ids.length) setActivatedSkillIds(ids)
-    }
-    requestAnimationFrame(() => ref.current?.focus())
-    // usableSkills is stable between a pick and this effect; listing it would re-apply the pick.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingStartingTemplate, setPendingStartingTemplate])
-  const [uploading, setUploading] = useState(false)
+  const [ownUploading, setUploading] = useState(false)
   /** Names of files whose upload failed, shown until the next upload attempt. */
   const [uploadFailed, setUploadFailed] = useState<string[]>([])
+  // File picked while an agent's conversation opened: uploaded by the picking composer; shown here with its failure.
+  const [carriedUploads, setCarriedUploads] = useState(() => (sessionId ? lateUploads.get(sessionId) ?? 0 : 0))
+  useEffect(() => {
+    const sync = () => {
+      if (!sessionId) return setCarriedUploads(0)
+      setCarriedUploads(lateUploads.get(sessionId) ?? 0)
+      const failed = lateFailures.get(sessionId)
+      if (failed?.length) {
+        lateFailures.delete(sessionId)
+        setUploadFailed((current) => [...current, ...failed])
+      }
+    }
+    sync()
+    window.addEventListener(LATE_UPLOADS_EVENT, sync)
+    return () => window.removeEventListener(LATE_UPLOADS_EVENT, sync)
+  }, [sessionId])
+  const uploading = ownUploading || carriedUploads > 0
   const fileInput = useRef<HTMLInputElement>(null)
-  // Dictation goes to the deployment's own Whisper, never to the browser
-  // vendor's recognizer; the recording is not kept.
+  // Dictation via the deployment's Whisper only, never the browser's recognizer; recording not kept.
   const dictationEnabled = useStore((s) => s.dictationEnabled)
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
@@ -581,11 +670,11 @@ export function Composer({
       setChatError(t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'))
     }
   }
-  // Push to talk: hold space in an empty box, release to transcribe and send.
-  // `pushToTalk` marks a held-key recording; the mic button's recording waits for send.
+  // Push to talk (환경설정): hold space in an empty box, release to fill the box, never send.
+  const spaceToTalk = useStore((s) => s.user?.preferences.spaceToTalk === true)
   const pushToTalk = useRef(false)
   const holdToTalk = (e: { key: string; repeat: boolean; preventDefault: () => void }) => {
-    if (e.key !== ' ' || !canRecord || busy || transcribing) return false
+    if (e.key !== ' ' || !spaceToTalk || !canRecord || busy || transcribing) return false
     if (liveValue.current.trim()) return false
     e.preventDefault()
     if (e.repeat || recorder.current) return true
@@ -597,9 +686,8 @@ export function Composer({
     if (e.key !== ' ' || !pushToTalk.current) return false
     e.preventDefault()
     pushToTalk.current = false
-    void stopRecording().then((text) => {
-      if (text.trim()) submit(text)
-    })
+    // Fills the box; never sends.
+    void stopRecording()
     return true
   }
   // Cmd/Ctrl+Shift+M toggles the mic; unlike push-to-talk it waits for send.
@@ -613,34 +701,11 @@ export function Composer({
     window.addEventListener(DICTATION_EVENT, toggle)
     return () => window.removeEventListener(DICTATION_EVENT, toggle)
   })
-  useEffect(() => {
-    if (!canRecord) return
-    // Also outside any field, but never on a control, where space is a click.
-    const idle = (target: EventTarget | null) => {
-      const el = target as HTMLElement | null
-      if (!el || el === document.body) return true
-      if (el.isContentEditable) return false
-      return !['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A', 'SUMMARY'].includes(el.tagName)
-    }
-    const down = (e: KeyboardEvent) => {
-      if (idle(e.target)) holdToTalk(e)
-    }
-    const up = (e: KeyboardEvent) => {
-      if (idle(e.target)) releaseToTalk(e)
-    }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-    }
-  })
-  // 「자동」 by default: the web tools are offered and the server searches when the words
-  // call for it; 「켬」 searches every turn, 「끔」 offers nothing. `searchBlocked` still
-  // overrides per turn.
+  // 자동 (default): tools offered, server decides; 켬 searches every turn; 끔 offers none. `searchBlocked` overrides.
   const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>('auto')
   const webSearch = webSearchMode !== 'off'
-  const webSearchModeLabel = { auto: t('자동'), on: t('켬'), off: t('끔') }[webSearchMode]
+  const webSearchModeLabels: Record<WebSearchMode, string> = { auto: t('자동'), on: t('항상'), off: t('끔') }
+  const webSearchModeLabel = webSearchModeLabels[webSearchMode]
   const [activatedSkillIds, setActivatedSkillIds] = useState<string[]>([])
   const liveActivatedSkillIds = useRef(activatedSkillIds)
   liveActivatedSkillIds.current = activatedSkillIds
@@ -651,21 +716,16 @@ export function Composer({
     sessionId: id,
     value: liveValue.current,
     attachments: liveAttachments.current,
-    startingTemplate: liveStartingTemplate.current,
     activatedSkillIds: liveActivatedSkillIds.current,
     webSearchMode: liveWebSearchMode.current,
-    startingValues,
   })
   const restoreComposer = (held: ComposerSnapshot) => {
     liveValue.current = held.value
     liveAttachments.current = held.attachments
     liveActivatedSkillIds.current = held.activatedSkillIds
-    liveStartingTemplate.current = held.startingTemplate
     setValue(held.value)
     setAttachments(held.attachments)
     setActivatedSkillIds(held.activatedSkillIds)
-    setStartingTemplate(held.startingTemplate)
-    setStartingValues(held.startingValues ?? {})
     setWebSearchMode(held.webSearchMode)
     draftStore.set(held.sessionId, held.value)
   }
@@ -696,9 +756,7 @@ export function Composer({
       return
     }
     if (sessionId && carriedComposer?.sessionId === sessionId) {
-      // Only non-empty fields are put back: on a send the composer was cleared
-      // before the session existed, and a refusal may already have restored
-      // the real draft through the store.
+      // Only non-empty fields: the composer was cleared before the session existed, and a refusal may already have restored the draft.
       const held = carriedComposer
       carriedComposer = null
       if (held.value) {
@@ -709,10 +767,6 @@ export function Composer({
         liveAttachments.current = held.attachments
         setAttachments(held.attachments)
       }
-      if (held.startingTemplate) {
-        liveStartingTemplate.current = held.startingTemplate
-        setStartingTemplate(held.startingTemplate)
-      }
       if (held.activatedSkillIds.length) {
         liveActivatedSkillIds.current = held.activatedSkillIds
         setActivatedSkillIds(held.activatedSkillIds)
@@ -720,21 +774,36 @@ export function Composer({
       setWebSearchMode(held.webSearchMode)
       return
     }
-    // The conversation's standing skills come back with it; a new one starts clean.
-    // Read once here, not subscribed: a later change to them is hydrated below.
+    // Standing skills return with the conversation; read once, later changes hydrated below.
     const standing = sessionId
       ? useStore.getState().sessions.find((c) => c.id === sessionId)?.skillIds ?? []
       : []
     liveActivatedSkillIds.current = standing
     setActivatedSkillIds(standing)
-    liveStartingTemplate.current = null
-    setStartingTemplate(null)
     liveAttachments.current = []
     setAttachments([])
     setWebSearchMode('auto')
   }, [sessionId, kind, messageEdit?.sessionId, accountEpoch])
-  // The session row may arrive after the composer mounted (a fresh load of /s/:id):
-  // its standing skills fill an empty picker once, never overriding a live choice.
+  // Declared after the scope reset above: effects run in order, so a hand-off arriving with a
+  // navigation is taken after the new scope's reset, not wiped by it.
+  useEffect(() => {
+    if (!pendingAttachment) return
+    // Media surfaces take no attachments; drop it rather than leave it for the next chat turn.
+    if (isMedia) {
+      setPendingAttachment(null)
+      return
+    }
+    activeRestoreToken.current = null
+    setAttachments((current) => {
+      const next = current.some((f) => f.id === pendingAttachment.id)
+        ? current
+        : [...current, pendingAttachment]
+      liveAttachments.current = next
+      return next
+    })
+    setPendingAttachment(null)
+  }, [isMedia, pendingAttachment, setPendingAttachment])
+  // Session row may arrive after mount: its skills fill an empty picker once, never overriding a live choice.
   const standingSkillIds = useStore((s) =>
     sessionId ? s.sessions.find((c) => c.id === sessionId)?.skillIds : undefined,
   )
@@ -757,14 +826,9 @@ export function Composer({
     agents,
     connectors,
     toggleConnector,
-    compareMode,
-    compareModels,
-    toggleCompareMode,
-    toggleCompareModel,
     models,
     modelByKind,
     imageOptions,
-    setImageOptions,
     jobs,
     uploadFile,
     newSession,
@@ -776,6 +840,7 @@ export function Composer({
     avOptions,
     mediaError,
     clearMediaError,
+    user,
   } = useStore()
 
   const project = projects.find((p) => p.id === projectId)
@@ -784,32 +849,29 @@ export function Composer({
   // A generation awaiting an answer or approval (document surfaces only).
   const pending = session?.pending ?? null
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
-  // The picked template, else the one the session already wears. Derived:
-  // the server is what makes the choice sticky.
+  // Picked template, else the session's; derived, the server keeps it sticky.
   const shownTemplate =
     (pendingTemplate?.surface === kind ? pendingTemplate : null) ??
     designTemplates.find((row) => row.id === session?.renderTemplateId) ??
     null
   // Same gate as the gallery button.
   const hasTemplates =
-    offersTemplates(kind) &&
-    (designTemplates.some((row) => row.surface === kind) ||
-      promptTemplates.some((row) => row.kind === kind))
-  // The empty screen, with its own gallery button, is gone.
+    offersTemplates(kind) && designTemplates.some((row) => row.surface === kind)
+  // Past the empty screen, which has its own gallery button.
   const started = (session?.messages.length ?? 0) > 0
   const model = models.find(
     (candidate) => candidate.id === effectiveModelId(session, kind, agents, modelByKind),
   )
-  // A strict-local model gets no network tool and a comparison sends no flag;
-  // the control follows the turn, not the stored preference.
-  const searchBlocked = (compareMode && kind === 'chat') || Boolean(model?.strictLocal)
+  // A strict-local model gets no network tool; the control follows the turn, not the stored preference.
+  const searchBlocked = Boolean(model?.strictLocal)
   const effectiveWebSearch = webSearch && !searchBlocked
-  // What this turn sends: the mode, unless something blocks search altogether.
   const sentWebSearch: WebSearchSetting = !effectiveWebSearch
     ? false
     : webSearchMode === 'auto'
       ? 'auto'
       : true
+  // 자동 is the default and needs no chip; 항상 and 끔 do, and so does a model that blocks search.
+  const webSearchChip = canWebSearch && (searchBlocked ? webSearch : webSearchMode !== 'auto')
   const agentSkillAllowlist = sessionAgent?.skillIds
   const agentToolAllowlist = sessionAgent?.tools
   const recommended = new Set(project?.skillIds ?? [])
@@ -817,6 +879,8 @@ export function Composer({
     .filter(
       (skill) =>
         skill.enabled &&
+        // A hidden part (`listed: false`) is not offered; one already on the turn stays.
+        (isListed(skill) || activatedSkillIds.includes(skill.id)) &&
         (skill.kinds.length === 0 || skill.kinds.includes(kind)) &&
         (agentSkillAllowlist === undefined ||
           agentSkillAllowlist === null ||
@@ -826,7 +890,7 @@ export function Composer({
 
   const skillUnavailableReason = (skill: Skill): string | null => {
     if (skill.requiredTools.length === 0) return null
-    if (kind !== 'chat' || compareMode) {
+    if (kind !== 'chat') {
       return t('이 화면에서는 도구가 필요한 스킬을 실행할 수 없습니다.')
     }
     if (!model?.supportsTools) {
@@ -868,7 +932,6 @@ export function Composer({
     kind === 'chat' && (session?.routingMode === 'auto' || session?.routingMode === 'auto_quality')
   const autoBypassPreview =
     autoActive &&
-    !compareMode &&
     Boolean(
       project ||
         sessionAgent ||
@@ -876,17 +939,23 @@ export function Composer({
         (effectiveWebSearch && webSearchMode === 'on') ||
         activeSkills.length > 0,
     )
-  const autoPausedForCompare = autoActive && compareMode
-  // Empty `kinds` means every surface.
-  const usableAgents = agents.filter(
+  // Empty `kinds` = every surface; an own copy and its catalogue original shown once.
+  const pickableAgents = distinctAgents(agents.filter((a) => a.enabled), user?.id)
+  const usableAgents = pickableAgents.filter(
     (a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(kind)),
   )
+  // 「+」 › 에이전트: this screen's agents first, then the rest on their own screens; media screens keep to their own.
+  const screenOrder = isMedia
+    ? usableAgents
+    : [...usableAgents, ...pickableAgents.filter((a) => a.enabled && !usableAgents.includes(a))]
+  // Own agents, then 「공유된 에이전트」 (others' shared ones, under their names).
+  const menuAgents = [...screenOrder.filter((a) => a.ownerId === user?.id), ...screenOrder.filter((a) => a.ownerId !== user?.id)]
+  const firstShared = menuAgents.findIndex((a) => a.ownerId !== user?.id)
   const usableConnectors = connectors.filter(
     (c) => c.installed && (c.kinds.length === 0 || c.kinds.includes(kind)),
   )
   const activeConnectors = usableConnectors.filter((c) => c.enabled && c.status === 'connected')
-  // Per picture, per second by (resolution, sound), or per call; never
-  // `creditCost`, which is per 1k output tokens.
+  // Per picture, per second by (resolution, sound), or per call — never `creditCost` (per 1k tokens).
   const videoRate =
     model?.creditPerSecond?.[`${avOptions.resolution}:${avOptions.withAudio ? 'sound' : 'silent'}`]
   // The submit endpoint refuses shapes the model does not price (Sora has no silent price).
@@ -904,8 +973,7 @@ export function Composer({
   )
   // This session's own turn only.
   const streaming = !!sessionId && !!running[sessionId]
-  // The gateway notice stands only until the turn it was about shows up: a running
-  // turn, or an answer growing in this conversation, means the request went through.
+  // Gateway notice stands until the turn shows: running, or an answer growing.
   const lastAnswerLength = useStore((s) => {
     const last = s.sessions.find((c) => c.id === sessionId)?.messages.at(-1)
     return last?.role === 'assistant' ? last.content.length + (last.steps?.length ?? 0) : 0
@@ -914,6 +982,34 @@ export function Composer({
     if (chatError === t(GATEWAY_NOTICE) && (streaming || lastAnswerLength > 0)) setChatError(null)
   }, [chatError, streaming, lastAnswerLength, t])
   const busy = isMedia ? jobRunning : streaming
+  // Before the model list has answered, a send would go out on a guessed model; it waits.
+  const modelsSettled = useStore((s) => s.modelsSettled)
+  const modelCount = useStore((s) => s.models.length)
+  const awaitingModels = !modelsSettled && modelCount === 0
+  const readingAttachment = attachments.find(isReading)
+  /** Enter pressed while a file uploads or the models load: sent as soon as that ends. */
+  const [queuedSend, setQueuedSend] = useState(false)
+  /** A new conversation's first turn: the text stays in the box until the server takes it. */
+  const [startPending, setStartPending] = useState(false)
+  const holdingStart = useRef(false)
+  /** A send is on its way and its turn has not shown yet: a second Enter waits for it. */
+  const submitting = useRef(false)
+  const [secondSend, setSecondSend] = useState(false)
+  useEffect(() => {
+    if (busy) submitting.current = false
+  }, [busy])
+  /** The server took the first turn: the box empties before its state is carried over. */
+  const releaseStart = () => {
+    if (!holdingStart.current) return
+    holdingStart.current = false
+    liveValue.current = ''
+    liveAttachments.current = []
+    livePasted.current = []
+    draftStore.set(draftKeyFor(null, kind), '')
+    setValue('')
+    setAttachments([])
+    setPasted([])
+  }
 
   useEffect(() => {
     if (!editing) {
@@ -946,11 +1042,8 @@ export function Composer({
     }))
     liveAttachments.current = files
     setAttachments(files)
-    liveStartingTemplate.current = null
-    setStartingTemplate(null)
-    setStartingValues({})
     requestAnimationFrame(() => { ref.current?.focus(); ref.current?.scrollIntoView({ block: 'nearest' }) })
-    // A message edit is an explicit one-time injection, not an ordinary draft update.
+    // One-time injection, not a draft update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messageEdit, sessionId])
 
@@ -974,7 +1067,6 @@ export function Composer({
     files: FileRow[],
     search: WebSearchSetting,
     skillIds: string[],
-    startedFrom: StartingPoint | null,
     action?: PrivacyAction,
     decisionToken?: string,
     restoreToken?: number,
@@ -1006,7 +1098,6 @@ export function Composer({
         attachments: files.map((file) => file.id),
         attachmentNames: files.map((file) => file.name),
         activatedSkillIds: skillIds,
-        startingTemplate: startedFrom ?? undefined,
         privacyAction: action,
         privacyDecisionToken: decisionToken,
         reconcileBeforeRetry: Boolean(editScope),
@@ -1014,14 +1105,14 @@ export function Composer({
           if (!ownsView()) return
           acceptedHere = true
           attemptedSessionId = id
+          releaseStart()
           carriedComposer = heldComposer(id)
           const branched = editContext.current?.forkId === id
           if (branched) {
             editContext.current = null
             clearMessageEdit()
           }
-          // A branch from an edit is pushed, so Back returns to the conversation it
-          // came from; a brand-new conversation replaces its /new/:kind address.
+          // Edit branch pushed (Back returns); a new conversation replaces /new/:kind.
           navigate(`/s/${id}`, branched ? undefined : { replace: true })
         },
       })
@@ -1039,6 +1130,8 @@ export function Composer({
         return
       }
       if (error instanceof PrivacyDecisionError) {
+        // The decision dialog holds the turn now; the box is free again.
+        releaseStart()
         const decisionSessionId = error.sessionId ?? resolvedSessionId
         setReusableSessionId(decisionSessionId)
         setPendingPrivacy({
@@ -1047,7 +1140,6 @@ export function Composer({
           text,
           attachments: files,
           activatedSkillIds: skillIds,
-          startingTemplate: startedFrom,
           webSearch: search,
           restoreToken: restoreToken ?? ++restoreSequence.current,
         })
@@ -1055,16 +1147,13 @@ export function Composer({
       }
       setReusableSessionId((current) => current ?? attemptedSessionId)
       if (editScope) throw error
-      // A gateway timeout is not a refusal: the request may have reached the server and
-      // its turn may be running. The draft is not handed back (sending it again would
-      // ask twice); the conversation is reloaded so a running turn shows.
+      // Gateway timeout is not a refusal: the turn may be running. Draft not handed back (a resend would ask twice); reload shows it.
       if (error instanceof ApiError && [502, 503, 504].includes(error.status) && attemptedSessionId) {
         setComposerRestore({
           sessionId: attemptedSessionId,
           value: '',
           attachments: [],
           activatedSkillIds: skillIds,
-          startingTemplate: null,
           error: t(GATEWAY_NOTICE),
         })
         void useStore.getState().openSession(attemptedSessionId)
@@ -1076,14 +1165,12 @@ export function Composer({
           ? t('Auto에 사용할 품질 모델을 다시 선택하세요. 초안과 첨부 파일은 그대로 보관했습니다.')
           : (refusalSentence(errorCode(error), t) ??
             errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.')))
-      // Through the store: the composer that sent a session-creating turn is
-      // unmounted by the time a refusal lands.
+      // Via the store: the sending composer is unmounted by the time a refusal lands.
       setComposerRestore({
         sessionId: attemptedSessionId,
         value: text,
         attachments: files,
         activatedSkillIds: skillIds,
-        startingTemplate: startedFrom,
         error: notice,
       })
       throw error
@@ -1092,58 +1179,100 @@ export function Composer({
 
   const dismissPrivacyDecision = () => {
     if (!pendingPrivacy || privacyRetrying) return
-    // Only the submission that still owns the cleared composer may restore it;
-    // a newer edit or upload revokes that.
+    // Only the submission owning the cleared composer restores it; a newer edit or upload revokes that.
     if (activeRestoreToken.current === pendingPrivacy.restoreToken) {
       activeRestoreToken.current = null
       liveValue.current = pendingPrivacy.text
       liveAttachments.current = pendingPrivacy.attachments
       liveActivatedSkillIds.current = pendingPrivacy.activatedSkillIds
-      liveStartingTemplate.current = pendingPrivacy.startingTemplate
       setValue(pendingPrivacy.text)
       setAttachments(pendingPrivacy.attachments)
       setActivatedSkillIds(pendingPrivacy.activatedSkillIds)
-      setStartingTemplate(pendingPrivacy.startingTemplate)
     }
     setReusableSessionId(pendingPrivacy.sessionId)
     setPendingPrivacy(null)
   }
 
+  // Grows to the cap, then scrolls; remeasured on width change or web-font load.
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 280)}px`
+    let width = el.clientWidth
+    const fit = () => {
+      el.style.height = 'auto'
+      const full = el.scrollHeight
+      // Short screen (phone, 200% zoom): at most a quarter of it, so the answer stays readable.
+      const most = Math.max(72, Math.min(COMPOSER_MAX_PX, Math.round(window.innerHeight * 0.25)))
+      el.style.height = `${Math.min(full, most)}px`
+      el.style.overflowY = full > most ? 'auto' : 'hidden'
+    }
+    fit()
+    const resized = new ResizeObserver(() => {
+      if (el.clientWidth === width) return
+      width = el.clientWidth
+      fit()
+    })
+    resized.observe(el)
+    let live = true
+    void document.fonts?.ready.then(() => { if (live) fit() })
+    return () => {
+      live = false
+      resized.disconnect()
+    }
   }, [value])
 
   /** Shared picker, drop, and paste upload path. */
-  const addFiles = async (picked: File[]) => {
-    if (!picked.length || isMedia || editPending) return
+  const addFiles = async (offered: File[]) => {
+    if (!offered.length || isMedia || editPending) return
     const editScope = editContext.current
-    const uploadSession = sessionId
+    // Refused before uploading: an empty file or a program has nothing to read.
+    const refused = offered.flatMap((file) => {
+      const reason = attachRefusal(file, t)
+      return reason ? [`${file.name} — ${reason}`] : []
+    })
+    const picked = offered.filter((file) => !attachRefusal(file, t))
+    setUploadFailed(refused)
+    if (!picked.length) return
     setUploading(true)
-    setUploadFailed([])
+    // A file picked while an agent's conversation is being opened belongs to that conversation.
+    const starting = agentStart.current
+    let carriedTo: string | null = null
     try {
+      const uploadSession = starting ? (await starting.catch(() => null)) ?? sessionId : sessionId
+      if (starting && uploadSession && uploadSession !== sessionId) {
+        carriedTo = uploadSession
+        countLateUpload(uploadSession, 1)
+      }
+      const movedOn = () =>
+        !!uploadSession && (!composerMounted.current || liveSessionId.current !== uploadSession)
       for (const file of picked) {
         const row = await uploadFile(file, {
           projectId: editing ? undefined : projectId ?? undefined,
-          sessionId: editing ? undefined : sessionId ?? undefined,
+          sessionId: editing ? undefined : uploadSession ?? undefined,
         }).catch(() => {
           // Said where the chips are: a file that never arrived must not look attached.
-          setUploadFailed((current) => [...current, file.name])
+          if (movedOn()) failLate(uploadSession!, file.name)
+          else setUploadFailed((current) => [...current, file.name])
           return null
         })
-        if (row && editContext.current === editScope && (!editScope || useStore.getState().activeSessionId === uploadSession)) {
-          setAttachments((current) => {
-            activeRestoreToken.current = null
-            const next = [...current, row]
-            liveAttachments.current = next
-            return next
-          })
+        if (!row || editContext.current !== editScope) continue
+        if (editScope && useStore.getState().activeSessionId !== uploadSession) continue
+        if (movedOn()) {
+          // Composer moved on: the file follows the conversation it was uploaded for.
+          attachLate(uploadSession!, row)
+          continue
         }
+        if (!composerMounted.current) continue
+        setAttachments((current) => {
+          activeRestoreToken.current = null
+          const next = [...current, row]
+          liveAttachments.current = next
+          return next
+        })
       }
     } finally {
-      setUploading(false)
+      if (carriedTo) countLateUpload(carriedTo, -1)
+      if (composerMounted.current) setUploading(false)
     }
   }
 
@@ -1153,38 +1282,60 @@ export function Composer({
     !isMedia && !editPending,
   )
   const onPasteFiles = usePasteFiles((files) => void addFiles(files))
-
-  // Prefixes the filled blanks to the request; empty blanks are omitted.
-  const withStartingValues = (typed: string) => {
-    if (!startingTemplate) return typed
-    // A media template fills one sentence; an empty blank keeps its example.
-    if (startingTemplate.examplePrompt && startingTemplate.blanks) {
-      const values = Object.fromEntries(
-        startingTemplate.blanks.map((blank, index) => [
-          blank.name,
-          (startingValues[index] ?? '').trim() || startingTemplate.examples?.[index] || '',
-        ]),
-      )
-      const sentence = startingTemplate.examplePrompt.replace(/\{(\w+)\}/g, (whole, name: string) =>
-        name in values ? values[name] : whole,
-      )
-      return [sentence, typed].filter(Boolean).join('\n')
-    }
-    const lines = startingTemplate.fills
-      .map((fill, index) => [fill, (startingValues[index] ?? '').trim()] as const)
-      .filter(([, filled]) => filled)
-      .map(([fill, filled]) => `${fill}: ${filled}`)
-    if (!lines.length) return typed
-    return [startingTemplate.title, ...lines, typed].filter(Boolean).join('\n')
+  // Long paste folds into a chip: sent with the message, opened into the box, or attached as a file.
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    onPasteFiles(e)
+    if (e.defaultPrevented || editing) return
+    const text = e.clipboardData?.getData('text/plain') ?? ''
+    if (text.length <= PASTE_FOLD) return
+    e.preventDefault()
+    activeRestoreToken.current = null
+    setPasted((current) => {
+      const next = [...current, text]
+      livePasted.current = next
+      return next
+    })
   }
-  // A media template's sentence is whole even with empty blanks.
-  const startingFilled =
-    Object.values(startingValues).some((one) => one.trim()) ||
-    Boolean(startingTemplate?.examplePrompt)
+  const dropPasted = (index: number) =>
+    setPasted((current) => {
+      const next = current.filter((_, at) => at !== index)
+      livePasted.current = next
+      return next
+    })
+  const openPasted = (index: number) => {
+    const text = livePasted.current[index] ?? ''
+    dropPasted(index)
+    const next = liveValue.current.trim() ? `${liveValue.current.replace(/\s+$/, '')}\n\n${text}` : text
+    liveValue.current = next
+    if (!editing) draftStore.set(draftKey, next)
+    setValue(next)
+    requestAnimationFrame(() => ref.current?.focus())
+  }
+  const attachPasted = (index: number) => {
+    const text = livePasted.current[index] ?? ''
+    dropPasted(index)
+    void addFiles([new File([text], t('붙여넣은-텍스트.txt'), { type: 'text/plain' })])
+  }
+  const typedLength = value.length + pasted.reduce((sum, text) => sum + text.length + 2, 0)
 
   const submit = (spoken?: string) => {
-    const text = withStartingValues((spoken ?? value).trim())
-    if (!text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
+    const text = (spoken ?? [value.trim(), ...livePasted.current].filter(Boolean).join('\n\n')).trim()
+    if (text.length > MESSAGE_LIMIT) {
+      setChatError(t('질문은 200,000자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.'))
+      return
+    }
+    if (text && !spoken && !editing && !busy && (uploading || awaitingModels)) {
+      setQueuedSend(true)
+      return
+    }
+    setQueuedSend(false)
+    if (text && !editing && (submitting.current || holdingStart.current)) {
+      // 「Enter」 twice before the first turn showed: one question, said so.
+      setSecondSend(true)
+      window.setTimeout(() => setSecondSend(false), 3000)
+      return
+    }
+    if (startPending || !text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
     if (editing && editContext.current) {
       if (sessionId && useStore.getState().running[sessionId]) return
       const context = editContext.current
@@ -1228,7 +1379,7 @@ export function Composer({
           setValue('')
           setAttachments([])
           setActivatedSkillIds([])
-          await deliverChat(context.forkId, text, files, search, skillIds, null, undefined, undefined, restoreToken)
+          await deliverChat(context.forkId, text, files, search, skillIds, undefined, undefined, restoreToken)
         } catch (error) {
           if (!ownsEdit()) return
           liveValue.current = text
@@ -1252,52 +1403,100 @@ export function Composer({
       return
     }
     clearMediaError()
-    const attachmentIds = attachments.map((f) => f.id)
-    const attachmentLabels = attachments.map((f) => f.name)
-    const sentAttachments = attachments
+    // A file the server could not read adds nothing to the turn; its chip goes with the send.
+    const readableAttachments = attachments.filter((f) => !f.error)
+    const attachmentIds = readableAttachments.map((f) => f.id)
+    const attachmentLabels = readableAttachments.map((f) => f.name)
+    const sentAttachments = readableAttachments
     const sentSkillIds = activeSkills.map((skill) => skill.id)
-    const sentStartingTemplate = startingTemplate
     setChatError(null)
     const restoreToken = ++restoreSequence.current
     activeRestoreToken.current = kind === 'chat' ? restoreToken : null
-    // Clear the composer first: the session is created server-side, so awaiting
-    // the round trip would leave the sent text sitting in the box.
-    liveValue.current = ''
-    liveAttachments.current = []
-    // Skills stay on: picked once, they apply to the conversation's later turns too.
-    // A starting point is spent on one turn, unlike the template chip.
-    liveStartingTemplate.current = null
-    setValue('')
-    setAttachments([])
-    setStartingTemplate(null)
-    setStartingValues({})
+    // In a conversation the box empties at once; a new one keeps the text read-only until the server takes the turn. Skills stay on.
+    const startSettled = () => {
+      holdingStart.current = false
+      submitting.current = false
+      setStartPending(false)
+    }
+    submitting.current = true
+    // No sign of the turn after 15 s: reload the conversation from the server.
+    const resyncFrom = sessionId
+    window.setTimeout(() => {
+      if (!submitting.current) return
+      submitting.current = false
+      if (resyncFrom) void useStore.getState().openSession(resyncFrom)
+    }, 15_000)
+    if (sessionId) {
+      liveValue.current = ''
+      liveAttachments.current = []
+      livePasted.current = []
+      setValue('')
+      setAttachments([])
+      setPasted([])
+    } else {
+      holdingStart.current = true
+      setStartPending(true)
+    }
     if (kind === 'av' && avOptions.mode === 'video') {
       // Video is a job; the card tracks it.
       void generateVideo(sessionId, text, {
         projectId,
-        onSession: (id) => navigate(`/s/${id}`, { replace: true }),
-      })
+        onSession: (id) => {
+          releaseStart()
+          navigate(`/s/${id}`, { replace: true })
+        },
+      }).finally(startSettled)
       return
     }
     if (kind === 'av' && avOptions.mode === 'audio') {
       // Audio returns inside its call; only video becomes a job.
       void generateAudio(sessionId, text, {
         projectId,
-        onSession: (id) => navigate(`/s/${id}`, { replace: true }),
-      })
+        onSession: (id) => {
+          releaseStart()
+          navigate(`/s/${id}`, { replace: true })
+        },
+      }).finally(startSettled)
       return
     }
     if (kind === 'image') {
       // Not streamed: `generateImages` writes both halves from one call.
       void generateImages(sessionId, text, {
         projectId,
-        onSession: (id) => navigate(`/s/${id}`, { replace: true }),
+        onSession: (id) => {
+          releaseStart()
+          navigate(`/s/${id}`, { replace: true })
+        },
+      }).finally(startSettled)
+      return
+    }
+    // Document request in chat starts a report/slides conversation; an agent chat moves only to a surface it names; a pipeline conversation answers here.
+    const movable = kind === 'chat' && !session?.pipelineId && !sessionAgent?.pipelineId
+    const detected = movable ? handoffSurface(text) : null
+    const agentHandoff =
+      movable && sessionId && sessionAgent
+        ? agentHandoffSurface(text, sessionAgent.kinds, agentDocumentNames(sessionAgent, designTemplates))
+        : null
+    const generalHandoff = detected && !session?.agentId ? detected : null
+    // Earlier turns go along as material (「대화 기록.txt」 plus files), so a deck can reuse values computed above.
+    const carried = agentHandoff ?? (sessionId && (session?.messages.length ?? 0) > 0 ? generalHandoff : null)
+    if (carried && sessionId) {
+      void handOff(sessionId, carried, text, {
+        attachments: sentAttachments,
+        webSearch: sentWebSearch,
+        onSession: (id) => navigate(`/s/${id}`),
+      }).finally(startSettled).catch((error: unknown) => {
+        setComposerRestore({
+          sessionId,
+          value: text,
+          attachments: sentAttachments,
+          activatedSkillIds: sentSkillIds,
+          error: errorMessage(error, t('문서로 넘기지 못했습니다. 다시 시도하세요.')),
+        })
       })
       return
     }
-    // A document request typed into chat starts a new conversation on the
-    // report or slides surface; agent chats and starting points keep it here.
-    const handoff = kind === 'chat' && !session?.agentId && !sentStartingTemplate ? handoffSurface(text) : null
+    const handoff = generalHandoff
     if (handoff) {
       let landedHandoffSessionId = sessionId
       void send(null, handoff, text, {
@@ -1307,17 +1506,17 @@ export function Composer({
         attachmentNames: attachmentLabels,
         onSession: (id) => {
           landedHandoffSessionId = id
+          releaseStart()
           carriedComposer = heldComposer(id)
           navigate(`/s/${id}`, { replace: !sessionId })
         },
-      }).catch((error: unknown) => {
+      }).finally(startSettled).catch((error: unknown) => {
         const freshnessRefusal = errorCode(error) === 'freshness_verification_unavailable'
         setComposerRestore({
           sessionId: freshnessRefusal ? landedHandoffSessionId : sessionId,
           value: text,
           attachments: sentAttachments,
           activatedSkillIds: sentSkillIds,
-          startingTemplate: sentStartingTemplate,
           error: freshnessRefusal ? refusalSentence(errorCode(error), t) ?? '' : '',
         })
       })
@@ -1330,11 +1529,10 @@ export function Composer({
         sentAttachments,
         sentWebSearch,
         sentSkillIds,
-        sentStartingTemplate,
         undefined,
         undefined,
         restoreToken,
-      ).catch(() => undefined)
+      ).finally(startSettled).catch(() => undefined)
       return
     }
     // The pick is spent on this turn; the session row is the record from here.
@@ -1348,39 +1546,486 @@ export function Composer({
       attachments: attachmentIds,
       attachmentNames: attachmentLabels,
       activatedSkillIds: sentSkillIds,
-      // Writing surfaces only; an image template is applied by `generateImages`.
-      renderTemplateId:
-        shownTemplate && shownTemplate.kind !== 'image' ? shownTemplate.id : undefined,
-      startingTemplate: sentStartingTemplate ?? undefined,
+      renderTemplateId: shownTemplate ? shownTemplate.id : undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         landedSessionId = id
+        releaseStart()
         carriedComposer = heldComposer(id)
         navigate(`/s/${id}`, { replace: true })
       },
     })
+      .finally(startSettled)
       .catch((error: unknown) => {
-        // A refusal happens before the server stores the turn; restore the
-        // draft through the store (see `deliverChat`).
+        // Refused before the server stored it: restore the draft via the store (see `deliverChat`).
         setComposerRestore({
           sessionId: landedSessionId,
           value: text,
           attachments: sentAttachments,
           activatedSkillIds: sentSkillIds,
-          startingTemplate: sentStartingTemplate,
           error:
             errorCode(error) === 'freshness_verification_unavailable'
               ? refusalSentence(errorCode(error), t) ?? ''
               : '',
         })
-        // The session row was rolled back with the refused turn; hand the
-        // pick back unless a newer one was chosen meanwhile.
+        // Session row rolled back with the refusal: hand the pick back unless a newer one exists.
         if (sentTemplate && !livePendingTemplate.current) setPendingTemplate(sentTemplate)
       })
   }
 
+  // A queued Enter goes out once the upload or the model list is done.
+  useEffect(() => {
+    if (!queuedSend || uploading || awaitingModels) return
+    submit()
+    // `submit` reads the latest render; the gates decide when.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queuedSend, uploading, awaitingModels])
+  // Another conversation or surface: nothing held from the last one applies.
+  useEffect(() => {
+    holdingStart.current = false
+    setStartPending(false)
+    setQueuedSend(false)
+    livePasted.current = []
+    setPasted([])
+  }, [sessionId, kind])
+
+  const toggleSkill = (id: string, selected: boolean) => {
+    activeRestoreToken.current = null
+    const next = selected
+      ? activeSkills.filter((skill) => skill.id !== id).map((skill) => skill.id)
+      : [...activeSkills.map((skill) => skill.id), id]
+    liveActivatedSkillIds.current = next
+    setActivatedSkillIds(next)
+    // Saved server-side in a conversation — except while editing, where cancel must undo it.
+    if (sessionId && kind === 'chat' && !editing) void setSessionSkills(sessionId, next)
+  }
+  // Everything but dictation, model and send sits behind 「+」; active options show as chips.
+  const showTemplates = hasTemplates && (started || !sessionId) && !editing
+  // Offered before any skill is added, so a new account can find them from here.
+  const showSkills = !isMedia
+  // On a phone the microphone moves into 「+」 unless it is recording.
+  const micInMenu = phone && canRecord && !recording && !transcribing
+  const hasTools =
+    !isMedia || showTemplates || showSkills || canWebSearch || usableConnectors.length > 0 ||
+    menuAgents.length > 0 || micInMenu
+  const closePlus = () => {
+    setPlusOpen(false)
+    setPlusView('main')
+    setSkillQuery('')
+  }
+  const openPlusView = (view: PlusView) => {
+    setPlusView(view)
+    setSkillQuery('')
+  }
+  const shownSkills = skillQuery.trim()
+    ? usableSkills.filter((s) => s.name.toLowerCase().includes(skillQuery.trim().toLowerCase()))
+    : usableSkills
+  const webSearchHelp: Record<WebSearchMode, string> = {
+    auto: t('최신 사실이나 날씨를 물으면 찾아봅니다'),
+    on: t('매번 웹에서 찾아봅니다'),
+    off: t('웹을 찾아보지 않습니다'),
+  }
+  const back = (title: string) => (
+    <>
+      <ToolItem back icon={<ChevronLeft size={15} />} onClick={() => openPlusView('main')}>
+        {t('뒤로')}
+      </ToolItem>
+      <MenuSeparator />
+      <MenuLabel>{title}</MenuLabel>
+    </>
+  )
+  const plusMenu = hasTools && (
+    <Dropdown
+      open={plusOpen}
+      onOpenChange={(open) => (open ? setPlusOpen(true) : closePlus())}
+      sheet={phone}
+      label={t('도구')}
+      className={plusView === 'main' ? 'min-w-64' : 'min-w-72'}
+      trigger={({ open }) => (
+        <button
+          type="button"
+          aria-label={t('도구')}
+          title={t('파일·템플릿·스킬·웹 검색·커넥터·에이전트')}
+          className={cn(
+            'grid size-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-elevated hover:text-fg',
+            open ? 'bg-elevated text-fg' : 'text-muted',
+          )}
+        >
+          <Plus size={18} />
+        </button>
+      )}
+    >
+      <div ref={plusViewRef} data-plus-view={plusView}>
+        {plusView === 'main' && (
+          <>
+            {!isMedia && (
+              <ToolItem
+                icon={<Paperclip size={15} />}
+                disabled={editPending}
+                onClick={() => {
+                  closePlus()
+                  fileInput.current?.click()
+                }}
+              >
+                {t('파일·사진 첨부')}
+              </ToolItem>
+            )}
+            {showTemplates && (
+              <ToolItem
+                icon={<LayoutGrid size={15} />}
+                label={t('템플릿 고르기')}
+                hint={shownTemplate ? templateText(shownTemplate, currentLang() === 'en').name : undefined}
+                onClick={() => {
+                  closePlus()
+                  setGalleryOpen(true)
+                }}
+              >
+                {t('템플릿 고르기')}
+              </ToolItem>
+            )}
+            {showSkills && (
+              <ToolItem
+                icon={<Sparkles size={15} />}
+                label={t('스킬')}
+                submenu
+                hint={activeSkills.length ? String(activeSkills.length) : undefined}
+                onClick={() => openPlusView('skills')}
+              >
+                {t('스킬')}
+              </ToolItem>
+            )}
+            {canWebSearch && (
+              <ToolItem
+                icon={<Globe size={15} />}
+                label={`${t('웹 검색')}: ${webSearchModeLabel}`}
+                submenu
+                hint={webSearchModeLabel}
+                onClick={() => openPlusView('web')}
+              >
+                {t('웹 검색')}
+              </ToolItem>
+            )}
+            {usableConnectors.length > 0 && (
+              <ToolItem
+                icon={<Plug size={15} />}
+                label={
+                  activeConnectors.length
+                    ? t('커넥터 {n}개').replace('{n}', String(activeConnectors.length))
+                    : t('커넥터')
+                }
+                submenu
+                hint={activeConnectors.length ? String(activeConnectors.length) : undefined}
+                onClick={() => openPlusView('connectors')}
+              >
+                {t('커넥터')}
+              </ToolItem>
+            )}
+            {(menuAgents.length > 0 || !isMedia) && (
+              <ToolItem
+                icon={<AtSign size={15} />}
+                label={t('에이전트')}
+                submenu
+                hint={sessionAgent?.name}
+                onClick={() => openPlusView('agents')}
+              >
+                {t('에이전트')}
+              </ToolItem>
+            )}
+            {micInMenu && (
+              <ToolItem
+                icon={<Mic size={15} />}
+                label={t('말로 쓰기')}
+                onClick={() => {
+                  closePlus()
+                  void startRecording()
+                }}
+              >
+                {t('말로 쓰기')}
+              </ToolItem>
+            )}
+          </>
+        )}
+        {plusView === 'skills' && (
+          <>
+            {back(t('이번 요청에 적용할 스킬 (최대 3개)'))}
+            <div className="px-1.5 pb-1">
+              <input
+                value={skillQuery}
+                onChange={(e) => setSkillQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    plusViewRef.current?.querySelector<HTMLButtonElement>('[role="menuitemcheckbox"]:not(:disabled)')?.focus()
+                  }
+                }}
+                placeholder={t('스킬 찾기')}
+                aria-label={t('스킬 찾기')}
+                className="h-8 w-full rounded-control border border-line bg-panel px-2.5 text-sm text-fg outline-none placeholder:text-faint focus:border-accent"
+              />
+            </div>
+            {shownSkills.length === 0 && (
+              <p className="px-2.5 py-1.5 text-sm text-faint">
+                {usableSkills.length === 0 ? t('아직 추가한 스킬이 없습니다.') : t('맞는 스킬이 없습니다.')}
+              </p>
+            )}
+            {shownSkills.map((s) => {
+              const selected = activeSkills.some((skill) => skill.id === s.id)
+              const unavailable = skillUnavailableReason(s)
+              const limitReached = !selected && activeSkills.length >= 3
+              return (
+                <MenuItem
+                  key={s.id}
+                  checked={selected}
+                  keepOpen
+                  disabled={!!unavailable || limitReached}
+                  title={limitReached ? t('최대 3개까지 선택할 수 있습니다.') : undefined}
+                  hint={
+                    unavailable
+                      ? unavailable
+                      : recommended.has(s.id)
+                        ? t('이 프로젝트 스킬')
+                        : t('약 {n} 토큰').replace('{n}', s.estimatedTokens.toLocaleString())
+                  }
+                  onClick={() => toggleSkill(s.id, selected)}
+                >
+                  {s.name}
+                </MenuItem>
+              )
+            })}
+            <MenuSeparator />
+            {usableSkills.length === 0 ? (
+              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills&view=explore')}>
+                {t('스킬 둘러보기')}
+              </MenuItem>
+            ) : (
+              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills')}>
+                {t('스킬 관리')}
+              </MenuItem>
+            )}
+          </>
+        )}
+        {plusView === 'web' && (
+          <>
+            {back(t('웹 검색'))}
+            {searchBlocked && (
+              <p className="px-2.5 pb-1.5 text-xs text-warn">
+                {t('이 모델은 외부에 연결하지 않아 웹 검색을 쓸 수 없습니다')}
+              </p>
+            )}
+            <div role="group" aria-label={t('웹 검색')}>
+              {(['auto', 'on', 'off'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={webSearchMode === mode}
+                  disabled={searchBlocked}
+                  onClick={() => {
+                    setWebSearchMode(mode)
+                    closePlus()
+                  }}
+                  className="flex w-full items-start gap-2.5 rounded-control px-2.5 py-1.5 text-left transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  <span className="mt-0.5 grid size-4 shrink-0 place-items-center text-accent" aria-hidden>
+                    {webSearchMode === mode && <Check size={14} />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-base text-fg">{webSearchModeLabels[mode]}</span>
+                    <span className="block text-xs text-faint">{webSearchHelp[mode]}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {plusView === 'connectors' && (
+          <>
+            {back(t('커넥터'))}
+            {/* Account-wide, unlike the per-turn controls beside it. */}
+            <p className="px-2.5 pb-1.5 text-xs text-faint">
+              {t('계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.')}
+            </p>
+            {usableConnectors.map((c) => (
+              <MenuItem
+                key={c.id}
+                keepOpen
+                icon={<span className="text-base">{c.icon}</span>}
+                hint={c.status === 'connected' ? (c.enabled ? t('켜짐') : t('꺼짐')) : t('인증 필요')}
+                onClick={() => c.status === 'connected' && toggleConnector(c.id)}
+              >
+                {c.name}
+              </MenuItem>
+            ))}
+            <MenuSeparator />
+            <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=connectors')}>
+              {t('커넥터 관리')}
+            </MenuItem>
+          </>
+        )}
+        {plusView === 'agents' && (
+          <>
+            {back(t('에이전트로 새 대화'))}
+            {menuAgents.map((a, i) => {
+              // An agent this screen does not offer opens on its own screen, which the row says.
+              const startOn = usableAgents.includes(a) ? kind : agentStartKind(a, kind)
+              const elsewhere = startOn !== kind
+              const shared = i >= firstShared && firstShared >= 0
+              return [
+                i === firstShared && <MenuLabel key="shared-label">{t('공유된 에이전트')}</MenuLabel>,
+                <MenuItem
+                  key={a.id}
+                  // Screen shown as a badge, never read as part of the agent's name.
+                  label={elsewhere ? t('{name} — {kind} 화면에서 열림').replace('{name}', a.name).replace('{kind}', t(kindMeta[startOn].label)) : a.name}
+                  hint={
+                    elsewhere ? (
+                      <span
+                        aria-hidden
+                        data-testid="agent-surface-badge"
+                        className="rounded-full border border-line px-1.5 py-px text-xs text-faint"
+                      >
+                        {t(kindMeta[startOn].label)}
+                      </span>
+                    ) : shared ? (
+                      a.official ? t('공식') : a.ownerName
+                    ) : a.model ? (
+                      a.model.split('/').pop()
+                    ) : undefined
+                  }
+                  onClick={() => {
+                    closePlus()
+                    // Agent belongs to the session: picking one starts a conversation, carrying what was typed or attached.
+                    const starting = newSession(startOn, { agentId: a.id, projectId })
+                    agentStart.current = starting
+                    void starting
+                      .then((id) => {
+                        carriedComposer = heldComposer(id)
+                        navigate(`/s/${id}`)
+                      })
+                      .catch((err: unknown) => {
+                        if (agentStart.current === starting) agentStart.current = null
+                        setNotice(startFailure(err, t))
+                      })
+                  }}
+                >
+                  {a.name}
+                </MenuItem>,
+              ]
+            })}
+            {!isMedia && <SharedBotItems withLabel={firstShared < 0} onPick={closePlus} />}
+            {menuAgents.length > 0 && <MenuSeparator />}
+            <MenuItem
+              icon={<Plus size={14} />}
+              onClick={() => {
+                closePlus()
+                navigate('/customize/agents/new')
+              }}
+            >
+              {t('에이전트 만들기')}
+            </MenuItem>
+          </>
+        )}
+      </div>
+    </Dropdown>
+  )
+  const micButton = canRecord && (!phone || recording || transcribing) && (
+    <button
+      onClick={() => void (recording ? stopRecording() : startRecording())}
+      disabled={transcribing}
+      className={cn(
+        'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
+        recording ? 'text-danger' : 'text-muted',
+      )}
+      aria-label={recording ? t('녹음 끝내기') : t('말로 쓰기')}
+      aria-pressed={recording}
+      title={
+        recording
+          ? t('누르면 녹음을 끝내고 받아씁니다')
+          : `${t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다')} (${isMac() ? '⌘' : 'Ctrl'}+Shift+M)`
+      }
+    >
+      {transcribing ? (
+        <Loader2 size={16} className="animate-spin" />
+      ) : (
+        <Mic size={16} className={recording ? 'animate-pulse' : undefined} />
+      )}
+    </button>
+  )
+  const modelPicker = (
+    <fieldset disabled={!!editing} className="contents">
+    <ModelPicker
+      key={editing ? 'editing' : 'normal'}
+      kind={kind}
+      sessionId={sessionId ?? reusableSessionId}
+      modality={kind === 'av' ? (avOptions.mode === 'video' ? 'video' : 'audio') : undefined}
+      onEnableAuto={async (mode) => {
+        setChatError(null)
+        try {
+          let id = sessionId ?? reusableSessionId
+          if (!id) {
+            id = await newSession(kind, { projectId, routingMode: mode })
+            carriedComposer = heldComposer(id)
+            setReusableSessionId(id)
+            navigate(`/s/${id}`, { replace: true })
+          } else {
+            await setSessionRoutingMode(id, mode)
+          }
+        } catch (error) {
+          setChatError(
+            errorMessage(error, t('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')),
+          )
+        }
+      }}
+      onBusyChange={setModelSelectionPending}
+    />
+    </fieldset>
+  )
+  const sendButton = (
+    <button
+      onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
+      disabled={(!value.trim() && !pasted.length && !streaming) || typedLength > MESSAGE_LIMIT || modelSelectionPending || editPending || startPending || queuedSend || !!pendingPrivacy}
+      className={cn(
+        'grid size-9 shrink-0 place-items-center rounded-full transition-colors',
+        streaming
+          ? 'bg-elevated text-fg'
+          : 'bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-elevated disabled:text-faint',
+      )}
+      aria-label={streaming ? t('중지') : editing ? t('수정 후 다시 보내기') : t('전송')}
+      title={
+        streaming
+          ? t('생성을 멈춥니다')
+          : startPending
+            ? t('보내는 중…')
+          : modelSelectionPending
+            ? t('모델 설정 저장 중…')
+          : !value.trim() && !pasted.length
+            ? t('보낼 내용을 먼저 입력하세요')
+          : typedLength > MESSAGE_LIMIT
+            ? t('질문은 200,000자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.')
+            : unsupportedVideo
+              ? t('이 모델은 이 조합을 만들지 않습니다')
+              : uploading
+                ? t('첨부를 올리는 중입니다. 다 올리면 보낼 수 있습니다')
+                : awaitingModels
+                  ? t('모델을 불러오는 중입니다. 불러오면 보낼 수 있습니다')
+                  : readingAttachment
+                    ? t('첨부 글자를 읽는 중입니다({done}/{total}쪽). 지금 보내면 읽은 쪽까지만 씁니다')
+                        .replace('{done}', String(readingAttachment.ocrDone ?? 0))
+                        .replace('{total}', String(readingAttachment.ocrTotal ?? 0))
+                    : t('Enter로도 보낼 수 있습니다')
+      }
+    >
+      {streaming ? (
+        <Square size={13} fill="currentColor" />
+      ) : startPending || queuedSend ? (
+        <Loader2 size={16} className="animate-spin" />
+      ) : (
+        <ArrowUp size={16} />
+      )}
+    </button>
+  )
+
   return (
-    <div className="relative mx-auto w-full max-w-3xl px-4 pb-4" {...dropHandlers}>
+    <div className="relative mx-auto w-full max-w-3xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))]" {...dropHandlers}>
       {dragging && (
         <div className="pointer-events-none absolute inset-x-4 inset-y-0 z-10 grid place-items-center rounded-panel border-2 border-dashed border-accent bg-accent-soft/90 text-base font-medium text-accent">
           <span className="flex items-center gap-2">
@@ -1393,7 +2038,7 @@ export function Composer({
         {editing && (
           <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-sm">
             <Pencil size={14} className="shrink-0 text-accent" />
-            <span className="min-w-0 flex-1">{t('메시지 수정 · 새 대화')}</span>
+            <span className="min-w-0 flex-1">{t('메시지 수정 · 보내면 새 대화로 이어지고, 지금 대화는 그대로 남습니다')}</span>
             <Button size="icon" variant="ghost" title={t('수정 취소')} aria-label={t('수정 취소')}
               disabled={editPending || privacyRetrying} onClick={cancelEditing}>
               <X size={14} />
@@ -1402,15 +2047,14 @@ export function Composer({
         )}
         {(project ||
           attachments.length > 0 ||
+          pasted.length > 0 ||
           uploadFailed.length > 0 ||
-          webSearch ||
+          webSearchChip ||
+          sessionAgent ||
           activeSkills.length > 0 ||
           autoBypassPreview ||
-          autoPausedForCompare ||
-          startingTemplate ||
           // Same rule as the chip below: the session's own shape survives a reload.
-          shownTemplate ||
-          (compareMode && kind === 'chat')) && (
+          shownTemplate) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
             {autoBypassPreview && (
               <Badge tone="warn" className="max-w-full whitespace-normal!">
@@ -1420,43 +2064,33 @@ export function Composer({
                   : t('Auto · 이번 요청은 기능 사용으로 품질 모델 유지')}
               </Badge>
             )}
-            {autoPausedForCompare && (
-              <Badge tone="warn" className="max-w-full whitespace-normal!">
-                <Gauge size={11} />
-                {t('Auto 일시 중지 · 비교할 모델을 직접 실행')}
-              </Badge>
-            )}
-            {compareMode && kind === 'chat' && (
-              <Badge tone="accent">
-                <Columns2 size={11} />
-                {compareModels
-                  .map((id) => models.find((m) => m.id === id)?.label ?? id)
-                  .join(' vs ')}
-                <button
-                  type="button"
-                  onClick={toggleCompareMode}
-                  aria-label={t('모델 비교 끄기')}
-                  title={t('모델 비교 끄기')}
-                  className="ml-0.5 text-faint hover:text-fg"
-                >
-                  <X size={10} />
-                </button>
-              </Badge>
-            )}
-            {webSearch &&
+            {webSearchChip &&
               (searchBlocked ? (
                 <Badge tone="warn">
                   <Globe size={11} />
-                  {compareMode && kind === 'chat'
-                    ? t('웹 검색 안 함 · 모델 비교는 검색 없이 실행합니다')
-                    : t('웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다')}
+                  {t('웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다')}
                 </Badge>
               ) : (
-                <Badge tone="accent">
+                <Badge tone={webSearchMode === 'on' ? 'accent' : 'neutral'}>
                   <Globe size={11} />
-                  {t('웹 검색')}
+                  {`${t('웹 검색')}: ${webSearchModeLabel}`}
+                  <button
+                    type="button"
+                    onClick={() => setWebSearchMode('auto')}
+                    aria-label={t('웹 검색 자동으로 되돌리기')}
+                    title={t('웹 검색 자동으로 되돌리기')}
+                    className="ml-0.5 text-faint hover:text-fg"
+                  >
+                    <X size={10} />
+                  </button>
                 </Badge>
               ))}
+            {sessionAgent && (
+              <Badge tone="accent" title={t('이 대화의 에이전트')}>
+                <AtSign size={11} />
+                {sessionAgent.name}
+              </Badge>
+            )}
             {project && (
               <Badge tone="accent">
                 <Boxes size={11} />
@@ -1464,26 +2098,21 @@ export function Composer({
               </Badge>
             )}
             {shownTemplate && (
-              <Badge tone="accent">
+              <Badge tone="accent" title={t('이 대화의 템플릿')}>
                 <LayoutGrid size={11} />
-                {templateText(shownTemplate, currentLang() === 'en').name}
+                {/* Named by its role: beside an agent of the same name (「@회의록」) it reads as the form. */}
+                {t('템플릿: {name}').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)}
                 <button
                   type="button"
                   onClick={() => {
                     setPendingTemplate(null)
-                    // The template's questions go with it.
-                    if (startingTemplate?.examplePrompt) {
-                      liveStartingTemplate.current = null
-                      setStartingTemplate(null)
-                      setStartingValues({})
-                    }
                     // Sticky server-side once used, so clear the session row too.
                     if (session?.renderTemplateId) {
                       void setSessionTemplate(session.id, null)
                     }
                   }}
                   disabled={!!editing}
-                  aria-label={t('{name} 서식 해제').replace(
+                  aria-label={t('{name} 템플릿 해제').replace(
                     '{name}',
                     templateText(shownTemplate, currentLang() === 'en').name,
                   )}
@@ -1492,35 +2121,6 @@ export function Composer({
                   <X size={10} />
                 </button>
               </Badge>
-            )}
-            {/* Hidden for a media template, whose chip above already names it. */}
-            {startingTemplate && (!startingTemplate.examplePrompt || !pendingTemplate) && (
-              <Badge tone="accent">
-                <LayoutTemplate size={11} />
-                {startingTemplate.title}
-                <button
-                  type="button"
-                  onClick={() => {
-                    activeRestoreToken.current = null
-                    liveStartingTemplate.current = null
-                    setStartingTemplate(null)
-                  }}
-                  aria-label={t('{name} 시작점 해제').replace('{name}', startingTemplate.title)}
-                  className="ml-0.5 text-faint hover:text-fg"
-                >
-                  <X size={10} />
-                </button>
-              </Badge>
-            )}
-            {startingTemplate?.needs?.includes('file') && attachments.length === 0 && (
-              <button
-                type="button"
-                onClick={() => fileInput.current?.click()}
-                className="inline-flex h-6 items-center gap-1 rounded-full border border-warn/40 bg-warn/10 px-2 text-xs text-warn hover:bg-warn/20"
-              >
-                <Paperclip size={11} />
-                {t('이 일에는 파일이 필요합니다 — 첨부하기')}
-              </button>
             )}
             {activeSkills.map((skill) => (
               <Badge key={skill.id} tone="accent">
@@ -1543,31 +2143,86 @@ export function Composer({
                 </button>
               </Badge>
             ))}
-            {attachments.map((f) => (
+            {attachments.map((f, at) => {
+              const reading = ocrNote(f, t)
+              return (
               <span
                 key={f.id}
+                data-ocr={f.ocrState ?? undefined}
                 className={cn(
                   'flex items-center gap-1.5 rounded-control border px-1.5 py-0.5 text-xs',
                   f.error
                     ? 'border-warn/40 bg-warn/5 text-warn'
                     : 'border-line bg-elevated',
                 )}
-                title={f.error ?? t('{n} 토큰').replace('{n}', f.tokens.toLocaleString())}
+                title={
+                  f.error ??
+                  (reading
+                    ? reading.text
+                    : t('{n} 토큰').replace('{n}', f.tokens.toLocaleString()))
+                }
               >
-                <Paperclip size={10} className={f.error ? '' : 'text-faint'} />
+                {isReading(f) ? (
+                  <Loader2 size={10} className="animate-spin text-faint" />
+                ) : (
+                  <Paperclip size={10} className={f.error ? '' : 'text-faint'} />
+                )}
                 {f.name}
+                {reading && (
+                  <span className={reading.tone === 'warn' ? 'text-warn' : 'text-faint'}>
+                    {reading.text}
+                  </span>
+                )}
                 {f.error && <TriangleAlert size={10} />}
                 <button
-                  onClick={() =>
+                  onClick={() => {
+                    // Focus moves to the next chip's ×, else the box: never lost to the page.
+                    const neighbour = attachments[at + 1] ?? attachments[at - 1]
                     setAttachments((current) => {
                       activeRestoreToken.current = null
                       const next = current.filter((item) => item.id !== f.id)
                       liveAttachments.current = next
                       return next
                     })
-                  }
+                    requestAnimationFrame(() => {
+                      const label = neighbour ? t('{name} 제거').replace('{name}', neighbour.name) : ''
+                      const chip = label
+                        ? [...document.querySelectorAll<HTMLButtonElement>('[data-attachment-remove]')]
+                          .find((button) => button.getAttribute('aria-label') === label)
+                        : undefined
+                      ;(chip ?? ref.current)?.focus()
+                    })
+                  }}
+                  data-attachment-remove=""
                   className="text-faint hover:text-fg"
                   aria-label={t('{name} 제거').replace('{name}', f.name)}
+                >
+                  <X size={10} />
+                </button>
+              </span>
+              )
+            })}
+            {pasted.map((text, at) => (
+              <span
+                key={`pasted-${at}`}
+                className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs"
+              >
+                <FileText size={10} className="text-faint" />
+                {t('붙여 넣은 텍스트 · {n}자').replace('{n}', text.length.toLocaleString())}
+                <button type="button" onClick={() => openPasted(at)} className="text-accent hover:underline">
+                  {t('펼치기')}
+                </button>
+                <button type="button" onClick={() => attachPasted(at)} className="text-accent hover:underline">
+                  {t('파일로 첨부')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    dropPasted(at)
+                    requestAnimationFrame(() => ref.current?.focus())
+                  }}
+                  className="text-faint hover:text-fg"
+                  aria-label={t('붙여 넣은 텍스트 제거')}
                 >
                   <X size={10} />
                 </button>
@@ -1580,7 +2235,11 @@ export function Composer({
               </span>
             )}
             {attachments.some((f) => f.error) && (
-              <p role="status" className="w-full text-xs text-warn">
+              <p
+                role="status"
+                className="w-full truncate text-xs text-warn"
+                title={attachments.filter((f) => f.error).map((f) => `${f.name} — ${f.error}`).join('\n')}
+              >
                 {attachments
                   .filter((f) => f.error)
                   .map((f) => `${f.name} — ${f.error}`)
@@ -1606,7 +2265,7 @@ export function Composer({
             >
               {unsupportedVideo
                 ? t('이 모델은 이 조합을 만들지 않습니다')
-                : pendingTemplate?.kind === 'image' && pendingTemplate.figure
+                : kind === 'image' && FIGURE_STYLES[imageOptions.style]
                   // A figure is drawn by the text model, not priced as a picture.
                   ? t('도식은 글 모델이 씁니다 · 그림 요금이 아닙니다')
                   : t('예상 {n} 크레딧').replace('{n}', estimate.toLocaleString())}
@@ -1614,488 +2273,102 @@ export function Composer({
           </div>
         )}
 
-        {/* Starting-point blanks; filled ones are prefixed to the request. */}
-        {!pending && startingTemplate && startingTemplate.fills.length > 0 && (
-          <div
-            role="group"
-            aria-label={t('{name} 시작점 질문').replace('{name}', startingTemplate.title)}
-            className="grid gap-x-3 gap-y-2 border-b border-line px-3 py-2.5 sm:grid-cols-2"
-          >
-            {startingTemplate.fills.map((fill, index) => {
-              const blank = startingTemplate.blanks?.[index]
-              const set = (next: string) => {
-                setStartingValues((all) => ({ ...all, [index]: next }))
-                // An aspect blank also sets the aspect chip, which is what the request reads.
-                if (blank?.name === 'aspect') {
-                  const ratio = /^\s*(\d+:\d+)/.exec(next)?.[1]
-                  if (ratio && ASPECTS.includes(ratio)) setImageOptions({ aspect: ratio })
-                }
+        {/* A phone is one line — 「+」, the text, send — that grows with the text. */}
+        <div className={cn(phone && 'flex items-end gap-1 px-1.5 py-1.5')}>
+          {phone && plusMenu}
+          <textarea
+            ref={ref}
+            autoFocus={autoFocus}
+            rows={1}
+            value={value}
+            readOnly={editPending || startPending}
+            onCompositionStart={() => { composing.current = true }}
+            onCompositionEnd={() => { composing.current = false }}
+            onChange={(e) => {
+              activeRestoreToken.current = null
+              // 「@」 typed into an empty box picks an agent, as the menu's 에이전트 does.
+              if (e.target.value === '@' && !liveValue.current && usableAgents.length > 0 && !editing) {
+                setPlusView('agents')
+                setPlusOpen(true)
+                return
               }
-              return (
-                <label key={`${fill}-${index}`} className={cn('block min-w-0', blank?.long && 'sm:col-span-2')}>
-                  <span className="mb-0.5 block text-xs font-medium text-muted">{fill}</span>
-                  {blank?.options?.length ? (
-                    <select
-                      // Unpicked, the template default shows and is sent.
-                      value={startingValues[index] ?? startingTemplate.examples?.[index] ?? ''}
-                      onChange={(e) => set(e.target.value)}
-                      aria-label={`${startingTemplate.title} · ${fill}`}
-                      className="h-8 w-full rounded-control border border-line bg-panel px-2 text-sm focus:border-accent focus:outline-none"
-                    >
-                      {blank.options.map((option) => (
-                        <option key={option} value={option}>{option}</option>
-                      ))}
-                    </select>
-                  ) : blank?.long ? (
-                    <textarea
-                      value={startingValues[index] ?? ''}
-                      onChange={(e) => set(e.target.value)}
-                      rows={4}
-                      placeholder={startingTemplate.examples?.[index] || ''}
-                      aria-label={`${startingTemplate.title} · ${fill}`}
-                      className="w-full resize-y rounded-control border border-line bg-panel px-2 py-1.5 text-sm leading-relaxed placeholder:text-faint focus:border-accent focus:outline-none"
-                    />
-                  ) : (
-                    <input
-                      value={startingValues[index] ?? ''}
-                      onChange={(e) => set(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                          e.preventDefault()
-                          submit()
-                        }
-                      }}
-                      placeholder={startingTemplate.examples?.[index] || ''}
-                      aria-label={`${startingTemplate.title} · ${fill}`}
-                      className="h-8 w-full rounded-control border border-line bg-panel px-2 text-sm placeholder:text-faint focus:border-accent focus:outline-none"
-                    />
-                  )}
-                </label>
-              )
-            })}
+              liveValue.current = e.target.value
+              // Written synchronously: a send navigates before an effect would run.
+              if (!editing) draftStore.set(draftKey, e.target.value)
+              setValue(e.target.value)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && editing && !isImeKey(e)) {
+                e.preventDefault()
+                cancelEditing()
+                return
+              }
+              if (holdToTalk(e)) return
+              if (e.key === 'Enter' && !e.shiftKey && !isImeKey(e)) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+            onKeyUp={releaseToTalk}
+            // File pastes only; text pastes are untouched.
+            onPaste={onPaste}
+            placeholder={
+              recording && pushToTalk.current
+                ? t('듣고 있습니다. 스페이스를 떼면 받아 적습니다')
+                : transcribing
+                  ? t('받아쓰는 중…')
+                  : pending
+                    ? pending.stage === 'clarify'
+                      ? t('답을 적거나, 위에서 고르세요')
+                      : t('고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요')
+                    : session?.artifactId && (kind === 'report' || kind === 'slides')
+                      // The document is made: the next message changes it.
+                      ? kind === 'slides'
+                        ? t('고칠 곳을 적으세요. 예: 3번 장을 표로 바꿔 줘')
+                        : t('고칠 곳을 적으세요. 예: 2절을 더 짧게 써 줘')
+                      : t(placeholders[kind])
+            }
+            aria-label={t('프롬프트 입력')}
+            data-composer=""
+            className={cn(
+              'block resize-none overflow-y-hidden bg-transparent text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none phone:text-[1rem] phone:leading-[1.6]',
+              phone ? 'min-w-0 flex-1 self-center px-1.5 py-1' : 'w-full px-4 pt-3.5 pb-1',
+            )}
+          />
+          {phone && micButton}
+          {phone && sendButton}
+        </div>
+
+        {!isMedia && (
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            accept={ATTACH_ACCEPT}
+            className="hidden"
+            aria-label={t('파일 선택')}
+            onChange={(e) => {
+              const picked = Array.from(e.target.files ?? [])
+              // Reset immediately so picking the same file twice still fires.
+              e.target.value = ''
+              void addFiles(picked)
+            }}
+          />
+        )}
+
+        {!phone && (
+          <div className="flex items-center gap-1 px-2 pb-2">
+            {plusMenu}
+            {micButton}
+            <div className="ml-auto flex min-w-0 items-center gap-1">
+              {modelPicker}
+              {sendButton}
+            </div>
           </div>
         )}
-        <textarea
-          ref={ref}
-          autoFocus={autoFocus}
-          rows={1}
-          value={value}
-          readOnly={editPending}
-          onCompositionStart={() => { composing.current = true }}
-          onCompositionEnd={() => { composing.current = false }}
-          onChange={(e) => {
-            activeRestoreToken.current = null
-            liveValue.current = e.target.value
-            // Written synchronously: picking a starting point navigates before an effect would run.
-            if (!editing) draftStore.set(draftKey, e.target.value)
-            setValue(e.target.value)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape' && editing && !e.nativeEvent.isComposing) {
-              e.preventDefault()
-              cancelEditing()
-              return
-            }
-            if (holdToTalk(e)) return
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault()
-              submit()
-            }
-          }}
-          onKeyUp={releaseToTalk}
-          // File pastes only; text pastes are untouched.
-          onPaste={onPasteFiles}
-          placeholder={
-            recording && pushToTalk.current
-              ? t('듣고 있습니다. 스페이스를 떼면 보냅니다')
-              : transcribing
-                ? t('받아쓰는 중…')
-                : pending
-                  ? pending.stage === 'clarify'
-                    ? t('답을 적거나, 위에서 고르세요')
-                    : t('고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요')
-                  : startingTemplate && startingTemplate.fills.length > 0
-                    ? t('덧붙일 말이 있으면 여기에 적으세요')
-                    : t(placeholders[kind])
-          }
-          aria-label={t('프롬프트 입력')}
-          data-composer=""
-          className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none phone:min-h-[3.25rem] phone:text-[1rem] phone:leading-[1.6]"
-        />
-
-        <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
-          {/* Media surfaces take no attachments. */}
-          {!isMedia && (
-            <>
-              <input
-                ref={fileInput}
-                type="file"
-                multiple
-                className="hidden"
-                aria-label={t('파일 선택')}
-                onChange={(e) => {
-                  const picked = Array.from(e.target.files ?? [])
-                  // Reset immediately so picking the same file twice still fires.
-                  e.target.value = ''
-                  void addFiles(picked)
-                }}
-              />
-              <button
-                onClick={() => fileInput.current?.click()}
-                className="grid size-9 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg"
-                aria-label={t('첨부')}
-                title={t('파일을 올려 답변의 근거로 씁니다')}
-              >
-                <Paperclip size={16} />
-              </button>
-            </>
-          )}
-          {canRecord && (
-            <button
-              onClick={() => void (recording ? stopRecording() : startRecording())}
-              disabled={transcribing}
-              className={cn(
-                'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
-                recording ? 'text-danger' : 'text-muted',
-              )}
-              aria-label={recording ? t('녹음 끝내기') : t('말로 쓰기')}
-              aria-pressed={recording}
-              title={
-                recording
-                  ? t('누르면 녹음을 끝내고 받아씁니다')
-                  : `${t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다')} (${isMac() ? '⌘' : 'Ctrl'}+Shift+M)`
-              }
-            >
-              {transcribing ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Mic size={16} className={recording ? 'animate-pulse' : undefined} />
-              )}
-            </button>
-          )}
-
-          {/* Only once the conversation has started; the empty screen offers the same button. */}
-          {hasTemplates && started && !folded && !editing && (
-            <button
-              onClick={() => setGalleryOpen(true)}
-              className={cn(
-                'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
-                shownTemplate ? 'text-accent' : 'text-muted',
-              )}
-              aria-label={t('작업 시작하기')}
-              title={t('업무 시작점이나 결과 서식을 고릅니다')}
-            >
-              <LayoutGrid size={16} />
-            </button>
-          )}
-
-          {/* Media models are never handed a skill. */}
-          {!isMedia && usableSkills.length > 0 && !folded && (
-            <Dropdown
-              className="min-w-64"
-              trigger={() => (
-                <button
-                  aria-label={t('스킬')}
-                  title={t('이번 요청에만 적용할 스킬을 고릅니다')}
-                  className={cn(
-                    'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
-                    activeSkills.length ? 'text-accent' : 'text-muted hover:text-fg',
-                  )}
-                >
-                  <Sparkles size={15} />
-                  {activeSkills.length > 0 && <span>{activeSkills.length}</span>}
-                </button>
-              )}
-            >
-              <MenuLabel>{t('이번 요청에 적용할 스킬 (최대 3개)')}</MenuLabel>
-              {usableSkills.map((s) => {
-                const selected = activeSkills.some((skill) => skill.id === s.id)
-                const unavailable = skillUnavailableReason(s)
-                const limitReached = !selected && activeSkills.length >= 3
-                return (
-                  <MenuItem
-                    key={s.id}
-                    checked={selected}
-                    keepOpen
-                    disabled={!!unavailable || limitReached}
-                    title={limitReached ? t('최대 3개까지 선택할 수 있습니다.') : undefined}
-                    hint={
-                      unavailable
-                        ? unavailable
-                        : recommended.has(s.id)
-                          ? t('프로젝트 추천')
-                          : t('약 {n} 토큰').replace('{n}', s.estimatedTokens.toLocaleString())
-                    }
-                    onClick={() => {
-                      activeRestoreToken.current = null
-                      const next = selected
-                        ? activeSkills
-                            .filter((skill) => skill.id !== s.id)
-                            .map((skill) => skill.id)
-                        : [...activeSkills.map((skill) => skill.id), s.id]
-                      liveActivatedSkillIds.current = next
-                      setActivatedSkillIds(next)
-                      // In a conversation the change is the conversation's, kept on the server —
-                      // except while a message is being edited, where cancel must undo it.
-                      if (sessionId && kind === 'chat' && !editing) void setSessionSkills(sessionId, next)
-                    }}
-                  >
-                    {s.name}
-                  </MenuItem>
-                )
-              })}
-              <MenuSeparator />
-              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/skills')}>
-                {t('스킬 관리')}
-              </MenuItem>
-            </Dropdown>
-          )}
-
-          {kind === 'chat' && !phone && (
-            <Dropdown
-              className="min-w-72"
-              trigger={() => (
-                <button
-                  className={cn(
-                    'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
-                    compareMode ? 'text-accent' : 'text-muted hover:text-fg',
-                  )}
-                  aria-label={t('모델 비교')}
-                  title={t('같은 질문을 여러 모델에 동시에 보내고 답변을 나란히 비교합니다')}
-                >
-                  <Columns2 size={15} />
-                  {compareMode && <span>{compareModels.length}</span>}
-                </button>
-              )}
-            >
-              <MenuLabel>{t('모델 비교')}</MenuLabel>
-              <MenuItem
-                icon={<Columns2 size={14} />}
-                hint={compareMode ? t('켜짐') : t('꺼짐')}
-                onClick={toggleCompareMode}
-              >
-                {t('비교 모드')}
-              </MenuItem>
-              <MenuSeparator />
-              <MenuLabel>{t('비교할 모델 (2~3개)')}</MenuLabel>
-              {models
-                .filter((m) => m.kinds.includes('chat'))
-                .map((m) => (
-                  <MenuItem
-                    key={m.id}
-                    checked={compareModels.includes(m.id)}
-                    hint={t('출력 1k당 {n} 크레딧').replace('{n}', m.creditCost.toLocaleString())}
-                    onClick={() => toggleCompareModel(m.id)}
-                    keepOpen
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate">{m.label}</span>
-                      {m.strictLocal ? (
-                        <Badge tone="success">
-                          <ShieldCheck size={10} />
-                          strict-local
-                        </Badge>
-                      ) : (
-                        <Badge tone="warn">
-                          {t(
-                            m.dataBoundary === 'hybrid'
-                              ? '외부 전환 가능'
-                              : m.dataBoundary === 'external'
-                                ? '외부 제공'
-                                : m.dataBoundary === 'self_hosted'
-                                  ? 'self-hosted · strict 미확인'
-                                  : '경계 미확인',
-                          )}
-                        </Badge>
-                      )}
-                    </span>
-                  </MenuItem>
-                ))}
-            </Dropdown>
-          )}
-
-          {canWebSearch && (
-            <button
-              onClick={() =>
-                setWebSearchMode((m) => (m === 'auto' ? 'on' : m === 'on' ? 'off' : 'auto'))
-              }
-              aria-pressed={effectiveWebSearch}
-              disabled={searchBlocked}
-              className={cn(
-                'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
-                !effectiveWebSearch
-                  ? 'text-faint hover:text-muted'
-                  : webSearchMode === 'on'
-                    ? 'text-accent'
-                    : 'text-muted hover:text-fg',
-                searchBlocked && 'opacity-55 hover:bg-transparent hover:text-muted',
-              )}
-              aria-label={`${t('웹 검색')}: ${webSearchModeLabel}`}
-              title={
-                searchBlocked
-                  ? compareMode && kind === 'chat'
-                    ? t('모델 비교는 웹 검색 없이 실행합니다')
-                    : t('이 모델은 외부에 연결하지 않아 웹 검색을 쓸 수 없습니다')
-                  : webSearchMode === 'auto'
-                    ? t('웹 검색 자동: 최신 사실이나 날씨를 물으면 찾아봅니다. 누르면 매번 검색')
-                    : webSearchMode === 'on'
-                      ? t('웹 검색 켬: 매번 검색합니다. 누르면 끔')
-                      : t('웹 검색 끔: 찾아보지 않습니다. 누르면 자동')
-              }
-            >
-              <Globe size={15} />
-              <span className="text-sm">{webSearchModeLabel}</span>
-            </button>
-          )}
-
-          {phone &&
-            ((hasTemplates && started) ||
-              (!isMedia && usableSkills.length > 0) ||
-              usableConnectors.length > 0 ||
-              usableAgents.length > 0) && (
-              <button
-                onClick={() => setMoreOpen((o) => !o)}
-                aria-expanded={moreOpen}
-                className={cn(
-                  'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
-                  moreOpen ? 'bg-elevated text-fg' : 'text-muted',
-                )}
-                aria-label={moreOpen ? t('도구 접기') : t('도구 더보기')}
-                title={t('시작점·스킬·커넥터·에이전트')}
-              >
-                <MoreHorizontal size={16} />
-              </button>
-            )}
-
-          {usableConnectors.length > 0 && !folded && (
-            <Dropdown
-              className="min-w-72"
-              trigger={() => (
-                <button
-                  className={cn(
-                    'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
-                    activeConnectors.length ? 'text-accent' : 'text-muted hover:text-fg',
-                  )}
-                  aria-label={
-                    activeConnectors.length
-                      ? t('커넥터 {n}개').replace('{n}', String(activeConnectors.length))
-                      : t('커넥터')
-                  }
-                >
-                  <Plug size={15} />
-                  {activeConnectors.length > 0 && <span>{activeConnectors.length}</span>}
-                </button>
-              )}
-            >
-              <MenuLabel>{t('커넥터')}</MenuLabel>
-              {/* Account-wide, unlike the per-turn controls beside it. */}
-              <p className="px-2.5 pb-1.5 text-xs text-faint">
-                {t('계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.')}
-              </p>
-              {usableConnectors.map((c) => (
-                <MenuItem
-                  key={c.id}
-                  icon={<span className="text-base">{c.icon}</span>}
-                  hint={c.status === 'connected' ? (c.enabled ? t('켜짐') : t('꺼짐')) : t('인증 필요')}
-                  onClick={() => c.status === 'connected' && toggleConnector(c.id)}
-                >
-                  {c.name}
-                </MenuItem>
-              ))}
-              <MenuSeparator />
-              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/connectors')}>
-                {t('커넥터 관리')}
-              </MenuItem>
-            </Dropdown>
-          )}
-
-          {usableAgents.length > 0 && !folded && (
-            <Dropdown
-              className="min-w-64"
-              trigger={() => (
-                <button
-                  className="flex h-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-control px-2.5 text-base text-muted transition-colors hover:bg-elevated hover:text-fg"
-                  title={t('에이전트를 골라 새 대화를 시작합니다')}
-                >
-                  @
-                </button>
-              )}
-            >
-              <MenuLabel>{t('에이전트로 새 대화')}</MenuLabel>
-              {usableAgents.map((a) => (
-                <MenuItem
-                  key={a.id}
-                  hint={a.model ? a.model.split('/').pop() : undefined}
-                  onClick={() =>
-                    // An agent belongs to the session, so choosing one starts a conversation.
-                    void newSession(kind, { agentId: a.id, projectId })
-                      .then((id) => navigate(`/s/${id}`))
-                      .catch((err: unknown) => setNotice(startFailure(err, t)))
-                  }
-                >
-                  {a.name}
-                </MenuItem>
-              ))}
-            </Dropdown>
-          )}
-
-          <div className="ml-auto flex min-w-0 items-center gap-1">
-            {!(compareMode && kind === 'chat') && (
-              <fieldset disabled={!!editing} className="contents">
-              <ModelPicker
-                key={editing ? 'editing' : 'normal'}
-                kind={kind}
-                sessionId={sessionId ?? reusableSessionId}
-                modality={kind === 'av' ? (avOptions.mode === 'video' ? 'video' : 'audio') : undefined}
-                onEnableAuto={async (mode) => {
-                  setChatError(null)
-                  try {
-                    let id = sessionId ?? reusableSessionId
-                    if (!id) {
-                      id = await newSession(kind, { projectId, routingMode: mode })
-                      carriedComposer = heldComposer(id)
-                      setReusableSessionId(id)
-                      navigate(`/s/${id}`, { replace: true })
-                    } else {
-                      await setSessionRoutingMode(id, mode)
-                    }
-                  } catch (error) {
-                    setChatError(
-                      errorMessage(error, t('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')),
-                    )
-                  }
-                }}
-                onBusyChange={setModelSelectionPending}
-              />
-              </fieldset>
-            )}
-            <button
-              onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
-              disabled={(!value.trim() && !startingFilled && !streaming) || modelSelectionPending || editPending || uploading || !!pendingPrivacy}
-              className={cn(
-                'grid size-9 place-items-center rounded-full transition-colors',
-                streaming
-                  ? 'bg-elevated text-fg'
-                  : 'bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-elevated disabled:text-faint',
-              )}
-              aria-label={streaming ? t('중지') : editing ? t('수정 후 다시 보내기') : t('전송')}
-              title={
-                streaming
-                  ? t('생성을 멈춥니다')
-                  : modelSelectionPending
-                    ? t('모델 설정 저장 중…')
-                  : !value.trim() && !startingFilled
-                    ? t('보낼 내용을 먼저 입력하세요')
-                    : unsupportedVideo
-                      ? t('이 모델은 이 조합을 만들지 않습니다')
-                      : t('Enter 로도 보낼 수 있습니다')
-              }
-            >
-              {streaming ? <Square size={13} fill="currentColor" /> : <ArrowUp size={16} />}
-            </button>
-          </div>
-        </div>
       </div>
+      {/* The phone's line has no room for the model; it sits just under the box. */}
+      {phone && modelPicker && <div className="mt-1 flex justify-end">{modelPicker}</div>}
       {mediaError && (
         <p
           role="status"
@@ -2105,6 +2378,34 @@ export function Composer({
           <span className="min-w-0 flex-1">{mediaError}</span>
           <button onClick={clearMediaError} aria-label={t('닫기')} className="shrink-0">
             <X size={13} />
+          </button>
+        </p>
+      )}
+      {typedLength >= MESSAGE_WARN && (
+        <p
+          className={cn('mt-1 px-1 text-right text-xs', typedLength > MESSAGE_LIMIT ? 'text-danger' : 'text-faint')}
+          aria-live="polite"
+        >
+          {`${typedLength.toLocaleString()} / ${MESSAGE_LIMIT.toLocaleString()}${t('자')}`}
+          {typedLength > MESSAGE_LIMIT && ` · ${t('긴 자료는 「파일·사진 첨부」로 올리세요.')}`}
+        </p>
+      )}
+      {secondSend && (
+        <p role="status" className="mt-2 flex items-center gap-2 px-1 text-sm text-muted">
+          <Loader2 size={13} className="shrink-0 animate-spin" />
+          {t('앞 질문을 보내는 중입니다.')}
+        </p>
+      )}
+      {queuedSend && (
+        <p role="status" className="mt-2 flex items-center gap-2 px-1 text-sm text-muted">
+          <Loader2 size={13} className="shrink-0 animate-spin" />
+          <span className="min-w-0 flex-1">
+            {uploading
+              ? t('첨부를 다 올리면 바로 보냅니다')
+              : t('모델을 불러오면 바로 보냅니다')}
+          </span>
+          <button type="button" onClick={() => setQueuedSend(false)} className="shrink-0 underline">
+            {t('취소')}
           </button>
         </p>
       )}
@@ -2125,13 +2426,13 @@ export function Composer({
         {busy && isMedia
             ? t('생성 중입니다 — 완료되면 위 카드가 결과로 바뀝니다')
             : kind === 'image'
-              ? t('Enter 로 생성 · 만든 그림은 아티팩트에 쌓입니다')
+              ? t('Enter로 생성 · 만든 그림은 아티팩트에 쌓입니다')
               : kind === 'av' && avOptions.mode === 'audio'
-                ? t('Enter 로 생성 · 음성과 음악은 아티팩트에 쌓입니다')
+                ? t('Enter로 생성 · 음성과 음악은 아티팩트에 쌓입니다')
                 : kind === 'av'
-                  ? t('Enter 로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다')
+                  ? t('Enter로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다')
                   : kind === 'slides'
-                    ? t('Enter 로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다')
+                    ? t('Enter로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다')
                     : `${t('Enter 전송, Shift+Enter 줄바꿈')}, ${isMac() ? 'Cmd' : 'Ctrl'}+/ ${t('단축키 보기')}`}
       </p>
 
@@ -2178,7 +2479,6 @@ export function Composer({
                       pendingPrivacy.attachments,
                       false,
                       pendingPrivacy.activatedSkillIds,
-                      pendingPrivacy.startingTemplate,
                       'route_strict_local',
                       pendingPrivacy.decision.decisionToken,
                       pendingPrivacy.restoreToken,
@@ -2200,7 +2500,6 @@ export function Composer({
                     pendingPrivacy.attachments,
                     pendingPrivacy.webSearch,
                     pendingPrivacy.activatedSkillIds,
-                    pendingPrivacy.startingTemplate,
                     'mask_external',
                     pendingPrivacy.decision.decisionToken,
                     pendingPrivacy.restoreToken,
@@ -2223,7 +2522,6 @@ export function Composer({
                       pendingPrivacy.attachments,
                       pendingPrivacy.webSearch,
                       pendingPrivacy.activatedSkillIds,
-                      pendingPrivacy.startingTemplate,
                       'send_raw_external',
                       pendingPrivacy.decision.decisionToken,
                       pendingPrivacy.restoreToken,
@@ -2240,12 +2538,6 @@ export function Composer({
               pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
                 <p className="text-sm text-warn">
                   {t('안전한 로컬 모델은 외부에 연결하지 않습니다. 그 버튼을 고르면 이 요청은 웹 검색 없이 실행됩니다.')}
-                </p>
-              )}
-            {pendingPrivacy.decision.requestedModels.length > 1 &&
-              pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
-                <p className="text-sm text-muted">
-                  {t('모델 비교는 아직 시작되지 않았습니다. 안전 모델을 선택하면 비교 대신 strict-local 모델 1개로 실행합니다.')}
                 </p>
               )}
             {pendingPrivacy.decision.safeModels.length === 0 && (

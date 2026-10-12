@@ -67,7 +67,7 @@ async function seed(page: Page) {
 /** Enters the in-place editor via 페이지뷰 then the 편집 toggle. */
 async function enterEdit(page: Page) {
   await page.getByRole('button', { name: '페이지뷰' }).click()
-  const edit = page.getByRole('button', { name: '편집' })
+  const edit = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '편집', exact: true })
   if ((await edit.getAttribute('data-variant')) !== 'primary') await edit.click()
   await expect(page.locator('.page').first()).toBeVisible({ timeout: 30_000 })
 }

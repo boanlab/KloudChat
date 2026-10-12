@@ -235,14 +235,14 @@ async def test_existing_calculation_preflight_gate_remains_authoritative(monkeyp
     _mock_model(
         monkeypatch,
         [
-            {"calls": [{"id": "n1", "name": "check_ncs_answer", "arguments": "{}"}]},
+            {"calls": [{"id": "n1", "name": "preflight_check", "arguments": "{}"}]},
             {"text": "CALCULATION_VERIFIED_ANSWER"},
         ],
         snapshots,
     )
     events = await _turn(
-        [_tool("check_ncs_answer", ToolResult(content="Valid arithmetic"))],
-        preflight_tool="check_ncs_answer",
+        [_tool("preflight_check", ToolResult(content="Valid arithmetic"))],
+        preflight_tool="preflight_check",
     )
     assert _visible(events) == "CALCULATION_VERIFIED_ANSWER"
     assert all(

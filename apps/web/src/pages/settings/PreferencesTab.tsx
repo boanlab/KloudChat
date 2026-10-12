@@ -7,11 +7,19 @@ import { useStore } from '@/store/useStore'
 import type { Preferences } from '@/types'
 import { useT } from '@/lib/useT'
 
-/** Per-surface default models and behaviour switches, stored on the account. */
+/** Per-surface defaults and switches, stored on the account. */
 export function PreferencesTab() {
   const t = useT()
   const { user, updateProfile } = useStore()
   const prefs = user?.preferences
+  const dictationEnabled = useStore((s) => s.dictationEnabled)
+  const models = useStore((s) => s.models)
+  const modelsSettled = useStore((s) => s.modelsSettled)
+  const enabledKinds = useStore((s) => s.enabledKinds)
+  // No model for a surface: not offered.
+  const offered = (kind: (typeof kindOrder)[number], modality?: 'audio' | 'video') =>
+    !modelsSettled || (enabledKinds.includes(kind) &&
+      models.some((m) => m.kinds.includes(kind) && (!modality || m.modality === modality)))
   const [allowRawExternal, setAllowRawExternal] = useState<boolean | null>(null)
   const set = (patch: Partial<Preferences>) => void updateProfile({ preferences: patch })
 
@@ -33,7 +41,7 @@ export function PreferencesTab() {
           {kindOrder.flatMap((kind) => {
             const meta = kindMeta[kind]
             const Icon = meta.icon
-            // The av surface has separate audio and video defaults.
+            // av: separate audio and video defaults.
             const fields =
               kind === 'av'
                 ? ([
@@ -41,7 +49,7 @@ export function PreferencesTab() {
                     { modality: 'video', label: '오디오/동영상 · 동영상 모델' },
                   ] as const)
                 : ([{ modality: undefined, label: meta.label }] as const)
-            return fields.map((field) => (
+            return fields.filter((field) => offered(kind, field.modality)).map((field) => (
               <div key={`${kind}:${field.modality ?? ''}`} className="space-y-1.5">
                 <span className="flex items-center gap-1.5 text-base font-medium">
                   <Icon size={13} style={{ color: meta.color }} />
@@ -86,7 +94,7 @@ export function PreferencesTab() {
             )}
           </Select>
           <span className="block text-sm text-faint">
-            {t('모델 전환은 외부 fallback이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.')}
+            {t('모델 전환은 외부 대체 모델이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.')}
           </span>
         </label>
       </section>
@@ -106,6 +114,12 @@ export function PreferencesTab() {
             value: prefs?.autoMemory ?? false,
             set: (v: boolean) => set({ autoMemory: v }),
           },
+          ...(dictationEnabled ? [{
+            label: '스페이스로 말하기',
+            desc: '빈 입력창에서 스페이스를 누른 채 말하면, 떼는 순간 받아 적어 입력창에 넣습니다. 보내지는 않습니다.',
+            value: prefs?.spaceToTalk ?? false,
+            set: (v: boolean) => set({ spaceToTalk: v }),
+          }] : []),
           {
             label: '토큰·크레딧 표시',
             desc: '각 응답 아래에 모델·토큰·크레딧을 표시합니다.',

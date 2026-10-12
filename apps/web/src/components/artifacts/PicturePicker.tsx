@@ -2,16 +2,16 @@ import { ImagePlus, Loader2, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ArtifactPreview } from '@/components/artifacts/ArtifactPanel'
 import { Button, Input } from '@/components/ui'
-import { errorMessage, sessionsApi } from '@/lib/api'
+import { ApiError, errorMessage, sessionsApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { useDesignTemplates } from '@/lib/useDesignTemplates'
 import { useT } from '@/lib/useT'
 import { drawFigure, useStore } from '@/store/useStore'
+import { isImeKey } from '@/lib/ime'
 
-/**
- * Picks an existing image artifact for a slide or section, or generates one
- * in place via the synchronous `POST /sessions/{id}/images`.
- */
+/** On-screen name of a figure kind. */
+const FIGURE_NAMES: Record<string, string> = { method: '구조도', flow: '흐름도', concept: '개념도', compare: '비교도' }
+
+/** Picks an image artifact for a slide or section, or generates one via `POST /sessions/{id}/images`. */
 export function PicturePicker({
   sessionId,
   aspect,
@@ -24,7 +24,7 @@ export function PicturePicker({
   context,
   visualStyle,
 }: {
-  /** Session the picture is charged to and stored under. */
+  /** Session charged and stored under. */
   sessionId?: string | null
   /** `16:9` for a slide, `4:3` for a document figure. */
   aspect: string
@@ -32,11 +32,11 @@ export function PicturePicker({
   onPick: (id: string | null) => void
   caption: string
   onCaption: (value: string) => void
-  /** Subject the picture is for; seeds the prompt suggestion. */
+  /** Subject; seeds the prompt suggestion. */
   about?: string
   /** Document title, passed to the suggestion. */
   title?: string
-  /** Surrounding text, so the suggestion does not redraw it. */
+  /** Surrounding text, so the suggestion doesn't redraw it. */
   context?: string
   /** Document look, so the picture matches. */
   visualStyle?: string
@@ -50,18 +50,11 @@ export function PicturePicker({
   const loadArtifacts = useStore((s) => s.loadArtifacts)
   const imageOn = useStore((s) => s.enabledKinds).includes('image')
   const canMake = imageOn && Boolean(sessionId)
-  // True while the box holds the untouched suggestion.
+  // Box holds the untouched suggestion.
   const [suggested, setSuggested] = useState(false)
-  // Template chosen by the suggestion; a figure template draws as mermaid.
-  const [chosen, setChosen] = useState<{
-    templateId: string
-    name: string
-    figure: string
-    description: string
-    style: string
-  } | null>(null)
+  // Suggestion's choice: figure kind → server-drawn shapes, else a picture.
+  const [chosen, setChosen] = useState<{ figure: string; style: string } | null>(null)
   const chatModel = useStore((s) => s.modelByKind.chat)
-  const templates = useDesignTemplates()
 
   // Same-session pictures first.
   const pictures = artifacts
@@ -72,7 +65,7 @@ export function PicturePicker({
     })
     .slice(0, 24)
 
-  // Prompt suggestion, fetched once on open; a failure leaves the box empty.
+  // Fetched once on open; failure leaves the box empty.
   useEffect(() => {
     if (!canMake || !sessionId || prompt.trim()) return
     let alive = true
@@ -81,20 +74,11 @@ export function PicturePicker({
       .suggestFigure(sessionId, { title, about, context, visualStyle })
       .then((row) => {
         if (!alive || !(row.prompt || row.figure)) return
-        // A figure shows its description (what gets drawn); a picture shows its prompt.
+        // Figure: its description; picture: its prompt.
         setPrompt((row.figure ? row.description : row.prompt) ?? '')
         setSuggested(true)
-        if (row.templateId) {
-          const named = templates.find((one) => one.id === row.templateId)
-          setChosen({
-            templateId: row.templateId,
-            name: named?.name ?? row.templateId,
-            figure: row.figure ?? '',
-            description: row.description ?? '',
-            style: row.style ?? '',
-          })
-        }
-        // A typed caption outranks the suggested one.
+        setChosen({ figure: row.figure ?? '', style: row.style ?? '' })
+        // Typed caption outranks the suggestion.
         if (row.caption) onCaption(caption.trim() || row.caption)
       })
       .catch(() => undefined)
@@ -104,7 +88,7 @@ export function PicturePicker({
     return () => {
       alive = false
     }
-    // Once on mount; re-running on `caption` would overwrite typing.
+    // Mount only; re-running on `caption` would overwrite typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -116,7 +100,7 @@ export function PicturePicker({
     try {
       let rows: { id: string }[]
       if (chosen?.figure && suggested) {
-        // Figure path: the box holds the description `drawFigure` renders.
+        // Figure: box holds the description drawn as shapes.
         rows = [await drawFigure(sessionId, asked, chosen.figure, chatModel || undefined)]
       } else {
         rows = await sessionsApi.images(sessionId, {
@@ -124,17 +108,21 @@ export function PicturePicker({
           aspect,
           style: chosen?.style ?? '',
           count: 1,
-          ...(chosen && !chosen.figure ? { templateId: chosen.templateId } : {}),
-          // An illustration for a slide, not a rendering of one.
+          // An illustration for a slide, not a rendering of it.
           figure: true,
         })
       }
       await loadArtifacts()
-      // Select the new picture so the insert button is enabled.
+      // Select it so insert is enabled.
       if (rows[0]) onPick(rows[0].id)
       setPrompt('')
     } catch (err) {
-      setError(errorMessage(err, t('그림을 만들지 못했습니다.')))
+      // Drawing step's own sentences (undrawable figure) shown as is.
+      setError(
+        err instanceof Error && !(err instanceof ApiError) && err.message
+          ? err.message
+          : errorMessage(err, t('그림을 만들지 못했습니다.')),
+      )
     } finally {
       setMaking(false)
     }
@@ -152,7 +140,7 @@ export function PicturePicker({
                 setSuggested(false)
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                if (e.key === 'Enter' && !isImeKey(e)) {
                   e.preventDefault()
                   void make()
                 }
@@ -183,10 +171,10 @@ export function PicturePicker({
           </div>
           <p className="mt-1.5 flex items-center gap-1 text-xs text-faint">
             {suggested && <Sparkles size={11} className="shrink-0 text-accent" />}
-            {suggested && chosen
-              ? t('「{name}」 서식으로 만듭니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.').replace(
+            {suggested && chosen?.figure
+              ? t('「{name}」로 그립니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.').replace(
                   '{name}',
-                  chosen.name,
+                  t(FIGURE_NAMES[chosen.figure] ?? '도식'),
                 )
               : suggested
                 ? t(

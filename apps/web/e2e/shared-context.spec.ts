@@ -52,7 +52,7 @@ test('링크를 받은 사람은 무엇이 이 결과를 만들었는지 읽고,
   const { id } = (await session.json()) as { id: string }
   await page.request.patch(`/api/sessions/${id}`, {
     headers,
-    data: { renderTemplateId: 'doc-brief', title: `2분기 감사 요약 ${stamp}` },
+    data: { renderTemplateId: 'doc-comparison', title: `2분기 감사 요약 ${stamp}` },
   })
   const share = await page.request.post('/api/shares', {
     headers,
@@ -72,7 +72,7 @@ test('링크를 받은 사람은 무엇이 이 결과를 만들었는지 읽고,
   await expect(guest.getByText('이 에이전트가 답합니다')).toBeVisible()
   await expect(guest.getByText(`2분기 감사 ${stamp}`)).toBeVisible()
   await expect(guest.getByText('한 장 요약')).toBeVisible()
-  await expect(guest.getByText('결과물이 이 서식으로 나옵니다')).toBeVisible()
+  await expect(guest.getByText('아티팩트가 이 템플릿으로 나옵니다')).toBeVisible()
 
   // Nothing behind them, read off the response: an unrendered body still left the workspace.
   const payload = await guest.request.get(`/api/shared/${link}`)

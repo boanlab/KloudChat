@@ -19,7 +19,14 @@ If the sign-up method is **Use after approval**, new accounts build up as waitin
 | Edit details | Name and email, **Reset password** (a random password; saving it signs out all of the user's sessions) |
 | Key management | Reissue the gateway key (the existing key is discarded at once) or replace it. List and delete the API keys the user created |
 | Suspend / Unsuspend | Reversible, and a record is kept |
-| Delete | Deletes conversations, projects, results, memory, credit records, and the gateway key. You choose whether to delete the uploaded files and the generated image and video files from disk |
+| Delete | Deletes conversations, projects, artifacts, memory, credit records, and the gateway key. You choose whether to delete the uploaded files and the generated image and video files from disk |
+
+## Sharing review
+
+Two review queues sit at the bottom of the page. Approve, or reject with a reason that the author sees as written.
+
+- **Process review**: A custom process or bundle that exports a file, has another model review, or calls another agent is used by others only after approval.
+- **Skill review**: A skill with uploaded scripts is copied by others only after approval. The scripts run only in the code execution sandbox.
 
 ## Credit policy
 

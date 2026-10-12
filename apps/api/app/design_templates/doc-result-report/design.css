@@ -1,0 +1,21 @@
+/* 결과 보고서 — 개요 표, 수치가 먼저 오는 개조식, 문제점과 개선 사항의 짝.
+ *
+ * 계획서와 짝이 되는 문서라 모양도 같이 간다: 가운데 제목과 이중선, 색 없는
+ * 계단. 다른 점은 숫자다 — 표의 숫자 열을 고정폭 숫자로 맞춰 계획과 실적을
+ * 위아래로 견줄 수 있게 한다. */
+
+.page { font-family: 'Malgun Gothic', 'Nanum Gothic', 'NanumGothic', 'Pretendard', sans-serif; }
+.cover { min-height: 0; padding: 0.6rem 0 0; margin: 0 0 1.6rem; text-align: center; align-items: center; }
+.cover::after { display: none; }
+.cover h1 { max-width: none; margin: 0 0 0.6rem; padding-bottom: 0.7rem; border-bottom: 3px double var(--ink); font-weight: 800; }
+
+h2 { font-weight: 800; color: var(--ink); margin-bottom: 0.4rem; }
+h2::before { color: var(--ink); }
+section { margin-bottom: 1.4rem; }
+table thead th { border-top: 2px solid var(--ink); border-bottom: 1px solid var(--ink); color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
+table td { font-variant-numeric: tabular-nums; }
+table td:first-child { font-weight: 600; white-space: nowrap; }
+
+@media print {
+  .cover { min-height: 0; padding: 0.6rem 0 0; page-break-after: auto; break-after: auto; }
+}

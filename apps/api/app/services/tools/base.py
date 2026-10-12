@@ -12,73 +12,78 @@ from typing import Any
 class Tool:
     name: str
     description: str
-    #: JSON Schema for the arguments, as the OpenAI tools API expects.
+    #: OpenAI-style JSON Schema for arguments.
     parameters: dict[str, Any]
     run: Callable[[dict[str, Any]], Awaitable[str]]
-    #: Shown in the UI while the call is in flight, e.g. "searching the web".
+    #: UI label while running.
     label: str
-    #: The tool as a noun, e.g. "web search", for permission lists and finished steps.
-    #: Empty falls back to `label`.
+    #: Noun title for permission lists; empty → `label`.
     title: str = ""
-    #: Read-only tools run unattended; write tools are gated.
+    #: Read-only runs unattended; writes gated.
     read_only: bool = True
-    #: Provider slug, for the audit trail and the UI badge.
+    #: Provider slug for audit and UI badge.
     source: str = "builtin"
-    #: `run` receives the `ToolContext` as a second argument.
+    #: `run` gets `ToolContext` as second arg.
     wants_context: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class SearchEvidence:
-    """Trusted builtin metadata: linked snippet/body presence, not truth or freshness.
-
-    Kept outside tool-result text so remote content cannot declare itself verified.
-    Only the in-process web-search parser constructs this value.
-    """
+    """Trusted search metadata, outside result text so remote content can't self-verify."""
 
     source_urls: tuple[str, ...]
 
 
 @dataclass(slots=True)
 class ToolResult:
-    """What the loop feeds back to the model, plus what the UI should show."""
+    """Model-facing content plus UI display."""
 
     content: str
-    #: Optional extra line under the step, e.g. "5 results".
+    #: Extra step line, e.g. "5 results".
     detail: str | None = None
-    #: Marks the step red without aborting the turn.
+    #: Step marked failed; turn continues.
     failed: bool = False
-    #: Ran but found nothing usable; the loop counts these per turn.
+    #: Ran but found nothing; counted per turn.
     empty: bool = False
-    #: A trusted in-process tool may finish the turn without another model hop.
-    #: The loop applies the same output/privacy masking before showing this text.
+    #: Trusted tool's final answer, no extra model hop; masking still applied.
     final_text: str | None = None
     search_evidence: SearchEvidence | None = None
+    #: Stored output files `{"id", "name", "size"}`.
+    outputs: list[dict[str, Any]] | None = None
+    #: Code/output view fields: `code`, `codeAttempt`, `stdout`, `stderr`.
+    trace: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
 class ToolContext:
-    """Per-request state a tool may need; explicit so a tool cannot reach another user's data."""
+    """Per-request tool state; explicit to block cross-user access."""
 
     user_id: str
     session_id: str
-    #: The caller's LiteLLM virtual key, so model calls are billed to them.
+    #: Caller's LiteLLM key for billing.
     api_key: str = ""
-    #: Tool names enabled for this turn; empty means all available.
+    #: Enabled tool names; empty = all.
     allowed: set[str] = field(default_factory=set)
-    #: Scope of a shared note: the project when set, else this session.
+    #: Shared-note scope: project, else session.
     project_id: str = ""
-    #: Byline on a shared note; empty on a plain conversation.
+    #: Shared-note byline.
     agent_name: str = ""
-    #: The user's own message text; `create_artifact` checks it for a file request.
+    #: User message text; checked by `create_artifact` for file requests.
     request: str = ""
-    #: Artifacts to store after the turn finishes, in call order (tools hold no DB session).
+    #: Artifacts stored after the turn (tools hold no DB session).
     pending_artifacts: list[dict] = field(default_factory=list)
-    #: Shared notes to store after the turn finishes.
+    #: Shared notes stored after the turn.
     pending_notes: list[dict] = field(default_factory=list)
-    #: Calls that actually ran this turn, by tool name. `web_search` reaches
-    #: the usage ledger as searches; a repeated call the loop refused is not here.
+    #: Calls actually run, by tool name; refused repeats excluded.
     tool_calls: dict[str, int] = field(default_factory=dict)
+    #: Strict-local turn; model-calling tools stay strict-local.
+    strict_local: bool = False
+    #: Sandbox state for this turn's code tools.
+    sandbox: dict[str, Any] = field(default_factory=dict)
+    #: Tool outputs in call order; number sources for `check_skills`.
+    outputs: list[str] = field(default_factory=list)
+    #: Own skill scripts by key; sandbox-only via `run_skill_script`.
+    own_scripts: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def to_openai(tools: list[Tool]) -> list[dict[str, Any]]:
@@ -96,5 +101,5 @@ def to_openai(tools: list[Tool]) -> list[dict[str, Any]]:
 
 
 def openai_snapshot(tools: list[Tool]) -> list[dict[str, Any]]:
-    """Detached copy of `to_openai`, so a privacy decision binds bytes no callback can mutate."""
+    """Detached `to_openai` copy; privacy decision binds immutable bytes."""
     return json.loads(json.dumps(to_openai(tools), ensure_ascii=False))

@@ -11,8 +11,9 @@ import {
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { isListed } from '@/lib/listed'
 
-/** Craft rules; keys must match `CRAFT` in the API's design service, unknown keys are dropped on save. */
+/** Keys match the API design service's `CRAFT`; unknown keys dropped on save. */
 const CRAFT: { key: string; label: string; hint: string }[] = [
   {
     key: 'restraint',
@@ -33,7 +34,7 @@ const FONTS: { key: DesignTokens['font']; label: string }[] = [
 
 const BODY_MAX = 400
 
-/** Blank design with the API's default tokens. */
+/** API default tokens. */
 const blank = (): Partial<DesignRow> => ({
   name: '',
   description: '',
@@ -75,7 +76,7 @@ function Swatch({
   )
 }
 
-/** User-facing text for the extract endpoint's 4xx codes; other errors fall through as-is. */
+/** Extract endpoint 4xx codes; others fall through. */
 const REFUSAL: Record<string, string> = {
   file_unreadable: '이 파일에서는 글자를 읽지 못했습니다.',
   url_unreadable: '그 주소에서 내용을 읽지 못했습니다.',
@@ -115,7 +116,7 @@ function ExtractForm({
         draft.source,
       )
     } catch (e) {
-      const said = errorMessage(e, t('문서에서 디자인 시스템을 읽어내지 못했습니다.'))
+      const said = errorMessage(e, t('문서에서 테마를 읽어내지 못했습니다.'))
       setError(REFUSAL[said] ? t(REFUSAL[said]) : said)
     } finally {
       setBusy(false)
@@ -125,7 +126,7 @@ function ExtractForm({
   return (
     <section aria-label={t('문서에서 가져오기')} className="space-y-3">
       <p className="text-sm text-muted">
-        {t('공문 양식이나 지난 보고서를 올리면 색·서체·문체를 읽어 초안을 만듭니다. 저장은 확인한 뒤에 합니다.')}
+        {t('지난 공문이나 보고서를 올리면 색·서체·문체를 읽어 초안을 만듭니다. 저장은 확인한 뒤에 합니다.')}
       </p>
 
       <Field label={t('문서 올리기')} hint={t('hwpx · docx · pdf · 텍스트')}>
@@ -176,18 +177,23 @@ function ExtractForm({
   )
 }
 
-/** Design systems this account can attach to a project: tokens plus style prose. */
-export function DesignsSection() {
+/** Themes: tokens plus style prose. */
+export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract' } = {}) {
   const t = useT()
   const isAdmin = useStore((s) => s.user?.role === 'admin')
   const loadWorkspace = useStore((s) => s.loadWorkspace)
+  const ensureWorkspace = useStore((s) => s.ensureWorkspace)
   const projects = useStore((s) => s.projects)
   const [rows, setRows] = useState<DesignRow[]>([])
+  // 숨김 포함: shipped themes kept for existing users (`listed: false`) folded away.
+  const [showHidden, setShowHidden] = useState(false)
+  const hiddenCount = rows.filter((r) => !isListed(r)).length
+  const shownRows = showHidden ? rows : rows.filter(isListed)
   const deleteMany = useStore((s) => s.deleteMany)
   const pick = useBulkSelect(rows.filter((r) => r.mine))
-  const [draft, setDraft] = useState<Partial<DesignRow> | null>(null)
-  const [extracting, setExtracting] = useState(false)
-  // Source the draft was extracted from.
+  // Hub 「+ 추가」 opens the form or reader directly.
+  const [draft, setDraft] = useState<Partial<DesignRow> | null>(initialMode === 'new' ? blank() : null)
+  const [extracting, setExtracting] = useState(initialMode === 'extract')
   const [readFrom, setReadFrom] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirming, setConfirming] = useState<DesignRow | null>(null)
@@ -196,9 +202,9 @@ export function DesignsSection() {
   const load = async () => setRows(await designsApi.list().catch(() => []))
   useEffect(() => {
     void load()
-    // Projects are needed for the delete confirmation count.
-    void loadWorkspace()
-  }, [loadWorkspace])
+    // For the delete confirmation count.
+    void ensureWorkspace()
+  }, [ensureWorkspace])
 
   const tokens = (draft?.tokens ?? blank().tokens) as DesignTokens
   const setTokens = (patch: Partial<DesignTokens>) =>
@@ -216,7 +222,7 @@ export function DesignsSection() {
       setRows((r) => (draft.id ? r.map((x) => (x.id === row.id ? row : x)) : [...r, row]))
       setDraft(null)
       setReadFrom('')
-      // Projects read designs from the store.
+      // Projects read themes from the store.
       void loadWorkspace()
     } catch (e) {
       setError(errorMessage(e, t('저장하지 못했습니다.')))
@@ -225,12 +231,12 @@ export function DesignsSection() {
     }
   }
 
-  /** Delete confirmation text, counting projects that use the design. */
+  /** Counts projects using the theme. */
   const wearing = (row: DesignRow | null) => {
     const n = row ? projects.filter((p) => p.designSystemId === row.id).length : 0
     return n === 0
-      ? t('되돌릴 수 없습니다. 이 디자인을 쓰는 프로젝트는 없습니다.')
-      : t('되돌릴 수 없습니다. 이 디자인을 쓰던 프로젝트 {n}개가 기본 모양으로 돌아갑니다.').replace(
+      ? t('되돌릴 수 없습니다. 이 테마를 쓰는 프로젝트는 없습니다.')
+      : t('되돌릴 수 없습니다. 이 테마를 쓰던 프로젝트 {n}개가 기본 모양으로 돌아갑니다.').replace(
           '{n}',
           String(n),
         )
@@ -261,7 +267,7 @@ export function DesignsSection() {
 
   if (draft) {
     return (
-      <section aria-label={t('디자인 시스템')} className="space-y-4">
+      <section aria-label={t('내 테마')} className="space-y-4">
         {readFrom && (
           <p className="rounded-control border border-line bg-elevated px-2.5 py-1.5 text-sm text-muted">
             {t('“{name}” 에서 읽었습니다. 확인하고 고친 뒤 저장하세요.').replace(
@@ -311,7 +317,7 @@ export function DesignsSection() {
 
         <Field
           label={`${t('문체 규율')} — ${(draft.body ?? '').length}/${BODY_MAX}`}
-          hint={t('이 프로젝트의 모든 턴에 함께 전달됩니다. 길어질 내용은 프로젝트 지침에 적으세요.')}
+          hint={t('이 테마를 쓰는 모든 답에 함께 전달됩니다. 길어질 내용은 프로젝트 지침에 적으세요.')}
         >
           <Textarea
             rows={3}
@@ -385,22 +391,35 @@ export function DesignsSection() {
   }
 
   return (
-    <section aria-label={t('디자인 시스템')} className="space-y-3">
+    <section aria-label={t('내 테마')} className="space-y-3">
       <BulkBar
         count={pick.count}
         allPicked={pick.allPicked}
         onToggleAll={pick.toggleAll}
         onClear={pick.clear}
-        title={t('디자인')}
-        note={t('이 디자인을 쓰던 프로젝트는 기본 모양으로 돌아갑니다.')}
+        title={t('테마')}
+        note={t('이 테마를 쓰던 프로젝트는 기본 모양으로 돌아갑니다.')}
         onDelete={async () => {
           await deleteMany('designs', pick.ids)
           setRows((r) => r.filter((x) => !pick.ids.includes(x.id)))
           pick.clear()
         }}
       />
+      {hiddenCount > 0 && (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant={showHidden ? 'secondary' : 'ghost'}
+            aria-pressed={showHidden}
+            data-testid="themes-show-hidden"
+            onClick={() => setShowHidden(!showHidden)}
+          >
+            {t('숨김 포함')} ({hiddenCount})
+          </Button>
+        </div>
+      )}
       <ul className="space-y-1">
-        {rows.map((row) => (
+        {shownRows.map((row) => (
           <li
             key={row.id}
             className="flex items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base"
@@ -420,6 +439,7 @@ export function DesignsSection() {
               style={{ background: row.tokens.accent }}
             />
             <span className="min-w-0 flex-1 truncate">{row.name}</span>
+            {!isListed(row) && <Badge>{t('숨김')}</Badge>}
             {row.shared && <Badge>{t('공용')}</Badge>}
             {row.mine ? (
               <>
@@ -430,7 +450,7 @@ export function DesignsSection() {
                   variant="ghost"
                   size="icon"
                   aria-label={t('{name} 삭제').replace('{name}', row.name)}
-                  title={t('이 디자인을 삭제합니다')}
+                  title={t('이 테마를 삭제합니다')}
                   onClick={() => setConfirming(row)}
                 >
                   <Trash2 size={14} />
@@ -445,7 +465,7 @@ export function DesignsSection() {
       {rows.length === 0 && (
         <p className="flex items-center gap-1.5 text-base text-faint">
           <Palette size={13} />
-          {t('아직 디자인이 없습니다. 하나 만들면 프로젝트에서 고를 수 있습니다.')}
+          {t('아직 테마가 없습니다. 하나 만들면 프로젝트에서 고를 수 있습니다.')}
         </p>
       )}
       <div className="flex flex-wrap gap-2">
@@ -456,7 +476,7 @@ export function DesignsSection() {
           }}
         >
           <Plus size={14} />
-          {t('디자인 추가')}
+          {t('테마 추가')}
         </Button>
         <Button onClick={() => setExtracting(true)}>
           <FileUp size={14} />

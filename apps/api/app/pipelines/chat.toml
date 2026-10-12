@@ -1,0 +1,14 @@
+# A chat answer after the agent loop: normalized, traced by the agent's check skills,
+# checked as copy when a copy skill wrote it, run past the post-check scripts of the skills on the
+# turn, measured when it carries cover-letter blocks,
+# and swapped in when anything changed.
+
+name = "chat"
+pre = ["check:gaps", "gap-card"]
+finish = ["answer-normalize", "check:answer-grounding", "check:copy", "check:skills", "text-fit", "answer-replace"]
+
+# What each step of the drawn chain does, said for the person (display only).
+[summary]
+question = "빠진 정보가 있으면 먼저 물어봅니다"
+compute = "답의 표기를 다듬습니다"
+check = "답이 자료와 맞는지 확인합니다"

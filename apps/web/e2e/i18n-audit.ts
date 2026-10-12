@@ -94,7 +94,7 @@ async function scan(page: Page, where: string): Promise<Finding[]> {
   )
 }
 
-export const AUDIT_ROUTES: [string, string][] = [
+const AUDIT_ROUTES: [string, string][] = [
   ['/', '홈'],
   ['/new/chat', '새 챗'],
   ['/new/report', '새 보고서'],
@@ -103,14 +103,10 @@ export const AUDIT_ROUTES: [string, string][] = [
   ['/new/av', '새 오디오·동영상'],
   ['/projects', '프로젝트'],
   ['/artifacts', '아티팩트'],
-  ['/agents', '에이전트'],
-  ['/skills', '스킬'],
-  ['/memory', '메모리'],
+  ['/customize', '사용자 지정'],
   ['/history', '기록'],
   ['/usage', '사용량'],
-  ['/connectors', '커넥터'],
   ['/agent-setup', 'AI 에이전트 연동'],
-  ['/designs', '디자인'],
   ['/settings', '설정'],
   ['/settings/preferences', '설정·환경설정'],
   ['/settings/keys', '설정·API 키'],
@@ -120,16 +116,14 @@ export const AUDIT_ROUTES: [string, string][] = [
   ['/admin/system', '관리자·시스템'],
   ['/admin/system/routing', '관리자·라우팅'],
   ['/admin/system/features', '관리자·기능'],
-  ['/admin/system/templates', '관리자·공용 템플릿'],
   ['/admin/system/branding', '관리자·브랜딩'],
   ['/admin/system/mail', '관리자·메일'],
   ['/admin/governance', '관리자·거버넌스'],
 ]
 
 const HEADINGS: Record<string, string> = {
-  '/projects': '프로젝트', '/artifacts': '아티팩트', '/agents': '에이전트',
-  '/skills': '스킬', '/memory': '메모리', '/history': '대화 기록', '/usage': '사용량',
-  '/connectors': '커넥터', '/agent-setup': 'AI 에이전트 연동', '/designs': '디자인',
+  '/projects': '프로젝트', '/artifacts': '아티팩트', '/customize': '사용자 지정',
+  '/history': '대화 기록', '/usage': '사용량', '/agent-setup': 'AI 에이전트 연동',
   '/admin/users': '사용자 · 크레딧', '/admin/usage': '사용량', '/admin/governance': '보안 · 감사',
 }
 const KINDS: Record<string, string> = {
@@ -191,7 +185,7 @@ async function routeReady(page: Page, path: string) {
     await expect(main.getByRole('heading', { level: 1, name: t(heading), exact: true }),
       `Audit route: expected screen heading is missing at ${path}`).toBeVisible()
   }
-  if (parent) await expect(main.locator(`[role="tab"][href="${path}"]`),
+  if (parent) await expect(main.locator(`a[href="${path}"]`).first(),
     `Audit route: selected tab is missing at ${path}`).toHaveAttribute('aria-current', 'page')
 }
 
@@ -249,7 +243,8 @@ export async function auditEnglishMode(page: Page, routes = AUDIT_ROUTES): Promi
     await visit(page, path, userId)
     findings.push(...(await scan(page, name)))
 
-    const tabs = page.getByRole('tab')
+    // Tabs, and the settings menu's links (a nav of pages, not a tablist).
+    const tabs = page.locator(`[role="tab"], main nav[aria-label="${t('설정 메뉴')}"] a[href]`)
     const count = await tabs.count()
     for (let i = 0; i < count; i++) {
       const tab = tabs.nth(i)

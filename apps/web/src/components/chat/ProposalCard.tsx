@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { PendingPlan, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
+import { layoutLabel } from '@/components/slides/patterns'
 
 /** Clarification or outline approval before artifact generation. */
 export function ProposalCard({
@@ -32,8 +33,7 @@ export function ProposalCard({
   const streaming = useStore((s) => !!s.running[sessionId])
   const [picked, setPicked] = useState<Record<string, string>>({})
 
-  // Hooks stay above the stage-specific early returns.
-  // The person's edits to the outline, or null if untouched.
+  // Hooks above the stage-specific early returns. Outline edits, or null if untouched.
   const [edited, setEdited] = useState<{ title: string; layout?: string }[] | null>(null)
   // Null means the plan decides, however late it arrives (the card mounts while streaming).
   const [pickedDensity, setPickedDensity] = useState<string | null>(null)
@@ -104,45 +104,81 @@ export function ProposalCard({
 
   if (pending.stage === 'clarify') {
     const questions = pending.questions ?? []
-    const answered = questions.every((q) => picked[q.id])
+    // Every question takes typed words; options are suggestions that fill the box.
+    const typed = (id: string) => (picked[id] ?? '').trim()
+    const answered = questions.some((q) => typed(q.id))
+    const blanks = questions.filter((q) => !typed(q.id) && q.placeholder).length
     return (
       <Shell tone="warn" icon={<FileWarning size={15} />} title={t('시작하기 전에')}>
         <div className="space-y-3">
-          {questions.map((q) => (
-            <div key={q.id}>
-              <p className="text-base font-medium">{q.question}</p>
-              {q.detail && <p className="mt-0.5 text-sm text-muted">{q.detail}</p>}
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {q.options.map((option) => (
-                  <button
-                    key={option}
-                    onClick={() => setPicked((current) => ({ ...current, [q.id]: option }))}
-                    className={cn(
-                      'rounded-control border px-2.5 py-1 text-base transition-colors',
-                      picked[q.id] === option
-                        ? 'border-accent bg-accent-soft text-accent'
-                        : 'border-line hover:bg-elevated',
-                    )}
-                  >
-                    {option}
-                  </button>
-                ))}
+          {questions.map((q) => {
+            const free = q.freeText !== false || q.options.length === 0
+            const inputId = `q-${sessionId}-${q.id}`
+            return (
+              <div key={q.id}>
+                <label htmlFor={free ? inputId : undefined} className="block text-base font-medium">
+                  {q.question}
+                </label>
+                {(q.why || q.detail) && <p className="mt-0.5 text-sm text-muted">{q.why || q.detail}</p>}
+                {free && (
+                  <input
+                    id={inputId}
+                    value={picked[q.id] ?? ''}
+                    onChange={(e) =>
+                      setPicked((current) => ({ ...current, [q.id]: e.target.value }))
+                    }
+                    placeholder={
+                      q.placeholder
+                        ? t('비워 두면 「{blank}」로 둡니다').replace('{blank}', q.placeholder)
+                        : t('알면 적어 주세요. 비워 두면 빈칸으로 둡니다')
+                    }
+                    className="mt-1.5 w-full rounded-control border border-line bg-transparent px-2.5 py-1 text-base focus:border-accent focus:outline-none"
+                  />
+                )}
+                {q.options.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5" role="group" aria-label={t('{q} 예시 답').replace('{q}', q.label || q.question)}>
+                    {q.options.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        aria-pressed={picked[q.id] === option}
+                        onClick={() => setPicked((current) => ({ ...current, [q.id]: option }))}
+                        className={cn(
+                          'rounded-control border px-2.5 py-1 text-base transition-colors',
+                          picked[q.id] === option
+                            ? 'border-accent bg-accent-soft text-accent'
+                            : 'border-line hover:bg-elevated',
+                        )}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
           <p className="text-sm text-faint">
-            {t('고를 것이 없으면 아래 입력창에 직접 적어도 됩니다.')}
+            {t('답하지 않은 항목은 문서에 빈칸으로 남고, 나중에 문서에서 바로 채울 수 있습니다.')}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
               variant="primary"
               size="sm"
               disabled={streaming || !answered}
-              title={answered ? undefined : t('먼저 위 항목을 골라 주세요')}
-              onClick={() => run({ answers: picked }, Object.values(picked).join(' · '))}
+              title={answered ? undefined : t('먼저 위 항목에 답해 주세요')}
+              onClick={() => {
+                const given = Object.fromEntries(
+                  Object.entries(picked).filter(([, value]) => value.trim()),
+                )
+                run({ answers: given }, Object.values(given).join(' · '))
+              }}
             >
               {streaming ? <Loader2 size={13} className="animate-spin" /> : null}
-              {t('이대로 계속')}
+              {t('답하고 계속')}
+              {answered && blanks > 0 && (
+                <span className="font-normal opacity-80">· {t('빈칸 {n}개').replace('{n}', String(blanks))}</span>
+              )}
             </Button>
             <Button
               size="sm"
@@ -150,6 +186,8 @@ export function ProposalCard({
               onClick={() => run({ answers: {} }, t('있는 자료로 진행해 주세요'))}
             >
               {t('있는 자료로 진행')}
+              <span aria-hidden className="text-faint">→</span>
+              <span className="text-muted">{t('빈칸')}</span>
             </Button>
           </div>
         </div>
@@ -206,7 +244,7 @@ export function ProposalCard({
               aria-label={t('{n}번 제목').replace('{n}', String(i + 1))}
               className="min-w-0 flex-1 rounded-control border border-transparent bg-transparent px-1.5 py-0.5 hover:border-line focus:border-accent focus:bg-panel focus:outline-none"
             />
-            {item.layout && <Badge>{item.layout}</Badge>}
+            {layoutLabel(item.layout) && <Badge>{t(layoutLabel(item.layout) ?? '')}</Badge>}
             <Button
               variant="ghost"
               size="icon"
@@ -237,8 +275,7 @@ export function ProposalCard({
           </li>
         ))}
       </ol>
-      {/* No look picker here: the outline is about what is said. The design is chosen,
-          and changed, from the document's own ribbon (홈 › 디자인). */}
+      {/* No look picker: the outline is about content; the look is chosen from the document's ribbon. */}
       {plan.slides && (
         <fieldset className="mt-4">
           <legend className="mb-2 text-sm font-medium text-fg">{t('어떻게 사용할 자료인가요?')}</legend>
@@ -276,11 +313,18 @@ export function ProposalCard({
           </Button>
         )}
       </div>
+      {streaming ? (
+        // Accepted and being written: a status, not a button that cannot be pressed.
+        <p role="status" className="mt-3 flex items-center gap-1.5 text-sm text-muted">
+          <Loader2 size={13} className="animate-spin" />
+          {kind === 'slides' ? t('이 구성으로 만드는 중…') : t('이 개요로 쓰는 중…')}
+        </p>
+      ) : (
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button
           variant="primary"
           size="sm"
-          disabled={streaming || items.every((i) => !i.title.trim())}
+          disabled={items.every((i) => !i.title.trim())}
           onClick={() =>
             run(
               { approve: true, ...(dirty ? { plan: asPlan() } : {}) },
@@ -288,17 +332,14 @@ export function ProposalCard({
             )
           }
         >
-          {streaming ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <CircleCheck size={13} />
-          )}
+          <CircleCheck size={13} />
           {dirty ? t('고친 대로 생성') : t('이대로 생성')}
         </Button>
         <span className="text-sm text-muted">
           {t('제목을 직접 고치거나, 크게 바꿀 것이 있으면 아래 입력창에 적어 주세요.')}
         </span>
       </div>
+      )}
     </Shell>
   )
 }

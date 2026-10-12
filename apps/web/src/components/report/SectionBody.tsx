@@ -2,11 +2,7 @@ import { cn } from '@/lib/utils'
 import { Markdown } from '@/components/chat/Markdown'
 import type { ReportSection } from '@/types'
 
-/**
- * One section's body: Markdown, or HTML once edited in the document editor.
- * HTML content must have been through `design_templates.sanitise`; nothing
- * else may reach the `dangerouslySetInnerHTML` here.
- */
+/** Markdown, or HTML once edited; HTML must have passed `design_templates.sanitise` before `dangerouslySetInnerHTML`. */
 export function SectionBody({
   section,
   className,
@@ -14,11 +10,11 @@ export function SectionBody({
 }: {
   section: Pick<ReportSection, 'content' | 'format' | 'diagrams'>
   className?: string
-  /** Document to store rendered diagrams on; absent in the transcript. */
+  /** Diagram store target; absent in the transcript. */
   owner?: { artifactId: string; sectionId: string }
 }) {
   if (section.format === 'html') {
-    // `doc-html` styles the template markup outside the page view's shadow root.
+    // `doc-html`: template markup styling outside the page view's shadow root.
     return (
       <div
         className={cn('doc-html', className)}
@@ -36,13 +32,10 @@ export function SectionBody({
   )
 }
 
-// Elements that end a line when markup becomes text.
+// Line-ending elements for text conversion.
 const BLOCKS = 'p, div, section, li, h1, h2, h3, h4, h5, h6, tr, blockquote'
 
-/**
- * The body as plain text. Parsed with DOMParser (no script, no fetch) rather
- * than regex-stripped, so escaped text cannot turn back into markup.
- */
+/** Plain text via DOMParser (no script, no fetch), so escaped text cannot become markup. */
 export function sectionText(section: Pick<ReportSection, 'content' | 'format'>): string {
   if (section.format !== 'html') return section.content
   const doc = new DOMParser().parseFromString(section.content, 'text/html')

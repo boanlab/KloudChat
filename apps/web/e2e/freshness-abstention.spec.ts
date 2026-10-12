@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 const sessionId = 'legacy-freshness-fixture'
 const now = '2026-09-12T00:00:00.000Z'
@@ -37,9 +38,11 @@ async function savedLegacyAnswer(page: Page, reason: string) {
     if (req.method() === 'GET' && path === '/sessions') return json([row])
     if (req.method() === 'GET' && path === `/sessions/${sessionId}`) return json(row)
     if (path === '/artifacts/counts') return json({ counts: {}, total: 0 })
+    const shell = shellRead(req.method(), path)
+    if (shell) return route.fulfill(shell)
     if (req.method() === 'GET' && (path.endsWith('/jobs') || [
-      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools', '/templates',
-      '/connectors', '/connectors/catalog', '/designs', '/design-templates', '/prompt-templates', '/shares',
+      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
+      '/connectors', '/connectors/catalog', '/designs', '/design-templates', '/shares',
     ].includes(path))) return json([])
     unexpected.push(`${req.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })

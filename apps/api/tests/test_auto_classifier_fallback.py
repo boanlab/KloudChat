@@ -12,7 +12,7 @@ from app.models.governance import Governance
 from app.models.user import AuditEvent, User
 from app.routers import sessions as sessions_router
 from app.schemas.chat import SendMessage
-from app.services import adaptive_routing
+from app.services import adaptive_routing, settings_store
 from app.services.tools.base import Tool, openai_snapshot
 
 
@@ -36,6 +36,12 @@ async def test_classifier_fallback_preserves_the_turn_and_model_identity(
     monkeypatch.setattr(socket, "create_connection", no_network)
     monkeypatch.setattr(httpx.HTTPTransport, "handle_request", no_network)
     monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", no_network)
+
+    # No database here: the stored settings (model roles among them) are empty.
+    async def no_stored_settings(force: bool = False) -> dict:
+        return {}
+
+    monkeypatch.setattr(settings_store, "all_values", no_stored_settings)
 
     user = User(
         email="fixture@example.test",

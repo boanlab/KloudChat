@@ -1,10 +1,4 @@
-"""Labelled method/flow/concept figures as mermaid source, written by a model and drawn by the
-client.
-
-House style: zones as subgraphs, rounded processes / square data / cylinder stores, solid
-forward and dashed auxiliary edges, one `hot` highlight. The mermaid source is what is
-stored; the picture is derived from it.
-"""
+"""Model-written mermaid method/flow/concept figures, drawn with the .pptx export's shapes."""
 
 from __future__ import annotations
 
@@ -12,11 +6,12 @@ import logging
 import re
 from typing import Any
 
+from app.services import diagram_render, diagram_shapes
 from app.services.report import _complete
 
 log = logging.getLogger(__name__)
 
-#: Figure kinds, as the prompt describes them.
+#: figure kinds as the prompt describes them
 FIGURES: dict[str, str] = {
     "method": "제안 방법의 구조도 — 구성 요소와 그 사이의 데이터 흐름",
     "flow": "처리 흐름도 — 입력이 단계를 거쳐 결과가 되기까지",
@@ -40,12 +35,12 @@ _RULES = """
   아니다. 화살표의 연쇄는 단계·처리 흐름에만 쓴다.
 - 성과 수치(「탐지 시간 90% 단축」)는 처리 단계가 아니다. 흐름의 마지막 노드로
   넣지 말고 본문이나 캡션에 둔다.
-- 그림의 비율은 4:3 에서 16:9 사이여야 한다. 가로로 길게 늘어선 그림은 지면 폭에
-  맞춰 줄어 글자를 읽을 수 없고, 세로로 긴 그림은 한 면을 다 먹는다. 처리 흐름의
-  단계가 6개를 넘으면 **두세 줄로 접어라**: `flowchart TB` 에 단계군 subgraph
-  2~3개를 두고, 각 subgraph 첫 줄에 `direction LR` 을 적어 그 안에서는 가로로
-  흐르게 한다. 줄 사이의 연결은 노드가 아니라 **subgraph id 끼리** 잇는다
-  (`idx -.-> qry`) — 노드가 밖과 이어지면 mermaid 가 subgraph 의 방향을 버린다.
+- 처리 흐름은 단계가 많아도 `flowchart LR` 하나로 순서대로 써라. 줄을 접거나
+  세로로 돌리는 것은 그리는 쪽이 지면 폭에 맞춰 한다 — 직접 접지 마라.
+  단계가 5개를 넘으면 **단계군(phase) subgraph 2~4개로 묶어라**. 한 단계군은
+  2~4단계이고, 그리는 쪽은 단계군 하나를 한 줄에 둔다.
+- 되돌아가는 흐름(재시도, 재검색, 오류 시 이전 단계로)은 돌아갈 단계로 가는 점선
+  하나다(`gate -.->|불확실| ret`). 그 선을 실선으로 쓰거나 두 번 쓰지 마라.
 - 비교도는 `flowchart LR` 에 subgraph 둘(기존/제안, A안/B안)을 나란히 두고,
   각 subgraph 첫 줄에 `direction TB` 를 적어 항목이 위에서 아래로 서게 한다.
   같은 자리의 항목이 마주 보게 같은 순서로 놓고, 순서는 보이지 않는 연결
@@ -67,12 +62,18 @@ _RULES = """
   - 판단·조건은 마름모 `id{이름}`
 - 노드 id 는 영문 소문자, 이름은 한 번만 정의한다. 화살표 양끝은 반드시
   **이미 정의한 id** 다 — 이름 없는 id 하나만 덜렁 두지 마라.
-- 노드는 12개 이하, 이름은 12자 안쪽. `/` 로 둘을 한 칸에 넣지 마라.
+- 노드는 12개 이하, 이름은 8자 안팎(길어도 12자). 상자 글자는 인쇄 크기에서 읽혀야
+  한다 — 이름이 길면 상자가 넓어지고 한 줄에 놓을 단계가 줄어든다. `/` 로 둘을 한
+  칸에 넣지 마라.
+- **첫 줄은 반드시 `flowchart LR` 또는 `flowchart TB` 다.** sequenceDiagram·mindmap·
+  classDiagram·timeline 같은 다른 mermaid 종류는 그릴 수 없다. 노드가
+  {max_nodes}개를 넘는 그림도 그릴 수 없다 — 묶음으로 줄여라.
 
 ## 선
 - 본류(순전파, 주 데이터 흐름)는 실선 `-->`.
 - 보조 흐름(기울기, 되먹임, 건너뛰기, 손실 계산)은 점선 `-.->`.
-- 선 위 글자는 `A -->|글자| B` 하나뿐이고 6자 안쪽. 길어지면 붙이지 마라.
+- 선 위 글자는 `A -->|글자| B` 하나뿐이고 4자 안팎(길어도 6자). 길어지면 붙이지
+  마라. 분기의 조건(예/아니오, 통과/실패)처럼 선을 구별할 때만 붙인다.
 - 연산 기호는 노드로 두지 말고 선 위 글자로: `-->|⊕|`, `-->|⊗|`.
 
 ## 강조
@@ -86,7 +87,7 @@ _RULES = """
 """
 
 
-#: Size rules for a figure that shares a slide with words.
+#: size rules when sharing a slide with words
 
 _SLIDE_RULES = """
 ## 슬라이드용
@@ -106,7 +107,11 @@ def _messages(
     what = FIGURES.get(figure, FIGURES["method"])
     lang = "영어로" if language == "en" else "한국어로"
     return [
-        {"role": "system", "content": _RULES + (_SLIDE_RULES if slide else "")},
+        {
+            "role": "system",
+            "content": _RULES.replace("{max_nodes}", str(diagram_shapes.MAX_NODES))
+            + (_SLIDE_RULES if slide else ""),
+        },
         {
             "role": "user",
             "content": (
@@ -121,10 +126,10 @@ _CAPTION = re.compile(r"^\s*(?:그림|Figure)\s*[:：]\s*(.+)$", re.M)
 
 
 def _parse(text: str) -> tuple[str, str]:
-    """Pulls the mermaid source and the caption out of the answer."""
+    """Mermaid source and caption from the answer."""
     block = _BLOCK.search(text)
     source = (block.group(1) if block else text).strip()
-    # A `style` line would override the house palette.
+    # style lines would override the house palette
     source = "\n".join(
         line
         for line in source.splitlines()
@@ -136,7 +141,7 @@ def _parse(text: str) -> tuple[str, str]:
     return source, (caption.group(1).strip() if caption else "")
 
 
-#: Mixed bracket shapes (`{(x)}`) that mermaid refuses, mapped to one shape.
+#: mixed bracket shapes mermaid refuses → one shape
 _MIXED = (
     (re.compile(r"\{\(([^)}]*)\)\}"), r"(\1)"),
     (re.compile(r"\(\{([^)}]*)\}\)"), r"{\1}"),
@@ -146,7 +151,7 @@ _MIXED = (
 
 
 def _mend(source: str) -> str:
-    """Rewrites mixed bracket shapes to a single valid one."""
+    """Rewrite mixed bracket shapes to one valid shape."""
     for pattern, replacement in _MIXED:
         source = pattern.sub(replacement, source)
     return source
@@ -163,11 +168,7 @@ async def draw(
     error: str = "",
     slide: bool = False,
 ) -> tuple[str, str, dict[str, Any]]:
-    """Writes one figure as mermaid. Returns `(source, caption, usage)`.
-
-    `broken`/`error` carry a previous answer mermaid refused, for one retry. `slide`
-    adds the size rules for a figure that shares a slide with words.
-    """
+    """One figure as mermaid: (source, caption, usage); broken/error for one retry."""
     messages = _messages(description, figure, language, slide)
     if broken:
         messages.append({"role": "assistant", "content": f"```mermaid\n{broken}\n```"})
@@ -189,4 +190,68 @@ async def draw(
     return source, caption, usage
 
 
-__all__ = ["FIGURES", "draw"]
+#: figure accent outside a deck
+ACCENT = "#2563EB"
+
+#: retry note for sources the shapes can't draw
+_NOT_DRAWABLE = (
+    "이 그림판은 flowchart 만 그린다. 첫 줄을 `flowchart LR` 또는 `flowchart TB` 로 하고, "
+    "노드를 {n}개 이하로 줄여라."
+)
+
+
+class Undrawable(ValueError):
+    """Figure undrawable after rewrite, or no renderer; usage still chargeable."""
+
+    def __init__(self, reason: str, usage: dict[str, Any] | None = None) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.usage = usage or {}
+
+
+def _added(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    keys = set(left) | set(right)
+    return {
+        k: int(left.get(k) or 0) + int(right.get(k) or 0)
+        for k in keys
+        if isinstance(left.get(k, 0), int | float) and isinstance(right.get(k, 0), int | float)
+    }
+
+
+async def draw_native(
+    *,
+    description: str,
+    figure: str,
+    model: str,
+    api_key: str,
+    language: str = "ko",
+    slide: bool = False,
+    accent: str = ACCENT,
+) -> tuple[str, str, dict[str, Any], bytes]:
+    """One figure drawn natively to PNG: (source, caption, usage, png); no fallback."""
+    source, caption, usage = await draw(
+        description=description, figure=figure, model=model, api_key=api_key,
+        language=language, slide=slide,
+    )
+    if diagram_shapes.parse(source) is None:
+        log.info("figure source not drawable as shapes; asking for a flowchart once")
+        try:
+            source, again, more = await draw(
+                description=description, figure=figure, model=model, api_key=api_key,
+                language=language, slide=slide, broken=source,
+                error=_NOT_DRAWABLE.format(n=diagram_shapes.MAX_NODES),
+            )
+        except ValueError as exc:
+            raise Undrawable("not_drawable", usage) from exc
+        usage = _added(usage, more)
+        caption = again or caption
+        if diagram_shapes.parse(source) is None:
+            raise Undrawable("not_drawable", usage)
+    png = await diagram_render.render_png(source, accent or ACCENT)
+    if not png:
+        log.warning("figure not drawn: the picture renderer did not answer")
+        raise Undrawable("renderer_unavailable", usage)
+    return source, caption, usage, png
+
+
+__all__ = ["ACCENT", "FIGURES", "Undrawable", "draw", "draw_native"]

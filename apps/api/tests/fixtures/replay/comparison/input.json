@@ -1,0 +1,18 @@
+{
+ "name": "comparison",
+ "kind": "report",
+ "run": "comparison-report-1__r1",
+ "now": "2026-10-08T16:00:00+09:00",
+ "write": {
+  "request": "사내 메신저 세 개 비교 보고서 써 줘. 직원 80명이고 SSO 연동은 필수, 화상회의는 한 번에 60명까지 되면 돼. 연간 비용 기준으로 하나 골라 줘.\n\n[제품 정보 — 각 사 요금 페이지, 2026-10-01 확인]\n- 톡플로우: 1인 월 6,000원, SSO 지원, 국내 데이터센터, 화상회의 최대 100명\n- 팀링크: 기본 요금제 1인 월 4,500원(SSO 미지원) / 엔터프라이즈 1인 월 8,000원(SSO 지원), 해외 데이터센터, 화상회의 최대 50명\n- 워크닷: 1인 월 7,500원, SSO 지원, 국내 데이터센터, 화상회의 최대 300명",
+  "model": "strict-local/qwen3.8-27b",
+  "outline_model": "strict-local/qwen3.5-122b",
+  "api_key": "k",
+  "web_search": false,
+  "template_id": "doc-comparison",
+  "format_id": "comparison",
+  "check_keys": [
+   "grounding-check"
+  ]
+ }
+}

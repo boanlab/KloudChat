@@ -12,7 +12,7 @@ const AS_USER = `async (path, init) => {
 }`
 
 /** Tab counts come from a workspace-wide query, so deleting rows must refresh them. */
-test('결과물을 지우면 탭의 숫자도 같이 줄어든다', async ({ page }) => {
+test('아티팩트를 지우면 탭의 숫자도 같이 줄어든다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
 

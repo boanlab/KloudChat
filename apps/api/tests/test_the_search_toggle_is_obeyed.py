@@ -195,11 +195,11 @@ def test_the_rule_asks_per_claim_not_per_turn() -> None:
     prompt = context.system_prompt(SessionKind.chat, with_tools=True, web_search=True)
 
     # Not one search per turn.
-    assert "최소 한 번" not in prompt
-    assert "축마다" in prompt
+    assert "최소 한 번" not in prompt and "at least once" not in prompt
+    assert "for each axis" in prompt
     # Prefer what was read; mark what could not be checked.
-    assert "검색 결과를 따르세요" in prompt
-    assert "확인하지 못했다고 밝히세요" in prompt
+    assert "follow the search results" in prompt
+    assert "say you could not verify them" in prompt
 
 
 def test_a_toggle_with_no_tool_behind_it_still_says_so() -> None:
@@ -207,6 +207,19 @@ def test_a_toggle_with_no_tool_behind_it_still_says_so() -> None:
         SessionKind.chat, with_tools=True, web_search=True, web_search_available=False
     )
 
-    assert "검색 도구가 없습니다" in prompt
+    assert "this request has no search tool" in prompt
     # The blocked notice and the search nudge never appear together.
-    assert "축마다" not in prompt
+    assert "for each axis" not in prompt
+
+
+def test_a_blocked_search_answers_an_event_question_briefly():
+    # Strict-local that cannot check ACL 2026 says so briefly: no date, city or paragraph on
+    # how awards are usually decided.
+    from app.models.chat import SessionKind
+    from app.services.context import system_prompt
+
+    prompt = system_prompt(SessionKind.chat, with_tools=True, web_search=True,
+                           web_search_available=False)
+    assert "Add no dates, places, names or procedures for it from memory" in prompt
+    assert "Add no dates" not in system_prompt(SessionKind.chat, with_tools=True,
+                                               web_search=True)

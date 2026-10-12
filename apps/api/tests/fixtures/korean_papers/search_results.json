@@ -1,0 +1,175 @@
+{
+ "_note": "Titles and links as the search backend answered on 2026-10-11 for the subject 「거대언어모델 요약」 (snippets abridged for the test), one list per (query, site) variant, in the shape builtin.searxng returns.",
+ "거대언어모델 요약 학회 논문|": [
+  {
+   "title": "학회 논문 인용하는 방법 (APA) | Aithor Blog",
+   "url": "https://aithor.com/blog/ko-kr/how-to-cite-conference-paper-apa",
+   "snippet": "",
+   "published": ""
+  },
+  {
+   "title": "AI 저널 요약 생성기 | 빠른 기사 요약 무료 - Musely",
+   "url": "https://musely.ai/ko/tools/journal-summary-generator",
+   "snippet": "",
+   "published": ""
+  },
+  {
+   "title": "대형 언어 모델 - 위키백과 한국어",
+   "url": "https://ko.wikipedia.org/wiki/%EB%8C%80%ED%98%95_%EC%96%B8%EC%96%B4_%EB%AA%A8%EB%8D%B8",
+   "snippet": "",
+   "published": ""
+  },
+  {
+   "title": "거대 언어 모델의 발전 및 상용화 과제 - 한국통신학회지(정보와통신) : 논문",
+   "url": "https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE11420764",
+   "snippet": "거대 언어 모델의 발전 과정과 요약·번역 등 상용 서비스의 과제를 정리한다.",
+   "published": ""
+  },
+  {
+   "title": "학회 논문 포스터 ppt 양식 깔끔한 학술논문포스터... - YouTube",
+   "url": "https://www.youtube.com/watch?v=K9pJmTSBIMU",
+   "snippet": "",
+   "published": ""
+  }
+ ],
+ "거대언어모델 요약 학술대회 발표|": [
+  {
+   "title": "대학논술문항을 활용한 거대언어모델의 한국어 서술형 평가",
+   "url": "https://koreascience.kr/article/CFKO202404272003320.page",
+   "snippet": "거대언어모델의 한국어 서술형 답변 생성과 요약 능력을 평가",
+   "published": ""
+  },
+  {
+   "title": "한국어 헬스케어 개체명 인식을 위한 거대 언어 모델에서의 형태소 기반 Few-Shot.... - 한국정보처리학회 학술대회논문집",
+   "url": "https://kiss.kstudy.com/Detail/Ar?key=4059314",
+   "snippet": "거대 언어 모델 기반 개체명 인식",
+   "published": ""
+  },
+  {
+   "title": "두나무 머신러닝팀, 세계적 인공지능 학술대회 AAAI - 2026서 연구 발표...",
+   "url": "https://www.newsspace.kr/news/article.html?no=12124",
+   "snippet": "",
+   "published": ""
+  },
+  {
+   "title": "발표 논문 - 2025년도 한국통신학회 동계종합학술발표회",
+   "url": "https://conf.kics.or.kr/2025w/program",
+   "snippet": "",
+   "published": ""
+  }
+ ],
+ "거대언어모델 요약 학회지|": [
+  {
+   "title": "정보과학회지 제43권 제4호 통권 제431호",
+   "url": "https://www.kiise.or.kr/admin/file/get/44a95894-b9d6-486a-b0a3-caac5e948ced",
+   "snippet": "",
+   "published": ""
+  },
+  {
+   "title": "원자력연구원의 오픈소스 거대언어모델 활용 방향 - YouTube",
+   "url": "https://www.youtube.com/watch?v=6hn7Vd9aYwo",
+   "snippet": "",
+   "published": ""
+  }
+ ],
+ "거대언어모델 요약|kci.go.kr": [
+  {
+   "title": "거대언어모델(LLM)의 국방분야 적용모델 연구",
+   "url": "https://dspace.kci.go.kr/handle/kci/2171498",
+   "snippet": "거대언어모델의 국방 문서 요약 적용",
+   "published": ""
+  },
+  {
+   "title": "journal.kci.go.kr/JTS/archive/articlePdf?artiId=ART001847726",
+   "url": "https://journal.kci.go.kr/JTS/archive/articlePdf?artiId=ART001847726",
+   "snippet": "",
+   "published": ""
+  },
+  {
+   "title": "Is Korean Academia Unique? A Comparison of Knowledge Discourses...",
+   "url": "https://journal.kci.go.kr/KJS/archive/articleView?artiId=ART002656945",
+   "snippet": "한국 학계 지식 담론 요약 비교",
+   "published": ""
+  },
+  {
+   "title": "거대언어모델을 활용한 설문조사의 현재와 한계",
+   "url": "https://dspace.kci.go.kr/handle/kci/2176140",
+   "snippet": "거대언어모델 설문 응답 요약",
+   "published": ""
+  },
+  {
+   "title": "Research &amp; Publication Ethics",
+   "url": "https://journal.kci.go.kr/cemtp/author/editorialPolicy",
+   "snippet": "",
+   "published": ""
+  }
+ ],
+ "거대언어모델 요약|dbpia.co.kr": [
+  {
+   "title": "초거대 언어모델 연구 동향 - 논문",
+   "url": "https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE11610124",
+   "snippet": "초거대 언어모델과 요약 연구의 동향",
+   "published": ""
+  },
+  {
+   "title": "GPT 4.0의 우회 공격과 LLM 침입 차단 모델에 대한 연구 - 한국산학기술학회 논문....",
+   "url": "https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE11743721",
+   "snippet": "거대언어모델의 취약점 요약",
+   "published": ""
+  },
+  {
+   "title": "거대 언어 모델의 발전 및 상용화 과제 - 한국통신학회지(정보와통신) : 논문",
+   "url": "https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE11420764",
+   "snippet": "",
+   "published": ""
+  }
+ ],
+ "거대언어모델 요약|riss.kr": [
+  {
+   "title": "RISS 검색 - 학위논문",
+   "url": "https://www.riss.kr/search/Search.do?detailSearch=true&searchGubun=true&queryText=znCreator,%EC%9D%B4%EC%83%81",
+   "snippet": "",
+   "published": ""
+  },
+  {
+   "title": "거대언어모델을 활용한 설문조사의 현재와 한계 = The Current State and Limitations of L....",
+   "url": "https://www.riss.kr/search/detail/DetailView.do?p_mat_type=1a0202e37d52c72d&control_no=e30e748c6a4f9f63e981025",
+   "snippet": "",
+   "published": ""
+  },
+  {
+   "title": "거대언어모델의 차별문제 비교 연구 = A Comparative Study on Discrimination Issues in L",
+   "url": "https://www.riss.kr/search/detail/DetailView.do?p_mat_type=1a0202e37d52c72d&control_no=5241a7c031159fb86aae8a9",
+   "snippet": "거대언어모델 요약 출력의 차별 문제",
+   "published": ""
+  }
+ ],
+ "거대언어모델 요약|scienceon.kisti.re.kr": [
+  {
+   "title": "[논문]ChatGPT 및 거대언어모델의 추론 능력 향상을 위한 프롬프트 엔지니어링 방....",
+   "url": "https://scienceon.kisti.re.kr/srch/selectPORSrchArticle.do?cn=JAKO202302557635729",
+   "snippet": "거대언어모델 추론 연구 현황 요약",
+   "published": ""
+  },
+  {
+   "title": "지식인프라서비스 홈",
+   "url": "https://scienceon.kisti.re.kr/",
+   "snippet": "",
+   "published": ""
+  }
+ ],
+ "거대언어모델 요약|earticle.net": [
+  {
+   "title": "한국어 학습자 오류에 대한 거대언어모델과 모어 화자의 교정 양상 비교 연구",
+   "url": "https://www.earticle.net/Article/A454990",
+   "snippet": "",
+   "published": ""
+  },
+  {
+   "title": "사전학습 언어 모델을 활용한 트랜스포머 기반 텍스트 요약",
+   "url": "https://www.earticle.net/Article/A406599",
+   "snippet": "트랜스포머 기반 텍스트 요약",
+   "published": ""
+  }
+ ]
+}

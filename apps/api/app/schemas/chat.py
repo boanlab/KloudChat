@@ -17,7 +17,7 @@ from app.models.chat import (
     TurnFailure,
 )
 from app.schemas.auth import Wire
-from app.schemas.workspace import FileOut
+from app.schemas.workspace import ArtifactOut, FileOut
 
 
 class MessageOut(Wire):
@@ -28,16 +28,15 @@ class MessageOut(Wire):
     attachments: list | None = None
     usage: dict | None = None
     variants: list | None = None
-    #: Earlier answers to the same question, oldest first; see `Message.superseded`.
     superseded: list | None = None
     model: str | None = None
     routing: dict | None = None
-    #: Artifacts this turn produced, rendered in place of the answer.
     artifact_ids: list | None = None
-    #: The 시작점 this turn began from, as `{templateId, title}`.
+    #: version of `artifact_ids[0]` written, from the pipeline run; null if unknown
+    artifact_version: int | None = None
+    #: retired 시작점; read only
     started_from: dict | None = None
     rating: MessageRating | None = None
-    #: How the turn ended when it did not end in an answer.
     failure: TurnFailure | None = None
     created_at: datetime
 
@@ -47,67 +46,54 @@ class MessageOut(Wire):
 
 
 class MessageRatingIn(Wire):
-    """A rating; explicit null withdraws it."""
+    """Explicit null withdraws."""
 
     rating: MessageRating | None = None
 
 
 class ImageRequest(Wire):
-    """Image generation request. `aspect` and `style` are folded into the prompt."""
+    """Image generation; `aspect`/`style` folded into prompt."""
 
     prompt: str = Field(min_length=1, max_length=2000)
     model: str | None = None
     aspect: str = "1:1"
     style: str = ""
-    #: An `image` design template; shapes the prompt only.
+    #: retired 서식 id ignored; others refused
     template_id: str | None = Field(default=None, max_length=60)
-    #: Each picture is a separate upstream call and charge.
+    #: one upstream call and charge each
     count: int = Field(default=1, ge=1, le=4)
-    #: Requested from inside a document; adds `imagegen._FIGURE_CLAUSE` to the prompt.
+    #: in-document request; adds `imagegen._FIGURE_CLAUSE`
     figure: bool = False
-    #: In-picture text language: `auto`, `ko`, `en`, `none`.
     labels: str = Field(default="auto", max_length=8)
-    #: Send the prompt as typed, skipping the planner.
     raw: bool = False
 
 
 class FigureSuggestRequest(Wire):
-    """Figure suggestion request for one slide or section."""
+    """Figure suggestion for one slide/section."""
 
-    #: Document title.
     title: str = Field(default="", max_length=300)
-    #: Heading of the slide or section the picture goes into.
     about: str = Field(default="", max_length=300)
-    #: Existing text of that slide or section.
     context: str = Field(default="", max_length=4000)
-    #: Document look: `editorial`, `poster`, `minimal`, or empty.
     visual_style: str = Field(default="", max_length=20)
 
 
 class FigureSuggestion(Wire):
     caption: str
     prompt: str
-    #: Image 서식 chosen, e.g. `image-scene`; empty draws a plain picture from `prompt`.
-    template_id: str = ""
-    #: Mermaid figure kind (`flow`, `method`, `concept`) when the client should draw a diagram.
+    #: mermaid kind (`flow`, `method`, `concept`) for diagrams
     figure: str = ""
-    #: Diagram description, in Korean. Empty for pictures.
+    #: Korean diagram description; empty for pictures
     description: str = ""
-    #: Style chip to draw with.
     style: str = ""
 
 
 class DiagramRequest(Wire):
-    """Diagram generation request."""
+    """Diagram generation."""
 
     description: str = Field(min_length=1, max_length=6000)
-    #: `method`, `flow` or `concept`.
     figure: str = Field(default="method", max_length=20)
     model: str | None = None
     language: str = Field(default="ko", max_length=5)
-    #: Mermaid source the client failed to render, and the renderer's error.
-    broken: str = Field(default="", max_length=20000)
-    error: str = Field(default="", max_length=500)
 
 
 class DiagramOut(Wire):
@@ -115,39 +101,23 @@ class DiagramOut(Wire):
     caption: str = ""
     model: str = ""
     credits: int = 0
-
-
-class DiagramStore(Wire):
-    """A client-rendered diagram stored beside its source."""
-
-    source: str = Field(min_length=1, max_length=20000)
-    caption: str = Field(default="", max_length=500)
-    description: str = Field(default="", max_length=6000)
-    figure: str = Field(default="method", max_length=20)
-    title: str = Field(default="", max_length=200)
-    model: str = Field(default="", max_length=120)
-    #: PNG bytes, base64.
-    png: str = Field(min_length=1)
-    width: int = Field(default=0, ge=0, le=10000)
-    height: int = Field(default=0, ge=0, le=10000)
+    #: drawn with .pptx shapes, kept as image artifact
+    artifact: ArtifactOut | None = None
 
 
 class AudioRequest(Wire):
-    """Audio generation request. `audio_kind` picks the model family."""
+    """Audio generation; `audio_kind` picks model family."""
 
     prompt: str = Field(min_length=1, max_length=2000)
     model: str | None = None
     audio_kind: Literal["narration", "music"] = "narration"
     voice: str = "alloy"
-    #: Requested length; folded into the prompt, no model takes it as a parameter.
+    #: folded into prompt (no model takes it as a param)
     seconds: int = Field(default=0, ge=0, le=300)
 
 
 class VideoJobRequest(Wire):
-    """Video generation request.
-
-    Priced per (model × resolution × audio × seconds); unlisted combinations are refused.
-    """
+    """Video generation; priced per model×resolution×audio×seconds, unlisted refused."""
 
     prompt: str = Field(min_length=1, max_length=2000)
     model: str | None = None
@@ -170,7 +140,6 @@ class JobOut(Wire):
     artifact_id: str | None
     created_at: datetime
     finished_at: datetime | None
-    #: Original request, so a failed job can be retried.
     prompt: str
     model: str
     params: dict | None
@@ -181,34 +150,29 @@ class JobOut(Wire):
 
 
 class SessionBulkDelete(Wire):
-    """Ids to delete, or every session the caller owns; `all` is resolved server-side."""
+    """Ids, or all owned sessions (resolved server-side)."""
 
     ids: list[str] = []
     all: bool = False
-    #: Accepted from older clients and ignored: a conversation's artifacts always go with it.
+    #: ignored: artifacts always deleted with the conversation
     artifacts: bool = True
 
 
 class SessionMade(Wire):
-    """Summary of the media a session produced, for list rows that have no text preview.
-
-    Measurements only; the client writes the sentence in the reader's language.
-    """
+    """Media summary for text-less list rows; measurements only, client phrases it."""
 
     kind: Literal["image", "video", "narration", "music"]
     count: int
-    #: Zero when unknown or when the artifacts disagree.
     seconds: int = 0
-    #: Empty when unknown or when the artifacts disagree.
     aspect: str = ""
 
 
-#: Artifact kinds summarised as-is; `audio` splits into narration/music by `audioKind`.
+#: summarised as-is; `audio` split by `audioKind`
 _MEDIA_KINDS = ("image", "video")
 
 
 def _agreed(rows: list[dict], *keys: str):
-    """The one truthy value every row gives for a key, else None."""
+    """Truthy value shared by all rows for the first matching key, else None."""
     for key in keys:
         seen = {row.get(key) for row in rows}
         if len(seen) == 1:
@@ -219,7 +183,7 @@ def _agreed(rows: list[dict], *keys: str):
 
 
 def made_from_artifacts(rows: list[tuple[str, dict | None]]) -> SessionMade | None:
-    """Summarises `(kind, data)` rows, newest first; only the newest artifact's kind is counted."""
+    """Summary of `(kind, data)` rows, newest first; newest kind only."""
     if not rows:
         return None
     kind, newest = rows[0][0], rows[0][1] or {}
@@ -231,7 +195,7 @@ def made_from_artifacts(rows: list[tuple[str, dict | None]]) -> SessionMade | No
     else:
         return None
     seconds = _agreed(same, "durationSec") if noun != "image" else None
-    # `actualAspect` is measured off the picture; `aspect` is what was asked for.
+    # `actualAspect` measured; `aspect` requested
     aspect = _agreed(same, "actualAspect", "aspect") if noun != "narration" else None
     return SessionMade(
         kind=noun,
@@ -247,23 +211,20 @@ class SessionOut(Wire):
     title: str
     project_id: str | None
     agent_id: str | None
+    pipeline_id: str | None = None
     model: str
     routing_mode: RoutingMode
     artifact_id: str | None
     render_template_id: str | None = None
-    #: A generation awaiting an answer or approval, or null.
     pending: dict | None = None
-    #: Skills that stay on for this conversation; see `ChatSession.skill_ids`.
     skill_ids: list | None = None
     pinned: bool
     created_at: datetime
     updated_at: datetime
-    #: Omitted from list responses.
     messages: list[MessageOut] | None = None
-    #: First line of the latest message.
     preview: str | None = None
     message_count: int = 0
-    #: Media summary; set only when there is no text transcript.
+    #: only when there's no text transcript
     made: SessionMade | None = None
 
     @classmethod
@@ -275,9 +236,12 @@ class SessionOut(Wire):
         preview: str | None = None,
         message_count: int = 0,
         made: SessionMade | None = None,
+        links: dict[str, tuple[str, int | None]] | None = None,
     ) -> SessionOut:
+        from app.services.message_links import linked
+
         out = cls.model_validate(s, from_attributes=True)
-        out.messages = [MessageOut.of(m) for m in messages] if messages is not None else None
+        out.messages = [linked(m, links) for m in messages] if messages is not None else None
         if messages:
             out.preview = snippet(messages[-1].content)
             out.message_count = len(messages)
@@ -288,8 +252,18 @@ class SessionOut(Wire):
         return out
 
 
+class SessionPage(Wire):
+    """대화 기록 page, newest first, with total."""
+
+    items: list[SessionOut]
+    total: int
+    #: served page; clamped to last
+    page: int
+    size: int
+
+
 def snippet(content: str, limit: int = 120) -> str | None:
-    """Collapses whitespace and truncates to `limit` characters."""
+    """Whitespace-collapsed, truncated to `limit`."""
     text = " ".join((content or "").split())
     if not text:
         return None
@@ -297,6 +271,8 @@ def snippet(content: str, limit: int = 120) -> str | None:
 
 
 class SessionCreate(Wire):
+    #: id the client gave its unsent conversation; created on the first send under it
+    id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     kind: SessionKind = SessionKind.chat
     project_id: str | None = None
     agent_id: str | None = None
@@ -310,21 +286,15 @@ class MessageForkOut(Wire):
     attachment_id_map: dict[str, str]
 
 
-class CompareRequest(Wire):
-    content: str = Field(min_length=1)
-    models: list[str] = Field(min_length=2, max_length=3)
-    activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
-    #: See `SendMessage.starting_template_id`.
-    starting_template_id: str | None = Field(default=None, max_length=64)
-    attachments: list[str] | None = None
-    privacy_action: Literal["route_strict_local", "mask_external", "send_raw_external"] | None = (
-        None
-    )
-    privacy_decision_token: str | None = Field(default=None, max_length=4000)
+class HandoffIn(Wire):
+    #: target document surface; agent must offer it
+    kind: Literal["report", "slides"]
 
 
-class ChooseVariant(Wire):
-    model: str = Field(min_length=1, max_length=200)
+class HandoffOut(Wire):
+    session: SessionOut
+    #: conversation as text file plus its attachments, sent as writer material
+    attachments: list[FileOut]
 
 
 class SessionPatch(Wire):
@@ -334,13 +304,13 @@ class SessionPatch(Wire):
     routing_mode: RoutingMode | None = None
     project_id: str | None = None
     render_template_id: str | None = Field(default=None, max_length=60)
-    #: The conversation's standing skills; `[]` switches them all off.
+    #: `[]` clears
     skill_ids: list[str] | None = Field(default=None, max_length=3)
 
     @field_validator("routing_mode", mode="before")
     @classmethod
     def routing_mode_cannot_be_null(cls, value):
-        # Omitted means unchanged; the column is non-null.
+        # omitted = unchanged; column non-null
         if value is None:
             raise ValueError("routing_mode_must_not_be_null")
         return value
@@ -349,32 +319,22 @@ class SessionPatch(Wire):
 class SendMessage(Wire):
     content: str = Field(min_length=1, max_length=200_000)
     attachments: list[str] | None = None
-    #: Model override for this turn only.
     model: str | None = None
-    #: `True` searches every turn, `False` never (unless the words ask for research),
-    #: `"auto"` offers the tools and searches when the words call for it.
+    #: True every turn, False never (unless research asked), "auto" when warranted
     web_search: bool | Literal["auto"] = False
-    #: Installed skills selected for this turn; installation alone injects nothing.
+    #: per-turn selection; installation alone injects nothing
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
-    #: A 시작점: a built-in from `/prompt-templates` or a visible `templates` row.
-    #: Applies to this turn only; reaches the model as its own context block.
-    starting_template_id: str | None = Field(default=None, max_length=64)
-    #: A rendering template from `/design-templates`. Stored on the session;
-    #: `""` clears it.
+    #: `/design-templates` id, stored on session; `""` clears
     render_template_id: str | None = Field(default=None, max_length=60)
-    #: Write the pending outline instead of planning again. Ignored when
-    #: nothing is pending.
+    #: write the pending outline; ignored if none pending
     approve: bool = False
-    #: The pending outline as edited on the card. Sanitised by `_edited_plan`.
+    #: edited outline, sanitised by `_edited_plan`
     plan: dict[str, Any] | None = None
-    #: Message id of the failed latest question to run again; its row is
-    #: reused and `content`/`attachments` come from it.
+    #: failed latest question to rerun; content/attachments reused
     retry_of: str | None = Field(default=None, max_length=64)
-    #: Figure-card answer: `True` writes with the proposed pictures, `False`
-    #: without, `None` is not answering the card.
+    #: figure card: True with pictures, False without, None unanswered
     include_figures: bool | None = None
-    #: Answers to a stopped turn's questions, keyed by question id; added as
-    #: conditions on the request.
+    #: stopped-turn answers by question id, added as conditions
     answers: dict[str, str] | None = None
     privacy_action: Literal["route_strict_local", "mask_external", "send_raw_external"] | None = (
         None
@@ -386,5 +346,4 @@ class Transcription(Wire):
     """Transcription result."""
 
     text: str
-    #: Audio length reported by the backend, or 0.
     seconds: int = 0

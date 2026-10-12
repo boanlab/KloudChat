@@ -125,7 +125,7 @@ test('프로젝트 안에서 새 작업을 시작하면 그 프로젝트에 속�
 
   const projectId = await createProject(page, `작업 프로젝트 ${stamp()}`)
 
-  await page.getByRole('button', { name: /이 프로젝트에서 새로 만들기/ }).click()
+  await page.getByRole('button', { name: '새로 시작', exact: true }).click()
   await page.getByRole('menuitem', { name: '챗' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
 
@@ -149,28 +149,28 @@ test('프로젝트에 서식을 정하면 그 안에서 시작한 작업이 그 
       r.status() === 200,
     { timeout: 20_000 },
   )
-  const picker = page.getByLabel('보고서 서식')
+  const picker = page.getByLabel('보고서 양식')
   await expect(picker).toBeVisible({ timeout: 20_000 })
-  await picker.selectOption({ label: '안내문·공지' })
+  await picker.selectOption({ label: '회의록' })
   const stored = (await (await saved).json()) as { renderTemplates: Record<string, string> }
-  expect(stored.renderTemplates).toEqual({ report: 'doc-notice' })
+  expect(stored.renderTemplates).toEqual({ report: 'doc-minutes' })
 
   // The map is sent whole: setting one key must not clear the others.
   await page.reload()
-  await expect(page.getByLabel('보고서 서식')).toHaveValue('doc-notice', { timeout: 20_000 })
-  await expect(page.getByLabel('슬라이드 서식')).toHaveValue('')
+  await expect(page.getByLabel('보고서 양식')).toHaveValue('doc-minutes', { timeout: 20_000 })
+  await expect(page.getByLabel('슬라이드 양식')).toHaveValue('')
 
-  await page.getByRole('button', { name: /이 프로젝트에서 새로 만들기/ }).click()
+  await page.getByRole('button', { name: '새로 시작', exact: true }).click()
   await page.getByRole('menuitem', { name: '보고서' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   const sessionId = page.url().split('/').pop() as string
 
   const started = await storedSession(page, sessionId)
-  expect(started?.renderTemplateId).toBe('doc-notice')
-  await expect(page.getByText('안내문·공지').first()).toBeVisible({ timeout: 20_000 })
+  expect(started?.renderTemplateId).toBe('doc-minutes')
+  await expect(page.getByText('회의록').first()).toBeVisible({ timeout: 20_000 })
 
   // Clearing the chip is this conversation's decision; the project keeps its default.
-  await page.getByRole('button', { name: /안내문·공지.*해제/ }).click()
+  await page.getByRole('button', { name: /회의록.*해제/ }).click()
   await expect
     .poll(async () => (await storedSession(page, sessionId))?.renderTemplateId, {
       timeout: 20_000,
@@ -178,5 +178,5 @@ test('프로젝트에 서식을 정하면 그 안에서 시작한 작업이 그 
     .toBeNull()
 
   await page.goto(`/projects/${projectId}`)
-  await expect(page.getByLabel('보고서 서식')).toHaveValue('doc-notice', { timeout: 20_000 })
+  await expect(page.getByLabel('보고서 양식')).toHaveValue('doc-minutes', { timeout: 20_000 })
 })

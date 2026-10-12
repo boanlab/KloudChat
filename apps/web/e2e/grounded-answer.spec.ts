@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -10,13 +11,10 @@ const koUnknown = '다만 이 답변은 부정확할 수 있으며, 이 모델�
 const koKnown = '다만 이 모델의 학습 기준은 2025년 1월로 제공되어 이후의 변화가 반영되지 않았거나 답변이 부정확할 수 있으므로 최신 사실은 별도 검증이 필요합니다.'
 const enUnknown = "However, this answer may be inaccurate; this model's training cutoff could not be verified, so current facts need independent verification."
 const enKnown = "However, the model catalogue lists this model's training cutoff as 2025-01, so later changes may be missing and this answer may be inaccurate; current facts need independent verification."
+// One certain answer per language and both uncertain ones: the client shows the footer the
+// server wrote, so more certain topics only repeat the same path with other text.
 const domains = [
   { name: 'arithmetic-add', prompt: '1+1은?', answer: '1+1은 2입니다.', lang: 'ko', uncertain: false },
-  { name: 'arithmetic-zero', prompt: '0+0은?', answer: '0+0은 0입니다.', lang: 'ko', uncertain: false },
-  { name: 'greeting', prompt: '한국어로 인사해줘', answer: '안녕하세요! 오늘 어떤 도움이 필요하신가요?', lang: 'ko', uncertain: false },
-  { name: 'science', prompt: '과학에서 관측과 가설은 어떤 관계야?', answer: '가설은 관측으로 검토할 설명이며, 새로운 관측에 따라 수정될 수 있습니다.', lang: 'ko', uncertain: false },
-  { name: 'software', prompt: '소프트웨어 버전 호환성을 확인하는 방법은?', answer: '사용 중인 버전과 의존성의 지원 범위를 확인하고 해당 조합을 테스트합니다.', lang: 'ko', uncertain: false },
-  { name: 'budget', prompt: '일반적으로 예산과 실제 지출을 어떻게 비교해?', answer: '같은 기간과 항목으로 예산과 실제 지출을 나란히 정리해 차이를 비교합니다.', lang: 'ko', uncertain: false },
   { name: 'english', prompt: 'Explain the difference between a model and an observation.', answer: 'A model represents an explanation, while an observation records what was measured.', lang: 'en', uncertain: false },
   { name: 'current-facts', prompt: '웹 검색 없이 현재 최신 Python 버전의 새 기능을 설명해줘.', answer: 'Python은 범용 프로그래밍 언어이며, 새 버전의 변경 사항은 공식 릴리스 문서에서 확인할 수 있습니다. 현재 최신 버전 번호와 새 기능 목록은 여기서 확인하지 못했습니다.', lang: 'ko', uncertain: true },
   { name: 'current-facts-english', prompt: 'Without web search, explain the features of the latest Python release.', answer: 'Python is a general-purpose programming language. Release notes document version-specific changes, but I have not verified the current latest version or its features here.', lang: 'en', uncertain: true },
@@ -87,9 +85,11 @@ async function fixture(page: Page, info: TestInfo, domain: Domain, cutoff: Cutof
       ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') })
     }
     if (path === '/artifacts/counts') return json({ counts: {}, total: 0 })
+    const shell = shellRead(request.method(), path)
+    if (shell) return route.fulfill(shell)
     if (request.method() === 'GET' && (path.endsWith('/jobs') || [
-      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools', '/templates',
-      '/connectors', '/connectors/catalog', '/designs', '/design-templates', '/prompt-templates', '/shares',
+      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
+      '/connectors', '/connectors/catalog', '/designs', '/design-templates', '/shares',
     ].includes(path))) return json([])
     unexpected.push(`${request.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })
@@ -121,7 +121,8 @@ for (const viewport of [
   { name: 'desktop', width: 1440, height: 900 }, { name: 'mobile', width: 390, height: 844 },
 ]) {
   for (const cutoff of ['known', 'unknown', 'fallback'] as const) {
-    for (const domain of domains) {
+    // At phone width only the footer (wrapping, in view, no sideways scroll) adds anything.
+    for (const domain of domains.filter((d) => viewport.name === 'desktop' || d.uncertain)) {
       test(`${viewport.name} ${domain.name} ${cutoff}: ${domain.uncertain ? '불확실한 답변에 단서 한 번' : '확실한 답변에 단서 없음'}을 유지한다`, async ({ page }, info) => {
         await page.setViewportSize(viewport)
         const state = await fixture(page, info, domain, cutoff)
@@ -148,7 +149,7 @@ for (const viewport of [
     }
     test(`${viewport.name} saved ${cutoff}: 기존 불확실한 답변의 주의문을 다시 생성하지 않는다`, async ({ page }, info) => {
       await page.setViewportSize(viewport)
-      const domain = domains[7]
+      const domain = domains.find((d) => d.name === 'current-facts')!
       const state = await fixture(page, info, domain, cutoff, true)
       await page.goto(`/s/${id}`)
       await checkAnswer(page, domain, state)

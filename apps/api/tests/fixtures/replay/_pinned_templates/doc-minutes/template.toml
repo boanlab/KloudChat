@@ -1,0 +1,72 @@
+kind = "document"
+# The document format it fixes (`doc_formats`): head fields, numbering, the format's
+# pipeline, and its genre rule in `genre.md`.
+doc_format = "minutes"
+cover_page = false
+
+# 규칙은 서식 지침과 에이전트 지침에 둔다. 검사는 서버 훅이 맡는다.
+skills = []
+# Run by the server before and after writing (app/skills/README.md).
+check_skills = ["gap-check", "grounding-check"]
+name = "회의록"
+description = "결정·할 일·담당·기한을 남기는 회의록 · 촘촘한 회색 머리"
+category = "업무"
+fills = ["회의 이름", "일시와 참석자", "다룬 안건"]
+example_prompt = "회의록을 정리해 줘. 정해진 것과 아직 정해지지 않은 것을 나누고, 실행 항목에는 담당자와 기한을 적어 줘.\n\n회의와 참석자: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Meeting minutes"
+description_en = "Decisions, actions, owners, dates · compact"
+category_en = "Work"
+fills_en = ["Meeting", "Date and attendees", "Agenda"]
+example_prompt_en = "Write these minutes up. Separate what was decided from what is still open, and give every action an owner and a due date.\n\nMeeting and attendees: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "meeting_date"
+label = "회의 일시"
+question = "회의를 언제 했나요? (연도 포함)"
+why = "자료에 회의 날짜가 없습니다. ‘다음 주 금요일’ 같은 기한을 날짜로 풀고 머리의 일시를 채우려면 필요합니다."
+placeholder = "[회의 일자]"
+detector = { type = "builtin", name = "meeting_date" }
+
+[[questions]]
+id = "attendees"
+label = "참석자"
+question = "참석자는 누구였나요?"
+why = "자료에 참석자 목록이 없습니다. 회의록의 참석·불참 칸에 들어갑니다."
+placeholder = "[참석자]"
+detector = { type = "builtin", name = "attendees" }
+
+[[questions]]
+id = "action_dues"
+label = "실행 항목 기한"
+question = "실행 항목의 기한을 정했나요?"
+why = "담당은 정했는데 기한이 없는 항목이 있습니다."
+placeholder = "[기한]"
+detector = { type = "builtin", name = "action_dues" }
+
+# 진행 과정 설정 (`services/process_settings.py`): what writing in this 서식 does besides
+# writing. A person's agent or template sets the same keys in its form.
+[process]
+prepass = ["date-calc"]
+# Relative dates count from the meeting day; with none, nothing is dated.
+date_base = "meeting"
+# Action rows repaired by code before the verify stage and again after it.
+stages = ["minutes-repair", "minutes-reground"]
+checks = ["lead-dates", "minutes-rows", "material-blanks"]
+judged = ["judge-owners"]
+head = ["meeting-date"]
+# Diagrams only when the instruction asks for them: a 회의록 draws none by itself.
+draws = "when-asked"
+conflict_rule = "The value of the later decision or later mail is final. Write the final value and leave 「○○에서 변경」 in 비고."

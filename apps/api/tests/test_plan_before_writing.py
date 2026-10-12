@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.core.config import settings
@@ -105,7 +107,7 @@ async def test_the_approved_outline_is_what_gets_written(gateway):
     slides = next(e["slides"] for e in written if e["type"] == "deck")
     assert [s["title"] for s in slides] == [item["title"] for item in plan["slides"]]
     # Planned once; the approved plan is not re-planned.
-    assert sum(1 for p in posts if "발표 슬라이드의 제목과 구성" in str(p)) == 1
+    assert sum(1 for p in posts if "slide structure of a presentation" in str(p)) == 1
 
 
 async def test_an_empty_approval_writes_nothing(gateway):
@@ -208,7 +210,7 @@ async def test_going_with_what_was_read_is_not_asked_again(gateway):
     # The answer is folded into the prompt, not filtered on the way back.
     sent = "\n".join(str(m) for post in posts for m in post.get("messages", []))
     assert "있는 자료로 진행" in sent
-    assert "되물어라" not in sent
+    assert "If there is no subject at all, ask back" not in sent
 
 
 async def test_an_unreadable_outline_is_asked_for_once_more(gateway):
@@ -368,3 +370,17 @@ def test_a_request_naming_an_attachment_that_did_arrive_is_not_asked_about():
         )
         is None
     )
+
+
+def test_a_question_neither_offers_to_invent_nor_cites_unseen_references():
+    # Neither 「가상하여 작성」 offered nor 「[1]~[10]」 the person never saw.
+    text = json.dumps({"needs": [{
+        "question": "국내 동향에 인용할 논문을 검색 자료([1]~[10]) 밖에서도 찾을까요? [3]",
+        "options": ["제공된 검색 자료([1]~[10])의 범위 내에서만 인용 및 구성",
+                    "국내 연구 사례를 가상하여 작성", "임의의 예시로 채움",
+                    "KCI 논문을 더 찾아 인용"]}]}, ensure_ascii=False)
+    asked = grounding.parse_needs(text)
+    assert asked is not None
+    assert asked[0].question == "국내 동향에 인용할 논문을 검색 자료 밖에서도 찾을까요?"
+    assert asked[0].options == ["제공된 검색 자료의 범위 내에서만 인용 및 구성",
+                                "KCI 논문을 더 찾아 인용"]

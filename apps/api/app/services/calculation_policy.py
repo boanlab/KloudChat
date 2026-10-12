@@ -1,7 +1,4 @@
-"""Conservative request-only cues for a required arithmetic tool call.
-
-Not a semantic classifier; the direct extractor only copies an explicit expression.
-"""
+"""Conservative request-only cues for a required arithmetic tool call."""
 
 from __future__ import annotations
 
@@ -32,6 +29,9 @@ _BUILD = re.compile(r"만들|작성|구현|개발|\b(?:write|build|create|genera
 _CODE = re.compile(r"\b(?:function\s+\w+\s*\(|def\s+\w+\s*\(|return\s+)", re.I)
 _DECLINE = re.compile(
     r"(?:계산|검산)(?:을|은|는|도)?\s*하지(?:는|도)?\s*(?:마|말)|"
+    # 「계산 안 함」 asks nothing
+    r"(?:계산|검산)(?:을|은|는|도)?\s{0,3}(?:안|못)\s{0,3}(?:함|했|하였|됨|됐)|"
+    r"(?:계산|검산)(?:을|은|는|도)?\s{0,3}하지\s{0,3}(?:않|못)(?:았|음|았음)|"
     r"\b(?:do\s+not|don['’]t|never)\s+(?:calculate|compute|evaluate|add|subtract|multiply|divide)\b",
     re.IGNORECASE,
 )
@@ -43,8 +43,20 @@ _MISSING = re.compile(
     re.IGNORECASE,
 )
 _CALCULATE = re.compile(r"계산|검산|산출|\b(?:calculate|compute|evaluate)\b", re.IGNORECASE)
-#: "10분이 아니라 20분" / "not 10 but 20" / "10 → 20": a corrected value is one
-#: operand, not two.
+#: writing length limits (text-fit's job, not arithmetic)
+_LENGTH_LIMIT = re.compile(
+    r"\d[\d,]{0,6}\s{0,2}(?:자|글자|바이트|bytes?)\s{0,2}(?:이내|이하|내외|제한|미만|까지|안으로)"
+    r"|(?:공백|띄어쓰기)\s{0,2}(?:포함|제외)\s{0,2}\d[\d,]{0,6}\s{0,2}(?:자|글자|바이트)",
+    re.IGNORECASE,
+)
+_WRITING = re.compile(r"자기\s{0,2}소개서|자소서|문항|써\s{0,2}줘|작성|다듬|고쳐", re.IGNORECASE)
+#: arithmetic ask, not a note that something was computed
+_CALCULATE_ASK = re.compile(
+    r"계산\s{0,2}(?:해|하여|하고|해서|좀|부탁)|검산\s{0,2}(?:해|좀)|구해|얼마|몇\s{0,2}(?:%|퍼센트|원|명|개)"
+    r"|\b(?:calculate|compute)\b",
+    re.IGNORECASE,
+)
+#: correction ("10분이 아니라 20분", "10 → 20"): one operand
 _CORRECTION = re.compile(
     r"[+-]?\d+(?:\.\d+)?\s*[^\s\d,.;:]{0,6}\s*"
     r"(?:(?:이|가)?\s*아니라|아닌|→|->|⇒|대신에?|instead of)\s*"
@@ -137,8 +149,7 @@ _PLAIN_NUMBER = re.compile(rf"{_FOLLOWUP_NUMBER}\Z")
 
 
 def _mask_quoted_intent(text: str) -> str:
-    # Each opener's first closing quote, found in one reverse pass. Apostrophes
-    # inside English words are not delimiters; Korean suffixes can follow quotes.
+        # first closing quote per opener, one reverse pass; skips apostrophes, Korean suffixes
     ends: list[int | None] = [None] * len(text)
     next_closing: dict[str, int] = {}
     for index in range(len(text) - 1, -1, -1):
@@ -171,7 +182,7 @@ def _mask_quoted_intent(text: str) -> str:
 
 
 def _has_numeric_arithmetic_action(text: str) -> bool:
-    # "Add section 2" and "문단 2와 3을 더해" edit objects, not their numeric labels.
+    # numbered objects ("section 2"), not operands
     text = " ".join(text.split())
     for match in _ARITHMETIC_ACTION.finditer(text):
         tail = text[match.end():]
@@ -181,7 +192,7 @@ def _has_numeric_arithmetic_action(text: str) -> bool:
         ):
             continue
         if _NEGATED_ARITHMETIC.match(tail):
-            # The same operands may still have an explicit replacement operation.
+            # explicit replacement on same operands
             replacement = _REPLACEMENT_ARITHMETIC.match(tail)
             if replacement is None or _NEGATED_ARITHMETIC.match(tail[replacement.end():]):
                 continue
@@ -254,10 +265,7 @@ def _answer_modifiers_only(remainder: str) -> bool:
 
 
 def is_calculation_followup(request: str) -> bool:
-    """Recognize one explicit previous-result operation, never infer its operand.
-
-    Grants nothing alone: the caller must bind it to a completed same-session chain.
-    """
+    """Explicit previous-result operation; grants nothing without a same-session chain."""
     if not isinstance(request, str) or len(request) > 1024 or _has_non_positional_notation(request):
         return False
     text = unicodedata.normalize("NFKC", request).strip().replace("−", "-")
@@ -266,7 +274,7 @@ def is_calculation_followup(request: str) -> bool:
 
 
 def is_plain_numeric_answer(answer: str) -> bool:
-    """Check a bare number/equation shape, not its truth or arithmetic result."""
+    """Bare number/equation shape check, not truth."""
     if not isinstance(answer, str) or len(answer) > 1024 or _has_non_positional_notation(answer):
         return False
     text = unicodedata.normalize("NFKC", answer).strip().removesuffix(".").rstrip()
@@ -283,14 +291,10 @@ def is_plain_numeric_answer(answer: str) -> bool:
 
 
 def direct_calculation_expression(request: str) -> str | None:
-    """Copy one unambiguous user expression for an already-authorized calculator.
-
-    The whole request must be the expression plus optional question/format suffixes; else None.
-    """
+    """Copy one unambiguous user expression for an authorized calculator; else None."""
     if not isinstance(request, str) or len(request) > _MAX_REQUEST_CHARS:
         return None
-    # NFKC can turn powers or indices into adjacent digits (2² -> 22).
-    # Leave these notations to the model; only positional digits are copied.
+    # NFKC can merge powers/indices into digits (2² -> 22); left to the model
     if _has_non_positional_notation(request):
         return None
     text = unicodedata.normalize("NFKC", request).strip()
@@ -302,7 +306,7 @@ def direct_calculation_expression(request: str) -> str | None:
     expression = literal.group().strip()
     if ".." in expression:
         return None
-    # A sentence's final period is not part of the copied numeric expression.
+    # final period not part of the expression
     expression = expression.removesuffix(".").rstrip()
     if _DATE.fullmatch(re.sub(r"\s", "", expression).strip("()")):
         return None
@@ -314,7 +318,7 @@ def direct_calculation_expression(request: str) -> str | None:
     if not _answer_modifiers_only(remainder):
         return None
 
-    # Match the calculator's literal/depth bounds without computing a result.
+    # calculator literal/depth bounds, no computation
     nesting = 0
     for character in expression:
         if character == "(":
@@ -337,11 +341,35 @@ def direct_calculation_expression(request: str) -> str | None:
     return expression
 
 
-def requires_calculation(request: str) -> bool:
-    """Recognize supplied-number arithmetic without inferring absent operands.
+#: unit asking for something: the person's own instruction
+_REQUEST_CUE = re.compile(
+    r"줘|주세요|주실|해\s{0,2}봐|하세요|할래|해라|부탁|알려|구해|얼마|몇\s{0,2}(?:%|원|명|개)|[?？]"
+    r"|\b(?:please|calculate|compute|what|how)\b",
+    re.IGNORECASE,
+)
+#: rule line (「---」) above pasted material
+_RULE_LINE = re.compile(r"\n[ \t]{0,8}-{3,8}[ \t]{0,8}\n")
 
-    False means no strong cue, not that no tool is useful.
-    """
+
+def _mask_pasted_intent(text: str, intent: str) -> str:
+    """`intent` with pasted material blanked; its numbers still count."""
+    rule = _RULE_LINE.search(text)
+    if rule:
+        return intent[: rule.start()] + re.sub(r"[^\n]", " ", intent[rule.start():])
+    units = [m for m in re.finditer(r"(?:[^\n]|\n(?![ \t]{0,8}\n))+", text)]
+    if len(units) < 2:
+        units = list(re.finditer(r"[^\n]+", text))
+    if len(units) < 2 or not any(_REQUEST_CUE.search(m.group()) for m in units):
+        return intent
+    out = list(intent)
+    for m in units[1:]:
+        if not _REQUEST_CUE.search(m.group()):
+            out[m.start():m.end()] = re.sub(r"[^\n]", " ", intent[m.start():m.end()])
+    return "".join(out)
+
+
+def requires_calculation(request: str) -> bool:
+    """Supplied-number arithmetic cue, no inferred operands; False = no strong cue."""
     if not isinstance(request, str) or len(request) > _MAX_REQUEST_CHARS:
         return False
     text = unicodedata.normalize("NFKC", request)
@@ -350,8 +378,8 @@ def requires_calculation(request: str) -> bool:
     if _standalone_expression(text):
         return True
 
-    # Quotes can supply numbers, but their embedded commands cannot establish intent.
-    intent = _mask_quoted_intent(text)
+    # quotes supply numbers, not intent
+    intent = _mask_pasted_intent(text, _mask_quoted_intent(text))
     clauses: list[tuple[str, str, str]] = []
     start = 0
     previous_delimiter = ""
@@ -368,7 +396,7 @@ def requires_calculation(request: str) -> bool:
         if _NEW_TASK.fullmatch(before.strip()):
             transform_payload = False
         if _TRANSFORM.search(words):
-            # An unquoted "Translate this:\nCalculate ..." remains source material.
+            # unquoted "Translate this:\n..." stays material
             transform_payload = words.rstrip().endswith(":")
             continue
         if transform_payload:
@@ -377,20 +405,23 @@ def requires_calculation(request: str) -> bool:
             continue
         if _PROGRAM.search(words) and _BUILD.search(words):
             continue
-        # A format conversion is not unit arithmetic; the rest of the clause still counts.
+        # format conversion isn't unit arithmetic
         words = _REPRESENTATION_CONVERSION.sub(" ", words)
         eligible.append((data, words))
-    # A self-contained expression does not need a missing operand from another task.
+    # self-contained expression needs no outside operand
     if any(_standalone_expression(raw) for raw, _ in eligible):
         return True
     data = " ".join(raw for raw, _ in eligible)
     if _MISSING.search(data):
         return False
-    # "10분이 아니라 20분이야, 다시 계산해 줘" corrects one value; only the new one is supplied.
+    if (_LENGTH_LIMIT.search(text) and _WRITING.search(intent)
+            and not any(_CALCULATE_ASK.search(words) for _, words in eligible)):
+        return False
+    # correction supplies only the new value
     number_count = len(_NUMBER.findall(_CORRECTION.sub(" ", data)))
     if number_count < 1:
         return False
-    # Splitting on "and" between operands leaves whitespace the addition grammar accepts.
+    # "and" split leaves whitespace the grammar accepts
     arithmetic_action = _has_numeric_arithmetic_action(" ".join(words for _, words in eligible))
     for raw, words in eligible:
         if number_count >= 2 and (
@@ -404,3 +435,33 @@ def requires_calculation(request: str) -> bool:
             if len(units) >= 2 or _PERCENT_CONVERSION.search(raw):
                 return True
     return False
+
+
+#: figures from attached data: totals, rates, trends, chart, table
+_TABLE_ANALYSIS = re.compile(
+    r"집계|평균|비율|비중|합계|총합|합산|추이|분석|차트|그래프|통계|증감|변화|비교|순위|"
+    r"최댓값|최솟값|최대|최소|중앙값|분포|표로|표\s{0,2}(?:를\s{0,2})?(?:만들|작성|정리)|"
+    r"몇\s{0,2}(?:%|퍼센트|명|개|건|권|원|배)|얼마|"
+    r"\b(?:average|mean|median|sum|total|ratio|share|trend|analy[sz]e|analysis|chart|plot|"
+    r"compare|aggregate|pivot)\b",
+    re.IGNORECASE,
+)
+#: question carrying a figure
+_DIGIT_QUESTION = re.compile(r"\d[^\n?？]{0,80}[?？]|[?？][^\n]{0,80}\d")
+#: request limited to reading the file
+_DESCRIBE_ONLY = re.compile(
+    r"계산\s{0,2}(?:은|는|도)?\s{0,2}(?:없이|말고|빼고)|"
+    r"(?:설명|소개|내용\s{0,2}파악|구조)\s{0,2}만|"
+    r"\b(?:just|only)\s+(?:describe|explain|summari[sz]e)\b",
+    re.IGNORECASE,
+)
+
+
+def asks_table_analysis(request: str) -> bool:
+    """Whether a request about attached tabular data wants computed figures."""
+    if not isinstance(request, str) or len(request) > _MAX_REQUEST_CHARS:
+        return False
+    text = unicodedata.normalize("NFKC", _FENCE.sub(" ", request))
+    if _DECLINE.search(text) or _DESCRIBE_ONLY.search(text):
+        return False
+    return bool(_TABLE_ANALYSIS.search(text) or _DIGIT_QUESTION.search(text))

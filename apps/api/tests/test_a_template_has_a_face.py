@@ -8,10 +8,10 @@ import pytest
 
 from app.services import design_templates
 
-#: Base shapes whose design is the shared file itself; they have no face.
-BASES = {"doc-report": "_document"}
+#: The shared seed drawn as a 서식 of its own (retired 서식 render in it); it has no face.
+GENERIC = design_templates.rendering(design_templates.GENERIC_ID)
 
-PAPER = [t for t in design_templates.all_templates() if t.kind in ("document", "deck")]
+PAPER = [t for t in design_templates.all_templates() if t.kind in ("document", "deck")] + [GENERIC]
 
 
 def _face(template) -> str:
@@ -46,12 +46,11 @@ def test_the_face_is_read_after_the_shared_typesetting(template) -> None:
     assert html.index(f"/* {template.id} */") < html.index("</head>")
 
 
-@pytest.mark.parametrize("name,base", BASES.items(), ids=list(BASES))
-def test_the_base_shape_has_no_face_of_its_own(name, base) -> None:
-    """The base document shape has no `design.css`."""
-    template = design_templates.get(name)
-    assert template is not None
-    assert _face(template) == ""
+def test_the_base_shape_has_no_face_of_its_own() -> None:
+    """The shared seed has no `design.css` and is not in the catalogue."""
+    assert GENERIC is not None
+    assert _face(GENERIC) == ""
+    assert design_templates.get(design_templates.GENERIC_ID) is None
 
 
 #: Only the bare form; `var(--x, fallback)` declares its own answer.

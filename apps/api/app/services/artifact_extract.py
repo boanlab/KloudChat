@@ -1,5 +1,4 @@
-"""Stores substantial code blocks and model-requested artifacts from a transcript as Artifact rows.
-"""
+"""Code blocks and requested artifacts from a transcript stored as Artifact rows."""
 
 from __future__ import annotations
 
@@ -13,14 +12,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.workspace import Artifact, ArtifactKind
 
-#: ```lang\n … \n```
 _FENCE = re.compile(r"```([A-Za-z0-9_+#.-]*)\n(.*?)```", re.S)
 
-#: A block qualifies by meeting either bound.
+#: either bound qualifies
 _MIN_LINES = 8
 _MIN_CHARS = 300
 
-#: Fences that hold output or prose, not code.
+#: output/prose fences
 _NOT_CODE = {"", "text", "txt", "output", "console", "log", "md", "markdown", "plain"}
 
 _LANGUAGE_LABEL = {
@@ -33,7 +31,6 @@ _LANGUAGE_LABEL = {
 }
 
 
-#: `def name(`, `function name(`, `class Name`, `const name =`.
 _DEFINITION = re.compile(
     r"^\s*(?:async\s+)?(?:def|function|class|interface|type)\s+([A-Za-z_][\w]*)"
     r"|^\s*(?:const|let|var)\s+([A-Za-z_][\w]*)\s*=",
@@ -42,7 +39,7 @@ _DEFINITION = re.compile(
 
 
 def _title_for(content: str, block_start: int, body: str, language: str, index: int) -> str:
-    """Nearest heading above the block, else the first definition, else `"<lang> <n>"`."""
+    """Nearest heading above, else first definition, else `"<lang> <n>"`."""
     before = content[:block_start].rstrip().splitlines()
     for line in reversed(before[-4:]):
         line = line.strip()
@@ -57,7 +54,7 @@ def _title_for(content: str, block_start: int, body: str, language: str, index: 
 
 
 def find_blocks(content: str) -> list[dict]:
-    """Blocks in `content` worth keeping, in order."""
+    """Blocks worth keeping, in order."""
     out: list[dict] = []
     for match in _FENCE.finditer(content):
         raw_lang = (match.group(1) or "").lower()
@@ -85,12 +82,12 @@ async def extract(
     project_id: str | None,
     content: str,
 ) -> str | None:
-    """Stores any new blocks and returns the last artifact's id, or None. Caller commits."""
+    """Store new blocks; last artifact id or None. Caller commits."""
     blocks = find_blocks(content)
     if not blocks:
         return None
 
-    # Skip content already stored for this session (regenerated answers).
+    # skip already-stored content (regenerated answers)
     existing = (await db.exec(select(Artifact).where(col(Artifact.session_id) == session_id))).all()
     seen = {(a.data or {}).get("content") for a in existing}
 
@@ -113,7 +110,7 @@ async def extract(
 
 
 def _identity(kind: str, title: str, data: dict) -> tuple[str, str, str]:
-    """De-duplication key: content when present, else title plus the full data payload."""
+    """Dedup key: content, else title plus data."""
     content = data.get("content")
     if isinstance(content, str):
         return (kind, "", content)
@@ -121,7 +118,7 @@ def _identity(kind: str, title: str, data: dict) -> tuple[str, str, str]:
 
 
 def _mask_text_values(value: Any, masker: Callable[[str], tuple[str, int]]) -> Any:
-    """Detached copy of `value` with every nested string masked."""
+    """Detached copy with every nested string masked."""
     if isinstance(value, str):
         return masker(value)[0]
     if isinstance(value, dict):
@@ -142,13 +139,11 @@ async def store_requested(
     requests: list[dict],
     masker: Callable[[str], tuple[str, int]] | None = None,
 ) -> str | None:
-    """Stores artifacts requested via `create_artifact`, de-duplicated per session. Caller commits.
-    """
+    """Store `create_artifact` requests, deduped per session. Caller commits."""
     if not requests:
         return None
 
-    # Masked at the persistence boundary: the in-turn tool request stays raw,
-    # but no protected text may reach an Artifact row.
+    # masked at persistence: no protected text in Artifact rows
     safe_requests = (
         [_mask_text_values(request, masker) for request in requests]
         if masker is not None

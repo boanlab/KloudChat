@@ -1,7 +1,4 @@
-/**
- * Copies to the clipboard; false when it failed. `navigator.clipboard` exists
- * only in a secure context, so plain HTTP falls back to a textarea and `execCommand`.
- */
+/** Clipboard copy; false on failure. Non-secure contexts fall back to `execCommand`. */
 export async function copyText(text: string): Promise<boolean> {
   if (navigator.clipboard?.writeText) {
     try {

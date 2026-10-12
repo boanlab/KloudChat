@@ -4,7 +4,9 @@ import { signIn } from './helpers'
 /** The toggle's knob stays inside its track in both states. */
 test('토글의 동그라미가 어느 상태에서도 트랙 밖으로 나가지 않는다', async ({ page }) => {
   await signIn(page)
-  await page.goto('/agents')
+  // The on/off switch lives on an item's own screen in 사용자 지정.
+  await page.goto('/customize?tab=skills&view=mine')
+  await page.getByTestId('item-card').first().click()
 
   const toggle = page.getByRole('switch').first()
   await expect(toggle).toBeVisible({ timeout: 15_000 })

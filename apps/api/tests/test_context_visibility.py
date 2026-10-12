@@ -166,6 +166,34 @@ async def test_another_conversations_upload_is_not_carried():
     assert "attachment.earlier" not in [block.source for block in context.blocks]
 
 
+async def test_a_document_follow_up_without_files_still_reads_the_session_s_files():
+    """gaejo-report-4: the follow-up 「처장님이 예산 부족분 얘기를 맨 위로 올리래 …」 came with no
+    file, was re-planned, and wrote 「제공된 원문 자료(메모) 없음」 over a 912-character memo."""
+    memo = _file("gaejo_safety_inspection_notes.txt", "불량 실험실 13곳, 부족 예산 4,200만 원")
+    memo.session_id = "session-1"
+    export = _file("하반기 실험실 안전점검 결과 보고.pdf", "앞서 만든 보고서 본문")
+    export.session_id = "session-1"
+    session = ChatSession(id="session-1", user_id="user-1", kind=SessionKind.report)
+    db = _Db(files=[memo, export], attached=[[{"id": memo.id, "name": memo.name}], None])
+    context = await assemble(db, _user(), session, attachment_ids=[])
+
+    assert [f.name for f in context.carried] == ["gaejo_safety_inspection_notes.txt"]
+    block = next(b.text for b in context.blocks if b.source == "attachment.earlier")
+    assert "부족 예산 4,200만 원" in block and "앞서 만든 보고서" not in block
+    assert _one(_context_steps(context), "context-earlier")["label"] == "이전 첨부 1개 반영"
+
+
+async def test_a_document_turn_with_its_own_files_reads_only_those():
+    memo = _file("메모.txt", "가" * 20)
+    memo.session_id = "session-1"
+    now = _file("새 자료.txt", "나" * 10)
+    session = ChatSession(id="session-1", user_id="user-1", kind=SessionKind.report)
+    db = _Db(files=[memo, now], attached=[[{"id": memo.id}]])
+    context = await assemble(db, _user(), session, attachment_ids=[now.id])
+
+    assert context.carried == ()
+
+
 # ── project knowledge ──────────────────────────────────────────────────
 
 
@@ -330,10 +358,13 @@ class _Db:
         memories: list[Memory] | None = None,
         files: list[StoredFile] | None = None,
         project: Project | None = None,
+        attached: list[list[dict]] | None = None,
     ):
         self.memories = memories or []
         self.files = files or []
         self.project = project
+        #: Each user message's `attachments`, for a document session's earlier files.
+        self.attached = attached or []
 
     async def get(self, model, row_id):
         if model is Project and self.project is not None and row_id == self.project.id:
@@ -348,6 +379,8 @@ class _Db:
             return _Result(self.files)
         if table == "skills":
             return _Result([])
+        if table == "messages":
+            return _Result(self.attached)
         raise AssertionError(f"unexpected query: {query}")
 
 

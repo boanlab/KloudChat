@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import style from './fixtures/report-table-style.json' with { type: 'json' }
+import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -44,7 +45,7 @@ async function fixture(page: Page, testInfo: TestInfo, titleBlock: unknown) {
     if (!url.pathname.startsWith('/api/')) return route.continue()
     const path = url.pathname.slice(4)
     const method = request.method()
-    if (method === 'GET' && path === '/design-templates/doc-report/style') return route.fulfill({ json: style })
+    if (method === 'GET' && path === '/design-templates/_document/style') return route.fulfill({ json: style })
     if (method === 'POST' && path === '/auth/refresh') return route.fulfill({ json: { accessToken: 'fixture-only', expiresIn: 3600,
       user: { id: 'fixture-user', name: 'Report fixture', email: 'fixture@example.test', role: 'user',
         status: 'active', monthlyCredits: 1000, creditsUsed: 0, avatarColor: '#168267', allowedModels: [],
@@ -68,9 +69,11 @@ async function fixture(page: Page, testInfo: TestInfo, titleBlock: unknown) {
       return route.fulfill({ json: artifact })
     }
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: { report: 1 }, total: 1 } })
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && [`/sessions/${sessionId}/messages`, `/sessions/${sessionId}/jobs`, '/projects',
-      '/skills', '/memory', '/agents', '/tools', '/templates', '/connectors', '/connectors/catalog', '/jobs',
-      '/designs', '/design-templates', '/prompt-templates', '/shares'].includes(path)) return route.fulfill({ json: [] })
+      '/skills', '/memory', '/agents', '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/designs', '/design-templates', '/shares'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.abort('blockedbyclient')
   })
@@ -79,7 +82,8 @@ async function fixture(page: Page, testInfo: TestInfo, titleBlock: unknown) {
 }
 
 async function enterEditor(page: Page) {
-  await page.getByRole('tab', { name: '편집', exact: true }).click()
+  // 「편집」 in the panel header opens the page editor and the editing tabs.
+  await page.locator('[data-panel="artifact"] header').getByRole('button', { name: '편집', exact: true }).click()
   await expect(page.locator('.ProseMirror').first()).toBeVisible()
 }
 
@@ -92,7 +96,7 @@ for (const [head, block] of Object.entries(blocks)) {
     for (const [label, value] of block.fields) {
       const input = drawn.getByRole('textbox', { name: label, exact: true })
       await expect(input).toHaveValue(value)
-      if (!value) await expect(input).toHaveAttribute('placeholder', '(기입)')
+      if (!value) await expect(input).toHaveAttribute('placeholder', `[${label}]`)
     }
     const first = page.locator('.report-page-shell section').first().locator('h2').first()
     const expected = { decimal: '1.', roman: 'I.', official: '1.', korean: '1.', none: null }[block.numbering]
@@ -125,15 +129,16 @@ test('the web view and the page view show the cover', async ({ page }, testInfo)
   await fixture(page, testInfo, blocks.cover)
   const web = page.locator('article.doc-web')
   await expect(web.locator('header.tb-cover')).toBeVisible()
-  await expect(web.locator('header.tb-cover .tb-blank').first()).toHaveText('(기입)')
+  await expect(web.locator('header.tb-cover .tb-blank').first()).toHaveText('[담당교수]')
   await expect(web.locator('section h2').first()).toHaveText('1. 서론')
-  const sub = await web.locator('section :is(h2, h3, h4)').nth(1).evaluate((node) => getComputedStyle(node, '::before').content)
-  expect(sub).toContain('counter(tba)')
+  // The format's numbering arrives with its stylesheet, after the text: poll, do not read once.
+  await expect.poll(() => web.locator('section :is(h2, h3, h4)').nth(1)
+    .evaluate((node) => getComputedStyle(node, '::before').content)).toContain('counter(tba)')
   await page.screenshot({ path: testInfo.outputPath('cover-web.png') })
   await page.getByRole('button', { name: '페이지뷰', exact: true }).click()
   const cover = page.locator('.pagedjs_page').first().locator('header.tb-cover')
   await expect(cover).toBeVisible({ timeout: 20_000 })
-  await expect(cover.locator('.tb-blank').first()).toHaveText('(기입)')
+  await expect(cover.locator('.tb-blank').first()).toHaveText('[담당교수]')
   await expect(page.locator('.pagedjs_page').first().locator('section')).toHaveCount(0)
   await expect(page.locator('.pagedjs_page h2[data-num="1."]').first()).toBeAttached()
   await expect(page.locator('.pagedjs_page :is(h2, h3, h4)[data-num="1.1"]').first()).toBeAttached()
