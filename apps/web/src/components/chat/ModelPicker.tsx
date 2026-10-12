@@ -177,9 +177,10 @@ export function ModelPicker({
   return (
     <Dropdown
       align={field ? 'left' : 'right'}
+      matchTrigger={field}
       className={
         field
-          ? 'w-full min-w-0'
+          ? 'min-w-0'
           : 'w-[calc(100vw-2rem)] max-w-[340px] min-w-0 sm:w-auto sm:min-w-[340px]'
       }
       trigger={({ open }) => (

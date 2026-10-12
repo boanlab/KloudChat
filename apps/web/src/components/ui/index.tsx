@@ -473,6 +473,7 @@ export function Dropdown({
   onOpenChange,
   sheet = false,
   label,
+  matchTrigger = false,
 }: {
   trigger: (props: { open: boolean }) => ReactNode
   children: ReactNode
@@ -485,6 +486,8 @@ export function Dropdown({
   sheet?: boolean
   /** Accessible name of the menu. */
   label?: string
+  /** Menu as wide as the trigger (form fields). */
+  matchTrigger?: boolean
 }) {
   const [ownOpen, setOwnOpen] = useState(false)
   const open = controlledOpen ?? ownOpen
@@ -501,9 +504,10 @@ export function Dropdown({
     openChange.current?.(value)
   }, [])
   // Opening direction and height cap, measured against the viewport.
-  const [placement, setPlacement] = useState<{ up: boolean; maxHeight: number; left: number; top: number; bottom: number }>({
+  const [placement, setPlacement] = useState<{ up: boolean; maxHeight: number; left: number; top: number; bottom: number; width: number }>({
     up: false,
     maxHeight: 0,
+    width: 0,
     left: 0,
     top: 0,
     bottom: 0,
@@ -518,18 +522,20 @@ export function Dropdown({
     const below = window.innerHeight - rect.bottom - margin
     const above = rect.top - margin
     const up = below < 220 && above > below
-    const menuWidth = menuRef.current?.getBoundingClientRect().width ?? 208
+    const menuWidth = matchTrigger ? rect.width : (menuRef.current?.getBoundingClientRect().width ?? 208)
     const left = align === 'right'
       ? Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.right - menuWidth))
       : Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.left))
     setPlacement({
       up,
-      maxHeight: Math.max(160, up ? above : below),
+      // height cap: 60% of the viewport
+      maxHeight: Math.max(160, Math.min(up ? above : below, Math.round(window.innerHeight * 0.6))),
+      width: matchTrigger ? rect.width : 0,
       left,
       top: rect.bottom + 6,
       bottom: window.innerHeight - rect.top + 6,
     })
-  }, [align])
+  }, [align, matchTrigger])
 
   useLayoutEffect(() => {
     if (open) measure()
@@ -648,6 +654,7 @@ export function Dropdown({
                 : {
                     position: 'fixed',
                     maxHeight: placement.maxHeight || undefined,
+                    width: placement.width || undefined,
                     left: placement.left,
                     ...(placement.up ? { bottom: placement.bottom } : { top: placement.top }),
                   }

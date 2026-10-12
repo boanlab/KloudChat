@@ -102,6 +102,7 @@ async function app(page: Page, testInfo: TestInfo, { signedIn = true, signupMode
       models: [
         model('local/qwen3.8-27b', 'Qwen3.8 27b (local)'),
         model('strict-local/qwen3.8-27b', 'Qwen3.8 27b (strict-local)', { strictLocal: true, dataBoundary: 'self_hosted' }),
+        ...Array.from({ length: 16 }, (_, i) => model(`vendor/model-${i}`, `Vendor Model ${i}`)),
       ],
       autoRouting: { enabled: false, available: false, qualityAvailable: false, reason: null, qualityReason: null, economyModelIds: [] },
     })
@@ -378,6 +379,28 @@ test.describe('desktop keyboard', () => {
     const dialog = page.getByRole('dialog', { name: '키보드 단축키' })
     await expect(dialog).toContainText('Alt')
     await expect(dialog).not.toContainText('Esc')
+    expect(state.problems).toEqual([])
+  })
+})
+
+test.describe('settings model field', () => {
+  test.skip(({ viewport }) => (viewport?.width ?? 0) < 1024, 'desktop layout')
+
+  test('the menu is as wide as its field and at most 60% of the screen tall', async ({ page }, testInfo) => {
+    const state = await app(page, testInfo)
+    await page.setViewportSize({ width: 1280, height: 1000 })
+    await page.goto('/settings/preferences')
+    const field = page.getByRole('button', { name: /^챗: / })
+    await expect(field).toBeVisible({ timeout: 30_000 })
+    await field.click()
+    const menu = page.getByRole('menu')
+    await expect(menu).toBeVisible()
+    const fieldBox = (await field.boundingBox())!
+    const menuBox = (await menu.boundingBox())!
+    expect(Math.abs(menuBox.width - fieldBox.width)).toBeLessThanOrEqual(2)
+    expect(Math.abs(menuBox.x - fieldBox.x)).toBeLessThanOrEqual(2)
+    expect(menuBox.height).toBeLessThanOrEqual(600 + 1)
+    await page.keyboard.press('Escape')
     expect(state.problems).toEqual([])
   })
 })
