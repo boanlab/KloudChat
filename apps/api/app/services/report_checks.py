@@ -4436,7 +4436,7 @@ LABELS = {
     "comparison_blank": "비교표 빈칸",
     "comparison_score": "점수가 계산과 다름",
     "career_number": "자료에 없는 숫자",
-    "ungrounded_value": "근거 없는 값 → 빈칸",
+    "ungrounded_value": "근거 없는 값 → 확인 필요",
     "career_total": "총 경력이 계산과 다름",
     "requirement_missing": "빠진 요구 ID",
     "validity_missing": "견적 유효기간 없음",

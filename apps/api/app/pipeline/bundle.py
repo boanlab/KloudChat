@@ -56,6 +56,8 @@ class Request:
     traced: bool = False
     #: tool prints (composed run: earlier step's code output)
     tool_outputs: list[str] = field(default_factory=list)
+    #: web search results of the turn: evidence for the value guard, never number sources
+    evidence: list[str] = field(default_factory=list)
     #: earlier composed step's text: writer reads, checks never take figures
     derived: list[str] = field(default_factory=list)
     #: turn skill keys: catalogue key or `skill:<id>`

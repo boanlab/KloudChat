@@ -165,9 +165,11 @@ def test_the_report_step_says_how_many_were_blanked():
     sections, outcome = check_skills.ground_sections(
         ("grounding-check",), run["sections"], material=f"{run['request']}\n{run['material']}",
         computed=run["computed"], options=_options(run))
-    assert outcome.summary.startswith("근거 없는 값 1개 → 빈칸")
+    assert outcome.summary.startswith("근거 없는 값 1개 → 확인 필요")
     assert outcome.left == []
-    assert any("[시기]" in s["content"] for s in sections)
+    # the value stays as written, marked, never a 「[시기]」 blank
+    assert any("11월 초(확인 필요)" in s["content"] for s in sections)
+    assert not any("[시기]" in s["content"] for s in sections)
 
 
 def test_the_script_runs_as_a_cli(capsys):
@@ -199,10 +201,10 @@ async def test_a_written_report_is_traced_and_the_step_records_it(monkeypatch):
     )]
     sections = next(e["sections"] for e in events if e["type"] == "report")
     text = "\n".join(s["content"] for s in sections)
-    assert "11월 초" not in text and "[시기]까지 오지호가" in text
+    assert "11월 초(확인 필요)까지 오지호가" in text and "[시기]" not in text
     assert "2026-10-21(수)" in text
     steps = {e["id"]: e for e in events if e["type"] == "step"}
-    assert "근거 없는 값 1개 → 빈칸" in steps["format_checks"]["detail"]
+    assert "근거 없는 값 → 확인 필요" in steps["format_checks"]["detail"]
 
 
 _TOOL_NUMBERS = check_skills.options_for(None, {"tool_numbers": True})

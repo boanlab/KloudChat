@@ -73,7 +73,8 @@ async def test_an_agent_s_own_checks_still_run_with_the_trace():
 
     assert answer_checks(bundle.request) == ("grounding-check",)
     await _run(bundle)
-    assert "신분증" not in bundle.document.answer
+    # the requirement no material names would empty the answer: kept, marked
+    assert bundle.document.answer == "신분증 지참 후 참석해 주세요. (확인 필요)"
 
 
 def _workspace(*blocks: tuple[str, str, bool]) -> WorkspaceContext:
@@ -180,8 +181,11 @@ async def test_slides_on_the_persons_material_are_traced():
     events = [event async for event in stage.run(bundle, Context())]
     out = bundle.document.sections
     assert out[0] == slides[0]
-    assert out[1]["bullets"] == ["학생증과 필기구", "참가비 [수치]"]
-    assert out[2]["rows"][1] == ["전체", "1,850만 원"] and out[2]["rows"][2][1] == "[수치]"
+    # unsupported values and requirements stay as written, marked; no item emptied or blanked
+    assert out[1]["bullets"] == ["학생증과 필기구", "신분증을 지참하세요. (확인 필요)",
+                                 "참가비 3만 원(확인 필요)"]
+    assert out[2]["rows"][1] == ["전체", "1,850만 원"]
+    assert out[2]["rows"][2][1] == "420만 원(확인 필요)"
     assert any(e["type"] == "step" for e in events)
     request.turn["traced"] = False
     assert DeckGrounding().skip(bundle)

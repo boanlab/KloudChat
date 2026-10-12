@@ -82,6 +82,8 @@ class ToolContext:
     sandbox: dict[str, Any] = field(default_factory=dict)
     #: Tool outputs in call order; number sources for `check_skills`.
     outputs: list[str] = field(default_factory=list)
+    #: Web search results; evidence for the post-writing value guard, not number sources.
+    searched: list[str] = field(default_factory=list)
     #: Own skill scripts by key; sandbox-only via `run_skill_script`.
     own_scripts: dict[str, dict[str, Any]] = field(default_factory=dict)
 

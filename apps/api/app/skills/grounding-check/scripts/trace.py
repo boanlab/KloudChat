@@ -1334,7 +1334,7 @@ def fix(text: str, findings: list[dict]) -> str:
 
 
 def summary(findings: list[dict]) -> str:
-    """「근거 없는 값 3개 → 빈칸 (수치 2 · 날짜 1): 「11월 초」, …」."""
+    """「근거 없는 값 3개 → 확인 필요 (수치 2 · 날짜 1): 「11월 초」, …」."""
     if not findings:
         return ""
     counts: dict[str, int] = {}
@@ -1343,7 +1343,7 @@ def summary(findings: list[dict]) -> str:
         counts[word] = counts.get(word, 0) + 1
     kinds = " · ".join(f"{word} {n}" for word, n in counts.items())
     shown = ", ".join(dict.fromkeys(f"「{f['text'].strip()[:24]}」" for f in findings if f["kind"] != "claim"))
-    return f"근거 없는 값 {len(findings)}개 → 빈칸 ({kinds})" + (f": {shown[:300]}" if shown else "")
+    return f"근거 없는 값 {len(findings)}개 → 확인 필요 ({kinds})" + (f": {shown[:300]}" if shown else "")
 
 
 def run(options: dict) -> dict:

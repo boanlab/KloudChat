@@ -88,25 +88,14 @@
   }
  },
  {
-  "key": "a9abb962db9ad1c90472d640",
+  "key": "54926b483554717b5d6d3158",
   "stage": "verify",
   "kind": "verify-neutral",
   "head": "Below is one applicant's 경력기술서. Pick only the sentences that repeat the same situation, action or result\nof the same experience in two or more places. Do not pi",
   "reply": "{\"items\": []}",
   "usage": {
-   "prompt_tokens": 940,
+   "prompt_tokens": 941,
    "completion_tokens": 4
-  }
- },
- {
-  "key": "22ba207c2d1bdfc5bfae0a85",
-  "stage": "verify",
-  "kind": "repair",
-  "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
-  "reply": "[\"두 경력을 합산하면 90개월(7년 6개월)의 백엔드 개발 경험이며, 최근 3년 [수치]은 결제와 주문 처리 시스템을 리드한 기간입니다.\"]",
-  "usage": {
-   "prompt_tokens": 685,
-   "completion_tokens": 20
   }
  }
 ]

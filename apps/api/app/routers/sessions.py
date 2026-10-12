@@ -1401,17 +1401,39 @@ def _reads_pasted_material(content: str) -> bool:
     if pasted_material(content):
         return not _asks_about_now(instruction_part(content))
     head = (content or "").partition("\n\n")[0]
-    return _memo_pasted(content) and not _asks_about_now(head)
+    if "\n\n" not in (content or ""):
+        head = (content or "").partition("\n")[0]
+    return _memo_pasted(content) and (
+        (bool(_POINTS_AT_MEMO.search(head)) and not _NOW_WORD.search(head))
+        or not _asks_about_now(head))
+
+
+#: an ask pointing at the memo below it: 「이번 업데이트 내용으로」, 「아래 목록대로」
+_POINTS_AT_MEMO = re.compile(
+    r"(?:이|이번|아래|다음|위)\s{0,2}(?:[가-힣]{1,8}\s{0,2})?(?:내용|목록|자료|메모|기록)"
+    r"(?:으로|을|를|대로|에서|만)")
+_NOW_WORD = re.compile(r"지금|현재|오늘|최신|요즘|실시간")
+
+
+#: a memo line: a list item or a labelled line (「- fix(docs): …」, 「상황: …」)
+_MEMO_LINE = re.compile(r"\s{0,8}(?:[-*•·]|\d{1,2}[.)]|\(|[가-힣A-Za-z ]{1,20}[:：])\s{0,4}\S")
 
 
 def _memo_pasted(content: str) -> bool:
     """A short ask, a blank line, then a memo or document of the person's."""
     head, gap, rest = (content or "").partition("\n\n")
+    if not gap:
+        # 「…써 줘.\n(변경 목록)\n- …\n- …」: the ask's line, then a listed memo, no blank line
+        head, _, rest = (content or "").partition("\n")
+        lines = [line for line in rest.splitlines() if line.strip()]
+        listed = sum(1 for line in lines if _MEMO_LINE.match(line))
+        return (len(head) <= 300 and len(rest.strip()) >= 120 and len(lines) >= 4
+                and listed >= 0.6 * len(lines) and bool(_DRAFTS.search(head)))
     lines = [line for line in rest.splitlines() if line.strip()]
     looks_pasted = len(rest.strip()) >= 120 and (
         len(lines) >= 3 or bool(re.match(r"[\[#|「<]", rest.lstrip()))
         or bool(_DRAFTS.search(head)))
-    return bool(gap) and len(head) <= 300 and looks_pasted
+    return len(head) <= 300 and looks_pasted
 
 
 #: Context blocks holding the person's own material (files, project knowledge).
@@ -5445,6 +5467,7 @@ async def _answer_turn(
             first_message=first_user_message, messages=messages,
             material=_material_text(messages), check_keys=check_keys,
             check_material=check_material, tool_outputs=list(ctx.outputs), judge=judge_model,
+            evidence=list(ctx.searched),
             kept_steps=steps, usage=usage, skill_keys=skill_keys, check_options=check_options,
             skill_specs=skill_specs, traced=carries_material,
         )

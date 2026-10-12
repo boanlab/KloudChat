@@ -460,7 +460,7 @@ def test_a_slide_left_with_nothing_after_its_chart_is_dropped_is_written_again()
     assert 1 not in out or out[1].get("layout") != "metrics"
 
 
-def test_money_in_a_document_with_no_figures_becomes_undetermined() -> None:
+def test_money_in_a_document_with_no_figures_is_marked_for_checking() -> None:
     from app.services.report import _without_invented_money
 
     text = (
@@ -468,8 +468,9 @@ def test_money_in_a_document_with_no_figures_becomes_undetermined() -> None:
         "연 2,400 만 원이 든다. 2026년 계획."
     )
     out = _without_invented_money(text)
-    assert "380만 원" not in out and "1,140만 원" not in out and "2,400 만 원" not in out
-    assert out.count("[금액]") == 4 and "2026년" in out
+    # each sum kept as written and marked, never replaced by 「[금액]」
+    assert out.count("(확인 필요)") == 4 and "[금액]" not in out and "2026년 계획" in out
+    assert "연 2,400 만 원(확인 필요)이 든다." in out
 
 
 def test_a_proposal_with_nothing_behind_it_is_asked_about() -> None:
