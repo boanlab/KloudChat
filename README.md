@@ -26,10 +26,10 @@ every model and tool through one backend gateway address configured at
 runtime ([KloudChat-LLM][backend]). The browser only ever talks to the
 KloudChat API.
 
-**Five surfaces, one workspace.** Chat, 보고서 (reports), 슬라이드 (slides),
-이미지 and 오디오/동영상 share the same projects, knowledge files, memories,
+**Five surfaces, one workspace.** Chat, Report, Slides,
+Image and Audio / Video share the same projects, knowledge files, memories,
 agents and skills. Everything a turn produces — a document, a deck, a chart, a
-picture, a clip — is an **아티팩트**, kept in its own gallery and exportable:
+picture, a clip — is an **artifact**, kept in its own gallery and exportable:
 
 | Artifact | Exports |
 | --- | --- |
@@ -37,10 +37,10 @@ picture, a clip — is an **아티팩트**, kept in its own gallery and exportab
 | Deck | PDF, PPTX, Markdown |
 | Chart | PNG, SVG, CSV |
 
-**Structure and look are separate choices.** A **템플릿** fixes a document's
-structure (sections, title block, numbering — minutes, 개조식 보고, comparison,
-기안문, briefing deck and so on), and code keeps the model inside it. A
-**테마** fixes the look — colour, type, voice — and the same theme dresses a
+**Structure and look are separate choices.** A **template** fixes a document's
+structure (sections, title block, numbering — minutes, bullet-style briefing, comparison,
+official draft, briefing deck and so on), and code keeps the model inside it. A
+**theme** fixes the look — colour, type, voice — and the same theme dresses a
 report, a deck and a cover image alike. Flowcharts and structure diagrams in
 reports and decks are laid out by code and drawn with python-pptx: native
 shapes in the `.pptx`, the same drawing as a picture in the report.
@@ -51,19 +51,20 @@ reader lacks) and model checks (claims against the material, figure sentences)
 name the sentences they find wrong; one repair pass rewrites only those, and
 whatever is still found is listed with the answer rather than passed off as
 done. Facts missing from the material are asked for before writing, or left as
-`[대괄호]` blanks — never invented.
+`[bracketed]` blanks — never invented.
 
 **Skills are the way into a job; agents are built from them.** The work the
-product ships — minutes, 개조식 briefings, compare-and-decide reports, official
-drafts, decks, spreadsheet tallies, answers from regulations, YouTube summaries,
-deep research — comes as official skills a person switches on in a conversation.
-A skill brings its own template, checks, missing-information questions and
-process settings, and a person can make one just like it. An agent fixes its
-instructions, model, knowledge files, the skills it keeps on, templates and 진행
-과정, plus the bundles of extra steps around the writing (prepare · review ·
-finish). Other skills are scripts and checks that change the result
-(calculation check, date and quote calculation, spreadsheet clean-up, PDF
-tables, source check, PII masking…). An agent's knowledge is searched
+product ships — minutes, bullet-style briefings (개조식), compare-and-decide
+reports, official drafts, decks, spreadsheet tallies, answers from regulations,
+YouTube summaries, deep research — comes as official skills a person switches
+on in a conversation. A skill brings its own template, checks,
+missing-information questions and process settings, and a person can make one
+just like it. An agent fixes its instructions, model, knowledge files, the
+skills it keeps on, templates and **How it works** process, plus the bundles of
+extra steps around the writing (prepare · review · finish). Other skills are
+scripts and checks that change the result (calculation check, date and quote
+calculation, spreadsheet clean-up, PDF tables, source check, PII masking…). An
+agent's knowledge is searched
 through a tool when it needs it — lexically by default, adding vector search
 when the backend serves an embedding model. Everything shipped is built with
 the same features a user has, so a user can build the same thing.
@@ -90,9 +91,9 @@ not charged. KloudChat enforces the limit before every turn; the LiteLLM-side
 budget is a backstop 20% above it, attached to the account rather than to a
 key. An administrator can also offer **Auto** routing, which a person selects
 per conversation: a strict-local classifier sends clearly simple turns to a
-cheaper model (`Auto · 비용 절약`) or clearly hard ones to a stronger model
-(`Auto · 품질 우선`); the requested and executed models stay visible on the
-answer.
+cheaper model (**Auto · Save credits**) or clearly hard ones to a stronger
+model (**Auto · Favour quality**); the requested and executed models stay
+visible on the answer.
 
 ### The self-hosted models
 
@@ -103,8 +104,9 @@ The default configuration expects two self-hosted models behind the gateway:
 | `local/qwen3.8-27b` | Chat answers, report and deck prose, file-reading code (`run_code`) |
 | `local/qwen3.8-flash` | Outlines and plans, judging and checks, the Auto classifier, titles, memories and conversation summaries, re-reading scanned pages (as `strict-local/qwen3.8-flash`) |
 
-Which model does which job is chosen in the admin screen (**System › 모델**
-and **System › 라우팅**); the `.env` values only seed a fresh install. See
+Which model does which job is chosen in the admin screen (**System › Model**
+and **System › Routing**, 시스템 › 모델 / 라우팅 on a Korean screen); the
+`.env` values only seed a fresh install. See
 [Which model does what](docs/configuration.md#which-model-does-what).
 
 ## Deployment shape
@@ -161,8 +163,8 @@ accounts at all, so changing them later never resets an existing password.
 
 ### Connecting the backend
 
-In the account menu, open **시스템 › 기능** and paste the backend gateway
-address into **기능 연동 › 서버 주소**, then save. The LiteLLM address and the
+In the account menu, open **System › Features** and paste the backend gateway
+address into **Integrations › Server address**, then save. The LiteLLM address and the
 seven tool endpoints (web search, document fetch, code execution, deep
 research, speech-to-text, retrieval index, OCR) are derived from it by
 appending their paths. Print the address from the backend:
@@ -175,37 +177,37 @@ If you host one feature elsewhere, override that single field. Each field has a
 connection test, and a feature with an empty address drops quietly out of the
 tool list — conversation, files, projects, memory and agents are unaffected.
 
-The LiteLLM master key is entered under **시스템 › 프록시**, which also holds
+The LiteLLM master key is entered under **System › Proxy**, which also holds
 an explicit LiteLLM address when it is not behind the gateway. The tool
 endpoints are authenticated by a shared key set in `.env`
 (`KCHAT_TOOLS_GATEWAY_KEY`), never in the screen.
 
 ## What an administrator controls
 
-The account menu's 관리 section:
+The account menu's **Manage** (관리) section:
 
 | Entry | Route | Contents |
 | --- | --- | --- |
-| 사용자 · 크레딧 | `/admin/users` | Signup approval, monthly credit allowance, suspension, API keys of an account |
-| 사용량 | `/admin/usage` | Organisation-wide usage by person, model and surface |
-| 공개 챗봇 | `/admin/publications` | Review queue for bots opened to people without an account, and their channels |
-| 보안 · 감사 | `/admin/governance` | Privacy guard and PII masking, internal material on strict-local, intent filter, retention, idle sign-out, audit log |
-| 문의·신고 | `/admin/issues` | Reports and questions sent from the app |
-| 시스템 | `/admin/system` | The tabs below |
-| 성능 모니터링 | `/admin/performance` | API, host, GPU node and per-model latency figures |
+| Users · credits | `/admin/users` | Signup approval, monthly credit allowance, suspension, API keys of an account |
+| Usage | `/admin/usage` | Organisation-wide usage by person, model and surface |
+| Published chatbots | `/admin/publications` | Review queue for bots opened to people without an account, and their channels |
+| Security · audit | `/admin/governance` | Privacy guard and PII masking, internal material on strict-local, intent filter, retention, idle sign-out, audit log |
+| Feedback & issues | `/admin/issues` | Reports and questions sent from the app |
+| System | `/admin/system` | The tabs below |
+| Performance | `/admin/performance` | API, host, GPU node and per-model latency figures |
 
-**시스템** tabs:
+**System** tabs:
 
 | Tab | Contents |
 | --- | --- |
-| 프록시 | LiteLLM address and master key, connection test, model list refresh, models hidden for an unknown price |
-| 모델 | The default model of each surface, the models for side work (titles and memories, `run_code` programs), whether models think before answering |
-| 라우팅 | Auto routing — the classifier, economy and upgrade models — and the outline model that plans documents |
-| 기능 | Enabled surfaces; feature integrations (server address, per-feature endpoints); OCR mode, vision model and page limit |
-| 브랜딩 | Name and logo for the sidebar and the sign-in screen |
-| 메일 | SMTP for password reset and email verification |
-| 회원 가입 | Signup mode, allowed mail domains, email verification, a new account's monthly credits |
-| 커넥터 카탈로그 | The MCP connectors users can install |
+| Proxy | LiteLLM address and master key, connection test, model list refresh, models hidden for an unknown price |
+| Model | The default model of each surface, the models for side work (titles and memories, `run_code` programs), whether models think before answering |
+| Routing | Auto routing — the classifier, economy and upgrade models — and the outline model that plans documents |
+| Features | Enabled surfaces; feature integrations (server address, per-feature endpoints); OCR mode, vision model and page limit |
+| Branding | Name and logo for the sidebar and the sign-in screen |
+| Mail | SMTP for password reset and email verification |
+| Signup | Signup mode, allowed mail domains, email verification, a new account's monthly credits |
+| Connector catalogue | The MCP connectors users can install |
 
 Chat is always on. Images and audio/video cost credits per generation, so they
 default to off; a disabled surface disappears from the UI *and* the server
@@ -214,7 +216,7 @@ refuses to create sessions of that kind.
 ## Connecting coding agents
 
 Tools like Claude Code and Codex can use this instance's models. The account
-menu's **AI 에이전트 연동** page has the configuration to paste.
+menu's **Agent setup** page has the configuration to paste.
 
 ```bash
 export ANTHROPIC_BASE_URL=https://<this-server>/llm      # Claude Code
@@ -226,7 +228,7 @@ virtual key, so spend and the model allow-list follow it, and usage is
 aggregated under "API keys" on `/usage`. The monthly limit is attached to the
 account rather than to the key, so issuing several keys does not raise it.
 LiteLLM itself is reachable only on the private network, which makes this route
-the only way in. **API 연동** (`/api-setup`) covers calling the KloudChat API
+the only way in. **API access** (`/api-setup`) covers calling the KloudChat API
 itself.
 
 ## Language
@@ -245,11 +247,11 @@ without a translation fall back to Korean. The user guide is published at
 | `/projects` · `/projects/:id` | Project instructions, knowledge files, conversations and memories |
 | `/artifacts` | Every artifact, filtered by kind, with a way back to its conversation |
 | `/bots` | Old link to the members' chatbot list; redirects to **Customize** → **Agents** → **Explore** (shared agents), where members' published bots show as agents. `/b/:slug` is a bot's own page, `/b` the public list, `/embed/b/:slug` the embeddable frame |
-| `/customize` | 사용자 지정 — agents, skills and connectors (`?tab=agents\|skills\|connectors`), including what others shared; bundles at `/customize/bundles` |
+| `/customize` | **Customize** — agents, skills and connectors (`?tab=agents\|skills\|connectors`), including what others shared; bundles at `/customize/bundles` |
 | `/history` | Conversation history — selective and bulk deletion |
 | `/usage` | Your own usage, by day, model and surface |
 | `/issues` | Questions and reports you sent, with the answers |
-| `/settings` · `/preferences` · `/personalization` · `/memory` · `/themes` · `/keys` · `/access` | Profile and password / defaults / about-me and response style / memories / 테마 / API keys / sign-ins |
+| `/settings` · `/preferences` · `/personalization` · `/memory` · `/themes` · `/keys` · `/access` | Profile and password / defaults / about-me and response style / memories / themes / API keys / sign-ins |
 | `/agent-setup` · `/api-setup` | Coding-agent and API connection guides |
 | `/share/:token` | A read-only shared link |
 | `/admin/…` | See [What an administrator controls](#what-an-administrator-controls) |
@@ -259,15 +261,15 @@ without a translation fall back to Korean. The user guide is published at
 - **Chat** — real streaming. Tool calls appear inline while they run and
   collapse to one line when the turn settles. A file, chart or HTML page the
   model makes opens in the right-hand panel.
-- **보고서** — the outline is proposed first and writing starts once you
+- **Report** — the outline is proposed first and writing starts once you
   approve it; sections stream in order. The document is edited in place on
   page-sized paper, and saving keeps versions.
-- **슬라이드** — the outline is approved first, then each slide is filled in.
+- **Slides** — the outline is approved first, then each slide is filled in.
   Thumbnail grid, speaker notes, per-slide editing; preview and exports share
   one 16:9 geometry, so what you saw is what the file contains.
-- **이미지** — an option bar above the composer (aspect ratio, style, count).
+- **Image** — an option bar above the composer (aspect ratio, style, count).
   The prompt and the picture read as an ordinary turn.
-- **오디오/동영상** — the same turn shape, with a job card standing in the
+- **Audio / Video** — the same turn shape, with a job card standing in the
   answer's place while a clip is made. Picking resolution, audio and duration
   updates the quote in place. A failure states the cause and that nothing was
   charged.
@@ -281,7 +283,7 @@ speech-to-text. The transcript fills the composer rather than being sent.
 
 **A turn outlives the tab it was started in.** Closing the page or losing the
 connection does not throw the answer away — it is still written, charged and
-titled. Stopping is a separate act: 중단 tells the server before it closes the
+titled. Stopping is a separate act: **Stop** tells the server before it closes the
 connection, and the partial answer is kept and marked as cut off.
 
 ## Repository layout
@@ -311,7 +313,7 @@ apps/web/src/
 │   ├── slides/                       Deck renderer, slide patterns, type scale
 │   ├── chart/ChartPanel.tsx          Chart, underlying data, PNG/SVG/CSV
 │   ├── media/                        Generation job card and media results
-│   ├── customize/                    Agent and skill forms, the 사용자 지정 hub
+│   ├── customize/                    Agent and skill forms, the Customize hub
 │   ├── publishing/                   Publish dialog, audience, bot channels
 │   ├── layout/                       AppShell, Sidebar, AccountMenu, shortcuts
 │   └── ui/                           Button, Modal, Dropdown, Badge, …

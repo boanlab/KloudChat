@@ -73,6 +73,7 @@ export function ItemCard({
   const t = useT()
   const navigate = useNavigate()
   const [busy, setBusy] = useState<'try' | 'add' | null>(null)
+  const [lockOpen, setLockOpen] = useState(false)
   const name = t(item.name)
   const open = () => {
     if (onOpen) onOpen(item)
@@ -175,15 +176,41 @@ export function ItemCard({
               <Check size={15} />
             </span>
           ) : item.bot && !item.bot.copyable ? (
-            // Locked bot: answers on its page only; no copy, no instructions.
-            <span
-              role="img"
-              title={t('만든 사람이 복사를 허용하지 않아 바로 쓰기만 할 수 있습니다')}
-              aria-label={t('{name} 복사 잠김').replace('{name}', name)}
-              data-testid="bot-copy-locked"
-              className="grid size-8 place-items-center rounded-control border border-line text-faint"
-            >
-              <Lock size={14} />
+            // Locked bot: answers on its page only; no copy, no instructions. The reason opens by
+            // keyboard and touch too, not only on hover.
+            <span className="relative">
+              <button
+                type="button"
+                title={t('만든 사람이 복사를 허용하지 않아 바로 쓰기만 할 수 있습니다')}
+                aria-label={t('{name} 복사 잠김').replace('{name}', name)}
+                aria-expanded={lockOpen}
+                aria-controls={lockOpen ? `lock-${item.key}` : undefined}
+                data-testid="bot-copy-locked"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setLockOpen((v) => !v)
+                }}
+                onBlur={() => setLockOpen(false)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape' && lockOpen) {
+                    e.stopPropagation()
+                    setLockOpen(false)
+                  }
+                }}
+                className="grid size-8 place-items-center rounded-control border border-line text-faint hover:bg-elevated"
+              >
+                <Lock size={14} />
+              </button>
+              {lockOpen && (
+                <span
+                  id={`lock-${item.key}`}
+                  role="note"
+                  data-testid="bot-copy-locked-reason"
+                  className="absolute top-full right-0 z-20 mt-1 w-56 rounded-control border border-line bg-panel px-3 py-2 text-sm text-fg shadow-float"
+                >
+                  {t('만든 사람이 복사를 허용하지 않아 바로 쓰기만 할 수 있습니다')}
+                </span>
+              )}
             </span>
           ) : (
             <button

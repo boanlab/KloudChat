@@ -15,7 +15,7 @@ A template is the structure of an artifact; a theme is its look. Work you do oft
 
 A template defines the structure rules and the typesetting of reports and slides. Select one and the **What this template checks** list appears. You edit a document in a template by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Create your own document template with **New template** in the template picker or the agent settings ([Agents and skills](agents.md)). Images, audio and video have no templates.
 
-The built-in templates in the picker are six documents (internal draft 간이기안문, plan 추진 계획(안), result report 결과 보고서, bullet-style briefing 개조식 보고서, comparison report 비교·분석 보고서, minutes 회의록) and the **Briefing** deck. They write straight into the institution's format and show that format's check results when done. Conversations and agents that use a hidden template keep writing and exporting with it.
+The built-in templates in the picker are six documents (**Internal approval draft (간이기안문)**, **Implementation plan (draft)**, **Results report**, **Bullet-style briefing (개조식)**, **Comparison report**, **Meeting minutes**) and the **Briefing deck**. They write straight into the institution's format and show that format's check results when done. Conversations and agents that use a hidden template keep writing and exporting with it.
 
 ## Themes
 

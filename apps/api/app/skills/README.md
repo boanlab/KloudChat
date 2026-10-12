@@ -7,7 +7,7 @@ the server imports the same file through `services/skill_scripts.py`, so both co
 ## Check skills
 
 A package with `stage` in its front matter is a check the server runs itself, around writing,
-for every agent or 서식 that attaches it — the model is not left to call it.
+for every agent or template that attaches it — the model is not left to call it.
 
 | field   | meaning                                                                 |
 |---------|-------------------------------------------------------------------------|
@@ -15,7 +15,7 @@ for every agent or 서식 that attaches it — the model is not left to call it.
 | `entry` | the script under `scripts/` the server imports                          |
 
 Attach a check by key: `checks = ["gap-check", "grounding-check"]` in `app/agents/<key>.toml`, or
-`check_skills = [...]` in a 서식's `template.toml` (`checks` there is already the checklist).
+`check_skills = [...]` in a template's `template.toml` (`checks` there is already the checklist).
 `services/check_skills.py` resolves the attached keys and runs them; the pipelines run them as
 `check` stages (`app/pipeline/check_stages.py`: `check:gaps`, `check:grounding`,
 `check:answer-grounding`; docs/architecture.md § Pipelines). `copy-check` runs as a stage of its
@@ -59,3 +59,19 @@ word is taken out. The step records what was fixed, sent back and left.
 
 Every script also has a CLI: `python scripts/<entry>.py '<JSON>'`, the last line of output
 being the result JSON.
+
+## What a skill brings to a turn
+
+A skill can also carry what an agent's own fields set, so a skill alone can do an agent's job
+(`skill_specs.DOCUMENT_FIELDS`, `services/skill_turn.py`; docs/architecture.md § Skills instead
+of shipped agents):
+
+| field           | meaning                                                                    |
+|-----------------|----------------------------------------------------------------------------|
+| `template`      | the template a report or deck writes into when none is picked             |
+| `checks`        | check skills attached while it is on (keys of packages with `stage`)      |
+| `check_options` | trace strictness while it is on (`tool_numbers`, `titles`)                |
+| `questions`     | missing-information questions, as `[[questions]]` in a `template.toml`    |
+| `process`       | process settings (`search`, `draws`, …), under an agent's own             |
+
+The same fields are set in the skill form and in an uploaded SKILL.md.

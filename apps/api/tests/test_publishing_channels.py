@@ -523,3 +523,33 @@ async def test_a_failed_turn_is_an_error_not_a_partial_answer(world, monkeypatch
     called = (await _mcp(world, key, pub["slug"], "tools/call",
                          {"name": "ask", "arguments": {"question": "휴학은?"}})).json()
     assert called["result"]["isError"] is True and "아무 때나" not in json.dumps(called)
+
+
+async def test_the_ask_tool_says_what_its_citations_mean(world):
+    pub, key = await _with_api(world)
+    tools = (await _mcp(world, key, pub["slug"], "tools/list")).json()["result"]["tools"]
+    about = tools[0]["description"]
+    # An uncited answer is not called ungrounded: the server cites the passages it used.
+    assert "rests on no passage" not in about and "citations" in about
+    world.as_("owner")
+    turned = await world.client.patch(f"/publications/{pub['id']}", json={"showSources": False})
+    assert turned.status_code == 200, turned.text
+    world.user = None
+    tools = (await _mcp(world, key, pub["slug"], "tools/list")).json()["result"]["tools"]
+    assert "turned citations off" in tools[0]["description"]
+
+
+async def test_a_paused_bot_answers_an_mcp_call_as_a_tool_error(world):
+    pub, key = await _with_api(world)
+    world.as_("admin")
+    await world.client.post(f"/admin/publications/{pub['id']}/status",
+                            json={"status": "paused", "reason": "확인 중입니다"})
+    world.user = None
+    called = await _mcp(world, key, pub["slug"], "tools/call",
+                        {"name": "ask", "arguments": {"question": "휴학은 언제까지?"}}, id_=7)
+    # An MCP client reads a tool error, not an HTTP refusal it cannot show.
+    assert called.status_code == 200, called.text
+    body = called.json()
+    assert body["jsonrpc"] == "2.0" and body["id"] == 7
+    assert body["result"]["isError"] is True
+    assert "일시 중지" in body["result"]["content"][0]["text"]

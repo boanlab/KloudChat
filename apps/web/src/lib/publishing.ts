@@ -75,7 +75,7 @@ export const VISIBILITY_LABEL: Record<BotVisibility, string> = {
 }
 
 export const VISIBILITY_HINT: Record<BotVisibility, string> = {
-  internal: '이 기관 구성원이 로그인해서 씁니다. 챗봇 목록에 보입니다. 바로 열립니다.',
+  internal: '이 기관 구성원이 로그인해서 씁니다. 구성원의 「공유된 에이전트」와 「+ › 에이전트」에 보입니다. 바로 열립니다.',
   link: '주소를 아는 사람은 누구나 로그인 없이 씁니다. 어떤 목록에도 나오지 않습니다. 관리자가 승인하면 열립니다.',
   external: '누구나 로그인 없이 씁니다. 공개 챗봇 목록에 나오고 검색에도 잡힐 수 있습니다. 관리자가 승인하면 열립니다.',
 }
@@ -245,6 +245,8 @@ interface SharedBots {
   rows: BotListItem[]
   /** The account the rows were read for. */
   loadedFor: string | null
+  /** The account whose first read has answered (or failed). */
+  readFor: string | null
   load: (userId: string) => Promise<void>
 }
 
@@ -252,12 +254,15 @@ interface SharedBots {
 export const useSharedBots = create<SharedBots>((set, get) => ({
   rows: [],
   loadedFor: null,
+  readFor: null,
   load: async (userId) => {
     if (get().loadedFor !== userId) set({ loadedFor: userId, rows: [] })
     try {
       set({ rows: await botsApi.list() })
     } catch {
       /* the list is an addition; a failed read leaves it as it was */
+    } finally {
+      if (get().loadedFor === userId) set({ readFor: userId })
     }
   },
 }))
@@ -278,6 +283,13 @@ export function useMemberBots(): BotListItem[] {
   }, [userId, loadedFor, load])
   const ready = !!userId && loadedFor === userId
   return useMemo(() => (ready ? memberBots(rows) : []), [ready, rows])
+}
+
+/** The member bot list has not answered yet for this account (a list showing it waits, not reflows). */
+export function useMemberBotsPending(): boolean {
+  const readFor = useSharedBots((s) => s.readFor)
+  const userId = useStore((s) => s.user?.id)
+  return !!userId && readFor !== userId
 }
 
 /** Copies a bot as the caller's own agent; resolves to the copy's id. */

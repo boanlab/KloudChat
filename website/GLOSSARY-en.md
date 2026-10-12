@@ -1,61 +1,64 @@
-# KloudChat 영문 가이드 용어표
+# KloudChat English guide glossary
 
-두 사람 이상이 나눠 번역하므로, 아래 대응은 예외 없이 지킨다.
+The guide is translated by more than one person, so the mappings below hold
+without exception. The Korean column is the source term as it appears in the
+Korean guide and on Korean screens.
 
-| 한국어 | English | 비고 |
+| Korean | English | Notes |
 |---|---|---|
-| 기관 | organization | 철자는 미국식으로 통일 |
-| 관리자 | administrator | admin 축약 금지 |
-| 대화 | conversation | 화면 이름으로 쓰일 때만 Chat |
-| 챗 | Chat | 화면 이름 |
-| 최근 | Recent | 사이드바의 대화 목록 |
+| 기관 | organization | American spelling throughout |
+| 관리자 | administrator | Never abbreviated to admin |
+| 대화 | conversation | Chat only as a screen name |
+| 챗 | Chat | Screen name |
+| 최근 | Recent | The conversation list in the sidebar |
 | 요청 / 턴 | request / turn | |
-| 답변 | answer | response 쓰지 않음 |
-| 다시 시도 | Retry | 버튼 |
+| 답변 | answer | Not "response" |
+| 다시 시도 | Retry | Button |
 | 작업 단계 | processing steps | |
 | 모델 | model | |
 | 데이터 경계 | data boundary | |
-| strict-local / self-hosted | strict-local / self-hosted | 번역하지 않음 |
+| strict-local / self-hosted | strict-local / self-hosted | Not translated |
 | 외부 제공 | external provider | |
 | 외부 전환 가능 | may switch to an external provider | |
-| 개인정보 전용 | personal-data only | 배지 |
+| 개인정보 전용 | personal-data only | Badge |
 | 크레딧 | credit | |
 | 첨부 / 첨부 파일 | attachment | |
-| 파일 첨부 | Attaching files | 페이지 제목 |
+| 파일 첨부 | Attaching files | Page title |
 | 한글(.hwp/.hwpx) | Hangul (.hwp/.hwpx) | |
-| 자료 찾기 | Find in files | 도구 이름 |
+| 자료 찾기 | Find in files | Tool name |
 | 웹 검색 | web search | |
 | 커넥터 | connector | |
 | 에이전트 | agent | |
 | 스킬 | skill | |
-| 템플릿 | template | 아티팩트의 구조 (글자 꾸밈의 「서식」은 formatting) |
-| 테마 | theme | 아티팩트의 모양(색·글꼴·문체) |
+| 템플릿 | template | The artifact's structure (text formatting, 「서식」, is "formatting") |
+| 테마 | theme | The artifact's look (colors, typefaces, tone) |
 | 프로젝트 | project | |
 | 메모리 | memory | |
 | 보고서 | report | |
-| 발표자료 / 슬라이드 | slide deck / slide | 화면 이름은 Slides |
-| 장 | slide | 슬라이드의 낱장 |
-| 절 | section | 보고서의 절 |
+| 발표자료 / 슬라이드 | slide deck / slide | The screen name is Slides |
+| 장 | slide | One slide of a deck |
+| 절 | section | A section of a report |
 | 개요 | outline | |
 | 리본 | ribbon | |
-| 검토 | Review | 리본 탭일 때 대문자 |
+| 검토 | Review | Capitalized as a ribbon tab |
 | 팩트체크 | fact check | |
 | 잘림 위험 | overflow risk | |
 | 버전 기록 | version history | |
-| 내보내기 | Export | 메뉴일 때 대문자 |
-| 아티팩트 | artifact | 사이드바·화면 이름은 Artifacts |
+| 내보내기 | Export | Capitalized as a menu |
+| 아티팩트 | artifact | The sidebar and screen name is Artifacts |
 | 공유 | sharing / Share | |
 | 사용량 | usage | |
-| 챗봇 | chatbot | 사이드바·화면 이름은 Chatbots |
-| 문의·신고 | Feedback & issues | 화면 이름 |
+| 챗봇 | chatbot | The sidebar and screen name is Chatbots |
+| 문의·신고 | Feedback & issues | Screen name |
 | 접속 기록 | sign-in history | |
 | 제한 사항 | limits | |
 | 용어 | glossary | |
 
-## 문장 규칙
+## Sentence rules
 
-- 철자는 미국식이다. organization, color, recognize, summarize, analyze, judgment.
-- 평서문 현재형. "~합니다"는 "does", "~하십시오"는 명령형("Open the ...").
-- 화면에 보이는 문자열은 **볼드**로 감싼 원문 형태를 유지하되 영어 UI 문구로 옮긴다.
-- 한 문장 20단어 안팎. 세미콜론으로 절을 잇지 않는다.
-- em 대시를 쓰지 않는다.
+- American spelling: organization, color, recognize, summarize, analyze, judgment.
+- Plain present tense. A Korean "~합니다" becomes "does"; a "~하십시오" becomes
+  an imperative ("Open the ...").
+- Strings shown on screen stay in **bold**, written with the English UI label.
+- Sentences of about 20 words. Do not join clauses with semicolons.
+- No em dashes.

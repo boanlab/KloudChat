@@ -38,7 +38,7 @@ pytest -q
 Tests run without services: model replies are faked, and database tests use
 in-memory SQLite through `aiosqlite` (part of `.[dev]`). Three suites guard the
 screens and the guide as well as the code: `test_screens_use_one_set_of_words.py`
-(one vocabulary — 아티팩트, 템플릿, 테마), `test_the_app_does_not_narrate_its_own_changes.py`
+(one vocabulary — artifact, template, theme; 아티팩트, 템플릿, 테마 on Korean screens), `test_the_app_does_not_narrate_its_own_changes.py`
 and `test_app_help.py` (`app/help/docs.json` matches `website/`; rebuild it with
 `python scripts/build_help.py`).
 
@@ -64,13 +64,13 @@ All under `/api` except `/llm`. The complete list is the OpenAPI document at
 | `GET /search` | Search across conversations and artifacts |
 | `GET /artifacts` · `counts` · `GET/PATCH/DELETE {id}` · `GET {id}/export` · `GET {id}/versions` · `POST {id}/restore` | Artifacts as a page of cards, version history and restore, export |
 | `POST /artifacts/{id}/sections/…` · `slides/…` · `blocks/…` · `critique` · `GET {id}/marks` | Rewrite, fact-check, picture and figure on a finished document; review; check marks |
-| `GET /projects` · `files` · `skills` · `memory` · `agents` · `designs` | Workspace (`designs` are 테마) |
+| `GET /projects` · `files` · `skills` · `memory` · `agents` · `designs` | Workspace (`designs` are themes) |
 | `POST /files/{id}/open-as-document` · `POST /designs/extract` | Open an uploaded `.hwpx` as an editable report; draft a theme from a file or URL |
 | `POST /projects/{id}/knowledge/url` · `…/reindex` · `POST /agents/{id}/knowledge` · `…/url` · `…/from-files` · `…/reindex` | Project and agent knowledge, and backfilling the vector index |
 | `GET /skills/store` · `POST /skills/{id}/install` · `POST /agents/{id}/install` · `POST /skills/import` · `GET /skills/{id}/export` | What others shared, copying from it, skill packages |
-| `GET /pipelines` · `GET /agents/{id}/pipeline` · `GET /agent-bases` · `PUT /agents/{id}/process` | Built-in processes and an agent's 진행 과정 |
-| `/user-pipelines…` · `/bundles…` | Composed processes and 묶음 (bundles); sharing ones that export or review goes through administrator approval |
-| `GET /design-templates` · `usage` · `{id}/preview` · `{id}/style` · `{id}/form` · `/user-templates…` | 템플릿: the shipped catalogue (preview is unauthenticated) and users' own |
+| `GET /pipelines` · `GET /agents/{id}/pipeline` · `GET /agent-bases` · `PUT /agents/{id}/process` | Built-in processes and an agent's process (How it works) |
+| `/user-pipelines…` · `/bundles…` | Composed processes and bundles; sharing ones that export or review goes through administrator approval |
+| `GET /design-templates` · `usage` · `{id}/preview` · `{id}/style` · `{id}/form` · `/user-templates…` | Templates: the shipped catalogue (preview is unauthenticated) and users' own |
 | `GET /connectors` · `/connectors/catalog` · `POST /connectors/install/{slug}` | MCP connectors |
 | `POST /shares` · `GET /shared/{token}` · `GET /shares/{id}/views` | Read-only sharing. Reading a `link`-scoped share needs no authentication |
 | `/publications…` · `/bots` · `/bots/{slug}/copy` · `/public/bots` · `/b/{slug}…` | Published chatbots: the owner's screens, members' list and copy (shown as shared agents), and the visitors' |
@@ -141,7 +141,7 @@ those, a rewrite is kept only when its check no longer fires, and the code
 checks run again. `key_figures` settles the figures a document set fixes
 (price, costs, targets) once and holds sections and slides to them;
 `quality_gate` reads the finished report or deck for form defects. What is
-still found is reported in the turn's 품질 점검 step.
+still found is reported in the turn's quality check step (`quality`).
 
 **Sign-in survives LiteLLM being down.** A provisioning failure is logged and
 stepped over, and the catalogue returns adapter models with
@@ -175,7 +175,7 @@ app/
 │                           connectors, keys, shares, publications, bot_api, issues,
 │                           usage, perf, branding, transcriptions, llm
 ├── agents/ · skills/ · bundles/ · pipelines/   Shipped agents, skills, bundles and processes (data)
-├── design_templates/       템플릿 catalogue: template.toml, seed.html, sample.html per entry
+├── design_templates/       Template catalogue: template.toml, seed.html, sample.html per entry
 ├── help/docs.json          The user guide, as the in-app help reads it (scripts/build_help.py)
 └── services/
     ├── credits.py          Allowance, monthly refill (1st, KST), pre-flight check, settlement
@@ -201,7 +201,7 @@ app/
     ├── credibility.py      Source trust tiers for citations
     ├── answer_plan.py · conversation_summary.py · stop_signal.py   Chat answer plan, long-conversation summary, cross-replica stop
     ├── slide_patterns.py · doc_formats.py   Slide pattern table; per-purpose document heads and numbering
-    ├── design.py · design_templates.py · design_extract.py   테마, the 템플릿 catalogue, theme extraction
+    ├── design.py · design_templates.py · design_extract.py   Themes, the template catalogue, theme extraction
     ├── doc_type.py · deck_type.py   Type scale shared by every renderer of a report or a deck
     ├── report_export.py · deck_export.py · page_export.py   DOCX/PDF/HWPX, PPTX/PDF, HTML read-back
     ├── printing.py         PDF via the print service; None when it is absent
@@ -219,7 +219,7 @@ app/
     ├── ocr.py · ocr_jobs.py   Scanned pages: OCR engine, then a strict-local vision model; background queue
     ├── korean_papers.py    Korean scholarly papers (KCI, DBpia, RISS) through the ordinary search backend
     ├── publishing.py       A published bot's turn: approved version, strict-local model, owner's credits
-    ├── bundles.py · process_settings.py   묶음 and an agent's 진행 과정
+    ├── bundles.py · process_settings.py   Bundles and an agent's process
     ├── knowledge.py · index_client.py   Agent shelves: lexical retrieval and the vector index
     ├── fonts.py            The Korean face every reportlab PDF embeds
     ├── mcp.py              MCP client (stdio and streamable-http)

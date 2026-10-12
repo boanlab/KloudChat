@@ -934,11 +934,14 @@ function CreditDialog({
               {t('{date} 리필').replace('{date}', formatDate(user.cycleResetsAt))}
             </p>
             {/* The proxy copy sits above the real limit as a backstop. */}
-            <p className="text-xs text-faint">
-              {t('LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).')
-                .replace('{limit}', proxyBudget(valid ? parsed : 0, economics))
-                .replace('{pct}', String(Math.round(economics.budgetHeadroom * 100)))}
-            </p>
+            {/* Only for a value that would be saved: no 「$0.00」 for an empty or bad entry. */}
+            {valid && (
+              <p className="text-xs text-faint" data-testid="credit-proxy-budget">
+                {t('LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).')
+                  .replace('{limit}', proxyBudget(parsed, economics))
+                  .replace('{pct}', String(Math.round(economics.budgetHeadroom * 100)))}
+              </p>
+            )}
           </div>
         )}
       </form>

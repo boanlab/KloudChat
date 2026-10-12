@@ -1,6 +1,6 @@
 import { Cpu } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Button, Card, Field, Select, Switch } from '@/components/ui'
+import { Button, Card, Field, LoadingState, Select, Switch } from '@/components/ui'
 import { ApiError, adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
@@ -132,7 +132,8 @@ export function ModelRolesSection({
     setExternalThinking(roles.externalThinking)
   }, [roles])
 
-  if (!roles || !models) return null
+  // Until the settings answer: a loader, not a blank tab.
+  if (!roles || !models) return settings ? null : <LoadingState />
 
   const touch = () => {
     dirty.current = true

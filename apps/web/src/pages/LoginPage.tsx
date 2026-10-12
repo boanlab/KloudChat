@@ -419,6 +419,8 @@ export function LoginPage() {
                 onClick={() => {
                   setMode(t.id)
                   setFieldError(null)
+                  // The other tab's error does not follow the user here.
+                  useStore.setState({ authError: null })
                 }}
                 className={`flex-1 rounded-control px-3 py-1.5 text-base font-medium transition-colors ${
                   mode === t.id ? 'bg-panel text-fg shadow-raised' : 'text-muted hover:text-fg'

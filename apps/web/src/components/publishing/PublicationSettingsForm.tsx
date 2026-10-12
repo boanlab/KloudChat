@@ -38,7 +38,7 @@ export function PublicationSettingsForm({
       <Field label={t('이름')}>
         <Input value={draft.title} maxLength={80} onChange={(e) => set({ title: e.target.value })} />
       </Field>
-      <Field label={t('설명')} hint={t('챗봇 목록과 챗봇 화면 위쪽에 보입니다.')}>
+      <Field label={t('설명')} hint={t('공유된 에이전트 카드와 챗봇 화면 위쪽에 보입니다.')}>
         <Textarea rows={2} value={draft.description} maxLength={400} onChange={(e) => set({ description: e.target.value })} />
       </Field>
       <Field label={t('첫 인사')} hint={t('첫 질문 전에 보이는 안내입니다.')}>

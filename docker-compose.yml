@@ -3,7 +3,7 @@
 #   docker compose up -d
 #
 # Models and tools live in KloudChat-LLM, reached through one gateway URL
-# (BACKEND_BASE_URL in .env, or the address saved under 시스템 › 기능 › 기능 연동). With that backend down, sign-in, history, workspace and
+# (BACKEND_BASE_URL in .env, or the address saved under System › Features › Integrations). With that backend down, sign-in, history, workspace and
 # settings keep working; model calls and tools report "not connected".
 #
 # `latest` moves with every push to main. Pin a version tag in production.
@@ -11,7 +11,7 @@
 name: kloudchat
 
 # Product choices — which model does which job, whether models think, a new account's
-# credits — are decided in the admin screen (System › 모델, System › 회원 가입) and stored
+# credits — are decided in the admin screen (System › Model, System › Signup) and stored
 # in the database. These variables only seed a fresh install: a migration writes them
 # there once, and the stored values win from then on. `migrate` and `api` both get them.
 x-first-install-seeds: &first-install-seeds
@@ -148,7 +148,7 @@ services:
       - ./mcp:/srv/mcp:ro
       # uv's cache for PEP 723 script dependencies.
       - ./data/uv-cache:/srv/data/uv-cache
-      # Read-only host views for the admin 「성능 모니터링」 page (services/perf/host.py):
+      # Read-only host views for the admin Performance page (services/perf/host.py):
       # host and per-container CPU, memory, disk and network. No docker socket;
       # leave both out to run without host figures.
       - /proc:/host/proc:ro
