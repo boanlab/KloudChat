@@ -1959,6 +1959,87 @@ def strip_json_residue(slides: list[dict]) -> list[int]:
     return changed
 
 
+#: the writer's own JSON in slide words: 「[ { "slide_id": "slide-cover」, 「{"notes": …」 (a
+#: lecture's JSON example names other keys and stays)
+_JSON_FRAGMENT = re.compile(
+    r'(?:[\[{]\s{0,4})+\\?"(?:slide_?id|slides|title|subtitle|bullets|layout|notes|'
+    r'speaker_notes|body|rows|chart|items|columns|metrics|id)\\?"\s{0,4}[:,\]}]'
+    r'|\\?"slide_id\\?"')
+#: a spoken sentence's end: punctuation, or a Korean final ending (「…입니다」 「…해요」)
+_SPOKEN_END = re.compile(r"(?:[.!?。…]|(?<=[다요죠까]))[\"'」』”’)\]]{0,2}(?=\s|$)")
+
+
+def finished_notes(notes: str) -> str:
+    """Notes cut back to their last whole sentence (「… 412ms에서 38ms로」 broke off); notes
+    with no sentence end at all are left as they are."""
+    text = (notes or "").rstrip()
+    ends = list(_SPOKEN_END.finditer(text))
+    if not text or (ends and ends[-1].end() == len(text)):
+        return text
+    # no whole sentence at all: nothing to cut back to, kept as written
+    return text[: ends[-1].end()].rstrip() if ends else text
+
+
+def _leaf_clean(text: str) -> str:
+    """Slide words without the writer's internal text: a JSON fragment and what follows it,
+    the 「이 장을 쓰지 못했습니다」 stand-in."""
+    if m := _JSON_FRAGMENT.search(text):
+        text = text[: m.start()].rstrip(" \t-—:,")
+    return "" if text.strip().strip("> ") == UNWRITTEN else text
+
+
+def strip_internal_text(slides: list[dict]) -> list[int]:
+    """Internal text the writer left on slides taken off: JSON fragments, the unwritten
+    stand-in (kept only while nothing else is on the slide), broken-off notes."""
+    changed: list[int] = []
+    for index, slide in enumerate(slides):
+        before = json.dumps(slide, ensure_ascii=False, sort_keys=True, default=str)
+        body = str(slide.get("body") or "").strip()
+        for key, value in list(slide.items()):
+            if key in ("id", "layout", "image", "diagram", "chart", "accent", "body"):
+                continue
+            if isinstance(value, str):
+                slide[key] = _leaf_clean(value)
+            elif isinstance(value, list):
+                kept = []
+                for item in value:
+                    if isinstance(item, str):
+                        item = _leaf_clean(item)
+                        if not item.strip():
+                            continue
+                    elif isinstance(item, list):
+                        item = [_leaf_clean(c) if isinstance(c, str) else c for c in item]
+                    kept.append(item)
+                slide[key] = kept
+        if body == UNWRITTEN:
+            # the stand-in goes once anything else is on the slide
+            slide.pop("body")
+            if not has_content(slide):
+                slide["body"] = UNWRITTEN
+        elif body:
+            slide["body"] = _leaf_clean(str(slide["body"])) or ""
+            if not slide["body"]:
+                slide.pop("body")
+        if isinstance(slide.get("notes"), str):
+            slide["notes"] = finished_notes(slide["notes"])
+        if json.dumps(slide, ensure_ascii=False, sort_keys=True, default=str) != before:
+            changed.append(index)
+    return changed
+
+
+def unshippable(slide: dict) -> str:
+    """Why a slide must not reach the person as it is, or ''."""
+    if str(slide.get("body") or "").strip() == UNWRITTEN:
+        return "unwritten"
+    if not has_content(slide):
+        return "empty"
+    words = "\n".join(quality_gate._strings({k: v for k, v in slide.items()
+                                             if k not in ("image", "diagram")}))
+    if _JSON_FRAGMENT.search(words) or UNWRITTEN in words:
+        return "internal"
+    return ""
+
+
 _TITLE_LABELS = ("발표\\s{0,2}제목", "논문\\s{0,2}제목", "제목", "title")
 _AUTHOR_LABELS = ("저자", "발표자", "발표\\s{0,2}자", "연구자", "authors?", "presenter")
 
@@ -3056,8 +3137,10 @@ async def _write_slides(
             "deck written with %d slides against a requested %d: %s",
             len(slides), wanted, " · ".join(str(s.get("title") or "") for s in slides),
         )
+    # the writer's internal text off first, so emptied notes are filled below
+    internal = set(strip_internal_text(slides))
     # dropped request numbers restored onto a related slide
-    touched = (
+    touched = internal | (
         set(restate_missing_facts(slides, request))
         | set(keep_listed_items(slides, request))
         | set(fill_csv_categories(slides, list(untrusted_context or []), request))
@@ -3071,9 +3154,9 @@ async def _write_slides(
     touched |= set(end_without_next(slides))
     # placeholders or name-only parts rewritten once
     needs = requested_contents(slides, request)
-    # given-up slides retried once
+    # given-up or empty slides retried once
     for index, slide in enumerate(slides):
-        if str(slide.get("body") or "").strip() == UNWRITTEN:
+        if unshippable(slide):
             needs[index] = (
                 f"This slide (「{slide.get('title') or ''}」) has not been written yet. Find what "
                 "its title speaks of in the material and fill the screen text and the speaker "
@@ -3177,6 +3260,8 @@ async def _write_slides(
         touched |= set(mend_scaled_numbers(slides, vocabulary))
     # still-long lines cut, full text in notes
     touched |= set(fit_long_bullets(slides))
+    # rewritten slides and late fills (a bullet added under the stand-in) cleaned again
+    touched |= set(strip_internal_text(slides))
     # numbers naming computed values take those values
     recomputed: list[str] = []
     if computed:
@@ -3186,6 +3271,15 @@ async def _write_slides(
             log.warning("deck values set back to the computed ones: %s", recomputed[:12])
     for index in sorted(touched):
         yield {"type": "slide", "slide": auto_fit(slides[index]), "done": True}
+    # never shipped: a slide still empty or holding internal text after its one rewrite
+    gone = [(i, s) for i, s in enumerate(slides) if unshippable(s)]
+    if gone and len(gone) < len(slides):
+        slides[:] = [s for s in slides if not unshippable(s)]
+        names = ", ".join(f"「{s.get('title') or i + 1}」" for i, s in gone)
+        log.warning("deck slides dropped unwritten: %s", names)
+        yield {"type": "step", "id": "dropped", "status": "error",
+               "label": f"내용을 채우지 못한 장 {len(gone)}개를 뺐습니다",
+               "detail": f"다시 써도 비어 있거나 내부 문구가 남아 뺀 장: {names}"}
     findings = quality_gate.deck_findings(slides)
     findings += [{"code": "long_line", "where": f"{i + 1}장", "detail": lines[0][:160]}
                  for i, lines in long_bullets(slides).items()]
@@ -3363,6 +3457,8 @@ async def write(
     image_model: dict | None = None,
     #: Research before the outline.
     web_search: bool = True,
+    #: a calculation skill is on: derived values by code even when the request names none
+    code_calc: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `title`, `slide`, `deck`, `usage`; planning pass emits `proposal` only."""
     # outline usage apart (may be another model)
@@ -3445,14 +3541,19 @@ async def write(
             )
         # derived numbers from code
         computed = ""
-        if calc.needed(request, document_context):
+        # unasked values only from the person's own words and files, never search pages
+        asked = calc.needed(request, document_context)
+        unasked = (not asked and code_calc
+                   and calc.needed(request, list(untrusted_context or []), always=True))
+        if asked or unasked:
             yield {
                 "type": "step", "id": "calc", "label": "코드로 수치 계산 중", "status": "running"
             }
             # planner's reading of the material
             computed, spent, status = await calc.computed_values(
-                request, document_context, complete=_complete, model=outline_model or model,
-                api_key=api_key,
+                request, document_context if asked else list(untrusted_context or []),
+                complete=_complete, model=outline_model or model, api_key=api_key,
+                always=bool(unasked),
             )
             plan_rules.count(usage, spent, planned_apart=bool(outline_model))
             if computed:
@@ -4873,6 +4974,16 @@ def to_markdown(title: str, slides: list[dict]) -> str:
             for pair in slide.get(key) or []:
                 if isinstance(pair, (list, tuple)) and len(pair) >= 2:
                     parts.append(f"- {pair[0]} — {pair[1]}")
+        # pattern slides (`slide_patterns`): items and columns are their whole screen
+        for item in slide.get("items") or []:
+            cells = ([str(c).strip() for c in item if str(c).strip()]
+                     if isinstance(item, list) else [_entry_line(item)])
+            if cells and cells[0]:
+                parts.append("- " + " — ".join(cells))
+        for column in slide.get("columns") or []:
+            if isinstance(column, dict):
+                entries = [str(i).strip() for i in column.get("items") or [] if str(i).strip()]
+                parts.append(f"- **{column.get('title') or ''}** " + " · ".join(entries))
         if chart := slide.get("chart"):
             # chart data as a table, not a 「P1: 0 · 7 · 0」 line
             categories = [str(c) for c in chart.get("categories") or []]

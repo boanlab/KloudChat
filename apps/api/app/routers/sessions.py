@@ -3238,6 +3238,27 @@ async def _skill_specs(
         agent_owner=agent.owner_id if agent is not None else "")
 
 
+_LINK = re.compile(r"https?://[^\s<>()\[\]「」\"']+")
+
+
+def _source_call(applied, tools: list[Tool], content: str) -> tuple[str, dict[str, Any]] | None:
+    """`(tool, {param: link})` for a connector tool an applied skill declares, when this message
+    gives a link and the tool's only required input is a URL; None otherwise."""
+    link = _LINK.search(content or "")
+    if link is None:
+        return None
+    by_name = {tool.name: tool for tool in tools}
+    for skill in applied:
+        for name in getattr(skill, "required_tools", ()) or ():
+            tool = by_name.get(name)
+            if tool is None or not name.startswith("mcp__") or tool.read_only is not True:
+                continue
+            required = list((tool.parameters or {}).get("required") or [])
+            if len(required) == 1 and "url" in str(required[0]).lower():
+                return name, {required[0]: link.group(0).rstrip(".,;:!?)」")}
+    return None
+
+
 def _skill_keys(applied, specs: dict[str, skill_specs.Spec]) -> tuple[str, ...]:
     """Turn's skills keyed for the checks: catalogue key, or `skill:<id>`."""
     out = []
@@ -4579,6 +4600,11 @@ async def send_message(
                 _run_deck(
                     template=render_template,
                     traced=material_turn,
+                    # turned-on check skills run as the server's checks, as on a report
+                    check_keys=check_keys,
+                    code_calc=bool((skills_bring.process_with(
+                        agent_row.process_settings if agent_row is not None else None) or {}
+                                    ).get("code_calc")),
                     may_ask=not proceed_as_is and not _brings_material(content),
                     figures_plan=approved_figures,
                     image_model=image_model,
@@ -4686,6 +4712,15 @@ async def send_message(
         place = weather_location(content)
         if place:
             preset_call = ("weather", {"location": place})
+    # a skill's declared connector given its link here: the server fetches it first, and the
+    # answer is made of that result or says it could not get it
+    source_fetch = (
+        _source_call(workspace.applied_skills, tools, content)
+        if session.kind is SessionKind.chat and not preflight_tool and not calculation_required
+        else None
+    )
+    if source_fetch is not None and preset_call is None and forced_tool is None:
+        preset_call = source_fetch
     #: published bot's answer when its material doesn't cover the question
     not_covered: str | None = None
     if (
@@ -4767,6 +4802,8 @@ async def send_message(
                 routing_audit_id=routing_audit_id,
                 # short lookups: server presets; long ones: forced planning hop
                 preset_call=preset_call,
+                source_tools=(frozenset({source_fetch[0]}) if source_fetch is not None
+                              else frozenset()),
                 preset_empty_answer=not_covered,
                 freshness_request=content if fresh_fact else None,
                 caveat_request=(
@@ -5187,6 +5224,8 @@ async def _answer_turn(
     calculation_expression: str | None = None,
     #: server's own first call (`agent.run_turn`)
     preset_call: tuple[str, dict[str, Any]] | None = None,
+    #: tools the answer is made of (`agent.run_turn`)
+    source_tools: frozenset[str] = frozenset(),
     #: whole answer when that material search finds nothing
     preset_empty_answer: str | None = None,
     freshness_request: str | None = None,
@@ -5338,6 +5377,7 @@ async def _answer_turn(
                     if calculation_expression is not None else {}
                 ),
                 preset_call=preset_call,
+                **({"source_tools": source_tools} if source_tools else {}),
                 **({"preset_empty_answer": preset_empty_answer} if preset_empty_answer else {}),
                 **({"freshness_request": freshness_request} if freshness_request else {}),
                 **({"caveat_request": caveat_request} if caveat_request else {}),
@@ -6177,6 +6217,10 @@ async def _run_deck(
     template: design_templates.DesignTemplate | None = None,
     #: the person's files or pasted material: slide values are traced to them
     traced: bool = False,
+    #: attached check skills (`check_skills.attached`); the grounding one traces slides too
+    check_keys: tuple[str, ...] = (),
+    #: derived values computed by code even when the request names none (a calculation skill)
+    code_calc: bool = False,
     outline_model: dict | None = None,
     #: `None` plans and offers; otherwise written as approved
     approved_plan: dict | None = None,
@@ -6224,9 +6268,10 @@ async def _run_deck(
         "user_id": user_id, "model": model, "outline_model": outline_model,
         "project_id": project_id, "routing": routing, "skills_event": skills_event,
         "context_steps": list(context_steps or []), "carry_from": carry_from,
-        "carry_note": carry_note, "traced": traced,
+        "carry_note": carry_note, "traced": traced, "check_keys": list(check_keys),
         "writer": {
             "web_search": web_search, "figures_plan": figures_plan, "image_model": image_model,
+            "code_calc": code_calc,
             "request": request, "approved_plan": approved_plan, "may_ask": may_ask,
             "model": model["id"], "outline_model": (outline_model or {}).get("id", ""),
             "trusted_context": list(trusted_context or []),
@@ -6342,6 +6387,9 @@ async def _document_write(work: PipelineBundle, service: Any, payload: str
             # code-computed values, shown in the stage record
             work.computed.values = str(event.get("values") or "")
             continue
+        if event["type"] == "sources":
+            # what the slides may cite, for the grounding check after writing
+            work.material.sources = list(event.get("sources") or [])
         yield event
     if work.plan.proposal is not None or work.findings.questions:
         raise PipelineStop("proposal offered" if work.plan.proposal is not None else "needs")

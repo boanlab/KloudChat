@@ -91,6 +91,8 @@ class AppliedSkill:
     name: str
     catalog_key: str | None
     estimated_tokens: int
+    #: tools the skill declares it needs
+    required_tools: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1060,6 +1062,7 @@ async def assemble(
             name=skill.name,
             catalog_key=metadata["catalog_key"],
             estimated_tokens=metadata["estimated_tokens"],
+            required_tools=tuple(metadata["required_tools"]),
         )
         for skill, metadata in resolved
     )

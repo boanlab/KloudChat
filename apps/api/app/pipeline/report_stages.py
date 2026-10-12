@@ -576,7 +576,8 @@ class Calc(Base):
 
     def skip(self, bundle: Bundle) -> str:
         # person's material only, not search pages
-        if not calc.needed(bundle.request.text, [_given(bundle)]):
+        if not calc.needed(bundle.request.text, [_given(bundle)],
+                           always=bundle.spec.settings.code_calc):
             return "nothing to compute in the request"
         return ""
 
@@ -586,7 +587,7 @@ class Calc(Base):
         # planner model: more accurate values (93% vs 84%), always closes code block
         computed, spent, status = await calc.computed_values(
             req.text, bundle.material.grounds, complete=report._complete, model=req.judge,
-            api_key=req.api_key)
+            api_key=req.api_key, always=bundle.spec.settings.code_calc)
         _count(bundle, spent, planner=True)
         if computed:
             bundle.computed.values = computed

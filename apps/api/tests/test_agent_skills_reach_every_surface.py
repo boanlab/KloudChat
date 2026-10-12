@@ -44,7 +44,8 @@ from app.services import (
 @pytest.mark.parametrize(("key", "surfaces"), [
     ("date-calc", {"chat", "report"}),
     ("quote-calc", {"chat", "report"}),
-    ("calc-check", {"chat", "report"}),
+    ("calc-check", {"chat", "report", "slides"}),
+    ("grounding-check", {"chat", "report", "slides"}),
     ("deep-research", {"chat", "report"}),
     ("source-check", {"chat", "report"}),
     ("copy-editing", {"chat", "report", "slides"}),

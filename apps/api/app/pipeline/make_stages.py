@@ -40,7 +40,7 @@ _WRITE = ("document.sections", "document.data", "plan.proposal", "findings.quest
 
 for _stage in (
     Hosted("deck-write", "model", "_deck_write", reads=("request",),
-           writes=(*_WRITE, "computed.values"), needs="writer"),
+           writes=(*_WRITE, "computed.values", "material.sources"), needs="writer"),
     Hosted("deck-carry", "compute", "_deck_carry", reads=("request", "document.sections"),
            writes=("document.sections",), needs="carry_from"),
     Hosted("deck-save", "io", "_deck_save", reads=("request", "document", "usage", "wire"),

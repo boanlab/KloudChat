@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from collections.abc import AsyncIterator
 from zoneinfo import ZoneInfo
 
@@ -368,31 +369,48 @@ def ground_slides(slides: list[dict], *, material: str, computed: list[str],
     return out, found
 
 
+#: a figure in the person's words
+_FIGURES = re.compile(r"(?<![\w.])\d[\d,]{0,15}(?:\.\d{1,6})?")
+
+
+def _material(bundle: Bundle) -> str:
+    """The request and the person's files, as the writer read them."""
+    writer = bundle.request.turn.get("writer") or {}
+    return "\n".join([bundle.request.text, *(writer.get("untrusted_context") or [])])
+
+
 class DeckGrounding(Base):
     """Slide values traced to the person's material and code results; the rest → blanks."""
 
     name = "deck-ground"
     kind = "check"
-    reads = ("request", "computed.values", "document.sections")
+    reads = ("request", "computed.values", "material.sources", "document.sections")
     writes = ("document.sections",)
 
     def skip(self, bundle: Bundle) -> str:
-        if not bundle.request.turn.get("traced"):
-            return "no material of the person's on this turn"
+        turn = bundle.request.turn
+        if not turn.get("traced"):
+            if TRACE not in (turn.get("check_keys") or ()):
+                return "no material of the person's on this turn"
+            # the grounding skill on: the request's own figures are the material
+            if len(_FIGURES.findall(_material(bundle))) < 4:
+                return "no material to trace against"
         if not bundle.document.sections:
             return "no slides"
         return ""
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
-        req = bundle.request
-        writer = req.turn.get("writer") or {}
-        material = "\n".join([req.text, *(writer.get("untrusted_context") or [])])
+        from app.services import report
+
+        material = _material(bundle)
         today = dt.datetime.now(ZoneInfo(settings.timezone)).date()
         options = {**check_skills.options_for(today, surface="deck"), "person": material,
                    "requirements": True}
         before = bundle.document.sections
+        computed = [bundle.computed.values or "",
+                    *(report._source_text(row) for row in bundle.material.sources or [])]
         slides, found = ground_slides(
-            before, material=material, computed=[bundle.computed.values or ""], options=options)
+            before, material=material, computed=computed, options=options)
         if not found:
             return
         bundle.document.sections = slides
