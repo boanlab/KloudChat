@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from sqlalchemy import func
+from sqlalchemy import case, func, or_
 from sqlmodel import col, delete, select
 
 from app.core.config import settings
@@ -51,6 +52,9 @@ from app.schemas.admin import (
     SmtpTestRequest,
     SystemSettingsIn,
     UpdateUserRequest,
+    UserPage,
+    UserSummary,
+    UserTabCounts,
 )
 from app.schemas.auth import UserOut
 from app.schemas.workspace import ApiKeyOut
@@ -580,6 +584,126 @@ async def list_users(admin: AdminUser, db: DbSession):
     rank = {UserStatus.pending: 0, UserStatus.active: 1, UserStatus.suspended: 2}
     users.sort(key=lambda u: rank.get(u.status, 3))
     return [UserOut.of(u) for u in users]
+
+
+UserSort = Literal["name", "status", "credits", "last_active"]
+
+
+def _escape_like(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _user_search(q: str):
+    """Name or address containing `q`, case-insensitively; None when there is nothing to find."""
+    needle = q.strip()[:200]
+    if not needle:
+        return None
+    pattern = f"%{_escape_like(needle)}%"
+    return or_(
+        col(User.name).ilike(pattern, escape="\\"),
+        col(User.email).ilike(pattern, escape="\\"),
+    )
+
+
+def _user_order(sort: UserSort, order: Literal["asc", "desc"]) -> list:
+    """The sort column, then fixed tie-breakers ending at the id, so a page never shifts."""
+    desc = order == "desc"
+    name = func.lower(col(User.name))
+    if sort == "name":
+        key = [name.desc() if desc else name.asc(), func.lower(col(User.email))]
+    elif sort == "status":
+        rank = case(
+            (col(User.status) == UserStatus.pending, 0),
+            (col(User.status) == UserStatus.active, 1),
+            else_=2,
+        )
+        # Within a status the newest sign-up first, as the list always read.
+        key = [rank.desc() if desc else rank.asc(), col(User.created_at).desc(), name]
+    elif sort == "credits":
+        used = col(User.credits_used)
+        key = [used.desc() if desc else used.asc(), name]
+    else:
+        seen = col(User.last_active_at)
+        # Never-active accounts last either way.
+        key = [
+            case((seen.is_(None), 1), else_=0),
+            seen.desc() if desc else seen.asc(),
+            name,
+        ]
+    return [*key, col(User.id)]
+
+
+@router.get("/users/page", response_model=UserPage)
+async def list_users_page(
+    admin: AdminUser,
+    db: DbSession,
+    tab: Literal["all", "pending", "active", "suspended"] = Query("all", alias="status"),
+    q: str = Query("", max_length=200),
+    sort: UserSort = "status",
+    order: Literal["asc", "desc"] = "asc",
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """The 사용자 list a page at a time: search, then tab, then order, then the page."""
+    search = _user_search(q)
+    searched = [search] if search is not None else []
+
+    per_status = (
+        await db.exec(
+            select(User.status, func.count()).where(*searched).group_by(col(User.status))
+        )
+    ).all()
+    counts = UserTabCounts()
+    for state, n in per_status:
+        key = state.value if isinstance(state, UserStatus) else str(state)
+        if key in ("pending", "active", "suspended"):
+            setattr(counts, key, n)
+        counts.all += n
+
+    where = [*searched]
+    if tab != "all":
+        where.append(col(User.status) == UserStatus(tab))
+    total = counts.all if tab == "all" else getattr(counts, tab)
+    rows = (
+        await db.exec(
+            select(User)
+            .where(*where)
+            .order_by(*_user_order(sort, order))
+            .offset((page - 1) * limit)
+            .limit(limit)
+        )
+    ).all()
+
+    whole = (
+        await db.exec(
+            select(
+                func.count(),
+                func.coalesce(func.sum(col(User.monthly_credits)), 0),
+                func.coalesce(func.sum(col(User.credits_used)), 0),
+                func.min(col(User.cycle_resets_at)),
+            )
+        )
+    ).one()
+    pending = (
+        await db.exec(
+            select(func.count()).select_from(User).where(col(User.status) == UserStatus.pending)
+        )
+    ).one()
+    summary = UserSummary(
+        users=whole[0],
+        pending=pending,
+        credits_granted=int(whole[1]),
+        credits_used=int(whole[2]),
+        next_reset=whole[3],
+    )
+    return UserPage(
+        items=[UserOut.of(u) for u in rows],
+        total=total,
+        page=page,
+        limit=limit,
+        counts=counts,
+        summary=summary,
+    )
 
 
 @router.post("/users/{user_id}/approve", response_model=UserOut)

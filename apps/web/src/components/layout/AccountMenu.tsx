@@ -28,9 +28,8 @@ function AccountItems() {
   const navigate = useNavigate()
   const t = useT()
   const user = useStore((s) => s.user)
-  const users = useStore((s) => s.users)
   const logout = useStore((s) => s.logout)
-  const pendingUsers = users.filter((u) => u.status === 'pending').length
+  const pendingUsers = useStore((s) => s.usersPage?.summary.pending ?? 0)
   const unreadIssues = useIssues((s) => s.unread)
   const reviews = useBotAttention((s) => s.reviews)
   // Current conversation, attachable to a 「문의·신고」 report.
@@ -116,8 +115,8 @@ function AccountItems() {
 export function AccountMenu() {
   const t = useT()
   const user = useStore((s) => s.user)
-  const users = useStore((s) => s.users)
-  const pendingUsers = users.filter((u) => u.status === 'pending').length + useBotAttention((s) => s.reviews)
+  const pendingSignups = useStore((s) => s.usersPage?.summary.pending ?? 0)
+  const pendingUsers = pendingSignups + useBotAttention((s) => s.reviews)
   const unreadIssues = useIssues((s) => s.unread)
 
   return (
@@ -168,8 +167,8 @@ export function AccountMenu() {
 export function AccountMenuCompact() {
   const t = useT()
   const user = useStore((s) => s.user)
-  const users = useStore((s) => s.users)
-  const pendingUsers = users.filter((u) => u.status === 'pending').length + useBotAttention((s) => s.reviews)
+  const pendingSignups = useStore((s) => s.usersPage?.summary.pending ?? 0)
+  const pendingUsers = pendingSignups + useBotAttention((s) => s.reviews)
   const unreadIssues = useIssues((s) => s.unread)
 
   return (

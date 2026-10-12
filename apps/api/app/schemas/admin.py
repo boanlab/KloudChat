@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import EmailStr, Field
 
 from app.models.user import UserRole
-from app.schemas.auth import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, Wire
+from app.schemas.auth import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, UserOut, Wire
 from app.schemas.workspace import ApiKeyOut
 
 
@@ -153,3 +153,33 @@ class GovernanceIn(Wire):
     retention_days: int | None = Field(default=None, ge=0, le=3650)
     #: 0 off; capped at a day (refresh cookie shorter beyond)
     idle_timeout_minutes: int | None = Field(default=None, ge=0, le=1440)
+
+
+class UserTabCounts(Wire):
+    """Accounts per 사용자 tab, the search applied."""
+
+    all: int = 0
+    pending: int = 0
+    active: int = 0
+    suspended: int = 0
+
+
+class UserSummary(Wire):
+    """Whole-instance figures for the cards above the list; no tab or search applies."""
+
+    users: int = 0
+    pending: int = 0
+    credits_granted: int = 0
+    credits_used: int = 0
+    next_reset: datetime | None = None
+
+
+class UserPage(Wire):
+    """One page of the 사용자 list; `total` counts the rows the tab and search select."""
+
+    items: list[UserOut]
+    total: int
+    page: int
+    limit: int
+    counts: UserTabCounts
+    summary: UserSummary

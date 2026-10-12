@@ -83,6 +83,8 @@ import type {
   StoreSkill,
   ToolCatalogEntry,
   User,
+  UserListQuery,
+  UserPage,
 } from '@/types'
 import { fileSize, uid } from '@/lib/utils'
 import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
@@ -302,6 +304,7 @@ interface State {
   cycleSidebar: () => void
 
   // ── data ──────────────────────────────────────────────────────────────
+  /** 관리자 › 사용자: the page on screen. */
   users: User[]
   sessions: Session[]
   jobs: Job[]
@@ -599,7 +602,12 @@ interface State {
 
   // ── admin ─────────────────────────────────────────────────────────────
   usersLoading: boolean
-  loadUsers: () => Promise<void>
+  /** Totals, tab counts and window of the page in `users`. */
+  usersPage: Omit<UserPage, 'items'> | null
+  /** The query `users` answers; a change to an account reloads it. */
+  usersQuery: UserListQuery | null
+  /** One page of the list; without a query, the last one again. */
+  loadUsers: (query?: UserListQuery) => Promise<void>
   approveUser: (id: string, monthlyCredits?: number) => Promise<void>
   rejectUser: (id: string) => Promise<void>
   suspendUser: (id: string) => Promise<void>
@@ -1045,6 +1053,8 @@ export const useStore = create<State>((set, get) => ({
       // Never leave one account's work on screen for the next.
       sessions: [],
       users: [],
+      usersPage: null,
+      usersQuery: null,
       projects: [],
       artifacts: [],
       skills: [],
@@ -1110,6 +1120,8 @@ export const useStore = create<State>((set, get) => ({
 
   users: [],
   usersLoading: false,
+  usersPage: null,
+  usersQuery: null,
   models: [],
   modelsLoading: false,
   modelsSettled: false,
@@ -1291,12 +1303,17 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  loadUsers: async () => {
-    set({ usersLoading: true })
+  loadUsers: async (query) => {
+    const asked = query ?? get().usersQuery
+    if (!asked) return
+    set({ usersLoading: true, usersQuery: asked })
     try {
-      set({ users: await adminApi.users(), usersLoading: false })
+      const { items, ...page } = await adminApi.usersPage(asked)
+      // A later query has been asked meanwhile: its answer is the one to show.
+      if (get().usersQuery !== asked) return
+      set({ users: items ?? [], usersPage: page.counts ? page : null, usersLoading: false })
     } catch {
-      set({ usersLoading: false })
+      if (get().usersQuery === asked) set({ usersLoading: false })
     }
   },
 
@@ -2664,30 +2681,38 @@ export const useStore = create<State>((set, get) => ({
     })
   },
 
-  approveUser: (id, monthlyCredits) => applyUserChange(set, adminApi.approve(id, monthlyCredits)),
-  rejectUser: (id) => applyUserChange(set, adminApi.reject(id)),
-  suspendUser: (id) => applyUserChange(set, adminApi.suspend(id)),
-  reinstateUser: (id) => applyUserChange(set, adminApi.reinstate(id)),
-  rotateLitellmKey: (id) => applyUserChange(set, adminApi.rotateLitellmKey(id)),
-  setUserModels: (id, models) => applyUserChange(set, adminApi.setUserModels(id, models)),
+  approveUser: (id, monthlyCredits) =>
+    applyUserChange(set, get, adminApi.approve(id, monthlyCredits), true),
+  rejectUser: (id) => applyUserChange(set, get, adminApi.reject(id), true),
+  suspendUser: (id) => applyUserChange(set, get, adminApi.suspend(id), true),
+  reinstateUser: (id) => applyUserChange(set, get, adminApi.reinstate(id), true),
+  rotateLitellmKey: (id) => applyUserChange(set, get, adminApi.rotateLitellmKey(id)),
+  setUserModels: (id, models) => applyUserChange(set, get, adminApi.setUserModels(id, models)),
   removeUser: async (id, purgeFiles = true) => {
     await adminApi.removeUser(id, purgeFiles)
     set((s) => ({ users: s.users.filter((u) => u.id !== id) }))
+    // Counts and the page's window moved.
+    void get().loadUsers()
   },
   setUserCredits: (id, monthlyCredits) =>
-    applyUserChange(set, adminApi.setCredits(id, monthlyCredits)),
-  updateUser: (id, patch) => applyUserChange(set, adminApi.updateUser(id, patch)),
-  resetUserPassword: (id, password) => applyUserChange(set, adminApi.resetPassword(id, password)),
-  replaceLitellmKey: (id, key) => applyUserChange(set, adminApi.replaceLitellmKey(id, key)),
+    applyUserChange(set, get, adminApi.setCredits(id, monthlyCredits), true),
+  updateUser: (id, patch) => applyUserChange(set, get, adminApi.updateUser(id, patch), true),
+  resetUserPassword: (id, password) =>
+    applyUserChange(set, get, adminApi.resetPassword(id, password)),
+  replaceLitellmKey: (id, key) => applyUserChange(set, get, adminApi.replaceLitellmKey(id, key)),
 }))
 
-/** Admin mutations return the updated row; a self-edit also updates `user`. */
-async function applyUserChange(set: Set, pending: Promise<User>) {
+/**
+ * Admin mutations return the updated row; a self-edit also updates `user`. A change that can
+ * move the row (status, name, credits) reloads the page: tab counts and order follow it.
+ */
+async function applyUserChange(set: Set, get: Get, pending: Promise<User>, reorders = false) {
   const updated = await pending
   set((s) => ({
     users: s.users.map((u) => (u.id === updated.id ? updated : u)),
     user: s.user?.id === updated.id ? updated : s.user,
   }))
+  if (reorders) void get().loadUsers()
 }
 
 /* ── helpers ─────────────────────────────────────────────────────────── */

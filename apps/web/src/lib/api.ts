@@ -45,6 +45,8 @@ import type {
   Step,
   ToolResultAnswer,
   User,
+  UserListQuery,
+  UserPage,
 } from '@/types'
 
 import { objectParticle, topicParticle } from './formCheck'
@@ -556,6 +558,18 @@ export const adminApi = {
   testSmtp: (to?: string) =>
     call<{ ok: boolean; detail?: string }>('/admin/settings/smtp-test', body({ to: to ?? null })),
   users: () => call<User[]>('/admin/users'),
+  /** One page of the 사용자 list; the server searches, filters and sorts. */
+  usersPage: (query: UserListQuery) => {
+    const params = new URLSearchParams({
+      status: query.status,
+      sort: query.sort,
+      order: query.order,
+      page: String(query.page),
+      limit: String(query.limit),
+    })
+    if (query.q.trim()) params.set('q', query.q.trim())
+    return call<UserPage>(`/admin/users/page?${params}`)
+  },
   /** Approval and allowance together: an active account without credits reads as a bug. */
   approve: (id: string, monthlyCredits?: number) =>
     call<User>(`/admin/users/${id}/approve`, body({ monthlyCredits: monthlyCredits ?? null })),
