@@ -37,6 +37,7 @@ from app.routers import (
     workspace,
 )
 from app.services import (
+    api_key_usage,
     bootstrap,
     connector_defaults,
     litellm,
@@ -95,6 +96,7 @@ async def lifespan(app: FastAPI):
     # published bots: retention, pausing unaffordable bots
     bots = asyncio.create_task(publishing.watch())
     reader = asyncio.create_task(ocr_jobs.watch())
+    key_usage = asyncio.create_task(api_key_usage.watch())
     # cross-replica stop delivery; no extra connection for a single replica
     stop_listener = (
         asyncio.create_task(stop_signal.listen(sessions.fire_stop_locally))
@@ -108,6 +110,7 @@ async def lifespan(app: FastAPI):
     sweeper.cancel()
     bots.cancel()
     reader.cancel()
+    key_usage.cancel()
     if stop_listener is not None:
         stop_listener.cancel()
     if perf_task is not None:

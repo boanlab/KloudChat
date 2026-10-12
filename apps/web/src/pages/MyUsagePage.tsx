@@ -42,7 +42,7 @@ export function MyUsagePage() {
   const other = data?.totals.otherCredits ?? 0
   // Charges outside a conversation: no kind entry.
   const surface = (kind: string) =>
-    kind === 'bot' ? t('공개 챗봇') : kind in kindMeta ? t(kindMeta[kind as keyof typeof kindMeta].label) : t('기타')
+    kind === 'bot' ? t('공개 챗봇') : kind === 'api' ? t('API 키') : kind in kindMeta ? t(kindMeta[kind as keyof typeof kindMeta].label) : t('기타')
 
   return (
     <>

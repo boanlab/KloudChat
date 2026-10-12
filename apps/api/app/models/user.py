@@ -132,6 +132,9 @@ class CreditLedger(SQLModel, table=True):
     """Append-only deductions and refills."""
 
     __tablename__ = "credit_ledger"
+    __table_args__ = (
+        Index("ux_credit_ledger_external_ref", "external_ref", unique=True),
+    )
 
     id: str = Field(default_factory=_uuid, primary_key=True)
     user_id: str = Field(foreign_key="users.id", index=True)
@@ -149,6 +152,8 @@ class CreditLedger(SQLModel, table=True):
     unit: str | None = Field(default=None)
     #: published-bot turn: billed to owner, shown separately
     publication_id: str | None = Field(default=None)
+    #: proxy request id of a member-held API key call; one row per request
+    external_ref: str | None = Field(default=None, max_length=120)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 

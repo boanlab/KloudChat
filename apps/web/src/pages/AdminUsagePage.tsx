@@ -91,7 +91,7 @@ export function AdminUsagePage() {
   const cr = (v: number) => `${v.toLocaleString()} cr`
   // Charges outside a conversation: no kind entry.
   const surface = (kind: string) =>
-    kind === 'bot' ? t('공개 챗봇') : kind in kindMeta ? t(kindMeta[kind as SessionKind].label) : t('기타')
+    kind === 'bot' ? t('공개 챗봇') : kind === 'api' ? t('API 키') : kind in kindMeta ? t(kindMeta[kind as SessionKind].label) : t('기타')
   // Free models bill nothing: zero credits → plot requests.
   const byCredits = (usage?.totals.credits ?? 0) > 0
   const daily = (usage?.daily ?? []).map((d) => ({

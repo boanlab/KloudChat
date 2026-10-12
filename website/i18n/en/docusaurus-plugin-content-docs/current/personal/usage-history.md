@@ -13,7 +13,7 @@ Check it in the account menu → **Usage**.
 ![Usage screen](/img/guide/usage.png)
 
 - It provides the remaining credits and the allowance for this month, a period selector, and a daily trend of credits or answer counts.
-- It shows usage separately **by model**, **by screen** (Chat, Reports, Slides, Images, and so on), and **by API key**. API key usage is counted separately but shares the same monthly limit.
+- It shows usage separately **by model**, **by screen** (Chat, Reports, Slides, Images, API keys, and so on), and **by API key**. Requests sent with an API key are added to this month's credits and to each breakdown within a few minutes, and share the same monthly limit.
 - Voice transcription is shown separately in seconds and material indexing in chunks.
 
 ## Credits
