@@ -154,7 +154,7 @@
   }
  },
  {
-  "key": "99cd35761ab0d2283a6c970f",
+  "key": "41d70a7cc9340cbac6296101",
   "stage": "figures",
   "kind": "diagram_plan",
   "head": "아래는 보고서의 부분들이다. 각 부분의 제목과 내용을 읽고, **글보다 도식이 더\n잘 전달하는 곳**에만 도식을 하나씩 제안하라.\n\n원래 요청:\n그린텍스타일 인사팀이랑 미팅한 메모야. 이걸로 교육 제안서 만들어 줘. 1인당 비용도 보여 줘.\n\n[미팅 메모 — 그린텍스타일(주) 인사팀, ",
@@ -198,14 +198,14 @@
   }
  },
  {
-  "key": "40db61d4976d0a410bdfe6dc",
+  "key": "506a163115f8cbb951be2fa5",
   "stage": "verify",
-  "kind": "judge",
+  "kind": "verify-neutral",
   "head": "Below are the material and the document's sentences with numbers. Pick only the sentences where the number\nbelongs to a different target in the material (anothe",
-  "reply": "{\n  \"items\": [\n    {\n      \"sentence\": \"강사료 항목의 세부 산출 과정은 다음과 같습니다. 보조강사 비용은 반당 1 명씩 4 개 반, 즉 4 명을 배치하여\",\n      \"number\": \"4\",\n      \"belongs_to\": \"반의 개수 (4 개 반)\",\n      \"why\": \"문장은 '4 개 반'이라는 대상에 대해 언급하고 있으나, 문장 끝이 끊겨 '4 명'이라는 숫자가 보조강사 인력 배치의 최종 결과로 오해받기 쉽지만, 실제로는 반의 수를 나타내는 숫자임. (다만, 이 문장은 숫자가 잘못 연결된 것으로 보기 어렵고, 문장이 불완전함. 따라서 다른 문장을 확인함)\"\n    },\n    {\n      \"sentence\": \"강사료는 주강사 4 반 × 16 시간 × 200,000 원 = 12,800,000 원, 보조강사 4 반 × 16 시간 × 50,000 원 = 3,200,000 원으로 계산되며, 두 항목을 합산한 강사료 소계는 16,000,000 원이 됩니다.\",\n      \"number\": \"16,000,000\",\n      \"belongs_to\": \"강사료 소계 (주강사 + 보조강사)\",\n      \"why\": \"문장은 보조강사 비용 (3,200,000 원) 을 포함하여 강사료 총계를 16,000,000 원으로 잘못 계산하고 제시함. 자료에 따르면 견적 산정 시 보조강사 비용은 포함되지 않았거나 (또는 별도 항목), 제시된 견적표의 '강사료' 항목 금액 (12,800,000 원) 은 주강사 비용만 해당함. 문장은 보조강사 비용을 강사료에 합산하여 16,000,000 원이라는 잘못된 총액을 제시함.\"\n    },\n    {\n      \"sentence\": \"교재 1 인당 20,000 원 (120 명 기준 총 2,400,000 원) 은 본 견적 항목에 포함되지 않습니다. 교재비 2,400,000 원이 추가될 경우 공급가액 (VAT 별도) 은 15,200,000 원이 되며, 이는 여전히 예산 [수치] 대비 여유가 있는 범위입니다.\",\n      \"number\": \"15,200,000\",\n      \"belongs_to\": \"교재비 포함 시 예상 공급가액\",\n      \"why\": \"문장은 교재비를 추가한 금액을 시나리오 (another scenario) 로 제시하고 있으나, '예산 [수치]'라는 표현이 구체적이지 않고, 15,200,000 원이라는 숫자가 실제 견적서 (12,800,000 원) 와 혼동될 소지가 있음. 하지만 이는 '가정 시나리오'이므로 오류로 보기 어려움. 다시 확인.\"\n    },\n    {\n      \"sentence\": \"4 개 반의 전체 교육은 순차적으로 진행될 때 총 8 일 (16 시간 × 4 반 = 64 시간) 이 소요되며, 이 기간 동안 주강사와 보조강사가 120 명 전체를 담당합니다.\",\n      \"number\": \"8\",\n      \"belongs_to\": \"총 소요 일수 (4 개 반 × 2 일)\",\n      \"why\": \"문장은 '16 시간 × 4 반 = 64 시간'이라는 계산식을 통해 '8 일'을 유도하고 있음. 그러나 자료에 따르면 반당 2 일 (하루 8 시간, 총 16 시간) 이므로, 4 개 반을 순차 진행할 경우 총 8 일 (2 일 × 4 반) 이 맞음. 하지만 '16 시간 × 4 반 = 64 시간'을 '8 일'로 연결하는 논리는 '하루 8 시간'이라는 조건이 암묵적으로 적용된 것임. 이 문장 자체는 논리적으로 맞을 수 있음. 다시 확인.\"\n    },\n    {\n      \"sentence\": \"주강사는 16 시간 중 총 12 시간을 투입하여 (12 × 4 = 48? 반당 주강사 1 명 16 시간 투입) 전반적인 흐름을 잡아주며\",\n      \"number\": \"12\",\n      \"belongs_to\": \"주강사의 실제 투입 시간 (오류)\",\n      \"why\": \"문장은 주강사가 16 시간 중 12 시간만 투입된다고 잘못 서술하고 있음. 자료에 따르면 '반당 2 일 (하루 8 시간, 총 16 시간)'이며, 강사료 산정 기준도 '4 × 16 회×시간'으로 16 시간 전체를 투입하는 것으로 명시되어 있음. 따라서 '12 시간'이라는 숫자는 자료의 '16 시간'과 다른 대상 (또는 잘못된 계산) 을 가리키고 있음.\"\n    },\n    {\n      \"sentence\": \"강사료는 주강사 4 반 × 16 시간 × 200,000 원 = 12,800,0",
+  "reply": "{\"items\": []}",
   "usage": {
    "prompt_tokens": 2266,
-   "completion_tokens": 546
+   "completion_tokens": 4
   }
  },
  {
@@ -231,6 +231,17 @@
   }
  },
  {
+  "key": "037b5edfe525ed2c2d033928",
+  "stage": "verify",
+  "kind": "verify-neutral",
+  "head": "확정 수치: 대상 인원 120명, 반 구성 30명씩 4개 반, 예산 2,000만 원, 주강사 단가 200,000원, 보조강사 단가 50,000원, 교재 단가 20,000원, 견적 공급가액(VAT 별도) 12,800,000원, 견적 부가세 1,280,000원, 견적 합계(VAT 포함) 1",
+  "reply": "아니오",
+  "usage": {
+   "prompt_tokens": 126,
+   "completion_tokens": 1
+  }
+ },
+ {
   "key": "bf65f3e31fb93ee20695f3cc",
   "stage": "verify",
   "kind": "repair",
@@ -242,14 +253,25 @@
   }
  },
  {
-  "key": "e2f00d0bc7e0dc668d7d6ca1",
+  "key": "069af8104f49075eb50bcf4f",
   "stage": "verify",
-  "kind": "repair",
+  "kind": "verify-neutral",
   "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
-  "reply": "[\"견적서에는 주강사 시간당 200,000원이 적용되어 강사료 12,800,000원이 포함되며, 1인당 비용은 부가세 별도 기준 106,667원, 부가세 포함 기준 117,333원입니다.\", \"견적서에 포함된 강사료 12,800,000원은 주강사 인건비만을 의미하며, 보조강사 인건비 및 교재 1인당 20,000원(120명 기준 총 2,400,000원)은 본 견적 항목에 포함되지 않습니다.\", \"교재비 2,400,000원이 추가될 경우 공급가액(VAT 별도)은 15,200,000원이 되며, 이는 여전히 예산 20,000,000원 대비 여유가 있는 범위입니다.\"]",
+  "reply": "[\"견적서에는 주강사 시간당 200,000원, 보조강사 시간당 50,000원이 적용되어 강사료 12,800,000원이 포함되며, 1인당 비용은 부가세 별도 기준 106,667원, 부가세 포함 기준 117,333원입니다.\", \"교재비 2,400,000원이 추가될 경우 공급가액(VAT 별도)은 15,200,000원이 되며, 이는 여전히 예산 [수치] 대비 여유가 있는 범위입니다.\"]",
   "usage": {
-   "prompt_tokens": 1112,
-   "completion_tokens": 80
+   "prompt_tokens": 1041,
+   "completion_tokens": 54
+  }
+ },
+ {
+  "key": "8c834e0d8fa85ae7a9aeade5",
+  "stage": "verify",
+  "kind": "verify-neutral",
+  "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
+  "reply": "[\"고객사에서 제시하신 \\\"VAT 별도 2,000만 원 안쪽\\\"이라는 표현은 본 견적의 공급가액(VAT 별도) 12,800,000원 기준으로는 여유가 있으나, 실제 계약서상 부가세 1,280만원이 합산된 총액 14,080,000원에 대한 예산 편입 여부가 달라질 수 있습니다.\", \"16시간의 집중 교육이 곧 실무 적용으로 이어지지는 않으므로, 교육 후 1~[수치] 후의 업무 성과나 활용도를 점검할 수 있는 간단한 평가 항목을 [담당자]와 같이 선정해 주시기를 바랍니다.\"]",
+  "usage": {
+   "prompt_tokens": 1043,
+   "completion_tokens": 67
   }
  },
  {
@@ -261,17 +283,6 @@
   "usage": {
    "prompt_tokens": 928,
    "completion_tokens": 16
-  }
- },
- {
-  "key": "aa036ebc485d2f73be96bd87",
-  "stage": "verify",
-  "kind": "repair",
-  "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
-  "reply": "[\"16시간의 집중 교육이 곧 실무 적용으로 이어지지는 않으므로, 교육 후 1~[수치] 후의 업무 성과나 활용도를 점검할 수 있는 간단한 평가 항목을 [담당자]와 같이 선정해 주시기를 바랍니다.\"]",
-  "usage": {
-   "prompt_tokens": 960,
-   "completion_tokens": 28
   }
  }
 ]

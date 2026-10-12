@@ -3680,10 +3680,24 @@ _ASSESSMENT_LINE = re.compile(
 )
 
 
+#: sentence leaning on the one before: 「이 요건은」, 「따라서」, 「둘째,」
+_LEANS_BACK = re.compile(
+    r"^(?:[-*+]\s+)?(?:이|그|저|이런|이러한|이와|그런|그러한|그와|두|세|네|이때|그때|이에|이로써|"
+    r"따라서|그러므로|그래서|그러나|하지만|다만|또한|즉|한편|반면|둘째|셋째|넷째|다섯째|"
+    r"마지막으로)(?=[\s,])"
+)
+#: section heading asking a question: 「Q7. 신청 기간과 방법은?」
+QUESTION_HEADING = re.compile(r"\?\s*$|^\s*(?:Q|문)\s?\d{1,2}\b")
+#: line asking a question: 「**Q2. 신청 기간은?**」
+_QUESTION_LINE = re.compile(r"\?\s*(?:\*\*|__)?\s*$")
+
+
 def trim_restatements(
-    body: str, earlier: list[str], *, keep_items: bool = False
+    body: str, earlier: list[str], *, keep_items: bool = False, question: bool = False
 ) -> tuple[str, list[str]]:
-    """`(body, cut sentences)`: pure restatements and filler dropped; blocks kept, never emptied."""
+    """`(body, cut sentences)`: pure restatements and filler dropped; blocks kept, never emptied.
+    An answer's lead sentence (after a question heading or line) and any sentence the next one
+    leans on (「이 …」, 「둘째,」) stay."""
     if not body.strip():
         return body, []
     # pool grows sentence by sentence
@@ -3691,9 +3705,10 @@ def trim_restatements(
     earlier_numbers = set(_NUMBER_FACT.findall(earlier_text))
     earlier_words = _stems(earlier_text)
     has_table = any(line.strip().startswith("|") for line in body.split("\n"))
-    cut: list[str] = []
-    out_lines: list[str] = []
+    # per line: (line, sentences or None, kept flags)
+    rows: list[tuple[str, list[str] | None, list[bool]]] = []
     in_block = False
+    answer_lead = question
     for line in body.split("\n"):
         if line.strip().startswith("```"):
             in_block = not in_block
@@ -3707,10 +3722,12 @@ def trim_restatements(
         if (in_block or line.strip().startswith("|") or line.strip().startswith("#")
                 or not line.strip() or _ASSESSMENT_LINE.search(line)
                 or keep_items and _LIST_LEAD.match(line).group(0).strip()):
-            out_lines.append(line)
+            rows.append((line, None, []))
+            if line.strip().startswith("#") and _QUESTION_LINE.search(line):
+                answer_lead = True
             continue
         sentences = [x for x in _SPACED_SENTENCE_END.split(line) if x.strip()]
-        kept: list[str] = []
+        flags: list[bool] = []
         for sentence in sentences:
             text = sentence.strip()
             numbers = set(_NUMBER_FACT.findall(text))
@@ -3736,21 +3753,47 @@ def trim_restatements(
                 and re.search(r"(?:위|아래|다음|이)\s*표(?:는|에서|를|가|의)", text)
                 and re.search(r"(?:보여|나타내|정리|제시|요약)", text)
             )
-            if restated or dangling or _FILLER.search(text):
-                cut.append(text)
-                continue
-            kept.append(sentence)
-            earlier_numbers |= numbers
-            earlier_words |= words
-        if sentences and not kept and not any(x.strip() for x in out_lines):
+            keep = (answer_lead or _QUESTION_LINE.search(text)
+                    or not (restated or dangling or _FILLER.search(text)))
+            # the question's answer is the sentence after it
+            answer_lead = bool(_QUESTION_LINE.search(text))
+            flags.append(bool(keep))
+            if keep:
+                earlier_numbers |= numbers
+                earlier_words |= words
+        rows.append((line, sentences, flags))
+    # a cut sentence the next one leans on comes back; chains walk backwards
+    chain: list[tuple[int, int] | None] = []
+    for r, (line, sentences, _) in enumerate(rows):
+        if sentences is None:
+            if line.strip():
+                chain.append(None)
+            continue
+        chain.extend((r, k) for k in range(len(sentences)))
+    for i in range(len(chain) - 2, -1, -1):
+        here, after = chain[i], chain[i + 1]
+        if here is None or after is None:
+            continue
+        flags_here, flags_after = rows[here[0]][2], rows[after[0]][2]
+        if (not flags_here[here[1]] and flags_after[after[1]]
+                and _LEANS_BACK.match(rows[after[0]][1][after[1]].strip())):
+            flags_here[here[1]] = True
+    cut: list[str] = []
+    out_lines: list[str] = []
+    for line, sentences, flags in rows:
+        if sentences is None:
+            out_lines.append(line)
+            continue
+        if sentences and not any(flags) and not any(x.strip() for x in out_lines):
             # never emptied
-            kept = [sentences[0]]
-            cut.remove(sentences[0].strip())
+            flags[0] = True
+        cut.extend(x.strip() for x, f in zip(sentences, flags, strict=True) if not f)
+        kept = [x for x, f in zip(sentences, flags, strict=True) if f]
         if kept and kept == sentences:
             out_lines.append(line)
         elif kept:
             # indent kept; marker kept if the first sentence went
-            lead = (_LINE_LEAD if sentences[0] in kept else _LIST_LEAD).match(line).group(0)
+            lead = (_LINE_LEAD if flags[0] else _LIST_LEAD).match(line).group(0)
             out_lines.append(lead + " ".join(k.strip() for k in kept))
         elif not sentences:
             out_lines.append(line)

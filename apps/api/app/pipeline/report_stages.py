@@ -1038,7 +1038,8 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     trimmed: list[str] = []
     if not is_reference:
         body, trimmed = report.trim_restatements(
-            body, earlier, keep_items=doc_format is not None and doc_format.lists == "gaejo"
+            body, earlier, keep_items=doc_format is not None and doc_format.lists == "gaejo",
+            question=bool(report.QUESTION_HEADING.search(str(section["heading"] or ""))),
         )
     if trimmed:
         log.info("trimmed %d sentence(s) from %r: %s", len(trimmed), section["heading"],
