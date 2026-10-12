@@ -6,10 +6,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 
-from app.services import report, report_checks, skill_scripts
-from app.services.verify import Doc, find
 from test_a_quote_leaves_out_what_the_rfp_rules_out import KAFI_REPLY, KAFI_REQUEST, KAFI_RFP
 from test_minutes_keep_to_the_material import MEMO_3, REQUEST_3, SPOKEN
+
+from app.services import report, report_checks, skill_scripts
+from app.services.verify import Doc, find
 
 # ── client-proposal-3: 85,000,000 is the 공급가액 ──────────────────────────
 
