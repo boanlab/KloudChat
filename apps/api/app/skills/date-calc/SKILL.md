@@ -13,6 +13,7 @@ Do not count dates in your head: a date comes from code (the script in chat, the
 1. Weekends and holidays are for display only. Move a date only when the material says so.
 2. A date that does not settle to a single day stays 「미정」, an inaudible one 「[기한]」, with the original wording kept in 비고. Write a repeat like 「매주 월요일(2026-10-19부터)」.
 3. An offset counts from the date said before it in the same sentence, or from the event it names when the text dates that event elsewhere: 「개강은 3월 2일」 and 「매 학기 개시 30일 전」 give 2027-01-31.
+4. A date the writing needs that sits inside or after a given one — the Saturday of a Friday-to-Sunday works, the first billing day a rule applies to after the release, the delivery day 「계약 후 3주」 — is computed and written with its weekday (「10월 17일(토)」); never handed back to the reader as 「금요일 다음 날」 and never left blank.
 
 Weekends and public holidays follow 「관공서의 공휴일에 관한 규정」 (amended April 2026: 노동절·제헌절 added, substitute holidays included) and
 the 우주항공청 「2026년 월력요항」「2027년 월력요항」 (published 2026-06-29). Holidays outside 2026–2027 are not included (`holidays_unknown`).
@@ -33,4 +34,4 @@ the 우주항공청 「2026년 월력요항」「2027년 월력요항」 (publis
 After the answer is written, the server runs `dates` over it (`post_check`): a date the person's relative words resolve to (「개강 2027-03-02, 30일 전」 → 2027-01-31) that the answer missed by a few days, or left as a blank, is set to the worked-out date with its weekday. Every chat answer gets the same check for offsets counted from a date the person gave, with or without this skill.
 
 [보고서에서]
-The server resolves the material's relative dates, lead times and periods before you write and gives them in the 「확정 날짜(코드 계산)」 block. Copy every date and weekday from that block; never count one yourself. A date the block does not give stays in the material's own words, or 「[기한]」 where the report needs a date.
+The server resolves the material's relative dates, lead times and periods before you write and gives them in the 「확정 날짜(코드 계산)」 block. Copy every date and weekday from that block; never count one yourself. A date the block does not give stays in the material's own words, or 「미정」 where the report needs a date.

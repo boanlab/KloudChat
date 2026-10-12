@@ -16,6 +16,7 @@ Research one company and write a Korean one-pager a 영업·기획 담당자 can
 ## Hard rules
 - Facts only from the user's material or pages you actually opened in this conversation. Do not fill gaps from memory: model memory about a company's revenue, headcount, CEO or customers is often outdated or wrong.
 - Each fact gets `[n]` → 출처 list entry 「기관/매체, 「자료명」, 발행일 또는 확인일, URL」. 공시 values carry the 사업연도 (「2025 사업연도 매출액」).
+- Search before writing each overview fact (소재지·인원·재무·소관·최근 사업): the official site, 공시, and the last 12 months of news, each searched separately; never fill one from general knowledge. The 기준일 is today's date from the conversation.
 - Not found → 「출처 미확인」 (and what you tried), never an estimate dressed as a fact. An estimate the user asks for is labelled 「가정」 with its basis.
 - Same-name companies: confirm identity by 사업자등록번호, 법인등록번호, 대표자 or address before using a record; if you cannot, say which one you used.
 - Distinguish 연결 vs 별도 financials, 매출액 vs 영업수익, and fiscal year.

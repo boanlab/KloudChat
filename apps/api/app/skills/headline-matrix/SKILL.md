@@ -28,14 +28,14 @@ Produce many headline candidates that differ by angle (why someone would click),
 | 작동 원리 | 어떻게 되는지 | |
 | 정체성 | 누구를 위한 것인지 | |
 Every angle, not only the fact angles, must stay true to the material: no stretching a fact into a bigger promise (「앱에서 영수증 사진으로 청구」 ≠ 「서류 없이 청구」「청구 서류 필요 없어요」; 「의료비 보장」 ≠ 「병원비 걱정 끝」), no implied results the material does not report (「출고 오류가 줄어든 제조사의 공통점」 needs a reported result), no invented offers or deadlines.
-If an angle needs a fact the material does not have, do not invent one: either skip the angle and say why, or write the headline with a placeholder (「[고객 수]곳이 쓰는 회의록 도구」) and mark it.
+If an angle needs a fact the material does not have, do not invent one: write that angle's headlines without the fact, or skip the angle and say why. No bracket placeholders in headlines.
 
 ## Procedure
 1. List the facts from the material (short). Decide limit and unit for the channel. Common limits (공백 포함): 네이버 파워링크 제목 15자, Google 반응형 검색광고 제목 30(한글은 2로 셈 → 15자), 메타 광고 제목 권장 40자, 메일 제목 권장 30자. For other channels use `copy-check` script `length` with `{"list": true}`.
 2. Get the grid: `run_skill_script` skill `headline-matrix`, script `matrix`, args `{"count": 25, "facts": [...], "limit": 15, "unit": "chars"}` (`chars_dw` for Google Ads). It returns how many per angle and which angles need facts.
 3. Write the headlines into the grid. Vary the shape inside each angle: question, statement, imperative, number-first, audience-first. Natural Korean; no em dash, no 「!!」, no 혁신적·획기적, no 「단순한 ~가 아닙니다」.
 4. Check: call `matrix` again with `"headlines": [{"angle": "호기심", "text": "..."}, ...]`. Fix every item in `over`, `duplicates`, `near_duplicates`, `repeated_shapes`, `short_angles`, then check once more.
-5. Run `copy-check` script `claims` on all headlines with the material — again after every rewrite, since fixes introduce new numbers (「출고 전 3초」) and mechanisms (「스캔 한 번에 끝」). Remove or placeholder every `block` finding.
+5. Run `copy-check` script `claims` on all headlines with the material — again after every rewrite, since fixes introduce new numbers (「출고 전 3초」) and mechanisms (「스캔 한 번에 끝」). Remove or rewrite without the claim every `block` finding.
 6. Mark 3 recommended picks to test first, from different angles, with one-line reasons.
 
 ## Output format
@@ -43,8 +43,8 @@ Use the `table_markdown` from the last `matrix` run (각도 | # | 헤드라인 |
 ```
 ### 먼저 시험할 3개
 1. #n … — 이유
-### 비운 칸·빈칸
-- 증거: 자료에 고객 수·사례가 없어 [고객 수]로 둠
+### 뺀 각도
+- 증거: 자료에 고객 수·사례가 없어 수치 없이 씀
 ```
 Never write character counts yourself; copy them from the script.
 

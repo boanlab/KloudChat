@@ -29,7 +29,7 @@ Before writing, check the material for these. If any is missing, ask in ONE mess
 - What readers must do, and by when (or that nothing is needed) — `[할 일·기한]`
 - Where to ask: 부서·담당자·내선·메일 — `[문의처]`
 - For maintenance: what will not work during it — `[영향 범위]`
-Never fill these from general knowledge: no invented dates, weekdays, times, names, departments, extension numbers, emails, URLs, versions, amounts or headcounts. 「다음 주」「내일」 in the material become a date only if the base date is known (use `date-calc`); otherwise keep `[날짜]`.
+Never fill these from general knowledge: no invented dates, weekdays, times, names, departments, extension numbers, emails, URLs, versions, amounts or headcounts. 「다음 주」「내일」 in the material become a date only if the base date is known (use `date-calc`); otherwise keep the material's words (「다음 주 중」).
 
 ## Structure (notice / change / maintenance)
 1. 한 줄 요지 — what, for whom, from when, in one sentence: 「11월 1일부터 출장비 정산은 새 경비 시스템에서만 받습니다.」
@@ -37,7 +37,7 @@ Never fill these from general knowledge: no invented dates, weekdays, times, nam
 3. 누가·언제부터 — 대상, 시행일 or 일시(요일 포함), 경과 조치 if any.
 4. 해야 할 일 — numbered steps with deadline; if nothing: 「별도로 하실 일은 없습니다.」
 5. 문의처 — exactly as in the material.
-Optional: 붙임/링크 (only those given), 자주 묻는 질문 2–4개 when the change raises obvious questions — answers only from the material; otherwise 「[담당 부서]에서 [날짜]까지 안내」.
+Optional: 붙임/링크 (only those given), 자주 묻는 질문 2–4개 when the change raises obvious questions — answers only from the material; otherwise 「정해지는 대로 다시 안내드리겠습니다」.
 - Dates as 「2026. 11. 1.(일)」 or 「11월 1일(일)」, times as 「02:00~06:00」; one format through the notice.
 - Lead with the reader's action, not the background. No 「~관련하여 알려드립니다」 openers, no 「많은 관심 부탁드립니다」, no apology for a routine change.
 - Bad news and inconvenience: say it plainly once (「점검 시간에는 메일을 보낼 수 없습니다」), then what helps.
@@ -53,7 +53,7 @@ Problems: 1–3 sentences — what is blocking, and what help is needed. 「없�
 Readable in under a minute. Labels may be 「진행·계획·문제」 if the user writes in Korean. No emoji unless the user's team uses them.
 
 ## FAQ
-`Q:` one sentence / `A:` 1–2 sentences from official material. If the material does not answer it, write 「확인 중입니다. [담당 부서]에서 [날짜]까지 안내합니다.」 and flag questions that need a decision by management.
+`Q:` one sentence / `A:` 1–2 sentences from official material. If the material does not answer it, write 「확인 중입니다. 정해지는 대로 다시 안내드리겠습니다.」 and flag questions that need a decision by management.
 
 ## Check (always, before answering)
 `run_skill_script` skill `internal-comms`, script `check`:

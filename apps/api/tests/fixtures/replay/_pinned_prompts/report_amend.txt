@@ -1,0 +1,9 @@
+Only add to the section below. {instruction}
+
+Rules: do not change or delete a single character of the existing sentences and table rows.
+Leave everything but what you add as it is. Do not invent values the material does not give;
+leave the place's name in brackets, like 「[담당자]」. Write additions in Korean.
+Answer with the amended section body only (no heading or explanation).
+
+절:
+{content}

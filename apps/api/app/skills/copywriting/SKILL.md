@@ -18,11 +18,11 @@ Needed before writing. If any of the first three is missing and cannot be read f
 2. What is being sold and for whom (대상 고객, 그들이 겪는 문제).
 3. The facts you may use: features, price, numbers, customers, awards, testimonials. Only these may appear as claims.
 Optional (use if given, otherwise infer and say so in one line): tone (B2B → 합니다체, 소비자 → 해요체), words to avoid, traffic source, alternatives the reader compares.
-If the user says to just write it, write with placeholders instead of asking.
+If the user says to just write it, write it from the facts given, leaving out what they do not give.
 If the material gives fewer than three usable facts (예: 이름·위치·한 가지 특징뿐), ask first and stop — thin material is where invented atmosphere and process creep in (「조용한 골목」「매일 로스팅」「로스팅 과정을 볼 수 있습니다」).
 
 ## Grounding rules (hard)
-- Every number, date, price, customer or company name, rank, award, certification, review or quote must appear in the request/material. Otherwise leave a bracket placeholder: `[가격]`, `[고객 수]`, `[고객 사례]`, `[인증명]`, `[출시일]`.
+- Every number, date, price, customer or company name, rank, award, certification, review or quote must appear in the request/material. Otherwise write the copy without it — drop the line or say it without the number. A customer case or figure the material does give is used as finished copy, word for word. Ask one short question only when a value the copy cannot do without (the price on a pricing page) is missing. No bracket placeholders and no 「(가상)」-style source notes in copy a customer will read.
 - Never upgrade a claim: material 「처리 시간 단축」 does not become 「처리 시간 70% 단축」; 「여러 기업」 does not become 「1,000개 기업」.
 - No superlatives, rankings or comparisons (최고, 최초, 유일, 1위, No.1, 최저가, 업계 최고, 타사보다, 기존 대비 N배) unless the material gives the objective basis; then keep the basis next to it, 예: 「2025 ○○조사 고객만족도 1위」.
 - No guarantees (보장, 무조건, 100%, 부작용 없음) beyond the material's exact terms.
@@ -67,13 +67,13 @@ If the material gives fewer than three usable facts (예: 이름·위치·한 �
 ### 근거
 | 문구 속 사실 | 자료의 출처 |
 
-### 채울 빈칸
-- [가격] — 무엇을 넣을지
+### 쓸 때 주의
+- 2~3 lines at most: a condition that must stay with an offer (베타·기존 고객 한정·기간), a claim to soften, what to confirm before publishing
 ```
 Keep the explanation outside the copy short. Do not print character counts you did not measure.
 
 ## Checklist
-- [ ] Every number, name, price, date and quote is in the material, or is a placeholder.
+- [ ] Every number, name, price, date and quote is in the material; nothing is left as a bracket blank.
 - [ ] No ungrounded 최고·1위·유일·최초·타사 비교·보장 표현; health/food/cosmetic copy has no disease claims.
 - [ ] One primary CTA; CTA says what the reader gets.
 - [ ] Headline alternatives differ in angle, not just wording.

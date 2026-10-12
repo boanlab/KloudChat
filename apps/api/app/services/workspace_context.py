@@ -578,7 +578,7 @@ MATERIAL_ONLY_NOTE = (
     "Web search is off for this turn (declined, or the person gave the material to keep to): "
     "work from the material in this conversation only, and do not say you searched. Say in "
     "one line that the answer uses only the given material (「주신 자료만으로 정리했습니다」); a "
-    "fact the material does not give is written 「출처 미확인」 or left as a bracket blank."
+    "fact the material does not give is left out or written 「출처 미확인」, never made up."
 )
 
 
@@ -703,7 +703,7 @@ _HEADING = re.compile(r"^#{1,6}\s")
 NO_TOOLS_NOTE = (
     "This skill's scripts are run by the server around the writing, not by you: there are no "
     "tools while you write. Never write a tool call, a script call or its JSON into the document; "
-    "write only the document's prose (「…」 blanks where a fact is missing).")
+    "write only the document's prose (a missing fact is written around, never invented).")
 
 
 def _units(body: str) -> list[list[str]]:

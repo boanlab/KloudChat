@@ -13,6 +13,8 @@ tables: true
 listed: false
 ---
 Check sourcing with code, not by eye. A model reviewing its own research misses unsourced numbers.
+- A fact with a link you opened is sourced: never mark it 「출처 미확인」. The mark is only for what you could not open or find.
+- What the text calls 확인 필요 in one place is not stated as settled anywhere else in it.
 
 출처: 새로 씀(KloudChat). 「근거 없는 일반론」 목록은 이 저장소의 lint `_FILLER`·copy-check 의 방식을 시장 조사 문장에 맞춰 옮겼다.
 
@@ -37,7 +39,7 @@ Check sourcing with code, not by eye. A model reviewing its own research misses 
 
 ## Procedure
 1. Run the script that fits the output (usually `sources`; add `claims` for tables, `frame` for frameworks).
-2. Fix every blocking finding: add the source you actually have, label it 가정 with its basis, or replace the value with 「출처 미확인」/a placeholder. Never fix a finding by inventing a source.
+2. Fix every blocking finding: add the source you actually have, label it 가정 with its basis, or replace the value with 「출처 미확인」 (a sentence that holds without it, never a bare bracket blank). Never fix a finding by inventing a source.
 3. Run once more. Report the script's final summary line, not your own count.
 
 [보고서에서]

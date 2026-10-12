@@ -20,8 +20,12 @@ agent adds its own in the agent form (「빠진 정보 질문」). The server me
    `{"type": "regex", "pattern": "...", "when": "..."}` or `{"type": "judge"}` (decided by the server only).
 2. If `findings` in the result is empty, write without asking. Otherwise ask the questions (at most 4) all at once, each with what is
    missing and why it is needed. Do not ask the same question twice in a row.
-3. When the user answers, write using the answer as material. On 「있는 자료로 진행」, follow the result's `rule`: leave those slots as
-   bracketed blanks (「[회의 일자]」「[부가세 기준]」) and do not invent them.
+3. When the user answers, write using the answer as material. On 「있는 자료로 진행」, follow the result's `rule`: do not invent those
+   facts; write sentences that hold without them, 「미정」 in a table cell with one 「확인 필요」 line, and brackets only for what the
+   person fills in themselves (a head field such as 「[작성자]」).
+4. Ask only what the writing cannot go on without. A fact the request already states in other words (「다음 주 목요일(10/15)」 is a
+   date; a pasted abstract and table name the talk's subject) is answered, and a fact with a sensible default (기한 없는 할 일 →
+   「미정」) is written with the default rather than asked.
 
 ## 서버가 쓰는 인터페이스
 

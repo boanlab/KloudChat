@@ -1915,8 +1915,13 @@ def date_matches(found: tuple[int | None, int, int], entry: dict) -> bool:
                for p in pool)
 
 
+#: what an empty owner/deadline cell is told to hold: a value never invented, nor a bracket blank
+EMPTY_OWNER = "담당 칸이 비었다 — 이름, 자료에 없으면 「미정」(표 아래 「확인 필요」 한 줄)"
+EMPTY_DUE = "기한 칸이 비었다 — 날짜, 자료에 없으면 「미정」(표 아래 「확인 필요」 한 줄)"
+
+
 async def minutes_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict]:
-    """Each action row: owner and due date (「[기한]」 if none given, 「미정」 + reason if deferred), per date-calc."""
+    """Each action row: owner and due date (「미정」 + reason if none given or deferred), per date-calc."""
     found: list[Finding] = []
     bound = [d for d in dates if d.get("status") in ("ok", "repeat")]
     for table in tables(doc.sections):
@@ -1931,9 +1936,9 @@ async def minutes_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict
             who, when = row[owner].strip(" *"), row[due].strip(" *")
             problems: list[str] = []
             if not who:
-                problems.append("담당 칸이 비었다 — 이름, 자료에 없으면 「[담당자]」")
+                problems.append(EMPTY_OWNER)
             if not when:
-                problems.append("기한 칸이 비었다 — 날짜, 자료에 없으면 「[기한]」")
+                problems.append(EMPTY_DUE)
             elif not _DUE_CELL_OK.match(when):
                 if _RELATIVE_WORDS.search(when) or len(when) > 16:
                     problems.append("기한 칸에는 값만 쓴다(날짜(요일)·미정·[기한]) — 원문 표현은 비고로")

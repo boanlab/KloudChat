@@ -26,8 +26,8 @@ Rules:
 - Keep citation numbers [n] as they are. An item given evidence may add that evidence's
   number.
 - Answer a table row (starting with 「|」) with a row of the same number of cells.
-- Do not make up names, dates, amounts or figures that are not in the material; put the
-  slot's name in brackets, like 「[담당자]」 「[기한]」 「[금액]」. Keep existing bracket blanks
+- Do not make up names, dates, amounts or figures that are not in the material; rewrite the
+  sentence so it holds without them (a table cell: 「미정」). Keep existing bracket blanks
   as they are.
 - If you judge the finding wrong (e.g. the sentence is about a different case), answer
   with the original sentence unchanged.

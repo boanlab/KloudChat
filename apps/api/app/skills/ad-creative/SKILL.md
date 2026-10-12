@@ -30,8 +30,10 @@ If the platform is clear and the material has the offer, proceed without asking.
 | Google 반응형 검색광고 | 제목 ×15 / 설명 ×4 / 경로 | 30 / 90 / 15 — 한글은 2자로 셈(한글만이면 15 / 45 / 7자) |
 | Google 동영상 | 제목 / 긴 제목 / 설명 | 30 / 90 / 90 (한글 2자 셈으로 맞춤) |
 
+LinkedIn sponsored content is one set per variant — 도입글 + 헤드라인 + CTA — with its limits from `copy-check` `length` `{"list": true, "channel": "linkedin"}` (an ordinary post's 3,000자 is not the ad limit). Each Meta set names its CTA button and one line of image idea.
+
 ## Grounding and legal rules (hard)
-- Numbers, prices, dates, customer counts, ratings, awards, certifications, reviews: only from the material; otherwise `[가격]`, `[고객 수]`, `[인증명]` or leave the angle out.
+- Numbers, prices, dates, customer counts, ratings, awards, certifications, reviews: only from the material; otherwise write the line without it or leave the angle out — no bracket blanks in upload-ready copy.
 - Keep material facts exact: 「다음 영업일 지급」 must not become 「당일 지급」; a 30-person panel result is stated with its base (「자사 패널 30명 중 27명, 2주 사용」), never as 「90% 효과」.
 - 최상급·순위·비교·보장 (최고, 1위, 유일, 최초, 최저가, 타사 대비, 100%, 보장) only with objective evidence in the material, shown with its source (조사기관·기간). Naver rejects a named competitor in any comparison.
 - Cosmetics: no 미백·주름 개선·재생·치료 unless the material says it is a reviewed 기능성 화장품. Food/건강기능식품: no disease wording; 건강기능식품 ads need 자율심의 — remind the user.
@@ -55,7 +57,7 @@ Per channel, an upload-ready table, counts copied from the `length` result:
 | # | 각도 | 제목 | 글자 | 설명 | 글자 |
 ### 근거·주의
 - 「1+1」: 자료의 10월 31일 기한 그대로
-- 채울 빈칸: [고객 수] …
+- 뺀 각도: 고객 수 — 자료에 없음
 ```
 Then one short note on which 2–3 sets to test first and why.
 
