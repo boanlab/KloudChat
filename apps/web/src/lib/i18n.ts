@@ -147,8 +147,6 @@ const EN: Record<string, string> = {
   '관리자가 승인하면 쓸 수 있습니다.': 'You can start once an administrator approves.',
   '가입하기': 'Sign up',
   '{n}번 더 틀리면 {m}분 동안 잠깁니다.': '{n} more wrong tries locks sign-in for {m} minutes.',
-  '비밀번호는 보안 탭에서 바꿉니다.': 'Change your password on the Security tab.',
-  '비밀번호 변경으로 가기': 'Go to Change password',
   '설정 메뉴': 'Settings menu',
   '시스템 메뉴': 'System menu',
   // 입력 확인 · 필수 칸
