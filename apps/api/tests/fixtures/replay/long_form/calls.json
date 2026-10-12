@@ -154,7 +154,7 @@
   }
  },
  {
-  "key": "41d70a7cc9340cbac6296101",
+  "key": "d3f0a7fedfe0fc89aab38869",
   "stage": "figures",
   "kind": "diagram_plan",
   "head": "아래는 보고서의 부분들이다. 각 부분의 제목과 내용을 읽고, **글보다 도식이 더\n잘 전달하는 곳**에만 도식을 하나씩 제안하라.\n\n원래 요청:\n그린텍스타일 인사팀이랑 미팅한 메모야. 이걸로 교육 제안서 만들어 줘. 1인당 비용도 보여 줘.\n\n[미팅 메모 — 그린텍스타일(주) 인사팀, ",
@@ -198,7 +198,7 @@
   }
  },
  {
-  "key": "c9297cf07b72bdadda58f838",
+  "key": "393a6942e324f713fed4b07d",
   "stage": "verify",
   "kind": "verify-neutral",
   "head": "Below are the material and the document's sentences with numbers. Pick only the sentences where the number\nbelongs to a different target in the material (anothe",
@@ -231,9 +231,20 @@
   }
  },
  {
-  "key": "037b5edfe525ed2c2d033928",
+  "key": "0c3b07c4a08bd6e95867cce7",
   "stage": "verify",
   "kind": "verify-neutral",
+  "head": "확정 수치: 대상 인원 120명, 반 구성 30명씩 4개 반, 예산 2,000만 원, 주강사 단가 200,000원, 보조강사 단가 50,000원, 교재 단가 20,000원, 견적 공급가액(VAT 별도) 12,800,000원, 견적 부가세 1,280,000원, 견적 합계(VAT 포함) 1",
+  "reply": "아니오",
+  "usage": {
+   "prompt_tokens": 135,
+   "completion_tokens": 1
+  }
+ },
+ {
+  "key": "037b5edfe525ed2c2d033928",
+  "stage": "verify",
+  "kind": "judge",
   "head": "확정 수치: 대상 인원 120명, 반 구성 30명씩 4개 반, 예산 2,000만 원, 주강사 단가 200,000원, 보조강사 단가 50,000원, 교재 단가 20,000원, 견적 공급가액(VAT 별도) 12,800,000원, 견적 부가세 1,280,000원, 견적 합계(VAT 포함) 1",
   "reply": "아니오",
   "usage": {

@@ -1335,12 +1335,26 @@ def _chart_marks(raw: Any, series: list[dict], caption: str) -> list[dict]:
     return out[:_MAX_MARKS]
 
 
+
+#: tool-call markup a model wrote into an argument: 「…</caption>\n<parameter name="xLabel">」
+_CALL_MARKUP = re.compile(
+    r"</?(?:parameter|invoke|function|caption|title|xLabel|yLabel)\b[^>]*>", re.I)
+
+
+def _plain_arg(value: object) -> str:
+    """A text argument cut where leaked tool-call markup starts."""
+    text = str(value or "")
+    if m := _CALL_MARKUP.search(text):
+        text = text[:m.start()]
+    return text.strip()
+
+
 async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     """Queue a chart artifact; colours and table derived here."""
     chart_type = str(args.get("chartType") or "bar").strip().lower()
     if chart_type not in ("bar", "line", "stacked"):
         chart_type = "bar"
-    title = str(args.get("title") or "").strip()
+    title = _plain_arg(args.get("title"))
     if not title:
         return ToolResult(content="오류: title 이 필요합니다.", failed=True)
 
@@ -1379,8 +1393,8 @@ async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
             failed=True,
         )
 
-    x_label = str(args.get("xLabel") or "").strip()[:40]
-    caption = str(args.get("caption") or "").strip()[:300]
+    x_label = _plain_arg(args.get("xLabel"))[:40]
+    caption = _plain_arg(args.get("caption"))[:300]
     marks = _chart_marks(args.get("marks"), series, caption)
     ctx.pending_artifacts.append(
         {
@@ -1392,7 +1406,7 @@ async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
                 "caption": caption,
                 "xLabel": x_label,
                 "marks": marks,
-                "yLabel": str(args.get("yLabel") or "").strip()[:40],
+                "yLabel": _plain_arg(args.get("yLabel"))[:40],
                 "series": series,
                 "table": _chart_table(series, x_label),
                 "sourceFile": str(args.get("sourceFile") or "").strip()[:200],

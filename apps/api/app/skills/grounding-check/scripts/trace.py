@@ -177,6 +177,9 @@ GENERIC_OBJECTS = frozenset((
 ))
 #: An object word that is not one: 「10월 5일까지 제출」, 「신청 후 제출」, 「완료한 뒤 제출」.
 NOT_OBJECT = re.compile(r"\d|(?:까지|부터|에게|에서|에|로|으로|은|는|이|가|의|후|뒤|전|때|시|내|한|된|할|하여|하고|해서|면)$")
+#: A verb told as what happens, not asked of the reader: 「제출됩니다」, 「제출이 가능」, 「제출된」.
+DESCRIBED = re.compile(
+    r"\s{0,2}(?:되(?!어\s{0,2}야)|됩|된|됐|돼(?!야)|이\s{0,2}(?:가능|완료|마감|끝))")
 #: Findings that drop their whole sentence rather than leave a blank.
 DROPPED = frozenset({"claim", "requirement"})
 
@@ -1157,6 +1160,9 @@ def _claims(lines: list[str], skip: set[int], sources: Sources) -> list[dict]:
 def _required(part: str, sources: Sources) -> bool:
     """Whether `part` asks the reader to bring or hand in something no source names."""
     for m in REQUIRE.finditer(part):
+        if DESCRIBED.match(part, m.end()):
+            # 「마감에 맞춰 제출됩니다」, 「통합 제출이 가능합니다」: how it goes, not what to bring
+            continue
         obj = re.sub(r"(?:을|를|도|만|등|및)$", "", m.group("obj"))
         if len(obj) < 2 or obj in GENERIC_OBJECTS or NOT_OBJECT.search(obj):
             continue

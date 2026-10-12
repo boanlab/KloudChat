@@ -89,9 +89,16 @@ def scrub(text: str, *, document: bool = True) -> str:
 TOOL_REPORT = re.compile(
     r"`(?:block|check|info|pass|lost|added|risky|format_changed)`"
     r"|(?<![A-Za-z_])(?:block|check|info)\s{0,2}\d{1,4}\s{0,2}건"
+    # a check script's verdict counts: 「block 0 · check 0 · info 1」, 「(block 0)」
+    r"|(?<![A-Za-z_])(?:block|check|info)\s{0,2}\d{1,4}\s{0,2}(?:[·,)]|$)"
+    r"|\(\s{0,2}block\s{0,2}\d{1,4}\s{0,2}\)"
+    r"|(?<![A-Za-z_])block\s{0,2}\)?\s{0,2}판정"
     r"|(?<![A-Za-z_])(?:calculate|run_code|run_skill_script|use_skill|web_search)\s{0,2}[:(（]"
     r"|스크립트(?:가|로|를|의|는|에서|로는)?\s{0,3}(?:[^\s.]{1,12}\s{1,2}){0,4}"
-    r"(?:오류|실행|결과|한도|돌려|돌린|확인했|점검했|냈|검증|남긴|계산)"
+    r"(?:오류|실행|결과|한도|돌려|돌린|확인했|점검했|냈|검증|남긴|계산|지적|항목|판정)"
+    # a check skill named in the answer: 「`copy-check` 로 한도 재검사」
+    r"|`?(?<![A-Za-z_-])(?:copy-check|grounding-check|gap-check|calc-check|source-check|date-calc"
+    r"|release-notes|internal-comms|generic-language-killer|pii-mask|text-fit)(?![A-Za-z_-])`?"
     r"|(?:점검|검사|검증|검산)\s{0,2}(?:스크립트\s{0,2})?(?:최종\s{0,2})?결과\s{0,2}[:：][^\n]{0,200}?"
     r"\d{1,4}\s{0,2}(?:건|개)"
     r"|(?:점검|검사|검증)\s{0,2}(?:스크립트\s{0,2})?(?:최종\s{0,2})?결과\s{0,2}[:：][^\n]{0,16}?문제\s{0,2}없"
@@ -244,15 +251,49 @@ def strip_tool_calls(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", out).strip("\n")
 
 
+#: the material's own test label: 「한빛시청(가상)」, 「(한빛소프트, 가상 — …)」
+_TEST_LABEL = re.compile(r"\(\s{0,2}가상\s{0,2}\)|[(,]\s{0,2}가상\s{0,2}(?:—|-|,|\))")
+#: the person asking for the label in the copy: 「가상임을 표시」, 「(가상) 표기」
+_LABEL_WANTED = re.compile(
+    r"가상[^\n.]{0,10}?(?:임을|이라고|이라는|표시|표기|명시|라고\s{0,2}밝)")
+_LABEL_IN_COPY = re.compile(r"[ \t]?\(\s{0,2}가상\s{0,2}\)")
+
+
+def strip_test_label(text: str, request: str) -> str:
+    """`text` without the 「(가상)」 the material tags its made-up names with for a test; kept
+    when the person asks for the label; fences kept."""
+    if not text or "가상" not in text or not _TEST_LABEL.search(request or "") \
+            or _LABEL_WANTED.search(request or ""):
+        return text
+    out, fenced = [], False
+    for line in text.split("\n"):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        out.append(line if fenced else _LABEL_IN_COPY.sub("", line))
+    return "\n".join(out)
+
+
 #: a prompt section heading echoed back at the top of a rewrite: 「# Answer」
 _ECHOED_HEADING = re.compile(
     r"\A\s{0,3}#{1,6}\s{0,3}(?:Answer|Corrected\s+answer|Answer\s+\(corrected\)|Final\s+answer|"
     r"Rewritten\s+answer)\s{0,3}:?\s*(?:\n|\Z)", re.I)
 
 
+#: the same heading on a line of its own further down, the prompt's problems echoed above it
+_ECHOED_LINE = re.compile(
+    r"^\s{0,3}#{1,6}\s{0,3}(?:Answer|Corrected\s+answer|Answer\s+\(corrected\)|Final\s+answer|"
+    r"Rewritten\s+answer)\s{0,3}:?\s*$", re.I | re.M)
+
+
 def strip_echoed_heading(text: str) -> str:
-    """`text` without a leading prompt heading the model copied (「# Answer」)."""
-    return _ECHOED_HEADING.sub("", text or "", count=1).lstrip("\n") if text else text
+    """`text` without a prompt heading the model copied (「# Answer」), and without the
+    prompt's problem list it echoed above one."""
+    if not text:
+        return text
+    text = _ECHOED_HEADING.sub("", text, count=1).lstrip("\n")
+    if m := _ECHOED_LINE.search(text):
+        text = text[m.end():].lstrip("\n")
+    return text
 
 
 #: a verification block the writer appended: 「**검증 결과**」 then its items

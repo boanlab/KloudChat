@@ -102,7 +102,9 @@ def labelled(answers: dict[str, str], asked: list[dict]) -> dict[str, str]:
     for qid, text in (answers or {}).items():
         label = labels.get(qid, "")
         text = str(text or "").strip()
-        out[qid] = f"{label}: {text}" if label and text and qid.startswith(GAP_PREFIX) else text
+        # 「모르니 빈칸으로」 says nothing about the fact: never 「회의 일시: 모르니 …」
+        fact = qid.startswith(GAP_PREFIX) and not goes_on(text)
+        out[qid] = f"{label}: {text}" if label and text and fact else text
     return out
 
 
@@ -114,7 +116,8 @@ def _label(question: dict) -> str:
 #: "just proceed" reply, not an answer
 _GO_ON = re.compile(
     r"자료대로|있는\s{0,2}(?:자료|것|대로)|그대로\s{0,2}(?:진행|써)|더\s{0,2}(?:있는\s{0,2})?(?:정보|자료)\s{0,2}(?:는|가)?\s{0,2}없|"
-    r"모르겠|몰라|없어요|없어\.?$|진행해\s{0,2}(?:줘|주세요)")
+    r"모르겠|몰라|모르니|모릅니다|없어요|없어\.?$|진행해\s{0,2}(?:줘|주세요)"
+    r"|빈칸으로|비워\s{0,2}(?:두|둬)|자료에\s{0,2}없는\s{0,2}것은|가진\s{0,2}사실의\s{0,2}전부")
 
 
 def goes_on(text: str) -> bool:
@@ -190,7 +193,8 @@ class Outcome:
 
 
 def ground(keys: tuple[str, ...], text: str, *, material: str, computed: list[str],
-           options: dict, specs: Specs = None, evidence: list[str] | None = None) -> Outcome:
+           options: dict, specs: Specs = None, evidence: list[str] | None = None,
+           worked: str = "") -> Outcome:
     """Attached `post` checks over `text`: check, fix once, recheck."""
     outcome = Outcome(text)
     for key in of_stage(keys, "post", specs):
@@ -217,7 +221,7 @@ def ground(keys: tuple[str, ...], text: str, *, material: str, computed: list[st
             pass
         outcome.settled = value_guard.settle(text, outcome.text, value_guard.Evidence.of(
             [material, *computed, str(options.get("person") or ""), *(evidence or [])],
-            answer=text, today=today))
+            answer=text, today=today, worked=worked))
         outcome.text = outcome.settled.text
     return outcome
 
@@ -231,13 +235,15 @@ def ground_sections(keys: tuple[str, ...], sections: list[dict], *, material: st
     """Each section traced; reference list = the sources."""
     total = Outcome("")
     out = []
+    # a total one section works out (「(…) × 1.1 = 46,563,000원」) holds in the others too
+    whole = "\n".join(str(row.get("content") or "") for row in sections)
     for row in sections:
         content = str(row.get("content") or "")
         if not content or _REFERENCES.search(str(row.get("heading") or "")):
             out.append(row)
             continue
         one = ground(keys, content, material=material, computed=computed, options=options,
-                     specs=specs)
+                     specs=specs, worked=whole)
         total.found += one.found
         total.left += one.left
         out.append({**row, "content": one.text} if one.text != content else row)

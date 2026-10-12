@@ -61,6 +61,25 @@ class Rule:
     flags: int = 0
 
 
+def _dash(m: re.Match) -> str | None:
+    """A dash read by what it joins: after a sentence end it goes, after a bold or short
+    label it is a colon, between words a comma; a lone cell or line-start dash stays."""
+    if m.group(0).startswith("!"):
+        return "!"
+    before, after = m.string[:m.start()].rstrip(), m.string[m.end():].lstrip()
+    if not before or not after or before.endswith("|") or after.startswith("|"):
+        return None
+    if re.search(r"\d$", before) and re.match(r"\d", after):
+        return None  # a range: 「10—12」
+    if re.search(r"[.?!。」』\"')\]]$", before) and not before.endswith("**"):
+        return " "
+    lead = re.sub(r"^\s{0,8}(?:[-*+]\s+|\d{1,3}[.)]\s+)?", "", before)
+    if before.endswith("**") or (len(lead) <= 16 and len(lead.split()) <= 2
+                                 and not re.search(r"[.,]|[고며면서다요]$", lead)):
+        return ": "
+    return ", "
+
+
 def _said_plain(m: re.Match) -> str | None:
     """「X다고 할 수 있습니다」→「X습니다/X합니다」, 「X(이)라고 할 수 있다」→「X이다」."""
     stem, kind, end = m.group("stem"), m.group("kind"), m.group("end")
@@ -169,8 +188,8 @@ RULES: tuple[Rule, ...] = (
          "얼마나 쉬운지 사실로 쓴다(「3단계」「5분」). 자료에 없으면 「[단계·시간]」.", "[단계·시간]"),
     Rule("ai", rf"[{_H}]+(?:을|를)\s+(?:경험하세요|만나\s*보세요|느껴\s*보세요)|여정(?:을|이|의)?(?=[\s.,])", "rewrite",
          "광고 상투 표현 대신 독자가 할 일을 쓴다(「14일 무료로 써 보기」 — 자료에 있을 때)."),
-    Rule("ai", r"—|―|!{2,}", "replace", "줄표·느낌표 겹침은 쉼표·마침표로.",
-         replace=lambda m: "!" if m.group(0).startswith("!") else ", "),
+    Rule("ai", r"[ \t]*(?:—|―)[ \t]*|!{2,}", "replace", "줄표·느낌표 겹침은 쉼표·마침표로.",
+         replace=lambda m: _dash(m)),
     Rule("translationese", rf"([{_H}]+)(?:함에|하는\s*데)\s+있어(?:서)?", "replace",
          "「~함에 있어서」「~하는 데 있어」→「~할 때」.", replace=r"\1할 때"),
     Rule("translationese", rf"[{_H}A-Za-z0-9]+(?:에|에게)\s+있어(?:서)?(?=[\s,])(?!\s*(?:못|안|좋|다행))", "check",
@@ -246,7 +265,13 @@ def scan(text: str, material: str = "", categories: list[str] | None = None) -> 
     wanted = set(categories or CATEGORIES)
     flat_material = _norm(material)
     out: list[dict] = []
+    fenced = False
     for k, line in enumerate((text or "").split("\n")):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
         quotes = _quoted(line)
         hits = []
         for order, (rule, rx) in enumerate(_COMPILED):

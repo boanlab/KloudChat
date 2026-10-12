@@ -53,5 +53,16 @@
    "prompt_tokens": 630,
    "completion_tokens": 13
   }
+ },
+ {
+  "key": "c0fb3c58078eba455b7eb620",
+  "stage": "verify",
+  "kind": "repair",
+  "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
+  "reply": "[\"학생 수요 설문은 최○○가 2026-10-16(금)까지 회수합니다.\"]",
+  "usage": {
+   "prompt_tokens": 628,
+   "completion_tokens": 11
+  }
  }
 ]

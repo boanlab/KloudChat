@@ -217,7 +217,7 @@ def test_ordinals_item_numbers_and_character_counts_come_back():
     scan = skill_scripts.module("generic-language-killer", "scan")
     material = "11월 한 달 기존 고객에게 AI 회의록 요약을 무료로 엽니다."
     before = ("| # | 헤드라인 | 글자 수 |\n|---|---|---|\n"
-              "| 19 | 회의록 대신 요약이 먼저 도착합니다 | 17 |\n\n"
+              "| 19 | 회의록 대신 요약이 먼저 도착합니다 | 15 |\n\n"
               "**기능 블록 1 — 결재 알림 연동**\n\n"
               "### 먼저 시험할 3개\n\n"
               "11월 한 달 기존 고객 무료\n\n"
@@ -228,7 +228,8 @@ def test_ordinals_item_numbers_and_character_counts_come_back():
     # the script no longer cuts 「11월」 to 「[구체적 수치]1월」
     assert "[구체적 수치]1월" not in guarded
     out = _settle(before, guarded, material, "헤드라인 써 줘")
-    for kept in ("| 19 | 회의록 대신", "| 17 |", "기능 블록 1 —", "먼저 시험할 3개",
+    # a count the headline bears out (15 characters without spaces) comes back as written
+    for kept in ("| 19 | 회의록 대신", "| 15 |", "기능 블록 1 —", "먼저 시험할 3개",
                  "11월 한 달 기존 고객 무료", "(제목 26자)", "[1차 메일]"):
         assert kept in out, kept
     assert "[구체적 수치]" not in out

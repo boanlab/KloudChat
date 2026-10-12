@@ -620,6 +620,36 @@ def _without_invented_money(text: str, evidence: list[str] | None = None) -> str
     return "".join(out)
 
 
+def unmark_worked(sections: list[dict], evidence: list[str]) -> list[dict]:
+    """Money marked unsupported in one section, unmarked where another section works it out
+    from the material (「(1,480,000 × 30 × 0.95 + 5,000 × 30) × 1.1 = 46,563,000원」)."""
+    from app.services import value_guard
+
+    mark = value_guard.MARK
+    whole = "\n".join(str(sec.get("content") or "") for sec in sections)
+    if mark not in whole:
+        return sections
+    out = []
+    for sec in sections:
+        text = str(sec.get("content") or "")
+        if mark not in text:
+            out.append(sec)
+            continue
+        ev = value_guard.Evidence.of(list(evidence), answer=text, worked=whole)
+        pieces, at = [], 0
+        for m in _MONEY.finditer(text):
+            if not text.startswith(mark, m.end()):
+                continue
+            line, base = _line_of(text, m.start())
+            if value_guard.supported(m.group(0), line, m.start() - base, ev, 0):
+                pieces.append(text[at:m.end()])
+                at = m.end() + len(mark)
+        pieces.append(text[at:])
+        fixed = "".join(pieces)
+        out.append({**sec, "content": fixed} if fixed != text else sec)
+    return out
+
+
 def _line_of(text: str, pos: int) -> tuple[str, int]:
     start = text.rfind("\n", 0, pos) + 1
     end = text.find("\n", pos)
@@ -672,6 +702,10 @@ def _cell_sourced(
     return any(len(w) >= 2 and w in compact for w in words)
 
 
+#: a cell that names a time: digits or relative-time words (「다음 회의 때」, 「이번 주」)
+_TIME_WORDS = re.compile(r"\d|다음|이번|지난|내일|모레|글피|주|월|요일|회의|때|까지|분기|반기|초|말|중순|순")
+
+
 def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = None) -> str:
     """Unmentioned 담당/기한 cells become 「[담당자]」/「[기한]」 blanks."""
     compact = re.sub(r"\s+", "", source)
@@ -697,6 +731,10 @@ def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = No
                     row = " ".join(c for k, c in enumerate(cells) if k not in guarded or
                                    _OWNER_HEADER.search(header[k] if k < len(header) else ""))
                     for k in guarded:
+                        if k < len(cells) and _DUE_HEADER.search(header[k] if k < len(header) else "") \
+                                and not _TIME_WORDS.search(cells[k]):
+                            # 「기준」, 「동일」: words about a due, not a day the writer made up
+                            continue
                         if k < len(cells) and not _cell_sourced(cells[k], compact, row, dates):
                             cells[k] = placeholders.for_header(header[k] if k < len(header) else "")
                     out.append("| " + " | ".join(cells) + " |")
@@ -3533,14 +3571,18 @@ def trim_table_echo(body: str) -> str:
             out.append(line)
             continue
         line = _SHOWN_ARITHMETIC.sub(r"\1", line)
-        kept = []
-        for sentence in _SENTENCE_END.split(line):
-            if not sentence.strip():
-                continue
+        sentences = [x.strip() for x in _SENTENCE_END.split(line) if x.strip()]
+        keep = []
+        for sentence in sentences:
             numbers = _number_keys(sentence)
-            if len(numbers) >= 2 and numbers <= table_cells:
-                continue
-            kept.append(sentence.strip())
+            # an echo: the row's figures and nothing more; who decided what stays (회의록)
+            echo = len(numbers) >= 2 and numbers <= table_cells and not _DECIDED.search(sentence)
+            keep.append(not echo or bool(_ENUMERATED.match(sentence)))
+        # a cut sentence the next kept one leans on comes back
+        for i in range(len(sentences) - 2, -1, -1):
+            if not keep[i] and keep[i + 1] and _LEANS_BACK.match(sentences[i + 1]):
+                keep[i] = True
+        kept = [x for x, k in zip(sentences, keep, strict=True) if k]
         prose_kept += len(kept)
         if kept:
             out.append(" ".join(kept))
@@ -3722,6 +3764,9 @@ def fix_products(text: str) -> str:
     for match in reversed(list(_PRODUCT.finditer(out))):
         if (match.group("ua") or "") != (match.group("uc") or ""):
             continue
+        if units.inside_longer_expression(out, match.start()):
+            # 「1,320,000원 × 30 × 1.1 = 43,560,000원」: 「30 × 1.1」 is no product of its own
+            continue
         try:
             a = _as_number(match.group("a"))
             b = _as_number(match.group("b"))
@@ -3819,8 +3864,12 @@ _ASSESSMENT_LINE = re.compile(
 _LEANS_BACK = re.compile(
     r"^(?:[-*+]\s+)?(?:이|그|저|이런|이러한|이와|그런|그러한|그와|두|세|네|이때|그때|이에|이로써|"
     r"따라서|그러므로|그래서|그러나|하지만|다만|또한|즉|한편|반면|둘째|셋째|넷째|다섯째|"
-    r"마지막으로)(?=[\s,])"
+    r"마지막으로|나머지)(?=[\s,])"
 )
+#: a decision and who made or asked it: 「…의 제안과 …의 승인으로 결정되었습니다」
+_DECIDED = re.compile(r"결정|승인|합의|제안|요청|지시|확정|하기로|않기로|보류")
+#: one item of a counted run (「첫째, …」 … 「셋째, …」): cutting one breaks the run
+_ENUMERATED = re.compile(r"^(?:[-*+]\s+)?(?:첫째|둘째|셋째|넷째|다섯째|여섯째|마지막으로)(?=[\s,])")
 #: section heading asking a question: 「Q7. 신청 기간과 방법은?」
 QUESTION_HEADING = re.compile(r"\?\s*$|^\s*(?:Q|문)\s?\d{1,2}\b")
 #: line asking a question: 「**Q2. 신청 기간은?**」
@@ -3888,7 +3937,7 @@ def trim_restatements(
                 and re.search(r"(?:위|아래|다음|이)\s*표(?:는|에서|를|가|의)", text)
                 and re.search(r"(?:보여|나타내|정리|제시|요약)", text)
             )
-            keep = (answer_lead or _QUESTION_LINE.search(text)
+            keep = (answer_lead or _QUESTION_LINE.search(text) or _ENUMERATED.match(text)
                     or not (restated or dangling or _FILLER.search(text)))
             # the question's answer is the sentence after it
             answer_lead = bool(_QUESTION_LINE.search(text))

@@ -278,6 +278,21 @@ def _labelled(line: str, labels: dict[str, str]) -> dict[str, str]:
     return out
 
 
+#: a reply sentence, not a field value: 「…빈칸으로 두세요.」, 「…전부입니다.」
+_SENTENCE_VALUE = re.compile(r"(?:니다|세요|어요|아요|해요|하세요|주세요|[다요])[.!]?\s*$")
+
+
+def field_value(name: str, value: str) -> bool:
+    """Whether `value` can fill head field `name`: a date field holds a digit, no field a
+    whole reply sentence."""
+    value = (value or "").strip()
+    if not value:
+        return True
+    if re.search(r"일시|일자|날짜|기간|시간", name) and not re.search(r"\d|\[", value):
+        return False
+    return not (len(value) > 20 and _SENTENCE_VALUE.search(value))
+
+
 def head_values(fmt: DocFormat, text: str) -> dict[str, str]:
     """Head fields read by code from request and material."""
     wanted = {_base(f): f for f in fmt.fields}
@@ -289,7 +304,7 @@ def head_values(fmt: DocFormat, text: str) -> dict[str, str]:
 
     def put(field_name: str | None, value: str) -> None:
         value = " ".join((value or "").split()).strip(" ,;·")[:80]
-        if field_name and value and field_name not in out:
+        if field_name and value and field_name not in out and field_value(field_name, value):
             out[field_name] = value
 
     for line in (text or "").splitlines():
@@ -397,6 +412,7 @@ def title_block(
 
     fields = [[name, grounded((read or {}).get(name)) or grounded(raw.get(name))]
               for name in fmt.fields]
+    fields = [[name, value if field_value(name, value) else ""] for name, value in fields]
     fields = [[name, value] for name, value in fields if value or name not in fmt.optional]
     block: dict[str, Any] = {
         "format": fmt.id,
