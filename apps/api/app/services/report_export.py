@@ -193,7 +193,9 @@ def with_references(
             "heading": "참고문헌",
             "level": 1,
             "status": "done",
-            "content": "\n".join(f"{index}. {entry}" for index, entry in enumerate(entries, 1)),
+            # IEEE entries carry their own 「[n]」: not numbered twice
+            "content": ("\n\n".join(entries) if style.upper() == "IEEE" else
+                        "\n".join(f"{index}. {entry}" for index, entry in enumerate(entries, 1))),
         },
     ]
 
