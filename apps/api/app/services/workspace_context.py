@@ -227,8 +227,10 @@ def _personal_block(user: User, kind: SessionKind) -> str:
     return "\n".join(lines)
 
 
-#: Surface-only prompt section header, until the next.
-_SURFACE_PART = re.compile(r"^[ \t]{0,3}\[(채팅|보고서|슬라이드)에서\][ \t]{0,4}$", re.M)
+#: Surface-only prompt section header, until the next (「[보고서·슬라이드에서]」 names two).
+_SURFACE_PART = re.compile(
+    r"^[ \t]{0,3}\[((?:채팅|보고서|슬라이드)(?:·(?:채팅|보고서|슬라이드)){0,2})에서\][ \t]{0,4}$",
+    re.M)
 _SURFACE_WORDS = {"채팅": "chat", "보고서": "report", "슬라이드": "slides"}
 
 
@@ -236,10 +238,16 @@ def surface_prompt(prompt: str, kind: str) -> str:
     """Common prompt plus this surface's parts."""
     parts = _SURFACE_PART.split(prompt or "")
     kept = [parts[0].strip()]
-    for word, body in zip(parts[1::2], parts[2::2], strict=True):
-        if _SURFACE_WORDS[word] == kind:
+    for words, body in zip(parts[1::2], parts[2::2], strict=True):
+        if kind in {_SURFACE_WORDS[w] for w in words.split("·")}:
             kept.append(body.strip())
     return "\n\n".join(part for part in kept if part)
+
+
+def surface_body(body: str, kind: SessionKind) -> str:
+    """A skill body read on one surface: its common part and that surface's parts, the same
+    `[채팅에서]` / `[보고서에서]` lines an agent's prompt uses."""
+    return surface_prompt(body, kind.value)
 
 
 def _agent_block(agent: Agent | None, kind: SessionKind) -> str:
@@ -625,6 +633,32 @@ async def agent_skill_rows(db: AsyncSession, user_id: str, agent: Agent | None,
     return out
 
 
+#: surface names as the web shows them (`lib/kinds.ts`)
+_SURFACE_LABELS = {"chat": "챗", "report": "보고서", "slides": "슬라이드", "image": "이미지",
+                  "av": "오디오/동영상"}
+
+
+def off_surface(agent_kinds: list[str] | None, skills: list[Skill], *,
+                place: str) -> list[dict]:
+    """Skills that apply on none of the agent's surfaces (skipped at run time), each with why;
+    `place` is `active` (kept on) or `available` (picked per turn)."""
+    surfaces = [str(k) for k in agent_kinds or []] or [k.value for k in SessionKind]
+    out: list[dict] = []
+    for skill in skills:
+        kinds = [str(k) for k in skill.kinds or []]
+        if not kinds or set(kinds) & set(surfaces):
+            continue
+        own = "·".join(_SURFACE_LABELS.get(k, k) for k in kinds)
+        agent = "·".join(_SURFACE_LABELS.get(k, k) for k in surfaces)
+        out.append({
+            "skill_id": skill.id, "name": skill.name, "place": place, "skill_kinds": kinds,
+            "agent_kinds": surfaces,
+            "message": f"「{skill.name}」 스킬은 {own} 화면에서만 쓰여 이 에이전트의 "
+                       f"화면({agent})에서는 적용되지 않습니다.",
+        })
+    return out
+
+
 async def _agent_skills(
     db: AsyncSession,
     user: User,
@@ -662,7 +696,7 @@ _TOOL_STEP = re.compile(
     r"|mcp__[A-Za-z0-9_-]{1,80})(?![A-Za-z_])|`calculate`|^\s{0,8}CLI\s{0,2}:"
     r"|`python\s[^`\n]{1,80}`", re.M)
 #: developer-facing section of a skill body (the server's own interface)
-_INTERFACE_HEADING = re.compile(r"^#{2,4}\s.*(?:인터페이스|interface)", re.I)
+_INTERFACE_HEADING = re.compile(r"^#{2,4}\s.*(?:인터페이스|interface)", re.I | re.M)
 _ITEM_START = re.compile(r"^\s{0,12}(?:[-*+]|\d{1,3}[.)])\s")
 _HEADING = re.compile(r"^#{1,6}\s")
 #: told to document writers in place of the skill's tool steps
@@ -724,7 +758,7 @@ def _skill_blocks(resolved: list[tuple[Skill, dict]],
         head = f"# 활성 스킬 — {skill.name}"
         if skill.when_to_use.strip():
             head += f"\n적용 시점: {skill.when_to_use.strip()}"
-        body = skill.body.strip() or skill.description.strip()
+        body = surface_body(skill.body.strip(), kind) or skill.description.strip()
         if kind is not SessionKind.chat and metadata.get("required_tools"):
             # document writers run no tools; the server runs the skill's checks
             body = "\n\n".join(p for p in (tool_free_body(body), NO_TOOLS_NOTE) if p)

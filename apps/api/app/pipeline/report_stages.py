@@ -129,7 +129,8 @@ class Research(Base):
             yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
             planner = req.outline_model or req.model
             findings = await research.run(req.text, model=planner, api_key=req.api_key,
-                                          scholarly=report.scholarly_document(req.text))
+                                          scholarly=report.scholarly_document(req.text),
+                                          deep=bundle.spec.settings.deep_search)
             # product comparison: each product's own pages too
             findings = await research.deepen_for_products(
                 req.text, findings, model=planner, api_key=req.api_key)

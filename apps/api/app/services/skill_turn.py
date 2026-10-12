@@ -3,7 +3,8 @@ strictness, 빠진 정보 질문 and 진행 과정 설정 (`skill_specs.DOCUMENT
 
 The skills are the person's picks for the turn (or the conversation's standing set) and the
 agent's always-on ones. What they bring sits under what the agent and the picked 템플릿 set:
-a template only when none is picked, checks and questions added, settings under the agent's.
+a template only when none is picked, checks and questions added, settings under the agent's
+(their pre-pass steps and code checks join the 서식's).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models.chat import ChatSession
 from app.models.user import User
 from app.models.workspace import Agent, Skill
-from app.services import design_templates, skill_specs, user_templates
+from app.services import design_templates, process_settings, skill_specs, user_templates
 from app.services.workspace_context import agent_skill_rows
 
 #: 템플릿 kind each document surface writes into
@@ -44,8 +45,12 @@ class Brought:
         return [*asking, *(dict(q) for q in self.questions if q.get("id") not in seen)]
 
     def process_with(self, own: dict | None) -> dict | None:
-        """Agent's own settings over the skills'; None when neither sets any."""
-        merged = {**self.process, **(own or {})}
+        """Agent's own settings over the skills'; the skills' steps and checks ride apart
+        (`process_settings.ADDED`) to join the 서식's; None when neither sets any."""
+        lists = {k: v for k, v in self.process.items() if k in process_settings.LIST_KEYS}
+        merged = {**{k: v for k, v in self.process.items() if k not in lists}, **(own or {})}
+        if lists:
+            merged[process_settings.ADDED] = lists
         return merged or None
 
 
@@ -64,6 +69,11 @@ def merge(specs: list[skill_specs.Spec]) -> Brought:
     process: dict[str, Any] = {}
     for spec in reversed(specs):
         process.update(spec.process or {})
+    for key in process_settings.LIST_KEYS:
+        # every skill's steps and checks, each once
+        named = (n for s in specs for n in (s.process or {}).get(key) or ())
+        if joined := list(dict.fromkeys(named)):
+            process[key] = joined
     return Brought(template=template, checks=checks, check_options=options,
                    questions=tuple(questions), process=process)
 

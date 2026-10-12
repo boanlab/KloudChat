@@ -82,8 +82,12 @@ MAX_PAGES = 30
 MAX_SUMMARY = 4
 #: storable keys
 KEYS = ("prepass", "date_base", "stages", "checks", "judged", "amend", "head", "rules",
-        "structure", "search", "fixed_outline", "draws", "prepass_always", "prepass_quiet",
-        "conflict_rule")
+        "structure", "search", "deep_search", "fixed_outline", "draws", "prepass_always",
+        "prepass_quiet", "conflict_rule")
+#: list settings a turned-on skill adds to (never replaces) the 서식's
+LIST_KEYS = ("prepass", "stages", "checks", "judged", "amend", "head", "rules")
+#: key in an agent's settings carrying its skills' list additions (`skill_turn.Brought`)
+ADDED = "added_by_skills"
 
 
 class ProcessError(ValueError):
@@ -127,6 +131,8 @@ class Process:
     rules: tuple[str, ...] = ()
     structure: Structure = field(default_factory=Structure)
     search: bool = True
+    #: search with twice the queries and sources (a research skill on a document)
+    deep_search: bool = False
     fixed_outline: bool = False
     draws: str = "auto"
     prepass_always: bool = False
@@ -159,7 +165,8 @@ class Process:
                 "stages": list(self.stages), "checks": list(self.checks),
                 "judged": list(self.judged), "amend": list(self.amend), "head": list(self.head),
                 "rules": list(self.rules), "structure": self.structure.wire(),
-                "search": self.search, "fixed_outline": self.fixed_outline,
+                "search": self.search, "deep_search": self.deep_search,
+                "fixed_outline": self.fixed_outline,
                 "draws": self.draws, "prepass_always": self.prepass_always,
                 "prepass_quiet": self.prepass_quiet, "conflict_rule": self.conflict_rule}
 
@@ -266,7 +273,7 @@ def clean(raw: Any) -> dict[str, Any]:
         out["rules"] = tuple(dict.fromkeys(rules))
     if "structure" in data:
         out["structure"] = _structure(data.get("structure"))
-    for key in ("search", "fixed_outline", "prepass_always", "prepass_quiet"):
+    for key in ("search", "deep_search", "fixed_outline", "prepass_always", "prepass_quiet"):
         if key in data:
             out[key] = bool(data[key])
     if "draws" in data:
@@ -313,6 +320,20 @@ def apply(base: Process, settings: dict[str, Any] | None) -> Process:
     return dataclasses.replace(base, **changes)
 
 
+def add(base: Process, settings: dict[str, Any] | None) -> Process:
+    """`base` with cleaned `settings`' lists joined to its own, in the shipped order."""
+    if not settings:
+        return base
+    order = {"prepass": PREPASS, "stages": STAGES, "checks": CHECKS, "amend": AMENDS}
+    changes: dict[str, Any] = {}
+    for key in LIST_KEYS:
+        if extra := settings.get(key):
+            joined = dict.fromkeys([*getattr(base, key), *extra])
+            changes[key] = (tuple(n for n in order[key] if n in joined) if key in order
+                            else tuple(joined))
+    return dataclasses.replace(base, **changes) if changes else base
+
+
 def of_template(template) -> dict[str, Any]:
     """서식's stored `[process]`."""
     return dict(getattr(template, "process", None) or {})
@@ -351,7 +372,9 @@ def resolve(*, template_id: str | None, format_id: str | None,
     template = governing_template(template_id, format_id)
     out = apply(DEFAULT, FORMAT_DEFAULTS.get(format_id or ""))
     out = apply(out, of_template(template) if template is not None else None)
-    return apply(out, stored(own) if own else None)
+    out = apply(out, stored(own) if own else None)
+    # turned-on skills' steps and checks join the 서식's
+    return add(out, stored((own or {}).get(ADDED)))
 
 
 def for_format(format_id: str | None) -> Process:
@@ -374,6 +397,7 @@ def catalogue() -> dict[str, Any]:
             "defaults": DEFAULT.wire()}
 
 
-__all__ = ["AMENDS", "CHECKS", "DEFAULT", "FORMAT_DEFAULTS", "HEADS", "JUDGED", "KEYS", "PREPASS",
-           "STAGES", "Process", "ProcessError", "Structure", "apply", "catalogue", "clean",
+__all__ = ["ADDED", "AMENDS", "CHECKS", "DEFAULT", "FORMAT_DEFAULTS", "HEADS", "JUDGED", "KEYS",
+           "LIST_KEYS", "PREPASS", "STAGES", "Process", "ProcessError", "Structure", "add",
+           "apply", "catalogue", "clean",
            "for_format", "governing_template", "of_template", "resolve", "stored", "stored_form"]

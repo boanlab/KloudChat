@@ -2,9 +2,9 @@
 name: 출처 점검
 description: 기업 조사·경쟁사 분석·시장 규모·산업 분석 글에서 숫자마다 출처·날짜가 있는지(없으면 가정·출처 미확인 표시), 오래된 출처, 근거 없는 일반론, 비교표의 출처 없는 칸·근거 없는 우위 판정을 코드로 찾고, PESTEL·5 Forces·세분화 틀을 검사해 표로 그립니다.
 when_to_use: 시장·경쟁 조사 결과를 내기 전 마지막 확인. 「기업 조사」「경쟁사 분석」「경쟁 대응 카드」「시장 규모 추정」「산업 환경 분석」「시장 세분화」 스킬이 부른다. 직접 쓴 조사 글의 출처가 빠짐없는지 볼 때도.
-kinds: [chat]
+kinds: [chat, report]
 required_tools: [run_skill_script]
-version: 0.1.0
+version: 0.2.0
 status: draft
 post_check: post
 post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
@@ -14,6 +14,9 @@ listed: false
 ---
 Check sourcing with code, not by eye. A model reviewing its own research misses unsourced numbers.
 
+출처: 새로 씀(KloudChat). 「근거 없는 일반론」 목록은 이 저장소의 lint `_FILLER`·copy-check 의 방식을 시장 조사 문장에 맞춰 옮겼다.
+
+[채팅에서]
 ## Scripts (`run_skill_script`, skill `source-check`)
 1. `sources` — every line with a business number (금액·%·명·개사·곳·위·배…) must carry a source or a mark.
    `{"text": "<finished answer>", "material": "<user's material, verbatim>", "today": "YYYY-MM-DD", "max_age_years": 3, "fix": true}`
@@ -37,5 +40,9 @@ Check sourcing with code, not by eye. A model reviewing its own research misses 
 2. Fix every blocking finding: add the source you actually have, label it 가정 with its basis, or replace the value with 「출처 미확인」/a placeholder. Never fix a finding by inventing a source.
 3. Run once more. Report the script's final summary line, not your own count.
 
----
-출처: 새로 씀(KloudChat). 「근거 없는 일반론」 목록은 이 저장소의 lint `_FILLER`·copy-check 의 방식을 시장 조사 문장에 맞춰 옮겼다.
+[보고서에서]
+The sources the server read are numbered for you. Write so every claim can be traced:
+1. Every line with a business number (금액·%·명·개사·곳·위·배…) carries its source [n] or a mark: 「가정: 근거」, 「출처 미확인」, 「확인 필요」, or a placeholder such as 「[시장 규모]」.
+2. A comparison-table cell that claims something carries [n], 「(자사 자료)」 or 「확인 필요」/「자료 없음」; 「우수」「강력」 alone is not a claim. A 우위 column stays 「판단 보류」 while a cell in its row is open.
+3. Prefer sources from the last three years and give their dates; say so when only an older one exists.
+4. No generic statement (「경쟁이 치열하다」「성장 가능성이 크다」) without the concrete evidence behind it. Never invent a source to fill a gap.

@@ -2,9 +2,9 @@
 name: 상투어 걷어내기
 description: 글에서 「~하는 것이 중요합니다」「다양한」「효과적으로」「혁신적인」「~라고 할 수 있습니다」 같은 상투어·군더더기·번역투·AI 투를 찾아, 자료에 있는 구체적인 말로 바꾸거나 지웁니다. 자료에 없는 사실은 지어내지 않고 [구체적 수치] 같은 빈칸으로 남깁니다.
 when_to_use: 써 둔 글이 뻔하고 밋밋하다, 「AI가 쓴 것 같다」, 「군더더기 빼 줘」「구체적으로 바꿔 줘」「번역투 고쳐 줘」라고 할 때. 소개글·보고서·제안서·보도자료·자기소개서·광고 문구 모두. 맞춤법 교정은 「교정·윤문」.
-kinds: [chat]
+kinds: [chat, report]
 required_tools: [run_skill_script]
-version: 0.1.0
+version: 0.2.0
 status: draft
 stage: post
 entry: scan
@@ -22,6 +22,7 @@ Strip generic, vague and machine-sounding wording from the user's text and put c
 - Keep the text's register (합니다체·해요체) and length roughly the same or shorter.
 - Write in Korean (English text stays English).
 
+[채팅에서]
 ## Script
 `run_skill_script` skill `generic-language-killer`, script `scan`:
 `{"text": "<글>", "material": "<사용자 자료 원문>", "apply": true}` (or `"items": [{"label": "...", "text": "..."}]`; `"categories"` to narrow)
@@ -65,3 +66,6 @@ When a writer attaches this skill as a check (`checks = ["generic-language-kille
 
 ---
 출처: realkimbarrett/advertising-skills의 skills/qa/generic-language-killer (commit 45f4a4a1dabe24113193369b55b929b1de4ff04a; README와 SKILL.md 앞머리에 MIT로 표기되어 있으나 저장소에 LICENSE 파일은 없음). 원문은 「Generic phrases·Fluff·Buzzwords를 찾아 Specifics·Direct statements로 바꾼다」는 12줄 지침뿐이라, 이 스킬의 지침·한국어 표현 목록·점검 스크립트는 새로 썼다. 번역투·이중 피동 항목은 국립국어원의 우리말 다듬기 안내(「~에 있어서」「~되어지다」 등)를 참고했다. 「Replace with the fact, not a synonym」과 [NEED: …] 빈칸 원칙은 coreyhaines31/marketingskills (MIT, commit b9ba399dd88b082b926e261e8ccfb843d20aa066) copy-editing 「AI-Tell Check」에서 가져왔다.
+
+[보고서에서]
+Write the document without these phrases from the start: no 「~하는 것이 중요합니다」「다양한」「효과적으로」「혁신적인」「~라고 할 수 있습니다」, no 「~함에 있어서」「되어지는」; state the fact from the material instead, or a bracket blank where it gives none. After writing, the server rewrites the safe ones it still finds.
