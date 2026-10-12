@@ -103,6 +103,23 @@ export async function rasterise(svg: string, scale = 2): Promise<string | null> 
   }
 }
 
+/**
+ * Mermaid 12 draws with ELK, the `neo` look (drop shadows, gradient borders) and boxes at
+ * least 120px wide, wrapping labels at 120px — a Korean word is then cut mid-word. These keep
+ * the 11 drawing: dagre, classic shapes, no shadow, boxes as wide as their label.
+ */
+const CLASSIC = {
+  look: 'classic' as const,
+  // `useGradient` as in 11: it also hides the mindmap's underline under each node.
+  themeVariables: { dropShadow: 'none', useGradient: true },
+  // Per diagram, not at the root: a root `layout` would also turn the mindmap's radial
+  // cose-bilkent drawing into a dagre tree.
+  flowchart: { layout: 'dagre', minNodeWidth: 0 },
+  state: { layout: 'dagre', minNodeWidth: 0, wrappingWidth: 320 },
+  class: { layout: 'dagre' },
+  er: { layout: 'dagre' },
+}
+
 /** Mermaid theme from the node's CSS tokens (app or template shadow root); `fontSize` above reading size since wide diagrams shrink. */
 export function theme(node: HTMLElement) {
   const read = (name: string, fallback: string) =>
@@ -116,6 +133,7 @@ export function theme(node: HTMLElement) {
   const face = read('--font-body', "'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', Arial, sans-serif")
 
   return {
+    ...CLASSIC,
     theme: 'base' as const,
     fontFamily: face,
     // `<text>`, not `<foreignObject>`: foreign content taints the canvas in `rasterise`.
@@ -140,6 +158,7 @@ export function theme(node: HTMLElement) {
       clusterBorder: muted,
       edgeLabelBackground: paper,
       fontSize: '18px',
+      ...CLASSIC.themeVariables,
       // Pie slices are read off numbered variables, the xy plot off a comma-joined list.
       ...Object.fromEntries(
         shades(accent, paper, 6).map((colour, i) => [`pie${i + 1}`, colour]),
@@ -165,6 +184,7 @@ export function theme(node: HTMLElement) {
       },
     },
     flowchart: {
+      ...CLASSIC.flowchart,
       // Fitted to the text column.
       useMaxWidth: true,
       curve: 'linear' as const,
@@ -380,6 +400,7 @@ export async function drawIntoFitting(
 /** Paper look in the deck's colours; larger type, as the picture shrinks on the slide. */
 export function slideTheme(colours: { accent: string; ink: string; muted: string; font?: string }) {
   return {
+    ...CLASSIC,
     theme: 'base' as const,
     // `<text>`, not `<foreignObject>`: foreign content taints the canvas `rasterise` draws to.
     htmlLabels: false,
@@ -400,17 +421,20 @@ export function slideTheme(colours: { accent: string; ink: string; muted: string
       textColor: colours.ink,
       edgeLabelBackground: '#ffffff',
       fontSize: '26px',
+      ...CLASSIC.themeVariables,
     },
     flowchart: {
+      ...CLASSIC.flowchart,
       // Drawn at its own size so the rasteriser has a size to draw at; the slide scales it.
       useMaxWidth: false,
-      htmlLabels: false,
       curve: 'basis' as const,
       // Roomy: the band is wide and the words sit below, not beside.
       padding: 26,
       rankSpacing: 64,
       nodeSpacing: 56,
       subGraphTitleMargin: { top: 14, bottom: 18 },
+      // 11's default; 12's 120px cuts a 26px Korean word such as 「데이터베이스」 in two.
+      wrappingWidth: 200,
     },
     hot: colours.accent,
   }
