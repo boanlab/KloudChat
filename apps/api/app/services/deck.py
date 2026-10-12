@@ -2366,6 +2366,30 @@ def _named_dividers(plan: list[dict[str, str]]) -> list[dict[str, str]]:
     ]
 
 
+#: chart category label length
+_CATEGORY_CHARS = 10
+
+
+def _short_category(label: str) -> str:
+    """A category label within the axis's room, never cut inside its brackets: 「라운드 로빈
+    (q=2)」 → 「라운드로빈(q=2)」, not 「라운드 로빈 (q=」."""
+    label = " ".join(label.split())
+    if len(label) <= _CATEGORY_CHARS:
+        return label
+    compact = re.sub(r"\s+", "", label)
+    if len(compact) <= _CATEGORY_CHARS:
+        return compact
+    m = re.match(r"^(?P<head>[^(（]+)[(（](?P<inner>[^()（）]+)[)）]", compact)
+    numbers = re.findall(r"\d+(?:\.\d+)?", m.group("inner")) if m else []
+    if m and numbers and len(m.group("head")) + len(",".join(numbers)) + 2 <= _CATEGORY_CHARS:
+        # the bracket's number tells apart rows of one name (퀀텀 2 / 퀀텀 4): it stays
+        return m.group("head") + "(" + ",".join(numbers) + ")"
+    cut = compact[:_CATEGORY_CHARS]
+    if cut.count("(") > cut.count(")"):
+        cut = cut[: cut.rfind("(")] or cut
+    return cut
+
+
 def _clean_chart(value: Any) -> dict[str, Any] | None:
     """Drawable chart or `None`; series cut to the shortest paired length."""
     if not isinstance(value, dict):
@@ -2373,7 +2397,7 @@ def _clean_chart(value: Any) -> dict[str, Any] | None:
     kind = str(value.get("kind") or "bar").strip().lower()
     if kind not in ("bar", "line"):
         kind = "bar"
-    categories = [str(c).strip()[:10] for c in (value.get("categories") or [])]
+    categories = [_short_category(str(c)) for c in (value.get("categories") or [])]
     categories = [c for c in categories if c][:_MAX_CATEGORIES]
 
     series: list[dict[str, Any]] = []
@@ -2393,6 +2417,14 @@ def _clean_chart(value: Any) -> dict[str, Any] | None:
 
     width = min(len(categories), min(len(s["values"]) for s in series))
     if width < 2:
+        return None
+    # A row of zeros draws nothing: a value the writer did not have (SRTF 0, 0, 0, …).
+    drawn = [s for s in series if any(v for v in s["values"][:width])]
+    if len(drawn) < len(series):
+        log.warning("chart series with only zeros dropped: %s",
+                    [s["name"] for s in series if s not in drawn])
+    series = drawn
+    if not series:
         return None
     return {
         "kind": kind,

@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from typing import Any
 
 #: slide number; letters in 「P1」「q=2」 excluded
-_NUMBER = re.compile(r"(?<![A-Za-z0-9_.])-?\d{1,15}(?:\.\d{1,10})?(?![\d])")
+_NUMBER = re.compile(
+    r"(?<![A-Za-z0-9_.,])-?(?:\d{1,3}(?:,\d{3})+|\d{1,15})(?:\.\d{1,10})?(?![\d])")
 #: counts of other things: 「2배」「30%」「3장」
 _OTHER_QUANTITY = re.compile(r"\s{0,2}(?:배|%|퍼센트|장|개|번|명|차|회|위|등|단계|가지|줄|쪽)")
 _PAREN = re.compile(r"[(（][^()（）]{0,80}[)）]")
@@ -41,7 +42,8 @@ def stated_values(block: str) -> list[Stated]:
             label, value = cell.split("=", 1)
             numbers = _NUMBER.findall(value)
             if len(numbers) == 1 and label.strip():
-                out.append(Stated(row, label.strip(), numbers[0], float(numbers[0])))
+                out.append(Stated(row, label.strip(), numbers[0],
+                                  float(numbers[0].replace(",", ""))))
     return out
 
 
@@ -59,20 +61,58 @@ def _pattern(name: str) -> re.Pattern[str] | None:
     return re.compile(head + body + tail, re.I)
 
 
+#: English measure words and the Korean a text uses for them
+_KO_MEASURE = (("wait", "대기"), ("turnaround", "반환"), ("response", "응답"),
+               ("completion", "완료"), ("burst", "실행"))
+_AVERAGE = re.compile(r"(?<![A-Za-z])(?:average|avg|mean)(?![A-Za-z])", re.I)
+
+
+def _spelled_out(acronym: str) -> str:
+    """「SRTF」 written as its words: 「Shortest Remaining Time First」, 「First-Come, …」."""
+    return r"(?<![A-Za-z])" + r"[^A-Za-z0-9가-힣\n]{1,3}".join(
+        f"{ch.upper()}[a-z]+" for ch in acronym) + r"(?![A-Za-z])"
+
+
+def _initials(words: str) -> str:
+    """「Round Robin」 → 「RR」; '' unless two or more capitalised English words."""
+    parts = re.findall(r"[A-Za-z]+", words)
+    if len(parts) < 2 or not all(p[0].isupper() for p in parts):
+        return ""
+    return "".join(p[0] for p in parts)
+
+
 class _Names:
     """Slide spellings of each row and label."""
 
     def __init__(self, stated: list[Stated]) -> None:
         rows = list(dict.fromkeys(s.row for s in stated if s.row))
-        cores = [_norm(_PAREN.sub("", r)) for r in rows]
+        bare = [_PAREN.sub("", r).strip() for r in rows]
+        cores = [_norm(b) for b in bare]
         self.rows: dict[str, list[re.Pattern[str]]] = {}
-        for row, core in zip(rows, cores, strict=True):
+        for row, plain, core in zip(rows, bare, cores, strict=True):
             names = {_norm(row)}
             # 「SJF(비선점)」 → 「SJF」 unless ambiguous (RR(q=2)/RR(q=4))
             if core and cores.count(core) == 1:
                 names.add(core)
-            self.rows[row] = [p for n in sorted(names, key=len, reverse=True)
-                              if (p := _pattern(n))]
+            patterns = [p for n in sorted(names, key=len, reverse=True) if (p := _pattern(n))]
+            # the other spelling of the same name: 「SRTF」 ↔ 「Shortest Remaining Time First」
+            other = ""
+            if re.fullmatch(r"[A-Z]{2,5}", plain):
+                other = _spelled_out(plain)
+            elif short := _initials(plain):
+                other = r"(?<![A-Za-z])" + short + r"(?![A-Za-z])"
+            spellings = [s for s in (other, (_pattern(core).pattern if core and _pattern(core)
+                                              else "")) if s]
+            numbers = re.findall(r"\d+", row[len(plain):] if row.startswith(plain) else "")
+            if core and cores.count(core) == 1 and other:
+                patterns.append(re.compile(other))
+            elif core and cores.count(core) > 1 and len(numbers) == 1:
+                # 「RR(q=2)」 as 「Round Robin (타임 퀀텀 = 2)」: the name, then its own number
+                for spelling in spellings:
+                    patterns.append(re.compile(
+                        f"(?:{spelling})" + r"[^0-9\n|]{0,20}?(?<![0-9.])" + numbers[0]
+                        + r"(?![0-9])", re.I if spelling != other else 0))
+            self.rows[row] = patterns
         self.labels: dict[tuple[str, str], list[re.Pattern[str]]] = {}
         for s in stated:
             full = _norm(s.label)
@@ -83,6 +123,10 @@ class _Names:
                 1 for o in stated if o.row == s.row and _norm(o.label)[:4] == prefix
             ) == 1:
                 names.add(prefix)
+            # 「average waiting time」 read in Korean text as 「평균 대기」
+            if _AVERAGE.search(s.label) and not re.search(r"[가-힣]", s.label):
+                lowered = s.label.lower()
+                names.update("평균" + ko for en, ko in _KO_MEASURE if en in lowered)
             self.labels[(s.row, s.label)] = [p for n in names if (p := _pattern(n))]
 
     def rows_in(self, text: str) -> list[tuple[int, int, str]]:
@@ -106,8 +150,17 @@ class _Names:
         return None
 
 
+def _shown(written: str, s: Stated) -> str:
+    """The computed value in the way the text writes numbers: 「78000」 as 「78,000」."""
+    if "," not in written:
+        return s.text
+    places = len(s.text.split(".", 1)[1]) if "." in s.text else 0
+    return f"{s.value:,.{places}f}"
+
+
 def _same(written: str, value: float) -> bool:
     """Whether written equals value at its shown precision."""
+    written = written.replace(",", "")
     places = len(written.split(".", 1)[1]) if "." in written else 0
     if not places and abs(value) < 100:
         return abs(float(written) - value) < 1e-9
@@ -119,6 +172,10 @@ def _first_number(text: str, start: int, end: int) -> re.Match[str] | None:
         if not _OTHER_QUANTITY.match(text, m.end()):
             return m
     return None
+
+
+#: between a row and its value when the label is the title's: 「SRTF: 0.50」 「SRTF는 0.50」
+_RIGHT_AFTER = re.compile(r"[\s:：=\-–—|*]{0,4}(?:은|는|이|가)?[\s:：=*]{0,3}")
 
 
 @dataclass(slots=True)
@@ -157,11 +214,16 @@ def _clashes(text: str, context: str, names: _Names, stated: list[Stated]) -> li
                 # value before its label
                 number = _first_number(text, start, start + m.start())
         else:
-            # one label for the whole line
+            # one label for the whole line, else for the title (「SRTF: 0.50」 under
+            # 「알고리즘별 평균 대기시간」)
             named = [s for s in mine if names.label_at(row, s.label, text)]
+            number = _first_number(text, start, end)
+            if not named and hits and number is not None and _RIGHT_AFTER.fullmatch(
+                    text[start:number.start()]):
+                named = [s for s in mine if names.label_at(row, s.label, context)]
             if len(named) != 1:
                 continue
-            s, number = named[0], _first_number(text, start, end)
+            s = named[0]
         if number and not _same(number.group(0), s.value):
             out.append(Clash(number.start(), number.end(), number.group(0), s))
     return out
@@ -169,7 +231,7 @@ def _clashes(text: str, context: str, names: _Names, stated: list[Stated]) -> li
 
 def _mend(text: str, clashes: list[Clash]) -> str:
     for clash in sorted(clashes, key=lambda c: c.start, reverse=True):
-        text = text[: clash.start] + clash.stated.text + text[clash.end :]
+        text = text[: clash.start] + _shown(clash.written, clash.stated) + text[clash.end :]
     return text
 
 
@@ -194,8 +256,10 @@ def _check_text(text: str, context: str, names: _Names, stated: list[Stated],
 
 
 def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
-                found: list[str]) -> list[list[Any]]:
-    """Table with computed rows/labels as headers."""
+                found: list[str], context: str = "") -> list[list[Any]]:
+    """Table with computed rows/labels as headers; a two-column table may take its label
+    (「| SRTF | 0.50 |」 under 「평균 대기시간」) or its row (「| 평균 대기시간 | 0.50 |」 under
+    「SRTF」) from `context`, the title over it."""
     if len(rows) < 2:
         return rows
     header = [str(c) for c in rows[0]]
@@ -210,6 +274,8 @@ def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
         return matched[0] if len(matched) == 1 else None
 
     by_column = [one_row(h) for h in header]
+    pair = len(header) == 2 and bool(context)
+    titled = one_row(context) if pair else None
     for raw in rows[1:]:
         cells = [str(c) for c in raw]
         own = one_row(cells[0]) if cells else None
@@ -217,8 +283,12 @@ def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
         for j in range(1, len(cells)):
             if own is not None:
                 s = label_of(own, header[j]) if j < len(header) else None
+                if s is None and pair:
+                    s = label_of(own, context)
             elif j < len(by_column) and by_column[j] is not None:
                 s = label_of(by_column[j], cells[0])
+            elif titled is not None:
+                s = label_of(titled, cells[0])
             else:
                 s = None
             if s is None:
@@ -231,14 +301,15 @@ def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
                     fixed[j] = s.text
             elif not _same(number.group(0), s.value):
                 found.append(f"「{number.group(0)}」 → {s.text} ({s.row} {s.label})")
-                fixed[j] = cells[j][: number.start()] + s.text + cells[j][number.end():]
+                fixed[j] = (cells[j][: number.start()] + _shown(number.group(0), s)
+                            + cells[j][number.end():])
         out.append(fixed)
     return out
 
 
 #: word fields that aren't the slide's claims
 _SKIP = frozenset({"id", "layout", "title", "accent", "image", "diagram", "textScale", "number",
-                   "rows", "notes"})
+                   "rows", "notes", "chart"})
 
 
 def check_slides(slides: list[dict[str, Any]], block: str) -> tuple[list[int], list[str]]:
@@ -275,9 +346,198 @@ def check_slides(slides: list[dict[str, Any]], block: str) -> tuple[list[int], l
         if isinstance(slide.get("notes"), str):
             mended["notes"] = _check_text(slide["notes"], title, names, stated, found)
         if isinstance(slide.get("rows"), list) and all(isinstance(r, list) for r in slide["rows"]):
-            mended["rows"] = _check_rows(slide["rows"], names, stated, found)
+            mended["rows"] = _check_rows(slide["rows"], names, stated, found, context=title)
+        if isinstance(slide.get("chart"), dict):
+            mended["chart"] = check_chart(slide["chart"], title, names, stated, found)
         if found:
             slides[index] = mended
             touched.append(index)
             corrected.extend(f"{index + 1}장 {item}" for item in found)
     return touched, corrected
+
+
+#: a printed section header: 「=== SRTF ===」 「--- RR (q=2) ---」 「## FCFS」 「[SJF]」 「SRTF:」
+_DECORATED = re.compile(
+    r"^(?:[=\-*#~]{2,}|#{1,6}(?=\s)|\[)\s*(?P<name>[^\n]{1,40}?)\s*(?:[=\-*#~]{2,}|\])?\s*:?$")
+_COLON_HEADER = re.compile(r"^(?P<name>[^:：\n]{1,40}?)\s*[:：]$")
+#: 「label: value」 or 「label = value」 with one number and an optional unit
+_PRINTED = re.compile(
+    r"^(?P<label>[^\n]{1,80}?)\s*[:=：]\s*(?P<num>-?\d[\d,]{0,15}(?:\.\d{1,10})?)"
+    r"\s*(?P<unit>[^\d\s,|:=]{0,8})\s*$")
+#: words that open a measure in a label: what precedes them names the row
+_MEASURE = re.compile(r"평균|합계|총\s{0,2}[가-힣]|(?<![A-Za-z])(?:average|avg|mean|total)"
+                      r"(?![A-Za-z])", re.I)
+
+
+def _value_match(line: str) -> re.Match[str] | None:
+    """「label: value」 whose label closes its brackets (「RR (q=2)」 is a name, not q = 2)."""
+    m = _PRINTED.match(line)
+    if not m:
+        return None
+    label = m.group("label")
+    if label.count("(") + label.count("（") != label.count(")") + label.count("）"):
+        return None
+    return m
+
+
+def _printed_line(line: str, section: str) -> Stated | None:
+    m = _value_match(line)
+    if not m:
+        return None
+    label = m.group("label").strip().strip("-*•·").strip()
+    if not label or re.fullmatch(r"[\d\s.,:=-]*", label) or len(_NUMBER.findall(label)) > 2:
+        return None
+    number = m.group("num").replace(",", "")
+    row = section
+    if not row:
+        trailing = re.search(r"[(（]([^()（）]{1,30})[)）]\s*$", label)
+        measure = _MEASURE.search(label)
+        if trailing and measure and measure.start() < trailing.start():
+            # 「Average waiting time (SRTF)」
+            row, label = trailing.group(1).strip(), label[: trailing.start()].strip()
+        elif measure and measure.start() > 0:
+            # 「SRTF 평균 대기시간」 「FCFS average waiting time」
+            head = label[: measure.start()].strip(" -:|")
+            if head:
+                row, label = head, label[measure.start():].strip()
+    return Stated(row, label, number, float(number))
+
+
+def printed_values(outputs: list[str]) -> list[Stated]:
+    """Single-number values code printed, by row and label; a later run's value for the same
+    quantity replaces an earlier one (the run that corrected it)."""
+    found: dict[tuple[str, str], Stated] = {}
+    for output in outputs:
+        section = ""
+        for raw in (output or "").splitlines():
+            line = raw.strip()
+            if not line or line.lower() in ("stdout:", "stderr:"):
+                continue
+            if "|" in line and "=" in line:
+                stated = stated_values(line)
+            elif (head := _DECORATED.match(line)) and not _value_match(
+                    line.strip("=-*#~[] ")):
+                section = head.group("name").strip().rstrip(":：").strip()
+                continue
+            elif (head := _COLON_HEADER.match(line)) and not _NUMBER.search(
+                    _PAREN.sub("", head.group("name"))):
+                section = head.group("name").strip()
+                continue
+            else:
+                stated = [s] if (s := _printed_line(line, section)) else []
+            for s in stated:
+                key = (_norm(s.row), _norm(s.label))
+                found.pop(key, None)
+                found[key] = s
+    return list(found.values())
+
+
+_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(?P<h>.+?)\s*#*$")
+_RULE_CELL = re.compile(r":?-{2,}:?")
+
+
+def _cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def check_markdown(text: str, stated: list[Stated]) -> tuple[str, list[str]]:
+    """A markdown answer's numbers that name a printed value set to it: sentences read with
+    the nearest heading as their title, tables cell by cell. `(text, corrections)`."""
+    # a value printed with no row (「합계: 152760」) is too loose to pin a line of prose to
+    stated = [s for s in stated if s.row]
+    if not stated or not text:
+        return text, []
+    names = _Names(stated)
+    found: list[str] = []
+    lines = text.split("\n")
+    out: list[str] = []
+    heading = ""
+    fenced = False
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        if fenced or line.lstrip().startswith("```"):
+            out.append(line)
+            i += 1
+            continue
+        if line.lstrip().startswith("|"):
+            block = []
+            while i < len(lines) and lines[i].lstrip().startswith("|"):
+                block.append(lines[i])
+                i += 1
+            out.extend(_check_table(block, heading, names, stated, found))
+            continue
+        if m := _HEADING.match(line):
+            heading = m.group("h")
+            out.append(line)
+            i += 1
+            continue
+        out.append(_check_text(line, heading, names, stated, found))
+        i += 1
+    return "\n".join(out), found
+
+
+def _check_table(block: list[str], heading: str, names: _Names, stated: list[Stated],
+                 found: list[str]) -> list[str]:
+    rows = [_cells(line) for line in block]
+    rule = [j for j, cells in enumerate(rows) if cells and all(
+        _RULE_CELL.fullmatch(c) for c in cells if c)]
+    body = [cells for j, cells in enumerate(rows) if j not in rule]
+    if len(body) < 2:
+        return block
+    before = [list(r) for r in body]
+    checked = _check_rows(body, names, stated, found, context=heading)
+    out, k = [], 0
+    for j, line in enumerate(block):
+        if j in rule:
+            out.append(line)
+            continue
+        new = [str(c) for c in checked[k]]
+        out.append(line if new == before[k] else "| " + " | ".join(new) + " |")
+        k += 1
+    return out
+
+
+def check_chart(chart: dict[str, Any], title: str, names: _Names, stated: list[Stated],
+                found: list[str]) -> dict[str, Any]:
+    """Chart bars naming a computed value set to it: a category or series names the row, the
+    other (or the title) the value's label."""
+    categories = [str(c) for c in chart.get("categories") or []]
+    series = [s for s in chart.get("series") or [] if isinstance(s, dict)]
+    out = {**chart, "series": [dict(s) for s in series]}
+
+    def one(text: str) -> str | None:
+        rows = {row for _, _, row in names.rows_in(text)}
+        return rows.pop() if len(rows) == 1 else None
+
+    def label_of(row: str, *texts: str) -> Stated | None:
+        for text in texts:
+            matched = [s for s in stated if s.row == row and names.label_at(row, s.label, text)]
+            if len(matched) == 1:
+                return matched[0]
+        return None
+
+    for item in out["series"]:
+        values = list(item.get("values") or [])
+        series_row = one(str(item.get("name") or ""))
+        for j, category in enumerate(categories[: len(values)]):
+            row = one(category)
+            if row is not None:
+                s = label_of(row, str(item.get("name") or ""), title)
+            elif series_row is not None:
+                s = label_of(series_row, category)
+            else:
+                s = None
+            if s is None:
+                continue
+            try:
+                value = float(values[j])
+            except (TypeError, ValueError):
+                continue
+            if not _same(f"{value:g}", s.value):
+                found.append(f"「{values[j]}」 → {s.text} ({s.row} {s.label})")
+                values[j] = s.value
+        item["values"] = values
+    return out

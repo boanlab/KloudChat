@@ -13,7 +13,7 @@ from typing import Any, Literal, TypedDict
 import httpx
 
 from app.core.config import settings
-from app.services import current_evidence, internal_words, settings_store, thinking
+from app.services import calc_check, current_evidence, internal_words, settings_store, thinking
 from app.services.chat import ChatStreamError, step_label, step_title
 from app.services.context import literature_request
 from app.services.tools import arithmetic
@@ -391,6 +391,79 @@ _COMPUTE_UNVERIFIED = (
     "말고, run_code 로 그 값을 구하는 코드를 실행해 출력한 다음, 위의 코드 출력값만으로 답을 "
     "처음부터 다시 쓰세요. 코드가 이미 출력한 값이 있으면 그 값을 그대로 옮기세요."
 )
+
+
+#: The answer setting the code's printed values aside as wrong and working them by hand:
+#: 「코드 출력의 P1 대기시간 11은 … 잘못 잡은 결과」 「수동 추적으로 수정한 값」.
+_OVERRIDE_CLAIM = re.compile(
+    r"(?:코드|프로그램|시뮬레이션)\s{0,2}(?:의\s{0,2})?(?:실행\s{0,2})?(?:출력|결과|값)"
+    r"[^.!?\n]{0,80}(?:잘못|틀렸|틀린|틀립|틀려|오류|버그|맞지\s{0,2}않|부정확|반영하지\s{0,2}못)"
+    r"|(?:수동|손)\s{0,2}(?:으로)?\s{0,2}(?:직접\s{0,2})?(?:추적|계산|셈)[^.!?\n]{0,20}"
+    r"(?:수정|고친|고쳐|바로잡|한\s{0,2}값|구한\s{0,2}값|채운|채웠|대신)"
+    r"|(?:수동|손)\s{0,2}(?:으로)?\s{0,2}(?:수정|고친|고쳐|바로잡)"
+    r"|(?:code|program|simulation)(?:'s)?\s+(?:output|result)s?[^.!?\n]{0,80}"
+    r"(?:wrong|incorrect|buggy|\bbug\b|mistaken)"
+    r"|\b(?:hand|manually)[\s-]{0,2}(?:traced|computed|calculated|corrected)"
+    r"|(?:traced|computed|calculated|corrected)\s+(?:it\s+|them\s+)?(?:by\s+hand|manually)",
+    re.I,
+)
+_CODE_OVERRIDE = (
+    "답이 코드 실행 출력값을 틀렸다며 손으로 셈한 값으로 바꿨습니다. 코드 출력은 손 계산으로 "
+    "고칠 수 없습니다. 코드가 틀렸다고 보면, 틀린 곳을 고친 코드를 run_code 로 다시 실행해 그 "
+    "출력값으로 답을 처음부터 다시 쓰세요(출력이 잘렸다면 필요한 값만 다시 출력하세요). 다시 "
+    "실행하지 않을 거면 코드 출력값을 그대로 쓰고, 코드가 틀렸다는 말이나 손으로 고친 값은 쓰지 "
+    "마세요."
+)
+_REVERTED = (
+    "_이 답은 코드 실행 출력값을 틀렸다며 손으로 셈한 값으로 바꿨지만, 고친 코드를 다시 실행하지 "
+    "않았습니다. 손으로 셈한 답을 거두고 코드가 출력한 값을 그대로 보입니다. 코드가 틀렸다고 "
+    "보이면 어디가 틀렸는지 알려 주세요. 코드를 고쳐 다시 실행하겠습니다._"
+)
+#: Revert block: the code's printed text, newest runs kept within this many characters.
+_REVERT_CHARS = 6000
+
+
+#: A sentence saying the hand check agrees with the code, or that the code had no error.
+_AGREES = re.compile(
+    r"일치|같습|같은\s{0,2}값|동일|오류\s{0,2}(?:가|는)?\s{0,2}없|틀린\s{0,2}곳\s{0,2}(?:이|은)?\s{0,2}없"
+    r"|\b(?:match|matches|agree|agrees|same)\b", re.I)
+
+
+def override_claims(text: str) -> list[str]:
+    """Sentences of `text` (outside code blocks) setting the code's output aside by hand."""
+    plain = _FENCED.sub(" ", text or "")
+    return [sentence.strip() for sentence in re.split(r"(?<=[.!?。])\s+|\n", plain)
+            if _OVERRIDE_CLAIM.search(sentence) and not _AGREES.search(sentence)]
+
+
+def printed_text(content: str) -> str:
+    """The printed (stdout) part of a code tool result; the whole text when it has no part."""
+    m = re.search(r"(?:^|\n)stdout:\n(.*?)(?=\n\n(?:stderr:|만든 파일|요약\(JSON\))|\Z)",
+                  content or "", re.S)
+    return (m.group(1) if m else content or "").strip()
+
+
+def reverted_answer(code_outputs: list[str]) -> str:
+    """The answer when a hand-worked override was not backed by a new run: what code printed."""
+    printed: list[str] = []
+    used = 0
+    for output in reversed(code_outputs):
+        text = printed_text(output)
+        if not text or text in printed:
+            continue
+        if printed and used + len(text) > _REVERT_CHARS:
+            break
+        printed.insert(0, text[-_REVERT_CHARS:])
+        used += len(text)
+    body = "\n\n".join(printed).replace("```", "ˋˋˋ")
+    return _REVERTED + "\n\n```text\n" + body + "\n```"
+
+
+def code_checked(answer: str, code_outputs: list[str]) -> tuple[str, list[str]]:
+    """`answer` with numbers naming a value the code printed set to that value (the latest
+    run's value for a quantity printed twice): `(answer, corrections)`."""
+    stated = calc_check.printed_values([printed_text(o) for o in code_outputs])
+    return calc_check.check_markdown(answer, stated)
 
 
 def _text_of(message: dict) -> str:
@@ -857,6 +930,10 @@ async def run_turn(
     code_refused = False
     #: Hand-worked values retried once.
     figures_retried = False
+    #: Answer set the code's output aside by hand: retried once; code runs seen at the first
+    #: such answer (a later run backs the correction, none means the code's values stand).
+    override_retried = False
+    override_at: int | None = None
     #: Extra hops past the cap (max one, for computing values).
     extra_hops = 0
     #: Next call is last after this hop's tools.
@@ -1125,6 +1202,38 @@ async def run_turn(
             yield {"type": "delta", "text": note}
             answer_text[:] = [kept + tail + note]
             break
+        if not acc.calls and code_outputs and not preflight_tool and "run_code" in by_name:
+            # A code turn's answer, closing hop included: values the code printed are not set
+            # aside or worked by hand. Each is sent back once, with a tool hop past the cap.
+            spoken_now = "".join(acc.content).strip()
+            claims = override_claims(
+                spoken_now if code_refused else strip_limit_claims(spoken_now))
+            if claims and override_at is None:
+                override_at = len(code_outputs)
+            ask = ""
+            if claims and not override_retried:
+                # 「코드 출력의 P1 대기시간 11은 잘못 … 수동 추적으로 수정」: rerun or use it.
+                override_retried = True
+                log.info("answer set the code's output aside by hand, asking once to rerun")
+                ask = _CODE_OVERRIDE
+            elif (spoken_now and not figures_retried and len(
+                    missing := _unverified_figures(
+                        spoken_now, "\n".join([given_text, *code_outputs]))) >= 2):
+                # Hand-worked values the code did not print.
+                figures_retried = True
+                log.info("answer values missing from the code outputs, asking once to compute")
+                ask = _COMPUTE_UNVERIFIED.format(values=", ".join(missing[:12]))
+            if ask:
+                streamed = "".join(hop_text)
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": streamed}
+                conversation.append(acc.assistant_message())
+                conversation.append({"role": "user", "content": ask})
+                if closing or hop >= settings.max_tool_hops:
+                    extra_hops = max(extra_hops, hop + 1 - settings.max_tool_hops)
+                    close_after_tools = True
+                closing = False
+                continue
         if closing:
             break
         if not acc.calls:
@@ -1152,24 +1261,6 @@ async def run_turn(
                 yield {"type": "retract", "text": streamed}
                 conversation.append(acc.assistant_message())
                 conversation.append({"role": "user", "content": _COMPUTE_BLANKS})
-                continue
-            if (spoken_now and code_outputs and not figures_retried and "run_code" in by_name
-                    and not preflight_tool and len(
-                        missing := _unverified_figures(
-                            spoken_now, "\n".join([given_text, *code_outputs]))) >= 2):
-                # Hand-worked values: retracted, retried once with one extra hop if capped.
-                figures_retried = True
-                log.info("answer values missing from the code outputs, asking once to compute")
-                streamed = "".join(hop_text)
-                del answer_text[len(answer_text) - len(hop_text) :]
-                yield {"type": "retract", "text": streamed}
-                conversation.append(acc.assistant_message())
-                conversation.append({"role": "user", "content": _COMPUTE_UNVERIFIED.format(
-                    values=", ".join(missing[:12]))})
-                if closing or hop >= settings.max_tool_hops:
-                    extra_hops = max(extra_hops, hop + 1 - settings.max_tool_hops)
-                    close_after_tools = True
-                closing = False
                 continue
             if hop and not spoken_now:
                 # Empty answer after tools: retry once without tools.
@@ -1577,6 +1668,25 @@ async def run_turn(
         yield {"type": "retract", "text": answer}
         yield {"type": "delta", "text": unclaimed}
         answer = unclaimed
+    if code_outputs and not preflight_tool:
+        if override_claims(answer) and (override_at is None or len(code_outputs) <= override_at):
+            # The code's output set aside by hand and no corrected run after: its values stand.
+            log.warning("answer kept setting the code's output aside without a new run; "
+                        "showing the printed values instead")
+            reverted = reverted_answer(code_outputs)
+            yield {"type": "retract", "text": answer}
+            yield {"type": "delta", "text": reverted}
+            answer = reverted
+        else:
+            checked, fixes = code_checked(answer, code_outputs)
+            if fixes:
+                # A number naming a printed value is that value (a later run's, if rerun).
+                log.info("answer values set back to the code's printed ones: %s", fixes[:12])
+                checked += ("\n\n_코드 출력과 다르게 적힌 값을 코드가 출력한 값으로 "
+                            "바로잡았습니다: " + "; ".join(fixes[:8]) + "_")
+                yield {"type": "retract", "text": answer}
+                yield {"type": "delta", "text": checked}
+                answer = checked
     linked, cited = _link_citations(answer, sources)
     if linked != answer:
         # Mid-text citations: answer re-sent whole.
