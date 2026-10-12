@@ -55,11 +55,11 @@ from app.schemas.admin import (
 from app.schemas.auth import UserOut
 from app.schemas.workspace import ApiKeyOut
 from app.services import audit as audit_service
+from app.services import connector_defaults, ocr, settings_store, starter, tools_gateway
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import mail as mail_service
 from app.services import models as model_service
-from app.services import ocr, settings_store, starter, tools_gateway
 from app.services.credits import grant_initial_allowance, set_allowance
 from app.services.litellm import provision_user
 
@@ -602,6 +602,7 @@ async def approve(
     grant_initial_allowance(db, user, allowance)
     await provision_user(user)
     await starter.seed_designs(db, user.id)
+    await connector_defaults.provide(db, user)
     db.add(user)
 
     _audit(

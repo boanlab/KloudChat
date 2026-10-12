@@ -1757,6 +1757,8 @@ export interface ConnectorRow {
   tools: ConnectorToolRow[]
   lastSyncAt: string | null
   error: string | null
+  /** 기본 제공: can be switched off, not removed. */
+  byDefault?: boolean
 }
 
 interface RequiredEnvField {
@@ -1777,6 +1779,8 @@ export interface CatalogEntry {
   kinds: string[]
   official: boolean
   installed: boolean
+  /** 기본 제공: everyone has it installed. */
+  byDefault?: boolean
   /** Credentials the server needs before it can start. */
   requiredEnv: RequiredEnvField[]
 }

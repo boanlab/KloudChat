@@ -38,6 +38,7 @@ from app.routers import (
 )
 from app.services import (
     bootstrap,
+    connector_defaults,
     litellm,
     ocr_jobs,
     publishing,
@@ -51,6 +52,13 @@ from app.services.perf import live as perf_live
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("kchat")
+
+
+async def _provide_defaults() -> None:
+    try:
+        await connector_defaults.provide_at_startup(SessionLocal)
+    except Exception as exc:  # noqa: BLE001 — the next start or admin save retries
+        log.warning("default connectors not installed at startup: %s", exc)
 
 
 @asynccontextmanager
@@ -81,6 +89,8 @@ async def lifespan(app: FastAPI):
         await starter.sync_catalog_at_startup(SessionLocal)
     except Exception as exc:  # noqa: BLE001 — the owner's next sign-in syncs it
         log.warning("catalogue not synced at startup: %s", exc)
+    # 기본 제공 copies anyone lacks; background: servers may be slow to list tools
+    defaults = asyncio.create_task(_provide_defaults())
     sweeper = asyncio.create_task(storage.watch())
     # published bots: retention, pausing unaffordable bots
     bots = asyncio.create_task(publishing.watch())
@@ -94,6 +104,7 @@ async def lifespan(app: FastAPI):
     # one replica also samples host and GPUs
     perf_task = asyncio.create_task(perf_collector.run()) if settings.perf_monitoring else None
     yield
+    defaults.cancel()
     sweeper.cancel()
     bots.cancel()
     reader.cancel()

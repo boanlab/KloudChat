@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { conversationRows, hubFixture, myAgents, mySkills, storeAgents } from './customize-fixture'
+import { conversationRows, hubFixture, installedConnectors, myAgents, mySkills, storeAgents } from './customize-fixture'
 
 /**
  * 「사용자 지정」: one hub for agents (and the 묶음 they tick), skills and connectors. Its tab,
@@ -256,5 +256,29 @@ test('묶음 만들기 opens the bundle editor, its items from the same steps �
   await expect.poll(() => state.calls.find((c) => c.method === 'POST' && c.path === '/bundles')?.body).toMatchObject({
     name: '검토 두 번', stages: [{ kind: 'agent', ref: '@self' }],
   })
+  expect(state.unexpected).toEqual([])
+})
+
+test('a built-in connector is marked and can be switched off, not removed', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo, { connectors: installedConnectors })
+  await page.goto('/customize?tab=connectors')
+  const list = page.getByTestId('connector-list')
+  const time = list.locator('[data-connector="time"]')
+  const wiki = list.locator('[data-connector="wiki"]')
+  await expect(time).toContainText('기본 제공', { timeout: 15_000 })
+  await expect(wiki).not.toContainText('기본 제공')
+  // Not pickable for bulk removal; the switch stays.
+  await expect(time.getByRole('checkbox', { name: /선택/ })).toHaveCount(0)
+  await expect(wiki.getByRole('checkbox', { name: /선택/ })).toHaveCount(1)
+  await expect(time.getByRole('switch', { name: '시간 사용' })).toBeVisible()
+  await time.getByRole('button', { name: /시간/ }).first().click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('기본 제공 커넥터는 지울 수 없습니다')
+  await expect(dialog.getByRole('button', { name: '제거' })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await wiki.getByRole('button', { name: /사내 위키/ }).first().click()
+  await expect(page.getByRole('dialog').getByRole('button', { name: '제거' })).toBeVisible()
+  expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
 })
