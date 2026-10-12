@@ -937,6 +937,20 @@ class Sections(Base):
                     body = internal_words.strip_tool_calls(body)
                     if not body.strip():
                         raise ValueError("tool call in place of the section")
+                noted = internal_words.strip_work_notes(body, request=req.text)
+                if noted != body:
+                    log.warning("section %r carried the writer's work notes; removed",
+                                section["heading"])
+                    body = noted
+                if not body.strip():
+                    # empty, or notes only: written once more, never shipped empty
+                    log.warning("section %r came back empty; written again", section["heading"])
+                    _count(bundle, spent)
+                    body, spent = await write_section(index, section, written)
+                    body = internal_words.strip_work_notes(
+                        internal_words.strip_tool_calls(body), request=req.text)
+                    if not body.strip():
+                        raise ValueError("empty section")
             except _CAUGHT as exc:
                 log.warning("report section %r failed: %s", section["heading"], exc)
                 yield {

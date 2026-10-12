@@ -5429,6 +5429,12 @@ async def _answer_turn(
     # answer-generation scope; earlier classifier/search work keeps its audit
     skip_completion_work = server_abstention or tool_result_answer
     content = "".join(text_parts)
+    if not content.strip() and not failed and not skip_completion_work and not superseded_ids:
+        # the turn ended with no answer (the agent's last try included): said, not silent
+        log.warning("chat turn in session %s ended without an answer", session_id)
+        yield chat_service.sse(_error_event(
+            "답을 완성하지 못했습니다. 다시 시도하거나 다른 모델을 골라 보세요.",
+            code="no_answer"))
     if content.strip() and not failed and not skip_completion_work:
         # agent finish pipeline (`app/pipelines/*.toml` `finish`); streamed text replaced if changed
         finish = chat_stages.bundle_for(

@@ -65,7 +65,9 @@ async def test_current_fact_closing_hop_with_invented_tool_call_does_not_finish_
     assert model_calls[-1] == []
     assert "UNSUPPORTED_PRETOOL_GUESS" not in text
     assert text.strip(), "A completed turn must explain its limit instead of saving an empty answer"
-    assert events[-1] == {"type": "usage", "inputTokens": 3, "outputTokens": 3}
+    # two tool hops, closing hop, then one write from the results (it too only called a tool)
+    assert len(model_calls) == 4
+    assert events[-1] == {"type": "usage", "inputTokens": 4, "outputTokens": 4}
 
 
 @pytest.mark.asyncio
