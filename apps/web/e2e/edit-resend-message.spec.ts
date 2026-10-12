@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 import { openTool } from './composer-tools'
+import { viewport } from './project'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -274,7 +275,7 @@ for (const index of [1, 2]) {
     const state = await fixture(page, info)
     await beginEdit(page, index)
     await page.getByLabel('프롬프트 입력').fill(edited)
-    await page.screenshot({ path: info.outputPath(`editing-${info.project.name}.png`), animations: 'disabled' })
+    await page.screenshot({ path: info.outputPath(`editing-${viewport(info)}.png`), animations: 'disabled' })
     await page.getByRole('button', { name: '수정 후 다시 보내기', exact: true }).click()
     await expect(page).toHaveURL(new RegExp(`/s/${forkId}$`))
     await expect(page.getByText(freshAnswer, { exact: true })).toBeVisible()
@@ -292,7 +293,7 @@ for (const index of [1, 2]) {
     await expect(page.getByText(freshAnswer, { exact: true })).toBeVisible()
     await expect(page.getByText(prompts[index], { exact: true })).toHaveCount(0)
     if (index === 1) await expect(page.getByText(prompts[2], { exact: true })).toHaveCount(0)
-    await page.screenshot({ path: info.outputPath(`edited-fork-${info.project.name}.png`), animations: 'disabled' })
+    await page.screenshot({ path: info.outputPath(`edited-fork-${viewport(info)}.png`), animations: 'disabled' })
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
     await page.goto(`/s/${sourceId}`)
     for (const original of [...prompts, ...answers]) await expect(page.getByText(original, { exact: true })).toBeVisible()

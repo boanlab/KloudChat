@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
+import { viewport } from './project'
 
 const now = '2026-10-09T03:00:00.000Z'
 const shots = process.env.AUDIT_LOG_SCREENSHOT_DIR
 
 async function shot(page: Page, name: string) {
   if (!shots) return
-  await page.screenshot({ path: `${shots}/${test.info().project.name}-${name}.png`, animations: 'disabled' })
+  await page.screenshot({ path: `${shots}/${viewport(test.info())}-${name}.png`, animations: 'disabled' })
 }
 
 type Row = Record<string, unknown> & { id: string; action: string; at: string; actor: string }

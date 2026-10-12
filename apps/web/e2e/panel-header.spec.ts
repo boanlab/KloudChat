@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { deckSession, panel, reportSession, resultsFixture } from './results-fixture'
+import { viewport } from './project'
 
 /** The report and slide panels read calmly: title, view, 검토, 내려받기, 편집, ⋯ in one row;
  *  the ribbon shows only while editing and holds only editing tabs. */
@@ -39,7 +40,7 @@ test('report: reading shows no ribbon and downloads from the header', async ({ p
   await open(page, reportSession)
   await expect(panel(page).getByRole('tablist')).toHaveCount(0)
   await fitsOneRow(page)
-  await shot(page, 'report-reading', testInfo.project.name)
+  await shot(page, 'report-reading', viewport(testInfo))
 
   const download = header(page).getByRole('button', { name: '내려받기' })
   await expect(download).toBeInViewport()
@@ -48,7 +49,7 @@ test('report: reading shows no ribbon and downloads from the header', async ({ p
   for (const name of ['PDF', 'Word 문서', '한글 문서', '마크다운 원문', '인쇄']) {
     await expect(menu(page).getByRole('menuitem', { name: new RegExp(name) })).toBeVisible()
   }
-  await shot(page, 'report-download', testInfo.project.name)
+  await shot(page, 'report-download', viewport(testInfo))
   const file = page.waitForEvent('download')
   await menu(page).getByRole('menuitem', { name: /한글 문서/ }).click()
   expect((await file).suggestedFilename()).toMatch(/\.hwpx$/)
@@ -67,7 +68,7 @@ test('report: ⋯ holds the views it folded, the contents, versions and reuse', 
   for (const name of ['목차', '원문 편집', '버전 기록', '이걸로 새로 시작', '새 대화에 첨부']) {
     await expect(menu(page).getByRole('menuitem', { name: new RegExp(name) })).toBeVisible()
   }
-  await shot(page, 'report-more', testInfo.project.name)
+  await shot(page, 'report-more', viewport(testInfo))
   await menu(page).getByRole('menuitem', { name: /버전 기록/ }).click()
   await expect(page.getByRole('dialog', { name: '버전 기록' })).toBeVisible()
 })
@@ -78,7 +79,7 @@ test('report: 편집 opens the editing tabs; 테마 holds the look, 강조색, �
   await header(page).getByRole('button', { name: '편집', exact: true }).click()
   expect(await tabs(page)).toEqual(['글자', '삽입', '테마', '검토'])
   await expect(panel(page).getByRole('tab', { name: '글자' })).toHaveAttribute('aria-selected', 'true')
-  await shot(page, 'report-editing', testInfo.project.name)
+  await shot(page, 'report-editing', viewport(testInfo))
   await panel(page).getByRole('tab', { name: '테마' }).click()
   await expect(header(page).getByRole('button', { name: '문서 테마 고르기' })).toBeVisible()
   await expect(header(page).getByRole('button', { name: '강조색 고르기' })).toBeVisible()
@@ -86,7 +87,7 @@ test('report: 편집 opens the editing tabs; 테마 holds the look, 강조색, �
   // 템플릿 is the document's structure: the menu lists the templates.
   await header(page).getByRole('button', { name: '문서 템플릿 고르기' }).click()
   await expect(menu(page)).toContainText('내보내면 이 템플릿으로 나갑니다')
-  await shot(page, 'report-design-tab', testInfo.project.name)
+  await shot(page, 'report-design-tab', viewport(testInfo))
   await page.keyboard.press('Escape')
   await panel(page).getByRole('tab', { name: '검토' }).click()
   await expect(header(page).getByRole('button', { name: /출처 \d+/ })).toBeVisible()
@@ -101,7 +102,7 @@ test('slides: 발표 and 내려받기 in the header, editing tabs only while edi
   await expect(panel(page).getByRole('tablist')).toHaveCount(0)
   await fitsOneRow(page)
   await expect(header(page).getByRole('button', { name: '발표' })).toBeVisible()
-  await shot(page, 'deck-reading', testInfo.project.name)
+  await shot(page, 'deck-reading', viewport(testInfo))
   await header(page).getByRole('button', { name: '내려받기' }).click()
   for (const name of ['PowerPoint', 'PDF \\(발표용\\)', '텍스트']) {
     await expect(menu(page).getByRole('menuitem', { name: new RegExp(name) })).toBeVisible()
@@ -125,12 +126,12 @@ test('slides: 발표 and 내려받기 in the header, editing tabs only while edi
   await header(page).getByRole('button', { name: '편집', exact: true }).click()
   expect(await tabs(page)).toEqual(['글자', '삽입', '테마', '검토'])
   await expect(header(page).getByRole('button', { name: '저장' })).toBeVisible()
-  await shot(page, 'deck-editing', testInfo.project.name)
+  await shot(page, 'deck-editing', viewport(testInfo))
   await header(page).getByRole('button', { name: '편집 취소' }).click()
   await panel(page).getByRole('tab', { name: '테마' }).click()
   await expect(header(page).getByRole('button', { name: '슬라이드 테마 고르기' })).toBeVisible()
   await expect(header(page).getByRole('button', { name: '강조색 고르기' })).toBeVisible()
-  await shot(page, 'deck-design-tab', testInfo.project.name)
+  await shot(page, 'deck-design-tab', viewport(testInfo))
 })
 
 test('slides: a table slide opens its cells to edit, under labels that say which box is which', async ({ page }, testInfo) => {
@@ -146,5 +147,5 @@ test('slides: a table slide opens its cells to edit, under labels that say which
   await expect(panel(page).getByLabel('1행 1열')).toBeVisible()
   await panel(page).getByLabel('1행 1열').fill('기준(수정)')
   await expect(panel(page).getByLabel('슬라이드 텍스트')).toHaveValue(/기준\(수정\)/)
-  await shot(page, 'deck-table-edit', testInfo.project.name)
+  await shot(page, 'deck-table-edit', viewport(testInfo))
 })

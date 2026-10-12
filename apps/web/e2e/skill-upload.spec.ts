@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 import { hubFixture, mySkills } from './customize-fixture'
+import { viewport } from './project'
 
 /**
  * 「스킬 업로드」: 추가 ▾ offers it on the 스킬 tab; dropped files get a dry run whose findings
@@ -65,7 +66,7 @@ async function drop(page: Page, name: string) {
 test('upload: menu, dry-run findings, a blocked file holds the upload, commit opens the skill', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   const posts = await mockImport(page)
-  const phone = testInfo.project.name === 'phone'
+  const phone = viewport(testInfo) === 'phone'
 
   await page.goto('/customize?tab=skills&view=mine')
   await expect(page.getByTestId('item-card').first()).toBeVisible({ timeout: 15_000 })
@@ -109,7 +110,7 @@ test('upload: menu, dry-run findings, a blocked file holds the upload, commit op
   expect(posts[1].body).toContain('filename="meeting.skill"')
   expect(posts[1].body).toContain('filename="notes.zip"')
 
-  if (shots) await page.screenshot({ path: `${shots}/${testInfo.project.name}-upload.png`, fullPage: true })
+  if (shots) await page.screenshot({ path: `${shots}/${viewport(testInfo)}-upload.png`, fullPage: true })
 
   await blocked.getByRole('button', { name: 'notes.zip 빼기' }).click()
   await expect(page.getByTestId('skill-preview')).toHaveCount(1)
@@ -142,7 +143,7 @@ test('upload: menu, dry-run findings, a blocked file holds the upload, commit op
 })
 
 test('hub header: filter and sort stay on the tab row; the search box wraps first', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'phone', 'the phone header is its own layout')
+  test.skip(viewport(testInfo) === 'phone', 'the phone header is its own layout')
   await hubFixture(page, testInfo)
   for (const width of [1440, 1180, 1000]) {
     await page.setViewportSize({ width, height: 800 })

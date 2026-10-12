@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import {
   card, deckSession, deckTitle, openSession, panel, reportSession, reportTitle, resultsFixture, shareToken,
 } from './results-fixture'
+import { viewport } from './project'
 
 /** The result card under the answer that made a document: open, download, start again from it. */
 
@@ -17,8 +18,12 @@ async function shot(page: Page, name: string, project: string) {
 }
 
 /** The panel opens itself with the session; the card sits behind it on a phone. */
+/** Both fixture conversations open their document in the panel once the conversation has
+ *  loaded, which can be after the transcript shows: wait for it to open, then close it. A
+ *  one-time look raced that opening and left the panel to cover the card. */
 async function closePanel(page: Page) {
-  if (await panel(page).isVisible()) await panel(page).getByRole('button', { name: '닫기', exact: true }).last().click()
+  await expect(panel(page)).toBeVisible({ timeout: 10_000 })
+  await panel(page).getByRole('button', { name: '닫기', exact: true }).last().click()
   await expect(panel(page)).toBeHidden()
 }
 
@@ -40,7 +45,7 @@ test('the answer that wrote the report carries its card; the question card does 
   await expect(card(page)).toContainText(reportTitle)
   await expect(card(page)).toContainText('보고서 · 5개 절 · v1')
   await card(page).scrollIntoViewIfNeeded()
-  await shot(page, 'result-card', testInfo.project.name)
+  await shot(page, 'result-card', viewport(testInfo))
 
   await card(page).getByRole('button', { name: '열기' }).click()
   await expect(panel(page)).toBeVisible()
@@ -60,7 +65,7 @@ test('the card downloads every report format by the export endpoint, after the c
   for (const name of ['PDF', 'Word 문서', '한글 문서', '마크다운 원문']) {
     await expect(menu(page).getByRole('menuitem', { name: new RegExp(name) })).toBeVisible()
   }
-  await shot(page, 'download-menu', testInfo.project.name)
+  await shot(page, 'download-menu', viewport(testInfo))
   const download = page.waitForEvent('download')
   await menu(page).getByRole('menuitem', { name: /Word 문서/ }).click()
   expect((await download).suggestedFilename()).toMatch(/\.docx$/)
@@ -95,7 +100,7 @@ test('「이걸로 새로 시작」 attaches the document to a new report with t
   await closePanel(page)
   await card(page).scrollIntoViewIfNeeded()
   await card(page).getByRole('button', { name: '더보기' }).click()
-  await shot(page, 'reuse-menu', testInfo.project.name)
+  await shot(page, 'reuse-menu', viewport(testInfo))
   await menu(page).getByRole('menuitem', { name: '이걸로 새로 시작' }).click()
   await expect(page).toHaveURL(/\/new\/report$/)
   await onNewScreen(page)
@@ -154,7 +159,7 @@ test('a shared conversation shows the card with nothing to change it', async ({ 
   await expect(card(page).getByRole('button', { name: '내려받기' })).toHaveCount(0)
   await expect(card(page).getByRole('button', { name: '더보기' })).toHaveCount(0)
   await card(page).getByRole('button', { name: '보기' }).click()
-  await shot(page, 'shared-card', testInfo.project.name)
+  await shot(page, 'shared-card', viewport(testInfo))
 })
 
 test('a deck saved in the panel moves the card under its answer to the new version', async ({ page }, testInfo) => {

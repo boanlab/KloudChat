@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
+import { viewport } from './project'
 
 /**
  * Pipeline phase 2 screens against fixture data: the stage list in a report transcript and on the
@@ -249,7 +250,7 @@ async function fixture(page: Page, testInfo: TestInfo) {
 }
 
 function shooter(page: Page, testInfo: TestInfo) {
-  const dir = shotsDir ? `${shotsDir}/${testInfo.project.name}` : testInfo.outputPath('shots')
+  const dir = shotsDir ? `${shotsDir}/${viewport(testInfo)}` : testInfo.outputPath('shots')
   let n = 0
   return async (name: string, full = false) => {
     n += 1
@@ -260,7 +261,7 @@ function shooter(page: Page, testInfo: TestInfo) {
 const panel = (page: Page) => page.locator('[data-panel="artifact"]')
 
 test('report: stage list, evidence, marks, fill, rerun', async ({ page }, testInfo) => {
-  const phone = testInfo.project.name === 'phone'
+  const phone = viewport(testInfo) === 'phone'
   const state = await fixture(page, testInfo)
   const shot = shooter(page, testInfo)
   await page.goto(`/s/${reportSession}?artifact=${artifactId}`)

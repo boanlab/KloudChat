@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
+import { viewport } from './project'
 
 /**
  * An agent's 직접 구성 (고급) against fixture data: in the agent's own settings, the steps start from
@@ -273,7 +274,7 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
 }
 
 function shooter(page: Page, testInfo: TestInfo) {
-  const dir = shotsDir ? `${shotsDir}/${testInfo.project.name}` : testInfo.outputPath('shots')
+  const dir = shotsDir ? `${shotsDir}/${viewport(testInfo)}` : testInfo.outputPath('shots')
   let n = 0
   return async (name: string, full = false) => {
     n += 1

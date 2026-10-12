@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { hubFixture, myAgents, mySkills } from './customize-fixture'
+import { viewport } from './project'
 
 /** Screenshots of the hub for review; runs only with CUSTOMIZE_SHOTS set to a directory. */
 
@@ -15,8 +16,8 @@ async function settle(page: Page) {
 test('screens', async ({ page }, testInfo) => {
   test.setTimeout(240_000)
   await hubFixture(page, testInfo, { conversations: 40 })
-  const phone = testInfo.project.name === 'phone'
-  const tag = testInfo.project.name
+  const phone = viewport(testInfo) === 'phone'
+  const tag = viewport(testInfo)
   const shot = async (name: string, full = false) => {
     await settle(page)
     await page.screenshot({ path: `${dir}/${tag}-${name}.png`, fullPage: full })
@@ -83,7 +84,7 @@ test('screens', async ({ page }, testInfo) => {
 })
 
 test('dark', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop')
+  test.skip(viewport(testInfo) !== 'desktop')
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.addInitScript(() => localStorage.setItem('kchat-theme', 'dark'))
   await hubFixture(page, testInfo)

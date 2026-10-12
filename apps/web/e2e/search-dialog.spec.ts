@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { conversationRows, hubFixture } from './customize-fixture'
+import { viewport } from './project'
 
 /**
  * ⌘K search: one dialog over conversations and results, by title and by what they say. The
@@ -14,7 +15,7 @@ const SHOTS = process.env.SEARCH_SHOTS
 async function shot(page: Page, name: string, testInfo: TestInfo) {
   if (!SHOTS) return
   await page.waitForTimeout(300)
-  await page.screenshot({ path: `${SHOTS}/${name}-${testInfo.project.name}.png` })
+  await page.screenshot({ path: `${SHOTS}/${name}-${viewport(testInfo)}.png` })
 }
 
 const rows = conversationRows(30).map((row, i) => ({
@@ -162,7 +163,7 @@ test('the sidebar 검색 box opens the same dialog', async ({ page }, testInfo) 
   const state = await searchFixture(page, testInfo)
   await page.goto('/customize')
   await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible({ timeout: 15_000 })
-  if (testInfo.project.name === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
+  if (viewport(testInfo) === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
   await page.locator('aside').getByRole('button', { name: '대화 빠른 검색' }).click()
   await expect(dialog(page)).toBeVisible()
   await expect(box(page)).toBeFocused()

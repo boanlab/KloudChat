@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { conversationRows, hubFixture } from './customize-fixture'
+import { viewport } from './project'
 
 /** 대화 기록 a page at a time: 50 compact rows, the page and the words in the address. */
 
@@ -49,8 +50,8 @@ test('50 compact rows a page; page and words live in the address', async ({ page
   await expect(pager(page).getByRole('button', { name: '1쪽' })).toHaveAttribute('aria-current', 'page')
   // One line per conversation (the phone's larger type and touch target make it a little taller).
   const box = await historyRows(page).first().boundingBox()
-  expect(box!.height).toBeLessThanOrEqual(testInfo.project.name === 'phone' ? 64 : 48)
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/history-paged-${testInfo.project.name}.png` })
+  expect(box!.height).toBeLessThanOrEqual(viewport(testInfo) === 'phone' ? 64 : 48)
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/history-paged-${viewport(testInfo)}.png` })
 
   await pager(page).getByRole('button', { name: '2쪽' }).click()
   await expect(page).toHaveURL(/\/history\?page=2$/)
@@ -89,6 +90,6 @@ test('50 compact rows a page; page and words live in the address', async ({ page
   await expect(historyRows(page)).toHaveCount(10)
   const search = state.asked.filter((p) => p.has('q')).at(-1)!
   expect([search.get('offset'), search.get('limit'), search.get('count')]).toEqual(['50', '50', 'true'])
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/history-search-paged-${testInfo.project.name}.png` })
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/history-search-paged-${viewport(testInfo)}.png` })
   expect(state.problems).toEqual([])
 })

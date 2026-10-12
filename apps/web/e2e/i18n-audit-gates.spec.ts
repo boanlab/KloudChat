@@ -17,9 +17,10 @@ async function mockAudit(page: Page, scenario: Scenario = 'admin') {
     preferences: { autoMemory: false }, allowedModels: [],
   }
   const session = { accessToken: 'synthetic-audit-token', expiresIn: 3600, user }
+  const origin = new URL(String(test.info().project.use.baseURL)).origin
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url())
-    if (url.origin !== 'http://127.0.0.1:5193') {
+    if (url.origin !== origin) {
       state.forbidden.push('external origin')
       await route.abort('blockedbyclient')
       return

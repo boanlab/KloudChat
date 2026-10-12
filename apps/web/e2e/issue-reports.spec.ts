@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { openSidebar } from './helpers'
+import { viewport } from './project'
 
 /**
  * 「문의·신고」 against fixture data: a 👎 answer reported with the answer pinned, the session
@@ -191,7 +192,7 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
 }
 
 function shooter(page: Page, testInfo: TestInfo) {
-  const dir = shotsDir ? `${shotsDir}/${testInfo.project.name}` : testInfo.outputPath('shots')
+  const dir = shotsDir ? `${shotsDir}/${viewport(testInfo)}` : testInfo.outputPath('shots')
   let n = 0
   return async (name: string, full = false) => {
     n += 1

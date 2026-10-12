@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { CostRouting, RoutingMode } from '../src/types'
 import { setWebSearch } from './composer-tools'
+import { viewport } from './project'
 
 const now = '2026-08-18T00:00:00.000Z'
 const sessionId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -9,7 +10,7 @@ const screenshotDir = process.env.AUTO_ROUTING_SCREENSHOT_DIR
 async function captureAutoRouting(page: Page, filename: string) {
   if (!screenshotDir) return
   await page.screenshot({
-    path: `${screenshotDir}/${test.info().project.name}-${filename}`,
+    path: `${screenshotDir}/${viewport(test.info())}-${filename}`,
     animations: 'disabled',
   })
 }

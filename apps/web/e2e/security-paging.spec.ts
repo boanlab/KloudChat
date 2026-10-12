@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
+import { viewport } from './project'
 
 const now = '2026-10-09T03:00:00.000Z'
 const shots = process.env.SECURITY_PAGING_SCREENSHOT_DIR
 
 async function shot(page: Page, name: string) {
   if (!shots) return
-  await page.screenshot({ path: `${shots}/${test.info().project.name}-${name}.png`, fullPage: true, animations: 'disabled' })
+  await page.screenshot({ path: `${shots}/${viewport(test.info())}-${name}.png`, fullPage: true, animations: 'disabled' })
 }
 
 const at = (minutes: number) => new Date(Date.parse(now) - minutes * 60_000).toISOString()

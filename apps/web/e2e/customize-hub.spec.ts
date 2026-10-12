@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { conversationRows, hubFixture, installedConnectors, myAgents, mySkills, storeAgents } from './customize-fixture'
+import { viewport } from './project'
 
 /**
  * 「사용자 지정」: one hub for agents (and the 묶음 they tick), skills and connectors. Its tab,
@@ -11,7 +12,7 @@ test.use({ serviceWorkers: 'block' })
 
 test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
-  const phone = testInfo.project.name === 'phone'
+  const phone = viewport(testInfo) === 'phone'
   await page.goto('/customize')
   await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible({ timeout: 15_000 })
   // The person has agents of their own, so the hub opens on 내 항목.
@@ -195,7 +196,7 @@ test('account menu: one 사용자 지정 item, 대화 기록 beside it, 계정 u
   const state = await hubFixture(page, testInfo)
   await page.goto('/customize')
   await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible({ timeout: 15_000 })
-  if (testInfo.project.name === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
+  if (viewport(testInfo) === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
   await expect(page.getByRole('link', { name: '사용자 지정' })).toBeVisible()
   // No separate 챗봇: members' published agents are in 사용자 지정 › 에이전트.
   await expect(page.locator('aside nav').first().getByRole('link')).toHaveText(['새 대화', '프로젝트', '아티팩트', '사용자 지정'])
@@ -216,7 +217,7 @@ test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; the b
   const rows = conversationRows(40)
   const old = rows[33]
   await page.goto('/customize')
-  if (testInfo.project.name === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
+  if (viewport(testInfo) === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
   const side = page.locator('aside')
   await expect(side.getByText('고정됨')).toBeVisible({ timeout: 15_000 })
   await expect(side.getByText('최근', { exact: true })).toBeVisible()
@@ -233,7 +234,7 @@ test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; the b
 
   // An older conversation, once open, stays in view.
   await page.goto(`/s/${old.id}`)
-  if (testInfo.project.name === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
+  if (viewport(testInfo) === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
   await expect(side.getByRole('link', { name: old.title, exact: true })).toBeVisible({ timeout: 15_000 })
   await side.getByRole('link', { name: '모든 대화 보기' }).click()
   await expect(page).toHaveURL(/\/history$/)
@@ -241,7 +242,7 @@ test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; the b
 })
 
 test('묶음 만들기 opens the bundle editor, its items from the same steps 직접 구성 offers', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop')
+  test.skip(viewport(testInfo) !== 'desktop')
   const state = await hubFixture(page, testInfo)
   await page.goto('/customize?tab=agents&view=mine')
   await page.getByRole('button', { name: '추가', exact: true }).filter({ visible: true }).first().click()

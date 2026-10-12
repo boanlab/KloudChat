@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { hubFixture } from './customize-fixture'
+import { viewport } from './project'
 
 /**
  * What a person can set as the built-ins do: a template of their own made from every field
@@ -10,7 +11,7 @@ import { hubFixture } from './customize-fixture'
 test.use({ serviceWorkers: 'block' })
 
 async function shot(page: Page, testInfo: TestInfo, name: string) {
-  await page.screenshot({ path: `test-results/gaps2/${name}-${testInfo.project.name}.png`, fullPage: true })
+  await page.screenshot({ path: `test-results/gaps2/${name}-${viewport(testInfo)}.png`, fullPage: true })
 }
 
 test('a template made from 회의록 in the editor carries every field the shipped one sets', async ({ page }, testInfo) => {

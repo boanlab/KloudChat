@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { hubFixture, myAgents } from './customize-fixture'
 import { openTool } from './composer-tools'
+import { viewport } from './project'
 
 /** Screenshots of the agent-centric screens for review; runs only with RESTRUCTURE_SHOTS set. */
 
@@ -16,7 +17,7 @@ async function settle(page: Page) {
 test('screens', async ({ page }, testInfo) => {
   test.setTimeout(240_000)
   await hubFixture(page, testInfo)
-  const tag = testInfo.project.name
+  const tag = viewport(testInfo)
   const shot = async (name: string, full = true) => {
     await settle(page)
     await page.screenshot({ path: `${dir}/${tag}-${name}.png`, fullPage: full })

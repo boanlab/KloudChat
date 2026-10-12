@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { hubFixture } from './customize-fixture'
 import { openTool, toolNames } from './composer-tools'
+import { viewport } from './project'
 
 /**
  * 템플릿 is a document's structure (the shipped report and slide templates, formerly 양식), 테마 is
@@ -23,7 +24,7 @@ async function shot(page: Page, name: string, phone: boolean) {
 
 test('the composer picks a 템플릿, and the gallery says so', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
-  const phone = testInfo.project.name === 'phone'
+  const phone = viewport(testInfo) === 'phone'
   await page.goto('/new/report')
   // ▦ lives in 「+」 (a bottom sheet on a phone).
   await expect(page.getByRole('button', { name: '도구', exact: true })).toBeVisible({ timeout: 15_000 })
@@ -47,7 +48,7 @@ test('the composer picks a 템플릿, and the gallery says so', async ({ page },
 
 test('the agent form picks a 템플릿 and a 테마; themes are kept in 설정 › 테마', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
-  const phone = testInfo.project.name === 'phone'
+  const phone = viewport(testInfo) === 'phone'
   await page.goto('/customize/agents/new')
   const form = page.getByTestId('agent-form')
   await expect(form).toBeVisible({ timeout: 15_000 })

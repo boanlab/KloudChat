@@ -126,7 +126,8 @@ test('walkthrough: every tab and control, with screenshots', async ({ page }, te
       await shot(`${name}-${label.replace(/[^\p{L}\p{N}]+/gu, '_').slice(0, 24)}`)
       const layers = await openLayers(page)
       await page.keyboard.press('Escape')
-      await page.waitForTimeout(200)
+      // A closing layer fades out: wait for it to go, up to a bound, then count what stayed.
+      await expect.poll(() => openLayers(page), { timeout: 2_000 }).toBe(0).catch(() => undefined)
       const after = await openLayers(page)
       if (after > 0) notes.push(`${name}/${label}: ${after} layer(s) still open after Escape (had ${layers})`)
       // Every other tab: nothing this tab opened may stay.
@@ -169,11 +170,14 @@ test('flows: views round-trip and every panel belongs to its tab', async ({ page
   await homeButton(page, '웹뷰').click()
   await check('web view returns after page view', async () => { await expect(webView(page)).toBeVisible({ timeout: 5000 }); return true })
   await shot('back-to-web-1')
-  await page.waitForTimeout(1500)
+  // The buttons fade back in; poll until they settle instead of guessing how long that takes.
   await check('view buttons are enabled and opaque after returning', async () => {
-    const states = await panel(page).locator('header').getByRole('button', { name: /^(웹뷰|페이지뷰)$/ }).evaluateAll((buttons) =>
-      buttons.map((b) => ({ disabled: (b as HTMLButtonElement).disabled, opacity: Number(getComputedStyle(b).opacity) })))
-    return states.length === 2 && states.every((x) => !x.disabled && x.opacity > 0.95)
+    await expect.poll(async () => {
+      const states = await panel(page).locator('header').getByRole('button', { name: /^(웹뷰|페이지뷰)$/ }).evaluateAll((buttons) =>
+        buttons.map((b) => ({ disabled: (b as HTMLButtonElement).disabled, opacity: Number(getComputedStyle(b).opacity) })))
+      return states.length === 2 && states.every((x) => !x.disabled && x.opacity > 0.95)
+    }, { timeout: 5_000 }).toBe(true)
+    return true
   })
   await shot('back-to-web-settled')
 

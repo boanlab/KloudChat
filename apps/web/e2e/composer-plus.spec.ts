@@ -1,13 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
 import { chatId, composerFixture, fixtureAgent } from './composer-fixture'
 import { openTool, setWebSearch, toolNames } from './composer-tools'
+import { viewport } from './project'
 
 /**
  * The composer keeps 「+」, dictation, the model and send outside; every other tool is a row of
  * 「+」 (a bottom sheet on a phone), and what is switched on shows as a removable chip.
  */
 
-const phoneProject = () => test.info().project.name === 'phone'
+const phoneProject = () => viewport(test.info()) === 'phone'
 
 async function send(page: Page, text: string) {
   const input = page.getByLabel('프롬프트 입력')
@@ -252,7 +253,7 @@ test('N6: 「+」 › 에이전트 lists every agent, each on its own screen, an
   }
   // Not this screen's: it says where it opens.
   await expect(menu.getByRole('menuitem', { name: /회의록 정리/ })).toContainText('보고서')
-  if (info.project.name === 'desktop') await page.screenshot({ path: shotPath('composer-agents-desktop') })
+  if (viewport(info) === 'desktop') await page.screenshot({ path: shotPath('composer-agents-desktop') })
   else await page.screenshot({ path: shotPath('composer-agents-phone') })
   // A report agent opens a report conversation, not a chat one.
   await menu.getByRole('menuitem', { name: /회의록 정리/ }).click()

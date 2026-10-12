@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
+import { viewport } from './project'
 
 /**
  * Keyboard, focus and announcements against fixture data: forms that say
@@ -138,7 +139,7 @@ async function app(page: Page, testInfo: TestInfo, { signedIn = true, signupMode
   return state
 }
 
-const phone = (testInfo: TestInfo) => testInfo.project.name === 'phone'
+const phone = (testInfo: TestInfo) => viewport(testInfo) === 'phone'
 
 test.describe('signed out', () => {
   test('sign-in: an empty form names the field, a wrong password is cleared and warns before the lock', async ({ page }, testInfo) => {

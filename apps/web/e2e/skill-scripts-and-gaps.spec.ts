@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { hubFixture, myAgents, mySkills } from './customize-fixture'
+import { viewport } from './project'
 
 /**
  * A person can set up what built-ins have: the skill form names shipped scripts and checks for
@@ -58,7 +59,7 @@ test('skill form: shipped scripts and checks by name, own scripts listed for the
   await server.getByRole('combobox', { name: '검사 스킬로 쓰기' }).selectOption('post')
   await expect(server.getByTestId('skill-entry')).toHaveValue('grounding-check/trace')
   await server.getByRole('checkbox', { name: /날짜 계산/ }).check()
-  await shot(page, 'skill-form-scripts', testInfo.project.name, group)
+  await shot(page, 'skill-form-scripts', viewport(testInfo), group)
   await form.getByRole('button', { name: '저장', exact: true }).click()
   await expect(form.getByText('저장했습니다.')).toBeVisible()
   const saved = state.calls.find((c) => c.method === 'PATCH' && c.path === `/skills/${mine.id}`)
@@ -97,7 +98,7 @@ test('upload: a kept script shows its code and its findings by file and line', a
   await expect(card.getByTestId('skill-preview-server')).toContainText('source-check/post')
   await card.getByTestId('skill-script').first().getByRole('button', { name: '코드 보기' }).click()
   await expect(card.locator('pre')).toContainText('urlopen')
-  await shot(page, 'upload-preview', testInfo.project.name, card)
+  await shot(page, 'upload-preview', viewport(testInfo), card)
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
 })
@@ -128,7 +129,7 @@ test('agent form: 빠진 정보 질문 editor beside the template\'s questions',
   await third.getByRole('textbox', { name: '물어볼 것' }).fill('참석자는 누구인가요?')
   await third.getByTestId('gap-detector').selectOption('builtin')
   await third.getByRole('combobox', { name: '찾는 것' }).selectOption('attendees')
-  await shot(page, 'agent-gap-questions', testInfo.project.name, group)
+  await shot(page, 'agent-gap-questions', viewport(testInfo), group)
   await form.getByRole('button', { name: '만들기' }).click()
   await expect(page).toHaveURL(/\/customize\/agents\/a9999999999999999999999999999999$/)
   const created = state.calls.find((c) => c.method === 'POST' && c.path === '/agents')
@@ -140,7 +141,7 @@ test('agent form: 빠진 정보 질문 editor beside the template\'s questions',
   ])
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
-  if (testInfo.project.name === 'phone') {
+  if (viewport(testInfo) === 'phone') {
     const width = await page.evaluate(() => document.documentElement.scrollWidth)
     expect(width).toBeLessThanOrEqual(390)
   }
@@ -170,7 +171,7 @@ test('agent form: the template\'s questions stay read only; the base\'s seed the
   await expect(group.getByTestId('gap-inherited')).toContainText('누구에게 올리는 보고인가요?')
   await expect(group.getByTestId('gap-question')).toHaveCount(1)
   await expect(group.getByTestId('gap-question').getByRole('textbox', { name: '물어볼 것' })).toHaveValue('며칠을 넘으면 기한을 넘긴 것으로 볼까요?')
-  await shot(page, 'agent-gap-inherited', testInfo.project.name, group)
+  await shot(page, 'agent-gap-inherited', viewport(testInfo), group)
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
 })

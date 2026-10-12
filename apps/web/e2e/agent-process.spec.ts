@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { hubFixture, myAgents } from './customize-fixture'
+import { viewport } from './project'
 
 /**
  * An agent's 진행 과정 and 추가로 할 일: 바로 답하기, a base the official agents work by with its
@@ -190,7 +191,7 @@ test('B-6, B-9: 사용자 지정 does not narrate where things moved; the bright
 
 const shotDir = process.env.SHOT_DIR ?? 'test-results/shots'
 async function shot(page: Page, name: string, target?: import('@playwright/test').Locator) {
-  const file = `${shotDir}/${name}-${test.info().project.name}.png`
+  const file = `${shotDir}/${name}-${viewport(test.info())}.png`
   if (target) await target.screenshot({ path: file })
   else await page.screenshot({ path: file, fullPage: false })
 }
