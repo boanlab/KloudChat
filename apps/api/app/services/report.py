@@ -2210,7 +2210,24 @@ _PROMPT_TALK = re.compile(
     r"|(?:확정|계산)\s{0,2}블록|확정 날짜 블록"
     r"|[×x*]\s{0,2}[\d.,]{1,12}\s{0,2}=\s{0,2}[\d,]{1,20}\s{0,2}원[^.\n]{0,80}?(?:과|와)\s{0,2}"
     r"(?:다릅니다|다르다|달라|일치하지\s{0,2}않)"
+    r"|본\s{0,2}섹션|[\"「]?\d{2,4}\s{0,2}자\s{0,2}내외[\"」]?\s{0,2}로|(?:한두|두세|\d)\s{0,2}문장으로\s{0,2}압축"
 )
+#: writer's note to itself, 「[[확정 수치 검토: … 압축.]]」; not a figure mark or a citation
+_WRITER_NOTE = re.compile(r"\[\[(?!\s*그림\s*[:：])(?!\s*\d{1,3}\s*\]\])(?:(?!\n\s*\n)[^\[\]]){2,3000}\]\]")
+#: note left open to the paragraph's end, or closed with its opening already gone
+_OPEN_NOTE = re.compile(r"\[\[(?!\s*그림\s*[:：])(?!\s*\d{1,3}\s*\]\])[^\[\]\n]{20,}$", re.M)
+_CLOSED_NOTE_TAIL = re.compile(r"^(?:(?!\n\s*\n)[^\[\]]){0,3000}?\]\](?!\()", re.M)
+
+
+def drop_writer_notes(body: str) -> str:
+    """`[[…]]` notes the writer left itself removed whole, never sentence by sentence."""
+    if "]]" not in body and "[[" not in body:
+        return body
+    out = _WRITER_NOTE.sub("", body)
+    out = _OPEN_NOTE.sub("", out)
+    out = _CLOSED_NOTE_TAIL.sub(lambda m: "" if "[[" not in m.group(0) else m.group(0), out)
+    out = re.sub(r"[ \t]+\n", "\n", out)
+    return re.sub(r"\n{3,}", "\n\n", out).strip("\n") + ("\n" if body.endswith("\n") else "")
 _LONE_LANGUAGE = re.compile(r"(?m)^```[ \t]*\n(callout|kpi|cards|diagram|mermaid|chart)[ \t]*$")
 _TABLE_CAPTION_LINE = re.compile(r"^\s*(?:\*\*)?표\s?(?:\d{1,3})?[.:]")
 
@@ -2409,7 +2426,7 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
             # 「[[5]]」/「[]」 from a citation pass
             body = re.sub(r"\[\[(\d{1,3})\]\](?!\()", r"[\1]", body)
             body = re.sub(r"\s?\[\](?!\()", "", body)
-            body = internal_words.scrub(drop_prompt_talk(drop_cut_rows(body)))
+            body = internal_words.scrub(drop_prompt_talk(drop_cut_rows(drop_writer_notes(body))))
             # settled figures restored in formulas before recomputing
             body = key_figures.mend_operands(body, settled or [])
             body = fix_table_formulas(units.fix_written_sums(units.fix_written_arithmetic(body)))
