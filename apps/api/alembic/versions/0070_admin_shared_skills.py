@@ -12,7 +12,7 @@
 Downgrade drops the column and marks keyed rows `built_in` again.
 
 Revision ID: 0070
-Revises: 0068
+Revises: 0069
 Create Date: 2026-10-12
 """
 
@@ -27,7 +27,7 @@ from alembic import op
 
 revision: str = "0070"
 # re-parent onto the head current at merge time (0069 lands separately)
-down_revision: str | None = "0068"
+down_revision: str | None = "0069"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
