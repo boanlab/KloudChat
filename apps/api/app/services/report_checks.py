@@ -74,6 +74,9 @@ def tables(sections: list[dict]) -> list[Table]:
                 rows = []
                 j = i + 2
                 while j < len(lines) and lines[j].lstrip().startswith("|"):
+                    if j + 1 < len(lines) and _TABLE_RULE.match(lines[j + 1]):
+                        # a header and rule glued on: the next table
+                        break
                     rows.append((lines[j], cells(lines[j])))
                     j += 1
                 above = next((ln for ln in reversed(lines[max(0, i - 3):i]) if ln.strip()), "")
@@ -87,6 +90,12 @@ def tables(sections: list[dict]) -> list[Table]:
 def _column(header: list[str], pattern: str) -> int | None:
     rx = re.compile(pattern)
     return next((k for k, h in enumerate(header) if rx.search(h)), None)
+
+
+def _owner_due(header: list[str], due: str = r"기한|마감|완료일|due") -> tuple[int | None, int | None]:
+    """Owner and due columns; one combined 「담당·기한」 column is neither."""
+    owner, when = _column(header, r"담당|책임|owner"), _column(header, due)
+    return (None, None) if owner is not None and owner == when else (owner, when)
 
 
 def _words(text: str) -> set[str]:
@@ -1865,8 +1874,7 @@ async def minutes_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict
     found: list[Finding] = []
     bound = [d for d in dates if d.get("status") in ("ok", "repeat")]
     for table in tables(doc.sections):
-        owner = _column(table.header, r"담당|책임|owner")
-        due = _column(table.header, r"기한|마감|완료일|due")
+        owner, due = _owner_due(table.header)
         if owner is None or due is None:
             continue
         note = _column(table.header, r"비고|사유|메모|원문")
@@ -3072,8 +3080,7 @@ def minutes_undated(sections: list[dict], dates: list[dict], known: str) -> tupl
                 lines[i] = _MEETING_DAY.sub(meeting_day, line)
         out[k] = {**sec, "content": "\n".join(lines)}
     for table in tables(out):
-        owner = _column(table.header, r"담당|책임|owner")
-        due = _column(table.header, r"기한|마감|완료일|due")
+        owner, due = _owner_due(table.header)
         if owner is None or due is None:
             continue
         note = _column(table.header, r"비고|사유|메모|원문")
@@ -3351,8 +3358,7 @@ def minutes_columns(sections: list[dict], dates: list[dict]) -> tuple[list[dict]
     out = [dict(s) for s in sections]
     added = 0
     for table in tables(out):
-        owner = _column(table.header, r"담당|책임|owner")
-        due = _column(table.header, r"기한|마감|완료일|due")
+        owner, due = _owner_due(table.header)
         if owner is None or due is None:
             continue
         lacks_source = _column(table.header, r"출처|근거") is None
@@ -3426,6 +3432,39 @@ def _due_value(entry: dict) -> str:
     return str(entry.get("shown") or "")
 
 
+#: 「미정(정현우 과장 복귀 후)」: undecided, with the reason
+_DEFERRED = re.compile(r"^\**\s{0,2}미정\s{0,2}[(（]\s{0,2}(?P<why>[^()（）]{1,60}?)\s{0,2}[)）]\s{0,2}\**$")
+
+
+def minutes_deferred(sections: list[dict]) -> tuple[list[dict], int]:
+    """「미정(사유)」 owner/due cells become 「미정」 with the reason in 비고: the reason is no owner."""
+    out = [dict(s) for s in sections]
+    moved = 0
+    for table in tables(out):
+        owner, due = _owner_due(table.header)
+        note = _column(table.header, r"비고|사유|메모|원문")
+        if owner is None or due is None or note is None:
+            continue
+        content = str(out[table.section].get("content") or "")
+        for line, row in table.rows:
+            if len(row) <= max(owner, due, note):
+                continue
+            row = list(row)
+            reasons = []
+            for k in (owner, due):
+                if m := _DEFERRED.match(row[k].strip()):
+                    row[k] = "미정"
+                    reasons.append(m.group("why").strip())
+            if not reasons:
+                continue
+            kept = row[note].strip(" -—")
+            row[note] = ", ".join(dict.fromkeys([*([kept] if kept else []), *reasons]))
+            content = content.replace(line, "| " + " | ".join(row) + " |", 1)
+            moved += 1
+        out[table.section] = {**out[table.section], "content": content}
+    return out, moved
+
+
 def _task_column(header: list[str], others: tuple[int | None, ...]) -> int | None:
     """Task column: 「할 일」, else first non-owner·due·note column."""
     found = _column(header, r"할\s{0,2}일|내용|항목|조치|과제|업무|실행")
@@ -3445,8 +3484,7 @@ def minutes_due_fill(sections: list[dict], dates: list[dict]) -> tuple[list[dict
     out = [dict(s) for s in sections]
     filled = 0
     for table in tables(out):
-        owner = _column(table.header, r"담당|책임|owner")
-        due = _column(table.header, r"기한|마감|완료일|due")
+        owner, due = _owner_due(table.header)
         if owner is None or due is None:
             continue
         note = _column(table.header, r"비고|사유|메모|원문")
@@ -3625,8 +3663,9 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
         return " ".join([*kept, last])
 
     for table in tables(out):
-        owner = _column(table.header, r"담당|책임|owner")
-        due = _column(table.header, r"기한|마감|완료일|due|일시|시점")
+        owner, due = _owner_due(table.header, r"기한|마감|완료일|due|일시|시점")
+        # one 「담당·기한」 column: its row is a sentence, kept whole
+        combined = owner is None and _column(table.header, r"담당|책임|owner") is not None
         content = str(out[table.section].get("content") or "")
         for line, row in table.rows:
             row = list(row)
@@ -3637,7 +3676,7 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
                 changed = True
             around = " ".join([*table.header, *row])
             spec_cells = [k for k, c in enumerate(row) if k not in (owner, due) and unknown(c, around)]
-            if spec_cells and owner is None:
+            if spec_cells and owner is None and not combined:
                 content = content.replace(line + "\n", "", 1).replace(line, "", 1)
                 codes.append("minutes_spec")
                 continue

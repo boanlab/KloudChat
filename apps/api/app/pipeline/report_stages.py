@@ -1069,6 +1069,12 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         ),
         prepass.bound_dates if prepass is not None and prepass.bound_dates else None,
     )
+    today = report.local_today()
+    computed = {str(d.get("date") or "") for d in (prepass.dates if prepass is not None else [])}
+    if (doc_format is not None and doc_format.id == "minutes"
+            and today.isoformat() not in computed):
+        # minutes carry the memo's dates; the writer's today is none of them
+        clean = report.blank_today(clean, "\n".join([request, *document_context]), today)
     if bundle.plan.unverified and index == 0:
         # stated at the head of the first section
         clean = report._UNVERIFIED_NOTE + "\n\n" + clean
@@ -1416,6 +1422,8 @@ class MinutesRepair(Base):
         sections, widened = report_checks.minutes_columns(bundle.document.sections,
                                                           prepass.dates)
         before += ["minutes_columns"] * widened
+        # 「미정(사유)」: reason to 비고 by code, so no rewrite reads it as an owner
+        sections, _ = report_checks.minutes_deferred(sections)
         sections, filled = report_checks.minutes_due_fill(sections, prepass.dates)
         before += ["minutes_due"] * filled
         if prepass.undated:

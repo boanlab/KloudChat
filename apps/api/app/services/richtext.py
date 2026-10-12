@@ -564,8 +564,11 @@ def tidy_tables(text: str) -> str:
             out.append(line)
             continue
         before = next((out[i] for i in range(len(out) - 1, -1, -1) if out[i].strip()), "")
-        after = next((lines[i] for i in range(index + 1, len(lines)) if lines[i].strip()), "")
-        if _PIPE_ROW.match(before) and _PIPE_ROW.match(after):
+        at = next((i for i in range(index + 1, len(lines)) if lines[i].strip()), len(lines))
+        after = lines[at] if at < len(lines) else ""
+        # a header and rule after the gap start another table: the gap stays
+        starts_table = at + 1 < len(lines) and _SEPARATOR_ROW.match(lines[at + 1])
+        if _PIPE_ROW.match(before) and _PIPE_ROW.match(after) and not starts_table:
             continue
         out.append(line)
     return "\n".join(out)
