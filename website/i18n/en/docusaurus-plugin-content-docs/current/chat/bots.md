@@ -57,6 +57,7 @@ The management page (**Chatbot** → **Manage** on your agent's page) shows:
 
 - **Statistics**: questions, conversations, visitors, frequent topics, unanswered questions (sentences with personal details masked), 👍👎.
 - **Sent conversations**: only conversations a visitor sent with **Send to the maker**, personal details masked. With **Conversation access** on, conversations after the visitor's consent show too. Turn it on only for chatbots whose conversations are the work itself, such as counselling or complaints.
+- **Allow copies** under **Settings**: off (locked) by default. Turn it on and members can take the chatbot, instructions included, as their own agent. Leave it off to keep the instructions to yourself.
 - Visitors show as "Visitor ABC123" with only whether they signed in. **Block this visitor** on a sent conversation stops them from asking; unblock them under **Settings** → **Blocked visitors**.
 
 When an administrator reads conversations to check abuse, the date and reason appear under **Administrator reads** on **Overview**.
@@ -70,7 +71,7 @@ A chatbot published to members (or to the public) shows to other members as an a
 - It is listed under **Shared agents** in **Customize** → **Agents** → **Explore**, with its publisher's name. Agents shared with everyone sit in the same place, and an agent that is both shows once.
 - In the composer, **+** → **Agents** lists it under **Shared agents**, below your own agents.
 - **Use now** or its name opens a conversation on the chatbot page. Answers spend the publisher's credits.
-- **Add** copies the published version's instructions and settings as your own agent. Material (knowledge files) does not come along. An agent whose maker keeps the instructions private cannot be copied.
+- Chatbots are locked by default: members can only **Use now**. **Add** shows only on chatbots whose publisher turned on **Allow copies**; it copies the published version's instructions and settings as your own agent. Material (knowledge files) does not come along. Even with copies allowed, an agent whose maker keeps the instructions private cannot be copied. A locked chatbot shows a lock instead of **Add**.
 
 ## On the visitor's side
 

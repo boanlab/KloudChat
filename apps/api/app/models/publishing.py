@@ -84,6 +84,8 @@ class Publication(SQLModel, table=True):
     features: dict | None = Field(default=None, sa_column=_json(nullable=True))
     show_process: str = Field(default="summary", max_length=20)
     show_sources: bool = Field(default=True)
+    #: 「복사 허용」: members may copy the bot (instructions included) as their own agent
+    allow_copy: bool = Field(default=False)
     retention_days: int = Field(default=30)
     conversation_view: str = Field(default="off", max_length=8)
     #: bumped on notice change; consent is per version

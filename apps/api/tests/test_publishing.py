@@ -647,8 +647,24 @@ async def test_members_find_open_bots_and_owners_their_own(world):
     assert (await world.client.get("/bots")).json() == []
 
 
-async def test_a_member_copies_a_listed_bot_as_an_own_agent_once(world):
+async def test_a_bot_is_locked_until_its_publisher_allows_copies(world):
     pub = await _publish(world)
+    assert pub["allowCopy"] is False
+    world.as_("member")
+    (bot,) = (await world.client.get("/bots")).json()
+    assert bot["copyable"] is False
+    closed = await world.client.post(f"/bots/{pub['slug']}/copy")
+    assert closed.status_code == 403 and closed.json()["detail"] == "copy_closed"
+    world.as_("owner")
+    allowed = await world.client.patch(f"/publications/{pub['id']}", json={"allowCopy": True})
+    assert allowed.json()["allowCopy"] is True
+    assert (await world.client.get("/bots")).json()[0]["copyable"] is False  # own bot
+    world.as_("member")
+    assert (await world.client.get("/bots")).json()[0]["copyable"] is True
+
+
+async def test_a_member_copies_a_listed_bot_as_an_own_agent_once(world):
+    pub = await _publish(world, allowCopy=True)
     world.as_("member")
     (bot,) = (await world.client.get("/bots")).json()
     assert bot["copied"] is False and bot["sharedAgentId"] is None
@@ -666,7 +682,7 @@ async def test_a_member_copies_a_listed_bot_as_an_own_agent_once(world):
 
 
 async def test_a_bot_whose_agent_is_shared_or_sealed_is_marked_and_not_copied(world):
-    pub = await _publish(world)
+    pub = await _publish(world, allowCopy=True)
     async with world.local() as db:
         agent = await db.get(Agent, "agent-1")
         agent.visibility = "org"
@@ -679,6 +695,7 @@ async def test_a_bot_whose_agent_is_shared_or_sealed_is_marked_and_not_copied(wo
         agent.share_mode = "sealed"
         db.add(agent)
         await db.commit()
+    assert (await world.client.get("/bots")).json()[0]["copyable"] is False
     closed = await world.client.post(f"/bots/{pub['slug']}/copy")
     assert closed.status_code == 403 and closed.json()["detail"] == "copy_closed"
     world.as_("owner")
@@ -713,9 +730,11 @@ def _migration(name: str = "0064_agent_publishing"):
 def test_the_migrations_add_and_drop_what_publishing_needs_on_sqlite():
     first, outside = _migration(), _migration("0065_publishing_outside")
     channels = _migration("0066_publishing_channels")
+    copies = _migration("0071_bot_copy")
     assert (first.revision, first.down_revision) == ("0064", "0063")
     assert (outside.revision, outside.down_revision) == ("0065", "0064")
     assert (channels.revision, channels.down_revision) == ("0066", "0065")
+    assert copies.revision == "0071"
     engine = sa.create_engine("sqlite://")
     with engine.begin() as conn:
         for ddl in ("CREATE TABLE users (id VARCHAR PRIMARY KEY)",
@@ -728,6 +747,7 @@ def test_the_migrations_add_and_drop_what_publishing_needs_on_sqlite():
             first.upgrade()
             outside.upgrade()
             channels.upgrade()
+            copies.upgrade()
         inspector = sa.inspect(conn)
         for model in (Publication, PublicationVersion, PublicationVisitor, PublicationCounter,
                       PublicationSlot, PublicationQuestion, PublicationKey):
@@ -739,6 +759,12 @@ def test_the_migrations_add_and_drop_what_publishing_needs_on_sqlite():
         conn.execute(sa.text(
             "INSERT INTO publications (id, owner_id, slug, visibility, created_at, updated_at) "
             "VALUES ('p', 'u', 's', 'link', '2026-10-10', '2026-10-10')"))
+        # Bots published before 0071 stay locked.
+        assert conn.execute(sa.text("SELECT allow_copy FROM publications")).scalar() == 0
+        with Operations.context(MigrationContext.configure(conn)):
+            copies.downgrade()
+        assert "allow_copy" not in {c["name"] for c in sa.inspect(conn).get_columns(
+            "publications")}
         with Operations.context(MigrationContext.configure(conn)):
             channels.downgrade()
         inspector = sa.inspect(conn)

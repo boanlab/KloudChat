@@ -27,6 +27,7 @@ class PublicationSettings(Wire):
     limits: dict[str, int] | None = None
     show_process: Literal["none", "summary", "full"] | None = None
     show_sources: bool | None = None
+    allow_copy: bool | None = None
     retention_days: int | None = Field(default=None, ge=1, le=365)
     conversation_view: Literal["off", "on"] | None = None
 

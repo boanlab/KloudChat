@@ -309,6 +309,7 @@ export interface SettingsDraft {
   placeholder: string
   showProcess: ShowProcess
   showSources: boolean
+  allowCopy: boolean
   retentionDays: number
   conversationView: 'off' | 'on'
   limits: BotLimits
@@ -335,6 +336,7 @@ export function toSettings(draft: SettingsDraft): PublicationSettings {
     },
     showProcess: draft.showProcess,
     showSources: draft.showSources,
+    allowCopy: draft.allowCopy,
     retentionDays: draft.retentionDays,
     conversationView: draft.conversationView,
     limits: draft.limits,

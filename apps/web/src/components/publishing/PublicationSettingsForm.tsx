@@ -74,6 +74,13 @@ export function PublicationSettingsForm({
         </div>
         <Switch checked={draft.showSources} onChange={(v) => set({ showSources: v })} label={t('출처 목록 보여 주기')} />
       </div>
+      <div className="flex items-start justify-between gap-3 rounded-card border border-line px-3.5 py-3">
+        <div className="min-w-0">
+          <p className="text-base font-medium">{t('복사 허용')}</p>
+          <p className="text-sm text-faint">{t('복사를 허용하면 구성원이 지시문까지 내 에이전트로 가져갈 수 있습니다.')}</p>
+        </div>
+        <Switch checked={draft.allowCopy} onChange={(v) => set({ allowCopy: v })} label={t('복사 허용')} />
+      </div>
       <div className="space-y-2 rounded-card border border-line px-3.5 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">

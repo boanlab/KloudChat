@@ -57,6 +57,7 @@ function draftOf(pub: Publication): SettingsDraft {
     placeholder: pub.branding.placeholder,
     showProcess: pub.showProcess,
     showSources: pub.showSources,
+    allowCopy: pub.allowCopy,
     retentionDays: pub.retentionDays,
     conversationView: pub.conversationView,
     limits: pub.limits,
@@ -259,7 +260,7 @@ export function PublicationPage() {
               <Card className="space-y-1 p-4">
                 <p className="text-sm text-faint">{t('방문자에게 보이는 것')}</p>
                 <p className="text-base">
-                  {t('답을 만드는 과정')}: {t(SHOW_PROCESS_LABEL[pub.showProcess])} · {t('출처 목록')}: {pub.showSources ? t('보임') : t('숨김')}
+                  {t('답을 만드는 과정')}: {t(SHOW_PROCESS_LABEL[pub.showProcess])} · {t('출처 목록')}: {pub.showSources ? t('보임') : t('숨김')} · {t('복사')}: {pub.allowCopy ? t('허용') : t('잠금')}
                 </p>
                 <p className="text-sm text-muted">
                   {t('답은 공개한 판의 지시와 자료로만 하고, 내 메모리·개인 맞춤 설정·다른 파일은 쓰지 않습니다. 사용량은 내 크레딧으로 계산됩니다.')}
