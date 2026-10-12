@@ -216,3 +216,14 @@ def test_a_dropped_figure_takes_its_reference_particle_with_it():
     assert "〔그림〕" not in out and " 에서" not in out
     assert out.startswith("비용은 제시한 산식대로")
     assert report.drop_figure(f"위 〔그림〕과 같이 나뉜다.\n{mark}", mark).startswith("나뉜다.")
+
+
+def test_official_items_print_as_levels_not_a_list_beside_flush_lines():
+    from app.services import report_export
+
+    body = ("1. 협조를 요청합니다.\n\n가. 조사 대상: 기자재\n\n※ 소모품은 제외\n\n"
+            "1) 세부 항목\n\n가) 더 세부\n\n2. 문의: 기획예산팀")
+    lines = report_export._section_lines({"content": body}, {"numbering": "official"}, False, "  ")
+    shown = [(kind, marker, depth) for kind, _text, marker, depth in lines]
+    assert shown == [("gaejo", "1.", 0), ("gaejo", "가.", 1), ("remark", "※", 2),
+                     ("gaejo", "1)", 2), ("gaejo", "가)", 3), ("gaejo", "2.", 0)]
