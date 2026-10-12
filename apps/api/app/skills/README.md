@@ -78,7 +78,9 @@ The same fields are set in the skill form and in an uploaded SKILL.md.
 
 A skill's `process` lists (`prepass`, `checks`, `stages`, …) join the 서식's instead of replacing
 them, so `date-calc` on a report adds its pre-pass to whatever the template already runs; its
-single values (`search`, `deep_search`, `draws`, …) sit under the agent's own.
+single values (`search`, `deep_search`, `code_calc`, `draws`, …) sit under the agent's own.
+`code_calc` (set by `calc-check`) runs the code calculation pass on a report or deck even when
+the request names no calculation.
 
 ## Every surface it names
 

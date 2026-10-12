@@ -4579,6 +4579,11 @@ async def send_message(
                 _run_deck(
                     template=render_template,
                     traced=material_turn,
+                    # turned-on check skills run as the server's checks, as on a report
+                    check_keys=check_keys,
+                    code_calc=bool((skills_bring.process_with(
+                        agent_row.process_settings if agent_row is not None else None) or {}
+                                    ).get("code_calc")),
                     may_ask=not proceed_as_is and not _brings_material(content),
                     figures_plan=approved_figures,
                     image_model=image_model,
@@ -6177,6 +6182,10 @@ async def _run_deck(
     template: design_templates.DesignTemplate | None = None,
     #: the person's files or pasted material: slide values are traced to them
     traced: bool = False,
+    #: attached check skills (`check_skills.attached`); the grounding one traces slides too
+    check_keys: tuple[str, ...] = (),
+    #: derived values computed by code even when the request names none (a calculation skill)
+    code_calc: bool = False,
     outline_model: dict | None = None,
     #: `None` plans and offers; otherwise written as approved
     approved_plan: dict | None = None,
@@ -6224,9 +6233,10 @@ async def _run_deck(
         "user_id": user_id, "model": model, "outline_model": outline_model,
         "project_id": project_id, "routing": routing, "skills_event": skills_event,
         "context_steps": list(context_steps or []), "carry_from": carry_from,
-        "carry_note": carry_note, "traced": traced,
+        "carry_note": carry_note, "traced": traced, "check_keys": list(check_keys),
         "writer": {
             "web_search": web_search, "figures_plan": figures_plan, "image_model": image_model,
+            "code_calc": code_calc,
             "request": request, "approved_plan": approved_plan, "may_ask": may_ask,
             "model": model["id"], "outline_model": (outline_model or {}).get("id", ""),
             "trusted_context": list(trusted_context or []),
@@ -6342,6 +6352,9 @@ async def _document_write(work: PipelineBundle, service: Any, payload: str
             # code-computed values, shown in the stage record
             work.computed.values = str(event.get("values") or "")
             continue
+        if event["type"] == "sources":
+            # what the slides may cite, for the grounding check after writing
+            work.material.sources = list(event.get("sources") or [])
         yield event
     if work.plan.proposal is not None or work.findings.questions:
         raise PipelineStop("proposal offered" if work.plan.proposal is not None else "needs")

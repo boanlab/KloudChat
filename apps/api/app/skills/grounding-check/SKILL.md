@@ -2,9 +2,9 @@
 name: 근거 대조
 description: 다 쓴 문서·답의 수치·날짜·시각·이름·기관·직함·제품명이 요청·자료·사용자 답·코드 계산값에 있는지 대조하고, 근거 없는 값은 대괄호 빈칸으로 바꿉니다.
 when_to_use: 주어진 자료로 쓴 문서나 답을 내기 전에, 자료에 없는 값을 지어 넣지 않았는지 확인할 때. 서버가 붙은 에이전트·서식에서는 쓰고 나서 자동으로 돌린다.
-kinds: [chat, report]
+kinds: [chat, report, slides]
 required_tools: [run_skill_script]
-version: 1.0.0
+version: 1.1.0
 stage: post
 entry: trace
 ---
@@ -28,6 +28,11 @@ Check the values in the finished text against the material. Do not judge in your
    or list items must be one of them — and beside a 학번 the roster gives, that person's; otherwise it becomes 「[이름]」.
    Names written in the request count as material.
 4. If any value was turned into a blank, say in one line what was blanked, and ask the user for the value to fill it.
+
+[보고서·슬라이드에서]
+The server runs this check once writing is done, over every section or slide (body, tables and speaker notes): a value with no
+grounds in the request, the material, the code's computed block or the sources does not stay as written. Write only values you can
+point to there.
 
 ## 서버가 쓰는 인터페이스
 

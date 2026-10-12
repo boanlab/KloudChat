@@ -6,7 +6,7 @@ import asyncio
 import logging
 import re
 
-from app.services import settings_store
+from app.services import scheduling, settings_store
 from app.services.context import instruction_part, pasted_material, prompt_request
 
 log = logging.getLogger("kchat")
@@ -61,6 +61,14 @@ PROMPT = """아래 요청과 자료로 문서를 쓰기 전에, 문서에 들어
 {material}"""
 
 
+#: told when a calculation skill runs the pass on a request that names no calculation
+_UNASKED = (
+    "\n\nThe request names no calculation. Compute the derived values a reader of this "
+    "document would state from the material's tables and figures: the differences, ratios, "
+    "percent changes and reductions between rows or columns (e.g. one method's latency against "
+    "another's), each on its own line naming both operands' rows. Do not invent operands."
+)
+
 #: citation marks aren't data
 _CITATION = re.compile(
     r"\[\d{1,3}(?:\s{0,2}[-~,]\s{0,2}\d{1,3}){0,8}\](?:\s{0,2}~\s{0,2}\[\d{1,3}\])?")
@@ -69,10 +77,14 @@ _CITATION = re.compile(
 DEADLINE = 120.0
 
 
-def needed(request: str, context: list[str] | None = None) -> bool:
-    """Whether the instruction asks for derived values over data present in `context`."""
+def needed(request: str, context: list[str] | None = None, *, always: bool = False) -> bool:
+    """Whether the instruction asks for derived values over data present in `context`;
+    `always` (a calculation skill on): whenever the data is there."""
+    if scheduling.computed_block(request or ""):
+        # a CPU scheduling exercise is run by code whether or not it says 계산
+        return True
     instruction = instruction_part(request or "")
-    if not _ASKS.search(instruction):
+    if not always and not _ASKS.search(instruction):
         return False
     data = _CITATION.sub(" ", "\n".join([request or "", *(context or [])]))
     return len(_NUMBER.findall(data)) >= 4
@@ -235,10 +247,14 @@ async def computed_values(
     model: str,
     api_key: str,
     deadline: float = DEADLINE,
+    always: bool = False,
 ) -> tuple[str, dict[str, int], str]:
     """`(writer block, usage, status)`; independent programs must agree within `deadline`."""
     usage = {"inputTokens": 0, "outputTokens": 0}
-    if not needed(request, context):
+    if block := scheduling.computed_block(request):
+        # a textbook procedure: run here, no program to write or agree on
+        return block, usage, "done"
+    if not needed(request, context, always=always):
         return "", usage, "skipped"
     backends = await settings_store.tools_config()
     if not backends.exec:
@@ -251,6 +267,9 @@ async def computed_values(
     prompt = PROMPT.format(
         request=prompt_request(request, 6000), material=material or "(요청 안)"
     )
+    if always and not _ASKS.search(instruction_part(request or "")):
+        # nothing named: the values a reader would state from the material's tables
+        prompt += _UNASKED
     again = prompt + (
         "\n\n(검산용으로 처음부터 독립적으로 다시 작성한다. 다른 풀이 방법을 써도 좋다. "
         "모든 값을 SI 기본 단위로 바꿔 계산한다.)"
