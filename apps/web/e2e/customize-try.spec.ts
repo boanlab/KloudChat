@@ -1,14 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
 import { hubFixture, myAgents, mySkills, newSessionId, storeSkills } from './customize-fixture'
 
-/** 「체험」 opens a conversation with the item in it, whatever kind of item it is. */
+/** 「바로 쓰기」 opens a conversation with the item in it, whatever kind of item it is. */
 
 test.use({ serviceWorkers: 'block' })
 
 async function tryCard(page: Page, name: string) {
   const card = page.getByTestId('item-card').filter({ hasText: name }).first()
   await expect(card).toBeVisible({ timeout: 15_000 })
-  await card.getByRole('button', { name: `${name} 체험` }).click()
+  await card.getByRole('button', { name: `${name} 바로 쓰기` }).click()
 }
 
 test('agent: a conversation with the agent', async ({ page }, testInfo) => {
@@ -38,7 +38,7 @@ test('store skill: taken as a copy first, said so, with 빼기', async ({ page }
   const paths = state.calls.map((c) => `${c.method} ${c.path}`)
   expect(paths.slice(0, 3)).toEqual([`POST /skills/${storeSkills[0].id}/install`, 'POST /sessions', `PATCH /sessions/${newSessionId}`])
   const toast = page.getByTestId('toast')
-  await expect(toast).toContainText('체험하려고 내 스킬에 추가했어요')
+  await expect(toast).toContainText('바로 쓰려고 내 스킬에 추가했어요')
   await expect(toast.getByRole('button', { name: '빼기' })).toBeVisible()
   expect(state.problems).toEqual([])
 })

@@ -36,7 +36,7 @@ function UndoBar() {
   )
 }
 
-/** Passing neutral message (「체험하려고 내 스킬에 추가했어요 · 빼기」); outlives navigation. */
+/** Passing neutral message (「바로 쓰려고 내 스킬에 추가했어요 · 빼기」); outlives navigation. */
 function ToastBar() {
   const t = useT()
   const toast = useStore((s) => s.toast)

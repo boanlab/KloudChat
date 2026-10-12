@@ -6,7 +6,7 @@ import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { HubItem } from './hubItems'
 
-/** 「체험」 (conversation with the item) and 「+」 (copy into 내 항목); failures via the shell notice. */
+/** 「바로 쓰기」 (conversation with the item) and 「+」 (copy into 내 항목); failures via the shell notice. */
 export function useItemActions(onChanged?: () => void) {
   const t = useT()
   const navigate = useNavigate()
@@ -43,7 +43,7 @@ export function useItemActions(onChanged?: () => void) {
         const copy = held.find((s) => s.originId === item.skill?.id) ?? held.find((s) => !before.has(s.id))
         if (!copy) return
         setToast({
-          text: t('체험하려고 내 스킬에 추가했어요'),
+          text: t('바로 쓰려고 내 스킬에 추가했어요'),
           action: before.has(copy.id)
             ? undefined
             : { label: t('빼기'), run: () => void deleteSkill(copy.id) },

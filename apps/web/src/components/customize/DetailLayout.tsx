@@ -65,7 +65,7 @@ export interface MenuAction {
   danger?: boolean
 }
 
-/** Item screen: header, 체험 and 추가/편집, rest under ⋯; main actions pinned bottom on phones. */
+/** Item screen: header, 바로 쓰기 and 추가/편집, rest under ⋯; main actions pinned bottom on phones. */
 export function DetailLayout({
   item,
   tab,
@@ -105,7 +105,7 @@ export function DetailLayout({
     <>
       <Button variant={phone ? 'secondary' : 'secondary'} className={phone ? 'flex-1' : ''} disabled={busy} onClick={() => void tryIt()}>
         {busy ? <Loader2 size={15} className="animate-spin" /> : <MessageCircle size={15} />}
-        {t('체험')}
+        {t('바로 쓰기')}
       </Button>
       {primary && (
         <Button

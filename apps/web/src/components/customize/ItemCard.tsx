@@ -149,7 +149,7 @@ export function ItemCard({
       <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
-          aria-label={t('{name} 체험').replace('{name}', name)}
+          aria-label={t('{name} 바로 쓰기').replace('{name}', name)}
           title={t('새 대화에서 바로 써 봅니다')}
           disabled={busy !== null}
           onClick={async () => {
@@ -163,7 +163,7 @@ export function ItemCard({
           className="inline-flex h-8 items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 text-sm font-medium text-fg transition-colors hover:bg-elevated disabled:opacity-50 max-sm:w-8 max-sm:justify-center max-sm:px-0"
         >
           {busy === 'try' ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
-          <span className="max-sm:hidden">{t('체험')}</span>
+          <span className="max-sm:hidden">{t('바로 쓰기')}</span>
         </button>
         {view === 'explore' && onAdd ? (
           item.added ? (
