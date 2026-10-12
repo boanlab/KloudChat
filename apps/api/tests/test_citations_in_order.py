@@ -54,9 +54,10 @@ def test_exports_number_the_list_as_the_body_does():
     sections = [{"id": "a", "heading": "동향", "content": "사실성 [4]. 요약 [2]."}]
     out, kept = citations.cite_order(sections, _SOURCES)
     with_refs = report_export.with_references(out, kept, "IEEE")
-    listing = with_refs[-1]["content"].splitlines()
-    assert listing[0].startswith("1. [1]") and "Work 4" in listing[0]
-    assert listing[1].startswith("2. [2]") and "Work 2" in listing[1]
+    listing = with_refs[-1]["content"].split("\n\n")
+    # IEEE entries numbered once, by their own 「[n]」
+    assert listing[0].startswith("[1] ") and "Work 4" in listing[0]
+    assert listing[1].startswith("[2] ") and "Work 2" in listing[1]
     assert len(listing) == 2
     docx = zipfile.ZipFile(io.BytesIO(report_export.to_docx("문서", with_refs)))
     body = docx.read("word/document.xml").decode()

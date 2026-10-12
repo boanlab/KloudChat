@@ -554,6 +554,7 @@ export function Composer({
   const livePendingTemplate = useRef(pendingTemplate)
   livePendingTemplate.current = pendingTemplate
   const designTemplates = useStore((s) => s.designTemplates)
+  const ensureDesignTemplates = useStore((s) => s.ensureDesignTemplates)
   const [galleryOpen, setGalleryOpen] = useState(false)
   // A phone opens 「+」 as a bottom sheet.
   const phone = useMediaQuery('(pointer: coarse) and (max-width: 64rem), (max-width: 40rem)')
@@ -1688,7 +1689,12 @@ export function Composer({
   const plusMenu = hasTools && (
     <Dropdown
       open={plusOpen}
-      onOpenChange={(open) => (open ? setPlusOpen(true) : closePlus())}
+      onOpenChange={(open) => {
+        if (!open) return closePlus()
+        setPlusOpen(true)
+        // The startup list can miss (slow or failed load): fetched again so 「템플릿 고르기」 shows.
+        if (offersTemplates(kind) && designTemplates.length === 0) void ensureDesignTemplates()
+      }}
       sheet={phone}
       label={t('도구')}
       className={plusView === 'main' ? 'min-w-64' : 'min-w-72'}

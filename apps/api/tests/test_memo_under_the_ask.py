@@ -136,3 +136,94 @@ def open_scenario_s10() -> str:
         "",
         "판단 기준: 연간 비용(첫해·이듬해), 업무 효율, 보안, 도입 부담.",
     ])
+
+
+def test_any_work_document_on_attached_or_given_facts_is_not_searched():
+    # 공고문·FAQ on an attached 규정, a 학사일정 memo, an IRB form, a numbered procedure.
+    notice = ("첨부한 장학금 지급 규정을 근거로 「장학금 신청 안내」 공고문을 "
+              "학생 대상으로 써 줘. 문의: 학생지원팀 041-550-1150.")
+    assert report.material_complete(notice, None, has_files=True)
+    assert report.material_complete("첨부 규정 보고 학생들이 자주 묻는 질문 FAQ 8개 만들어 줘.",
+                                    None, has_files=True)
+    haksa = ("학생들한테 보낼 2027학년도 1학기 학사일정 안내문 써 줘. 요일도 붙여서.\n"
+             "- 수강신청: 2027. 2. 15. ~ 2. 18.\n- 개강: 2027. 3. 2.\n"
+             "- 수강신청 정정: 개강일부터 5일간\n- 중간고사: 2027. 4. 20. ~ 4. 26.")
+    assert report.material_complete(haksa, "official")
+    assert report.material_complete(haksa, None)
+    irb = ("IRB 심의 신청서(연구계획 요약) 초안 써 줘.\n- 연구제목: 대학생의 생성형 AI 학습 활용\n"
+           "- 대상: 본교 학부생 240명, 온라인 설문(약 15분)\n- 위험: 최소 위험. 중도 철회 가능\n"
+           "- 자료 보관: 연구 종료 후 3년")
+    assert report.material_complete(irb, "plan")
+    flow = ("우리 학과 「학부연구생 신청 절차」 안내 보고서 써 줘. 절차 흐름도도 넣어서.\n"
+            "절차: ① 지원 메일 → ② 교수 면담 → ③ 서류 제출 → ④ 서류 확인\n"
+            "신청 기간: 매 학기 개강 후 2주 이내 / 문의: 학과 사무실 내선 2301")
+    assert report.material_complete(flow, None)
+    # A memo with a lookup ask, a short bare ask, or a research plan: searched.
+    assert not report.material_complete(haksa.replace("써 줘.", "다른 대학 사례도 찾아서 써 줘."),
+                                        None)
+    assert not report.material_complete("학사일정 안내문 써 줘.", None)
+    memo = "\n".join(f"- 항목 {n}: 자료 내용 {n}번째 줄" for n in range(1, 5))
+    assert not report.material_complete(f"아래 메모로 연구계획서 써 줘.\n{memo}", "plan")
+
+
+def test_kpi_figures_the_minutes_already_state_are_not_dumped_as_a_list():
+    body = ("| 항목 | 내용 |\n|---|---|\n| 일시 | 2026-10-15(목) 14:00 |\n\n"
+            "워크숍 신청자는 42명이다.\n\n```kpi\n2026-10-15(목) | 다음 회의일\n"
+            "42명 | 워크숍 신청자\n420만원 | 사례집 디자인 견적 B사\n```\n")
+    out = report.plain_blocks(body, body)
+    assert "- 다음 회의일" not in out and "- 워크숍 신청자" not in out
+    assert "- 사례집 디자인 견적 B사: 420만원" in out
+    every = body.replace("420만원 | 사례집 디자인 견적 B사\n", "")
+    assert "```" not in report.plain_blocks(every, every) and "- " not in report.plain_blocks(
+        every, every)
+
+
+def test_forms_and_notices_are_text_documents():
+    for ask in ("IRB 심의 신청서(연구계획 요약) 초안 써 줘.\n- 대상: 학부생 240명",
+                "첨부 규정 보고 학생들이 자주 묻는 질문 FAQ 8개 만들어 줘.",
+                "장학금 신청 안내 공고문을 학생 대상으로 써 줘."):
+        assert report.form_document(ask)
+    assert not report.form_document("생성형 AI 교육 활용 동향 보고서 써 줘.")
+    assert not report.form_document("아래 메모로 사업계획서 써 줘. 한빛시 공모사업 신청용이야.")
+
+
+def test_an_untitled_body_exports_without_an_empty_heading():
+    out = report.to_markdown("안내", [{"heading": "", "content": "1. 개강: 2027. 3. 2.(화)"}])
+    assert out == "# 안내\n\n1. 개강: 2027. 3. 2.(화)\n"
+
+
+def test_a_short_guide_with_figures_gets_no_word_table_of_contents():
+    from app.services import report_export
+
+    picture = "![흐름](data:image/png;base64," + "A" * 20000 + ")"
+    sections = [{"heading": f"절 {n}", "content": f"짧은 안내 {n}.\n\n{picture}"} for n in range(6)]
+    assert not report_export._wants_toc(sections)
+    assert report_export._wants_toc([{"heading": f"절 {n}", "content": "가" * 1200}
+                                     for n in range(6)])
+
+
+def test_listed_pipe_rows_become_a_table_without_list_markers():
+    body = "- 비목 | 협약 예산(원) | 집행액(원)\n- 인건비 | 1,000 | 900\n- 여비 | 500 | 450"
+    out = report.repair_pipe_tables(body)
+    assert out.splitlines()[0] == "| 비목 | 협약 예산(원) | 집행액(원) |"
+    assert "| 인건비 | 1,000 | 900 |" in out and "- " not in out
+
+
+def test_a_dropped_figure_takes_its_reference_particle_with_it():
+    mark = "[[그림: flow | 비용 산식 | 단가 → 인원 → 개월]]"
+    body = f"비용은 〔그림〕에서 제시한 산식대로 계산한다.\n\n{mark}\n\n끝."
+    out = report.drop_figure(body, mark)
+    assert "〔그림〕" not in out and " 에서" not in out
+    assert out.startswith("비용은 제시한 산식대로")
+    assert report.drop_figure(f"위 〔그림〕과 같이 나뉜다.\n{mark}", mark).startswith("나뉜다.")
+
+
+def test_official_items_print_as_levels_not_a_list_beside_flush_lines():
+    from app.services import report_export
+
+    body = ("1. 협조를 요청합니다.\n\n가. 조사 대상: 기자재\n\n※ 소모품은 제외\n\n"
+            "1) 세부 항목\n\n가) 더 세부\n\n2. 문의: 기획예산팀")
+    lines = report_export._section_lines({"content": body}, {"numbering": "official"}, False, "  ")
+    shown = [(kind, marker, depth) for kind, _text, marker, depth in lines]
+    assert shown == [("gaejo", "1.", 0), ("gaejo", "가.", 1), ("remark", "※", 2),
+                     ("gaejo", "1)", 2), ("gaejo", "가)", 3), ("gaejo", "2.", 0)]

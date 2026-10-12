@@ -688,6 +688,8 @@ export interface ChartArtifact extends ArtifactBase {
   xLabel: string
   yLabel: string
   series: { name: string; color: string; points: { x: string; y: number }[] }[]
+  /** x values marked on the chart (dashed line, short name). */
+  marks?: { x: string; label: string }[]
   /** The rows the chart was computed from. */
   table: { columns: string[]; rows: (string | number)[][] }
   sourceFile: string

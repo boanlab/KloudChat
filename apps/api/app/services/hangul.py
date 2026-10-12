@@ -118,12 +118,50 @@ def _jamo(word: str) -> str:
     return "".join(out)
 
 
+#: Japanese kana run
+_KANA = re.compile(r"[\u3040-\u30ff][\u3040-\u30ff\u30fc]*")
+#: frequent kana slips at a Korean sentence end, read as Korean
+_KANA_KO = {
+    "できません": " 할 수 없습니다", "できます": " 할 수 있습니다", "ありません": " 없습니다",
+    "あります": " 있습니다", "です": "입니다", "でした": "이었습니다", "ください": "주세요",
+    "など": " 등", "について": "에 대해",
+}
+_SENTENCE = re.compile(r"[^.!?。\n]*[.!?。]?")
+
+
+def repair_kana(text: str, vocabulary: str = "") -> tuple[str, list[str]]:
+    """(text, changed): Japanese kana slipped into Korean prose read as Korean, or its
+    sentence dropped. Text or vocabulary written in Japanese is left alone."""
+    if not _KANA.search(text or "") or _KANA.search(vocabulary or ""):
+        return text, []
+    if len(re.findall(r"[가-힣]", text)) < len(re.findall(r"[\u3040-\u30ff]", text)):
+        return text, []
+    keep = _protected(text)
+    changed: list[str] = []
+
+    def mend(m: re.Match) -> str:
+        sentence = m.group(0)
+        if not _KANA.search(sentence) or any(a <= m.start() < b for a, b in keep):
+            return sentence
+        fixed = _KANA.sub(lambda k: _KANA_KO.get(k.group(0), k.group(0)), sentence)
+        fixed = re.sub(r"\s+ (?=할 수|있습니다|없습니다|등\b)", " ", fixed)
+        if _KANA.search(fixed):  # unknown kana: the sentence goes
+            fixed = ""
+        changed.append(f"{sentence.strip()}→{fixed.strip()}")
+        return fixed
+
+    out = _SENTENCE.sub(mend, text)
+    return (re.sub(r"(?<=\S) {2,}(?=\S)", " ", out) if changed else text), changed
+
+
 def repair_mixed_script(text: str, vocabulary: str = "") -> tuple[str, list[str]]:
-    """(text, changed): Cyrillic-tainted Korean words fixed or stripped; Greek kept."""
+    """(text, changed): Cyrillic-tainted Korean words fixed or stripped; Greek kept;
+    Japanese kana slips read as Korean or dropped."""
     import difflib
 
+    text, kana = repair_kana(text, vocabulary)
     if not _STRAY.search(text or ""):
-        return text, []
+        return text, kana
     clean_words = {
         w for w in re.findall(r"[가-힣]{2,}", f"{text} {vocabulary} {_COMMON_TERMS}")
     }
@@ -145,4 +183,4 @@ def repair_mixed_script(text: str, vocabulary: str = "") -> tuple[str, list[str]
         changed.append(f"{word}→{fixed}")
         return fixed
 
-    return _MIXED_WORD.sub(mend, text), changed
+    return _MIXED_WORD.sub(mend, text), kana + changed

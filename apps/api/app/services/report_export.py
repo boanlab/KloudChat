@@ -193,7 +193,9 @@ def with_references(
             "heading": "참고문헌",
             "level": 1,
             "status": "done",
-            "content": "\n".join(f"{index}. {entry}" for index, entry in enumerate(entries, 1)),
+            # IEEE entries carry their own 「[n]」: not numbered twice
+            "content": ("\n\n".join(entries) if style.upper() == "IEEE" else
+                        "\n".join(f"{index}. {entry}" for index, entry in enumerate(entries, 1))),
         },
     ]
 
@@ -596,6 +598,43 @@ def _gaejo_lines(lines: list[tuple[str, Any, str, int]]) -> list[tuple[str, Any,
     return out
 
 
+#: 공문 항목 기호 by level (1. → 가. → 1) → 가)); 「1)」 kept apart from 「1.」 before parsing
+_OFFICIAL_PAREN = "\u2063"
+_OFFICIAL_ITEM = re.compile(
+    rf"^(?:(?P<hangul>[가-하])\.|{_OFFICIAL_PAREN}(?P<paren>\d{{1,2}})\)|(?P<hparen>[가-하])\))\s+(?P<text>.+)$")
+
+
+def _official_lines(content: str, grids) -> list[tuple[str, Any, str, int]]:
+    """공문 body lines: 1. / 가. / 1) / 가) as hanging items indented by level (규칙 제2조),
+    not a Markdown list beside flush-left 가. lines; ※ under the item above."""
+    marked = re.sub(r"(?m)^\s{0,8}(\d{1,2})\)\s+", lambda m: f"{_OFFICIAL_PAREN}{m.group(1)}) ",
+                    str(content or ""))
+    out: list[tuple[str, Any, str, int]] = []
+    level = -1
+    for kind, text, marker, depth in _markdown_to_lines(marked, grids):
+        if kind == "number":
+            level = min(depth, 3)
+            out.append(("gaejo", text, marker, level))
+            continue
+        if kind == "body" and (item := _OFFICIAL_ITEM.match(str(text))):
+            level = 1 if item.group("hangul") else 2 if item.group("paren") else 3
+            mark = (f"{item.group('hangul')}." if item.group("hangul") else
+                    f"{item.group('paren')})" if item.group("paren") else f"{item.group('hparen')})")
+            out.append(("gaejo", item.group("text").strip(), mark, level))
+            continue
+        if kind == "body" and str(text).startswith("※"):
+            out.append(("remark", str(text)[1:].strip(), "※", max(level + 1, 0)))
+            continue
+        if kind == "body" and (found := _ATTACH_LINE.match(str(text))):
+            out.append(("attach", (found.group(1) or "").strip(), "붙임", 0))
+            level = -1
+            continue
+        if kind == "body":
+            text = str(text).replace(_OFFICIAL_PAREN, "")
+        out.append((kind, text, marker, depth))
+    return out
+
+
 def _closed(lines: list[tuple[str, Any, str, int]], gap: str) -> list[tuple[str, Any, str, int]]:
     """Lines ending in 「끝.」 (시행규칙 제4조제5항); a typed 「끝.」 is replaced."""
     kept: list[tuple[str, Any, str, int]] = []
@@ -676,7 +715,9 @@ def _section_lines(
     attachment = _is_attachment(section, block)
     if attachment:
         content = doc_formats.attachment_body(content)
-    if not gaejo:
+    if not gaejo and (block or {}).get("numbering") == "official":
+        lines = _official_lines(content, section.get("tables"))
+    elif not gaejo:
         lines = _markdown_to_lines(content, section.get("tables"))
     else:
         lines = _gaejo_lines(
@@ -887,7 +928,9 @@ _TOC_CHARS = 6_000
 
 
 def _wants_toc(sections: list[dict]) -> bool:
-    length = sum(len(str(s.get("content") or "")) for s in sections)
+    # text only: an embedded figure's data URI is no reading length
+    length = sum(len(re.sub(r"data:[\w/+.-]{1,40};base64,[A-Za-z0-9+/=]+", "",
+                            str(s.get("content") or ""))) for s in sections)
     return len(sections) >= _TOC_SECTIONS and length >= _TOC_CHARS
 
 

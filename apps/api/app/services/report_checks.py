@@ -3519,6 +3519,16 @@ def _task_column(header: list[str], others: tuple[int | None, ...]) -> int | Non
     return next((k for k in range(len(header)) if k not in others), None)
 
 
+def _owner_in_line(cell: str, entry: dict) -> bool:
+    """Whether the row's owner said the due or is named in its line; no owner, no binding."""
+    line = re.sub(r"\s", "", str(entry.get("source_line") or ""))
+    names = [re.sub(r"\s|\([^)]{0,30}\)|(?:님|씨)$", "", part.strip(" *"))
+             for part in _OWNER_SPLIT.split(cell or "")]
+    names = [n for n in names if len(n) >= 2 and not _ANY_OWNER.search(n)]
+    # 「박정민 팀장」 matched by the name before the title
+    return any(n in line or (len(n) > 3 and n[:3] in line) for n in names)
+
+
 def minutes_due_fill(sections: list[dict], dates: list[dict]) -> tuple[list[dict], int]:
     """Fill 「미정」/「[기한]」 action rows with date-calc's resolved date; original words to 비고."""
     # meeting date only: lines re-dated by later header or mail left to writer
@@ -3544,7 +3554,7 @@ def minutes_due_fill(sections: list[dict], dates: list[dict]) -> tuple[list[dict
             action = row[task] if task is not None and task < len(row) else ""
             entries = _strong_dates(" ".join(c for k, c in enumerate(row) if k not in (due, note)),
                                     bound, action)
-            if entries:
+            if entries and _owner_in_line(row[owner], entries[0]):
                 picks.append((line, row, entries, _action_hits(action, entries[0])))
         # one line's date → best-matching row; ties only when line names several tasks
         actions = [row[task] if task is not None and task < len(row) else "" for _, row in table.rows]

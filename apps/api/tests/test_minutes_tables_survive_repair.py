@@ -82,3 +82,33 @@ def test_today_is_no_deadline_in_minutes():
     # A date the memo gives stays, even on the day it is written.
     assert report.blank_today("10월 15일(목) 다음 회의", MEMO, dt.date(2026, 10, 15)) == (
         "10월 15일(목) 다음 회의")
+
+
+def test_a_due_goes_only_to_the_row_whose_owner_said_or_is_named_with_it():
+    rows = skill_scripts.dates().scan(MEMO, dt.date(2026, 10, 8))
+    table = ("| 항목 | 담당 | 기한 | 비고 |\n|---|---|---|---|\n"
+             "| LMS 모바일 화면 검수 체크리스트 공유 | 김도윤 | 미정 | 다음 회의 때 공유 |\n"
+             "| LMS 모바일 화면 학생 테스트 그룹 모집 | 최하늘 | [기한] | 학생회 통해 진행 |\n"
+             "| LMS 모바일 화면 체크리스트 검토 | 미정 | 미정 | - |")
+    filled, count = report_checks.minutes_due_fill([{"heading": "후속 조치", "content": table}],
+                                                   rows)
+    text = filled[0]["content"]
+    assert count == 1
+    assert "| LMS 모바일 화면 검수 체크리스트 공유 | 김도윤 | 2026-10-15(목) |" in text
+    assert "| 최하늘 | [기한] |" in text and "체크리스트 검토 | 미정 | 미정 |" in text
+    # alone in its table, the other person's row still gets no date from 김도윤's line
+    alone = ("| 항목 | 담당 | 기한 | 비고 |\n|---|---|---|---|\n"
+             "| LMS 모바일 화면 학생 테스트 그룹 모집 | 최하늘 | [기한] | 학생회 통해 진행 |")
+    filled, count = report_checks.minutes_due_fill([{"heading": "후속", "content": alone}], rows)
+    assert count == 0 and "[기한]" in filled[0]["content"]
+    # 「다음 주부터 매주 월요일」 said by 문서아 about the GPU 서버 예약표: not 오지호's row
+    memo = ("[녹취] 2026-10-14(수) 연구실 회의\n"
+            "오지호: GPU 서버 우선 배정 좀 부탁드려요.\n"
+            "문서아: GPU 서버 예약표는 제가 다음 주부터 매주 월요일에 갱신할게요.")
+    rows = skill_scripts.dates().scan(memo, dt.date(2026, 10, 14))
+    table = ("| 할 일 | 담당 | 기한 |\n|---|---|---|\n"
+             "| GPU 서버 우선 배정 | 오지호 | 미정 |\n"
+             "| GPU 서버 예약표 갱신 | 문서아 | 미정 |")
+    filled, count = report_checks.minutes_due_fill([{"heading": "할 일", "content": table}], rows)
+    text = filled[0]["content"]
+    assert "| GPU 서버 우선 배정 | 오지호 | 미정 |" in text

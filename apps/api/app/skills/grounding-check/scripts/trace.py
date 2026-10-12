@@ -168,14 +168,15 @@ DID_WORK = re.compile(
 #: Something the reader must bring or hand in: 「신분증 지참」, 「서류를 제출해 주세요」.
 REQUIRE = re.compile(
     r"(?P<obj>[가-힣A-Za-z0-9]{2,15})\s{0,2}(?:(?:꼭|반드시|미리|함께|각자|직접|모두|필히|별도로)\s{1,2})?"
-    r"(?P<verb>지참|제출|휴대|착용|구비|챙기|챙겨|가져오|가져와|준비해|준비하)")
+    r"(?P<verb>지참|제출|휴대|착용|구비|챙기|챙겨|가져오|가져와|준비해|준비하)"
+    r"(?!\s{0,2}드리)")  # 「준비해 드리겠습니다」: an offer, not a requirement
 #: Objects any notice may name: 「서류를 제출」, 「준비물을 챙겨」.
 GENERIC_OBJECTS = frozenset((
     "서류", "자료", "준비물", "물품", "소지품", "개인", "본인", "것", "이것", "그것", "해당", "관련", "필요",
     "내용", "사항", "결과", "결과물", "의견", "답안", "답변", "회신", "미리", "사전", "함께", "꼭",
 ))
 #: An object word that is not one: 「10월 5일까지 제출」, 「신청 후 제출」, 「완료한 뒤 제출」.
-NOT_OBJECT = re.compile(r"\d|(?:까지|부터|에게|에서|에|로|으로|은|는|이|가|의|후|뒤|전|때|시|내|한|된|할|하여|하고|해서)$")
+NOT_OBJECT = re.compile(r"\d|(?:까지|부터|에게|에서|에|로|으로|은|는|이|가|의|후|뒤|전|때|시|내|한|된|할|하여|하고|해서|면)$")
 #: Findings that drop their whole sentence rather than leave a blank.
 DROPPED = frozenset({"claim", "requirement"})
 

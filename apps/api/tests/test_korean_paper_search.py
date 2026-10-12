@@ -404,3 +404,64 @@ def test_the_subject_is_the_quoted_topic_not_the_document_s_words():
     query = korean_papers.query_for(request, planned)
     assert query.startswith("대형 언어모델") and "연구재단" not in query
     assert korean_papers.terms("한국연구재단 개인기초연구 중견연구 연구계획서 초안") == []
+
+
+@pytest.mark.asyncio
+async def test_korean_papers_are_judged_and_kept_among_many_english_hits(monkeypatch):
+    """Eight English queries fill the judge's 30 candidates; the Korean lane still gets in."""
+    words = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"]
+    queries = [f"generative AI university teaching {w}" for w in words]
+
+    async def backends():
+        return settings_store.ToolBackends(search="http://search.test")
+
+    async def plan(*_args, **_kwargs):
+        return list(queries), {"inputTokens": 0, "outputTokens": 0}
+
+    async def gather(_base, query, **_kwargs):
+        tag = query.split()[-1]
+        return [{"title": f"{query} study {tag}{n} {n * 7}",
+                 "url": f"https://arxiv.org/abs/{tag}{n}", "snippet": query}
+                for n in range(6)]
+
+    papers = [
+        {"title": "국내 대학 교육에서의 생성형 AI 활용 연구 동향 분석",
+         "url": "https://www.dbpia.co.kr/journal/articleDetail?nodeId=NODE1",
+         "snippet": "생성형 AI 대학 교육", "lane": korean_papers.LANE},
+        {"title": "대학생의 생성형 AI의 교육적 사용경험 및 인식 탐색",
+         "url": "https://dspace.kci.go.kr/handle/kci/2",
+         "snippet": "생성형 AI 대학 교육", "lane": korean_papers.LANE},
+    ]
+
+    async def search(query, count=6):
+        return [dict(p) for p in papers]
+
+    async def scrape(*_args, **_kwargs):
+        return ""
+
+    async def litellm():
+        return "http://llm.test", ""
+
+    shown: list[str] = []
+
+    def judge(request: httpx.Request) -> httpx.Response:
+        listing = json.loads(request.content)["messages"][0]["content"]
+        shown.append(listing)
+        numbers = [int(n) for n in __import__("re").findall(r"^(\d+)\. ", listing, flags=8)]
+        return httpx.Response(200, json={"choices": [{"message": {"content": str(numbers)}}]})
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(research.httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(judge), **kw))
+    monkeypatch.setattr(settings_store, "tools_config", backends)
+    monkeypatch.setattr(settings_store, "litellm_config", litellm)
+    monkeypatch.setattr(research, "_plan", plan)
+    monkeypatch.setattr(research, "_gather", gather)
+    monkeypatch.setattr(research, "scrape", scrape)
+    monkeypatch.setattr(korean_papers, "search", search)
+    ask = "생성형 AI의 대학 교육 활용 국내외 연구 동향 보고서, 국내는 국내 학회 중심"
+    found = await research.run(ask, model="m", api_key="k", scholarly=True)
+    assert shown and "국내 대학 교육에서의 생성형 AI" in shown[0]
+    korean = [s for s in found.sources if "dbpia" in s["url"] or "kci.go.kr" in s["url"]]
+    assert len(korean) == 2
+    assert "국내 논문 검색 결과 없음" not in found.context

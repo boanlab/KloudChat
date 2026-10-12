@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime as dt
 import logging
 import re
@@ -1131,17 +1132,23 @@ class Figures(Base):
         request, sections = req.text, bundle.document.sections
         # planned on written sections; skipped for peer review, one-page 개조식, 회의록; approved pictures kept
         draws_nothing = report._genre_rule(request).startswith("Genre: 학회 피어리뷰") or (
-            bundle.spec.settings.draws == "when-asked"
+            (bundle.spec.settings.draws == "when-asked" or report.form_document(request))
             and not diagrams.asks_for_diagrams(instruction_part(request))
         )
         figure_cap = min(5, max(diagrams.MAX_FIGURES, len(sections) // 2 + 1))
         # writer-placed (〔그림〕) first; planner only looks at sections with none
         drawn = 0
+        # drawn flowcharts: one figure per procedure; a numbered procedure shows every step
+        flows: list[str] = []
+        steps = diagrams.given_steps(instruction_part(request))
         for index, section in enumerate(sections):
             marks = report.figure_marks(str(section.get("content") or ""))
             for mark in marks:
                 content = str(section.get("content") or "")
-                if not mark["kind"] or draws_nothing or drawn >= figure_cap:
+                again = mark["kind"] == "flow" and not diagrams.drop_repeated_flows(
+                    [diagrams.Planned(index, "flow", mark["description"], mark["caption"])],
+                    flows)
+                if not mark["kind"] or draws_nothing or drawn >= figure_cap or again:
                     section["content"] = report.drop_figure(content, mark["mark"])
                     continue
                 name = mark["caption"] or diagrams.FIGURES[mark["kind"]]
@@ -1153,7 +1160,8 @@ class Figures(Base):
                         diagrams.Planned(index, mark["kind"], mark["description"],
                                          mark["caption"], context=content,
                                          document="\n\n".join(
-                                             str(s.get("content") or "") for s in sections)),
+                                             str(s.get("content") or "") for s in sections),
+                                         steps=steps),
                         model=req.model, api_key=req.api_key, slide=False,
                     )
                 except Exception as exc:  # noqa: BLE001 — the text stands without its figure
@@ -1166,6 +1174,8 @@ class Figures(Base):
                 section["content"] = content.replace(
                     mark["mark"], report._figure_markdown(made, png), 1)
                 drawn += 1
+                if made.get("figure") == "flow":
+                    flows.append(str(made.get("source") or ""))
                 yield {"type": "step", "id": f"dia{index}", "label": name, "status": "done",
                        "progress": progress}
             if marks:
@@ -1199,6 +1209,9 @@ class Figures(Base):
             wrap=lambda prompt: _messages(bundle, prompt),
         )
         _count(bundle, spent)
+        # one figure per procedure: the writer's own flow is not drawn again
+        planned = [dataclasses.replace(row, steps=steps) if row.figure == "flow" else row
+                   for row in diagrams.drop_repeated_flows(planned, flows)]
         if not planned:
             log.info("report figures: none planned for %d eligible sections", len(eligible))
         for row in planned:
@@ -1315,8 +1328,10 @@ class Normalize(Base):
             sources=bundle.material.sources, request=bundle.request.text,
             context=_material_text(bundle))
         sections = report.gaejo_body(sections, bundle.spec.format)
-        if bundle.spec.format_id in report.PLAIN_FORMATS:
-            sections = [{**s, "content": report.plain_blocks(str(s.get("content") or ""))}
+        if bundle.spec.format_id in report.PLAIN_FORMATS or report.form_document(
+                bundle.request.text):
+            whole = "\n".join(str(s.get("content") or "") for s in sections)
+            sections = [{**s, "content": report.plain_blocks(str(s.get("content") or ""), whole)}
                         for s in sections]
         bundle.document.sections = sections
 
@@ -1474,6 +1489,29 @@ class FormatFind(Base):
         bundle.findings.before += [f.code for f in first]
 
 
+def keep_blanks(before: list[dict], after: list[dict], traced: Any) -> list[dict]:
+    """`after` with values grounding blanked kept blank where a repair wrote them back."""
+    blanked = {(str(f.get("text") or "").strip(), str(f.get("placeholder") or ""))
+               for f in (getattr(traced, "found", None) or [])}
+    blanked = {(text, mark) for text, mark in blanked
+               if mark and len(text) >= 2 and re.search(r"\d", text)}
+    if not blanked:
+        return after
+    old = {str(row.get("heading") or ""): str(row.get("content") or "") for row in before}
+    out = []
+    for row in after:
+        content = str(row.get("content") or "")
+        was = old.get(str(row.get("heading") or ""), "")
+        mended = content
+        for text, mark in blanked:
+            if text in mended and text not in was:
+                mended = mended.replace(text, mark)
+        if mended != content:
+            log.info("verify wrote back blanked values in %r", logs.safe(row.get("heading")))
+        out.append({**row, "content": mended} if mended != content else row)
+    return out
+
+
 class Verify(Base):
     """Find, repair once, find again; leftovers reported, never passed off."""
 
@@ -1487,6 +1525,7 @@ class Verify(Base):
         settled, sources = bundle.computed.settled, bundle.material.sources
         context_text = _material_text(bundle)
         still: list[verify.Finding] = []
+        before = list(bundle.document.sections)
         try:
             bundle.document.sections, still, spent = await verify.verify_and_repair(
                 _doc(bundle),
@@ -1503,6 +1542,8 @@ class Verify(Base):
             _count(bundle, spent, planner=True)
         except Exception:  # noqa: BLE001 — the sentences stay as written; the gate reports them
             log.exception("verify stage failed")
+        bundle.document.sections = keep_blanks(before, bundle.document.sections,
+                                               bundle.findings.traced)
         if (pre := bundle.computed.prepass) is not None and pre.musts:
             # a recommendation still against the must-have matrix: the code's verdict instead
             bundle.document.sections, still = report_checks.settle_verdict(

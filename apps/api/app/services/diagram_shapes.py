@@ -11,14 +11,84 @@ from app.services import flow_layout
 MAX_NODES = 18
 
 _HEAD = re.compile(r"^\s*(?:flowchart|graph)\s+(TB|TD|BT|LR|RL)\b", re.I)
-#: Node ref with optional shape: id[..] id(..) id([..]) id((..)) id{..} id[(..)]
-_NODE = re.compile(
+#: Node id with optional shape opener: id[..] id(..) id([..]) id((..)) id{..} id[(..)]
+_NODE_HEAD = re.compile(
     r"(?P<id>[A-Za-z0-9_가-힣]{1,40})\s{0,2}"
-    r"(?:(?P<shape>\(\(|\(\[|\[\(|\[\[|\[|\(|\{\{|\{|>)"
-    r"\s{0,2}\"?(?P<label>[^\]\)\}\"]{0,120}?)\"?\s{0,2}(?:\)\)|\]\)|\)\]|\]\]|\]|\)|\}\}|\}))?"
+    r"(?P<shape>\(\(|\(\[|\[\(|\[\[|\[|\(|\{\{|\{|>)?"
+)
+_CLOSER = {"((": "))", "([": "])", "[(": ")]", "[[": "]]", "[": "]", "(": ")",
+           "{{": "}}", "{": "}", ">": "]"}
+_NODE_TAIL = re.compile(
     r"(?:\([^()]{0,40}\))?"  # stray 「(입력)」 after a label
     r"(?::::(?P<cls>[A-Za-z0-9_-]{1,30}))?"
 )
+
+
+@dataclass
+class _NodeRef:
+    """One node reference in a line: id, shape opener, label, class, end offset."""
+
+    id: str
+    shape: str | None
+    label: str
+    cls: str | None
+    stop: int
+
+    def group(self, name: str):
+        return getattr(self, name)
+
+    def end(self) -> int:
+        return self.stop
+
+
+def _label_end(line: str, start: int, closer: str) -> tuple[str, int] | None:
+    """Label from `start` to its own closer: quoted text whole, brackets inside balanced."""
+    i = start
+    while i < len(line) and line[i] == " ":
+        i += 1
+    if i < len(line) and line[i] == '"':
+        quote = line.find('"', i + 1)
+        if quote < 0:
+            return None
+        label, j = line[i + 1:quote], quote + 1
+        while j < len(line) and line[j] == " ":
+            j += 1
+        return (label, j + len(closer)) if line.startswith(closer, j) else None
+    depth = {"(": 0, "[": 0, "{": 0}
+    pairs = {")": "(", "]": "[", "}": "{"}
+    j = i
+    while j < len(line) and j - i <= 160:
+        ch = line[j]
+        if line.startswith(closer, j) and depth[pairs[closer[0]]] == 0:
+            return line[i:j].strip(), j + len(closer)
+        if ch in depth:
+            depth[ch] += 1
+        elif ch in pairs and depth[pairs[ch]] > 0:
+            depth[pairs[ch]] -= 1
+        j += 1
+    return None
+
+
+class _NodePattern:
+    """`match(line, pos)` for a node reference; labels keep their own parentheses."""
+
+    @staticmethod
+    def match(line: str, pos: int = 0) -> _NodeRef | None:
+        head = _NODE_HEAD.match(line, pos)
+        if not head:
+            return None
+        shape, label, stop = head.group("shape"), "", head.end()
+        if shape:
+            found = _label_end(line, stop, _CLOSER[shape])
+            if found is None:
+                shape, stop = None, head.end("id")
+            else:
+                label, stop = found
+        tail = _NODE_TAIL.match(line, stop)
+        return _NodeRef(head.group("id"), shape, label, tail.group("cls"), tail.end())
+
+
+_NODE = _NodePattern()
 _SUBGRAPH = re.compile(
     r"^subgraph\s+([A-Za-z0-9_가-힣]+)(?:\s{0,3}\[\s{0,3}\"?([^\]\"]{0,80})\"?\s{0,3}\])?"
 )
@@ -263,6 +333,11 @@ def layout(graph: Graph, width: float, height: float) -> dict[str, Placed]:
     if _compares(graph):
         # room between sides for links and labels
         flow_gap = max(64.0, flow_len * 0.12)
+    elif count > 1 and (labels := [len(e.label) for e in graph.edges if e.label]):
+        # room for a branch label beside its own run
+        widest = 9.0 * min(max(labels), 8) + 12
+        flow_gap = max(flow_gap, min(widest + 32, flow_len * 0.16) if graph.direction == "LR"
+                       else min(44.0, flow_len * 0.12))
     cross_gap = max(14.0, cross_len * 0.05) if across > 1 else 0.0
     cell_flow = (flow_len - flow_gap * (count - 1)) / count
     cell_cross = (cross_len - cross_gap * (across - 1)) / across
@@ -532,6 +607,41 @@ def _route(
     return corners
 
 
+def _label_spots(
+    path: list[tuple[float, float]], tw: float, th: float, *, forked: bool
+) -> list[tuple[float, float]]:
+    """Label top-left candidates, best first. After a fork the stem is shared, so a branch
+    label goes at its own end: beside the entry run, away from the bend it came from."""
+    runs = list(zip(path, path[1:], strict=False))
+
+    def size(run) -> float:
+        (x0, y0), (x1, y1) = run
+        return abs(x1 - x0) + abs(y1 - y0)
+
+    def beside(run) -> list[tuple[float, float]]:
+        (x0, y0), (x1, y1) = run
+        mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+        if abs(y1 - y0) < 1:  # horizontal: above, then below
+            return [(mx - tw / 2, my - th - 2), (mx - tw / 2, my + 3)]
+        return [(mx + 4, my - th / 2), (mx - tw - 4, my - th / 2)]  # vertical: right, left
+
+    if not forked or len(runs) < 2:
+        return [spot for run in sorted(runs, key=lambda r: -size(r)) for spot in beside(run)]
+    spots: list[tuple[float, float]] = []
+    (px, py), (ex, ey) = runs[-2][0], runs[-1][0]
+    gx, gy = path[-1]
+    if abs(gy - ey) < 1:  # horizontal entry: side away from the bend's vertical
+        x = gx - tw - 2 if gx > ex else gx + 2
+        spots.append((x, gy + 3) if py < ey else (x, gy - th - 2))
+    else:  # vertical entry
+        y = gy - th - 2 if gy > ey else gy + 2
+        spots.append((gx + 4, y) if px < ex else (gx - tw - 4, y))
+    own = list(reversed(runs[1:]))
+    for run in [r for r in own if size(r) >= 16] + [r for r in own if size(r) < 16] + runs[:1]:
+        spots += beside(run)
+    return spots
+
+
 def _tint(rgb: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
     """`rgb` mixed toward white by `amount` (0–1)."""
     return tuple(int(round(c + (255 - c) * amount)) for c in rgb)  # type: ignore[return-value]
@@ -743,6 +853,10 @@ def draw_pptx(
     }
     used: dict[tuple[int, int], set[str]] = {}
     placed_labels: list[tuple[float, float, float, float]] = []
+    outgoing: dict[str, int] = {}
+    for edge in graph.edges:
+        outgoing[edge.a] = outgoing.get(edge.a, 0) + 1
+    forks = {nid for nid, n in outgoing.items() if n > 1}
     back_marks: list[tuple[Edge, Placed]] = []
     for edge in graph.edges:
         a_box, b_box = boxes[edge.a], boxes[edge.b]
@@ -773,21 +887,11 @@ def draw_pptx(
             head = {"type": "triangle", "w": "med", "len": "med"}
             ln.append(ln.makeelement(qn("a:tailEnd"), head))
         if edge.label:
-            # beside a run, longest first, first free spot; long labels wrap to two lines
+            # beside a run, first free spot; long labels wrap to two lines
             two = len(edge.label) > 8
             tw = min(150.0, 9.0 * (-(-len(edge.label) // 2) if two else len(edge.label)) + 12)
             th = 24.0 if two else 14.0
-            runs = sorted(
-                zip(path, path[1:], strict=False),
-                key=lambda s: -(abs(s[1][0] - s[0][0]) + abs(s[1][1] - s[0][1])),
-            )
-            spots = []
-            for (x0, y0), (x1, y1) in runs:
-                mx, my = (x0 + x1) / 2, (y0 + y1) / 2
-                if abs(y1 - y0) < 1:  # horizontal: above, then below
-                    spots += [(mx - tw / 2, my - th - 2), (mx - tw / 2, my + 3)]
-                else:  # vertical: right, then left
-                    spots += [(mx + 4, my - th / 2), (mx - tw - 4, my - th / 2)]
+            spots = _label_spots(path, tw, th, forked=edge.a in forks)
             def clear(x: float, y: float, tw: float = tw, th: float = th) -> bool:
                 return not any(
                     x < bx1 and x + tw > bx0 and y < by1 and y + th > by0
