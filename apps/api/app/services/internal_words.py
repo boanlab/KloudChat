@@ -432,12 +432,46 @@ def strip_work_notes(text: str, *, request: str = "") -> str:
     return re.sub(r"^(?:\s*(?:-{3,}|\*{3,}|_{3,})\s*\n)+", "", cleaned).strip("\n")
 
 
+#: a paragraph announcing the writer's own next step (「Let me draft:」「Now I'll write …」)
+_EN_PLAN_STEP = re.compile(
+    r"^\s{0,4}(?:[-*>]\s{1,3})?(?:\*\*)?(?:Let me(?!\sknow)|Let's|I(?:'ll| will| need to"
+    r"| should| must| have to| could| can)|Now(?:,)?\s(?:I|let)|First(?:,)?\sI|Then(?:,)?\sI"
+    r"|Next(?:,)?\sI|Actually|Better to|So I|OK(?:ay)?,?\s(?:I|let)|The user\b|Format\s?:"
+    r"|Key points\b)")
+#: …about the writing task itself
+_EN_PLAN_TOPIC = re.compile(
+    r"\b(?:the user|draft|skill|skeleton|format|structure|section|compose|rule|the (?:answer"
+    r"|report|memo|material|request|check)|tools?)\b", re.I)
+#: the person asked for English text: its 「I'll …」 is the deliverable
+_ASKED_ENGLISH = re.compile(r"영문|영어|English", re.I)
+
+
+def is_work_plan(text: str, *, request: str = "") -> bool:
+    """Whether a Korean request's answer is the writer's plan or narration instead of the
+    deliverable: three or more English paragraphs about its own next steps, the last one
+    among them (it stops at 「Let me write the final answer …」), or nothing but notes left
+    once `strip_work_notes` runs."""
+    if not text or not text.strip():
+        return False
+    if (_latin_share(request) >= 0.5 if request.strip() else _latin_share(text) >= 0.5) or (
+            _ASKED_ENGLISH.search(request)):
+        return False  # English asked for: its 「I'll …」 is the prose
+    paragraphs = [p for p in re.split(r"\n[ \t]*\n", text) if p.strip()]
+    steps = [i for i, p in enumerate(paragraphs)
+             if not _structural(p) and _EN_PLAN_STEP.match(p) and len(_LATIN.findall(p)) >= 12]
+    if (len(steps) >= 3 and steps[-1] == len(paragraphs) - 1
+            and sum(bool(_EN_PLAN_TOPIC.search(paragraphs[i])) for i in steps) >= 2):
+        return True
+    left = strip_work_notes(text, request=request)
+    return len(text.strip()) >= 200 and left != text and len(_HANGUL.findall(left)) < 20
+
+
 def has_work_notes(text: str, *, request: str = "") -> bool:
     """Whether `text` carries work notes `strip_work_notes` would remove."""
     return strip_work_notes(text, request=request) != text
 
 
 __all__ = ["DOCUMENT_TERMS", "JSON_LINE", "TERMS", "TOOL_APOLOGY", "TOOL_REPORT", "WRITER_NOTE",
-           "found", "has_tool_call", "has_work_notes", "scrub", "strip_check_block",
+           "found", "has_tool_call", "has_work_notes", "is_work_plan", "scrub", "strip_check_block",
            "strip_echoed_heading", "strip_reports", "strip_tool_apologies", "strip_tool_calls",
            "strip_work_notes"]

@@ -3238,6 +3238,27 @@ async def _skill_specs(
         agent_owner=agent.owner_id if agent is not None else "")
 
 
+_LINK = re.compile(r"https?://[^\s<>()\[\]「」\"']+")
+
+
+def _source_call(applied, tools: list[Tool], content: str) -> tuple[str, dict[str, Any]] | None:
+    """`(tool, {param: link})` for a connector tool an applied skill declares, when this message
+    gives a link and the tool's only required input is a URL; None otherwise."""
+    link = _LINK.search(content or "")
+    if link is None:
+        return None
+    by_name = {tool.name: tool for tool in tools}
+    for skill in applied:
+        for name in getattr(skill, "required_tools", ()) or ():
+            tool = by_name.get(name)
+            if tool is None or not name.startswith("mcp__") or tool.read_only is not True:
+                continue
+            required = list((tool.parameters or {}).get("required") or [])
+            if len(required) == 1 and "url" in str(required[0]).lower():
+                return name, {required[0]: link.group(0).rstrip(".,;:!?)」")}
+    return None
+
+
 def _skill_keys(applied, specs: dict[str, skill_specs.Spec]) -> tuple[str, ...]:
     """Turn's skills keyed for the checks: catalogue key, or `skill:<id>`."""
     out = []
@@ -4686,6 +4707,15 @@ async def send_message(
         place = weather_location(content)
         if place:
             preset_call = ("weather", {"location": place})
+    # a skill's declared connector given its link here: the server fetches it first, and the
+    # answer is made of that result or says it could not get it
+    source_fetch = (
+        _source_call(workspace.applied_skills, tools, content)
+        if session.kind is SessionKind.chat and not preflight_tool and not calculation_required
+        else None
+    )
+    if source_fetch is not None and preset_call is None and forced_tool is None:
+        preset_call = source_fetch
     #: published bot's answer when its material doesn't cover the question
     not_covered: str | None = None
     if (
@@ -4767,6 +4797,8 @@ async def send_message(
                 routing_audit_id=routing_audit_id,
                 # short lookups: server presets; long ones: forced planning hop
                 preset_call=preset_call,
+                source_tools=(frozenset({source_fetch[0]}) if source_fetch is not None
+                              else frozenset()),
                 preset_empty_answer=not_covered,
                 freshness_request=content if fresh_fact else None,
                 caveat_request=(
@@ -5187,6 +5219,8 @@ async def _answer_turn(
     calculation_expression: str | None = None,
     #: server's own first call (`agent.run_turn`)
     preset_call: tuple[str, dict[str, Any]] | None = None,
+    #: tools the answer is made of (`agent.run_turn`)
+    source_tools: frozenset[str] = frozenset(),
     #: whole answer when that material search finds nothing
     preset_empty_answer: str | None = None,
     freshness_request: str | None = None,
@@ -5338,6 +5372,7 @@ async def _answer_turn(
                     if calculation_expression is not None else {}
                 ),
                 preset_call=preset_call,
+                **({"source_tools": source_tools} if source_tools else {}),
                 **({"preset_empty_answer": preset_empty_answer} if preset_empty_answer else {}),
                 **({"freshness_request": freshness_request} if freshness_request else {}),
                 **({"caveat_request": caveat_request} if caveat_request else {}),
