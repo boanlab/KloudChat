@@ -21,7 +21,7 @@ import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind } from '@/types'
 import { slugify } from './formModel'
 import { isListed } from '@/lib/listed'
-import { ActiveSkillPicker, SkillPicker, ToolPicker } from './Pickers'
+import { ActiveSkillPicker, OffSurfaceNote, SkillPicker, ToolPicker } from './Pickers'
 
 /** Draft with `kinds`, minus bindings those kinds don't offer. */
 function withinKinds(draft: Agent, kinds: SessionKind[]): Agent {
@@ -722,9 +722,15 @@ export function AgentForm({
               onChange={(activeSkillIds) => edit({ ...draft, activeSkillIds })}
               skills={skills}
             />
+            <OffSurfaceNote ids={draft.activeSkillIds} skills={skills} surfaces={offered} />
           </Block>
           <Block label={t('입력창에서 고를 수 있는 스킬')}>
             <SkillPicker value={draft.skillIds} onChange={(skillIds) => edit({ ...draft, skillIds })} skills={skills} />
+            <OffSurfaceNote
+              ids={(draft.skillIds ?? []).filter((id) => !draft.activeSkillIds.includes(id))}
+              skills={skills}
+              surfaces={offered}
+            />
           </Block>
           <Block label={t('도구')}>
             <ToolPicker

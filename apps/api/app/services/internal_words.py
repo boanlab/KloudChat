@@ -283,6 +283,161 @@ def strip_check_block(text: str) -> tuple[str, str]:
     return text, ""
 
 
+_HANGUL = re.compile(r"[가-힣]")
+_LATIN = re.compile(r"[A-Za-z]")
+#: the writer's English note to itself opens like this
+_EN_NOTE_OPEN = re.compile(
+    r"^\s{0,4}(?:[-*>]\s{1,3})?(?:\*\*)?(?:The user(?:'s)?\b|I(?:'ll|'m| will| need| should| must"
+    r"| have| can| am going)\b|Let me\b|Let's\b|Now(?:,|\s(?:I|let|the|format|write))\b"
+    r"|OK(?:ay)?[,.]|Alright\b|First(?:,|\sI\b)|So(?:,|\sI\b)|Wait\b|Hmm\b|Actually\b"
+    r"|Write it\b|Key discipline\b)")
+#: …and is about the work, not the reader's subject
+_EN_NOTE_TOPIC = re.compile(
+    r"\b(?:the user|this section|the section|the material|sources|search results?|tools?"
+    r"|verify|the draft|instructions|cite)\b", re.I)
+#: …unmistakably about the writing task, even inside English text
+_EN_NOTE_TASK = re.compile(
+    r"\b(?:the user(?:'s)?|this section|the section|against the material|the draft"
+    r"|the instructions)\b", re.I)
+#: Korean narration of the writing itself (「개요 섹션은 … 다루지 않습니다」)
+_KO_NOTE = re.compile(
+    r"섹션의\s?(?:초안|범위|영역)|섹션은\s[^\n]{0,80}?영역입니다"
+    r"|(?:제공된|주어진)\s?자료를\s?(?:먼저\s?)?(?:분석|검토|확인)하여[^\n]{0,160}?하겠습니다"
+    r"|요청된\s?형식\s?\(")
+#: a check's verdict belongs in the steps (「근거 대조 결과 근거 없는 값 0개.」)
+_CHECK_RESULT = re.compile(
+    r"^\W{0,4}(?:근거\s?대조|출처\s?점검|카피\s?점검|계산[·ㆍ]?\s?단위\s?검증|자체\s?(?:점검|검증|검토))"
+    r"\s?결과|근거\s?없는\s?값\s?\d{1,3}\s?개")
+#: generic verdict, dropped only as the opening line
+_OPENING_VERDICT = re.compile(r"^\W{0,4}(?:검증|점검|검산|대조)\s?결과[,:：]?\s")
+#: request that asked for a check, whose verdict is then the content
+_ASKED_CHECK = re.compile(
+    r"(?:검증|점검|검산|대조|검토|확인)\s?(?:해|하여|해서|하고)\s?(?:줘|주세요|주십시오|주실|봐|달라)"
+    r"|근거\s?대조|출처\s?점검|팩트\s?체크|fact[- ]?check|verify", re.I)
+#: lone marker line (「check」)
+_LONE_MARK = re.compile(r"^\s{0,4}(?:check|Check|CHECK|체크|TODO|todo|TBD)\s{0,2}[.:]?\s*$")
+#: question stub left in the text
+_QUESTION_STUB = re.compile(
+    r"^\s{0,4}(?:[-*]\s{1,3})?\[(?:질문|문의|Question)\][^\n]{0,400}?"
+    r"(?:알려\s?주|주십시오|주세요|미기재|누락|확인이?\s?필요|please (?:provide|confirm))", re.I)
+#: label line of a writer's worksheet (「**작성 계획 (2~4단락):**」)
+_NOTE_LABEL = re.compile(
+    r"^\s{0,4}(?:[-*]\s{1,3})?(?:\*\*|__)?\s?(?P<label>자료\s?분석(?:\s?및\s?추출)?(?:\s?내용)?"
+    r"|추출\s?내용|수치\s?제한\s?확인|사용\s?가능한\s?수치|작성\s?계획|초안(?:\s?작성)?(?:\s?및\s?수정)?"
+    r"|자체\s?검토|검토|형식\s?확인|문체\s?확인|최종\s?(?:텍스트|본문|원고|답변)(?:\s?생성)?|최종본"
+    r"|Analysis|Plan|Draft|Review|Final(?:\s(?:text|answer|draft))?)"
+    r"\s?(?:\([^)\n]{0,40}\))?\s?[:：]\s?(?:\*\*|__)?\s*$")
+
+
+def _latin_share(text: str) -> float:
+    hangul, latin = len(_HANGUL.findall(text)), len(_LATIN.findall(text))
+    return latin / (hangul + latin) if hangul + latin else 0.0
+
+
+def _english_note(paragraph: str) -> bool:
+    return (len(_LATIN.findall(paragraph)) >= 20 and _latin_share(paragraph) >= 0.7
+            and bool(_EN_NOTE_OPEN.match(paragraph)) and bool(_EN_NOTE_TOPIC.search(paragraph)))
+
+
+def _structural(paragraph: str) -> bool:
+    return paragraph.lstrip().startswith(("#", "|", "```", "!["))
+
+
+def _worksheet(text: str) -> str:
+    """A worksheet (two or more labels like 「작성 계획:」「초안:」「최종 텍스트 생성:」) cut to
+    its final text, or to its draft prose without the notes."""
+    lines = text.split("\n")
+    labels = [(i, re.sub(r"\s", "", m.group("label"))) for i, line in enumerate(lines)
+              if (m := _NOTE_LABEL.match(line))]
+    if len({label for _, label in labels}) < 2:
+        return text
+    first = labels[0][0]
+    finals = [i for i, label in labels if label.startswith(("최종", "Final"))]
+    if finals and "\n".join(lines[finals[-1] + 1:]).strip():
+        return "\n".join(lines[:first] + lines[finals[-1] + 1:])
+    out: list[str] = lines[:first]
+    keeping = under_label = False
+    for line in lines[first:]:
+        m = _NOTE_LABEL.match(line)
+        if m:
+            keeping, under_label = m.group("label").startswith(("초안", "Draft")), True
+            continue
+        if line.lstrip().startswith("#"):
+            keeping = True
+        if under_label and line.strip():
+            under_label = False
+            if re.fullmatch(r"\s*\([^)\n]{0,120}\)\s*", line):
+                continue  # 「(문체: …)」 note under the label
+        if keeping:
+            out.append(line)
+    return "\n".join(out)
+
+
+def strip_work_notes(text: str, *, request: str = "") -> str:
+    """`text` minus the writer's work notes: plan narration (English or Korean), a worksheet's
+    labels and notes, check verdicts, lone 「check」 lines and 「[질문]」 stubs. Headings,
+    tables and fences stay; an English deliverable is left alone."""
+    if not text or not text.strip():
+        return text
+    korean = _latin_share(request) < 0.5 if request.strip() else _latin_share(text) < 0.5
+    asked_check = bool(_ASKED_CHECK.search(request or ""))
+    out = _worksheet(text) if korean else text
+    paragraphs = re.split(r"\n[ \t]*\n", out)
+    if korean:
+        # an English preamble of notes before the answer: cut through its last English paragraph
+        first = next((i for i, p in enumerate(paragraphs) if p.strip()), None)
+        if first is not None and _english_note(paragraphs[first]):
+            heading = next((i for i, p in enumerate(paragraphs) if _structural(p)),
+                           len(paragraphs))
+            last = max((i for i in range(first, heading) if _latin_share(paragraphs[i]) >= 0.6),
+                       default=first)
+            rest = "\n\n".join(paragraphs[last + 1:])
+            if len(_HANGUL.findall(rest)) >= 40 and _latin_share(rest) < 0.5:
+                paragraphs = paragraphs[last + 1:]
+        # a note elsewhere: in Korean text, or naming the task itself (an English deliverable
+        # in a Korean conversation keeps its own 「I'll …」)
+        whole_korean = _latin_share("\n".join(paragraphs)) < 0.5
+        paragraphs = [p for p in paragraphs if _structural(p) or not _english_note(p)
+                      or not (whole_korean or _EN_NOTE_TASK.search(p))]
+    kept: list[str] = []
+    fenced = False
+    opening = True  # no text line yet
+    for line in "\n\n".join(paragraphs).split("\n"):
+        stripped = line.lstrip()
+        first_line, opening = opening, opening and not stripped
+        if stripped.startswith("```"):
+            fenced = not fenced
+        if fenced or stripped.startswith(("```", "#", "|", "![")):
+            kept.append(line)
+            continue
+        if _LONE_MARK.match(line) or _QUESTION_STUB.match(line):
+            continue
+        if korean and stripped:
+            lead = re.match(r"\s{0,24}(?:(?:[-*+]|\d{1,3}[.)])\s{1,4})?", line).group(0)
+            sentences = [s for s in units.SENTENCE_BREAK.split(line[len(lead):]) if s.strip()]
+            left = [s for s in sentences
+                    if not _KO_NOTE.search(s)
+                    and (asked_check or not _CHECK_RESULT.search(s))
+                    and not (first_line and not asked_check and len(line) <= 100
+                             and _OPENING_VERDICT.match(s))]
+            if len(left) != len(sentences):
+                if left:
+                    kept.append(lead + " ".join(s.strip() for s in left))
+                continue
+        kept.append(line)
+    cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip("\n")
+    if cleaned == text.strip("\n"):
+        return text
+    # a rule left at the top once the line above it went
+    return re.sub(r"^(?:\s*(?:-{3,}|\*{3,}|_{3,})\s*\n)+", "", cleaned).strip("\n")
+
+
+def has_work_notes(text: str, *, request: str = "") -> bool:
+    """Whether `text` carries work notes `strip_work_notes` would remove."""
+    return strip_work_notes(text, request=request) != text
+
+
 __all__ = ["DOCUMENT_TERMS", "JSON_LINE", "TERMS", "TOOL_APOLOGY", "TOOL_REPORT", "WRITER_NOTE",
-           "found", "has_tool_call", "scrub", "strip_check_block", "strip_echoed_heading",
-           "strip_reports", "strip_tool_apologies", "strip_tool_calls"]
+           "found", "has_tool_call", "has_work_notes", "scrub", "strip_check_block",
+           "strip_echoed_heading", "strip_reports", "strip_tool_apologies", "strip_tool_calls",
+           "strip_work_notes"]

@@ -68,6 +68,10 @@ class Normalize(Base):
         normalized = superlatives.narrow_sweeping_claims(normalized)
         # a tool call written out as text, never shown
         normalized = internal_words.strip_tool_calls(normalized)
+        # the writer's work notes and check verdicts; never down to nothing
+        noted = internal_words.strip_work_notes(normalized, request=first or req.text)
+        if noted.strip():
+            normalized = noted
         if req.skill_keys or req.check_keys:
             # skill script report lines
             normalized = internal_words.strip_reports(normalized)

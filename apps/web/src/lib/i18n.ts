@@ -7,6 +7,8 @@ const EN: Record<string, string> = {
   '켜 둔 스킬이 없습니다.': 'No skills kept on.',
   '최대 6개까지 켜 둘 수 있습니다.': 'You can keep up to six on.',
   '켜 둘 스킬 고르기': 'Choose skills to keep on',
+  '「{name}」 스킬은 {skill} 화면에서만 쓰여 이 에이전트의 화면({agent})에서는 적용되지 않습니다. 고급 › 사용할 화면에서 {skill} 화면을 더하거나 스킬을 빼세요.':
+    'The skill “{name}” runs only on {skill}, so it will not apply on this agent\'s surfaces ({agent}). Add {skill} under Advanced › Surfaces, or remove the skill.',
   '켜 둘 스킬로 에이전트를 짜고, 쓸 수 있는 스킬과 도구를 좁힙니다': 'Build the agent from skills it keeps on, and narrow the skills and tools it may use',
   '켜 둘 스킬': 'Skills kept on',
   '이 에이전트의 모든 대화에서 늘 켜집니다. 스킬의 템플릿·검사·빠진 정보 질문도 함께 따라옵니다.': 'On in every conversation with this agent. Each skill\'s template, checks and missing-information questions come with it.',

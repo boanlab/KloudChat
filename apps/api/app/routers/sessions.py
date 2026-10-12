@@ -167,6 +167,7 @@ from app.services.workspace_context import (
     design_for,
     file_budget,
     reads_pictures,
+    surface_body,
 )
 
 log = logging.getLogger(__name__)
@@ -325,7 +326,7 @@ async def _skill_shelf(
             continue
         if not _agent_allows_skill(agent, skill):
             continue
-        shelf.append((skill.name, skill.when_to_use, skill.body))
+        shelf.append((skill.name, skill.when_to_use, surface_body(skill.body, SessionKind.chat)))
         if len(shelf) >= _SKILL_SHELF_LIMIT:
             break
     return shelf
@@ -2117,7 +2118,7 @@ async def _template_skills(
         if skill.required_tools and kind is not SessionKind.chat:
             continue
         head = f"# 서식 스킬 — {skill.name}"
-        body = skill.body.strip() or skill.description.strip()
+        body = surface_body(skill.body.strip(), kind) or skill.description.strip()
         blocks.append(f"{head}\n{body}" if body else head)
         applied.append(
             {
@@ -5451,6 +5452,12 @@ async def _answer_turn(
     # answer-generation scope; earlier classifier/search work keeps its audit
     skip_completion_work = server_abstention or tool_result_answer
     content = "".join(text_parts)
+    if not content.strip() and not failed and not skip_completion_work and not superseded_ids:
+        # the turn ended with no answer (the agent's last try included): said, not silent
+        log.warning("chat turn in session %s ended without an answer", session_id)
+        yield chat_service.sse(_error_event(
+            "답을 완성하지 못했습니다. 다시 시도하거나 다른 모델을 골라 보세요.",
+            code="no_answer"))
     if content.strip() and not failed and not skip_completion_work:
         # agent finish pipeline (`app/pipelines/*.toml` `finish`); streamed text replaced if changed
         finish = chat_stages.bundle_for(

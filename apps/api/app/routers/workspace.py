@@ -68,6 +68,7 @@ from app.schemas.workspace import (
     SectionRewrite,
     SkillIn,
     SkillOut,
+    SkillWarning,
     SlideDiagramPicture,
     SlideFactCheck,
     SlideImage,
@@ -99,6 +100,7 @@ from app.services import (
     skill_packages,
     starter,
     user_templates,
+    workspace_context,
 )
 from app.services import deck as deck_service
 from app.services import design as design_service
@@ -189,6 +191,22 @@ async def _validate_skill_ids(
     invalid = set(skill_ids) - valid - (grandfathered or set())
     if invalid:
         raise HTTPException(status_code=422, detail="invalid_skill_ids")
+
+
+async def _skill_warnings(db: DbSession, agent: Agent) -> list[SkillWarning]:
+    """Kept-on and pickable skills that apply on none of the agent's surfaces."""
+    active = [str(x) for x in agent.active_skill_ids or []]
+    available = [str(x) for x in agent.skill_ids or []]
+    ids = list(dict.fromkeys([*active, *available]))
+    if not ids:
+        return []
+    rows = {row.id: row for row in (
+        await db.exec(select(Skill).where(col(Skill.id).in_(ids)))).all()}
+    kept_on = [rows[i] for i in active if i in rows]
+    pickable = [rows[i] for i in available if i in rows and i not in active]
+    found = [*workspace_context.off_surface(agent.kinds, kept_on, place="active"),
+             *workspace_context.off_surface(agent.kinds, pickable, place="available")]
+    return [SkillWarning(**row) for row in found]
 
 
 async def _validate_tool_names(
@@ -2326,11 +2344,13 @@ async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
-    return AgentOut.of(
+    out = AgentOut.of(
         agent,
         has_knowledge=await _agent_has_knowledge(db, user.id, agent.id),
         process=(await _processes(db, [agent], viewer_id=user.id)).get(agent.id),
     )
+    out.skill_warnings = await _skill_warnings(db, agent)
+    return out
 
 
 @router.post(
@@ -2491,11 +2511,13 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
         await user_pipelines.submit_shared_process(db, user, agent)
     await db.commit()
     await db.refresh(agent)
-    return AgentOut.of(
+    out = AgentOut.of(
         agent,
         has_knowledge=await _agent_has_knowledge(db, user.id, agent.id),
         process=(await _processes(db, [agent], viewer_id=user.id)).get(agent.id),
     )
+    out.skill_warnings = await _skill_warnings(db, agent)
+    return out
 
 
 @router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)

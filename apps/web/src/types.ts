@@ -1106,6 +1106,8 @@ export interface Agent {
   skillIds: string[] | null
   /** Skills on in every turn of its conversations: what the agent is built from. */
   activeSkillIds: string[]
+  /** Save responses only: chosen skills none of its surfaces run (the form shows the same live). */
+  skillWarnings?: { skillId: string; name: string; place: 'active' | 'available'; skillKinds: SessionKind[]; agentKinds: SessionKind[]; message: string }[]
   kinds: SessionKind[]
   /** Surface a new conversation opens on; null takes the first of `kinds`. */
   surface: SessionKind | null

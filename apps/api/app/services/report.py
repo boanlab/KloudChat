@@ -2531,6 +2531,9 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
             body = re.sub(r"\[\[(\d{1,3})\]\](?!\()", r"[\1]", body)
             body = re.sub(r"\s?\[\](?!\()", "", body)
             body = internal_words.scrub(drop_prompt_talk(drop_cut_rows(drop_writer_notes(body))))
+            # work notes a rewrite brought back; a section never emptied here
+            noted = internal_words.strip_work_notes(body)
+            body = noted if noted.strip() else body
             # settled figures restored in formulas before recomputing
             body = key_figures.mend_operands(body, settled or [])
             body = fix_table_formulas(units.fix_written_sums(units.fix_written_arithmetic(body)))

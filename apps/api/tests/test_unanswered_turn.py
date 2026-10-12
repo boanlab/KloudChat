@@ -152,6 +152,21 @@ async def test_a_stream_that_ends_saying_nothing_is_still_a_turn_without_an_answ
 
 
 @pytest.mark.asyncio
+async def test_a_turn_that_ends_saying_nothing_tells_the_person(monkeypatch) -> None:
+    """No answer (tool steps only) is said with an error event, not left silent."""
+    turn = _Turn()
+    chunks = await _drain(turn, monkeypatch, [
+        {"type": "step", "id": "h1_0", "label": "기업 조사", "status": "done"},
+        {"type": "usage", "inputTokens": 49082, "outputTokens": 170},
+    ])
+
+    errors = [json.loads(c.removeprefix("data: ")) for c in chunks if '"type": "error"' in c]
+    assert [e["code"] for e in errors] == ["no_answer"]
+    assert "답을 완성하지 못했습니다" in errors[0]["message"]
+    assert turn.question.failure is TurnFailure.no_answer
+
+
+@pytest.mark.asyncio
 async def test_half_an_answer_is_kept_and_said_to_be_half(monkeypatch) -> None:
     turn = _Turn()
     await _drain(

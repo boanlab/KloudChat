@@ -487,12 +487,14 @@ async def built_from(db: AsyncSession, agent: Agent) -> tuple[str, list[str]]:
     """The prompt and `post` checks a bot answers with: the agent's own, plus the skills it is
     built from (`Agent.active_skill_ids`) written into the frozen prompt, since no skill reaches
     a visitor's turn."""
-    from app.services.workspace_context import agent_skill_rows
+    from app.models.chat import SessionKind
+    from app.services.workspace_context import agent_skill_rows, surface_body
 
     prompt = agent.system_prompt or ""
     checks = _post_checks(agent)
     for skill in await agent_skill_rows(db, agent.owner_id, agent, "chat"):
-        body = (skill.body or skill.description or "").strip()
+        # its chat reading only: a document part would swallow what follows it
+        body = surface_body(skill.body or "", SessionKind.chat) or (skill.description or "").strip()
         if body:
             prompt = f"{prompt}\n\n# 스킬 — {skill.name}\n{body}".strip()
         for key in skill_specs.of_row(skill).checks:

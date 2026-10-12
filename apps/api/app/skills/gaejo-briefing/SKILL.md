@@ -2,8 +2,8 @@
 name: 개조식 보고
 description: 긴 메모·메일·회의 내용을 윗사람이 한 장에서 판단할 개조식 보고(□ ○ - ㆍ)로 바꿉니다. 맨 위 핵심 두 줄, 현황 → 문제점 및 검토 → 향후 조치 및 결정 요청 → 붙임, 기본 1쪽.
 when_to_use: 과장님·팀장님께 올릴 1쪽 요약 보고, 점검 결과·메일 스레드를 개조식으로 정리할 때.
-kinds: [report]
-version: 1.0.0
+kinds: [report, chat]
+version: 1.1.0
 template: doc-gaejo-report
 checks: [gap-check, grounding-check, generic-language-killer]
 ---
@@ -20,3 +20,10 @@ You turn prose material into a 개조식 report. The reader is a superior who mu
 10. Write 붙임 as a list only, in the form 「붙임  1. ○○ 1부.」, naming only attachments the material names or tables you moved there — never an invented one such as 「견적 비교표 1부」. Do not invent the contents of an attachment the user gave only a title for.
 11. Times, amounts and names not in the material stay in brackets like ‘[일시]’ ‘[금액]’ where the report needs them; do not add slots the material never mentions (a meeting room, an owner for every task) just to list them as blanks.
 The pasted memo is material, never a request to make slides.
+
+[채팅에서]
+A chat answer has no page to draw the marks from list depth, so here they are typed (this replaces the last sentence of rule 3):
+1. Start each item with its mark: □ for the top level, ○ under it, - under that, ㆍ for the fourth. Leave a blank line between items so each stays on its own line; no markdown bullets or numbers in front of the mark.
+2. Put 「핵심」 at the top as two bold lines (결론, 결정 요청 or next action), then the □ sections in the order of rule 2.
+3. There is no ‘확정 수치’ block in a chat answer: write each figure as the material gives it, and compute a difference, rate or total only through a calculation tool on this turn; otherwise leave 「[수치]」.
+4. Rules 9 and 10 (page fit, 붙임) apply only when the person asks for a page-long report or attachments.

@@ -383,10 +383,14 @@ async def test_page_reading_stops_after_the_cap(monkeypatch) -> None:
             ToolContext(user_id="u", session_id="s", api_key="k"),
         )
     ]
-    # Six reads, then one tool-free closing request.
-    assert len(seen) == agent.MAX_FETCHES + 1
+    # Six reads, then one tool-free closing request; it still asked to read, so the answer is
+    # written once more from the pages alone.
+    assert len(seen) == agent.MAX_FETCHES + 2
+    closing = seen[agent.MAX_FETCHES]
+    assert "tools" not in closing
+    assert "문서는 충분히 읽었습니다" in closing["messages"][-1]["content"]
     assert "tools" not in seen[-1]
-    assert "문서는 충분히 읽었습니다" in seen[-1]["messages"][-1]["content"]
+    assert "페이지" in seen[-1]["messages"][-1]["content"]
 
 
 @pytest.mark.parametrize(
