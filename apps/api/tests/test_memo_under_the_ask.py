@@ -185,3 +185,8 @@ def test_forms_and_notices_are_text_documents():
         assert report.form_document(ask)
     assert not report.form_document("생성형 AI 교육 활용 동향 보고서 써 줘.")
     assert not report.form_document("아래 메모로 사업계획서 써 줘. 한빛시 공모사업 신청용이야.")
+
+
+def test_an_untitled_body_exports_without_an_empty_heading():
+    out = report.to_markdown("안내", [{"heading": "", "content": "1. 개강: 2027. 3. 2.(화)"}])
+    assert out == "# 안내\n\n1. 개강: 2027. 3. 2.(화)\n"

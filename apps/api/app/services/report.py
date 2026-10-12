@@ -4399,5 +4399,7 @@ def word_count(sections: list[dict]) -> int:
 def to_markdown(title: str, sections: list[dict]) -> str:
     parts = [f"# {title}"]
     for section in sections:
-        parts.append(f"\n## {section['heading']}\n\n{section.get('content') or ''}")
+        # untitled lone 「본문」 (공문·안내문): no empty 「## 」
+        head = f"## {section['heading']}\n\n" if str(section.get("heading") or "").strip() else ""
+        parts.append(f"\n{head}{section.get('content') or ''}")
     return "\n".join(parts).strip() + "\n"
