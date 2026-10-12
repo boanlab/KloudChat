@@ -14,13 +14,13 @@ Field-by-field examples are in [Agent and template examples](agent-examples).
 
 **+** → **Agents** in the composer and **Run** in the agent list both start a new conversation with that agent.
 
-Jobs such as minutes or a bullet-point report have no menu of their own; they are agents. For minutes, choose **+** → **Agents** → **회의록** (Minutes) in the composer, attach or paste the recording transcript or notes, and send 「회의록으로 정리해 주세요」.
+Jobs such as minutes or a bullet-point report are **official skills**. For minutes, on the report screen choose **+** → **Skills** → **회의록 작성** (Meeting minutes) in the composer, attach or paste the recording transcript or notes, and send 「회의록으로 정리해 주세요」. Work you do often becomes an agent of your own with that skill kept on ([Working with skills and building agents](skill-recipes)).
 
 - The first screen of the conversation shows the agent's **How to use** text and its **opening prompts**, up to six of them. Select an opening prompt to send it as it is.
 - An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.
 - Within the same project, other conversations reference the conclusions that the agent left through **Shared notes**.
 
-The built-in agents are **Regulations and procedures** (규정·업무 안내), **Bullet-style briefing** (개조식 보고), **Compare and decide** (비교·결정), **Extract and tally** (자료 추출·집계) and **Minutes** (회의록: meetings, interviews, lectures). Bullet-style briefing and Minutes write straight into the institution's format and show the format check results when done. Extract and tally pulls set columns out of internal Excel and CSV files, totals them by item, and keeps a change log of the rows it removed or changed. Regulations and procedures answers from the regulations and guidelines you upload, citing the article as [n], and points anything the material does not cover to the department and contact written on the agent.
+There are no built-in agents. What the former ones did (Regulations and procedures, Bullet-style briefing, Compare and decide, Extract and tally, Minutes) is done by official skills of the same names, and the conversations you had with them, the copies you took and the chatbots you published keep working. They no longer show in the lists or as base processes.
 
 ## Creating an agent
 
@@ -46,7 +46,7 @@ The enable toggle pauses an agent. Deleting it also deletes its sources, index a
 Pick one of three under **How it works** in the create-agent form.
 
 - **Answer directly**: answers in the chat. It makes no file (DOCX, HWPX, PDF); to get a file, choose **Start from a base process** with a base that writes a document. When the name, description or instructions mention Word, DOCX or a file, a **Switch to “Bullet-style briefing (개조식)”** button appears. It switches to that base process and also ticks **Export a file when done** under **Finish** (HWPX, as a 개조식 document, or DOCX or PDF when the instructions name that format).
-- **Start from a base process**: pick a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …) from the **Base process** list and the agent follows the order it works in. Its steps appear as up to five plain lines, and the agent gets that built-in agent's questions, document format, template, checks and bundles. A base that writes a document still starts with file export off (see "Get a file" under Bundles).
+- **Start from a base process**: follows the order a former built-in agent (Bullet-style briefing, Minutes, Compare and decide, …) worked in. With the built-in agents gone there is no base process to pick anew; an agent that already started from one keeps it. A new agent does the same job with **Answer directly** plus **Skills kept on** and bundles.
 - **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one "This agent" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order.
 
 ## Bundles
@@ -61,7 +61,7 @@ A bundle groups a few things an agent does before and after writing. Each bundle
 
 - **Get a file**: with **Finish** ticked, a separate **Export a file when done** checkbox shows under it; tick it and pick the format beside it (HWPX for 공문-type documents, else DOCX). The base processes come with Finish ticked and export off. Export works only in a process that writes a document.
 - On the report screen, date and amount calculations, format checks and fix-and-check-again always happen in report writing ("Always done"). The chat screen has no format checks and no export.
-- Built-in agents use the same bundles: Minutes is Prepare before writing + Review after writing (including each action item's owner and deadline) + Finish (export off).
+- The former built-in Minutes agent was Prepare + Review + Finish (export off); the **회의록 작성** skill now brings those checks.
 - **Your own bundles**: **Customize** → **Agents** → **Add** → **Create a bundle**, or **Save this order as a bundle** in a custom order. They appear under Extra work in all your agents; edit and share them from **Manage bundles**.
 - Sharing works like skills (Only me · Everyone). A bundle or custom order that exports files, has another model review or calls another agent reaches others only once an administrator approves it under **Process review**; base processes and built-in bundles are shared at once.
 
@@ -105,7 +105,7 @@ Keep a conversation that went well as an agent. **Save as agent** in the **⋯**
 
 ## Skills
 
-A skill is a working method that applies **to one request only**. Select up to three from **+** → **Skills** in the composer. They are cleared once you send. Installing a skill alone does not apply it. The built-in ones are listed under "Built-in skills" below.
+A skill is a working method kept on in a conversation: select up to three from **+** → **Skills** (again to turn one off). An **official skill** is added to your skills when picked. A skill brings its template, checks and questions.
 
 ![The Skills screen](/img/guide/skills.png)
 
@@ -117,9 +117,9 @@ A skill is a working method that applies **to one request only**. Select up to t
 
 ## Built-in skills
 
-Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** with their maker (the administrator's name), and **Add** puts a copy in your list. A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and templates use (grounding check, asking for missing information and so on) run without adding anything.
+Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** as **By: Official**; **Add** puts a copy in your list (**Original: Official**). A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and templates use (grounding check, asking for missing information and so on) run without adding anything.
 
-The lists show seven: **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Quote calculation** (견적 계산), **Excel cleanup** (엑셀 정리) and **PDF table → Excel** (PDF 표 → 엑셀).
+The lists show the nine work skills under [Official skills](skill-recipes#official-skills) and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Quote calculation** (견적 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).
 
 - **Excel cleanup** strips title, blank, total and note rows and records what it changed on a change-log sheet. Rows whose values are all the same are not removed, only marked 「중복 의심」 (suspected duplicate); ask for them to be removed if you want that.
 - **PDF table → Excel** reads only PDFs whose text can be selected (text PDFs). Scanned PDFs (images) cannot be read.

@@ -161,6 +161,8 @@ async def _load_agent(db: AsyncSession, user: User, session: ChatSession) -> Age
         origin = await db.get(Agent, agent.origin_id)
         if origin is not None and origin.visibility is Visibility.org:
             agent = _with_prompt(agent, origin.system_prompt)
+            # the original's skills, as its prompt
+            agent.active_skill_ids = list(origin.active_skill_ids or [])
         else:
             raise WorkspaceContextError("agent_origin_gone")
     return agent
@@ -592,6 +594,68 @@ def gives_material(question: str, attachment_ids: list[str] | None) -> bool:
     return bool(pasted_material(question or "")) or (bool(gap) and len(rest.strip()) >= 120)
 
 
+#: Skills an agent may keep on (its own composition), apart from the three picked per turn.
+MAX_AGENT_SKILLS = 6
+
+
+async def agent_skill_rows(db: AsyncSession, user_id: str, agent: Agent | None,
+                           kind: str | None = None) -> list[Skill]:
+    """The agent's always-on skills (`Agent.active_skill_ids`) this person may run: the
+    agent owner's, the person's own, or shared ones; disabled or other-surface ones skipped."""
+    ids = [str(x) for x in (agent.active_skill_ids or [])] if agent is not None else []
+    if not ids:
+        return []
+    owners = {agent.owner_id, user_id}
+    if agent.origin_id:
+        origin = await db.get(Agent, agent.origin_id)
+        if origin is not None:
+            owners.add(origin.owner_id)
+    rows = (await db.exec(select(Skill).where(col(Skill.id).in_(ids)))).all()
+    by_id = {row.id: row for row in rows}
+    out: list[Skill] = []
+    for skill_id in ids[:MAX_AGENT_SKILLS]:
+        row = by_id.get(skill_id)
+        if row is None or not row.enabled:
+            continue
+        if row.owner_id not in owners and row.visibility is not Visibility.org:
+            continue
+        if kind and row.kinds and kind not in row.kinds:
+            continue
+        out.append(row)
+    return out
+
+
+async def _agent_skills(
+    db: AsyncSession,
+    user: User,
+    session: ChatSession,
+    agent: Agent | None,
+    picked: list[tuple[Skill, dict]],
+    available_tool_names: set[str],
+    material_given: bool,
+) -> list[tuple[Skill, dict]]:
+    """Agent's always-on skills not already picked; one whose tools are missing drops out."""
+    seen = {skill.id for skill, _ in picked} | {
+        skill.origin_id for skill, _ in picked if skill.origin_id}
+    out: list[tuple[Skill, dict]] = []
+    for skill in await agent_skill_rows(db, user.id, agent, session.kind.value):
+        if skill.id in seen or (skill.origin_id and skill.origin_id in seen):
+            continue
+        metadata = starter.runtime_metadata(skill)
+        missing = set(metadata["required_tools"]) - available_tool_names
+        if session.kind is not SessionKind.chat:
+            missing = set()  # document writers run no tool loop; the server runs its checks
+        if missing and missing <= SEARCH_TOOLS:
+            if not material_given and not await _search_configured():
+                continue
+            metadata = {**metadata, "material_only": True}
+        elif missing:
+            continue
+        seen.add(skill.id)
+        out.append((skill, metadata))
+    return out
+
+
 def _skill_blocks(resolved: list[tuple[Skill, dict]]) -> list[ContextBlock]:
     blocks: list[ContextBlock] = []
     for skill, metadata in resolved:
@@ -744,6 +808,10 @@ async def assemble(
         available_tool_names or set(),
         material_given=gives_material(question or focus, attachment_ids),
     )
+    if not published:
+        resolved += await _agent_skills(
+            db, user, session, agent, resolved, available_tool_names or set(),
+            material_given=gives_material(question or focus, attachment_ids))
 
     blocks: list[ContextBlock] = []
     # Least specific first; later blocks win.
@@ -937,6 +1005,8 @@ __all__ = [
     "ContextBlock",
     "ContextFile",
     "MAX_ACTIVE_SKILLS",
+    "MAX_AGENT_SKILLS",
+    "agent_skill_rows",
     "WorkspaceContext",
     "WorkspaceContextError",
     "agent_settings",

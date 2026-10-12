@@ -23,7 +23,13 @@ from app.pipeline.bundle import Bundle, Request
 from app.pipeline.runner import Runner
 from app.pipeline.stage import Context
 from app.schemas.auth import Wire
-from app.services import bases, check_skills, design_templates, gap_questions, skill_specs
+from app.services import (
+    bases,
+    check_skills,
+    design_templates,
+    gap_questions,
+    skill_specs,
+)
 from app.services import bundles as bundle_service
 from app.services import chat as chat_service
 from app.services import models as model_service
@@ -83,6 +89,8 @@ def _output(agent: Agent) -> str:
 
 async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
     """Agents `user` may run as a step: own and organisation's."""
+    from app.services.workspace_context import agent_skill_rows
+
     rows = list((await db.exec(
         select(Agent).where((Agent.owner_id == user.id) | (Agent.visibility == Visibility.org),
                             col(Agent.snapshot_of).is_(None))
@@ -107,6 +115,13 @@ async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
             spec = skill_specs.of_row(row)
             if spec.stage:
                 specs[spec.key] = spec
+    # skills an agent is built from join its prompt as a step (no skill loop there)
+    built: dict[str, list[Skill]] = {}
+    for agent in rows:
+        own = by_id.get(agent.origin_id or "") if agent.sealed else None
+        source = own if own is not None else agent
+        if source.active_skill_ids:
+            built[agent.id] = await agent_skill_rows(db, user.id, source)
     out: dict[str, compose.AgentInfo] = {}
     for agent in rows:
         origin = by_id.get(agent.origin_id or "")
@@ -116,6 +131,9 @@ async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
         # sealed copy: original's prompt
         prompt = (origin.system_prompt if agent.sealed and origin is not None
                   else agent.system_prompt)
+        for skill in built.get(agent.id, []):
+            if body := (skill.body or "").strip():
+                prompt = f"{prompt or ''}\n\n# 스킬 — {skill.name}\n{body}".strip()
         template = design_templates.get(agent.render_template_id) \
             if agent.render_template_id else None
         # sealed copy: original's tools

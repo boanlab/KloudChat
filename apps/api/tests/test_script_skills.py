@@ -155,7 +155,8 @@ def test_every_package_loads_with_its_scripts():
     assert {"xlsx-clean", "pdf-table", "calc-check"} <= set(packages)
     for package in packages.values():
         assert package.name and package.description and package.when_to_use and package.body
-        assert "run_skill_script" in package.required_tools
+        # a package with scripts runs them; an instruction-only one (an agent's abilities) need not
+        assert "run_skill_script" in package.required_tools or not package.scripts
         assert package.files[0] == "SKILL.md"
         assert all((package.root / rel).is_file() for rel in package.files)
     assert packages["xlsx-clean"].scripts.keys() == {"clean"}

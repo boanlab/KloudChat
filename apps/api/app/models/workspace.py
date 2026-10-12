@@ -325,6 +325,8 @@ class Agent(SQLModel, table=True):
     tools: list | None = Field(default=None, sa_column=_json(nullable=True))
     #: same three-state contract as tools
     skill_ids: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: skills on in every turn of its conversations (an agent built from skills); null: none
+    active_skill_ids: list | None = Field(default=None, sa_column=_json(nullable=True))
     kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
     #: initial surface (one of `kinds`); others secondary
     surface: str | None = Field(default=None)

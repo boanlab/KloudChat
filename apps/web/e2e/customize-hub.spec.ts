@@ -120,10 +120,11 @@ test('a skill kept only as a part is hidden until 숨김 포함, and then marked
 test('a shipped skill is the administrator\'s shared skill, and a copy is the person\'s own', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   await page.goto('/customize?tab=skills&view=explore')
-  await expect(page.getByTestId('item-card').filter({ hasText: '견적 계산' }).first()).toContainText('제작: 관리자', { timeout: 15_000 })
+  // An administrator's shared skill reads 「공식」, as their agents do; a copy says where it came from.
+  await expect(page.getByTestId('item-card').filter({ hasText: '견적 계산' }).first()).toContainText('제작: 공식', { timeout: 15_000 })
   await page.goto('/customize?tab=skills&view=mine')
   const copy = page.getByTestId('item-card').filter({ hasText: '데이터 분석' })
-  await expect(copy).toContainText('제작: 관리자', { timeout: 15_000 })
+  await expect(copy).toContainText('내가 수정함 · 원본: 공식', { timeout: 15_000 })
   await page.goto(`/customize/skills/${mySkills[0].id}`)
   await expect(page.getByRole('button', { name: '편집' })).toBeVisible({ timeout: 15_000 })
   await page.getByRole('button', { name: '더 보기' }).click()

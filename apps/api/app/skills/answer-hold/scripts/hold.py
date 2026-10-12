@@ -36,9 +36,26 @@ def _pairs(text: str) -> set[str]:
     return {flat[i:i + 2] for i in range(len(flat) - 1)}
 
 
-def corpus(computed) -> str:
-    """Grounds: this turn's material passages and earlier answers citing it."""
+#: Files attached to the conversation, as the context block names them
+#: (`workspace_context`: this turn's and earlier ones).
+_ATTACHED = re.compile(r"^# (?:이번 요청에 첨부된 파일|이 대화에서 앞서 첨부된 파일)[^\n]*\n", re.M)
+_TOP_HEADING = re.compile(r"^# (?!#)", re.M)
+
+
+def attached(material: str) -> str:
+    """The attached files' text inside `material` (never the request itself)."""
     out = []
+    for found in _ATTACHED.finditer(material or ""):
+        rest = (material or "")[found.end():]
+        end = _TOP_HEADING.search(rest)
+        out.append(rest[:end.start()] if end else rest)
+    return "\n".join(out)
+
+
+def corpus(computed, material: str = "") -> str:
+    """Grounds: this turn's material passages, earlier answers citing it, and the files
+    attached to the conversation."""
+    out = [text] if (text := attached(material)).strip() else []
     for item in computed or []:
         text = str(item or "")
         if _PASSAGE.search(text):
@@ -69,7 +86,7 @@ def check(text: str, material: str = "", computed=None, options=None) -> list[di
     said = claims(text)
     if not said:
         return []
-    found = corpus(computed)
+    found = corpus(computed, material)
     if found:
         grams = _pairs(found)
         if any(len(g := _pairs(s)) and len(g & grams) >= _SUPPORT * len(g) for s in said):
@@ -94,7 +111,8 @@ def summary(findings: list[dict]) -> str:
 
 def run(options: dict) -> dict:
     text = str(options.get("text") or "")
-    found = check(text, "", options.get("computed") or [], options.get("options") or {})
+    found = check(text, str(options.get("material") or ""), options.get("computed") or [],
+                  options.get("options") or {})
     return {"ok": True, "text": fix(text, found), "findings": found, "summary": summary(found)}
 
 
