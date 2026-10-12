@@ -217,9 +217,17 @@ def pin_recorded_templates(patch: Patch) -> None:
 
 def freeze(patch: Patch, now_iso: str) -> None:
     """Every `app` module sees `now_iso` as the current time and gets counted uuids."""
-    # Loaded first, so their module globals are the ones patched.
+    # Loaded first, so their module globals are the ones patched: a stage module first
+    # imported mid-run would read the wall clock (a cold run's checks dated today).
+    import importlib
+    import pkgutil
+
+    import app.pipeline
     import app.routers.sessions  # noqa: F401
     import app.services.report  # noqa: F401
+
+    for found in pkgutil.iter_modules(app.pipeline.__path__):
+        importlib.import_module(f"app.pipeline.{found.name}")
 
     now = _datetime.datetime.fromisoformat(now_iso)
 

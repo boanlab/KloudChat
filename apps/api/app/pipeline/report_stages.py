@@ -919,6 +919,14 @@ class Sections(Base):
                         if index in prefetched
                         else write_section(index, section, written)
                     )
+                if report.error_text(body, req.text):
+                    # a tool or error message in place of the section: written once more
+                    log.warning("section %r came back as an error message; written again",
+                                section["heading"])
+                    _count(bundle, spent)
+                    body, spent = await write_section(index, section, written)
+                    if report.error_text(body, req.text):
+                        raise ValueError("error message in place of the section")
             except _CAUGHT as exc:
                 log.warning("report section %r failed: %s", section["heading"], exc)
                 yield {
@@ -1045,7 +1053,8 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     trimmed: list[str] = []
     if not is_reference:
         body, trimmed = report.trim_restatements(
-            body, earlier, keep_items=doc_format is not None and doc_format.lists == "gaejo"
+            body, earlier, keep_items=doc_format is not None and doc_format.lists == "gaejo",
+            question=bool(report.QUESTION_HEADING.search(str(section["heading"] or ""))),
         )
     if trimmed:
         log.info("trimmed %d sentence(s) from %r: %s", len(trimmed), section["heading"],

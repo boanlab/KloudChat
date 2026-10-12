@@ -612,7 +612,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
                             </Badge>
                           )}
                         </p>
-                        <p className="mt-0.5 text-sm text-muted">{t(tool.description)}</p>
+                        <p className="mt-0.5 text-sm text-muted">{t(tool.summary || tool.description.trim().split('\n')[0])}</p>
                       </div>
                       <Switch
                         checked={tool.enabled}

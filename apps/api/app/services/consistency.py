@@ -28,8 +28,23 @@ _FILLER = frozenset({"다시", "그리고", "그럼", "근데", "그냥", "이�
                      "내용"})
 
 
+#: a follow-up reshaping what is there: a column or row added, a list made a table, a summary
+_RESHAPE = re.compile(
+    r"열\s{0,2}(?:을|를|도|만)?\s{0,2}(?:추가|넣|더|붙)|행\s{0,2}(?:을|를|도|만)?\s{0,2}(?:추가|넣|더|붙)"
+    r"|표로\s{0,2}(?:바꿔|바꾸|만들|정리|그려|보여)|요약\s{0,2}(?:을|를|도)?\s{0,2}(?:넣|추가|달|붙|써)"
+    r"|제목\s{0,2}(?:을|를)?|합계")
+#: a value the follow-up states (「3열」, 「3줄」, 「(%)」 are shapes, not values)
+_STATED_VALUE = re.compile(
+    r"\d[\d,.]*\s{0,2}(?:원|만|억|명|점|개월|년|일|시간|주|%(?!\s?\)))"
+    r"|\d{4}[.-]\s?\d{1,2}|바뀌|바꿨|변경|아니라|틀렸|틀려|다시\s{0,2}(?:봐|계산|확인|따져)")
+
+
 def changes_content(instruction: str) -> bool:
-    return bool(_CONTENT_CHANGE.search(instruction or ""))
+    """Whether a follow-up changes facts others restate, not only the shape of a part."""
+    text = instruction or ""
+    if _RESHAPE.search(text) and not _STATED_VALUE.search(text):
+        return False
+    return bool(_CONTENT_CHANGE.search(text))
 
 
 def dependents(

@@ -16,11 +16,17 @@ USER = "skill:"
 
 #: storable fields, SKILL.md front-matter names
 FIELDS = ("stage", "entry", "post_check", "post_judge", "copy_check", "copy_kinds", "tables",
-          "own_stage", "uses")
+          "own_stage", "uses", "template", "checks", "check_options", "questions", "process")
+#: what a skill brings to the turn it is on, as an agent's own fields do
+DOCUMENT_FIELDS = ("template", "checks", "check_options", "questions", "process")
 
 _REF = re.compile(r"[a-z0-9-]{1,60}/[a-z0-9_]{1,40}")
 _FOCUS_MAX = 400
 _USES_MAX = 12
+_CHECKS_MAX = 8
+#: `check_skills.CHECK_OPTIONS` names (kept here: packages load before that module)
+CHECK_OPTION_NAMES = ("tool_numbers", "titles")
+_TEMPLATE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,59}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +50,15 @@ class Spec:
     uses: tuple[str, ...] = ()
     #: user scripts → first docstring line; sandbox only
     scripts: dict[str, str] = field(default_factory=dict)
+    #: 템플릿 a document turn writes into when the person picked none
+    template: str = ""
+    #: check skills attached while on; trace strictness while on
+    checks: tuple[str, ...] = ()
+    check_options: tuple[str, ...] = ()
+    #: 빠진 정보 질문 asked while on
+    questions: tuple = ()
+    #: 진행 과정 설정 while on, under an agent's own
+    process: dict = field(default_factory=dict)
 
     @property
     def user(self) -> bool:
@@ -60,6 +75,9 @@ class Spec:
             "post_judge": self.judge_focus or self.post_judge, "copy_check": self.copy_check,
             "copy_kinds": list(self.copy_kinds), "tables": self.tables,
             "own_stage": self.own_stage, "uses": list(self.uses),
+            "template": self.template, "checks": list(self.checks),
+            "check_options": list(self.check_options),
+            "questions": [dict(q) for q in self.questions], "process": dict(self.process),
         }
 
 
@@ -71,7 +89,18 @@ def of_package(package: skill_packages.SkillPackage | None) -> Spec | None:
         entry=f"{package.key}/{package.entry}" if package.entry else "",
         post_checks=package.post_checks, post_judge=package.post_judge,
         judge_focus=package.judge_focus, copy_check=package.copy_check,
-        copy_kinds=package.copy_kinds, tables=package.tables, own_stage=package.own_stage)
+        copy_kinds=package.copy_kinds, tables=package.tables, own_stage=package.own_stage,
+        template=package.template, checks=package.checks, check_options=package.check_options,
+        questions=tuple(_package_questions(package)), process=dict(package.process or {}))
+
+
+def _package_questions(package: skill_packages.SkillPackage) -> list[dict[str, Any]]:
+    from app.services import gap_questions
+
+    try:
+        return gap_questions.clean(list(package.questions))
+    except gap_questions.QuestionError:
+        return []
 
 
 def package_fields(package: skill_packages.SkillPackage) -> dict[str, Any]:
@@ -106,7 +135,10 @@ def of_row(row) -> Spec:
         post_checks=tuple(clean["post_check"]), post_judge=bool(clean["post_judge"]),
         judge_focus=focus, copy_check=clean["copy_check"],
         copy_kinds=tuple(clean["copy_kinds"]), tables=clean["tables"],
-        own_stage=clean["own_stage"], uses=tuple(clean["uses"]), scripts=scripts)
+        own_stage=clean["own_stage"], uses=tuple(clean["uses"]), scripts=scripts,
+        template=clean["template"], checks=tuple(clean["checks"]),
+        check_options=tuple(clean["check_options"]),
+        questions=tuple(clean["questions"]), process=clean["process"])
 
 
 def _as_dict(spec: Spec) -> dict[str, Any]:
@@ -210,7 +242,22 @@ def catalogue() -> dict[str, Any]:
         "entries": {stage: [label(r) for r in refs] for stage, refs in entry_refs().items()},
         "scripts": [label(r) for r in script_refs()],
         "copyKinds": [{"kind": k, "label": _kind_words().get(k, k)} for k in copy_kinds()],
+        "checks": [{"ref": key, "skill": packages[key].name,
+                    "summary": packages[key].description} for key in check_keys()],
+        "checkOptions": [{"option": k, "label": _OPTION_WORDS[k]} for k in CHECK_OPTION_NAMES],
+        "gapDetectors": _detectors(),
     }
+
+
+#: as the 「다 쓴 뒤 검토하기」 bundle words them
+_OPTION_WORDS = {"tool_numbers": "수치는 도구로 계산한 결과에서만 인정",
+                 "titles": "직함·제품명까지 근거 확인"}
+
+
+def _detectors() -> list[dict[str, str]]:
+    from app.services import gap_questions
+
+    return gap_questions.detector_catalogue()
 
 
 @cache
@@ -252,7 +299,32 @@ def normalize(raw: Any) -> dict[str, Any]:
         "tables": bool(data.get("tables")),
         "own_stage": bool(data.get("own_stage")),
         "uses": [r for r in _refs(data.get("uses")) if _REF.fullmatch(r)][:_USES_MAX],
+        **_document_stored(data),
     }
+
+
+def _document_stored(data: dict) -> dict[str, Any]:
+    """Stored template/checks/options/questions/process read back; a bad one sets nothing."""
+    from app.services import gap_questions, process_settings
+
+    template = str(data.get("template") or "").strip()
+    try:
+        questions = gap_questions.clean(data.get("questions") or [])
+    except gap_questions.QuestionError:
+        questions = []
+    return {
+        "template": template if _TEMPLATE.fullmatch(template) else "",
+        "checks": [k for k in _refs(data.get("checks"))
+                   if _CHECK_KEY.fullmatch(k)][:_CHECKS_MAX],
+        "check_options": [k for k in CHECK_OPTION_NAMES
+                          if k in _refs(data.get("check_options"))],
+        "questions": questions,
+        "process": process_settings.stored_form(
+            process_settings.stored(data.get("process") or {})),
+    }
+
+
+_CHECK_KEY = re.compile(r"(?:skill:)?[a-z0-9-]{1,60}")
 
 
 def validate(raw: Any, *,
@@ -313,7 +385,76 @@ def validate(raw: Any, *,
             errors.append(FieldError("skill_script_unknown",
                                      f"모르는 스크립트입니다: {ref[:80]}"))
     out["uses"] = list(dict.fromkeys(out["uses"]))[:_USES_MAX]
+    _validate_document(data, out, errors, packaged=False)
     return out, errors
+
+
+def validate_document(raw: Any) -> tuple[dict[str, Any], list[FieldError]]:
+    """A package's document fields (no check-key lookup while packages load)."""
+    out = {"template": "", "checks": [], "check_options": [], "questions": [], "process": {}}
+    errors: list[FieldError] = []
+    _validate_document(raw if isinstance(raw, dict) else {}, out, errors, packaged=True)
+    return out, errors
+
+
+def check_keys() -> tuple[str, ...]:
+    """Shipped check skills a skill may attach."""
+    return tuple(sorted(p.key for p in skill_packages.packages().values() if p.stage))
+
+
+def _validate_document(data: dict, out: dict[str, Any], errors: list[FieldError], *,
+                       packaged: bool) -> None:
+    """template/checks/check_options/questions/process; `packaged` skips the check-key lookup
+    (packages are still loading)."""
+    from app.services import gap_questions, process_settings
+
+    template = str(data.get("template") or "").strip()
+    if template and packaged:
+        # the catalogue test checks shipped ids; templates load after packages
+        if _TEMPLATE.fullmatch(template):
+            out["template"] = template
+        else:
+            errors.append(FieldError("skill_template_unknown",
+                                     f"모르는 템플릿입니다: {template[:60]}"))
+    elif template:
+        from app.services import design_templates
+
+        found = design_templates.get(template)
+        if found is None and not template.startswith(design_templates.USER_PREFIX):
+            errors.append(FieldError("skill_template_unknown",
+                                     f"모르는 템플릿입니다: {template[:60]}"))
+        elif found is not None and found.kind not in ("document", "deck"):
+            errors.append(FieldError("skill_template_kind",
+                                     "스킬에는 보고서·발표 템플릿만 붙일 수 있습니다."))
+        else:
+            out["template"] = template
+    known = None if packaged else set(check_keys())
+    for key in _refs(data.get("checks")):
+        if not _CHECK_KEY.fullmatch(key) or key.startswith(USER) or (
+                known is not None and key not in known):
+            errors.append(FieldError("skill_check_unknown",
+                                     f"검사 스킬로 쓸 수 없습니다: {key[:60]}"))
+        else:
+            out["checks"].append(key)
+    out["checks"] = list(dict.fromkeys(out["checks"]))[:_CHECKS_MAX]
+    options = _refs(data.get("check_options"))
+    if bad := [o for o in options if o not in CHECK_OPTION_NAMES]:
+        errors.append(FieldError("skill_check_option_unknown",
+                                 f"모르는 검사 강도입니다: {', '.join(b[:20] for b in bad[:3])}"))
+    out["check_options"] = [k for k in CHECK_OPTION_NAMES if k in options]
+    if packaged:
+        # detectors name package scripts: checked when the spec is built (`of_package`)
+        out["questions"] = [dict(q) for q in data.get("questions") or [] if isinstance(q, dict)]
+    else:
+        try:
+            out["questions"] = gap_questions.clean(data.get("questions") or [])
+        except gap_questions.QuestionError as exc:
+            errors.append(FieldError(exc.code, str(exc)))
+    try:
+        out["process"] = process_settings.stored_form(
+            process_settings.clean(data.get("process") or {}))
+    except process_settings.ProcessError as exc:
+        errors.append(FieldError(exc.code, str(exc)))
 
 
 def empty(fields: dict[str, Any] | None) -> bool:
@@ -322,7 +463,8 @@ def empty(fields: dict[str, Any] | None) -> bool:
     return not any(clean.values())
 
 
-__all__ = ["FIELDS", "USER", "FieldError", "Spec", "catalogue", "copy_kinds", "empty",
-           "entry_refs", "key_of", "normalize", "of_package", "of_row", "package_fields",
-           "for_turn", "of_wire", "post_check_refs", "resolve", "script_refs", "validate",
-           "wire"]
+__all__ = ["CHECK_OPTION_NAMES", "DOCUMENT_FIELDS", "FIELDS", "USER", "FieldError", "Spec",
+           "catalogue", "check_keys",
+           "copy_kinds", "empty", "entry_refs", "for_turn", "key_of", "normalize", "of_package",
+           "of_row", "of_wire", "package_fields", "post_check_refs", "resolve", "script_refs",
+           "validate", "validate_document", "wire"]

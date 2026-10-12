@@ -53,12 +53,18 @@ whatever is still found is listed with the answer rather than passed off as
 done. Facts missing from the material are asked for before writing, or left as
 `[bracketed]` blanks — never invented.
 
-**Agents are the way into a job.** An agent fixes its instructions, model,
-knowledge files, templates, skills and **How it works** process (answer directly, start from a
-built-in process, or compose one), plus the bundles of extra steps around the
-writing (prepare · review · finish). Skills are scripts and checks that change
-the result (calculation check, date and quote calculation, spreadsheet clean-up,
-PDF tables, source check, PII masking…). An agent's knowledge is searched
+**Skills are the way into a job; agents are built from them.** The work the
+product ships — minutes, bullet-style briefings (개조식), compare-and-decide
+reports, official drafts, decks, spreadsheet tallies, answers from regulations,
+YouTube summaries, deep research — comes as official skills a person switches
+on in a conversation. A skill brings its own template, checks,
+missing-information questions and process settings, and a person can make one
+just like it. An agent fixes its instructions, model, knowledge files, the
+skills it keeps on, templates and **How it works** process, plus the bundles of
+extra steps around the writing (prepare · review · finish). Other skills are
+scripts and checks that change the result (calculation check, date and quote
+calculation, spreadsheet clean-up, PDF tables, source check, PII masking…). An
+agent's knowledge is searched
 through a tool when it needs it — lexically by default, adding vector search
 when the backend serves an embedding model. Everything shipped is built with
 the same features a user has, so a user can build the same thing.

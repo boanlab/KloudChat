@@ -93,16 +93,18 @@ def _base(spec: dict) -> Base:
     )
 
 
-def bases(*, drafts: bool = False) -> list[Base]:
-    """Pickable bases in catalogue order; drafts for admins."""
+def bases(*, drafts: bool = False, withdrawn: bool = False) -> list[Base]:
+    """Pickable bases in catalogue order; drafts for admins; withdrawn ones only on request
+    (an agent already built on one keeps its base)."""
     from app.services import starter
 
-    return [_base(spec) for spec in starter.offered_agents(drafts=drafts)]
+    return [_base(spec) for spec in starter.offered_agents(drafts=drafts, withdrawn=withdrawn)]
 
 
 def get(key: str | None, *, drafts: bool = True) -> Base | None:
-    """Base for a catalogue key; None if unknown or retired."""
-    return next((b for b in bases(drafts=drafts) if b.key == key), None) if key else None
+    """Base for a catalogue key (withdrawn ones included); None if unknown or retired."""
+    return next((b for b in bases(drafts=drafts, withdrawn=True) if b.key == key),
+                None) if key else None
 
 
 #: 문서 형식 → base (migration 0060 backfills `agents.base_key`)

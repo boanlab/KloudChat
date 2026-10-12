@@ -59,3 +59,19 @@ word is taken out. The step records what was fixed, sent back and left.
 
 Every script also has a CLI: `python scripts/<entry>.py '<JSON>'`, the last line of output
 being the result JSON.
+
+## What a skill brings to a turn
+
+A skill can also carry what an agent's own fields set, so a skill alone can do an agent's job
+(`skill_specs.DOCUMENT_FIELDS`, `services/skill_turn.py`; docs/architecture.md § Skills instead
+of shipped agents):
+
+| field           | meaning                                                                    |
+|-----------------|----------------------------------------------------------------------------|
+| `template`      | the template a report or deck writes into when none is picked             |
+| `checks`        | check skills attached while it is on (keys of packages with `stage`)      |
+| `check_options` | trace strictness while it is on (`tool_numbers`, `titles`)                |
+| `questions`     | missing-information questions, as `[[questions]]` in a `template.toml`    |
+| `process`       | process settings (`search`, `draws`, …), under an agent's own             |
+
+The same fields are set in the skill form and in an uploaded SKILL.md.

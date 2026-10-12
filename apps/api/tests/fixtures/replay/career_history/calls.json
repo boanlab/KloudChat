@@ -33,7 +33,7 @@
   }
  },
  {
-  "key": "b36b335cd50d4a9fa1a19f84",
+  "key": "f1a193abf547aa3b4aaf0f0f",
   "stage": "figures",
   "kind": "diagram_plan",
   "head": "아래는 보고서의 부분들이다. 각 부분의 제목과 내용을 읽고, **글보다 도식이 더\n잘 전달하는 곳**에만 도식을 하나씩 제안하라.\n\n원래 요청:\n해솔핀테크 시니어 백엔드 지원할 경력기술서 만들어 줘. 결제 쪽 경력을 앞에 세워 줘. 내 경력 정리한 거 붙일게.\n\n[경력 정리 — 박준영]",
@@ -88,14 +88,14 @@
   }
  },
  {
-  "key": "94ebbe2a1ecd971d47439020",
+  "key": "a9abb962db9ad1c90472d640",
   "stage": "verify",
-  "kind": "judge",
+  "kind": "verify-neutral",
   "head": "Below is one applicant's 경력기술서. Pick only the sentences that repeat the same situation, action or result\nof the same experience in two or more places. Do not pi",
-  "reply": "```json\n{\n  \"items\": [\n    {\n      \"sentence\": \"하루 1,200만 건 규모의 정산 배치 데이터를 Oracle 에서 PostgreSQL 로 이관하는 실무를 수행했습니다.\",\n      \"repeats\": \"하루 약 1,200 만 건의 정산 데이터를 처리하는 배치 시스템이었고, 이관 과정에서 정산 누락 0 건을 달성했습니다.\",\n      \"why\": \"1,200 만 건 정산 데이터 이관 경험의 반복 서술\"\n    },\n    {\n      \"sentence\": \"이관 중 정산 누락 0 건을 달성하며, 대규모 데이터베이스 마이그레이션에서의 데이터 무결성 관리 능력을 입증했습니다.\",\n      \"repeats\": \"이관 과정에서 정산 누락 0 건을 달성했습니다.\",\n      \"why\": \"정산 누락 0 건 달성 결과의 반복 서술\"\n    },\n    {\n      \"sentence\": \"Java 는 결제 승인 API 리팩터링에, Kotlin 은 주문 시스템 MSA 전환에 각각 적용했습니다.\",\n      \"repeats\": \"Java 와 Spring 기반의 결제 승인 API 응답 시간을 개선하기 위해 기존 코드를 구조화하고 성능 병목을 제거했습니다.\",\n      \"why\": \"결제 API 리팩터링에 Java 사용 사실의 반복 서술\"\n    },\n    {\n      \"sentence\": \"Kotlin 은 주문 시스템 MSA 전환에 각각 적용했습니다.\",\n      \"repeats\": \"Kotlin 과 Kafka 를 도입하여 모놀리식 구조를 마이크로서비스로 전환했습니다.\",\n      \"why\": \"주문 시스템 MSA 전환에 Kotlin 사용 사실의 반복 서술\"\n    }\n  ]\n}\n```",
+  "reply": "{\"items\": []}",
   "usage": {
-   "prompt_tokens": 1057,
-   "completion_tokens": 217
+   "prompt_tokens": 940,
+   "completion_tokens": 4
   }
  },
  {

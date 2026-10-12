@@ -48,6 +48,8 @@ export interface HubItem {
   color: string | null
   /** 「공식」 or the author's name. */
   maker: string
+  /** A copy: whose it came from (「공식」 or a name), and whether the person changed it. */
+  origin?: { from: string; edited: boolean }
   official: boolean
   installs: number
   runs: number | null
@@ -123,8 +125,9 @@ export function botItem(b: BotListItem): HubItem {
 
 export function skillItem(s: Skill | StoreSkill, store: boolean): HubItem {
   const row = s as StoreSkill
-  // shared skills, shipped ones included, are labelled by who shares them
+  // an administrator's shared skill reads 「공식」, as their agents do; a copy says where it came from
   const official = store && row.official
+  const from = !store && s.originId ? (s.originOfficial ? '공식' : s.originOwnerName || '') : ''
   return {
     key: `skill:${s.id}`,
     type: 'skill',
@@ -133,7 +136,8 @@ export function skillItem(s: Skill | StoreSkill, store: boolean): HubItem {
     summary: s.description,
     surfaces: s.kinds,
     color: null,
-    maker: store ? row.ownerName : s.originOwnerName || (s.source === 'workspace' ? '워크스페이스' : ''),
+    maker: store ? (official ? '공식' : row.ownerName) : from ? '' : s.source === 'workspace' ? '워크스페이스' : '',
+    origin: from ? { from, edited: !!s.edited } : undefined,
     official,
     installs: s.installs,
     runs: null,
@@ -237,7 +241,10 @@ export function itemMeta(item: HubItem, view: 'mine' | 'explore', t: (s: string)
     if (item.installs > 0) parts.push(t('{n}회 추가').replace('{n}', item.installs.toLocaleString()))
   } else {
     if (item.runs !== null) parts.push(t('{n}회 사용').replace('{n}', item.runs.toLocaleString()))
-    else if (item.maker) parts.push(`${t('제작')}: ${t(item.maker)}`)
+    else if (item.origin) {
+      if (item.origin.edited) parts.push(t('내가 수정함'))
+      parts.push(`${t('원본')}: ${t(item.origin.from)}`)
+    } else if (item.maker) parts.push(`${t('제작')}: ${t(item.maker)}`)
   }
   return parts.join(' · ')
 }

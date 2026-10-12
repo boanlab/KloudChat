@@ -1,6 +1,9 @@
 # 자료 추출·집계.
 
 key = "data-analysis"
+# Withdrawn (D21): offered to no one for new use; its abilities are the 「data-tabulation」 skill.
+# The rows, copies, conversations and published bots built on it keep working.
+withdrawn = true
 order = 3
 name = "자료 추출·집계"
 # Names an untouched copy may still carry; renamed on sync.

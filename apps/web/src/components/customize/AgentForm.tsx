@@ -21,7 +21,7 @@ import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind } from '@/types'
 import { slugify } from './formModel'
 import { isListed } from '@/lib/listed'
-import { SkillPicker, ToolPicker } from './Pickers'
+import { ActiveSkillPicker, SkillPicker, ToolPicker } from './Pickers'
 
 /** Draft with `kinds`, minus bindings those kinds don't offer. */
 function withinKinds(draft: Agent, kinds: SessionKind[]): Agent {
@@ -707,8 +707,23 @@ export function AgentForm({
           <AgentKnowledge agentId={savedId} onNeedAgent={needAgent} onKnowledgeChange={knowledgeChanged} />
         </Group>
 
-        <Group title={t('스킬과 도구')} hint={t('쓸 수 있는 스킬과 도구를 좁힙니다')} testId="agent-tools-group">
-          <Block label={t('스킬')}>
+        <Group
+          title={t('스킬과 도구')}
+          hint={t('켜 둘 스킬로 에이전트를 짜고, 쓸 수 있는 스킬과 도구를 좁힙니다')}
+          testId="agent-tools-group"
+          open={draft.activeSkillIds.length > 0 || undefined}
+        >
+          <Block
+            label={t('켜 둘 스킬')}
+            hint={t('이 에이전트의 모든 대화에서 늘 켜집니다. 스킬의 템플릿·검사·빠진 정보 질문도 함께 따라옵니다.')}
+          >
+            <ActiveSkillPicker
+              value={draft.activeSkillIds}
+              onChange={(activeSkillIds) => edit({ ...draft, activeSkillIds })}
+              skills={skills}
+            />
+          </Block>
+          <Block label={t('입력창에서 고를 수 있는 스킬')}>
             <SkillPicker value={draft.skillIds} onChange={(skillIds) => edit({ ...draft, skillIds })} skills={skills} />
           </Block>
           <Block label={t('도구')}>

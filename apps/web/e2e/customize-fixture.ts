@@ -154,7 +154,7 @@ export const storeAgents = [
 ]
 
 export const mySkills = [
-  skillRow('k1111111111111111111111111111111', '데이터 분석', { source: 'workspace', catalogKey: 'data-analysis', originId: 'k9999999999999999999999999999999', originOwnerName: '관리자' }),
+  skillRow('k1111111111111111111111111111111', '데이터 분석', { source: 'workspace', catalogKey: 'data-analysis', originId: 'k9999999999999999999999999999999', originOwnerName: '관리자', originOfficial: true, edited: true }),
   skillRow('k2222222222222222222222222222222', '주간 현황 보고', { visibility: 'org' }),
   skillRow('k3333333333333333333333333333333', '번역 검수', { enabled: false }),
 ]

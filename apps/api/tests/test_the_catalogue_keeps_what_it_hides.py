@@ -51,8 +51,12 @@ from app.services import (
 )
 from app.services.tools import catalog
 
+#: the shipped agents' abilities (D21) and the connector companions, shown with the rest
+WORK_SKILLS = {"minutes-writing", "option-comparison", "gaejo-briefing", "data-tabulation",
+               "document-drafting", "deck-writing", "regulation-answer", "youtube-summary",
+               "deep-research"}
 SHOWN_SKILLS = {"grounding-check", "gap-check", "calc-check", "date-calc", "quote-calc",
-                "xlsx-clean", "pdf-table", "pii-mask"}
+                "xlsx-clean", "pdf-table", "pii-mask"} | WORK_SKILLS
 SHOWN_DOCUMENTS = {"doc-internal-draft", "doc-event-plan", "doc-result-report",
                    "doc-gaejo-report", "doc-comparison", "doc-minutes"}
 HIDDEN_DECKS = {"deck-case", "deck-defense", "deck-editorial", "deck-lecture", "deck-proposal",
@@ -63,7 +67,7 @@ SKILLS_DIR = Path(skill_packages.__file__).resolve().parent.parent / "skills"
 # ── what is shown ──────────────────────────────────────────────────────
 
 
-def test_eight_skills_are_shown_and_the_rest_kept_as_parts():
+def test_the_shown_skills_are_listed_and_the_rest_kept_as_parts():
     packages = skill_packages.packages()
     assert {k for k, p in packages.items() if p.listed} == SHOWN_SKILLS
     assert not any(packages[k].draft for k in SHOWN_SKILLS)
@@ -322,7 +326,7 @@ def test_finishing_exports_the_official_family_as_hwpx(doc_format, made):
 
 
 def test_the_shipped_agents_still_do_not_export_on_their_own():
-    for spec in starter.offered_agents(drafts=True):
+    for spec in starter.offered_agents(drafts=True, withdrawn=True):
         assert not any(s["kind"] == "export" for s in spec["steps"] or []), spec["key"]
 
 

@@ -215,7 +215,7 @@ async function fixture(page: Page, info: TestInfo, options: {
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: {}, total: 0 } })
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
-    if (method === 'GET' && (path.endsWith('/jobs') || ['/projects', '/skills', '/memory', '/tools',
+    if (method === 'GET' && (path.endsWith('/jobs') || ['/projects', '/skills', '/skills/store', '/memory', '/tools',
       '/connectors', '/connectors/catalog', '/designs', '/design-templates',
       '/shares', '/artifacts', '/agents'].includes(path))) {
       return route.fulfill({ json: [] })

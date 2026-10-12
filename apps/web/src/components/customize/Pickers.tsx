@@ -342,3 +342,41 @@ export function SkillPicker({
     </div>
   )
 }
+
+/** The skills an agent keeps on in every turn: what it is built from (at most six). */
+export function ActiveSkillPicker({
+  value,
+  onChange,
+  skills,
+}: {
+  value: string[]
+  onChange: (next: string[]) => void
+  skills: Skill[]
+}) {
+  const t = useT()
+  const options: Option[] = skills
+    .filter((s) => (s.enabled && isListed(s)) || value.includes(s.id))
+    .map((s) => ({
+      id: s.id,
+      title: s.name,
+      description: s.description,
+      group: s.originId ? '공유받은 스킬' : '내 스킬',
+    }))
+  const full = value.length >= 6
+  const toggle = (id: string) =>
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : full ? value : [...value, id])
+  return (
+    <div className="space-y-2" data-testid="active-skill-picker">
+      <ChosenChips options={options} chosen={value} onRemove={toggle} />
+      {value.length === 0 && <p className="text-sm text-faint">{t('켜 둔 스킬이 없습니다.')}</p>}
+      {full && <p className="text-sm text-faint">{t('최대 6개까지 켜 둘 수 있습니다.')}</p>}
+      <PickerPanel
+        label={t('켜 둘 스킬 고르기')}
+        options={options}
+        chosen={value}
+        onToggle={toggle}
+        searchLabel={t('스킬 검색')}
+      />
+    </div>
+  )
+}

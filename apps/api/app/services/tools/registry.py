@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.models.user import User
 from app.models.workspace import Connector, ConnectorStatus, ConnectorTool
 from app.services import mcp, settings_store
-from app.services.tools import catalog
+from app.services.tools import blurbs, catalog
 from app.services.tools.base import Tool, ToolResult
 from app.services.tools.builtin import (
     CALCULATE,
@@ -237,7 +237,7 @@ async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
                 "available": name in available,
                 "group": connector.name,
                 "title": _humanize(row.name),
-                "description": _first_line(row.description),
+                "description": blurbs.blurb(connector.slug, row.name, row.description),
             }
 
     # Only for agents with shelf documents.

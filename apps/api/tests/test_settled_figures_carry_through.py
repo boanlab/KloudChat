@@ -154,3 +154,18 @@ def test_what_the_inputs_give_is_worked_out_by_code_and_checked_like_them():
     # A material whose own margin disagrees with price minus cost: nothing is derived.
     odd = [*inputs, kf.Figure("박스당 마진", "10,000원", ["마진"])]
     assert kf.derived(odd) == []
+
+
+def test_a_generic_row_label_or_a_bound_is_not_overwritten_by_another_figure():
+    """A 가계곤란 table row 「지급액 | 학기당 200만 원 이내」 kept: 「지급액」 is also the
+    근로장학금 hourly rate's alias, but it names no subject, and the cell is a bound."""
+    figures = [
+        kf.Figure("시간당 근로장학금", "11,000원", ["시급", "지급액"]),
+        kf.Figure("가계곤란장학금 지급액", "200만 원", ["지급액"]),
+    ]
+    table = ("| 구분 | 기준 |\n| --- | --- |\n| 소득 요건 | 4구간 이하 |\n"
+             "| 지급액 | 학기당 200만 원 이내 |\n| 지급액 | 150만 원 |\n| 시급 | 9,000원 |")
+    mended = kf.mend_rows(table, figures)
+    assert "| 지급액 | 학기당 200만 원 이내 |" in mended
+    assert "| 지급액 | 150만 원 |" in mended
+    assert "| 시급 | 11,000원 |" in mended

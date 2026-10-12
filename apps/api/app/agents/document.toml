@@ -1,6 +1,9 @@
 # 공문·기안 초안 — a draft (`draft`): offered only to the catalogue owner.
 
 key = "document"
+# Withdrawn (D21): offered to no one for new use; its abilities are the 「document-drafting」 skill.
+# The rows, copies, conversations and published bots built on it keep working.
+withdrawn = true
 order = 5
 draft = true
 name = "공문·기안 초안"

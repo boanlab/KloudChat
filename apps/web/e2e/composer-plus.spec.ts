@@ -357,3 +357,19 @@ test('M1: an agent row shows its own name once, the other screen as a badge, and
 
 const shotPath = (name: string) =>
   `${process.env.SHOT_DIR ?? 'test-results/shots'}/${name}.png`
+
+test('a document asked for in chat takes the skills that are on along to the report', async ({ page }, info) => {
+  const { unexpected, sends, created } = await composerFixture(page, info)
+  await page.goto('/new/chat')
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await openTool(page, '스킬')
+  await page.getByRole('menuitemcheckbox', { name: /초안 검토/ }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: '초안 검토 제거', exact: true })).toBeVisible()
+  await send(page, '총장님께 보내는 협조 공문 작성해줘')
+  await expect.poll(() => sends.length).toBe(1)
+  expect(created.map((row) => row.kind)).toEqual(['report'])
+  // The skill rides on the report's first turn; the server keeps it on for the approval.
+  expect(sends[0].body.activatedSkillIds).toEqual(['k'.padEnd(33, '1')])
+  expect(unexpected).toEqual([])
+})

@@ -921,6 +921,15 @@ export interface SkillServer {
   tables: boolean
   ownStage: boolean
   uses: string[]
+  /** 템플릿 a report or deck writes into when it is on and none is picked. */
+  template?: string
+  /** Check skills attached while it is on, and their strictness. */
+  checks?: string[]
+  checkOptions?: string[]
+  /** 빠진 정보 질문 asked while it is on. */
+  questions?: GapQuestion[]
+  /** 진행 과정 설정 while it is on (`search`, `draws`, …), under an agent's own. */
+  process?: Partial<ProcessSettings>
 }
 
 /** One of a person's own skill scripts: run only in the code sandbox. */
@@ -953,6 +962,10 @@ export interface Skill {
   originId: string | null
   /** A copy: who shared the skill it came from. */
   originOwnerName?: string
+  /** A copy of an administrator's shared skill: 「원본: 공식」. */
+  originOfficial?: boolean
+  /** A copy the person changed from the skill it came from. */
+  edited?: boolean
   version: string
   updatedAt: string
   /** Fixed scripts its package ships; empty for a plain skill. */
@@ -975,6 +988,8 @@ export type ConnectorStatus = 'connected' | 'disconnected' | 'needs_auth' | 'err
 interface McpTool {
   name: string
   description: string
+  /** One line for people; `description` is what the model reads. */
+  summary?: string
   /** Read-only tools can run unattended; write tools ask for confirmation. */
   readOnly: boolean
   enabled: boolean
@@ -1057,6 +1072,8 @@ export interface Agent {
   tools: string[] | null
   /** null inherits turn selection; [] denies all selected skills. */
   skillIds: string[] | null
+  /** Skills on in every turn of its conversations: what the agent is built from. */
+  activeSkillIds: string[]
   kinds: SessionKind[]
   /** Surface a new conversation opens on; null takes the first of `kinds`. */
   surface: SessionKind | null
