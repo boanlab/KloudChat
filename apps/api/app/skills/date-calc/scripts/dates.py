@@ -327,10 +327,28 @@ def named_dates(text: str, base: dt.date) -> dict[str, dt.date]:
     return {name: next(iter(days)) for name, days in out.items() if len(days) == 1}
 
 
+#: 「다음 회의 10/15(목)」: the next meeting's own date
+_NEXT_MEETING = re.compile(r"다음\s{0,2}(?:회의|미팅|모임)\s{0,2}(?:은|는|:|일시|일정)?\s{0,2}(?=\d)")
+#: 「다음 회의 때」 after a condition (「복귀 후 다음 회의」): some later meeting, not the next one
+_AFTER_CONDITION = re.compile(r"(?:후|이후|뒤|되면)\s{0,2}$")
+
+
+def next_meeting(text: str, base: dt.date) -> dt.date | None:
+    """The one date the text gives the next meeting, after `base`."""
+    days = set()
+    for m in _NEXT_MEETING.finditer(text or ""):
+        rows = [r for r in find(text[m.end():m.end() + 16], base)
+                if r["kind"] in ("full_date", "month_day") and r.get("status") == "ok" and r["at"] == 0]
+        days |= {dt.date.fromisoformat(r["date"]) for r in rows}
+    days = {d for d in days if d > base}
+    return next(iter(days)) if len(days) == 1 else None
+
+
 def find(text: str, base: dt.date, *, absolute: bool = True,
          named: dict[str, dt.date] | None = None,
-         anchors: set[str] | None = None) -> list[dict]:
-    """Date expressions resolved against `base`; offsets count from the sentence's date or named event."""
+         anchors: set[str] | None = None, meeting: dt.date | None = None) -> list[dict]:
+    """Date expressions resolved against `base`; offsets count from the sentence's date or named event;
+    「다음 회의 때」 is `meeting`, the next meeting's given date."""
     taken: list[tuple[int, int]] = []
     found: list[dict] = []
     matches: dict[int, tuple[re.Match[str], int]] = {}
@@ -347,6 +365,9 @@ def find(text: str, base: dt.date, *, absolute: bool = True,
                 row.update(_resolve_match(kind, m, base))
             except (ValueError, KeyError) as exc:
                 row.update({"status": "unresolved", "reason": str(exc)})
+            if (kind == "vague" and meeting is not None and re.match(r"다음\s{0,2}회의", row["text"])
+                    and not _AFTER_CONDITION.search(text[max(0, start - 12):start])):
+                row.update({**_dated(meeting), "kind": "next_meeting", "anchor": "다음 회의"})
             found.append(row)
             matches[id(row)] = (m, end)
     found.sort(key=lambda r: r["at"])
@@ -428,6 +449,7 @@ def scan(text: str, base: dt.date | None = None, *, absolute: bool = True) -> li
     current, kind = base, "meeting" if base else ""
     # Events the whole text dates (「개강은 3월 2일」 in the request, 「학기 개시 30일 전」 in a rule).
     events = named_dates(text, base) if base else {}
+    meeting = next_meeting(text, base) if base else None
     for number, line in enumerate((text or "").splitlines(), start=1):
         if not line.strip():
             continue
@@ -436,7 +458,8 @@ def scan(text: str, base: dt.date | None = None, *, absolute: bool = True) -> li
             current, kind = stamped, stamp_kind
         if current is None:
             continue
-        for row in find(line, current, absolute=absolute, named=events):
+        for row in find(line, current, absolute=absolute, named=events,
+                        meeting=meeting if current == base else None):
             row.pop("at", None)
             row.update({"source_line": line.strip()[:300], "line": number,
                         "base_date": current.isoformat(), "base_kind": kind or "given"})

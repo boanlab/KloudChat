@@ -339,6 +339,11 @@ FORMAT_DEFAULTS: dict[str, dict[str, Any]] = {
 FORMAT_DEFAULTS["official"] = {**FORMAT_DEFAULTS["official"], "fixed_outline": True,
                                "structure": {"sections": ("본문",)}}
 
+# 공모·지원사업 계획서: the funder's skeleton, not a decision memo's 요약 → 권고안
+FORMAT_DEFAULTS["grant"] = {"fixed_outline": True, "structure": {"sections": (
+    "추진 배경 및 필요성", "사업 목표 및 성과지표", "세부 프로그램", "추진 일정", "추진 체계",
+    "예산 계획", "기대 효과 및 지속 방안")}}
+
 
 def resolve(*, template_id: str | None, format_id: str | None,
             own: dict[str, Any] | None = None) -> Process:

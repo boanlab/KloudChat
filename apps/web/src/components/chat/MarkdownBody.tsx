@@ -356,7 +356,8 @@ export function MarkdownBody({
             </td>
           ),
           code: ({ className, children, ...props }) => {
-            const isBlock = /language-/.test(className ?? '')
+            // A fenced block's text ends in a newline even without a language; inline code never does.
+            const isBlock = /language-/.test(className ?? '') || String(children).endsWith('\n')
             // Block fences the exporters also read: chart, steps, kpi, cards, callout, mermaid.
             if (/language-chart/.test(className ?? '')) {
               return <ChartBlock source={String(children).trimEnd()} owner={owner} />

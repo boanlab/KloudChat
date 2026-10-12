@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import logging
 import re
 from collections.abc import AsyncIterator
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -619,8 +621,10 @@ def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = No
         line = lines[i]
         if line.lstrip().startswith("|") and i + 1 < len(lines) and _TABLE_RULE.match(lines[i + 1]):
             header = [c.strip() for c in line.strip().strip("|").split("|")]
+            # one combined 「담당·기한」 column holds sentences: not a blank-able value
             guarded = [
-                k for k, h in enumerate(header) if _OWNER_HEADER.search(h) or _DUE_HEADER.search(h)
+                k for k, h in enumerate(header)
+                if bool(_OWNER_HEADER.search(h)) != bool(_DUE_HEADER.search(h))
             ]
             out.extend((line, lines[i + 1]))
             i += 2
@@ -640,6 +644,39 @@ def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = No
         out.append(line)
         i += 1
     return "\n".join(out)
+
+
+#: 「10월 11일(일)」, 「10/11(일)」, 「2026-10-11」 with the particle after it
+_DAY_WRITTEN = re.compile(
+    r"(?<![\d./-])(?:(?P<y>20\d{2})\s{0,2}(?:[-./]|년)\s{0,2})?(?P<m>\d{1,2})\s{0,2}(?:월\s{0,2}|/|[-.]\s{0,2})"
+    r"(?P<d>\d{1,2})(?![\d/])\s{0,2}일?\.?(?:\s{0,2}[(（][월화수목금토일][)）])?"
+    r"(?P<josa>과|와|을|를|이|가|은|는)?")
+_AFTER_VOWEL = {"과": "와", "을": "를", "이": "가", "은": "는"}
+
+
+def blank_today(text: str, source: str, today: dt.date) -> str:
+    """Today's date the source never gives (the writer's clock, not the meeting's) → 「[일자]」."""
+    given = {(int(m.group("m")), int(m.group("d"))) for m in _DAY_WRITTEN.finditer(source or "")}
+    if (today.month, today.day) in given:
+        return text
+
+    def one(m: re.Match) -> str:
+        if (int(m.group("m")), int(m.group("d"))) != (today.month, today.day) or (
+                m.group("y") and int(m.group("y")) != today.year):
+            return m.group(0)
+        josa = m.group("josa") or ""
+        return "[일자]" + _AFTER_VOWEL.get(josa, josa)
+
+    return _DAY_WRITTEN.sub(one, text or "")
+
+
+def local_today() -> dt.date:
+    """Today in `settings.timezone` (the writer's 「Today is …」)."""
+    try:
+        zone = ZoneInfo(settings.timezone)
+    except Exception:  # noqa: BLE001 — misconfigured tz must not break writing
+        zone = dt.UTC
+    return dt.datetime.now(zone).date()
 
 
 def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
@@ -1417,7 +1454,7 @@ _QUALITY_LABELS = {
     "leftover_mark": "남은 표시", "mixed_script": "다른 문자 섞임", "literal_br": "<br> 노출",
     "placeholder": "자리표시", "source_innards": "출처 내부 지칭",
     "prompt_talk": "작성 지침 언급", "fence_language_apart": "블록 형식 줄 분리",
-    "cut_table_row": "잘린 표 행",
+    "cut_table_row": "잘린 표 행", "table_rows": "빠진 표 행·합계와 다른 행",
     "carried_number_changed": "자료와 자릿수가 다른 수치",
     "formula_unit_slip": "단위가 어긋난 계산식",
     "picture_in_code": "코드 블록 속 그림",
@@ -1509,8 +1546,13 @@ def fix_restated_amounts(text: str, given: str) -> str:
         return text
 
     def mend(sentence: str) -> str:
-        found = [(m.group(0), round(_ko_value(m.group(0)), 2)) for m in _KO_AMOUNT.finditer(sentence)]
-        for raw, value in found:
+        spans = list(_KO_AMOUNT.finditer(sentence))
+        found = [(m.group(0), round(_ko_value(m.group(0)), 2)) for m in spans]
+        swaps: list[tuple[int, int, str]] = []
+        for m, (raw, value) in zip(spans, found, strict=True):
+            # bare digits are in the writer's unit (「4,200 ÷ 12,000」 in 만) unless 원 follows
+            if not re.search(r"[조억만]", raw) and not re.match(r"\s?원", sentence[m.end():]):
+                continue
             for values in lines:
                 if value in values or not value:
                     continue
@@ -1523,8 +1565,11 @@ def fix_restated_amounts(text: str, given: str) -> str:
                     None,
                 )
                 if match is not None:
-                    sentence = sentence.replace(raw, _ko_amount(match), 1)
+                    swaps.append((m.start(), m.end(), _ko_amount(match)))
                     break
+        # in place: the same digits elsewhere (「4,200만 원」) untouched
+        for start, end, amount in reversed(swaps):
+            sentence = sentence[:start] + amount + sentence[end:]
         return sentence
 
     return _SENTENCE.sub(lambda m: mend(m.group(0)), text)
@@ -3561,6 +3606,18 @@ _FILL_PROMPT = """Below is the draft of the report's "{heading}" section. Its ta
 have blanks such as [측정값]·[금액]. The attached material (reference data) contains those values.
 Rewrite the section, filling the blanks with the material's actual values. Do not make up a
 value the material does not have; leave that blank ([측정값] etc.) as it is. Answer with the
+body only, no section heading, in Markdown, in Korean. Do not wrap it in JSON.
+
+{body}"""
+
+
+_TABLE_FIX_PROMPT = """Below is the draft of the report's "{heading}" section. Its tables have these defects:
+{problems}
+
+Rewrite the section with whole tables: one row per item, phase or program the request and
+material list (none merged, none left out), every row under its header, and the rows adding up
+exactly to the 합계 row. Copy every number from the request and material; a value they do not
+give stays as a bracket blank such as 「[단가]」. Keep the sentences as they are. Answer with the
 body only, no section heading, in Markdown, in Korean. Do not wrap it in JSON.
 
 {body}"""

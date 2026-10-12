@@ -40,6 +40,7 @@ from app.services import (
     report_checks,
     research,
     richtext,
+    table_integrity,
     units,
     verify,
 )
@@ -952,6 +953,27 @@ class Sections(Base):
                     if refilled.strip() and not report.placeholder_heavy(refilled):
                         body = refilled
             section["content"] = _cleaned(bundle, index, section, body)
+            material = _material_text(bundle)
+            if gaps := table_integrity.problems(section["content"], material):
+                # rows dropped or not adding up: written once more with the defects named
+                try:
+                    redone, more = await report._complete(
+                        req.model,
+                        _messages(bundle, report._TABLE_FIX_PROMPT.format(
+                            heading=section["heading"], problems="\n".join(f"- {g}" for g in gaps),
+                            body=section["content"][:6000])),
+                        req.api_key,
+                        1600,
+                    )
+                except _CAUGHT as exc:
+                    log.info("table rewrite of %r failed: %s", section["heading"], exc)
+                else:
+                    _count(bundle, more)
+                    redone = _cleaned(bundle, index, section, richtext.detach_tables(
+                        report.unwrap_json_prose(redone)))
+                    if redone.strip() and len(table_integrity.problems(redone, material)) < len(gaps):
+                        section["content"] = redone
+                section["content"] = table_integrity.mend(section["content"], material)
 
             # drawn after prose: failed drawing leaves no dangling reference
             if (drawing := wanted_figures.get(index)) is not None:
@@ -1047,6 +1069,12 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         ),
         prepass.bound_dates if prepass is not None and prepass.bound_dates else None,
     )
+    today = report.local_today()
+    computed = {str(d.get("date") or "") for d in (prepass.dates if prepass is not None else [])}
+    if (doc_format is not None and doc_format.id == "minutes"
+            and today.isoformat() not in computed):
+        # minutes carry the memo's dates; the writer's today is none of them
+        clean = report.blank_today(clean, "\n".join([request, *document_context]), today)
     if bundle.plan.unverified and index == 0:
         # stated at the head of the first section
         clean = report._UNVERIFIED_NOTE + "\n\n" + clean
@@ -1394,6 +1422,8 @@ class MinutesRepair(Base):
         sections, widened = report_checks.minutes_columns(bundle.document.sections,
                                                           prepass.dates)
         before += ["minutes_columns"] * widened
+        # 「미정(사유)」: reason to 비고 by code, so no rewrite reads it as an owner
+        sections, _ = report_checks.minutes_deferred(sections)
         sections, filled = report_checks.minutes_due_fill(sections, prepass.dates)
         before += ["minutes_due"] * filled
         if prepass.undated:
@@ -1457,6 +1487,10 @@ class Verify(Base):
             _count(bundle, spent, planner=True)
         except Exception:  # noqa: BLE001 — the sentences stay as written; the gate reports them
             log.exception("verify stage failed")
+        if (pre := bundle.computed.prepass) is not None and pre.musts:
+            # a recommendation still against the must-have matrix: the code's verdict instead
+            bundle.document.sections, still = report_checks.settle_verdict(
+                bundle.document.sections, still, pre.musts, pre.scores)
         bundle.findings.still = still
         format_codes = set(report_checks.LABELS)
         bundle.findings.after += [f.code for f in still if f.code in format_codes]
@@ -1654,9 +1688,23 @@ class Quality(Base):
         if repeated:
             log.info("dropped %d repeated line(s) across sections", len(repeated))
             bundle.document.sections = sections
+        material = _material_text(bundle)
+        # amounts scaled twice go back to the material's form before the read
+        restored = [
+            {**s, "content": units.restore_material_scale(str(s.get("content") or ""), material)}
+            if isinstance(s.get("content"), str) else s
+            for s in sections
+        ]
+        if restored != sections:
+            log.info("restored double-scaled amounts to the material's form")
+            sections = bundle.document.sections = restored
         format_codes = set(report_checks.LABELS)
-        findings = quality_gate.report_findings(sections, _material_text(bundle),
+        findings = quality_gate.report_findings(sections, material,
                                                 bundle.computed.settled)
+        for sec in sections:
+            for gap in table_integrity.problems(str(sec.get("content") or ""), material):
+                findings.append({"code": "table_rows", "where": str(sec.get("heading") or ""),
+                                 "detail": gap})
         for x in [x for x in f.still if x.code in format_codes][:12]:
             findings.append({"code": x.code,
                              "where": str(sections[x.section].get("heading") or ""),
