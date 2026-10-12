@@ -410,15 +410,26 @@ export function SessionPage() {
     session !== null && session !== undefined && session.messages.length === 0 &&
     (session.messageCount > 0 || !!session.pending) && fetchedId !== session.id
 
-  // Messages and jobs: one timeline by creation.
+  // Messages and jobs: one timeline by creation. Messages keep the transcript's order (a
+  // reply made on this screen is stamped by the browser clock, its question by the server's).
   const timeline = useMemo(() => {
     if (!session) return []
-    const sessionJobs = jobs.filter((j) => j.sessionId === session.id)
-    const items = [
-      ...session.messages.map((m) => ({ t: m.createdAt, node: { type: 'message' as const, m } })),
-      ...sessionJobs.map((j) => ({ t: j.createdAt, node: { type: 'job' as const, j } })),
-    ]
-    return items.sort((a, b) => +new Date(a.t) - +new Date(b.t)).map((i) => i.node)
+    const sessionJobs = jobs
+      .filter((j) => j.sessionId === session.id)
+      .sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt))
+    const out: (
+      | { type: 'message'; m: (typeof session.messages)[number] }
+      | { type: 'job'; j: (typeof sessionJobs)[number] }
+    )[] = []
+    let next = 0
+    for (const m of session.messages) {
+      while (next < sessionJobs.length && +new Date(sessionJobs[next].createdAt) < +new Date(m.createdAt)) {
+        out.push({ type: 'job', j: sessionJobs[next++] })
+      }
+      out.push({ type: 'message', m })
+    }
+    for (; next < sessionJobs.length; next++) out.push({ type: 'job', j: sessionJobs[next] })
+    return out
   }, [session, jobs])
 
   // Outline card: transcript end while pending, above the running turn once accepted.

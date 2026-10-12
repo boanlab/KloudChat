@@ -17,6 +17,7 @@ export function emptyAgent(model: string): Agent {
     sealed: false,
     tools: null,
     skillIds: null,
+    activeSkillIds: [],
     kinds: ['chat'],
     surface: null,
     renderTemplateId: null,
@@ -80,4 +81,9 @@ export const blankServer = (): SkillServer => ({
   tables: false,
   ownStage: false,
   uses: [],
+  template: '',
+  checks: [],
+  checkOptions: [],
+  questions: [],
+  process: {},
 })

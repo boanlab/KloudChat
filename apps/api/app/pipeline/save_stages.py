@@ -308,6 +308,9 @@ class ReviseSave(Base):
                 )
                 session.artifact_id = artifact_id
                 reply = f"{changed}곳을 고쳤습니다."
+                if missed := bundle.document.missed:
+                    reply = (f"{changed}곳을 고쳤지만 요청한 {', '.join(missed)}은 문서에서 "
+                             "찾지 못했습니다. 다시 요청해 주세요.")
                 if note := rerun_note(turn):
                     reply = f"{note} {reply}"
                 handed = None

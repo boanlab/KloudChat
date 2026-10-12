@@ -92,6 +92,8 @@ class Planned:
     context: str = ""
     #: whole document, for the recommended option
     document: str = ""
+    #: steps the request numbers (①…): a flow of that procedure shows every one
+    steps: tuple[str, ...] = ()
 
 
 async def plan(
@@ -217,6 +219,102 @@ def parse(text: str, *, count: int, limit: int, eligible: Iterable[int]) -> list
     return out
 
 
+_WORD = re.compile(r"[가-힣A-Za-z0-9]{2,}")
+
+
+def _flow_words(text: str) -> set[str]:
+    """Step words of a flow: labels of a mermaid flowchart, else the text's words."""
+    from app.services import diagram_shapes
+
+    graph = diagram_shapes.parse(text) if text.lstrip().startswith(("flowchart", "graph")) \
+        else None
+    if graph is not None:
+        text = " ".join(node.label for node in graph.nodes.values())
+    return {w[:4] for w in _WORD.findall(text or "")}
+
+
+def drop_repeated_flows(planned: list[Planned], drawn: Iterable[str]) -> list[Planned]:
+    """Planned flows minus ones redrawing a procedure already drawn (or planned before):
+    two figures of one procedure end up disagreeing."""
+    seen = [words for source in drawn if (words := _flow_words(source))]
+    out = []
+    for row in planned:
+        if row.figure == "flow":
+            words = _flow_words(row.description)
+            if any(len(words & other) >= max(3, 0.5 * min(len(words), len(other)))
+                   for other in seen):
+                log.info("report figures: %r repeats a drawn flow", row.caption[:60])
+                continue
+            seen.append(words)
+        out.append(row)
+    return out
+
+
+_CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+_PARTICLE = re.compile(r"(?:에서|으로|에게|에|이|가|을|를|은|는|의|로|와|과|시)$")
+
+
+def given_steps(request: str) -> tuple[str, ...]:
+    """Steps the request numbers ① ② ③ … in order (3 or more), else ()."""
+    found: list[tuple[str, str]] = []
+    depth = 0
+    for ch in request or "":
+        if ch in "(（":
+            depth += 1
+        elif ch in ")）":
+            depth = max(0, depth - 1)
+        if ch in _CIRCLED and depth == 0:
+            found.append((ch, ""))
+        elif found and ch == "\n":
+            found[-1] = (found[-1][0], found[-1][1] + "\0")  # a step ends with its line
+        elif found and not found[-1][1].endswith("\0"):
+            found[-1] = (found[-1][0], found[-1][1] + ch)
+    found = [(n, text.rstrip("\0").split("→")[0].strip(" ,·/-")) for n, text in found]
+    numbers = [_CIRCLED.index(n) for n, _ in found]
+    if len(found) < 3 or numbers != list(range(len(found))):
+        return ()
+    return tuple(text for _, text in found)
+
+
+def _stems(text: str) -> set[str]:
+    return {_PARTICLE.sub("", w) for w in _WORD.findall(text or "")} - {""}
+
+
+def covers_steps(source: str, steps: Iterable[str]) -> bool:
+    """Whether a flowchart of these steps draws them all and nothing else; True when it is
+    about something else (under 3 steps named)."""
+    from app.services import diagram_shapes
+
+    graph = diagram_shapes.parse(source)
+    if graph is None:
+        return True
+    steps = list(steps)
+    labels = [_stems(node.label) for node in graph.nodes.values()]
+    named = [any(_stems(step) & label for label in labels) for step in steps]
+    if sum(named) < 3:
+        return True
+    spare = [label for label in labels if not any(_stems(step) & label for step in steps)]
+    return all(named) and not spare
+
+
+def steps_flowchart(steps: Iterable[str]) -> str:
+    """Flowchart of the given steps in order; 「(미비 시 ②로 돌아가 …)」 becomes a back edge."""
+    steps = list(steps)
+    lines = ["flowchart LR"]
+    back = []
+    for k, text in enumerate(steps):
+        label = re.sub(r"\s{0,2}[(（][^()（）]*[)）]", "", text).strip() or text
+        label = label.replace('"', "'")[:40]
+        lines.append(f'  s{k}["{_CIRCLED[k]} {label}"]')
+        if m := re.search(rf"([가-힣]{{1,6}})\s{{0,2}}시\s{{0,2}}([{_CIRCLED}])\s{{0,2}}(?:으로|로)"
+                          r"\s{0,2}(?:돌아|되돌)", text):
+            target = _CIRCLED.index(m.group(2))
+            if target < len(steps):
+                back.append(f"  s{k} -->|{m.group(1)}| s{target}")
+    chain = " --> ".join(f"s{k}" for k in range(len(steps)))
+    return "\n".join([*lines, f"  {chain}", *back])
+
+
 async def make(
     planned: Planned, *, model: str, api_key: str, slide: bool, accent: str = ""
 ) -> tuple[dict[str, Any], dict[str, int], bytes]:
@@ -232,6 +330,13 @@ async def make(
         slide=slide,
         accent=accent or diagram.ACCENT,
     )
+    if planned.figure == "flow" and planned.steps and not covers_steps(source, planned.steps):
+        # the given procedure drawn with steps missing or made up: drawn from the steps
+        whole = steps_flowchart(planned.steps)
+        redrawn = await diagram_render.render_png(whole, accent or diagram.ACCENT)
+        if redrawn:
+            log.info("figure redrawn from the %d given steps", len(planned.steps))
+            source, png = whole, redrawn
     if planned.context:
         # figures contradicting their tables dropped; off-recommendation highlight removed
         checked = figure_facts.check(source, context=planned.context, document=planned.document)

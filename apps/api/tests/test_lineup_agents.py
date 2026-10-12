@@ -1,7 +1,8 @@
 """The shipped agents (lineup): their specs hold together and the seeder makes them.
 
-Six are offered (two of them drafts until they pass the lineup evaluation); two are retired
-and kept only so the conversations made with them still open."""
+Seven are withdrawn (D21: their abilities are skills now) — offered to no one anew, their rows,
+copies, conversations and bots kept working; two are retired and kept only so the
+conversations made with them still open."""
 
 from __future__ import annotations
 
@@ -60,8 +61,10 @@ _BY_KEY = {spec["key"]: spec for spec in starter._AGENTS}
 def test_the_catalogue_ships_the_lineup_agents_in_order():
     assert [spec["key"] for spec in starter._AGENTS] == list(_SHIPPED)
     assert {key: spec["name"] for key, spec in _BY_KEY.items()} == _SHIPPED
-    assert [s["key"] for s in starter.offered_agents(drafts=True)] == _OFFERED
-    assert [s["key"] for s in starter.offered_agents()] == [
+    assert starter.offered_agents(drafts=True) == [] and starter.withdrawn_agents() == set(
+        _OFFERED)
+    assert [s["key"] for s in starter.offered_agents(drafts=True, withdrawn=True)] == _OFFERED
+    assert [s["key"] for s in starter.offered_agents(withdrawn=True)] == [
         k for k in _OFFERED if k not in _DRAFTS]
     assert starter.draft_agents() == _DRAFTS and starter.retired_agents() == _RETIRED
     assert {k: s.get("former_names") for k, s in _BY_KEY.items() if s.get("former_names")} \
@@ -236,7 +239,7 @@ async def test_a_career_docs_report_session_gets_the_report_part_of_the_prompt(d
 
 
 @pytest.mark.asyncio
-async def test_a_user_running_a_seeded_agent_wears_their_own_design_of_that_name(db):
+async def test_a_user_running_a_seeded_agent_wears_their_own_design_of_that_name(db, monkeypatch):
     admin = await _admin(db)
     await starter.sync_catalog(db, admin)
     user = User(email="lineup-user@example.com", name="User", password_hash="x")
@@ -255,16 +258,19 @@ async def test_a_user_running_a_seeded_agent_wears_their_own_design_of_that_name
     ).one()
     assert agent.design_system_id != own.id
 
-    # The shared original and an installed copy both resolve to the user's own row.
-    copy = await ws.install_agent(agent.id, user, db)
+    # The shared original and a copy installed before it was withdrawn both resolve to the
+    # user's own row.
+    with monkeypatch.context() as before:
+        before.setattr(starter, "withdrawn_agents", frozenset)
+        copy = await ws.install_agent(agent.id, user, db)
     for agent_id in (agent.id, copy.id):
         session = ChatSession(user_id=user.id, agent_id=agent_id, kind=SessionKind.report)
         db.add(session)
         await db.commit()
         design = await workspace_context.design_for(db, user, session)
         assert design is not None and design.id == own.id
-    listed = next(row for row in await ws.list_agents(user, db) if row.id == agent.id)
-    assert listed.design_name == "문서용 명조"
+    listed = {row.id: row for row in await ws.list_agents(user, db)}
+    assert agent.id not in listed and listed[copy.id].design_name == "문서용 명조"
 
     # Someone holding no design of that name gets none.
     session = ChatSession(user_id=bare.id, agent_id=agent.id, kind=SessionKind.report)
@@ -331,25 +337,34 @@ async def test_retiring_hides_the_agent_and_its_copies_without_deleting_them(db)
 
 
 @pytest.mark.asyncio
-async def test_drafts_are_for_administrators_and_renamed_copies_follow(db):
+async def test_drafts_are_for_administrators_and_renamed_copies_follow(db, monkeypatch):
     admin = await _admin(db)
     user = User(email="lineup-reader@example.com", name="Reader", password_hash="x")
     db.add(user)
     await db.commit()
     await starter.sync_catalog(db, admin)
     await db.commit()
+    # Withdrawn: listed to no one and installed by no one, drafts included.
+    assert not {a.catalog_key for a in await ws.list_agents(user, db) if a.catalog_key}
+    assert not {a.catalog_key for a in await ws.list_agents(admin, db) if a.catalog_key}
+    minutes = (await db.exec(select(Agent).where(Agent.catalog_key == "minutes"))).one()
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as caught:
+        await ws.install_agent(minutes.id, user, db)
+    assert caught.value.status_code == 410
+
+    # As before the withdrawal: drafts for administrators, copies taken by members.
+    monkeypatch.setattr(starter, "withdrawn_agents", frozenset)
     seen = {a.catalog_key for a in await ws.list_agents(user, db) if a.catalog_key}
     assert seen == set(_OFFERED) - _DRAFTS
     assert {a.catalog_key for a in await ws.list_agents(admin, db) if a.catalog_key} \
         == set(_OFFERED)
     draft = (await db.exec(select(Agent).where(Agent.catalog_key == "document"))).one()
-    from fastapi import HTTPException
-
     with pytest.raises(HTTPException) as caught:
         await ws.install_agent(draft.id, user, db)
     assert caught.value.status_code == 404
 
-    minutes = (await db.exec(select(Agent).where(Agent.catalog_key == "minutes"))).one()
     copy = await ws.install_agent(minutes.id, user, db)
     renamed = await ws.install_agent(
         (await db.exec(select(Agent).where(Agent.catalog_key == "gaejo-report"))).one().id,
@@ -357,6 +372,7 @@ async def test_drafts_are_for_administrators_and_renamed_copies_follow(db):
     data = await ws.install_agent(
         (await db.exec(select(Agent).where(Agent.catalog_key == "data-analysis"))).one().id,
         user, db)
+    monkeypatch.undo()
     for row_id, old in ((copy.id, "기록 정리"), (renamed.id, "내 개조식"),
                         (data.id, "데이터 분석")):
         row = await db.get(Agent, row_id)
@@ -370,3 +386,7 @@ async def test_drafts_are_for_administrators_and_renamed_copies_follow(db):
     assert (await db.get(Agent, copy.id)).name == "회의록"
     assert (await db.get(Agent, renamed.id)).name == "내 개조식"
     assert (await db.get(Agent, data.id)).name == "자료 추출·집계"
+    # The copies stay the member's, listed and runnable.
+    await db.refresh(user)
+    mine = {a.id for a in await ws.list_agents(user, db)}
+    assert {copy.id, renamed.id, data.id} <= mine

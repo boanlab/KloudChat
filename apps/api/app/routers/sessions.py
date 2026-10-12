@@ -118,6 +118,7 @@ from app.services import (
     revise,
     settings_store,
     skill_specs,
+    skill_turn,
     starter,
     stop_signal,
     user_templates,
@@ -470,6 +471,8 @@ _widens_boundary = adaptive_routing.widens_boundary
 _AUTO_MODES = frozenset({RoutingMode.auto, RoutingMode.auto_quality})
 #: Surfaces whose writer an Auto lane may choose (`_document_route`).
 _AUTO_KINDS = frozenset({SessionKind.chat, SessionKind.report, SessionKind.slides})
+#: kinds whose picked skills stay on for later turns (a plan's approval included)
+_STANDING_KINDS = frozenset({SessionKind.chat, SessionKind.report, SessionKind.slides})
 
 
 def _planner_model(
@@ -513,10 +516,15 @@ def _local_planner(
 
 
 async def _enrichment_model(writer: dict, *, strict_local: bool, disable_fallbacks: bool) -> dict:
-    """Catalogue row for titles and memory extraction; writer when `title_model` unset."""
-    if strict_local or disable_fallbacks:
+    """Catalogue row for titles and memory extraction; writer when `title_model` unset.
+    Strict-local: the chosen model's `strict-local/` twin, else the writer."""
+    if disable_fallbacks:
         return writer
     resolved = await model_service.resolve_enrichment_model()
+    if strict_local and resolved.startswith("local/"):
+        resolved = "strict-local/" + resolved.split("/", 1)[1]
+    elif strict_local and not resolved.startswith("strict-local/"):
+        return writer
     if not resolved or resolved == writer["id"]:
         return writer
     catalogue = await model_service.list_models()
@@ -3686,9 +3694,14 @@ async def send_message(
     specs, own_scripts = await _skill_specs(db, user, agent_row)
     if published is not None:
         active_skill_ids = []
-    elif not active_skill_ids and session.kind is SessionKind.chat:
-        # standing set, pruned of since-removed or barred skills
+    elif not active_skill_ids and session.kind in _STANDING_KINDS:
+        # standing set, pruned of since-removed or barred skills (a plan's approval too)
         active_skill_ids = await _standing_skill_ids(db, user, session, agent_row)
+    # what the turn's skills bring besides their words (template, checks, questions, settings)
+    skills_bring = skill_turn.Brought() if published is not None else await skill_turn.brought(
+        db, user, session, agent_row, active_skill_ids)
+    if (picked_template := await skill_turn.template_for(db, user, session, skills_bring)):
+        session.render_template_id = picked_template
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
         shelf, shelf_key = await _knowledge_shelf(db, user, session, agent_row)
         agent_material = bool(shelf) and await _has_agent_material(db, user, session)
@@ -3734,7 +3747,8 @@ async def send_message(
         effective_web_search = False
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
         skill_shelf = [] if published is not None else await _skill_shelf(
-            db, user, agent=agent_row, exclude=set(active_skill_ids)
+            db, user, agent=agent_row,
+            exclude={*active_skill_ids, *((agent_row.active_skill_ids or []) if agent_row else [])}
         )
         if not requested_is_strict:
             candidate_tools = sorted(
@@ -3831,10 +3845,11 @@ async def send_message(
     agent_key = await _agent_catalog_key(db, agent_row)
     # agent's own checks and strictness from its row
     check_keys = check_skills.attached(
-        agent_checks=(agent_row.check_skills or []) if agent_row is not None else [],
+        agent_checks=skills_bring.checks_with(
+            agent_row.check_skills if agent_row is not None else None),
         template_checks=render_template_checks(session), specs=specs)
-    check_options = check_skills.clean_options(
-        agent_row.check_options if agent_row is not None else None)
+    check_options = skills_bring.options_with(check_skills.clean_options(
+        agent_row.check_options if agent_row is not None else None))
     # user-pipeline conversation asks through its own steps (`human:gaps`)
     from app.routers import user_pipelines
 
@@ -3849,10 +3864,11 @@ async def send_message(
         # 담당 부서·연락처, quoted verbatim by checks
         check_options = {**check_options, "contact": agent_row.contact.strip()}
     # 빠진 정보 질문: 서식's and agent's own, else its base's
-    asking = gap_questions.resolve(
+    asking = skills_bring.questions_with(gap_questions.resolve(
         own=agent_row.gap_questions if agent_row is not None else None, base_key=agent_key,
         template_id=session.render_template_id if session.kind is SessionKind.report else None,
-        doc_format=workspace.doc_format) if check_skills.of_stage(check_keys, "pre", specs) else []
+        doc_format=workspace.doc_format)) if check_skills.of_stage(check_keys, "pre", specs) \
+        else []
     judge_model, judge_key = "", ""
     if gap_questions.needs_judge(asking):
         # judge reads material before routing: in-boundary model only, else nothing asked
@@ -4248,7 +4264,7 @@ async def send_message(
         if revoked_model is None:
             session.model = requested_model["id"]
     session.updated_at = utcnow()
-    if session.kind is SessionKind.chat and payload.activated_skill_ids:
+    if session.kind in _STANDING_KINDS and payload.activated_skill_ids:
         # picked for this turn, kept for later
         session.skill_ids = list(payload.activated_skill_ids)
     if not session.title:
@@ -4487,7 +4503,8 @@ async def send_message(
                     check_keys=_traced(check_keys, material_turn),
                     check_options=check_options,
                     skill_specs=specs,
-                    process=agent_row.process_settings if agent_row is not None else None,
+                    process=skills_bring.process_with(
+                        agent_row.process_settings if agent_row is not None else None),
                     user_id=user.id,
                     api_key=api_key,
                     session_id=session.id,
@@ -6517,6 +6534,13 @@ async def _revision_plan(
     skeleton = _skeleton(artifact)
     if not skeleton:
         return None, []
+    rename = (revise.title_rename(instruction, skeleton)
+              if getattr(artifact, "kind", None) != ArtifactKind.deck else None)
+    if rename is not None and rename[1] is None:
+        # the document's title is renamed by hand; the rest is planned without it
+        instruction = revise.without_title_clause(instruction)
+        if not instruction:
+            return revise.Plan(scope="parts", targets=[], note=f"제목 → {rename[0]}"), skeleton
     if (swap := revise.order_swap(instruction, skeleton)) is not None:
         # swap done in place: planner would read 「순서」 as restructure and redraw
         first, second = swap

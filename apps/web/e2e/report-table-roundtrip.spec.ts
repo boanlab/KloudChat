@@ -75,6 +75,12 @@ async function fixture(page: Page, testInfo: TestInfo) {
   return { unexpected, writes, stored: () => structuredClone(artifact) }
 }
 
+/** Report data with tiptap's default `colspan="1" rowspan="1"` dropped: older tiptap writes them, 3.31 does not, and both mean one cell. */
+function spans(data: unknown): unknown {
+  return JSON.parse(JSON.stringify(data, (key, value) =>
+    key === 'content' && typeof value === 'string' ? value.replace(/\s(?:colspan|rowspan)="1"/g, '') : value))
+}
+
 async function enterEditor(page: Page) {
   // 「편집」 in the panel header opens the page editor and the editing tabs.
   await page.locator('[data-panel="artifact"] header').getByRole('button', { name: '편집', exact: true }).click()
@@ -175,7 +181,7 @@ for (const width of [1440, 390]) {
     await expect(merged.locator('p')).toHaveText(['Alpha', '10', 'Beta', '20'])
     await save(page)
     const storedMerged = state.stored()
-    expect(storedMerged.data).toEqual(expectedMerged)
+    expect(spans(storedMerged.data)).toEqual(spans(expectedMerged))
     await captureReport(testInfo, 'merged-report.json', storedMerged.data)
     await page.reload()
     await enterEditor(page)
@@ -188,7 +194,7 @@ for (const width of [1440, 390]) {
     await expect(editor.locator('td')).toHaveCount(6)
     await expect(rows.nth(1).locator('td').first().locator('p')).toHaveText(['Alpha', '10', 'Beta', '20'])
     await save(page)
-    expect(state.stored().data).toEqual(expectedSplit)
+    expect(spans(state.stored().data)).toEqual(spans(expectedSplit))
     await captureReport(testInfo, 'split-report.json', state.stored().data)
     await page.reload()
     await enterEditor(page)
@@ -213,7 +219,7 @@ test('a full-width vertical merge keeps the covered final row on reload', async 
   await page.getByRole('button', { name: '선택한 셀 병합', exact: true }).click()
   await expect(editor.locator('td[colspan="3"][rowspan="2"]')).toHaveCount(1)
   await save(page)
-  expect(state.stored().data).toEqual(expectedFullWidth)
+  expect(spans(state.stored().data)).toEqual(spans(expectedFullWidth))
   await captureReport(testInfo, 'full-width-merged-report.json', state.stored().data)
   await page.reload()
   await enterEditor(page)

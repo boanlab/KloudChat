@@ -154,14 +154,14 @@ export const storeAgents = [
 ]
 
 export const mySkills = [
-  skillRow('k1111111111111111111111111111111', '데이터 분석', { source: 'workspace', catalogKey: 'data-analysis', originId: 'k9999999999999999999999999999999', originOwnerName: '관리자' }),
+  skillRow('k1111111111111111111111111111111', '데이터 분석', { source: 'workspace', catalogKey: 'data-analysis', originId: 'k9999999999999999999999999999999', originOwnerName: '관리자', originOfficial: true, edited: true }),
   skillRow('k2222222222222222222222222222222', '주간 현황 보고', { visibility: 'org' }),
   skillRow('k3333333333333333333333333333333', '번역 검수', { enabled: false }),
 ]
 /** A shipped skill kept only as a part (`listed: false`): 숨김 포함 shows it. */
 const hiddenSkillRow = skillRow('k8888888888888888888888888888888', '글자 수 맞춤', { source: 'workspace', catalogKey: 'text-fit', listed: false })
 export const storeSkills = [
-  { ...skillRow('k4444444444444444444444444444444', '견적 계산'), ownerId: 'admin', ownerName: '관리자', official: true, installed: false, installs: 31, visibility: 'org' },
+  { ...skillRow('k4444444444444444444444444444444', '견적 계산'), ownerId: 'admin', ownerName: '김관리', official: true, installed: false, installs: 31, visibility: 'org' },
   { ...skillRow('k5555555555555555555555555555555', '보도자료 교정'), ownerId: 'u2', ownerName: '김동료', official: false, installed: false, installs: 3, visibility: 'org' },
 ]
 

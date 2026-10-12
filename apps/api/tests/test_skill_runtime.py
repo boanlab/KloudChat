@@ -411,8 +411,8 @@ async def test_the_catalog_seeds_exactly_the_agents_it_ships_even_none():
     db = _SeedDb([])
     assert await starter.seed_catalog(db, "admin-1") > 0
 
-    # A retired agent is never seeded afresh.
-    assert len(db.agents) == len(starter.offered_agents(drafts=True))
+    # A retired agent is never seeded afresh; a withdrawn one is kept up to date.
+    assert len(db.agents) == len(starter.offered_agents(drafts=True, withdrawn=True))
     assert db.rows and all(row.visibility is Visibility.org for row in db.rows)
 
 

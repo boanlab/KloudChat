@@ -1314,6 +1314,27 @@ def _chart_table(series: list[dict], x_label: str) -> dict:
     return {"columns": [x_label or "항목", *[s["name"] for s in series]], "rows": rows}
 
 
+#: caption saying points are marked on the chart
+_MARKED = re.compile(r"표시|강조|주석|하이라이트")
+_MAX_MARKS = 6
+
+
+def _chart_marks(raw: Any, series: list[dict], caption: str) -> list[dict]:
+    """Marked x values ({x, label}) on the chart's own categories; a caption that says
+    「…에 표시」 without them marks the categories it names."""
+    keys = [p["x"] for one in series for p in one["points"]]
+    out: list[dict] = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        x = str(item.get("x") or "").strip()[:40]
+        if x in keys and all(m["x"] != x for m in out):
+            out.append({"x": x, "label": str(item.get("label") or "").strip()[:30]})
+    if not out and _MARKED.search(caption):
+        out = [{"x": x, "label": ""} for x in dict.fromkeys(keys) if x in caption]
+    return out[:_MAX_MARKS]
+
+
 async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     """Queue a chart artifact; colours and table derived here."""
     chart_type = str(args.get("chartType") or "bar").strip().lower()
@@ -1359,6 +1380,8 @@ async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         )
 
     x_label = str(args.get("xLabel") or "").strip()[:40]
+    caption = str(args.get("caption") or "").strip()[:300]
+    marks = _chart_marks(args.get("marks"), series, caption)
     ctx.pending_artifacts.append(
         {
             "kind": "chart",
@@ -1366,8 +1389,9 @@ async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
             "data": {
                 "kind": "chart",
                 "chartType": chart_type,
-                "caption": str(args.get("caption") or "").strip()[:300],
+                "caption": caption,
                 "xLabel": x_label,
+                "marks": marks,
                 "yLabel": str(args.get("yLabel") or "").strip()[:40],
                 "series": series,
                 "table": _chart_table(series, x_label),
@@ -1406,6 +1430,19 @@ CREATE_CHART = Tool(
             "sourceFile": {
                 "type": "string",
                 "description": "수치의 출처. 첨부 파일 이름이나 자료 이름.",
+            },
+            "marks": {
+                "type": "array",
+                "description": "특정 가로축 값을 차트 위에 세로선과 이름으로 표시합니다. "
+                               "캡션에 「…에 표시」라고 쓰려면 여기에 넣으세요.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "x": {"type": "string", "description": "표시할 가로축 값(points 의 x)."},
+                        "label": {"type": "string", "description": "짧은 이름(예: 폭염 특보)."},
+                    },
+                    "required": ["x"],
+                },
             },
             "series": {
                 "type": "array",

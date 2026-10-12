@@ -324,6 +324,15 @@ class SkillServer(Wire):
     own_stage: bool = False
     #: `run_skill_script` targets: shipped `<key>/<script>` or own scripts (sandbox)
     uses: list[str] = Field(default_factory=list, max_length=12)
+    #: 템플릿 a report/deck writes into while it is on and none is picked
+    template: str = Field(default="", max_length=60)
+    #: check skills attached while on, and their strictness
+    checks: list[str] = Field(default_factory=list, max_length=8)
+    check_options: list[str] = Field(default_factory=list, max_length=4)
+    #: 빠진 정보 질문 while on (`gap_questions.clean`)
+    questions: list[dict[str, Any]] = Field(default_factory=list, max_length=12)
+    #: 진행 과정 설정 while on (`process_settings.clean`)
+    process: dict[str, Any] = Field(default_factory=dict)
 
 
 class SkillScriptOut(Wire):
@@ -353,6 +362,10 @@ class SkillOut(Wire):
     origin_id: str | None = None
     #: a copy: who shared the skill it came from ("" when gone or not a copy)
     origin_owner_name: str = ""
+    #: a copy of an administrator's shared skill (「원본: 공식」)
+    origin_official: bool = False
+    #: a copy whose words differ from the skill it came from (「내가 수정함」)
+    edited: bool = False
     updated_at: datetime
     #: package's fixed scripts; empty for plain skill
     scripts: list[str] = Field(default_factory=list)
@@ -478,6 +491,8 @@ class AgentOut(Wire):
     system_prompt: str
     tools: list[str] | None = None
     skill_ids: list[str] | None = None
+    #: skills on in every turn (`Agent.active_skill_ids`); null read as none
+    active_skill_ids: list[str] | None = Field(default_factory=list)
     kinds: JsonList = Field(default_factory=list)
     #: bindings; see `Agent.surface` onward
     surface: str | None = None
@@ -562,6 +577,7 @@ class AgentOut(Wire):
         out.installed = installed
         out.tools = None if a.tools is None else list(a.tools)
         out.skill_ids = None if a.skill_ids is None else list(a.skill_ids)
+        out.active_skill_ids = [str(x) for x in a.active_skill_ids or []]
         out.kinds = list(a.kinds or [])
         out.starters = [str(x) for x in (a.starters or []) if str(x).strip()]
         out.share_mode = "sealed" if a.share_mode == "sealed" else "open"
@@ -586,6 +602,8 @@ class AgentIn(Wire):
     #: null inherits all tools/skills; `[]` denies all
     tools: list[str] | None = None
     skill_ids: list[str] | None = None
+    #: skills on in every turn of its conversations
+    active_skill_ids: list[str] | None = Field(default=None, max_length=6)
     kinds: list[str] | None = None
     #: null: first of `kinds` (chat if unrestricted); else one of `kinds`
     surface: str | None = Field(default=None, max_length=20)
@@ -710,12 +728,18 @@ class ShareViewOut(Wire):
 class ConnectorToolOut(Wire):
     name: str
     description: str
+    #: one line for people (`tools/blurbs.py`); `description` is what the model reads
+    summary: str = ""
     read_only: bool
     enabled: bool
 
     @classmethod
-    def of(cls, t: ConnectorTool) -> ConnectorToolOut:
-        return cls.model_validate(t, from_attributes=True)
+    def of(cls, t: ConnectorTool, slug: str = "") -> ConnectorToolOut:
+        from app.services.tools import blurbs
+
+        out = cls.model_validate(t, from_attributes=True)
+        out.summary = blurbs.blurb(slug, t.name, t.description)
+        return out
 
 
 class ConnectorOut(Wire):
@@ -744,10 +768,12 @@ class ConnectorOut(Wire):
     def of(cls, c: Connector, tools: list[ConnectorTool] | None = None) -> ConnectorOut:
         out = cls.model_validate({**c.model_dump(), "auth": c.auth_type}, from_attributes=False)
         out.kinds = list(c.kinds or [])
-        out.tools = [ConnectorToolOut.of(t) for t in (tools or [])]
-        # `{{...}}` placeholders filled at spawn, not user-entered
+        out.tools = [ConnectorToolOut.of(t, c.slug) for t in (tools or [])]
+        # only what the person enters: `{{...}}` identity placeholders and `${VAR}` values the
+        # server fills from its own settings at spawn (YouTube's WHISPER_URL) are not theirs
         out.env_keys = [
-            k for k, v in settings_store.decrypt_env(c.env).items() if not v.startswith("{{")
+            k for k, v in settings_store.decrypt_env(c.env).items()
+            if not v.startswith("{{") and "${" not in v
         ]
         return out
 

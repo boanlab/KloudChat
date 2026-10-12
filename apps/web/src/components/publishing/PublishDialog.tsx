@@ -130,7 +130,7 @@ export function PublishDialog({
             <CheckCircle2 size={16} aria-hidden />
             {t('챗봇을 공개했습니다.')}
           </p>
-          <p className="text-base text-muted">{t('이 기관 구성원이 로그인해서 아래 주소로 물어볼 수 있습니다. 챗봇 목록에도 보입니다.')}</p>
+          <p className="text-base text-muted">{t('이 기관 구성원이 로그인해서 아래 주소로 물어볼 수 있습니다. 구성원의 「공유된 에이전트」에도 보입니다.')}</p>
           {done.reviewState === 'pending' && done.requestedVisibility && (
             <p className="flex items-start gap-2 text-base text-warn" data-testid="publish-requested">
               <Clock size={15} className="mt-0.5 shrink-0" aria-hidden />

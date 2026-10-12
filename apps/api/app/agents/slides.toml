@@ -2,6 +2,9 @@
 # flow (`app/pipelines/deck.toml`): no 추가로 할 일 and no 직접 구성.
 
 key = "slides"
+# Withdrawn (D21): offered to no one for new use; its abilities are the 「deck-writing」 skill.
+# The rows, copies, conversations and published bots built on it keep working.
+withdrawn = true
 order = 6
 draft = true
 name = "발표 자료"

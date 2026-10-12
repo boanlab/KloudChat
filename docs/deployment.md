@@ -39,7 +39,7 @@ web container (`localhost:5173/api/…`), or one instance with
 ```
 
 The API also mounts the host's `/proc` and `/sys/fs/cgroup` read-only for the
-admin 성능 모니터링 page; remove both mounts to run without host figures.
+admin **Performance** page; remove both mounts to run without host figures.
 
 The `kloudchat-init` container runs once before the API and exits.
 Docker creates bind-mount directories as root and the API runs as uid 1000, so
@@ -113,10 +113,10 @@ administrator) or by setting `KCHAT_ADMIN_EMAIL` and `KCHAT_ADMIN_PASSWORD`
 before the first start. Those two apply **only** when the database has no
 accounts, so they cannot be used to reset a forgotten password later.
 
-Finish in the UI, from the account menu's **시스템** screen: paste the gateway
-address under **기능 › 기능 연동**, the LiteLLM master key under **프록시**,
-and use each field's connection test. Then check **모델** (which model does
-which job) and **라우팅** (the outline model and Auto) against the models the
+Finish in the UI, from the account menu's **System** (시스템) screen: paste the gateway
+address under **Features › Integrations**, the LiteLLM master key under **Proxy**,
+and use each field's connection test. Then check **Model** (which model does
+which job) and **Routing** (the outline model and Auto) against the models the
 gateway actually serves.
 
 ## TLS and reverse proxy
@@ -135,8 +135,8 @@ every 15 seconds while a turn is silent, so a proxy *idle* timeout of 60
 seconds is fine — only a cap on the total response time has to be raised.
 
 **Forward the client's address.** `X-Forwarded-For` is the only way KloudChat
-learns who is connecting; without it every audit row, share visit and 접속기록
-line records the proxy. The `kloudchat-web` container then has to be told which
+learns who is connecting; without it every audit row, share visit and access
+log line records the proxy. The `kloudchat-web` container then has to be told which
 hops to believe — `KCHAT_TRUSTED_PROXIES`, and narrow it to this proxy's own
 address wherever port 5173 is reachable by anyone else. See
 [Behind a reverse proxy](configuration.md#behind-a-reverse-proxy).
@@ -315,7 +315,7 @@ The API scales horizontally: set `KCHAT_API_REPLICAS` and `docker compose up -d`
   write, so a change made on one replica reaches the others within that window.
   Governance is read fresh for every egress decision.
 - **The stop signal** is broadcast over Postgres `NOTIFY` when there is more
-  than one replica (`services/stop_signal.py`), so 중단 reaches whichever
+  than one replica (`services/stop_signal.py`), so **Stop** reaches whichever
   replica is streaming the turn. A turn is claimed on its session row, so two
   replicas cannot answer the same conversation at once.
 - **The database pool** is per replica; replicas × (`DB_POOL_SIZE` +

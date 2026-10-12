@@ -1,6 +1,9 @@
 # 회의록.
 
 key = "minutes"
+# Withdrawn (D21): offered to no one for new use; its abilities are the 「minutes-writing」 skill.
+# The rows, copies, conversations and published bots built on it keep working.
+withdrawn = true
 order = 4
 name = "회의록"
 # Names an untouched copy may still carry; renamed on sync.

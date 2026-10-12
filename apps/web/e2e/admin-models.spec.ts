@@ -107,7 +107,10 @@ test('the administrator decides which model does which job', { tag: '@phone' }, 
   await page.goto('/admin/system/models')
   const card = page.locator('[data-section="model-roles"]')
   await expect(card).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('tab', { name: '모델', exact: true })).toHaveAttribute('aria-current', 'page')
+  // The system pages are links in a named menu: no tabs without tab behaviour.
+  const menu = page.getByRole('navigation', { name: '시스템 메뉴' })
+  await expect(menu.getByRole('link', { name: '모델', exact: true })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('tab')).toHaveCount(0)
 
   // The report default follows the chat default until one is chosen.
   const report = card.getByRole('combobox', { name: /^보고서 기본 모델/ })
@@ -134,6 +137,21 @@ test('the administrator decides which model does which job', { tag: '@phone' }, 
   // The card fits a phone width.
   const box = await card.boundingBox()
   expect(box && box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+  expect(unexpected).toEqual([])
+})
+
+test('the 모델 page shows it is loading until the settings answer', async ({ page }, info) => {
+  const { unexpected } = await adminFixture(page, info)
+  let release: () => void = () => undefined
+  const held = new Promise<void>((resolve) => (release = resolve))
+  await page.route('**/api/admin/settings', async (route) => {
+    await held
+    await route.fallback()
+  })
+  await page.goto('/admin/system/models')
+  await expect(page.getByRole('main').getByRole('status')).toContainText('불러오는 중…', { timeout: 15_000 })
+  release()
+  await expect(page.locator('[data-section="model-roles"]')).toBeVisible()
   expect(unexpected).toEqual([])
 })
 

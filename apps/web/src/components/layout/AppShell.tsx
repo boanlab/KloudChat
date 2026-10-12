@@ -128,10 +128,27 @@ export function AppShell() {
     const opener = document.activeElement as HTMLElement | null
     drawer.current?.querySelector<HTMLElement>('a[href], button:not([disabled]), input:not([disabled])')?.focus()
     const onKey = (e: KeyboardEvent) => {
+      const overlaid = () =>
+        [...document.querySelectorAll('[role="menu"], [aria-modal="true"]')].some((el) => el !== drawer.current)
+      if (e.key === 'Tab' && !e.defaultPrevented && drawer.current) {
+        // A menu or dialog opened from the drawer keeps its own Tab order.
+        if (overlaid()) return
+        // Tab wraps inside the drawer: nothing behind it (the skip link included) takes focus.
+        const stops = [...drawer.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        )].filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0 && !el.closest('[inert]'))
+        const [first, last] = [stops[0], stops.at(-1)]
+        const here = document.activeElement
+        const outside = !drawer.current.contains(here)
+        if (first && last && (outside || here === (e.shiftKey ? first : last))) {
+          e.preventDefault()
+          ;(e.shiftKey ? last : first).focus()
+        }
+        return
+      }
       if (e.key !== 'Escape' || e.defaultPrevented) return
       // A menu or dialog from the drawer owns this Escape.
-      const above = [...document.querySelectorAll('[role="menu"], [aria-modal="true"]')]
-      if (above.some((el) => el !== drawer.current)) return
+      if (overlaid()) return
       e.preventDefault()
       cycleSidebar()
     }
@@ -151,7 +168,10 @@ export function AppShell() {
           e.preventDefault()
           mainRef.current?.focus()
         }}
-        className="sr-only z-[200] rounded-control bg-accent px-3 py-2 text-base font-medium text-accent-fg focus:not-sr-only focus:absolute focus:top-2 focus:left-2"
+        // While the drawer is a modal, the page it skips to is inert: out of the Tab order.
+        tabIndex={drawerOpen ? -1 : undefined}
+        aria-hidden={drawerOpen || undefined}
+        className="sr-only z-[200] rounded-control bg-accent text-base font-medium text-accent-fg focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:px-3 focus:py-2.5"
       >
         {t('본문으로 건너뛰기')}
       </a>

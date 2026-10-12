@@ -73,25 +73,25 @@ test('이름을 바꾸면 저장되고 새로고침 후에도 남는다', async 
 
 test('관리자 시스템이 탭으로 나뉘고 각 탭이 URL을 가진다', async ({ page }) => {
   await page.goto('/admin/system')
-  await expect(page.getByRole('tab', { name: '프록시' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '시스템 메뉴' }).getByRole('link', { name: '프록시' })).toBeVisible()
   await expect(page.getByLabel(/LiteLLM 주소/)).toBeVisible()
 
-  await page.getByRole('tab', { name: '라우팅' }).click()
+  await page.getByRole('navigation', { name: '시스템 메뉴' }).getByRole('link', { name: '라우팅' }).click()
   await expect(page).toHaveURL(/\/admin\/system\/routing$/)
   await expect(page.getByRole('heading', { name: '모델 자동 라우팅' })).toBeVisible()
   // The proxy is not on this tab.
   await expect(page.getByLabel(/LiteLLM 주소/)).toHaveCount(0)
 
-  await page.getByRole('tab', { name: '기능' }).click()
+  await page.getByRole('navigation', { name: '시스템 메뉴' }).getByRole('link', { name: '기능' }).click()
   await expect(page).toHaveURL(/\/admin\/system\/features$/)
   await expect(page.getByRole('heading', { name: '사용할 기능' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '기능 연동' })).toBeVisible()
 
-  await page.getByRole('tab', { name: '브랜딩' }).click()
+  await page.getByRole('navigation', { name: '시스템 메뉴' }).getByRole('link', { name: '브랜딩' }).click()
   await expect(page).toHaveURL(/\/admin\/system\/branding$/)
   await expect(page.getByRole('heading', { name: '브랜딩' })).toBeVisible()
 
-  await page.getByRole('tab', { name: '메일' }).click()
+  await page.getByRole('navigation', { name: '시스템 메뉴' }).getByRole('link', { name: '메일' }).click()
   await expect(page).toHaveURL(/\/admin\/system\/mail$/)
   // One tab, one save unit.
   await expect(page.getByRole('button', { name: '메일 설정 저장' })).toBeVisible()

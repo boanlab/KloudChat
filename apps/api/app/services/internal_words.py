@@ -147,7 +147,9 @@ def strip_reports(text: str) -> str:
 
 #: writer apologising for its own tool call
 TOOL_APOLOGY = re.compile(
-    r"(?:도구|툴|tool|함수)(?:를|을)?\s{0,2}잘못\s{0,2}(?:호출|사용|실행|불러)", re.I)
+    r"(?:도구|툴|tool|함수)(?:를|을)?\s{0,2}잘못\s{0,2}(?:호출|사용|실행|불러)"
+    # a code tool's run told by its name: 「직전 `run_code`는 … syntax error로 실패」
+    r"|`?(?<![A-Za-z_])(?:run_code|execute_code|run_skill_script)(?![A-Za-z_])`?", re.I)
 _SORRY = re.compile(r"^\s{0,4}(?:죄송합니다|죄송해요|미안합니다|사과드립니다)[.!]?\s{0,4}$")
 
 

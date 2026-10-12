@@ -554,6 +554,7 @@ export function Composer({
   const livePendingTemplate = useRef(pendingTemplate)
   livePendingTemplate.current = pendingTemplate
   const designTemplates = useStore((s) => s.designTemplates)
+  const ensureDesignTemplates = useStore((s) => s.ensureDesignTemplates)
   const [galleryOpen, setGalleryOpen] = useState(false)
   // A phone opens 「+」 as a bottom sheet.
   const phone = useMediaQuery('(pointer: coarse) and (max-width: 64rem), (max-width: 40rem)')
@@ -834,6 +835,10 @@ export function Composer({
     newSession,
     setSessionSkills,
     setSessionRoutingMode,
+    skillStore,
+    skillStoreLoaded,
+    loadSkillStore,
+    installSkill,
     generateImages,
     generateAudio,
     generateVideo,
@@ -989,6 +994,8 @@ export function Composer({
   const readingAttachment = attachments.find(isReading)
   /** Enter pressed while a file uploads or the models load: sent as soon as that ends. */
   const [queuedSend, setQueuedSend] = useState(false)
+  // An official skill being added: a send waits for it, so the skill is on that turn.
+  const [adding, setAdding] = useState<string | null>(null)
   /** A new conversation's first turn: the text stays in the box until the server takes it. */
   const [startPending, setStartPending] = useState(false)
   const holdingStart = useRef(false)
@@ -1324,7 +1331,7 @@ export function Composer({
       setChatError(t('질문은 200,000자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.'))
       return
     }
-    if (text && !spoken && !editing && !busy && (uploading || awaitingModels)) {
+    if (text && !spoken && !editing && !busy && (uploading || awaitingModels || adding !== null)) {
       setQueuedSend(true)
       return
     }
@@ -1480,10 +1487,20 @@ export function Composer({
     const generalHandoff = detected && !session?.agentId ? detected : null
     // Earlier turns go along as material (「대화 기록.txt」 plus files), so a deck can reuse values computed above.
     const carried = agentHandoff ?? (sessionId && (session?.messages.length ?? 0) > 0 ? generalHandoff : null)
+    // The skills on go along to the document, those that work there; the rest are named.
+    const skillsFor = (target: SessionKind) => {
+      const fits = activeSkills.filter((s) => (s.kinds.length === 0 || s.kinds.includes(target)) && s.requiredTools.length === 0)
+      const left = activeSkills.filter((s) => !fits.includes(s))
+      if (left.length) {
+        setNotice(t('이 화면에서는 쓸 수 없어 빼고 넘깁니다: {skills}').replace('{skills}', left.map((s) => s.name).join(', ')))
+      }
+      return fits.map((s) => s.id)
+    }
     if (carried && sessionId) {
       void handOff(sessionId, carried, text, {
         attachments: sentAttachments,
         webSearch: sentWebSearch,
+        activatedSkillIds: skillsFor(carried),
         onSession: (id) => navigate(`/s/${id}`),
       }).finally(startSettled).catch((error: unknown) => {
         setComposerRestore({
@@ -1504,6 +1521,7 @@ export function Composer({
         webSearch: sentWebSearch,
         attachments: attachmentIds,
         attachmentNames: attachmentLabels,
+        activatedSkillIds: skillsFor(handoff),
         onSession: (id) => {
           landedHandoffSessionId = id
           releaseStart()
@@ -1575,11 +1593,11 @@ export function Composer({
 
   // A queued Enter goes out once the upload or the model list is done.
   useEffect(() => {
-    if (!queuedSend || uploading || awaitingModels) return
+    if (!queuedSend || uploading || awaitingModels || adding !== null) return
     submit()
     // `submit` reads the latest render; the gates decide when.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queuedSend, uploading, awaitingModels])
+  }, [queuedSend, uploading, awaitingModels, adding])
   // Another conversation or surface: nothing held from the last one applies.
   useEffect(() => {
     holdingStart.current = false
@@ -1589,15 +1607,45 @@ export function Composer({
     setPasted([])
   }, [sessionId, kind])
 
-  const toggleSkill = (id: string, selected: boolean) => {
+  const toggleSkill = (id: string, selected: boolean, picked?: Skill) => {
     activeRestoreToken.current = null
     const next = selected
       ? activeSkills.filter((skill) => skill.id !== id).map((skill) => skill.id)
       : [...activeSkills.map((skill) => skill.id), id]
     liveActivatedSkillIds.current = next
     setActivatedSkillIds(next)
+    // A skill that writes into a template brings it when none is picked; the chip shows it.
+    const template = selected ? '' : (picked ?? usableSkills.find((skill) => skill.id === id))?.server?.template
+    if (template && !shownTemplate && offersTemplates(kind)) {
+      const row = designTemplates.find((candidate) => candidate.id === template && candidate.surface === kind)
+      if (row) setPendingTemplate(row)
+    }
     // Saved server-side in a conversation — except while editing, where cancel must undo it.
-    if (sessionId && kind === 'chat' && !editing) void setSessionSkills(sessionId, next)
+    if (sessionId && kind !== 'image' && kind !== 'av' && !editing) void setSessionSkills(sessionId, next)
+  }
+  // 공식 스킬 not added yet: picking one adds it to the person's skills and switches it on.
+  const officialToAdd = skillStore.filter(
+    (s) =>
+      s.official &&
+      !s.installed &&
+      s.enabled &&
+      isListed(s) &&
+      !skills.some((mine) => mine.originId === s.id) &&
+      (s.kinds.length === 0 || s.kinds.includes(kind)) &&
+      (agentSkillAllowlist === undefined || agentSkillAllowlist === null),
+  )
+  const addOfficial = async (s: Skill) => {
+    if (adding) return
+    setAdding(s.id)
+    try {
+      await installSkill(s.id)
+      const copy = useStore.getState().skills.find((mine) => mine.originId === s.id)
+      if (copy) toggleSkill(copy.id, false, copy)
+    } catch {
+      setNotice(t('스킬을 추가하지 못했습니다.'))
+    } finally {
+      setAdding(null)
+    }
   }
   // Everything but dictation, model and send sits behind 「+」; active options show as chips.
   const showTemplates = hasTemplates && (started || !sessionId) && !editing
@@ -1616,10 +1664,14 @@ export function Composer({
   const openPlusView = (view: PlusView) => {
     setPlusView(view)
     setSkillQuery('')
+    if (view === 'skills' && !skillStoreLoaded) void loadSkillStore()
   }
   const shownSkills = skillQuery.trim()
     ? usableSkills.filter((s) => s.name.toLowerCase().includes(skillQuery.trim().toLowerCase()))
     : usableSkills
+  const shownOfficial = skillQuery.trim()
+    ? officialToAdd.filter((s) => s.name.toLowerCase().includes(skillQuery.trim().toLowerCase()))
+    : officialToAdd
   const webSearchHelp: Record<WebSearchMode, string> = {
     auto: t('최신 사실이나 날씨를 물으면 찾아봅니다'),
     on: t('매번 웹에서 찾아봅니다'),
@@ -1637,7 +1689,12 @@ export function Composer({
   const plusMenu = hasTools && (
     <Dropdown
       open={plusOpen}
-      onOpenChange={(open) => (open ? setPlusOpen(true) : closePlus())}
+      onOpenChange={(open) => {
+        if (!open) return closePlus()
+        setPlusOpen(true)
+        // The startup list can miss (slow or failed load): fetched again so 「템플릿 고르기」 shows.
+        if (offersTemplates(kind) && designTemplates.length === 0) void ensureDesignTemplates()
+      }}
       sheet={phone}
       label={t('도구')}
       className={plusView === 'main' ? 'min-w-64' : 'min-w-72'}
@@ -1763,7 +1820,7 @@ export function Composer({
                 className="h-8 w-full rounded-control border border-line bg-panel px-2.5 text-sm text-fg outline-none placeholder:text-faint focus:border-accent"
               />
             </div>
-            {shownSkills.length === 0 && (
+            {shownSkills.length === 0 && shownOfficial.length === 0 && (
               <p className="px-2.5 py-1.5 text-sm text-faint">
                 {usableSkills.length === 0 ? t('아직 추가한 스킬이 없습니다.') : t('맞는 스킬이 없습니다.')}
               </p>
@@ -1792,6 +1849,28 @@ export function Composer({
                 </MenuItem>
               )
             })}
+            {shownOfficial.length > 0 && (
+              <>
+                <p className="px-2.5 pt-1.5 pb-0.5 text-xs text-faint">{t('공식 스킬 · 고르면 내 스킬에 추가됩니다')}</p>
+                {shownOfficial.map((s) => {
+                  const unavailable = skillUnavailableReason(s)
+                  const limitReached = activeSkills.length >= 3
+                  return (
+                    <MenuItem
+                      key={s.id}
+                      checked={false}
+                      keepOpen
+                      disabled={!!unavailable || limitReached || adding !== null}
+                      title={limitReached ? t('최대 3개까지 선택할 수 있습니다.') : undefined}
+                      hint={unavailable ?? (adding === s.id ? t('추가하는 중…') : t('공식'))}
+                      onClick={() => void addOfficial(s)}
+                    >
+                      {s.name}
+                    </MenuItem>
+                  )
+                })}
+              </>
+            )}
             <MenuSeparator />
             {usableSkills.length === 0 ? (
               <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills&view=explore')}>
@@ -2402,7 +2481,9 @@ export function Composer({
           <span className="min-w-0 flex-1">
             {uploading
               ? t('첨부를 다 올리면 바로 보냅니다')
-              : t('모델을 불러오면 바로 보냅니다')}
+              : adding !== null
+                ? t('스킬을 추가하면 바로 보냅니다')
+                : t('모델을 불러오면 바로 보냅니다')}
           </span>
           <button type="button" onClick={() => setQueuedSend(false)} className="shrink-0 underline">
             {t('취소')}

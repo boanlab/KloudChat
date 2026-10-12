@@ -122,8 +122,9 @@ async def _key_visitor(db: DbSession, pub: Publication, key: PublicationKey) -> 
         PublicationVisitor.publication_id == pub.id,
         PublicationVisitor.anon_id == anon))).first()
     if row is None:
-        row = PublicationVisitor(publication_id=pub.id, anon_id=anon)
-        await publishing.bump(db, pub.id, publishing.day_window(now), "visitors")
+        row, inserted = await publishing.visitor_row(db, pub.id, anon_id=anon)
+        if inserted:
+            await publishing.bump(db, pub.id, publishing.day_window(now), "visitors")
     if row.blocked:
         raise Failed(403, "visitor_blocked", _MESSAGES["visitor_blocked"],
                      kind="permission_error")
@@ -451,8 +452,10 @@ def _ask_tool(pub: Publication) -> dict[str, Any]:
         "title": pub.title,
         "description": (f"{pub.title}: {about} " if about else f"{pub.title}. ")
         + "The bot looks the question up in the material it was published with and answers "
-          "from what it finds; the passages it cites are listed in citations. An answer "
-          "without citations rests on no passage of that material.",
+          "from what it finds. "
+        + ("Answers drawn from the material list the passages they use in citations."
+           if pub.show_sources else
+           "This bot's owner turned citations off, so citations is always empty."),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -477,8 +480,34 @@ async def mcp_delete(slug: str) -> Response:
     return Response(status_code=status.HTTP_405_METHOD_NOT_ALLOWED, headers={"Allow": "POST"})
 
 
+#: tool-error text for an MCP caller, shown to its user
+_TOOL_ERRORS = {
+    "bot_paused": "이 챗봇은 지금 일시 중지되어 답할 수 없습니다. 잠시 뒤에 다시 시도하세요.",
+    "channel_closed": "이 챗봇의 MCP 연결은 지금 열려 있지 않습니다.",
+    "visitor_blocked": "이 키는 챗봇 공개자가 막았습니다.",
+    "visitor_rate_limited": "요청이 많아 잠시 뒤에 다시 시도해야 합니다.",
+    "bot_rate_limited": "요청이 많아 잠시 뒤에 다시 시도해야 합니다.",
+    "bot_busy": "챗봇이 바빠 잠시 뒤에 다시 시도해야 합니다.",
+    "visitor_daily_limit": "이 키의 오늘 사용 한도에 이르렀습니다.",
+    "daily_turns_reached": "챗봇의 오늘 사용 한도에 이르렀습니다.",
+    "daily_tokens_reached": "챗봇의 오늘 사용 한도에 이르렀습니다.",
+    "daily_credits_reached": "챗봇의 오늘 사용 한도에 이르렀습니다.",
+    "answer_failed": "챗봇이 답하지 못했습니다. 다시 시도하세요.",
+}
+
+
+def _tool_error(id_: Any, failed: Failed) -> dict[str, Any]:
+    return _rpc(id_, {"content": [{"type": "text",
+                                   "text": _TOOL_ERRORS.get(failed.code, failed.message)}],
+                      "isError": True})
+
+
 @router.post("/bots/mcp/{slug}")
 async def mcp(slug: str, request: Request, db: DbSession):
+    try:
+        message = await request.json()
+    except ValueError:
+        message = None
     try:
         pub, key = await keyed(request, db)
         if pub.slug != slug[:80]:
@@ -486,10 +515,12 @@ async def mcp(slug: str, request: Request, db: DbSession):
                          kind="authentication_error")
         _channel(pub, "mcp")
     except Failed as failed:
+        if failed.status_code == 403 and isinstance(message, dict) \
+                and message.get("method") == "tools/call" and message.get("id") is not None:
+            # a closed or paused bot is the tool's error, readable by the MCP client
+            return _tool_error(message.get("id"), failed)
         return failed.response()
-    try:
-        message = await request.json()
-    except ValueError:
+    if message is None:
         return JSONResponse(status_code=400, content=_rpc(None, error={
             "code": -32700, "message": "Parse error"}))
     if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
@@ -528,8 +559,7 @@ async def mcp(slug: str, request: Request, db: DbSession):
         final = await _final(session, events, show_sources=pub.show_sources)
     except Failed as failed:
         await db.rollback()
-        return _rpc(id_, {"content": [{"type": "text", "text": failed.message}],
-                          "isError": True})
+        return _tool_error(id_, failed)
     text = final["answer"]
     if final["citations"]:
         text += "\n\n출처:\n" + "\n".join(

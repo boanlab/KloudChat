@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import re
@@ -1751,6 +1752,24 @@ _PROMPTS.update(
 )
 
 
+#: a note sentence handing over to a slide that is not there
+_NEXT_SLIDE = re.compile(
+    r"[^.!?\n]*(?:다음\s{0,2}(?:으로|슬라이드|장)|이어서|이제\s{0,2}(?:다음|이어))[^.!?\n]*"
+    r"(?:살펴보|보겠|넘어가|알아보|이어가)[^.!?\n]*[.!?]?\s*")
+
+
+def end_without_next(slides: list[dict]) -> list[int]:
+    """The last slide's notes lose a 「다음으로 … 살펴보겠습니다」 hand-over; returns indices."""
+    if not slides or not isinstance(slides[-1].get("notes"), str):
+        return []
+    notes = slides[-1]["notes"]
+    kept = _NEXT_SLIDE.sub("", notes).strip()
+    if kept == notes.strip() or not kept:
+        return []
+    slides[-1]["notes"] = kept
+    return [len(slides) - 1]
+
+
 def mend_mixed_script(slides: list[dict], vocabulary: str) -> list[int]:
     """Mends Cyrillic slipped into Hangul (「프로мп트」); returns indices."""
     deck_words = " ".join(json.dumps(s, ensure_ascii=False) for s in slides)
@@ -1758,7 +1777,9 @@ def mend_mixed_script(slides: list[dict], vocabulary: str) -> list[int]:
 
     def fix(value):
         if isinstance(value, str):
+            value, kana = hangul.repair_kana(value, vocabulary[:20000])
             mended, slips = hangul.repair_mixed_script(value, words)
+            slips = kana + slips
             # written 「A × B → D」 with a wrong D
             worked = units.fix_written_sums(units.fix_written_arithmetic(mended))
             return worked, bool(slips) or worked != mended
@@ -1818,8 +1839,10 @@ def mend_scaled_numbers(slides: list[dict], material: str) -> list[int]:
 
 _ASKS_QUIZ = re.compile(r"퀴즈|문항|확인 문제|형성평가")
 _ASKS_DECISION = re.compile(r"요청 사항|요청사항|승인|의사\s?결정|결정 요청")
-_ASKS_MINUTES = re.compile(r"(\d{2,3})\s?분")
-_ASKS_LESSON = re.compile(r"수업|강의|차시|교육")
+#: a lesson's length (not 「10분 발표」) and a lesson (not 「교육부」「교육비」)
+_ASKS_MINUTES = re.compile(r"(\d{2,3})\s?분(?!\s?(?:발표|브리핑|보고|회의|스피치|피치))")
+_ASKS_LESSON = re.compile(
+    r"수업|강의|차시|교육\s?(?:과정|프로그램|세션)|(?<![가-힣])연수(?![원생])")
 _MONEY_TITLE = re.compile(r"수익|손익|재무|매출|수익성")
 _MONEY = re.compile(r"\d[\d,.]*\s?(?:만|억|조)?\s?원|\d[\d,.]*\s?(?:박스|명|건)")
 
@@ -3041,6 +3064,7 @@ async def _write_slides(
     touched |= set(mend_mixed_script(slides, given_text))
     touched |= set(strip_json_residue(slides))
     touched |= set(mend_scaled_numbers(slides, given_text))
+    touched |= set(end_without_next(slides))
     # placeholders or name-only parts rewritten once
     needs = requested_contents(slides, request)
     # given-up slides retried once
@@ -3216,6 +3240,10 @@ async def _draw_figures(
     )
     usage["inputTokens"] += spent["inputTokens"]
     usage["outputTokens"] += spent["outputTokens"]
+    # a numbered procedure in the request: its flow shows every step
+    steps = diagrams.given_steps(request)
+    planned = [dataclasses.replace(row, steps=steps) if row.figure == "flow" else row
+               for row in planned]
     if not planned:
         log.info("deck figures: none planned for %d eligible slides", len(eligible))
     for row in planned:

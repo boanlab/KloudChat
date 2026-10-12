@@ -134,3 +134,35 @@ async def test_a_plan_with_too_few_figures_is_asked_once_more():
                                          at_least=1)
     assert [p.index for p in planned] == [1] and "적어도 1개" in calls[1]
     assert usage == {"inputTokens": 2, "outputTokens": 2}
+
+
+def test_a_label_keeps_its_own_closing_parenthesis():
+    g = ds.parse("flowchart TB\n A[대학생 디지털 서포터즈 (30명)] --> B[1:1 방문 지원 (연 300회)]"
+                 "\n B --> C((시작)) --> D([접수 (온라인)]) --> E{\"미비 (서류)?\"}")
+    assert g.nodes["A"].label == "대학생 디지털 서포터즈 (30명)"
+    assert g.nodes["B"].label == "1:1 방문 지원 (연 300회)"
+    assert g.nodes["C"].shape == "circle" and g.nodes["C"].label == "시작"
+    assert g.nodes["D"].label == "접수 (온라인)" and g.nodes["E"].label == "미비 (서류)?"
+    assert [(e.a, e.b) for e in g.edges] == [("A", "B"), ("B", "C"), ("C", "D"), ("D", "E")]
+
+
+def test_branch_labels_sit_on_their_own_branch_not_the_shared_stem():
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Inches(13.333), Inches(7.5)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    g = ds.parse("flowchart LR\n office[학과 사무실]\n office -->|서류 확인| gate{미비?}\n"
+                 " gate -->|예| fix(보완 요청)\n fix -->|면담 재진행| office\n"
+                 " gate -->|아니오| ok[재제출]:::hot")
+    ds.draw_pptx(slide, g, left=72, top=100, width=816, height=300, accent="#2563EB")
+
+    def centre(text):
+        shape = next(s for s in slide.shapes if s.has_text_frame and s.text_frame.text == text)
+        return (shape.left + shape.width / 2) / 12700, (shape.top + shape.height / 2) / 12700
+
+    def dist(p, q):
+        return abs(p[0] - q[0]) + abs(p[1] - q[1])
+
+    yes, no = centre("예"), centre("아니오")
+    fix, ok = centre("보완 요청"), centre("재제출")
+    assert dist(yes, fix) < dist(yes, ok)
+    assert dist(no, ok) < dist(no, fix)

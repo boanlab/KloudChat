@@ -262,7 +262,7 @@ Keep the total small. Every active tool ships its full schema on every turn,
 and model selection accuracy degrades well before twenty of them.
 
 **A connector.** Catalogue entries are database rows an administrator keeps
-under **시스템 › 커넥터 카탈로그** (`app/services/tools/catalog.py`); a stdio
+under **System › Connector catalogue** (`app/services/tools/catalog.py`); a stdio
 script goes under `mcp/` and runs via `uv run --script`. Only add servers you
 have actually started and whose tool count you have checked.
 

@@ -835,8 +835,11 @@ async def _visitor(db: DbSession, pub: Publication, user: User | None, request: 
             PublicationVisitor.publication_id == pub.id,
             PublicationVisitor.user_id == user.id))).first()
         if row is None:
-            row = PublicationVisitor(publication_id=pub.id, user_id=user.id)
-            await publishing.bump(db, pub.id, publishing.day_window(now), "visitors")
+            if not create:
+                return None
+            row, inserted = await publishing.visitor_row(db, pub.id, user_id=user.id)
+            if inserted:
+                await publishing.bump(db, pub.id, publishing.day_window(now), "visitors")
     else:
         anon = _anon_id(request)
         if anon is None:
@@ -855,8 +858,9 @@ async def _visitor(db: DbSession, pub: Publication, user: User | None, request: 
                                                  "visitors", publishing.ANON_VISITORS_PER_IP_DAY)
             except publishing.Refused as refused:
                 raise _refused(refused) from None
-            row = PublicationVisitor(publication_id=pub.id, anon_id=anon)
-            await publishing.bump(db, pub.id, publishing.day_window(now), "visitors")
+            row, inserted = await publishing.visitor_row(db, pub.id, anon_id=anon)
+            if inserted:
+                await publishing.bump(db, pub.id, publishing.day_window(now), "visitors")
     # new row already counted; old once a day
     if publishing.day_window(row.last_seen_at) != publishing.day_window(now):
         await publishing.bump(db, pub.id, publishing.day_window(now), "visitors")
@@ -1239,13 +1243,29 @@ async def visitor_send(slug: str, session_id: str, payload: VisitorMessage, requ
     pub = await _bot(db, slug, user, request)
     visitor, session = await _visited(db, pub, user, request, session_id)
     _ready(pub, visitor)
-    response = await run_published_turn(
-        db, pub, visitor, session, content=payload.content, retry_of=payload.retry_of,
-        request=request, user=user, ip_key=_ip_key(request, user),
-        channel="embed" if _embedded(request) else "web")
+    session_id = session.id
+    try:
+        response = await run_published_turn(
+            db, pub, visitor, session, content=payload.content, retry_of=payload.retry_of,
+            request=request, user=user, ip_key=_ip_key(request, user),
+            channel="embed" if _embedded(request) else "web")
+    except HTTPException:
+        await _drop_if_empty(db, session_id)
+        raise
+    if not isinstance(response, StreamingResponse):
+        await _drop_if_empty(db, session_id)
     if isinstance(response, StreamingResponse):
         response.body_iterator = _visitor_stream(response.body_iterator, pub)
     return response
+
+
+async def _drop_if_empty(db: DbSession, session_id: str) -> None:
+    """Refused first question: its still-empty conversation goes too (no empty 「새 대화」)."""
+    await db.rollback()
+    if (await db.exec(select(Message.id).where(Message.session_id == session_id))).first():
+        return
+    await publishing.delete_sessions(db, [session_id])
+    await db.commit()
 
 
 async def run_published_turn(db: DbSession, pub: Publication, visitor: PublicationVisitor,

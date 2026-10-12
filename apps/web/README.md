@@ -37,10 +37,10 @@ src/
 │   ├── slides/         DeckPanel (renderer, thumbnail grid, per-slide editing), slide patterns, type scale
 │   ├── chart/          Chart, underlying-data tab, PNG/SVG/CSV
 │   ├── media/          Asynchronous generation card (progress → result)
-│   ├── agents/         An agent's knowledge, 진행 과정 and gap questions
-│   ├── customize/      사용자 지정 hub: agent, skill and 서식 forms, sharing, 체험
+│   ├── agents/         An agent's knowledge, process (How it works) and gap questions
+│   ├── customize/      Customize hub: agent, skill and template forms, sharing, Use now
 │   ├── publishing/     Publish dialog, channels (link, embed, API, MCP), scope
-│   ├── issues/         문의·신고 dialog, thread, read-only session copy
+│   ├── issues/         Feedback & issues dialog, thread, read-only session copy
 │   ├── share/          Read-only link creation and revocation
 │   ├── layout/         AppShell, Sidebar, TopBar, Brand
 │   └── ui/index.tsx    Button, Modal, Dropdown, Badge, …

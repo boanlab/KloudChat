@@ -110,6 +110,8 @@ def _trace(bundle: Bundle) -> tuple[str, list[str], dict]:
         surface="report")
     # person's own words/files apart from search pages: given days copied, not traced to a page
     options["person"] = "\n".join([bundle.request.text, bundle.material.given, *worked])
+    # 「…을 지참·제출」 for an item the material never names, as in chat and decks
+    options["requirements"] = True
     return material, computed, options
 
 

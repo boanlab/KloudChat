@@ -13,7 +13,14 @@ from typing import Any, Literal, TypedDict
 import httpx
 
 from app.core.config import settings
-from app.services import calc_check, current_evidence, internal_words, settings_store, thinking
+from app.services import (
+    calc_check,
+    current_evidence,
+    internal_words,
+    scheduling,
+    settings_store,
+    thinking,
+)
 from app.services.chat import ChatStreamError, step_label, step_title
 from app.services.context import literature_request
 from app.services.tools import arithmetic
@@ -414,6 +421,13 @@ _CODE_OVERRIDE = (
     "실행하지 않을 거면 코드 출력값을 그대로 쓰고, 코드가 틀렸다는 말이나 손으로 고친 값은 쓰지 "
     "마세요."
 )
+_SCHEDULE_MISMATCH = (
+    "답의 다음 값이 같은 프로세스 표를 교과서 정의(대기시간 = 완료 시각 − 도착 시각 − 실행 시간, "
+    "같은 조건이면 먼저 도착한 프로세스 먼저, 라운드 로빈은 퀀텀이 끝나는 시각에 도착한 프로세스가 "
+    "선점된 프로세스보다 먼저 큐에 들어감)로 다시 셈한 값과 다릅니다: {values}. 코드의 스케줄링 "
+    "로직(선점 시점, 준비 큐 순서, 대기시간 정의)을 고쳐 run_code 로 다시 실행하고, 새 출력으로 "
+    "간트 차트와 표를 처음부터 다시 쓰세요. 도구 이름이나 실행 실패 이야기는 답에 쓰지 마세요."
+)
 _REVERTED = (
     "_이 답은 코드 실행 출력값을 틀렸다며 손으로 셈한 값으로 바꿨지만, 고친 코드를 다시 실행하지 "
     "않았습니다. 손으로 셈한 답을 거두고 코드가 출력한 값을 그대로 보입니다. 코드가 틀렸다고 "
@@ -457,6 +471,12 @@ def reverted_answer(code_outputs: list[str]) -> str:
         used += len(text)
     body = "\n\n".join(printed).replace("```", "ˋˋˋ")
     return _REVERTED + "\n\n```text\n" + body + "\n```"
+
+
+def _values_step(step_id: str, label: str, count: int) -> dict:
+    """A finished step saying how many answer values were set to computed ones."""
+    return {"type": "step", "category": "thinking", "id": step_id, "label": label, "status": "done",
+            "detail": f"값 {count}개 맞춤"}
 
 
 def code_checked(answer: str, code_outputs: list[str]) -> tuple[str, list[str]]:
@@ -669,6 +689,74 @@ def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
     return "```".join(pieces), sorted(cited)
 
 
+def _collect_passages(content: str, into: dict[int, str]) -> None:
+    """Numbered `search_knowledge` output → passage text by source number."""
+    number: int | None = None
+    for line in content.split("\n"):
+        if match := _MATERIAL.match(line):
+            number = int(match.group(1))
+            into.setdefault(number, "")
+        elif number is not None:
+            into[number] += "\n" + line
+
+
+#: Answer words: numbers with their first unit letter, and Hangul/Latin words.
+_ANSWER_TOKEN = re.compile(r"\d+(?:[:.,]\d+)*[가-힣%]?|[가-힣A-Za-z]{2,}")
+#: Predicate endings: no topic.
+_PREDICATE = ("니다", "세요", "어요", "아요", "해요", "에요", "예요", "까요", "나요", "죠")
+_SENTENCE_END = re.compile(r"(?<=[.!?。])\s+")
+
+
+def _overlap(sentence: str, passage: str) -> int:
+    """Answer tokens found in the passage: a number with its unit 2, a bare one 1, a word 1."""
+    score = 0
+    for token in dict.fromkeys(_ANSWER_TOKEN.findall(sentence)):
+        if token[0].isdigit():
+            bare = re.sub(r"[가-힣%]$", "", token)
+            if bare != token and re.search(rf"(?<![\d:.,]){re.escape(token)}", passage):
+                score += 2
+            elif len(bare) > 1 and re.search(rf"(?<![\d:.,]){re.escape(bare)}(?![\d])", passage):
+                # 「22:00입니다」: the unit letter is the ending's, the number still counts
+                score += 1
+        elif not token.endswith(_PREDICATE) and (
+            token in passage or (len(token) >= 3 and token[:-1] in passage)
+        ):
+            score += 1
+    return score
+
+
+def _cite_material(answer: str, passages: dict[int, str]) -> str:
+    """Uncited answer → `[n]` after each sentence a passage holds; unchanged when cited,
+    not-covered, or no passage shares enough of its words and numbers."""
+    from app.services import publishing
+
+    if not answer.strip() or _CITATION.search(answer) or publishing.unanswered(answer):
+        return answer
+    lines = answer.split("\n")
+    fenced = False
+    marked = False
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced or not line.strip() or line.lstrip().startswith(("#", "|")):
+            continue
+        pieces = _SENTENCE_END.split(line)
+        for j, piece in enumerate(pieces):
+            scored = [(_overlap(piece, text), n) for n, text in passages.items()]
+            best, number = max(scored, key=lambda pair: (pair[0], -pair[1]))
+            if best < 2:
+                continue
+            body = piece.rstrip()
+            pieces[j] = (body[:-1] + f" [{number}]" + body[-1] if body[-1] in ".!?。"
+                         else body + f" [{number}]") + piece[len(body):]
+            marked = True
+        lines[i] = " ".join(pieces)
+    if not marked:
+        return answer
+    return "\n".join(lines)
+
+
 #: Front-page paths.
 _INDEX_LEAVES = {
     "index",
@@ -793,7 +881,8 @@ async def run_turn(
     calculation_expression: str | None = None,
     #: Server-run `(tool, args)` before the first model call.
     preset_call: tuple[str, dict[str, Any]] | None = None,
-    #: Whole answer when preset knowledge search finds nothing (published bots).
+    #: Whole answer when preset knowledge search finds nothing (published bots); also marks a
+    #: published material turn, whose uncited answer gets its passages cited by the server.
     preset_empty_answer: str | None = None,
     #: Current-fact request: answer dated and unverified until a read returns material.
     freshness_request: str | None = None,
@@ -915,6 +1004,8 @@ async def run_turn(
     sources: list[str] = []
     #: Search titles by URL for 출처.
     source_titles: dict[str, str] = {}
+    #: Material passage text by source number.
+    material_texts: dict[int, str] = {}
     answer_text: list[str] = []
     searches = 0
     empty_searches = 0
@@ -934,6 +1025,9 @@ async def run_turn(
     #: such answer (a later run backs the correction, none means the code's values stand).
     override_retried = False
     override_at: int | None = None
+    #: Scheduling exercise read against the textbook result; its mismatch retried once.
+    schedule_request = scheduling.latest_request(messages)
+    schedule_retried = False
     #: Extra hops past the cap (max one, for computing values).
     extra_hops = 0
     #: Next call is last after this hop's tools.
@@ -1223,6 +1317,13 @@ async def run_turn(
                 figures_retried = True
                 log.info("answer values missing from the code outputs, asking once to compute")
                 ask = _COMPUTE_UNVERIFIED.format(values=", ".join(missing[:12]))
+            elif (spoken_now and schedule_request and not schedule_retried
+                  and (wrong := scheduling.check(spoken_now, schedule_request)[1])):
+                # A simulation whose averages differ from the textbook run of the same table.
+                schedule_retried = True
+                log.info("scheduling values differ from the reference, asking once to rerun: %s",
+                         wrong[:8])
+                ask = _SCHEDULE_MISMATCH.format(values="; ".join(wrong[:10]))
             if ask:
                 streamed = "".join(hop_text)
                 del answer_text[len(answer_text) - len(hop_text) :]
@@ -1530,6 +1631,8 @@ async def run_turn(
             if not result.failed and call["name"] in _CODE_TOOLS:
                 code_outputs.append(result.content)
             result.content = _number_sources(result.content, sources, call, source_titles)
+            if call["name"] == "search_knowledge" and not result.failed:
+                _collect_passages(result.content, material_texts)
             conversation.append(
                 {
                     "role": "tool",
@@ -1682,11 +1785,26 @@ async def run_turn(
             if fixes:
                 # A number naming a printed value is that value (a later run's, if rerun).
                 log.info("answer values set back to the code's printed ones: %s", fixes[:12])
-                checked += ("\n\n_코드 출력과 다르게 적힌 값을 코드가 출력한 값으로 "
-                            "바로잡았습니다: " + "; ".join(fixes[:8]) + "_")
                 yield {"type": "retract", "text": answer}
                 yield {"type": "delta", "text": checked}
+                yield _values_step("code-values", "코드 출력값 대조", len(fixes))
                 answer = checked
+    if schedule_request and not preflight_tool:
+        checked, fixes = scheduling.check(answer, schedule_request)
+        if fixes:
+            # Waiting times the textbook run of the same table disagrees with.
+            log.info("scheduling values set to the reference run: %s", fixes[:12])
+            yield {"type": "retract", "text": answer}
+            yield {"type": "delta", "text": checked}
+            yield _values_step("schedule-values", "스케줄링 결과 검산", len(fixes))
+            answer = checked
+    if preset_empty_answer is not None and material_texts:
+        attributed = _cite_material(answer, material_texts)
+        if attributed != answer:
+            # Answer drawn from the passages without their numbers: the server cites them.
+            yield {"type": "retract", "text": answer}
+            yield {"type": "delta", "text": attributed}
+            answer = attributed
     linked, cited = _link_citations(answer, sources)
     if linked != answer:
         # Mid-text citations: answer re-sent whole.

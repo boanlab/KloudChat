@@ -11,6 +11,7 @@ import random
 import re
 import secrets
 import time
+import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -158,6 +159,27 @@ async def bump(db: AsyncSession, publication_id: str, window: str, key: str,
         set_={"value": table.c.value + statement.excluded.value},
     )
     await db.exec(statement)
+
+
+async def visitor_row(db: AsyncSession, publication_id: str, *, user_id: str | None = None,
+                      anon_id: str | None = None) -> tuple[PublicationVisitor, bool]:
+    """Bot visitor by account or anonymous id, inserted if absent → (row, inserted).
+    Insert-if-absent, so two first requests at once share one row. Caller commits."""
+    table = PublicationVisitor.__table__
+    conn = await db.connection()
+    insert = pg_insert if conn.dialect.name == "postgresql" else sqlite_insert
+    now = utcnow()
+    who = {"user_id": user_id} if user_id is not None else {"anon_id": anon_id}
+    statement = insert(table).values(
+        id=str(uuid.uuid4()), publication_id=publication_id, consent_version=0,
+        blocked=False, first_seen_at=now, last_seen_at=now, **who,
+    ).on_conflict_do_nothing(index_elements=["publication_id", next(iter(who))])
+    inserted = (await db.exec(statement)).rowcount == 1
+    match = (PublicationVisitor.user_id == user_id if user_id is not None
+             else PublicationVisitor.anon_id == anon_id)
+    row = (await db.exec(select(PublicationVisitor).where(
+        PublicationVisitor.publication_id == publication_id, match))).one()
+    return row, inserted
 
 
 async def counted(db: AsyncSession, publication_id: str, window: str, key: str) -> int:
@@ -454,17 +476,37 @@ async def preflight(db: AsyncSession, owner: User, agent: Agent, catalogue: list
         "model": {"id": model["id"], "label": model.get("label") or model["id"]}
         if model else None,
         "tools": tools,
-        "checks": _post_checks(agent),
+        "checks": (await built_from(db, agent))[1],
         "disabled": disabled,
         "knowledge": knowledge,
         "creditsRemaining": owner.credits_remaining,
     }
 
 
+async def built_from(db: AsyncSession, agent: Agent) -> tuple[str, list[str]]:
+    """The prompt and `post` checks a bot answers with: the agent's own, plus the skills it is
+    built from (`Agent.active_skill_ids`) written into the frozen prompt, since no skill reaches
+    a visitor's turn."""
+    from app.services.workspace_context import agent_skill_rows
+
+    prompt = agent.system_prompt or ""
+    checks = _post_checks(agent)
+    for skill in await agent_skill_rows(db, agent.owner_id, agent, "chat"):
+        body = (skill.body or skill.description or "").strip()
+        if body:
+            prompt = f"{prompt}\n\n# 스킬 — {skill.name}\n{body}".strip()
+        for key in skill_specs.of_row(skill).checks:
+            spec = skill_specs.resolve(key, None)
+            if spec is not None and spec.stage == "post" and key not in checks:
+                checks.append(key)
+    return prompt, checks
+
+
 def _answers_with(agent: Agent, model_id: str, tools: list[str], checks: list[str],
-                  files: list[StoredFile]) -> tuple:
+                  files: list[StoredFile], prompt: str | None = None) -> tuple:
     """Version fingerprint."""
-    return (agent.name, agent.description, model_id, agent.system_prompt, sorted(tools),
+    return (agent.name, agent.description, model_id,
+            agent.system_prompt if prompt is None else prompt, sorted(tools),
             sorted(checks), dict(agent.check_options or {}), agent.contact or "", agent.guide,
             list(agent.starters or []), agent.temperature,
             [(f.name, hashlib.sha256((f.text or "").encode()).hexdigest()) for f in files])
@@ -481,9 +523,10 @@ async def same_as_latest(db: AsyncSession, pub: Publication, agent: Agent,
         return False
     copies = list((await db.exec(select(StoredFile).where(StoredFile.agent_id == snap.id)
                                  .order_by(col(StoredFile.created_at)))).all())
+    prompt, checks = await built_from(db, agent)
     return _answers_with(snap, snap.model, snap.tools or [], snap.check_skills or [], copies) \
-        == _answers_with(agent, model_id, _tools_of(agent), _post_checks(agent),
-                         await knowledge_rows(db, agent))
+        == _answers_with(agent, model_id, _tools_of(agent), checks,
+                         await knowledge_rows(db, agent), prompt)
 
 
 async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: Agent,
@@ -495,20 +538,21 @@ async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: A
     number = int((await db.exec(select(func.max(PublicationVersion.number)).where(
         PublicationVersion.publication_id == pub.id))).one() or 0) + 1
     key = await _agent_catalog_key(db, agent)
+    prompt, checks = await built_from(db, agent)
     snap = Agent(
         owner_id=owner.id,
         name=agent.name,
         slug=f"bot-{pub.id[:10]}-v{number}-{secrets.token_hex(3)}",
         description=agent.description,
         model=model_id,
-        system_prompt=agent.system_prompt,
+        system_prompt=prompt,
         tools=_tools_of(agent),
         # No owner skills reach visitors.
         skill_ids=[],
         kinds=["chat"],
         surface="chat",
         base_key=key,
-        check_skills=_post_checks(agent),
+        check_skills=checks,
         check_options=dict(agent.check_options) if agent.check_options else None,
         bundles=list(agent.bundles) if agent.bundles else None,
         process_settings=dict(agent.process_settings) if agent.process_settings else None,

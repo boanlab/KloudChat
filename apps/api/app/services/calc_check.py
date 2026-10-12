@@ -10,7 +10,7 @@ from typing import Any
 _NUMBER = re.compile(
     r"(?<![A-Za-z0-9_.,])-?(?:\d{1,3}(?:,\d{3})+|\d{1,15})(?:\.\d{1,10})?(?![\d])")
 #: counts of other things: 「2배」「30%」「3장」
-_OTHER_QUANTITY = re.compile(r"\s{0,2}(?:배|%|퍼센트|장|개|번|명|차|회|위|등|단계|가지|줄|쪽)")
+_OTHER_QUANTITY = re.compile(r"\s{0,2}(?:배|%|퍼센트|장|개|번|명|차|회|순위|위|등|단계|가지|줄|쪽)")
 _PAREN = re.compile(r"[(（][^()（）]{0,80}[)）]")
 #: allowed between a name's letters: spaces, brackets, 「=」
 _GAP = r"[^0-9A-Za-z가-힣]{0,3}"
@@ -158,6 +158,32 @@ def _shown(written: str, s: Stated) -> str:
     return f"{s.value:,.{places}f}"
 
 
+#: reading of a figure's last sound, for the particle after it
+_DIGIT_CODA = {"0": "ㅇ", "1": "ㄹ", "2": "", "3": "ㅁ", "4": "", "5": "", "6": "ㄱ",
+               "7": "ㄹ", "8": "ㄹ", "9": ""}
+_PARTICLE = re.compile(r"(으로|로|은|는|이|가|을|를|과|와)(?=[\s,.)」'\"*]|$)")
+_PAIRS = {"은": ("은", "는"), "는": ("은", "는"), "이": ("이", "가"), "가": ("이", "가"),
+          "을": ("을", "를"), "를": ("을", "를"), "과": ("과", "와"), "와": ("과", "와"),
+          "으로": ("으로", "로"), "로": ("으로", "로")}
+
+
+def _coda(number: str) -> str:
+    digits = number.replace(",", "").lstrip("-")
+    if "." in digits or digits == "0" or not digits.endswith("0"):
+        return _DIGIT_CODA[digits[-1]]
+    zeros = len(digits) - len(digits.rstrip("0"))
+    return {1: "ㅂ", 2: "ㄱ"}.get(zeros, "ㄴ")
+
+
+def _particle(number: str, particle: str) -> str:
+    """`particle` agreeing with how `number` is read (「3.00으로」, 「4.75로」)."""
+    coda = _coda(number)
+    closed, opened = _PAIRS[particle]
+    if particle in ("으로", "로"):
+        return opened if coda in ("", "ㄹ") else closed
+    return closed if coda else opened
+
+
 def _same(written: str, value: float) -> bool:
     """Whether written equals value at its shown precision."""
     written = written.replace(",", "")
@@ -165,6 +191,15 @@ def _same(written: str, value: float) -> bool:
     if not places and abs(value) < 100:
         return abs(float(written) - value) < 1e-9
     return abs(float(written) - value) <= 0.5 * 10 ** -places + 1e-9
+
+
+#: what joins two row names that share the values after them: 「자연과학·공학」 「A와 B」
+_JOINED = re.compile(r"\s{0,2}(?:[·,/]|와|과|및|그리고)\s{0,2}")
+
+
+def _numbers(text: str, start: int, end: int) -> list[re.Match[str]]:
+    return [m for m in _NUMBER.finditer(text, start, end)
+            if not _OTHER_QUANTITY.match(text, m.end())]
 
 
 def _first_number(text: str, start: int, end: int) -> re.Match[str] | None:
@@ -201,13 +236,25 @@ def _clashes(text: str, context: str, names: _Names, stated: list[Stated]) -> li
             # row-less values matched by label
             segments = [(0, len(text), "")] if any(not s.row for s in stated) else []
     out: list[Clash] = []
+    shared = False
     for start, end, row in segments:
         mine = [s for s in stated if s.row == row]
         piece = text[start:end]
+        if shared:
+            # 「자연과학·공학은 좌석 부족(각 22·41건)」: the values are the rows' together
+            shared = bool(_JOINED.fullmatch(piece))
+            continue
+        if _JOINED.fullmatch(piece) and hits:
+            shared = True
+            continue
         found = [(m, s) for s in mine if (m := names.label_at(row, s.label, piece))]
         if found:
             m, s = min(found, key=lambda pair: pair[0].start())
             following = [other.start() for other, _ in found if other.start() > m.start()]
+            stop = start + min(following, default=len(piece))
+            if len(_numbers(text, start, stop)) >= 2:
+                # 「41건이 좌석 부족을, 31건이 와이파이를」: which value is the label's is unclear
+                continue
             number = _first_number(text, start + m.end(),
                                    start + min(following, default=len(piece)))
             if number is None:
@@ -231,7 +278,12 @@ def _clashes(text: str, context: str, names: _Names, stated: list[Stated]) -> li
 
 def _mend(text: str, clashes: list[Clash]) -> str:
     for clash in sorted(clashes, key=lambda c: c.start, reverse=True):
-        text = text[: clash.start] + _shown(clash.written, clash.stated) + text[clash.end :]
+        shown = _shown(clash.written, clash.stated)
+        end = clash.end
+        if m := _PARTICLE.match(text, end):
+            shown += _particle(shown, m.group(1))
+            end = m.end()
+        text = text[: clash.start] + shown + text[end:]
     return text
 
 
@@ -295,8 +347,8 @@ def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
                 continue
             number = _first_number(cells[j], 0, len(cells[j]))
             if number is None:
-                # 「최소」 in place of the value
-                if cells[j].strip():
+                # 「최소」 in place of the value; a figure of another kind (「+9.4%」) stands
+                if cells[j].strip() and not re.search(r"\d", cells[j]):
                     found.append(f"「{cells[j]}」 → {s.text} ({s.row} {s.label})")
                     fixed[j] = s.text
             elif not _same(number.group(0), s.value):
@@ -385,7 +437,8 @@ def _printed_line(line: str, section: str) -> Stated | None:
     if not m:
         return None
     label = m.group("label").strip().strip("-*•·").strip()
-    if not label or re.fullmatch(r"[\d\s.,:=-]*", label) or len(_NUMBER.findall(label)) > 2:
+    if (not label or re.fullmatch(r"[\d\s.,:=-]*", label) or len(_NUMBER.findall(label)) > 2
+            or re.search(r"[=:：]\s*-?\d", _PAREN.sub("", label))):
         return None
     number = m.group("num").replace(",", "")
     row = section
@@ -401,6 +454,36 @@ def _printed_line(line: str, section: str) -> Stated | None:
             if head:
                 row, label = head, label[measure.start():].strip()
     return Stated(row, label, number, float(number))
+
+
+#: one 「label = value」 of several on a line: 「RR TQ2 avg wait=5.25 avg resp=4.75」
+_PAIR = re.compile(
+    r"(?P<label>[^=:：,;\n]{1,80}?)\s*[=:：]\s*(?P<num>-?\d[\d,]{0,15}(?:\.\d{1,10})?)"
+    r"(?P<unit>%|[A-Za-z가-힣]{1,4})?(?=\s|[,;]|$)")
+
+
+def _pairs(line: str, section: str) -> list[Stated] | None:
+    """Values of a line holding two or more 「label = value」 pairs, each its own; the first
+    pair's row names the rest (「RR TQ2」 in 「RR TQ2 avg wait=5.25 avg resp=4.75」). `None`
+    for a line of one value."""
+    matches = list(_PAIR.finditer(line))
+    if len(matches) < 2 or not line.strip().endswith(matches[-1].group(0).strip()):
+        return None
+    out: list[Stated] = []
+    head = line[: matches[0].start()].strip()
+    # 「SRTF: wait=3.00, turnaround=7.25」
+    row = head[:-1].strip() if head.endswith((":", "：")) and head[:-1].strip() else section
+    for m in matches:
+        piece = m.group(0).strip(" ,;")
+        s = _printed_line(piece, row)
+        if s is None:
+            continue
+        if not row and s.row:
+            row = s.row
+        elif row and not s.row:
+            s = Stated(row, s.label, s.text, s.value)
+        out.append(s)
+    return out
 
 
 def printed_values(outputs: list[str]) -> list[Stated]:
@@ -423,6 +506,8 @@ def printed_values(outputs: list[str]) -> list[Stated]:
                     _PAREN.sub("", head.group("name"))):
                 section = head.group("name").strip()
                 continue
+            elif (several := _pairs(line, section)) is not None:
+                stated = several
             else:
                 stated = [s] if (s := _printed_line(line, section)) else []
             for s in stated:
