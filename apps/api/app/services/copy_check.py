@@ -8,7 +8,7 @@ import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 
-from app.services import skill_packages, skill_scripts, skill_specs
+from app.services import internal_words, skill_packages, skill_scripts, skill_specs
 
 log = logging.getLogger(__name__)
 
@@ -169,10 +169,11 @@ def _rewrite_prompt(text: str, material: str, findings: list[dict], over: list[d
     return (
         "Below are the material and an answer written from it. Fix only the problems listed; "
         "an item the material does state after all stays as it is. "
-        "For a claim: take it out or replace it with what the material states. Use a bracket "
-        "blank such as [수치] or [영업시간] only for a value the person must fill in; when a "
-        "sentence, list item or section has nothing true left to say, delete it (and its "
-        "heading) instead of leaving a blank or a note. For a length: shorten or lengthen that "
+        "For a claim: take out the unsupported clause or replace it with what the material "
+        "states; when the sentence needs the value, keep it and write 「(확인 필요)」 right "
+        "after it. Never replace a value with a bracket blank such as [수치]; brackets are "
+        "only for a field the person fills in (a signature, a contact). Never empty a "
+        "paragraph or leave a table with only its header. For a length: shorten or lengthen that "
         "piece only. Keep "
         "everything else exactly as written — structure, order, numbering, tables, headings, "
         "the other wording, and the language. Add no new fact, number, feature or offer. Reply "
@@ -186,7 +187,7 @@ def _cleaned(reply: str) -> str:
     text = _THINK.sub("", reply or "").strip()
     if text.startswith("```") and text.endswith("```"):
         text = re.sub(r"^```[a-z]{0,12}\n?|```$", "", text).strip()
-    return text
+    return internal_words.strip_echoed_heading(text)
 
 
 async def run(answer: str, *, request: str, material: str, complete: Complete, model: str,

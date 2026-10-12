@@ -1101,7 +1101,9 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     clean = units.fix_magnitude_slips(units.fix_unit_labels(clean, given_text), given_text)
     clean = report.drop_redundant_kpi(report.drop_repeated_figures(clean))
     if not bundle.material.grounded:
-        clean = report._without_invented_money(clean)
+        # money the sources state stays; the rest is marked, never blanked
+        clean = report._without_invented_money(clean, [
+            given_text, *(report._source_text(row) for row in sources or [])])
     # owners and dates from request, material or source only
     clean = report._unsourced_owner_dates(
         clean,
@@ -1486,9 +1488,21 @@ class MinutesRepair(Base):
             sections, undated = report_checks.minutes_undated(sections, prepass.dates, known)
             before += undated
         # owners/quantities repaired by code, rechecked after verify rewrites
-        sections, ungrounded = report_checks.minutes_grounding(sections, known)
+        repaired, ungrounded = report_checks.minutes_grounding(sections, known)
         before += ungrounded
-        bundle.document.sections = sections
+        bundle.document.sections = settled_sections(sections, repaired, [known])
+
+
+def settled_sections(before: list[dict], after: list[dict], evidence: list[str]) -> list[dict]:
+    """Sections a code guard repaired, its value blanks and emptied blocks undone."""
+    from app.services import value_guard
+
+    out = []
+    for old, new in zip(before, after, strict=True):
+        a, b = str(old.get("content") or ""), str(new.get("content") or "")
+        out.append({**new, "content": value_guard.settle(
+            a, b, value_guard.Evidence.of(evidence, answer=a)).text} if a != b else new)
+    return out
 
 
 def _doc(bundle: Bundle) -> verify.Doc:
@@ -1596,7 +1610,7 @@ class MinutesReground(Base):
         if again:
             sections, left = report_checks.minutes_grounding(sections, known)
             bundle.findings.after += left
-        bundle.document.sections = sections
+        bundle.document.sections = settled_sections(bundle.document.sections, sections, [known])
 
 
 class FormatAmend(Base):

@@ -17,7 +17,18 @@ from app.services import (
     key_figures,
     post_checks,
     skill_specs,
+    value_guard,
 )
+
+
+def chat_evidence(bundle: Bundle, before: str) -> value_guard.Evidence:
+    """What a chat answer may say: request, files, answers, tool and search results."""
+    req = bundle.request
+    asked = [str(m.get("content") or "") for m in req.messages if m.get("role") == "user"]
+    return value_guard.Evidence.of(
+        [bundle.material.given, req.check_material, *req.tool_outputs, *req.evidence, *asked],
+        answer=before, request=req.text,
+        today=req.today if isinstance(req.today, dt.date) else None)
 
 
 class GapCheck(Base):
@@ -173,25 +184,32 @@ class AnswerGrounding(Base):
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         req = bundle.request
+        before = bundle.document.answer
         traced = check_skills.ground(
-            answer_checks(req), bundle.document.answer,
+            answer_checks(req), before,
             material=f"{bundle.material.given}\n{req.check_material}",
-            computed=[*req.tool_outputs, *(str(m.get("content") or "") for m in req.messages
-                                           if m.get("role") == "assistant")],
+            computed=[*req.tool_outputs, *req.evidence,
+                      *(str(m.get("content") or "") for m in req.messages
+                        if m.get("role") == "assistant")],
             options={**check_skills.options_for(req.today, req.check_options, surface="chat"),
                      "person": "\n".join([bundle.material.given, req.check_material,
                                           *req.tool_outputs]),
                      "requirements": True},
             specs=req.skill_specs,
+            # the person's earlier messages and the request count as evidence too
+            evidence=[req.text, *(str(m.get("content") or "") for m in req.messages
+                                  if m.get("role") == "user")],
         )
         if not traced.found:
             return
         bundle.document.answer = traced.text
+        marked = traced.marked
         ground_step = {
             "category": "thinking", "id": "grounding",
-            "label": (f"근거 없는 값 {len(traced.found)}개 → 빈칸" if traced.traced_only
+            "label": (f"근거 없는 값 {marked}개 → 확인 필요" if traced.traced_only and marked
+                      else "답 점검: 근거 확인됨" if traced.traced_only
                       else "답 점검: " + traced.summary[:120]),
-            "status": "error" if traced.left else "done",
+            "status": "error" if traced.left and marked else "done",
             "detail": traced.summary[:1500],
         }
         bundle.document.kept_steps = [row for row in bundle.document.kept_steps
@@ -222,13 +240,14 @@ class CopyCheck(Base):
                "label": "카피 점검 중", "status": "running"}
         outcome = await copy_check.run(
             doc.answer, request=req.text,
-            material=f"{bundle.material.given}\n{req.check_material}",
+            material="\n".join([bundle.material.given, req.check_material, *req.evidence]),
             complete=report._complete, model=req.model, judge=req.judge, api_key=req.api_key,
             usage=bundle.usage,
             skills=copy_check.on_turn((*req.skill_keys, *(req.check_keys or ())), req.tool_outputs,
                                       req.skill_specs),
             specs=req.skill_specs)
-        doc.answer = outcome.text
+        settled = value_guard.settle(doc.answer, outcome.text, chat_evidence(bundle, doc.answer))
+        doc.answer = settled.text
         still = [r for r in outcome.rows if r.get("hard") and (r["over"] or r["under"])]
         step = {
             "category": "thinking", "id": "copy_check",
@@ -236,7 +255,8 @@ class CopyCheck(Base):
                       + (f" · 한도 초과 {len(outcome.over)}개" if outcome.over else "")
                       if outcome.changed else "카피 점검: 고칠 것 없음"),
             "status": "error" if still else "done",
-            **({"detail": outcome.detail[:1500]} if outcome.detail else {}),
+            **({"detail": " · ".join(x for x in (outcome.detail, settled.note()) if x)[:1500]}
+               if outcome.detail or settled.changed else {}),
         }
         doc.kept_steps = [row for row in doc.kept_steps if row.get("id") != "copy_check"] + [step]
         yield {"type": "step", **step}
@@ -272,13 +292,15 @@ class SkillChecks(Base):
             doc.answer, keys=self._keys(bundle), request=req.text,
             material="\n".join(x for x in (req.text, bundle.material.given, req.check_material)
                                if x and x.strip()),
-            attached=req.check_material, computed=list(req.tool_outputs), today=today,
-            complete=report._complete, model=req.model, judge=req.judge, api_key=req.api_key,
-            usage=bundle.usage, specs=req.skill_specs)
-        doc.answer = outcome.text
+            attached=req.check_material, computed=[*req.tool_outputs, *req.evidence],
+            today=today, complete=report._complete, model=req.model, judge=req.judge,
+            api_key=req.api_key, usage=bundle.usage, specs=req.skill_specs)
+        settled = value_guard.settle(doc.answer, outcome.text, chat_evidence(bundle, doc.answer))
+        doc.answer = settled.text
+        detail = " · ".join(x for x in (outcome.detail, settled.note()) if x)
         step = {"category": "thinking", "id": "skill_check", "label": outcome.label,
                 "status": "error" if outcome.left else "done",
-                **({"detail": outcome.detail[:1500]} if outcome.detail else {})}
+                **({"detail": detail[:1500]} if detail else {})}
         doc.kept_steps = [row for row in doc.kept_steps if row.get("id") != "skill_check"] + [step]
         yield {"type": "step", **step}
 
@@ -321,13 +343,14 @@ def ground_slides(slides: list[dict], *, material: str, computed: list[str],
     if not found:
         return slides, []
     out = [dict(slide) for slide in slides]
+    evidence = value_guard.Evidence.of([material, *computed])
     dropped: dict[tuple[int, str], set[int]] = {}
     for (n, path, text), (first, count) in zip(leaves, spans, strict=True):
         mine = [{**f, "line": f["line"] - first} for f in found
                 if first <= f["line"] < first + count]
         if not mine:
             continue
-        fixed = module.fix(text, mine)
+        fixed = value_guard.settle(text, module.fix(text, mine), evidence).text
         slide, key = out[n], path[0]
         if len(path) == 1:
             # a title or body emptied whole keeps its words; its values are blanked in place
@@ -374,7 +397,7 @@ class DeckGrounding(Base):
             return
         bundle.document.sections = slides
         step = {"category": "thinking", "id": "grounding",
-                "label": f"근거 없는 값 {len(found)}개 → 빈칸", "status": "done",
+                "label": f"근거 없는 값 {len(found)}개 → 확인 필요", "status": "done",
                 "detail": check_skills.entry(TRACE).summary(found)[:1500]}
         yield {"type": "step", **step}
         for old, new in zip(before, slides, strict=True):

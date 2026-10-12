@@ -60,6 +60,19 @@ def caveat(request: str) -> str:
     )
 
 
+#: the caveat as `caveat` writes it, either language
+_CAVEAT = re.compile(
+    r"\n{0,2}_위 내용은 학습 시점의 지식이며, 현재 상태는 이번 요청에서 확인하지 않았습니다\. "
+    r"최신 값은 공식 자료나 웹 검색을 켜서 확인하세요\._"
+    r"|\n{0,2}_This reflects training-time knowledge; the current state was not verified in "
+    r"this request\. Check an official source or enable web search for the latest value\._")
+
+
+def strip_caveat(content: str) -> str:
+    """`content` without the training-time caveat (an answer grounded in given material)."""
+    return _CAVEAT.sub("", content or "").rstrip() if content else content
+
+
 def has_caveat(content: str) -> bool:
     return bool(_HEDGED.search(content))
 

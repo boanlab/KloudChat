@@ -781,8 +781,9 @@ async def test_a_chat_agent_step_runs_its_tools_and_its_finish_flow(monkeypatch)
                              output="answer", after_outline=False, final=True)
     events = [e async for e in step._answer(bundle, info)]
     assert seen["tools"] == ["run_code", "calculate"] and seen["definitions"]
-    # The data-analysis finish traced every figure to what the code printed.
-    assert "26,300명" in bundle.document.answer and "99,999" not in bundle.document.answer
+    # The data-analysis finish traced every figure to what the code printed; the one it did
+    # not print stays as written, marked for checking.
+    assert bundle.document.answer == "방학 월평균 26,300명, 학기 월평균 99,999명(확인 필요)."
     assert any(e["id"].startswith("compose:1:agent:") for e in events)
     computed = [p for p in bundle.material.parts if p.origin == "computed"]
     assert computed and "26300" in computed[0].text
@@ -808,8 +809,9 @@ async def test_a_check_downstream_does_not_take_a_figure_from_an_earlier_step():
     step = compose.CheckStep(2, {"kind": "check", "ref": "grounding-check", "settings": {}},
                              "근거 대조")
     [e async for e in step.run(bundle, Context())]
-    assert "26,300명" in bundle.document.answer
-    assert "30,000" not in bundle.document.answer
+    assert "26,300명." in bundle.document.answer
+    # the earlier step's figure is not evidence: marked, not taken as supported
+    assert "30,000명(확인 필요)" in bundle.document.answer
     args = compose._sub_args(bundle, _info("cmp"), "비교 보고서")
     assert args["derived_context"] == ["# 앞 단계 결과: 데이터 분석\n방학 월평균 방문자 30,000명"]
     assert args["tool_outputs"] == ["# 코드 실행 결과: 데이터 분석\n방학 월평균 26300"]

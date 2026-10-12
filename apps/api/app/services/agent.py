@@ -1677,6 +1677,8 @@ async def run_turn(
             }
             if not result.failed and call["name"] != "web_search":
                 ctx.outputs.append(result.content)
+            elif not result.failed and not result.empty:
+                ctx.searched.append(result.content)
             if not result.failed and call["name"] in _CODE_TOOLS:
                 code_outputs.append(result.content)
             result.content = _number_sources(result.content, sources, call, source_titles)

@@ -82,9 +82,13 @@ def _semver(value: str) -> tuple[int, ...] | None:
 
 
 def _numbers(text: str) -> set[str]:
+    """Numbers as written, commas and leading zeros dropped (「2026-11-04」 gives 「4」)."""
     out: set[str] = set()
     for match in _NUM.finditer(text):
-        out.add(match.group(1).replace(",", ""))
+        raw = match.group(1).replace(",", "")
+        out.add(raw)
+        if raw.isdigit():
+            out.add(str(int(raw)))
     return out
 
 
@@ -270,12 +274,19 @@ def post(text: str, args: dict) -> dict:
         for m in _VALUE.finditer(line):
             if m.group(1).replace(",", "") in known or (m.group(2) == "년" and _YEAR.fullmatch(m.group(1))):
                 continue
+            # a listed day in another notation (「11월 4일」 for 「2026-11-04」)
+            month = re.search(r"(\d{1,2})\s*(?:월|/|\.)\s*$", line[:m.start()])
+            if m.group(2) == "일" and month and (int(month.group(1)), int(m.group(1))) in days:
+                continue
+            # the list's own items counted (「항목 7개」)
+            if m.group(2) in ("개", "건") and m.group(1).isdigit() and 0 < int(m.group(1)) <= len(items):
+                continue
             if final:
                 line = line.replace(m.group(0), "[수치]", 1)
                 out["fixed"].append({"kind": "number", "text": m.group(0), "why": "변경 목록에 없는 수치 → [수치]"})
             else:
                 out["rewrite"].append({"kind": "number", "text": m.group(0),
-                                       "why": "변경 목록에 없는 수치입니다. 빼거나 [수치]로 두세요."})
+                                       "why": "변경 목록에 없는 수치입니다. 빼거나 값 뒤에 「(확인 필요)」를 붙이세요."})
         lines[k] = line
         if items and in_notes and _ITEM_LINE.match(line):
             mine = _terms(re.sub(r"\([^)]*\)|`[^`]*`", "", line))

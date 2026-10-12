@@ -16,6 +16,7 @@ from app.services import (
     skill_scripts,
     skill_specs,
     starter,
+    value_guard,
 )
 
 log = logging.getLogger(__name__)
@@ -156,6 +157,15 @@ class Outcome:
     left: list[dict] = field(default_factory=list)
     #: findings by check, in run order
     by_key: dict[str, list[dict]] = field(default_factory=dict)
+    #: what the value guard gave back of the fix (supported values, emptied blocks)
+    settled: value_guard.Settled | None = None
+
+    @property
+    def marked(self) -> int:
+        """Values and blocks left marked 「(확인 필요)」."""
+        if self.settled is None:
+            return len(self.found)
+        return len(self.settled.marked) + len(self.settled.kept)
 
     @property
     def traced_only(self) -> bool:
@@ -171,14 +181,16 @@ class Outcome:
             try:
                 parts.append(skill_scripts.entry(key).summary(found))
             except Exception:  # noqa: BLE001
-                parts.append(f"근거 없는 값 {len(found)}개 → 빈칸"
+                parts.append(f"근거 없는 값 {len(found)}개 → 확인 필요"
                              if key == "grounding-check" else f"{key} {len(found)}개")
+        if self.settled is not None and self.settled.changed:
+            parts.append(self.settled.note())
         shown = " · ".join(p for p in parts if p)
         return shown + (f" · 남은 것 {len(self.left)}개" if self.left else "")
 
 
 def ground(keys: tuple[str, ...], text: str, *, material: str, computed: list[str],
-           options: dict, specs: Specs = None) -> Outcome:
+           options: dict, specs: Specs = None, evidence: list[str] | None = None) -> Outcome:
     """Attached `post` checks over `text`: check, fix once, recheck."""
     outcome = Outcome(text)
     for key in of_stage(keys, "post", specs):
@@ -196,6 +208,17 @@ def ground(keys: tuple[str, ...], text: str, *, material: str, computed: list[st
             outcome.text = fixed
         except Exception:  # noqa: BLE001 — the text stays as written; the step says nothing
             log.exception("check skill %s failed after writing", key)
+    if outcome.text != text:
+        # supported values back as written, the rest marked; nothing emptied
+        today = None
+        try:
+            today = dt.date.fromisoformat(str(options.get("today") or "")[:10])
+        except ValueError:
+            pass
+        outcome.settled = value_guard.settle(text, outcome.text, value_guard.Evidence.of(
+            [material, *computed, str(options.get("person") or ""), *(evidence or [])],
+            answer=text, today=today))
+        outcome.text = outcome.settled.text
     return outcome
 
 

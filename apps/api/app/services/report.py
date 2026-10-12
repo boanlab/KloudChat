@@ -591,9 +591,31 @@ _MONEY = re.compile(
 )
 
 
-def _without_invented_money(text: str) -> str:
-    """Sums of money replaced by 「[금액]」."""
-    return _MONEY.sub("[금액]", text)
+def _without_invented_money(text: str, evidence: list[str] | None = None) -> str:
+    """Sums of money no source states nor derives marked 「(확인 필요)」, never blanked."""
+    from app.services import value_guard
+
+    found = list(_MONEY.finditer(text or ""))
+    if not found:
+        return text
+    ev = value_guard.Evidence.of(list(evidence or []), answer=text)
+    out, at = [], 0
+    for m in found:
+        line, base = _line_of(text, m.start())
+        out.append(text[at:m.end()])
+        at = m.end()
+        if text[at:at + len(value_guard.MARK) + 1].lstrip().startswith(value_guard.MARK):
+            continue
+        if not value_guard.supported(m.group(0), line, m.start() - base, ev, 0):
+            out.append(value_guard.MARK)
+    out.append(text[at:])
+    return "".join(out)
+
+
+def _line_of(text: str, pos: int) -> tuple[str, int]:
+    start = text.rfind("\n", 0, pos) + 1
+    end = text.find("\n", pos)
+    return text[start:end if end >= 0 else len(text)], start
 
 
 _OWNER_HEADER = re.compile(r"담당|책임|owner", re.I)

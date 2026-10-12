@@ -661,7 +661,7 @@ class AgentStep(Step):
             check_options=info.check_options, skill_specs=info.skill_specs(),
             check_material="\n".join(req.untrusted),
             tool_outputs=[*ctx.outputs, *_computed(bundle)], judge=req.judge, kept_steps=[],
-            usage=spent)
+            usage=spent, evidence=list(ctx.searched))
         runner = Runner(pipe.stages("finish"), name=f"{pipe.name}.finish", emit_records=False)
         async for event in runner.run(finish, Context(options=dict(pipe.options))):
             if event.get("type") == "step":
@@ -806,7 +806,7 @@ class CheckStep(Step):
         bundle.findings.before = [*bundle.findings.before, *[code] * len(outcome.found)]
         bundle.findings.after = [*bundle.findings.after, *[code] * len(outcome.left)]
         said = (f"상투적인 표현 {len(outcome.found)}개 고침" if ref == "generic-language-killer"
-                else f"근거 없는 값 {len(outcome.found)}개 → 빈칸")
+                else f"근거 없는 값 {outcome.marked}개 → 확인 필요")
         yield {"type": "step", "id": f"compose:{self.name}",
                "label": said if outcome.found else "고칠 것 없음",
                "status": "error" if outcome.left else "done",
