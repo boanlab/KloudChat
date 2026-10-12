@@ -82,7 +82,8 @@ MAX_PAGES = 30
 MAX_SUMMARY = 4
 #: storable keys
 KEYS = ("prepass", "date_base", "stages", "checks", "judged", "amend", "head", "rules",
-        "structure", "search", "deep_search", "fixed_outline", "draws", "prepass_always",
+        "structure", "search", "deep_search", "code_calc", "fixed_outline", "draws",
+        "prepass_always",
         "prepass_quiet", "conflict_rule")
 #: list settings a turned-on skill adds to (never replaces) the 서식's
 LIST_KEYS = ("prepass", "stages", "checks", "judged", "amend", "head", "rules")
@@ -133,6 +134,9 @@ class Process:
     search: bool = True
     #: search with twice the queries and sources (a research skill on a document)
     deep_search: bool = False
+    #: derived values computed by code before writing even when the request names no
+    #: calculation (a calculation skill on a document)
+    code_calc: bool = False
     fixed_outline: bool = False
     draws: str = "auto"
     prepass_always: bool = False
@@ -166,6 +170,7 @@ class Process:
                 "judged": list(self.judged), "amend": list(self.amend), "head": list(self.head),
                 "rules": list(self.rules), "structure": self.structure.wire(),
                 "search": self.search, "deep_search": self.deep_search,
+                "code_calc": self.code_calc,
                 "fixed_outline": self.fixed_outline,
                 "draws": self.draws, "prepass_always": self.prepass_always,
                 "prepass_quiet": self.prepass_quiet, "conflict_rule": self.conflict_rule}
@@ -273,7 +278,8 @@ def clean(raw: Any) -> dict[str, Any]:
         out["rules"] = tuple(dict.fromkeys(rules))
     if "structure" in data:
         out["structure"] = _structure(data.get("structure"))
-    for key in ("search", "deep_search", "fixed_outline", "prepass_always", "prepass_quiet"):
+    for key in ("search", "deep_search", "code_calc", "fixed_outline", "prepass_always",
+                "prepass_quiet"):
         if key in data:
             out[key] = bool(data[key])
     if "draws" in data:

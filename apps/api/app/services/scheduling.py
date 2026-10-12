@@ -115,14 +115,39 @@ def algorithms(request: str, has_priority: bool) -> list[Algorithm]:
         if re.search(r"우선\s{0,2}순위[^.\n]{0,15}(?<!비)선점|(?<!비)선점\s{0,2}(?:형\s{0,2})?"
                      r"우선\s{0,2}순위", text):
             out.append(Algorithm(("우선순위(선점)",), "priority-preemptive"))
+        if (not any(a.kind.startswith("priority") for a in out)
+                and _PRIORITY_RUN.search(text)):
+            # 「우선순위 스케줄링」 with neither named: both readings, each its own row
+            out += [Algorithm(("우선순위(비선점)",), "priority"),
+                    Algorithm(("우선순위(선점)",), "priority-preemptive")]
     return out
+
+
+#: priority scheduling named as an algorithm (not just a column of the table)
+_PRIORITY_RUN = re.compile(r"우선\s{0,2}순위\s{0,2}(?:기반\s{0,2})?(?:스케줄링|알고리즘|방식)"
+                           r"|priority\s{0,2}(?:scheduling|algorithm)", re.I)
 
 
 def simulate(procs: list[Process], kind: str, quantum: int = 0, *,
              arrivals_first: bool = True, larger_first: bool = False) -> dict[str, int]:
     """Waiting time by process name; `arrivals_first`: in RR, a process arriving as a quantum
     ends queues before the preempted one."""
+    return _run(procs, kind, quantum, arrivals_first=arrivals_first,
+                larger_first=larger_first)[0]
+
+
+def _run(procs: list[Process], kind: str, quantum: int = 0, *, arrivals_first: bool = True,
+         larger_first: bool = False) -> tuple[dict[str, int], list[tuple[str, int, int]]]:
+    """Waiting times and the Gantt runs `(name, start, end)`, idle gaps left out."""
     n = len(procs)
+    runs: list[tuple[str, int, int]] = []
+
+    def ran(i: int, start: int, end: int) -> None:
+        if runs and runs[-1][0] == procs[i].name and runs[-1][2] == start:
+            runs[-1] = (procs[i].name, runs[-1][1], end)
+        else:
+            runs.append((procs[i].name, start, end))
+
     left = [p.burst for p in procs]
     done = [0] * n
     if kind == "rr":
@@ -143,9 +168,10 @@ def simulate(procs: list[Process], kind: str, quantum: int = 0, *,
                 admit(t)
                 continue
             i = queue.popleft()
-            ran = min(quantum, left[i])
-            t += ran
-            left[i] -= ran
+            slice_ = min(quantum, left[i])
+            ran(i, t, t + slice_)
+            t += slice_
+            left[i] -= slice_
             if left[i]:
                 admit(t if arrivals_first else t - 0.5)
                 queue.append(i)
@@ -172,11 +198,12 @@ def simulate(procs: list[Process], kind: str, quantum: int = 0, *,
             if preemptive:
                 later = [p.arrival - t for p in procs if p.arrival > t]
                 step = min([step, *later])
+            ran(i, t, t + step)
             t += step
             left[i] -= step
             if not left[i]:
                 done[i] = t
-    return {p.name: done[i] - p.arrival - p.burst for i, p in enumerate(procs)}
+    return {p.name: done[i] - p.arrival - p.burst for i, p in enumerate(procs)}, runs
 
 
 def _stated(alg: Algorithm, waits: dict[str, int], procs: list[Process]) -> list[Stated]:
@@ -239,6 +266,53 @@ def check(answer: str, request: str) -> tuple[str, list[str]]:
         clean = [r for r in readings if not misses(r)]
         picked[k] = (clean or readings)[0]
     return calc_check.check_markdown(answer, [s for r in picked for s in r])
+
+
+#: what the block tells the writer (`calc.computed_values` speaks the same way)
+_BLOCK_HEAD = (
+    "# 코드로 계산한 값\n"
+    "아래 값은 요청의 프로세스 표로 각 스케줄링 알고리즘을 코드로 실행해 구했다(대기 = 완료 − 도착 "
+    "− 실행). 간트 차트 구간·대기시간·평균은 이 값을 그대로 옮기고, 같은 항목을 손으로 다시 "
+    "셈하거나 다른 값으로 적지 마라. 본문과 비교 표는 같은 값을 쓴다."
+)
+
+
+def computed_block(request: str) -> str:
+    """The request's scheduling exercise run by code, as a writer's computed-values block
+    (「FCFS | 평균 대기시간 = 4.75」 lines), or '' when it is not a plain exercise."""
+    text = request or ""
+    if _BEYOND.search(text):
+        return ""
+    procs = processes(text)
+    if not procs:
+        return ""
+    algs = algorithms(text, all(p.priority is not None for p in procs))
+    if not algs:
+        return ""
+    larger = bool(_HIGHER_IS_LARGER.search(text))
+    lines = ["동점 규칙: 조건이 같으면 먼저 도착한 프로세스가 먼저; 라운드 로빈에서 퀀텀이 끝나는 "
+             "시각에 도착한 프로세스는 선점된 프로세스보다 먼저 큐에 들어간다"]
+    if any(a.kind.startswith("priority") for a in algs):
+        lines.append("우선순위: 숫자가 " + ("클수록" if larger else "작을수록") + " 높다")
+    n = len(procs)
+    for alg in algs:
+        waits, runs = _run(procs, alg.kind, alg.quantum, larger_first=larger)
+        done = {p.name: waits[p.name] + p.arrival + p.burst for p in procs}
+        average = sum(waits.values()) / n
+        turnaround = sum(done[p.name] - p.arrival for p in procs) / n
+        row = alg.rows[0]
+        lines.append(f"{row} | 간트 차트 = " + ", ".join(f"{name} {a}-{b}"
+                                                      for name, a, b in runs))
+        lines.append(f"{row} 대기 풀이: " + ", ".join(
+            f"{p.name} {done[p.name]}−{p.arrival}−{p.burst}={waits[p.name]}"
+            for p in procs) + f" → 평균 {sum(waits.values())}/{n}={_text(average)}")
+        # every name the slides may use for the row (「RR(q=2)」 「라운드 로빈(q=2)」)
+        for row in alg.rows:
+            lines.append(f"{row} | 평균 대기시간 = {_text(average)} | "
+                         f"평균 반환시간 = {_text(turnaround)}")
+            lines.append(f"{row} | " + " | ".join(f"{p.name} 대기 = {waits[p.name]}"
+                                                   for p in procs))
+    return _BLOCK_HEAD + "\n\n" + "\n".join(lines)
 
 
 def latest_request(messages: list[dict]) -> str:

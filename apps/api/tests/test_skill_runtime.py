@@ -389,7 +389,7 @@ async def test_a_skill_that_became_a_package_keeps_its_row_and_gets_the_new_body
 
     assert old.catalog_key == "calc-check"
     assert old.required_tools == ["run_skill_script"]
-    assert "run_skill_script" in old.body and old.version == "2.0.0"
+    assert "run_skill_script" in old.body and old.version == "2.1.0"
     assert [row.catalog_key for row in db.rows].count("calc-check") == 1
 
 
