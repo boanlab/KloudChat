@@ -450,9 +450,14 @@ test('a conversation opened by its address stays when the conversation list answ
     }
     await route.fallback()
   })
+  // The late list's answer, not a guessed delay, is what the row must outlive.
+  const listAnswered = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/api/sessions' && response.request().method() === 'GET')
   await page.goto(`/s/${id}`)
   await expect(page.getByText('목록보다 먼저 온 대화')).toBeVisible()
-  await page.waitForTimeout(1_000)
+  await listAnswered
+  // Two frames: React has rendered whatever the list changed.
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
   await expect(page.getByText('목록보다 먼저 온 대화')).toBeVisible()
   await expect(page.getByText('최신 내용을 불러오지 못했습니다.')).toHaveCount(0)
   expect(rowReads).toBe(1)

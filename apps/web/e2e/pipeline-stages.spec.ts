@@ -300,7 +300,7 @@ test('report: stage list, evidence, marks, fill, rerun', async ({ page }, testIn
     await panel(page).getByRole('button', { name: '다음 표시' }).click()
     await panel(page).getByRole('button', { name: '다음 표시' }).click()
     await panel(page).getByRole('button', { name: '다음 표시' }).click()
-    await page.waitForTimeout(500)
+    // hover() waits for the mark to stop moving (the jump scrolls smoothly).
     await panel(page).locator('.doc-ungrounded').first().hover()
     await expect(panel(page).getByText('자료에 없음: 원래 값 120명 → [인원] · 근거 확인')).toBeVisible()
     await shot('ungrounded-tooltip')
