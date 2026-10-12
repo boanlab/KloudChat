@@ -1418,9 +1418,13 @@ def drop_figure(body: str, mark: str) -> str:
     head, tail = body[:at], body[at + len(mark):]
     ref = head.rfind(_FIGURE_REF)
     if ref >= 0:
-        match = _DANGLING_REF.match(head, max(0, ref - 2))
-        if match and match.start() <= ref:
-            head = head[: match.start()] + head[match.end():]
+        # the reference with its particle (「〔그림〕에서」), with or without 「위」 before it
+        match = next((m for start in range(max(0, ref - 3), ref + 1)
+                      if (m := _DANGLING_REF.match(head, start)) and m.end() > ref), None)
+        if match:
+            before, after = head[: match.start()].rstrip(" "), head[match.end():].lstrip(" ")
+            joint = " " if before and not before.endswith("\n") and after else ""
+            head = before + joint + after
         else:
             head = head[:ref] + head[ref + len(_FIGURE_REF):]
     return re.sub(r"\n{3,}", "\n\n", head.rstrip() + "\n\n" + tail.lstrip())

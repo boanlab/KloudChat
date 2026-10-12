@@ -207,3 +207,12 @@ def test_listed_pipe_rows_become_a_table_without_list_markers():
     out = report.repair_pipe_tables(body)
     assert out.splitlines()[0] == "| 비목 | 협약 예산(원) | 집행액(원) |"
     assert "| 인건비 | 1,000 | 900 |" in out and "- " not in out
+
+
+def test_a_dropped_figure_takes_its_reference_particle_with_it():
+    mark = "[[그림: flow | 비용 산식 | 단가 → 인원 → 개월]]"
+    body = f"비용은 〔그림〕에서 제시한 산식대로 계산한다.\n\n{mark}\n\n끝."
+    out = report.drop_figure(body, mark)
+    assert "〔그림〕" not in out and " 에서" not in out
+    assert out.startswith("비용은 제시한 산식대로")
+    assert report.drop_figure(f"위 〔그림〕과 같이 나뉜다.\n{mark}", mark).startswith("나뉜다.")
