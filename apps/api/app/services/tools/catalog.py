@@ -41,6 +41,7 @@ def _entry(row) -> dict[str, Any]:
         if row.tools_key_var and row.tools_key_feature else None,
         "kinds": list(row.kinds or ["chat"]), "enabled": bool(row.enabled),
         "listed": bool(getattr(row, "listed", True)),
+        "by_default": bool(getattr(row, "by_default", False)),
         "position": int(row.position or 0),
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
@@ -99,6 +100,11 @@ def catalog_entry(slug: str) -> dict[str, Any] | None:
     return _CACHE.get(slug)
 
 
+def provided(entry: dict[str, Any] | None) -> bool:
+    """Whether an entry is 기본 제공 now: marked and enabled."""
+    return bool(entry and entry.get("by_default") and entry.get("enabled", True))
+
+
 async def resolve_urls(text: str) -> str:
     """Substitutes `${TOOLS_*_URL}` in a string with the current settings."""
     if "${" not in text:
@@ -140,6 +146,33 @@ async def resolve_env(env: dict[str, str] | None) -> dict[str, str]:
     for key, value in settings_store.decrypt_env(env).items():
         out[key] = await resolve_urls(value)
     return out
+
+
+#: Tool-name words that mark a write tool (off until opted in).
+_WRITE_HINTS = (
+    "create",
+    "update",
+    "delete",
+    "write",
+    "post",
+    "send",
+    "push",
+    "publish",
+    "upload",
+    "insert",
+    "remove",
+    "add",
+    "set",
+    "edit",
+    "move",
+    "rename",
+)
+
+
+def looks_like_write(name: str) -> bool:
+    """Name hints at a write."""
+    lowered = name.lower()
+    return any(hint in lowered for hint in _WRITE_HINTS)
 
 
 class EntryError(ValueError):
@@ -206,13 +239,17 @@ def clean(payload: dict[str, Any], *, previous_env: dict[str, str] | None = None
         raise EntryError("catalog_tools_key")
     if var and (var not in env and var not in previous or feature not in tools_gateway.FEATURES):
         raise EntryError("catalog_tools_key")
+    by_default = bool(payload.get("by_default", False))
+    if by_default and required:
+        # nobody is there to type each person's credentials
+        raise EntryError("catalog_default_env")
     return {
         "slug": slug, "name": name, "description": _one_line(payload.get("description"), 300),
         "category": _one_line(payload.get("category"), 30), "transport": transport,
         "endpoint": endpoint, "env": env or None, "required_env": required,
         "auth": "none", "tools_key_var": var, "tools_key_feature": feature,
         "kinds": list(dict.fromkeys(kinds)), "enabled": bool(payload.get("enabled", True)),
-        "listed": bool(payload.get("listed", True)),
+        "listed": bool(payload.get("listed", True)), "by_default": by_default,
         "position": max(0, min(int(payload.get("position") or 0), 999)),
     }
 
@@ -231,10 +268,11 @@ def admin_wire(entry: dict[str, Any]) -> dict[str, Any]:
         "toolsKeyVar": target[0], "toolsKeyFeature": target[1],
         "kinds": list(entry.get("kinds") or []), "enabled": bool(entry.get("enabled", True)),
         "listed": bool(entry.get("listed", True)),
+        "byDefault": bool(entry.get("by_default", False)),
         "position": int(entry.get("position") or 0), "updatedAt": entry.get("updated_at"),
     }
 
 
 __all__ = ["KINDS", "TRANSPORTS", "EntryError", "admin_wire", "catalog_entry", "clean",
-           "connector_env", "effective_endpoint", "entries", "entry", "refresh",
-           "resolve_env", "resolve_urls", "use"]
+           "connector_env", "effective_endpoint", "entries", "entry", "looks_like_write",
+           "provided", "refresh", "resolve_env", "resolve_urls", "use"]

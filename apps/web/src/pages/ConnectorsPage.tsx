@@ -71,12 +71,15 @@ function ConnectorCard({
     // `data-connector` is the e2e hook.
     <Card className="flex flex-col p-4" data-connector={connector.slug}>
       <div className="flex items-start gap-3">
-        <PickBox
-          checked={picked}
-          onChange={onPick}
-          label={t('{name} 선택').replace('{name}', connector.name)}
-          className="mt-2.5"
-        />
+        {/* 기본 제공: switched off, never removed */}
+        {!connector.byDefault && (
+          <PickBox
+            checked={picked}
+            onChange={onPick}
+            label={t('{name} 선택').replace('{name}', connector.name)}
+            className="mt-2.5"
+          />
+        )}
         <span
           className="grid size-9 shrink-0 place-items-center rounded-card text-lg"
           style={{ background: `${connector.color}1a` }}
@@ -92,6 +95,7 @@ function ConnectorCard({
                 {t('공식')}
               </Badge>
             )}
+            {connector.byDefault && <Badge tone="accent">{t('기본 제공')}</Badge>}
             <Badge tone={status.tone}>{t(status.label)}</Badge>
           </span>
           <span className="mt-1 block text-base text-muted">{t(connector.description)}</span>
@@ -191,6 +195,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
                 {t('공식')}
               </Badge>
             )}
+            {entry.byDefault && <Badge tone="accent">{t('기본 제공')}</Badge>}
           </span>
           <span className="mt-1 block text-base text-muted">{t(entry.description)}</span>
         </div>
@@ -436,7 +441,8 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   })
 
   const installed = connectors.filter((c) => c.installed)
-  const pick = useBulkSelect(installed)
+  // 기본 제공 copies cannot be removed, so they cannot be picked.
+  const pick = useBulkSelect(installed.filter((c) => !c.byDefault))
   // Installed entries stay in the catalogue, marked.
   const catalog = connectorCatalog
   const current = detail ? (connectors.find((c) => c.id === detail.id) ?? detail) : null
@@ -540,7 +546,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
         width="max-w-2xl"
         footer={
           <>
-            {current?.installed && (
+            {current?.installed && !current.byDefault && (
               <Button
                 variant="danger"
                 className="mr-auto"
@@ -552,6 +558,11 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
                 <Trash2 size={14} />
                 {t('제거')}
               </Button>
+            )}
+            {current?.byDefault && (
+              <p className="mr-auto text-sm text-muted">
+                {t('기본 제공 커넥터는 지울 수 없습니다. 쓰지 않으려면 끄세요.')}
+              </p>
             )}
             <Button onClick={() => setDetail(null)}>{t('닫기')}</Button>
           </>

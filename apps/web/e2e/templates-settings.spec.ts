@@ -92,3 +92,22 @@ test('an administrator adds a catalogue entry; stored values never come back', a
   await expect(page.getByTestId('catalog-entry-form').getByRole('textbox', { name: '값' })).toHaveAttribute('placeholder', /저장됨/)
   expect(state.problems).toEqual([])
 })
+
+test('an administrator makes a catalogue entry 기본 제공', async ({ page }) => {
+  const state = await hubFixture(page, test.info(), { admin: true })
+  await page.goto('/admin/system/connectors')
+  const admin = page.getByTestId('connector-catalog-admin')
+  const time = admin.getByTestId('catalog-entry').filter({ hasText: '시간' })
+  const youtube = admin.getByTestId('catalog-entry').filter({ hasText: 'YouTube' })
+  await expect(time).toContainText('기본 제공', { timeout: 15_000 })
+  await expect(youtube).not.toContainText('기본 제공')
+  await admin.getByRole('button', { name: 'YouTube 전사 편집' }).click()
+  const box = page.getByTestId('catalog-entry-default')
+  await expect(box).not.toBeChecked()
+  await box.check()
+  await page.getByRole('button', { name: '저장' }).click()
+  await expect(youtube).toContainText('기본 제공')
+  expect(state.calls.find((c) => c.method === 'PUT' && c.path === '/admin/connector-catalog/e2')?.body).toMatchObject({
+    slug: 'youtube', byDefault: true, listed: false })
+  expect(state.problems).toEqual([])
+})

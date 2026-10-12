@@ -209,6 +209,17 @@ const connectorCatalog = [
     kinds: ['chat'], official: false, installed: false, requiredEnv: [] },
 ]
 
+/** A 기본 제공 copy (switch off, not remove) and a server the person added. */
+export const installedConnectors = [
+  { id: 'n1', name: '시간', slug: 'time', description: '현재 시각과 타임존 변환.', category: '기본', transport: 'stdio',
+    endpoint: 'uvx mcp-server-time', auth: 'none', kinds: ['chat', 'report', 'slides'], official: true, installed: true,
+    enabled: true, status: 'connected', tools: [{ name: 'get_current_time', description: '현재 시각', readOnly: true, enabled: true }],
+    lastSyncAt: at, error: null, envKeys: [], byDefault: true },
+  { id: 'n2', name: '사내 위키', slug: 'wiki', description: '위키 검색', category: '', transport: 'http',
+    endpoint: 'https://wiki.example.com/mcp', auth: 'none', kinds: ['chat'], official: false, installed: true,
+    enabled: true, status: 'connected', tools: [], lastSyncAt: at, error: null, envKeys: [], byDefault: false },
+]
+
 /** `n` conversations, newest first, a minute apart; the first is pinned. */
 export function conversationRows(n: number) {
   return Array.from({ length: n }, (_, i) => ({
@@ -219,7 +230,7 @@ export function conversationRows(n: number) {
   }))
 }
 
-export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = false, conversations = 0, draft = agentDraft as Record<string, unknown>, admin = false, hiddenSkill = false, listDelayMs = 0, decided = undefined as { distilled: string; prompt: string; decided: string[]; delayMs?: number }[] | undefined } = {}) {
+export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = false, conversations = 0, draft = agentDraft as Record<string, unknown>, admin = false, hiddenSkill = false, listDelayMs = 0, connectors = [] as Record<string, unknown>[], decided = undefined as { distilled: string; prompt: string; decided: string[]; delayMs?: number }[] | undefined } = {}) {
   // 「에이전트로 저장」's distillation replies, in order; by default the draft's own 지시.
   const decidedReplies = decided ? [...decided] : [{ distilled: 'ok', prompt: String(draft.systemPrompt ?? ''), decided: (draft.decided ?? []) as string[] }]
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
@@ -238,10 +249,10 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
   let catalogRows: Record<string, unknown>[] = [
     { id: 'e1', slug: 'time', name: '시간', description: "현재 시각과 타임존 변환. '오늘'이 며칠인지 서버 시계로 알려 줍니다.", category: '기본',
       transport: 'stdio', endpoint: "uvx --with 'mcp<2' mcp-server-time --local-timezone=Asia/Seoul", env: {}, requiredEnv: [],
-      toolsKeyVar: '', toolsKeyFeature: '', kinds: ['chat', 'report', 'slides'], enabled: true, listed: true, position: 0, updatedAt: at },
+      toolsKeyVar: '', toolsKeyFeature: '', kinds: ['chat', 'report', 'slides'], enabled: true, listed: true, byDefault: true, position: 0, updatedAt: at },
     { id: 'e2', slug: 'youtube', name: 'YouTube 전사', description: '영상의 자막을 가져오고, 없으면 음성을 전사합니다.', category: '미디어',
       transport: 'stdio', endpoint: 'uv run --script /srv/mcp/youtube.py', env: { WHISPER_URL: '${TOOLS_STT_URL}' }, requiredEnv: [],
-      toolsKeyVar: 'WHISPER_URL', toolsKeyFeature: 'stt', kinds: ['chat', 'report'], enabled: true, listed: false, position: 1, updatedAt: at },
+      toolsKeyVar: 'WHISPER_URL', toolsKeyFeature: 'stt', kinds: ['chat', 'report'], enabled: true, listed: false, byDefault: false, position: 1, updatedAt: at },
   ]
 
   await page.context().route('**/*', async (route) => {
@@ -306,7 +317,12 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     if (method === 'POST' && path === '/admin/connector-catalog') {
       catalogRows = [...catalogRows, { ...(body as Record<string, unknown>), id: `e${catalogRows.length + 1}`, updatedAt: at,
         env: Object.fromEntries(Object.entries((body.env ?? {}) as Record<string, string>).map(([k, v]) => [k, v && v.startsWith('${') ? v : null])) }]
-      return json({ entries: catalogRows }, 201)
+      return json({ entries: catalogRows, provided: 0 }, 201)
+    }
+    if (method === 'PUT' && /^\/admin\/connector-catalog\/[^/]+$/.test(path)) {
+      const id = path.split('/')[3]
+      catalogRows = catalogRows.map((r) => (r.id === id ? { ...r, ...body, id, env: r.env } : r))
+      return json({ entries: catalogRows, provided: body.byDefault ? 2 : 0 })
     }
     if (method === 'GET' && path === '/admin/settings') return json(null, 404)
     if (method === 'GET' && path === '/user-pipelines') return json(emptyMine ? [] : myPipelines)
@@ -425,7 +441,8 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && path === '/connectors/catalog') return json(connectorCatalog)
-    if (method === 'GET' && ['/projects', '/memory', '/connectors', '/jobs', '/shares', '/artifacts',
+    if (method === 'GET' && path === '/connectors') return json(connectors)
+    if (method === 'GET' && ['/projects', '/memory', '/jobs', '/shares', '/artifacts',
       '/history'].includes(path)) return json([])
     unexpected.push(`${method} ${path}`)
     return json({ detail: 'not_found' }, 404)

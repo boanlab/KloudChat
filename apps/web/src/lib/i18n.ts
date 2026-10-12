@@ -772,6 +772,12 @@ const EN: Record<string, string> = {
   '설치할 수 있게 켜기': 'Enabled for installing',
   '끄면 멤버 카탈로그에 나오지 않지만, 설치된 것은 계속 동작합니다.':
     'When off, members no longer see it in the catalogue; what is already installed keeps working.',
+  '켜 두면 모든 사용자에게 설치됩니다. 사용자는 끌 수 있지만 지울 수는 없습니다.':
+    'When on, it is installed for everyone. People can switch it off but not remove it.',
+  '사람마다 자격증명을 받아야 하는 항목은 기본 제공할 수 없습니다.':
+    'An entry that needs each person\'s credentials cannot be built in.',
+  '기본 제공 커넥터는 지울 수 없습니다. 쓰지 않으려면 끄세요.':
+    'Built-in connectors cannot be removed. Switch it off if you do not use it.',
   '요약·정리': 'Summary',
   '문서 작성': 'Document writing',
   '기록 정리': 'Records',

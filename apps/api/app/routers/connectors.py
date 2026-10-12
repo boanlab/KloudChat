@@ -27,7 +27,7 @@ from app.schemas.workspace import (
     InstallRequest,
     ToolToggle,
 )
-from app.services import mcp, settings_store
+from app.services import connector_defaults, mcp, settings_store
 from app.services.tools import catalog
 
 log = logging.getLogger(__name__)
@@ -51,7 +51,15 @@ async def _tools_of(db: DbSession, connector_id: str) -> list[ConnectorTool]:
 
 
 async def _out(db: DbSession, connector: Connector) -> ConnectorOut:
-    return ConnectorOut.of(connector, await _tools_of(db, connector.id))
+    out = ConnectorOut.of(connector, await _tools_of(db, connector.id))
+    out.by_default = await connector_defaults.kept(connector.slug, official=connector.official)
+    return out
+
+
+async def _removable(connector: Connector) -> None:
+    if await connector_defaults.kept(connector.slug, official=connector.official):
+        # 기본 제공: switched off, never removed
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="connector_default")
 
 
 @router.get("/catalog")
@@ -72,6 +80,7 @@ async def get_catalog(user: CurrentUser, db: DbSession):
             "kinds": entry.get("kinds", ["chat"]),
             "official": True,
             "installed": entry["slug"] in installed,
+            "byDefault": catalog.provided(entry),
             "requiredEnv": [
                 {
                     "key": field["key"],
@@ -200,7 +209,7 @@ async def _sync(db: DbSession, user: User, connector: Connector) -> None:
         if not name:
             continue
         seen.add(name)
-        read_only = not _looks_like_write(name)
+        read_only = not catalog.looks_like_write(name)
         row = existing.get(name)
         if row is None:
             db.add(
@@ -231,31 +240,6 @@ async def _sync(db: DbSession, user: User, connector: Connector) -> None:
     await db.commit()
 
 
-_WRITE_HINTS = (
-    "create",
-    "update",
-    "delete",
-    "write",
-    "post",
-    "send",
-    "push",
-    "publish",
-    "upload",
-    "insert",
-    "remove",
-    "add",
-    "set",
-    "edit",
-    "move",
-    "rename",
-)
-
-
-def _looks_like_write(name: str) -> bool:
-    lowered = name.lower()
-    return any(hint in lowered for hint in _WRITE_HINTS)
-
-
 @router.post("/{connector_id}/sync", response_model=ConnectorOut)
 async def sync(connector_id: str, user: CurrentUser, db: DbSession):
     connector = await _own(db, user, connector_id)
@@ -268,6 +252,8 @@ async def sync(connector_id: str, user: CurrentUser, db: DbSession):
 async def patch(connector_id: str, payload: ConnectorPatch, user: CurrentUser, db: DbSession):
     connector = await _own(db, user, connector_id)
     patch_fields = payload.model_dump(exclude_unset=True)
+    if patch_fields.get("installed") is False:
+        await _removable(connector)
     # env merged, not replaced: keeps catalogue defaults
     if (env := patch_fields.pop("env", None)) is not None:
         connector.env = {**(connector.env or {}), **settings_store.encrypt_env(env)}
@@ -302,28 +288,30 @@ async def toggle_tool(
 
 @router.post("/delete")
 async def uninstall_many(payload: BulkDelete, user: CurrentUser, db: DbSession):
-    """Bulk uninstall."""
+    """Bulk uninstall; 기본 제공 copies stay (`kept`)."""
     if not payload.ids:
-        return {"deleted": 0}
+        return {"deleted": 0, "kept": 0}
     rows = (
         await db.exec(
             select(Connector).where(
-                col(Connector.id).in_(payload.ids), Connector.user_id == user.id
+                col(Connector.id).in_(payload.ids), Connector.owner_id == user.id
             )
         )
     ).all()
-    if not rows:
-        return {"deleted": 0}
-    ids = [row.id for row in rows]
+    ids = [row.id for row in rows
+           if not await connector_defaults.kept(row.slug, official=row.official)]
+    if not ids:
+        return {"deleted": 0, "kept": len(rows)}
     await db.exec(delete(ConnectorTool).where(col(ConnectorTool.connector_id).in_(ids)))
     await db.exec(delete(Connector).where(col(Connector.id).in_(ids)))
     await db.commit()
-    return {"deleted": len(ids)}
+    return {"deleted": len(ids), "kept": len(rows) - len(ids)}
 
 
 @router.delete("/{connector_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def uninstall(connector_id: str, user: CurrentUser, db: DbSession):
     connector = await _own(db, user, connector_id)
+    await _removable(connector)
     await db.exec(delete(ConnectorTool).where(ConnectorTool.connector_id == connector.id))
     await db.delete(connector)
     await db.commit()
@@ -348,6 +336,8 @@ class CatalogEntryIn(Wire):
     enabled: bool = True
     #: False = installable but not offered
     listed: bool = True
+    #: 기본 제공: installed for every active person
+    by_default: bool = False
     position: int = Field(default=0, ge=0, le=999)
 
 
@@ -370,6 +360,15 @@ async def _admin_list(db: DbSession) -> list[dict[str, Any]]:
     return [catalog.admin_wire(e) for e in await catalog.entries(enabled_only=False)]
 
 
+async def _saved(db: DbSession, slug: str) -> dict[str, Any]:
+    """Catalogue after a save; a 기본 제공 entry installed for whoever lacks it."""
+    entries = await _admin_list(db)
+    saved = await catalog.entry(slug)
+    provided = (await connector_defaults.provide_everyone(db, [saved])
+                if catalog.provided(saved) else 0)
+    return {"entries": entries, "provided": provided}
+
+
 @admin_router.get("")
 async def admin_catalog(admin: AdminUser, db: DbSession):
     """All entries incl. disabled; env keys only."""
@@ -390,7 +389,7 @@ async def admin_add_entry(payload: CatalogEntryIn, admin: AdminUser, db: DbSessi
     db.add(ConnectorCatalogEntry(**fields, updated_by=admin.id))
     _audit(db, request, admin, "connector.catalog.save", fields["slug"])
     await db.commit()
-    return {"entries": await _admin_list(db)}
+    return await _saved(db, fields["slug"])
 
 
 @admin_router.put("/{entry_id}")
@@ -410,7 +409,7 @@ async def admin_edit_entry(entry_id: str, payload: CatalogEntryIn, admin: AdminU
     db.add(row)
     _audit(db, request, admin, "connector.catalog.save", row.slug)
     await db.commit()
-    return {"entries": await _admin_list(db)}
+    return await _saved(db, row.slug)
 
 
 @admin_router.delete("/{entry_id}")

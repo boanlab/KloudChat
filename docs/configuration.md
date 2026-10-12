@@ -474,9 +474,28 @@ Why this split:
 ### 커넥터 카탈로그
 
 The MCP connectors users can install from **사용자 지정 › 커넥터**: name,
-address or stdio command, and whether the entry is listed. An installed
-connector keeps its entry's slug. Users can also register their own MCP server
-by address.
+address or stdio command, whether the entry is listed, and whether it is
+**기본 제공** (`by_default`). An installed connector keeps its entry's slug.
+Users can also register their own MCP server by address.
+
+A 기본 제공 entry is installed for every active user: everyone at once when an
+administrator saves it with the switch on, a new user when the account becomes
+active (sign-up, e-mail verification, approval), and anyone still missing it
+when the API starts (a background task, one replica at a time under an advisory
+lock). Users can switch the connector or its tools off but cannot remove it
+(`409 connector_default`). Tools are copied from a connected install synced
+since the entry last changed, otherwise listed by the server once per process
+(60 s limit); a server that does not answer leaves the copy in error with
+「다시 연결」. An entry that asks each user for credentials (`required_env`)
+cannot be 기본 제공.
+
+Shipped entries, all 기본 제공 and attributed to the oldest administrator:
+
+| Slug | Runs | Needs |
+|---|---|---|
+| `time` | `uvx --with 'mcp<2' mcp-server-time --local-timezone=Asia/Seoul` | PyPI reachable from the API container on first run (uv cache under `/srv/data/uv-cache`) |
+| `youtube` | `uv run --script /srv/mcp/youtube.py` | `./mcp` mounted at `/srv/mcp`; speech-to-text address for videos without captions |
+| `deep-research` | `${TOOLS_RESEARCH_URL}/mcp` | the deep-research address (`BACKEND_BASE_URL` + `/tools/research`, kloudchat-llm's `deep-research` service); runs within `TOOL_TIMEOUT_SEC` |
 
 ### Enabled surfaces (기능)
 

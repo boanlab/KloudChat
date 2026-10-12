@@ -993,6 +993,8 @@ export interface Connector {
   /** Credential names only, never values. */
   envKeys?: string[]
   official: boolean
+  /** 기본 제공: can be switched off, not removed. */
+  byDefault: boolean
   icon: string
   color: string
   lastSyncAt: string | null
@@ -1351,6 +1353,8 @@ export interface CatalogEntryAdmin {
   enabled: boolean
   /** Shown in the members' catalogue; false keeps it installable and working, not offered. */
   listed: boolean
+  /** 기본 제공: installed for every active person, who can switch it off but not remove it. */
+  byDefault: boolean
   position: number
   updatedAt: string | null
 }

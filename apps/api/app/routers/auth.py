@@ -57,7 +57,7 @@ from app.schemas.auth import (
     SignupResponse,
     UserOut,
 )
-from app.services import geoip, settings_store, starter
+from app.services import connector_defaults, geoip, settings_store, starter
 from app.services import governance as governance_service
 from app.services import mail as mail_service
 from app.services import transcribe as transcribe_service
@@ -199,6 +199,8 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
         # shared catalogue: admin only
         if user.role is UserRole.admin:
             await starter.seed_catalog(db, user.id)
+            await connector_defaults.claim(db, user.id)
+        await connector_defaults.provide(db, user)
         db.add(user)
 
     await _audit(db, request, "signup", user.id, target=email, detail=f"status={user_status}")
@@ -251,6 +253,7 @@ async def _activate(db: AsyncSession, user: User) -> None:
     grant_initial_allowance(db, user, await settings_store.default_monthly_credits())
     await provision_user(user)
     await starter.seed_designs(db, user.id)
+    await connector_defaults.provide(db, user)
     db.add(user)
 
 

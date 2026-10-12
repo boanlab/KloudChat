@@ -575,6 +575,8 @@ class ConnectorCatalogEntry(SQLModel, table=True):
     enabled: bool = Field(default=True)
     #: members' catalogue; unlisted still installable by slug
     listed: bool = Field(default=True)
+    #: 기본 제공: installed for every active person, who can switch it off but not remove it
+    by_default: bool = Field(default=False)
     position: int = Field(default=0)
     updated_by: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))

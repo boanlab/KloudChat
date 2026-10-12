@@ -8,7 +8,7 @@ import type { CatalogEntryAdmin } from '@/types'
 const BLANK: CatalogEntryIn = {
   slug: '', name: '', description: '', category: '', transport: 'http', endpoint: '', env: {},
   requiredEnv: [], toolsKeyVar: '', toolsKeyFeature: '', kinds: ['chat'], enabled: true, listed: true,
-  position: 0,
+  byDefault: false, position: 0,
 }
 
 const ERRORS: Record<string, string> = {
@@ -20,6 +20,7 @@ const ERRORS: Record<string, string> = {
   catalog_env: '환경 변수 이름은 영문 대문자로, 값은 한 줄로 적으세요. TOOLS_GATEWAY_KEY는 직접 넣을 수 없습니다.',
   catalog_tools_key: '게이트웨이 키를 넣을 변수는 환경 변수 중 하나여야 하고, 도구를 골라야 합니다.',
   catalog_kinds: '쓸 화면을 하나 이상 고르세요.',
+  catalog_default_env: '사람마다 자격증명을 받아야 하는 항목은 기본 제공할 수 없습니다.',
 }
 
 type EnvRow = { key: string; value: string; stored: boolean }
@@ -161,6 +162,12 @@ function EntryForm({
               onChange={(e) => set('listed', e.target.checked)} />
             {t('목록에 보이기')}
           </label>
+          <label className="flex items-center gap-1.5 text-base" title={t('켜 두면 모든 사용자에게 설치됩니다. 사용자는 끌 수 있지만 지울 수는 없습니다.')}>
+            <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={value.byDefault}
+              data-testid="catalog-entry-default"
+              onChange={(e) => set('byDefault', e.target.checked)} />
+            {t('기본 제공')}
+          </label>
         </div>
       </div>
     </Modal>
@@ -203,6 +210,7 @@ export function ConnectorCatalogSection() {
                 {row.toolsKeyFeature && <Badge>{t('게이트웨이 키')}: {row.toolsKeyFeature}</Badge>}
                 {!row.enabled && <Badge>{t('꺼짐')}</Badge>}
                 {row.enabled && row.listed === false && <Badge>{t('숨김')}</Badge>}
+                {row.enabled && row.byDefault && <Badge tone="accent">{t('기본 제공')}</Badge>}
               </span>
               <span className="block truncate text-sm text-muted">{row.description}</span>
               <code className="block truncate text-sm text-faint">{row.endpoint}</code>

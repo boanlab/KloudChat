@@ -735,6 +735,8 @@ class ConnectorOut(Wire):
     error: str | None
     #: credential names only
     env_keys: list[str] = Field(default_factory=list)
+    #: 기본 제공 copy: can be switched off, not removed
+    by_default: bool = False
 
     @classmethod
     def of(cls, c: Connector, tools: list[ConnectorTool] | None = None) -> ConnectorOut:

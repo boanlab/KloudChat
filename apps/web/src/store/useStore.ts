@@ -3147,6 +3147,7 @@ function toConnector(c: ConnectorRow): Connector {
     })),
     envKeys: c.envKeys ?? [],
     official: c.official,
+    byDefault: !!c.byDefault,
     icon: '🔌',
     color: '#6b7280',
     lastSyncAt: c.lastSyncAt,
