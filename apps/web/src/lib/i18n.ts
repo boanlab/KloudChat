@@ -14,6 +14,7 @@ const EN: Record<string, string> = {
   '스킬을 추가하지 못했습니다.': 'Could not add the skill.',
   '공식 스킬 · 고르면 내 스킬에 추가됩니다': 'Official skills · picking one adds it to your skills',
   '추가하는 중…': 'Adding…',
+  '스킬을 추가하면 바로 보냅니다': 'Sends as soon as the skill is added',
   '쓸 템플릿': 'Template to write in',
   '보고서·발표에서 이 스킬을 켜고 템플릿을 고르지 않았으면 이 템플릿에 씁니다.': 'When this skill is on in a report or deck and no template is picked, it writes in this one.',
   '켜면 붙는 검사': 'Checks it brings',

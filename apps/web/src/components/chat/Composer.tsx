@@ -993,6 +993,8 @@ export function Composer({
   const readingAttachment = attachments.find(isReading)
   /** Enter pressed while a file uploads or the models load: sent as soon as that ends. */
   const [queuedSend, setQueuedSend] = useState(false)
+  // An official skill being added: a send waits for it, so the skill is on that turn.
+  const [adding, setAdding] = useState<string | null>(null)
   /** A new conversation's first turn: the text stays in the box until the server takes it. */
   const [startPending, setStartPending] = useState(false)
   const holdingStart = useRef(false)
@@ -1328,7 +1330,7 @@ export function Composer({
       setChatError(t('질문은 200,000자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.'))
       return
     }
-    if (text && !spoken && !editing && !busy && (uploading || awaitingModels)) {
+    if (text && !spoken && !editing && !busy && (uploading || awaitingModels || adding !== null)) {
       setQueuedSend(true)
       return
     }
@@ -1579,11 +1581,11 @@ export function Composer({
 
   // A queued Enter goes out once the upload or the model list is done.
   useEffect(() => {
-    if (!queuedSend || uploading || awaitingModels) return
+    if (!queuedSend || uploading || awaitingModels || adding !== null) return
     submit()
     // `submit` reads the latest render; the gates decide when.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queuedSend, uploading, awaitingModels])
+  }, [queuedSend, uploading, awaitingModels, adding])
   // Another conversation or surface: nothing held from the last one applies.
   useEffect(() => {
     holdingStart.current = false
@@ -1620,7 +1622,6 @@ export function Composer({
       (s.kinds.length === 0 || s.kinds.includes(kind)) &&
       (agentSkillAllowlist === undefined || agentSkillAllowlist === null),
   )
-  const [adding, setAdding] = useState<string | null>(null)
   const addOfficial = async (s: Skill) => {
     if (adding) return
     setAdding(s.id)
@@ -2463,7 +2464,9 @@ export function Composer({
           <span className="min-w-0 flex-1">
             {uploading
               ? t('첨부를 다 올리면 바로 보냅니다')
-              : t('모델을 불러오면 바로 보냅니다')}
+              : adding !== null
+                ? t('스킬을 추가하면 바로 보냅니다')
+                : t('모델을 불러오면 바로 보냅니다')}
           </span>
           <button type="button" onClick={() => setQueuedSend(false)} className="shrink-0 underline">
             {t('취소')}
