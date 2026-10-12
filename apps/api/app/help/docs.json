@@ -480,7 +480,7 @@
 "path": "chat/bots",
 "title": "챗봇 공개",
 "heading": "구성원 쪽에서",
-"text": "구성원 공개(외부 공개 포함)한 챗봇은 다른 구성원에게 에이전트로 보입니다. 따로 챗봇 메뉴는 없습니다.\n\n- **사용자 지정** → **에이전트** → **탐색**의 **공유된 에이전트**에 만든 사람의 이름과 함께 나옵니다. 모두에게 공개한 에이전트도 같은 곳에 있고, 둘 다 해당하는 에이전트는 한 번만 나옵니다.\n- 입력창 **+** → **에이전트**에서도 내 에이전트 아래 **공유된 에이전트**로 고릅니다.\n- **체험**이나 이름을 누르면 챗봇 페이지에서 대화합니다. 답하는 데 드는 크레딧은 공개한 사람의 것입니다.\n- **추가**를 누르면 공개된 판의 지시와 설정이 내 에이전트로 복사됩니다. 자료(지식 파일)는 오지 않습니다. 만든 사람이 지시를 비공개로 둔 에이전트는 복사할 수 없습니다."
+"text": "구성원 공개(외부 공개 포함)한 챗봇은 다른 구성원에게 에이전트로 보입니다. 따로 챗봇 메뉴는 없습니다.\n\n- **사용자 지정** → **에이전트** → **탐색**의 **공유된 에이전트**에 만든 사람의 이름과 함께 나옵니다. 모두에게 공개한 에이전트도 같은 곳에 있고, 둘 다 해당하는 에이전트는 한 번만 나옵니다.\n- 입력창 **+** → **에이전트**에서도 내 에이전트 아래 **공유된 에이전트**로 고릅니다.\n- **바로 쓰기**이나 이름을 누르면 챗봇 페이지에서 대화합니다. 답하는 데 드는 크레딧은 공개한 사람의 것입니다.\n- **추가**를 누르면 공개된 판의 지시와 설정이 내 에이전트로 복사됩니다. 자료(지식 파일)는 오지 않습니다. 만든 사람이 지시를 비공개로 둔 에이전트는 복사할 수 없습니다."
 },
 {
 "lang": "ko",
@@ -1768,7 +1768,7 @@
 "path": "chat/bots",
 "title": "Publishing a chatbot",
 "heading": "On a member's side",
-"text": "A chatbot published to members (or to the public) shows to other members as an agent. There is no separate chatbot menu.\n\n- It is listed under **Shared agents** in **Customize** → **Agents** → **Explore**, with its publisher's name. Agents shared with everyone sit in the same place, and an agent that is both shows once.\n- In the composer, **+** → **Agents** lists it under **Shared agents**, below your own agents.\n- **Try** or its name opens a conversation on the chatbot page. Answers spend the publisher's credits.\n- **Add** copies the published version's instructions and settings as your own agent. Material (knowledge files) does not come along. An agent whose maker keeps the instructions private cannot be copied."
+"text": "A chatbot published to members (or to the public) shows to other members as an agent. There is no separate chatbot menu.\n\n- It is listed under **Shared agents** in **Customize** → **Agents** → **Explore**, with its publisher's name. Agents shared with everyone sit in the same place, and an agent that is both shows once.\n- In the composer, **+** → **Agents** lists it under **Shared agents**, below your own agents.\n- **Use now** or its name opens a conversation on the chatbot page. Answers spend the publisher's credits.\n- **Add** copies the published version's instructions and settings as your own agent. Material (knowledge files) does not come along. An agent whose maker keeps the instructions private cannot be copied."
 },
 {
 "lang": "en",

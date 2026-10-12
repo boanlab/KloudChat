@@ -69,7 +69,7 @@ A chatbot published to members (or to the public) shows to other members as an a
 
 - It is listed under **Shared agents** in **Customize** → **Agents** → **Explore**, with its publisher's name. Agents shared with everyone sit in the same place, and an agent that is both shows once.
 - In the composer, **+** → **Agents** lists it under **Shared agents**, below your own agents.
-- **Try** or its name opens a conversation on the chatbot page. Answers spend the publisher's credits.
+- **Use now** or its name opens a conversation on the chatbot page. Answers spend the publisher's credits.
 - **Add** copies the published version's instructions and settings as your own agent. Material (knowledge files) does not come along. An agent whose maker keeps the instructions private cannot be copied.
 
 ## On the visitor's side

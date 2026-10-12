@@ -586,7 +586,7 @@ test('members find published agents among the shared agents, open one and copy i
   await expect(card.getByLabel('학사 안내 추가됨')).toBeVisible()
   expect(writes.some((w) => w.method === 'POST' && w.path === `/bots/${SLUG}/copy`)).toBe(true)
 
-  await card.getByRole('button', { name: '학사 안내 체험' }).click()
+  await card.getByRole('button', { name: '학사 안내 바로 쓰기' }).click()
   await expect(page).toHaveURL(new RegExp(`/b/${SLUG}$`))
   // Back from the bot page: the shared agents, not a chatbot list.
   await expect(page.getByRole('link', { name: '공유된 에이전트로' })).toHaveAttribute('href', '/customize?tab=agents&view=explore')
