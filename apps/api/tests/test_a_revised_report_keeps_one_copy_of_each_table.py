@@ -40,6 +40,18 @@ BUDGET_BODY = """- 운영 실적
 - 편성 24,500천원 / 집행 22,820천원 / 잔액 1,680천원(집행률 93.1%)"""
 
 
+
+def _unfenced(content: str) -> str:
+    """Section body as tidied: a ```markdown wrapper is unwrapped."""
+    text = content.strip()
+    if text.startswith("```markdown") and text.endswith("```"):
+        text = text[len("```markdown"):-3].strip()
+    return text
+
+
+def _unfenced_sections(sections: list[dict]) -> list[dict]:
+    return [{**section, "content": _unfenced(section["content"])} for section in sections]
+
 def _texts(sections):
     return [str(s.get("content") or "") for s in sections]
 
@@ -132,7 +144,7 @@ def test_the_budget_request_edits_the_budget_table_in_its_own_part(monkeypatch):
     asyncio.run(_run(bundle))
     sections = bundle.document.sections
     assert bundle.plan.revision.targets == [2] and bundle.plan.widened == []
-    assert sections[0]["content"] == V1[0]["content"]
+    assert sections[0]["content"] == _unfenced(V1[0]["content"])
     whole = "\n".join(_texts(sections))
     tables = [m.group(0) for m in revised_tables.TABLE.finditer(whole)]
     assert sum("| 강사비 |" in t for t in tables) == 1
@@ -160,4 +172,4 @@ def test_the_title_request_renames_the_document_not_a_part(monkeypatch):
     asyncio.run(_run(title_only))
     assert title_only.plan.title == "2026 하계 SW 캠프 운영 결과 보고"
     assert title_only.document.changed == 1
-    assert title_only.document.sections == V1
+    assert title_only.document.sections == _unfenced_sections(V1)

@@ -6535,7 +6535,7 @@ async def _revision_plan(
     if not skeleton:
         return None, []
     rename = (revise.title_rename(instruction, skeleton)
-              if artifact.kind != ArtifactKind.deck else None)
+              if getattr(artifact, "kind", None) != ArtifactKind.deck else None)
     if rename is not None and rename[1] is None:
         # the document's title is renamed by hand; the rest is planned without it
         instruction = revise.without_title_clause(instruction)
