@@ -1226,7 +1226,9 @@ templates are in `design_templates.RETIRED_KEPT` and their formats in `doc_forma
 A
 prompt's `[채팅에서]` / `[보고서에서]` / `[슬라이드에서]` lines ("in chat", "in reports",
 "in slides") open parts read
-on that surface only (`workspace_context.surface_prompt`).
+on that surface only (`workspace_context.surface_prompt`); `[보고서·슬라이드에서]` names two.
+A skill body uses the same lines (`surface_body`), so one skill can tell a chat answer to run
+its script and a report writer to copy the server's pre-pass block.
 `seed_catalog` syncs the catalogue on the owner's sign-in and deletes the
 owner's rows whose `catalog_key` is not shipped at all (a key still in a file with
 `retired = true` is kept, hidden); copies people installed are theirs and stay. Sharing is set on the first run only (told apart by a

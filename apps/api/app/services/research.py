@@ -220,7 +220,7 @@ async def available() -> bool:
     return bool(backends.search)
 
 
-def _parse_queries(text: str, request: str) -> list[str]:
+def _parse_queries(text: str, request: str, most: int = MAX_QUERIES) -> list[str]:
     """Planned queries, else the request."""
     block = text[text.find("[") : text.rfind("]") + 1] if "[" in text and "]" in text else ""
     try:
@@ -230,7 +230,7 @@ def _parse_queries(text: str, request: str) -> list[str]:
     if not isinstance(parsed, list):
         return [request[:300]]
     queries = [str(q).strip()[:200] for q in parsed if str(q).strip()]
-    return queries[:MAX_QUERIES] or [request[:300]]
+    return queries[:most] or [request[:300]]
 
 
 async def literature_queries(request: str, model: str, api_key: str) -> list[str]:
@@ -240,7 +240,8 @@ async def literature_queries(request: str, model: str, api_key: str) -> list[str
 
 
 async def _plan(
-    request: str, model: str, api_key: str, *, scholarly: bool = False
+    request: str, model: str, api_key: str, *, scholarly: bool = False,
+    most: int = MAX_QUERIES,
 ) -> tuple[list[str], dict[str, int]]:
     """Search terms; request on failure."""
     spent = {"inputTokens": 0, "outputTokens": 0}
@@ -265,7 +266,7 @@ async def _plan(
                                     n=_SCHOLAR_QUERIES, request=request[:2000]
                                 )
                                 if scholarly
-                                else _PLAN_PROMPT.format(n=MAX_QUERIES, request=request[:2000])
+                                else _PLAN_PROMPT.format(n=most, request=request[:2000])
                             ),
                         }
                     ],
@@ -284,7 +285,7 @@ async def _plan(
         "outputTokens": int(raw.get("completion_tokens") or 0),
     }
     text = (payload["choices"][0]["message"]["content"] or "").strip()
-    queries = _parse_queries(text, request)
+    queries = _parse_queries(text, request, most)
     if scholarly:
         # Planner cap = literature mode's.
         block = text[text.find("[") : text.rfind("]") + 1] if "[" in text else ""
@@ -419,13 +420,18 @@ async def run(
     api_key: str = "",
     max_sources: int = MAX_SOURCES,
     scholarly: bool = False,
+    deep: bool = False,
 ) -> Findings:
-    """Plan, search concurrently, read top pages. Never raises."""
+    """Plan, search concurrently, read top pages; `deep` doubles queries and sources.
+    Never raises."""
     backends = await settings_store.tools_config()
     if not backends.search:
         return Findings()
 
-    queries, spent = await _plan(request, model, api_key, scholarly=scholarly)
+    if deep:
+        max_sources *= 2
+    queries, spent = await _plan(request, model, api_key, scholarly=scholarly,
+                                 most=MAX_QUERIES * (2 if deep else 1))
     if scholarly:
         max_sources = max(max_sources, _SCHOLAR_SOURCES)
     # Korean-scholarship requests add a Korean papers query.

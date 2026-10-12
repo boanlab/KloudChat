@@ -167,6 +167,7 @@ from app.services.workspace_context import (
     design_for,
     file_budget,
     reads_pictures,
+    surface_body,
 )
 
 log = logging.getLogger(__name__)
@@ -325,7 +326,7 @@ async def _skill_shelf(
             continue
         if not _agent_allows_skill(agent, skill):
             continue
-        shelf.append((skill.name, skill.when_to_use, skill.body))
+        shelf.append((skill.name, skill.when_to_use, surface_body(skill.body, SessionKind.chat)))
         if len(shelf) >= _SKILL_SHELF_LIMIT:
             break
     return shelf
@@ -2095,7 +2096,7 @@ async def _template_skills(
         if skill.required_tools and kind is not SessionKind.chat:
             continue
         head = f"# 서식 스킬 — {skill.name}"
-        body = skill.body.strip() or skill.description.strip()
+        body = surface_body(skill.body.strip(), kind) or skill.description.strip()
         blocks.append(f"{head}\n{body}" if body else head)
         applied.append(
             {

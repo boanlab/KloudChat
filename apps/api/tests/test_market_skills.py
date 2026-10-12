@@ -56,7 +56,8 @@ def test_the_market_skills_ship_as_drafts_with_their_source():
         searches = key in ("company-research", "competitor-analysis", "competitive-battlecard")
         assert package.required_tools == (("run_skill_script", "web_search", "fetch_url")
                                           if searches else ("run_skill_script",)), key
-        assert package.kinds == ("chat",), key
+        # source-check also guides a report writer on sourcing
+        assert package.kinds == (("chat", "report") if key == "source-check" else ("chat",)), key
         assert "출처:" in package.body, key
         # Korean front matter, English instructions.
         assert any("가" <= ch <= "힣" for ch in package.name), key

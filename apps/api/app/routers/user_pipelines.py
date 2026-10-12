@@ -89,7 +89,8 @@ def _output(agent: Agent) -> str:
 
 async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
     """Agents `user` may run as a step: own and organisation's."""
-    from app.services.workspace_context import agent_skill_rows
+    from app.models.chat import SessionKind
+    from app.services.workspace_context import agent_skill_rows, surface_body
 
     rows = list((await db.exec(
         select(Agent).where((Agent.owner_id == user.id) | (Agent.visibility == Visibility.org),
@@ -131,8 +132,11 @@ async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
         # sealed copy: original's prompt
         prompt = (origin.system_prompt if agent.sealed and origin is not None
                   else agent.system_prompt)
+        surface = agent.surface or next(iter(agent.kinds or []), None) or "chat"
+        kind = next((k for k in SessionKind if k.value == surface), SessionKind.chat)
         for skill in built.get(agent.id, []):
-            if body := (skill.body or "").strip():
+            # this step's surface reading: a part for another would swallow what follows it
+            if body := surface_body(skill.body or "", kind):
                 prompt = f"{prompt or ''}\n\n# 스킬 — {skill.name}\n{body}".strip()
         template = design_templates.get(agent.render_template_id) \
             if agent.render_template_id else None

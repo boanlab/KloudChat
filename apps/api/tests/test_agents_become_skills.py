@@ -58,9 +58,11 @@ def test_the_skill_carries_what_the_agent_did(agent, key):
         assert spec["system_prompt"].split("1.")[0] in package.body
         assert "search_knowledge" in package.body
     else:
-        assert package.body == spec["system_prompt"]
-    # where it writes: the agent's surface and template
-    assert list(package.kinds) == [spec["surface"]]
+        # what the agent's own surface reads (a `[채팅에서]` part is for chat)
+        surface = SessionKind(spec["surface"])
+        assert workspace_context.surface_body(package.body, surface) == spec["system_prompt"]
+    # where it writes: the agent's surface first, and its template
+    assert package.kinds[0] == spec["surface"]
     assert made.template == (spec.get("template") or "")
     # the checks its 묶음 compiled to (the template's own come with the template)
     template = design_templates.get(made.template) if made.template else None

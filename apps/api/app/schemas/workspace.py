@@ -482,6 +482,19 @@ class MemoryIn(Wire):
     pinned: bool = False
 
 
+class SkillWarning(Wire):
+    """A skill the agent names that applies on none of its surfaces
+    (`workspace_context.off_surface`)."""
+
+    skill_id: str
+    name: str
+    #: `active` (kept on) or `available` (picked per turn)
+    place: str
+    skill_kinds: list[str]
+    agent_kinds: list[str]
+    message: str
+
+
 class AgentOut(Wire):
     id: str
     name: str
@@ -544,6 +557,8 @@ class AgentOut(Wire):
     owner_id: str
     owner_name: str = ""
     updated_at: datetime
+    #: on save only: skills that will not apply on the agent's surfaces
+    skill_warnings: list[SkillWarning] = Field(default_factory=list)
 
     @classmethod
     def of(

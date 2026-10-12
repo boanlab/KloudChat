@@ -75,3 +75,19 @@ of shipped agents):
 | `process`       | process settings (`search`, `draws`, …), under an agent's own             |
 
 The same fields are set in the skill form and in an uploaded SKILL.md.
+
+A skill's `process` lists (`prepass`, `checks`, `stages`, …) join the 서식's instead of replacing
+them, so `date-calc` on a report adds its pre-pass to whatever the template already runs; its
+single values (`search`, `deep_search`, `draws`, …) sit under the agent's own.
+
+## Every surface it names
+
+`kinds` is where a skill applies; an agent's kept-on skill outside every surface of the agent
+is skipped there, and the agent form and the save response (`skillWarnings`) say so. A skill
+meant for both a chat answer and a document ends its body with the parts only one surface
+reads, under the same lines an agent's prompt uses: `[채팅에서]`, `[보고서에서]`,
+`[슬라이드에서]`, or `[보고서·슬라이드에서]` for both documents
+(`workspace_context.surface_body`); what comes before the first such line is read everywhere.
+Document writers run no tools, so a skill whose work is a script there either brings the server
+step that does it (`process.prepass`, `checks`, `stage`) or tells the writer which server block
+to copy from.

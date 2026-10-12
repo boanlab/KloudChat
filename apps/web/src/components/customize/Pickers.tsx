@@ -1,10 +1,11 @@
 import { ChevronDown, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Input } from '@/components/ui'
+import { kindMeta } from '@/lib/kinds'
 import { isListed } from '@/lib/listed'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
-import type { Skill, ToolCatalogEntry } from '@/types'
+import type { SessionKind, Skill, ToolCatalogEntry } from '@/types'
 
 const BUILTIN = '기본 도구'
 
@@ -344,6 +345,33 @@ export function SkillPicker({
 }
 
 /** The skills an agent keeps on in every turn: what it is built from (at most six). */
+/** Chosen skills whose `kinds` share no surface with the agent: they are skipped there. */
+function skillsOffSurface(ids: string[], skills: Skill[], surfaces: SessionKind[]): Skill[] {
+  return ids
+    .map((id) => skills.find((s) => s.id === id))
+    .filter((s): s is Skill => !!s && s.kinds.length > 0 && !s.kinds.some((k) => surfaces.includes(k)))
+}
+
+/** Says which chosen skills none of the agent's surfaces will run, and why. */
+export function OffSurfaceNote({ ids, skills, surfaces }: { ids: string[]; skills: Skill[]; surfaces: SessionKind[] }) {
+  const t = useT()
+  const off = skillsOffSurface(ids, skills, surfaces)
+  if (off.length === 0) return null
+  const words = (kinds: SessionKind[]) => kinds.map((k) => t(kindMeta[k].label)).join('·')
+  return (
+    <ul role="status" data-testid="skill-surface-warning" className="space-y-1 rounded-control border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn">
+      {off.map((s) => (
+        <li key={s.id}>
+          {t('「{name}」 스킬은 {skill} 화면에서만 쓰여 이 에이전트의 화면({agent})에서는 적용되지 않습니다. 고급 › 사용할 화면에서 {skill} 화면을 더하거나 스킬을 빼세요.')
+            .replace('{name}', s.name)
+            .replaceAll('{skill}', words(s.kinds))
+            .replace('{agent}', words(surfaces))}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function ActiveSkillPicker({
   value,
   onChange,
