@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test:config": "node --test tests/vite-config.test.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:ci": "playwright test --config playwright.ci.config.ts",
     "test:personas": "playwright test e2e/personas.spec.ts --reporter=list",
     "test:auth": "playwright test e2e/auth.spec.ts --project=desktop --reporter=list",
     "test:chat": "playwright test e2e/chat.spec.ts --project=desktop --reporter=list",

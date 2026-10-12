@@ -46,81 +46,51 @@ jobs:
       - name: Typecheck and build
         run: npm run build
 
-      - name: Install presentation test browser
+  # The fixture suite (`apps/web/playwright.ci.config.ts`): one build and one
+  # `vite preview` per job, the projects split over four jobs. Each job builds for
+  # itself: `vite build` is shorter than passing `dist/` between jobs.
+  web-e2e:
+    name: Web · e2e ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1/4, 2/4, 3/4, 4/4]
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+
+      # The type check runs once, in the job above.
+      - name: Build
+        run: npx vite build
+
+      - name: Install test browser
         run: npx playwright install --with-deps chromium
 
-      - name: Test freshness policy feedback
-        run: npx playwright test --config playwright.freshness.config.ts --workers=1
+      # One retry: a test that passes only on retry is reported as flaky (a warning
+      # annotation and the HTML report), not hidden.
+      - name: Test
+        env:
+          E2E_PREBUILT: '1'
+        run: npx playwright test --config playwright.ci.config.ts --shard=${{ matrix.shard }}
 
-      - name: Test message editing and resend
-        run: npx playwright test --config playwright.edit-resend.config.ts --workers=1
-
-      - name: Test Auto routing badge geometry
-        run: npx playwright test --config playwright.auto-badge.config.ts --workers=1
-
-      - name: Test slide presentation layout
-        run: npx playwright test --config playwright.presentation.config.ts --workers=1
-
-      - name: Test calculation routing feedback
-        run: npx playwright test --config playwright.calculation.config.ts --workers=1
-
-      - name: Test phone media-query boundaries
-        run: npx playwright test --config playwright.phone.config.ts --workers=1
-
-      - name: Test the composer's + menu and phone layout
-        run: npx playwright test --config playwright.composer.config.ts --workers=1
-
-      - name: Test English audit authentication gates
-        run: npx playwright test --config playwright.i18n-gates.config.ts --workers=1
-
-      - name: Test report edit restoration
-        run: npx playwright test --config playwright.report-table.config.ts --workers=1
-
-      - name: Test session metadata hydration
-        run: npx playwright test --config playwright.session-hydration.config.ts --workers=1
-
-      # Every report-panel tab, control, view switch, panel, error state and the sign-in
-      # landing, against a stored report: what a person clicks through before trusting it.
-      - name: Test report panel walkthrough and error states
-        run: npx playwright test --config playwright.report-audit.config.ts --workers=1
-
-      - name: Test search masking feedback
-        run: npx playwright test --config playwright.search-masking.config.ts
-
-      - name: Test artifact source downloads
-        run: npx playwright test --config playwright.artifact-source.config.ts
-
-      - name: Test the audit log screen
-        run: npx playwright test --config playwright.audit-log.config.ts --workers=1
-
-      - name: Test settings › 보안 paging
-        run: npx playwright test --config playwright.security.config.ts --workers=1
-
-      - name: Test pipeline stages and user flows
-        run: npx playwright test --config playwright.pipeline.config.ts --workers=1
-
-      - name: Test issue reports
-        run: npx playwright test --config playwright.issues.config.ts --workers=1
-
-      - name: Test the 사용자 지정 hub
-        run: npx playwright test --config playwright.customize.config.ts --workers=1
-      - name: Test an agent's 진행 과정, 묶음 and 에이전트로 저장
-        run: npx playwright test --config playwright.agents.config.ts --workers=1
-
-      - name: Test result cards, panel headers and reuse
-        run: npx playwright test --config playwright.results.config.ts --workers=1
-
-      - name: Test the search dialog and 대화 기록 search
-        run: npx playwright test --config playwright.search.config.ts --workers=1
-
-      - name: Test 공개 챗봇 (publish dialog, bot page, dashboard, members' list)
-        run: npx playwright test --config playwright.publishing.config.ts --workers=1
-
-      - name: Test 글자 읽기 (scanned attachment progress, admin OCR card)
-        run: npx playwright test --config playwright.ocr.config.ts --workers=1
-
-      - name: Test form errors, focus and keyboard (sign-in, credits, drawer, menus, shortcuts)
-        run: npx playwright test --config playwright.ux.config.ts --workers=1
+      - name: Upload report and traces
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-report-${{ strategy.job-index }}
+          path: apps/web/playwright-report/
+          retention-days: 7
 
   api:
     name: API · lint, tests

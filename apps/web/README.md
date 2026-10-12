@@ -86,19 +86,27 @@ rather than in a cookie. The exception is deliberate and confined to
 npx playwright install chromium   # once
 ```
 
-**Focused configs** (`playwright.<name>.config.ts`) need no stack. Each starts its
-own Vite server (dev, or `build` + `preview`) on a fixed port, points
-`API_BASE_URL` at an unused port and answers the API with `page.route` fixtures
-(`e2e/*-fixture.ts`, `e2e/shell-mocks.ts`, `e2e/fixtures/`). CI runs them one by
-one (`.github/workflows/ci.yml`):
+**The fixture suite** (`playwright.ci.config.ts`) needs no stack. It builds the
+app, serves it once with `vite preview` on port 5390 (`E2E_PORT` to change it),
+points `API_BASE_URL` at an unused port and answers the API with `page.route`
+fixtures (`e2e/*-fixture.ts`, `e2e/shell-mocks.ts`, `e2e/fixtures/`). Its projects
+are `<surface>/<viewport>` (`customize/desktop`, `customize/phone`, …); each
+surface lists its spec files and the viewports it is checked at. CI splits the
+projects over four jobs with `--shard` (`.github/workflows/ci.yml`):
 
 ```bash
-npx playwright test --config playwright.freshness.config.ts --workers=1
+npm run test:e2e:ci                                                   # the whole suite
+npx playwright test -c playwright.ci.config.ts e2e/publishing.spec.ts # one file, all its viewports
+npx playwright test -c playwright.ci.config.ts --project='customize/*' # one surface
+npx playwright test -c playwright.ci.config.ts --shard=2/4            # what CI job 2 runs
+E2E_PREBUILT=1 npx playwright test -c playwright.ci.config.ts         # serve the dist/ you already built
 ```
 
-Exceptions: `playwright.chat-errors.config.ts` signs in to a running app and fakes
-only the turn's stream; `playwright.admin-models.config.ts` is fixture-only but
-not in CI. `ocr` and `ux` share port 5361, so run them one after the other.
+A new fixture spec goes into a surface in `playwright.ci.config.ts`, or CI never
+runs it. The report is in `playwright-report/` (`npx playwright show-report`).
+
+Exception: `playwright.chat-errors.config.ts` signs in to a running app and fakes
+only the turn's stream, so it stays out of CI.
 
 **The default config** (`playwright.config.ts`) runs the remaining specs against a
 running stack at `http://localhost:5173` with a seeded account

@@ -112,7 +112,7 @@ Four layers, in increasing cost:
 | Layer | Command | Needs |
 | --- | --- | --- |
 | Unit | `pytest -q` in `apps/api` | nothing |
-| Web focused | `npx playwright test --config playwright.<name>.config.ts` in `apps/web` | nothing — each starts its own Vite server and stubs the API, as in CI |
+| Web fixture suite | `npm run test:e2e:ci` in `apps/web` (one file: `npx playwright test -c playwright.ci.config.ts e2e/<name>.spec.ts`) | nothing — it serves a build and stubs the API, as in CI |
 | API integration | `bash scripts/smoke-test.sh` | a running stack + an admin account |
 | Browser | `npx playwright test` in `apps/web` | a running stack + a seeded account |
 

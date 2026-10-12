@@ -153,13 +153,16 @@ No services required.
 
 ```bash
 cd apps/web
-npx playwright test --config playwright.freshness.config.ts
+npm run test:e2e:ci                                                    # whole suite
+npx playwright test -c playwright.ci.config.ts e2e/publishing.spec.ts  # one file
+npx playwright test -c playwright.ci.config.ts --shard=1/4             # one CI shard
 ```
 
-The `playwright.<name>.config.ts` files are what CI runs. Each starts its own
-Vite server on a fixed port and stubs the API with route handlers, so no stack
-or account is needed. [apps/web/README.md](../apps/web/README.md) lists the
-exceptions.
+`playwright.ci.config.ts` is what CI runs, split over four jobs. It builds the
+app once, serves it with `vite preview` on port 5390 and stubs the API with
+route handlers, so no stack or account is needed. Projects are
+`<surface>/<viewport>`; [apps/web/README.md](../apps/web/README.md) has the
+details and the one config that stays out of CI.
 
 ### API integration
 

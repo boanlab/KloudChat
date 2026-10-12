@@ -1701,7 +1701,7 @@ still in flight — otherwise a late response overwrites the local write.
 ```bash
 cd apps/api && pytest -q             # unit and pipeline tests, no services
 bash scripts/smoke-test.sh           # auth, approval, rotation and suspension checks (non-destructive)
-cd apps/web && npx playwright test --config playwright.<name>.config.ts   # focused, API stubbed (CI)
+cd apps/web && npm run test:e2e:ci   # fixture suite, API stubbed (CI)
 cd apps/web && npx playwright test   # full E2E against a running stack — pinned to workers: 1
 ```
 
