@@ -656,13 +656,78 @@ async def _agent_skills(
     return out
 
 
-def _skill_blocks(resolved: list[tuple[Skill, dict]]) -> list[ContextBlock]:
+#: a line telling the reader to call a tool or run a script
+_TOOL_STEP = re.compile(
+    r"(?<![A-Za-z_])(?:run_skill_script|run_code|execute_code|use_skill|web_search|fetch_url"
+    r"|mcp__[A-Za-z0-9_-]{1,80})(?![A-Za-z_])|`calculate`|^\s{0,8}CLI\s{0,2}:"
+    r"|`python\s[^`\n]{1,80}`", re.M)
+#: developer-facing section of a skill body (the server's own interface)
+_INTERFACE_HEADING = re.compile(r"^#{2,4}\s.*(?:인터페이스|interface)", re.I)
+_ITEM_START = re.compile(r"^\s{0,12}(?:[-*+]|\d{1,3}[.)])\s")
+_HEADING = re.compile(r"^#{1,6}\s")
+#: told to document writers in place of the skill's tool steps
+NO_TOOLS_NOTE = (
+    "This skill's scripts are run by the server around the writing, not by you: there are no "
+    "tools while you write. Never write a tool call, a script call or its JSON into the document; "
+    "write only the document's prose (「…」 blanks where a fact is missing).")
+
+
+def _units(body: str) -> list[list[str]]:
+    """Body cut into headings, list items with their indented lines, and paragraphs."""
+    out: list[list[str]] = []
+    indent = 0
+    for line in body.split("\n"):
+        if not line.strip():
+            out.append([line])
+            continue
+        depth = len(line) - len(line.lstrip())
+        current = out[-1] if out and out[-1][0].strip() else None
+        starts = bool(_HEADING.match(line) or _ITEM_START.match(line))
+        joins = current is not None and not _HEADING.match(current[0]) and (
+            depth > indent or (not starts and not _ITEM_START.match(current[0])))
+        if joins:
+            current.append(line)
+            continue
+        out.append([line])
+        indent = depth
+    return out
+
+
+def tool_free_body(body: str) -> str:
+    """Skill body for a writer with no tools: tool and script steps and the server's interface
+    section left out, the writing guidance kept."""
+    if not _TOOL_STEP.search(body or "") and not _INTERFACE_HEADING.search(body or ""):
+        return body
+    kept: list[str] = []
+    skipping = 0
+    for unit in _units(body):
+        head = unit[0]
+        if _HEADING.match(head):
+            level = len(head) - len(head.lstrip("#"))
+            if skipping and level > skipping:
+                continue
+            skipping = level if _INTERFACE_HEADING.match(head) else 0
+            if skipping:
+                continue
+        elif skipping or _TOOL_STEP.search("\n".join(unit)):
+            continue
+        kept.extend(unit)
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+    # a heading left with nothing under it
+    return re.sub(r"(?m)^#{1,6}\s[^\n]*\n*(?=^#{1,6}\s|\Z)", "", text).strip()
+
+
+def _skill_blocks(resolved: list[tuple[Skill, dict]],
+                  kind: SessionKind = SessionKind.chat) -> list[ContextBlock]:
     blocks: list[ContextBlock] = []
     for skill, metadata in resolved:
         head = f"# 활성 스킬 — {skill.name}"
         if skill.when_to_use.strip():
             head += f"\n적용 시점: {skill.when_to_use.strip()}"
         body = skill.body.strip() or skill.description.strip()
+        if kind is not SessionKind.chat and metadata.get("required_tools"):
+            # document writers run no tools; the server runs the skill's checks
+            body = "\n\n".join(p for p in (tool_free_body(body), NO_TOOLS_NOTE) if p)
         if metadata.get("material_only"):
             body = f"{body}\n\n{MATERIAL_ONLY_NOTE}"
         blocks.append(
@@ -823,7 +888,7 @@ async def assemble(
         blocks.append(ContextBlock("project.instructions", instructions, True))
     if design_block := design_service.prompt_block(design, session.kind):
         blocks.append(ContextBlock("project.design", design_block, True))
-    blocks.extend(_skill_blocks(resolved))
+    blocks.extend(_skill_blocks(resolved, session.kind))
     if memories:
         blocks.append(ContextBlock("memory", memories, False))
 

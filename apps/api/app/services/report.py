@@ -2488,7 +2488,7 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
     """Deterministic mends rerun after rewriting passes."""
     tidied = []
     for sec in sections:
-        body = str(sec.get("content") or "")
+        body = internal_words.strip_tool_calls(str(sec.get("content") or ""))
         body = _JSON_PROSE_FENCE.sub(
             lambda m: unwrap_json_prose(m.group(1)) if unwrap_json_prose(m.group(1)) != m.group(1)
             else m.group(0), body)
@@ -3286,7 +3286,8 @@ async def rewrite_section(
         1200,
     )
     # same normalisation as `write`
-    body = hangul.tidy_spacing(hangul.read_back(_without_own_heading(body, heading))[0])
+    body = hangul.tidy_spacing(hangul.read_back(_without_own_heading(
+        internal_words.strip_tool_calls(body), heading))[0])
     target = next((s for s in sections if s.get("id") == target_id), {})
     others = [str(s.get("content") or "") for s in sections if s.get("id") != target_id]
     body = _without_borrowed_tables(body, target.get("content") or "", others, note)

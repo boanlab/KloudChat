@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 from app.services import units
@@ -179,5 +180,70 @@ def strip_tool_apologies(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).lstrip("\n")
 
 
+#: tool names a written-out call names
+_TOOL_NAME = re.compile(
+    r"(?<![A-Za-z_])(?:run_skill_script|run_code|execute_code|use_skill|calculate|web_search"
+    r"|fetch_url|mcp__[A-Za-z0-9_-]{1,80})(?![A-Za-z_])")
+#: fenced block, any language
+_FENCE = re.compile(r"^[ \t]{0,8}```[^\n`]{0,20}\n([\s\S]*?)\n[ \t]{0,8}```[ \t]{0,8}$", re.M)
+_DECODER = json.JSONDecoder()
+
+
+def _call_shaped(data: object) -> bool:
+    """A call to one of this app's tools written as JSON (`action_type`, `tool_calls`,
+    skill+script, or a named tool with its arguments)."""
+    if isinstance(data, list):
+        return bool(data) and all(_call_shaped(d) for d in data)
+    if not isinstance(data, dict):
+        return False
+    keys = set(data)
+    script = {"skill", "script"} <= keys
+    shaped = script or bool(keys & {"action_type", "tool_calls"}) or (
+        bool(keys & {"name", "tool", "function", "action"})
+        and bool(keys & {"arguments", "args", "parameters", "input"}))
+    return shaped and (script or bool(_TOOL_NAME.search(json.dumps(data, ensure_ascii=False))))
+
+
+def _json_at(text: str, at: int) -> tuple[object, int] | None:
+    try:
+        return _DECODER.raw_decode(text, at)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def has_tool_call(text: str) -> bool:
+    """Whether `text` holds a tool call written out as JSON (bare or fenced)."""
+    return strip_tool_calls(text) != (text or "")
+
+
+def strip_tool_calls(text: str) -> str:
+    """`text` minus tool calls written out as JSON: the fenced block or the bare object."""
+    if not text or "{" not in text or not (
+            _TOOL_NAME.search(text) or re.search(r'"(?:action_type|tool_calls|script)"', text)):
+        return text
+    out = _FENCE.sub(lambda m: "" if (got := _json_at(m.group(1).strip(), 0)) is not None
+                     and not m.group(1).strip()[got[1]:].strip() and _call_shaped(got[0])
+                     else m.group(0), text)
+    # bare objects starting a line
+    pieces: list[str] = []
+    at = 0
+    for m in re.finditer(r"^[ \t]{0,8}(?=[{\[])", out, re.M):
+        start = m.end()
+        if start < at:
+            continue
+        got = _json_at(out, start)
+        if got is None or not _call_shaped(got[0]):
+            continue
+        pieces.append(out[at:m.start()])
+        at = got[1]
+    if pieces or at:
+        pieces.append(out[at:])
+        out = "".join(pieces)
+    if out == text:
+        return text
+    return re.sub(r"\n{3,}", "\n\n", out).strip("\n")
+
+
 __all__ = ["DOCUMENT_TERMS", "JSON_LINE", "TERMS", "TOOL_APOLOGY", "TOOL_REPORT", "WRITER_NOTE",
-           "found", "scrub", "strip_reports", "strip_tool_apologies"]
+           "found", "has_tool_call", "scrub", "strip_reports", "strip_tool_apologies",
+           "strip_tool_calls"]
