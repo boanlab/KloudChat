@@ -284,6 +284,12 @@ function ReviewView({ id }: { id: string }) {
                   : t('새 판 확인 요청')}
               {data.version && ` · ${t('{n}판').replace('{n}', String(data.version.number))}`}
             </p>
+            {data.version?.note && (
+              <p className="text-sm" data-testid="admin-review-note">
+                <span className="text-faint">{t('바꾼 점 메모')}: </span>
+                {data.version.note}
+              </p>
+            )}
             {pub.requestedVisibility && <p className="text-sm text-muted">{t(VISIBILITY_HINT[pub.requestedVisibility])}</p>}
             {pub.requestedChannels && (
               <p className="text-sm" data-testid="admin-review-channels">

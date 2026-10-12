@@ -60,6 +60,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   const [bot, setBot] = useState<BotPageData | null>(null)
   const [missing, setMissing] = useState(false)
   const [rows, setRows] = useState<BotConversationRow[]>([])
+  const [listFailed, setListFailed] = useState(false)
   const [current, setCurrent] = useState<BotConversationRow | null>(null)
   const [turns, setTurns] = useState<Turn[]>([])
   const [text, setText] = useState('')
@@ -72,12 +73,15 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   const seq = useRef(0)
   const end = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
+  const focusOnConsent = useRef(false)
 
   const loadList = useCallback(async () => {
     try {
       setRows(await botsApi.conversations(slug))
+      setListFailed(false)
     } catch {
-      /* the list is a convenience; the page still works */
+      // The page still works; the list says it did not load instead of looking empty.
+      setListFailed(true)
     }
   }, [slug])
 
@@ -99,6 +103,15 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   }, [slug, loadList, t, authenticated])
 
   useNoIndex(bot?.visibility !== 'external')
+
+  // Focus the box once it is enabled: the clicked button is gone and the box was disabled.
+  const consented = bot?.consented ?? false
+  useEffect(() => {
+    if (consented && focusOnConsent.current) {
+      focusOnConsent.current = false
+      input.current?.focus()
+    }
+  }, [consented])
 
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: 'end' })
@@ -129,9 +142,8 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
     if (!bot) return
     try {
       await botsApi.consent(slug, bot.consentVersion)
+      focusOnConsent.current = true
       setBot({ ...bot, consented: true })
-      // The box was disabled until now.
-      window.requestAnimationFrame(() => input.current?.focus())
     } catch (err) {
       setError(botErrorMessage(err, t))
     }
@@ -148,6 +160,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
     setBusy(true)
     setText('')
     let conversation = current
+    let made = false
     const now = new Date().toISOString()
     seq.current += 1
     const answerId = `pending-${seq.current}`
@@ -162,6 +175,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
     try {
       if (!conversation) {
         conversation = await botsApi.start(slug)
+        made = true
         setCurrent(conversation)
       }
       const controller = new AbortController()
@@ -198,6 +212,11 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
         // Failed question goes back in the box.
         setTurns((all) => all.filter((turn) => turn.id !== answerId && turn.id !== questionId))
         setText(question)
+        if (made) {
+          // A refused first question leaves no conversation behind (the server drops it too).
+          conversation = null
+          setCurrent(null)
+        }
       }
     } finally {
       stopper.current = null
@@ -313,7 +332,16 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
       </Button>
       <p className="px-1 pt-2 text-sm font-medium text-faint">{t('내 대화')}</p>
       <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto" data-testid="bot-conversations">
-        {rows.length === 0 && <li className="px-1 text-sm text-faint">{t('아직 대화가 없습니다.')}</li>}
+        {listFailed ? (
+          <li className="flex flex-wrap items-center gap-x-2 px-1 text-sm text-danger" data-testid="bot-conversations-failed">
+            {t('불러오지 못했습니다.')}
+            <button type="button" className="text-accent underline hover:no-underline" onClick={() => void loadList()}>
+              {t('다시 시도')}
+            </button>
+          </li>
+        ) : (
+          rows.length === 0 && <li className="px-1 text-sm text-faint">{t('아직 대화가 없습니다.')}</li>
+        )}
         {rows.map((row) => (
           <li key={row.id}>
             <button
@@ -357,21 +385,23 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
             {bot.ownerName && bot.description && <span className="max-sm:hidden"> · {bot.description}</span>}
           </p>
         </div>
-        <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setListOpen((v) => !v)} aria-label={t('내 대화')} aria-expanded={listOpen}>
+        <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setListOpen((v) => !v)} aria-label={t('내 대화')} aria-expanded={listOpen}>
           <Menu size={17} />
         </Button>
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="w-64 shrink-0 border-r border-line p-3 max-sm:hidden">{list}</aside>
+        {/* Below md (a phone, or a laptop zoomed to 200%) the list is a drawer, not a column. */}
+        <aside className="w-64 shrink-0 border-r border-line p-3 max-md:hidden">{list}</aside>
         {listOpen && (
-          <div className="fixed inset-0 z-40 sm:hidden" role="dialog" aria-label={t('내 대화')}>
+          <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-label={t('내 대화')}>
             <div className="absolute inset-0 bg-black/40" onClick={() => setListOpen(false)} />
             <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-panel p-3 shadow-float">{list}</div>
           </div>
         )}
 
-        <main className="flex min-w-0 flex-1 flex-col">
+        {/* Before consent the notice and the box scroll as one page, so 「확인하고 시작」 is never squeezed under the box. */}
+        <main className={cn('flex min-w-0 flex-1 flex-col', !bot.consented && 'overflow-y-auto')}>
           {current && turns.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 text-sm">
               <span className="min-w-0 flex-1 truncate font-medium">{current.title || t('새 대화')}</span>
@@ -394,7 +424,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
             </div>
           )}
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
+          <div className={cn('px-4 py-6', bot.consented ? 'min-h-0 flex-1 overflow-y-auto' : 'flex-none')}>
             <div className="mx-auto max-w-3xl space-y-6">
               {bot.blocked && (
                 <p role="status" className="flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-base text-danger" data-testid="bot-blocked">

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import type { BotListItem } from '@/lib/api'
 import { agentKinds } from '@/lib/kinds'
 import { isListed } from '@/lib/listed'
-import { useMemberBots } from '@/lib/publishing'
+import { useMemberBots, useMemberBotsPending } from '@/lib/publishing'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind, Skill, StoreSkill } from '@/types'
 import type { ItemType } from './itemIcons'
@@ -158,6 +158,7 @@ export function useHubItems(tab: HubTab, showHidden = false) {
   const workspaceLoading = useStore((s) => s.workspaceLoading)
   const skillStoreLoaded = useStore((s) => s.skillStoreLoaded)
   const bots = useMemberBots()
+  const botsPending = useMemberBotsPending()
 
   const items = useMemo(() => {
     if (tab === 'agents') {
@@ -189,7 +190,8 @@ export function useHubItems(tab: HubTab, showHidden = false) {
     hiddenMine: items.mine.filter((i) => i.hidden).length,
     hiddenAny: items.mine.some((i) => i.hidden) || items.explore.some((i) => i.hidden),
     // Before the lists answer: loading, not empty.
-    loading: workspaceLoading || (tab === 'skills' && !skillStoreLoaded),
+    // 공유된 에이전트 waits for the published bots too, so the grid does not reflow when they arrive.
+    loading: workspaceLoading || (tab === 'skills' && !skillStoreLoaded) || (tab === 'agents' && botsPending),
   }
 }
 

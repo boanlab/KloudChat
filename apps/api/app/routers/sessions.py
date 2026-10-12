@@ -513,10 +513,15 @@ def _local_planner(
 
 
 async def _enrichment_model(writer: dict, *, strict_local: bool, disable_fallbacks: bool) -> dict:
-    """Catalogue row for titles and memory extraction; writer when `title_model` unset."""
-    if strict_local or disable_fallbacks:
+    """Catalogue row for titles and memory extraction; writer when `title_model` unset.
+    Strict-local: the chosen model's `strict-local/` twin, else the writer."""
+    if disable_fallbacks:
         return writer
     resolved = await model_service.resolve_enrichment_model()
+    if strict_local and resolved.startswith("local/"):
+        resolved = "strict-local/" + resolved.split("/", 1)[1]
+    elif strict_local and not resolved.startswith("strict-local/"):
+        return writer
     if not resolved or resolved == writer["id"]:
         return writer
     catalogue = await model_service.list_models()

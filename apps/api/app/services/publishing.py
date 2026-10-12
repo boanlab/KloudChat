@@ -11,6 +11,7 @@ import random
 import re
 import secrets
 import time
+import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -158,6 +159,27 @@ async def bump(db: AsyncSession, publication_id: str, window: str, key: str,
         set_={"value": table.c.value + statement.excluded.value},
     )
     await db.exec(statement)
+
+
+async def visitor_row(db: AsyncSession, publication_id: str, *, user_id: str | None = None,
+                      anon_id: str | None = None) -> tuple[PublicationVisitor, bool]:
+    """Bot visitor by account or anonymous id, inserted if absent → (row, inserted).
+    Insert-if-absent, so two first requests at once share one row. Caller commits."""
+    table = PublicationVisitor.__table__
+    conn = await db.connection()
+    insert = pg_insert if conn.dialect.name == "postgresql" else sqlite_insert
+    now = utcnow()
+    who = {"user_id": user_id} if user_id is not None else {"anon_id": anon_id}
+    statement = insert(table).values(
+        id=str(uuid.uuid4()), publication_id=publication_id, consent_version=0,
+        blocked=False, first_seen_at=now, last_seen_at=now, **who,
+    ).on_conflict_do_nothing(index_elements=["publication_id", next(iter(who))])
+    inserted = (await db.exec(statement)).rowcount == 1
+    match = (PublicationVisitor.user_id == user_id if user_id is not None
+             else PublicationVisitor.anon_id == anon_id)
+    row = (await db.exec(select(PublicationVisitor).where(
+        PublicationVisitor.publication_id == publication_id, match))).one()
+    return row, inserted
 
 
 async def counted(db: AsyncSession, publication_id: str, window: str, key: str) -> int:

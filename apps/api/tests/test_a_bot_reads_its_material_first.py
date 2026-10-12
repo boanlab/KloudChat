@@ -119,3 +119,64 @@ def test_the_bot_and_the_hold_say_not_found_in_the_same_words():
     hold = skill_scripts.entry("answer-hold")
     assert hold.NOT_FOUND == publishing.NOT_COVERED
     assert hold.message(_CONTACT) == publishing.not_covered_answer(_CONTACT)
+
+
+#: Right answers from the FAQ that leave out the passage number (R2O-01).
+_UNCITED = [
+    ("연체료 있나요?", "연체료는 없습니다. 대신 연체한 날수만큼 대출이 정지됩니다."),
+    ("열람실 연장 돼요?", "열람실 좌석은 1회, 2시간 연장할 수 있습니다."),
+    ("대학원생 대출 기간은?", "대학원생 대출 기간은 30일입니다."),
+    ("평일 몇 시까지?", "평일은 22:00까지입니다."),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("question", "answer"), _UNCITED)
+async def test_an_answer_from_the_material_cites_it_even_when_the_model_did_not(
+        monkeypatch, question, answer):
+    seen = []
+    _model(monkeypatch, [answer], seen)
+    events, _ = await _turn(question, [("faq.md", _FAQ, None)],
+                            preset_empty_answer=publishing.not_covered_answer(_CONTACT))
+    text = "".join(e["text"] for e in events if e["type"] == "delta")
+    retracted = [e["text"] for e in events if e["type"] == "retract"]
+    final = text
+    for gone in retracted:
+        final = final.replace(gone, "", 1)
+    assert "[1]" in final.split("### 출처")[0]
+    assert final.rstrip().endswith("### 출처\n- [1] faq.md")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("answer", [
+    "주차장은 지하 2층에 있고 한 시간에 1,000원입니다.",
+    publishing.not_covered_answer(_CONTACT),
+])
+async def test_an_answer_the_material_does_not_hold_gets_no_citation(monkeypatch, answer):
+    seen = []
+    _model(monkeypatch, [answer], seen)
+    events, _ = await _turn("주차 요금은?", [("faq.md", _FAQ, None)],
+                            preset_empty_answer=publishing.not_covered_answer(_CONTACT))
+    text = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert "### 출처" not in text and "[1]" not in text
+
+
+@pytest.mark.asyncio
+async def test_the_passage_the_answer_uses_is_the_one_cited(monkeypatch):
+    seen = []
+    _model(monkeypatch, ["열람실 좌석은 최대 4시간 쓸 수 있습니다."], seen)
+    other = "# 식당 안내\n\n- 학생식당은 11:30~14:00에 엽니다. 메뉴는 매주 바뀝니다.\n"
+    events, _ = await _turn("열람실 몇 시간?", [("식당.md", other, None), ("faq.md", _FAQ, None)],
+                            preset_empty_answer=publishing.not_covered_answer(_CONTACT))
+    text = "".join(e["text"] for e in events if e["type"] == "delta")
+    tail = text.split("### 출처")[-1]
+    assert "faq.md" in tail and "식당.md" not in tail
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_turn_is_not_cited_by_the_server(monkeypatch):
+    seen = []
+    _model(monkeypatch, ["연체료는 없습니다."], seen)
+    events, _ = await _turn("연체료 있나요?", [("faq.md", _FAQ, None)])
+    text = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert "### 출처" not in text

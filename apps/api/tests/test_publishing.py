@@ -798,3 +798,40 @@ def test_frequent_topics_are_nouns_not_question_forms_or_verb_pieces():
     for question, words in asked.items():
         assert publishing.topics(question) == words, question
     assert "1은" not in publishing.topics("1은 2 더하기 3이면?")
+
+
+async def test_a_first_look_at_my_conversations_makes_no_visitor_and_two_at_once_one(world):
+    pub = await _publish(world)
+    world.as_("other")
+    listed = await world.client.get(f"/b/{pub['slug']}/conversations")
+    assert listed.status_code == 200 and listed.json() == []
+    async with world.local() as db:
+        rows = (await db.exec(select(PublicationVisitor).where(
+            PublicationVisitor.user_id == "other"))).all()
+    # Only reading the list: no visitor yet.
+    assert rows == []
+    # The page and the list open together on a first visit: one visitor, no unique-key error.
+    async with world.local() as one, world.local() as two:
+        first, made = await publishing.visitor_row(one, pub["id"], user_id="other")
+        second, again = await publishing.visitor_row(two, pub["id"], user_id="other")
+        await one.commit()
+        await two.commit()
+    assert made is True and again is False and first.id == second.id
+    async with world.local() as db:
+        rows = (await db.exec(select(PublicationVisitor).where(
+            PublicationVisitor.user_id == "other"))).all()
+    assert len(rows) == 1
+
+
+async def test_a_question_refused_at_the_cap_leaves_no_empty_conversation(world):
+    pub = await _publish(world, limits={"creditsPerDay": 1})
+    slug = pub["slug"]
+    await _ask(world, slug, "휴학 기한")
+    made = await world.client.post(f"/b/{slug}/conversations")
+    assert made.status_code == 201
+    refused = await world.client.post(f"/b/{slug}/conversations/{made.json()['id']}/messages",
+                                      json={"content": "복학 기한"})
+    assert refused.status_code == 429 and refused.json()["detail"] == "daily_credits_reached"
+    listed = (await world.client.get(f"/b/{slug}/conversations")).json()
+    assert [row["id"] for row in listed] != [] and made.json()["id"] not in [
+        row["id"] for row in listed]

@@ -170,6 +170,11 @@ test.describe('signed out', () => {
     await form.getByLabel('비밀번호').press('Enter')
     await expect(alert).toContainText('3번 더 틀리면 15분 동안 잠깁니다.')
     expect(state.logins).toBe(2)
+
+    // The sign-in error stays with sign-in: 회원가입 opens without it.
+    await page.getByRole('button', { name: '회원가입', exact: true }).click()
+    await expect(page.getByRole('button', { name: '회원가입', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByText('이메일 또는 비밀번호가 올바르지 않습니다.')).toHaveCount(0)
     expect(state.problems).toEqual([])
   })
 
@@ -219,6 +224,8 @@ test('admin credits: a bad value keeps the dialog open with the reason; 0 asks a
   await expect(field).toHaveAttribute('inputmode', 'numeric')
 
   await field.fill('abc')
+  // No proxy limit for a value that is not a number (no 「$0.00」).
+  await expect(dialog.getByTestId('credit-proxy-budget')).toHaveCount(0)
   await dialog.getByRole('button', { name: '저장' }).click()
   await expect(dialog.getByRole('alert')).toHaveText('0부터 100,000,000 사이의 정수로 입력하세요.')
   await expect(field).toHaveAttribute('aria-invalid', 'true')
@@ -338,6 +345,8 @@ test.describe('desktop keyboard', () => {
     const skip = page.getByRole('link', { name: '본문으로 건너뛰기' })
     await expect(skip).toBeFocused()
     await expect(skip).toBeInViewport()
+    // At least 24px tall: a target, not a line of text.
+    expect((await skip.boundingBox())!.height).toBeGreaterThanOrEqual(24)
     await page.keyboard.press('Enter')
     await expect(page.locator('main#main')).toBeFocused()
     expect(state.problems).toEqual([])
@@ -386,10 +395,40 @@ test.describe('phone drawer', { tag: '@phone' }, () => {
       const inMain = await page.evaluate(() => Boolean(document.activeElement?.closest('main')))
       expect(inMain).toBe(false)
     }
+    // All the way round: never out to 본문으로 건너뛰기, whose target is inert behind the drawer.
+    for (let i = 0; i < 24; i++) {
+      await page.keyboard.press('Tab')
+      const inside = await drawer.evaluate((el) => el.contains(document.activeElement))
+      expect(inside, `Tab ${i + 7} left the drawer`).toBe(true)
+    }
     await page.keyboard.press('Escape')
     await expect(drawer).toHaveCount(0)
     await expect(toggle).toBeFocused()
     await expect(page.locator('main')).not.toHaveAttribute('inert', '')
+    expect(state.problems).toEqual([])
+  })
+})
+
+test.describe('iPhone top bar', { tag: '@phone' }, () => {
+  test.skip(({ viewport }) => (viewport?.width ?? 0) >= 640, 'the icon-only top bar is the phone layout')
+  test.use({
+    userAgent:
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+  })
+
+  test('앱 설치 is an icon that stays inside its button, clear of the language button', async ({ page }, testInfo) => {
+    const state = await app(page, testInfo)
+    await page.goto(`/s/${chatId}`)
+    const install = page.getByRole('button', { name: '앱 설치' })
+    await expect(install).toBeVisible({ timeout: 15_000 })
+    const language = page.getByRole('button', { name: /^언어 전환/ })
+    const [a, b] = [(await install.boundingBox())!, (await language.boundingBox())!]
+    // Its label is for screen readers only; nothing spills over the next button.
+    expect(await install.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+    expect(a.x + a.width).toBeLessThanOrEqual(b.x + 0.5)
+    const icon = (await install.locator('svg').boundingBox())!
+    expect(icon.x).toBeGreaterThanOrEqual(a.x - 0.5)
+    expect(icon.x + icon.width).toBeLessThanOrEqual(a.x + a.width + 0.5)
     expect(state.problems).toEqual([])
   })
 })

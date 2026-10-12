@@ -576,7 +576,8 @@ function Hub() {
   }
 
   const exploreBody = () => {
-    if (hub.loading && hub.explore.length === 0) return <LoadingState />
+    // Until every list has answered: a partial grid would re-sort as the rest arrives.
+    if (hub.loading) return <LoadingState />
     const toggleRow = hiddenToggle && <div className="flex justify-end">{hiddenToggle}</div>
     if (hub.explore.length === 0) {
       return (
