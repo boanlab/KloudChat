@@ -12,6 +12,7 @@ export function Pager({
   onPage,
   label,
   rangeTestId,
+  rangeFormat,
   className = 'mt-3',
   children,
 }: {
@@ -22,6 +23,8 @@ export function Pager({
   /** Nav landmark name, e.g. 「감사 로그 페이지」. */
   label: string
   rangeTestId?: string
+  /** Translated 「{first}–{last} / …{total}…」; defaults to 「… / 전체 {total}건」. */
+  rangeFormat?: string
   className?: string
   children?: ReactNode
 }) {
@@ -36,7 +39,7 @@ export function Pager({
     >
       <div className="flex items-center gap-2 text-sm text-faint">
         <span className="tabular-nums" data-testid={rangeTestId}>
-          {t('{first}–{last} / 전체 {total}건')
+          {(rangeFormat ?? t('{first}–{last} / 전체 {total}건'))
             .replace('{first}', first.toLocaleString())
             .replace('{last}', last.toLocaleString())
             .replace('{total}', total.toLocaleString())}

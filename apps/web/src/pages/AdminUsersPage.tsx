@@ -1,4 +1,7 @@
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Check,
   SlidersHorizontal,
   KeyRound,
@@ -11,7 +14,8 @@ import {
   UserX,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PipelineApprovals } from '@/components/agents/PipelineEditor'
 import { SkillApprovals } from '@/components/customize/SkillApprovals'
 import { PageBody } from '@/components/layout/AppShell'
@@ -29,9 +33,9 @@ import {
 } from '@/components/ui'
 import { adminApi, errorMessage, type AdminKeys } from '@/lib/api'
 import { cn, formatDate, relativeTime } from '@/lib/utils'
-import { ShowMore, usePaged } from '@/components/ui/ShowMore'
+import { Pager } from '@/components/ui/Pager'
 import { useStore } from '@/store/useStore'
-import type { User, UserStatus } from '@/types'
+import type { User, UserSort, UserStatus } from '@/types'
 import { useT } from '@/lib/useT'
 import { USER_STATUS_LABEL } from '@/lib/userStatus'
 
@@ -49,6 +53,94 @@ const PLANS = [
   { label: '연구', credits: 2_000_000 },
   { label: '대규모', credits: 5_000_000 },
 ]
+
+type Tab = UserStatus | 'all'
+const TABS: Tab[] = ['all', 'pending', 'active', 'suspended']
+const SORTS: UserSort[] = ['name', 'status', 'credits', 'last_active']
+const DEFAULT_SORT: UserSort = 'status'
+/** The order a column opens in: names A→Z, status pending first, the largest and latest first. */
+const FIRST_ORDER: Record<UserSort, 'asc' | 'desc'> = {
+  name: 'asc',
+  status: 'asc',
+  credits: 'desc',
+  last_active: 'desc',
+}
+const PAGE_SIZE = 50
+
+/** Tab, search, sort and page live in the address: a reload or 뒤로 keeps them. */
+function useListParams() {
+  const [params, setParams] = useSearchParams()
+  const tabParam = params.get('tab') as Tab | null
+  const sortParam = params.get('sort') as UserSort | null
+  const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : 'all'
+  const sort: UserSort = sortParam && SORTS.includes(sortParam) ? sortParam : DEFAULT_SORT
+  const order: 'asc' | 'desc' =
+    params.get('order') === 'desc' ? 'desc' : params.get('order') === 'asc' ? 'asc' : FIRST_ORDER[sort]
+  const page = Math.max(1, Math.floor(Number(params.get('page'))) || 1)
+  const q = params.get('q') ?? ''
+  /** Sets the given keys; a default value leaves the address. A change other than the page
+   *  starts again at page 1. */
+  const update = (
+    changes: Partial<{ tab: Tab; q: string; sort: UserSort; order: 'asc' | 'desc'; page: number }>,
+    replace = false,
+  ) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        const put = (key: string, value: string, fallback: string) =>
+          value === fallback ? next.delete(key) : next.set(key, value)
+        if (changes.tab !== undefined) put('tab', changes.tab, 'all')
+        if (changes.q !== undefined) put('q', changes.q.trim(), '')
+        const nextSort = changes.sort ?? sort
+        if (changes.sort !== undefined) put('sort', changes.sort, DEFAULT_SORT)
+        if (changes.order !== undefined) put('order', changes.order, FIRST_ORDER[nextSort])
+        if (changes.page !== undefined) put('page', String(changes.page), '1')
+        else next.delete('page')
+        return next
+      },
+      { replace },
+    )
+  return { tab, sort, order, page, q, update }
+}
+
+/** A column heading that sorts: the button names the column, the cell carries `aria-sort`. */
+function SortHeader({
+  column,
+  label,
+  sort,
+  order,
+  onSort,
+}: {
+  column: UserSort
+  label: string
+  sort: UserSort
+  order: 'asc' | 'desc'
+  onSort: (column: UserSort) => void
+}) {
+  const t = useT()
+  const active = sort === column
+  const Arrow = !active ? ArrowUpDown : order === 'asc' ? ArrowUp : ArrowDown
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className="px-4 py-1.5 text-left font-semibold"
+    >
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        title={t('{column} 기준으로 정렬').replace('{column}', label)}
+        className={cn(
+          '-mx-1.5 inline-flex items-center gap-1 rounded-control whitespace-nowrap px-1.5 py-1 tracking-wide uppercase transition-colors hover:bg-line/40 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent',
+          active && 'text-fg',
+        )}
+      >
+        {label}
+        <Arrow size={12} aria-hidden className={active ? undefined : 'opacity-50'} />
+      </button>
+    </th>
+  )
+}
 
 function CreditBar({ user }: { user: User }) {
   const pct = user.monthlyCredits > 0 ? (user.creditsUsed / user.monthlyCredits) * 100 : 0
@@ -73,6 +165,8 @@ export function AdminUsersPage() {
     user,
     users,
     usersLoading,
+    usersPage,
+    usersQuery,
     loadUsers,
     approveUser,
     rejectUser,
@@ -90,8 +184,9 @@ export function AdminUsersPage() {
     lang,
     passwordMinLength,
   } = useStore()
-  const [filter, setFilter] = useState<UserStatus | 'all'>('all')
-  const [query, setQuery] = useState('')
+  const { tab: filter, sort, order, page, q, update } = useListParams()
+  // What is typed; it reaches the address (and the server) a moment after typing stops.
+  const [query, setQuery] = useState(q)
   const [editing, setEditing] = useState<User | null>(null)
   // 정보 수정: name, address, password reset.
   const [profile, setProfile] = useState<User | null>(null)
@@ -138,13 +233,49 @@ export function AdminUsersPage() {
   const [economics, setEconomics] = useState({ perUsd: 100_000, budgetHeadroom: 0.2 })
 
   useEffect(() => {
-    void loadUsers()
+    void loadUsers({ status: filter, q, sort, order, page, limit: PAGE_SIZE })
+  }, [loadUsers, filter, q, sort, order, page])
+
+  // 뒤로 to another search: the box follows the address.
+  useEffect(() => {
+    setQuery((typed) => (typed.trim() === q ? typed : q))
+  }, [q])
+  useEffect(() => {
+    if (query.trim() === q) return
+    const timer = window.setTimeout(() => update({ q: query }, true), 250)
+    return () => window.clearTimeout(timer)
+    // `update` is rebuilt every render; the address it writes is what matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, q])
+
+  // A page past the end (after a delete, or an old link): the last page instead.
+  const pages = usersPage ? Math.max(1, Math.ceil(usersPage.total / usersPage.limit)) : 1
+  const answered =
+    !usersLoading &&
+    usersQuery?.status === filter &&
+    usersQuery.q === q &&
+    usersQuery.sort === sort &&
+    usersQuery.order === order &&
+    usersQuery.page === page
+  useEffect(() => {
+    if (answered && usersPage && page > pages) update({ page: pages }, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answered, usersPage, page, pages])
+
+  const onSort = (column: UserSort) =>
+    update(
+      column === sort
+        ? { order: order === 'asc' ? 'desc' : 'asc' }
+        : { sort: column, order: FIRST_ORDER[column] },
+    )
+
+  useEffect(() => {
     adminApi.catalogue().then(setCatalogue).catch(() => setCatalogue(null))
     adminApi
       .settings()
       .then((s) => s.credits && setEconomics(s.credits))
       .catch(() => {})
-  }, [loadUsers])
+  }, [])
 
   /** Guards double-fire, surfaces failure. */
   const run = async (id: string, action: () => Promise<void>) => {
@@ -160,19 +291,13 @@ export function AdminUsersPage() {
     }
   }
 
-  const matching = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return users
-      .filter((u) => filter === 'all' || u.status === filter)
-      .filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
-  }, [users, filter, query])
-  const { visible, hidden, more } = usePaged(matching, [filter, query, users.length])
-
-  const pendingCount = users.filter((u) => u.status === 'pending').length
-  const totalGranted = users.reduce((s, u) => s + u.monthlyCredits, 0)
-  const totalUsed = users.reduce((s, u) => s + u.creditsUsed, 0)
+  const visible = users
+  const summary = usersPage?.summary
+  const counts = usersPage?.counts
+  const totalGranted = summary?.creditsGranted ?? 0
+  const totalUsed = summary?.creditsUsed ?? 0
   // Pending accounts have no cycle.
-  const resetDate = users.find((u) => u.cycleResetsAt)?.cycleResetsAt
+  const resetDate = summary?.nextReset
 
   return (
     <>
@@ -194,8 +319,8 @@ export function AdminUsersPage() {
 
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: t('전체 사용자'), value: String(users.length) },
-            { label: t('승인 대기'), value: String(pendingCount) },
+            { label: t('전체 사용자'), value: summary ? summary.users.toLocaleString() : '—' },
+            { label: t('승인 대기'), value: summary ? summary.pending.toLocaleString() : '—' },
             {
               label: t('이번 달 사용 / 배정'),
               value: `${(totalUsed / 1_000_000).toFixed(1)}M / ${(totalGranted / 1_000_000).toFixed(1)}M`,
@@ -212,10 +337,11 @@ export function AdminUsersPage() {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <Tabs<UserStatus | 'all'>
             value={filter}
-            onChange={setFilter}
+            onChange={(next) => update({ tab: next })}
             tabs={[
-              { id: 'all', label: t('전체'), count: users.length },
-              { id: 'pending', label: t('승인 대기'), count: pendingCount },
+              { id: 'all', label: t('전체'), count: counts?.all },
+              { id: 'pending', label: t('승인 대기'), count: counts?.pending },
+              // No count on these two: four counts overrun a phone's width.
               { id: 'active', label: t('활성') },
               { id: 'suspended', label: t('정지') },
             ]}
@@ -238,11 +364,26 @@ export function AdminUsersPage() {
             <table className="w-full text-base">
             <thead className="bg-elevated text-xs tracking-wide text-faint uppercase">
               <tr>
-                <th className="px-4 py-2.5 text-left font-semibold">{t('사용자')}</th>
-                <th className="px-4 py-2.5 text-left font-semibold">{t('상태')}</th>
-                <th className="px-4 py-2.5 text-left font-semibold">{t('이번 달 크레딧')}</th>
-                <th className="px-4 py-2.5 text-left font-semibold">{t('마지막 활동')}</th>
-                <th className="px-4 py-2.5 text-right font-semibold">{t('관리')}</th>
+                {(
+                  [
+                    ['name', t('사용자')],
+                    ['status', t('상태')],
+                    ['credits', t('이번 달 크레딧')],
+                    ['last_active', t('마지막 활동')],
+                  ] as const
+                ).map(([column, label]) => (
+                  <SortHeader
+                    key={column}
+                    column={column}
+                    label={label}
+                    sort={sort}
+                    order={order}
+                    onSort={onSort}
+                  />
+                ))}
+                <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                  {t('관리')}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -251,7 +392,7 @@ export function AdminUsersPage() {
                   <td colSpan={5} className="px-4 py-10 text-center text-base text-faint">
                     {usersLoading ? (
                       <Loader2 size={16} className="mx-auto animate-spin" />
-                    ) : users.length === 0 ? (
+                    ) : !usersPage ? (
                       t('사용자를 불러오지 못했습니다.')
                     ) : (
                       t('조건에 맞는 사용자가 없습니다.')
@@ -430,7 +571,17 @@ export function AdminUsersPage() {
           </table>
           </div>
         </Card>
-        <ShowMore hidden={hidden} onMore={more} />
+        {usersPage && usersPage.total > 0 && (
+          <Pager
+            page={Math.min(page, pages)}
+            size={usersPage.limit}
+            total={usersPage.total}
+            onPage={(next) => update({ page: next })}
+            label={t('사용자 목록 페이지')}
+            rangeTestId="users-range"
+            rangeFormat={t('{first}–{last} / 총 {total}명')}
+          />
+        )}
         <PipelineApprovals />
         <SkillApprovals />
       </PageBody>

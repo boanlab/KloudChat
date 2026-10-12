@@ -33,6 +33,36 @@ export interface User {
   emailVerifiedAt?: string | null
 }
 
+/** 관리자 › 사용자 list: which tab, what search, which column, which page. */
+export type UserSort = 'name' | 'status' | 'credits' | 'last_active'
+
+export interface UserListQuery {
+  status: UserStatus | 'all'
+  q: string
+  sort: UserSort
+  order: 'asc' | 'desc'
+  page: number
+  limit: number
+}
+
+export interface UserPage {
+  items: User[]
+  /** Rows the tab and the search select. */
+  total: number
+  page: number
+  limit: number
+  /** Per tab, the search applied. */
+  counts: Record<UserStatus | 'all', number>
+  /** The whole instance; no tab or search applies. */
+  summary: {
+    users: number
+    pending: number
+    creditsGranted: number
+    creditsUsed: number
+    nextReset: string | null
+  }
+}
+
 /* ── models ─────────────────────────────────────────────────────────── */
 
 type Modality = 'chat' | 'image' | 'audio' | 'video'

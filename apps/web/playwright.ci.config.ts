@@ -115,6 +115,7 @@ const groups: Record<string, Group> = {
   ocr: { files: ['ocr.spec.ts'], projects: { desktop, phone: touchPhone } },
   ux: { files: ['ux-keyboard-forms.spec.ts'], projects: { desktop, phone: pixel } },
   'admin-models': { files: ['admin-models.spec.ts'], projects: { desktop, phone: touchPhone } },
+  'admin-users': { files: ['admin-users-paging.spec.ts'], projects: { desktop, phone: touchPhone } },
 }
 
 export default defineConfig({
