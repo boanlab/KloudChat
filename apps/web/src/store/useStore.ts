@@ -1,5 +1,6 @@
 import type { WebSearchSetting } from '@/lib/api'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
+import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
 import { create } from 'zustand'
 import { applyBrand } from '@/lib/brand'
 import {
@@ -116,6 +117,12 @@ export class ChatSendRecoveryError extends Error {
 
 /** Per-session PATCH queue for model/routing changes; a send waits for the latest one. */
 const sessionPersistence = new Map<string, Promise<void>>()
+
+type UnsentPatch = { title?: string; pinned?: boolean; renderTemplateId?: string; skillIds?: string[] }
+/** Settings changed on an unsent conversation, applied right after it is created. */
+const unsentPatches = new Map<string, UnsentPatch>()
+/** One creation per unsent conversation, however many sends and uploads ask for it. */
+const creatingSessions = new Map<string, Promise<string>>()
 
 /** Jobs already polled by this tab, so opening the session does not start a second loop. */
 const followedJobs = new Set<string>()
@@ -372,6 +379,8 @@ interface State {
       routingMode?: Session['routingMode']
     },
   ) => Promise<string>
+  /** Creates an unsent conversation on the server (same id); resolves to the id to use. */
+  ensureSession: (id: string) => Promise<string>
   send: (
     sessionId: string | null,
     kind: SessionKind,
@@ -992,6 +1001,7 @@ export const useStore = create<State>((set, get) => ({
   logout: async (reason) => {
     // Half-typed questions must not outlive the account on a shared machine.
     purgeStoredDrafts(get().user?.id)
+    purgeUnsent(get().user?.id)
     set((state) => ({ accountEpoch: state.accountEpoch + 1,
       messageEdit: null, messageEditBusy: false, composerRestore: null,
       pendingAttachment: null, draft: '' }))
@@ -1295,6 +1305,7 @@ export const useStore = create<State>((set, get) => ({
       }
     }),
   setSessionModel: async (sessionId, modelId) => {
+    if (holdUnsent(set, get, sessionId, { model: modelId, routingMode: 'manual' })) return
     const previous = get().sessions.find((session) => session.id === sessionId)
     set((s) => ({
       sessions: s.sessions.map((c) =>
@@ -1320,6 +1331,7 @@ export const useStore = create<State>((set, get) => ({
     }
   },
   setSessionRoutingMode: async (sessionId, mode) => {
+    if (holdUnsent(set, get, sessionId, { routingMode: mode })) return
     const previous = get().sessions.find((session) => session.id === sessionId)?.routingMode
     set((s) => ({
       sessions: s.sessions.map((session) =>
@@ -1365,10 +1377,11 @@ export const useStore = create<State>((set, get) => ({
       set((s) => ({
         sessionsLoading: false,
         sessionsFailed: false,
-        // The list carries no transcripts, so held messages are kept.
-        sessions: rows.map((row) =>
-          toSession(row, s.sessions.find((c) => c.id === row.id)?.messages),
-        ),
+        // The list carries no transcripts, so held messages are kept; unsent ones are the browser's.
+        sessions: [
+          ...s.sessions.filter((c) => c.unsent && !rows.some((row) => row.id === c.id)),
+          ...rows.map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
+        ],
       }))
     } catch {
       if (!ownsAccount()) return
@@ -1390,6 +1403,13 @@ export const useStore = create<State>((set, get) => ({
     const epoch = get().accountEpoch
     const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
     const accountSet: Set = (patch) => { if (ownsAccount()) set(patch) }
+    if (get().sessions.find((c) => c.id === id)?.unsent) return true
+    // Opened before a reload and never sent: nothing on the server yet.
+    const kept = findUnsent(owner, id)
+    if (kept) {
+      set((s) => ({ sessions: [{ ...kept, messages: [], unsent: true }, ...s.sessions.filter((c) => c.id !== id)] }))
+      return true
+    }
     let row: Awaited<ReturnType<typeof sessionsApi.get>>
     try {
       row = await sessionsApi.get(id)
@@ -1444,27 +1464,63 @@ export const useStore = create<State>((set, get) => ({
     kind,
     { projectId = null, agentId = null, routingMode = 'manual' } = {},
   ) => {
-    touchWorkspace()
-    const row = await sessionsApi.create({
-      kind,
-      projectId,
-      agentId,
+    // Held in the browser: the server row comes with the first send (`ensureSession`).
+    const state = get()
+    const agent = state.agents.find((a) => a.id === agentId)
+    const now = new Date().toISOString()
+    const session: Session = {
+      id: unsentId(), kind, title: tr('새 작업'), projectId, agentId, pipelineId: null,
       // A session model outranks the agent's, so an agent that pins one gets none here.
-      model: get().agents.find((a) => a.id === agentId)?.model ? null : get().modelByKind[kind],
-      routingMode,
-    })
-    const session = toSession(row, [])
+      model: agent?.model ? '' : (state.modelByKind[kind] ?? ''),
+      routingMode, createdAt: now, updatedAt: now, pinned: false, messages: [], preview: null,
+      messageCount: 0, made: null, artifactId: null, pending: null, skillIds: [],
+      renderTemplateId: startingTemplate(state, kind, agent, projectId), unsent: true,
+    }
+    keepUnsent(state.user?.id, session)
     set((s) => ({
       sessions: [session, ...s.sessions],
       activeSessionId: session.id,
       openArtifactId: null,
-      projects: projectId
-        ? s.projects.map((p) =>
-            p.id === projectId ? { ...p, sessionIds: [session.id, ...p.sessionIds] } : p,
-          )
-        : s.projects,
     }))
     return session.id
+  },
+
+  ensureSession: (id) => {
+    const row = get().sessions.find((c) => c.id === id)
+    if (!row?.unsent) return Promise.resolve(id)
+    const pending = creatingSessions.get(id)
+    if (pending) return pending
+    const owner = get().user?.id
+    const started = (async () => {
+      touchWorkspace()
+      let made = await sessionsApi.create({
+        id, kind: row.kind, projectId: row.projectId, agentId: row.agentId,
+        model: row.model || null, routingMode: row.routingMode,
+      })
+      const patch = unsentPatches.get(id)
+      if (patch && Object.keys(patch).length) made = await sessionsApi.update(made.id, patch)
+      unsentPatches.delete(id)
+      forgetUnsent(owner, id)
+      if (owner !== get().user?.id) return made.id
+      const held = get().sessions.find((c) => c.id === id)
+      const session = toSession(made, held?.messages ?? [])
+      set((s) => ({
+        sessions: s.sessions.some((c) => c.id === id)
+          ? s.sessions.filter((c) => c.id !== session.id || c.id === id).map((c) => (c.id === id ? session : c))
+          : [session, ...s.sessions.filter((c) => c.id !== session.id)],
+        activeSessionId: s.activeSessionId === id ? session.id : s.activeSessionId,
+        projects: session.projectId
+          ? s.projects.map((p) =>
+              p.id === session.projectId && !p.sessionIds.includes(session.id)
+                ? { ...p, sessionIds: [session.id, ...p.sessionIds] }
+                : p,
+            )
+          : s.projects,
+      }))
+      return session.id
+    })().finally(() => creatingSessions.delete(id))
+    creatingSessions.set(id, started)
+    return started
   },
 
   messageEdit: null,
@@ -1524,7 +1580,14 @@ export const useStore = create<State>((set, get) => ({
     // A retry resends the original turn's options, not just its sentence.
     const again = opts.retryOf ? sentWith.get(opts.retryOf) : undefined
     if (again) opts = { ...again, ...opts }
-    const id = sessionId ?? (await get().newSession(kind, { projectId: opts.projectId ?? null }))
+    const fresh = sessionId ? null : await get().newSession(kind, { projectId: opts.projectId ?? null })
+    let id: string
+    try {
+      id = await get().ensureSession(sessionId ?? fresh!)
+    } catch (error) {
+      if (fresh) void get().deleteSession(fresh)
+      throw error
+    }
     await waitForSessionPersistence(id)
     if (!ownsAccount()) throw new Error('account_changed')
     // Chat keeps the originating composer until the first SSE event; other surfaces navigate at once.
@@ -1747,6 +1810,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setSessionTemplate: async (id, templateId) => {
+    if (holdUnsent(set, get, id, { renderTemplateId: templateId }, { renderTemplateId: templateId ?? '' })) return
     set((s) => ({
       sessions: s.sessions.map((c) =>
         c.id === id ? { ...c, renderTemplateId: templateId } : c,
@@ -1759,6 +1823,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   moveSessionToProject: async (id, projectId) => {
+    if (holdUnsent(set, get, id, { projectId })) return
     set((s) => ({
       sessions: s.sessions.map((c) => (c.id === id ? { ...c, projectId } : c)),
     }))
@@ -1766,10 +1831,12 @@ export const useStore = create<State>((set, get) => ({
   },
 
   renameSession: async (id, title) => {
+    if (holdUnsent(set, get, id, { title }, { title })) return
     set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, title } : c)) }))
     await sessionsApi.update(id, { title }).catch(() => get().loadSessions())
   },
   setSessionSkills: async (id, skillIds) => {
+    if (holdUnsent(set, get, id, { skillIds }, { skillIds })) return
     set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, skillIds } : c)) }))
     await sessionsApi.update(id, { skillIds }).catch(() => get().loadSessions())
   },
@@ -1787,16 +1854,16 @@ export const useStore = create<State>((set, get) => ({
 
   generateVideo: async (sessionId, prompt, opts = {}) => {
     const { avOptions } = get()
-    let id = sessionId
-    if (!id) {
-      try {
-        id = await get().newSession('av', { projectId: opts.projectId ?? null })
-      } catch (err) {
-        set({ mediaError: errorMessage(err, '영상 작업을 시작하지 못했습니다.') })
-        return
-      }
-      opts.onSession?.(id)
+    const fresh = sessionId ? null : await get().newSession('av', { projectId: opts.projectId ?? null })
+    let id: string
+    try {
+      id = await get().ensureSession(sessionId ?? fresh!)
+    } catch (err) {
+      if (fresh) void get().deleteSession(fresh)
+      set({ mediaError: errorMessage(err, '영상 작업을 시작하지 못했습니다.') })
+      return
     }
+    if (fresh) opts.onSession?.(id)
     const { promptId } = beginMediaTurn(set, id, prompt, false)
     try {
       const job = await jobsApi.create(id, {
@@ -1864,11 +1931,10 @@ export const useStore = create<State>((set, get) => ({
   },
   generateAudio: async (sessionId, prompt, opts = {}) => {
     const { avOptions } = get()
-    let id = sessionId
-    if (!id) {
-      id = await get().newSession('av', { projectId: opts.projectId ?? null })
-      opts.onSession?.(id)
-    }
+    const id = await get().ensureSession(
+      sessionId ?? (await get().newSession('av', { projectId: opts.projectId ?? null })),
+    )
+    if (!sessionId) opts.onSession?.(id)
     // Audio returns inside this call: no job card.
     const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
     beginRun(set, id)
@@ -1893,16 +1959,16 @@ export const useStore = create<State>((set, get) => ({
   },
   generateImages: async (sessionId, prompt, opts = {}) => {
     const { imageOptions, modelByKind } = get()
-    let id = sessionId
-    if (!id) {
-      try {
-        id = await get().newSession('image', { projectId: opts.projectId ?? null })
-      } catch (err) {
-        set({ mediaError: errorMessage(err, '이미지를 만들지 못했습니다.') })
-        return
-      }
-      opts.onSession?.(id)
+    const fresh = sessionId ? null : await get().newSession('image', { projectId: opts.projectId ?? null })
+    let id: string
+    try {
+      id = await get().ensureSession(sessionId ?? fresh!)
+    } catch (err) {
+      if (fresh) void get().deleteSession(fresh)
+      set({ mediaError: errorMessage(err, '이미지를 만들지 못했습니다.') })
+      return
     }
+    if (fresh) opts.onSession?.(id)
     const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
     beginRun(set, id)
     try {
@@ -1969,6 +2035,16 @@ export const useStore = create<State>((set, get) => ({
     return deleted
   },
   deleteSession: async (id) => {
+    if (get().sessions.find((c) => c.id === id)?.unsent && !creatingSessions.has(id)) {
+      unsentPatches.delete(id)
+      forgetUnsent(get().user?.id, id)
+      forgetStoredDraft(get().user?.id, id)
+      set((s) => ({
+        sessions: s.sessions.filter((c) => c.id !== id),
+        activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
+      }))
+      return
+    }
     touchWorkspace()
     const before = get()
     const row = before.sessions.find((c) => c.id === id)
@@ -2011,6 +2087,7 @@ export const useStore = create<State>((set, get) => ({
   },
   togglePinSession: async (id) => {
     const pinned = !get().sessions.find((c) => c.id === id)?.pinned
+    if (holdUnsent(set, get, id, { pinned }, { pinned })) return
     set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, pinned } : c)) }))
     await sessionsApi.update(id, { pinned }).catch(() => get().loadSessions())
   },
@@ -2202,6 +2279,8 @@ export const useStore = create<State>((set, get) => ({
 
   uploadFile: async (file, opts) => {
     touchWorkspace()
+    // A file for an unsent conversation creates it: the file belongs to that conversation.
+    if (opts?.sessionId) opts = { ...opts, sessionId: await get().ensureSession(opts.sessionId) }
     const row = await filesApi.upload(file, opts)
     if (opts?.projectId) {
       set((s) => ({
@@ -2587,6 +2666,29 @@ async function applyUserChange(set: Set, pending: Promise<User>) {
 
 type Set = (u: Partial<State> | ((s: State) => Partial<State>)) => void
 type Get = () => State
+
+/**
+ * A change to a conversation not yet created: applied on screen and kept for its creation.
+ * True when it was one (the caller sends nothing).
+ */
+function holdUnsent(set: Set, get: Get, id: string, change: Partial<Session>, patch?: UnsentPatch): boolean {
+  const row = get().sessions.find((c) => c.id === id)
+  if (!row?.unsent) return false
+  const next = { ...row, ...change }
+  set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? next : c)) }))
+  if (patch) unsentPatches.set(id, { ...unsentPatches.get(id), ...patch })
+  keepUnsent(get().user?.id, next)
+  return true
+}
+
+/** The template a new conversation starts with: the agent's for this surface, else the project's. */
+function startingTemplate(state: State, kind: SessionKind, agent: Agent | undefined, projectId: string | null): string | null {
+  const usable = (id: string | null | undefined) =>
+    !!id && state.designTemplates.some((row) => row.id === id && row.surface === kind)
+  if (usable(agent?.renderTemplateId)) return agent!.renderTemplateId!
+  const fromProject = state.projects.find((p) => p.id === projectId)?.renderTemplates?.[kind]
+  return usable(fromProject) ? fromProject! : null
+}
 
 /** Draft title while writing: the request's opening words, or on approval the outline's title. */
 function draftTitle(

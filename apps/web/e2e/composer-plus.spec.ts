@@ -140,7 +140,7 @@ test('a new account with no skills still finds 스킬 in 「+」, pointing to wh
 })
 
 test('「@」 typed into an empty box picks an agent, which then shows as a chip', async ({ page }, info) => {
-  const { unexpected, created } = await composerFixture(page, info)
+  const { unexpected, created, sends } = await composerFixture(page, info)
   await page.goto('/new/chat')
   const input = page.getByLabel('프롬프트 입력')
   await expect(input).toBeVisible()
@@ -149,12 +149,18 @@ test('「@」 typed into an empty box picks an agent, which then shows as a chip
   await expect(agent).toBeVisible()
   await expect(input).toHaveValue('')
   await agent.click()
-  await expect(page).toHaveURL(/\/s\/c0+\d+$/)
-  expect(created).toEqual([expect.objectContaining({ agentId: expect.any(String) })])
+  await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
+  // Nothing is created until the first send.
+  expect(created).toEqual([])
   await expect(page.getByTitle('이 대화의 에이전트')).toContainText('예산 검토')
   // 「@」 after text is just a character.
   await input.fill('메일 주소는 a@')
   await expect(page.getByRole('menu')).toHaveCount(0)
+  await input.press('Enter')
+  await expect.poll(() => sends.length).toBe(1)
+  const id = new URL(page.url()).pathname.split('/').at(-1)
+  expect(created).toEqual([expect.objectContaining({ id, agentId: expect.any(String) })])
+  expect(sends[0].path).toBe(`/sessions/${id}/messages`)
   expect(unexpected).toEqual([])
 })
 
@@ -236,7 +242,7 @@ test('phone: one line, tools in a bottom sheet, answers full width, no sideways 
 })
 
 test('N6: 「+」 › 에이전트 lists every agent, each on its own screen, and offers 에이전트 만들기', async ({ page }, info) => {
-  const { unexpected, created } = await composerFixture(page, info)
+  const { unexpected, created, sends } = await composerFixture(page, info)
   await page.goto('/new/chat')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
   await openTool(page, '에이전트')
@@ -250,7 +256,11 @@ test('N6: 「+」 › 에이전트 lists every agent, each on its own screen, an
   else await page.screenshot({ path: shotPath('composer-agents-phone') })
   // A report agent opens a report conversation, not a chat one.
   await menu.getByRole('menuitem', { name: /회의록 정리/ }).click()
-  await expect(page).toHaveURL(/\/s\/c0+\d+$/)
+  await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
+  expect(created).toEqual([])
+  await page.getByLabel('프롬프트 입력').fill('회의 메모 정리')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => sends.length).toBe(1)
   expect(created).toEqual([expect.objectContaining({ kind: 'report', agentId: expect.stringMatching(/^a9+$/) })])
 
   await page.goto('/new/chat')
@@ -265,7 +275,7 @@ test('N6: 「+」 › 에이전트 lists every agent, each on its own screen, an
 test('M1: an agent row shows its own name once, the other screen as a badge, and one row per agent', async ({ page }, info) => {
   // The person's copy of 개조식 보고서 and the catalogue original it came from, both report-only.
   const report = { kinds: ['report'], surface: 'report' }
-  const { unexpected, created } = await composerFixture(page, info, {
+  const { unexpected, created, sends } = await composerFixture(page, info, {
     extraAgents: [
       fixtureAgent('b1'.padEnd(33, '1'), '개조식 보고서', {
         ...report, ownerId: 'admin', ownerName: '관리자', catalogKey: 'gaejo-report', official: true,
@@ -288,7 +298,10 @@ test('M1: an agent row shows its own name once, the other screen as a badge, and
   await expect(menu.getByRole('menuitem', { name: /주간 보고/ })).toHaveCount(2)
   // The person's own copy is the one kept.
   await rows.click()
-  await expect(page).toHaveURL(/\/s\/c0+\d+$/)
+  await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
+  await page.getByLabel('프롬프트 입력').fill('주간 업무 보고')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => sends.length).toBe(1)
   expect(created.at(-1)).toEqual(expect.objectContaining({ kind: 'report', agentId: 'b2'.padEnd(33, '2') }))
   await page.goto('/new/chat')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()

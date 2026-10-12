@@ -24,8 +24,8 @@ x-first-install-seeds: &first-install-seeds
   DEFAULT_VIDEO_MODEL: ${KCHAT_DEFAULT_VIDEO_MODEL:-google/veo-3.1-lite}
   # Titles, memories and the running summary of a long conversation.
   TITLE_MODEL: ${KCHAT_TITLE_MODEL:-local/qwen3.8-flash}
-  # 1 credit = $0.00001; 1,000,000 ≈ $10/month.
-  DEFAULT_MONTHLY_CREDITS: ${KCHAT_DEFAULT_MONTHLY_CREDITS:-1000000}
+  # 1 credit = $0.00001; 5,000,000 ≈ $50/month.
+  DEFAULT_MONTHLY_CREDITS: ${KCHAT_DEFAULT_MONTHLY_CREDITS:-5000000}
   SELF_HOSTED_CHAT_THINKING: ${KCHAT_SELF_HOSTED_CHAT_THINKING:-false}
   EXTERNAL_CHAT_THINKING: ${KCHAT_EXTERNAL_CHAT_THINKING:-false}
 

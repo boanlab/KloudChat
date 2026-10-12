@@ -81,6 +81,17 @@ async def test_the_new_account_allowance_is_stored(stored, monkeypatch):
     assert await settings_store.default_monthly_credits() == 250_000
 
 
+def test_a_new_account_gets_five_million_credits_by_default():
+    from app.core.config import Settings
+
+    assert Settings.model_fields["default_monthly_credits"].default == 5_000_000
+    root = Path(__file__).resolve().parents[3]
+    compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "${KCHAT_DEFAULT_MONTHLY_CREDITS:-5000000}" in compose
+    example = (root / ".env.example").read_text(encoding="utf-8")
+    assert "KCHAT_DEFAULT_MONTHLY_CREDITS=5000000" in example
+
+
 async def test_the_catalogue_defaults_follow_the_stored_roles(monkeypatch):
     from app.services import litellm
 

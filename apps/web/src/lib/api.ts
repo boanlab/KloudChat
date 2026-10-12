@@ -1056,6 +1056,8 @@ export const sessionsApi = {
     },
   ) => call<ArtifactRow>(`/sessions/${sessionId}/audio`, body(payload)),
   create: (payload: {
+    /** The unsent conversation's own id: created under it. */
+    id?: string
     kind: string
     projectId?: string | null
     agentId?: string | null

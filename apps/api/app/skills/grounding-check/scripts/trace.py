@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import datetime as dt
 import json
 import re
@@ -157,13 +158,28 @@ SKILL_LINE = re.compile(
 DID_WORK = re.compile(
     r"(?:수행|운영|설계|구축|배포|개발|도입|이관|적용|구현|활용|사용|담당|관리)\s{0,2}(?:했|하였|해\s{0,2}왔|하며|하여|해\s)")
 
+#: Something the reader must bring or hand in: 「신분증 지참」, 「서류를 제출해 주세요」.
+REQUIRE = re.compile(
+    r"(?P<obj>[가-힣A-Za-z0-9]{2,15})\s{0,2}(?:(?:꼭|반드시|미리|함께|각자|직접|모두|필히|별도로)\s{1,2})?"
+    r"(?P<verb>지참|제출|휴대|착용|구비|챙기|챙겨|가져오|가져와|준비해|준비하)")
+#: Objects any notice may name: 「서류를 제출」, 「준비물을 챙겨」.
+GENERIC_OBJECTS = frozenset((
+    "서류", "자료", "준비물", "물품", "소지품", "개인", "본인", "것", "이것", "그것", "해당", "관련", "필요",
+    "내용", "사항", "결과", "결과물", "의견", "답안", "답변", "회신", "미리", "사전", "함께", "꼭",
+))
+#: An object word that is not one: 「10월 5일까지 제출」, 「신청 후 제출」, 「완료한 뒤 제출」.
+NOT_OBJECT = re.compile(r"\d|(?:까지|부터|에게|에서|에|로|으로|은|는|이|가|의|후|뒤|전|때|시|내|한|된|할|하여|하고|해서)$")
+#: Findings that drop their whole sentence rather than leave a blank.
+DROPPED = frozenset({"claim", "requirement"})
+
 PLACEHOLDER = {
     "number": "[수치]", "date": "[일자]", "month": "[시기]", "time": "[시각]", "person": "[이름]",
-    "org": "[기관명]", "title": "[직함]", "product": "[제품명]", "claim": "",
+    "org": "[기관명]", "title": "[직함]", "product": "[제품명]", "claim": "", "requirement": "",
 }
 KIND_WORDS = {
     "number": "수치", "date": "날짜", "month": "시기", "time": "시각", "person": "이름",
     "org": "기관·회사", "title": "직함", "product": "제품·도구", "claim": "자료에 없는 경력 문장",
+    "requirement": "자료에 없는 준비·제출 요구",
 }
 
 
@@ -402,6 +418,9 @@ class Sources:
             # A price or a distance times a count: 「20만 원 × 2팀」, 「15,000km × 5대」.
             counts = sorted({abs(v) for v in pool if 1 < abs(v) < 100 and v == int(v)})
             self.derived += [a * c for a in figures for c in counts if a >= 1000]
+        #: Sorted magnitudes: a long attachment holds thousands of values and derives millions.
+        self.derived_sorted = sorted({abs(d) for d in self.derived})
+        self.values_sorted = sorted((abs(v), k) for k, (v, _, _) in enumerate(self.values))
         #: Data rows (naming cells, values): a value counts only on a line naming its row; rate ×
         #: computed value is priced tool output. Tools-only numbers mode; else rows are material.
         self.rows: list[tuple[list[tuple[str, ...]], set[float]]] = []
@@ -456,14 +475,28 @@ class Sources:
         if family == "일" and value == int(value) and any(
                 (None, m, int(value)) in self.days for m in range(1, 13)):
             return value
-        for known, known_unit, kp in self.values:
+        # `near` allows at most one in the last place plus half a unit of the source's
+        v = abs(value)
+        tol = 1.0 + 10.0 ** -places + 1e-6 * max(1.0, v)
+        lo = bisect.bisect_left(self.values_sorted, (v - tol, -1))
+        hi = bisect.bisect_right(self.values_sorted, (v + tol, len(self.values)))
+        for k in sorted(k for _, k in self.values_sorted[lo:hi]):
+            known, known_unit, kp = self.values[k]
             if (not known_unit or not family or known_unit == family) and near(value, known, places, kp):
                 return known
         if round(abs(value), 6) in self.priced:
             return value
-        if value >= 10 and any(near(value, d, places) for d in self.derived):
+        if value >= 10 and self._near_derived(value, places):
             return value
         return None
+
+    def _near_derived(self, value: float, places: int) -> bool:
+        # `near` never allows more than one step in the last place
+        v = abs(value)
+        tol = 10.0 ** -places + 1e-6 * max(1.0, v)
+        lo = bisect.bisect_left(self.derived_sorted, v - tol)
+        hi = bisect.bisect_right(self.derived_sorted, v + tol)
+        return any(near(value, d, places) for d in self.derived_sorted[lo:hi])
 
     def counted(self, year: int | None, month: int, day: int) -> bool:
         """Whether the day is a source date moved by a source-stated offset (「3월 2일」 + 「30일 전」)."""
@@ -838,6 +871,8 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
         start = m.start("num") if m.group("sign") is None else m.start()
         found.append(_finding("number", lines[n["line"]], n["line"], start, m.end()))
     found.extend(_claims(lines, skip, sources))
+    if options.get("requirements"):
+        found.extend(_requirements(lines, skip, sources))
     found.extend(_listed_people(lines, skip, sources, found))
     return sorted(found, key=lambda f: (f["line"], f["start"]))
 
@@ -882,6 +917,28 @@ def person_days(text: str) -> dict[tuple[int | None, int, int], str]:
     return out
 
 
+#: The words a deadline ends on: 「11. 6.(금) 18:00까지」.
+_DEADLINE_CUE = re.compile(r"[^.\n]{0,16}?(?=까지|마감|기한)")
+#: What a garbled copy of a deadline's time leaves between the day and 「까지」: 「 00」, 「 00(:00)」.
+_TIME_DEBRIS = re.compile(r"[\s\d:()시분]*")
+
+
+def person_deadlines(text: str) -> dict[tuple[int | None, int], list[str]]:
+    """Deadlines the person wrote, by (year, month), each as written up to 「까지」: 「2026. 11. 6.(금) 18:00」."""
+    out: dict[tuple[int | None, int], list[str]] = {}
+    for pattern in (FULL_DAY, MONTH_DAY, SHORT_DAY):
+        for m in pattern.finditer(text or ""):
+            cue = _DEADLINE_CUE.match(text, m.end())
+            if cue is None or not _TIME_DEBRIS.fullmatch(cue.group(0)):
+                continue
+            y = int(m.group("y")) if "y" in m.groupdict() and m.group("y") else None
+            phrase = text[m.start():cue.end()].strip()
+            for key in {(y, int(m.group("m"))), (None, int(m.group("m")))}:
+                if phrase not in out.setdefault(key, []):
+                    out[key].append(phrase)
+    return out
+
+
 #: 「00시 2214분」: minutes no clock has — another figure (an extension) run into a time.
 _BROKEN_TIME = re.compile(r"(?<![\d:])\d{1,2}\s{0,2}시\s{0,2}\d{3,}\s{0,2}분")
 
@@ -919,6 +976,14 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
         if sources.counted(y, mo, d):
             return
         if (y is None or (y, mo, d) not in sources.days) and (None, mo, d) not in sources.days:
+            # A garbled copy of the person's one deadline that month goes back to it whole.
+            cue = _DEADLINE_CUE.match(masked, m.end())
+            given = person_deadlines(str(options.get("person") or "")).get((y, mo), [])
+            if cue is not None and len(given) == 1 and _TIME_DEBRIS.fullmatch(cue.group(0)):
+                end = m.end() + len(cue.group(0).rstrip())
+                taken.append((m.start(), end))
+                found.append({**_finding("date", line, k, m.start(), end), "placeholder": given[0]})
+                return
             found.append(_finding("date", line, k, *m.span()))
             return
         deadline = bool(re.match(r"[^.\n]{0,16}?(?:까지|마감|기한)", masked[m.end():]))
@@ -1034,6 +1099,32 @@ def _claims(lines: list[str], skip: set[int], sources: Sources) -> list[dict]:
     return out
 
 
+def _required(part: str, sources: Sources) -> bool:
+    """Whether `part` asks the reader to bring or hand in something no source names."""
+    for m in REQUIRE.finditer(part):
+        obj = re.sub(r"(?:을|를|도|만|등|및)$", "", m.group("obj"))
+        if len(obj) < 2 or obj in GENERIC_OBJECTS or NOT_OBJECT.search(obj):
+            continue
+        if obj.lower() not in sources.lower:
+            return True
+    return False
+
+
+def _requirements(lines: list[str], skip: set[int], sources: Sources) -> list[dict]:
+    """Sentences telling the reader to bring or submit an item the material never names."""
+    out = []
+    for k, line in enumerate(lines):
+        if k in skip or line.strip().startswith("|"):
+            continue
+        pos = 0
+        for part in re.split(f"({SENTENCE_BREAK.pattern})", line):
+            if _required(part, sources):
+                out.append({"kind": "requirement", "text": part, "line": k, "start": pos,
+                            "end": pos + len(part), "placeholder": ""})
+            pos += len(part)
+    return out
+
+
 def _blank_cell(cell: str, items: list[dict], offset: int) -> str:
     """A cell holding the stray value and little else becomes the blank alone."""
     rest = cell
@@ -1068,7 +1159,7 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
         cells, pos, out = line.split("|"), 0, []
         for cell in cells:
             start, end = pos, pos + len(cell)
-            mine = [f for f in items if start <= f["start"] and f["end"] <= end and f["kind"] != "claim"]
+            mine = [f for f in items if start <= f["start"] and f["end"] <= end and f["kind"] not in DROPPED]
             out.append(_blank_cell(cell, mine, start) if mine else cell)
             pos = end + 1
         return "|".join(out)
@@ -1080,7 +1171,7 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
         if not mine:
             kept.append(part)
             continue
-        if any(f["kind"] == "claim" for f in mine):
+        if any(f["kind"] in DROPPED for f in mine):
             kept.append("")
             continue
         rest = part
@@ -1095,11 +1186,17 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
             part = part[: f["start"] - start] + f["placeholder"] + part[f["end"] - start:]
         kept.append(_collapse_chain(part))
     text = re.sub(r"(?<=\S)[ \t]{2,}", " ", "".join(kept)).rstrip()
+    if any(f["kind"] == "requirement" for f in items):
+        # a dropped first notice keeps the line's indent and list marker
+        lead = re.match(r"\s*(?:[-*+•]\s+|\d{1,2}[.)]\s+)?", line).group(0)
+        text = lead + (text[len(lead):] if text.startswith(lead) else text).lstrip()
+        if text.strip() == lead.strip():
+            return None
     return text if text.strip() else None
 
 
 def fix(text: str, findings: list[dict]) -> str:
-    """`text` with findings blanked, or sentences dropped (claims, invented-only sentences)."""
+    """`text` with findings blanked, or sentences dropped (claims, requirements, invented-only)."""
     by_line: dict[int, list[dict]] = {}
     for f in findings or []:
         by_line.setdefault(int(f["line"]), []).append(f)

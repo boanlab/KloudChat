@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     bootstrap_admin_password: str = ""
     bootstrap_admin_name: str = "관리자"
     # Default grant at approval; first-install seed of 「새 계정의 월 크레딧」.
-    default_monthly_credits: int = 500_000
+    default_monthly_credits: int = 5_000_000
     # Provider USD → credits; fine-grained so cheap models don't round to one floor.
     credits_per_usd: int = 100_000
     # LiteLLM budget headroom above the allowance (meters reset at different instants).

@@ -52,6 +52,8 @@ class Request:
     check_facts: str = ""
     #: attached/carried file text; also a value source
     check_material: str = ""
+    #: chat turn on the person's material: its answer is traced even without check skills
+    traced: bool = False
     #: tool prints (composed run: earlier step's code output)
     tool_outputs: list[str] = field(default_factory=list)
     #: earlier composed step's text: writer reads, checks never take figures

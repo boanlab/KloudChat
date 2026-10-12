@@ -5,7 +5,7 @@
 name = "deck"
 # Catalogue agents whose slides it makes.
 agents = ["slides"]
-make = ["deck-write", "deck-carry", "deck-save"]
+make = ["deck-write", "deck-carry", "deck-ground", "deck-save"]
 revise = [
     "revise-load", "revise-route", "revise-widen", "revise-rewrite", "consistency",
     "revise-save",

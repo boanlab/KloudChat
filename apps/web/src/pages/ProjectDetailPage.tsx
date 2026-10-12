@@ -140,8 +140,8 @@ export function ProjectDetailPage() {
     )
   }
 
-  const projectSessions = sessions.filter((c) => c.projectId === project.id)
-  const outsideSessions = [...sessions.filter((c) => c.projectId !== project.id)].sort(
+  const projectSessions = sessions.filter((c) => c.projectId === project.id && !c.unsent)
+  const outsideSessions = sessions.filter((c) => c.projectId !== project.id && !c.unsent).sort(
     (a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt),
   )
   const projectSkills = skills.filter((s) => project.skillIds.includes(s.id))
