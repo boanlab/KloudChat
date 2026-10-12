@@ -103,7 +103,7 @@ test('upload: a kept script shows its code and its findings by file and line', a
   expect(state.unexpected).toEqual([])
 })
 
-test('agent form: 빠진 정보 질문 editor beside the template\'s questions', async ({ page }, testInfo) => {
+test('agent form: 빠진 정보 질문 editor beside the template\'s questions', { tag: '@phone' }, async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   await page.goto('/customize/agents/new')
   const form = page.getByTestId('agent-form')

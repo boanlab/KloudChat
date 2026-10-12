@@ -153,7 +153,7 @@ async function mockApp(page: Page) {
   return requests
 }
 
-test('감사 로그는 무엇이 바뀌었는지 한국어로 보여 주고 쪽으로 나눈다', async ({ page }) => {
+test('감사 로그는 무엇이 바뀌었는지 한국어로 보여 주고 쪽으로 나눈다', { tag: '@phone' }, async ({ page }) => {
   const requests = await mockApp(page)
   await page.goto('/admin/governance')
   await page.getByRole('tab', { name: /감사 로그/ }).click()
@@ -215,7 +215,7 @@ test('감사 로그는 무엇이 바뀌었는지 한국어로 보여 주고 쪽�
   expect(overflow).toBeLessThanOrEqual(0)
 })
 
-test('감사 로그 첫 화면', async ({ page }) => {
+test('감사 로그 첫 화면', { tag: '@phone' }, async ({ page }) => {
   await mockApp(page)
   await page.goto('/admin/governance')
   await page.getByRole('tab', { name: /감사 로그/ }).click()

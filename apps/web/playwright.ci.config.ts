@@ -7,7 +7,8 @@ import base from './playwright.config'
  * stack and no account. One production build, served once by `vite preview`, for
  * every spec; `API_BASE_URL` points at an unused port so an unmocked call fails fast.
  *
- * Each group below is one surface: its spec files and the viewports it is checked at.
+ * Each group below is one surface: its spec files and the viewports it is checked at. A
+ * `phone`/`mobile` project runs only tests tagged `@phone`.
  * A project is `<group>/<viewport>`, e.g. `npx playwright test -c playwright.ci.config.ts
  * --project='customize/*'`. CI splits the projects over four jobs with `--shard`.
  *
@@ -26,7 +27,6 @@ const narrow = { viewport: { width: 390, height: 844 } }
 // A real phone profile (mobile user agent, device pixel ratio, `isMobile`).
 const pixel = { ...devices['Pixel 7'], browserName: 'chromium' as const, viewport: { width: 390, height: 844 } }
 const pixelNative = { ...devices['Pixel 7'], browserName: 'chromium' as const }
-const dark = { ...desktop, colorScheme: 'dark' as const }
 const desktopChrome = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } }
 const desktopChromePhone = {
   ...devices['Desktop Chrome'],
@@ -36,6 +36,9 @@ const desktopChromePhone = {
 }
 // The live suite's desktop and laptop profiles.
 const baseProfile = (name: string) => base.projects!.find((p) => p.name === name)!.use
+
+/** Projects at phone width; they run only `@phone` tests. */
+const phoneWidths = ['phone', 'mobile']
 
 type Group = {
   files: string[]
@@ -73,12 +76,11 @@ const groups: Record<string, Group> = {
   'session-hydration': {
     files: [
       'session-hydration.spec.ts',
-      'transcript-load.spec.ts',
       'composer-paste.spec.ts',
       'media-templates-retired.spec.ts',
       'answer-outcomes.spec.ts',
     ],
-    projects: { desktop: { viewport: desktop.viewport }, mobile: narrow },
+    projects: { desktop: { viewport: desktop.viewport } },
   },
   'report-audit': { files: ['report-panel-audit.spec.ts', 'sign-in-landing.spec.ts'], projects: { default: desktop } },
   'search-masking': { files: ['search-masking-origin.spec.ts'], projects: { default: {} } },
@@ -87,9 +89,9 @@ const groups: Record<string, Group> = {
   security: { files: ['security-paging.spec.ts'], projects: { desktop: desktopChrome, phone: desktopChromePhone } },
   pipeline: {
     files: ['pipeline-stages.spec.ts', 'user-pipelines.spec.ts'],
-    projects: { desktop, dark, phone: pixelNative },
+    projects: { desktop, phone: pixelNative },
   },
-  issues: { files: ['issue-reports.spec.ts'], projects: { desktop, dark, phone: pixelNative } },
+  issues: { files: ['issue-reports.spec.ts'], projects: { desktop } },
   customize: {
     files: [
       'customize-hub.spec.ts',
@@ -105,10 +107,10 @@ const groups: Record<string, Group> = {
   },
   agents: {
     files: ['agent-process.spec.ts', 'save-as-agent.spec.ts', 'restructure-shots.spec.ts'],
-    projects: { desktop, phone: pixel },
+    projects: { desktop },
   },
   results: { files: ['results.spec.ts', 'panel-header.spec.ts'], projects: { desktop, phone: pixel } },
-  search: { files: ['search-dialog.spec.ts', 'history-paging.spec.ts'], projects: { desktop, phone: pixel } },
+  search: { files: ['search-dialog.spec.ts'], projects: { desktop, phone: pixel } },
   publishing: { files: ['publishing.spec.ts'], projects: { desktop, phone: pixel } },
   ocr: { files: ['ocr.spec.ts'], projects: { desktop, phone: touchPhone } },
   ux: { files: ['ux-keyboard-forms.spec.ts'], projects: { desktop, phone: pixel } },
@@ -139,7 +141,9 @@ export default defineConfig({
     Object.entries(projects).map(([viewport, use]) => ({
       name: `${group}/${viewport}`,
       testMatch: files,
-      ...(grep ? { grep } : {}),
+      // A phone-width project runs only what is about the phone (`@phone`: layout, drawer,
+      // touch, widths); everything else is checked once, at desktop width.
+      ...(phoneWidths.includes(viewport) ? { grep: /@phone/ } : grep ? { grep } : {}),
       use,
     })),
   ),

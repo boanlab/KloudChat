@@ -188,7 +188,7 @@ test('home: example requests per surface fill the box and send nothing', async (
   expect(unexpected).toEqual([])
 })
 
-test('phone: one line, tools in a bottom sheet, answers full width, no sideways scroll at 360', async ({ page }, info) => {
+test('phone: one line, tools in a bottom sheet, answers full width, no sideways scroll at 360', { tag: '@phone' }, async ({ page }, info) => {
   test.skip(!phoneProject(), 'phone layout')
   const { unexpected } = await composerFixture(page, info)
   for (const width of [390, 360]) {

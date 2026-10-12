@@ -260,7 +260,7 @@ function shooter(page: Page, testInfo: TestInfo) {
 
 const panel = (page: Page) => page.locator('[data-panel="artifact"]')
 
-test('report: stage list, evidence, marks, fill, rerun', async ({ page }, testInfo) => {
+test('report: stage list, evidence, marks, fill, rerun', { tag: '@phone' }, async ({ page }, testInfo) => {
   const phone = viewport(testInfo) === 'phone'
   const state = await fixture(page, testInfo)
   const shot = shooter(page, testInfo)
@@ -381,7 +381,7 @@ test('agents: how it works, in one line, and no 워크플로 anywhere', async ({
   expect(state.problems).toEqual([])
 })
 
-test('home: composer docked at the bottom, empty textarea without a scrollbar', async ({ page }, testInfo) => {
+test('home: composer docked at the bottom, empty textarea without a scrollbar', { tag: '@phone' }, async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
   const shot = shooter(page, testInfo)
   const stamp = process.env.HOME_SHOT_TAG ?? 'after'

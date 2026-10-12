@@ -18,7 +18,7 @@ function fileRow(extra: Record<string, unknown>) {
   }
 }
 
-test('an attached scan shows its pages being read, then what to check', async ({ page }, info) => {
+test('an attached scan shows its pages being read, then what to check', { tag: '@phone' }, async ({ page }, info) => {
   const { unexpected } = await composerFixture(page, info)
   // Each poll reads one more page; the third answer is the finished file.
   const answers = [

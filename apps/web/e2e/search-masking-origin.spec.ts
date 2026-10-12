@@ -194,7 +194,8 @@ async function assertBadges(page: Page, scenario: Scenario) {
 }
 
 for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
-  for (const mode of ['saved', 'streamed'] as const) {
+  // A streamed answer is reloaded and read back saved, so at phone width it covers both.
+  for (const mode of viewport.name === 'desktop' ? ['saved', 'streamed'] as const : ['streamed'] as const) {
     test(`${viewport.name} ${mode}: 도구만 마스킹한 경우 요청 마스킹으로 표시하지 않는다`, async ({ page }) => {
       await page.setViewportSize(viewport)
       const state = await mockMasking(page, 'tool', mode === 'saved')

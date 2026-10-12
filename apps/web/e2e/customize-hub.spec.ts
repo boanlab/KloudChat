@@ -10,7 +10,7 @@ import { viewport } from './project'
 
 test.use({ serviceWorkers: 'block' })
 
-test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address', async ({ page }, testInfo) => {
+test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address', { tag: '@phone' }, async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   const phone = viewport(testInfo) === 'phone'
   await page.goto('/customize')
@@ -192,7 +192,7 @@ test('every old address lands where its screen went', async ({ page }, testInfo)
   expect(state.problems).toEqual([])
 })
 
-test('account menu: one 사용자 지정 item, 대화 기록 beside it, 계정 unchanged; sidebar has it too', async ({ page }, testInfo) => {
+test('account menu: one 사용자 지정 item, 대화 기록 beside it, 계정 unchanged; sidebar has it too', { tag: '@phone' }, async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   await page.goto('/customize')
   await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible({ timeout: 15_000 })
@@ -212,7 +212,7 @@ test('account menu: one 사용자 지정 item, 대화 기록 beside it, 계정 u
   expect(state.problems).toEqual([])
 })
 
-test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; the box opens search', async ({ page }, testInfo) => {
+test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; the box opens search', { tag: '@phone' }, async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo, { conversations: 40 })
   const rows = conversationRows(40)
   const old = rows[33]

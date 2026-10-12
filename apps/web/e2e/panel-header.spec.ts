@@ -35,7 +35,7 @@ async function fitsOneRow(page: Page) {
   expect(Math.max(...middles) - Math.min(...middles)).toBeLessThan(4)
 }
 
-test('report: reading shows no ribbon and downloads from the header', async ({ page }, testInfo) => {
+test('report: reading shows no ribbon and downloads from the header', { tag: '@phone' }, async ({ page }, testInfo) => {
   const recorded = await resultsFixture(page, testInfo)
   await open(page, reportSession)
   await expect(panel(page).getByRole('tablist')).toHaveCount(0)
@@ -96,7 +96,7 @@ test('report: 편집 opens the editing tabs; 테마 holds the look, 강조색, �
   await expect(panel(page).getByRole('tablist')).toHaveCount(0)
 })
 
-test('slides: 발표 and 내려받기 in the header, editing tabs only while editing', async ({ page }, testInfo) => {
+test('slides: 발표 and 내려받기 in the header, editing tabs only while editing', { tag: '@phone' }, async ({ page }, testInfo) => {
   const recorded = await resultsFixture(page, testInfo)
   await open(page, deckSession)
   await expect(panel(page).getByRole('tablist')).toHaveCount(0)

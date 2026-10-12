@@ -88,7 +88,7 @@ async function mockApp(page: Page) {
   return asked
 }
 
-test('로그인된 기기는 현재 기기를 맨 앞에 두고 10개씩 나누며, 마지막 줄을 종료하면 앞 쪽으로 간다', async ({ page }) => {
+test('로그인된 기기는 현재 기기를 맨 앞에 두고 10개씩 나누며, 마지막 줄을 종료하면 앞 쪽으로 간다', { tag: '@phone' }, async ({ page }) => {
   const asked = await mockApp(page)
   await page.goto('/settings/access')
 

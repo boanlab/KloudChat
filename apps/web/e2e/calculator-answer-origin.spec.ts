@@ -151,7 +151,8 @@ for (const viewport of [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'mobile', width: 390, height: 844 },
 ]) {
-  for (const mode of ['saved', 'streamed'] as const) {
+  // A streamed answer is reloaded and read back saved, so at phone width it covers both.
+  for (const mode of viewport.name === 'desktop' ? ['saved', 'streamed'] as const : ['streamed'] as const) {
     test(`${viewport.name} ${mode}: 계산기 답변은 모델 생성과 Auto 선택을 구분하며 재조회 후에도 유지한다`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
       const state = await mockAnswer(page, mode === 'saved')

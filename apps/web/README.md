@@ -103,7 +103,9 @@ E2E_PREBUILT=1 npx playwright test -c playwright.ci.config.ts         # serve th
 ```
 
 A new fixture spec goes into a surface in `playwright.ci.config.ts`, or CI never
-runs it. The report is in `playwright-report/` (`npx playwright show-report`).
+runs it. A test is checked once, at desktop width; one about the phone
+(layout, the drawer, touch, widths) also carries `{ tag: '@phone' }`, and the
+`phone`/`mobile` projects run only those. The report is in `playwright-report/` (`npx playwright show-report`).
 
 Exception: `playwright.chat-errors.config.ts` signs in to a running app and fakes
 only the turn's stream, so it stays out of CI.

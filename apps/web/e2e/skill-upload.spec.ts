@@ -63,7 +63,7 @@ async function drop(page: Page, name: string) {
   await page.getByTestId('skill-drop').dispatchEvent('drop', { dataTransfer: transfer })
 }
 
-test('upload: menu, dry-run findings, a blocked file holds the upload, commit opens the skill', async ({ page }, testInfo) => {
+test('upload: menu, dry-run findings, a blocked file holds the upload, commit opens the skill', { tag: '@phone' }, async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   const posts = await mockImport(page)
   const phone = viewport(testInfo) === 'phone'

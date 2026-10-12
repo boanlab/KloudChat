@@ -778,7 +778,7 @@ test('the framed page asks without an account and marks every call', async ({ pa
   expect(state.unexpected).toEqual([])
 })
 
-test('the loader on another page opens the bot in a frame, the whole screen on a phone', async ({ page }, testInfo) => {
+test('the loader on another page opens the bot in a frame, the whole screen on a phone', { tag: '@phone' }, async ({ page }, testInfo) => {
   await noAccount(page, testInfo)
   await botRoutes(page, { anonymous: true })
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
@@ -791,9 +791,9 @@ test('the loader on another page opens the bot in a frame, the whole screen on a
   await expect(frame).toHaveAttribute('src', `${origin}/embed/b/${SLUG}`)
   await expect(page.frameLocator('iframe[title="챗봇에게 묻기"]').getByTestId('bot-notice')).toBeVisible({ timeout: 15_000 })
   const box = await frame.boundingBox()
-  const viewport = page.viewportSize()
+  const size = page.viewportSize()
   if (viewport(testInfo) === 'phone') {
-    expect(Math.round(box?.width ?? 0)).toBe(viewport?.width)
+    expect(Math.round(box?.width ?? 0)).toBe(size?.width)
     // The close button sits above the frame, not over the bot's own header.
     const close = await page.getByRole('button', { name: '챗봇에게 묻기' }).boundingBox()
     expect((close?.y ?? 0) + (close?.height ?? 0)).toBeLessThanOrEqual(box?.y ?? 0)

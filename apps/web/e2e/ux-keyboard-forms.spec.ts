@@ -272,7 +272,7 @@ test('settings is a menu of links, and the password form lives at the top of 보
   expect(state.problems).toEqual([])
 })
 
-test('the model menu marks the pick as a radio and offers no Auto the administrator has not turned on', async ({ page }, testInfo) => {
+test('the model menu marks the pick as a radio and offers no Auto the administrator has not turned on', { tag: '@phone' }, async ({ page }, testInfo) => {
   const state = await app(page, testInfo)
   await page.goto(`/s/${chatId}`)
   const trigger = page.getByRole('button', { name: 'Qwen · Qwen3.8 27b (local)' }).last()
@@ -365,7 +365,7 @@ test.describe('desktop keyboard', () => {
   })
 })
 
-test.describe('phone drawer', () => {
+test.describe('phone drawer', { tag: '@phone' }, () => {
   test.skip(({ viewport }) => (viewport?.width ?? 0) >= 1024, 'the drawer is the narrow layout')
 
   test('opens as a modal: focus moves in, the page behind is inert, Escape closes and returns focus', async ({ page }, testInfo) => {

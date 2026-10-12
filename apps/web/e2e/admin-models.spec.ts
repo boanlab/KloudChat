@@ -102,7 +102,7 @@ async function adminFixture(page: Page, info: TestInfo) {
   return { unexpected, puts }
 }
 
-test('the administrator decides which model does which job', async ({ page }, info) => {
+test('the administrator decides which model does which job', { tag: '@phone' }, async ({ page }, info) => {
   const { unexpected, puts } = await adminFixture(page, info)
   await page.goto('/admin/system/models')
   const card = page.locator('[data-section="model-roles"]')

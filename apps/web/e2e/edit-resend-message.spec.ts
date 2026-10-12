@@ -271,7 +271,7 @@ async function settleUi(page: Page) {
 }
 
 for (const index of [1, 2]) {
-  test(`${index === 1 ? 'middle' : 'last'} edit forks a prefix and survives reload without changing the original`, async ({ page }, info) => {
+  test(`${index === 1 ? 'middle' : 'last'} edit forks a prefix and survives reload without changing the original`, { tag: '@phone' }, async ({ page }, info) => {
     const state = await fixture(page, info)
     await beginEdit(page, index)
     await page.getByLabel('프롬프트 입력').fill(edited)
@@ -576,7 +576,7 @@ test('a newly sent message becomes editable after stored IDs reconcile without r
   state.assertClean()
 })
 
-test('moving to another session does not carry the edit target or edited draft', async ({ page }, info) => {
+test('moving to another session does not carry the edit target or edited draft', { tag: '@phone' }, async ({ page }, info) => {
   const state = await fixture(page, info)
   await beginEdit(page)
   await page.getByLabel('프롬프트 입력').fill(edited)
