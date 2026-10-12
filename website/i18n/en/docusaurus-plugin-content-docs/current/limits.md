@@ -56,7 +56,7 @@ Search for the message exactly as it appears on the screen.
 | The microphone is unavailable. Check the microphone permission in your browser | No microphone or no permission | Browser permission |
 | No text could be read from this file | An unsupported format, or a scan while text from scans (OCR) is not connected | Use a file that contains text, or ask the administrator to connect text from scans |
 | The text could not be read. Upload it again in a moment | The text-from-scans service did not answer | Upload it again later |
-| Sign-in failed five times in a row, so the account is locked for 15 minutes | Locked | Try again after 15 minutes |
+| Too many failed sign-ins, so this address is locked for a while | Five failures in a row within 15 minutes | Try again after the time shown, or have an administrator reset the password |
 | Sign-ups are not being accepted right now | The administrator has blocked sign-up | Ask your administrator for an account |
 
 ## Features that are not provided

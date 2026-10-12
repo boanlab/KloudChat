@@ -275,6 +275,8 @@ interface State {
   authLoading: boolean
   /** Backend `detail` code from the last failed auth call. */
   authError: string | null
+  /** Seconds left on a sign-in lockout (`Retry-After`), when the server said. */
+  authRetryAfter: number | null
   /** Set when the session ended by idle timeout rather than 로그아웃. */
   signedOutReason: 'idle' | null
   /** Minutes of inactivity allowed; 0 is off. */
@@ -912,6 +914,7 @@ export const useStore = create<State>((set, get) => ({
   authenticated: false,
   authLoading: true,
   authError: null,
+  authRetryAfter: null,
   signedOutReason: null,
   idleTimeoutMinutes: 0,
   dictationEnabled: false,
@@ -975,7 +978,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   login: async (email, password) => {
-    set((state) => ({ authError: null, accountEpoch: state.accountEpoch + 1,
+    set((state) => ({ authError: null, authRetryAfter: null, accountEpoch: state.accountEpoch + 1,
       messageEdit: null, messageEditBusy: false }))
     try {
       const session = await auth.login(email, password)
@@ -991,7 +994,8 @@ export const useStore = create<State>((set, get) => ({
         void get().loadWorkspace()
       }
     } catch (err) {
-      set({ authError: err instanceof ApiError ? err.detail : 'network_error' })
+      set({ authError: err instanceof ApiError ? err.detail : 'network_error',
+        authRetryAfter: err instanceof ApiError ? err.retryAfter ?? null : null })
       throw err
     }
   },

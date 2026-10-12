@@ -23,7 +23,7 @@ If pressing **Request sign-up** shows the notice "Sign-ups are not being accepte
 
 ## Signing in
 
-Sign in with your email and password. **If you enter the wrong password five times in a row, sign-in is blocked for 15 minutes.** While it is blocked, even the correct password will not sign you in, so try again after 15 minutes.
+Sign in with your email and password. **If you enter the wrong password five times in a row within 15 minutes, sign-in is blocked for 15 minutes.** While it is blocked, even the correct password will not sign you in. The screen shows the time left, and an administrator's password reset or your own reset lifts it at once.
 
 If your account is suspended, an information screen appears instead of the home screen. In that case, contact your administrator.
 

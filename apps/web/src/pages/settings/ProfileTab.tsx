@@ -1,7 +1,6 @@
 import { Shield } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, Card, Field, Input } from '@/components/ui'
-import { Link } from 'react-router-dom'
 import { USER_STATUS_LABEL } from '@/lib/userStatus'
 import { formatDate } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -55,12 +54,6 @@ function ProfileFields() {
           </div>
         </form>
 
-        <p className="text-base text-muted">
-          {t('비밀번호는 보안 탭에서 바꿉니다.')}{' '}
-          <Link to="/settings/access#password" className="font-medium text-accent hover:underline">
-            {t('비밀번호 변경으로 가기')}
-          </Link>
-        </p>
     </div>
   )
 }

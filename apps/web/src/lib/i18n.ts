@@ -147,8 +147,6 @@ const EN: Record<string, string> = {
   '관리자가 승인하면 쓸 수 있습니다.': 'You can start once an administrator approves.',
   '가입하기': 'Sign up',
   '{n}번 더 틀리면 {m}분 동안 잠깁니다.': '{n} more wrong tries locks sign-in for {m} minutes.',
-  '비밀번호는 보안 탭에서 바꿉니다.': 'Change your password on the Security tab.',
-  '비밀번호 변경으로 가기': 'Go to Change password',
   '설정 메뉴': 'Settings menu',
   '시스템 메뉴': 'System menu',
   // 입력 확인 · 필수 칸
@@ -1726,7 +1724,8 @@ const EN: Record<string, string> = {
   '가입한 이메일 주소로 재설정 링크를 보냅니다.': 'We will send a reset link to your sign-up address.',
   '비밀번호를 잊었다면 관리자에게 문의하세요.': 'If you forgot your password, ask your administrator.',
   '이메일 또는 비밀번호가 올바르지 않습니다.': 'That email or password is not right.',
-  '로그인에 다섯 번 연속 실패해 잠시 잠겼습니다. 15분 뒤에 다시 시도하세요.': 'Five sign-ins in a row failed, so this address is locked for a while. Try again in 15 minutes.',
+  '로그인에 여러 번 실패해 잠시 잠겼습니다. 잠시 뒤에 다시 시도하세요.': 'Too many failed sign-ins, so this address is locked for a while. Try again later.',
+  '로그인에 여러 번 실패해 잠시 잠겼습니다. {n}분 뒤에 다시 시도하세요.': 'Too many failed sign-ins, so this address is locked for a while. Try again in {n} min.',
   '정지된 계정입니다. 관리자에게 문의하세요.': 'This account is suspended. Ask your administrator.',
   '이미 사용 중인 이메일입니다.': 'That email is already in use.',
   '지금은 회원가입을 받지 않습니다. 관리자에게 문의하세요.': 'Sign-ups are closed. Ask your administrator.',

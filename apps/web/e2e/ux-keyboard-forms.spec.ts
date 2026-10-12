@@ -44,7 +44,7 @@ const project = {
 
 interface Options {
   signedIn?: boolean
-  signupMode?: 'open' | 'approval'
+  signupMode?: 'open' | 'approval' | 'closed'
 }
 
 async function app(page: Page, testInfo: TestInfo, { signedIn = true, signupMode = 'approval' }: Options = {}) {
@@ -186,6 +186,15 @@ test.describe('signed out', () => {
     expect(state.problems).toEqual([])
   })
 
+  test('signup: a closed signup shows no 회원가입 tab, only sign-in', async ({ page }, testInfo) => {
+    const state = await app(page, testInfo, { signedIn: false, signupMode: 'closed' })
+    await page.goto('/')
+    await expect(page.getByRole('button', { name: '로그인', exact: true }).last()).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: '회원가입', exact: true })).toHaveCount(0)
+    await expect(page.getByText('계정 만들기')).toHaveCount(0)
+    expect(state.problems).toEqual([])
+  })
+
   test('signup: open signup says so, ticks the rule as typed, and a 422 reads as Korean', async ({ page }, testInfo) => {
     const state = await app(page, testInfo, { signedIn: false, signupMode: 'open' })
     await page.goto('/')
@@ -278,10 +287,9 @@ test('settings is a menu of links, and the password form lives at the top of 보
   const nav = page.getByRole('navigation', { name: '설정 메뉴' })
   await expect(nav.getByRole('link', { name: '프로필' })).toHaveAttribute('aria-current', 'page', { timeout: 15_000 })
   await expect(page.getByRole('tab')).toHaveCount(0)
-  await page.getByRole('link', { name: '비밀번호 변경으로 가기' }).click()
-  await expect(page).toHaveURL(/\/settings\/access#password$/)
+  await nav.getByRole('link', { name: '보안' }).click()
   await expect(nav.getByRole('link', { name: '보안' })).toHaveAttribute('aria-current', 'page')
-  await expect(page.getByLabel('현재 비밀번호')).toBeFocused()
+  await expect(page.getByLabel('현재 비밀번호')).toBeVisible()
   await page.getByRole('button', { name: '비밀번호 변경' }).click()
   await expect(page.getByRole('alert').first()).toHaveText('현재 비밀번호를 입력하세요.')
   expect(state.problems).toEqual([])

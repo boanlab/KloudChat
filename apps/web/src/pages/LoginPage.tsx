@@ -21,7 +21,7 @@ const ERRORS: Record<string, string> = {
   reset_token_expired: '링크가 만료되었습니다. 다시 요청하세요.',
   email_unavailable: '이미 사용 중인 이메일입니다.',
   account_suspended: '정지된 계정입니다. 관리자에게 문의하세요.',
-  account_locked: '로그인에 다섯 번 연속 실패해 잠시 잠겼습니다. 15분 뒤에 다시 시도하세요.',
+  account_locked: '로그인에 여러 번 실패해 잠시 잠겼습니다. 잠시 뒤에 다시 시도하세요.',
   signup_closed: '지금은 회원가입을 받지 않습니다. 관리자에게 문의하세요.',
   signup_domain_not_allowed: '이 이메일 도메인으로는 가입할 수 없습니다. 허용된 주소를 쓰세요.',
   invalid_verify_token: '확인 링크가 올바르지 않습니다. 로그인해서 확인 메일을 다시 받으세요.',
@@ -35,7 +35,7 @@ const UNKNOWN_ERROR = '요청을 처리하지 못했습니다. 잠시 후 다시
 export function LoginPage() {
   const t = useT()
   const lang = useStore((s) => s.lang)
-  const { login, signup, authError, bootstrap, signedOutReason, adoptSession } = useStore()
+  const { login, signup, authError, authRetryAfter, bootstrap, signedOutReason, adoptSession } = useStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   // No router while signed out: `?token=` on `/verify` confirms signup, elsewhere resets a password.
   const [resetToken, setResetToken] = useState(() =>
@@ -53,7 +53,12 @@ export function LoginPage() {
     mode: 'open' | 'approval' | 'closed'
     domains: string[]
     emailVerification: boolean
+    available?: boolean
   } | null>(null)
+  const signupOpen = signupPolicy ? signupPolicy.available ?? signupPolicy.mode !== 'closed' : true
+  useEffect(() => {
+    if (!signupOpen) setMode('login')
+  }, [signupOpen])
   const [passwordMin, setPasswordMin] = useState(DEFAULT_PASSWORD_MIN)
   const [lockout, setLockout] = useState({ maxFailures: 5, lockoutMinutes: 15 })
   /** Consecutive wrong passwords for this address: warn before the lock. */
@@ -189,7 +194,10 @@ export function LoginPage() {
   }
 
   /** Known code, the server's sentence, or a general one. */
-  const authText = authError
+  const lockedMinutes = authError === 'account_locked' && authRetryAfter ? Math.max(1, Math.ceil(authRetryAfter / 60)) : null
+  const authText = lockedMinutes
+    ? t('로그인에 여러 번 실패해 잠시 잠겼습니다. {n}분 뒤에 다시 시도하세요.').replace('{n}', String(lockedMinutes))
+    : authError
     ? ERRORS[authError]
       ? t(ERRORS[authError])
       : isSentence(authError) && !authError.startsWith('http_')
@@ -404,7 +412,7 @@ export function LoginPage() {
             </div>
           )}
 
-          {!resetToken && !forgotOpen && (
+          {!resetToken && !forgotOpen && signupOpen && (
           <div className="mt-6 flex gap-1 rounded-control border border-line bg-elevated p-1">
             {(
               [
