@@ -1458,6 +1458,29 @@ class FormatFind(Base):
         bundle.findings.before += [f.code for f in first]
 
 
+def keep_blanks(before: list[dict], after: list[dict], traced: Any) -> list[dict]:
+    """`after` with values grounding blanked kept blank where a repair wrote them back."""
+    blanked = {(str(f.get("text") or "").strip(), str(f.get("placeholder") or ""))
+               for f in (getattr(traced, "found", None) or [])}
+    blanked = {(text, mark) for text, mark in blanked
+               if mark and len(text) >= 2 and re.search(r"\d", text)}
+    if not blanked:
+        return after
+    old = {str(row.get("heading") or ""): str(row.get("content") or "") for row in before}
+    out = []
+    for row in after:
+        content = str(row.get("content") or "")
+        was = old.get(str(row.get("heading") or ""), "")
+        mended = content
+        for text, mark in blanked:
+            if text in mended and text not in was:
+                mended = mended.replace(text, mark)
+        if mended != content:
+            log.info("verify wrote back blanked values in %r", logs.safe(row.get("heading")))
+        out.append({**row, "content": mended} if mended != content else row)
+    return out
+
+
 class Verify(Base):
     """Find, repair once, find again; leftovers reported, never passed off."""
 
@@ -1471,6 +1494,7 @@ class Verify(Base):
         settled, sources = bundle.computed.settled, bundle.material.sources
         context_text = _material_text(bundle)
         still: list[verify.Finding] = []
+        before = list(bundle.document.sections)
         try:
             bundle.document.sections, still, spent = await verify.verify_and_repair(
                 _doc(bundle),
@@ -1487,6 +1511,8 @@ class Verify(Base):
             _count(bundle, spent, planner=True)
         except Exception:  # noqa: BLE001 — the sentences stay as written; the gate reports them
             log.exception("verify stage failed")
+        bundle.document.sections = keep_blanks(before, bundle.document.sections,
+                                               bundle.findings.traced)
         if (pre := bundle.computed.prepass) is not None and pre.musts:
             # a recommendation still against the must-have matrix: the code's verdict instead
             bundle.document.sections, still = report_checks.settle_verdict(
