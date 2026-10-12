@@ -26,7 +26,7 @@ $env:OPENAI_BASE_URL = "https://<service-address>/llm/v1"
 $env:OPENAI_API_KEY = "<your-api-key>"
 ```
 
-Usage is added to your account limit and is counted separately under **By API key** on the usage screen. Any allowed-model restriction set on the account applies to the key in the same way.
+Requests sent with a key reach the usage screen and this month's credits within a few minutes, and appear as **API keys** in the by-screen breakdown. Requests to free models are counted as requests too. Any allowed-model restriction set on the account applies to the key in the same way.
 
 ## AI agent integration
 

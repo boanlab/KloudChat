@@ -70,6 +70,7 @@ _DDL = (
         units INTEGER,
         unit TEXT,
         publication_id TEXT,
+        external_ref TEXT,
         created_at DATETIME
     )
     """,

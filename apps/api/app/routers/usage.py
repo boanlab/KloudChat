@@ -16,7 +16,7 @@ from app.models.chat import ChatSession, Message, Role
 from app.models.governance import Governance
 from app.models.user import ApiKey, AuditEvent, CreditLedger, User, UserStatus, utcnow
 from app.schemas.admin import GovernanceIn
-from app.services import adaptive_routing, geoip, governance, settings_store
+from app.services import adaptive_routing, api_key_usage, geoip, governance, settings_store
 from app.services import audit as audit_service
 from app.services import credits as credits_service
 from app.services import files as file_service
@@ -32,7 +32,15 @@ me_router = APIRouter(prefix="/me", tags=["usage"])
 MEDIA_REASONS = ("image.generate", "image.chart", "audio.generate", "video.generate")
 
 #: free work in `units` (seconds, chunks, pages); one request per row
-UNIT_REASONS = ("speech.transcribe", "index.embed", "index.search", "ocr.engine", "ocr.vision")
+UNIT_REASONS = (
+    "speech.transcribe",
+    "index.embed",
+    "index.search",
+    "ocr.engine",
+    "ocr.vision",
+    # member-held API key calls: one request per row, tokens in `units`
+    api_key_usage.API_KEY_REASON,
+)
 
 #: web searches ride on their turn: in totals/days, not bars
 SEARCH_REASON = credits_service.SEARCH_REASON

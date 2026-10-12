@@ -638,7 +638,7 @@ export interface UsageReport {
     unit?: string
   }[]
   /** `other`: spend with no session, so the bars sum to the total. */
-  bySurface: { kind: SessionKind | 'other' | 'bot'; credits: number; requests: number }[]
+  bySurface: { kind: SessionKind | 'other' | 'bot' | 'api'; credits: number; requests: number }[]
   /** Every account with activity in the window, most spent first. */
   topUsers: {
     id: string

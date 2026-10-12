@@ -116,7 +116,8 @@ and private ranges read **Private network** (`내부망`) rather than a guess.
 1 credit = $0.00001 (`credits_per_usd = 100_000`). **The ledger
 (`CreditLedger`) is the truth**; `messages.usage.credits` is for display.
 Free work that still has a quota goes on the same ledger at zero credits with
-a `units` figure: seconds transcribed, chunks embedded, and web searches
+a `units` figure: seconds transcribed, chunks embedded, tokens of an API key
+call (§ Coding agents), and web searches
 (`search.web`, one row per turn with the number of queries the turn sent to
 SearXNG, counted from `ToolContext.tool_calls` in chat and from the research
 step on the document surfaces). The usage screens read searches from there.
@@ -1349,9 +1350,20 @@ The master key never travels this path, and a call without credentials gets a
 401 from upstream. Responses are relayed chunk by chunk, so streaming passes
 through intact.
 
-`/usage` shows conversation usage and API key usage **side by side**. The first
-number comes from KloudChat's ledger and the second from the proxy; they are
-aggregated at different moments, so adding them makes neither correct.
+Calls made with a member's key reach the proxy without passing through a
+turn, so `api_key_usage.watch` reads them back: every five minutes it pulls each
+issued key's rows (revoked keys included) from LiteLLM's `/spend/logs/v2`,
+filtered by the key's hash, and writes one ledger row per successful request —
+reason `api.key`, surface `api`, the model, prompt plus completion tokens as
+`units`, and credits at this instance's rates (`charge_for_tokens`, so free
+models record the request at zero). The request id goes in
+`credit_ledger.external_ref` under a unique index (migration 0073), and each
+pass re-reads from 30 minutes before the newest such row, so a request is never
+written twice; the first pass starts at the month's cycle start. Credits land
+in `credits_used` only for calls in the current cycle. One replica runs a pass
+at a time (`pg_try_advisory_xact_lock`). The usage screens, the admin user list
+and the balance therefore include API key calls; `/usage` also still lists each
+key's lifetime spend as the proxy reports it.
 
 ### Administrator controls
 
