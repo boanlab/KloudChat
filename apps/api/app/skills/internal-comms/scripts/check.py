@@ -314,7 +314,7 @@ def check(text: str, material: str = "", kind: str = "notice", register: str = "
 
 #: Facts a notice must not make up: blanked by code wherever the material lacks them.
 _BLANKED = ("date", "time", "email", "phone", "url", "version")
-_UNIT_AFTER = re.compile(r"\s?(?:%|명|건|개|곳|원|시간|분|초|일|주|개월|년|회|차|대|GB|MB|억|만|천)")
+_UNIT_AFTER = re.compile(r"\s?(?:%|명|건|개|곳|원|시간|분|초|일|주(?!차)|개월|년|회(?!차)|대|GB|MB|억|만|천)")
 
 
 def _blank(text: str, fact: dict, placeholder: str) -> str:
@@ -366,7 +366,7 @@ def post(text: str, args: dict) -> dict:
                 out["fixed"].append({"kind": kind, "text": fact["text"], "why": "자료에 없는 수치 → [수치]"})
             else:
                 out["rewrite"].append({"kind": kind, "text": fact["text"],
-                                       "why": "자료에 없는 수치입니다. 자료의 값으로 바꾸거나 [수치] 빈칸으로 두세요."})
+                                       "why": "자료에 없는 수치입니다. 자료의 값으로 바꾸거나 값 뒤에 「(확인 필요)」를 붙이세요."})
     out["text"] = text
     return out
 

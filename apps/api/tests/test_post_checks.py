@@ -334,7 +334,8 @@ def test_the_stage_runs_in_the_chat_finish_with_a_post_checked_skill_only(monkey
         return [e async for e in stage.run(bundle, Context())]
 
     events = asyncio.run(go())
-    assert "11월 3일" not in bundle.document.answer
+    # an unlisted date stays as written, marked; the guard leaves no 「[날짜]」 blank
+    assert bundle.document.answer == "11월 3일(화)(확인 필요)부터 씁니다."
     step = bundle.document.kept_steps[-1]
     assert step["id"] == "skill_check" and events[0]["status"] == "running"
 

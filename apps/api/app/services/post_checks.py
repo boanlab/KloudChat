@@ -8,7 +8,7 @@ import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 
-from app.services import skill_packages, skill_scripts, skill_specs, units
+from app.services import internal_words, skill_packages, skill_scripts, skill_specs, units
 
 log = logging.getLogger(__name__)
 
@@ -20,8 +20,8 @@ _SKILL_CHARS = 6000
 _JUDGED = 12
 
 _JUDGE = """You check an answer against the material it was written from. The material is \
-the person's request and the files and text they gave, and what code and scripts printed \
-this turn; nothing else counts as a source.
+the person's request and the files and text they gave, and what tools returned this turn \
+(code and scripts, web search results, fetched pages); nothing else counts as a source.
 
 List each statement in the answer that presents as fact something the material does not \
 state or directly imply: a date, deadline, time, number, amount, name, contact, version, \
@@ -67,9 +67,11 @@ imply it (a paraphrase of what it says counts), exactly as the material writes t
 _REWRITE = (
     "Below are the material and an answer written from it. Fix only the problems listed; an "
     "item the material does state after all stays as it is. For a value or statement the "
-    "material does not give: take it out or replace it with what the material states; use a "
-    "bracket blank such as [날짜] or [수치] only for a value the person must fill in, and "
-    "delete a sentence or list item that has nothing true left to say. For an original "
+    "material does not give: take out the unsupported clause or replace it with what the "
+    "material states; when the sentence needs the value, keep it and write 「(확인 필요)」 "
+    "right after it. Never replace a value with a bracket blank such as [날짜] or [수치]; "
+    "brackets are only for a field the person fills in (a signature, a contact). Never empty "
+    "a paragraph or leave a table with only its header. For an original "
     "value or wording that was changed: restore the original exactly. For a plan or judgment "
     "written as settled: write it as the material hedges it. Keep everything else exactly as "
     "written — structure, order, headings, tables, the other wording and the language. Add no "
@@ -321,7 +323,7 @@ def _cleaned(reply: str) -> str:
     text = _THINK.sub("", reply or "").strip()
     if text.startswith("```") and text.endswith("```"):
         text = re.sub(r"^```[a-z]{0,12}\n?|```$", "", text).strip()
-    return text
+    return internal_words.strip_echoed_heading(text)
 
 
 def drop(text: str, quote: str) -> str:
@@ -376,7 +378,7 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
     shipped = "\n\n".join(p.body[:_SKILL_CHARS] for p in on)
     # skill text excluded from judge material (instructions); confirmer may quote its facts
     sources = "\n\n".join(x for x in (
-        material, f"# 코드·스크립트 출력\n{printed}" if printed else "") if x)
+        material, f"# 도구 출력(코드·스크립트·웹 검색)\n{printed}" if printed else "") if x)
     reference = "\n\n".join(x for x in (sources, f"# 스킬 참고\n{shipped}" if shipped else "")
                              if x)
     args = {"request": request, "material": material, "attached": attached,

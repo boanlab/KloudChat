@@ -10,7 +10,15 @@ from typing import Any
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle, Document, Material, Request
 from app.pipeline.stage import Base, Context
-from app.services import cover_letter, freshness, internal_words, superlatives, units, weekdays
+from app.services import (
+    cover_letter,
+    current_evidence,
+    freshness,
+    internal_words,
+    superlatives,
+    units,
+    weekdays,
+)
 from app.services.chat_format import normalize_raw_payload, unlink_local_targets
 
 log = logging.getLogger("app.routers.sessions")
@@ -21,13 +29,31 @@ class Normalize(Base):
 
     name = "answer-normalize"
     reads = ("request", "material.given")
-    writes = ("document.answer",)
+    writes = ("document.answer", "document.kept_steps")
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        before = {row.get("id") for row in bundle.document.kept_steps}
+        await self.apply(bundle, ctx)
+        for row in bundle.document.kept_steps:
+            if row.get("id") == "answer_checks" and "answer_checks" not in before:
+                yield {"type": "step", **row}
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         req = bundle.request
+        streamed = internal_words.strip_echoed_heading(bundle.document.streamed)
+        if req.traced or req.evidence or req.check_material.strip():
+            # grounded in the person's material or this turn's search: no training-time caveat
+            streamed = current_evidence.strip_caveat(streamed)
+        # verification notes are the steps' to show, not the body's
+        streamed, checked = internal_words.strip_check_block(streamed)
+        if checked:
+            bundle.document.kept_steps = [
+                row for row in bundle.document.kept_steps if row.get("id") != "answer_checks"
+            ] + [{"category": "thinking", "id": "answer_checks", "label": "작성 중 점검 결과",
+                  "status": "done", "detail": checked[:1500]}]
         first = req.first_message
         normalized = freshness.normalize_answer_notice(
-            bundle.document.streamed, req.text, req.model_info, req.actual_model)
+            streamed, req.text, req.model_info, req.actual_model)
         # `first`: stored user text, not the merged reference envelope
         normalized = normalize_raw_payload(normalized, first)
         # wrong unit label on a money table
@@ -149,7 +175,8 @@ def bundle_for(*, answer: str, request: str, model: dict, actual_model: str | No
                tool_outputs: list[str], judge: str, kept_steps: list[dict],
                usage: dict[str, Any], skill_keys: tuple[str, ...] = (),
                check_options: dict | None = None,
-               skill_specs: dict | None = None, traced: bool = False) -> Bundle:
+               skill_specs: dict | None = None, traced: bool = False,
+               evidence: list[str] | None = None) -> Bundle:
     """Chat answer bundle: streamed answer, turn text, material."""
     req = Request(
         text=request, model=model["id"], api_key=api_key, outline_model=judge,
@@ -158,7 +185,7 @@ def bundle_for(*, answer: str, request: str, model: dict, actual_model: str | No
         first_message=first_message, messages=list(messages),
         check_material=check_material, tool_outputs=list(tool_outputs),
         skill_keys=tuple(skill_keys), check_options=dict(check_options or {}),
-        skill_specs=dict(skill_specs or {}), traced=traced,
+        skill_specs=dict(skill_specs or {}), traced=traced, evidence=list(evidence or []),
     )
     return Bundle(
         request=req, material=Material(given=material),

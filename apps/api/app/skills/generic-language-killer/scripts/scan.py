@@ -418,11 +418,11 @@ def post(text: str, args: dict) -> dict:
            if _digits(m.group(0)) and _digits(m.group(0)) not in known]
     for raw in dict.fromkeys(new):
         if final:
-            body = re.sub(rf"(?<![\w.]){re.escape(raw)}", "[구체적 수치]", body, count=1)
+            body = re.sub(rf"(?<![\w.]){re.escape(raw)}(?![\d,.])", "[구체적 수치]", body, count=1)
             out["fixed"].append({"kind": "number", "text": raw, "why": "원문에 없는 수치 — 빈칸으로 둠"})
         else:
             out["rewrite"].append({"kind": "number", "text": raw,
-                                   "why": "원문에 없는 수치입니다. 빼거나 「[구체적 수치]」 빈칸으로 두세요."})
+                                   "why": "원문에 없는 수치입니다. 빼거나 값 뒤에 「(확인 필요)」를 붙이세요."})
     lines[lo:hi] = body.split("\n")
     out["text"] = "\n".join(lines)
     return out

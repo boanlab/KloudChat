@@ -52,9 +52,12 @@ def test_an_undecided_item_the_material_states_keeps_its_words():
     assert "미정(다음 회의에서 재논의) | 미정(다음 회의에서 재논의)" in fixed[0]["content"]
 
 
-def test_money_in_a_document_with_no_material_becomes_an_amount_blank():
+def test_money_in_a_document_with_no_material_is_marked_not_blanked():
     out = report._without_invented_money("행사 예산은 500만 원이고 다과비는 1인당 8,000원입니다.")
-    assert out == "행사 예산은 [금액]이고 다과비는 1인당 [금액]입니다."
+    assert out == "행사 예산은 500만 원(확인 필요)이고 다과비는 1인당 8,000원(확인 필요)입니다."
+    # a sum the sources state stays as written
+    assert report._without_invented_money(
+        "예산은 500만 원입니다.", ["행사 예산 500만 원 확정"]) == "예산은 500만 원입니다."
 
 
 def test_a_head_field_not_given_is_printed_as_its_name_in_brackets():

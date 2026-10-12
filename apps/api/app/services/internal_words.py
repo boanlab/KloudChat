@@ -244,6 +244,45 @@ def strip_tool_calls(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", out).strip("\n")
 
 
+#: a prompt section heading echoed back at the top of a rewrite: 「# Answer」
+_ECHOED_HEADING = re.compile(
+    r"\A\s{0,3}#{1,6}\s{0,3}(?:Answer|Corrected\s+answer|Answer\s+\(corrected\)|Final\s+answer|"
+    r"Rewritten\s+answer)\s{0,3}:?\s*(?:\n|\Z)", re.I)
+
+
+def strip_echoed_heading(text: str) -> str:
+    """`text` without a leading prompt heading the model copied (「# Answer」)."""
+    return _ECHOED_HEADING.sub("", text or "", count=1).lstrip("\n") if text else text
+
+
+#: a verification block the writer appended: 「**검증 결과**」 then its items
+_CHECK_HEAD = re.compile(
+    r"^\s{0,3}(?:#{1,6}\s{0,3}|\*\*)\s{0,2}(?:검증|점검|대조)\s{0,2}결과\s{0,2}(?:\*\*)?\s{0,2}[:：]?\s*$")
+#: an item of that block: what was checked, never content for the reader
+_CHECK_ITEM = re.compile(
+    r"^\s{0,8}(?:[-*•]|\d{1,2}[.)])\s.*(?:빠짐|뺌|빈칸|반영|누락|스크립트|검사|대조|근거|통과|일치)")
+
+
+def strip_check_block(text: str) -> tuple[str, str]:
+    """`text` without a closing 「검증 결과」 block of check notes, and the block (for a step)."""
+    lines = (text or "").rstrip().split("\n")
+    for k in range(len(lines) - 1, -1, -1):
+        if not _CHECK_HEAD.match(lines[k]):
+            continue
+        rest = lines[k + 1:]
+        # the block runs to the end, or to a blank line (a caveat line may follow)
+        end = next((i for i, line in enumerate(rest) if not line.strip()), len(rest))
+        items = [line for line in rest[:end] if line.strip()]
+        tail = [line for line in rest[end:] if line.strip()]
+        if not items or not all(_CHECK_ITEM.match(line) for line in items) or (
+                tail and not all(line.strip().startswith("_") for line in tail)):
+            return text, ""
+        block = "\n".join([lines[k], *items]).strip()
+        kept = [*lines[:k], *rest[end:]]
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip("\n"), block
+    return text, ""
+
+
 __all__ = ["DOCUMENT_TERMS", "JSON_LINE", "TERMS", "TOOL_APOLOGY", "TOOL_REPORT", "WRITER_NOTE",
-           "found", "has_tool_call", "scrub", "strip_reports", "strip_tool_apologies",
-           "strip_tool_calls"]
+           "found", "has_tool_call", "scrub", "strip_check_block", "strip_echoed_heading",
+           "strip_reports", "strip_tool_apologies", "strip_tool_calls"]
