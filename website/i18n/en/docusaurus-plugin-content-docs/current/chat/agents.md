@@ -97,7 +97,7 @@ Keep a conversation that went well as an agent. **Save as agent** in the **⋯**
 
 ## Workspace store
 
-**Explore** on **Customize** → **Agents** shows the agents that other users have published. An **Official** badge marks an item published by an administrator. Select **Add** to create a **copy** in your own list.
+**Shared agents** under **Explore** on **Customize** → **Agents** shows, with their makers' names, the agents other users have published and the agents [published to members as chatbots](bots.md). An **Official** badge marks an item published by an administrator. Select **Add** to create a **copy** in your own list.
 
 - A copy does not include the original author's knowledge files. Its process and bundles come along (a custom order still waiting for approval stays behind; the copy uses the base process).
 - A copy of an agent published as "contents stay private" cannot be edited, and any change to the original applies to the copy as well.

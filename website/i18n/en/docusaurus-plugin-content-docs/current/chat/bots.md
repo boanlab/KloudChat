@@ -18,7 +18,7 @@ The **Publish as a chatbot** button at the top of your agent's page. Before publ
 
 | Audience | Who uses it | Opens |
 |---|---|---|
-| Members | Members of this institution, signed in. Listed under **Chatbots** | At once |
+| Members | Members of this institution, signed in. Members see it as a **shared agent** | At once |
 | Anyone with the link | Anyone with the address, without signing in. Listed nowhere | After an administrator approves |
 | Public | Anyone, without signing in. Listed on the public chatbot page (`/b`) and may show up in search | After an administrator approves |
 
@@ -53,7 +53,7 @@ A chatbot open to people without an account can also be reached through these ch
 
 ## What the publisher sees
 
-The management page (**Chatbots** → **Manage** on your chatbot) shows:
+The management page (**Chatbot** → **Manage** on your agent's page) shows:
 
 - **Statistics**: questions, conversations, visitors, frequent topics, unanswered questions (sentences with personal details masked), 👍👎.
 - **Sent conversations**: only conversations a visitor sent with **Send to the maker**, personal details masked. With **Conversation access** on, conversations after the visitor's consent show too. Turn it on only for chatbots whose conversations are the work itself, such as counselling or complaints.
@@ -61,7 +61,16 @@ The management page (**Chatbots** → **Manage** on your chatbot) shows:
 
 When an administrator reads conversations to check abuse, the date and reason appear under **Administrator reads** on **Overview**.
 
-When a chatbot stops (credits used up, paused by an administrator and so on) or an administrator decides a request, a number appears next to **Chatbots** in the sidebar.
+When a chatbot stops (credits used up, paused by an administrator and so on) or an administrator decides a request, a number appears next to **Customize** in the sidebar.
+
+## On a member's side
+
+A chatbot published to members (or to the public) shows to other members as an agent. There is no separate chatbot menu.
+
+- It is listed under **Shared agents** in **Customize** → **Agents** → **Explore**, with its publisher's name. Agents shared with everyone sit in the same place, and an agent that is both shows once.
+- In the composer, **+** → **Agents** lists it under **Shared agents**, below your own agents.
+- **Try** or its name opens a conversation on the chatbot page. Answers spend the publisher's credits.
+- **Add** copies the published version's instructions and settings as your own agent. Material (knowledge files) does not come along. An agent whose maker keeps the instructions private cannot be copied.
 
 ## On the visitor's side
 

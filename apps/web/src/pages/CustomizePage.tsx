@@ -608,6 +608,15 @@ function Hub() {
         </div>
       )
     }
+    if (tab === 'agents') {
+      // One group: what others shared or published to members, under their names.
+      return (
+        <section aria-label={t('공유된 에이전트')} data-testid="shared-agents">
+          <SectionHead title={t('공유된 에이전트')} />
+          <Grid>{sortItems(hub.explore, sort).map((item) => card(item, 'explore'))}</Grid>
+        </section>
+      )
+    }
     const popular = sortItems(hub.explore.filter((i) => i.installs > 0), 'popular').slice(0, PER_SECTION)
     // Shown once: 가장 많이 추가된 not repeated under 새.
     const fresh = sortItems(hub.explore.filter((i) => !popular.includes(i)), 'recent')

@@ -14,7 +14,7 @@ Signing in opens the home screen. Use the sidebar on the left to find past conve
 |---|---|
 | Search | Searches past conversations (titles and messages) and artifacts. Shortcut `Ctrl+K`. |
 | New chat | Goes to the home screen so you can start new work. Shortcut `Alt+Shift+N`. |
-| Projects · Artifacts · Chatbots · Customize | Goes to the workspace that holds your grouped files, the gallery of generated artifacts, the list of published chatbots, and the place to manage agents, skills and connectors. |
+| Projects · Artifacts · Customize | Goes to the workspace that holds your grouped files, the gallery of generated artifacts, and the place to manage agents (including ones others shared), skills and connectors. |
 | Conversation list | Shown in the order **Pinned**, **Recent**. **All conversations** opens the history page. Icons show the type of each item. The `…` menu on an item lets you rename it, pin it, remove it from a project and delete it. |
 | Credit this month | The usage you have left. Press it to go to the usage screen. A model marked **Free** does not consume credit. |
 | Account menu | Customize, History, Agent setup, API access, Usage, Settings (including memory and themes), Feedback & issues, Keyboard shortcuts, the Manage menu (administrators), Sign out. |

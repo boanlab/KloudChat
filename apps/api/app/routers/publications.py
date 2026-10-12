@@ -898,12 +898,14 @@ async def _colors(db: DbSession, rows: list[Publication]) -> dict[str, str]:
     return {p.id: colors.get(snaps.get(p.active_version_id or "", ""), "#5b53e8") for p in rows}
 
 
+_LISTED = (PublicationVisibility.internal.value, PublicationVisibility.external.value)
+
+
 @router.get("/bots")
 async def list_bots(user: CurrentUser, db: DbSession):
     """Member-openable bots plus caller's own; link-only bots unlisted."""
-    listed = (PublicationVisibility.internal.value, PublicationVisibility.external.value)
     rows = list((await db.exec(select(Publication).where(
-        (col(Publication.visibility).in_(listed)
+        (col(Publication.visibility).in_(_LISTED)
          & (Publication.status == PublicationStatus.approved.value))
         | ((Publication.owner_id == user.id)
            & (Publication.status != PublicationStatus.revoked.value)))
@@ -911,13 +913,85 @@ async def list_bots(user: CurrentUser, db: DbSession):
     owners = {u.id: u.name for u in (await db.exec(select(User).where(
         col(User.id).in_({p.owner_id for p in rows})))).all()} if rows else {}
     colors = await _colors(db, rows)
+    sources = [p.agent_id for p in rows if p.agent_id]
+    # Source agents also shared in the org: the app lists those once, as agents.
+    org_shared = set((await db.exec(select(Agent.id).where(
+        col(Agent.id).in_(sources), Agent.visibility == "org",
+        col(Agent.retired).is_(False)))).all()) if sources else set()
+    copied = set((await db.exec(select(Agent.origin_id).where(
+        Agent.owner_id == user.id, col(Agent.origin_id).in_(sources)))).all()) if sources else set()
     return [{"slug": p.slug, "title": p.title, "description": p.description,
              "ownerName": owners.get(p.owner_id, ""), "mine": p.owner_id == user.id,
              "id": p.id if p.owner_id == user.id else None, "status": p.status,
              "visibility": p.visibility,
              "needsLook": p.owner_id == user.id and _needs_look(p),
-             "color": colors.get(p.id, "#5b53e8"), "publishedAt": p.published_at}
+             "color": colors.get(p.id, "#5b53e8"), "publishedAt": p.published_at,
+             "sharedAgentId": p.agent_id if p.agent_id in org_shared else None,
+             "copied": p.agent_id in copied}
             for p in rows]
+
+
+async def _free_slug(db: DbSession, owner_id: str, base: str) -> str:
+    """Owner-unique agent slug: `base`, else `base-2`, `base-3`, ..."""
+    taken = set((await db.exec(select(Agent.slug).where(Agent.owner_id == owner_id))).all())
+    slug, n = base, 2
+    while slug in taken:
+        slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
+@router.post("/bots/{slug}/copy", status_code=status.HTTP_201_CREATED)
+async def copy_bot(slug: str, user: CurrentUser, db: DbSession):
+    """A member's own agent from a listed bot's answering version; no knowledge, no skills."""
+    from app.routers import workspace
+    from app.schemas.workspace import AgentOut
+
+    pub = (await db.exec(select(Publication).where(Publication.slug == slug))).first()
+    if pub is None or pub.visibility not in _LISTED \
+            or pub.status != PublicationStatus.approved.value:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if pub.owner_id == user.id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="already_yours")
+    version = await db.get(PublicationVersion, pub.active_version_id) \
+        if pub.active_version_id else None
+    snap = await db.get(Agent, version.agent_snapshot_id) if version else None
+    if snap is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="bot_paused")
+    source = await db.get(Agent, pub.agent_id) if pub.agent_id else None
+    # The owner's 「프롬프트 비공개」 holds for bots too.
+    if source is not None and source.share_mode == "sealed":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="copy_closed")
+    origin_id = pub.agent_id or snap.id
+    held = (await db.exec(select(Agent).where(
+        Agent.owner_id == user.id, Agent.origin_id == origin_id))).first()
+    if held is None:
+        held = Agent(
+            owner_id=user.id,
+            name=pub.title or snap.name,
+            slug=await _free_slug(db, user.id, workspace._slug(pub.title or snap.name)),
+            description=pub.description or snap.description,
+            model=snap.model,
+            system_prompt=snap.system_prompt,
+            guide=snap.guide,
+            contact=snap.contact,
+            starters=list(snap.starters or []),
+            tools=None if snap.tools is None else list(snap.tools),
+            kinds=["chat"],
+            surface="chat",
+            base_key=snap.base_key,
+            temperature=snap.temperature,
+            color=snap.color,
+            check_skills=list(snap.check_skills) if snap.check_skills is not None else None,
+            check_options=dict(snap.check_options) if snap.check_options else None,
+            process_settings=dict(snap.process_settings)
+            if snap.process_settings is not None else None,
+            enabled=True,
+            origin_id=origin_id,
+        )
+        db.add(held)
+        await db.commit()
+        await db.refresh(held)
+    return AgentOut.of(held, has_knowledge=False)
 
 
 @router.get("/public/bots")

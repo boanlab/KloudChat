@@ -6,5 +6,7 @@
 export function shellRead(method: string, path: string): { json: unknown } | null {
   if (method === 'GET' && path === '/issues/unread') return { json: { count: 0 } }
   if (method === 'GET' && path === '/publications/attention') return { json: { bots: 0, reviews: 0 } }
+  // Members' published agents, listed with the shared agents.
+  if (method === 'GET' && path === '/bots') return { json: [] }
   return null
 }

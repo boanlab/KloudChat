@@ -30,11 +30,10 @@ interface NavRow {
   icon: typeof Bot
 }
 
-// Agents, skills, connectors in 「사용자 지정」; memory and themes in 설정; 「챗봇」 for members' bots.
+// Agents (own and shared), skills, connectors in 「사용자 지정」; memory and themes in 설정.
 const workspaceNav: NavRow[] = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
   { to: '/artifacts', label: '아티팩트', icon: Layers },
-  { to: '/bots', label: '챗봇', icon: Bot },
   { to: '/customize', label: '사용자 지정', icon: SlidersHorizontal },
 ]
 
@@ -304,7 +303,7 @@ export function Sidebar() {
           >
             <Icon size={15} />
             {t(label)}
-            {to === '/bots' && botNews > 0 && (
+            {to === '/customize' && botNews > 0 && (
               <span
                 aria-label={t('확인할 챗봇 {n}개').replace('{n}', String(botNews))}
                 className="ml-auto rounded-control bg-accent px-1.5 text-xs font-medium text-white"

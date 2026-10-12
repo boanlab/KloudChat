@@ -272,6 +272,38 @@ test('N6: 「+」 › 에이전트 lists every agent, each on its own screen, an
   expect(unexpected.filter((u) => !u.startsWith('GET '))).toEqual([])
 })
 
+test('「+」 › 에이전트 puts others\' shared and published agents under 공유된 에이전트, with their makers', async ({ page }, info) => {
+  const { unexpected, created } = await composerFixture(page, info, {
+    extraAgents: [fixtureAgent('b5'.padEnd(33, '5'), '공유 검토', { ownerId: 'u2', ownerName: '김동료', visibility: 'org' })],
+  })
+  await page.route('**/api/bots', (route) => route.fulfill({ json: [
+    { slug: 'haksa-1a2b3c', title: '학사 안내', description: '', ownerName: '학사지원팀 김담당', mine: false, id: null,
+      status: 'approved', visibility: 'internal', color: '#0f766e', publishedAt: null, sharedAgentId: null, copied: false },
+    // The caller's own bot is managed from its agent, not picked here.
+    { slug: 'mine-9z', title: '내 안내 챗봇', description: '', ownerName: 'Fixture', mine: true, id: 'p1',
+      status: 'approved', visibility: 'internal', color: '#5b53e8', publishedAt: null },
+  ] }))
+  await page.goto('/new/chat')
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await openTool(page, '에이전트')
+  const menu = page.getByRole('menu', { name: '도구' })
+  await expect(menu.getByText('공유된 에이전트', { exact: true })).toHaveCount(1)
+  const bot = menu.getByRole('menuitem', { name: '학사 안내 — 만든 사람: 학사지원팀 김담당' })
+  await expect(bot).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: /내 안내 챗봇/ })).toHaveCount(0)
+  // Own agents first, then the shared ones under their makers' names.
+  const names = await menu.getByRole('menuitem').allInnerTexts()
+  const shared = names.findIndex((n) => n.includes('공유 검토'))
+  expect(names.findIndex((n) => n.includes('논문 리뷰어'))).toBeLessThan(shared)
+  expect(shared).toBeLessThan(names.findIndex((n) => n.includes('학사 안내')))
+  await expect(menu.getByRole('menuitem', { name: '공유 검토' })).toContainText('김동료')
+  // A published agent answers on its own page; no conversation is made here.
+  await bot.click()
+  await expect(page).toHaveURL(/\/b\/haksa-1a2b3c$/)
+  expect(created).toEqual([])
+  expect(unexpected.filter((u) => !u.startsWith('GET /b/'))).toEqual([])
+})
+
 test('M1: an agent row shows its own name once, the other screen as a badge, and one row per agent', async ({ page }, info) => {
   // The person's copy of 개조식 보고서 and the catalogue original it came from, both report-only.
   const report = { kinds: ['report'], surface: 'report' }

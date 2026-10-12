@@ -88,7 +88,7 @@ test('dark', async ({ page }, testInfo) => {
   await page.addInitScript(() => localStorage.setItem('kchat-theme', 'dark'))
   await hubFixture(page, testInfo)
   await page.goto('/customize?tab=agents&view=explore')
-  await expect(page.getByRole('region', { name: '새 에이전트', exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('region', { name: '공유된 에이전트', exact: true })).toBeVisible({ timeout: 15_000 })
   await settle(page)
   await page.screenshot({ path: `${dir}/dark-explore-agents.png` })
 })

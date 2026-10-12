@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
+import type { BotListItem } from '@/lib/api'
 import { agentKinds } from '@/lib/kinds'
 import { isListed } from '@/lib/listed'
+import { useMemberBots } from '@/lib/publishing'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind, Skill, StoreSkill } from '@/types'
 import type { ItemType } from './itemIcons'
@@ -62,6 +64,8 @@ export interface HubItem {
   /** Detail screen; null when none (a shipped flow opens its locked section). */
   to: string | null
   agent?: Agent
+  /** An agent another member published to members: opened on its bot page. */
+  bot?: BotListItem
   skill?: Skill | StoreSkill
 }
 
@@ -88,6 +92,32 @@ export function agentItem(a: Agent, me: string | undefined): HubItem {
     hidden: false,
     to: `/customize/agents/${a.id}`,
     agent: a,
+  }
+}
+
+/** A member-published agent, shown with the shared agents under its publisher's name. */
+export function botItem(b: BotListItem): HubItem {
+  return {
+    key: `bot:${b.slug}`,
+    type: 'agent',
+    id: b.slug,
+    name: b.title,
+    summary: b.description,
+    surfaces: ['chat'],
+    color: b.color,
+    maker: b.ownerName,
+    official: false,
+    installs: 0,
+    runs: null,
+    updatedAt: b.publishedAt ?? '',
+    status: 'on',
+    shared: true,
+    mine: false,
+    added: !!b.copied,
+    deletable: false,
+    hidden: false,
+    to: `/b/${b.slug}`,
+    bot: b,
   }
 }
 
@@ -127,12 +157,17 @@ export function useHubItems(tab: HubTab, showHidden = false) {
   const me = useStore((s) => s.user?.id)
   const workspaceLoading = useStore((s) => s.workspaceLoading)
   const skillStoreLoaded = useStore((s) => s.skillStoreLoaded)
+  const bots = useMemberBots()
 
   const items = useMemo(() => {
     if (tab === 'agents') {
       return {
         mine: agents.filter((a) => a.ownerId === me).map((a) => agentItem(a, me)),
-        explore: agents.filter((a) => a.visibility === 'org' && a.ownerId !== me).map((a) => agentItem(a, me)),
+        // 공유된 에이전트: org-shared agents and members' published ones, each once.
+        explore: [
+          ...agents.filter((a) => a.visibility === 'org' && a.ownerId !== me).map((a) => agentItem(a, me)),
+          ...bots.map(botItem),
+        ],
         locked: [] as HubItem[],
       }
     }
@@ -144,7 +179,7 @@ export function useHubItems(tab: HubTab, showHidden = false) {
       }
     }
     return { mine: [] as HubItem[], explore: [] as HubItem[], locked: [] as HubItem[] }
-  }, [tab, agents, skills, skillStore, me])
+  }, [tab, agents, bots, skills, skillStore, me])
 
   const shown = (rows: HubItem[]) => (showHidden ? rows : rows.filter((i) => !i.hidden))
   return {
