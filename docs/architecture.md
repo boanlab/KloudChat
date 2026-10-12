@@ -1285,7 +1285,9 @@ or an uploaded SKILL.md, stored on `skills.server_fields` and validated in `skil
 then the agent's always-on ones: the first skill's template and settings win, checks and
 questions add up, and the agent's own fields sit on top. Skills stay on for a report or deck
 conversation as they do for chat (`sessions._STANDING_KINDS`), so the plan's approval, which
-carries no picks, writes with them. The composer lists the official (administrator-shared)
+carries no picks, writes with them; a document asked for in chat takes the skills that are on
+along to the new report or deck (those that need no tool, the rest named in a notice). The
+composer lists the official (administrator-shared)
 skills a person has not added under **Official skills**; picking one adds the copy and
 switches it on.
 
@@ -1307,7 +1309,7 @@ agent step gets the same prompt.
 | bullet-style briefing `gaejo-report` | bullet-style briefing `gaejo-briefing` (report) | `doc-gaejo-report` | same | — (the template's: addressee, reporter; fixed outline, one page) | keep on `gaejo-briefing` · theme document serif |
 | official letter and draft `document` (draft) | official document draft `document-drafting` (report) | none (format from the words) | same | `process`: no search, pictures only when asked | keep on `document-drafting` |
 | extract and tally `data-analysis` | extract and tally `data-tabulation` (chat, needs `run_code`) | — | gap-check, grounding-check; `tool_numbers` | deadline basis, period split, denominator | keep on `data-tabulation` · tools file work, chart, calculation |
-| regulations and procedures `regulation-guide` | answers from regulations `regulation-answer` (chat) | — | grounding-check | — | keep on `regulation-answer` + `date-calc` · knowledge (the regulation files) · department and contact · the publish-check bundle (hold ungrounded answers, point to the department, mask PII — they need an agent's shelf and contact) |
+| regulations and procedures `regulation-guide` | answers from regulations `regulation-answer` (chat) | — | grounding-check | — | keep on `regulation-answer` + `date-calc` · knowledge (the regulation files) · department and contact · the publish-check bundle (hold ungrounded answers, point to the department, mask PII; the hold reads the shelf's hits and the files attached to the conversation) |
 | presentation `slides` (draft) | presentation deck `deck-writing` (slides) | — (deck flow) | — | — | keep on `deck-writing` · screen Slides |
 
 The skill's body is the agent's prompt as it was; the bundles the agents ticked compiled to

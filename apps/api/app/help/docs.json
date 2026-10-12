@@ -613,7 +613,7 @@
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "대화에서 바로 쓰기",
-"text": "1. 홈에서 **보고서**를 고릅니다.\n2. 입력창의 **+** → **스킬** → **회의록 작성**을 고릅니다. 템플릿 칸에 **회의록**이 보입니다.\n3. 회의 메모나 전사본을 붙이고 「정식 회의록으로 만들어 줘」라고 보냅니다.\n\n같은 방법으로 **개조식 보고**(「과장님께 올릴 1쪽 보고로」), **비교·결정 보고**(「세 제품을 연간 비용과 필수 조건으로 비교해서 하나 골라 줘」)를 씁니다."
+"text": "1. 홈에서 **보고서**를 고릅니다.\n2. 입력창의 **+** → **스킬** → **회의록 작성**을 고릅니다. 템플릿 칸에 **회의록**이 보입니다.\n3. 회의 메모나 전사본을 붙이고 「정식 회의록으로 만들어 줘」라고 보냅니다.\n\n챗에서 켠 스킬도 「…보고서 써 줘」처럼 문서를 부탁해 보고서·슬라이드로 넘어갈 때 함께 갑니다. 도구가 필요한 스킬은 그 화면에서 쓸 수 없어 빠지고, 빠진 스킬은 알림으로 알려 줍니다.\n\n같은 방법으로 **개조식 보고**(「과장님께 올릴 1쪽 보고로」), **비교·결정 보고**(「세 제품을 연간 비용과 필수 조건으로 비교해서 하나 골라 줘」)를 씁니다."
 },
 {
 "lang": "ko",
@@ -1985,7 +1985,7 @@
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "Using a skill in a conversation",
-"text": "1. Choose **Report** on the home screen.\n2. In the composer choose **+** → **Skills** → **회의록 작성**. The template chip shows **회의록**.\n3. Paste the meeting notes or transcript and send 「정식 회의록으로 만들어 줘」.\n\nUse **개조식 보고** (「과장님께 올릴 1쪽 보고로」) and **비교·결정 보고** (「세 제품을 연간 비용과 필수 조건으로 비교해서 하나 골라 줘」) the same way."
+"text": "1. Choose **Report** on the home screen.\n2. In the composer choose **+** → **Skills** → **회의록 작성**. The template chip shows **회의록**.\n3. Paste the meeting notes or transcript and send 「정식 회의록으로 만들어 줘」.\n\nSkills turned on in chat also go along when you ask for a document there and it moves to a report or deck. Skills that need tools cannot run on that screen and are left out, with a notice naming them.\n\nUse **개조식 보고** (「과장님께 올릴 1쪽 보고로」) and **비교·결정 보고** (「세 제품을 연간 비용과 필수 조건으로 비교해서 하나 골라 줘」) the same way."
 },
 {
 "lang": "en",

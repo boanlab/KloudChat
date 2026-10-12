@@ -1486,10 +1486,20 @@ export function Composer({
     const generalHandoff = detected && !session?.agentId ? detected : null
     // Earlier turns go along as material (「대화 기록.txt」 plus files), so a deck can reuse values computed above.
     const carried = agentHandoff ?? (sessionId && (session?.messages.length ?? 0) > 0 ? generalHandoff : null)
+    // The skills on go along to the document, those that work there; the rest are named.
+    const skillsFor = (target: SessionKind) => {
+      const fits = activeSkills.filter((s) => (s.kinds.length === 0 || s.kinds.includes(target)) && s.requiredTools.length === 0)
+      const left = activeSkills.filter((s) => !fits.includes(s))
+      if (left.length) {
+        setNotice(t('이 화면에서는 쓸 수 없어 빼고 넘깁니다: {skills}').replace('{skills}', left.map((s) => s.name).join(', ')))
+      }
+      return fits.map((s) => s.id)
+    }
     if (carried && sessionId) {
       void handOff(sessionId, carried, text, {
         attachments: sentAttachments,
         webSearch: sentWebSearch,
+        activatedSkillIds: skillsFor(carried),
         onSession: (id) => navigate(`/s/${id}`),
       }).finally(startSettled).catch((error: unknown) => {
         setComposerRestore({
@@ -1510,6 +1520,7 @@ export function Composer({
         webSearch: sentWebSearch,
         attachments: attachmentIds,
         attachmentNames: attachmentLabels,
+        activatedSkillIds: skillsFor(handoff),
         onSession: (id) => {
           landedHandoffSessionId = id
           releaseStart()

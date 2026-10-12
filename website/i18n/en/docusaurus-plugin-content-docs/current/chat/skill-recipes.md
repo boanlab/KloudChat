@@ -34,6 +34,8 @@ A skill brings its template, checks and missing-information questions. Turn on *
 2. In the composer choose **+** → **Skills** → **회의록 작성**. The template chip shows **회의록**.
 3. Paste the meeting notes or transcript and send 「정식 회의록으로 만들어 줘」.
 
+Skills turned on in chat also go along when you ask for a document there and it moves to a report or deck. Skills that need tools cannot run on that screen and are left out, with a notice naming them.
+
 Use **개조식 보고** (「과장님께 올릴 1쪽 보고로」) and **비교·결정 보고** (「세 제품을 연간 비용과 필수 조건으로 비교해서 하나 골라 줘」) the same way.
 
 ## Building an agent from skills

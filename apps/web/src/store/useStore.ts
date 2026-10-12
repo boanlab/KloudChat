@@ -364,7 +364,7 @@ interface State {
     fromSessionId: string,
     kind: 'report' | 'slides',
     text: string,
-    opts?: Pick<SendOptions, 'webSearch' | 'onSession'> & { attachments?: FileRow[] },
+    opts?: Pick<SendOptions, 'webSearch' | 'onSession' | 'activatedSkillIds'> & { attachments?: FileRow[] },
   ) => Promise<string>
   forkBeforeMessage: (sessionId: string, messageId: string) => Promise<{
     sessionId: string; attachments: FileRow[]; attachmentIdMap: Record<string, string>
@@ -1581,6 +1581,7 @@ export const useStore = create<State>((set, get) => ({
       webSearch: opts.webSearch,
       attachments: files.map((file) => file.id),
       attachmentNames: files.map((file) => file.name),
+      activatedSkillIds: opts.activatedSkillIds,
       onSession: opts.onSession,
     })
   },

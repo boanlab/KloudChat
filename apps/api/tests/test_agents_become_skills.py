@@ -236,3 +236,43 @@ def test_a_connector_asks_only_for_what_the_person_enters():
     assert blurbs.blurb("youtube", "transcript", "Returns the full transcript…").startswith(
         "YouTube 영상의 자막")
     assert blurbs.blurb("other", "lookup", "Look things up.\nMore.") == "Look things up."
+
+
+@pytest.mark.asyncio
+async def test_a_report_keeps_its_skills_for_the_approval_turn(db):
+    """A skill picked on a report's first turn stays on: the plan's approval carries no picks."""
+    from app.routers import sessions as sessions_router
+
+    assert {SessionKind.report, SessionKind.slides} <= sessions_router._STANDING_KINDS
+    _, member, _ = await _people(db)
+    minutes = Skill(owner_id=member.id, name="회의록 작성", body="x", kinds=["report"],
+                    server_fields={"template": "doc-minutes", "checks": ["gap-check"]})
+    chat_only = Skill(owner_id=member.id, name="자료 집계", body="y", kinds=["chat"])
+    db.add_all([minutes, chat_only])
+    await db.commit()
+    session = ChatSession(user_id=member.id, kind=SessionKind.report,
+                          skill_ids=[minutes.id, chat_only.id])
+    db.add(session)
+    await db.commit()
+    kept = await sessions_router._standing_skill_ids(db, member, session, None)
+    assert kept == [minutes.id] and session.skill_ids == [minutes.id]
+    found = await skill_turn.brought(db, member, session, None, kept)
+    assert await skill_turn.template_for(db, member, session, found) == "doc-minutes"
+
+
+def test_answers_from_attached_regulations_are_not_held():
+    """The hold reads the files attached to the conversation, not only the shelf's hits."""
+    from app.services import skill_scripts
+
+    hold = skill_scripts.module("answer-hold", "hold")
+    answer = "휴학은 학기 개시일 전까지 학사지원팀에 신청서를 내야 합니다 [1]."
+    material = ("수강신청 안내를 알려 줘\n# 이번 요청에 첨부된 파일\n"
+                "아래는 이미 읽어 둔 자료 본문입니다.\n"
+                "## 학칙.md\n제12조 휴학은 학기 개시일 전까지 학사지원팀에 신청서를 내야 한다.\n"
+                "# 파일 처리 결과\n- 학칙.md")
+    assert hold.check(answer, material, [], {"surface": "chat"}) == []
+    # the question alone is no evidence
+    assert hold.check(answer, "휴학은 언제까지 신청서를 내야 하나요", [], {"surface": "chat"})
+    unrelated = material.replace("휴학은 학기 개시일 전까지 학사지원팀에 신청서를 내야 한다",
+                                 "장학금은 성적 상위 10퍼센트 이내에게 지급한다")
+    assert hold.check(answer, unrelated, [], {"surface": "chat"})
