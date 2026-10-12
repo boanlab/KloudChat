@@ -23,6 +23,9 @@ Aliases: `market-sizing`, `tam-sam-som-calculator` (one skill: the calculator is
   Anything else is 「출처 미확인」 and the result says so. Never upgrade a 가정 into a fact in the prose.
 - Say the market definition (who, what, where, which year, revenue or volume) before any number. A number from a source with a different definition (global vs 국내, 하드웨어 포함 vs 제외) is not reused without saying so.
 - SOM is a share the company can win in a stated period with stated capacity; it is always 가정 unless the user gives a plan.
+- A value no source gives is not left blank: use a reasonable value or range labelled 「가정」 with a one-line basis (「학부모 70%·학교 20%·학원 10%(가정: 유사 서비스 매출 구성)」). Brackets only for the company's own internal values the user must supply (자사 매출, 계약 단가) — and even then, show the calculation with a stated 가정 alongside.
+- State what a share is a share of (the denominator) before using it. When the request names customer groups, the tables carry one column per group.
+- The headline numbers in the summary, any KPI line and the body are the same values in the same unit (억/조) — check them against the script output before answering.
 
 ## Where to look (if `web_search`/`fetch_url` are available and the user did not restrict you to their material)
 - 통계청 KOSIS (kosis.kr): 전국사업체조사(업종·규모별 사업체 수·종사자), 인구·가구, 가계동향.

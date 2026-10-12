@@ -20,7 +20,8 @@ script when checking several values at once.
    If the rounding place is set, add `"decimals"`; if there is a tolerance, add `"tolerance"`.
 3. Correct mismatched or erroneous items from the result in the answer, together with the formula. For an item whose denominator
    is 0 or whose units do not match, stop calculating and say what is missing.
-4. Do not mix percent and percentage points, mean and median, nominal and real values. In the answer, leave the grounds briefly in the
+4. A total built from several amounts is written as an explicit sum line (「합계: 119,600 + 150,000 + 80,000 = 349,600원」) whose terms are exactly the table's amounts, and that line is one expression item; a total stated again elsewhere (the first sentence, a summary) must be the same value. Count 「N박 M일」 as M days and N nights.
+5. Do not mix percent and percentage points, mean and median, nominal and real values. In the answer, leave the grounds briefly in the
    order input values → formula → result → rounding rule.
 
 If the values are inside an attached Excel or CSV file, first clean the table with `xlsx-clean` or aggregate with `run_code`, then check

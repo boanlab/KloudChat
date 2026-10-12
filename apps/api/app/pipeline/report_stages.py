@@ -63,7 +63,7 @@ DERIVED_NOTE = (
     "# 작성 메모(내부)\nThe 「앞 단계 결과」 blocks were written by an earlier step from the same "
     "files. Use them for what to cover and how to word it, but take every figure from the "
     "attached files or the 「코드 실행 결과」 blocks; a figure only an earlier step wrote is not "
-    "a source — leave it out or write [수치]."
+    "a source — leave it out."
 )
 
 _CAUGHT = (httpx.HTTPError, KeyError, IndexError, ValueError)

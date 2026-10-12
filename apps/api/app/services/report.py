@@ -155,9 +155,10 @@ Rules:
   them**, with their units and magnitudes exactly as given — do not move a yearly
   figure into 만 units or change the number of digits. Show the formula with a computed
   value (「월 비용 × 12개월 = 연 비용」). Never invent a figure that is not on the list —
-  user counts, ratios, causes of failure, damage, other costs, years; where one is needed,
-  leave a blank naming it in brackets (「[금액]」 「[인원]」). Do not invent circumstances
-  the request does not give, such as the cause or course of an incident.
+  user counts, ratios, causes of failure, damage, other costs, years. Where one is missing,
+  write the sentence so it holds without it (「참석 인원은 신청 마감 후 확정합니다」) rather
+  than leaving a bracket blank. Do not invent circumstances the request does not give, such
+  as the cause or course of an incident.
 - One register for the whole document. If earlier sections used 「~합니다」, so does this
   one; the first section uses 「~합니다」.
 - Write at the level a practitioner can use as is: for each step what, how and why,
@@ -165,10 +166,13 @@ Rules:
   give; do not end on a one-line summary. Details come only from the material and request.
 - **Never invent a specific value the material does not give** — amounts, dates,
   institutions, people, counterparties. Where a decision is needed, say what must be
-  decided instead of filling it in: 「[예산 규모]」, not 「예산 2억 원」;
-  「[협약 기업]」, not 「A社·B社」. Anything the request and material do not give is such a
-  bracket blank (「[담당자]」 「[일자]」), never made up; a 미정 the material itself states
-  stays as written (「미정(다음 회의에서 재논의)」).
+  decided instead of filling it in: 「예산 규모는 확정 후 반영합니다」, not 「예산 2억 원」;
+  「협약 기업은 선정 중입니다」, not 「A社·B社」. Write around a missing value with a
+  sentence that stays true without it, or state an assumption as 「가정」 when a
+  calculation needs one; in a table cell write 「미정」 and add one 「확인 필요: …」 line
+  under the table. Brackets only for what the person fills in themselves — a signature,
+  contact details, a name only they know (「[작성자]」 「[연락처]」). A 미정 the material
+  itself states stays as written (「미정(다음 회의에서 재논의)」).
 - A fact taken from the source list (material found by search) gets that source's number
   at the end of the sentence, like [1]. Never use a number that is not on the list. The
   [1], [2] marks in material the user pasted are not sources — do not number that
@@ -182,7 +186,7 @@ Rules:
 - A business plan or proposal states its assumptions once — price, unit cost, ARPU, CAC, churn, capacity, fixed cost — in one table, and every later figure is computed from that table; never a second value for the same assumption. Write each calculation as 「A × B = C」 with units so it can be checked.
 - A figure that shows a classification puts the kinds side by side under their parent, not in a row of arrows; arrows are for steps and data flow only.
 - When the request says a part must include something (「문항 포함」, 「예시 포함」, 「표로」), that thing itself appears in the part — the questions, the examples, the table — not a description of it. Material already written in the context (questions, a table, a calculation) is carried over as it is.
-- Do not leave a blank for a figure the stated assumptions let you compute (initial funding = monthly fixed cost × months to break-even, and so on): compute it and show the formula. Only an input nobody gave stays a bracket blank (「[월 고정비]」), and such inputs are listed once under 「확인 필요」.
+- Do not leave a blank for a figure the stated assumptions let you compute (initial funding = monthly fixed cost × months to break-even, and so on): compute it and show the formula. An input nobody gave is not invented: take a stated 「가정」 value or write the step as a formula of named inputs (「월 고정비 × 회수 개월」), and list such inputs once under 「확인 필요」.
 - Do not copy these rules into the text; the reader never sees them.
 - Every sentence ends in the 「~합니다」 / 「~입니다」 form, table cells and list items aside; never end a sentence in 「~다.」 (「확인했다.」, 「필요하다.」).
 - Write the section in Korean.
@@ -205,8 +209,12 @@ Rules:
 - Do not add causes, reasons or judgements the material does not give — 「민감한 정보가
   포함되어 있어」, 「~때문으로 판단됩니다」 only if the material says so. What you do not know,
   leave out; do not write sentences explaining what is missing (「(자료에 없음)으로 처리해야
-  할 부분은 …」). A value the document needs and nobody gave is a bracket blank naming it
-  (「[담당자]」 「[기한]」 「[금액]」), never made up. Do not write sentences that add no fact, such as 「기반을 마련했습니다」 or
+  할 부분은 …」). A value the document needs and nobody gave is never made up and never a
+  bracket blank: write the sentence so it holds without it (「일정은 확정되는 대로
+  안내합니다」), state an assumption as 「가정」 when a calculation needs one, and in a table
+  cell write 「미정」 with one 「확인 필요: …」 line under the table. Brackets only for what
+  the person fills in themselves — a signature, contact details, a name only they know
+  (「[작성자]」 「[연락처]」). Do not write sentences that add no fact, such as 「기반을 마련했습니다」 or
   「긍정적인 성과」.
 - Start each section with a `## 제목` line. Do not add sections that are not in the
   outline and do not drop any. No top-level heading (#); the title is set on the cover.
@@ -248,12 +256,12 @@ Rules:
   Write each calculation with formula and result, divisions to one decimal place
   (「월 비용 × 12개월 = 연 비용」, 「초기 비용 ÷ 연 비용 ≈ 회수 기간(년)」). Never invent a
   figure that is not on the list — user counts, ratios, periods, other costs, residual
-  values, years, working days; leave a bracket blank naming it (「[금액]」 「[인원]」). Do not invent
+  values, years, working days; write around a missing one as above. Do not invent
   circumstances the request does not give. When comparing a large and a small number,
   write both to check the direction.
 - Facts from the source list get the source number at the end of the sentence, like [1].
   No numbers that are not on the list, no source labels like [설계도면] as citations
-  (a blank like 「[담당자]」 is not one), and not the [1], [2] marks of material the user
+  (a blank like 「[작성자]」 is not one), and not the [1], [2] marks of material the user
   pasted. No sources, no numbers.
 - One register for the whole document: 「~합니다」. No first person (「저는」 「우리는」) —
   「클라우드 이전을 권고합니다」, not 「저는 … 권고합니다」.
@@ -268,7 +276,7 @@ Rules:
 - A business plan or proposal states its assumptions once — price, unit cost, ARPU, CAC, churn, capacity, fixed cost — in one table, and every later figure is computed from that table; never a second value for the same assumption. Write each calculation as 「A × B = C」 with units so it can be checked.
 - A figure that shows a classification puts the kinds side by side under their parent, not in a row of arrows; arrows are for steps and data flow only.
 - When the request says a part must include something (「문항 포함」, 「예시 포함」, 「표로」), that thing itself appears in the part — the questions, the examples, the table — not a description of it. Material already written in the context (questions, a table, a calculation) is carried over as it is.
-- Do not leave a blank for a figure the stated assumptions let you compute (initial funding = monthly fixed cost × months to break-even, and so on): compute it and show the formula. Only an input nobody gave stays a bracket blank (「[월 고정비]」), and such inputs are listed once under 「확인 필요」.
+- Do not leave a blank for a figure the stated assumptions let you compute (initial funding = monthly fixed cost × months to break-even, and so on): compute it and show the formula. An input nobody gave is not invented: take a stated 「가정」 value or write the step as a formula of named inputs (「월 고정비 × 회수 개월」), and list such inputs once under 「확인 필요」.
 - Do not copy these rules into the text.
 - Every sentence ends in the 「~합니다」 / 「~입니다」 form, table cells and list items aside; never end a sentence in 「~다.」 (「확인했다.」, 「필요하다.」).
 - Write the document in Korean.
@@ -1912,9 +1920,7 @@ def flagged_sentences(
                                   "자료의 값으로 항을 바로잡고 결과를 다시 계산해라."))
             for m in _SENTENCE.finditer(line + " "):
                 if quality_gate._PLACEHOLDER.search(m.group(0)):
-                    found.append((index, m.group(0).strip(), "자리표시(「(미정)」, 「(여기에 …)」 "
-                                  "등)가 남아 있다. 자료에 있는 값으로 채우고, 없으면 그 자리 "
-                                  "이름을 「[담당자]」 「[금액]」처럼 대괄호로 남겨라."))
+                    found.append((index, m.group(0).strip(), PLACEHOLDER_LEFT))
     for index, sec in enumerate(sections):
         if _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
             continue
@@ -3740,8 +3746,9 @@ _TABLE_FIX_PROMPT = """Below is the draft of the report's "{heading}" section. I
 Rewrite the section with whole tables: one row per item, phase or program the request and
 material list (none merged, none left out), every row under its header, and the rows adding up
 exactly to the 합계 row. Copy every number from the request and material; a value they do not
-give stays as a bracket blank such as 「[단가]」. Keep the sentences as they are. Answer with the
-body only, no section heading, in Markdown, in Korean. Do not wrap it in JSON.
+give is never made up: its cell says 「미정」 and one 「확인 필요: …」 line under the table names it.
+Keep the sentences as they are. Answer with the body only, no section heading, in Markdown, in
+Korean. Do not wrap it in JSON.
 
 {body}"""
 
@@ -4081,11 +4088,15 @@ def reference_list_only(sections: list[dict]) -> list[dict]:
     return out
 
 
+#: a placeholder left in a sentence: filled from the material, else written around
+PLACEHOLDER_LEFT = ("자리표시(「(미정)」, 「(여기에 …)」 등)가 남아 있다. 자료에 있는 값으로 채우고, "
+                    "없으면 그 값 없이도 맞는 문장으로 고쳐 써라(표 칸은 「미정」, 표 아래 「확인 필요」 한 줄).")
+
 _AMEND_PROMPT = """Only add to the section below. {instruction}
 
 Rules: do not change or delete a single character of the existing sentences and table rows.
 Leave everything but what you add as it is. Do not invent values the material does not give;
-leave the place's name in brackets, like 「[담당자]」. Write additions in Korean.
+write what you add so it holds without them (a table cell: 「미정」). Write additions in Korean.
 Answer with the amended section body only (no heading or explanation).
 
 절:

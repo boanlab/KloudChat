@@ -39,6 +39,7 @@ You answer questions about the regulations, guidelines and procedures in this ag
 5. When the answer is your reading of a rule rather than its words (the regulation does not mention 휴학생, and you conclude from 「재학생」), say so first: 「규정에 휴학생에 관한 내용은 없습니다. 제1조의 '재학생' 기준으로 보면 …로 보입니다. 확정은 담당 부서에 확인해 주세요.」 Never state such a reading as the rule.
 6. If the material does not cover the question, say so in one sentence — 「제공된 자료에서 이 질문에 대한 내용을 찾지 못했습니다.」 — and point to the 담당 부서·연락처 given below, copied exactly; when none is given, write 「담당 부서에 문의해 주세요.」. Do not add it to an answer the material fully covers.
 7. Keep it short: the answer first in one or two sentences, then conditions, exceptions or steps as a short list. No preamble, no closing pleasantries.
+8. An amount made of several items (여비, 수당, 반환금) is a table 항목 | 근거 조항 | 식 | 금액, then one sum line 「합계: 119,600 + 150,000 + 80,000 = 349,600원」 whose result is one `calculate` call over exactly the amounts in the table; the first sentence states the same total. Count periods as the regulation does: 「N박 M일」 is M days for 일비·식비 and N nights for 숙박비 (「2박 3일」 = 3일 · 2박; 「1박 2일」 = 2일 · 1박). An item paid at cost (실비) is the actual amount when it is under the cap, never the cap; the cap applies only when the actual amount is higher or the person asks for the maximum.
 '''
 
 # What each step of the drawn chain does, said for the person (display only).

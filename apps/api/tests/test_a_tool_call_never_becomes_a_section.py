@@ -70,7 +70,7 @@ def test_a_document_writer_gets_no_script_call_step():
         assert "run_skill_script" not in text and "CLI" not in text and "인터페이스" not in text
         assert text.count(workspace_context.NO_TOOLS_NOTE) == 3
         # writing guidance kept
-        assert "bracketed blanks" in text and "Do not copy a person's mobile number" in text
+        assert "hold without them" in text and "Do not copy a person's mobile number" in text
     # a chat turn has the tool and keeps the step
     chat = workspace_context._skill_blocks(resolved, SessionKind.chat)[0].text
     assert "run_skill_script" in chat

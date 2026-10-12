@@ -30,8 +30,8 @@ Check copy with code, not by eye. Character counts and claim scans written by th
 
 ## Procedure
 1. Collect every piece of copy with a label. Pass the user's material verbatim.
-2. Run `length` and `claims`. Fix: shorten anything `over` on a hard limit; for a recommended limit, say what gets cut off. Replace every `block` with a material fact or a placeholder (`[근거 자료]`, `[수치]`, `[고객 사례]`), or remove it.
-3. Run once more after fixing. Report the final counts from the script, never your own.
+2. Run `length` and `claims`. Fix: shorten anything `over` on a hard limit; for a recommended limit, say what gets cut off. Replace every `block` with a material fact or rewrite the line without the claim; a bracket only for a value the person must fill in themselves.
+3. Run once more after fixing. Report the final counts from the script, never your own: a count cell holds the last run's value, and copy shortened to fit is measured again before you write that it fits.
 
 ## Output format
 A table `| 문구 | 채널·필드 | 글자 수/한도 | 판정 |` from the `length` result, then a list of claim findings by severity with the suggested fix, then the corrected copy.

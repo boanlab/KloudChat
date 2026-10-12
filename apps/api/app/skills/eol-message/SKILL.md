@@ -22,7 +22,7 @@ Check the material. If any of 1–5 is missing, ask in ONE message (at most 5 qu
 5. Money and contracts: 자동 결제 중단일, 남은 이용 기간·선불 잔액·포인트 처리, 환불 방법과 기한, B2B 계약 해지 조건 — only what the company decided. `[환불 기준]`
 6. Alternative: successor product, migration path, or 「대체 서비스는 없습니다」. Never name a competitor or promise a discount the material lacks. `[대안]`
 7. 문의처: channel, hours, until when it answers. `[문의처]`
-8. Reason: one honest line if the material gives it; otherwise none — do not invent 「더 나은 서비스를 위해」.
+8. Reason: one honest line if the material gives it; otherwise none — do not invent 「더 나은 서비스를 위해」. 이용 기간 and the number of users, when the material gives them, go in the body too (「2019년부터 7년 동안 함께해 주신」).
 No invented dates, weekdays, amounts, percentages, product names, contacts or legal promises (「전액 환불」「안전하게 영구 삭제」) beyond the material.
 
 ## Structure
@@ -36,10 +36,11 @@ No invented dates, weekdays, amounts, percentages, product names, contacts or le
    | 데이터 삭제 | … | 복구할 수 없습니다 |
 4. 대상 — who is and is not affected.
 5. 내 데이터 — what to do, how, by when; what is deleted and when; what is kept by law and for how long (separately stored).
-6. 결제·환불·계약 — automatic billing stop, refunds (method, deadline, who to contact), contract terms. If not decided: 「환불 기준은 [날짜]까지 따로 안내합니다」 + 「법무 확인 필요」 note to the requester.
+6. 결제·환불·계약 — automatic billing stop, refunds (method, deadline, who to contact), contract terms. If not decided: 「환불 기준은 정해지는 대로 따로 안내드리겠습니다」 + 「법무 확인 필요」 note to the requester.
 7. 대안 — successor and how to move, or that there is none.
 8. 문의처.
 9. A short thank-you — one sentence, no excessive apology, no marketing.
+For customers, the first paragraph thanks them and gives the reason in one sentence each, and the notice ends with an apology and thanks. When the request names two or more channels (메일과 앱 공지), write one version per channel, each under its own label; an app notice is about five lines plus the button text.
 Tone: 정중한 합니다체, plain; the bad news in the first line, not after three paragraphs. For B2B customers also offer a 1:1 이전 상담 only if the material says it exists.
 For a 공공기관·학교 notice that goes out as an official document, give the content and point the user to the 「공문·안내문」 서식.
 
@@ -60,7 +61,7 @@ Sources (law.go.kr, read 2026-10-08): 전기통신사업법 [시행 2026. 10. 1.
    - A `block` (wrong order, gap too short, export after deletion) is the user's decision: report it with the script's suggested latest notice date and do not change dates yourself.
 3. Write the notice with the dates as the script shows them (with weekday).
 4. Run `timeline` again with `"text": "<안내문>"` — every schedule date must be in the notice and no other date; fix weekdays. Then run `internal-comms` script `check` with the material for invented contacts, amounts and numbers.
-5. Answer with the notice, then for the requester: the schedule check result, 「법무 확인 필요」 items, and 「보내기 전에 채울 것」.
+5. Answer with the notice(s) only, then for the requester at most three lines: the schedule check result in one line (only when something needs their decision), the 「법무 확인 필요」 items, and what to fill in before sending if anything is still open. Never a checklist of every rule you followed.
 
 ## Checklist
 - [ ] Title and first line name what ends and the end date.

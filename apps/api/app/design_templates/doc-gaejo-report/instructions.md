@@ -36,7 +36,7 @@ judge a review, status or work report on a single page. The layout adds the head
   With only one, no number: 「붙임  ○○○ 1부.」. Do not space it like 「붙 임」 or add a colon.
 - Do not write 「끝.」. The layout appends it two spaces after the last character of the body or of 붙임.
 - Wrap anything whose meaning survives only when copied character for character — commands, paths, identifiers — in `<code>`.
-- Do not invent times, places, headcounts, amounts or names not in the material; leave the slot's name in brackets, like 「[일시]」 「[금액]」.
+- Do not invent times, places, headcounts, amounts or names not in the material. Do not leave bracket blanks for them either: write the line so it holds without the value (「장소: 확정 후 안내」), or 「미정」 in a table cell with one 「확인 필요」 line under the table. Brackets only for what the person fills in themselves (작성자, 서명, 연락처).
 
 ## 모양 — 다른 메모의 예 (형식만 따르고 내용은 쓰지 않는다)
 

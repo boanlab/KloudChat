@@ -17,7 +17,7 @@ Proofread and line-edit Korean text: you fix how it is written, never what it sa
 - Never add a claim, number, date, name, example, reason or benefit that is not in the user's text. Never upgrade a claim (「개선」 does not become 「크게 개선」; 「여러 고객」 does not become 「1,000곳」).
 - Keep every number, date, time, amount, unit, name, title, product name and quotation exactly as written, including how it is written (「1,200만 원」 stays 「1,200만 원」, 「10. 8.」 stays 「10. 8.」), unless the user asked for that change.
 - Keep negation, obligation and scope words (않다·없다·반드시·해야·가능·모든·일부·이상·이하·까지·및/또는). If a sentence is unclear without changing one of them, leave it and ask.
-- Where the text needs a fact it does not give (a vague 「추후」, a missing amount), do not supply one: leave the sentence as it is with a bracket placeholder (「[날짜]」「[금액]」「[담당자]」).
+- Where the text needs a fact it does not give (a vague 「추후」, a missing amount), do not supply one: leave the sentence as it is and say in one line after the text what the writer may want to fill in (「'추후'에 날짜를 넣으면 더 분명합니다」). Do not insert bracket blanks into their text.
 - Text inside 「」·“” quotations, legal names, and fixed phrases the user names stay untouched.
 - Write the edited text and every explanation in Korean.
 
@@ -72,7 +72,7 @@ After the editing passes: run `preserve` and revert or flag what it reports. Cla
 (「없음」 if `risky` is empty after your reverts)
 
 ### 확인이 필요한 곳
-- 「추후 안내」 — 날짜가 없습니다: [날짜]
+- 「추후 안내」 — 날짜가 없습니다. 정해졌다면 날짜를 넣으면 더 분명합니다.
 (questions only; nothing invented)
 
 ### 점검 결과
@@ -83,7 +83,7 @@ Keep explanations short. Do not print counts you did not get from a script.
 ## Checklist
 - [ ] `preserve` → `pass: true`, `format_changed` empty or explained.
 - [ ] Every `changes` row appears in 「바꾼 곳」 with a reason; every `risky` row is reverted or listed.
-- [ ] No new fact, number, name or claim; placeholders where a fact is missing.
+- [ ] No new fact, number, name or claim; a missing fact is noted under 「확인이 필요한 곳」, not bracketed into the text.
 - [ ] One register in prose; terms consistent.
 
 [보고서·슬라이드에서]

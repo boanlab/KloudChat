@@ -16,7 +16,9 @@ Make a Korean battlecard against ONE competitor that a 영업 담당자 can read
 
 ## Hard rules
 - Competitor facts (features, prices, contract terms, customers, outages, reviews) from the user's material or pages you opened, each with `[n]` and the date checked. Prices with plan, VAT 기준, date.
-- Own-product claims from the user's material → 「(자사 자료)」. Do not promise features, discounts, SLAs or roadmap items the material does not contain.
+- Own-product claims from the user's material → 「(자사 자료)」, and only the capabilities it lists: never say our product includes something the material does not name (메일, 드라이브). Do not promise features, discounts, SLAs or roadmap items the material does not contain.
+- A competitor's lack of something is stated only as what you checked: 「공개 자료에서 확인하지 못함」, never 「제공하지 않습니다」.
+- Prices are compared on one basis first — a small table with 월/연, 1인당/전체, 계약 조건, 부가세 포함 여부 aligned — before any judgement on price.
 - Unknown → 「확인 필요」. 우위 column → 「판단 보류」 unless both cells are sourced.
 - 반론 대응 answers use facts from the table, not adjectives. No disparagement: no claims about the competitor's finances, security or stability without a public source; never 「곧 망한다」 style talk. Comparative advertising rules (표시광고법) apply to anything that may reach customers: objective, verifiable, same conditions.
 - 수주·실주 패턴 only from the user's win/loss notes or CRM; without them, the section says 「수주·실주 기록이 없어 비워 둠」 and lists what to record.

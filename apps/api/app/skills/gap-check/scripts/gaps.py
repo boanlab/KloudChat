@@ -284,7 +284,9 @@ def rule(findings: list[dict]) -> str:
     plain = [f["label"] for f in findings or [] if not f.get("placeholder")]
     parts = []
     if shown:
-        parts.append("사용자가 더 줄 정보가 없다고 했다. 다음은 지어내지 말고 대괄호 빈칸으로 둔다: " + ", ".join(shown) + ".")
+        parts.append("사용자가 더 줄 정보가 없다고 했다. 다음은 지어내지 않는다: " + ", ".join(shown) + ". "
+                     "그 대괄호는 사용자가 직접 채울 머리 칸(일시·작성자 등)·서명·연락처에만 두고, "
+                     "본문에서는 그 값 없이도 맞는 문장으로 쓴다(표 칸은 「미정」, 표 아래 「확인 필요」 한 줄).")
     if plain:
         parts.append(f"{', '.join(plain)}은(는) 자료에 없어 기본 기준으로 하고, 그렇게 했다고 한 줄로 밝힌다.")
     return " ".join(parts)

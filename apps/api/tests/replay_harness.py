@@ -172,12 +172,28 @@ PINNED_PROMPTS = FIXTURES / "_pinned_prompts"
 
 
 def pin_recorded_prompts(patch: Patch) -> None:
-    from app.services import calc, report_checks
+    from app.pipeline import report_stages
+    from app.services import calc, report, report_checks, verify
 
-    patch(calc, "PROMPT", (PINNED_PROMPTS / "calc.txt").read_text(encoding="utf-8"))
-    patch(report_checks, "_COST_PROMPT",
-          (PINNED_PROMPTS / "compare_cost.txt").read_text(encoding="utf-8"))
+    def pinned(name: str) -> str:
+        return (PINNED_PROMPTS / name).read_text(encoding="utf-8")
+
+    patch(calc, "PROMPT", pinned("calc.txt"))
+    patch(report_checks, "_COST_PROMPT", pinned("compare_cost.txt"))
     patch(report_checks, "year_lines", lambda label, totals: [])
+    # The writing prompts as recorded, before their blank rule asked for sentences that hold
+    # without a missing value instead of bracket blanks.
+    patch(report, "_SECTION_PROMPT", pinned("report_section.txt"))
+    patch(report, "_DRAFT_PROMPT", pinned("report_draft.txt"))
+    patch(report, "_TABLE_FIX_PROMPT", pinned("report_table_fix.txt"))
+    patch(report, "_AMEND_PROMPT", pinned("report_amend.txt"))
+    patch(verify, "_REPAIR_PROMPT", pinned("verify_repair.txt"))
+    patch(report_stages, "DERIVED_NOTE", pinned("derived_note.txt"))
+    patch(report, "PLACEHOLDER_LEFT", "자리표시(「(미정)」, 「(여기에 …)」 등)가 남아 있다. "
+          "자료에 있는 값으로 채우고, 없으면 그 자리 이름을 「[담당자]」 「[금액]」처럼 "
+          "대괄호로 남겨라.")
+    patch(report_checks, "EMPTY_OWNER", "담당 칸이 비었다 — 이름, 자료에 없으면 「[담당자]」")
+    patch(report_checks, "EMPTY_DUE", "기한 칸이 비었다 — 날짜, 자료에 없으면 「[기한]」")
 
 
 #: Shipped templates as they were when the records were made (`_pinned_templates/<id>/`):

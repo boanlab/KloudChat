@@ -116,7 +116,8 @@ def test_a_direct_agent_asks_its_own_questions():
     assert _card(asked, "회의록 써 줘.") == []
     rule = check_skills.rule(("gap-check",), check_skills.gaps(
         ("gap-check",), questions=asked, request="행사 안내문 써 줘.", material=""))
-    assert "장소 → [장소]" in rule
+    # never invented; its bracket only in a slot the person fills, the body written around it
+    assert "장소 → [장소]" in rule and "그 값 없이도 맞는 문장으로" in rule
 
 
 def test_the_judge_must_quote_the_material():

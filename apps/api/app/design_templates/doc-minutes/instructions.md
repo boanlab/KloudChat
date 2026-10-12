@@ -30,8 +30,10 @@ One item looks like this.
 - If the owner or deadline was not decided in the meeting, write only 「미정」 in the value
   cell, like `<small>미정 · 미정</small>`, and put why it was not decided and when and who will
   decide it (e.g. 9월 7일까지 담당 지정) in the sentence before. If it is not in the material
-  at all, leave it as brackets like `<small>[담당자] · [기한]</small>`. Write a deadline only
-  as one of 날짜(요일)·「미정」·「[기한]」, and keep original wording such as
+  at all, it is 「미정」 too — never invented, never moved over from another item, never a
+  bracket blank — and one line after the list names what needs checking (「※ 3번 담당자와
+  5번 기한은 회의에서 정하지 않아 확인이 필요합니다.」). Write a deadline only
+  as one of 날짜(요일)·「미정」, and keep original wording such as
   「다음 주 금요일까지」 in the sentence before. A line without `<small>` is later read by no one
   as their own.
 
@@ -52,10 +54,11 @@ most important line and describe the rest in words.
 
 - Do not mix what was said with what was decided. Write discussion as paragraphs and decisions as `rows`.
 - Every action item must carry an owner and a deadline. If the meeting did not decide them,
-  write "미정" to record that they were not decided; if they are not in the material, leave "[담당자]" "[기한]".
+  write "미정" — whether the meeting deferred them or the material does not give them — with
+  the reason, and one 「확인 필요」 line after the list.
 - Do not write an agenda item with no conclusion as if it were concluded; state who decides
   it next and when.
-- Do not invent background that did not come up in the meeting. Leave unknown names and dates as brackets, like 「[담당자]」 「[일자]」.
+- Do not invent background that did not come up in the meeting. A name or date the material does not give is 「미정」 or left out; brackets only for what the writer fills in (작성자).
 - Do not transcribe remarks verbatim; reduce them to what was argued. Use `<blockquote>`
   only when the wording itself must be kept.
 

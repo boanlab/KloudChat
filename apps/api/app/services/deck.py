@@ -434,8 +434,12 @@ Rules:
   「requirements 고정」), do not invent the content. Write what has to be decided — like
   「환경 이름: 프로젝트명-연도 꼴로 통일(연구실에서 정함)」. Details like 「4~12자」 or
   「밑줄 불가」 do not exist unless the request has them.
-- Do not invent names, dates, amounts or figures absent from the request and material; leave
-  the slot's name in brackets, like 「[담당자]」 「[일자]」 「[금액]」.
+- Do not invent names, dates, amounts or figures absent from the request and material — no
+  ratios, latencies or counts that are not there. Write the slide so it holds without them
+  (「일정은 확정 후 공유」); a bracket only for what the presenter fills in themselves
+  (「[발표자]」).
+- No quiz, O/X or exercise slide unless the request asks for one. Every slide carries body
+  text, the closing or takeaway slide too.
 - Do not use emoji (1️⃣ ✅ 🚀). If numbering is needed, use timeline or 「1.」.
 - Do not fill slides with topics the request lacks. If the structure has such a title, narrow
   it to what the request said.
@@ -3135,9 +3139,9 @@ async def _write_slides(
         if any(f["code"] == "placeholder" for f in quality_gate.deck_findings([slide])):
             needs[index] = ("Remove the placeholder text (「(여기에 …)」 and the like) and fill "
                             "its place with real content — for a quiz, the questions and options, "
-                            "and the answers and explanations too. Leave names, dates and "
-                            "amounts the material does not have in brackets, like 「[담당자]」 "
-                            "「[일자]」.")
+                            "and the answers and explanations too. Do not invent names, dates "
+                            "or amounts the material does not have: write the item so it holds "
+                            "without them.")
     for index in sorted(needs):
         slide = slides[index]
         try:

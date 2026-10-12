@@ -1,0 +1,61 @@
+You are writing only the "{heading}" section of the report below.
+
+Full outline:
+{outline}
+
+Already written in earlier sections:
+{written}
+
+Sources:
+{refs}
+
+This section's role: {role}
+{others}
+{facts}
+{genre}
+
+Rules:
+- Write only what belongs under "{heading}". Do not put the whole report here; other
+  sections own their parts (comparison, schedule, recommendation).
+- No heading line, not even in bold, and no top-level heading (#). Body only.
+- Do not repeat what earlier sections said or the tables and blocks they drew.
+- Prose is the default: usually two to four paragraphs of connected sentences. Do not
+  fill the section with a numbered list like 「- **1번 항목**:」.
+- **Use only the figures in the 「쓸 수 있는 수치」 list above and values computed from
+  them**, with their units and magnitudes exactly as given — do not move a yearly
+  figure into 만 units or change the number of digits. Show the formula with a computed
+  value (「월 비용 × 12개월 = 연 비용」). Never invent a figure that is not on the list —
+  user counts, ratios, causes of failure, damage, other costs, years; where one is needed,
+  leave a blank naming it in brackets (「[금액]」 「[인원]」). Do not invent circumstances
+  the request does not give, such as the cause or course of an incident.
+- One register for the whole document. If earlier sections used 「~합니다」, so does this
+  one; the first section uses 「~합니다」.
+- Write at the level a practitioner can use as is: for each step what, how and why,
+  criteria and examples, what to watch for. Unfold everything the material and request
+  give; do not end on a one-line summary. Details come only from the material and request.
+- **Never invent a specific value the material does not give** — amounts, dates,
+  institutions, people, counterparties. Where a decision is needed, say what must be
+  decided instead of filling it in: 「[예산 규모]」, not 「예산 2억 원」;
+  「[협약 기업]」, not 「A社·B社」. Anything the request and material do not give is such a
+  bracket blank (「[담당자]」 「[일자]」), never made up; a 미정 the material itself states
+  stays as written (「미정(다음 회의에서 재논의)」).
+- A fact taken from the source list (material found by search) gets that source's number
+  at the end of the sentence, like [1]. Never use a number that is not on the list. The
+  [1], [2] marks in material the user pasted are not sources — do not number that
+  content. Cite only facts that need support, not every sentence.
+- Break into paragraphs where the point changes: one point per paragraph, two to four sentences.
+- Put a caption line directly above every table: 「표: 제목」, a short noun phrase for what the table shows. Figures are captioned for you; write no figure caption.
+- The reader has only this report, not the sources. Never point into a source's own structure (「매뉴얼 제2장」, 「보고서 3절」, 「p. 12」, 「해당 자료」, 「이 매뉴얼은」): say what the content is and cite [n]. If the source itself matters, name it once by its title and publisher (「과기정통부·KISA의 『AI 보안 위협 대응 매뉴얼』(2026)」), never as a bare 「매뉴얼」.
+- Cite a source once for the sentences that rest on it, at the end of the last of them; do not put the same [n] after every sentence of a paragraph.
+- A figure goes where the text describes something drawable: components and how they connect (method), steps in order (flow), two sides set against each other (compare), or a classification (concept). Put it on its own line right after that paragraph as `[[그림: kind | caption | description]]` — kind is method, flow, compare or concept; caption a short Korean noun phrase; description the boxes and arrows, named in the text's own words. Refer to it in the prose as 〔그림〕 (「〔그림〕과 같이 …」). At most one figure per section, and none for numbers (a table holds numbers). Refer to a table you write as 〔표〕 in the sentence before it.
+- When the request names three or more things to analyse (「대상 환경, 배포 방법, 주요 기능, 적용 기술」), the report carries one comparison table whose rows are the actual products, vendors or options found in the sources (by name) and whose columns are exactly those things. Generic categories are not rows.
+- A business plan or proposal states its assumptions once — price, unit cost, ARPU, CAC, churn, capacity, fixed cost — in one table, and every later figure is computed from that table; never a second value for the same assumption. Write each calculation as 「A × B = C」 with units so it can be checked.
+- A figure that shows a classification puts the kinds side by side under their parent, not in a row of arrows; arrows are for steps and data flow only.
+- When the request says a part must include something (「문항 포함」, 「예시 포함」, 「표로」), that thing itself appears in the part — the questions, the examples, the table — not a description of it. Material already written in the context (questions, a table, a calculation) is carried over as it is.
+- Do not leave a blank for a figure the stated assumptions let you compute (initial funding = monthly fixed cost × months to break-even, and so on): compute it and show the formula. Only an input nobody gave stays a bracket blank (「[월 고정비]」), and such inputs are listed once under 「확인 필요」.
+- Do not copy these rules into the text; the reader never sees them.
+- Every sentence ends in the 「~합니다」 / 「~입니다」 form, table cells and list items aside; never end a sentence in 「~다.」 (「확인했다.」, 「필요하다.」).
+- Write the section in Korean.
+{blocks}
+
+Original request: {request}

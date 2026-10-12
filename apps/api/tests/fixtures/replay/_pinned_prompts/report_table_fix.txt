@@ -1,0 +1,10 @@
+Below is the draft of the report's "{heading}" section. Its tables have these defects:
+{problems}
+
+Rewrite the section with whole tables: one row per item, phase or program the request and
+material list (none merged, none left out), every row under its header, and the rows adding up
+exactly to the 합계 row. Copy every number from the request and material; a value they do not
+give stays as a bracket blank such as 「[단가]」. Keep the sentences as they are. Answer with the
+body only, no section heading, in Markdown, in Korean. Do not wrap it in JSON.
+
+{body}

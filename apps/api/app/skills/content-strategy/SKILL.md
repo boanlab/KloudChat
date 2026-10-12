@@ -28,7 +28,7 @@ Search volumes, rankings and past performance numbers come only from the user (�
    `{"topics": [{"title": "...", "pillar": "...", "type": "searchable", "scores": {"impact": 8, "fit": 9, "search": 6, "resources": 7}, "basis": {"impact": "상담 기록에 월 12회 언급", "fit": "...", "search": "사용자 제공 월 검색량 1,300"}}], "calendar": {"start": "YYYY-MM-DD", "weeks": 8, "per_week": 2, "weekdays": ["화", "목"]}}`
    Default weights 40/30/20/10 and mix 검색형 60·공유형 30·실험 10; change only if the user asks (새 블로그는 검색형 비중을 높일 수 있음 — suggest, don't impose). Copy the ranking and calendar from the result; do not recompute scores or dates yourself.
 5. Do not state legal or regulatory facts (적용 대상 인원, 의무 여부, 기한) unless the material gives them; write the topic and mark `[법령 확인 필요]`. Do not attribute features to the product beyond the material.
-   Proposed titles and briefs follow the same grounding: no numbers, savings, durations or offers the material lacks (「3분이면 끝」「주유비 10% 아끼는 법」「14일 무료 체험」 are invented) — use `[수치]` or a wording without a number.
+   Proposed titles and briefs follow the same grounding: no numbers, savings, durations or offers the material lacks (「3분이면 끝」「주유비 10% 아끼는 법」「14일 무료 체험」 are invented) — use a wording without a number.
 6. For the top 3 topics write a brief: 제목 후보 3개, 핵심 질문, 목차, 근거로 쓸 자료, CTA, 재가공(블로그 → 인스타 카드뉴스·링크드인 글·뉴스레터).
 7. Channel norms (Korea): 네이버 블로그 — 검색어를 제목 앞쪽에, 경험·사진·구체적 절차, 광고·협찬이면 「광고」「협찬」 표시(공정위 추천·보증 심사지침); 인스타그램 — 첫 줄이 잘림 전 노출, 카드뉴스 6–10장; 링크드인 — 실무자 1인칭, 숫자·사례 중심, 해시태그 3–5개; 유튜브 — 제목에 핵심어, 설명 첫 2줄.
 
@@ -46,7 +46,7 @@ Search volumes, rankings and past performance numbers come only from the user (�
 ```
 
 ## Checklist
-- [ ] Every number (검색량, 성과, 고객 수) is from the user; otherwise marked as 가정/빈칸.
+- [ ] Every number (검색량, 성과, 고객 수) is from the user; otherwise marked 가정 or left out.
 - [ ] Scores and dates copied from the `plan` result.
 - [ ] Each pillar traces to evidence; mix stated.
 - [ ] Sponsored/ad content flagged for 「광고」·「협찬」 disclosure.

@@ -16,8 +16,8 @@ listed: false
 Strip generic, vague and machine-sounding wording from the user's text and put concrete wording in its place — concrete only from the user's text and material. Clear beats clever; a fact beats an adjective.
 
 ## Hard rules
-- A concrete replacement must come from the user's text or material. Quote the material line you used. If the material has no fact for it, write a bracket placeholder (「[구체적 수치]」「[구체적 항목]」「[방법]」「[차별점]」「[근거]」) or delete the phrase — never invent a number, name, customer, result, time or comparison.
-- Keep every number, date, name and claim of the original. Removing an unsupported superlative (「최고의」) is allowed; replacing it with a different claim is not.
+- A concrete replacement must come from the user's text or material. Quote the material line you used. If the material has no fact for it, delete the phrase or say the plain thing without it (「획기적으로 줄였습니다」 → 「줄였습니다」) — never invent a number, name, customer, result, time or comparison, and do not leave bracket blanks in the text.
+- Keep every number, date, name and claim of the original; numbers, dates and head counts from the material are never touched. Only clichés and unsupported superlatives are in scope. Removing an unsupported superlative (「최고의」) is allowed; replacing it with a different claim is not.
 - Do not touch quotations (「」·“”), legal or official names, or wording the material itself uses as a fixed term (`in_material: true` — e.g. a program called 「역량 강화 사업」).
 - Keep the text's register (합니다체·해요체) and length roughly the same or shorter.
 - Write in Korean (English text stays English).
@@ -51,10 +51,7 @@ Strip generic, vague and machine-sounding wording from the user's text and put c
 | 원래 표현 | 분류 | 바꾼 말 | 근거 |
 |-----------|------|---------|------|
 | 다양한 기능 | 채움말 | 회의 녹음·요약·할 일 정리 | 자료 「기능: 녹음, 요약, 할 일」 |
-| 획기적으로 줄였습니다 | 빈 강조어 | [구체적 수치]만큼 줄였습니다 | 자료에 수치 없음 |
-
-### 채울 빈칸
-- [구체적 수치] — 무엇을 넣어야 하는지 한 줄
+| 획기적으로 줄였습니다 | 빈 강조어 | 줄였습니다 | 자료에 수치 없음 — 수치가 있으면 넣을 자리 |
 
 ### 밀도
 상투어 밀도 12.4(높음) → 2.1(낮음), N개 중 M개 고침

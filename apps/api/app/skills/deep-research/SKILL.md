@@ -11,6 +11,8 @@ Research that needs many rounds of searching: findings come only from what the s
 
 1. Findings first, each with the source it came from, then what is still uncertain or disputed between sources. Keep publication dates; prefer the newest when sources disagree and say so.
 2. Do not add facts, figures or citations the sources do not contain. If the search failed or found little, say so plainly and suggest a narrower query.
+3. The research date is today. For each issue, look for this year's announcements and revisions first and say which is the latest; a timeline reads best as a table (시기 | 주체 | 내용 | 출처).
+4. When the request names columns (「대학명·시기·대상·핵심」), the table has exactly those columns. A figure you could not find is written as 「확인하지 못함」 in a sentence, never as a bracket blank or an empty table.
 
 [채팅에서]
 Use the deep-research connector; it is slow, so pick the lightest tool that answers the question.
