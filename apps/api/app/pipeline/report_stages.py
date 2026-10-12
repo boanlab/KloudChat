@@ -1479,6 +1479,10 @@ class Verify(Base):
             _count(bundle, spent, planner=True)
         except Exception:  # noqa: BLE001 — the sentences stay as written; the gate reports them
             log.exception("verify stage failed")
+        if (pre := bundle.computed.prepass) is not None and pre.musts:
+            # a recommendation still against the must-have matrix: the code's verdict instead
+            bundle.document.sections, still = report_checks.settle_verdict(
+                bundle.document.sections, still, pre.musts, pre.scores)
         bundle.findings.still = still
         format_codes = set(report_checks.LABELS)
         bundle.findings.after += [f.code for f in still if f.code in format_codes]

@@ -1618,7 +1618,7 @@ async def _compare_check(pre: Prepass, job: PrepassJob) -> None:
         count(more)
         data = _json(text)
         numbers = _material_numbers(f"{request}\n{material}")
-        if musts := must_status(data, numbers, f"{request}\n{material}"):
+        if musts := must_status(data, numbers, f"{request}\n{material}", pre.costs):
             pre.musts = musts
             pre.blocks.append(_must_block(musts))
             pre.runs.append({"skill": "compare-check", "summary": "필수 조건 " + ", ".join(
@@ -3790,8 +3790,25 @@ def must_values_from_tables(data: dict, material: str) -> dict:
     return {**data, "options": options}
 
 
-def must_status(data: dict, numbers: list[float], material: str = "") -> dict | None:
-    """Each option 충족 / 탈락(사유) / 조건 미확인; unstated limits/values left out."""
+#: must on a yearly amount: 「연구비 연간 집행 한도」, 「1년 예산」
+_ANNUAL = re.compile(r"연간|매년|해마다|1년|한\s?해|연\s{0,2}(?:한도|예산|집행|비용)|년\s{0,2}(?:한도|예산)")
+
+
+def _yearly_cost(option: str, costs: dict | None) -> float | None:
+    """Option's peak yearly cost from compare-cost (first year or a later one)."""
+    key = _option_key(option)
+    for name, entry in ((costs or {}).get("options") or {}).items():
+        other = _option_key(name)
+        if key and other and (key in other or other in key):
+            years = [entry.get(k) for k in ("first_year", "next_year") if entry.get(k) is not None]
+            return float(max(years)) if years else None
+    return None
+
+
+def must_status(data: dict, numbers: list[float], material: str = "",
+                costs: dict | None = None) -> dict | None:
+    """Each option 충족 / 탈락(사유) / 조건 미확인; unstated limits/values left out; a yearly
+    money limit the reading left blank is judged on compare-cost's yearly cost."""
     if material:
         data = must_values_from_tables(data, material)
     musts = []
@@ -3814,6 +3831,10 @@ def must_status(data: dict, numbers: list[float], material: str = "") -> dict | 
             if must.get("kind") != "yesno" and plain is not None and not _grounded(plain, numbers):
                 raw = None
             value = _must_value(raw, must)
+            if (value is None and must.get("kind") == "max" and _ANNUAL.search(must["name"])
+                    and str(must.get("unit") or "원") == "원"):
+                # code-computed yearly cost, not a value to ground in the material
+                value = _yearly_cost(option["name"], costs)
             if value is None:
                 unknown.append(must["name"])
             elif must["kind"] == "yesno" and value is False:
@@ -3899,9 +3920,10 @@ async def comparison_recommendation(doc: Doc, musts: dict | None, scored: dict |
         return found, {}
     if not doc.sections:
         return found, {}
-    # each recommending sentence read separately: summary listing all options before the pick
-    stating = [i for i, s in enumerate(doc.sections)
-               if re.search(r"결론|권고|요약|추천|제언", str(s.get("heading") or ""))] or [0]
+    # each recommending sentence read separately: summary listing all options before the pick;
+    # the opening section too, where the bottom line is stated first
+    stating = sorted({0, *(i for i, s in enumerate(doc.sections)
+                           if re.search(r"결론|권고|요약|추천|제언", str(s.get("heading") or "")))})
     for index in stating:
         for line in str(doc.sections[index].get("content") or "").split("\n"):
             if line.lstrip().startswith(("|", "#", "```")):
@@ -3914,6 +3936,67 @@ async def comparison_recommendation(doc: Doc, musts: dict | None, scored: dict |
                         rank=0,
                         still=lambda s, m=musts, sc=scored: bool(_recommend_problem(s, m, sc))))
     return found, {}
+
+
+def _object(word: str) -> str:
+    last = (word or " ")[-1]
+    return "을" if "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 else "를"
+
+
+def verdict_sentence(musts: dict, scored: dict | None = None) -> str:
+    """The recommendation the must-have matrix (and scores) allow, as one sentence."""
+    rows = (musts or {}).get("options") or {}
+    if not rows:
+        return ""
+
+    def said(option: str) -> str:
+        row = rows[option]
+        if row["status"] == "탈락":
+            return f"{option}: 탈락 — " + "; ".join(row["failed"])
+        if row["status"] == "조건 미확인":
+            return f"{option}: 조건 미확인 — " + ", ".join(row["unknown"]) + " 자료 없음"
+        return f"{option}: 충족"
+
+    passing = [o for o, r in rows.items() if r["status"] == "충족"]
+    pending = [o for o, r in rows.items() if r["status"] == "조건 미확인"]
+    if scored and len(passing) > 1:
+        totals = {o: scored["options"][o]["total"] for o in passing if o in scored.get("options", {})}
+        if totals:
+            best = max(totals.values())
+            leaders = [o for o, t in totals.items() if t == best]
+            passing = leaders if len(leaders) == 1 else passing
+    others = "; ".join(said(o) for o in rows if o not in passing)
+    tail = f"({others})" if others else ""
+    if len(passing) == 1:
+        return f"필수 조건을 모두 충족하는 {passing[0]}{_object(passing[0])} 권고합니다{tail}."
+    if passing:
+        return f"필수 조건을 모두 충족하는 대안은 {', '.join(passing)}입니다{tail}."
+    if pending:
+        return (f"{', '.join(pending)}{_object(pending[-1])} 조건이 확인되면 권고합니다"
+                f"({'; '.join(said(o) for o in rows)}).")
+    return f"필수 조건을 모두 충족하는 대안이 없습니다({'; '.join(said(o) for o in rows)})."
+
+
+def settle_verdict(sections: list[dict], still: list[Finding], musts: dict | None,
+                   scored: dict | None = None) -> tuple[list[dict], list[Finding]]:
+    """Recommendations the repair left against the matrix replaced by the code's verdict."""
+    verdict = verdict_sentence(musts or {}, scored)
+    wrong = [f for f in still if f.code == "recommend_mismatch"]
+    if not verdict or not wrong:
+        return sections, still
+    out = [dict(s) for s in sections]
+    settled: list[Finding] = []
+    placed = False
+    for finding in wrong:
+        body = str(out[finding.section].get("content") or "")
+        if not finding.sentence or finding.sentence not in body:
+            continue
+        # first wrong sentence carries the verdict; later ones would only repeat it
+        body = body.replace(finding.sentence, "" if placed else verdict, 1)
+        out[finding.section]["content"] = re.sub(r"[ \t]{2,}", " ", body).strip()
+        placed = True
+        settled.append(finding)
+    return out, [f for f in still if f not in settled]
 
 
 # ── judge (large self-hosted model): one call per document, shown not rewritten ──
