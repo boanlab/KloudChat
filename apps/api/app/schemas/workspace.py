@@ -351,6 +351,8 @@ class SkillOut(Wire):
     visibility: Visibility = Visibility.private
     installs: int = 0
     origin_id: str | None = None
+    #: a copy: who shared the skill it came from ("" when gone or not a copy)
+    origin_owner_name: str = ""
     updated_at: datetime
     #: package's fixed scripts; empty for plain skill
     scripts: list[str] = Field(default_factory=list)

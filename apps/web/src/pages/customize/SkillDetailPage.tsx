@@ -58,7 +58,7 @@ export function SkillDetailPage() {
   }
 
   const item = skillItem(skill, !own)
-  const editable = !!own && own.source !== 'built-in'
+  const editable = !!own
 
   const menu: MenuAction[] = []
   if (editable) menu.push({ label: '공유', icon: <Share2 size={14} />, run: () => setSharing(true) })

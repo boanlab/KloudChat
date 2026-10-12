@@ -53,7 +53,6 @@ from app.models.workspace import (
     MemoryType,
     Project,
     Skill,
-    SkillSource,
     StoredFile,
 )
 from app.models.workspace import Visibility as SkillVisibility
@@ -2032,7 +2031,8 @@ async def _template_skills(
             select(Skill)
             .where(
                 col(Skill.catalog_key).in_(list(template.skills)),
-                Skill.source == SkillSource.built_in,
+                # the catalogue owner's shared rows, not someone's shared copy
+                Skill.owner_id == starter.catalog_owner_query().scalar_subquery(),
                 Skill.visibility == SkillVisibility.org,
             )
             .order_by(col(Skill.id))

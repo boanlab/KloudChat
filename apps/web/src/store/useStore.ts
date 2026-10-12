@@ -3040,6 +3040,7 @@ function toSkill(s: SkillRow): Skill {
     visibility: (s.visibility as Skill['visibility']) ?? 'private',
     installs: s.installs ?? 0,
     originId: s.originId ?? null,
+    originOwnerName: s.originOwnerName ?? '',
     version: s.version,
     updatedAt: s.updatedAt,
     scripts: s.scripts ?? [],

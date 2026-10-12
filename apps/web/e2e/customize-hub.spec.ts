@@ -113,6 +113,21 @@ test('a skill kept only as a part is hidden until 숨김 포함, and then marked
   expect(state.problems).toEqual([])
 })
 
+test('a shipped skill is the administrator\'s shared skill, and a copy is the person\'s own', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  await page.goto('/customize?tab=skills&view=explore')
+  await expect(page.getByTestId('item-card').filter({ hasText: '견적 계산' }).first()).toContainText('제작: 관리자', { timeout: 15_000 })
+  await page.goto('/customize?tab=skills&view=mine')
+  const copy = page.getByTestId('item-card').filter({ hasText: '데이터 분석' })
+  await expect(copy).toContainText('제작: 관리자', { timeout: 15_000 })
+  await page.goto(`/customize/skills/${mySkills[0].id}`)
+  await expect(page.getByRole('button', { name: '편집' })).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: '더 보기' }).click()
+  await expect(page.getByRole('menuitem', { name: '공유' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '삭제' })).toBeVisible()
+  expect(state.problems).toEqual([])
+})
+
 test('a tab with nothing of the person\'s own opens on 탐색', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo, { emptyMine: true })
   await page.goto('/customize?tab=agents')

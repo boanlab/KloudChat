@@ -936,18 +936,21 @@ export interface Skill {
   description: string
   whenToUse: string
   body: string
-  /** Stable key for shipped skills; null for user-authored ones. */
+  /** Package a shipped skill and its copies come from; null for others. */
   catalogKey: string | null
   requiredTools: string[]
   /** Approximate prompt cost. */
   estimatedTokens: number
-  source: 'built-in' | 'workspace' | 'personal'
+  /** `workspace`: a copy of a shared skill; `personal`: authored here. */
+  source: 'workspace' | 'personal'
   kinds: SessionKind[]
   enabled: boolean
   /** `org` lists it in the store for the workspace to copy. */
   visibility: 'private' | 'org'
   installs: number
   originId: string | null
+  /** A copy: who shared the skill it came from. */
+  originOwnerName?: string
   version: string
   updatedAt: string
   /** Fixed scripts its package ships; empty for a plain skill. */

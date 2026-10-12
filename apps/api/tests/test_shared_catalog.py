@@ -123,7 +123,7 @@ def _skill(**kwargs) -> Skill:
             "when_to_use": "제출용 글을 쓸 때",
             "body": "절차",
             "catalog_key": "citation",
-            "source": SkillSource.built_in,
+            "source": SkillSource.personal,
             "kinds": ["chat"],
             "required_tools": [],
             "estimated_tokens": 40,

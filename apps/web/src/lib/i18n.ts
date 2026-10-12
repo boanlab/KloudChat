@@ -3841,7 +3841,7 @@ const EN: Record<string, string> = {
   '도구 고르기': 'Choose tools',
   '도구 검색': 'Search tools',
   '기술 정보': 'Technical details',
-  '기본 스킬': 'Built-in skills',
+  '공유받은 스킬': 'Shared with me',
   '내 스킬': 'My skills',
   '입력창에서 고른 스킬을 그대로 씁니다.': 'Uses the skills picked in the composer.',
   '스킬을 쓰지 않습니다.': 'Uses no skills.',

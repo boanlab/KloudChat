@@ -313,7 +313,7 @@ export function SkillPicker({
       id: s.id,
       title: s.name,
       description: s.description,
-      group: s.source === 'built-in' ? '기본 스킬' : '내 스킬',
+      group: s.originId ? '공유받은 스킬' : '내 스킬',
     }))
   const toggle = (id: string) => onChange(chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id])
   return (
