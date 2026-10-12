@@ -4,6 +4,7 @@ import { Navigate, Route, BrowserRouter as Router, Routes, useLocation, useNavig
 import { RoleRoute } from '@/components/auth/RoleRoute'
 import { AppShell } from '@/components/layout/AppShell'
 import { setBotEmbedded } from '@/lib/api'
+import { SHARED_AGENTS_PATH } from '@/lib/publishing'
 import { kindOrder } from '@/lib/kinds'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -46,7 +47,6 @@ const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ de
 const PublicBotsPage = lazy(() => import('@/pages/PublicBotsPage').then((m) => ({ default: m.PublicBotsPage })))
 const SharedPage = lazy(() => import('@/pages/SharedPage').then((m) => ({ default: m.SharedPage })))
 const BotPage = lazy(() => import('@/pages/BotPage').then((m) => ({ default: m.BotPage })))
-const BotsPage = lazy(() => import('@/pages/BotsPage').then((m) => ({ default: m.BotsPage })))
 const PublicationPage = lazy(() =>
   import('@/pages/customize/PublicationPage').then((m) => ({ default: m.PublicationPage })),
 )
@@ -203,7 +203,8 @@ function Authenticated() {
           <Route path="customize/skills/:skillId" element={<SkillDetailPage />} />
           <Route path="customize/bundles" element={<BundlesPage />} />
           <Route path="customize/publications/:publicationId" element={<PublicationPage />} />
-          <Route path="bots" element={<BotsPage />} />
+          {/* Members' bots are agents in 사용자 지정; old links land on the shared group. */}
+          <Route path="bots" element={<Navigate to={SHARED_AGENTS_PATH} replace />} />
           <Route path="customize/workflows/:pipelineId" element={<ToHub tab="agents" />} />
           <Route path="designs" element={<Navigate to="/settings/themes" replace />} />
           <Route path="agents" element={<ToHub tab="agents" />} />

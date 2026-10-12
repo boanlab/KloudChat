@@ -27,7 +27,7 @@ import {
   type BotPage as BotPageData,
   type BotTranscriptMessage,
 } from '@/lib/api'
-import { botErrorMessage, noticeLines, PAUSE_LABEL } from '@/lib/publishing'
+import { botErrorMessage, noticeLines, PAUSE_LABEL, SHARED_AGENTS_PATH } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -272,8 +272,8 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
             : t('닫혔거나 주소가 올바르지 않습니다. 구성원에게만 열린 챗봇이면 로그인해야 합니다.')}
         </p>
         {embedded ? null : authenticated ? (
-          <Link to="/bots" className="mt-4 text-base text-accent hover:underline">
-            {t('챗봇 목록으로')}
+          <Link to={SHARED_AGENTS_PATH} className="mt-4 text-base text-accent hover:underline">
+            {t('공유된 에이전트로')}
           </Link>
         ) : (
           <div className="mt-4 flex flex-wrap justify-center gap-3">
@@ -302,8 +302,8 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
 
   const paused = bot.status !== 'approved'
   const closed = paused || bot.blocked
-  // Back: member → members' list; visitor → public list if listed; link-only or framed → nowhere.
-  const backTo = embedded ? null : bot.signedIn ? '/bots' : bot.visibility === 'external' ? '/b' : null
+  // Back: member → shared agents; visitor → public list if listed; link-only or framed → nowhere.
+  const backTo = embedded ? null : bot.signedIn ? SHARED_AGENTS_PATH : bot.visibility === 'external' ? '/b' : null
   const prompts = bot.branding.suggestedPrompts
   const list = (
     <nav aria-label={t('내 대화')} className="flex h-full flex-col gap-2">
@@ -343,7 +343,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
         style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
       >
         {backTo && (
-          <Link to={backTo} className="grid size-9 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg" aria-label={t('챗봇 목록으로')}>
+          <Link to={backTo} className="grid size-9 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg" aria-label={t(bot.signedIn ? '공유된 에이전트로' : '챗봇 목록으로')}>
             <ArrowLeft size={17} />
           </Link>
         )}

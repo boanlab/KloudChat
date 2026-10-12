@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Brand } from '@/components/layout/Brand'
 import { botsApi, type PublicBotItem } from '@/lib/api'
+import { SHARED_AGENTS_PATH } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
@@ -33,8 +34,8 @@ export function PublicBotsPage() {
       >
         <Brand name={brand.name} logo={brand.logo} />
         <span className="min-w-0 flex-1" />
-        <Link to={authenticated ? '/bots' : '/'} className="text-sm text-muted hover:text-fg">
-          {authenticated ? t('챗봇 목록으로') : t('로그인')}
+        <Link to={authenticated ? SHARED_AGENTS_PATH : '/'} className="text-sm text-muted hover:text-fg">
+          {authenticated ? t('공유된 에이전트로') : t('로그인')}
         </Link>
       </header>
       <main className="mx-auto max-w-3xl px-4 py-8">

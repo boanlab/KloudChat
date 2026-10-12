@@ -41,6 +41,7 @@ import { ChatSendRecoveryError, FIGURE_STYLES, effectiveModelId, useStore } from
 import type { ModelInfo, PrivacyAction, SessionKind, Skill } from '@/types'
 import { servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
+import { SharedBotItems } from './SharedBotItems'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
 import { isListed } from '@/lib/listed'
@@ -939,9 +940,12 @@ export function Composer({
     (a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(kind)),
   )
   // 「+」 › 에이전트: this screen's agents first, then the rest on their own screens; media screens keep to their own.
-  const menuAgents = isMedia
+  const screenOrder = isMedia
     ? usableAgents
     : [...usableAgents, ...pickableAgents.filter((a) => a.enabled && !usableAgents.includes(a))]
+  // Own agents, then 「공유된 에이전트」 (others' shared ones, under their names).
+  const menuAgents = [...screenOrder.filter((a) => a.ownerId === user?.id), ...screenOrder.filter((a) => a.ownerId !== user?.id)]
+  const firstShared = menuAgents.findIndex((a) => a.ownerId !== user?.id)
   const usableConnectors = connectors.filter(
     (c) => c.installed && (c.kinds.length === 0 || c.kinds.includes(kind)),
   )
@@ -1856,11 +1860,13 @@ export function Composer({
         {plusView === 'agents' && (
           <>
             {back(t('에이전트로 새 대화'))}
-            {menuAgents.map((a) => {
+            {menuAgents.map((a, i) => {
               // An agent this screen does not offer opens on its own screen, which the row says.
               const startOn = usableAgents.includes(a) ? kind : agentStartKind(a, kind)
               const elsewhere = startOn !== kind
-              return (
+              const shared = i >= firstShared && firstShared >= 0
+              return [
+                i === firstShared && <MenuLabel key="shared-label">{t('공유된 에이전트')}</MenuLabel>,
                 <MenuItem
                   key={a.id}
                   // Screen shown as a badge, never read as part of the agent's name.
@@ -1874,6 +1880,8 @@ export function Composer({
                       >
                         {t(kindMeta[startOn].label)}
                       </span>
+                    ) : shared ? (
+                      a.official ? t('공식') : a.ownerName
                     ) : a.model ? (
                       a.model.split('/').pop()
                     ) : undefined
@@ -1895,9 +1903,10 @@ export function Composer({
                   }}
                 >
                   {a.name}
-                </MenuItem>
-              )
+                </MenuItem>,
+              ]
             })}
+            {!isMedia && <SharedBotItems withLabel={firstShared < 0} onPick={closePlus} />}
             {menuAgents.length > 0 && <MenuSeparator />}
             <MenuItem
               icon={<Plus size={14} />}

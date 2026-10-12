@@ -239,7 +239,7 @@ without a translation fall back to Korean. The user guide is published at
 | `/s/:id` | A conversation, with its artifacts in the right-hand panel |
 | `/projects` · `/projects/:id` | Project instructions, knowledge files, conversations and memories |
 | `/artifacts` | Every artifact, filtered by kind, with a way back to its conversation |
-| `/bots` | Chatbots published on this instance; `/b/:slug` is a bot's own page, `/embed/b/:slug` its embeddable frame |
+| `/bots` | Old link to the members' chatbot list; redirects to **Customize** → **Agents** → **Explore** (shared agents), where members' published bots show as agents. `/b/:slug` is a bot's own page, `/b` the public list, `/embed/b/:slug` the embeddable frame |
 | `/customize` | 사용자 지정 — agents, skills and connectors (`?tab=agents\|skills\|connectors`), including what others shared; bundles at `/customize/bundles` |
 | `/history` | Conversation history — selective and bulk deletion |
 | `/usage` | Your own usage, by day, model and surface |

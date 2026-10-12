@@ -73,7 +73,7 @@ All under `/api` except `/llm`. The complete list is the OpenAPI document at
 | `GET /design-templates` · `usage` · `{id}/preview` · `{id}/style` · `{id}/form` · `/user-templates…` | 템플릿: the shipped catalogue (preview is unauthenticated) and users' own |
 | `GET /connectors` · `/connectors/catalog` · `POST /connectors/install/{slug}` | MCP connectors |
 | `POST /shares` · `GET /shared/{token}` · `GET /shares/{id}/views` | Read-only sharing. Reading a `link`-scoped share needs no authentication |
-| `/publications…` · `/bots` · `/public/bots` · `/b/{slug}…` | Published chatbots: the owner's screens and the visitors' |
+| `/publications…` · `/bots` · `/bots/{slug}/copy` · `/public/bots` · `/b/{slug}…` | Published chatbots: the owner's screens, members' list and copy (shown as shared agents), and the visitors' |
 | `/bots/v1/models` · `/bots/v1/chat/completions` · `/bots/mcp/{slug}` · `/embed/frame-policy` | A bot's API (OpenAI-compatible), MCP and embed channels |
 | `GET /keys` · `POST` · `DELETE {id}` | API keys users take away with them |
 | `GET /me/usage` | Own usage |

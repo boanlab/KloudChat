@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
-import { hubFixture, myAgents } from './customize-fixture'
+import { agentRow, hubFixture, myAgents } from './customize-fixture'
 
 /**
  * 공개 챗봇 against fixture data: the publish dialog with its audience (members at once; a link
@@ -75,6 +75,7 @@ async function botRoutes(
   let rating: string | null = null
   let asked = false
   let blocked = false
+  let copied = false
   let pub = publication(options.pub)
   const english = options.english
   const bot = () => page_({
@@ -109,10 +110,18 @@ async function botRoutes(
     if (method === 'GET' && path === '/bots') {
       return json([
         { slug: SLUG, title: english ? 'Campus Help' : '학사 안내', description: english ? 'Answers from the campus rules.' : '학칙과 학사 일정을 안내합니다.',
-          ownerName: english ? 'Jane' : '학사지원팀 김담당', mine: false, id: null, status: 'approved', visibility: 'internal', color: '#0f766e', publishedAt: at },
+          ownerName: english ? 'Jane' : '학사지원팀 김담당', mine: false, id: null, status: 'approved', visibility: 'internal', color: '#0f766e', publishedAt: at,
+          sharedAgentId: null, copied },
+        // Its agent is also shared with everyone: listed once, as that agent.
+        { slug: 'budget-7k', title: '예산 검토', description: '', ownerName: '이동료', mine: false, id: null, status: 'approved',
+          visibility: 'internal', color: '#5b53e8', publishedAt: at, sharedAgentId: 'a5555555555555555555555555555555', copied: false },
         { slug: 'mine-9z', title: english ? 'My Help Desk' : '내 안내 챗봇', description: '', ownerName: 'Fixture', mine: true, id: PUB,
           status: 'paused', visibility: 'link', needsLook: true, color: '#5b53e8', publishedAt: at },
       ])
+    }
+    if (path === `/bots/${SLUG}/copy` && method === 'POST') {
+      copied = true
+      return json(agentRow('a6666666666666666666666666666666', '학사 안내', { originId: 'a0000000000000000000000000000001' }), 201)
     }
     if (path === `/b/${SLUG}` && method === 'GET') return json(bot())
     if (path === `/b/${SLUG}/consent` && method === 'POST') {
@@ -554,17 +563,33 @@ test('the dashboard shows statistics, sent conversations and versions, and rolls
   expect(state.unexpected).toEqual([])
 })
 
-test('members find the bots under 챗봇 and owners their own to manage', async ({ page }, testInfo) => {
+test('members find published agents among the shared agents, open one and copy it', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
-  await botRoutes(page)
+  const { writes } = await botRoutes(page)
+  // The old members' list lands on the shared group.
   await page.goto('/bots')
-  await expect(page.getByRole('heading', { level: 1, name: '챗봇' })).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByTestId('bot-list')).toContainText('학사 안내')
-  await expect(page.getByTestId('my-bots')).toContainText('일시 중지')
-  await expect(page.getByTestId('my-bots').getByRole('link', { name: '관리' })).toHaveAttribute('href', `/customize/publications/${PUB}`)
-  await shot(page, 'bots', testInfo.project.name)
-  await page.getByTestId('bot-list').getByRole('link').first().click()
+  await expect(page).toHaveURL(/\/customize\?tab=agents&view=explore$/)
+  const group = page.getByTestId('shared-agents')
+  await expect(group.getByRole('heading', { name: '공유된 에이전트' })).toBeVisible({ timeout: 15_000 })
+  const card = group.locator(`[data-item="bot:${SLUG}"]`)
+  await expect(card).toContainText('학사 안내')
+  await expect(card).toContainText('제작: 학사지원팀 김담당')
+  // Org-shared agents sit in the same group; one also published shows once; the caller's own bot not at all.
+  await expect(group.locator('[data-item="agent:a5555555555555555555555555555555"]')).toBeVisible()
+  await expect(group.getByRole('button', { name: '예산 검토', exact: true })).toHaveCount(1)
+  await expect(group).not.toContainText('내 안내 챗봇')
+  // No separate 챗봇 menu; the owner's bot news sits on 사용자 지정.
+  await expect(page.getByRole('link', { name: '챗봇', exact: true })).toHaveCount(0)
+  await shot(page, 'shared-agents', testInfo.project.name)
+
+  await card.getByRole('button', { name: '학사 안내 추가' }).click()
+  await expect(card.getByLabel('학사 안내 추가됨')).toBeVisible()
+  expect(writes.some((w) => w.method === 'POST' && w.path === `/bots/${SLUG}/copy`)).toBe(true)
+
+  await card.getByRole('button', { name: '학사 안내 체험' }).click()
   await expect(page).toHaveURL(new RegExp(`/b/${SLUG}$`))
+  // Back from the bot page: the shared agents, not a chatbot list.
+  await expect(page.getByRole('link', { name: '공유된 에이전트로' })).toHaveAttribute('href', '/customize?tab=agents&view=explore')
   expect(state.unexpected).toEqual([])
 })
 
@@ -613,9 +638,11 @@ test('the publishing screens read in English', async ({ page }, testInfo) => {
   await shot(page, 'en-bot', testInfo.project.name)
 
   await page.goto('/bots')
-  await expect(page.getByRole('heading', { level: 1, name: 'Chatbots' })).toBeVisible({ timeout: 15_000 })
-  // The sidebar and shell are checked by their own gates; this screen's main area here.
-  expect(untranslated(await page.getByRole('main').innerText())).toEqual([])
+  await expect(page.getByRole('heading', { name: 'Shared agents' })).toBeVisible({ timeout: 15_000 })
+  // The sidebar and shell are checked by their own gates; the group's own words and the bot's card here.
+  const group = page.getByTestId('shared-agents')
+  await expect(group.locator(`[data-item="bot:${SLUG}"]`)).toContainText('By: Jane')
+  expect(untranslated(await group.locator(`[data-item="bot:${SLUG}"]`).innerText())).toEqual([])
 
   await page.goto(`/customize/publications/${PUB}`)
   await expect(page.getByRole('heading', { level: 1, name: 'Campus Help' })).toBeVisible({ timeout: 15_000 })

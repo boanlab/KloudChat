@@ -647,6 +647,46 @@ async def test_members_find_open_bots_and_owners_their_own(world):
     assert (await world.client.get("/bots")).json() == []
 
 
+async def test_a_member_copies_a_listed_bot_as_an_own_agent_once(world):
+    pub = await _publish(world)
+    world.as_("member")
+    (bot,) = (await world.client.get("/bots")).json()
+    assert bot["copied"] is False and bot["sharedAgentId"] is None
+    made = await world.client.post(f"/bots/{pub['slug']}/copy")
+    assert made.status_code == 201, made.text
+    copy = made.json()
+    assert copy["ownerId"] == "member" and copy["name"] == pub["title"]
+    assert copy["systemPrompt"] == "규정에서 찾아 답한다." and copy["originId"] == "agent-1"
+    assert copy["hasKnowledge"] is False and copy["skillIds"] is None
+    again = (await world.client.post(f"/bots/{pub['slug']}/copy")).json()
+    assert again["id"] == copy["id"]
+    assert (await world.client.get("/bots")).json()[0]["copied"] is True
+    world.as_("owner")
+    assert (await world.client.post(f"/bots/{pub['slug']}/copy")).status_code == 409
+
+
+async def test_a_bot_whose_agent_is_shared_or_sealed_is_marked_and_not_copied(world):
+    pub = await _publish(world)
+    async with world.local() as db:
+        agent = await db.get(Agent, "agent-1")
+        agent.visibility = "org"
+        db.add(agent)
+        await db.commit()
+    world.as_("member")
+    assert (await world.client.get("/bots")).json()[0]["sharedAgentId"] == "agent-1"
+    async with world.local() as db:
+        agent = await db.get(Agent, "agent-1")
+        agent.share_mode = "sealed"
+        db.add(agent)
+        await db.commit()
+    closed = await world.client.post(f"/bots/{pub['slug']}/copy")
+    assert closed.status_code == 403 and closed.json()["detail"] == "copy_closed"
+    world.as_("owner")
+    await world.client.patch(f"/publications/{pub['id']}", json={"status": "paused"})
+    world.as_("member")
+    assert (await world.client.post(f"/bots/{pub['slug']}/copy")).status_code == 404
+
+
 async def test_deleting_the_bot_takes_its_conversations_and_copies(world):
     pub = await _publish(world)
     sid, _ = await _ask(world, pub["slug"], "휴학 기한")

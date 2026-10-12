@@ -2331,6 +2331,10 @@ export interface BotListItem {
   needsLook?: boolean
   color: string
   publishedAt: string | null
+  /** Source agent the org also shares: the app lists that agent instead. */
+  sharedAgentId?: string | null
+  /** The caller already holds an agent copied from it. */
+  copied?: boolean
 }
 
 /** A bot open to everyone, as the public list shows it: no owner names. */
@@ -2416,6 +2420,8 @@ export const publicationsApi = {
 
 export const botsApi = {
   list: () => call<BotListItem[]>('/bots'),
+  /** The bot's answering version as the caller's own agent; knowledge stays with the owner. */
+  copy: (slug: string) => call<AgentRow>(`/bots/${encodeURIComponent(slug)}/copy`, { method: 'POST' }),
   /** Bots open to everyone; needs no account. */
   publicList: () => call<PublicBotItem[]>('/public/bots'),
   page: (slug: string) => call<BotPage>(`/b/${encodeURIComponent(slug)}`),

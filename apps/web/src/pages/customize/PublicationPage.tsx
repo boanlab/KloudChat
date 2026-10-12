@@ -294,7 +294,7 @@ export function PublicationPage() {
         open={deleting}
         onClose={() => setDeleting(false)}
         onConfirm={() =>
-          void publicationsApi.remove(pub.id).then(() => navigate('/bots'), (err) => setError(errorMessage(err, t('지우지 못했습니다.'))))
+          void publicationsApi.remove(pub.id).then(() => navigate(pub.agentId ? `/customize/agents/${pub.agentId}` : '/customize?tab=agents'), (err) => setError(errorMessage(err, t('지우지 못했습니다.'))))
         }
         title={t('챗봇 지우기')}
         description={t('챗봇과 그 대화·통계·판이 모두 지워집니다. 에이전트는 그대로 남습니다.')}

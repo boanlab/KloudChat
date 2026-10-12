@@ -29,9 +29,12 @@ test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address
   await expect(page).toHaveURL(/view=explore/)
   await expect(page.getByTestId('hub-banner')).toHaveCount(0)
   await expect(page.getByRole('region', { name: '추천', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('region', { name: '가장 많이 추가된 에이전트' })).toContainText(storeAgents[0].name)
-  await expect(page.getByRole('region', { name: '새 에이전트', exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: '가장 많이 추가된 에이전트' }).getByTestId('item-card').first()).toContainText('제작: 공식 · 42회 추가')
+  // One 공유된 에이전트 group, most added first, each under its maker.
+  const shared = page.getByRole('region', { name: '공유된 에이전트', exact: true })
+  await expect(shared).toContainText(storeAgents[0].name)
+  await expect(page.getByRole('region', { name: '새 에이전트', exact: true })).toHaveCount(0)
+  await expect(shared.getByTestId('item-card').first()).toContainText('제작: 공식 · 42회 추가')
+  await expect(shared.getByTestId('item-card').nth(1)).toContainText('제작: 김동료')
 
   if (phone) await page.getByRole('button', { name: '검색', exact: true }).click()
   await page.getByRole('searchbox', { name: '검색' }).fill('보도')
@@ -116,7 +119,7 @@ test('a skill kept only as a part is hidden until 숨김 포함, and then marked
 test('a tab with nothing of the person\'s own opens on 탐색', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo, { emptyMine: true })
   await page.goto('/customize?tab=agents')
-  await expect(page.getByRole('region', { name: '새 에이전트', exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('region', { name: '공유된 에이전트', exact: true })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('button', { name: '탐색' })).toHaveAttribute('aria-pressed', 'true')
   expect(state.unexpected).toEqual([])
 })
@@ -154,6 +157,8 @@ const redirects: [string, RegExp][] = [
   ['/customize?tab=designs', /\/settings\/themes$/],
   ['/memory', /\/settings\/memory$/],
   ['/customize?tab=memory', /\/settings\/memory$/],
+  // Members' published bots are shared agents now.
+  ['/bots', /\/customize\?tab=agents&view=explore$/],
 ]
 
 test('every old address lands where its screen went', async ({ page }, testInfo) => {
@@ -177,6 +182,8 @@ test('account menu: one 사용자 지정 item, 대화 기록 beside it, 계정 u
   await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible({ timeout: 15_000 })
   if (testInfo.project.name === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
   await expect(page.getByRole('link', { name: '사용자 지정' })).toBeVisible()
+  // No separate 챗봇: members' published agents are in 사용자 지정 › 에이전트.
+  await expect(page.locator('aside nav').first().getByRole('link')).toHaveText(['새 대화', '프로젝트', '아티팩트', '사용자 지정'])
   await page.getByRole('button', { name: /^계정 메뉴/ }).filter({ visible: true }).first().click()
   const menu = page.getByRole('menu')
   const names = (await menu.getByRole('menuitem').allTextContents()).map((n) => n.replace(/(Ctrl|⌘) \/$/, '').trim())

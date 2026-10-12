@@ -1,9 +1,9 @@
 /** Words for published bots: check findings, exclusions, audience, review, pause reason, visitor notice, badges. */
 
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { create } from 'zustand'
-import { ApiError, BASE_URL, publicationsApi } from '@/lib/api'
-import type { BotChannel, BotLimits, BotVisibility, Publication, PublicationSettings, PublicationStatus, ShowProcess } from '@/lib/api'
+import { ApiError, BASE_URL, botsApi, publicationsApi } from '@/lib/api'
+import type { BotChannel, BotListItem, BotLimits, BotVisibility, Publication, PublicationSettings, PublicationStatus, ShowProcess } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 
 /** Why an agent cannot be published as it stands. */
@@ -237,6 +237,56 @@ export const useBotAttention = create<BotAttention>((set) => ({
     }
   },
 }))
+
+/** Where members find agents others shared or published to them; old `/bots` links land here. */
+export const SHARED_AGENTS_PATH = '/customize?tab=agents&view=explore'
+
+interface SharedBots {
+  rows: BotListItem[]
+  /** The account the rows were read for. */
+  loadedFor: string | null
+  load: (userId: string) => Promise<void>
+}
+
+/** Bots listed to members, read once per account; the hub and the composer show them as agents. */
+export const useSharedBots = create<SharedBots>((set, get) => ({
+  rows: [],
+  loadedFor: null,
+  load: async (userId) => {
+    if (get().loadedFor !== userId) set({ loadedFor: userId, rows: [] })
+    try {
+      set({ rows: await botsApi.list() })
+    } catch {
+      /* the list is an addition; a failed read leaves it as it was */
+    }
+  },
+}))
+
+/** Others' approved bots not already listed as an org-shared agent. */
+export function memberBots(rows: BotListItem[]): BotListItem[] {
+  return rows.filter((b) => !b.mine && b.status === 'approved' && !b.sharedAgentId)
+}
+
+/** Loads the member bot list when first needed; `memberBots` of it. */
+export function useMemberBots(): BotListItem[] {
+  const rows = useSharedBots((s) => s.rows)
+  const loadedFor = useSharedBots((s) => s.loadedFor)
+  const load = useSharedBots((s) => s.load)
+  const userId = useStore((s) => s.user?.id)
+  useEffect(() => {
+    if (userId && loadedFor !== userId) void load(userId)
+  }, [userId, loadedFor, load])
+  const ready = !!userId && loadedFor === userId
+  return useMemo(() => (ready ? memberBots(rows) : []), [ready, rows])
+}
+
+/** Copies a bot as the caller's own agent; resolves to the copy's id. */
+export async function copyBot(slug: string): Promise<string> {
+  const row = await botsApi.copy(slug)
+  const userId = useStore.getState().user?.id
+  await Promise.all([useStore.getState().loadWorkspace(), userId ? useSharedBots.getState().load(userId) : null])
+  return row.id
+}
 
 /** Reads the bot badges on sign-in and every few minutes after. Mounted once, in the shell. */
 export function useBotAttentionBadge() {

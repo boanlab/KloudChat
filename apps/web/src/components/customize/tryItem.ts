@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom'
-import { errorMessage } from '@/lib/api'
+import { errorCode, errorMessage } from '@/lib/api'
 import { startFailure } from '@/lib/failures'
 import { agentStartKind } from '@/lib/kinds'
+import { copyBot } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { HubItem } from './hubItems'
@@ -26,6 +27,11 @@ export function useItemActions(onChanged?: () => void) {
 
   const tryItem = async (item: HubItem) => {
     try {
+      // A published agent answers on its own page, on its publisher's credits.
+      if (item.bot) {
+        navigate(`/b/${item.bot.slug}`)
+        return
+      }
       if (item.agent) {
         const id = await newSession(agentStartKind(item.agent), { agentId: item.agent.id })
         navigate(`/s/${id}`)
@@ -59,6 +65,11 @@ export function useItemActions(onChanged?: () => void) {
   /** Takes a copy; resolves to its screen, when it has one. */
   const addItem = async (item: HubItem): Promise<string | null> => {
     try {
+      if (item.bot) {
+        const id = await copyBot(item.bot.slug)
+        onChanged?.()
+        return `/customize/agents/${id}`
+      }
       if (item.agent) {
         await installAgent(item.agent)
         const copy = useStore.getState().agents.find((a) => a.originId === item.agent?.id)
@@ -72,7 +83,11 @@ export function useItemActions(onChanged?: () => void) {
         return copy ? `/customize/skills/${copy.id}` : null
       }
     } catch (err) {
-      setNotice(errorMessage(err, t('가져오지 못했습니다.')))
+      setNotice(
+        errorCode(err) === 'copy_closed'
+          ? t('만든 사람이 프롬프트를 비공개로 두어 내 에이전트로 복사할 수 없습니다.')
+          : errorMessage(err, t('가져오지 못했습니다.')),
+      )
     }
     return null
   }
