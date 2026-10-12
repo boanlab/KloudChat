@@ -356,3 +356,54 @@ async def test_explicit_total_preserves_retold_slots_through_writing_and_export(
     pptx = Presentation(io.BytesIO(deck_export.to_pptx("Guide", slides)))
     pdf = PdfReader(io.BytesIO(deck_export.to_pdf("Guide", slides)))
     assert len(pptx.slides) == len(pdf.pages) == expected_count
+
+
+
+_TALK = (
+    "다음 주 학회(한국정보과학회 추계) 구두 발표용 슬라이드 만들어 줘. 발표 15분, 10장 안팎. "
+    "아래 초록과 실험 결과로.\n\n"
+    "제목: 소형 언어모델을 위한 문서 재순위화 경량화\n"
+    "저자: 이서준, 김나래(한빛대학교)\n"
+    "초록: 교차 인코더를 지식 증류한 경량 재순위화기를 제안한다. 상위 후보 20개만 정밀 평가한다.\n"
+    "실험 결과 (생성 모델: 3B sLM, 검색 상위 100개 후보, A100 1장)\n"
+    "| 방식 | EM | 지연(ms) |\n"
+    "| 교차 인코더 | 72.8 | 412 |\n"
+    "- 조기 종료 제거 시: EM 72.1, 지연 71ms\n"
+)
+
+
+def test_a_count_in_material_under_the_ask_does_not_replace_its_stated_size():
+    assert deck.requested_slides(_TALK) is None
+    assert deck.slide_range(_TALK) == (8, 12)
+    # A total stated in the first paragraph still wins over the material.
+    assert deck.requested_slides(_TALK.replace("10장 안팎", "총 12장")) == 12
+    # Conditions added after planning still count.
+    merged = _TALK + "\n\n덧붙인 조건:\n- 장수는 6장으로 맞춘다"
+    assert deck.requested_slides(merged) == 6
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("A100 1장으로 학습한 결과 발표, 5장", 5),
+        ("RTX 4090 2장 서버 소개 발표 8장으로", 8),
+        ("H100 1장 실험 발표 만들어 줘", None),
+        ("5장", 5),
+        ("총 12장", 12),
+        ("요약을 한 장으로 합쳐 줘", None),
+        ("표 한 장만 만들어 줘", None),
+    ],
+)
+def test_a_count_after_a_model_name_is_hardware_not_slides(prompt, expected):
+    assert deck.requested_slides(prompt) == expected
+
+
+def test_a_report_keeps_its_section_count_over_numbers_in_material():
+    ask = (
+        "아래 실험 메모로 결과 보고서를 3개 섹션으로 써 줘.\n\n"
+        "제목: 재순위화 비교\n"
+        "- 비교 대상: 2개 섹션(A/B)으로 나눈 질의 세트\n"
+        "- 장비: A100 1장\n"
+        "- 결과: EM 72.8\n"
+    )
+    assert report.requested_sections(ask) == 3

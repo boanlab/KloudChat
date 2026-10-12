@@ -37,9 +37,31 @@ def requested_range(
     request: str, units: tuple[str, ...], *, maximum: int
 ) -> tuple[int, int] | None:
     """Stated total range (「8~10장」) from the instruction, or None; exact total wins."""
-    from app.services.context import instruction_part
+    return _range_in(_instruction_scope(request, units, maximum), units, maximum=maximum)
 
-    text = " ".join(instruction_part(request or "").split())
+
+def _instruction_scope(request: str, units: tuple[str, ...], maximum: int) -> str:
+    """Lead paragraph when it states the size (material below ignored), else the instruction."""
+    from app.services.context import instruction_part, lead_instruction
+
+    text = request or ""
+    tail = ""
+    marker = text.find("\n\n덧붙인 조건:")
+    if marker >= 0:
+        text, tail = text[:marker], text[marker:]
+    instruction = instruction_part(text)
+    lead = lead_instruction(text)
+    if lead != instruction and (
+        _count_in(lead, units, maximum=maximum) is not None
+        or _range_in(lead, units, maximum=maximum) is not None
+    ):
+        return lead + tail
+    return instruction + tail
+
+
+def _range_in(request: str, units: tuple[str, ...], *, maximum: int) -> tuple[int, int] | None:
+    """Range stated in this text."""
+    text = " ".join(request.split())
     unit = "|".join(re.escape(value) for value in units)
     for match in re.finditer(
         rf"(?<![\d.])(\d{{1,2}})\s{{0,2}}[~～–-]\s{{0,2}}(\d{{1,2}})\s{{0,2}}(?:개\s{{0,2}})?(?:{unit})",
@@ -80,9 +102,17 @@ def suffix_words(text: str, end: int) -> str:
 def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> int | None:
     """Explicit total; not a page ref, range, or body-only count."""
     # counts inside pasted material ignored
-    from app.services.context import instruction_part
+    return _count_in(_instruction_scope(request, units, maximum), units, maximum=maximum)
 
-    request = instruction_part(request)
+
+#: model/product token before a count (「A100 1장」, 「RTX 4090 2장」)
+_PRODUCT = re.compile(
+    r"(?<![A-Za-z0-9])(?:[A-Za-z][A-Za-z0-9-]*\d[A-Za-z0-9]*|[A-Za-z]{2,}[ -]?\d+[A-Za-z0-9]*)$"
+)
+
+
+def _count_in(request: str, units: tuple[str, ...], *, maximum: int) -> int | None:
+    """Explicit total stated in this text."""
     # normalized once to bound work
     request = " ".join(request.split())
     words = "|".join(sorted(_COUNT_WORDS, key=len, reverse=True))
@@ -103,6 +133,9 @@ def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> in
             continue
         if prefix.split()[-1:] in _FIGURE_WORDS:
             # 「표 한 장」 counts a table
+            continue
+        if _PRODUCT.search(request[max(0, match.start() - 16) : match.start()].rstrip()):
+            # 「A100 1장」 counts hardware
             continue
         after = request[match.end() : match.end() + 8]
         if re.match(r"\s{0,8}(?:으로|에)\s{0,8}(?:합|묶|병합|넣|정리|모아|담)", after):
