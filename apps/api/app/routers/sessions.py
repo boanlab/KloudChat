@@ -3848,6 +3848,10 @@ async def send_message(
         agent_checks=skills_bring.checks_with(
             agent_row.check_skills if agent_row is not None else None),
         template_checks=render_template_checks(session), specs=specs)
+    if session.kind is not SessionKind.chat:
+        # document writers run no tools: a turned-on check skill runs as the server's check
+        check_keys = tuple(dict.fromkeys((*check_keys, *check_skills.attached(
+            agent_checks=list(_skill_keys(workspace.applied_skills, specs)), specs=specs))))
     check_options = skills_bring.options_with(check_skills.clean_options(
         agent_row.check_options if agent_row is not None else None))
     # user-pipeline conversation asks through its own steps (`human:gaps`)

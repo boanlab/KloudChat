@@ -40,6 +40,8 @@ class Normalize(Base):
         normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized))
         # sweeping superlatives narrowed to the table's evidence
         normalized = superlatives.narrow_sweeping_claims(normalized)
+        # a tool call written out as text, never shown
+        normalized = internal_words.strip_tool_calls(normalized)
         if req.skill_keys or req.check_keys:
             # skill script report lines
             normalized = internal_words.strip_reports(normalized)

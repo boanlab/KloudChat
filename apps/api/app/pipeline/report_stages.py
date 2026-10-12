@@ -928,6 +928,15 @@ class Sections(Base):
                     body, spent = await write_section(index, section, written)
                     if report.error_text(body, req.text):
                         raise ValueError("error message in place of the section")
+                if internal_words.has_tool_call(body):
+                    # a tool call written out (no tools while writing): written once more
+                    log.warning("section %r came back as a tool call; written again",
+                                section["heading"])
+                    _count(bundle, spent)
+                    body, spent = await write_section(index, section, written)
+                    body = internal_words.strip_tool_calls(body)
+                    if not body.strip():
+                        raise ValueError("tool call in place of the section")
             except _CAUGHT as exc:
                 log.warning("report section %r failed: %s", section["heading"], exc)
                 yield {
