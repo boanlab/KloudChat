@@ -10,7 +10,7 @@ from typing import Any
 _NUMBER = re.compile(
     r"(?<![A-Za-z0-9_.,])-?(?:\d{1,3}(?:,\d{3})+|\d{1,15})(?:\.\d{1,10})?(?![\d])")
 #: counts of other things: 「2배」「30%」「3장」
-_OTHER_QUANTITY = re.compile(r"\s{0,2}(?:배|%|퍼센트|장|개|번|명|차|회|위|등|단계|가지|줄|쪽)")
+_OTHER_QUANTITY = re.compile(r"\s{0,2}(?:배|%|퍼센트|장|개|번|명|차|회|순위|위|등|단계|가지|줄|쪽)")
 _PAREN = re.compile(r"[(（][^()（）]{0,80}[)）]")
 #: allowed between a name's letters: spaces, brackets, 「=」
 _GAP = r"[^0-9A-Za-z가-힣]{0,3}"
@@ -193,6 +193,15 @@ def _same(written: str, value: float) -> bool:
     return abs(float(written) - value) <= 0.5 * 10 ** -places + 1e-9
 
 
+#: what joins two row names that share the values after them: 「자연과학·공학」 「A와 B」
+_JOINED = re.compile(r"\s{0,2}(?:[·,/]|와|과|및|그리고)\s{0,2}")
+
+
+def _numbers(text: str, start: int, end: int) -> list[re.Match[str]]:
+    return [m for m in _NUMBER.finditer(text, start, end)
+            if not _OTHER_QUANTITY.match(text, m.end())]
+
+
 def _first_number(text: str, start: int, end: int) -> re.Match[str] | None:
     for m in _NUMBER.finditer(text, start, end):
         if not _OTHER_QUANTITY.match(text, m.end()):
@@ -227,13 +236,25 @@ def _clashes(text: str, context: str, names: _Names, stated: list[Stated]) -> li
             # row-less values matched by label
             segments = [(0, len(text), "")] if any(not s.row for s in stated) else []
     out: list[Clash] = []
+    shared = False
     for start, end, row in segments:
         mine = [s for s in stated if s.row == row]
         piece = text[start:end]
+        if shared:
+            # 「자연과학·공학은 좌석 부족(각 22·41건)」: the values are the rows' together
+            shared = bool(_JOINED.fullmatch(piece))
+            continue
+        if _JOINED.fullmatch(piece) and hits:
+            shared = True
+            continue
         found = [(m, s) for s in mine if (m := names.label_at(row, s.label, piece))]
         if found:
             m, s = min(found, key=lambda pair: pair[0].start())
             following = [other.start() for other, _ in found if other.start() > m.start()]
+            stop = start + min(following, default=len(piece))
+            if len(_numbers(text, start, stop)) >= 2:
+                # 「41건이 좌석 부족을, 31건이 와이파이를」: which value is the label's is unclear
+                continue
             number = _first_number(text, start + m.end(),
                                    start + min(following, default=len(piece)))
             if number is None:

@@ -482,6 +482,11 @@ def resolve(text: str, base: dt.date) -> dict:
     return row
 
 
+_HEAD_FIELD = re.compile(
+    r"\s{0,4}(?:[-*•]\s{0,2})?(?:\*\*)?(?:회의\s{0,2})?(?:일시|일자|날짜|시간|회의명?|제목|장소|안건|"
+    r"date|time|meeting|subject)(?:\*\*)?\s{0,2}", re.I)
+
+
 def _line_base(line: str, base: dt.date | None) -> tuple[dt.date | None, str]:
     """The date a header line sets as the base for what follows, with its kind."""
     stamp = re.search(
@@ -500,7 +505,10 @@ def _line_base(line: str, base: dt.date | None) -> tuple[dt.date | None, str]:
         return None, ""
     if _MAIL_HEAD.search(line):
         return day, "mail"
-    head = line.strip().startswith(("[", "(", "#", "<")) or line.strip()[:12].count(":") == 1
+    # 「일시: 10/14」 is a header field; 「김민석: … 교무회의 …」 is someone speaking
+    label = line.strip()[:12].split(":", 1)[0] if line.strip()[:12].count(":") == 1 else None
+    head = line.strip().startswith(("[", "(", "#", "<")) or (
+        label is not None and bool(_HEAD_FIELD.fullmatch(label)))
     if _MEETING_HEAD.search(line) and (head or base is None):
         return day, "meeting"
     return None, ""

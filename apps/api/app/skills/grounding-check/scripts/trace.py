@@ -99,6 +99,11 @@ TIME = re.compile(
     r"|:(?P<mm>[0-5]\d)(?!\d))"
 )
 
+#: 「오후 5~8시」, 「5시~8시」: a span of hours
+TIME_RANGE = re.compile(
+    r"(?P<half>오전|오후|저녁|밤|새벽|아침)?\s{0,2}(?<![\d:])(?P<h1>\d{1,2})\s{0,2}(?:시\s{0,2})?[~∼〜-]"
+    r"\s{0,2}(?P<h2>\d{1,2})\s{0,2}시(?!간)")
+
 
 HONORIFIC = (
     r"교수(?:님)?|박사|팀장|파트장|과장|부장|차장|실장|본부장|센터장|처장|원장|학과장|대리|사원|주임|"
@@ -120,6 +125,8 @@ NOT_A_NAME = re.compile(
     r"당시|현재|이후|이전|최초|최종|공학|인문|자연|사회|경영|의과|법학|교육|예술|체육|명|분|여러분|고객님|회원|사용자|이용자|담당자|관리자)$"
 )
 #: The end of a word that is not a name: 「참석한 교수」, 「맡은 대리」.
+#: A linking verb ending before a title-like word: 「달라」, 「달라서」, 「맡아」, 「하며」.
+_LINKING_END = re.compile(r"(?:라|아|어|서|고|며|면|게|지|해|여|러|워)$")
 VERB_END = re.compile(r"(?:한|된|는|은|던|할|의|를|을|에|로|와|과|도|만|인)$")
 ORG = re.compile(
     r"\(주\)\s?(?P<a>[가-힣A-Za-z][가-힣A-Za-z0-9]{1,15})"
@@ -388,6 +395,14 @@ class Sources:
                 self.months.add(int(m.group(1)))
         for m in TIME.finditer(text):
             self.hours.update((_hour(m) % 24, int(m.group("h")) % 24))
+        for m in TIME_RANGE.finditer(text):
+            # 「오후 5~8시」: the start is a time too, in the same half of the day
+            pm = 12 if m.group("half") in ("오후", "저녁", "밤") else 0
+            for h in (int(m.group("h1")), int(m.group("h2"))):
+                self.hours.update((h % 24, (h + pm) % 24 if h < 12 else h % 24))
+        # 「시차 9시간」: the other side's clock for every time given
+        for shift in {int(n) for n in re.findall(r"시차\s{0,3}(?:는|가)?\s{0,2}(\d{1,2})\s{0,2}시간", text)}:
+            self.hours |= {(h + d) % 24 for h in set(self.hours) for d in (shift, -shift)}
         number_text = text if numbers == "all" else f"{_said_by_person(material)}\n{computed_text}"
         number_text = _native_digits(number_text)
         self.values: list[tuple[float, str, int]] = []
@@ -851,6 +866,14 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
                     and (_family(a["unit"]) == family or not a["unit"])]
             kin = {abs(a["value"]) for a in accepted if family and _family(a["unit"]) == family}
             pool = pool + [x for a in mine for b in kin for x in (a + b, abs(b - a))]
+            given = sorted({abs(v) for v, u, _ in sources.values if _family(u) == family})
+            if _COMPARED.search(lines[n["line"]]) and family and len(given) <= 12:
+                # 「실험반이 대조반보다 0.5점 높았다」: the gap of two figures the person gave,
+                # from a short material only (a long one has a gap for anything)
+                pool = pool + [b - a for i, a in enumerate(given) for b in given[i + 1:]]
+            if n["line"] in tables:
+                # a column's total or a run of it (a subtotal)
+                pool = pool + _column_sums(n, accepted, tables, lines)
             # A rate the person gave times a grounded quantity of another kind: 49.5시간 × 11,000원.
             if family in ("원", "달러", "") and sources.rates:
                 quantities = {abs(a["value"]) for a in accepted
@@ -875,6 +898,21 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
         found.extend(_requirements(lines, skip, sources))
     found.extend(_listed_people(lines, skip, sources, found))
     return sorted(found, key=lambda f: (f["line"], f["start"]))
+
+
+#: words of a comparison: a gap between two figures may be stated
+_COMPARED = re.compile(r"높|낮|많|적|크|작|차이|증가|감소|늘|줄|상승|하락|앞서|뒤지|%p|포인트|격차")
+
+
+def _column_sums(n: dict, accepted: list[dict], tables: dict[int, int],
+                 lines: list[str]) -> list[float]:
+    """Sums of every run of the accepted figures above `n` in its table column."""
+    col = _column_of(lines[n["line"]], n["match"].start())
+    above = [abs(a["value"]) for a in sorted(accepted, key=lambda a: a["line"])
+             if a["line"] in tables and tables[a["line"]] == tables[n["line"]]
+             and a["line"] < n["line"] and _column_of(lines[a["line"]], a["match"].start()) == col]
+    above = above[-40:]
+    return [sum(above[i:j]) for i in range(len(above)) for j in range(i + 2, len(above) + 1)]
 
 
 #: 「3분의 2」, 「50퍼센트」, 「50%」 — a share of something.
@@ -914,7 +952,17 @@ def person_days(text: str) -> dict[tuple[int | None, int, int], str]:
             mo, d = int(m.group("m")), int(m.group("d"))
             if 1 <= mo <= 12 and 1 <= d <= 31:
                 out.setdefault((y, mo, d), m.group(0).strip())
+    # 「2027. 2. 3. ~ 2. 5.」: a range's short end is in its start's year
+    for m in FULL_DAY.finditer(text or ""):
+        if end := _RANGE_END.match(text, m.end()):
+            mo, d = int(end.group("m")), int(end.group("d"))
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                out.setdefault((int(m.group("y")), mo, d), end.group(0).strip(" ~∼〜-"))
     return out
+
+
+_RANGE_END = re.compile(
+    r"\s{0,3}[~∼〜-]\s{0,3}(?P<m>\d{1,2})\s{0,2}(?:월|[-./])\s{0,2}(?P<d>\d{1,2})(?!\d)\s{0,2}(?:일|\.)?")
 
 
 #: The words a deadline ends on: 「11. 6.(금) 18:00까지」.
@@ -946,6 +994,9 @@ _BROKEN_TIME = re.compile(r"(?<![\d:])\d{1,2}\s{0,2}시\s{0,2}\d{3,}\s{0,2}분")
 def _a_misread_day(y: int | None, mo: int, d: int, own: dict, near_deadline: bool) -> str | None:
     """None for the person's own day (or undated month); else their one day that month, or a blank."""
     if (y, mo, d) in own or (None, mo, d) in own:
+        return None
+    if y is None and any(key[1:] == (mo, d) for key in own):
+        # 「2. 3.」 for the person's 「2027-02-03」: the year left out, the day theirs
         return None
     same = {key: text for key, text in own.items()
             if key[1] == mo and (y is None or key[0] is None or key[0] == y)}
@@ -1050,6 +1101,9 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
             continue
         if "○○" not in name and len(name) >= 3 and VERB_END.search(name):
             continue
+        if "○○" not in name and name[0] not in SURNAMES and _LINKING_END.search(name):
+            # 「담당 교수가 달라 교수 효과와」: a verb running on, not a name
+            continue
         if "○○" in name:
             ok = sources.has_text(name)
         else:
@@ -1153,6 +1207,10 @@ def _collapse_chain(part: str) -> str:
     return _CHAIN.sub(one, part)
 
 
+#: a heading or a bold item title: kept whole when its values are blanked
+_TITLE_LINE = re.compile(r"\s{0,3}(?:#{1,6}\s|\*\*|(?:[-*+•]|\d{1,2}[.)])\s{1,4}\*\*)")
+
+
 def _fix_line(line: str, items: list[dict]) -> str | None:
     """The line with each finding blanked; `None` when nothing is left of it."""
     if line.lstrip().startswith("|"):
@@ -1177,8 +1235,9 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
         rest = part
         for f in sorted(mine, key=lambda f: -f["start"]):
             rest = rest[: f["start"] - start] + rest[f["end"] - start:]
-        # Invented values carrying the sentence alone: two or more, and no number left.
-        if len(mine) >= 2 and not re.search(r"\d", rest) and all(
+        # Invented values carrying the sentence alone: two or more, and no number left. A
+        # heading or bold list title (「**2. 등록금 납부 — …**」) keeps its words.
+        if len(mine) >= 2 and not re.search(r"\d", rest) and not _TITLE_LINE.match(line) and all(
                 f["placeholder"] in PLACEHOLDER.values() for f in mine):
             kept.append("")
             continue
@@ -1186,6 +1245,9 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
             part = part[: f["start"] - start] + f["placeholder"] + part[f["end"] - start:]
         kept.append(_collapse_chain(part))
     text = re.sub(r"(?<=\S)[ \t]{2,}", " ", "".join(kept)).rstrip()
+    if line.count("**") % 2 == 0 and text.count("**") % 2:
+        # a dropped piece took a bold pair's closing half
+        text += "**"
     if any(f["kind"] == "requirement" for f in items):
         # a dropped first notice keeps the line's indent and list marker
         lead = re.match(r"\s*(?:[-*+•]\s+|\d{1,2}[.)]\s+)?", line).group(0)
@@ -1193,6 +1255,67 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
         if text.strip() == lead.strip():
             return None
     return text if text.strip() else None
+
+
+_KO_DIGIT = {"영": 0, "일": 1, "이": 2, "삼": 3, "사": 4, "오": 5, "육": 6, "칠": 7, "팔": 8, "구": 9}
+_KO_SMALL = {"십": 10, "백": 100, "천": 1000}
+_KO_BIG = {"만": 10**4, "억": 10**8, "조": 10**12}
+#: 「금 3,200,000원(금삼백이십만원)」, 「금[수치](금이백십이만원)」: an amount and its words
+_SPELLED = re.compile(
+    r"(?P<num>\d[\d,]*|\[수치\]|\[금액\])\s{0,2}(?:원)?\s{0,2}"
+    r"\(\s{0,2}금\s{0,2}(?P<ko>[영일이삼사오육칠팔구십백천만억조]+)\s{0,2}원\s{0,2}(?:정)?\s{0,2}\)")
+
+
+def ko_spelled(words: str) -> int | None:
+    """「이백십이만」 → 2120000; None when not a numeral."""
+    total = section = digit = 0
+    for ch in words:
+        if ch in _KO_DIGIT:
+            digit = _KO_DIGIT[ch]
+        elif ch in _KO_SMALL:
+            section += (digit or 1) * _KO_SMALL[ch]
+            digit = 0
+        elif ch in _KO_BIG:
+            total += ((section + digit) or 1) * _KO_BIG[ch]
+            section = digit = 0
+        else:
+            return None
+    return total + section + digit
+
+
+def spell_ko(value: int) -> str:
+    """2120000 → 「이백십이만」 (공문서 금액 표기)."""
+    if value == 0:
+        return "영"
+    digits = "영일이삼사오육칠팔구"
+    out = ""
+    for unit, size in (("조", 10**12), ("억", 10**8), ("만", 10**4), ("", 1)):
+        part, value = divmod(value, size)
+        if not part:
+            continue
+        words = ""
+        for name, step in (("천", 1000), ("백", 100), ("십", 10), ("", 1)):
+            d, part = divmod(part, step)
+            if d:
+                words += ("" if d == 1 and name else digits[d]) + name
+        out += words + unit
+    return out
+
+
+def _spelled_amounts(text: str) -> str:
+    """Words of an amount follow its figure: dropped with a blanked figure, rewritten when
+    they say another amount."""
+    def one(m: re.Match) -> str:
+        whole, ko = m.group(0), m.group("ko")
+        head = whole[: m.start("ko") - m.start()]
+        if m.group("num").startswith("["):
+            return whole[: whole.index("(")].rstrip()
+        value = int(m.group("num").replace(",", ""))
+        said = ko_spelled(ko)
+        if said is None or said == value:
+            return whole
+        return head + spell_ko(value) + whole[m.end("ko") - m.start():]
+    return _SPELLED.sub(one, text or "")
 
 
 def fix(text: str, findings: list[dict]) -> str:
@@ -1206,7 +1329,7 @@ def fix(text: str, findings: list[dict]) -> str:
             out.append(line)
         elif (fixed := _fix_line(line, by_line[k])) is not None:
             out.append(fixed)
-    return "\n".join(out)
+    return _spelled_amounts("\n".join(out))
 
 
 def summary(findings: list[dict]) -> str:
