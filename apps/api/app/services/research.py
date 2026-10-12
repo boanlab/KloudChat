@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from app.services import credibility, korean_papers, settings_store, thinking
+from app.services import credibility, korean_papers, query_terms, settings_store, thinking
 from app.services.tools.builtin import scrape, searxng
 
 log = logging.getLogger(__name__)
@@ -229,14 +229,58 @@ def _parse_queries(text: str, request: str, most: int = MAX_QUERIES) -> list[str
         parsed = None
     if not isinstance(parsed, list):
         return [request[:300]]
-    queries = [str(q).strip()[:200] for q in parsed if str(q).strip()]
-    return queries[:most] or [request[:300]]
+    return query_terms.query_list(parsed)[:most] or [request[:300]]
+
+
+def _parse_scholar_plan(text: str) -> tuple[list[object], list[str]]:
+    """`(entities, queries)` from the planner's JSON object, or a bare list of queries."""
+    start = text.find("{")
+    if start >= 0:
+        try:
+            parsed = json.loads(text[start : text.rfind("}") + 1])
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict):
+            entities = parsed.get("entities")
+            return (
+                list(entities) if isinstance(entities, list) else [],
+                query_terms.query_list(parsed.get("queries")),
+            )
+    block = text[text.find("[") : text.rfind("]") + 1] if "[" in text else ""
+    return [], query_terms.query_list(block)
+
+
+def scholar_queries(text: str, request: str) -> tuple[list[str], list[str]]:
+    """Planner reply → `(queries, entities)` kept on the request's subject.
+
+    Every query names one of the request's entities when it has any (Hangul spellings
+    mapped to Latin); invented topics are dropped and entity queries fill the gap.
+    """
+    from app.services.context import lead_instruction
+
+    proposed, planned = _parse_scholar_plan(text)
+    # names from the instruction only, not from pasted material
+    entities = query_terms.key_entities(lead_instruction(request), proposed)
+    kept = query_terms.on_request(planned, request, entities)
+    if entities and len(kept) < 3:
+        for query in query_terms.entity_queries(request, entities, scholarly=True):
+            if all(query_terms.norm(query) != query_terms.norm(k) for k in kept):
+                kept.append(query)
+    return kept[:_SCHOLAR_QUERIES], entities
 
 
 async def literature_queries(request: str, model: str, api_key: str) -> list[str]:
     """English literature queries; [] if none."""
-    queries, _ = await _plan(request, model, api_key, scholarly=True)
-    return [q for q in queries if q.strip() and q.strip() != request[:300].strip()]
+    queries, _ = await literature_plan(request, model, api_key)
+    return queries
+
+
+async def literature_plan(request: str, model: str, api_key: str) -> tuple[list[str], list[str]]:
+    """`(queries, entities)` for a literature question; queries [] if none."""
+    queries, _, entities = await _planned(
+        request, model, api_key, scholarly=True, by_entity=True
+    )
+    return [q for q in queries if q.strip() and q.strip() != request[:300].strip()], entities
 
 
 async def _plan(
@@ -244,9 +288,23 @@ async def _plan(
     most: int = MAX_QUERIES,
 ) -> tuple[list[str], dict[str, int]]:
     """Search terms; request on failure."""
+    queries, spent, _ = await _planned(request, model, api_key, scholarly=scholarly, most=most)
+    return queries, spent
+
+
+async def _planned(
+    request: str, model: str, api_key: str, *, scholarly: bool = False,
+    most: int = MAX_QUERIES, by_entity: bool = False,
+) -> tuple[list[str], dict[str, int], list[str]]:
+    """Search terms, spend and the request's entities (`by_entity`: chat literature lookup,
+    every query names one); documents keep the planner's queries as planned."""
+    from app.services.context import lead_instruction
+
     spent = {"inputTokens": 0, "outputTokens": 0}
+    known = query_terms.key_entities(lead_instruction(request)) if by_entity else []
+    fallback = query_terms.entity_queries(request, known, scholarly=True) or [request[:300]]
     if not model:
-        return [request[:300]], spent
+        return fallback, spent, known
     base, _ = await settings_store.litellm_config()
     try:
         async with httpx.AsyncClient(
@@ -270,14 +328,14 @@ async def _plan(
                             ),
                         }
                     ],
-                    "max_tokens": 300,
+                    "max_tokens": 500 if scholarly else 300,
                 },
             )
             response.raise_for_status()
             payload = response.json()
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         log.info("research query planning failed: %s", exc)
-        return [request[:300]], spent
+        return fallback, spent, known
 
     raw = payload.get("usage") or {}
     spent = {
@@ -285,35 +343,42 @@ async def _plan(
         "outputTokens": int(raw.get("completion_tokens") or 0),
     }
     text = (payload["choices"][0]["message"]["content"] or "").strip()
-    queries = _parse_queries(text, request, most)
+    if by_entity:
+        queries, entities = scholar_queries(text, request)
+        log.info("literature queries %s (entities %s)", queries, entities)
+        return queries or fallback, spent, entities
     if scholarly:
         # Planner cap = literature mode's.
-        block = text[text.find("[") : text.rfind("]") + 1] if "[" in text else ""
-        try:
-            parsed = [str(q).strip()[:200] for q in json.loads(block) if str(q).strip()]
-        except (json.JSONDecodeError, ValueError, TypeError):
-            parsed = []
-        queries = parsed[:_SCHOLAR_QUERIES] or queries
-    return queries, spent
+        return _parse_scholar_plan(text)[1][:_SCHOLAR_QUERIES] or fallback, spent, []
+    return _parse_queries(text, request, most), spent, []
 
 
 #: Literature-mode query count (each also via science lane).
 _SCHOLAR_QUERIES = 6
 _SCHOLAR_SOURCES = 16
-_SCHOLAR_PLAN_PROMPT = """다음 요청으로 학술 문서(논문 초안·문헌 정리)를 쓰려고 한다. 관련 연구를
-찾을 영어 학술 검색어를 최대 {n}개 만들어라.
+_SCHOLAR_PLAN_PROMPT = """Plan English scholarly search queries (at most {n}) for the request
+below (a literature question, a paper draft or a literature review).
 
-규칙:
-- 영어 키워드만. 논문 제목에 나올 법한 용어로(예: "indirect prompt injection defense LLM agents").
-- 첫 검색어는 이 분야를 정리한 서베이·SoK를 찾는 것(예: "survey prompt injection attacks
-  defenses", "SoK prompt injection"). 서베이가 기준 논문을 알려 준다.
-- 나머지는 서로 다른 축을 하나씩: 문제·공격, 방어 계열마다 하나, 벤치마크·평가.
-- 요청 문장을 그대로 쓰지 말고, 연도나 학회 이름은 넣지 마라.
+Steps:
+1. entities: the specific things the request names — products, services, tools, models,
+   datasets, methods, organisations. Write each in its official Latin spelling even when the
+   request spells it in Hangul (「허깅페이스」 → "Hugging Face", 「랭체인」 → "LangChain"), and
+   copy the request's own spelling into "as_written". Only things the request names; [] if none.
+2. queries: English keywords as they would appear in paper titles or text.
+   - Stay on the request's own subject. Never switch to another topic.
+   - With entities, every query contains at least one entity name exactly as written in
+     "entities" (e.g. "<entity> LLM evaluation", "<entity> benchmark experiments").
+   - Without entities, the first query finds a survey or SoK of the field; the others take
+     one distinct axis each (problem, method families, benchmarks).
+   - When the request asks for work at conferences or journals (「top-tier」, 학회, 저널),
+     one or two queries add venue names (e.g. "<entity> ACL EMNLP", "<entity> NeurIPS ICLR").
+   - Do not copy the request sentence; no years.
 
-요청:
+Request:
 {request}
 
-JSON 배열 하나만 답하라. 예: ["...", "..."]"""
+Answer with one JSON object only:
+{{"entities": [{{"name": "...", "as_written": "..."}}], "queries": ["...", "..."]}}"""
 
 #: Scholarly hosts exempt from one-per-host.
 _SCHOLAR_HOSTS = (

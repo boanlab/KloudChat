@@ -21,6 +21,7 @@ from app.services import (
     knowledge,
     korean_papers,
     netguard,
+    query_terms,
     sandbox,
     settings_store,
     tools_gateway,
@@ -605,6 +606,12 @@ def _interleave(batches: list[list[dict[str, Any]]], limit: int) -> list[dict[st
 
 async def web_search(args: dict[str, Any]) -> ToolResult:
     query = str(args.get("query") or "").strip()
+    # A JSON-encoded string is parsed, never iterated character by character.
+    planned = query_terms.query_list(args.get("queries"))[:_MAX_PLANNED]
+    if not query and planned:
+        query = planned[0]
+    # Names whose presence in the read text decides the answer (「OpenRouter를 쓴 논문」).
+    verify = query_terms.query_list(args.get("verify"))[:3]
     if not query:
         return ToolResult(content="오류: query 가 비었습니다.", failed=True)
     kind = str(args.get("kind") or "web")
@@ -621,10 +628,6 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     from app.services.context import needs_web_search
 
     hints = {k: args.get(k) for k in ("site", "time_range", "language", "official") if args.get(k)}
-    # Several planned queries per call for field coverage.
-    planned = [
-        str(q).strip()[:200] for q in (args.get("queries") or []) if str(q).strip()
-    ][:_MAX_PLANNED]
     try:
         if planned:
             batches = await asyncio.gather(
@@ -637,8 +640,8 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
             hits = _interleave([b for b in batches if isinstance(b, list)], _MAX_PLANNED_HITS)
             # Surveys first: read in full, name foundational papers.
             hits.sort(key=lambda h: not _SURVEY.search(str(h.get("title") or "")))
-            # Commonly cited works up front.
-            chased = await _chase_citations(
+            # Commonly cited works up front; not for a named-entity check.
+            chased = [] if verify else await _chase_citations(
                 backends, hits, planned[1] if len(planned) > 1 else planned[0], hints
             )
             seen = {str(h.get("url") or "") for h in hits}
@@ -695,15 +698,15 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
             empty=True,
         )
 
-    # Top few read in full; rest as fetchable titles.
-    bodies = await asyncio.gather(
-        *(
-            _scrape(backends.fetch, h["url"])
-            for h in hits[
-                : max(settings.web_search_scrape, 5) if planned else settings.web_search_scrape
-            ]
-        )
-    )
+    reads = max(settings.web_search_scrape, 5) if planned else settings.web_search_scrape
+    if verify:
+        # Paper pages and PDFs first: the named entity is checked in their full text.
+        hits.sort(key=lambda hit: _verify_rank(hit, verify))
+        bodies = await asyncio.gather(*(_full_text(backends.fetch, h["url"]) for h in hits[:reads]))
+        hits, bodies = _confirmed_first(hits, list(bodies), verify)
+    else:
+        # Top few read in full; rest as fetchable titles.
+        bodies = await asyncio.gather(*(_scrape(backends.fetch, h["url"]) for h in hits[:reads]))
 
     lines = [f"'{query}' 검색 결과:\n"]
     usable_sources: list[str] = []
@@ -713,8 +716,10 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
         body = bodies[i] if i < len(bodies) and isinstance(bodies[i], str) else ""
         if hit["snippet"].strip() or body.strip():
             usable_sources.append(hit["url"])
+        if verify and i < len(bodies):
+            lines.append(_verify_note(body, verify))
         if body:
-            lines.append(f"본문 발췌:\n{_truncate(body, 4000)}")
+            lines.append(f"본문 발췌:\n{_truncate(_around(body, verify), 4000)}")
         lines.append("")
 
     scraped = sum(1 for b in bodies if b)
@@ -724,6 +729,78 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
         # Link-only results can't release the current-fact gate.
         search_evidence=SearchEvidence(tuple(usable_sources)) if usable_sources else None,
     )
+
+
+def _verify_rank(hit: dict[str, Any], names: list[str]) -> tuple[bool, bool]:
+    """Sort key: hits naming the entity, then scholarly hosts, first."""
+    text = f"{hit.get('title') or ''} {hit.get('snippet') or ''}"
+    named = any(query_terms.mentions(text, name) for name in names)
+    scholarly = any(host in str(hit.get("url") or "") for host in _FULL_TEXT_HOSTS)
+    return (not named, not scholarly)
+
+
+#: Hosts whose papers have a readable full text.
+_FULL_TEXT_HOSTS = (
+    "arxiv.org", "aclanthology.org", "openreview.net", "proceedings.", "papers.nips.cc",
+    "neurips.cc", "mlr.press", "dl.acm.org", "usenix.org", "ojs.aaai.org",
+)
+_ACL_PAGE = re.compile(r"^(https?://aclanthology\.org/(?:\d{4}\.[\w-]+\.\d+|[A-Z]\d{2}-\d{4}))/?$")
+_OPENREVIEW_PAGE = re.compile(r"^https?://openreview\.net/forum\?id=([\w-]+)")
+
+
+def full_text_url(url: str) -> str | None:
+    """Full-text address of a paper landing page (arXiv HTML, ACL/OpenReview PDF), or None."""
+    if (url or "").lower().endswith(".pdf"):
+        return None
+    if found := _arxiv_html(url):
+        return found
+    if match := _ACL_PAGE.match(url or ""):
+        return match.group(1) + ".pdf"
+    if match := _OPENREVIEW_PAGE.match(url or ""):
+        return f"https://openreview.net/pdf?id={match.group(1)}"
+    return None
+
+
+async def _full_text(base_url: str, url: str) -> str:
+    """Paper full text when a full-text address exists, else the page itself."""
+    if (full := full_text_url(url)) and (body := await _scrape(base_url, full)):
+        return body
+    return await _scrape(base_url, url)
+
+
+def _confirmed_first(
+    hits: list[dict[str, Any]], bodies: list[Any], names: list[str]
+) -> tuple[list[dict[str, Any]], list[Any]]:
+    """Read hits whose text names the entity first; bodies stay aligned, unread hits last."""
+    def named(i: int) -> bool:
+        body = bodies[i]
+        return isinstance(body, str) and any(query_terms.mentions(body, n) for n in names)
+
+    read = sorted(range(len(bodies)), key=lambda i: not named(i))
+    return [hits[i] for i in read] + hits[len(bodies):], [bodies[i] for i in read]
+
+
+def _verify_note(body: Any, names: list[str]) -> str:
+    """One line saying whether the read text names the entity."""
+    label = ", ".join(f"'{n}'" for n in names)
+    if not isinstance(body, str) or not body:
+        return f"본문 확인: 본문을 읽지 못해 {label} 언급 여부를 확인하지 못함"
+    found = [n for n in names if query_terms.mentions(body, n)]
+    if found:
+        return "본문 확인: " + ", ".join(f"'{n}'" for n in found) + " 언급 있음"
+    return f"본문 확인: 읽은 본문에 {label} 언급 없음"
+
+
+def _around(body: str, names: list[str]) -> str:
+    """Excerpt starting near the first mention of a name, so the cut keeps it."""
+    if not names or not isinstance(body, str):
+        return body
+    lowered = body.lower()
+    spots = [lowered.find(n.lower()) for n in names if lowered.find(n.lower()) >= 0]
+    if not spots or min(spots) < 3000:
+        return body
+    start = max(0, min(spots) - 1500)
+    return body[:800] + "\n…\n" + body[start:]
 
 
 async def _korean_papers_search(query: str) -> ToolResult:
@@ -754,8 +831,40 @@ async def _korean_papers_search(query: str) -> ToolResult:
     )
 
 
+#: Links read in one call (the user's own message, read before answering).
+MAX_GIVEN_LINKS = 6
+
+
+async def _fetch_urls(urls: list[str]) -> ToolResult:
+    """Several links read together, each numbered with its address for citation."""
+    backends = await settings_store.tools_config()
+
+    async def one(url: str) -> str:
+        if not url.startswith(("http://", "https://")) or await netguard.refusal(url):
+            return ""
+        return await _full_text(backends.fetch, url)
+
+    bodies = await asyncio.gather(*(one(u) for u in urls))
+    share = 20_000 // max(len(urls), 1)
+    lines = ["사용자가 준 링크를 읽은 결과:\n"]
+    for i, (url, body) in enumerate(zip(urls, bodies, strict=True), 1):
+        lines.append(f"[{i}] 사용자가 준 링크\n{url}")
+        lines.append(_truncate(body, share) if body else "(이 링크는 읽지 못했습니다.)")
+        lines.append("")
+    read = sum(1 for b in bodies if b)
+    if not read:
+        return ToolResult(
+            content="\n".join(lines) + "\n오류: 준 링크를 하나도 읽지 못했습니다.",
+            detail=f"링크 {len(urls)}개 · 읽지 못함", failed=True,
+        )
+    return ToolResult(content="\n".join(lines), detail=f"링크 {read}/{len(urls)}개 읽음")
+
+
 async def fetch_url(args: dict[str, Any]) -> ToolResult:
-    url = str(args.get("url") or "").strip()
+    urls = [u for u in query_terms.query_list(args.get("urls")) if "://" in u]
+    if len(urls) > 1:
+        return await _fetch_urls(list(dict.fromkeys(urls))[:MAX_GIVEN_LINKS])
+    url = str(args.get("url") or (urls[0] if urls else "")).strip()
     if not url.startswith(("http://", "https://")):
         return ToolResult(content="오류: http(s) URL 이 필요합니다.", failed=True)
     # Distinct from unreadable so the model won't retry.

@@ -156,6 +156,7 @@ from app.services.context import (
 from app.services.credits import charge_for_tokens, has_headroom, record_searches, settle
 from app.services.tools import sandbox_tools
 from app.services.tools.base import Tool, ToolContext, openai_snapshot
+from app.services.tools.builtin import MAX_GIVEN_LINKS
 from app.services.tools.registry import build_tools
 from app.services.workspace_context import (
     ContextBlock,
@@ -3480,6 +3481,21 @@ _MATERIAL_FIRST_RULE = (
 )
 
 
+_GIVEN_LINKS_RULE = (
+    "Links given: the person put links in this message and the server has already read them "
+    "(the first fetch_url result, numbered like [1]). Answer about those links from what was "
+    "read and cite them. A link that could not be read is named as unread, not as missing; "
+    "never say a link the person gave did not appear in your search results. Search the web "
+    "after that only for what the links leave open."
+)
+
+
+def given_links_in(content: str) -> list[str]:
+    """Links in the person's message, in order, at most `MAX_GIVEN_LINKS`."""
+    links = [m.rstrip(".,;:!?)」") for m in _LINK.findall(content or "")]
+    return list(dict.fromkeys(link for link in links if "://" in link))[: MAX_GIVEN_LINKS]
+
+
 def _with_system_rule(messages: list[dict], rule: str) -> list[dict]:
     """`messages` with `rule` appended to the system turn (copy; envelope shared)."""
     if messages and messages[0].get("role") == "system":
@@ -4679,25 +4695,35 @@ async def send_message(
 
     tool_names = {t.name for t in tools}
     preset_call: tuple[str, dict[str, Any]] | None = None
-    if forced_tool == "web_search" and "web_search" in tool_names:
+    # links the person gave in this message are read before anything is said about them
+    given_links = (
+        given_links_in(content)
+        if session.kind is SessionKind.chat and "fetch_url" in tool_names
+        and not preflight_tool and not calculation_required
+        and published is None and not agent_material and not declines_web_search(content)
+        else []
+    )
+    if forced_tool == "web_search" and "web_search" in tool_names and not given_links:
         # reuse only privacy-processed history; never re-send the earlier raw question
         lookup_content = (
             outbound_history[fresh_followup_index]
             if fresh_followup_index is not None else content
         )
-        planned = (
-            await research_service.literature_queries(lookup_content, model["id"], api_key)
+        planned, entities = (
+            await research_service.literature_plan(lookup_content, model["id"], api_key)
             if literature_request(lookup_content)
-            else []
+            else ([], [])
         )
         if planned:
-            # literature question searched across its axes at once (attacks, defences, benchmarks)
+            # literature question searched across its axes at once; named entities are
+            # checked in the papers' own text
             preset_call = (
                 "web_search", {
                     "query": planned[0],
                     "queries": planned,
                     "kind": "papers",
                     "scholarly": True,
+                    **({"verify": entities} if entities else {}),
                     **search_hints(lookup_content),
                 },
             )
@@ -4721,6 +4747,12 @@ async def send_message(
     )
     if source_fetch is not None and preset_call is None and forced_tool is None:
         preset_call = source_fetch
+    elif given_links and source_fetch is None:
+        preset_call = (
+            "fetch_url",
+            {"url": given_links[0]} if len(given_links) == 1 else {"urls": given_links},
+        )
+        messages = _with_system_rule(messages, _GIVEN_LINKS_RULE)
     #: published bot's answer when its material doesn't cover the question
     not_covered: str | None = None
     if (
