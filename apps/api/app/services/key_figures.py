@@ -329,7 +329,8 @@ def conflicts(text: str, figures: list[Figure]) -> list[tuple[str, Figure, float
             label = re.sub(r"\*|\s", "", cells[0]) if cells else ""
             for figure in figures:
                 if (len(cells) >= 2 and figure.number is not None
-                        and label in {re.sub(r"\s", "", n) for n in figure.names}):
+                        and label in {re.sub(r"\s", "", n) for n in figure.names}
+                        and _own_label(label, figure, figures) and not _BOUND.search(cells[1])):
                     wrote = [v for u, v in _values(cells[1]) if u == figure.unit]
                     if wrote and abs(wrote[0] - figure.number) > 1e-6 * max(1.0, figure.number):
                         found.append((stripped, figure, wrote[0]))
@@ -355,6 +356,27 @@ def conflicts(text: str, figures: list[Figure]) -> list[tuple[str, Figure, float
     return found
 
 
+#: row label naming no subject: 「지급액」 of which grant
+_GENERIC_LABEL = frozenset(
+    {"지급액", "금액", "액수", "합계", "총액", "총계", "소계", "비고", "값", "수치", "기준", "내용"}
+)
+#: cell giving a bound or a span, not one value: 「200만 원 이내」, 「3~5만 원」
+_BOUND = re.compile(r"이내|이하|이상|미만|초과|최대|최소|까지|부터|[~∼〜]")
+
+
+def _own_label(label: str, figure: Figure, figures: list[Figure]) -> bool:
+    """Whether a row label names this figure and no other: an alias another figure's name
+    also carries (「지급액」 of 「가계곤란장학금 지급액」) names neither."""
+    if label == re.sub(r"\s", "", figure.name):
+        return True
+    if label in _GENERIC_LABEL:
+        return False
+    return not any(
+        other is not figure and label in re.sub(r"\s", "", " ".join(other.names))
+        for other in figures
+    )
+
+
 def mend_rows(text: str, figures: list[Figure]) -> str:
     """Table row named for a settled figure gets its value."""
     lines = (text or "").split("\n")
@@ -365,9 +387,13 @@ def mend_rows(text: str, figures: list[Figure]) -> str:
         if len(cells) < 2:
             continue
         label = re.sub(r"\*|\s", "", cells[0])
+        if _BOUND.search(cells[1]):
+            continue
         for figure in figures:
             if label not in {re.sub(r"\s", "", n) for n in figure.names}:
                 continue
+            if not _own_label(label, figure, figures):
+                break
             values = _values(cells[1])
             if (len(values) == 1 and values[0][0] == figure.unit and figure.number is not None
                     and abs(values[0][1] - figure.number) > 1e-6 * max(1.0, figure.number)):

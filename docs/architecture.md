@@ -1201,10 +1201,8 @@ rather than a second one with the same name.
 The shipped catalogue is `starter._SKILLS` plus `starter._AGENTS`, the
 agents read from `app/agents/<key>.toml` (prompt, guide, starters, kinds,
 bindings, an explicit tool list — `[]` denies every tool — skill keys and the bundles
-they run). Offered: regulations and procedures (`regulation-guide`), bullet-style briefing
-(`gaejo-report`), compare and decide (`comparison-report`), extract and tally
-(`data-analysis`), minutes (`minutes`), and as drafts (`draft = true`, visible to
-administrators only) official letter and draft (`document`) and presentation (`slides`).
+they run). No agent is offered: every shipped agent is withdrawn (below, "Skills instead of
+shipped agents"), and what they did ships as skills.
 
 **Listed, hidden, retired.** `listed: false` (a SKILL.md, a `template.toml`, a
 `starter._DESIGNS` entry) or `connector_catalog.listed` keeps a shipped part out of the lists
@@ -1213,7 +1211,8 @@ connector catalogue — while it still runs by name, in bundles, in the editors 
 the conversations and documents that already use it. Unlike `draft`, it does not gate
 `run_skill_script`. The wire carries `listed`; administrators see hidden rows behind **Show
 hidden**. Listed: the skills `grounding-check`, `gap-check`, `calc-check`, `date-calc`,
-`quote-calc`, `xlsx-clean`, `pdf-table` and `pii-mask`; the offered document templates and
+`quote-calc`, `xlsx-clean`, `pdf-table` and `pii-mask`, the work skills that replaced the
+shipped agents and the two connector companions; the offered document templates and
 the briefing deck (`deck-briefing`); the themes **Basic** (기본) and the document serif
 (문서용 명조); the time connector (deep research disabled, YouTube unlisted).
 **Finish**'s export item names `by_format`: an official-letter-family format (`internal_draft`, `official`,
@@ -1265,6 +1264,78 @@ after the administrator who published it was demoted.
 
 `_copy_of` matches an account's existing copies by catalogue key — and, for
 agents, by slug — so seeded copies count as installed.
+
+### Skills instead of shipped agents
+
+There are no built-in agents (D21). Each thing a shipped agent did is an admin-owned shared
+skill (`app/skills/<key>/`, seeded and followed like every package), which a person switches
+on in a conversation or builds into an agent of their own. The skill package format gained
+five fields, the same ones a person sets in the skill form (**Server checks**, 서버가 돌리는 점검)
+or an uploaded SKILL.md, stored on `skills.server_fields` and validated in `skill_specs`:
+
+| field | what it brings to a turn the skill is on | an agent's equivalent |
+|---|---|---|
+| `template` | the template a report/deck writes into when none is picked (the composer shows it as soon as the skill is picked; otherwise the server sets it on the session) | `render_template_id` (with its `doc_format`, questions, `[process]`, checks) |
+| `checks` | check skills attached to the turn (`gap-check`, `grounding-check`, `generic-language-killer`, …) | `check_skills` (compiled from bundles) |
+| `check_options` | trace strictness (`tool_numbers`, `titles`) | `check_options` |
+| `questions` | missing-information questions added to the template's | `gap_questions` |
+| `process` | process settings (`search`, `draws`, …) under the agent's own | `process_settings` |
+
+`services/skill_turn.py` merges what the turn's skills bring — the picked or standing skills,
+then the agent's always-on ones: the first skill's template and settings win, checks and
+questions add up, and the agent's own fields sit on top. Skills stay on for a report or deck
+conversation as they do for chat (`sessions._STANDING_KINDS`), so the plan's approval, which
+carries no picks, writes with them; a document asked for in chat takes the skills that are on
+along to the new report or deck (those that need no tool, the rest named in a notice). The
+composer lists the official (administrator-shared)
+skills a person has not added under **Official skills**; picking one adds the copy and
+switches it on.
+
+**An agent is built from skills.** `agents.active_skill_ids` (**Skills kept on**, at most
+six, migration 0072) are on in every turn of the agent's conversations, apart from the three
+a person picks per turn; `skill_ids` stays the allow-list of what the composer may add. They
+are resolved where the agent runs (`workspace_context.agent_skill_rows`): the agent owner's
+rows, the person's own, or shared ones — a skill the owner built into a shared agent travels
+with it the way its prompt does, while a hand-picked skill is still only ever the person's own
+copy. Installing such an agent copies the shared skills it is built from. A published bot never
+runs skills; its version freezes the agent's prompt with each built-from skill's instructions
+appended and adds the skills' `post` checks (`publishing.built_from`). A composed pipeline's
+agent step gets the same prompt.
+
+| withdrawn agent | skill (`app/skills/`) | template | checks | own questions / settings | to rebuild the agent |
+|---|---|---|---|---|---|
+| minutes `minutes` | meeting minutes `minutes-writing` (report) | `doc-minutes` | gap-check, grounding-check, generic-language-killer | — (the template's: meeting date, attendees, due dates; date pre-pass from the meeting date) | keep on `minutes-writing` · theme document serif · screen Report |
+| compare and decide `comparison-report` | compare-and-decide report `option-comparison` (report) | `doc-comparison` | same | — (the template's: prices, must-haves; cost and score pre-pass) | keep on `option-comparison` |
+| bullet-style briefing `gaejo-report` | bullet-style briefing `gaejo-briefing` (report) | `doc-gaejo-report` | same | — (the template's: addressee, reporter; fixed outline, one page) | keep on `gaejo-briefing` · theme document serif |
+| official letter and draft `document` (draft) | official document draft `document-drafting` (report) | none (format from the words) | same | `process`: no search, pictures only when asked | keep on `document-drafting` |
+| extract and tally `data-analysis` | extract and tally `data-tabulation` (chat, needs `run_code`) | — | gap-check, grounding-check; `tool_numbers` | deadline basis, period split, denominator | keep on `data-tabulation` · tools file work, chart, calculation |
+| regulations and procedures `regulation-guide` | answers from regulations `regulation-answer` (chat) | — | grounding-check | — | keep on `regulation-answer` + `date-calc` · knowledge (the regulation files) · department and contact · the publish-check bundle (hold ungrounded answers, point to the department, mask PII; the hold reads the shelf's hits and the files attached to the conversation) |
+| presentation `slides` (draft) | presentation deck `deck-writing` (slides) | — (deck flow) | — | — | keep on `deck-writing` · screen Slides |
+
+The skill's body is the agent's prompt as it was; the bundles the agents ticked compiled to
+the checks above (the prepare bundle's date and amount pre-passes and the review bundle's
+format checks and repair run inside the report flow for every template that sets them). What
+a skill does not carry is the look — the theme stays a choice of the person or the agent — and
+the agent's 0.3 temperature (a turn without an agent writes at 0.4).
+
+Two skills tell the model when and how to use the default connectors: YouTube transcript and
+summary `youtube-summary` (needs `mcp__youtube__transcript`; summarises from the transcript
+only and marks doubtful words) and deep research `deep-research` (needs
+`mcp__deep-research__quick_research`; the lightest research tool that answers, said to take
+minutes). The time connector joins `date-calc`: with no date in the material, today comes from
+`mcp__time__get_current_time`. Connector tool panels show a Korean line per shipped tool
+(`tools/blurbs.py`), not the server's model-facing docstring, and a connector asks for
+credentials only for env values the person enters — `{{...}}` identity placeholders and
+`${VAR}` values the server fills (YouTube's `WHISPER_URL`) are not theirs. An administrator's
+shared skill reads **By: Official** in the hub, as their agents do; a copy reads **Original:
+Official**, and **Edited by me · Original: …** once changed.
+
+**Withdrawn, not retired.** An agent file with `withdrawn = true` stays in the catalogue: the
+sync keeps its owner row and keeps untouched copies following it, `bases.get` still resolves
+it for the agents built on it as a base, and existing conversations and published bots run as
+before. It is left out of `GET /agents`, the base picker (`bases.bases()` without
+`withdrawn=True`) and install (410 `agent_retired`). Nothing in the database changes for it;
+a member's own copy (which carries `origin_id`) stays listed and theirs.
 
 ### Coding agents
 

@@ -74,6 +74,8 @@ class Plan:
     #: Instruction as a task for the rewrite prompt.
     note: str = ""
     usage: dict[str, int] = field(default_factory=lambda: {"inputTokens": 0, "outputTokens": 0})
+    #: what the rewrite is told the person typed, minus what code already did (a title)
+    typed: str = ""
 
     @property
     def revises(self) -> bool:
@@ -476,6 +478,44 @@ def requested_title(instruction: str) -> str | None:
     return quoted[-1].group(1).strip()
 
 
+#: rename aimed at a part: 「개요 절 제목을」, 「장 이름을」, 「섹션 제목」
+_PART_TITLE = re.compile(
+    r"(?:절|장|섹션|슬라이드|부분|챕터)\s{0,4}(?:의\s{0,4})?(?:제목|이름|타이틀|헤드라인)|\bheading\b",
+    re.I,
+)
+#: 「제목을 「…」로 바꿔 줘」 as typed, so the rest goes on without it
+_TITLE_CLAUSE = re.compile(
+    r"[,，]?\s{0,4}(?:그리고\s{1,4})?(?:문서\s{0,4}|보고서\s{0,4}|전체\s{0,4})?(?:제목|타이틀)"
+    r"(?:을|를|은|는|도)?\s{0,4}[「\"“'][^」\"”']{2,80}[」\"”']\s{0,4}(?:으로|로|라고)?\s{0,4}"
+    r"(?:바꿔|바꾸어|변경해|고쳐|수정해|해)?\s{0,4}(?:줘|주세요|주십시오|주시고|주고)?[.!]?"
+)
+
+
+def title_rename(instruction: str, parts: list[str]) -> tuple[str, int | None] | None:
+    """`(new title, part index or None)`: a rename naming a part (「개요 절 제목을」) is that
+    part's; 「제목을 「…」로」 with no part named is the document's (index None)."""
+    new = requested_title(instruction)
+    if not new:
+        return None
+    text = " ".join((instruction or "").split())
+    for index, name in enumerate(parts):
+        short = name.strip()
+        if short and re.search(
+            rf"{re.escape(short)}\s{{0,4}}(?:절|장|섹션|슬라이드|부분)?\s{{0,4}}(?:의\s{{0,4}})?"
+            r"(?:제목|이름|타이틀)", text):
+            return new, index
+    if _PART_TITLE.search(text) or not _TITLE_CLAUSE.search(text):
+        return new, -1
+    return new, None
+
+
+def without_title_clause(instruction: str) -> str:
+    """The instruction minus its document-title clause; empty when that was all."""
+    rest = _TITLE_CLAUSE.sub(" ", instruction or "")
+    rest = " ".join(rest.split()).strip(" ,，.")
+    return rest if re.search(r"[가-힣A-Za-z]{2}", rest) else ""
+
+
 _BEFORE = re.compile(r"\s{0,8}(?:절|장|부분)?\s{0,8}(?:바로\s{0,8})?(?:앞에|앞으로|전에)")
 _AFTER = re.compile(r"\s{0,8}(?:절|장|부분)?\s{0,8}(?:바로\s{0,8})?(?:뒤에|뒤로|다음에|아래에)")
 
@@ -592,6 +632,107 @@ def named_target(plan: Plan, parts: list[str], message: str) -> Plan:
     if plan.scope == "outline" or plan.targets != [index]:
         return Plan(scope="parts", targets=[index], note=plan.note, usage=plan.usage)
     return plan
+
+
+#: 「예산 표에」, 「과정별 표의」: the table named by what it holds
+_NAMED_TABLE = re.compile(
+    r"([가-힣A-Za-z0-9·]{2,12})\s{0,2}표\s{0,2}(?:에|에서|를|을|의|는|도|만)(?![가-힣])"
+)
+#: 「개선점을 … 표로 바꿔」: a list made into a table
+_INTO_TABLE = re.compile(
+    r"([가-힣A-Za-z0-9·]{2,12})(?:을|를)\s{1,4}(?:[^\s]{1,20}\s{1,4}){0,4}?(?:\d\s{0,2}열\s{0,2})?표로"
+)
+_TABLE_LINES = re.compile(r"(?m)^[ \t]{0,12}\|.+\|[ \t]*$")
+
+
+def _stems(word: str) -> list[str]:
+    stem = re.sub(r"(?:별|점|사항|내용|현황|들)$", "", word)
+    return [w for w in dict.fromkeys([word, stem]) if len(w) >= 2]
+
+
+def _table_context(text: str) -> str:
+    """Each table's header row with the two lines above it (its caption, its lead-in)."""
+    lines = (text or "").split("\n")
+    out = []
+    for i, line in enumerate(lines):
+        if _TABLE_LINES.match(line) and not (i and _TABLE_LINES.match(lines[i - 1])):
+            out.extend(lines[max(0, i - 2): i + 1])
+    return "\n".join(out)
+
+
+def table_target(plan: Plan, parts: list[str], texts: list[str], message: str) -> Plan:
+    """A table edit goes to the one part holding that table (「예산 표에 … 열 추가」 → the part
+    whose table is captioned or headed 예산); a list made a table goes to the one part whose
+    heading names it (「개선점을 … 표로」 → 「… 개선 사항」). Otherwise the plan stands."""
+    if plan.scope not in ("parts", "insert") or not parts:
+        return plan
+    text = " ".join((message or "").split())
+    holders: list[int] = []
+    if named := _NAMED_TABLE.search(text):
+        words = _stems(named.group(1))
+        holders = [i for i, body in enumerate(texts)
+                   if any(w in _table_context(body) for w in words)]
+    elif made := _INTO_TABLE.search(text):
+        words = _stems(made.group(1))
+        holders = [i for i, name in enumerate(parts) if any(w in name for w in words)]
+        if not holders:
+            holders = [i for i, body in enumerate(texts)
+                       if any(w in line for w in words
+                              for line in body.split("\n") if line.lstrip()[:1] in "-*#")]
+    if len(holders) != 1 or (plan.scope == "parts" and plan.targets == holders):
+        return plan
+    return Plan(scope="parts", targets=holders, note=plan.note, usage=plan.usage,
+                typed=plan.typed)
+
+
+#: 「집행률(%) 열 추가」: a column asked for by name
+_ASKED_COLUMN = re.compile(
+    r"([가-힣A-Za-z]{2,10})\s{0,2}(?:\([^()\n]{0,8}\))?\s{0,2}열\s{0,2}(?:을|를|도|만)?\s{0,2}"
+    r"(?:추가|넣|더|붙)"
+)
+#: 「'문제-원인-조치' 3열 표」: the columns of a table asked for
+_ASKED_HEADER = re.compile(
+    r"[「'\"‘“]([^」'\"’”\n]{3,60})[」'\"’”]\s{0,4}(?:\d\s{0,2}열\s{0,2})?(?:의\s{0,2})?표"
+)
+_ASKED_TOTAL = re.compile(r"합계\s{0,2}행")
+_TOTAL_ROW = frozenset({"합계", "계", "총계", "소계", "전체", "총합"})
+
+
+def _headers_and_labels(texts: list[str]) -> tuple[list[list[str]], set[str]]:
+    headers: list[list[str]] = []
+    labels: set[str] = set()
+    for text in texts:
+        lines = [ln.strip() for ln in (text or "").split("\n")]
+        for i, line in enumerate(lines):
+            if not line.startswith("|"):
+                continue
+            cells = [re.sub(r"[\s*]", "", c) for c in line.strip("|").split("|")]
+            if i + 1 < len(lines) and re.match(r"^\|?\s{0,4}:?-{2,}", lines[i + 1]):
+                headers.append(cells)
+            elif cells and not re.match(r"^:?-{2,}", cells[0]):
+                labels.add(cells[0])
+    return headers, labels
+
+
+def missing_shapes(instruction: str, texts: list[str]) -> list[str]:
+    """What the instruction asked of a table that no table in `texts` has: a named column,
+    a table's columns, a total row. Empty when all were made (or none was asked)."""
+    text = " ".join((instruction or "").split())
+    headers, labels = _headers_and_labels(texts)
+    flat = ["|".join(h) for h in headers]
+    missed: list[str] = []
+    for m in _ASKED_COLUMN.finditer(text):
+        name = re.sub(r"\s", "", m.group(1))
+        if not any(name in head for head in flat):
+            missed.append(f"「{m.group(1)}」 열")
+    for m in _ASKED_HEADER.finditer(text):
+        wanted = [re.sub(r"\s", "", w) for w in re.split(r"[-–—·/,|]", m.group(1)) if w.strip()]
+        if len(wanted) >= 2 and not any(all(any(w in c for c in h) for w in wanted)
+                                        for h in headers):
+            missed.append(f"「{m.group(1)}」 표")
+    if _ASKED_TOTAL.search(text) and not labels & _TOTAL_ROW:
+        missed.append("합계 행")
+    return missed
 
 
 def into_existing_part(plan: Plan, parts: list[str], message: str) -> Plan:

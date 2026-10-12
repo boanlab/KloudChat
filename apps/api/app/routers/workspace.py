@@ -1929,16 +1929,23 @@ async def list_skills(user: CurrentUser, db: DbSession):
     ).all()
     # copies say whose shared skill they came from
     origin_ids = [s.origin_id for s in rows if s.origin_id]
-    owners: dict[str, str] = {}
+    origins: dict[str, Skill] = {}
     if origin_ids:
-        origins = await db.exec(select(Skill.id, Skill.owner_id).where(
-            col(Skill.id).in_(origin_ids)))
-        owners = {row[0]: row[1] for row in origins.all()}
-    names = await _owner_names(db, set(owners.values()))
+        origins = {row.id: row for row in (await db.exec(select(Skill).where(
+            col(Skill.id).in_(origin_ids)))).all()}
+    owners = {origin.owner_id for origin in origins.values()}
+    names = await _owner_names(db, owners)
+    admins = await _admin_ids(db, owners)
     out = []
     for s in rows:
         item = SkillOut.of(s)
-        item.origin_owner_name = names.get(owners.get(s.origin_id or "", ""), "")
+        origin = origins.get(s.origin_id or "")
+        if origin is not None:
+            item.origin_owner_name = names.get(origin.owner_id, "")
+            # an administrator's shared skill reads 「공식」, as their agents do
+            item.origin_official = origin.owner_id in admins
+            item.edited = any(getattr(s, f) != getattr(origin, f)
+                              for f in ("name", "description", "when_to_use", "body"))
         out.append(item)
     return out
 
@@ -2202,9 +2209,12 @@ async def list_agents(user: CurrentUser, db: DbSession):
         )
     ).all()
     rows = _without_legacy_copies(rows, user_id=user.id)
-    # retired agents hidden; drafts admin-only
-    drafts = starter.draft_agents() if user.role is not UserRole.admin else frozenset()
-    rows = [a for a in rows if not a.retired and (a.catalog_key or "") not in drafts]
+    # retired agents hidden; drafts admin-only; withdrawn catalogue rows offered to no one
+    # (their copies, conversations and bots keep working)
+    hidden = starter.withdrawn_agents() | (
+        starter.draft_agents() if user.role is not UserRole.admin else frozenset())
+    rows = [a for a in rows if not a.retired and not (
+        a.catalog_key and a.origin_id is None and a.catalog_key in hidden)]
 
     owner_ids = {a.owner_id for a in rows}
     names = await _owner_names(db, owner_ids)
@@ -2303,6 +2313,7 @@ async def _processes(db: DbSession, rows: list[Agent], *, viewer_id: str) -> dic
 @router.post("/agents", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
 async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     await _validate_skill_ids(db, user, payload.skill_ids)
+    await _validate_skill_ids(db, user, payload.active_skill_ids)
     await _validate_tool_names(db, user, payload.tools)
     bindings = await _validate_agent_bindings(db, user, payload.model_dump())
     checks = await _validated_checks(db, user, payload.model_dump())
@@ -2332,7 +2343,7 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
     from app.routers import user_pipelines
 
     origin = await _shared(db, Agent, user, agent_id)
-    if origin.retired:
+    if origin.retired or (origin.catalog_key or "") in starter.withdrawn_agents():
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="agent_retired")
     if (origin.catalog_key or "") in starter.draft_agents() and user.role is not UserRole.admin:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -2343,9 +2354,8 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
             has_knowledge=await _agent_has_knowledge(db, user.id, existing.id),
         )
 
-    skill_ids: list[str] | None = None
-    if origin.skill_ids is not None:
-        wanted = list(origin.skill_ids)
+    async def copied_skills(wanted: list[str]) -> list[str]:
+        """The shared ones installed for this person; unshared/deleted dropped, not refused."""
         rows = (
             (await db.exec(select(Skill).where(col(Skill.id).in_(wanted)))).all() if wanted else []
         )
@@ -2353,7 +2363,6 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         copied: list[str] = []
         for skill_id in wanted:
             source = by_id.get(skill_id)
-            # unshared/deleted skills dropped, not refused
             if source is None or source.visibility is not Visibility.org:
                 continue
             if source.owner_id == user.id:
@@ -2362,8 +2371,16 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
             copy = await _install_skill(db, user, source)
             await db.flush()
             copied.append(copy.id)
+        return copied
+
+    skill_ids: list[str] | None = None
+    if origin.skill_ids is not None:
+        wanted = list(origin.skill_ids)
+        copied = await copied_skills(wanted)
         # `[]` = hard deny; emptied allow-list → inherit (None)
         skill_ids = copied if copied or not wanted else None
+    # the skills it is built from, as the person's own copies
+    active_skill_ids = await copied_skills(list(origin.active_skill_ids or [])) or None
 
     # missing-knowledge note in editable description
     description = origin.description
@@ -2386,6 +2403,7 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         starters=list(origin.starters or []),
         tools=None if origin.tools is None else list(origin.tools),
         skill_ids=skill_ids,
+        active_skill_ids=active_skill_ids,
         kinds=list(origin.kinds or []),
         # same bindings; invisible design ignored at run time, not dropped
         **{name: getattr(origin, name) for name in _AGENT_BINDINGS},
@@ -2426,6 +2444,13 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
             user,
             changes["skill_ids"],
             grandfathered=set(agent.skill_ids or []),
+        )
+    if "active_skill_ids" in changes:
+        await _validate_skill_ids(
+            db,
+            user,
+            changes["active_skill_ids"],
+            grandfathered=set(agent.active_skill_ids or []),
         )
     if "tools" in changes:
         await _validate_tool_names(

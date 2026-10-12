@@ -364,7 +364,7 @@ interface State {
     fromSessionId: string,
     kind: 'report' | 'slides',
     text: string,
-    opts?: Pick<SendOptions, 'webSearch' | 'onSession'> & { attachments?: FileRow[] },
+    opts?: Pick<SendOptions, 'webSearch' | 'onSession' | 'activatedSkillIds'> & { attachments?: FileRow[] },
   ) => Promise<string>
   forkBeforeMessage: (sessionId: string, messageId: string) => Promise<{
     sessionId: string; attachments: FileRow[]; attachmentIdMap: Record<string, string>
@@ -1581,6 +1581,7 @@ export const useStore = create<State>((set, get) => ({
       webSearch: opts.webSearch,
       attachments: files.map((file) => file.id),
       attachmentNames: files.map((file) => file.name),
+      activatedSkillIds: opts.activatedSkillIds,
       onSession: opts.onSession,
     })
   },
@@ -2617,6 +2618,7 @@ export const useStore = create<State>((set, get) => ({
       systemPrompt: a.systemPrompt,
       tools: a.tools,
       skillIds: a.skillIds,
+      activeSkillIds: a.activeSkillIds,
       kinds: a.kinds,
       surface: a.surface,
       renderTemplateId: a.renderTemplateId,
@@ -3169,6 +3171,8 @@ function toSkill(s: SkillRow): Skill {
     installs: s.installs ?? 0,
     originId: s.originId ?? null,
     originOwnerName: s.originOwnerName ?? '',
+    originOfficial: s.originOfficial ?? false,
+    edited: s.edited ?? false,
     version: s.version,
     updatedAt: s.updatedAt,
     scripts: s.scripts ?? [],
@@ -3216,6 +3220,7 @@ function toAgent(a: AgentRow): Agent {
     systemPrompt: a.systemPrompt,
     tools: a.tools,
     skillIds: a.skillIds,
+    activeSkillIds: a.activeSkillIds ?? [],
     kinds: a.kinds as SessionKind[],
     surface: (a.surface ?? null) as SessionKind | null,
     renderTemplateId: a.renderTemplateId ?? null,
@@ -3271,6 +3276,7 @@ function toConnector(c: ConnectorRow): Connector {
     tools: c.tools.map((t) => ({
       name: t.name,
       description: t.description,
+      summary: t.summary ?? '',
       readOnly: t.readOnly,
       enabled: t.enabled,
     })),

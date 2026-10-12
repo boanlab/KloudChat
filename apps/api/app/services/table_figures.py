@@ -94,9 +94,10 @@ def _mark_table(table: str) -> str:
     rows = [
         [cell.group(3) for cell in _CELL.finditer(row.group(1))] for row in _ROW.finditer(table)
     ]
-    # spanned cells and head field tables left as is
+    # merged cells (span > 1) and head field tables left as is
     opening = table[: table.index(">") + 1]
-    if not rows or "tb-fields" in opening or re.search(r"\b(?:col|row)span=", table, re.I):
+    merged = any(int(n) > 1 for n in re.findall(r"\b(?:col|row)span=[\"']?(\d+)", table, re.I))
+    if not rows or "tb-fields" in opening or merged:
         return table
     columns = figure_columns(rows)
     at = iter(range(len(rows)))

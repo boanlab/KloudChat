@@ -5,6 +5,8 @@ import { skillsApi, type ServerRef, type SkillServerCatalogue } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import type { SkillScript, SkillServer } from '@/types'
+import { GapQuestionsEditor } from '@/components/agents/GapQuestionsEditor'
+import { useStore } from '@/store/useStore'
 import { Block } from './AgentForm'
 
 let cached: Promise<SkillServerCatalogue> | null = null
@@ -221,11 +223,91 @@ export function SkillServerFields({
           </ul>
         </Block>
       )}
-      {value.stage === '' && value.postCheck.length === 0 && !value.copyCheck && !judging && value.uses.length === 0 && (
+      <DocumentFields value={value} set={set} catalogue={catalogue} />
+      {value.stage === '' && value.postCheck.length === 0 && !value.copyCheck && !judging && value.uses.length === 0 &&
+        !value.template && !(value.checks?.length) && !(value.questions?.length) && (
         <p className="text-sm text-faint">
           <Badge>{t('없음')}</Badge> {t('서버는 이 스킬에 아무것도 돌리지 않습니다.')}
         </p>
       )}
+    </div>
+  )
+}
+
+/** What the skill brings to a turn it is on, as an agent's own fields do: 템플릿, 검사, 빠진 정보 질문, 진행 설정. */
+function DocumentFields({
+  value,
+  set,
+  catalogue,
+}: {
+  value: SkillServer
+  set: (patch: Partial<SkillServer>) => void
+  catalogue: SkillServerCatalogue
+}) {
+  const t = useT()
+  const templates = useStore((s) => s.designTemplates).filter((row) => row.surface === 'report' || row.surface === 'slides')
+  const process = value.process ?? {}
+  const setProcess = (patch: Partial<NonNullable<SkillServer['process']>>) => {
+    const next: Record<string, unknown> = { ...process, ...patch }
+    for (const key of Object.keys(next)) if (next[key] === undefined) delete next[key]
+    set({ process: next as SkillServer['process'] })
+  }
+  return (
+    <div className="space-y-4 border-t border-line pt-4" data-testid="skill-document-fields">
+      <Field label={t('쓸 템플릿')} hint={t('보고서·발표에서 이 스킬을 켜고 템플릿을 고르지 않았으면 이 템플릿에 씁니다.')}>
+        <Select value={value.template ?? ''} onChange={(e) => set({ template: e.target.value })} data-testid="skill-template">
+          <option value="">{t('정하지 않음')}</option>
+          {templates.map((row) => (
+            <option key={row.id} value={row.id}>
+              {t(row.name)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {catalogue.checks && (
+        <Block label={t('켜면 붙는 검사')} hint={t('이 스킬을 켠 대화에서 서버가 쓰기 전·후에 돌립니다.')}>
+          <RefList refs={catalogue.checks} value={value.checks ?? []} onChange={(checks) => set({ checks })} testId="skill-checks" />
+        </Block>
+      )}
+      {(catalogue.checkOptions ?? []).map((o) => (
+        <SwitchRow
+          key={o.option}
+          checked={(value.checkOptions ?? []).includes(o.option)}
+          onChange={() => set({ checkOptions: toggle(value.checkOptions ?? [], o.option) })}
+          label={t(o.label)}
+        />
+      ))}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label={t('웹 검색')}>
+          <Select
+            value={process.search === undefined ? '' : process.search ? 'on' : 'off'}
+            onChange={(e) => setProcess({ search: e.target.value === '' ? undefined : e.target.value === 'on' })}
+            data-testid="skill-search"
+          >
+            <option value="">{t('템플릿 설정을 따름')}</option>
+            <option value="on">{t('쓰기 전에 찾아봄')}</option>
+            <option value="off">{t('찾지 않음(자료만)')}</option>
+          </Select>
+        </Field>
+        <Field label={t('그림')}>
+          <Select
+            value={process.draws ?? ''}
+            onChange={(e) => setProcess({ draws: (e.target.value || undefined) as 'auto' | 'when-asked' | undefined })}
+            data-testid="skill-draws"
+          >
+            <option value="">{t('템플릿 설정을 따름')}</option>
+            <option value="auto">{t('알맞으면 넣음')}</option>
+            <option value="when-asked">{t('요청할 때만')}</option>
+          </Select>
+        </Field>
+      </div>
+      <Block label={t('빠진 정보 질문')} hint={t('「빠진 정보 묻기」 검사가 붙어 있을 때, 자료가 답하지 않으면 쓰기 전에 묻습니다.')}>
+        <GapQuestionsEditor
+          value={value.questions ?? []}
+          onChange={(questions) => set({ questions })}
+          detectors={catalogue.gapDetectors ?? []}
+        />
+      </Block>
     </div>
   )
 }

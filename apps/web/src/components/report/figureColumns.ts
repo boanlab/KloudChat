@@ -44,7 +44,9 @@ export function markFigureColumns(html: string): string {
   if (!/<table\b/i.test(html) || typeof DOMParser === 'undefined') return html
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
   doc.querySelectorAll('table').forEach((table) => {
-    if (table.classList.contains('tb-fields') || table.querySelector('[colspan],[rowspan]')) return
+    const merged = [...table.querySelectorAll('[colspan],[rowspan]')].some((cell) =>
+      Number(cell.getAttribute('colspan') ?? 1) > 1 || Number(cell.getAttribute('rowspan') ?? 1) > 1)
+    if (table.classList.contains('tb-fields') || merged) return
     const rows = [...table.querySelectorAll('tr')]
     const text = rows.map((row) => [...row.children].map((cell) => cell.textContent ?? ''))
     const columns = figureColumns(text)

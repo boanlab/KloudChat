@@ -12,7 +12,14 @@ from app.core import logs
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle, Document, Material, Part, Plan, Request
 from app.pipeline.stage import Base, Context, Stop
-from app.services import consistency, doc_formats, internal_words, revise, richtext
+from app.services import (
+    consistency,
+    doc_formats,
+    internal_words,
+    revise,
+    revised_tables,
+    richtext,
+)
 from app.services import deck as deck_service
 
 log = logging.getLogger("app.routers.sessions")
@@ -48,6 +55,34 @@ def _stopped(bundle: Bundle, text: str = "", *, error: str = "") -> list[dict]:
     return events
 
 
+def _typed(bundle: Bundle) -> str:
+    """The instruction as the rewrite reads it: minus what route did by hand (a title)."""
+    plan = bundle.plan.revision
+    return (plan.typed if plan is not None and plan.typed else "") or bundle.request.instruction
+
+
+def _tidy_tables(bundle: Bundle) -> list[dict]:
+    """Section events for parts the table tidy changed: one copy of each table (the revised
+    part's), captions over tables, 〔표〕 resolved, block tokens gone."""
+    if bundle.request.is_deck:
+        return []
+    parts = bundle.document.sections
+    plan = bundle.plan.revision
+    targets = set(plan.targets) if plan is not None else set()
+    rank = {i: 2 if i in targets else 1 for i in bundle.plan.order}
+    before = [str(p.get("content") or "") for p in parts]
+    report = _report()
+    unfenced = [p if str(p.get("format") or "markdown") != "markdown"
+                else {**p, "content": report.unfence_pictures(str(p.get("content") or ""))}
+                for p in parts]
+    tidied = report.caption_figures_and_tables(revised_tables.tidy(unfenced, rank))
+    if [str(p.get("content") or "") for p in tidied] == before:
+        return []
+    bundle.document.sections = tidied
+    return [_part_event(part, False) for i, part in enumerate(tidied)
+            if str(part.get("content") or "") != before[i]]
+
+
 def strings(value: Any) -> list[str]:
     """All strings inside a slide."""
     if isinstance(value, str):
@@ -74,8 +109,19 @@ class Route(Base):
         names = _names(bundle)
         plan = bundle.plan.revision
         changed = 0
-        swap = revise.term_swap(instruction)
-        reorder = revise.order_swap(instruction, names) if swap is None else None
+        typed = instruction
+        rename = None if is_deck else revise.title_rename(instruction, names)
+        if rename is not None and rename[1] is None:
+            # the document's title, by hand; the rest of the sentence goes on without it
+            bundle.plan.title = rename[0]
+            typed = revise.without_title_clause(instruction)
+            yield {"type": "step", "id": "route", "status": "done",
+                   "label": f"제목 바꾸는 중: {rename[0]}"}
+            changed = 1
+            if not typed:
+                plan = revise.Plan(scope="parts", targets=[], note=f"제목 → {rename[0]}")
+        swap = revise.term_swap(typed) if typed else None
+        reorder = revise.order_swap(typed, names) if swap is None and typed else None
         if reorder is not None:
             # swap by hand: model would redraw the deck (and add a 목차)
             first, second = reorder
@@ -108,14 +154,20 @@ class Route(Base):
             for part in parts:
                 yield _part_event(part, is_deck)
             plan = revise.Plan(scope="parts", targets=[], note=f"{old_term} → {new_term}")
-            changed = hits
-        else:
+            changed += hits
+        elif typed:
             yield {"type": "step", "id": "route", "label": "무엇을 고칠지 보는 중",
                    "status": "running"}
         plan = plan or await revise.plan(
-            message=instruction, title=bundle.plan.title, parts=names,
+            message=typed, title=bundle.plan.title, parts=names,
             model=req.outline_model or req.model, api_key=req.api_key,
         )
+        if typed != instruction:
+            plan.typed = typed
+        if typed and swap is None and reorder is None and not is_deck:
+            # a table edit goes where that table is, whatever the planner guessed
+            plan = revise.table_target(plan, names, [str(p.get("content") or "") for p in parts],
+                                       typed)
         bundle.usage["inputTokens"] += plan.usage["inputTokens"]
         bundle.usage["outputTokens"] += plan.usage["outputTokens"]
         if plan.inserts:
@@ -145,9 +197,10 @@ class Route(Base):
                 targets=list(range(position, position + len(plan.names))),
                 note=plan.note,
                 usage=plan.usage,
+                typed=plan.typed,
             )
         doc.sections = parts
-        by_hand = swap is not None or reorder is not None
+        by_hand = swap is not None or reorder is not None or not typed
         doc.by_hand, bundle.plan.revision = by_hand, plan
         if not by_hand and not plan.revises:
             # new-document request: said, not acted on
@@ -159,7 +212,7 @@ class Route(Base):
         if not by_hand:
             yield {"type": "step", "id": "route", "label": revise.label(plan, _names(bundle)),
                    "status": "done"}
-        doc.changed = changed if by_hand else 0
+        doc.changed = changed
 
 
 class Widen(Base):
@@ -173,11 +226,12 @@ class Widen(Base):
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, doc = _report(), bundle.request, bundle.document
         bundle.plan.order = list(bundle.plan.revision.targets)
-        if doc.by_hand or req.is_deck or not consistency.changes_content(req.instruction):
+        typed = _typed(bundle)
+        if doc.by_hand or req.is_deck or not consistency.changes_content(typed):
             return
         names = _names(bundle)
         widened = consistency.dependents(
-            req.instruction, names, [str(p.get("content") or "") for p in doc.sections],
+            typed, names, [str(p.get("content") or "") for p in doc.sections],
             bundle.plan.order)
         bundle.plan.widened = widened
         bundle.plan.order += widened
@@ -209,7 +263,7 @@ class Rewrite(Base):
     name = "revise-rewrite"
     kind = "model"
     reads = ("request", "document", "material.parts", "computed.prepass", "plan")
-    writes = ("document.sections", "document.changed")
+    writes = ("document.sections", "document.changed", "document.missed")
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, doc = _report(), bundle.request, bundle.document
@@ -253,7 +307,7 @@ class Rewrite(Base):
                             consistency.dependent_note(instruction)
                             if index in widened
                             else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
-                            f"{instruction.strip()[:400]}"
+                            f"{(plan.typed or instruction).strip()[:400]}"
                         ),
                         sources=list(data.get("sources") or []),
                         material=[*material, *settled_blocks],
@@ -261,8 +315,8 @@ class Rewrite(Base):
                     )
                     if not body.strip():
                         raise ValueError("빈 결과")
-                    if revise.meta_talk(body):
-                        # reply to the person, not a part: keep the part
+                    if revise.meta_talk(body) or report.error_text(body, request):
+                        # reply to the person or an error message, not a part: keep the part
                         raise ValueError("본문 대신 대화 답이 나옴")
                     # existing figure kept unless redrawn or removal asked
                     body = revise.keep_figure(str(part.get("content") or ""), body, instruction)
@@ -293,11 +347,16 @@ class Rewrite(Base):
                             and f.lists == "gaejo"
                             for f in doc_formats.FORMATS
                         )
-                        body = report.trim_restatements(body, earlier, keep_items=gaejo)[0]
+                        body = report.trim_restatements(
+                            body, earlier, keep_items=gaejo,
+                            question=bool(report.QUESTION_HEADING.search(label)))[0]
                     body = internal_words.scrub(body)
                     # Markdown output; old `html` flag would show literal asterisks
-                    renamed = (revise.requested_title(instruction)
-                               if len(plan.targets) == 1 and index not in widened else None)
+                    # a part's own rename only; the document's title was set by route
+                    rename = revise.title_rename(instruction, names)
+                    renamed = (rename[0] if rename is not None and index not in widened and (
+                        rename[1] == index or rename[1] == -1 and len(plan.targets) == 1)
+                        else None)
                     parts[index] = {
                         **part,
                         **({"heading": renamed} if renamed else {}),
@@ -327,6 +386,12 @@ class Rewrite(Base):
             for event in _stopped(bundle, error="고치지 못했습니다."):
                 yield event
             raise Stop("nothing changed")
+        for event in _tidy_tables(bundle):
+            yield event
+        if not is_deck:
+            # said only when the asked table shape is really there
+            doc.missed = revise.missing_shapes(
+                _typed(bundle), [str(p.get("content") or "") for p in doc.sections])
 
 
 class Consistency(Base):
@@ -340,7 +405,7 @@ class Consistency(Base):
     def skip(self, bundle: Bundle) -> str:
         if not bundle.plan.order or bundle.request.is_deck:
             return "nothing rewritten to align" if not bundle.plan.order else "a deck"
-        if not consistency.changes_content(bundle.request.instruction):
+        if not consistency.changes_content(_typed(bundle)):
             return "the instruction changes no fact"
         return ""
 
@@ -366,6 +431,8 @@ class Consistency(Base):
                     "type": "section", "sectionId": part.get("id"), "heading": part.get("heading"),
                     "content": part.get("content"), "done": True,
                 }
+        for event in _tidy_tables(bundle):
+            yield event
         bundle.findings.aligned = aligned
         yield aligned
 

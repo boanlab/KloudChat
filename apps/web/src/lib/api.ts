@@ -1512,6 +1512,10 @@ export interface SkillServerCatalogue {
   entries: Record<'pre' | 'post', ServerRef[]>
   scripts: ServerRef[]
   copyKinds: { kind: string; label: string }[]
+  /** Check skills a skill may attach while it is on. */
+  checks?: ServerRef[]
+  checkOptions?: { option: string; label: string }[]
+  gapDetectors?: { name: string; label: string }[]
 }
 
 export interface SkillReview {
@@ -1569,6 +1573,8 @@ export interface SkillRow {
   installs: number
   originId: string | null
   originOwnerName?: string
+  originOfficial?: boolean
+  edited?: boolean
   updatedAt: string
   /** Fixed scripts its package ships, run by `run_skill_script`. */
   scripts?: string[]
@@ -1683,6 +1689,7 @@ export interface AgentRow {
   systemPrompt: string
   tools: string[] | null
   skillIds: string[] | null
+  activeSkillIds?: string[]
   kinds: string[]
   surface: string | null
   renderTemplateId: string | null
@@ -1734,6 +1741,7 @@ export interface AgentRow {
 interface ConnectorToolRow {
   name: string
   description: string
+  summary?: string
   readOnly: boolean
   enabled: boolean
 }

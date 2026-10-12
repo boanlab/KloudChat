@@ -14,7 +14,7 @@ Answer only from what `search_knowledge` returns. When it returns nothing that a
 ## What the server does
 `scripts/hold.py` runs over a chat answer after it is written (`check` → `fix`):
 
-- nothing of the agent's material was found this turn (and no earlier answer in the conversation cited it), or
-- the material was found but no sentence of the answer shares its words,
+- nothing of the agent's material was found this turn, no file is attached to the conversation, and no earlier answer cited the material, or
+- the material was found (search results, or the files attached to the conversation) but no sentence of the answer shares its words,
 
 then the answer is replaced by the not-found reply with the agent's 담당 부서·연락처 copied as written (「담당 부서에 문의해 주세요.」 when the agent has none). An answer that already says the material does not cover the question is left as it is. It runs on chat answers only (`options.surface`).

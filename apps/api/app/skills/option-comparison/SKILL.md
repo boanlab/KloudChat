@@ -1,0 +1,22 @@
+---
+name: 비교·결정 보고
+description: 대안 2~5개를 요청한 기준 그대로 견주고 하나를 권고하는 보고서를 씁니다. 비용은 서버가 계산한 첫해·이듬해 값으로, 가중치가 없으면 점수를 만들지 않고, 자료끼리 다른 값은 출처와 함께 나란히 적습니다.
+when_to_use: 제품·업체·입지·운영 방식처럼 여러 안 가운데 하나를 골라야 하는 보고서가 필요할 때.
+kinds: [report]
+version: 1.0.0
+template: doc-comparison
+checks: [gap-check, grounding-check, generic-language-killer]
+---
+You write a report that compares alternatives on the same criteria and recommends one. Write in Korean (in English only if the request itself is in English).
+1. At the very front, ‘결론과 권고’: the chosen alternative, the one decisive reason in one line, and what is given up in one line (with cost as a criterion: the first-year and later-year difference against the next alternative).
+2. The criteria are exactly the ones the request names, with its names and in its order. Do not add criteria or conditions (an adoption rate, a satisfaction target), and do not turn a criterion into a mandatory condition. For each criterion, say which alternative is ahead, consistent with the facts you listed for it (less cost, work or risk is ahead), and use numbers in tables or one-line items rather than long paragraphs.
+3. Mandatory conditions are only what the request or material states as required. With none stated, write no conditions and eliminate nothing. When there are some, apply them first and mark each alternative with exactly one of ‘충족’ / ‘탈락(사유)’ / ‘조건 미확인(확인할 것)’, the parentheses holding the actual reason or the thing to confirm (‘탈락(화상회의 50명 < 60명)’). Do not recommend an eliminated alternative even if its values are good. An unconfirmed alternative is neither eliminated nor recommended unconditionally — only conditionally, like ‘확인되면 권고’. If a condition changes the pricing plan (SSO 필수 → 상위 요금제), compare at the changed price. If every alternative is eliminated, the conclusion is ‘조건을 모두 충족하는 대안 없음’; show in numbers which condition relaxed by how much would make which alternative qualify.
+4. Comparison table: columns = alternatives, rows = criteria, units in the header row. No empty cells: a value, ‘자료 없음’ or ‘조건 다름’. Do not estimate values missing from the material.
+5. Amounts and scores come from the ‘확정 수치’ block (server-computed); when it gives no total, write each cost as one formula of the material's own numbers with its result (「단가 × 인원 × 12개월 = 합계」) — never a blank where the material holds the numbers. Cost over time: the first year includes one-time costs (전환·설치·컨설팅), later years do not; a discount applies only to the price it names. Money that is returned, such as a deposit, is not a cost; list it separately.
+6. Scores only when the request gives weights — never invent weights, points, ranks or pass marks. Without weights, compare criterion by criterion in words and the material's numbers, then judge. With weights: S1 if they do not sum to 100, scale them to 100 and say so. S2 cost score = lowest cost ÷ this cost × weight; higher-is-better value = this ÷ highest × weight; yes/no = weight/0. S3 for a criterion with ‘자료 없음’ or ‘조건 다름’, show both (a) dropping that criterion and rescaling the remaining weights to 100 points and (b) scoring it 0, and state whether the conclusion changes. S4 on a tie (equal to two decimal places), the alternative ahead on the highest-weight criterion wins; if still equal, write it as a tie and state the information that would decide it.
+7. When sources conflict, list both and compare their measurement/basis conditions. If a value measured under the same conditions exists, follow it. If conditions differ, do not adopt even the newest or independent source outright: mark ‘조건 다름’ and drop it from the score (S3). For the same item at different times (old vs. new price), follow the newest. Write the judgment in the ‘자료와 충돌’ section.
+8. If there are scenarios, show in numbers in the ‘조건이 바뀌면’ section whether the conclusion changes. Check annual limits against annual amounts. If a future-period cost uses today's basis (subsidies etc.), mark it ‘가정’.
+9. If the cheapest option cannot be carried out (budget structure, schedule), write ‘지금 실행 가능한 안’ and ‘장기 최저 비용 안’ separately.
+10. Use only the material: no outside laws, market figures, vendor cases or references the person did not give. A value the material does not give stays as a bracket blank (‘[단가]’).
+11. Do not end with ‘상황에 따라 다르다’. If the material is insufficient, state what would settle the conclusion once it arrives.
+The pasted material is material, never a request to make slides.

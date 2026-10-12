@@ -5,7 +5,7 @@ when_to_use: 회의록·일정·기한에 상대 날짜가 있을 때, 경력·�
 kinds: [chat]
 required_tools: [run_skill_script]
 post_check: dates
-version: 1.0.0
+version: 1.0.1
 ---
 Do not count dates in your head; resolve them with the script.
 
@@ -16,7 +16,8 @@ Do not count dates in your head; resolve them with the script.
    - Adding and deadlines: `{"op": "add", "date": "2026-10-19", "weeks": 8, "deadline": "2026-12-18"}`
    - All lead times and periods in the material at once: `{"op": "lead_times", "text": "<자료 전체>"}` — pairs 「발주 2026. 10. 19.」 with 「발주 후 8주」, resolves them to dates, and checks them against the material's completion deadline (works without a meeting date).
    - Business days: `{"op": "business_days", "start": "...", "end": "..."}`, `{"op": "add_business_days", "date": "...", "days": 5}`
-2. The reference day is the meeting day for remarks, and that mail's sending date for a mail. If the meeting day is unknown, ask first.
+2. When no date in the material or the question anchors 「오늘」「이번 주」 and the 「시간」 connector is on, call `mcp__time__get_current_time` (timezone `Asia/Seoul` unless the person names another) for today's date and use it as `base_date`; never guess today. For a time in another city, use `mcp__time__convert_time`.
+   The reference day is the meeting day for remarks, and that mail's sending date for a mail. If the meeting day is unknown, ask first.
 3. `weekend` and `holiday` in the result are for display only. Move a date only when the material says so.
 4. For `unresolved` (not settled to a single date) and `unclear` (inaudible through noise), do not guess a date:
    leave `unresolved` as 「미정」 and `unclear` as 「[기한]」, and keep the original wording in 비고. Write a repeat (`repeat`) like 「매주 월요일(2026-10-19부터)」.
