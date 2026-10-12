@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime as dt
 import logging
 import re
@@ -1121,8 +1122,9 @@ class Figures(Base):
         figure_cap = min(5, max(diagrams.MAX_FIGURES, len(sections) // 2 + 1))
         # writer-placed (〔그림〕) first; planner only looks at sections with none
         drawn = 0
-        # drawn flowcharts: one figure per procedure
+        # drawn flowcharts: one figure per procedure; a numbered procedure shows every step
         flows: list[str] = []
+        steps = diagrams.given_steps(instruction_part(request))
         for index, section in enumerate(sections):
             marks = report.figure_marks(str(section.get("content") or ""))
             for mark in marks:
@@ -1142,7 +1144,8 @@ class Figures(Base):
                         diagrams.Planned(index, mark["kind"], mark["description"],
                                          mark["caption"], context=content,
                                          document="\n\n".join(
-                                             str(s.get("content") or "") for s in sections)),
+                                             str(s.get("content") or "") for s in sections),
+                                         steps=steps),
                         model=req.model, api_key=req.api_key, slide=False,
                     )
                 except Exception as exc:  # noqa: BLE001 — the text stands without its figure
@@ -1191,7 +1194,8 @@ class Figures(Base):
         )
         _count(bundle, spent)
         # one figure per procedure: the writer's own flow is not drawn again
-        planned = diagrams.drop_repeated_flows(planned, flows)
+        planned = [dataclasses.replace(row, steps=steps) if row.figure == "flow" else row
+                   for row in diagrams.drop_repeated_flows(planned, flows)]
         if not planned:
             log.info("report figures: none planned for %d eligible sections", len(eligible))
         for row in planned:

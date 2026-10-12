@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import re
@@ -3218,6 +3219,10 @@ async def _draw_figures(
     )
     usage["inputTokens"] += spent["inputTokens"]
     usage["outputTokens"] += spent["outputTokens"]
+    # a numbered procedure in the request: its flow shows every step
+    steps = diagrams.given_steps(request)
+    planned = [dataclasses.replace(row, steps=steps) if row.figure == "flow" else row
+               for row in planned]
     if not planned:
         log.info("deck figures: none planned for %d eligible slides", len(eligible))
     for row in planned:
