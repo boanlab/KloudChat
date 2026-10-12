@@ -461,7 +461,9 @@ interface State {
   setImageOptions: (patch: Partial<State['imageOptions']>) => void
   /** Text to drop into the composer; never sent on the user's behalf. */
   draft: string
-  setDraft: (text: string) => void
+  /** The composer `draft` is for (`composerKey`); null: whichever is mounted. */
+  draftTo: string | null
+  setDraft: (text: string, to?: string | null) => void
   /** Where an opened artifact should land: its review pane, a slide, an earlier version. Read once by the panel. */
   artifactIntent: ArtifactIntent | null
   /** Opens the panel on `id` and hands it `intent`. */
@@ -469,7 +471,9 @@ interface State {
   clearArtifactIntent: () => void
   /** Form file a picked template carries to the composer. Consumed once. */
   pendingAttachment: FileRow | null
-  setPendingAttachment: (file: FileRow | null) => void
+  /** The composer `pendingAttachment` is for (`composerKey`); null: whichever is mounted. */
+  pendingAttachmentTo: string | null
+  setPendingAttachment: (file: FileRow | null, to?: string | null) => void
   /** A refused turn's draft, addressed to the session it was sent to; the sending composer may already be unmounted. */
   composerRestore: {
     sessionId: string | null
@@ -805,7 +809,7 @@ function disarmIdleWatch() {
 
 /** A prompt sent to a job surface through chat goes back to the composer, where its options live. */
 function handToTheComposer(set: Set, text: string) {
-  set({ draft: text })
+  set({ draft: text, draftTo: null })
 }
 
 /** Remembered pick if still served on the surface, else surface/instance default, else cheapest; storage untouched. */
@@ -842,6 +846,14 @@ function reconcileDefaults(
 }
 
 /** The model a turn will run on: session, then agent, then surface default (turn overrides excluded). */
+/**
+ * Which composer a hand-off is for: the conversation's id, or `new:<kind>` before it exists.
+ * Navigation renders as a transition, so the composer being left still sees the store first.
+ */
+export function composerKey(sessionId: string | null, kind: SessionKind): string {
+  return sessionId ?? `new:${kind}`
+}
+
 export function effectiveModelId(
   session: Pick<Session, 'model' | 'agentId'> | undefined,
   kind: SessionKind,
@@ -1004,7 +1016,7 @@ export const useStore = create<State>((set, get) => ({
     purgeUnsent(get().user?.id)
     set((state) => ({ accountEpoch: state.accountEpoch + 1,
       messageEdit: null, messageEditBusy: false, composerRestore: null,
-      pendingAttachment: null, draft: '' }))
+      pendingAttachment: null, pendingAttachmentTo: null, draft: '', draftTo: null }))
     try {
       await auth.logout()
     } catch {
@@ -2116,9 +2128,11 @@ export const useStore = create<State>((set, get) => ({
   imageOptions: { aspect: '16:9', style: '자동', labels: 'auto', count: 1 },
   setImageOptions: (patch) => set((s) => ({ imageOptions: { ...s.imageOptions, ...patch } })),
   draft: '',
-  setDraft: (draft) => set({ draft }),
+  draftTo: null,
+  setDraft: (draft, to = null) => set({ draft, draftTo: to }),
   pendingAttachment: null,
-  setPendingAttachment: (pendingAttachment) => set({ pendingAttachment }),
+  pendingAttachmentTo: null,
+  setPendingAttachment: (pendingAttachment, to = null) => set({ pendingAttachment, pendingAttachmentTo: to }),
   artifactIntent: null,
   openArtifactAt: (id, intent) => {
     set({ artifactIntent: { ...intent, artifactId: id, nonce: Date.now() } })

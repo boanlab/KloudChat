@@ -37,7 +37,7 @@ import { useNavigate } from 'react-router-dom'
 import { agentStartKind, distinctAgents, kindMeta } from '@/lib/kinds'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import { ChatSendRecoveryError, FIGURE_STYLES, effectiveModelId, useStore } from '@/store/useStore'
+import { ChatSendRecoveryError, FIGURE_STYLES, composerKey, effectiveModelId, useStore } from '@/store/useStore'
 import type { ModelInfo, PrivacyAction, SessionKind, Skill } from '@/types'
 import { servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
@@ -348,7 +348,7 @@ const editBackups = new Map<string, ComposerSnapshot>()
 
 // Unsent text by session id (or `new:<kind>`), mirrored to per-account storage; memory alone when storage is unavailable.
 const drafts = new Map<string, string>()
-const draftKeyFor = (sessionId: string | null, kind: SessionKind) => sessionId ?? `new:${kind}`
+const draftKeyFor = composerKey
 const draftStore = {
   /** Memory first; one storage read per key, misses cached as '' so list renders stay cheap. */
   get(key: string): string | undefined {
@@ -465,12 +465,14 @@ export function Composer({
   const restoreSequence = useRef(0)
   const activeRestoreToken = useRef<number | null>(null)
 
-  const draft = useStore((s) => s.draft)
+  // A hand-off addressed to another composer (the one a navigation is opening) waits for it.
+  const draft = useStore((s) => (s.draftTo === null || s.draftTo === draftKey ? s.draft : ''))
   const setDraft = useStore((s) => s.setDraft)
   // Gallery sentence appended, never overwriting, and selected for one-keystroke removal; selection applied after commit.
   const pendingSelection = useRef<[number, number] | null>(null)
   useEffect(() => {
-    if (!draft) return
+    // Taken once: StrictMode replays a mount's effects with the render's (already consumed) value.
+    if (!draft || useStore.getState().draft !== draft) return
     activeRestoreToken.current = null
     const kept = liveValue.current.replace(/\s*$/, '')
     const next = kept ? `${kept}\n\n${draft}` : draft
@@ -545,7 +547,8 @@ export function Composer({
   const [modelSelectionPending, setModelSelectionPending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   // A form a picked template brought with it; taken once and cleared.
-  const pendingAttachment = useStore((s) => s.pendingAttachment)
+  const pendingAttachment = useStore((s) =>
+    s.pendingAttachmentTo === null || s.pendingAttachmentTo === draftKey ? s.pendingAttachment : null)
   const pendingTemplate = useStore((s) => s.pendingTemplate)
   const setPendingTemplate = useStore((s) => s.setPendingTemplate)
   const livePendingTemplate = useRef(pendingTemplate)

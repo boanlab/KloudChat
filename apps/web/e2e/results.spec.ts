@@ -24,6 +24,12 @@ async function closePanel(page: Page) {
 
 const menu = (page: Page) => page.locator('[role="menu"]:visible').first()
 
+/** The address moves before the new screen renders (a transition); until then the old box is still on screen. */
+async function onNewScreen(page: Page) {
+  await expect(page.getByRole('heading', { level: 1, name: /안녕하세요/ })).toBeVisible()
+  await expect(page.getByTestId('transcript')).toHaveCount(0)
+}
+
 test('the answer that wrote the report carries its card; the question card does not', async ({ page }, testInfo) => {
   const recorded = await resultsFixture(page, testInfo)
   await openSession(page, reportSession)
@@ -92,10 +98,15 @@ test('「이걸로 새로 시작」 attaches the document to a new report with t
   await shot(page, 'reuse-menu', testInfo.project.name)
   await menu(page).getByRole('menuitem', { name: '이걸로 새로 시작' }).click()
   await expect(page).toHaveURL(/\/new\/report$/)
+  await onNewScreen(page)
   expect(recorded.exports).toEqual(['report:md'])
   expect(recorded.uploads).toEqual([`${reportTitle}.md`])
   await expect(page.getByText(`${reportTitle}.md`).first()).toBeVisible()
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue(`「${reportTitle}」 내용을 바탕으로 새 보고서를 써 주세요.`)
+  // The conversation left behind did not keep the request as its own draft.
+  await page.goBack()
+  await expect(page.getByTestId('transcript')).toBeVisible()
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
 })
 
 test('「새 대화에 첨부」 attaches the deck and leaves the box to the person', async ({ page }, testInfo) => {
@@ -105,6 +116,7 @@ test('「새 대화에 첨부」 attaches the deck and leaves the box to the per
   await card(page).getByRole('button', { name: '더보기' }).click()
   await menu(page).getByRole('menuitem', { name: '새 대화에 첨부' }).click()
   await expect(page).toHaveURL(/\/new\/slides$/)
+  await onNewScreen(page)
   expect(recorded.exports).toEqual(['deck:md'])
   expect(recorded.uploads).toEqual([`${deckTitle}.md`])
   await expect(page.getByText(`${deckTitle}.md`).first()).toBeVisible()
@@ -129,7 +141,9 @@ test('the 아티팩트 page offers the same reuse', async ({ page }, testInfo) =
   await expect(menu(page).getByRole('menuitem', { name: '이걸로 새로 시작' })).toBeVisible()
   await menu(page).getByRole('menuitem', { name: '새 대화에 첨부' }).click()
   await expect(page).toHaveURL(/\/new\/report$/)
+  await onNewScreen(page)
   expect(recorded.uploads).toEqual([`${reportTitle}.md`])
+  await expect(page.getByText(`${reportTitle}.md`).first()).toBeVisible()
 })
 
 test('a shared conversation shows the card with nothing to change it', async ({ page }, testInfo) => {

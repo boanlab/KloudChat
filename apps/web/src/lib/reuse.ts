@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { csvSource, htmlIsDeck } from '@/components/artifacts/artifactExport'
 import { errorMessage, fetchArtifactExport, filesApi } from '@/lib/api'
 import { currentLang, translate } from '@/lib/i18n'
-import { useStore } from '@/store/useStore'
+import { composerKey, useStore } from '@/store/useStore'
 import type { Artifact, SessionKind } from '@/types'
 
 const tr = (text: string) => translate(currentLang(), text)
@@ -61,7 +61,9 @@ export function useReuseArtifact() {
       const wanted = sameKind(artifact, templateKind)
       const kind = enabledKinds.includes(wanted) ? wanted : 'chat'
       openArtifact(null)
-      setPendingAttachment(row)
+      // Addressed to the new conversation's box: the one being left would otherwise take them first.
+      const to = composerKey(null, kind)
+      setPendingAttachment(row, to)
       if (how === 'restart') {
         setDraft(
           (kind === 'slides'
@@ -70,6 +72,7 @@ export function useReuseArtifact() {
               ? tr('「{title}」 내용을 바탕으로 새 보고서를 써 주세요.')
               : tr('「{title}」 내용을 바탕으로 새로 써 주세요.')
           ).replace('{title}', artifact.title),
+          to,
         )
       }
       navigate(`/new/${kind}`)
