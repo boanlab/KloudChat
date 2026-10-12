@@ -1392,12 +1392,44 @@ def _reads_pasted_material(content: str) -> bool:
 
     if pasted_material(content):
         return not _asks_about_now(instruction_part(content))
+    head = (content or "").partition("\n\n")[0]
+    return _memo_pasted(content) and not _asks_about_now(head)
+
+
+def _memo_pasted(content: str) -> bool:
+    """A short ask, a blank line, then a memo or document of the person's."""
     head, gap, rest = (content or "").partition("\n\n")
     lines = [line for line in rest.splitlines() if line.strip()]
     looks_pasted = len(rest.strip()) >= 120 and (
         len(lines) >= 3 or bool(re.match(r"[\[#|「<]", rest.lstrip()))
         or bool(_DRAFTS.search(head)))
-    return bool(gap) and len(head) <= 300 and looks_pasted and not _asks_about_now(head)
+    return bool(gap) and len(head) <= 300 and looks_pasted
+
+
+#: Context blocks holding the person's own material (files, project knowledge).
+_MATERIAL_BLOCKS = frozenset({"attachment", "attachment.earlier", "project.knowledge"})
+
+
+def _carries_material(workspace: WorkspaceContext) -> bool:
+    """Whether the turn reads attached, carried or project-file text."""
+    return any(block.source in _MATERIAL_BLOCKS and block.text.strip()
+               for block in workspace.blocks)
+
+
+def _pasted_in(turns: list[dict]) -> bool:
+    """Whether the person pasted material into the conversation (`turns`: theirs, no envelope)."""
+    from app.services.context import pasted_material
+
+    return any(pasted_material(text) or _memo_pasted(text)
+               for one in turns if one.get("role") == "user"
+               for text in (_material_text([one]),))
+
+
+def _traced(keys: tuple[str, ...], material: bool) -> tuple[str, ...]:
+    """Check skills with the grounding check added on the person's material."""
+    from app.pipeline.check_stages import TRACE
+
+    return (*keys, TRACE) if material and TRACE not in keys else tuple(keys)
 
 
 def _grounded_in_files(workspace: WorkspaceContext) -> bool:
@@ -4419,6 +4451,9 @@ async def send_message(
                 },
             )
 
+    # the person's files or pasted material: what the answer or document is traced to
+    material_turn = _carries_material(workspace) or _pasted_in(wire_history)
+
     if user_pipe is not None and route in ("report", "chat"):
         # person's own pipeline runs or resumes the turn (`user_pipelines`)
         outbound = content
@@ -4449,7 +4484,7 @@ async def send_message(
                     image_model=image_model,
                     template=render_template,
                     format_id=workspace.doc_format,
-                    check_keys=check_keys,
+                    check_keys=_traced(check_keys, material_turn),
                     check_options=check_options,
                     skill_specs=specs,
                     process=agent_row.process_settings if agent_row is not None else None,
@@ -4499,6 +4534,7 @@ async def send_message(
             _survive_disconnect(
                 _run_deck(
                     template=render_template,
+                    traced=material_turn,
                     may_ask=not proceed_as_is and not _brings_material(content),
                     figures_plan=approved_figures,
                     image_model=image_model,
@@ -4712,6 +4748,7 @@ async def send_message(
                 check_material="\n".join([*workspace.untrusted, *(
                     [agent_row.contact] if agent_row is not None and agent_row.contact.strip()
                     else [])]),
+                carries_material=material_turn,
                 agent_key=agent_key or "",
                 calculation_required=calculation_required,
                 # calculator-skipping writer hands off to the outline model
@@ -5129,6 +5166,8 @@ async def _answer_turn(
     check_options: dict | None = None,
     #: attached/carried file text: also a valid value source
     check_material: str = "",
+    #: turn reads files, project knowledge or pasted material: the answer is traced to them
+    carries_material: bool = False,
     #: catalogue agent key: which pipeline finishes the answer
     agent_key: str = "",
 ) -> AsyncIterator[str]:
@@ -5378,7 +5417,7 @@ async def _answer_turn(
             material=_material_text(messages), check_keys=check_keys,
             check_material=check_material, tool_outputs=list(ctx.outputs), judge=judge_model,
             kept_steps=steps, usage=usage, skill_keys=skill_keys, check_options=check_options,
-            skill_specs=skill_specs,
+            skill_specs=skill_specs, traced=carries_material,
         )
         pipe = pipeline_registry.for_chat(agent_key)
         runner = PipelineRunner(pipe.stages("finish"), name=f"{pipe.name}.finish")
@@ -6084,6 +6123,8 @@ async def _run_deck(
     *,
     #: deck template: planner rules, `look` face, id for export
     template: design_templates.DesignTemplate | None = None,
+    #: the person's files or pasted material: slide values are traced to them
+    traced: bool = False,
     outline_model: dict | None = None,
     #: `None` plans and offers; otherwise written as approved
     approved_plan: dict | None = None,
@@ -6131,7 +6172,7 @@ async def _run_deck(
         "user_id": user_id, "model": model, "outline_model": outline_model,
         "project_id": project_id, "routing": routing, "skills_event": skills_event,
         "context_steps": list(context_steps or []), "carry_from": carry_from,
-        "carry_note": carry_note,
+        "carry_note": carry_note, "traced": traced,
         "writer": {
             "web_search": web_search, "figures_plan": figures_plan, "image_model": image_model,
             "request": request, "approved_plan": approved_plan, "may_ask": may_ask,

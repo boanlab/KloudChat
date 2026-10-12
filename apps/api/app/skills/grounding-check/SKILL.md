@@ -17,6 +17,8 @@ Check the values in the finished text against the material. Do not judge in your
    - For a data-analysis answer, `"bare": true, "numbers": "computed"` — numbers come only from execution results.
    - For career documents, `"titles": true, "products": true` — job titles and tool names are checked too.
    - `"today": "YYYY-MM-DD"` counts as grounds only when the request said 「오늘」.
+   - `"requirements": true` — a sentence telling the reader to bring or hand in an item (「신분증 지참」 「노트북을 가져오세요」)
+     the material never names is dropped. The server sets it on chat answers.
 2. The result's `text` is the corrected text. Ungrounded values become 「[수치]」「[일자]」「[시기]」「[시각]」「[이름]」
    「[기관명]」「[직함]」「[제품명]」, and sentences saying work was done with a tool that the material lists only as a skill are dropped.
 3. What counts as grounds: values written in the request, material or user answers; values computed by code; simple calculations among those values
@@ -33,10 +35,12 @@ Check the values in the finished text against the material. Do not judge in your
 
 - `check(text, material, computed=None, options=None) -> list[dict]` — each finding is
   `{"kind", "text", "line", "start", "end", "placeholder"}`. `line` is the line number when `text` is split on `\n`;
-  `start` and `end` are positions within that line. `kind` is `number·date·month·time·person·org·title·product·claim`.
-- `fix(text, findings) -> str` — turns findings into blanks (values) or drops the whole sentence (claim, a sentence holding only invented values).
+  `start` and `end` are positions within that line. `kind` is `number·date·month·time·person·org·title·product·claim·requirement`.
+- `fix(text, findings) -> str` — turns findings into blanks (values) or drops the whole sentence (claim, requirement, a sentence holding only invented values).
 - `summary(findings) -> str` — one line for the step record: 「근거 없는 값 3개 → 빈칸 (수치 2 · 시기 1): …」.
 - CLI: `python trace.py '<JSON>'` — `op` is `check`, `fix` or `repair`; the last line is the result JSON.
 
 For an attached agent (`checks` in `agents/*.toml`) or format (`check_skills` in `template.toml`), once writing
 is done the server runs `check` → `fix` once, then `check` again, and writes what remains to the step.
+A chat answer on the person's own material (attached or earlier files, project files, pasted material) gets the
+same pass with no agent attached; a turn without material is left alone.

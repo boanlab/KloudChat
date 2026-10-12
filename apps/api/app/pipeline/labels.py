@@ -48,6 +48,7 @@ LABELS: dict[str, str] = {
     "export": "파일 만들기",
     "deck-write": "슬라이드 쓰기",
     "deck-carry": "그대로 둘 슬라이드",
+    "deck-ground": "근거 확인",
     "deck-save": "저장",
     "page-write": "페이지 쓰기",
     "page-save": "저장",

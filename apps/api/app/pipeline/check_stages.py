@@ -127,7 +127,8 @@ class GroundCheck(Base):
     def skip(self, bundle: Bundle) -> str:
         if not bundle.material.given.strip():
             return "no material to trace against"
-        if not bundle.spec.format_id:
+        if not bundle.spec.format_id and not check_skills.of_stage(
+                tuple(bundle.findings.check_keys), "post", bundle.request.skill_specs):
             return "no document format"
         return ""
 
@@ -147,6 +148,16 @@ class GroundCheck(Base):
 
 
 
+#: Check every chat turn on the person's material runs, agent or not.
+TRACE = "grounding-check"
+
+
+def answer_checks(req) -> tuple[str, ...]:
+    """Attached `post` checks; on the person's material the grounding check too."""
+    keys = tuple(req.check_keys or ())
+    return (*keys, TRACE) if req.traced and TRACE not in keys else keys
+
+
 class AnswerGrounding(Base):
     """Answer values traced to person's input or tool output; the rest → bracket blanks."""
 
@@ -156,18 +167,19 @@ class AnswerGrounding(Base):
     writes = ("document.answer", "document.kept_steps")
 
     def skip(self, bundle: Bundle) -> str:
-        return "" if bundle.request.check_keys else "no check skills attached"
+        return "" if answer_checks(bundle.request) else "no material and no check skills"
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         req = bundle.request
         traced = check_skills.ground(
-            tuple(req.check_keys or ()), bundle.document.answer,
+            answer_checks(req), bundle.document.answer,
             material=f"{bundle.material.given}\n{req.check_material}",
             computed=[*req.tool_outputs, *(str(m.get("content") or "") for m in req.messages
                                            if m.get("role") == "assistant")],
             options={**check_skills.options_for(req.today, req.check_options, surface="chat"),
                      "person": "\n".join([bundle.material.given, req.check_material,
-                                          *req.tool_outputs])},
+                                          *req.tool_outputs]),
+                     "requirements": True},
             specs=req.skill_specs,
         )
         if not traced.found:
@@ -269,7 +281,106 @@ class SkillChecks(Base):
         yield {"type": "step", **step}
 
 
+#: Slide fields holding words: a string, a list of strings, or rows of strings.
+_SLIDE_TEXT = ("title", "subtitle", "body", "bullets", "left", "right", "cards", "steps", "bands",
+               "tiles", "timeline", "rows", "metrics", "notes")
+
+
+def _slide_leaves(slide: dict) -> list[tuple[tuple, str]]:
+    """(path, text) of each word-bearing value on a slide."""
+    out: list[tuple[tuple, str]] = []
+    for key in _SLIDE_TEXT:
+        value = slide.get(key)
+        if isinstance(value, str):
+            out.append(((key,), value))
+        elif isinstance(value, list):
+            for i, item in enumerate(value):
+                if isinstance(item, str):
+                    out.append(((key, i), item))
+                elif isinstance(item, list):
+                    out += [((key, i, j), cell) for j, cell in enumerate(item)
+                            if isinstance(cell, str)]
+    return out
+
+
+def ground_slides(slides: list[dict], *, material: str, computed: list[str],
+                  options: dict) -> tuple[list[dict], list[dict]]:
+    """Slides with unsourced values blanked (one trace over the deck); the findings."""
+    module = check_skills.entry(TRACE)
+    leaves = [(n, path, text) for n, slide in enumerate(slides)
+              for path, text in _slide_leaves(slide)]
+    lines: list[str] = []
+    spans: list[tuple[int, int]] = []
+    for _, _, text in leaves:
+        parts = text.split("\n")
+        spans.append((len(lines), len(parts)))
+        lines += parts
+    found = module.check("\n".join(lines), material, computed, options)
+    if not found:
+        return slides, []
+    out = [dict(slide) for slide in slides]
+    dropped: dict[tuple[int, str], set[int]] = {}
+    for (n, path, text), (first, count) in zip(leaves, spans, strict=True):
+        mine = [{**f, "line": f["line"] - first} for f in found
+                if first <= f["line"] < first + count]
+        if not mine:
+            continue
+        fixed = module.fix(text, mine)
+        slide, key = out[n], path[0]
+        if len(path) == 1:
+            # a title or body emptied whole keeps its words; its values are blanked in place
+            slide[key] = fixed if fixed.strip() else text
+        elif len(path) == 2:
+            items = slide[key] = list(slide[key])
+            items[path[1]] = fixed
+            if not fixed.strip():
+                dropped.setdefault((n, key), set()).add(path[1])
+        else:
+            rows = slide[key] = [list(row) if isinstance(row, list) else row for row in slide[key]]
+            rows[path[1]][path[2]] = fixed
+    for (n, key), gone in dropped.items():
+        out[n][key] = [item for i, item in enumerate(out[n][key]) if i not in gone]
+    return out, found
+
+
+class DeckGrounding(Base):
+    """Slide values traced to the person's material and code results; the rest → blanks."""
+
+    name = "deck-ground"
+    kind = "check"
+    reads = ("request", "computed.values", "document.sections")
+    writes = ("document.sections",)
+
+    def skip(self, bundle: Bundle) -> str:
+        if not bundle.request.turn.get("traced"):
+            return "no material of the person's on this turn"
+        if not bundle.document.sections:
+            return "no slides"
+        return ""
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        req = bundle.request
+        writer = req.turn.get("writer") or {}
+        material = "\n".join([req.text, *(writer.get("untrusted_context") or [])])
+        today = dt.datetime.now(ZoneInfo(settings.timezone)).date()
+        options = {**check_skills.options_for(today, surface="deck"), "person": material,
+                   "requirements": True}
+        before = bundle.document.sections
+        slides, found = ground_slides(
+            before, material=material, computed=[bundle.computed.values or ""], options=options)
+        if not found:
+            return
+        bundle.document.sections = slides
+        step = {"category": "thinking", "id": "grounding",
+                "label": f"근거 없는 값 {len(found)}개 → 빈칸", "status": "done",
+                "detail": check_skills.entry(TRACE).summary(found)[:1500]}
+        yield {"type": "step", **step}
+        for old, new in zip(before, slides, strict=True):
+            if old != new:
+                yield {"type": "slide", "slide": new, "done": True}
+
+
 for _stage in (GapCheck(), GapCard(), GroundCheck("check:grounding", again=False),
                GroundCheck("check:grounding-again", again=True), AnswerGrounding(), CopyCheck(),
-               SkillChecks()):
+               SkillChecks(), DeckGrounding()):
     registry.register(_stage)
