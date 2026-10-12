@@ -406,6 +406,69 @@ def find(text: str, base: dt.date, *, absolute: bool = True,
     return found
 
 
+#: 「개강일부터 5일간(수업일 기준)」: a run of days from a named event
+_SPAN = re.compile(
+    rf"(?P<event>{_EVENT})\s{{0,2}}(?:부터|로부터|에서)\s{{0,2}}(?P<n>\d{{1,2}})\s{{0,2}}"
+    r"(?P<unit>수업일|영업일|근무일|평일|일)\s{0,2}(?:간|동안)")
+#: 「개강 후 8주차 월요일부터 3일간」: a weekday of the event's n-th week
+_ORDINAL = re.compile(
+    rf"(?P<event>{_EVENT})\s{{0,2}}(?:후|이후|부터|기준)?\s{{0,2}}(?P<n>\d{{1,2}})\s{{0,2}}주\s{{0,2}}차"
+    r"\s{0,2}(?P<wd>[월화수목금토일])요일"
+    r"(?:\s{0,2}(?:부터|에서)\s{0,2}(?P<m>\d{1,2})\s{0,2}(?P<unit>수업일|영업일|근무일|평일|일)"
+    r"\s{0,2}(?:간|동안))?")
+#: days that skip weekends and holidays
+_CLASS_DAYS = re.compile(
+    r"수업일|영업일|근무일|평일|주말\s{0,2}(?:과|및|·)?\s{0,2}(?:공휴일\s{0,2})?(?:은\s{0,2})?"
+    r"(?:제외|빼고|포함\s{0,2}(?:아님|안|하지|않))")
+_LABEL = re.compile(r"^\s{0,4}(?:[-*•·]\s{0,2})?(?P<label>[^:：\n]{1,30}?)\s{0,2}[:：]")
+
+
+def _run_end(start: dt.date, days: int, class_days: bool) -> tuple[dt.date, dt.date]:
+    """First and last day of a run of `days` days from `start`; class days skip weekends and
+    holidays and begin on the first such day."""
+    if not class_days:
+        return start, start + dt.timedelta(days=days - 1)
+    while not is_business_day(start):
+        start += dt.timedelta(days=1)
+    return start, add_business_days(start, days - 1)
+
+
+def spans(text: str, base: dt.date) -> list[dict]:
+    """Runs of days and n-th-week days counted from an event the text dates: 「개강일부터 5일간
+    (수업일 기준)」 → 3/2–3/8, 「개강 후 8주차 월요일부터 3일간」 → 4/19–4/21."""
+    events = named_dates(text, base)
+    out: list[dict] = []
+    for line in (text or "").splitlines():
+        label = m.group("label").strip() if (m := _LABEL.match(line)) else ""
+        class_days = bool(_CLASS_DAYS.search(line))
+        for m in _SPAN.finditer(line):
+            name = _event(m.group("event"))
+            if name not in events or _NOT_EVENT.match(name):
+                continue
+            school = class_days or m.group("unit") != "일"
+            start, end = _run_end(events[name], int(m.group("n")), school)
+            out.append({"kind": "span", "label": label, "text": m.group(0), "anchor": name,
+                        "start": start.isoformat(), "end": end.isoformat(),
+                        "class_days": school, "source_line": line.strip()[:300]})
+        for m in _ORDINAL.finditer(line):
+            name = _event(m.group("event"))
+            if name not in events or _NOT_EVENT.match(name):
+                continue
+            day = events[name]
+            monday = day - dt.timedelta(days=day.weekday())
+            start = monday + dt.timedelta(weeks=int(m.group("n")) - 1,
+                                          days=WEEKDAYS.index(m.group("wd")))
+            end = start
+            if m.group("m"):
+                school = class_days or m.group("unit") != "일"
+                start, end = _run_end(start, int(m.group("m")), school)
+            out.append({"kind": "ordinal", "label": label, "text": m.group(0), "anchor": name,
+                        "start": start.isoformat(), "end": end.isoformat(),
+                        "class_days": bool(m.group("m")) and (class_days or m.group("unit") != "일"),
+                        "source_line": line.strip()[:300]})
+    return out
+
+
 def resolve(text: str, base: dt.date) -> dict:
     """One expression: the first date it states, or why it states none."""
     found = find(text, base)
@@ -685,6 +748,11 @@ def post(text: str, args: dict) -> dict:
         worked += [r for r in find(text, today, anchors=stated, named={})
                    if r["kind"] == "offset" and r.get("anchor") and r.get("status") == "ok"
                    and r["date"] not in stated]
+    # 「개강일부터 5일간(수업일 기준)」: a run's first and last day
+    for run in spans(source, today):
+        for edge, day in (("시작", run["start"]), ("끝", run["end"])):
+            worked.append({**_dated(dt.date.fromisoformat(day)), "kind": run["kind"],
+                           "text": f"{run['text']}({edge})", "anchor": run["anchor"]})
     if not worked or not text:
         return out
     expected = {r["date"]: r for r in worked}
@@ -711,10 +779,11 @@ def post(text: str, args: dict) -> dict:
         start, end = row["at"], row["at"] + len(row["text"])
         written = text[start:end]
         fixed = _redate(written, day, new)
-        tail = re.match(r"\s{0,2}\(\s{0,2}[월화수목금토일](?:요일)?\s{0,2}\)", text[end:])
+        # 「2027. 3. 5.(금)」: the closing dot before the weekday kept
+        tail = re.match(r"(\.?)\s{0,2}\(\s{0,2}[월화수목금토일](?:요일)?\s{0,2}\)", text[end:])
         if tail:
             end += tail.end()
-            fixed += f"({WEEKDAYS[new.weekday()]})"
+            fixed += f"{tail.group(1)}({WEEKDAYS[new.weekday()]})"
         out["fixed"].append({"kind": "date", "text": text[start:end],
                              "why": f"{expected[near[0]]['text']} → {iso_weekday(new)}"})
         text = text[:start] + fixed + text[end:]

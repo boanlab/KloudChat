@@ -23,6 +23,7 @@ from app.services import (
     calc,
     check_skills,
     checks,
+    date_rules,
     design,
     design_templates,
     diagrams,
@@ -717,14 +718,20 @@ class WriterNotes(Base):
     """Settled and conflicting figures in front of the writer."""
 
     name = "writer-notes"
-    reads = ("computed.settled", "computed.conflicts", "computed.prepass", "spec.format_id")
+    reads = ("request", "material.given", "computed.settled", "computed.conflicts",
+             "computed.prepass", "spec.format_id")
     writes = ("material.parts",)
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         mat, com = bundle.material, bundle.computed
         if com.settled:
             mat.parts = [Part(key_figures.block(com.settled), "settled"), *mat.parts]
-        if com.settled or (com.prepass is not None and com.prepass.blocks):
+        # dates the request's own rules settle (「개시 30일 전」, 「개강일부터 5일간」), by code
+        dated = date_rules.block(bundle.request.text, mat.given,
+                                 dt.datetime.now(ZoneInfo(settings.timezone)).date())
+        if dated:
+            mat.parts = [Part(dated, "prepass"), *mat.parts]
+        if com.settled or dated or (com.prepass is not None and com.prepass.blocks):
             # writer notes; block names never reach the page
             mat.parts = [*mat.parts, Part(internal_words.WRITER_NOTE, "note")]
             log.info("settled figures: %s", [(f.name, f.value) for f in com.settled])
