@@ -437,7 +437,8 @@ async def run(
     )
     hit_lists = list(hit_lists)
     if korean_hits:
-        queries, hit_lists = [*queries, korean_query], [*hit_lists, korean_hits]
+        # first lane: judged within the candidate cap and picked first each round
+        queries, hit_lists = [korean_query, *queries], [korean_hits, *hit_lists]
 
     # Per-query filter and rank before fetch; round-robin, one per publisher/URL.
     sources: list[dict[str, Any]] = []
