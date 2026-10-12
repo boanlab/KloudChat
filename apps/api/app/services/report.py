@@ -447,7 +447,39 @@ def material_complete(request: str, format_id: str | None, *, has_files: bool = 
         # priced options decided as given; unpriced ones still looked up
         priced = len(_MONEY.findall(request)) >= 2
         return has_files or (priced and _carries_material(request))
-    return named and (has_files or _carries_material(request))
+    if named and (has_files or _carries_material(request)):
+        return True
+    # any other work document built on attached files or a given memo, nothing to look up
+    if (format_id or "") in _RESEARCH_FORMATS and not _FORM_GENRES.search(instruction):
+        return False
+    return (has_files or _given_memo(instruction)) and not _LOOKS_UP.search(_ask_lines(instruction))
+
+
+#: formats that cite outside work even with a memo
+_RESEARCH_FORMATS = frozenset({"plan", "paper", "term", "review", "lab", "proposal"})
+#: forms and notices: the person's facts only
+_FORM_GENRES = re.compile(r"IRB|심의|신청서|공고|공지|안내|FAQ|자주\s{0,2}묻는|가이드|매뉴얼", re.I)
+#: asks for outside facts
+_LOOKS_UP = re.compile(
+    r"조사|동향|사례|검색|찾아|최신|트렌드|벤치마킹|국내외|해외|다른\s{0,2}(?:대학|기관|학교|회사)"
+    r"|타\s{0,2}(?:대학|기관|학교|사)|통계|법령|근거\s{0,2}자료")
+#: 「항목: 값」 line, bulleted or not
+_KEY_VALUE = re.compile(
+    r"^[ \t]{0,8}(?:[-*•·□○◦▪]\s{0,2}|\d{1,2}[.)]\s{0,2})?[가-힣A-Za-z][^:：\n]{0,24}[:：]\s{0,2}\S",
+    re.M)
+
+
+def _given_memo(instruction: str) -> bool:
+    """The facts come with the request: 3+ 「항목: 값」 lines or 3+ numbered steps."""
+    return (len(_KEY_VALUE.findall(instruction)) >= 3
+            or len(re.findall(r"[①-⑳]", instruction)) >= 3)
+
+
+def _ask_lines(instruction: str) -> str:
+    """The instruction's own lines, memo lines left out."""
+    return "\n".join(line for line in instruction.splitlines()
+                     if line.strip() and not _KEY_VALUE.match(line)
+                     and not re.match(r"^\s{0,8}[-*•·□○◦▪]\s", line))
 
 
 _SCHOLARLY_DOC = re.compile(
