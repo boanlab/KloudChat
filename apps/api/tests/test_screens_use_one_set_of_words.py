@@ -19,7 +19,7 @@ import pytest
 
 from app.pipeline import labels
 from app.services import report_checks
-from tests.test_the_app_does_not_narrate_its_own_changes import _without_comments
+from test_the_app_does_not_narrate_its_own_changes import _without_comments
 
 _REPO = Path(__file__).resolve().parents[3]
 _WEB = _REPO / "apps/web/src"
