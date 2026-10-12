@@ -74,6 +74,11 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
   const top = Math.ceil(hi / step) * step || step
   const bottom = Math.floor(lo / step) * step
 
+  const marks = Array.isArray(chart.marks) ? chart.marks : []
+  // Every n-th x label when they would overlap (~6 units a character).
+  const widest = Math.max(...keys.map((key) => key.length), 1) * 6 + 8
+  const labelEvery = Math.max(1, Math.ceil(widest / band))
+
   const y = (v: number) => padT + plotH - ((v - bottom) / (top - bottom)) * plotH
   const centre = (i: number) => padL + band * (i + 0.5)
   const zero = y(0)
@@ -165,21 +170,62 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
           )
         })}
 
+      {marks.map((mark) => {
+        const i = keys.indexOf(mark.x)
+        if (i < 0) return null
+        return (
+          <g key={`mark-${mark.x}`} pointerEvents="none">
+            <line
+              x1={centre(i)}
+              x2={centre(i)}
+              y1={padT}
+              y2={padT + plotH}
+              stroke="var(--muted)"
+              strokeWidth={1}
+              strokeDasharray="4 3"
+            />
+            {mark.label && (
+              <text
+                x={centre(i) < padL + plotW / 2 ? centre(i) + 4 : centre(i) - 4}
+                y={padT + 10}
+                textAnchor={centre(i) < padL + plotW / 2 ? 'start' : 'end'}
+                className="fill-[var(--muted)]"
+                fontSize={10}
+              >
+                {mark.label}
+              </text>
+            )}
+          </g>
+        )
+      })}
+
       {chart.chartType === 'line'
         ? series.map((one, si) => {
             const drawn = keys
               .map((key, i) => ({ i, v: valueAt(si, key) }))
               .filter((d): d is { i: number; v: number } => typeof d.v === 'number')
+            // Lines join neighbouring x values only: a sparse series is points, not a trend.
+            const runs: (typeof drawn)[] = []
+            for (const d of drawn) {
+              const last = runs[runs.length - 1]
+              if (last && last[last.length - 1].i === d.i - 1) last.push(d)
+              else runs.push([d])
+            }
             return (
               <g key={one.name}>
-                <polyline
-                  fill="none"
-                  stroke={one.color}
-                  strokeWidth={2.5}
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                  points={drawn.map((d) => `${centre(d.i)},${y(d.v)}`).join(' ')}
-                />
+                {runs
+                  .filter((run) => run.length > 1)
+                  .map((run) => (
+                    <polyline
+                      key={run[0].i}
+                      fill="none"
+                      stroke={one.color}
+                      strokeWidth={2.5}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      points={run.map((d) => `${centre(d.i)},${y(d.v)}`).join(' ')}
+                    />
+                  ))}
                 {/* Points make single-value series visible. */}
                 {drawn.map((d) => (
                   <circle key={d.i} cx={centre(d.i)} cy={y(d.v)} r={3} fill={one.color} />
@@ -216,7 +262,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
             })
           })}
 
-      {keys.map((key, i) => (
+      {keys.map((key, i) => (i % labelEvery === 0 || hover === key) && (
         <text
           key={key}
           x={centre(i)}
