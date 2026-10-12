@@ -272,7 +272,7 @@ def test_a_planner_that_will_not_answer_still_searches():
 
 
 def test_planned_queries_are_capped():
-    text = '["가", "나", "다", "라", "마", "바"]'
+    text = '["가격 비교", "나라별 규정", "다운로드 수", "라이선스 조건", "마감 일정", "바뀐 사양"]'
     assert len(research._parse_queries(text, "원래 요청")) == research.MAX_QUERIES
 
 
