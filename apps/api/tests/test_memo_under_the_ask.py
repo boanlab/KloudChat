@@ -164,3 +164,15 @@ def test_any_work_document_on_attached_or_given_facts_is_not_searched():
     assert not report.material_complete("학사일정 안내문 써 줘.", None)
     memo = "\n".join(f"- 항목 {n}: 자료 내용 {n}번째 줄" for n in range(1, 5))
     assert not report.material_complete(f"아래 메모로 연구계획서 써 줘.\n{memo}", "plan")
+
+
+def test_kpi_figures_the_minutes_already_state_are_not_dumped_as_a_list():
+    body = ("| 항목 | 내용 |\n|---|---|\n| 일시 | 2026-10-15(목) 14:00 |\n\n"
+            "워크숍 신청자는 42명이다.\n\n```kpi\n2026-10-15(목) | 다음 회의일\n"
+            "42명 | 워크숍 신청자\n420만원 | 사례집 디자인 견적 B사\n```\n")
+    out = report.plain_blocks(body, body)
+    assert "- 다음 회의일" not in out and "- 워크숍 신청자" not in out
+    assert "- 사례집 디자인 견적 B사: 420만원" in out
+    every = body.replace("420만원 | 사례집 디자인 견적 B사\n", "")
+    assert "```" not in report.plain_blocks(every, every) and "- " not in report.plain_blocks(
+        every, every)

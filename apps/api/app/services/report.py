@@ -895,8 +895,11 @@ PLAIN_FORMATS = frozenset({"official", "press", "minutes", "result_report", "int
 _BOX = re.compile(r"^```(?P<kind>kpi|callout)[ \t]*\n(?P<body>.*?)^```[ \t]*$\n?", re.S | re.M)
 
 
-def plain_blocks(text: str) -> str:
-    """kpi rows and callouts as plain lines."""
+def plain_blocks(text: str, document: str = "") -> str:
+    """kpi rows and callouts as plain lines; a kpi value `document` already states is dropped
+    (no trailing dump of figures the tables and sentences give)."""
+    told = re.sub(r"\s", "", _BOX.sub("", document or ""))
+
     def one(m: re.Match) -> str:
         lines = [line.strip() for line in m.group("body").splitlines() if line.strip()]
         if not lines:
@@ -905,8 +908,10 @@ def plain_blocks(text: str) -> str:
             rows = []
             for line in lines:
                 value, _, name = line.partition("|")
+                if told and re.sub(r"\s", "", value) in told:
+                    continue
                 rows.append(f"- {name.strip()}: {value.strip()}" if name.strip() else f"- {value.strip()}")
-            return "\n".join(rows) + "\n"
+            return "\n".join(rows) + "\n" if rows else ""
         head, rest = lines[0], " ".join(lines[1:])
         return f"※ {head}" + (f": {rest}" if rest else "") + "\n"
     return _BOX.sub(one, text or "")

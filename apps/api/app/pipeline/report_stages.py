@@ -1300,7 +1300,8 @@ class Normalize(Base):
             context=_material_text(bundle))
         sections = report.gaejo_body(sections, bundle.spec.format)
         if bundle.spec.format_id in report.PLAIN_FORMATS:
-            sections = [{**s, "content": report.plain_blocks(str(s.get("content") or ""))}
+            whole = "\n".join(str(s.get("content") or "") for s in sections)
+            sections = [{**s, "content": report.plain_blocks(str(s.get("content") or ""), whole)}
                         for s in sections]
         bundle.document.sections = sections
 
