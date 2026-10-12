@@ -702,6 +702,8 @@ async def auth_config(db: DbSession):
             "mode": signup.mode,
             "domains": signup.domains,
             "emailVerification": signup.verification,
+            # closed still lets the first account in
+            "available": signup.mode != "closed" or await user_count(db) == 0,
         },
         "brand": await settings_store.brand(),
         "contactEmail": await settings_store.contact_email(db),

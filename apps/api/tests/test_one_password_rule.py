@@ -77,3 +77,48 @@ async def test_config_hands_the_rule_and_the_lockout_to_the_screens(monkeypatch)
     assert body["password"] == {"minLength": PASSWORD_MIN_LENGTH}
     assert body["login"] == {"maxFailures": 5, "lockoutMinutes": 15}
     assert body["signup"]["mode"] == "open"
+
+
+@pytest.mark.parametrize(("users", "available"), [(3, False), (0, True)])
+async def test_a_closed_signup_is_offered_only_for_the_first_account(monkeypatch, users, available):
+    class _Policy:
+        external_data_guard = False
+        allow_user_raw_external = False
+        pii_masking = False
+        idle_timeout_minutes = 0
+
+    class _Signup:
+        mode = "closed"
+        domains: list[str] = []
+        verification = False
+
+    async def _value(*_args, **_kwargs):
+        return None
+
+    async def _policy():
+        return _Policy()
+
+    async def _signup():
+        return _Signup()
+
+    async def _false():
+        return False
+
+    async def _kinds():
+        return ["chat"]
+
+    async def _count(_db):
+        return users
+
+    monkeypatch.setattr(auth.governance_service, "current", _policy)
+    monkeypatch.setattr(auth.settings_store, "signup_policy", _signup)
+    monkeypatch.setattr(auth.settings_store, "mail_enabled", _false)
+    monkeypatch.setattr(auth.settings_store, "brand", _value)
+    monkeypatch.setattr(auth.settings_store, "contact_email", _value)
+    monkeypatch.setattr(auth.settings_store, "enabled_kinds", _kinds)
+    monkeypatch.setattr(auth.transcribe_service, "available", _false)
+    monkeypatch.setattr(auth, "user_count", _count)
+
+    body = await auth.auth_config(db=None)
+
+    assert body["signup"]["available"] is available

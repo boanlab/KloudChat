@@ -44,7 +44,7 @@ const project = {
 
 interface Options {
   signedIn?: boolean
-  signupMode?: 'open' | 'approval'
+  signupMode?: 'open' | 'approval' | 'closed'
 }
 
 async function app(page: Page, testInfo: TestInfo, { signedIn = true, signupMode = 'approval' }: Options = {}) {
@@ -175,6 +175,15 @@ test.describe('signed out', () => {
     await page.getByRole('button', { name: '회원가입', exact: true }).click()
     await expect(page.getByRole('button', { name: '회원가입', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByText('이메일 또는 비밀번호가 올바르지 않습니다.')).toHaveCount(0)
+    expect(state.problems).toEqual([])
+  })
+
+  test('signup: a closed signup shows no 회원가입 tab, only sign-in', async ({ page }, testInfo) => {
+    const state = await app(page, testInfo, { signedIn: false, signupMode: 'closed' })
+    await page.goto('/')
+    await expect(page.getByRole('button', { name: '로그인', exact: true }).last()).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: '회원가입', exact: true })).toHaveCount(0)
+    await expect(page.getByText('계정 만들기')).toHaveCount(0)
     expect(state.problems).toEqual([])
   })
 

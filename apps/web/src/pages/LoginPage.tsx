@@ -53,7 +53,12 @@ export function LoginPage() {
     mode: 'open' | 'approval' | 'closed'
     domains: string[]
     emailVerification: boolean
+    available?: boolean
   } | null>(null)
+  const signupOpen = signupPolicy ? signupPolicy.available ?? signupPolicy.mode !== 'closed' : true
+  useEffect(() => {
+    if (!signupOpen) setMode('login')
+  }, [signupOpen])
   const [passwordMin, setPasswordMin] = useState(DEFAULT_PASSWORD_MIN)
   const [lockout, setLockout] = useState({ maxFailures: 5, lockoutMinutes: 15 })
   /** Consecutive wrong passwords for this address: warn before the lock. */
@@ -404,7 +409,7 @@ export function LoginPage() {
             </div>
           )}
 
-          {!resetToken && !forgotOpen && (
+          {!resetToken && !forgotOpen && signupOpen && (
           <div className="mt-6 flex gap-1 rounded-control border border-line bg-elevated p-1">
             {(
               [
