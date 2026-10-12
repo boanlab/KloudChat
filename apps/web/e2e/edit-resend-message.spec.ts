@@ -245,9 +245,22 @@ async function openSidebarControl(page: Page, name: string | RegExp) {
   // Conversations in the sidebar are links; the account menu is a button.
   const exact = typeof name === 'string'
   const button = page.getByRole('link', { name, exact }).or(page.getByRole('button', { name, exact })).first()
-  const bounds = await button.boundingBox()
+  await expect(button).toBeAttached()
+  // Phone drawer slides; decide only once its position has settled.
+  const settled = async () => {
+    let last = ''
+    for (let i = 0; i < 40; i++) {
+      const box = JSON.stringify(await button.boundingBox())
+      if (box === last) return JSON.parse(box) as { x: number; width: number } | null
+      last = box
+      await page.waitForTimeout(50)
+    }
+    return JSON.parse(last) as { x: number; width: number } | null
+  }
+  const bounds = await settled()
   if (!bounds || bounds.x < 0 || bounds.x + bounds.width > (page.viewportSize()?.width ?? 0)) {
     await page.getByRole('button', { name: '사이드바 토글', exact: true }).click()
+    await settled()
   }
   await button.click()
 }

@@ -14,7 +14,8 @@ def test_a_minus_sign_the_face_lacks_becomes_a_hyphen():
     font = fonts.korean("gothic")
     face = getattr(pdfmetrics.getFont(font), "face", None)
     drawn = fonts.drawable("대기 = 완료 − 도착 − 실행", font)
-    if face is None or 0x2212 not in face.charToGlyph:
+    glyphs = getattr(face, "charToGlyph", None)  # CID faces: no glyph table
+    if glyphs is None or 0x2212 not in glyphs:
         assert drawn == "대기 = 완료 - 도착 - 실행"
     else:
         assert drawn == "대기 = 완료 − 도착 − 실행"
