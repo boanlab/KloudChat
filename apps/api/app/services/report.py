@@ -1417,7 +1417,7 @@ _QUALITY_LABELS = {
     "leftover_mark": "남은 표시", "mixed_script": "다른 문자 섞임", "literal_br": "<br> 노출",
     "placeholder": "자리표시", "source_innards": "출처 내부 지칭",
     "prompt_talk": "작성 지침 언급", "fence_language_apart": "블록 형식 줄 분리",
-    "cut_table_row": "잘린 표 행",
+    "cut_table_row": "잘린 표 행", "table_rows": "빠진 표 행·합계와 다른 행",
     "carried_number_changed": "자료와 자릿수가 다른 수치",
     "formula_unit_slip": "단위가 어긋난 계산식",
     "picture_in_code": "코드 블록 속 그림",
@@ -3569,6 +3569,18 @@ _FILL_PROMPT = """Below is the draft of the report's "{heading}" section. Its ta
 have blanks such as [측정값]·[금액]. The attached material (reference data) contains those values.
 Rewrite the section, filling the blanks with the material's actual values. Do not make up a
 value the material does not have; leave that blank ([측정값] etc.) as it is. Answer with the
+body only, no section heading, in Markdown, in Korean. Do not wrap it in JSON.
+
+{body}"""
+
+
+_TABLE_FIX_PROMPT = """Below is the draft of the report's "{heading}" section. Its tables have these defects:
+{problems}
+
+Rewrite the section with whole tables: one row per item, phase or program the request and
+material list (none merged, none left out), every row under its header, and the rows adding up
+exactly to the 합계 row. Copy every number from the request and material; a value they do not
+give stays as a bracket blank such as 「[단가]」. Keep the sentences as they are. Answer with the
 body only, no section heading, in Markdown, in Korean. Do not wrap it in JSON.
 
 {body}"""

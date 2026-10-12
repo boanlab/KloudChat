@@ -40,6 +40,7 @@ from app.services import (
     report_checks,
     research,
     richtext,
+    table_integrity,
     units,
     verify,
 )
@@ -952,6 +953,27 @@ class Sections(Base):
                     if refilled.strip() and not report.placeholder_heavy(refilled):
                         body = refilled
             section["content"] = _cleaned(bundle, index, section, body)
+            material = _material_text(bundle)
+            if gaps := table_integrity.problems(section["content"], material):
+                # rows dropped or not adding up: written once more with the defects named
+                try:
+                    redone, more = await report._complete(
+                        req.model,
+                        _messages(bundle, report._TABLE_FIX_PROMPT.format(
+                            heading=section["heading"], problems="\n".join(f"- {g}" for g in gaps),
+                            body=section["content"][:6000])),
+                        req.api_key,
+                        1600,
+                    )
+                except _CAUGHT as exc:
+                    log.info("table rewrite of %r failed: %s", section["heading"], exc)
+                else:
+                    _count(bundle, more)
+                    redone = _cleaned(bundle, index, section, richtext.detach_tables(
+                        report.unwrap_json_prose(redone)))
+                    if redone.strip() and len(table_integrity.problems(redone, material)) < len(gaps):
+                        section["content"] = redone
+                section["content"] = table_integrity.mend(section["content"], material)
 
             # drawn after prose: failed drawing leaves no dangling reference
             if (drawing := wanted_figures.get(index)) is not None:
@@ -1667,6 +1689,10 @@ class Quality(Base):
         format_codes = set(report_checks.LABELS)
         findings = quality_gate.report_findings(sections, material,
                                                 bundle.computed.settled)
+        for sec in sections:
+            for gap in table_integrity.problems(str(sec.get("content") or ""), material):
+                findings.append({"code": "table_rows", "where": str(sec.get("heading") or ""),
+                                 "detail": gap})
         for x in [x for x in f.still if x.code in format_codes][:12]:
             findings.append({"code": x.code,
                              "where": str(sections[x.section].get("heading") or ""),
