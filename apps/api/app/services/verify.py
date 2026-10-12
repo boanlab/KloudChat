@@ -111,6 +111,27 @@ async def find(doc: Doc, checks: list[Check]) -> tuple[list[Finding], dict]:
     return sorted(merged.values(), key=lambda f: f.rank), usage
 
 
+#: 합니다체 sentence end, and plain 한다체 ends read in it
+_POLITE_END = re.compile(r"(?:니다|세요|십시오|까요)[.?!]?[」\")]*\s*$")
+_PLAIN_END = re.compile(r"(?<!니)다(?P<tail>[.!]?[」\")]*\s*)$")
+_TO_POLITE = tuple((plain, polite) for plain, polite in (
+    ("이다", "입니다"), ("한다", "합니다"), ("된다", "됩니다"), ("있다", "있습니다"),
+    ("없다", "없습니다"), ("않다", "않습니다"), ("같다", "같습니다"), ("했다", "했습니다"),
+    ("였다", "였습니다"), ("었다", "었습니다"), ("았다", "았습니다"), ("겠다", "겠습니다"),
+))
+
+
+def keep_register(old: str, new: str) -> str | None:
+    """`new` in `old`'s 합니다체 when the repair ended it in 한다체; None when it cannot be."""
+    if not _POLITE_END.search(old) or not (end := _PLAIN_END.search(new)):
+        return new
+    body = new[: end.start()] + "다"
+    for plain, polite in _TO_POLITE:
+        if body.endswith(plain):
+            return body[: -len(plain)] + polite + end.group("tail")
+    return None
+
+
 def _acceptable(old: str, new: str, finding: Finding) -> bool:
     # multi-line items (question with options) may stay multi-line
     if not new or ("\n" in new and "\n" not in old) or len(new) > 2 * len(old) + 120:
@@ -182,6 +203,8 @@ async def repair(
         content = str(out[index].get("content") or "")
         for finding, new in zip(items, rewritten, strict=True):
             new = clean(str(new).strip().strip("「」"))
+            # a fix keeps the document's 합니다체 (no 「…대상으로 한다.」 in a notice)
+            new = keep_register(finding.sentence, new) or ""
             if new != finding.sentence and _acceptable(finding.sentence, new, finding):
                 content = content.replace(finding.sentence, new, 1)
                 log.info("repaired [%s] in %r", finding.code, out[index].get("heading"))
