@@ -1121,11 +1121,16 @@ class Figures(Base):
         figure_cap = min(5, max(diagrams.MAX_FIGURES, len(sections) // 2 + 1))
         # writer-placed (〔그림〕) first; planner only looks at sections with none
         drawn = 0
+        # drawn flowcharts: one figure per procedure
+        flows: list[str] = []
         for index, section in enumerate(sections):
             marks = report.figure_marks(str(section.get("content") or ""))
             for mark in marks:
                 content = str(section.get("content") or "")
-                if not mark["kind"] or draws_nothing or drawn >= figure_cap:
+                again = mark["kind"] == "flow" and not diagrams.drop_repeated_flows(
+                    [diagrams.Planned(index, "flow", mark["description"], mark["caption"])],
+                    flows)
+                if not mark["kind"] or draws_nothing or drawn >= figure_cap or again:
                     section["content"] = report.drop_figure(content, mark["mark"])
                     continue
                 name = mark["caption"] or diagrams.FIGURES[mark["kind"]]
@@ -1150,6 +1155,8 @@ class Figures(Base):
                 section["content"] = content.replace(
                     mark["mark"], report._figure_markdown(made, png), 1)
                 drawn += 1
+                if made.get("figure") == "flow":
+                    flows.append(str(made.get("source") or ""))
                 yield {"type": "step", "id": f"dia{index}", "label": name, "status": "done",
                        "progress": progress}
             if marks:
@@ -1183,6 +1190,8 @@ class Figures(Base):
             wrap=lambda prompt: _messages(bundle, prompt),
         )
         _count(bundle, spent)
+        # one figure per procedure: the writer's own flow is not drawn again
+        planned = diagrams.drop_repeated_flows(planned, flows)
         if not planned:
             log.info("report figures: none planned for %d eligible sections", len(eligible))
         for row in planned:

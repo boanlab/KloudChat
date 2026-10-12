@@ -217,6 +217,37 @@ def parse(text: str, *, count: int, limit: int, eligible: Iterable[int]) -> list
     return out
 
 
+_WORD = re.compile(r"[가-힣A-Za-z0-9]{2,}")
+
+
+def _flow_words(text: str) -> set[str]:
+    """Step words of a flow: labels of a mermaid flowchart, else the text's words."""
+    from app.services import diagram_shapes
+
+    graph = diagram_shapes.parse(text) if text.lstrip().startswith(("flowchart", "graph")) \
+        else None
+    if graph is not None:
+        text = " ".join(node.label for node in graph.nodes.values())
+    return {w[:4] for w in _WORD.findall(text or "")}
+
+
+def drop_repeated_flows(planned: list[Planned], drawn: Iterable[str]) -> list[Planned]:
+    """Planned flows minus ones redrawing a procedure already drawn (or planned before):
+    two figures of one procedure end up disagreeing."""
+    seen = [words for source in drawn if (words := _flow_words(source))]
+    out = []
+    for row in planned:
+        if row.figure == "flow":
+            words = _flow_words(row.description)
+            if any(len(words & other) >= max(3, 0.5 * min(len(words), len(other)))
+                   for other in seen):
+                log.info("report figures: %r repeats a drawn flow", row.caption[:60])
+                continue
+            seen.append(words)
+        out.append(row)
+    return out
+
+
 async def make(
     planned: Planned, *, model: str, api_key: str, slide: bool, accent: str = ""
 ) -> tuple[dict[str, Any], dict[str, int], bytes]:
