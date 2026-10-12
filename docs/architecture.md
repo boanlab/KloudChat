@@ -1221,6 +1221,19 @@ owner's rows whose `catalog_key` is not shipped at all (a key still in a file wi
 catalogue agent, or a shipped skill that is shared or has been installed), so a
 skill the administrator made private stays private. `former_names` in an agent file renames untouched copies on sync.
 
+Shipped skills are ordinary skills of that account (`source = personal`; copies are
+`workspace` — there is no built-in source, migration 0070 rewrote the old one): the owner
+can edit or unshare them in 사용자 지정 like any skill of their own (a deleted one is seeded
+again on the next sync, as agents are), and the store
+shows them under the owner's name. `skills.package_hash` is the owner row's content as last
+synced; while the row still hashes to it the sync rewrites it from its package, and copies
+whose content equals the owner row's previous content follow along; an edited owner row
+(hash differs, or `""` for an adopted per-account seed) or an edited copy is left alone.
+Copies seeded before `origin_id` are linked to the owner row by key. Check skills run by key
+from the packages (`skill_specs.resolve`), so an agent's or template's checks work for
+someone who added nothing; a template's text skills come from the owner's shared row only
+(`sessions._template_skills`), never from someone's shared copy.
+
 **Sharing means copyable, not usable in place.** A skill is only ever resolved
 out of its owner's account (`workspace_context._resolve_skills`), so a shared
 row is inert until copied. This is why the store is its own endpoint and not a

@@ -94,7 +94,7 @@ class _SeedDb:
     async def exec(self, query):
         table = _query_table(query)
         if table == "skills":
-            return _Result(rows=self.rows)
+            return _Result(rows=[row for row in self.rows if _matches(row, query.whereclause)])
         if table == "agents":
             clause = query.whereclause
             if clause is not None and "origin_id" in str(clause):
@@ -329,10 +329,11 @@ async def test_required_tool_and_surface_are_enforced():
 async def test_catalog_backfill_is_idempotent_and_preserves_edited_body(monkeypatch):
     use_text_skills(monkeypatch)
     legacy = _skill(
+        owner_id="admin-1",
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
         body="내가 고친 절차",
-        source=SkillSource.built_in,
+        source=SkillSource.workspace,
         catalog_key=None,
         required_tools=None,
         estimated_tokens=0,
@@ -355,10 +356,11 @@ async def test_catalog_backfill_is_idempotent_and_preserves_edited_body(monkeypa
 async def test_catalog_only_upgrades_an_exact_untouched_catalog_body(monkeypatch):
     use_text_skills(monkeypatch)
     legacy = _skill(
+        owner_id="admin-1",
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
         body=starter._LEGACY_CATALOG_BODIES[("citation", "1.0.0")],
-        source=SkillSource.built_in,
+        source=SkillSource.workspace,
         catalog_key=None,
         version="1.0.0",
         estimated_tokens=0,
@@ -373,10 +375,11 @@ async def test_catalog_only_upgrades_an_exact_untouched_catalog_body(monkeypatch
 @pytest.mark.asyncio
 async def test_a_skill_that_became_a_package_keeps_its_row_and_gets_the_new_body():
     old = _skill(
+        owner_id="admin-1",
         name="계산·단위 검증",
         slug="계산-단위-검증",
         body=starter._LEGACY_CATALOG_BODIES[("calc-check", "1.0.0")],
-        source=SkillSource.built_in,
+        source=SkillSource.personal,
         catalog_key="calculation-unit-check",
         required_tools=["execute_code"],
         version="1.0.0",
@@ -487,10 +490,11 @@ async def test_an_upgrading_instance_publishes_the_skills_it_already_had(monkeyp
     """Admin copies that already carry catalogue keys are still published."""
     use_text_skills(monkeypatch)
     existing = _skill(
+        owner_id="admin-1",
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
         catalog_key="citation",
-        source=SkillSource.built_in,
+        source=SkillSource.personal,
     )
     db = _SeedDb([existing])
     await starter.seed_catalog(db, "admin-1")
@@ -762,7 +766,7 @@ async def test_valid_refresh_leaves_an_ordinary_account_catalog_alone(monkeypatc
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
         body="내가 고친 절차",
-        source=SkillSource.built_in,
+        source=SkillSource.workspace,
         catalog_key=None,
         required_tools=None,
         estimated_tokens=0,

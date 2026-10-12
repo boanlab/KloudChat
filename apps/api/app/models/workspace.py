@@ -233,7 +233,7 @@ AgentVisibility = Visibility
 
 
 class SkillSource(StrEnum):
-    built_in = "built-in"
+    #: workspace = copied from a shared skill; personal = authored (shipped ones by the admin)
     workspace = "workspace"
     personal = "personal"
 
@@ -252,6 +252,8 @@ class Skill(SQLModel, table=True):
     body: str = Field(default="")
     #: shipped-skill identity; null if user-authored
     catalog_key: str | None = Field(default=None)
+    #: owner row: content hash at the last package sync; differs once the owner edits it
+    package_hash: str | None = Field(default=None, max_length=32)
     source: SkillSource = Field(default=SkillSource.personal)
     #: shared = copyable; runs only from owner's account
     visibility: Visibility = Field(

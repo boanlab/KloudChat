@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import tomllib
 from math import ceil
@@ -208,16 +210,83 @@ async def seed_designs(db: AsyncSession, user_id: str) -> int:
     return len(specs)
 
 
-async def catalog_owner_id(db: AsyncSession) -> str | None:
+def catalog_owner_query():
     """Catalogue owner: the oldest administrator."""
-    return (
-        await db.exec(
-            select(User.id)
-            .where(User.role == UserRole.admin)
-            .order_by(col(User.created_at), col(User.id))
-            .limit(1)
-        )
-    ).first()
+    return (select(User.id).where(User.role == UserRole.admin)
+            .order_by(col(User.created_at), col(User.id)).limit(1))
+
+
+async def catalog_owner_id(db: AsyncSession) -> str | None:
+    return (await db.exec(catalog_owner_query())).first()
+
+
+#: content a package sets on its skill row; copies equal to the owner's follow it
+_CONTENT = ("name", "description", "when_to_use", "body", "version", "kinds", "required_tools")
+
+
+def _shipped(spec: dict) -> dict:
+    return {
+        "name": spec["name"],
+        "description": spec["description"],
+        "when_to_use": spec["when_to_use"],
+        "body": spec["body"],
+        "version": spec.get("version", "1.0.0"),
+        "kinds": list(spec["kinds"]),
+        "required_tools": list(spec.get("required_tools", [])),
+        "estimated_tokens": _estimated_tokens(spec),
+    }
+
+
+def _content(skill: Skill) -> tuple:
+    return tuple(list(v) if isinstance(v := getattr(skill, f), (list, tuple)) else v
+                 for f in _CONTENT)
+
+
+def _content_hash(skill: Skill) -> str:
+    raw = json.dumps(_content(skill), ensure_ascii=False, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+async def _follow_package(db: AsyncSession, skill: Skill, spec: dict, owner_id: str,
+                          *, adopted: bool) -> None:
+    """Owner row follows its package unless the owner edited it; untouched copies follow too."""
+    key = spec["key"]
+    # copies seeded before origin_id: linked by key
+    orphans = await db.exec(select(Skill).where(
+        col(Skill.catalog_key).in_([key, *(k for k, v in skill_packages.RENAMED.items()
+                                          if v == key)]),
+        col(Skill.owner_id) != owner_id, col(Skill.origin_id).is_(None)))
+    for orphan in orphans.all():
+        orphan.origin_id = skill.id
+        db.add(orphan)
+    if skill.package_hash is not None:
+        untouched = _content_hash(skill) == skill.package_hash
+    elif adopted:
+        # per-account seed adopted by slug: only an exact earlier shipped body
+        previous = _LEGACY_CATALOG_BODIES.get((key, skill.version))
+        untouched = bool(previous and skill.body.strip() == previous.strip())
+    else:
+        # synced before hashes; never editable in the UI then
+        untouched = True
+    if not untouched:
+        # "" never matches: stays the owner's own from here on
+        skill.package_hash = skill.package_hash or ""
+        if not skill.estimated_tokens:
+            skill.estimated_tokens = estimate_tokens(
+                skill.when_to_use, skill.body, skill.description)
+        return
+    shipped = _shipped(spec)
+    before = _content(skill)
+    if before != tuple(shipped[f] for f in _CONTENT):
+        copies = await db.exec(select(Skill).where(col(Skill.origin_id) == skill.id))
+        for copy in copies.all():
+            if _content(copy) == before:
+                for field_name, value in shipped.items():
+                    setattr(copy, field_name, value)
+                db.add(copy)
+    for field_name, value in shipped.items():
+        setattr(skill, field_name, value)
+    skill.package_hash = _content_hash(skill)
 
 
 async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
@@ -246,7 +315,9 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
     legacy_builtins = {
         _LEGACY_CATALOG_KEYS[s.slug]: s
         for s in existing_skills
-        if s.source == SkillSource.built_in and s.slug in _LEGACY_CATALOG_KEYS
+        # per-account seeds of old: no key, no origin (0070 marks them `workspace`)
+        if s.source == SkillSource.workspace and s.origin_id is None and not s.catalog_key
+        and s.slug in _LEGACY_CATALOG_KEYS
     }
 
     ids: dict[str, str] = {}
@@ -254,30 +325,20 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
     for spec in _SKILLS:
         key = spec["key"]
         skill = by_catalog.get(key)
-        if skill is None and (adopted := legacy_builtins.get(key)) is not None:
-            skill = adopted
+        adopted = False
+        if skill is None and (adopted_row := legacy_builtins.get(key)) is not None:
+            skill, adopted = adopted_row, True
             skill.catalog_key = key
+            skill.source = SkillSource.personal
         if skill is not None:
             # drafts stay admin-private (never shared)
             if spec.get("draft"):
                 skill.visibility = Visibility.private
             elif not established:
                 skill.visibility = Visibility.org
-            # only untouched earlier bodies upgraded
-            previous = _LEGACY_CATALOG_BODIES.get((key, skill.version))
-            upgraded = bool(previous and skill.body.strip() == previous.strip())
             if skill.required_tools is None:
                 skill.required_tools = list(spec.get("required_tools", []))
-            if upgraded:
-                skill.body = spec["body"]
-                skill.version = spec.get("version", "1.0.0")
-                skill.description = spec["description"]
-                skill.when_to_use = spec["when_to_use"]
-                skill.required_tools = list(spec.get("required_tools", []))
-            if upgraded or not skill.estimated_tokens:
-                skill.estimated_tokens = estimate_tokens(
-                    skill.when_to_use, skill.body, skill.description
-                )
+            await _follow_package(db, skill, spec, owner_id, adopted=adopted)
             # server fields follow the package
             skill.server_fields = _server_fields(key)
             db.add(skill)
@@ -285,20 +346,14 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             continue
         skill = Skill(
             owner_id=owner_id,
-            name=spec["name"],
             slug=_slug(spec["name"]),
-            description=spec["description"],
-            when_to_use=spec["when_to_use"],
-            body=spec["body"],
             catalog_key=key,
-            kinds=spec["kinds"],
-            required_tools=spec.get("required_tools", []),
-            estimated_tokens=_estimated_tokens(spec),
-            version=spec.get("version", "1.0.0"),
-            source=SkillSource.built_in,
+            source=SkillSource.personal,
             visibility=Visibility.private if spec.get("draft") else Visibility.org,
             server_fields=_server_fields(key),
+            **_shipped(spec),
         )
+        skill.package_hash = _content_hash(skill)
         db.add(skill)
         ids[key] = skill.id
         made += 1
@@ -473,6 +528,7 @@ def runtime_metadata(skill: Skill) -> dict:
 __all__ = [
     "agent_spec",
     "catalog_owner_id",
+    "catalog_owner_query",
     "draft_agents",
     "estimate_tokens",
     "offered_agents",

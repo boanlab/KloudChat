@@ -10,7 +10,7 @@ type SkillRow = {
   whenToUse: string
   body: string
   catalogKey: string | null
-  source: 'built-in' | 'personal'
+  source: 'workspace' | 'personal'
   kinds: string[]
   requiredTools: string[]
   estimatedTokens: number
@@ -34,7 +34,7 @@ const skill = (
   whenToUse: `${name} 절차가 필요할 때`,
   body: options.body ?? `${name}의 원본 절차를 순서대로 따른다.`,
   catalogKey: options.catalogKey ?? null,
-  source: options.source ?? 'built-in',
+  source: options.source ?? 'workspace',
   kinds: ['chat', 'report', 'slides'],
   requiredTools: options.requiredTools ?? [],
   estimatedTokens: name === '의사결정 메모' ? 123 : 80,

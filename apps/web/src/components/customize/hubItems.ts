@@ -93,7 +93,8 @@ export function agentItem(a: Agent, me: string | undefined): HubItem {
 
 export function skillItem(s: Skill | StoreSkill, store: boolean): HubItem {
   const row = s as StoreSkill
-  const official = store ? row.official : s.source === 'built-in'
+  // shared skills, shipped ones included, are labelled by who shares them
+  const official = store && row.official
   return {
     key: `skill:${s.id}`,
     type: 'skill',
@@ -102,7 +103,7 @@ export function skillItem(s: Skill | StoreSkill, store: boolean): HubItem {
     summary: s.description,
     surfaces: s.kinds,
     color: null,
-    maker: official ? '공식' : store ? row.ownerName : s.source === 'workspace' ? '워크스페이스' : '',
+    maker: store ? row.ownerName : s.originOwnerName || (s.source === 'workspace' ? '워크스페이스' : ''),
     official,
     installs: s.installs,
     runs: null,
@@ -111,7 +112,7 @@ export function skillItem(s: Skill | StoreSkill, store: boolean): HubItem {
     shared: s.visibility === 'org',
     mine: !store,
     added: store ? row.installed : true,
-    deletable: !store && s.source !== 'built-in',
+    deletable: !store,
     hidden: !isListed(s),
     to: `/customize/skills/${s.id}`,
     skill: s,

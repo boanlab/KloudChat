@@ -1902,9 +1902,7 @@ async def _install_skill(db: DbSession, user: User, origin: Skill) -> Skill:
         when_to_use=origin.when_to_use,
         body=origin.body,
         catalog_key=origin.catalog_key,
-        source=(
-            SkillSource.built_in if origin.source is SkillSource.built_in else SkillSource.workspace
-        ),
+        source=SkillSource.workspace,
         kinds=list(origin.kinds or []),
         required_tools=list(origin.required_tools or []),
         estimated_tokens=origin.estimated_tokens
@@ -1929,7 +1927,20 @@ async def list_skills(user: CurrentUser, db: DbSession):
     rows = (
         await db.exec(select(Skill).where(Skill.owner_id == user.id).order_by(col(Skill.name)))
     ).all()
-    return [SkillOut.of(s) for s in rows]
+    # copies say whose shared skill they came from
+    origin_ids = [s.origin_id for s in rows if s.origin_id]
+    owners: dict[str, str] = {}
+    if origin_ids:
+        origins = await db.exec(select(Skill.id, Skill.owner_id).where(
+            col(Skill.id).in_(origin_ids)))
+        owners = {row[0]: row[1] for row in origins.all()}
+    names = await _owner_names(db, set(owners.values()))
+    out = []
+    for s in rows:
+        item = SkillOut.of(s)
+        item.origin_owner_name = names.get(owners.get(s.origin_id or "", ""), "")
+        out.append(item)
+    return out
 
 
 @router.get("/tools", response_model=list[ToolCatalogOut])

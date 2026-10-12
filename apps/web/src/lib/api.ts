@@ -1566,6 +1566,7 @@ export interface SkillRow {
   visibility: string
   installs: number
   originId: string | null
+  originOwnerName?: string
   updatedAt: string
   /** Fixed scripts its package ships, run by `run_skill_script`. */
   scripts?: string[]
