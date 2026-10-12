@@ -185,3 +185,22 @@ async def test_slides_on_the_persons_material_are_traced():
     assert any(e["type"] == "step" for e in events)
     request.turn["traced"] = False
     assert DeckGrounding().skip(bundle)
+
+
+async def test_a_report_on_the_person_s_material_drops_items_it_never_asks_for():
+    """Reports run the reader-requirement check chat and decks run."""
+    from app.pipeline import report_stages
+    from app.pipeline.check_stages import GroundCheck
+
+    bundle = report_stages.bundle_for(
+        request="첨부 규정으로 장학금 신청 안내 공고문 써 줘.", model="m", api_key="k")
+    bundle.material.given = "장학금 신청은 학생지원팀에서 받는다. 성적우수장학금은 평점 3.5 이상."
+    bundle.findings.check_keys = ["grounding-check"]
+    bundle.document.sections = [{"heading": "신청 방법", "content": (
+        "신청은 학생지원팀에서 받습니다. 신청할 때 가족관계증명서를 반드시 지참하세요. "
+        "안내 자료가 필요하시면 별도로 준비해 드리겠습니다.")}]
+    await GroundCheck("check:grounding", again=False).apply(bundle, Context())
+    text = bundle.document.sections[0]["content"]
+    assert "가족관계증명서" not in text and "학생지원팀에서 받습니다" in text
+    # an offer to prepare something is not a requirement put on the reader
+    assert "별도로 준비해 드리겠습니다" in text
