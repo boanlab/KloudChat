@@ -278,7 +278,7 @@ test('「+」 › 에이전트 puts others\' shared and published agents under �
   })
   await page.route('**/api/bots', (route) => route.fulfill({ json: [
     { slug: 'haksa-1a2b3c', title: '학사 안내', description: '', ownerName: '학사지원팀 김담당', mine: false, id: null,
-      status: 'approved', visibility: 'internal', color: '#0f766e', publishedAt: null, sharedAgentId: null, copied: false },
+      status: 'approved', visibility: 'internal', color: '#0f766e', publishedAt: null, sharedAgentId: null, copied: false, copyable: false },
     // The caller's own bot is managed from its agent, not picked here.
     { slug: 'mine-9z', title: '내 안내 챗봇', description: '', ownerName: 'Fixture', mine: true, id: 'p1',
       status: 'approved', visibility: 'internal', color: '#5b53e8', publishedAt: null },

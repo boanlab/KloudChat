@@ -59,6 +59,7 @@ export function PublishDialog({
           placeholder: '',
           showProcess: 'summary',
           showSources: true,
+          allowCopy: false,
           retentionDays: 30,
           conversationView: 'off',
           limits: found.defaults,

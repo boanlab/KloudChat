@@ -87,6 +87,8 @@ def _apply(pub: Publication, payload: PublicationSettings) -> None:
         pub.show_process = payload.show_process
     if "show_sources" in fields and payload.show_sources is not None:
         pub.show_sources = payload.show_sources
+    if "allow_copy" in fields and payload.allow_copy is not None:
+        pub.allow_copy = payload.allow_copy
     notice_changed = False
     if "retention_days" in fields and payload.retention_days is not None \
             and payload.retention_days != pub.retention_days:
@@ -137,6 +139,7 @@ def _pub_out(pub: Publication, *, versions: list[PublicationVersion] | None = No
         "visibility": pub.visibility, "status": pub.status, "pauseReason": pub.pause_reason,
         "activeVersionId": pub.active_version_id, "branding": _branding(pub.branding),
         "showProcess": pub.show_process, "showSources": pub.show_sources,
+        "allowCopy": pub.allow_copy,
         "retentionDays": pub.retention_days, "conversationView": pub.conversation_view,
         "consentVersion": pub.consent_version, **_limits_out(pub),
         "requestedVisibility": pub.requested_visibility, "reviewState": pub.review_state,
@@ -918,6 +921,8 @@ async def list_bots(user: CurrentUser, db: DbSession):
     org_shared = set((await db.exec(select(Agent.id).where(
         col(Agent.id).in_(sources), Agent.visibility == "org",
         col(Agent.retired).is_(False)))).all()) if sources else set()
+    sealed = set((await db.exec(select(Agent.id).where(
+        col(Agent.id).in_(sources), Agent.share_mode == "sealed"))).all()) if sources else set()
     copied = set((await db.exec(select(Agent.origin_id).where(
         Agent.owner_id == user.id, col(Agent.origin_id).in_(sources)))).all()) if sources else set()
     return [{"slug": p.slug, "title": p.title, "description": p.description,
@@ -927,7 +932,8 @@ async def list_bots(user: CurrentUser, db: DbSession):
              "needsLook": p.owner_id == user.id and _needs_look(p),
              "color": colors.get(p.id, "#5b53e8"), "publishedAt": p.published_at,
              "sharedAgentId": p.agent_id if p.agent_id in org_shared else None,
-             "copied": p.agent_id in copied}
+             "copied": p.agent_id in copied,
+             "copyable": p.owner_id != user.id and p.allow_copy and p.agent_id not in sealed}
             for p in rows]
 
 
@@ -958,8 +964,8 @@ async def copy_bot(slug: str, user: CurrentUser, db: DbSession):
     if snap is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="bot_paused")
     source = await db.get(Agent, pub.agent_id) if pub.agent_id else None
-    # The owner's 「프롬프트 비공개」 holds for bots too.
-    if source is not None and source.share_mode == "sealed":
+    # Locked unless the publisher allows copies; the agent's 「프롬프트 비공개」 still holds.
+    if not pub.allow_copy or (source is not None and source.share_mode == "sealed"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="copy_closed")
     origin_id = pub.agent_id or snap.id
     held = (await db.exec(select(Agent).where(

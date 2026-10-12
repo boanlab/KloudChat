@@ -85,7 +85,7 @@ export function useItemActions(onChanged?: () => void) {
     } catch (err) {
       setNotice(
         errorCode(err) === 'copy_closed'
-          ? t('만든 사람이 프롬프트를 비공개로 두어 내 에이전트로 복사할 수 없습니다.')
+          ? t('만든 사람이 복사를 허용하지 않아 내 에이전트로 가져올 수 없습니다.')
           : errorMessage(err, t('가져오지 못했습니다.')),
       )
     }

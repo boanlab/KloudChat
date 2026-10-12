@@ -2250,6 +2250,8 @@ export interface Publication {
   branding: BotBranding
   showProcess: ShowProcess
   showSources: boolean
+  /** 「복사 허용」: members may copy it, instructions included, as their own agent. */
+  allowCopy: boolean
   retentionDays: number
   conversationView: 'off' | 'on'
   consentVersion: number
@@ -2284,6 +2286,7 @@ export interface PublicationSettings {
   limits?: Partial<BotLimits>
   showProcess?: ShowProcess
   showSources?: boolean
+  allowCopy?: boolean
   retentionDays?: number
   conversationView?: 'off' | 'on'
 }
@@ -2338,6 +2341,8 @@ export interface BotListItem {
   sharedAgentId?: string | null
   /** The caller already holds an agent copied from it. */
   copied?: boolean
+  /** The publisher allows copies (and the agent's prompt is not private). */
+  copyable?: boolean
 }
 
 /** A bot open to everyone, as the public list shows it: no owner names. */

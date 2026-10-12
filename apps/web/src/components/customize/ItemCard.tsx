@@ -1,4 +1,4 @@
-import { Check, Globe, Loader2, MessageCircle, Plus } from 'lucide-react'
+import { Check, Globe, Loader2, Lock, MessageCircle, Plus } from 'lucide-react'
 import { createElement, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PickBox } from '@/components/ui/BulkSelect'
@@ -173,6 +173,17 @@ export function ItemCard({
               className="grid size-8 place-items-center rounded-control border border-line text-success"
             >
               <Check size={15} />
+            </span>
+          ) : item.bot && !item.bot.copyable ? (
+            // Locked bot: answers on its page only; no copy, no instructions.
+            <span
+              role="img"
+              title={t('만든 사람이 복사를 허용하지 않아 바로 쓰기만 할 수 있습니다')}
+              aria-label={t('{name} 복사 잠김').replace('{name}', name)}
+              data-testid="bot-copy-locked"
+              className="grid size-8 place-items-center rounded-control border border-line text-faint"
+            >
+              <Lock size={14} />
             </span>
           ) : (
             <button

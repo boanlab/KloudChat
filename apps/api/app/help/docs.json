@@ -473,14 +473,14 @@
 "path": "chat/bots",
 "title": "챗봇 공개",
 "heading": "만든 사람이 보는 것",
-"text": "관리 화면(내 에이전트 화면의 **챗봇** → **관리**)에는 다음이 보입니다.\n\n- **통계**: 질문 수, 대화 수, 방문자 수, 자주 나온 주제, 답하지 못한 질문(개인정보를 가린 문장), 👍👎.\n- **보낸 대화**: 방문자가 **만든 사람에게 보내기**로 보낸 대화만, 개인정보를 가린 채. **대화 열람**을 켠 챗봇은 방문자가 동의한 뒤의 대화도 보입니다. 상담·민원처럼 대화 기록이 업무인 챗봇에만 켭니다.\n- 방문자는 이름 대신 「방문자 ABC123」처럼 보이고, 로그인했는지만 표시됩니다. 보낸 대화에서 **이 방문자 차단**을 누르면 그 방문자는 더 이상 질문할 수 없습니다. **설정**의 **차단한 방문자**에서 풉니다.\n\n관리자가 남용 확인을 위해 대화를 열람하면 **개요**의 **관리자 열람 기록**에 날짜와 사유가 남습니다.\n\n챗봇이 멈추거나(크레딧 소진, 관리자 중지 등) 관리자가 요청을 결정하면 사이드바 **사용자 지정**에 숫자가 붙습니다."
+"text": "관리 화면(내 에이전트 화면의 **챗봇** → **관리**)에는 다음이 보입니다.\n\n- **통계**: 질문 수, 대화 수, 방문자 수, 자주 나온 주제, 답하지 못한 질문(개인정보를 가린 문장), 👍👎.\n- **보낸 대화**: 방문자가 **만든 사람에게 보내기**로 보낸 대화만, 개인정보를 가린 채. **대화 열람**을 켠 챗봇은 방문자가 동의한 뒤의 대화도 보입니다. 상담·민원처럼 대화 기록이 업무인 챗봇에만 켭니다.\n- **설정**의 **복사 허용**: 기본은 꺼짐(잠금)입니다. 켜면 구성원이 지시문까지 내 에이전트로 가져갈 수 있습니다. 지시를 보여 주고 싶지 않으면 끈 채로 둡니다.\n- 방문자는 이름 대신 「방문자 ABC123」처럼 보이고, 로그인했는지만 표시됩니다. 보낸 대화에서 **이 방문자 차단**을 누르면 그 방문자는 더 이상 질문할 수 없습니다. **설정**의 **차단한 방문자**에서 풉니다.\n\n관리자가 남용 확인을 위해 대화를 열람하면 **개요**의 **관리자 열람 기록**에 날짜와 사유가 남습니다.\n\n챗봇이 멈추거나(크레딧 소진, 관리자 중지 등) 관리자가 요청을 결정하면 사이드바 **사용자 지정**에 숫자가 붙습니다."
 },
 {
 "lang": "ko",
 "path": "chat/bots",
 "title": "챗봇 공개",
 "heading": "구성원 쪽에서",
-"text": "구성원 공개(외부 공개 포함)한 챗봇은 다른 구성원에게 에이전트로 보입니다. 따로 챗봇 메뉴는 없습니다.\n\n- **사용자 지정** → **에이전트** → **탐색**의 **공유된 에이전트**에 만든 사람의 이름과 함께 나옵니다. 모두에게 공개한 에이전트도 같은 곳에 있고, 둘 다 해당하는 에이전트는 한 번만 나옵니다.\n- 입력창 **+** → **에이전트**에서도 내 에이전트 아래 **공유된 에이전트**로 고릅니다.\n- **바로 쓰기**이나 이름을 누르면 챗봇 페이지에서 대화합니다. 답하는 데 드는 크레딧은 공개한 사람의 것입니다.\n- **추가**를 누르면 공개된 판의 지시와 설정이 내 에이전트로 복사됩니다. 자료(지식 파일)는 오지 않습니다. 만든 사람이 지시를 비공개로 둔 에이전트는 복사할 수 없습니다."
+"text": "구성원 공개(외부 공개 포함)한 챗봇은 다른 구성원에게 에이전트로 보입니다. 따로 챗봇 메뉴는 없습니다.\n\n- **사용자 지정** → **에이전트** → **탐색**의 **공유된 에이전트**에 만든 사람의 이름과 함께 나옵니다. 모두에게 공개한 에이전트도 같은 곳에 있고, 둘 다 해당하는 에이전트는 한 번만 나옵니다.\n- 입력창 **+** → **에이전트**에서도 내 에이전트 아래 **공유된 에이전트**로 고릅니다.\n- **바로 쓰기**나 이름을 누르면 챗봇 페이지에서 대화합니다. 답하는 데 드는 크레딧은 공개한 사람의 것입니다.\n- 챗봇은 기본으로 잠겨 있어 **바로 쓰기**만 됩니다. 만든 사람이 **복사 허용**을 켠 챗봇에만 **추가**가 보이고, 누르면 공개된 판의 지시와 설정이 내 에이전트로 복사됩니다. 자료(지식 파일)는 오지 않습니다. 복사를 허용해도 에이전트의 지시를 비공개로 두었으면 복사되지 않습니다. 잠긴 챗봇에는 **추가** 대신 자물쇠가 보입니다."
 },
 {
 "lang": "ko",
@@ -1761,14 +1761,14 @@
 "path": "chat/bots",
 "title": "Publishing a chatbot",
 "heading": "What the publisher sees",
-"text": "The management page (**Chatbot** → **Manage** on your agent's page) shows:\n\n- **Statistics**: questions, conversations, visitors, frequent topics, unanswered questions (sentences with personal details masked), 👍👎.\n- **Sent conversations**: only conversations a visitor sent with **Send to the maker**, personal details masked. With **Conversation access** on, conversations after the visitor's consent show too. Turn it on only for chatbots whose conversations are the work itself, such as counselling or complaints.\n- Visitors show as \"Visitor ABC123\" with only whether they signed in. **Block this visitor** on a sent conversation stops them from asking; unblock them under **Settings** → **Blocked visitors**.\n\nWhen an administrator reads conversations to check abuse, the date and reason appear under **Administrator reads** on **Overview**.\n\nWhen a chatbot stops (credits used up, paused by an administrator and so on) or an administrator decides a request, a number appears next to **Customize** in the sidebar."
+"text": "The management page (**Chatbot** → **Manage** on your agent's page) shows:\n\n- **Statistics**: questions, conversations, visitors, frequent topics, unanswered questions (sentences with personal details masked), 👍👎.\n- **Sent conversations**: only conversations a visitor sent with **Send to the maker**, personal details masked. With **Conversation access** on, conversations after the visitor's consent show too. Turn it on only for chatbots whose conversations are the work itself, such as counselling or complaints.\n- **Allow copies** under **Settings**: off (locked) by default. Turn it on and members can take the chatbot, instructions included, as their own agent. Leave it off to keep the instructions to yourself.\n- Visitors show as \"Visitor ABC123\" with only whether they signed in. **Block this visitor** on a sent conversation stops them from asking; unblock them under **Settings** → **Blocked visitors**.\n\nWhen an administrator reads conversations to check abuse, the date and reason appear under **Administrator reads** on **Overview**.\n\nWhen a chatbot stops (credits used up, paused by an administrator and so on) or an administrator decides a request, a number appears next to **Customize** in the sidebar."
 },
 {
 "lang": "en",
 "path": "chat/bots",
 "title": "Publishing a chatbot",
 "heading": "On a member's side",
-"text": "A chatbot published to members (or to the public) shows to other members as an agent. There is no separate chatbot menu.\n\n- It is listed under **Shared agents** in **Customize** → **Agents** → **Explore**, with its publisher's name. Agents shared with everyone sit in the same place, and an agent that is both shows once.\n- In the composer, **+** → **Agents** lists it under **Shared agents**, below your own agents.\n- **Use now** or its name opens a conversation on the chatbot page. Answers spend the publisher's credits.\n- **Add** copies the published version's instructions and settings as your own agent. Material (knowledge files) does not come along. An agent whose maker keeps the instructions private cannot be copied."
+"text": "A chatbot published to members (or to the public) shows to other members as an agent. There is no separate chatbot menu.\n\n- It is listed under **Shared agents** in **Customize** → **Agents** → **Explore**, with its publisher's name. Agents shared with everyone sit in the same place, and an agent that is both shows once.\n- In the composer, **+** → **Agents** lists it under **Shared agents**, below your own agents.\n- **Use now** or its name opens a conversation on the chatbot page. Answers spend the publisher's credits.\n- Chatbots are locked by default: members can only **Use now**. **Add** shows only on chatbots whose publisher turned on **Allow copies**; it copies the published version's instructions and settings as your own agent. Material (knowledge files) does not come along. Even with copies allowed, an agent whose maker keeps the instructions private cannot be copied. A locked chatbot shows a lock instead of **Add**."
 },
 {
 "lang": "en",

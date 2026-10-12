@@ -29,7 +29,7 @@ function publication(extra: Record<string, unknown> = {}) {
     id: PUB, slug: SLUG, title: '학사 안내', description: '학칙과 학사 일정을 안내합니다.', agentId: AGENT, agentName: '논문 리뷰어',
     ownerName: 'Fixture', visibility: 'internal', status: 'approved', pauseReason: '', activeVersionId: 'v2',
     branding: { greeting: '학칙을 찾아 근거 조항과 함께 답합니다.', suggestedPrompts: ['휴학은 언제까지 신청하나요?'], placeholder: '' },
-    showProcess: 'summary', showSources: true, retentionDays: 30, conversationView: 'off', consentVersion: 1,
+    showProcess: 'summary', showSources: true, allowCopy: false, retentionDays: 30, conversationView: 'off', consentVersion: 1,
     limits, defaults: limits, createdAt: at, updatedAt: at, publishedAt: at,
     requestedVisibility: '', reviewState: '', reviewNote: '', reviewedAt: null, pendingVersionId: null, needsLook: false,
     channels: {}, requestedChannels: null,
@@ -111,7 +111,10 @@ async function botRoutes(
       return json([
         { slug: SLUG, title: english ? 'Campus Help' : '학사 안내', description: english ? 'Answers from the campus rules.' : '학칙과 학사 일정을 안내합니다.',
           ownerName: english ? 'Jane' : '학사지원팀 김담당', mine: false, id: null, status: 'approved', visibility: 'internal', color: '#0f766e', publishedAt: at,
-          sharedAgentId: null, copied },
+          sharedAgentId: null, copied, copyable: true },
+        // Locked by its publisher: used on its page only.
+        { slug: 'rules-4q', title: '규정 도우미', description: '', ownerName: '이동료', mine: false, id: null, status: 'approved',
+          visibility: 'internal', color: '#5b53e8', publishedAt: at, sharedAgentId: null, copied: false, copyable: false },
         // Its agent is also shared with everyone: listed once, as that agent.
         { slug: 'budget-7k', title: '예산 검토', description: '', ownerName: '이동료', mine: false, id: null, status: 'approved',
           visibility: 'internal', color: '#5b53e8', publishedAt: at, sharedAgentId: 'a5555555555555555555555555555555', copied: false },
@@ -303,7 +306,7 @@ test('the owner publishes a chat agent to members and gets its address', async (
   await expect(dialog.getByTestId('bot-url')).toContainText(`/b/${SLUG}`)
   await shot(page, 'publish-done', testInfo.project.name)
   const sent = writes.find((w) => w.method === 'POST' && w.path === '/publications')?.body as Record<string, unknown>
-  expect(sent).toMatchObject({ agentId: AGENT, visibility: 'internal', showProcess: 'summary', conversationView: 'off' })
+  expect(sent).toMatchObject({ agentId: AGENT, visibility: 'internal', showProcess: 'summary', conversationView: 'off', allowCopy: false })
   expect(state.unexpected).toEqual([])
 })
 
@@ -552,13 +555,15 @@ test('the dashboard shows statistics, sent conversations and versions, and rolls
   await shot(page, 'dashboard-versions', testInfo.project.name)
   await page.getByRole('tab', { name: '설정' }).click()
   await page.getByRole('switch', { name: '대화 열람' }).click()
+  await expect(page.getByText('복사를 허용하면 구성원이 지시문까지 내 에이전트로 가져갈 수 있습니다.')).toBeVisible()
+  await page.getByRole('switch', { name: '복사 허용' }).click()
   await expect(page.getByText('저장하면 방문자가 다음 질문 전에 바뀐 안내를 다시 확인합니다.')).toBeVisible()
   await shot(page, 'dashboard-settings', testInfo.project.name)
   await Promise.all([
     page.waitForRequest((r) => r.method() === 'PATCH' && r.url().endsWith(`/publications/${PUB}`)),
     page.getByRole('button', { name: '저장', exact: true }).click(),
   ])
-  expect(writes.find((w) => w.method === 'PATCH')?.body).toMatchObject({ conversationView: 'on' })
+  expect(writes.find((w) => w.method === 'PATCH')?.body).toMatchObject({ conversationView: 'on', allowCopy: true })
   expect(writes.some((w) => w.path.endsWith('/versions/v1/activate'))).toBe(true)
   expect(state.unexpected).toEqual([])
 })
@@ -585,6 +590,11 @@ test('members find published agents among the shared agents, open one and copy i
   await card.getByRole('button', { name: '학사 안내 추가' }).click()
   await expect(card.getByLabel('학사 안내 추가됨')).toBeVisible()
   expect(writes.some((w) => w.method === 'POST' && w.path === `/bots/${SLUG}/copy`)).toBe(true)
+  // A locked bot offers 바로 쓰기 only: no 추가 button, a lock that says why.
+  const locked = group.locator('[data-item="bot:rules-4q"]')
+  await expect(locked.getByRole('button', { name: '규정 도우미 추가' })).toHaveCount(0)
+  await expect(locked.getByLabel('규정 도우미 복사 잠김')).toHaveAttribute('title', '만든 사람이 복사를 허용하지 않아 바로 쓰기만 할 수 있습니다')
+  await expect(locked.getByRole('button', { name: '규정 도우미 바로 쓰기' })).toBeVisible()
 
   await card.getByRole('button', { name: '학사 안내 바로 쓰기' }).click()
   await expect(page).toHaveURL(new RegExp(`/b/${SLUG}$`))
