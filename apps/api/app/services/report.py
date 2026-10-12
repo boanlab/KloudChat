@@ -1223,6 +1223,8 @@ def repair_pipe_tables(body: str) -> str:
         text = line.strip()
         if not text or text.startswith(("|", "```", "#", ">", "!")) or " | " not in text:
             return None
+        # 「- 비목 | 예산」: the list marker is not cell text
+        text = re.sub(r"^(?:[-*•·]|\d{1,2}[.)])\s+", "", text)
         parts = [c.strip() for c in text.split("|")]
         return parts if len(parts) >= 2 and all(parts) else None
 

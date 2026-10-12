@@ -200,3 +200,10 @@ def test_a_short_guide_with_figures_gets_no_word_table_of_contents():
     assert not report_export._wants_toc(sections)
     assert report_export._wants_toc([{"heading": f"절 {n}", "content": "가" * 1200}
                                      for n in range(6)])
+
+
+def test_listed_pipe_rows_become_a_table_without_list_markers():
+    body = "- 비목 | 협약 예산(원) | 집행액(원)\n- 인건비 | 1,000 | 900\n- 여비 | 500 | 450"
+    out = report.repair_pipe_tables(body)
+    assert out.splitlines()[0] == "| 비목 | 협약 예산(원) | 집행액(원) |"
+    assert "| 인건비 | 1,000 | 900 |" in out and "- " not in out
