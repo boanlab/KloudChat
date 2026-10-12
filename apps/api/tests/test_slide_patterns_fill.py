@@ -256,6 +256,11 @@ def test_a_part_asked_for_but_only_named_on_its_slide_is_sent_back():
     slides[1]["bullets"] = ["도입 5분", "개념 15분", "활동 15분", "정리 10분"]
     assert deck.requested_contents(slides, lesson) == {}
 
+    # a policy briefing naming 교육부·교육비, given 10 minutes to present: no lesson plan
+    policy = ("처장단 회의(10분 발표)용 정책 브리핑 슬라이드 6장. 교육부 공청회 자료로 "
+              "학생 1인당 교육비 변화를 정리해 줘.")
+    assert deck.requested_contents([{"title": "개요"}, {"title": "배분 구조"}], policy) == {}
+
     board = "경영진 보고 자료를 만들어 줘. 결론 먼저, 시장, 수익성, 요청 사항 순서로."
     slides = [
         {"title": "수익성", "bullets": ["월 판매량이 늘며 5월에 흑자"]},

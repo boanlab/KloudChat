@@ -1821,8 +1821,10 @@ def mend_scaled_numbers(slides: list[dict], material: str) -> list[int]:
 
 _ASKS_QUIZ = re.compile(r"퀴즈|문항|확인 문제|형성평가")
 _ASKS_DECISION = re.compile(r"요청 사항|요청사항|승인|의사\s?결정|결정 요청")
-_ASKS_MINUTES = re.compile(r"(\d{2,3})\s?분")
-_ASKS_LESSON = re.compile(r"수업|강의|차시|교육")
+#: a lesson's length (not 「10분 발표」) and a lesson (not 「교육부」「교육비」)
+_ASKS_MINUTES = re.compile(r"(\d{2,3})\s?분(?!\s?(?:발표|브리핑|보고|회의|스피치|피치))")
+_ASKS_LESSON = re.compile(
+    r"수업|강의|차시|교육\s?(?:과정|프로그램|세션)|(?<![가-힣])연수(?![원생])")
 _MONEY_TITLE = re.compile(r"수익|손익|재무|매출|수익성")
 _MONEY = re.compile(r"\d[\d,.]*\s?(?:만|억|조)?\s?원|\d[\d,.]*\s?(?:박스|명|건)")
 
