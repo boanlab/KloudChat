@@ -56,7 +56,7 @@ The SMTP host, port, security, account, and sender address, the service address 
 - **Sign-up method**: Use after approval / Use immediately / Not accepted. The value chosen on this screen overrides the `SIGNUP_MODE` environment variable.
 - **Email domains allowed to sign up**: Several, separated by commas. Subdomains have to be listed separately.
 - **Email verification**: Not effective without a mail server.
-- **Monthly credits for new accounts**: granted at sign-up or approval (default 5,000,000). You can change it for each account when approving.
+- **Monthly credits for new accounts**: granted at sign-up or approval. You can change it for each account when approving.
 
 ## Connector catalogue
 

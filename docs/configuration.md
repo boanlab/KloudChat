@@ -150,7 +150,7 @@ it when nobody is mid-turn):
 | `KCHAT_ADMIN_EMAIL` | `BOOTSTRAP_ADMIN_EMAIL` | — | Applied only when the database has no accounts at all. Blank means the first signup becomes administrator. |
 | `KCHAT_ADMIN_PASSWORD` | `BOOTSTRAP_ADMIN_PASSWORD` | — | Set both to create an administrator on first boot. Never commit a value — this file is published. |
 | `KCHAT_SIGNUP_MODE` | `SIGNUP_MODE` | `approval` | `open` (active immediately), `approval` (admin approves), `closed` (signup disabled). |
-| `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `5000000` (`.env.example`, the compose fallback and the code default) | First-install seed of **시스템 › 회원 가입 › 새 계정의 월 크레딧**, which then decides. Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 5,000,000 ≈ $50/month. |
+| `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `500000` | First-install seed of **시스템 › 회원 가입 › 새 계정의 월 크레딧**, which then decides. Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 500,000 ≈ $5/month. |
 | `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.8-27b` | First-install seed of **시스템 › 모델 › 대화 기본 모델** (as are the four rows below). Falls back to the surface's cheapest model when absent from the catalogue. |
 | `KCHAT_DEFAULT_REPORT_MODEL` / `KCHAT_DEFAULT_SLIDES_MODEL` | `DEFAULT_REPORT_MODEL` / `DEFAULT_SLIDES_MODEL` | — | Per-surface defaults for 보고서 and 발표 자료. Empty falls back to the chat default. |
 | `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `google/gemini-2.5-flash-image` | Default picture model. Gemini's image models take the aspect ratio as a parameter; the OpenAI ones return a square whatever is asked. Absent from the catalogue → cheapest image model. |

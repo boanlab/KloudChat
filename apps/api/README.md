@@ -110,9 +110,8 @@ dropped and why.
 
 **Credit conversion.** `credits_per_usd` (default 100,000, so 1 credit =
 $0.00001) is the single exchange rate. When provider prices move, adjust this
-rather than re-cutting everyone's allowance. The default grant of 5,000,000
-credits (code, `.env.example` and the `docker-compose.yml` fallback) is about
-$50/month.
+rather than re-cutting everyone's allowance. The default grant of 500,000
+credits is about $5/month.
 
 Resolution matters more than magnitude: provider prices span four orders of
 magnitude, and a coarse unit rounds the cheapest models up onto the same floor

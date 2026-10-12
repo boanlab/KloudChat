@@ -81,17 +81,6 @@ async def test_the_new_account_allowance_is_stored(stored, monkeypatch):
     assert await settings_store.default_monthly_credits() == 250_000
 
 
-def test_a_new_account_gets_five_million_credits_by_default():
-    from app.core.config import Settings
-
-    assert Settings.model_fields["default_monthly_credits"].default == 5_000_000
-    root = Path(__file__).resolve().parents[3]
-    compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
-    assert "${KCHAT_DEFAULT_MONTHLY_CREDITS:-5000000}" in compose
-    example = (root / ".env.example").read_text(encoding="utf-8")
-    assert "KCHAT_DEFAULT_MONTHLY_CREDITS=5000000" in example
-
-
 async def test_the_catalogue_defaults_follow_the_stored_roles(monkeypatch):
     from app.services import litellm
 
@@ -303,3 +292,20 @@ def test_a_classifier_the_administrator_chose_is_kept(monkeypatch):
         assert policy["outline_model_id"] == "local/qwen3.5-122b"
         # A title model someone named on purpose is seeded as it is.
         assert _rows(conn)["models.title"] == "local/custom-titler"
+
+
+def test_new_account_credits_default_is_one_number_everywhere():
+    """Code default, compose fallback and both .env examples: 500,000."""
+    import re
+    from pathlib import Path
+
+    from app.core.config import Settings
+
+    root = Path(__file__).resolve().parents[3]
+    assert Settings.model_fields["default_monthly_credits"].default == 500_000
+    compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
+    assert re.search(r"\$\{KCHAT_DEFAULT_MONTHLY_CREDITS:-500000\}", compose)
+    root_env = (root / ".env.example").read_text(encoding="utf-8")
+    api_env = (root / "apps/api/.env.example").read_text(encoding="utf-8")
+    assert "KCHAT_DEFAULT_MONTHLY_CREDITS=500000" in root_env
+    assert "DEFAULT_MONTHLY_CREDITS=500000" in api_env
