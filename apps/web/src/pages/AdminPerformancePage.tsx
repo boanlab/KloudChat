@@ -777,7 +777,7 @@ export function AdminPerformancePage() {
         )}
 
         {data && (
-          <div className="grid gap-x-6 lg:grid-cols-2">
+          <>
             <Section title={t('api 복제본')}>
               <Table
                 empty={t('복제본 표본이 없습니다.')}
@@ -800,7 +800,7 @@ export function AdminPerformancePage() {
                 rows={data.pipeline.map((s) => [s.stage, num(s.runs, 0), fmt(s.p50, 's'), fmt(s.p95, 's'), fmt(s.max, 's')])}
               />
             </Section>
-          </div>
+          </>
         )}
 
         {th && (
