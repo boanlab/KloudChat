@@ -2285,7 +2285,8 @@ _DRAWN_FENCES = ("mermaid", "callout", "kpi", "cards", "diagram", "chart")
 
 
 def unfence_pictures(body: str) -> str:
-    """Code fence holding a picture unwrapped (else PDF prints base64)."""
+    """Code fence holding a picture, or prose fenced as markdown, unwrapped (else PDF prints
+    base64 or the body in a code font)."""
     lines = body.split("\n")
     out: list[str] = []
     i = 0
@@ -2304,12 +2305,41 @@ def unfence_pictures(body: str) -> str:
             i = j + 1
             continue
         inner = lines[i + 1:j]
-        if any(_FIGURE_LINE.match(x.strip()) or "](data:image/" in x for x in inner):
+        if (opening.group(1).lower() in _PROSE_FENCES
+                or any(_FIGURE_LINE.match(x.strip()) or "](data:image/" in x for x in inner)):
+            # a picture, or prose wrapped as 「```markdown」: the body itself
             out.extend(inner)
         else:
             out.extend(lines[i:j + 1])
         i = j + 1
     return "\n".join(out)
+
+
+#: words of a tool or API error message: 「required_context_missing」, 「Provide the … argument」
+_ERROR_WORDS = re.compile(
+    r"\b(?:error|errors|missing|required|argument|arguments|parameter|context|tool|invalid|"
+    r"unable|cannot|failed|failure|exception|provide|undefined|null|denied|timeout)\b"
+    r"|\b[a-z]{2,20}(?:_[a-z]{2,20}){1,5}\b",
+    re.I,
+)
+
+
+def error_text(body: str, request: str = "") -> bool:
+    """Whether a section of a Korean document is a tool or error message instead of prose
+    (「required_context_missing / Required context is missing. Provide the … argument」)."""
+    text = re.sub(r"```.*?```", " ", body or "", flags=re.S)
+    text = "\n".join(ln for ln in text.split("\n") if not ln.lstrip().startswith(("|", "!")))
+    hangul = len(re.findall(r"[가-힣]", text))
+    latin = len(re.findall(r"[A-Za-z]", text))
+    if latin < 20 or hangul > latin * 0.25:
+        return False
+    if request and len(re.findall(r"[가-힣]", request)) < len(re.findall(r"[A-Za-z]", request)):
+        return False  # an English document
+    return len(_ERROR_WORDS.findall(text)) >= 2
+
+
+#: fence language that only wraps document prose: 「```markdown」
+_PROSE_FENCES = ("markdown", "md", "text", "txt", "plain", "plaintext")
 
 
 _JSON_PROSE_FENCE = re.compile(r"```json[ \t]{0,8}\n(\{[\s\S]{0,200000}?\})\s{0,8}\n```")

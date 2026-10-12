@@ -912,6 +912,14 @@ class Sections(Base):
                         if index in prefetched
                         else write_section(index, section, written)
                     )
+                if report.error_text(body, req.text):
+                    # a tool or error message in place of the section: written once more
+                    log.warning("section %r came back as an error message; written again",
+                                section["heading"])
+                    _count(bundle, spent)
+                    body, spent = await write_section(index, section, written)
+                    if report.error_text(body, req.text):
+                        raise ValueError("error message in place of the section")
             except _CAUGHT as exc:
                 log.warning("report section %r failed: %s", section["heading"], exc)
                 yield {
