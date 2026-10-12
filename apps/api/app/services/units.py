@@ -283,6 +283,17 @@ def slipped_formulas(text: str) -> list[str]:
     return found
 
 
+#: an operator before a term, its label words between (「+ 보증 연장 45,000원 × 30대」)
+_OPERATOR_BEFORE = re.compile(
+    r"(?:[+\-−±×x*÷]\s{0,3}|[+−±×*÷]\s{0,3}(?:[가-힣()]{1,8}\s{1,2}){1,3})$")
+
+
+def inside_longer_expression(text: str, start: int) -> bool:
+    """Whether the expression at `start` is one term of a longer one on its line."""
+    line_start = text.rfind("\n", 0, start) + 1
+    return bool(_OPERATOR_BEFORE.search(text[max(line_start, start - 30):start]))
+
+
 def fix_written_arithmetic(text: str) -> str:
     """Wrong 「A × B = D」 results replaced everywhere D repeats; sums/percentages elsewhere."""
     if not text or ("×" not in text and "÷" not in text):
@@ -294,7 +305,7 @@ def fix_written_arithmetic(text: str) -> str:
         if "%" in (m.group("rhs_unit") or ""):
             return m.group(0)
         # product inside a sum is one term; the tail of a longer product is no product
-        if re.search(r"[+\-−±×x*÷]\s{0,3}$", m.string[max(0, m.start() - 4):m.start()]):
+        if inside_longer_expression(m.string, m.start()):
             return m.group(0)
         parts = re.split(r"\s?([×x*÷])\s?", lhs)
         try:

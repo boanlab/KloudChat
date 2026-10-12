@@ -155,12 +155,24 @@ class Evidence:
     #: the answer's own table rows (row, its values, its days): evidence for its prose
     rows: list[tuple[str, list[tuple[float, str]], set[tuple[int, int]]]] = field(
         default_factory=list)
+    #: item counts of the lists the evidence enumerates (「네이버웍스, 카카오워크, … 슬랙」 → 7)
+    enumerated: set[int] = field(default_factory=set)
+    #: the answer's own figures worked step by step from the evidence (a total, its VAT, …)
+    chained: list[float] = field(default_factory=list)
+    #: the evidence prices with VAT
+    vat: bool = False
+    #: periods the evidence gives (「기간 11/1~11/30」): a day in one is the writer's schedule
+    periods: list[tuple[tuple[int, int], tuple[int, int]]] = field(default_factory=list)
+
+    #: the whole document the answer is a part of: its worked formulas count
+    worked: str = ""
 
     @classmethod
     def of(cls, texts: Iterable[str], *, answer: str = "", request: str = "",
-           today: dt.date | None = None) -> Evidence:
+           today: dt.date | None = None, worked: str = "") -> Evidence:
         own = [t for t in texts if t and t.strip()]
-        ev = cls(texts=own, answer=answer or "", today=today, request=request or "")
+        ev = cls(texts=own, answer=answer or "", today=today, request=request or "",
+                 worked=worked or "")
         ev.listed = max([_structure_count(t) for t in [*own, request or ""]] or [0])
         for line in (answer or "").split("\n"):
             if line.strip().startswith("|") and not re.fullmatch(r"[\s|:\-]+", line.strip()):
@@ -168,13 +180,22 @@ class Evidence:
                                 {(m, d) for _, m, d, _ in _days_in(line)}))
         ev._read([*own, request or ""])
         if today is not None:
-            # a document dated today (「보고일: 2026. 10. 8.」) states no fact
+            # a document dated today (「보고일: 2026. 10. 8.」) states no fact; nor does this month
             ev.days.update({(today.year, today.month, today.day), (None, today.month, today.day)})
+            ev.years.add(today.year)
+            ev.months.add(today.month)
+        ev._chain()
         return ev
 
     def _read(self, texts: list[str]) -> None:
         joined = "\n".join(texts)
         self.flat = re.sub(r"\s+", "", joined).lower()
+        for y, m, d in _url_days(joined):
+            self.days.update({(y, m, d), (None, m, d)})
+            self.years.add(y)
+            self.months.add(m)
+        self.enumerated = _enumerations(joined)
+        self.periods = _periods(joined)
         for y, m, d, _ in _days_in(joined):
             self.days.update({(y, m, d), (None, m, d)})
             self.months.add(m)
@@ -197,16 +218,47 @@ class Evidence:
         self.sorted_values = sorted({abs(v) for v, _ in self.values if v})
         own_rows = [x for r in self.rows for x in r[1]]
         tables = [*_table_sums(joined), *(_table_sums(self.answer) if own_rows else [])]
-        self.derived = sorted({*_derived(self.sorted_values), *_table_sums(joined)})
+        self.vat = bool(_VAT.search(joined))
+        self.derived = sorted({*_derived(self.sorted_values, vat=self.vat), *_table_sums(joined)})
         self.derived_rows = sorted({
-            *_derived(sorted({abs(v) for v, _ in [*self.values, *own_rows] if v})),
+            *_derived(sorted({abs(v) for v, _ in [*self.values, *own_rows] if v}), vat=self.vat),
             *tables, *_row_steps(self.rows, {abs(v) for v, _ in _values(self.answer)}),
         }) if own_rows else self.derived
+
+    def _chain(self, rounds: int = 6) -> None:
+        """The answer's figures each one simple step from the evidence or an earlier such
+        figure: 「1,480,000원×30대=44,400,000원」, its 5% 할인, the VAT on that, the total."""
+        pool = set(self.sorted_values)
+        todo = {abs(v) for v, _ in _values(self.answer) if abs(v) >= 10} - pool
+        if not todo or len(todo) > 400:
+            return
+        known: set[float] = set()
+        formulas = _formulas(f"{self.answer}\n{self.worked}")
+        for _ in range(rounds):
+            near = sorted({*_derived(sorted(pool | known), vat=self.vat), *self.derived})
+            added = {v for v in _worked(formulas, pool | known, self.vat) if v in todo}
+            for v in todo:
+                tol = 0.5 + 1e-9 * v
+                k = bisect.bisect_left(near, v - tol)
+                if k < len(near) and near[k] <= v + tol:
+                    added.add(v)
+            if not added:
+                break
+            known |= added
+            todo -= added
+        self.chained = sorted(known)
 
     def supports_number(self, value: float, unit: str, raw: str, line: str = "") -> bool:
         tol = _step(raw) + 1e-9 * max(1.0, abs(value))
         family = _family(unit)
         v = abs(value)
+        if family in _COUNT_UNIT and v == int(v) and int(v) in self.enumerated:
+            # 「경쟁사 7곳」 for the seven names the person listed
+            return True
+        if v >= 10 and self.chained:
+            k = bisect.bisect_left(self.chained, v - tol)
+            if k < len(self.chained) and self.chained[k] <= v + tol:
+                return True
         strict = family in ("%", "%p", "원", "달러")
         lo = bisect.bisect_left(self.sorted_values, v - tol)
         hi = bisect.bisect_right(self.sorted_values, v + tol)
@@ -233,6 +285,8 @@ class Evidence:
 
     def supports_day(self, y: int | None, m: int, d: int, line: str = "") -> bool:
         if (y, m, d) in self.days or (None, m, d) in self.days:
+            return True
+        if any(a <= (m, d) <= b for a, b in self.periods):
             return True
         if not line.strip().startswith("|") and any((m, d) in days for _, _, days in self.rows):
             return True
@@ -277,11 +331,138 @@ class Evidence:
         return hit >= 0.7 * len(words)
 
 
-def _derived(pool: list[float]) -> list[float]:
-    """Simple arithmetic of two figures: sums, gaps, shares, changes, price × count."""
+#: a worked formula on one line: 「(1,480,000 × 30 × 0.95 + 5,000 × 30) × 1.1 = 46,563,000원」
+_FORMULA = re.compile(
+    r"(?P<lhs>[(\d][\d,.\s()×xX*÷/+\-−원대명개건%]*[\d)%원대명개건])\s{0,3}=\s{0,3}"
+    r"(?P<rhs>\d[\d,]*(?:\.\d+)?)")
+_OPERAND = re.compile(r"\d[\d,]*(?:\.\d+)?%?")
+
+
+def _formulas(answer: str) -> list[tuple[str, list[str], float]]:
+    """`(python expression, operands, stated result)` of the answer's written formulas."""
+    out = []
+    lines = [line for line in (answer or "").split("\n") if "=" in line]
+    # label words between terms go: 「확정 42,000,000원(부가세 포함) + 보증 연장 45,000원 × 30대」
+    cleaned = [re.sub(r"[가-힣A-Za-z]{1,12}\s{0,2}[:：]", " ", re.sub(
+        r"\([^()\n]*[가-힣][^()\n]*\)|(?<![\d])[가-힣]{1,12}(?![\d가-힣])", " ", line))
+        for line in lines]
+    for m in _FORMULA.finditer("\n".join(cleaned)):
+        lhs = m.group("lhs")
+        if not re.search(r"[×xX*÷/+\-−]", lhs):
+            continue
+        expr = re.sub(r"[원대명개건]", "", lhs)
+        expr = expr.replace("×", "*").replace("x", "*").replace("X", "*").replace("÷", "/")
+        expr = expr.replace("−", "-")
+        operands = _OPERAND.findall(expr)
+        expr = re.sub(r"(\d[\d,]*(?:\.\d+)?)%", r"(\1/100)", expr).replace(",", "")
+        if not re.fullmatch(r"[\d.\s()*/+\-]+", expr) or "**" in expr.replace(" ", ""):
+            continue
+        try:
+            out.append((expr, operands, float(m.group("rhs").replace(",", ""))))
+        except ValueError:
+            continue
+    return out
+
+
+def _worked(formulas: list[tuple[str, list[str], float]], known: set[float],
+            vat: bool) -> set[float]:
+    """Stated results of formulas whose operands are all known (or a rate) and whose
+    arithmetic holds."""
+    out: set[float] = set()
+    shares = {v for v in known if 0 < v < 100}
+    rates = {1.0, 100.0, *({1.1, 0.1} if vat else ()),
+             *(round(1 - v / 100, 6) for v in shares), *(round(v / 100, 6) for v in shares)}
+    for expr, operands, stated in formulas:
+        ok = True
+        for raw in operands:
+            v = float(raw.rstrip("%").replace(",", ""))
+            if raw.endswith("%"):
+                v_ok = v in shares
+            else:
+                v_ok = v in rates or any(abs(v - k) <= 0.5 + 1e-9 * v for k in known)
+            if not v_ok:
+                ok = False
+                break
+        if not ok:
+            continue
+        try:
+            value = eval(compile(expr, "<formula>", "eval"), {"__builtins__": {}}, {})  # noqa: S307
+        except Exception:  # noqa: BLE001 — not arithmetic after all
+            continue
+        if isinstance(value, (int, float)) and abs(value - stated) <= max(0.5, 1e-4 * stated):
+            out.add(stated)
+    return out
+
+
+#: a material that prices with VAT: 「부가세 별도」, 「VAT 포함」
+_VAT = re.compile(r"부가세|부가가치세|VAT", re.I)
+#: a date in a link: 「/2026/03/15/」 is a day too; 「/202610021506176780」 is 2026-10-02
+_URL = re.compile(r"https?://\S+")
+_URL_DAY = re.compile(r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?=\d{0,12}(?!\d))")
+
+
+def _url_days(text: str) -> set[tuple[int, int, int]]:
+    """Days a search result's links carry in compact form (a news id starting 「20261002」)."""
+    out = set()
+    for url in _URL.findall(text or ""):
+        for m in _URL_DAY.finditer(url):
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                out.add((y, mo, d))
+    return out
+
+
+#: a period: 「11/1~11/30」, 「11월 1일 ~ 30일」, 「2026-11-01 ~ 2026-11-30」
+_PERIOD_SEP = re.compile(r"\s{0,2}[~∼〜–—-]\s{0,2}|\s{0,2}부터\s{0,2}")
+
+
+def _periods(text: str) -> list[tuple[tuple[int, int], tuple[int, int]]]:
+    """(first, last) month-day pairs of the periods `text` gives, a year at most."""
+    days = sorted(_days_in(text or ""), key=lambda t: t[3][0])
+    out = []
+    for (_, m1, d1, (_, e1)), (_, m2, d2, (s2, _)) in zip(days, days[1:], strict=False):
+        if _PERIOD_SEP.fullmatch(text[e1:s2]) and (m1, d1) < (m2, d2):
+            out.append(((m1, d1), (m2, d2)))
+    # 「11월 1일~30일」: the end day without its month
+    for m in re.finditer(r"(?<![\d.])(\d{1,2})\s{0,2}월\s{0,2}(\d{1,2})\s{0,2}일"
+                         r"\s{0,2}[~∼〜–-]\s{0,2}(\d{1,2})\s{0,2}일", text or ""):
+        mo, a, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if 1 <= mo <= 12 and a < b <= 31:
+            out.append(((mo, a), (mo, b)))
+    return out
+
+
+#: one listed item: a short name between commas (「잔디」, 「마이크로소프트 팀즈」)
+_ITEM = re.compile(r"^[가-힣A-Za-z0-9][가-힣A-Za-z0-9 .&+-]{0,23}$")
+
+
+def _enumerations(text: str) -> set[int]:
+    """Item counts of comma lists of three or more short names, in brackets or on a line."""
+    out: set[int] = set()
+    pieces = [m.group(1) for m in re.finditer(r"[(（]([^()（）\n]{4,400})[)）]", text or "")]
+    pieces += [line for line in (text or "").split("\n")]
+    for piece in pieces:
+        for run in re.split(r"[(（)）:：;]", piece):
+            parts = [re.sub(r"\s{0,2}등$", "", p.strip()) for p in re.split(r"[,，、]", run)]
+            if len(parts) >= 3 and all(_ITEM.match(p) for p in parts):
+                out.add(len(parts))
+    return out
+
+
+def _derived(pool: list[float], *, vat: bool = False) -> list[float]:
+    """Simple arithmetic of two figures: sums, gaps, shares, changes, price × count; with a
+    VAT in the material, a figure with or without its 10% and that 10% alone."""
     big = [v for v in pool if v >= 10][-80:]
     counts = [v for v in pool if 1 < v < 100 and v == int(v)][:40]
     out: set[float] = set()
+    shares = [v for v in pool if 0 < v < 100]
+    if vat:
+        for a in big:
+            out.update((a * 1.1, a * 0.1, a / 1.1, a / 11))
+            for c in counts:
+                out.update((a * c * 1.1, a * c * 0.1))
+    # a discount taken off a figure: 「총액 5% 할인」 → 95%
+    out.update((100 - v) / 100 * w for v in shares for w in big[-40:])
     for i, a in enumerate(big):
         for b in big[i + 1:]:
             out.update((a + b, b - a, b / a * 100, a / b * 100, (b - a) / a * 100,
@@ -295,10 +476,17 @@ def _derived(pool: list[float]) -> list[float]:
     if len(big) >= 2:
         out.add(sum(big))
     if len(big) <= 25:
-        # a short material: a price times a count, plus or less another figure
+        # a short material: a price times a count, plus or less another figure; two or three
+        # unit prices for the same count (단가 + 연장 보증 + 수거비, × 30대)
         for a in big:
             for c in counts[:12]:
                 out.update(x for b in big if b != a for x in (a * c + b, a * c - b))
+        units_ = big[:25]
+        for i, a in enumerate(units_):
+            for j, b in enumerate(units_[i + 1:], i + 1):
+                pair = a + b
+                out.update(pair * c for c in counts[:12])
+                out.update((pair + d) * c for d in units_[j + 1:] for c in counts[:12])
     return sorted(out)
 
 
@@ -365,8 +553,21 @@ def _structure_count(text: str) -> int:
 
 
 #: a table column of order numbers or of character counts: 「#」, 「번호」, 「글자 수」
-_ORDER_COLUMN = re.compile(
-    r"^(?:#|No\.?|번호|순번|순위|순|행|안)$|글자|자\s?수|길이|chars?|bytes?", re.I)
+_ORDER_COLUMN = re.compile(r"^(?:#|No\.?|번호|순번|순위|순|행|안)$", re.I)
+#: a column of character counts: its value is measured against the row's own text
+_CHARS_COLUMN = re.compile(r"글자|자\s?수|길이|chars?|bytes?", re.I)
+
+
+def _measured(line: str, col: int, value: float) -> bool:
+    """Whether `value` is the length of another cell of the row (with or without spaces)."""
+    cells = [c.strip().strip("*").strip() for c in line.strip().strip("|").split("|")]
+    for k, cell in enumerate(cells):
+        if k == col or not cell:
+            continue
+        bare = re.sub(r"^[「“\"']|[」”\"']$", "", cell)
+        if value in (len(bare), len(bare.replace(" ", "")), len(cell)):
+            return True
+    return False
 
 
 def _table_header(text: str, pos: int) -> list[str]:
@@ -390,9 +591,16 @@ def _exempt(line: str, start: int, end: int, raw: str, unit: str, ev: Evidence,
     value = ko_number(raw)
     if header and line.lstrip().startswith("|"):
         col = line[:start].count("|") - 1
-        if 0 <= col < len(header) and _ORDER_COLUMN.search(header[col]):
+        if 0 <= col < len(header) and _ORDER_COLUMN.search(header[col].strip()):
             return True
+        if 0 <= col < len(header) and _CHARS_COLUMN.search(header[col]):
+            # a count the row's own text bears out; a miscount is the writer's to fix
+            return _measured(line, col, value)
     if not unit and _ORDINAL_AFTER.match(after):
+        return True
+    if unit in ("주", "회") and line.lstrip().startswith("|") and line[:start].count("|") == 1 \
+            and re.fullmatch(r"\|\s*\**", line[:start].strip()) and value <= max(structure, 12):
+        # a row label counting the rows: 「| 4주 | 11/23(월) | …」
         return True
     if unit in ("자",) or (not unit and _CHARS_AFTER.match(after)):
         return True
@@ -414,6 +622,21 @@ def _exempt(line: str, start: int, end: int, raw: str, unit: str, ev: Evidence,
     return False
 
 
+#: a step the writer proposes, not a fact it reports: 「11월, 인력 계획을 확정합니다」
+_PLAN = re.compile(
+    r"(?:확정|진행|준비|착수|추진|시행|검토|확인|등록|결정|정리|수립|마련|점검)(?:합니다|하겠습니다|한다|할\s?예정|"
+    r"하도록|해야|을\s?마칩니다|를\s?마칩니다)|(?:정합니다|마칩니다|엽니다|둡니다)")
+_PLAN_NOT = re.compile(r"발표|공개|개정|시행령|법률|정부|부처")
+
+
+def _planned(y: int, mo: int, line: str, ev: Evidence) -> bool:
+    """A month up to two years ahead in a line that proposes a step of the reader's own."""
+    if ev.today is None or not y or not 1 <= mo <= 12:
+        return False
+    ahead = (y - ev.today.year) * 12 + mo - ev.today.month
+    return 0 <= ahead <= 24 and bool(_PLAN.search(line)) and not _PLAN_NOT.search(line)
+
+
 def supported(segment: str, line: str, offset: int, ev: Evidence, structure: int,
               header: list[str] | None = None) -> bool:
     """Whether every value in `segment` (at `offset` in `line`) is supported or exempt."""
@@ -426,7 +649,8 @@ def supported(segment: str, line: str, offset: int, ev: Evidence, structure: int
         masked = masked[:s] + " " * (e - s) + masked[e:]
     for m in _YEAR_MONTH.finditer(masked):
         y, mo = int(m.group("y")), int(m.group("m"))
-        if 1 <= mo <= 12 and not (y in ev.years and mo in ev.months):
+        if 1 <= mo <= 12 and not (y in ev.years and mo in ev.months) and not _planned(
+                y, mo, line, ev):
             return False
         masked = masked[:m.start()] + " " * (m.end() - m.start()) + masked[m.end():]
     for m in _MONTH_PART.finditer(masked):
@@ -439,7 +663,8 @@ def supported(segment: str, line: str, offset: int, ev: Evidence, structure: int
                 (None, mo, d) in ev.days for d in days):
             return False
     for m in _MONTH.finditer(masked):
-        if int(m.group("m")) not in ev.months and not _exempt(
+        if int(m.group("m")) not in ev.months and not _planned(
+                ev.today.year if ev.today else 0, int(m.group("m")), line, ev) and not _exempt(
                 line, offset + m.start(), offset + m.end("m"), m.group("m"), "", ev, structure):
             return False
         masked = masked[:m.start()] + " " * (m.end() - m.start()) + masked[m.end():]
@@ -459,7 +684,15 @@ def supported(segment: str, line: str, offset: int, ev: Evidence, structure: int
     return True
 
 
-_TOKEN = re.compile(r"\[[^\[\]\n]{1,30}\]|\d[\d,.]*|[A-Za-z]+|\s+|.", re.S)
+#: a date part or a blank standing for one
+_PART = r"(?:\d{1,4}|\[[^\[\]\n]{1,12}\])"
+#: a whole date, any notation, blanks inside it too (「2026년 [수치]월 [수치]일」): one token, so
+#: a value given back or marked is the whole date, never a piece of it
+_DATE_TOKEN = (
+    rf"{_PART}\s?(?:년|[-./])\s?{_PART}\s?(?:월|[-./])\s?{_PART}\s?(?:일)?"
+    rf"(?:\s?\(\s?[{_WD}](?:요일)?\s?\))?"
+    rf"|{_PART}\s?월\s?{_PART}\s?일(?:\s?\(\s?[{_WD}](?:요일)?\s?\))?")
+_TOKEN = re.compile(rf"{_DATE_TOKEN}|\[[^\[\]\n]{{1,30}}\]|\d[\d,.]*|[A-Za-z]+|\s+|.", re.S)
 
 
 def _tokens(text: str) -> list[str]:
@@ -540,7 +773,7 @@ def _value_end(text: str, s: int, e: int, widened: int) -> int:
 def _settle_values(before: str, after: str, ev: Evidence, structure: int,
                    out: Settled) -> str:
     """`after` with each guard blank replaced by what `before` had there."""
-    if not GUARD_BLANK.search(after):
+    if not GUARD_BLANK.search(after) and after.count(MARK) <= before.count(MARK):
         return after
     a, b = _tokens(before), _tokens(after)
     offsets = [0]
@@ -569,7 +802,10 @@ def _settle_values(before: str, after: str, ev: Evidence, structure: int,
             continue
         if pending is not None and pending <= offsets[i1]:
             pieces.append(flush(offsets[i1], "", offsets[i1]))
-        if not GUARD_BLANK.search(new):
+        was = "".join(a[i1:i2])
+        # a value the guard swapped for 「(확인 필요)」 is a blank too (「스크립트 지적 9개」)
+        swapped = MARK in new and MARK not in was and re.search(r"\d", was)
+        if not GUARD_BLANK.search(new) and not swapped:
             pieces.append(new)
             continue
         if i1 == i2:
@@ -671,13 +907,67 @@ def settle(before: str, after: str, ev: Evidence) -> Settled:
         else:
             pairs = [("\n\n".join(olds), "\n\n".join(news))]
         for old, new in pairs:
-            fixed = _settle_values(old, new, ev, structure, out)
+            if dropped := _dropped_given(old, new, ev):
+                # a rewrite took out a value the person gave (「무료 체험 45일」): kept as written
+                out.kept.append(f"{dropped}: {old.strip()[:50]}")
+                result.append(old)
+                continue
+            fixed = _unmark(old, _settle_values(old, new, ev, structure, out), ev, structure,
+                            out)
             if _emptied(old, fixed):
                 out.kept.append(old.strip()[:60])
                 fixed = _mark_block(old, ev)
             result.append(fixed)
     out.text = "\n\n".join(result)
     return out
+
+
+#: a value written just before a mark: a day (weekday too) or a number with its unit
+_BEFORE_MARK = re.compile("(?:" + "|".join(
+    re.sub(r"\(\?P<\w+>", "(?:", p) for p in (
+        _FULL_DAY.pattern, _MONTH_DAY.pattern, _SHORT_DAY.pattern,
+        rf"(?<![A-Za-z\d.,_/#-])(?:{_TERM})\s?(?:{_UNIT}|월)?")) + r")\s?$")
+
+
+def _unmark(before: str, after: str, ev: Evidence, structure: int, out: Settled) -> str:
+    """A 「(확인 필요)」 the guard put after a value the evidence supports, taken off; the
+    writer's own marks stay."""
+    if MARK not in after or after.count(MARK) <= before.count(MARK):
+        return after
+    pieces, at = [], 0
+    for m in re.finditer(re.escape(MARK), after):
+        head = after[max(0, m.start() - 40):m.start()]
+        value = _BEFORE_MARK.search(head)
+        if value is None:
+            continue
+        written = value.group(0).strip()
+        if f"{written}{MARK}" in before.replace(" " + MARK, MARK):
+            continue  # the writer marked it
+        line, base = _line_at(after, m.start())
+        start = m.start() - len(head) + value.start() - base
+        if supported(written, line, start, ev, structure, _table_header(after, m.start())):
+            out.restored.append(written)
+            cut = m.start() - (1 if after[m.start() - 1:m.start()] == " " else 0)
+            pieces.append(after[at:cut])
+            at = m.end()
+    pieces.append(after[at:])
+    return "".join(pieces)
+
+
+def _dropped_given(old: str, new: str, ev: Evidence) -> str:
+    """A value `old` writes that the evidence states as written, gone from a non-empty `new`
+    the guard rewrote (blanks and marks aside); "" when none."""
+    if not new.strip() or GUARD_BLANK.search(new) or old.lstrip().startswith(("|", "```")):
+        return ""
+    for m in _NUMBER.finditer(old):
+        unit = m.group("unit") or ""
+        if not unit or unit in ("자", "줄"):
+            continue
+        written = re.sub(r"\s+", "", m.group(0))
+        if written in ev.flat and written not in re.sub(r"\s+", "", new) \
+                and old.count(m.group(0)) > new.count(m.group(0)):
+            return m.group(0).strip()
+    return ""
 
 
 __all__ = ["GUARD_BLANK", "MARK", "Evidence", "Settled", "ko_number", "settle", "supported"]

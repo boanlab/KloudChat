@@ -34,6 +34,7 @@ LABELS: dict[str, str] = {
     "quality": "품질 점검",
     "report-save": "저장",
     "answer-normalize": "답 다듬기",
+    "answer-han": "한자 섞인 문장 고치기",
     "check:answer-grounding": "근거 확인",
     "check:copy": "카피 점검",
     "check:skills": "스킬 점검",

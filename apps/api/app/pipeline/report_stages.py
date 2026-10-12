@@ -1073,6 +1073,9 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     document_context = bundle.material.document
     # cut by code: model rewording invents content
     earlier = [str(s.get("content") or "") for s in sections[:index]]
+    if doc_format is not None and doc_format.id == "minutes":
+        # minutes state a decision, its discussion and the next meeting each in its own part
+        earlier = []
     # reference lists exempt from prose number/owner guards
     is_reference = bool(report._REFERENCE_HEADING.search(str(section["heading"] or "")))
     trimmed: list[str] = []
@@ -1100,10 +1103,6 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     given_text = "\n".join([request, *document_context])
     clean = units.fix_magnitude_slips(units.fix_unit_labels(clean, given_text), given_text)
     clean = report.drop_redundant_kpi(report.drop_repeated_figures(clean))
-    if not bundle.material.grounded:
-        # money the sources state stays; the rest is marked, never blanked
-        clean = report._without_invented_money(clean, [
-            given_text, *(report._source_text(row) for row in sources or [])])
     # owners and dates from request, material or source only
     clean = report._unsourced_owner_dates(
         clean,
@@ -1126,23 +1125,27 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         report.fix_table_formulas(units.fix_written_sums(units.fix_written_arithmetic(clean))),
         given_text,
     )
-    return richtext.tidy_tables(
-        report._grounded_figures(
-            report.trim_table_echo(
-                report.fix_point_units(
-                    report.undouble_words(
-                        report.fix_percent_formulas(
-                            report.fix_ledger_magnitudes(
-                                report.fix_value_then_product(report.fix_products(clean)),
-                                request,
-                            )
+    clean = report._grounded_figures(
+        report.trim_table_echo(
+            report.fix_point_units(
+                report.undouble_words(
+                    report.fix_percent_formulas(
+                        report.fix_ledger_magnitudes(
+                            report.fix_value_then_product(report.fix_products(clean)),
+                            request,
                         )
                     )
                 )
-            ),
-            bundle.material.grounded,
-        )
+            )
+        ),
+        bundle.material.grounded,
     )
+    if not bundle.material.grounded:
+        # money the sources state stays; the rest is marked, never blanked — after the
+        # arithmetic fixes, so a mark never splits a formula they read
+        clean = report._without_invented_money(clean, [
+            given_text, *(report._source_text(row) for row in sources or [])])
+    return richtext.tidy_tables(clean)
 
 
 class Figures(Base):
@@ -1353,6 +1356,10 @@ class Normalize(Base):
             bundle.document.sections, settled=bundle.computed.settled,
             sources=bundle.material.sources, request=bundle.request.text,
             context=_material_text(bundle))
+        if not bundle.material.grounded:
+            sections = report.unmark_worked(sections, [
+                bundle.request.text, *bundle.material.document,
+                *(report._source_text(row) for row in bundle.material.sources or [])])
         sections = report.gaejo_body(sections, bundle.spec.format)
         if bundle.spec.format_id in report.PLAIN_FORMATS or report.form_document(
                 bundle.request.text):
@@ -1498,10 +1505,12 @@ def settled_sections(before: list[dict], after: list[dict], evidence: list[str])
     from app.services import value_guard
 
     out = []
+    whole = "\n".join(str(row.get("content") or "") for row in before)
     for old, new in zip(before, after, strict=True):
         a, b = str(old.get("content") or ""), str(new.get("content") or "")
         out.append({**new, "content": value_guard.settle(
-            a, b, value_guard.Evidence.of(evidence, answer=a)).text} if a != b else new)
+            a, b, value_guard.Evidence.of(evidence, answer=a, worked=whole)).text}
+            if a != b else new)
     return out
 
 

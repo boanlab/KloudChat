@@ -15,6 +15,7 @@ from app.services import (
     current_evidence,
     freshness,
     internal_words,
+    stray_han,
     superlatives,
     units,
     weekdays,
@@ -76,6 +77,8 @@ class Normalize(Base):
             # skill script report lines
             normalized = internal_words.strip_reports(normalized)
         normalized = internal_words.strip_tool_apologies(normalized)
+        # the material's 「(가상)」 test tag stays out of the copy
+        normalized = internal_words.strip_test_label(normalized, first or req.text)
         # sandbox links open nothing; files are in the chips
         made = {str(out.get("name") or "") for step in bundle.document.kept_steps
                 for out in (step.get("outputs") or []) if isinstance(out, dict)}
@@ -153,6 +156,32 @@ class TextFit(Base):
         yield {"type": "step", **fit_step}
 
 
+class StrayHan(Base):
+    """Chinese words slipped into a Korean answer: their sentence said again in Korean once."""
+
+    name = "answer-han"
+    kind = "model"
+    reads = ("request", "material.given", "document.answer")
+    writes = ("document.answer",)
+
+    def skip(self, bundle: Bundle) -> str:
+        given = f"{bundle.request.text}\n{bundle.material.given}"
+        if not stray_han.strays(bundle.document.answer, given):
+            return "no Chinese words in the answer"
+        return ""
+
+    async def apply(self, bundle: Bundle, ctx: Context) -> None:
+        from app.services import report
+
+        req = bundle.request
+        bundle.document.answer, changed = await stray_han.mend(
+            bundle.document.answer, given=f"{req.text}\n{bundle.material.given}",
+            complete=report._complete, model=req.model, api_key=req.api_key,
+            usage=bundle.usage)
+        if changed:
+            log.info("stray Chinese rephrased in session %s: %s", req.session_id, changed[:6])
+
+
 class Replace(Base):
     """Finished answer replaces the streamed one (client retracts the first match)."""
 
@@ -168,7 +197,7 @@ class Replace(Base):
         yield {"type": "delta", "text": bundle.document.answer}
 
 
-for _stage in (Normalize(), TextFit(), Replace()):
+for _stage in (Normalize(), StrayHan(), TextFit(), Replace()):
     registry.register(_stage)
 
 
