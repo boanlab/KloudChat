@@ -34,6 +34,20 @@ def _given(request: str) -> set[float]:
     return out
 
 
+#: digits the person wrote before a scale word (「4,215만」 → 4215)
+_SCALED_DIGITS = re.compile(r"(?<![\d.])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}(?:억|천만|백만|만|천)")
+
+
+def _scaled_digits(request: str) -> set[float]:
+    out = set()
+    for number in _SCALED_DIGITS.findall(request or ""):
+        try:
+            out.add(round(float(number.replace(",", "")), 2))
+        except ValueError:
+            continue
+    return out
+
+
 def _label(scale: float) -> str:
     word = next(w for w, s in _SCALE if s == scale)
     return f"{word} 원" if word else "원"
@@ -102,7 +116,9 @@ def _like(value: float, template: str) -> str:
 
 
 def _swap(text: str, old: str, new: str) -> str:
-    return re.sub(rf"(?<![\d.,]){re.escape(old)}(?![\d]|[.,]\d)", new, text)
+    # 「4,215만」 is already scaled
+    scaled = r"\s?(?:억|천만|백만|만|천)"
+    return re.sub(rf"(?<![\d.,]){re.escape(old)}(?![\d]|[.,]\d|{scaled})", new, text)
 
 
 def fix_magnitude_slips(text: str, request: str) -> str:
@@ -111,12 +127,14 @@ def fix_magnitude_slips(text: str, request: str) -> str:
     if not given or not text:
         return text
     exact = {round(g, 2) for g in given}
+    # the person's own digits (「4,215만원」 → 4,215) are in their unit, not slipped
+    own = _scaled_digits(request)
     fixes: dict[str, str] = {}
     for m in _EXPRESSION.finditer(text):
         for key in ("a", "b"):
             raw = m.group(key)
             value = _num(raw)
-            if value < 1000 or round(value, 2) in exact or raw in fixes:
+            if value < 1000 or round(value, 2) in exact or round(value, 2) in own or raw in fixes:
                 continue
             for g in given:
                 if any(abs(value * 10**k - g) < 0.5 or abs(value - g * 10**k) < 0.5
@@ -170,6 +188,25 @@ def fix_double_scale(text: str, request: str) -> str:
         return f"{number}{m.group(2)} 원"
 
     return _SCALED_WON.sub(one, text)
+
+
+#: same scale word twice after digits: 「4,200만만 원」
+_REPEATED_SCALE = re.compile(r"(?<=\d)(억|천만|백만|만|천)\1+(?=\s{0,1}원)")
+#: scaled amount the person wrote without 원 (「강사비 4,200만 /」)
+_SCALED_BARE = re.compile(
+    r"(?<![\d.,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}(억|천만|백만|만|천)(?=\s{0,2}(?:[/,)·]|$))",
+    re.M)
+
+
+def restore_material_scale(text: str, material: str) -> str:
+    """Amount scaled twice (「45,000,000만 원」, 「4,200만만 원」) in the material's form."""
+    if not text or not material:
+        return text
+    text = _REPEATED_SCALE.sub(r"\1", text)
+    extra = []
+    for number, word in _SCALED_BARE.findall(material):
+        extra.append(f"{number}{word}원")
+    return fix_double_scale(text, "\n".join([material, *extra]))
 
 
 #: Korean amount; 천 matched inside 만/억 groups (else 「1억 8」)

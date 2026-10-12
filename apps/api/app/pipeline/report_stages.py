@@ -1654,8 +1654,18 @@ class Quality(Base):
         if repeated:
             log.info("dropped %d repeated line(s) across sections", len(repeated))
             bundle.document.sections = sections
+        material = _material_text(bundle)
+        # amounts scaled twice go back to the material's form before the read
+        restored = [
+            {**s, "content": units.restore_material_scale(str(s.get("content") or ""), material)}
+            if isinstance(s.get("content"), str) else s
+            for s in sections
+        ]
+        if restored != sections:
+            log.info("restored double-scaled amounts to the material's form")
+            sections = bundle.document.sections = restored
         format_codes = set(report_checks.LABELS)
-        findings = quality_gate.report_findings(sections, _material_text(bundle),
+        findings = quality_gate.report_findings(sections, material,
                                                 bundle.computed.settled)
         for x in [x for x in f.still if x.code in format_codes][:12]:
             findings.append({"code": x.code,

@@ -1509,8 +1509,13 @@ def fix_restated_amounts(text: str, given: str) -> str:
         return text
 
     def mend(sentence: str) -> str:
-        found = [(m.group(0), round(_ko_value(m.group(0)), 2)) for m in _KO_AMOUNT.finditer(sentence)]
-        for raw, value in found:
+        spans = list(_KO_AMOUNT.finditer(sentence))
+        found = [(m.group(0), round(_ko_value(m.group(0)), 2)) for m in spans]
+        swaps: list[tuple[int, int, str]] = []
+        for m, (raw, value) in zip(spans, found, strict=True):
+            # bare digits are in the writer's unit (「4,200 ÷ 12,000」 in 만) unless 원 follows
+            if not re.search(r"[조억만]", raw) and not re.match(r"\s?원", sentence[m.end():]):
+                continue
             for values in lines:
                 if value in values or not value:
                     continue
@@ -1523,8 +1528,11 @@ def fix_restated_amounts(text: str, given: str) -> str:
                     None,
                 )
                 if match is not None:
-                    sentence = sentence.replace(raw, _ko_amount(match), 1)
+                    swaps.append((m.start(), m.end(), _ko_amount(match)))
                     break
+        # in place: the same digits elsewhere (「4,200만 원」) untouched
+        for start, end, amount in reversed(swaps):
+            sentence = sentence[:start] + amount + sentence[end:]
         return sentence
 
     return _SENTENCE.sub(lambda m: mend(m.group(0)), text)
