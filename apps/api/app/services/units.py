@@ -215,7 +215,8 @@ _TERM = (
     r"|\d[\d,]*(?:\.\d+)?"
 )
 #: per-unit amount reads as its amount
-_UNIT_WORD = (r"(?:\s?(?:원|명|박스|회차|회|개월|개|건|세트|가구|%|배)"
+_UNIT_WORD = (r"(?:\s?(?:원|명|박스|회차|회|개월|개년|개|건|세트|가구|%|배"
+              r"|시간|년|장|대|일|주|km|kWh)"
               r"(?:\s?/\s?(?:월|년|연|박스|개|명|회|건|가구|세트|주|일))?)?")
 #: short name between operator and amount
 _NAMED = r"(?:[가-힣]{1,6}\s)?"
@@ -292,8 +293,8 @@ def fix_written_arithmetic(text: str) -> str:
         lhs, rhs = m.group("lhs"), m.group("rhs")
         if "%" in (m.group("rhs_unit") or ""):
             return m.group(0)
-        # product inside a sum is one term
-        if re.search(r"[+\-−±]\s{0,3}$", m.string[max(0, m.start() - 4):m.start()]):
+        # product inside a sum is one term; the tail of a longer product is no product
+        if re.search(r"[+\-−±×x*÷]\s{0,3}$", m.string[max(0, m.start() - 4):m.start()]):
             return m.group(0)
         parts = re.split(r"\s?([×x*÷])\s?", lhs)
         try:

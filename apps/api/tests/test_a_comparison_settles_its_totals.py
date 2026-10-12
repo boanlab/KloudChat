@@ -578,13 +578,21 @@ def _gpu(cards: int) -> dict:
 
 
 async def test_the_gpu_decision_keeps_the_settled_option_s_totals_when_the_other_splits():
-    # A안 read as 1 or 4 cards: B안's settled 1억 4,700만 is still stated, not [금액].
-    complete, _ = _by_turn(_gpu(1), _gpu(4), _gpu(5))
+    # A안 read three ways (×1, ×5, ×3): B안's settled 1억 4,700만 is still stated, not [금액].
+    complete, _ = _by_turn(_gpu(1), _gpu(5), _gpu(3))
     pre = await report_checks.prepare("comparison", GPU, GPU, complete=complete,
                                       model="m", api_key="k", tiebreak_model="big")
     partial = next(b for b in pre.blocks if b.startswith("# 총비용 계산(코드): 일부만 확정"))
     assert "B안 147,000,000원" in partial and "B안 129,000,000원" in partial
     assert "Not settled: A안" in partial
+
+
+async def test_a_hourly_price_read_per_card_is_the_instance_price():
+    # 「A100 80GB 4장, 시간당 12,000원」 read as ×4 cards: the material prices no card, so ×1
+    complete, asked = _by_turn(_gpu(1), _gpu(4))
+    pre = await report_checks.prepare("comparison", GPU, GPU, complete=complete,
+                                      model="m", api_key="k", tiebreak_model="big")
+    assert len(asked) == 2 and pre.costs["options"]["A안"]["total"] == 72_000_000
 
 
 def test_a_blank_about_one_option_is_not_answered_from_another_option_s_figures():

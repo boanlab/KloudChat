@@ -855,7 +855,7 @@ Schema (the example comes from other material; take names and numbers from the m
  "scenarios": [{{"name": "연 3,000장", "replace": [{{"from": 2000, "to": 3000}}]}}]}}
 
 Fields (the code does the multiplication; do not multiply or add anything yourself):
-- unit_price: the unit price exactly as written in the material (won). count: the number of units, people or items the price applies to (that number when the price is per unit or per person, otherwise 1).
+- unit_price: the unit price exactly as written in the material (won). count: the number of units, people or items the price applies to — only when the material prices each one (「대당」「1인당」「/명」); a price for the whole setup (「A100 4장, 시간당 12,000원」) has count 1.
 - per: the unit of the price. "once" (one time), "year" (each year), "month" (each month), otherwise the usage unit
   ("km", "시간", "장", "건" …).
 - years: the number of years compared. For a monthly price, "months" if the material gives the number of months, otherwise only years.
@@ -883,6 +883,51 @@ Material:
 {material}
 
 Answer with one JSON object only."""
+
+
+#: units a thing is counted in (「4장」「40명」「3대」), not usage (「2,000시간」「15,000km」)
+_COUNTED_IN = r"장|개|대|명|인|석|좌석|부|권|세트|식|계정|카드|노드|copy|units?|seats?|users?"
+
+
+def _count_alternatives(unit: str) -> str:
+    return "명|인" if unit in ("명", "인") else re.escape(unit)
+
+
+def priced_per_unit(count: Any, text: str) -> bool:
+    """Whether a price is multiplied by `count` in the material: a count of things (「4장」)
+    needs a per-unit price there (「대당」「1인」「/명」「× 40명」); a hourly price for 「A100
+    4장」 is the whole instance's. Counts of usage (「2,000시간」) or unwritten stand."""
+    plain = _plain(count)
+    try:
+        number = float(plain) if plain is not None else 1.0
+    except ValueError:
+        return True
+    if number <= 1 or number != int(number):
+        return True
+    shown = "|".join(re.escape(f) for f in dict.fromkeys((f"{int(number):,}", str(int(number)))))
+    units = {m.group(1) for m in re.finditer(
+        rf"(?<![\d.,])(?:{shown})\s{{0,2}}({_COUNTED_IN})(?![가-힣A-Za-z])", text or "")}
+    if not units:
+        return True
+    for unit in units:
+        alt = _count_alternatives(unit)
+        if re.search(rf"(?:{alt})\s{{0,2}}당|(?<![\d.,])1\s{{0,2}}(?:{alt})(?![가-힣\d])"
+                     rf"|/\s{{0,2}}(?:{alt})(?![가-힣])|[×x*]\s{{0,2}}(?:{shown})\s{{0,2}}(?:{alt})"
+                     rf"|(?:{shown})\s{{0,2}}(?:{alt})\s{{0,2}}[×x*]", text or ""):
+            return True
+    return False
+
+
+def counted_as_written(data: dict, text: str) -> dict:
+    """The cost reading with a count the material does not price per unit set to 1."""
+    for option in data.get("options") or []:
+        for item in (option.get("items") or []) if isinstance(option, dict) else []:
+            if isinstance(item, dict) and "count" in item and not priced_per_unit(
+                    item.get("count"), text):
+                log.info("cost item %r: count %s is not priced per unit in the material",
+                         logs.safe(str(item.get("name"))), logs.safe(str(item.get("count"))))
+                item["count"] = 1
+    return data
 
 
 _ONCE = ("once", "한 번", "1회", "일시")
@@ -1547,7 +1592,8 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
             text, more = await complete(override or model, prompt, api_key, 2500)
             count(more)
             why: list[str] = []
-            return option_costs(_json(text), numbers, why), (why[0] if why else "")
+            return option_costs(counted_as_written(_json(text), given), numbers, why), (
+                why[0] if why else "")
 
         # split settled by outline model w/ thinking (15/15 vs 12/15 without, 150 s median); plain third past cap
         thinker = next((m for m in (model, tiebreak_model)
@@ -1560,7 +1606,7 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                 text, more = await job.deliberate(thinker, prompt, api_key, DELIBERATE_TOKENS)
             count(more)
             why: list[str] = []
-            found = option_costs(_json(text), numbers, why)
+            found = option_costs(counted_as_written(_json(text), given), numbers, why)
             deliberated = found is not None
             return found, (why[0] if why else "")
 
@@ -3844,6 +3890,42 @@ def _yearly_cost(option: str, costs: dict | None) -> float | None:
     return None
 
 
+#: a must that data stay in-house
+_RESIDENCY = re.compile(
+    r"외부\s{0,2}반출|반출\s{0,2}(?:불가|금지)|외부\s{0,2}(?:저장|전송|보관|이전)\s{0,2}(?:불가|금지)"
+    r"|국외\s{0,2}이전\s{0,2}(?:불가|금지)|데이터\s{0,2}(?:주권|레지던시)|망\s{0,2}분리")
+_CLOUD = re.compile(r"클라우드|cloud|SaaS|퍼블릭|구독형|외부\s{0,2}(?:서버|호스팅|데이터\s{0,2}센터)",
+                    re.I)
+_IN_HOUSE = re.compile(
+    r"온\s{0,2}프레미스|설치형|자체\s{0,2}(?:서버|구축)|사내\s{0,2}(?:서버|구축)|내부\s{0,2}(?:망|서버)"
+    r"|프라이빗\s{0,2}클라우드|전용\s{0,2}(?:리전|망)|(?:반출|외부\s{0,2}전송)\s{0,2}(?:없|않|불필요)")
+
+
+def _described(option: str, options: list[str], text: str) -> str:
+    """What the material says of `option`: its name and the words after it up to the next
+    option's name or the line's end (「A안: 클라우드 GPU(A100 80GB 4장) 시간당 …」)."""
+    out = [option]
+    for m in re.finditer(re.escape(option), text or ""):
+        end = text.find("\n", m.end())
+        end = len(text) if end < 0 else end
+        for other in options:
+            if other != option and (at := text.find(other, m.end(), end)) >= 0:
+                end = min(end, at)
+        out.append(text[m.end():end])
+    return " ".join(out)
+
+
+def _residency(option: str, options: list[str], text: str) -> bool | None:
+    """Whether `option` keeps data in-house, by what it is: a cloud service holds them outside
+    unless the material says otherwise; `None` when the material doesn't say."""
+    said = _described(option, options, text)
+    if _IN_HOUSE.search(said):
+        return True
+    if _CLOUD.search(said):
+        return False
+    return None
+
+
 def must_status(data: dict, numbers: list[float], material: str = "",
                 costs: dict | None = None) -> dict | None:
     """Each option 충족 / 탈락(사유) / 조건 미확인; unstated limits/values left out; a yearly
@@ -3861,6 +3943,7 @@ def must_status(data: dict, numbers: list[float], material: str = "",
     if not musts or len(options) < 2:
         return None
     out: dict[str, dict] = {}
+    names = [str(o["name"]) for o in options]
     for option in options:
         given = option.get("musts") or {}
         failed, unknown = [], []
@@ -3870,10 +3953,21 @@ def must_status(data: dict, numbers: list[float], material: str = "",
             if must.get("kind") != "yesno" and plain is not None and not _grounded(plain, numbers):
                 raw = None
             value = _must_value(raw, must)
-            if (value is None and must.get("kind") == "max" and _ANNUAL.search(must["name"])
-                    and str(must.get("unit") or "원") == "원"):
-                # code-computed yearly cost, not a value to ground in the material
-                value = _yearly_cost(option["name"], costs)
+            if (must.get("kind") == "max" and _ANNUAL.search(must["name"])
+                    and str(must.get("unit") or "원") == "원"
+                    and (yearly := _yearly_cost(option["name"], costs)) is not None):
+                # a yearly money limit is judged on the code-computed yearly cost, never on a
+                # reading of one of the material's figures (the hourly price, a count)
+                value = yearly
+            residency = (_residency(str(option["name"]), names, material)
+                         if must.get("kind") == "yesno" and _RESIDENCY.search(must["name"])
+                         else None)
+            if residency is False and value is not False:
+                # 「데이터 외부 반출 불가」 and a cloud service: the data sit on its servers
+                failed.append(f"{must['name']} 아님(클라우드라 데이터가 외부 서버에 있음)")
+                continue
+            if residency is True and value is None:
+                value = True
             if value is None:
                 unknown.append(must["name"])
             elif must["kind"] == "yesno" and value is False:
