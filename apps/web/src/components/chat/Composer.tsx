@@ -580,23 +580,6 @@ export function Composer({
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
   const composerRestore = useStore((s) => s.composerRestore)
   const setComposerRestore = useStore((s) => s.setComposerRestore)
-  useEffect(() => {
-    if (!pendingAttachment) return
-    // Media surfaces take no attachments; drop it rather than leave it for the next chat turn.
-    if (isMedia) {
-      setPendingAttachment(null)
-      return
-    }
-    activeRestoreToken.current = null
-    setAttachments((current) => {
-      const next = current.some((f) => f.id === pendingAttachment.id)
-        ? current
-        : [...current, pendingAttachment]
-      liveAttachments.current = next
-      return next
-    })
-    setPendingAttachment(null)
-  }, [isMedia, pendingAttachment, setPendingAttachment])
   /** Refused-turn restoration without overwriting newer input. */
   useEffect(() => {
     if (!composerRestore || composerRestore.sessionId !== sessionId) return
@@ -801,6 +784,25 @@ export function Composer({
     setAttachments([])
     setWebSearchMode('auto')
   }, [sessionId, kind, messageEdit?.sessionId, accountEpoch])
+  // Declared after the scope reset above: effects run in order, so a hand-off arriving with a
+  // navigation is taken after the new scope's reset, not wiped by it.
+  useEffect(() => {
+    if (!pendingAttachment) return
+    // Media surfaces take no attachments; drop it rather than leave it for the next chat turn.
+    if (isMedia) {
+      setPendingAttachment(null)
+      return
+    }
+    activeRestoreToken.current = null
+    setAttachments((current) => {
+      const next = current.some((f) => f.id === pendingAttachment.id)
+        ? current
+        : [...current, pendingAttachment]
+      liveAttachments.current = next
+      return next
+    })
+    setPendingAttachment(null)
+  }, [isMedia, pendingAttachment, setPendingAttachment])
   // Session row may arrive after mount: its skills fill an empty picker once, never overriding a live choice.
   const standingSkillIds = useStore((s) =>
     sessionId ? s.sessions.find((c) => c.id === sessionId)?.skillIds : undefined,

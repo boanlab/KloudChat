@@ -948,11 +948,16 @@ export const useStore = create<State>((set, get) => ({
         void get().loadModels()
         void get().loadSessions()
         void get().loadWorkspace()
-      } catch {
+      } catch (err) {
         cancelRefresh()
         disarmIdleWatch()
         setAccessToken(null)
-        rememberSignedOut(true)
+        // Remembered only when the server said so. A refresh cut off by a reload or a
+        // network error says nothing about the cookie; remembering it would skip the
+        // refresh on the next load and show sign-in to a signed-in person.
+        if ((err instanceof Error && err.message === 'signed_out') || err instanceof UnauthorizedError) {
+          rememberSignedOut(true)
+        }
         set({ authenticated: false, user: null, authLoading: false })
       } finally {
         inFlight = null
