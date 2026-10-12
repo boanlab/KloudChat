@@ -1702,6 +1702,11 @@ async def get_session(session_id: str, user: CurrentUser, db: DbSession):
 
 @router.post("", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
 async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSession):
+    if payload.id and (existing := await db.get(ChatSession, payload.id)) is not None:
+        # a retried first send finds its conversation; another account's id is refused
+        if existing.user_id != user.id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_id_taken")
+        return SessionOut.of(existing, [])
     agent = await db.get(WorkspaceAgent, payload.agent_id) if payload.agent_id else None
     if agent is not None and agent.owner_id != user.id and agent.visibility != AgentVisibility.org:
         agent = None
@@ -1740,6 +1745,7 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
     if payload.routing_mode in _AUTO_MODES:
         await _require_auto_quality_model(user, payload.model)
     session = ChatSession(
+        **({"id": payload.id} if payload.id else {}),
         user_id=user.id,
         kind=payload.kind,
         project_id=payload.project_id,

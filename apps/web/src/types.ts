@@ -163,6 +163,8 @@ export interface Session {
   skillIds: string[]
   /** Sticky rendering template; null is the surface's built-in track. */
   renderTemplateId: string | null
+  /** Opened but not sent: the browser holds it until the first send creates it under this id. */
+  unsent?: boolean
 }
 
 export interface Preferences {

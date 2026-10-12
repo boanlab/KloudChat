@@ -182,7 +182,7 @@ export function SearchDialog() {
   )
 
   const recent = useMemo(
-    () => [...sessions].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)).slice(0, RECENT),
+    () => sessions.filter((c) => !c.unsent).sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)).slice(0, RECENT),
     [sessions],
   )
 

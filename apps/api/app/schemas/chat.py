@@ -271,6 +271,8 @@ def snippet(content: str, limit: int = 120) -> str | None:
 
 
 class SessionCreate(Wire):
+    #: id the client gave its unsent conversation; created on the first send under it
+    id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     kind: SessionKind = SessionKind.chat
     project_id: str | None = None
     agent_id: str | None = None

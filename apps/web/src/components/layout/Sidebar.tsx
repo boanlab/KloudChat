@@ -188,7 +188,8 @@ export function Sidebar() {
   } = useStore()
 
   const filtered = useMemo(
-    () => [...sessions].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)),
+    // An unsent conversation is listed once its first send creates it.
+    () => sessions.filter((c) => !c.unsent).sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)),
     [sessions],
   )
 

@@ -157,7 +157,8 @@ export async function composerFixture(
     if (method === 'GET' && path === '/sessions') return json([...rows.values()])
     if (method === 'GET' && path === '/artifacts/counts') return json({ counts: {}, total: 0 })
     if (method === 'POST' && path === '/sessions') {
-      const id = `c${String(next++).padStart(31, '0')}`
+      // An unsent conversation is created under the id it was opened with.
+      const id = typeof body.id === 'string' ? body.id : `c${String(next++).padStart(31, '0')}`
       const row = sessionRow(id, String(body.kind ?? 'chat'))
       Object.assign(row, body.agentId ? { agentId: body.agentId } : {})
       rows.set(id, row)

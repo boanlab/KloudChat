@@ -443,3 +443,20 @@ def test_the_transcript_keeps_the_latest_turns_within_its_bound():
     assert sessions_router.handoff_transcript([]) == ""
     failed = Message(session_id="s", role=Role.user, content="실패", failure=TurnFailure.no_answer)
     assert sessions_router.handoff_transcript([failed]) == ""
+
+
+@pytest.mark.asyncio
+async def test_a_conversation_is_created_under_the_id_its_first_send_carries(db):
+    author, taker, _ = await _people(db)
+    draft = "d" * 32
+    made = await sessions_router.create_session(SessionCreate(id=draft), author, db)
+    assert made.id == draft and (await db.get(ChatSession, draft)).user_id == author.id
+    # a retried first send finds the same conversation
+    again = await sessions_router.create_session(SessionCreate(id=draft), author, db)
+    assert again.id == draft
+    with pytest.raises(HTTPException) as taken:
+        await sessions_router.create_session(SessionCreate(id=draft), taker, db)
+    assert taken.value.status_code == 409
+    with pytest.raises(ValueError):
+        SessionCreate(id="../not-an-id")
+    assert (await sessions_router.create_session(SessionCreate(), author, db)).id != draft

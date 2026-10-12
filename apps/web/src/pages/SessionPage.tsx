@@ -343,7 +343,7 @@ export function SessionPage() {
     setActiveSession(session?.id ?? null)
   }, [session?.id, setActiveSession])
 
-  // Empty session deleted on leave unless it holds a draft; deferred a tick for StrictMode remounts and same-id returns.
+  // Left empty (never sent, or its first send refused): dropped on leave unless it holds a draft; deferred a tick for StrictMode remounts and same-id returns.
   const pendingCleanup = useRef<{ id: string; timer: number } | null>(null)
   useEffect(() => {
     const id = sessionId
@@ -568,7 +568,7 @@ export function SessionPage() {
             {session.kind === 'chat' && agent && session.messages.length > 0 && (
               <HandOffButtons agent={agent} sessionId={session.id} />
             )}
-            {session && <ShareButton session={session} />}
+            {session && !session.unsent && <ShareButton session={session} />}
             {sessionArtifact && !openArtifactId && (
               <Button size="sm" onClick={() => openArtifact(sessionArtifact.id)}>
                 <PanelRight size={14} />

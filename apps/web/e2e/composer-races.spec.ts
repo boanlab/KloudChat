@@ -91,8 +91,8 @@ test('a refused first turn leaves the text where it was typed', async ({ page },
   expect(unexpected).toEqual([])
 })
 
-test('a file attached while an agent conversation opens stays attached', async ({ page }, info) => {
-  const { unexpected } = await composerFixture(page, info)
+test('picking an agent creates nothing; a file attached then creates the conversation and stays', async ({ page }, info) => {
+  const { unexpected, created } = await composerFixture(page, info)
   const create = gate()
   await page.route('**/api/sessions', async (route) => {
     if (route.request().method() === 'POST') await create.opened
@@ -104,25 +104,25 @@ test('a file attached while an agent conversation opens stays attached', async (
   await page.getByRole('button', { name: '도구', exact: true }).click()
   await page.getByRole('menuitem', { name: '에이전트' }).click()
   await page.getByRole('menuitem', { name: '논문 리뷰어' }).click()
-  await page.getByLabel('파일 선택').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('회의 메모') })
-  create.open()
-  await expect(page).toHaveURL(/\/s\//)
+  // The conversation opens at once, before anything is created.
+  await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
   await expect(page.getByTitle('이 대화의 에이전트')).toContainText('논문 리뷰어')
+  await page.getByLabel('파일 선택').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('회의 메모') })
+  // The file needs the conversation: it is created now, under the id already in the address.
+  await expect.poll(() => created.length).toBe(0)
+  create.open()
   await expect(page.getByRole('button', { name: 'notes.txt 제거' })).toBeVisible()
+  const id = new URL(page.url()).pathname.split('/').at(-1)
+  expect(created).toEqual([expect.objectContaining({ id, agentId: expect.any(String) })])
   // Still there once the conversation has settled.
   await page.waitForTimeout(500)
   await expect(page.getByRole('button', { name: 'notes.txt 제거' })).toBeVisible()
   expect(unexpected).toEqual([])
 })
 
-test('a file still uploading when the agent conversation opens shows there, then joins it', async ({ page }, info) => {
+test('a file attached to a just-opened agent conversation says it is uploading, then joins it', async ({ page }, info) => {
   const { unexpected } = await composerFixture(page, info)
-  const create = gate()
   const upload = gate()
-  await page.route('**/api/sessions', async (route) => {
-    if (route.request().method() === 'POST') await create.opened
-    await route.fallback()
-  })
   await page.route('**/api/files', async (route) => {
     await upload.opened
     await route.fallback()
@@ -133,11 +133,9 @@ test('a file still uploading when the agent conversation opens shows there, then
   await page.getByRole('button', { name: '도구', exact: true }).click()
   await page.getByRole('menuitem', { name: '에이전트' }).click()
   await page.getByRole('menuitem', { name: '논문 리뷰어' }).click()
-  await page.waitForTimeout(500)
-  await page.getByLabel('파일 선택').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('회의 메모') })
-  create.open()
   await expect(page).toHaveURL(/\/s\//)
   await expect(page.getByTitle('이 대화의 에이전트')).toContainText('논문 리뷰어')
+  await page.getByLabel('파일 선택').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('회의 메모') })
   // The upload is still on its way: the new conversation says so, not an empty box.
   await expect(page.getByText('업로드 중')).toBeVisible()
   upload.open()
@@ -146,14 +144,9 @@ test('a file still uploading when the agent conversation opens shows there, then
   expect(unexpected).toEqual([])
 })
 
-test('a file that fails to upload after the agent conversation opened is reported there', async ({ page }, info) => {
+test('a file that fails to upload to a just-opened agent conversation is reported there', async ({ page }, info) => {
   const { unexpected } = await composerFixture(page, info)
-  const create = gate()
   const upload = gate()
-  await page.route('**/api/sessions', async (route) => {
-    if (route.request().method() === 'POST') await create.opened
-    await route.fallback()
-  })
   await page.route('**/api/files', async (route) => {
     await upload.opened
     await route.fulfill({ status: 500, json: { detail: 'boom' } })
@@ -164,13 +157,32 @@ test('a file that fails to upload after the agent conversation opened is reporte
   await page.getByRole('button', { name: '도구', exact: true }).click()
   await page.getByRole('menuitem', { name: '에이전트' }).click()
   await page.getByRole('menuitem', { name: '논문 리뷰어' }).click()
-  await page.getByLabel('파일 선택').setInputFiles({ name: 'rules.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') })
-  create.open()
   await expect(page).toHaveURL(/\/s\//)
+  await expect(page.getByTitle('이 대화의 에이전트')).toContainText('논문 리뷰어')
+  await page.getByLabel('파일 선택').setInputFiles({ name: 'rules.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') })
   await expect(page.getByText('업로드 중')).toBeVisible()
   upload.open()
   await expect(page.getByRole('alert')).toContainText('첨부하지 못했습니다: rules.pdf')
   await expect(page.getByText('업로드 중')).toHaveCount(0)
+  expect(unexpected).toEqual([])
+})
+
+test('an agent conversation left before its first send leaves nothing behind', async ({ page }, info) => {
+  const { unexpected, created } = await composerFixture(page, info)
+  const models = await modelsServed(page)
+  await page.goto('/')
+  await expect.poll(models, { timeout: 15_000 }).toBe(true)
+  await page.getByRole('button', { name: '도구', exact: true }).click()
+  await page.getByRole('menuitem', { name: '에이전트' }).click()
+  await page.getByRole('menuitem', { name: '논문 리뷰어' }).click()
+  await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
+  // A reload keeps the agent it was opened with.
+  await page.reload()
+  await expect(page.getByTitle('이 대화의 에이전트')).toContainText('논문 리뷰어')
+  await page.goto('/new/chat')
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  expect(created).toEqual([])
+  expect(unexpected.filter((u) => u.startsWith('DELETE '))).toEqual([])
   expect(unexpected).toEqual([])
 })
 
