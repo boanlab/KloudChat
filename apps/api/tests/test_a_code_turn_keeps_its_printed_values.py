@@ -185,20 +185,21 @@ async def test_a_hand_correction_at_the_cap_is_sent_back_and_without_a_rerun_the
 @pytest.mark.asyncio
 async def test_a_correction_backed_by_a_rerun_keeps_the_rerun_values(monkeypatch):
     ran, snapshots = [], []
-    rerun = "stdout:\n=== SRTF ===\nAverage waiting time: 2.75"
+    first = "stdout:\n=== SRTF ===\nAverage waiting time: 0.50"
+    rerun = "stdout:\n=== SRTF ===\nAverage waiting time: 3.00"
     corrected = (
-        "## SRTF\n\n**평균 대기시간: 2.75**\n\n처음 코드의 출력이 잘못되어 고친 코드를 다시 "
+        "## SRTF\n\n**평균 대기시간: 3.00**\n\n처음 코드의 출력이 잘못되어 고친 코드를 다시 "
         "실행했습니다.")
     _stream(monkeypatch, [
         {"calls": [_call(1)]},
-        {"text": "## SRTF\n\n**평균 대기시간: 0.50**\n\n코드 출력이 틀려 수동으로 추적한 "
+        {"text": "## SRTF\n\n**평균 대기시간: 3.00**\n\n코드 출력이 틀려 수동으로 추적한 "
                  "값입니다."},
         {"calls": [_call(2)]},
         {"text": corrected},
     ], snapshots, hops=3)
-    text = await _turn([_code(ran, [_PRINTED, rerun])])
+    text = await _turn([_code(ran, [first, rerun])])
     assert len(ran) == 2
-    # The rerun printed 2.75 for SRTF after the first run's 3.00: the later run stands.
+    # The rerun printed 3.00 for SRTF after the first run's 0.50: the later run stands.
     assert text == corrected
 
 
@@ -213,7 +214,8 @@ async def test_a_number_naming_a_printed_value_is_set_to_it_and_said(monkeypatch
     text = await _turn([_code(ran, [_PRINTED])])
     assert text.startswith(
         "## 3. SRTF (선점)\n\n**평균 대기시간: 3.00**\n\nFCFS 평균 대기시간은 4.75")
-    assert "코드가 출력한 값으로 바로잡았습니다: 「0.50」 → 3.00" in text
+    # said as a step, not a footer on the answer (R2W-04)
+    assert "바로잡았습니다" not in text
 
 
 #: The computed block the deck's calc writes (row names in the request's words).
