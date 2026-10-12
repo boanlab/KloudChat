@@ -1758,7 +1758,9 @@ def mend_mixed_script(slides: list[dict], vocabulary: str) -> list[int]:
 
     def fix(value):
         if isinstance(value, str):
+            value, kana = hangul.repair_kana(value, vocabulary[:20000])
             mended, slips = hangul.repair_mixed_script(value, words)
+            slips = kana + slips
             # written 「A × B → D」 with a wrong D
             worked = units.fix_written_sums(units.fix_written_arithmetic(mended))
             return worked, bool(slips) or worked != mended
