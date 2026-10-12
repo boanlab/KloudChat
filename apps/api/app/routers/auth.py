@@ -8,7 +8,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
-from sqlalchemy import text
+from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -318,27 +318,41 @@ async def resend_verification(user: CurrentIdentity, request: Request, db: DbSes
     await _mail_verification(user, token)
 
 
+_RUN_ENDERS = ("password.reset", "user.password_reset", "password.change")
+
+
 async def _locked_until(db: AsyncSession, email: str) -> datetime | None:
-    """Lockout end or None; attempts while locked recorded as `locked` (no extension)."""
+    """Lockout end or None: the last N attempts all failed within one lockout window.
+
+    A sign-in, a password reset (self or admin) or a password change ends the run;
+    attempts while locked are recorded as `locked` and never extend it.
+    """
     limit = max(1, settings.login_max_failures)
+    window = timedelta(minutes=settings.login_lockout_min)
     rows = (
         await db.exec(
             select(AuditEvent)
             .where(
-                AuditEvent.action == "login",
                 AuditEvent.target == email,
-                col(AuditEvent.detail).in_(("", "failed")),
+                or_(
+                    and_(AuditEvent.action == "login", col(AuditEvent.detail).in_(("", "failed"))),
+                    col(AuditEvent.action).in_(_RUN_ENDERS),
+                ),
             )
             .order_by(col(AuditEvent.at).desc())
             .limit(limit)
         )
     ).all()
-    if len(rows) < limit or any(row.detail != "failed" for row in rows):
+    if len(rows) < limit or any(row.action != "login" or row.detail != "failed" for row in rows):
         return None
-    newest = rows[0].at
-    if newest.tzinfo is None:
-        newest = newest.replace(tzinfo=UTC)
-    until = newest + timedelta(minutes=settings.login_lockout_min)
+
+    def _aware(at: datetime) -> datetime:
+        return at if at.tzinfo else at.replace(tzinfo=UTC)
+
+    newest, oldest = _aware(rows[0].at), _aware(rows[-1].at)
+    if newest - oldest > window:
+        return None
+    until = newest + window
     return until if until > utcnow() else None
 
 

@@ -142,3 +142,44 @@ async def test_an_unknown_address_locks_the_same_way() -> None:
     for _ in range(settings.login_max_failures):
         assert (await _fails_with(db, "nobody@example.com", "wrong")).status_code == 401
     assert (await _fails_with(db, "nobody@example.com", "wrong")).status_code == 429
+
+
+async def _user(db: AsyncSession) -> None:
+    db.add(
+        User(
+            email="lock@example.com",
+            name="잠금",
+            password_hash=hash_password("correct-horse-battery"),
+            status=UserStatus.pending,
+        )
+    )
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_old_failures_and_one_new_one_do_not_lock() -> None:
+    """Failures days apart are not a run: only failures inside one lockout window count."""
+    db = await _session()
+    await _user(db)
+    for _ in range(settings.login_max_failures - 1):
+        await _fails_with(db, "lock@example.com", "wrong")
+    old = datetime.now(UTC) - timedelta(days=4)
+    for row in (await db.exec(select(AuditEvent))).all():
+        row.at = old
+        db.add(row)
+    await db.commit()
+    assert (await _fails_with(db, "lock@example.com", "wrong")).status_code == 401
+    assert (await _login(db, "lock@example.com", "correct-horse-battery")).user is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["user.password_reset", "password.reset", "password.change"])
+async def test_a_password_reset_lifts_the_lock(action: str) -> None:
+    db = await _session()
+    await _user(db)
+    for _ in range(settings.login_max_failures):
+        await _fails_with(db, "lock@example.com", "wrong")
+    assert (await _fails_with(db, "lock@example.com", "correct-horse-battery")).status_code == 429
+    db.add(AuditEvent(action=action, target="lock@example.com"))
+    await db.commit()
+    assert (await _login(db, "lock@example.com", "correct-horse-battery")).user is not None
