@@ -2,8 +2,8 @@
 # the first that matches given to the outline and the draft.
 #
 # An entry is either a rule of its own (`match`: a pattern on the instruction, `rule`: the
-# text), or `format = "<doc_formats id>"`: the rule the 서식 bound to that format carries in its
-# `genre.md`, matched on the same words `doc_formats` reads (case-insensitive). A 서식 picked
+# text), or `format = "<doc_formats id>"`: the rule the template bound to that format carries in its
+# `genre.md`, matched on the same words `doc_formats` reads (case-insensitive). A template picked
 # for the document (shipped or a person's) gives its own rule directly and skips this list.
 
 [[genres]]

@@ -3,6 +3,8 @@
 What the system does, and why the load-bearing decisions are the way they are.
 Everything here is in the code; most of it is covered by the tests under
 `apps/api/tests/` and the specs under `apps/web/e2e/`.
+Korean text in 「」 brackets is a literal the code reads or writes — a user's
+words it matches, a label it emits — followed by an English gloss.
 
 ---
 
@@ -55,7 +57,7 @@ backstop.
 The browser reaches the API only through the web container, whose nginx
 serves the bundle and proxies `/api` and `/llm` to the `api` service (one or
 more replicas, no published port). The backend address is stored through the
-admin screen (System › 기능 › 기능 연동). One address derives the LiteLLM
+admin screen (System › Features › Integrations). One address derives the LiteLLM
 address and the seven tool endpoints by appending paths; hosting one feature
 elsewhere means overriding that one field. A feature left blank drops out of the tool list and everything
 else keeps working.
@@ -90,7 +92,7 @@ attached to this one route rather than to the default dependency
 
 `audit_events` carries a sign-in, a failed sign-in, a password change and a key
 issue, each with the client's address and browser. Two screens read it: an
-account's own **접속기록** (`GET /auth/me/access`, the account's rows only) and
+account's own **Access log** (`GET /auth/me/access`, the account's rows only) and
 the administrator's audit trail (`GET /admin/audit`, everything, a page at a time
 with action, account, period and text filters). A change event keeps
 `metadata.changes = {field: [old, new]}` from `services/audit.py:diff`, secrets masked
@@ -105,7 +107,7 @@ A region is shown beside the address when, and only when, a MaxMind GeoLite2
 file is mounted (`services/geoip.py`). The lookup is offline by design:
 resolving addresses through a third-party service would send every visitor's
 address off the instance. With no file the screens show the address alone,
-and private ranges read `내부망` rather than a guess.
+and private ranges read **Private network** (`내부망`) rather than a guess.
 
 ---
 
@@ -150,17 +152,17 @@ Migrations live under `alembic/versions/`. The principal tables:
 - `projects` · `files` · `file_pages` (OCR text per page) · `artifacts` ·
   `artifact_versions` · `skills` · `memories` · `agents` · `connectors` ·
   `connector_tools` · `connector_credentials` · `connector_catalog`
-- `design_systems` — themes (테마): the look a project's or agent's output wears.
+- `design_systems` — themes: the look a project's or agent's output wears.
   `projects.design_system_id` is nullable and null by default, and
   `ON DELETE SET NULL`: removing a theme costs the projects their look, not the
   projects
-- `user_templates` — templates (템플릿) people make in the editor (§6 Templates)
+- `user_templates` — templates people make in the editor (§6 Templates)
 - `user_pipelines` · `pipeline_runs` — composed step lists and bundles, and the
   recorded runs of every writing pass (§6 Pipelines)
 - `publications` · `publication_versions` · `publication_visitors` ·
   `publication_counters` · `publication_slots` · `publication_questions` ·
   `publication_keys` — published agents (§6 Publishing agents)
-- `issue_reports` · `issue_replies` — 문의·신고 and the administrators' replies
+- `issue_reports` · `issue_replies` — Feedback & issues reports and the administrators' replies
 - `metric_samples` — the performance monitor's series
 - `templates` — not read or written by the application; the table and its rows
   remain in the schema
@@ -189,7 +191,7 @@ Migrations live under `alembic/versions/`. The principal tables:
 - `sessions.skill_ids` — the skills switched on for the conversation (§6 Chat).
 - `messages.failure` — how a turn ended when it did not end in an answer.
   `no_answer` sits on the question, `interrupted` on a partial reply, and
-  `stopped` on either when 중단 was pressed — same shape, the reader's choice
+  `stopped` on either when **Stop** was pressed — same shape, the reader's choice
 - `jobs` — video only. Without `provider_job_id`, a restart orphans a
   half-generated clip
 - `system_settings` — LiteLLM address and master key, backend and tool
@@ -216,7 +218,7 @@ shares (`sessions._delete_artifacts_of`).
 
 `POST /sessions/{id}/messages` → SSE, emitting `delta`, `step`, `artifact`,
 `usage`, `title` and `done`. One answer at a time: a second message while this
-process is still writing one (and nobody pressed 중단) is refused with 409
+process is still writing one (and nobody pressed **Stop**) is refused with 409
 `session_busy`; with several replicas the shared transcript stands in for the
 other processes' signals (a fresh question with no reply and no failure mark).
 `retry_of` on the latest question reruns it; when that question already had an
@@ -234,7 +236,8 @@ dated, never phrased as what holds today — and the answer ends with a caveat
 the conversation stay in the envelope; the instruction says they are not
 evidence. A question the person's own files answer (a price in an attached
 list) is read from the file and is not treated as a current-fact lookup unless
-the words themselves name the present (「지금」「현재」「올해」).
+the words themselves name the present (Korean cues such as 「지금」 "now",
+「현재」 "currently", 「올해」 "this year").
 
 **Skills stay on for the conversation.** The skills picked for a turn are
 remembered on `sessions.skill_ids` and applied to every later turn until the
@@ -250,7 +253,7 @@ that are not switched on are offered as one tool, `use_skill`, whose description
 lists each by its `when_to_use`. When a request matches one, the model calls the
 tool once and receives the skill's instructions as the tool result — the one
 tool result the rules say to follow, since the person installed it — and
-answers under them. The step shows as 「스킬 적용」. Up to twelve skills are
+answers under them. The step shows as "applying a skill" (스킬 적용). Up to twelve skills are
 offered per turn so the description stays a paragraph, and an agent's skill
 allowlist bounds the shelf as it bounds a hand pick.
 
@@ -286,10 +289,10 @@ shipped scripts only (allowlists in that module), set in the skill form or an up
 SKILL.md. A person's own Python scripts (`skills.script_files`, kept from `scripts/*.py` in
 an upload and scanned) run only through `run_skill_script` in the sandbox, mounted
 read-only under `skills/own-<id>/`; the server never imports them. Sharing a skill with
-scripts waits for an administrator (`/admin/skills`, 「스킬 검토」). A person's check skill
-(`stage`) is attached through the 「내 검사 스킬」 bundle as `skill:<id>`.
+scripts waits for an administrator (`/admin/skills`, **Skill review**). A person's check skill
+(`stage`) is attached through the **My check skills** bundle as `skill:<id>`.
 
-**빠진 정보 질문** are data (`services/gap_questions.py`): a template lists the questions its
+**Missing-information questions** are data (`services/gap_questions.py`): a template lists the questions its
 format needs (`[[questions]]` in `template.toml`), an agent adds its own
 (`agents.gap_questions`, the agent form; a shipped agent's come from its file). Each names
 a detector — a built-in one from `gap-check/scripts/gaps.py`, keywords, a bounded pattern,
@@ -301,23 +304,23 @@ twin of the code model.
 
 **The web-search toggle has three positions.** `context.search_plan` turns the
 toggle and the user's words into two facts: whether the web tools (`web_search`,
-`weather`) are offered this turn, and which tool the first hop must call. 「켬」
-offers them and forces a search every turn; 「끔」 offers nothing unless the
-words explicitly ask for research; 「자동」, the default, offers them and forces
+`weather`) are offered this turn, and which tool the first hop must call. **On**
+offers them and forces a search every turn; **Off** offers nothing unless the
+words explicitly ask for research; **Auto**, the default, offers them and forces
 the first hop only when the words ask for research, for something that changes
 with time (news, prices, versions, schedules, a year), or for the weather —
 otherwise the model decides under a lighter rule (`_WEB_SEARCH_AUTO`) that says
 what to look up and what to answer outright. A strict-local route offers none of
 this, whatever the toggle says. Weather questions force the `weather` tool
 rather than a search, since a search engine returns encyclopaedia pages for
-「분당 날씨」.
+「분당 날씨」 ("Bundang weather").
 
 **A search runs two lanes and reads dates.** `web_search` asks SearXNG's
-general lane and, when the query carries a time-sensitive word (a year, 최신,
-가격, a named release), the news lane too, with the news hits first; the
-general lane answers 「최신 모델」 with home pages and encyclopaedias. Front
+general lane and, when the query carries a time-sensitive word (a year, 최신 "latest",
+가격 "price", a named release), the news lane too, with the news hits first; the
+general lane answers 「최신 모델」 ("latest model") with home pages and encyclopaedias. Front
 pages and a host's third hit are benched (used only to pad a thin list), and a
-hit's `publishedDate` reaches the model as 「게시일」 so the newest wins. A turn
+hit's `publishedDate` reaches the model as 「게시일」 ("published on") so the newest wins. A turn
 makes at most three searches and six page reads; past either cap the model is
 told to answer from what it has.
 
@@ -326,7 +329,7 @@ entries of every search result so the numbers run across the whole turn and
 gives a fetched page a number of its own; the prompt asks the model to cite
 `[3]` at the end of a sentence and not to copy URLs. After the answer,
 `_link_citations` turns each `[n]` into a link to that source and a numbered
-「출처」 list is appended; numbers no result carries stay as text. A model that
+「출처」 ("Sources") list is appended; numbers no result carries stay as text. A model that
 types a URL anyway is checked against the tool results. A stream
 that repeats one letter or digit forty times in a row (a decoder stuck on a
 long article id) is closed there: the run is retracted, and a URL it broke is
@@ -422,13 +425,14 @@ would quietly widen the egress of every document. Anything that fails falls
 back to the writing model rather than failing the turn.
 
 **Revising one slide the way the person said.** A slide rewrite reads the
-layout the words ask for — 「연표로」, 「단계로」, 「차트로」, 「큰 숫자로」, 「표로」
-(`deck.requested_layout`; 「연표」 is not a 「표」) — and writes with that layout's
+layout the words ask for — 「연표로」 (as a timeline), 「단계로」 (as steps), 「차트로」 (as a chart),
+「큰 숫자로」 (as big numbers), 「표로」 (as a table) (`deck.requested_layout`;
+「연표」 "timeline" is not a 「표」 "table") — and writes with that layout's
 prompt; a chart or metrics answer replaces the slide's chart or metrics, not
-just its notes, and a title the person asked to change (「제목을 …로 바꿔 줘」) is
-taken, quoted text verbatim. 「위험 장을 하나 추가해 줘」 is an `insert`: the
+just its notes, and a title the person asked to change (「제목을 …로 바꿔 줘」, "change the title to …") is
+taken, quoted text verbatim. 「위험 장을 하나 추가해 줘」 ("add a risk slide") is an `insert`: the
 revision planner names the new part and its place, the router slots a blank
-part in and rewrites only it, so the other slides stay byte for byte. A restructure (「6장으로 줄여」) is told to hit the count
+part in and rewrites only it, so the other slides stay byte for byte. A restructure (「6장으로 줄여」, "cut it to six slides") is told to hit the count
 exactly, merge only what was named, and keep every other part's title and
 content.
 
@@ -437,29 +441,30 @@ content.
 (`carryFrom`) and, after the approved rewrite, every new part whose name
 survived and which the instruction never named gets its words back from the
 old part (`revise.carry_parts`): same position, new id and accent, old content.
-A part the instruction names — 「지표와 진척은 한 장으로」 — is written fresh;
+A part the instruction names — 「지표와 진척은 한 장으로」 ("metrics and progress on one slide") — is written fresh;
 "named" is judged against the restructure instruction (`carryNote`), never
 against the merged request, which names every part of the original. A quoted
-rename (「위험 절 제목을 「위험과 대응」으로」) sets the section's heading as well as
+rename (「위험 절 제목을 「위험과 대응」으로」, "retitle the risk section
+'Risks and responses'") sets the section's heading as well as
 its words (`revise.requested_title`). An insert aimed *into* an existing part
-(「비용 절에 표를 넣어 줘」) is that part's edit (`into_existing_part`), and one
-that names its neighbour (「요청 사항 장 앞에」) lands exactly there
+(「비용 절에 표를 넣어 줘」, "put a table in the cost section") is that part's edit (`into_existing_part`), and one
+that names its neighbour (「요청 사항 장 앞에」, "before the requests slide") lands exactly there
 (`place_insert`). The deck writer is told that every figure the person wrote
 must appear once.
 
-**A term swap is done by hand.** 「문서 전체에서 「A」를 「B」로 통일해 줘」 is a string
+**A term swap is done by hand.** 「문서 전체에서 「A」를 「B」로 통일해 줘」 ("use B for A throughout") is a string
 replacement across every text field (`revise.term_swap`, `replace_term`): exact,
 instant, and nothing else moves, rather than a model retyping and possibly
 rewording every section.
 
 **The words name the part.** When a revision instruction names exactly one
-existing part (「다음 단계 장을 연표로」), that part is the target whatever the
+existing part (「다음 단계 장을 연표로」, "next-steps slide as a timeline"), that part is the target whatever the
 planner guessed — another part, or a restructure of the whole deck
 (`revise.named_target`); a
 shorter name inside a longer part's name counts as the longer part's mention,
 and an instruction that asks for a structural change (add, remove, merge,
 reorder, a new count) is left to the planner. When the request itself asked for a
-구조도 or 흐름도 and the figure planner proposed nothing, it is asked once more
+structure diagram or flow diagram (구조도, 흐름도) and the figure planner proposed nothing, it is asked once more
 with that fact in front of it (`diagrams.asks_for_diagrams`); an empty plan on
 a request that never mentioned diagrams stands as the planner's judgement.
 
@@ -472,7 +477,8 @@ reads. A section rewrite that drops the section's mermaid
 figure, or redraws it as ASCII boxes, gets the figure back (`revise.keep_figure`)
 unless the person asked for it to go.
 
-**A stated count is a restructure.** 「전체를 6장으로 줄여 줘」 against a nine-slide
+**A stated count is a restructure.** 「전체를 6장으로 줄여 줘」 ("cut the whole thing
+to six slides") against a nine-slide
 deck is re-planned whatever the revision planner read it as — a partial edit, or
 a request for a new document (`revise.count_change`). A count equal to the current one, or no count,
 leaves the planner's reading alone.
@@ -485,33 +491,34 @@ or under, goes to the honest error.
 
 **A send never supersedes a live turn.** The pre-flight 409 and the turn's
 registration are far apart; two sends that both passed the check meet at the
-registration, where a fresh send (not a regenerate, not a message after 중단)
+registration, where a fresh send (not a regenerate, not a message after **Stop**)
 finding a live turn bows out with `session_busy` and removes its own question
 row, so the transcript stays question, answer.
 
 **A written product is checked.** A rewrite that says 「470만 원 × 36개월 =
-169,200만 원」 has written its own proof of error; `report.fix_products`
+169,200만 원」 ("4.7M won × 36 months = 1,692M won") has written its own proof of error; `report.fix_products`
 recomputes every 「A × B = C」 and replaces a wrong C, with its scale and unit,
 wherever the section repeats it — the sentence and the table cell alike. Only
 plain products with the same scale on both sides are touched.
 
-**The part the words mean.** 「오버헤드 결과 장을」 for a slide called 「오버헤드
-측정 결과」 is that slide: every word of the phrase sits in the one name. A part
+**The part the words mean.** 「오버헤드 결과 장을」 ("the overhead results slide") for a slide called
+「오버헤드 측정 결과」 ("overhead measurement results") is that slide: every word of the phrase sits in the one name. A part
 the deck truly lacks (no name shares a word) is made, before the closing slide,
 rather than guessed from another slide (`revise.named_target`).
 
 **A section is prose, with the data in it.** A drafted section that came back as
-a one-key JSON object (`{"결과의 섹션 본문": "…"}`) is unwrapped to its text
-(`report.unwrap_json_prose`). One whose table is a frame of 「(미정)」 cells while
+a one-key JSON object (`{"결과의 섹션 본문": "…"}`, "section body of the results") is unwrapped to its text
+(`report.unwrap_json_prose`). One whose table is a frame of 「(미정)」 ("TBD") cells while
 the attached material carries numbers is asked for once more with the data in
 front of it (`placeholder_heavy`, `_FILL_PROMPT`); a cell the data cannot fill
 is 「—」, never an invented value.
 
-**Notes are notes.** 「모든 장에 발표자 노트를 두 문장씩 넣어 줘」 is a whole-deck
+**Notes are notes.** 「모든 장에 발표자 노트를 두 문장씩 넣어 줘」 ("two sentences of speaker
+notes on every slide") is a whole-deck
 pass whatever the planner picked (`revise.notes_everywhere`), and a notes-only
 rewrite (`revise.notes_only`) changes nothing on the slide but its notes.
 
-### Templates (템플릿)
+### Templates
 
 A template is a document or deck structure the model writes into; a theme
 (below) is its look. Shipped templates live inside the API image under
@@ -525,8 +532,8 @@ plain prompt.
 
 A person's own template (`user_templates`, `/user-templates`, the editor at
 `/customize/templates`) holds every field a shipped one sets — what to bring,
-instructions and checklist, genre rule, document format, 빠진 정보 질문 and
-진행 과정 설정 — and is drawn in the shared document seed (`_document`) with
+instructions and checklist, genre rule, document format, missing-information questions and
+process settings — and is drawn in the shared document seed (`_document`) with
 the theme's tokens: no HTML or CSS of its own. A form file it was made from is
 kept as reference text only. Sessions and agents name it `ut-<id>`.
 
@@ -558,8 +565,8 @@ wrote that heading and a second one prints the title twice.
 
 **Figures a document draws for itself.** After the draft, one planning call
 (`services/diagrams.py`) names up to three parts where a structure, flow,
-comparison or concept figure (구조도·흐름도·비교도·개념도) says more than the
-words; a report writer can also place one inline with a `[[그림: …]]` mark.
+comparison or concept figure (구조도·흐름도·비교도·개념도 in Korean requests) says more than the
+words; a report writer can also place one inline with a `[[그림: …]]` mark (그림, "figure").
 `services/diagram.py` writes each as a mermaid flowchart source in the house
 style and `diagram.draw_native` draws it: code lays the flowchart out
 (`flow_layout`), `diagram_shapes` draws it as native python-pptx shapes on a
@@ -568,11 +575,11 @@ PNG through LibreOffice (`POST /pptx/png`). The panel, the PDF and the report
 show that picture, and the deck's `.pptx` carries the same shapes, editable. A source the shapes cannot read (not a flowchart, more than
 `diagram_shapes.MAX_NODES` nodes) goes back to the writer once, told why; still
 unreadable, or with no sidecar answering (logged as a warning), the figure is
-left out — a report drops the mark and the 〔그림〕 pointing at it, a deck slide
+left out — a report drops the mark and the 〔그림〕 ("figure") reference pointing at it, a deck slide
 keeps its words. Documents get no browser-drawn figure in its place; only chat
 answers draw mermaid in the browser, and a document that already carries a
 mermaid fence still opens and exports. The same path serves a figure made by hand: the picture picker in a
-report or deck and the image surface's 구조도 · 흐름도 · 개념도 chips call
+report or deck and the image surface's **Structure diagram** · **Flow diagram** · **Concept diagram** chips call
 `POST /sessions/{id}/diagrams`, which stores the PNG as an image artifact with
 its source, or answers 422 (`diagram_not_drawable` / `diagram_unrendered`). Placed
 on a slide, such a figure keeps its source as `slide.diagram` and is drawn again
@@ -628,7 +635,8 @@ of it: raster only, embedded only, never fetched.
 A template's typesetting is two files. `seed.html` — shared, named by `seed_from` —
 is correctness: the tokens, the whole closed vocabulary `assemble` can emit, the
 `@page` rule, the print rules, the shadow-root `:host`. `design.css` is
-identity: 회의록 packs a compact grey head, 신호 presents white on black. It is spliced in as a second `<style>`
+identity: the minutes template (`doc-minutes`) packs a compact grey head, the
+high-contrast deck (`deck-signal`) presents white on black. It is spliced in as a second `<style>`
 last in `<head>`, so it overrides by order rather than by specificity, and
 `stylesheet()` — which concatenates every style block — carries it into the
 document editor's shadow root by the same route. Two of them have no `design.css`
@@ -741,7 +749,7 @@ system prompts, and in the starter skills. Two stages read the answer back.
 check only finds: the sentence, why it is wrong, and how to tell whether a
 rewrite still is. Code checks cost nothing — numeric issues, one metric stated
 with two values, references to a source's chapters the reader does not have
-(「해당 자료」), sentences that give a settled figure another value, and scaled
+(「해당 자료」, "the material in question"), sentences that give a settled figure another value, and scaled
 metric slips. Model checks run once, before the repair: a judge on the
 figure sentences (only when a separate outline model exists, so the writer
 does not judge itself), claims checked against the web when search is on, and
@@ -749,10 +757,10 @@ assessment items worked through by the judge (`services/fact_check.py`). One
 `repair` call rewrites the found sentences; a rewrite is kept only when the
 check that raised it no longer fires. Then the code checks run again. What
 remains, plus model findings no rule can confirm, is listed in the turn's
-「품질 점검」 step for the reader to check — never passed off as done.
+quality check step (`quality`) for the reader to check — never passed off as done.
 
-Around it: `key_figures` settles the figures a document set fixes (판매가,
-변동비, 손익분기, 목표, 예산 …) once from the material, tells the writer, and
+Around it: `key_figures` settles the figures a document set fixes (sale price,
+variable cost, break-even, targets, budget …) once from the material, tells the writer, and
 mends table rows and slides that drift from them; `calc` has the code sandbox
 compute derived values before the prose is written; `units` corrects a money
 table's unit label against the amounts the person gave; and
@@ -786,12 +794,12 @@ nothing enforces.
 never got written, a figure nobody could have sourced. `P1` means it reads
 badly: filler adjectives, an emoji leading a line, a line repeated from another
 section, a slide too crowded or too long to read from the back of a room. The
-numbers rule is narrow on purpose — an ordinary "12% 증가" is what a report is
+numbers rule is narrow on purpose — an ordinary "12% 증가" ("12% increase") is what a report is
 *for*, so only round marketing figures and the multiplier-with-a-verb form are
 flagged. A check that fires on ordinary writing is one people learn to ignore.
 
 Nothing is corrected automatically. The panel shows a count and a list; the
-report surface already has "이 절만 다시 쓰기" for acting on it, and an HTML
+report surface already has **Rewrite just this section** for acting on it, and an HTML
 artifact has the same per-block rewrite.
 
 ### Pipelines
@@ -823,11 +831,11 @@ for the drawn chain:
 | `make` | a one-pass writer: deck, page | `sessions._make_pass` |
 
 What a document does besides writing is not in the file. The template's and the agent's
-**진행 과정 설정** (`services/process_settings.py`; `[process]` in a shipped `template.toml`,
+**process settings** (`services/process_settings.py`; `[process]` in a shipped `template.toml`,
 `user_templates.process`, `agents.process_settings`) name the pre-pass calculations, the optional
 format-repair stages (each listed in `report.toml` and skipped unless named), the code and
-judged checks, structure rules (sections, tables, summary lines, 개조식 style, page limit),
-written 검토 규칙 and options such as `search`, `fixed_outline` and `draws`. Every name is from a
+judged checks, structure rules (sections, tables, summary lines, bullet (개조식) style, page limit),
+written review rules and options such as `search`, `fixed_outline` and `draws`. Every name is from a
 closed list the code ships, so a person who sets the same values as a shipped template gets
 the same run. `tests/test_pipelines.py` holds every shipped format to its expected pre-pass
 steps, check families, stages and options. Runs stored under the names of earlier per-format
@@ -874,7 +882,7 @@ document, with no model call from the stages before the restart.
 
 **The gap card is a stage.** `pre` ends with `gap-card`, which raises `Wait`: the run is
 kept as `waiting`, the card's questions (fact, label, why, placeholder) ride on the pending
-turn with its run id, and the answer (or 「있는 자료로 진행」, which leaves each fact its
+turn with its run id, and the answer (or **Go with what arrived**, which leaves each fact its
 bracket blank) closes it; the writing pass that follows names it as its parent.
 
 **Persistence and routing are stages.** `report-save`, `revise-load`, `revise-save`,
@@ -900,7 +908,7 @@ its own test. A format-specific behaviour is a stage listed only in that format'
 an `[options]` switch — not a format comparison inside a stage.
 
 **Replay tests.** `tests/test_pipeline_replay.py` replays recorded turns — one
-acceptance run per format (minutes, 개조식, client proposal, comparison, career history,
+acceptance run per format (minutes, bullet-style briefing, client proposal, comparison, career history,
 a long-form proposal through the parallel gate), the data-analysis and career-docs chat
 turns, and two revisions (one that widens, settles again and aligns) — and requires the
 same events, sections and stored rows as when they were recorded. `tests/replay_harness.py`
@@ -912,7 +920,7 @@ sections, readings of its material); rebuild only when a change in behaviour is 
 say so.
 
 **Composed pipelines** (`app/pipeline/compose.py`, `app/routers/user_pipelines.py`). The
-shipped files stay locked. An agent's 진행 과정 › 직접 구성 (고급) edits a `user_pipelines` row: a
+shipped files stay locked. An agent's process › **Set it up yourself (advanced)** edits a `user_pipelines` row: a
 list of at most twelve coarse **steps** `{id, kind, ref, settings}` —
 
 | kind | ref / settings | needs | leaves |
@@ -926,7 +934,8 @@ list of at most twelve coarse **steps** `{id, kind, ref, settings}` —
 
 `compose.validate` holds the order to these contracts before every save and on
 `POST /user-pipelines/validate` (the editor's live messages), one Korean line per problem
-(「1번 검사(근거 대조): 앞 단계에서 만든 문서나 답이 있어야 합니다.」), plus warnings (a card
+(「1번 검사(근거 대조): 앞 단계에서 만든 문서나 답이 있어야 합니다.」, "check 1
+(grounding check) needs a document or answer from an earlier step"), plus warnings (a card
 before an agent with no facts to ask is skipped). The **recursion guard** refuses an agent step
 whose agent is bound to this pipeline, directly or through the pipelines its agents are bound
 to, and binding an agent to a pipeline that runs it. The last agent decides the surface:
@@ -955,10 +964,11 @@ step** raises `Wait`: what the run spent is billed, the card (`needs`) or the ou
 (`proposal`) is the session's pending turn with `pending.compose = {runId, stage}`, and the
 next message resumes the run from that step with the answers or the approved outline.
 
-**An agent's 진행 과정** (`app/services/bases.py`, `app/services/bundles.py`,
-`PUT /agents/{id}/process`). The agent form offers 「진행 과정」 — 바로 답하기 (no base), 기본 과정에서 시작 (a
-**base**: an offered catalogue agent, `agents.base_key`) or 직접 구성 (고급, the step editor
-above, not offered for 발표 자료) — and 「추가로 할 일」, one checkbox per **묶음** (bundle).
+**An agent's process** (`app/services/bases.py`, `app/services/bundles.py`,
+`PUT /agents/{id}/process`). The agent form offers **How it works** — **Answer directly** (no base), **Start from a
+base process** (a **base**: an offered catalogue agent, `agents.base_key`) or **Set it up
+yourself (advanced)** (the step editor above, not offered for slides) — and **Extra work**,
+one checkbox per **bundle**.
 
 - A **base** is any offered agent file (`starter.offered_agents`; drafts for
   administrators only). Its plain steps are its pipeline's `[summary]` lines (at most five);
@@ -966,8 +976,8 @@ above, not offered for 발표 자료) — and 「추가로 할 일」, one check
   so a person's agent with a base runs that base's question card, format, template and
   pipeline. Picking a base sets `surface`, `doc_format` and (when the agent has none that
   fits) `render_template_id`.
-- A **bundle** is data: `app/bundles/{prepare,review,finish,publish-check}.toml` ship 쓰기 전에
-  준비하기 · 다 쓴 뒤 검토하기 · 마무리하기 · 공개 전 점검; a person's own is a `user_pipelines` row with `kind = "bundle"`
+- A **bundle** is data: `app/bundles/{prepare,review,finish,publish-check}.toml` ship **Prepare
+  before writing** · **Review after writing** · **Finish** · the pre-publication check; a person's own is a `user_pipelines` row with `kind = "bundle"`
   in the same item shape (`{id, kind, ref, settings, label, default}`; `GET/POST/PUT/DELETE
   /bundles`, `POST /bundles/{id}/share`). Where an item runs is decided by its kind alone
   (`bundles.target`): a check skill with a stage is an `Agent.check_skills` entry, run inside
@@ -985,17 +995,17 @@ above, not offered for 발표 자료) — and 「추가로 할 일」, one check
   search and connectors (none under strict-local); `compose.validate`'s recursion guard does not
   apply to it. With no step needed there is no pipeline and the shipped flow runs as is.
 - **Review on share.** A shipped bundle never needs review. A person's bundle that exports,
-  reviews or runs another agent, and a 직접 구성 with any of those, reach others only after an
-  administrator approves them (「진행 과정 검토」 on the admin users page, the same queue as
+  reviews or runs another agent, and a set-it-up-yourself pipeline with any of those, reach others only after an
+  administrator approves them (**Process review** on the admin users page, the same queue as
   below); until then others run the agent on its base (`user_pipelines.runs_for_others`).
   Installing a copy carries `base_key`, `bundles`, `check_skills`, `check_options` and, when
   it runs for others, a clone of the pipeline; deleting an agent deletes its own pipeline.
 - `GET /user-pipelines` lists a person's unbound pipelines (no `agent_id`, not bundles), which
-  a 직접 구성 can start from.
+  a set-it-up-yourself pipeline can start from.
 
-**「에이전트로 저장」** (`GET /sessions/{id}/agent-draft`, `services/agent_draft.py`): the result
+**Save as agent** (`GET /sessions/{id}/agent-draft`, `services/agent_draft.py`): the result
 card's and the panel's ⋯ open `/customize/agents/new?from=session:<id>` prefilled; nothing is
-saved until 저장. 「이 대화에서 정한 것」 is distilled from the person's own messages only, by the
+saved until **Save**. "What this conversation settled" is distilled from the person's own messages only, by the
 model the conversation ran on — its strict-local model (no fallbacks, nothing masked away) when
 any turn ran strict-local, otherwise masked by `governance.mask`. A sealed agent's prompt is
 never copied. The base is the conversation's agent's, else inferred from its template; the
@@ -1035,7 +1045,7 @@ can be measured by.
 ### Reading a theme out of a document
 
 Four colours and a paragraph of house style are usually already on hand — the
-공문 template everything is filed on, an earlier report, a page on the
+official-letter template everything is filed on, an earlier report, a page on the
 department site — rather than typed from scratch.
 
 `POST /designs/extract` takes a `fileId` (its text is already extracted on
@@ -1054,7 +1064,7 @@ obviously unfinished.
 
 Costs one call on the cheapest chat model, charged like any other.
 
-### Themes (테마)
+### Themes
 
 One look, read by every surface that produces a document. Split in two, and the
 split is the whole design:
@@ -1142,7 +1152,7 @@ sign-in screen.
 
 ### Publishing agents
 
-An agent can be published as a chatbot (공개 챗봇: `routers/publications.py`,
+An agent can be published as a chatbot (**Published chatbots**: `routers/publications.py`,
 `services/publishing.py`, the owner's screen at `/customize/publications/:id`, the
 members' list at `/bots`). A bot opens to the members of this instance as soon as it is
 published. Opening it to people without an account — by link (`link`) or listed on the
@@ -1155,15 +1165,15 @@ publisher and marked with the publication, and the ordinary turn runs it, so cre
 policy, masking and retention are the owner's. The turn is constrained on the session
 rather than on the caller: the model is a strict-local one fixed with the version (refused
 when none exists); the agent is the version's hidden copy (`Agent.snapshot_of`) with its
-knowledge text; the tools are 자료 찾기 and 계산 only, and none of the owner's memories,
+knowledge text; the tools are **Search knowledge** and **Calculate** only, and none of the owner's memories,
 personalisation, projects, connectors, skills or other files reach the turn. Limits apply
 per visitor, per address, per bot and per day, plus the owner's daily credit cap and a
 concurrency cap per bot and across the instance, with a short queue before 429. A visitor
 without an account is a signed browser cookie and nothing more.
 
 **What the owner sees.** Counts, frequent topics, unanswered questions (personal details
-masked) and 👍👎 — not conversations, except one a visitor sent with 「만든 사람에게
-보내기」 or, with 「대화 열람」 on, those started after the visitor's consent, both masked
+masked) and 👍👎 — not conversations, except one a visitor sent with **Send to its
+maker** or, with **Conversation access** on, those started after the visitor's consent, both masked
 when read. An administrator may read a conversation for an abuse review, with a recorded
 reason.
 
@@ -1183,37 +1193,39 @@ partial answer. Closing the outside audience closes every channel with it.
 
 Agents and skills live in one account — the oldest administrator's, resolved by
 `starter.catalog_owner_id`, derived rather than stored — shared to the
-workspace, and taken from the store tabs of 사용자 지정 (`/customize`) a copy at a time.
+workspace, and taken from the store tabs of **Customize** (`/customize`) a copy at a time.
 `POST /agents/{id}/install` and `POST /skills/{id}/install` do the copying, and
-both are idempotent: pressing 가져오기 twice returns the row you already have
+both are idempotent: pressing **Import** twice returns the row you already have
 rather than a second one with the same name.
 
 The shipped catalogue is `starter._SKILLS` plus `starter._AGENTS`, the
 agents read from `app/agents/<key>.toml` (prompt, guide, starters, kinds,
-bindings, an explicit tool list — `[]` denies every tool — skill keys and the 묶음
-they run). Offered: 규정·업무 안내 (`regulation-guide`), 개조식 보고 (`gaejo-report`), 비교·결정
-(`comparison-report`), 자료 추출·집계 (`data-analysis`), 회의록 (`minutes`), and as drafts
-(`draft = true`, visible to administrators only) 공문·기안 초안 (`document`) and 발표 자료
-(`slides`).
+bindings, an explicit tool list — `[]` denies every tool — skill keys and the bundles
+they run). Offered: regulations and procedures (`regulation-guide`), bullet-style briefing
+(`gaejo-report`), compare and decide (`comparison-report`), extract and tally
+(`data-analysis`), minutes (`minutes`), and as drafts (`draft = true`, visible to
+administrators only) official letter and draft (`document`) and presentation (`slides`).
 
 **Listed, hidden, retired.** `listed: false` (a SKILL.md, a `template.toml`, a
 `starter._DESIGNS` entry) or `connector_catalog.listed` keeps a shipped part out of the lists
 people pick from — the skill hub and store, the template and theme pickers, the members'
-connector catalogue — while it still runs by name, in 묶음, in the editors that name it, and in
+connector catalogue — while it still runs by name, in bundles, in the editors that name it, and in
 the conversations and documents that already use it. Unlike `draft`, it does not gate
-`run_skill_script`. The wire carries `listed`; administrators see hidden rows behind 「숨김
-포함」. Listed: the skills 근거 대조·빠진 정보 묻기·계산·단위 검증·날짜 계산·견적 계산·엑셀
-정리·PDF 표 → 엑셀·개인정보 가리기; the offered document templates and the 브리핑 deck; the themes
-기본 and 문서용 명조; the time connector (deep research disabled, YouTube unlisted).
-마무리하기's export item names `by_format`: a 공문-family format (`internal_draft`, `official`,
+`run_skill_script`. The wire carries `listed`; administrators see hidden rows behind **Show
+hidden**. Listed: the skills `grounding-check`, `gap-check`, `calc-check`, `date-calc`,
+`quote-calc`, `xlsx-clean`, `pdf-table` and `pii-mask`; the offered document templates and
+the briefing deck (`deck-briefing`); the themes **Basic** (기본) and the document serif
+(문서용 명조); the time connector (deep research disabled, YouTube unlisted).
+**Finish**'s export item names `by_format`: an official-letter-family format (`internal_draft`, `official`,
 `event_plan`, `result_report`, `gaejo`) exports HWPX when ticked without a format, anything
 else its first `formats` (`bundles.export_default`). An agent file with `retired = true`
-(자기소개서·경력기술서 `career-docs`, 고객 맞춤 제안서 `client-proposal`) is never seeded afresh; its
+(cover letter and career history `career-docs`, client proposal `client-proposal`) is never seeded afresh; its
 rows and every copy get `agents.retired`, are listed nowhere, refuse install and new
 conversations (410 `agent_retired`), and keep their conversations and documents. Their
 templates are in `design_templates.RETIRED_KEPT` and their formats in `doc_formats.RETIRED`.
 A
-prompt's `[채팅에서]` / `[보고서에서]` / `[슬라이드에서]` lines open parts read
+prompt's `[채팅에서]` / `[보고서에서]` / `[슬라이드에서]` lines ("in chat", "in reports",
+"in slides") open parts read
 on that surface only (`workspace_context.surface_prompt`).
 `seed_catalog` syncs the catalogue on the owner's sign-in and deletes the
 owner's rows whose `catalog_key` is not shipped at all (a key still in a file with
@@ -1223,7 +1235,7 @@ skill the administrator made private stays private. `former_names` in an agent f
 
 Shipped skills are ordinary skills of that account (`source = personal`; copies are
 `workspace` — there is no built-in source, migration 0070 rewrote the old one): the owner
-can edit or unshare them in 사용자 지정 like any skill of their own (a deleted one is seeded
+can edit or unshare them in **Customize** like any skill of their own (a deleted one is seeded
 again on the next sync, as agents are), and the store
 shows them under the owner's name. `skills.package_hash` is the owner row's content as last
 synced; while the row still hashes to it the sync rewrites it from its package, and copies
@@ -1286,10 +1298,10 @@ than the administrator's own (possibly restricted) list. Reissuing a LiteLLM key
 asks first, since the old key is revoked at once.
 
 **Model roles** are product choices stored in `system_settings` (`models.*`,
-`thinking.*`; `services/settings_store.py`) and edited under System › 모델: each surface's
+`thinking.*`; `services/settings_store.py`) and edited under System › Model: each surface's
 default model, the title·memory·summary model, the `run_code` model and its fallback, and
 whether self-hosted and external models think. The outline model and the Auto classifier
-sit in the `governance` row (System › 라우팅). The `.env` values of the same names only seed
+sit in the `governance` row (System › Routing). The `.env` values of the same names only seed
 a fresh install; deployment facts — addresses, secrets, which served models think unless
 told not to — stay in `.env` (see [configuration.md](configuration.md)). The defaults use
 the two self-hosted models: `local/qwen3.8-27b` writes chat answers, reports, decks and
@@ -1302,7 +1314,7 @@ screen renders one before anybody is authenticated. The filename carries a
 content hash, so replacing the logo changes its URL. SVG is rejected: it can
 carry script, and that file loads for every visitor.
 
-**문의·신고** (`routers/issues.py`, `/issues`, `/admin/issues`): a person reports a fault
+**Feedback & issues** (`routers/issues.py`, `/issues`, `/admin/issues`): a person reports a fault
 or asks for something, optionally attaching a read-only copy of a conversation
 (`services/issue_snapshot.py`; a strict-local conversation needs an explicit
 confirmation); administrators work the queue with status, assignee and replies, and
@@ -1325,9 +1337,9 @@ Two readers, both inside the deployment (`services/ocr.py`): the engine (ocr-shi
 `/tools/ocr`, CPU), which returns every line with a score and a box, and a vision model
 through LiteLLM that must be strict-local and declare vision — checked against an
 uncached catalogue right before each page is sent, or the page is not sent. The reading
-mode (`both` by default, `engine`, `vision`), the vision model (자동 takes
+mode (`both` by default, `engine`, `vision`), the vision model (**Auto** takes
 `OCR_VISION_MODEL`, `strict-local/qwen3.8-flash`), on/off and a page limit are set under
-System › 기능 › 글자 읽기(OCR). With both, the engine reads every page and a page it scored
+System › Features › Text from scans (OCR). With both, the engine reads every page and a page it scored
 low or that holds a ruled table is read again by the vision model, whose text is kept;
 when the two readings differ in words or in any number the page is marked for review.
 Pages read are recorded on the ledger as units.
@@ -1421,7 +1433,7 @@ deliberately high token estimate (`context.estimate_tokens`, about 1.2× the
 gateway's count on Qwen), an answer reserve is held back, and the earlier turns
 that do not fit the rest are dropped oldest first, at a question boundary, to
 80 % of the budget so the next few turns fit without another cut. The dropped
-turns go in as a trusted 「이전 대화 요약」 block written by the enrichment model
+turns go in as a trusted 「이전 대화 요약」 ("summary of the earlier conversation") block written by the enrichment model
 (`services/conversation_summary`, in batches of about 14k characters when a lot
 is dropped at once) and cached on `sessions.summary` by the id of the last
 message it covers, so a later cut summarises only the turns since. A summary
@@ -1538,18 +1550,18 @@ prompts and free-form model reasoning are never persisted.
 ### Chat answer shaping
 
 **Standing rules are repeated next to the question.** An earlier user message
-that sets a rule for every later answer (「앞으로 … 세 문장 이내로」, "from now on
-answer in English") is replayed verbatim as a short exchange right before the
+that sets a rule for every later answer (「앞으로 … 세 문장 이내로」, "from now on … within three sentences";
+"from now on answer in English") is replayed verbatim as a short exchange right before the
 latest question (`standing_directives`, chat only, the three most recent, a
-withdrawal such as 「원래대로」 clears them). The rule still sits in the
+withdrawal such as 「원래대로」 ("back to normal") clears them). The rule still sits in the
 transcript; the replay is where a small model attends. A skill fetched through
 `use_skill` is told that such rules take precedence over its own instructions.
 
 **The auto toggle's forced search asks about the world.** `needs_web_search`
 stands down when the person is telling rather than asking (their team, memo,
-rule, code), when the question is about the conversation (「아까」, 「그 규칙」,
-「지금 코드」), when it is arithmetic on supplied numbers or a rule of thumb
-(「몇 장이 적당해?」, 「보통 얼마」), and when a sentence has a time word but no
+rule, code), when the question is about the conversation (「아까」 "earlier",
+「그 규칙」 "that rule", 「지금 코드」 "the current code"), when it is arithmetic on supplied numbers or a rule of thumb
+(「몇 장이 적당해?」 "how many slides is right?", 「보통 얼마」 "usually how much"), and when a sentence has a time word but no
 world cue (news, price, version, law, office). The search tool stays offered;
 only the forced first hop is withheld.
 
@@ -1561,7 +1573,7 @@ or today's values; `create_chart` is for charts the user asked for, not for
 trend questions.
 
 **A rough figure still says where to check.** A question about the usual level
-of a changing value (「왕복 요금은 보통 얼마나 해?」) forces no search, but the
+of a changing value (「왕복 요금은 보통 얼마나 해?」, "what does a round trip usually cost?") forces no search, but the
 figure comes from training data, so the turn runs with `caveat_request`
 (`freshness.ballpark_current_value`): the answer streams live and closes with
 the same light caveat an unverified current-fact answer gets, unless the
@@ -1659,7 +1671,7 @@ Three tiers, chosen by size and by what is available:
 
 `services/knowledge.py` is the lexical half: term containment plus character
 bigrams, which is what carries Korean, where whitespace tokens include
-particles. It matches words, so it cannot find 접근 통제 from "access control".
+particles. It matches words, so it cannot find 접근 통제 (Korean for "access control") from "access control".
 
 `services/index_client.py` is the other half, calling `/tools/index` in
 KloudChat-LLM — pgvector beside the embedding model. Nothing there raises: a

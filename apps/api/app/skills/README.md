@@ -7,7 +7,7 @@ the server imports the same file through `services/skill_scripts.py`, so both co
 ## Check skills
 
 A package with `stage` in its front matter is a check the server runs itself, around writing,
-for every agent or 서식 that attaches it — the model is not left to call it.
+for every agent or template that attaches it — the model is not left to call it.
 
 | field   | meaning                                                                 |
 |---------|-------------------------------------------------------------------------|
@@ -15,7 +15,7 @@ for every agent or 서식 that attaches it — the model is not left to call it.
 | `entry` | the script under `scripts/` the server imports                          |
 
 Attach a check by key: `checks = ["gap-check", "grounding-check"]` in `app/agents/<key>.toml`, or
-`check_skills = [...]` in a 서식's `template.toml` (`checks` there is already the checklist).
+`check_skills = [...]` in a template's `template.toml` (`checks` there is already the checklist).
 `services/check_skills.py` resolves the attached keys and runs them; the pipelines run them as
 `check` stages (`app/pipeline/check_stages.py`: `check:gaps`, `check:grounding`,
 `check:answer-grounding`; docs/architecture.md § Pipelines). `copy-check` runs as a stage of its

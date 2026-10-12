@@ -171,14 +171,14 @@ default. No history or provenance ("was", "used to", "after the incident"),
 no issue or PR numbers, dates or work notes, no anecdotes, no commented-out
 code. Documentation describes the current state, not how it got there.
 Comments and developer documentation are in English; a Korean comment is a
-brief noun phrase (명사형).
+brief noun phrase (nominal style, ending in a noun).
 
-**Screens speak one vocabulary.** What a turn produces is an **아티팩트**; a
-**템플릿** is a document's structure and a **테마** its look.
+**Screens speak one vocabulary.** What a turn produces is an **artifact** (아티팩트); a
+**template** (템플릿) is a document's structure and a **theme** (테마) its look.
 `apps/api/tests/test_screens_use_one_set_of_words.py` fails on retired words,
 and `test_the_app_does_not_narrate_its_own_changes.py` on screens or guide
-pages that describe a reorganisation ("옮겼습니다", "예전 이름") instead of the
-current state.
+pages that describe a reorganisation (Korean phrases such as "옮겼습니다", "moved", or
+"예전 이름", "old name") instead of the current state.
 
 **The user guide feeds the in-app help.** After editing `website/docs/` or its
 English translation, run `python apps/api/scripts/build_help.py`;

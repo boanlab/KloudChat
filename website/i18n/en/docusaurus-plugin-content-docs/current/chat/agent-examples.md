@@ -233,7 +233,7 @@ Shape of every section: first its table, then at most three one-line bullets; ne
 
 ## Results report template and agent
 
-A results report is quicker from a built-in template. **New template** › **Start from a built-in template** › **결과 보고서** fills in the overview table, the results summary, the spending table per item (summing to the amount spent), problems paired with fixes, no web search and figures only when asked. Rename it, for example 「결과 보고서(우리 부서)」, change only your side's head fields or approval line, and save.
+A results report is quicker from a built-in template. **New template** › **Start from a built-in template** › **Results report** fills in the overview table, the results summary, the spending table per item (summing to the amount spent), problems paired with fixes, no web search and figures only when asked. Rename it, for example 「결과 보고서(우리 부서)」, change only your side's head fields or approval line, and save.
 
 For the agent, pick How it works **Answer directly**, Surfaces **Report**, the template you just saved, and these instructions.
 

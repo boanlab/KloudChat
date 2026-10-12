@@ -1,52 +1,57 @@
-# 사용자 가이드
+# User guide
 
-KloudChat 사용자 가이드와 관리자 가이드의 소스입니다. [Docusaurus](https://docusaurus.io/)로
-만들고 GitHub Pages로 게시합니다. 실행 중인 서비스와는 무관한 정적 사이트이며 서비스에서
-데이터를 읽지 않습니다.
+Source of the KloudChat user guide and administrator guide. It is built with
+[Docusaurus](https://docusaurus.io/) and published to GitHub Pages. It is a
+static site, separate from the running service, and reads no data from it.
 
-게시 주소는 <https://boanlab.github.io/KloudChat/> 입니다.
+The guide is published at <https://boanlab.github.io/KloudChat/>.
 
-## 구성
+## Layout
 
-| 경로 | 내용 |
+| Path | Contents |
 |---|---|
-| `docs/` | 한국어 본문 |
-| `i18n/en/` | 영어 번역. 본문과 화면 문구 |
-| `src/pages/index.tsx` | 첫 페이지 |
-| `src/components/` | 첫 페이지의 화면 캐러셀, 특징 격자, 등장 효과 |
-| `static/img/guide/` | 본문에 쓰는 화면 캡처 |
-| `GLOSSARY-en.md` | 영어 번역 용어표 |
+| `docs/` | Korean pages |
+| `i18n/en/` | English translation: pages and site strings |
+| `src/pages/index.tsx` | Landing page |
+| `src/components/` | The landing page's screen carousel, feature grid and reveal effect |
+| `static/img/guide/` | Screenshots used in the pages |
+| `GLOSSARY-en.md` | Term list for the English translation |
 
-## 로컬에서 보기
+## Viewing locally
 
 ```bash
 npm ci
 npm start
 ```
 
-한국어만 뜹니다. 영어까지 보려면 `npm start -- --locale en` 을 따로 실행하거나 아래처럼
-빌드한 결과를 확인하십시오.
+This serves Korean only. To see English, run `npm start -- --locale en`
+separately, or build and serve both:
 
 ```bash
 npm run build
 npm run serve
 ```
 
-## 문서 고치기
+## Editing pages
 
-`docs/` 의 마크다운을 고치면 됩니다. 한국어를 고쳤으면 `i18n/en/docusaurus-plugin-content-docs/current/`
-의 같은 경로에 있는 영어 파일도 함께 고쳐야 두 언어가 어긋나지 않습니다.
+Edit the Markdown under `docs/`. When you change a Korean page, change the
+English file at the same path under `i18n/en/docusaurus-plugin-content-docs/current/`
+as well, so the two languages stay in step.
 
-첫 페이지나 상단 메뉴 같은 화면 문구를 바꿨다면 아래로 영어 목록을 갱신한 뒤 새로 생긴 항목을
-채웁니다.
+After changing site strings such as the landing page or the top menu, refresh
+the English list and fill in the new entries:
 
 ```bash
 npm run write-translations -- --locale en
 ```
 
-영어 용어는 `GLOSSARY-en.md` 에 정해 두었습니다. 새 문서를 번역할 때 그 표를 따르고, 화면 문구는 `apps/web/src/lib/i18n.ts` 의 영어 번역과 맞추십시오.
+English terms are fixed in `GLOSSARY-en.md`. Follow that table when
+translating a page, and match screen labels to the English strings in
+`apps/web/src/lib/i18n.ts`.
 
-## 게시
+## Publishing
 
-`main` 의 `website/` 가 바뀌면 `.github/workflows/docs.yml` 이 빌드해서 Pages로 올립니다.
-저장소의 Settings → Pages → Source 가 **GitHub Actions** 로 설정되어 있어야 합니다. 코드 변경 없이 다시 올리려면 Actions 에서 **Docs site** 를 직접 실행하십시오.
+When `website/` changes on `main`, `.github/workflows/docs.yml` builds it and
+deploys it to Pages. The repository's Settings → Pages → Source must be set to
+**GitHub Actions**. To redeploy without a code change, run **Docs site** from
+Actions by hand.
