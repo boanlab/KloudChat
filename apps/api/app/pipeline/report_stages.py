@@ -1116,7 +1116,7 @@ class Figures(Base):
         request, sections = req.text, bundle.document.sections
         # planned on written sections; skipped for peer review, one-page 개조식, 회의록; approved pictures kept
         draws_nothing = report._genre_rule(request).startswith("Genre: 학회 피어리뷰") or (
-            bundle.spec.settings.draws == "when-asked"
+            (bundle.spec.settings.draws == "when-asked" or report.form_document(request))
             and not diagrams.asks_for_diagrams(instruction_part(request))
         )
         figure_cap = min(5, max(diagrams.MAX_FIGURES, len(sections) // 2 + 1))
@@ -1312,7 +1312,8 @@ class Normalize(Base):
             sources=bundle.material.sources, request=bundle.request.text,
             context=_material_text(bundle))
         sections = report.gaejo_body(sections, bundle.spec.format)
-        if bundle.spec.format_id in report.PLAIN_FORMATS:
+        if bundle.spec.format_id in report.PLAIN_FORMATS or report.form_document(
+                bundle.request.text):
             whole = "\n".join(str(s.get("content") or "") for s in sections)
             sections = [{**s, "content": report.plain_blocks(str(s.get("content") or ""), whole)}
                         for s in sections]

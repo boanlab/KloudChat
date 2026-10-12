@@ -892,6 +892,14 @@ def _section_role(heading: str, index: int, total: int, written: str) -> tuple[s
 
 #: plain-text formats: no KPI tiles or callouts
 PLAIN_FORMATS = frozenset({"official", "press", "minutes", "result_report", "internal_draft"})
+#: forms and notices read as text: no pictures unless asked, no tiles or callouts
+_FORM_DOCUMENT = re.compile(
+    r"IRB|심의\s{0,2}신청|신청서|공고문|모집\s{0,2}공고|FAQ|자주\s{0,2}묻는\s{0,2}질문|안내문", re.I)
+
+
+def form_document(request: str) -> bool:
+    """Whether the ask is a form or notice (IRB 신청서, 공고문, FAQ, 안내문)."""
+    return bool(_FORM_DOCUMENT.search(lead_instruction(request or "")))
 _BOX = re.compile(r"^```(?P<kind>kpi|callout)[ \t]*\n(?P<body>.*?)^```[ \t]*$\n?", re.S | re.M)
 
 

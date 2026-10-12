@@ -176,3 +176,12 @@ def test_kpi_figures_the_minutes_already_state_are_not_dumped_as_a_list():
     every = body.replace("420만원 | 사례집 디자인 견적 B사\n", "")
     assert "```" not in report.plain_blocks(every, every) and "- " not in report.plain_blocks(
         every, every)
+
+
+def test_forms_and_notices_are_text_documents():
+    for ask in ("IRB 심의 신청서(연구계획 요약) 초안 써 줘.\n- 대상: 학부생 240명",
+                "첨부 규정 보고 학생들이 자주 묻는 질문 FAQ 8개 만들어 줘.",
+                "장학금 신청 안내 공고문을 학생 대상으로 써 줘."):
+        assert report.form_document(ask)
+    assert not report.form_document("생성형 AI 교육 활용 동향 보고서 써 줘.")
+    assert not report.form_document("아래 메모로 사업계획서 써 줘. 한빛시 공모사업 신청용이야.")
