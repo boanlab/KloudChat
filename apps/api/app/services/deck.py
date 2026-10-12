@@ -1752,6 +1752,24 @@ _PROMPTS.update(
 )
 
 
+#: a note sentence handing over to a slide that is not there
+_NEXT_SLIDE = re.compile(
+    r"[^.!?\n]*(?:다음\s{0,2}(?:으로|슬라이드|장)|이어서|이제\s{0,2}(?:다음|이어))[^.!?\n]*"
+    r"(?:살펴보|보겠|넘어가|알아보|이어가)[^.!?\n]*[.!?]?\s*")
+
+
+def end_without_next(slides: list[dict]) -> list[int]:
+    """The last slide's notes lose a 「다음으로 … 살펴보겠습니다」 hand-over; returns indices."""
+    if not slides or not isinstance(slides[-1].get("notes"), str):
+        return []
+    notes = slides[-1]["notes"]
+    kept = _NEXT_SLIDE.sub("", notes).strip()
+    if kept == notes.strip() or not kept:
+        return []
+    slides[-1]["notes"] = kept
+    return [len(slides) - 1]
+
+
 def mend_mixed_script(slides: list[dict], vocabulary: str) -> list[int]:
     """Mends Cyrillic slipped into Hangul (「프로мп트」); returns indices."""
     deck_words = " ".join(json.dumps(s, ensure_ascii=False) for s in slides)
@@ -3046,6 +3064,7 @@ async def _write_slides(
     touched |= set(mend_mixed_script(slides, given_text))
     touched |= set(strip_json_residue(slides))
     touched |= set(mend_scaled_numbers(slides, given_text))
+    touched |= set(end_without_next(slides))
     # placeholders or name-only parts rewritten once
     needs = requested_contents(slides, request)
     # given-up slides retried once

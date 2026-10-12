@@ -23,3 +23,12 @@ def test_deck_notes_are_checked_for_kana():
     slides = [{"title": "선택", "notes": "두 가지를 함께 받는 것은できません."}]
     assert deck.mend_mixed_script(slides, "") == [0]
     assert slides[0]["notes"] == "두 가지를 함께 받는 것은 할 수 없습니다."
+
+
+def test_the_last_slide_hands_over_to_no_next_slide():
+    slides = [{"title": "1", "notes": "다음으로 결과를 살펴보겠습니다."},
+              {"title": "결론", "notes": "세 가지를 정리했습니다. 다음으로 한계를 살펴보겠습니다."}]
+    assert deck.end_without_next(slides) == [1]
+    assert slides[1]["notes"] == "세 가지를 정리했습니다."
+    assert slides[0]["notes"] == "다음으로 결과를 살펴보겠습니다."
+    assert deck.end_without_next(slides) == []
