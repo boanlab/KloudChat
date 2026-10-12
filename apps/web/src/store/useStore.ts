@@ -121,6 +121,9 @@ const sessionPersistence = new Map<string, Promise<void>>()
 type UnsentPatch = { title?: string; pinned?: boolean; renderTemplateId?: string; skillIds?: string[] }
 /** Settings changed on an unsent conversation, applied right after it is created. */
 const unsentPatches = new Map<string, UnsentPatch>()
+/** When each conversation's own row last arrived, against `loadSessions` started before it. */
+let rowsFetched = 0
+const rowFetchedAt = new Map<string, number>()
 /** One creation per unsent conversation, however many sends and uploads ask for it. */
 const creatingSessions = new Map<string, Promise<string>>()
 
@@ -1383,6 +1386,8 @@ export const useStore = create<State>((set, get) => ({
     const owner = get().user?.id
     const epoch = get().accountEpoch
     const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
+    // A row fetched on its own after the list was asked for is newer than the list's snapshot.
+    const asked = rowsFetched
     try {
       const rows = await sessionsApi.list()
       if (!ownsAccount()) return
@@ -1391,7 +1396,8 @@ export const useStore = create<State>((set, get) => ({
         sessionsFailed: false,
         // The list carries no transcripts, so held messages are kept; unsent ones are the browser's.
         sessions: [
-          ...s.sessions.filter((c) => c.unsent && !rows.some((row) => row.id === c.id)),
+          ...s.sessions.filter((c) => !rows.some((row) => row.id === c.id) &&
+            (c.unsent || (rowFetchedAt.get(c.id) ?? 0) > asked)),
           ...rows.map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
         ],
       }))
@@ -1432,6 +1438,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       if (!ownsAccount()) return true
       const session = toSession(row)
+      rowFetchedAt.set(id, ++rowsFetched)
       set((s) => ({
         sessions: s.sessions.some((c) => c.id === id)
           ? s.sessions.map((c) => (c.id === id ? session : c))

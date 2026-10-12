@@ -420,3 +420,41 @@ test('an approved outline card is spent: it does not stay live to write the docu
   await expect(page.getByRole('button', { name: /이대로 생성/ })).toHaveCount(0)
   answered.open()
 })
+
+test('a conversation opened by its address stays when the conversation list answers after it', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info)
+  const id = 'c0000000000000000000000000000010'
+  const row = {
+    id, kind: 'chat', title: '목록에 없는 대화', model: 'fixture/model', routingMode: 'manual',
+    projectId: null, agentId: null, artifactId: null, pending: null, skillIds: [], renderTemplateId: null, pinned: false,
+    messageCount: 1, createdAt: '2026-10-09T07:00:00.000Z', updatedAt: '2026-10-09T07:00:00.000Z', preview: null,
+    made: null, messages: [{ id: 'm0000000000000000000000000000101', role: 'user', content: '목록보다 먼저 온 대화',
+      attachments: [], createdAt: '2026-10-09T07:00:00.000Z' }],
+  }
+  const rowServed = gate()
+  let rowReads = 0
+  // The list was asked for before the row arrived and does not name it (an older snapshot).
+  await page.route((url) => url.pathname === '/api/sessions', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await rowServed.opened
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await route.fallback()
+  })
+  await page.route(`**/api/sessions/${id}**`, async (route) => {
+    const request = route.request()
+    if (request.method() === 'GET' && !request.url().includes('/jobs')) {
+      rowReads += 1
+      await route.fulfill({ json: row })
+      rowServed.open()
+      return
+    }
+    await route.fallback()
+  })
+  await page.goto(`/s/${id}`)
+  await expect(page.getByText('목록보다 먼저 온 대화')).toBeVisible()
+  await page.waitForTimeout(1_000)
+  await expect(page.getByText('목록보다 먼저 온 대화')).toBeVisible()
+  await expect(page.getByText('최신 내용을 불러오지 못했습니다.')).toHaveCount(0)
+  expect(rowReads).toBe(1)
+  expect(unexpected).toEqual([])
+})
