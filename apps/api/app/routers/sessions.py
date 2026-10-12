@@ -6522,6 +6522,13 @@ async def _revision_plan(
     skeleton = _skeleton(artifact)
     if not skeleton:
         return None, []
+    rename = (revise.title_rename(instruction, skeleton)
+              if artifact.kind != ArtifactKind.deck else None)
+    if rename is not None and rename[1] is None:
+        # the document's title is renamed by hand; the rest is planned without it
+        instruction = revise.without_title_clause(instruction)
+        if not instruction:
+            return revise.Plan(scope="parts", targets=[], note=f"제목 → {rename[0]}"), skeleton
     if (swap := revise.order_swap(instruction, skeleton)) is not None:
         # swap done in place: planner would read 「순서」 as restructure and redraw
         first, second = swap

@@ -33,6 +33,7 @@ from app.services import (
     ratelimit,
     report_checks,
     research,
+    revised_tables,
     settings_store,
     thinking,
     units,
@@ -3245,30 +3246,50 @@ async def rewrite_section(
 
 
 def _without_borrowed_tables(body: str, before: str, others: list[str], note: str) -> str:
-    """Rewrite tables minus ones drawn elsewhere or never asked for."""
-    if not _TABLE.search(body):
+    """Rewrite tables minus ones drawn elsewhere or never asked for; a dropped table's caption
+    goes with it."""
+    rx = revised_tables.TABLE
+    if not rx.search(body):
         return body
-    elsewhere = {_table_key(m.group(0)) for text in others for m in _TABLE.finditer(text)}
-    had_table = bool(_TABLE.search(before)) or bool(re.search(r"표", note))
+    elsewhere = [m.group(0) for text in others for m in rx.finditer(text)]
+    own = [m.group(0) for m in rx.finditer(before)]
+    had_table = bool(own) or bool(re.search(r"표", note))
+
+    def borrowed(table: str) -> bool:
+        if _table_key(table) in {_table_key(t) for t in elsewhere}:
+            return True
+        # another part's table redrawn here, not this part's own one
+        return (any(revised_tables.same_table(table, t) for t in elsewhere)
+                and not any(revised_tables.same_table(table, t) for t in own))
 
     def keep_or_drop(m: re.Match[str]) -> str:
-        if _table_key(m.group(0)) in elsewhere or not had_table:
+        if borrowed(m.group(0)) or not had_table:
             return ""
         return m.group(0)
 
-    return re.sub(r"\n{3,}", "\n\n", _TABLE.sub(keep_or_drop, body)).strip()
+    out = rx.sub(keep_or_drop, body)
+    return re.sub(r"\n{3,}", "\n\n", revised_tables.drop_orphan_captions(out)).strip()
 
 
-_DROPS_TABLE = re.compile(r"표[^.\n]{0,12}(?:빼|없애|삭제|지워|제외|말고|대신)")
+_DROPS_TABLE = re.compile(r"표[^.\n]{0,12}(?:빼|없애|삭제|지워|제외|말고|대신|합쳐|합치|통합|병합)")
 _CAPTION = re.compile(r"^\s{0,3}\**\s{0,2}(?:<표|표)\s{0,2}(\d{1,3})\b[^\n]{0,120}$")
 
 
 def _keeps_its_tables(body: str, before: str, note: str) -> str:
-    """Tables lost in a rewrite restored after the paragraph naming them, else at the end."""
-    if _TABLE.search(body) or not _TABLE.search(before) or _DROPS_TABLE.search(note or ""):
+    """Tables lost in a rewrite restored after the paragraph naming them, else at the end; a
+    table the rewrite redrew (indented under an item, a column added) is not lost."""
+    rx = revised_tables.TABLE
+    if not rx.search(before) or _DROPS_TABLE.search(note or ""):
         return body
+    kept = [m.group(0) for m in rx.finditer(body)]
     blocks: list[tuple[str, str]] = []
-    for m in _TABLE.finditer(before):
+    for m in rx.finditer(before):
+        if any(_table_key(m.group(0)) == _table_key(t) or revised_tables.same_table(m.group(0), t)
+               for t in kept):
+            continue
+        if kept and not re.search(r"표", note or ""):
+            # the rewrite drew its own tables: an unlike old one was replaced, not lost
+            continue
         head = before[:m.start()].rstrip("\n").split("\n")[-1] if m.start() else ""
         caption = head if _CAPTION.match(head) else ""
         blocks.append((caption.strip(), m.group(0).strip()))
