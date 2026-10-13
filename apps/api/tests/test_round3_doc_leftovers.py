@@ -177,10 +177,12 @@ async def test_a_remark_count_stays_with_its_remark():
 
 
 def test_a_one_part_plan_goes_straight_to_writing():
-    assert sessions._one_part_plan({"title": "협조 요청", "sections": ["본문"]})
-    assert not sessions._one_part_plan({"sections": ["개요", "결과"]})
-    assert not sessions._one_part_plan({"sections": ["본문"], "figures": [{"caption": "x"}]})
-    assert not sessions._one_part_plan({"sections": ["본문"], "frame": True})
+    straight = sessions.outline_rules.nothing_to_approve
+    ask = "협조 요청 공문 써 줘"
+    assert straight({"title": "협조 요청", "sections": ["본문"]}, ask)
+    assert not straight({"sections": ["개요", "결과"]}, ask)
+    assert not straight({"sections": ["본문"], "figures": [{"caption": "x"}]}, ask)
+    assert not straight({"sections": ["본문"], "frame": True}, ask)
 
 
 # ── A04 T2: a budget limit judged on the computed VAT-inclusive totals ──────────────────────

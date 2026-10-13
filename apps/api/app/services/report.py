@@ -446,10 +446,27 @@ _MATERIAL_FORMATS = frozenset({
 _GRANT_APPLICATION = re.compile(r"공모|지원\s{0,3}사업|보조\s{0,3}사업|보조금|사업\s{0,3}신청")
 
 
+#: the ask names outside facts to look up (「국내 시장 규모와 성장 전망(공개 자료 기준)」)
+_PUBLIC_FACTS = re.compile(
+    r"공개(?:된)?\s{0,2}자료|공식\s{0,2}(?:자료|통계)|시장\s{0,2}(?:규모|전망|점유율|동향)|"
+    r"성장\s{0,2}전망|경쟁(?:사|업체|\s{0,2}제품)|업계\s{0,2}동향|산업\s{0,2}(?:환경|동향)"
+)
+
+
+def asks_public_sources(request: str) -> bool:
+    """Whether the instruction asks for outside facts, whatever the 서식 says about search.
+
+    Memo lines are not asks: a minutes memo that mentions 「경쟁사」 still searches nothing."""
+    instruction = instruction_part(request)
+    asks = [instruction.strip().split("\n\n")[0]] + [
+        line for line in instruction.splitlines() if _ASK_LABEL.match(line)]
+    return requests_web_search(instruction) or bool(_PUBLIC_FACTS.search("\n".join(asks)))
+
+
 def material_complete(request: str, format_id: str | None, *, has_files: bool = False) -> bool:
     """Work document written from the person's material alone (no web unless asked)."""
     instruction = instruction_part(request)
-    if requests_web_search(instruction) or _SCHOLARLY_DOC.search(instruction):
+    if asks_public_sources(request) or _SCHOLARLY_DOC.search(instruction):
         return False
     named = (format_id or "") in _MATERIAL_FORMATS or bool(
         _GRANT_APPLICATION.search(lead_instruction(request)))
