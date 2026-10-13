@@ -195,6 +195,13 @@ CREATE TABLE users (
 )
 """
 
+_AUDIT_DDL = """
+CREATE TABLE audit_events (
+    id TEXT PRIMARY KEY, at DATETIME, actor_id TEXT, action TEXT, target TEXT, detail TEXT,
+    metadata TEXT, ip TEXT, user_agent TEXT, severity TEXT
+)
+"""
+
 
 @pytest.fixture
 async def db(tmp_path, monkeypatch):
@@ -204,6 +211,7 @@ async def db(tmp_path, monkeypatch):
     async with engine.begin() as connection:
         # Hand-written: the users model has JSONB defaults SQLite cannot compile.
         await connection.execute(sa.text(_USERS_DDL))
+        await connection.execute(sa.text(_AUDIT_DDL))
         await connection.run_sync(lambda c: SQLModel.metadata.create_all(c, tables=tables))
 
     def session():

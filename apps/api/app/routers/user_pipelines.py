@@ -24,6 +24,7 @@ from app.pipeline.runner import Runner
 from app.pipeline.stage import Context
 from app.schemas.auth import Wire
 from app.services import (
+    audit,
     bases,
     check_skills,
     design_templates,
@@ -465,7 +466,8 @@ async def update(pipeline_id: str, payload: PipelineIn, user: CurrentUser, db: D
 
 
 @router.delete("/user-pipelines/{pipeline_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete(pipeline_id: str, user: CurrentUser, db: DbSession):
+async def delete(pipeline_id: str, user: CurrentUser, db: DbSession,
+                 request: HttpRequest = None):  # type: ignore[assignment]
     row = await _own(db, user, pipeline_id)
     for agent in (await db.exec(select(Agent).where(Agent.pipeline_id == row.id))).all():
         agent.pipeline_id = None
@@ -475,6 +477,8 @@ async def delete(pipeline_id: str, user: CurrentUser, db: DbSession):
         session.pipeline_id = None
         db.add(session)
     await db.delete(row)
+    db.add(audit.deletion(user, request, action="pipeline.delete", ids=[row.id],
+                          counts={"pipelines": 1}))
     await db.commit()
 
 

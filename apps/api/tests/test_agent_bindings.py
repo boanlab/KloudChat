@@ -18,7 +18,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.chat import ChatSession, Message, Role, SessionKind, TurnFailure
-from app.models.user import User
+from app.models.user import AuditEvent, User
 from app.models.workspace import (
     Agent,
     Connector,
@@ -84,7 +84,7 @@ async def db():
     engine = create_async_engine("sqlite+aiosqlite://")
     models = (
         User, Agent, Skill, StoredFile, Memory, ChatSession, Message, Project, DesignSystem,
-        Connector,
+        Connector, AuditEvent,
     )
     try:
         async with engine.begin() as conn:
