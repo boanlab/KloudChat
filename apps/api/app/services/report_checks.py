@@ -128,6 +128,8 @@ class Prepass:
     costs: dict | None = None
     #: never-agreeing cost readings: writer gets no totals
     costs_withheld: bool = False
+    #: the options split readings still priced alike, with their budget comparison
+    costs_partial: dict | None = None
     rfp: dict | None = None
     #: per-role headcount and MM (`staffing`): MM never written as people
     staff: dict[str, dict] = field(default_factory=dict)
@@ -1148,8 +1150,13 @@ def year_amount(item: dict, year: int) -> Decimal | None:
         amount = Decimal(0)
     elif per in _MONTH:
         months = _plain(raw.get("months"))
-        left = Decimal(12) if months is None else max(
-            Decimal(0), min(Decimal(12), Decimal(str(months)) - 12 * (year - 1)))
+        if months is not None and Decimal(str(months)) <= 12:
+            # a monthly fee read with the comparison's 12 months recurs the next year too, not
+            # 0원 (r7 A04-T1: 이듬해 A·B 모두 0원)
+            left = Decimal(str(months))
+        else:
+            left = Decimal(12) if months is None else max(
+                Decimal(0), min(Decimal(12), Decimal(str(months)) - 12 * (year - 1)))
         amount *= left
     elif per not in _YEAR:
         usage = _plain(raw.get("usage"))
@@ -1295,10 +1302,25 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None,
     return out
 
 
+#: words of a name that say nothing of what is priced
+_NAME_NOISE = re.compile(r"\([^()\n]{0,40}\)|[^가-힣A-Za-z]|비용|요금|금액|가격|단가|할인|시|연장|계약|기본|추가|조건")
+
+
+def _same_item(a: dict, b: dict) -> bool:
+    """Whether two items name the same thing: 「구독료」 and 「구독료(연 계약)」 do, 「노트북」 and
+    「3년 보증 연장」 do not (r7 A04-T2: the warranty extension replaced the laptops' price)."""
+    words = [set(re.findall(r"[가-힣]{2,}|[A-Za-z]{2,}", _NAME_NOISE.sub(" ", str(i.get("name") or ""))))
+             for i in (a, b)]
+    raw_a, raw_b = a.get("raw") or {}, b.get("raw") or {}
+    same_price = _plain(raw_a.get("unit_price")) is not None and (
+        _plain(raw_a.get("unit_price")) == _plain(raw_b.get("unit_price")))
+    return same_price or bool(words[0] & words[1]) or not (words[0] and words[1])
+
+
 def _same_base(a: dict, b: dict) -> bool:
     ra, rb = a.get("raw") or {}, b.get("raw") or {}
     return (str(ra.get("per") or "").strip().lower() == str(rb.get("per") or "").strip().lower()
-            and _plain(ra.get("count")) == _plain(rb.get("count")))
+            and _plain(ra.get("count")) == _plain(rb.get("count")) and _same_item(a, b))
 
 
 def conditional_items(items: list[dict], conditions: list[str],
@@ -1365,7 +1387,13 @@ def year_lines(label: str, totals: dict[str, dict]) -> list[str]:
     return lines
 
 
-def _cost_block(result: dict) -> str:
+def _cost_block(result: dict, *, data: bool = False) -> str:
+    """The code's totals for the writer. `data`: a strong writer gets them as figures to use,
+    with no verdict (the lowest alternative, 「settled facts」) to follow: which condition
+    applies and what to recommend stay its judgment (r7 A04-T1: the base without the annual
+    contract's discount, stated as settled, tilted three models to A안)."""
+    if data:
+        return _cost_data(result)
     period = result["period"] or "비교 기간"
     rows = ["| 대안 | 항목 | 계산 | 금액(원) |", "|---|---|---|---:|"]
     for option, entry in result["options"].items():
@@ -1410,6 +1438,48 @@ def _cost_block(result: dict) -> str:
         lines += year_lines(f"「{spec['name']}」 ", totals)
     if result["dropped"]:
         lines.append("- Left out of the calculation (values not in the material): " + ", ".join(result["dropped"][:6]))
+    return "\n".join(lines)
+
+
+def _cost_data(result: dict) -> str:
+    period = result["period"] or "비교 기간"
+    rows = ["| 대안 | 항목 | 계산 | 금액(원) |", "|---|---|---|---:|"]
+    for option, entry in result["options"].items():
+        for row in entry["rows"]:
+            rows.append(f"| {option} | {row['name']} | {_factor_text(row)} | {row['amount']:,} |")
+        rows.append(f"| {option} | 합계 |  | {entry['total']:,} |")
+    basis = {"incl": "부가세 포함", "excl": "부가세 별도"}.get(result.get("vat_basis") or "", "")
+    conditional = bool(result["scenarios"])
+    lines = [f"# 총비용 계산(코드)\nThe code worked out the {period} totals from the material's unit "
+             "prices and quantities. Use these amounts where you state totals rather than "
+             "recalculating them."
+             + (" The first table leaves out the material's conditional terms; each scenario "
+                "below applies one. Which applies, and what to recommend, is your judgment from "
+                "the request: state the condition with the figure." if conditional else
+                " What to recommend is your judgment from the request and the material.")
+             + (f" Every amount is on one basis, {basis}; label totals with it." if basis else ""),
+             "\n".join(rows)]
+    totals = result["options"]
+    ranked = sorted(totals, key=lambda n: totals[n]["total"])
+    lines.append(("- 조건 없이: " if conditional else "- ")
+                 + " < ".join(f"{o} {totals[o]['total']:,}원" for o in ranked))
+    lines += [line for line in year_lines("", totals) if "더 적은 대안" not in line]
+    if budget := result.get("budget"):
+        said = {"incl": "부가세 포함", "excl": "부가세 별도"}.get(budget["vat"], "")
+        lines.append(f"- 예산 {budget['amount']:,}원" + (f"({said})" if said else "") + " 대비: "
+                     + ", ".join(f"{o} {budget['compared'][o]:,}원 → "
+                                 + (f"잔액 {room:,}원" if room >= 0 else f"초과 {-room:,}원")
+                                 for o, room in budget["room"].items()))
+    for spec in result["scenarios"]:
+        totals = spec["options"]
+        ranked = sorted(totals, key=lambda n: totals[n]["total"])
+        lines.append(f"- 「{spec['name']}」 적용: "
+                     + " < ".join(f"{o} {totals[o]['total']:,}원" for o in ranked))
+        lines += [line for line in year_lines(f"「{spec['name']}」 ", totals)
+                  if "더 적은 대안" not in line]
+    if result["dropped"]:
+        lines.append("- Left out of the calculation (values not in the material): "
+                     + ", ".join(result["dropped"][:6]))
     return "\n".join(lines)
 
 
@@ -1582,6 +1652,22 @@ def _partial_cost_block(kept: dict[str, dict], unsettled: list[str], period: str
     return "\n".join(lines)
 
 
+def _partial_budget(kept: dict[str, dict], readings: list[dict]) -> dict | None:
+    """`kept` options' budget comparison from a reading that agrees on them."""
+    for reading in readings:
+        budget = reading.get("budget") or {}
+        compared = budget.get("compared") or {}
+        if not compared:
+            continue
+        same = {n: compared[n] for n in kept if n in compared
+                and (reading["options"].get(n) or {}).get("total") == kept[n]["total"]}
+        if same:
+            return {"options": kept, "budget": {**budget, "compared": same,
+                                                "room": {n: budget["room"][n] for n in same
+                                                         if n in (budget.get("room") or {})}}}
+    return None
+
+
 def _costs_agree(a: dict, b: dict) -> bool:
     """Readings agree: same options, same totals."""
     return _same_totals(a["options"], b["options"])
@@ -1647,6 +1733,8 @@ class PrepassJob:
     usage: dict
     #: thinking completion for the split-settling read (`report._complete_thinking`); None = plain third read
     deliberate: Complete | None = None
+    #: the writer is a strong model: blocks are data for it, never verdicts to follow
+    strong: bool = False
 
     def count(self, more: dict) -> None:
         for key in ("inputTokens", "outputTokens"):
@@ -1657,6 +1745,7 @@ async def prepare(
     format_id: str | None, request: str, material: str, *, complete: Complete, model: str,
     api_key: str, usage: dict | None = None, today: dt.date | None = None,
     tiebreak_model: str = "", process: Any = None, deliberate: Complete | None = None,
+    strong: bool = False,
 ) -> Prepass:
     """Pre-pass: code-settled facts before writing; steps from pipeline `prepass`, runs in `Prepass.runs`."""
     from app.pipeline.runner import CURRENT_STAGE
@@ -1668,7 +1757,7 @@ async def prepare(
     if not (material or "").strip():
         return pre
     job = PrepassJob(format_id or "", request, material, complete, model, api_key, today,
-                     tiebreak_model, usage if usage is not None else {}, deliberate)
+                     tiebreak_model, usage if usage is not None else {}, deliberate, strong)
     for name in process.prepass:
         token = CURRENT_STAGE.set(f"prepass:{name}")
         try:
@@ -1884,7 +1973,7 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                              "dropped": [*costs["dropped"], "시나리오(읽을 때마다 다름) " + ", ".join(
                                  sc["name"] for sc in costs["scenarios"] if sc not in kept)]}
                 pre.costs = costs
-                pre.blocks.append(_cost_block(costs))
+                pre.blocks.append(_cost_block(costs, data=job.strong))
                 summary = (f"총비용 {len(costs['options'])}개 대안"
                            + (f"({costs['period']})" if costs["period"] else "") + ": "
                            + ", ".join(f"{o} {e['total']:,}원" for o, e in costs["options"].items()))
@@ -1905,6 +1994,10 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                 period = next((o[0]["period"] for o in outcomes if o[0] is not None), "")
                 pre.blocks.append(_partial_cost_block(kept, unsettled, period) if kept
                                   else _COST_WITHHELD)
+                # an option every reading priced alike is still judged against the budget
+                # (r7 A04-T2: 「예산 자료 없음」 for 가온, 43,560,000원 in all three readings)
+                pre.costs_partial = _partial_budget(
+                    kept, [o[0] for o in outcomes if o[0] is not None])
                 readings = " / ".join(", ".join(f"{n} {e['total']:,}원" for n, e in o[0]["options"].items())
                                       for o in outcomes if o[0] is not None)
                 pre.runs.append({"skill": "compare-cost", "error": True,
@@ -1934,9 +2027,10 @@ async def _compare_check(pre: Prepass, job: PrepassJob) -> None:
         count(more)
         data = _json(text)
         numbers = _material_numbers(f"{request}\n{material}")
-        if musts := must_status(data, numbers, f"{request}\n{material}", pre.costs):
+        if musts := must_status(data, numbers, f"{request}\n{material}",
+                                pre.costs or pre.costs_partial):
             pre.musts = musts
-            pre.blocks.append(_must_block(musts))
+            pre.blocks.append(_must_block(musts, data=job.strong))
             pre.runs.append({"skill": "compare-check", "summary": "필수 조건 " + ", ".join(
                 f"{o} {r['status']}" for o, r in musts["options"].items())})
         if not _WEIGHTS.search(f"{request}\n{material}") or any(
@@ -4469,7 +4563,22 @@ def must_status(data: dict, numbers: list[float], material: str = "",
     return {"musts": [m["name"] for m in musts], "options": out}
 
 
-def _must_block(result: dict) -> str:
+def _must_block(result: dict, *, data: bool = False) -> str:
+    if data:
+        lines = ["# 필수 조건 대조(코드)",
+                 "The request's must-have conditions (" + ", ".join(result["musts"]) + ") set "
+                 "against the values read from the material. 탈락 means a value the material gives "
+                 "misses a condition; 조건 미확인 means the material gives no value for it — say "
+                 "which condition is open where you recommend. Weigh these with the rest of the "
+                 "material; the reading may miss something the material says."]
+        for option, row in result["options"].items():
+            if row["status"] == "탈락":
+                lines.append(f"- {option}: 탈락 — " + "; ".join(row["failed"]))
+            elif row["status"] == "조건 미확인":
+                lines.append(f"- {option}: 조건 미확인 — " + ", ".join(row["unknown"]) + " 자료 없음")
+            else:
+                lines.append(f"- {option}: 충족")
+        return "\n".join(lines)
     lines = ["# 필수 조건 판정(코드)",
              "The request's must-have conditions (" + ", ".join(result["musts"]) + ") checked against the "
              "material's values. Each alternative's status follows this result. Do not recommend a 탈락 "
@@ -4610,8 +4719,12 @@ def settle_verdict(sections: list[dict], still: list[Finding], musts: dict | Non
         body = str(out[finding.section].get("content") or "")
         if not finding.sentence or finding.sentence not in body:
             continue
-        # first wrong sentence carries the verdict; later ones would only repeat it
-        body = body.replace(finding.sentence, "" if placed else verdict, 1)
+        if placed:
+            # a later one is left as written and reported (r7 A04-T2: deleting it left 「누리컴
+            # 보다 약 3,003,000원 저렴하고 …」 with no subject)
+            continue
+        # the first wrong sentence carries the verdict
+        body = body.replace(finding.sentence, verdict, 1)
         out[finding.section]["content"] = re.sub(r"[ \t]{2,}", " ", body).strip()
         placed = True
         settled.append(finding)

@@ -792,7 +792,8 @@ class CheckStep(Step):
         computed = _computed(bundle)
         # producing agent's own strictness
         options = {**check_skills.options_for(req.today, _product(bundle).get("checkOptions")),
-                   "person": "\n".join([req.text, *req.untrusted])}
+                   "person": "\n".join([req.text, *req.untrusted]),
+                   **({"strong": True} if req.strong else {})}
         keys = (ref,)
         if kind == "document":
             bundle.document.sections, outcome = check_skills.ground_sections(
@@ -819,7 +820,7 @@ class CheckStep(Step):
         outcome = await copy_check.run(
             bundle.document.answer, request=req.text, material="\n".join(_sources(bundle)),
             complete=report._complete, model=req.model, judge=req.judge, api_key=req.api_key,
-            usage=bundle.usage)
+            usage=bundle.usage, strong=req.strong)
         bundle.document.answer = outcome.text
         bundle.findings.before = [*bundle.findings.before, *["copy_claim"] * len(outcome.found)]
         bundle.findings.after = [*bundle.findings.after, *["copy_claim"] * len(outcome.left)]

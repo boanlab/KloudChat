@@ -171,10 +171,15 @@ def strip_reports(text: str) -> str:
 
 #: writer apologising for its own tool call
 TOOL_APOLOGY = re.compile(
-    r"(?:도구|툴|tool|함수)(?:를|을)?\s{0,2}잘못\s{0,2}(?:호출|사용|실행|불러)"
+    # any particle after the tool (r7 P02 「날씨 도구는 잘못 호출됐네요.」)
+    r"(?:도구|툴|tool|함수)(?:를|을|는|은|가|이|도)?\s{0,2}잘못\s{0,2}(?:호출|사용|실행|불러)"
     # a code tool's run told by its name: 「직전 `run_code`는 … syntax error로 실패」
     r"|`?(?<![A-Za-z_])(?:run_code|execute_code|run_skill_script)(?![A-Za-z_])`?", re.I)
 _SORRY = re.compile(r"^\s{0,4}(?:죄송합니다|죄송해요|미안합니다|사과드립니다)[.!]?\s{0,4}$")
+#: the writer going on after a tool apology (「…필요 없으니, 바로 계획을 짜 드리겠습니다.」)
+_CARRY_ON = re.compile(
+    r"(?:필요\s?없으니|필요하지\s?않으니|대신|바로)[^\n.]{0,60}?(?:드리겠습니다|하겠습니다|합니다)"
+    r"[.!]?\s*$")
 
 
 def strip_tool_apologies(text: str) -> str:
@@ -192,10 +197,14 @@ def strip_tool_apologies(text: str) -> str:
             continue
         sentences = [s for s in units.SENTENCE_BREAK.split(line) if s.strip()]
         kept: list[str] = []
+        apologised = False
         for sentence in sentences:
             if TOOL_APOLOGY.search(sentence):
                 if kept and _SORRY.match(kept[-1]):
                     kept.pop()
+                apologised = True
+                continue
+            if apologised and not kept and _CARRY_ON.search(sentence):
                 continue
             kept.append(sentence)
         if kept:
@@ -672,7 +681,26 @@ _CHECK_RESULT = re.compile(
     r"|^\W{0,4}(?:일정|날짜|요일|문구|최종)?\s?(?:점검|검증|검산|검수)\s?(?:결과|에서)?\s?[:：]?\s"
     r"[^\n]{0,80}?(?:0\s?건|없습니다|없고|맞습니다|맞고|일치합니다|일치하고|통과)"
     r"|(?:요일|날짜)[^\n.]{0,60}?(?:실제\s?)?달력(?:과|이|와)\s?(?:모두\s?)?일치합니다"
-    r"|차단\s?(?:\(block\)\s?)?(?:항목|값|표현)\S{0,2}\s?\d{1,3}\s?건")
+    r"|차단\s?(?:\(block\)\s?)?(?:항목|값|표현)\S{0,2}\s?\d{1,3}\s?건"
+    # a script's verdict by its own words (r7 A15-T1 「점검 결과: 콜드메일 check 0 block …」)
+    r"|(?<![A-Za-z])(?:check|claims|scan)\s?\d{1,3}\s?block"
+    # a check told as done (r7 A02-T1 「근거 대조 점검을 마쳤고, 메모에 없는 수치·날짜는
+    # 없습니다.」)
+    r"|(?:근거\s?대조|출처\s?점검|카피\s?점검|자체\s?점검|검산|대조)\s?(?:점검)?\s?(?:을|를)?\s?마쳤"
+    # a length the writer measured on its own copy (r7 A12-T2 「…는 18자로 한도 안입니다.」)
+    r"|\d{1,4}\s?자(?:로|라서?)?\s?(?:한도|제한)\s?(?:안|내|이내)(?:입니다|이고|예요)"
+    # a weekday the writer checked (r7 A16-T2 「2026-11-04는 수요일로 확인됐습니다.」)
+    r"|(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\s?월\s?\d{1,2}\s?일)(?:\s?\([월화수목금토일]\))?(?:은|는)"
+    r"\s?[월화수목금토일]요일(?:로|임이|인\s?것으로)\s?확인(?:됐|되었|했)"
+    r"|사용자가\s?(?:준|주신|적은|말한)\s?(?:요일|날짜)[^\n.]{0,20}?(?:과|와)\s?(?:모두\s?)?일치합니다")
+#: the writer announcing its next piece of work before the answer starts (r7 A16-T2 「이제 두
+#: 문서를 작성합니다.」, A16-T1 「두 버전으로 작성합니다.」, A13-T1 「이제 소재를 정리해
+#: 드리겠습니다.」, A12-T2 「최종 확정된 25개입니다.」): dropped only ahead of the first
+#: content line
+_OPENING_NARRATION = re.compile(
+    r"^(?:이제|먼저|그럼|그러면|바로|자,)?\s?[^\n.?!]{0,30}?(?:작성합니다|작성하겠습니다|작성해\s?드리겠습니다"
+    r"|정리해\s?드리겠습니다|정리하겠습니다|짜\s?드리겠습니다|만들어\s?드리겠습니다|시작하겠습니다)[.!]?\s*$"
+    r"|^최종\s?(?:확정된|확정한|정리한)\s?[^\n.]{0,20}?입니다[.!]?\s*$")
 #: the writer telling what it did to its own copy (「권장 150자를 12자 초과해서 줄였습니다」):
 #: an edit verb in the past with a length or check word beside it
 _SELF_EDIT = re.compile(
@@ -777,6 +805,7 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
     kept: list[str] = []
     fenced = False
     opening = True  # no text line yet
+    started = False  # no content line kept yet
     for line in "\n\n".join(paragraphs).split("\n"):
         stripped = line.lstrip()
         first_line, opening = opening, opening and not stripped
@@ -784,6 +813,7 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
             fenced = not fenced
         if fenced or stripped.startswith(("```", "#", "|", "![")):
             kept.append(line)
+            started = started or bool(stripped)
             continue
         if _LONE_MARK.match(line) or _QUESTION_STUB.match(line):
             continue
@@ -797,10 +827,17 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
                     and (asked_edit or not _SELF_EDIT.search(s))
                     and not (first_line and not asked_check and len(line) <= 100
                              and _OPENING_VERDICT.match(s))]
+            if not started and not lead.strip() and not document:
+                # narration of the next step, ahead of the answer's first content
+                while left and _OPENING_NARRATION.match(left[0].strip()):
+                    left.pop(0)
             if len(left) != len(sentences):
                 if left:
                     kept.append(lead + " ".join(s.strip() for s in left))
+                    started = True
                 continue
+        if stripped:
+            started = True
         kept.append(line)
     cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip("\n")
     if cleaned == text.strip("\n"):

@@ -212,6 +212,8 @@ def restore_material_scale(text: str, material: str) -> str:
 #: Korean amount; 천 matched inside 만/억 groups (else 「1억 8」)
 _TERM = (
     r"\d[\d,]*(?:\.\d+)?\s?(?:조|억|천만|만|천)(?:\s?\d[\d,]*(?:\.\d+)?\s?(?:억|천만|만|천))*"
+    # a bare tail under the last scale word is part of the amount: 「8만 2,080」 (r7 A10-T2)
+    r"(?:\s?(?:\d{1,3},\d{3}|\d{1,4})(?![\d,.]|\s?(?:조|억|천만|만|천)))?"
     r"|\d[\d,]*(?:\.\d+)?"
 )
 #: per-unit amount reads as its amount
@@ -294,6 +296,24 @@ def inside_longer_expression(text: str, start: int) -> bool:
     return bool(_OPERATOR_BEFORE.search(text[max(line_start, start - 30):start]))
 
 
+#: what may follow a result the code reads whole: not a word run on from its digits (「= 1박당
+#: 104,000원」 reads 「1」, r7 A05-T1) and not more digits
+_RESULT_CUT = re.compile(r"[가-힣A-Za-z]|\s?\d")
+
+
+def _cut_result(m: re.Match) -> bool:
+    """Whether the result `m` read is only the head of what the line writes after 「=」."""
+    return not (m.group("rhs_unit") or "").strip() and bool(
+        _RESULT_CUT.match(m.string, m.end("rhs")))
+
+
+def _cut_expression(m: re.Match) -> bool:
+    """Whether the left side `m` read is only the tail of a longer calculation (r7 A03-T2: the
+    last four of twelve terms read as the whole sum)."""
+    line_start = m.string.rfind("\n", 0, m.start()) + 1
+    return bool(re.search(r"(?:[\d)]|[×x*÷+\-−])\s{0,3}$", m.string[line_start:m.start()]))
+
+
 def fix_written_arithmetic(text: str) -> str:
     """Wrong 「A × B = D」 results replaced everywhere D repeats; sums/percentages elsewhere."""
     if not text or ("×" not in text and "÷" not in text):
@@ -303,6 +323,8 @@ def fix_written_arithmetic(text: str) -> str:
     def work(m: re.Match) -> str:
         lhs, rhs = m.group("lhs"), m.group("rhs")
         if "%" in (m.group("rhs_unit") or ""):
+            return m.group(0)
+        if _cut_result(m) or _cut_expression(m):
             return m.group(0)
         # product inside a sum is one term; the tail of a longer product is no product
         if inside_longer_expression(m.string, m.start()):
@@ -458,6 +480,8 @@ def fix_written_sums(text: str) -> str:
     def work(m: re.Match) -> str:
         lhs = m.group("lhs")
         if not re.search(r"[+\-−]", lhs) or "%" in (m.group("rhs_unit") or ""):
+            return m.group(0)
+        if _cut_result(m) or _cut_expression(m):
             return m.group(0)
         value = _evaluate(lhs)
         # terms 1000× apart without a product: missing quantity, skip
