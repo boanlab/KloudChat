@@ -4317,6 +4317,8 @@ const EN: Record<string, string> = {
   '분량 확인': 'Length check',
   '확인 표시 모으기': 'Gather the check marks',
   '확인 표시 말 맞추기': 'Check marks in the answer\'s language',
+  '응급 안내 먼저': 'Emergency advice first',
+  '응급 안내를 답 맨 앞에 둠': 'Emergency advice put first in the answer',
   '답 바꾸기': 'Replace the answer',
 }
 

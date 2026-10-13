@@ -118,6 +118,7 @@ from app.services import (
     message_links,
     output_language,
     publishing,
+    red_flags,
     revise,
     settings_store,
     skill_specs,
@@ -3931,6 +3932,10 @@ async def send_message(
         if session.kind is SessionKind.chat and published is None
         else None
     )
+    #: stroke signs, chest pain, anaphylaxis, suicidal intent…: the answer opens with 119/109
+    urgent = (
+        red_flags.detect(content, earlier_asks) if session.kind is SessionKind.chat else None
+    )
     web_search_auto = payload.web_search == "auto" and forced_tool is None
     # agent allowlist without web_search is deliberate: no 「웹 검색 없이」 noise
     if session.agent_id and agent_tools is not None and "web_search" not in agent_tools:
@@ -5004,6 +5009,7 @@ async def send_message(
                 check_keys=_advice_checks(
                     tuple(check_skills.of_stage(check_keys, "post", specs)), advice),
                 advice=advice or "",
+                urgent=urgent.kind if urgent else "",
                 skill_keys=_skill_keys(workspace.applied_skills, specs),
                 skill_specs=specs,
                 own_scripts=own_scripts,
@@ -5446,6 +5452,8 @@ async def _answer_turn(
     agent_key: str = "",
     #: `exact_facts.advice_domain` of the turn: writer rule and grounding check
     advice: str = "",
+    #: `red_flags.detect` kind of the turn: the answer opens with the emergency action
+    urgent: str = "",
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion; own DB session (request one closes)."""
     text_parts: list[str] = []
@@ -5548,6 +5556,7 @@ async def _answer_turn(
                 model["id"],
                 freshness.with_answer_policy(
                     messages, model, current_fact=bool(freshness_request), advice=advice,
+                    urgent=urgent,
                 ),
                 tools,
                 ctx,
@@ -5710,6 +5719,7 @@ async def _answer_turn(
             evidence=list(ctx.searched),
             kept_steps=steps, usage=usage, skill_keys=skill_keys, check_options=check_options,
             skill_specs=skill_specs, traced=carries_material, advice=advice,
+            urgent=urgent,
         )
         pipe = pipeline_registry.for_chat(agent_key)
         runner = PipelineRunner(pipe.stages("finish"), name=f"{pipe.name}.finish")

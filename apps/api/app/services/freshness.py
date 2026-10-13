@@ -216,7 +216,7 @@ _ADVICE_WORDS = {"legal": "legal", "tax": "tax", "financial": "financial",
 
 def with_answer_policy(
     messages: list[dict], model: dict[str, Any], *, current_fact: bool | None = None,
-    advice: str = "",
+    advice: str = "", urgent: str = "",
 ) -> list[dict]:
     """Copied envelope; never mutate another comparison column."""
     policy = answer_instruction(model)
@@ -242,6 +242,12 @@ def with_answer_policy(
         result[0]["content"] += "\n\n" + CURRENT_FACT_INSTRUCTION
     if advice in _ADVICE_WORDS:
         result[0]["content"] += "\n\n" + ADVICE_INSTRUCTION.format(domain=_ADVICE_WORDS[advice])
+    if urgent:
+        from app.services import red_flags
+
+        # last, so it wins over the person's form and the advice rule's 「form comes first」
+        if rule := red_flags.instruction(urgent):
+            result[0]["content"] += "\n\n" + rule
     return result
 
 _LIVE = re.compile(
