@@ -156,8 +156,10 @@ Rules:
 - **Use only the figures in the 「쓸 수 있는 수치」 list above and values computed from
   them**, with their units and magnitudes exactly as given — do not move a yearly
   figure into 만 units or change the number of digits. Show the formula with a computed
-  value (「월 비용 × 12개월 = 연 비용」). Never invent a figure that is not on the list —
-  user counts, ratios, causes of failure, damage, other costs, years. Where one is missing,
+  value (「월 비용 × 12개월 = 연 비용」). Never present a figure that is not on the list as
+  a fact — user counts, causes of failure, damage, other costs, years. An estimate the
+  request asks for (시장 규모, TAM·SAM·SOM, 손익 전망) sets the rates and shares it needs
+  as stated 「가정」 with their basis and computes from them. Where a fact is missing,
   write the sentence so it holds without it (「참석 인원은 신청 마감 후 확정합니다」) rather
   than leaving a bracket blank. Do not invent circumstances the request does not give, such
   as the cause or course of an incident.
@@ -256,9 +258,10 @@ Rules:
   Arabic numerals as the request writes them — do not shift magnitudes (만 to 백만) or use
   Chinese numerals. **Example numbers inside these rules are not this document's figures.**
   Write each calculation with formula and result, divisions to one decimal place
-  (「월 비용 × 12개월 = 연 비용」, 「초기 비용 ÷ 연 비용 ≈ 회수 기간(년)」). Never invent a
-  figure that is not on the list — user counts, ratios, periods, other costs, residual
-  values, years, working days; write around a missing one as above. Do not invent
+  (「월 비용 × 12개월 = 연 비용」, 「초기 비용 ÷ 연 비용 ≈ 회수 기간(년)」). Never present a
+  figure that is not on the list as a fact — user counts, periods, other costs, residual
+  values, years, working days; write around a missing one as above. An estimate the
+  request asks for sets the rates and shares it needs as stated 「가정」 with their basis. Do not invent
   circumstances the request does not give. When comparing a large and a small number,
   write both to check the direction.
 - Facts from the source list get the source number at the end of the sentence, like [1].
@@ -827,7 +830,9 @@ def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
             "performance gains of any kind.** Leave each place a value would go as its name in "
             "brackets, like 「[금액]」「[측정값]」, and instead of computing or inventing a value, say "
             "what must be measured or confirmed and how. Formulas and general principles "
-            "(such as f_c = 1/(2πRC)) are fine."
+            "(such as f_c = 1/(2πRC)) are fine. Only when the request itself asks for an "
+            "estimate (시장 규모, TAM·SAM·SOM, 손익 전망) set the inputs it needs as stated "
+            "「가정」 values with their basis and compute from them."
         )
         if _DECISION.search(request):
             line += (
@@ -3579,7 +3584,8 @@ async def rewrite_section(
     body, spent = await _complete(
         model,
         build_document_messages(
-            SessionKind.report, prompt, request=request, untrusted_context=material
+            SessionKind.report, prompt, request=request, untrusted_context=material,
+            model=model,
         ),
         api_key,
         1200,

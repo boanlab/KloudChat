@@ -302,6 +302,10 @@ def test_the_writers_own_closing_list_is_found() -> None:
     at, end, numbers = agent._own_source_list(answer)
     assert answer[at:].startswith("### 출처") and numbers == [1, 2] and end == len(answer)
     assert agent._own_source_list("본문.\n\n### 출처\n그 밖의 말") is None
+    # r7 A11: a paragraph after the list does not hide it
+    tail = answer + "\n\n보완이 필요한 항목: 예산 [2]."
+    at, end, numbers = agent._own_source_list(tail)
+    assert numbers == [1, 2] and tail[end:].strip() == "보완이 필요한 항목: 예산 [2]."
 
 
 # ── 6. question cards ────────────────────────────────────────────────────────

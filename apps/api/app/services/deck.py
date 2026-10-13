@@ -3070,6 +3070,7 @@ async def _write_slides(
                 trusted_context=trusted_context,
                 untrusted_context=untrusted_context,
                 research_rule=research_rule,
+                model=model,
             ),
             api_key,
             min(9000, 500 * len(slides) + 600),
@@ -3173,6 +3174,7 @@ async def _write_slides(
                         trusted_context=trusted_context,
                         untrusted_context=untrusted_context,
                         research_rule=research_rule,
+                        model=model,
                 )
                 body, spent = await _complete(model, slide_messages, api_key, 600)
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
@@ -3939,6 +3941,7 @@ async def write(
                 trusted_context=trusted_context,
                 untrusted_context=document_context,
                 research_rule=research_rule,
+                model=outline_model or model,
             ),
             api_key,
             # scaled with slide count (no JSON truncation)
@@ -4300,7 +4303,8 @@ async def rewrite_slide(
     text, usage = await _complete(
         model,
         build_document_messages(
-            SessionKind.slides, prompt, request=request, untrusted_context=material
+            SessionKind.slides, prompt, request=request, untrusted_context=material,
+            model=model,
         ),
         api_key,
         900 if layout in ("table", "chart", "timeline", "two-column") else 600,

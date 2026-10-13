@@ -98,8 +98,9 @@ def _searched(mat) -> bool:
     return bool(mat.web_search and mat.research is not None and mat.research.searched)
 
 
-def _messages(bundle: Bundle, prompt: str) -> list[dict[str, str]]:
-    """Writer messages: prompt under the material."""
+def _messages(bundle: Bundle, prompt: str, model: str | None = None) -> list[dict[str, str]]:
+    """Writer messages: prompt under the material; `model` = the writer, whose tier sets the
+    setup (`prompt_tier`) — none for a repair call, which keeps the full one."""
     return build_document_messages(
         SessionKind.report,
         prompt,
@@ -107,6 +108,7 @@ def _messages(bundle: Bundle, prompt: str) -> list[dict[str, str]]:
         trusted_context=bundle.material.trusted_texts,
         untrusted_context=bundle.material.document,
         research_rule=bundle.material.research_rule,
+        model=model,
     )
 
 
@@ -353,7 +355,7 @@ class Outline(Base):
                     hi=wanted or report._MAX_SECTIONS,
                     genre=bundle.spec.genre,
                     request=prompt_request(request, 2000),
-                ) + nudge),
+                ) + nudge, req.outline_model or req.model),
                 req.api_key,
                 400,
             )
@@ -848,7 +850,7 @@ class Draft(Base):
                         request=prompt_request(req.text, 1500),
                     ),
                     genre,
-                )),
+                ), req.model),
                 req.api_key,
                 max_tokens=min(11000, 1400 * len(plan.headings)),
             )
@@ -932,7 +934,7 @@ class Sections(Base):
                     "material's figures, and do not pad it by repeating yourself."
                     if long_form
                     else ""
-                )),
+                ), req.model),
                 req.api_key,
                 tokens or (2400 if long_form else 1200),
             )

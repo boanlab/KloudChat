@@ -47,6 +47,25 @@ def test_answers_that_say_they_could_not_confirm():
     assert not server_notes.says_unconfirmed("예금자보호 한도는 1인당 5천만 원입니다.")
 
 
+async def test_an_empty_search_says_to_answer_from_what_is_known(monkeypatch):
+    # r7 P31 (DSP): four empty searches and a Fermi estimate declined
+    from app.services.tools import builtin
+
+    async def tools_config():
+        class B:
+            search = "http://search"
+            fetch = ""
+        return B()
+
+    async def nothing(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(builtin.settings_store, "tools_config", tools_config)
+    monkeypatch.setattr(builtin, "_searxng", nothing)
+    result = await builtin.web_search({"query": "서울 피아노 조율사 수"})
+    assert result.empty and "아는 것과 밝힌 가정으로 답하되" in result.content
+
+
 def _empty_search_tools() -> list[Tool]:
     async def run(_args):
         return ToolResult(content="'금리' 검색 결과가 없습니다.", empty=True)

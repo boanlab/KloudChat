@@ -684,8 +684,14 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
         hits = trusted
     hits.sort(key=lambda hit: credibility.tier(hit["url"]) < 2)
     if not hits:
+        # what to do next, as for unrelated results (r7 P31: four empty searches and the
+        # model declined a Fermi estimate it could have worked from what it knows)
         return ToolResult(
-            content=f"'{query}' 에 대한 검색 결과가 없습니다.", detail="0개 결과", empty=True
+            content=(
+                f"'{query}' 에 대한 검색 결과가 없습니다. 같은 검색을 되풀이하지 말고, 아는 것과 "
+                "밝힌 가정으로 답하되 검색으로 확인하지 못한 수치·사실은 그렇다고 밝히세요."
+            ),
+            detail="0개 결과", empty=True,
         )
     if not planned and _off_topic(hits, query):
         return ToolResult(
