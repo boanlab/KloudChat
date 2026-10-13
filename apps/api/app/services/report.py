@@ -17,8 +17,8 @@ import httpx
 from app.core import logs
 from app.core.config import settings
 from app.models.chat import SessionKind
-from app.services import deck as deck_rules
 from app.services import (
+    block_fences,
     design_templates,
     diagram_render,
     diagrams,
@@ -40,6 +40,7 @@ from app.services import (
     units,
     weekdays,
 )
+from app.services import deck as deck_rules
 from app.services import outline as plan_rules
 from app.services.context import (
     build_document_messages,
@@ -4820,9 +4821,11 @@ def word_count(sections: list[dict]) -> int:
 
 
 def to_markdown(title: str, sections: list[dict]) -> str:
+    """The document as a Markdown file; the app's block fences (callout, kpi, chart …), which a
+    Markdown viewer shows as they stand, written as plain Markdown (r6 A04-T1)."""
     parts = [f"# {title}"]
     for section in sections:
         # untitled lone 「본문」 (공문·안내문): no empty 「## 」
         head = f"## {section['heading']}\n\n" if str(section.get("heading") or "").strip() else ""
-        parts.append(f"\n{head}{section.get('content') or ''}")
+        parts.append(f"\n{head}{block_fences.plain(section.get('content') or '')}")
     return "\n".join(parts).strip() + "\n"

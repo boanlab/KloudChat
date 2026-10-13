@@ -21,6 +21,7 @@ import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from app.services import output_language
 from app.services.freshness import without_quoted_transform_sources
 
 _I = re.I
@@ -373,21 +374,15 @@ def leads_with_action(answer: str, flag: Flag) -> bool:
     return bool((_CRISIS if flag.kind == "suicide" else _ACTIONS).search(opening))
 
 
-def _korean(answer: str, request: str) -> bool:
-    text = answer if re.search(r"[가-힣A-Za-z]", answer or "") else request
-    hangul = len(re.findall(r"[가-힣]", text))
-    latin = len(re.findall(r"[A-Za-z]", text))
-    return hangul > 0 and hangul * 3 >= latin
-
-
-def lead(answer: str, flag: Flag | None, request: str = "") -> str:
+def lead(answer: str, flag: Flag | None) -> str:
     """The answer with the emergency line first, when its opening lacks the action."""
     if flag is None or flag.kind not in KINDS or not answer.strip():
         return answer
     if leads_with_action(answer, flag):
         return answer
     _, korean, english = KINDS[flag.kind]
-    line = korean if _korean(answer, request) else english
+    # the answer's language as the finish stages read it (`output_language.reads_english`)
+    line = english if output_language.reads_english(answer) else korean
     return f"{line}\n\n{answer.lstrip()}"
 
 

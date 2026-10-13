@@ -41,6 +41,7 @@ LABELS: dict[str, str] = {
     "check:skills": "스킬 점검",
     "text-fit": "분량 확인",
     "copy-marks": "확인 표시 모으기",
+    "answer-marks": "확인 표시 말 맞추기",
     "answer-replace": "답 바꾸기",
     "revise-route": "고칠 곳 찾기",
     "revise-widen": "함께 고칠 곳",

@@ -15,6 +15,7 @@ from app.services import (
     current_evidence,
     freshness,
     internal_words,
+    output_language,
     red_flags,
     stray_han,
     superlatives,
@@ -201,7 +202,7 @@ class UrgentLead(Base):
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         req, doc = bundle.request, bundle.document
         flag = red_flags.Flag(kind=req.urgent, signs=())
-        led = red_flags.lead(doc.answer, flag, req.text)
+        led = red_flags.lead(doc.answer, flag)
         if led == doc.answer:
             return
         doc.answer = led
@@ -239,6 +240,23 @@ class CopyMarks(Base):
         bundle.document.answer = copy_check.lift_marks(bundle.document.answer)
 
 
+class MarkLanguage(Base):
+    """An answer in English keeps no Korean mark: the checks' 「(확인 필요)」 as 「(needs
+    checking)」 (r6 P27·P46: the Korean mark inside an English reply)."""
+
+    name = "answer-marks"
+    reads = ("document.answer",)
+    writes = ("document.answer",)
+
+    def skip(self, bundle: Bundle) -> str:
+        if "확인" not in bundle.document.answer:
+            return "no marks"
+        return "" if output_language.reads_english(bundle.document.answer) else "a Korean answer"
+
+    async def apply(self, bundle: Bundle, ctx: Context) -> None:
+        bundle.document.answer = output_language.localize_marks(bundle.document.answer)
+
+
 class Replace(Base):
     """Finished answer replaces the streamed one (client retracts the first match)."""
 
@@ -254,7 +272,7 @@ class Replace(Base):
         yield {"type": "delta", "text": bundle.document.answer}
 
 
-for _stage in (Normalize(), StrayHan(), TextFit(), CopyMarks(), Replace()):
+for _stage in (Normalize(), StrayHan(), TextFit(), CopyMarks(), MarkLanguage(), Replace()):
     registry.register(_stage)
 
 

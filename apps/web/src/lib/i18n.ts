@@ -4305,6 +4305,21 @@ const EN: Record<string, string> = {
   '끄면 템플릿(또는 문서 형식)이 정한 계산·검사·구조를 그대로 씁니다. 켜면 그 값에서 시작해 바꿉니다.': 'Off: the template\'s (or document format\'s) calculations, checks and structure apply as they are. On: start from them and change them.',
   '커넥터 카탈로그': 'Connector catalogue',
   '사용자가 사용자 지정 › 커넥터에서 설치할 수 있는 MCP 서버입니다. 명령으로 실행하는 서버(stdio)는 여기서만 추가할 수 있습니다.': 'MCP servers people can install from Customize › Connectors. Servers run as a command (stdio) can only be added here.',
+  // 대화 답 단계 이름(서버가 보내는 한국어 키)
+  '다른 모델로 답 쓰기': 'Answer written by another model',
+  '코드 출력값 대조': 'Values checked against the code output',
+  '스케줄링 결과 검산': 'Scheduling result checked',
+  '코드 출력에 없는 값': 'Values not in the code output',
+  '작성 중 점검 결과': 'Checks while writing',
+  '답 다듬기': 'Tidy the answer',
+  '한자 섞인 문장 고치기': 'Fix sentences with Chinese characters',
+  '스킬 점검': 'Skill checks',
+  '분량 확인': 'Length check',
+  '확인 표시 모으기': 'Gather the check marks',
+  '확인 표시 말 맞추기': 'Check marks in the answer\'s language',
+  '응급 안내 먼저': 'Emergency advice first',
+  '응급 안내를 답 맨 앞에 둠': 'Emergency advice put first in the answer',
+  '답 바꾸기': 'Replace the answer',
 }
 
 export function translate(lang: Lang, text: string): string {

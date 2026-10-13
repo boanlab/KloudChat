@@ -1206,7 +1206,7 @@ def _visitor_stream(events, pub: Publication):
             kind = event.get("type")
             if kind == "delta":
                 if not pub.show_sources and str(event.get("text") or "").lstrip(
-                        "\n").startswith(("### 출처", "## 출처")):
+                        "\n").startswith(("### 출처", "## 출처", "### Sources")):
                     continue
                 out = {"type": "delta", "text": event.get("text", "")}
             elif kind == "retract":

@@ -10,6 +10,7 @@ from app.pipeline import marks as doc_marks
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle
 from app.pipeline.stage import Base, Context
+from app.services import output_language
 
 log = logging.getLogger("app.routers.sessions")
 
@@ -82,6 +83,14 @@ class ReportSave(Base):
                                "content": section.get("content"), "done": True}
         # references numbered by first citation; venue-as-author replaced by the work's name
         sections, sources = citations.tidy(sections, sources)
+        if output_language.reads_english("\n".join(s.get("content") or "" for s in sections)):
+            # a document in English keeps no Korean 「(확인 필요)」 the checks put in
+            for i, section in enumerate(sections):
+                body = str(section.get("content") or "")
+                if (english := output_language.localize_marks(body)) != body:
+                    sections[i] = {**section, "content": english}
+                    yield {"type": "section", "sectionId": section.get("id"),
+                           "heading": section.get("heading"), "content": english, "done": True}
         bundle.document.sections = sections
         written = [s for s in sections if (s.get("content") or "").strip()]
         credits = (
