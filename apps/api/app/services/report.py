@@ -1449,7 +1449,11 @@ def collapse_repeated_citations(body: str) -> str:
     return "".join(out)
 
 
-_FIGURE_MARK = re.compile(r"\[\[\s*그림\s*[:：]\s*(?P<body>[^\]\n]{3,900}?)\s*\]\]")
+#: 「[[그림: kind | caption | body]]」; the body may hold single brackets (「[김도윤: 검수]」, r5
+#: A01-T1 left the whole mark in the minutes)
+_FIGURE_MARK = re.compile(r"\[\[\s*그림\s*[:：]\s*(?P<body>(?:[^\]\n]|\](?!\])){3,900}?)\s*\]\]")
+#: a mark left open to the line's end: taken out, never shown
+_FIGURE_OPEN = re.compile(r"[ \t]*\[\[\s*그림\s*[:：][^\n]*")
 _FIGURE_REF, _TABLE_REF = "〔그림〕", "〔표〕"
 #: phrase around a reference to an undrawable figure
 _DANGLING_REF = re.compile(
@@ -2776,6 +2780,9 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
             out.append(sec)
             continue
         content = str(sec.get("content") or "")
+        section_name = re.sub(r"^\s*(?:[\dⅠ-Ⅻ]{1,3}[.)]|[가-하][.)]|제\s?\d{1,2}\s?[장절])\s*", "",
+                              str(sec.get("heading") or "")).strip(" *#")
+        tables_here = 0
         # 「−」 lacks a PDF glyph; empty 「[]」; title-less 「표 4」 line
         content = content.replace("\u2212", "-")
         content = re.sub(r"\s?\[\s*\]", "", content)
@@ -2844,7 +2851,10 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                     if k < len(lines) and (below := _caption_text(lines[k], "표")) is not None:
                         given = below
                         lines[k] = ""
-                title = given or "·".join(header[:3]) or "표"
+                # no caption given: the section's name for its first table, else none; never
+                # its column names (「표 1. 항목·내용·비고」, r5 A03-T2·A07-T1·A01-T1)
+                title = given or (section_name if not tables_here else "")
+                tables_here += 1
                 # table shaped like the previous takes its caption, number advanced
                 if not given and previous_table and previous_table[0] == header:
                     step = re.search(r"(\d{1,2})\s?(차시|회차|주차|단계|일차|개월차)", previous_table[1])
@@ -2856,7 +2866,8 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                     result, lines, i, _TABLE_REF, f"표 {table_no}"
                 ) and f"표 {table_no}" not in mentioned:
                     _point_from_paragraph_before(result, f"표 {table_no}")
-                result.extend(["", f"**표 {table_no}. {title}**", ""])
+                result.extend(["", f"**표 {table_no}. {title}**" if title
+                               else f"**표 {table_no}**", ""])
                 result.extend(lines[i:end])
                 i = end
                 continue
@@ -2867,7 +2878,7 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
         if _FIGURE_REF in text or _TABLE_REF in text:
             text = re.sub(r"[ \t]{2,}", " ", _DANGLING_REF.sub(" ", text))
             text = re.sub(r" ([.,)])", r"\1", text)
-        text = fix_number_particles(_FIGURE_MARK.sub("", text))
+        text = fix_number_particles(_FIGURE_OPEN.sub("", _FIGURE_MARK.sub("", text)))
         out.append({**sec, "content": text})
     return out
 
@@ -3993,6 +4004,9 @@ def _stems(text: str) -> set[str]:
 
 
 #: test lines: never trimmed (wrong choices repeat numbers)
+#: a formula or a numbered step: never a restatement to trim (r5 A10-T2 lost 「연간 시장 규모(원) =
+#: N(명) × 9,900원 × 12개월 × c」 and its 「2단계」 paragraph)
+_WORKED_LINE = re.compile(r"[=×÷]|\d\s?[x*/]\s?\d|(?:^|\s|\()\d{1,2}\s?단계")
 _ASSESSMENT_LINE = re.compile(
     r"[①-⑩]|^\s*(?:\*\*)?(?:서술형\s?)?\d{1,2}\s?[.)번](?:\*\*)?\s|^\s*\*\*서술형|"
     r"\d{1,2}\s?점\)|[?？]\s{0,8}$|(?:정답|모범\s?답|채점|배점|보기)\s?[:：]|시오\.?\s{0,8}$"
@@ -4044,6 +4058,7 @@ def trim_restatements(
             earlier_words |= _stems(cells)
         if (in_block or line.strip().startswith("|") or line.strip().startswith("#")
                 or not line.strip() or _ASSESSMENT_LINE.search(line)
+                or _WORKED_LINE.search(line)
                 or keep_items and _LIST_LEAD.match(line).group(0).strip()):
             rows.append((line, None, []))
             if line.strip().startswith("#") and _QUESTION_LINE.search(line):

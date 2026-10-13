@@ -217,6 +217,55 @@ _SHORT_LINE = re.compile(
 _CALL_CUE = re.compile(
     r"전화|상담|핫라인|번호|콜\s?센터|☎|신고|긴급|문의|다이얼|직통|"
     r"hotline|helpline|crisis|call|dial|phone", re.I)
+#: National emergency and public help lines, known without a source (r5 P14 「119(확인 필요)에
+#: 전화」, P48 「112(확인 필요)에 신고」): never marked. 1393 is not among them: it became 109.
+PUBLIC_LINES = frozenset({
+    "112", "119", "110", "113", "117", "118", "120", "122", "125", "128", "129", "131", "132",
+    "182", "109", "1301", "1332", "1333", "1339", "1345", "1350", "1366", "1388",
+    "1577-0199", "1588-9191",
+})
+#: Statutory figures an answer may state without a source, each with the words it goes with:
+#: interest and dividend tax 15.4% (14% + local 1.4%), the 2,000만 원 financial income line
+#: (r5 P19), business income withholding 3.3%, VAT 10%.
+STATUTORY = (
+    (15.4, "%", re.compile(r"이자|배당|금융\s?소득|원천")),
+    (14.0, "%", re.compile(r"이자|배당|금융\s?소득|원천")),
+    (1.4, "%", re.compile(r"지방\s?소득세|이자|배당")),
+    (2.0e7, "원", re.compile(r"금융\s?소득|종합\s?과세")),
+    (3.3, "%", re.compile(r"사업\s?소득|원천|프리랜서|3\.3")),
+    (10.0, "%", re.compile(r"부가\s?(?:가치)?세|VAT", re.I)),
+)
+#: An example the answer gives as one: 「(예: 4,872행)」, 「예를 들어 …」, 「가령 …」.
+_EXAMPLE = re.compile(r"(?:\(|^|\s)(?:예\s?[:：)]|예를\s?들(?:어|면)|예컨대|가령|이를테면|e\.g\.)")
+
+
+def _statutory(value: float, unit: str, line: str) -> bool:
+    return any(abs(value - v) < 1e-9 and _family(unit) == u and cue.search(line)
+               for v, u, cue in STATUTORY)
+
+
+def _illustrative(line: str, start: int) -> bool:
+    """Whether the value sits in an example the answer labels as one, in its own sentence."""
+    head = line[:start]
+    cut = max((m.end() for m in SENTENCE_BREAK.finditer(head)), default=0)
+    return bool(_EXAMPLE.search(head[cut:]))
+
+
+def _worked_in_line(n: dict, numbers: list[dict]) -> bool:
+    """A money figure the line works out from its own money and rate (「0.5%포인트 차이는
+    3천만 원 기준 연 15만 원」), or the rate such a line works with."""
+    same = [o for o in numbers if o["line"] == n["line"] and o is not n]
+    money = [abs(o["value"]) for o in same if _family(o["unit"]) in ("원", "달러")]
+    rates = [abs(o["value"]) for o in same if _family(o["unit"]) in ("%", "%p")]
+    places = _decimals(n["match"].group("num"))
+    if _family(n["unit"]) in ("원", "달러"):
+        return any(near(abs(n["value"]), a * r / 100, places) for a in money for r in rates)
+    if _family(n["unit"]) in ("%", "%p"):
+        return any(a and near(abs(n["value"]), b / a * 100, places)
+                   for a in money for b in money if b < a)
+    return False
+
+
 #: A dose: 「500mg」 「2정」 「10 mL」.
 _DOSE = re.compile(
     r"(?<![\d.,])(?P<n>\d+(?:[.,]\d+)?)\s?(?P<u>mg|㎎|mcg|㎍|μg|mL|ml|㎖|IU|캡슐|"
@@ -935,6 +984,11 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
             # advice's durations and counts are guidance, not facts to source
             continue
         m = n["match"]
+        line = lines[n["line"]]
+        # an example the answer labels as one, a statutory figure, or the line's own sum
+        if _illustrative(line, m.start()) or _statutory(n["value"], n["unit"], line) \
+                or _worked_in_line(n, numbers):
+            continue
         start = m.start("num") if m.group("sign") is None else m.start()
         found.append(_finding("number", lines[n["line"]], n["line"], start, m.end()))
     found.extend(_claims(lines, skip, sources))
@@ -985,11 +1039,13 @@ def _advice_values(lines: list[str], skip: set[int], sources: Sources,
                             "end": m.end(), "placeholder": PLACEHOLDER[kind]})
 
         for m in _PHONE.finditer(masked):
-            if free(*m.span()) and not _digits_in(sources, re.sub(r"\D", "", m.group(0))):
+            if free(*m.span()) and m.group(0) not in PUBLIC_LINES \
+                    and not _digits_in(sources, re.sub(r"\D", "", m.group(0))):
                 mark("contact", m)
         for m in _SHORT_LINE.finditer(masked):
             near_text = masked[max(0, m.start() - 16):m.end() + 16]
             if free(*m.span()) and _CALL_CUE.search(near_text) \
+                    and m.group(0) not in PUBLIC_LINES \
                     and not _digits_in(sources, m.group(0)):
                 mark("contact", m)
         for m in _DOSE.finditer(masked):

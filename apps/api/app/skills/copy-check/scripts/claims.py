@@ -306,6 +306,49 @@ def _stated(quote: str, squashed: str) -> bool:
     return bool(words) and all(w in squashed for w in words) and all(n in squashed for n in numbers)
 
 
+def _paraphrased(quote: str, squashed: str) -> bool:
+    """Half or more of a judged quote's words are the material's and its numbers all are:
+    a listed feature said in plain words (r5 A12-T1: 「결재 알림 연동」 →
+    「결재가 진행되면 알림이 따라옵니다」)."""
+    words = [w[:2] for w in re.findall(r"[가-힣]{2,}", quote) if w[:2] not in _STOP]
+    numbers = re.findall(r"\d+", quote)
+    return len(words) >= 2 and sum(w in squashed for w in words) >= 0.5 * len(words) \
+        and all(n in squashed for n in numbers)
+
+
+#: a guess the copy marks as one (「… 경우가 많을 것 같습니다」): a sales hypothesis, not a
+#: fact (r5 A15-T1: the mail's one reason for the company was taken out with it)
+_GUESS = re.compile(r"(?:것|듯)\s?(?:같|싶|합니다|하다)|(?:ㄹ|을|를)?\s?수도\s?있|아닐까|추측|짐작|가능성이")
+#: a table column of notes on the copy, not the copy: 「추천 채널」, 「활용 이유」, 「용도」
+_NOTE_COLUMN = re.compile(r"이유|용도|채널|추천|활용|설명|메모|비고|근거|노림|의도|포인트|why|note|use", re.I)
+
+
+def _sentence_at(line: str, start: int, end: int) -> str:
+    head = max(line.rfind(". ", 0, start), line.rfind("? ", 0, start), line.rfind("|", 0, start))
+    tail = [i for i in (line.find(". ", end), line.find("|", end)) if i >= 0]
+    return line[head + 1: min(tail) if tail else len(line)]
+
+
+def _cells(line: str) -> list[str]:
+    return line.strip().strip("|").split("|")
+
+
+def _explains(lines: list[str], k: int, at: int) -> bool:
+    """Whether column `at` of table row `k` sits under a notes header (r5 A12-T2: the 「추천
+    채널·활용 이유」 columns of 25 headline rows were emptied as unsupported facts)."""
+    line = lines[k]
+    if not line.lstrip().startswith("|"):
+        return False
+    column = line[:at].count("|") - 1
+    for j in range(k - 1, 0, -1):
+        if not lines[j].lstrip().startswith("|"):
+            return False
+        if re.fullmatch(r"\s*\|?[\s:|-]+\|?\s*", lines[j]) and "-" in lines[j]:
+            head = _cells(lines[j - 1])
+            return 0 <= column < len(head) and bool(_NOTE_COLUMN.search(head[column]))
+    return False
+
+
 def check(text: str, material: str, computed=None, options=None) -> list[dict]:
     """Findings to act on: ungrounded kinds (code fix) and judge-flagged statements (rewrite)."""
     options = dict(options or {})
@@ -340,12 +383,14 @@ def check(text: str, material: str, computed=None, options=None) -> list[dict]:
     squashed = _squash(material)
     for row in _judged(computed) if "claim" in kinds else []:
         quote = " ".join(str(row["quote"]).split())
-        if _stated(quote, squashed):
+        if _stated(quote, squashed) or _paraphrased(quote, squashed):
             continue
         for k, line in enumerate(lines):
             at = line.find(quote)
             if at < 0 or _in_placeholder(line, at, at + len(quote)):
                 continue
+            if _explains(lines, k, at) or _GUESS.search(_sentence_at(line, at, at + len(quote))):
+                break  # a note on the copy (channel, why it works) or a guess, not a claim
             end = at + len(quote)
             over = [f for f in out if f["line"] == k and f["start"] < end and at < f["end"]]
             # The judge's span wins over code's smaller findings inside it.

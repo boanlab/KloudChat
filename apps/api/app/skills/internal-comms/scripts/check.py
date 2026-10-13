@@ -174,14 +174,21 @@ def _grounded(fact: dict, ground: dict) -> bool:
     return key in ground.get(kind, set())
 
 
-def _year(material: str, today: str | None) -> int | None:
-    years = [f["key"][0] for f in facts(material) if f["kind"] == "date" and f["key"][0]]
-    if years:
-        return max(set(years), key=years.count)
+def _years_for(month: int, day: int, dated: list[tuple], today: str | None) -> set[int]:
+    """Years a year-less 「12월 31일」 may be in: the year written with the same day
+    elsewhere, else every year the material or answer names and today's (r5 A14-T2: a
+    schedule from 2026-11-02 to 2027-03-31 put 「12월 31일」 in 2027 and turned its (목)
+    into (금))."""
+    same = {y for y, m, d in dated if y and (m, d) == (month, day)}
+    if same:
+        return same
+    years = {y for y, _, _ in dated if y}
     try:
-        return dt.date.fromisoformat(today).year if today else None
+        if today:
+            years.add(dt.date.fromisoformat(today).year)
     except ValueError:
-        return None
+        pass
+    return years
 
 
 _PLACE = {"date": "[날짜]", "time": "[시간]", "email": "[메일]", "phone": "[연락처]", "url": "[링크]",
@@ -190,21 +197,26 @@ _PLACE = {"date": "[날짜]", "time": "[시간]", "email": "[메일]", "phone": 
 
 def _fact_findings(text: str, material: str, today: str | None) -> list[dict]:
     ground = _grounds(material)
-    year = _year(material, today)
+    found = facts(text)
+    dated = [tuple(f["key"]) for f in [*facts(material), *found] if f["kind"] == "date"]
     findings: list[dict] = []
-    for fact in facts(text):
+    for fact in found:
         if fact["kind"] == "date" and fact.get("weekday"):
             y, m, d = fact["key"]
-            y = y or year
-            if y:
+            years = {y} if y else _years_for(m, d, dated, today)
+            real: dict[int, str] = {}
+            for year in sorted(years):
                 try:
-                    real = WEEKDAYS[dt.date(y, m, d).weekday()]
+                    real[year] = WEEKDAYS[dt.date(year, m, d).weekday()]
                 except ValueError:
-                    real = None
-                if real and real != fact["weekday"]:
-                    findings.append({**fact, "severity": "block", "type": "weekday",
-                                     "why": f"{y}-{m:02d}-{d:02d}은 {real}요일입니다.",
-                                     "fix": f"요일을 ({real})로 고치거나 날짜를 확인하세요."})
+                    continue
+            # wrong in every year it may be in; fixed by code only when that year is certain
+            if real and fact["weekday"] not in real.values():
+                y = y or max(real)
+                findings.append({**fact, "severity": "block", "type": "weekday",
+                                 "certain": len(real) == 1,
+                                 "why": f"{y}-{m:02d}-{d:02d}은 {real[y]}요일입니다.",
+                                 "fix": f"요일을 ({real[y]})로 고치거나 날짜를 확인하세요."})
         if not material.strip() or _grounded(fact, ground):
             continue
         findings.append({**fact, "severity": "block", "type": "unsupported",
@@ -343,7 +355,9 @@ def post(text: str, args: dict) -> dict:
         kind = fact.get("kind")
         if fact.get("type") == "weekday":
             real = re.search(r"은 (.)요일", fact["why"])
-            if real and fact.get("weekday"):
+            if not fact.get("certain"):
+                out["flags"].append({"kind": "weekday", "text": fact["text"], "why": fact["why"]})
+            elif real and fact.get("weekday"):
                 fixed_text = re.sub(rf"\(\s*{fact['weekday']}(?:요일)?\s*\)", f"({real.group(1)})",
                                     fact["text"], count=1)
                 text = _blank(text, fact, fixed_text)

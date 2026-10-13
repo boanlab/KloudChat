@@ -218,7 +218,8 @@ def test_figures_are_captioned_below_and_tables_above_numbered_through_the_docum
     ]
     out = report.caption_figures_and_tables(sections)
     first, second = out[0]["content"], out[1]["content"]
-    assert "**표 1. 구성 요소·주요 역할·보안 위치**\n\n| 구성 요소" in first
+    # no caption given: the section's name, never its column names
+    assert "**표 1. 시스템 구조**\n\n| 구성 요소" in first
     assert "![그림 1. 네트워크 구조](data:image/png;base64,AAAA)" in first
     assert "*그림: 네트워크 구조*" not in first and first.endswith("설명 문단입니다.")
     assert second.startswith("**표 2. 단계별 처리**\n\n| 단계 | 처리 |")
@@ -301,7 +302,7 @@ def test_placed_figures_are_parsed_shown_and_numbered_where_the_text_points():
     drawn = body.replace(marks[0]["mark"], "![요청 처리 흐름](data:image/png;base64,AAAA)")
     out = report.caption_figures_and_tables([{"heading": "구조", "content": drawn}])[0]["content"]
     assert "그림 1과 같이 응답은" in out and "〔그림〕" not in out
-    assert "비교는 표 1에 정리했습니다." in out and "**표 1. 항목·값**" in out
+    assert "비교는 표 1에 정리했습니다." in out and "**표 1. 구조**" in out
 
 
 def test_a_figure_that_could_not_be_drawn_takes_its_reference_with_it():

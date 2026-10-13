@@ -269,7 +269,8 @@ async def test_readings_that_differ_on_every_option_hand_the_writer_no_totals():
                                       model="m", api_key="k", tiebreak_model="big")
     assert pre.costs is None and pre.costs_withheld
     withheld = next(b for b in pre.blocks if b.startswith("# 총비용 계산(코드): 확정 못 함"))
-    assert "leave them as 「[금액]」" in withheld and "197,900,000" not in withheld
+    # the writer works the totals out from the material, formula shown; no settled total
+    assert "show the formula" in withheld and "197,900,000" not in withheld
 
 
 async def test_scenarios_that_differ_between_agreeing_readings_are_left_out():
