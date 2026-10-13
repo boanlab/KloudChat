@@ -1231,7 +1231,9 @@ the conversations and documents that already use it. Unlike `draft`, it does not
 `run_skill_script`. The wire carries `listed`; administrators see hidden rows behind **Show
 hidden**. Listed: the skills `grounding-check`, `gap-check`, `calc-check`, `date-calc`,
 `quote-calc`, `xlsx-clean`, `pdf-table` and `pii-mask`, the work skills that replaced the
-shipped agents and the two connector companions; the offered document templates and
+shipped agents and the two connector companions, and translation `translation`, press release
+`press-release`, Excel file `xlsx-build` and chart `chart-make`; the offered document templates
+(the meeting agenda `doc-agenda` beside the minutes) and
 the briefing deck (`deck-briefing`); the themes **Basic** (기본) and the document serif
 (문서용 명조); the time connector (deep research disabled, YouTube unlisted).
 **Finish**'s export item names `by_format`: an official-letter-family format (`internal_draft`, `official`,
@@ -1350,6 +1352,20 @@ credentials only for env values the person enters — `{{...}}` identity placeho
 `${VAR}` values the server fills (YouTube's `WHISPER_URL`) are not theirs. An administrator's
 shared skill reads **By: Official** in the hub, as their agents do; a copy reads **Original:
 Official**, and **Edited by me · Original: …** once changed.
+
+Four more work skills fill gaps an agent built only from shipped skills had. Translation
+`translation` (chat, report) and press release `press-release` (chat, report; grounding-check
+and generic-language-killer, no search) are instructions only; a press release written as a
+report gets the `press` format's head when the request names it. Excel file `xlsx-build` (chat,
+needs `run_skill_script`) builds a workbook with `scripts/build.py` from `sheets` given in the
+args or from a chat file (a pasted table, an attachment, or a CSV `run_code` saved): computed
+columns as `{column}` formulas per row, a `SUM` total row where a formula column repeats its
+formula (a rate stays total ÷ total), number formats, and an optional native chart. LibreOffice
+in the sandbox caches the formula values, which the summary returns for the answer to quote;
+the file is a step output, shown under the answer as a download. Chart `chart-make` (chat,
+needs `create_chart`) tells the model when and how to draw a chart artifact. The meeting agenda
+template `doc-agenda` binds the `agenda` format (the minutes' head) with its own genre rule,
+missing-information questions (meeting date, attendees) and date pre-pass.
 
 **Withdrawn, not retired.** An agent file with `withdrawn = true` stays in the catalogue: the
 sync keeps its owner row and keeps untouched copies following it, `bases.get` still resolves
