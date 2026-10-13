@@ -514,6 +514,12 @@ def _planner_model(
     return planner
 
 
+def _document_role(roles: settings_store.ModelRoles) -> str:
+    """The model that plans and judges when the governance row names none: the report
+    writer's (27B by default), not the chat default, which is the faster model."""
+    return roles.report or roles.chat
+
+
 def _local_planner(
     *, user: User, catalogue: list[dict], kind: str, writer: dict, strict_local: bool
 ) -> dict | None:
@@ -521,9 +527,37 @@ def _local_planner(
     if strict_local or writer.get("dataBoundary") in ("self_hosted", "hybrid"):
         return None
     return _planner_model(
-        settings_store.cached_model_roles().chat, user=user, catalogue=catalogue, kind=kind,
+        _document_role(settings_store.cached_model_roles()), user=user, catalogue=catalogue,
+        kind=kind,
         writer=writer, strict_local=strict_local,
     )
+
+
+async def _rescue_model(
+    *, user: User, catalogue: list[dict], writer: dict, strict_local: bool,
+    outline: dict | None,
+) -> dict | None:
+    """The other self-hosted model that writes an answer once more when the writer left it
+    empty or only announced it (r5 P07·P05): flash for 27B and 27B for flash, read from the
+    model roles (chat, report, slides, code fallback), else the outline model; `None` when
+    there is none or the writer is not self-hosted."""
+    if not str(writer.get("id") or "").startswith(("local/", "strict-local/")):
+        return None
+    roles = await settings_store.model_roles()
+
+    def bare(model_id: str) -> str:
+        return model_id.split("/", 1)[-1]
+
+    for wanted in (roles.chat, roles.report, roles.slides, roles.code_fallback,
+                   (outline or {}).get("id")):
+        if not wanted or not str(wanted).startswith(("local/", "strict-local/")) or (
+                bare(str(wanted)) == bare(str(writer["id"]))):
+            continue
+        found = _planner_model(wanted, user=user, catalogue=catalogue, kind="chat",
+                               writer=writer, strict_local=strict_local)
+        if found is not None and found.get("dataBoundary") == "self_hosted":
+            return found
+    return None
 
 
 async def _enrichment_model(writer: dict, *, strict_local: bool, disable_fallbacks: bool) -> dict:
@@ -3645,6 +3679,9 @@ async def send_message(
     proceed_as_is = bool(
         pending and not payload.approve and payload.answers is not None and not payload.answers
     )
+    #: a question card answered once — picked, typed, or 「알아서 진행」 — is not asked again
+    #: in the same run (r5 A04-T2: a second card came back after 「알아서 판단해 진행」)
+    asked_once = bool(pending and pending.get("stage") == "clarify" and not payload.approve)
     #: files new to this reply; only these rechecked
     reply_brings_files = bool(
         pending
@@ -4493,7 +4530,7 @@ async def send_message(
 
     # planner: writer's allowlist, surface, boundary; default = local model
     outline_model = _planner_model(
-        policy.outline_model_id or (await settings_store.model_roles()).chat,
+        policy.outline_model_id or _document_role(await settings_store.model_roles()),
         user=user,
         catalogue=catalogue_models,
         kind=session.kind.value,
@@ -4530,7 +4567,7 @@ async def send_message(
         return StreamingResponse(
             _survive_disconnect(
                 _run_page(
-                    may_ask=not proceed_as_is and not _brings_material(content),
+                    may_ask=not (proceed_as_is or asked_once) and not _brings_material(content),
                     user_id=user.id,
                     api_key=api_key,
                     session_id=session.id,
@@ -4664,7 +4701,7 @@ async def send_message(
                 _run_report(
                     # run the card waited on, if any
                     parent_run_id=str(pending.get("runId") or "") or None,
-                    may_ask=not proceed_as_is and not _brings_material(content),
+                    may_ask=not (proceed_as_is or asked_once) and not _brings_material(content),
                     figures_plan=approved_figures,
                     image_model=image_model,
                     template=render_template,
@@ -4726,7 +4763,7 @@ async def send_message(
                     code_calc=bool((skills_bring.process_with(
                         agent_row.process_settings if agent_row is not None else None) or {}
                                     ).get("code_calc")),
-                    may_ask=not proceed_as_is and not _brings_material(content),
+                    may_ask=not (proceed_as_is or asked_once) and not _brings_material(content),
                     figures_plan=approved_figures,
                     image_model=image_model,
                     user_id=user.id,
@@ -4851,8 +4888,13 @@ async def send_message(
         if session.kind is SessionKind.chat and not preflight_tool and not calculation_required
         else None
     )
-    if source_fetch is not None and preset_call is None and forced_tool is None:
+    if source_fetch is not None and preset_call is None and (
+            forced_tool is None or (forced_tool == "web_search" and exact_reason)):
+        # the link's content is the turn's material: read first; a search forced by the topic
+        # alone (「금리」 → financial) stays offered, not forced (r5 A08-T2: three searches and
+        # the transcript never fetched)
         preset_call = source_fetch
+        forced_tool = None
     elif given_links and source_fetch is None:
         preset_call = (
             "fetch_url",
@@ -4978,6 +5020,11 @@ async def send_message(
                     outline_model
                     if calculation_required and preflight_tool == "calculate" else None
                 ),
+                # an answer the writer left empty or only announced: the other local model
+                # writes it once more (r5 P07, P05)
+                rescue=await _rescue_model(
+                    user=user, catalogue=catalogue_models, writer=model,
+                    strict_local=strict_local, outline=outline_model),
                 calculation_expression=(
                     calculation_policy.direct_calculation_expression(content)
                     if calculation_required and preflight_tool == "calculate" else None
@@ -5362,6 +5409,8 @@ async def _answer_turn(
     calculation_required: bool = False,
     #: model for a calculation the writer skipped (`agent.run_turn`)
     calculation_handoff: dict | None = None,
+    #: model that writes an empty or announced-only answer once more (`agent.run_turn`)
+    rescue: dict | None = None,
     calculation_expression: str | None = None,
     #: server's own first call (`agent.run_turn`)
     preset_call: tuple[str, dict[str, Any]] | None = None,
@@ -5517,6 +5566,7 @@ async def _answer_turn(
                     {"calculation_handoff_model": calculation_handoff["id"]}
                     if calculation_handoff is not None else {}
                 ),
+                **({"rescue_model": rescue["id"]} if rescue is not None else {}),
                 **(
                     {"calculation_expression": calculation_expression}
                     if calculation_expression is not None else {}
@@ -5730,15 +5780,24 @@ async def _answer_turn(
         0 if not content or skip_completion_work
         else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
     )
-    # calculation hand-off: its model's price, own ledger line
-    handoff_credits = 0
-    if calculation_handoff is not None and content and not skip_completion_work:
-        prefix = f"model:{calculation_handoff['id']}:"
-        handoff_credits = charge_for_tokens(
-            calculation_handoff,
-            int(usage.get(prefix + "inputTokens") or 0),
-            int(usage.get(prefix + "outputTokens") or 0),
-        )
+    # calculation hand-off and a rewrite by the rescue model: each model's price, own ledger
+    # line (one line when they are the same model, its tokens counted once)
+    partners = [(row, "chat.calculation" if row is calculation_handoff else "chat.completion")
+                for row in (calculation_handoff, rescue) if row is not None]
+    partners = [p for k, p in enumerate(partners)
+                if all(p[0]["id"] != q[0]["id"] for q in partners[:k])]
+    partner_credits: list[tuple[dict, str, int]] = []
+    if content and not skip_completion_work:
+        for row, reason in partners:
+            prefix = f"model:{row['id']}:"
+            spent = charge_for_tokens(
+                row,
+                int(usage.get(prefix + "inputTokens") or 0),
+                int(usage.get(prefix + "outputTokens") or 0),
+            )
+            if spent:
+                partner_credits.append((row, reason, spent))
+    partner_total = sum(spent for _, _, spent in partner_credits)
     if cost_routing:
         cost_routing = {**cost_routing, "executedModel": actual_model}
         if content and quality_model is not None and cost_routing.get("decision") == "routed":
@@ -5807,7 +5866,7 @@ async def _answer_turn(
                     role=Role.assistant,
                     content=stored_content,
                     steps=stored_steps or None,
-                    usage={**usage, "credits": credits + handoff_credits},
+                    usage={**usage, "credits": credits + partner_total},
                     model=stored_actual_model,
                     routing=stored_routing,
                     artifact_ids=[new_artifact] if new_artifact else None,
@@ -5838,14 +5897,14 @@ async def _answer_turn(
                         model=stored_actual_model,
                         publication_id=published.publication_id if published else None,
                     )
-                    if handoff_credits and calculation_handoff is not None:
+                    for row, reason, spent in partner_credits:
                         settle(
                             db,
                             user,
-                            handoff_credits,
-                            reason="chat.calculation",
+                            spent,
+                            reason=reason,
                             session_id=session_id,
-                            model=calculation_handoff["id"],
+                            model=row["id"],
                             publication_id=published.publication_id if published else None,
                         )
             elif superseded_ids:
@@ -5997,7 +6056,7 @@ async def _answer_turn(
         yield chat_service.sse(_step_event(memory_step))
     if cost_routing:
         yield chat_service.sse({"type": "model_route", **cost_routing})
-    yield chat_service.sse({"type": "usage", **usage, "credits": credits + handoff_credits})
+    yield chat_service.sse({"type": "usage", **usage, "credits": credits + partner_total})
     if title:
         yield chat_service.sse({"type": "title", "title": title})
     # stored id with `done`; browser's streaming id provisional

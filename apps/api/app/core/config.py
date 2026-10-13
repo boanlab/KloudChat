@@ -131,7 +131,7 @@ class Settings(BaseSettings):
     # Titles, memories, running summary. Empty: session model; strict-local uses its own.
     title_model: str = "local/qwen3.8-flash"
     #: Fallback chat model; `local/`, since strict alias gets no network tool.
-    default_chat_model: str = "local/qwen3.8-27b"
+    default_chat_model: str = "local/qwen3.8-flash"
     #: Off: Qwen3 templates get `enable_thinking: false`.
     self_hosted_chat_thinking: bool = False
     #: Name fragments that get `enable_thinking: false`; others untouched.
@@ -153,9 +153,9 @@ class Settings(BaseSettings):
     #: External equivalent via OpenRouter `reasoning`; refusing providers remembered.
     external_chat_thinking: bool = False
 
-    #: Per-surface overrides; empty: default_chat_model.
-    default_report_model: str = ""
-    default_slides_model: str = ""
+    #: Per-surface defaults; empty: default_chat_model. Documents keep the larger model.
+    default_report_model: str = "local/qwen3.8-27b"
+    default_slides_model: str = "local/qwen3.8-27b"
 
     #: Must honour aspect ratio. Unserved → cheapest image model.
     default_image_model: str = "google/gemini-2.5-flash-image"

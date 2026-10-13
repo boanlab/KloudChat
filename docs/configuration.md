@@ -151,8 +151,8 @@ it when nobody is mid-turn):
 | `KCHAT_ADMIN_PASSWORD` | `BOOTSTRAP_ADMIN_PASSWORD` | — | Set both to create an administrator on first boot. Never commit a value — this file is published. |
 | `KCHAT_SIGNUP_MODE` | `SIGNUP_MODE` | `approval` | `open` (active immediately), `approval` (admin approves), `closed` (signup disabled). |
 | `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `500000` | First-install seed of **System › Signup › Monthly credits for new accounts**, which then decides. Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 500,000 ≈ $5/month. |
-| `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.8-27b` | First-install seed of **System › Model › Default chat model** (as are the four rows below). Falls back to the surface's cheapest model when absent from the catalogue. |
-| `KCHAT_DEFAULT_REPORT_MODEL` / `KCHAT_DEFAULT_SLIDES_MODEL` | `DEFAULT_REPORT_MODEL` / `DEFAULT_SLIDES_MODEL` | — | Per-surface defaults for Report and Slides. Empty falls back to the chat default. |
+| `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.8-flash` | First-install seed of **System › Model › Default chat model** (as are the four rows below). Falls back to the surface's cheapest model when absent from the catalogue. |
+| `KCHAT_DEFAULT_REPORT_MODEL` / `KCHAT_DEFAULT_SLIDES_MODEL` | `DEFAULT_REPORT_MODEL` / `DEFAULT_SLIDES_MODEL` | `local/qwen3.8-27b` | Per-surface defaults for Report and Slides; documents keep the larger model while chat uses the faster one. Empty falls back to the chat default. |
 | `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `google/gemini-2.5-flash-image` | Default picture model. Gemini's image models take the aspect ratio as a parameter; the OpenAI ones return a square whatever is asked. Absent from the catalogue → cheapest image model. |
 | `KCHAT_DEFAULT_AUDIO_MODEL` / `KCHAT_DEFAULT_VIDEO_MODEL` | `DEFAULT_AUDIO_MODEL` / `DEFAULT_VIDEO_MODEL` | `openai/gpt-audio-mini` / `google/veo-3.1-lite` | The Audio / Video surface keeps one default per modality. Absent from the catalogue → cheapest model of that modality. |
 
@@ -435,7 +435,9 @@ blind pairs judged twice):
 
 | Work | Model | Set by |
 | --- | --- | --- |
-| Chat answers, report and deck prose | `local/qwen3.8-27b` | the person's choice; else **System › Model › Default chat / report / slides model** |
+| Chat answers | `local/qwen3.8-flash` | the person's choice; else **System › Model › Default chat model** |
+| Report and deck prose | `local/qwen3.8-27b` | the person's choice; else **System › Model › Default report / slides model** |
+| Writing an empty or announced-only chat answer once more | the other self-hosted model (27B for Flash, Flash for 27B) | follows the chat, report and slides roles |
 | Outline, research plan, figure proposals | `local/qwen3.8-flash` | **System › Routing › Model that plans** (`outline_model_id`) |
 | Judging: key figures, cost and score readings, checks, repairs, title block | the outline model, else the writer | follows the outline model |
 | Calculation programs for a document (`calc`) | the outline model, else the writer | follows the outline model |

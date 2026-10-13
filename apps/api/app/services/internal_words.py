@@ -669,13 +669,40 @@ def is_intent_only(text: str, *, request: str = "") -> bool:
         _KO_INTENT.search(s) for s in sentences)
 
 
+#: a sentence announcing the writer's next piece of work (「Let me compute the totals.」)
+_EN_ANNOUNCE = re.compile(
+    r"(?:\*\*)?(?:Let me(?!\s+know)|Let's|I(?:'ll| will|'m going to| am going to| need to)"
+    r"|Now(?:,)?\s(?:I|let me)|Next(?:,)?\s(?:I|let me)|First(?:,)?\s(?:I|let me))\b"
+    r"[^\n]{0,160}?\b(?:comput|calculat|check|search|look\s(?:up|into|at)|verif|writ|draft"
+    r"|prepar|gather|fetch|find|review|analy[sz]|summari[sz]|confirm|run\b|research|compil"
+    r"|put together|work out|figure out)", re.I)
+
+
+def is_announcement(text: str) -> bool:
+    """Whether a short reply, in any language asked for, only announces work still to do
+    (r5 P05: 「I have enough verified data. Let me compute the recipe's calorie and
+    macronutrient totals precisely.」 was the whole answer): no list, table or heading, at
+    most three sentences, the last one an announcement, almost no Hangul."""
+    body = (text or "").strip()
+    if not body or len(body) > 300 or len(_HANGUL.findall(body)) >= 10:
+        return False
+    if any(_structural(line) or re.match(r"\s{0,4}(?:[-*+]|\d{1,2}[.)])\s", line)
+           for line in body.split("\n") if line.strip()):
+        return False
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?…:])\s+|\n+", body) if s.strip()]
+    return 0 < len(sentences) <= 3 and bool(_EN_ANNOUNCE.match(sentences[-1]))
+
+
 def is_work_plan(text: str, *, request: str = "") -> bool:
     """Whether a Korean request's answer is the writer's plan or narration instead of the
     deliverable: three or more English paragraphs about its own next steps, the last one
     among them (it stops at 「Let me write the final answer …」), or nothing but notes left
-    once `strip_work_notes` runs."""
+    once `strip_work_notes` runs; for any request, a short reply that only announces the
+    work (`is_announcement`)."""
     if not text or not text.strip():
         return False
+    if is_announcement(text):
+        return True
     if (_latin_share(request) >= 0.5 if request.strip() else _latin_share(text) >= 0.5) or (
             _ASKED_ENGLISH.search(request)):
         return False  # English asked for: its 「I'll …」 is the prose
@@ -697,7 +724,8 @@ def has_work_notes(text: str, *, request: str = "") -> bool:
 
 
 __all__ = ["DOCUMENT_TERMS", "JSON_LINE", "TERMS", "TOOL_APOLOGY", "TOOL_REPORT", "WRITER_NOTE",
-           "found", "has_tool_call", "has_work_notes", "is_intent_only", "is_work_plan", "scrub",
+           "found", "has_tool_call", "has_work_notes", "is_announcement", "is_intent_only",
+           "is_work_plan", "scrub",
            "strip_check_block",
            "strip_echoed_heading", "strip_reports", "strip_tool_apologies", "strip_tool_calls",
            "strip_work_notes"]

@@ -328,7 +328,7 @@ class Outline(Base):
 
         _count(bundle, spent, planner=True)
         # question instead of 목차 — see `grounding.ASK_RULE`
-        if req.may_ask and (asked := grounding.parse_needs(text)):
+        if req.may_ask and (asked := grounding.parse_needs(text, req.text)):
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
             yield _usage(bundle)
@@ -1635,7 +1635,11 @@ class MinutesReground(Base):
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         known = f"{bundle.request.text}\n{bundle.material.given}"
-        sections, again = report_checks.minutes_grounding(bundle.document.sections, known)
+        # a due the checks blanked to 「[기한]」 gets the material's date back (r5 A01-T1: a
+        # wrong 11/16 was blanked, the memo's 10/16 never restored)
+        sections, _ = report_checks.minutes_due_fill(bundle.document.sections,
+                                                     bundle.computed.prepass.dates, blanked=True)
+        sections, again = report_checks.minutes_grounding(sections, known)
         if again:
             sections, left = report_checks.minutes_grounding(sections, known)
             bundle.findings.after += left

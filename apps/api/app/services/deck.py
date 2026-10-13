@@ -2032,7 +2032,11 @@ def template_blanks(slide: dict) -> list[str]:
             and not re.search(r"이름|성명|서명|연락|날짜|일시|시간|주소", m.group(0))]
 
 
-_ASKS_QUIZ = re.compile(r"퀴즈|문항|확인 문제|형성평가")
+#: a quiz asked for, not a count of items in the material (r5 A09-T1: 「사내 문서 QA
+#: 세트(1,200문항)」 turned the evaluation slide into a quiz)
+_ASKS_QUIZ = re.compile(
+    r"퀴즈|확인\s?문(?:제|항)|형성\s?평가|(?:연습|평가|객관식|주관식|O\s?/?\s?X)\s?문(?:제|항)"
+    r"|(?<![\d,])\d{1,2}\s?(?:개\s?)?문(?:제|항)\s?(?:을|를)?\s?(?:넣|내|포함|추가|출제|만들|구성)")
 _ASKS_DECISION = re.compile(r"요청 사항|요청사항|승인|의사\s?결정|결정 요청")
 #: a lesson's length (not 「10분 발표」) and a lesson (not 「교육부」「교육비」)
 _ASKS_MINUTES = re.compile(r"(\d{2,3})\s?분(?!\s?(?:발표|브리핑|보고|회의|스피치|피치))")
@@ -2049,7 +2053,7 @@ def _shown(slide: dict) -> str:
 
 def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
     """Slides holding a requested part only in name or notes, with what to add."""
-    from app.services.context import instruction_part
+    from app.services.context import instruction_part, lead_instruction
 
     asked = instruction_part(request or "")
     titles = [str(s.get("title") or "") for s in slides]
@@ -2059,8 +2063,8 @@ def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
         hits = [i for i, t in enumerate(titles) if pattern.search(t)]
         return hits[-1] if hits else None
 
-    if _ASKS_QUIZ.search(asked):
-        at = last_titled(re.compile(r"퀴즈|문항|확인 문제|형성평가|평가"))
+    if _ASKS_QUIZ.search(lead_instruction(request or "")):
+        at = last_titled(re.compile(r"퀴즈|문항|확인\s?문제|형성\s?평가|평가\s?문제"))
         # question: 「?」, options, or Korean question ending
         asking = r"\?|①|②|O\s?/\s?X|(?:니까|나요|까요|인가요?|일까|는가|시오)(?=[\s.\"']|$)"
         if at is not None and not re.search(asking, _shown(slides[at])):
@@ -3872,7 +3876,7 @@ async def write(
 
     plan_rules.count(usage, spent, planned_apart=bool(outline_model))
     # outline may answer with questions (`grounding.ASK_RULE`)
-    if may_ask and (asked := grounding.parse_needs(text)):
+    if may_ask and (asked := grounding.parse_needs(text, request)):
         yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
         yield {"type": "needs", "questions": [q.wire() for q in asked]}
         yield {"type": "usage", **usage}

@@ -760,6 +760,20 @@ def _redate(written: str, old: dt.date, new: dt.date) -> str:
     return "".join(out) + written[last:]
 
 
+#: what an offset counts from when it is an event, not today: 「출장 종료 후 7일 이내」
+_EVENT_BASE = re.compile(r"(?:후|이후|뒤|부터|로부터|기준(?:으로)?)\s{0,2}$")
+
+
+def _from_an_event(row: dict) -> bool:
+    """Whether an offset nobody dated counts from an event the text names (r5 A05-T1: a
+    rule's 「출장 종료 후 7일 이내」 read from today as 10-20 moved a right 10-19(월))."""
+    if row.get("kind") != "offset" or row.get("anchor"):
+        return False
+    line, said = str(row.get("source_line") or ""), str(row.get("text") or "")
+    at = line.find(said)
+    return at > 0 and bool(_EVENT_BASE.search(line[max(0, at - 12):at]))
+
+
 def post(text: str, args: dict) -> dict:
     """Answer dates missing a worked-out relative date by days (or blank) set to it (code)."""
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
@@ -772,7 +786,8 @@ def post(text: str, args: dict) -> dict:
     # `anchored_only`: only an offset counted from a date the person gave, never from today.
     worked = [r for r in scanned
               if r.get("status") == "ok" and r.get("date") and r.get("kind") in _WORKED_KINDS
-              and (not args.get("anchored_only") or r.get("anchor"))]
+              and (not args.get("anchored_only") or r.get("anchor"))
+              and not _from_an_event(r)]
     stated = {r["date"] for r in scanned if r.get("kind") in ("full_date", "month_day")
               and r.get("status") == "ok"}
     # The answer's own working from a date the person gave: 「3월 2일에서 30일 전은 …」.

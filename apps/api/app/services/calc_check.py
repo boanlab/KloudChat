@@ -99,9 +99,17 @@ _GAP_AFTER = re.compile(r"\s{0,2}(?:점|%p|%\s?포인트|포인트|p)?\s{0,2}"
                         r"(?:낮|높|차이|많|적|앞서|뒤|증가|감소|상승|하락|늘|줄|더\s|덜\s)")
 
 
+#: an end of a range: 「1~2점」 (r5 A06-T1: its 1 became 2.89)
+_RANGE_AFTER = re.compile(r"\s{0,1}[~∼〜–]\s{0,1}\d")
+_RANGE_BEFORE = re.compile(r"\d\s{0,1}[~∼〜–]\s{0,1}$")
+
+
 def _a_gap(text: str, number: re.Match[str]) -> bool:
+    """Whether the number is a gap (「0.79 낮다」) or a range's end, not a value."""
     return bool(_GAP_BEFORE.search(text[max(0, number.start() - 8):number.start()])
-                or _GAP_AFTER.match(text, number.end()))
+                or _GAP_AFTER.match(text, number.end())
+                or _RANGE_AFTER.match(text, number.end())
+                or _RANGE_BEFORE.search(text[max(0, number.start() - 4):number.start()]))
 
 
 def _stem_words(text: str) -> set[str]:
@@ -625,18 +633,41 @@ def _cells(line: str) -> list[str]:
     return [c.strip() for c in line.strip().strip("|").split("|")]
 
 
+#: a printed table row: a name, then numbers only (pandas: 「온라인학습 3.56  4.0  0.83  10.8」)
+_TABLE_ROW = re.compile(
+    r"^\s*(?P<name>[^\d\s|=:：][^\d|=:：]{0,40}?)\s+(?P<values>-?\d[\d\s.,%()-]*)$")
+
+
+def _tabled_apart(s: Stated, printed: tuple[str, ...]) -> bool:
+    """Whether the code also printed `s`'s row as a table row without `s`'s value: which
+    group a value written beside that name is for is then unclear, and none is set to `s`
+    (r5 A06-T1: 「온라인학습: 평균=3.06」 printed for one college overwrote the overall table's
+    3.56, printed as 「온라인학습 3.56  4.0  0.83 …」)."""
+    own = _norm(s.row)
+    for line in printed:
+        m = _TABLE_ROW.match(line)
+        if m is None or _norm(m.group("name")) != own:
+            continue
+        values = [float(n.replace(",", "")) for n in _NUMBER.findall(m.group("values"))]
+        if values and not any(abs(v - s.value) < 1e-9 for v in values):
+            return True
+    return False
+
+
 def check_markdown(text: str, stated: list[Stated],
                    printed: list[str] | None = None) -> tuple[str, list[str]]:
     """A markdown answer's numbers that name a printed value set to it: sentences read with
     the nearest heading as their title, tables cell by cell. `(text, corrections)`. A gap
     (「0.79 낮다」) or a value `printed` beside a group the sentence names stays."""
-    # a value printed with no row (「합계: 152760」) is too loose to pin a line of prose to
-    stated = [s for s in stated if s.row]
+    lines_printed = tuple(line for out in printed or () for line in str(out).splitlines()
+                          if line.strip())
+    # a value printed with no row (「합계: 152760」) is too loose to pin a line of prose to;
+    # a row the code also printed as a table row of other values is one group's of several
+    stated = [s for s in stated if s.row and not _tabled_apart(s, lines_printed)]
     if not stated or not text:
         return text, []
     names = _Names(stated)
-    names.printed = tuple(line for out in printed or () for line in str(out).splitlines()
-                          if line.strip())
+    names.printed = lines_printed
     found: list[str] = []
     lines = text.split("\n")
     out: list[str] = []

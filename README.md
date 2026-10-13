@@ -101,8 +101,8 @@ The default configuration expects two self-hosted models behind the gateway:
 
 | Model | Does |
 | --- | --- |
-| `local/qwen3.8-27b` | Chat answers, report and deck prose, file-reading code (`run_code`) |
-| `local/qwen3.8-flash` | Outlines and plans, judging and checks, the Auto classifier, titles, memories and conversation summaries, re-reading scanned pages (as `strict-local/qwen3.8-flash`) |
+| `local/qwen3.8-27b` | Report and deck prose, file-reading code (`run_code`) |
+| `local/qwen3.8-flash` | Chat answers, outlines and plans, judging and checks, the Auto classifier, titles, memories and conversation summaries, re-reading scanned pages (as `strict-local/qwen3.8-flash`) |
 
 Which model does which job is chosen in the admin screen (**System › Model**
 and **System › Routing**, 시스템 › 모델 / 라우팅 on a Korean screen); the

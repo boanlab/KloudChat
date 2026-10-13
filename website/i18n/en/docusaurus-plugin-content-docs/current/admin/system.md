@@ -26,8 +26,8 @@ The defaults use two models the organization runs itself. Each is registered in 
 
 | Model | Jobs |
 |---|---|
-| `qwen3.8-27b` | Default chat model, code model |
-| `qwen3.8-flash` | Planning model (outline and judgments for reports and slides), titles, memory and summaries, Auto classifier and cost-saving model, vision model for text reading, code fallback model |
+| `qwen3.8-27b` | Default report and slides model, code model |
+| `qwen3.8-flash` | Default chat model, planning model (outline and judgments for reports and slides), titles, memory and summaries, Auto classifier and cost-saving model, vision model for text reading, code fallback model |
 
 All of them can be changed on this tab and on the **Routing** and **Features** tabs.
 

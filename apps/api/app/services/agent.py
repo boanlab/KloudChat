@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from collections.abc import AsyncIterator, Callable
 from copy import deepcopy
 from typing import Any, Literal, TypedDict
@@ -322,6 +323,34 @@ def _preamble_only(text: str, *, request: str, wanted_tools: bool) -> bool:
         return True
     sentences = [s.strip() for s in re.split(r"(?<=[.!?…])\s+|\n+", body) if s.strip()]
     return 0 < len(sentences) <= 3 and all(_PREAMBLE_SENTENCE.search(s) for s in sentences)
+
+
+#: seconds the other model may take on a rewrite before the turn's own model is not tried
+#: after it (a stalled stream already cost the person minutes)
+_RESCUE_PATIENCE = 60.0
+#: a rewrite this short, from this much gathered material, that stops mid-sentence is cut
+_THIN_CHARS = 200
+_THIN_RESULTS = 2000
+#: how a whole reply ends: punctuation, a closing mark, or a Korean sentence ending
+_WHOLE_END = re.compile(r"(?:[.!?…。)\]」』\"'`|:]|[다요죠음함임됨까네])$")
+
+
+def _self_hosted(model: str) -> bool:
+    return model.startswith(("local/", "strict-local/"))
+
+
+def _usable_rewrite(text: str, *, request: str, results: str) -> bool:
+    """Whether a rewrite is an answer to show: not empty, not a plan or an announcement of
+    the work, and not a short line cut off mid-sentence beside a wealth of gathered results
+    (r5 A12-T2: 「…*미리보기 문구: 화상회의 후 5분 안에 요약본을 보내드*」, 90 characters after
+    eight tool calls)."""
+    body = internal_words.strip_tool_calls(text or "").strip()
+    if (not body or internal_words.is_work_plan(body, request=request)
+            or _preamble_only(body, request=request, wanted_tools=False)):
+        return False
+    tail = re.sub(r"[*_~\s]+$", "", body)
+    return not (len(tail) < _THIN_CHARS and len(results) >= _THIN_RESULTS
+                and not _WHOLE_END.search(tail))
 
 #: Per-turn `web_search` cap.
 MAX_WEB_SEARCHES = 3
@@ -859,7 +888,7 @@ def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
 
     def link(match: re.Match[str]) -> str:
         wanted = numbers(match.group(1))
-        if not wanted or any(not 1 <= n <= len(sources) for n in wanted):
+        if not wanted or any(not 1 <= n <= len(sources) or not sources[n - 1] for n in wanted):
             return match.group(0)
         for n in wanted:
             if n not in cited:
@@ -878,6 +907,64 @@ def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
     for i in range(0, len(pieces), 2):
         pieces[i] = _CITATION.sub(link, pieces[i])
     return "```".join(pieces), sorted(cited)
+
+
+#: an appended list line: 「- [3] [제목 · host](url)」, 「- [3] url」, or a material
+#: 「- [3] 자료명」
+_LISTED_SOURCE = re.compile(r"^\s{0,3}[-*]\s{1,3}\[(\d{1,2})\]\s{1,3}(?:\[([^\]\n]{0,300})\]\()?"
+                            r"(https?://[^\s)]{1,500})?")
+#: what an unverified-link note says (earlier answers' notes are not sources)
+_MEMORY_NOTES = ("기억으로 적은", "written from memory")
+
+
+def _earlier_sources(messages: list[dict[str, Any]]) -> tuple[list[str], dict[str, str]]:
+    """`(sources, titles)` as earlier answers numbered them (their 「### 출처」 lists and
+    `[[n]](url)` links, a later answer's number winning), "" for a number not known; so this
+    turn's search results go on numbering after them and a 「[6]」 the writer carries over
+    still means the source it meant (r5 P16·P27·P56: it was linked to this turn's sixth
+    result)."""
+    by_number: dict[int, str] = {}
+    titles: dict[str, str] = {}
+    for message in messages:
+        if message.get("role") != "assistant":
+            continue
+        text = _text_of(message)
+        for m in _LINKED_CITATION.finditer(text):
+            by_number[int(m.group(1))] = m.group(2)
+        for line in text.split("\n"):
+            m = _LISTED_SOURCE.match(line)
+            if m is None or not m.group(3):
+                continue
+            url = m.group(3).rstrip(".,;:")
+            by_number[int(m.group(1))] = url
+            label = (m.group(2) or "").strip()
+            if " · " in label and url not in titles:
+                titles[url] = label.rsplit(" · ", 1)[0].strip()
+    if not by_number:
+        return [], {}
+    return [by_number.get(n, "") for n in range(1, max(by_number) + 1)], titles
+
+
+#: a closing source list the writer wrote itself: 「### 출처」 「**참고 자료**」 then its items
+_OWN_LIST_HEAD = re.compile(
+    r"(?m)^[ \t]{0,3}(?:#{1,6}\s{0,3}|\*\*)\s{0,2}(?:출처|참고\s?(?:자료|문헌|링크)|자료\s?출처"
+    r"|Sources?|References?)\s{0,2}(?:\*\*)?\s{0,2}[:：]?\s*$")
+_OWN_LIST_ITEM = re.compile(r"^\s{0,3}(?:[-*]\s{1,3}|\d{1,2}[.)]\s{1,3})?\[\[?(\d{1,2})\]")
+
+
+def _own_source_list(answer: str) -> tuple[int, list[int]] | None:
+    """`(start, numbers)` of the source list the answer ends with, when it is one: a source
+    heading and below it only numbered items and blank lines (r5 P14·P27·P56: the server's
+    list came after it once more). `None` when the answer ends otherwise."""
+    heads = list(_OWN_LIST_HEAD.finditer(answer or ""))
+    if not heads:
+        return None
+    start = heads[-1].start()
+    items = [line for line in answer[heads[-1].end():].split("\n") if line.strip()]
+    numbers = [int(m.group(1)) for line in items if (m := _OWN_LIST_ITEM.match(line))]
+    if not items or len(numbers) != len(items):
+        return None
+    return start, numbers
 
 
 def _collect_passages(content: str, into: dict[int, str]) -> None:
@@ -1165,6 +1252,10 @@ async def run_turn(
     source_tools: frozenset[str] = frozenset(),
     #: The turn carries the person's own material (pasted, attached or project files).
     material_given: bool = False,
+    #: Other self-hosted model that writes the answer once more when this one left it empty,
+    #: cut short or only announced (r5 P07: asked again, the same model stalled); billed as
+    #: `model:<id>:*Tokens`.
+    rescue_model: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """One assistant turn to a final answer; exactly one `usage`, `done` left to caller."""
     by_name = {t.name: t for t in tools}
@@ -1277,10 +1368,16 @@ async def run_turn(
     called: set[tuple[str, str]] = set()
     # Arithmetic gate evidence only; futures coalesce duplicates, results detached before masking.
     arithmetic_evidence: dict[tuple[str, str], asyncio.Future[ToolResult | None]] = {}
-    #: Tool URLs in numbering order.
-    sources: list[str] = []
-    #: Search titles by URL for 출처.
-    source_titles: dict[str, str] = {}
+    #: Tool URLs in numbering order, after the numbers earlier answers gave theirs (a later
+    #: turn that cites 「[6]」 again means the same source, r5 P16·P27·P56); "" where an
+    #: earlier number is unknown.
+    sources, source_titles = _earlier_sources(messages)
+    #: URLs earlier answers gave (not those they already flagged): found then, not written
+    #: from memory now.
+    earlier_urls = {u for m in messages if m.get("role") == "assistant"
+                    for line in _text_of(m).split("\n")
+                    if not any(note in line for note in _MEMORY_NOTES)
+                    for u in _urls_in(line)}
     #: Material passage text by source number.
     material_texts: dict[int, str] = {}
     answer_text: list[str] = []
@@ -2077,8 +2174,10 @@ async def run_turn(
             )
             closing = True
 
-    async def write_once(prompt: list[dict[str, Any]]) -> str:
-        """One tool-free write, held until known to be an answer; '' when it is none."""
+    async def write_once(prompt: list[dict[str, Any]], writer: str | None = None) -> str:
+        """One tool-free write by `writer` (the turn's model by default), held until known to
+        be an answer; '' when it is none."""
+        writer = writer or model
         retry_kwargs: dict[str, Any] = {
             "strict_local": strict_local, "redact_logging": redact_next_request}
         if disable_fallbacks:
@@ -2089,23 +2188,54 @@ async def run_turn(
         written: list[str] = []
         try:
             async for kind, value in _stream_once(
-                model, prompt, [], ctx.user_id, ctx.api_key, **retry_kwargs,
+                writer, prompt, [], ctx.user_id, ctx.api_key, **retry_kwargs,
             ):
                 if kind == "delta":
                     written.append(value)
                 else:
                     retry = value
         except ChatStreamError as exc:
-            log.warning("tool-free write failed: %s", exc)
-        if retry is not None:
+            log.warning("tool-free write by %s failed: %s", writer, exc)
+        if retry is not None and writer == model:
             usage["inputTokens"] += retry.usage["inputTokens"]
             usage["outputTokens"] += retry.usage["outputTokens"]
+        elif retry is not None:
+            # the other model's tokens at its own price
+            for key in ("inputTokens", "outputTokens"):
+                counter = f"model:{writer}:{key}"
+                usage[counter] = usage.get(counter, 0) + retry.usage[key]
         spoken = "".join(written)
         if (retry is None or retry.calls or retry.looped or retry.runaway
                 or not internal_words.strip_tool_calls(spoken).strip()):
             # nothing, a loop, or only a tool call (written out or not): not an answer
             return ""
         return spoken
+
+    asked = ctx.request or next(
+        (_text_of(m) for m in reversed(messages) if m.get("role") == "user"), "")
+    #: who writes a missing answer once more: the other self-hosted model when there is one
+    #: (asked again, the same model stalled for three minutes, r5 P07), then the turn's own
+    #: model unless the other one took long
+    rescuers = [model]
+    if rescue_model and rescue_model != model and _self_hosted(rescue_model):
+        rescuers = [rescue_model, model]
+    rescued_by: list[str] = []
+
+    async def write_rescued(prompt: list[dict[str, Any]], results: str) -> str:
+        """The answer written once more from `prompt`, by each rescuer in turn; '' when none
+        wrote a usable one — empty, a plan, an announcement, or cut off short, which is never
+        shown (r5 A12-T2: a 90-character line stopping mid-word)."""
+        for writer in rescuers:
+            started = time.monotonic()
+            written = await write_once(prompt, writer)
+            if written and _usable_rewrite(written, request=asked, results=results):
+                if writer != model:
+                    rescued_by.append(writer)
+                return written
+            log.warning("rewrite by %s gave no usable answer (%d chars)", writer, len(written))
+            if writer != model and time.monotonic() - started > _RESCUE_PATIENCE:
+                break
+        return ""
 
     gathered = _gathered_results(conversation)
     if (closing and gathered and not preflight_tool and not ended_by_tool
@@ -2116,7 +2246,8 @@ async def run_turn(
         # maybe one more call, not the answer: written once more from what was gathered.
         log.warning("closing hop gave a preamble only (%d chars); writing from the results",
                     len(spoken))
-        written = await write_once(_answer_from_results(conversation, messages, gathered))
+        written = await write_rescued(_answer_from_results(conversation, messages, gathered),
+                                      gathered)
         if written and not _preamble_only(written, request=ctx.request or "",
                                           wanted_tools=False):
             yield {"type": "retract", "text": spoken}
@@ -2136,7 +2267,8 @@ async def run_turn(
             len(last_hop.calls) if last_hop else 0,
             last_hop.reasoning_chars if last_hop else 0,
         )
-        spoken = await write_once(_answer_from_results(conversation, messages, gathered))
+        spoken = await write_rescued(_answer_from_results(conversation, messages, gathered),
+                                     gathered)
         if spoken:
             answer_text.append(spoken)
             yield {"type": "delta", "text": spoken}
@@ -2160,8 +2292,6 @@ async def run_turn(
         yield {"type": "delta", "text": note}
         said_missing = True
 
-    asked = ctx.request or next(
-        (_text_of(m) for m in reversed(messages) if m.get("role") == "user"), "")
     if (not said_missing and not preflight_tool and not ended_by_tool
             and internal_words.is_work_plan(spoken := "".join(answer_text), request=asked)):
         # A plan of the work in place of the deliverable: never shipped, written once more.
@@ -2171,13 +2301,17 @@ async def run_turn(
         answer_text.clear()
         held.clear()
         provisional.clear()
-        written = await write_once(
-            _answer_from_results(conversation, messages, gathered, after_plan=True))
-        if written and not internal_words.is_work_plan(written, request=asked):
+        written = await write_rescued(
+            _answer_from_results(conversation, messages, gathered, after_plan=True), gathered)
+        if written:
             answer_text.append(written)
             yield {"type": "delta", "text": written}
         else:
             log.warning("the second write was no deliverable either")
+    if rescued_by:
+        yield {"type": "step", "category": "thinking", "id": "answer-rescue",
+               "label": "다른 모델로 답 쓰기", "status": "done",
+               "detail": f"답이 비거나 예고뿐이어서 {rescued_by[0]}가 다시 썼습니다"}
 
     if (unverified_current and "".join(answer_text).strip()
             and not _form_fixed(messages, ctx.request or "")):
@@ -2263,7 +2397,19 @@ async def run_turn(
             yield {"type": "retract", "text": answer}
             yield {"type": "delta", "text": attributed}
             answer = attributed
-    linked, cited = _link_citations(answer, sources)
+    # the writer's own source list at the end: the server's list replaces it when every
+    # number in it is known, else it stays as written and no second list is added
+    own_list = ""
+    if (own := _own_source_list(answer)) is not None:
+        at, numbers = own
+        linked, cited = _link_citations(answer[:at].rstrip(), sources)
+        if not cited or not all(1 <= n <= len(sources) and sources[n - 1] for n in numbers):
+            # kept as written (its numbers not relinked), and no second list
+            own_list = answer[at:]
+            linked, cited = _link_citations(answer[:at], sources)
+            linked += own_list
+    else:
+        linked, cited = _link_citations(answer, sources)
     if linked != answer:
         # Mid-text citations: answer re-sent whole.
         yield {"type": "retract", "text": answer}
@@ -2271,6 +2417,8 @@ async def run_turn(
         answer = linked
     answer_text[:] = [answer]
     if (not unverified_current and searches and empty_searches * 2 >= searches and answer.strip()
+            # 「mostly unrelated」 is wrong for an answer citing what the searches found
+            and not (cited and empty_searches < searches)
             and _searched_for_nothing(ctx.request, material_given)
             and not _form_fixed(messages, ctx.request or "")):
         note = (
@@ -2282,7 +2430,7 @@ async def run_turn(
         )
         answer_text.append(note)
         yield {"type": "delta", "text": note}
-    if cited:
+    if cited and not own_list:
         appendix = "\n\n### 출처\n" + "\n".join(
             f"- [{n}] {sources[n - 1].removeprefix(MATERIAL_SOURCE)}"
             if sources[n - 1].startswith(MATERIAL_SOURCE)
@@ -2299,11 +2447,16 @@ async def run_turn(
         yield {"type": "step", "category": "thinking", "id": "code-unprinted",
                "label": "코드 출력에 없는 값", "status": "done",
                "detail": ", ".join(hand[:12])}
-    unverified = [u for u in _urls_in(answer) if u not in seen_urls and _looks_like_a_source(u)]
+    unverified = [u for u in _urls_in(answer) if u not in seen_urls and u not in earlier_urls
+                  and _looks_like_a_source(u)]
     if unverified and seen_urls:
         note = (
             "\n\n_다음 링크는 이 답을 쓰며 검색·열람한 결과에 없던 것입니다. 기억으로 적은 "
             "것이니 열어 보고 확인하세요: " + ", ".join(dict.fromkeys(unverified)) + "_"
+            if korean else
+            "\n\n_These links were not among the results searched or read for this answer; "
+            "they were written from memory, so open and check them: "
+            + ", ".join(dict.fromkeys(unverified)) + "_"
         )
         answer_text.append(note)
         yield {"type": "delta", "text": note}
