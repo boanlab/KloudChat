@@ -60,7 +60,7 @@ MADE_SKILLS = {"translation", "press-release", "xlsx-build", "chart-make"}
 SHOWN_SKILLS = {"grounding-check", "gap-check", "calc-check", "date-calc", "quote-calc",
                 "xlsx-clean", "pdf-table", "pii-mask"} | WORK_SKILLS | MADE_SKILLS
 SHOWN_DOCUMENTS = {"doc-internal-draft", "doc-event-plan", "doc-result-report",
-                   "doc-gaejo-report", "doc-comparison", "doc-minutes"}
+                   "doc-gaejo-report", "doc-comparison", "doc-minutes", "doc-agenda"}
 HIDDEN_DECKS = {"deck-case", "deck-defense", "deck-editorial", "deck-lecture", "deck-proposal",
                 "deck-signal"}
 SKILLS_DIR = Path(skill_packages.__file__).resolve().parent.parent / "skills"

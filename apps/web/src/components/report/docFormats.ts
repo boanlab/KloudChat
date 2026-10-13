@@ -24,6 +24,7 @@ export const DOC_FORMATS: DocFormatWire[] = /* wire:begin */ [
   {"id": "paper", "label": "학술 논문", "fields": ["저자", "소속", "교신저자"], "numbering": "roman", "head": "paper", "abstract": true, "keywords": true, "subtitle": false, "lists": "", "closing": false},
   {"id": "lab", "label": "실험 보고서", "fields": ["실험일", "과목·분반", "조", "학번·이름", "공동실험자", "제출일"], "numbering": "decimal", "head": "cover", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
   {"id": "minutes", "label": "회의록", "fields": ["회의명", "일시", "장소", "참석자", "작성자"], "numbering": "none", "head": "memo", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
+  {"id": "agenda", "label": "회의 안건", "fields": ["회의명", "일시", "장소", "참석자", "작성자"], "numbering": "none", "head": "memo", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
   {"id": "press", "label": "보도자료", "fields": ["배포일", "보도 시점", "문의처"], "numbering": "none", "head": "press", "abstract": false, "keywords": false, "subtitle": true, "lists": "", "closing": false},
   {"id": "internal_draft", "label": "간이기안문", "fields": ["생산등록번호", "등록일", "결재일", "공개 구분", "기안자", "검토자", "결재권자"], "numbering": "korean", "head": "draft", "abstract": false, "keywords": false, "subtitle": false, "lists": "gaejo", "closing": true},
   {"id": "official", "label": "공문·안내문", "fields": ["수신", "참조", "발신", "시행일"], "numbering": "official", "head": "memo", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": true},

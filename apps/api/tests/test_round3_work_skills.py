@@ -1,6 +1,7 @@
 """What agents built only from shipped skills could not do (round 3): 번역, 보도자료, an Excel
 file built by code in a chat turn, a chart artifact. Each is a shipped skill people pick or an
-administrator shares; the Excel file comes from the sandbox script and is a download."""
+administrator shares; the Excel file comes from the sandbox script and is a download. The
+회의 안건 is a document template beside the 회의록, with the same head."""
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services import sandbox, skill_packages, starter
+from app.services import design_templates, doc_formats, sandbox, skill_packages, starter
 from app.services.tools import builtin, registry, sandbox_tools
 from app.services.tools.base import ToolContext
 
@@ -240,3 +241,34 @@ async def test_the_chart_skill_s_call_makes_a_chart_artifact():
     assert not result.failed
     artifact = ctx.pending_artifacts[0]
     assert artifact["kind"] == "chart" and len(artifact["data"]["series"]) == 2
+
+
+# ── 회의 안건 템플릿 ────────────────────────────────────────────────────
+
+
+def test_the_agenda_template_is_listed_bound_to_its_format_and_asks_like_the_minutes():
+    template = design_templates.get("doc-agenda")
+    assert template is not None and template.kind == "document"
+    assert template.name == "회의 안건" and template.doc_format == "agenda"
+    assert "doc-agenda" in {t.id for t in design_templates.listed()}
+    assert template.form_file.endswith("form.docx") and template.docx_template
+    # the same head as the minutes, so the two read as one set
+    assert doc_formats.BY_ID["agenda"].fields == doc_formats.BY_ID["minutes"].fields
+    assert {q["id"] for q in template.questions} == {"meeting_date", "attendees"}
+    assert template.process["search"] is False and "date-calc" in template.process["prepass"]
+    # never minutes: the genre forbids writing the meeting's outcome
+    assert "This is not minutes" in template.genre
+    assert "brackets only for what the organiser fills in" in template.genre
+
+
+@pytest.mark.parametrize(("request_text", "expected"), [
+    ("다음 주 운영위원회 회의 안건지를 만들어 줘", "agenda"),
+    ("월요일 어젠다 정리해 줘", "agenda"),
+    ("Draft the agenda for Monday's sync", "agenda"),
+    ("회의록 써 줘. 회의 안건은 세 개였어", "minutes"),
+    ("회의 안건별 결정 사항 정리", None),
+    ("안건 표결 결과를 정리해 줘", None),
+])
+def test_the_agenda_is_named_by_its_own_words(request_text, expected):
+    found = doc_formats.detect(request_text)
+    assert (found.id if found else None) == expected

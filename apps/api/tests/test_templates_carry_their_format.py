@@ -19,6 +19,7 @@ def test_the_format_map_is_read_from_each_template_toml():
         "doc-internal-draft": "internal_draft", "doc-event-plan": "event_plan",
         "doc-result-report": "result_report", "doc-client-proposal": "client_proposal",
         "doc-comparison": "comparison", "doc-career-history": "career_history",
+        "doc-agenda": "agenda",
     }
 
 
