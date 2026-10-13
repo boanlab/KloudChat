@@ -36,11 +36,24 @@ _VERSION = re.compile(r"(?<![\w.])[vV]?(\d+\.\d+(?:\.\d+)?(?:-[\w.]+)?)(?![\w.]*
 _DATE = re.compile(r"(?<!\d)(20\d{2})\s*(?:[.\-/]|년)\s*(\d{1,2})\s*(?:[.\-/]|월)\s*(\d{1,2})")
 _JARGON = re.compile(r"(?<![\w-])(#\d+|[A-Z][A-Z0-9]+-\d+)(?![\w-])|\b[0-9a-f]{7,40}\b|`[^`]+`"
                      r"|\b[a-z]+_[a-z_]+\b|\b[a-z]+[A-Z]\w+\b")
+#: Product names spelled like camelCase code (r7 A16-T1: 「iOS 18」 is not jargon).
+_PRODUCT_NAMES = {"iOS", "iPadOS", "macOS", "watchOS", "tvOS", "visionOS", "iPhone", "iPad", "iCloud", "eSIM"}
+#: A deprecation notice: the thing still works and goes later (r7 A16-T1: 「2027-03-31 종료 예정」).
+_NOTICE = re.compile(r"deprecat\w*|(?:종료|중단|폐지|제거|삭제)\s*예정|지원\s*종료\s*(?:예고|안내)|sunset", re.I)
+_HARD_BREAK = re.compile(r"BREAKING|breaking change|호환\s*(?:되지|안\s*됨|불가|성\s*깨)", re.I)
+#: 「매월 3일」: a policy day the first-apply date is worked out from (SKILL.md Procedure 3).
+_MONTHLY = re.compile(r"매월\s*(\d{1,2})\s*일")
+
+
+def _notice(text: str) -> bool:
+    """A deprecation announced ahead (「… 종료 예정」), not a change that breaks this release."""
+    match = _CONVENTIONAL.match(text)
+    return bool(_NOTICE.search(text)) and not _HARD_BREAK.search(text) and not (match and match.group(3))
 
 
 def _kind(text: str) -> tuple[str, bool]:
     match = _CONVENTIONAL.match(text)
-    breaking = bool(_BREAKING.search(text)) or bool(match and match.group(3))
+    breaking = (bool(_BREAKING.search(text)) or bool(match and match.group(3))) and not _notice(text)
     if match:
         kind = _CONV_KIND.get(match.group(1).lower(), "internal")
         rest = text[match.end():]
@@ -71,8 +84,9 @@ def parse(log: str) -> list[dict]:
             ident = f"{ident}@L{number}"
         seen.add(ident)
         kind, breaking = _kind(text)
-        items.append({"id": ident, "text": text, "kind": kind, "breaking": breaking,
-                      "section": "주의" if breaking else _SECTION_FOR[kind], "line": number})
+        notice = _notice(text)
+        items.append({"id": ident, "text": text, "kind": kind, "breaking": breaking, "notice": notice,
+                      "section": "주의" if breaking or notice else _SECTION_FOR[kind], "line": number})
     return items
 
 
@@ -84,11 +98,32 @@ def _semver(value: str) -> tuple[int, ...] | None:
 def _numbers(text: str) -> set[str]:
     """Numbers as written, commas and leading zeros dropped (「2026-11-04」 gives 「4」)."""
     out: set[str] = set()
+    # 「22:00」 is 「22시」 written another way: its 「00」 is no new figure (r7 A16-T2).
+    text = re.sub(r"(?<=\d):00(?!\d)", "", text)
     for match in _NUM.finditer(text):
         raw = match.group(1).replace(",", "")
         out.add(raw)
         if raw.isdigit():
             out.add(str(int(raw)))
+    return out
+
+
+def _first_apply(date: str | None, basis: str) -> list[dt.date]:
+    """First day each 「매월 N일」 in `basis` falls on from the release date on
+    (배포 11/4, 매월 3일 → 12/3): the date SKILL.md Procedure 3 asks to write (r7 A16-T2)."""
+    try:
+        release = dt.date.fromisoformat(date or "")
+    except ValueError:
+        return []
+    out = []
+    for match in _MONTHLY.finditer(basis):
+        day = int(match.group(1))
+        month = release.month + (day < release.day)
+        year, month = release.year + (month - 1) // 12, (month - 1) % 12 + 1
+        try:
+            out.append(dt.date(year, month, day))
+        except ValueError:
+            continue
     return out
 
 
@@ -105,6 +140,8 @@ def check(items: list[dict], entries: list[dict], omitted: list[dict] | None = N
     for item in items:
         if "breaking" not in item:
             item["breaking"] = _kind(str(item.get("text", "")))[1]
+        if "notice" not in item:
+            item["notice"] = _notice(str(item.get("text", "")))
     used: dict[str, list[int]] = {}
     for index, entry in enumerate(entries):
         sources = [str(s) for s in entry.get("sources") or []]
@@ -119,7 +156,11 @@ def check(items: list[dict], entries: list[dict], omitted: list[dict] | None = N
                                          "입력에 없는 항목 id입니다.", "id를 고치거나 항목을 지우세요.", entry=index))
             used.setdefault(source, []).append(index)
         basis = " ".join(str(by_id[s].get("text", "")) for s in sources if s in by_id)
-        extra = _numbers(text) - _numbers(basis) - _numbers(version or "") - _numbers(date or "")
+        # A worked-out first-apply date (entry `derived`, or 매월 N일 from the release date) is known.
+        worked = " ".join(f"{d.year} {d.month} {d.day}" for d in _first_apply(date, basis))
+        worked += " " + " ".join(str(d) for d in entry.get("derived") or [])
+        extra = (_numbers(text) - _numbers(basis) - _numbers(version or "") - _numbers(date or "")
+                 - _numbers(worked))
         if sources and extra:
             findings.append(_finding("block", "invented_figure", f"{label}: {', '.join(sorted(extra))}",
                                      "근거 항목에 없는 숫자입니다(속도 배수·비율·건수를 지어내지 않음).",
@@ -128,7 +169,7 @@ def check(items: list[dict], entries: list[dict], omitted: list[dict] | None = N
         if section and section not in SECTIONS and not any(w in section.lower() for w in _BREAKING_SECTIONS):
             findings.append(_finding("info", "section", section, "권장 절 이름이 아닙니다.",
                                      f"{'·'.join(SECTIONS)} 가운데 고르세요.", entry=index))
-        jargon = sorted({m.group(0) for m in _JARGON.finditer(text)})
+        jargon = sorted({m.group(0) for m in _JARGON.finditer(text)} - _PRODUCT_NAMES)
         if jargon:
             findings.append(_finding("check", "jargon", f"{label}: {', '.join(jargon[:4])}",
                                      "사용자용 문장에 티켓 번호·커밋 해시·코드 이름이 남았습니다.",
@@ -149,7 +190,7 @@ def check(items: list[dict], entries: list[dict], omitted: list[dict] | None = N
                                      "릴리스 노트에 없고 뺀 이유도 없습니다.", "넣거나 omitted 에 이유와 함께 적으세요.", id=ident))
         if in_notes and dropped:
             findings.append(_finding("check", "both", ident, "노트에도 있고 뺀 목록에도 있습니다.", "한쪽만 남기세요.", id=ident))
-        if item.get("breaking"):
+        if item.get("breaking") or item.get("notice"):
             if dropped and not in_notes:
                 findings.append(_finding("block", "breaking_omitted", ident,
                                          "호환성이 깨지거나 기능이 없어지는 변경은 뺄 수 없습니다.",
@@ -198,6 +239,10 @@ def check(items: list[dict], entries: list[dict], omitted: list[dict] | None = N
                                          f"노트 속 버전이 주어진 버전({version})과 다릅니다.", "버전을 맞추세요."))
         item_text = " ".join(str(i.get("text", "")) for i in items)
         item_dates = {tuple(int(g) for g in m.groups()) for m in _DATE.finditer(item_text)}
+        item_dates |= {(d.year, d.month, d.day) for d in _first_apply(date, item_text)}
+        for entry in entries:
+            item_dates |= {tuple(int(g) for g in m.groups())
+                           for m in _DATE.finditer(" ".join(str(d) for d in entry.get("derived") or []))}
         target = tuple(int(p) for p in date.split("-")) if date else None
         for match in _DATE.finditer(notes):
             value = tuple(int(g) for g in match.groups())
@@ -209,7 +254,8 @@ def check(items: list[dict], entries: list[dict], omitted: list[dict] | None = N
     coverage = {"items": len(items), "in_notes": sum(1 for i in by_id if i in used),
                 "omitted": sum(1 for i in by_id if i in omitted_ids and i not in used),
                 "missing": sum(1 for i in by_id if i not in used and i not in omitted_ids),
-                "breaking": [i for i, item in by_id.items() if item.get("breaking")]}
+                "breaking": [i for i, item in by_id.items() if item.get("breaking")],
+                "notices": [i for i, item in by_id.items() if item.get("notice")]}
     return {"findings": findings, "coverage": coverage, "counts": counts}
 
 

@@ -119,7 +119,7 @@ async def _complete_once(
                 json={
                     "model": model,
                     "messages": messages,
-                    "max_tokens": max_tokens,
+                    "max_tokens": thinking.room(model, max_tokens),
                     # off where the provider allows (`thinking.switch`)
                     **thinking.switch(model),
                 },
@@ -128,7 +128,8 @@ async def _complete_once(
                 response = await client.post(
                     "/v1/chat/completions",
                     json={
-                        "model": model, "messages": messages, "max_tokens": max_tokens,
+                        "model": model, "messages": messages,
+                        "max_tokens": thinking.room(model, max_tokens),
                         **thinking.switch(model),
                     },
                 )

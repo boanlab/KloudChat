@@ -56,7 +56,7 @@ from app.models.workspace import (
     StoredFile,
 )
 from app.models.workspace import Visibility as SkillVisibility
-from app.pipeline import chat_stages, export_stages, revise_stages
+from app.pipeline import chat_stages, export_stages, report_stages, revise_stages
 from app.pipeline import registry as pipeline_registry
 from app.pipeline import runs as pipeline_runs
 from app.pipeline.bundle import Bundle as PipelineBundle
@@ -120,6 +120,7 @@ from app.services import (
     publishing,
     red_flags,
     revise,
+    server_notes,
     settings_store,
     skill_specs,
     skill_turn,
@@ -3845,7 +3846,9 @@ async def send_message(
     active_skill_ids = list(payload.activated_skill_ids)
 
     stored_content = content
-    outbound_history = [message.content for message in history]
+    # the server's notes under a stored answer are not the model's words (`server_notes`)
+    outbound_history = [server_notes.strip(message.content) if message.role is Role.assistant
+                        else message.content for message in history]
     privacy_resolution: _PrivacyResolution | None = None
     tools: list[Tool] = []
     tool_definitions: list[dict[str, Any]] = []
@@ -7214,6 +7217,8 @@ async def _run_report(
                     )
                     if straight:
                         continue
+                    # the carried findings stay with the stored plan
+                    event = {**event, "plan": report_stages.public_plan(proposal)}
                 else:
                     questions = event["questions"]
                 yield chat_service.sse(event)

@@ -73,13 +73,18 @@ def _dash(m: re.Match) -> str | None:
         return None  # a range: 「10—12」
     if re.search(r"[)\]]$", before) and not re.search(r"[.?!。][)\]]$", before):
         return None  # 「(…, 2026년 게시) — 자막 기반」: a header's parts (r5 A08-T2)
+    if re.search(r"[」』]$", before) and not re.search(r"[.?!。][」』]$", before):
+        return ": "  # 「#13 「…무료」 — 설명」: a quoted line and its note (r7 A12-T2)
     if re.search(r"[.?!。」』\"']$", before) and not before.endswith("**"):
         return " "
     line = before[before.rfind("\n") + 1:]
     if line.count("**") % 2 == 1:
         return None  # inside a bold label: 「**기능 블록 1 — 결재 알림 연동**」
-    item =re.match(r"\s{0,8}(?:[-*+•]\s+|\d{1,3}[.)]\s+)", line)
+    # 개조식 marks count as list marks: 「□ 영향 1 — …」 (r7 A02-T2)
+    item = re.match(r"\s{0,8}(?:[-*+•]\s+|[□■○●◦※▪◆◇▶▷①-⑳]\s*|\d{1,3}[.)]\s+)", line)
     lead = line[item.end():] if item else re.sub(r"^\s{0,8}", "", line)
+    if re.match(r"\*\*[^*\n]{1,30}\*\*\s+\S", lead):
+        return None  # 「1. **#5** 헤드라인 — 각도」: the bold is the label; the dash is the line's own (r7 A12-T2)
     if before.endswith("**") or (len(lead) <= 16 and len(lead.split()) <= 2
                                  and not re.search(r"[.,]|[고며면서다요]$", lead)):
         return ": "

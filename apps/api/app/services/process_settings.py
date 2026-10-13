@@ -341,6 +341,26 @@ def add(base: Process, settings: dict[str, Any] | None) -> Process:
     return dataclasses.replace(base, **changes) if changes else base
 
 
+#: Steps that read one format's own parts (회의록 실행 항목 표): elsewhere they repair what is
+#: not there (r7 A01-T2: an agenda's 담당·시간 칸 all 「미정」 under a minutes agent).
+FORMAT_ONLY = {
+    "minutes": {"stages": ("minutes-repair", "minutes-reground"), "checks": ("minutes-rows",)},
+}
+
+
+def only_for_format(process: Process, format_id: str | None) -> Process:
+    """`process` without the steps of formats other than `format_id`."""
+    changes: dict[str, Any] = {}
+    for fmt, keys in FORMAT_ONLY.items():
+        if fmt == format_id:
+            continue
+        for key, names in keys.items():
+            kept = tuple(n for n in changes.get(key, getattr(process, key)) if n not in names)
+            if kept != getattr(process, key):
+                changes[key] = kept
+    return dataclasses.replace(process, **changes) if changes else process
+
+
 def of_template(template) -> dict[str, Any]:
     """서식's stored `[process]`."""
     return dict(getattr(template, "process", None) or {})

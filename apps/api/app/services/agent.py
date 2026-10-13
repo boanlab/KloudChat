@@ -23,6 +23,7 @@ from app.services import (
     output_language,
     query_terms,
     scheduling,
+    server_notes,
     settings_store,
     thinking,
 )
@@ -948,6 +949,9 @@ def _source_number(url: str, sources: list[str]) -> int:
 _LINKED_CITATION = re.compile(r"\[\[(\d{1,2})\]\]\((https?://[^)\s]{1,500})\)")
 #: `[n]` citations not already linked.
 _CITATION = re.compile(r"(?<!\[)\[(\d{1,2}(?:\s*[,，\-–]\s*\d{1,2})*)\](?!\()")
+#: `[[n]]` with no address: the writer copying an earlier answer's links (r7 P19
+#: 「[[2]][[3]]」 stayed raw and the turn got no source list)
+_BARE_DOUBLE = re.compile(r"\[\[(\d{1,2})\]\](?!\()")
 
 
 def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
@@ -983,7 +987,7 @@ def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
                 # the writer linked the article itself: the list keeps its id too
                 sources[n - 1] = url
     for i in range(0, len(pieces), 2):
-        pieces[i] = _CITATION.sub(link, pieces[i])
+        pieces[i] = _CITATION.sub(link, _BARE_DOUBLE.sub(r"[\1]", pieces[i]))
     return "```".join(pieces), sorted(cited)
 
 
@@ -1030,19 +1034,25 @@ _OWN_LIST_HEAD = re.compile(
 _OWN_LIST_ITEM = re.compile(r"^\s{0,3}(?:[-*]\s{1,3}|\d{1,2}[.)]\s{1,3})?\[\[?(\d{1,2})\]")
 
 
-def _own_source_list(answer: str) -> tuple[int, list[int]] | None:
-    """`(start, numbers)` of the source list the answer ends with, when it is one: a source
-    heading and below it only numbered items and blank lines (r5 P14·P27·P56: the server's
-    list came after it once more). `None` when the answer ends otherwise."""
-    heads = list(_OWN_LIST_HEAD.finditer(answer or ""))
-    if not heads:
-        return None
-    start = heads[-1].start()
-    items = [line for line in answer[heads[-1].end():].split("\n") if line.strip()]
-    numbers = [int(m.group(1)) for line in items if (m := _OWN_LIST_ITEM.match(line))]
-    if not items or len(numbers) != len(items):
-        return None
-    return start, numbers
+def _own_source_list(answer: str) -> tuple[int, int, list[int]] | None:
+    """`(start, end, numbers)` of the source list the answer wrote itself: a source heading
+    and below it numbered items (blank lines between them allowed), up to the first other
+    line (r5 P14·P27·P56: the server's list came after it once more; r7 A11-T1: a paragraph
+    after the list hid it and 「### 출처」 came twice). `None` without one."""
+    for head in reversed(list(_OWN_LIST_HEAD.finditer(answer or ""))):
+        numbers: list[int] = []
+        end = head.end()
+        at = head.end()
+        for line in answer[head.end():].split("\n"):
+            if line.strip():
+                if (m := _OWN_LIST_ITEM.match(line)) is None:
+                    break
+                numbers.append(int(m.group(1)))
+                end = at + len(line)
+            at += len(line) + 1
+        if numbers:
+            return head.start(), end, numbers
+    return None
 
 
 def _collect_passages(content: str, into: dict[int, str]) -> None:
@@ -2549,13 +2559,18 @@ async def run_turn(
     # number in it is known, else it stays as written and no second list is added
     own_list = ""
     if (own := _own_source_list(answer)) is not None:
-        at, numbers = own
-        linked, cited = _link_citations(answer[:at].rstrip(), sources)
+        at, end, numbers = own
+        # what follows the list (보완이 필요한 항목) stays, before the server's list
+        rest = answer[end:].strip()
+        linked, cited = _link_citations(
+            answer[:at].rstrip() + (f"\n\n{rest}" if rest else ""), sources)
         if not cited or not all(1 <= n <= len(sources) and sources[n - 1] for n in numbers):
             # kept as written (its numbers not relinked), and no second list
-            own_list = answer[at:]
+            own_list = answer[at:end]
             linked, cited = _link_citations(answer[:at], sources)
-            linked += own_list
+            tail, more = _link_citations(answer[end:], sources)
+            linked += own_list + tail
+            cited = sorted({*cited, *more})
     else:
         linked, cited = _link_citations(answer, sources)
     if linked != answer:
@@ -2568,19 +2583,17 @@ async def run_turn(
             # 「mostly unrelated」 is wrong for an answer citing what the searches found
             and not (cited and empty_searches < searches)
             and _searched_for_nothing(ctx.request, material_given)
-            and not _form_fixed(messages, ctx.request or "")):
+            and not _form_fixed(messages, ctx.request or "")
+            # the answer already says what it could not confirm, or carries the note itself
+            # (r7 P19·P27: the same warning twice)
+            and not server_notes.says_unconfirmed(answer)
+            and not server_notes.has_web_note(answer)):
         note = (
-            "\n\n_웹 검색이 쓸 만한 결과를 주지 않아 이 답은 검색으로 확인하지 못했습니다. "
-            "서지·수치·최신 사항은 확인이 필요합니다._"
-            if empty_searches == searches
-            else "\n\n_웹 검색 결과가 대부분 질문과 무관해 이 답은 충분히 확인되지 않았습니다. "
-            "서지·수치·최신 사항은 확인이 필요합니다._"
+            server_notes.WEB_NONE_KO if empty_searches == searches
+            else server_notes.WEB_MOSTLY_KO
         ) if reply_korean else (
-            "\n\n_The web search gave no usable results, so this answer was not checked "
-            "against it. References, figures and recent facts need checking._"
-            if empty_searches == searches
-            else "\n\n_Most web search results were unrelated to the question, so this answer "
-            "is not fully checked. References, figures and recent facts need checking._"
+            server_notes.WEB_NONE_EN if empty_searches == searches
+            else server_notes.WEB_MOSTLY_EN
         )
         answer_text.append(note)
         yield {"type": "delta", "text": note}

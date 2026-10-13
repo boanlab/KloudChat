@@ -45,6 +45,7 @@ from app.services import (
     richtext,
     table_integrity,
     units,
+    value_guard,
     verify,
 )
 from app.services import deck as deck_rules
@@ -68,6 +69,14 @@ DERIVED_NOTE = (
 )
 
 _CAUGHT = (httpx.HTTPError, KeyError, IndexError, ValueError)
+
+#: Proposal key holding the outline pass's web findings; stored with the plan, never sent.
+PLAN_RESEARCH = "research"
+
+
+def public_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    """The proposal as the browser sees it: without the carried findings."""
+    return {k: v for k, v in plan.items() if k != PLAN_RESEARCH}
 
 
 def _report():
@@ -140,7 +149,39 @@ class Research(Base):
                 or report.material_complete(req.text, bundle.spec.format_id,
                                             has_files=bool(req.untrusted))):
             web_search = False
-        if web_search and await research.available():
+        # writing an approved outline: the outline pass's pages carry over (r7 A07-T2: a fresh
+        # search kept 7 of the 17 sources, digitalmarket.kr among the lost, and the
+        # 디지털서비스몰 section came out blank); only headings they miss are searched again
+        kept = (research.from_carried(req.approved_plan.get(PLAN_RESEARCH))
+                if req.approved_plan is not None else None)
+        if kept is not None:
+            web_search = True
+            findings = kept
+            headings = [h for h in map(report._heading_of,
+                                       req.approved_plan.get("sections") or []) if h]
+            gaps = research.uncovered(headings, kept.context)
+            if gaps and await research.available():
+                yield {"type": "step", "id": "sources", "label": "자료 더 찾는 중",
+                       "status": "running"}
+                more = await research.run(
+                    "자료를 더 찾을 부분: " + ", ".join(gaps) + "\n\n원래 요청:\n" + req.text,
+                    model=req.outline_model or req.model, api_key=req.api_key,
+                    scholarly=report.scholarly_document(req.text))
+                findings = research.merge(
+                    kept, more, most=max(3, research.MAX_SOURCES - len(kept.sources)))
+                apart = bool(req.outline_model)
+                bundle.usage["outlineInputTokens" if apart else "inputTokens"] += more.usage[
+                    "inputTokens"]
+                bundle.usage["outlineOutputTokens" if apart else "outputTokens"] += more.usage[
+                    "outputTokens"]
+            yield {
+                "type": "step",
+                "id": "sources",
+                "label": f"자료 {len(findings.sources)}건",
+                "status": "done",
+                "detail": findings.detail,
+            }
+        elif web_search and await research.available():
             yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
             planner = req.outline_model or req.model
             findings = await research.run(req.text, model=planner, api_key=req.api_key,
@@ -492,6 +533,9 @@ class Outline(Base):
             plan["frame"] = True
         if unverified:
             plan["unverified"] = True
+        # the writing pass starts from these pages (`Research.run`); kept off the wire
+        if mat.web_search and findings.searched and mat.web_selected:
+            plan[PLAN_RESEARCH] = research.carried(findings, mat.web_selected)
         # pictures only where the 서식 draws or when asked
         if req.image_model and not (bundle.spec.settings.draws == "when-asked"
                                     and not diagrams.asks_for_diagrams(instruction_part(request))):
@@ -581,6 +625,16 @@ def _given(bundle: Bundle) -> str:
                          *req.tool_outputs]).strip()
 
 
+#: Writer note when the code calculation gave no values.
+CALC_MISSING_NOTE = (
+    "# 작성 메모(내부)\nThe code calculation did not finish, so no computed values are given. "
+    "Work out the figures the request asks for yourself from the material's numbers: write "
+    "each as its formula with the result (「9,900원 × 12 = 118,800원」). Where the request "
+    "allows estimates and the material lacks a rate or share, state it as an assumption "
+    "(「가정: 전환율 2%」) and compute from it; never leave a requested figure as a formula name only."
+)
+
+
 class Calc(Base):
     """Derived numbers computed by code; printed values go to every section as facts."""
 
@@ -607,6 +661,10 @@ class Calc(Base):
         if computed:
             bundle.computed.values = computed
             bundle.material.trusted.append(Part(computed, "computed"))
+        elif status == "timeout":
+            # no code values: the writer still works the numbers out (r7 A10-T2: a timeout
+            # left TAM·SAM·SOM uncomputed, only formula names)
+            bundle.material.trusted.append(Part(CALC_MISSING_NOTE, "note"))
         yield {
             "type": "step", "id": "calc",
             "label": {
@@ -824,8 +882,9 @@ class Sections(Base):
         #: Assumptions section text once written, and its position.
         assumptions: dict = {"text": "", "index": -1}
 
-        async def write_section(index: int, section: dict, written: list[str]):
-            """One section's call."""
+        async def write_section(index: int, section: dict, written: list[str],
+                                tokens: int = 0):
+            """One section's call; `tokens` overrides its budget."""
             role = report._section_role(section["heading"], index, len(sections),
                                         "\n".join(written))
             return await _written(
@@ -875,8 +934,11 @@ class Sections(Base):
                     else ""
                 )),
                 req.api_key,
-                2400 if long_form else 1200,
+                tokens or (2400 if long_form else 1200),
             )
+
+        #: sections no call wrote, shown as such (never a blank heading)
+        failed: set[int] = set()
 
         # assumptions section (「핵심 가정」, 「전제」) first: parallel sections would settle conflicting inputs
         assumption_at = next(
@@ -969,23 +1031,39 @@ class Sections(Base):
                     if not body.strip():
                         raise ValueError("empty section")
             except _CAUGHT as exc:
-                log.warning("report section %r failed: %s", section["heading"], exc)
-                yield {
-                    "type": "step",
-                    "id": section["id"],
-                    "label": label,
-                    "status": "error",
-                    "progress": progress,
-                }
-                yield {
-                    "type": "section",
-                    "sectionId": section["id"],
-                    "heading": section["heading"],
-                    "content": "_이 섹션을 쓰지 못했습니다._",
-                    "done": True,
-                }
-                section["content"] = ""
-                continue
+                log.warning("report section %r failed: %s; asked once more with more room",
+                            section["heading"], exc)
+                # one more call with a much larger budget (r7 GLM-5.3: thinking it could not
+                # turn off took the section's whole budget, twice)
+                body = ""
+                try:
+                    body, spent = await write_section(index, section, written,
+                                                      4800 if long_form else 3000)
+                    body = internal_words.strip_work_notes(
+                        internal_words.strip_tool_calls(body), request=req.text, document=True)
+                    if report.error_text(body, req.text):
+                        body = ""
+                except _CAUGHT as again:
+                    log.warning("report section %r failed again: %s", section["heading"], again)
+                if not body.strip():
+                    failed.add(index)
+                    yield {
+                        "type": "step",
+                        "id": section["id"],
+                        "label": label,
+                        "status": "error",
+                        "progress": progress,
+                    }
+                    yield {
+                        "type": "section",
+                        "sectionId": section["id"],
+                        "heading": section["heading"],
+                        "content": FAILED_SECTION,
+                        "done": True,
+                    }
+                    # said in the document, not left as a blank heading
+                    section["content"] = FAILED_SECTION
+                    continue
 
             _count(bundle, spent)
             # a section cut off mid-sentence ends at its last whole sentence
@@ -1081,6 +1159,18 @@ class Sections(Base):
                 "content": report.shown_while_writing(body),
                 "done": True,
             }
+        if sections and len(failed) == len(sections):
+            # nothing written: no document to check, save and call finished (r7 A04-T2 GLP:
+            # six empty sections went on through every check and were saved as 「1개 절로 …
+            # 작성을 마쳤습니다」 holding only a code-added line)
+            yield {"type": "error",
+                   "message": "보고서의 어느 절도 쓰지 못했습니다. 잠시 뒤 다시 시도해 주세요."}
+            yield _usage(bundle)
+            raise Stop("every section failed")
+
+
+#: what a section no call could write says, in place of a blank heading
+FAILED_SECTION = "_이 절은 쓰지 못했습니다. 이 절만 다시 써 달라고 요청해 주세요._"
 
 
 def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
@@ -1802,6 +1892,40 @@ class FormatStep(Base):
         }
 
 
+#: the request asking unconfirmed points to be marked in the text
+_ASKS_MARKS = re.compile(
+    r"확인\s{0,2}(?:이\s{0,2})?필요[^\n]{0,20}(?:표시|적|달|남겨|밝혀)"
+    r"|(?:확인|검증)(?:하지\s{0,2}못한|\s{0,2}못\s{0,2}한|되지\s{0,2}않은|\s{0,2}안\s{0,2}된)"
+    r"[^\n]{0,30}(?:표시|구분|밝혀|적어)")
+
+
+def mark_web_disputes(sections: list[dict], still: list, request: str) -> int:
+    """Sentences the web check found contradicted, still standing after the repair, marked
+    「(확인 필요)」 in the text when the request asked unconfirmed points to be marked (r7
+    A07-T2: three such sentences went out unmarked; they were in the step detail only).
+    Returns how many were marked."""
+    if not _ASKS_MARKS.search(instruction_part(request or "")):
+        return 0
+    marked = 0
+    for x in still:
+        if x.code != "fact" or not 0 <= x.section < len(sections):
+            continue
+        content = sections[x.section].get("content")
+        sentence = x.sentence.strip()
+        if not isinstance(content, str) or not sentence or sentence not in content:
+            continue
+        at = content.index(sentence) + len(sentence)
+        if value_guard.MARK in sentence or content[at:at + 12].lstrip().startswith(
+                value_guard.MARK):
+            continue
+        body = sentence.rstrip(".。 ")
+        end = content.index(sentence) + len(body)
+        sections[x.section] = {**sections[x.section],
+                               "content": f"{content[:end]} {value_guard.MARK}{content[end:]}"}
+        marked += 1
+    return marked
+
+
 class Quality(Base):
     """Final read for reader-facing defects, reported in steps and log; then the document goes out."""
 
@@ -1826,6 +1950,8 @@ class Quality(Base):
         if restored != sections:
             log.info("restored double-scaled amounts to the material's form")
             sections = bundle.document.sections = restored
+        if mark_web_disputes(sections, f.still, bundle.request.text):
+            bundle.document.sections = sections
         format_codes = set(report_checks.LABELS)
         findings = quality_gate.report_findings(sections, material,
                                                 bundle.computed.settled)
@@ -1881,6 +2007,24 @@ for _stage in (
     registry.register(_stage)
 
 
+def sibling_note(bound: doc_formats.DocFormat, asked: doc_formats.DocFormat) -> str:
+    """Writer note when the request asked for the bound format's sibling."""
+    note = (
+        f"# 작성 메모(내부)\nThis document is a {asked.label}, not a {bound.label}. Instructions "
+        f"above written for a {bound.label} apply only where the two share a part; never turn "
+        f"this document into a {bound.label} or name it one."
+    )
+    if asked.id == "agenda":
+        note += (
+            " An agenda is written before the meeting: no decisions or action items yet. "
+            "Within the meeting length the request gives, propose a time for each item and "
+            "mark the split as a proposal (「시간 배분(안)」). A presenter the material names "
+            "goes beside the item; with none named, leave the presenter column out rather "
+            "than fill it with 「미정」."
+        )
+    return note
+
+
 def bundle_for(*, request: str, model: str, api_key: str, **kwargs: Any) -> Bundle:
     """Report bundle from `report.write`'s arguments, format and genre settled."""
     from app.pipeline.bundle import Request, Spec
@@ -1894,9 +2038,19 @@ def bundle_for(*, request: str, model: str, api_key: str, **kwargs: Any) -> Bund
     if doc_format is None:
         doc_format = doc_formats.detect(instruction_part(request), req.template_id, req.format_id)
     format_id = doc_format.id if doc_format is not None else ""
-    # 서식 settings, then the agent's own
-    process = process_settings.resolve(template_id=req.template_id, format_id=format_id,
-                                       own=req.process)
+    bound = doc_formats.TEMPLATE_FORMATS.get(req.template_id or "")
+    if bound and format_id and bound != format_id:
+        # the request asked for the bound format's sibling (안건 under 회의록): that format's
+        # own 서식 governs its settings, questions and head
+        own_template = design_templates.for_format(format_id)
+        req.template_id = own_template.id if own_template is not None else None
+        # the agent's skill was written for the bound format; its rules for that one's parts
+        # (회의록's 「미정」 owners and 확인 필요 line) would empty the asked document's cells
+        req.trusted = [*req.trusted, sibling_note(doc_formats.BY_ID[bound], doc_format)]
+    # 서식 settings, then the agent's own; repair stages of one format stay on it
+    process = process_settings.only_for_format(
+        process_settings.resolve(template_id=req.template_id, format_id=format_id,
+                                 own=req.process), format_id)
     governing = process_settings.governing_template(req.template_id, format_id)
     if governing is not None and governing.check_options:
         # 서식 strictness joins the agent's

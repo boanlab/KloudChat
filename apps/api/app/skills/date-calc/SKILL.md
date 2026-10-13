@@ -27,6 +27,7 @@ the 우주항공청 「2026년 월력요항」「2027년 월력요항」 (publis
    - Adding and deadlines: `{"op": "add", "date": "2026-10-19", "weeks": 8, "deadline": "2026-12-18"}`
    - All lead times and periods in the material at once: `{"op": "lead_times", "text": "<자료 전체>"}` — pairs 「발주 2026. 10. 19.」 with 「발주 후 8주」, resolves them to dates, and checks them against the material's completion deadline (works without a meeting date).
    - Business days: `{"op": "business_days", "start": "...", "end": "..."}`, `{"op": "add_business_days", "date": "...", "days": 5}`
+   - Weekday of given dates: `{"op": "weekday", "dates": ["2026-11-04", "2026-12-03"]}`. Without `base_date`, `resolve` counts from a full date in the expressions, else from today (each row says `base_kind`).
 2. When no date in the material or the question anchors 「오늘」「이번 주」 and the 「시간」 connector is on, call `mcp__time__get_current_time` (timezone `Asia/Seoul` unless the person names another) for today's date and use it as `base_date`; never guess today. For a time in another city, use `mcp__time__convert_time`.
    The reference day is the meeting day for remarks, and that mail's sending date for a mail. If the meeting day is unknown, ask first.
 3. In the result, `weekend` and `holiday` are display marks; `unresolved` and `unclear` are the dates rule 2 leaves as 「미정」 and 「[기한]」.

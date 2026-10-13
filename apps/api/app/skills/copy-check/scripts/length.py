@@ -195,12 +195,35 @@ def cut(text: str, limit: int, unit: str = "chars") -> str:
     return text[:lo]
 
 
+#: Names writers use for a channel these specs hold under another key (r7 A12-T2: 「kakao_moment」
+#: refused the whole call). Only channels with a spec here; none gets a made-up limit.
+ALIASES = {
+    "kakao_moment": "kakao_display", "kakao_moment_display": "kakao_display",
+    "kakao_native": "kakao_display", "kakao_talkboard": "kakao_bizboard",
+    "kakao_biz_board": "kakao_bizboard", "kakao_channel": "kakao_message",
+    "kakao_channel_message": "kakao_message", "kakao_search": "kakao_keyword",
+    "naver_search": "naver_powerlink", "naver_sa": "naver_powerlink",
+    "naver_power_link": "naver_powerlink", "naver_post": "naver_blog",
+    "google_search": "google_rsa", "google_ads": "google_rsa", "google_responsive": "google_rsa",
+    "demand_gen": "google_demand_gen", "youtube_ads": "google_video",
+    "facebook": "meta", "facebook_ads": "meta", "meta_ads": "meta", "instagram_ads": "meta",
+    "insta": "instagram", "mail": "email", "newsletter": "email",
+}
+
+
+def channel_key(channel: object) -> str:
+    """`channel` as a spec key: case, spaces and hyphens ignored, known aliases mapped."""
+    key = str(channel or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return ALIASES.get(key, key)
+
+
 def measure(item: dict) -> dict:
     text = str(item.get("text") or "")
     label = str(item.get("label") or "")
     channel, field = item.get("channel"), item.get("field")
     if channel:
-        spec = SPECS.get(str(channel))
+        channel = channel_key(channel)
+        spec = SPECS.get(channel)
         if spec is None:
             raise ValueError(f"모르는 채널 {channel}. 있는 것: {', '.join(SPECS)}")
         fields = spec["fields"]
@@ -247,7 +270,7 @@ def measure(item: dict) -> dict:
 def listing(channel: str | None) -> list[dict]:
     rows = []
     for key, spec in SPECS.items():
-        if channel and key != channel:
+        if channel and key != channel_key(channel):
             continue
         for field, rule in spec["fields"].items():
             rows.append({"channel": key, "name": spec["name"], "field": field,

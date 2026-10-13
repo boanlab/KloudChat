@@ -40,6 +40,21 @@ def template_switch_on(model: str) -> dict:
 LEAST_REASONING = {"effort": "low"}
 
 
+#: room for a model that thinks whatever it is told, on top of the answer's own budget
+THINK_ROOM = 4000
+
+
+def mandatory(model: str) -> bool:
+    """Whether the gateway refused to turn this model's reasoning off (learned per process)."""
+    return model in _MANDATORY
+
+
+def room(model: str, max_tokens: int) -> int:
+    """`max_tokens` for an answer of `max_tokens`: plus thinking room when reasoning cannot be
+    turned off (r7 GLM-5.3 「Reasoning is mandatory」: a section's 1,200 went to thinking)."""
+    return max_tokens + THINK_ROOM if model in _MANDATORY else max_tokens
+
+
 def switch(model: str) -> dict:
     """No-thinking fields for model (OpenRouter switch or least effort, plus vLLM switch)."""
     fields: dict = {"reasoning": LEAST_REASONING if model in _MANDATORY else NO_REASONING}
@@ -78,4 +93,6 @@ def starved(payload: dict, asked: int) -> int:
     if not thought:
         # no reasoning reported: answer itself overflowed
         thought = int(usage.get("completion_tokens") or 0)
-    return asked + thought + _HEADROOM if thought else 0
+    # the answer's whole budget again on top of what was thought, not only a little headroom
+    # (r7 A04-T2: 「thought + 700」 ran out once more and every section came back empty)
+    return asked + thought + max(_HEADROOM, asked) if thought else 0

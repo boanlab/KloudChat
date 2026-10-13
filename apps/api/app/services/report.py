@@ -760,6 +760,11 @@ def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = No
                                 and not _TIME_WORDS.search(cells[k]):
                             # 「기준」, 「동일」: words about a due, not a day the writer made up
                             continue
+                        if k < len(cells) and _OWNER_HEADER.search(
+                                header[k] if k < len(header) else "") \
+                                and report_checks._ANY_OWNER.search(cells[k].strip()):
+                            # 「전원」 「각 담당자」: everyone, no one invented (r7 A01-T1)
+                            continue
                         if k < len(cells) and not _cell_sourced(cells[k], compact, row, dates):
                             cells[k] = placeholders.for_header(header[k] if k < len(header) else "")
                     out.append("| " + " | ".join(cells) + " |")
@@ -1104,7 +1109,7 @@ async def _complete(
                     json={
                         "model": model,
                         "messages": messages,
-                        "max_tokens": max_tokens,
+                        "max_tokens": thinking.room(model, max_tokens),
                         # thinking off where allowed (`thinking.switch`)
                         **thinking.switch(model),
                     },
@@ -1130,7 +1135,8 @@ async def _complete(
                 response = await client.post(
                     "/v1/chat/completions",
                     json={
-                        "model": model, "messages": messages, "max_tokens": max_tokens,
+                        "model": model, "messages": messages,
+                        "max_tokens": thinking.room(model, max_tokens),
                         **thinking.switch(model),
                     },
                 )
@@ -1143,8 +1149,15 @@ async def _complete(
         response.raise_for_status()
         payload = response.json()
 
-    # reasoning model may exhaust the ceiling thinking
-    if bigger := thinking.starved(payload, max_tokens):
+    # reasoning model may exhaust the ceiling thinking; asked twice, the second time with
+    # what the first re-ask thought on top (r7 A04-T2: GLM-5.3 thought through 3,100 tokens
+    # too and every section failed 「empty section」)
+    asked = thinking.room(model, max_tokens)
+    for _ in range(2):
+        bigger = min(thinking.starved(payload, asked), _MOST_TOKENS)
+        if bigger <= asked:
+            break
+        asked = bigger
         log.info("%s: answer starved by reasoning, re-asking with %s tokens", model, bigger)
         async with httpx.AsyncClient(
             base_url=base.rstrip("/"),

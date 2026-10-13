@@ -20,6 +20,9 @@ _DATE_MD = re.compile(
 _TIME = re.compile(
     r"(?:(오전|오후|새벽|저녁|밤)\s*)?(?<!\d)(\d{1,2})\s*(?::\s*(\d{2})|시(?:\s*(\d{1,2})\s*분|\s*반)?)"
 )
+_TIME_FROM = re.compile(
+    r"(?:(오전|오후|새벽|저녁|밤)\s*)?(?<![\d:.])(\d{1,2})\s*[~\-–]\s*(?=(?:오전|오후)?\s*\d{1,2}\s*시(?!간))"
+)
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _URL = re.compile(r"https?://[^\s)\]>]+|www\.[^\s)\]>]+")
 _PHONE = re.compile(r"(?<!\d)(?:0\d{1,2}[-.\s)]\s?\d{3,4}[-.\s]\d{4}|1[5-9]\d{2}[-.\s]\d{4}|01\d{8,9})(?!\d)")
@@ -125,6 +128,11 @@ def facts(text: str) -> list[dict]:
                 continue
             hours = [hour] if match.group(3) is not None and match.group(1) is None else _hour(match.group(1), hour)
             add("time", match, sorted({h * 60 + minute for h in hours}))
+        # 「10~17시」「10-17시」: the range's first number is a time too (r7 A14-T2).
+        for match in _TIME_FROM.finditer(line):
+            if free(*match.span(2)) and int(match.group(2)) <= 24:
+                hours = _hour(match.group(1), int(match.group(2)))
+                add("time", match, sorted({h * 60 for h in hours}), span=match.span(2))
         for match in _NUMBER.finditer(line):
             if not free(*match.span()):
                 continue

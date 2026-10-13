@@ -67,9 +67,17 @@ _EXACT_ASK = re.compile(
     re.I,
 )
 
+#: 「진단」 of a budget, a firm or a system, not a body (r7 A02-T2: a pasted ministry notice's
+#: 「재정 진단 대상」 forced a search and medical grounding on a 보도자료 summary)
+_NOT_BODY = ("재정", "재무", "경영", "조직", "보안", "컨설팅", "시스템", "품질", "안전", "구조",
+             "에너지", "역량", "성과", "사업", "기업", "시장", "정책", "진로", "학습", "수준",
+             "취약점", "네트워크", "인프라", "운영")
+_DIAGNOSIS = "".join(f"(?<!{w})(?<!{w} )" for w in _NOT_BODY) + "진단"
+
 #: Medical and health guidance.
 _MEDICAL = re.compile(
-    r"증상|진단|치료|처방|약물|복용|용량|투약|부작용|진통제|해열제|항생제|수면제|항우울제|"
+    r"증상|" + _DIAGNOSIS
+    + r"|치료|처방|약물|복용|용량|투약|부작용|진통제|해열제|항생제|수면제|항우울제|"
     r"영양제|보충제|두통|어지럼|어지러|현기증|저림|저려|저렸|마비|흉통|가슴\s*통증|통증|"
     r"복통|발열|구토|설사|출혈|우울|불안\s*(?:장애|증)|공황|자살|자해|극단적\s*선택|불면|"
     r"병원|응급실|응급|질환|질병|감염|혈압|당뇨|임신|이가?\s*시려|이\s*시림|잇몸|충치|"
@@ -207,10 +215,33 @@ def _first(texts: list[str], table: tuple[tuple[str, re.Pattern], ...]) -> str |
     return None
 
 
+def _split(text: str) -> tuple[str, str]:
+    """`(instruction, pasted material)` of one turn; material '' when none is pasted."""
+    from app.services.context import instruction_part
+
+    ask = instruction_part(text).rstrip()
+    if ask == text.rstrip() or not text.startswith(ask):
+        return text, ""
+    return ask, text[len(ask):]
+
+
+def _domain(text: str) -> str | None:
+    """The advice domain one turn names: its instruction decides; pasted material below it
+    counts only with two different words of one domain (r7 A02-T2: a ministry notice's
+    「재정 진단 대상」 and 「진단 대상 대학」 made a 보도자료 summary a medical turn)."""
+    ask, material = _split(text)
+    if found := _first([ask], _DOMAINS):
+        return found
+    for name, pattern in _DOMAINS:
+        if len({m.group(0).replace(" ", "") for m in pattern.finditer(material)}) >= 2:
+            return name
+    return None
+
+
 def advice_domain(request: str, earlier: Sequence[str] = ()) -> str | None:
     """「medical」 「legal」 「tax」 「financial」 for an advice turn, else None."""
     texts = _texts(request, earlier)
-    return _first(texts, _DOMAINS) if texts else None
+    return next((found for text in texts if (found := _domain(text))), None) if texts else None
 
 
 def search_reason(request: str, earlier: Sequence[str] = ()) -> str | None:
@@ -223,7 +254,8 @@ def search_reason(request: str, earlier: Sequence[str] = ()) -> str | None:
     if not texts:
         return None
     for text in texts:
-        if (found := _first([text], _DOMAINS) or _first([text], _FACTS)):
+        # a fact word in pasted material is the material's, not a lookup (「학령인구」 in it)
+        if (found := _domain(text) or _first([_split(text)[0]], _FACTS)):
             return found
     return None
 
