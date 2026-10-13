@@ -1,0 +1,32 @@
+/* 회의 안건 — 회의록과 같은 머리, 한 장의 안건 표가 중심.
+ *
+ * 참석자는 회의 전에 이 문서를 펴서 자기 순서와 시간, 준비할 것만 찾는다.
+ * 그래서 안건 표(순서 · 안건 · 담당 · 시간 · 목표)의 순서·담당·시간·목표 칸은
+ * 줄을 막고 내용 폭으로 좁히며, 담당자 이름을 강조한다. 안건 이름만 넓게
+ * 줄을 바꾼다. 나머지는 회의록처럼 조용하다. */
+
+.page { line-height: 1.6; }
+
+.cover { min-height: 0; padding: 0 0 0.9rem; margin: 0 0 1.6rem; }
+.cover::after { height: 1px; background: var(--border); }
+
+/* 안건 표: 다섯 칸 중 둘째(안건)를 뺀 칸은 짧은 값이다. 머리 행이 thead 에 있든
+   (내보낸 파일) 첫 행에 있든(편집기) 같은 선택자로 잡는다. */
+table:has(tr:first-child > :nth-child(5):last-child) :is(th, td):is(:nth-child(1), :nth-child(3), :nth-child(4), :nth-child(5)) {
+  white-space: nowrap;
+  width: 1%;
+  font-variant-numeric: tabular-nums;
+}
+table:has(tr:first-child > :nth-child(5):last-child) td:nth-child(3) { font-weight: 650; color: var(--accent); }
+
+/* 결정 필요 사항은 번호 붙은 질문이다: 줄마다 가는 선. */
+ol > li { padding: 0.15rem 0; border-bottom: 1px solid var(--hair); }
+
+@media print {
+  .cover { min-height: 0; padding: 0 0 0.9rem; page-break-after: auto; break-after: auto; }
+}
+
+/* 회의록과 한 벌: 촘촘한 고딕 절 제목, 회색 칸 머리. */
+h2 { font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; background: var(--wash);
+      padding: 0.3rem 0.6rem; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+h2::before { color: var(--muted); }
