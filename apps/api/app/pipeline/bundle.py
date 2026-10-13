@@ -57,6 +57,8 @@ class Request:
     #: legal, tax, financial or medical chat turn (`exact_facts.advice_domain`): its values,
     #: hotlines, dosages and legal consequences are traced to the search results
     advice: str = ""
+    #: `red_flags.detect` kind of a chat turn: the answer opens with the emergency action
+    urgent: str = ""
     #: tool prints (composed run: earlier step's code output)
     tool_outputs: list[str] = field(default_factory=list)
     #: web search results of the turn: evidence for the value guard, never number sources

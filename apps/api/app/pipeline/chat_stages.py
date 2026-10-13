@@ -15,6 +15,7 @@ from app.services import (
     current_evidence,
     freshness,
     internal_words,
+    red_flags,
     stray_han,
     superlatives,
     units,
@@ -186,6 +187,35 @@ class StrayHan(Base):
             log.info("stray Chinese rephrased in session %s: %s", req.session_id, changed[:6])
 
 
+class UrgentLead(Base):
+    """A red-flag turn's answer opens with the emergency action (`red_flags`): when the
+    writer put it lower or left it out, one line in the answer's language goes first."""
+
+    name = "answer-urgent"
+    reads = ("request", "document.answer")
+    writes = ("document.answer", "document.kept_steps")
+
+    def skip(self, bundle: Bundle) -> str:
+        return "" if bundle.request.urgent in red_flags.KINDS else "no red flag on this turn"
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        req, doc = bundle.request, bundle.document
+        flag = red_flags.Flag(kind=req.urgent, signs=())
+        led = red_flags.lead(doc.answer, flag, req.text)
+        if led == doc.answer:
+            return
+        doc.answer = led
+        step = {"category": "thinking", "id": "urgent_lead", "status": "done",
+                "label": "응급 안내를 답 맨 앞에 둠"}
+        doc.kept_steps = [row for row in doc.kept_steps if row.get("id") != "urgent_lead"] + [
+            step]
+        yield {"type": "step", **step}
+
+
+# registered here, beside its class: the finish list in `pipelines/chat.toml` orders it
+registry.register(UrgentLead())
+
+
 class CopyMarks(Base):
     """Copy written with a copy skill keeps no 「(확인 필요)」 inside it: the marks, from any
     check before, are listed once below as 「보내기 전 확인」."""
@@ -236,7 +266,8 @@ def bundle_for(*, answer: str, request: str, model: dict, actual_model: str | No
                usage: dict[str, Any], skill_keys: tuple[str, ...] = (),
                check_options: dict | None = None,
                skill_specs: dict | None = None, traced: bool = False,
-               evidence: list[str] | None = None, advice: str = "") -> Bundle:
+               evidence: list[str] | None = None, advice: str = "",
+               urgent: str = "") -> Bundle:
     """Chat answer bundle: streamed answer, turn text, material."""
     req = Request(
         text=request, model=model["id"], api_key=api_key, outline_model=judge,
@@ -246,7 +277,7 @@ def bundle_for(*, answer: str, request: str, model: dict, actual_model: str | No
         check_material=check_material, tool_outputs=list(tool_outputs),
         skill_keys=tuple(skill_keys), check_options=dict(check_options or {}),
         skill_specs=dict(skill_specs or {}), traced=traced, evidence=list(evidence or []),
-        advice=advice,
+        advice=advice, urgent=urgent,
     )
     return Bundle(
         request=req, material=Material(given=material),
