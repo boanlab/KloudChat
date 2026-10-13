@@ -1323,7 +1323,10 @@ async def run_turn(
                         acc = value
             except ChatStreamError as exc:
                 if hop_model == model:
-                    if transport_retried or not str(exc).startswith("upstream_unreachable"):
+                    # a gateway saying the model server is down counts as a drop too
+                    if transport_retried or not str(exc).startswith(
+                            ("upstream_unreachable", "upstream_502", "upstream_503",
+                             "upstream_504")):
                         raise
                     # Stream dropped mid-answer (the proxy closed it after 2,400 characters):
                     # the half answer taken back and the hop asked once more.

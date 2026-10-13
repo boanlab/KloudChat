@@ -315,6 +315,126 @@ def computed_block(request: str) -> str:
     return _BLOCK_HEAD + "\n\n" + "\n".join(lines)
 
 
+@dataclass(frozen=True, slots=True)
+class Schedule:
+    """One algorithm run on the request's processes."""
+
+    alg: Algorithm
+    procs: tuple[Process, ...]
+    #: Gantt runs `(name, start, end)`, idle gaps left out
+    runs: tuple[tuple[str, int, int], ...]
+    waits: dict[str, int]
+
+    @property
+    def average(self) -> float:
+        return sum(self.waits.values()) / len(self.procs)
+
+    @property
+    def average_text(self) -> str:
+        return _text(self.average)
+
+    @property
+    def reading(self) -> str:
+        """「비선점」/「선점」 for a priority reading, else the algorithm's name."""
+        return _READING.get(self.alg.kind, self.alg.rows[0])
+
+
+def schedules(request: str) -> list[Schedule]:
+    """Each algorithm the request names, run by code; `[]` when it is not a plain exercise
+    (the same reading as `computed_block`)."""
+    text = request or ""
+    if _BEYOND.search(text):
+        return []
+    procs = processes(text)
+    if not procs:
+        return []
+    larger = bool(_HIGHER_IS_LARGER.search(text))
+    out = []
+    for alg in algorithms(text, all(p.priority is not None for p in procs)):
+        waits, runs = _run(procs, alg.kind, alg.quantum, larger_first=larger)
+        out.append(Schedule(alg, tuple(procs), tuple(runs), waits))
+    return out
+
+
+def gantt_rows(s: Schedule) -> list[list[str]]:
+    """The schedule as a slide table in time order: each run, what the process has left or,
+    when it finishes, its waiting time worked out, then the average (Claude's RR table)."""
+    left = {p.name: p.burst for p in s.procs}
+    by_name = {p.name: p for p in s.procs}
+    rows = [["구간", "실행", "남은 시간 · 대기"]]
+    for name, a, b in s.runs:
+        left[name] -= b - a
+        p = by_name[name]
+        done = s.waits[name] + p.arrival + p.burst
+        rows.append([f"{a}–{b}", name,
+                     f"남은 {left[name]}" if left[name]
+                     else f"완료, 대기 {done}−{p.arrival}−{p.burst} = {s.waits[name]}"])
+    rows.append(["평균 대기", "",
+                 f"({' + '.join(str(s.waits[p.name]) for p in s.procs)}) / {len(s.procs)}"
+                 f" = {s.average_text}"])
+    return rows
+
+
+#: the reading's own word when one slide carries both priority readings
+_READING = {"priority": "비선점", "priority-preemptive": "선점"}
+
+
+def readings_rows(several: list[Schedule]) -> list[list[str]]:
+    """Several readings of one algorithm on one slide (priority without and with preemption):
+    each one's runs in order and its average."""
+    rows = [["방식", "간트 차트", "평균 대기"]]
+    for s in several:
+        rows.append([s.reading, " → ".join(f"{name} {a}–{b}" for name, a, b in s.runs),
+                     s.average_text])
+    return rows
+
+
+#: how a slide title names each kind of algorithm
+_TITLE_NAMES = {
+    "fcfs": re.compile(r"(?<![A-Za-z])FCFS(?![A-Za-z])|선입\s{0,2}선처리|first[\s-]come", re.I),
+    "sjf": re.compile(r"(?<!선점형\s)(?<!선점\s)(?<![A-Za-z])SJF(?![A-Za-z])"
+                      r"|최단\s{0,2}작업\s{0,2}우선", re.I),
+    "srtf": re.compile(r"(?<![A-Za-z])SRTF?(?![A-Za-z])|최소\s{0,2}잔여|최단\s{0,2}잔여"
+                       r"|선점\s{0,2}형?\s{0,2}SJF", re.I),
+    "rr": _RR,
+    "priority": re.compile(r"우선\s{0,2}순위|priority", re.I),
+}
+
+
+def mentioned(title: str, all_: list[Schedule]) -> list[Schedule]:
+    """Every schedule a slide title names (「SRTF와 RR 스케줄링」 names two)."""
+    named = [kind for kind, rx in _TITLE_NAMES.items() if rx.search(title or "")]
+    return [s for kind in named for s in _of_kind(kind, title, all_)]
+
+
+def titled(title: str, all_: list[Schedule]) -> list[Schedule]:
+    """The schedules a slide title is about; none for a title naming two algorithms (a
+    comparison) or none."""
+    named = [kind for kind, rx in _TITLE_NAMES.items() if rx.search(title or "")]
+    return _of_kind(named[0], title, all_) if len(named) == 1 else []
+
+
+def _of_kind(kind: str, title: str, all_: list[Schedule]) -> list[Schedule]:
+    if kind == "priority":
+        found = [s for s in all_ if s.alg.kind.startswith("priority")]
+        if re.search(r"비\s{0,2}선점|non-?preemptive", title, re.I):
+            return [s for s in found if s.alg.kind == "priority"]
+        if re.search(r"선점|preemptive", title, re.I):
+            return [s for s in found if s.alg.kind == "priority-preemptive"]
+        return found
+    found = [s for s in all_ if s.alg.kind == kind]
+    if kind == "rr" and len(found) > 1:
+        # several quanta: the title's own number picks one
+        found = [s for s in found if re.search(rf"(?<!\d){s.alg.quantum}(?!\d)", title)]
+    return found
+
+
+def shows_runs(text: str, s: Schedule) -> bool:
+    """Every run of `s` written as an interval (「0–7」 「0~7」 「0-7」) in `text`."""
+    return all(re.search(rf"(?<![\d.]){a}\s{{0,2}}[-–~—]\s{{0,2}}{b}(?![\d.])", text or "")
+               for _, a, b in s.runs)
+
+
 def latest_request(messages: list[dict]) -> str:
     """The newest user message with a process table."""
     for message in reversed(messages):
