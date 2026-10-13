@@ -5,6 +5,7 @@ code values, copy lengths, a deck's quiz, citations across turns, question cards
 from __future__ import annotations
 
 import datetime as dt
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -241,7 +242,7 @@ def test_a_rewrite_that_brings_a_site_or_a_link_is_not_kept() -> None:
     after = ("대웅제약은 본사와 이천 공장 등 다수의 사업장을 운영하는 제약·바이오 기업으로 "
              "파악됩니다. [[1]](https://www.daewoongpharm.com/)")
     added = copy_check.added_facts(after, before, "대웅제약 협업툴 제안 메일")
-    assert "이천 공장" in added and "https://www.daewoongpharm.com/" in added
+    assert {"이천 공장", "https://www.daewoongpharm.com/"} <= set(added)
     assert copy_check.added_facts(before, before, "") == []
 
 
@@ -283,7 +284,7 @@ TURN_1 = (
 def test_an_earlier_number_keeps_its_source_and_new_results_follow_it() -> None:
     sources, titles = agent._earlier_sources([{"role": "user", "content": "q"},
                                               {"role": "assistant", "content": TURN_1}])
-    assert sources[1] == "https://129.go.kr/109" and sources[5].startswith("https://www.bbc.com")
+    assert sources[1] == "https://129.go.kr/109" and urlsplit(sources[5]).hostname == "www.bbc.com"
     assert sources[2] == ""
     assert titles["https://129.go.kr/109"] == "자살예방상담전화 | 보건복지상담센터"
     numbered = agent._number_sources(
