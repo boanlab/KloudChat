@@ -116,7 +116,9 @@ from app.services import (
     index_client,
     lint,
     message_links,
+    model_tier,
     output_language,
+    prompt_tier,
     publishing,
     red_flags,
     revise,
@@ -1630,6 +1632,12 @@ def _memory_saved_step(written: int) -> dict:
         "detail": "자동 메모리에 추가됨",
         "memoriesWritten": written,
     }
+
+
+def _setup_step(model_id: str) -> dict:
+    """Timeline line: the writer got the light setup (`model_tier.strong`)."""
+    return {"id": "setup-light", "type": "thinking", "label": prompt_tier.SETUP_LABEL,
+            "status": "done", "detail": f"{prompt_tier.SETUP_DETAIL} · {model_id}"}
 
 
 def _step_event(step: dict) -> dict:
@@ -4312,7 +4320,8 @@ async def send_message(
         # document planners/writers expose no full actual-model trace
         trusted_context = [
             *trusted_context,
-            freshness.answer_instruction({**model, "knowledgeCutoff": None}, structured=True),
+            freshness.answer_instruction({**model, "knowledgeCutoff": None}, structured=True,
+                                         light=model_tier.strong(model["id"])),
         ]
     # attached-table figures come from code on the file: first hop forced to run_code
     tables = (
@@ -4362,11 +4371,15 @@ async def send_message(
             untrusted_context=untrusted_context,
             turn_context=turn_context,
             remind_standing=session.kind is SessionKind.chat,
+            # the writer at call time: an auto route may change it (`model_tier`)
+            light=model_tier.strong(model["id"]),
         )
         # after `build_messages`, never inside — see `context.with_pictures`
         return with_pictures(built, [picture.uri for picture in workspace.pictures])
 
     messages = envelope(wire_history)
+    #: the tier `messages` was built for; an auto route to the other tier rebuilds them
+    built_light = model_tier.strong(model["id"])
     #: auto routing swapped in the tool-free envelope
     routed_down = False
 
@@ -4431,6 +4444,12 @@ async def send_message(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
         )
+    if session.kind is SessionKind.chat and model_tier.strong(model["id"]) != built_light:
+        # routed to a writer of the other tier: its own setup
+        messages = envelope(wire_history, economy=routed_down)
+    if model_tier.strong(model["id"]):
+        # the step log says which setup the writer got (evaluation reads it)
+        context_steps = [*context_steps, _setup_step(model["id"])]
 
     for stored in rows:
         stored.session_id = session.id
@@ -4930,6 +4949,7 @@ async def send_message(
         and not routed_down
         and not calculation_required
         and not tables
+        # every tier: r7 P38 (all three strong models) gained ready-to-send detail from it
         and answer_plan.wanted(content)
     ):
         plan_model, plan_key = model["id"], api_key
@@ -5556,7 +5576,7 @@ async def _answer_turn(
                 model["id"],
                 freshness.with_answer_policy(
                     messages, model, current_fact=bool(freshness_request), advice=advice,
-                    urgent=urgent,
+                    urgent=urgent, light=model_tier.strong(model["id"]),
                 ),
                 tools,
                 ctx,

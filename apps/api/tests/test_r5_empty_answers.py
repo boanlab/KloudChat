@@ -299,9 +299,13 @@ def test_an_earlier_number_keeps_its_source_and_new_results_follow_it() -> None:
 
 def test_the_writers_own_closing_list_is_found() -> None:
     answer = ("본문 [1].\n\n### 출처\n- [1] [A](https://a.example/x)\n- [2] [B](https://b.example/y)")
-    at, numbers = agent._own_source_list(answer)
-    assert answer[at:].startswith("### 출처") and numbers == [1, 2]
+    at, end, numbers = agent._own_source_list(answer)
+    assert answer[at:].startswith("### 출처") and numbers == [1, 2] and end == len(answer)
     assert agent._own_source_list("본문.\n\n### 출처\n그 밖의 말") is None
+    # r7 A11: a paragraph after the list does not hide it
+    tail = answer + "\n\n보완이 필요한 항목: 예산 [2]."
+    at, end, numbers = agent._own_source_list(tail)
+    assert numbers == [1, 2] and tail[end:].strip() == "보완이 필요한 항목: 예산 [2]."
 
 
 # ── 6. question cards ────────────────────────────────────────────────────────

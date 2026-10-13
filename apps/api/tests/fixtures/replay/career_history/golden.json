@@ -43,7 +43,7 @@
   "type": "usage",
   "inputTokens": 0,
   "outputTokens": 0,
-  "outlineInputTokens": 2969,
+  "outlineInputTokens": 2973,
   "outlineOutputTokens": 55
  },
  {
@@ -447,7 +447,7 @@
  },
  {
   "type": "usage",
-  "inputTokens": 8451,
+  "inputTokens": 8498,
   "outputTokens": 1286,
   "outlineInputTokens": 1326,
   "outlineOutputTokens": 5
