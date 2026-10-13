@@ -1456,10 +1456,11 @@ whether self-hosted and external models think. The outline model and the Auto cl
 sit in the `governance` row (System › Routing). The `.env` values of the same names only seed
 a fresh install; deployment facts — addresses, secrets, which served models think unless
 told not to — stay in `.env` (see [configuration.md](configuration.md)). The defaults use
-the two self-hosted models: `local/qwen3.8-27b` writes chat answers, reports, decks and
-`run_code` programs; `local/qwen3.8-flash` plans outlines, judges and checks, classifies for
-Auto, writes titles, memories and summaries, and (as `strict-local/qwen3.8-flash`) reads
-scanned pages. See [Which model does what](configuration.md#which-model-does-what).
+the two self-hosted models: `local/qwen3.8-flash` writes chat answers, `local/qwen3.8-27b`
+writes reports, decks and `run_code` programs; Flash also plans outlines, judges and checks,
+classifies for Auto, writes titles, memories and summaries, and (as
+`strict-local/qwen3.8-flash`) reads scanned pages. See
+[Which model does what](configuration.md#which-model-does-what).
 
 **Branding** logos are served without authentication, because the sign-in
 screen renders one before anybody is authenticated. The filename carries a

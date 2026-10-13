@@ -1888,7 +1888,8 @@ def test_an_external_writer_gets_the_local_model_as_its_revision_judge():
     from app.core.config import settings
     from app.routers import sessions as sessions_router
 
-    local = {"id": settings.default_chat_model, "kinds": ["chat", "report", "slides"],
+    # the judge is the document writer's model (27B), not the faster chat default
+    local = {"id": settings.default_report_model, "kinds": ["chat", "report", "slides"],
              "dataBoundary": "hybrid", "creditCost": 0}
     external = {"id": "deepseek/deepseek-v4-flash", "kinds": ["chat", "report", "slides"],
                 "dataBoundary": "external", "creditCost": 18}

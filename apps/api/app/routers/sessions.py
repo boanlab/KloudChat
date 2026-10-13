@@ -514,6 +514,12 @@ def _planner_model(
     return planner
 
 
+def _document_role(roles: settings_store.ModelRoles) -> str:
+    """The model that plans and judges when the governance row names none: the report
+    writer's (27B by default), not the chat default, which is the faster model."""
+    return roles.report or roles.chat
+
+
 def _local_planner(
     *, user: User, catalogue: list[dict], kind: str, writer: dict, strict_local: bool
 ) -> dict | None:
@@ -521,7 +527,8 @@ def _local_planner(
     if strict_local or writer.get("dataBoundary") in ("self_hosted", "hybrid"):
         return None
     return _planner_model(
-        settings_store.cached_model_roles().chat, user=user, catalogue=catalogue, kind=kind,
+        _document_role(settings_store.cached_model_roles()), user=user, catalogue=catalogue,
+        kind=kind,
         writer=writer, strict_local=strict_local,
     )
 
@@ -4523,7 +4530,7 @@ async def send_message(
 
     # planner: writer's allowlist, surface, boundary; default = local model
     outline_model = _planner_model(
-        policy.outline_model_id or (await settings_store.model_roles()).chat,
+        policy.outline_model_id or _document_role(await settings_store.model_roles()),
         user=user,
         catalogue=catalogue_models,
         kind=session.kind.value,

@@ -15,10 +15,10 @@ name: kloudchat
 # in the database. These variables only seed a fresh install: a migration writes them
 # there once, and the stored values win from then on. `migrate` and `api` both get them.
 x-first-install-seeds: &first-install-seeds
-  DEFAULT_CHAT_MODEL: ${KCHAT_DEFAULT_CHAT_MODEL:-local/qwen3.8-27b}
-  # Per-surface defaults. Empty follows the chat default.
-  DEFAULT_REPORT_MODEL: ${KCHAT_DEFAULT_REPORT_MODEL:-}
-  DEFAULT_SLIDES_MODEL: ${KCHAT_DEFAULT_SLIDES_MODEL:-}
+  DEFAULT_CHAT_MODEL: ${KCHAT_DEFAULT_CHAT_MODEL:-local/qwen3.8-flash}
+  # Per-surface defaults (empty follows the chat default): documents keep the larger model.
+  DEFAULT_REPORT_MODEL: ${KCHAT_DEFAULT_REPORT_MODEL:-local/qwen3.8-27b}
+  DEFAULT_SLIDES_MODEL: ${KCHAT_DEFAULT_SLIDES_MODEL:-local/qwen3.8-27b}
   DEFAULT_IMAGE_MODEL: ${KCHAT_DEFAULT_IMAGE_MODEL:-google/gemini-2.5-flash-image}
   DEFAULT_AUDIO_MODEL: ${KCHAT_DEFAULT_AUDIO_MODEL:-openai/gpt-audio-mini}
   DEFAULT_VIDEO_MODEL: ${KCHAT_DEFAULT_VIDEO_MODEL:-google/veo-3.1-lite}
