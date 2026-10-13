@@ -133,10 +133,12 @@ class Research(Base):
         report, req = _report(), bundle.request
         findings = research.Findings()
         web_search = req.web_search
-        # no search: own-material docs, 경력기술서, work docs with material (unless web asked)
-        if web_search and (report._own_material(req.text) or not bundle.spec.settings.search
-                           or report.material_complete(req.text, bundle.spec.format_id,
-                                                       has_files=bool(req.untrusted))):
+        # no search: own-material docs, 경력기술서, work docs with material, unless the ask
+        # names outside facts (「시장 규모(공개 자료 기준)」 in an 안건 자료 left 「[시장 규모]」)
+        if web_search and not report.asks_public_sources(req.text) and (
+                report._own_material(req.text) or not bundle.spec.settings.search
+                or report.material_complete(req.text, bundle.spec.format_id,
+                                            has_files=bool(req.untrusted))):
             web_search = False
         if web_search and await research.available():
             yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}

@@ -138,6 +138,9 @@ from app.services import (
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
+from app.services import (
+    outline as outline_rules,
+)
 from app.services import page as page_service
 from app.services import report as report_service
 from app.services import research as research_service
@@ -1391,8 +1394,13 @@ def _answer_in_flight(last: Message) -> bool:
 _ASKS = re.compile(
     r"얼마|몇\s{0,2}[가-힣]|누구|언제|어디|인가요|나요|\?|？"
     r"|\b(?:what|who|when|how\s+much)\b", re.I)
-#: Ask to write/arrange from what follows: 「안건 초안을 잡아 줘」.
-_DRAFTS = re.compile(r"초안|써\s{0,2}줘|작성|정리|잡아\s{0,2}줘|만들어|요약|다듬")
+#: Ask to write/arrange/proofread what follows: 「안건 초안을 잡아 줘」, 「교정자가 되어 줘 …
+#: 글을 주면」 (its pasted 「마감일이 … 변경」 is the text to fix, not a present fact).
+_DRAFTS = re.compile(
+    r"초안|써\s{0,2}줘|작성|정리|잡아\s{0,2}줘|만들어|요약|다듬|"
+    r"교정|교열|첨삭|윤문|퇴고|맞춤법|띄어쓰기|문법|고쳐\s{0,2}(?:줘|주세요)|번역|proofread|translate",
+    re.I,
+)
 
 
 def _asks_about_now(instruction: str) -> bool:
@@ -6412,6 +6420,8 @@ async def _run_deck(
     carry_note: str = "",
 ) -> AsyncIterator[str]:
     """Drives one deck to completion (`deck` pipeline `make`); deck is an artifact."""
+    #: this call's arguments, for writing a plan with nothing to decide straight away
+    given = dict(locals())
     if routing:
         # first: model badge updates
         yield chat_service.sse({"type": "privacy_route", **routing})
@@ -6443,18 +6453,33 @@ async def _run_deck(
         template_id=template.id if template else None, design_tokens=design_tokens,
         session_id=session_id, turn=turn))
     work.usage = {"inputTokens": 0, "outputTokens": 0}
+    straight = approved_plan is None and (lambda plan: outline_rules.nothing_to_approve(
+        plan, request, has_material=traced or any(t.strip() for t in untrusted_context or ())))
     async for chunk in _make_pass(work, pipeline_registry.pipeline("deck"),
                                   crashed="슬라이드를 만들지 못했습니다.",
-                                  attachments=attachments, answers=answers):
+                                  attachments=attachments, answers=answers,
+                                  straight=straight or None):
         yield chunk
+    if straight and work.plan.proposal is not None and not work.findings.questions \
+            and straight(work.plan.proposal):
+        # nothing to decide in the outline: written as planned (pictures declined: none offered)
+        planned = {k: v for k, v in work.plan.proposal.items() if k != "figures"}
+        async for chunk in _run_deck(**{**given, "approved_plan": planned, "figures_plan": [],
+                                        "routing": None, "skills_event": None,
+                                        "context_steps": None}):
+            yield chunk
 
 
 async def _make_pass(work: PipelineBundle, pipe: Any, *, crashed: str,
                      attachments: list[str] | None = None, answers: dict | None = None,
                      start: str | None = None, recorder: pipeline_runs.Recorder | None = None,
                      carried: dict | None = None, attempts: dict | None = None,
-                     parent: Any = None) -> AsyncIterator[str]:
-    """One-pass writer's `make` flow (deck, page): plan turn, or write approved outline and save."""
+                     parent: Any = None,
+                     straight: Callable[[dict], bool] | None = None) -> AsyncIterator[str]:
+    """One-pass writer's `make` flow (deck, page): plan turn, or write approved outline and save.
+
+    A plan `straight` accepts is neither shown nor stored: the caller writes it at once.
+    """
     turn, user_id, session_id = work.request.turn, work.request.turn["user_id"], \
         work.request.session_id
     model, outline_model = turn["model"], turn.get("outline_model")
@@ -6472,6 +6497,9 @@ async def _make_pass(work: PipelineBundle, pipe: Any, *, crashed: str,
         async for event in runner.run(work, PipelineContext(
                 options=dict(pipe.options), run_id=recorder.run_id if recorder else ""),
                 start=start):
+            if straight is not None and event.get("type") == "proposal" and straight(
+                    event.get("plan") or {}):
+                continue
             yield chat_service.sse(event)
     except Exception as exc:  # noqa: BLE001 — the turn must still settle
         log.exception("%s generation crashed for session %s", pipe.name, session_id)
@@ -6480,6 +6508,9 @@ async def _make_pass(work: PipelineBundle, pipe: Any, *, crashed: str,
         if parent is not None:
             _carry_records(work, parent, start)
     proposal, questions = work.plan.proposal, work.findings.questions or None
+    if straight is not None and proposal is not None and questions is None \
+            and straight(proposal):
+        return
     usage = work.usage
     # planned or asked: stored on session, no artifact
     if proposal is not None or questions is not None:
@@ -7108,7 +7139,10 @@ async def _run_report(
                 # stopped on purpose: stored below, no artifact
                 if event["type"] == "proposal":
                     proposal = event["plan"]
-                    straight = writing is False and _one_part_plan(proposal)
+                    straight = writing is False and outline_rules.nothing_to_approve(
+                        proposal, request,
+                        has_material=any(t.strip() for t in untrusted_context or ()),
+                    )
                     if straight:
                         continue
                 else:
@@ -7131,7 +7165,7 @@ async def _run_report(
 
     work = built[0][0] if built else None
     if straight and proposal is not None and questions is None:
-        # nothing to approve in a one-part outline: written as planned
+        # nothing to decide in the outline (one part, or a specific request): written as planned
         planned = {k: v for k, v in proposal.items() if k != "figures"}
         async for chunk in _run_report(**{**given, "approved_plan": planned, "figures_plan": [],
                                           "routing": None, "skills_event": None,
@@ -7179,14 +7213,6 @@ async def _run_report(
     async for chunk in _report_tail(work, recorder=recorder, session_id=session_id,
                                     user_id=user_id, usage=usage, parent=parent_run_id):
         yield chunk
-
-
-def _one_part_plan(plan: dict | None) -> bool:
-    """A plan of one part (공문 「본문」) with no picture to pick and nothing marked: its card
-    would only ask to go on."""
-    plan = plan or {}
-    return (len(plan.get("sections") or []) == 1 and not plan.get("figures")
-            and not plan.get("frame") and not plan.get("unverified"))
 
 
 def _told_bundle(told: dict[str, Any], *, usage: dict, turn: dict, request: str,

@@ -203,6 +203,14 @@ def focus_terms(answers: dict[str, str]) -> str:
     return text
 
 
+#: the request names its own subject (「제목: …」, 「주제는 …」, 「「…」 보고서」)
+_STATED_SUBJECT = re.compile(
+    r"(?m)^\s*(?:제목|주제|발표\s{0,2}제목|논문\s{0,2}제목)\s{0,2}[:：]\s*\S|주제는\s{0,2}\S|「[^」\n]{4,}」"
+)
+#: request plus material this long carries its subject
+_SUBSTANTIAL_CHARS = 300
+
+
 def subject_missing(text: str, request: str, material: str = "") -> bool:
     """Whether the planner's `subject` shares no word with request or material."""
     obj = re.search(r"\{.*\}", text, re.S)
@@ -214,10 +222,14 @@ def subject_missing(text: str, request: str, material: str = "") -> bool:
         return False
     if not isinstance(data, dict) or "subject" not in data:
         return False
+    # attachment counts as request words
+    compact = re.sub(r"\s+", "", request + material)
+    if _STATED_SUBJECT.search(request + "\n" + material) or len(compact) >= _SUBSTANTIAL_CHARS:
+        # a titled request, or one that brings its material: the planner just left it blank
+        # (「제목: … 초록: … 실험 결과 …」 was asked 「무엇에 대한 발표입니까?」)
+        return False
     subject = str(data.get("subject") or "").strip()
     if not subject:
         return True
-    # attachment counts as request words
-    compact = re.sub(r"\s+", "", request + material)
     words = [w for w in re.split(r"[\s,.·/()]+", subject) if len(w) >= 2]
     return bool(words) and not any(w in compact for w in words)

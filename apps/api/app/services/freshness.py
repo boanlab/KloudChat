@@ -188,20 +188,25 @@ CURRENT_FACT_INSTRUCTION = (
 
 
 ADVICE_INSTRUCTION = (
-    "This turn asks for {domain} guidance. After you write, the answer's concrete values "
+    "This turn asks for {domain} guidance. Give a concrete answer the person can act on, "
+    "as a knowledgeable practitioner would. After you write, the answer's concrete values "
     "are checked against this turn's search results and the user's own words and files; "
     "unsupported ones are marked 「(확인 필요)」.\n"
-    "- State a specific amount, rate, threshold, limit, deadline, phone number or hotline, "
-    "dosage, or legal consequence (criminal liability, fines, licence penalties) only when "
-    "a search result or the user's material in this conversation supports it, and give the "
-    "result number like [2]. Otherwise say it in general terms (「보호 한도가 정해져 있다」, "
-    "「과실 비율에 따라 보상이 달라진다」) and name where to confirm it (the official agency, "
-    "insurer, 국세청, 금융감독원, 병원).\n"
+    "- The person's requested form comes first: if they asked for advice only, a list only, "
+    "or no explanation, keep exactly that form and add no option comparison or background.\n"
+    "- Name the specific programmes, deductions, rules, procedures and agencies that apply "
+    "(예: 의제매입세액공제, 노란우산공제, 내용증명, 분쟁조정위원회), even when the search found "
+    "nothing; never fall back to principles only or say you cannot advise for lack of "
+    "search results.\n"
+    "- Give an amount, rate, threshold, deadline, dosage or legal consequence with its "
+    "source number like [2] when a search result or the user's material supports it. A "
+    "figure you are unsure of may still be given as a figure to confirm, and only that "
+    "figure is said to need checking; a public emergency number (112, 119) needs no source.\n"
     "- Never invent a tax rule, a threshold, a legal consequence or a hotline number. A "
     "number remembered from training may be out of date; the search results win.\n"
-    "- Keep it practical: what to do now, what to record or prepare, the main options with "
-    "their trade-offs, and when to see a professional (변호사, 세무사, 의사) or call "
-    "emergency services. One short sentence on that is enough; no disclaimer list."
+    "- Keep it practical: what to do now, what to record or prepare, and when to see a "
+    "professional (변호사, 세무사, 의사) or call emergency services. One short sentence on "
+    "that is enough; no disclaimer list."
 )
 
 #: `exact_facts` domain → the words the instruction uses

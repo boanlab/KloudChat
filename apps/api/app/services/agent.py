@@ -14,6 +14,7 @@ import httpx
 
 from app.core.config import settings
 from app.services import (
+    answer_plan,
     calc_check,
     current_evidence,
     fallback_watch,
@@ -294,6 +295,33 @@ def _default_presence_penalty(model: str) -> float | None:
 #: Shorter pre-tool text is narration, not an answer.
 _NARRATION_CHARS = 400
 _DIGIT = re.compile(r"\d")
+#: Longest closing reply still read as a preamble rather than the answer.
+_PREAMBLE_CHARS = 160
+#: A sentence about the work, done or still to do (「…확인했습니다」, 「이제 …검증하겠습니다」,
+#: 「…요금을 확인해야 합니다」), not the deliverable.
+_PREAMBLE_SENTENCE = re.compile(
+    r"(?:확인|검색|조사|찾아\s?보|찾|알아\s?보|살펴\s?보|검증|검토|비교|정리|작성|수집|파악|"
+    r"읽어\s?보|읽|모아\s?보|모으|모았|준비)"
+    r"(?:해야\s?(?:합니다|해요|한다|함)|이\s?필요(?:합니다|해요|하다|함)|"
+    r"(?:해\s?보|하여\s?보|해)?\s?(?:하겠습니다|겠습니다|드리겠습니다|할게요|볼게요)|"
+    r"(?:했|하였|었)습니다|합니다)\s?[.!…]?$")
+
+
+def _preamble_only(text: str, *, request: str, wanted_tools: bool) -> bool:
+    """Whether a closing reply is only a line about the work (what was checked, what is
+    still to check) and not the asked-for answer; a short reply beside a further tool
+    call always is."""
+    body = (text or "").strip()
+    if not body or len(body) > _PREAMBLE_CHARS:
+        return False
+    if internal_words.is_intent_only(body, request=request):
+        return True
+    if re.search(r"(?m)^\s{0,3}(?:#|\||[-*+]\s|\d{1,2}[.)]\s)", body):
+        return False
+    if wanted_tools:
+        return True
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?…])\s+|\n+", body) if s.strip()]
+    return 0 < len(sentences) <= 3 and all(_PREAMBLE_SENTENCE.search(s) for s in sentences)
 
 #: Per-turn `web_search` cap.
 MAX_WEB_SEARCHES = 3
@@ -396,6 +424,18 @@ def _asks_again(earlier: str, later: str) -> bool:
     return 2 * len(pairs_a & pairs_b) >= 0.6 * (len(pairs_a) + len(pairs_b))
 
 
+def _other_language_set(messages: list[dict[str, Any]]) -> bool:
+    """Whether the conversation set a non-Korean output: asked in any user turn (「언어: 영어」
+    in the first message, then 「좀 더 친근하게」), or the previous answer was written in it."""
+    if any(m.get("role") == "user" and _OTHER_LANGUAGE_ASK.search(_text_of(m))
+           for m in messages):
+        return True
+    previous = next((_text_of(m) for m in reversed(messages) if m.get("role") == "assistant"),
+                    "")
+    latin = len(_LATIN_CHARS.findall(previous))
+    return latin >= 100 and len(_HANGUL_CHARS.findall(previous)) * 10 < latin
+
+
 def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str] | None:
     """`(kind, nudge)` for a verbatim repeat, the same question asked again, or an unrequested
     Latin answer to Korean; else None."""
@@ -424,14 +464,15 @@ def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str
                 "요청한 것을 지금 바로 답하세요."
             )
     asked = last("user")
-    if asked is not None and not _OTHER_LANGUAGE_ASK.search(asked["content"]):
+    if asked is not None and not _other_language_set(messages):
         hangul_asked = len(_HANGUL_CHARS.findall(asked["content"]))
         if hangul_asked >= 10 and hangul_asked >= len(_LATIN_CHARS.findall(asked["content"])):
             latin = len(_LATIN_CHARS.findall(text))
             hangul = len(_HANGUL_CHARS.findall(text))
             if latin >= 200 and hangul * 50 < latin:
                 return "language", (
-                    "답이 사용자의 언어로 쓰이지 않았습니다. 한국어로 이번 질문에 답하세요."
+                    "답이 사용자의 언어로 쓰이지 않았습니다. 이번 요청의 어조와 형식은 그대로 "
+                    "지키면서 한국어로 답하세요."
                 )
     return None
 
@@ -554,6 +595,13 @@ def _text_of(message: dict) -> str:
     if isinstance(content, list):
         return "\n".join(str(p.get("text") or "") for p in content if isinstance(p, dict))
     return str(content or "")
+
+
+def _form_fixed(messages: list[dict], request: str = "") -> bool:
+    """Whether the person fixed the answer's form (「다른 건 쓰지 마」, 「진단과 치료 계획만」):
+    no footer is added to such an answer."""
+    asks = [request] + [_text_of(m) for m in messages if m.get("role") == "user"]
+    return any(answer_plan.restricted(text) for text in asks if text)
 
 
 def _numbers(text: str) -> list[float]:
@@ -2060,6 +2108,22 @@ async def run_turn(
         return spoken
 
     gathered = _gathered_results(conversation)
+    if (closing and gathered and not preflight_tool and not ended_by_tool
+            and last_hop is not None and not freshness_request
+            and _preamble_only(spoken := "".join(answer_text), request=ctx.request or "",
+                               wanted_tools=bool(last_hop.calls))):
+        # The closing hop gave a line of intent (「네이버웍스 요금을 확인해야 합니다.」) and
+        # maybe one more call, not the answer: written once more from what was gathered.
+        log.warning("closing hop gave a preamble only (%d chars); writing from the results",
+                    len(spoken))
+        written = await write_once(_answer_from_results(conversation, messages, gathered))
+        if written and not _preamble_only(written, request=ctx.request or "",
+                                          wanted_tools=False):
+            yield {"type": "retract", "text": spoken}
+            answer_text[:] = [written]
+            held.clear()
+            provisional.clear()
+            yield {"type": "delta", "text": written}
     if (gathered and not preflight_tool and not ended_by_tool
             and not "".join(answer_text).strip()
             and not (last_hop and not last_hop.calls and "".join(last_hop.content).strip())):
@@ -2115,8 +2179,9 @@ async def run_turn(
         else:
             log.warning("the second write was no deliverable either")
 
-    if unverified_current and "".join(answer_text).strip():
-        # Knowledge answer stays, caveat added if missing.
+    if (unverified_current and "".join(answer_text).strip()
+            and not _form_fixed(messages, ctx.request or "")):
+        # Knowledge answer stays, caveat added if missing (not past 「다른 건 쓰지 마」).
         spoken = "".join(answer_text)
         if not current_evidence.has_caveat(spoken):
             note = current_evidence.caveat(freshness_request or caveat_request or "")
@@ -2206,7 +2271,8 @@ async def run_turn(
         answer = linked
     answer_text[:] = [answer]
     if (not unverified_current and searches and empty_searches * 2 >= searches and answer.strip()
-            and _searched_for_nothing(ctx.request, material_given)):
+            and _searched_for_nothing(ctx.request, material_given)
+            and not _form_fixed(messages, ctx.request or "")):
         note = (
             "\n\n_웹 검색이 쓸 만한 결과를 주지 않아 이 답은 검색으로 확인하지 못했습니다. "
             "서지·수치·최신 사항은 확인이 필요합니다._"

@@ -165,6 +165,41 @@ def _count_in(request: str, units: tuple[str, ...], *, maximum: int) -> int | No
     return next(iter(found)) if len(found) == 1 else None
 
 
+#: an outline longer than this is worth a look before writing
+_MANY_SECTIONS = 10
+_MANY_SLIDES = 16
+#: shorter requests without material leave the scope open (「AI 동향 보고서 써 줘」)
+_SPECIFIC_CHARS = 150
+
+
+def nothing_to_approve(plan: dict | None, request: str, *, has_material: bool = False) -> bool:
+    """Whether an offered plan has no real decision in it, so it is written straight away.
+
+    A card stays for pictures to pick (credits), a form for missing facts (`frame`), an
+    unsearched topic (`unverified`), a long outline, a slide count off the asked one, or a
+    short request with no material behind it.
+    """
+    plan = plan or {}
+    if plan.get("figures") or plan.get("frame") or plan.get("unverified"):
+        return False
+    slides = plan.get("slides")
+    parts = list(slides if slides is not None else plan.get("sections") or [])
+    if not parts:
+        return False
+    if len(parts) == 1:
+        return True
+    if len(parts) > (_MANY_SLIDES if slides is not None else _MANY_SECTIONS):
+        return False
+    if slides is not None:
+        units = ("장", "슬라이드")
+        if (wanted := requested_count(request, units, maximum=60)) and len(parts) != wanted:
+            return False
+        if (span := requested_range(request, units, maximum=60)) and not (
+                span[0] <= len(parts) <= span[1]):
+            return False
+    return has_material or len((request or "").strip()) >= _SPECIFIC_CHARS
+
+
 def count(usage: dict[str, int], spent: dict[str, int], *, planned_apart: bool) -> None:
     """Add planning-call tokens to outline/writer usage."""
     prefix = "outline" if planned_apart else ""
