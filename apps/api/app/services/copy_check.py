@@ -149,9 +149,29 @@ def _items(reply: dict, text: str = "", rows: list[dict] | None = None) -> list[
     found = _length().table_items(text, rows or []) if text else []
     seen = {i["text"] for i in found}
     for item in reply.get("items") or []:
-        if isinstance(item, dict) and str(item.get("text") or "").strip() not in seen:
+        piece = str(item.get("text") or "").strip() if isinstance(item, dict) else ""
+        # a clause of a cell already measured whole is not a piece of its own (r5 A13-T1:
+        # 「11월 신청 시 체험 45일」 out of a 36-character description, measured as one 15/45)
+        if piece and not any(piece in cell for cell in seen):
             found.append(item)
     return found
+
+
+#: a site named by its place: 「이천 공장」 「오송공장」 「판교 연구소」
+_SITE = re.compile(r"([가-힣]{2,8})\s?(?:공장|사업장|본사|지사|캠퍼스|연구소|연구원|센터|지점|법인"
+                   r"|공단|산업단지|단지|물류센터)")
+_LINK = re.compile(r"https?://[^\s)\]>\"'」]+")
+
+
+def added_facts(new: str, old: str, material: str) -> list[str]:
+    """Sites and links a rewrite brought that neither the answer before it nor the material
+    has (r5 A15-T1: asked to fix one claim, the rewrite wrote 「본사와 이천 공장」 and a home
+    page no search had shown); such a rewrite is not kept."""
+    known = f"{old}\n{material}"
+    sites = [m.group(0) for m in _SITE.finditer(new or "") if m.group(1) not in known]
+    links = [u.rstrip(".,;:") for u in _LINK.findall(new or "")
+             if u.rstrip(".,;:") not in known]
+    return list(dict.fromkeys([*sites, *links]))
 
 
 def _rewrite_prompt(text: str, material: str, findings: list[dict], over: list[dict]) -> str:
@@ -170,7 +190,8 @@ def _rewrite_prompt(text: str, material: str, findings: list[dict], over: list[d
         "Below are the material and an answer written from it. Fix only the problems listed; "
         "an item the material does state after all stays as it is. "
         "For a claim: take out the unsupported clause or replace it with what the material "
-        "states; when the sentence needs the value, keep it and write 「(확인 필요)」 right "
+        "states — never with a name, place, site, number or link the material does not give; "
+        "when the sentence needs the value, keep it and write 「(확인 필요)」 right "
         "after it. Never replace a value with a bracket blank such as [수치]; brackets are "
         "only for a field the person fills in (a signature, a contact). Never empty a "
         "paragraph or leave a table with only its header. For a length: shorten or lengthen that "
@@ -222,7 +243,8 @@ async def run(answer: str, *, request: str, material: str, complete: Complete, m
             _spend(usage, spent)
             new = _cleaned(reply_text)
             # reject rewrites losing half a long answer
-            if new and len(new) >= min(0.5 * len(text), len(text) - 300):
+            if (new and len(new) >= min(0.5 * len(text), len(text) - 300)
+                    and not added_facts(new, text, material)):
                 text, outcome.rewritten = new, True
             else:
                 log.warning("copy check rewrite not kept: %d of %d characters", len(new), len(text))

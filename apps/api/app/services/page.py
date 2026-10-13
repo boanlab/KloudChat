@@ -438,7 +438,7 @@ async def write(
 
         plan_rules.count(usage, spent, planned_apart=bool(outline_model))
         # question instead of plan (`grounding.ASK_RULE`)
-        if may_ask and (asked := grounding.parse_needs(text)):
+        if may_ask and (asked := grounding.parse_needs(text, request)):
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
             yield {"type": "usage", **usage}

@@ -140,8 +140,31 @@ PROCEED_RULE = """- Do not ask back. The user already chose "있는 자료로 �
   cover show as 「자료 없음」 in the outline."""
 
 
-def parse_needs(text: str) -> list[Question] | None:
-    """Questions from a `{"needs": [...]}` reply, or `None`."""
+#: a document's head field the sender fills in (r5 A03-T1: 「공문의 시행(발송)일이 언제입니까?」)
+_HEAD_FIELD_ASK = re.compile(
+    r"(?:시행|발송|발신|접수)\s?\(?[^)\n]{0,6}\)?\s?(?:일|일자|날짜|번호)|문서\s?번호")
+#: whether to do what was asked, offering a blank instead (r5 A09-T2: 「계산해 넣을지, 자리만
+#: 틀어둘까요」 with 「[수치]로 빈칸 두고」)
+_BLANK_OPTION = re.compile(r"\[[^\]\n]{1,12}\]|빈칸|자리만|비워\s?두")
+
+
+def _needless(question: str, options: list[str], request: str) -> bool:
+    """Whether a planner question is one the card never asks: a head field, whether to
+    leave blank what the request asks for, or one whose offered answer the request already
+    says word for word."""
+    if _HEAD_FIELD_ASK.search(question):
+        return True
+    if any(_BLANK_OPTION.search(o) for o in options) and re.search(
+            r"(?:할지|할까요|넣을지|채울지|드릴까요|둘까요)", question):
+        return True
+    said = re.sub(r"[\s()（）·,.]", "", request or "")
+    return any(len(core) >= 6 and core in said
+               for core in (re.sub(r"[\s()（）·,.]", "", o) for o in options))
+
+
+def parse_needs(text: str, request: str = "") -> list[Question] | None:
+    """Questions from a `{"needs": [...]}` reply, or `None`; questions the card never asks
+    (`_needless`) dropped."""
     block = re.search(r"\{.*\}", text, re.S)
     if not block:
         return None
@@ -166,7 +189,7 @@ def parse_needs(text: str) -> list[Question] | None:
             continue
         question = _uncited(question)
         options = [o for o in map(_uncited, options) if o and not _INVENTS.search(o)]
-        if not question:
+        if not question or _needless(question, options, request):
             continue
         out.append(Question(id=f"ask{i}", question=question[:200], options=options[:4]))
     return out or None

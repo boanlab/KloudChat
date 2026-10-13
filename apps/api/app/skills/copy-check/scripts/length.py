@@ -341,23 +341,47 @@ def _cells(line: str) -> list[str]:
     return [c.strip() for c in line.strip().strip("|").split("|")]
 
 
+#: A channel a heading over a table names, loosely (「## 메타 (페이스북·인스타그램 피드)」).
+_HEADING_CHANNELS: tuple[tuple[re.Pattern, tuple[str, ...]], ...] = (
+    (re.compile(r"네이버|파워\s{0,2}링크|naver", re.I), ("naver_powerlink", "naver_blog")),
+    (re.compile(r"카카오|kakao", re.I), ("kakao_keyword", "kakao_bizboard", "kakao_display", "kakao_message")),
+    (re.compile(r"메타|페이스북|인스타|facebook|instagram|\bmeta\b", re.I), ("meta", "instagram")),
+    (re.compile(r"구글|google", re.I), ("google_rsa", "google_demand_gen", "google_video")),
+    (re.compile(r"유튜브|youtube", re.I), ("youtube", "google_video")),
+    (re.compile(r"링크드\s{0,2}인|linked\s{0,2}in", re.I), ("linkedin",)),
+    (re.compile(r"(?:이|e-?)?메일|뉴스레터|e-?mail", re.I), ("email",)),
+)
+#: A line that heads what follows: a Markdown heading or a bold line alone.
+_HEADING_LINE = re.compile(r"^\s{0,3}(?:#{1,6}\s+\S|\*\*[^*\n]{1,80}\*\*\s*:?\s*$)")
+
+
+def _channels_named(heading: str) -> set[str]:
+    return {key for pattern, keys in _HEADING_CHANNELS if pattern.search(heading) for key in keys}
+
+
 def table_items(text: str, rows: list[dict]) -> list[dict]:
-    """Copy pieces from answer tables: cells under a header naming a field of `rows`."""
+    """Copy pieces from answer tables: cells under a header naming a field of `rows`, of the
+    channel the heading over the table names when it names one (r5 A13-T1: Meta titles were
+    measured against Naver's 15)."""
     if not rows:
         return []
     ranked = sorted(rows, key=lambda r: (not r.get("hard", True), r["key"] != "stated.item"))
     out: list[dict] = []
     lines = (text or "").split("\n")
+    named: set[str] = set()
     k = 0
     while k < len(lines):
         line = lines[k]
+        if _HEADING_LINE.match(line):
+            named = _channels_named(line)
         if not line.lstrip().startswith("|") or k + 1 >= len(lines) or not re.match(r"\s{0,8}\|[\s:|-]{3,}$", lines[k + 1]):
             k += 1
             continue
+        mine = [r for r in ranked if r["key"].split(".", 1)[0] in named or r["key"] == "stated.item"] if named else ranked
         keys = []
         for header in _cells(line):
             word = re.sub(r"[*`]", "", header).strip()
-            keys.append(next((r["key"] for r in ranked if word in FIELD_HEADERS.get(r["field"], ())), None))
+            keys.append(next((r["key"] for r in mine if word in FIELD_HEADERS.get(r["field"], ())), None))
         k += 2
         while k < len(lines) and lines[k].lstrip().startswith("|"):
             for key, cell in zip(keys, _cells(lines[k]), strict=False):
@@ -384,8 +408,10 @@ def restate_counts(text: str, rows: list[dict]) -> str:
             end = at + len(piece)
             tail = line[end:]
             m = _PAREN_COUNT.match(tail)
-            # A table cell holding the piece whole, then a cell holding a number alone.
-            cell = re.match(r"(?:\*\*)?[ \t]{0,3}\|[ \t]{0,3}(\d{1,4})[ \t]{0,3}(?:자)?[ \t]{0,3}(?=\|)", tail)
+            # A table cell holding the piece whole, then a cell holding a number alone or over
+            # its limit (「13/15」, r5 A13-T1: rewritten pieces kept their old counts).
+            cell = re.match(r"(?:\*\*)?[ \t]{0,3}\|[ \t]{0,3}(\d{1,4})[ \t]{0,3}(?:자)?"
+                            r"(?:[ \t]{0,2}/[ \t]{0,2}\d{1,4}[ \t]{0,2}(?:자)?)?[ \t]{0,3}(?=\|)", tail)
             whole = re.search(r"\|[ \t]{0,3}(?:\*\*)?$", line[:at]) and re.match(r"(?:\*\*)?[ \t]{0,3}\|", tail)
             if m:
                 lines[k] = line[:end] + tail[: m.start(1)] + n + tail[m.end(1):]

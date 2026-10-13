@@ -3750,13 +3750,15 @@ def _action_hits(action: str, entry: dict) -> int:
     return len(_words(action) & _words(near))
 
 
-def _strong_dates(row_text: str, bound: list[dict], action: str | None = None) -> list[dict]:
-    """Dates a row is plainly about: 2+ shared words incl. a task word, no closer rival date."""
+def _strong_dates(row_text: str, bound: list[dict], action: str | None = None, *,
+                  written: bool = False) -> list[dict]:
+    """Dates a row is plainly about: 2+ shared words incl. a task word, no closer rival date;
+    `written`: the material's own dates count too."""
     words = _words(row_text)
     scored = []
     for d in bound:
         # code-resolved dates only: material's own dates left 미정 = writer's call; 「오늘」 = meeting day
-        if d.get("kind") in _WRITTEN_DATES or d.get("date") == d.get("base_date"):
+        if (d.get("kind") in _WRITTEN_DATES and not written) or d.get("date") == d.get("base_date"):
             continue
         # names and 「회의」 on every row: shared name alone binds nothing
         if action is not None and not _action_hits(action, d):
@@ -3853,8 +3855,11 @@ def _in_date_sentence(action: str, entry: dict) -> bool:
                               for a in _words(action) for b in _words(holding))
 
 
-def minutes_due_fill(sections: list[dict], dates: list[dict]) -> tuple[list[dict], int]:
-    """Fill 「미정」/「[기한]」 action rows with date-calc's resolved date; original words to 비고."""
+def minutes_due_fill(sections: list[dict], dates: list[dict], *,
+                     blanked: bool = False) -> tuple[list[dict], int]:
+    """Fill 「미정」/「[기한]」 action rows with date-calc's resolved date; original words to 비고.
+    `blanked`: after the checks, only 「[기한]」 cells, and the material's own written dates too
+    (a check blanked a wrong one, r5 A01-T1)."""
     # meeting date only: lines re-dated by later header or mail left to writer
     base = next((d.get("base_date") for d in dates), "")
     bound = [d for d in dates if d.get("status") in ("ok", "repeat")
@@ -3872,15 +3877,15 @@ def minutes_due_fill(sections: list[dict], dates: list[dict]) -> tuple[list[dict
         content = str(out[table.section].get("content") or "")
         picks = []
         for line, row in table.rows:
-            if len(row) <= max(owner, due) or (
-                    row[due].strip(" *()") != "미정" and not placeholders.is_blank(row[due])):
+            if len(row) <= max(owner, due) or not placeholders.is_blank(row[due]) and (
+                    blanked or row[due].strip(" *()") != "미정"):
                 continue
             if note is not None and note < len(row) and _SAID_UNDECIDED.search(row[note]):
                 # the writer read the material as giving no due: 「미정」 stands
                 continue
             action = row[task] if task is not None and task < len(row) else ""
             entries = _strong_dates(" ".join(c for k, c in enumerate(row) if k not in (due, note)),
-                                    bound, action)
+                                    bound, action, written=blanked)
             if (entries and _owner_in_line(row[owner], entries[0])
                     and _in_date_sentence(action, entries[0])):
                 picks.append((line, row, entries, _action_hits(action, entries[0])))
