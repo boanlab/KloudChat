@@ -1724,6 +1724,9 @@ export interface AgentRow {
   /** The prompt is withheld: somebody else's sealed original, or a copy of one. */
   sealed: boolean
   temperature: number
+  outputLanguage?: string
+  webSearchDefault?: 'auto' | 'on' | 'off'
+  useMemory?: boolean
   color: string
   enabled: boolean
   visibility: string

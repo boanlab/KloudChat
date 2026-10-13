@@ -873,9 +873,11 @@ async def test_send_rejects_workspace_bypass_before_writes_or_upstream(
 
 @pytest.mark.parametrize("kind", [SessionKind.report, SessionKind.slides])
 @pytest.mark.asyncio
-async def test_document_routes_reject_tool_skills_before_writes_or_upstream(
+async def test_document_routes_reject_interactive_tool_skills_before_writes_or_upstream(
     monkeypatch, kind: SessionKind
 ):
+    """A tool skill the server runs nothing for (no pre-pass, check or code calculation)
+    still needs the tools a document writer does not have."""
     user = _route_user()
     session = _session(kind)
     skill = _skill(kinds=[kind.value], required_tools=["execute_code"])
@@ -890,6 +892,28 @@ async def test_document_routes_reject_tool_skills_before_writes_or_upstream(
     assert not any(isinstance(row, (Message, CreditLedger)) for row in db.added)
     assert db.commits == 0
     assert upstream["calls"] == 0
+
+
+@pytest.mark.parametrize("kind", [SessionKind.report, SessionKind.slides])
+@pytest.mark.parametrize("server", [
+    {"process": {"code_calc": True}},
+    {"process": {"prepass": ["date-calc"], "checks": ["lead-dates"]}},
+    {"stage": "post"},
+])
+@pytest.mark.asyncio
+async def test_a_document_turn_may_pick_a_tool_skill_the_server_runs(kind, server):
+    """계산·단위 검증, 날짜 계산, 견적 계산: picked by hand on a report or deck, the server runs
+    their pre-pass, checks or code calculation, so they are not refused for lacking tools."""
+    skill = _skill(kinds=[kind.value], required_tools=["run_skill_script"],
+                   server_fields=server)
+    resolved = await _resolve_skills(
+        _SkillDb([skill]), _user(), _session(kind), None, [skill.id], set())
+    assert [row.id for row, _ in resolved] == [skill.id]
+    # the chat composer still needs the script tool itself
+    with pytest.raises(WorkspaceContextError, match="skill_tools_unavailable:run_skill_script"):
+        await _resolve_skills(_SkillDb([_skill(required_tools=["run_skill_script"],
+                                               server_fields=server)]),
+                              _user(), _session(), None, ["skill-1"], set())
 
 
 @pytest.mark.parametrize(

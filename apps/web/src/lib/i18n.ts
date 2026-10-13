@@ -3,6 +3,27 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // 에이전트 출력 언어·웹 검색 기본값·메모리, 대체 모델 표시
+  '출력 언어': 'Output language',
+  '모든 답과 문서를 이 언어로 씁니다. 사용자가 그 턴에 다른 언어를 직접 요청하면 그 요청을 따릅니다.':
+    'Every answer and document is written in this language. When someone asks for another language in a turn, that turn follows the request.',
+  '자동 (요청한 언어)': 'Auto (the request\'s language)',
+  '직접 입력': 'Type one in',
+  '언어 이름': 'Language name',
+  '예: Vietnamese, 독일어': 'e.g. Vietnamese, German',
+  '웹 검색 기본값': 'Web search default',
+  '이 에이전트와 새 대화를 열 때의 웹 검색입니다. 입력창에서 턴마다 바꿀 수 있습니다.':
+    'Web search a new conversation with this agent starts with. You can change it per turn in the composer.',
+  '메모리 사용': 'Use memory',
+  '끄면 이 에이전트의 대화에는 내 메모리를 넣지 않고, 이 대화에서 새 메모리도 만들지 않습니다.':
+    'When off, your memories are not added to this agent\'s conversations, and those conversations create no new memories.',
+  '사용할 화면, 모델, 출력 언어, 웹 검색, 메모리, 다양성, 색': 'Screens, model, output language, web search, memory, variety, colour',
+  '서버가 쓰기 전후에 계산·검사합니다': 'The server calculates and checks around the writing',
+  '외부 대체로 답함': 'Answered by external fallback',
+  '대체 모델로 답함': 'Answered by fallback model',
+  '요청한 모델 {asked}이(가) 응답하지 못해 대체 모델 {served}이(가) 답했습니다.':
+    'The requested model {asked} did not answer, so the fallback model {served} did.',
+  '대체 모델이 답함': 'Fallback model answered',
   // 스킬로 짜는 에이전트·공식 스킬·커넥터 도구
   '켜 둔 스킬이 없습니다.': 'No skills kept on.',
   '최대 6개까지 켜 둘 수 있습니다.': 'You can keep up to six on.',
@@ -728,7 +749,6 @@ const EN: Record<string, string> = {
   '스킬과 도구': 'Skills and tools',
   '쓸 수 있는 스킬과 도구를 좁힙니다': 'Narrow the skills and tools it may use',
   '고급': 'Advanced',
-  '사용할 화면, 모델, 다양성, 색': 'Screens, model, variety, colour',
   '카드와 목록에서 이 에이전트를 알아보는 색입니다.': 'The colour that marks this agent on cards and lists.',
   '대화 종류, 사용한 모델, 에이전트·진행 과정, 단계 상태와 실패 사유, 아티팩트 판 번호': 'Conversation type, models used, agent and its process, stage status and failure reasons, artifact version numbers',
   '에이전트·진행 과정': 'Agent & process',

@@ -320,8 +320,9 @@ class SendMessage(Wire):
     content: str = Field(min_length=1, max_length=200_000)
     attachments: list[str] | None = None
     model: str | None = None
-    #: True every turn, False never (unless research asked), "auto" when warranted
-    web_search: bool | Literal["auto"] = False
+    #: True every turn, False never (unless research asked), "auto" when warranted; None: the
+    #: agent's `web_search_default`, else False
+    web_search: bool | Literal["auto"] | None = None
     #: per-turn selection; installation alone injects nothing
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
     #: `/design-templates` id, stored on session; `""` clears

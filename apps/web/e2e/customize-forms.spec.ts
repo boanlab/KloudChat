@@ -99,6 +99,31 @@ test('agent form: essentials and 진행 과정 in view, folded groups, tools by 
   expect(state.unexpected).toEqual([])
 })
 
+test('agent form: 고급 sets its output language, web search default and memory', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  await page.goto('/customize/agents/new')
+  const form = page.getByTestId('agent-form')
+  await expect(form).toBeVisible({ timeout: 15_000 })
+  await form.getByRole('textbox', { name: '이름' }).fill('번역 도우미')
+  await form.getByRole('textbox', { name: '지시' }).fill('받은 글을 옮긴다.')
+  await page.getByTestId('agent-more-group').locator('summary').click()
+  // 자동, 자동, on: today's behaviour until changed.
+  await expect(form.getByTestId('agent-output-language')).toHaveValue('auto')
+  await expect(form.getByTestId('agent-web-search-default')).toHaveValue('auto')
+  await expect(form.getByTestId('agent-use-memory')).toBeChecked()
+  // A language outside the list is typed in.
+  await form.getByTestId('agent-output-language').selectOption('other')
+  await form.getByRole('textbox', { name: '언어 이름' }).fill('Vietnamese')
+  await form.getByTestId('agent-web-search-default').selectOption('off')
+  await form.getByTestId('agent-use-memory').uncheck()
+  await form.getByRole('button', { name: '만들기' }).click()
+  await expect(page).toHaveURL(/\/customize\/agents\/a9999999999999999999999999999999$/)
+  const created = state.calls.find((c) => c.method === 'POST' && c.path === '/agents')
+  expect(created?.body).toMatchObject({ outputLanguage: 'Vietnamese', webSearchDefault: 'off', useMemory: false })
+  expect(state.problems).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
 test('agent detail: sealed instructions stay private; a store agent offers 추가', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   await page.goto('/customize/agents/a4444444444444444444444444444444')

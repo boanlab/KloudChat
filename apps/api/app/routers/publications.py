@@ -990,6 +990,7 @@ async def copy_bot(slug: str, user: CurrentUser, db: DbSession):
             surface="chat",
             base_key=snap.base_key,
             temperature=snap.temperature,
+            output_language=snap.output_language,
             color=snap.color,
             check_skills=list(snap.check_skills) if snap.check_skills is not None else None,
             check_options=dict(snap.check_options) if snap.check_options else None,
