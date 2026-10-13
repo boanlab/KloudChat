@@ -370,3 +370,48 @@ def test_built_in_tools_and_tools_needing_more_than_a_link_are_left_to_the_model
     two = Tool(name="mcp__x__clip", description="", run=run, label="자르기", source="mcp",
                parameters={"type": "object", "required": ["url", "start"]})
     assert sessions._source_call([_skill("mcp__x__clip")], [two], A08_REQUEST) is None
+
+
+# ── an answer that only says what it is about to do (r3 third pass, A11 T1 27B) ──
+
+A11_REQUEST = (
+    "다음 주에 한국수자원공사(K-water) 정보화 담당 부서와 첫 미팅이 있어. 미팅 전에 읽을 "
+    "고객사 조사 자료 만들어 줘.\n- 기관 개요(규모, 주요 사업, 최근 이슈) — 공개 자료로, "
+    "출처 달기\n- 우리가 미팅에서 물어볼 질문 5개, 예상 이슈")
+A11_INTENT = ("K-water 개요·조직·재무, 최근 정보화·DX 사업, 최근 12개월 이슈를 각각 공개 "
+              "자료로 확인하겠습니다.\n\n\n\n")
+A11_BRIEF = (
+    "## 기관 개요\n한국수자원공사(K-water)는 1967년 설립된 물관리 공기업입니다.\n\n"
+    "## 미팅 질문\n1. 현재 쓰는 협업 도구는 무엇입니까?")
+
+
+def test_an_intent_line_is_no_deliverable() -> None:
+    assert internal_words.is_intent_only(A11_INTENT, request=A11_REQUEST)
+    assert internal_words.is_work_plan(A11_INTENT, request=A11_REQUEST)
+    assert internal_words.is_intent_only(
+        "관련 자료를 찾아보겠습니다. 잠시만 기다려 주세요.", request=A11_REQUEST)
+    # a deliverable, or a short answer that is not a promise of work
+    assert not internal_words.is_intent_only(A11_BRIEF, request=A11_REQUEST)
+    assert not internal_words.is_intent_only(
+        "네, 다음부터는 존댓말로 답하겠습니다.", request="존댓말로 해 줘")
+    assert not internal_words.is_intent_only(
+        "K-water는 1967년에 설립됐습니다. 최근 이슈는 공개 자료로 더 확인하겠습니다.",
+        request=A11_REQUEST)
+    assert not internal_words.is_intent_only("I'll check the sources.", request="Check it")
+
+
+@pytest.mark.asyncio
+async def test_an_intent_line_is_written_once_more_as_the_brief(monkeypatch) -> None:
+    events, seen = await _turn(monkeypatch, [A11_INTENT, A11_BRIEF], request=A11_REQUEST)
+
+    assert _shown(events) == A11_BRIEF
+    assert len(seen) == 2
+    assert "tools" not in seen[-1]
+
+
+@pytest.mark.asyncio
+async def test_an_intent_line_twice_is_never_shipped(monkeypatch) -> None:
+    events, seen = await _turn(monkeypatch, [A11_INTENT, A11_INTENT], request=A11_REQUEST)
+
+    assert _shown(events).strip() == ""
+    assert len(seen) == 2

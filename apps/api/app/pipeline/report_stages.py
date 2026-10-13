@@ -76,6 +76,11 @@ def _report():
     return report
 
 
+def _searched(mat) -> bool:
+    """Whether this turn's web search ran (its material is the search's, not an upload)."""
+    return bool(mat.web_search and mat.research is not None and mat.research.searched)
+
+
 def _messages(bundle: Bundle, prompt: str) -> list[dict[str, str]]:
     """Writer messages: prompt under the material."""
     return build_document_messages(
@@ -318,7 +323,7 @@ class Outline(Base):
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
             yield _usage(bundle)
             raise Stop("needs: the planner asked")
-        if req.may_ask and report._results_without_data(request, untrusted):
+        if req.may_ask and report._results_without_data(request, untrusted, web=_searched(mat)):
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {
                 "type": "needs",
@@ -356,7 +361,7 @@ class Outline(Base):
             raise Stop("needs: no subject")
         # carried on the plan for the separate writing request — see `_FRAME_RULE`
         frame = not req.may_ask and (
-            report._results_without_data(request, untrusted)
+            report._results_without_data(request, untrusted, web=_searched(mat))
             or grounding.subject_missing(text, request, "\n".join(untrusted))
         )
         findings = mat.research
@@ -939,7 +944,7 @@ class Sections(Base):
                     body = internal_words.strip_tool_calls(body)
                     if not body.strip():
                         raise ValueError("tool call in place of the section")
-                noted = internal_words.strip_work_notes(body, request=req.text)
+                noted = internal_words.strip_work_notes(body, request=req.text, document=True)
                 if noted != body:
                     log.warning("section %r carried the writer's work notes; removed",
                                 section["heading"])
@@ -950,7 +955,7 @@ class Sections(Base):
                     _count(bundle, spent)
                     body, spent = await write_section(index, section, written)
                     body = internal_words.strip_work_notes(
-                        internal_words.strip_tool_calls(body), request=req.text)
+                        internal_words.strip_tool_calls(body), request=req.text, document=True)
                     if not body.strip():
                         raise ValueError("empty section")
             except _CAUGHT as exc:

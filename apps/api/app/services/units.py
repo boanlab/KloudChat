@@ -485,3 +485,54 @@ def fix_written_sums(text: str) -> str:
         return m.group(0)[: m.start("rhs") - start] + right + m.group(0)[m.end("rhs") - start:]
 
     return _SUM_EXPRESSION.sub(work, text)
+
+
+#: the writer's own correction line: 「수정: 합계는 429,600원입니다.」
+_CORRECTION = re.compile(
+    r"^[ \t]{0,4}(?:[-*][ \t]{1,3})?(?:\*\*)?(?:수정|정정|바로잡음)(?:\*\*)?[ \t]{0,2}[:：]"
+    r"(?:\*\*)?"
+    r"[ \t]{0,2}(?P<body>[^\n]{1,200})\n?", re.M)
+#: a total's name before its amount: 「총 409,600원」, 「합계는 429,600원」
+_TOTAL_WORD = r"(?:총액|합계|총|합산액)"
+_WON = re.compile(r"(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d{4,})\s{0,1}원")
+#: a conditional total stays (「소명하면 총액은 453,600원까지」)
+_CONDITION = re.compile(r"경우|소명|(?<=[가-힣])면\s|(?<=[가-힣])시\s|추가|까지")
+
+
+def _total_stated(text: str, amount: str) -> bool:
+    """Whether `text` already names `amount` as a total (the correction only repeats it)."""
+    return bool(re.search(_TOTAL_WORD + r"[^\n]{0,40}?" + re.escape(amount) + r"\s{0,1}원", text)
+                or re.search(r"=\s{0,2}" + re.escape(amount) + r"\s{0,1}원", text))
+
+
+def settle_corrections(text: str) -> str:
+    """A 「수정: 합계는 N원」 line taken off, its value put in place of the differing total it
+    corrects (the unconditioned total named before it; r3 A05 T1: 「총 409,600원」 then
+    「수정: 합계는 429,600원입니다.」). A line with no single total amount stays."""
+    if not text or not re.search(r"수정|정정|바로잡음", text):
+        return text
+    for m in reversed(list(_CORRECTION.finditer(text))):
+        body = m.group("body")
+        amounts = _WON.findall(body)
+        if len(amounts) != 1 or not re.search(_TOTAL_WORD, body):
+            continue
+        right = amounts[0]
+        value = float(right.replace(",", ""))
+        before, after = text[: m.start()], text[m.end():]
+        fixed = before
+        for spot in re.finditer(_TOTAL_WORD + r"[^\n.|]{0,24}?" + _WON.pattern, before):
+            other = float(spot.group(1).replace(",", ""))
+            if other == value or not value or abs(other - value) / value > 0.5:
+                continue
+            line_start = before.rfind("\n", 0, spot.start()) + 1
+            if before[line_start:].lstrip().startswith("|"):
+                continue
+            sentence_start = max(line_start, before.rfind(". ", line_start, spot.start()) + 1)
+            if _CONDITION.search(before[sentence_start: spot.end()]):
+                continue
+            fixed = before[: spot.start(1)] + right + before[spot.end(1):]
+            break
+        if fixed == before and not _total_stated(before, right):
+            continue
+        text = fixed + after
+    return re.sub(r"\n{3,}", "\n\n", text)

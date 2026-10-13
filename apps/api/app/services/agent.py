@@ -22,7 +22,7 @@ from app.services import (
     thinking,
 )
 from app.services.chat import ChatStreamError, step_label, step_title
-from app.services.context import literature_request
+from app.services.context import instruction_part, literature_request
 from app.services.tools import arithmetic
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult, to_openai
 
@@ -810,6 +810,15 @@ def _source_label(url: str, title: str = "") -> str:
 _NOT_RESULTS = ("(도구 호출 한도에 닿아", "(같은 도구를 같은 조건으로", "오류:")
 #: gathered-results budget for the last try
 _RESULTS_CHARS = 24000
+#: an instruction that asks for outside sources, not only the person's own material
+_ASKS_LOOKUP = re.compile(
+    r"검색|찾아|조사|공개\s?자료|최신|출처|웹|인터넷|뉴스|기사|동향|논문|search|look up", re.I)
+
+
+def _searched_for_nothing(request: str, material_given: bool) -> bool:
+    """Whether an empty search is worth a footer: not when the answer is made of material
+    the person gave and the instruction asked for no outside sources (r3 A02 T2 flash)."""
+    return not (material_given and not _ASKS_LOOKUP.search(instruction_part(request or "")))
 
 
 def _gathered_results(conversation: list[dict[str, Any]]) -> str:
@@ -965,6 +974,8 @@ async def run_turn(
     #: Tools whose result the answer is made of (a skill's declared connector, given its link):
     #: without a usable result the answer says so instead of writing the content.
     source_tools: frozenset[str] = frozenset(),
+    #: The turn carries the person's own material (pasted, attached or project files).
+    material_given: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """One assistant turn to a final answer; exactly one `usage`, `done` left to caller."""
     by_name = {t.name: t for t in tools}
@@ -1994,7 +2005,8 @@ async def run_turn(
         yield {"type": "delta", "text": linked}
         answer = linked
     answer_text[:] = [answer]
-    if not unverified_current and searches and empty_searches * 2 >= searches and answer.strip():
+    if (not unverified_current and searches and empty_searches * 2 >= searches and answer.strip()
+            and _searched_for_nothing(ctx.request, material_given)):
         note = (
             "\n\n_웹 검색이 쓸 만한 결과를 주지 않아 이 답은 검색으로 확인하지 못했습니다. "
             "서지·수치·최신 사항은 확인이 필요합니다._"
