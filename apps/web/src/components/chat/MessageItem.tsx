@@ -325,8 +325,9 @@ function MessageItemInner({
   const actualModelChanged = Boolean(
     routing?.actualModel && routing.actualModel !== routing.requestedModels[0],
   )
+  const fallback = routing?.fallback
   const showRouting = Boolean(
-    routing && (routing.action !== 'none' || actualModelChanged || routing.costRouting),
+    routing && (routing.action !== 'none' || actualModelChanged || routing.costRouting || fallback),
   )
   const messageBoundary =
     model?.dataBoundary ??
@@ -576,6 +577,16 @@ function MessageItemInner({
                     : messageBoundary === 'external'
                       ? t('외부 제공')
                       : t('경계 미확인')}
+              </Badge>
+            )}
+            {fallback && (
+              <Badge
+                tone={fallback.external ? 'warn' : 'neutral'}
+                title={t('요청한 모델 {asked}이(가) 응답하지 못해 대체 모델 {served}이(가) 답했습니다.')
+                  .replace('{asked}', fallback.requestedModel)
+                  .replace('{served}', fallback.servedBy)}
+              >
+                {fallback.external ? t('외부 대체로 답함') : t('대체 모델로 답함')}
               </Badge>
             )}
             {routing.toolOutputMasked ? (

@@ -364,6 +364,13 @@ def system_prompt(
     return "\n\n".join(parts)
 
 
+def _agent_language(rules: list[str]) -> bool:
+    """An agent's output-language rule is among the trusted blocks (`output_language.rule`)."""
+    from app.services.output_language import HEADING
+
+    return any(isinstance(r, str) and r.startswith(HEADING) for r in rules)
+
+
 def build_messages(
     kind: SessionKind,
     history: list[dict[str, str]],
@@ -383,7 +390,11 @@ def build_messages(
     )
     rules = list(extra or [])
     standing = standing_directives(history) if remind_standing else []
-    if rule := language_rule(asked if isinstance(asked, str) else ""):
+    if _agent_language(rules):
+        # the agent's language holds; a standing request for another one still wins
+        if rule := standing_language_rule(standing, asked if isinstance(asked, str) else ""):
+            rules.append(rule)
+    elif rule := language_rule(asked if isinstance(asked, str) else ""):
         rules.append(rule.replace("write the entire output", "write the entire answer"))
     elif rule := standing_language_rule(standing, asked if isinstance(asked, str) else ""):
         rules.append(rule)
@@ -1062,7 +1073,7 @@ def build_document_messages(
     trusted = list(trusted_context or [])
     if research_rule:
         trusted.append(research_rule)
-    if rule := language_rule(request):
+    if not _agent_language(trusted) and (rule := language_rule(request)):
         trusted.append(rule)
     messages = [
         {

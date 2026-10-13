@@ -72,7 +72,15 @@ These sit under **More settings** in the create-agent form.
 - **Template & theme**: pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **New template** under the template makes your own; **Manage themes** under the theme opens Settings › Themes. An agent started from a base process uses the base's template when the template is left empty ("The base's template"), and that template sets the document format. The **Document format** field shows only for a report-writing agent on Answer directly or Set it up yourself.
 - **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).
 - **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.
-- **Skills and tools**, **Advanced** (screens, first screen, model, variety, colour) and **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**.
+- **Skills and tools**, **Advanced** (screens, first screen, model, output language, web search default, variety, colour, use memory) and **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**.
+
+## Output language, web search and memory
+
+These are under **Advanced** in the agent form.
+
+- **Output language**: pick **Auto (the request's language)**, 한국어, English, 日本語 or 中文, or type a language name under **Type one in**. Once set, every answer, report and slide deck of this agent is written in that language, whatever language the question or the material is in. A turn that asks for another language itself ("영어로", "in Korean") follows that request. A published bot answers in it too.
+- **Web search default**: whether the composer's web search starts on **Auto**, **Always** or **Off** in a new conversation with this agent. You can change it per turn in the composer. With **Off**, a question about current facts is not searched first (asking "search for it" still searches). A turn sent through the API without a web search setting uses this value.
+- **Use memory**: when off, your memories are not added to this agent's conversations, and those conversations create no automatic memories or shared notes.
 
 ## Detailed settings and your own templates
 
@@ -115,11 +123,15 @@ A skill is a working method kept on in a conversation: select up to three from *
 - A skill that requires tools is enabled only when all of these hold: you are on the Chat screen, the model supports tool calling, and that tool is connected. When a condition is not met, the reason is shown.
 - Skills you pick with **Choose skills** on a project's **Skills** tab appear first in that project's composer.
 
+## Tool skills on reports and slides
+
+On the Report and Slides screens you can pick a skill that needs tools when the server does its work around the writing: it calculates or checks before or after, such as **Calculation and unit check**, **Date calculation** and **Quote calculation**. The picker shows "The server calculates and checks around the writing". Other skills that need tools can be picked only on the Chat screen.
+
 ## Built-in skills
 
 Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** as **By: Official**; **Add** puts a copy in your list (**Original: Official**). A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and templates use (grounding check, asking for missing information and so on) run without adding anything.
 
-The lists show the nine work skills under [Official skills](skill-recipes#official-skills) and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Quote calculation** (견적 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).
+The lists show the thirteen work skills (including Translation, Press release, Make an Excel file and Make a chart) under [Official skills](skill-recipes#official-skills) and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Quote calculation** (견적 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).
 
 - **Excel cleanup** strips title, blank, total and note rows and records what it changed on a change-log sheet. Rows whose values are all the same are not removed, only marked 「중복 의심」 (suspected duplicate); ask for them to be removed if you want that.
 - **PDF table → Excel** reads only PDFs whose text can be selected (text PDFs). Scanned PDFs (images) cannot be read.

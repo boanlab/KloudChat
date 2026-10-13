@@ -55,6 +55,7 @@ export const ACTION_LABEL: Record<string, string> = {
   'privacy.send_raw_external': '원문 외부 전송',
   'privacy.mask_tool_output': '도구 결과 가림',
   'privacy.strict_tool_output': '도구 결과 strict-local 처리',
+  'model.fallback': '대체 모델이 답함',
   'publication.published': '챗봇 공개',
   'publication.requested': '챗봇 공개 범위 승인 요청',
   'publication.request_withdrawn': '챗봇 승인 요청 취소',

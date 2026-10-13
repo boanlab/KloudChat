@@ -522,6 +522,10 @@ class AgentOut(Wire):
     #: prompt withheld (sealed original for non-owner, or its copy)
     sealed: bool = False
     temperature: float
+    #: `auto`, a language code or a language named in free text (`Agent.output_language`)
+    output_language: str = "auto"
+    web_search_default: Literal["auto", "on", "off"] = "auto"
+    use_memory: bool = True
     color: str
     enabled: bool
     visibility: AgentVisibility
@@ -606,6 +610,12 @@ class AgentOut(Wire):
         return out
 
 
+def _language(value: Any) -> str:
+    from app.services import output_language
+
+    return output_language.normalize(value if isinstance(value, str) else "")
+
+
 class AgentIn(Wire):
     name: str = Field(min_length=1, max_length=120)
     #: @handle, slugified, unique per owner; empty: from name
@@ -633,6 +643,13 @@ class AgentIn(Wire):
     starters: list[str] = Field(default_factory=list, max_length=6)
     share_mode: Literal["open", "sealed"] = "open"
     temperature: float = Field(default=0.7, ge=0, le=2)
+    #: `auto` (the request's language), `ko`, `en`, `ja`, `zh`, or a language in free text
+    output_language: Annotated[str, BeforeValidator(_language)] = Field(default="auto",
+                                                                         max_length=40)
+    #: web search a new conversation starts with
+    web_search_default: Literal["auto", "on", "off"] = "auto"
+    #: account memories read into and written from its turns
+    use_memory: bool = True
     color: str = Field(default="#5b53e8", pattern=r"^#[0-9a-fA-F]{6}$")
     enabled: bool = True
     visibility: AgentVisibility = AgentVisibility.private

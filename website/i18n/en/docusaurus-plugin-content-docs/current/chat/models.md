@@ -23,6 +23,8 @@ Select the model name to the right of the composer to open the list. When eight 
 
 Depending on how the gateway registers models, one model name can appear as two entries that differ only in the data boundary label. Check the label before you select one.
 
+When a **May switch to an external provider** model fails to answer and the gateway's fallback model answers instead, the answer carries an **Answered by external fallback** badge (**Answered by fallback model** when the fallback also runs on organization servers). Hover over the badge to see the model you asked for and the one that answered. The same event is recorded in the administrator's audit log as **Fallback model answered**.
+
 ## Auto mode
 
 When the administrator enables it on the Chat screen, two modes appear at the top of the list. These modes apply to the conversation, not to a model.

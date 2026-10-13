@@ -105,6 +105,7 @@ from app.services import (
     conversation_summary,
     design_templates,
     exact_facts,
+    fallback_watch,
     figures,
     file_schema,
     freshness,
@@ -115,6 +116,7 @@ from app.services import (
     index_client,
     lint,
     message_links,
+    output_language,
     publishing,
     revise,
     settings_store,
@@ -172,6 +174,7 @@ from app.services.workspace_context import (
     file_budget,
     reads_pictures,
     surface_body,
+    uses_memory,
 )
 
 log = logging.getLogger(__name__)
@@ -3557,6 +3560,13 @@ def _with_system_rule(messages: list[dict], rule: str) -> list[dict]:
     return [{"role": "system", "content": rule}, *messages]
 
 
+def _agent_web_search(agent: WorkspaceAgent | None) -> bool | str:
+    """Toggle for a turn that sent none: the agent's `web_search_default`, else off."""
+    if agent is None:
+        return False
+    return {"auto": "auto", "on": True}.get(agent.web_search_default, False)
+
+
 def _plans_first(session: ChatSession) -> bool:
     """Whether this surface offers an outline first (report, slides)."""
     return session.kind in (SessionKind.report, SessionKind.slides)
@@ -3804,6 +3814,9 @@ async def send_message(
     agent_material = False
     if session.agent_id:
         agent_row = await db.get(WorkspaceAgent, session.agent_id)
+    if payload.web_search is None:
+        # caller sent no toggle (API, MCP): the agent's default, else off as before
+        payload = payload.model_copy(update={"web_search": _agent_web_search(agent_row)})
     specs, own_scripts = await _skill_specs(db, user, agent_row)
     if published is not None:
         active_skill_ids = []
@@ -3916,6 +3929,10 @@ async def send_message(
             # own scripts join shipped ones in `run_skill_script`
             candidate_tools = sandbox_tools.with_own_scripts(candidate_tools, own_scripts)
             strict_tools = sandbox_tools.with_own_scripts(strict_tools, own_scripts)
+        if not uses_memory(agent_row):
+            # an agent kept out of memory writes no shared note (a memory row) either
+            candidate_tools = [t for t in candidate_tools if t.name != "share_note"]
+            strict_tools = [t for t in strict_tools if t.name != "share_note"]
 
     requested_tools = strict_tools if requested_is_strict else candidate_tools
     # app how-to: guide only; memories and 개인 맞춤 설정 kept out
@@ -4205,6 +4222,13 @@ async def send_message(
         if privacy_resolution is None and revoked_model is not None
         else None
     )
+    if (
+        session.kind is not SessionKind.chat
+        and any(block.source == "agent.language" for block in workspace.blocks)
+        and agent_row is not None
+    ):
+        # the agent's language as a condition the document writers read with the request
+        content = _with_condition(content, output_language.condition(agent_row.output_language))
     turn_options = {
         "webSearch": payload.web_search,
         "activatedSkillIds": active_skill_ids,
@@ -4868,7 +4892,8 @@ async def send_message(
                 user_id=user.id,
                 api_key=api_key,
                 # visitor's words never remembered on the owner's account
-                auto_memory=Preferences.of(user).auto_memory and published is None,
+                auto_memory=Preferences.of(user).auto_memory and published is None
+                and uses_memory(agent_row),
                 published=published,
                 session_id=session.id,
                 # shared note's reach and byline
@@ -5374,6 +5399,8 @@ async def _answer_turn(
     tool_output_masked = 0
     tool_output_findings: dict[tuple[str, str], int] = {}
     actual_model = model["id"]
+    #: the asked model failed over and LiteLLM's fallback answered (`fallback_watch.record`)
+    fallback: dict | None = None
     server_abstention = False
     tool_result_answer = False
     length_check: dict | None = None
@@ -5545,6 +5572,16 @@ async def _answer_turn(
                     routing = {**(routing or {}), "costRouting": cost_routing}
                     # don't leak the agent loop's partial provider-route shape
                     yield chat_service.sse({"type": "model_route", **cost_routing})
+                continue
+            elif event["type"] == "fallback_route":
+                try:
+                    listed = (await model_service.list_models())["models"]
+                except Exception:  # noqa: BLE001 — unlisted answering model reads as unknown
+                    listed = []
+                fallback = fallback_watch.record(model, str(event["servedBy"]), listed,
+                                                 int(event.get("attempts") or 1))
+                routing = {**(routing or {}), "fallback": fallback}
+                yield chat_service.sse({"type": "privacy_route", **routing})
                 continue
             elif event["type"] == "privacy_route" and event.get("source") == "tool_output":
                 count = int(event.get("count") or 0)
@@ -5872,6 +5909,18 @@ async def _answer_turn(
             if new_artifact:
                 session.artifact_id = new_artifact
             db.add(session)
+            if fallback is not None:
+                # ops record: a self-hosted answer that LiteLLM's fallback served instead
+                db.add(AuditEvent(
+                    actor_id=user_id,
+                    action="model.fallback",
+                    target=session_id,
+                    detail=f"{fallback['requestedModel']} → {fallback['servedBy']}",
+                    event_metadata={**fallback, "surface": "chat",
+                                    "publicationId": published.publication_id
+                                    if published else None},
+                    severity="warn" if fallback["external"] else "info",
+                ))
             if tool_output_findings:
                 db.add(
                     AuditEvent(

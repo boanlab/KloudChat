@@ -45,6 +45,9 @@ format = "client_proposal"
 format = "comparison"
 
 [[genres]]
+format = "agenda"
+
+[[genres]]
 format = "career_history"
 
 [[genres]]

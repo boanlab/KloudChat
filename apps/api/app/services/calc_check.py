@@ -67,6 +67,13 @@ _KO_MEASURE = (("wait", "대기"), ("turnaround", "반환"), ("response", "응�
 _AVERAGE = re.compile(r"(?<![A-Za-z])(?:average|avg|mean)(?![A-Za-z])", re.I)
 
 
+#: the English a table may name a Korean row by (r2 A09 T2: 「| Priority | 2.0 |」)
+_ENGLISH = {"우선순위": re.compile(r"(?<![A-Za-z])priority(?![A-Za-z])", re.I)}
+#: words picking one reading of a shared name, the non-preemptive one first (it holds 「선점」)
+_READINGS = ((r"비\s{0,2}선점|non-?\s?preemptive", "비선점"),
+             (r"선점|preemptive", "선점"))
+
+
 def _spelled_out(acronym: str) -> str:
     """「SRTF」 written as its words: 「Shortest Remaining Time First」, 「First-Come, …」."""
     return r"(?<![A-Za-z])" + r"[^A-Za-z0-9가-힣\n]{1,3}".join(
@@ -154,7 +161,17 @@ class _Names:
                     patterns.append(re.compile(
                         f"(?:{spelling})" + r"[^0-9\n|]{0,20}?(?<![0-9.])" + numbers[0]
                         + r"(?![0-9])", re.I if spelling != other else 0))
+            if core and cores.count(core) == 1 and (english := _ENGLISH.get(core)):
+                patterns.append(english)
             self.rows[row] = patterns
+        #: a bare name shared by several rows that differ only in a word (「우선순위」 for
+        #: 「우선순위(비선점)」 and 「우선순위(선점)」), read in a table row by its value
+        self.groups: list[tuple[list[re.Pattern[str]], list[str]]] = []
+        for core in dict.fromkeys(c for c in cores if c and cores.count(c) > 1):
+            members = [r for r, c in zip(rows, cores, strict=True) if c == core]
+            if any(re.search(r"\d", r) for r in members) or not (bare_core := _pattern(core)):
+                continue
+            self.groups.append(([bare_core, *filter(None, [_ENGLISH.get(core)])], members))
         self.labels: dict[tuple[str, str], list[re.Pattern[str]]] = {}
         for s in stated:
             full = _norm(s.label)
@@ -184,6 +201,20 @@ class _Names:
                 continue
             out.append(hit)
         return out
+
+    def group_in(self, cell: str) -> list[str]:
+        """The rows a bare shared name in `cell` may mean, narrowed by a word naming one
+        (「비선점」/「non-preemptive」 → 「(비선점)」); `[]` when none is named."""
+        for patterns, members in self.groups:
+            if not any(p.search(cell) for p in patterns):
+                continue
+            for word, tag in _READINGS:
+                if re.search(word, cell, re.I):
+                    picked = [r for r in members
+                              if _norm("".join(_PAREN.findall(r))) == tag]
+                    return picked or members
+            return members
+        return []
 
     def label_at(self, row: str, label: str, text: str) -> re.Match[str] | None:
         for pattern in self.labels.get((row, label), []):
@@ -376,6 +407,31 @@ def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
         cells = [str(c) for c in raw]
         own = one_row(cells[0]) if cells else None
         fixed = list(raw)
+        shared = names.group_in(cells[0]) if cells and own is None else []
+        if len(shared) == 1:
+            own = shared[0]
+        elif shared:
+            # 「| Priority | 2.0 |」: read as the reading most of its values agree with (the
+            # first on a tie); a value it doesn't hold is set to it and the row says which
+            # reading it is
+            columns = [(j, number) for j in range(1, min(len(cells), len(header)))
+                       if (number := _first_number(cells[j], 0, len(cells[j]))) is not None]
+
+            def agree(row: str, columns=columns, cells=cells) -> int:
+                return sum(1 for j, number in columns
+                           if (s := label_of(row, header[j])) and _same(number.group(0), s.value))
+
+            best = max(shared, key=agree)
+            for j, number in columns:
+                s = label_of(best, header[j])
+                if s is None or _same(number.group(0), s.value):
+                    continue
+                found.append(f"「{cells[0]} {number.group(0)}」 → {s.row} {s.text} ({s.label})")
+                fixed[j] = (cells[j][: number.start()] + _shown(number.group(0), s)
+                            + cells[j][number.end():])
+                fixed[0] = s.row
+            out.append(fixed)
+            continue
         for j in range(1, len(cells)):
             if own is not None:
                 s = label_of(own, header[j]) if j < len(header) else None

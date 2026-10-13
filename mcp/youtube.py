@@ -13,6 +13,8 @@
 
 One tool, `transcript(url, language=None)`: official captions via
 youtube-transcript-api; otherwise audio via yt-dlp, transcribed at WHISPER_URL.
+The transcript comes under a header naming the video (title, channel, length,
+upload date, link) from yt-dlp, or YouTube's oEmbed when yt-dlp fails.
 
 Environment:
   WHISPER_URL  OpenAI-compatible `/v1/audio/transcriptions` base. Filled in by
@@ -93,6 +95,85 @@ def _try_captions(vid: str, language: str | None) -> str | None:
         return None
 
 
+#: Metadata lookup budget (s); the transcript goes out without the header after it.
+_META_TIMEOUT = 20.0
+
+
+def _ytdlp_meta(vid: str) -> dict:
+    """Title, channel, length and upload date via yt-dlp, nothing downloaded."""
+    from yt_dlp import YoutubeDL
+    opts = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True}
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False) or {}
+    return {
+        "title": info.get("title"),
+        "channel": info.get("channel") or info.get("uploader"),
+        "duration": info.get("duration"),
+        "published": info.get("upload_date"),
+    }
+
+
+async def _oembed_meta(vid: str) -> dict:
+    """Title and channel from YouTube's oEmbed endpoint (no length there)."""
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.get("https://www.youtube.com/oembed",
+                        params={"url": f"https://www.youtube.com/watch?v={vid}", "format": "json"})
+    if r.status_code >= 400:
+        return {}
+    data = r.json() or {}
+    return {"title": data.get("title"), "channel": data.get("author_name")}
+
+
+async def _metadata(vid: str) -> dict:
+    """What the note's header names; `{}` when YouTube answers neither way."""
+    try:
+        meta = await asyncio.wait_for(asyncio.to_thread(_ytdlp_meta, vid), _META_TIMEOUT)
+        if meta.get("title"):
+            return meta
+    except Exception as e:
+        LOG.info("yt-dlp metadata failed for %s: %s", vid, e)
+    try:
+        return await _oembed_meta(vid)
+    except Exception as e:
+        LOG.info("oEmbed metadata failed for %s: %s", vid, e)
+        return {}
+
+
+def _length(seconds: object) -> str:
+    """「6분 12초」, 「1시간 2분 3초」; '' when unknown."""
+    try:
+        total = int(float(seconds))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return ""
+    if total <= 0:
+        return ""
+    hours, rest = divmod(total, 3600)
+    minutes, secs = divmod(rest, 60)
+    parts = [f"{hours}시간"] if hours else []
+    parts += [f"{minutes}분"] if minutes or hours else []
+    parts += [f"{secs}초"] if secs or not parts else []
+    return " ".join(parts)
+
+
+def _header(vid: str, meta: dict) -> str:
+    """The video's own facts above its transcript (a note names the video it is about)."""
+    published = str(meta.get("published") or "")
+    if re.fullmatch(r"\d{8}", published):
+        published = f"{published[:4]}-{published[4:6]}-{published[6:]}"
+    lines = [
+        ("Title", str(meta.get("title") or "").strip()),
+        ("Channel", str(meta.get("channel") or "").strip()),
+        ("Length", _length(meta.get("duration"))),
+        ("Published", published),
+        ("URL", f"https://www.youtube.com/watch?v={vid}"),
+    ]
+    return "\n".join(f"{label}: {value}" for label, value in lines if value)
+
+
+def _with_header(vid: str, meta: dict, text: str) -> str:
+    return f"{_header(vid, meta)}\n\nTranscript:\n{text}"
+
+
 def _download_audio(vid: str, dest_dir: str) -> str:
     """Audio-only download via yt-dlp; returns the file path."""
     from yt_dlp import YoutubeDL
@@ -140,7 +221,8 @@ async def _whisper(audio_path: str) -> str:
 
 @mcp.tool()
 async def transcript(url: str, language: str | None = None) -> str:
-    """Returns the full transcript text of a YouTube video.
+    """Returns a YouTube video's title, channel, length, upload date and link, then its full
+    transcript text.
 
     This docstring is the tool description the model reads; the Korean trigger
     phrases are functional.
@@ -163,20 +245,25 @@ async def transcript(url: str, language: str | None = None) -> str:
     if not vid:
         return f"Error: cannot extract video ID from {url!r}"
 
+    # The video's own facts, looked up while the captions are read.
+    meta = asyncio.ensure_future(_metadata(vid))
+
     # Captions first.
     txt = await asyncio.to_thread(_try_captions, vid, language)
     if txt:
-        return txt
+        return _with_header(vid, await meta, txt)
 
     # No captions: download audio and transcribe.
     with tempfile.TemporaryDirectory() as tmp:
         try:
             audio = await asyncio.to_thread(_download_audio, vid, tmp)
         except Exception as e:
+            meta.cancel()
             return f"Error: audio download failed: {e}"
         try:
-            return await _whisper(audio)
+            return _with_header(vid, await meta, await _whisper(audio))
         except Exception as e:
+            meta.cancel()
             return f"Error: transcription failed: {e}"
 
 

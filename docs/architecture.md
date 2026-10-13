@@ -1231,7 +1231,9 @@ the conversations and documents that already use it. Unlike `draft`, it does not
 `run_skill_script`. The wire carries `listed`; administrators see hidden rows behind **Show
 hidden**. Listed: the skills `grounding-check`, `gap-check`, `calc-check`, `date-calc`,
 `quote-calc`, `xlsx-clean`, `pdf-table` and `pii-mask`, the work skills that replaced the
-shipped agents and the two connector companions; the offered document templates and
+shipped agents and the two connector companions, and translation `translation`, press release
+`press-release`, Excel file `xlsx-build` and chart `chart-make`; the offered document templates
+(the meeting agenda `doc-agenda` beside the minutes) and
 the briefing deck (`deck-briefing`); the themes **Basic** (기본) and the document serif
 (문서용 명조); the time connector (deep research disabled, YouTube unlisted).
 **Finish**'s export item names `by_format`: an official-letter-family format (`internal_draft`, `official`,
@@ -1323,6 +1325,38 @@ runs skills; its version freezes the agent's prompt with each built-from skill's
 appended and adds the skills' `post` checks (`publishing.built_from`). A composed pipeline's
 agent step gets the same prompt.
 
+**Language, web search and memory are the agent's own settings** (migration 0074, form
+**Advanced**). They are plain agent fields, not catalogue cases, so a person builds the same
+thing a shipped agent would:
+
+- `agents.output_language` (`auto`, `ko`, `en`, `ja`, `zh`, or a language name typed in,
+  cleaned to one line by `output_language.normalize`). `workspace_context.assemble` adds it as
+  the last trusted block (`agent.language`, `output_language.rule`) on chat, report and slides
+  alike, and `context.build_messages` / `build_document_messages` then skip their own
+  request-language rule. A turn that names a language itself (「영어로」, "in Korean",
+  `output_language.asks_language`) drops the block for that turn; a standing request for
+  English earlier in the chat still wins. Report and slides turns also carry it as a request
+  condition (「Write the whole document in …」), which their stage prompts read with the
+  request. A published version copies the field, so the bot answers in it.
+- `agents.web_search_default` (`auto`, `on`, `off`). The composer opens a conversation with the
+  agent on this setting and the person changes it per turn. `SendMessage.web_search` is
+  optional: a turn that sends none (API, MCP) takes the agent's default, and without an agent
+  stays off as before. With `off`, current-fact forcing (`freshness`, `exact_facts`) does not
+  start a search, since it only forces one when search is on; asking for a search in the words
+  still searches.
+- `agents.use_memory` (default true). When false, `assemble` reads no memory block for the
+  agent's turns, the turn writes no automatic memory (`_enrich_memory` is not asked), and
+  `share_note`, which writes a memory row, is not offered.
+
+**Tool skills on documents.** A report or deck writer runs no tools, so a hand-picked skill
+whose `required_tools` are missing was refused (`skill_tools_unavailable`). A skill whose work
+the server does around the writing is now accepted there (`skill_specs.runs_on_server`: a
+check skill with a `stage`, or `process` with `prepass`, `checks`, `stages` or `code_calc`,
+like `calc-check`, `date-calc` and `quote-calc`); its body reaches the writer without the
+tool steps, and its pre-pass, checks and code calculation join the turn through
+`skill_turn`. A tool skill without such a process is still refused, and the composer greys it
+out with the same rule (`lib/serverSkills.ts`).
+
 | withdrawn agent | skill (`app/skills/`) | template | checks | own questions / settings | to rebuild the agent |
 |---|---|---|---|---|---|
 | minutes `minutes` | meeting minutes `minutes-writing` (report) | `doc-minutes` | gap-check, grounding-check, generic-language-killer | — (the template's: meeting date, attendees, due dates; date pre-pass from the meeting date) | keep on `minutes-writing` · theme document serif · screen Report |
@@ -1340,7 +1374,8 @@ a skill does not carry is the look — the theme stays a choice of the person or
 the agent's 0.3 temperature (a turn without an agent writes at 0.4).
 
 Two skills tell the model when and how to use the default connectors: YouTube transcript and
-summary `youtube-summary` (needs `mcp__youtube__transcript`; summarises from the transcript
+summary `youtube-summary` (needs `mcp__youtube__transcript`, which heads the transcript with the
+video's title, channel, length and upload date; summarises from the transcript
 only and marks doubtful words) and deep research `deep-research` (needs
 `mcp__deep-research__quick_research`; the lightest research tool that answers, said to take
 minutes). The time connector joins `date-calc`: with no date in the material, today comes from
@@ -1350,6 +1385,20 @@ credentials only for env values the person enters — `{{...}}` identity placeho
 `${VAR}` values the server fills (YouTube's `WHISPER_URL`) are not theirs. An administrator's
 shared skill reads **By: Official** in the hub, as their agents do; a copy reads **Original:
 Official**, and **Edited by me · Original: …** once changed.
+
+Four more work skills fill gaps an agent built only from shipped skills had. Translation
+`translation` (chat, report) and press release `press-release` (chat, report; grounding-check
+and generic-language-killer, no search) are instructions only; a press release written as a
+report gets the `press` format's head when the request names it. Excel file `xlsx-build` (chat,
+needs `run_skill_script`) builds a workbook with `scripts/build.py` from `sheets` given in the
+args or from a chat file (a pasted table, an attachment, or a CSV `run_code` saved): computed
+columns as `{column}` formulas per row, a `SUM` total row where a formula column repeats its
+formula (a rate stays total ÷ total), number formats, and an optional native chart. LibreOffice
+in the sandbox caches the formula values, which the summary returns for the answer to quote;
+the file is a step output, shown under the answer as a download. Chart `chart-make` (chat,
+needs `create_chart`) tells the model when and how to draw a chart artifact. The meeting agenda
+template `doc-agenda` binds the `agenda` format (the minutes' head) with its own genre rule,
+missing-information questions (meeting date, attendees) and date pre-pass.
 
 **Withdrawn, not retired.** An agent file with `withdrawn = true` stays in the catalogue: the
 sync keeps its owner row and keeps untouched copies following it, `bases.get` still resolves
@@ -1586,6 +1635,18 @@ report/slides send path fails closed with `503 governance_unavailable` before
 model discovery, transcript writes, billing, virtual-key issuance or upstream
 calls. This also blocks a strict-local request: without the row the server does
 not know whether organisation-wide masking, intent filtering or blocked categories apply.
+
+**A fallback answer is recorded.** LiteLLM marks a response its fallback served with
+`x-litellm-attempted-fallbacks` (> 0) and names the answering group in
+`x-litellm-model-group`; the body's `model` is then left as the fallback's own. The chat
+stream reader keeps those headers per hop (`agent._stream_once`), and `run_turn` reports a
+`fallback_route` event (`fallback_watch.served_by`: the group header when it names another
+group, else the body's model). The turn stores `routing.fallback` (asked and answering model,
+the answering model's catalogue boundary, `external` unless it is `self_hosted`), the answer
+shows 「외부 대체로 답함」 (or 「대체 모델로 답함」 for a self-hosted fallback), and the
+answer's transaction writes a `model.fallback` audit event (`warn` when external) for the
+administrator. Report and slides writers call the proxy through their own clients and are
+not covered yet.
 
 Strict-local turns disable web search, URL fetching and remote connector tools.
 Their tool registry is built from in-process runners only, rather than building

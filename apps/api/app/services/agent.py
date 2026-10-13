@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.services import (
     calc_check,
     current_evidence,
+    fallback_watch,
     internal_words,
     query_terms,
     scheduling,
@@ -101,6 +102,8 @@ class _Accumulator:
         self.runaway: str | None = None
         #: Reasoning-channel characters (never shown; logged when a hop comes back empty).
         self.reasoning_chars = 0
+        #: proxy response headers naming a fallback (`fallback_watch`)
+        self.fallback_headers: dict[str, str] = {}
 
     def add_chunk(self, chunk: dict[str, Any]) -> str | None:
         """Newly emitted visible text, if any."""
@@ -235,6 +238,12 @@ async def _stream_once(
                     body = (await response.aread()).decode(errors="replace")[:400]
                     detail = "response redacted" if redact_logging else body
                     raise ChatStreamError(f"upstream_{response.status_code}: {detail}")
+                headers = getattr(response, "headers", None) or {}
+                if fallback_watch.attempts(headers):
+                    acc.fallback_headers = {
+                        name: headers.get(name, "")
+                        for name in (fallback_watch.FALLBACKS_HEADER, fallback_watch.GROUP_HEADER)
+                    }
                 async for line in response.aiter_lines():
                     if not line.startswith("data:"):
                         continue
@@ -1349,7 +1358,10 @@ async def run_turn(
                         acc = value
             except ChatStreamError as exc:
                 if hop_model == model:
-                    if transport_retried or not str(exc).startswith("upstream_unreachable"):
+                    # a gateway saying the model server is down counts as a drop too
+                    if transport_retried or not str(exc).startswith(
+                            ("upstream_unreachable", "upstream_502", "upstream_503",
+                             "upstream_504")):
                         raise
                     # Stream dropped mid-answer (the proxy closed it after 2,400 characters):
                     # the half answer taken back and the hop asked once more.
@@ -1415,6 +1427,16 @@ async def run_turn(
                 "type": "model_route",
                 "routedModel": model,
                 "actualModel": acc.actual_model,
+            }
+        served = fallback_watch.served_by(acc.fallback_headers, hop_model, acc.actual_model)
+        if hop_model == model and served and f"fallback:{served}" not in reported_models:
+            # the asked model failed over: the proxy's fallback answered this hop
+            reported_models.add(f"fallback:{served}")
+            yield {
+                "type": "fallback_route",
+                "routedModel": model,
+                "servedBy": served,
+                "attempts": fallback_watch.attempts(acc.fallback_headers),
             }
 
         prerequisite_batch = False

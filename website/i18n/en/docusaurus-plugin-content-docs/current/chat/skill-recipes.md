@@ -21,6 +21,10 @@ Skills the administrator shares with everyone. They show under **Official skills
 | Answers from regulations (규정 근거 답변) | Chat | Answers from regulations and guidelines with the article cited as [n], and points what the material does not cover to the department. |
 | YouTube transcript and summary (YouTube 영상 전사·요약) | Chat | Gets the captions (or a transcription of the audio) through the **YouTube 전사** connector and summarises from that alone. |
 | Deep research (심층 조사) | Chat | Searches the web and papers many times through the **심층 리서치** connector and sums up the sourced findings. Takes a few minutes. |
+| Translation (번역) | Chat, Report | Translates between Korean and English (other languages on request) without leaving anything out. Names, numbers, units, tables, lists and code stay as they are; one term stays one term throughout; only genuinely ambiguous spots get a 「번역 메모」 (translator's note). Ask for 「직역」 (literal) or 「의역」 (free), 「격식체」 (formal) or 「평어체」 (plain) and it follows. |
+| Press release (보도자료) | Chat, Report | A press release with headline, subheadline, a who-what-when-where-why lead, the body most important first, the organisation's boilerplate and contact. Quotes only words the material gives to a named person, and no figures the material does not give. Only the release date, embargo and contact are left as brackets for you to fill. Give a length (「A4 1장」, 「800자 이내」) and it keeps to it. |
+| Make an Excel file (엑셀 파일 만들기) | Chat | Turns a pasted table, an attached CSV or Excel file, or a computed table into a downloadable Excel (.xlsx) file. Total rows and columns such as totals or rates go in as formulas; on request it adds an Excel chart too. |
+| Make a chart (차트 만들기) | Chat | Draws a bar, line or stacked bar chart from a table's numbers beside the conversation. Only values in the material or computed by code. |
 
 ## Other skills, and what a skill brings
 
@@ -37,6 +41,17 @@ A skill brings its template, checks and missing-information questions. Turn on *
 Skills turned on in chat also go along when you ask for a document there and it moves to a report or deck. Skills that need tools cannot run on that screen and are left out, with a notice naming them.
 
 Use **개조식 보고** (「과장님께 올릴 1쪽 보고로」) and **비교·결정 보고** (「세 제품을 연간 비용과 필수 조건으로 비교해서 하나 골라 줘」) the same way.
+
+## Translation, press releases, Excel files and charts
+
+- **번역** (Translation): turn it on in a conversation, paste the text and send something like 「영어로, 의역, 격식체로」 (into English, free, formal). To fix terms, add them: 「용어: 학생지원팀 = Student Support Office」. To translate a whole document as a document, turn it on on the report screen; it follows the source's headings and order and adds no summary or recommendation.
+- **보도자료** (Press release): paste the event, agreement or award material and send 「보도자료로, A4 1장」. If the material has no quote, it writes no quote paragraph and says so at the end. On the report screen, say 「보도자료」 in the request and the page head gets the release date, embargo and contact fields.
+- **엑셀 파일 만들기** (Make an Excel file): paste a table or attach a CSV or Excel file and send 「엑셀 파일로, 합계 행과 증감률 열은 수식으로」 (as an Excel file, total row and change-rate column as formulas). The file appears under the answer as a download button. For a messy sheet, turn on **엑셀 정리** (Excel cleanup) too; for aggregates, **자료 추출·집계** (Extract and tally), and you get the computed table as a file. Code execution (the sandbox) must be on.
+- **차트 만들기** (Make a chart): paste a table and send 「지점별 월 매출을 막대 차트로」 (monthly sales by branch as a bar chart); the chart opens beside the conversation. To put the chart inside the Excel file too, turn on **엑셀 파일 만들기** as well and add 「엑셀 차트도」.
+
+## Before the meeting: the agenda
+
+The **회의 안건** (Meeting agenda) template is the minutes' counterpart. On the report screen choose **+** → template picker → **회의 안건** (or say 「회의 안건」 or 「안건지」 in the request) and send the items and their owners. It writes the same head as the minutes (meeting, date and time, place, attendees, author), an agenda table (order · item · owner · time · goal), points to review per item, pre-reads and the decisions needed. The goal is one of 보고 (information), 논의 (discussion) or 결정 (decision); an owner the material does not name is 「미정」 with one line saying what to confirm. Without a meeting date or attendees in the material, it asks before writing.
 
 ## Building an agent from skills
 

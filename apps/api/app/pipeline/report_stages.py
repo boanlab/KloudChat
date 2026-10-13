@@ -36,6 +36,7 @@ from app.services import (
     internal_words,
     key_figures,
     lint,
+    model_retry,
     placeholders,
     process_settings,
     quality_gate,
@@ -74,6 +75,13 @@ def _report():
     from app.services import report
 
     return report
+
+
+async def _written(*args, **kwargs) -> tuple[str, dict]:
+    """`report._complete` for the draft and a section, asked once more when the connection
+    dropped (r3: a section otherwise ends 「이 섹션을 쓰지 못했습니다」)."""
+    return await model_retry.once_more(lambda: _report()._complete(*args, **kwargs),
+                                       "report call")
 
 
 def _searched(mat) -> bool:
@@ -768,7 +776,7 @@ class Draft(Base):
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
         genre, sources = bundle.spec.genre, bundle.material.sources
         try:
-            draft_text, spent = await report._complete(
+            draft_text, spent = await _written(
                 req.model,
                 _messages(bundle, report._shaped(
                     report._DRAFT_PROMPT.format(
@@ -818,7 +826,7 @@ class Sections(Base):
             """One section's call."""
             role = report._section_role(section["heading"], index, len(sections),
                                         "\n".join(written))
-            return await report._complete(
+            return await _written(
                 req.model,
                 _messages(bundle, report._shaped(report._SECTION_PROMPT.format(
                     heading=section["heading"],

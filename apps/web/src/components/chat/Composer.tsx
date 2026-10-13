@@ -38,13 +38,14 @@ import { agentStartKind, distinctAgents, kindMeta } from '@/lib/kinds'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { ChatSendRecoveryError, FIGURE_STYLES, composerKey, effectiveModelId, useStore } from '@/store/useStore'
-import type { ModelInfo, PrivacyAction, SessionKind, Skill } from '@/types'
+import type { ModelInfo, PrivacyAction, SessionKind, Skill, WebSearchMode } from '@/types'
 import { servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
 import { SharedBotItems } from './SharedBotItems'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
 import { isListed } from '@/lib/listed'
+import { runsOnServer } from '@/lib/serverSkills'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import { ATTACH_ACCEPT, attachRefusal } from '@/lib/attachable'
 import { isImeKey } from '@/lib/ime'
@@ -287,9 +288,6 @@ function AvOptions() {
     </>
   )
 }
-
-/** The three positions (자동·항상·끔); `auto` is sent as `'auto'`, the others as booleans. */
-type WebSearchMode = 'auto' | 'on' | 'off'
 
 /** What the 「+」 menu shows: its list, or one tool's own choices in its place. */
 type PlusView = 'main' | 'skills' | 'web' | 'connectors' | 'agents'
@@ -864,6 +862,11 @@ export function Composer({
     offersTemplates(kind) && designTemplates.some((row) => row.surface === kind)
   // Past the empty screen, which has its own gallery button.
   const started = (session?.messages.length ?? 0) > 0
+  // A conversation with an agent opens on the agent's web search default; the person still changes it per turn.
+  const agentSearch = sessionAgent?.webSearchDefault
+  useEffect(() => {
+    if (agentSearch && !started) setWebSearchMode(agentSearch)
+  }, [sessionId, sessionAgent?.id, agentSearch, started])
   const model = models.find(
     (candidate) => candidate.id === effectiveModelId(session, kind, agents, modelByKind),
   )
@@ -896,7 +899,8 @@ export function Composer({
   const skillUnavailableReason = (skill: Skill): string | null => {
     if (skill.requiredTools.length === 0) return null
     if (kind !== 'chat') {
-      return t('이 화면에서는 도구가 필요한 스킬을 실행할 수 없습니다.')
+      // Its calculation or check runs on the server around the writing (`runsOnServer`).
+      return runsOnServer(skill) ? null : t('이 화면에서는 도구가 필요한 스킬을 실행할 수 없습니다.')
     }
     if (!model?.supportsTools) {
       return t('선택한 모델이 도구 호출을 지원하지 않습니다.')
@@ -926,6 +930,11 @@ export function Composer({
         )
       : null
   }
+  // A tool skill a document turn may still pick: the server runs its part.
+  const serverNote = (skill: Skill): string | null =>
+    kind !== 'chat' && skill.requiredTools.length > 0 && runsOnServer(skill)
+      ? t('서버가 쓰기 전후에 계산·검사합니다')
+      : null
   const activeSkills = activatedSkillIds
     .map((id) => usableSkills.find((skill) => skill.id === id))
     .filter(
@@ -1837,11 +1846,11 @@ export function Composer({
                   disabled={!!unavailable || limitReached}
                   title={limitReached ? t('최대 3개까지 선택할 수 있습니다.') : undefined}
                   hint={
-                    unavailable
-                      ? unavailable
-                      : recommended.has(s.id)
-                        ? t('이 프로젝트 스킬')
-                        : t('약 {n} 토큰').replace('{n}', s.estimatedTokens.toLocaleString())
+                    unavailable ??
+                    serverNote(s) ??
+                    (recommended.has(s.id)
+                      ? t('이 프로젝트 스킬')
+                      : t('약 {n} 토큰').replace('{n}', s.estimatedTokens.toLocaleString()))
                   }
                   onClick={() => toggleSkill(s.id, selected)}
                 >
@@ -1862,7 +1871,7 @@ export function Composer({
                       keepOpen
                       disabled={!!unavailable || limitReached || adding !== null}
                       title={limitReached ? t('최대 3개까지 선택할 수 있습니다.') : undefined}
-                      hint={unavailable ?? (adding === s.id ? t('추가하는 중…') : t('공식'))}
+                      hint={unavailable ?? (adding === s.id ? t('추가하는 중…') : serverNote(s) ?? t('공식'))}
                       onClick={() => void addOfficial(s)}
                     >
                       {s.name}

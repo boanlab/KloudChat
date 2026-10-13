@@ -68,6 +68,8 @@ ACTIONS: frozenset[str] = frozenset(
         "privacy.send_raw_external",
         "privacy.mask_tool_output",
         "privacy.strict_tool_output",
+        # a model call LiteLLM's fallback answered (`services/fallback_watch`)
+        "model.fallback",
         # published chatbots (`routers/publications`, `services/publishing`)
         "publication.published",
         "publication.requested",

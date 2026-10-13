@@ -61,6 +61,12 @@ FORMATS: tuple[DocFormat, ...] = (
         ("회의명", "일시", "장소", "참석자", "작성자"), numbering="none", head="memo",
     ),
     DocFormat(
+        # After minutes: 「회의록」 wins when both are named.
+        "agenda", "회의 안건",
+        r"회의\s{0,3}안건(?!별)|안건\s{0,3}(?:지|목록)|안건\s{0,3}표(?!결)|어젠다|(?<![A-Za-z])agenda(?![A-Za-z])",
+        ("회의명", "일시", "장소", "참석자", "작성자"), numbering="none", head="memo",
+    ),
+    DocFormat(
         "press", "보도자료", r"보도\s{0,3}자료|press\s{0,3}release|언론\s{0,3}배포",
         ("배포일", "보도 시점", "문의처"), numbering="none", subtitle=True, head="press",
     ),
