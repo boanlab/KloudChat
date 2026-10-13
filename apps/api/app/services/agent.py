@@ -485,20 +485,68 @@ def _writes_korean(request: str, conversation: list[dict[str, Any]]) -> bool:
     return bool(_HANGUL_CHARS.search(request)) or len(_LATIN_CHARS.findall(request)) < 3
 
 
-def _in_reply_language(note: str, korean: bool) -> str:
-    """A loop note to the writer (written in Korean) with, for an answer in another language,
-    a line keeping the answer in it: the last user message picks a weak model's language (r6
-    P27: after 「웹 검색은 충분히 했습니다」 GLM answered an English question in Korean)."""
-    if korean:
-        return note
-    return (note + "\n\nWrite the answer in the language the answer is to be in — the "
-            "language of the user's request or the one set for it — not in Korean, the "
-            "language of this note.")
+def _note(korean_text: str, english_text: str, korean: bool) -> str:
+    """A note the loop adds to the turn, in the answer's language: the last user message picks
+    a weak model's language (r6 P27: after a Korean 「웹 검색은 충분히 했습니다」 GLM answered
+    an English question in Korean)."""
+    return korean_text if korean else english_text
 
 
-def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str] | None:
+#: the loop's notes to the writer in English, for an answer in English (`_note`)
+_ECHO_EN = ("Your reply repeated your previous answer word for word. Answer this question "
+            "afresh.")
+_REASK_EN = (
+    "You asked the same question again. The user did not answer it and went on. Do not ask "
+    "again: take the most usual case for what is still open, say so in one sentence, and "
+    "answer what was asked now.")
+_COMPUTE_BLANKS_EN = (
+    "The answer still has blanks like 「[수치]」. If a value can be counted from the attached "
+    "data (an average without outliers, a share, …), compute it with run_code and rewrite the "
+    "answer from the start with the printed values. Leave blank only what the data cannot "
+    "give.")
+_COMPUTE_UNVERIFIED_EN = (
+    "These values in the answer are not in this turn's code output: {values}. Do not use "
+    "values worked by hand: run code with run_code that computes and prints them, then rewrite "
+    "the answer from the start using only the code output above. Copy any value the code "
+    "already printed as it is.")
+_CODE_OVERRIDE_EN = (
+    "The answer called the code's printed values wrong and replaced them with values worked by "
+    "hand. Code output cannot be corrected by hand. If the code is wrong, fix it, run it again "
+    "with run_code and rewrite the answer from the start with its output (if the output was "
+    "cut, print only the values you need). If you will not run it again, use the printed "
+    "values as they are and do not say the code was wrong or give hand-corrected values.")
+_SCHEDULE_MISMATCH_EN = (
+    "These values in the answer differ from the same process table worked by the textbook "
+    "definition (waiting time = completion time − arrival time − burst time; on a tie the "
+    "process that arrived first goes first; in round robin a process arriving when a quantum "
+    "ends enters the queue before the preempted one): {values}. Fix the scheduling logic "
+    "(preemption points, ready-queue order, waiting-time definition), run it again with "
+    "run_code, and rewrite the Gantt chart and the table from the new output. Do not mention "
+    "tool names or failed runs in the answer.")
+_EMPTY_EN = ("Your answer was empty. Write the answer from the material gathered so far. If "
+             "it is not enough, ask what else is needed.")
+_HOP_CAP_EN = ("No more tools can be used. Write the answer from the material gathered so "
+               "far, and say plainly which points you could not confirm.")
+_CODE_CLOSE_EN = (
+    "No more tools can be used. Write the answer with the values the code printed above. Do "
+    "not fill in values the code did not print by working them by hand; say those could not be "
+    "computed with code.")
+_SEARCH_CAP_EN = (
+    "{done} Use no more tools and answer from what you have confirmed so far. Say which points "
+    "you could not confirm, and cite only URLs that were in the actual search results.")
+_NOT_RUN = "(도구 호출 한도에 닿아 실행하지 않았습니다.)"
+_NOT_RUN_EN = "(Not run: the tool-call limit was reached.)"
+_REVERTED_EN = (
+    "_This answer called the code's printed values wrong and replaced them with values worked "
+    "by hand, but the fixed code was not run again. The hand-worked answer is withdrawn and "
+    "the values the code printed are shown as they are. If the code looks wrong, say where, "
+    "and I will fix it and run it again._")
+
+
+def _answer_anomaly(text: str, messages: list[dict[str, Any]],
+                    korean: bool = True) -> tuple[str, str] | None:
     """`(kind, nudge)` for a verbatim repeat, the same question asked again, or an unrequested
-    Latin answer to Korean; else None."""
+    Latin answer to Korean; else None. `korean`: the answer's language, for the nudge."""
     squeeze = lambda t: " ".join(str(t or "").split())  # noqa: E731
     def last(role: str) -> dict[str, Any] | None:
         return next(
@@ -513,16 +561,15 @@ def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str
     if previous is not None:
         before, now = squeeze(previous["content"]), squeeze(text)
         if len(now) >= 40 and (now == before or (len(now) >= 80 and before.startswith(now))):
-            return "echo", (
-                "방금 쓴 답은 앞 답을 그대로 반복한 것입니다. 이번 질문에 맞게 새로 답하세요."
-            )
+            return "echo", _note(
+                "방금 쓴 답은 앞 답을 그대로 반복한 것입니다. 이번 질문에 맞게 새로 답하세요.",
+                _ECHO_EN, korean)
         if _asks_again(previous["content"], text):
             # 「100달러가 상품가인지 … 알려 주세요」 twice: the person moved on instead.
-            return "reask", (
+            return "reask", _note(
                 "같은 질문을 다시 했습니다. 사용자는 그 질문에 답하지 않고 이어서 말했습니다. "
                 "되묻지 말고, 정해지지 않은 점은 흔한 경우로 가정해 한 문장으로 밝힌 뒤 "
-                "요청한 것을 지금 바로 답하세요."
-            )
+                "요청한 것을 지금 바로 답하세요.", _REASK_EN, korean)
     asked = last("user")
     if asked is not None and not _other_language_set(messages):
         hangul_asked = len(_HANGUL_CHARS.findall(asked["content"]))
@@ -621,7 +668,7 @@ def printed_text(content: str) -> str:
     return (m.group(1) if m else content or "").strip()
 
 
-def reverted_answer(code_outputs: list[str]) -> str:
+def reverted_answer(code_outputs: list[str], *, korean: bool = True) -> str:
     """The answer when a hand-worked override was not backed by a new run: what code printed."""
     printed: list[str] = []
     used = 0
@@ -634,13 +681,13 @@ def reverted_answer(code_outputs: list[str]) -> str:
         printed.insert(0, text[-_REVERT_CHARS:])
         used += len(text)
     body = "\n\n".join(printed).replace("```", "ˋˋˋ")
-    return _REVERTED + "\n\n```text\n" + body + "\n```"
+    return _note(_REVERTED, _REVERTED_EN, korean) + "\n\n```text\n" + body + "\n```"
 
 
-def _values_step(step_id: str, label: str, count: int) -> dict:
+def _values_step(step_id: str, label: str, count: int, *, korean: bool = True) -> dict:
     """A finished step saying how many answer values were set to computed ones."""
     return {"type": "step", "category": "thinking", "id": step_id, "label": label, "status": "done",
-            "detail": f"값 {count}개 맞춤"}
+            "detail": f"값 {count}개 맞춤" if korean else f"{count} value(s) set"}
 
 
 def code_checked(answer: str, code_outputs: list[str]) -> tuple[str, list[str]]:
@@ -1456,7 +1503,6 @@ async def run_turn(
     ended_by_tool = False
     #: A source tool gave content; one was called (and failed).
     source_ok = source_called = False
-    korean = bool(re.search(r"[가-힣]", ctx.request or given_text))
     #: the answer's language: the loop's own notes and footers follow it
     reply_korean = _writes_korean(ctx.request or "", conversation)
     #: a tool call written into the text was dropped, nothing else said (r6 P16)
@@ -1679,6 +1725,17 @@ async def run_turn(
                         "정답을 문장이나 JSON 본문으로 쓰지 말고, 제공된 함수 스키마에 맞춰 "
                         f"{preflight_tool} 도구 호출만 반환하세요. "
                         "원래 질문의 값과 단위를 보존하여 검산할 식을 전달하세요."
+                    ) if reply_korean else (
+                        "The check calculation is not done yet. If the values it needs are in "
+                        "the material, call an allowed read tool first, then calculate with "
+                        "calculate once you have its result. Do not call reading and "
+                        "calculating together or make up values. Do not return the answer as "
+                        "text before the check."
+                        if pending_reads else
+                        f"No {preflight_tool} tool call has come yet. Do not write the answer "
+                        "as text or a JSON body: return only a "
+                        f"{preflight_tool} tool call that fits the function schema, passing the "
+                        "expression to check with the question's values and units kept."
                     ),
                 })
                 continue
@@ -1763,10 +1820,11 @@ async def run_turn(
                     answer_text.append(kept)
                     yield {"type": "delta", "text": kept}
             if "".join(answer_text).strip() or freshness_request:
-                note = (
+                note = _note(
                     "\n\n_같은 내용이 되풀이되어 여기서 멈췄습니다. "
-                    "다시 시도하거나 다른 모델을 골라 보세요._"
-                )
+                    "다시 시도하거나 다른 모델을 골라 보세요._",
+                    "\n\n_The same text kept repeating, so the answer stops here. Try again or "
+                    "pick another model._", reply_korean)
                 answer_text.append(note)
                 yield {"type": "delta", "text": note}
             break
@@ -1778,7 +1836,7 @@ async def run_turn(
                 yield {"type": "retract", "text": retracted}
             if tail:
                 yield {"type": "delta", "text": tail}
-            note = {
+            note = ({
                 "completed": (
                     "\n\n_주소가 같은 글자를 되풀이해 여기서 멈추고, "
                     "검색 결과에 있던 주소로 바로잡았습니다._"
@@ -1791,7 +1849,14 @@ async def run_turn(
                     "\n\n_같은 글자가 되풀이되어 여기서 멈췄습니다. "
                     "다시 시도하거나 다른 모델을 골라 보세요._"
                 ),
-            }[outcome]
+            } if reply_korean else {
+                "completed": ("\n\n_A link kept repeating the same characters, so it stops "
+                              "here and was set to the address in the search results._"),
+                "dropped": ("\n\n_A link kept repeating the same characters, so it stops here; "
+                            "that address was not in the search results and was taken out._"),
+                "cut": ("\n\n_The same characters kept repeating, so the answer stops here. Try "
+                        "again or pick another model._"),
+            })[outcome]
             yield {"type": "delta", "text": note}
             answer_text[:] = [kept + tail + note]
             break
@@ -1808,28 +1873,29 @@ async def run_turn(
                 # 「코드 출력의 P1 대기시간 11은 잘못 … 수동 추적으로 수정」: rerun or use it.
                 override_retried = True
                 log.info("answer set the code's output aside by hand, asking once to rerun")
-                ask = _CODE_OVERRIDE
+                ask = _note(_CODE_OVERRIDE, _CODE_OVERRIDE_EN, reply_korean)
             elif (spoken_now and not figures_retried and len(
                     missing := _unverified_figures(
                         spoken_now, "\n".join([given_text, *code_outputs]))) >= 2):
                 # Hand-worked values the code did not print.
                 figures_retried = True
                 log.info("answer values missing from the code outputs, asking once to compute")
-                ask = _COMPUTE_UNVERIFIED.format(values=", ".join(missing[:12]))
+                ask = _note(_COMPUTE_UNVERIFIED, _COMPUTE_UNVERIFIED_EN, reply_korean).format(
+                    values=", ".join(missing[:12]))
             elif (spoken_now and schedule_request and not schedule_retried
                   and (wrong := scheduling.check(spoken_now, schedule_request)[1])):
                 # A simulation whose averages differ from the textbook run of the same table.
                 schedule_retried = True
                 log.info("scheduling values differ from the reference, asking once to rerun: %s",
                          wrong[:8])
-                ask = _SCHEDULE_MISMATCH.format(values="; ".join(wrong[:10]))
+                ask = _note(_SCHEDULE_MISMATCH, _SCHEDULE_MISMATCH_EN, reply_korean).format(
+                    values="; ".join(wrong[:10]))
             if ask:
                 streamed = "".join(hop_text)
                 del answer_text[len(answer_text) - len(hop_text) :]
                 yield {"type": "retract", "text": streamed}
                 conversation.append(acc.assistant_message())
-                conversation.append(
-                    {"role": "user", "content": _in_reply_language(ask, reply_korean)})
+                conversation.append({"role": "user", "content": ask})
                 if closing or hop >= settings.max_tool_hops:
                     extra_hops = max(extra_hops, hop + 1 - settings.max_tool_hops)
                     close_after_tools = True
@@ -1840,7 +1906,7 @@ async def run_turn(
         if not acc.calls:
             spoken_now = "".join(acc.content).strip()
             if spoken_now and not anomaly_retried and not preflight_tool and not freshness_request:
-                anomaly = _answer_anomaly(spoken_now, messages)
+                anomaly = _answer_anomaly(spoken_now, messages, korean=reply_korean)
                 if anomaly:
                     # Repeat or wrong-language answer: retracted, retried once.
                     anomaly_retried = True
@@ -1849,8 +1915,7 @@ async def run_turn(
                     del answer_text[len(answer_text) - len(hop_text) :]
                     yield {"type": "retract", "text": streamed}
                     conversation.append(acc.assistant_message())
-                    conversation.append({"role": "user", "content": _in_reply_language(
-                        anomaly[1], reply_korean or anomaly[0] == "language")})
+                    conversation.append({"role": "user", "content": anomaly[1]})
                     closing = True
                     continue
             if (spoken_now and hop and not blanks_retried and "run_code" in by_name
@@ -1862,8 +1927,8 @@ async def run_turn(
                 del answer_text[len(answer_text) - len(hop_text) :]
                 yield {"type": "retract", "text": streamed}
                 conversation.append(acc.assistant_message())
-                conversation.append(
-                    {"role": "user", "content": _in_reply_language(_COMPUTE_BLANKS, reply_korean)})
+                conversation.append({"role": "user", "content": _note(
+                    _COMPUTE_BLANKS, _COMPUTE_BLANKS_EN, reply_korean)})
                 continue
             if hop and not spoken_now:
                 # Empty answer after tools: retry once without tools.
@@ -1871,9 +1936,10 @@ async def run_turn(
                 conversation.append(
                     {
                         "role": "user",
-                        "content": _in_reply_language(
+                        "content": _note(
                             "답이 비어 있습니다. 지금까지 모은 자료로 답을 쓰세요. "
-                            "자료가 부족하면 무엇이 더 필요한지 물으세요.", reply_korean),
+                            "자료가 부족하면 무엇이 더 필요한지 물으세요.",
+                            _EMPTY_EN, reply_korean),
                     }
                 )
                 closing = True
@@ -1896,15 +1962,16 @@ async def run_turn(
                     {
                         "role": "tool",
                         "tool_call_id": call.get("id") or f"call_{index}",
-                        "content": "(도구 호출 한도에 닿아 실행하지 않았습니다.)",
+                        "content": _note(_NOT_RUN, _NOT_RUN_EN, reply_korean),
                     }
                 )
             conversation.append(
                 {
                     "role": "user",
-                    "content": _in_reply_language(
+                    "content": _note(
                         "도구는 더 쓸 수 없습니다. 지금까지 모은 자료로 답을 쓰세요. "
-                        "확인하지 못한 항목은 확인하지 못했다고 밝히세요.", reply_korean),
+                        "확인하지 못한 항목은 확인하지 못했다고 밝히세요.", _HOP_CAP_EN,
+                        reply_korean),
                 }
             )
             closing = True
@@ -2044,7 +2111,8 @@ async def run_turn(
                 elif running_preset and result.final_text is None:
                     # the server's own fetch failed: said at once, nothing written from nothing
                     result.final_text = _source_missing(
-                        visible_label(tool, call["name"], done=True), called=True, korean=korean)
+                        visible_label(tool, call["name"], done=True), called=True,
+                        korean=reply_korean)
             if verifying_arithmetic and call["name"] == preflight_tool:
                 arithmetic_results.append(not result.failed)
             elif preflight_tool and call["name"] == preflight_tool and not result.failed:
@@ -2209,18 +2277,19 @@ async def run_turn(
         if close_after_tools:
             close_after_tools = False
             closing = True
-            conversation.append({"role": "user", "content": _in_reply_language(
+            conversation.append({"role": "user", "content": _note(
                 "도구는 더 쓸 수 없습니다. 위 코드 실행 출력의 값으로 답을 쓰세요. 코드가 출력하지 "
                 "않은 값을 손으로 셈해 채우지 말고, 그 항목은 코드로 구하지 못했다고 밝히세요.",
-                reply_korean)})
+                _CODE_CLOSE_EN, reply_korean)})
             continue
 
         if searches >= MAX_WEB_SEARCHES or fetches >= MAX_FETCHES:
             conversation.append(
                 {
                     "role": "user",
-                    # r6 P27: in Korean alone this last note turned an English answer Korean
-                    "content": _in_reply_language(
+                    # r6 P27: a Korean note here, the last user message, turned GLM's answer to
+                    # an English question Korean
+                    "content": _note(
                         (
                             "웹 검색은 충분히 했습니다. "
                             if searches >= MAX_WEB_SEARCHES
@@ -2229,6 +2298,10 @@ async def run_turn(
                         + "도구를 더 쓰지 말고 지금까지 "
                         "확인한 자료로 답하세요. 확인하지 못한 항목은 그렇게 밝히고, "
                         "실제 검색 결과에 있던 URL만 출처로 쓰세요.",
+                        _SEARCH_CAP_EN.format(done=(
+                            "You have searched the web enough."
+                            if searches >= MAX_WEB_SEARCHES
+                            else "You have read enough pages.")),
                         reply_korean,
                     ),
                 }
@@ -2353,7 +2426,7 @@ async def run_turn(
                     sorted(source_tools), source_called)
         name = sorted(source_tools)[0]
         note = _source_missing(visible_label(by_name.get(name), name, done=True),
-                               called=source_called, korean=korean)
+                               called=source_called, korean=reply_korean)
         if spoken := "".join(answer_text):
             yield {"type": "retract", "text": spoken}
         answer_text[:] = [note]
@@ -2380,8 +2453,11 @@ async def run_turn(
             log.warning("the second write was no deliverable either")
     if rescued_by:
         yield {"type": "step", "category": "thinking", "id": "answer-rescue",
+               # labels are keys the screen translates (web i18n); the detail is about the answer
                "label": "다른 모델로 답 쓰기", "status": "done",
-               "detail": f"답이 비거나 예고뿐이어서 {rescued_by[0]}가 다시 썼습니다"}
+               "detail": _note(f"답이 비거나 예고뿐이어서 {rescued_by[0]}가 다시 썼습니다",
+                               f"The answer was empty or only announced the work, so "
+                               f"{rescued_by[0]} wrote it again", reply_korean)}
 
     if (unverified_current and "".join(answer_text).strip()
             and not _form_fixed(messages, ctx.request or "")):
@@ -2438,7 +2514,7 @@ async def run_turn(
             # The code's output set aside by hand and no corrected run after: its values stand.
             log.warning("answer kept setting the code's output aside without a new run; "
                         "showing the printed values instead")
-            reverted = reverted_answer(code_outputs)
+            reverted = reverted_answer(code_outputs, korean=reply_korean)
             yield {"type": "retract", "text": answer}
             yield {"type": "delta", "text": reverted}
             answer = reverted
@@ -2449,7 +2525,8 @@ async def run_turn(
                 log.info("answer values set back to the code's printed ones: %s", fixes[:12])
                 yield {"type": "retract", "text": answer}
                 yield {"type": "delta", "text": checked}
-                yield _values_step("code-values", "코드 출력값 대조", len(fixes))
+                yield _values_step("code-values", "코드 출력값 대조", len(fixes),
+                                   korean=reply_korean)
                 answer = checked
     if schedule_request and not preflight_tool:
         checked, fixes = scheduling.check(answer, schedule_request)
@@ -2458,7 +2535,8 @@ async def run_turn(
             log.info("scheduling values set to the reference run: %s", fixes[:12])
             yield {"type": "retract", "text": answer}
             yield {"type": "delta", "text": checked}
-            yield _values_step("schedule-values", "스케줄링 결과 검산", len(fixes))
+            yield _values_step("schedule-values", "스케줄링 결과 검산", len(fixes),
+                               korean=reply_korean)
             answer = checked
     if preset_empty_answer is not None and material_texts:
         attributed = _cite_material(answer, material_texts)
@@ -2538,12 +2616,12 @@ async def run_turn(
         yield {"type": "delta", "text": note}
     homepages = [u for u in _urls_in(answer) if _is_homepage(u)]
     if searches and homepages:
-        note = (
+        note = _note(
             "\n\n_기관 홈페이지 첫 화면은 위 주장을 뒷받침하는 직접 출처가 아닙니다. "
-            "해당 보고서·보도자료의 원문 주소를 확인하세요: "
-            + ", ".join(dict.fromkeys(homepages))
-            + "_"
-        )
+            "해당 보고서·보도자료의 원문 주소를 확인하세요: ",
+            "\n\n_An organisation's home page is not a direct source for the claims above. "
+            "Check the address of the report or press release itself: ", reply_korean,
+        ) + ", ".join(dict.fromkeys(homepages)) + "_"
         answer_text.append(note)
         yield {"type": "delta", "text": note}
 

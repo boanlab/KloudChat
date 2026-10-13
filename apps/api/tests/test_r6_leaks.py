@@ -5,6 +5,7 @@ answer, a 「(확인 필요)」 inside a number, and an English question answere
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -144,7 +145,7 @@ _CALL = ('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1",'
 _EMPTY = ['data: {"choices":[{"delta":{},"finish_reason":"stop"}]}', "data: [DONE]"]
 
 
-async def _turn(monkeypatch, replies: list[list[str]], request: str):
+async def _turn(monkeypatch, replies: list[list[str]], request: str, tool_name: str = "lookup"):
     seen: list[dict] = []
     ran: list[dict] = []
 
@@ -168,7 +169,7 @@ async def _turn(monkeypatch, replies: list[list[str]], request: str):
         ran.append(args)
         return ToolResult(content="정신건강복지센터는 무료 상담을 하며 전화로 예약한다.")
 
-    tool = Tool(name="lookup", description="찾는다", parameters={"type": "object"}, run=lookup,
+    tool = Tool(name=tool_name, description="찾는다", parameters={"type": "object"}, run=lookup,
                 label="찾기")
     events = [
         event
@@ -273,19 +274,47 @@ def test_the_loops_notes_keep_an_english_answer_english() -> None:
     assert not agent._writes_korean("런던 파업을 영어로 정리해 줘", system)
     set_ko = [{"role": "system", "content": output_language.rule("ko")}]
     assert agent._writes_korean(P27, set_ko)
-    note = "웹 검색은 충분히 했습니다. 도구를 더 쓰지 말고 지금까지 확인한 자료로 답하세요."
-    assert agent._in_reply_language(note, True) == note
-    english = agent._in_reply_language(note, False)
-    assert english.startswith(note) and "not in Korean" in english
+    assert agent._answer_anomaly("same " * 20, [
+        {"role": "assistant", "content": "same " * 20}], korean=False)[1] == agent._ECHO_EN
+
+
+def _searched(n: int) -> list[str]:
+    call = {"index": 0, "id": f"s{n}",
+            "function": {"name": "web_search", "arguments": json.dumps({"query": f"q{n}"})}}
+    return [f"data: {json.dumps({'choices': [{'delta': {'tool_calls': [call]}}]})}",
+            "data: [DONE]"]
+
+
+def _notes(seen: list[dict]) -> list[str]:
+    """The notes the loop added as user turns (the request itself left out)."""
+    return list(dict.fromkeys(
+        str(m["content"]) for s in seen for m in s["messages"][2:] if m["role"] == "user"))
 
 
 @pytest.mark.asyncio
-async def test_a_note_after_an_empty_reply_keeps_the_question_language(monkeypatch) -> None:
+async def test_the_search_cap_note_is_english_in_an_english_conversation(monkeypatch) -> None:
+    replies = [_searched(1), _searched(2), _searched(3), _said("The Great Unrest ran 1910-14.")]
+    _, seen, _ = await _turn(monkeypatch, replies, P27, tool_name="web_search")
+    notes = _notes(seen)
+    assert notes == [agent._SEARCH_CAP_EN.format(done="You have searched the web enough.")]
+    assert not any(re.search(r"[가-힣]", n) for n in notes)
+
+
+@pytest.mark.asyncio
+async def test_a_korean_conversation_keeps_korean_notes(monkeypatch) -> None:
+    replies = [_searched(1), _searched(2), _searched(3), _said("1910~1914년 대불안 시기입니다.")]
+    _, seen, _ = await _turn(monkeypatch, replies, "20세기 초 런던 파업을 정리해 줘",
+                             tool_name="web_search")
+    notes = _notes(seen)
+    assert len(notes) == 1 and notes[0].startswith("웹 검색은 충분히 했습니다.")
+
+
+@pytest.mark.asyncio
+async def test_a_note_after_an_empty_reply_is_in_the_question_language(monkeypatch) -> None:
     answer = "The 1911 dock strike began in August."
     _, seen, _ = await _turn(monkeypatch, [[_CALL, "data: [DONE]"], _EMPTY, _said(answer)], P27)
-    nudges = [m["content"] for s in seen for m in s["messages"]
-              if m["role"] == "user" and "답이 비어 있습니다" in str(m["content"])]
-    assert nudges and all("not in Korean" in n for n in nudges)
+    assert agent._EMPTY_EN in _notes(seen)
+    assert not any(re.search(r"[가-힣]", n) for n in _notes(seen))
 
 
 def test_an_english_answer_gets_english_marks() -> None:
