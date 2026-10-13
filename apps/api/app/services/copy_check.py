@@ -241,4 +241,88 @@ async def run(answer: str, *, request: str, material: str, complete: Complete, m
     return outcome
 
 
-__all__ = ["COPY_SKILLS", "Outcome", "active", "on_turn", "run", "used_skills"]
+#: a check's mark beside copy (「…줄이세요 (확인 필요)」)
+_MARK = re.compile(r"[ \t]?\(\s?확인\s?필요\s?\)")
+_SENTENCE_END = re.compile(r"[.!?。]\s*$")
+_SHOWN = 40
+_LISTED = 6
+
+
+def _clause_before(head: str) -> str:
+    """The clause that ends `head`, a closed 「(월)」 kept with it: scanned back to a comma,
+    colon, bar, dash or an unclosed 「(」."""
+    depth = 0
+    for k in range(len(head) - 1, -1, -1):
+        ch = head[k]
+        if ch in ")）":
+            depth += 1
+        elif ch in "(（":
+            if not depth:
+                return head[k + 1:]
+            depth -= 1
+        elif not depth and (ch in ",，:：|" or (ch in "-—" and head[k - 1:k] == " ")):
+            return head[k + 1:]
+    return head
+
+
+def _marked_phrase(before: str, after: str, row: str = "") -> str:
+    """What a mark sits on: the clause before it, the sentence it closes, or (a mark that
+    opens a line) the clause after it; in a table, with the row's first cell."""
+    head = re.sub(r"\*\*|__|`", "", before).rstrip()
+    if _SENTENCE_END.search(head):
+        sentences = [s for s in re.split(r"(?<=[.!?。])\s+", head) if s.strip()]
+        phrase = sentences[-1] if sentences else ""
+    else:
+        phrase = _clause_before(head)
+    phrase = phrase.strip(" \t-*•>#").rstrip(".")
+    if not phrase:
+        tail = re.sub(r"\*\*|__|`", "", after).lstrip()
+        phrase = re.split(r"[.,:|。]", tail, maxsplit=1)[0].strip()
+    if row and phrase and row not in phrase:
+        phrase = f"{row} · {phrase}"
+    return phrase if len(phrase) <= _SHOWN else phrase[: _SHOWN - 1].rstrip() + "…"
+
+
+def lift_marks(text: str) -> str:
+    """Copy keeps no 「(확인 필요)」: each mark comes out of the text it sits in, and what it
+    was on is listed once below as 「보내기 전 확인」 (r3 A12·A13·A15 T1: marks inside the
+    headline, the CTA and the mail body)."""
+    if not text or not _MARK.search(text):
+        return text
+    listed: list[str] = []
+    lines: list[str] = []
+    fenced = False
+    for line in text.split("\n"):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        if fenced or not _MARK.search(line):
+            lines.append(line)
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        row = cells[0] if line.lstrip().startswith("|") and len(cells) > 1 else ""
+        kept, at = [], 0
+        for m in _MARK.finditer(line):
+            if line[m.start() - 1:m.start()] == "「" or line[m.end():m.end() + 1] == "」":
+                continue  # the mark quoted, not placed (「값 뒤에 「(확인 필요)」를 붙이세요」)
+            phrase = _marked_phrase(line[at:m.start()], line[m.end():],
+                                    "" if row and line[at:m.start()].rstrip().endswith(row)
+                                    else row)
+            if phrase and phrase not in listed:
+                listed.append(phrase)
+            piece = line[at:m.start()]
+            # 「…6개월 안」, 「…입니다.」: no space left before the punctuation that follows
+            kept.append(piece.rstrip(" \t") if line[m.end():m.end() + 1] in (".", ",", ")")
+                        else piece)
+            at = m.end()
+        kept.append(line[at:])
+        lines.append("".join(kept).rstrip())
+    body = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).rstrip()
+    if not listed:
+        return body
+    shown = ", ".join(f"「{p}」" for p in listed[:_LISTED])
+    more = f" 외 {len(listed) - _LISTED}곳" if len(listed) > _LISTED else ""
+    return (f"{body}\n\n보내기 전 확인: {shown}{more} — 자료로 확인되지 않은 표현이니 보내기 전에 "
+            "확인하세요.")
+
+
+__all__ = ["COPY_SKILLS", "Outcome", "active", "lift_marks", "on_turn", "run", "used_skills"]

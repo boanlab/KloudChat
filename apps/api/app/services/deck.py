@@ -8,7 +8,7 @@ import json
 import logging
 import re
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import httpx
@@ -27,6 +27,7 @@ from app.services import (
     grounding,
     hangul,
     imagegen,
+    internal_words,
     key_figures,
     pictures,
     placeholders,
@@ -1841,6 +1842,61 @@ def mend_scaled_numbers(slides: list[dict], material: str) -> list[int]:
     return sorted(set(changed))
 
 
+#: a bracket around a value already written (「[구체적 하락 수치: 3.1포인트]」)
+_WRAPPED_VALUE = re.compile(
+    r"(?<!\[)\[(?P<label>[가-힣][^\[\]\n:：]{0,30}?)\s?[:：]\s?(?P<value>[^\[\]\n]{0,40}?\d"
+    r"[^\[\]\n]{0,20}?)\](?!\()")
+#: a template blank in slide words (「[장점]」, 「[구조 설명]」, 「[경량화 필요성 구체적 수치]」)
+_TEMPLATE_BLANK = re.compile(r"(?<!\[)\[[가-힣][가-힣 ·]{0,24}\](?![(\[])")
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+#: blanks on one slide that make it a template, not a slide
+TEMPLATE_BLANKS = 3
+
+
+def _map_words(value: Any, fix: Callable[[str], str]) -> Any:
+    if isinstance(value, str):
+        return fix(value)
+    if isinstance(value, list):
+        return [_map_words(v, fix) for v in value]
+    if isinstance(value, dict):
+        return {k: _map_words(v, fix) for k, v in value.items()}
+    return value
+
+
+def unwrap_known_values(slides: list[dict], material: str) -> list[int]:
+    """A bracket around a value the material gives taken off (「[구체적 하락 수치: 3.1포인트]」
+    → 「구체적 하락 수치: 3.1포인트」, r3 A09 T1 flash); a value not in the material stays."""
+    known = set(_NUMBER.findall(material or ""))
+    changed: list[int] = []
+
+    def fix(text: str) -> str:
+        def unwrap(m: re.Match) -> str:
+            numbers = _NUMBER.findall(m.group("value"))
+            if numbers and all(n in known for n in numbers):
+                return f"{m.group('label').strip()}: {m.group('value').strip()}"
+            return m.group(0)
+
+        return _WRAPPED_VALUE.sub(unwrap, text)
+
+    for index, slide in enumerate(slides):
+        mended = {k: (v if k in ("image", "id", "diagram", "chart") else _map_words(v, fix))
+                  for k, v in slide.items()}
+        if mended != slide:
+            slides[index] = mended
+            changed.append(index)
+    return changed
+
+
+def template_blanks(slide: dict) -> list[str]:
+    """The template blanks on a slide (「[장점]」 in every cell of a comparison table); a field
+    the person fills in (「[담당자]」 「[기한]」 「[금액]」) is not one."""
+    words = quality_gate._strings({k: v for k, v in slide.items()
+                                   if k not in ("image", "diagram", "id")})
+    return [m.group(0) for text in words for m in _TEMPLATE_BLANK.finditer(text)
+            if not any(pattern.search(m.group(0)) for pattern, _ in placeholders._FIELD_NAMES)
+            and not re.search(r"이름|성명|서명|연락|날짜|일시|시간|주소", m.group(0))]
+
+
 _ASKS_QUIZ = re.compile(r"퀴즈|문항|확인 문제|형성평가")
 _ASKS_DECISION = re.compile(r"요청 사항|요청사항|승인|의사\s?결정|결정 요청")
 #: a lesson's length (not 「10분 발표」) and a lesson (not 「교육부」「교육비」)
@@ -2021,7 +2077,8 @@ def strip_internal_text(slides: list[dict]) -> list[int]:
             if not slide["body"]:
                 slide.pop("body")
         if isinstance(slide.get("notes"), str):
-            slide["notes"] = finished_notes(slide["notes"])
+            # the writer's instructions and work account are not what the speaker says
+            slide["notes"] = finished_notes(internal_words.strip_work_sentences(slide["notes"]))
         if json.dumps(slide, ensure_ascii=False, sort_keys=True, default=str) != before:
             changed.append(index)
     return changed
@@ -3152,8 +3209,18 @@ async def _write_slides(
     touched |= set(strip_json_residue(slides))
     touched |= set(mend_scaled_numbers(slides, given_text))
     touched |= set(end_without_next(slides))
+    touched |= set(unwrap_known_values(slides, given_text))
     # placeholders or name-only parts rewritten once
     needs = requested_contents(slides, request)
+    for index, slide in enumerate(slides):
+        if len(blanks := template_blanks(slide)) >= TEMPLATE_BLANKS:
+            # a comparison left as its template (r3 A09 T1 flash: 「[장점]」 「[단점]」 cells)
+            needs.setdefault(index, (
+                "This slide still holds template blanks: "
+                + ", ".join(dict.fromkeys(blanks))
+                + ". Fill each from this slide's own words, the other slides and the material "
+                "(an abstract's method, results and limits answer 구조·장점·단점). Leave a "
+                "bracket only for a name, date or amount the material does not have."))
     # given-up or empty slides retried once
     for index, slide in enumerate(slides):
         if unshippable(slide):

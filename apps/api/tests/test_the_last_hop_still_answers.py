@@ -421,9 +421,23 @@ async def test_a_rate_limit_is_retried_before_it_is_reported(monkeypatch) -> Non
     assert len(seen) == 2 and waited == [agent._RETRY_AFTER[0]]
 
 
+#: r3 A02 T2 flash: pasted press release, an empty search, an answer made of the release
+_A02_T2 = ("아래 발표문을 부서장 보고용으로 정리해 줘. 핵심은 5줄 이내로 요약하고, 우리 대학에 "
+           "미치는 영향 3가지와 우리가 지금 준비할 일을 정리해 줘.\n\n---\n"
+           "[교육부 보도 참고자료(가상)] 2027년 대학 재정지원사업 개편 방향\n\n" + "교육부는 " * 80)
+
+
 @pytest.mark.asyncio
-async def test_an_answer_whose_searches_all_came_back_empty_says_so(monkeypatch) -> None:
-    """When every search comes back empty, the answer notes that nothing was verified."""
+@pytest.mark.parametrize(("request_text", "material", "footer"), [
+    ("선행연구 정리", False, True),
+    (_A02_T2, True, False),
+    # the person's material and a lookup asked for: the empty search still matters
+    ("아래 회사 소개를 보고 최신 기사도 검색해서 정리해 줘\n\n---\n" + "소개 " * 200, True, True),
+])
+async def test_an_answer_whose_searches_all_came_back_empty_says_so(
+        monkeypatch, request_text: str, material: bool, footer: bool) -> None:
+    """When every search comes back empty, the answer notes that nothing was verified,
+    unless it is made of the person's own material and no lookup was asked for."""
     seen: list[dict] = []
 
     class _Searching(_Client):
@@ -459,14 +473,16 @@ async def test_an_answer_whose_searches_all_came_back_empty_says_so(monkeypatch)
         event
         async for event in agent.run_turn(
             "vendor/model",
-            [{"role": "user", "content": "선행연구 정리"}],
+            [{"role": "user", "content": request_text}],
             [tool],
-            ToolContext(user_id="user", session_id="session", api_key="key"),
+            ToolContext(user_id="user", session_id="session", api_key="key",
+                        request=request_text),
+            material_given=material,
         )
     ]
     text = "".join(e["text"] for e in events if e["type"] == "delta")
     assert text.startswith("Twenge (2018)")
-    assert "검색으로 확인하지 못했습니다" in text
+    assert ("검색으로 확인하지 못했습니다" in text) is footer
 
 
 @pytest.mark.asyncio

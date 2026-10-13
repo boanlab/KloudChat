@@ -6,6 +6,7 @@ import asyncio
 import datetime as dt
 import json
 import logging
+import math
 import re
 from collections.abc import AsyncIterator
 from typing import Any
@@ -1708,7 +1709,9 @@ def fix_table_formulas(body: str) -> str:
         if formula is None:
             out.append(line)
             continue
-        factors = [_amount(part) for part in formula.split("×")]
+        # 「475만 명 × 2% × 118,800원」: a rate is a hundredth (r3 A10 T2 SOM row)
+        factors = [None if (a := _amount(part)) is None else a / 100 if "%" in part else a
+                   for part in formula.split("×")]
         if not factors or any(f is None for f in factors):
             out.append(line)
             continue
@@ -1736,6 +1739,102 @@ def fix_table_formulas(body: str) -> str:
     for old, new in corrected.items():
         text = re.sub(rf"(?<![\d.,]){re.escape(old)}", new, text)
     return text
+
+
+#: a won amount as written: 「11,286,000,000원」, 「113억 원」, 「29조 2,000억 원」
+_WON_AMOUNT = re.compile(
+    r"(?<![\d.,])(\d[\d,]*(?:\.\d+)?\s?(?:조|억|만)?(?:\s?\d[\d,]*(?:\.\d+)?\s?(?:억|만))?)\s?원")
+#: a worked result in prose: 「= 11,286,000,000원」
+_WORKED = re.compile(r"[=≈]\s{0,2}(\d[\d,]*(?:\.\d+)?\s?(?:조|억|만)?(?:\s?\d[\d,]*\s?(?:억|만))?)"
+                     r"\s?원")
+
+
+def _won_value(text: str) -> float | None:
+    try:
+        return units._ko_number(text.replace(" ", ""))
+    except ValueError:
+        return None
+
+
+_WORDS = re.compile(r"[가-힣A-Za-z][가-힣A-Za-z]+|\d[\d,]{2,}(?:원|명)?")
+
+
+def _power_slip(value: float, against: dict[float, str], near: str) -> int:
+    """`k` when `value` is 10^k (100 to 10,000 times either way) a worked amount whose
+    sentence shares a word with `near` (the row, its header, the caption), else 0."""
+    words = set(_WORDS.findall(near))
+    for worked, sentence in against.items():
+        if not worked or not value or not words & set(_WORDS.findall(sentence)):
+            continue
+        power = round(math.log10(value / worked))
+        if 2 <= abs(power) <= 4 and abs(value / worked / 10 ** power - 1) < 0.002:
+            return power
+    return 0
+
+
+def fix_table_magnitudes(sections: list[dict]) -> list[dict]:
+    """A table or KPI amount a power of ten off an amount the prose works out (「= N원」)
+    scaled back, with the column it totals (r3 A10 T2 27B: prose SOM 「= 11,286,000,000원
+    ≈ 113억 원」, table 「11,286억 원」 and rows summing to it). An amount the prose also
+    states as written is left alone."""
+    prose = [line for sec in sections for line in str(sec.get("content") or "").split("\n")
+             if not line.lstrip().startswith("|")]
+    worked = {v: line for line in prose for m in _WORKED.finditer(line) if (v := _won_value(m.group(1)))}
+    stated = {v for line in prose for m in _WON_AMOUNT.finditer(line) if (v := _won_value(m.group(1)))}
+    if not worked:
+        return sections
+    out = []
+    for sec in sections:
+        lines = str(sec.get("content") or "").split("\n")
+        changed = False
+        start = 0
+        while start < len(lines):
+            if not lines[start].lstrip().startswith("|"):
+                start += 1
+                continue
+            end = start
+            while end < len(lines) and lines[end].lstrip().startswith("|"):
+                end += 1
+            rows = [lines[i].strip().strip("|").split("|") for i in range(start, end)]
+            caption = lines[start - 1] if start and lines[start - 1].strip() else (
+                lines[start - 2] if start > 1 else "")
+            for col in range(max(len(r) for r in rows)):
+                # body cells holding one won amount (no header, rule or working)
+                cells = [(i, r[col]) for i, r in enumerate(rows)
+                         if i and col < len(r) and "원" in r[col] and "×" not in r[col]
+                         and not re.match(r"\s*:?-{2,}", r[col])
+                         and len(_WON_AMOUNT.findall(r[col])) == 1]
+                values = {i: _won_value(_WON_AMOUNT.search(c).group(1)) for i, c in cells}
+                for i, cell in cells:
+                    value = values[i]
+                    if not value or any(abs(value - s) <= 1e-6 * s for s in stated):
+                        continue
+                    header = rows[0][col] if col < len(rows[0]) else ""
+                    near = " ".join([caption, header, *rows[i][:col], *rows[i][col + 1:]])
+                    power = _power_slip(value, worked, near)
+                    if not power:
+                        continue
+                    others = [v for j, v in values.items() if j != i and v]
+                    # rows that add up to the slipped total slipped with it
+                    column = [i, *([j for j in values if j != i and values[j]]
+                                   if others and abs(sum(others) - value) <= 1e-3 * value else [])]
+                    for j in column:
+                        cell_j = rows[j][col]
+                        written = _WON_AMOUNT.search(cell_j)
+                        fixed = _won_like(values[j] / 10 ** power, written.group(0))
+                        rows[j][col] = cell_j[: written.start()] + fixed + cell_j[written.end():]
+                    log.info("table amounts scaled by 10^%d to the prose's working: %s",
+                             -power, logs.safe(cell.strip()))
+                    changed = True
+                    break
+            for k, i in enumerate(range(start, end)):
+                lead = lines[i][: len(lines[i]) - len(lines[i].lstrip())]
+                rebuilt = lead + "|" + "|".join(rows[k]) + "|"
+                if rows[k] != lines[i].strip().strip("|").split("|"):
+                    lines[i] = rebuilt
+            start = end
+        out.append({**sec, "content": "\n".join(lines)} if changed else sec)
+    return out
 
 
 _UNDECIDED = re.compile(r"^\s*(?:\(미정\)|미정|TBD|-|—|\[[가-힣][가-힣 ·]{0,9}\])\s*$")
@@ -2139,7 +2238,8 @@ def normalize_document(
     except Exception:  # noqa: BLE001 — the questions stay as written
         log.exception("restoring choices failed")
     try:
-        out = fix_pnl_tables(drop_repeated_tables(fill_undecided_cells(final_tidy(out, settled))))
+        out = fix_pnl_tables(drop_repeated_tables(fill_undecided_cells(
+            fix_table_magnitudes(final_tidy(out, settled)))))
     except Exception:  # noqa: BLE001 — a mend that fails leaves the text as it was
         log.exception("final tidy failed; the sections are kept as written")
     out = caption_figures_and_tables(out)
@@ -2576,11 +2676,12 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
             body = re.sub(r"\s?\[\](?!\()", "", body)
             body = internal_words.scrub(drop_prompt_talk(drop_cut_rows(drop_writer_notes(body))))
             # work notes a rewrite brought back; a section never emptied here
-            noted = internal_words.strip_work_notes(body)
+            noted = internal_words.strip_work_notes(body, document=True)
             body = noted if noted.strip() else body
             # settled figures restored in formulas before recomputing
             body = key_figures.mend_operands(body, settled or [])
-            body = fix_table_formulas(units.fix_written_sums(units.fix_written_arithmetic(body)))
+            body = units.settle_corrections(
+                fix_table_formulas(units.fix_written_sums(units.fix_written_arithmetic(body))))
         tidied.append({**sec, "content": body})
     return tidied
 
@@ -2900,12 +3001,15 @@ def _carries_material(request: str) -> bool:
     return len(request) >= 300 or "|" in request
 
 
-def _results_without_data(request: str, attached: list[str]) -> bool:
-    """Request needs material nothing attached carries."""
+def _results_without_data(request: str, attached: list[str], *, web: bool = False) -> bool:
+    """Request needs material nothing attached carries; `web`: search is on this turn, so a
+    research request (「…동향을 조사해서」) has its material coming (r3 A07 T1)."""
     if any(block.strip() for block in attached) or _carries_material(request):
         return False
     if _MATERIAL.search(request):
         return True
+    if web and _from_the_web(request):
+        return False
     if not _RESULTS.search(request):
         return False
     return not deck_rules.has_numbers(request, [])

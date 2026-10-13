@@ -164,24 +164,48 @@ class Prepass:
 #: yearless day with weekday: 「10/8(목)」, 「10월 8일(목)」, 「10. 8.(목)」
 _DAY_WITH_WEEKDAY = re.compile(
     r"(?<![\d./])(\d{1,2})\s{0,2}(?:[/.]|월)\s{0,2}(\d{1,2})\s{0,2}(?:일|\.)?\s{0,2}\(([월화수목금토일])\)")
+#: …weekday first: 「목요일(10/15)」, 「목(10월 15일)」
+_WEEKDAY_WITH_DAY = re.compile(
+    r"([월화수목금토일])(?:요일)?\s{0,2}\(\s{0,2}(\d{1,2})\s{0,2}(?:[/.]|월)\s{0,2}(\d{1,2})"
+    r"\s{0,2}일?\s{0,2}\)")
+#: a meeting still to come: 「다음 주 목요일(10/15) … 회의」
+_UPCOMING = re.compile(r"다음\s{0,2}주|이번\s{0,2}주|다음\s{0,2}달|내일|모레|예정|열릴|열\s|있을")
+#: yearless day without a weekday: 「10/15」, 「10월 15일」
+_YEARLESS_DAY = re.compile(r"(?<![\d./])(\d{1,2})\s{0,2}(?:/|월\s{0,2})(\d{1,2})(?![\d/])\s{0,2}일?")
 _WEEKDAYS = "월화수목금토일"
 
 
 def _year_of(month: int, day: int, weekday: str, today: dt.date) -> dt.date | None:
-    """Date this year or last matching the weekday; None if neither or both (ask, don't guess)."""
+    """Date this year or last (or early next year, within 60 days) matching the weekday;
+    None if none or several (ask, don't guess)."""
     found = []
-    for year in (today.year, today.year - 1):
+    for year in (today.year, today.year - 1, today.year + 1):
         try:
             date = dt.date(year, month, day)
         except ValueError:
+            continue
+        if year > today.year and (date - today).days > 60:
             continue
         if _WEEKDAYS[date.weekday()] == weekday:
             found.append(date)
     return found[0] if len(found) == 1 else None
 
 
+def _upcoming_day(month: int, day: int, today: dt.date) -> dt.date | None:
+    """A meeting still to come on a yearless day: the one from today to 120 days ahead."""
+    for year in (today.year, today.year + 1):
+        try:
+            date = dt.date(year, month, day)
+        except ValueError:
+            continue
+        if 0 <= (date - today).days <= 120:
+            return date
+    return None
+
+
 def meeting_date(request: str, material: str, today: dt.date | None = None) -> dt.date | None:
-    """Meeting date from the person or material header; yearless day resolved by weekday."""
+    """Meeting date from the person or material header; yearless day resolved by weekday,
+    or, for a meeting the request says is still to come, by the next such day."""
     for text in (request, material):
         for line in (text or "").splitlines():
             if (m := _FULL_DATE.search(line)) and _MEETING.search(line):
@@ -192,9 +216,22 @@ def meeting_date(request: str, material: str, today: dt.date | None = None) -> d
     today = today or dt.date.today()
     for text in (request, material):
         for line in (text or "").splitlines():
-            if _MEETING.search(line) and (m := _DAY_WITH_WEEKDAY.search(line)):
-                if found := _year_of(int(m.group(1)), int(m.group(2)), m.group(3), today):
-                    return found
+            if not _MEETING.search(line):
+                continue
+            if m := _DAY_WITH_WEEKDAY.search(line):
+                month, day, weekday = int(m.group(1)), int(m.group(2)), m.group(3)
+            elif m := _WEEKDAY_WITH_DAY.search(line):
+                month, day, weekday = int(m.group(2)), int(m.group(3)), m.group(1)
+            else:
+                continue
+            if found := _year_of(month, day, weekday, today):
+                return found
+    for line in (request or "").splitlines():
+        # 「다음 주 목요일(10/15) 14시 주간회의」: a meeting to come is this year's next one
+        if _MEETING.search(line) and _UPCOMING.search(line) and (
+                m := _YEARLESS_DAY.search(line)):
+            if found := _upcoming_day(int(m.group(1)), int(m.group(2)), today):
+                return found
     return None
 
 
@@ -640,6 +677,16 @@ def _quote_block(result: dict, excluded: list[dict] | None = None, assumed: bool
             lines.append(f"- 견적 {row['vendor']}: {row['amount']:,}원(부가세 기준 불분명)")
         else:
             lines.append(f"- 견적 {row['vendor']}: {row['amount']:,}원 (as the material writes it)")
+    settled = [row for row in result.get("quotes") or [] if "incl" in row]
+    if len(settled) >= 2:
+        # the comparison itself, by code: lowest and each gap on the same (VAT-inclusive) basis
+        ranked = sorted(settled, key=lambda row: row["incl"])
+        low = ranked[0]
+        lines.append("- 부가세 포함 기준 낮은 순: " + " < ".join(
+            f"{row['vendor']} {row['incl']:,}원" for row in ranked)
+            + f" → 가장 낮은 견적: {low['vendor']}; " + ", ".join(
+                f"{row['vendor']} +{row['incl'] - low['incl']:,}원" for row in ranked[1:])
+            + " (settled facts: state them as given)")
     return "\n".join(lines)
 
 
@@ -1006,9 +1053,80 @@ def explicit_factors(item: dict, years: Any) -> dict | None:
         out["sign"] = -1
     if str(item.get("when") or "").strip():
         out["when"] = str(item["when"]).strip()[:40]
+    if (vat := str(item.get("vat") or "").strip().lower()) in ("incl", "excl"):
+        out["vat"] = vat
     out["raw"] = {k: item.get(k) for k in ("unit_price", "count", "per", "months", "usage",
-                                           "threshold", "rate", "from_year", "years")}
+                                           "threshold", "rate", "from_year", "years", "vat")}
     return out
+
+
+def _vat_added(amount: int) -> int:
+    """A VAT-exclusive amount with its 10% VAT (truncated below one won), sign kept."""
+    return amount + (abs(amount) // 10) * (1 if amount >= 0 else -1)
+
+
+#: a VAT basis written right after a price: 「1,320,000원(부가세 별도)」, 「(VAT 포함)」
+_VAT_AFTER = re.compile(r"^[^\n\d]{0,6}?\(?\s{0,2}(?:부가세|부가가치세|VAT)\s{0,2}(별도|미포함|제외|포함)",
+                        re.I)
+#: the budget the request states: 「예산 4,800만원(부가세 포함)」
+_BUDGET = re.compile(r"예산\s{0,2}(?:은|는|:|：)?\s{0,2}(\d[\d,.]*\s{0,2}(?:억|천만|백만|만)?)\s{0,2}원"
+                     r"(?:\s{0,2}\(?\s{0,2}(?:부가세|부가가치세|VAT)\s{0,2}(별도|미포함|제외|포함))?",
+                     re.I)
+
+
+def _vat_written(price: Any, material: str) -> str:
+    """「incl」/「excl」 when the material writes that basis right after this price, else ''."""
+    value = _plain(price)
+    if value is None or not material:
+        return ""
+    number = float(value)
+    seen = set()
+    for m in re.finditer(r"(?<![\d,.])(\d[\d,]*(?:\.\d+)?)\s{0,2}(억|천만|백만|만)?\s{0,2}원", material):
+        try:
+            written = units._ko_number(m.group(1) + (m.group(2) or ""))
+        except ValueError:
+            continue
+        if abs(written - number) > 1e-6 * max(1.0, number):
+            continue
+        if said := _VAT_AFTER.match(material[m.end():m.end() + 24]):
+            seen.add("incl" if said.group(1) == "포함" else "excl")
+    return next(iter(seen)) if len(seen) == 1 else ""
+
+
+def _budget_of(data: dict, numbers: list[float], material: str = "") -> dict | None:
+    """The stated budget `{"amount", "vat"}`: read from the material by code, else the
+    reading's when the material gives that amount."""
+    if m := _BUDGET.search(material or ""):
+        try:
+            amount = units._ko_number(m.group(1).replace(" ", ""))
+        except ValueError:
+            amount = None
+        if amount:
+            return {"amount": int(amount),
+                    "vat": "" if not m.group(2) else "incl" if m.group(2) == "포함" else "excl"}
+    budget = data.get("budget")
+    if not isinstance(budget, dict):
+        return None
+    amount = _plain(budget.get("amount"))
+    if amount is None or not _grounded(amount, numbers):
+        return None
+    vat = str(budget.get("vat") or "").strip().lower()
+    return {"amount": int(float(amount)), "vat": vat if vat in ("incl", "excl") else ""}
+
+
+def _judged_against(budget: dict | None, totals: dict[str, dict], basis: str) -> dict | None:
+    """Each option's room under the budget on the budget's VAT basis (negative = over)."""
+    if not budget:
+        return None
+    if budget["vat"] == basis:
+        compared = {name: e["total"] for name, e in totals.items()}
+    elif budget["vat"] == "incl" and basis == "excl":
+        compared = {name: _vat_added(e["total"]) for name, e in totals.items()}
+    else:
+        return None  # one side's VAT basis unknown, or a VAT-exclusive budget: not judged
+    return {"amount": budget["amount"], "vat": budget["vat"],
+            "room": {name: budget["amount"] - total for name, total in compared.items()},
+            "compared": compared}
 
 
 def year_amount(item: dict, year: int) -> Decimal | None:
@@ -1076,8 +1194,10 @@ def _percent(value: Any, numbers: list[float]) -> bool:
                                or _grounded(round((1 - number) * 100, 6), numbers))
 
 
-def option_costs(data: dict, numbers: list[float], why: list[str] | None = None) -> dict | None:
-    """Each option's total from material-stated factors; `None` (reason in `why`) if < 2 options left."""
+def option_costs(data: dict, numbers: list[float], why: list[str] | None = None, *,
+                 material: str = "") -> dict | None:
+    """Each option's total from material-stated factors; `None` (reason in `why`) if < 2 options left.
+    `material`: where each price's VAT basis and the budget are read by code."""
     def grounded(item: Any) -> bool:
         if not isinstance(item, dict) or not item.get("name"):
             return False
@@ -1103,6 +1223,9 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None)
             if isinstance(item, dict) and "factors" not in item and "unit_price" in item:
                 item = explicit_factors(item, data.get("years")) or {"name": item.get("name")}
             if grounded(item):
+                # the basis the material writes beside this price wins over the reading's
+                if said := _vat_written((item.get("raw") or {}).get("unit_price"), material):
+                    item = {**item, "vat": said}
                 items.append(item)
             elif isinstance(item, dict):
                 dropped.append(f"{option['name']} {item.get('name') or '?'}")
@@ -1119,19 +1242,31 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None)
         option["base"], option["by"] = conditional_items(option["items"], conditions,
                                                          data.get("years"))
 
+    # VAT-exclusive and VAT-inclusive prices side by side: all put on the inclusive basis
+    stated = {i.get("vat") for o in options for i in o["items"]} - {None}
+    to_incl = stated == {"incl", "excl"}
+    basis = "incl" if to_incl else (next(iter(stated)) if len(stated) == 1 and all(
+        i.get("vat") for o in options for i in o["items"]) else "")
+
+    def priced(item: dict, amount: int) -> int:
+        return _vat_added(amount) if to_incl and item.get("vat") == "excl" else amount
+
     def run(swap: dict[float, Decimal], conditions: frozenset[str] = frozenset()) -> dict[str, dict]:
         out = {}
         for option in options:
             # condition scenario (「연 단위 계약 시」) priced with the condition; base without
             items = (option["by"][next(iter(conditions))] if conditions else option["base"])
-            rows = [{"name": str(i["name"])[:40], "amount": int(_cost_item(i, swap)),
-                     "factors": i["factors"], "over": i.get("over")} for i in items]
+            rows = [{"name": str(i["name"])[:40], "amount": priced(i, int(_cost_item(i, swap))),
+                     "factors": i["factors"], "over": i.get("over"),
+                     **({"vat_added": True} if to_incl and i.get("vat") == "excl" else {})}
+                    for i in items]
             entry = {"rows": rows, "total": sum(r["amount"] for r in rows)}
             if not swap:
                 years = [[year_amount(i, y) for i in items] for y in (1, 2)]
                 if all(a is not None for row in years for a in row):
-                    entry["first_year"] = int(sum(years[0]))
-                    entry["next_year"] = int(sum(years[1]))
+                    first, later = (zip(items, row, strict=True) for row in years)
+                    entry["first_year"] = sum(priced(i, int(a)) for i, a in first)
+                    entry["next_year"] = sum(priced(i, int(a)) for i, a in later)
             out[option["name"]] = entry
         return out
 
@@ -1151,8 +1286,13 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None)
         scenarios.insert(0, {"name": condition, "options": run({}, frozenset({condition}))})
     base = run({})
     lowest = min(base, key=lambda name: base[name]["total"])
-    return {"period": str(data.get("period") or "")[:20], "options": base, "lowest": lowest,
-            "scenarios": scenarios[:4], "dropped": dropped}
+    out = {"period": str(data.get("period") or "")[:20], "options": base, "lowest": lowest,
+           "scenarios": scenarios[:4], "dropped": dropped}
+    if basis:
+        out["vat_basis"] = basis
+    if judged := _judged_against(_budget_of(data, numbers, material), base, basis):
+        out["budget"] = judged
+    return out
 
 
 def _same_base(a: dict, b: dict) -> bool:
@@ -1201,7 +1341,7 @@ def _factor_text(row: dict) -> str:
     if row.get("over"):
         a, b = row["over"]
         parts.append(f"({float(str(a).replace(',', '')):,g} − {float(str(b).replace(',', '')):,g}, 0 이상)")
-    return " × ".join(parts)
+    return " × ".join(parts) + (" + 부가세 10%" if row.get("vat_added") else "")
 
 
 def year_lines(label: str, totals: dict[str, dict]) -> list[str]:
@@ -1232,12 +1372,36 @@ def _cost_block(result: dict) -> str:
         for row in entry["rows"]:
             rows.append(f"| {option} | {row['name']} | {_factor_text(row)} | {row['amount']:,} |")
         rows.append(f"| {option} | 합계 |  | {entry['total']:,} |")
+    # VAT basis or budget known: the comparison itself is settled here too (r3 A04 T2)
+    settled = bool(result.get("vat_basis") or result.get("budget"))
+    basis = {"incl": "부가세 포함", "excl": "부가세 별도"}.get(result.get("vat_basis") or "", "")
     lines = [f"# 총비용 계산(코드)\nThe code calculated the {period} total costs from the material's unit prices "
              "and quantities. Use only these values for the total cost table and the amounts in comparison "
-             "sentences; do not recalculate.", "\n".join(rows)]
-    lines.append("- " + ", ".join(f"{o} {e['total']:,}원" for o, e in result["options"].items())
-                 + f" → 가장 적은 대안: {result['lowest']}")
+             "sentences; do not recalculate."
+             + (" The comparisons below (lowest, differences, budget) are settled facts: state them "
+                "as given, do not judge them again." if settled else "")
+             + (f" Every amount is on one basis, {basis}"
+                + (" (VAT-exclusive prices had their 10% VAT added)" if any(
+                    r.get("vat_added") for e in result["options"].values() for r in e["rows"])
+                   else "") + "; label totals with it." if basis else ""),
+             "\n".join(rows)]
+    totals = result["options"]
+    ranked = sorted(totals, key=lambda n: totals[n]["total"])
+    lines.append("- " + ", ".join(f"{o} {e['total']:,}원" for o, e in totals.items())
+                 + f" → 가장 적은 대안: {result['lowest']}"
+                 + (f" ({basis} 기준)" if basis else ""))
+    if settled and len(ranked) > 2:
+        lines.append("- 적은 순: " + " < ".join(f"{o} {totals[o]['total']:,}원" for o in ranked))
     lines += year_lines("", result["options"])
+    if budget := result.get("budget"):
+        said = {"incl": "부가세 포함", "excl": "부가세 별도"}.get(budget["vat"], "")
+        within = [o for o, room in budget["room"].items() if room >= 0]
+        lines.append(f"- 예산 {budget['amount']:,}원" + (f"({said})" if said else "") + " 대비: "
+                     + ", ".join(f"{o} {budget['compared'][o]:,}원 → "
+                                 + (f"예산 안(잔액 {room:,}원)" if room >= 0
+                                    else f"예산 초과({-room:,}원)")
+                                 for o, room in budget["room"].items())
+                     + " → " + (f"예산 안: {', '.join(within)}" if within else "예산 안의 대안 없음"))
     for spec in result["scenarios"]:
         totals = spec["options"]
         lines.append(f"- 시나리오 「{spec['name']}」: " + ", ".join(
@@ -1592,7 +1756,8 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
             text, more = await complete(override or model, prompt, api_key, 2500)
             count(more)
             why: list[str] = []
-            return option_costs(counted_as_written(_json(text), given), numbers, why), (
+            return option_costs(counted_as_written(_json(text), given), numbers, why,
+                                material=given), (
                 why[0] if why else "")
 
         # split settled by outline model w/ thinking (15/15 vs 12/15 without, 150 s median); plain third past cap
@@ -1606,7 +1771,8 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                 text, more = await job.deliberate(thinker, prompt, api_key, DELIBERATE_TOKENS)
             count(more)
             why: list[str] = []
-            found = option_costs(counted_as_written(_json(text), given), numbers, why)
+            found = option_costs(counted_as_written(_json(text), given), numbers, why,
+                                 material=given)
             deliberated = found is not None
             return found, (why[0] if why else "")
 

@@ -65,6 +65,8 @@ class Normalize(Base):
         normalized = units.fix_double_scale(normalized, first)
         # wrong product in 「A × B = D」
         normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized))
+        # 「수정: 합계는 N원」 beside the wrong total: the total corrected, the line gone
+        normalized = units.settle_corrections(normalized)
         # sweeping superlatives narrowed to the table's evidence
         normalized = superlatives.narrow_sweeping_claims(normalized)
         # a tool call written out as text, never shown
@@ -182,6 +184,29 @@ class StrayHan(Base):
             log.info("stray Chinese rephrased in session %s: %s", req.session_id, changed[:6])
 
 
+class CopyMarks(Base):
+    """Copy written with a copy skill keeps no 「(확인 필요)」 inside it: the marks, from any
+    check before, are listed once below as 「보내기 전 확인」."""
+
+    name = "copy-marks"
+    reads = ("request", "document.answer")
+    writes = ("document.answer",)
+
+    def skip(self, bundle: Bundle) -> str:
+        from app.services import copy_check
+
+        req = bundle.request
+        if not copy_check.active((*req.skill_keys, *(req.check_keys or ())), req.tool_outputs,
+                                 req.skill_specs):
+            return "no copy skill on this turn"
+        return "" if "확인" in bundle.document.answer else "no marks"
+
+    async def apply(self, bundle: Bundle, ctx: Context) -> None:
+        from app.services import copy_check
+
+        bundle.document.answer = copy_check.lift_marks(bundle.document.answer)
+
+
 class Replace(Base):
     """Finished answer replaces the streamed one (client retracts the first match)."""
 
@@ -197,7 +222,7 @@ class Replace(Base):
         yield {"type": "delta", "text": bundle.document.answer}
 
 
-for _stage in (Normalize(), StrayHan(), TextFit(), Replace()):
+for _stage in (Normalize(), StrayHan(), TextFit(), CopyMarks(), Replace()):
     registry.register(_stage)
 
 

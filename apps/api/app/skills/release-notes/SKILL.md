@@ -57,10 +57,10 @@ Only the change list is essential; without it, ask for it in one line and stop. 
 ## 알려진 문제      ← only when the change list names one
 - …
 ```
-Then, for the person who asked (not part of the notes): 「뺀 항목: 1234abc(내부 CI 설정) …」 and the script's coverage line 「항목 5개: 노트 4 · 뺌 1 · 빠짐 0」.
+The answer is the notes only. Do not add a 「뺀 항목」 list or the script's coverage line (「항목 5개: 노트 4 · 뺌 1 · 빠짐 0」) under them: the script's step shows both to the person who asked.
 
 ## Checklist
-- [ ] Every input item is in the notes or in 뺀 항목 with a reason (script coverage, 0 빠짐).
+- [ ] Every input item is in the notes or left out for a reason the script reports (0 빠짐).
 - [ ] No feature, figure, platform or date that is not in an item.
 - [ ] Breaking changes in 주의 with what to do; version bump question raised if needed.
 - [ ] Version and date the same everywhere; plain language for the chosen audience.

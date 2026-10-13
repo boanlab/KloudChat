@@ -167,6 +167,22 @@ async def test_a_turn_that_ends_saying_nothing_tells_the_person(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_an_answer_the_finish_stages_clean_to_nothing_tells_the_person(monkeypatch) -> None:
+    """r3 A14 T1 27B: the only text was a written tool name, cleaned away after the stream;
+    the question was stored unanswered but the stream sent no error."""
+    turn = _Turn()
+    chunks = await _drain(turn, monkeypatch, [
+        {"type": "delta", "text": "run_skill_script"},
+        {"type": "usage", "inputTokens": 30000, "outputTokens": 4},
+    ])
+
+    errors = [json.loads(c.removeprefix("data: ")) for c in chunks if '"type": "error"' in c]
+    assert [e["code"] for e in errors] == ["no_answer"]
+    assert turn.question.failure is TurnFailure.no_answer
+    assert turn.answer is None
+
+
+@pytest.mark.asyncio
 async def test_half_an_answer_is_kept_and_said_to_be_half(monkeypatch) -> None:
     turn = _Turn()
     await _drain(

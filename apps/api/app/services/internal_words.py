@@ -107,7 +107,15 @@ TOOL_REPORT = re.compile(
     r"|(?<![\w/])[a-z_]{2,20}\.py(?![\w])"
     r"|(?<![A-Za-z])(?:preserve|proof|scan|timeline|sources|claims|frame|notes)\s{0,2}"
     r"(?:검사|점검|결과|스크립트)"
+    # a check's findings named by its verdict word (r3 A12 T1: 「두 check는 …」, A13 T1:
+    # 「차단(block) 표현은 0건」)
+    r"|(?<![A-Za-z_])(?:두|세|네|이|그|이번)\s{1,2}(?:check|block)(?:는|은|가|를|도|의)?(?![A-Za-z])"
+    r"|\(\s{0,2}(?:block|check)\s{0,2}\)\s{0,2}표현"
+    # how the values were made (A13 T2: 「코드로 계산한 출력값」 「코드 출력 그대로」)
+    r"|코드로\s?계산한\s?출력값|코드\s?출력\s?그대로|계산\s?도구로\s?(?:구한|계산한)"
 )
+#: a table row reporting a check's verdict count (「| CTA 2건 | check 2건 (…) |」)
+_REPORT_CELL = re.compile(r"\|\s{0,2}(?:block|check|info)\s{0,2}\d{1,4}\s{0,2}건")
 #: raw JSON lines or 「[실행 결과: …]」 headers
 JSON_LINE = re.compile(
     r'^\s{0,8}[\[{]\s{0,2}"[A-Za-z_]{1,30}"\s{0,2}:'
@@ -138,7 +146,8 @@ def strip_reports(text: str) -> str:
             out.append(line)
             continue
         if stripped.startswith("|"):
-            out.append(_SCRIPT_CELL.sub(lambda m: f"자동 {m.group(1)}", line))
+            if not _REPORT_CELL.search(line):
+                out.append(_SCRIPT_CELL.sub(lambda m: f"자동 {m.group(1)}", line))
             continue
         if JSON_LINE.search(line):
             continue
@@ -344,7 +353,42 @@ _EN_NOTE_TASK = re.compile(
 _KO_NOTE = re.compile(
     r"섹션의\s?(?:초안|범위|영역)|섹션은\s[^\n]{0,80}?영역입니다"
     r"|(?:제공된|주어진)\s?자료를\s?(?:먼저\s?)?(?:분석|검토|확인)하여[^\n]{0,160}?하겠습니다"
-    r"|요청된\s?형식\s?\(")
+    r"|요청된\s?형식\s?\("
+    # an instruction to the writer copied into the text (r3 A09 T1 notes:
+    # 「수정: 근거 없는 수치를 「[수치]」 등으로 비워 두고, 요청의 값을 채워 넣어 주세요.」)
+    r"|수정\s?[:：][^\n]{0,200}?(?:비워\s?두|채워\s?넣|바꿔\s?주|고쳐\s?주|빼\s?주)"
+    # a check's mark explained (「확인 전까지는 「확인 필요」 상태로 남겨둡니다」)
+    r"|[「『\"']확인\s?필요[」』\"']\s?(?:상태|표시)로\s?(?:남겨|두|둡)"
+    # the paper search's own note (「… KCI·DBpia·RISS 등을 찾았으나 국내 논문을 찾지 못했습니다」)
+    r"|KCI\s?·\s?DBpia\s?·\s?RISS\s?등을\s?(?:찾았|검색했)"
+    # a release-notes script's coverage (「항목 9개: 노트 7 · 뺌 2 · 빠짐 0」, 「뺀 항목: L7(…)」)
+    r"|항목\s?\d{1,3}\s?개\s?[:：]\s?노트\s?\d|^\W{0,4}뺀\s?항목\W{0,4}[:：]")
+#: …and, in a document or a slide's notes (which speak to the reader, not the requester),
+#: the writer's account of its own work
+_DOC_NOTE = re.compile(
+    r"채워\s?넣어\s?주(?:세요|십시오)"
+    # what it left out (r3 A09 T1: 「96퍼센트와 33퍼센트는 자료에 근거가 없어 … 쓰지 않습니다」)
+    r"|자료에\s?근거가\s?없어[^\n.]{0,60}?(?:쓰지\s?않|적지\s?않|넣지\s?않|뺐|뺍니다|생략)"
+    # how the values were made (A09 T2: 「여러 수치와 수식은 계산 도구로 구한 결과입니다」)
+    r"|계산\s?도구로\s?(?:구한|계산한|얻은)|코드로\s?계산한\s?출력값|코드\s?출력\s?그대로")
+
+
+def strip_work_sentences(text: str) -> str:
+    """Sentences of `text` that are the writer's notes or instructions dropped (a slide's
+    speaker notes); lines otherwise kept as written."""
+    if not text or not (_KO_NOTE.search(text) or _DOC_NOTE.search(text)):
+        return text
+    out = []
+    for line in text.split("\n"):
+        sentences = [s for s in units.SENTENCE_BREAK.split(line) if s.strip()]
+        left = [s for s in sentences if not (_KO_NOTE.search(s) or _DOC_NOTE.search(s))]
+        if len(left) == len(sentences):
+            out.append(line)
+        elif left:
+            out.append(" ".join(s.strip() for s in left))
+    return "\n".join(out).strip("\n")
+
+
 #: a check's verdict belongs in the steps (「근거 대조 결과 근거 없는 값 0개.」)
 _CHECK_RESULT = re.compile(
     r"^\W{0,4}(?:근거\s?대조|출처\s?점검|카피\s?점검|계산[·ㆍ]?\s?단위\s?검증|자체\s?(?:점검|검증|검토))"
@@ -414,10 +458,11 @@ def _worksheet(text: str) -> str:
     return "\n".join(out)
 
 
-def strip_work_notes(text: str, *, request: str = "") -> str:
+def strip_work_notes(text: str, *, request: str = "", document: bool = False) -> str:
     """`text` minus the writer's work notes: plan narration (English or Korean), a worksheet's
     labels and notes, check verdicts, lone 「check」 lines and 「[질문]」 stubs. Headings,
-    tables and fences stay; an English deliverable is left alone."""
+    tables and fences stay; an English deliverable is left alone. `document`: a report section
+    or slide, whose reader is not the requester (the writer's account of its work goes too)."""
     if not text or not text.strip():
         return text
     korean = _latin_share(request) < 0.5 if request.strip() else _latin_share(text) < 0.5
@@ -458,6 +503,7 @@ def strip_work_notes(text: str, *, request: str = "") -> str:
             sentences = [s for s in units.SENTENCE_BREAK.split(line[len(lead):]) if s.strip()]
             left = [s for s in sentences
                     if not _KO_NOTE.search(s)
+                    and not (document and _DOC_NOTE.search(s))
                     and (asked_check or not _CHECK_RESULT.search(s))
                     and not (first_line and not asked_check and len(line) <= 100
                              and _OPENING_VERDICT.match(s))]
@@ -469,8 +515,9 @@ def strip_work_notes(text: str, *, request: str = "") -> str:
     cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip("\n")
     if cleaned == text.strip("\n"):
         return text
-    # a rule left at the top once the line above it went
-    return re.sub(r"^(?:\s*(?:-{3,}|\*{3,}|_{3,})\s*\n)+", "", cleaned).strip("\n")
+    # a rule left at the top (or the end) once the lines beside it went
+    cleaned = re.sub(r"^(?:\s*(?:-{3,}|\*{3,}|_{3,})\s*\n)+", "", cleaned)
+    return re.sub(r"(?:\n\s*(?:-{3,}|\*{3,}|_{3,})\s*)+$", "", cleaned).strip("\n")
 
 
 #: a paragraph announcing the writer's own next step (「Let me draft:」「Now I'll write …」)
@@ -487,6 +534,31 @@ _EN_PLAN_TOPIC = re.compile(
 _ASKED_ENGLISH = re.compile(r"영문|영어|English", re.I)
 
 
+#: a sentence that only says what the writer is about to do (「…공개 자료로 확인하겠습니다.」)
+_KO_INTENT = re.compile(
+    r"(?:확인|검색|조사|찾아\s?보|찾|알아\s?보|살펴\s?보|살펴|정리|작성|분석|검토|수집|파악"
+    r"|준비|읽어\s?보|읽|모아\s?보|모으|비교|계산|구성|진행)"
+    r"(?:해\s?보|하여\s?보|해)?\s?(?:하겠습니다|겠습니다|드리겠습니다|할게요|볼게요|하겠어요)"
+    r"\s?[.!…]?\s*$")
+#: …or asks to wait for it
+_KO_WAIT = re.compile(r"^(?:잠시만?|조금만)\s?기다려\s?주(?:세요|십시오)[.!]?$")
+
+
+def is_intent_only(text: str, *, request: str = "") -> bool:
+    """Whether a Korean answer is only a line or two saying the work is about to be done
+    (r3 A11 T1: 「K-water 개요·조직·재무 … 공개 자료로 확인하겠습니다.」), no deliverable."""
+    body = (text or "").strip()
+    if not body or len(body) > 300 or _latin_share(request or body) >= 0.5:
+        return False
+    if any(_structural(line) or re.match(r"\s{0,4}(?:[-*+]|\d{1,2}[.)])\s", line)
+           for line in body.split("\n") if line.strip()):
+        return False
+    sentences = [s.strip() for s in units.SENTENCE_BREAK.split(" ".join(body.split())) if s.strip()]
+    return bool(sentences) and len(sentences) <= 3 and all(
+        _KO_INTENT.search(s) or _KO_WAIT.match(s) for s in sentences) and any(
+        _KO_INTENT.search(s) for s in sentences)
+
+
 def is_work_plan(text: str, *, request: str = "") -> bool:
     """Whether a Korean request's answer is the writer's plan or narration instead of the
     deliverable: three or more English paragraphs about its own next steps, the last one
@@ -497,7 +569,9 @@ def is_work_plan(text: str, *, request: str = "") -> bool:
     if (_latin_share(request) >= 0.5 if request.strip() else _latin_share(text) >= 0.5) or (
             _ASKED_ENGLISH.search(request)):
         return False  # English asked for: its 「I'll …」 is the prose
-    paragraphs = [p for p in re.split(r"\n[ \t]*\n", text) if p.strip()]
+    if is_intent_only(text, request=request):
+        return True
+    paragraphs =[p for p in re.split(r"\n[ \t]*\n", text) if p.strip()]
     steps = [i for i, p in enumerate(paragraphs)
              if not _structural(p) and _EN_PLAN_STEP.match(p) and len(_LATIN.findall(p)) >= 12]
     if (len(steps) >= 3 and steps[-1] == len(paragraphs) - 1
@@ -513,6 +587,7 @@ def has_work_notes(text: str, *, request: str = "") -> bool:
 
 
 __all__ = ["DOCUMENT_TERMS", "JSON_LINE", "TERMS", "TOOL_APOLOGY", "TOOL_REPORT", "WRITER_NOTE",
-           "found", "has_tool_call", "has_work_notes", "is_work_plan", "scrub", "strip_check_block",
+           "found", "has_tool_call", "has_work_notes", "is_intent_only", "is_work_plan", "scrub",
+           "strip_check_block",
            "strip_echoed_heading", "strip_reports", "strip_tool_apologies", "strip_tool_calls",
            "strip_work_notes"]
