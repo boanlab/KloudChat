@@ -55,14 +55,15 @@ def report_findings(
         add("lesson_time_gap", first[:60], f"활동 시간 합 {total}분, 차시는 {minutes}분")
     figures = re.findall(r"!\[(그림 (\d+))\.", whole)
     figures += re.findall(r"^\*(그림 (\d+))\.", whole, re.M)
-    tables = re.findall(r"\*\*(표 (\d+))\.", whole)
+    # 「**표 3. 제목**」 or a bare 「**표 3**」: the same table either way
+    tables = re.findall(r"\*\*(표 (\d+))(?:\.|\*\*)", whole)
     for kind, found in (("figure", figures), ("table", tables)):
         numbers = [int(n) for _, n in found]
         if numbers != list(range(1, len(numbers) + 1)):
             add(f"{kind}_numbering", "document", str(numbers))
     labels = (
         r"!\[[^\]]{0,2000}\]\([^)]{0,9000000}\)"
-        r"|\*\*표 \d{1,3}\.[^*\n]{0,2000}\*\*|^\*그림 \d{1,3}\.[^\n]{0,2000}\*$"
+        r"|\*\*표 \d{1,3}(?:\.[^*\n]{0,2000})?\*\*|^\*그림 \d{1,3}\.[^\n]{0,2000}\*$"
     )
     body_only = re.sub(labels, "", whole, flags=re.M)
     for name, _ in figures + tables:

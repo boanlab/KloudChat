@@ -897,6 +897,36 @@ def _mark_block(block: str, ev: Evidence) -> str:
     return "\n".join(lines)
 
 
+def _row_cells(line: str) -> list[str]:
+    return line.strip().strip("|").split("|")
+
+
+def _refill_cells(old: str, new: str, out: Settled) -> str:
+    """A table cell a guard emptied, given back as written (r5 A12-T2: the 「추천 채널·활용
+    이유」 cells of 25 rows came back blank): rows matched in order, same width only."""
+    olds = [line for line in old.split("\n") if line.strip().startswith("|")]
+    lines = new.split("\n")
+    rows = [i for i, line in enumerate(lines) if line.strip().startswith("|")]
+    if not olds or len(olds) != len(rows):
+        return new
+    for was, i in zip(olds, rows, strict=True):
+        before, after = _row_cells(was), _row_cells(lines[i])
+        if len(before) != len(after) or _TABLE_RULE.match(was):
+            continue
+        filled = False
+        for c, cell in enumerate(after):
+            if before[c].strip() and not re.sub(r"\(?확인\s?필요\)?", "", cell).strip():
+                # a cell judged unsupported keeps its words, marked
+                verdict = "확인" in cell and MARK not in before[c]
+                after[c] = f"{before[c].rstrip()} {MARK} " if verdict else before[c]
+                filled = True
+        if filled:
+            out.kept.append(was.strip()[:60])
+            lead = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
+            lines[i] = f"{lead}|{'|'.join(after)}|"
+    return "\n".join(lines)
+
+
 def settle(before: str, after: str, ev: Evidence) -> Settled:
     """`after` (a guard's output for `before`) with blanks and emptied blocks undone."""
     out = Settled(after)
@@ -932,6 +962,7 @@ def settle(before: str, after: str, ev: Evidence) -> Settled:
                 continue
             fixed = _unmark(old, _settle_values(old, new, ev, structure, out), ev, structure,
                             out)
+            fixed = _refill_cells(old, fixed, out)
             if _emptied(old, fixed):
                 out.kept.append(old.strip()[:60])
                 fixed = _mark_block(old, ev)

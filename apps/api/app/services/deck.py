@@ -2834,6 +2834,20 @@ _PAIRED = {
 }
 
 
+def _cut(text: str, limit: int) -> str:
+    """`text` within `limit`, never through a word: a name a little over keeps its last
+    letters (r5 A09-T1: 「KorQuAD-RAG」 became 「KorQuAD-RA」), a longer run stops at a space."""
+    if len(text) <= limit:
+        return text
+    if not (re.match(r"[\w-]", text[limit - 1]) and re.match(r"[\w-]", text[limit])):
+        return text[:limit].rstrip()
+    end = re.match(r"[\w-]*", text[limit:]).end() + limit
+    if end <= limit + max(3, limit // 2):
+        return text[:end]
+    space = text.rfind(" ", 0, limit)
+    return text[:space].rstrip() if space > 0 else text[:limit]
+
+
 def _clean_pairs(value: Any, layout: str) -> list[list[str]]:
     """`[[왼쪽, 오른쪽]]` within `_PAIRED` bounds; half-empty dropped."""
     count, left_max, right_max = _PAIRED[layout]
@@ -2843,8 +2857,8 @@ def _clean_pairs(value: Any, layout: str) -> list[list[str]]:
         pair = item if isinstance(item, list) else []
         if len(pair) < 2:
             continue
-        left = " ".join(str(pair[0]).split())[:left_max]
-        right = " ".join(str(pair[1]).split())[:right_max]
+        left = _cut(" ".join(str(pair[0]).split()), left_max)
+        right = _cut(" ".join(str(pair[1]).split()), right_max)
         if left and right:
             out.append([left, right])
     return out

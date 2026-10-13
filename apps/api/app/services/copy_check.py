@@ -8,7 +8,7 @@ import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 
-from app.services import internal_words, skill_packages, skill_scripts, skill_specs
+from app.services import internal_words, skill_packages, skill_scripts, skill_specs, value_guard
 
 log = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ class Outcome:
         if self.rewritten:
             parts.append("고쳐 쓰기 1회")
         if self.left:
-            parts.append(f"고쳐 쓴 뒤 남은 것 {len(self.left)}개 → 빈칸·삭제: "
+            parts.append(f"고쳐 쓴 뒤 남은 것 {len(self.left)}개 → 확인 표시: "
                          + ", ".join(f"「{f['text'][:20]}」" for f in self.left[:6]))
         still = [r for r in self.rows if r.get("hard") and (r["over"] or r["under"])]
         if still:
@@ -177,7 +177,8 @@ def _rewrite_prompt(text: str, material: str, findings: list[dict], over: list[d
         "piece only. Keep "
         "everything else exactly as written — structure, order, numbering, tables, headings, "
         "the other wording, and the language. Add no new fact, number, feature or offer. Reply "
-        "with the whole corrected answer only, no preface.\n\n"
+        "with the whole corrected answer only, no preface and no word about the problems or "
+        "the check — the reader never sees them.\n\n"
         f"# Material\n{material[:_MATERIAL_CHARS] or '(none)'}\n\n"
         "# Problems\n" + "\n".join(lines) + f"\n\n# Answer\n{text}"
     )
@@ -188,6 +189,30 @@ def _cleaned(reply: str) -> str:
     if text.startswith("```") and text.endswith("```"):
         text = re.sub(r"^```[a-z]{0,12}\n?|```$", "", text).strip()
     return internal_words.strip_echoed_heading(text)
+
+
+#: what is left after the rewrite is marked, never dropped: a sentence or a row taken out
+#: whole emptied blocks and took facts with it (r5 A12-T1 feature blocks, A15-T1 the mail's
+#: one reason for the company)
+_MARKED = ("drop", "rewrite")
+
+
+def mark_left(text: str, found: list[dict]) -> str:
+    """`text` with 「(확인 필요)」 after each finding's phrase (once each, right to left)."""
+    lines = (text or "").split("\n")
+    for f in sorted(found, key=lambda f: (f["line"], f["end"]), reverse=True):
+        k = int(f["line"])
+        if not 0 <= k < len(lines):
+            continue
+        line, phrase = lines[k], str(f.get("text") or "")
+        at = line.find(phrase) if phrase else -1
+        if at < 0:
+            continue
+        end = at + len(phrase.rstrip())
+        if _MARK.match(line[end:end + 9]):
+            continue
+        lines[k] = f"{line[:end]} {value_guard.MARK}{line[end:]}"
+    return "\n".join(lines)
 
 
 async def run(answer: str, *, request: str, material: str, complete: Complete, model: str,
@@ -220,7 +245,7 @@ async def run(answer: str, *, request: str, material: str, complete: Complete, m
                     text, material, hand, outcome.over)}],
                 api_key, min(12000, 2 * len(text) + 1000))
             _spend(usage, spent)
-            new = _cleaned(reply_text)
+            new = internal_words.strip_rewrite_preface(_cleaned(reply_text), text)
             # reject rewrites losing half a long answer
             if new and len(new) >= min(0.5 * len(text), len(text) - 300):
                 text, outcome.rewritten = new, True
@@ -230,7 +255,9 @@ async def run(answer: str, *, request: str, material: str, complete: Complete, m
             log.warning("copy check rewrite failed: %r", exc)
         # second reading never blanks text the first didn't question
         outcome.left = claims.check(text, material, [reply], options)
-        text = claims.fix(text, outcome.left)
+        text = mark_left(claims.fix(text, [f for f in outcome.left
+                                           if f["action"] not in _MARKED]),
+                         [f for f in outcome.left if f["action"] in _MARKED])
         if outcome.rewritten and outcome.over:
             # re-measure; this reading only lifts pieces
             reply = await _judged(text, material, rows, complete=complete,

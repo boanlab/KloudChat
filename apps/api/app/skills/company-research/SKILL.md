@@ -28,6 +28,7 @@ Research one company and write a Korean one-pager a 영업·기획 담당자 can
 3. 특허정보검색 KIPRIS, 조달청 나라장터(공공 수주 실적), 중소벤처기업부 벤처확인·이노비즈 공시.
 4. News: name the outlet and date; prefer two independent outlets for anything material.
 - If the user gave a material pack or said 「자료만으로」, use only that and do not search.
+- A public body (공공기관·공기업·지자체·출연연·학교·병원 등) is not a company: look first at ALIO (alio.go.kr, 공공기관 경영정보 — 정원·예산·임원·경영공시), its own site (기관 소개·조직도·예산서·사업계획), the 주무부처 and 나라장터 발주 내역. DART and 매출 apply only when it files there.
 
 ## Procedure
 1. Pin the company (정식 상호, 사업자/법인 번호 if known) and the user's purpose (영업 미팅, 투자 검토, 제휴, 입찰). Ask once if the company is ambiguous.
@@ -55,7 +56,7 @@ Research one company and write a Korean one-pager a 영업·기획 담당자 can
 ## 출처
 [1] 금융감독원 DART, 「○○ 2025 사업보고서」, 2026-03-20, URL
 ```
-Keep it to what helps the stated purpose; drop sections with nothing sourced rather than padding them.
+Rows and sections fit the body researched: for a public body, use 「설립 근거·주무부처」, 「정원·현원(기준일)」, 「예산(연도)」 instead of 매출·영업이익, and leave out 「제품과 가격」 unless it sells something; never write the user's own product or prices there. A row that does not apply to this body is left out, not filled with 「출처 미확인」. Keep it to what helps the stated purpose; drop sections with nothing sourced rather than padding them.
 
 ## Checklist
 - [ ] Every fact has [n] with date; nothing from memory.

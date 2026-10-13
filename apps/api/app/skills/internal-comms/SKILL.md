@@ -34,9 +34,10 @@ Never fill these from general knowledge: no invented dates, weekdays, times, nam
 ## Structure (notice / change / maintenance)
 1. 한 줄 요지 — what, for whom, from when, in one sentence: 「11월 1일부터 출장비 정산은 새 경비 시스템에서만 받습니다.」
 2. 무엇이 바뀌나 — before → after, one item per line. Why, in one line, only if the material gives the reason.
-3. 누가·언제부터 — 대상, 시행일 or 일시(요일 포함), 경과 조치 if any.
+3. 누가·언제 — 대상, and for a rule or system that changes from a day on 시행일; for something with a start and an end (공사·점검·배포·행사) its 일시 from start to end (「10. 23.(금) 19:00~10. 25.(일) 18:00」), never 「시행 … 부터」. 경과 조치 if any.
 4. 해야 할 일 — numbered steps with deadline; if nothing: 「별도로 하실 일은 없습니다.」
 5. 문의처 — exactly as in the material.
+Write only the blocks this kind of notice needs; a block the material has nothing for is left out (a missing 문의처 stays one 「[문의처]」 under 「보내기 전에 채울 것」).
 Optional: 붙임/링크 (only those given), 자주 묻는 질문 2–4개 when the change raises obvious questions — answers only from the material; otherwise 「정해지는 대로 다시 안내드리겠습니다」.
 - Dates as 「2026. 11. 1.(일)」 or 「11월 1일(일)」, times as 「02:00~06:00」; one format through the notice.
 - Lead with the reader's action, not the background. No 「~관련하여 알려드립니다」 openers, no 「많은 관심 부탁드립니다」, no apology for a routine change.
@@ -71,7 +72,7 @@ Fix, run once more. The check is yours, not the reader's: no 「점검 결과」
 
 **무엇이 바뀌나**
 - …
-**대상·시행**
+**대상·시행**                        ← 공사·점검·배포는 **대상·일시**, 「일시: 시작~끝」
 - 대상: …
 - 시행: 2026. 11. 1.(일)부터
 **해야 할 일**
