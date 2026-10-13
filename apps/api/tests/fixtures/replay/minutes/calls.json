@@ -33,13 +33,13 @@
   }
  },
  {
-  "key": "25881a8a4a26954ab9900b4d",
+  "key": "18f371b1f7d4dfc0d80f3776",
   "stage": "verify",
   "kind": "judge",
   "head": "Below are the meeting material and the action items of the minutes. Among the items whose owner the material\nchanged (○○ 대신 △△, changed by mail) or newly assign",
   "reply": "{\"items\": []}",
   "usage": {
-   "prompt_tokens": 492,
+   "prompt_tokens": 489,
    "completion_tokens": 4
   }
  },

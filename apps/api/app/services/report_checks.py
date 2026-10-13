@@ -2575,6 +2575,7 @@ CHECK_FAMILIES: dict[str, Callable[[Prepass], Check | None]] = {
     "career-numbers": _career_numbers_check,
     "staff-counts": _staff_counts_check,
     "material-blanks": lambda pre: material_blanks,
+    "count-labels": lambda pre: count_labels,
 }
 
 
@@ -2793,6 +2794,85 @@ async def material_blanks(doc: Doc) -> tuple[list[Finding], dict]:
 
 def _digits_of(text: str) -> str:
     return re.sub(r"[\s,]", "", text)
+
+
+#: a count the material ties to a quoted remark: 「'밤샘 중 휴식 공간 부족' 23건」
+_QUOTED_COUNT = re.compile(
+    r"[‘'\"「『“](?P<label>[^’'\"」』”\n]{2,40})[’'\"」』”]\s{0,2}(?P<n>\d{1,5})\s{0,2}(?P<unit>건|명|회|표)")
+_ITEM_LINE = re.compile(r"^(?P<indent>\s{0,12})(?:[-*+]|\d{1,2}[.)])\s{1,4}(?P<text>.*)$")
+
+
+def quoted_counts(material: str) -> list[tuple[str, str, str]]:
+    """(label, count, unit) for each count the material gives with its quoted remark."""
+    return [(m.group("label").strip(), m.group("n"), m.group("unit"))
+            for m in _QUOTED_COUNT.finditer(material or "")]
+
+
+def _parent_item(lines: list[str], k: int) -> str:
+    """Text of the nearest list item above line `k` that is less indented."""
+    m = _ITEM_LINE.match(lines[k])
+    if not m:
+        return ""
+    depth = len(m.group("indent"))
+    for j in range(k - 1, -1, -1):
+        up = _ITEM_LINE.match(lines[j])
+        if up and len(up.group("indent")) < depth:
+            return up.group("text")
+        if not lines[j].strip():
+            break
+    return ""
+
+
+#: words any complaint shares (「부족」, 「불만」): they tie a count to nothing
+_REMARK_WORDS = frozenset({"부족", "문제", "지적", "불만", "불편", "개선", "미흡", "필요", "요청", "의견",
+                           "응답", "답변", "주관식", "건수"})
+
+
+def _remark_words(text: str) -> set[str]:
+    return _words(text) - _REMARK_WORDS
+
+
+def count_label_problems(text: str, lines: list[str], k: int,
+                         counts: list[tuple[str, str, str]]) -> list[str]:
+    """Counts in line `k` written for something other than their remark, or listed as the
+    evidence of an item that is about something else."""
+    out = []
+    parent = _parent_item(lines, k)
+    for label, n, unit in counts:
+        for m in re.finditer(rf"(?<![\d,.]){n}\s{{0,2}}{unit}", text):
+            near = text[max(0, m.start() - 40):m.start()]
+            words = _remark_words(label)
+            if not words:
+                continue
+            if not (words & _words(near)):
+                out.append(f"「{n}{unit}」은 자료에서 「{label}」의 건수다. 이 문장의 대상에 붙이지 말고 "
+                           f"「{label}」 지적 {n}{unit}이라고 쓰거나 빼라")
+            elif parent and not (words & _words(parent)):
+                out.append(f"「{label}」 {n}{unit}은 상위 항목 「{parent[:40]}」의 근거가 아니다. "
+                           f"그 지적이 말하는 문제 항목에 붙이거나 따로 적어라")
+    return out
+
+
+async def count_labels(doc: Doc) -> tuple[list[Finding], dict]:
+    """A count the material gives for one remark (「'휴식 공간 부족' 23건」) set to another."""
+    counts = quoted_counts(doc.material)
+    found: list[Finding] = []
+    if not counts:
+        return found, {}
+    for index, sec in enumerate(doc.sections):
+        lines = str(sec.get("content") or "").split("\n")
+        for k, line in enumerate(lines):
+            if line.lstrip().startswith(("|", "#", "```")):
+                continue
+            whys = count_label_problems(line, lines, k, counts)
+            if whys:
+                found.append(Finding(
+                    index, line.strip(), "count_label", "; ".join(dict.fromkeys(whys)) + ".",
+                    evidence="\n".join(f"자료: 「{lb}」 {n}{u}" for lb, n, u in counts), rank=1,
+                    still=lambda s, c=counts: bool(count_label_problems(s, [s], 0, c))))
+    return found, {}
+
+
 
 
 # ── after writing: add missing, never rewrite ──
@@ -3539,7 +3619,7 @@ def _list_row_problems(line: str, bound: list[dict]) -> tuple[list[str], str]:
     rest = re.sub(r"^\s{0,12}[-*+]\s{1,3}\*\*[^*\n]{1,120}\*\*", "", text)
     if "미정" in f"{who} {when}" and len(re.sub(r"<[^>]{1,20}>|[*\-\s.]", "", rest)) < 4:
         problems.append("「미정」이면 사유(회의에서 정하지 않음 등)를 앞 문장에 적는다")
-    if not _SOURCE_WORD.search(text):
+    if _mailed(bound) and not _SOURCE_WORD.search(text):
         problems.append("출처(회의 또는 메일)를 앞 문장에 적는다")
     entries = bound_rows(text, bound)
     written = _cell_dates(when)
@@ -3569,16 +3649,23 @@ async def minutes_list_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding],
     return found, {}
 
 
+def _mailed(dates: list[dict]) -> bool:
+    """Whether follow-up mail is part of the material (a date counted from a mail)."""
+    return any(d.get("base_kind") == "mail" for d in dates)
+
+
 def minutes_columns(sections: list[dict], dates: list[dict]) -> tuple[list[dict], int]:
-    """Add missing 출처·비고 columns; 출처 = the date's source line (회의 or mail), else 「[출처]」."""
+    """Add missing 출처·비고 columns; 출처 = the date's source line (회의 or mail), else 「[출처]」.
+    One meeting and no mail: no 출처 column, every row would say 「회의」."""
     bound = [d for d in dates if d.get("status") in ("ok", "repeat")]
+    mailed = _mailed(dates)
     out = [dict(s) for s in sections]
     added = 0
     for table in tables(out):
         owner, due = _owner_due(table.header)
         if owner is None or due is None:
             continue
-        lacks_source = _column(table.header, r"출처|근거") is None
+        lacks_source = mailed and _column(table.header, r"출처|근거") is None
         lacks_note = _column(table.header, r"비고|사유|메모|원문") is None
         if not (lacks_source or lacks_note):
             continue
@@ -3604,6 +3691,53 @@ def minutes_columns(sections: list[dict], dates: list[dict]) -> tuple[list[dict]
         out[table.section] = {**out[table.section], "content": "\n".join(lines)}
         added += 1
     return out, added
+
+
+#: 「출처: 회의」 in a 비고 cell, with the comma before or after it
+_SAID_SOURCE = re.compile(r"(?:,\s{0,2})?출처\s{0,2}[:：]\s{0,2}(?:회의|회의록|메모)(?:\s{0,2},)?")
+
+
+def minutes_one_source(sections: list[dict], dates: list[dict]) -> tuple[list[dict], int]:
+    """No mail in the material: an action table's 출처 column saying one thing on every row
+    dropped, and 「출처: 회의」 taken out of its 비고 cells — a column that tells nothing."""
+    if _mailed(dates):
+        return sections, 0
+    out = [dict(s) for s in sections]
+    dropped = 0
+    for table in tables(out):
+        owner, due = _owner_due(table.header)
+        if owner is None or due is None:
+            continue
+        source = _column(table.header, r"^\**\s{0,2}(?:출처|근거)\s{0,2}\**$")
+        note = _column(table.header, r"비고|사유|메모|원문")
+        values = {row[source].strip(" *") for _, row in table.rows if source is not None
+                  and source < len(row)}
+        cut = source is not None and len(values) <= 1 and values <= {"회의", "회의록", "메모", "-", ""}
+        content = str(out[table.section].get("content") or "")
+        lines = content.split("\n")
+        start = next((i for i, ln in enumerate(lines) if cells(ln) == table.header
+                      and i + 1 < len(lines) and _TABLE_RULE.match(lines[i + 1])), None)
+        if start is None:
+            continue
+        changed = False
+        width = len(table.header)
+        for k, (_, row) in enumerate(table.rows):
+            row = list(row)
+            if note is not None and note < len(row) and _SAID_SOURCE.search(row[note]):
+                row[note] = _SAID_SOURCE.sub("", row[note]).strip(" ,") or "-"
+                changed = True
+            if cut and source < len(row):
+                row.pop(source)
+                changed = True
+            lines[start + 2 + k] = "| " + " | ".join(row) + " |"
+        if cut:
+            header = [h for j, h in enumerate(table.header) if j != source]
+            lines[start] = "| " + " | ".join(header) + " |"
+            lines[start + 1] = "|" + "---|" * (width - 1)
+            dropped += 1
+        if changed:
+            out[table.section] = {**out[table.section], "content": "\n".join(lines)}
+    return out, dropped
 
 
 _WRITTEN_DATES = frozenset({"full_date", "month_day", "named_month_end", "vague", "unclear"})
@@ -3700,6 +3834,25 @@ def _owner_in_line(cell: str, entry: dict) -> bool:
     return any(n in line or (len(n) > 3 and n[:3] in line) for n in names)
 
 
+#: a note saying the meeting set no due (「회의에서 기한을 정하지 않음」)
+_SAID_UNDECIDED = re.compile(
+    r"정하지\s{0,2}않|미정|확인\s{0,2}(?:이\s{0,2})?필요|(?:언급|명시|지정|확정)(?:되지|하지)\s{0,2}않")
+
+
+def _in_date_sentence(action: str, entry: dict) -> bool:
+    """Whether the task is named in the sentence holding the date, when its line has several
+    (「… 다음 회의 때 공유하겠다. 학생 테스트 그룹 모집은 …」: the date is the checklist's)."""
+    own = _SPEAKER.sub("", str(entry.get("source_line") or ""))
+    said = str(entry.get("text") or "")
+    sentences = [s for s in re.split(r"(?<=[.!?。])\s+", own) if s.strip()]
+    if len(sentences) < 2 or not said:
+        return True
+    holding = next((s for s in sentences if said in s), "")
+    # 「갱신」 in the row, 「갱신해 줘요」 in the sentence: the same word
+    return not holding or any(a.startswith(b) or b.startswith(a)
+                              for a in _words(action) for b in _words(holding))
+
+
 def minutes_due_fill(sections: list[dict], dates: list[dict]) -> tuple[list[dict], int]:
     """Fill 「미정」/「[기한]」 action rows with date-calc's resolved date; original words to 비고."""
     # meeting date only: lines re-dated by later header or mail left to writer
@@ -3722,10 +3875,14 @@ def minutes_due_fill(sections: list[dict], dates: list[dict]) -> tuple[list[dict
             if len(row) <= max(owner, due) or (
                     row[due].strip(" *()") != "미정" and not placeholders.is_blank(row[due])):
                 continue
+            if note is not None and note < len(row) and _SAID_UNDECIDED.search(row[note]):
+                # the writer read the material as giving no due: 「미정」 stands
+                continue
             action = row[task] if task is not None and task < len(row) else ""
             entries = _strong_dates(" ".join(c for k, c in enumerate(row) if k not in (due, note)),
                                     bound, action)
-            if entries and _owner_in_line(row[owner], entries[0]):
+            if (entries and _owner_in_line(row[owner], entries[0])
+                    and _in_date_sentence(action, entries[0])):
                 picks.append((line, row, entries, _action_hits(action, entries[0])))
         # one line's date → best-matching row; ties only when line names several tasks
         actions = [row[task] if task is not None and task < len(row) else "" for _, row in table.rows]
@@ -3748,7 +3905,8 @@ _QUANTITY = re.compile(
 )
 #: owner words naming no one: need no material backing
 _ANY_OWNER = re.compile(
-    r"미정|확인\s{0,2}필요|해당\s{0,2}없음|전체|전원|공동|참석자|각자|^[-—–]?$|^\[[가-힣 ·]{1,10}\]$")
+    r"미정|확인\s{0,2}필요|해당\s{0,2}없음|전체|전원|공동|참석자|각자|각\s{0,2}(?:담당|팀원|구성원|부서)"
+    r"|담당자\s{0,2}별|^[-—–]?$|^\[[가-힣 ·]{1,10}\]$")
 _OWNER_SPLIT = re.compile(r"[,·/、→]|\s(?:및|와|과)\s")
 
 
@@ -4060,6 +4218,22 @@ def must_values_from_tables(data: dict, material: str) -> dict:
 _ANNUAL = re.compile(r"연간|매년|해마다|1년|한\s?해|연\s{0,2}(?:한도|예산|집행|비용)|년\s{0,2}(?:한도|예산)")
 
 
+def _budget_total(option: str, must: dict, costs: dict | None) -> float | None:
+    """Option's total compare-cost judged against the same budget as `must`, on its VAT basis."""
+    budget = (costs or {}).get("budget") or {}
+    try:
+        if abs(float(str(must.get("limit")).replace(",", "")) - float(budget.get("amount"))) > 0.5:
+            return None
+    except (TypeError, ValueError):
+        return None
+    key = _option_key(option)
+    for name, total in (budget.get("compared") or {}).items():
+        other = _option_key(name)
+        if key and other and (key in other or other in key):
+            return float(total)
+    return None
+
+
 def _yearly_cost(option: str, costs: dict | None) -> float | None:
     """Option's peak yearly cost from compare-cost (first year or a later one)."""
     key = _option_key(option)
@@ -4140,6 +4314,12 @@ def must_status(data: dict, numbers: list[float], material: str = "",
                 # a yearly money limit is judged on the code-computed yearly cost, never on a
                 # reading of one of the material's figures (the hourly price, a count)
                 value = yearly
+            elif (value is None and must.get("kind") == "max"
+                    and str(must.get("unit") or "원") == "원"
+                    and (total := _budget_total(option["name"], must, costs)) is not None):
+                # the budget limit read no total: compare-cost's total on the budget's VAT
+                # basis is the option's, computed from the material, not 「자료 없음」
+                value = total
             residency = (_residency(str(option["name"]), names, material)
                          if must.get("kind") == "yesno" and _RESIDENCY.search(must["name"])
                          else None)
@@ -4627,6 +4807,7 @@ LABELS = {
     "lead_date_missing": "납기를 날짜로 풀지 않음",
     "placeholder_answerable": "자료에 있는 값을 빈칸으로 둠",
     "staff_headcount": "투입 MM을 인원으로 씀",
+    "count_label": "지적 건수가 다른 대상에 붙음",
 }
 #: judge findings (E5): shown for review, not counted as repairs
 MODEL_LABELS = {

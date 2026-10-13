@@ -472,7 +472,12 @@ _FORM_GENRES = re.compile(r"IRB|심의|신청서|공고|공지|안내|FAQ|자주
 #: asks for outside facts
 _LOOKS_UP = re.compile(
     r"조사|동향|사례|검색|찾아|최신|트렌드|벤치마킹|국내외|해외|다른\s{0,2}(?:대학|기관|학교|회사)"
-    r"|타\s{0,2}(?:대학|기관|학교|사)|통계|법령|근거\s{0,2}자료")
+    r"|타\s{0,2}(?:대학|기관|학교|사)|통계|법령|근거\s{0,2}자료"
+    # a market-entry review asks what the person's memo cannot hold
+    r"|공개\s{0,2}(?:자료|통계|출처)|시장\s{0,2}규모|성장\s{0,2}전망|경쟁사|경쟁\s{0,2}구도|산업\s{0,2}환경")
+#: a memo line that is the ask itself: 「알고 싶은 것: 시장 규모와 …」
+_ASK_LABEL = re.compile(r"^[ \t]{0,8}(?:[-*•·]\s{0,2})?(?:알고\s{0,2}싶은|궁금한|요청\s{0,2}사항|원하는\s{0,2}것"
+                        r"|질문|검토\s{0,2}(?:사항|항목|내용))[^:：\n]{0,10}[:：]")
 #: 「항목: 값」 line, bulleted or not
 _KEY_VALUE = re.compile(
     r"^[ \t]{0,8}(?:[-*•·□○◦▪]\s{0,2}|\d{1,2}[.)]\s{0,2})?[가-힣A-Za-z][^:：\n]{0,24}[:：]\s{0,2}\S",
@@ -488,8 +493,9 @@ def _given_memo(instruction: str) -> bool:
 def _ask_lines(instruction: str) -> str:
     """The instruction's own lines, memo lines left out."""
     return "\n".join(line for line in instruction.splitlines()
-                     if line.strip() and not _KEY_VALUE.match(line)
-                     and not re.match(r"^\s{0,8}[-*•·□○◦▪]\s", line))
+                     if line.strip() and (_ASK_LABEL.match(line) or (
+                         not _KEY_VALUE.match(line)
+                         and not re.match(r"^\s{0,8}[-*•·□○◦▪]\s", line))))
 
 
 _SCHOLARLY_DOC = re.compile(
@@ -1470,6 +1476,35 @@ def figure_marks(body: str) -> list[dict[str, str]]:
         out.append({"mark": m.group(0), "kind": kind, "caption": parts[1][:80],
                     "description": " | ".join(parts[2:])[:700]})
     return out
+
+
+#: a sentence's end: a full stop or a closing mark after it, a citation, a closed quote
+_SENTENCE_DONE = re.compile(r"(?:[.!?。…]|[.!?。][)\]」』\"'*]+|\[\d{1,3}(?:\s?,\s?\d{1,3})*\][.]?)\s*$")
+_LAST_STOP = re.compile(r"[.!?。](?:\s?\[\d{1,3}(?:\s?,\s?\d{1,3})*\])?(?=\s)")
+
+
+def cut_unfinished_tail(body: str) -> str:
+    """A section whose last paragraph stops mid-sentence (「… 이러한 부처별 추」, the call ran
+    out) ends at its last whole sentence; tables, lists, headings and fences are left alone."""
+    text = (body or "").rstrip()
+    if not text:
+        return body
+    start = text.rfind("\n") + 1
+    last = text[start:]
+    stripped = last.strip()
+    if (not stripped or stripped.startswith(("|", "#", "-", "*", "+", ">", "```", "!", "["))
+            or re.match(r"\d{1,3}[.)]\s", stripped) or "```" in text[start - 4:start]
+            or text.count("```") % 2 or _SENTENCE_DONE.search(stripped)
+            or re.search(r"[다요음함임됨:：)\]」』”\"'*_]$", stripped)):
+        return body
+    stops = list(_LAST_STOP.finditer(last))
+    if not stops:
+        return body
+    kept = last[:stops[-1].end()].rstrip()
+    # only a short dangling piece goes: a long one is a sentence the writer meant
+    if len(last) - len(kept) > 200:
+        return body
+    return text[:start] + kept
 
 
 def shown_while_writing(body: str) -> str:

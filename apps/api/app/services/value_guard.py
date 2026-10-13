@@ -752,6 +752,17 @@ def _widen(text: str, s: int, e: int) -> tuple[int, int]:
     return s, e
 
 
+def _header_row(text: str, base: int, line: str) -> bool:
+    """Whether `line` (starting at `base`) is a table's header row: a row with the rule under it."""
+    if not line.lstrip().startswith("|"):
+        return False
+    after = text.find("\n", base)
+    if after < 0:
+        return False
+    rule, _ = _line_at(text, after + 1)
+    return bool(re.match(r"^\s*\|?\s*:?-{2,}", rule))
+
+
 def _value_end(text: str, s: int, e: int, widened: int) -> int:
     """End of the last value touching [s, e): its digits, scale word, unit or whole date."""
     line, base = _line_at(text, s)
@@ -818,6 +829,11 @@ def _settle_values(before: str, after: str, ev: Evidence, structure: int,
         s, e = _widen(before, offsets[i1], offsets[i2])
         line, base = _line_at(before, s)
         whole = before[s:e]
+        if _header_row(before, base, line):
+            # a column name (「12월말 예상 집행액」) labels values, it claims none
+            out.restored.append(whole.strip())
+            pieces.append(old)
+            continue
         if supported(whole, line, s - base, ev, structure, _table_header(before, s)):
             out.restored.append(whole.strip())
             pieces.append(old)

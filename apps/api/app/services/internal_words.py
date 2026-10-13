@@ -373,6 +373,20 @@ def strip_check_block(text: str) -> tuple[str, str]:
         tail = [line for line in rest[end:] if line.strip()]
         if not items or not all(_CHECK_ITEM.match(line) for line in items) or (
                 tail and not all(line.strip().startswith("_") for line in tail)):
+            # a heading with nothing of the check under it: the heading goes, with the rule
+            # set above it to part it from the answer
+            first = next((i for i, line in enumerate(rest) if line.strip()), None)
+            under = rest[first:] if first is not None else []
+            stop = next((i for i, line in enumerate(under) if not line.strip()), len(under))
+            top = k
+            while top and not lines[top - 1].strip():
+                top -= 1
+            # only past a rule that parts it from the answer (a report's own 「점검 결과」 stays)
+            ruled = bool(top) and bool(
+                re.fullmatch(r"\s*(?:-{3,}|\*{3,}|_{3,})\s*", lines[top - 1]))
+            if ruled and not any(_CHECK_ITEM.match(line) for line in under[:stop]):
+                kept = [*lines[:top - 1], *rest]
+                return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip("\n"), lines[k].strip()
             return text, ""
         block = "\n".join([lines[k], *items]).strip()
         kept = [*lines[:k], *rest[end:]]
@@ -439,7 +453,20 @@ def strip_work_sentences(text: str) -> str:
 #: a check's verdict belongs in the steps (「근거 대조 결과 근거 없는 값 0개.」)
 _CHECK_RESULT = re.compile(
     r"^\W{0,4}(?:근거\s?대조|출처\s?점검|카피\s?점검|계산[·ㆍ]?\s?단위\s?검증|자체\s?(?:점검|검증|검토))"
-    r"\s?결과|근거\s?없는\s?값\s?\d{1,3}\s?개")
+    r"\s?결과|근거\s?없는\s?값\s?\d{1,3}\s?개"
+    # a pass told under a notice (「일정 점검: … 차단 항목 0건」, 「점검 결과 … 없습니다」)
+    r"|^\W{0,4}(?:일정|날짜|요일|문구|최종)?\s?(?:점검|검증|검산|검수)\s?(?:결과|에서)?\s?[:：]?\s"
+    r"[^\n]{0,80}?(?:0\s?건|없습니다|없고|맞습니다|맞고|일치합니다|일치하고|통과)"
+    r"|(?:요일|날짜)[^\n.]{0,60}?(?:실제\s?)?달력(?:과|이|와)\s?(?:모두\s?)?일치합니다"
+    r"|차단\s?(?:\(block\)\s?)?(?:항목|값|표현)\S{0,2}\s?\d{1,3}\s?건")
+#: the writer telling what it did to its own copy (「권장 150자를 12자 초과해서 줄였습니다」):
+#: an edit verb in the past with a length or check word beside it
+_SELF_EDIT = re.compile(
+    r"(?=[^\n]{0,120}?(?:\d{1,4}\s?자|글자\s?수|초과|한도|검수|block|차단))"
+    r"[^\n]{0,160}?(?:줄였|고쳤|수정했|바꿨|다듬었|뺐|맞췄|덜어냈|잘랐)(?:습니다|어요|다)[.!]?\s*$")
+#: a request that asks for edits: then telling them is the answer
+_ASKED_EDIT = re.compile(
+    r"(?:고쳐|다듬어|줄여|수정해|바꿔|윤문|교정|첨삭)\s?(?:줘|주세요|주십시오|달라)")
 #: generic verdict, dropped only as the opening line
 _OPENING_VERDICT = re.compile(r"^\W{0,4}(?:검증|점검|검산|대조)\s?결과[,:：]?\s")
 #: request that asked for a check, whose verdict is then the content
@@ -514,6 +541,7 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
         return text
     korean = _latin_share(request) < 0.5 if request.strip() else _latin_share(text) < 0.5
     asked_check = bool(_ASKED_CHECK.search(request or ""))
+    asked_edit = bool(_ASKED_EDIT.search(request or ""))
     out = _worksheet(text) if korean else text
     paragraphs = re.split(r"\n[ \t]*\n", out)
     if korean:
@@ -552,6 +580,7 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
                     if not _KO_NOTE.search(s)
                     and not (document and _DOC_NOTE.search(s))
                     and (asked_check or not _CHECK_RESULT.search(s))
+                    and (asked_edit or not _SELF_EDIT.search(s))
                     and not (first_line and not asked_check and len(line) <= 100
                              and _OPENING_VERDICT.match(s))]
             if len(left) != len(sentences):

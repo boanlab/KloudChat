@@ -111,7 +111,10 @@ async def test_a_limit_claim_goes_and_values_still_unchecked_are_named(monkeypat
     events, text = await _turn([_code(ran)])
     assert "한도" not in text
     assert text.startswith("FCFS 4.75, SRTF 2.25, 우선순위 1.75입니다.")
-    assert text.endswith("코드로 확인하지 못했습니다: 2.25, 1.75_")
+    # the unprinted values are named in the steps, never as a footnote under the answer
+    assert "코드로 확인하지 못했습니다" not in text
+    step = next(e for e in events if e.get("id") == "code-unprinted")
+    assert step["detail"] == "2.25, 1.75"
 
 
 def test_known_values_rounding_and_percentages_are_not_flagged():

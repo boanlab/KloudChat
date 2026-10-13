@@ -6997,10 +6997,14 @@ async def _run_report(
     parent_run_id: str | None = None,
 ) -> AsyncIterator[str]:
     """Drives one report to completion (`write` → `report-save`); run kept for reruns."""
+    #: this call's arguments, for writing a one-part plan straight away
+    given = dict(locals())
     proposal: dict | None = None
     questions: list[dict] | None = None
     usage = {"inputTokens": 0, "outputTokens": 0}
     writing = approved_plan is not None
+    #: a one-part plan (공문 「본문」) with nothing to choose is written, not offered
+    straight = False
     recorder = pipeline_runs.Recorder(run_id=uuid4().hex) if writing else None
     built: list = []
     announced = False
@@ -7055,9 +7059,14 @@ async def _run_report(
                 # stopped on purpose: stored below, no artifact
                 if event["type"] == "proposal":
                     proposal = event["plan"]
+                    straight = writing is False and _one_part_plan(proposal)
+                    if straight:
+                        continue
                 else:
                     questions = event["questions"]
                 yield chat_service.sse(event)
+                continue
+            if straight and event["type"] == "usage":
                 continue
             if event["type"] in ("report", "titleBlock", "sources", "research", "title"):
                 told[event["type"]] = event
@@ -7072,6 +7081,14 @@ async def _run_report(
         yield chat_service.sse(_error_event("보고서를 만들지 못했습니다.", exc))
 
     work = built[0][0] if built else None
+    if straight and proposal is not None and questions is None:
+        # nothing to approve in a one-part outline: written as planned
+        planned = {k: v for k, v in proposal.items() if k != "figures"}
+        async for chunk in _run_report(**{**given, "approved_plan": planned, "figures_plan": [],
+                                          "routing": None, "skills_event": None,
+                                          "context_steps": None}):
+            yield chunk
+        return
     # planned or asked: stored on session, no artifact
     if proposal is not None or questions is not None:
         # figure question held until outline approval
@@ -7113,6 +7130,14 @@ async def _run_report(
     async for chunk in _report_tail(work, recorder=recorder, session_id=session_id,
                                     user_id=user_id, usage=usage, parent=parent_run_id):
         yield chunk
+
+
+def _one_part_plan(plan: dict | None) -> bool:
+    """A plan of one part (공문 「본문」) with no picture to pick and nothing marked: its card
+    would only ask to go on."""
+    plan = plan or {}
+    return (len(plan.get("sections") or []) == 1 and not plan.get("figures")
+            and not plan.get("frame") and not plan.get("unverified"))
 
 
 def _told_bundle(told: dict[str, Any], *, usage: dict, turn: dict, request: str,

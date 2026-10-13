@@ -34,6 +34,7 @@ CHECKS = {
     "career-numbers": "경력 수치 확인",
     "staff-counts": "투입 인원 확인",
     "material-blanks": "자료로 채울 빈칸 찾기",
+    "count-labels": "지적 건수와 대상 확인",
 }
 #: 판정 검사 (`report_checks.JUDGED_CHECKS`)
 JUDGED = {

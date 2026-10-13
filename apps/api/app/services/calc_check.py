@@ -81,8 +81,50 @@ def _initials(words: str) -> str:
     return "".join(p[0] for p in parts)
 
 
+#: a word of a sentence or a printed line, for telling which group a value is about
+_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{2,}")
+#: words every printed table shares: they name no group
+_COMMON_WORDS = frozenset({"평균", "전체", "합계", "비율", "점수", "응답", "문항", "기준",
+                           "결과", "값"})
+#: a figure that is a gap, not the level beside it: 「−0.79」, 「0.79 낮습니다」, 「차이는 0.79」
+_GAP_BEFORE = re.compile(r"(?:[−\-+±]\s{0,1}|(?:차이|격차|차)(?:는|가|가\s?약)?\s{0,3})$")
+_GAP_AFTER = re.compile(r"\s{0,2}(?:점|%p|%\s?포인트|포인트|p)?\s{0,2}"
+                        r"(?:낮|높|차이|많|적|앞서|뒤|증가|감소|상승|하락|늘|줄|더\s|덜\s)")
+
+
+def _a_gap(text: str, number: re.Match[str]) -> bool:
+    return bool(_GAP_BEFORE.search(text[max(0, number.start() - 8):number.start()])
+                or _GAP_AFTER.match(text, number.end()))
+
+
+def _stem_words(text: str) -> set[str]:
+    return {w for w in _WORD.findall(text or "") if w not in _COMMON_WORDS}
+
+
 class _Names:
     """Slide spellings of each row and label."""
+
+    #: the code's printed lines: a written value printed beside a group the sentence names
+    #: is that group's value, not a slip for the stated one
+    printed: tuple[str, ...] = ()
+
+    def vouched(self, written: str, sentence: str, s: Stated) -> bool:
+        """Whether `written` is printed on a line naming a group the sentence also names
+        (「예술대학 … 2.89」 printed, 「예술대학 시설 평균 2.89점」 written) other than `s`'s."""
+        own = _stem_words(f"{s.row} {s.label}")
+        words = {w for w in _stem_words(sentence)
+                 if not any(w.startswith(o) or o.startswith(w) for o in own)}
+        if not words:
+            return False
+        for line in self.printed:
+            if not any(_same(written, float(m.group(0).replace(",", "")))
+                       for m in _NUMBER.finditer(line)):
+                continue
+            named = _stem_words(line)
+            if any(w.startswith(n) or n.startswith(w) for w in words for n in named
+                   if min(len(w), len(n)) >= 2):
+                return True
+        return False
 
     def __init__(self, stated: list[Stated]) -> None:
         rows = list(dict.fromkeys(s.row for s in stated if s.row))
@@ -272,6 +314,8 @@ def _clashes(text: str, context: str, names: _Names, stated: list[Stated]) -> li
                 continue
             s = named[0]
         if number and not _same(number.group(0), s.value):
+            if _a_gap(text, number) or names.vouched(number.group(0), text, s):
+                continue
             out.append(Clash(number.start(), number.end(), number.group(0), s))
     return out
 
@@ -525,14 +569,18 @@ def _cells(line: str) -> list[str]:
     return [c.strip() for c in line.strip().strip("|").split("|")]
 
 
-def check_markdown(text: str, stated: list[Stated]) -> tuple[str, list[str]]:
+def check_markdown(text: str, stated: list[Stated],
+                   printed: list[str] | None = None) -> tuple[str, list[str]]:
     """A markdown answer's numbers that name a printed value set to it: sentences read with
-    the nearest heading as their title, tables cell by cell. `(text, corrections)`."""
+    the nearest heading as their title, tables cell by cell. `(text, corrections)`. A gap
+    (「0.79 낮다」) or a value `printed` beside a group the sentence names stays."""
     # a value printed with no row (「합계: 152760」) is too loose to pin a line of prose to
     stated = [s for s in stated if s.row]
     if not stated or not text:
         return text, []
     names = _Names(stated)
+    names.printed = tuple(line for out in printed or () for line in str(out).splitlines()
+                          if line.strip())
     found: list[str] = []
     lines = text.split("\n")
     out: list[str] = []
