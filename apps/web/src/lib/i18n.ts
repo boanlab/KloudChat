@@ -3625,6 +3625,7 @@ const EN: Record<string, string> = {
   '학술 논문': 'Research paper',
   '실험 보고서': 'Lab report',
   '회의록': 'Minutes',
+  '회의 안건': 'Meeting agenda',
   '보도자료': 'Press release',
   '간이기안문': 'Internal approval draft',
   '공문·안내문': 'Official letter or notice',

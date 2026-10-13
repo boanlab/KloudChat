@@ -29,12 +29,14 @@ from app.services import (
     imagegen,
     internal_words,
     key_figures,
+    model_retry,
     pictures,
     placeholders,
     quality_gate,
     ratelimit,
     research,
     revise,
+    scheduling,
     settings_store,
     slide_patterns,
     thinking,
@@ -906,6 +908,128 @@ def restate_missing_facts(slides: list[dict], request: str) -> list[int]:
     return changed
 
 
+#: a request asking for Gantt charts
+_ASKS_GANTT = re.compile(r"간트|gantt", re.I)
+#: a title about one algorithm's worked result
+_RESULT_TITLE = re.compile(r"간트|차트|대기|평균|계산|결과|풀이|예제|실행\s?순서")
+#: titles about the whole deck, never one algorithm's chart
+_NOT_ONE_ALGORITHM = re.compile(r"비교|퀴즈|요약|정리|개요|목차|마무리|결론|문제|소개")
+#: layouts whose screen a Gantt table replaces without losing a point
+_NUMBERS_LAYOUTS = ("metrics", "big-number", "table", "chart")
+
+
+def _as_table(slide: dict, rows: list[list[str]], *, keep_points: bool) -> None:
+    """`slide` shows `rows` alone; its old points go to the notes when `keep_points`."""
+    points = [str(b).strip() for b in slide.get("bullets") or [] if str(b).strip()]
+    for field in _CONTENT_FIELDS:
+        slide.pop(field, None)
+    slide.pop("textScale", None)
+    if (slide.get("image") or {}).get("diagram"):
+        slide.pop("image", None)
+    if keep_points and points:
+        said = " ".join(p if re.search(r"[.!?]$", p) else f"{p}." for p in points)
+        slide["notes"] = f"{said} {slide.get('notes') or ''}".strip()[:800]
+    slide["layout"] = "table"
+    slide["rows"] = rows
+    auto_fit(slide)
+
+
+def place_gantt_charts(slides: list[dict], request: str, *, may_add: bool = True) -> int:
+    """Each scheduling algorithm the request asks a Gantt chart for shows one, as a table
+    run by code (r3 A09 T2: the intervals were a line of text or missing, Claude drew one per
+    algorithm). Taken by the algorithm's result slide (「FCFS 평균 대기시간」, a metrics or
+    table slide), else added after its slide, else (an exact slide count) its slide's points
+    move to the notes. Returns how many slides changed or were added."""
+    if not _ASKS_GANTT.search(request or ""):
+        return 0
+    every = scheduling.schedules(request)
+    if not every:
+        return 0
+    charted: set[str] = set()
+    changed = 0
+    # slides about each algorithm (or each reading), in deck order
+    groups: dict[tuple[str, ...], list[int]] = {}
+    for i, slide in enumerate(slides):
+        title = str(slide.get("title") or "")
+        if slide.get("layout") in _STRUCTURAL or _NOT_ONE_ALGORITHM.search(title):
+            continue
+        if found := scheduling.titled(title, every):
+            groups.setdefault(tuple(s.alg.rows[0] for s in found), []).append(i)
+    for s in every:
+        # a table already holding every interval stands
+        for i in (i for key, at in groups.items() if s.alg.rows[0] in key for i in at):
+            rows = slides[i].get("rows") or []
+            if scheduling.shows_runs("\n".join(" | ".join(map(str, r)) for r in rows), s):
+                charted.add(s.alg.rows[0])
+    added: list[tuple[int, dict]] = []
+    for key, at in groups.items():
+        todo = [s for s in every if s.alg.rows[0] in key and s.alg.rows[0] not in charted]
+        if not todo:
+            continue
+        rows = scheduling.gantt_rows(todo[0]) if len(todo) == 1 else scheduling.readings_rows(todo)
+        target = next((i for i in at if _RESULT_TITLE.search(str(slides[i].get("title") or ""))),
+                      None)
+        if target is None:
+            target = next((i for i in at if slides[i].get("layout") in _NUMBERS_LAYOUTS), None)
+        if target is not None:
+            _as_table(slides[target], rows, keep_points=True)
+        elif may_add:
+            added.append((at[-1] + 1, _gantt_slide(todo, rows, slides[at[-1]])))
+        else:
+            _as_table(slides[at[-1]], rows, keep_points=True)
+        charted.update(s.alg.rows[0] for s in todo)
+        changed += 1
+    # an algorithm only named beside another (「SRTF와 RR 스케줄링」): its chart follows that slide
+    for s in every:
+        if s.alg.rows[0] in charted or not may_add:
+            continue
+        at = [i for i, slide in enumerate(slides)
+              if slide.get("layout") not in _STRUCTURAL
+              and not _NOT_ONE_ALGORITHM.search(str(slide.get("title") or ""))
+              and s in scheduling.mentioned(str(slide.get("title") or ""), every)]
+        if at:
+            added.append((at[-1] + 1, _gantt_slide([s], scheduling.gantt_rows(s),
+                                                   slides[at[-1]])))
+            charted.add(s.alg.rows[0])
+            changed += 1
+    # inserted from the back so earlier positions hold; same position keeps deck order
+    for _, (at, slide) in sorted(enumerate(added), key=lambda p: (p[1][0], p[0]), reverse=True):
+        slides.insert(at, slide)
+    return changed
+
+
+def _gantt_slide(todo: list, rows: list[list[str]], beside: dict) -> dict:
+    """A slide holding `todo`'s Gantt table, with notes saying the order and the average."""
+    # 「라운드 로빈(q=2)」 over 「RR(q=2)」; both priority readings: the algorithm
+    name = todo[0].alg.rows[-1] if len(todo) == 1 else "우선순위 스케줄링"
+    finished = {run[0]: run[2] for run in todo[0].runs}
+    order = " → ".join(sorted(finished, key=finished.get))
+    notes = " ".join(f"{s.reading + ' 방식의 ' if len(todo) > 1 else ''}평균 대기시간은 "
+                     f"{s.average_text}입니다." for s in todo)
+    slide = {"id": f"gantt_{uuid.uuid4().hex[:6]}", "title": f"{name} 간트 차트",
+             "accent": beside.get("accent", ""),
+             "notes": (f"완료 순서는 {order}입니다. " if len(todo) == 1 else "") + notes}
+    _as_table(slide, rows, keep_points=False)
+    return slide
+
+
+def refresh_agenda(slides: list[dict], before: list[dict]) -> None:
+    """After slides were dropped or added, the agenda lists the deck as it now is: lines it
+    drew from the slide titles redrawn, a dropped slide's line taken off a written one."""
+    now = {unnumbered(str(s.get("title") or "")) for s in slides}
+    was = {unnumbered(str(s.get("title") or "")) for s in before}
+    gone = was - now
+    for slide in slides:
+        if slide.get("layout") != "agenda":
+            continue
+        lines = [str(b) for b in slide.get("bullets") or []]
+        if lines and all(line in was for line in lines):
+            slide["bullets"] = _agenda_lines(slides)
+        elif gone:
+            slide["bullets"] = [b for b in lines if unnumbered(b) not in gone]
+        auto_fit(slide)
+
+
 def _bullets_from_notes(notes: object, limit: int = 4) -> list[str]:
     """Speaker notes as bullets when the number guard emptied a chart/metrics slide."""
     text = " ".join(str(n) for n in notes) if isinstance(notes, list) else str(notes or "")
@@ -1263,7 +1387,18 @@ async def _complete(
     api_key: str,
     max_tokens: int,
 ) -> tuple[str, dict]:
-    """One non-streaming call → `(text, usage)`; retries 429."""
+    """One non-streaming call → `(text, usage)`; retries 429, and a dropped connection once
+    (r3: a slide or the draft lost to 「peer closed connection」)."""
+    return await model_retry.once_more(
+        lambda: _complete_once(model, messages, api_key, max_tokens), "deck call")
+
+
+async def _complete_once(
+    model: str,
+    messages: list[dict[str, str]],
+    api_key: str,
+    max_tokens: int,
+) -> tuple[str, dict]:
     base, _ = await settings_store.litellm_config()
     async with httpx.AsyncClient(
         base_url=base.rstrip("/"),
@@ -1949,9 +2084,12 @@ def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
         if planned < 0.6 * total:
             at = next((i for i, t in enumerate(titles) if re.search(r"목차|흐름|순서|오늘", t)),
                       1 if len(slides) > 1 else 0)
-            needs.setdefault(at, f"Put the time allocation by stage of the {total}-minute "
-                                 f"lesson (e.g. 도입 5분·개념 15분·활동 15분·정리 10분, 합계 "
-                                 f"{total}분) on this slide's screen.")
+            # r3 A09 T2: the example itself replaced the agenda and disagreed with the notes
+            needs.setdefault(at, f"Put the time allocation of the {total}-minute lesson on this "
+                                 "slide's screen: keep its items, name the parts after this "
+                                 "deck's own slides (which slides each part covers), and give "
+                                 f"each its minutes, summing to {total}분. The notes say the "
+                                 "same split.")
     for i, title in enumerate(titles):
         if _MONEY_TITLE.search(title) and not _MONEY.search(_shown(slides[i])):
             needs.setdefault(i, "This slide shows profitability. Write the material's "
@@ -3338,6 +3476,10 @@ async def _write_slides(
             log.warning("deck values set back to the computed ones: %s", recomputed[:12])
     for index in sorted(touched):
         yield {"type": "slide", "slide": auto_fit(slides[index]), "done": True}
+    before = list(slides)
+    if computed and (charts := place_gantt_charts(slides, request,
+                                                  may_add=not requested_slides(request))):
+        log.info("deck Gantt charts set from the computed schedules: %d", charts)
     # never shipped: a slide still empty or holding internal text after its one rewrite
     gone = [(i, s) for i, s in enumerate(slides) if unshippable(s)]
     if gone and len(gone) < len(slides):
@@ -3347,6 +3489,8 @@ async def _write_slides(
         yield {"type": "step", "id": "dropped", "status": "error",
                "label": f"내용을 채우지 못한 장 {len(gone)}개를 뺐습니다",
                "detail": f"다시 써도 비어 있거나 내부 문구가 남아 뺀 장: {names}"}
+    if [id(s) for s in slides] != [id(s) for s in before]:
+        refresh_agenda(slides, before)
     findings = quality_gate.deck_findings(slides)
     findings += [{"code": "long_line", "where": f"{i + 1}장", "detail": lines[0][:160]}
                  for i, lines in long_bullets(slides).items()]

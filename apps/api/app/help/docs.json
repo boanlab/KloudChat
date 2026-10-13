@@ -382,7 +382,7 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "기본 스킬",
-"text": "기본 스킬은 관리자 계정이 만들어 모두에게 공개한 스킬입니다. **사용자 지정** › **스킬**의 **탐색**에 **제작: 공식**으로 보이고, **추가**하면 내 목록에 사본이 생깁니다. 사본은 **원본: 공식**, 고친 사본은 **내가 수정함 · 원본: 공식**으로 보입니다. 사본은 고치지 않는 동안 관리자 쪽 새 버전을 따라가고, 고치면 내 것으로 남습니다. 에이전트와 템플릿이 쓰는 검사(근거 대조, 빠진 정보 묻기 등)는 추가하지 않아도 그대로 돕니다.\n\n목록에 보이는 기본 스킬은 공식 스킬의 업무 스킬 아홉 가지(회의록 작성, 개조식 보고, 비교·결정 보고, 공문·기안 초안, 발표 자료 구성, 자료 추출·집계, 규정 근거 답변, YouTube 영상 전사·요약, 심층 조사)와 **근거 대조**, **빠진 정보 묻기**, **계산·단위 검증**, **날짜 계산**, **견적 계산**, **엑셀 정리**, **PDF 표 → 엑셀**, **개인정보 가리기**입니다.\n\n- **엑셀 정리**는 제목·빈 행·합계·주석 행을 걷어 내고 바꾼 내용을 변경내역 시트로 남깁니다. 모든 값이 같은 행은 지우지 않고 「중복 의심」으로 표시만 합니다. 지우려면 지워 달라고 요청하세요.\n- **PDF 표 → 엑셀**은 글자를 고를 수 있는 PDF(텍스트 PDF)만 읽습니다. 스캔한 PDF(이미지)는 읽지 못합니다.\n- 그 밖의 스킬(카피·시장 조사·교정, 상투어 걷어내기, 글자 수 맞춤 등)은 목록·스토어·고르기 창에 보이지 않습니다. 묶음(예: 마무리하기의 상투적인 표현 걷어내기)과 그 스킬을 쓰던 대화에서는 그대로 돌고, 편집기에서 이름으로 고를 수 있습니다. 관리자는 **숨김 포함**을 켜면 볼 수 있습니다."
+"text": "기본 스킬은 관리자 계정이 만들어 모두에게 공개한 스킬입니다. **사용자 지정** › **스킬**의 **탐색**에 **제작: 공식**으로 보이고, **추가**하면 내 목록에 사본이 생깁니다. 사본은 **원본: 공식**, 고친 사본은 **내가 수정함 · 원본: 공식**으로 보입니다. 사본은 고치지 않는 동안 관리자 쪽 새 버전을 따라가고, 고치면 내 것으로 남습니다. 에이전트와 템플릿이 쓰는 검사(근거 대조, 빠진 정보 묻기 등)는 추가하지 않아도 그대로 돕니다.\n\n목록에 보이는 기본 스킬은 공식 스킬의 업무 스킬 열세 가지(회의록 작성, 개조식 보고, 비교·결정 보고, 공문·기안 초안, 발표 자료 구성, 자료 추출·집계, 규정 근거 답변, YouTube 영상 전사·요약, 심층 조사, 번역, 보도자료, 엑셀 파일 만들기, 차트 만들기)와 **근거 대조**, **빠진 정보 묻기**, **계산·단위 검증**, **날짜 계산**, **견적 계산**, **엑셀 정리**, **PDF 표 → 엑셀**, **개인정보 가리기**입니다.\n\n- **엑셀 정리**는 제목·빈 행·합계·주석 행을 걷어 내고 바꾼 내용을 변경내역 시트로 남깁니다. 모든 값이 같은 행은 지우지 않고 「중복 의심」으로 표시만 합니다. 지우려면 지워 달라고 요청하세요.\n- **PDF 표 → 엑셀**은 글자를 고를 수 있는 PDF(텍스트 PDF)만 읽습니다. 스캔한 PDF(이미지)는 읽지 못합니다.\n- 그 밖의 스킬(카피·시장 조사·교정, 상투어 걷어내기, 글자 수 맞춤 등)은 목록·스토어·고르기 창에 보이지 않습니다. 묶음(예: 마무리하기의 상투적인 표현 걷어내기)과 그 스킬을 쓰던 대화에서는 그대로 돌고, 편집기에서 이름으로 고를 수 있습니다. 관리자는 **숨김 포함**을 켜면 볼 수 있습니다."
 },
 {
 "lang": "ko",
@@ -613,7 +613,7 @@
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "공식 스킬",
-"text": "관리자가 모두에게 공개한 스킬입니다. 입력창의 **+** → **스킬** 아래 **공식 스킬**에 보이고, 고르면 내 스킬에 추가되면서 바로 켜집니다.\n\n| 스킬 | 쓰는 화면 | 하는 일 |\n|---|---|---|\n| 회의록 작성 | 보고서 | 녹음 전사본·메모·후속 메일로 결정·실행 항목(할 일·담당·기한·출처·비고)·미결을 남깁니다. **회의록** 템플릿에 씁니다. |\n| 개조식 보고 | 보고서 | 메모·메일을 윗사람이 한 장에서 판단할 □ ○ - ㆍ 개조식으로 바꿉니다. **개조식 보고서** 템플릿, 기본 1쪽. |\n| 비교·결정 보고 | 보고서 | 대안 2~5개를 요청한 기준 그대로 견주고 하나를 권고합니다. **비교·분석 보고서** 템플릿. |\n| 공문·기안 초안 | 보고서 | 계획서·결과 보고·기안·안내문 초안. 검색하지 않고, 그림은 요청할 때만 넣습니다. |\n| 발표 자료 구성 | 슬라이드 | 한 장에 주장 하나, 결론을 맨 앞에 두는 발표 슬라이드. |\n| 자료 추출·집계 | 대화 | 엑셀·CSV를 코드로 읽어 열을 뽑고 항목별로 집계한 표·차트를 만들고, 지우거나 바꾼 행을 남깁니다. |\n| 규정 근거 답변 | 대화 | 규정·지침에서 근거 조항을 [n]으로 달아 답하고, 자료에 없으면 담당 부서로 안내합니다. |\n| YouTube 영상 전사·요약 | 대화 | **YouTube 전사** 커넥터로 자막(없으면 음성 전사)을 받아 그 내용만으로 요약합니다. |\n| 심층 조사 | 대화 | **심층 리서치** 커넥터로 웹·논문을 여러 번 찾아 출처가 달린 결과를 정리합니다. 몇 분 걸립니다. |"
+"text": "관리자가 모두에게 공개한 스킬입니다. 입력창의 **+** → **스킬** 아래 **공식 스킬**에 보이고, 고르면 내 스킬에 추가되면서 바로 켜집니다.\n\n| 스킬 | 쓰는 화면 | 하는 일 |\n|---|---|---|\n| 회의록 작성 | 보고서 | 녹음 전사본·메모·후속 메일로 결정·실행 항목(할 일·담당·기한·출처·비고)·미결을 남깁니다. **회의록** 템플릿에 씁니다. |\n| 개조식 보고 | 보고서 | 메모·메일을 윗사람이 한 장에서 판단할 □ ○ - ㆍ 개조식으로 바꿉니다. **개조식 보고서** 템플릿, 기본 1쪽. |\n| 비교·결정 보고 | 보고서 | 대안 2~5개를 요청한 기준 그대로 견주고 하나를 권고합니다. **비교·분석 보고서** 템플릿. |\n| 공문·기안 초안 | 보고서 | 계획서·결과 보고·기안·안내문 초안. 검색하지 않고, 그림은 요청할 때만 넣습니다. |\n| 발표 자료 구성 | 슬라이드 | 한 장에 주장 하나, 결론을 맨 앞에 두는 발표 슬라이드. |\n| 자료 추출·집계 | 대화 | 엑셀·CSV를 코드로 읽어 열을 뽑고 항목별로 집계한 표·차트를 만들고, 지우거나 바꾼 행을 남깁니다. |\n| 규정 근거 답변 | 대화 | 규정·지침에서 근거 조항을 [n]으로 달아 답하고, 자료에 없으면 담당 부서로 안내합니다. |\n| YouTube 영상 전사·요약 | 대화 | **YouTube 전사** 커넥터로 자막(없으면 음성 전사)을 받아 그 내용만으로 요약합니다. |\n| 심층 조사 | 대화 | **심층 리서치** 커넥터로 웹·논문을 여러 번 찾아 출처가 달린 결과를 정리합니다. 몇 분 걸립니다. |\n| 번역 | 대화·보고서 | 한국어↔영어(요청하면 다른 언어도)로 빠짐없이 옮깁니다. 이름·숫자·단위·표·목록·코드는 그대로, 같은 용어는 끝까지 같은 말로, 두 뜻으로 읽히는 곳만 「번역 메모」로 적습니다. 「직역」·「의역」, 「격식체」·「평어체」를 요청에 적으면 그대로 씁니다. |\n| 보도자료 | 대화·보고서 | 제목·부제, 육하원칙 리드, 중요한 것부터 내려가는 본문, 기관 소개와 문의까지 갖춘 보도자료. 인용은 자료에 있는 사람의 발언만 쓰고, 자료에 없는 수치는 넣지 않습니다. 배포일·보도 시점·문의처만 대괄호로 남겨 직접 채웁니다. 「A4 1장」·「800자 이내」처럼 분량을 적으면 맞춥니다. |\n| 엑셀 파일 만들기 | 대화 | 붙여 넣은 표, 첨부한 CSV·엑셀, 계산한 표를 내려받을 수 있는 엑셀(.xlsx) 파일로 만듭니다. 합계 행과 합계·비율 같은 열은 수식으로 들어가고, 요청하면 엑셀 차트도 붙습니다. |\n| 차트 만들기 | 대화 | 표의 숫자로 막대·선·누적 막대 차트를 만들어 대화 옆에 띄웁니다. 값은 자료에 있거나 코드로 계산한 것만 씁니다. |"
 },
 {
 "lang": "ko",
@@ -628,6 +628,20 @@
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "대화에서 바로 쓰기",
 "text": "1. 홈에서 **보고서**를 고릅니다.\n2. 입력창의 **+** → **스킬** → **회의록 작성**을 고릅니다. 템플릿 칸에 **회의록**이 보입니다.\n3. 회의 메모나 전사본을 붙이고 「정식 회의록으로 만들어 줘」라고 보냅니다.\n\n챗에서 켠 스킬도 「…보고서 써 줘」처럼 문서를 부탁해 보고서·슬라이드로 넘어갈 때 함께 갑니다. 도구가 필요한 스킬은 그 화면에서 쓸 수 없어 빠지고, 빠진 스킬은 알림으로 알려 줍니다.\n\n같은 방법으로 **개조식 보고**(「과장님께 올릴 1쪽 보고로」), **비교·결정 보고**(「세 제품을 연간 비용과 필수 조건으로 비교해서 하나 골라 줘」)를 씁니다."
+},
+{
+"lang": "ko",
+"path": "chat/skill-recipes",
+"title": "스킬로 일하고 에이전트 짜기",
+"heading": "번역·보도자료·엑셀 파일·차트",
+"text": "- **번역**: 대화에서 켜고 글을 붙인 뒤 「영어로, 의역, 격식체로」처럼 보냅니다. 용어를 정해 두려면 「용어: 학생지원팀 = Student Support Office」처럼 함께 적습니다. 긴 문서를 문서째 옮기려면 보고서 화면에서 켭니다. 원문의 절 제목과 순서를 그대로 따르고 요약·권고 절은 붙이지 않습니다.\n- **보도자료**: 행사 결과·협약·수상 자료를 붙이고 「보도자료로, A4 1장」이라고 보냅니다. 자료에 인용할 발언이 없으면 인용 문단을 만들지 않고 답 끝에 그렇다고 알려 줍니다. 보고서 화면에서 요청에 「보도자료」라고 적으면 문서 머리에 배포일·보도 시점·문의처 칸이 생깁니다.\n- **엑셀 파일 만들기**: 표를 붙이거나 CSV·엑셀을 첨부하고 「엑셀 파일로, 합계 행과 증감률 열은 수식으로」라고 보냅니다. 만든 파일은 답 아래에 내려받기 단추로 붙습니다. 지저분한 표는 먼저 **엑셀 정리**를, 집계가 필요하면 **자료 추출·집계**를 함께 켜면 계산한 표를 파일로 받습니다. 코드 실행(샌드박스)이 켜져 있어야 합니다.\n- **차트 만들기**: 표를 붙이고 「지점별 월 매출을 막대 차트로」라고 보내면 차트가 대화 옆에 열립니다. 엑셀 안에도 차트를 넣으려면 **엑셀 파일 만들기**를 함께 켜고 「엑셀 차트도」라고 적습니다."
+},
+{
+"lang": "ko",
+"path": "chat/skill-recipes",
+"title": "스킬로 일하고 에이전트 짜기",
+"heading": "회의 전에는 회의 안건",
+"text": "회의록의 짝인 **회의 안건** 템플릿이 있습니다. 보고서 화면에서 **+** → 템플릿 고르기 → **회의 안건**을 고르고(또는 요청에 「회의 안건」·「안건지」라고 적고) 다룰 안건과 담당을 보냅니다. 회의록과 같은 머리(회의명·일시·장소·참석자·작성자)에 안건 표(순서·안건·담당·시간·목표), 안건별 검토 사항, 사전 자료, 결정 필요 사항을 씁니다. 목표는 보고·논의·결정 중 하나이고, 담당이 자료에 없으면 「미정」으로 두고 확인할 것을 한 줄로 적습니다. 회의 날짜나 참석자가 자료에 없으면 쓰기 전에 묻습니다."
 },
 {
 "lang": "ko",
@@ -697,7 +711,7 @@
 "path": "chat/starters",
 "title": "템플릿·테마",
 "heading": "템플릿",
-"text": "보고서와 슬라이드의 구성 규칙과 조판을 정의합니다. 선택하면 **이 템플릿이 확인하는 것** 점검 항목이 표시됩니다. 템플릿을 적용한 문서는 블록 단위로 다시 쓰는 방식으로 편집하며 PDF, DOCX/PPTX, HWPX, HTML, 텍스트로 내보낼 수 있습니다. 템플릿 고르기 창이나 에이전트 설정의 **새 템플릿**으로 내 문서 템플릿을 만듭니다(에이전트와 스킬). 이미지·오디오·동영상에는 템플릿이 없습니다.\n\n템플릿 고르기 창에 보이는 기본 템플릿은 문서 여섯 가지(간이기안문, 추진 계획(안), 결과 보고서, 개조식 보고서, 비교·분석 보고서, 회의록)와 슬라이드 **브리핑**입니다. 기관 서식으로 바로 쓰고, 다 쓴 뒤 그 서식의 형식 검사 결과를 보여 줍니다. 숨긴 템플릿을 쓰는 대화와 에이전트는 그 템플릿으로 계속 쓰고 내보냅니다."
+"text": "보고서와 슬라이드의 구성 규칙과 조판을 정의합니다. 선택하면 **이 템플릿이 확인하는 것** 점검 항목이 표시됩니다. 템플릿을 적용한 문서는 블록 단위로 다시 쓰는 방식으로 편집하며 PDF, DOCX/PPTX, HWPX, HTML, 텍스트로 내보낼 수 있습니다. 템플릿 고르기 창이나 에이전트 설정의 **새 템플릿**으로 내 문서 템플릿을 만듭니다(에이전트와 스킬). 이미지·오디오·동영상에는 템플릿이 없습니다.\n\n템플릿 고르기 창에 보이는 기본 템플릿은 문서 일곱 가지(간이기안문, 추진 계획(안), 결과 보고서, 개조식 보고서, 비교·분석 보고서, 회의록, 회의 안건)와 슬라이드 **브리핑**입니다. 기관 서식으로 바로 쓰고, 다 쓴 뒤 그 서식의 형식 검사 결과를 보여 줍니다. 숨긴 템플릿을 쓰는 대화와 에이전트는 그 템플릿으로 계속 쓰고 내보냅니다."
 },
 {
 "lang": "ko",
@@ -1775,7 +1789,7 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Built-in skills",
-"text": "Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** as **By: Official**; **Add** puts a copy in your list (**Original: Official**). A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and templates use (grounding check, asking for missing information and so on) run without adding anything.\n\nThe lists show the nine work skills under Official skills and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Quote calculation** (견적 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).\n\n- **Excel cleanup** strips title, blank, total and note rows and records what it changed on a change-log sheet. Rows whose values are all the same are not removed, only marked 「중복 의심」 (suspected duplicate); ask for them to be removed if you want that.\n- **PDF table → Excel** reads only PDFs whose text can be selected (text PDFs). Scanned PDFs (images) cannot be read.\n- The other skills (copy, market research, proofreading, stock-phrase stripping, character-count fitting and so on) are not shown in the lists, the store and the pickers. They still run in bundles (such as Finish's stock-phrase stripping) and in conversations that used them, and the editors still let you pick them by name. Administrators see them with **Show hidden** (숨김 포함)."
+"text": "Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** as **By: Official**; **Add** puts a copy in your list (**Original: Official**). A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and templates use (grounding check, asking for missing information and so on) run without adding anything.\n\nThe lists show the thirteen work skills (including Translation, Press release, Make an Excel file and Make a chart) under Official skills and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Quote calculation** (견적 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).\n\n- **Excel cleanup** strips title, blank, total and note rows and records what it changed on a change-log sheet. Rows whose values are all the same are not removed, only marked 「중복 의심」 (suspected duplicate); ask for them to be removed if you want that.\n- **PDF table → Excel** reads only PDFs whose text can be selected (text PDFs). Scanned PDFs (images) cannot be read.\n- The other skills (copy, market research, proofreading, stock-phrase stripping, character-count fitting and so on) are not shown in the lists, the store and the pickers. They still run in bundles (such as Finish's stock-phrase stripping) and in conversations that used them, and the editors still let you pick them by name. Administrators see them with **Show hidden** (숨김 포함)."
 },
 {
 "lang": "en",
@@ -2006,7 +2020,7 @@
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "Official skills",
-"text": "Skills the administrator shares with everyone. They show under **Official skills** in the composer's **+** → **Skills**; picking one adds it to your skills and turns it on.\n\n| Skill | Screen | What it does |\n|---|---|---|\n| Meeting minutes (회의록 작성) | Report | Keeps decisions, action items (task · owner · due date · source · note) and open items from a transcript, notes and follow-up mails. Writes in the **회의록** template. |\n| Bullet-style briefing (개조식 보고) | Report | Turns notes and mails into a one-page □ ○ - ㆍ briefing a superior can decide from. **개조식 보고서** template, one page by default. |\n| Compare-and-decide report (비교·결정 보고) | Report | Weighs 2–5 options on exactly the criteria asked and recommends one. **비교·분석 보고서** template. |\n| Official document draft (공문·기안 초안) | Report | Drafts plans, result reports, approval drafts and notices. No web search; pictures only when asked. |\n| Presentation deck (발표 자료 구성) | Slides | One claim per slide, the conclusion first. |\n| Extract and tally (자료 추출·집계) | Chat | Reads Excel and CSV with code, pulls columns, totals by item into tables and charts, and records the rows it removed or changed. |\n| Answers from regulations (규정 근거 답변) | Chat | Answers from regulations and guidelines with the article cited as [n], and points what the material does not cover to the department. |\n| YouTube transcript and summary (YouTube 영상 전사·요약) | Chat | Gets the captions (or a transcription of the audio) through the **YouTube 전사** connector and summarises from that alone. |\n| Deep research (심층 조사) | Chat | Searches the web and papers many times through the **심층 리서치** connector and sums up the sourced findings. Takes a few minutes. |"
+"text": "Skills the administrator shares with everyone. They show under **Official skills** in the composer's **+** → **Skills**; picking one adds it to your skills and turns it on.\n\n| Skill | Screen | What it does |\n|---|---|---|\n| Meeting minutes (회의록 작성) | Report | Keeps decisions, action items (task · owner · due date · source · note) and open items from a transcript, notes and follow-up mails. Writes in the **회의록** template. |\n| Bullet-style briefing (개조식 보고) | Report | Turns notes and mails into a one-page □ ○ - ㆍ briefing a superior can decide from. **개조식 보고서** template, one page by default. |\n| Compare-and-decide report (비교·결정 보고) | Report | Weighs 2–5 options on exactly the criteria asked and recommends one. **비교·분석 보고서** template. |\n| Official document draft (공문·기안 초안) | Report | Drafts plans, result reports, approval drafts and notices. No web search; pictures only when asked. |\n| Presentation deck (발표 자료 구성) | Slides | One claim per slide, the conclusion first. |\n| Extract and tally (자료 추출·집계) | Chat | Reads Excel and CSV with code, pulls columns, totals by item into tables and charts, and records the rows it removed or changed. |\n| Answers from regulations (규정 근거 답변) | Chat | Answers from regulations and guidelines with the article cited as [n], and points what the material does not cover to the department. |\n| YouTube transcript and summary (YouTube 영상 전사·요약) | Chat | Gets the captions (or a transcription of the audio) through the **YouTube 전사** connector and summarises from that alone. |\n| Deep research (심층 조사) | Chat | Searches the web and papers many times through the **심층 리서치** connector and sums up the sourced findings. Takes a few minutes. |\n| Translation (번역) | Chat, Report | Translates between Korean and English (other languages on request) without leaving "
 },
 {
 "lang": "en",
@@ -2021,6 +2035,20 @@
 "title": "Working with skills and building agents",
 "heading": "Using a skill in a conversation",
 "text": "1. Choose **Report** on the home screen.\n2. In the composer choose **+** → **Skills** → **회의록 작성**. The template chip shows **회의록**.\n3. Paste the meeting notes or transcript and send 「정식 회의록으로 만들어 줘」.\n\nSkills turned on in chat also go along when you ask for a document there and it moves to a report or deck. Skills that need tools cannot run on that screen and are left out, with a notice naming them.\n\nUse **개조식 보고** (「과장님께 올릴 1쪽 보고로」) and **비교·결정 보고** (「세 제품을 연간 비용과 필수 조건으로 비교해서 하나 골라 줘」) the same way."
+},
+{
+"lang": "en",
+"path": "chat/skill-recipes",
+"title": "Working with skills and building agents",
+"heading": "Translation, press releases, Excel files and charts",
+"text": "- **번역** (Translation): turn it on in a conversation, paste the text and send something like 「영어로, 의역, 격식체로」 (into English, free, formal). To fix terms, add them: 「용어: 학생지원팀 = Student Support Office」. To translate a whole document as a document, turn it on on the report screen; it follows the source's headings and order and adds no summary or recommendation.\n- **보도자료** (Press release): paste the event, agreement or award material and send 「보도자료로, A4 1장」. If the material has no quote, it writes no quote paragraph and says so at the end. On the report screen, say 「보도자료」 in the request and the page head gets the release date, embargo and contact fields.\n- **엑셀 파일 만들기** (Make an Excel file): paste a table or attach a CSV or Excel file and send 「엑셀 파일로, 합계 행과 증감률 열은 수식으로」 (as an Excel file, total row and change-rate column as formulas). The file appears under the answer as a download button. For a messy sheet, turn on **엑셀 정리** (Excel cleanup) too; for aggregates, **자료 추출·집계** (Extract and tally), and you get the computed table as a file. Code execution (the sandbox) must be on.\n- **차트 만들기** (Make a chart): paste a table and send 「지점별 월 매출을 막대 차트로」 (monthly sales by branch as a bar chart); the chart opens beside the conversation. To put the chart inside the Excel file too, turn on **엑셀 파일 만들기** as well and add 「엑셀 차트도」."
+},
+{
+"lang": "en",
+"path": "chat/skill-recipes",
+"title": "Working with skills and building agents",
+"heading": "Before the meeting: the agenda",
+"text": "The **회의 안건** (Meeting agenda) template is the minutes' counterpart. On the report screen choose **+** → template picker → **회의 안건** (or say 「회의 안건」 or 「안건지」 in the request) and send the items and their owners. It writes the same head as the minutes (meeting, date and time, place, attendees, author), an agenda table (order · item · owner · time · goal), points to review per item, pre-reads and the decisions needed. The goal is one of 보고 (information), 논의 (discussion) or 결정 (decision); an owner the material does not name is 「미정」 with one line saying what to confirm. Without a meeting date or attendees in the material, it asks before writing."
 },
 {
 "lang": "en",
@@ -2090,7 +2118,7 @@
 "path": "chat/starters",
 "title": "Templates and themes",
 "heading": "Templates",
-"text": "A template defines the structure rules and the typesetting of reports and slides. Select one and the **What this template checks** list appears. You edit a document in a template by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Create your own document template with **New template** in the template picker or the agent settings (Agents and skills). Images, audio and video have no templates.\n\nThe built-in templates in the picker are six documents (**Internal approval draft (간이기안문)**, **Implementation plan (draft)**, **Results report**, **Bullet-style briefing (개조식)**, **Comparison report**, **Meeting minutes**) and the **Briefing deck**. They write straight into the institution's format and show that format's check results when done. Conversations and agents that use a hidden template keep writing and exporting with it."
+"text": "A template defines the structure rules and the typesetting of reports and slides. Select one and the **What this template checks** list appears. You edit a document in a template by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Create your own document template with **New template** in the template picker or the agent settings (Agents and skills). Images, audio and video have no templates.\n\nThe built-in templates in the picker are seven documents (**Internal approval draft (간이기안문)**, **Implementation plan (draft)**, **Results report**, **Bullet-style briefing (개조식)**, **Comparison report**, **Meeting minutes**, **Meeting agenda**) and the **Briefing deck**. They write straight into the institution's format and show that format's check results when done. Conversations and agents that use a hidden template keep writing and exporting with it."
 },
 {
 "lang": "en",

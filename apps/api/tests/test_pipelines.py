@@ -21,7 +21,7 @@ from app.services import doc_formats, process_settings, report_checks
 AGENTS = Path(__file__).resolve().parents[1] / "app" / "agents"
 
 # The steps each format expects, written out by hand: the pipelines must give the same.
-DATE = {"minutes", "event_plan", "client_proposal", "gaejo", "result_report"}
+DATE = {"minutes", "event_plan", "client_proposal", "gaejo", "result_report", "agenda"}
 QUOTE = {"client_proposal", "comparison", "gaejo"}
 PREPASS = DATE | QUOTE | {"comparison", "career_history"}
 PAGES = {"gaejo", "client_proposal"}
@@ -92,10 +92,10 @@ _OLD_ADOPT = {
 _OLD_AMEND = {"client_proposal": ["requirement-ids", "quote-validity"],
               "comparison": ["option-status", "conflict-values", "unverified-options"]}
 #: Formats whose 서식 turns web search off: written from the person's own material.
-NO_SEARCH = {"career_history", "gaejo", "minutes", "result_report", "internal_draft"}
+NO_SEARCH = {"career_history", "gaejo", "minutes", "result_report", "internal_draft", "agenda"}
 #: Formats whose 서식 draws figures only when asked.
 DRAW_WHEN_ASKED = {"gaejo", "minutes", "comparison", "result_report", "internal_draft",
-                   "event_plan"}
+                   "event_plan", "agenda"}
 OPTIONAL = {"prepass", "page-limit", "minutes-repair", "minutes-reground", "career-periods-tidy"}
 
 
@@ -129,7 +129,7 @@ def test_each_format_runs_what_the_if_chains_ran(fmt):
     assert settings.structure.summary_lines == (2 if gaejo else 0)
     assert settings.structure.page_limit == (1 if gaejo else 0)
     assert settings.structure.page_limit_rfp == (fmt == "client_proposal")
-    assert list(settings.head) == {"minutes": ["meeting-date"],
+    assert list(settings.head) == {"minutes": ["meeting-date"], "agenda": ["meeting-date"],
                                    "client_proposal": ["rfp-client"]}.get(fmt, [])
     assert settings.conflict_rule == _OLD_ADOPT.get(fmt, "")
     # Every document is written by one flow that holds every optional stage.
