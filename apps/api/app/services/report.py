@@ -2767,6 +2767,37 @@ def _renumber_references(sections: list[dict]) -> tuple[list[dict], set[str]]:
     return out, mentioned
 
 
+#: a section named only for where it sits: its name is no table's caption
+_GENERIC_SECTION = re.compile(r"(?:붙임|별첨|첨부|참고|부록|기타|비고)(?:\s?(?:자료|\d{1,2}))?")
+#: a line titling the table under it: 「- 표: 교체 방식 비교」, 「[표] …」, 「<표 2> …」
+_TABLE_TITLE = re.compile(
+    r"^\s{0,8}(?:[-*•·]\s{1,3})?[*_]{0,2}\s{0,2}(?:\[\s?표\s?\d{0,3}\s?\]|[<〈《【]\s?표\s?\d{0,3}\s?[>〉》】]"
+    r"|표\s?\d{0,3}\s?[.:：])\s{0,2}(?P<text>[^\n|]{1,80}?)\s{0,2}[*_]{0,2}\s*$")
+#: a label or heading that leads into a table: 「## 교체 일정」, 「**예산 내역**」, 「차수별 일정:」
+_LEAD_LABEL = re.compile(
+    r"^\s{0,8}(?:#{1,6}\s+(?P<h>[^\n]{1,60}?)|(?:[-*•·]\s{1,3})?\*\*(?P<b>[^*\n]{1,40})\*\*\s{0,2}[:：]?"
+    r"|(?:[-*•·]\s{1,3})?(?P<c>[^\n:：.。]{2,40})[:：])\s*$")
+
+
+def _table_title(line: str) -> str | None:
+    m = _TABLE_TITLE.match(line or "")
+    return m.group("text").strip(" *_.:") if m else None
+
+
+def _lead_caption(result: list[str]) -> str:
+    """Caption from the line leading into a table, or the nearest heading above it."""
+    k = len(result) - 1
+    while k >= 0 and not result[k].strip():
+        k -= 1
+    if k >= 0 and (m := _LEAD_LABEL.match(result[k])) \
+            and not re.match(r"\s*(?:\||\*\*표\s?\d|\*그림\s?\d|!\[)", result[k]):
+        return (m.group("h") or m.group("b") or m.group("c") or "").strip(" *_.:")
+    for line in reversed(result[:max(k, 0)]):
+        if (m := re.match(r"^\s{0,3}#{1,6}\s+(.{1,60}?)\s*$", line)):
+            return m.group(1).strip(" *_")
+    return ""
+
+
 def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
     """Figures captioned below, tables above, numbered in order."""
     sections, mentioned = _renumber_references(sections)
@@ -2782,7 +2813,9 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
         content = str(sec.get("content") or "")
         section_name = re.sub(r"^\s*(?:[\dⅠ-Ⅻ]{1,3}[.)]|[가-하][.)]|제\s?\d{1,2}\s?[장절])\s*", "",
                               str(sec.get("heading") or "")).strip(" *#")
-        tables_here = 0
+        if _GENERIC_SECTION.fullmatch(section_name):
+            section_name = ""
+        used_titles: set[str] = set()
         # 「−」 lacks a PDF glyph; empty 「[]」; title-less 「표 4」 line
         content = content.replace("\u2212", "-")
         content = re.sub(r"\s?\[\s*\]", "", content)
@@ -2833,7 +2866,14 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 k = len(result) - 1
                 while k >= 0 and not result[k].strip():
                     k -= 1
-                given = _caption_text(result[k], "표") if k >= 0 else None
+                if k >= 0 and re.fullmatch(r"\s{0,3}\*\*표\s?\d{1,3}\.?\*\*\s*", result[k]):
+                    # a bare number caption from an earlier pass: numbered again below
+                    del result[k:]
+                    k = len(result) - 1
+                    while k >= 0 and not result[k].strip():
+                        k -= 1
+                given = (_caption_text(result[k], "표") or _table_title(result[k])) if k >= 0 \
+                    else None
                 if given is not None:
                     del result[k:]
                 elif k >= 0 and (tail := _TRAILING_TABLE_CAPTION.search(result[k])):
@@ -2851,10 +2891,19 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                     if k < len(lines) and (below := _caption_text(lines[k], "표")) is not None:
                         given = below
                         lines[k] = ""
-                # no caption given: the section's name for its first table, else none; never
-                # its column names (「표 1. 항목·내용·비고」, r5 A03-T2·A07-T1·A01-T1)
-                title = given or (section_name if not tables_here else "")
-                tables_here += 1
+                # no caption given: the nearest label or heading, else a descriptive section
+                # name, else the number alone; never its column names (「표 1. 항목·내용·비고」,
+                # r5 A03-T2·A07-T1·A01-T1)
+                title = given or next((t for t in (_lead_caption(result), section_name)
+                                       if t and t not in used_titles), "")
+                if title:
+                    used_titles.add(title)
+                    k = len(result) - 1
+                    while k >= 0 and not result[k].strip():
+                        k -= 1
+                    if k >= 0 and re.fullmatch(r"\s{0,8}\*\*" + re.escape(title)
+                                               + r"\*\*\s{0,2}[:：]?\s*", result[k]):
+                        del result[k:]  # the bold label became the caption
                 # table shaped like the previous takes its caption, number advanced
                 if not given and previous_table and previous_table[0] == header:
                     step = re.search(r"(\d{1,2})\s?(차시|회차|주차|단계|일차|개월차)", previous_table[1])

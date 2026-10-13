@@ -336,3 +336,30 @@ def test_internal_wording_in_a_callout_is_scrubbed():
     assert "코드에서 확정된" not in out and "15% 할인" in out and "본문입니다." in out
     alone = internal_words.scrub("```callout\n확정 수치 블록에 따르면 그렇습니다.\n```\n\n본문.")
     assert "```" not in alone and alone.strip() == "본문."
+
+
+def test_a_table_takes_its_title_line_label_or_heading_before_a_bare_number():
+    # the gaejo 「붙임」: 「- 표: 교체 방식 비교」 above each table is its caption
+    content = ("- 표: 교체 방식 비교\n\n  | 구분 | 동시 교체 | 순차 교체(본 안) |\n"
+               "  |---|---|---|\n  | 총 기간 | 6주 | 18주 |\n- 표: 순차 교체 시점\n\n"
+               "  | 차수 | 시점 |\n  |---|---|\n  | 1차 | 겨울방학 |\n\n"
+               "| 항목 | 금액 |\n|---|---|\n| 가 | 나 |")
+    sections = [{"heading": "붙임", "content": content}]
+    text = report.caption_figures_and_tables(sections)[0]["content"]
+    assert "**표 1. 교체 방식 비교**" in text and "**표 2. 순차 교체 시점**" in text
+    assert "- 표:" not in text and "붙임" not in text and "**표 3**" in text
+    labelled = ("## 결정 사항\n\n**예산 내역**\n\n| 항목 | 금액 |\n|---|---|\n| 가 | 나 |\n\n"
+                "| 차수 | 시점 |\n|---|---|\n| 1차 | 겨울 |")
+    text = report.caption_figures_and_tables(
+        [{"heading": "3. 회의 결과", "content": labelled}])[0]["content"]
+    assert "**표 1. 예산 내역**" in text and text.count("예산 내역") == 1
+    assert "**표 2. 결정 사항**" in text
+
+
+def test_a_bare_table_number_is_still_checked_for_a_mention():
+    from app.services import quality_gate
+
+    sections = [{"heading": "붙임", "content": "**표 1**\n\n| 가 | 나 |\n|---|---|\n| 1 | 2 |\n\n"
+                 "**표 2. 일정**\n\n| 가 | 나 |\n|---|---|\n| 1 | 2 |"}]
+    found = [f for f in quality_gate.report_findings(sections) if f.get("code") == "unmentioned"]
+    assert len(found) == 2, found
