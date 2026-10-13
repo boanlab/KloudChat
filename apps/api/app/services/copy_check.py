@@ -8,7 +8,14 @@ import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 
-from app.services import internal_words, skill_packages, skill_scripts, skill_specs, value_guard
+from app.services import (
+    internal_words,
+    output_language,
+    skill_packages,
+    skill_scripts,
+    skill_specs,
+    value_guard,
+)
 
 log = logging.getLogger(__name__)
 
@@ -229,7 +236,8 @@ def mark_left(text: str, found: list[dict]) -> str:
         at = line.find(phrase) if phrase else -1
         if at < 0:
             continue
-        end = at + len(phrase.rstrip())
+        # never inside a value: 「3.5」 of 「3.5.0」 marked after the whole 「3.5.0」
+        end = value_guard.token_end(line, at + len(phrase.rstrip()))
         if _MARK.match(line[end:end + 9]):
             continue
         lines[k] = f"{line[:end]} {value_guard.MARK}{line[end:]}"
@@ -368,6 +376,12 @@ def lift_marks(text: str) -> str:
     body = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).rstrip()
     if not listed:
         return body
+    if output_language.reads_english(body):
+        # copy in English gets its note in English
+        shown = ", ".join(f"“{p}”" for p in listed[:_LISTED])
+        more = f" and {len(listed) - _LISTED} more" if len(listed) > _LISTED else ""
+        return (f"{body}\n\nCheck before sending: {shown}{more} — the material does not "
+                "confirm these.")
     shown = ", ".join(f"「{p}」" for p in listed[:_LISTED])
     more = f" 외 {len(listed) - _LISTED}곳" if len(listed) > _LISTED else ""
     return (f"{body}\n\n보내기 전 확인: {shown}{more} — 자료로 확인되지 않은 표현이니 보내기 전에 "

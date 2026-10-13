@@ -780,6 +780,31 @@ def _value_end(text: str, s: int, e: int, widened: int) -> int:
     end = end if end is not None else widened
     while end > s and text[end - 1].isspace():
         end -= 1
+    return token_end(text, end)
+
+
+#: what still belongs to a value after its digits: a scale word and unit (「%」 「원」), then a
+#: weekday in brackets (「(목)」)
+_TOKEN_TAIL = re.compile(
+    rf"(?:\s?(?:조|억|천만|백만|만|천)?\s?(?:{_UNIT}))?(?:\s?\(\s?[{_WD}](?:요일)?\s?\))?")
+
+
+def token_end(text: str, end: int) -> int:
+    """`end` moved past the rest of the token it stops inside, so a mark never splits one:
+    「3.5」 of 「3.5.0」 (r6 A16-T2 「3.5(확인 필요).0」), 「10/15」 of 「10/15(목)」, 「3.5」 of
+    「3.5%」."""
+    if not 0 < end <= len(text) or not text[end - 1].isdigit():
+        return end
+    while end < len(text):
+        if text[end].isdigit():
+            end += 1
+        elif text[end] in ",.:/~-–" and text[end + 1:end + 2].isdigit():
+            end += 2
+        else:
+            break
+    tail = _TOKEN_TAIL.match(text, end)
+    if tail and tail.group(0).strip():
+        end += len(tail.group(0).rstrip())
     return end
 
 

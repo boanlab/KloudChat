@@ -20,6 +20,7 @@ from app.services import (
     current_evidence,
     fallback_watch,
     internal_words,
+    output_language,
     query_terms,
     scheduling,
     settings_store,
@@ -463,6 +464,36 @@ def _other_language_set(messages: list[dict[str, Any]]) -> bool:
                     "")
     latin = len(_LATIN_CHARS.findall(previous))
     return latin >= 100 and len(_HANGUL_CHARS.findall(previous)) * 10 < latin
+
+
+#: the standing ask for English answers `context` writes into the system prompt
+_STANDING_ENGLISH = "asked for every answer in English"
+_SET_LANGUAGE = re.compile(r"This agent writes in ([^.\n]{1,60}?)\.")
+
+
+def _writes_korean(request: str, conversation: list[dict[str, Any]]) -> bool:
+    """Whether this turn's answer is written in Korean: the language the turn asks for, else
+    the agent's set language, else a standing ask for English, else the request's own."""
+    request = request or ""
+    if output_language.asks_language(request):
+        return bool(re.search(r"한국어|한글|우리말|\bKorean\b", request, re.I))
+    system = "\n".join(_text_of(m) for m in conversation if m.get("role") == "system")
+    if output_language.HEADING in system and (found := _SET_LANGUAGE.search(system)):
+        return found.group(1).startswith("Korean")
+    if _STANDING_ENGLISH in system:
+        return False
+    return bool(_HANGUL_CHARS.search(request)) or len(_LATIN_CHARS.findall(request)) < 3
+
+
+def _in_reply_language(note: str, korean: bool) -> str:
+    """A loop note to the writer (written in Korean) with, for an answer in another language,
+    a line keeping the answer in it: the last user message picks a weak model's language (r6
+    P27: after 「웹 검색은 충분히 했습니다」 GLM answered an English question in Korean)."""
+    if korean:
+        return note
+    return (note + "\n\nWrite the answer in the language the answer is to be in — the "
+            "language of the user's request or the one set for it — not in Korean, the "
+            "language of this note.")
 
 
 def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str] | None:
@@ -1426,6 +1457,10 @@ async def run_turn(
     #: A source tool gave content; one was called (and failed).
     source_ok = source_called = False
     korean = bool(re.search(r"[가-힣]", ctx.request or given_text))
+    #: the answer's language: the loop's own notes and footers follow it
+    reply_korean = _writes_korean(ctx.request or "", conversation)
+    #: a tool call written into the text was dropped, nothing else said (r6 P16)
+    markup_dropped = False
     while True:
         # Hand-off model holds the gate until verified.
         hop_model = (
@@ -1537,6 +1572,29 @@ async def run_turn(
                 del answer_text[len(answer_text) - len(hop_text) :]
                 yield {"type": "retract", "text": "".join(hop_text)}
             continue
+
+        if (not running_preset and not acc.calls and hop_text
+                and internal_words.has_tool_call(spoken := "".join(hop_text))):
+            # A tool call written into the text in the model's own template (r6 P16: GLM's
+            # 「<tool_call>web_search<arg_key>query</arg_key>…」 was the whole answer): one
+            # naming an offered tool is made the call it meant, any other dropped; the markup
+            # is never shown.
+            offered = set() if closing else {tool.name for tool in hop_tools}
+            kept, written = internal_words.written_tool_calls(spoken, offered)
+            log.warning("%s wrote %d tool call(s) as text (%d usable)", hop_model,
+                        max(len(written), 1), len(written))
+            if not preflight_tool and not freshness_request:
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": spoken}
+                if kept:
+                    answer_text.append(kept)
+                    yield {"type": "delta", "text": kept}
+            hop_text[:] = [kept] if kept else []
+            acc.content[:] = [kept] if kept else []
+            for index, (name, arguments) in enumerate(written):
+                acc.calls[index] = {"id": f"written_{hop}_{index}", "name": name,
+                                    "arguments": json.dumps(arguments, ensure_ascii=False)}
+            markup_dropped = not written and not kept.strip()
 
         if not running_preset and not acc.calls and hop_text:
             # Doubled answer counts once.
@@ -1770,7 +1828,8 @@ async def run_turn(
                 del answer_text[len(answer_text) - len(hop_text) :]
                 yield {"type": "retract", "text": streamed}
                 conversation.append(acc.assistant_message())
-                conversation.append({"role": "user", "content": ask})
+                conversation.append(
+                    {"role": "user", "content": _in_reply_language(ask, reply_korean)})
                 if closing or hop >= settings.max_tool_hops:
                     extra_hops = max(extra_hops, hop + 1 - settings.max_tool_hops)
                     close_after_tools = True
@@ -1790,7 +1849,8 @@ async def run_turn(
                     del answer_text[len(answer_text) - len(hop_text) :]
                     yield {"type": "retract", "text": streamed}
                     conversation.append(acc.assistant_message())
-                    conversation.append({"role": "user", "content": anomaly[1]})
+                    conversation.append({"role": "user", "content": _in_reply_language(
+                        anomaly[1], reply_korean or anomaly[0] == "language")})
                     closing = True
                     continue
             if (spoken_now and hop and not blanks_retried and "run_code" in by_name
@@ -1802,7 +1862,8 @@ async def run_turn(
                 del answer_text[len(answer_text) - len(hop_text) :]
                 yield {"type": "retract", "text": streamed}
                 conversation.append(acc.assistant_message())
-                conversation.append({"role": "user", "content": _COMPUTE_BLANKS})
+                conversation.append(
+                    {"role": "user", "content": _in_reply_language(_COMPUTE_BLANKS, reply_korean)})
                 continue
             if hop and not spoken_now:
                 # Empty answer after tools: retry once without tools.
@@ -1810,10 +1871,9 @@ async def run_turn(
                 conversation.append(
                     {
                         "role": "user",
-                        "content": (
+                        "content": _in_reply_language(
                             "답이 비어 있습니다. 지금까지 모은 자료로 답을 쓰세요. "
-                            "자료가 부족하면 무엇이 더 필요한지 물으세요."
-                        ),
+                            "자료가 부족하면 무엇이 더 필요한지 물으세요.", reply_korean),
                     }
                 )
                 closing = True
@@ -1842,10 +1902,9 @@ async def run_turn(
             conversation.append(
                 {
                     "role": "user",
-                    "content": (
+                    "content": _in_reply_language(
                         "도구는 더 쓸 수 없습니다. 지금까지 모은 자료로 답을 쓰세요. "
-                        "확인하지 못한 항목은 확인하지 못했다고 밝히세요."
-                    ),
+                        "확인하지 못한 항목은 확인하지 못했다고 밝히세요.", reply_korean),
                 }
             )
             closing = True
@@ -2150,17 +2209,18 @@ async def run_turn(
         if close_after_tools:
             close_after_tools = False
             closing = True
-            conversation.append({"role": "user", "content": (
+            conversation.append({"role": "user", "content": _in_reply_language(
                 "도구는 더 쓸 수 없습니다. 위 코드 실행 출력의 값으로 답을 쓰세요. 코드가 출력하지 "
-                "않은 값을 손으로 셈해 채우지 말고, 그 항목은 코드로 구하지 못했다고 밝히세요."
-            )})
+                "않은 값을 손으로 셈해 채우지 말고, 그 항목은 코드로 구하지 못했다고 밝히세요.",
+                reply_korean)})
             continue
 
         if searches >= MAX_WEB_SEARCHES or fetches >= MAX_FETCHES:
             conversation.append(
                 {
                     "role": "user",
-                    "content": (
+                    # r6 P27: in Korean alone this last note turned an English answer Korean
+                    "content": _in_reply_language(
                         (
                             "웹 검색은 충분히 했습니다. "
                             if searches >= MAX_WEB_SEARCHES
@@ -2168,7 +2228,8 @@ async def run_turn(
                         )
                         + "도구를 더 쓰지 말고 지금까지 "
                         "확인한 자료로 답하세요. 확인하지 못한 항목은 그렇게 밝히고, "
-                        "실제 검색 결과에 있던 URL만 출처로 쓰세요."
+                        "실제 검색 결과에 있던 URL만 출처로 쓰세요.",
+                        reply_korean,
                     ),
                 }
             )
@@ -2274,6 +2335,15 @@ async def run_turn(
             yield {"type": "delta", "text": spoken}
         else:
             log.warning("no answer from the tool results either")
+    if (markup_dropped and not gathered and not preflight_tool and not ended_by_tool
+            and not "".join(answer_text).strip()):
+        # The reply was only a tool call written out, for no tool there is: the answer
+        # written once more without tools (r6 P16), never an empty turn.
+        log.warning("reply was only a written-out tool call; writing the answer once more")
+        spoken = await write_rescued(_answer_from_results(conversation, messages, ""), "")
+        if spoken:
+            answer_text.append(spoken)
+            yield {"type": "delta", "text": spoken}
 
     said_missing = False
     if source_tools and not source_ok and not ended_by_tool and not preflight_tool:
@@ -2427,11 +2497,17 @@ async def run_turn(
             if empty_searches == searches
             else "\n\n_웹 검색 결과가 대부분 질문과 무관해 이 답은 충분히 확인되지 않았습니다. "
             "서지·수치·최신 사항은 확인이 필요합니다._"
+        ) if reply_korean else (
+            "\n\n_The web search gave no usable results, so this answer was not checked "
+            "against it. References, figures and recent facts need checking._"
+            if empty_searches == searches
+            else "\n\n_Most web search results were unrelated to the question, so this answer "
+            "is not fully checked. References, figures and recent facts need checking._"
         )
         answer_text.append(note)
         yield {"type": "delta", "text": note}
     if cited and not own_list:
-        appendix = "\n\n### 출처\n" + "\n".join(
+        appendix = ("\n\n### 출처\n" if reply_korean else "\n\n### Sources\n") + "\n".join(
             f"- [{n}] {sources[n - 1].removeprefix(MATERIAL_SOURCE)}"
             if sources[n - 1].startswith(MATERIAL_SOURCE)
             else f"- [{n}] [{_source_label(sources[n - 1], source_titles.get(sources[n - 1], ''))}]"
@@ -2453,7 +2529,7 @@ async def run_turn(
         note = (
             "\n\n_다음 링크는 이 답을 쓰며 검색·열람한 결과에 없던 것입니다. 기억으로 적은 "
             "것이니 열어 보고 확인하세요: " + ", ".join(dict.fromkeys(unverified)) + "_"
-            if korean else
+            if reply_korean else
             "\n\n_These links were not among the results searched or read for this answer; "
             "they were written from memory, so open and check them: "
             + ", ".join(dict.fromkeys(unverified)) + "_"

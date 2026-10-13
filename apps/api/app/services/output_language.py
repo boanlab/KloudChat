@@ -92,5 +92,29 @@ def condition(value: str | None) -> str:
     return f"Write the whole document in {name} (에이전트 출력 언어)." if name else ""
 
 
-__all__ = ["AUTO", "HEADING", "LANGUAGES", "asks_language", "condition", "name_of", "normalize",
-           "rule"]
+_HANGUL = re.compile(r"[가-힣]")
+_LATIN = re.compile(r"[A-Za-z]")
+#: the checks' Korean mark, as `value_guard.MARK` and the copy check write it
+_KO_MARK = re.compile(r"([(\[])\s?확인\s?필요\s?([)\]])")
+EN_MARK = "needs checking"
+
+
+def reads_english(text: str) -> bool:
+    """Whether `text` is written in a Latin-script language, not Korean: its own words, with
+    links, code and the checks' own marks set aside."""
+    body = re.sub(r"```[\s\S]*?(?:```|\Z)|`[^`\n]*`|\]\([^)\s]*\)|https?://\S+", " ", text or "")
+    body = _KO_MARK.sub(" ", body)
+    latin = len(_LATIN.findall(body))
+    return latin >= 40 and len(_HANGUL.findall(body)) * 10 < latin
+
+
+def localize_marks(text: str) -> str:
+    """An answer in English with the checks' 「(확인 필요)」 as 「(needs checking)」 (r6: the
+    Korean mark inside an English answer); a Korean answer as it is."""
+    if not text or "확인" not in text or not reads_english(text):
+        return text
+    return _KO_MARK.sub(lambda m: f"{m.group(1)}{EN_MARK}{m.group(2)}", text)
+
+
+__all__ = ["AUTO", "EN_MARK", "HEADING", "LANGUAGES", "asks_language", "condition",
+           "localize_marks", "name_of", "normalize", "reads_english", "rule"]

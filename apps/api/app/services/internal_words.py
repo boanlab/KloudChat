@@ -235,11 +235,191 @@ def _json_at(text: str, at: int) -> tuple[object, int] | None:
 
 
 def has_tool_call(text: str) -> bool:
-    """Whether `text` holds a tool call written out as JSON (bare or fenced)."""
+    """Whether `text` holds a tool call written out as JSON (bare or fenced) or in a model's
+    call template (「<tool_call>…」)."""
     return strip_tool_calls(text) != (text or "")
 
 
+#: a tool call in a model's own call template, written into the text instead of sent as a
+#: call (r6 P16: GLM's 「<tool_call>web_search<arg_key>query</arg_key><arg_value>…」): Qwen·GLM
+#: 「<tool_call>…</tool_call>」, 「<|tool_call|>…」, 「<function_call>…」, DeepSeek's
+#: 「<｜tool▁calls▁begin｜>…<｜tool▁calls▁end｜>」 and 「<function=name>…</function>」; an
+#: unclosed one runs to the end of the text
+_TAGGED_CALL = re.compile(
+    r"<(?P<tag>tool_calls?|function_calls?)>(?P<body>[\s\S]*?)(?:</(?P=tag)>|\Z)"
+    r"|<\|(?P<ptag>tool_calls?|function_calls?)(?:_begin)?\|>(?P<pbody>[\s\S]*?)"
+    r"(?:<\|/?(?P=ptag)(?:_end)?\|>|\Z)"
+    r"|<｜tool▁calls?▁begin｜>(?P<ds>[\s\S]*?)(?:<｜tool▁calls?▁end｜>|\Z)"
+    r"|<function=(?P<fn>[A-Za-z0-9_.:-]{1,80})>(?P<fbody>[\s\S]*?)(?:</function>|\Z)",
+    re.I)
+#: a template's tag left on its own: 「</tool_call>」, 「<|tool_call_end|>」, 「<｜tool▁sep｜>」
+_STRAY_TAG = re.compile(
+    r"</?(?:tool_calls?|function_calls?|arg_key|arg_value)>|<\|/?(?:tool_calls?|function_calls?)"
+    r"(?:_begin|_end)?\|>|<｜tool▁[a-z▁]{1,20}｜>", re.I)
+_ARG_PAIR = re.compile(r"<arg_key>\s*([\s\S]*?)\s*</arg_key>\s*<arg_value>([\s\S]*?)</arg_value>")
+_PARAMETER = re.compile(r"<parameter=([A-Za-z0-9_.:-]{1,80})>([\s\S]*?)</parameter>")
+_CALL_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.:-]{0,79}")
+
+
+#: code the answer shows on purpose (an explanation of a call format): never taken as a call
+_CODE_SPAN = re.compile(r"```[\s\S]*?(?:```|\Z)|`[^`\n]{1,400}`")
+#: DeepSeek's template tokens are never prose, even with its own ```json inside
+_DEEPSEEK = re.compile(r"<｜tool▁calls?▁begin｜>")
+
+
+def _template_sub(text: str, repl) -> str:
+    """`text` with every call template replaced by `repl(match)`, code spans left alone."""
+    def sub(piece: str) -> str:
+        return _STRAY_TAG.sub("", _TAGGED_CALL.sub(repl, piece))
+
+    if _DEEPSEEK.search(text):
+        # its markup wraps a ```json fence: taken before code spans are set apart
+        text = _TAGGED_CALL.sub(lambda m: repl(m) if m.group("ds") is not None else m.group(0),
+                                text)
+    out, at = [], 0
+    for code in _CODE_SPAN.finditer(text):
+        out += [sub(text[at:code.start()]), code.group(0)]
+        at = code.end()
+    out.append(sub(text[at:]))
+    return "".join(out)
+
+
+def _loose(value: str) -> object:
+    """A template's argument value: JSON when it reads as JSON, else the text."""
+    value = value.strip()
+    try:
+        return json.loads(value)
+    except ValueError:
+        return value
+
+
+def _json_calls(body: str) -> list[tuple[str, dict]]:
+    """`(name, arguments)` of JSON calls in `body`: {"name", "arguments"}, OpenAI's
+    {"function": {…}}, or a list of them."""
+    body = re.sub(r"```[A-Za-z]*", "", body).strip()
+    out: list[tuple[str, dict]] = []
+    at = 0
+    while at < len(body):
+        start = min((i for i in (body.find("{", at), body.find("[", at)) if i >= 0), default=-1)
+        if start < 0:
+            break
+        got = _json_at(body, start)
+        if got is None:
+            at = start + 1
+            continue
+        data, at = got
+        for item in data if isinstance(data, list) else [data]:
+            if not isinstance(item, dict):
+                continue
+            fn = item.get("function") if isinstance(item.get("function"), dict) else {}
+            name = item.get("name") or item.get("tool") or fn.get("name") or (
+                item.get("function") if isinstance(item.get("function"), str) else "")
+            args = next((v for v in (item.get("arguments"), item.get("parameters"),
+                                     item.get("args"), item.get("input"), fn.get("arguments"))
+                         if v is not None), {})
+            if isinstance(args, str):
+                args = _loose(args)
+            if isinstance(name, str) and _CALL_NAME.fullmatch(name.strip()):
+                out.append((name.strip(), args if isinstance(args, dict) else {}))
+    return out
+
+
+def _template_calls(m: re.Match) -> list[tuple[str, dict]]:
+    """`(name, arguments)` of the calls one template match holds."""
+    if m.group("fn"):
+        return [(m.group("fn"), {k: _loose(v) for k, v in _PARAMETER.findall(m.group("fbody"))}
+                 or (_json_calls(m.group("fbody"))[:1] or [("", {})])[0][1])]
+    if m.group("ds") is not None:
+        out = []
+        for part in re.split(r"<｜tool▁call▁begin｜>", m.group("ds")):
+            if "<｜tool▁sep｜>" not in part:
+                continue
+            left, right = part.split("<｜tool▁sep｜>", 1)
+            right = re.sub(r"<｜tool▁call▁end｜>[\s\S]*", "", right)
+            if left.strip() == "function":
+                # 「function<｜tool▁sep｜>name\n```json\n{…}\n```」
+                name, _, right = right.strip().partition("\n")
+            else:
+                name = left
+            brace = right.find("{")
+            got = _json_at(right, brace) if brace >= 0 else None
+            if _CALL_NAME.fullmatch(name.strip()):
+                out.append((name.strip(), got[0] if got and isinstance(got[0], dict) else {}))
+        return out
+    body = m.group("body") if m.group("body") is not None else m.group("pbody") or ""
+    if "<arg_key>" in body or (_CALL_NAME.fullmatch(body.strip()) is not None):
+        # GLM: 「name<arg_key>k</arg_key><arg_value>v</arg_value>…」
+        name = body.split("<arg_key>", 1)[0].strip()
+        if _CALL_NAME.fullmatch(name):
+            return [(name, {k: _loose(v) for k, v in _ARG_PAIR.findall(body)})]
+        return []
+    if "<function=" in body:
+        return [c for f in _TAGGED_CALL.finditer(body) for c in _template_calls(f)]
+    return _json_calls(body)
+
+
+def _named_call(data: object, known: set[str]) -> bool:
+    """A JSON call (or list of them) naming only tools in `known`."""
+    calls = _json_calls(json.dumps(data, ensure_ascii=False))
+    shaped = _call_shaped(data) or (isinstance(data, (dict, list)) and bool(calls))
+    return bool(known) and shaped and bool(calls) and all(name in known for name, _ in calls)
+
+
+def written_tool_calls(text: str, known: set[str] | frozenset[str] = frozenset()
+                       ) -> tuple[str, list[tuple[str, dict]]]:
+    """`(text without written-out tool calls, the calls naming a tool in `known`)`: a model's
+    call template (any tool name; never prose) and JSON calls naming a known tool or one of
+    this app's. A call naming a tool not in `known` is dropped, never shown."""
+    if not text:
+        return text or "", []
+    calls: list[tuple[str, dict]] = []
+    def take(m: re.Match) -> str:
+        calls.extend(_template_calls(m))
+        return ""
+
+    out = _template_sub(text, take)
+    if known and "{" in out:
+        def fenced(m: re.Match) -> str:
+            got = _json_at(m.group(1).strip(), 0)
+            if got is None or m.group(1).strip()[got[1]:].strip() or not _named_call(
+                    got[0], set(known)):
+                return m.group(0)
+            calls.extend(_json_calls(m.group(1)))
+            return ""
+        out = _FENCE.sub(fenced, out)
+        pieces: list[str] = []
+        at = 0
+        for m in re.finditer(r"^[ \t]{0,8}(?=[{\[])", out, re.M):
+            if m.end() < at:
+                continue
+            got = _json_at(out, m.end())
+            if got is None or not _named_call(got[0], set(known)):
+                continue
+            calls.extend(_json_calls(out[m.end():got[1]]))
+            pieces.append(out[at:m.start()])
+            at = got[1]
+        if pieces:
+            pieces.append(out[at:])
+            out = "".join(pieces)
+    out = _strip_json_calls(out)
+    if out == text:
+        return text, []
+    out = re.sub(r"\n{3,}", "\n\n", out).strip()
+    return out, [(name, args) for name, args in calls if name in known]
+
+
 def strip_tool_calls(text: str) -> str:
+    """`text` minus tool calls written out: a model's call template (「<tool_call>…」), and a
+    JSON call to this app's tools, fenced or bare."""
+    if text and (_TAGGED_CALL.search(text) or _STRAY_TAG.search(text)):
+        out = _template_sub(text, lambda m: "")
+        if out != text:
+            out = _strip_json_calls(out)
+            return re.sub(r"\n{3,}", "\n\n", out).strip()
+    return _strip_json_calls(text)
+
+
+def _strip_json_calls(text: str) -> str:
     """`text` minus tool calls written out as JSON: the fenced block or the bare object."""
     if not text or "{" not in text or not (
             _TOOL_NAME.search(text) or re.search(r'"(?:action_type|tool_calls|script)"', text)):
@@ -728,4 +908,5 @@ __all__ = ["DOCUMENT_TERMS", "JSON_LINE", "TERMS", "TOOL_APOLOGY", "TOOL_REPORT"
            "is_work_plan", "scrub",
            "strip_check_block",
            "strip_echoed_heading", "strip_reports", "strip_tool_apologies", "strip_tool_calls",
+           "written_tool_calls",
            "strip_work_notes"]
