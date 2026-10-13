@@ -236,7 +236,7 @@ def bundle_for(*, answer: str, request: str, model: dict, actual_model: str | No
                usage: dict[str, Any], skill_keys: tuple[str, ...] = (),
                check_options: dict | None = None,
                skill_specs: dict | None = None, traced: bool = False,
-               evidence: list[str] | None = None) -> Bundle:
+               evidence: list[str] | None = None, advice: str = "") -> Bundle:
     """Chat answer bundle: streamed answer, turn text, material."""
     req = Request(
         text=request, model=model["id"], api_key=api_key, outline_model=judge,
@@ -246,6 +246,7 @@ def bundle_for(*, answer: str, request: str, model: dict, actual_model: str | No
         check_material=check_material, tool_outputs=list(tool_outputs),
         skill_keys=tuple(skill_keys), check_options=dict(check_options or {}),
         skill_specs=dict(skill_specs or {}), traced=traced, evidence=list(evidence or []),
+        advice=advice,
     )
     return Bundle(
         request=req, material=Material(given=material),

@@ -10,13 +10,19 @@ Choose **Web search** from the **+** button in the composer and set it to **Auto
 
 | Mode | What it does |
 |---|---|
-| Auto | Searches when you ask about information that changes over time, such as news, prices, schedules, latest versions, and weather. Otherwise it searches only when the model judges it necessary. |
+| Auto | Searches first when you ask about information that changes over time, such as news, prices, schedules, latest versions, and weather, or that must be exact: phone numbers and hotlines, laws, tax rates, thresholds and benefits, fees, rates and limits, event dates, whether a product or service is available, organizations, and statistics. Legal, tax, financial and health advice is searched first too. Otherwise it searches only when the model judges it necessary. |
 | Always | Always performs a search for that request. |
 | Off | Does not search unless you ask explicitly, with wording such as "search for" or "look it up". |
 
 When a search runs, the answer shows numbers in the form `[n]` and a source list. One request performs at most three searches and reads at most six pages. Weather uses a dedicated tool instead of search. If you select a strict-local model, web search cannot be chosen.
 
+Writing, translation and proofreading, code and spreadsheet formulas, role-play, concept explanations, and questions about attached or pasted material are not searched first in Auto. A follow-up (for example "it's 30 million won I need within a year" after an investment question) is judged with the conversation before it. Writing "don't search" or choosing **Off** keeps the turn offline.
+
 Requests about current information need a search. "Exchange rate trends this quarter" and "Changes in Python 3.14" are examples. Calculation, translation, summarizing an attached text, and fixing code do not need a search. Setting the mode to **Off** for those makes the answer faster and avoids unnecessary sources.
+
+## Grounding check for legal, tax, financial and health questions
+
+Legal, tax, financial and health advice gets the **grounding check** by default. An amount, rate or threshold, a phone number or hotline, a dose, or a legal consequence such as a criminal penalty or a fine that is not in this turn's search results or in what you gave is marked **(확인 필요)** ("needs checking") where it stands. When there are many marks, they come out of the text and are listed once at the end of the answer. Practical guidance (what to do, which documents to prepare, when to see a professional) stays as written. The result appears in the processing steps as an item such as **근거 확인(법률)** ("grounding check (legal)").
 
 ## Tools the model uses
 

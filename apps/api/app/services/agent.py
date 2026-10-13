@@ -17,6 +17,7 @@ from app.services import (
     calc_check,
     current_evidence,
     internal_words,
+    query_terms,
     scheduling,
     settings_store,
     thinking,
@@ -1019,6 +1020,9 @@ async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
         if str(parsed.get("kind") or "web") == "web":
             parsed["kind"] = "papers"
         parsed["scholarly"] = True
+    elif tool.name == "web_search" and isinstance(parsed.get("query"), str):
+        # the request's named things stay in the query the model wrote (「OpenRouter 요금」)
+        parsed["query"] = query_terms.keep_entities(parsed["query"], ctx.request)
 
     try:
         async with asyncio.timeout(settings.tool_timeout_sec):

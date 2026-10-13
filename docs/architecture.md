@@ -311,7 +311,25 @@ words explicitly ask for research; **Auto**, the default, offers them and forces
 the first hop only when the words ask for research, for something that changes
 with time (news, prices, versions, schedules, a year), or for the weather —
 otherwise the model decides under a lighter rule (`_WEB_SEARCH_AUTO`) that says
-what to look up and what to answer outright. A strict-local route offers none of
+what to look up and what to answer outright. On a chat turn the route also forces the
+first search, for every model, when `services/exact_facts.search_reason` finds a fact
+that must be exact (a phone number or hotline, a law, tax rule, threshold or benefit, a
+price, rate or limit, an event date, availability, an organization, a statistic) or
+legal, tax, financial or medical advice; a short follow-up is read with the earlier user
+turns, and the model then writes the query from the conversation. Writing, translation,
+code and formulas, role-play, drafting, concept explanations and turns on the person's
+own material are left alone (`exact_facts.not_a_lookup`), and an explicit opt-out or Off
+stands. A model-written query keeps the request's named things
+(`query_terms.keep_entities`).
+
+**Advice answers are traced by default.** `exact_facts.advice_domain` puts the
+`grounding-check` skill on a legal, tax, financial or medical chat turn, as an agent that
+turned it on would, and the writer gets `freshness.ADVICE_INSTRUCTION`. With
+`"advice": true` the trace checks money and rates, phone numbers, doses and legal
+consequences against the turn's search results and the person's words (not earlier
+answers), marks each unsupported one 「(확인 필요)」 where it stands rather than blanking
+it, and leaves agency names and the guidance's durations alone; more than three marks
+are listed once under the answer. The step reads 「근거 확인(법률): …」. A strict-local route offers none of
 this, whatever the toggle says. Weather questions force the `weather` tool
 rather than a search, since a search engine returns encyclopaedia pages for
 「분당 날씨」 ("Bundang weather").

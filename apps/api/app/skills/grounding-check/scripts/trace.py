@@ -186,12 +186,45 @@ DROPPED = frozenset({"claim", "requirement"})
 PLACEHOLDER = {
     "number": "[수치]", "date": "[일자]", "month": "[시기]", "time": "[시각]", "person": "[이름]",
     "org": "[기관명]", "title": "[직함]", "product": "[제품명]", "claim": "", "requirement": "",
+    "contact": "(확인 필요)", "dose": "(확인 필요)", "consequence": " (확인 필요)",
 }
 KIND_WORDS = {
     "number": "수치", "date": "날짜", "month": "시기", "time": "시각", "person": "이름",
     "org": "기관·회사", "title": "직함", "product": "제품·도구", "claim": "자료에 없는 경력 문장",
     "requirement": "자료에 없는 준비·제출 요구",
+    "contact": "전화번호", "dose": "용량", "consequence": "법적 결과",
 }
+#: The mark an advice finding gets where it stands (「1393(확인 필요)」), never blanked or dropped.
+MARK = "(확인 필요)"
+
+
+def _marks(finding: dict) -> bool:
+    return finding["placeholder"].strip() == MARK
+
+
+#: `advice` (legal, tax, financial, medical chat answers): numbers checked are money and rates;
+#: hotlines, doses and legal consequences are checked too; agency names are not.
+ADVICE_FAMILIES = frozenset({"원", "달러", "%", "%p"})
+#: A phone number: full, or a 15xx-style line.
+_PHONE = re.compile(r"(?<![\d.,-])(?:0\d{1,2}-\d{3,4}-\d{4}|1[5-8]\d{2}-\d{4})(?![\d-])")
+#: A short line (「109」 「1393」), read as one only beside a call cue.
+_SHORT_LINE = re.compile(
+    r"(?<![\d.,-])1\d{2,3}(?![\d.,-])(?!\s?(?:%|퍼센트|년|월|일|원|만|억|천|개|명|시간|분|초|세|살|"
+    r"회|kg|cm|mg|km|달러|가지|주|층|호|차|위|점|배|건|곳|단계|쪽))")
+_CALL_CUE = re.compile(
+    r"전화|상담|핫라인|번호|콜\s?센터|☎|신고|긴급|문의|다이얼|직통|"
+    r"hotline|helpline|crisis|call|dial|phone", re.I)
+#: A dose: 「500mg」 「2정」 「10 mL」.
+_DOSE = re.compile(
+    r"(?<![\d.,])(?P<n>\d+(?:[.,]\d+)?)\s?(?P<u>mg|㎎|mcg|㎍|μg|mL|ml|㎖|IU|캡슐|"
+    r"정(?![가-힣])|알(?![가-힣]))(?![A-Za-z])")
+#: A legal consequence: 「형사처벌」 「벌금」 「면허 취소」.
+_PENALTY = re.compile(
+    r"형사\s?처벌|형사\s?책임|형사\s?입건|처벌|징역|벌금|과태료|구속|전과|면허\s?(?:취소|정지)|"
+    r"criminal(?:ly)?\s+(?:charge\w*|liab\w*|prosecut\w*)|jail|prison", re.I)
+_MARK_AFTER = re.compile(r"\s?\(\s?확인\s?필요\s?\)")
+_VALUE_MASK = re.compile(
+    r"https?://\S{1,300}|`[^`\n]{0,200}`|\[[^\[\]\n]{0,40}\](?:\([^)\n]{0,300}\))?")
 
 
 _NATIVE = {"한": 1, "하나": 1, "두": 2, "둘": 2, "세": 3, "셋": 3, "네": 4, "넷": 4, "다섯": 5,
@@ -894,6 +927,9 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
     for n in numbers:
         if n["ok"] or not n["checked"] or (n["value"] in (0, 1) and not bare):
             continue
+        if options.get("advice") and _family(n["unit"]) not in ADVICE_FAMILIES:
+            # advice's durations and counts are guidance, not facts to source
+            continue
         m = n["match"]
         start = m.start("num") if m.group("sign") is None else m.start()
         found.append(_finding("number", lines[n["line"]], n["line"], start, m.end()))
@@ -901,7 +937,79 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
     if options.get("requirements"):
         found.extend(_requirements(lines, skip, sources))
     found.extend(_listed_people(lines, skip, sources, found))
+    if options.get("advice"):
+        # advice: agency names are not checked, and a value is marked where it stands
+        found = [_as_mark(f, lines) for f in found if f["kind"] not in ("org", "person")]
+        found = [f for f in found if f is not None]
+        found.extend(_advice_values(lines, skip, sources, found))
     return sorted(found, key=lambda f: (f["line"], f["start"]))
+
+
+def _as_mark(finding: dict, lines: list[str]) -> dict | None:
+    """A blank-type finding as a mark after its value; None when the mark is there already."""
+    if finding["kind"] in DROPPED:
+        return finding
+    line, end = lines[finding["line"]], finding["end"]
+    if _MARK_AFTER.match(line, end):
+        return None
+    return {**finding, "start": end, "end": end, "placeholder": MARK}
+
+
+def _digits_in(sources: Sources, digits: str) -> bool:
+    joined = re.sub(r"(?<=\d)[-\s.](?=\d)", "", sources.text)
+    return bool(re.search(rf"(?<!\d){re.escape(digits)}(?!\d)", joined))
+
+
+def _advice_values(lines: list[str], skip: set[int], sources: Sources,
+                   found: list[dict]) -> list[dict]:
+    """Hotlines, doses and legal consequences an advice answer gives with no source."""
+    out: list[dict] = []
+    for k, line in enumerate(lines):
+        if k in skip:
+            continue
+        masked = _VALUE_MASK.sub(lambda m: " " * len(m.group(0)), line)
+        taken = [(f["start"], f["end"]) for f in found if f["line"] == k]
+
+        def free(start: int, end: int, taken: list = taken) -> bool:
+            return not any(s < end and start < e for s, e in taken)
+
+        def mark(kind: str, m: re.Match, taken: list = taken, line: str = line,
+                 k: int = k) -> None:
+            taken.append(m.span())
+            if not _MARK_AFTER.match(line, m.end()):
+                out.append({"kind": kind, "text": m.group(0), "line": k, "start": m.end(),
+                            "end": m.end(), "placeholder": PLACEHOLDER[kind]})
+
+        for m in _PHONE.finditer(masked):
+            if free(*m.span()) and not _digits_in(sources, re.sub(r"\D", "", m.group(0))):
+                mark("contact", m)
+        for m in _SHORT_LINE.finditer(masked):
+            near_text = masked[max(0, m.start() - 16):m.end() + 16]
+            if free(*m.span()) and _CALL_CUE.search(near_text) \
+                    and not _digits_in(sources, m.group(0)):
+                mark("contact", m)
+        for m in _DOSE.finditer(masked):
+            written = re.sub(r"\s+", "", m.group(0)).lower()
+            if free(*m.span()) and written not in sources.lower:
+                mark("dose", m)
+        if line.strip().startswith("|"):
+            continue
+        pos = 0
+        for part in re.split(f"({SENTENCE_BREAK.pattern})", line):
+            start, pos = pos, pos + len(part)
+            if "확인 필요" in part:
+                continue
+            hit = next((m for m in _PENALTY.finditer(part)
+                        if re.sub(r"\s+", "", m.group(0)).lower() not in sources.lower), None)
+            if hit is None:
+                continue
+            # the mark goes at the sentence's end, before its closing punctuation
+            end = start + len(part.rstrip())
+            while end > start and line[end - 1] in ".!?。)*":
+                end -= 1
+            out.append({"kind": "consequence", "text": hit.group(0), "line": k, "start": end,
+                        "end": end, "placeholder": PLACEHOLDER["consequence"]})
+    return out
 
 
 #: words of a comparison: a gap between two figures may be stated
@@ -1232,7 +1340,9 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
     for part in re.split(f"({SENTENCE_BREAK.pattern})", line):
         start = pos
         pos += len(part)
-        mine = [f for f in items if start <= f["start"] < start + max(1, len(part))]
+        # a mark after a line's last sentence sits at its very end
+        mine = [f for f in items if start <= f["start"] < start + max(1, len(part))
+                or (_marks(f) and f["start"] == pos and part.strip())]
         if not mine:
             kept.append(part)
             continue
@@ -1245,7 +1355,7 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
         # Invented values carrying the sentence alone: two or more, and no number left. A
         # heading or bold list title (「**2. 등록금 납부 — …**」) keeps its words.
         if len(mine) >= 2 and not re.search(r"\d", rest) and not _TITLE_LINE.match(line) and all(
-                f["placeholder"] in PLACEHOLDER.values() for f in mine):
+                f["placeholder"] in PLACEHOLDER.values() and not _marks(f) for f in mine):
             kept.append("")
             continue
         for f in sorted(mine, key=lambda f: -f["start"]):

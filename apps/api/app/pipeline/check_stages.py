@@ -172,6 +172,33 @@ def answer_checks(req) -> tuple[str, ...]:
     return (*keys, TRACE) if req.traced and TRACE not in keys else keys
 
 
+#: an advice answer keeps up to this many 「(확인 필요)」 inline; more are listed once below
+ADVICE_INLINE_MARKS = 3
+_ADVICE_MARK = re.compile(r" ?" + re.escape(value_guard.MARK))
+
+
+def _advice_note(text: str, before: str, found: list[dict]) -> str:
+    """The marks the check added taken out of the text and its values named once below."""
+    if before.count(value_guard.MARK):
+        return text
+    # a value the guard found supported after all lost its mark: not listed
+    values = list(dict.fromkeys(
+        str(f.get("text") or "").strip() for f in found
+        if f.get("kind") == "consequence"
+        or f"{str(f.get('text') or '').strip()}{value_guard.MARK}" in text))
+    values = [v for v in values if v][:6]
+    body = _ADVICE_MARK.sub("", text).rstrip()
+    shown = ", ".join(f"「{v[:30]}」" for v in values)
+    return (f"{body}\n\n확인 필요: {shown} — 검색 결과나 주신 내용으로 확인하지 못했으니 "
+            "공식 기관이나 전문가에게 확인하세요.")
+
+
+def _advice_label(domain: str) -> str:
+    from app.services import exact_facts
+
+    return exact_facts.LABELS.get(domain, domain)
+
+
 class AnswerGrounding(Base):
     """Answer values traced to person's input or tool output; the rest → bracket blanks."""
 
@@ -186,28 +213,49 @@ class AnswerGrounding(Base):
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         req = bundle.request
         before = bundle.document.answer
+        # advice on no material of the person's: an earlier answer is no evidence, and the
+        # documents it tells them to bring are the guidance itself
+        advice_only = bool(req.advice) and not req.traced
         traced = check_skills.ground(
             answer_checks(req), before,
             material=f"{bundle.material.given}\n{req.check_material}",
             computed=[*req.tool_outputs, *req.evidence,
                       *(str(m.get("content") or "") for m in req.messages
-                        if m.get("role") == "assistant")],
+                        if m.get("role") == "assistant" and not advice_only)],
             options={**check_skills.options_for(req.today, req.check_options, surface="chat"),
                      "person": "\n".join([bundle.material.given, req.check_material,
                                           *req.tool_outputs]),
-                     "requirements": True},
+                     "requirements": not advice_only,
+                     **({"advice": True} if advice_only else {})},
             specs=req.skill_specs,
             # the person's earlier messages and the request count as evidence too
             evidence=[req.text, *(str(m.get("content") or "") for m in req.messages
                                   if m.get("role") == "user")],
         )
         if not traced.found:
+            if req.advice:
+                step = {"category": "thinking", "id": "grounding", "status": "done",
+                        "label": f"근거 확인({_advice_label(req.advice)}): 확인 필요한 값 없음"}
+                bundle.document.kept_steps = [row for row in bundle.document.kept_steps
+                                              if row.get("id") != "grounding"] + [step]
+                yield {"type": "step", **step}
             return
         bundle.document.answer = traced.text
         marked = traced.marked
+        if req.advice:
+            # advice values are marked where they stand, not blanked and settled back
+            marked = max(marked, traced.text.count(value_guard.MARK)
+                         - before.count(value_guard.MARK))
+        if req.advice and traced.text.count(value_guard.MARK) > ADVICE_INLINE_MARKS:
+            # many marks read as noise: listed once under the answer
+            bundle.document.answer = _advice_note(traced.text, before, traced.found)
         ground_step = {
             "category": "thinking", "id": "grounding",
-            "label": (f"근거 없는 값 {marked}개 → 확인 필요" if traced.traced_only and marked
+            "label": (f"근거 확인({_advice_label(req.advice)}): "
+                      + (f"근거 없는 값 {marked}개 → 확인 필요" if marked
+                         else "확인 필요한 값 없음")
+                      if req.advice and traced.traced_only
+                      else f"근거 없는 값 {marked}개 → 확인 필요" if traced.traced_only and marked
                       else "답 점검: 근거 확인됨" if traced.traced_only
                       else "답 점검: " + traced.summary[:120]),
             "status": "error" if traced.left and marked else "done",

@@ -697,7 +697,14 @@
 "path": "chat/web-search",
 "title": "웹 검색과 도구",
 "heading": "",
-"text": "입력창의 **+** 버튼에서 **웹 검색**을 **자동**, **항상**, **끔** 중 하나로 고릅니다. 기본은 **자동**이며, **항상**이나 **끔**을 고르면 입력창에 칩으로 표시됩니다. 설정은 해당 요청에만 적용되고 새 대화에서는 **자동**으로 초기화됩니다.\n\n| 모드 | 동작 |\n|---|---|\n| 자동 | 뉴스, 가격, 일정, 최신 버전, 날씨처럼 시간에 따라 변하는 정보를 물으면 검색하고, 그 외에는 모델이 필요하다고 판단한 경우에만 검색합니다. |\n| 항상 | 해당 요청에 대해 반드시 검색을 수행합니다. |\n| 끔 | \"검색해서\", \"찾아봐\"처럼 명시적으로 요청하지 않는 한 검색하지 않습니다. |\n\n검색을 수행하면 답변에 `[n]` 형식의 번호와 출처 목록이 표시됩니다. 한 요청에서 검색은 최대 3회, 페이지 읽기는 최대 6회까지 수행합니다. 날씨는 검색 대신 전용 도구를 사용합니다. strict-local 모델을 선택하면 웹 검색을 고를 수 없습니다.\n\n최신 정보를 다루는 요청에는 검색이 필요합니다. \"이번 분기 환율 추이\", \"Python 3.14의 변경 사항\"이 이에 해당합니다. 계산, 번역, 첨부한 글의 요약, 코드 수정에는 검색이 필요하지 않으므로 **끔**으로 설정하면 응답이 빨라지고 불필요한 출처가 표시되지 않습니다."
+"text": "입력창의 **+** 버튼에서 **웹 검색**을 **자동**, **항상**, **끔** 중 하나로 고릅니다. 기본은 **자동**이며, **항상**이나 **끔**을 고르면 입력창에 칩으로 표시됩니다. 설정은 해당 요청에만 적용되고 새 대화에서는 **자동**으로 초기화됩니다.\n\n| 모드 | 동작 |\n|---|---|\n| 자동 | 뉴스, 가격, 일정, 최신 버전, 날씨처럼 시간에 따라 변하는 정보와, 전화번호·상담 번호, 법·세율·기준 금액·지원 제도, 요금·금리·한도, 행사 일정, 판매·운영 여부, 기관, 통계처럼 정확해야 하는 정보를 물으면 먼저 검색합니다. 법률·세금·금융·건강 상담도 먼저 검색합니다. 그 외에는 모델이 필요하다고 판단한 경우에만 검색합니다. |\n| 항상 | 해당 요청에 대해 반드시 검색을 수행합니다. |\n| 끔 | \"검색해서\", \"찾아봐\"처럼 명시적으로 요청하지 않는 한 검색하지 않습니다. |\n\n검색을 수행하면 답변에 `[n]` 형식의 번호와 출처 목록이 표시됩니다. 한 요청에서 검색은 최대 3회, 페이지 읽기는 최대 6회까지 수행합니다. 날씨는 검색 대신 전용 도구를 사용합니다. strict-local 모델을 선택하면 웹 검색을 고를 수 없습니다.\n\n글쓰기, 번역·교정, 코드·엑셀 수식, 역할극, 개념 설명, 첨부하거나 붙여 넣은 자료에 대한 질문은 자동 모드에서 먼저 검색하지 않습니다. 앞선 대화에서 이어지는 질문(예: 투자 질문 뒤 「1년 안에 쓸 3천만 원이야」)은 대화 전체를 보고 판단합니다. \"검색하지 마\"라고 쓰거나 **끔**을 고르면 검색하지 않습니다.\n\n최신 정보를 다루는 요청에는 검색이 필요합니다. \"이번 분기 환율 추이\", \"Python 3.14의 변경 사항\"이 이에 해당합니다. 계산, 번역, 첨부한 글의 요약, 코드 수정에는 검색이 필요하지 않으므로 **끔**으로 설정하면 응답이 빨라지고 불필요한 출처가 표시되지 않습니다."
+},
+{
+"lang": "ko",
+"path": "chat/web-search",
+"title": "웹 검색과 도구",
+"heading": "법률·세금·금융·건강 질문의 근거 확인",
+"text": "법률, 세금, 금융, 건강·의료 상담에는 **근거 대조** 검사가 기본으로 적용됩니다. 답의 금액·비율·기준 금액, 전화번호·상담 번호, 약 용량, 처벌·벌금 같은 법적 결과가 이번 검색 결과나 사용자가 준 내용에 없으면 그 자리에 **(확인 필요)**가 붙습니다. 표시가 많으면 본문에서 빼고 답 끝에 「확인 필요: …」 한 줄로 모읍니다. 해야 할 일, 준비할 서류, 전문가에게 상담할 때 같은 안내는 그대로 둡니다. 검사 결과는 작업 단계의 **근거 확인(법률)** 같은 항목에 표시됩니다."
 },
 {
 "lang": "ko",
@@ -2069,7 +2076,14 @@
 "path": "chat/web-search",
 "title": "Web search and tools",
 "heading": "",
-"text": "Choose **Web search** from the **+** button in the composer and set it to **Auto**, **Always** or **Off**. Auto is the default; Always or Off shows as a chip in the composer. The setting applies to that request only, and it resets to **Auto** in a new conversation.\n\n| Mode | What it does |\n|---|---|\n| Auto | Searches when you ask about information that changes over time, such as news, prices, schedules, latest versions, and weather. Otherwise it searches only when the model judges it necessary. |\n| Always | Always performs a search for that request. |\n| Off | Does not search unless you ask explicitly, with wording such as \"search for\" or \"look it up\". |\n\nWhen a search runs, the answer shows numbers in the form `[n]` and a source list. One request performs at most three searches and reads at most six pages. Weather uses a dedicated tool instead of search. If you select a strict-local model, web search cannot be chosen.\n\nRequests about current information need a search. \"Exchange rate trends this quarter\" and \"Changes in Python 3.14\" are examples. Calculation, translation, summarizing an attached text, and fixing code do not need a search. Setting the mode to **Off** for those makes the answer faster and avoids unnecessary sources."
+"text": "Choose **Web search** from the **+** button in the composer and set it to **Auto**, **Always** or **Off**. Auto is the default; Always or Off shows as a chip in the composer. The setting applies to that request only, and it resets to **Auto** in a new conversation.\n\n| Mode | What it does |\n|---|---|\n| Auto | Searches first when you ask about information that changes over time, such as news, prices, schedules, latest versions, and weather, or that must be exact: phone numbers and hotlines, laws, tax rates, thresholds and benefits, fees, rates and limits, event dates, whether a product or service is available, organizations, and statistics. Legal, tax, financial and health advice is searched first too. Otherwise it searches only when the model judges it necessary. |\n| Always | Always performs a search for that request. |\n| Off | Does not search unless you ask explicitly, with wording such as \"search for\" or \"look it up\". |\n\nWhen a search runs, the answer shows numbers in the form `[n]` and a source list. One request performs at most three searches and reads at most six pages. Weather uses a dedicated tool instead of search. If you select a strict-local model, web search cannot be chosen.\n\nWriting, translation and proofreading, code and spreadsheet formulas, role-play, concept explanations, and questions about attached or pasted material are not searched first in Auto. A follow-up (for example \"it's 30 million won I need within a year\" after an investment question) is judged with the conversation before it. Writing \"don't search\" or choosing **Off** keeps the turn offline.\n\nRequests about current information need a search. \"Exchange rate trends this quarter\" and \"Changes in Python 3.14\" are examples. Calculation, translation, summarizing an attached text, and fixing code d"
+},
+{
+"lang": "en",
+"path": "chat/web-search",
+"title": "Web search and tools",
+"heading": "Grounding check for legal, tax, financial and health questions",
+"text": "Legal, tax, financial and health advice gets the **grounding check** by default. An amount, rate or threshold, a phone number or hotline, a dose, or a legal consequence such as a criminal penalty or a fine that is not in this turn's search results or in what you gave is marked **(확인 필요)** (\"needs checking\") where it stands. When there are many marks, they come out of the text and are listed once at the end of the answer. Practical guidance (what to do, which documents to prepare, when to see a professional) stays as written. The result appears in the processing steps as an item such as **근거 확인(법률)** (\"grounding check (legal)\")."
 },
 {
 "lang": "en",

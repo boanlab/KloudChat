@@ -187,8 +187,31 @@ CURRENT_FACT_INSTRUCTION = (
 )
 
 
+ADVICE_INSTRUCTION = (
+    "This turn asks for {domain} guidance. After you write, the answer's concrete values "
+    "are checked against this turn's search results and the user's own words and files; "
+    "unsupported ones are marked 「(확인 필요)」.\n"
+    "- State a specific amount, rate, threshold, limit, deadline, phone number or hotline, "
+    "dosage, or legal consequence (criminal liability, fines, licence penalties) only when "
+    "a search result or the user's material in this conversation supports it, and give the "
+    "result number like [2]. Otherwise say it in general terms (「보호 한도가 정해져 있다」, "
+    "「과실 비율에 따라 보상이 달라진다」) and name where to confirm it (the official agency, "
+    "insurer, 국세청, 금융감독원, 병원).\n"
+    "- Never invent a tax rule, a threshold, a legal consequence or a hotline number. A "
+    "number remembered from training may be out of date; the search results win.\n"
+    "- Keep it practical: what to do now, what to record or prepare, the main options with "
+    "their trade-offs, and when to see a professional (변호사, 세무사, 의사) or call "
+    "emergency services. One short sentence on that is enough; no disclaimer list."
+)
+
+#: `exact_facts` domain → the words the instruction uses
+_ADVICE_WORDS = {"legal": "legal", "tax": "tax", "financial": "financial",
+                 "medical": "medical or health"}
+
+
 def with_answer_policy(
     messages: list[dict], model: dict[str, Any], *, current_fact: bool | None = None,
+    advice: str = "",
 ) -> list[dict]:
     """Copied envelope; never mutate another comparison column."""
     policy = answer_instruction(model)
@@ -212,6 +235,8 @@ def with_answer_policy(
         result.insert(0, {"role": "system", "content": policy})
     if current_turn:
         result[0]["content"] += "\n\n" + CURRENT_FACT_INSTRUCTION
+    if advice in _ADVICE_WORDS:
+        result[0]["content"] += "\n\n" + ADVICE_INSTRUCTION.format(domain=_ADVICE_WORDS[advice])
     return result
 
 _LIVE = re.compile(
