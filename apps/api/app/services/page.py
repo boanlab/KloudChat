@@ -13,7 +13,15 @@ import httpx
 
 from app.core.config import settings
 from app.services import design_templates as templates
-from app.services import grounding, hangul, ratelimit, research, settings_store, thinking
+from app.services import (
+    grounding,
+    hangul,
+    model_retry,
+    ratelimit,
+    research,
+    settings_store,
+    thinking,
+)
 from app.services import outline as plan_rules
 from app.services.context import build_document_messages
 from app.services.design_templates import DesignTemplate
@@ -90,7 +98,15 @@ def _text(payload: dict[str, Any]) -> str:
 async def _complete(
     model: str, messages: list[dict[str, str]], api_key: str, max_tokens: int
 ) -> tuple[str, dict[str, int]]:
-    """One non-streaming call with 429 retry; same contract as `deck._complete`."""
+    """One non-streaming call with 429 retry and one more try on a dropped connection; same
+    contract as `deck._complete`."""
+    return await model_retry.once_more(
+        lambda: _complete_once(model, messages, api_key, max_tokens), "page call")
+
+
+async def _complete_once(
+    model: str, messages: list[dict[str, str]], api_key: str, max_tokens: int
+) -> tuple[str, dict[str, int]]:
     base, _ = await settings_store.litellm_config()
     async with httpx.AsyncClient(
         base_url=base.rstrip("/"),

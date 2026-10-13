@@ -50,6 +50,7 @@ def test_running_out_with_no_reasoning_at_all_still_asks_for_more() -> None:
 @pytest.mark.parametrize("module", [deck, report, page], ids=["deck", "report", "page"])
 def test_all_three_document_paths_check_it(module) -> None:
     """Every document `_complete` checks for starvation and counts both calls' tokens."""
-    source = inspect.getsource(module._complete)
+    # deck and page wrap the call in a retry (`model_retry`); the call itself is checked
+    source = inspect.getsource(getattr(module, "_complete_once", module._complete))
     assert "thinking.starved" in source, module.__name__
     assert "completion_tokens" in source

@@ -1342,7 +1342,8 @@ a skill does not carry is the look — the theme stays a choice of the person or
 the agent's 0.3 temperature (a turn without an agent writes at 0.4).
 
 Two skills tell the model when and how to use the default connectors: YouTube transcript and
-summary `youtube-summary` (needs `mcp__youtube__transcript`; summarises from the transcript
+summary `youtube-summary` (needs `mcp__youtube__transcript`, which heads the transcript with the
+video's title, channel, length and upload date; summarises from the transcript
 only and marks doubtful words) and deep research `deep-research` (needs
 `mcp__deep-research__quick_research`; the lightest research tool that answers, said to take
 minutes). The time connector joins `date-calc`: with no date in the material, today comes from
