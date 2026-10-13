@@ -162,7 +162,7 @@ def test_a_run_outside_a_url_is_only_cut() -> None:
 @pytest.mark.asyncio
 async def test_a_tool_call_whose_arguments_never_end_is_cut(monkeypatch) -> None:
     """Repeating tool-call arguments are invisible to the text checks; the
-    stream is closed all the same and the turn ends with the loop note."""
+    stream is closed all the same, asked once more, and a second loop leaves no answer."""
     fragment = json.dumps(
         {
             "choices": [
@@ -207,6 +207,7 @@ async def test_a_tool_call_whose_arguments_never_end_is_cut(monkeypatch) -> None
         e async for e in agent.run_turn("m", [{"role": "user", "content": "q"}], [_SEARCH], _ctx())
     ]
     text = _final_text(events)
-    assert "되풀이되어 여기서 멈췄습니다" in text
-    assert len(consumed) < 400
+    # asked once more, looped again: no answer (the turn reports no_answer), not a stub note
+    assert text == ""
+    assert len(consumed) < 2 * 400
     assert not [e for e in events if e["type"] == "step"]

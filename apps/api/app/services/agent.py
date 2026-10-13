@@ -173,6 +173,7 @@ async def _stream_once(
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
     force_tool: str | None = None,
+    presence_penalty: float | None = None,
 ) -> AsyncIterator[tuple[str, Any]]:
     """Yields `('delta', text)`, then `('done', _Accumulator)`."""
     payload: dict[str, Any] = {
@@ -186,6 +187,10 @@ async def _stream_once(
     if temperature is not None:
         payload["temperature"] = temperature
     self_hosted = model.startswith(("local/", "strict-local/"))
+    if presence_penalty is None and self_hosted:
+        presence_penalty = _default_presence_penalty(model)
+    if presence_penalty:
+        payload["presence_penalty"] = presence_penalty
     roles = await settings_store.model_roles()
     if self_hosted and not roles.self_hosted_thinking:
         payload.update(thinking.template_switch(model))
@@ -243,7 +248,7 @@ async def _stream_once(
                     text = acc.add_chunk(chunk)
                     if text:
                         yield "delta", text
-                        if _is_looping(acc.content):
+                        if _is_looping(acc.content) or _line_loop(acc.content):
                             # Stream closed; `run_turn` adds a note.
                             acc.looped = True
                             break
@@ -258,9 +263,22 @@ async def _stream_once(
             finally:
                 await opened.__aexit__(None, None, None)
     except httpx.HTTPError as exc:
-        raise ChatStreamError(f"upstream_unreachable: {exc}") from exc
+        # The class too: a dropped stream's exception often has no message.
+        detail = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+        raise ChatStreamError(f"upstream_unreachable: {detail}") from exc
 
+    if acc.finish_reason == "length":
+        log.warning("%s stopped at its token limit (%d output tokens)",
+                    model, acc.usage["outputTokens"])
     yield "done", acc
+
+
+def _default_presence_penalty(model: str) -> float | None:
+    """Configured `presence_penalty` for a self-hosted model, else None."""
+    fragments = [f.strip() for f in settings.self_hosted_presence_penalty_models.split(",")]
+    if any(f and f in model for f in fragments):
+        return settings.self_hosted_presence_penalty or None
+    return None
 
 
 #: Shorter pre-tool text is narration, not an answer.
@@ -312,6 +330,10 @@ def _repeats(earlier: str, later: str) -> bool:
 
 #: 429 retry delays.
 _RETRY_AFTER = (5.0, 15.0)
+#: Pause before asking again after a dropped stream.
+_DROP_RETRY_AFTER = 1.0
+#: `presence_penalty` for the one retry of a looping hop (Qwen's advice tops out at 2).
+_LOOP_RETRY_PRESENCE = 1.5
 
 
 #: Arguments past this = unclosed JSON; documents fit well under.
@@ -346,8 +368,27 @@ _LATIN_CHARS = re.compile(r"[A-Za-z]")
 _OTHER_LANGUAGE_ASK = re.compile(r"영어|english|영문|번역|translate|in english", re.I)
 
 
+#: A reply that ends by asking: 「…알려 주세요.」 「…인가요?」
+_ASKS = re.compile(r"(?:[?？]|주세요|인가요|일까요|할까요|하나요|나요|까요|인지요)[.!]?\s*$")
+#: Longest reply still read as a bare question.
+_QUESTION_CHARS = 300
+
+
+def _asks_again(earlier: str, later: str) -> bool:
+    """`later` is the short question `earlier` already asked, in other words."""
+    a, b = (re.sub(r"\s+", "", t) for t in (earlier, later))
+    if not a or not b or len(a) > _QUESTION_CHARS or len(b) > _QUESTION_CHARS:
+        return False
+    if not (_ASKS.search(earlier.strip()) and _ASKS.search(later.strip())):
+        return False
+    pairs_a = {a[i : i + 2] for i in range(len(a) - 1)}
+    pairs_b = {b[i : i + 2] for i in range(len(b) - 1)}
+    return 2 * len(pairs_a & pairs_b) >= 0.6 * (len(pairs_a) + len(pairs_b))
+
+
 def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str] | None:
-    """`(kind, nudge)` for a verbatim repeat or an unrequested Latin answer to Korean; else None."""
+    """`(kind, nudge)` for a verbatim repeat, the same question asked again, or an unrequested
+    Latin answer to Korean; else None."""
     squeeze = lambda t: " ".join(str(t or "").split())  # noqa: E731
     def last(role: str) -> dict[str, Any] | None:
         return next(
@@ -364,6 +405,13 @@ def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str
         if len(now) >= 40 and (now == before or (len(now) >= 80 and before.startswith(now))):
             return "echo", (
                 "방금 쓴 답은 앞 답을 그대로 반복한 것입니다. 이번 질문에 맞게 새로 답하세요."
+            )
+        if _asks_again(previous["content"], text):
+            # 「100달러가 상품가인지 … 알려 주세요」 twice: the person moved on instead.
+            return "reask", (
+                "같은 질문을 다시 했습니다. 사용자는 그 질문에 답하지 않고 이어서 말했습니다. "
+                "되묻지 말고, 정해지지 않은 점은 흔한 경우로 가정해 한 문장으로 밝힌 뒤 "
+                "요청한 것을 지금 바로 답하세요."
             )
     asked = last("user")
     if asked is not None and not _OTHER_LANGUAGE_ASK.search(asked["content"]):
@@ -563,6 +611,60 @@ def _is_looping(pieces: list[str], *, window: int = 160, times: int = 4) -> bool
         return False
     needle = text[-window:].strip()
     return len(needle) >= window // 2 and text.count(needle) >= times
+
+
+#: Consecutive copies of a 1–3 line cycle that count as a loop (one line: more, since a
+#: form may repeat a blank row a few times).
+_LINE_LOOP_TIMES = {1: 8, 2: 6, 3: 6}
+_WORDISH = re.compile(r"\w")
+
+
+def _line_loop(pieces: list[str]) -> bool:
+    """The last whole lines are one short cycle of wordy lines, again and again.
+
+    Catches the list loop (「- 두부 2모: 1,000원」 × 40) at a few lines instead of after the
+    `_is_looping` window, which short lines take long to fill.
+    """
+    lines = _tail(pieces, 4_000).split("\n")[:-1]  # the last piece of a line is still coming
+    for size, times in _LINE_LOOP_TIMES.items():
+        span = size * times
+        if len(lines) < span:
+            continue
+        tail = [ln.strip() for ln in lines[-span:]]
+        cycle = tail[:size]
+        if sum(len(_WORDISH.findall(ln)) for ln in cycle) < 2 * size:
+            continue  # blank, rule or table-border rows
+        if all(tail[i] == cycle[i % size] for i in range(span)):
+            return True
+    return False
+
+
+def _loop_span(text: str) -> tuple[int, int] | None:
+    """`(start, period)` of the cycle `text` ends repeating (three copies or more), else None."""
+    end = len(text)
+    for period in range(1, min(2_000, end // 3) + 1):
+        if text[end - period :] != text[end - 2 * period : end - period]:
+            continue
+        start = end - period
+        while start > 0 and text[start - 1] == text[start - 1 + period]:
+            start -= 1
+        if end - start >= max(3 * period, 120):
+            return start, period
+    return None
+
+
+def _trim_loop(text: str) -> str:
+    """`text` cut after the first copy of the cycle it ends repeating; unchanged if none, ''
+    when the repeating is all there is."""
+    span = _loop_span(text)
+    if span is None:
+        return text
+    start, period = span
+    if not text[:start].strip():
+        return ""
+    # One whole copy: to the end of the line the first period ends in.
+    line_end = text.find("\n", start + period - 1)
+    return text[: line_end + 1] if line_end != -1 else text[: start + period]
 
 
 #: Stuck-decoder run length; banner/box-drawing chars excluded.
@@ -1104,6 +1206,11 @@ async def run_turn(
     provisional: list[str] = []
     anomaly_retried = False
     blanks_retried = False
+    #: A looping hop is asked once more, with `_LOOP_RETRY_PRESENCE` from then on.
+    loop_retried = False
+    loop_penalty: float | None = None
+    #: A dropped stream (connection closed mid-answer) is asked once more.
+    transport_retried = False
     #: Successful code-run outputs; refused-code flag.
     code_outputs: list[str] = []
     code_refused = False
@@ -1167,6 +1274,8 @@ async def run_turn(
             stream_kwargs["tool_definitions"] = hop_definitions
         if temperature is not None:
             stream_kwargs["temperature"] = temperature
+        if loop_penalty is not None:
+            stream_kwargs["presence_penalty"] = loop_penalty
         if preflight_tool and not preflight_completed and not closing and not pending_reads:
             stream_kwargs["force_tool"] = preflight_tool
         elif force_tool and not preflight_tool and hop == 0:
@@ -1210,12 +1319,37 @@ async def run_turn(
                         acc = value
             except ChatStreamError as exc:
                 if hop_model == model:
-                    raise
+                    if transport_retried or not str(exc).startswith("upstream_unreachable"):
+                        raise
+                    # Stream dropped mid-answer (the proxy closed it after 2,400 characters):
+                    # the half answer taken back and the hop asked once more.
+                    transport_retried = True
+                    log.warning("stream from %s dropped (%s), asking once more", model, exc)
+                    if hop_text and not preflight_tool and not freshness_request:
+                        del answer_text[len(answer_text) - len(hop_text) :]
+                        yield {"type": "retract", "text": "".join(hop_text)}
+                    await asyncio.sleep(_DROP_RETRY_AFTER)
+                    continue
                 # Hand-off failure → note, not error.
                 log.info("calculation hand-off to %s failed: %s", hop_model, exc)
                 acc = _Accumulator()
         assert acc is not None
         last_hop = acc
+
+        if (acc.looped and not running_preset and not preflight_tool and not loop_retried
+                and hop_model == model):
+            # A loop is the sampler's, not the answer: taken back, asked once more with a
+            # stronger presence penalty (a second loop is cut to one copy below).
+            loop_retried = True
+            loop_penalty = _LOOP_RETRY_PRESENCE
+            log.warning("%s looped after %d characters, asking once more",
+                        model, sum(len(t) for t in hop_text))
+            usage["inputTokens"] += acc.usage["inputTokens"]
+            usage["outputTokens"] += acc.usage["outputTokens"]
+            if hop_text and not freshness_request:
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": "".join(hop_text)}
+            continue
 
         if not running_preset and not acc.calls and hop_text:
             # Doubled answer counts once.
@@ -1360,12 +1494,26 @@ async def run_turn(
             else:
                 held.append(spoken)
         if acc.looped:
-            note = (
-                "\n\n_같은 내용이 되풀이되어 여기서 멈췄습니다. "
-                "다시 시도하거나 다른 모델을 골라 보세요._"
-            )
-            answer_text.append(note)
-            yield {"type": "delta", "text": note}
+            # Looped again: the hop is taken back whole (a retract removes the first match, and
+            # copies match too early) and given again up to one copy of the cycle. Nothing
+            # left is no answer, reported as an error by the turn, not a note posing as one.
+            spoken = "".join(hop_text) if not freshness_request else ""
+            kept = _trim_loop(spoken)
+            if not kept.strip():
+                kept = ""
+            if spoken and kept != spoken:
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": spoken}
+                if kept:
+                    answer_text.append(kept)
+                    yield {"type": "delta", "text": kept}
+            if "".join(answer_text).strip() or freshness_request:
+                note = (
+                    "\n\n_같은 내용이 되풀이되어 여기서 멈췄습니다. "
+                    "다시 시도하거나 다른 모델을 골라 보세요._"
+                )
+                answer_text.append(note)
+                yield {"type": "delta", "text": note}
             break
         if acc.runaway:
             # Runaway run taken back; eaten known URL finished.

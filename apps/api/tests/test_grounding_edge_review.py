@@ -100,7 +100,9 @@ async def test_current_fact_incomplete_completion_is_visible_without_hidden_draf
     assert text.strip()
     assert "UNSUPPORTED_HIDDEN_DRAFT" not in text
     assert not any(event["type"] == "retract" and not event["text"] for event in events)
-    assert events[-1] == {"type": "usage", "inputTokens": 1, "outputTokens": 1}
+    # a loop is asked once more
+    calls = 2 if outcome == "looped" else 1
+    assert events[-1] == {"type": "usage", "inputTokens": calls, "outputTokens": calls}
 
 
 @pytest.mark.asyncio

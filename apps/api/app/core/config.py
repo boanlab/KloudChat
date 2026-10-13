@@ -136,6 +136,10 @@ class Settings(BaseSettings):
     self_hosted_chat_thinking: bool = False
     #: Name fragments that get `enable_thinking: false`; others untouched.
     self_hosted_thinking_models: str = "qwen3.8-flash"
+    #: Self-hosted name fragments sent `presence_penalty` (Qwen's own advice against endless
+    #: repetition); 27B at the chat temperature loops on lists without it. Empty: none.
+    self_hosted_presence_penalty_models: str = "qwen3.8-27b"
+    self_hosted_presence_penalty: float = 1.0
     #: Internal-material strict-local default; tests turn it off for fake catalogues.
     internal_data_strict_local_default: bool = True
     #: Fresh governance-row defaults; lists comma-separated.
