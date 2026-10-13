@@ -34,7 +34,7 @@ Check copy with code, not by eye. Character counts and claim scans written by th
 3. Run once more after fixing. Report the final counts from the script, never your own: a count cell holds the last run's value, and copy shortened to fit is measured again before you write that it fits.
 
 ## Output format
-A table `| 문구 | 채널·필드 | 글자 수/한도 | 판정 |` from the `length` result, then a list of claim findings by severity with the suggested fix, then the corrected copy.
+A table `| 문구 | 채널·필드 | 글자 수/한도 | 판정 |` from the `length` result, then a list of claim findings by severity with the suggested fix, then the corrected copy. Name a channel and a field by the result's `name` and `word` (「링크드인 도입 문구」), never by the `channel`/`field` keys (`linkedin`, `ad_intro`) — those are for calling the script.
 
 ## Checklist
 - [ ] Counts and limits copied from the script.

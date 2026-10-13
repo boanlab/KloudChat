@@ -214,6 +214,9 @@ def measure(item: dict) -> dict:
     unit = rule.get("unit", "chars")
     n = count(text, unit)
     row = {"label": label, "channel": channel, "field": field, "count": n, "unit": unit}
+    if field:
+        # the field as the answer names it; the key is for calls only
+        row["word"] = FIELD_WORDS.get(str(field), str(field))
     if rule.get("limit"):
         row.update(limit=rule["limit"], over=max(0, n - rule["limit"]), hard=rule.get("hard", True))
         if row["over"] and not row["hard"]:
@@ -247,7 +250,8 @@ def listing(channel: str | None) -> list[dict]:
         if channel and key != channel:
             continue
         for field, rule in spec["fields"].items():
-            rows.append({"channel": key, "name": spec["name"], "field": field, **rule, "source": spec["source"]})
+            rows.append({"channel": key, "name": spec["name"], "field": field,
+                         "word": FIELD_WORDS.get(field, field), **rule, "source": spec["source"]})
     return rows
 
 
@@ -261,6 +265,8 @@ _CHANNEL_WORDS: tuple[tuple[str, re.Pattern], ...] = (
     ("meta", re.compile(r"메타\s{0,2}(?:\(|광고)|페이스북\s{0,2}광고|인스타(?:그램)?\s{0,2}광고|\bmeta\s{0,2}ads?\b", re.I)),
     ("youtube", re.compile(r"유튜브\s{0,2}(?:영상\s{0,2})?제목")),
     ("email", re.compile(r"(?:메일|뉴스레터)\s{0,2}제목")),
+    # sponsored content, not a member's own post (r3 A13 T1: an intro written as 148, 156 measured)
+    ("linkedin", re.compile(r"링크드\s{0,2}인\s{0,2}(?:스폰서드|광고)|linked\s{0,2}in\s{0,2}(?:ads?|sponsored)", re.I)),
 )
 #: Fields whose text a judge can lift out of an answer whole: short ones.
 _SHORT = 150
@@ -269,7 +275,14 @@ FIELD_WORDS = {"title": "제목", "description": "설명", "extra_title": "추�
                "slide_price": "슬라이드 가격", "headline": "제목(헤드라인)", "long_headline": "긴 제목",
                "path": "표시 경로", "cta": "행동 유도 문구", "primary_text": "기본 문구",
                "business_name": "업체명", "subject": "메일 제목", "preheader": "미리보기 문구",
-               "item": "후보 하나하나"}
+               "item": "후보 하나하나",
+               # every other field, so no key reaches the person (r3 A13 T1: 「ad_intro 권장 150」)
+               "main_copy": "메인 문구", "sub_copy": "서브 문구", "basic_text": "기본 텍스트",
+               "wide_image_text": "와이드 이미지 문구", "wide_list_title": "와이드 리스트 제목",
+               "wide_list_first": "와이드 리스트 첫 항목", "wide_list_item": "와이드 리스트 항목",
+               "carousel_title": "캐러셀 제목", "carousel_promo": "캐러셀 홍보 문구",
+               "button": "버튼", "caption": "캡션", "bio": "소개", "post": "게시물 본문",
+               "ad_intro": "도입 문구", "ad_headline": "헤드라인", "ad_description": "설명"}
 #: 「30자 안으로」「공백 포함 40자 이내」: a limit the person set for every piece.
 _STATED = re.compile(r"(?<!\d)(\d{1,4})\s{0,2}(?:자|글자)\s{0,2}(?:안으로|안쪽|이내|이하|미만|까지|내로|를?\s{0,2}넘지)")
 
@@ -319,6 +332,8 @@ FIELD_HEADERS = {
     "extra_title": ("추가제목", "추가 제목"), "promo_text": ("홍보문구", "홍보 문구"),
     "profile_name": ("프로필명",), "slide_title": ("슬라이드 제목",), "primary_text": ("기본 문구", "본문"),
     "long_headline": ("긴 제목",), "subject": ("제목", "메일 제목"), "item": ("헤드라인", "제목", "후보", "문구"),
+    "ad_intro": ("도입 문구", "도입글", "소개 문구", "인트로"), "ad_headline": ("헤드라인", "제목"),
+    "ad_description": ("설명",),
 }
 
 
@@ -391,7 +406,7 @@ def main(argv: list[str]) -> int:
         rows = listing(options.get("channel"))
         for row in rows:
             limit = row.get("limit")
-            print(f"{row['name']} {row['field']}: {limit or '-'} ({row.get('unit', 'chars')}, {'한도' if row.get('hard', True) else '권장'})")
+            print(f"{row['name']} {row['word']}: {limit or '-'} ({row.get('unit', 'chars')}, {'한도' if row.get('hard', True) else '권장'}) — 부를 때 field={row['field']}")
         print(json.dumps({"ok": True, "specs": rows}, ensure_ascii=False))
         return 0
     items = options.get("items")

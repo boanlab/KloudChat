@@ -12,7 +12,8 @@ from app.services import deck, page, report
 
 @pytest.mark.parametrize(
     "writer",
-    [deck._complete, report._complete, page._complete],
+    # deck and page: the call under the dropped-connection retry
+    [deck._complete_once, report._complete, page._complete_once],
     ids=["deck", "report", "page"],
 )
 def test_the_writers_ask_for_no_thinking(writer) -> None:
@@ -25,7 +26,7 @@ def test_the_re_ask_asks_for_no_thinking_either() -> None:
     from app.services import thinking
 
     assert thinking.NO_REASONING == {"enabled": False}
-    for writer in (deck._complete, report._complete, page._complete):
+    for writer in (deck._complete_once, report._complete, page._complete_once):
         source = inspect.getsource(writer)
         # Once for the first call and once for the re-ask.
         assert source.count("thinking.switch(model)") >= 2, writer.__module__
