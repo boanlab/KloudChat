@@ -46,7 +46,8 @@ def test_minutes_repair_adds_columns_without_turning_a_rule_into_a_row():
     grounded, _ = report_checks.minutes_grounding(widened, MEMO)
     body = grounded[0]["content"]
     assert "[담당자] | --- |" not in body and "| --- |" not in body.replace("|---|", "")
-    assert body.count("| 항목 | 담당 | 기한 | 비고 | 출처 |") == 2
+    # one meeting, no mail: no 출처 column added
+    assert body.count("| 항목 | 담당 | 기한 | 비고 |") == 2 and "출처" not in body
 
 
 def test_a_combined_owner_and_due_column_is_left_whole():

@@ -163,7 +163,8 @@ async def test_minutes_rows_written_as_a_list_are_read_like_table_rows():
     by_item = {f.sentence.split("**")[1]: f.why for f in found}
     assert set(by_item) == {"강의계획서 초안", "선수과목 검토"}
     assert "값에는" in by_item["강의계획서 초안"]
-    assert "사유" in by_item["선수과목 검토"] and "출처" in by_item["선수과목 검토"]
+    # one meeting, no mail: the source need not be told
+    assert "사유" in by_item["선수과목 검토"] and "출처" not in by_item["선수과목 검토"]
     still = next(f for f in found if "강의계획서" in f.sentence).still
     assert not still("- **강의계획서 초안** 회의에서 정함(다음 주 금요일). "
                      "<small>이교수 · 2026-10-23(금)</small>")
@@ -177,8 +178,9 @@ def test_an_action_table_without_source_and_note_columns_gets_them():
         [{"heading": "실행 항목", "content": table}], _dates())
     assert added == 1
     lines = sections[0]["content"].split("\n")
-    assert lines[0] == "| 할 일 | 담당 | 기한 | 출처 | 비고 |"
-    assert lines[2].endswith("| 회의 | - |") and lines[3].endswith("| [출처] | - |")
+    # one meeting, no mail: 비고 only, no 출처 column of 「회의」 on every row
+    assert lines[0] == "| 할 일 | 담당 | 기한 | 비고 |"
+    assert lines[2].endswith("| 2026-10-23(금) | - |") and lines[3].endswith("| 미정 | - |")
     again, more = report_checks.minutes_columns(sections, _dates())
     assert more == 0 and again == sections
 
@@ -374,8 +376,8 @@ async def test_a_gaejo_report_with_nothing_attached_is_still_checked_for_its_sha
 async def test_the_minutes_judge_runs_once_and_its_candidate_is_listed(monkeypatch):
     from app.services import report
 
-    table = ("| 할 일 | 담당 | 기한 | 출처 | 비고 |\n|---|---|---|---|---|\n"
-             "| 버스 견적 | 강주무관 | 2026-10-20(화) | 회의 | - |\n")
+    table = ("| 할 일 | 담당 | 기한 | 비고 |\n|---|---|---|---|\n"
+             "| 버스 견적 | 강주무관 | 2026-10-20(화) | - |\n")
     draft = "## 회의 개요\nOT 준비 회의.\n## 실행 항목\n" + table
     judged: list[str] = []
 

@@ -36,7 +36,7 @@ block = '<section><h2>{title}</h2>{body}</section>'
 # writing. A person's agent or template sets the same keys in its form.
 [process]
 prepass = ["date-calc"]
-checks = ["lead-dates", "material-blanks"]
+checks = ["lead-dates", "material-blanks", "count-labels"]
 # Written from the person's own results: no web search, and no picture unless asked.
 search = false
 draws = "when-asked"

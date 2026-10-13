@@ -61,7 +61,8 @@ ORDINAL_AFTER = re.compile(
 LIST_MARKER = re.compile(r"^\s{0,8}(?:[-*+]\s{1,4})?(?:\(?\d{1,2}[.)]|[①-⑳])\s{1,4}")
 #: Spans holding no value of their own: blanks, citations, links, code, numbered labels.
 MASKED = re.compile(
-    r"\[[^\[\]\n]{0,40}\](?:\([^)\n]{0,300}\))?"
+    r"\[[^\[\]\n]{0,300}\]\(https?://[^)\n]{0,500}\)"  # a linked source title: its own words
+    r"|\[[^\[\]\n]{0,40}\](?:\([^)\n]{0,300}\))?"
     r"|`[^`\n]{0,200}`"
     r"|https?://\S{1,300}"
     r"|[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,4}"
@@ -128,6 +129,8 @@ NOT_A_NAME = re.compile(
 #: A linking verb ending before a title-like word: 「달라」, 「달라서」, 「맡아」, 「하며」.
 _LINKING_END = re.compile(r"(?:라|아|어|서|고|며|면|게|지|해|여|러|워)$")
 VERB_END = re.compile(r"(?:한|된|는|은|던|할|의|를|을|에|로|와|과|도|만|인)$")
+#: a clause ending before 「교수」 「학습」: 「신설하여 교수·학습 영역」 is no name
+CLAUSE_END = re.compile(r"(?:하여|하며|하고|하면|해서|되어|되며|하에|에서|으로|에게|이며|이고|라며|하게|되게)$")
 ORG = re.compile(
     r"\(주\)\s?(?P<a>[가-힣A-Za-z][가-힣A-Za-z0-9]{1,15})"
     r"|(?<![가-힣A-Za-z0-9])(?P<b>[가-힣A-Za-z][가-힣A-Za-z0-9]{1,15})(?:\(주\)|㈜)"
@@ -224,7 +227,8 @@ _PENALTY = re.compile(
     r"criminal(?:ly)?\s+(?:charge\w*|liab\w*|prosecut\w*)|jail|prison", re.I)
 _MARK_AFTER = re.compile(r"\s?\(\s?확인\s?필요\s?\)")
 _VALUE_MASK = re.compile(
-    r"https?://\S{1,300}|`[^`\n]{0,200}`|\[[^\[\]\n]{0,40}\](?:\([^)\n]{0,300}\))?")
+    r"\[[^\[\]\n]{0,300}\]\(https?://[^)\n]{0,500}\)"  # a source's title: the source's words
+    r"|https?://\S{1,300}|`[^`\n]{0,200}`|\[[^\[\]\n]{0,40}\](?:\([^)\n]{0,300}\))?")
 
 
 _NATIVE = {"한": 1, "하나": 1, "두": 2, "둘": 2, "세": 3, "셋": 3, "네": 4, "넷": 4, "다섯": 5,
@@ -1205,13 +1209,15 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
         name = PARTICLE.sub("", next(g for g in m.groups() if g))
         if free(*m.span()):
             taken.append(m.span())
-            if not sources.has_text(name):
+            # 「고려대학교」 where the source says 「고려대」: the same school
+            short = name[:-2] if name.endswith("대학교") else ""
+            if not sources.has_text(name) and not (len(short) >= 3 and sources.has_text(short)):
                 found.append(_finding("org", line, k, *m.span()))
     for m in PERSON.finditer(masked):
         name = m.group("name")
         if not free(*m.span()) or NOT_A_NAME.match(name):
             continue
-        if "○○" not in name and len(name) >= 3 and VERB_END.search(name):
+        if "○○" not in name and len(name) >= 3 and (VERB_END.search(name) or CLAUSE_END.search(name)):
             continue
         if "○○" not in name and name[0] not in SURNAMES and _LINKING_END.search(name):
             # 「담당 교수가 달라 교수 효과와」: a verb running on, not a name

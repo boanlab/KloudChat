@@ -400,6 +400,37 @@ def fill_prompt(fmt: DocFormat, request: str, title: str, material: str = "") ->
     )
 
 
+#: a head field naming the day the document itself is issued, sent or written
+_ISSUE_FIELD = re.compile(r"시행일|보고일|작성일|배포일|등록일|결재일|발송일|기안일")
+#: a line giving another day: a deadline, an event, a period
+_OTHER_DAY = re.compile(r"기한|마감|까지|제출|접수|신청|일시|기간|행사|개최|회의|납기|만료")
+_DAY_DIGITS = re.compile(r"(\d{1,4})\s{0,2}[-./년]\s{0,2}(\d{1,2})\s{0,2}[-./월]\s{0,2}(\d{1,2})"
+                         r"|(\d{1,2})\s{0,2}[./월]\s{0,2}(\d{1,2})(?!\d)")
+
+
+def _days(text: str) -> set[tuple[int, int]]:
+    out = set()
+    for m in _DAY_DIGITS.finditer(text or ""):
+        month, day = (m.group(2), m.group(3)) if m.group(1) else (m.group(4), m.group(5))
+        out.add((int(month), int(day)))
+    return out
+
+
+def _issue_day(name: str, value: str, request: str) -> str:
+    """The model's value for an issue-day field (시행일), unless that day is one the request
+    gives for something else — 「제출 기한: 2026. 11. 6.」 is no 시행일."""
+    if not value or not _ISSUE_FIELD.search(name):
+        return value
+    wanted = _days(value)
+    if not wanted:
+        return value
+    base = _base(name)
+    lines = [ln for ln in (request or "").splitlines() if _days(ln) & wanted]
+    if lines and not any(base in ln for ln in lines) and all(_OTHER_DAY.search(ln) for ln in lines):
+        return ""
+    return value
+
+
 def title_block(
     fmt: DocFormat, answer: dict[str, Any], request: str, read: dict[str, str] | None = None
 ) -> dict[str, Any]:
@@ -416,7 +447,8 @@ def title_block(
         tokens = [t for t in re.split(r"[\s,·/()]+", text.removesuffix(NAMED_NOTE)) if t]
         return text if all(re.sub(r"\s+", "", t) in squeezed for t in tokens) else ""
 
-    fields = [[name, grounded((read or {}).get(name)) or grounded(raw.get(name))]
+    fields = [[name, grounded((read or {}).get(name))
+               or _issue_day(name, grounded(raw.get(name)), request)]
               for name in fmt.fields]
     fields = [[name, value if field_value(name, value) else ""] for name, value in fields]
     fields = [[name, value] for name, value in fields if value or name not in fmt.optional]
@@ -645,9 +677,62 @@ def tables_out_of_items(text: str) -> str:
     return "\n".join(_tables_out_of_items((text or "").split("\n")))
 
 
+#: 「- 구분: 일시」 / 「  - 내용: …」: a table's row written as a labelled item and its child
+_LABELLED_ITEM = re.compile(r"^(?P<indent>\s{0,8})[-*+]\s{1,4}"
+                            r"(?P<label>[가-힣A-Za-z][^:：\n]{0,11}?)"
+                            r"\s{0,2}[:：]\s{1,4}(?P<value>\S.*)$")
+
+
+def _labelled_group(lines: list[str], at: int) -> tuple[list[tuple[str, str]], int] | None:
+    """(label, value) pairs of a top item and its labelled children from `at`, and the next
+    line; None unless every child is labelled one level deeper."""
+    head = _LABELLED_ITEM.match(lines[at])
+    if not head:
+        return None
+    depth = len(head.group("indent"))
+    pairs = [(head.group("label").strip(), head.group("value").strip())]
+    k = at + 1
+    while k < len(lines):
+        child = _LABELLED_ITEM.match(lines[k])
+        if not child or len(child.group("indent")) <= depth:
+            break
+        pairs.append((child.group("label").strip(), child.group("value").strip()))
+        k += 1
+    return (pairs, k) if len(pairs) >= 2 else None
+
+
+def _tables_out_of_labelled_items(lines: list[str]) -> list[str]:
+    """Runs of two or more items labelled alike (「- 구분: 일시」 then 「  - 내용: …」) set back as
+    the table they were: the labels are its header, each item a row."""
+    out: list[str] = []
+    k = 0
+    while k < len(lines):
+        groups, j = [], k
+        while j < len(lines) and (found := _labelled_group(lines, j)):
+            if groups and [label for label, _ in found[0]] != [label for label, _ in groups[0]]:
+                break
+            groups.append(found[0])
+            j = found[1]
+        if len(groups) < 2:
+            out.append(lines[k])
+            k += 1
+            continue
+        header = [label for label, _ in groups[0]]
+        if out and out[-1].strip():
+            out.append("")
+        out.append("| " + " | ".join(header) + " |")
+        out.append("|" + "---|" * len(header))
+        out.extend("| " + " | ".join(v.replace("|", "/") for _, v in group) + " |"
+                   for group in groups)
+        if j < len(lines) and lines[j].strip():
+            out.append("")
+        k = j
+    return out
+
+
 def gaejo_markdown(text: str) -> str:
     """개조식 body as canonical nested Markdown; tables and fences untouched."""
-    lines = _tables_out_of_items((text or "").split("\n"))
+    lines = _tables_out_of_items(_tables_out_of_labelled_items((text or "").split("\n")))
     typed = _typed_markers(lines)
     out: list[str] = []
     #: Open list-level indents.

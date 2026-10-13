@@ -986,6 +986,8 @@ class Sections(Base):
                 continue
 
             _count(bundle, spent)
+            # a section cut off mid-sentence ends at its last whole sentence
+            body = report.cut_unfinished_tail(body)
             # stray ideographs to Hangul, table gaps closed once before storing
             body = richtext.detach_tables(report.unwrap_json_prose(body))
             if report.placeholder_heavy(body) and any(re.search(r"\d", m or "")
@@ -1500,6 +1502,8 @@ class MinutesRepair(Base):
         sections, widened = report_checks.minutes_columns(bundle.document.sections,
                                                           prepass.dates)
         before += ["minutes_columns"] * widened
+        # one meeting, no mail: a 출처 column of 「회의」 on every row says nothing
+        sections, _ = report_checks.minutes_one_source(sections, prepass.dates)
         # 「미정(사유)」: reason to 비고 by code, so no rewrite reads it as an owner
         sections, _ = report_checks.minutes_deferred(sections)
         sections, filled = report_checks.minutes_due_fill(sections, prepass.dates)

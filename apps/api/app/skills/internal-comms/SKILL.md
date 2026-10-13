@@ -61,7 +61,7 @@ Readable in under a minute. Labels may be 「진행·계획·문제」 if the us
 - `block`: a value not in the material (date, time, phone/내선, email, URL, version, number) or a date whose weekday is wrong. Replace with the material's value or the placeholder; never keep it.
 - `check`: relative dates, a missing part (`questions` gives the question and placeholder), register slips, a first line too long.
 - `info`: placeholders still open — list them under 「보내기 전에 채울 것」.
-Fix, run once more, and report the final counts from the script.
+Fix, run once more. The check is yours, not the reader's: no 「점검 결과」 paragraph, counts or 「요일이 달력과 일치합니다」 under the notice — only 「보내기 전에 채울 것」 when something is still open.
 
 ## Output format
 ```

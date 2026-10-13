@@ -545,8 +545,8 @@ def _values_step(step_id: str, label: str, count: int) -> dict:
 def code_checked(answer: str, code_outputs: list[str]) -> tuple[str, list[str]]:
     """`answer` with numbers naming a value the code printed set to that value (the latest
     run's value for a quantity printed twice): `(answer, corrections)`."""
-    stated = calc_check.printed_values([printed_text(o) for o in code_outputs])
-    return calc_check.check_markdown(answer, stated)
+    printed = [printed_text(o) for o in code_outputs]
+    return calc_check.check_markdown(answer, calc_check.printed_values(printed), printed)
 
 
 def _text_of(message: dict) -> str:
@@ -765,12 +765,32 @@ def _number_sources(
     return content
 
 
+#: an article viewer page: its query names the article (「articleView.html?idxno=355223」)
+_VIEWER_PAGE = re.compile(
+    r"/[^/?#]*(?:view|read|article|detail|show|content|board|news)[^/?#]*\.(?:html?|php|do|jsp|aspx?)$",
+    re.I)
+
+
+def _same_page_fuller(url: str, known: str) -> bool:
+    """Whether `url` is `known` with the query a viewer page needs (`known` lacks it)."""
+    stem, _, query = url.partition("?")
+    return bool(query) and "?" not in known and stem.split("#")[0] == known.split("#")[0] \
+        and bool(_VIEWER_PAGE.search(known.split("#")[0]))
+
+
 def _source_number(url: str, sources: list[str]) -> int:
     if url not in sources:
-        sources.append(url)
+        bare = next((k for k, known in enumerate(sources) if _same_page_fuller(url, known)), None)
+        if bare is not None:
+            # the same article listed earlier without its id: one number, the whole address
+            sources[bare] = url
+        else:
+            sources.append(url)
     return sources.index(url) + 1
 
 
+#: `[[n]](url)` citations the writer linked itself.
+_LINKED_CITATION = re.compile(r"\[\[(\d{1,2})\]\]\((https?://[^)\s]{1,500})\)")
 #: `[n]` citations not already linked.
 _CITATION = re.compile(r"(?<!\[)\[(\d{1,2}(?:\s*[,，\-–]\s*\d{1,2})*)\](?!\()")
 
@@ -801,6 +821,12 @@ def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
                        else f"[[{n}]]({sources[n - 1]})" for n in wanted)
 
     pieces = answer.split("```")
+    for i in range(0, len(pieces), 2):
+        for m in _LINKED_CITATION.finditer(pieces[i]):
+            n, url = int(m.group(1)), m.group(2)
+            if 1 <= n <= len(sources) and _same_page_fuller(url, sources[n - 1]):
+                # the writer linked the article itself: the list keeps its id too
+                sources[n - 1] = url
     for i in range(0, len(pieces), 2):
         pieces[i] = _CITATION.sub(link, pieces[i])
     return "```".join(pieces), sorted(cited)
@@ -2202,12 +2228,11 @@ async def run_turn(
         yield {"type": "delta", "text": appendix}
     if code_outputs and not preflight_tool and len(
             hand := _unverified_figures(answer, "\n".join([given_text, *code_outputs]))) >= 2:
-        note = (
-            "\n\n_다음 값은 이번 코드 실행 출력에 없어 코드로 확인하지 못했습니다: "
-            + ", ".join(hand[:12]) + "_"
-        )
-        answer_text.append(note)
-        yield {"type": "delta", "text": note}
+        # the reader's answer carries no audit footnote; the steps say which values the
+        # code did not print
+        yield {"type": "step", "category": "thinking", "id": "code-unprinted",
+               "label": "코드 출력에 없는 값", "status": "done",
+               "detail": ", ".join(hand[:12])}
     unverified = [u for u in _urls_in(answer) if u not in seen_urls and _looks_like_a_source(u)]
     if unverified and seen_urls:
         note = (

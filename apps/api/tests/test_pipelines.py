@@ -59,6 +59,9 @@ def _old_checks(f: str) -> list[str]:
         out.append("staff-counts")
     if f in PREPASS:
         out.append("material-blanks")
+    if f == "result_report":
+        # a remark's count kept with its remark (round 3 A03)
+        out.append("count-labels")
     return out
 
 
