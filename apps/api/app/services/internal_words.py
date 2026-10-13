@@ -374,6 +374,22 @@ def _named_call(data: object, known: set[str]) -> bool:
     return bool(known) and shaped and bool(calls) and all(name in known for name, _ in calls)
 
 
+#: what may sit between two calls written in a row: 「{…}, {…}」
+_BETWEEN_CALLS = re.compile(r"[ \t]{0,4}[,;]?[ \t]{0,4}\n?[ \t]{0,8}(?=[{\[])")
+
+
+def _run_of_calls(text: str, at: int, is_call) -> tuple[int, list[str]]:
+    """End of the calls written right after `at` (「, {…}」 again and again) and their texts."""
+    bodies: list[str] = []
+    while (m := _BETWEEN_CALLS.match(text, at)) is not None:
+        got = _json_at(text, m.end())
+        if got is None or not is_call(got[0]):
+            break
+        bodies.append(text[m.end():got[1]])
+        at = got[1]
+    return at, bodies
+
+
 def written_tool_calls(text: str, known: set[str] | frozenset[str] = frozenset()
                        ) -> tuple[str, list[tuple[str, dict]]]:
     """`(text without written-out tool calls, the calls naming a tool in `known`)`: a model's
@@ -406,7 +422,10 @@ def written_tool_calls(text: str, known: set[str] | frozenset[str] = frozenset()
                 continue
             calls.extend(_json_calls(out[m.end():got[1]]))
             pieces.append(out[at:m.start()])
-            at = got[1]
+            # a second call after 「, 」 on the same run goes too, not shown
+            at, more = _run_of_calls(out, got[1], lambda d: _named_call(d, set(known)))
+            for body in more:
+                calls.extend(_json_calls(body))
         if pieces:
             pieces.append(out[at:])
             out = "".join(pieces)
@@ -447,7 +466,7 @@ def _strip_json_calls(text: str) -> str:
         if got is None or not _call_shaped(got[0]):
             continue
         pieces.append(out[at:m.start()])
-        at = got[1]
+        at, _ = _run_of_calls(out, got[1], _call_shaped)
     if pieces or at:
         pieces.append(out[at:])
         out = "".join(pieces)

@@ -609,3 +609,13 @@ def test_a_pasted_press_release_makes_no_medical_question():
     lab = ("이 검사 결과 괜찮은 건지 봐 줘.\n\n---\n공복혈당 130 mg/dL, 당화혈색소 6.8%, "
            "총콜레스테롤 240, 중성지방 180, 혈압 145/92, 체중 82kg, 복용 중인 약 없음\n")
     assert sessions._ask_of(lab) == lab
+
+
+def test_a_second_call_written_after_a_comma_is_taken_too():
+    # r7 A11-T2: two JSON calls in a row, the second left visible after 「, 」
+    text = ('찾아보겠습니다.\n{"name": "web_search", "arguments": {"query": "한빛소프트 매출"}}, '
+            '{"name": "web_search", "arguments": {"query": "한빛소프트 직원 수"}}\n\n본문입니다.')
+    out, calls = internal_words.written_tool_calls(text, {"web_search"})
+    assert "{" not in out and "본문입니다." in out
+    assert [args["query"] for _, args in calls] == ["한빛소프트 매출", "한빛소프트 직원 수"]
+    assert "{" not in internal_words.strip_tool_calls(text)
