@@ -143,7 +143,11 @@ def _korean_caveat(request: str) -> bool:
     return hangul > 0 and (latin < 40 or hangul * 4 > latin)
 
 
-def answer_instruction(model: dict[str, Any], *, structured: bool = False) -> str:
+def answer_instruction(
+    model: dict[str, Any], *, structured: bool = False, light: bool = False,
+) -> str:
+    if light:
+        return _light_answer_instruction(model, structured=structured)
     cutoff = accuracy_metadata(model, model.get("id"))["knowledgeCutoff"]
     source = (
         f"The configured model catalogue declares a training cutoff of {cutoff}; "
@@ -166,6 +170,23 @@ def answer_instruction(model: dict[str, Any], *, structured: bool = False) -> st
         + accuracy_caveat("English", model, model.get("id"))
     )
     return FRESHNESS_INSTRUCTION + "\n" + source + "\n" + ending
+
+
+def _light_answer_instruction(model: dict[str, Any], *, structured: bool) -> str:
+    """The strong-writer form: the catalogue's cutoff and the closing notice the screen
+    expects, nothing on how to write."""
+    cutoff = accuracy_metadata(model, model.get("id"))["knowledgeCutoff"]
+    known = (f"The model catalogue gives a training cutoff of {cutoff}."
+             if cutoff else "The model catalogue gives no training cutoff.")
+    if structured:
+        return known + (" Keep the requested document schema intact; never append prose "
+                        "outside JSON.")
+    return (
+        known + " Only if the freshness of a fact materially affects this answer, end with ONE "
+        "of these sentences in the answer's language:\n"
+        + accuracy_caveat("한국어", model, model.get("id")) + "\n"
+        + accuracy_caveat("English", model, model.get("id"))
+    )
 
 
 CURRENT_FACT_INSTRUCTION = (
@@ -209,6 +230,20 @@ ADVICE_INSTRUCTION = (
     "that is enough; no disclaimer list."
 )
 
+#: The strong-writer forms: what the model cannot know about this turn.
+LIGHT_CURRENT_FACT_INSTRUCTION = (
+    "This turn asks for something whose present state can change. Earlier answers are not "
+    "evidence of it; if nothing retrieved in this turn establishes it, say the current value "
+    "is unverified and give the last known state with its date."
+)
+LIGHT_ADVICE_INSTRUCTION = (
+    "This turn asks for {domain} guidance: give a concrete answer the person can act on, in "
+    "the form they asked for, naming the programmes, rules, procedures and agencies that "
+    "apply — also when the search found nothing; do not decline for lack of results. "
+    "Its concrete values are checked afterwards against this turn's search results and the "
+    "person's own words and files."
+)
+
 #: `exact_facts` domain → the words the instruction uses
 _ADVICE_WORDS = {"legal": "legal", "tax": "tax", "financial": "financial",
                  "medical": "medical or health"}
@@ -216,10 +251,11 @@ _ADVICE_WORDS = {"legal": "legal", "tax": "tax", "financial": "financial",
 
 def with_answer_policy(
     messages: list[dict], model: dict[str, Any], *, current_fact: bool | None = None,
-    advice: str = "", urgent: str = "",
+    advice: str = "", urgent: str = "", light: bool = False,
 ) -> list[dict]:
-    """Copied envelope; never mutate another comparison column."""
-    policy = answer_instruction(model)
+    """Copied envelope; never mutate another comparison column. `light` = the strong-writer
+    forms of the policy; the emergency rule is the same for every writer."""
+    policy = answer_instruction(model, light=light)
     result = [dict(message) for message in messages]
     latest = next((message.get("content") for message in reversed(result)
                    if message.get("role") == "user"), "")
@@ -239,9 +275,12 @@ def with_answer_policy(
     else:
         result.insert(0, {"role": "system", "content": policy})
     if current_turn:
-        result[0]["content"] += "\n\n" + CURRENT_FACT_INSTRUCTION
+        result[0]["content"] += "\n\n" + (
+            LIGHT_CURRENT_FACT_INSTRUCTION if light else CURRENT_FACT_INSTRUCTION)
     if advice in _ADVICE_WORDS:
-        result[0]["content"] += "\n\n" + ADVICE_INSTRUCTION.format(domain=_ADVICE_WORDS[advice])
+        result[0]["content"] += "\n\n" + (
+            LIGHT_ADVICE_INSTRUCTION if light else ADVICE_INSTRUCTION
+        ).format(domain=_ADVICE_WORDS[advice])
     if urgent:
         from app.services import red_flags
 
