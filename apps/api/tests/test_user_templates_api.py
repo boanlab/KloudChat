@@ -14,7 +14,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.chat import ChatSession, Message
-from app.models.user import User
+from app.models.user import AuditEvent, User
 from app.models.workspace import (
     Agent,
     DesignSystem,
@@ -44,7 +44,7 @@ async def db():
         await conn.run_sync(metadata.create_all, tables=[
             metadata.tables[m.__tablename__] for m in (
                 User, UserTemplate, Agent, DesignSystem, Project, ChatSession, Message,
-                StoredFile, Skill, UserPipeline)])
+                StoredFile, Skill, UserPipeline, AuditEvent)])
     async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
     await engine.dispose()

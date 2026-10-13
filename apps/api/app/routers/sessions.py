@@ -124,6 +124,7 @@ from app.services import (
     user_templates,
 )
 from app.services import agent as agent_service
+from app.services import audit as audit_service
 from app.services import auto_memory as auto_memory_service
 from app.services import chat as chat_service
 from app.services import deck as deck_service
@@ -2374,17 +2375,48 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_session(session_id: str, user: CurrentUser, db: DbSession):
+async def delete_session(
+    session_id: str,
+    user: CurrentUser,
+    db: DbSession,
+    request: Request = None,  # type: ignore[assignment]
+):
     session = await _owned(db, user, session_id)
+    counts = await _conversation_counts(db, [session.id])
     await db.exec(delete(Message).where(Message.session_id == session.id))
     # Job rows: no cascade
     await db.exec(delete(Job).where(Job.session_id == session.id))
-    await _delete_artifacts_of(db, [session.id])
+    counts["artifacts"] = await _delete_artifacts_of(db, [session.id])
     await forget_session_files(db, [session.id])
     if session.index_key:
         await index_client.forget_collection(collection=session.index_key)
     await db.delete(session)
+    db.add(audit_service.deletion(
+        user, request, action="conversation.delete", ids=[session.id], counts=counts,
+        note=_FILES_KEPT if counts["files"] else "",
+    ))
     await db.commit()
+
+
+#: conversation uploads stay in the file box; only their search entries go
+_FILES_KEPT = "첨부 파일은 지우지 않음"
+
+
+async def _conversation_counts(db: DbSession, session_ids: list[str]) -> dict[str, int]:
+    """What deleting these conversations takes (messages) or touches (uploads)."""
+    messages = (
+        await db.exec(
+            select(func.count()).select_from(Message)
+            .where(col(Message.session_id).in_(session_ids))
+        )
+    ).one()
+    files = (
+        await db.exec(
+            select(func.count()).select_from(StoredFile)
+            .where(col(StoredFile.session_id).in_(session_ids))
+        )
+    ).one()
+    return {"sessions": len(session_ids), "messages": int(messages), "files": int(files)}
 
 
 async def _delete_artifacts_of(db: DbSession, session_ids: list[str]) -> int:
@@ -2979,8 +3011,13 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
 
 
 @router.post("/delete")
-async def delete_sessions(payload: SessionBulkDelete, user: CurrentUser, db: DbSession):
-    """Deletes many conversations; `all` separate from an id list."""
+async def delete_sessions(
+    payload: SessionBulkDelete,
+    user: CurrentUser,
+    db: DbSession,
+    request: Request = None,  # type: ignore[assignment]
+):
+    """Deletes many conversations; `all` separate from an id list. One audit event."""
     query = select(ChatSession).where(owned_by(user.id))
     if not payload.all:
         if not payload.ids:
@@ -2991,17 +3028,23 @@ async def delete_sessions(payload: SessionBulkDelete, user: CurrentUser, db: DbS
         return {"deleted": 0}
 
     ids = [row.id for row in rows]
+    counts = await _conversation_counts(db, ids)
     await db.exec(delete(Message).where(col(Message.session_id).in_(ids)))
     # Job rows: no cascade
     await db.exec(delete(Job).where(col(Job.session_id).in_(ids)))
 
     artifacts_deleted = await _delete_artifacts_of(db, ids)
+    counts["artifacts"] = artifacts_deleted
     await forget_session_files(db, ids)
     for row in rows:
         if row.index_key:
             await index_client.forget_collection(collection=row.index_key)
 
     await db.exec(delete(ChatSession).where(col(ChatSession.id).in_(ids)))
+    db.add(audit_service.deletion(
+        user, request, action="conversation.bulk_delete", ids=ids, counts=counts,
+        everything=payload.all, note=_FILES_KEPT if counts["files"] else "",
+    ))
     await db.commit()
     return {"deleted": len(ids), "artifactsDeleted": artifacts_deleted}
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from pydantic import Field
 from sqlmodel import col, select, update
 
@@ -13,7 +13,7 @@ from app.core.deps import CurrentUser, DbSession
 from app.models.user import User, utcnow
 from app.models.workspace import Agent, UserTemplate
 from app.schemas.auth import Wire
-from app.services import design_templates, user_templates
+from app.services import audit, design_templates, user_templates
 
 router = APIRouter(tags=["user-templates"])
 
@@ -124,13 +124,16 @@ async def update_template(template_id: str, payload: TemplateIn, user: CurrentUs
 
 
 @router.delete("/user-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_template(template_id: str, user: CurrentUser, db: DbSession):
+async def delete_template(template_id: str, user: CurrentUser, db: DbSession,
+                          request: Request = None):  # type: ignore[assignment]
     row = await _owned(db, user, template_id)
     wire_id = user_templates.template_id(row)
     # agents reset to no template; conversations keep the id (shared seed)
     await db.exec(update(Agent).where(col(Agent.render_template_id) == wire_id)
                   .values(render_template_id=None))
     await db.delete(row)
+    db.add(audit.deletion(user, request, action="template.delete", ids=[row.id],
+                          counts={"templates": 1}))
     await db.commit()
     design_templates.forget(wire_id)
 

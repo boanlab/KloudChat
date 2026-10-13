@@ -79,7 +79,46 @@ export const ACTION_LABEL: Record<string, string> = {
   'publication.admin_read': '관리자의 챗봇 대화 열람',
   'publication.visitor_blocked': '챗봇 방문자 차단',
   'publication.visitor_unblocked': '챗봇 방문자 차단 해제',
+  'conversation.delete': '사용자 대화 삭제',
+  'conversation.bulk_delete': '사용자 대화 일괄 삭제',
+  'project.delete': '사용자 프로젝트 삭제',
+  'project.bulk_delete': '사용자 프로젝트 일괄 삭제',
+  'file.delete': '사용자 파일 삭제',
+  'knowledge.delete': '사용자 에이전트 지식 파일 삭제',
+  'artifact.delete': '사용자 아티팩트 삭제',
+  'artifact.bulk_delete': '사용자 아티팩트 일괄 삭제',
+  'memory.delete': '사용자 메모리 삭제',
+  'agent.delete': '사용자 에이전트 삭제',
+  'agent.bulk_delete': '사용자 에이전트 일괄 삭제',
+  'skill.delete': '사용자 스킬 삭제',
+  'skill.bulk_delete': '사용자 스킬 일괄 삭제',
+  'design.delete': '사용자 테마 삭제',
+  'design.bulk_delete': '사용자 테마 일괄 삭제',
+  'template.delete': '사용자 템플릿 삭제',
+  'pipeline.delete': '사용자 진행 과정 삭제',
 }
+
+/** A person deleting their own content; one row per request, counts in metadata. */
+const DELETION_CODES = [
+  'conversation.delete',
+  'conversation.bulk_delete',
+  'project.delete',
+  'project.bulk_delete',
+  'file.delete',
+  'knowledge.delete',
+  'artifact.delete',
+  'artifact.bulk_delete',
+  'memory.delete',
+  'agent.delete',
+  'agent.bulk_delete',
+  'skill.delete',
+  'skill.bulk_delete',
+  'design.delete',
+  'design.bulk_delete',
+  'template.delete',
+  'pipeline.delete',
+]
+const DELETION_ACTIONS = new Set(DELETION_CODES)
 
 /** A sign-in row's outcome lives in its detail. */
 const LOGIN_DETAIL: Record<string, string> = {
@@ -105,6 +144,7 @@ export const ACTION_GROUPS: { id: string; label: string; codes: string }[] = [
   { id: 'privacy', label: '개인정보 · 라우팅', codes: 'privacy.*,pii.*,filter.*,routing.*' },
   { id: 'storage', label: '저장 공간', codes: 'storage.*' },
   { id: 'publications', label: '챗봇 공개 · 채널', codes: 'publication.*' },
+  { id: 'deletions', label: '사용자 콘텐츠 삭제', codes: DELETION_CODES.join(',') },
 ]
 
 /** Recorded field names (governance, system settings, accounts) to their screen labels. */
@@ -261,9 +301,39 @@ const DETAIL_WORD: Record<string, string> = {
   refresh_reuse: '',
 }
 
+/** Counts a person's own delete records, in the order the server writes its detail. */
+const DELETED_COUNT: [string, string][] = [
+  ['sessions', '대화 {n}개'],
+  ['messages', '메시지 {n}개'],
+  ['artifacts', '아티팩트 {n}개'],
+  ['projects', '프로젝트 {n}개'],
+  ['files', '파일 {n}개'],
+  ['memories', '메모리 {n}개'],
+  ['agents', '에이전트 {n}개'],
+  ['skills', '스킬 {n}개'],
+  ['designs', '테마 {n}개'],
+  ['templates', '템플릿 {n}개'],
+  ['pipelines', '진행 과정 {n}개'],
+]
+
+/** A delete row's counts from its metadata, so the words follow the screen language. */
+function deletionWords(meta: Record<string, unknown>, t: (s: string) => string): string {
+  const parts = meta.all === true ? [t('전체 삭제')] : []
+  for (const [key, words] of DELETED_COUNT) {
+    if (typeof meta[key] === 'number') parts.push(t(words).replace('{n}', (meta[key] as number).toLocaleString()))
+  }
+  if (typeof meta.sessions === 'number' && typeof meta.files === 'number' && meta.files > 0) {
+    parts.push(t('첨부 파일은 지우지 않음'))
+  }
+  return parts.join(' · ')
+}
+
 /** Free-text detail made readable, or '' when the label already says it. */
 export function detailWords(row: AuditRow, t: (s: string) => string): string {
   const detail = row.detail.trim()
+  if (row.metadata && DELETION_ACTIONS.has(row.action)) {
+    return deletionWords(row.metadata, t) || detail
+  }
   // A chatbot row names the bot; an administrator's reading or closing also says why.
   const reason = typeof row.metadata?.reason === 'string' ? row.metadata.reason.trim() : ''
   if (row.action.startsWith('publication.') && reason) {

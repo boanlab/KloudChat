@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import quote, unquote
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, or_, tuple_
 from sqlmodel import col, delete, select, update
@@ -77,6 +77,7 @@ from app.schemas.workspace import (
     ToolCatalogOut,
 )
 from app.services import (
+    audit,
     critique,
     deck_export,
     design_extract,
@@ -421,11 +422,12 @@ async def patch_project(project_id: str, payload: ProjectPatch, user: CurrentUse
     return await _project_out(db, project)
 
 
-async def _remove_project(db: DbSession, project: Project) -> None:
-    """Project and knowledge files deleted; sessions detached. Uncommitted."""
-    for stored in (
+async def _remove_project(db: DbSession, project: Project) -> int:
+    """Project and knowledge files deleted; sessions detached. Uncommitted; returns file count."""
+    files = (
         await db.exec(select(StoredFile).where(StoredFile.project_id == project.id))
-    ).all():
+    ).all()
+    for stored in files:
         file_service.delete_blob(stored.storage_key)
         await db.delete(stored)
     if project.index_key:
@@ -437,20 +439,30 @@ async def _remove_project(db: DbSession, project: Project) -> None:
         session.project_id = None
         db.add(session)
     await db.delete(project)
+    return len(files)
 
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_project(project_id: str, user: CurrentUser, db: DbSession):
-    await _remove_project(db, await _own(db, Project, "user_id", user, project_id))
+async def delete_project(project_id: str, user: CurrentUser, db: DbSession,
+                         request: Request = None):  # type: ignore[assignment]
+    files = await _remove_project(db, await _own(db, Project, "user_id", user, project_id))
+    db.add(audit.deletion(user, request, action="project.delete", ids=[project_id],
+                          counts={"projects": 1, "files": files}))
     await db.commit()
 
 
 @router.post("/projects/delete")
-async def delete_projects(payload: BulkDelete, user: CurrentUser, db: DbSession):
+async def delete_projects(payload: BulkDelete, user: CurrentUser, db: DbSession,
+                          request: Request = None):  # type: ignore[assignment]
     """Bulk delete; returns count."""
     rows = await _owned_many(db, Project, "user_id", user, payload.ids)
+    files = 0
     for row in rows:
-        await _remove_project(db, row)
+        files += await _remove_project(db, row)
+    if rows:
+        db.add(audit.deletion(user, request, action="project.bulk_delete",
+                              ids=[row.id for row in rows],
+                              counts={"projects": len(rows), "files": files}))
     await db.commit()
     return {"deleted": len(rows)}
 
@@ -735,7 +747,8 @@ async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
 
 
 @router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_file(file_id: str, user: CurrentUser, db: DbSession):
+async def delete_file(file_id: str, user: CurrentUser, db: DbSession,
+                      request: Request = None):  # type: ignore[assignment]
     owned = await _own(db, StoredFile, "user_id", user, file_id)
     # shelf (key mint commits) before row lock: nothing commits between lock and delete
     shelf = await shelf_of(db, owned) if owned.ocr_state else None
@@ -774,6 +787,8 @@ async def delete_file(file_id: str, user: CurrentUser, db: DbSession):
             if not await index_client.forget_document(collection=collection, doc_id=stored.id):
                 log.warning("file %s: index delete from %s failed", stored.id, collection)
     await db.delete(stored)
+    db.add(audit.deletion(user, request, action="file.delete", ids=[stored.id],
+                          counts={"files": 1}, extra={"bytes": stored.size}))
     await db.commit()
 
 
@@ -1841,15 +1856,19 @@ async def restore_artifact(
 
 
 @router.delete("/artifacts/{artifact_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
+async def delete_artifact(artifact_id: str, user: CurrentUser, db: DbSession,
+                          request: Request = None):  # type: ignore[assignment]
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     await db.exec(delete(ArtifactVersion).where(ArtifactVersion.artifact_id == artifact.id))
     await db.delete(artifact)
+    db.add(audit.deletion(user, request, action="artifact.delete", ids=[artifact.id],
+                          counts={"artifacts": 1}, extra={"kind": str(artifact.kind)}))
     await db.commit()
 
 
 @router.post("/artifacts/delete")
-async def delete_artifacts(payload: BulkDelete, user: CurrentUser, db: DbSession):
+async def delete_artifacts(payload: BulkDelete, user: CurrentUser, db: DbSession,
+                           request: Request = None):  # type: ignore[assignment]
     """Bulk delete; source sessions untouched."""
     rows = await _owned_many(db, Artifact, "user_id", user, payload.ids)
     if not rows:
@@ -1857,6 +1876,8 @@ async def delete_artifacts(payload: BulkDelete, user: CurrentUser, db: DbSession
     ids = [row.id for row in rows]
     await db.exec(delete(ArtifactVersion).where(col(ArtifactVersion.artifact_id).in_(ids)))
     await db.exec(delete(Artifact).where(col(Artifact.id).in_(ids)))
+    db.add(audit.deletion(user, request, action="artifact.bulk_delete", ids=ids,
+                          counts={"artifacts": len(ids)}))
     await db.commit()
     return {"deleted": len(ids)}
 
@@ -2121,16 +2142,23 @@ async def toggle_skill(skill_id: str, user: CurrentUser, db: DbSession):
 
 
 @router.delete("/skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_skill(skill_id: str, user: CurrentUser, db: DbSession):
+async def delete_skill(skill_id: str, user: CurrentUser, db: DbSession,
+                       request: Request = None):  # type: ignore[assignment]
     await db.delete(await _own(db, Skill, "owner_id", user, skill_id))
+    db.add(audit.deletion(user, request, action="skill.delete", ids=[skill_id],
+                          counts={"skills": 1}))
     await db.commit()
 
 
 @router.post("/skills/delete")
-async def delete_skills(payload: BulkDelete, user: CurrentUser, db: DbSession):
+async def delete_skills(payload: BulkDelete, user: CurrentUser, db: DbSession,
+                        request: Request = None):  # type: ignore[assignment]
     rows = await _owned_many(db, Skill, "owner_id", user, payload.ids)
     for row in rows:
         await db.delete(row)
+    if rows:
+        db.add(audit.deletion(user, request, action="skill.bulk_delete",
+                              ids=[row.id for row in rows], counts={"skills": len(rows)}))
     await db.commit()
     return {"deleted": len(rows)}
 
@@ -2183,8 +2211,11 @@ async def pin_memory(memory_id: str, user: CurrentUser, db: DbSession):
 
 
 @router.delete("/memory/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_memory(memory_id: str, user: CurrentUser, db: DbSession):
+async def delete_memory(memory_id: str, user: CurrentUser, db: DbSession,
+                        request: Request = None):  # type: ignore[assignment]
     await db.delete(await _own(db, Memory, "user_id", user, memory_id))
+    db.add(audit.deletion(user, request, action="memory.delete", ids=[memory_id],
+                          counts={"memories": 1}))
     await db.commit()
 
 
@@ -2521,7 +2552,8 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
 
 
 @router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_agent(agent_id: str, user: CurrentUser, db: DbSession):
+async def delete_agent(agent_id: str, user: CurrentUser, db: DbSession,
+                       request: Request = None):  # type: ignore[assignment]
     from app.routers import user_pipelines
 
     agent = await _own(db, Agent, "owner_id", user, agent_id)
@@ -2529,13 +2561,16 @@ async def delete_agent(agent_id: str, user: CurrentUser, db: DbSession):
     key = agent.index_key
     await user_pipelines.drop_processes(db, [agent.id])
     await db.delete(agent)
+    db.add(audit.deletion(user, request, action="agent.delete", ids=[agent_id],
+                          counts={"agents": 1}))
     await db.commit()
     if key:
         await index_client.forget_collection(collection=key)
 
 
 @router.post("/agents/delete")
-async def delete_agents(payload: BulkDelete, user: CurrentUser, db: DbSession):
+async def delete_agents(payload: BulkDelete, user: CurrentUser, db: DbSession,
+                        request: Request = None):  # type: ignore[assignment]
     """Bulk delete; index collections dropped after commit."""
     from app.routers import user_pipelines
 
@@ -2544,6 +2579,9 @@ async def delete_agents(payload: BulkDelete, user: CurrentUser, db: DbSession):
     await user_pipelines.drop_processes(db, [row.id for row in rows])
     for row in rows:
         await db.delete(row)
+    if rows:
+        db.add(audit.deletion(user, request, action="agent.bulk_delete",
+                              ids=[row.id for row in rows], counts={"agents": len(rows)}))
     await db.commit()
     for key in keys:
         try:
@@ -2950,7 +2988,8 @@ async def patch_design(design_id: str, payload: DesignSystemIn, user: CurrentUse
 
 
 @router.delete("/designs/{design_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_design(design_id: str, user: CurrentUser, db: DbSession):
+async def delete_design(design_id: str, user: CurrentUser, db: DbSession,
+                        request: Request = None):  # type: ignore[assignment]
     """Design system delete; users detached in one transaction."""
     row = await _own(db, DesignSystem, "owner_id", user, design_id)
     await db.exec(
@@ -2960,11 +2999,14 @@ async def delete_design(design_id: str, user: CurrentUser, db: DbSession):
         update(Agent).where(col(Agent.design_system_id) == row.id).values(design_system_id=None)
     )
     await db.delete(row)
+    db.add(audit.deletion(user, request, action="design.delete", ids=[design_id],
+                          counts={"designs": 1}))
     await db.commit()
 
 
 @router.post("/designs/delete")
-async def delete_designs(payload: BulkDelete, user: CurrentUser, db: DbSession):
+async def delete_designs(payload: BulkDelete, user: CurrentUser, db: DbSession,
+                         request: Request = None):  # type: ignore[assignment]
     """Bulk delete; users detached."""
     rows = await _owned_many(db, DesignSystem, "owner_id", user, payload.ids)
     if not rows:
@@ -2977,6 +3019,8 @@ async def delete_designs(payload: BulkDelete, user: CurrentUser, db: DbSession):
         update(Agent).where(col(Agent.design_system_id).in_(ids)).values(design_system_id=None)
     )
     await db.exec(delete(DesignSystem).where(col(DesignSystem.id).in_(ids)))
+    db.add(audit.deletion(user, request, action="design.bulk_delete", ids=ids,
+                          counts={"designs": len(ids)}))
     await db.commit()
     return {"deleted": len(ids)}
 
@@ -3355,7 +3399,8 @@ async def reindex_agent_knowledge(
 
 
 @router.delete("/agents/{agent_id}/knowledge/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_agent_knowledge(agent_id: str, file_id: str, user: CurrentUser, db: DbSession):
+async def delete_agent_knowledge(agent_id: str, file_id: str, user: CurrentUser, db: DbSession,
+                                 request: Request = None):  # type: ignore[assignment]
     agent = await _own(db, Agent, "owner_id", user, agent_id)
     stored = await db.get(StoredFile, file_id)
     if stored is None or stored.user_id != user.id or stored.agent_id != agent_id:
@@ -3363,6 +3408,8 @@ async def delete_agent_knowledge(agent_id: str, file_id: str, user: CurrentUser,
     if stored.storage_key:
         file_service.delete_blob(stored.storage_key)
     await db.delete(stored)
+    db.add(audit.deletion(user, request, action="knowledge.delete", ids=[file_id],
+                          counts={"files": 1}, extra={"agentId": agent_id, "bytes": stored.size}))
     await db.commit()
     if agent.index_key:
         await index_client.forget_document(collection=agent.index_key, doc_id=file_id)
