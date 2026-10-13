@@ -26,7 +26,7 @@ from app.models.publishing import (
 )
 from app.models.user import utcnow
 from app.routers import publications
-from app.services import publishing
+from app.services import block_fences, publishing
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["bot-channels"])
@@ -37,7 +37,7 @@ CONVERSATION_HEADER = "X-KloudChat-Conversation"
 _HISTORY_MAX = 40
 _KEEPALIVE_SEC = 10.0
 _PIECE = 120
-_SOURCES = re.compile(r"\n{1,3}#{2,3} ?출처[ \t]{0,4}\n([\s\S]{0,8000})$")
+_SOURCES = re.compile(r"\n{1,3}#{2,3} ?(?:출처|Sources)[ \t]{0,4}\n([\s\S]{0,8000})$")
 _CITED = re.compile(r"^\s*-\s*\[(\d{1,3})\]\s*(.+?)\s*$")
 _LINK = re.compile(r"^\[([^\]]{1,300})\]\((https?://[^)\s]{1,2000})\)$")
 
@@ -152,10 +152,12 @@ def _text_of(content: Any) -> str:
 
 
 def citations_of(content: str) -> tuple[str, list[dict[str, Any]]]:
-    """Answer without sources list, plus that list as data."""
-    found = _SOURCES.search(content or "")
+    """Answer without sources list, plus that list as data; the app's block fences (```kpi,
+    ```callout) as plain Markdown, which a caller would otherwise show as they stand."""
+    content = block_fences.plain(content or "")
+    found = _SOURCES.search(content)
     if found is None:
-        return (content or "").strip(), []
+        return content.strip(), []
     cited = []
     for line in found.group(1).splitlines():
         match = _CITED.match(line)

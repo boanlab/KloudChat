@@ -5,7 +5,7 @@
 
 name = "chat"
 pre = ["check:gaps", "gap-card"]
-finish = ["answer-normalize", "answer-han", "check:answer-grounding", "check:copy", "check:skills", "text-fit", "copy-marks", "answer-replace"]
+finish = ["answer-normalize", "answer-han", "check:answer-grounding", "check:copy", "check:skills", "text-fit", "copy-marks", "answer-marks", "answer-replace"]
 
 # What each step of the drawn chain does, said for the person (display only).
 [summary]

@@ -18,6 +18,16 @@ import { doingPhrase, donePhrase, failedPhrase, runSeconds, stageLabel, stageTon
 import { useT } from '@/lib/useT'
 import { downloadFile } from '@/lib/api'
 
+/** A step label in the screen's language; a stage's 「이름 · 결과」 label part by part. */
+function stepLabel(t: (text: string) => string, label: string): string {
+  const whole = t(label)
+  if (whole !== label || !label.includes(' · ')) return whole
+  return label
+    .split(' · ')
+    .map((part) => t(part))
+    .join(' · ')
+}
+
 /** m:ss since `since`, ticking while live. */
 function useElapsed(since: number | undefined, live: boolean) {
   const [now, setNow] = useState(() => Date.now())
@@ -105,7 +115,7 @@ function StepRow({ step, live }: { step: Step; live: boolean }) {
             running && (live ? 'font-medium text-fg' : 'text-fg'),
           )}
         >
-          {t(step.label)}
+          {stepLabel(t, step.label)}
           {step.progress && (
             <span className="ml-1 tabular-nums text-faint no-underline">
               ({step.progress.current}/{step.progress.total})

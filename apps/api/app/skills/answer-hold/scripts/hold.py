@@ -18,8 +18,8 @@ _NOT_COVERED = re.compile(
 #: Material passage header in a tool result (`knowledge.render`).
 _PASSAGE = re.compile(r"^\[\d{1,3}\] 자료: ", re.M)
 #: Earlier answer's source list naming the material (no link: `agent._link_citations`).
-_CITED = re.compile(r"^### 출처[ \t]{0,4}$", re.M)
-_SOURCES = re.compile(r"\n#{2,3} ?출처[ \t]{0,4}\n[\s\S]{0,6000}$")
+_CITED = re.compile(r"^### (?:출처|Sources)[ \t]{0,4}$", re.M)
+_SOURCES = re.compile(r"\n#{2,3} ?(?:출처|Sources)[ \t]{0,4}\n[\s\S]{0,6000}$")
 _SENTENCE = re.compile(r"(?<=[.!?。])[ \t]{1,8}|\n{1,8}")
 #: Support: share of a sentence's letter pairs found in retrieved text.
 _SUPPORT = 0.3
