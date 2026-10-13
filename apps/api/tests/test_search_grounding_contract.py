@@ -127,9 +127,11 @@ async def test_successful_search_updates_initial_policy_and_sanitizes_reference_
     assert forwarded[-1]["role"] == "tool"
     assert "[MASKED]" in forwarded[-1]["content"]
     assert "SYNTHETIC_PRIVATE_VALUE" not in json.dumps(forwarded)
-    assert "brief exact supporting quotation" in forwarded[0]["content"]
-    assert "Previous assistant answers and model memory are not evidence" in forwarded[0]["content"]
+    assert "time-sensitive and exact facts" in forwarded[0]["content"]
+    assert "Previous assistant answers are not evidence" in forwarded[0]["content"]
     assert "old scheduled term" in forwarded[0]["content"]
+    # established background is not dropped for missing a result (r7 P27)
+    assert "Well-established background" in forwarded[0]["content"]
     assert events[-1] == {"type": "usage", "inputTokens": 3, "outputTokens": 5}
 
 
