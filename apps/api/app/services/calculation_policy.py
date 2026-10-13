@@ -27,6 +27,15 @@ _PROGRAM = re.compile(
 )
 _BUILD = re.compile(r"만들|작성|구현|개발|\b(?:write|build|create|generate|implement)\b", re.I)
 _CODE = re.compile(r"\b(?:function\s+\w+\s*\(|def\s+\w+\s*\(|return\s+)", re.I)
+#: A spreadsheet formula asked for: the answer is the formula, not a number to verify
+#: (「엑셀 수식 생성기가 되어 줘. 지역별·월별 매출 합계를 계산하는 수식이 필요해」).
+_SHEET_FORMULA = re.compile(
+    r"(?:엑셀|스프레드\s?시트|구글\s?시트|\b(?:excel|spreadsheet|google\s+sheets)\b)"
+    r"[^\n]{0,80}?(?:수식|\bformulas?\b)"
+    r"|(?:수식|\bformulas?\b)[^\n]{0,40}?(?:엑셀|스프레드\s?시트|구글\s?시트|"
+    r"\b(?:excel|spreadsheet|google\s+sheets)\b)",
+    re.IGNORECASE,
+)
 _DECLINE = re.compile(
     r"(?:계산|검산)(?:을|은|는|도)?\s*하지(?:는|도)?\s*(?:마|말)|"
     # 「계산 안 함」 asks nothing
@@ -380,6 +389,8 @@ def requires_calculation(request: str) -> bool:
 
     # quotes supply numbers, not intent
     intent = _mask_pasted_intent(text, _mask_quoted_intent(text))
+    if _SHEET_FORMULA.search(intent):
+        return False
     clauses: list[tuple[str, str, str]] = []
     start = 0
     previous_delimiter = ""

@@ -49,9 +49,9 @@ _SPAN = re.compile(
     r"|(?P<d>일)(?=\s{0,2}(?:간|동안|전|후|뒤|이내|안에|만에|이후|이전|가량|정도|짜리)))")
 
 #: a number with its scale words: 「5억 7,499만」, 「8억 8천만」, 「1.2조」, 「26」
-_TERM = (r"\d[\d,]*(?:\.\d+)?\s?(?:조|억|천만|백만|만|천)"
-         r"(?:\s?\d[\d,]*(?:\.\d+)?\s?(?:억|천만|백만|만|천))*"
-         r"|\d[\d,]*(?:\.\d+)?")
+_TERM = (r"\d(?:,?\d)*(?:\.\d+)?\s?(?:조|억|천만|백만|만|천)"
+         r"(?:\s?\d(?:,?\d)*(?:\.\d+)?\s?(?:억|천만|백만|만|천))*"
+         r"|\d(?:,?\d)*(?:\.\d+)?")
 _UNITS = ("%p", "%", "퍼센트", "원", "달러", "명", "건", "개월", "개", "가지", "곳", "년", "주",
           "일", "시간", "분", "초", "회", "배", "점", "자", "줄", "장", "쪽", "대", "팀")
 _UNIT = "|".join(map(re.escape, _UNITS))
@@ -735,9 +735,11 @@ def _line_at(text: str, pos: int) -> tuple[str, int]:
 
 def _widen(text: str, s: int, e: int) -> tuple[int, int]:
     """Span grown to the whole value: digits, scale words, unit, a date's parts and weekday."""
-    while s > 0 and re.match(r"[\d,.]", text[s - 1]):
+    while s > 0 and (text[s - 1].isdigit()
+                     or (text[s - 1] in ",." and s > 1 and text[s - 2].isdigit())):
         s -= 1
-    while e < len(text) and re.match(r"[\d,.]", text[e]):
+    while e < len(text) and (text[e].isdigit()
+                             or (text[e] in ",." and text[e + 1 : e + 2].isdigit())):
         e += 1
     line, base = _line_at(text, s)
     for *_, (ds, de) in _days_in(line):

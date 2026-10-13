@@ -350,12 +350,15 @@ def test_a_repeating_stream_is_recognised() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_looping_answer_is_cut_and_told(monkeypatch) -> None:
-    """A looping stream is cut off and a note says so at the end."""
+@pytest.mark.parametrize("lead", ["", "역발행은 세금계산서 발행 방식의 하나입니다.\n\n"])
+async def test_a_looping_answer_is_cut_and_told(monkeypatch, lead) -> None:
+    """A looping stream is cut off and asked once more; looping again, one copy stays with a
+    note, and a loop that is the whole answer leaves no answer instead of a note."""
     seen: list[dict] = []
     paragraph = "역발행은 공급받는 자가 세금계산서를 발행하는 방식이며 절차가 다릅니다. " * 3
     chunk = json.dumps({"choices": [{"delta": {"content": paragraph}}]}, ensure_ascii=False)
-    lines = [f"data: {chunk}"] * 40 + ["data: [DONE]"]
+    first = json.dumps({"choices": [{"delta": {"content": lead}}]}, ensure_ascii=False)
+    lines = [f"data: {first}"] + [f"data: {chunk}"] * 40 + ["data: [DONE]"]
 
     class _Loop(_Client):
         def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
@@ -375,10 +378,20 @@ async def test_a_looping_answer_is_cut_and_told(monkeypatch) -> None:
             ToolContext(user_id="user", session_id="session", api_key="key"),
         )
     ]
-    text = "".join(e["text"] for e in events if e["type"] == "delta")
-    assert "되풀이되어 여기서 멈췄습니다" in text
-    assert text.count(paragraph) < 40
-    assert len(seen) == 1
+    text = ""
+    for event in events:
+        if event["type"] == "delta":
+            text += event["text"]
+        elif event["type"] == "retract":
+            text = text.replace(event["text"], "", 1)
+    assert len(seen) == 2
+    assert seen[1]["presence_penalty"] == agent._LOOP_RETRY_PRESENCE
+    if lead:
+        assert text.startswith(lead)
+        assert "되풀이되어 여기서 멈췄습니다" in text
+        assert text.count("역발행은 공급받는 자가") == 1
+    else:
+        assert text == ""
 
 
 @pytest.mark.asyncio

@@ -41,7 +41,9 @@ class Normalize(Base):
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         req = bundle.request
-        streamed = internal_words.strip_echoed_heading(bundle.document.streamed)
+        # reasoning the model wrote out (「[Thinking: …]」) is never the answer
+        streamed = internal_words.strip_reasoning(bundle.document.streamed)
+        streamed = internal_words.strip_echoed_heading(streamed)
         if req.traced or req.evidence or req.check_material.strip():
             # grounded in the person's material or this turn's search: no training-time caveat
             streamed = current_evidence.strip_caveat(streamed)

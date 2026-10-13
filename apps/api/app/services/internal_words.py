@@ -294,6 +294,53 @@ _ECHOED_LINE = re.compile(
     r"Rewritten\s+answer)\s{0,3}:?\s*$", re.I | re.M)
 
 
+#: Reasoning written into the answer: 「<think>…</think>」, a closing tag whose opening the
+#: template ate, or a bracketed 「[Thinking: …]」 / 「(Reasoning: …)」 block starting a line.
+_THINK_TAGGED = re.compile(r"<think(?:ing)?>[\s\S]*?</think(?:ing)?>\s*", re.I)
+_THINK_CLOSE = re.compile(r"\A[\s\S]*?</think(?:ing)?>\s*", re.I)
+_THINK_BRACKET = re.compile(
+    r"^[ \t]*([\[(])\s?(?:thinking|thoughts?|reasoning|internal\s+(?:notes?|reasoning)|"
+    r"생각|추론)\s?:", re.I | re.M)
+_CLOSER = {"[": "]", "(": ")"}
+#: Shorter brackets are content (「(생각: 30초)」), not a reasoning block.
+_THINK_MIN = 80
+
+
+def strip_reasoning(text: str) -> str:
+    """`text` minus reasoning blocks the model wrote into the answer; never down to nothing."""
+    if not text or not re.search(r"think|reason|thought|생각|추론", text, re.I):
+        return text
+    out = _THINK_TAGGED.sub("", text)
+    if "</think" in out.lower():
+        out = _THINK_CLOSE.sub("", out, count=1)
+    pieces: list[str] = []
+    at = 0
+    for m in _THINK_BRACKET.finditer(out):
+        if m.start() < at:
+            continue
+        opener, closer = m.group(1), _CLOSER[m.group(1)]
+        depth, i = 0, m.start(1)
+        while i < len(out):
+            if out[i] == opener:
+                depth += 1
+            elif out[i] == closer:
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        if i >= len(out) or i - m.start() < _THINK_MIN:
+            continue
+        pieces.append(out[at:m.start()])
+        at = i + 1
+    if pieces:
+        pieces.append(out[at:])
+        out = "".join(pieces)
+    if out == text:
+        return text
+    out = re.sub(r"\n{3,}", "\n\n", out).strip("\n")
+    return out if out.strip() else text
+
+
 def strip_echoed_heading(text: str) -> str:
     """`text` without a prompt heading the model copied (「# Answer」), and without the
     prompt's problem list it echoed above one."""
