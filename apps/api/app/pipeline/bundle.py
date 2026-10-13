@@ -54,6 +54,9 @@ class Request:
     check_material: str = ""
     #: chat turn on the person's material: its answer is traced even without check skills
     traced: bool = False
+    #: legal, tax, financial or medical chat turn (`exact_facts.advice_domain`): its values,
+    #: hotlines, dosages and legal consequences are traced to the search results
+    advice: str = ""
     #: tool prints (composed run: earlier step's code output)
     tool_outputs: list[str] = field(default_factory=list)
     #: web search results of the turn: evidence for the value guard, never number sources

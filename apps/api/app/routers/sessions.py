@@ -104,6 +104,7 @@ from app.services import (
     check_skills,
     conversation_summary,
     design_templates,
+    exact_facts,
     figures,
     file_schema,
     freshness,
@@ -144,6 +145,7 @@ from app.services.context import (
     envelope_tokens,
     fit_history,
     history_budget,
+    is_small_talk,
     literature_request,
     requests_web_search,
     search_hints,
@@ -1462,6 +1464,14 @@ def _traced(keys: tuple[str, ...], material: bool) -> tuple[str, ...]:
     from app.pipeline.check_stages import TRACE
 
     return (*keys, TRACE) if material and TRACE not in keys else tuple(keys)
+
+
+def _advice_checks(keys: tuple[str, ...], advice: str | None) -> tuple[str, ...]:
+    """A legal, tax, financial or medical turn carries the grounding check, as a person's
+    agent that turned it on would."""
+    from app.pipeline.check_stages import TRACE
+
+    return (*keys, TRACE) if advice and TRACE not in keys else tuple(keys)
 
 
 def _grounded_in_files(workspace: WorkspaceContext) -> bool:
@@ -3844,6 +3854,25 @@ async def send_message(
         # current fact asked: search forced; availability rechecked after privacy
         forced_by_freshness = forced_tool is None
         forced_tool = "web_search"
+    earlier_asks = [m.content for m in history if m.role is Role.user]
+    #: why the first search is forced though no current-fact wording asked for it
+    #: (a hotline, a tax rule, a rate, advice): `exact_facts`, every model alike
+    exact_reason = (
+        exact_facts.search_reason(content, earlier_asks)
+        if session.kind is SessionKind.chat and published is None and not fresh_fact
+        and effective_web_search and forced_tool is None
+        and not is_small_talk(content)
+        else None
+    )
+    if exact_reason:
+        forced_by_freshness = True
+        forced_tool = "web_search"
+    #: legal, tax, financial or medical advice: the answer's concrete claims are traced
+    advice = (
+        exact_facts.advice_domain(content, earlier_asks)
+        if session.kind is SessionKind.chat and published is None
+        else None
+    )
     web_search_auto = payload.web_search == "auto" and forced_tool is None
     # agent allowlist without web_search is deliberate: no 「웹 검색 없이」 noise
     if session.agent_id and agent_tools is not None and "web_search" not in agent_tools:
@@ -3917,7 +3946,7 @@ async def send_message(
         _raise_workspace_error(exc)
 
     if (
-        fresh_fact
+        (fresh_fact or exact_reason)
         and session.kind is SessionKind.chat
         and (
             (_grounded_in_files(workspace) and not freshness.names_the_present(content))
@@ -3926,6 +3955,7 @@ async def send_message(
     ):
         # question about an attached/pasted document: read it, not search or withhold
         fresh_fact = False
+        exact_reason = None
         if forced_by_freshness and forced_tool == "web_search":
             forced_tool = None
             web_search_auto = payload.web_search == "auto"
@@ -4770,7 +4800,8 @@ async def send_message(
                     **search_hints(lookup_content),
                 },
             )
-        elif not search_needs_planning(lookup_content):
+        elif not search_needs_planning(lookup_content) and not (exact_reason and history):
+            # a follow-up forced by `exact_facts` leans on earlier turns: the model plans it
             preset_call = (
                 "web_search", {
                     "query": search_query(lookup_content, prefer_primary=fresh_fact),
@@ -4895,7 +4926,9 @@ async def send_message(
                     else None
                 ),
                 preflight_tool=preflight_tool,
-                check_keys=tuple(check_skills.of_stage(check_keys, "post", specs)),
+                check_keys=_advice_checks(
+                    tuple(check_skills.of_stage(check_keys, "post", specs)), advice),
+                advice=advice or "",
                 skill_keys=_skill_keys(workspace.applied_skills, specs),
                 skill_specs=specs,
                 own_scripts=own_scripts,
@@ -5329,6 +5362,8 @@ async def _answer_turn(
     carries_material: bool = False,
     #: catalogue agent key: which pipeline finishes the answer
     agent_key: str = "",
+    #: `exact_facts.advice_domain` of the turn: writer rule and grounding check
+    advice: str = "",
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion; own DB session (request one closes)."""
     text_parts: list[str] = []
@@ -5428,7 +5463,7 @@ async def _answer_turn(
             agent_service.run_turn(
                 model["id"],
                 freshness.with_answer_policy(
-                    messages, model, current_fact=bool(freshness_request),
+                    messages, model, current_fact=bool(freshness_request), advice=advice,
                 ),
                 tools,
                 ctx,
@@ -5579,7 +5614,7 @@ async def _answer_turn(
             check_material=check_material, tool_outputs=list(ctx.outputs), judge=judge_model,
             evidence=list(ctx.searched),
             kept_steps=steps, usage=usage, skill_keys=skill_keys, check_options=check_options,
-            skill_specs=skill_specs, traced=carries_material,
+            skill_specs=skill_specs, traced=carries_material, advice=advice,
         )
         pipe = pipeline_registry.for_chat(agent_key)
         runner = PipelineRunner(pipe.stages("finish"), name=f"{pipe.name}.finish")

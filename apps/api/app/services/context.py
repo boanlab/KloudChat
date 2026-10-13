@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from app.core.config import settings
 from app.models.chat import SessionKind
+from app.services import exact_facts
 from app.services.freshness import (
     FRESHNESS_INSTRUCTION,
     _quoted_spans,
@@ -279,10 +280,14 @@ _WEB_SEARCH_NUDGE = (
 _WEB_SEARCH_AUTO = (
     "Web search and weather tools are available. Use them only when the answer depends on "
     "events after your training or on today's values; otherwise answer directly.\n"
-    "- Check by search: facts about the world that change over time — news, prices and "
-    "rates, latest versions, official statistics, a person's current position, schedules "
-    "in the outside world such as events and services, exact bibliographic details and "
-    "dates. Look up weather, temperature and rain with the weather tool, not web_search.\n"
+    "- Check by search: facts about the world that change over time or must be exact — "
+    "news, prices, fees, rates and limits, phone numbers and hotlines, laws, tax rules, "
+    "thresholds and benefits, latest versions, official statistics, a person's current "
+    "position, schedules in the outside world such as events and services, exact "
+    "bibliographic details and dates. Legal, tax, financial and health advice counts too: "
+    "search before giving its specific figures. Write the query with the request's own "
+    "key terms (the product, law, agency or condition named). Look up weather, "
+    "temperature and rain with the weather tool, not web_search.\n"
     "- Do not search: questions about this conversation itself (rules set earlier, pasted "
     "text, the material and numbers the user gave, such as their schedule or budget), "
     "calculations on those numbers, how code behaves, textbook principles, translation, "
@@ -1017,8 +1022,10 @@ def search_plan(toggle: bool | str, request: str) -> tuple[bool, str | None]:
             return True, "weather"
         if is_small_talk(request):
             return True, None
-        # Literature questions searched even without 「검색」.
-        searched = explicit or needs_web_search(request) or literature_request(request)
+        # Literature questions searched even without 「검색」; a formula, a translation or a
+        # role-play naming a year is not a lookup
+        searched = explicit or literature_request(request) or (
+            needs_web_search(request) and not exact_facts.not_a_lookup(request))
         return True, "web_search" if searched else None
     if toggle is True:
         return True, "weather" if weather else "web_search"

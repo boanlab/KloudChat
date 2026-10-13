@@ -155,6 +155,17 @@ def on_request(queries: Iterable[str], request: str, entities: list[str]) -> lis
     return kept
 
 
+def keep_entities(query: str, request: str) -> str:
+    """A model-written query naming none of the request's named things gets the first one."""
+    # in an English request a capitalized word may only start a sentence (「Summarize」)
+    hangul = bool(re.search(r"[가-힣]", request or ""))
+    entities = [e for e in key_entities(request) if hangul or any(c.isdigit() for c in e)
+                or any(c.isupper() for c in e[1:])]
+    if not query.strip() or not entities or any(mentions(query, e) for e in entities):
+        return query
+    return f"{entities[0]} {query}"[:200]
+
+
 def asks_for_venues(request: str) -> bool:
     """Wants work published at a conference or journal."""
     return bool(_VENUE_CUE.search(request or ""))
