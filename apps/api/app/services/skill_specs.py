@@ -141,6 +141,17 @@ def of_row(row) -> Spec:
         questions=tuple(clean["questions"]), process=clean["process"])
 
 
+#: `process` keys whose work the server runs around a document's writing
+SERVER_PROCESS = ("prepass", "checks", "stages", "code_calc")
+
+
+def runs_on_server(spec: Spec) -> bool:
+    """A skill whose tool work the server does on a report or deck: a pre-pass, a code check or
+    the code calculation it brings, or itself a check skill (`stage`)."""
+    process = spec.process or {}
+    return bool(spec.stage) or any(process.get(key) for key in SERVER_PROCESS)
+
+
 def _as_dict(spec: Spec) -> dict[str, Any]:
     return {f.name: getattr(spec, f.name) for f in dataclasses.fields(spec)}
 
@@ -466,5 +477,5 @@ def empty(fields: dict[str, Any] | None) -> bool:
 __all__ = ["CHECK_OPTION_NAMES", "DOCUMENT_FIELDS", "FIELDS", "USER", "FieldError", "Spec",
            "catalogue", "check_keys",
            "copy_kinds", "empty", "entry_refs", "for_turn", "key_of", "normalize", "of_package",
-           "of_row", "of_wire", "package_fields", "post_check_refs", "resolve", "script_refs",
-           "validate", "validate_document", "wire"]
+           "of_row", "of_wire", "package_fields", "post_check_refs", "resolve", "runs_on_server",
+           "script_refs", "validate", "validate_document", "wire"]

@@ -362,6 +362,13 @@ class Agent(SQLModel, table=True):
     #: empty-screen starter buttons, sent verbatim
     starters: list | None = Field(default=None, sa_column=_json(nullable=True))
     temperature: float = Field(default=0.7)
+    #: language every turn and document is written in: `auto` (the request's), `ko`, `en`,
+    #: `ja`, `zh` or a language named in free text; a turn naming another language wins
+    output_language: str = Field(default="auto", max_length=40)
+    #: web search a new conversation starts with: `auto`, `on`, `off`; toggled per turn
+    web_search_default: str = Field(default="auto", max_length=10)
+    #: account memories read into its turns and written from them
+    use_memory: bool = Field(default=True)
     color: str = Field(default="#5b53e8")
     enabled: bool = Field(default=True)
     #: explicit type name, shared with `Skill.visibility`

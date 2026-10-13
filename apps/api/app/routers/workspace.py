@@ -2459,6 +2459,9 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         # same bindings; invisible design ignored at run time, not dropped
         **{name: getattr(origin, name) for name in _AGENT_BINDINGS},
         temperature=origin.temperature,
+        output_language=origin.output_language,
+        web_search_default=origin.web_search_default,
+        use_memory=origin.use_memory,
         color=origin.color,
         check_skills=list(origin.check_skills) if origin.check_skills is not None else None,
         check_options=dict(origin.check_options) if origin.check_options else None,

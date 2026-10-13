@@ -253,6 +253,16 @@ export interface PrivacyRouting {
   toolOutputFindings?: { category: string; source: string; count: number }[]
   initialAction?: PrivacyAction | 'strict_local' | 'none'
   costRouting?: CostRouting
+  /** The asked model failed over and LiteLLM's fallback answered (`services/fallback_watch`). */
+  fallback?: {
+    requestedModel: string
+    requestedBoundary: ModelInfo['dataBoundary']
+    servedBy: string
+    dataBoundary: ModelInfo['dataBoundary']
+    /** The answering model is not self-hosted (or not in the catalogue). */
+    external: boolean
+    attempts: number
+  }
   accuracy?: {
     policy: 'grounded-best-effort-v1'
     knowledgeCutoff: string | null
@@ -1069,6 +1079,9 @@ export interface MemoryEntry {
   pinned: boolean
 }
 
+/** Web search per turn: 자동 (server decides), 항상, 끔. */
+export type WebSearchMode = 'auto' | 'on' | 'off'
+
 export interface Agent {
   /** Shared agents are read-only to everyone but the owner. */
   ownerId: string
@@ -1120,6 +1133,12 @@ export interface Agent {
   /** That design's name, for a viewer who cannot see the row. */
   designName?: string
   temperature: number
+  /** Language every answer and document is written in: `auto` (the request's), `ko`, `en`, `ja`, `zh` or a name typed in. */
+  outputLanguage?: string
+  /** Web search a new conversation with it starts with; changed per turn in the composer. */
+  webSearchDefault?: WebSearchMode
+  /** Account memories read into its turns and written from them. */
+  useMemory?: boolean
   color: string
   enabled: boolean
   runs: number

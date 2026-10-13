@@ -27,7 +27,7 @@ from app.schemas.auth import Preferences
 from app.services import design as design_service
 from app.services import files as file_service
 from app.services import knowledge as knowledge_service
-from app.services import pictures, starter
+from app.services import output_language, pictures, starter
 
 log = logging.getLogger(__name__)
 
@@ -168,6 +168,11 @@ async def _load_agent(db: AsyncSession, user: User, session: ChatSession) -> Age
         else:
             raise WorkspaceContextError("agent_origin_gone")
     return agent
+
+
+def uses_memory(agent: Agent | None) -> bool:
+    """Whether account memories reach the turn and are written from it."""
+    return agent is None or getattr(agent, "use_memory", True) is not False
 
 
 def _with_prompt(agent: Agent, prompt: str) -> Agent:
@@ -566,10 +571,17 @@ async def _resolve_skills(
             if not material_given and not await _search_configured():
                 raise WorkspaceContextError("skill_search_unavailable")
             metadata = {**metadata, "material_only": True}
-        elif missing:
+        elif missing and not (session.kind is not SessionKind.chat and _server_runs(skill)):
+            # a document skill whose work the server runs is fine without the tools
             raise WorkspaceContextError(f"skill_tools_unavailable:{','.join(missing)}")
         resolved.append((skill, metadata))
     return resolved
+
+
+def _server_runs(skill: Skill) -> bool:
+    from app.services import skill_specs
+
+    return skill_specs.runs_on_server(skill_specs.of_row(skill))
 
 
 #: Research skill web tools.
@@ -895,8 +907,9 @@ async def assemble(
     project = None if published else await _load_project(db, user, session)
     design = await _load_design_system(db, user, project, agent)
     instructions = _project_instructions(project)
-    # Memories chat-only.
-    if session.kind is SessionKind.chat and not how_to and not published:
+    # Memories chat-only; an agent may opt out (`Agent.use_memory`)
+    if (session.kind is SessionKind.chat and not how_to and not published
+            and uses_memory(agent)):
         memories, memory_names, memory_total = await _memory_block(db, user, project, session)
     else:
         memories, memory_names, memory_total = "", (), 0
@@ -925,6 +938,10 @@ async def assemble(
     if design_block := design_service.prompt_block(design, session.kind):
         blocks.append(ContextBlock("project.design", design_block, True))
     blocks.extend(_skill_blocks(resolved, session.kind))
+    if agent is not None and not output_language.asks_language(question or focus):
+        # the agent's language, unless this turn names one; last trusted rule so it wins
+        if text := output_language.rule(agent.output_language):
+            blocks.append(ContextBlock("agent.language", text, True))
     if memories:
         blocks.append(ContextBlock("memory", memories, False))
 

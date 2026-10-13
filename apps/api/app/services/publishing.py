@@ -510,7 +510,7 @@ def _answers_with(agent: Agent, model_id: str, tools: list[str], checks: list[st
     return (agent.name, agent.description, model_id,
             agent.system_prompt if prompt is None else prompt, sorted(tools),
             sorted(checks), dict(agent.check_options or {}), agent.contact or "", agent.guide,
-            list(agent.starters or []), agent.temperature,
+            list(agent.starters or []), agent.temperature, agent.output_language,
             [(f.name, hashlib.sha256((f.text or "").encode()).hexdigest()) for f in files])
 
 
@@ -562,6 +562,7 @@ async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: A
         guide=agent.guide,
         starters=list(agent.starters or []),
         temperature=agent.temperature,
+        output_language=agent.output_language,
         color=agent.color,
         enabled=True,
         visibility=Visibility.private,

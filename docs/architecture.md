@@ -1325,6 +1325,38 @@ runs skills; its version freezes the agent's prompt with each built-from skill's
 appended and adds the skills' `post` checks (`publishing.built_from`). A composed pipeline's
 agent step gets the same prompt.
 
+**Language, web search and memory are the agent's own settings** (migration 0074, form
+**Advanced**). They are plain agent fields, not catalogue cases, so a person builds the same
+thing a shipped agent would:
+
+- `agents.output_language` (`auto`, `ko`, `en`, `ja`, `zh`, or a language name typed in,
+  cleaned to one line by `output_language.normalize`). `workspace_context.assemble` adds it as
+  the last trusted block (`agent.language`, `output_language.rule`) on chat, report and slides
+  alike, and `context.build_messages` / `build_document_messages` then skip their own
+  request-language rule. A turn that names a language itself (「영어로」, "in Korean",
+  `output_language.asks_language`) drops the block for that turn; a standing request for
+  English earlier in the chat still wins. Report and slides turns also carry it as a request
+  condition (「Write the whole document in …」), which their stage prompts read with the
+  request. A published version copies the field, so the bot answers in it.
+- `agents.web_search_default` (`auto`, `on`, `off`). The composer opens a conversation with the
+  agent on this setting and the person changes it per turn. `SendMessage.web_search` is
+  optional: a turn that sends none (API, MCP) takes the agent's default, and without an agent
+  stays off as before. With `off`, current-fact forcing (`freshness`, `exact_facts`) does not
+  start a search, since it only forces one when search is on; asking for a search in the words
+  still searches.
+- `agents.use_memory` (default true). When false, `assemble` reads no memory block for the
+  agent's turns, the turn writes no automatic memory (`_enrich_memory` is not asked), and
+  `share_note`, which writes a memory row, is not offered.
+
+**Tool skills on documents.** A report or deck writer runs no tools, so a hand-picked skill
+whose `required_tools` are missing was refused (`skill_tools_unavailable`). A skill whose work
+the server does around the writing is now accepted there (`skill_specs.runs_on_server`: a
+check skill with a `stage`, or `process` with `prepass`, `checks`, `stages` or `code_calc`,
+like `calc-check`, `date-calc` and `quote-calc`); its body reaches the writer without the
+tool steps, and its pre-pass, checks and code calculation join the turn through
+`skill_turn`. A tool skill without such a process is still refused, and the composer greys it
+out with the same rule (`lib/serverSkills.ts`).
+
 | withdrawn agent | skill (`app/skills/`) | template | checks | own questions / settings | to rebuild the agent |
 |---|---|---|---|---|---|
 | minutes `minutes` | meeting minutes `minutes-writing` (report) | `doc-minutes` | gap-check, grounding-check, generic-language-killer | — (the template's: meeting date, attendees, due dates; date pre-pass from the meeting date) | keep on `minutes-writing` · theme document serif · screen Report |
@@ -1603,6 +1635,18 @@ report/slides send path fails closed with `503 governance_unavailable` before
 model discovery, transcript writes, billing, virtual-key issuance or upstream
 calls. This also blocks a strict-local request: without the row the server does
 not know whether organisation-wide masking, intent filtering or blocked categories apply.
+
+**A fallback answer is recorded.** LiteLLM marks a response its fallback served with
+`x-litellm-attempted-fallbacks` (> 0) and names the answering group in
+`x-litellm-model-group`; the body's `model` is then left as the fallback's own. The chat
+stream reader keeps those headers per hop (`agent._stream_once`), and `run_turn` reports a
+`fallback_route` event (`fallback_watch.served_by`: the group header when it names another
+group, else the body's model). The turn stores `routing.fallback` (asked and answering model,
+the answering model's catalogue boundary, `external` unless it is `self_hosted`), the answer
+shows 「외부 대체로 답함」 (or 「대체 모델로 답함」 for a self-hosted fallback), and the
+answer's transaction writes a `model.fallback` audit event (`warn` when external) for the
+administrator. Report and slides writers call the proxy through their own clients and are
+not covered yet.
 
 Strict-local turns disable web search, URL fetching and remote connector tools.
 Their tool registry is built from in-process runners only, rather than building

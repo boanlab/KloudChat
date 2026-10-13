@@ -333,7 +333,14 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "템플릿·테마와 자료",
-"text": "에이전트 만들기 폼의 **더 설정하기** 아래에 있습니다.\n\n- **템플릿·테마**: **템플릿**(보고서·슬라이드의 구성)과 **테마**(색·글꼴·문체)를 고릅니다. 템플릿 아래 **새 템플릿**은 내 템플릿을 만들고, 테마 아래 **테마 관리**는 설정 › 테마로 갑니다. 기본 과정에서 시작한 에이전트는 템플릿을 비워 두면(「기본 과정의 템플릿」) 기본 과정의 템플릿을 쓰고, 문서 형식도 그 템플릿이 정합니다. **문서 형식** 칸은 보고서를 쓰는 에이전트가 바로 답하기나 직접 구성일 때만 보입니다.\n- **대화 시작**: **사용법**(대화 첫 화면에 보이는 안내)과 **시작 문장**(한 줄에 하나, 여섯 개까지).\n- **자료**: 이 에이전트가 검색해서 근거로 쓸 파일과 웹 주소(**파일 붙이기**, **URL 추가**). 대화마다 통째로 들어가지 않고 필요할 때 찾아 씁니다. URL은 추가한 시점의 내용을 저장하고, 페이지가 바뀌어도 따라가지 않습니다. 자료를 주기적으로 다시 읽거나 요약하지 않으며, 에이전트가 정해진 시각에 저절로 실행되지도 않습니다. 대화를 열어 요청할 때 일합니다.\n- **스킬과 도구**, **고급**(사용할 화면, 처음 여는 화면, 모델, 다양성, 색), **공유**(**나만 쓰기** 또는 **모두에게 공개**; 공개할 때 **가져가서 편집할 수 있게** 또는 **가져갈 수 있지만 내용은 비공개**)."
+"text": "에이전트 만들기 폼의 **더 설정하기** 아래에 있습니다.\n\n- **템플릿·테마**: **템플릿**(보고서·슬라이드의 구성)과 **테마**(색·글꼴·문체)를 고릅니다. 템플릿 아래 **새 템플릿**은 내 템플릿을 만들고, 테마 아래 **테마 관리**는 설정 › 테마로 갑니다. 기본 과정에서 시작한 에이전트는 템플릿을 비워 두면(「기본 과정의 템플릿」) 기본 과정의 템플릿을 쓰고, 문서 형식도 그 템플릿이 정합니다. **문서 형식** 칸은 보고서를 쓰는 에이전트가 바로 답하기나 직접 구성일 때만 보입니다.\n- **대화 시작**: **사용법**(대화 첫 화면에 보이는 안내)과 **시작 문장**(한 줄에 하나, 여섯 개까지).\n- **자료**: 이 에이전트가 검색해서 근거로 쓸 파일과 웹 주소(**파일 붙이기**, **URL 추가**). 대화마다 통째로 들어가지 않고 필요할 때 찾아 씁니다. URL은 추가한 시점의 내용을 저장하고, 페이지가 바뀌어도 따라가지 않습니다. 자료를 주기적으로 다시 읽거나 요약하지 않으며, 에이전트가 정해진 시각에 저절로 실행되지도 않습니다. 대화를 열어 요청할 때 일합니다.\n- **스킬과 도구**, **고급**(사용할 화면, 처음 여는 화면, 모델, 출력 언어, 웹 검색 기본값, 다양성, 색, 메모리 사용), **공유**(**나만 쓰기** 또는 **모두에게 공개**; 공개할 때 **가져가서 편집할 수 있게** 또는 **가져갈 수 있지만 내용은 비공개**)."
+},
+{
+"lang": "ko",
+"path": "chat/agents",
+"title": "에이전트와 스킬",
+"heading": "출력 언어·웹 검색·메모리",
+"text": "에이전트 만들기 폼의 **고급**에 있습니다.\n\n- **출력 언어**: **자동 (요청한 언어)**, 한국어, English, 日本語, 中文 중에서 고르거나 **직접 입력**으로 언어 이름을 적습니다. 정하면 이 에이전트의 모든 답과 보고서·슬라이드를 그 언어로 씁니다. 질문이나 자료가 다른 언어여도 같습니다. 그 턴에 「영어로」「in Korean」처럼 다른 언어를 직접 요청하면 그 턴은 요청을 따릅니다. 공개 챗봇도 이 설정대로 답합니다.\n- **웹 검색 기본값**: 이 에이전트와 새 대화를 열 때 입력창의 웹 검색이 **자동**·**항상**·**끔** 중 무엇으로 시작할지 정합니다. 턴마다 입력창에서 바꿀 수 있습니다. **끔**이면 최신 정보가 필요한 질문이어도 먼저 검색하지 않습니다(직접 「검색해 줘」라고 하면 찾습니다). API로 보낸 턴이 웹 검색을 정하지 않으면 이 값을 씁니다.\n- **메모리 사용**: 끄면 이 에이전트의 대화에는 내 메모리를 넣지 않고, 그 대화에서 자동 메모리나 공유 메모도 만들지 않습니다."
 },
 {
 "lang": "ko",
@@ -362,6 +369,13 @@
 "title": "에이전트와 스킬",
 "heading": "스킬",
 "text": "스킬은 대화에 켜 두는 작업 방식입니다. 입력창의 **+** → **스킬**에서 최대 3개까지 고르면 그 대화가 끝날 때까지 켜져 있고, 다시 눌러 끕니다. 설치만 해서는 적용되지 않습니다. **공식 스킬**은 고르면 내 스킬에 추가되면서 켜집니다. 스킬은 자기 템플릿·검사·빠진 정보 질문을 함께 가져옵니다. 기본 스킬은 아래 「기본 스킬」에 있습니다.\n\n- **사용자 지정** → **스킬**에서 설치와 사용 중지, 직접 만들기(이름, 설명, 사용 시점, 절차, 필수 도구, 공개 범위)를 수행합니다. **서버가 돌리는 점검**에서 **쓸 템플릿**, **켜면 붙는 검사**, **웹 검색**·**그림**, **빠진 정보 질문**도 정합니다. 공개한 스킬은 스토어에 등록되며 다른 사용자는 사본으로 가져갑니다.\n- **사용자 지정 › 스킬 › 추가 › 스킬 업로드**에서 SKILL.md(.md) 또는 SKILL.md가 든 .zip·.skill 파일을 여러 개 한 번에 올릴 수 있습니다. .md는 맨 앞 YAML 머리에 `name`과 `description`이 있어야 하고, `resources/`의 .md·.txt는 본문 끝 「참고 자료」에 붙습니다. 올리기 전에 파일마다 미리 보기와 보안 스캔 결과(막음·주의)를 보여 줍니다. `scripts/` 아래의 Python 스크립트는 스킬과 함께 저장되어 코드 실행 샌드박스에서만 실행되고, 그 밖의 스크립트(.sh, .js 등)는 제외합니다. 스크립트가 있는 스킬을 공개하면 관리자가 **스킬 검토**에서 승인한 뒤에 다른 사람이 가져갈 수 있습니다. 검사는 휴리스틱이라 모든 위험을 찾지는 못합니다. **초안으로 올리기**를 고르면 꺼진 상태로 저장됩니다.\n- 스킬 상세의 **⋯ → 내보내기 (SKILL.md)**로 내 스킬을 SKILL.md 파일로 받습니다. 키·토큰처럼 보이는 문자열이나 보이지 않는 방향 제어 문자가 있으면 공개(공유)가 거절됩니다.\n- 도구가 필요한 스킬은 챗 화면에서, 도구 호출을 지원하는 모델을 사용하며, 해당 도구가 연결된 경우에만 활성화됩니다. 조건을 충족하지 못하면 사유가 표시됩니다.\n- 프로젝트의 **스킬** 탭에서 **스킬 고르기**로 고른 스킬은 그 프로젝트의 입력창에서 먼저 보입니다."
+},
+{
+"lang": "ko",
+"path": "chat/agents",
+"title": "에이전트와 스킬",
+"heading": "보고서·슬라이드의 도구 스킬",
+"text": "보고서·슬라이드 화면에서도 서버가 쓰기 전후에 일을 맡는 스킬은 고를 수 있습니다. **계산·단위 검증**, **날짜 계산**, **견적 계산**처럼 미리 계산하거나 검사하는 스킬입니다. 고르기 창에 「서버가 쓰기 전후에 계산·검사합니다」가 표시됩니다. 그 밖의 도구가 필요한 스킬은 챗 화면에서만 고를 수 있습니다."
 },
 {
 "lang": "ko",
@@ -571,7 +585,7 @@
 "path": "chat/models",
 "title": "모델 선택",
 "heading": "모델 목록의 표시 항목",
-"text": "| 표시 | 의미 |\n|---|---|\n| **strict-local** | 기관 서버에서만 처리되며 외부로 전달되지 않는 것이 확인된 모델입니다. 선택하면 웹 검색, 페이지 읽기, 커넥터가 비활성화됩니다. |\n| **self-hosted · strict 미확인** | 기관 서버에서 동작하지만 외부 대체 경로가 없다는 점이 확인되지 않은 모델입니다. |\n| **외부 전환 가능** | 평소에는 기관 서버에서 처리하지만 장애 시 외부 서비스로 전환될 수 있습니다. |\n| **외부 제공** | 외부 서비스가 제공하는 모델로, 요청이 기관 밖으로 전송됩니다. |\n| **경계 미확인** | 처리 위치 정보가 제공되지 않은 모델입니다. |\n| 가격 | 1,000 토큰당 입력·출력 크레딧 또는 **무료** |\n| 컨텍스트 | 한 번에 처리할 수 있는 분량 |\n| 👁 · 🔧 | 이미지 인식 지원 · 도구 호출 지원 |\n\n게이트웨이 등록 방식에 따라 이름이 같은 모델이 데이터 경계 표시만 다른 두 항목으로 나타날 수 있습니다. 표시를 확인한 뒤 선택하십시오."
+"text": "| 표시 | 의미 |\n|---|---|\n| **strict-local** | 기관 서버에서만 처리되며 외부로 전달되지 않는 것이 확인된 모델입니다. 선택하면 웹 검색, 페이지 읽기, 커넥터가 비활성화됩니다. |\n| **self-hosted · strict 미확인** | 기관 서버에서 동작하지만 외부 대체 경로가 없다는 점이 확인되지 않은 모델입니다. |\n| **외부 전환 가능** | 평소에는 기관 서버에서 처리하지만 장애 시 외부 서비스로 전환될 수 있습니다. |\n| **외부 제공** | 외부 서비스가 제공하는 모델로, 요청이 기관 밖으로 전송됩니다. |\n| **경계 미확인** | 처리 위치 정보가 제공되지 않은 모델입니다. |\n| 가격 | 1,000 토큰당 입력·출력 크레딧 또는 **무료** |\n| 컨텍스트 | 한 번에 처리할 수 있는 분량 |\n| 👁 · 🔧 | 이미지 인식 지원 · 도구 호출 지원 |\n\n게이트웨이 등록 방식에 따라 이름이 같은 모델이 데이터 경계 표시만 다른 두 항목으로 나타날 수 있습니다. 표시를 확인한 뒤 선택하십시오.\n\n**외부 전환 가능** 모델이 장애로 응답하지 못해 게이트웨이의 대체 모델이 대신 답하면, 그 답 위에 **외부 대체로 답함** 배지가 붙습니다(대체 모델도 기관 서버의 모델이면 **대체 모델로 답함**). 배지에 마우스를 올리면 요청한 모델과 실제로 답한 모델이 보입니다. 같은 일은 관리자 감사 로그에 **대체 모델이 답함**으로 남습니다."
 },
 {
 "lang": "ko",
@@ -1726,7 +1740,14 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Template & theme and sources",
-"text": "These sit under **More settings** in the create-agent form.\n\n- **Template & theme**: pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **New template** under the template makes your own; **Manage themes** under the theme opens Settings › Themes. An agent started from a base process uses the base's template when the template is left empty (\"The base's template\"), and that template sets the document format. The **Document format** field shows only for a report-writing agent on Answer directly or Set it up yourself.\n- **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).\n- **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.\n- **Skills and tools**, **Advanced** (screens, first screen, model, variety, colour) and **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**."
+"text": "These sit under **More settings** in the create-agent form.\n\n- **Template & theme**: pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **New template** under the template makes your own; **Manage themes** under the theme opens Settings › Themes. An agent started from a base process uses the base's template when the template is left empty (\"The base's template\"), and that template sets the document format. The **Document format** field shows only for a report-writing agent on Answer directly or Set it up yourself.\n- **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).\n- **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.\n- **Skills and tools**, **Advanced** (screens, first screen, model, output language, web search default, variety, colour, use memory) and **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**."
+},
+{
+"lang": "en",
+"path": "chat/agents",
+"title": "Agents and skills",
+"heading": "Output language, web search and memory",
+"text": "These are under **Advanced** in the agent form.\n\n- **Output language**: pick **Auto (the request's language)**, 한국어, English, 日本語 or 中文, or type a language name under **Type one in**. Once set, every answer, report and slide deck of this agent is written in that language, whatever language the question or the material is in. A turn that asks for another language itself (\"영어로\", \"in Korean\") follows that request. A published bot answers in it too.\n- **Web search default**: whether the composer's web search starts on **Auto**, **Always** or **Off** in a new conversation with this agent. You can change it per turn in the composer. With **Off**, a question about current facts is not searched first (asking \"search for it\" still searches). A turn sent through the API without a web search setting uses this value.\n- **Use memory**: when off, your memories are not added to this agent's conversations, and those conversations create no automatic memories or shared notes."
 },
 {
 "lang": "en",
@@ -1755,6 +1776,13 @@
 "title": "Agents and skills",
 "heading": "Skills",
 "text": "A skill is a working method kept on in a conversation: select up to three from **+** → **Skills** (again to turn one off). An **official skill** is added to your skills when picked. A skill brings its template, checks and questions.\n\n- Use **Customize** → **Skills** to install a skill, stop using one, or build your own with a name, description, when to use it, steps, required tools, and visibility. A published skill is listed in the store, and other users import it as a copy.\n- **Customize › Skills › Add › Upload skill** takes a SKILL.md (.md) or a .zip/.skill file containing one, several at a time. A .md file needs YAML front matter with `name` and `description`; .md and .txt files under `resources/` are appended to the body under 「참고 자료」 (References). Before anything is saved, each file shows a preview and its security-scan findings (blocked or warning). Python scripts under `scripts/` are stored with the skill and run only in the code execution sandbox; other scripts (.sh, .js and the like) are left out. A published skill with scripts can be copied by others only after an administrator approves it under **Skill review**. The checks are heuristic and will not catch every risk. **Upload as draft** saves the skill switched off.\n- A skill's **⋯ → Export (SKILL.md)** downloads your skill as a SKILL.md file. Sharing is refused while a skill contains key- or token-like strings or invisible direction-control characters.\n- A skill that requires tools is enabled only when all of these hold: you are on the Chat screen, the model supports tool calling, and that tool is connected. When a condition is not met, the reason is shown.\n- Skills you pick with **Choose skills** on a project's **Skills** tab appear first in that project's composer."
+},
+{
+"lang": "en",
+"path": "chat/agents",
+"title": "Agents and skills",
+"heading": "Tool skills on reports and slides",
+"text": "On the Report and Slides screens you can pick a skill that needs tools when the server does its work around the writing: it calculates or checks before or after, such as **Calculation and unit check**, **Date calculation** and **Quote calculation**. The picker shows \"The server calculates and checks around the writing\". Other skills that need tools can be picked only on the Chat screen."
 },
 {
 "lang": "en",
@@ -1964,7 +1992,7 @@
 "path": "chat/models",
 "title": "Choosing a model",
 "heading": "What the model list shows",
-"text": "| Label | Meaning |\n|---|---|\n| **strict-local** | The model is confirmed to run only on organization servers and to send nothing outside. Selecting it disables web search, page reading, and connectors. |\n| **self-hosted · strict unverified** | The model runs on organization servers, but it is not confirmed that there is no external fallback path. |\n| **May switch to an external provider** | The model normally runs on organization servers, but it may switch to an external service during an outage. |\n| **External provider** | The model is supplied by an external service, so requests are sent outside the organization. |\n| **Boundary unverified** | No information about the processing location is provided for this model. |\n| Price | Input and output credits per 1,000 tokens, or **Free** |\n| Context | How much can be processed at once |\n| 👁 · 🔧 | Image recognition supported · Tool calling supported |\n\nDepending on how the gateway registers models, one model name can appear as two entries that differ only in the data boundary label. Check the label before you select one."
+"text": "| Label | Meaning |\n|---|---|\n| **strict-local** | The model is confirmed to run only on organization servers and to send nothing outside. Selecting it disables web search, page reading, and connectors. |\n| **self-hosted · strict unverified** | The model runs on organization servers, but it is not confirmed that there is no external fallback path. |\n| **May switch to an external provider** | The model normally runs on organization servers, but it may switch to an external service during an outage. |\n| **External provider** | The model is supplied by an external service, so requests are sent outside the organization. |\n| **Boundary unverified** | No information about the processing location is provided for this model. |\n| Price | Input and output credits per 1,000 tokens, or **Free** |\n| Context | How much can be processed at once |\n| 👁 · 🔧 | Image recognition supported · Tool calling supported |\n\nDepending on how the gateway registers models, one model name can appear as two entries that differ only in the data boundary label. Check the label before you select one.\n\nWhen a **May switch to an external provider** model fails to answer and the gateway's fallback model answers instead, the answer carries an **Answered by external fallback** badge (**Answered by fallback model** when the fallback also runs on organization servers). Hover over the badge to see the model you asked for and the one that answered. The same event is recorded in the administrator's audit log as **Fallback model answered**."
 },
 {
 "lang": "en",

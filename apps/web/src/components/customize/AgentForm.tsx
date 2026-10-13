@@ -18,7 +18,7 @@ import { useTemplateCatalogue } from '@/lib/templates'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { Agent, SessionKind } from '@/types'
+import type { Agent, SessionKind, WebSearchMode } from '@/types'
 import { slugify } from './formModel'
 import { isListed } from '@/lib/listed'
 import { ActiveSkillPicker, OffSurfaceNote, SkillPicker, ToolPicker } from './Pickers'
@@ -161,6 +161,57 @@ export function AgentSharing({ draft, onChange }: { draft: Agent; onChange: (nex
         </div>
       )}
     </div>
+  )
+}
+
+/** Languages offered by code (`services/output_language.LANGUAGES`); any other is typed in. */
+const LANGUAGES: { id: string; label: string }[] = [
+  { id: 'ko', label: '한국어' },
+  { id: 'en', label: 'English' },
+  { id: 'ja', label: '日本語' },
+  { id: 'zh', label: '中文' },
+]
+
+/** 출력 언어: 자동 (the request's), one of the codes, or a language typed in. */
+function OutputLanguageField({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const t = useT()
+  const coded = value === 'auto' || LANGUAGES.some((l) => l.id === value)
+  const [typing, setTyping] = useState(!coded)
+  return (
+    <Field
+      label={t('출력 언어')}
+      hint={t('모든 답과 문서를 이 언어로 씁니다. 사용자가 그 턴에 다른 언어를 직접 요청하면 그 요청을 따릅니다.')}
+    >
+      <div className="space-y-1.5">
+        <Select
+          data-testid="agent-output-language"
+          value={typing ? 'other' : value}
+          onChange={(e) => {
+            const next = e.target.value
+            setTyping(next === 'other')
+            onChange(next === 'other' ? '' : next)
+          }}
+        >
+          <option value="auto">{t('자동 (요청한 언어)')}</option>
+          {LANGUAGES.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.label}
+            </option>
+          ))}
+          <option value="other">{t('직접 입력')}</option>
+        </Select>
+        {typing && (
+          <Input
+            data-testid="agent-output-language-other"
+            aria-label={t('언어 이름')}
+            value={value === 'auto' ? '' : value}
+            maxLength={40}
+            onChange={(e) => onChange(e.target.value.slice(0, 40))}
+            placeholder={t('예: Vietnamese, 독일어')}
+          />
+        )}
+      </div>
+    </Field>
   )
 }
 
@@ -742,7 +793,7 @@ export function AgentForm({
           </Block>
         </Group>
 
-        <Group title={t('고급')} hint={t('사용할 화면, 모델, 다양성, 색')} testId="agent-more-group">
+        <Group title={t('고급')} hint={t('사용할 화면, 모델, 출력 언어, 웹 검색, 메모리, 다양성, 색')} testId="agent-more-group">
           <Block label={t('사용할 화면')} hint={t('여기서 고른 화면의 @ 버튼에만 나타납니다.')}>
             <div className="flex flex-wrap gap-1.5">
               {kindOrder.map((k) => {
@@ -800,6 +851,21 @@ export function AgentForm({
                 </Select>
               )}
             </Field>
+            <OutputLanguageField
+              value={draft.outputLanguage ?? 'auto'}
+              onChange={(outputLanguage) => edit({ ...draft, outputLanguage: outputLanguage || 'auto' })}
+            />
+            <Field label={t('웹 검색 기본값')} hint={t('이 에이전트와 새 대화를 열 때의 웹 검색입니다. 입력창에서 턴마다 바꿀 수 있습니다.')}>
+              <Select
+                data-testid="agent-web-search-default"
+                value={draft.webSearchDefault ?? 'auto'}
+                onChange={(e) => edit({ ...draft, webSearchDefault: e.target.value as WebSearchMode })}
+              >
+                <option value="auto">{t('자동')}</option>
+                <option value="on">{t('항상')}</option>
+                <option value="off">{t('끔')}</option>
+              </Select>
+            </Field>
             <Field
               label={`${t('다양성')} — ${draft.temperature}`}
               hint={t('낮을수록 일관되게, 높을수록 다양하게 답합니다. 대화 화면에만 적용됩니다.')}
@@ -831,6 +897,21 @@ export function AgentForm({
               </div>
             </Block>
           </div>
+          <label className="flex items-start gap-2 text-base">
+            <input
+              type="checkbox"
+              data-testid="agent-use-memory"
+              className="mt-1 size-4 accent-[var(--accent)]"
+              checked={draft.useMemory ?? true}
+              onChange={(e) => edit({ ...draft, useMemory: e.target.checked })}
+            />
+            <span>
+              <span className="block">{t('메모리 사용')}</span>
+              <span className="block text-sm text-faint">
+                {t('끄면 이 에이전트의 대화에는 내 메모리를 넣지 않고, 이 대화에서 새 메모리도 만들지 않습니다.')}
+              </span>
+            </span>
+          </label>
         </Group>
 
         <Group title={t('공유')} hint={draft.visibility === 'org' ? t('모두에게 공개') : t('나만 쓰기')}>
