@@ -1471,9 +1471,52 @@ _NOW_WORD = re.compile(r"지금|현재|오늘|최신|요즘|실시간")
 _MEMO_LINE = re.compile(r"\s{0,8}(?:[-*•·]|\d{1,2}[.)]|\(|[가-힣A-Za-z ]{1,20}[:：])\s{0,4}\S")
 
 
+#: a line about the person themselves: 「- 나이: 34세 / 성별: 여성」, 「키 165cm, 몸무게 72kg」
+_PROFILE_LINE = re.compile(
+    r"나이|성별|키\s{0,2}\d|신장|몸무게|체중|혈액형|직업|목표|생활\s{0,2}(?:습관|패턴)|운동\s{0,2}(?:경험|제약|습관|수준)"
+    r"|식(?:단|습관)|수면|병력|질환|복용|알레르기|체력|부상|통증|가족\s{0,2}(?:구성|력)|흡연|음주|활동량")
+#: the label over such a list: 「고객 정보:」, 「내 정보」, 「프로필」
+_PROFILE_HEAD = re.compile(
+    r"(?:고객|회원|환자|본인|내|제|나의?|대상자?)\s{0,2}(?:정보|프로필|상황|상태)|프로필")
+
+
+def _profile(rest: str) -> bool:
+    """Whether the pasted part is a profile of the person (or the client they ask about), not a
+    memo or document: a short labelled list most of whose lines describe the person (r7 P07:
+    traced as material, it turned the exercise plan's sets and rests into values to source)."""
+    lines = [line for line in (rest or "").splitlines() if line.strip()]
+    if not 3 <= len(lines) <= 30 or len(rest) > 2000:
+        return False
+    about = sum(1 for line in lines if _PROFILE_LINE.search(line))
+    return bool(_PROFILE_HEAD.search(lines[0])) and about >= 0.4 * len(lines) or (
+        about >= 0.6 * len(lines))
+
+
+#: an ask that works on the pasted text itself (summarise, report, translate, proofread)
+_WORKS_ON_TEXT = re.compile(
+    r"정리|요약|보고\s{0,2}(?:용|서)|번역|교정|윤문|다듬|옮겨|바꿔|작성|써\s{0,2}줘|만들어|발표문|보도")
+
+
+def _ask_of(content: str) -> str:
+    """The ask that decides a turn's forced search and advice reading: the instruction alone
+    when it works on text the person pasted under it (a 「재정 진단」 in a pasted press release
+    asked to be summarised makes no medical question, r7 A02-T2); else the whole message
+    (lab results pasted under 「봐 줘」 stay a medical question)."""
+    from app.services.context import lead_instruction, pasted_material
+
+    if pasted_material(content) or _memo_pasted(content):
+        ask = lead_instruction(content)
+        if ask and _WORKS_ON_TEXT.search(ask):
+            return ask
+    return content
+
+
 def _memo_pasted(content: str) -> bool:
-    """A short ask, a blank line, then a memo or document of the person's."""
+    """A short ask, a blank line, then a memo or document of the person's (a profile of the
+    person is neither)."""
     head, gap, rest = (content or "").partition("\n\n")
+    if gap and _profile(rest):
+        return False
     if not gap:
         # 「…써 줘.\n(변경 목록)\n- …\n- …」: the ask's line, then a listed memo, no blank line
         head, _, rest = (content or "").partition("\n")
@@ -3922,10 +3965,13 @@ async def send_message(
         forced_by_freshness = forced_tool is None
         forced_tool = "web_search"
     earlier_asks = [m.content for m in history if m.role is Role.user]
+    #: the ask without the material pasted under it: a 「재정 진단」 in a pasted press release
+    #: makes no medical question (r7 A02-T2)
+    asked = _ask_of(content)
     #: why the first search is forced though no current-fact wording asked for it
     #: (a hotline, a tax rule, a rate, advice): `exact_facts`, every model alike
     exact_reason = (
-        exact_facts.search_reason(content, earlier_asks)
+        exact_facts.search_reason(asked, earlier_asks)
         if session.kind is SessionKind.chat and published is None and not fresh_fact
         and effective_web_search and forced_tool is None
         and not is_small_talk(content)
@@ -3936,7 +3982,7 @@ async def send_message(
         forced_tool = "web_search"
     #: legal, tax, financial or medical advice: the answer's concrete claims are traced
     advice = (
-        exact_facts.advice_domain(content, earlier_asks)
+        exact_facts.advice_domain(asked, earlier_asks)
         if session.kind is SessionKind.chat and published is None
         else None
     )

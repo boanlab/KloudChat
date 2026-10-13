@@ -124,6 +124,8 @@ def _trace(bundle: Bundle) -> tuple[str, list[str], dict]:
     options["person"] = "\n".join([bundle.request.text, bundle.material.given, *worked])
     # 「…을 지참·제출」 for an item the material never names, as in chat and decks
     options["requirements"] = True
+    if bundle.request.strong:
+        options["strong"] = True
     return material, computed, options
 
 
@@ -216,6 +218,8 @@ class AnswerGrounding(Base):
         # advice on no material of the person's: an earlier answer is no evidence, and the
         # documents it tells them to bring are the guidance itself
         advice_only = bool(req.advice) and not req.traced
+        # advice keeps its own reading on the person's material too: a pasted profile or file
+        # does not make an exercise plan's sets and rests facts to source (r7 P07)
         traced = check_skills.ground(
             answer_checks(req), before,
             material=f"{bundle.material.given}\n{req.check_material}",
@@ -226,7 +230,8 @@ class AnswerGrounding(Base):
                      "person": "\n".join([bundle.material.given, req.check_material,
                                           *req.tool_outputs]),
                      "requirements": not advice_only,
-                     **({"advice": True} if advice_only else {})},
+                     **({"advice": True} if req.advice else {}),
+                     **({"strong": True} if req.strong else {})},
             specs=req.skill_specs,
             # the person's earlier messages and the request count as evidence too
             evidence=[req.text, *(str(m.get("content") or "") for m in req.messages
@@ -294,8 +299,9 @@ class CopyCheck(Base):
             usage=bundle.usage,
             skills=copy_check.on_turn((*req.skill_keys, *(req.check_keys or ())), req.tool_outputs,
                                       req.skill_specs),
-            specs=req.skill_specs)
-        settled = value_guard.settle(doc.answer, outcome.text, chat_evidence(bundle, doc.answer))
+            specs=req.skill_specs, strong=req.strong)
+        settled = value_guard.settle(doc.answer, outcome.text, chat_evidence(bundle, doc.answer),
+                                     writer=req.strong)
         doc.answer = settled.text
         still = [r for r in outcome.rows if r.get("hard") and (r["over"] or r["under"])]
         step = {
@@ -343,8 +349,10 @@ class SkillChecks(Base):
                                if x and x.strip()),
             attached=req.check_material, computed=[*req.tool_outputs, *req.evidence],
             today=today, complete=report._complete, model=req.model, judge=req.judge,
-            api_key=req.api_key, usage=bundle.usage, specs=req.skill_specs)
-        settled = value_guard.settle(doc.answer, outcome.text, chat_evidence(bundle, doc.answer))
+            api_key=req.api_key, usage=bundle.usage, specs=req.skill_specs, strong=req.strong)
+        # what the judge had taken out stays out; a strong writer's revision stands as written
+        settled = value_guard.settle(doc.answer, outcome.text, chat_evidence(bundle, doc.answer),
+                                     keep_out=outcome.dropped, writer=req.strong)
         doc.answer = settled.text
         detail = " · ".join(x for x in (outcome.detail, settled.note()) if x)
         step = {"category": "thinking", "id": "skill_check", "label": outcome.label,
@@ -453,7 +461,7 @@ class DeckGrounding(Base):
         material = _material(bundle)
         today = dt.datetime.now(ZoneInfo(settings.timezone)).date()
         options = {**check_skills.options_for(today, surface="deck"), "person": material,
-                   "requirements": True}
+                   "requirements": True, **({"strong": True} if bundle.request.strong else {})}
         before = bundle.document.sections
         computed = [bundle.computed.values or "",
                     *(report._source_text(row) for row in bundle.material.sources or [])]

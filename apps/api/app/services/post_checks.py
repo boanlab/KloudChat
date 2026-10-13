@@ -80,6 +80,25 @@ _REWRITE = (
     "them.\n\n# Material\n{material}\n\n# Problems\n{problems}\n\n# Answer\n{text}"
 )
 
+#: A strong writer gets the findings as evidence to weigh, not orders (r7 A12-T1: told to
+#: 「take out the unsupported clause」 for a feature's obvious use, the writer left 「문서를 함께
+#: 편집합니다. 문서 공동편집 기능을 제공합니다.」).
+_REVISE = (
+    "Below are the material and your answer. A check read the answer against the material and "
+    "noted the items listed under Notes; it may be wrong. Weigh each note yourself against the "
+    "material. Keep a sentence exactly as it is when the material states it or it follows from "
+    "the material: a listed feature's plain use or benefit, a calculation from the material's "
+    "values, your own recommendation, caveat or suggestion, a step a loaded skill asked for. "
+    "When a note is right, revise only that sentence: replace the claim with what the material "
+    "says, state it as an assumption or a suggestion, or write 「(확인 필요)」 right after the "
+    "value; take a sentence out only when it asserts something invented and the answer reads "
+    "complete without it. Never use a bracket blank such as [수치]; never empty a paragraph or "
+    "a table. Keep everything else exactly as written — structure, order, headings, tables, "
+    "the other wording and the language. Add no new fact. Reply with the whole answer only, "
+    "no preface and no word about the notes or the check — the reader never sees them."
+    "\n\n# Material\n{material}\n\n# Notes\n{problems}\n\n# Answer\n{text}"
+)
+
 
 Specs = Mapping[str, skill_specs.Spec] | None
 
@@ -128,6 +147,8 @@ class Outcome:
     left: list[dict] = field(default_factory=list)
     flags: list[dict] = field(default_factory=list)
     rewritten: bool = False
+    #: sentences taken out on the judge's confirmed finding: not to be brought back
+    dropped: list[str] = field(default_factory=list)
 
     @property
     def changed(self) -> bool:
@@ -196,6 +217,12 @@ def _json(text: str) -> dict:
 
 
 _ASKS = re.compile(r"\?\s*$|(?:알려|말씀해|확인해|정해|보내)\s?주(?:세요|십시오)|할까요|인가요")
+#: a recommendation or caveat of the answer's own, which the judge's prompt leaves out but a
+#: small judge lists anyway (r7 A12-T1: 「게시 전에 그 수치의 산정 기준을 확인하세요」)
+_SUGGESTS = re.compile(
+    r"(?:확인하|검토하|고려하|참고하|살펴보|점검하)(?:세요|십시오|시기\s?바랍니다)"
+    r"|(?:권합니다|권장합니다|권고합니다|추천합니다|제안합니다|바람직합니다)[.!]?\s*$"
+    r"|(?:하는|두는|쓰는|확인하는)\s?(?:것이|편이)\s?(?:좋|낫|안전)")
 
 
 _OPEN = re.compile(
@@ -248,8 +275,10 @@ async def _judge(text: str, material: str, *, complete: Complete, judge: str, ap
         quote = str(row.get("quote") or "").strip().strip("「」\"'")[:200]
         if present(quote, material):
             continue
-        # questions, requests, open items, bare labels, checklist lines state nothing
+        # questions, requests, open items, bare labels, checklist lines state nothing;
+        # the answer's own suggestions are its judgment, not a fact to source
         if _ASKS.search(quote) or _OPEN.search(quote) or not _STATES.search(quote) \
+                or (_SUGGESTS.search(quote) and not re.search(r"\d", quote)) \
                 or "자료만으로" in quote \
                 or _under_checklist(quote, text):
             continue
@@ -383,8 +412,13 @@ def _problems(rows: list[dict]) -> str:
 
 async def run(answer: str, *, keys: list[str], request: str, material: str, attached: str,
               computed: list[str], today: str, complete: Complete, model: str, judge: str,
-              api_key: str, usage: dict | None = None, specs: Specs = None) -> Outcome:
-    """Check, code-fix, rewrite once, recheck and code-fix."""
+              api_key: str, usage: dict | None = None, specs: Specs = None,
+              strong: bool = False) -> Outcome:
+    """Check, code-fix, rewrite once, recheck and code-fix.
+
+    `strong`: the writer is a strong model. It judges its own answer (no weaker judge reads
+    it), gets the findings as evidence for one revision of its own, and nothing it kept is
+    taken out afterwards; the findings it kept are shown in the step only."""
     outcome = Outcome(answer, skills=list(keys))
     scripts = list(dict.fromkeys(e for key in keys for e in entries(key, specs)))
     on = [p for k in keys if (p := skill_specs.resolve(k, specs)) is not None]
@@ -421,19 +455,22 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
     text, fixed, rewrite, flags = one_pass(text, final=False)
     outcome.fixed += fixed
     judged = []
-    if judged_on and (judge or model):
+    # a weaker model never judges a strong writer's answer: the writer reads it itself
+    reader = model if strong and model else judge or model
+    if judged_on and reader:
         focus = "; ".join(p.judge_focus for p in on if p.judge_focus)
-        judged = await _judge(text, sources, complete=complete, judge=judge or model,
+        judged = await _judge(text, sources, complete=complete, judge=reader,
                               api_key=api_key, usage=usage, focus=focus, today=today)
-        judged = await _confirm(judged, reference, complete=complete, judge=judge or model,
+        judged = await _confirm(judged, reference, complete=complete, judge=reader,
                                 api_key=api_key, usage=usage)
     send = rewrite + judged
     outcome.sent = send
     if send and model:
+        prompt = _REVISE if strong else _REWRITE
         try:
-            reply, spent = await complete(model, [{"role": "user", "content": _REWRITE.format(
-                material=sources[:_MATERIAL_CHARS * 2] or "(none)", problems=_problems(send),
-                text=text)}], api_key, min(12000, 2 * len(text) + 1000))
+            reply, spent = await complete(model, [{"role": "user", "content": prompt.format(
+                material=(reference if strong else sources)[:_MATERIAL_CHARS * 2] or "(none)",
+                problems=_problems(send), text=text)}], api_key, min(12000, 2 * len(text) + 1000))
             _spend(usage, spent)
             new = internal_words.strip_rewrite_preface(_cleaned(reply), text)
             # rewrite that lost half a long answer discarded
@@ -448,15 +485,20 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
         outcome.fixed += fixed
         outcome.left += rewrite
         flags = more
-    # judged statement left verbatim is removed
+    # judged statement left verbatim: a strong writer kept it on the evidence (shown only); a
+    # small writer's, confirmed unstated, is removed
     for row in judged:
         # user-written sentences never removed
         if present(row["text"], text) and not present(row["text"], material):
+            if strong:
+                flags.append({**row, "why": f"{row['why']} (작성 모델이 근거를 보고 남김)"})
+                continue
             if names_the_material(row["text"], sources):
                 # its names and paths are the material's: kept and shown, never removed
                 flags.append({**row, "why": f"{row['why']} (자료의 항목을 풀어 쓴 문장이라 남김)"})
                 continue
             text = drop(text, row["text"])
+            outcome.dropped.append(row["text"])
             outcome.fixed.append({**row, "why": f"{row['why']} → 뺌"})
     outcome.flags = flags
     outcome.text = particles(text)

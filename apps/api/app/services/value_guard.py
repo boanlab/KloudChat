@@ -53,8 +53,14 @@ _TERM = (r"\d(?:,?\d)*(?:\.\d+)?\s?(?:조|억|천만|백만|만|천)"
          r"(?:\s?\d(?:,?\d)*(?:\.\d+)?\s?(?:억|천만|백만|만|천))*"
          r"|\d(?:,?\d)*(?:\.\d+)?")
 _UNITS = ("%p", "%", "퍼센트", "원", "달러", "명", "건", "개월", "개", "가지", "곳", "년", "주",
-          "일", "시간", "분", "초", "회", "배", "점", "자", "줄", "장", "쪽", "대", "팀")
-_UNIT = "|".join(map(re.escape, _UNITS))
+          "일", "시간", "분", "초", "회", "배", "점", "자", "줄", "장", "쪽", "대", "팀", "세트",
+          "행",
+          "시")
+#: measures written in Latin letters; a mark never goes between one and its number (r7 P07
+#: 「2.5(확인 필요)cm」, 「6~7(확인 필요)kg」)
+_LATIN_UNITS = ("kcal", "km", "cm", "mm", "kg", "mg", "mL", "ml", "g", "L")
+_UNIT = "|".join([*map(re.escape, _UNITS),
+                  *(f"{re.escape(u)}(?![A-Za-z])" for u in _LATIN_UNITS)])
 _NUMBER = re.compile(rf"(?<![A-Za-z\d.,_/#-])(?P<num>{_TERM})(?![\d])\s?(?P<unit>{_UNIT})?")
 _FAMILY = {"퍼센트": "%", "가지": "개"}
 
@@ -161,6 +167,8 @@ class Evidence:
     chained: list[float] = field(default_factory=list)
     #: the evidence prices with VAT
     vat: bool = False
+    #: the percentages the evidence gives (a discount, a rate)
+    rates: list[float] = field(default_factory=list)
     #: periods the evidence gives (「기간 11/1~11/30」): a day in one is the writer's schedule
     periods: list[tuple[tuple[int, int], tuple[int, int]]] = field(default_factory=list)
 
@@ -219,9 +227,12 @@ class Evidence:
         own_rows = [x for r in self.rows for x in r[1]]
         tables = [*_table_sums(joined), *(_table_sums(self.answer) if own_rows else [])]
         self.vat = bool(_VAT.search(joined))
-        self.derived = sorted({*_derived(self.sorted_values, vat=self.vat), *_table_sums(joined)})
+        self.rates = sorted({abs(v) for v, f in self.values if f == "%" and 0 < abs(v) < 100})
+        self.derived = sorted({*_derived(self.sorted_values, vat=self.vat, rates=self.rates),
+                               *_table_sums(joined)})
         self.derived_rows = sorted({
-            *_derived(sorted({abs(v) for v, _ in [*self.values, *own_rows] if v}), vat=self.vat),
+            *_derived(sorted({abs(v) for v, _ in [*self.values, *own_rows] if v}), vat=self.vat,
+                      rates=self.rates),
             *tables, *_row_steps(self.rows, {abs(v) for v, _ in _values(self.answer)}),
         }) if own_rows else self.derived
 
@@ -235,7 +246,8 @@ class Evidence:
         known: set[float] = set()
         formulas = _formulas(f"{self.answer}\n{self.worked}")
         for _ in range(rounds):
-            near = sorted({*_derived(sorted(pool | known), vat=self.vat), *self.derived})
+            near = sorted({*_derived(sorted(pool | known), vat=self.vat, rates=self.rates),
+                           *self.derived})
             added = {v for v in _worked(formulas, pool | known, self.vat) if v in todo}
             for v in todo:
                 tol = 0.5 + 1e-9 * v
@@ -449,7 +461,8 @@ def _enumerations(text: str) -> set[int]:
     return out
 
 
-def _derived(pool: list[float], *, vat: bool = False) -> list[float]:
+def _derived(pool: list[float], *, vat: bool = False,
+             rates: Iterable[float] = ()) -> list[float]:
     """Simple arithmetic of two figures: sums, gaps, shares, changes, price × count; with a
     VAT in the material, a figure with or without its 10% and that 10% alone."""
     big = [v for v in pool if v >= 10][-80:]
@@ -487,6 +500,25 @@ def _derived(pool: list[float], *, vat: bool = False) -> list[float]:
                 pair = a + b
                 out.update(pair * c for c in counts[:12])
                 out.update((pair + d) * c for d in units_[j + 1:] for c in counts[:12])
+        # a price times a count with the material's discount taken off, then its VAT, then
+        # another priced line added (r7 A04-T2: 1,480,000원 × 30대, 5% 할인 → 42,180,000원,
+        # VAT → 46,398,000원; with 5,000원 × 30대 → 46,563,000원)
+        kept = [(100 - v) / 100 for v in sorted(rates)[:6] if 0 < v < 100]
+        priced = [a for a in units_ if a >= 1000]
+        for a in priced:
+            for c in counts[:12]:
+                for k in kept:
+                    net = a * c * k
+                    out.add(net)
+                    extra = [net + b * c for b in priced if b != a]
+                    out.update(extra)
+                    if vat:
+                        out.add(net * 1.1)
+                        out.update(x * 1.1 for x in extra)
+        # a figure scaled by a ratio of two others: 「1억 × 6/106」 (r7 P56)
+        small = sorted({v for v in pool if 1 < v <= 1000})[:20]
+        for a in (a for a in units_ if a >= 1e4):
+            out.update(a * x / y for x in small for y in small if x < y)
     return sorted(out)
 
 
@@ -786,7 +818,8 @@ def _value_end(text: str, s: int, e: int, widened: int) -> int:
 #: what still belongs to a value after its digits: a scale word and unit (「%」 「원」), then a
 #: weekday in brackets (「(목)」)
 _TOKEN_TAIL = re.compile(
-    rf"(?:\s?(?:조|억|천만|백만|만|천)?\s?(?:{_UNIT}))?(?:\s?\(\s?[{_WD}](?:요일)?\s?\))?")
+    rf"(?:\s?(?:조|억|천만|백만|만|천)?\s?(?:{_UNIT})|[A-Za-z]{{1,8}}(?![A-Za-z]))?"
+    rf"(?:\s?\(\s?[{_WD}](?:요일)?\s?\))?")
 
 
 def token_end(text: str, end: int) -> int:
@@ -941,8 +974,10 @@ def _refill_cells(old: str, new: str, out: Settled) -> str:
         filled = False
         for c, cell in enumerate(after):
             if before[c].strip() and not re.sub(r"\(?확인\s?필요\)?", "", cell).strip():
-                # a cell judged unsupported keeps its words, marked
-                verdict = "확인" in cell and MARK not in before[c]
+                # a cell judged unsupported keeps its words, marked; a cell that already said
+                # 「확인 필요」 keeps saying it once (r7 A11-T2 「확인 필요 (확인 필요)」)
+                verdict = ("확인" in cell and MARK not in before[c]
+                           and not re.search(r"확인\s?필요", before[c]))
                 after[c] = f"{before[c].rstrip()} {MARK} " if verdict else before[c]
                 filled = True
         if filled:
@@ -952,10 +987,27 @@ def _refill_cells(old: str, new: str, out: Settled) -> str:
     return "\n".join(lines)
 
 
-def settle(before: str, after: str, ev: Evidence) -> Settled:
-    """`after` (a guard's output for `before`) with blanks and emptied blocks undone."""
+def _left_out(block: str, keep_out: Iterable[str]) -> bool:
+    """Whether `block` holds a sentence a check took out on purpose."""
+    flat = re.sub(r"\s+", " ", block)
+    return any(q and re.sub(r"\s+", " ", q).strip() in flat for q in keep_out)
+
+
+def settle(before: str, after: str, ev: Evidence, *, keep_out: Iterable[str] = (),
+           writer: bool = False) -> Settled:
+    """`after` (a guard's output for `before`) with blanks and emptied blocks undone.
+
+    `keep_out`: sentences a check took out on purpose (judged invented, work narration): a
+    block holding one is not brought back (r7 A02-T2, A16-T2). `writer`: `after` is the
+    writer's own revision on the checks' evidence (a strong writer): what it took out or
+    reworded stays as it wrote it; only blanks go back to values."""
     out = Settled(after)
     if before == after or not before.strip():
+        return out
+    keep_out = [q for q in keep_out if q and q.strip()]
+    if writer:
+        out.text = tidy_marks(_without_stale_asks(before, after, _settle_values(
+            before, after, ev, max(_structure_count(before), ev.listed), out)))
         return out
     structure = max(_structure_count(before), ev.listed)
     old_blocks, new_blocks = _blocks(before), _blocks(after)
@@ -970,7 +1022,7 @@ def settle(before: str, after: str, ev: Evidence) -> Settled:
             continue
         if op == "delete":
             for block in old_blocks[i1:i2]:
-                if _emptied(block, ""):
+                if _emptied(block, "") and not _left_out(block, keep_out):
                     out.kept.append(block.strip()[:60])
                     result.append(_mark_block(block, ev))
             continue
@@ -988,12 +1040,41 @@ def settle(before: str, after: str, ev: Evidence) -> Settled:
             fixed = _unmark(old, _settle_values(old, new, ev, structure, out), ev, structure,
                             out)
             fixed = _refill_cells(old, fixed, out)
-            if _emptied(old, fixed):
+            if _emptied(old, fixed) and _left_out(old, keep_out) and not fixed.strip():
+                continue
+            if _emptied(old, fixed) and not _left_out(old, keep_out):
                 out.kept.append(old.strip()[:60])
                 fixed = _mark_block(old, ev)
             result.append(fixed)
-    out.text = "\n\n".join(result)
+    out.text = tidy_marks(_without_stale_asks(before, after, "\n\n".join(result)))
     return out
+
+
+#: a mark inside a bracket: 「(10월 16일(확인 필요))」
+_MARK_IN_BRACKET = re.compile(r"\(([^()\n]{1,60}?)\s?\(확인 필요\)\)")
+
+
+def tidy_marks(text: str) -> str:
+    """A mark that closes a bracket goes inside it, no doubled bracket: 「(10월 16일, 확인
+    필요)」 (r7 P36 「10월 16일(확인 필요))」)."""
+    return _MARK_IN_BRACKET.sub(r"(\1, 확인 필요)", text or "")
+
+
+def _without_stale_asks(before: str, after: str, text: str) -> str:
+    """Lines the guard added around its own blanks (「확인이 필요한 날짜(자료에 없어 [날짜]로
+    두었습니다 …)」 and the items under it) taken out once every blank went back: left in, they
+    read 「자료에 없어 로 두었습니다 … 공지일() 기준」 (r7 A14-T2)."""
+    if GUARD_BLANK.search(text) or not GUARD_BLANK.search(after):
+        return text
+    had = {line.strip() for line in (before or "").split("\n")}
+    stale = {GUARD_BLANK.sub("", line).strip() for line in after.split("\n")
+             if GUARD_BLANK.search(line) and line.strip() not in had}
+    stale = {line for line in stale if line and line not in had}
+    if not stale:
+        return text
+    lines = [line for line in text.split("\n") if line.strip() not in stale]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).rstrip() + (
+        "\n" if text.endswith("\n") else "")
 
 
 #: a value written just before a mark: a day (weekday too) or a number with its unit
