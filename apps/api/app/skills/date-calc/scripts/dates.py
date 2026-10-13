@@ -344,6 +344,12 @@ def next_meeting(text: str, base: dt.date) -> dt.date | None:
     return next(iter(days)) if len(days) == 1 else None
 
 
+#: the day a text writes in brackets right after a relative one: 「(10/15)」, 「(10월 15일)」
+_GIVEN_AFTER = re.compile(
+    r"\s{0,2}\(\s{0,2}(?:(?P<y>20\d{2})\s{0,2}[-./년]\s{0,2})?(?P<m>\d{1,2})\s{0,2}(?:/|\.|월)"
+    r"\s{0,2}(?P<d>\d{1,2})(?!\d)")
+
+
 def find(text: str, base: dt.date, *, absolute: bool = True,
          named: dict[str, dt.date] | None = None,
          anchors: set[str] | None = None, meeting: dt.date | None = None) -> list[dict]:
@@ -371,6 +377,24 @@ def find(text: str, base: dt.date, *, absolute: bool = True,
             found.append(row)
             matches[id(row)] = (m, end)
     found.sort(key=lambda r: r["at"])
+    for row in found:
+        # 「다음 주 목요일(10/15)」: the date the text writes beside it is the day (r5 A01-T2
+        # resolved it again from the meeting day and got 10/22)
+        if row["kind"] in ("full_date", "month_day"):
+            continue
+        given = _GIVEN_AFTER.match(text, matches[id(row)][1])
+        if given is None:
+            continue
+        try:
+            if given.group("y"):
+                day = dt.date(int(given.group("y")), int(given.group("m")), int(given.group("d")))
+            else:
+                day, _ = _year_for(base, int(given.group("m")), int(given.group("d")))
+        except ValueError:
+            continue
+        kept = {k: v for k, v in row.items() if k in ("text", "at", "kind")}
+        row.clear()
+        row.update({**kept, **_dated(day), "anchor": "written"})
     # An offset right after a date in the same sentence counts from that date.
     anchor: dict | None = None
     chained: tuple[int, dt.date, str] | None = None

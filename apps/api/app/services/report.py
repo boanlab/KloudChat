@@ -1466,7 +1466,11 @@ def collapse_repeated_citations(body: str) -> str:
     return "".join(out)
 
 
-_FIGURE_MARK = re.compile(r"\[\[\s*그림\s*[:：]\s*(?P<body>[^\]\n]{3,900}?)\s*\]\]")
+#: 「[[그림: kind | caption | body]]」; the body may hold single brackets (「[김도윤: 검수]」, r5
+#: A01-T1 left the whole mark in the minutes)
+_FIGURE_MARK = re.compile(r"\[\[\s*그림\s*[:：]\s*(?P<body>(?:[^\]\n]|\](?!\])){3,900}?)\s*\]\]")
+#: a mark left open to the line's end: taken out, never shown
+_FIGURE_OPEN = re.compile(r"[ \t]*\[\[\s*그림\s*[:：][^\n]*")
 _FIGURE_REF, _TABLE_REF = "〔그림〕", "〔표〕"
 #: phrase around a reference to an undrawable figure
 _DANGLING_REF = re.compile(
@@ -2780,6 +2784,37 @@ def _renumber_references(sections: list[dict]) -> tuple[list[dict], set[str]]:
     return out, mentioned
 
 
+#: a section named only for where it sits: its name is no table's caption
+_GENERIC_SECTION = re.compile(r"(?:붙임|별첨|첨부|참고|부록|기타|비고)(?:\s?(?:자료|\d{1,2}))?")
+#: a line titling the table under it: 「- 표: 교체 방식 비교」, 「[표] …」, 「<표 2> …」
+_TABLE_TITLE = re.compile(
+    r"^\s{0,8}(?:[-*•·]\s{1,3})?[*_]{0,2}\s{0,2}(?:\[\s?표\s?\d{0,3}\s?\]|[<〈《【]\s?표\s?\d{0,3}\s?[>〉》】]"
+    r"|표\s?\d{0,3}\s?[.:：])\s{0,2}(?P<text>[^\n|]{1,80}?)\s{0,2}[*_]{0,2}\s*$")
+#: a label or heading that leads into a table: 「## 교체 일정」, 「**예산 내역**」, 「차수별 일정:」
+_LEAD_LABEL = re.compile(
+    r"^\s{0,8}(?:#{1,6}\s+(?P<h>[^\n]{1,60}?)|(?:[-*•·]\s{1,3})?\*\*(?P<b>[^*\n]{1,40})\*\*\s{0,2}[:：]?"
+    r"|(?:[-*•·]\s{1,3})?(?P<c>[^\n:：.。]{2,40})[:：])\s*$")
+
+
+def _table_title(line: str) -> str | None:
+    m = _TABLE_TITLE.match(line or "")
+    return m.group("text").strip(" *_.:") if m else None
+
+
+def _lead_caption(result: list[str]) -> str:
+    """Caption from the line leading into a table, or the nearest heading above it."""
+    k = len(result) - 1
+    while k >= 0 and not result[k].strip():
+        k -= 1
+    if k >= 0 and (m := _LEAD_LABEL.match(result[k])) \
+            and not re.match(r"\s*(?:\||\*\*표\s?\d|\*그림\s?\d|!\[)", result[k]):
+        return (m.group("h") or m.group("b") or m.group("c") or "").strip(" *_.:")
+    for line in reversed(result[:max(k, 0)]):
+        if (m := re.match(r"^\s{0,3}#{1,6}\s+(.{1,60}?)\s*$", line)):
+            return m.group(1).strip(" *_")
+    return ""
+
+
 def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
     """Figures captioned below, tables above, numbered in order."""
     sections, mentioned = _renumber_references(sections)
@@ -2793,6 +2828,11 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
             out.append(sec)
             continue
         content = str(sec.get("content") or "")
+        section_name = re.sub(r"^\s*(?:[\dⅠ-Ⅻ]{1,3}[.)]|[가-하][.)]|제\s?\d{1,2}\s?[장절])\s*", "",
+                              str(sec.get("heading") or "")).strip(" *#")
+        if _GENERIC_SECTION.fullmatch(section_name):
+            section_name = ""
+        used_titles: set[str] = set()
         # 「−」 lacks a PDF glyph; empty 「[]」; title-less 「표 4」 line
         content = content.replace("\u2212", "-")
         content = re.sub(r"\s?\[\s*\]", "", content)
@@ -2843,7 +2883,14 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 k = len(result) - 1
                 while k >= 0 and not result[k].strip():
                     k -= 1
-                given = _caption_text(result[k], "표") if k >= 0 else None
+                if k >= 0 and re.fullmatch(r"\s{0,3}\*\*표\s?\d{1,3}\.?\*\*\s*", result[k]):
+                    # a bare number caption from an earlier pass: numbered again below
+                    del result[k:]
+                    k = len(result) - 1
+                    while k >= 0 and not result[k].strip():
+                        k -= 1
+                given = (_caption_text(result[k], "표") or _table_title(result[k])) if k >= 0 \
+                    else None
                 if given is not None:
                     del result[k:]
                 elif k >= 0 and (tail := _TRAILING_TABLE_CAPTION.search(result[k])):
@@ -2861,7 +2908,19 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                     if k < len(lines) and (below := _caption_text(lines[k], "표")) is not None:
                         given = below
                         lines[k] = ""
-                title = given or "·".join(header[:3]) or "표"
+                # no caption given: the nearest label or heading, else a descriptive section
+                # name, else the number alone; never its column names (「표 1. 항목·내용·비고」,
+                # r5 A03-T2·A07-T1·A01-T1)
+                title = given or next((t for t in (_lead_caption(result), section_name)
+                                       if t and t not in used_titles), "")
+                if title:
+                    used_titles.add(title)
+                    k = len(result) - 1
+                    while k >= 0 and not result[k].strip():
+                        k -= 1
+                    if k >= 0 and re.fullmatch(r"\s{0,8}\*\*" + re.escape(title)
+                                               + r"\*\*\s{0,2}[:：]?\s*", result[k]):
+                        del result[k:]  # the bold label became the caption
                 # table shaped like the previous takes its caption, number advanced
                 if not given and previous_table and previous_table[0] == header:
                     step = re.search(r"(\d{1,2})\s?(차시|회차|주차|단계|일차|개월차)", previous_table[1])
@@ -2873,7 +2932,8 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                     result, lines, i, _TABLE_REF, f"표 {table_no}"
                 ) and f"표 {table_no}" not in mentioned:
                     _point_from_paragraph_before(result, f"표 {table_no}")
-                result.extend(["", f"**표 {table_no}. {title}**", ""])
+                result.extend(["", f"**표 {table_no}. {title}**" if title
+                               else f"**표 {table_no}**", ""])
                 result.extend(lines[i:end])
                 i = end
                 continue
@@ -2884,7 +2944,7 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
         if _FIGURE_REF in text or _TABLE_REF in text:
             text = re.sub(r"[ \t]{2,}", " ", _DANGLING_REF.sub(" ", text))
             text = re.sub(r" ([.,)])", r"\1", text)
-        text = fix_number_particles(_FIGURE_MARK.sub("", text))
+        text = fix_number_particles(_FIGURE_OPEN.sub("", _FIGURE_MARK.sub("", text)))
         out.append({**sec, "content": text})
     return out
 
@@ -4010,6 +4070,9 @@ def _stems(text: str) -> set[str]:
 
 
 #: test lines: never trimmed (wrong choices repeat numbers)
+#: a formula or a numbered step: never a restatement to trim (r5 A10-T2 lost 「연간 시장 규모(원) =
+#: N(명) × 9,900원 × 12개월 × c」 and its 「2단계」 paragraph)
+_WORKED_LINE = re.compile(r"[=×÷]|\d\s?[x*/]\s?\d|(?:^|\s|\()\d{1,2}\s?단계")
 _ASSESSMENT_LINE = re.compile(
     r"[①-⑩]|^\s*(?:\*\*)?(?:서술형\s?)?\d{1,2}\s?[.)번](?:\*\*)?\s|^\s*\*\*서술형|"
     r"\d{1,2}\s?점\)|[?？]\s{0,8}$|(?:정답|모범\s?답|채점|배점|보기)\s?[:：]|시오\.?\s{0,8}$"
@@ -4061,6 +4124,7 @@ def trim_restatements(
             earlier_words |= _stems(cells)
         if (in_block or line.strip().startswith("|") or line.strip().startswith("#")
                 or not line.strip() or _ASSESSMENT_LINE.search(line)
+                or _WORKED_LINE.search(line)
                 or keep_items and _LIST_LEAD.match(line).group(0).strip()):
             rows.append((line, None, []))
             if line.strip().startswith("#") and _QUESTION_LINE.search(line):

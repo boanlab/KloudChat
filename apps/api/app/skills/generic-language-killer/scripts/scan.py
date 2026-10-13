@@ -71,12 +71,20 @@ def _dash(m: re.Match) -> str | None:
         return None
     if re.search(r"\d$", before) and re.match(r"\d", after):
         return None  # a range: 「10—12」
-    if re.search(r"[.?!。」』\"')\]]$", before) and not before.endswith("**"):
+    if re.search(r"[)\]]$", before) and not re.search(r"[.?!。][)\]]$", before):
+        return None  # 「(…, 2026년 게시) — 자막 기반」: a header's parts (r5 A08-T2)
+    if re.search(r"[.?!。」』\"']$", before) and not before.endswith("**"):
         return " "
-    lead = re.sub(r"^\s{0,8}(?:[-*+]\s+|\d{1,3}[.)]\s+)?", "", before)
+    line = before[before.rfind("\n") + 1:]
+    if line.count("**") % 2 == 1:
+        return None  # inside a bold label: 「**기능 블록 1 — 결재 알림 연동**」
+    item =re.match(r"\s{0,8}(?:[-*+•]\s+|\d{1,3}[.)]\s+)", line)
+    lead = line[item.end():] if item else re.sub(r"^\s{0,8}", "", line)
     if before.endswith("**") or (len(lead) <= 16 and len(lead.split()) <= 2
                                  and not re.search(r"[.,]|[고며면서다요]$", lead)):
         return ": "
+    if item and not re.search(r"[—―:：]", lead):
+        return ": "  # 「- 실수 내용함 — 설명」: the item's label and its note (r5 A08-T1)
     return ", "
 
 
@@ -415,8 +423,19 @@ def _digits(token: str) -> str:
     return re.sub(r"[^\d.]", "", token).strip(".")
 
 
+#: a small bare count: 「1명」, 「2개」, 「3가지」 (not a rate, money or a measure)
+_SMALL_COUNT = re.compile(r"[1-9]\s?(?:명|개|곳|건|회|가지|단계|번째|차)?")
+
+
+def _everyday(token: str, edit: bool) -> bool:
+    """A number not worth a rewrite: a one-digit count, or any number outside an edit of
+    the person's text (new copy is the grounding check's to trace, not this script's)."""
+    return not edit or bool(_SMALL_COUNT.fullmatch(token.strip()))
+
+
 def post(text: str, args: dict) -> dict:
-    """Rewritten text: safe auto fixes only; hedges made definite and new numbers to the writer."""
+    """Rewritten text: safe auto fixes only; hedges made definite and, in an edit, new numbers
+    to the writer. Numbers are never blanked."""
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
     lines = (text or "").split("\n")
     span = section(text)
@@ -438,16 +457,17 @@ def post(text: str, args: dict) -> dict:
                 item = {"kind": "hedge", "text": name,
                         "why": "원문의 계획·판단을 확정된 일처럼 바꿨습니다. 원문처럼 계획·판단으로 되돌리세요."}
                 (out["flags"] if final else out["rewrite"]).append(item)
-    known = {_digits(m.group(0)) for m in _VALUE.finditer(original + "\n" + str(args.get("request") or ""))}
+    given = "\n".join(str(x or "") for x in (original, args.get("request"), args.get("material")))
+    known = {_digits(m.group(0)) for m in _VALUE.finditer(given)}
     new = [m.group(0).strip() for m in _VALUE.finditer(body)
-           if _digits(m.group(0)) and _digits(m.group(0)) not in known]
+           if _digits(m.group(0)) and _digits(m.group(0)) not in known
+           and not _everyday(m.group(0), span is not None)]
     for raw in dict.fromkeys(new):
-        if final:
-            body = re.sub(rf"(?<![\w.]){re.escape(raw)}(?![\d,.])", "[구체적 수치]", body, count=1)
-            out["fixed"].append({"kind": "number", "text": raw, "why": "원문에 없는 수치 — 빈칸으로 둠"})
-        else:
-            out["rewrite"].append({"kind": "number", "text": raw,
-                                   "why": "원문에 없는 수치입니다. 빼거나 값 뒤에 「(확인 필요)」를 붙이세요."})
+        # code never blanks a number (r5 A12-T1: 「1명부터」 ended as 「(1)명까지」); in an edit
+        # of the person's text the writer is asked once, otherwise it is only shown
+        item = {"kind": "number", "text": raw,
+                "why": "원문에 없는 수치입니다. 빼거나 값 뒤에 「(확인 필요)」를 붙이세요."}
+        (out["rewrite"] if span is not None and not final else out["flags"]).append(item)
     lines[lo:hi] = body.split("\n")
     out["text"] = "\n".join(lines)
     return out

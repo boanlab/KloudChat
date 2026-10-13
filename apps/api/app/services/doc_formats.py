@@ -63,7 +63,10 @@ FORMATS: tuple[DocFormat, ...] = (
     DocFormat(
         # After minutes: 「회의록」 wins when both are named.
         "agenda", "회의 안건",
-        r"회의\s{0,3}안건(?!별)|안건\s{0,3}(?:지|목록)|안건\s{0,3}표(?!결)|어젠다|(?<![A-Za-z])agenda(?![A-Za-z])",
+        # 「검토 보고서 써 줘. 경영회의 안건 자료야」: what the report is for, not an agenda (r5
+        # A10-T1 got agenda head fields, its sections and no web search)
+        r"회의\s{0,3}안건(?!별|\s{0,3}(?:자료|으로|에\s{0,3}(?:올|상정|부칠)))"
+        r"|안건\s{0,3}(?:지|목록)|안건\s{0,3}표(?!결)|어젠다|(?<![A-Za-z])agenda(?![A-Za-z])",
         ("회의명", "일시", "장소", "참석자", "작성자"), numbering="none", head="memo",
     ),
     DocFormat(

@@ -1444,14 +1444,86 @@ def _json(text: str) -> dict:
 _COST_SPLIT = "총비용 계산 불일치 — 직접 확인 필요"
 _COST_WITHHELD = (
     "# 총비용 계산(코드): 확정 못 함\nThe cost items read from the material differed on every reading, so the "
-    "total cost per alternative could not be settled. Do not calculate per-alternative total costs, sums, "
-    "differences or scenario totals; leave them as 「[금액]」. The unit prices, quantities and conditions "
-    "written in the material may be used as they are.")
+    "code settled no total cost per alternative. Work each total out yourself from the unit prices, "
+    "quantities, periods, discounts and one-off costs the material writes, and show the formula beside it "
+    "(「14,000원 × 40명 × 12개월 × 0.85 + 3,000,000원 = 8,712,000원」); where the material lacks a figure a "
+    "total needs, leave that total as 「[금액]」.")
+#: what the writer does with an option the readings did not settle
+_UNSETTLED = ("its cost items read differently each time, so the code settled no total for it. Work "
+              "its total and yearly totals out yourself from the unit prices, quantities, periods, "
+              "discounts and one-off costs the material writes, showing the formula beside each; "
+              "leave a total as 「[금액]」 only where the material lacks a figure it needs.")
+
+#: an option's head label: 「A안: 사내 메신저 유지 + …」, 「제2안」, 「안 1」, 「견적 2」
+_OPTION_HEAD = re.compile(
+    r"^\s*(?:제\s?)?(?:(?P<x>[A-Za-z]|\d{1,2}|[가-하])\s?안|안\s?(?P<y>\d{1,2}))"
+    r"(?=$|[\s:：(\-—·,])")
 
 
 def _option_key(name: str) -> str:
-    """Option name for comparison: 「팀링크 (엔터프라이즈)」 → 「팀링크」."""
+    """Option name for comparison: 「팀링크 (엔터프라이즈)」 → 「팀링크」; a labelled option by its
+    label, 「A안: 지금 쓰는 사내 메신저 유지 + …」 → 「A안」 (r5 A04-T1: two wordings of A안 were
+    two options, and A안 was left unsettled)."""
+    if m := _OPTION_HEAD.match(str(name)):
+        return (m.group("x") or "").upper() + "안" if m.group("x") else m.group("y") + "안"
     return re.sub(r"\s+|\(.*?\)|（.*?）", "", str(name))
+
+
+_DISCOUNT = re.compile(r"(?P<n>\d{1,2}(?:\.\d)?)\s?%\s?(?:할인|감면|인하)|할인(?:율)?\s?(?P<m>\d{1,2})\s?%")
+
+
+def _missing_discount(options: dict[str, dict], scenarios: list[dict], material: str) -> list[str]:
+    """Options whose material names a percent discount no reading priced: neither a row nor a
+    condition scenario applies it (r5 A04-T1: B안's 「연 단위 계약 시 15% 할인」 was dropped
+    by every reading and its undiscounted total went to the writer as settled)."""
+    names = list(options)
+    out = []
+    for name in names:
+        said = _option_text(name, names, material)
+        if not _DISCOUNT.search(said):
+            continue
+        rows = options[name].get("rows") or []
+        priced = any("할인" in str(r.get("name") or "") or int(r.get("amount") or 0) < 0
+                     or any(_rate_factor(f) for f in r.get("factors") or [])
+                     for r in rows)
+        scenario = any(name in (sc.get("options") or {}) and sc["options"][name]["total"]
+                       != options[name]["total"] for sc in scenarios)
+        if not priced and not scenario:
+            out.append(name)
+    return out
+
+
+def _rate_factor(factor: Any) -> bool:
+    try:
+        value = float(str(factor).replace(",", "").rstrip("%"))
+    except ValueError:
+        return False
+    return 0 < value < 1 or str(factor).strip().endswith("%")
+
+
+def _names_option(line: str, name: str) -> bool:
+    """Whether a material line opens `name`'s part: its label (「A안:」) or its name."""
+    head = line.strip()
+    key = _option_key(name)
+    if _OPTION_HEAD.match(head):
+        return _option_key(head) == key
+    plain = re.sub(r"\s+", "", head)
+    return bool(key) and (key in plain or re.sub(r"\s+", "", name) in plain)
+
+
+def _option_text(name: str, names: list[str], material: str) -> str:
+    """What the material writes under an option: from the line naming it to the line naming
+    another (「[견적 2] 다솜시스템」 and the lines under it)."""
+    out: list[str] = []
+    inside = False
+    for line in (material or "").split("\n"):
+        if _names_option(line, name):
+            inside = True
+        elif any(n != name and _names_option(line, n) for n in names):
+            inside = False
+        if inside:
+            out.append(line)
+    return "\n".join(out) or _described(name, names, material)
 
 
 def _same_totals(a: dict[str, dict], b: dict[str, dict]) -> bool:
@@ -1506,11 +1578,7 @@ def _partial_cost_block(kept: dict[str, dict], unsettled: list[str], period: str
             f"{o} {e['first_year']:,}원" for o, e in kept.items()) + " / 이듬해(반복 비용만): "
             + ", ".join(f"{o} {e['next_year']:,}원" for o, e in kept.items()))
     if unsettled:
-        lines.append(
-            f"- Not settled: {', '.join(unsettled)} — its cost items read differently each time. "
-            "Leave its total, its yearly totals and any difference from it as 「[금액]」; the unit "
-            "prices, quantities and amounts the material writes for it may still be used as "
-            "written.")
+        lines.append(f"- Not settled: {', '.join(unsettled)} — {_UNSETTLED}")
     return "\n".join(lines)
 
 
@@ -1673,6 +1741,15 @@ async def _proposal_rfp(pre: Prepass, job: PrepassJob) -> None:
         pre.runs.append({"skill": "proposal-check", "summary": "RFP: " + ", ".join(shown)})
 
 
+def _quote_empty(result: dict) -> bool:
+    """A quote result that settles nothing: lines all left out, or a 0원 total."""
+    lines = result.get("lines") or []
+    if lines:
+        return not [line for line in lines if not line.get("excluded")] \
+            or not result.get("total")
+    return not result.get("quotes")
+
+
 async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
     """Quote lines read twice (third settles split), summed by code."""
     material, api_key = job.material, job.api_key
@@ -1699,6 +1776,11 @@ async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
             if how == "split":
                 pre.runs.append({"skill": "quote-calc", "error": True,
                                  "summary": "견적 계산 불일치 — 직접 확인 필요"})
+            elif agreed is not None and _quote_empty(agreed[2]):
+                # every line left out (or a 0원 sum): no settled block for the writer (r5
+                # A04-T2: 「공급가액 0원 … 합계 0원」 six times in the report)
+                pre.runs.append({"skill": "quote-calc", "error": True, "skipped": True,
+                                 "summary": "견적 계산 보류 — 계산할 항목이 남지 않아 확정값 없음"})
             elif agreed is not None:
                 data, dropped, result = agreed
                 pre.quote_input, pre.quote = data, result
@@ -1780,7 +1862,17 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
             costs, how, outcomes = await _vote(
                 read_costs, _costs_agree, tiebreak_model or model,
                 think_costs if job.deliberate is not None and thinker else None)
-            if costs is not None:
+            if costs is not None and (unpriced := _missing_discount(
+                    costs["options"], costs["scenarios"], f"{request}\n{material}")):
+                # a discount the material names that no reading applied: those options are
+                # not settled, the others are
+                pre.costs_withheld = True
+                kept = {n: e for n, e in costs["options"].items() if n not in unpriced}
+                pre.blocks.append(_partial_cost_block(kept, unpriced, costs["period"]) if kept
+                                  else _COST_WITHHELD)
+                pre.runs.append({"skill": "compare-cost", "error": True, "summary": (
+                    "총비용 일부 보류 — 자료의 할인을 반영하지 않은 읽기: " + ", ".join(unpriced))})
+            elif costs is not None:
                 # scenario kept only if another agreeing reading has same totals
                 others = [o[0] for o in outcomes if o[0] is not None and o[0] is not costs
                           and _costs_agree(o[0], costs)]
@@ -1807,6 +1899,9 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
             elif how == "split":
                 pre.costs_withheld = True
                 kept, unsettled = settled_options([o[0] for o in outcomes if o[0] is not None])
+                for name in _missing_discount(kept, [], f"{request}\n{material}"):
+                    kept.pop(name)
+                    unsettled.append(name)
                 period = next((o[0]["period"] for o in outcomes if o[0] is not None), "")
                 pre.blocks.append(_partial_cost_block(kept, unsettled, period) if kept
                                   else _COST_WITHHELD)
@@ -4286,6 +4381,26 @@ def _residency(option: str, options: list[str], text: str) -> bool | None:
     return None
 
 
+_ABSENT = re.compile(r"없|미지원|미제공|불포함|불가|안\s{0,2}됨|제공\s{0,2}안|(?<![A-Za-z])[Xx](?![A-Za-z])")
+
+
+def _states_absence(option: str, options: list[str], must: str, material: str) -> bool:
+    """Whether the material says `option` lacks `must`: a pasted table row of it, or a word of
+    the must beside 「없음」·「미지원」 in what the material writes of it."""
+    if any(option in line for line in material.split("\n") if _PIPE_ROW.match(line)):
+        return True
+    said = _option_text(option, options, material)
+    stems = {w[:2] for w in re.findall(r"[가-힣]{2,}", must) if w[:2] not in ("필수", "조건", "여부")}
+    stems |= {w.lower() for w in re.findall(r"[A-Za-z]{2,}", must)}
+    low = said.lower()
+    for line in low.split("\n"):
+        for stem in stems:
+            for m in re.finditer(re.escape(stem), line):
+                if _ABSENT.search(line[max(0, m.start() - 12): m.end() + 20]):
+                    return True
+    return False
+
+
 def must_status(data: dict, numbers: list[float], material: str = "",
                 costs: dict | None = None) -> dict | None:
     """Each option 충족 / 탈락(사유) / 조건 미확인; unstated limits/values left out; a yearly
@@ -4334,6 +4449,11 @@ def must_status(data: dict, numbers: list[float], material: str = "",
                 continue
             if residency is True and value is None:
                 value = True
+            if (value is False and material and residency is None
+                    and not _states_absence(str(option["name"]), names, must["name"], material)):
+                # a reading of 「없음」 the material never states is no verdict (r5 A04-T2:
+                # 「다솜시스템: 탈락 — 보증기간 없음」 for a two-year warranty)
+                value = None
             if value is None:
                 unknown.append(must["name"])
             elif must["kind"] == "yesno" and value is False:

@@ -76,7 +76,8 @@ _REWRITE = (
     "written as settled: write it as the material hedges it. Keep everything else exactly as "
     "written — structure, order, headings, tables, the other wording and the language. Add no "
     "new fact, number, date, name, feature or procedure. Reply with the whole corrected answer "
-    "only, no preface.\n\n# Material\n{material}\n\n# Problems\n{problems}\n\n# Answer\n{text}"
+    "only, no preface and no word about the problems or the check — the reader never sees "
+    "them.\n\n# Material\n{material}\n\n# Problems\n{problems}\n\n# Answer\n{text}"
 )
 
 
@@ -326,6 +327,21 @@ def _cleaned(reply: str) -> str:
     return internal_words.strip_echoed_heading(text)
 
 
+#: a name or path a sentence can only have from somewhere: 「v2」, 「/messages」, 「iOS 18」
+_IDENT = re.compile(r"(?<![A-Za-z0-9_/])(?:/[A-Za-z][A-Za-z0-9_./-]*|[A-Za-z][A-Za-z0-9_.-]*\d"
+                    r"[A-Za-z0-9_.-]*|[A-Z]{2,}[A-Za-z0-9_-]*)")
+
+
+def names_the_material(statement: str, material: str) -> bool:
+    """Whether every name, version and path the statement writes is the material's own
+    (r5 A16-T1: 「… v2의 /messages로 전환해 주세요」 from 「(v2 /messages 사용)」 was taken out)."""
+    names = {m.group(0).rstrip(".") for m in _IDENT.finditer(statement or "")}
+    names = {n for n in names if len(n) >= 2}
+    low = (material or "").lower()
+    return bool(names) and any(re.search(r"\d|/", n) for n in names) \
+        and all(n.lower() in low for n in names)
+
+
 def drop(text: str, quote: str) -> str:
     """text without the sentence/cell/item holding quote."""
     flat = _flat(quote)
@@ -419,7 +435,7 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
                 material=sources[:_MATERIAL_CHARS * 2] or "(none)", problems=_problems(send),
                 text=text)}], api_key, min(12000, 2 * len(text) + 1000))
             _spend(usage, spent)
-            new = _cleaned(reply)
+            new = internal_words.strip_rewrite_preface(_cleaned(reply), text)
             # rewrite that lost half a long answer discarded
             if new and len(new) >= min(0.5 * len(text), len(text) - 300):
                 text, outcome.rewritten = new, True
@@ -436,6 +452,10 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
     for row in judged:
         # user-written sentences never removed
         if present(row["text"], text) and not present(row["text"], material):
+            if names_the_material(row["text"], sources):
+                # its names and paths are the material's: kept and shown, never removed
+                flags.append({**row, "why": f"{row['why']} (자료의 항목을 풀어 쓴 문장이라 남김)"})
+                continue
             text = drop(text, row["text"])
             outcome.fixed.append({**row, "why": f"{row['why']} → 뺌"})
     outcome.flags = flags

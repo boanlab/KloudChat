@@ -31,6 +31,8 @@ TERMS = re.compile(
 DOCUMENT_TERMS = re.compile(
     TERMS.pattern
     + r"|코드(?:가|로)\s{0,2}(?:계산|풀|해석)|\(\s{0,2}코드\s{0,2}계산[^()\n]{0,24}\)|\(코드\)"
+    # 「코드에서 확정된 금액」 (r5 A04-T1)
+    r"|코드(?:에서|가|로|를\s{0,2}통해)\s{0,2}(?:확정|산출|정해|정한|고정)"
     r"|코드\s{0,2}계산"
 )
 #: clause within a table cell
@@ -64,14 +66,16 @@ def scrub(text: str, *, document: bool = True) -> str:
     if not rx.search(text or ""):
         return text
     out: list[str] = []
-    fenced = False
+    fence = ""  # "" outside, "code", or "prose" for a 「```callout」·「```kpi」 box
     for line in text.split("\n"):
         stripped = line.lstrip()
         if stripped.startswith("```"):
-            fenced = not fenced
+            # a callout or kpi box is prose the reader sees (r5 A04-T1)
+            fence = "" if fence else (
+                "prose" if stripped[3:].strip().lower() in ("callout", "kpi") else "code")
             out.append(line)
             continue
-        if fenced or stripped.startswith("#") or not rx.search(line):
+        if fence == "code" or stripped.startswith("#") or not rx.search(line):
             out.append(line)
             continue
         if stripped.startswith("|"):
@@ -82,7 +86,10 @@ def scrub(text: str, *, document: bool = True) -> str:
         kept = [s for s in units.SENTENCE_BREAK.split(body) if s.strip() and not rx.search(s)]
         if kept:
             out.append(lead + " ".join(kept))
-    return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
+    # a box left with nothing in it goes too
+    empty_box = r"(?m)^[ \t]{0,3}```(?:callout|kpi)[^\n]*\n(?:[ \t]*\n)*[ \t]{0,3}```[ \t]*(?:\n|$)"
+    text = re.sub(empty_box, "", "\n".join(out))
+    return re.sub(r"\n{3,}", "\n\n", text)
 
 
 #: tool/script reports copied into the answer (skills g2–g4)
@@ -350,6 +357,33 @@ def strip_echoed_heading(text: str) -> str:
     if m := _ECHOED_LINE.search(text):
         text = text[m.end():].lstrip("\n")
     return text
+
+
+#: a check rewrite's reply to the check (「점검이 끝났습니다. … 스크립트가 15를 수치로 짚었습니다」,
+#: 「#17의 「자동화」는 … 근거가 있습니다. 다만 스크립트가 확인 표시를 달았으니 …」)
+_CHECK_REPLY = re.compile(
+    r"스크립트|점검(?:이|을|은|에서|\s?결과|\s?지적)|확인\s?표시|지적(?:하신|된|받은|에)|짚었|짚은"
+    r"|근거가\s?(?:있|없)습니다|자료에\s?(?:근거|없어도|있는\s?표현)|(?:고쳐|다시)\s?썼|수정했습니다"
+    r"|그대로\s?두(?:고|었)|허용되는|무방")
+
+
+def strip_rewrite_preface(new: str, before: str) -> str:
+    """A check rewrite without the paragraphs it put above the answer to answer the check
+    (r5 A12-T2·A15-T2): paragraphs before the first one the answer had, that the answer
+    did not have and that talk about the check. Never down to nothing."""
+    if not new or not before:
+        return new
+    paragraphs = re.split(r"\n[ \t]*\n", new.strip("\n"))
+    old = re.sub(r"\s+", " ", before)
+    cut = 0
+    for paragraph in paragraphs[:3]:
+        flat = re.sub(r"\s+", " ", paragraph).strip()
+        if not flat or re.match(r"(?:#{1,6}\s|\||```|!\[)", paragraph.lstrip()) \
+                or flat in old or not _CHECK_REPLY.search(flat):
+            break
+        cut += 1
+    rest = "\n\n".join(paragraphs[cut:]).strip("\n")
+    return rest if cut and rest.strip() else new
 
 
 #: a verification block the writer appended: 「**검증 결과**」 then its items
