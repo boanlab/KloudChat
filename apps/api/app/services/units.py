@@ -210,10 +210,11 @@ def restore_material_scale(text: str, material: str) -> str:
 
 
 #: Korean amount; 천 matched inside 만/억 groups (else 「1억 8」)
+_SCALE_WORD = r"(?:조(?![건사정직치합언각])|억|천만|만(?![큼약일족])|천(?![국재]))"
 _TERM = (
-    r"\d[\d,]*(?:\.\d+)?\s?(?:조|억|천만|만|천)(?:\s?\d[\d,]*(?:\.\d+)?\s?(?:억|천만|만|천))*"
+    rf"\d[\d,]*(?:\.\d+)?\s?{_SCALE_WORD}(?:\s?\d[\d,]*(?:\.\d+)?\s?{_SCALE_WORD})*"
     # a bare tail under the last scale word is part of the amount: 「8만 2,080」 (r7 A10-T2)
-    r"(?:\s?(?:\d{1,3},\d{3}|\d{1,4})(?![\d,.]|\s?(?:조|억|천만|만|천)))?"
+    rf"(?:\s?(?:\d{{1,3}},\d{{3}}|\d{{1,4}})(?![\d,.]|\s?{_SCALE_WORD}))?"
     r"|\d[\d,]*(?:\.\d+)?"
 )
 #: per-unit amount reads as its amount

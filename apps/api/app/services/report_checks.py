@@ -1245,8 +1245,26 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None,
         return None
 
     conditions = sorted({i["when"] for o in options for i in o["items"] if i.get("when")})
+    # a condition the material's own figures meet (「30대 이상 구매 시 5% 할인」 for 30 units)
+    # is applied, not offered as a scenario (r8 A04-T2: the discount went to a scenario, the
+    # scenario was dropped, and the undiscounted total put 누리컴 over the budget)
+    applied: list[str] = []
     for option in options:
-        option["base"], option["by"] = conditional_items(option["items"], conditions,
+        met = [c for c in conditions if any(i.get("when") == c for i in option["items"])
+               and condition_met(c, option["items"], data.get("years"))]
+        current = [i for i in option["items"] if not i.get("when")]
+        for condition in met:
+            _, by = conditional_items(
+                [*current, *(i for i in option["items"] if i.get("when") == condition)],
+                [condition], data.get("years"))
+            current = [{k: v for k, v in i.items() if k != "when"} for i in by[condition]]
+        option["rest"] = [*current, *(i for i in option["items"]
+                                      if i.get("when") and i["when"] not in met)]
+        applied += [f"{c} ({option['name']})" for c in met]
+    conditions = [c for c in conditions
+                  if any(any(i.get("when") == c for i in o["rest"]) for o in options)]
+    for option in options:
+        option["base"], option["by"] = conditional_items(option.pop("rest"), conditions,
                                                          data.get("years"))
 
     # VAT-exclusive and VAT-inclusive prices side by side: all put on the inclusive basis
@@ -1295,11 +1313,52 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None,
     lowest = min(base, key=lambda name: base[name]["total"])
     out = {"period": str(data.get("period") or "")[:20], "options": base, "lowest": lowest,
            "scenarios": scenarios[:4], "dropped": dropped}
+    if applied:
+        out["applied"] = applied
     if basis:
         out["vat_basis"] = basis
-    if judged := _judged_against(_budget_of(data, numbers, material), base, basis):
+    budget = _budget_of(data, numbers, material)
+    if judged := _judged_against(budget, base, basis):
         out["budget"] = judged
+        scenario_budgets(out, budget)
     return out
+
+
+def scenario_budgets(costs: dict, budget: dict | None) -> None:
+    """Each scenario's totals on the budget's basis, beside the base's: an option over the
+    budget only without a condition is not out (`must_status`)."""
+    if not budget or "budget" not in costs:
+        return
+    costs["budget"]["scenarios"] = {
+        sc["name"]: j["compared"] for sc in costs.get("scenarios") or []
+        if (j := _judged_against(budget, sc["options"], costs.get("vat_basis") or ""))}
+
+
+#: a quantity threshold in a condition: 「30대 이상 구매 시」, 「50명 이상」
+_AT_LEAST = re.compile(r"(\d[\d,]*)\s{0,2}(?:" + _COUNTED_IN + r")\s{0,2}이상")
+#: a period threshold: 「3년 이상 계약 시」
+_YEARS_AT_LEAST = re.compile(r"(\d{1,2})\s{0,2}년\s{0,2}이상")
+
+
+def condition_met(condition: str, items: list[dict], years: Any) -> bool:
+    """Whether the material's own figures meet `condition`: a count threshold the option's
+    counted units reach, or a period threshold the compared years reach. A condition only the
+    buyer decides (「연 단위 계약 시」) is never met by code."""
+    if m := _AT_LEAST.search(condition or ""):
+        need = float(m.group(1).replace(",", ""))
+        counts = []
+        for item in items:
+            try:
+                counts.append(float(_plain((item.get("raw") or {}).get("count")) or 0))
+            except ValueError:
+                continue
+        return bool(counts) and max(counts) >= need
+    if m := _YEARS_AT_LEAST.search(condition or ""):
+        try:
+            return float(_plain(years) or 0) >= float(m.group(1))
+        except ValueError:
+            return False
+    return False
 
 
 #: words of a name that say nothing of what is priced
@@ -1430,6 +1489,7 @@ def _cost_block(result: dict, *, data: bool = False) -> str:
                                     else f"예산 초과({-room:,}원)")
                                  for o, room in budget["room"].items())
                      + " → " + (f"예산 안: {', '.join(within)}" if within else "예산 안의 대안 없음"))
+    lines += _applied_lines(result)
     for spec in result["scenarios"]:
         totals = spec["options"]
         lines.append(f"- 시나리오 「{spec['name']}」: " + ", ".join(
@@ -1439,6 +1499,14 @@ def _cost_block(result: dict, *, data: bool = False) -> str:
     if result["dropped"]:
         lines.append("- Left out of the calculation (values not in the material): " + ", ".join(result["dropped"][:6]))
     return "\n".join(lines)
+
+
+def _applied_lines(result: dict) -> list[str]:
+    """The material's conditions its own figures meet, applied in the totals above."""
+    if not result.get("applied"):
+        return []
+    return ["- 자료의 조건 중 자료의 수량·기간으로 충족되어 위 합계에 넣은 것: "
+            + ", ".join(f"「{a}」" for a in result["applied"][:4])]
 
 
 def _cost_data(result: dict) -> str:
@@ -1470,6 +1538,7 @@ def _cost_data(result: dict) -> str:
                      + ", ".join(f"{o} {budget['compared'][o]:,}원 → "
                                  + (f"잔액 {room:,}원" if room >= 0 else f"초과 {-room:,}원")
                                  for o, room in budget["room"].items()))
+    lines += _applied_lines(result)
     for spec in result["scenarios"]:
         totals = spec["options"]
         ranked = sorted(totals, key=lambda n: totals[n]["total"])
@@ -1911,6 +1980,45 @@ async def _staffing(pre: Prepass, job: PrepassJob) -> None:
         pre.staff = staffing(job.material)
 
 
+#: a scenario name marked where its readings differ (the strong writer gets both)
+_READINGS_DIFFER = " — 읽을 때마다 값이 다름"
+
+
+def _split_scenarios(costs: dict, others: list[dict], *,
+                     strong: bool) -> tuple[dict, list[str]]:
+    """`costs` with its scenarios that another agreeing reading prices alike; the rest are
+    never dropped silently. A strong writer gets each differing scenario with every reading's
+    totals, marked, to judge from the material; for a small writer a differing scenario that
+    lowers an option's total (a discount) leaves that option unsettled (the names returned),
+    and any other differing scenario is listed as left out."""
+    agreed = [sc for sc in costs["scenarios"] if any(
+        _same_totals(sc["options"], other["options"])
+        for o in others for other in o["scenarios"])]
+    differing = [sc for sc in costs["scenarios"] if sc not in agreed]
+    if not differing:
+        return costs, []
+    if strong:
+        readings = [*differing]
+        for sc in differing:
+            readings += [{**other, "name": f"{other['name']} (다른 읽기)"} for o in others
+                         for other in o["scenarios"] if other["name"] == sc["name"]
+                         and not _same_totals(other["options"], sc["options"])]
+        marked = [{**sc, "name": sc["name"] + _READINGS_DIFFER} for sc in readings]
+        out = {**costs, "scenarios": [*agreed, *marked][:6]}
+        if budget := costs.get("budget"):
+            out["budget"] = dict(budget)
+            scenario_budgets(out, {"amount": budget["amount"], "vat": budget["vat"]})
+        return out, []
+    lowered = [name for name, entry in costs["options"].items() if any(
+        (sc["options"].get(name) or {}).get("total", entry["total"]) < entry["total"]
+        for sc in differing)]
+    if lowered:
+        return costs, lowered
+    return {**costs, "scenarios": agreed,
+            "dropped": [*costs["dropped"], "시나리오(읽을 때마다 다름) " + ", ".join(
+                sc["name"] for sc in differing)]}, []
+
+
 async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
     """Each option's period total: read twice, computed by code."""
     request, material, api_key = job.request, job.material, job.api_key
@@ -1965,18 +2073,27 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                 # scenario kept only if another agreeing reading has same totals
                 others = [o[0] for o in outcomes if o[0] is not None and o[0] is not costs
                           and _costs_agree(o[0], costs)]
-                kept = [sc for sc in costs["scenarios"] if any(
-                    _same_totals(sc["options"], other["options"])
-                    for o in others for other in o["scenarios"])]
-                if len(kept) < len(costs["scenarios"]):
-                    costs = {**costs, "scenarios": kept,
-                             "dropped": [*costs["dropped"], "시나리오(읽을 때마다 다름) " + ", ".join(
-                                 sc["name"] for sc in costs["scenarios"] if sc not in kept)]}
+                costs, unsettled = _split_scenarios(costs, others, strong=job.strong)
+                if unsettled:
+                    # a discount scenario the readings price differently: the option's total
+                    # without it is not settled either (r8 A04-T2: dropping 「30대 이상 구매 시」
+                    # left the undiscounted total settled, and 누리컴 went over the budget)
+                    pre.costs_withheld = True
+                    kept = {n: e for n, e in costs["options"].items() if n not in unsettled}
+                    pre.blocks.append(_partial_cost_block(kept, unsettled, costs["period"])
+                                      if kept else _COST_WITHHELD)
+                    pre.costs_partial = _partial_budget(
+                        kept, [o[0] for o in outcomes if o[0] is not None])
+                    pre.runs.append({"skill": "compare-cost", "error": True, "summary": (
+                        "총비용 일부 보류 — 읽을 때마다 다른 할인 조건: " + ", ".join(unsettled))})
+                    return
                 pre.costs = costs
                 pre.blocks.append(_cost_block(costs, data=job.strong))
                 summary = (f"총비용 {len(costs['options'])}개 대안"
                            + (f"({costs['period']})" if costs["period"] else "") + ": "
                            + ", ".join(f"{o} {e['total']:,}원" for o, e in costs["options"].items()))
+                if costs.get("applied"):
+                    summary += " · 자료로 충족된 조건 적용: " + ", ".join(costs["applied"][:3])
                 if costs["scenarios"]:
                     summary += f" · 시나리오 {len(costs['scenarios'])}개"
                 if costs["dropped"]:
@@ -4439,6 +4556,24 @@ def _yearly_cost(option: str, costs: dict | None) -> float | None:
     return None
 
 
+def _within_under(option: str, must: dict, costs: dict | None) -> tuple[str, float] | None:
+    """A scenario under which `option`'s total meets the budget `must` names, with that total."""
+    budget = (costs or {}).get("budget") or {}
+    try:
+        limit = float(str(must.get("limit")).replace(",", ""))
+        if abs(limit - float(budget.get("amount"))) > 0.5:
+            return None
+    except (TypeError, ValueError):
+        return None
+    key = _option_key(option)
+    for scenario, compared in (budget.get("scenarios") or {}).items():
+        for name, total in compared.items():
+            other = _option_key(name)
+            if key and other and (key in other or other in key) and float(total) <= limit:
+                return scenario, float(total)
+    return None
+
+
 #: a must that data stay in-house
 _RESIDENCY = re.compile(
     r"외부\s{0,2}반출|반출\s{0,2}(?:불가|금지)|외부\s{0,2}(?:저장|전송|보관|이전)\s{0,2}(?:불가|금지)"
@@ -4557,6 +4692,13 @@ def must_status(data: dict, numbers: list[float], material: str = "",
                 unit = str(must.get("unit") or "")
                 if (value > limit) if must["kind"] == "max" else (value < limit):
                     sign = ">" if must["kind"] == "max" else "<"
+                    if must["kind"] == "max" and (within := _within_under(
+                            option["name"], must, costs)):
+                        # within the budget under a condition the material states: open,
+                        # not out (r8 A04-T2: 누리컴 탈락 on the total without its discount)
+                        unknown.append(f"{must['name']}(「{within[0]}」 적용 시 "
+                                       f"{within[1]:,.0f}{unit}, 적용 없이 {value:,.0f}{unit})")
+                        continue
                     failed.append(f"{must['name']} {value:,.0f}{unit} {sign} 조건 {limit:,.0f}{unit}")
         status = "탈락" if failed else "조건 미확인" if unknown else "충족"
         out[option["name"]] = {"status": status, "failed": failed, "unknown": unknown}

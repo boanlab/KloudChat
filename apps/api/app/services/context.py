@@ -344,7 +344,11 @@ _LIGHT_TOOLS = (
     "instructions of a skill the user installed; follow them). Cite search or page results "
     "with their number at the end of the sentence, like [1] — the system attaches the link, "
     "so do not copy URLs. Never say a tool ran or succeeded when it did not. The steps are "
-    "shown on screen, so do not narrate tool use in the answer."
+    "shown on screen, so do not narrate tool use in the answer. Numbers the answer depends "
+    "on (totals, unit conversions, per-serving or per-person figures, percentages) come from "
+    "calculate or execute_code when either is allowed — compute them before writing, and "
+    "check that the parts add up to the total you state; never write that you checked a "
+    "calculation without a tool result."
 )
 
 _LIGHT_SEARCH_AUTO = (

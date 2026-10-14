@@ -544,10 +544,14 @@ async def _rescue_model(
     """The other self-hosted model that writes an answer once more when the writer left it
     empty or only announced it (r5 P07·P05): flash for 27B and 27B for flash, read from the
     model roles (chat, report, slides, code fallback), else the outline model; `None` when
-    there is none or the writer is not self-hosted."""
-    if not str(writer.get("id") or "").startswith(("local/", "strict-local/")):
-        return None
+    there is none. An external writer gets the chat model (r8 A13-T2: qwen3.8-max thought
+    through its whole budget twice and the person got no answer)."""
     roles = await settings_store.model_roles()
+    if not str(writer.get("id") or "").startswith(("local/", "strict-local/")):
+        if strict_local or not roles.chat or roles.chat == writer.get("id"):
+            return None
+        return _planner_model(roles.chat, user=user, catalogue=catalogue, kind="chat",
+                              writer=writer, strict_local=strict_local)
 
     def bare(model_id: str) -> str:
         return model_id.split("/", 1)[-1]

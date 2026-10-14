@@ -183,8 +183,11 @@ async def _stream_once(
     redact_logging: bool = False,
     force_tool: str | None = None,
     presence_penalty: float | None = None,
+    capped_reasoning: bool = False,
 ) -> AsyncIterator[tuple[str, Any]]:
-    """Yields `('delta', text)`, then `('done', _Accumulator)`."""
+    """Yields `('delta', text)`, then `('done', _Accumulator)`. `capped_reasoning`: least
+    reasoning (thinking off for a self-hosted model) and an output cap, for a write after a
+    stream that spent its whole budget thinking."""
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -206,6 +209,11 @@ async def _stream_once(
     if not self_hosted and not roles.external_thinking:
         # `thinking.switch` skips providers that refused.
         payload.update(thinking.switch(model))
+    if capped_reasoning:
+        # r8 A13-T2: 65,536 output tokens went to reasoning, twice, and no answer came
+        payload.update(thinking.template_switch(model) if self_hosted
+                       else {"reasoning": thinking.LEAST_REASONING})
+        payload["max_tokens"] = _CAPPED_TOKENS
     if tools:
         payload["tools"] = tool_definitions if tool_definitions is not None else to_openai(tools)
         payload["tool_choice"] = (
@@ -347,6 +355,22 @@ def _preamble_only(text: str, *, request: str, wanted_tools: bool) -> bool:
         return True
     sentences = [s.strip() for s in re.split(r"(?<=[.!?…])\s+|\n+", body) if s.strip()]
     return 0 < len(sentences) <= 3 and all(_PREAMBLE_SENTENCE.search(s) for s in sentences)
+
+
+#: output cap for a write after a reasoning-starved stream (answer plus low-effort thinking)
+_CAPPED_TOKENS = 16000
+#: reasoning this long with no answer is a starved stream, even without finish 「length」
+_STARVED_REASONING_CHARS = 40000
+
+
+def _starved(hop: Any) -> bool:
+    """Whether a hop spent its budget thinking and wrote nothing (r8 A13-T2: finish length,
+    120,432 characters of reasoning, no answer)."""
+    if hop is None or "".join(getattr(hop, "content", []) or []).strip() or getattr(
+            hop, "calls", None):
+        return False
+    return (getattr(hop, "finish_reason", None) == "length"
+            or getattr(hop, "reasoning_chars", 0) >= _STARVED_REASONING_CHARS)
 
 
 #: seconds the other model may take on a rewrite before the turn's own model is not tried
@@ -556,7 +580,20 @@ def _note(korean_text: str, english_text: str, korean: bool) -> str:
     return korean_text if korean else english_text
 
 
+#: an answer stopped mid-sentence, continued once from where it stopped
+_CUT_SHORT = (
+    "답이 문장 중간에서 끊겼습니다. 끝부분: 「{tail}」. 앞 내용을 되풀이하거나 머리말을 "
+    "붙이지 말고 끊긴 바로 그 자리에서 이어서, 요청한 나머지까지 끝까지 쓰세요. 이미 끝난 "
+    "답이었다면 「(끝)」 한 마디만 쓰세요.")
+_CUT_SHORT_EN = (
+    "Your answer stopped mid-sentence, ending: 「{tail}」. Continue from exactly that point — no "
+    "repetition, no preface — and finish the rest of what was asked. If the answer was in fact "
+    "complete, reply with only 「(끝)」.")
+#: a continuation saying the cut answer was complete after all
+_CUT_DONE = frozenset({"(끝)", "「(끝)」", "끝", "(끝).", "(end)", "(End)"})
+
 #: the loop's notes to the writer in English, for an answer in English (`_note`)
+
 _ECHO_EN = ("Your reply repeated your previous answer word for word. Answer this question "
             "afresh.")
 _REASK_EN = (
@@ -572,7 +609,8 @@ _COMPUTE_UNVERIFIED_EN = (
     "These values in the answer are not in this turn's code output: {values}. Do not use "
     "values worked by hand: run code with run_code that computes and prints them, then rewrite "
     "the answer from the start using only the code output above. Copy any value the code "
-    "already printed as it is.")
+    "already printed as it is. The user saw neither the earlier answer nor this note: do not "
+    "mention the recount or the earlier values; start with the answer itself.")
 _CODE_OVERRIDE_EN = (
     "The answer called the code's printed values wrong and replaced them with values worked by "
     "hand. Code output cannot be corrected by hand. If the code is wrong, fix it, run it again "
@@ -671,7 +709,9 @@ _LIMIT_CLAIM = re.compile(
 _COMPUTE_UNVERIFIED = (
     "답에 적은 다음 값은 이번 턴의 코드 실행 출력에 없습니다: {values}. 손으로 셈한 값을 쓰지 "
     "말고, run_code 로 그 값을 구하는 코드를 실행해 출력한 다음, 위의 코드 출력값만으로 답을 "
-    "처음부터 다시 쓰세요. 코드가 이미 출력한 값이 있으면 그 값을 그대로 옮기세요."
+    "처음부터 다시 쓰세요. 코드가 이미 출력한 값이 있으면 그 값을 그대로 옮기세요. 앞 답과 이 "
+    "요청은 사용자에게 보이지 않으니 다시 계산했다는 말이나 앞 답의 값은 쓰지 말고 답 자체로 "
+    "시작하세요."
 )
 
 
@@ -1578,6 +1618,9 @@ async def run_turn(
     code_refused = False
     #: Hand-worked values retried once.
     figures_retried = False
+    #: An answer cut mid-sentence is continued once; the cut text until the continuation came.
+    cut_retried = False
+    cut_partial: str | None = None
     #: Answer set the code's output aside by hand: retried once; code runs seen at the first
     #: such answer (a later run backs the correction, none means the code's values stand).
     override_retried = False
@@ -2005,6 +2048,37 @@ async def run_turn(
                     close_after_tools = True
                 closing = False
                 continue
+        if cut_partial is not None:
+            # the continuation of a cut answer: a whole rewrite replaces the cut copy, a bare
+            # 「(끝)」 (it was complete after all) is taken back
+            again = "".join(hop_text)
+            squeezed = " ".join(again.split())
+            if squeezed in _CUT_DONE:
+                del answer_text[len(answer_text) - len(hop_text):]
+                yield {"type": "retract", "text": again}
+            elif squeezed[:60] and squeezed[:60] == " ".join(cut_partial.split())[:60]:
+                whole = "".join(answer_text)
+                before = whole[:len(whole) - len(again)]
+                if before.endswith(cut_partial):
+                    answer_text[:] = [before[:len(before) - len(cut_partial)] + again]
+                    yield {"type": "retract", "text": cut_partial}
+            cut_partial = None
+        elif (not acc.calls and not cut_retried and hop_model == model and not running_preset
+                and not preflight_tool and not freshness_request and not acc.looped
+                and not acc.runaway and (spoken := "".join(hop_text)).strip()
+                and ((acc.finish_reason == "length" and len(spoken.strip()) >= 200)
+                     or internal_words.cut_mid_sentence(spoken))):
+            # The answer stopped mid-sentence (r8 A02-T2: 「○ 2027년 3월」 and the rest of the
+            # asked sections missing): continued once from where it stopped.
+            cut_retried = True
+            cut_partial = spoken
+            log.warning("answer stopped mid-sentence (finish %s, %d chars); asking to continue",
+                        acc.finish_reason, len(spoken))
+            conversation.append(acc.assistant_message())
+            conversation.append({"role": "user", "content": _note(
+                _CUT_SHORT, _CUT_SHORT_EN, reply_korean).format(tail=spoken.rstrip()[-80:])})
+            closing = True
+            continue
         if closing:
             break
         if not acc.calls:
@@ -2419,6 +2493,8 @@ async def run_turn(
             retry_kwargs["disable_fallbacks"] = True
         if temperature is not None:
             retry_kwargs["temperature"] = temperature
+        if starved_turn:
+            retry_kwargs["capped_reasoning"] = True
         retry: _Accumulator | None = None
         written: list[str] = []
         try:
@@ -2454,7 +2530,13 @@ async def run_turn(
     rescuers = [model]
     if rescue_model and rescue_model != model and _self_hosted(rescue_model):
         rescuers = [rescue_model, model]
+    elif rescue_model and rescue_model != model and not _self_hosted(model):
+        # an external writer first once more with its reasoning capped, then the chat model
+        # (r8 A13-T2: the same model asked the same way starved again)
+        rescuers = [model, rescue_model]
     rescued_by: list[str] = []
+    #: the turn's last hop thought through its budget: rewrites cap the reasoning
+    starved_turn = _starved(last_hop)
 
     async def write_rescued(prompt: list[dict[str, Any]], results: str) -> str:
         """The answer written once more from `prompt`, by each rescuer in turn; '' when none
@@ -2509,6 +2591,17 @@ async def run_turn(
             yield {"type": "delta", "text": spoken}
         else:
             log.warning("no answer from the tool results either")
+    if (starved_turn and not gathered and not markup_dropped and not preflight_tool
+            and not ended_by_tool and not "".join(answer_text).strip()):
+        # No tool ran and the reasoning ate the whole budget: written once more with the
+        # reasoning capped, then by the rescuer, never an empty turn.
+        log.warning("answer starved by reasoning (finish %s, reasoning %d chars); writing it "
+                    "once more with the reasoning capped", last_hop.finish_reason,
+                    last_hop.reasoning_chars)
+        spoken = await write_rescued(_answer_from_results(conversation, messages, ""), "")
+        if spoken:
+            answer_text.append(spoken)
+            yield {"type": "delta", "text": spoken}
     if (markup_dropped and not gathered and not preflight_tool and not ended_by_tool
             and not "".join(answer_text).strip()):
         # The reply was only a tool call written out, for no tool there is: the answer
@@ -2596,6 +2689,12 @@ async def run_turn(
         if _repeats(spoken, final):
             answer = answer.replace(spoken, "", 1)
             yield {"type": "retract", "text": spoken}
+    if called and (cut := internal_words.strip_tool_preamble(answer)) != answer:
+        # work narration between the tools, ahead of the deliverable (r8 A12-T2, A14-T1,
+        # A06-T1: 「…다시 확인했습니다 … 답을 다시 씁니다」 above the report it introduced)
+        yield {"type": "retract", "text": answer}
+        yield {"type": "delta", "text": cut}
+        answer = cut
     answer, duplicate_paragraphs = _without_duplicate_paragraphs(answer)
     for paragraph in duplicate_paragraphs:
         yield {"type": "retract", "text": paragraph}

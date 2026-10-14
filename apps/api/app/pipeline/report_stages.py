@@ -1029,6 +1029,20 @@ class Sections(Base):
                     log.warning("section %r carried the writer's work notes; removed",
                                 section["heading"])
                     body = noted
+                if internal_words.cut_mid_sentence(body, min_chars=150):
+                    # stops mid-sentence (r8 A01-T1: 「이수진 차장이 온라인 동시 송출」 and the
+                    # rest of the agenda missing): written once more with more room, kept when
+                    # the new one ends whole
+                    log.warning("section %r stops mid-sentence; written again",
+                                section["heading"])
+                    _count(bundle, spent)
+                    again, spent = await write_section(index, section, written,
+                                                       4800 if long_form else 2400)
+                    again = internal_words.strip_work_notes(
+                        internal_words.strip_tool_calls(again), request=req.text, document=True)
+                    if (again.strip() and not report.error_text(again, req.text)
+                            and not internal_words.cut_mid_sentence(again, min_chars=150)):
+                        body = again
                 if not body.strip():
                     # empty, or notes only: written once more, never shipped empty
                     log.warning("section %r came back empty; written again", section["heading"])
@@ -1743,6 +1757,21 @@ class Verify(Base):
             log.exception("verify stage failed")
         bundle.document.sections = keep_blanks(before, bundle.document.sections,
                                                bundle.findings.traced)
+        disputed = [f for f in still if f.code == "fact" and not f.auto]
+        if disputed and req.strong:
+            # the web check's contradictions go back to the strong writer once, evidence
+            # attached; it fixes the sentence or keeps it when the page is about something else
+            # (r8 A07·A10: flagged in the step detail, left in the text unmarked)
+            try:
+                bundle.document.sections, unfixed, spent = await verify.repair(
+                    _doc(bundle), [dataclasses.replace(f, auto=True) for f in disputed],
+                    complete=report._complete, model=req.reviser, api_key=req.api_key)
+                _count(bundle, spent, planner=True)
+                kept = {(f.section, f.sentence) for f in unfixed}
+                still = [f for f in still if f not in disputed
+                         or (f.section, f.sentence) in kept]
+            except Exception:  # noqa: BLE001 — the sentences stay; they are marked below
+                log.exception("hand-back of web disputes failed")
         if (pre := bundle.computed.prepass) is not None and pre.musts and not req.strong:
             # a recommendation still against the must-have matrix: the code's verdict instead;
             # a strong writer's recommendation stands, the finding reported (r7 A04-T2)
@@ -1752,6 +1781,11 @@ class Verify(Base):
             # the person asked for unconfirmed points to be marked: a sentence a check found at
             # odds with the sources and no rule could settle is marked where it stands (r7 A07-T2)
             bundle.document.sections = mark_unsettled(bundle.document.sections, still)
+        elif disputed:
+            # a sentence a web page contradicts, still standing, is marked for the reader
+            # whatever the request said (r8 A07·A10: left unmarked, in the step detail only)
+            bundle.document.sections = mark_unsettled(
+                bundle.document.sections, [f for f in still if f.code == "fact"])
         bundle.findings.still = still
         format_codes = set(report_checks.LABELS)
         bundle.findings.after += [f.code for f in still if f.code in format_codes]

@@ -309,6 +309,19 @@ def _core_query(query: str) -> str:
     return re.sub(r"\s+", " ", _TIME_NOISE.sub(" ", query)).strip() or query
 
 
+#: dates and framing words a broader retry drops (「2026년 10월 초 … 금리 비교」)
+_RETRY_NOISE = re.compile(
+    r"\d{1,2}월\s{0,2}(?:초|중순|말)?|\d{1,2}일|이번\s{0,2}(?:주|달)|"
+    r"(?<!\S)(?:비교|정리|현황|수준|추천|방법|알려\s{0,2}줘|기준)(?!\S)")
+
+
+def _broader_query(query: str) -> str:
+    """One broader query after an empty search: no dates or framing words, at most five
+    words (r8 P19: 「2026년 10월 초 단기 자금 운용 MMF CMA 금리 비교」 → 0 results, three times)."""
+    words = re.sub(r"\s+", " ", _RETRY_NOISE.sub(" ", _core_query(query))).strip().split()
+    return " ".join(words[-5:]) if words else query
+
+
 def _english_query(query: str) -> str:
     """English-lane query: Latin tokens plus intent words, else whole query."""
     tokens = [
@@ -604,6 +617,20 @@ def _interleave(batches: list[list[dict[str, Any]]], limit: int) -> list[dict[st
     return out
 
 
+def _usable_hits(hits: list[Any]) -> list[dict[str, Any]]:
+    """Hits with a fetchable source URL, title and snippet as strings."""
+    return [
+        {
+            **hit,
+            "url": url,
+            "title": hit.get("title") if isinstance(hit.get("title"), str) else "",
+            "snippet": hit.get("snippet") if isinstance(hit.get("snippet"), str) else "",
+        }
+        for hit in hits
+        if isinstance(hit, dict) and (url := _search_source_url(hit.get("url")))
+    ]
+
+
 async def web_search(args: dict[str, Any]) -> ToolResult:
     query = str(args.get("query") or "").strip()
     # A JSON-encoded string is parsed, never iterated character by character.
@@ -668,16 +695,19 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
         found = await korean_papers.search(query, 4)
         seen = {str(h.get("url") or "") for h in found}
         hits = [*found, *(h for h in hits if str(h.get("url") or "") not in seen)]
-    hits = [
-        {
-            **hit,
-            "url": url,
-            "title": hit.get("title") if isinstance(hit.get("title"), str) else "",
-            "snippet": hit.get("snippet") if isinstance(hit.get("snippet"), str) else "",
-        }
-        for hit in hits
-        if isinstance(hit, dict) and (url := _search_source_url(hit.get("url")))
-    ]
+    hits = _usable_hits(hits)
+    if (not hits and not planned and kind == "web"
+            and (broader := _broader_query(query)) != query):
+        # one reformulated retry, without the date window, before the empty answer
+        try:
+            retried = await _searxng(
+                backends.search, broader, settings.web_search_results, kind=kind,
+                hints={k: v for k, v in hints.items() if k != "time_range"},
+            )
+        except (httpx.HTTPError, ValueError):
+            retried = []
+        if hits := _usable_hits(retried):
+            query = broader
     # Low-credibility sites withheld while three others remain.
     trusted = [hit for hit in hits if credibility.tier(hit["url"]) > 0]
     if len(trusted) >= 3:

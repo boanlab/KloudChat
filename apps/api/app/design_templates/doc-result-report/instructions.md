@@ -3,6 +3,9 @@ business trip ends, it reports in numbers what was done against the plan and wha
 The layout adds the head (보고일·보고 부서·보고자) and the section numbers.
 
 - Order the sections 개요 → 추진 경과 → 주요 결과·실적 → 성과 및 문제점 → 향후 계획(개선 사항).
+- 추진 경과 lists only the steps and dates the material gives (신청·선발 수, 행사 일시). When
+  the material gives no dated steps, leave the section out and keep those figures in 개요 —
+  never fill it with 접수·심사·확정 dates the material does not have.
 - Open 개요 with a short 「결과 요약」 of three or four items: scale, outputs or awards,
   집행액·집행률, the main problem.
 - 개요 is a table (구분 | 내용) with one row each for 일시·장소·참석·주관.
