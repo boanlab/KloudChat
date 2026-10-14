@@ -92,6 +92,8 @@ def post(text: str, args: dict) -> dict:
                        " ".join(_rates(sources._values(material)))])
     # The same worked value restated in another unit (「162,000,000,000원 (약 1,620억원)」).
     known += "\n" + " ".join(_scaled(sources._values(worked)))
+    # A figure the material yields in a step or two (1,800만원 ÷ 100명 ÷ 12개월 = 15,000원).
+    known += "\n" + " ".join(sorted(claims.derived_numbers(material)))
     found = [f for f in sources.check(text, known, {"today": args.get("today")})
              if not (f["kind"] == "unsourced" and _skipped(text, f.get("line")))]
     unsourced = [f for f in found if f["kind"] == "unsourced"]

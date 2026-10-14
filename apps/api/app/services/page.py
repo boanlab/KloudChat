@@ -421,6 +421,8 @@ async def write(
                 trusted_context=[*(trusted_context or []), _guide(template)],
                 untrusted_context=document_context,
                 research_rule=research_rule,
+                # the writer's tier sets the setup, as for reports and decks
+                model=outline_model or model,
             ),
             api_key,
             max(600, 70 * (wanted or _DEFAULT_MAX) + 300),
@@ -551,6 +553,7 @@ async def write(
                     trusted_context=trusted_context,
                     untrusted_context=document_context,
                     research_rule=research_rule,
+                    model=model,
                 ),
                 api_key,
                 1200,
@@ -624,7 +627,7 @@ async def rewrite_block(
 
     text, usage = await _complete(
         model,
-        build_document_messages(template.surface, prompt),
+        build_document_messages(template.surface, prompt, model=model),
         api_key,
         1200,
     )

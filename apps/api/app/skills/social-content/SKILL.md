@@ -22,7 +22,8 @@ Also ask whether it is sponsored when it reads like a review of a product the wr
 ## Rules (hard)
 - Only facts and experiences from the material. No invented customer reactions (「손님들이 줄 서서」), sales (「완판」), numbers, or feelings the writer did not report.
 - Reviews and first-person posts: write only the experiences the writer reported. Do not add durations (「1시간 넘게 앉으면」), repeat results (「두 번째부터는 1분」), sensations, product parts (「다리 4개」), or uses (「트레킹 겸용」) they did not report. Where a richer review needs more, leave `[사용 경험: 무엇을 더 쓸지]` for the writer.
-- First-person and company posts: no invented motives (「시작한 이유는…」), processes (당번 순번·인수 규칙), quotes or survey answers. Use `[대표의 생각: …]` / `[운영 방식: …]` placeholders. Copy names exactly (회사명·제품명 철자).
+- First-person and company posts: no invented motives (「시작한 이유는…」), processes (당번 순번·인수 규칙), quotes or survey answers. Where the post cannot stand without one, use `[대표의 생각: …]` / `[인터뷰 답변: …]`. Copy names exactly (회사명·제품명 철자).
+- A missing fact that is not the person's own (link, 신청 방법, 행사 세부, 혜택 내용): write a sentence that stays true without it — 「프로필 링크에서 신청하세요」, 「부스에서 직접 보여 드립니다」 — never a bracket blank such as `[신청 링크: 확인 후 기재]`. Brackets are only for what the person alone can fill in (their own experience, a quote, an interview answer, a choice not yet made): at most one per post, each listed under 「확인할 것」. Ad copy (광고 소재) follows the same rule.
 - Keep unfavourable facts the material gives (단점, 늘어난 수치); don't spin them away.
 - Sponsored/gifted/paid content (경제적 이해관계): disclose at the start — title or first line, before 「더 보기」 — in plain Korean: 「이 글은 [브랜드]로부터 제품을 무상으로 제공받아 작성했습니다」 / 「광고」 / 「협찬」 (공정위 「추천·보증 등에 관한 표시·광고 심사지침」). Not only at the bottom, not only in hashtags.
 - No ungrounded 최고·1위·인생 ○○·완벽, disease claims, or comparisons.

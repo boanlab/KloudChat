@@ -33,7 +33,7 @@ If the platform is clear and the material has the offer, proceed without asking.
 LinkedIn sponsored content is one set per variant — 도입글 + 헤드라인 + CTA — with its limits from `copy-check` `length` `{"list": true, "channel": "linkedin"}` (an ordinary post's 3,000자 is not the ad limit). Each Meta set names its CTA button and one line of image idea.
 
 ## Grounding and legal rules (hard)
-- Numbers, prices, dates, customer counts, ratings, awards, certifications, reviews: only from the material; otherwise write the line without it or leave the angle out — no bracket blanks in upload-ready copy.
+- Numbers, prices, dates, customer counts, ratings, awards, certifications, reviews: only from the material; otherwise write a line that stays true without it or leave the angle out. Upload-ready copy has no bracket blanks — the same rule as SNS 콘텐츠, where brackets are only for what the person alone can fill in (their own experience, a quote); an ad has no such field.
 - Keep material facts exact: 「다음 영업일 지급」 must not become 「당일 지급」; a 30-person panel result is stated with its base (「자사 패널 30명 중 27명, 2주 사용」), never as 「90% 효과」.
 - 최상급·순위·비교·보장 (최고, 1위, 유일, 최초, 최저가, 타사 대비, 100%, 보장) only with objective evidence in the material, shown with its source (조사기관·기간). Naver rejects a named competitor in any comparison.
 - Cosmetics: no 미백·주름 개선·재생·치료 unless the material says it is a reviewed 기능성 화장품. Food/건강기능식품: no disease wording; 건강기능식품 ads need 자율심의 — remind the user.

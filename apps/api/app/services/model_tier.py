@@ -7,6 +7,8 @@ directly). Strong writers get tools, material, deterministic checks and marks on
 
 from __future__ import annotations
 
+import os
+
 #: Writer models that get the light setup. Exact names or prefixes ending in "/" or "-".
 STRONG_MODELS: tuple[str, ...] = (
     "anthropic/",
@@ -27,6 +29,10 @@ _SMALL_SUFFIXES: tuple[str, ...] = ("-flash", "-nano", "-mini", "-lite", "-luna"
 def strong(model: str | None) -> bool:
     """True when the writer is a strong model: light prompt, marks instead of rewrites."""
     name = (model or "").strip().lower()
+    # evaluation switch: exact model names (comma-separated) treated as strong; empty by default
+    forced = {n.strip().lower() for n in os.environ.get("KCHAT_LIGHT_WRITERS", "").split(",")}
+    if name and name in forced:
+        return True
     if not name or name.startswith(("local/", "strict-local/")):
         return False
     if any(s in name for s in _SMALL_SUFFIXES):

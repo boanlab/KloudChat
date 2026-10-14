@@ -1059,9 +1059,45 @@ def _gantt_slide(todo: list, rows: list[list[str]], beside: dict) -> dict:
     return slide
 
 
+#: slide numbers a written agenda line cites: 「(슬라이드 1~4)」 「(4~8번)」 「(11번)」
+_AGENDA_NUMBERS = re.compile(
+    r"(?P<pre>슬라이드\s{0,2})?(?<![\d.,])(?P<a>\d{1,2})"
+    r"(?:\s{0,2}(?P<dash>[~∼〜\-–])\s{0,2}(?P<b>\d{1,2}))?(?P<post>\s{0,2}번(?!째))?(?![\d.,%])"
+)
+
+
+def _renumbered(line: str, slides: list[dict], before: list[dict]) -> str:
+    """`line`'s slide numbers (counted from the title slide, as `before` stood) moved to where
+    those slides now are, slides added between them taken into the span (r7 A09-T2: four
+    Gantt slides added, 「(슬라이드 5~7)」 and 「(4~8번)」 still counted the old deck)."""
+    where = {id(s): i + 1 for i, s in enumerate(slides)}
+
+    def span(a: int, b: int) -> tuple[int, int] | None:
+        kept = [where[id(before[i - 1])] for i in range(a, b + 1) if id(before[i - 1]) in where]
+        if not kept:
+            return None
+        after = [where[id(before[i - 1])] for i in range(b + 1, len(before) + 1)
+                 if id(before[i - 1]) in where]
+        # added slides up to the next kept one belong to this span
+        return min(kept), (min(after) - 1 if after else len(slides))
+
+    def fix(m: re.Match) -> str:
+        if not (m.group("pre") or m.group("post")):
+            return m.group(0)
+        a, b = int(m.group("a")), int(m.group("b") or m.group("a"))
+        if not 1 <= a <= b <= len(before) or (got := span(a, b)) is None:
+            return m.group(0)
+        lo, hi = got
+        numbers = f"{lo}" if lo == hi else f"{lo}{m.group('dash') or '~'}{hi}"
+        return f"{m.group('pre') or ''}{numbers}{m.group('post') or ''}"
+
+    return _AGENDA_NUMBERS.sub(fix, line)
+
+
 def refresh_agenda(slides: list[dict], before: list[dict]) -> None:
     """After slides were dropped or added, the agenda lists the deck as it now is: lines it
-    drew from the slide titles redrawn, a dropped slide's line taken off a written one."""
+    drew from the slide titles redrawn, a dropped slide's line taken off a written one, the
+    slide numbers a written line cites moved to the slides' new places."""
     now = {unnumbered(str(s.get("title") or "")) for s in slides}
     was = {unnumbered(str(s.get("title") or "")) for s in before}
     gone = was - now
@@ -1071,8 +1107,10 @@ def refresh_agenda(slides: list[dict], before: list[dict]) -> None:
         lines = [str(b) for b in slide.get("bullets") or []]
         if lines and all(line in was for line in lines):
             slide["bullets"] = _agenda_lines(slides)
-        elif gone:
-            slide["bullets"] = [b for b in lines if unnumbered(b) not in gone]
+        else:
+            if gone:
+                lines = [b for b in lines if unnumbered(b) not in gone]
+            slide["bullets"] = [_renumbered(b, slides, before) for b in lines]
         auto_fit(slide)
 
 
@@ -2737,28 +2775,31 @@ def _named_dividers(plan: list[dict[str, str]]) -> list[dict[str, str]]:
     ]
 
 
-#: chart category label length
-_CATEGORY_CHARS = 10
+#: chart category label length: two lines of a category's slot (renderers wrap at spaces)
+_CATEGORY_CHARS = 32
 
 
 def _short_category(label: str) -> str:
-    """A category label within the axis's room, never cut inside its brackets: 「라운드 로빈
-    (q=2)」 → 「라운드로빈(q=2)」, not 「라운드 로빈 (q=」."""
+    """A category label kept whole: the renderers wrap it at its spaces (r7 A09-T1: 「2단계 구조
+    제거 시」 squeezed to 「2단계구조제거시」, 「교차 인코더(bge-reranker-large)」 cut to
+    「교차인코더」). Past two lines' room, a bracket's aside goes first (its number stays: 퀀텀 2
+    / 퀀텀 4 tell rows apart), then whole trailing words; never a cut inside a word."""
     label = " ".join(label.split())
     if len(label) <= _CATEGORY_CHARS:
         return label
-    compact = re.sub(r"\s+", "", label)
-    if len(compact) <= _CATEGORY_CHARS:
-        return compact
-    m = re.match(r"^(?P<head>[^(（]+)[(（](?P<inner>[^()（）]+)[)）]", compact)
-    numbers = re.findall(r"\d+(?:\.\d+)?", m.group("inner")) if m else []
-    if m and numbers and len(m.group("head")) + len(",".join(numbers)) + 2 <= _CATEGORY_CHARS:
-        # the bracket's number tells apart rows of one name (퀀텀 2 / 퀀텀 4): it stays
-        return m.group("head") + "(" + ",".join(numbers) + ")"
-    cut = compact[:_CATEGORY_CHARS]
-    if cut.count("(") > cut.count(")"):
-        cut = cut[: cut.rfind("(")] or cut
-    return cut
+    m = re.match(r"^(?P<head>[^(（]+?)\s?[(（](?P<inner>[^()（）]+)[)）]\s?(?P<tail>.*)$", label)
+    if m:
+        inner = m.group("inner")
+        numbers = re.findall(r"\d+(?:\.\d+)?", inner) if len(inner) <= 12 else []
+        kept = f"({','.join(numbers)})" if numbers else ""
+        bare = " ".join(f"{m.group('head')}{kept} {m.group('tail')}".split())
+        if len(bare) <= _CATEGORY_CHARS:
+            return bare
+        label = bare
+    words = label.split(" ")
+    while len(words) > 1 and len(" ".join(words)) > _CATEGORY_CHARS:
+        words.pop()
+    return " ".join(words)
 
 
 def _clean_chart(value: Any) -> dict[str, Any] | None:
@@ -3372,6 +3413,7 @@ async def _write_slides(
                             trusted_context=trusted_context,
                             untrusted_context=untrusted_context,
                             research_rule=research_rule,
+                            model=model,
                         ),
                         api_key,
                         400,
@@ -3387,8 +3429,8 @@ async def _write_slides(
                         added = notes_only_given(plain, slide, request)
                     notes = _join_notes(notes, added)
         if notes:
-            given_facts = _facts_set("\n".join([request, *(untrusted_context or []), *given_extra]))
-            notes = notes_grounded(notes, given_facts)
+            given_text = "\n".join([request, *(untrusted_context or []), *given_extra])
+            notes = notes_grounded(notes, _facts_set(given_text), given_text)
             slide["notes"] = notes[:800]
 
         summary = (
@@ -4351,7 +4393,8 @@ async def rewrite_slide(
         if not strict and _ONLY_GIVEN.search(request or ""):
             # 「적어 준 것만」: reading the slide beats no notes
             strict = notes_only_given(plain, result, request)
-        notes = notes_grounded(strict, _facts_set("\n".join([request, *(material or [])])))
+        given_text = "\n".join([request, *(material or [])])
+        notes = notes_grounded(strict, _facts_set(given_text), given_text)
         if not notes:
             raise SlideNotWritten("노트 없음", usage)
         result["notes"] = notes
@@ -4561,13 +4604,80 @@ def _plain_notes(text: str) -> str:
     return text.strip().strip('"“”\'')
 
 
-def notes_grounded(notes: str, facts: set[str]) -> str:
-    """Notes minus sentences with numbers not in the request."""
+#: a number with its scale and unit: 「1.2만 원」 「3%p」 「96 ms」 「25만 건」
+_NOTE_QUANTITY = re.compile(
+    r"(?<![\d.,A-Za-z])(?P<n>\d[\d,]*(?:\.\d+)?)(?!\.?\d)\s{0,2}(?:(?P<s>억|만|천)"
+    r"(?:\s{0,2}(?P<n2>\d[\d,]*(?:\.\d+)?)\s{0,2}(?P<s2>만|천))?)?\s{0,2}"
+    r"(?P<u>%\s{0,2}p|%\s{0,2}포인트|퍼센트\s{0,2}포인트|%|퍼센트|포인트|원|명|건|개월|ms|초|분|"
+    r"시간|배|대|곳|가구|회|일|주|년|kg|km|GB|MB)?(?(u)(?![A-Za-z]))"
+)
+_UNIT_FAMILY = {"퍼센트": "%", "포인트": "%p"}
+
+
+def _quantities(text: str) -> list[tuple[float, str]]:
+    """`(value, unit)` per number in `text`: scale words applied, 「%포인트」 read as 「%p」."""
+    out: list[tuple[float, str]] = []
+    for m in _NOTE_QUANTITY.finditer(text or ""):
+        try:
+            value = float(m.group("n").replace(",", "")) * _UNIT_VALUE.get(m.group("s") or "", 1)
+            if m.group("n2"):
+                value += float(m.group("n2").replace(",", "")) * _UNIT_VALUE[m.group("s2")]
+        except (KeyError, ValueError):
+            continue
+        unit = re.sub(r"\s", "", m.group("u") or "")
+        unit = "%p" if unit.endswith("포인트") and unit != "포인트" else unit
+        out.append((value, _UNIT_FAMILY.get(unit, unit)))
+    return out
+
+
+def _with_column_units(text: str) -> str:
+    """Bare numbers in a Markdown table given their column's bracketed unit: under 「재순위화
+    지연(ms/질의)」, 「96」 reads 「96 ms」."""
+    out, header = [], None
+    for line in (text or "").splitlines():
+        if not line.strip().startswith("|"):
+            header = None
+            out.append(line)
+            continue
+        cells = line.strip().strip("|").split("|")
+        if header is None:
+            header = []
+            for cell in cells:
+                m = re.search(r"[(（]\s{0,2}([^()（）/]{1,8})", cell)
+                header.append(m.group(1).strip() if m else "")
+            out.append(line)
+            continue
+        if all(re.fullmatch(r"\s*:?-{2,}:?\s*", c) for c in cells):
+            out.append(line)
+            continue
+        shown = [f"{c.strip()} {header[i]}" if i < len(header) and header[i]
+                 and re.fullmatch(r"\s*-?\d[\d,]*(?:\.\d+)?\s*", c) else c
+                 for i, c in enumerate(cells)]
+        out.append("| " + " | ".join(shown) + " |")
+    return "\n".join(out)
+
+
+def _quantity_given(value: float, unit: str, given: list[tuple[float, str]]) -> bool:
+    """Whether the source states `value` in `unit`, or bare; a unitless note number needs the
+    value only (「96%」 is not 「96 ms」; 「5만 원」 is 「50,000원」)."""
+    def same(other: float) -> bool:
+        return abs(other - value) <= max(abs(value), 1.0) * 1e-9
+    return any(same(v) and (not unit or not u or u == unit) for v, u in given)
+
+
+def notes_grounded(notes: str, facts: set[str], source: str | None = None) -> str:
+    """Notes minus sentences with numbers not in the request; with `source`, numbers are
+    compared with their scale and unit (r7 A09-T1: 「96%의 정확도」 passed on 「96 ms」)."""
+    given = _quantities(_with_column_units(source)) if source is not None else None
     kept = []
     for sentence in units.SENTENCE_BREAK.split((notes or "").strip()):
         if not sentence.strip():
             continue
-        if _numbers_come_from(re.findall(r"\d[\d,.]*(?:\s*(?:만|억|천))?", sentence), facts):
+        if given is not None:
+            ok = all(_quantity_given(v, u, given) for v, u in _quantities(sentence))
+        else:
+            ok = _numbers_come_from(re.findall(r"\d[\d,.]*(?:\s*(?:만|억|천))?", sentence), facts)
+        if ok:
             kept.append(sentence.strip())
     return " ".join(kept)
 

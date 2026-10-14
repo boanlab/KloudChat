@@ -45,6 +45,7 @@ from app.services import (
     richtext,
     table_integrity,
     units,
+    value_guard,
     verify,
 )
 from app.services import deck as deck_rules
@@ -99,7 +100,7 @@ def _searched(mat) -> bool:
 
 def _messages(bundle: Bundle, prompt: str, model: str | None = None) -> list[dict[str, str]]:
     """Writer messages: prompt under the material; `model` = the writer, whose tier sets the
-    setup (`prompt_tier`) — none for a repair call, which keeps the full one."""
+    setup (`prompt_tier`), repair calls to the writer included; none keeps the full one."""
     return build_document_messages(
         SessionKind.report,
         prompt,
@@ -628,8 +629,9 @@ def _given(bundle: Bundle) -> str:
 
 #: Writer note when the code calculation gave no values.
 CALC_MISSING_NOTE = (
-    "# 작성 메모(내부)\nThe code calculation did not finish, so no computed values are given. "
-    "Work out the figures the request asks for yourself from the material's numbers: write "
+    "# 작성 메모(내부)\nThe code calculation did not finish; at most the given figures' own "
+    "arithmetic is computed above. Work out the other figures the request asks for yourself "
+    "from the material's numbers: write "
     "each as its formula with the result (「9,900원 × 12 = 118,800원」). Where the request "
     "allows estimates and the material lacks a rate or share, state it as an assumption "
     "(「가정: 전환율 2%」) and compute from it; never leave a requested figure as a formula name only."
@@ -662,10 +664,14 @@ class Calc(Base):
         if computed:
             bundle.computed.values = computed
             bundle.material.trusted.append(Part(computed, "computed"))
-        elif status == "timeout":
-            # no code values: the writer still works the numbers out (r7 A10-T2: a timeout
-            # left TAM·SAM·SOM uncomputed, only formula names)
-            bundle.material.trusted.append(Part(CALC_MISSING_NOTE, "note"))
+        elif status in ("timeout", "unavailable", "failed"):
+            # r7 A10-T2: a timeout left TAM·SAM·SOM uncomputed, only formula names. The given
+            # figures' own arithmetic is done here; the writer works out the rest
+            if given := calc.given_block(req.text, [_given(bundle)]):
+                bundle.computed.values = given
+                bundle.material.trusted.append(Part(given, "computed"))
+            if status == "timeout":
+                bundle.material.trusted.append(Part(CALC_MISSING_NOTE, "note"))
         yield {
             "type": "step", "id": "calc",
             "label": {
@@ -1079,7 +1085,7 @@ class Sections(Base):
                     refilled, more = await report._complete(
                         req.model,
                         _messages(bundle, report._FILL_PROMPT.format(
-                            heading=section["heading"], body=body[:6000])),
+                            heading=section["heading"], body=body[:6000]), req.model),
                         req.api_key,
                         1600,
                     )
@@ -1099,7 +1105,7 @@ class Sections(Base):
                         req.model,
                         _messages(bundle, report._TABLE_FIX_PROMPT.format(
                             heading=section["heading"], problems="\n".join(f"- {g}" for g in gaps),
-                            body=section["content"][:6000])),
+                            body=section["content"][:6000]), req.model),
                         req.api_key,
                         1600,
                     )
@@ -1933,6 +1939,40 @@ class FormatStep(Base):
         }
 
 
+#: the request asking unconfirmed points to be marked in the text
+_ASKS_MARKS = re.compile(
+    r"확인\s{0,2}(?:이\s{0,2})?필요[^\n]{0,20}(?:표시|적|달|남겨|밝혀)"
+    r"|(?:확인|검증)(?:하지\s{0,2}못한|\s{0,2}못\s{0,2}한|되지\s{0,2}않은|\s{0,2}안\s{0,2}된)"
+    r"[^\n]{0,30}(?:표시|구분|밝혀|적어)")
+
+
+def mark_web_disputes(sections: list[dict], still: list, request: str) -> int:
+    """Sentences the web check found contradicted, still standing after the repair, marked
+    「(확인 필요)」 in the text when the request asked unconfirmed points to be marked (r7
+    A07-T2: three such sentences went out unmarked; they were in the step detail only).
+    Returns how many were marked."""
+    if not _ASKS_MARKS.search(instruction_part(request or "")):
+        return 0
+    marked = 0
+    for x in still:
+        if x.code != "fact" or not 0 <= x.section < len(sections):
+            continue
+        content = sections[x.section].get("content")
+        sentence = x.sentence.strip()
+        if not isinstance(content, str) or not sentence or sentence not in content:
+            continue
+        at = content.index(sentence) + len(sentence)
+        if value_guard.MARK in sentence or content[at:at + 12].lstrip().startswith(
+                value_guard.MARK):
+            continue
+        body = sentence.rstrip(".。 ")
+        end = content.index(sentence) + len(body)
+        sections[x.section] = {**sections[x.section],
+                               "content": f"{content[:end]} {value_guard.MARK}{content[end:]}"}
+        marked += 1
+    return marked
+
+
 class Quality(Base):
     """Final read for reader-facing defects, reported in steps and log; then the document goes out."""
 
@@ -1957,6 +1997,8 @@ class Quality(Base):
         if restored != sections:
             log.info("restored double-scaled amounts to the material's form")
             sections = bundle.document.sections = restored
+        if mark_web_disputes(sections, f.still, bundle.request.text):
+            bundle.document.sections = sections
         format_codes = set(report_checks.LABELS)
         findings = quality_gate.report_findings(sections, material,
                                                 bundle.computed.settled)

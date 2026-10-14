@@ -48,14 +48,63 @@ def _norm(text: str) -> str:
     return re.sub(r"[\s,·「」『』\"'*]", "", text or "")
 
 
-def _in_material(cell: str, material: str, material_norm: str) -> bool:
+_AMOUNT = re.compile(r"(?<![\d.,])(\d[\d,]*(?:\.\d+)?)\s{0,2}(억|만|천)?")
+_SCALE = {"억": 1e8, "만": 1e4, "천": 1e3}
+
+
+def _shown(value: float) -> set[str]:
+    """How a derived value can be written: 「15000」, 「1.5」(만), 「1800」(만)."""
+    out = set()
+    for scale in (1, 1e4, 1e8):
+        part = value / scale
+        # 「3」 for 30,000 would let any small count pass; 「1.5」(만) and 「180」(만) are kept
+        if part < 1 or (scale > 1 and part < 10 and float(part).is_integer()):
+            continue
+        if abs(part - round(part)) < 1e-6:
+            out.add(str(round(part)))
+        elif abs(part * 10 - round(part * 10)) < 1e-6:
+            out.add(f"{part:.1f}")
+    return out
+
+
+def derived_numbers(material: str) -> set[str]:
+    """Figures one or two steps of arithmetic away from the material's own: a total per head or
+    per month (「연 1,800만원」 for 「100명」 → 1인 월 15,000원, r7 A11-T2), a price times a count,
+    a month's amount over a year (「1인 월 6,000원」 × 100명 × 12). Written as digits."""
+    values: set[float] = set()
+    for m in _AMOUNT.finditer(material or ""):
+        try:
+            values.add(float(m.group(1).replace(",", "")) * _SCALE.get(m.group(2) or "", 1))
+        except ValueError:
+            continue
+    base = sorted(v for v in values if v > 0)[:40]
+    found: set[float] = set()
+    for a in base:
+        found.update({a * 12, a / 12})
+        for b in base:
+            if a == b or b < 2:
+                continue
+            if a >= 1000 and a > b:
+                found.update({a / b, a / b / 12})
+            if a >= 100 and b <= 10000 and float(b).is_integer():
+                found.update({a * b, a * b * 12})
+    out: set[str] = set()
+    for value in found:
+        out |= _shown(value)
+    return out
+
+
+def _in_material(cell: str, material: str, material_norm: str,
+                 derived: set[str] | None = None) -> bool:
     if not material:
         return False
     core = re.sub(r"\[\d+\]", "", cell).strip()
     if len(_norm(core)) >= 4 and _norm(core) in material_norm:
         return True
     numbers = re.findall(r"\d[\d,]*(?:\.\d+)?", core)
-    if numbers and all(n.replace(",", "") in material.replace(",", "") for n in numbers):
+    flat = material.replace(",", "")
+    if numbers and all(n.replace(",", "") in flat or n.replace(",", "") in (derived or ())
+                       for n in numbers):
         words = re.sub(r"\d[\d,]*(?:\.\d+)?", "", core)
         if len(_norm(words)) <= 4:
             return True
@@ -92,6 +141,7 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
     labels = int(options.get("label_columns", 1))
     material = material or ""
     material_norm = _norm(material)
+    derived = derived_numbers(material)
     lines = (text or "").split("\n")
     findings: list[dict] = []
     for t_index, table in enumerate(tables(lines)):
@@ -146,7 +196,8 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
                     )
                     row_open = True
                     continue
-                if CITED.search(cell) or row_sourced or _in_material(cell, material, material_norm):
+                if CITED.search(cell) or row_sourced or _in_material(cell, material, material_norm,
+                                                                     derived):
                     continue
                 findings.append(
                     {
@@ -184,7 +235,8 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
         if not in_section or not re.match(r"^(?:[-*•]|\d+[.)])\s+", stripped):
             continue
         body = re.sub(r"^(?:[-*•]|\d+[.)])\s+", "", stripped)
-        if CITED.search(body) or OPEN.search(body) or _in_material(body, material, material_norm):
+        if CITED.search(body) or OPEN.search(body) or _in_material(body, material, material_norm,
+                                                                   derived):
             continue
         # A question to ask the prospect is not a claim.
         if (

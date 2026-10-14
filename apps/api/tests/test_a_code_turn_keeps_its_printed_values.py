@@ -258,12 +258,13 @@ def test_a_chart_row_of_zeros_is_dropped_and_categories_keep_their_brackets():
     mixed = {"kind": "bar", "categories": ["FCFS", "SRTF"],
              "series": [{"name": "평균", "values": [4.75, 3]}, {"name": "빈", "values": [0, 0]}]}
     assert [s["name"] for s in deck._clean_chart(mixed)["series"]] == ["평균"]
-    # S08 slide 9: both round-robin columns were cut to 「라운드 로빈 (q=」.
+    # S08 slide 9: both round-robin columns were cut to 「라운드 로빈 (q=」; r7 A09-T1: kept
+    # whole, the renderers wrap them at their spaces
     named = {"kind": "bar", "categories": ["라운드 로빈 (q=2)", "라운드 로빈 (q=4)",
                                            "라운드 로빈(타임 퀀텀 2)", "SJF (비선점)"],
              "series": [{"name": "평균 대기시간", "values": [5, 4.5, 5, 4]}]}
     assert deck._clean_chart(named)["categories"] == [
-        "라운드로빈(q=2)", "라운드로빈(q=4)", "라운드로빈(2)", "SJF (비선점)"]
+        "라운드 로빈 (q=2)", "라운드 로빈 (q=4)", "라운드 로빈(타임 퀀텀 2)", "SJF (비선점)"]
 
 
 def test_grouped_amounts_keep_their_commas_and_a_value_with_no_row_pins_nothing():
