@@ -294,6 +294,32 @@ def test_the_plan_scores_ranks_and_dates_without_inventing_basis():
     assert [r["type"] for r in result["calendar"]].count("searchable") >= 2
 
 
+def test_each_channel_gets_its_own_frequency():
+    # r7 A13-T2: 「11월 한 달 회사 SNS(인스타그램, 링크드인) 게시물 계획 짜 줘. 주 2회씩.」
+    # came out 8 posts for both channels together (인스타 5·링크드인 3)
+    topics = [{"title": f"주제 {n}", "type": "searchable",
+               "scores": {"impact": 5, "fit": 5, "search": 5, "resources": 5}} for n in range(20)]
+    topics[0] = {**topics[0], "title": "AI 회의록 요약 베타 출시", "channel": "링크드인"}
+    args = {"topics": topics, "calendar": {
+        "start": "2026-11-01", "end": "2026-11-30", "channels": [
+            {"name": "인스타그램", "per_week": 2, "weekdays": ["화", "목"]},
+            {"name": "링크드인", "per_week": 2, "weekdays": ["수", "금"]}]}}
+    result = _run("content-strategy", "plan", args)
+    assert result["posts_per_channel"] == {"인스타그램": 8, "링크드인": 8}
+    dates = [r["date"] for r in result["calendar"]]
+    assert dates == sorted(dates) and dates[-1] <= "2026-11-30"
+    insta = [r["date"] for r in result["calendar"] if r["channel"] == "인스타그램"]
+    assert insta[:2] == ["2026-11-03", "2026-11-05"]
+    # a topic meant for LinkedIn lands there
+    assert next(r for r in result["calendar"] if r["title"] == "AI 회의록 요약 베타 출시")[
+        "channel"] == "링크드인"
+    # channel names alone take the calendar's frequency
+    names = _run("content-strategy", "plan", {"topics": topics, "calendar": {
+        "start": "2026-11-02", "weeks": 1, "per_week": 2, "weekdays": ["화", "목"],
+        "channels": ["인스타그램", "링크드인"]}})
+    assert names["posts_per_channel"] == {"인스타그램": 2, "링크드인": 2}
+
+
 # ── copy-check: length ──────────────────────────────────────────────────
 
 

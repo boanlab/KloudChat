@@ -10,7 +10,15 @@ CITED = re.compile(
     r"\[\d{1,3}\]|https?://|출처\s*[:：]|자료\s*[:：]|\((?:자사|제공|사용자|내부)\s?자료[^)]*\)|\[자료\]"
 )
 OPEN = re.compile(
-    r"확인\s?필요|출처\s?미확인|자료\s?없음|판단\s?보류|가정\s*[:：)]|\(가정|해당\s?없음|N/?A", re.I
+    r"확인\s?필요|출처\s?미확인|자료\s?없음|판단\s?보류|가정\s*[:：)]|\(가정|해당\s?없음|N/?A"
+    # the battlecard's own 「공개 자료에서 확인하지 못함」 (r7 A11-T2)
+    r"|확인하지\s?못(?:함|했)|확인\s?못\s?함",
+    re.I,
+)
+#: Units and modifiers around a figure the material gives (「6,000원/인/월(부가세 별도)」, r7 A11-T2).
+_UNIT_WORDS = re.compile(
+    r"만원|억원|천원|원|명|인당|인|월|연|년|일|개월|개|건|회|시간|시|분|초|배|%|GB|MB|TB|"
+    r"약|최대|최소|이상|이하|미만|초과|기준|당|부가세|VAT|별도|포함", re.I
 )
 EMPTY = {"", "-", "—", "–", "?", "??", "tbd", "TBD"}
 VAGUE = re.compile(
@@ -49,7 +57,11 @@ def _in_material(cell: str, material: str, material_norm: str) -> bool:
     numbers = re.findall(r"\d[\d,]*(?:\.\d+)?", core)
     if numbers and all(n.replace(",", "") in material.replace(",", "") for n in numbers):
         words = re.sub(r"\d[\d,]*(?:\.\d+)?", "", core)
-        return len(_norm(words)) <= 4
+        if len(_norm(words)) <= 4:
+            return True
+        # Every other word a unit/modifier or a word the material itself uses (「(클라우드형)」).
+        return all(_UNIT_WORDS.fullmatch(w) or (len(w) >= 2 and w in material)
+                   for w in re.findall(r"[가-힣A-Za-z%]+", words))
     return False
 
 
@@ -91,6 +103,8 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
             if source_col is not None and source_col < len(cells):
                 src = cells[source_col]
                 row_sourced = bool(src) and src not in EMPTY and not OPEN.fullmatch(src)
+            # A [n] in any other column (「비고」) is the row's source too (r7 A11-T2).
+            row_sourced = row_sourced or any(CITED.search(c) for k, c in enumerate(cells) if k != verdict_col)
             row_open = False
             label = " / ".join(cells[:labels])
             for col, cell in enumerate(cells):

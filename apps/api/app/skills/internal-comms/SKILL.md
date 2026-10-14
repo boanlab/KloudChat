@@ -66,9 +66,11 @@ Fix, run once more. The check is yours, not the reader's: no 「점검 결과」
 
 ## Output format
 ```
-**제목** [요지 그대로 짧게]          ← 메일일 때만
+**제목** 정기 점검으로 11/8(토) 그룹웨어 사용 중지          ← 메일일 때만; 요지를 짧게, 대괄호 없이
 
-[한 줄 요지]
+안녕하세요, 정보화팀입니다.          ← 인사와 보내는 부서 한 줄(공지·메일 모두)
+
+11월 8일(토) 22시부터 24시까지 그룹웨어를 쓸 수 없습니다.          ← 한 줄 요지
 
 **무엇이 바뀌나**
 - …
@@ -79,6 +81,9 @@ Fix, run once more. The check is yours, not the reader's: no 「점검 결과」
 1. … (기한: …)
 **문의** …
 
+감사합니다.
+정보화팀 드림          ← 맺음과 발신 부서(자료의 부서명; 없으면 [발신 부서])
+
 ---
 보내기 전에 채울 것: [시행일], [문의처]
 ```
@@ -88,6 +93,7 @@ Fix, run once more. The check is yours, not the reader's: no 「점검 결과」
 - [ ] Every date, weekday, time, contact and number is from the material (script: 0 `block`).
 - [ ] Action and deadline stated, or 「별도로 하실 일은 없습니다」.
 - [ ] 문의처 present or `[문의처]` flagged.
+- [ ] Opens with a greeting and the sending team, closes with a sign-off and sender line; the template's example wording (점검·정보화팀) is replaced by the material's, and the title carries no brackets (r7 A14-T1·T2).
 - [ ] 공문 for 결재·대외 발송 → pointed to the 「공문·안내문」/「간이기안문」 서식.
 
 ---

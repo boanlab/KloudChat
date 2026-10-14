@@ -83,6 +83,8 @@ FORMATS: tuple[DocFormat, ...] = (
     DocFormat(
         "official", "공문·안내문", r"공문|시행\s{0,3}문|안내문|공지문|협조\s{0,3}요청",
         ("수신", "참조", "발신", "시행일"), numbering="official", head="memo", closing=True,
+        # no 참조 in the material: no blank 「[참조]」 to fill (r7 A03-T1)
+        optional=("참조",),
     ),
     DocFormat(
         "incident", "장애 보고서",
@@ -196,12 +198,41 @@ def _template_formats() -> dict[str, str]:
 TEMPLATE_FORMATS = _template_formats()
 
 
+#: Formats one bound template cannot tell apart: the request's own word picks among them
+#: (r7 A01-T2: 「회의 안건 초안」 under a minutes agent came out as 회의록, every 담당·시간
+#: 「미정」 and 「회의록 작성을 마쳤습니다」).
+_SIBLINGS = (frozenset({"minutes", "agenda"}),)
+#: What asks for the sibling itself — making it, not mentioning it: minutes material says
+#: 「안건 3개를 논의했다」 and stays minutes.
+_ASKS_FOR = {
+    "agenda": re.compile(
+        r"(?:회의\s{0,3})?(?:안건|어젠다)\s{0,3}(?:초안|지|목록|표)?\s{0,3}(?:을|를)?\s{0,3}"
+        r"(?:같이\s{0,3}|함께\s{0,3}|먼저\s{0,3})?(?:잡|짜|만들|작성|써|준비|구성)"
+        r"|안건\s{0,3}(?:초안|목록|지(?=[를는가로\s.,)]|$))"),
+    "minutes": re.compile(r"회의록"),
+}
+
+
+def _sibling_named(bound: str, instruction: str) -> DocFormat | None:
+    """A sibling of the bound format the instruction asks for instead, or None."""
+    for group in _SIBLINGS:
+        if bound not in group:
+            continue
+        for other in sorted(group - {bound}):
+            if _ASKS_FOR[other].search(instruction or "") and not _ASKS_FOR[bound].search(
+                    instruction or ""):
+                return BY_ID[other]
+    return None
+
+
 def detect(
     instruction: str, template_id: str | None = None, fixed: str | None = None
 ) -> DocFormat | None:
-    """Template format, else `fixed`, else first named in instruction; else None."""
+    """Template format, else `fixed`, else first named in instruction; else None. A request
+    naming a sibling of the bound format (안건 under a 회의록 template) gets the sibling."""
     if template_id and template_id in TEMPLATE_FORMATS:
-        return BY_ID[TEMPLATE_FORMATS[template_id]]
+        bound = TEMPLATE_FORMATS[template_id]
+        return _sibling_named(bound, instruction) or BY_ID[bound]
     if template_id and template_id.startswith("ut-"):
         # User templates carry their own format.
         from app.services import design_templates
@@ -210,7 +241,7 @@ def detect(
         if template is not None and template.doc_format_def is not None:
             return template.doc_format_def
     if fixed and fixed in BY_ID:
-        return BY_ID[fixed]
+        return _sibling_named(fixed, instruction) or BY_ID[fixed]
     for fmt, pattern in (*_COMPILED, *_FALLBACKS):
         if pattern.search(instruction or ""):
             return fmt

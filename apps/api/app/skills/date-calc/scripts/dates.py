@@ -710,6 +710,15 @@ def lead_times(text: str) -> dict:
 def run(options: dict) -> dict:
     op = str(options.get("op") or "resolve")
     if op == "resolve":
+        if not options.get("base_date"):
+            # No base given: a full date the expressions write is the base (r7 A16-T2).
+            given = " ".join(str(e.get("text") if isinstance(e, dict) else e)
+                             for e in options.get("expressions") or [])
+            try:
+                options = {**options, "base_date": parse_day(given).isoformat(), "base_kind": "text"}
+            except ValueError:
+                # nothing written either: today (Korea), said so on every row
+                options = {**options, "base_date": today().isoformat(), "base_kind": "today"}
         base = parse_day(options["base_date"])
         items = []
         for item in options.get("expressions") or []:
@@ -739,7 +748,25 @@ def run(options: dict) -> dict:
                 "holidays": [f"{d} {n}" for d, n in HOLIDAYS.items() if start.isoformat() <= d <= end.isoformat()]}
     if op == "add_business_days":
         return {"ok": True, "op": op, **_dated(add_business_days(parse_day(options["date"]), int(options["days"])))}
-    raise ValueError(f"모르는 op: {op}")
+    if op == "weekday":
+        # what day of the week given dates fall on (r7 A16-T2: 「2026-11-04는 수요일」 had no op)
+        given = options.get("dates") or ([options["date"]] if options.get("date") else [])
+        if not given:
+            raise KeyError("dates")
+        return {"ok": True, "op": op, "items": [_dated(parse_day(str(d))) for d in given[:60]]}
+    raise ValueError(f"모르는 op: {op}. 있는 것: {', '.join(OPS)}")
+
+
+#: The ops `run` knows.
+OPS = ("resolve", "scan", "span", "add", "lead_times", "business_days", "add_business_days",
+       "weekday")
+
+
+def today() -> dt.date:
+    """Today in Korea."""
+    from zoneinfo import ZoneInfo
+
+    return dt.datetime.now(ZoneInfo("Asia/Seoul")).date()
 
 
 #: What the person's relative dates resolve to, as a post check compares them with the answer.
@@ -851,6 +878,17 @@ def _line(row: dict) -> str:
     return f"{label} → {row.get('status')}: {row.get('reason', '')}"
 
 
+#: Keys an op cannot run without, each with a call that gives it.
+_NEEDED = {
+    "base_date": {"op": "resolve", "base_date": "2026-11-04", "expressions": ["다음 달 3일"]},
+    "date": {"op": "add", "date": "2026-11-04", "days": 30},
+    "start": {"op": "business_days", "start": "2026-11-04", "end": "2026-11-30"},
+    "end": {"op": "business_days", "start": "2026-11-04", "end": "2026-11-30"},
+    "days": {"op": "add_business_days", "date": "2026-11-04", "days": 10},
+    "dates": {"op": "weekday", "dates": ["2026-11-04", "2026-12-03"]},
+}
+
+
 def main(argv: list[str]) -> int:
     try:
         options = json.loads(argv[1]) if len(argv) > 1 else {}
@@ -858,7 +896,15 @@ def main(argv: list[str]) -> int:
     except json.JSONDecodeError as exc:
         print(json.dumps({"ok": False, "error": f"인자 JSON 오류: {exc}"}, ensure_ascii=False))
         return 1
-    except (KeyError, ValueError, TypeError) as exc:
+    except KeyError as exc:
+        # A bare 「'base_date'」 told the caller nothing (r7 A16-T2): name the key, show a call.
+        key = str(exc.args[0]) if exc.args else ""
+        error = f"「{key}」 값이 필요합니다." if key in _NEEDED else str(exc)
+        if key in _NEEDED:
+            error += f" 예: {json.dumps(_NEEDED[key], ensure_ascii=False)}"
+        print(json.dumps({"ok": False, "error": error}, ensure_ascii=False))
+        return 1
+    except (ValueError, TypeError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 1
     for row in result.get("items") or []:

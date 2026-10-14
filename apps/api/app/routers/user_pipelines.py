@@ -17,7 +17,7 @@ from app.core.deps import AdminUser, CurrentUser, DbSession, client_ip
 from app.models.chat import ChatSession, Message, PipelineRun, Role, SessionKind
 from app.models.user import AuditEvent, User, utcnow
 from app.models.workspace import Agent, Skill, UserPipeline, Visibility
-from app.pipeline import compose
+from app.pipeline import compose, report_stages
 from app.pipeline import runs as pipeline_runs
 from app.pipeline.bundle import Bundle, Request
 from app.pipeline.runner import Runner
@@ -1354,7 +1354,7 @@ async def _settle_wait(work: Bundle, recorder: pipeline_runs.Recorder, waiting, 
     await sessions._persist_run(work, recorder, session_id=session_id, user_id=user_id,
                                 saved=saved, parent=parent, from_stage=start)
     if kind == "outline":
-        yield _sse({"type": "proposal", "plan": plan})
+        yield _sse({"type": "proposal", "plan": report_stages.public_plan(plan or {})})
     else:
         yield _sse({"type": "needs", "questions": questions})
     yield _sse({"type": "usage", **compose.usage_counts(usage),

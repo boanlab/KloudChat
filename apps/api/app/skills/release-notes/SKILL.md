@@ -35,6 +35,7 @@ Only the change list is essential; without it, ask for it in one line and stop. 
    - 알려진 문제 only from items the user labels as known/open issues; with a workaround only if given. No such items → no 알려진 문제 section.
    - An app-store version fits the store's limit (Google Play 「이번 버전의 새로운 기능」 500자).
 4. Check: script `notes`, `{"op": "check", "items": <parse 결과 items>, "entries": [{"section": "수정", "text": "...", "sources": ["#102"]}], "omitted": [{"id": "1234abc", "reason": "내부 CI 설정"}], "version": "2.5.0", "previous_version": "2.4.3", "date": "2026-10-20", "notes": "<완성한 노트 전문>"}`.
+   An entry that writes a date worked out from the material (the first-apply date of step 3) lists it in `"derived": ["2026-12-03"]`; a deprecation announced ahead (「… 종료 예정」) is a notice, not a breaking change, and still goes in 주의 with what to do.
    Fix every `block` (missing item, entry without source, invented figure, breaking change not in 주의 with an action, version/date mismatch); answer each `check` (major version not bumped despite a breaking change → ask, do not change the version yourself). Run again until 0 `block`.
 5. For product-wide announcements to customers, also run `internal-comms` script `check` with the material for invented contacts and dates.
 

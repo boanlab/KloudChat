@@ -364,7 +364,8 @@ Content fields of a slide — fill only the one for its layout:
 - two-column: "bullets": [...], {count_two} items. The first half is the left column, the
   second half the right.
 - table: "rows": [["기준", "A", "B"], ["행", "값", "값"], ...]; the first row is the header.
-  3~5 rows, 2~4 columns. Keep cells short (within 15 characters).
+  3~5 rows, 2~5 columns; a table the material gives keeps its columns. Keep cells short
+  (within 15 characters) but keep a name from the material whole.
 - timeline: "timeline": [["시점 또는 단계", "일"], ...], 3~6 entries. Each event one line.
   **Only points in time and stages the request has** — if the request has only one date, it
   is not a timeline but bullets. Do not fill cells with procedures the request lacks, like
@@ -911,7 +912,12 @@ def restate_missing_facts(slides: list[dict], request: str) -> list[int]:
 #: a request asking for Gantt charts
 _ASKS_GANTT = re.compile(r"간트|gantt", re.I)
 #: a title about one algorithm's worked result
-_RESULT_TITLE = re.compile(r"간트|차트|대기|평균|계산|결과|풀이|예제|실행\s?순서")
+_RESULT_TITLE = re.compile(r"간트|gantt|차트|대기|평균|계산|결과|풀이|도출|실행\s?순서", re.I)
+#: a slide setting up the example (its process table is the deck's data, never a chart's
+#: place: r7 A09-T2 「예제 프로세스 구성과 우선순위」 lost its P1~P4 table to a Gantt table)
+_SETUP_TITLE = re.compile(r"예제|구성|데이터|입력|조건|프로세스\s?(?:목록|정보|표)")
+#: a table header of the example's processes
+_INPUT_HEADER = re.compile(r"도착|버스트|burst|arrival|실행\s?시간", re.I)
 #: titles about the whole deck, never one algorithm's chart
 _NOT_ONE_ALGORITHM = re.compile(r"비교|퀴즈|요약|정리|개요|목차|마무리|결론|문제|소개")
 #: layouts whose screen a Gantt table replaces without losing a point
@@ -934,12 +940,40 @@ def _as_table(slide: dict, rows: list[list[str]], *, keep_points: bool) -> None:
     auto_fit(slide)
 
 
-def place_gantt_charts(slides: list[dict], request: str, *, may_add: bool = True) -> int:
+def _sets_up_example(slide: dict) -> bool:
+    """A slide presenting the example's processes (by its title or its own input table)."""
+    title = str(slide.get("title") or "")
+    if _SETUP_TITLE.search(title) and not _RESULT_TITLE.search(title):
+        return True
+    rows = slide.get("rows") or []
+    return bool(rows) and bool(_INPUT_HEADER.search(" ".join(map(str, rows[0]))))
+
+
+def _points_text(slide: dict) -> str:
+    return "\n".join([*(str(b) for b in slide.get("bullets") or []), str(slide.get("body") or "")])
+
+
+def gantt_room(request: str, slides: list[dict]) -> int | None:
+    """Slides a Gantt chart may add: none under an exact count, up to a range's top
+    (「12장 안팎」 is 10~14: r7 A09-T2 went from 14 to 18), else any (None)."""
+    if requested_slides(request):
+        return 0
+    if span := slide_range(request):
+        return max(0, span[1] - len(slides))
+    return None
+
+
+def place_gantt_charts(slides: list[dict], request: str, *, may_add: bool = True,
+                       room: int | None = None) -> int:
     """Each scheduling algorithm the request asks a Gantt chart for shows one, as a table
     run by code (r3 A09 T2: the intervals were a line of text or missing, Claude drew one per
     algorithm). Taken by the algorithm's result slide (「FCFS 평균 대기시간」, a metrics or
-    table slide), else added after its slide, else (an exact slide count) its slide's points
-    move to the notes. Returns how many slides changed or were added."""
+    table slide), else its slide whose points already list the intervals, else added after
+    its slide while `room` lasts (None: no limit; `may_add=False`: none), else its slide's
+    points move to the notes. A slide setting up the example keeps its table. Returns how
+    many slides changed or were added."""
+    if not may_add:
+        room = 0
     if not _ASKS_GANTT.search(request or ""):
         return 0
     every = scheduling.schedules(request)
@@ -967,21 +1001,32 @@ def place_gantt_charts(slides: list[dict], request: str, *, may_add: bool = True
         if not todo:
             continue
         rows = scheduling.gantt_rows(todo[0]) if len(todo) == 1 else scheduling.readings_rows(todo)
-        target = next((i for i in at if _RESULT_TITLE.search(str(slides[i].get("title") or ""))),
-                      None)
+        eligible = [i for i in at if not _sets_up_example(slides[i])]
+        target = next((i for i in eligible
+                       if _RESULT_TITLE.search(str(slides[i].get("title") or ""))), None)
         if target is None:
-            target = next((i for i in at if slides[i].get("layout") in _NUMBERS_LAYOUTS), None)
+            target = next((i for i in eligible if slides[i].get("layout") in _NUMBERS_LAYOUTS),
+                          None)
+        if target is None:
+            # points already listing every interval: that slide becomes the table, no
+            # second slide repeats it (r7 A09-T2: 「간트 차트: P1 0-7, P2 7-11…」 and a chart)
+            target = next((i for i in eligible if all(
+                scheduling.shows_runs(_points_text(slides[i]), s) for s in todo)), None)
         if target is not None:
             _as_table(slides[target], rows, keep_points=True)
-        elif may_add:
+        elif room is None or room > 0:
             added.append((at[-1] + 1, _gantt_slide(todo, rows, slides[at[-1]])))
+            room = None if room is None else room - 1
+        elif eligible:
+            _as_table(slides[eligible[-1]], rows, keep_points=True)
         else:
-            _as_table(slides[at[-1]], rows, keep_points=True)
+            # only the example's own slide is about it and the deck is full: the data stays
+            continue
         charted.update(s.alg.rows[0] for s in todo)
         changed += 1
     # an algorithm only named beside another (「SRTF와 RR 스케줄링」): its chart follows that slide
     for s in every:
-        if s.alg.rows[0] in charted or not may_add:
+        if s.alg.rows[0] in charted or room == 0:
             continue
         at = [i for i, slide in enumerate(slides)
               if slide.get("layout") not in _STRUCTURAL
@@ -990,6 +1035,7 @@ def place_gantt_charts(slides: list[dict], request: str, *, may_add: bool = True
         if at:
             added.append((at[-1] + 1, _gantt_slide([s], scheduling.gantt_rows(s),
                                                    slides[at[-1]])))
+            room = None if room is None else room - 1
             charted.add(s.alg.rows[0])
             changed += 1
     # inserted from the back so earlier positions hold; same position keeps deck order
@@ -1281,8 +1327,9 @@ Already said on earlier slides:
 
 Rules:
 - rows are the table's rows. **The first row is the header**; the rest are values.
-- **2~4 columns, 3~6 rows including the header.** This table is shown on a screen. Any
-  larger and it cannot be read from the back rows.
+- **2~5 columns, 3~6 rows including the header.** This table is shown on a screen. Any
+  larger and it cannot be read from the back rows. A table the material gives keeps its
+  columns — a figure column (파라미터, 지연) is often the point.
 - One cell **within 12 characters**. Do not put sentences in — a table is a place to compare,
   not text to read. If explanation is needed, put it in notes.
 - The first column is the **criterion** being compared; the other columns are the values for
@@ -1411,7 +1458,7 @@ async def _complete_once(
                 json={
                     "model": model,
                     "messages": messages,
-                    "max_tokens": max_tokens,
+                    "max_tokens": thinking.room(model, max_tokens),
                     # off where allowed; `thinking.switch` learns where not
                     **thinking.switch(model),
                 },
@@ -1420,7 +1467,8 @@ async def _complete_once(
                 response = await client.post(
                     "/v1/chat/completions",
                     json={
-                        "model": model, "messages": messages, "max_tokens": max_tokens,
+                        "model": model, "messages": messages,
+                        "max_tokens": thinking.room(model, max_tokens),
                         **thinking.switch(model),
                     },
                 )
@@ -2270,12 +2318,16 @@ def unnumbered(title: str) -> str:
     return bare or (title or "")
 
 
+_AGENDA_LINES = 10
+
+
 def _agenda_lines(slides: list[dict]) -> list[str]:
-    """Agenda lines: dividers when ≥ 2, else body slides; at most eight."""
+    """Agenda lines: dividers when ≥ 2, else body slides; at most ten, set in two columns
+    past four (r7 A09-T1: an eight-line cap dropped 「적용 한계」, the ninth part)."""
     names = [s["title"] for s in slides if s.get("layout") == "section"]
     if len(names) < 2:
         names = [s["title"] for s in slides if s.get("layout") not in (*_STRUCTURAL, "closing")]
-    return [unnumbered(str(n)) for n in names if str(n).strip()][:8]
+    return [unnumbered(str(n)) for n in names if str(n).strip()][:_AGENDA_LINES]
 
 
 #: Keys describing a slide, not content.
@@ -2357,6 +2409,17 @@ def _cut_at_word(text: str, limit: int) -> str:
     return text[:at].rstrip(" ,，;:·—–-(")
 
 
+def _within_sentences(text: str, limit: int) -> str:
+    """`text` within `limit` ending at a sentence's end, else at a word (r7 A09-T2: a
+    definition slide's body cut at 120 characters read 「…CPU를 빼앗아 그」)."""
+    if len(text) <= limit:
+        return text
+    ends = [m.end() for m in re.finditer(r"[.!?。](?=\s|$)", text[: limit + 1])]
+    if ends and ends[-1] >= limit // 3:
+        return text[: ends[-1]].strip()
+    return _cut_at_word(text, limit)
+
+
 #: Long-bullet cut points: comma, dash, colon.
 _BULLET_CLAUSE = re.compile(r",\s|，|\s[—–-]\s|;\s|:\s")
 
@@ -2396,8 +2459,9 @@ def fit_long_bullets(slides: list[dict[str, Any]]) -> list[int]:
     return touched
 
 
-#: Slide table bounds (readable on 16:9).
-_MAX_COLUMNS = 4
+#: Slide table bounds (readable on 16:9); five columns keep a given table's figure column
+#: (r7 A09-T1: 「파라미터」 22M vs 560M, the talk's point, was dropped at four).
+_MAX_COLUMNS = 5
 _MAX_ROWS = 6
 _MAX_CELL = 24
 
@@ -2868,6 +2932,21 @@ def _clean_pairs(value: Any, layout: str) -> list[list[str]]:
     return out
 
 
+def _cell(text: str) -> str:
+    """A table cell within `_MAX_CELL`, cut at a word (`_cut`) and never inside a bracket
+    it opened (r7 A09-T1: 「교차 인코더 (bge-reranker-large)」 became 「…(bge-reranker-larg」)."""
+    text = " ".join(text.split())
+    if len(text) <= _MAX_CELL:
+        return text
+    cut = _cut(text, _MAX_CELL)
+    if cut.count("(") > cut.count(")"):
+        rest = text[len(cut):]
+        if rest.startswith(")") and len(cut) < _MAX_CELL + 12:
+            return cut + ")"
+        cut = cut[: cut.rfind("(")].rstrip() or cut
+    return cut
+
+
 def _clean_rows(value: Any) -> list[list[str]]:
     """Bounded table rows, ragged padded; empty under two rows."""
     rows = value if isinstance(value, list) else []
@@ -2876,7 +2955,7 @@ def _clean_rows(value: Any) -> list[list[str]]:
         if not isinstance(row, list):
             continue
         cells = [
-            re.sub(r"\*\*(.+?)\*\*", r"\1", str(cell)).replace("`", "").strip()[:_MAX_CELL]
+            _cell(re.sub(r"\*\*(.+?)\*\*", r"\1", str(cell)).replace("`", "").strip())
             for cell in row[:_MAX_COLUMNS]
         ]
         if any(cells):
@@ -3179,7 +3258,8 @@ async def _write_slides(
         if slide["layout"] in ("quote", "statement"):
             line = str(data.get("body") or "").strip().strip('"“”')
             if slide["layout"] == "statement" and (word := str(data.get("title") or "").strip()):
-                slide["title"] = word[:24]
+                # a few letters over stays whole; longer stops at a word (r7 A09-T1: 「…지킨」)
+                slide["title"] = word if len(word) <= 28 else _cut_at_word(word, 24)
             if not line:
                 slide["layout"] = "bullets"
                 slide["bullets"] = _clean_bullets(data.get("bullets"))
@@ -3278,6 +3358,7 @@ async def _write_slides(
                             SessionKind.slides,
                             _NOTES_PROMPT.format(
                                 heading=slide["title"], shown=_slide_lines_text(slide),
+                                neighbours=notes_neighbours(slides, index),
                                 request=request[:1200],
                             )
                             + (
@@ -3498,7 +3579,7 @@ async def _write_slides(
         yield {"type": "slide", "slide": auto_fit(slides[index]), "done": True}
     before = list(slides)
     if computed and (charts := place_gantt_charts(slides, request,
-                                                  may_add=not requested_slides(request))):
+                                                  room=gantt_room(request, slides))):
         log.info("deck Gantt charts set from the computed schedules: %d", charts)
     # never shipped: a slide still empty or holding internal text after its one rewrite
     gone = [(i, s) for i, s in enumerate(slides) if unshippable(s)]
@@ -4376,9 +4457,12 @@ _DIAGRAM_LAYOUTS = ("bullets", "two-column", "cards", "bands", "tiles")
 _NOTES_PROMPT = """The screen of the "{heading}" slide already reads:
 {shown}
 
+{neighbours}
+
 Write two sentences the presenter will actually say aloud to the audience on this slide. Do
 not repeat the screen's sentences; choose among why it matters, the one thing the audience
-should remember, and words that lead to the next slide. Write the words themselves, not
+should remember, and words that lead to the next slide named above (on the last slide, a
+close; never a slide the deck does not have). Write the words themselves, not
 directions saying what to say such as 「~을 강조합니다」「~을 설명합니다」.
 (Example: 「이 숫자가 중요한 이유는 …입니다.」) Do not invent figures or facts the request does
 not have. Output only the sentences, in Korean unless the request itself is written in English.
@@ -4548,12 +4632,35 @@ def _sentence_count(text: str) -> int:
     return len([x for x in units.SENTENCE_BREAK.split((text or "").strip()) if x.strip()])
 
 
+def notes_neighbours(slides: list[dict], index: int) -> str:
+    """The slides around `index`, for notes that lead on (r7 A09-T1: 「이제 한계를
+    이야기하겠습니다」 on the last slide, 「두 가지 설계를 살펴보겠습니다」 three slides early)."""
+    def name(i: int) -> str:
+        return unnumbered(str(slides[i].get("title") or "")).strip()
+
+    lines = []
+    if index > 0 and name(index - 1):
+        lines.append(f"Previous slide: {name(index - 1)}")
+    following = next((i for i in range(index + 1, len(slides)) if name(i)), None)
+    lines.append(f"Next slide: {name(following)}" if following is not None
+                 else "This is the deck's last slide.")
+    return "\n".join(lines)
+
+
+#: a notes sentence leading on to what comes next
+_LEADS_ON = re.compile(
+    r"다음\s?(?:장|슬라이드|페이지)|이어서|이제\s[^.]{0,30}(?:살펴|보겠|이야기|넘어)")
+
+
 def _join_notes(existing: str, added: str) -> str:
-    """Existing notes plus new sentences not already said."""
+    """Existing notes plus new sentences not already said; a second lead-on to the next
+    slide is left out (r7 A09-T1: two 「다음 장에서는 …」 announcing different slides)."""
     have = [x.strip() for x in units.SENTENCE_BREAK.split(existing or "") if x.strip()]
     for sentence in units.SENTENCE_BREAK.split(added or ""):
         sentence = sentence.strip()
         said = any(sentence == h or (len(sentence) > 12 and sentence in h) for h in have)
+        if _LEADS_ON.search(sentence) and any(_LEADS_ON.search(h) for h in have):
+            said = True
         if sentence and not said:
             have.append(sentence)
     return " ".join(have)
@@ -4747,7 +4854,10 @@ def _fill_pattern(slide: dict, data: dict) -> None:
     elif pattern.shape == "text":
         line = " ".join(str(data.get("body") or "").split()).strip('"“”')
         if line:
-            slide["body"] = line[: pattern.right_max]
+            slide["body"] = _within_sentences(line, pattern.right_max)
+            if slide["body"] != line:
+                # the rest is said, not shown
+                slide["notes"] = f"{slide.get('notes') or ''} {line}".strip()[:800]
             return
     bullets = _clean_bullets(data.get("bullets"))
     if pattern.shape == "pairs" and (items := _pairs_from_bullets(pattern.name, bullets)):

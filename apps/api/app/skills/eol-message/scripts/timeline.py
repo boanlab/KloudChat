@@ -90,8 +90,12 @@ def text_dates(text: str, year_hint: int | None, known: tuple[dt.date, ...] = ()
     return out
 
 
+#: The material gives end and deletion as one step (r7 A14-T2: 「서비스 완전 종료 및 데이터 삭제」).
+_ONE_STEP = re.compile(r"종료\s*(?:및|와|과|·|,|하고|하며)\s*(?:[가-힣]{1,6}\s*){0,2}?(?:삭제|파기)")
+
+
 def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None = None,
-          text: str | None = None, today: str | None = None) -> dict:
+          text: str | None = None, today: str | None = None, material: str | None = None) -> dict:
     findings: list[dict] = []
     questions: list[dict] = []
     parsed: dict[str, dt.date] = {}
@@ -116,6 +120,12 @@ def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None =
             findings.append(_finding("block", "order", f"{_label(a)} {_show(day_a)} → {_label(b)} {_show(day_b)}",
                                      f"{_label(b)}이 {_label(a)}보다 앞섭니다.", "일정을 확인하세요."))
         elif day_b == day_a and {a, b} in ({"announce", "end"}, {"end", "delete"}, {"announce", "stop_new"}):
+            # End = deletion is planned when export runs up to the end or the material makes it
+            # one step; the export window is no_export_window's to judge (r7 A14-T2).
+            if {a, b} == {"end", "delete"} and (
+                    ("export_until" in parsed and parsed["export_until"] <= day_a)
+                    or _ONE_STEP.search(f"{text or ''}\n{material or ''}")):
+                continue
             findings.append(_finding("check", "same_day", f"{_label(a)} = {_label(b)} {_show(day_a)}",
                                      "같은 날입니다. 이용자가 준비할 시간이 없습니다.", "의도인지 확인하세요."))
     export = parsed.get("export_until")
@@ -325,7 +335,7 @@ def post(text: str, args: dict) -> dict:
             text = text.rstrip() + f"\n\n{_ASK_HEAD}:\n" + "\n".join(f"- {w}" for w in blanks)
     stated = schedule(text, hint)
     if len(stated) >= 2:
-        for finding in check(stated)["findings"]:
+        for finding in check(stated, material=f"{material}\n{text}")["findings"]:
             if finding["type"] in ("order", "same_day", "no_export_window", "export_before_end"):
                 out["flags"].append({"kind": finding["type"], "text": finding["text"], "why": finding["why"]})
     for line in text.split("\n"):
@@ -345,7 +355,8 @@ def main(argv: list[str]) -> int:
     if not isinstance(args, dict) or not isinstance(args.get("dates"), dict):
         print(json.dumps({"error": "dates(공지·종료 등 날짜)가 필요합니다."}, ensure_ascii=False))
         return 1
-    result = check(args["dates"], args.get("min_gaps"), args.get("telecom"), args.get("text"), args.get("today"))
+    result = check(args["dates"], args.get("min_gaps"), args.get("telecom"), args.get("text"), args.get("today"),
+                   args.get("material"))
     for row in result["timeline"]:
         print(f"{row['shown']}\t{row['label']}")
     for gap in result["gaps"]:

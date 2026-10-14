@@ -737,34 +737,100 @@ async def deepen_for_products(
           for name in names),
         return_exceptions=True,
     )
-    sources = list(findings.sources)
-    blocks = [findings.context] if findings.context else []
-    seen = {s["url"] for s in sources}
     for more in found:
         if isinstance(more, BaseException) or not more.sources:
             continue
-        for key in findings.usage:
-            findings.usage[key] += more.usage.get(key, 0)
-        parts = re.split(r"(?m)^(?=\[\d+\] )", more.context)
-        by_ordinal = {}
-        for part in parts:
-            m = re.match(r"\[(\d+)\] ", part)
-            if m:
-                by_ordinal[int(m.group(1))] = part
-        for src in more.sources:
-            if src["url"] in seen:
-                continue
-            seen.add(src["url"])
-            ordinal = len(sources) + 1
-            part = by_ordinal.get(src["ordinal"], "")
-            sources.append({**src, "ordinal": ordinal})
-            if part:
-                blocks.append(re.sub(r"^\[\d+\] ", f"[{ordinal}] ", part.strip(), count=1))
-        findings.queries = [*findings.queries, *more.queries]
-    log.info("product pages read for %s: %d sources now", names, len(sources))
-    findings.sources = sources
-    findings.context = "\n\n".join(blocks)
+        findings = merge(findings, more)
+    log.info("product pages read for %s: %d sources now", names, len(findings.sources))
     return findings
+
+
+def merge(base: Findings, more: Findings, *, most: int | None = None) -> Findings:
+    """`base` plus `more`'s sources it lacks (same URL counts once), renumbered after base's;
+    base keeps its numbering, its pages and its order. `most` caps the sources added."""
+    sources = list(base.sources)
+    blocks = [base.context] if base.context else []
+    seen = {s.get("url") for s in sources}
+    by_ordinal = {}
+    for part in re.split(r"(?m)^(?=\[\d+\] )", more.context or ""):
+        if m := re.match(r"\[(\d+)\] ", part):
+            by_ordinal[int(m.group(1))] = part
+    added = 0
+    for src in more.sources:
+        if src.get("url") in seen or (most is not None and added >= most):
+            continue
+        seen.add(src.get("url"))
+        ordinal = len(sources) + 1
+        part = by_ordinal.get(src.get("ordinal"), "")
+        sources.append({**src, "ordinal": ordinal})
+        added += 1
+        if part:
+            blocks.append(re.sub(r"^\[\d+\] ", f"[{ordinal}] ", part.strip(), count=1))
+    usage = {k: base.usage.get(k, 0) + more.usage.get(k, 0)
+             for k in {*base.usage, *more.usage}}
+    return Findings(
+        sources=sources,
+        context="\n\n".join(blocks),
+        queries=[*base.queries, *(q for q in more.queries if q not in base.queries)],
+        searched=base.searched or more.searched,
+        dropped=base.dropped + more.dropped,
+        usage=usage,
+    )
+
+
+def carried(findings: Findings, web_count: int) -> dict[str, Any]:
+    """The outline pass's web findings as stored on the proposal (`from_carried` reads it);
+    only the first `web_count` sources — project files are appended after them."""
+    return {
+        "sources": [dict(s) for s in findings.sources[:web_count]],
+        "context": findings.context,
+        "queries": list(findings.queries),
+        "dropped": findings.dropped,
+    }
+
+
+def from_carried(stored: Any) -> Findings | None:
+    """Findings the outline pass found (`carried`), or None when the plan carries none."""
+    if not isinstance(stored, dict) or not stored.get("sources"):
+        return None
+    sources = [dict(s) for s in stored["sources"] if isinstance(s, dict) and s.get("url")]
+    if not sources:
+        return None
+    return Findings(
+        sources=sources,
+        context=str(stored.get("context") or ""),
+        queries=[str(q) for q in stored.get("queries") or []],
+        searched=True,
+        dropped=int(stored.get("dropped") or 0),
+    )
+
+
+#: Heading words that name a part of any document, not what to look up.
+_GENERIC_HEADING = frozenset(
+    "개요 현황 결론 요약 시사점 방안 전략 분석 배경 목적 서론 제언 권고 정리 검토 대응 과제 향후 "
+    "계획 주요 기대 효과 필요성 동향 결과 참고문헌 부록 방향 개선 추진 문제점 결론및 및 위한 대한 "
+    "관련 사항 내용 기준 비교 종합 핵심 경로 절차 단계 체계 구조 이해 조사 범위 출처 확인 필요 "
+    "목차 서문 맺음말 마무리 들어가며 나가며".split()
+)
+_HEADING_TAIL = re.compile(r"(?:의|과|와|별|을|를|에|및)$")
+
+
+def uncovered(headings: list[str], context: str) -> list[str]:
+    """Approved headings the found pages say nothing about: fewer than half of a heading's
+    own words (generic part names like 「현황」·「시사점」 aside) occur in `context`.
+    Spacing is ignored (「디지털 서비스몰」 covers 「디지털서비스몰」)."""
+    flat = re.sub(r"\s+", "", (context or "").lower())
+    gaps: list[str] = []
+    for heading in headings:
+        words = []
+        for word in re.findall(r"[0-9A-Za-z가-힣]{2,}", heading or ""):
+            if len(word) > 2:
+                word = _HEADING_TAIL.sub("", word)
+            if word not in _GENERIC_HEADING and not word.isdigit():
+                words.append(word.lower())
+        if words and sum(1 for w in words if w in flat) * 2 < len(words):
+            gaps.append(heading)
+    return gaps
 
 
 #: Untrusted data block header, provenance web search.

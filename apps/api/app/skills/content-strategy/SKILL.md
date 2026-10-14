@@ -26,6 +26,7 @@ Search volumes, rankings and past performance numbers come only from the user (�
 3. Score 1–10 on four criteria and write the basis for each score: impact(고객 영향: 얼마나 자주·많이 나오는 문제), fit(제품과 이어지는가), search(검색 잠재력: 사용자가 준 검색량·경쟁도만), resources(만들기 쉬움). Leave a criterion empty if there is nothing to judge it on.
 4. Run `run_skill_script` skill `content-strategy`, script `plan`, args:
    `{"topics": [{"title": "...", "pillar": "...", "type": "searchable", "scores": {"impact": 8, "fit": 9, "search": 6, "resources": 7}, "basis": {"impact": "상담 기록에 월 12회 언급", "fit": "...", "search": "사용자 제공 월 검색량 1,300"}}], "calendar": {"start": "YYYY-MM-DD", "weeks": 8, "per_week": 2, "weekdays": ["화", "목"]}}`
+   Several channels: give each its own frequency in `"channels": [{"name": "인스타그램", "per_week": 2, "weekdays": ["화", "목"]}, {"name": "링크드인", "per_week": 2, "weekdays": ["수", "금"]}]` — 「주 2회씩」 over two channels is two a week on each. A month or campaign: add `"end": "YYYY-MM-DD"` for its last day. A topic meant for one channel carries `"channel"`.
    Default weights 40/30/20/10 and mix 검색형 60·공유형 30·실험 10; change only if the user asks (새 블로그는 검색형 비중을 높일 수 있음 — suggest, don't impose). Copy the ranking and calendar from the result; do not recompute scores or dates yourself.
 5. Do not state legal or regulatory facts (적용 대상 인원, 의무 여부, 기한) unless the material gives them; write the topic and mark `[법령 확인 필요]`. Do not attribute features to the product beyond the material.
    Proposed titles and briefs follow the same grounding: no numbers, savings, durations or offers the material lacks (「3분이면 끝」「주유비 10% 아끼는 법」「14일 무료 체험」 are invented) — use a wording without a number.
@@ -37,9 +38,9 @@ Search volumes, rankings and past performance numbers come only from the user (�
 ### 콘텐츠 축
 | 축 | 왜(근거) | 하위 주제 |
 ### 우선순위
-(plan 의 table_markdown 그대로; 「근거 없는 기준」 열 유지)
+(plan 의 table_markdown 그대로; 「근거 없는 기준」 열 유지 — a request for a posting calendar alone, not a topic ranking, gets one line naming the top topics instead of this table)
 ### 발행 일정
-| 날짜 | 요일 | 유형 | 주제 | 축 |
+| 날짜 | 요일 | 채널(여럿일 때) | 유형 | 주제 | 축 |
 ### 상위 3개 기획안
 ### 확인이 필요한 것
 - [검색어 확인 필요] 등, 가정으로 둔 점수

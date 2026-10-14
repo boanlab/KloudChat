@@ -24,6 +24,7 @@ from app.services import (
     output_language,
     query_terms,
     scheduling,
+    server_notes,
     settings_store,
     thinking,
 )
@@ -2675,19 +2676,17 @@ async def run_turn(
             # 「mostly unrelated」 is wrong for an answer citing what the searches found
             and not (cited and empty_searches < searches)
             and _searched_for_nothing(ctx.request, material_given)
-            and not _form_fixed(messages, ctx.request or "")):
+            and not _form_fixed(messages, ctx.request or "")
+            # the answer already says what it could not confirm, or carries the note itself
+            # (r7 P19·P27: the same warning twice)
+            and not server_notes.says_unconfirmed(answer)
+            and not server_notes.has_web_note(answer)):
         note = (
-            "\n\n_웹 검색이 쓸 만한 결과를 주지 않아 이 답은 검색으로 확인하지 못했습니다. "
-            "서지·수치·최신 사항은 확인이 필요합니다._"
-            if empty_searches == searches
-            else "\n\n_웹 검색 결과가 대부분 질문과 무관해 이 답은 충분히 확인되지 않았습니다. "
-            "서지·수치·최신 사항은 확인이 필요합니다._"
+            server_notes.WEB_NONE_KO if empty_searches == searches
+            else server_notes.WEB_MOSTLY_KO
         ) if reply_korean else (
-            "\n\n_The web search gave no usable results, so this answer was not checked "
-            "against it. References, figures and recent facts need checking._"
-            if empty_searches == searches
-            else "\n\n_Most web search results were unrelated to the question, so this answer "
-            "is not fully checked. References, figures and recent facts need checking._"
+            server_notes.WEB_NONE_EN if empty_searches == searches
+            else server_notes.WEB_MOSTLY_EN
         )
         answer_text.append(note)
         yield {"type": "delta", "text": note}
