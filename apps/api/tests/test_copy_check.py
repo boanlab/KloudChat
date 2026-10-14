@@ -183,14 +183,16 @@ def test_run_fixes_by_code_rewrites_once_and_checks_again():
                                      model="writer", judge="judge", api_key="k", usage=usage))
     assert [m for m, _ in model.prompts] == ["judge", "writer", "judge"]
     rewrite = model.prompts[1][1]
-    # The writer sees what code left for it: the ranking, the statement, the piece over 15.
-    assert "업계 1위" in rewrite and "세무사가 매일 연락드립니다" in rewrite
+    # The writer sees what code left for it: the ranking and the piece over 15; the judged
+    # statement has no figure or name code could look up, so it is marked, not rewritten (r8)
+    problems = rewrite.split("# Problems", 1)[1].split("# Answer", 1)[0]
+    assert "업계 1위" in problems and "세무사가 매일 연락드립니다" not in problems
     assert "make it at most 15 (cut at least 5)" in rewrite
     # The number was blanked by code before the rewrite.
     assert "월 [수치] 기장" in rewrite and "89,000" not in rewrite
     assert out.rewritten and out.left == []
     assert out.text == "1. 세무온 기장 대행 (9자)\n2. 월 [수치] 기장 (10자)"
-    assert {f["kind"] for f in out.found} >= {"superlative", "number", "claim"}
+    assert {f["kind"] for f in out.found} >= {"superlative", "number"}
     assert out.over and out.over[0]["count"] == 20
     assert "고쳐 쓰기 1회" in out.detail
     assert usage == {"inputTokens": 20, "outputTokens": 5}
@@ -232,7 +234,8 @@ def test_the_stage_records_its_step(monkeypatch):
         return [e async for e in registry.stage("check:copy").run(bundle, Context())]
 
     events = asyncio.run(go())
-    assert bundle.document.answer == "매장에서 직접 로스팅합니다."
+    # 「매일」 goes by code (a qualifier); the judged 「매일 새벽」 is no rewrite order (r8)
+    assert bundle.document.answer == "매장에서 새벽 직접 로스팅합니다."
     step = bundle.document.kept_steps[-1]
     assert step["id"] == "copy_check" and step["status"] == "done"
     assert step["label"].startswith("카피 점검: 근거 없는 표현")

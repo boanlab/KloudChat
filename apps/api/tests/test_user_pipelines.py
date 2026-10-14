@@ -771,7 +771,9 @@ async def test_a_chat_agent_step_runs_its_tools_and_its_finish_flow(monkeypatch)
     monkeypatch.setattr(compose.AgentStep, "_tools", tools)
     monkeypatch.setattr("app.services.tools.base.to_openai", lambda ts: [{"n": t.name} for t in ts])
     monkeypatch.setattr(agent_service, "run_turn", run_turn)
-    bundle = Bundle(request=Request(text="학기와 방학 비교", model="m", api_key="k",
+    # a self-hosted writer: its marks stay where they stand (a small external one's go to the
+    # end box, docs/architecture.md "Mechanisms by model group")
+    bundle = Bundle(request=Request(text="학기와 방학 비교", model="local/m", api_key="k",
                                     untrusted=["월,방문자\n2025-07,28400\n2025-08,25900"]),
                     usage={"inputTokens": 0, "outputTokens": 0})
     info = compose.AgentInfo(id="a", name="데이터 분석", output="answer",

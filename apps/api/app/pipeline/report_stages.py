@@ -1772,6 +1772,24 @@ class Verify(Base):
                          or (f.section, f.sentence) in kept]
             except Exception:  # noqa: BLE001 — the sentences stay; they are marked below
                 log.exception("hand-back of web disputes failed")
+        # a judged figure code still finds at odds with a settled figure is fixed once, by the
+        # writer when strong and by the planner otherwise, and marked if it stands (r8 L27F·LFLF
+        # A10-T2, A03-T2: found in the check, shipped in the text unmarked)
+        confirmed = [f for f in still if not f.auto and f.code == "judged_figure"
+                     and f.still is not None and f.still(f.sentence)]
+        if confirmed:
+            try:
+                bundle.document.sections, unfixed, spent = await verify.repair(
+                    _doc(bundle), [dataclasses.replace(f, auto=True) for f in confirmed],
+                    complete=report._complete, model=req.reviser, api_key=req.api_key,
+                    clean=lambda s: units.fix_written_sums(units.fix_written_arithmetic(s)))
+                _count(bundle, spent, planner=True)
+                kept = {(f.section, f.sentence) for f in unfixed}
+                still = [f for f in still if f not in confirmed
+                         or (f.section, f.sentence) in kept]
+            except Exception:  # noqa: BLE001 — the sentences stay; they are marked below
+                log.exception("repair of confirmed judged figures failed")
+            confirmed = [f for f in confirmed if f in still]
         if (pre := bundle.computed.prepass) is not None and pre.musts and not req.strong:
             # a recommendation still against the must-have matrix: the code's verdict instead;
             # a strong writer's recommendation stands, the finding reported (r7 A04-T2)
@@ -1781,11 +1799,12 @@ class Verify(Base):
             # the person asked for unconfirmed points to be marked: a sentence a check found at
             # odds with the sources and no rule could settle is marked where it stands (r7 A07-T2)
             bundle.document.sections = mark_unsettled(bundle.document.sections, still)
-        elif disputed:
-            # a sentence a web page contradicts, still standing, is marked for the reader
-            # whatever the request said (r8 A07·A10: left unmarked, in the step detail only)
+        elif disputed or confirmed:
+            # a sentence a web page contradicts, or a figure code still finds wrong, standing,
+            # is marked for the reader whatever the request said (r8 A07·A10: left unmarked, in
+            # the step detail only)
             bundle.document.sections = mark_unsettled(
-                bundle.document.sections, [f for f in still if f.code == "fact"])
+                bundle.document.sections, [f for f in still if f.code == "fact"] + confirmed)
         bundle.findings.still = still
         format_codes = set(report_checks.LABELS)
         bundle.findings.after += [f.code for f in still if f.code in format_codes]

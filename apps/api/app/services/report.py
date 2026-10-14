@@ -1674,10 +1674,19 @@ _INSTRUCTION = re.compile(r"(?:고쳐|맞춰|답하|써|바로잡|채우|빼|확
 
 
 def reader_note(code: str, why: str) -> str:
-    """Reader-facing finding text, never the repair prompt."""
+    """Reader-facing finding text, never the repair prompt nor a judge model's reasoning: a
+    model-labelled finding keeps what it found (「「60」은 자료에서 「…」의 값일 수 있다」), not
+    the judge's account of why (r8 L27L A01-T1·A04-T2, L27F·QMX A04-T1: 「(판정: …)」 and
+    the judge's thinking in the step)."""
+    if code in report_checks.MODEL_LABELS:
+        why = _JUDGE_WHY.sub(r"\1. 확인 필요.", why or "")
     if code == "judged_figure" or _INSTRUCTION.search(why or ""):
         return _QUALITY_LABELS.get(code, "확인 필요")
-    return (why or "")[:200]
+    return (why or "")[:200] or _QUALITY_LABELS.get(code, "확인 필요")
+
+
+#: the judge's own reasoning after a model finding's claim: 「… 수 있다(판정: …). 확인 필요.」
+_JUDGE_WHY = re.compile(r"(수 있다)\(.*$", re.S)
 
 
 _AMOUNT = re.compile(r"(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?(조|억|만)?\s?(원|명|박스|회|개|건|%)?")
