@@ -84,6 +84,22 @@ class Request:
         """Planner if set, else writer: judgements, not prose."""
         return self.outline_model or self.model
 
+    @property
+    def strong(self) -> bool:
+        """A strong writer (`model_tier.strong`): checks mark or hand evidence back to it, and
+        no weaker model rewrites its text."""
+        from app.services import model_tier
+
+        # the model that actually wrote the answer when known (a privacy route's local twin
+        # is a small writer)
+        return model_tier.strong(self.actual_model or self.model)
+
+    @property
+    def reviser(self) -> str:
+        """Who rewrites the writer's text on the checks' findings: the writer itself when it is
+        strong, else the planner as before."""
+        return self.model if self.strong else self.judge
+
 
 @dataclass(slots=True)
 class Spec:

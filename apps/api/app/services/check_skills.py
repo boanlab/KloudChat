@@ -197,6 +197,21 @@ def ground(keys: tuple[str, ...], text: str, *, material: str, computed: list[st
            worked: str = "") -> Outcome:
     """Attached `post` checks over `text`: check, fix once, recheck."""
     outcome = Outcome(text)
+    today = None
+    try:
+        today = dt.date.fromisoformat(str(options.get("today") or "")[:10])
+    except ValueError:
+        pass
+    ev: value_guard.Evidence | None = None
+
+    def evidence_() -> value_guard.Evidence:
+        nonlocal ev
+        if ev is None:
+            ev = value_guard.Evidence.of(
+                [material, *computed, str(options.get("person") or ""), *(evidence or [])],
+                answer=text, today=today, worked=worked)
+        return ev
+
     for key in of_stage(keys, "post", specs):
         if own_stage(key, specs):
             continue
@@ -205,6 +220,7 @@ def ground(keys: tuple[str, ...], text: str, *, material: str, computed: list[st
             found = module.check(outcome.text, material, computed, options)
             if not found:
                 continue
+            found = _kept_when_supported(outcome.text, found, evidence_)
             fixed = module.fix(outcome.text, found)
             outcome.found += found
             outcome.by_key.setdefault(key, []).extend(found)
@@ -214,16 +230,38 @@ def ground(keys: tuple[str, ...], text: str, *, material: str, computed: list[st
             log.exception("check skill %s failed after writing", key)
     if outcome.text != text:
         # supported values back as written, the rest marked; nothing emptied
-        today = None
-        try:
-            today = dt.date.fromisoformat(str(options.get("today") or "")[:10])
-        except ValueError:
-            pass
-        outcome.settled = value_guard.settle(text, outcome.text, value_guard.Evidence.of(
-            [material, *computed, str(options.get("person") or ""), *(evidence or [])],
-            answer=text, today=today, worked=worked))
+        outcome.settled = value_guard.settle(text, outcome.text, evidence_())
         outcome.text = outcome.settled.text
     return outcome
+
+
+#: value findings the guard settles back (the rest of a check's findings are its own)
+_VALUE_KINDS = frozenset({"number", "date", "month", "time"})
+
+
+def _kept_when_supported(text: str, found: list[dict], evidence) -> list[dict]:
+    """Findings whose value the value guard would give back marked `keep`: a sentence of such
+    values is never dropped as invented (r7 P07: 「데드버그 3세트 × 각 10회, 휴식 45초.」 went
+    whole though its counts were the guard's to keep)."""
+    if not any(f.get("kind") in _VALUE_KINDS and not f.get("keep") for f in found):
+        return found
+    lines = (text or "").split("\n")
+    structure = 0
+    out = []
+    for f in found:
+        if f.get("kind") in _VALUE_KINDS and not f.get("keep"):
+            k = int(f.get("line", -1))
+            line = lines[k] if 0 <= k < len(lines) else ""
+            start, end = int(f.get("start", 0)), int(f.get("end", 0))
+            try:
+                ok = bool(line) and value_guard.supported(line[start:end], line, start,
+                                                          evidence(), structure)
+            except Exception:  # noqa: BLE001 — unread: the check's own reading stands
+                ok = False
+            if ok:
+                f = {**f, "keep": True}
+        out.append(f)
+    return out
 
 
 _REFERENCES = re.compile(r"참고\s{0,2}문헌|references|출처\s{0,2}목록", re.I)

@@ -45,7 +45,6 @@ from app.services import (
     richtext,
     table_integrity,
     units,
-    value_guard,
     verify,
 )
 from app.services import deck as deck_rules
@@ -754,6 +753,7 @@ class Prepass(Base):
                     today=dt.datetime.now(ZoneInfo(settings.timezone)).date(),
                     tiebreak_model=report._tiebreak_model(req.judge),
                     process=bundle.spec.settings, deliberate=report._complete_thinking,
+                    strong=req.strong,
                 )
             except Exception as exc:  # noqa: BLE001 — written without it; the step says so
                 log.exception("report pre-pass failed")
@@ -1189,7 +1189,9 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     # reference lists exempt from prose number/owner guards
     is_reference = bool(report._REFERENCE_HEADING.search(str(section["heading"] or "")))
     trimmed: list[str] = []
-    if not is_reference:
+    # a strong writer's sentences are its own: no code cut on a reading of 「restated」 (r7
+    # A10-T1: a strength's supporting sentence went as a repeat of an earlier figure)
+    if not is_reference and not bundle.request.strong:
         body, trimmed = report.trim_restatements(
             body, earlier, keep_items=doc_format is not None and doc_format.lists == "gaejo",
             question=bool(report.QUESTION_HEADING.search(str(section["heading"] or ""))),
@@ -1671,6 +1673,37 @@ def keep_blanks(before: list[dict], after: list[dict], traced: Any) -> list[dict
     return out
 
 
+#: a request asking for unconfirmed points to be marked: 「확인 못 한 건 확인 필요로 표시해 줘」
+_MARKS_ASKED = re.compile(
+    r"확인\s{0,2}필요[^\n]{0,12}(?:표시|표기|적어|달아|붙여)|(?:표시|표기)[^\n]{0,12}확인\s{0,2}필요"
+    r"|(?:미확인|확인\s{0,2}(?:못|안)\s{0,2}(?:한|된))[^\n]{0,24}(?:표시|표기)")
+_MARK = "(확인 필요)"
+
+
+def mark_unsettled(sections: list[dict], still: list) -> list[dict]:
+    """Sections with 「(확인 필요)」 after each sentence a model check left unsettled (a web
+    claim, a judged figure), once each; table rows and marked sentences stay as they are."""
+    out = [dict(sec) for sec in sections]
+    for f in still:
+        if getattr(f, "auto", True) or not f.sentence or not 0 <= f.section < len(out):
+            continue
+        sentence = f.sentence.rstrip()
+        content = str(out[f.section].get("content") or "")
+        if sentence.lstrip().startswith("|") or sentence not in content or _MARK in sentence:
+            continue
+        at = content.find(sentence) + len(sentence)
+        if content[at:at + len(_MARK) + 2].lstrip().startswith(_MARK):
+            continue
+        body = sentence
+        tail = ""
+        while body and body[-1] in ".!?。":
+            tail = body[-1] + tail
+            body = body[:-1]
+        content = content.replace(sentence, f"{body} {_MARK}{tail}", 1)
+        out[f.section]["content"] = content
+    return out
+
+
 class Verify(Base):
     """Find, repair once, find again; leftovers reported, never passed off."""
 
@@ -1690,7 +1723,8 @@ class Verify(Base):
                 _doc(bundle),
                 bundle.findings.checks,
                 complete=report._complete,
-                model=req.judge,
+                # a strong writer's sentences are repaired by the writer, never a weaker model
+                model=req.reviser,
                 api_key=req.api_key,
                 clean=lambda s: units.fix_written_sums(units.fix_written_arithmetic(s)),
                 normalize=lambda secs: report.normalize_document(
@@ -1703,10 +1737,15 @@ class Verify(Base):
             log.exception("verify stage failed")
         bundle.document.sections = keep_blanks(before, bundle.document.sections,
                                                bundle.findings.traced)
-        if (pre := bundle.computed.prepass) is not None and pre.musts:
-            # a recommendation still against the must-have matrix: the code's verdict instead
+        if (pre := bundle.computed.prepass) is not None and pre.musts and not req.strong:
+            # a recommendation still against the must-have matrix: the code's verdict instead;
+            # a strong writer's recommendation stands, the finding reported (r7 A04-T2)
             bundle.document.sections, still = report_checks.settle_verdict(
                 bundle.document.sections, still, pre.musts, pre.scores)
+        if _MARKS_ASKED.search(req.text or ""):
+            # the person asked for unconfirmed points to be marked: a sentence a check found at
+            # odds with the sources and no rule could settle is marked where it stands (r7 A07-T2)
+            bundle.document.sections = mark_unsettled(bundle.document.sections, still)
         bundle.findings.still = still
         format_codes = set(report_checks.LABELS)
         bundle.findings.after += [f.code for f in still if f.code in format_codes]
@@ -1894,40 +1933,6 @@ class FormatStep(Base):
         }
 
 
-#: the request asking unconfirmed points to be marked in the text
-_ASKS_MARKS = re.compile(
-    r"확인\s{0,2}(?:이\s{0,2})?필요[^\n]{0,20}(?:표시|적|달|남겨|밝혀)"
-    r"|(?:확인|검증)(?:하지\s{0,2}못한|\s{0,2}못\s{0,2}한|되지\s{0,2}않은|\s{0,2}안\s{0,2}된)"
-    r"[^\n]{0,30}(?:표시|구분|밝혀|적어)")
-
-
-def mark_web_disputes(sections: list[dict], still: list, request: str) -> int:
-    """Sentences the web check found contradicted, still standing after the repair, marked
-    「(확인 필요)」 in the text when the request asked unconfirmed points to be marked (r7
-    A07-T2: three such sentences went out unmarked; they were in the step detail only).
-    Returns how many were marked."""
-    if not _ASKS_MARKS.search(instruction_part(request or "")):
-        return 0
-    marked = 0
-    for x in still:
-        if x.code != "fact" or not 0 <= x.section < len(sections):
-            continue
-        content = sections[x.section].get("content")
-        sentence = x.sentence.strip()
-        if not isinstance(content, str) or not sentence or sentence not in content:
-            continue
-        at = content.index(sentence) + len(sentence)
-        if value_guard.MARK in sentence or content[at:at + 12].lstrip().startswith(
-                value_guard.MARK):
-            continue
-        body = sentence.rstrip(".。 ")
-        end = content.index(sentence) + len(body)
-        sections[x.section] = {**sections[x.section],
-                               "content": f"{content[:end]} {value_guard.MARK}{content[end:]}"}
-        marked += 1
-    return marked
-
-
 class Quality(Base):
     """Final read for reader-facing defects, reported in steps and log; then the document goes out."""
 
@@ -1952,8 +1957,6 @@ class Quality(Base):
         if restored != sections:
             log.info("restored double-scaled amounts to the material's form")
             sections = bundle.document.sections = restored
-        if mark_web_disputes(sections, f.still, bundle.request.text):
-            bundle.document.sections = sections
         format_codes = set(report_checks.LABELS)
         findings = quality_gate.report_findings(sections, material,
                                                 bundle.computed.settled)
