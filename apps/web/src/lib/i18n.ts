@@ -2452,6 +2452,7 @@ const EN: Record<string, string> = {
   '어느 장을 고쳐야 하는지 알 수 없습니다.': 'Nothing says which slide to fix.',
   '검사에서 지적된 문제를 고쳐 주세요: {message}': 'Fix what the check raised: {message}',
   '최신 내용을 불러오지 못했습니다.': 'Could not load the latest.',
+  '대화를 찾을 수 없습니다. 삭제되었거나 볼 수 없는 대화입니다.': 'Conversation not found. It was deleted or you cannot view it.',
   '잠시 후 다시 불러옵니다.': 'Trying again shortly.',
   '대화를 불러오는 중…': 'Loading the conversation…',
   '(계속)': '(cont.)',

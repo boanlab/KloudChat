@@ -198,7 +198,11 @@ for (const status of [404, 503]) {
       state.agents.release()
       state.detail.release()
       await page.goto(`/s/${id}`)
-      await expect(page.getByText('최신 내용을 불러오지 못했습니다.', { exact: true })).toBeVisible()
+      // 404: said to be missing (deleted or not ours), still retryable; 503: a load failure.
+      await expect(page.getByText(
+        status === 404 ? '대화를 찾을 수 없습니다. 삭제되었거나 볼 수 없는 대화입니다.' : '최신 내용을 불러오지 못했습니다.',
+        { exact: true },
+      )).toBeVisible()
       await expect(page.getByLabel('프롬프트 입력')).toHaveCount(0)
       expect(state.writes).toEqual([])
       await page.screenshot({ path: info.outputPath(`metadata-${status}.png`) })

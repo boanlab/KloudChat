@@ -527,6 +527,8 @@ interface State {
   openArtifact: (id: string | null) => void
   /** A delete waiting out its undo window. */
   pendingDelete: { label: string; undo: () => void } | null
+  /** Conversations gone in this tab: deleted here (the page leaves them) or not on the server (the page says so). */
+  goneSessions: Record<string, 'deleted' | 'missing'>
   mediaError: string | null
   clearMediaError: () => void
   /** Replaces the store's copy with the server's, and returns it. */
@@ -910,6 +912,7 @@ export const useStore = create<State>((set, get) => ({
   user: null,
   accountEpoch: 0,
   pendingDelete: null,
+  goneSessions: {},
   mediaError: null,
   authenticated: false,
   authLoading: true,
@@ -1424,7 +1427,9 @@ export const useStore = create<State>((set, get) => ({
         sessions: [
           ...s.sessions.filter((c) => !rows.some((row) => row.id === c.id) &&
             (c.unsent || (rowFetchedAt.get(c.id) ?? 0) > asked)),
-          ...rows.map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
+          // Deleted here and still in the undo window: the server lists it until the request goes.
+          ...rows.filter((row) => s.goneSessions[row.id] !== 'deleted')
+            .map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
         ],
       }))
     } catch {
@@ -1448,6 +1453,8 @@ export const useStore = create<State>((set, get) => ({
     const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
     const accountSet: Set = (patch) => { if (ownsAccount()) set(patch) }
     if (get().sessions.find((c) => c.id === id)?.unsent) return true
+    // Deleted in this tab (maybe still in its undo window): not fetched back.
+    if (get().goneSessions[id] === 'deleted') return false
     // Opened before a reload and never sent: nothing on the server yet.
     const kept = findUnsent(owner, id)
     if (kept) {
@@ -1457,10 +1464,15 @@ export const useStore = create<State>((set, get) => ({
     let row: Awaited<ReturnType<typeof sessionsApi.get>>
     try {
       row = await sessionsApi.get(id)
-    } catch {
-      // Deleted, not ours, or the network: the page tells these apart by the session row.
+    } catch (err) {
+      // Deleted or not ours: the page says so instead of offering a retry; the network: retried.
+      if (err instanceof ApiError && (err.status === 404 || err.status === 403) && ownsAccount()) {
+        set((s) => ({ goneSessions: { ...s.goneSessions, [id]: 'missing' } }))
+      }
       return false
     }
+    // Deleted while the request was in flight.
+    if (get().goneSessions[id] === 'deleted') return false
     try {
       if (!ownsAccount()) return true
       const session = toSession(row)
@@ -2070,10 +2082,16 @@ export const useStore = create<State>((set, get) => ({
     }
   },
   deleteSessions: async (payload) => {
+    const before = get().sessions.map((c) => c.id)
     const { deleted } = await sessionsApi.deleteMany(payload)
     // `all` is resolved server-side. The artifacts those conversations made went with them.
     await get().loadSessions()
+    const left = new Set(get().sessions.map((c) => c.id))
     set((s) => ({
+      goneSessions: {
+        ...s.goneSessions,
+        ...Object.fromEntries(before.filter((id) => !left.has(id)).map((id) => [id, 'deleted' as const])),
+      },
       activeSessionId: null,
       jobs: payload.all ? [] : s.jobs,
     }))
@@ -2099,6 +2117,8 @@ export const useStore = create<State>((set, get) => ({
     const projectIds = before.projects.filter((p) => p.sessionIds.includes(id)).map((p) => p.id)
     set((s) => ({
       sessions: s.sessions.filter((c) => c.id !== id),
+      // An open page leaves it, and no fetch brings it back during the undo window.
+      goneSessions: { ...s.goneSessions, [id]: 'deleted' },
       jobs: s.jobs.filter((j) => j.sessionId !== id),
       activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
       projects: s.projects.map((p) => ({
@@ -2114,6 +2134,7 @@ export const useStore = create<State>((set, get) => ({
       restore: () =>
         set((s) => ({
           sessions: row && !s.sessions.some((c) => c.id === id) ? [row, ...s.sessions] : s.sessions,
+          goneSessions: withoutKey(s.goneSessions, id),
           jobs: [...s.jobs, ...jobs.filter((j) => !s.jobs.some((x) => x.id === j.id))],
           artifacts: [
             ...artifacts.filter((a) => !s.artifacts.some((x) => x.id === a.id)),
@@ -2832,6 +2853,12 @@ function adoptServerId(set: Set, sessionId: string, localId: string, serverId: s
         : c,
     ),
   }))
+}
+
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  if (!(key in record)) return record
+  const { [key]: _gone, ...rest } = record
+  return rest
 }
 
 /** Deletes whose requests have not been sent yet, so the page can flush them. */
