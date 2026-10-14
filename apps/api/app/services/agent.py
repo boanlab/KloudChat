@@ -804,7 +804,7 @@ def code_checked(answer: str, code_outputs: list[str], *,
     run's value for a quantity printed twice): `(answer, corrections)`. A value the code
     printed for the same row under another label is left as written (r8 LFLF A06-T1:
     「사회과학대학 4.17점」 became the row's sample size, 「24점」). `mark`: a clash is marked
-    「(확인 필요)」, never rewritten (the self-hosted writers, `model_tier.group`)."""
+    「(확인 필요)」, never rewritten (every writer since r8)."""
     printed = [printed_text(o) for o in code_outputs]
     return calc_check.check_markdown(answer, calc_check.printed_values(printed), printed,
                                      mark=mark, keep_row_values=True)
@@ -2811,10 +2811,9 @@ async def run_turn(
             yield {"type": "delta", "text": reverted}
             answer = reverted
         else:
-            # marked for a self-hosted writer, set for an external one (docs/architecture.md,
-            # "Mechanisms by model group")
-            marked = model_tier.group(model) == model_tier.SELF_HOSTED
-            checked, fixes = code_checked(answer, code_outputs, mark=marked)
+            # marked for every writer: a misread row once set a correct 4.17 to 24
+            # (docs/architecture.md, "Mechanisms by model group")
+            checked, fixes = code_checked(answer, code_outputs, mark=True)
             if fixes:
                 # A number naming a printed value is that value (a later run's, if rerun), or
                 # marked against it.
@@ -2822,7 +2821,7 @@ async def run_turn(
                 yield {"type": "retract", "text": answer}
                 yield {"type": "delta", "text": checked}
                 yield _values_step("code-values", "코드 출력값 대조", len(fixes),
-                                   korean=reply_korean, marked=marked)
+                                   korean=reply_korean, marked=True)
                 answer = checked
     if schedule_request and not preflight_tool:
         checked, fixes = scheduling.check(answer, schedule_request)

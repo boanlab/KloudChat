@@ -395,6 +395,9 @@ def _mend(text: str, clashes: list[Clash], mark: bool = False) -> str:
             continue
         shown = _shown(clash.written, clash.stated)
         end = clash.end
+        # a value set from a known run drops an earlier pass's mark (「4.70(확인 필요)」 → 「4.75」)
+        if m := re.match(r"[%점명건개원배시간분초]{0,2}" + re.escape(_MARK), text[end:]):
+            text = text[:end + m.end() - len(_MARK)] + text[end + m.end():]
         if m := _PARTICLE.match(text, end):
             shown += _particle(shown, m.group(1))
             end = m.end()
