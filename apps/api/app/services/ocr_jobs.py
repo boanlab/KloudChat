@@ -63,7 +63,7 @@ async def queue_if_scanned(stored: StoredFile, data: bytes) -> bool:
     stored.ocr_attempts = 0
     stored.ocr_claimed_at = None
     # text layer until pages are read
-    stored.text = ocr.joined(sorted(found.layer.items()), found.kind)
+    stored.text = file_service.storable(ocr.joined(sorted(found.layer.items()), found.kind))
     stored.tokens = file_service.estimate_tokens(stored.text)
     stored.error = None
     return True
@@ -142,7 +142,7 @@ async def _finish(db, stored: StoredFile, kind: str, *, state: str, error: str |
     if kind == "image" and len(ocr.normalised(text)) < ocr.PHOTO_TEXT_MIN_CHARS:
         # photo with a stray word stays a picture
         text = ""
-    stored.text = text
+    stored.text = file_service.storable(text)
     stored.tokens = file_service.estimate_tokens(text)
     stored.ocr_state = state
     stored.ocr_claim = None
@@ -197,7 +197,8 @@ async def process(db, stored: StoredFile, token: str) -> None:
     have = await _pages(db, file_id)
     for page, text in plan.layer.items():
         if page not in have:
-            db.add(FilePage(file_id=file_id, page=page, source="text", text=text))
+            db.add(FilePage(file_id=file_id, page=page, source="text",
+                            text=file_service.storable(text)))
     # pages past the limit counted, never read
     stored.ocr_total = len(plan.pages) + plan.skipped
     stored.ocr_claimed_at = utcnow()
@@ -217,7 +218,7 @@ async def process(db, stored: StoredFile, token: str) -> None:
                 file_id=file_id,
                 page=page,
                 source=read.source,
-                text=read.text,
+                text=file_service.storable(read.text),
                 confidence=read.confidence,
                 needs_review=read.needs_review,
                 has_table=read.has_table,
