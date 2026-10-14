@@ -410,7 +410,15 @@ export function SessionPage() {
     }, wait)
     return () => window.clearTimeout(timer)
   }, [retrying])
-  const retryLoad = () => setLoadAttempt((attempt) => attempt + 1)
+  const retryLoad = () => {
+    if (sessionId && gone === 'missing') {
+      useStore.setState((s) => {
+        const { [sessionId]: _missing, ...rest } = s.goneSessions
+        return { goneSessions: rest }
+      })
+    }
+    setLoadAttempt((attempt) => attempt + 1)
+  }
   // Turns on the server: no empty greeting while loading.
   const awaitingTranscript =
     session !== null && session !== undefined && session.messages.length === 0 &&
@@ -538,7 +546,14 @@ export function SessionPage() {
       {gone === 'missing' ? (
         <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
           <p className="text-base text-muted">{t('대화를 찾을 수 없습니다. 삭제되었거나 볼 수 없는 대화입니다.')}</p>
-          <Button onClick={() => navigate('/', { replace: true })}>{t('새 대화')}</Button>
+          <div className="flex gap-2">
+            <Button onClick={() => navigate('/', { replace: true })}>{t('새 대화')}</Button>
+            {/* A conversation made a moment ago can miss once; asking again is still offered. */}
+            <Button variant="ghost" onClick={retryLoad}>
+              <RotateCw size={14} />
+              {t('다시 시도')}
+            </Button>
+          </div>
         </div>
       ) : loadFailed ? (
         <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">

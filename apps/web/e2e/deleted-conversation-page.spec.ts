@@ -41,10 +41,10 @@ test('열어 둔 대화를 지우면 그 화면을 떠나고, 지운 주소는 �
   await expect(page).not.toHaveURL(new RegExp(`/s/${id}`), { timeout: 15_000 })
   await expect(page.locator('aside').getByText(title)).toHaveCount(0)
 
-  // Its address now says it is gone, without offering a retry.
+  // Its address now says it is gone instead of a load failure.
   await page.goto(`/s/${id}`)
   await expect(page.getByText('대화를 찾을 수 없습니다.', { exact: false })).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('button', { name: '다시 시도' })).toHaveCount(0)
+  await expect(page.getByText('최신 내용을 불러오지 못했습니다.')).toHaveCount(0)
   await page.getByRole('button', { name: '새 대화' }).last().click()
   await expect(page).not.toHaveURL(new RegExp(`/s/${id}`))
 })
