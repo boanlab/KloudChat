@@ -1102,8 +1102,10 @@ export const useStore = create<State>((set, get) => ({
 
   theme: initialTheme,
   toggleTheme: () => {
-    const order: Theme[] = ['system', 'light', 'dark']
-    const next = order[(order.indexOf(get().theme) + 1) % order.length]
+    // 'system' stays until the first click, which picks the opposite of what is on screen
+    const theme = get().theme
+    const dark = theme === 'system' ? darkQuery.matches : theme === 'dark'
+    const next: Theme = dark ? 'light' : 'dark'
     applyTheme(next)
     set({ theme: next })
   },
