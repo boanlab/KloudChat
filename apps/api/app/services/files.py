@@ -686,11 +686,31 @@ async def text_of(name: str, mime: str, data: bytes) -> str:
     if len(data) > transcribe.MAX_BYTES:
         limit = transcribe.MAX_BYTES // (1024 * 1024)
         raise RuntimeError(f"녹음이 너무 깁니다. {limit}MB 이하로 나눠 올려 주세요.")
-    return await transcribe.transcribe(data, name)
+    return storable(await transcribe.transcribe(data, name))
+
+
+def storable(text: str) -> str:
+    """Text Postgres can store: surrogate pairs joined, lone surrogates and NULs dropped.
+
+    Some HWP/PDF parsers hand back UTF-16 surrogates (and the odd NUL); asyncpg then refuses
+    the whole row and the upload fails with a 500."""
+    if not text:
+        return text
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        # pairs → their character; what stays unpaired is dropped
+        text = text.encode("utf-16", "surrogatepass").decode("utf-16", "ignore")
+        text = "".join(ch for ch in text if not 0xD800 <= ord(ch) <= 0xDFFF)
+    return text.replace("\x00", "")
 
 
 def extract_text(name: str, mime: str, data: bytes) -> str:
     """Best-effort model text; raises with a Korean reason."""
+    return storable(_extract_text(name, mime, data))
+
+
+def _extract_text(name: str, mime: str, data: bytes) -> str:
     suffix = Path(name).suffix.lower()
 
     if suffix == ".pdf" or mime == "application/pdf":
