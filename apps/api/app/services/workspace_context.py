@@ -24,10 +24,10 @@ from app.models.workspace import (
     Visibility,
 )
 from app.schemas.auth import Preferences
+from app.services import asked_form, output_language, pictures, starter
 from app.services import design as design_service
 from app.services import files as file_service
 from app.services import knowledge as knowledge_service
-from app.services import output_language, pictures, starter
 
 log = logging.getLogger(__name__)
 
@@ -766,7 +766,9 @@ def tool_free_body(body: str) -> str:
 
 
 def _skill_blocks(resolved: list[tuple[Skill, dict]],
-                  kind: SessionKind = SessionKind.chat) -> list[ContextBlock]:
+                  kind: SessionKind = SessionKind.chat, *, form: str = "") -> list[ContextBlock]:
+    """One block per skill; `form` (`asked_form.note`) told with each when the request names
+    its own form, so the skill's frame yields to it (r8 A08, A02-T2, A13-T2)."""
     blocks: list[ContextBlock] = []
     for skill, metadata in resolved:
         head = f"# 활성 스킬 — {skill.name}"
@@ -778,6 +780,8 @@ def _skill_blocks(resolved: list[tuple[Skill, dict]],
             body = "\n\n".join(p for p in (tool_free_body(body), NO_TOOLS_NOTE) if p)
         if metadata.get("material_only"):
             body = f"{body}\n\n{MATERIAL_ONLY_NOTE}"
+        if form:
+            body = f"{body}\n\n{form}"
         blocks.append(
             ContextBlock(
                 source=f"skill:{skill.id}",
@@ -937,7 +941,8 @@ async def assemble(
         blocks.append(ContextBlock("project.instructions", instructions, True))
     if design_block := design_service.prompt_block(design, session.kind):
         blocks.append(ContextBlock("project.design", design_block, True))
-    blocks.extend(_skill_blocks(resolved, session.kind))
+    blocks.extend(_skill_blocks(resolved, session.kind,
+                                form=asked_form.note(question or focus) if resolved else ""))
     if agent is not None and not output_language.asks_language(question or focus):
         # the agent's language, unless this turn names one; last trusted rule so it wins
         if text := output_language.rule(agent.output_language):

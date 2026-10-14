@@ -15,7 +15,7 @@ Produce many headline candidates that differ by angle (why someone would click),
 ## Inputs
 - Needed: what is offered and to whom; where the headline goes (channel/field) or a character limit; the facts you may use.
 - If the product/offer is unclear, ask once (at most 2 questions) and stop. If only the channel/limit is missing, assume 「공백 포함 30자」 and say so.
-- Count: default 25 (as asked otherwise).
+- Count: as the request asks. When it asks for 「여러 안」 or names no number, 3–5 per channel or field it names (at most 12 in all), one per angle the facts support — never filler variants to reach a quota.
 
 ## Angles
 | 각도 | 하는 일 | 사실 필요 |
@@ -32,7 +32,7 @@ If an angle needs a fact the material does not have, do not invent one: write th
 
 ## Procedure
 1. List the facts from the material (short). Decide limit and unit for the channel. Common limits (공백 포함): 네이버 파워링크 제목 15자, Google 반응형 검색광고 제목 30(한글은 2로 셈 → 15자), 메타 광고 제목 권장 40자, 메일 제목 권장 30자. For other channels use `copy-check` script `length` with `{"list": true}`.
-2. Get the grid: `run_skill_script` skill `headline-matrix`, script `matrix`, args `{"count": 25, "facts": [...], "limit": 15, "unit": "chars"}` (`chars_dw` for Google Ads). It returns how many per angle and which angles need facts.
+2. Get the grid: `run_skill_script` skill `headline-matrix`, script `matrix`, args `{"count": <the count above>, "facts": [...], "limit": <the channel's limit>, "unit": "chars"}` (`chars_dw` for Google Ads). It returns how many per angle and which angles need facts.
 3. Write the headlines into the grid. Vary the shape inside each angle: question, statement, imperative, number-first, audience-first. Natural Korean; no em dash, no 「!!」, no 혁신적·획기적, no 「단순한 ~가 아닙니다」.
 4. Check: call `matrix` again with `"headlines": [{"angle": "호기심", "text": "..."}, ...]`. Fix every item in `over`, `duplicates`, `near_duplicates`, `repeated_shapes`, `short_angles`, then check once more.
 5. Run `copy-check` script `claims` on all headlines with the material — again after every rewrite, since fixes introduce new numbers (「출고 전 3초」) and mechanisms (「스캔 한 번에 끝」). Remove or rewrite without the claim every `block` finding.
@@ -55,4 +55,4 @@ Never write character counts yourself; copy them from the script.
 - [ ] No number, name, rank, deadline or claim absent from the material.
 
 ---
-출처: realkimbarrett/advertising-skills `skills/copy-chief/headline-matrix` (README·front matter 기준 MIT, LICENSE 파일 없음), commit 45f4a4a1dabe24113193369b55b929b1de4ff04a, https://github.com/realkimbarrett/advertising-skills. 7개 각도와 25개 기본값을 따르고, 칸 나누기·길이·중복 검사와 사실 근거 규칙을 더했다.
+출처: realkimbarrett/advertising-skills `skills/copy-chief/headline-matrix` (README·front matter 기준 MIT, LICENSE 파일 없음), commit 45f4a4a1dabe24113193369b55b929b1de4ff04a, https://github.com/realkimbarrett/advertising-skills. 7개 각도를 따르고(25개 기본값은 요청이 개수를 정하지 않을 때 채널마다 3~5개로 줄였다), 칸 나누기·길이·중복 검사와 사실 근거 규칙을 더했다.

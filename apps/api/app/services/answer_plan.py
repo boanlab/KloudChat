@@ -26,6 +26,8 @@ _RESTRICTED = re.compile(
     r"\d+\s{0,2}(?:자|단어|줄|문장|단락|문단)\s{0,2}(?:이내|이하|안팎|내외|로|으로|만)|"
     r"(?:한|두|세)\s{0,2}(?:줄|문장|단락|문단)\s{0,2}(?:로|으로|만|이내)|"
     r"(?:표|목록)\s{0,2}(?:로만|만으로)|"
+    # 「- 길이: 짧게」, 「짧게 써 줘」: the length is set (r8 QMX P38: a plan grew the mail)
+    r"길이\s{0,2}[:：]\s{0,2}(?:짧|간단|간결)|(?:짧고|짧게|간단히|간결하게)\s{0,2}(?:써|적어|작성해)|"
     r"(?:다음|아래)\s{0,2}(?:형식|양식|순서|구성|틀|절|항목)\s{0,2}(?:으로|대로|에\s{0,2}맞|을\s{0,2}따|로)|"
     r"\b(?:answer only|only (?:the|a|one)|don'?t explain|no explanations?|in \d+ words|"
     r"one (?:line|sentence))\b",
@@ -35,8 +37,13 @@ _RESTRICTED = re.compile(
 PROMPT = """(이 메시지는 답을 쓰기 전의 준비다. 답은 쓰지 마라.)
 List 4-7 points an expert would cover in a good answer to the last request above.
 Put what the request directly asks for first. Then add only what this case really needs:
-practical detail (figures, timing, criteria, examples){extras}.
+practical detail (figures, timing, criteria, examples) the request or the material gives or
+that general knowledge settles{extras}.
 Do not add a point just to fill a category; fewer specific points beat generic ones.
+A message written for the person (an email, a letter, a notice, an apology, a reply) carries
+only the person's own facts: its points name what the message must say of them and its tone,
+never a cause, a remedy, a date, a time, a name or a promise the person did not give
+(예: 지연 사유·대체 공급·우선 처리를 지어내지 않는다).
 The last point starts with 「정확히: 」 and names one or two concepts or terms that are easy
 to get wrong in this answer (예: 이온 결합 물질은 분자가 아니므로 분자식이 아니라 화학식으로 쓴다).
 Each point is one short phrase (about 30 characters) starting with 「- 」, no sentences.
