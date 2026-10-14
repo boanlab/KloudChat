@@ -1623,11 +1623,22 @@ def _rows_any(parsed: dict[str, Any], text: str) -> list[list[str]]:
     """Table rows in any given form: `rows`, `table`, objects, or pipe text."""
     for key in ("rows", "table", "cells"):
         value = parsed.get(key)
+        header = next((h for k in ("header", "headers", "columns")
+                       if isinstance(h := parsed.get(k), list) and h
+                       and all(isinstance(c, (str, int, float)) for c in h)), None)
         if isinstance(value, dict):
+            header = next((h for k in ("header", "headers", "columns")
+                           if isinstance(h := value.get(k), list) and h), header)
             value = value.get("rows") or value.get("cells")
         if isinstance(value, list) and value and all(isinstance(r, dict) for r in value):
             keys = list(value[0].keys())
             value = [keys, *[[str(r.get(k, "")) for k in keys] for r in value]]
+        elif (header and isinstance(value, list) and value
+              and all(isinstance(r, list) for r in value)
+              and [str(c).strip() for c in value[0]] != [str(c).strip() for c in header]):
+            # header apart from the value rows (r9 L27F R3-A09-T2: the comparison slide kept
+            # only its column names)
+            value = [list(header), *value]
         if rows := _clean_rows(value):
             return rows
     return _clean_rows(_rows_from_text(text))
@@ -3588,8 +3599,28 @@ async def _write_slides(
                             "and the answers and explanations too. Do not invent names, dates "
                             "or amounts the material does not have: write the item so it holds "
                             "without them.")
+    # a slide planned as a comparison table that came out without value rows (a header
+    # alone, or its names as bullets) is written once more as a table (r9 L27F R3-A09-T2: the
+    # last comparison slide listed the algorithm names, no values, and the read said nothing)
+    as_table: set[str] = set()
+    for index, slide in enumerate(slides):
+        planned = plan[index] if index < len(plan) else {}
+        was_table = (planned.get("layout") == "table"
+                     and planned.get("title") == slide.get("title")
+                     and slide.get("layout") == "bullets")
+        if ((was_table or slide.get("layout") == "table") and not table_values(slide)
+                and not unshippable(slide)):
+            as_table.add(str(slide.get("id")))
+            needs.setdefault(index, (
+                "This slide is a comparison table, but it came out without value rows — only "
+                "the names of what it compares. Write it as one table: the first row is the "
+                "header, every other row gives one item's values, taken from the earlier "
+                "slides and the computed values. Copy the numbers; never make one up."))
     for index in sorted(needs):
         slide = slides[index]
+        table_ask = str(slide.get("id")) in as_table
+        if table_ask:
+            slides[index] = {**slide, "layout": "table"}
         try:
             fixed, spent = await rewrite_slide(
                 request=request, slides=slides, target_id=str(slide.get("id")),
@@ -3601,9 +3632,15 @@ async def _write_slides(
             spent = getattr(exc, "usage", None) or {}
             usage["inputTokens"] += spent.get("inputTokens", 0)
             usage["outputTokens"] += spent.get("outputTokens", 0)
+            slides[index] = slide
             continue
         usage["inputTokens"] += spent.get("inputTokens", 0)
         usage["outputTokens"] += spent.get("outputTokens", 0)
+        if table_ask:
+            # the table or nothing: the slide as it was when no value row came back
+            slides[index] = ({**fixed, "id": slide.get("id")} if table_values(fixed) else slide)
+            touched.add(index)
+            continue
         slides[index] = {**slide, **fixed, "id": slide.get("id")}
         touched.add(index)
     # settled figure restored in a formula, product redone
@@ -3652,6 +3689,10 @@ async def _write_slides(
     findings = quality_gate.deck_findings(slides)
     findings += [{"code": "long_line", "where": f"{i + 1}장", "detail": lines[0][:160]}
                  for i, lines in long_bullets(slides).items()]
+    findings += [{"code": "table_without_values",
+                  "where": f"{i + 1}장 {str(s.get('title') or '')[:30]}", "detail": ""}
+                 for i, s in enumerate(slides)
+                 if str(s.get("id")) in as_table and s.get("layout") != "table"]
     if findings:
         log.warning("deck quality findings: %s", [(f["code"], f["where"]) for f in findings][:12])
     # bracket blanks (「[담당자]」): gaps, not defects
@@ -4480,6 +4521,16 @@ async def rewrite_slide(
 _CONTENT_FIELDS = (
     "bullets", "body", "rows", "metrics", "chart", "diagram", "items", "columns", *_PAIRED
 )
+
+
+def table_values(slide: dict) -> bool:
+    """Whether a table slide shows values: a row under the header with a filled cell past the
+    row's name (a header alone, or names with empty cells, compares nothing)."""
+    rows = slide.get("rows")
+    if slide.get("layout") != "table" or not isinstance(rows, list) or len(rows) < 2:
+        return False
+    return any(isinstance(r, list) and any(str(c).strip() for c in (r[1:] if len(r) > 1 else r))
+               for r in rows[1:])
 
 
 def has_content(slide: dict) -> bool:
