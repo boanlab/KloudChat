@@ -73,8 +73,10 @@ _UNASKED = (
 _CITATION = re.compile(
     r"\[\d{1,3}(?:\s{0,2}[-~,]\s{0,2}\d{1,3}){0,8}\](?:\s{0,2}~\s{0,2}\[\d{1,3}\])?")
 
-#: settle deadline (s); writer proceeds without values after it
-DEADLINE = 120.0
+#: settle deadline (s); writer proceeds without values after it. r8: at 120 s the pass timed
+#: out on every setup's market-size and quote tasks (A04-T1/T2, A10-T2) and the writer's own
+#: arithmetic went 10~100x wrong (TAM < SAM); a report spends minutes writing anyway
+DEADLINE = 240.0
 
 
 def needed(request: str, context: list[str] | None = None, *, always: bool = False) -> bool:
@@ -249,7 +251,10 @@ async def computed_values(
     deadline: float = DEADLINE,
     always: bool = False,
 ) -> tuple[str, dict[str, int], str]:
-    """`(writer block, usage, status)`; independent programs must agree within `deadline`."""
+    """`(writer block, usage, status)`; independent programs must agree within `deadline`.
+
+    Status "partial": the deadline passed with one program's output only; its lines go to the
+    writer marked unchecked."""
     usage = {"inputTokens": 0, "outputTokens": 0}
     if block := scheduling.computed_block(request):
         # a textbook procedure: run here, no program to write or agree on
@@ -307,6 +312,20 @@ async def computed_values(
             + "\n".join(runs[0])
         )
 
+    def partial() -> str:
+        """One program's lines when the check run did not finish in time: code arithmetic,
+        unchecked, still beats the writer's own (r8 A10-T2: SOM 100x off after a time-out)."""
+        if len(runs) != 1:
+            return ""
+        return (
+            "# 코드로 계산한 값(검산 전)\n"
+            "아래 값은 주어진 자료로 Python 을 한 번 실행해 구했다(검산용 두 번째 실행은 시간 "
+            "안에 끝나지 않았다). 본문과 표의 같은 항목에는 이 값을 옮기고, 손으로 다시 셈해 "
+            "다른 값으로 적지 마라. 여기 없는 값을 직접 계산하면 그 값 바로 뒤에 「(추정)」을 "
+            "붙여라.\n\n"
+            + "\n".join(runs[0])
+        )
+
     # up to two run pairs; failures don't count against agreement
     loop = asyncio.get_running_loop()
     ends = loop.time() + deadline
@@ -331,6 +350,8 @@ async def computed_values(
             log.info("calculation runs passed %.0fs; the writer goes on without them", deadline)
             if block := single():
                 return block, usage, "done"
+            if block := partial():
+                return block, usage, "partial"
             return "", usage, "timeout"
     if len(runs) >= 2:
         log.info("calculation runs disagree; no computed values handed to the writer")

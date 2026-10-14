@@ -634,7 +634,10 @@ CALC_MISSING_NOTE = (
     "from the material's numbers: write "
     "each as its formula with the result (「9,900원 × 12 = 118,800원」). Where the request "
     "allows estimates and the material lacks a rate or share, state it as an assumption "
-    "(「가정: 전환율 2%」) and compute from it; never leave a requested figure as a formula name only."
+    "(「가정: 전환율 2%」) and compute from it; never leave a requested figure as a formula name only. "
+    "No code checked these figures: write 「(추정)」 right after each result you compute "
+    "yourself (「118,800원(추정)」), so the reader tells them from the material's and the "
+    "code's figures."
 )
 
 
@@ -676,12 +679,13 @@ class Calc(Base):
             "type": "step", "id": "calc",
             "label": {
                 "done": "코드로 수치 계산·검산",
+                "partial": "코드로 수치 계산(검산 시간 초과 — 한 번 실행한 값)",
                 "unavailable": "코드 실행 없음 — 모델이 계산",
                 "disputed": "코드 계산이 서로 달라 쓰지 않음",
-                "timeout": "코드 계산 시간 초과 — 모델이 계산",
+                "timeout": "코드 계산 시간 초과 — 모델이 계산한 값은 추정으로 표시",
             }
             .get(status, "코드 계산 실패 — 모델이 계산"),
-            "status": "done" if status == "done" else "error",
+            "status": "done" if status in ("done", "partial") else "error",
         }
 
 

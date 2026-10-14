@@ -86,13 +86,14 @@ async def test_a_procedure_whose_check_run_runs_late_keeps_the_finished_programs
         LECTURE, [], complete=complete, model="m", api_key="k", deadline=0.3
     )
     assert status == "done" and "FCFS | 평균 대기시간 = 4.75" in block
-    # Not a procedure: one program alone is not enough.
+    # Not a procedure: one program's lines go to the writer marked unchecked (r8 A10-T2:
+    # nothing at all left the writer's own arithmetic 10~100x off)
     calls["n"] = 0
     block, _, status = await calc.computed_values(
         "아래 측정값으로 이득을 계산해 줘.\n\n---\n1 2 3 4 5 6", [], complete=complete, model="m",
         api_key="k", deadline=0.3,
     )
-    assert (block, status) == ("", "timeout")
+    assert status == "partial" and "검산 전" in block
 
 
 _BLOCK = "# 코드로 계산한 값\n설명.\n\n" + "\n".join(_RUN_A)

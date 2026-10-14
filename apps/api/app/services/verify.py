@@ -147,6 +147,22 @@ def _acceptable(old: str, new: str, finding: Finding) -> bool:
     return not (finding.still and finding.still(new))
 
 
+#: keys a repair reply puts its fixed sentence under when it answers objects, not strings
+_SENTENCE_KEYS = ("sentence", "fixed", "revised", "new", "text", "corrected")
+
+
+def _sentence_of(item: object) -> str | None:
+    """The fixed sentence of one repair reply item: a string, or the one sentence of an object
+    that echoes the request's shape (`{"sentence": …}`); None for anything else."""
+    if isinstance(item, str):
+        return item
+    if isinstance(item, dict):
+        for key in _SENTENCE_KEYS:
+            if isinstance(item.get(key), str):
+                return item[key]
+    return None
+
+
 async def repair(
     doc: Doc, findings: list[Finding], *, complete: Complete, model: str, api_key: str,
     clean: Callable[[str], str] = lambda s: s,
@@ -202,7 +218,12 @@ async def repair(
             continue
         content = str(out[index].get("content") or "")
         for finding, new in zip(items, rewritten, strict=True):
-            new = clean(str(new).strip().strip("「」"))
+            new = _sentence_of(new)
+            if new is None:
+                # r8 L27L A07-T1: a reply item `{'sentence': …}` went into the text as written
+                left.append(finding)
+                continue
+            new = clean(new.strip().strip("「」"))
             # a fix keeps the document's 합니다체 (no 「…대상으로 한다.」 in a notice)
             new = keep_register(finding.sentence, new) or ""
             if new != finding.sentence and _acceptable(finding.sentence, new, finding):

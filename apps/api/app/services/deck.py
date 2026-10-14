@@ -2988,9 +2988,24 @@ def _cell(text: str) -> str:
     return cut
 
 
+def _transposed(rows: list[Any]) -> list[Any]:
+    """`rows` turned so items stand as rows when the table is too wide for the slide but its
+    transpose fits (r8 LFLF A09-T2: 「구분 | FCFS | SJF | SRTF | RR | 우선순위」 lost its sixth
+    column, the priority algorithm, to the five-column cap)."""
+    grid = [row for row in rows if isinstance(row, list)]
+    if len(grid) != len(rows) or len(grid) < 2:
+        return rows
+    width = max(len(row) for row in grid)
+    if width <= _MAX_COLUMNS or len(grid) > _MAX_COLUMNS or width > _MAX_ROWS:
+        return rows
+    padded = [list(row) + [""] * (width - len(row)) for row in grid]
+    return [[padded[r][c] for r in range(len(padded))] for c in range(width)]
+
+
 def _clean_rows(value: Any) -> list[list[str]]:
-    """Bounded table rows, ragged padded; empty under two rows."""
-    rows = value if isinstance(value, list) else []
+    """Bounded table rows, ragged padded; empty under two rows. A table too wide but not too
+    long is turned, not cut."""
+    rows = _transposed(value if isinstance(value, list) else [])
     out: list[list[str]] = []
     for row in rows[:_MAX_ROWS]:
         if not isinstance(row, list):
@@ -3915,8 +3930,10 @@ async def write(
                 yield {"type": "computed", "values": computed}
             yield {
                 "type": "step", "id": "calc",
-                "label": "코드로 수치 계산" if status == "done" else "코드 계산 없음 — 모델이 계산",
-                "status": "done" if status == "done" else "error",
+                "label": "코드로 수치 계산" if status == "done"
+                else "코드로 수치 계산(검산 시간 초과)" if status == "partial"
+                else "코드 계산 없음 — 모델이 계산",
+                "status": "done" if status in ("done", "partial") else "error",
             }
         # settled figures: told to every slide, checked at the end
         settled: list[key_figures.Figure] = []
