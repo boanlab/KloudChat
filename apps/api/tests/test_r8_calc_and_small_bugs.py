@@ -229,13 +229,13 @@ def test_the_writer_s_reading_is_kept_by_url():
 def test_a_citation_on_an_unrelated_page_is_taken_out():
     sources, seen = _numbered()
     linked, cited = agent._link_citations(A11_ANSWER, sources, seen)
-    assert "msn.com" not in linked
+    assert sources[0] not in linked and sources[1] not in linked
     assert cited == [3]
     assert linked.count("[[3]](https://naver.worksmobile.com/pricing/)") == 2
     assert "강하고, 요금은" in linked
     # without what was read, numbers are linked as before
     plain, plain_cited = agent._link_citations(A11_ANSWER, sources)
-    assert "msn.com" in plain and plain_cited == [1, 2, 3]
+    assert sources[0] in plain and sources[1] in plain and plain_cited == [1, 2, 3]
 
 
 def test_a_citation_its_page_bears_out_is_linked():
