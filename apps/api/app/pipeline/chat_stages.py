@@ -15,6 +15,7 @@ from app.services import (
     cover_letter,
     current_evidence,
     freshness,
+    guide_echo,
     hangul,
     hotlines,
     internal_words,
@@ -291,6 +292,60 @@ class MarkLanguage(Base):
         bundle.document.answer = output_language.localize_marks(bundle.document.answer)
 
 
+def _seen(req: Request, material: Material) -> list[str]:
+    """What the person and the turn's tools gave: the only sources a value may come from."""
+    today = req.today if isinstance(req.today, dt.date) else dt.date.today()
+    return [today.isoformat(), req.text, req.first_message, material.given, req.check_material,
+            *req.tool_outputs, *req.evidence,
+            *(str(m.get("content") or "") for m in req.messages if m.get("role") == "user")]
+
+
+class GuideEcho(Base):
+    """The guidance's example names and dates and its rule lines kept out of the answer
+    (`services/guide_echo.py`); every model group. Runs after every check that may rewrite."""
+
+    name = "answer-echo"
+    reads = ("request", "material.given", "document.answer")
+    writes = ("document.answer", "document.kept_steps")
+
+    def skip(self, bundle: Bundle) -> str:
+        return "" if bundle.request.skill_keys else "no skill on this turn"
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        req, doc = bundle.request, bundle.document
+        guide = guide_echo.guidance(req.skill_keys, req.skill_specs)
+        echoes = guide_echo.scrub(doc.answer, guide, _seen(req, bundle.material))
+        if not echoes.changed:
+            return
+        doc.answer = echoes.text
+        step = {"category": "thinking", "id": "guide_echo", "status": "done",
+                "label": "스킬 예시·지시문을 답에서 뺌", "detail": echoes.note()[:300]}
+        doc.kept_steps = [row for row in doc.kept_steps if row.get("id") != "guide_echo"] + [step]
+        yield {"type": "step", **step}
+
+
+class Weekdays(Base):
+    """「M월 D일(요일)」 set to the calendar once more, after every stage that may rewrite the
+    answer (r9 A13-T2: the copy check's rewrite came after `answer-normalize` and brought 9
+    wrong weekdays back); every model group."""
+
+    name = "answer-weekdays"
+    reads = ("request", "material.given", "document.answer")
+    writes = ("document.answer",)
+
+    def skip(self, bundle: Bundle) -> str:
+        return "" if weekdays.WEEKDAYS_RX.search(bundle.document.answer) else "no weekday"
+
+    async def apply(self, bundle: Bundle, ctx: Context) -> None:
+        req = bundle.request
+        bundle.document.answer, fixes = weekdays.fix_weekdays(
+            bundle.document.answer, context=f"{req.text}\n{bundle.material.given}",
+            today=req.today if isinstance(req.today, dt.date) else None)
+        if fixes:
+            log.info("weekdays fixed in session %s: %s", req.session_id,
+                     [f.fixed for f in fixes][:6])
+
+
 class Replace(Base):
     """Finished answer replaces the streamed one (client retracts the first match)."""
 
@@ -306,7 +361,8 @@ class Replace(Base):
         yield {"type": "delta", "text": bundle.document.answer}
 
 
-for _stage in (Normalize(), StrayHan(), TextFit(), CopyMarks(), MarkLanguage(), Replace()):
+for _stage in (Normalize(), StrayHan(), TextFit(), CopyMarks(), MarkLanguage(), GuideEcho(),
+               Weekdays(), Replace()):
     registry.register(_stage)
 
 

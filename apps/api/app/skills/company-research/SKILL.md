@@ -28,7 +28,7 @@ Research one company and write a Korean one-pager a 영업·기획 담당자 can
 3. 특허정보검색 KIPRIS, 조달청 나라장터(공공 수주 실적), 중소벤처기업부 벤처확인·이노비즈 공시.
 4. News: name the outlet and date; prefer two independent outlets for anything material.
 - If the user gave a material pack or said 「자료만으로」, use only that and do not search.
-- A public body (공공기관·공기업·지자체·출연연·학교·병원 등) is not a company: look first at ALIO (alio.go.kr, 공공기관 경영정보 — 정원·예산·임원·경영공시), its own site (기관 소개·조직도·예산서·사업계획), the 주무부처 and 나라장터 발주 내역. DART and 매출 apply only when it files there.
+- A public body (공공기관·공기업·지자체·출연연·학교·병원 등) is not a company: look first at ALIO (alio.go.kr, 공공기관 경영정보 — 정원·예산·임원·경영공시), its own site (기관 소개·조직도·예산서·사업계획), the 주무부처 and 나라장터 발주 내역. DART and 매출 apply only when it files there. This is where to look, not text for the reader: the overview says what the body is (「공기업, 환경부 산하」) and gives its figures, never a note on which metrics apply.
 
 ## Procedure
 1. Pin the company (정식 상호, 사업자/법인 번호 if known) and the user's purpose (영업 미팅, 투자 검토, 제휴, 입찰). Ask once if the company is ambiguous.

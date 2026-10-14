@@ -1132,6 +1132,24 @@ class ReportSaveStep(Base):
         bundle.document.saved = saved
 
 
+def _last_pass(bundle: Bundle) -> str:
+    """A composed answer's weekdays set to the calendar and the guidance's example values and
+    rule lines kept out, after every step that may have rewritten it (every model group)."""
+    import datetime as dt
+
+    from app.pipeline.chat_stages import _seen
+    from app.services import guide_echo, weekdays
+
+    req = bundle.request
+    answer, _ = weekdays.fix_weekdays(
+        bundle.document.answer, context=f"{req.text}\n{bundle.material.given}",
+        today=req.today if isinstance(req.today, dt.date) else None)
+    if guide := guide_echo.guidance(req.skill_keys, req.skill_specs):
+        answer = guide_echo.scrub(answer, guide, _seen(req, bundle.material)).text
+    bundle.document.answer = answer
+    return answer
+
+
 class AnswerSaveStep(Base):
     """Store answer as assistant message; bill as chat turn."""
 
@@ -1152,7 +1170,7 @@ class AnswerSaveStep(Base):
 
         turn, usage = bundle.request.turn, bundle.usage
         model = turn["model"]
-        answer = bundle.document.answer
+        answer = _last_pass(bundle)
         if note := rerun_note(turn):
             answer = f"{note}\n\n{answer}"
         yield {"type": "delta", "text": answer}

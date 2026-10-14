@@ -21,13 +21,13 @@ Write right away from what the request and material give. Ask (one message, at m
 1. Recipient (직무·회사) and why them. When a search tool is available and the person asks for research, look the company up and put **one** confirmed fact in the first paragraph (「서울 본사와 오송·향남 공장이 떨어져 있어」), with its source (매체·날짜·링크) under the mail in a short 「조사 메모」. What you could not confirm (망분리 운영 여부) is written as a condition (「~한 환경이라면」), never as a fact. With no fact to use, open with the recipient's role and the problem, and say in the memo that the opener is general.
 2. The ask: what the request offers (미팅, 체험, 자료 송부). Two offers in the request → both in the mail as one easy choice.
 3. Proof: 사례·성과·고객사 only as the material gives them; otherwise no proof sentence.
-4. Sender: name, team and company as the material gives them. Contact details the material does not give stay as `[전화번호]` `[이메일]` — the only brackets in the mail, since the sender fills them in.
+4. Sender: name, team and company as the material gives them. A sender name the material does not give is `[이름]`, never a made-up or example name. Contact details the material does not give stay as `[전화번호]` `[이메일]` — with `[이름]`, the only brackets in the mail, since the sender fills them in.
 
 ## Writing
 - Subject: short and plain, like a colleague wrote it (권장 30자 이내): 「정산 마감 일정 관련」, 「{{회사}} 출고 검수 건」. No 「RE:/FW:」 tricks, no 「긴급」「무료!!」, no emoji.
 - Opening: their world, not ours — the researched fact or the follow-up context. Not 「바쁘신 와중에 실례가 많습니다」 + company intro.
 - Body 3–5 short paragraphs, under about 500자: observation → the problem it usually brings → what we do (the material's capabilities only) → proof only if in material → one ask.
-- Ask: one, easy to answer: 「다음 주 중 20분 통화가 괜찮으실까요?」 or 「관련 자료를 보내 드려도 될까요?」 — not a 1-hour meeting.
+- Ask: one, easy to answer — a short call or sending material, not a 1-hour meeting. Shape only, never copied: 「[가능한 때]에 [시간] 정도 통화가 괜찮으실까요?」 or 「관련 자료를 보내 드려도 될까요?」. A day, week or length the material does not give stays out (「편하신 때」).
 - Tone: 정중한 합니다체, 과장 없는 동료 어투. Avoid 「귀사의 무궁한 발전」, 「혁신적인 솔루션」, 「업계 최고」, 「단순한 ~가 아닙니다」.
 - Describe the product only with the capabilities in the material; no added mechanics (「주문번호로 배송일 안내」) or effects (「상담이 필요한 문의만 남습니다」). No numbers, conditions or offers the material lacks (「10분이면」); proposing a call length is fine. Do not invent material that was sent or will be sent (a demo video, a case study).
 - Personalization variables (`{{이름}}`, `{{회사}}`) only for a mail-merge template the person asks for.
@@ -42,7 +42,7 @@ Background for that line (정보통신망법 제50조, 시행령 제61조·별�
 ## Procedure
 1. Draft the mail(s) asked for.
 2. Check: `run_skill_script` skill `cold-email`, script `check`, args
-   `{"advertising": false, "sender": {"name": "한빛소프트"}, "emails": [{"label": "본문", "subject": "...", "body": "..."}]}` (`"advertising": true` only for a labelled version the person asked for). Fix every `block` (empty subject, fake RE:, unfilled variables) and run once more.
+   `{"advertising": false, "sender": {"name": "<보내는 회사·이름, 자료에 있는 것만>"}, "emails": [{"label": "본문", "subject": "...", "body": "..."}]}` (`"advertising": true` only for a labelled version the person asked for). Fix every `block` (empty subject, fake RE:, unfilled variables) and run once more.
 3. Run `copy-check` script `claims` with the material; remove invented numbers, cases, rankings.
 
 ## Output format
@@ -51,8 +51,8 @@ Background for that line (정보통신망법 제50조, 시행령 제61조·별�
 1. …
 ### 본문
 …
-김현수 드림
-한빛소프트 영업팀 | [전화번호] | [이메일]
+[보내는 사람 이름] 드림          ← the sender's name as the material gives it; none given → 「[이름] 드림」
+[회사·팀] | [전화번호] | [이메일]
 ### 조사 메모            ← only when something was looked up: the fact used, its source, what was not confirmed
 보내기 전에: …          ← one line
 ```

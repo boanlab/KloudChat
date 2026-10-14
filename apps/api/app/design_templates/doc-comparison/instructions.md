@@ -24,9 +24,10 @@ same criteria and recommends one, with conditions. The layout adds the head
   reason in the parentheses (「탈락(화상회의 50명 < 60명)」), even if its values are good, and do
   not recommend it. Keep an alternative whose condition is not confirmed as 「조건 미확인」,
   distinct from elimination.
-- Settle every condition you can by calculation before calling it unconfirmed: a price
-  부가세 별도 × 1.1, a discount on the amount it names, extra items (보증 연장, 수거, 설치)
-  added, so each alternative has one 「부가세 포함 총액」 set against the budget; a lead time
+- Settle every condition you can by calculation before calling it unconfirmed: a price the
+  material itself marks 「부가세 별도」 × 1.1 (only then — with no VAT word in the material,
+  write no VAT note, column or (VAT 별도) tag), a discount on the amount it names, extra items
+  (보증 연장, 수거, 설치) added, so each alternative has one total set against the budget; a lead time
   turned into a date set against the deadline. Only what no calculation settles (a service the
   quote does not mention) is 「조건 미확인」.
 

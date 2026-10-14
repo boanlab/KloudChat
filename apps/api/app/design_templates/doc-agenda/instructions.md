@@ -15,12 +15,14 @@ Each section is one `layout` plus that section's body HTML fragment.
   meeting length and head the column 「시간(안)」. With no meeting length either, leave the
   column out rather than inventing one.
 - 담당 is a person or team the material names for that item. With none named, write 「미정」 and
-  one line under the table: 「※ 2번 안건 담당은 자료에 없어 확인이 필요합니다.」
+  one line under the table naming those items (「※ [안건 번호]번 안건 담당은 자료에 없어 확인이
+  필요합니다.」). When no item has a named lead, leave the 담당 column out instead.
 - 안건별 검토 사항 — one `<h3>` per item (its title), then two to four short bullets: the
   background in one line and what the attendees should look at. No figures, options or positions
   the material does not give.
 - 사전 자료 — a table (자료 | 준비 | 공유 기한) of the documents the material names. If it names
-  none, write the one line 「사전 자료 없음」 instead of an empty table.
+  none, the section is only the line 「사전 자료 없음」 — no sentence explaining why there is no
+  table, no advice on what to prepare.
 - 결정 필요 사항 — an `<ol>` of the questions the meeting must answer, each with the options the
   material gives (「A안 정기권 / B안 주차권 지급」). If nothing needs a decision, one line saying so.
 

@@ -20,12 +20,12 @@ the right edge shows each person their own name and date.
 That is why 결정 사항 and 실행 항목 are written as `<ul class="rows">`, not paragraphs.
 One item looks like this.
 
-    <li><strong>정해진 것 한 줄</strong> 왜 그렇게 정했는지 한두 문장. <small>정해원 · 8월 28일</small></li>
+    <li><strong>정해진 것 한 줄</strong> 왜 그렇게 정했는지 한두 문장. <small>[이름] · [M월 D일]</small></li>
 
 - `<strong>` is the decision or the task itself in one line. It need not end with punctuation.
 - The sentences after it are grounds or conditions. If there are none, leave them out.
 - `<small>` is the value that hangs on the ruler, one per `<li>`. In the form `담당 · 기한`,
-  under 15 characters — short, like `정해원 · 8월 28일`, `이견 없음`, `전결 규정 §12`.
+  under 15 characters — short, like `[이름] · [M월 D일]`, `이견 없음`, `전결 규정 §12`.
   A sentence there overflows the column into two or three lines.
 - If the owner or deadline was not decided in the meeting, write only 「미정」 in the value
   cell, like `<small>미정 · 미정</small>`, and put why it was not decided and when and who will
