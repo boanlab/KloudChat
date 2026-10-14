@@ -321,6 +321,12 @@ function Intro({
 export function SessionPage() {
   const t = useT()
   const { sessionId } = useParams()
+  const navigate = useNavigate()
+  // Deleted here: the page leaves it for a new chat. Not on the server: said so, no retry.
+  const gone = useStore((s) => (sessionId ? s.goneSessions[sessionId] : undefined))
+  useEffect(() => {
+    if (gone === 'deleted') navigate('/', { replace: true })
+  }, [gone, navigate])
   // Selectors, not the store: `MessageItem`'s memo keys on these rows.
   const jobs = useStore((s) => s.jobs)
   const projects = useStore((s) => s.projects)
@@ -394,7 +400,7 @@ export function SessionPage() {
   if (autoRetries.current.id !== sessionId) autoRetries.current = { id: sessionId, count: 0 }
   const loadFailed = failedLoad?.id === sessionId && failedLoad?.attempt === loadAttempt
   // Dropped request retried a few times with backoff.
-  const retrying = loadFailed && autoRetries.current.count < LOAD_RETRIES
+  const retrying = loadFailed && gone !== 'missing' && autoRetries.current.count < LOAD_RETRIES
   useEffect(() => {
     if (!retrying) return
     const wait = 1500 * 2 ** autoRetries.current.count
@@ -529,7 +535,12 @@ export function SessionPage() {
 
   const loadingTranscript = (
     <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-      {loadFailed ? (
+      {gone === 'missing' ? (
+        <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
+          <p className="text-base text-muted">{t('대화를 찾을 수 없습니다. 삭제되었거나 볼 수 없는 대화입니다.')}</p>
+          <Button onClick={() => navigate('/', { replace: true })}>{t('새 대화')}</Button>
+        </div>
+      ) : loadFailed ? (
         <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
           <p className="text-base text-muted">{t('최신 내용을 불러오지 못했습니다.')}</p>
           {retrying && <p className="text-sm text-faint">{t('잠시 후 다시 불러옵니다.')}</p>}
