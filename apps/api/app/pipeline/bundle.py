@@ -95,6 +95,13 @@ class Request:
         return model_tier.strong(self.actual_model or self.model)
 
     @property
+    def group(self) -> str:
+        """The writer's model group (`model_tier.group`), from the model that actually wrote."""
+        from app.services import model_tier
+
+        return model_tier.group(self.actual_model or self.model)
+
+    @property
     def reviser(self) -> str:
         """Who rewrites the writer's text on the checks' findings: the writer itself when it is
         strong, else the planner as before."""
