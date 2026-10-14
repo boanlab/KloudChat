@@ -620,6 +620,19 @@ def _table_header(text: str, pos: int) -> list[str]:
     return [c.strip(" *") for c in head.strip().strip("|").split("|")]
 
 
+_CLOCK_RANGE = re.compile(
+    r"(?<![\d:])(\d{1,2}):([0-5]\d)\s{0,2}[~∼〜–-]\s{0,2}(\d{1,2}):([0-5]\d)(?!\d)")
+
+
+def _clock_span(line: str, minutes: float) -> bool:
+    """Whether a time slot on the line (「14:55~15:00」) lasts `minutes`."""
+    for m in _CLOCK_RANGE.finditer(line):
+        h1, m1, h2, m2 = (int(g) for g in m.groups())
+        if (h2 * 60 + m2 - h1 * 60 - m1) % (24 * 60) == minutes:
+            return True
+    return False
+
+
 def _exempt(line: str, start: int, end: int, raw: str, unit: str, ev: Evidence,
             structure: int, header: list[str] | None = None) -> bool:
     """Ordinals, step numbers, own-item counts, character counts, request years, quotes."""
@@ -640,6 +653,13 @@ def _exempt(line: str, start: int, end: int, raw: str, unit: str, ev: Evidence,
         # a row label counting the rows: 「| 4주 | 11/23(월) | …」
         return True
     if unit in ("자",) or (not unit and _CHARS_AFTER.match(after)):
+        return True
+    if re.match(r"\s?분의\s?\d", after):
+        # 「10분의 1」: a fraction, not ten minutes (r8 A09-T1 QMX)
+        return True
+    if unit in ("분", "시간") and _clock_span(line, value * (60 if unit == "시간" else 1)):
+        # 「14:55~15:00(5분)」: the length of the line's own time slot (r8 A01-T2, four
+        # setups: 「5분(확인 필요), 확인 필요」)
         return True
     if _BEFORE_ORDINAL.search(before) or before.endswith("#"):
         return True
@@ -1062,7 +1082,15 @@ _MARK_IN_BRACKET = re.compile(r"\(([^()\n]{1,60}?)\s?\(확인 필요\)\)")
 def tidy_marks(text: str) -> str:
     """A mark that closes a bracket goes inside it, no doubled bracket: 「(10월 16일, 확인
     필요)」 (r7 P36 「10월 16일(확인 필요))」)."""
-    return _MARK_IN_BRACKET.sub(r"(\1, 확인 필요)", text or "")
+    text = _MARK_IN_BRACKET.sub(r"(\1, 확인 필요)", text or "")
+    # a value marked twice over two passes reads once: 「(5분(확인 필요), 확인 필요)」 → 「(5분,
+    # 확인 필요)」, 「0건(확인 필요)(확인 필요)」 → 「0건(확인 필요)」 (r8 A01-T2, A03-T2, A16-T1)
+    text = _MARK_THEN_NOTE.sub(r"\1, 확인 필요)", text)
+    return _MARK_TWICE.sub(MARK, text)
+
+
+_MARK_THEN_NOTE = re.compile(r"(\([^()\n]{1,60}?)\s?\(확인 필요\),\s?확인 필요\)")
+_MARK_TWICE = re.compile(r"\(확인 필요\)(?:\s?\(확인 필요\))+")
 
 
 def _without_stale_asks(before: str, after: str, text: str) -> str:
@@ -1087,6 +1115,8 @@ _BEFORE_MARK = re.compile("(?:" + "|".join(
     re.sub(r"\(\?P<\w+>", "(?:", p) for p in (
         _FULL_DAY.pattern, _MONTH_DAY.pattern, _SHORT_DAY.pattern,
         rf"(?<![A-Za-z\d.,_/#-])(?:{_TERM})\s?(?:{_UNIT}|월)?")) + r")\s?$")
+#: public: the end box of an advice answer names the values it lifts the marks off
+BEFORE_MARK = _BEFORE_MARK
 
 
 def _unmark(before: str, after: str, ev: Evidence, structure: int, out: Settled) -> str:

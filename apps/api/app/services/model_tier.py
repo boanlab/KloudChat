@@ -26,6 +26,28 @@ STRONG_MODELS: tuple[str, ...] = (
 _SMALL_SUFFIXES: tuple[str, ...] = ("-flash", "-nano", "-mini", "-lite", "-luna", ":free")
 
 
+#: Model groups each post-writing mechanism decides by (docs/architecture.md, "Mechanisms by
+#: model group"): the self-hosted models (27B, flash), small external models, strong external
+#: models.
+SELF_HOSTED, SMALL_EXTERNAL, STRONG_EXTERNAL = "self_hosted", "small_external", "strong_external"
+GROUPS: tuple[str, ...] = (SELF_HOSTED, SMALL_EXTERNAL, STRONG_EXTERNAL)
+
+
+def self_hosted(model: str | None) -> bool:
+    """True for the self-hosted models (`local/`, `strict-local/`) and for no model."""
+    name = (model or "").strip().lower()
+    return not name or name.startswith(("local/", "strict-local/"))
+
+
+def group(model: str | None) -> str:
+    """The writer's model group. Self-hosted stays self-hosted under the light-setup evaluation
+    switch (`KCHAT_LIGHT_WRITERS`): the switch changes the prompt (`strong`), not who the
+    model is."""
+    if self_hosted(model):
+        return SELF_HOSTED
+    return STRONG_EXTERNAL if strong(model) else SMALL_EXTERNAL
+
+
 def strong(model: str | None) -> bool:
     """True when the writer is a strong model: light prompt, marks instead of rewrites."""
     name = (model or "").strip().lower()
@@ -33,7 +55,7 @@ def strong(model: str | None) -> bool:
     forced = {n.strip().lower() for n in os.environ.get("KCHAT_LIGHT_WRITERS", "").split(",")}
     if name and name in forced:
         return True
-    if not name or name.startswith(("local/", "strict-local/")):
+    if self_hosted(name):
         return False
     if any(s in name for s in _SMALL_SUFFIXES):
         return False

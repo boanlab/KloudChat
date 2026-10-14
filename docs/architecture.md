@@ -821,6 +821,54 @@ Nothing is corrected automatically. The panel shows a count and a list; the
 report surface already has **Rewrite just this section** for acting on it, and an HTML
 artifact has the same per-block rewrite.
 
+### Mechanisms by model group
+
+The checks and devices after writing help a weak writer and can harm a strong one: in
+round 8 (48 tasks, seven setups) KloudChat beat the direct answer of the self-hosted models
+about four times in five, while with a strong external writer its gain was small and for one
+model the direct answer won more often. A check that overrides the writer pays only when the
+writer is weaker than the check. So each mechanism decides its behaviour by the **model group**
+of the model that actually wrote (`model_tier.group`, `Request.group`):
+
+- **self-hosted** — `local/…` and `strict-local/…` (27B, flash). The light-setup evaluation
+  switch (`KCHAT_LIGHT_WRITERS`) changes their prompt, not their group.
+- **strong external** — `model_tier.STRONG_MODELS` (`model_tier.strong`), which also picks the
+  light prompt (`prompt_tier`).
+- **small external** — every other external model (a `-flash`, `-mini`, `-lite` variant of a
+  strong family included).
+
+Two rules hold for every group. **Marking is apart from deleting**: no judge model deletes
+or rewrites a sentence unless code has confirmed that one of its figures or names is in
+none of the evidence (`post_checks.code_reading`); a finding code cannot check is marked or
+shown, never acted on. **Code fixes only what it computes**: a value is replaced by code only
+when code knows the right one (a settled figure, an official hotline, a recomputed date).
+
+Small external models have no round-8 measurement; their column follows round 6 (old code)
+and the self-hosted column, and is to be re-measured. Change a row here when a fix changes
+what a group gets, and test both a self-hosted and a strong external writer.
+
+| Mechanism (code) | Self-hosted | Small external | Strong external |
+|---|---|---|---|
+| Writing rules (`prompt_tier`, `context`) | full rule bundle | full rule bundle | light: one anti-fabrication line |
+| Judge findings of skill post-checks (`post_checks.run`) | judge is the planner; a finding whose figures and names are all in the evidence is dropped; one with none is marked 「(확인 필요)」 where it stands; one with a figure or name in none of the evidence (or a script's own finding) goes to one rewrite and may come out | as self-hosted | the writer judges its own answer; dropped findings as for every group; the rest go back to it once as notes to weigh; nothing it kept is taken out |
+| Copy check claims (`copy_check.run`) | as post-checks: dropped / marked / rewritten by the same code reading; numbers, offers and lengths fixed by code | as self-hosted | notes to the writer; what it kept is marked |
+| Value marks (`value_guard`, `grounding-check/scripts/trace.py`) | marked, never cut; not marked: the person's values and the days inside a month part they give (「9월 하순」), values under a heading or bold label naming assumptions or examples, the system date on a date label (「확인일」), a time slot's own length, fractions (「10분의 1」); a value marked twice reads once | as self-hosted | as self-hosted; its own revision stands (`settle(writer=True)`) |
+| Where marks stand in a chat answer (`copy-marks`, `check_stages._advice_note`) | inline; an advice answer with more than three marks gets one 「확인 필요: …」 line, the writer's own marks included | always one 「확인 필요: …」 line at the end | inline, as self-hosted |
+| Report quality follow-through (`report_stages.Verify`, `Quality`) | a web-contradicted sentence is marked; a judged figure code still finds at odds with a settled one is repaired once by the planner and marked if it stands; the step shows what a judge found, never its reasoning | as self-hosted | web contradictions and code-confirmed judged figures go back to the writer once; what stands is marked; reasoning hidden |
+| Recommendation override (`report_checks.settle_verdict`) | on | on | off: the finding is reported |
+| Sweeping-claim narrowing (`superlatives`) | on | on | off |
+| Crisis lines (`hotlines.fix`) | a wrong number where a crisis line is meant becomes the official one (109, 1577-0199, 1366, 1388); numbers the person or a source gives stay | same | same |
+| Work notes and check reports (`internal_words.strip_work_notes`) | stripped, also an untagged English plan paragraph, an English tool-step opener, 「N개 중 … 확인」 report sentences | same | same |
+| Mixed script in a chat answer (`hangul.repair_mixed_script`) | on (Cyrillic and kana inside Korean words) | on | on |
+| Calculation time limit (`calc.DEADLINE`, `Calc.run`) | 240 s; a finished run is handed over unchecked; with none, the writer marks its own figures 「(추정)」 | same | same |
+| Code-printed values (`agent.code_checked`) | a row's own printed values are kept; a mismatch is marked, never rewritten | a mismatch is set to the code's value | as small external |
+| Citation links (`agent._link_citations`) | a number whose page shares no word with the claim is dropped | same | same |
+| Repair replies (`verify.repair`) | only a sentence string (or `{sentence: …}`) is written into the text | same | same |
+| Deck table width (`deck._clean_rows`) | a wide, short table is transposed; else the five-column cap | same | same |
+| Skill frames and genre rules (`asked_form`, `skill_turn`, `report._genre_rule`, `skills/*/SKILL.md`) | the request's own parts, order, counts, columns and tone are the structure; a skill's frame, default count and extra tables fill only what the request leaves open | same | same |
+| Automatic web search (`report.given_material_suffices`, `routers/sessions.py`) | off on an 「자동」 turn whose given material does the job and that asks for no research or current facts; forced searches (current facts, contacts, advice) and the empty-result retry stay | same | same |
+| Answer plan (`answer_plan`) | a mail or notice written for the person carries only the facts they gave (no invented cause, replacement supply, priority handling or time); a short answer gets no plan | same | same |
+
 ### Pipelines
 
 The report writer, the deck and page writers, a chat answer's finish, a

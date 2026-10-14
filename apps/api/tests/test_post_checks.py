@@ -246,7 +246,7 @@ class _Model:
         return self.rewrite, {"inputTokens": 20, "outputTokens": 8}
 
 
-def test_run_fixes_by_code_rewrites_once_and_drops_what_the_writer_left():
+def test_run_fixes_by_code_and_marks_what_code_cannot_confirm():
     memo = "[메모] 2026-11-02(월)부터 새 시스템. 문의: 인사팀 내선 2231"
     answer = ("11월 2일(월)부터 새 시스템을 씁니다. 11월 9일(월) 설명회가 있습니다.\n"
               "기존 신청분은 자동으로 옮겨집니다. 문의: 인사팀 내선 2231")
@@ -258,11 +258,14 @@ def test_run_fixes_by_code_rewrites_once_and_drops_what_the_writer_left():
         answer, keys=["internal-comms"], request="공지 써 줘", material=memo, attached="",
         computed=[], today="2026-10-08", complete=model, model="w", judge="j", api_key="k",
         usage=usage))
-    assert "자동으로 옮겨집니다" not in out.text and "11월 9일" not in out.text
-    assert out.rewritten and [m for m, _ in model.prompts] == ["j", "j", "w"]
+    # the judged sentence has no figure or name code could look up: marked, never cut (r8)
+    assert "기존 신청분은 자동으로 옮겨집니다(확인 필요)." in out.text
+    assert "11월 9일" not in out.text
+    # nothing code confirmed absent: no rewrite
+    assert not out.rewritten and [m for m, _ in model.prompts] == ["j", "j"]
     assert any(f["kind"] == "date" for f in out.fixed)
     assert out.label.startswith("스킬 점검: 코드로 고침")
-    assert usage == {"inputTokens": 35, "outputTokens": 11}
+    assert usage == {"inputTokens": 15, "outputTokens": 3}
 
 
 def test_run_with_nothing_to_fix_asks_only_the_judge():

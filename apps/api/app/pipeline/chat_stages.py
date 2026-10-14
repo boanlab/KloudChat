@@ -222,27 +222,38 @@ class UrgentLead(Base):
 registry.register(UrgentLead())
 
 
+def _copy_turn(req: Request) -> bool:
+    from app.services import copy_check
+
+    return copy_check.active((*req.skill_keys, *(req.check_keys or ())), req.tool_outputs,
+                             req.skill_specs)
+
+
 class CopyMarks(Base):
     """Copy written with a copy skill keeps no 「(확인 필요)」 inside it: the marks, from any
-    check before, are listed once below as 「보내기 전 확인」."""
+    check before, are listed once below as 「보내기 전 확인」. A small external writer's answer
+    gets the same end box, 「확인 필요: …」, in place of inline marks (r6: GLM-5.3 Flash and
+    DeepSeek V4.1 Flash answers read as unusable with 「(확인 필요)」 inside 14 and 17 tasks);
+    self-hosted and strong external writers keep marks where they stand (docs/architecture.md,
+    "Mechanisms by model group")."""
 
     name = "copy-marks"
     reads = ("request", "document.answer")
     writes = ("document.answer",)
 
     def skip(self, bundle: Bundle) -> str:
-        from app.services import copy_check
+        from app.services import model_tier
 
         req = bundle.request
-        if not copy_check.active((*req.skill_keys, *(req.check_keys or ())), req.tool_outputs,
-                                 req.skill_specs):
+        if not _copy_turn(req) and req.group != model_tier.SMALL_EXTERNAL:
             return "no copy skill on this turn"
         return "" if "확인" in bundle.document.answer else "no marks"
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         from app.services import copy_check
 
-        bundle.document.answer = copy_check.lift_marks(bundle.document.answer)
+        bundle.document.answer = copy_check.lift_marks(
+            bundle.document.answer, answer=not _copy_turn(bundle.request))
 
 
 class MarkLanguage(Base):

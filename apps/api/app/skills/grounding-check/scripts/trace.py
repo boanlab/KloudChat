@@ -274,12 +274,33 @@ def assumed_lines(lines: list[str]) -> set[int]:
     under = False
     for k, line in enumerate(lines):
         stripped = line.strip()
-        if stripped.startswith("#") or re.fullmatch(r"\*\*[^*\n]{1,40}\*\*\s{0,2}[:：]?", stripped):
+        # 「**먼저 합리적으로 가정한 것** (틀리면 알려 주세요):」 (r8 P02 GLP: its 「9월 21일」 marked)
+        if stripped.startswith("#") or _LABEL_LINE.fullmatch(stripped):
             under = bool(_ASSUMED_HEAD.search(stripped))
             continue
+        if under and stripped.startswith("**"):
+            # the next bold-led paragraph (「**솔직한 결론 하나**: …」) is out from under it
+            under = False
         if under:
             out.add(k)
     return out
+
+
+#: a bold label line, a short aside after it: 「**전제**」, 「**가정한 것** (틀리면 알려 주세요):」
+_LABEL_LINE = re.compile(r"\*\*[^*\n]{1,40}\*\*(?:\s{0,2}\([^()\n]{0,40}\))?\s{0,2}[:：]?")
+#: a month part the person gives (「9월 하순」): a day inside it is the writer's pick of theirs
+_PERSON_PART = re.compile(r"(?<![\d.])(\d{1,2})\s{0,2}월\s{0,2}(초|초순|중순|하순|말)")
+_PART_DAYS = {"초": range(1, 11), "초순": range(1, 11), "중순": range(11, 21),
+              "하순": range(21, 32), "말": range(21, 32)}
+#: a date label a document or a note dates itself with: 「확인일 2026-10-14」, 「작성일:」
+_DATED = re.compile(r"(?:확인|작성|기준|조회|접속|보고|검색|발행)\s{0,2}(?:일|일자|일시|시점)\s{0,2}[:：]?\s{0,2}$")
+
+
+def _in_person_part(person: str, mo: int, d: int) -> bool:
+    """Whether the person's words name a part of month `mo` that holds day `d` (r8 P02:
+    「9월 하순 10일」 → 「9월 21일경 출발」)."""
+    return any(int(m.group(1)) == mo and d in _PART_DAYS[m.group(2)]
+               for m in _PERSON_PART.finditer(person or ""))
 
 
 #: a spreadsheet date formula: 「DATE(2026,13,1)」
@@ -352,9 +373,9 @@ def _span_of_line(n: dict, line: str) -> bool:
 _DOSE = re.compile(
     r"(?<![\d.,])(?P<n>\d+(?:[.,]\d+)?)\s?(?P<u>mg|㎎|mcg|㎍|μg|mL|ml|㎖|IU|캡슐|"
     r"정(?![가-힣])|알(?![가-힣]))(?![A-Za-z])")
-#: A legal consequence: 「형사처벌」 「벌금」 「면허 취소」.
+#: A legal consequence: 「형사처벌」 「벌금」 「면허 취소」; not the psychology of 「자기 처벌」 (r8 P16 LFLF).
 _PENALTY = re.compile(
-    r"형사\s?처벌|형사\s?책임|형사\s?입건|처벌|징역|벌금|과태료|구속|(?<!이)전과(?!정)|면허\s?(?:취소|정지)|"
+    r"형사\s?처벌|형사\s?책임|형사\s?입건|(?<!자기)(?<!자기 )처벌|징역|벌금|과태료|구속|(?<!이)전과(?!정)|면허\s?(?:취소|정지)|"
     r"criminal(?:ly)?\s+(?:charge\w*|liab\w*|prosecut\w*)|jail|prison", re.I)
 _MARK_AFTER = re.compile(r"\s?\(\s?확인\s?필요\s?\)")
 #: the rest of a condition clause: 「… 사고(인사사고, 뺑소니)라면 」
@@ -1359,6 +1380,13 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
         if not (1 <= mo <= 12 and 1 <= d <= 31):
             return
         if sources.counted(y, mo, d) or assumed(m.start()):
+            return
+        if _in_person_part(str(options.get("person") or ""), mo, d):
+            return
+        today = sources.today
+        if today and (mo, d) == (today.month, today.day) and y in (None, today.year) \
+                and _DATED.search(line[max(0, m.start() - 12):m.start()]):
+            # the system date a note dates itself with (r8 A15-T2 「(확인일 2026-10-14, …)」)
             return
         worked = _worked_dates(line)
         if (y, mo, d) in worked or (y is None and any((wm, wd) == (mo, d) for _, wm, wd in worked)):

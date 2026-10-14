@@ -181,15 +181,18 @@ _ADVICE_MARK = re.compile(r" ?" + re.escape(value_guard.MARK))
 
 
 def _advice_note(text: str, before: str, found: list[dict]) -> str:
-    """The marks the check added taken out of the text and its values named once below."""
-    if before.count(value_guard.MARK):
-        return text
+    """The marks taken out of the text and their values named once below. The writer's own
+    marks go with the check's (r8 P19 L27F: a draft that already had one kept all of them
+    inline, 18 in one answer)."""
     # a value the guard found supported after all lost its mark: not listed
-    values = list(dict.fromkeys(
-        str(f.get("text") or "").strip() for f in found
-        if f.get("kind") == "consequence"
-        or f"{str(f.get('text') or '').strip()}{value_guard.MARK}" in text))
-    values = [v for v in values if v][:6]
+    values = [str(f.get("text") or "").strip() for f in found
+              if f.get("kind") == "consequence"
+              or f"{str(f.get('text') or '').strip()}{value_guard.MARK}" in text]
+    for m in _ADVICE_MARK.finditer(text):
+        written = value_guard.BEFORE_MARK.search(text[max(0, m.start() - 40):m.start()])
+        if written is not None:
+            values.append(written.group(0).strip())
+    values = [v for v in dict.fromkeys(values) if v][:6]
     body = _ADVICE_MARK.sub("", text).rstrip()
     shown = ", ".join(f"「{v[:30]}」" for v in values)
     return (f"{body}\n\n확인 필요: {shown} — 검색 결과나 주신 내용으로 확인하지 못했으니 "

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from app.services import (
     internal_words,
     output_language,
+    post_checks,
     skill_packages,
     skill_scripts,
     skill_specs,
@@ -265,6 +266,25 @@ def mark_left(text: str, found: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _gate(reply: dict, material: str, *, strong: bool) -> tuple[dict, list[dict]]:
+    """The judge's claim notes code may act on (`post_checks.code_reading`, every model
+    group): a note whose figures and names the material all holds is no note; for a small
+    writer one code cannot check (no figure, no name) is only marked, never rewritten or cut
+    (r8 L27L A12-T1: the noted clause cut left the empathy sentence hanging; LFLF A15-T1: the
+    mail's reason for the company gone). Returns the reply left and the notes to mark."""
+    notes = [u for u in reply.get("unsupported") or []
+             if isinstance(u, dict) and str(u.get("quote") or "").strip()]
+    if not notes:
+        return reply, []
+    kept, marked = [], []
+    for note in notes:
+        reading = post_checks.code_reading(str(note["quote"]), material)
+        if reading == "present":
+            continue
+        (marked if reading == "unchecked" and not strong else kept).append(note)
+    return {**reply, "unsupported": kept}, marked
+
+
 async def run(answer: str, *, request: str, material: str, complete: Complete, model: str,
               judge: str, api_key: str, usage: dict | None = None,
               skills: frozenset[str] | set[str] = frozenset(), specs: Specs = None,
@@ -287,6 +307,7 @@ async def run(answer: str, *, request: str, material: str, complete: Complete, m
     reader = model if strong and model else judge or model
     reply = await _judged(answer, material, rows, complete=complete, judge=reader,
                           api_key=api_key, usage=usage)
+    reply, unchecked = _gate(reply, material, strong=strong)
     found = claims.check(answer, material, [reply], options)
     measured = length.measured(_items(reply, answer, rows), rows)
     outcome.found = found
@@ -326,6 +347,13 @@ async def run(answer: str, *, request: str, material: str, complete: Complete, m
                                   judge=reader, api_key=api_key, usage=usage)
     elif strong and found:
         text = mark_left(text, found)
+    for row in unchecked:
+        marked = post_checks.mark(text, row["quote"])
+        if marked != text:
+            text = marked
+            why = f"{row.get('why') or ''} (코드로 확인할 값이 없어 표시만)"
+            outcome.found.append({"kind": "claim", "text": row["quote"], "action": "mark",
+                                  "why": why})
     outcome.rows = [r for r in length.measured(_items(reply, text, rows), rows)
                     if r["text"] in text]
     outcome.text = length.restate_counts(text, outcome.rows)
@@ -352,6 +380,8 @@ def _clause_before(head: str) -> str:
                 return head[k + 1:]
             depth -= 1
         elif not depth and (ch in ",，:：|" or (ch in "-—" and head[k - 1:k] == " ")):
+            if ch == "," and head[k - 1:k].isdigit() and head[k + 1:k + 2].isdigit():
+                continue  # 「99,999명」: a thousands comma, not a clause break
             return head[k + 1:]
     return head
 
@@ -374,10 +404,11 @@ def _marked_phrase(before: str, after: str, row: str = "") -> str:
     return phrase if len(phrase) <= _SHOWN else phrase[: _SHOWN - 1].rstrip() + "…"
 
 
-def lift_marks(text: str) -> str:
+def lift_marks(text: str, *, answer: bool = False) -> str:
     """Copy keeps no 「(확인 필요)」: each mark comes out of the text it sits in, and what it
     was on is listed once below as 「보내기 전 확인」 (r3 A12·A13·A15 T1: marks inside the
-    headline, the CTA and the mail body)."""
+    headline, the CTA and the mail body). `answer`: any answer's end box, 「확인 필요: …」 (a
+    small external writer's, docs/architecture.md "Mechanisms by model group")."""
     if not text or not _MARK.search(text):
         return text
     listed: list[str] = []
@@ -414,10 +445,13 @@ def lift_marks(text: str) -> str:
         # copy in English gets its note in English
         shown = ", ".join(f"“{p}”" for p in listed[:_LISTED])
         more = f" and {len(listed) - _LISTED} more" if len(listed) > _LISTED else ""
-        return (f"{body}\n\nCheck before sending: {shown}{more} — the material does not "
-                "confirm these.")
+        lead = "Needs checking" if answer else "Check before sending"
+        return f"{body}\n\n{lead}: {shown}{more} — the material does not confirm these."
     shown = ", ".join(f"「{p}」" for p in listed[:_LISTED])
     more = f" 외 {len(listed) - _LISTED}곳" if len(listed) > _LISTED else ""
+    if answer:
+        return (f"{body}\n\n확인 필요: {shown}{more} — 주신 자료나 검색 결과로 확인하지 못한 "
+                "내용이니 쓰기 전에 확인하세요.")
     return (f"{body}\n\n보내기 전 확인: {shown}{more} — 자료로 확인되지 않은 표현이니 보내기 전에 "
             "확인하세요.")
 

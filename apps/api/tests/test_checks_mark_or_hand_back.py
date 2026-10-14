@@ -182,12 +182,24 @@ def test_a_strong_writer_weighs_the_notes_itself_and_keeps_what_it_kept():
     assert any("작성 모델이 근거를 보고 남김" in row["why"] for row in out.flags)
 
 
-def test_a_small_writer_still_loses_a_confirmed_invented_statement():
+def test_a_small_writer_s_judged_statement_is_marked_unless_code_confirms_it():
+    # r8: a judge's 「자료에 없음」 is no reason to cut; code finds no figure or name to look
+    # up in 「부서 회의나 전 직원 회의를 …」, so it is marked where it stands
     model = _Writer(A12_JUDGED, A12_ANSWER)
     out = _post(SMALL, model)
     assert [m for m, _ in model.prompts][:2] == ["flash", "flash"]
-    assert "부서 회의나 전 직원 회의" not in out.text
-    assert out.dropped and "부서 회의" in out.dropped[0]
+    assert "별도 도구 없이 진행할 수 있습니다(확인 필요)." in out.text and not out.dropped
+    # a statement with a figure the material lacks still goes
+    judged = [{"quote": "화상회의에는 최대 300명이 한자리에 모일 수 있습니다",
+               "why": "자료는 50명"}]
+    answer = A12_ANSWER.replace("최대 50명이 한자리에 모일 수 있어, 부서 회의나 전 직원 회의를 "
+                                "별도 도구 없이 진행할 수 있습니다.",
+                                "최대 300명이 한자리에 모일 수 있습니다.")
+    out = asyncio.run(post_checks.run(
+        answer, keys=["generic-language-killer"], request="랜딩 페이지 문구 써 줘",
+        material=A12_MATERIAL, attached="", computed=[], today="2026-10-13",
+        complete=_Writer(judged, answer), model=SMALL, judge="flash", api_key="k"))
+    assert "300명" not in out.text and out.dropped
 
 
 def test_what_a_judge_took_out_is_not_brought_back_by_the_guard():
@@ -579,15 +591,16 @@ def test_advice_to_the_writer_on_their_own_text_is_no_demand_to_drop():
 
 
 @pytest.mark.parametrize("quote", ["사업은 일정대로 정상 추진 중입니다", "추가 비용은 없습니다"])
-def test_a_small_writer_s_invented_assertion_still_goes(quote):
-    # r7 helps: 「정상 추진 중」, 「추가 비용 없음」 taken out of a 개조식 report
+def test_a_small_writer_s_invented_assertion_is_still_marked(quote):
+    # r7 helps: 「정상 추진 중」, 「추가 비용 없음」 caught in a 개조식 report; since r8 they are
+    # marked where they stand (no figure or name for code to confirm absent)
     answer = f"## 현황\n- 1차 시안을 받았습니다.\n- {quote}."
     model = _Writer([{"quote": quote, "why": "자료에 없음"}], answer)
     out = asyncio.run(post_checks.run(
         answer, keys=["internal-comms"], request="팀장 보고 써 줘", material="1차 시안 수령",
         attached="", computed=[], today="2026-10-13", complete=model, model=SMALL,
         judge="flash", api_key="k"))
-    assert quote not in out.text and "1차 시안을 받았습니다." in out.text
+    assert f"{quote}(확인 필요)." in out.text and "1차 시안을 받았습니다." in out.text
 
 
 A02_T2 = (

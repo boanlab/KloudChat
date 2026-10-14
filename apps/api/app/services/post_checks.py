@@ -402,6 +402,61 @@ def drop(text: str, quote: str) -> str:
     return text
 
 
+#: what code can look up in the evidence: a figure (「8,000명」 → 8000), a Latin name or
+#: version (「Free」, 「ISO 27001」, 「v2」), a quoted phrase
+_KEY_NUMBER = re.compile(r"(?<![\d.])\d[\d,]{0,15}(?:\.\d{1,6})?")
+_KEY_LATIN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9+-]{1,30}")
+_KEY_QUOTED = re.compile(r"「([^」\n]{2,40})」|“([^”\n]{2,40})”")
+
+
+def key_tokens(quote: str) -> list[str]:
+    """The figures, Latin names and quoted phrases of a statement, in the form the evidence
+    is searched in (no thousands commas, lower case)."""
+    out = [m.group(0).replace(",", "") for m in _KEY_NUMBER.finditer(quote or "")]
+    out += [m.group(0).lower() for m in _KEY_LATIN.finditer(quote or "")]
+    out += [_flat(next(g for g in m.groups() if g)).lower()
+            for m in _KEY_QUOTED.finditer(quote or "")]
+    return list(dict.fromkeys(t for t in out if t and t not in ("0", "1")))
+
+
+def _searchable(text: str) -> str:
+    return re.sub(r"(?<=\d),(?=\d)", "", _flat(text)).lower()
+
+
+def code_reading(quote: str, evidence: str) -> str:
+    """What code can say about a judged statement before any of it is rewritten or taken
+    out: 「absent」 when one of its key tokens is in none of the evidence, 「present」 when all
+    are, 「unchecked」 when it has none (r8 LFLF A02-T2: the person's own 「8,000명·RISE 참여」,
+    A11-T2: the Free plan of source [14], both judged unsupported and cut)."""
+    tokens = key_tokens(quote)
+    if not tokens:
+        return "unchecked"
+    flat = _searchable(evidence)
+    for token in tokens:
+        if token[0].isdigit():
+            if not re.search(rf"(?<![\d.]){re.escape(token)}(?!\d|\.\d)", flat):
+                return "absent"
+        elif token not in flat:
+            return "absent"
+    return "present"
+
+
+#: the mark a judged statement gets where it stands (`value_guard.MARK`)
+MARK = "(확인 필요)"
+
+
+def mark(text: str, quote: str) -> str:
+    """`text` with 「(확인 필요)」 right after the quoted statement, before its full stop; once."""
+    phrase = (quote or "").strip().rstrip(".!?。 ")
+    at = text.find(phrase) if len(phrase) >= 4 else -1
+    if at < 0:
+        return text
+    end = at + len(phrase)
+    if text[end:end + len(MARK) + 1].lstrip().startswith(MARK):
+        return text
+    return f"{text[:end]}{MARK}{text[end:]}"
+
+
 def _problems(rows: list[dict]) -> str:
     out = []
     for row in rows:
@@ -418,7 +473,8 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
 
     `strong`: the writer is a strong model. It judges its own answer (no weaker judge reads
     it), gets the findings as evidence for one revision of its own, and nothing it kept is
-    taken out afterwards; the findings it kept are shown in the step only."""
+    taken out afterwards; the findings it kept are shown in the step only. For any writer a
+    judged statement is rewritten or taken out only on code's reading (`code_reading`)."""
     outcome = Outcome(answer, skills=list(keys))
     scripts = list(dict.fromkeys(e for key in keys for e in entries(key, specs)))
     on = [p for k in keys if (p := skill_specs.resolve(k, specs)) is not None]
@@ -463,6 +519,29 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
                               api_key=api_key, usage=usage, focus=focus, today=today)
         judged = await _confirm(judged, reference, complete=complete, judge=reader,
                                 api_key=api_key, usage=usage)
+    # Marking apart from deleting (docs/architecture.md, "Mechanisms by model group"): code
+    # reads each finding against all the evidence, the search pages whole. One whose figures
+    # and names are all there is dropped as a finding (every group). One code cannot check (no
+    # figure, no name) is marked where it stands, never rewritten or cut, for a small writer;
+    # a strong writer gets it as a note to weigh. Only one with a figure or name in none of the
+    # evidence (or a script's own finding) goes to a small writer's rewrite and may come out.
+    everything = "\n".join([request, material, attached, *computed, shipped])
+    scripted = [_flat(str(r.get("text") or "")) for r in rewrite]
+    held, marked, absent = [], [], []
+    for row in judged:
+        quote = _flat(row["text"])
+        reading = "absent" if any(s and (s in quote or quote in s) for s in scripted) \
+            else code_reading(row["text"], everything)
+        if reading == "present":
+            held.append({**row, "why": f"{row['why']} (근거에 있는 값이라 남김)"})
+        elif reading == "absent" or strong:
+            absent.append(row)
+        else:
+            marked.append(row)
+    judged = absent
+    for row in marked:
+        text = mark(text, row["text"])
+        held.append({**row, "why": f"{row['why']} (코드로 확인할 값이 없어 표시만)"})
     send = rewrite + judged
     outcome.sent = send
     if send and model:
@@ -485,6 +564,7 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
         outcome.fixed += fixed
         outcome.left += rewrite
         flags = more
+    flags = held + flags
     # judged statement left verbatim: a strong writer kept it on the evidence (shown only); a
     # small writer's, confirmed unstated, is removed
     for row in judged:
