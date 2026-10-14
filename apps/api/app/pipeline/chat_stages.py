@@ -71,8 +71,10 @@ class Normalize(Base):
         normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized))
         # 「수정: 합계는 N원」 beside the wrong total: the total corrected, the line gone
         normalized = units.settle_corrections(normalized)
-        # sweeping superlatives narrowed to the table's evidence
-        normalized = superlatives.narrow_sweeping_claims(normalized)
+        # sweeping superlatives narrowed to the table's evidence; a strong writer's claim is
+        # its own reading of the table (r7 A06-T1 「전 문항 중 최저(2.89)」 was true)
+        if not req.strong:
+            normalized = superlatives.narrow_sweeping_claims(normalized)
         # a tool call written out as text, never shown
         normalized = internal_words.strip_tool_calls(normalized)
         # the writer's work notes and check verdicts; never down to nothing

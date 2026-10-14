@@ -182,6 +182,8 @@ async def test_the_written_minutes_are_repaired_and_the_step_records_it(monkeypa
     )]
     sections = next(e["sections"] for e in events if e["type"] == "report")
     text = "\n".join(s["content"] for s in sections)
-    assert "220V" not in text and "폭 4m" not in text and "시설관리 부서 협의" not in text
+    assert "220V" not in text and "시설관리 부서 협의" not in text
+    # the made-up width stays only marked, the mark after its unit (not 「4(확인 필요)m」)
+    assert "폭 4m," not in text and "4(확인 필요)m" not in text
     steps = {e["id"]: e for e in events if e["type"] == "step"}
     assert "자료에 없는 수치 5 → 0" in steps["format_checks"]["detail"]

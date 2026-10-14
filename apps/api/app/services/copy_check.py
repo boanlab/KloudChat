@@ -181,7 +181,8 @@ def added_facts(new: str, old: str, material: str) -> list[str]:
     return list(dict.fromkeys([*sites, *links]))
 
 
-def _rewrite_prompt(text: str, material: str, findings: list[dict], over: list[dict]) -> str:
+def _rewrite_prompt(text: str, material: str, findings: list[dict], over: list[dict],
+                    *, strong: bool = False) -> str:
     lines = []
     for f in findings:
         why = f" — {f['why']}" if f.get("why") else ""
@@ -193,6 +194,26 @@ def _rewrite_prompt(text: str, material: str, findings: list[dict], over: list[d
         lines.append(f"- 「{r['text']}」 ({r['name']} {r['word']}) is {r['count']} {unit}, "
                      f"spaces included; make it {bound} {unit}, keeping its meaning — drop a "
                      "word rather than squeeze, and update any count written beside it.")
+    if strong:
+        # a strong writer weighs the notes itself (r7 A12-T1: a feature's everyday use was cut
+        # to 「같은 문서를 여러 명이 함께 고칩니다.」 on a judge's note)
+        return (
+            "Below are the material and your copy. A check noted the items listed under Notes; "
+            "a claim note may be wrong. Weigh each claim note against the material: keep the "
+            "words when the material states them or they follow plainly from it (a listed "
+            "feature's everyday use or benefit, your own suggestion or caveat, a date or count "
+            "worked out from the material). When a note is right, reword only that phrase with "
+            "what the material gives — never a name, place, site, number or link it does not "
+            "give — or write 「(확인 필요)」 right after it; take a sentence out only when it "
+            "asserts something invented and the copy reads complete without it. A length note "
+            "is a fact: shorten or lengthen that piece only. Never use a bracket blank such as "
+            "[수치]; never empty a paragraph or a table. Keep everything else exactly as "
+            "written — structure, order, numbering, tables, headings, the other wording and "
+            "the language. Add no new fact, number, feature or offer. Reply with the whole "
+            "copy only, no preface and no word about the notes or the check.\n\n"
+            f"# Material\n{material[:_MATERIAL_CHARS] or '(none)'}\n\n"
+            "# Notes\n" + "\n".join(lines) + f"\n\n# Answer\n{text}"
+        )
     return (
         "Below are the material and an answer written from it. Fix only the problems listed; "
         "an item the material does state after all stays as it is. "
@@ -246,8 +267,13 @@ def mark_left(text: str, found: list[dict]) -> str:
 
 async def run(answer: str, *, request: str, material: str, complete: Complete, model: str,
               judge: str, api_key: str, usage: dict | None = None,
-              skills: frozenset[str] | set[str] = frozenset(), specs: Specs = None) -> Outcome:
-    """Check, code-fix, rewrite once, recheck."""
+              skills: frozenset[str] | set[str] = frozenset(), specs: Specs = None,
+              strong: bool = False) -> Outcome:
+    """Check, code-fix, rewrite once, recheck.
+
+    `strong`: the writer is a strong model. It reads its own copy for claims (no weaker judge),
+    every finding goes back to it as a note for one revision (code edits nothing but counts),
+    and what is left after it is marked, never cut."""
     claims, length = _claims(), _length()
     material = "\n".join(x for x in (request, material) if x and x.strip())
     rows = length.targets(request)
@@ -258,20 +284,22 @@ async def run(answer: str, *, request: str, material: str, complete: Complete, m
             kind for key in sorted(on) for kind in on[key].copy_kinds))
     outcome = Outcome(answer)
 
-    reply = await _judged(answer, material, rows, complete=complete, judge=judge or model,
+    reader = model if strong and model else judge or model
+    reply = await _judged(answer, material, rows, complete=complete, judge=reader,
                           api_key=api_key, usage=usage)
     found = claims.check(answer, material, [reply], options)
     measured = length.measured(_items(reply, answer, rows), rows)
     outcome.found = found
     outcome.over = [r for r in measured if r.get("hard") and (r["over"] or r["under"])]
     outcome.rows = measured
-    text = claims.fix(answer, [f for f in found if f["action"] != "rewrite"])
-    hand = [f for f in found if f["action"] == "rewrite"]
+    text = answer if strong else claims.fix(answer, [f for f in found
+                                                     if f["action"] != "rewrite"])
+    hand = found if strong else [f for f in found if f["action"] == "rewrite"]
     if (hand or outcome.over) and model:
         try:
             reply_text, spent = await complete(
                 model, [{"role": "user", "content": _rewrite_prompt(
-                    text, material, hand, outcome.over)}],
+                    text, material, hand, outcome.over, strong=strong)}],
                 api_key, min(12000, 2 * len(text) + 1000))
             _spend(usage, spent)
             new = internal_words.strip_rewrite_preface(_cleaned(reply_text), text)
@@ -285,13 +313,19 @@ async def run(answer: str, *, request: str, material: str, complete: Complete, m
             log.warning("copy check rewrite failed: %r", exc)
         # second reading never blanks text the first didn't question
         outcome.left = claims.check(text, material, [reply], options)
-        text = mark_left(claims.fix(text, [f for f in outcome.left
-                                           if f["action"] not in _MARKED]),
-                         [f for f in outcome.left if f["action"] in _MARKED])
+        if strong:
+            # what the writer kept on the notes is marked where it stands
+            text = mark_left(text, outcome.left)
+        else:
+            text = mark_left(claims.fix(text, [f for f in outcome.left
+                                               if f["action"] not in _MARKED]),
+                             [f for f in outcome.left if f["action"] in _MARKED])
         if outcome.rewritten and outcome.over:
             # re-measure; this reading only lifts pieces
             reply = await _judged(text, material, rows, complete=complete,
-                                  judge=judge or model, api_key=api_key, usage=usage)
+                                  judge=reader, api_key=api_key, usage=usage)
+    elif strong and found:
+        text = mark_left(text, found)
     outcome.rows = [r for r in length.measured(_items(reply, text, rows), rows)
                     if r["text"] in text]
     outcome.text = length.restate_counts(text, outcome.rows)

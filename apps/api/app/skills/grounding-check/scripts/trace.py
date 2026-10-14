@@ -46,7 +46,7 @@ _UNIT = "|".join(re.escape(u) for u in UNIT_WORDS)
 #: A unit syllable that begins another word: 「62, 주의 45」, 「1일부」, 「3대비」.
 _NOT_UNIT = ("(?<=주)[의요]|(?<=일)[부반]|(?<=분)[석야기]|(?<=초)[과기]|(?<=회)[의사]|(?<=대)[비상학]"
              "|(?<=점)검|(?<=부)서|(?<=장)[소비]|(?<=행)사|(?<=팀)장|(?<=종)류|(?<=배)송|(?<=개)[발선]"
-             "|(?<=명)단|(?<=건)[의물]|(?<=원)[인장]")
+             "|(?<=명)단|(?<=건)[의물]|(?<=원)[인장]|(?<=부)터")
 #: A number with an optional unit; not inside an identifier (「REQ-03」, 「p95」) nor glued to a number.
 NUMBER = re.compile(
     rf"(?<![A-Za-z\d.,_/#-])(?P<sign>[+-]|−|▲|▼)?(?P<num>{TERM})"
@@ -127,7 +127,7 @@ NOT_A_NAME = re.compile(
 )
 #: The end of a word that is not a name: 「참석한 교수」, 「맡은 대리」.
 #: A linking verb ending before a title-like word: 「달라」, 「달라서」, 「맡아」, 「하며」.
-_LINKING_END = re.compile(r"(?:라|아|어|서|고|며|면|게|지|해|여|러|워)$")
+_LINKING_END = re.compile(r"(?:라|아|어|서|고|며|면|게|지|해|여|러|워|니|므로)$")
 VERB_END = re.compile(r"(?:한|된|는|은|던|할|의|를|을|에|로|와|과|도|만|인)$")
 #: a clause ending before 「교수」 「학습」: 「신설하여 교수·학습 영역」 is no name
 CLAUSE_END = re.compile(r"(?:하여|하며|하고|하면|해서|되어|되며|하에|에서|으로|에게|이며|이고|라며|하게|되게)$")
@@ -239,6 +239,66 @@ STATUTORY = (
 _EXAMPLE = re.compile(r"(?:\(|^|\s)(?:예\s?[:：)]|예를\s?들(?:어|면)|예컨대|가령|이를테면|e\.g\.)")
 
 
+#: A value the answer states as its own assumption or estimate, in the same sentence: 「…로
+#: 가정하면」, 「대략 9월 22일~10월 1일 출발로 잡았고」 (r7 P02), 「월 150만 원이라면」 (r7 P56).
+_ASSUMED = re.compile(
+    r"가정(?:하|해|한|할|합|으로|이며|이고|치|에)|(?:이|으)?라면\s|(?:이|으)?라고\s?(?:하면|치면|보면)"
+    r"|대략|어림|추정(?:하면|치|해|하여|으로|값)|(?:으로|로)\s?잡(?:았|고|으면|아|습)|기준으로\s?잡"
+    r"|(?:이|가)\s?(?:된다|이라)고\s?(?:하면|치면)")
+#: 「약 1,430kcal」: an approximation the answer says it is
+_ABOUT = re.compile(r"(?<![가-힣])(?:약|대략|어림잡아|얼추|대충)\s?$")
+#: a heading or bold label naming what follows as assumptions or examples
+_ASSUMED_HEAD = re.compile(r"가정|전제|예시|예를\s?들|시나리오|assumption|example", re.I)
+
+
+def _assumed(line: str, start: int) -> bool:
+    """Whether the value at `start` is one the answer marks as assumed, estimated or
+    approximate in its own sentence."""
+    if _ABOUT.search(line[max(0, start - 8):start]):
+        return True
+    cut = max((m.end() for m in SENTENCE_BREAK.finditer(line[:start])), default=0)
+    stop = SENTENCE_BREAK.search(line, start)
+    return bool(_ASSUMED.search(line[cut:stop.start() if stop else len(line)]))
+
+
+def assumed_lines(lines: list[str]) -> set[int]:
+    """Lines under a heading or bold label that names assumptions or examples (「## 가정」,
+    「**전제**」), to the next heading."""
+    out: set[int] = set()
+    under = False
+    for k, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("#") or re.fullmatch(r"\*\*[^*\n]{1,40}\*\*\s{0,2}[:：]?", stripped):
+            under = bool(_ASSUMED_HEAD.search(stripped))
+            continue
+        if under:
+            out.add(k)
+    return out
+
+
+#: a spreadsheet date formula: 「DATE(2026,13,1)」
+_DATE_FORMULA = re.compile(r"DATE\(\s{0,2}(\d{4})\s{0,2},\s{0,2}(\d{1,3})\s{0,2},\s{0,2}(\d{1,3})\s{0,2}\)",
+                           re.I)
+
+
+def _worked_dates(line: str) -> set[tuple[int, int, int]]:
+    """Dates the line's DATE(y, m, d) formulas give, months and days rolled over as a
+    spreadsheet does (DATE(2026,13,1) → 2027-01-01)."""
+    out = set()
+    for m in _DATE_FORMULA.finditer(line):
+        y, mo, d = (int(g) for g in m.groups())
+        try:
+            day = dt.date(y + (mo - 1) // 12, (mo - 1) % 12 + 1, 1) + dt.timedelta(days=d - 1)
+        except ValueError:
+            continue
+        out.add((day.year, day.month, day.day))
+    return out
+
+
+#: a mark inside a bracket: 「(10월 16일(확인 필요))」 → 「(10월 16일, 확인 필요)」
+_MARK_IN_BRACKET = re.compile(r"\(([^()\n]{1,60}?)\s?\(확인 필요\)\)")
+
+
 def _statutory(value: float, unit: str, line: str) -> bool:
     return any(abs(value - v) < 1e-9 and _family(unit) == u and cue.search(line)
                for v, u, cue in STATUTORY)
@@ -275,6 +335,8 @@ _PENALTY = re.compile(
     r"형사\s?처벌|형사\s?책임|형사\s?입건|처벌|징역|벌금|과태료|구속|전과|면허\s?(?:취소|정지)|"
     r"criminal(?:ly)?\s+(?:charge\w*|liab\w*|prosecut\w*)|jail|prison", re.I)
 _MARK_AFTER = re.compile(r"\s?\(\s?확인\s?필요\s?\)")
+#: the rest of a condition clause: 「… 사고(인사사고, 뺑소니)라면 」
+_CONDITION_AFTER = re.compile(r"(?:\([^()\n]{0,60}\)|[^.,(\n]){0,40}?(?:라|다|이)?면\s")
 _VALUE_MASK = re.compile(
     r"\[[^\[\]\n]{0,300}\]\(https?://[^)\n]{0,500}\)"  # a source's title: the source's words
     r"|https?://\S{1,300}|`[^`\n]{0,200}`|\[[^\[\]\n]{0,40}\](?:\([^)\n]{0,300}\))?")
@@ -490,6 +552,20 @@ class Sources:
             pm = 12 if m.group("half") in ("오후", "저녁", "밤") else 0
             for h in (int(m.group("h1")), int(m.group("h2"))):
                 self.hours.update((h % 24, (h + pm) % 24 if h < 12 else h % 24))
+        # 「다음 달 15일」: that day of next month, by today (r7 P36 「11월 15일」)
+        if today:
+            for m in re.finditer(r"(다음|이번|지난)\s{0,2}(?:달|월)\s{0,2}(\d{1,2})\s{0,2}일", text):
+                shift = {"다음": 1, "이번": 0, "지난": -1}[m.group(1)]
+                n = today.year * 12 + today.month - 1 + shift
+                self._day(n // 12, n % 12 + 1, int(m.group(2)))
+        # 「14시 시작, 1시간」: the end of a span the sources give (r7 A01-T2 15:00)
+        spans = {int(n) for n in re.findall(r"(?<![\d.])(\d{1,2})\s{0,2}시간", text)
+                 if 0 < int(n) <= 12}
+        if spans and len(spans) <= 6:
+            self.hours |= {(h + d) % 24 for h in set(self.hours) for d in spans}
+        #: 「매월 1일」: that day in any month the sources name
+        self.monthly = {int(d) for d in re.findall(r"매\s?(?:월|달)\s{0,2}(\d{1,2})\s{0,2}일", text)
+                        if 1 <= int(d) <= 31}
         # 「시차 9시간」: the other side's clock for every time given
         for shift in {int(n) for n in re.findall(r"시차\s{0,3}(?:는|가)?\s{0,2}(\d{1,2})\s{0,2}시간", text)}:
             self.hours |= {(h + d) % 24 for h in set(self.hours) for d in (shift, -shift)}
@@ -572,6 +648,10 @@ class Sources:
         """The source value `value` was written from, or None."""
         family = _family(unit)
         if family in _CONSTANT and value in _CONSTANT[family]:
+            return value
+        if family == "년" and self.today and value == int(value) and 0 < value < 200 and any(
+                self.today.year - y == int(value) for y in self.years):
+            # years since a year the sources name, to today (r7 A14-T2 「2018년 출시 이후 8년」)
             return value
         # 「5년」 written as 「60개월」; 「(메일 3, 14일)」 for a day the material dates.
         if family == "개월" and value % 12 == 0 and any(
@@ -894,6 +974,7 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
     found: list[dict] = []
     numbers: list[dict] = []
     heads = column_units(lines)
+    options = {**options, "_assumed_lines": assumed_lines(lines)}
     for k, line in enumerate(lines):
         if k in skip:
             continue
@@ -987,7 +1068,8 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
         line = lines[n["line"]]
         # an example the answer labels as one, a statutory figure, or the line's own sum
         if _illustrative(line, m.start()) or _statutory(n["value"], n["unit"], line) \
-                or _worked_in_line(n, numbers):
+                or _worked_in_line(n, numbers) or n["line"] in options["_assumed_lines"] \
+                or _assumed(line, m.start()):
             continue
         start = m.start("num") if m.group("sign") is None else m.start()
         found.append(_finding("number", lines[n["line"]], n["line"], start, m.end()))
@@ -1000,7 +1082,22 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
         found = [_as_mark(f, lines) for f in found if f["kind"] not in ("org", "person")]
         found = [f for f in found if f is not None]
         found.extend(_advice_values(lines, skip, sources, found))
+    if options.get("strong"):
+        # a strong writer's sentence is never taken out on this check: a sentence-level
+        # finding is marked where the sentence ends, values are blanked (and settled back)
+        found = [_sentence_mark(f, lines) if f["kind"] in DROPPED else {**f, "keep": True}
+                 for f in found]
     return sorted(found, key=lambda f: (f["line"], f["start"]))
+
+
+def _sentence_mark(finding: dict, lines: list[str]) -> dict:
+    """A finding that would drop its sentence, as a mark at that sentence's end."""
+    line = lines[finding["line"]]
+    stop = SENTENCE_BREAK.search(line, finding["end"])
+    end = stop.start() if stop else len(line.rstrip())
+    while end > finding["start"] and line[end - 1] in ".!?。)*":
+        end -= 1
+    return {**finding, "start": end, "end": end, "placeholder": " " + MARK}
 
 
 def _as_mark(finding: dict, lines: list[str]) -> dict | None:
@@ -1060,7 +1157,11 @@ def _advice_values(lines: list[str], skip: set[int], sources: Sources,
             if "확인 필요" in part:
                 continue
             hit = next((m for m in _PENALTY.finditer(part)
-                        if re.sub(r"\s+", "", m.group(0)).lower() not in sources.lower), None)
+                        if re.sub(r"\s+", "", m.group(0)).lower() not in sources.lower
+                        # a condition the advice is given under, not a consequence it states
+                        # (r7 P48 「형사처벌 우려가 있는 사고라면 변호사를 선임하세요」)
+                        and not _CONDITION_AFTER.match(part, m.end())),
+                       None)
             if hit is None:
                 continue
             # the mark goes at the sentence's end, before its closing punctuation
@@ -1185,6 +1286,11 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
     """Dates, months, times and names on one line; returns the spans they take."""
     taken: list[tuple[int, int]] = []
     own = person_days(str(options.get("person") or ""))
+    under_assumption = k in (options.get("_assumed_lines") or ())
+
+    def assumed(start: int) -> bool:
+        # an example's clock or date (r7 P16 「예컨대 저녁 7시」) is no fact either
+        return under_assumption or _assumed(line, start) or _illustrative(line, start)
 
     def free(start: int, end: int) -> bool:
         return not any(s < end and start < e for s, e in taken)
@@ -1196,7 +1302,13 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
     def day(m: re.Match, y: int | None, mo: int, d: int) -> None:
         if not (1 <= mo <= 12 and 1 <= d <= 31):
             return
-        if sources.counted(y, mo, d):
+        if sources.counted(y, mo, d) or assumed(m.start()):
+            return
+        if y is not None and (y, mo, d) in _worked_dates(line):
+            # 「DATE(2026,13,1)은 2027-01-01」: the formula's own date (r7 P46)
+            return
+        if d in sources.monthly and (mo in sources.months or y is None):
+            # 「매월 1일」 in a month the sources name (r7 A16-T2 「11월 1일」)
             return
         if (y is None or (y, mo, d) not in sources.days) and (None, mo, d) not in sources.days:
             # A garbled copy of the person's one deadline that month goes back to it whole.
@@ -1258,6 +1370,8 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
                 r"\s{0,2}(?:까지|부터|에|이전|이후|전|후|경|~)", tail):
             continue
         taken.append(m.span())
+        if assumed(m.start()):
+            continue
         if _hour(m) % 24 not in sources.hours and int(m.group("h")) % 24 not in sources.hours:
             start = m.start("half") if m.group("half") else m.start("h")
             found.append(_finding("time", line, k, start, m.end()))
@@ -1327,6 +1441,14 @@ def _claims(lines: list[str], skip: set[int], sources: Sources) -> list[dict]:
     return out
 
 
+#: advice to the writer on their own text, not a demand on its reader (r7 P36: 「마지막으로
+#: 회신을 받는 경로(메일 답장인지 …)를 밝히면 좋습니다」 went whole as 「자료에 없는 요구」)
+_WRITING_ADVICE = re.compile(
+    r"(?:밝히|적|쓰|넣|명시하|덧붙이|추가하|알리|안내하)(?:면|시면)\s{0,2}(?:좋|낫|오해|더|읽는)"
+    r"|(?:밝혀|적어|써|넣어|명시해|덧붙여)\s{0,2}(?:두|주)(?:면|시면|세요|는\s?것이)"
+    r"|제안합니다|권합니다|권장합니다|고쳐\s{0,2}보세요")
+
+
 def _required(part: str, sources: Sources) -> bool:
     """Whether `part` asks the reader to bring or hand in something no source names."""
     for m in REQUIRE.finditer(part):
@@ -1349,7 +1471,7 @@ def _requirements(lines: list[str], skip: set[int], sources: Sources) -> list[di
             continue
         pos = 0
         for part in re.split(f"({SENTENCE_BREAK.pattern})", line):
-            if _required(part, sources):
+            if _required(part, sources) and not _WRITING_ADVICE.search(part):
                 out.append({"kind": "requirement", "text": part, "line": k, "start": pos,
                             "end": pos + len(part), "placeholder": ""})
             pos += len(part)
@@ -1408,16 +1530,18 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
         if not mine:
             kept.append(part)
             continue
-        if any(f["kind"] in DROPPED for f in mine):
+        if any(f["kind"] in DROPPED and not _marks(f) for f in mine):
             kept.append("")
             continue
         rest = part
         for f in sorted(mine, key=lambda f: -f["start"]):
             rest = rest[: f["start"] - start] + rest[f["end"] - start:]
         # Invented values carrying the sentence alone: two or more, and no number left. A
-        # heading or bold list title (「**2. 등록금 납부 — …**」) keeps its words.
+        # heading or bold list title (「**2. 등록금 납부 — …**」) keeps its words; so does a
+        # strong writer's sentence, its values blanked and settled back marked.
         if len(mine) >= 2 and not re.search(r"\d", rest) and not _TITLE_LINE.match(line) and all(
-                f["placeholder"] in PLACEHOLDER.values() and not _marks(f) for f in mine):
+                f["placeholder"] in PLACEHOLDER.values() and not _marks(f) and not f.get("keep")
+                for f in mine):
             kept.append("")
             continue
         for f in sorted(mine, key=lambda f: -f["start"]):
@@ -1508,7 +1632,7 @@ def fix(text: str, findings: list[dict]) -> str:
             out.append(line)
         elif (fixed := _fix_line(line, by_line[k])) is not None:
             out.append(fixed)
-    return _spelled_amounts("\n".join(out))
+    return _MARK_IN_BRACKET.sub(r"(\1, 확인 필요)", _spelled_amounts("\n".join(out)))
 
 
 def summary(findings: list[dict]) -> str:
