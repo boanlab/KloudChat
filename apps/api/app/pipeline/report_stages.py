@@ -100,7 +100,7 @@ def _searched(mat) -> bool:
 
 def _messages(bundle: Bundle, prompt: str, model: str | None = None) -> list[dict[str, str]]:
     """Writer messages: prompt under the material; `model` = the writer, whose tier sets the
-    setup (`prompt_tier`) — none for a repair call, which keeps the full one."""
+    setup (`prompt_tier`), repair calls to the writer included; none keeps the full one."""
     return build_document_messages(
         SessionKind.report,
         prompt,
@@ -629,8 +629,9 @@ def _given(bundle: Bundle) -> str:
 
 #: Writer note when the code calculation gave no values.
 CALC_MISSING_NOTE = (
-    "# 작성 메모(내부)\nThe code calculation did not finish, so no computed values are given. "
-    "Work out the figures the request asks for yourself from the material's numbers: write "
+    "# 작성 메모(내부)\nThe code calculation did not finish; at most the given figures' own "
+    "arithmetic is computed above. Work out the other figures the request asks for yourself "
+    "from the material's numbers: write "
     "each as its formula with the result (「9,900원 × 12 = 118,800원」). Where the request "
     "allows estimates and the material lacks a rate or share, state it as an assumption "
     "(「가정: 전환율 2%」) and compute from it; never leave a requested figure as a formula name only."
@@ -663,10 +664,14 @@ class Calc(Base):
         if computed:
             bundle.computed.values = computed
             bundle.material.trusted.append(Part(computed, "computed"))
-        elif status == "timeout":
-            # no code values: the writer still works the numbers out (r7 A10-T2: a timeout
-            # left TAM·SAM·SOM uncomputed, only formula names)
-            bundle.material.trusted.append(Part(CALC_MISSING_NOTE, "note"))
+        elif status in ("timeout", "unavailable", "failed"):
+            # r7 A10-T2: a timeout left TAM·SAM·SOM uncomputed, only formula names. The given
+            # figures' own arithmetic is done here; the writer works out the rest
+            if given := calc.given_block(req.text, [_given(bundle)]):
+                bundle.computed.values = given
+                bundle.material.trusted.append(Part(given, "computed"))
+            if status == "timeout":
+                bundle.material.trusted.append(Part(CALC_MISSING_NOTE, "note"))
         yield {
             "type": "step", "id": "calc",
             "label": {
@@ -1080,7 +1085,7 @@ class Sections(Base):
                     refilled, more = await report._complete(
                         req.model,
                         _messages(bundle, report._FILL_PROMPT.format(
-                            heading=section["heading"], body=body[:6000])),
+                            heading=section["heading"], body=body[:6000]), req.model),
                         req.api_key,
                         1600,
                     )
@@ -1100,7 +1105,7 @@ class Sections(Base):
                         req.model,
                         _messages(bundle, report._TABLE_FIX_PROMPT.format(
                             heading=section["heading"], problems="\n".join(f"- {g}" for g in gaps),
-                            body=section["content"][:6000])),
+                            body=section["content"][:6000]), req.model),
                         req.api_key,
                         1600,
                     )

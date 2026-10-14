@@ -62,6 +62,8 @@ _LIGHT_DROPS: tuple[str, ...] = (
     "Do not invent names, dates, amounts or figures absent",
     "No quiz, O/X or exercise slide",
     "Do not fill slides with topics the request lacks",
+    # page outline (`page._OUTLINE_PROMPT`): the anti-fabrication line stands for it
+    "요청에 없는 소재를 지어내지 마라.",
     # single-slide prompts (`deck._BULLETS_PROMPT` and the others)
     "A slide is a screen to look at",
     "Do not write made-up figures. Without a basis, write without numbers.",

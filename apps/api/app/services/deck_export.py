@@ -2560,8 +2560,13 @@ def _pdf_chart_more(
             row_top = plot_top - position * step
             pdf.setFillColorRGB(*muted)
             pdf.setFont(font, 12)
-            label = _wrap(name, font, 12, label_w)[0]
-            pdf.drawRightString(left + label_w, row_top - step / 2 - 4, label)
+            lines = _category_lines(name, font, 12, label_w)
+            if len(lines) == 1 or step < 22:
+                pdf.drawRightString(left + label_w, row_top - step / 2 - 4, " ".join(lines))
+            else:
+                pdf.setFont(font, 10)
+                for offset, line in enumerate(lines):
+                    pdf.drawRightString(left + label_w, row_top - step / 2 + 2 - 11 * offset, line)
             for series_index, (_name, items) in enumerate(series):
                 value = items[position]
                 y = row_top - step * 0.2 - thick * (series_index + 1)
@@ -2611,7 +2616,7 @@ def _pdf_chart_more(
     pdf.setFillColorRGB(*muted)
     pdf.setFont(font, 12)
     for position, label in enumerate(categories):
-        pdf.drawCentredString(left + step * (position + 0.5), plot_bottom - 18, label)
+        _draw_category(pdf, label, left + step * (position + 0.5), plot_bottom, font, step - 6)
     if len(series) > 1:
         x = left
         for series_index, (name, _values) in enumerate(series):
@@ -3786,7 +3791,7 @@ def _pdf_chart(
     pdf.setFillColorRGB(*muted)
     pdf.setFont(font, 12)
     for position, label in enumerate(categories):
-        pdf.drawCentredString(left + step * (position + 0.5), bottom - 18, label)
+        _draw_category(pdf, label, left + step * (position + 0.5), bottom, font, step - 6)
 
     if len(chart["series"]) > 1:
         x = left
@@ -3825,6 +3830,33 @@ def _typescale(slide: dict) -> float:
     except (TypeError, ValueError):
         return 1.0
     return min(2.0, max(0.5, value))
+
+
+def _category_lines(text: str, font: str, size: float, width: float) -> list[str]:
+    """A chart category over at most two lines, broken at spaces only: a word is never cut
+    (a lone word wider than `width` runs over rather than lose letters)."""
+    lines: list[str] = []
+    for word in text.split():
+        if lines and len(lines) < 2 and pdfmetrics.stringWidth(f"{lines[-1]} {word}", font,
+                                                               size) <= width:
+            lines[-1] = f"{lines[-1]} {word}"
+        elif len(lines) < 2:
+            lines.append(word)
+        else:
+            lines[-1] = f"{lines[-1]} {word}"
+    return lines or [text]
+
+
+def _draw_category(pdf, label: str, x: float, floor: float, font: str, width: float) -> None:
+    """A column chart's category under its slot: one line at 12pt, two at 10pt."""
+    lines = _category_lines(label, font, 12, width)
+    if len(lines) == 1:
+        pdf.drawCentredString(x, floor - 18, lines[0])
+        return
+    pdf.setFont(font, 10)
+    for offset, line in enumerate(_category_lines(label, font, 10, width)):
+        pdf.drawCentredString(x, floor - 14 - 12 * offset, line)
+    pdf.setFont(font, 12)
 
 
 def _wrap(text: str, font: str, size: float, width: float) -> list[str]:

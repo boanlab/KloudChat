@@ -97,18 +97,25 @@ export function SlideChart({
             ))
           })}
 
-      {chart.categories.map((label, i) => (
-        <text
-          key={i}
-          x={pad.left + step * (i + 0.5)}
-          y={height - 6}
-          textAnchor="middle"
-          fontSize={7.5}
-          fill="#666"
-        >
-          {label}
-        </text>
-      ))}
+      {chart.categories.map((label, i) => {
+        const lines = categoryLines(label, step - 4, 7.5)
+        return (
+          <text
+            key={i}
+            x={pad.left + step * (i + 0.5)}
+            y={lines.length > 1 ? height - 11 : height - 6}
+            textAnchor="middle"
+            fontSize={lines.length > 1 ? 6.5 : 7.5}
+            fill="#666"
+          >
+            {lines.map((line, n) => (
+              <tspan key={n} x={pad.left + step * (i + 0.5)} dy={n ? 7.5 : 0}>
+                {line}
+              </tspan>
+            ))}
+          </text>
+        )
+      })}
       {chart.unit && (
         <text x={0} y={pad.top + 2} fontSize={7} fill="#888">
           {chart.unit}
@@ -240,7 +247,7 @@ function HBarChart({ chart, accent, scale, ink }: { chart: Chart; accent: string
         const middle = pad.top + row * (i + 0.5)
         return (
           <g key={i}>
-            <text x={pad.left - 6} y={middle + 3} textAnchor="end" fontSize={8} fill={ink}>{label}</text>
+            <CategoryLabel label={label} x={pad.left - 6} middle={middle} width={pad.left - 10} room={row} ink={ink} />
             {chart.series.map((series, s) => {
               const v = Math.max(0, series.values[i] ?? 0)
               const w = plotW * (v / ceiling)
@@ -261,6 +268,34 @@ function HBarChart({ chart, accent, scale, ink }: { chart: Chart; accent: string
         <Legend x={width - pad.right} y={6} align="end" entries={chart.series.map((series, s) => [series.name, colours[s]])} />
       )}
     </svg>
+  )
+}
+
+/** A category over at most two lines, broken at spaces only: a word is never cut. */
+function categoryLines(text: string, width: number, size: number): string[] {
+  const lines: string[] = []
+  for (const word of (text ?? '').split(/\s+/).filter(Boolean)) {
+    const last = lines.length - 1
+    if (last >= 0 && (last === 1 || textWidth(`${lines[last]} ${word}`, size) <= width)) lines[last] = `${lines[last]} ${word}`
+    else lines.push(word)
+  }
+  return lines.length ? lines : [text ?? '']
+}
+
+/** A horizontal bar's category, right-aligned beside its row; two lines when it needs them and the row has room. */
+function CategoryLabel({ label, x, middle, width, room, ink }: { label: string; x: number; middle: number; width: number; room: number; ink: string }) {
+  const lines = room >= 16 ? categoryLines(label, width, 7) : [label]
+  if (lines.length === 1) {
+    return <text x={x} y={middle + 3} textAnchor="end" fontSize={8} fill={ink}>{label}</text>
+  }
+  return (
+    <text x={x} y={middle - 1} textAnchor="end" fontSize={7} fill={ink}>
+      {lines.map((line, n) => (
+        <tspan key={n} x={x} dy={n ? 8 : 0}>
+          {line}
+        </tspan>
+      ))}
+    </text>
   )
 }
 

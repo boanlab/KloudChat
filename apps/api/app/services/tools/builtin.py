@@ -1434,15 +1434,33 @@ _MARKED = re.compile(r"표시|강조|주석|하이라이트")
 _MAX_MARKS = 6
 
 
-def _chart_marks(raw: Any, series: list[dict], caption: str) -> list[dict]:
+#: a mark meant as a value line (「적정 75%」 「목표 80」): the chart draws marks at categories only
+_VALUE_LINE = re.compile(r"\d[\d,.]*\s{0,2}(?:%|퍼센트)|(?:기준|목표|적정|평균|한도)\s{0,2}\d")
+
+
+def _value_line(item: dict, x: str) -> bool:
+    """Whether a mark is a horizontal reference value put on a category (r7 A06-T2: 「적정 75%」
+    drawn as a vertical line at 「해외 단기연수」)."""
+    label = str(item.get("label") or "")
+    return item.get("y") is not None or bool(_VALUE_LINE.search(label) and not any(
+        n in x for n in re.findall(r"\d[\d,.]*", label)))
+
+
+def _chart_marks(raw: Any, series: list[dict], caption: str,
+                 refused: list[str] | None = None) -> list[dict]:
     """Marked x values ({x, label}) on the chart's own categories; a caption that says
-    「…에 표시」 without them marks the categories it names."""
+    「…에 표시」 without them marks the categories it names. A value line (no such drawing)
+    is left off and its label put in `refused`."""
     keys = [p["x"] for one in series for p in one["points"]]
     out: list[dict] = []
     for item in raw if isinstance(raw, list) else []:
         if not isinstance(item, dict):
             continue
         x = str(item.get("x") or "").strip()[:40]
+        if _value_line(item, x):
+            if refused is not None:
+                refused.append(str(item.get("label") or item.get("y") or "").strip()[:30])
+            continue
         if x in keys and all(m["x"] != x for m in out):
             out.append({"x": x, "label": str(item.get("label") or "").strip()[:30]})
     if not out and _MARKED.search(caption):
@@ -1510,7 +1528,8 @@ async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
 
     x_label = _plain_arg(args.get("xLabel"))[:40]
     caption = _plain_arg(args.get("caption"))[:300]
-    marks = _chart_marks(args.get("marks"), series, caption)
+    refused: list[str] = []
+    marks = _chart_marks(args.get("marks"), series, caption, refused)
     ctx.pending_artifacts.append(
         {
             "kind": "chart",
@@ -1528,10 +1547,15 @@ async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
             },
         }
     )
+    note = (
+        f" 기준선({', '.join(r for r in refused if r) or '세로축 값'})은 그리지 못해 표시에서 "
+        "뺐습니다. 이 차트에 기준선이 있다고 쓰지 말고, 기준은 문장에 적으세요."
+        if refused else ""
+    )
     return ToolResult(
         content=(
             f"'{title}' 차트를 만들었습니다. 사용자 화면에 이미 열려 있으니 수치를 다시 "
-            "나열하지 말고, 이 차트가 무엇을 보여 주는지만 한두 문장으로 설명하세요."
+            "나열하지 말고, 이 차트가 무엇을 보여 주는지만 한두 문장으로 설명하세요." + note
         ),
         detail=title,
     )
@@ -1563,7 +1587,8 @@ CREATE_CHART = Tool(
             "marks": {
                 "type": "array",
                 "description": "특정 가로축 값을 차트 위에 세로선과 이름으로 표시합니다. "
-                               "캡션에 「…에 표시」라고 쓰려면 여기에 넣으세요.",
+                               "캡션에 「…에 표시」라고 쓰려면 여기에 넣으세요. 세로축 값의 "
+                               "기준선(적정 75% 등)은 그리지 않으니 넣지 말고 캡션에 적으세요.",
                 "items": {
                     "type": "object",
                     "properties": {

@@ -413,3 +413,105 @@ def replace_tables(sections: list[dict], block: str) -> tuple[list[dict], int]:
             i += 1
         out.append({**sec, "content": "\n".join(result)})
     return out, changed
+
+
+# --- given-value arithmetic when the code pass doesn't finish (r7 A10-T2) ---
+
+#: a written quantity: 「9,900원」 「1,320,000원」 「40명」 「12개월」 「1.2만 원」
+_QTY = (r"(?P<n{i}>\d[\d,]{{0,15}}(?:\.\d{{1,6}})?)\s{{0,2}}(?P<s{i}>억|만|천)?\s{{0,2}}"
+        r"(?P<u{i}>원|개월|명|인|대|개|건|회|장|가구|곳|박|일|주|시간|km|kg|%)?")
+#: (부가세 별도) after an operand
+_ASIDE = r"(?:\s{0,2}\([^()\n]{1,20}\))?"
+_OPS = r"\s{{0,2}}(?P<op{i}>×|\*|÷|\+)\s{{0,2}}"
+#: 「A × B (× C …)」 with no written result after it
+_GIVEN_CHAIN = re.compile(
+    r"(?<![\d,.])" + _QTY.format(i=0) + _ASIDE
+    + "".join(f"(?:{_OPS.format(i=k)}{_QTY.format(i=k)}{_ASIDE})" + ("" if k == 1 else "?")
+              for k in range(1, 5))
+    + r"(?!\s{0,2}(?:[×*÷+=≈]|\d|[가-힣]{0,3}당))"
+)
+#: monthly amount: 「월 9,900원」 「월 구독료 9,900원」 「월 이용료 1.2만 원」
+_MONTHLY = re.compile(
+    r"(?<![가-힣])월\s{0,2}(?P<label>[가-힣]{1,8}\s{0,2})?(?:약\s{0,2})?"
+    r"(?<![\d,.])(?P<n>\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}(?P<s>억|만|천)?\s{0,2}원"
+)
+_SCALES = {"억": 100_000_000, "만": 10_000, "천": 1_000}
+
+
+def _number(digits: str, scale: str | None) -> float | None:
+    try:
+        return float(digits.replace(",", "")) * _SCALES.get(scale or "", 1)
+    except ValueError:
+        return None
+
+
+def _won(value: float) -> str:
+    whole = round(value)
+    return f"{whole:,}원" if abs(value - whole) < 1e-6 else f"{value:,.1f}원"
+
+
+def _plain(value: float) -> str:
+    whole = round(value)
+    return f"{whole:,}" if abs(value - whole) < 1e-6 else f"{value:,.4g}"
+
+
+def given_values(request: str, material: list[str] | None = None) -> list[str]:
+    """Arithmetic over figures the person gave, done here: written products and sums
+    (「단가 1,320,000원 × 30대」, 「월 8,000원 × 40명」) and monthly amounts over a year
+    (「월 구독료 9,900원」 → 「× 12개월 = 연 118,800원」). Rates and counts the material doesn't
+    give aren't guessed; `[]` when nothing is computable."""
+    from app.services.arithmetic import _evaluate
+
+    text = _CITATION.sub(" ", "\n".join([request or "", *(material or [])]))
+    lines: list[str] = []
+
+    def add(line: str) -> None:
+        if line not in lines and len(lines) < 20:
+            lines.append(line)
+
+    in_chains: list[tuple[int, int]] = []
+    for m in _GIVEN_CHAIN.finditer(text):
+        k = [i for i in range(5) if m.group(f"n{i}")]
+        values = [_number(m.group(f"n{i}"), m.group(f"s{i}")) for i in k]
+        ops = ["×" if m.group(f"op{i}") == "*" else m.group(f"op{i}") for i in k[1:]]
+        units = [m.group(f"u{i}") or "" for i in k]
+        if any(v is None for v in values) or len(values) < 2:
+            continue
+        if "+" in ops and not all(units):
+            # 「2024 + 1」 or a bare count: not a sum of amounts
+            continue
+        if not any(units):
+            continue
+        got = _evaluate([float(v) for v in values if v is not None], ops)
+        if got is None:
+            continue
+        monthly = bool(re.search(r"월\s{0,2}$", text[max(0, m.start() - 4):m.start()]))
+        shown = re.sub(r"\s{2,}", " ", m.group(0).strip())
+        money = "원" in units and "%" not in units
+        result = _won(got) if money else _plain(got)
+        add(f"{'월 ' if monthly else ''}{shown} = {result}")
+        if monthly and money:
+            add(f"월 {result} × 12개월 = 연 {_won(got * 12)}")
+        in_chains.append((m.start(), m.end()))
+    for m in _MONTHLY.finditer(text):
+        if any(a <= m.start("n") < b for a, b in in_chains):
+            continue
+        value = _number(m.group("n"), m.group("s"))
+        if not value:
+            continue
+        label = (m.group("label") or "").strip()
+        label = label + " " if label and label not in {"약", "평균"} else ""
+        add(f"월 {label}{_won(value)} × 12개월 = 연 {label}{_won(value * 12)}")
+    return lines
+
+
+def given_block(request: str, material: list[str] | None = None) -> str:
+    """Writer block for `given_values`, or `""`."""
+    lines = given_values(request, material)
+    if not lines:
+        return ""
+    return (
+        "# 코드로 계산한 값 (주어진 수치끼리)\n"
+        "아래 값은 요청과 자료에 주어진 수치만으로 코드가 계산했다. 본문과 표에는 이 값을 "
+        "그대로 옮기고 다시 셈하지 마라.\n\n" + "\n".join(lines)
+    )
