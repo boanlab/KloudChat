@@ -129,9 +129,12 @@ _KANA_KO = {
 _SENTENCE = re.compile(r"[^.!?。\n]*[.!?。]?")
 
 
-def repair_kana(text: str, vocabulary: str = "") -> tuple[str, list[str]]:
+def repair_kana(text: str, vocabulary: str = "", *,
+                keep_sentences: bool = False) -> tuple[str, list[str]]:
     """(text, changed): Japanese kana slipped into Korean prose read as Korean, or its
-    sentence dropped. Text or vocabulary written in Japanese is left alone."""
+    sentence dropped. Text or vocabulary written in Japanese is left alone. `keep_sentences`
+    (a chat answer, where a dropped sentence may be the step the person asked for): an
+    unknown kana run goes, its sentence stays."""
     if not _KANA.search(text or "") or _KANA.search(vocabulary or ""):
         return text, []
     if len(re.findall(r"[가-힣]", text)) < len(re.findall(r"[\u3040-\u30ff]", text)):
@@ -145,8 +148,8 @@ def repair_kana(text: str, vocabulary: str = "") -> tuple[str, list[str]]:
             return sentence
         fixed = _KANA.sub(lambda k: _KANA_KO.get(k.group(0), k.group(0)), sentence)
         fixed = re.sub(r"\s+ (?=할 수|있습니다|없습니다|등\b)", " ", fixed)
-        if _KANA.search(fixed):  # unknown kana: the sentence goes
-            fixed = ""
+        if _KANA.search(fixed):  # unknown kana: the run goes in a chat answer, else the sentence
+            fixed = re.sub(r" {2,}", " ", _KANA.sub("", fixed)) if keep_sentences else ""
         changed.append(f"{sentence.strip()}→{fixed.strip()}")
         return fixed
 
@@ -154,12 +157,51 @@ def repair_kana(text: str, vocabulary: str = "") -> tuple[str, list[str]]:
     return (re.sub(r"(?<=\S) {2,}(?=\S)", " ", out) if changed else text), changed
 
 
-def repair_mixed_script(text: str, vocabulary: str = "") -> tuple[str, list[str]]:
+#: a whole Cyrillic word between Korean words (r8 P16 flash 「흥미 или 즐거움」): read as Korean
+_CYRILLIC_WORD = re.compile(r"(?<![\u0400-\u04FFA-Za-z])[\u0400-\u04FF]+(?![\u0400-\u04FFA-Za-z])")
+_CYRILLIC_KO = {"или": "또는", "и": "및", "но": "하지만", "да": "네", "нет": "아니요",
+                "для": "위한", "в": "", "на": ""}
+
+
+def _lone_cyrillic(text: str, vocabulary: str) -> tuple[str, list[str]]:
+    """Whole Cyrillic words in a Korean text read as Korean when known, else taken out; a text
+    or vocabulary with Russian of its own (more than a few such words) is left alone."""
+    words = [m.group(0) for m in _CYRILLIC_WORD.finditer(text or "")
+             if not re.search(r"[가-힣]", text[max(0, m.start() - 1):m.start()]
+                              + text[m.end():m.end() + 1])]
+    if not words or _CYRILLIC_WORD.search(vocabulary or "") or len(words) > 3 \
+            or len(re.findall(r"[가-힣]", text)) < 20:
+        return text, []
+    keep = _protected(text)
+    changed: list[str] = []
+
+    def mend(m: re.Match) -> str:
+        word = m.group(0)
+        if re.search(r"[가-힣]", text[max(0, m.start() - 1):m.start()]
+                     + text[m.end():m.end() + 1]):
+            return word  # inside a Korean word: the mixed-word repair reads it
+        if any(a <= m.start() < b for a, b in keep):
+            return word  # code or a gloss
+        fixed = _CYRILLIC_KO.get(word.lower(), "")
+        changed.append(f"{word}→{fixed}")
+        return fixed or _GONE
+
+    return _closed(_CYRILLIC_WORD.sub(mend, text)), changed
+
+
+def repair_mixed_script(text: str, vocabulary: str = "", *,
+                        keep_sentences: bool = False) -> tuple[str, list[str]]:
     """(text, changed): Cyrillic-tainted Korean words fixed or stripped; Greek kept;
-    Japanese kana slips read as Korean or dropped."""
+    Japanese kana slips read as Korean or dropped (`keep_sentences`: only the kana run goes).
+    A tainted word with one Korean syllable left and no clean match goes whole (r8 P07 27B
+    「턱 인тягивание(chin tuck)」 → 「턱(chin tuck)」, not 「턱 인(chin tuck)」)."""
     import difflib
 
-    text, kana = repair_kana(text, vocabulary)
+    text, kana = repair_kana(text, vocabulary, keep_sentences=keep_sentences)
+    if not _STRAY.search(text or ""):
+        return text, kana
+    text, lone = _lone_cyrillic(text, vocabulary)
+    kana += lone
     if not _STRAY.search(text or ""):
         return text, kana
     clean_words = {
@@ -180,7 +222,23 @@ def repair_mixed_script(text: str, vocabulary: str = "") -> tuple[str, list[str]
             reverse=True,
         )
         fixed = scored[0][1] if scored and scored[0][0] >= 0.6 else skeleton
+        if fixed == skeleton and len(skeleton) <= 1 and len(_STRAY.findall(word)) >= 3:
+            changed.append(f"{word}→")
+            return _GONE
         changed.append(f"{word}→{fixed}")
         return fixed
 
-    return _MIXED_WORD.sub(mend, text), kana + changed
+    return _closed(_MIXED_WORD.sub(mend, text)), kana + changed
+
+
+#: where a word was taken out whole
+_GONE = "\x00"
+
+
+def _closed(text: str) -> str:
+    """No gap where a word went: 「턱 (chin tuck)」 → 「턱(chin tuck)」, two spaces → one."""
+    if _GONE not in text:
+        return text
+    text = re.sub(r" ?\x00(?=\()", "", text)
+    text = re.sub(r"(?<=\S) \x00 (?=\S)", " ", text)
+    return text.replace(_GONE, "")
