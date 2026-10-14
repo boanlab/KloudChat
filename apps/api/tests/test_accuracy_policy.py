@@ -101,7 +101,7 @@ def test_finalization_does_not_invent_a_notice(answer):
 
 def test_duplicate_notice_and_optional_daman_are_normalized_once():
     notice = accuracy_caveat("질문", {"id": "model"}, "model")
-    body = "현재 배포 버전은 확인하지 못했습니다."
+    body = "배포 버전은 3.2입니다."
     generated = body + "\n" + notice.removeprefix("다만 ") + "\n\n" + notice
     assert normalize_answer_notice(generated, "질문", {"id": "model"}, "model") == (
         body + "\n\n" + notice
@@ -127,7 +127,7 @@ def test_history_notices_are_not_repeated_or_removed_from_user_tools_and_quotes(
 def test_fallback_normalizes_only_generated_training_notice():
     model = {"id": "selected", "knowledgeCutoff": "2025-01"}
     notice = accuracy_caveat("질문", model, "selected")
-    body = "2025년 1월에 공개된 자료는 있지만 현재 값은 확인하지 못했습니다."
+    body = "2025년 1월에 공개된 자료에서 값은 12입니다."
     result = normalize_answer_notice(body + "\n\n" + notice, "질문", model, "fallback")
     assert result.startswith(body)
     assert result.endswith(accuracy_caveat("질문", model, "fallback"))

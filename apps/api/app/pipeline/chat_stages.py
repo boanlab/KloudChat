@@ -11,6 +11,7 @@ from app.pipeline import registry
 from app.pipeline.bundle import Bundle, Document, Material, Request
 from app.pipeline.stage import Base, Context
 from app.services import (
+    answer_plan,
     cover_letter,
     current_evidence,
     freshness,
@@ -58,7 +59,9 @@ class Normalize(Base):
                   "status": "done", "detail": checked[:1500]}]
         first = req.first_message
         normalized = freshness.normalize_answer_notice(
-            streamed, req.text, req.model_info, req.actual_model)
+            streamed, req.text, req.model_info, req.actual_model,
+            grounded=bool(req.traced or req.evidence or req.check_material.strip()),
+            form_fixed=answer_plan.restricted(req.text or ""))
         # `first`: stored user text, not the merged reference envelope
         normalized = normalize_raw_payload(normalized, first)
         # wrong unit label on a money table

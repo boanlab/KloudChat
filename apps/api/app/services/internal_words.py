@@ -866,6 +866,77 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
     return re.sub(r"(?:\n\s*(?:-{3,}|\*{3,}|_{3,})\s*)+$", "", cleaned).strip("\n")
 
 
+#: a sentence about the work between tool calls (r8 A12-T2 「…스크립트로 각도별 배분을
+#: 받겠습니다.」「각도별 배분이 나왔습니다.」, A14-T1 「점검 통과했습니다.」, A06-T1 「수치를 다시
+#: 확인했습니다.」 「…로 교체해 답을 다시 씁니다.」, A02-T2 「(검색은 최신 사실 확인용이었고 …)」)
+_WORK_SENTENCE = re.compile(
+    r"(?:하겠습니다|겠습니다|할게요|볼게요|받겠습니다|드릴게요)[.!…]?\)?$"
+    r"|(?:확인|점검|검증|검산|계산|재계산|실행|검색|조사|분류|수정|교체|반영|통과|완료|확정|파악|정리)"
+    r"\s?(?:했|하였|됐|되었|해\s?봤|해\s?보았)습니다"
+    r"|(?:나왔|잡혔|잡힙|찾았|바꿨|뺐|돌렸|받았|마쳤)습니다|잡힙니다"
+    r"|(?:바꿉니다|뺍니다|씁니다|둡니다|넣습니다|고칩니다|확인합니다|돌립니다)[.!…]?\)?$"
+    r"|검색\s?결과|^\(?\s?검색(?:은|을|으로|해)|스크립트|점검\s?결과|코드\s?(?:출력|실행)|실행\s?출력"
+    r"|이전\s?턴|무관합니다|완성된\s?[^\s.]{1,12}입니다")
+#: where a deliverable starts: a heading, table, rule, bold title, list item or fence
+_DELIVERABLE_LINE = re.compile(
+    r"^\s{0,3}(?:#{1,6}\s|\||-{3,}\s*$|\*{3,}\s*$|\*\*[^*\n]{1,80}\*\*|[-*+]\s|\d{1,2}[.)]\s"
+    r"|[□○■●▶◆]|```)")
+#: a Korean sentence's end, spaced or not (「…확인합니다.여전히 …」)
+_KO_SENTENCE_END = re.compile(r"(?<=[다요죠][.!?…])\)?\s*|\n+")
+
+
+def strip_tool_preamble(text: str) -> str:
+    """`text` minus the work narration a tool turn wrote ahead of its deliverable: the lines
+    before the first heading, table, rule or list, when they are all prose about the work
+    (their first sentence and at least half of them) and the deliverable after them is the
+    longer part. Prose that answers stays: a lead without a work sentence first, or one
+    followed by little, is the answer."""
+    lines = (text or "").split("\n")
+    at = next((i for i, line in enumerate(lines) if _DELIVERABLE_LINE.match(line)), None)
+    if not at:
+        return text
+    lead = "\n".join(lines[:at]).strip()
+    rest = "\n".join(lines[at:])
+    if not lead or len(rest.strip()) < max(300, len(lead)):
+        return text
+    sentences = [x.strip() for x in _KO_SENTENCE_END.split(lead) if x and x.strip()]
+    work = [x for x in sentences if _WORK_SENTENCE.search(x)]
+    if not sentences or not _WORK_SENTENCE.search(sentences[0]) or len(work) * 2 < len(sentences):
+        return text
+    return re.sub(r"^(?:\s*(?:-{3,}|\*{3,}|_{3,})\s*\n)+", "", rest.lstrip("\n"))
+
+
+#: how a finished line ends: punctuation, a closing mark, or a Korean sentence or 개조식
+#: ending (「…함」「…예정」「…완료」「…드림」)
+_DONE_END = re.compile(r"(?:[.!?…。)\]」』\"'`|:*~>]|[다요죠음함임됨까네정료능중림것])\s*$")
+#: a line ending on a particle or connective, which no phrase ends on
+_PARTICLE_END = re.compile(r"(?:[가-힣](?:는|을|를|에서|및)|,)\s*$")
+_ITEM_MARK = re.compile(r"^\s{0,8}(?:[-*+•·]|\d{1,3}[.)]|[□○◦▪■●ㆍ])\s")
+
+
+def cut_mid_sentence(text: str, *, min_chars: int = 400) -> bool:
+    """Whether a long answer or section stops in the middle of its last sentence (r8 A02-T2:
+    「○ 2027년 3월」 after items ending 「…배분함」; A01-T1: 「이수진 차장이 온라인 동시 송출」).
+    A table, heading, fence, label line (「출처: …」) or link ends whole; a list item counts as
+    cut only when the items above it end in sentence endings and it does not."""
+    body = (text or "").rstrip()
+    if len(body) < min_chars:
+        return False
+    lines = [line for line in body.split("\n") if line.strip()]
+    last = lines[-1].strip()
+    if (last.startswith(("|", "#", "```", "!", "<", "[")) or re.fullmatch(r"[-*_=]{3,}", last)
+            or _DONE_END.search(last) or re.search(r"[:：]|https?://\S+$", last)
+            or not re.search(r"[가-힣A-Za-z0-9,]$", last)):
+        return False
+    if _ITEM_MARK.match(lines[-1]):
+        # a stub after full items: 「○ 2027년 3월」 under 「○ …직접 설계·배분함」
+        above = [line.strip() for line in lines[-4:-1] if _ITEM_MARK.match(line)]
+        return (len(above) >= 2 and all(_DONE_END.search(a) for a in above)
+                and (_PARTICLE_END.search(last) is not None
+                     or len(last) * 2 <= min(len(a) for a in above)))
+    return len(_HANGUL.findall(last)) >= 3
+
+
 #: a paragraph announcing the writer's own next step (「Let me draft:」「Now I'll write …」)
 _EN_PLAN_STEP = re.compile(
     r"^\s{0,4}(?:[-*>]\s{1,3})?(?:\*\*)?(?:Let me(?!\sknow)|Let's|I(?:'ll| will| need to"

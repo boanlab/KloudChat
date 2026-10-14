@@ -18,6 +18,7 @@ from app.services import (
     key_figures,
     post_checks,
     skill_specs,
+    units,
     value_guard,
 )
 
@@ -201,6 +202,18 @@ def _advice_label(domain: str) -> str:
     return exact_facts.LABELS.get(domain, domain)
 
 
+#: a source number an answer cites: 「[4]」, 「[[4]](https://…)」
+_CITED = re.compile(r"\[\[?\d{1,3}\]")
+
+
+def _cited_sentences(text: str) -> str:
+    """The sentences of an earlier answer that cite a source the search found then: evidence
+    for advice that repeats them (r8 P19: 3.7% cited [4] in the first turn was 「확인하지
+    못했으니」 in the second)."""
+    return "\n".join(sentence for line in text.splitlines()
+                     for sentence in units.SENTENCE_BREAK.split(line) if _CITED.search(sentence))
+
+
 class AnswerGrounding(Base):
     """Answer values traced to person's input or tool output; the rest → bracket blanks."""
 
@@ -224,8 +237,9 @@ class AnswerGrounding(Base):
             answer_checks(req), before,
             material=f"{bundle.material.given}\n{req.check_material}",
             computed=[*req.tool_outputs, *req.evidence,
-                      *(str(m.get("content") or "") for m in req.messages
-                        if m.get("role") == "assistant" and not advice_only)],
+                      *(str(m.get("content") or "") if not advice_only
+                        else _cited_sentences(str(m.get("content") or ""))
+                        for m in req.messages if m.get("role") == "assistant")],
             options={**check_skills.options_for(req.today, req.check_options, surface="chat"),
                      "person": "\n".join([bundle.material.given, req.check_material,
                                           *req.tool_outputs]),

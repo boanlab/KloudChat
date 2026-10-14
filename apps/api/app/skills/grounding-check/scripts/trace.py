@@ -8,9 +8,13 @@ import json
 import re
 import sys
 
-#: 「1억 8천만」, 「3,000만」, 「5천」, 「1.2조」, or a bare number (same as the server's units._TERM).
+#: 「1억 8천만」, 「3,000만」, 「5천」, 「1.2조」, or a bare number (same as the server's units._TERM);
+#: not a scale syllable that begins another word (「2026 조건」, 「2만큼」).
+SCALE = r"(?:조(?![건사정직치합언각])|억|천만|만(?![큼약일족])|천(?![국재]))"
 TERM = (
-    r"\d[\d,]*(?:\.\d+)?\s?(?:조|억|천만|만|천)(?:\s?\d[\d,]*(?:\.\d+)?\s?(?:억|천만|만|천))*"
+    rf"\d[\d,]*(?:\.\d+)?\s?{SCALE}(?:\s?\d[\d,]*(?:\.\d+)?\s?{SCALE})*"
+    # the bare tail under the last scale word: 「18만 4,102」
+    rf"(?:\s?(?:\d{{1,3}},\d{{3}}|\d{{1,4}})(?![\d,.]|\s?{SCALE}))?"
     r"|\d[\d,]*(?:\.\d+)?"
 )
 #: Whitespace that ends a sentence, outside a dotted date or number run (units.SENTENCE_BREAK).
@@ -44,7 +48,7 @@ UNIT_WORDS = (
 FAMILY = {"퍼센트": "%", "USD": "달러", "인분": "명분", "가지": "개", "종": "개", "M/M": "MM"}
 _UNIT = "|".join(re.escape(u) for u in UNIT_WORDS)
 #: A unit syllable that begins another word: 「62, 주의 45」, 「1일부」, 「3대비」.
-_NOT_UNIT = ("(?<=주)[의요]|(?<=일)[부반]|(?<=분)[석야기]|(?<=초)[과기]|(?<=회)[의사]|(?<=대)[비상학]"
+_NOT_UNIT = ("(?<=주)[의요]|(?<=일)[부반]|(?<=분)[석야기의]|(?<=초)[과기]|(?<=회)[의사]|(?<=대)[비상학]"
              "|(?<=점)검|(?<=부)서|(?<=장)[소비]|(?<=행)사|(?<=팀)장|(?<=종)류|(?<=배)송|(?<=개)[발선]"
              "|(?<=명)단|(?<=건)[의물]|(?<=원)[인장]|(?<=부)터")
 #: A number with an optional unit; not inside an identifier (「REQ-03」, 「p95」) nor glued to a number.
@@ -123,12 +127,14 @@ NOT_A_NAME = re.compile(
     r"연구|개발|사업|프로젝트|운영|인사|총무|기획|재무|회계|영업|마케팅|품질|안전|보안|전산|정보|홍보|대외|"
     r"원어민|강사|외국인|신입|경력|정규|계약|인턴|파트|주문|결제|정산|검색|데이터|분석|백엔드|프론트|조원|"
     r"총|부총|사|과|처|국|실|단|원|청|시|도|군|구|동|면|읍|리|및|또는|겸|대행|직무|업무|임시|차기|역대|"
-    r"당시|현재|이후|이전|최초|최종|공학|인문|자연|사회|경영|의과|법학|교육|예술|체육|명|분|여러분|고객님|회원|사용자|이용자|담당자|관리자)$"
+    r"당시|현재|이후|이전|최초|최종|공학|인문|자연|사회|경영|의과|법학|교육|예술|체육|명|분|여러분|고객님|회원|사용자|이용자|담당자|관리자|"
+    # demonstratives (r8 A15-T1: 「이게 총무·IT 담당자에게 맞는」 → 「[이름] 총무」)
+    r"이게|그게|저게|이건|그건|저건|이걸|그걸|이것|그것|저것|여기|거기|이분|그분)$"
 )
 #: The end of a word that is not a name: 「참석한 교수」, 「맡은 대리」.
 #: A linking verb ending before a title-like word: 「달라」, 「달라서」, 「맡아」, 「하며」.
 _LINKING_END = re.compile(r"(?:라|아|어|서|고|며|면|게|지|해|여|러|워|니|므로)$")
-VERB_END = re.compile(r"(?:한|된|는|은|던|할|의|를|을|에|로|와|과|도|만|인)$")
+VERB_END = re.compile(r"(?:한|된|는|은|던|할|의|를|을|에|로|와|과|도|만|인|[어아와워라]간)$")
 #: a clause ending before 「교수」 「학습」: 「신설하여 교수·학습 영역」 is no name
 CLAUSE_END = re.compile(r"(?:하여|하며|하고|하면|해서|되어|되며|하에|에서|으로|에게|이며|이고|라며|하게|되게)$")
 ORG = re.compile(
@@ -326,13 +332,29 @@ def _worked_in_line(n: dict, numbers: list[dict]) -> bool:
     return False
 
 
+_CLOCK_SPAN = re.compile(r"(?<![\d:])(\d{1,2}):([0-5]\d)\s{0,2}[~∼〜-]\s{0,2}(\d{1,2}):([0-5]\d)(?!\d)")
+
+
+def _span_of_line(n: dict, line: str) -> bool:
+    """A duration the line's own clock span gives: 「14:55~15:00(5분)」 (r8 A01-T2: 「5분」 of
+    the agenda's last slot marked twice)."""
+    unit = _family(n["unit"])
+    if unit not in ("분", "시간"):
+        return False
+    for m in _CLOCK_SPAN.finditer(line):
+        minutes = (int(m.group(3)) * 60 + int(m.group(4))) - (int(m.group(1)) * 60 + int(m.group(2)))
+        if minutes > 0 and abs(n["value"] * (60 if unit == "시간" else 1) - minutes) < 1e-6:
+            return True
+    return False
+
+
 #: A dose: 「500mg」 「2정」 「10 mL」.
 _DOSE = re.compile(
     r"(?<![\d.,])(?P<n>\d+(?:[.,]\d+)?)\s?(?P<u>mg|㎎|mcg|㎍|μg|mL|ml|㎖|IU|캡슐|"
     r"정(?![가-힣])|알(?![가-힣]))(?![A-Za-z])")
 #: A legal consequence: 「형사처벌」 「벌금」 「면허 취소」.
 _PENALTY = re.compile(
-    r"형사\s?처벌|형사\s?책임|형사\s?입건|처벌|징역|벌금|과태료|구속|전과|면허\s?(?:취소|정지)|"
+    r"형사\s?처벌|형사\s?책임|형사\s?입건|처벌|징역|벌금|과태료|구속|(?<!이)전과(?!정)|면허\s?(?:취소|정지)|"
     r"criminal(?:ly)?\s+(?:charge\w*|liab\w*|prosecut\w*)|jail|prison", re.I)
 _MARK_AFTER = re.compile(r"\s?\(\s?확인\s?필요\s?\)")
 #: the rest of a condition clause: 「… 사고(인사사고, 뺑소니)라면 」
@@ -497,6 +519,33 @@ _RATE = re.compile(r"[가-힣]{0,4}당\s{0,2}\d|단가|요율|시급|일급|월�
 _CONSTANT = {"개월": {12, 24, 36}, "주": {52}, "일": {7, 365}, "시간": {24}, "분": {60}}
 
 
+_RELATIVE_DAY = re.compile(r"(?<![가-힣])(오늘|금일|지금|현재|어제|그제|그저께|내일|모레|글피)")
+_WEEK_DAY = re.compile(
+    rf"(?<![가-힣])(이번|다음|오는|돌아오는|다다음|지난)?\s{{0,2}}(?:주\s{{0,2}})?([{_WD}])요일")
+
+
+def _named_days(material: str, today: dt.date) -> list[dt.date]:
+    """The days the material names relative to today: 「오늘」·「지금」 (today itself, only when
+    said: 「어제 회의 메모」 does not make today a source), 「내일」, 「이번 주 금요일」, 「다음 주
+    월요일」, 「금요일까지」 (the coming one)."""
+    days = []
+    for m in _RELATIVE_DAY.finditer(material):
+        days.append(today + dt.timedelta(days={
+            "오늘": 0, "금일": 0, "지금": 0, "현재": 0, "어제": -1, "그제": -2, "그저께": -2,
+            "내일": 1, "모레": 2, "글피": 3}[m.group(1)]))
+    monday = today - dt.timedelta(days=today.weekday())
+    for m in _WEEK_DAY.finditer(material):
+        weekday = _WD.index(m.group(2))
+        word = m.group(1) or ""
+        weeks = {"다음": 1, "다다음": 2, "지난": -1}.get(word, 0)
+        day = monday + dt.timedelta(days=7 * weeks + weekday)
+        if not word or word in ("오는", "돌아오는"):
+            # the coming one
+            day = today + dt.timedelta(days=(weekday - today.weekday()) % 7)
+        days.append(day)
+    return days
+
+
 class Sources:
     """What the output may say: request, material, answers and code results, read once."""
 
@@ -504,8 +553,10 @@ class Sources:
                  today: dt.date | None = None, numbers: str = "all") -> None:
         computed_text = computed if isinstance(computed, str) else "\n".join(computed or [])
         text = f"{material or ''}\n{computed_text}"
-        if today and re.search(r"(?<![가-힣])(?:오늘|금일)(?!까지)", material or ""):
-            text += f"\n{today.isoformat()}"
+        if today and (named := _named_days(material or "", today)):
+            # the days the request names by today's date (r8 P19 「지금」 → 「오늘(10월 14일)」,
+            # P36 「이번 주 금요일」 → 10월 16일)
+            text += "\n" + "\n".join(d.isoformat() for d in named)
         self.text = text
         self.lower = re.sub(r"\s+", "", text).lower()
         self.days: set[tuple[int | None, int, int]] = set()
@@ -569,6 +620,10 @@ class Sources:
         # 「시차 9시간」: the other side's clock for every time given
         for shift in {int(n) for n in re.findall(r"시차\s{0,3}(?:는|가)?\s{0,2}(\d{1,2})\s{0,2}시간", text)}:
             self.hours |= {(h + d) % 24 for h in set(self.hours) for d in (shift, -shift)}
+        # 「A2:A6」, 「B1:M1」: the rows a cell range spans are the person's (r8 P46 「6행까지」)
+        text += "".join(f"\n{r}행" for a, b in re.findall(
+            r"(?<![A-Za-z])[A-Z]{1,3}(\d{1,7}):[A-Z]{1,3}(\d{1,7})(?!\d)", material or "")
+            for r in {int(a), int(b)})
         number_text = text if numbers == "all" else f"{_said_by_person(material)}\n{computed_text}"
         number_text = _native_digits(number_text)
         self.values: list[tuple[float, str, int]] = []
@@ -1068,7 +1123,8 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
         line = lines[n["line"]]
         # an example the answer labels as one, a statutory figure, or the line's own sum
         if _illustrative(line, m.start()) or _statutory(n["value"], n["unit"], line) \
-                or _worked_in_line(n, numbers) or n["line"] in options["_assumed_lines"] \
+                or _worked_in_line(n, numbers) or _span_of_line(n, line) \
+                or n["line"] in options["_assumed_lines"] \
                 or _assumed(line, m.start()):
             continue
         start = m.start("num") if m.group("sign") is None else m.start()
@@ -1304,8 +1360,10 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
             return
         if sources.counted(y, mo, d) or assumed(m.start()):
             return
-        if y is not None and (y, mo, d) in _worked_dates(line):
-            # 「DATE(2026,13,1)은 2027-01-01」: the formula's own date (r7 P46)
+        worked = _worked_dates(line)
+        if (y, mo, d) in worked or (y is None and any((wm, wd) == (mo, d) for _, wm, wd in worked)):
+            # 「DATE(2026,13,1)은 2027-01-01」, 「`DATE(2026,1,31)`로 쓰면 1월 31일」: the
+            # formula's own date (r7, r8 P46)
             return
         if d in sources.monthly and (mo in sources.months or y is None):
             # 「매월 1일」 in a month the sources name (r7 A16-T2 「11월 1일」)

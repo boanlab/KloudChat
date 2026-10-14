@@ -2,7 +2,7 @@
 # the first that matches given to the outline and the draft.
 #
 # An entry is either a rule of its own (`match`: a pattern on the instruction, `rule`: the
-# text), or `format = "<doc_formats id>"`: the rule the template bound to that format carries in its
+# text, `unless`: a pattern that keeps it off), or `format = "<doc_formats id>"`: the rule the template bound to that format carries in its
 # `genre.md`, matched on the same words `doc_formats` reads (case-insensitive). A template picked
 # for the document (shipped or a person's) gives its own rule directly and skips this list.
 
@@ -97,5 +97,7 @@ rule = '''Genre: 공문(시행문), in the form of the 행정업무운영 편람
 
 [[genres]]
 id = "notice"
-match = '안내문|공지|가이드라인|규정|정책'
+# the notice is the document asked for, not its topic: 「가이드라인 동향을 조사해서 보고서로」 is a report
+match = '안내문|공지\s{0,2}(?:문|사항)|공지(?:를|을)?\s{0,3}(?:써|작성|만들|올릴)|(?:가이드라인|규정|정책|지침)(?:\s{0,3}(?:안|초안))?(?:을|를)?\s{0,3}(?:써|작성|만들어\s{0,2}(?:줘|주))'
+unless = '조사|동향|보고서'
 rule = '''Genre: 안내·정책 문서. For each item, principle, allowed, forbidden and an example, briefly. No recommendation or summary section; put the effective date and contact at the end.'''

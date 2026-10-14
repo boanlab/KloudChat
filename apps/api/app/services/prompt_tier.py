@@ -15,7 +15,8 @@ from app.services import model_tier
 
 #: The one anti-fabrication line a strong writer gets in place of the many rules.
 ANTI_FABRICATION = (
-    "Don't invent specific facts, names, figures, quotations or sources; when you assume "
+    "Don't invent specific facts, names, dates, figures, quotations or sources — dates "
+    "and names come only from the request, the material or tool results; when you assume "
     "something, say so."
 )
 

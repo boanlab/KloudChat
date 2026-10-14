@@ -410,23 +410,25 @@ _FORMAT_PATTERNS: dict[str, re.Pattern[str]] = {
 }
 
 #: genre rules from `app/genres.toml`, in order
-def _load_genres() -> tuple[tuple[re.Pattern[str], str], ...]:
+def _load_genres() -> tuple[tuple[re.Pattern[str], str, re.Pattern[str] | None], ...]:
     import tomllib
     from pathlib import Path
 
     raw = tomllib.loads((Path(__file__).resolve().parent.parent / "genres.toml")
                         .read_text(encoding="utf-8"))
-    out: list[tuple[re.Pattern[str], str]] = []
+    out: list[tuple[re.Pattern[str], str, re.Pattern[str] | None]] = []
     for entry in raw.get("genres") or []:
         if fmt := str(entry.get("format") or ""):
             if fmt in _FORMAT_GENRES:
-                out.append((_FORMAT_PATTERNS[fmt], _FORMAT_GENRES[fmt]))
+                out.append((_FORMAT_PATTERNS[fmt], _FORMAT_GENRES[fmt], None))
             continue
-        out.append((re.compile(str(entry["match"])), str(entry["rule"])))
+        unless = str(entry.get("unless") or "")
+        out.append((re.compile(str(entry["match"])), str(entry["rule"]),
+                    re.compile(unless) if unless else None))
     return tuple(out)
 
 
-_GENRES: tuple[tuple[re.Pattern[str], str], ...] = _load_genres()
+_GENRES: tuple[tuple[re.Pattern[str], str, re.Pattern[str] | None], ...] = _load_genres()
 
 
 _OWN_GENRES = re.compile(
@@ -541,8 +543,8 @@ def _genre_rule(request: str, fmt: doc_formats.DocFormat | None = None,
         return _FORMAT_GENRES[fmt.id]
     # ask's first paragraph first: memo lines don't change the genre
     for instruction in dict.fromkeys((lead_instruction(request), instruction_part(request))):
-        for pattern, rule in _GENRES:
-            if pattern.search(instruction):
+        for pattern, rule, unless in _GENRES:
+            if pattern.search(instruction) and not (unless and unless.search(instruction)):
                 return rule
     return ""
 
