@@ -294,10 +294,11 @@ def test_a_judge_s_reasoning_never_reaches_the_step():
 
     why = ("자료의 최종 담당은 「미정」일 수 있다(판정: 각자 본인에게 해당하므로 담당자가 "
            "특정되지 않음). 확인 필요.")
-    assert report.reader_note("owner_change", why) == "자료의 최종 담당은 「미정」일 수 있다. 확인 필요."
+    assert report.reader_note("owner_change", why) \
+        == "자료의 최종 담당은 「미정」일 수 있다. 확인 필요."
     # r8 L27L A04-T2: 「표 3」 read as a value, the judge's reasoning shown
-    bound = ("「60」은 자료에서 「화상회의 동시 참여 인원 (조건)」의 값일 수 있다(문맥상 '최저 연비 "
-             "비용'을 선택하는 기준을 설명하는 문장 안에 포함되어 있어). 확인 필요.")
+    bound = ("「60」은 자료에서 「화상회의 동시 참여 인원 (조건)」의 값일 수 있다(문맥상 "
+             "'최저 연비 비용'을 선택하는 기준을 설명하는 문장 안에 포함되어 있어). 확인 필요.")
     assert report.reader_note("number_binding", bound) \
         == "「60」은 자료에서 「화상회의 동시 참여 인원 (조건)」의 값일 수 있다. 확인 필요."
     # a web dispute keeps what the page says
