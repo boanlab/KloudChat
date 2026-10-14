@@ -700,7 +700,15 @@ _CHECK_RESULT = re.compile(
     r"|^\W{0,4}(?:일정|날짜|요일|문구|최종)?\s?(?:점검|검증|검산|검수)\s?(?:결과|에서)?\s?[:：]?\s"
     r"[^\n]{0,80}?(?:0\s?건|없습니다|없고|맞습니다|맞고|일치합니다|일치하고|통과)"
     r"|(?:요일|날짜)[^\n.]{0,60}?(?:실제\s?)?달력(?:과|이|와)\s?(?:모두\s?)?일치합니다"
-    r"|차단\s?(?:\(block\)\s?)?(?:항목|값|표현)\S{0,2}\s?\d{1,3}\s?건"
+    r"|차단\s?(?:\(block\)\s?)?(?:항목|값|표현|사항)\S{0,2}\s?\d{1,3}\s?건"
+    # a script's coverage told as a sentence (r8 A16-T1 「항목 9개 중 노트 7 · 뺌 2 · 빠짐 0,
+    # 점검 차단 사항 0건…입니다」, A16-T2 「두 문서 모두 항목 7개 대비 빠짐 0, 차단 0으로 검증을
+    # 마쳤습니다」)
+    r"|\d{1,3}\s?개\s?(?:중|대비)[^\n.]{0,60}?(?:빠짐|뺌|누락|차단)\s?\d"
+    r"|(?:빠짐|뺌|누락|차단)\s?\d{1,3}\s?(?:건|개)?\s?(?:으로|이고|이며)?\s?(?:검증|점검|검수)"
+    r"(?:을|를)?\s?마쳤"
+    # a script's count told bare (r8 A12-T1 「block 0입니다.」)
+    r"|^\W{0,4}(?:block|check)\s?\d{1,3}\s?(?:건|개)?\s?(?:입니다|이고|이며|,)"
     # a script's verdict by its own words (r7 A15-T1 「점검 결과: 콜드메일 check 0 block …」)
     r"|(?<![A-Za-z])(?:check|claims|scan)\s?\d{1,3}\s?block"
     # a check told as done (r7 A02-T1 「근거 대조 점검을 마쳤고, 메모에 없는 수치·날짜는
@@ -754,9 +762,30 @@ def _latin_share(text: str) -> float:
     return latin / (hangul + latin) if hangul + latin else 0.0
 
 
-def _english_note(paragraph: str) -> bool:
-    return (len(_LATIN.findall(paragraph)) >= 20 and _latin_share(paragraph) >= 0.7
-            and bool(_EN_NOTE_OPEN.match(paragraph)) and bool(_EN_NOTE_TOPIC.search(paragraph)))
+def _english_note(paragraph: str, *, opening: bool = False) -> bool:
+    """`opening`: the answer's first paragraph, ahead of Korean text — there a first-person
+    plan of the work is a note even without naming the task (r8 P05 flash: 「I need to design
+    a vegetarian meal for 2 servings … so I'm thinking through …, then calculating …」)."""
+    if not (len(_LATIN.findall(paragraph)) >= 20 and _latin_share(paragraph) >= 0.7
+            and _EN_NOTE_OPEN.match(paragraph)):
+        return False
+    return bool(_EN_NOTE_TOPIC.search(paragraph)
+                or (opening and _EN_NOTE_PLAN.search(paragraph)))
+
+
+#: the writer planning its own work in English: 「I'm thinking through …」, 「then calculating
+#: the breakdown」, 「to make sure it hits those targets」
+_EN_NOTE_PLAN = re.compile(
+    r"\b(?:I'm\s(?:thinking|going\sto|planning|considering)|thinking\sthrough"
+    r"|I(?:'ll|\swill)\s(?:start|first|now|then|calculate|compute|check|draft|write|structure)"
+    r"|make\ssure\sit|then\s(?:calculat|comput|check|verify|draft|writ)|let\sme)", re.I)
+#: an English answer's opening line narrating a tool step (r8 P53 flash: 「Let me re-run with a
+#: fixed reference date so the 90-day window is deterministic and the edge cases actually
+#: show.」): one sentence, ahead of the answer
+_EN_TOOL_STEP = re.compile(
+    r"^\s{0,4}(?:Let me|I'll|I will|Now I'll|Now let me|Next, I'll)\s(?:\w+\s){0,3}?"
+    r"(?:re-?run|run|search|look\sup|fetch|check|calculate|compute|execute|test|try|retry"
+    r"|verify|query)\b[^\n]{0,240}?[.!:]\s*$", re.I)
 
 
 def _structural(paragraph: str) -> bool:
@@ -808,7 +837,14 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
     if korean:
         # an English preamble of notes before the answer: cut through its last English paragraph
         first = next((i for i, p in enumerate(paragraphs) if p.strip()), None)
-        if first is not None and _english_note(paragraphs[first]):
+        planned = first is not None and not _english_note(paragraphs[first]) \
+            and _english_note(paragraphs[first], opening=True)
+        if planned and (_ASKED_ENGLISH.search(request or "") or first + 1 >= len(paragraphs)
+                        or _latin_share(paragraphs[first + 1]) >= 0.5):
+            # a plan-shaped opening is a note only as the one English paragraph before Korean
+            # text, never an English deliverable the person asked for
+            planned = False
+        if first is not None and (planned or _english_note(paragraphs[first])):
             heading = next((i for i, p in enumerate(paragraphs) if _structural(p)),
                            len(paragraphs))
             last = max((i for i in range(first, heading) if _latin_share(paragraphs[i]) >= 0.6),
@@ -821,6 +857,13 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
         whole_korean = _latin_share("\n".join(paragraphs)) < 0.5
         paragraphs = [p for p in paragraphs if _structural(p) or not _english_note(p)
                       or not (whole_korean or _EN_NOTE_TASK.search(p))]
+    else:
+        # an English answer: its first paragraph, one line narrating a tool step, goes
+        first = next((i for i, p in enumerate(paragraphs) if p.strip()), None)
+        if first is not None and _EN_TOOL_STEP.match(paragraphs[first].strip()) \
+                and "\n" not in paragraphs[first].strip() \
+                and len("\n\n".join(paragraphs[first + 1:]).strip()) >= 80:
+            paragraphs = paragraphs[first + 1:]
     kept: list[str] = []
     fenced = False
     opening = True  # no text line yet

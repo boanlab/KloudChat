@@ -18,6 +18,7 @@ from app.core import logs
 from app.core.config import settings
 from app.models.chat import SessionKind
 from app.services import (
+    asked_form,
     block_fences,
     design_templates,
     diagram_render,
@@ -488,6 +489,43 @@ def material_complete(request: str, format_id: str | None, *, has_files: bool = 
     return (has_files or _given_memo(instruction)) and not _LOOKS_UP.search(_ask_lines(instruction))
 
 
+#: an ask that points at the material given with it: 「아래 초록과 실험 결과로」, 「아래 메모로」,
+#: 「이 변경 목록을 정리해 줘」
+_FROM_GIVEN = re.compile(
+    r"(?:아래|위|이|다음|첨부(?:한|된)?|붙인|붙여\s{0,2}넣은|준|주신)\s{0,2}"
+    r"(?:[가-힣]{1,10}\s{0,2}(?:와|과|및|,)\s{0,2}){0,3}[가-힣 ]{0,10}"
+    r"(?:자료|내용|메모|초안|초록|결과|목록|기록|정보|표|데이터|보도\s{0,2}자료|발표문|공지|문서|원고)"
+    r"\s{0,2}(?:만으로|만|으로|로|대로|를|을|에서|기반으로|바탕으로|참고해)")
+#: material the person marks as made up or complete: 「(가상)」, 「아래 자료가 전부임」 — the web
+#: holds nothing about it (r8 A12-T2, A13-T2, A16-T2: searches for a made-up product)
+_SELF_CONTAINED = re.compile(
+    r"\(\s{0,2}가상|가상\s{0,2}[)—-]|가상\s{0,2}(?:회사|제품|자료|기업|서비스|사례)|"
+    r"(?:아래|위)(?:\s{0,2}(?:자료|내용))?(?:가|이)\s{0,2}전부")
+
+
+def given_material_suffices(request: str, *, has_files: bool = False) -> bool:
+    """The ask works on material the person gives (pasted under it, attached, or marked made
+    up) and names nothing to look up: an automatic web search adds only unrelated pages (r8
+    A09-T1: 19 searches for a talk built from its own abstract and results; A02-T2: a made-up
+    press release checked on the web). An explicit 「조사해서」, 「찾아봐」, 「최신」 still
+    searches."""
+    instruction = instruction_part(request)
+    asks = f"{lead_instruction(request)}\n{_ask_lines(instruction)}"
+    if requests_web_search(instruction) or _EXPLICIT_LOOKUP.search(asks):
+        return False
+    if _SELF_CONTAINED.search(request):
+        # 「아래 자료가 전부임」: even a 「고객 사례 한 줄」 comes from it
+        return True
+    if asks_public_sources(request) or _LOOKS_UP.search(asks):
+        return False
+    return (has_files or _carries_material(request)) and bool(
+        _FROM_GIVEN.search(lead_instruction(request)))
+
+
+#: an ask to look something up, whatever material comes with it
+_EXPLICIT_LOOKUP = re.compile(r"조사|검색|찾아|최신|요즘|현재|공개\s{0,2}(?:자료|정보)")
+
+
 #: formats that cite outside work even with a memo
 _RESEARCH_FORMATS = frozenset({"plan", "paper", "term", "review", "lab", "proposal"})
 #: forms and notices: the person's facts only
@@ -545,8 +583,15 @@ def _genre_rule(request: str, fmt: doc_formats.DocFormat | None = None,
     for instruction in dict.fromkeys((lead_instruction(request), instruction_part(request))):
         for pattern, rule, unless in _GENRES:
             if pattern.search(instruction) and not (unless and unless.search(instruction)):
-                return rule
+                # the request's own parts come first (r8 A07: a genre's closing 「시행일·문의처」
+                # over a report that named its sections)
+                return f"{rule} {GENRE_YIELD}" if asked_form.asked(request) else rule
     return ""
+
+
+#: told after a genre rule when the request names its own form (`asked_form`)
+GENRE_YIELD = ("The request names its own parts, order or counts: those come first, and this "
+               "genre's shape applies only where the request leaves the form open.")
 
 
 def _plain_register(prompt: str) -> str:

@@ -788,17 +788,26 @@ def reverted_answer(code_outputs: list[str], *, korean: bool = True) -> str:
     return _note(_REVERTED, _REVERTED_EN, korean) + "\n\n```text\n" + body + "\n```"
 
 
-def _values_step(step_id: str, label: str, count: int, *, korean: bool = True) -> dict:
-    """A finished step saying how many answer values were set to computed ones."""
+def _values_step(step_id: str, label: str, count: int, *, korean: bool = True,
+                 marked: bool = False) -> dict:
+    """A finished step saying how many answer values were set to computed ones (`marked`:
+    marked for checking instead)."""
+    detail = (f"값 {count}개 확인 필요 표시" if korean else f"{count} value(s) marked") if marked \
+        else (f"값 {count}개 맞춤" if korean else f"{count} value(s) set")
     return {"type": "step", "category": "thinking", "id": step_id, "label": label, "status": "done",
-            "detail": f"값 {count}개 맞춤" if korean else f"{count} value(s) set"}
+            "detail": detail}
 
 
-def code_checked(answer: str, code_outputs: list[str]) -> tuple[str, list[str]]:
+def code_checked(answer: str, code_outputs: list[str], *,
+                 mark: bool = False) -> tuple[str, list[str]]:
     """`answer` with numbers naming a value the code printed set to that value (the latest
-    run's value for a quantity printed twice): `(answer, corrections)`."""
+    run's value for a quantity printed twice): `(answer, corrections)`. A value the code
+    printed for the same row under another label is left as written (r8 LFLF A06-T1:
+    「사회과학대학 4.17점」 became the row's sample size, 「24점」). `mark`: a clash is marked
+    「(확인 필요)」, never rewritten (every writer since r8)."""
     printed = [printed_text(o) for o in code_outputs]
-    return calc_check.check_markdown(answer, calc_check.printed_values(printed), printed)
+    return calc_check.check_markdown(answer, calc_check.printed_values(printed), printed,
+                                     mark=mark, keep_row_values=True)
 
 
 def _text_of(message: dict) -> str:
@@ -993,9 +1002,11 @@ MATERIAL_SOURCE = "material:"
 
 
 def _number_sources(
-    content: str, sources: list[str], call: dict[str, Any], titles: dict[str, str] | None = None
+    content: str, sources: list[str], call: dict[str, Any], titles: dict[str, str] | None = None,
+    seen: dict[str, str] | None = None,
 ) -> str:
-    """Renumber tool-result `[n]` turn-wide and register URLs in `sources`."""
+    """Renumber tool-result `[n]` turn-wide and register URLs in `sources`; `seen` gathers,
+    by URL, the title, snippet and excerpt the writer read under each number."""
     lines = content.split("\n")
     if call["name"] == "search_knowledge":
         # Same article keeps one number across the turn.
@@ -1004,6 +1015,7 @@ def _number_sources(
                 label = match.group(2).strip()
                 lines[i] = f"[{_source_number(MATERIAL_SOURCE + label, sources)}] 자료: {label}"
         return "\n".join(lines)
+    entries: list[tuple[int, str]] = []
     for i, line in enumerate(lines[:-1]):
         match = _NUMBERED.match(line)
         if not match:
@@ -1011,8 +1023,14 @@ def _number_sources(
         url = lines[i + 1].strip().rstrip(".,;:")
         if _URL.fullmatch(url):
             lines[i] = f"[{_source_number(url, sources)}] {match.group(2)}"
+            entries.append((i, url))
             if titles is not None and (title := match.group(2).strip()) and url not in titles:
                 titles[url] = title
+    if seen is not None:
+        # each entry's text runs to the next numbered entry
+        for k, (i, url) in enumerate(entries):
+            end = entries[k + 1][0] if k + 1 < len(entries) else len(lines)
+            seen[url] = (seen.get(url, "") + "\n" + "\n".join(lines[i:end]))[-12000:]
     content = "\n".join(lines)
     if call["name"] == "fetch_url" and not content.startswith("오류:"):
         try:
@@ -1056,8 +1074,69 @@ _BARE_DOUBLE = re.compile(r"\[\[(\d{1,2})\]\](?!\()")
 _CITATION = re.compile(r"(?<!\[)\[(\d{1,2}(?:\s*[,，\-–]\s*\d{1,2})*)\](?!\()")
 
 
-def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
-    """Link `[n]` citations to sources (code blocks untouched); returns answer and cited numbers."""
+#: content words of a cited claim and of a source's text
+_CLAIM_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{3,}|\d[\d,.]{1,15}")
+#: words a claim and an unrelated page share anyway
+_COMMON_CLAIM = frozenset({
+    "있습", "있다", "합니", "됩니", "하는", "되는", "경우", "기준", "이상", "이하", "포함",
+    "제공", "가능", "사용", "이용", "위해", "통해", "대한", "따라", "그리", "또는", "the",
+    "and", "for", "with", "https", "http", "www", "com"})
+_CELL_OR_SENTENCE = re.compile(r"[|]|(?<=[.!?。])\s")
+
+
+def _claim_words(text: str) -> set[str]:
+    out = set()
+    for w in _CLAIM_WORD.findall(text or ""):
+        if w[0].isdigit():
+            w = w.replace(",", "").rstrip(".")
+            if len(w) >= 2:
+                out.add(w)
+        else:
+            w = w[:2] if "가" <= w[0] <= "힣" else w.lower()
+            if w not in _COMMON_CLAIM:
+                out.add(w)
+    return out
+
+
+def _claim_at(text: str, at: int) -> str:
+    """The cell or sentence a citation at `at` closes, with a table row's first cell."""
+    start = text.rfind("\n", 0, at) + 1
+    line = text[start:text.find("\n", at) if "\n" in text[at:] else len(text)]
+    head = text[start:at]
+    pieces = _CELL_OR_SENTENCE.split(head)
+    claim = pieces[-1] if pieces[-1].strip(" *[]0-9") else (pieces[-2] if len(pieces) > 1 else "")
+    if line.lstrip().startswith("|"):
+        first = line.strip().strip("|").split("|")[0]
+        claim = f"{first} {claim}"
+    return claim
+
+
+#: content words a page needs before a citation of it is judged (a title alone is too little)
+_PAGE_WORDS = 8
+
+
+def _unrelated(claim: str, page: str) -> bool:
+    """Whether the cited claim shares no content word with the page the writer read under
+    that number (r8 L27F A11-T2: 네이버웍스 prices linked to a msn article on streaming
+    subscriptions). A claim of fewer than two words, a page of fewer than eight words, or a
+    page in another script than the claim's is not judged."""
+    words = _claim_words(re.sub(r"\[\[?\d{1,3}\]\]?(?:\([^)\s]{1,500}\))?", " ", claim))
+    read = _claim_words(_URL.sub(" ", page))
+    if len(words) < 2 or len(read) < _PAGE_WORDS:
+        return False
+    hangul = [w for w in words if "가" <= w[0] <= "힣"]
+    if hangul and sum(1 for w in read if "가" <= w[0] <= "힣") < _PAGE_WORDS:
+        # a page in another language says it in other words: not judged
+        return False
+    return not words & read
+
+
+def _link_citations(answer: str, sources: list[str],
+                    seen: dict[str, str] | None = None) -> tuple[str, list[int]]:
+    """Link `[n]` citations to sources (code blocks untouched); returns answer and cited numbers.
+
+    `seen`: what the writer read under each URL; a number whose page shares no word with the
+    sentence citing it is taken out, not linked to a page that does not say it."""
     cited: list[int] = []
 
     def numbers(spec: str) -> list[int]:
@@ -1070,10 +1149,17 @@ def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
                 found.append(int(part))
         return found
 
-    def link(match: re.Match[str]) -> str:
+    def link(match: re.Match[str], piece: str = "") -> str:
         wanted = numbers(match.group(1))
         if not wanted or any(not 1 <= n <= len(sources) or not sources[n - 1] for n in wanted):
             return match.group(0)
+        if seen:
+            claim = _claim_at(piece, match.start())
+            kept = [n for n in wanted if sources[n - 1].startswith(MATERIAL_SOURCE)
+                    or not _unrelated(claim, seen.get(sources[n - 1], ""))]
+            if not kept:
+                return "\x00"
+            wanted = kept
         for n in wanted:
             if n not in cited:
                 cited.append(n)
@@ -1092,7 +1178,10 @@ def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
                 # the writer linked the article itself: the list keeps its id too
                 sources[n - 1] = url
     for i in range(0, len(pieces), 2):
-        pieces[i] = _CITATION.sub(link, pieces[i])
+        piece = pieces[i]
+        linked = _CITATION.sub(lambda m, piece=piece: link(m, piece), piece)
+        # a number taken out leaves no gap: 「강하고 [1][2], 」 → 「강하고, 」
+        pieces[i] = re.sub(r"[ \t]{0,4}\x00+", "", linked)
     return "```".join(pieces), sorted(cited)
 
 
@@ -1590,6 +1679,8 @@ async def run_turn(
     #: turn that cites 「[6]」 again means the same source, r5 P16·P27·P56); "" where an
     #: earlier number is unknown.
     sources, source_titles = _earlier_sources(messages)
+    #: what the writer read under each URL this turn (title, snippet, excerpt)
+    source_seen: dict[str, str] = {}
     #: URLs earlier answers gave (not those they already flagged): found then, not written
     #: from memory now.
     earlier_urls = {u for m in messages if m.get("role") == "assistant"
@@ -2388,7 +2479,8 @@ async def run_turn(
                 ctx.searched.append(result.content)
             if not result.failed and call["name"] in _CODE_TOOLS:
                 code_outputs.append(result.content)
-            result.content = _number_sources(result.content, sources, call, source_titles)
+            result.content = _number_sources(result.content, sources, call, source_titles,
+                                             source_seen)
             if call["name"] == "search_knowledge" and not result.failed:
                 _collect_passages(result.content, material_texts)
             conversation.append(
@@ -2719,14 +2811,17 @@ async def run_turn(
             yield {"type": "delta", "text": reverted}
             answer = reverted
         else:
-            checked, fixes = code_checked(answer, code_outputs)
+            # marked for every writer: a misread row once set a correct 4.17 to 24
+            # (docs/architecture.md, "Mechanisms by model group")
+            checked, fixes = code_checked(answer, code_outputs, mark=True)
             if fixes:
-                # A number naming a printed value is that value (a later run's, if rerun).
-                log.info("answer values set back to the code's printed ones: %s", fixes[:12])
+                # A number naming a printed value is that value (a later run's, if rerun), or
+                # marked against it.
+                log.info("answer values checked against the code's printed ones: %s", fixes[:12])
                 yield {"type": "retract", "text": answer}
                 yield {"type": "delta", "text": checked}
                 yield _values_step("code-values", "코드 출력값 대조", len(fixes),
-                                   korean=reply_korean)
+                                   korean=reply_korean, marked=True)
                 answer = checked
     if schedule_request and not preflight_tool:
         checked, fixes = scheduling.check(answer, schedule_request)
@@ -2753,18 +2848,18 @@ async def run_turn(
         # what follows the list (a closing paragraph) stays after the body
         rest = answer[end:].strip()
         linked, cited = _link_citations(
-            answer[:at].rstrip() + ("\n\n" + rest if rest else ""), sources)
+            answer[:at].rstrip() + ("\n\n" + rest if rest else ""), sources, source_seen)
         if not cited or not all(1 <= n <= len(sources) and sources[n - 1] for n in numbers):
             # kept as written (its numbers not relinked), and no second list
             own_list = answer[at:end]
-            linked, cited = _link_citations(answer[:at], sources)
+            linked, cited = _link_citations(answer[:at], sources, source_seen)
             linked += own_list
             if rest:
-                tail, more = _link_citations(answer[end:], sources)
+                tail, more = _link_citations(answer[end:], sources, source_seen)
                 linked += tail
                 cited = sorted({*cited, *more})
     else:
-        linked, cited = _link_citations(answer, sources)
+        linked, cited = _link_citations(answer, sources, source_seen)
     if linked != answer:
         # Mid-text citations: answer re-sent whole.
         yield {"type": "retract", "text": answer}

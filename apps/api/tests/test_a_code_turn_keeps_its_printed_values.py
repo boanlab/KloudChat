@@ -212,8 +212,11 @@ async def test_a_number_naming_a_printed_value_is_set_to_it_and_said(monkeypatch
                  "4.75입니다."},
     ], snapshots, hops=3)
     text = await _turn([_code(ran, [_PRINTED])])
-    assert text.startswith(
-        "## 3. SRTF (선점)\n\n**평균 대기시간: 3.00**\n\nFCFS 평균 대기시간은 4.75")
+    # the textbook run of the same table sets the waiting times (scheduling.check, a known
+    # value); the code-values pass only marks, and its mark goes with the corrected value
+    assert text.startswith("## 3. SRTF (선점)\n\n**평균 대기시간: 3")
+    assert "0.50" not in text and "FCFS 평균 대기시간은 4.75" in text
+    assert "(확인 필요)" not in text
     # said as a step, not a footer on the answer (R2W-04)
     assert "바로잡았습니다" not in text
 

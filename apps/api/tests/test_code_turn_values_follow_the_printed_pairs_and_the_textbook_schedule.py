@@ -170,5 +170,6 @@ async def test_a_code_value_correction_is_a_step_not_a_footer(monkeypatch):
     _stream(monkeypatch, [{"calls": [_call(1)]}, {"text": "FCFS 평균 대기시간은 4.70입니다."}],
             snapshots)
     text, steps = await _turn([printed], ran)
+    # set by the textbook schedule run (a known value), the code-values mark dropped with it
     assert text == "FCFS 평균 대기시간은 4.75입니다."
     assert any(s["id"] == "code-values" for s in steps)

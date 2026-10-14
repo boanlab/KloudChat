@@ -15,6 +15,8 @@ from app.services import (
     cover_letter,
     current_evidence,
     freshness,
+    hangul,
+    hotlines,
     internal_words,
     output_language,
     red_flags,
@@ -39,7 +41,7 @@ class Normalize(Base):
         before = {row.get("id") for row in bundle.document.kept_steps}
         await self.apply(bundle, ctx)
         for row in bundle.document.kept_steps:
-            if row.get("id") == "answer_checks" and "answer_checks" not in before:
+            if row.get("id") in ("answer_checks", "hotline_fix") and row.get("id") not in before:
                 yield {"type": "step", **row}
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
@@ -100,6 +102,22 @@ class Normalize(Base):
         normalized, _ = weekdays.fix_weekdays(
             normalized, context=f"{req.text}\n{bundle.material.given}",
             today=req.today if isinstance(req.today, dt.date) else None)
+        # Cyrillic and kana slipped into Korean words (r8 P07 「턱 인тягивание」, P16 「흥미 или
+        # 즐거움」), every writer: a code repair costs nothing where there is none
+        normalized, slips = hangul.repair_mixed_script(
+            normalized, f"{req.text}\n{bundle.material.given}", keep_sentences=True)
+        if slips:
+            log.info("mixed script repaired in session %s: %s", req.session_id, slips[:6])
+        # a crisis line's wrong number set to the official one (r8 P16 「1599-9195」 → 109)
+        normalized, lines = hotlines.fix(normalized, "\n".join([
+            req.text, bundle.material.given, req.check_material, *req.tool_outputs,
+            *req.evidence, *(str(m.get("content") or "") for m in req.messages
+                             if m.get("role") == "user")]))
+        if lines:
+            bundle.document.kept_steps = [
+                row for row in bundle.document.kept_steps if row.get("id") != "hotline_fix"
+            ] + [{"category": "thinking", "id": "hotline_fix", "status": "done",
+                  "label": "위기 상담 번호를 공식 번호로 고침", "detail": ", ".join(lines)[:300]}]
         bundle.document.answer = normalized
 
 

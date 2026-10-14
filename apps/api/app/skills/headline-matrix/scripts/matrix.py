@@ -60,6 +60,11 @@ def similarity(a: str, b: str) -> float:
     return len(x & y) / len(x | y) if x | y else 0.0
 
 
+#: candidates when the request names no number (r8 A12-T2: a default 25 filled the grid with
+#: variants of the same few facts)
+DEFAULT_COUNT = 12
+
+
 def quotas(count_: int, angles: list[str]) -> dict[str, int]:
     base, extra = divmod(count_, len(angles))
     return {angle: base + (1 if n < extra else 0) for n, angle in enumerate(angles)}
@@ -67,7 +72,7 @@ def quotas(count_: int, angles: list[str]) -> dict[str, int]:
 
 def scaffold(options: dict) -> dict:
     angles = [str(a) for a in options.get("angles") or ANGLES]
-    total = int(options.get("count") or 25)
+    total = int(options.get("count") or DEFAULT_COUNT)
     if not 1 <= total <= 100:
         raise ValueError("count 는 1~100")
     facts = [str(f) for f in options.get("facts") or [] if str(f).strip()]

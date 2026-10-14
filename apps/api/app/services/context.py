@@ -886,6 +886,32 @@ _WEATHER_WORDS = re.compile(
 SEARCH_QUERY_LIMIT = 120
 
 
+#: where the actual question starts after a role-play setup: 「첫 요청: …」, 「질문: …」
+_SUBJECT_CUE = re.compile(
+    r"(?:첫\s{0,2}(?:요청|질문|상황)|내\s{0,2}(?:질문|상황|증상)|질문|요청|상황|증상)"
+    r"\s{0,2}[:：]\s{0,2}")
+#: a sentence that sets the answer's role or form, not its subject: 「가상 의사가 되어 줘」,
+#: 「진단과 치료 계획만 답하고 다른 건 쓰지 마」
+_SETUP_SENTENCE = re.compile(
+    r"(?:가|이)?\s{0,2}되어\s{0,2}(?:줘|주세요)|역할(?:을|로)|(?:쓰지|하지|붙이지|달지)\s{0,2}마"
+    r"|만\s{0,2}(?:답하|써|알려)|(?:말하면|물으면|보내면|주면)\s")
+
+
+def search_subject(request: str) -> str:
+    """The question a search looks up: after a role-play setup, the part the person asks
+    about (r8 P14: the whole 「가상 의사가 되어 줘 … 첫 요청: 며칠째 두통과 어지럼증이 있어」
+    as the query found nothing); else `request` as it is."""
+    text = request or ""
+    cues = list(_SUBJECT_CUE.finditer(text))
+    if cues and cues[-1].end() < len(text) and _SETUP_SENTENCE.search(text[:cues[-1].start()]):
+        return text[cues[-1].end():].strip()
+    sentences = [x for x in re.split(r"(?<=[.!?。])\s+", text) if x.strip()]
+    kept = [x for x in sentences if not _SETUP_SENTENCE.search(x)]
+    if kept and len(kept) < len(sentences):
+        return " ".join(kept).strip()
+    return text
+
+
 def search_needs_planning(request: str) -> bool:
     return len(re.sub(r"\s+", " ", (request or "").strip())) > SEARCH_QUERY_LIMIT
 

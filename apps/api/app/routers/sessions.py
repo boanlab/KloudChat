@@ -161,6 +161,7 @@ from app.services.context import (
     search_needs_planning,
     search_plan,
     search_query,
+    search_subject,
     summary_block,
     weather_location,
     with_pictures,
@@ -1568,6 +1569,17 @@ def _advice_checks(keys: tuple[str, ...], advice: str | None) -> tuple[str, ...]
     from app.pipeline.check_stages import TRACE
 
     return (*keys, TRACE) if advice and TRACE not in keys else tuple(keys)
+
+
+def _material_only_turn(session: ChatSession, payload: Any, forced_tool: str | None,
+                        content: str, workspace: WorkspaceContext, *, published: bool) -> bool:
+    """A chat turn on 「auto」 search whose material the person gives and whose ask names
+    nothing to look up (`report.given_material_suffices`): the search tool is not offered.
+    A forced first search (a current fact, a hotline, advice) stays."""
+    return (session.kind is SessionKind.chat and payload.web_search == "auto"
+            and forced_tool is None and not published
+            and report_service.given_material_suffices(
+                content, has_files=_grounded_in_files(workspace)))
 
 
 def _grounded_in_files(workspace: WorkspaceContext) -> bool:
@@ -3961,7 +3973,9 @@ async def send_message(
     ):
         # Auto isn't renewed consent for an explicitly offline question
         effective_web_search, forced_tool = False, None
-    fresh_fact = published is None and (freshness.current_fact_required(content) or (
+    # the ask, not the material pasted under it, decides (r8 QMX A02-T2: a made-up press
+    # release forced a search)
+    fresh_fact = published is None and (freshness.current_fact_required(_ask_of(content)) or (
         fresh_followup_index is not None
         and freshness.current_fact_required(history[fresh_followup_index].content)
     ))
@@ -4087,6 +4101,15 @@ async def send_message(
         if forced_by_freshness and forced_tool == "web_search":
             forced_tool = None
             web_search_auto = payload.web_search == "auto"
+
+    if _material_only_turn(session, payload, forced_tool, content, workspace,
+                           published=published is not None):
+        # the person gave the material (pasted, attached or marked made up) and asked for
+        # nothing to be looked up: no automatic search, every model alike (r8 A02-T2, A12-T2,
+        # A16-T2: searches for a made-up press release and product)
+        effective_web_search = web_search_auto = False
+        candidate_tools = [t for t in candidate_tools if t.name != "web_search"]
+        strict_tools = [t for t in strict_tools if t.name != "web_search"]
 
     if (
         forced_tool == "web_search"
@@ -4862,8 +4885,13 @@ async def send_message(
                     skills_event=skills_event,
                     context_steps=context_steps,
                     outline_model=outline_model,
-                    # no network on strict-local
-                    web_search=effective_web_search and not strict_local,
+                    # no network on strict-local; on 「auto」 a talk built from the person's own
+                    # material looks nothing up (r8 A09-T1: 2–19 searches beside a given
+                    # abstract and results table)
+                    web_search=effective_web_search and not strict_local and not (
+                        payload.web_search == "auto"
+                        and report_service.given_material_suffices(
+                            content, has_files=_grounded_in_files(workspace))),
                 )
             ),
             media_type="text/event-stream",
@@ -4946,11 +4974,14 @@ async def send_message(
                     **search_hints(lookup_content),
                 },
             )
-        elif not search_needs_planning(lookup_content) and not (exact_reason and history):
+        elif not search_needs_planning(search_subject(lookup_content)) \
+                and not (exact_reason and history):
             # a follow-up forced by `exact_facts` leans on earlier turns: the model plans it
             preset_call = (
                 "web_search", {
-                    "query": search_query(lookup_content, prefer_primary=fresh_fact),
+                    # the question, not a role-play setup around it (r8 P14)
+                    "query": search_query(search_subject(lookup_content),
+                                          prefer_primary=fresh_fact),
                     **search_hints(lookup_content),
                 },
             )

@@ -861,7 +861,7 @@ what a group gets, and test both a self-hosted and a strong external writer.
 | Work notes and check reports (`internal_words.strip_work_notes`) | stripped, also an untagged English plan paragraph, an English tool-step opener, 「N개 중 … 확인」 report sentences | same | same |
 | Mixed script in a chat answer (`hangul.repair_mixed_script`) | on (Cyrillic and kana inside Korean words) | on | on |
 | Calculation time limit (`calc.DEADLINE`, `Calc.run`) | 240 s; a finished run is handed over unchecked; with none, the writer marks its own figures 「(추정)」 | same | same |
-| Code-printed values (`agent.code_checked`) | a row's own printed values are kept; a mismatch is marked, never rewritten | a mismatch is set to the code's value | as small external |
+| Code-printed values (`agent.code_checked`) | a row's own printed values are kept; a mismatch is marked, never rewritten | as self-hosted | as self-hosted |
 | Citation links (`agent._link_citations`) | a number whose page shares no word with the claim is dropped | same | same |
 | Repair replies (`verify.repair`) | only a sentence string (or `{sentence: …}`) is written into the text | same | same |
 | Deck table width (`deck._clean_rows`) | a wide, short table is transposed; else the five-column cap | same | same |

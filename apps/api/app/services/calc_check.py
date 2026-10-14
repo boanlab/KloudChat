@@ -122,6 +122,25 @@ class _Names:
     #: the code's printed lines: a written value printed beside a group the sentence names
     #: is that group's value, not a slip for the stated one
     printed: tuple[str, ...] = ()
+    #: mark a clash instead of setting it to the printed value (`check_markdown(mark=True)`)
+    mark: bool = False
+    #: every printed value by row (`check_markdown(keep_row_values=True)`): a written value
+    #: the code printed for the row (another label's) is that row's figure, never a slip
+    #: (r8 LFLF A06-T1: 사회과학대학 전반만족 4.17 set to the row's 표본 24)
+    by_row: dict[str, list[float]] | None = None
+
+    def rows_value(self, row: str, written: str) -> bool:
+        if self.by_row is None:
+            return False
+        try:
+            value = float(written.replace(",", ""))
+        except ValueError:
+            return False
+        if any(abs(value - v) < 1e-9 for v in (self.by_row or {}).get(row, ())):
+            return True
+        # printed on a line that names the row (「사회과학대학 n=24, 전반만족 4.17」)
+        token = re.compile(rf"(?<![\d.]){re.escape(written)}(?![\d])")
+        return bool(row) and any(row in line and token.search(line) for line in self.printed)
 
     def vouched(self, written: str, sentence: str, s: Stated) -> bool:
         """Whether `written` is printed on a line naming a group the sentence also names
@@ -359,10 +378,26 @@ def _clashes(text: str, context: str, names: _Names, stated: list[Stated]) -> li
     return out
 
 
-def _mend(text: str, clashes: list[Clash]) -> str:
+#: what a clash gets under `mark`: the written value stays, marked
+_MARK = "(확인 필요)"
+
+
+def _mend(text: str, clashes: list[Clash], mark: bool = False) -> str:
     for clash in sorted(clashes, key=lambda c: c.start, reverse=True):
+        if mark:
+            if text[clash.end:clash.end + len(_MARK) + 1].lstrip().startswith(_MARK):
+                continue
+            # after the unit: 「24점(확인 필요)」, never between a value and its unit
+            end = clash.end
+            if m := re.match(r"[%점명건개원배시간분초]{1,2}", text[end:]):
+                end += m.end()
+            text = text[:end] + _MARK + text[end:]
+            continue
         shown = _shown(clash.written, clash.stated)
         end = clash.end
+        # a value set from a known run drops an earlier pass's mark (「4.70(확인 필요)」 → 「4.75」)
+        if m := re.match(r"[%점명건개원배시간분초]{0,2}" + re.escape(_MARK), text[end:]):
+            text = text[:end + m.end() - len(_MARK)] + text[end + m.end():]
         if m := _PARTICLE.match(text, end):
             shown += _particle(shown, m.group(1))
             end = m.end()
@@ -383,10 +418,15 @@ def _check_text(text: str, context: str, names: _Names, stated: list[Stated],
             if i % 2 or not piece:
                 out.append(piece)
                 continue
-            clashes = _clashes(piece, context, names, stated)
-            found.extend(f"「{c.written}」 → {c.stated.text} ({c.stated.row} {c.stated.label})"
-                         for c in clashes)
-            out.append(_mend(piece, clashes))
+            clashes = [c for c in _clashes(piece, context, names, stated)
+                       if not names.rows_value(c.stated.row, c.written)]
+            if names.mark:
+                found.extend(f"「{c.written}」 확인 필요 (코드 값 {c.stated.text}: "
+                             f"{c.stated.row} {c.stated.label})" for c in clashes)
+            else:
+                found.extend(f"「{c.written}」 → {c.stated.text} ({c.stated.row} {c.stated.label})"
+                             for c in clashes)
+            out.append(_mend(piece, clashes, names.mark))
     return "".join(out)
 
 
@@ -432,7 +472,14 @@ def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
             best = max(shared, key=agree)
             for j, number in columns:
                 s = label_of(best, header[j])
-                if s is None or _same(number.group(0), s.value):
+                if s is None or _same(number.group(0), s.value) \
+                        or names.rows_value(s.row, number.group(0)):
+                    continue
+                if names.mark:
+                    if _MARK not in cells[j]:
+                        found.append(f"「{cells[0]} {number.group(0)}」 확인 필요 (코드 값 "
+                                     f"{s.text}: {s.row} {s.label})")
+                        fixed[j] = f"{cells[j].rstrip()}{_MARK}"
                     continue
                 found.append(f"「{cells[0]} {number.group(0)}」 → {s.row} {s.text} ({s.label})")
                 fixed[j] = (cells[j][: number.start()] + _shown(number.group(0), s)
@@ -459,7 +506,15 @@ def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
                 if cells[j].strip() and not re.search(r"\d", cells[j]):
                     found.append(f"「{cells[j]}」 → {s.text} ({s.row} {s.label})")
                     fixed[j] = s.text
-            elif not _same(number.group(0), s.value):
+            elif not _same(number.group(0), s.value) \
+                    and not names.rows_value(s.row, number.group(0)):
+                if names.mark:
+                    if _MARK in cells[j]:
+                        continue
+                    found.append(f"「{number.group(0)}」 확인 필요 (코드 값 {s.text}: "
+                                 f"{s.row} {s.label})")
+                    fixed[j] = f"{cells[j].rstrip()}{_MARK}"
+                    continue
                 found.append(f"「{number.group(0)}」 → {s.text} ({s.row} {s.label})")
                 fixed[j] = (cells[j][: number.start()] + _shown(number.group(0), s)
                             + cells[j][number.end():])
@@ -655,10 +710,16 @@ def _tabled_apart(s: Stated, printed: tuple[str, ...]) -> bool:
 
 
 def check_markdown(text: str, stated: list[Stated],
-                   printed: list[str] | None = None) -> tuple[str, list[str]]:
+                   printed: list[str] | None = None, *, mark: bool = False,
+                   keep_row_values: bool = False) -> tuple[str, list[str]]:
     """A markdown answer's numbers that name a printed value set to it: sentences read with
     the nearest heading as their title, tables cell by cell. `(text, corrections)`. A gap
-    (「0.79 낮다」) or a value `printed` beside a group the sentence names stays."""
+    (「0.79 낮다」) or a value `printed` beside a group the sentence names stays.
+
+    `keep_row_values`: a value the code printed for the same row under another label is left
+    alone — the binding, not the value, is then the doubt (a textbook schedule leaves it off:
+    a turnaround time written as the waiting time is a slip). `mark`: a clash is marked
+    「(확인 필요)」 where it stands, never rewritten."""
     lines_printed = tuple(line for out in printed or () for line in str(out).splitlines()
                           if line.strip())
     # a value printed with no row (「합계: 152760」) is too loose to pin a line of prose to;
@@ -668,6 +729,11 @@ def check_markdown(text: str, stated: list[Stated],
         return text, []
     names = _Names(stated)
     names.printed = lines_printed
+    names.mark = mark
+    if keep_row_values or mark:
+        names.by_row = {}
+        for one in stated:
+            names.by_row.setdefault(one.row, []).append(one.value)
     found: list[str] = []
     lines = text.split("\n")
     out: list[str] = []

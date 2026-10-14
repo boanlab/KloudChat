@@ -118,7 +118,7 @@ async def test_a_calc_timeout_leaves_the_writer_computing(monkeypatch):
     bundle = report_stages.bundle_for(
         request="월 9,900원 구독, 초중고 학생 수로 TAM·SAM·SOM을 계산해 줘", model="m", api_key="k")
     events = [e async for e in report_stages.Calc().run(bundle, Context())]
-    assert events[-1]["label"] == "코드 계산 시간 초과 — 모델이 계산"
+    assert events[-1]["label"] == "코드 계산 시간 초과 — 모델이 계산한 값은 추정으로 표시"
     notes = [p for p in bundle.material.trusted if isinstance(p, Part)]
     assert any(p.text == report_stages.CALC_MISSING_NOTE for p in notes)
 

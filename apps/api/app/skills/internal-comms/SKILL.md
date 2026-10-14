@@ -37,6 +37,7 @@ Never fill these from general knowledge: no invented dates, weekdays, times, nam
 3. 누가·언제 — 대상, and for a rule or system that changes from a day on 시행일; for something with a start and an end (공사·점검·배포·행사) its 일시 from start to end (「10. 23.(금) 19:00~10. 25.(일) 18:00」), never 「시행 … 부터」. 경과 조치 if any.
 4. 해야 할 일 — numbered steps with deadline; if nothing: 「별도로 하실 일은 없습니다.」
 5. 문의처 — exactly as in the material.
+When the request names its own parts or order, write those instead of these blocks. Each fact goes once: a time, place, number or contact the 요지 states is not written again in a later block (r8 A14-T1: 일시·층·내선 three times).
 Write only the blocks this kind of notice needs; a block the material has nothing for is left out (a missing 문의처 stays one 「[문의처]」 under 「보내기 전에 채울 것」).
 Optional: 붙임/링크 (only those given), 자주 묻는 질문 2–4개 when the change raises obvious questions — answers only from the material; otherwise 「정해지는 대로 다시 안내드리겠습니다」.
 - Dates as 「2026. 11. 1.(일)」 or 「11월 1일(일)」, times as 「02:00~06:00」; one format through the notice.

@@ -34,6 +34,7 @@ Search volumes, rankings and past performance numbers come only from the user (�
 7. Channel norms (Korea): 네이버 블로그 — 검색어를 제목 앞쪽에, 경험·사진·구체적 절차, 광고·협찬이면 「광고」「협찬」 표시(공정위 추천·보증 심사지침); 인스타그램 — 첫 줄이 잘림 전 노출, 카드뉴스 6–10장; 링크드인 — 실무자 1인칭, 숫자·사례 중심, 해시태그 3–5개; 유튜브 — 제목에 핵심어, 설명 첫 2줄.
 
 ## Output format
+When the request names its own table or parts (「날짜·채널·형식·주제·본문 초안·해시태그를 표로, 콘텐츠 전략 요점도 같이」), that table with exactly those columns, then those parts, is the whole output: one table holding every post, no 우선순위 table, no scores, no 축 table, no internal column (「근거 없는 기준」) — the ranking and calendar from `plan` only fill its rows. Otherwise:
 ```
 ### 콘텐츠 축
 | 축 | 왜(근거) | 하위 주제 |

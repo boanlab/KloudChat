@@ -36,7 +36,7 @@ If the material gives fewer than three usable facts (예: 이름·위치·한 �
 ## Procedure
 1. Fact sheet: list the usable facts from the material in 3–8 short lines. Note what is missing.
 2. Choose one core message and one primary CTA. Headline states the outcome for the reader, not the company's pride.
-3. Write the page in this order (drop sections the material cannot support; never pad with invented proof):
+3. When the request lists the page's parts (「히어로, 기능 3개 블록, 고객 사례 한 줄, CTA까지」), write exactly those parts, in its order and counts, and nothing else. Otherwise write the page in this order (drop sections the material cannot support; never pad with invented proof):
    헤드라인 → 서브헤드(1–2문장) → 주 CTA → 문제 공감 → 이점 3–5개(기능 → 그래서 고객에게 무엇이 좋은지) → 이용 방법 3–4단계 → 근거(자료에 있는 수치·사례만) → 자주 묻는 질문 → 마지막 CTA.
 4. Korean style:
    - Benefits before features, specific before vague: 「매주 보고서 정리에 쓰던 시간을 줄입니다」 > 「업무 효율 극대화」.
@@ -44,13 +44,14 @@ If the material gives fewer than three usable facts (예: 이름·위치·한 �
    - Avoid AI tells: 「단순한 ~가 아닙니다」, 「~가 아닌, ~입니다」 reveals, 「결과는? ~」, 혁신적·획기적·차원이 다른·게임 체인저, em dashes (—), stacked 「!!」, emoji bullets.
    - CTA = verb + what they get: 「무료로 14일 써 보기」 (only if the trial length is in the material), 「도입 상담 예약하기」. Not 「제출」, 「클릭」, 「자세히」.
    - Translate jargon; keep English only for product names.
-5. Give alternatives: 3 headlines (different angles) and 2 CTAs, each with a one-line reason.
+5. Give alternatives (3 headlines with different angles, 2 CTAs, each with a one-line reason) only when the request leaves the parts open or asks for options.
 6. Check: call `run_skill_script` with skill `copy-check`, script `claims`, args
    `{"items": [{"label": "헤드라인", "text": "..."}, ...], "material": "<the user's material text>", "category": "general"}`
    (`category`: `food`, `health_food`, `cosmetics`, `medical_device` when relevant). Fix every `block` finding (remove it or replace with a placeholder) and run once more. Mention remaining `check` findings to the user.
    If page title / meta description is requested, also check lengths with script `length` (see 「카피 점검」).
 
 ## Output format
+The request's own parts, when it lists them, are the whole output (no 대안, 근거 or 주의 block it did not ask for). Otherwise:
 ```
 ### 페이지 카피
 **헤드라인** …
