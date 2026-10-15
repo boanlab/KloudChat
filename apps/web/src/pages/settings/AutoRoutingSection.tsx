@@ -107,7 +107,7 @@ export function AutoRoutingSection() {
   return (
     <Card className="space-y-4 p-4">
       <div className="flex items-start gap-3">
-        <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
+        <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent max-sm:hidden">
           <Gauge size={17} />
         </div>
         <div className="min-w-0 flex-1">
@@ -277,7 +277,7 @@ export function AutoRoutingSection() {
       {/* Quality lane: same classifier, opposite direction. */}
       <div className="space-y-4 border-t border-line pt-4">
         <div className="flex items-start gap-3">
-          <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
+          <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent max-sm:hidden">
             <Sparkles size={17} />
           </div>
           <div className="min-w-0 flex-1">

@@ -465,7 +465,7 @@ export function AgentForm({
           data-testid="agent-twin"
           className="flex flex-wrap items-center gap-2 rounded-control border border-warn/40 bg-warn/5 px-3 py-2 text-base text-fg"
         >
-          <span className="min-w-0 flex-1">{t('같은 이름의 에이전트를 방금 만들었습니다.')}</span>
+          <span className="min-w-0 flex-1 max-sm:basis-32">{t('같은 이름의 에이전트를 방금 만들었습니다.')}</span>
           <Button type="button" size="sm" variant="primary" onClick={() => onSaved(twin)}>
             {t('열기')}
           </Button>

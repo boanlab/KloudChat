@@ -471,7 +471,7 @@ export function AdminPerformancePage() {
             'CPU·메모리·디스크·네트워크, 모델 지연과 GPU 대기열을 1분마다 모아 과부하와 증설 필요를 판단합니다.',
           )}
           action={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="flex rounded-control border border-line p-0.5" role="group" aria-label={t('기간')}>
                 {RANGES.map((r) => (
                   <button
@@ -480,8 +480,8 @@ export function AdminPerformancePage() {
                     aria-pressed={range === r}
                     className={
                       range === r
-                        ? 'min-w-11 rounded-control bg-elevated px-3 py-2 text-sm font-medium'
-                        : 'min-w-11 rounded-control px-3 py-2 text-sm text-muted hover:text-fg'
+                        ? 'min-w-11 rounded-control bg-elevated px-3 py-2 text-sm font-medium max-sm:px-2'
+                        : 'min-w-11 rounded-control px-3 py-2 text-sm text-muted hover:text-fg max-sm:px-2'
                     }
                   >
                     {{ '1h': t('1시간'), '24h': t('24시간'), '7d': t('7일'), '30d': t('30일') }[r]}

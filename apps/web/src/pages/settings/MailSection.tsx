@@ -61,7 +61,7 @@ export function MailSection({
     <div>
       <div className="flex flex-wrap items-center gap-3">
         <Mail size={18} className={settings?.smtp.passwordResetEnabled ? 'text-success' : 'text-muted'} />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 max-sm:basis-32">
           <p className="text-base font-medium">{t('메일 발송')}</p>
           <p className="text-base text-muted">
             {settings?.smtp.passwordResetEnabled

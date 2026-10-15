@@ -31,7 +31,7 @@ function CardFace({
         <span className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
           <Icon size={16} />
         </span>
-        <span className="min-w-0 flex-1">
+        <span className="min-w-0 flex-1 max-sm:basis-32">
           <span className="block truncate text-base font-medium" title={title}>{title}</span>
           <span className="block truncate text-xs text-faint">{meta}</span>
         </span>

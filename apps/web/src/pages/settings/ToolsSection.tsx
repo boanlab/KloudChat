@@ -87,7 +87,7 @@ export function ToolsSection({
     <div className="space-y-4">
       <Card className="flex flex-wrap items-center gap-3 p-4">
         <Plug size={18} className="text-muted" />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 max-sm:basis-32">
           <p className="text-base font-medium">{t('기능 서버')}</p>
           <p className="text-base text-muted">
             {t('주소 하나만 입력하면 아래 기능이 모두 연결됩니다.')}

@@ -128,7 +128,7 @@ export function DetailLayout({
         <BackLink tab={tab} label={tabLabel} />
         <header className="flex flex-wrap items-start gap-4 border-b border-line pb-6" data-testid="item-detail-header">
           <ItemIconTile item={item} size="lg" />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 max-sm:basis-32">
             <h1 className="text-2xl font-semibold tracking-tight break-words">{name}</h1>
             {item.summary && <p className="mt-1 text-md text-muted">{t(item.summary)}</p>}
             {meta && <p className="mt-1.5 text-sm text-faint">{meta}</p>}

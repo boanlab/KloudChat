@@ -203,7 +203,7 @@ export function ConnectorCatalogSection() {
       <ul className="divide-y divide-line rounded-control border border-line">
         {meta.entries.map((row) => (
           <li key={row.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5" data-testid="catalog-entry">
-            <span className="min-w-0 flex-1">
+            <span className="min-w-0 flex-1 max-sm:basis-32">
               <span className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{row.name}</span>
                 <Badge>{row.transport === 'stdio' ? t('명령') : row.transport.toUpperCase()}</Badge>

@@ -168,7 +168,7 @@ export function ModelRolesSection({
   return (
     <Card className="space-y-4 p-4" data-section="model-roles">
       <div className="flex items-start gap-3">
-        <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
+        <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent max-sm:hidden">
           <Cpu size={17} />
         </div>
         <div className="min-w-0 flex-1">
@@ -250,7 +250,7 @@ export function ModelRolesSection({
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
-        <p className="min-w-0 flex-1 text-sm text-muted">
+        <p className="min-w-0 flex-1 max-sm:basis-32 text-sm text-muted">
           {t('바로 적용됩니다. 진행 중인 대화는 다음 메시지부터 바뀝니다.')}
         </p>
         {error && (

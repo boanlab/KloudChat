@@ -319,7 +319,7 @@ export function AgentKnowledge({
         )}
         {rows.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <p className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-faint">
+            <p className="flex min-w-0 flex-1 max-sm:basis-32 items-center gap-1.5 text-xs text-faint">
               <Paperclip size={10} />
               {t('URL 은 추가한 시점의 내용을 저장합니다. 페이지가 바뀌어도 따라가지 않습니다.')}
             </p>

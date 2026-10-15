@@ -163,7 +163,7 @@ export function ChannelsCard({ pub, onChange }: { pub: Publication; onChange: (n
         </p>
       )}
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {opening && <p className="min-w-0 flex-1 text-sm text-muted">{t('관리자가 승인할 때까지 지금 열린 채널만 씁니다.')}</p>}
+        {opening && <p className="min-w-0 flex-1 max-sm:basis-32 text-sm text-muted">{t('관리자가 승인할 때까지 지금 열린 채널만 씁니다.')}</p>}
         <Button variant="primary" disabled={busy || !changed} onClick={() => void save()} data-testid="channels-save">
           {busy && <Loader2 size={14} className="animate-spin" />}
           {opening ? t('승인 요청') : t('채널 저장')}
@@ -281,13 +281,13 @@ export function ApiTab({ pub }: { pub: Publication }) {
           <div className="space-y-2 rounded-control border border-warn/30 bg-warn/5 p-3" role="status" data-testid="new-key">
             <p className="text-sm text-warn">{t('이 키는 지금 한 번만 보입니다. 안전한 곳에 보관하세요.')}</p>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <code className="min-w-0 flex-1 break-all text-sm">{made.key}</code>
+              <code className="min-w-0 flex-1 max-sm:basis-32 break-all text-sm">{made.key}</code>
               <CopyButton text={made.key} />
             </div>
           </div>
         )}
         <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 max-sm:basis-32">
             <Field label={t('키 이름')}>
               <Input value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder={t('예: 학과 홈페이지 서버')} />
             </Field>
@@ -309,7 +309,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
           <ul className="divide-y divide-line" data-testid="key-list">
             {keys.map((k) => (
               <li key={k.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 max-sm:basis-32">
                   <span className="font-medium">{k.name}</span> <code className="text-faint">{k.preview}</code>
                 </span>
                 <span className="text-faint">

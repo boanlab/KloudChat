@@ -77,8 +77,8 @@ export function AdminSystemPage() {
           description={t('이 인스턴스 전체에 적용되는 설정입니다. 저장 즉시 적용되며 재시작이 필요하지 않습니다.')}
         />
 
-        {/* Labels overflow a phone width. Links to pages: a nav with aria-current, not tabs. */}
-        <nav aria-label={t('시스템 메뉴')} className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
+        {/* Labels overflow a phone width, so a phone wraps them. Links to pages: a nav with aria-current, not tabs. */}
+        <nav aria-label={t('시스템 메뉴')} className="mb-5 flex gap-1 border-b border-line max-sm:flex-wrap sm:overflow-x-auto [scrollbar-width:none]">
           {tabs.map((tab) => (
             <NavLink
               key={tab.to}
