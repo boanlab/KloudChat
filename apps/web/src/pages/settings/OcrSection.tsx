@@ -67,7 +67,7 @@ export function OcrSection({
   return (
     <Card className="space-y-4 p-4" data-section="ocr">
       <div className="flex items-start gap-3">
-        <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
+        <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent max-sm:hidden">
           <ScanText size={17} />
         </div>
         <div className="min-w-0 flex-1">
@@ -127,7 +127,7 @@ export function OcrSection({
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
-        <p className="min-w-0 flex-1 text-sm text-muted" role="status">
+        <p className="min-w-0 flex-1 max-sm:basis-32 text-sm text-muted" role="status">
           {inForce}
           {!ocr.engineConfigured && ` ${t('OCR 엔진 주소가 없어 PDF 쪽은 읽지 못하고 사진만 비전 모델로 읽습니다.')}`}
         </p>

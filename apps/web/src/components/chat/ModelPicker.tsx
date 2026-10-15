@@ -425,10 +425,11 @@ function ModelMenu({
               )}
             </span>
             <span className="mt-0.5 block truncate text-sm text-muted">{m.description}</span>
-            <span className="mt-1 flex items-center gap-2 text-xs text-faint">
-              <span className="flex items-center gap-1">
+            {/* Wraps between items on a phone; only a long price wraps inside itself. */}
+            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-faint">
+              <span className="flex min-w-0 flex-wrap items-center gap-x-1">
                 {boundaryOf && (
-                  <span className={cn('flex items-center gap-1', boundaryOf.tone)} title={boundaryOf.hint}>
+                  <span className={cn('flex items-center gap-1 whitespace-nowrap', boundaryOf.tone)} title={boundaryOf.hint}>
                     {m.strictLocal && <ShieldCheck size={11} />}
                     {boundaryOf.text}
                   </span>
@@ -436,7 +437,9 @@ function ModelMenu({
                 {boundaryOf && <span aria-hidden>·</span>}
                 <span className={cn(free && 'text-free')}>{rateLabel(m, t)}</span>
               </span>
-              {m.contextWindow && <span>{formatTokens(m.contextWindow)} ctx</span>}
+              {m.contextWindow && (
+                <span className="whitespace-nowrap">{formatTokens(m.contextWindow)} ctx</span>
+              )}
               {m.supportsVision && <Eye size={11} />}
               {m.supportsTools && <Wrench size={11} />}
             </span>

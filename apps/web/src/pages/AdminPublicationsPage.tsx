@@ -258,7 +258,7 @@ function ReviewView({ id }: { id: string }) {
       <PageBody>
         <div className="mb-4">{back}</div>
         <header className="flex flex-wrap items-start gap-3 border-b border-line pb-5">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 max-sm:basis-32">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight break-words">{pub.title}</h1>
               {scopeBadge(pub, t)}
@@ -505,7 +505,7 @@ function ConversationsCard({ id }: { id: string }) {
   return (
     <Card className="space-y-3 p-4" data-testid="admin-conversations">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="min-w-0 flex-1 text-sm text-faint">{t('대화 열람')}</p>
+        <p className="min-w-0 flex-1 max-sm:basis-32 text-sm text-faint">{t('대화 열람')}</p>
         {rows === null && (
           <Button size="sm" onClick={() => setAsking(true)} data-testid="admin-conversations-open">
             <Eye size={13} />

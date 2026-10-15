@@ -173,7 +173,7 @@ export function MyUsagePage() {
               </p>
               <ul className="mt-2 space-y-1.5">
                 {(data?.apiKeys ?? []).map((k) => (
-                  <li key={k.id} className="flex items-baseline justify-between gap-3 text-base">
+                  <li key={k.id} className="flex items-baseline justify-between gap-3 text-base max-sm:flex-wrap max-sm:gap-y-0">
                     <span className="min-w-0 truncate">
                       {k.name} <span className="font-mono text-sm text-faint">{k.preview}</span>
                     </span>
@@ -192,12 +192,12 @@ export function MyUsagePage() {
             </Card>
           )}
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Card className="p-4">
               <p className="text-base font-medium">{t('모델별')}</p>
               <ul className="mt-2 space-y-1.5">
                 {(data?.byModel ?? []).map((m) => (
-                  <li key={m.model} className="flex items-baseline justify-between gap-3 text-base">
+                  <li key={m.model} className="flex items-baseline justify-between gap-3 text-base max-sm:flex-wrap max-sm:gap-y-0">
                     <span className="min-w-0 truncate font-mono text-sm text-muted">
                       {m.model}
                     </span>
@@ -211,7 +211,7 @@ export function MyUsagePage() {
                   </li>
                 ))}
                 {other > 0 && (
-                  <li className="flex items-baseline justify-between gap-3 text-base">
+                  <li className="flex items-baseline justify-between gap-3 text-base max-sm:flex-wrap max-sm:gap-y-0">
                     <span className="text-muted">{t('기타')}</span>
                     <span className="shrink-0 tabular-nums">{other.toLocaleString()}</span>
                   </li>
@@ -222,7 +222,7 @@ export function MyUsagePage() {
               <p className="text-base font-medium">{t('화면별')}</p>
               <ul className="mt-2 space-y-1.5">
                 {(data?.bySurface ?? []).map((s) => (
-                  <li key={s.kind} className="flex items-baseline justify-between gap-3 text-base">
+                  <li key={s.kind} className="flex items-baseline justify-between gap-3 text-base max-sm:flex-wrap max-sm:gap-y-0">
                     <span className="text-muted">{surface(s.kind)}</span>
                     <span className="shrink-0 tabular-nums">
                       {s.credits.toLocaleString()}{' '}

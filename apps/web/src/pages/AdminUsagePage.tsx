@@ -20,8 +20,9 @@ function Bars({
   return (
     <div className="space-y-2.5">
       {rows.map((r) => (
-        <div key={r.label} className="flex items-center gap-3">
-          <span className="w-44 shrink-0 truncate text-base">{r.label}</span>
+        // A phone puts the label on its own line above the bar.
+        <div key={r.label} className="flex items-center gap-3 max-sm:flex-wrap max-sm:gap-y-1">
+          <span className="w-44 shrink-0 truncate text-base max-sm:w-full">{r.label}</span>
           <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-elevated">
             <div
               className="h-full rounded-full"
@@ -129,7 +130,7 @@ export function AdminUsagePage() {
           title={t('사용량')}
           description={t('실제 사용 기록을 집계한 값입니다. 아직 사용한 사람이 없으면 비어 있습니다.')}
           action={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="flex rounded-control border border-line p-0.5">
                 {RANGES.map((r) => (
                   <button
@@ -251,7 +252,7 @@ export function AdminUsagePage() {
               />
             </Card>
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card className="p-4">
                 <p className="mb-3 text-base font-medium">{t('화면별')}</p>
                 <Bars

@@ -45,7 +45,8 @@ export function ProxySection({
           size={18}
           className={!settings ? 'text-muted' : connected ? 'text-success' : 'text-danger'}
         />
-        <div className="min-w-0 flex-1">
+        {/* A basis, so a phone wraps the buttons below instead of squeezing this text. */}
+        <div className="min-w-0 flex-1 max-sm:basis-32">
           <p className="text-base font-medium">
             {!settings
               ? t('LiteLLM 연결 상태를 확인하는 중입니다')
@@ -53,7 +54,7 @@ export function ProxySection({
                 ? t('LiteLLM 에 연결되어 있습니다')
                 : t('LiteLLM 에 연결되지 않았습니다')}
           </p>
-          <p className="text-base text-muted">
+          <p className="break-all text-base text-muted">
             {settings ? settings.litellm.baseUrl || t('주소가 설정되지 않았습니다') : ' '}
           </p>
         </div>

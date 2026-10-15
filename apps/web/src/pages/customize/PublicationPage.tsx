@@ -144,7 +144,7 @@ export function PublicationPage() {
       <HubTopBar tab="agents" tabLabel="에이전트" title={pub.title} />
       <PageBody>
         <header className="flex flex-wrap items-start gap-3 border-b border-line pb-5">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 max-sm:basis-32">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight break-words">{pub.title}</h1>
               <Badge tone={pub.status === 'approved' ? 'success' : 'warn'} >{t(STATUS_LABEL[pub.status])}</Badge>
@@ -330,7 +330,7 @@ function ScopeCard({
       </div>
       <ScopePicker value={value} onChange={setValue} credits={credits} onCredits={setCredits} current={pub.visibility} />
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {wider && <p className="min-w-0 flex-1 text-sm text-muted">{t('관리자가 승인할 때까지 지금 범위로 답합니다.')}</p>}
+        {wider && <p className="min-w-0 flex-1 max-sm:basis-32 text-sm text-muted">{t('관리자가 승인할 때까지 지금 범위로 답합니다.')}</p>}
         <Button
           variant="primary"
           disabled={busy || !changed || asked || (value !== 'internal' && cap === undefined)}
@@ -509,7 +509,7 @@ function VisitorBar({ visitor, onBlock }: { visitor: BotVisitor; onBlock: () => 
   const [asking, setAsking] = useState(false)
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-line pb-3 text-sm" data-testid="publication-visitor">
-      <span className="min-w-0 flex-1 text-muted">{visitorName(visitor, t)}</span>
+      <span className="min-w-0 flex-1 max-sm:basis-32 text-muted">{visitorName(visitor, t)}</span>
       {visitor.blocked ? (
         <Badge tone="danger">{t('차단됨')}</Badge>
       ) : (
@@ -546,7 +546,7 @@ function BlockedVisitors({ pub }: { pub: Publication }) {
         <ul className="divide-y divide-line">
           {rows.map((v) => (
             <li key={v.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-              <span className="min-w-0 flex-1">{visitorName(v, t)}</span>
+              <span className="min-w-0 flex-1 max-sm:basis-32">{visitorName(v, t)}</span>
               <span className="text-faint">{day(v.blockedAt)}</span>
               <Button
                 size="sm"
@@ -586,7 +586,7 @@ function VersionsTab({
           <p className="text-sm text-warn">{t('로그인하지 않은 사람에게도 열린 챗봇이라 새 판은 관리자가 확인한 뒤 답합니다. 그동안 승인된 판이 답합니다.')}</p>
         )}
         <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 max-sm:basis-32">
             <Field label={t('바꾼 점 메모')}>
               <Input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder={t('예: 2026학년도 학칙으로 교체')} />
             </Field>
@@ -600,7 +600,7 @@ function VersionsTab({
       <Card className="divide-y divide-line" data-testid="publication-versions">
         {(pub.versions ?? []).map((v) => (
           <div key={v.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 max-sm:basis-32">
               <p className="flex items-center gap-2 text-base font-medium">
                 {t('{n}판').replace('{n}', String(v.number))}
                 {v.active && <Badge tone="success">{t('지금 판')}</Badge>}
@@ -649,7 +649,7 @@ function SettingsTab({
       </div>
       <BlockedVisitors pub={pub} />
       <Card className="flex flex-wrap items-center gap-3 border-danger/30 p-4">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 max-sm:basis-32">
           <p className="text-base font-medium">{t('챗봇 지우기')}</p>
           <p className="text-sm text-muted">{t('챗봇과 그 대화·통계·판이 모두 지워집니다. 에이전트는 그대로 남습니다.')}</p>
         </div>

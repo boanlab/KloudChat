@@ -80,8 +80,9 @@ function ConnectorCard({
             className="mt-2.5"
           />
         )}
+        {/* Decoration: a phone gives its width to the description. */}
         <span
-          className="grid size-9 shrink-0 place-items-center rounded-card text-lg"
+          className="grid size-9 shrink-0 place-items-center rounded-card text-lg max-sm:hidden"
           style={{ background: `${connector.color}1a` }}
         >
           {connector.icon}

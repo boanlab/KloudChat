@@ -74,9 +74,9 @@ export function ProfileTab() {
         >
           {user?.name?.[0]}
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 max-sm:basis-32">
           <p className="text-base font-medium">{user?.name}</p>
-          <p className="text-base text-muted">{user?.email}</p>
+          <p className="break-all text-base text-muted">{user?.email}</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {user?.role === 'admin' && (
               <Badge tone="accent">

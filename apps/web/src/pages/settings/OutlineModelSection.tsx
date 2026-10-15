@@ -47,7 +47,7 @@ export function OutlineModelSection() {
   return (
     <Card className="space-y-4 p-4">
       <div className="flex items-start gap-3">
-        <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
+        <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent max-sm:hidden">
           <ListTree size={17} />
         </div>
         <div className="min-w-0 flex-1">

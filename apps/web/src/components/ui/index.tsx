@@ -839,7 +839,7 @@ export function ReloadNotice({ onRetry }: { onRetry: () => void }) {
       role="status"
       className="mb-3 flex flex-wrap items-center gap-2 rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-base text-warn"
     >
-      <span className="min-w-0 flex-1">
+      <span className="min-w-0 flex-1 max-sm:basis-32">
         {t('목록을 새로 불러오지 못했습니다. 화면에 보이는 것은 마지막으로 받은 내용입니다.')}
       </span>
       <Button size="sm" onClick={onRetry}>
@@ -863,7 +863,7 @@ export function PageHeader({
 }) {
   return (
     <div className={cn('flex flex-wrap justify-between gap-4', embedded ? 'items-center pb-4' : 'items-end pb-6')}>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 max-sm:basis-32">
         {!embedded && <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>}
         {description && <p className={cn('text-base text-muted', !embedded && 'mt-1')}>{description}</p>}
       </div>
@@ -882,7 +882,11 @@ export function Tabs<T extends string>({
   onChange: (v: T) => void
 }) {
   return (
-    <div role="tablist" className="flex gap-1 border-b border-line">
+    // A phone scrolls the row sideways instead of the page.
+    <div
+      role="tablist"
+      className="flex gap-1 border-b border-line max-sm:overflow-x-auto max-sm:[scrollbar-width:none]"
+    >
       {tabs.map((t) => (
         <button
           key={t.id}

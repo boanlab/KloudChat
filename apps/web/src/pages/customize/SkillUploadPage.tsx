@@ -232,7 +232,7 @@ export function SkillUploadPage() {
           )}
 
           <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-4">
-            <label className="flex min-w-0 flex-1 items-start gap-2 text-base">
+            <label className="flex min-w-0 flex-1 max-sm:basis-32 items-start gap-2 text-base">
               <input
                 type="checkbox"
                 className="mt-1 size-4 shrink-0 accent-[var(--color-accent)]"

@@ -532,7 +532,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
               )}
               {offerShare && current && !current.sharedAt && (
                 <div className="flex flex-wrap items-center gap-2 rounded-card border border-line bg-elevated px-4 py-3 text-base" data-testid="bot-offer-share">
-                  <span className="min-w-0 flex-1">{t('이 대화를 만든 사람에게 보낼까요? 개인정보는 가려서 보입니다.')}</span>
+                  <span className="min-w-0 flex-1 max-sm:basis-32">{t('이 대화를 만든 사람에게 보낼까요? 개인정보는 가려서 보입니다.')}</span>
                   <Button size="sm" variant="primary" onClick={() => void share(true)}>
                     {t('보내기')}
                   </Button>
