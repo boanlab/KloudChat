@@ -168,7 +168,9 @@ async def test_numbers_run_across_searches_and_citations_become_links(monkeypatc
     assert ("- [1] [정책 문서 · example.go.kr](https://example.go.kr/policy/2026) · 2026-03-12"
             in text)
     assert "- [2] [논문 · journal.example.org](https://journal.example.org/article/42)" in text
-    assert "- [3] [기사 · news.example.com](https://news.example.com/a/1)\n" in text + "\n"
+    # a result with no date of its own is dated by the day it was read (r10 LFLF3)
+    today = agent._checked_on().isoformat()
+    assert f"- [3] [기사 · news.example.com](https://news.example.com/a/1) · 확인 {today}" in text
     assert "### 확인한 출처" not in text
     assert "검색·열람한 결과에 없던" not in text
 

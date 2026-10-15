@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import logging
 import re
@@ -10,6 +11,7 @@ import time
 from collections.abc import AsyncIterator, Callable
 from copy import deepcopy
 from typing import Any, Literal, TypedDict
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -685,6 +687,16 @@ def _answer_anomaly(text: str, messages: list[dict[str, Any]],
                 )
     return None
 
+
+#: A deep-searching skill's answer before every thing the request lists was searched.
+_SEARCH_THE_REST = (
+    "요청에 나온 다음 대상은 아직 한 번도 검색하지 않았습니다: {names}. 웹에서 찾아야 하는 "
+    "대상이면 대상마다 web_search 로 찾은 뒤, 찾은 내용을 넣어 답을 처음부터 다시 쓰세요. 검색할 "
+    "대상이 아니면 쓴 답을 그대로 다시 쓰세요.")
+_SEARCH_THE_REST_EN = (
+    "These things the request names have not been searched yet: {names}. If they are to be "
+    "looked up on the web, search each with web_search, then rewrite the answer from the start "
+    "with what you found. If they are not things to look up, write the same answer again.")
 
 #: Data-fillable numeric blank.
 _COMPUTABLE_BLANK = re.compile(r"\[(?:수치|측정값|비율|평균|합계|건수|일수|값)\]")
@@ -1412,6 +1424,15 @@ def _own_list_dates(listed: str, sources: list[str]) -> dict[str, str]:
     return out
 
 
+def _checked_on() -> dt.date:
+    """Today in `settings.timezone`, as `report.local_today` reads it."""
+    try:
+        zone = ZoneInfo(settings.timezone)
+    except Exception:  # noqa: BLE001 — a misconfigured zone must not break the list
+        zone = dt.UTC
+    return dt.datetime.now(zone).date()
+
+
 def _published_of(url: str, seen: dict[str, str]) -> str:
     """「 · 2026-03-12」 after a listed source whose search result gave its date, outside the
     link so a later turn reads the label back unchanged; "" when none (r10 SK-company-1·2:
@@ -1771,6 +1792,10 @@ async def run_turn(
     provisional: list[str] = []
     anomaly_retried = False
     blanks_retried = False
+    #: what this turn searched for; a deep-searching skill's answer is held once until each
+    #: thing the request lists was searched (r10 SK-competitor-1·2)
+    queries: list[str] = []
+    rest_asked = False
     #: A looping hop is asked once more, with `_LOOP_RETRY_PRESENCE` from then on.
     loop_retried = False
     loop_penalty: float | None = None
@@ -2271,6 +2296,23 @@ async def run_turn(
                 conversation.append({"role": "user", "content": _note(
                     _COMPUTE_BLANKS, _COMPUTE_BLANKS_EN, reply_korean)})
                 continue
+            unsearched = (query_terms.unsearched(ctx.request or "", queries)
+                          if deep_search and spoken_now and not rest_asked
+                          and "web_search" in by_name
+                          and searches < MAX_SEARCH_CALLS * search_scale
+                          and searches - empty_searches < MAX_WEB_SEARCHES * search_scale
+                          and hop < settings.max_tool_hops else [])
+            if unsearched:
+                rest_asked = True
+                log.info("deep search: %d listed names not searched, asking once", len(unsearched))
+                streamed = "".join(hop_text)
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": streamed}
+                conversation.append(acc.assistant_message())
+                conversation.append({"role": "user", "content": _note(
+                    _SEARCH_THE_REST, _SEARCH_THE_REST_EN, reply_korean).format(
+                        names=", ".join(unsearched))})
+                continue
             if hop and not spoken_now:
                 # Empty answer after tools: retry once without tools.
                 conversation.append(acc.assistant_message())
@@ -2568,6 +2610,7 @@ async def run_turn(
                 seen_urls.update(_urls_in(result.content))
             if call["name"] == "web_search":
                 searches += 1
+                queries.append(searched_query(call))
                 empty_searches += int(bool(result.empty))
                 unusable = (
                     result.failed
@@ -2966,14 +3009,21 @@ async def run_turn(
         )
         answer_text.append(note)
         yield {"type": "delta", "text": note}
+    # a page with no date of its own is dated by when it was read (r10 LFLF3: the search
+    # backend gave no 게시일, and the reader could not tell how fresh a price was)
+    checked = (f" · 확인 {_checked_on().isoformat()}" if reply_korean
+               else f" · checked {_checked_on().isoformat()}")
+
+    def _dated(url: str) -> str:
+        return _published_of(url, source_seen) or own_dates.get(url, "") or checked
+
     if cited and not own_list and not form_fixed:
         # a form the person fixed (「조언만, 다른 건 쓰지 마」, r7 P48) keeps the inline links only
         appendix = ("\n\n### 출처\n" if reply_korean else "\n\n### Sources\n") + "\n".join(
             f"- [{n}] {sources[n - 1].removeprefix(MATERIAL_SOURCE)}"
             if sources[n - 1].startswith(MATERIAL_SOURCE)
             else f"- [{n}] [{_source_label(sources[n - 1], source_titles.get(sources[n - 1], ''))}]"
-            f"({sources[n - 1]})"
-            f"{_published_of(sources[n - 1], source_seen) or own_dates.get(sources[n - 1], '')}"
+            f"({sources[n - 1]}){_dated(sources[n - 1])}"
             for n in cited
         )
         answer_text.append(appendix)

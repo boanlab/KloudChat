@@ -342,7 +342,10 @@ pages and a host's third hit are benched (used only to pad a thin list), and a
 hit's `publishedDate` reaches the model as 「게시일」 ("published on") so the newest wins. A turn
 makes at most three searches and six page reads (six searches when a turned-on skill
 sets `process: {deep_search: true}`, as 기업 조사 and 경쟁사 분석 do); past either cap
-the model is told to answer from what it has.
+the model is told to answer from what it has. On a deep-search turn an answer written before
+every name the request lists (「잔디, 플로우, 네이버웍스를」) appears in some query is held
+once and the model is asked to search the rest (`query_terms.unsearched`). A listed source
+with no 게시일 carries the day it was read (「· 확인 2026-10-15」).
 
 **Sources are cited by number, never typed.** `run_turn` renumbers the `[n]`
 entries of every search result so the numbers run across the whole turn and

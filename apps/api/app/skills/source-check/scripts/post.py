@@ -129,6 +129,16 @@ def post(text: str, args: dict) -> dict:
             out["flags"].append(_row(f))
     # Server flag: a turn skill answers in comparison tables (`tables: true`).
     if args.get("tables"):
+        unknown = [f for f in claims.check(text, material, {})
+                   if f["kind"] == "opportunity_on_unknown"]
+        if final and unknown:
+            # what is left after the rewrite is labelled a guess, never cut
+            text = claims.fix(text, unknown)
+            out["fixed"] += [{"kind": f["kind"], "text": str(f["text"])[:80],
+                              "why": f"{f['why']} → 「(가설)」"} for f in unknown]
+        else:
+            out["rewrite"] += [{"kind": f["kind"], "text": str(f["text"])[:80],
+                                "why": f"{f['why']} — {f['suggestion']}"} for f in unknown]
         cells = [f for f in claims.check(text, material, {})
                  if f["kind"] in ("unsourced_cell", "empty_cell", "verdict_without_evidence",
                                   "unsourced_bullet") and not _judgement(f)]

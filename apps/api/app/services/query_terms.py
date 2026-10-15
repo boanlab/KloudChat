@@ -188,3 +188,67 @@ def entity_queries(request: str, entities: list[str], *, scholarly: bool) -> lis
             out += [f"{head} ACL EMNLP NAACL", f"{head} NeurIPS ICLR ICML"]
         out.append(f"{head} arXiv")
     return list(dict.fromkeys(q for q in out if usable(q)))
+
+
+#: a particle closing a name in a list: 「네이버웍스를」「Copilot을」「경쟁사로」
+_PARTICLE_END = re.compile(r"(?:을|를|와|과|으로|로|이랑|랑|은|는|도|만|의|에게|에)$")
+#: a clause ending, not a name: 「만드는지」「정리하고」
+_CLAUSE_END = re.compile(r"(?:지|다|요|고|며|서|면|데|해|줘)[.!?]?$")
+_CLOSED = re.compile(r"[.!?:;。]$")
+#: words that frame a list item, not name it
+_FRAME_WORDS = frozenset("위주 대상 중심 관련 주요 최근 같은 등 및 기업용".split())
+
+
+def _tokens(words: list[str]) -> list[str]:
+    out = []
+    for word in words:
+        word = re.sub(r"[「」『』\"'.!?]", "", word).strip()
+        if len(word) >= 2 and not word.isdigit() and word not in _FRAME_WORDS:
+            out.append(word)
+    return out
+
+
+def listed_names(request: str) -> list[tuple[str, list[str]]]:
+    """The first run of things a request lists one after another (「잔디, 플로우, 네이버웍스를
+    대상으로」): (name as written, its words) each; a run of two to six, else none. What the
+    request says in brackets is left out (a product's own description)."""
+    # the ask only: the request's first paragraph, not a pasted memo's lines
+    ask = re.split(r"\n[ \t]*\n", (request or "").strip(), maxsplit=1)[0]
+    text = re.sub(r"\([^()\n]*\)", "", "\n".join(
+        line for line in ask.split("\n") if not re.match(r"\s*(?:[-*•]|\[)", line)))
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+        parts = [p.strip() for p in re.split(r"[,，、]", sentence)]
+        if len(parts) < 2:
+            continue
+        run: list[list[str]] = []
+        for i, part in enumerate(parts):
+            words = part.split()
+            if i == 0:
+                lead: list[str] = []
+                for word in reversed(words):
+                    if _CLOSED.search(word) or _PARTICLE_END.search(word):
+                        break
+                    lead.insert(0, word)
+                run.append(lead)
+                continue
+            stop = next((k for k, w in enumerate(words)
+                         if _PARTICLE_END.search(w) or _CLOSED.search(w)), None)
+            if stop is None and len(words) <= 4:
+                run.append(words)
+                continue
+            if stop is not None and stop <= 3:
+                run.append([*words[:stop], _PARTICLE_END.sub("", words[stop])])
+            break
+        items = [(" ".join(w), _tokens(w)) for w in run if w]
+        if (2 <= len(items) <= 6 and all(t for _, t in items)
+                and not any(_CLAUSE_END.search(name) for name, _ in items)):
+            return items
+    return []
+
+
+def unsearched(request: str, queries: Iterable[str]) -> list[str]:
+    """Names the request lists that no query has a word of (r10 SK-competitor-1: 네이버웍스,
+    one of three competitors, never searched)."""
+    asked = [norm(q) for q in queries]
+    return [name for name, tokens in listed_names(request)
+            if not any(norm(t) and norm(t) in q for t in tokens for q in asked)]

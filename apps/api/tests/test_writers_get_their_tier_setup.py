@@ -281,6 +281,34 @@ async def test_a_deep_searching_skill_gets_twice_the_searches(monkeypatch) -> No
     assert agent.MAX_WEB_SEARCHES < 6
 
 
+@pytest.mark.asyncio
+async def test_a_deep_search_answer_is_held_once_for_a_listed_name_never_searched(
+        monkeypatch) -> None:
+    """r10 SK-competitor-1: 잔디·플로우 searched, 네이버웍스 never, and the answer written."""
+    def ask(n: int, query: str) -> dict:
+        return {"text": "", "calls": [{"id": f"s{n}", "name": "web_search",
+                                       "arguments": json.dumps({"query": query})}]}
+
+    seen: list = []
+    _scripted(monkeypatch, [ask(1, "잔디 요금제"), ask(2, "플로우 요금제"),
+                            {"text": "표입니다 [1]."}, ask(3, "네이버웍스 요금제"),
+                            {"text": "세 곳 표입니다 [1]."}], seen)
+    request = "협업툴 비교표 만들어 줘. 잔디, 플로우, 네이버웍스를 대상으로 정리해 줘."
+    events = [e async for e in agent.run_turn(
+        SMALL, [{"role": "system", "content": "시스템"}, {"role": "user", "content": request}],
+        [_search([_found()] * 3)], ToolContext(user_id="u", session_id="s", api_key="k",
+                                               request=request), deep_search=True)]
+    notes = _loop_notes(seen)
+    assert any("네이버웍스" in n and "아직 한 번도 검색하지 않았습니다" in n for n in notes)
+    assert "세 곳 표입니다" in _shown(events) and "표입니다 [1]." not in _shown(events).replace(
+        "세 곳 표입니다 [1].", "")
+    # without deep search the answer stands as written
+    seen.clear()
+    _scripted(monkeypatch, [ask(1, "잔디 요금제"), {"text": "표입니다 [1]."}], seen)
+    await _turn(SMALL, request, _search([_found()]))
+    assert len(seen) == 2
+
+
 def test_the_grounding_note_keeps_established_knowledge() -> None:
     """r7 P27: the 1911 London dock strike dropped as 「확인 못 함」 next to Liverpool hits."""
     for light in (False, True):

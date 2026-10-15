@@ -78,3 +78,50 @@ def test_the_research_skills_search_deep_on_a_chat_turn():
         assert spec is not None and spec.process.get("deep_search") is True
         assert sessions._deep_search((key,), {key: spec})
     assert not sessions._deep_search(("copy-editing",), {})
+
+
+# ── LFLF3: searched what the request lists, a cell's own source, opportunities on unknowns ──
+
+COMPETITORS = ("국내 업무용 협업툴 경쟁사 비교표 만들어 줘. 잔디, 플로우, 네이버웍스를 대상으로 "
+               "포지셔닝, 주요 기능, 가격(요금제) 정리하고 출처 달아 줘.")
+
+
+def test_the_names_a_request_lists_are_read_from_the_ask_only():
+    from app.services import query_terms
+
+    names = [n for n, _ in query_terms.listed_names(COMPETITORS)]
+    assert names == ["잔디", "플로우", "네이버웍스"]
+    two = ("우리 제품은 사내 설치형이야(자체 GPU 서버, 외부 반출 없음). 경쟁사로 "
+           "뤼튼 엔터프라이즈, 네이버 하이퍼클로바X(기업용), 마이크로소프트 365 Copilot을 "
+           "놓고 분석해 줘.")
+    assert [n for n, _ in query_terms.listed_names(two)] == [
+        "뤼튼 엔터프라이즈", "네이버 하이퍼클로바X", "마이크로소프트 365 Copilot"]
+    assert query_terms.unsearched(two, ["뤼튼 요금", "하이퍼클로바X 가격", "MS 365 Copilot"]) == []
+    # a pasted memo's lines are material, not the ask
+    memo = "더존비즈온 조사해 줘.\n\n- ERP 1위, 본사 춘천, 공공 클라우드"
+    assert query_terms.listed_names(memo) == []
+    assert query_terms.unsearched(COMPETITORS, ["잔디 JANDI 요금제", "플로우 flow"]) == [
+        "네이버웍스"]
+
+
+def test_another_competitors_citation_does_not_source_a_cell():
+    table = ("| 항목 | 잔디 | 플로우 | 출처 |\n|---|---|---|---|\n"
+             "| 핵심 기능 | 채팅, 파일 공유 [1] | 프로젝트 관리, 태스크 할당 | 확인 필요 |")
+    found = claims.check(table, "", {})
+    assert [(f["kind"], f["column"]) for f in found] == [("unsourced_cell", "플로우")]
+
+
+def test_an_opportunity_resting_on_an_unknown_is_labelled_a_guess():
+    text = ("| 항목 | 자사 | 뤼튼 | HCX |\n|---|---|---|---|\n"
+            "| 사내 설치 | 있음(자사 자료) | 확인 필요 | 확인 필요 |\n"
+            "| 가격 | 확인 필요 | 월 1만 원 [1] | 확인 필요 |\n\n"
+            "## 차별화 기회\n"
+            "1. 설치형 전용 제안 — 근거: 비교표 「사내 설치」 행.\n"
+            "2. 반출 금지 기관 — 뤼튼의 설치 여부가 확인되지 않으므로 자사만 충족.\n"
+            "3. 가격 비교 — 근거: 비교표 「가격」 행 [1].\n"
+            "4. 양식 맞춤 — 경쟁사는 확인 필요이므로 가설로 둠, 검증: 블라인드 비교.")
+    found = claims.opportunities_on_unknowns(text.split("\n"))
+    assert [f["text"].split(" — ")[0] for f in found] == ["설치형 전용 제안", "반출 금지 기관"]
+    fixed = claims.fix(text, found)
+    assert "행. (가설)" in fixed and "자사만 충족. (가설)" in fixed
+    assert "「가격」 행 [1]." in fixed and "[1]. (가설)" not in fixed

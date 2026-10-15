@@ -28,6 +28,7 @@ VAGUE = re.compile(
     r"풍부|풍부함|편리|편리함|간편|탁월|최고|최상|업계\s?최고|부족|미흡|약함|열세|우세|강점|약점)[.!]?$"
 )
 SOURCE_HEADER = re.compile(r"출처|근거|source", re.I)
+NOTE_HEADER = re.compile(r"비고|메모|참고|note|remark", re.I)
 VERDICT_HEADER = re.compile(r"우위|승자|판정|winner|결과|유리", re.I)
 VERDICT_HOLD = re.compile(r"판단\s?보류|확인\s?필요|동등|비교\s?불가|^\s*[-—]?\s*$")
 DEFAULT_SECTIONS = r"강점|약점|이기는|지는|우위|열위|가격|기능|반론|대응|차별|위협"
@@ -150,13 +151,18 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
         header = table["header"]
         source_col = next((i for i, c in enumerate(header) if SOURCE_HEADER.search(c)), None)
         verdict_col = next((i for i, c in enumerate(header) if VERDICT_HEADER.search(c)), None)
+        note_cols = {i for i, c in enumerate(header) if NOTE_HEADER.search(c)}
         for line_no, cells in table["rows"]:
             row_sourced = False
             if source_col is not None and source_col < len(cells):
                 src = cells[source_col]
                 row_sourced = bool(src) and src not in EMPTY and not OPEN.fullmatch(src)
-            # A [n] in any other column (「비고」) is the row's source too (r7 A11-T2).
-            row_sourced = row_sourced or any(CITED.search(c) for k, c in enumerate(cells) if k != verdict_col)
+            # A [n] in a notes column (「비고」) is the row's source too (r7 A11-T2); one in
+            # another competitor's cell is that cell's only (r10 SK-competitor-1: 잔디's [1]
+            # passed the uncited 플로우·네이버웍스 cells of its row).
+            row_sourced = row_sourced or any(
+                CITED.search(c) for k, c in enumerate(cells)
+                if k in note_cols and k != verdict_col)
             row_open = False
             label = " / ".join(cells[:labels])
             for col, cell in enumerate(cells):
@@ -227,6 +233,7 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
                             "placeholder": "판단 보류",
                         }
                     )
+    findings += opportunities_on_unknowns(lines)
     sections = re.compile(options.get("sections") or DEFAULT_SECTIONS)
     in_section = False
     for line_no, line in enumerate(lines):
@@ -263,6 +270,58 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
     return findings
 
 
+OPPORTUNITY_HEADING = re.compile(r"^\s{0,3}(?:#{1,6}\s|\*\*).*(?:기회|opportunit)", re.I)
+#: an unknown given as the reason: 「확인되지 않으므로」「확인 필요이므로」「미공개라서」
+UNKNOWN_REASON = re.compile(
+    r"(?:확인(?:되지\s?않|하지\s?못|\s?필요|\s?안\s?되)|미공개|알려지지\s?않|자료\s?없)[가-힣]{0,3}?"
+    r"\s?(?:으므로|므로|아서|어서|으니|니까|기\s?때문|이라서|라서|인\s?만큼|이므로)")
+ROW_REF = re.compile(r"「([^」\n]{1,30})」\s?행")
+OWN_HEADER = re.compile(r"자사|우리|당사")
+
+
+def _open_rows(lines: list[str]) -> dict[str, bool]:
+    """Each table row's label → whether every competitor cell in it is open (확인 필요 …)."""
+    out: dict[str, bool] = {}
+    for table in tables(lines):
+        header = table["header"]
+        skip = {0} | {i for i, c in enumerate(header)
+                      if SOURCE_HEADER.search(c) or VERDICT_HEADER.search(c)
+                      or NOTE_HEADER.search(c) or OWN_HEADER.search(c)}
+        for _, cells in table["rows"]:
+            rest = [c for i, c in enumerate(cells) if i not in skip]
+            if cells and rest:
+                out[_norm(cells[0])] = all(OPEN.search(c) or c.strip() in EMPTY for c in rest)
+    return out
+
+
+def opportunities_on_unknowns(lines: list[str]) -> list[dict]:
+    """Opportunities resting on what was not found: every row they cite is open, or an unknown
+    is their reason (r10 SK-competitor-1·2·3: 「확인되지 않으므로 자사만 충족」). One already
+    labelled 「가설」 is a guess the skill allows."""
+    rows = _open_rows(lines)
+    out = []
+    inside = False
+    for line_no, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("#") or (stripped.startswith("**") and stripped.endswith("**")):
+            inside = bool(OPPORTUNITY_HEADING.match(line))
+            continue
+        if not inside or not re.match(r"^(?:[-*•]|\d+[.)])\s+", stripped) or "가설" in stripped:
+            continue
+        cited = [_norm(m.group(1)) for m in ROW_REF.finditer(stripped)]
+        known = [rows[c] for c in cited if c in rows]
+        if (known and len(known) == len(cited) and all(known)) or UNKNOWN_REASON.search(stripped):
+            out.append({
+                "table": None, "line": line_no, "column": "", "row": "",
+                "text": re.sub(r"^(?:[-*•]|\d+[.)])\s+", "", stripped)[:120],
+                "kind": "opportunity_on_unknown",
+                "why": "확인하지 못한 것을 근거로 든 기회입니다",
+                "suggestion": "출처 있는 행에 기대어 다시 쓰거나, 「가설」로 밝히고 검증 방법을 적으세요",
+                "placeholder": "가설",
+            })
+    return out
+
+
 def fix(text: str, findings: list[dict]) -> str:
     lines = (text or "").split("\n")
     by_line: dict[int, list[dict]] = {}
@@ -271,7 +330,10 @@ def fix(text: str, findings: list[dict]) -> str:
     for line_no, items in by_line.items():
         line = lines[line_no]
         if items[0]["table"] is None:
-            if "확인 필요" not in line:
+            if items[0]["kind"] == "opportunity_on_unknown":
+                if "가설" not in line:
+                    lines[line_no] = line.rstrip() + " (가설)"
+            elif "확인 필요" not in line:
                 lines[line_no] = line.rstrip() + " (확인 필요)"
             continue
         lead = line[: len(line) - len(line.lstrip())]
@@ -300,6 +362,7 @@ def summary(findings: list[dict]) -> str:
         "vague_cell": "막연한 평가",
         "verdict_without_evidence": "근거 없는 판정",
         "unsourced_bullet": "출처 없는 주장",
+        "opportunity_on_unknown": "확인 못 한 것을 근거로 든 기회",
     }
     counts: dict[str, int] = {}
     for f in findings:
