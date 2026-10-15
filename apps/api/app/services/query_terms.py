@@ -246,13 +246,50 @@ def listed_names(request: str) -> list[tuple[str, list[str]]]:
     return []
 
 
+#: 「자료만으로」「검색하지 말고」: the lines are the material, not things to look up
+_MATERIAL_ONLY = re.compile(
+    r"자료만|자료\s?안에서만|검색\s?(?:하지|없이|말)|without\s+search", re.I)
+_BULLET = re.compile(r"^\s*(?:[-*•]|\d{1,2}[.)])\s+(.+)$")
+#: hearsay and verb words of a memo line (「업체라고 들음」「냈다고 함」), not what it is about
+_VERBAL = re.compile(r"(?:다고|라고|대요|래요|들음|함|음|됨|임|모름|했|냈|넣은|한|된|하는|되는)$")
+
+
+def memo_items(request: str) -> list[tuple[str, list[str]]]:
+    """The bullet lines a request hands over to check (a sales memo's 「- 공공 클라우드 사업도
+    한다고 함」): (line as written, its words) each, up to six. Words of the ask itself (the
+    company's name) and hearsay words are left out."""
+    if _MATERIAL_ONLY.search(request or ""):
+        return []
+    parts = re.split(r"\n[ \t]*\n", (request or "").strip(), maxsplit=1)
+    ask = norm(re.sub(r"(?m)^\s*(?:[-*•]|\d{1,2}[.)])\s+.*$", "", parts[0]))
+    items = []
+    for line in (request or "").split("\n"):
+        if not (found := _BULLET.match(line)):
+            continue
+        item = found.group(1).strip()
+        words = []
+        for word in re.sub(r"\([^()\n]*\)", " ", item).split():
+            word = _PARTICLE_END.sub("", re.sub(r"[,，、「」『』\"'.!?]", "", word))
+            if (len(word) >= 2 and not _VERBAL.search(word) and word not in _FRAME_WORDS
+                    and norm(word) and norm(word) not in ask):
+                words.append(word)
+        if words:
+            items.append((item[:40], words))
+    return items[:6]
+
+
 def unsearched(request: str, queries: Iterable[str]) -> list[str]:
     """Names the request lists that no query has a word of (r10 SK-competitor-1: 네이버웍스,
-    one of three competitors, never searched)."""
+    one of three competitors, never searched), then memo lines no query has two words of
+    (r10 SK-company-3: 「ERP 1위」, 「공공 클라우드」 never searched)."""
     listed = listed_names(request)
     # a query naming two of them is the request searched whole (r10 LFLF4 SK-competitor-1:
     # one query of the whole ask counted all three as searched); each is searched on its own
     asked = [q for q in (norm(q) for q in queries)
              if sum(1 for _, tokens in listed if any(norm(t) in q for t in tokens)) < 2]
-    return [name for name, tokens in listed
-            if not any(norm(t) and norm(t) in q for t in tokens for q in asked)]
+    names = [name for name, tokens in listed
+             if not any(norm(t) and norm(t) in q for t in tokens for q in asked)]
+    every = [norm(q) for q in queries]
+    return names + [item for item, words in memo_items(request)
+                    if not any(sum(1 for w in words if norm(w) in q) >= min(2, len(words))
+                               for q in every)]

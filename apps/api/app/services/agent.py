@@ -1638,6 +1638,11 @@ async def run_turn(
 ) -> AsyncIterator[dict[str, Any]]:
     """One assistant turn to a final answer; exactly one `usage`, `done` left to caller."""
     search_scale = 2 if deep_search else 1
+    # one more search for each thing the request names or hands over to check (r10 LFLF6
+    # SK-company-3: six searches spent before two of four memo lines were looked up)
+    listed_searches = len(query_terms.unsearched(ctx.request or "", [])) if deep_search else 0
+    web_cap = MAX_WEB_SEARCHES * search_scale + listed_searches
+    call_cap = MAX_SEARCH_CALLS * search_scale + listed_searches
     by_name = {t.name: t for t in tools}
     search_tool = by_name.get("web_search")
     if (
@@ -2299,8 +2304,7 @@ async def run_turn(
             unsearched = (query_terms.unsearched(ctx.request or "", queries)
                           if deep_search and spoken_now and not rest_asked
                           and "web_search" in by_name
-                          and searches < MAX_SEARCH_CALLS * search_scale
-                          and searches - empty_searches < MAX_WEB_SEARCHES * search_scale
+                          and searches < call_cap and searches - empty_searches < web_cap
                           and hop < settings.max_tool_hops else [])
             if unsearched:
                 rest_asked = True
@@ -2663,8 +2667,7 @@ async def run_turn(
                 _CODE_CLOSE_EN, reply_korean)})
             continue
 
-        searched_enough = (searches - empty_searches >= MAX_WEB_SEARCHES * search_scale
-                           or searches >= MAX_SEARCH_CALLS * search_scale)
+        searched_enough = searches - empty_searches >= web_cap or searches >= call_cap
         if searched_enough or fetches >= MAX_FETCHES:
             conversation.append(
                 {

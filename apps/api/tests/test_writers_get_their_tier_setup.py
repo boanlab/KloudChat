@@ -282,6 +282,21 @@ async def test_a_deep_searching_skill_gets_twice_the_searches(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
+async def test_a_deep_search_gets_a_search_more_for_each_thing_the_request_lists(
+        monkeypatch) -> None:
+    """r10 LFLF6 SK-company-3: six searches spent before two of four memo lines were looked up."""
+    seen: list = []
+    _scripted(monkeypatch, [_call(n) for n in range(1, 9)] + [{"text": "답입니다 [1]."}], seen)
+    request = "더존비즈온 조사해 줘.\n\n- ERP 1위라고 들음\n- 공공 클라우드 한다고 함"
+    events = [e async for e in agent.run_turn(
+        SMALL, [{"role": "system", "content": "시스템"}, {"role": "user", "content": request}],
+        [_search([_found()] * 8)], ToolContext(user_id="u", session_id="s", api_key="k",
+                                               request=request), deep_search=True)]
+    assert len(seen) == 9 and _shown(events)
+    assert _loop_notes(seen)[0].startswith("웹 검색은 충분히 했습니다.")
+
+
+@pytest.mark.asyncio
 async def test_a_deep_search_answer_is_held_once_for_a_listed_name_never_searched(
         monkeypatch) -> None:
     """r10 SK-competitor-1: 잔디·플로우 searched, 네이버웍스 never, and the answer written."""

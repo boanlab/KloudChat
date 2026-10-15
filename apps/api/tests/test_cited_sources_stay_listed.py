@@ -147,3 +147,56 @@ def test_the_persons_own_product_in_their_words_is_not_marked():
              "| 가격 | 월 1만 원 최저가 | 확인 필요 |")
     found = claims.check(table, material, {})
     assert [(f["row"], f["column"]) for f in found] == [("가격", "자사")]
+
+
+def test_a_page_profiling_another_company_is_not_a_one_pagers_source():
+    # LFLF6 SK-company-2: THE VC's 앳 page cited for 리벨리온's series C investors
+    text = ("## 리벨리온(Rebellions) 한눈에\n\n"
+            "시리즈C에 산업은행이 참여했습니다 [[2]](https://thevc.kr/at-1). "
+            "설립은 2020년입니다 [[1]](https://thevc.kr/rebellions).\n\n"
+            "- [1] [리벨리온 - 기업정보 | 투자 - THE VC · thevc.kr](https://thevc.kr/rebellions)\n"
+            "- [2] [앳(에이스) - 기업정보 | 투자 - THE VC · thevc.kr](https://thevc.kr/at-1)")
+    found = [f for f in sources.check(text, "", {}) if f["kind"] == "cite_mismatch"]
+    assert [f["text"] for f in found] == ["[2]"] and "앳" in found[0]["why"]
+    fixed = sources.fix_cites(text, found)
+    assert "참여했습니다 「출처 미확인」." in fixed
+    assert "[[1]](https://thevc.kr/rebellions)" in fixed
+    # an answer that is not a company's one-pager is not judged so
+    assert not [f for f in sources.check(text.replace("한눈에", "투자 동향"), "", {})
+                if f["kind"] == "cite_mismatch"]
+
+
+def test_a_cell_whose_only_source_is_about_another_competitor_is_unsourced():
+    # LFLF6 SK-competitor-1: a JANDI blog the row's only source, a 네이버웍스 fact beside it
+    text = ("대상: 잔디(JANDI), 플로우(Flow), 네이버웍스(Naver Works)\n\n"
+            "| 항목 | 잔디 | 플로우 | 네이버웍스 | 출처 |\n|---|---|---|---|---|\n"
+            "| 최근 움직임 | 연동 확대 | 확인 필요 | 클로바노트 별도 상품 | "
+            "[[4]](https://blog.jandi.com/connect) |\n"
+            "| 요금 | 확인 필요 | 확인 필요 | Lite 4,000원 | "
+            "[[3]](https://naver.worksmobile.com/pricing/) |\n"
+            "| 기능 | 메신저 [[4]](https://blog.jandi.com/connect) | 칸반 "
+            "[[5]](https://daouoffice.com/blog/jandi-flow-compare) | 결재 | 확인 필요 |\n\n"
+            "- [4] [JANDI Connect 연동](https://blog.jandi.com/connect)\n"
+            "- [3] [요금제 | NAVER WORKS](https://naver.worksmobile.com/pricing/)\n"
+            "- [5] [잔디 vs 플로우 비교](https://daouoffice.com/blog/jandi-flow-compare)")
+    found = [f for f in claims.check(text, "", {}) if f["kind"] == "unsourced_cell"]
+    assert [(f["row"], f["column"]) for f in found] == [
+        ("최근 움직임", "네이버웍스"), ("기능", "네이버웍스")]
+    assert "잔디" in found[0]["why"] and "다른 회사" in found[0]["why"]
+
+
+def test_memo_lines_handed_over_to_check_are_each_searched():
+    from app.services import query_terms
+
+    # LFLF6 SK-company-3: 「ERP 1위」 and 「공공 클라우드」 never searched
+    memo = ("아래 메모로 더존비즈온 기업 조사 한 장 만들어 줘.\n\n[영업팀 메모]\n"
+            "- 더존비즈온, ERP 1위 업체라고 들음\n- 본사 강원도 춘천?\n"
+            "- 최근 AI 넣은 ERP 냈다고 함 (이름 모름)\n- 공공 클라우드 사업도 한다고 함")
+    assert [w for _, w in query_terms.memo_items(memo)][0] == ["ERP", "1위"]
+    queries = ["더존비즈온 AI ERP", "더존비즈온 본사 춘천", "더존비즈온 2025 실적"]
+    assert query_terms.unsearched(memo, queries) == [
+        "더존비즈온, ERP 1위 업체라고 들음", "공공 클라우드 사업도 한다고 함"]
+    more = ["더존 ERP 점유율 1위", "더존 공공 클라우드"]
+    assert query_terms.unsearched(memo, [*queries, *more]) == []
+    # the person's own material to work from is not a list of things to look up
+    assert query_terms.memo_items("이 자료만으로 정리해 줘.\n\n- 요금 월 6천 원\n- 고객 30곳") == []
