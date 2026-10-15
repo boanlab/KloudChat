@@ -249,6 +249,10 @@ def listed_names(request: str) -> list[tuple[str, list[str]]]:
 def unsearched(request: str, queries: Iterable[str]) -> list[str]:
     """Names the request lists that no query has a word of (r10 SK-competitor-1: 네이버웍스,
     one of three competitors, never searched)."""
-    asked = [norm(q) for q in queries]
-    return [name for name, tokens in listed_names(request)
+    listed = listed_names(request)
+    # a query naming two of them is the request searched whole (r10 LFLF4 SK-competitor-1:
+    # one query of the whole ask counted all three as searched); each is searched on its own
+    asked = [q for q in (norm(q) for q in queries)
+             if sum(1 for _, tokens in listed if any(norm(t) in q for t in tokens)) < 2]
+    return [name for name, tokens in listed
             if not any(norm(t) and norm(t) in q for t in tokens for q in asked)]

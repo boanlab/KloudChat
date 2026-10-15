@@ -125,3 +125,23 @@ def test_an_opportunity_resting_on_an_unknown_is_labelled_a_guess():
     fixed = claims.fix(text, found)
     assert "행. (가설)" in fixed and "자사만 충족. (가설)" in fixed
     assert "「가격」 행 [1]." in fixed and "[1]. (가설)" not in fixed
+
+
+def test_the_whole_ask_as_one_query_does_not_count_as_searching_each_name():
+    from app.services import query_terms
+
+    # LFLF4 SK-competitor-1: the first query was the request itself
+    whole = COMPETITORS[:60]
+    assert query_terms.unsearched(COMPETITORS, [whole, "잔디 요금제", "플로우 요금제"]) == [
+        "네이버웍스"]
+
+
+def test_the_persons_own_product_in_their_words_is_not_marked():
+    # LFLF4 SK-competitor-2: 14 own-product facts marked 「(확인 필요)」
+    material = "우리 제품은 사내 설치형 AI 챗봇이야(자체 GPU 서버, 문서 기반 답변, 보고서 생성)."
+    table = ("| 항목 | 자사 | 뤼튼 |\n|---|---|---|\n"
+             "| 설치 | 지원 (자체 GPU 서버) | 확인 필요 |\n"
+             "| 기능 | 문서 기반 답변, 보고서 생성 | 확인 필요 |\n"
+             "| 가격 | 월 1만 원 최저가 | 확인 필요 |")
+    found = claims.check(table, material, {})
+    assert [(f["row"], f["column"]) for f in found] == [("가격", "자사")]

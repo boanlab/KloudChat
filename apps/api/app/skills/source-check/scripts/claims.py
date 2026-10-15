@@ -117,6 +117,15 @@ def _in_material(cell: str, material: str, material_norm: str,
     return False
 
 
+def _in_own_words(cell: str, material: str) -> bool:
+    """Most of a cell's words are the material's own (「문서 기반 답변, 보고서 생성」)."""
+    words = [w for w in re.findall(r"[가-힣A-Za-z0-9]{2,}", re.sub(r"\[\d+\]", "", cell))]
+    if not words or not material:
+        return False
+    flat = re.sub(r"\s+", "", material)
+    return sum(1 for w in words if w in flat or w[:2] in flat and len(w) <= 3) >= 0.6 * len(words)
+
+
 def tables(lines: list[str]) -> list[dict]:
     found = []
     index = 0
@@ -152,6 +161,7 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
         source_col = next((i for i, c in enumerate(header) if SOURCE_HEADER.search(c)), None)
         verdict_col = next((i for i, c in enumerate(header) if VERDICT_HEADER.search(c)), None)
         note_cols = {i for i, c in enumerate(header) if NOTE_HEADER.search(c)}
+        own_cols = {i for i, c in enumerate(header) if OWN_HEADER.search(c)}
         for line_no, cells in table["rows"]:
             row_sourced = False
             if source_col is not None and source_col < len(cells):
@@ -206,6 +216,10 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
                     continue
                 if CITED.search(cell) or row_sourced or _in_material(cell, material, material_norm,
                                                                      derived):
+                    continue
+                if col in own_cols and _in_own_words(cell, material):
+                    # the person's own product in their words (r10 LFLF4 SK-competitor-2:
+                    # 「지원 (자체 GPU 서버)」 marked once a row's [n] stopped covering it)
                     continue
                 findings.append(
                     {
