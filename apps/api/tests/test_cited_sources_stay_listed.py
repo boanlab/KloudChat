@@ -78,6 +78,8 @@ def test_the_research_skills_search_deep_on_a_chat_turn():
         assert spec is not None and spec.process.get("deep_search") is True
         assert sessions._deep_search((key,), {key: spec})
     assert not sessions._deep_search(("copy-editing",), {})
+    # LFLF5: the test account's copy had no stored fields, so the turn's specs lacked it
+    assert sessions._deep_search(("competitor-analysis",), {})
 
 
 # ── LFLF3: searched what the request lists, a cell's own source, opportunities on unknowns ──

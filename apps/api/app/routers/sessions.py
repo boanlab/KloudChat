@@ -3443,8 +3443,9 @@ def _skill_keys(applied, specs: dict[str, skill_specs.Spec]) -> tuple[str, ...]:
 
 def _deep_search(keys, specs: dict | None) -> bool:
     """Whether a skill on the turn searches deep (its 진행 과정 설정 「깊이 검색」)."""
-    return any(bool(((specs or {}).get(key) or skill_specs.Spec(key=key)).process.get(
-        "deep_search")) for key in keys)
+    # a shipped skill with no stored fields reads its package's (`skill_specs.resolve`)
+    return any(bool((spec := skill_specs.resolve(key, specs)) is not None
+                    and spec.process.get("deep_search")) for key in keys)
 
 
 def render_template_checks(session: ChatSession) -> tuple[str, ...]:
