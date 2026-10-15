@@ -25,7 +25,6 @@ CHECKED = {
     "internal-comms": ["internal-comms/check"],
     "company-research": ["source-check/post"],
     "competitor-analysis": ["source-check/post"],
-    "industry-analysis": ["source-check/post"],
     "source-check": ["source-check/post"],
 }
 

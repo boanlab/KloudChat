@@ -713,7 +713,6 @@ const EN: Record<string, string> = {
   '교정·윤문': 'Copy editing',
   '출처 점검': 'Source check',
   '글자 수 맞춤': 'Text fit',
-  '산업 환경 분석': 'Industry analysis',
   // 진행 과정 · 묶음 · 에이전트로 저장 · 설정 › 메모리·테마
   '이 에이전트': 'This agent',
   '진행 과정': 'How it works',

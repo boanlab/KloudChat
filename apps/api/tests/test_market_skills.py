@@ -17,7 +17,6 @@ SKILLS = Path(skill_packages.__file__).resolve().parent.parent / "skills"
 MARKET_SKILLS = (
     "company-research",
     "competitor-analysis",
-    "industry-analysis",
 )
 ALL = (*MARKET_SKILLS, "source-check")
 
@@ -58,13 +57,6 @@ def test_the_market_skills_ship_as_drafts_with_their_source():
         # Korean front matter, English instructions.
         assert any("가" <= ch <= "힣" for ch in package.name), key
     assert set(packages["source-check"].scripts) == {"sources", "claims", "frame", "post"}
-
-
-def test_merged_skills_keep_the_original_names_as_aliases():
-    packages = skill_packages.packages()
-    for alias in ("pestel-analysis", "porters-five-forces"):
-        assert alias in packages["industry-analysis"].when_to_use
-        assert alias in packages["industry-analysis"].body
 
 
 def test_borrowed_text_names_its_licence_and_commit():
