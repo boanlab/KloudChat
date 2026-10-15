@@ -1185,6 +1185,40 @@ def _link_citations(answer: str, sources: list[str],
     return "```".join(pieces), sorted(cited)
 
 
+def _renumber_citations(answer: str, cited: list[int],
+                        sources: list[str]) -> tuple[str, list[int], list[str]]:
+    """Cited numbers renumbered 1, 2, … in the order the reader meets them (code blocks
+    untouched); returns the answer, the new numbers and the sources under them.
+
+    The list under the answer otherwise starts at whatever the searches numbered first
+    (「[5] [7] [8]」 with nothing above 5)."""
+    order: list[int] = []
+    marker = re.compile(r"\[\[(\d{1,2})\]\]\((https?://[^)\s]{1,500})\)|(?<!\[)\[(\d{1,2})\](?!\()")
+    pieces = answer.split("```")
+    for i in range(0, len(pieces), 2):
+        for m in marker.finditer(pieces[i]):
+            n = int(m.group(1) or m.group(3))
+            if n in cited and n not in order:
+                order.append(n)
+    order += [n for n in cited if n not in order]
+    if order == list(range(1, len(order) + 1)):
+        return answer, cited, sources
+    new = {n: i + 1 for i, n in enumerate(order)}
+
+    def swap(m: re.Match[str]) -> str:
+        n = int(m.group(1) or m.group(3))
+        if n not in new:
+            return m.group(0)
+        if m.group(1):
+            return f"[[{new[n]}]]({m.group(2)})"
+        return f"[{new[n]}]"
+
+    for i in range(0, len(pieces), 2):
+        pieces[i] = marker.sub(swap, pieces[i])
+    renumbered = [sources[n - 1] for n in order]
+    return "```".join(pieces), list(range(1, len(order) + 1)), renumbered
+
+
 #: an appended list line: 「- [3] [제목 · host](url)」, 「- [3] url」, or a material
 #: 「- [3] 자료명」
 _LISTED_SOURCE = re.compile(r"^\s{0,3}[-*]\s{1,3}\[(\d{1,2})\]\s{1,3}(?:\[([^\]\n]{0,300})\]\()?"
@@ -2860,6 +2894,11 @@ async def run_turn(
                 cited = sorted({*cited, *more})
     else:
         linked, cited = _link_citations(answer, sources, source_seen)
+    if cited and not own_list and not any(
+            sources[n - 1].startswith(MATERIAL_SOURCE) for n in cited):
+        # the list under the answer starts at [1] (only cited sources are listed); material
+        # passages keep the numbers the knowledge step showed
+        linked, cited, sources = _renumber_citations(linked, cited, sources)
     if linked != answer:
         # Mid-text citations: answer re-sent whole.
         yield {"type": "retract", "text": answer}
