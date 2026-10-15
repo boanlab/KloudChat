@@ -52,7 +52,7 @@ const serverCatalogue = {
   postChecks: [
     { ref: 'source-check/post', skill: '출처 점검', summary: '답의 수치·인용이 자료에 있는지 확인합니다.' },
     { ref: 'copy-editing/preserve', skill: '교정·윤문', summary: '원문의 값과 문장이 바뀌지 않았는지 봅니다.' },
-    { ref: 'release-notes/notes', skill: '릴리스 노트', summary: '' },
+    { ref: 'internal-comms/check', skill: '사내 공지·안내', summary: '' },
   ],
   entries: {
     pre: [{ ref: 'gap-check/gaps', skill: '빠진 정보 묻기', summary: '' }],

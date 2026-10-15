@@ -218,19 +218,6 @@ def test_copy_check_verdicts_leave_the_copy() -> None:
     assert internal_words.strip_reports(flash).strip() == "본문"
 
 
-A16_T1_TAIL = (
-    "대화 검색이 빨라졌습니다(사내 측정 평균 2.1초 → 0.8초).\n\n---\n"
-    "뺀 항목: L7(로깅 라이브러리 버전 업 — 사용자 영향 없는 내부 작업), L8(토큰 갱신 로직 정리 — "
-    "사용자 영향 없는 내부 리팩터링)\n항목 9개: 노트 7 · 뺌 2 · 빠짐 0")
-
-
-def test_release_notes_coverage_lines_stay_with_the_script() -> None:
-    assert internal_words.strip_work_notes(A16_T1_TAIL) == (
-        "대화 검색이 빨라졌습니다(사내 측정 평균 2.1초 → 0.8초).")
-    bold = "본문입니다.\n\n**뺀 항목**: 없음\n\n**항목 7개: 노트 7 · 뺌 0 · 빠짐 0**"
-    assert internal_words.strip_work_notes(bold) == "본문입니다."
-
-
 # ── A09 T1 flash: template blanks and a value in brackets ─────────────────────────────
 
 A09_ABSTRACT = ("LiteRerank는 조기 종료와 상위 20개 후보 제한으로 지연을 412ms에서 38ms로 줄였다. "

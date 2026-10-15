@@ -60,9 +60,6 @@ def test_the_report_prompts_keep_never_inventing_and_say_how_to_write_around():
 def test_the_skills_people_judged_carry_the_claude_like_rules():
     comparison = skill_packages.package_for("option-comparison").body
     assert "× 1.1" in comparison and "추천: ○○, 단 △△ 확인" in comparison
-    cold = skill_packages.package_for("cold-email").body
-    assert "보내기 전에" in cold and "no warning header" in cold.lower()
-    assert "If you do not wish to receive" not in cold.split("## Procedure")[1]
     minutes = skill_packages.package_for("minutes-writing").body
     assert "‘미정’" in minutes and "확인이 필요합니다" in minutes
     regulation = skill_packages.package_for("regulation-answer").body

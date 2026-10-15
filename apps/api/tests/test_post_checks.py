@@ -11,30 +11,22 @@ from app.pipeline import registry
 from app.pipeline.bundle import Bundle, Document, Material, Request
 from app.pipeline.runner import Runner
 from app.pipeline.stage import Base, Context
-from app.services import internal_words, post_checks, skill_packages, skill_scripts
+from app.services import internal_words, post_checks, skill_packages, skill_scripts, skill_specs
 
 preserve = skill_scripts.module("copy-editing", "preserve")
 scan = skill_scripts.module("generic-language-killer", "scan")
 comms = skill_scripts.module("internal-comms", "check")
-notes = skill_scripts.module("release-notes", "notes")
-timeline = skill_scripts.module("eol-message", "timeline")
 sources = skill_scripts.module("source-check", "sources")
 source_post = skill_scripts.module("source-check", "post")
-size = skill_scripts.module("market-sizing", "size")
 
 CHECKED = {
     "copy-editing": ["copy-editing/preserve"],
     "generic-language-killer": ["generic-language-killer/scan"],
     "internal-comms": ["internal-comms/check"],
-    "release-notes": ["release-notes/notes"],
-    "eol-message": ["eol-message/timeline"],
     "company-research": ["source-check/post"],
     "competitor-analysis": ["source-check/post"],
-    "competitive-battlecard": ["source-check/post"],
     "industry-analysis": ["source-check/post"],
-    "market-segments": ["source-check/post"],
     "source-check": ["source-check/post"],
-    "market-sizing": ["market-sizing/size", "source-check/post"],
 }
 
 
@@ -44,10 +36,10 @@ def test_the_skills_name_their_post_check_scripts_and_each_resolves():
         assert list(package.post_checks) == wanted, key
         assert package.post_judge and package.judge_focus, key
         assert [f"{k}/{s}" for k, s in post_checks.entries(key)] == wanted, key
-    assert post_checks.on_turn(("market-sizing", "copywriting")) == ["market-sizing"]
+    assert post_checks.on_turn(("competitor-analysis", "translation")) == ["competitor-analysis"]
     # A skill picked through `use_skill` is on the turn too.
-    body = skill_packages.package_for("eol-message").body
-    assert post_checks.on_turn((), ["# 스킬 지침\n\n" + body]) == ["eol-message"]
+    body = skill_packages.package_for("internal-comms").body
+    assert post_checks.on_turn((), ["# 스킬 지침\n\n" + body]) == ["internal-comms"]
 
 
 # ── copy-editing: original vs edited ─────────────────────────────────────
@@ -104,7 +96,7 @@ def test_scan_post_sends_back_a_hedge_made_definite_and_applies_safe_fixes():
     assert "- 예정 → 출시" in final["text"]
 
 
-# ── internal-comms, release-notes, eol-message: facts the material lacks ──
+# ── internal-comms: facts the material lacks ─────────────────────────────
 
 MEMO = ("[인사팀 메모] 2026-11-02(월)부터 새 HR 시스템(hr.example.kr)으로 신청. "
         "문의: 인사팀 내선 2231")
@@ -118,41 +110,6 @@ def test_a_notice_loses_a_date_and_a_contact_the_memo_does_not_give():
     assert "[연락처]" in out["text"]
     wrong = comms.post("11월 2일(화)부터 씁니다.", {"material": MEMO, "today": "2026-10-08"})
     assert "11월 2일(월)" in wrong["text"]
-
-
-def test_release_notes_blank_a_date_the_list_does_not_give_and_keep_a_year_less_one():
-    log = "앱 4.2.0, 10월 27일 배포\n- 품절 상품 한 번에 지우기 버튼"
-    text = "# 오늘장보기 4.2.0 (2026. 10. 27.)\n## 새 기능\n- 품절 상품을 한 번에 지우는 버튼"
-    assert notes.post(text, {"material": log, "final": False})["fixed"] == []
-    other = notes.post(text.replace("10. 27.", "10. 9."), {"material": log, "final": False})
-    assert "[배포일]" in other["text"] and other["fixed"][0]["kind"] == "date"
-    made_up = "## 개선\n- 결제 화면이 40% 빨라졌습니다"
-    first = notes.post(made_up, {"material": log, "final": False})
-    assert [f["kind"] for f in first["rewrite"]][:1] == ["number"]
-    assert "[수치]" in notes.post(made_up, {"material": log, "final": True})["text"]
-
-
-def test_timeline_fix_is_a_question_not_a_date():
-    result = timeline.check({"announce": "2026-12-01", "end": "2026-12-31"},
-                            [{"from": "announce", "to": "end", "days": 90}])
-    gap = next(f for f in result["findings"] if f["type"] == "gap")
-    assert "2026" not in gap["fix"] and "정해 주세요" in gap["fix"]
-    assert gap["question"].endswith("?")
-
-
-def test_eol_post_blanks_an_invented_date_and_asks_for_it():
-    material = "[결정] 공지: 2026-10-15\n서비스 종료: 2026-12-31\n데이터 삭제: 2027-02-28"
-    text = ("| 2026. 10. 15.(목) | 공지 |\n| 2026. 12. 31.(목) | 서비스 종료 |\n"
-            "| 2027. 1. 15.(금) | 환불 신청 마감 |\n\n신규 가입 중단일을 "
-            "언제로 할까요? (예: 2026. 11. 1.)")
-    out = timeline.post(text, {"material": material, "today": "2026-10-08"})
-    assert "2027. 1. 15." not in out["text"] and "| [날짜] | 환불 신청 마감 |" in out["text"]
-    assert "확인이 필요한 날짜" in out["text"]
-    # A question's example date is the question's, not a fact.
-    assert "(예: 2026. 11. 1.)" in out["text"]
-    relative = timeline.post("종료일은 2026. 11. 30.입니다.",
-                             {"material": "다음 달 말 종료", "today": "2026-10-08"})
-    assert relative["fixed"] == []
 
 
 # ── source-check: generalities, citations the source does not hold ───────
@@ -186,44 +143,6 @@ def test_the_source_check_post_marks_numbers_and_retracts_a_citation_on_the_fina
                                              "final": True})
     assert "구조다 「출처 미확인」." in final["text"]
     assert final["rewrite"] == [] and any(f["kind"] == "generic" for f in final["flags"])
-
-
-# ── market-sizing: the written calculation worked again ──────────────────
-
-SIZING = """## 결과
-| 구분 | 상향식 |
-|---|---:|
-| SOM | 5.4억원 |
-
-## 계산식
-SOM(상향식) = 첫해 고객 수 1,500가구 × 연 객단가 36만원 = 5.4억원
-
-## 가정과 출처
-| 번호 | 항목 | 값 | 구분 | 근거·출처 |
-|---:|---|---:|---|---|
-| 3 | 연 객단가 | 36만원 | 가정 | 월 3만원 × 12개월 |
-| 5 | 첫해 고객 수 | 1,500가구 | 가정 | 마케팅 예산 3억원 ÷ 고객 1가구 획득 비용 200만원 |
-
-## 민감도
-| 흔든 값 | SOM 범위 |
-|---|---|
-| 고객 수 | 4.3 ~ 6.5 |"""
-
-
-def test_size_post_recomputes_the_basis_and_the_equation_and_carries_the_result():
-    out = size.post(SIZING, {})
-    text = out["text"]
-    assert "| 5 | 첫해 고객 수 | 150가구 |" in text
-    assert "첫해 고객 수 150가구 × 연 객단가 36만원 = 5,400만원" in text
-    assert "| SOM | 5,400만원 |" in text
-    # The row number and the right value are left as they are; the sensitivity table is flagged.
-    assert "| 3 | 연 객단가 | 36만원 |" in text and "| 고객 수 | 4.3 ~ 6.5 |" in text
-    assert [f["kind"] for f in out["flags"]] == ["sensitivity"]
-    assert "※ 계산을 다시 해 고쳤습니다" in text
-    chained = size.post("12만 곳 × 50% × 2% = 0.01곳, 1,200 × 336만 원 = 40억 3,200만 원.", {})
-    assert chained["text"].startswith("12만 곳 × 50% × 2% = 1,200곳, 1,200 × "
-                                      "336만 원 = 40억 3,200만 원.")
-    assert size.post("TAM = 5,200 × (1 + 0.08)² = 6,065.28", {})["fixed"] == []
 
 
 # ── the server's run: code, one rewrite, code again ──────────────────────
@@ -285,9 +204,13 @@ def test_a_judged_statement_the_material_states_in_its_own_words_is_kept():
                     {"quote": "결제가 3배 빨라졌습니다", "why": "없음"}],
                    answer, evidence=[{"n": 1, "evidence": "템플릿 폴더 기능 추가"},
                                      {"n": 2, "evidence": "결제 속도 3배 개선"}])
+    # a person's own judged skill: its text gives no figure of its own
+    notes = skill_specs.Spec(key="skill:notes", name="변경 안내", post_judge=True,
+                             body="Write the change notice from the list only.")
     out = asyncio.run(post_checks.run(
-        answer, keys=["release-notes"], request="릴리스 노트", material=memo, attached="",
-        computed=[], today="2026-10-08", complete=model, model="w", judge="j", api_key="k"))
+        answer, keys=[notes.key], request="업데이트 안내 써 줘", material=memo, attached="",
+        computed=[], today="2026-10-08", complete=model, model="w", judge="j", api_key="k",
+        specs={notes.key: notes}))
     # The first quote's evidence is the memo's own words; the second's is made up.
     assert "템플릿을 폴더로 묶어 관리할 수 있습니다." in out.text
     assert "3배" not in out.text
@@ -327,7 +250,7 @@ def test_the_stage_runs_in_the_chat_finish_with_a_post_checked_skill_only(monkey
         flow = registry.pipeline(name).flow("finish")
         assert flow.index("check:copy") < flow.index("check:skills") < flow.index("answer-replace")
     assert stage.skip(_bundle("x"))
-    assert stage.skip(_bundle("x", skill_keys=("copywriting",)))
+    assert stage.skip(_bundle("x", skill_keys=("translation",)))
     assert not stage.skip(_bundle("x", skill_keys=("internal-comms",)))
     monkeypatch.setattr(report, "_complete", _Model([], "11월 2일(월)부터 씁니다."))
     bundle = _bundle("11월 3일(화)부터 씁니다.", skill_keys=("internal-comms",),
@@ -431,36 +354,13 @@ def test_the_source_check_post_leaves_worked_values_and_checklists_unmarked():
     assert marked == ["시장은 연 30% 성장한다."]
 
 
-def test_release_notes_drop_a_code_sample_the_list_does_not_hold_and_keep_years():
-    log = "PAY-301 결제 취소 API에 부분 취소 금액 파라미터 cancel_amount 추가"
-    text = ("## 새 기능\n- 부분 취소를 지원합니다.\n\n  ```\n  POST /v1/payments/{id}/cancel\n"
-            '  {"cancel_amount": 5000}\n  ```\n\n## 개선\n- 2026년 하반기 기준입니다.')
-    first = notes.post(text, {"material": log, "final": False})
-    assert "code" in [f["kind"] for f in first["rewrite"]]
-    final = notes.post(text, {"material": log, "final": True})
-    assert "POST /v1" not in final["text"] and "\n  \n" not in final["text"]
-    assert "2026년 하반기" in final["text"]
-
-
-def test_eol_keeps_a_worked_legal_deadline_but_not_a_worked_schedule_date():
-    material = "[메모] 종료 예정 2027-03-02. 공지 예정 2027-01-05."
-    computed = ["legal announce_by 2027-01-01, report_by 2027-02-15"]
-    text = ("| 공지 | 2027. 1. 1.(금) |\n| 종료 | 2027. 3. 2.(화) |\n\n"
-            "신고 기한은 2027. 2. 15.(월)입니다(시행령 제33조).\n"
-            "삭제는 2031. 3. 2.에 합니다.")
-    out = timeline.post(text, {"material": material, "computed": computed,
-                               "today": "2026-10-08"})
-    assert "| 공지 | [날짜] |" in out["text"] and "| 종료 | 2027. 3. 2.(화) |" in out["text"]
-    assert "2027. 2. 15.(월)" in out["text"] and "2031. 3. 2." not in out["text"]
-
-
 def test_the_judge_is_told_what_the_skill_looks_at():
     model = _Model([], "")
     asyncio.run(post_checks.run(
-        "자동 결제는 12월 31일에 중단됩니다.", keys=["eol-message"], request="종료 안내",
+        "자동 결제는 12월 31일에 중단됩니다.", keys=["internal-comms"], request="공지",
         material="종료 2026-12-31", attached="", computed=[], today="2026-10-08",
         complete=model, model="w", judge="j", api_key="k"))
-    assert "Look in particular at: billing and automatic payments" in model.prompts[0][1]
+    assert "Look in particular at: promises of a follow-up notice" in model.prompts[0][1]
 
 
 def test_a_comparison_table_keeps_its_own_categories_and_worked_rates_unmarked():
@@ -509,14 +409,6 @@ def test_an_attached_cliche_check_does_not_also_run_the_judged_post_check():
     assert not stage.skip(_bundle("x", skill_keys=("generic-language-killer",)))
 
 
-def test_size_post_leaves_a_unit_conversion_alone_and_flags_a_unit_slip():
-    text = ("- SOM = 900곳 × 40명 × 7,000원 × 12개월 ÷ 1억 = 30.24억원\n"
-            "- TAM = 12만 곳 × 40명 × 7,000원 × 12개월 = 4,032원")
-    out = size.post(text, {})
-    assert out["text"] == text and out["fixed"] == []
-    assert [f["kind"] for f in out["flags"]] == ["unit"]
-
-
 def test_a_claim_marked_as_our_own_material_must_be_in_it():
     material = ("[자사 자료] 노트핏(우리): 1인 월 12,000원(VAT 별도). 국내 리전 저장.\n"
                 "[자료 5] 고객 인터뷰(자사, 12곳): 슬랙/잔디 연동은 경쟁사 페이지에 언급 없음")
@@ -530,11 +422,6 @@ def test_a_pretty_printed_tool_result_is_taken_out_of_the_answer():
     text = ('[실행 결과: run_skill_script]\n{\n  "status": "ok",\n  "findings": [\n    {\n'
             '      "kind": "unsourced"\n    }\n  ]\n}\n고친 초안입니다.\n- 목록 [1]')
     assert internal_words.strip_reports(text) == "고친 초안입니다.\n- 목록 [1]"
-
-
-def test_size_post_skips_prose_around_a_calculation():
-    text = "객단가: 평균 7,000원으로 잡고, 평균 50명 사용 × 12개월 = 420만원"
-    assert size.post(text, {})["fixed"] == []
 
 
 def test_a_judged_sentence_the_person_wrote_is_never_taken_out():

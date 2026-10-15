@@ -115,7 +115,7 @@ def test_a_judged_line_made_of_the_material_s_names_is_kept_and_shown():
         return answer, {}
 
     out = asyncio.run(post_checks.run(
-        answer, keys=["release-notes"], request="릴리스 노트 써 줘", material=CHANGES,
+        answer, keys=["internal-comms"], request="변경 안내 써 줘", material=CHANGES,
         attached="", computed=[], today="2026-10-13", complete=complete, model="w",
         judge="j", api_key="k"))
     assert line in out.text and not [f for f in out.fixed if "뺌" in f["why"]]

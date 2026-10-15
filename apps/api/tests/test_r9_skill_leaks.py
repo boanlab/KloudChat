@@ -1,10 +1,7 @@
 """r9 items 4·5: skill examples leaking into answers, and weekdays a late rewrite brought back.
 
-- R3-A15-T2 (both configs): the cold-email output format's example signature 「김현수 드림」
+- R3-A15-T2 (both configs): a sales-email output format's example signature 「김현수 드림」
   became the sender, though the request gives no sender name.
-- R3-A14-T2 L27F: the eol-message structure's example 「(종료일 2026. 12. 31.)」 matched the
-  material's read-only day (12/31), which became the end date in the title, body and app
-  notice; the legal deadlines were counted back from it (12/1, 12/16).
 - R3-A01-T2 L27F: the doc-agenda rule for an empty 사전 자료 section told to the reader.
 - R3-A13-T2 LFLF: `answer-normalize` set the weekdays, then the copy check's rewrite brought
   back 9 wrong ones (「11월 27일(목)」, a Friday in 2026).
@@ -13,14 +10,11 @@
 from __future__ import annotations
 
 import datetime as dt
-import subprocess
-
-import pytest
 
 from app.pipeline import chat_stages
 from app.pipeline import registry as pipeline_registry
 from app.pipeline.stage import Context
-from app.services import guide_echo, internal_words, skill_scripts, skill_specs
+from app.services import guide_echo, internal_words, skill_specs
 
 TODAY = dt.date(2026, 10, 14)
 
@@ -89,7 +83,7 @@ async def test_an_answer_with_no_weekday_is_left_alone():
 
 # ── example names (R3-A15-T2) ────────────────────────────────────────────
 
-#: the cold-email output format before r9, as the writer read it
+#: a sales-email output format before r9, as the writer read it
 OLD_FORMAT = (
     "## Output format\n```\n### 제목 (택1)\n1. …\n### 본문\n…\n김현수 드림\n"
     "한빛소프트 영업팀 | [전화번호] | [이메일]\n```\n")
@@ -185,79 +179,3 @@ def test_the_agenda_rule_for_an_empty_section_is_not_told_to_the_reader():
             "참석자에게 공유돼야 합니다.")
     out = internal_words.strip_work_notes(body, request="회의 안건 써 줘", document=True)
     assert "만들지 않습니다" not in out and out.startswith("사전 자료 없음.")
-
-
-# ── the read-only day is not the end (R3-A14-T2) ─────────────────────────
-
-A14_REQUEST = (
-    "「한빛메모」 서비스 종료 안내문 써 줘. 이용 고객에게 메일과 앱 공지로 보낼 거야.\n"
-    "- 일정: 2026년 11월 2일 신규 가입 중단 → 12월 31일 메모 작성·수정 중단(읽기 전용) → "
-    "2027년 3월 31일 서비스 완전 종료 및 데이터 삭제\n"
-    "- 내보내기: 앱 설정 > 데이터 내보내기에서 텍스트(.txt)·마크다운(.md) 파일로 저장 가능, "
-    "2027년 3월 31일까지\n날짜마다 요일도 맞게 넣어 줘.")
-A14_ANSWER = (
-    "**제목** 한빛메모 서비스 종료 안내 (2026. 12. 31.)\n\n"
-    "2018년부터 함께해 주신 「한빛메모」를 2026년 12월 31일(목)에 종료합니다.\n\n"
-    "| 일정 | 날짜 |\n|---|---|\n| 신규 가입 중단 | 2026. 11. 2.(월) |\n"
-    "| 메모 작성·수정 중단(읽기 전용) | 2026. 12. 31.(목) |\n"
-    "| 서비스 완전 종료 및 데이터 삭제 | 2027. 3. 31.(수) |\n\n"
-    "보내기 전에 확인할 것: 부가통신사업자인 경우 전기통신사업법 제26조제1항에 따라 종료 예정일 "
-    "30일 전(2026. 12. 1.)까지 이용자 고지가 필요하고, 같은 법 시행령 제33조제1항에 따라 15일 "
-    "전(2026. 12. 16.)까지 신고서 제출이 필요합니다.")
-
-
-def _timeline():
-    return skill_scripts.module("eol-message", "timeline")
-
-
-def test_the_end_date_is_the_materials_whole_service_end():
-    out = _timeline().post(A14_ANSWER, {"request": A14_REQUEST, "material": A14_REQUEST,
-                                        "today": TODAY.isoformat(),
-                                        "computed": ["2026-12-01", "2026-12-16"]})
-    text = out["text"]
-    assert "종료 안내 (2027. 3. 31.)" in text
-    assert "2027년 3월 31일(수)에 종료합니다" in text
-    # the read-only row keeps its own day
-    assert "| 메모 작성·수정 중단(읽기 전용) | 2026. 12. 31.(목) |" in text
-    # the deadlines counted back from the real end
-    assert "30일 전(2027. 3. 1.)" in text and "15일 전(2027. 3. 16.)" in text
-    assert "[날짜]" not in text
-
-
-def test_a_notice_with_the_right_end_is_left_alone():
-    right = A14_ANSWER.replace("(2026. 12. 31.)", "(2027. 3. 31.)").replace(
-        "2026년 12월 31일(목)에 종료", "2027년 3월 31일(수)에 종료").replace(
-        "(2026. 12. 1.)", "(2027. 3. 1.)").replace("(2026. 12. 16.)", "(2027. 3. 16.)")
-    out = _timeline().post(right, {"request": A14_REQUEST, "material": A14_REQUEST,
-                                   "today": TODAY.isoformat(),
-                                   "computed": ["2027-03-01", "2027-03-16"]})
-    assert out["text"] == right
-    assert not [f for f in out["fixed"] if f["kind"] == "end_date"]
-
-
-def test_the_schedule_check_blocks_a_read_only_day_given_as_end():
-    found = _timeline().check(
-        {"announce": "2026-10-15", "stop_new": "2026-11-02", "end": "2026-12-31",
-         "export_until": "2027-03-31", "delete": "2027-03-31"}, material=A14_REQUEST)["findings"]
-    row = next(f for f in found if f["type"] == "end_is_partial")
-    assert row["severity"] == "block" and "2027. 3. 31." in row["why"]
-
-
-def test_the_script_runs_on_its_own():
-    # the same script the writer calls through run_skill_script
-    from pathlib import Path
-
-    import app
-
-    path = Path(app.__file__).parent / "skills/eol-message/scripts/timeline.py"
-    result = subprocess.run(
-        ["python3", str(path), '{"dates": {"announce": "2026-10-15", "end": "2026-12-31", '
-         '"delete": "2027-03-31"}, "material": "12월 31일 읽기 전용 → 2027년 3월 31일 서비스 '
-         '완전 종료"}'], capture_output=True, text=True, check=True)
-    assert "end_is_partial" in result.stdout
-
-
-@pytest.mark.parametrize("key", ["eol-message", "cold-email"])
-def test_the_skill_examples_hold_no_concrete_end_or_sender(key):
-    body = skill_specs.resolve(key).body
-    assert "2026. 12. 31." not in body and "김현수" not in body

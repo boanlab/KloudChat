@@ -81,19 +81,6 @@ def test_the_skill_texts_name_where_their_frame_stops():
     gaejo = skill_packages.package_for("gaejo-briefing").body
     assert "A study or lecture note, a video summary" in gaejo
     assert "never compose one" in gaejo and "「정상 추진 중」" in gaejo
-    headlines = skill_packages.package_for("headline-matrix").body
-    assert "default 25" not in headlines and "3–5 per channel" in headlines
-    copy = skill_packages.package_for("copywriting").body
-    assert "write exactly those parts, in its order and counts" in copy
-    strategy = skill_packages.package_for("content-strategy").body
-    assert "no 우선순위 table, no scores" in strategy
-
-
-def test_the_headline_grid_defaults_to_a_short_list():
-    from app.services import skill_scripts
-
-    grid = skill_scripts.module("headline-matrix", "matrix").scaffold({})
-    assert grid["count"] == 12
 
 
 def test_a_genre_rule_yields_to_the_named_form():

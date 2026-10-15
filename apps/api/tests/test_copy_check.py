@@ -9,7 +9,7 @@ import json
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle, Document, Material, Request
 from app.pipeline.stage import Context
-from app.services import calculation_policy, copy_check, skill_packages, skill_scripts
+from app.services import calculation_policy, copy_check, skill_packages, skill_scripts, skill_specs
 
 claims = skill_scripts.module("copy-check", "claims")
 length = skill_scripts.module("copy-check", "length")
@@ -206,7 +206,14 @@ def test_a_clean_answer_costs_one_judge_call_and_stays():
     assert out.text == "세무온, 첫 달 기장료 무료." and not out.changed and len(model.prompts) == 1
 
 
+#: a person's own copy skill with `copy_check: true` (no shipped writer skill carries it)
+COPY = skill_specs.Spec(key="skill:copy", name="광고 문구", copy_check=True,
+                        body="# 광고 문구\n\nWrite ad copy only from the material given.")
+SPECS = {COPY.key: COPY}
+
+
 def _bundle(answer: str, **request) -> Bundle:
+    request.setdefault("skill_specs", SPECS)
     return Bundle(request=Request(text="카페 소개 문구 써 줘", model="w", api_key="k", **request),
                   material=Material(given="매장 직접 로스팅"),
                   document=Document(streamed=answer, answer=answer))
@@ -215,10 +222,11 @@ def _bundle(answer: str, **request) -> Bundle:
 def test_the_stage_runs_only_with_a_copy_skill_on_the_turn():
     stage = registry.stage("check:copy")
     assert stage.skip(_bundle("x"))
-    assert not stage.skip(_bundle("x", skill_keys=("copywriting",)))
+    assert not stage.skip(_bundle("x", skill_keys=(COPY.key,)))
     assert not stage.skip(_bundle("x", check_keys=("copy-check",)))
-    body = skill_packages.package_for("social-content").body
-    assert not stage.skip(_bundle("x", tool_outputs=["# 스킬 지침\n\n" + body]))
+    # A copy skill picked through `use_skill` is on the turn too.
+    assert not stage.skip(_bundle("x", tool_outputs=["# 스킬 지침\n\n" + COPY.body]))
+    assert stage.skip(_bundle("x", skill_keys=("translation",)))
     assert "check:copy" in registry.pipeline("chat").flow("finish")
 
 
@@ -228,7 +236,7 @@ def test_the_stage_records_its_step(monkeypatch):
     model = _Model([{"unsupported": [{"quote": "매일 새벽", "why": "빈도 없음"}], "items": []},
                     {"unsupported": [], "items": []}], "매장에서 직접 로스팅합니다.")
     monkeypatch.setattr(report, "_complete", model)
-    bundle = _bundle("매장에서 매일 새벽 직접 로스팅합니다.", skill_keys=("copywriting",))
+    bundle = _bundle("매장에서 매일 새벽 직접 로스팅합니다.", skill_keys=(COPY.key,))
 
     async def go():
         return [e async for e in registry.stage("check:copy").run(bundle, Context())]

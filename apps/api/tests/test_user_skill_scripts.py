@@ -55,7 +55,6 @@ FOCUS = ("claims about the company, competitors, market or customers, what an in
 
 def test_the_allowlists_are_what_shipped_skills_use():
     assert "source-check/post" in skill_specs.post_check_refs()
-    assert "market-sizing/size" in skill_specs.post_check_refs()
     assert skill_specs.entry_refs()["pre"] == ("gap-check/gaps",)
     assert set(skill_specs.entry_refs()["post"]) == {
         "copy-check/claims", "generic-language-killer/scan", "grounding-check/trace",
@@ -125,10 +124,11 @@ def test_a_person_s_skill_with_a_shipped_skill_s_fields_is_checked_the_same():
         p["prompt"].count(FOCUS) for p in shipped_prompts]
 
 
-def test_a_person_s_copy_skill_narrows_the_copy_check_like_a_content_plan(monkeypatch):
-    shipped = skill_packages.package_for("content-strategy")
-    mine = skill_specs.of_row(_row(**skill_specs.package_fields(shipped)))
+def test_a_person_s_copy_skill_narrows_the_copy_check_to_its_kinds(monkeypatch):
+    kinds = ["claim", "medical", "guarantee"]
+    mine = skill_specs.of_row(_row(copy_check=True, copy_kinds=kinds))
     specs = {mine.key: mine}
+    assert mine.copy_check and list(mine.copy_kinds) == kinds
     assert copy_check.active((mine.key,), [], specs)
     assert not copy_check.active((mine.key,))
     # Picked through `use_skill`: the output carries its body.
@@ -150,10 +150,12 @@ def test_a_person_s_copy_skill_narrows_the_copy_check_like_a_content_plan(monkey
     async def complete(_model, _messages, _key, _n):
         return json.dumps({"items": []}), {}
 
-    for keys, given in ((frozenset({"content-strategy"}), None), (frozenset({mine.key}), specs)):
+    for keys, given in ((frozenset({"copy-check"}), None), (frozenset({mine.key}), specs)):
         asyncio.run(copy_check.run("새 기능 출시", request="카피", material="", complete=complete,
                                    model="m", judge="j", api_key="k", skills=keys, specs=given))
-    assert options[0]["kinds"] == options[1]["kinds"] == list(shipped.copy_kinds)
+    # The shipped check alone looks at every kind; the person's skill only at its own.
+    assert "kinds" not in options[0]
+    assert options[1]["kinds"] == kinds
 
 
 def test_a_person_s_check_skill_runs_the_shipped_entry_it_names():

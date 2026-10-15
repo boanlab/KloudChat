@@ -105,14 +105,14 @@ TOOL_REPORT = re.compile(
     r"(?:오류|실행|결과|한도|돌려|돌린|확인했|점검했|냈|검증|남긴|계산|지적|항목|판정)"
     # a check skill named in the answer: 「`copy-check` 로 한도 재검사」
     r"|`?(?<![A-Za-z_-])(?:copy-check|grounding-check|gap-check|calc-check|source-check|date-calc"
-    r"|release-notes|internal-comms|generic-language-killer|pii-mask|text-fit)(?![A-Za-z_-])`?"
+    r"|internal-comms|generic-language-killer|pii-mask|text-fit)(?![A-Za-z_-])`?"
     r"|(?:점검|검사|검증|검산)\s{0,2}(?:스크립트\s{0,2})?(?:최종\s{0,2})?결과\s{0,2}[:：][^\n]{0,200}?"
     r"\d{1,4}\s{0,2}(?:건|개)"
     r"|(?:점검|검사|검증)\s{0,2}(?:스크립트\s{0,2})?(?:최종\s{0,2})?결과\s{0,2}[:：][^\n]{0,16}?문제\s{0,2}없"
-    r"|`(?:claims|sources|frame|preserve|proof|scan|timeline|notes|size|check|length|matrix|plan)`"
+    r"|`(?:claims|sources|frame|preserve|proof|scan|check|length)`"
     r"|(?<![A-Za-z_])calculate\s{0,2}도구로"
     r"|(?<![\w/])[a-z_]{2,20}\.py(?![\w])"
-    r"|(?<![A-Za-z])(?:preserve|proof|scan|timeline|sources|claims|frame|notes)\s{0,2}"
+    r"|(?<![A-Za-z])(?:preserve|proof|scan|sources|claims|frame)\s{0,2}"
     r"(?:검사|점검|결과|스크립트)"
     # a check's findings named by its verdict word (r3 A12 T1: 「두 check는 …」, A13 T1:
     # 「차단(block) 표현은 0건」)
@@ -663,9 +663,7 @@ _KO_NOTE = re.compile(
     # a check's mark explained (「확인 전까지는 「확인 필요」 상태로 남겨둡니다」)
     r"|[「『\"']확인\s?필요[」』\"']\s?(?:상태|표시)로\s?(?:남겨|두|둡)"
     # the paper search's own note (「… KCI·DBpia·RISS 등을 찾았으나 국내 논문을 찾지 못했습니다」)
-    r"|KCI\s?·\s?DBpia\s?·\s?RISS\s?등을\s?(?:찾았|검색했)"
-    # a release-notes script's coverage (「항목 9개: 노트 7 · 뺌 2 · 빠짐 0」, 「뺀 항목: L7(…)」)
-    r"|항목\s?\d{1,3}\s?개\s?[:：]\s?노트\s?\d|^\W{0,4}뺀\s?항목\W{0,4}[:：]")
+    r"|KCI\s?·\s?DBpia\s?·\s?RISS\s?등을\s?(?:찾았|검색했)")
 #: …and, in a document or a slide's notes (which speak to the reader, not the requester),
 #: the writer's account of its own work
 _DOC_NOTE = re.compile(
@@ -714,7 +712,7 @@ _CHECK_RESULT = re.compile(
     r"(?:을|를)?\s?마쳤"
     # a script's count told bare (r8 A12-T1 「block 0입니다.」)
     r"|^\W{0,4}(?:block|check)\s?\d{1,3}\s?(?:건|개)?\s?(?:입니다|이고|이며|,)"
-    # a script's verdict by its own words (r7 A15-T1 「점검 결과: 콜드메일 check 0 block …」)
+    # a script's verdict by its own words (r7 A15-T1 「점검 결과: … check 0 block …」)
     r"|(?<![A-Za-z])(?:check|claims|scan)\s?\d{1,3}\s?block"
     # a check told as done (r7 A02-T1 「근거 대조 점검을 마쳤고, 메모에 없는 수치·날짜는
     # 없습니다.」)

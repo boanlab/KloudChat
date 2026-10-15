@@ -75,7 +75,7 @@ def test_the_shown_skills_are_listed_and_the_rest_kept_as_parts():
     assert not any(packages[k].draft for k in SHOWN_SKILLS)
     hidden = set(packages) - SHOWN_SKILLS
     # Nothing is deleted: the drafts stay drafts, the two published ones stay published.
-    assert {"text-fit", "generic-language-killer", "copy-editing", "release-notes"} <= hidden
+    assert {"text-fit", "generic-language-killer", "copy-editing", "internal-comms"} <= hidden
     # Published but unlisted: text-fit, and the 공개 전 점검 bundle's two parts, which run
     # where the bundle is ticked and are not picked on their own.
     assert {k for k in hidden if not packages[k].draft} == {"text-fit", "answer-hold",
