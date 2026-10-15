@@ -1386,6 +1386,18 @@ def _is_homepage(url: str) -> bool:
     return bool(parsed.netloc) and parsed.path in ("", "/")
 
 
+#: the date a search result carries (`tools.builtin` writes 「게시일 2026-03-12 · 」)
+_PUBLISHED = re.compile(r"게시일 (\d{4}-\d{2}-\d{2})")
+
+
+def _published_of(url: str, seen: dict[str, str]) -> str:
+    """「 · 2026-03-12」 after a listed source whose search result gave its date, outside the
+    link so a later turn reads the label back unchanged; "" when none (r10 SK-company-1·2:
+    the list had no dates, so the reader could not tell an old page from a new one)."""
+    found = _PUBLISHED.search(seen.get(url, ""))
+    return f" · {found.group(1)}" if found else ""
+
+
 def _source_label(url: str, title: str = "") -> str:
     """`title · host`, else `host · last segment`."""
     from urllib.parse import unquote, urlparse
@@ -2929,7 +2941,7 @@ async def run_turn(
             f"- [{n}] {sources[n - 1].removeprefix(MATERIAL_SOURCE)}"
             if sources[n - 1].startswith(MATERIAL_SOURCE)
             else f"- [{n}] [{_source_label(sources[n - 1], source_titles.get(sources[n - 1], ''))}]"
-            f"({sources[n - 1]})"
+            f"({sources[n - 1]}){_published_of(sources[n - 1], source_seen)}"
             for n in cited
         )
         answer_text.append(appendix)

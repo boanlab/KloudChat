@@ -74,7 +74,8 @@ def _calls(name: str, arguments: dict, call_id: str = "c0") -> list[str]:
 
 _SEARCHES = iter(
     [
-        "'첫 검색' 검색 결과:\n\n[1] 정책 문서\nhttps://example.go.kr/policy/2026\n요약\n\n[2] 기사\nhttps://news.example.com/a/1\n요약\n",
+        "'첫 검색' 검색 결과:\n\n[1] 정책 문서\nhttps://example.go.kr/policy/2026\n"
+        "게시일 2026-03-12 · 요약\n\n[2] 기사\nhttps://news.example.com/a/1\n요약\n",
         "'둘째 검색' 검색 결과:\n\n[1] 논문\nhttps://journal.example.org/article/42\n요약\n\n[2] 기사\nhttps://news.example.com/a/1\n요약\n",
     ]
 )
@@ -163,9 +164,11 @@ async def test_numbers_run_across_searches_and_citations_become_links(monkeypatc
     assert "[9]는 그대로" in text
     assert "### 출처" in text
     # Named by the search results' titles, not the address's last segment.
-    assert "- [1] [정책 문서 · example.go.kr](https://example.go.kr/policy/2026)" in text
+    # the date the search result carried follows the link (r10 SK-company-1·2)
+    assert ("- [1] [정책 문서 · example.go.kr](https://example.go.kr/policy/2026) · 2026-03-12"
+            in text)
     assert "- [2] [논문 · journal.example.org](https://journal.example.org/article/42)" in text
-    assert "- [3] [기사 · news.example.com](https://news.example.com/a/1)" in text
+    assert "- [3] [기사 · news.example.com](https://news.example.com/a/1)\n" in text + "\n"
     assert "### 확인한 출처" not in text
     assert "검색·열람한 결과에 없던" not in text
 
