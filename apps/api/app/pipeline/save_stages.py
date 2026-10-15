@@ -32,6 +32,34 @@ def rerun_note(turn: dict[str, Any]) -> str:
     return f"「{name}」 단계부터 다시 만들었습니다." if stage else ""
 
 
+def last_pass(bundle: Bundle, sections: list[dict], template: Any,
+              sources: list[dict]) -> list[tuple[int, dict]]:
+    """(index, section) for each section the report's last pass changes: weekdays set to the
+    calendar (`weekdays`) and the guidance's example values and rule lines kept out
+    (`guide_echo`), after every stage that may rewrite a section."""
+    import datetime as dt
+
+    from app.pipeline.report_stages import _material_text
+    from app.services import guide_echo, weekdays
+    from app.services import report as report_service
+
+    req = bundle.request
+    material = _material_text(bundle)
+    today = req.today if isinstance(req.today, dt.date) else None
+    guide = guide_echo.guidance(req.skill_keys, req.skill_specs, template)
+    seen = [(today or dt.date.today()).isoformat(), req.text, material, *req.tool_outputs,
+            *req.evidence, *(report_service._source_text(row) for row in sources or [])]
+    changed = []
+    for i, section in enumerate(sections):
+        body = str(section.get("content") or "")
+        fixed, _ = weekdays.fix_weekdays(body, context=f"{req.text}\n{material}", today=today)
+        if guide:
+            fixed = guide_echo.scrub(fixed, guide, seen).text
+        if fixed != body:
+            changed.append((i, {**section, "content": fixed}))
+    return changed
+
+
 class ReportSave(Base):
     """Stores the report: carried parts, artifact (new version if one exists), message, bill."""
 
@@ -83,6 +111,13 @@ class ReportSave(Base):
                                "content": section.get("content"), "done": True}
         # references numbered by first citation; venue-as-author replaced by the work's name
         sections, sources = citations.tidy(sections, sources)
+        # last pass after every repair: weekdays to the calendar, the guidance's example
+        # values and rule lines out (every model group)
+        for i, section in last_pass(bundle, sections, template, sources):
+            sections[i] = section
+            yield {"type": "section", "sectionId": section.get("id"),
+                   "heading": section.get("heading"), "content": section.get("content"),
+                   "done": True}
         if output_language.reads_english("\n".join(s.get("content") or "" for s in sections)):
             # a document in English keeps no Korean 「(확인 필요)」 the checks put in
             for i, section in enumerate(sections):

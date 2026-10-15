@@ -94,6 +94,39 @@ def text_dates(text: str, year_hint: int | None, known: tuple[dt.date, ...] = ()
 _ONE_STEP = re.compile(r"종료\s*(?:및|와|과|·|,|하고|하며)\s*(?:[가-힣]{1,6}\s*){0,2}?(?:삭제|파기)")
 
 
+#: A step that stops part of the service, not the service (r9 A14-T2: 「12월 31일 메모 작성·수정
+#: 중단(읽기 전용) → 2027년 3월 31일 서비스 완전 종료」, the read-only day written as 종료일).
+_PARTIAL = re.compile(r"읽기\s?전용|(?:작성|편집|쓰기|업로드)\s?[·ㆍ,/]?\s?(?:수정\s?)?(?:중단|불가|제한)")
+#: The step that ends the whole service.
+_FULL_END = re.compile(r"완전\s?종료|(?:서비스|운영)\s?(?:전체\s?)?종료|종료\s?(?:및|와|과|·|,)|종료일")
+_SPLIT = re.compile(r"→|->|⇒|;|\n")
+
+
+def material_steps(material: str, hint: int | None) -> tuple[set[dt.date], set[dt.date]]:
+    """(partial stops, whole-service ends) the material names, each date read with the words
+    after it up to the next step (or, with none after, the words before it)."""
+    partial: set[dt.date] = set()
+    whole: set[dt.date] = set()
+    for part in _SPLIT.split(material or ""):
+        found = text_dates(part, hint)
+        if len(found) != 1:
+            # several dates in one step: the words cannot be told apart
+            continue
+        words = part.replace(found[0]["text"], " ")
+        if _PARTIAL.search(words) and not _FULL_END.search(words):
+            partial.add(found[0]["date"])
+        elif _FULL_END.search(words):
+            whole.add(found[0]["date"])
+    return partial, whole
+
+
+def end_from_material(day: dt.date, material: str, hint: int | None) -> dt.date | None:
+    """The material's whole-service end when `day` is one of its partial stops, else None."""
+    partial, whole = material_steps(material, hint)
+    later = sorted(d for d in whole if d > day)
+    return later[0] if day in partial and len(later) == 1 else None
+
+
 def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None = None,
           text: str | None = None, today: str | None = None, material: str | None = None) -> dict:
     findings: list[dict] = []
@@ -114,6 +147,15 @@ def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None =
     for key, (label, placeholder, question) in EXTRA.items():
         if key not in parsed:
             questions.append({"fact": key, "label": label, "question": question, "placeholder": placeholder})
+    if material and "end" in parsed:
+        years = [d.year for d in parsed.values()]
+        hint = max(set(years), key=years.count) if years else None
+        if (whole := end_from_material(parsed["end"], material, hint)) is not None:
+            findings.append(_finding(
+                "block", "end_is_partial", f"서비스 종료일 {_show(parsed['end'])}",
+                "자료에서 이 날은 일부 기능만 멈추는 날(읽기 전용 등)이고, 서비스 전체 종료는 "
+                f"{_show(whole)}입니다.", f"end 를 {whole.isoformat()}로 두고, 이 날은 일정 표에 "
+                "따로 적으세요."))
     ordered = [(key, parsed[key]) for key, *_ in STEPS if key in parsed]
     for (a, day_a), (b, day_b) in zip(ordered, ordered[1:], strict=False):
         if day_b < day_a:
@@ -295,6 +337,61 @@ def schedule(text: str, hint: int | None) -> dict[str, str]:
     return out
 
 
+#: Words of a line that names another step than the end (its date is that step's).
+_OTHER_STEP = re.compile(r"신규|가입|구매|삭제|파기|내보내기|백업|다운로드|자동\s?결제|공지일")
+
+
+def _restyle(written: str, old: dt.date, new: dt.date, year_given: bool) -> str:
+    """`written` (「2026. 12. 31.(목)」, 「12월 31일(목)」) naming `new`, weekday its own."""
+    numbers = list(re.finditer(r"\d+", written))
+    values = [str(new.year), str(new.month), str(new.day)] if year_given else [
+        str(new.month), str(new.day)]
+    out, last = [], 0
+    for m, value in zip(numbers, values, strict=False):
+        out.append(written[last:m.start()] + value)
+        last = m.end()
+    shown = "".join(out) + written[last:]
+    shown = re.sub(r"\(\s*[월화수목금토일](?:요일)?\s*\)", f"({WEEKDAYS[new.weekday()]})", shown, count=1)
+    return shown if year_given or new.year == old.year else f"{new.year}년 {shown}"
+
+
+def _whole_end(text: str, material: str, hint: int | None, out: dict) -> tuple[str, set[dt.date]]:
+    """A partial stop's date written as the service's end (title, 「…에 종료합니다」) set to the
+    material's whole-service end; a legal deadline counted back from it (30·15·60일 전) moved
+    with it. The partial step's own line (「작성·수정 중단(읽기 전용)」) keeps its date."""
+    moved: set[dt.date] = set()
+    if not material.strip():
+        return text, moved
+    lines = text.split("\n")
+    found = text_dates(text, hint)
+
+    def as_end(item: dict) -> bool:
+        line = lines[item["line"]]
+        return bool(re.search(r"종료", line)) and not _PARTIAL.search(line) \
+            and not _OTHER_STEP.search(line)
+
+    ends = {item["date"] for item in found if as_end(item)}
+    wrong = next((d for d in sorted(ends) if end_from_material(d, material, hint)), None)
+    whole = end_from_material(wrong, material, hint) if wrong else None
+    if wrong is None or whole is None:
+        return text, moved
+    for item in sorted(found, key=lambda i: i["line"], reverse=True):
+        line = lines[item["line"]]
+        before = (wrong - item["date"]).days
+        if item["date"] == wrong and as_end(item):
+            new = whole
+        elif before in (15, 30, 60) and _LEGAL.search(line):
+            new = whole - dt.timedelta(days=before)
+            moved.add(new)
+        else:
+            continue
+        fixed = _restyle(item["text"], item["date"], new, item["year_given"])
+        lines[item["line"]] = line.replace(item["text"], fixed, 1)
+        out["fixed"].append({"kind": "end_date", "text": item["text"],
+                             "why": f"자료의 서비스 전체 종료일은 {_show(whole)} → {fixed}"})
+    return "\n".join(lines), moved
+
+
 def post(text: str, args: dict) -> dict:
     """Unsourced date → 「[날짜]」 + question (code), weekday fixed, schedule order listed."""
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
@@ -309,6 +406,8 @@ def post(text: str, args: dict) -> dict:
     days = _month_days([material])
     if not known and not material.strip():
         return out
+    text, moved = _whole_end(text, material, hint, out)
+    worked |= moved
     lines = text.split("\n")
     for item in sorted(text_dates(text, hint, tuple(known)), key=lambda i: i["line"], reverse=True):
         line = lines[item["line"]]
