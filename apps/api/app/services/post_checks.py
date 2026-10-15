@@ -407,6 +407,11 @@ def drop(text: str, quote: str) -> str:
 _KEY_NUMBER = re.compile(r"(?<![\d.])\d[\d,]{0,15}(?:\.\d{1,6})?")
 _KEY_LATIN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9+-]{1,30}")
 _KEY_QUOTED = re.compile(r"「([^」\n]{2,40})」|“([^”\n]{2,40})”")
+#: a counted figure is looked up with its counter: in a long search page a bare 「9」 or
+#: 「306」 turns up by chance (r10 LFLF SK-company-2: 「306명」 and 「9개 투자 라운드」
+#: judged unstated, kept as 「근거에 있는 값」). Dates and 만·억 stay bare (「2026. 4.」).
+_COUNTED = re.compile(
+    r"(?<![\d.])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s?(%|개사|라운드|[명개곳건회원배위대종차석])")
 
 
 def key_tokens(quote: str) -> list[str]:
@@ -432,6 +437,10 @@ def code_reading(quote: str, evidence: str) -> str:
     if not tokens:
         return "unchecked"
     flat = _searchable(evidence)
+    for number, counter in _COUNTED.findall(quote or ""):
+        figure = re.escape(number.replace(",", ""))
+        if not re.search(rf"(?<![\d.]){figure}\s?{re.escape(counter[0])}", flat):
+            return "absent"
     for token in tokens:
         if token[0].isdigit():
             if not re.search(rf"(?<![\d.]){re.escape(token)}(?!\d|\.\d)", flat):
