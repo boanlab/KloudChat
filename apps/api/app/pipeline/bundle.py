@@ -160,6 +160,8 @@ class Computed:
     settled: list[Any] = field(default_factory=list)
     conflicts: list[Any] = field(default_factory=list)
     prepass: Any = None
+    #: how the code calculation ended (`calc.computed_values` status); "" when it did not run
+    calc_status: str = ""
 
 
 @dataclass(slots=True)
@@ -262,6 +264,7 @@ class Bundle:
         "material.grounded",
         "answers",
         "computed.values", "computed.settled", "computed.conflicts", "computed.prepass",
+        "computed.calc_status",
         "plan.title", "plan.headings", "plan.frame", "plan.unverified", "plan.figures",
         "plan.proposal", "plan.revision", "plan.order", "plan.widened", "plan.route",
         "document.sections", "document.drafted", "document.written", "document.long_form",

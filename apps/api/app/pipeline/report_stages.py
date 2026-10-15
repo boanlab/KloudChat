@@ -647,7 +647,7 @@ class Calc(Base):
     name = "calc"
     kind = "model"
     reads = ("request", "material.parts")
-    writes = ("computed.values", "material.trusted")
+    writes = ("computed.values", "computed.calc_status", "material.trusted")
 
     def skip(self, bundle: Bundle) -> str:
         # person's material only, not search pages
@@ -664,6 +664,7 @@ class Calc(Base):
             req.text, bundle.material.grounds, complete=report._complete, model=req.judge,
             api_key=req.api_key, always=bundle.spec.settings.code_calc)
         _count(bundle, spent, planner=True)
+        bundle.computed.calc_status = status
         if computed:
             bundle.computed.values = computed
             bundle.material.trusted.append(Part(computed, "computed"))
@@ -1258,9 +1259,12 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         clean = report._UNVERIFIED_NOTE + "\n\n" + clean
     # 「A × B = C」 checked by arithmetic
     clean = report.fix_restated_amounts(
-        report.fix_table_formulas(units.fix_written_sums(units.fix_written_arithmetic(clean))),
+        report.fix_table_formulas(units.fix_written_sums(
+            units.fix_written_arithmetic(clean), printed=[bundle.computed.values])),
         given_text,
     )
+    # a formula a unit off and a profit its own figures do not leave: marked (r9 A10-T1)
+    clean = units.mark_profit_contradictions(units.mark_slipped_formulas(clean))
     clean = report._grounded_figures(
         report.trim_table_echo(
             report.fix_point_units(
@@ -1483,7 +1487,8 @@ class Normalize(Base):
     """All format mends in fixed order (verify repeats it), then list shape."""
 
     name = "normalize"
-    reads = ("request", "material", "computed.settled", "spec.format", "document.sections")
+    reads = ("request", "material", "computed.settled", "computed.values",
+             "computed.calc_status", "spec.format", "document.sections")
     writes = ("document.sections",)
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
@@ -1497,12 +1502,40 @@ class Normalize(Base):
                 bundle.request.text, *bundle.material.document,
                 *(report._source_text(row) for row in bundle.material.sources or [])])
         sections = report.gaejo_body(sections, bundle.spec.format)
+        sections = _figures_marked(bundle, sections)
         if bundle.spec.format_id in report.PLAIN_FORMATS or report.form_document(
                 bundle.request.text):
             whole = "\n".join(str(s.get("content") or "") for s in sections)
             sections = [{**s, "content": report.plain_blocks(str(s.get("content") or ""), whole)}
                         for s in sections]
         bundle.document.sections = sections
+
+
+#: calculation outcomes after which the writer worked figures out itself
+UNCHECKED_CALC = ("timeout", "partial", "unavailable", "failed", "disputed")
+
+
+def _figures_marked(bundle: Bundle, sections: list[dict]) -> list[dict]:
+    """What code finds in the document's figures but cannot settle, marked where it stands
+    (every writer): a figure ten times a worked result elsewhere in the document, the writer's
+    own results when the code calculation did not finish (「(추정)」), and a company-assumption
+    label on figures the person never gave (r9 A10-T2)."""
+    person = "\n".join([bundle.request.text, bundle.material.given])
+    known = "\n".join([person, bundle.computed.values or ""])
+    unchecked = bundle.computed.calc_status in UNCHECKED_CALC
+    whole = "\n".join(str(s.get("content") or "") for s in sections)
+    report = _report()
+    out = []
+    for sec in sections:
+        content = str(sec.get("content") or "")
+        if not content or report._REFERENCE_HEADING.search(str(sec.get("heading") or "")):
+            out.append(sec)
+            continue
+        marked = units.label_assumptions(units.mark_scaled_restatements(content, whole), person)
+        if unchecked:
+            marked = units.label_estimates(marked, known)
+        out.append({**sec, "content": marked} if marked != content else sec)
+    return out
 
 
 class TitleBlock(Base):

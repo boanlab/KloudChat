@@ -72,8 +72,15 @@ class Normalize(Base):
         normalized = units.fix_magnitude_slips(normalized, first)
         # won amount scaled twice (「10,000,000만 원」)
         normalized = units.fix_double_scale(normalized, first)
-        # wrong product in 「A × B = D」
-        normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized))
+        # wrong product in 「A × B = D」, wrong sums and table totals; a result a tool printed
+        # is marked, never rewritten
+        normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized),
+                                            printed=req.tool_outputs)
+        # what code finds off but cannot settle is marked where it stands, every writer: a
+        # formula a unit off, a figure ten times a worked result, a profit its own figures
+        # do not leave (r9 A10-T1, A10-T2, P56)
+        normalized = units.mark_profit_contradictions(units.mark_scaled_restatements(
+            units.mark_slipped_formulas(normalized)))
         # 「수정: 합계는 N원」 beside the wrong total: the total corrected, the line gone
         normalized = units.settle_corrections(normalized)
         # sweeping superlatives narrowed to the table's evidence; a strong writer's claim is
