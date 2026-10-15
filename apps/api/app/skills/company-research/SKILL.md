@@ -47,7 +47,7 @@ Research one company and write a Korean one-pager a 영업·기획 담당자 can
 | 주요 사업·제품 | … | [2] |
 | 매출·영업이익(사업연도, 연결/별도) | … 또는 출처 미확인 | [1] |
 | 임직원 수(기준일) | … 또는 출처 미확인 | |
-| 주요 고객·파트너 | 공개된 것만; 투자자·주주·정부 지원·행사 공동 주최는 고객이 아니다 | |
+| 주요 고객·파트너 | 공개된 것만 | |
 
 ## 제품과 가격
 ## 메모 확인                      ← 사용자가 메모·들은 말을 줬을 때만
@@ -61,7 +61,7 @@ Research one company and write a Korean one-pager a 영업·기획 담당자 can
 ## 출처
 [1] 금융감독원 DART, 「○○ 2025 사업보고서」, 2026-03-20, URL
 ```
-Rows and sections fit the body researched: for a public body, use 「설립 근거·주무부처」, 「정원·현원(기준일)」, 「예산(연도)」 instead of 매출·영업이익, and leave out 「제품과 가격」 unless it sells something; never write the user's own product or prices there. A row that does not apply to this body is left out, not filled with 「출처 미확인」. Keep it to what helps the stated purpose; drop sections with nothing sourced rather than padding them.
+주요 고객·파트너 holds buyers and business partners only: investors, shareholders, government grants and event co-hosts go elsewhere or nowhere. Rows and sections fit the body researched: for a public body, use 「설립 근거·주무부처」, 「정원·현원(기준일)」, 「예산(연도)」 instead of 매출·영업이익, and leave out 「제품과 가격」 unless it sells something; never write the user's own product or prices there. A row that does not apply to this body is left out, not filled with 「출처 미확인」. Keep it to what helps the stated purpose; drop sections with nothing sourced rather than padding them.
 
 ## Checklist
 - [ ] Every fact has [n] with date; nothing from memory; every [n] is about this company.

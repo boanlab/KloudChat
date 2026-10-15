@@ -80,6 +80,9 @@ def _scaled(values: set[float]) -> list[str]:
     return out
 
 
+_SOURCE_LINE = re.compile(r"^\s{0,3}(?:[-*]\s{1,3})?\[\[?\d{1,2}\]\]?\s")
+
+
 def post(text: str, args: dict) -> dict:
     sources, claims, frame = _sibling("sources"), _sibling("claims"), _sibling("frame")
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
@@ -105,6 +108,9 @@ def post(text: str, args: dict) -> dict:
     # frame.py's list of generalities, for the lines sources.py did not already catch.
     for index, line in enumerate(lines):
         hit = frame.GENERIC.search(line)
+        # a source-list line (「- [6] [제목](url)」) is a title, not a claim (r10 SK-company-3)
+        if _SOURCE_LINE.match(line):
+            continue
         if hit and index not in generic_lines and not line.lstrip().startswith("#") \
                 and hit.group(0) not in material and not sources.MARKED.search(line):
             found.append({"kind": "generic", "line": index, "text": hit.group(0),
