@@ -44,6 +44,7 @@ from app.services import (
     research,
     richtext,
     table_integrity,
+    table_mend,
     units,
     value_guard,
     verify,
@@ -1761,6 +1762,41 @@ def mark_unsettled(sections: list[dict], still: list) -> list[dict]:
     return out
 
 
+#: a number-binding finding's own words: 「「14달」은 자료에서 「납기 2주」의 값일 수 있다」
+_BOUND = re.compile(r"^「(?P<n>[^」]{1,24})」은 자료에서 「(?P<b>[^」]{0,80})」")
+
+
+def bound_token(finding: Any, evidence: str) -> str:
+    """The value with its unit a number-binding finding names (spaces out), when its sentence
+    has it and code confirms it is in none of the evidence; else "" (the judge's reading is
+    then shown, never acted on)."""
+    m = _BOUND.match(str(getattr(finding, "why", "") or ""))
+    digits = re.search(r"\d[\d,.]*", m.group("n")) if m else None
+    if not m or not digits:
+        return ""
+    number = digits.group(0).rstrip(",.")
+    unit = m.group("n")[digits.end():].strip()
+    tail = re.escape(unit) if unit else r"[가-힣%]{1,2}"
+    hit = re.search(rf"(?<![\d,.]){re.escape(number)}\s?{tail}", finding.sentence or "")
+    if not hit:
+        return ""
+    token = re.sub(r"\s+", "", hit.group(0))
+    squeezed = re.sub(r"\s+", "", evidence or "").replace(",", "")
+    # the shortest reading of the value: 「14달」 of 「14달은」
+    if any(token[:k].replace(",", "") in squeezed for k in range(len(number) + 1, len(token) + 1)):
+        return ""
+    return token if unit else token[:len(number) + 1]
+
+
+def bound_repair(finding: Any, token: str) -> Any:
+    """A confirmed number-binding finding as a repair item: wrong while `token` stands, the
+    source's own value for that place as evidence."""
+    m = _BOUND.match(str(getattr(finding, "why", "") or ""))
+    return dataclasses.replace(
+        finding, auto=True, still=lambda s: token in re.sub(r"\s+", "", s),
+        evidence=f"자료에서 이 숫자 자리의 값: 「{m.group('b')}」" if m else "")
+
+
 class Verify(Base):
     """Find, repair once, find again; leftovers reported, never passed off."""
 
@@ -1814,10 +1850,19 @@ class Verify(Base):
         # A10-T2, A03-T2: found in the check, shipped in the text unmarked)
         confirmed = [f for f in still if not f.auto and f.code == "judged_figure"
                      and f.still is not None and f.still(f.sentence)]
+        # a number a judge read as another item's whose value with its unit is in none of the
+        # evidence goes the same way (r9 LFLF R3-A04-T2: 「납기 14달」 flagged with the
+        # source's 「납기 2주」, shipped as written)
+        evidence = "\n".join([context_text, bundle.computed.values,
+                              *(str(getattr(x, "value", "")) for x in settled or [])])
+        bound = {id(f): token for f in still if not f.auto and f.code == "number_binding"
+                 and (token := bound_token(f, evidence))}
+        confirmed += [f for f in still if id(f) in bound]
         if confirmed:
             try:
                 bundle.document.sections, unfixed, spent = await verify.repair(
-                    _doc(bundle), [dataclasses.replace(f, auto=True) for f in confirmed],
+                    _doc(bundle), [bound_repair(f, bound[id(f)]) if id(f) in bound
+                                   else dataclasses.replace(f, auto=True) for f in confirmed],
                     complete=report._complete, model=req.reviser, api_key=req.api_key,
                     clean=lambda s: units.fix_written_sums(units.fix_written_arithmetic(s)))
                 _count(bundle, spent, planner=True)
@@ -2063,6 +2108,69 @@ def mark_web_disputes(sections: list[dict], still: list, request: str) -> int:
     return marked
 
 
+#: quality findings on a table's or figure's shape, mended by code and read again
+_SHAPE_CODES = frozenset({"pipe_rows_not_a_table", "stray_caption", "table_without_caption",
+                          "table_rows", "unmentioned"})
+#: a header-only table still standing after the mend, marked under the table
+_EMPTY_TABLE_MARK = "(확인 필요: 이 표에는 값이 없습니다)"
+
+
+def _markdown(sec: dict) -> bool:
+    return (isinstance(sec.get("content"), str)
+            and str(sec.get("format") or "markdown") == "markdown"
+            and not _report()._REFERENCE_HEADING.search(str(sec.get("heading") or "")))
+
+
+def _rows_marked(body: str) -> str:
+    """A header-only table marked once under its rule (r9 LFLF R3-A01-T1: it shipped bare)."""
+    lines = body.split("\n")
+    out: list[str] = []
+    for i, line in enumerate(lines):
+        out.append(line)
+        header = i >= 1 and lines[i - 1].lstrip().startswith("|")
+        rule = re.match(r"^\s*\|?\s*:?-{2,}", line) and header
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        after = next((ln.strip() for ln in lines[i + 1:] if ln.strip()), "")
+        if rule and not nxt.startswith("|") and after != _EMPTY_TABLE_MARK:
+            out += ["", _EMPTY_TABLE_MARK]
+    return "\n".join(out)
+
+
+def mend_shapes(sections: list[dict], findings: list[dict], *, gaejo: bool = False) -> list[dict]:
+    """Sections with the table and figure shape the quality read found broken mended by code:
+    broken pipe tables rebuilt (`table_mend.rebuild`), uncaptioned tables captioned, a table or
+    figure the text never names pointed at, pipe lines no table takes written as items, and a
+    header with no rows marked. Never a model call; `Quality` reads the result again."""
+    report = _report()
+    codes = {x["code"] for x in findings}
+    if not codes & _SHAPE_CODES:
+        return sections
+    out = [{**sec, "content": table_mend.rebuild(sec["content"])} if _markdown(sec) else sec
+           for sec in sections]
+    if out != sections or codes & {"table_without_caption", "stray_caption"}:
+        out = report.caption_figures_and_tables(out)
+    again = quality_gate.report_findings(out)
+    for x in again:
+        if x["code"] != "unmentioned":
+            continue
+        for index, sec in enumerate(out):
+            if _markdown(sec) and (cited := table_mend.cite(
+                    sec["content"], x["where"], str(sec.get("heading") or ""),
+                    gaejo=gaejo)) != sec["content"]:
+                out[index] = {**sec, "content": report.fix_number_particles(cited)}
+                break
+    loose = any(x["code"] == "pipe_rows_not_a_table" for x in again)
+    for index, sec in enumerate(out):
+        if not _markdown(sec):
+            continue
+        body = table_mend.flatten(sec["content"]) if loose else sec["content"]
+        if any("만 있고 행이 없다" in gap for gap in table_integrity.problems(body, "")):
+            body = _rows_marked(body)
+        if body != sec["content"]:
+            out[index] = {**sec, "content": body}
+    return out
+
+
 class Quality(Base):
     """Final read for reader-facing defects, reported in steps and log; then the document goes out."""
 
@@ -2090,12 +2198,29 @@ class Quality(Base):
         if mark_web_disputes(sections, f.still, bundle.request.text):
             bundle.document.sections = sections
         format_codes = set(report_checks.LABELS)
-        findings = quality_gate.report_findings(sections, material,
-                                                bundle.computed.settled)
-        for sec in sections:
-            for gap in table_integrity.problems(str(sec.get("content") or ""), material):
-                findings.append({"code": "table_rows", "where": str(sec.get("heading") or ""),
-                                 "detail": gap})
+
+        def read(secs: list[dict]) -> list[dict]:
+            found = quality_gate.report_findings(secs, material, bundle.computed.settled)
+            for sec in secs:
+                for gap in table_integrity.problems(str(sec.get("content") or ""), material):
+                    found.append({"code": "table_rows", "where": str(sec.get("heading") or ""),
+                                  "detail": gap})
+            return found
+
+        findings = read(sections)
+        # a broken table or an unnamed one is mended by code and read again, once; kept only
+        # when it adds no finding nor a new kind (r9 LFLF R3-A01-T1, A03-T2: found here,
+        # shipped as found)
+        mended_count = 0
+        gaejo = getattr(bundle.spec.format, "lists", "") == "gaejo"
+        if (mended := mend_shapes(sections, findings, gaejo=gaejo)) != sections:
+            again = read(mended)
+            if (len(again) <= len(findings)
+                    and {x["code"] for x in again} <= {x["code"] for x in findings}):
+                log.info("quality read: %d finding(s) mended by code", len(findings) - len(again))
+                mended_count = len(findings) - len(again)
+                sections = bundle.document.sections = mended
+                findings = again
         for x in [x for x in f.still if x.code in format_codes][:12]:
             findings.append({"code": x.code,
                              "where": str(sections[x.section].get("heading") or ""),
@@ -2124,6 +2249,7 @@ class Quality(Base):
             "label": ("품질 점검: 문제 없음" if not findings else f"품질 점검 {len(findings)}건: "
                       + ", ".join(dict.fromkeys(report._QUALITY_LABELS.get(x["code"], x["code"])
                                                 for x in findings)))
+            + (f" · 고침 {mended_count}곳" if mended_count else "")
             + (f" · 빈칸 {blanks}개" if blanks else ""),
             "status": "done" if not findings else "error",
             **({"detail": detail} if detail else {}),
