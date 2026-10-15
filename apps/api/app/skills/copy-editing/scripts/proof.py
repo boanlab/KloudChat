@@ -178,7 +178,10 @@ _ENDINGS = (
     ("handa", re.compile(r"(?:[다라냐자]|는가|던가|은가|인가)$")),
     ("bullet", re.compile(r"(?:음|함|임|됨|짐|김|림|움|봄|옴|줌|함\)|기|것|예정|필요|완료|요망|바람|중|등|및)$")),
 )
-_SPLIT = re.compile(r"(?<=[.!?])\s+|(?<=[다요까])\s+(?=[가-힣A-Z「\"])")
+_SPLIT = re.compile(r"(?<=[.!?])\s+")
+# a line with no full stop is split at a sentence ending; never inside 「생각보다 잘」 (r10
+# SK-copyedit-3: a 합니다체 paragraph reported as mixed)
+_SPLIT_BARE = re.compile(r"(?<!보)(?<=[다요까])\s+(?=[가-힣A-Z「\"])")
 
 
 def _ending(sentence: str) -> str:
@@ -203,7 +206,8 @@ def register(text: str, target: str = "") -> dict:
             continue
         bullet = bool(_BULLET.match(line))
         body = _BULLET.sub("", line, count=1) if bullet else line
-        for sentence in (s for s in _SPLIT.split(body) if s.strip()):
+        split = _SPLIT if re.search(r"[.!?]", body) else _SPLIT_BARE
+        for sentence in (s for s in split.split(body) if s.strip()):
             name = _ending(sentence)
             if not name:
                 continue

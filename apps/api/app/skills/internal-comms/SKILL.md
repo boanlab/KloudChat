@@ -5,11 +5,8 @@ when_to_use: 전 직원·특정 부서에 알리는 공지, 제도·규정·근�
 kinds: [chat]
 required_tools: [run_skill_script]
 version: 0.1.0
-status: draft
 post_check: check
 post_judge: "promises of a follow-up notice, procedures, contacts, deadlines and who must do what"
-# Kept for bundles, old conversations and editors that name it; not shown in lists.
-listed: false
 ---
 Write internal announcements a busy employee understands from the first line and can act on without asking back. Use only what the request and material say.
 
@@ -75,7 +72,7 @@ Fix, run once more. The check is yours, not the reader's: no 「점검 결과」
 
 **무엇이 바뀌나**
 - …
-**대상·시행**                        ← 공사·점검·배포는 **대상·일시**, 「일시: 시작~끝」
+**대상·시행**                        ← 공사·점검·배포는 **대상·일시**, 「일시: 시작~끝」; 요지에 쓴 일시는 다시 쓰지 않고 대상만
 - 대상: …
 - 시행: 2026. 11. 1.(일)부터
 **해야 할 일**
@@ -86,7 +83,7 @@ Fix, run once more. The check is yours, not the reader's: no 「점검 결과」
 정보화팀 드림          ← 맺음과 발신 부서(자료의 부서명; 없으면 [발신 부서])
 
 ---
-보내기 전에 채울 것: [시행일], [문의처]
+보내기 전에 채울 것: [시행일], [문의처]          ← 남은 빈칸이 없으면 이 줄과 위 선을 통째로 뺀다
 ```
 
 ## Checklist
