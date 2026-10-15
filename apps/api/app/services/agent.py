@@ -1390,6 +1390,28 @@ def _is_homepage(url: str) -> bool:
 _PUBLISHED = re.compile(r"게시일 (\d{4}-\d{2}-\d{2})")
 
 
+#: a date on a writer's list line: 「2026-03-12」「2026.3.12」「2026-03」
+_LINE_DATE = re.compile(r"(?<!\d)(20\d{2})[-./]\s?(\d{1,2})(?:[-./]\s?(\d{1,2}))?(?!\d)")
+
+
+def _own_list_dates(listed: str, sources: list[str]) -> dict[str, str]:
+    """「 · 2026-03-12」 by source URL for each line of the writer's own list that dates its
+    source (r10 SK-company-2: the person asked for 출처랑 날짜; the server's list replaced the
+    writer's dated one and the dates went with it)."""
+    out: dict[str, str] = {}
+    for line in listed.split("\n"):
+        item = _OWN_LIST_ITEM.match(line)
+        if item is None or not 1 <= (n := int(item.group(1))) <= len(sources):
+            continue
+        # the date outside the link and its label: a title's own 「2025.09」 is not the page's
+        rest = re.sub(r"\[[^\]\n]*\]\([^)\s]*\)|https?://\S+", " ", line[item.end():])
+        if found := _LINE_DATE.search(rest):
+            y, mo, d = found.group(1), int(found.group(2)), found.group(3)
+            if 1 <= mo <= 12 and (d is None or 1 <= int(d) <= 31):
+                out[sources[n - 1]] = f" · {y}-{mo:02d}" + (f"-{int(d):02d}" if d else "")
+    return out
+
+
 def _published_of(url: str, seen: dict[str, str]) -> str:
     """「 · 2026-03-12」 after a listed source whose search result gave its date, outside the
     link so a later turn reads the label back unchanged; "" when none (r10 SK-company-1·2:
@@ -1589,8 +1611,12 @@ async def run_turn(
     #: cut short or only announced (r5 P07: asked again, the same model stalled); billed as
     #: `model:<id>:*Tokens`.
     rescue_model: str | None = None,
+    #: A turned-on skill searches deep (`process.deep_search`): twice the searches, as a
+    #: document's research does (r10 SK-competitor-2: three competitors, three searches).
+    deep_search: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """One assistant turn to a final answer; exactly one `usage`, `done` left to caller."""
+    search_scale = 2 if deep_search else 1
     by_name = {t.name: t for t in tools}
     search_tool = by_name.get("web_search")
     if (
@@ -2594,8 +2620,8 @@ async def run_turn(
                 _CODE_CLOSE_EN, reply_korean)})
             continue
 
-        searched_enough = (searches - empty_searches >= MAX_WEB_SEARCHES
-                           or searches >= MAX_SEARCH_CALLS)
+        searched_enough = (searches - empty_searches >= MAX_WEB_SEARCHES * search_scale
+                           or searches >= MAX_SEARCH_CALLS * search_scale)
         if searched_enough or fetches >= MAX_FETCHES:
             conversation.append(
                 {
@@ -2889,6 +2915,8 @@ async def run_turn(
     # the writer's own source list at the end: the server's list replaces it when every
     # number in it is known, else it stays as written and no second list is added
     own_list = ""
+    #: dates the writer gave its own list lines, by URL (kept when the server's list replaces it)
+    own_dates: dict[str, str] = {}
     if (own := _own_source_list(answer)) is not None:
         at, end, numbers = own
         # what follows the list (a closing paragraph) stays after the body
@@ -2906,6 +2934,9 @@ async def run_turn(
                 cited = sorted({*cited, *more})
     else:
         linked, cited = _link_citations(answer, sources, source_seen)
+    if own is not None and not own_list:
+        # after linking: a writer's article link has become the listed URL by now
+        own_dates = _own_list_dates(answer[own[0]:own[1]], sources)
     if cited and not own_list and not any(
             sources[n - 1].startswith(MATERIAL_SOURCE) for n in cited):
         # the list under the answer starts at [1] (only cited sources are listed); material
@@ -2941,7 +2972,8 @@ async def run_turn(
             f"- [{n}] {sources[n - 1].removeprefix(MATERIAL_SOURCE)}"
             if sources[n - 1].startswith(MATERIAL_SOURCE)
             else f"- [{n}] [{_source_label(sources[n - 1], source_titles.get(sources[n - 1], ''))}]"
-            f"({sources[n - 1]}){_published_of(sources[n - 1], source_seen)}"
+            f"({sources[n - 1]})"
+            f"{_published_of(sources[n - 1], source_seen) or own_dates.get(sources[n - 1], '')}"
             for n in cited
         )
         answer_text.append(appendix)

@@ -266,6 +266,21 @@ async def test_a_runaway_of_empty_searches_still_stops(monkeypatch) -> None:
     assert _loop_notes(seen)[0].startswith("웹 검색은 충분히 했습니다.")
 
 
+@pytest.mark.asyncio
+async def test_a_deep_searching_skill_gets_twice_the_searches(monkeypatch) -> None:
+    """r10 SK-competitor-2: three competitors, and the cap note after the third search."""
+    seen: list = []
+    _scripted(monkeypatch, [_call(n) for n in range(1, 7)] + [{"text": "답입니다 [1]."}], seen)
+    request = "세 경쟁사를 비교해 줘"
+    events = [e async for e in agent.run_turn(
+        SMALL, [{"role": "system", "content": "시스템"}, {"role": "user", "content": request}],
+        [_search([_found()] * 6)], ToolContext(user_id="u", session_id="s", api_key="k",
+                                               request=request), deep_search=True)]
+    assert len(seen) == 7 and _shown(events)
+    assert _loop_notes(seen)[0].startswith("웹 검색은 충분히 했습니다.")
+    assert agent.MAX_WEB_SEARCHES < 6
+
+
 def test_the_grounding_note_keeps_established_knowledge() -> None:
     """r7 P27: the 1911 London dock strike dropped as 「확인 못 함」 next to Liverpool hits."""
     for light in (False, True):

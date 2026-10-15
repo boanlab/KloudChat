@@ -366,14 +366,24 @@ def cite_mismatches(lines: list[str], refs: dict, ref_lines: set[int], material:
     return out
 
 
+#: A citation the answer has already turned into a link: 「[[3]](https://…)」.
+LINKED_CITE = re.compile(r"\[(\[\d{1,3}\])\]\([^)\s]+\)")
+
+
 def fix_cites(text: str, findings: list[dict]) -> str:
     """Each mismatched [n] replaced by 「출처 미확인」 on its line."""
     lines = (text or "").split("\n")
     for f in sorted((f for f in findings if f["kind"] == "cite_mismatch"),
                     key=lambda f: (f["line"], f["start"]), reverse=True):
         line = lines[f["line"]]
-        if line[f["start"]:f["end"]] == f["text"]:
-            lines[f["line"]] = line[:f["start"]] + "「출처 미확인」" + line[f["end"]:]
+        start, end = f["start"], f["end"]
+        if line[start:end] != f["text"]:
+            continue
+        # A linked citation 「[[3]](url)」 goes whole, link and all.
+        linked = LINKED_CITE.match(line, start - 1) if start else None
+        if linked and linked.group(1) == f["text"]:
+            start, end = linked.start(), linked.end()
+        lines[f["line"]] = line[:start] + "「출처 미확인」" + line[end:]
     return "\n".join(lines)
 
 

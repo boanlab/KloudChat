@@ -4,6 +4,7 @@ description: 특정 회사의 개요(설립·대표·주소·사업)·재무·�
 when_to_use: 미팅·영업·투자·제휴·입찰 전에 상대 회사를 빠르게 파악할 때, 「○○ 회사 조사해 줘」「기업 개요 정리」. 별칭 company-research.
 kinds: [chat]
 required_tools: [run_skill_script, web_search, fetch_url]
+process: {deep_search: true}
 version: 0.1.0
 status: draft
 post_check: source-check/post
@@ -35,7 +36,7 @@ Research one company and write a Korean one-pager a 영업·기획 담당자 can
 ## Procedure
 1. Pin the company (정식 상호, 사업자/법인 번호 if known) and the user's purpose (영업 미팅, 투자 검토, 제휴, 입찰). Ask once if the company is ambiguous.
 2. Collect facts into the sections below. Record each source as you go.
-   - When the user hands over what they already know (a memo, hearsay, a list to check), search each item on its own and answer every item in a 「메모 확인」 table before the one-pager: 메모 내용 | 확인 결과 (맞음 · 다름 · 출처 미확인) | 근거 [n] (r10 SK-company-3: four memo items scattered, one never checked).
+   - When the user hands over what they already know (a memo, hearsay, a list to check), search each item on its own and answer every item in a 「메모 확인」 table before the one-pager: 메모 내용 | 확인 결과 (맞음 · 다름 · 출처 미확인) | 근거 [n] (r10 SK-company-3: four memo items scattered, one never checked). A sentence elsewhere that sums up a memo item uses that item's 확인 결과 word, never a firmer one (r10 SK-company-3: the table said 출처 미확인, the opening said 확인됩니다).
 3. Financial ratios or growth rates: compute with `run_skill_script` (`calc-check` if offered) or show the formula from the cited figures; never round silently.
 4. Check: `run_skill_script` skill `source-check`, script `sources`, args `{"text": "<answer>", "material": "<user material>", "today": "YYYY-MM-DD", "max_age_years": 2}`. Fix `unsourced`/`undefined_ref`; for `stale`, keep the value with 「(YYYY년 기준)」.
 

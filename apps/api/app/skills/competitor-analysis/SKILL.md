@@ -4,6 +4,7 @@ description: 직접·간접 경쟁사를 고르고 포지셔닝·기능·가격�
 when_to_use: 경쟁 구도 파악, 사업계획서·IR 의 경쟁 분석, 포지셔닝·가격 결정 전, 「경쟁사 분석」「경쟁사 비교표」「경쟁 지형」. 별칭 competitor-analysis.
 kinds: [chat]
 required_tools: [run_skill_script, web_search, fetch_url]
+process: {deep_search: true}
 version: 0.1.0
 status: draft
 post_check: source-check/post
@@ -32,8 +33,8 @@ Map the competition for the user's product in Korean, cell by cell from sources.
 ## Procedure
 1. Scope: the user's product, the customer segment and the decision this analysis serves. Ask once if unclear.
 2. Pick competitors: 직접(같은 고객·같은 문제), 간접/대체(다른 방식으로 같은 문제: 엑셀, 외주, 수작업). 3–5 direct unless the user names them. Say why each is in.
-3. Search each competitor on its own, one query per competitor and item (「<경쟁사> 요금제」「<경쟁사> 기능」「<경쟁사> 출시 보도자료」), and open its official page first. A competitor with nothing found gets one more query by another name (영문명, 공식 도메인) before its cells say 「확인 필요」 (r10 SK-competitor-1·2: one query of the whole request left a competitor with no data). With the user's material only, or 「검색하지 말고」, run no search.
-4. Build the comparison table: rows = 비교 항목 (목표 고객, 핵심 기능 3–6개, 가격·요금제, 도입 방식, 고객·사례, 최근 움직임), columns = 자사 + 경쟁사들 + 출처. One fact per cell.
+3. Search each competitor on its own, and open its official page first. A turn has about six searches that find something, so give each competitor two: 「<경쟁사> 요금제 도입 방식」 and 「<경쟁사> 기능 고객 사례 보도자료」 — never one query for the whole request, never all of them on prices only. A competitor with nothing found gets one more query by another name (영문명, 공식 도메인) before its cells say 「확인 필요」 (r10 SK-competitor-1·2). With the user's material only, or 「검색하지 말고」, run no search.
+4. Build the comparison table: rows = 비교 항목 (목표 고객, 핵심 기능 3–6개, 가격·요금제, 도입 방식, 고객·사례, 최근 움직임), columns = 자사 + 경쟁사들 + 출처. One fact per cell. Go through each competitor's results and put into its cells what they say, with `[n]`; 「확인 필요」 is for an item no result spoke to (r10 SK-competitor-2: two competitors searched five times, every cell left 「확인 필요」). With the user's material only, drop the 출처 column and cite the material by its name in the cell (「[경쟁 A 자료]」).
 5. Check the table: `run_skill_script` skill `source-check`, script `claims`, args `{"text": "<table and bullets>", "material": "<user material>", "fix": true}`. Fix every finding (add the source, or use `fixed_text`), run again until 0 `unsourced_cell`/`empty_cell`/`vague_cell`/`verdict_without_evidence`.
 6. 강점·약점 per competitor: bullets each tied to a cell or `[n]`.
 7. 차별화 기회: only where the table shows a gap (a need in the material or a review pattern that no competitor covers). Each opportunity cites the rows it rests on. A 「확인 필요」 cell is something unknown, not a gap: it is never the basis of an opportunity. Mark guesses 「가설」 and say how to test them.
@@ -55,8 +56,8 @@ Map the competition for the user's product in Korean, cell by cell from sources.
 1. 기회 — 근거: 비교표 「…」 행, [n] (가설이면 검증 방법)
 ## 지켜볼 것
 ## 확인 필요 목록
-## 출처
 ```
+The server lists the sources under the answer from your `[n]`: do not write an 출처 section of your own.
 
 ## Checklist
 - [ ] Every cell sourced or 「확인 필요」/「자료 없음」; no vague cells.

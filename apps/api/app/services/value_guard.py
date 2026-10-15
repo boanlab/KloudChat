@@ -984,6 +984,10 @@ def _row_cells(line: str) -> list[str]:
     return line.strip().strip("|").split("|")
 
 
+#: a cell holding citations only: 「[[2]](https://…)」, 「[1][3]」
+_ONLY_CITES = re.compile(r"\s*(?:(?:\[\[\d{1,3}\]\]\([^)\s]{1,500}\)|\[\d{1,3}\])[\s,]*)+")
+
+
 def _refill_cells(old: str, new: str, out: Settled) -> str:
     """A table cell a guard emptied, given back as written (r5 A12-T2: the 「추천 채널·활용
     이유」 cells of 25 rows came back blank): rows matched in order, same width only."""
@@ -998,6 +1002,10 @@ def _refill_cells(old: str, new: str, out: Settled) -> str:
             continue
         filled = False
         for c, cell in enumerate(after):
+            if _ONLY_CITES.fullmatch(before[c]):
+                # a citation a check took out stays out: put back, it named a page that did
+                # not say it, and its list line had gone (r10 SK-company-2·3 「[[2]]」)
+                continue
             if before[c].strip() and not re.sub(r"\(?확인\s?필요\)?", "", cell).strip():
                 # a cell judged unsupported keeps its words, marked; a cell that already said
                 # 「확인 필요」 keeps saying it once (r7 A11-T2 「확인 필요 (확인 필요)」)

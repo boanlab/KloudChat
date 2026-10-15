@@ -340,8 +340,9 @@ general lane and, when the query carries a time-sensitive word (a year, 최신 "
 general lane answers 「최신 모델」 ("latest model") with home pages and encyclopaedias. Front
 pages and a host's third hit are benched (used only to pad a thin list), and a
 hit's `publishedDate` reaches the model as 「게시일」 ("published on") so the newest wins. A turn
-makes at most three searches and six page reads; past either cap the model is
-told to answer from what it has.
+makes at most three searches and six page reads (six searches when a turned-on skill
+sets `process: {deep_search: true}`, as 기업 조사 and 경쟁사 분석 do); past either cap
+the model is told to answer from what it has.
 
 **Sources are cited by number, never typed.** `run_turn` renumbers the `[n]`
 entries of every search result so the numbers run across the whole turn and

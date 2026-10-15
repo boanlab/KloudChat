@@ -120,8 +120,11 @@ def test_a_counted_figure_is_looked_up_with_its_counter():
     assert post_checks.code_reading("총 9개 투자 라운드, 투자자 39개사", page) == "absent"
     assert post_checks.code_reading("임직원 수 306명", page + " 임직원 306 명") == "present"
     assert post_checks.code_reading("투자자 39개사", page + " 투자자 39개 회사") == "present"
-    # dates and 만·억 stay bare: the page may write them another way
+    # dates stay bare: the page may write them another way
     assert post_checks.code_reading("2026년 9월 투자", page) == "present"
+    # LFLF2 SK-company-1: 「89억」 against a page whose 89 is something else
+    assert post_checks.code_reading("시리즈 A 89억 원 유치", page + " 89 시리즈 A") == "absent"
+    assert post_checks.code_reading("시리즈 A 89억 원 유치", page + " 시리즈 A 89억원") == "present"
 
 
 @GROUPS

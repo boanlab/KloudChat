@@ -8,6 +8,8 @@ import sys
 
 CITED = re.compile(
     r"\[\d{1,3}\]|https?://|출처\s*[:：]|자료\s*[:：]|\((?:자사|제공|사용자|내부)\s?자료[^)]*\)|\[자료\]"
+    # the person's material cited by its name: 「[경쟁 A 자료]」 (r10 SK-competitor-3)
+    r"|\[[^\[\]\n]{1,30}\s자료\]"
 )
 OPEN = re.compile(
     r"확인\s?필요|출처\s?미확인|자료\s?없음|판단\s?보류|가정\s*[:：)]|\(가정|해당\s?없음|N/?A"

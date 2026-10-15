@@ -3441,6 +3441,12 @@ def _skill_keys(applied, specs: dict[str, skill_specs.Spec]) -> tuple[str, ...]:
     return tuple(out)
 
 
+def _deep_search(keys, specs: dict | None) -> bool:
+    """Whether a skill on the turn searches deep (its 진행 과정 설정 「깊이 검색」)."""
+    return any(bool(((specs or {}).get(key) or skill_specs.Spec(key=key)).process.get(
+        "deep_search")) for key in keys)
+
+
 def render_template_checks(session: ChatSession) -> tuple[str, ...]:
     """Check skills attached by the session's 서식."""
     template = design_templates.get(session.render_template_id)
@@ -5696,6 +5702,7 @@ async def _answer_turn(
                 **({"freshness_request": freshness_request} if freshness_request else {}),
                 **({"caveat_request": caveat_request} if caveat_request else {}),
                 **({"material_given": True} if carries_material else {}),
+                **({"deep_search": True} if _deep_search(skill_keys, skill_specs) else {}),
             ),
             stopping,
         ):

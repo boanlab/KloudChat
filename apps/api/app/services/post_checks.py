@@ -409,9 +409,10 @@ _KEY_LATIN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9+-]{1,30}")
 _KEY_QUOTED = re.compile(r"「([^」\n]{2,40})」|“([^”\n]{2,40})”")
 #: a counted figure is looked up with its counter: in a long search page a bare 「9」 or
 #: 「306」 turns up by chance (r10 LFLF SK-company-2: 「306명」 and 「9개 투자 라운드」
-#: judged unstated, kept as 「근거에 있는 값」). Dates and 만·억 stay bare (「2026. 4.」).
+#: judged unstated, kept as 「근거에 있는 값」); so are 억·조 (LFLF2 SK-company-1: 「89억」 kept
+#: on a bare 89). Dates and 만 stay bare (「2026. 4.」, 「1.2만」 against 「12,000」).
 _COUNTED = re.compile(
-    r"(?<![\d.])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s?(%|개사|라운드|[명개곳건회원배위대종차석])")
+    r"(?<![\d.])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s?(%|개사|라운드|[명개곳건회원배위대종차석억조])")
 
 
 def key_tokens(quote: str) -> list[str]:
@@ -592,6 +593,54 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
     outcome.flags = flags
     outcome.text = particles(text)
     return outcome
+
+
+#: the list the answer step put under the answer: 「### 출처」 then 「- [3] [제목](url)」
+_LIST_HEADING = re.compile(r"^#{2,4}\s*(?:출처|Sources)\s*$", re.M)
+_LIST_LINE = re.compile(r"^\s{0,3}[-*]\s{1,3}\[(\d{1,3})\]\s")
+_LINKED = re.compile(r"[ \t]?\[\[(\d{1,3})\]\]\([^)\s]{1,500}\)")
+
+
+def _split_list(text: str) -> tuple[str, str, dict[int, str], str]:
+    """(body, heading, {n: list line}, what follows the list) of `text`; no heading → the
+    body is all of it."""
+    found = list(_LIST_HEADING.finditer(text or ""))
+    if not found:
+        return text or "", "", {}, ""
+    at = found[-1]
+    listed: dict[int, str] = {}
+    lines = text[at.end():].split("\n")
+    last = 0
+    for i, line in enumerate(lines):
+        if m := _LIST_LINE.match(line):
+            listed.setdefault(int(m.group(1)), line.rstrip())
+            last = i
+        elif line.strip() and listed:
+            break
+    tail = "\n".join(lines[last + 1:]) if listed else "\n".join(lines)
+    return text[:at.start()].rstrip(), at.group(0), listed, tail
+
+
+def cited_sources_listed(before: str, text: str) -> str:
+    """`text` with each linked 「[[n]](url)」 of its body listed under it.
+
+    A rewrite took list lines out with the sentences it fixed (r10 SK-company-3: 「- [6] …」
+    read as a generality), or a guard gave a cell back after its line had gone (SK-company-2
+    「[[2]]」): a line the list had before comes back; a citation no list ever had comes out."""
+    body, heading, listed, tail = _split_list(text)
+    _, old_heading, was, _ = _split_list(before)
+    if not was:
+        return text
+    cited = list(dict.fromkeys(int(n) for n in _LINKED.findall(body)))
+    missing = [n for n in cited if n not in listed]
+    if not missing:
+        return text
+    body = _LINKED.sub(lambda m: "" if int(m.group(1)) not in listed | was else m.group(0), body)
+    listed |= {n: was[n] for n in missing if n in was}
+    if not listed:
+        return body + (f"\n\n{tail.strip()}" if tail.strip() else "")
+    return f"{body}\n\n{heading or old_heading}\n" + "\n".join(
+        listed[n] for n in sorted(listed)) + (f"\n{tail.rstrip()}" if tail.strip() else "")
 
 
 _PARTICLE = re.compile(r"(\[[^\[\]\n]{1,20}\])(으로|을|이|은|과|이나|이라)(?=[\s.,)」]|$)")
