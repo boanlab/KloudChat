@@ -8,6 +8,8 @@ from collections import Counter
 from dataclasses import dataclass
 
 WEEKDAYS = "월화수목금토일"
+#: a weekday written beside a date: 「(목)」, 「목요일」
+WEEKDAYS_RX = re.compile(rf"\(\s{{0,2}}[{WEEKDAYS}](?:요일)?\s{{0,2}}\)|[{WEEKDAYS}]요일")
 
 
 def _wd(name: str) -> str:
@@ -369,4 +371,5 @@ def _fix_weekday_columns(text: str, year: int | None, today: dt.date,
     return "\n".join(lines), fixes
 
 
-__all__ = ["Fix", "context_year", "context_years", "fix_weekdays"]
+__all__ = ["WEEKDAYS_RX", "Fix", "context_year", "context_years", "fix_weekdays"]
+

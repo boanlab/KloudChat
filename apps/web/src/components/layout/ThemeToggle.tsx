@@ -1,29 +1,33 @@
-import { Monitor, Moon, Sun } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Moon, Sun } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
-const icons = { system: Monitor, light: Sun, dark: Moon }
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
 
-const labels = {
-  system: '화면 밝기: 시스템 설정 따름',
-  light: '화면 밝기: 밝게',
-  dark: '화면 밝기: 어둡게',
-}
-
-/** Cycles system, light, dark; icon shows the current one. */
+/** Sun or moon for the brightness on screen; a click switches to the other one. */
 export function ThemeToggle({ className }: { className?: string }) {
   const t = useT()
   const { theme, toggleTheme } = useStore()
-  const Icon = icons[theme]
+  const [osDark, setOsDark] = useState(darkQuery.matches)
+
+  useEffect(() => {
+    const follow = () => setOsDark(darkQuery.matches)
+    darkQuery.addEventListener('change', follow)
+    return () => darkQuery.removeEventListener('change', follow)
+  }, [])
+
+  const dark = theme === 'system' ? osDark : theme === 'dark'
+  const Icon = dark ? Moon : Sun
 
   return (
     <Button
       variant="ghost"
       size="icon"
       onClick={toggleTheme}
-      aria-label={t(labels[theme])}
-      title={t('시스템·밝게·어둡게 순으로 바뀝니다')}
+      aria-label={t(dark ? '화면 밝기: 어둡게' : '화면 밝기: 밝게')}
+      title={t(dark ? '밝게 바꾸기' : '어둡게 바꾸기')}
       className={className}
     >
       <Icon size={16} />

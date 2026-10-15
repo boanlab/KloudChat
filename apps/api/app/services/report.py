@@ -37,6 +37,7 @@ from app.services import (
     research,
     revised_tables,
     settings_store,
+    table_mend,
     thinking,
     units,
     weekdays,
@@ -1373,8 +1374,10 @@ _TRAILING_TABLE_CAPTION = re.compile(
 
 
 def repair_pipe_tables(body: str) -> str:
-    """Bare 「a | b | c」 lines (2+, equal cells) as a Markdown table."""
-    lines = (body or "").split("\n")
+    """Bare 「a | b | c」 lines (2+, equal cells) as a Markdown table; a half-formed table (a
+    bare header and rule, a row ending in a bare 「|」) rebuilt whole first, so its first row
+    never becomes the header (r9 LFLF R3-A01-T1)."""
+    lines = table_mend.rebuild(body or "").split("\n")
     out: list[str] = []
     i = 0
 

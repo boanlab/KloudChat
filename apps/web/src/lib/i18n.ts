@@ -1221,10 +1221,10 @@ const EN: Record<string, string> = {
   '대화 기록': 'History',
   '워크스페이스': 'Workspace',
   '사이드바 토글': 'Toggle sidebar',
-  '화면 밝기: 시스템 설정 따름': 'Brightness: follow system',
   '화면 밝기: 밝게': 'Brightness: light',
   '화면 밝기: 어둡게': 'Brightness: dark',
-  '시스템·밝게·어둡게 순으로 바뀝니다': 'Cycles through system, light and dark',
+  '밝게 바꾸기': 'Switch to light',
+  '어둡게 바꾸기': 'Switch to dark',
   '언어 전환': 'Switch language',
 
   // ── enabled surfaces ────────────────────────────────────────────────

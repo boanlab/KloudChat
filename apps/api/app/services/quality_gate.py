@@ -10,6 +10,10 @@ from app.services import units
 _IMAGE = re.compile(r"!\[[^\]]{0,2000}\]\(data:[^)]{0,9000000}\)")
 _FENCE_GLUED = re.compile(r"(?m)^(?!\s*```).*\S[ \t]*```")
 _STRAY_CAPTION = re.compile(r"(?m)^\s*표\s?\d{0,3}\s?[:：]|^\s*표\s?\d{1,3}\s*$")
+#: a date or a clock time in a table cell
+_WHEN = re.compile(r"\d{4}\s?[-./년]\s?\d{1,2}\s?[-./월]\s?\d{1,2}"
+                   r"|(?<![\d.])\d{1,2}/\d{1,2}\s?\([월화수목금토일]\)"
+                   r"|\d{1,2}\s?월\s?\d{1,2}\s?일|(?<!\d)\d{1,2}:\d{2}(?!\d)")
 _PIPE_ROW = re.compile(r"(?m)^(?!\s*\|)[^\n|`]+ \| [^\n|]+ \| [^\n]+$")
 _LEFTOVER = re.compile(r"〔(?:그림|표)〕|\[\[\s*그림|〔그림 준비 중")
 _MIXED = re.compile(r"[가-힣][Ѐ-ӿ]|[Ѐ-ӿ][가-힣]")
@@ -134,6 +138,10 @@ def report_findings(
         for label, value, _, _ in report._table_rows(str(sec.get("content") or "")):
             if not re.search(r"\d", value) or report._UNDECIDED.match(value):
                 continue
+            if _WHEN.search(value):
+                # a date or time names its own event: this meeting's 일시 and the next one's
+                # are two rows, not one value written twice (r9 L27F R3-A01-T1)
+                continue
             number = re.sub(r"[^\d.]", "", value)
             # generic labels repeat by design; skipped
             generic = r"[\d.]+(?:개월|차시|주|월|일)?(?:차)?|도입|전개|정리|합계|소계|계|평균"
@@ -228,6 +236,9 @@ def deck_findings(slides: list[dict[str, Any]]) -> list[dict[str, str]]:
         # space-joined: placeholders split across cells still match
         words = {k: v for k, v in slide.items() if k not in ("image", "diagram")}
         text = " ".join(_strings(words))
+        if layout == "table" and not deck_service.table_values(slide):
+            # a header and no values compares nothing (r9 L27F R3-A09-T2)
+            add("empty_table", where)
         if layout == "section" and _NUMBERED.match(str(slide.get("title") or "")):
             add("numbered_divider", where)
         if layout == "agenda" and any(_NUMBERED.match(str(b)) for b in slide.get("bullets") or []):

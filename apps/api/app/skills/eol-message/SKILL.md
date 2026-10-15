@@ -26,8 +26,9 @@ Check the material. If any of 1–5 is missing, ask in ONE message (at most 5 qu
 No invented dates, weekdays, amounts, percentages, product names, contacts or legal promises (「전액 환불」「안전하게 영구 삭제」) beyond the material.
 
 ## Structure
-1. 제목: 「[서비스명] 종료 안내 (종료일 2026. 12. 31.)」 — the end date in the title.
-2. 한 줄 요지: what ends and when. 「[서비스명]은 2026. 12. 31.(목) 종료합니다.」
+종료일 (`end`) is the day the service can no longer be used at all. A day it only turns read-only (읽기 전용, 작성·수정 중단) or stops sign-ups is a step before it, not the end; when the material's last step says 「완전 종료」 or ends together with deletion, that day is 종료일.
+1. 제목: 「[서비스명] 종료 안내 (종료일 [종료일])」 — the end date in the title.
+2. 한 줄 요지: what ends and when. 「[서비스명]은 [종료일(요일)] 종료합니다.」
 3. 일정 표 — one row per step, in date order, with weekday:
    | 일정 | 날짜 | 이용자에게 일어나는 일 |
    | 신규 가입·구매 중단 | … | 새로 가입·결제할 수 없습니다 |
@@ -56,7 +57,8 @@ Sources (law.go.kr, read 2026-10-08): 전기통신사업법 [시행 2026. 10. 1.
 ## Procedure
 1. Collect the facts above; ask for what is missing.
 2. Check the schedule before writing: `run_skill_script` skill `eol-message`, script `timeline`,
-   `{"dates": {"announce": "2026-10-15", "stop_new": "2026-11-01", "billing_stop": "2026-11-30", "end": "2026-12-31", "export_until": "2027-01-31", "delete": "2027-03-31"}, "min_gaps": [{"from": "announce", "to": "end", "days": 90, "basis": "이용약관 제12조"}], "telecom": "value_added", "today": "<오늘>"}`.
+   `{"dates": {"announce": "<공지일>", "stop_new": "<신규 중단일>", "billing_stop": "<자동 결제 중단일>", "end": "<종료일>", "export_until": "<내보내기 마감일>", "delete": "<데이터 삭제일>"}, "min_gaps": [{"from": "announce", "to": "end", "days": <자료의 일수>, "basis": "<자료의 근거>"}], "telecom": "value_added", "today": "<오늘>", "material": "<자료의 일정 문장>"}` — every value YYYY-MM-DD from the material; leave out a key the material does not give.
+   - A read-only or partial stop (읽기 전용 전환) is not `end`; leave it out of `dates` and write it in the notice as its own row.
    - `min_gaps` only from the user's material (약관·계약·사내 기준); never make one up. Pass `telecom` only when the user says the business is a 부가통신/기간통신 사업 closure, or ask.
    - A `block` (wrong order, gap too short, export after deletion) is the user's decision: report it with the script's suggested latest notice date and do not change dates yourself.
 3. Write the notice with the dates as the script shows them (with weekday).

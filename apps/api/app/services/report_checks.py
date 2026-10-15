@@ -1980,6 +1980,185 @@ async def _staffing(pre: Prepass, job: PrepassJob) -> None:
         pre.staff = staffing(job.material)
 
 
+# ── the price lines as written: a code reading of the cost items ──
+
+#: an option's head: 「A안: …」, 「[견적 1] 가온정보통신」, 「견적 2: 다솜시스템」, 「### 대안 3 누리컴」
+_QUOTE_HEAD = re.compile(
+    r"^\s{0,3}(?:#{1,4}\s{0,2})?(?:\*\*)?\s{0,2}(?:\[\s{0,2}(?:견적|대안|옵션|업체|제안)\s{0,2}\d{1,2}\s{0,2}\]"
+    r"|(?:견적|대안|옵션|업체|제안)\s{0,2}\d{1,2}\s{0,2}[:：.)])\s{0,2}(?P<name>[^\n:：(]{1,40})")
+_BULLET = re.compile(r"^\s{0,6}(?:[-*·•]|\d{1,2}[.)])\s")
+#: an amount in won: 「14,000원」, 「300만원」, 「1억 2천만 원」
+_WON = re.compile(r"(?<![\d,.])(\d[\d,]{0,15}(?:\.\d{1,4})?\s{0,2}(?:억|천만|백만|만)?)\s{0,2}원")
+#: 「× 40명」 after a price, 「40명 ×」 before it
+_TIMES_AFTER = re.compile(rf"^\s{{0,3}}(?:\([^()\n]{{0,30}}\)\s{{0,3}})?[×x*]\s{{0,2}}(\d[\d,]{{0,8}})\s{{0,2}}({_COUNTED_IN})")
+_TIMES_BEFORE = re.compile(rf"(\d[\d,]{{0,8}})\s{{0,2}}({_COUNTED_IN})\s{{0,2}}[×x*]\s{{0,3}}$")
+_EACH = re.compile(rf"(?:1\s{{0,2}})?(?:{_COUNTED_IN})\s{{0,2}}당|/\s{{0,2}}(?:{_COUNTED_IN})(?![가-힣])")
+_PER_MONTH = re.compile(r"(?:^|[\s(/])(?:월|매월|월간|월\s{0,2}요금)\s{0,2}$|/\s{0,2}월")
+_PER_YEAR = re.compile(r"(?:^|[\s(/])(?:연|매년|연간|년)\s{0,2}$|/\s{0,2}(?:년|연)")
+_PER_USE = re.compile(r"(?:시간|km|㎞|건|장|회|GB|분|일)\s{0,2}당|/\s{0,2}(?:시간|km|건|장|회|GB|분|일)", re.I)
+#: the condition a clause is priced under: 「3년 연장 시」, 「연 단위 계약 시」, 「30대 이상 구매 시」
+_WHEN = re.compile(r"((?:[^\s,，;]{1,20}\s){0,3}[^\s,，;]{1,20}\s(?:시|경우|때))(?=\s|$)")
+#: a period the comparison spans: 「5년 총비용」, 「3년간」, 「연간 비용」
+_SPAN = re.compile(r"(\d{1,2})\s{0,2}년\s{0,2}(?:간|동안|총비용|총액|합계|TCO|누적|기준)")
+_ONE_YEAR = re.compile(r"연간\s{0,2}(?:비용|총비용|금액|합계)|첫해|이듬해|1년\s{0,2}(?:비용|기준)")
+_CLAUSE = re.compile(r",\s|，|;\s")
+_ITEM_NOISE = re.compile(
+    rf"(?:1\s{{0,2}})?(?:{_COUNTED_IN})\s{{0,2}}당|\((?:부가세|부가가치세|VAT)[^()]{{0,8}}\)"
+    r"|(?<![가-힣])(?:단가|매월|월|연간|연|1회|초기|약|부가세|별도|포함)(?![가-힣])|[\d,.]{1,20}|[×x*/]")
+
+
+def _option_blocks(text: str) -> list[tuple[str, list[str]]]:
+    """Option heads and the bullet lines under each (the head's own words count too)."""
+    blocks: list[tuple[str, list[str]]] = []
+    current: tuple[str, list[str]] | None = None
+    for line in (text or "").split("\n"):
+        head = None
+        if m := _QUOTE_HEAD.match(line):
+            head = m.group("name").strip(" *")
+        elif _OPTION_HEAD.match(line.strip().lstrip("#* ")) and not _BULLET.match(line):
+            head = _option_key(line.strip().lstrip("#* "))
+        if head:
+            current = (head, [line.split(":", 1)[1] if ":" in line else ""])
+            blocks.append(current)
+        elif current is not None and _BULLET.match(line):
+            current[1].append(_BULLET.sub("", line, count=1))
+        elif line.strip():
+            current = None
+    return blocks
+
+
+def _won(raw: str) -> float | None:
+    try:
+        return units._ko_number(raw.replace(" ", ""))
+    except ValueError:
+        return None
+
+
+def _quantity(lines: list[str], request: str) -> float | None:
+    """The count a 「대당」/「1인당」 price is multiplied by: the one count the option's own
+    「× 30대」 writes, else the one the request writes (「노트북 30대」, 「교직원 40명」)."""
+    found = {float(m.group(1).replace(",", "")) for line in lines
+             for m in re.finditer(rf"[×x*]\s{{0,2}}(\d[\d,]{{0,8}})\s{{0,2}}(?:{_COUNTED_IN})", line)}
+    if not found:
+        found = {float(m.group(1).replace(",", "")) for m in re.finditer(
+            r"(?<![\d,.])(\d[\d,]{0,8})\s{0,2}(?:대|명|인|석|좌석|계정|카드|세트)(?![가-힣])",
+            request or "")}
+    return next(iter(found)) if len(found) == 1 else None
+
+
+def _item_name(before: str, per: str) -> str:
+    """An item's name from the words before its price: 「기존 기기 수거는 대당」 → 「기존 기기 수거」."""
+    name = re.sub(r"\s{2,}", " ", _ITEM_NOISE.sub(" ", before)).strip(" ·:,-(")
+    name = re.sub(r"(?<=[가-힣])(?:은|는)$", "", name).strip()
+    if name:
+        return name[:30]
+    # never an empty or generic name: `_same_item` takes such a row for any other
+    return {"month": "월 이용료", "year": "연 이용료"}.get(per, "구입가")
+
+
+def price_lines_reading(request: str, material: str) -> dict | None:
+    """The cost reading code takes from price lines written plainly — 「1인당 월 14,000원 ×
+    40명, 연 단위 계약 시 15% 할인」, 「1회 300만원」, 「대당 10,000원(부가세 포함)」 — in the
+    shape the model's reading has (`_COST_PROMPT`). `None` unless every amount under every
+    option is read: a line it cannot read (a usage price, two amounts in one clause, a discount
+    with no price beside it, an amount outside the options) leaves the reading to the model.
+    The request and the material are read apart (the material may be the request's own
+    lines); both giving options, they must name the same ones."""
+    found = [r for r in (_price_lines(request, request), _price_lines(material, request)) if r]
+    if len(found) == 2 and ({_option_key(o["name"]) for o in found[0]["options"]}
+                            != {_option_key(o["name"]) for o in found[1]["options"]}):
+        return None
+    return found[0] if found else None
+
+
+def _price_lines(text: str, request: str) -> dict | None:
+    blocks = _option_blocks(text)
+    if len(blocks) < 2 or len({_option_key(n) for n, _ in blocks}) < len(blocks):
+        return None
+    inside = {line for _, lines in blocks for line in lines}
+    for line in text.split("\n"):
+        stripped = _BULLET.sub("", line, count=1)
+        if (_WON.search(line) and stripped not in inside and not _QUOTE_HEAD.match(line)
+                and not _OPTION_HEAD.match(line.strip().lstrip("#* "))
+                and not _BUDGET_LINE.search(line)):
+            return None  # an amount outside the options: whose it is, the model reads
+    recurring = False
+    options = []
+    for name, lines in blocks:
+        count_of = _quantity(lines, request)
+        items: list[dict] = []
+        for line in lines:
+            last: dict | None = None
+            for clause in _CLAUSE.split(line):
+                amounts = list(_WON.finditer(clause))
+                discount = _DISCOUNT.search(clause)
+                if (len(amounts) > 1 or (amounts and discount) or _PER_USE.search(clause)
+                        or ("%" in clause and not discount)):
+                    return None  # 「매년 5% 인상」, a usage price: the model reads it
+                when = next((w.group(1).strip() for w in _WHEN.finditer(clause)
+                             if not amounts or w.end() <= amounts[0].start()), "")
+                if discount:
+                    if last is None:
+                        return None  # 「총액 5% 할인」 alone: on what, the model reads
+                    rate = float(discount.group("n") or discount.group("m")) / 100
+                    items.append({**{k: v for k, v in last.items() if k not in ("when", "name")},
+                                  "name": "할인", "rate": rate, "sign": -1,
+                                  **({"when": when} if when else {})})
+                    continue
+                if not amounts:
+                    continue
+                m = amounts[0]
+                price = _won(m.group(1))
+                if price is None:
+                    return None
+                before, after = clause[:m.start()], clause[m.end():]
+                per = ("month" if _PER_MONTH.search(before) or _PER_MONTH.search(after[:6])
+                       else "year" if _PER_YEAR.search(before) or _PER_YEAR.search(after[:6])
+                       else "once")
+                recurring |= per != "once"
+                count: float | None = 1
+                if t := _TIMES_AFTER.match(after):
+                    count = float(t.group(1).replace(",", ""))
+                elif t := _TIMES_BEFORE.search(before):
+                    count = float(t.group(1).replace(",", ""))
+                elif _EACH.search(before):
+                    count = count_of
+                if count is None:
+                    return None
+                named = _item_name(before.replace(when, " ") if when else before, per)
+                if when and named in ("월 이용료", "연 이용료", "구입가"):
+                    # 「무상 보증 2년, 3년 연장 시 대당 45,000원」: the extension, named by its line
+                    lead = re.sub(r"\([^()]{0,60}\)|[\d,.]{1,20}\s{0,2}(?:년|개월|주|일)?", " ",
+                                  line[:line.find(clause)])
+                    core = re.sub(r"\s(?:시|경우|때)$", "", when)
+                    named = re.sub(r"\s{2,}", " ", f"{lead} {core}").strip(" ,")[:30]
+                item = {"name": named, "unit_price": price, "count": count, "per": per}
+                if vat := _VAT_AFTER.match(after):
+                    item["vat"] = "incl" if vat.group(1) == "포함" else "excl"
+                if when:
+                    item["when"] = when
+                items.append(item)
+                last = item
+        if not items:
+            return None
+        options.append({"name": name, "items": items})
+    years = None
+    period = ""
+    if spans := {int(m.group(1)) for m in _SPAN.finditer(request or "")}:
+        if len(spans) != 1:
+            return None
+        years = next(iter(spans))
+        period = f"{years}년"
+    elif recurring:
+        if not _ONE_YEAR.search(request or ""):
+            return None
+        years, period = 1, "1년"
+    data: dict = {"period": period, "options": options, "scenarios": []}
+    if years is not None:
+        data["years"] = years
+    return data
+
+
 #: a scenario name marked where its readings differ (the strong writer gets both)
 _READINGS_DIFFER = " — 읽을 때마다 값이 다름"
 
@@ -2055,10 +2234,34 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
             deliberated = found is not None
             return found, (why[0] if why else "")
 
+        # the price lines as written, read by code: the third reading when the model's two
+        # differ, in place of a slow thinking read (r9 A04-T1: three readings, three totals,
+        # 742 s), and the totals when no two readings agree
+        code_why: list[str] = []
+        code_read = price_lines_reading(request, material)
+        code_costs = (option_costs(counted_as_written(code_read, given), numbers, code_why,
+                                   material=given) if code_read else None)
+        if code_costs is not None and code_costs["dropped"]:
+            code_costs = None
+
+        async def code_settle() -> tuple[dict | None, str]:
+            return code_costs, ""
+
+        by_code = False
         try:
             costs, how, outcomes = await _vote(
                 read_costs, _costs_agree, tiebreak_model or model,
+                code_settle if code_costs is not None else
                 think_costs if job.deliberate is not None and thinker else None)
+            if code_costs is not None:
+                if costs is None:
+                    # no two readings agree: the code's reading of the price lines stands
+                    costs, how, by_code = code_costs, "code", True
+                elif costs is code_costs or _costs_agree(costs, code_costs):
+                    # a reading agrees with the code's: its scenarios are the code's too
+                    costs, by_code = code_costs, True
+                else:
+                    log.info("cost pre-pass: two readings agree against the price lines")
             if costs is not None and (unpriced := _missing_discount(
                     costs["options"], costs["scenarios"], f"{request}\n{material}")):
                 # a discount the material names that no reading applied: those options are
@@ -2070,10 +2273,12 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                 pre.runs.append({"skill": "compare-cost", "error": True, "summary": (
                     "총비용 일부 보류 — 자료의 할인을 반영하지 않은 읽기: " + ", ".join(unpriced))})
             elif costs is not None:
-                # scenario kept only if another agreeing reading has same totals
+                # scenario kept only if another agreeing reading has same totals; the code's
+                # scenarios are priced from the lines as written
                 others = [o[0] for o in outcomes if o[0] is not None and o[0] is not costs
                           and _costs_agree(o[0], costs)]
-                costs, unsettled = _split_scenarios(costs, others, strong=job.strong)
+                costs, unsettled = ((costs, []) if by_code else
+                                    _split_scenarios(costs, others, strong=job.strong))
                 if unsettled:
                     # a discount scenario the readings price differently: the option's total
                     # without it is not settled either (r8 A04-T2: dropping 「30대 이상 구매 시」
@@ -2100,7 +2305,10 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                     summary += f" (자료에 없는 값이라 뺀 것: {', '.join(costs['dropped'][:4])})"
                 if how == "voted":
                     summary += " · 세 번 읽어 둘이 같은 값" + (
-                        " (세 번째는 생각을 켜고 읽음)" if deliberated else "")
+                        " (세 번째는 생각을 켜고 읽음)" if deliberated else
+                        " (세 번째는 자료의 가격 줄을 코드가 읽음)" if by_code else "")
+                elif how == "code":
+                    summary += " · 읽을 때마다 값이 달라 자료의 가격 줄을 코드가 읽어 계산"
                 pre.runs.append({"skill": "compare-cost", "summary": summary})
             elif how == "split":
                 pre.costs_withheld = True
@@ -2145,11 +2353,12 @@ async def _compare_check(pre: Prepass, job: PrepassJob) -> None:
         data = _json(text)
         numbers = _material_numbers(f"{request}\n{material}")
         if musts := must_status(data, numbers, f"{request}\n{material}",
-                                pre.costs or pre.costs_partial):
+                                pre.costs or pre.costs_partial, today=job.today):
             pre.musts = musts
             pre.blocks.append(_must_block(musts, data=job.strong))
             pre.runs.append({"skill": "compare-check", "summary": "필수 조건 " + ", ".join(
-                f"{o} {r['status']}" for o, r in musts["options"].items())})
+                f"{o} {r['status']}" for o, r in musts["options"].items()) + (
+                f" (판정 안 함: {', '.join(musts['unjudged'])})" if musts.get("unjudged") else "")})
         if not _WEIGHTS.search(f"{request}\n{material}") or any(
                 not _grounded(c.get("weight"), numbers) for c in data.get("criteria") or []
                 if isinstance(c, dict)):
@@ -4630,18 +4839,219 @@ def _states_absence(option: str, options: list[str], must: str, material: str) -
     return False
 
 
+# ── lead times and periods a must-have names (「납기 4주 이내」, 「보증 3년 필수」) ──
+
+#: a duration as written: 「3주」, 「1~4주」, 「6개월」, 「2달」, 「10일」, 「15영업일」, 「1년」
+_DURATION = re.compile(
+    r"(?<![\d.,~∼\-–])(?P<lo>\d{1,3})(?:\s{0,2}(?P<lo_unit>영업일|주일?|개월|달|일|년))?"
+    r"(?:\s{0,2}[~∼\-–]\s{0,2}(?P<hi>\d{1,3}))?\s{0,2}(?P<unit>영업일|주일?|개월|달|일|년)"
+    r"(?![가-힣]{0,1}차)")
+#: days in a unit; months and years are calendar approximations
+_UNIT_DAYS = {"일": 1.0, "영업일": 7 / 5, "주": 7.0, "주일": 7.0, "개월": 30.0, "달": 30.0,
+              "년": 365.0}
+_ROUGH = ("개월", "달", "년")
+#: a must-have's unit that is a duration
+_DURATION_UNITS = {"일", "영업일", "주", "주일", "개월", "달", "년", "day", "days", "week",
+                   "weeks", "month", "months", "year", "years"}
+_EN_UNIT = {"day": "일", "days": "일", "week": "주", "weeks": "주", "month": "개월",
+            "months": "개월", "year": "년", "years": "년"}
+#: what a delivery-time must is called, in the request or under an option
+_LEAD_WORDS = re.compile(r"납기|납품|배송|인도|설치|구축|도입|소요|리드\s{0,2}타임|공급|일정|지급|완료|기한|마감")
+_LEAD_STEMS = ("납기", "납품", "배송", "인도", "설치", "구축", "소요", "공급")
+#: stems too general to find a must's own line (「보증 기간」 → 「보증」, not 「기간」)
+_GENERIC_STEMS = ("필수", "조건", "여부", "기간", "기한", "이내", "이상", "이하", "최대", "최소")
+#: a duration written beside these words is an extension the option sells, not its own
+_EXTENSION = re.compile(r"^\s{0,2}(?:으로\s{0,2}|로\s{0,2})?(?:연장|추가|확대|업그레이드|옵션)")
+_MONTH_DAY = r"(?:(?P<y>20\d{2})\s{0,2}년\s{0,2})?(?P<m>\d{1,2})\s{0,2}월\s{0,2}(?P<d>\d{1,2})\s{0,2}일"
+#: the day a lead time counts from: 「오늘 10월 12일 계약 가정」, 「10월 12일 계약」
+_BASE_DAYS = (
+    re.compile(rf"(?:오늘|금일|계약일?|발주일?|착수일?|기준일|체결일?)\s{{0,3}}(?:은|는|이|:|：)?"
+               rf"\s{{0,3}}{_MONTH_DAY}"),
+    re.compile(rf"{_MONTH_DAY}\s{{0,2}}(?:에\s{{0,2}})?(?:계약|발주|착수|체결)"))
+_DEADLINE_DAY = re.compile(rf"{_MONTH_DAY}\s{{0,2}}(?:까지|이전|전까지|안에|내)")
+_WITHIN = re.compile(r"^\s{0,2}(?:이내|안에|내|까지|이하|미만|안쪽)")
+
+
+def _duration(m: re.Match) -> tuple[float, float, bool]:
+    """A duration match in days: `(low, high, rough)`; a range keeps both ends."""
+    unit = m.group("unit")
+    lo_unit = m.group("lo_unit") or unit
+    lo = float(m.group("lo")) * _UNIT_DAYS[lo_unit]
+    hi = float(m.group("hi")) * _UNIT_DAYS[unit] if m.group("hi") else lo
+    return min(lo, hi), max(lo, hi), unit in _ROUGH or lo_unit in _ROUGH
+
+
+def _months(n: str, unit: str) -> float:
+    return float(n) * (12 if unit == "년" else 1)
+
+
+def durations(text: str) -> list[dict]:
+    """Every duration in `text`, in days: 「1~4주」 → 7~28, 「2달」 → 60; a day of a month
+    (「11월 30일」) is a date, not a duration."""
+    out = []
+    for m in _DURATION.finditer(text or ""):
+        if m.group("unit") == "일" and re.search(r"월\s{0,2}$", text[max(0, m.start() - 3):m.start()]):
+            continue
+        lo, hi, rough = _duration(m)
+        row = {"text": m.group(0).strip(), "lo": lo, "hi": hi, "rough": rough,
+               "unit": m.group("unit"), "start": m.start(), "end": m.end()}
+        lo_unit = m.group("lo_unit") or m.group("unit")
+        if m.group("unit") in _ROUGH and lo_unit in _ROUGH:
+            # months and years compare among themselves in months (3년 = 36개월)
+            ends = sorted([_months(m.group("lo"), lo_unit),
+                           _months(m.group("hi") or m.group("lo"),
+                                   m.group("unit") if m.group("hi") else lo_unit)])
+            row["months"] = (ends[0], ends[1])
+        out.append(row)
+    return out
+
+
+def duration_must(must: dict) -> bool:
+    """Whether a max/min must-have is a duration: a duration unit, or a lead-time name."""
+    if must.get("kind") not in ("max", "min"):
+        return False
+    unit = str(must.get("unit") or "").strip().lower()
+    if unit in _DURATION_UNITS:
+        return True
+    return not unit and bool(_LEAD_WORDS.search(str(must.get("name") or "")))
+
+
+def _must_stems(must: dict) -> list[str]:
+    name = str(must.get("name") or "")
+    stems = [w[:2] for w in re.findall(r"[가-힣]{2,}", name) if w[:2] not in _GENERIC_STEMS]
+    if _LEAD_WORDS.search(name):
+        stems += [s for s in _LEAD_STEMS if s not in stems]
+    return list(dict.fromkeys(stems))
+
+
+def option_duration(option: str, names: list[str], must: dict, material: str) -> dict | None:
+    """The duration the material writes for `option` under `must`'s word: the first one after
+    the word on its line (「납기 계약 후 3주」 → 21일), plus a longer one the option sells as an
+    extension (「무상 보증 2년, 3년 연장 시 …」 → `extended` 3년). `None` when it writes none."""
+    said = _option_text(option, names, material)
+    for stem in _must_stems(must):
+        for line in said.split("\n"):
+            at = line.find(stem)
+            if at < 0:
+                continue
+            found = [d for d in durations(line[at:at + 40])
+                     if not _EXTENSION.match(line[at + d["end"]:at + d["end"] + 8])]
+            if not found:
+                continue
+            row = dict(found[0])
+            longer = [d for d in durations(line)
+                      if _EXTENSION.match(line[d["end"]:d["end"] + 8]) and d["lo"] > row["hi"]]
+            if longer:
+                row["extended"] = longer[0]
+            return row
+    return None
+
+
+def _day_of(m: re.Match, year: int) -> dt.date | None:
+    try:
+        return dt.date(int(m.group("y") or year), int(m.group("m")), int(m.group("d")))
+    except ValueError:
+        return None
+
+
+def duration_limit(must: dict, text: str, today: dt.date | None = None) -> dict | None:
+    """A duration must's limit in days, from the request and material by code: the limit as
+    written with its unit (「4주 이내」), else a lead-time limit the text writes (「납품 6주
+    이내」), else a deadline counted from a contract day both written (「10월 12일 계약」,
+    「11월 30일까지」 → 49일). `None` when the text settles none — the reading's own number
+    (「1달」 for 「11월 30일까지」) is never the limit."""
+    unit = str(must.get("unit") or "").strip().lower()
+    unit = _EN_UNIT.get(unit, unit)
+    limit = _plain(must.get("limit"))
+    found = durations(text)
+    if limit is not None and unit in _UNIT_DAYS:
+        for d in found:
+            if (d["text"].endswith(unit) and abs(float(re.match(r"\d+", d["text"]).group(0))
+                                                 - float(limit)) < 1e-9 and d["lo"] == d["hi"]):
+                return {"days": d["hi"], "rough": d["rough"], "unit": d["unit"], "text": d["text"],
+                        **({"months": d["months"][1]} if "months" in d else {})}
+    if must.get("kind") == "max":
+        stems = _must_stems(must)
+        written = [d for d in found if _WITHIN.match(text[d["end"]:d["end"] + 6])
+                   and any(s in text[max(0, d["start"] - 30):d["start"]] for s in stems)]
+        if len({d["hi"] for d in written}) == 1:
+            d = written[0]
+            return {"days": d["hi"], "rough": d["rough"], "unit": d["unit"],
+                    "text": d["text"] + " 이내",
+                    **({"months": d["months"][1]} if "months" in d else {})}
+        year = (today or dt.date.today()).year
+        bases = {day for pattern in _BASE_DAYS for m in pattern.finditer(text or "")
+                 if (day := _day_of(m, year))}
+        if len(bases) == 1:
+            base = next(iter(bases))
+            ends = {day for m in _DEADLINE_DAY.finditer(text or "")
+                    if (day := _day_of(m, base.year)) and day != base}
+            ends = {d if d >= base else d.replace(year=d.year + 1) for d in ends}
+            if len(ends) == 1:
+                end = next(iter(ends))
+                return {"days": float((end - base).days), "rough": False, "unit": "일",
+                        "text": f"{(end - base).days}일({base.month}월 {base.day}일~"
+                                f"{end.month}월 {end.day}일)"}
+    return None
+
+
+def _days_text(d: dict, limit: dict) -> str:
+    """A duration as written, with its days when the limit counts in another unit."""
+    if d.get("unit") == limit.get("unit"):
+        return d["text"]
+    days = f"{d['lo']:g}" if d["lo"] == d["hi"] else f"{d['lo']:g}~{d['hi']:g}"
+    return f"{d['text']}({days}일)"
+
+
+def duration_verdict(value: dict, limit: dict, kind: str) -> str:
+    """「met」 / 「failed」 / 「open」 for a duration against its limit; a range across the limit,
+    or months against days within a day a month of it, is open; months and years compare
+    exactly among themselves (「3년」 meets 「3년 이상」 and 「36개월」)."""
+    if "months" in value and "months" in limit:
+        (lo, hi), bound, slack = value["months"], limit["months"], 0.0
+    else:
+        lo, hi, bound = value["lo"], value["hi"], limit["days"]
+        slack = (1.0 + bound / 30) if value["rough"] or limit["rough"] else 0.0
+    if kind == "max":
+        return "met" if hi <= bound - slack else "failed" if lo > bound + slack else "open"
+    return "met" if lo >= bound + slack else "failed" if hi < bound - slack else "open"
+
+
+def _mentions(option: str, options: list[str], must: str, material: str) -> bool:
+    """Whether the material writes anything of `must` for `option`: a pasted table row of it,
+    or a word of the must in what the material writes of it."""
+    if any(option in line for line in material.split("\n") if _PIPE_ROW.match(line)):
+        return True
+    said = _option_text(option, options, material).lower()
+    stems = {w[:2] for w in re.findall(r"[가-힣]{2,}", must) if w[:2] not in _GENERIC_STEMS}
+    stems |= {w.lower() for w in re.findall(r"[A-Za-z]{2,}", must)}
+    return not stems or any(stem in said for stem in stems)
+
+
 def must_status(data: dict, numbers: list[float], material: str = "",
-                costs: dict | None = None) -> dict | None:
+                costs: dict | None = None, today: dt.date | None = None) -> dict | None:
     """Each option 충족 / 탈락(사유) / 조건 미확인; unstated limits/values left out; a yearly
-    money limit the reading left blank is judged on compare-cost's yearly cost."""
+    money limit the reading left blank is judged on compare-cost's yearly cost. A duration
+    must (납기, 보증 기간) is judged in days by code from the material's own words, never on
+    the reading's numbers, whose units it does not say (r9 A04-T2: 「납기 2주」 read as 14
+    against a 「1달」 limit was 「납기 14달 > 조건 1달」 and 다솜시스템 탈락)."""
     if material:
         data = must_values_from_tables(data, material)
     musts = []
+    limits: dict[str, dict] = {}
+    unjudged: list[str] = []
     for must in data.get("musts") or []:
         if not isinstance(must, dict) or not must.get("name"):
             continue
         kind = must.get("kind")
-        if kind == "yesno" or (kind in ("max", "min") and _grounded(must.get("limit"), numbers)):
+        if material and duration_must(must):
+            if limit := duration_limit(must, material, today):
+                limits[must["name"]] = limit
+                musts.append(must)
+            else:
+                # no limit the text settles: not judged, said so
+                unjudged.append(str(must["name"]))
+        elif kind == "yesno" or (kind in ("max", "min") and _grounded(must.get("limit"), numbers)):
             musts.append(must)
     options = [o for o in data.get("options") or [] if isinstance(o, dict) and o.get("name")]
     if not musts or len(options) < 2:
@@ -4650,9 +5060,13 @@ def must_status(data: dict, numbers: list[float], material: str = "",
     names = [str(o["name"]) for o in options]
     for option in options:
         given = option.get("musts") or {}
-        failed, unknown = [], []
+        failed, unknown, conditional = [], [], []
         for must in musts:
             raw = given.get(must["name"])
+            if must["name"] in limits:
+                _judge_duration(str(option["name"]), names, must, limits[must["name"]], raw,
+                                material, failed, unknown, conditional)
+                continue
             plain = raw.get("value") if isinstance(raw, dict) else raw
             if must.get("kind") != "yesno" and plain is not None and not _grounded(plain, numbers):
                 raw = None
@@ -4683,6 +5097,12 @@ def must_status(data: dict, numbers: list[float], material: str = "",
                 # a reading of 「없음」 the material never states is no verdict (r5 A04-T2:
                 # 「다솜시스템: 탈락 — 보증기간 없음」 for a two-year warranty)
                 value = None
+            if (value is True and material and residency is None
+                    and not _mentions(str(option["name"]), names, must["name"], material)):
+                # a 「있음」 the material never writes of this option is no verdict either: the
+                # option's lines say nothing of the must (r9 A04-T2: 다솜시스템's quote says
+                # nothing of a deletion certificate)
+                value = None
             if value is None:
                 unknown.append(must["name"])
             elif must["kind"] == "yesno" and value is False:
@@ -4702,10 +5122,74 @@ def must_status(data: dict, numbers: list[float], material: str = "",
                     failed.append(f"{must['name']} {value:,.0f}{unit} {sign} 조건 {limit:,.0f}{unit}")
         status = "탈락" if failed else "조건 미확인" if unknown else "충족"
         out[option["name"]] = {"status": status, "failed": failed, "unknown": unknown}
-    return {"musts": [m["name"] for m in musts], "options": out}
+        if conditional:
+            out[option["name"]]["conditional"] = conditional
+    result = {"musts": [m["name"] for m in musts], "options": out}
+    if unjudged:
+        result["unjudged"] = unjudged
+    return result
+
+
+def _judge_duration(option: str, names: list[str], must: dict, limit: dict, raw: Any,
+                    material: str, failed: list[str], unknown: list[str],
+                    conditional: list[str]) -> None:
+    """One duration must for one option, in days: the material's own duration under the
+    must's word, else the reading's number only where the option's text writes it with the
+    must's unit; a range across the limit is open; a longer period the option sells as an
+    extension (「3년 연장 시」) meets a minimum, said with its cost."""
+    value = option_duration(option, names, must, material)
+    if value is None:
+        plain = _plain(raw.get("value") if isinstance(raw, dict) else raw)
+        unit = _EN_UNIT.get(str(must.get("unit") or "").strip().lower(),
+                            str(must.get("unit") or "").strip())
+        said = _option_text(option, names, material)
+        if plain is not None and unit in _UNIT_DAYS and any(
+                re.sub(r"\s", "", d["text"]) == f"{float(plain):g}{unit}" for d in durations(said)):
+            days = float(plain) * _UNIT_DAYS[unit]
+            value = {"text": f"{float(plain):g}{unit}", "lo": days, "hi": days,
+                     "rough": unit in _ROUGH, "unit": unit}
+            if unit in _ROUGH:
+                value["months"] = (float(plain) * (12 if unit == "년" else 1),) * 2
+    if value is None:
+        unknown.append(must["name"])
+        return
+    kind = must["kind"]
+    verdict = duration_verdict(value, limit, kind)
+    if verdict != "met" and kind == "min" and (more := value.get("extended")) and (
+            duration_verdict(more, limit, kind) == "met"):
+        conditional.append(f"{must['name']} {more['text']} 연장 시 충족(연장 비용 추가)")
+        return
+    if verdict == "failed":
+        sign = ">" if kind == "max" else "<"
+        failed.append(f"{must['name']} {_days_text(value, limit)} {sign} "
+                      + ("기한" if kind == "max" else "조건") + f" {limit['text']}")
+    elif verdict == "open":
+        unknown.append(f"{must['name']}({_days_text(value, limit)}, 조건 {limit['text']} — 범위가 걸침)")
+
+
+def _open_text(unknown: list[str]) -> str:
+    """Open conditions: a bare name has no value in the material; one with its reason in
+    brackets (a range across the limit, a budget met only under a condition) says why."""
+    return ", ".join(u if "(" in u else f"{u} 자료 없음" for u in unknown)
+
+
+def _must_line(option: str, row: dict) -> str:
+    if row["status"] == "탈락":
+        line = f"- {option}: 탈락 — " + "; ".join(row["failed"])
+    elif row["status"] == "조건 미확인":
+        line = f"- {option}: 조건 미확인 — " + _open_text(row["unknown"])
+    else:
+        line = f"- {option}: 충족"
+    if row.get("conditional"):
+        line += " (" + "; ".join(row["conditional"]) + ")"
+    return line
 
 
 def _must_block(result: dict, *, data: bool = False) -> str:
+    unjudged = result.get("unjudged") or []
+    left = ([f"- Not judged: {', '.join(unjudged)} — the request and material settle no limit for "
+             "it the code can count in days; work it out from the dates and periods they write."]
+            if unjudged else [])
     if data:
         lines = ["# 필수 조건 대조(코드)",
                  "The request's must-have conditions (" + ", ".join(result["musts"]) + ") set "
@@ -4713,28 +5197,16 @@ def _must_block(result: dict, *, data: bool = False) -> str:
                  "misses a condition; 조건 미확인 means the material gives no value for it — say "
                  "which condition is open where you recommend. Weigh these with the rest of the "
                  "material; the reading may miss something the material says."]
-        for option, row in result["options"].items():
-            if row["status"] == "탈락":
-                lines.append(f"- {option}: 탈락 — " + "; ".join(row["failed"]))
-            elif row["status"] == "조건 미확인":
-                lines.append(f"- {option}: 조건 미확인 — " + ", ".join(row["unknown"]) + " 자료 없음")
-            else:
-                lines.append(f"- {option}: 충족")
-        return "\n".join(lines)
+        lines += [_must_line(option, row) for option, row in result["options"].items()]
+        return "\n".join(lines + left)
     lines = ["# 필수 조건 판정(코드)",
              "The request's must-have conditions (" + ", ".join(result["musts"]) + ") checked against the "
              "material's values. Each alternative's status follows this result. Do not recommend a 탈락 "
              "alternative; recommend a 조건 미확인 alternative only conditionally, as in 「확인되면 권고」."]
-    for option, row in result["options"].items():
-        if row["status"] == "탈락":
-            lines.append(f"- {option}: 탈락 — " + "; ".join(row["failed"]))
-        elif row["status"] == "조건 미확인":
-            lines.append(f"- {option}: 조건 미확인 — " + ", ".join(row["unknown"]) + " 자료 없음")
-        else:
-            lines.append(f"- {option}: 충족")
+    lines += [_must_line(option, row) for option, row in result["options"].items()]
     if all(r["status"] == "탈락" for r in result["options"].values()):
         lines.append("- Every alternative is 탈락: the conclusion is 「조건을 모두 충족하는 대안 없음」")
-    return "\n".join(lines)
+    return "\n".join(lines + left)
 
 
 _RECOMMEND = re.compile(r"권고|추천|선정|채택|도입\s{0,2}(?:을|를)?\s{0,2}(?:제안|건의)|고른다|골랐")
@@ -4824,7 +5296,7 @@ def verdict_sentence(musts: dict, scored: dict | None = None) -> str:
         if row["status"] == "탈락":
             return f"{option}: 탈락 — " + "; ".join(row["failed"])
         if row["status"] == "조건 미확인":
-            return f"{option}: 조건 미확인 — " + ", ".join(row["unknown"]) + " 자료 없음"
+            return f"{option}: 조건 미확인 — " + _open_text(row["unknown"])
         return f"{option}: 충족"
 
     passing = [o for o, r in rows.items() if r["status"] == "충족"]

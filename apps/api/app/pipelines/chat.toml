@@ -1,11 +1,12 @@
 # A chat answer after the agent loop: normalized, traced by the agent's check skills,
 # checked as copy when a copy skill wrote it, run past the post-check scripts of the skills on the
-# turn, measured when it carries cover-letter blocks,
+# turn, measured when it carries cover-letter blocks, cleared of the skills' example values and
+# rule lines, its weekdays set to the calendar once more,
 # and swapped in when anything changed.
 
 name = "chat"
 pre = ["check:gaps", "gap-card"]
-finish = ["answer-normalize", "answer-han", "check:answer-grounding", "check:copy", "check:skills", "text-fit", "copy-marks", "answer-marks", "answer-urgent", "answer-replace"]
+finish = ["answer-normalize", "answer-han", "check:answer-grounding", "check:copy", "check:skills", "text-fit", "copy-marks", "answer-marks", "answer-echo", "answer-weekdays", "answer-urgent", "answer-replace"]
 
 # What each step of the drawn chain does, said for the person (display only).
 [summary]
