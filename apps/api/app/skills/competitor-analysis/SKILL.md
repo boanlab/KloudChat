@@ -6,12 +6,9 @@ kinds: [chat]
 required_tools: [run_skill_script, web_search, fetch_url]
 process: {deep_search: true}
 version: 0.1.0
-status: draft
 post_check: source-check/post
 post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
 tables: true
-# Kept for bundles, old conversations and editors that name it; not shown in lists.
-listed: false
 ---
 Map the competition for the user's product in Korean, cell by cell from sources. The comparison table is the product; the recommendations follow from it.
 

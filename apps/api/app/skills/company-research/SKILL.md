@@ -6,11 +6,8 @@ kinds: [chat]
 required_tools: [run_skill_script, web_search, fetch_url]
 process: {deep_search: true}
 version: 0.1.0
-status: draft
 post_check: source-check/post
 post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
-# Kept for bundles, old conversations and editors that name it; not shown in lists.
-listed: false
 ---
 Research one company and write a Korean one-pager a 영업·기획 담당자 can use before a meeting. Every fact carries where it came from and when.
 

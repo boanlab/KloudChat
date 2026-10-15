@@ -1,4 +1,4 @@
-"""시장·경쟁 스킬(초안): 조사 글·비교표·분석 틀은 출처 없는 값과 근거 없는 일반론을
+"""시장·경쟁 스킬: 조사 글·비교표·분석 틀은 출처 없는 값과 근거 없는 일반론을
 코드가 찾는다."""
 
 from __future__ import annotations
@@ -42,11 +42,13 @@ def _cli(key: str, script: str, args: dict) -> dict:
 # ── packages ────────────────────────────────────────────────────────────
 
 
-def test_the_market_skills_ship_as_drafts_with_their_source():
+def test_the_market_skills_ship_published_with_their_source():
     packages = skill_packages.packages()
     for key in ALL:
         package = packages[key]
-        assert package.draft, key
+        assert not package.draft, key
+        # the research skills are listed; the check they call is a helper, not a choice
+        assert package.listed == (key != "source-check"), key
         # The research skills search when the person did not hand them a material pack.
         searches = key in ("company-research", "competitor-analysis")
         assert package.required_tools == (("run_skill_script", "web_search", "fetch_url")
@@ -69,11 +71,10 @@ def test_borrowed_text_names_its_licence_and_commit():
     assert "CC BY-NC-SA" in packages["company-research"].body
 
 
-def test_market_drafts_stay_out_unless_enabled(monkeypatch):
+def test_the_market_skills_and_their_check_run_with_drafts_off(monkeypatch):
     monkeypatch.setattr(settings, "skill_drafts", False)
-    assert not {spec["key"] for spec in skill_packages.catalog_specs()} & set(ALL)
-    assert skill_packages.find("source-check") is None
-    monkeypatch.setattr(settings, "skill_drafts", True)
+    assert {spec["key"] for spec in skill_packages.catalog_specs()} >= set(ALL)
+    # the skills' procedure calls run_skill_script skill source-check
     assert "source-check" in {p.key for p in skill_packages.scripted()}
     assert skill_packages.find("경쟁사 분석").key == "competitor-analysis"
 

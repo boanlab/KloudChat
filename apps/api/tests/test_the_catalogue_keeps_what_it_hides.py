@@ -57,8 +57,8 @@ WORK_SKILLS = {"minutes-writing", "option-comparison", "gaejo-briefing", "data-t
                "deep-research"}
 #: what agents built only from shipped skills lacked: translation, press releases, files, charts
 MADE_SKILLS = {"translation", "press-release", "xlsx-build", "chart-make"}
-#: published after round 10 (LFLF 3/3, no high finding)
-R10_SKILLS = {"internal-comms", "copy-editing"}
+#: published after round 10 (LFLF 3/3, no high finding; the research two after LFLF7)
+R10_SKILLS = {"internal-comms", "copy-editing", "company-research", "competitor-analysis"}
 SHOWN_SKILLS = {"grounding-check", "gap-check", "calc-check", "date-calc", "quote-calc",
                 "xlsx-clean", "pdf-table", "pii-mask"} | WORK_SKILLS | MADE_SKILLS | R10_SKILLS
 SHOWN_DOCUMENTS = {"doc-internal-draft", "doc-event-plan", "doc-result-report",
@@ -78,10 +78,10 @@ def test_the_shown_skills_are_listed_and_the_rest_kept_as_parts():
     hidden = set(packages) - SHOWN_SKILLS
     # Nothing is deleted: the drafts stay drafts, the two published ones stay published.
     assert {"text-fit", "generic-language-killer"} <= hidden
-    # Published but unlisted: text-fit, and the 공개 전 점검 bundle's two parts, which run
-    # where the bundle is ticked and are not picked on their own.
+    # Published but unlisted: text-fit, the 공개 전 점검 bundle's two parts, which run where
+    # the bundle is ticked and are not picked on their own, and the research skills' check.
     assert {k for k in hidden if not packages[k].draft} == {"text-fit", "answer-hold",
-                                                            "contact-note"}
+                                                            "contact-note", "source-check"}
     for key in hidden:
         assert packages[key].body and packages[key].description
 
