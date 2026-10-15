@@ -155,15 +155,17 @@ async def test_numbers_run_across_searches_and_citations_become_links(monkeypatc
 
     text = _final_text(events)
     assert "이렇습니다[[1]](https://example.go.kr/policy/2026)." in text
-    assert "다릅니다 [[3]](https://journal.example.org/article/42)." in text
+    # renumbered in reading order: the list starts at [1] with no gaps
+    assert "다릅니다 [[2]](https://journal.example.org/article/42)." in text
     assert (
-        "[[2]](https://news.example.com/a/1)[[3]](https://journal.example.org/article/42)." in text
+        "[[3]](https://news.example.com/a/1)[[2]](https://journal.example.org/article/42)." in text
     )
     assert "[9]는 그대로" in text
     assert "### 출처" in text
     # Named by the search results' titles, not the address's last segment.
     assert "- [1] [정책 문서 · example.go.kr](https://example.go.kr/policy/2026)" in text
-    assert "- [3] [논문 · journal.example.org](https://journal.example.org/article/42)" in text
+    assert "- [2] [논문 · journal.example.org](https://journal.example.org/article/42)" in text
+    assert "- [3] [기사 · news.example.com](https://news.example.com/a/1)" in text
     assert "### 확인한 출처" not in text
     assert "검색·열람한 결과에 없던" not in text
 
