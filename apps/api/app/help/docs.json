@@ -213,6 +213,13 @@
 "lang": "ko",
 "path": "api",
 "title": "API와 코딩 도구 연동",
+"heading": "추론 단계",
+"text": "추론하는 모델은 생각하는 양을 단계로 정할 수 있습니다. OpenAI 형식에서는 `reasoning_effort`, Responses API에서는 `reasoning.effort`, Anthropic 형식에서는 `thinking` 을 보냅니다.\n\n```bash\ncurl \"$OPENAI_BASE_URL/chat/completions\" \\\n  -H \"Authorization: Bearer $OPENAI_API_KEY\" -H \"Content-Type: application/json\" \\\n  -d '{\"model\": \"z-ai/glm-5.3-flash\", \"reasoning_effort\": \"low\",\n       \"messages\": [{\"role\": \"user\", \"content\": \"...\"}]}'\n```\n\n모델마다 받는 단계가 다릅니다. `GET /llm/v1/models` 의 각 모델에 붙은 `reasoning` 을 확인하십시오.\n\n```json\n{\"id\": \"z-ai/glm-5.3-flash\", \"reasoning\": {\"efforts\": [\"low\", \"high\", \"max\"], \"default\": \"max\", \"mandatory\": true}}\n```\n\n| 필드 | 뜻 |\n|---|---|\n| `efforts` | 받는 단계, 낮은 것부터 |\n| `default` | 단계를 보내지 않았을 때의 단계 |\n| `mandatory` | `true` 이면 추론을 끌 수 없습니다. 끄도록 보내면(`none`, `thinking` 의 `disabled`) 가장 낮은 단계로 바꿔 보냅니다. |\n\n`reasoning` 이 `null` 인 모델은 단계를 받지 않으며, 보낸 단계는 무시됩니다. 목록에 없는 단계를 보내면 가까운 단계로 처리됩니다. 단계가 높을수록 출력 토큰과 크레딧이 늘어납니다."
+},
+{
+"lang": "ko",
+"path": "api",
+"title": "API와 코딩 도구 연동",
 "heading": "AI 에이전트 연동",
 "text": "Claude Code, Codex 등의 코딩 에이전트를 기관 모델로 연결하는 방법을 안내합니다. 키를 발급하고 모델을 선택한 뒤, 운영체제별 탭(Linux · macOS · Windows)에서 명령을 복사합니다.\n\n| 도구 | 환경변수 |\n|---|---|\n| Claude Code | `ANTHROPIC_BASE_URL=https://<서비스 주소>/llm`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL` |\n| Codex · OpenAI 호환 | `OPENAI_BASE_URL=https://<서비스 주소>/llm/v1`, `OPENAI_API_KEY`, `OPENAI_MODEL` |\n\nAnthropic 형식 주소에는 `/v1` 이 없고 OpenAI 형식 주소에는 포함된다는 점에 유의하십시오.\n\n`export` 와 `$env:` 는 해당 터미널 세션에서만 유효합니다. 지속적으로 사용하려면 `~/.bashrc` 또는 `~/.zshrc` 에 등록하십시오. 다른 프로젝트에서 별도의 OpenAI 키를 사용하는 경우 값이 충돌하지 않도록 터미널을 구분해 사용하십시오."
 },
@@ -1622,6 +1629,13 @@
 "title": "API and coding tool integration",
 "heading": "API integration",
 "text": "1. Issue a key under Settings → **API keys**.\n2. Follow the examples shown on the screen. Examples are provided for the OpenAI SDK, streaming, the LiteLLM SDK (`openai/` prefix), curl, and embeddings.\n3. For the model name, use **the id shown in the model list** exactly as it appears.\n\n```bash\n# Linux / macOS, OpenAI-compatible\n\n```\n\n```powershell\n# Windows PowerShell\n$env:OPENAI_BASE_URL = \"https:///llm/v1\"\n$env:OPENAI_API_KEY = \"\"\n```\n\nRequests sent with a key reach the usage screen and this month's credits within a few minutes, and appear as **API keys** in the by-screen breakdown. Requests to free models are counted as requests too. Any allowed-model restriction set on the account applies to the key in the same way."
+},
+{
+"lang": "en",
+"path": "api",
+"title": "API and coding tool integration",
+"heading": "Reasoning effort",
+"text": "Models that reason let you set how much they think. Send `reasoning_effort` in the OpenAI format, `reasoning.effort` in the Responses API, or `thinking` in the Anthropic format.\n\n```bash\ncurl \"$OPENAI_BASE_URL/chat/completions\" \\\n  -H \"Authorization: Bearer $OPENAI_API_KEY\" -H \"Content-Type: application/json\" \\\n  -d '{\"model\": \"z-ai/glm-5.3-flash\", \"reasoning_effort\": \"low\",\n       \"messages\": [{\"role\": \"user\", \"content\": \"...\"}]}'\n```\n\nEach model takes its own levels. Check the `reasoning` field on each model in `GET /llm/v1/models`.\n\n```json\n{\"id\": \"z-ai/glm-5.3-flash\", \"reasoning\": {\"efforts\": [\"low\", \"high\", \"max\"], \"default\": \"max\", \"mandatory\": true}}\n```\n\n| Field | Meaning |\n|---|---|\n| `efforts` | The levels it takes, lowest first |\n| `default` | The level used when you send none |\n| `mandatory` | When `true`, reasoning cannot be turned off. A request to turn it off (`none`, or `thinking` set to `disabled`) is sent at the lowest level instead. |\n\nA model whose `reasoning` is `null` takes no level, and any level sent is ignored. A level not in the list is handled as a nearby one. Higher levels use more output tokens and credits."
 },
 {
 "lang": "en",

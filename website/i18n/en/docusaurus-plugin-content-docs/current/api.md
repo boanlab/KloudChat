@@ -28,6 +28,31 @@ $env:OPENAI_API_KEY = "<your-api-key>"
 
 Requests sent with a key reach the usage screen and this month's credits within a few minutes, and appear as **API keys** in the by-screen breakdown. Requests to free models are counted as requests too. Any allowed-model restriction set on the account applies to the key in the same way.
 
+## Reasoning effort
+
+Models that reason let you set how much they think. Send `reasoning_effort` in the OpenAI format, `reasoning.effort` in the Responses API, or `thinking` in the Anthropic format.
+
+```bash
+curl "$OPENAI_BASE_URL/chat/completions" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" -H "Content-Type: application/json" \
+  -d '{"model": "z-ai/glm-5.3-flash", "reasoning_effort": "low",
+       "messages": [{"role": "user", "content": "..."}]}'
+```
+
+Each model takes its own levels. Check the `reasoning` field on each model in `GET /llm/v1/models`.
+
+```json
+{"id": "z-ai/glm-5.3-flash", "reasoning": {"efforts": ["low", "high", "max"], "default": "max", "mandatory": true}}
+```
+
+| Field | Meaning |
+|---|---|
+| `efforts` | The levels it takes, lowest first |
+| `default` | The level used when you send none |
+| `mandatory` | When `true`, reasoning cannot be turned off. A request to turn it off (`none`, or `thinking` set to `disabled`) is sent at the lowest level instead. |
+
+A model whose `reasoning` is `null` takes no level, and any level sent is ignored. A level not in the list is handled as a nearby one. Higher levels use more output tokens and credits.
+
 ## AI agent integration
 
 ![AI agent integration](/img/guide/agent-setup.png)

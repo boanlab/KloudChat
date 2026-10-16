@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
-from app.services import settings_store
+from app.services import models as model_service
+from app.services import reasoning, settings_store
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +37,57 @@ _MAX_BODY = 32 * 1024 * 1024
 
 #: long coding-agent turns
 _TIMEOUT = httpx.Timeout(settings.chat_timeout_sec, connect=10.0)
+
+
+#: Routes whose body names a model and may ask for (no) reasoning.
+_GENERATE = re.compile(r"(?:v1/)?(?:chat/completions|responses|messages)")
+#: Model listing routes, answered with each model's reasoning levels added.
+_LISTING = re.compile(r"(?:v1/)?models(?:/.+)?")
+
+
+async def _reasoning_of(model_id: object) -> dict[str, Any] | None:
+    """The catalogue's reasoning levels for `model_id`; None when unknown or unreadable."""
+    if not isinstance(model_id, str):
+        return None
+    try:
+        catalogue = await model_service.list_models()
+    except Exception:  # noqa: BLE001 — the proxy forwards unchanged rather than fail
+        return None
+    found = model_service.find(catalogue.get("models") or [], model_id)
+    return (found or {}).get("reasoning")
+
+
+async def _settled(body: bytes) -> bytes:
+    """`body` with an ask for no reasoning raised to the least, where the model cannot go
+    without; unchanged otherwise (not JSON, unknown model, nothing to change)."""
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return body
+    if not isinstance(payload, dict):
+        return body
+    if not reasoning.settle(payload, await _reasoning_of(payload.get("model"))):
+        return body
+    return json.dumps(payload, ensure_ascii=False).encode()
+
+
+async def _with_reasoning(raw: bytes) -> bytes:
+    """A LiteLLM model listing (or one model) with each model's `reasoning`:
+    `{efforts, default, mandatory}`, or null where it takes no effort."""
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        return raw
+    items = payload.get("data") if isinstance(payload, dict) else None
+    rows = items if isinstance(items, list) else [payload] if isinstance(payload, dict) else []
+    try:
+        catalogue = (await model_service.list_models()).get("models") or []
+    except Exception:  # noqa: BLE001 — the listing still answers without the levels
+        return raw
+    for row in rows:
+        if isinstance(row, dict) and isinstance(row.get("id"), str):
+            row["reasoning"] = (model_service.find(catalogue, row["id"]) or {}).get("reasoning")
+    return json.dumps(payload, ensure_ascii=False).encode()
 
 
 def _one_line(value: str) -> str:
@@ -72,6 +126,8 @@ async def proxy(path: str, request: Request) -> Response:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="음성은 내부 음성 인식으로만 처리합니다. 이 경로로는 보낼 수 없습니다.",
         )
+    if request.method == "POST" and _GENERATE.fullmatch(clean):
+        body = await _settled(body)
 
     client = httpx.AsyncClient(timeout=_TIMEOUT)
     try:
@@ -101,6 +157,23 @@ async def proxy(path: str, request: Request) -> Response:
             await client.aclose()
 
     passthrough = {k: v for k, v in upstream.headers.items() if k.lower() not in _DROP_RESPONSE}
+    if (
+        request.method == "GET"
+        and _LISTING.fullmatch(clean)
+        and upstream.status_code == 200
+        and "json" in upstream.headers.get("content-type", "")
+    ):
+        try:
+            raw = await upstream.aread()
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+        return Response(
+            content=await _with_reasoning(raw),
+            status_code=200,
+            headers=passthrough,
+            media_type=upstream.headers.get("content-type"),
+        )
     return StreamingResponse(
         relay(),
         status_code=upstream.status_code,

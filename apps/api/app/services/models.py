@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from app.core.config import settings
-from app.services import imagegen, litellm, settings_store
+from app.services import imagegen, litellm, reasoning, settings_store
 from app.services.adapters import (
     ADAPTER_MODELS,
     FREE_PROVIDERS,
@@ -295,6 +295,8 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
                 and (info.get("supports_function_calling") or "tools" in supported),
             )
         ),
+        # Effort levels the model takes; None where it takes none (`/llm/v1/models` shows it).
+        "reasoning": reasoning.of(info) if modality == "chat" else None,
         "adapter": None,
         "description": override.get("description", ""),
     }
