@@ -23,6 +23,10 @@ log = logging.getLogger(__name__)
 
 #: per image, generated one at a time
 _TIMEOUT = 180.0
+#: self-hosted diffusion queues on one GPU (Qwen-Image ~100 s a picture)
+_SELF_HOSTED_TIMEOUT = 420.0
+#: route prefixes of self-hosted models; their shim maps the ratio to a size
+_SELF_HOSTED = ("local/", "strict-local/")
 
 #: style chip → prompt Style sentence
 _STYLE_PHRASE = {
@@ -192,8 +196,9 @@ def _measure(data: bytes) -> tuple[int, int]:
 
 
 def honours_aspect(model_id: str) -> bool:
-    """Whether the model honours image_config.aspect_ratio (Gemini yes, OpenAI square)."""
-    return "gemini" in model_id.lower() or model_id.lower().startswith("google/")
+    """Whether the model honours image_config.aspect_ratio (Gemini, self-hosted; OpenAI square)."""
+    lowered = model_id.lower()
+    return "gemini" in lowered or lowered.startswith(("google/", *_SELF_HOSTED))
 
 
 #: composer ratios; 16:9 default
@@ -358,8 +363,9 @@ async def generate(
     }
     if aspect in _RATIOS:
         payload["image_config"] = {"aspect_ratio": aspect}
+    timeout = _SELF_HOSTED_TIMEOUT if model.lower().startswith(_SELF_HOSTED) else _TIMEOUT
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 f"{base_url.rstrip('/')}/chat/completions",
                 json=payload,

@@ -82,6 +82,8 @@ _LOCAL_VENDORS = (
     ("llama", "Meta"),
     ("mistral", "Mistral"),
     ("deepseek", "DeepSeek"),
+    ("flux", "Black Forest Labs"),
+    ("z-image", "Tongyi"),
 )
 
 
