@@ -56,6 +56,7 @@ from app.schemas.workspace import (
     DesignTemplateUsageOut,
     DiagramPicture,
     FileOut,
+    FileTextOut,
     KnowledgeUrl,
     MemoryIn,
     MemoryOut,
@@ -680,6 +681,18 @@ async def download_file(file_id: str, user: CurrentViewer, db: DbSession):
         media_type=media,
         headers=file_service.download_headers(media, inline, stored.name),
     )
+
+
+#: characters the file box preview shows; the rest is in the download
+PREVIEW_CHARS = 40_000
+
+
+@router.get("/files/{file_id}/text", response_model=FileTextOut)
+async def file_text(file_id: str, user: CurrentViewer, db: DbSession):
+    """An own file's extracted text, for previewing what has no inline view."""
+    stored = await _own(db, StoredFile, "user_id", user, file_id)
+    text = stored.text or ""
+    return FileTextOut(text=text[:PREVIEW_CHARS], truncated=len(text) > PREVIEW_CHARS)
 
 
 @router.post("/files/{file_id}/open-as-document", response_model=OpenedDocument)

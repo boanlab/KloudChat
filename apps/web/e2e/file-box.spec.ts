@@ -15,7 +15,7 @@ const file = (id: string, name: string, extra: Record<string, unknown> = {}) => 
   tokens: 10, projectId: null, sessionId: null, preview: '', error: null, origin: 'upload', createdAt: at, ...extra,
 })
 const files = [
-  file('a1', '회의녹취_0904.txt', { sessionId: chatId }),
+  file('a1', '회의녹취_0904.txt', { sessionId: chatId, preview: '1. 일정 확정\n2. 예산 검토' }),
   file('a2', '검색서비스_월별지표.csv'),
   file('b1', 'lru_results.csv', { sessionId: chatId, origin: 'generated' }),
   file('b2', '방법 구조도.png', { sessionId: 'gone'.padEnd(32, '0'), origin: 'generated' }),
@@ -44,6 +44,24 @@ test('파일함 lists uploaded and made files apart and deletes one after asking
   await dialog.getByRole('button', { name: '삭제', exact: true }).click()
   await expect(rows).toHaveCount(0)
   expect(deletes).toEqual([`DELETE /files/${'b1'.padEnd(32, '0')}`])
+  expect(unexpected).toEqual([])
+})
+
+test('파일함 previews a picture as itself and a document as its text', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info, { files })
+  await page.goto('/files')
+  await page.getByRole('button', { name: '회의녹취_0904.txt', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '회의녹취_0904.txt' })
+  await expect(dialog.getByTestId('file-preview')).toContainText('2. 예산 검토')
+  await expect(dialog.getByRole('button', { name: '내려받기' })).toBeVisible()
+  await dialog.getByRole('button', { name: '닫기' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await page.getByRole('tab', { name: /대화에서 만든 파일/ }).click()
+  await page.getByRole('button', { name: '방법 구조도.png 미리보기' }).click()
+  const picture = page.getByRole('dialog', { name: '방법 구조도.png' }).getByRole('img', { name: '방법 구조도.png' })
+  await expect(picture).toBeVisible()
+  expect(await picture.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1)
   expect(unexpected).toEqual([])
 })
 

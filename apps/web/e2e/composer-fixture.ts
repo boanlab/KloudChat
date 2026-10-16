@@ -23,6 +23,9 @@ export const answer = [
   '| 수행 기간 | 12개월 |',
 ].join('\n')
 
+/** 1×1 PNG for a previewed picture. */
+const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='
+
 const user = {
   id: 'fixture-user', email: 'fixture@example.test', name: 'UI 검증', role: 'user', status: 'active',
   monthlyCredits: 1000, creditsUsed: 0, avatarColor: '#168267', allowedModels: [], createdAt: at,
@@ -200,6 +203,13 @@ export async function composerFixture(
       const sessionId = url.searchParams.get('session_id')
       return json(sessionId ? box.filter((row) => row.sessionId === sessionId) : box)
     }
+    // preview: a picture's bytes, any other file's extracted text (the row's `preview`)
+    const previewMatch = path.match(/^\/files\/([^/]+)\/(content|text)$/)
+    const previewed = previewMatch && method === 'GET' && box.find((row) => row.id === previewMatch[1])
+    if (previewed && previewMatch[2] === 'content') {
+      return route.fulfill({ contentType: String(previewed.mime), body: Buffer.from(TINY_PNG, 'base64') })
+    }
+    if (previewed) return json({ text: previewed.preview ?? '', truncated: false })
     const fileMatch = path.match(/^\/files\/([^/]+)$/)
     if (fileMatch && method === 'DELETE') {
       deletes.push(`DELETE ${path}`)

@@ -1,6 +1,7 @@
-import { Download, FolderOpen, Trash2 } from 'lucide-react'
+import { Download, Eye, FolderOpen, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { FileBoxFilter, FileLine } from '@/components/files/FileBoxList'
+import { FilePreview } from '@/components/files/FilePreview'
 import { shownFiles, useFileBox, type FileOrigin } from '@/components/files/fileBox'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
@@ -16,6 +17,7 @@ export function FilesPage() {
   const [origin, setOrigin] = useState<FileOrigin>('upload')
   const [query, setQuery] = useState('')
   const [confirming, setConfirming] = useState<FileRow | null>(null)
+  const [previewing, setPreviewing] = useState<FileRow | null>(null)
   const [error, setError] = useState<string | null>(null)
   const shown = useMemo(() => shownFiles(box.rows, origin, query), [box.rows, origin, query])
   const pick = useBulkSelect(shown)
@@ -80,6 +82,7 @@ export function FilesPage() {
                   <FileLine
                     key={row.id}
                     row={row}
+                    onOpen={() => setPreviewing(row)}
                     lead={
                       <PickBox
                         checked={pick.picked.has(row.id)}
@@ -89,6 +92,15 @@ export function FilesPage() {
                     }
                     actions={
                       <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={t('{name} 미리보기').replace('{name}', row.name)}
+                          title={t('미리보기')}
+                          onClick={() => setPreviewing(row)}
+                        >
+                          <Eye size={14} />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -115,6 +127,7 @@ export function FilesPage() {
             </>
           )}
         </div>
+        <FilePreview row={previewing} onClose={() => setPreviewing(null)} />
         <ConfirmDialog
           open={!!confirming}
           onClose={() => setConfirming(null)}

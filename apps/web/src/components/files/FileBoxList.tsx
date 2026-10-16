@@ -79,14 +79,30 @@ export function FilePlace({ row }: { row: FileRow }) {
   return <span className="truncate">{row.sessionId ? t('지운 대화') : t('대화 밖에서 올림')}</span>
 }
 
-/** One file: icon, name, size · when · where, and the caller's controls. */
-export function FileLine({ row, lead, actions }: { row: FileRow; lead?: ReactNode; actions?: ReactNode }) {
+/** One file: icon, name, size · when · where, and the caller's controls. `onOpen` makes the name open it. */
+export function FileLine({
+  row,
+  lead,
+  actions,
+  onOpen,
+}: {
+  row: FileRow
+  lead?: ReactNode
+  actions?: ReactNode
+  onOpen?: () => void
+}) {
   return (
     <div data-testid="file-row" className="flex items-center gap-2 border-b border-line px-1 py-2 last:border-b-0">
       {lead}
       <FileGlyph row={row} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-base font-medium" title={row.name}>{row.name}</p>
+        {onOpen ? (
+          <button type="button" onClick={onOpen} className="block max-w-full truncate text-left text-base font-medium hover:underline" title={row.name}>
+            {row.name}
+          </button>
+        ) : (
+          <p className="truncate text-base font-medium" title={row.name}>{row.name}</p>
+        )}
         <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-faint">
           <span>{fileSize(row.size)}</span>
           <span>{relativeTime(row.createdAt)}</span>
