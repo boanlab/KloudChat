@@ -25,6 +25,9 @@ function signIns(): SessionRow[] {
 }
 
 async function mockApp(page: Page) {
+  // the browser's day is the mock's: past a week 「n일 전」 turns into a full date and the phone
+  // row wraps (CI on 2026-10-16)
+  await page.clock.setFixedTime(new Date(now))
   const sessions = signIns()
   const events = Array.from({ length: 45 }, (_, i) => ({
     id: `e${i}`, at: at(i * 30), action: i === 3 ? 'password.change' : 'login', detail: '', ip: '10.0.0.7', region: '',
