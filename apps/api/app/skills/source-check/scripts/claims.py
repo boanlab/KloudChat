@@ -8,6 +8,8 @@ import sys
 
 CITED = re.compile(
     r"\[\d{1,3}\]|https?://|출처\s*[:：]|자료\s*[:：]|\((?:자사|제공|사용자|내부)\s?자료[^)]*\)|\[자료\]"
+    # the person's material cited by its name: 「[경쟁 A 자료]」 (r10 SK-competitor-3)
+    r"|\[[^\[\]\n]{1,30}\s자료\]"
 )
 OPEN = re.compile(
     r"확인\s?필요|출처\s?미확인|자료\s?없음|판단\s?보류|가정\s*[:：)]|\(가정|해당\s?없음|N/?A"
@@ -26,6 +28,7 @@ VAGUE = re.compile(
     r"풍부|풍부함|편리|편리함|간편|탁월|최고|최상|업계\s?최고|부족|미흡|약함|열세|우세|강점|약점)[.!]?$"
 )
 SOURCE_HEADER = re.compile(r"출처|근거|source", re.I)
+NOTE_HEADER = re.compile(r"비고|메모|참고|note|remark", re.I)
 VERDICT_HEADER = re.compile(r"우위|승자|판정|winner|결과|유리", re.I)
 VERDICT_HOLD = re.compile(r"판단\s?보류|확인\s?필요|동등|비교\s?불가|^\s*[-—]?\s*$")
 DEFAULT_SECTIONS = r"강점|약점|이기는|지는|우위|열위|가격|기능|반론|대응|차별|위협"
@@ -114,6 +117,186 @@ def _in_material(cell: str, material: str, material_norm: str,
     return False
 
 
+def _in_own_words(cell: str, material: str) -> bool:
+    """Most of a cell's words are the material's own (「문서 기반 답변, 보고서 생성」)."""
+    words = [w for w in re.findall(r"[가-힣A-Za-z0-9]{2,}", re.sub(r"\[\d+\]", "", cell))]
+    if not words or not material:
+        return False
+    flat = re.sub(r"\s+", "", material)
+    return sum(1 for w in words if w in flat or w[:2] in flat and len(w) <= 3) >= 0.6 * len(words)
+
+
+#: A source the answer cites: its list line 「- [4] [제목](url)」 or an inline 「[[4]](url)」.
+_LIST_SOURCE = re.compile(r"^\s*[-*]?\s*\[(\d{1,3})\]\s+(.{4,})$")
+_LINKED_SOURCE = re.compile(r"\[\[(\d{1,3})\]\]\((https?://[^)\s]+)\)")
+_NUMBER = re.compile(r"\[\[?(\d{1,3})\]")
+#: Headers that name what a column holds, not a company.
+_NOT_A_COMPANY = re.compile(r"항목|구분|기준|비교|분류|평가|설명|내용|특징|요약|의미|시사점|차이|공통|"
+                            r"item|criteria|feature", re.I)
+
+
+#: An edition word in a product name (「하이퍼클로바X(기업용)」) names no company.
+_EDITION = re.compile(r"기업용|기업|엔터프라이즈|비즈니스|enterprise|business|pro|plus|team", re.I)
+
+
+def _flat(text: str) -> str:
+    return re.sub(r"[\s\-_.]", "", text or "").lower()
+
+
+def _cited_numbers(cell: str) -> set[str]:
+    return set(_NUMBER.findall(cell or ""))
+
+
+def _cited_pages(lines: list[str]) -> dict[str, str]:
+    """Each cited number's title and address, flattened for name matching."""
+    pages: dict[str, str] = {}
+    for line in lines:
+        if not line.lstrip().startswith("|") and (found := _LIST_SOURCE.match(line)):
+            pages[found.group(1)] = pages.get(found.group(1), "") + _flat(found.group(2))
+        for n, url in _LINKED_SOURCE.findall(line):
+            if url not in pages.get(n, ""):
+                pages[n] = pages.get(n, "") + _flat(url)
+    return pages
+
+
+def _entity_columns(header: list[str], labels: int, skip: set, text: str) -> dict[int, set[str]]:
+    """Company columns of a comparison table and each one's names: the header, its
+    「잔디(JANDI)」 and the 「네이버웍스(Naver Works)」 the answer writes elsewhere."""
+    out: dict[int, set[str]] = {}
+    for col, name in enumerate(header):
+        name = re.sub(r"[*]", "", name).strip()
+        if col < labels or col in skip or not name or _NOT_A_COMPANY.search(name):
+            continue
+        names = {n for n in re.split(r"[()/]", name) if len(n.strip()) >= 2
+                 and not _EDITION.fullmatch(n.strip())}
+        core = re.split(r"[(]", name)[0].strip()
+        for m in re.finditer(re.escape(core) + r"\s?\(([^()\n]{2,30})\)", text):
+            names.add(m.group(1))
+        # each word too (「M365 Copilot」 → copilot), unless it is the header's lone generic word
+        words = {w for n in names for w in re.findall(r"[가-힣]{2,}|[A-Za-z][A-Za-z0-9]{2,}", n)
+                 if not _EDITION.fullmatch(w)}
+        out[col] = {_flat(n) for n in names | words if len(_flat(n)) >= 2}
+    if len(out) < 2:
+        return {}
+    # a word two companies share (「네이버」 in 네이버웍스 and 네이버 클로바) names neither
+    shared = {w for c in out for w in out[c] if sum(w in out[d] for d in out) > 1}
+    return {c: names - shared for c, names in out.items()}
+
+
+def _other_company(col: int, numbers: set[str], entities: dict[int, set[str]],
+                   pages: dict[str, str]) -> int | None:
+    """The other company a cell's sources are all about, when none names its own column's
+    (r10 SK-competitor-1: a JANDI blog the only source of a 네이버웍스 cell)."""
+    if col not in entities or not numbers or any(n not in pages for n in numbers):
+        return None
+    other = None
+    for n in numbers:
+        page = pages[n]
+        if any(name in page for name in entities[col]):
+            return None
+        named = next((c for c, names in entities.items()
+                      if c != col and any(name in page for name in names)), None)
+        if named is None:
+            return None
+        other = other or named
+    return other
+
+
+_LIST_TITLE = re.compile(r"^\s*[-*]?\s*\[(\d{1,3})\]\s+\[([^\]\n]+)\]\((https?://[^)\s]+)\)")
+_TITLE_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z][A-Za-z0-9]+|\d+")
+
+
+def _cited_titles(lines: list[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Each listed number's title and each cited number's address."""
+    titles: dict[str, str] = {}
+    urls: dict[str, str] = {}
+    for line in lines:
+        if found := _LIST_TITLE.match(line):
+            titles[found.group(1)] = found.group(2)
+            urls[found.group(1)] = found.group(3)
+        for n, url in _LINKED_SOURCE.findall(line):
+            urls.setdefault(n, url)
+    return titles, urls
+
+
+#: address endings that name no one: 「blog.jandi.com」 → jandi
+_SUFFIX = frozenset("com net org co or go ac kr io ai dev app me info biz us uk jp cn".split())
+
+
+def _host(url: str) -> str:
+    """Whose site a page is on: 「learn.microsoft.com」, 「m365.cloud.microsoft」 → microsoft."""
+    labels = re.sub(r"^https?://", "", url or "").split("/")[0].lower().split(".")
+    while len(labels) > 1 and labels[-1] in _SUFFIX:
+        labels.pop()
+    return labels[-1] if labels else ""
+
+
+def _column_hosts(rows: list, entities: dict[int, set[str]],
+                  urls: dict[str, str]) -> dict[int, set[str]]:
+    """The sites two or more of a company column's cells cite: where its sources are."""
+    out: dict[int, set[str]] = {}
+    for col in entities:
+        counts: dict[str, int] = {}
+        for _, cells in rows:
+            if col < len(cells):
+                for host in {_host(urls[n]) for n in _cited_numbers(cells[col]) if n in urls}:
+                    counts[host] = counts.get(host, 0) + 1
+        out[col] = {h for h, k in counts.items() if k >= 2}
+    return out
+
+
+def _other_product(col: int, numbers: set[str], entities: dict[int, set[str]],
+                   titles: dict[str, str], urls: dict[str, str],
+                   hosts: dict[int, set[str]]) -> str | None:
+    """Another product of the same name a cell's sources are all about: a page whose title
+    puts another brand than the column's own sites' before the column's name (r10 LFLF7
+    SK-competitor-2: 「GitHub Copilot」 on github.com cited in the 365 Copilot column; LFLF10:
+    a 「github copilot price」 page cited in three of its cells)."""
+    names = entities.get(col)
+    if not names or not numbers or not hosts.get(col):
+        return None
+    found = None
+    for n in numbers:
+        title = titles.get(n)
+        site = _host(urls.get(n, ""))
+        if title is None or any(site and site in name for name in names):
+            return None
+        # the list's 「· blog.jandi.com」 is where, not what
+        title = re.sub(r"\s·\s[\w.-]+\.[a-z]{2,}\s*$", "", title)
+        words = _TITLE_WORD.findall(title)
+        # a page on both (「GitHub Copilot vs 365 Copilot」) is about the column's product too:
+        # its whole name is there, not one word of it
+        single = {_flat(w) for w in words}
+        if any(name not in single and name in _flat(title) for name in names):
+            return None
+        # a Latin brand put before the name (「GitHub Copilot」); a Korean word there is
+        # as often the maker (「마드라스체크 플로우」, r10 LFLF8 SK-competitor-1)
+        hit = next((f"{words[i - 1]} {w}" for i, w in enumerate(words)
+                    if i and _flat(w) in names and re.fullmatch(r"[A-Za-z][A-Za-z0-9]+", w)
+                    and re.fullmatch(r"[A-Za-z][A-Za-z0-9]+", words[i - 1])
+                    and words[i - 1].lower() not in _PLAIN_WORDS
+                    # the maker of the column's own sources (「Microsoft Copilot」 on a column
+                    # citing microsoft.com) is no other brand
+                    and words[i - 1].lower() not in hosts[col]
+                    and not _names(words[i - 1], names)), None)
+        if hit is None:
+            return None
+        found = found or hit
+    return found
+
+
+#: words before a product name that are no brand: 「Sign into Copilot」「Try Copilot」
+_PLAIN_WORDS = frozenset(
+    "into in on to for with and or of the a an your our my new get try buy use using sign "
+    "about what how why is are vs versus best free pricing price blog news guide review "
+    "download introducing meet".split())
+
+
+def _names(word: str, names: set[str]) -> bool:
+    flat = _flat(word)
+    return bool(_EDITION.fullmatch(word)) or any(flat in n or n in flat for n in names)
+
+
 def tables(lines: list[str]) -> list[dict]:
     found = []
     index = 0
@@ -143,20 +326,33 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
     material_norm = _norm(material)
     derived = derived_numbers(material)
     lines = (text or "").split("\n")
+    pages = _cited_pages(lines)
+    titles, urls = _cited_titles(lines)
     findings: list[dict] = []
     for t_index, table in enumerate(tables(lines)):
         header = table["header"]
         source_col = next((i for i, c in enumerate(header) if SOURCE_HEADER.search(c)), None)
         verdict_col = next((i for i, c in enumerate(header) if VERDICT_HEADER.search(c)), None)
+        note_cols = {i for i, c in enumerate(header) if NOTE_HEADER.search(c)}
+        own_cols = {i for i, c in enumerate(header) if OWN_HEADER.search(c)}
+        entities = _entity_columns(header, labels, {source_col, verdict_col, *note_cols,
+                                                    *own_cols}, text or "")
+        column_hosts = _column_hosts(table["rows"], entities, urls)
         for line_no, cells in table["rows"]:
             row_sourced = False
             if source_col is not None and source_col < len(cells):
                 src = cells[source_col]
                 row_sourced = bool(src) and src not in EMPTY and not OPEN.fullmatch(src)
-            # A [n] in any other column (「비고」) is the row's source too (r7 A11-T2).
-            row_sourced = row_sourced or any(CITED.search(c) for k, c in enumerate(cells) if k != verdict_col)
+            # A [n] in a notes column (「비고」) is the row's source too (r7 A11-T2); one in
+            # another competitor's cell is that cell's only (r10 SK-competitor-1: 잔디's [1]
+            # passed the uncited 플로우·네이버웍스 cells of its row).
+            row_sourced = row_sourced or any(
+                CITED.search(c) for k, c in enumerate(cells)
+                if k in note_cols and k != verdict_col)
             row_open = False
             label = " / ".join(cells[:labels])
+            row_cites = _cited_numbers(cells[source_col]) if row_sourced and source_col is not None \
+                and source_col < len(cells) else set()
             for col, cell in enumerate(cells):
                 if col < labels or col in (source_col, verdict_col):
                     continue
@@ -196,8 +392,35 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
                     )
                     row_open = True
                     continue
-                if CITED.search(cell) or row_sourced or _in_material(cell, material, material_norm,
-                                                                     derived):
+                foreign = _other_company(col, _cited_numbers(cell) or row_cites, entities, pages)
+                product = _other_product(col, _cited_numbers(cell), entities, titles, urls,
+                                         column_hosts) if foreign is None else None
+                if product is not None:
+                    findings.append({
+                        **base,
+                        "kind": "unsourced_cell",
+                        "why": f"인용한 출처가 다른 제품({product}) 자료입니다",
+                        "suggestion": "이 제품을 다룬 출처를 붙이거나 「확인 필요」로 적으세요",
+                        "placeholder": "확인 필요",
+                    })
+                    row_open = True
+                    continue
+                if foreign is None and (CITED.search(cell) or row_sourced or _in_material(
+                        cell, material, material_norm, derived)):
+                    continue
+                if foreign is not None:
+                    findings.append({
+                        **base,
+                        "kind": "unsourced_cell",
+                        "why": f"인용한 출처가 다른 회사({header[foreign]}) 자료입니다",
+                        "suggestion": "이 회사를 다룬 출처를 붙이거나 「확인 필요」로 적으세요",
+                        "placeholder": "확인 필요",
+                    })
+                    row_open = True
+                    continue
+                if col in own_cols and _in_own_words(cell, material):
+                    # the person's own product in their words (r10 LFLF4 SK-competitor-2:
+                    # 「지원 (자체 GPU 서버)」 marked once a row's [n] stopped covering it)
                     continue
                 findings.append(
                     {
@@ -225,6 +448,7 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
                             "placeholder": "판단 보류",
                         }
                     )
+    findings += opportunities_on_unknowns(lines)
     sections = re.compile(options.get("sections") or DEFAULT_SECTIONS)
     in_section = False
     for line_no, line in enumerate(lines):
@@ -261,6 +485,58 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
     return findings
 
 
+OPPORTUNITY_HEADING = re.compile(r"^\s{0,3}(?:#{1,6}\s|\*\*).*(?:기회|opportunit)", re.I)
+#: an unknown given as the reason: 「확인되지 않으므로」「확인 필요이므로」「미공개라서」
+UNKNOWN_REASON = re.compile(
+    r"(?:확인(?:되지\s?않|하지\s?못|\s?필요|\s?안\s?되)|미공개|알려지지\s?않|자료\s?없)[가-힣]{0,3}?"
+    r"\s?(?:으므로|므로|아서|어서|으니|니까|기\s?때문|이라서|라서|인\s?만큼|이므로)")
+ROW_REF = re.compile(r"「([^」\n]{1,30})」\s?행")
+OWN_HEADER = re.compile(r"자사|우리|당사")
+
+
+def _open_rows(lines: list[str]) -> dict[str, bool]:
+    """Each table row's label → whether every competitor cell in it is open (확인 필요 …)."""
+    out: dict[str, bool] = {}
+    for table in tables(lines):
+        header = table["header"]
+        skip = {0} | {i for i, c in enumerate(header)
+                      if SOURCE_HEADER.search(c) or VERDICT_HEADER.search(c)
+                      or NOTE_HEADER.search(c) or OWN_HEADER.search(c)}
+        for _, cells in table["rows"]:
+            rest = [c for i, c in enumerate(cells) if i not in skip]
+            if cells and rest:
+                out[_norm(cells[0])] = all(OPEN.search(c) or c.strip() in EMPTY for c in rest)
+    return out
+
+
+def opportunities_on_unknowns(lines: list[str]) -> list[dict]:
+    """Opportunities resting on what was not found: every row they cite is open, or an unknown
+    is their reason (r10 SK-competitor-1·2·3: 「확인되지 않으므로 자사만 충족」). One already
+    labelled 「가설」 is a guess the skill allows."""
+    rows = _open_rows(lines)
+    out = []
+    inside = False
+    for line_no, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("#") or (stripped.startswith("**") and stripped.endswith("**")):
+            inside = bool(OPPORTUNITY_HEADING.match(line))
+            continue
+        if not inside or not re.match(r"^(?:[-*•]|\d+[.)])\s+", stripped) or "가설" in stripped:
+            continue
+        cited = [_norm(m.group(1)) for m in ROW_REF.finditer(stripped)]
+        known = [rows[c] for c in cited if c in rows]
+        if (known and len(known) == len(cited) and all(known)) or UNKNOWN_REASON.search(stripped):
+            out.append({
+                "table": None, "line": line_no, "column": "", "row": "",
+                "text": re.sub(r"^(?:[-*•]|\d+[.)])\s+", "", stripped)[:120],
+                "kind": "opportunity_on_unknown",
+                "why": "확인하지 못한 것을 근거로 든 기회입니다",
+                "suggestion": "출처 있는 행에 기대어 다시 쓰거나, 「가설」로 밝히고 검증 방법을 적으세요",
+                "placeholder": "가설",
+            })
+    return out
+
+
 def fix(text: str, findings: list[dict]) -> str:
     lines = (text or "").split("\n")
     by_line: dict[int, list[dict]] = {}
@@ -269,7 +545,10 @@ def fix(text: str, findings: list[dict]) -> str:
     for line_no, items in by_line.items():
         line = lines[line_no]
         if items[0]["table"] is None:
-            if "확인 필요" not in line:
+            if items[0]["kind"] == "opportunity_on_unknown":
+                if "가설" not in line:
+                    lines[line_no] = line.rstrip() + " (가설)"
+            elif "확인 필요" not in line:
                 lines[line_no] = line.rstrip() + " (확인 필요)"
             continue
         lead = line[: len(line) - len(line.lstrip())]
@@ -298,6 +577,7 @@ def summary(findings: list[dict]) -> str:
         "vague_cell": "막연한 평가",
         "verdict_without_evidence": "근거 없는 판정",
         "unsourced_bullet": "출처 없는 주장",
+        "opportunity_on_unknown": "확인 못 한 것을 근거로 든 기회",
     }
     counts: dict[str, int] = {}
     for f in findings:

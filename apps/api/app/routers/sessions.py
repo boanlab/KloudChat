@@ -1500,7 +1500,8 @@ def _profile(rest: str) -> bool:
 
 #: an ask that works on the pasted text itself (summarise, report, translate, proofread)
 _WORKS_ON_TEXT = re.compile(
-    r"정리|요약|보고\s{0,2}(?:용|서)|번역|교정|윤문|다듬|옮겨|바꿔|작성|써\s{0,2}줘|만들어|발표문|보도")
+    r"정리|요약|보고\s{0,2}(?:용|서)|번역|교정|윤문|다듬|옮겨|바꿔|작성|써\s{0,2}줘|만들어|발표문|보도"
+    r"|맞춤법|띄어쓰기|어투|문체|군더더기|오탈자")
 
 
 def _ask_of(content: str) -> str:
@@ -1510,6 +1511,8 @@ def _ask_of(content: str) -> str:
     (lab results pasted under 「봐 줘」 stay a medical question)."""
     from app.services.context import lead_instruction, pasted_material
 
+    if edited := report_service.edit_ask(content):
+        return edited
     if pasted_material(content) or _memo_pasted(content):
         ask = lead_instruction(content)
         if ask and _WORKS_ON_TEXT.search(ask):
@@ -3438,6 +3441,13 @@ def _skill_keys(applied, specs: dict[str, skill_specs.Spec]) -> tuple[str, ...]:
     return tuple(out)
 
 
+def _deep_search(keys, specs: dict | None) -> bool:
+    """Whether a skill on the turn searches deep (its 진행 과정 설정 「깊이 검색」)."""
+    # a shipped skill with no stored fields reads its package's (`skill_specs.resolve`)
+    return any(bool((spec := skill_specs.resolve(key, specs)) is not None
+                    and spec.process.get("deep_search")) for key in keys)
+
+
 def render_template_checks(session: ChatSession) -> tuple[str, ...]:
     """Check skills attached by the session's 서식."""
     template = design_templates.get(session.render_template_id)
@@ -3956,7 +3966,10 @@ async def send_message(
     if pending and payload.web_search is False:
         # approval/answer has no toggle: the plan's starting turn chose it
         payload = payload.model_copy(update={"web_search": _planned_web_search(history)})
-    effective_web_search, forced_tool = search_plan(payload.web_search, content)
+    # text pasted under an editing ask is not a question (r10 SK-copyedit-2)
+    effective_web_search, forced_tool = search_plan(
+        payload.web_search,
+        _ask_of(content) if report_service.edits_given_text(content) else content)
     if published is not None:
         # bots answer from published material only; no web
         effective_web_search, forced_tool = False, None
@@ -5690,6 +5703,7 @@ async def _answer_turn(
                 **({"freshness_request": freshness_request} if freshness_request else {}),
                 **({"caveat_request": caveat_request} if caveat_request else {}),
                 **({"material_given": True} if carries_material else {}),
+                **({"deep_search": True} if _deep_search(skill_keys, skill_specs) else {}),
             ),
             stopping,
         ):

@@ -984,6 +984,10 @@ def _row_cells(line: str) -> list[str]:
     return line.strip().strip("|").split("|")
 
 
+#: a cell holding citations only: 「[[2]](https://…)」, 「[1][3]」
+_ONLY_CITES = re.compile(r"\s*(?:(?:\[\[\d{1,3}\]\]\([^)\s]{1,500}\)|\[\d{1,3}\])[\s,]*)+")
+
+
 def _refill_cells(old: str, new: str, out: Settled) -> str:
     """A table cell a guard emptied, given back as written (r5 A12-T2: the 「추천 채널·활용
     이유」 cells of 25 rows came back blank): rows matched in order, same width only."""
@@ -998,6 +1002,10 @@ def _refill_cells(old: str, new: str, out: Settled) -> str:
             continue
         filled = False
         for c, cell in enumerate(after):
+            if _ONLY_CITES.fullmatch(before[c]):
+                # a citation a check took out stays out: put back, it named a page that did
+                # not say it, and its list line had gone (r10 SK-company-2·3 「[[2]]」)
+                continue
             if before[c].strip() and not re.sub(r"\(?확인\s?필요\)?", "", cell).strip():
                 # a cell judged unsupported keeps its words, marked; a cell that already said
                 # 「확인 필요」 keeps saying it once (r7 A11-T2 「확인 필요 (확인 필요)」)
@@ -1135,13 +1143,61 @@ def _unmark(before: str, after: str, ev: Evidence, structure: int, out: Settled)
             continue  # the writer marked it
         line, base = _line_at(after, m.start())
         start = m.start() - len(head) + value.start() - base
-        if supported(written, line, start, ev, structure, _table_header(after, m.start())):
+        header = _table_header(after, m.start())
+        if supported(written, line, start, ev, structure, header) and _cited_support(
+                written, line, start, ev, structure, header):
             out.restored.append(written)
             cut = m.start() - (1 if after[m.start() - 1:m.start()] == " " else 0)
             pieces.append(after[at:cut])
             at = m.end()
     pieces.append(after[at:])
     return "".join(pieces)
+
+
+#: a citation the answer linked: 「[[3]](https://…)」
+_CITED_URL = re.compile(r"\[\[\d{1,3}\]\]\((https?://[^)\s]{1,500})\)")
+#: a search result's entry: 「[3] 제목」 then its address and text
+_ENTRY = re.compile(r"(?m)^(?=\[\d{1,3}\]\s)")
+
+
+def pages_at(urls: Iterable[str], texts: Iterable[str]) -> str | None:
+    """What the pages at `urls` said this turn: their search entries and fetched pages (a
+    fetched page's text starts with its address), or None when one was not read."""
+    texts = [t for t in texts if t]
+    pages: list[str] = []
+    for url in dict.fromkeys(urls):
+        found = [part for text in texts if url in text
+                 for part in (_ENTRY.split(text) if _ENTRY.search(text) else [text])
+                 if url in part]
+        if not found:
+            return None
+        pages += found
+    return "\n".join(pages) if pages else None
+
+
+def same_script(line: str, page: str) -> bool:
+    """Whether a page is written in the line's script: a Korean line's 「8억5,000만 달러」 is
+    not looked for in an English page's 「$850 million」 (r10 LFLF9 SK-company-2)."""
+    korean = len(re.findall(r"[가-힣]", line or "")) >= 4
+    hangul = len(re.findall(r"[가-힣]", page or ""))
+    return not korean or hangul >= 0.2 * len(re.findall(r"[가-힣A-Za-z]", page or "")) > 0
+
+
+def _cited_support(written: str, line: str, offset: int, ev: Evidence, structure: int,
+                   header: list[str] | None) -> bool:
+    """A value on a line that cites pages read this turn is supported by those pages (r10
+    LFLF8 SK-company-3: figures cited to a darts-match page had their marks taken off because
+    another page held them)."""
+    urls = _CITED_URL.findall(line)
+    cited = pages_at(urls, ev.texts) if urls else None
+    # a day the page gives as 「지난 1일」 under its own dateline is read on all the evidence
+    # (r10 LFLF9 SK-company-2: 「2024년 12월 1일」 cited to a 12월 2일 article)
+    if cited is None or _days_in(written) or _YEAR_MONTH.search(written) \
+            or not same_script(line, cited):
+        return True
+    narrow = Evidence.of([cited], answer=ev.answer, request=ev.request, today=ev.today,
+                         worked=ev.worked)
+    return supported(written, line, offset, narrow, structure, header)
 
 
 def _dropped_given(old: str, new: str, ev: Evidence) -> str:
@@ -1160,4 +1216,5 @@ def _dropped_given(old: str, new: str, ev: Evidence) -> str:
     return ""
 
 
-__all__ = ["GUARD_BLANK", "MARK", "Evidence", "Settled", "ko_number", "settle", "supported"]
+__all__ = ["GUARD_BLANK", "MARK", "Evidence", "Settled", "ko_number", "pages_at", "same_script",
+           "settle", "supported"]

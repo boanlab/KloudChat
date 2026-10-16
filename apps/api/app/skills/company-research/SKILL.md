@@ -4,12 +4,10 @@ description: 특정 회사의 개요(설립·대표·주소·사업)·재무·�
 when_to_use: 미팅·영업·투자·제휴·입찰 전에 상대 회사를 빠르게 파악할 때, 「○○ 회사 조사해 줘」「기업 개요 정리」. 별칭 company-research.
 kinds: [chat]
 required_tools: [run_skill_script, web_search, fetch_url]
+process: {deep_search: true}
 version: 0.1.0
-status: draft
 post_check: source-check/post
 post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
-# Kept for bundles, old conversations and editors that name it; not shown in lists.
-listed: false
 ---
 Research one company and write a Korean one-pager a 영업·기획 담당자 can use before a meeting. Every fact carries where it came from and when.
 
@@ -21,6 +19,8 @@ Research one company and write a Korean one-pager a 영업·기획 담당자 can
 - Same-name companies: confirm identity by 사업자등록번호, 법인등록번호, 대표자 or address before using a record; if you cannot, say which one you used.
 - Distinguish 연결 vs 별도 financials, 매출액 vs 영업수익, and fiscal year.
 - Opinions from news or reviews are attributed (「○○일보는 …라고 보도」), not stated as fact.
+- A `[n]` goes only to a page about this company that states the fact; a page on another subject (a product blog, a general explainer) is not a source for it, however near its words (r10 SK-company-1: a speech-app blog cited for an analyst estimate).
+- 「출처 미확인」 says in the reader's terms what was looked at (「공시·보도에서 찾지 못함」), never how a tool behaved (「검색 결과에 잠겨 있음」).
 
 ## Where to look (if `web_search`/`fetch_url` are available and the user did not restrict you to their material)
 1. DART 전자공시 (dart.fss.or.kr): 사업보고서·분기보고서(상장·대형 비상장), 감사보고서(외부감사 대상 비상장), 주요사항보고서, 대규모기업집단 현황. KIND (kind.krx.co.kr) for 상장 공시.
@@ -33,6 +33,7 @@ Research one company and write a Korean one-pager a 영업·기획 담당자 can
 ## Procedure
 1. Pin the company (정식 상호, 사업자/법인 번호 if known) and the user's purpose (영업 미팅, 투자 검토, 제휴, 입찰). Ask once if the company is ambiguous.
 2. Collect facts into the sections below. Record each source as you go.
+   - When the user hands over what they already know (a memo, hearsay, a list to check), search each item on its own and answer every item in a 「메모 확인」 table before the one-pager: 메모 내용 | 확인 결과 (맞음 · 다름 · 출처 미확인) | 근거 [n] (r10 SK-company-3: four memo items scattered, one never checked). A sentence elsewhere that sums up a memo item uses that item's 확인 결과 word, never a firmer one (r10 SK-company-3: the table said 출처 미확인, the opening said 확인됩니다).
 3. Financial ratios or growth rates: compute with `run_skill_script` (`calc-check` if offered) or show the formula from the cited figures; never round silently.
 4. Check: `run_skill_script` skill `source-check`, script `sources`, args `{"text": "<answer>", "material": "<user material>", "today": "YYYY-MM-DD", "max_age_years": 2}`. Fix `unsourced`/`undefined_ref`; for `stale`, keep the value with 「(YYYY년 기준)」.
 
@@ -47,6 +48,8 @@ Research one company and write a Korean one-pager a 영업·기획 담당자 can
 | 주요 고객·파트너 | 공개된 것만 | |
 
 ## 제품과 가격
+## 메모 확인                      ← 사용자가 메모·들은 말을 줬을 때만
+| 메모 내용 | 확인 결과 | 근거 |
 ## 최근 동향 (최근 12개월, 날짜순)
 - YYYY-MM-DD 무엇이 있었나 [n]
 ## 리스크·확인할 점
@@ -56,10 +59,11 @@ Research one company and write a Korean one-pager a 영업·기획 담당자 can
 ## 출처
 [1] 금융감독원 DART, 「○○ 2025 사업보고서」, 2026-03-20, URL
 ```
-Rows and sections fit the body researched: for a public body, use 「설립 근거·주무부처」, 「정원·현원(기준일)」, 「예산(연도)」 instead of 매출·영업이익, and leave out 「제품과 가격」 unless it sells something; never write the user's own product or prices there. A row that does not apply to this body is left out, not filled with 「출처 미확인」. Keep it to what helps the stated purpose; drop sections with nothing sourced rather than padding them.
+주요 고객·파트너 holds buyers and business partners only: investors, shareholders, government grants and event co-hosts go elsewhere or nowhere. Rows and sections fit the body researched: for a public body, use 「설립 근거·주무부처」, 「정원·현원(기준일)」, 「예산(연도)」 instead of 매출·영업이익, and leave out 「제품과 가격」 unless it sells something; never write the user's own product or prices there. A row that does not apply to this body is left out, not filled with 「출처 미확인」. Keep it to what helps the stated purpose; drop sections with nothing sourced rather than padding them.
 
 ## Checklist
-- [ ] Every fact has [n] with date; nothing from memory.
+- [ ] Every fact has [n] with date; nothing from memory; every [n] is about this company.
+- [ ] Every memo item the user gave has a 확인 결과.
 - [ ] Financials name the year and 연결/별도.
 - [ ] Unknowns are 「출처 미확인」 and turned into questions.
 - [ ] `source-check` `sources`: 0 `unsourced`, 0 `undefined_ref`.

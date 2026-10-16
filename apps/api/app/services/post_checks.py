@@ -8,7 +8,14 @@ import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 
-from app.services import internal_words, skill_packages, skill_scripts, skill_specs, units
+from app.services import (
+    internal_words,
+    skill_packages,
+    skill_scripts,
+    skill_specs,
+    units,
+    value_guard,
+)
 
 log = logging.getLogger(__name__)
 
@@ -407,6 +414,12 @@ def drop(text: str, quote: str) -> str:
 _KEY_NUMBER = re.compile(r"(?<![\d.])\d[\d,]{0,15}(?:\.\d{1,6})?")
 _KEY_LATIN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9+-]{1,30}")
 _KEY_QUOTED = re.compile(r"「([^」\n]{2,40})」|“([^”\n]{2,40})”")
+#: a counted figure is looked up with its counter: in a long search page a bare 「9」 or
+#: 「306」 turns up by chance (r10 LFLF SK-company-2: 「306명」 and 「9개 투자 라운드」
+#: judged unstated, kept as 「근거에 있는 값」); so are 억·조 (LFLF2 SK-company-1: 「89억」 kept
+#: on a bare 89). Dates and 만 stay bare (「2026. 4.」, 「1.2만」 against 「12,000」).
+_COUNTED = re.compile(
+    r"(?<![\d.])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s?(%|개사|라운드|[명개곳건회원배위대종차석억조])")
 
 
 def key_tokens(quote: str) -> list[str]:
@@ -432,6 +445,10 @@ def code_reading(quote: str, evidence: str) -> str:
     if not tokens:
         return "unchecked"
     flat = _searchable(evidence)
+    for number, counter in _COUNTED.findall(quote or ""):
+        figure = re.escape(number.replace(",", ""))
+        if not re.search(rf"(?<![\d.]){figure}\s?{re.escape(counter[0])}", flat):
+            return "absent"
     for token in tokens:
         if token[0].isdigit():
             if not re.search(rf"(?<![\d.]){re.escape(token)}(?!\d|\.\d)", flat):
@@ -439,6 +456,29 @@ def code_reading(quote: str, evidence: str) -> str:
         elif token not in flat:
             return "absent"
     return "present"
+
+
+#: the citations right after a statement: 「… 인수했다 [[1]](https://…)[[3]](https://…)」
+_CITE_RUN = re.compile(r"[\s.,。]{0,3}((?:\[\[\d{1,3}\]\]\(https?://[^)\s]{1,500}\)[\s,]*)+)")
+_CITED_URL = re.compile(r"\[\[\d{1,3}\]\]\((https?://[^)\s]{1,500})\)")
+def cited_pages(quote: str, text: str, computed: list[str]) -> str | None:
+    """What the pages a statement cites say: the search entries and fetched pages under the
+    addresses of the `[[n]](url)` run after it, or None when it cites none or one of them
+    was not read this turn (r10 LFLF7 SK-company-1: 「김상철 회장」 in some other page kept a
+    statement its own source [1] does not make)."""
+    phrase = (quote or "").strip().rstrip(".!?。 ")
+    at = text.find(phrase) if len(phrase) >= 4 else -1
+    if at < 0:
+        return None
+    end = at + len(phrase)
+    line_end = text.find("\n", end)
+    rest = text[end:line_end if line_end >= 0 else len(text)]
+    first = _CITED_URL.search(rest)
+    if first is None or re.search(r"[.!?。]\s+\S", rest[:first.start()]):
+        return None
+    run = _CITE_RUN.match(rest, max(0, first.start() - 3)) or _CITE_RUN.search(rest)
+    return value_guard.pages_at(_CITED_URL.findall(run.group(1) if run else first.group(0)),
+                                computed)
 
 
 #: the mark a judged statement gets where it stands (`value_guard.MARK`)
@@ -530,8 +570,14 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
     held, marked, absent = [], [], []
     for row in judged:
         quote = _flat(row["text"])
+        # a statement citing pages read this turn is read against those pages only
+        cited = cited_pages(row["text"], text, list(computed))
+        if cited is not None and not value_guard.same_script(row["text"], cited):
+            # an English page for a Korean sentence: its figures are written another way
+            cited = None
         reading = "absent" if any(s and (s in quote or quote in s) for s in scripted) \
-            else code_reading(row["text"], everything)
+            else code_reading(row["text"], everything if cited is None else "\n".join(
+                [request, material, attached, cited]))
         if reading == "present":
             held.append({**row, "why": f"{row['why']} (근거에 있는 값이라 남김)"})
         elif reading == "absent" or strong:
@@ -583,6 +629,54 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
     outcome.flags = flags
     outcome.text = particles(text)
     return outcome
+
+
+#: the list the answer step put under the answer: 「### 출처」 then 「- [3] [제목](url)」
+_LIST_HEADING = re.compile(r"^#{2,4}\s*(?:출처|Sources)\s*$", re.M)
+_LIST_LINE = re.compile(r"^\s{0,3}[-*]\s{1,3}\[(\d{1,3})\]\s")
+_LINKED = re.compile(r"[ \t]?\[\[(\d{1,3})\]\]\([^)\s]{1,500}\)")
+
+
+def _split_list(text: str) -> tuple[str, str, dict[int, str], str]:
+    """(body, heading, {n: list line}, what follows the list) of `text`; no heading → the
+    body is all of it."""
+    found = list(_LIST_HEADING.finditer(text or ""))
+    if not found:
+        return text or "", "", {}, ""
+    at = found[-1]
+    listed: dict[int, str] = {}
+    lines = text[at.end():].split("\n")
+    last = 0
+    for i, line in enumerate(lines):
+        if m := _LIST_LINE.match(line):
+            listed.setdefault(int(m.group(1)), line.rstrip())
+            last = i
+        elif line.strip() and listed:
+            break
+    tail = "\n".join(lines[last + 1:]) if listed else "\n".join(lines)
+    return text[:at.start()].rstrip(), at.group(0), listed, tail
+
+
+def cited_sources_listed(before: str, text: str) -> str:
+    """`text` with each linked 「[[n]](url)」 of its body listed under it.
+
+    A rewrite took list lines out with the sentences it fixed (r10 SK-company-3: 「- [6] …」
+    read as a generality), or a guard gave a cell back after its line had gone (SK-company-2
+    「[[2]]」): a line the list had before comes back; a citation no list ever had comes out."""
+    body, heading, listed, tail = _split_list(text)
+    _, old_heading, was, _ = _split_list(before)
+    if not was:
+        return text
+    cited = list(dict.fromkeys(int(n) for n in _LINKED.findall(body)))
+    missing = [n for n in cited if n not in listed]
+    if not missing:
+        return text
+    body = _LINKED.sub(lambda m: "" if int(m.group(1)) not in listed | was else m.group(0), body)
+    listed |= {n: was[n] for n in missing if n in was}
+    if not listed:
+        return body + (f"\n\n{tail.strip()}" if tail.strip() else "")
+    return f"{body}\n\n{heading or old_heading}\n" + "\n".join(
+        listed[n] for n in sorted(listed)) + (f"\n{tail.rstrip()}" if tail.strip() else "")
 
 
 _PARTICLE = re.compile(r"(\[[^\[\]\n]{1,20}\])(으로|을|이|은|과|이나|이라)(?=[\s.,)」]|$)")

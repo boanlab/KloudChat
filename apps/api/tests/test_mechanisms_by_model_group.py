@@ -113,6 +113,20 @@ def test_code_reads_figures_names_and_quotes():
     assert post_checks.code_reading("80명", A02_T2) == "absent"
 
 
+def test_a_counted_figure_is_looked_up_with_its_counter():
+    # r10 LFLF SK-company-2: a long search page holds a bare 「306」 and 「9」 by chance
+    page = "회사 소개 306 페이지 9 2026 리벨리온 투자 39 기업"
+    assert post_checks.code_reading("임직원 수 306명", page) == "absent"
+    assert post_checks.code_reading("총 9개 투자 라운드, 투자자 39개사", page) == "absent"
+    assert post_checks.code_reading("임직원 수 306명", page + " 임직원 306 명") == "present"
+    assert post_checks.code_reading("투자자 39개사", page + " 투자자 39개 회사") == "present"
+    # dates stay bare: the page may write them another way
+    assert post_checks.code_reading("2026년 9월 투자", page) == "present"
+    # LFLF2 SK-company-1: 「89억」 against a page whose 89 is something else
+    assert post_checks.code_reading("시리즈 A 89억 원 유치", page + " 89 시리즈 A") == "absent"
+    assert post_checks.code_reading("시리즈 A 89억 원 유치", page + " 시리즈 A 89억원") == "present"
+
+
 @GROUPS
 def test_a_judged_sentence_code_cannot_check_is_marked_not_cut(writer):
     # r7 helps kept: 「정상 추진 중」 is still caught, now marked where it stands for a

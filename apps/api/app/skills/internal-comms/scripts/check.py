@@ -35,6 +35,7 @@ _RELATIVE = re.compile(
     r"(?<![가-힣])(?:오늘|내일|모레|어제|금일|명일|익일|이번\s*주|다음\s*주|차주|금주|지난\s*주"
     r"|이번\s*달|다음\s*달|익월|금월|이번\s*분기|다음\s*분기|조만간|곧)(?![가-힣]*\])"
 )
+_RECURRING = re.compile(r"매(?:월|달|주|일|년|분기|번)|(?:달|주|해)마다")
 _POLITE_YO = re.compile(r"(?:요|죠)[.!?]?\s*$")
 _EMOJI = re.compile("[\U0001F300-\U0001FAFF☀-➿]")
 
@@ -233,6 +234,9 @@ def _fact_findings(text: str, material: str, today: str | None) -> list[dict]:
                          "placeholder": _PLACE[fact["kind"]]})
     for index, line in enumerate(text.split("\n")):
         for match in _RELATIVE.finditer(line):
+            if _RECURRING.search(line[:match.start()]):
+                # 「매월 25일까지 다음 달 근무계획」 is a rule, not a date to pin (r10 SK-notice-2)
+                continue
             findings.append({"severity": "check", "type": "relative_date", "text": match.group(0),
                              "line": index, "start": match.start(), "end": match.end(),
                              "why": "받는 사람마다 읽는 날이 달라 날짜가 흔들립니다.",

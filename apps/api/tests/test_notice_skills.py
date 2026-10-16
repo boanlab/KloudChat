@@ -37,11 +37,12 @@ def _types(result: dict, severity: str = "block") -> list[str]:
 # ── packages ────────────────────────────────────────────────────────────
 
 
-def test_the_notice_skills_ship_as_drafts_with_their_source_and_scripts():
+def test_the_notice_skills_ship_published_with_their_source_and_scripts():
     packages = skill_packages.packages()
     for key, script in NOTICE_SKILLS.items():
         package = packages[key]
-        assert package.draft, key
+        # r10: published and listed after the LFLF round (3/3, no high finding)
+        assert not package.draft and package.listed, key
         assert package.required_tools == ("run_skill_script",)
         assert script in package.scripts, key
         assert not package.stage, key
@@ -49,14 +50,11 @@ def test_the_notice_skills_ship_as_drafts_with_their_source_and_scripts():
     assert "resources/LICENSE-anthropics-skills.txt" in packages["internal-comms"].files
 
 
-def test_drafts_stay_out_of_the_catalogue_unless_enabled(monkeypatch):
+def test_the_notice_skills_are_in_the_catalogue_without_drafts(monkeypatch):
     monkeypatch.setattr(settings, "skill_drafts", False)
     keys = {spec["key"] for spec in skill_packages.catalog_specs()}
-    assert not keys & set(NOTICE_SKILLS)
-    assert skill_packages.find("internal-comms") is None
-    monkeypatch.setattr(settings, "skill_drafts", True)
-    keys = {spec["key"] for spec in skill_packages.catalog_specs()}
     assert set(NOTICE_SKILLS) <= keys
+    assert skill_packages.find("internal-comms") is not None
 
 
 def test_the_server_imports_the_same_scripts():
@@ -95,6 +93,17 @@ def test_invented_contacts_dates_and_wrong_weekdays_are_blocked():
     assert "11월 15일" in blocked
     assert "4513" in blocked and "finance@example.kr" in blocked
     assert "relative_date" in _types(result, "check")
+
+
+def test_a_relative_date_inside_a_recurring_rule_is_not_flagged():
+    # r10 SK-notice-2: 「매월 25일까지 다음 달 근무계획」 is the rule itself
+    material = "신청: 매월 25일까지 다음 달 근무계획을 인사시스템에 입력"
+    text = "매월 25일까지 다음 달 근무계획을 입력해 주십시오."
+    rule = _run("internal-comms", "check", {"text": text, "material": material, "kind": "change"})
+    assert "relative_date" not in _types(rule, "check")
+    once = _run("internal-comms", "check", {"text": "다음 달부터 근무계획을 입력해 주십시오.",
+                                            "material": material, "kind": "change"})
+    assert "relative_date" in _types(once, "check")
 
 
 def test_missing_facts_become_questions_with_placeholders():

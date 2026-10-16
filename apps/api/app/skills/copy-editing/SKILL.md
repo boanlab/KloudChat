@@ -5,11 +5,8 @@ when_to_use: 써 둔 보고서·공문·안내문·메일·소개글·자기소�
 kinds: [chat, report, slides]
 required_tools: [run_skill_script]
 version: 0.2.0
-status: draft
 post_check: preserve
 post_judge: "a sentence, reason, condition or promise the original text does not have, and an estimate or plan the original hedges written as settled"
-# Kept for bundles, old conversations and editors that name it; not shown in lists.
-listed: false
 ---
 Proofread and line-edit Korean text: you fix how it is written, never what it says.
 
@@ -24,7 +21,7 @@ Proofread and line-edit Korean text: you fix how it is written, never what it sa
 ## Editing passes
 Adapted from the Seven Sweeps of the original skill; the passes that add content (So What, Prove It, Specificity, Emotion, Zero Risk) become notes, never edits.
 1. 맞춤법·띄어쓰기·표준어.
-2. 명료성: one idea per sentence; split sentences over about 60 characters joined by 「~고, ~며, ~는데」; fix subject–predicate agreement (주술 호응) and dangling modifiers; move the main point forward.
+2. 명료성: split a sentence that carries two ideas joined by 「~고, ~며, ~는데」 (usually over about 60 characters); keep the joins that carry the reasoning (「그래서」「~면서」), so a paragraph does not become a row of short sentences (r10 SK-copyedit-3); fix subject–predicate agreement (주술 호응) and dangling modifiers; move the main point forward.
 3. 어투 일관: one register in prose; consistent honorifics (「~하시기 바랍니다」 vs 「~해 주세요」); consistent terms for the same thing (「고객/사용자」, 「신청/접수」 — pick the one the text uses most).
 4. 군더더기: cut repeated words, doubled meanings (「미리 예약」→「예약」, 「다시 재검토」→「재검토」), translationese (「~에 있어서」→「~에서」, 「~되어지다」→「~되다」). For a full cliché sweep use the 「상투어 걷어내기」 skill.
 
@@ -78,7 +75,7 @@ After the editing passes: run `preserve` and revert or flag what it reports. Cla
 ### 점검 결과
 맞춤법·띄어쓰기 지적 N개 반영(남은 것 M개) · 어투 ○○체로 통일 · 지킬 값 K개 모두 유지
 ```
-Keep explanations short. Do not print counts you did not get from a script.
+Keep explanations short. Do not print counts you did not get from a script: 「점검 결과」 states only what `proof` and `preserve` returned this turn, and is left out when they did not run. Proofreading needs no web search; the user's text and the rules above are enough.
 
 ## Checklist
 - [ ] `preserve` → `pass: true`, `format_changed` empty or explained.

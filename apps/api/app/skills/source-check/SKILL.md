@@ -5,7 +5,6 @@ when_to_use: 시장·경쟁 조사 결과를 내기 전 마지막 확인. 「기
 kinds: [chat, report]
 required_tools: [run_skill_script]
 version: 0.2.0
-status: draft
 post_check: post
 post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
 tables: true

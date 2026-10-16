@@ -370,7 +370,7 @@ class SkillChecks(Base):
         # what the judge had taken out stays out; a strong writer's revision stands as written
         settled = value_guard.settle(doc.answer, outcome.text, chat_evidence(bundle, doc.answer),
                                      keep_out=outcome.dropped, writer=req.strong)
-        doc.answer = settled.text
+        doc.answer = post_checks.cited_sources_listed(doc.answer, settled.text)
         detail = " · ".join(x for x in (outcome.detail, settled.note()) if x)
         step = {"category": "thinking", "id": "skill_check", "label": outcome.label,
                 "status": "error" if outcome.left else "done",

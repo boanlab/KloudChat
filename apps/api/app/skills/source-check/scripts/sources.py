@@ -186,6 +186,7 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
                 findings.append(_stale(index, found.group(1).strip(), max(years), today, max_age))
     if material.strip() and options.get("verify_cites", True):
         findings += cite_mismatches(lines, refs, ref_lines, material)
+    findings += other_company_profiles(lines, refs, ref_lines)
     for cite in sorted(used, key=int):
         if cite not in refs:
             findings.append(
@@ -366,14 +367,76 @@ def cite_mismatches(lines: list[str], refs: dict, ref_lines: set[int], material:
     return out
 
 
+#: A one-pager's title names its company: 「## 리벨리온(Rebellions) 한눈에」.
+SUBJECT_HEADING = re.compile(r"^\s{0,3}#{1,3}\s+(.{2,60}?)\s*(?:한눈에|기업\s?조사|기업\s?개요|회사\s?개요)\s*$")
+#: A page that profiles one company: a directory's 「앳(에이스) - 기업정보 | … - THE VC」.
+PROFILE_PAGE = re.compile(
+    r"기업\s?정보|회사\s?정보|기업\s?개요|기업\s?소개|company\s?profile|"
+    r"thevc\.kr|innoforest\.co\.kr|rocketpunch\.com|crunchbase\.com", re.I)
+_TITLE_LEAD = re.compile(r"\s(?:[-|:·]|\u2013|\u2014)\s")
+
+
+def _subject_names(lines: list[str]) -> set[str]:
+    """The names a one-pager's title gives its company, its 「(Rebellions)」 included."""
+    for line in lines:
+        if found := SUBJECT_HEADING.match(line):
+            title = re.sub(r"\(\s?주\s?\)|주식회사|[*]", "", found.group(1))
+            names = re.split(r"[()/]", title)
+            return {re.sub(r"\s", "", n).lower() for n in names if len(n.strip()) >= 2}
+        if line.lstrip().startswith("#"):
+            return set()
+    return set()
+
+
+def other_company_profiles(lines: list[str], refs: dict, ref_lines: set[int]) -> list[dict]:
+    """Citations of a page that profiles another company than the one-pager's own (r10
+    SK-company-2: THE VC's 앳 page cited for 리벨리온's investors)."""
+    names = _subject_names(lines)
+    if not names:
+        return []
+    foreign = {}
+    for n, ref in refs.items():
+        text = ref["text"]
+        if not PROFILE_PAGE.search(text):
+            continue
+        title = (re.match(r"\[([^\]\n]+)\]", text) or re.match(r"(.+)", text)).group(1)
+        lead = re.sub(r"\s", "", _TITLE_LEAD.split(title)[0]).lower()
+        if lead and not any(name in lead or lead in name for name in names):
+            foreign[n] = _TITLE_LEAD.split(title)[0].strip()
+    out = []
+    for index, line in enumerate(lines):
+        if index in ref_lines or not foreign:
+            continue
+        for match in CITE.finditer(line):
+            if (n := match.group(1)) in foreign:
+                out.append({
+                    "kind": "cite_mismatch", "line": index, "start": match.start(),
+                    "end": match.end(), "text": match.group(0), "excerpt": line.strip()[:120],
+                    "why": f"인용한 [{n}]은 다른 회사({foreign[n][:30]})를 소개하는 페이지입니다",
+                    "suggestion": "이 회사를 다룬 자료로 바꾸거나, 인용을 빼고 「출처 미확인」으로 표시하세요",
+                    "placeholder": "「출처 미확인」",
+                })
+    return out
+
+
+#: A citation the answer has already turned into a link: 「[[3]](https://…)」.
+LINKED_CITE = re.compile(r"\[(\[\d{1,3}\])\]\([^)\s]+\)")
+
+
 def fix_cites(text: str, findings: list[dict]) -> str:
     """Each mismatched [n] replaced by 「출처 미확인」 on its line."""
     lines = (text or "").split("\n")
     for f in sorted((f for f in findings if f["kind"] == "cite_mismatch"),
                     key=lambda f: (f["line"], f["start"]), reverse=True):
         line = lines[f["line"]]
-        if line[f["start"]:f["end"]] == f["text"]:
-            lines[f["line"]] = line[:f["start"]] + "「출처 미확인」" + line[f["end"]:]
+        start, end = f["start"], f["end"]
+        if line[start:end] != f["text"]:
+            continue
+        # A linked citation 「[[3]](url)」 goes whole, link and all.
+        linked = LINKED_CITE.match(line, start - 1) if start else None
+        if linked and linked.group(1) == f["text"]:
+            start, end = linked.start(), linked.end()
+        lines[f["line"]] = line[:start] + "「출처 미확인」" + line[end:]
     return "\n".join(lines)
 
 

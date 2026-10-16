@@ -340,8 +340,19 @@ general lane and, when the query carries a time-sensitive word (a year, 최신 "
 general lane answers 「최신 모델」 ("latest model") with home pages and encyclopaedias. Front
 pages and a host's third hit are benched (used only to pad a thin list), and a
 hit's `publishedDate` reaches the model as 「게시일」 ("published on") so the newest wins. A turn
-makes at most three searches and six page reads; past either cap the model is
-told to answer from what it has.
+makes at most three searches and six page reads (six searches when a turned-on skill
+sets `process: {deep_search: true}`, as 기업 조사 and 경쟁사 분석 do, plus one for each
+thing the request lists or hands over to check); past either cap the model is told to answer
+from what it has. On a deep-search turn an answer written before every name the request
+lists (「잔디, 플로우, 네이버웍스를」) appears in some query, or before every memo line it
+hands over (「- 공공 클라우드 사업도 한다고 함」) has two of its words in one query, is held
+once and the model is asked to search the rest (`query_terms.unsearched`). A listed source
+with no 게시일 carries the day it was read (「· 확인 2026-10-15」). The skills' last check
+(`source-check/post`) also takes out a citation of a page about another company: a company
+directory's profile of another firm in a 「○○ 한눈에」 one-pager, or, in a comparison
+table, sources that name another column's company and not the cell's own, or a page off the
+column's own sites about another product of the same name (「GitHub Copilot」 in a 365
+Copilot column).
 
 **Sources are cited by number, never typed.** `run_turn` renumbers the `[n]`
 entries of every search result so the numbers run across the whole turn and
@@ -839,8 +850,9 @@ of the model that actually wrote (`model_tier.group`, `Request.group`):
 
 Two rules hold for every group. **Marking is apart from deleting**: no judge model deletes
 or rewrites a sentence unless code has confirmed that one of its figures or names is in
-none of the evidence (`post_checks.code_reading`); a finding code cannot check is marked or
-shown, never acted on. **Code fixes only what it computes**: a value is replaced by code only
+none of the evidence (`post_checks.code_reading`); a statement that cites pages read this
+turn (`[[n]](url)`) is read against those pages only (`post_checks.cited_pages`), not every
+page the turn searched. A finding code cannot check is marked or shown, never acted on. **Code fixes only what it computes**: a value is replaced by code only
 when code knows the right one (a settled figure, an official hotline, a recomputed date).
 
 Small external models have no round-8 measurement; their column follows round 6 (old code)

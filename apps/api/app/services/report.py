@@ -510,6 +510,9 @@ def given_material_suffices(request: str, *, has_files: bool = False) -> bool:
     A09-T1: 19 searches for a talk built from its own abstract and results; A02-T2: a made-up
     press release checked on the web). An explicit 「조사해서」, 「찾아봐」, 「최신」 still
     searches."""
+    if edits_given_text(request, has_files=has_files):
+        # the ask alone is read: 「만족도 조사」 in the text to polish asks for nothing
+        return True
     instruction = instruction_part(request)
     asks = f"{lead_instruction(request)}\n{_ask_lines(instruction)}"
     if requests_web_search(instruction) or _EXPLICIT_LOOKUP.search(asks):
@@ -521,6 +524,32 @@ def given_material_suffices(request: str, *, has_files: bool = False) -> bool:
         return False
     return (has_files or _carries_material(request)) and bool(
         _FROM_GIVEN.search(lead_instruction(request)))
+
+
+#: an ask to edit the given text itself, not to add to it
+_EDITS_TEXT = re.compile(
+    r"맞춤법|띄어쓰기|교정|윤문|퇴고|다듬|어투|말투|문체|군더더기|오탈자|비문|매끄럽게")
+
+
+def edit_ask(request: str, *, has_files: bool = False) -> str:
+    """The ask, when it proofreads or polishes the text that comes with it (the first
+    paragraph over pasted text, or the message over a file) and names nothing to look up;
+    else "". That text is the whole job and nothing in it is a question (r10 SK-copyedit-2:
+    「아직」 in a pasted report started four unrelated searches)."""
+    instruction = instruction_part(request or "")
+    head, gap, rest = instruction.strip().partition("\n\n")
+    ask = head if gap and rest.strip() else instruction
+    # a pasted paragraph is the text to edit, short as it may be
+    given = has_files or len(rest.strip()) >= 80 or _carries_material(request or "")
+    if not given or not _EDITS_TEXT.search(ask):
+        return ""
+    if requests_web_search(ask) or _EXPLICIT_LOOKUP.search(ask):
+        return ""
+    return ask
+
+
+def edits_given_text(request: str, *, has_files: bool = False) -> bool:
+    return bool(edit_ask(request, has_files=has_files))
 
 
 #: an ask to look something up, whatever material comes with it

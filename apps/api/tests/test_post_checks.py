@@ -353,6 +353,16 @@ def test_the_source_check_post_leaves_worked_values_and_checklists_unmarked():
     assert marked == ["시장은 연 30% 성장한다."]
 
 
+def test_a_source_list_line_is_not_a_generality():
+    # r10 SK-company-3: a listed source's title (「…급성장…」) was sent back as a claim and
+    # the writer deleted the list line, leaving its [[6]] orphaned
+    text = ("영림원소프트랩은 ERP를 만든다 [6].\n\n### 출처\n"
+            "- [6] [영림원소프트랩, 클라우드 ERP 급성장 · example.com](https://example.com/a)")
+    out = source_post.post(text, {"material": "", "today": "2026-10-08"})
+    assert not any(f.get("kind") == "generic" or "일반론" in (f.get("why") or "")
+                   for f in out["rewrite"] + out["flags"])
+
+
 def test_the_judge_is_told_what_the_skill_looks_at():
     model = _Model([], "")
     asyncio.run(post_checks.run(

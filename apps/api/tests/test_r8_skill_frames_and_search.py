@@ -164,6 +164,36 @@ def test_a_pasted_press_release_forces_no_current_fact_search():
     assert "개편" not in sessions._ask_of(A02_T2)
 
 
+# r10 SK-copyedit-2: 「아직」 in the pasted report forced a search; SK-competitor-3: 「웹 검색은
+# 하지 말고」 was not read as a no
+COPYEDIT_2 = ("팀장님께 올릴 보고서인데 어투가 섞여 있어. 합니다체로 통일하고 문장만 매끄럽게 "
+              "다듬어 줘. 숫자·날짜는 그대로 둬야 해.\n\n[보고서 본문]\n지난 3분기 고객 문의는 "
+              "총 4,812건이었어요. 이는 전 분기(4,105건) 대비 17.2% 늘어난 수치임. 결제 오류가 "
+              "1,530건으로 가장 많았고, 배송 지연이 그 뒤를 이었다. 다만 결제 오류는 아직 원인 "
+              "분석이 끝나지 않았습니다. 4분기에는 상담 인력을 2명 늘릴 계획이에요. 고객 만족도 "
+              "조사는 10월 중에 실시할 예정임. 결과는 11월 회의에서 공유드릴게요. 끝.")
+
+
+def test_text_pasted_under_an_editing_ask_is_not_a_question():
+    assert report.edit_ask(COPYEDIT_2).endswith("숫자·날짜는 그대로 둬야 해.")
+    assert sessions._ask_of(COPYEDIT_2) == report.edit_ask(COPYEDIT_2)
+    assert context.search_plan("auto", sessions._ask_of(COPYEDIT_2)) == (True, None)
+    assert report.given_material_suffices(COPYEDIT_2) and _turn(COPYEDIT_2)
+    # an editing ask that also asks for a lookup still searches
+    lookup = COPYEDIT_2.replace("다듬어 줘.", "다듬고 최신 통계로 바꿔 줘.")
+    assert not report.edits_given_text(lookup)
+    assert not report.edits_given_text("이 문장 다듬어 줘")
+
+
+def test_a_no_to_search_is_read_with_its_particle():
+    for ask in ("아래 자료만으로 비교표 정리해 줘. 웹 검색은 하지 말고 없는 건 확인 필요로 둬.",
+                "검색 말고 네가 아는 걸로 답해 줘", "인터넷에서 찾지 말고 답해 줘"):
+        assert context.declines_web_search(ask), ask
+        assert context.search_plan("auto", ask) == (False, None)
+    assert not context.declines_web_search("최신 검색 결과 말고 공식 문서 기준으로 알려 줘")
+    assert context.search_plan("auto", "검색해서 알려 줘") == (True, "web_search")
+
+
 # ── R4-P38: the answer plan keeps to the person's facts ──────────────────────
 
 P38 = ("전문 이메일 작가가 되어 줘. 상황과 목적에 맞게 이메일을 쓰고, 알맞은 인사와 맺음말을 "

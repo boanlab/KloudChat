@@ -188,3 +188,108 @@ def entity_queries(request: str, entities: list[str], *, scholarly: bool) -> lis
             out += [f"{head} ACL EMNLP NAACL", f"{head} NeurIPS ICLR ICML"]
         out.append(f"{head} arXiv")
     return list(dict.fromkeys(q for q in out if usable(q)))
+
+
+#: a particle closing a name in a list: 「네이버웍스를」「Copilot을」「경쟁사로」
+_PARTICLE_END = re.compile(r"(?:을|를|와|과|으로|로|이랑|랑|은|는|도|만|의|에게|에)$")
+#: a clause ending, not a name: 「만드는지」「정리하고」
+_CLAUSE_END = re.compile(r"(?:지|다|요|고|며|서|면|데|해|줘)[.!?]?$")
+_CLOSED = re.compile(r"[.!?:;。]$")
+#: words that frame a list item, not name it
+_FRAME_WORDS = frozenset("위주 대상 중심 관련 주요 최근 같은 등 및 기업용".split())
+
+
+def _tokens(words: list[str]) -> list[str]:
+    out = []
+    for word in words:
+        word = re.sub(r"[「」『』\"'.!?]", "", word).strip()
+        if len(word) >= 2 and not word.isdigit() and word not in _FRAME_WORDS:
+            out.append(word)
+    return out
+
+
+def listed_names(request: str) -> list[tuple[str, list[str]]]:
+    """The first run of things a request lists one after another (「잔디, 플로우, 네이버웍스를
+    대상으로」): (name as written, its words) each; a run of two to six, else none. What the
+    request says in brackets is left out (a product's own description)."""
+    # the ask only: the request's first paragraph, not a pasted memo's lines
+    ask = re.split(r"\n[ \t]*\n", (request or "").strip(), maxsplit=1)[0]
+    text = re.sub(r"\([^()\n]*\)", "", "\n".join(
+        line for line in ask.split("\n") if not re.match(r"\s*(?:[-*•]|\[)", line)))
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+        parts = [p.strip() for p in re.split(r"[,，、]", sentence)]
+        if len(parts) < 2:
+            continue
+        run: list[list[str]] = []
+        for i, part in enumerate(parts):
+            words = part.split()
+            if i == 0:
+                lead: list[str] = []
+                for word in reversed(words):
+                    if _CLOSED.search(word) or _PARTICLE_END.search(word):
+                        break
+                    lead.insert(0, word)
+                run.append(lead)
+                continue
+            stop = next((k for k, w in enumerate(words)
+                         if _PARTICLE_END.search(w) or _CLOSED.search(w)), None)
+            if stop is None and len(words) <= 4:
+                run.append(words)
+                continue
+            if stop is not None and stop <= 3:
+                run.append([*words[:stop], _PARTICLE_END.sub("", words[stop])])
+            break
+        items = [(" ".join(w), _tokens(w)) for w in run if w]
+        if (2 <= len(items) <= 6 and all(t for _, t in items)
+                and not any(_CLAUSE_END.search(name) for name, _ in items)):
+            return items
+    return []
+
+
+#: 「자료만으로」「검색하지 말고」: the lines are the material, not things to look up
+_MATERIAL_ONLY = re.compile(
+    r"자료만|자료\s?안에서만|검색\s?(?:하지|없이|말)|without\s+search", re.I)
+_BULLET = re.compile(r"^\s*(?:[-*•]|\d{1,2}[.)])\s+(.+)$")
+#: hearsay and verb words of a memo line (「업체라고 들음」「냈다고 함」), not what it is about
+_VERBAL = re.compile(r"(?:다고|라고|대요|래요|들음|함|음|됨|임|모름|했|냈|넣은|한|된|하는|되는)$")
+
+
+def memo_items(request: str) -> list[tuple[str, list[str]]]:
+    """The bullet lines a request hands over to check (a sales memo's 「- 공공 클라우드 사업도
+    한다고 함」): (line as written, its words) each, up to six. Words of the ask itself (the
+    company's name) and hearsay words are left out."""
+    if _MATERIAL_ONLY.search(request or ""):
+        return []
+    parts = re.split(r"\n[ \t]*\n", (request or "").strip(), maxsplit=1)
+    ask = norm(re.sub(r"(?m)^\s*(?:[-*•]|\d{1,2}[.)])\s+.*$", "", parts[0]))
+    items = []
+    for line in (request or "").split("\n"):
+        if not (found := _BULLET.match(line)):
+            continue
+        item = found.group(1).strip()
+        words = []
+        for word in re.sub(r"\([^()\n]*\)", " ", item).split():
+            word = _PARTICLE_END.sub("", re.sub(r"[,，、「」『』\"'.!?]", "", word))
+            if (len(word) >= 2 and not _VERBAL.search(word) and word not in _FRAME_WORDS
+                    and norm(word) and norm(word) not in ask):
+                words.append(word)
+        if words:
+            items.append((item[:40], words))
+    return items[:6]
+
+
+def unsearched(request: str, queries: Iterable[str]) -> list[str]:
+    """Names the request lists that no query has a word of (r10 SK-competitor-1: 네이버웍스,
+    one of three competitors, never searched), then memo lines no query has two words of
+    (r10 SK-company-3: 「ERP 1위」, 「공공 클라우드」 never searched)."""
+    listed = listed_names(request)
+    # a query naming two of them is the request searched whole (r10 LFLF4 SK-competitor-1:
+    # one query of the whole ask counted all three as searched); each is searched on its own
+    asked = [q for q in (norm(q) for q in queries)
+             if sum(1 for _, tokens in listed if any(norm(t) in q for t in tokens)) < 2]
+    names = [name for name, tokens in listed
+             if not any(norm(t) and norm(t) in q for t in tokens for q in asked)]
+    every = [norm(q) for q in queries]
+    return names + [item for item, words in memo_items(request)
+                    if not any(sum(1 for w in words if norm(w) in q) >= min(2, len(words))
+                               for q in every)]
