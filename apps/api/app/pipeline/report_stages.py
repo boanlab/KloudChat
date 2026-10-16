@@ -857,7 +857,8 @@ class Draft(Base):
                         outline="\n".join(f"## {h}" for h in plan.headings),
                         refs=report._refs_block(sources),
                         facts=report._FRAME_RULE if plan.frame
-                        else report._facts_line(req.text, sources),
+                        else report._facts_line(
+                            req.text, sources, "\n".join(bundle.material.grounds)),
                         genre=genre,
                         request=prompt_request(req.text, 1500),
                     ),
@@ -914,7 +915,8 @@ class Sections(Base):
                     blocks=role[1],
                     others=report._others_line(headings, index),
                     facts=report._FRAME_RULE if plan.frame
-                    else report._facts_line(request, sources or []),
+                    else report._facts_line(
+                        request, sources or [], "\n".join(bundle.material.grounds)),
                     genre=genre,
                 ), genre)
                     + (

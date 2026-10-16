@@ -890,10 +890,12 @@ def local_today() -> dt.date:
     return dt.datetime.now(zone).date()
 
 
-def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
-    """Closed list of numbers the document may use."""
+def _facts_line(request: str, sources: list[dict[str, Any]], material: str = "") -> str:
+    """Closed list of numbers the document may use: the request's, the attachments', the sources'."""
     found: list[str] = []
-    for text in [request, *[str(s.get("quote") or "") for s in sources]]:
+    # attachments too: figures only a meeting transcript holds were told 「none」 and left as
+    # 「[사용자 수]」 blanks (demo R3, R4)
+    for text in [request, material, *[str(s.get("quote") or "") for s in sources]]:
         for match in _NUMBER.finditer(text):
             token = re.sub(r"\s+", "", match.group(0))
             if len(token) < 2 or token.isdigit() and len(token) > 4:
@@ -918,7 +920,7 @@ def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
                 "rows are 「필요한 것」 「위험」 「되돌릴 수 있는가」 instead of costs."
             )
         return line
-    line = "쓸 수 있는 수치 (every figure in the request and material): " + ", ".join(found[:40])
+    line = "쓸 수 있는 수치 (every figure in the request and material): " + ", ".join(found[:60])
     if derived := derived_values(request):
         # arithmetic done here; writer copies finished figures
         line += (

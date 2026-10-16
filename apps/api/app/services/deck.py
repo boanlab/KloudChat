@@ -472,17 +472,25 @@ _FRAME_TAIL = (
 )
 
 
-def _facts_line(request: str) -> str:
-    """Prompt line of numbers in the request (see `report._facts_line`)."""
-    found: list[str] = []
-    for match in re.finditer(
-        r"\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장)?",
-        request,
-    ):
-        token = re.sub(r"\s+", "", match.group(0))
-        if len(token) >= 2 and token not in found:
-            found.append(token)
-    if not found:
+def _facts_line(request: str, material: list[str] | None = None) -> str:
+    """Prompt line of numbers in the request and the attachments (see `report._facts_line`)."""
+
+    def figures(text: str, seen: list[str]) -> list[str]:
+        out: list[str] = []
+        for match in re.finditer(
+            r"\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장)?",
+            text,
+        ):
+            token = re.sub(r"\s+", "", match.group(0))
+            if len(token) >= 2 and token not in seen and token not in out:
+                out.append(token)
+        return out
+
+    found = figures(request, [])
+    # attachments too: a deck 「from the attached figures and transcript」 got only the request's
+    # figures, and one asked without any was told to chart nothing (demo S1)
+    attached = figures("\n".join(material or []), found)
+    if not found and not attached:
         return (
             "Usable figures: (the request has no figures — do not use metrics or chart, and do "
             "not make up numbers)"
@@ -492,7 +500,13 @@ def _facts_line(request: str) -> str:
         + ", ".join(found[:30])
         + " — facts the user wrote down, so each must appear on some slide at least once. "
         "Do not leave any out."
+        if found else "Usable figures: none in the request itself."
     )
+    if attached:
+        line += (
+            "\nFigures in the attached material (use the ones a slide needs, copied exactly; "
+            "make up no others): " + ", ".join(attached[:60])
+        )
     # implied arithmetic (`report.derived_values`)
     from app.services.report import derived_values
 
@@ -3127,7 +3141,8 @@ async def _write_slides(
                         f"{i + 1}. {s['title']}  (layout: {s['layout']})"
                         for i, s in enumerate(slides)
                     ),
-                    facts=_FRAME_RULE if frame else _facts_line(request),
+                    facts=_FRAME_RULE if frame else _facts_line(
+                        request, [*(trusted_context or []), *(untrusted_context or [])]),
                     count="4~6" if density == "reading" else "3~4",
                     count_two="6~8" if density == "reading" else "4~6",
                     request=prompt_request(request, 1500),
