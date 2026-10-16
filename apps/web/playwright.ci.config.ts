@@ -68,7 +68,7 @@ const groups: Record<string, Group> = {
   },
   phone: { files: ['phone-variant.spec.ts'], projects: { default: { browserName: 'chromium' } } },
   composer: {
-    files: ['composer-plus.spec.ts', 'composer-races.spec.ts', 'share-sign-in.spec.ts'],
+    files: ['composer-plus.spec.ts', 'composer-races.spec.ts', 'share-sign-in.spec.ts', 'file-box.spec.ts'],
     projects: { desktop, phone: touchPhone },
   },
   'i18n-gates': { files: ['i18n-audit-gates.spec.ts'], projects: { default: { ...devices['Desktop Chrome'] } } },

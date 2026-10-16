@@ -218,6 +218,7 @@ async def store_output(user_id: str, session_id: str, name: str, data: bytes) ->
     stored = StoredFile(
         user_id=user_id,
         session_id=session_id or None,
+        origin="generated",
         name=file_service.safe_name(name),
         size=len(data),
         mime=file_service.detected_mime(name, None, data),

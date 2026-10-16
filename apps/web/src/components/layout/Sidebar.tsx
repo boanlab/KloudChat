@@ -1,6 +1,7 @@
-import { ArrowRight, Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowRight, Bot, Boxes, FolderMinus, FolderOpen, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { DeleteFilesChoice, useSessionFileCount } from '@/components/files/DeleteFilesChoice'
 import { ConfirmDialog, Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { useBotAttention } from '@/lib/publishing'
@@ -34,6 +35,7 @@ interface NavRow {
 const workspaceNav: NavRow[] = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
   { to: '/artifacts', label: '아티팩트', icon: Layers },
+  { to: '/files', label: '파일함', icon: FolderOpen },
   { to: '/customize', label: '사용자 지정', icon: SlidersHorizontal },
 ]
 
@@ -195,6 +197,8 @@ export function Sidebar() {
   const pinned = filtered.filter((s) => s.pinned)
   const unpinned = filtered.filter((s) => !s.pinned)
   const [confirming, setConfirming] = useState<Session | null>(null)
+  const [withFiles, setWithFiles] = useState(false)
+  const fileCount = useSessionFileCount(!!confirming, confirming?.id)
 
   // Most recent few, then 모든 대화 보기; search (⌘K) covers the rest.
   const cap = RECENT
@@ -383,11 +387,16 @@ export function Sidebar() {
 
       <ConfirmDialog
         open={!!confirming}
-        onClose={() => setConfirming(null)}
-        onConfirm={() => confirming && void deleteSession(confirming.id)}
+        onClose={() => {
+          setConfirming(null)
+          setWithFiles(false)
+        }}
+        onConfirm={() => confirming && void deleteSession(confirming.id, { files: withFiles && !!fileCount })}
         title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
         description={t('되돌릴 수 없습니다. 이 대화가 만든 아티팩트도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
-      />
+      >
+        <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={fileCount ?? 0} />
+      </ConfirmDialog>
     </aside>
   )
 }

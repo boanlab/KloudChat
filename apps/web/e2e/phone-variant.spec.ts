@@ -175,9 +175,9 @@ for (const width of [390, 360]) {
         const main = page.getByRole('main')
         expect(await main.evaluate((el) => el.scrollWidth - el.clientWidth), tab).toBeLessThanOrEqual(0)
       }
-      // The drawer: 새 대화 · 프로젝트 · 아티팩트 · 사용자 지정, no separate 챗봇.
+      // The drawer: 새 대화 · 프로젝트 · 아티팩트 · 파일함 · 사용자 지정, no separate 챗봇.
       await page.getByRole('button', { name: '사이드바 토글' }).click()
-      await expect(page.locator('aside nav').first().getByRole('link')).toHaveText(['새 대화', '프로젝트', '아티팩트', '사용자 지정'])
+      await expect(page.locator('aside nav').first().getByRole('link')).toHaveText(['새 대화', '프로젝트', '아티팩트', '파일함', '사용자 지정'])
       // The phone keeps 추가 in the top bar and filter and sort in one sheet.
       await page.goto('/customize?tab=agents&view=explore')
       await expect(page.locator('header').getByRole('button', { name: '추가' })).toBeVisible()

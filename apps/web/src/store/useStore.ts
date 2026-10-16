@@ -408,13 +408,16 @@ interface State {
   setSessionSkills: (id: string, skillIds: string[]) => Promise<void>
   setSessionTemplate: (id: string, templateId: string | null) => Promise<void>
   moveSessionToProject: (id: string, projectId: string | null) => Promise<void>
-  deleteSession: (id: string) => Promise<void>
+  /** `files`: the files attached or made in it go too; else they stay in the file box. */
+  deleteSession: (id: string, opts?: { files?: boolean }) => Promise<void>
   /** Returns how many the server removed. */
   deleteSessions: (payload: {
     ids?: string[]
     all?: boolean
     /** Delete their artifacts too. */
     artifacts?: boolean
+    /** Delete the files attached or made in them too. */
+    files?: boolean
   }) => Promise<number>
   /** Polls one job until it settles. */
   followJob: (sessionId: string, jobId: string) => Promise<void>
@@ -2100,7 +2103,7 @@ export const useStore = create<State>((set, get) => ({
     await get().loadArtifacts()
     return deleted
   },
-  deleteSession: async (id) => {
+  deleteSession: async (id, opts) => {
     if (get().sessions.find((c) => c.id === id)?.unsent && !creatingSessions.has(id)) {
       unsentPatches.delete(id)
       forgetUnsent(get().user?.id, id)
@@ -2150,7 +2153,7 @@ export const useStore = create<State>((set, get) => ({
         })),
       commit: () => {
         forgetStoredDraft(get().user?.id, id)
-        return sessionsApi.remove(id).catch(() => get().loadSessions())
+        return sessionsApi.remove(id, opts).catch(() => get().loadSessions())
       },
     })
   },

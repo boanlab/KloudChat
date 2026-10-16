@@ -156,6 +156,8 @@ class SessionBulkDelete(Wire):
     all: bool = False
     #: ignored: artifacts always deleted with the conversation
     artifacts: bool = True
+    #: the files attached or made in them go too (else they stay in the file box)
+    files: bool = False
 
 
 class SessionMade(Wire):

@@ -38,6 +38,7 @@ const SkillCreatePage = lazy(() => import('@/pages/customize/CreatePages').then(
 const SkillUploadPage = lazy(() => import('@/pages/customize/SkillUploadPage').then((m) => ({ default: m.SkillUploadPage })))
 const BundlesPage = lazy(() => import('@/pages/customize/BundlesPage').then((m) => ({ default: m.BundlesPage })))
 const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage').then((m) => ({ default: m.ArtifactsPage })))
+const FilesPage = lazy(() => import('@/pages/FilesPage').then((m) => ({ default: m.FilesPage })))
 const HistoryPage = lazy(() => import('@/pages/HistoryPage').then((m) => ({ default: m.HistoryPage })))
 const IssuesPage = lazy(() => import('@/pages/IssuesPage').then((m) => ({ default: m.IssuesPage })))
 const MyUsagePage = lazy(() => import('@/pages/MyUsagePage').then((m) => ({ default: m.MyUsagePage })))
@@ -192,6 +193,7 @@ function Authenticated() {
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="projects/:projectId" element={<ProjectDetailPage />} />
           <Route path="artifacts" element={<ArtifactsPage />} />
+          <Route path="files" element={<FilesPage />} />
           <Route path="customize" element={<CustomizePage />} />
           <Route path="customize/agents/new" element={<AgentCreatePage />} />
           <Route path="customize/templates" element={<TemplatesPage />} />

@@ -1008,8 +1008,10 @@ export const sessionsApi = {
     ),
   get: (id: string) => call<SessionRow>(`/sessions/${id}`),
   /** `all` resolved server-side, so a conversation from another tab is not spared. */
-  deleteMany: (payload: { ids?: string[]; all?: boolean; artifacts?: boolean }) =>
-    call<{ deleted: number; artifactsDeleted: number }>('/sessions/delete', body(payload)),
+  /** `files`: the files attached or made in them go too; else they stay in the file box. */
+  deleteMany: (payload: { ids?: string[]; all?: boolean; artifacts?: boolean; files?: boolean }) =>
+    call<{ deleted: number; artifactsDeleted: number; filesDeleted?: number }>(
+      '/sessions/delete', body(payload)),
   /** Proposes a caption and prompt for a figure; draws nothing and costs nothing. */
   suggestFigure: (
     sessionId: string,
@@ -1090,7 +1092,8 @@ export const sessionsApi = {
     },
   ) =>
     call<SessionRow>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
-  remove: (id: string) => call<void>(`/sessions/${id}`, { method: 'DELETE' }),
+  remove: (id: string, opts?: { files?: boolean }) =>
+    call<void>(`/sessions/${id}${opts?.files ? '?files=true' : ''}`, { method: 'DELETE' }),
   /** 좋아요 / 싫어요, or `null` to take it back. Addressed by message id. */
   rate: (messageId: string, rating: 'up' | 'down' | null) =>
     call<MessageRow>(`/messages/${messageId}/rating`, {
@@ -1113,6 +1116,8 @@ export interface FileRow {
   agentId?: string | null
   /** Set when the text was read from a page rather than uploaded. */
   sourceUrl?: string | null
+  /** 「upload」: the person gave it; 「generated」: made in a conversation (a code run's output, an image). */
+  origin?: 'upload' | 'generated'
   /** First few hundred characters of the extracted text. */
   preview: string
   /** Set when extraction failed. The file still uploaded. */
@@ -1129,10 +1134,14 @@ export interface FileRow {
 }
 
 export const filesApi = {
-  list: (params?: { projectId?: string; sessionId?: string }) =>
-    call<FileRow[]>(
-      `/files${params ? `?${new URLSearchParams(params as Record<string, string>)}` : ''}`,
-    ),
+  list: (params?: { projectId?: string; sessionId?: string }) => {
+    // The route reads snake-case query names.
+    const query = new URLSearchParams({
+      ...(params?.projectId ? { project_id: params.projectId } : {}),
+      ...(params?.sessionId ? { session_id: params.sessionId } : {}),
+    }).toString()
+    return call<FileRow[]>(`/files${query ? `?${query}` : ''}`)
+  },
   upload: async (file: File, opts?: { projectId?: string; sessionId?: string }) => {
     const form = new FormData()
     form.append('file', file)

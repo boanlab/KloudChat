@@ -15,6 +15,7 @@ import { kindMeta } from '@/lib/kinds'
 import { errorMessage, historyApi, searchApi, type SearchRun } from '@/lib/api'
 import { cn, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
+import { DeleteFilesChoice } from '@/components/files/DeleteFilesChoice'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { dayLabel, dayOf } from '@/lib/days'
@@ -135,6 +136,8 @@ export function HistoryPage() {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [confirmAll, setConfirmAll] = useState(false)
   const [confirmPicked, setConfirmPicked] = useState(false)
+  /** 「대화의 파일도 함께 지우기」: off unless ticked in the dialog. */
+  const [withFiles, setWithFiles] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -226,7 +229,7 @@ export function HistoryPage() {
     setBusy(true)
     setError(null)
     try {
-      const count = await deleteSessions({ ids: [...picked] })
+      const count = await deleteSessions({ ids: [...picked], files: withFiles })
       setPicked(new Set())
       setDone(count)
       setAllTotal(null)
@@ -242,7 +245,7 @@ export function HistoryPage() {
     setBusy(true)
     setError(null)
     try {
-      const count = await deleteSessions({ all: true })
+      const count = await deleteSessions({ all: true, files: withFiles })
       setPicked(new Set())
       setConfirmAll(false)
       setDone(count)
@@ -401,15 +404,23 @@ export function HistoryPage() {
 
       <ConfirmDialog
         open={confirmPicked}
-        onClose={() => setConfirmPicked(false)}
+        onClose={() => {
+          setConfirmPicked(false)
+          setWithFiles(false)
+        }}
         onConfirm={() => void removePicked()}
         title={t('대화 {n}개를 삭제할까요?').replace('{n}', String(picked.size))}
         description={t('되돌릴 수 없습니다. 이 대화들이 만든 아티팩트(보고서·슬라이드·이미지·오디오·동영상)도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
-      />
+      >
+        <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={null} />
+      </ConfirmDialog>
 
       <Modal
         open={confirmAll}
-        onClose={() => setConfirmAll(false)}
+        onClose={() => {
+          setConfirmAll(false)
+          setWithFiles(false)
+        }}
         title={t('모든 대화를 삭제할까요?')}
         description={t('대화 {n}개와 그 안의 모든 메시지가 사라집니다.').replace('{n}', String(everyone ?? total))}
       >
@@ -418,6 +429,9 @@ export function HistoryPage() {
           <span>
             {t('되돌릴 수 없습니다. 이 대화들이 만든 아티팩트(보고서·슬라이드·이미지·오디오·동영상)도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
           </span>
+        </div>
+        <div className="mt-3">
+          <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={null} />
         </div>
         {error && <p className="mt-3 text-base text-danger">{error}</p>}
         <div className="mt-4 flex justify-end gap-2">

@@ -99,12 +99,23 @@ export async function composerFixture(
     agents = true,
     connectors = true,
     extraAgents = [],
-  }: { skills?: boolean; agents?: boolean; connectors?: boolean; extraAgents?: Record<string, unknown>[] } = {},
+    files = [],
+  }: {
+    skills?: boolean
+    agents?: boolean
+    connectors?: boolean
+    extraAgents?: Record<string, unknown>[]
+    /** The account's file box (`GET /files`); `DELETE /files/:id` takes one out. */
+    files?: Record<string, unknown>[]
+  } = {},
 ) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
   const unexpected: string[] = []
   const sends: SentTurn[] = []
   const created: Record<string, unknown>[] = []
+  /** Deletes the app sent, as 「METHOD /path?query」. */
+  const deletes: string[] = []
+  const box = [...files]
   page.on('pageerror', (error) => unexpected.push(`pageerror: ${error.message}`))
   const rows = new Map<string, Record<string, unknown>>()
   rows.set(chatId, sessionRow(chatId, 'chat', [
@@ -185,6 +196,22 @@ export async function composerFixture(
         { type: 'usage', inputTokens: 4, outputTokens: 4, credits: 0 }, { type: 'done' },
       ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') })
     }
+    if (method === 'GET' && path === '/files') {
+      const sessionId = url.searchParams.get('session_id')
+      return json(sessionId ? box.filter((row) => row.sessionId === sessionId) : box)
+    }
+    const fileMatch = path.match(/^\/files\/([^/]+)$/)
+    if (fileMatch && method === 'DELETE') {
+      deletes.push(`DELETE ${path}`)
+      const at = box.findIndex((row) => row.id === fileMatch[1])
+      if (at >= 0) box.splice(at, 1)
+      return route.fulfill({ status: 204, body: '' })
+    }
+    if (sessionMatch && method === 'DELETE') {
+      deletes.push(`DELETE ${path}${url.search}`)
+      rows.delete(sessionMatch[1])
+      return route.fulfill({ status: 204, body: '' })
+    }
     if (method === 'POST' && path === '/files') {
       return json({ id: `f${String(next++).padStart(31, '0')}`, name: 'notes.txt', size: 12, mime: 'text/plain',
         tokens: 4, projectId: null, sessionId: null, preview: '', error: null, createdAt: at }, 201)
@@ -198,5 +225,5 @@ export async function composerFixture(
     unexpected.push(`${method} ${path}`)
     return json({ detail: 'Unmocked fixture request' }, 501)
   })
-  return { unexpected, sends, created }
+  return { unexpected, sends, created, deletes }
 }

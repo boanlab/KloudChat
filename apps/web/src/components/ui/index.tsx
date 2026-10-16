@@ -421,6 +421,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  children,
 }: {
   open: boolean
   onClose: () => void
@@ -428,6 +429,8 @@ export function ConfirmDialog({
   title: string
   description?: string
   confirmLabel?: string
+  /** A choice that goes with the action (「파일도 함께 지우기」). */
+  children?: ReactNode
 }) {
   const t = useT()
   return (
@@ -437,6 +440,7 @@ export function ConfirmDialog({
       title={title}
       description={description}
       width="max-w-md"
+      children={children}
       footer={
         <>
           <Button onClick={onClose}>{t('취소')}</Button>

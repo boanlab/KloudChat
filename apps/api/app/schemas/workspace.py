@@ -53,6 +53,8 @@ class FileOut(Wire):
     session_id: str | None
     agent_id: str | None = None
     source_url: str | None = None
+    #: 「upload」 or 「generated」 (made in a conversation)
+    origin: str = "upload"
     preview: str = ""
     error: str | None = None
     indexed: bool = False
