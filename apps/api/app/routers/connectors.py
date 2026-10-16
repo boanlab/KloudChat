@@ -118,6 +118,7 @@ async def install(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_connector")
 
     supplied = (payload.env if payload else None) or {}
+    _settable_env(entry, supplied, user)
     missing = [
         field["key"]
         for field in entry.get("required_env", [])
@@ -158,6 +159,18 @@ async def install(
     # best-effort: unreachable server still installed, error on row
     await _sync(db, user, connector)
     return await _out(db, connector)
+
+
+
+def _settable_env(entry: dict | None, supplied: dict[str, str] | None, user: User) -> None:
+    """A person sets only the credentials a catalogue entry asks for: any other variable reaches
+    the server process (an index URL for `uvx`, a preload) and runs code on the API host."""
+    if not supplied or user.role is UserRole.admin:
+        return
+    asked = {str(field.get("key")) for field in (entry or {}).get("required_env", [])}
+    if extra := sorted(set(supplied) - asked):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"env_not_allowed:{','.join(extra)}")
 
 
 @router.post("", response_model=ConnectorOut, status_code=status.HTTP_201_CREATED)
@@ -252,6 +265,18 @@ async def sync(connector_id: str, user: CurrentUser, db: DbSession):
 async def patch(connector_id: str, payload: ConnectorPatch, user: CurrentUser, db: DbSession):
     connector = await _own(db, user, connector_id)
     patch_fields = payload.model_dump(exclude_unset=True)
+    if user.role is not UserRole.admin and (
+            "endpoint" in patch_fields or "env" in patch_fields):
+        if connector.transport is Transport.stdio and not connector.official:
+            # stdio = command on API server → admin only, as when adding one
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="stdio_requires_admin")
+        if connector.official and "endpoint" in patch_fields:
+            # a catalogue connector runs the catalogue's command, not the person's
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="catalogue_endpoint")
+        if connector.official:
+            _settable_env(await catalog.entry(connector.slug), patch_fields.get("env"), user)
     if patch_fields.get("installed") is False:
         await _removable(connector)
     # env merged, not replaced: keeps catalogue defaults
