@@ -1175,6 +1175,14 @@ def pages_at(urls: Iterable[str], texts: Iterable[str]) -> str | None:
     return "\n".join(pages) if pages else None
 
 
+def same_script(line: str, page: str) -> bool:
+    """Whether a page is written in the line's script: a Korean line's 「8억5,000만 달러」 is
+    not looked for in an English page's 「$850 million」 (r10 LFLF9 SK-company-2)."""
+    korean = len(re.findall(r"[가-힣]", line or "")) >= 4
+    hangul = len(re.findall(r"[가-힣]", page or ""))
+    return not korean or hangul >= 0.2 * len(re.findall(r"[가-힣A-Za-z]", page or "")) > 0
+
+
 def _cited_support(written: str, line: str, offset: int, ev: Evidence, structure: int,
                    header: list[str] | None) -> bool:
     """A value on a line that cites pages read this turn is supported by those pages (r10
@@ -1182,7 +1190,10 @@ def _cited_support(written: str, line: str, offset: int, ev: Evidence, structure
     another page held them)."""
     urls = _CITED_URL.findall(line)
     cited = pages_at(urls, ev.texts) if urls else None
-    if cited is None:
+    # a day the page gives as 「지난 1일」 under its own dateline is read on all the evidence
+    # (r10 LFLF9 SK-company-2: 「2024년 12월 1일」 cited to a 12월 2일 article)
+    if cited is None or _days_in(written) or _YEAR_MONTH.search(written) \
+            or not same_script(line, cited):
         return True
     narrow = Evidence.of([cited], answer=ev.answer, request=ev.request, today=ev.today,
                          worked=ev.worked)
@@ -1205,4 +1216,5 @@ def _dropped_given(old: str, new: str, ev: Evidence) -> str:
     return ""
 
 
-__all__ = ["GUARD_BLANK", "MARK", "Evidence", "Settled", "ko_number", "settle", "supported"]
+__all__ = ["GUARD_BLANK", "MARK", "Evidence", "Settled", "ko_number", "pages_at", "same_script",
+           "settle", "supported"]

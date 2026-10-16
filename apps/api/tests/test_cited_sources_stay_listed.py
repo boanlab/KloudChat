@@ -283,3 +283,20 @@ def test_a_comparison_page_and_a_korean_maker_are_not_another_product():
             "- [6] [Copilot Pricing 2026: GitHub Copilot and Microsoft 365 Copilot Cost · "
             "gptprompts.ai](https://gptprompts.ai/copilot-pricing)")
     assert not [f for f in claims.check(text, "", {}) if "다른 제품" in f["why"]]
+
+
+def test_an_english_page_or_a_bare_day_leaves_the_reading_to_all_the_evidence():
+    # LFLF9 SK-company-2: 「8억5,000만 달러」 cited to an English newsroom page, 「12월 1일」 to
+    # an article that says 「지난 1일」
+    news, daum = "https://rebellions.ai/newsroom/pre-ipo", "https://v.daum.net/v/20241202"
+    before = (f"누적 투자액은 8억5,000만 달러다 [[1]]({news}).\n\n"
+              f"2024년 12월 1일 합병을 마쳤다 [[5]]({daum}).")
+    after = before.replace("8억5,000만 달러다", "8억5,000만 달러(확인 필요)다").replace(
+        "2024년 12월 1일 합병", "2024년 12월 1일(확인 필요) 합병")
+    ev = value_guard.Evidence.of([
+        f"[1] Rebellions closes pre-IPO\n{news}\nThe company has raised $850 million in total.",
+        f"[5] 리벨리온 합병\n{daum}\n리벨리온은 지난 1일 사피온과의 합병을 마쳤다.",
+        "[9] 리벨리온 누적 투자 8억5,000만 달러\nhttps://news.example/9\n2024년 12월 1일 합병"],
+        answer=before)
+    settled = value_guard.settle(before, after, ev).text
+    assert "(확인 필요)" not in settled

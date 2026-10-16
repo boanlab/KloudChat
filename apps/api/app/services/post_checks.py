@@ -572,6 +572,9 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
         quote = _flat(row["text"])
         # a statement citing pages read this turn is read against those pages only
         cited = cited_pages(row["text"], text, list(computed))
+        if cited is not None and not value_guard.same_script(row["text"], cited):
+            # an English page for a Korean sentence: its figures are written another way
+            cited = None
         reading = "absent" if any(s and (s in quote or quote in s) for s in scripted) \
             else code_reading(row["text"], everything if cited is None else "\n".join(
                 [request, material, attached, cited]))
