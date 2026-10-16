@@ -21,7 +21,7 @@ test('「+」 holds the tools; nothing else sits beside the input', async ({ pag
   await page.goto(`/s/${chatId}`)
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
 
-  expect(await toolNames(page)).toEqual(['파일·사진 첨부', '스킬', '웹 검색: 자동', '커넥터 1개', '에이전트'])
+  expect(await toolNames(page)).toEqual(['파일·사진 첨부', '파일함에서 고르기', '스킬', '웹 검색: 자동', '커넥터 1개', '에이전트'])
   // The old toolbar buttons are gone, and model comparison with them.
   for (const gone of ['템플릿 고르기', '스킬', '모델 비교', '도구 더보기', '첨부', '@']) {
     await expect(page.getByRole('button', { name: gone, exact: true })).toHaveCount(0)

@@ -27,7 +27,20 @@ An attached file stays available to later requests in the same conversation. It 
 - If the answer is not in the part that was sent, the model searches inside the file with the **Find in files** tool.
 - The processing steps mark each attachment as used, truncated, or omitted.
 
-The Reports and Slides screens do not carry over attachments from earlier requests, so attach the material for the document to that request directly. Files attached in another conversation are not referenced either. To use the same material in several conversations, register it in a [project](../personal/projects). Where the administrator has turned on **Internal material stays strict-local**, a request with attachments is answered by the strict-local twin of the same model. [Privacy](../privacy)
+The Reports and Slides screens do not carry over attachments from earlier requests, so attach the material for the document to that request directly. Files attached in another conversation are not referenced on their own either. Attach a file you already uploaded again with **+** → **Choose from Files**, and to use the same material in many conversations all the time, register it in a [project](../personal/projects). Where the administrator has turned on **Internal material stays strict-local**, a request with attachments is answered by the strict-local twin of the same model. [Privacy](../privacy)
+
+## Files
+
+**Files** in the left menu holds every file of your account, under two tabs.
+
+- **Uploaded**: files you attached to conversations or uploaded to projects
+- **Made in conversations**: files made during a conversation, such as code-run outputs (CSV and the like), images and charts
+
+Each row shows the size, when it came, and which conversation or project it belongs to. Find files by name, download them, and delete one or a selection. Deleting a project file takes it out of the project too.
+
+To use the same material again in a new chat, report or deck, pick it under **+** → **Choose from Files** in the input box. Nothing is uploaded again, so there is no wait.
+
+When you delete a conversation you can tick **Also delete the conversation's files**. Left unticked, its files stay in Files. Project files are never deleted with a conversation.
 
 ## Improving recognition accuracy
 

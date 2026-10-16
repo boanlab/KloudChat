@@ -132,6 +132,7 @@ async def _poll_until_done(job_id: str) -> None:
                         id=file_id,
                         user_id=user_id,
                         session_id=session_id,
+                        origin="generated",
                         name=f"{prompt[:40] or 'video'}.mp4",
                         mime="video/mp4",
                         size=len(data),

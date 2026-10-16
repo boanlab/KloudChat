@@ -763,6 +763,14 @@ async def delete_file(file_id: str, user: CurrentUser, db: DbSession,
     ).first()
     if stored is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    await _drop_file(db, stored, shelf)
+    db.add(audit.deletion(user, request, action="file.delete", ids=[stored.id],
+                          counts={"files": 1}, extra={"bytes": stored.size}))
+    await db.commit()
+
+
+async def _drop_file(db: DbSession, stored: StoredFile, shelf: str | None = None) -> None:
+    """A file's blob, its search entries and its row; the caller commits."""
     file_service.delete_blob(stored.storage_key)
     if shelf and not stored.indexed_at:
         # read pages may be heading into the shelf
@@ -787,9 +795,20 @@ async def delete_file(file_id: str, user: CurrentUser, db: DbSession,
             if not await index_client.forget_document(collection=collection, doc_id=stored.id):
                 log.warning("file %s: index delete from %s failed", stored.id, collection)
     await db.delete(stored)
-    db.add(audit.deletion(user, request, action="file.delete", ids=[stored.id],
-                          counts={"files": 1}, extra={"bytes": stored.size}))
-    await db.commit()
+
+
+async def delete_session_files(db: DbSession, session_ids: list[str]) -> int:
+    """Before conversations are deleted, when the person chose so: the files attached or made
+    in them go too. A file a project or an agent holds stays. The caller commits."""
+    if not session_ids:
+        return 0
+    rows = (await db.exec(select(StoredFile).where(
+        col(StoredFile.session_id).in_(session_ids), col(StoredFile.project_id).is_(None),
+        col(StoredFile.agent_id).is_(None)))).all()
+    for stored in rows:
+        shelf = await shelf_of(db, stored) if stored.ocr_state else None
+        await _drop_file(db, stored, shelf)
+    return len(rows)
 
 
 # ══ artifacts ══

@@ -1,6 +1,7 @@
 import { CircleCheck } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { DeleteFilesChoice, useSessionFileCount } from '@/components/files/DeleteFilesChoice'
 import { ConfirmDialog, Modal } from '@/components/ui'
 import { copyText } from '@/lib/clipboard'
 import { COMPOSER_KEYS, SHORTCUTS, codeBlocks, isMac, shortcutFor, toggleDictation } from '@/lib/shortcuts'
@@ -38,6 +39,8 @@ export function KeyboardShortcuts() {
   const location = useLocation()
   const [open, setOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [withFiles, setWithFiles] = useState(false)
+  const fileCount = useSessionFileCount(confirmDelete, useStore.getState().activeSessionId)
   const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
@@ -163,17 +166,23 @@ export function KeyboardShortcuts() {
 
       <ConfirmDialog
         open={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
+        onClose={() => {
+          setConfirmDelete(false)
+          setWithFiles(false)
+        }}
         onConfirm={() => {
           const id = useStore.getState().activeSessionId
           setConfirmDelete(false)
           if (!id) return
-          void useStore.getState().deleteSession(id)
+          void useStore.getState().deleteSession(id, { files: withFiles && !!fileCount })
+          setWithFiles(false)
           if (location.pathname.startsWith('/s/')) navigate('/', { replace: true })
         }}
         title={t('{name} 삭제').replace('{name}', active?.title ?? t('이 대화'))}
         description={t('되돌릴 수 없습니다. 이 대화가 만든 아티팩트도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
-      />
+      >
+        <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={fileCount ?? 0} />
+      </ConfirmDialog>
 
       {toast && (
         <div

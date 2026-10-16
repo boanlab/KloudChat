@@ -200,7 +200,7 @@ test('account menu: one 사용자 지정 item, 대화 기록 beside it, 계정 u
   if (viewport(testInfo) === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
   await expect(page.getByRole('link', { name: '사용자 지정' })).toBeVisible()
   // No separate 챗봇: members' published agents are in 사용자 지정 › 에이전트.
-  await expect(page.locator('aside nav').first().getByRole('link')).toHaveText(['새 대화', '프로젝트', '아티팩트', '사용자 지정'])
+  await expect(page.locator('aside nav').first().getByRole('link')).toHaveText(['새 대화', '프로젝트', '아티팩트', '파일함', '사용자 지정'])
   await page.getByRole('button', { name: /^계정 메뉴/ }).filter({ visible: true }).first().click()
   const menu = page.getByRole('menu')
   const names = (await menu.getByRole('menuitem').allTextContents()).map((n) => n.replace(/(Ctrl|⌘) \/$/, '').trim())

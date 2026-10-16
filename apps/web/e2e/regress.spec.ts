@@ -294,6 +294,7 @@ test('그림·클립 화면에는 보낼 곳 없는 첨부·스킬 버튼이 없
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
     const tools = await toolNames(page)
     expect(tools).not.toContain('파일·사진 첨부')
+    expect(tools).not.toContain('파일함에서 고르기')
     // A hidden file input is still reachable.
     await expect(page.locator('input[type="file"]')).toHaveCount(0)
     expect(tools).not.toContain('스킬')

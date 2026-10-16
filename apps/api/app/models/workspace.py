@@ -85,6 +85,9 @@ class StoredFile(SQLModel, table=True):
     session_id: str | None = Field(default=None)
     agent_id: str | None = Field(default=None)
     source_url: str | None = Field(default=None)
+    #: how the file came: 「upload」 (the person gave it) or 「generated」 (made in a conversation:
+    #: a code run's output, an image, a chart, an export)
+    origin: str = Field(default="upload", max_length=12)
     name: str
     size: int = Field(default=0)
     mime: str = Field(default="")

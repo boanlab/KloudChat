@@ -120,7 +120,7 @@ async def test_a_bulk_delete_writes_one_event_with_its_counts(db):
     out = await sessions_router.delete_sessions(
         SessionBulkDelete(ids=[*ids, theirs]), me, db, _Request()
     )
-    assert out == {"deleted": 3, "artifactsDeleted": 3}
+    assert out == {"deleted": 3, "artifactsDeleted": 3, "filesDeleted": 0}
 
     (event,) = await _events(db)
     assert (event.action, event.actor_id, event.target) == (
@@ -134,6 +134,26 @@ async def test_a_bulk_delete_writes_one_event_with_its_counts(db):
     _no_content(event)
     # The other person's conversation is untouched.
     assert await db.get(ChatSession, theirs) is not None
+
+
+@pytest.mark.asyncio
+async def test_a_delete_asked_to_take_the_files_takes_them_and_says_so(db, tmp_path, monkeypatch):
+    from app.services import files as file_service
+
+    monkeypatch.setattr(file_service.settings, "file_storage_dir", str(tmp_path))
+    me = await _person(db)
+    kept = await _conversation(db, me, messages=1, artifacts=0, files=2)
+    gone = await _conversation(db, me, messages=1, artifacts=0, files=2)
+
+    out = await sessions_router.delete_sessions(SessionBulkDelete(ids=[kept]), me, db, _Request())
+    assert out["filesDeleted"] == 0
+    out = await sessions_router.delete_sessions(
+        SessionBulkDelete(ids=[gone], files=True), me, db, _Request())
+    assert out["filesDeleted"] == 2
+    left = (await db.exec(select(StoredFile))).all()
+    assert {f.session_id for f in left} == {kept}
+    kept_note, gone_note = (e.event_metadata.get("note") or e.detail for e in await _events(db))
+    assert "첨부 파일은 지우지 않음" in str(kept_note) and "파일 2개도 지움" in str(gone_note)
 
 
 @pytest.mark.asyncio

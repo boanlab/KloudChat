@@ -1879,7 +1879,12 @@ own. Each file records the collection its write went to
 conversation to another project forgets the old entry and indexes the file
 into the new home's collection (`reindex_session_files`); deleting the
 conversation, singly or in bulk, forgets its uploads' entries while the rows
-stay in the file box (`forget_session_files`). Deleting
+stay in the file box (`forget_session_files`), unless the person ticked 「대화의 파일도 함께
+지우기」 (`?files=true`, bulk `files: true`): then the files attached or made in it go too,
+a project's or an agent's excepted (`delete_session_files`). Each file records how it came
+(`files.origin`: `upload`, or `generated` for a code run's output, an image, a chart, a
+figure, audio, video, an export); the file box (`/files` in the web app) lists the two
+apart, and a composer's 「파일함에서 고르기」 attaches one again by id. Deleting
 the project drops the collection; `POST /projects/{id}/knowledge/reindex`
 backfills files uploaded before the index existed. The lexical shelf the tool
 also reads includes the project's files, so a passage the budget could not

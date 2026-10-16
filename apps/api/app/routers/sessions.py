@@ -67,6 +67,7 @@ from app.pipeline.stage import Context as PipelineContext
 from app.pipeline.stage import StepRecord
 from app.pipeline.stage import Stop as PipelineStop
 from app.routers.workspace import (
+    delete_session_files,
     forget_session_files,
     reindex_session_files,
 )
@@ -2060,6 +2061,7 @@ async def fork_message(session_id: str, message_id: str, user: CurrentUser, db: 
                 user_id=user.id, session_id=branch.id if stored.id in prefix_file_ids else None,
                 name=stored.name, size=stored.size, mime=stored.mime, text=stored.text,
                 tokens=stored.tokens, error=stored.error, source_url=stored.source_url,
+                origin=stored.origin,
             )
             if stored.storage_key:
                 copied.storage_key = file_service.copy_blob(
@@ -2191,6 +2193,7 @@ async def handoff_session(
         record = StoredFile(
             user_id=user.id,
             session_id=target.id,
+            origin="generated",
             name="대화 기록.txt",
             mime="text/plain",
             text=text,
@@ -2507,26 +2510,36 @@ async def delete_session(
     user: CurrentUser,
     db: DbSession,
     request: Request = None,  # type: ignore[assignment]
+    files: bool = False,
 ):
+    """`files`: the files attached or made in it go too; else they stay in the file box."""
     session = await _owned(db, user, session_id)
     counts = await _conversation_counts(db, [session.id])
     await db.exec(delete(Message).where(Message.session_id == session.id))
     # Job rows: no cascade
     await db.exec(delete(Job).where(Job.session_id == session.id))
     counts["artifacts"] = await _delete_artifacts_of(db, [session.id])
+    gone = await delete_session_files(db, [session.id]) if files else 0
     await forget_session_files(db, [session.id])
     if session.index_key:
         await index_client.forget_collection(collection=session.index_key)
     await db.delete(session)
     db.add(audit_service.deletion(
         user, request, action="conversation.delete", ids=[session.id], counts=counts,
-        note=_FILES_KEPT if counts["files"] else "",
+        note=_files_note(counts["files"], gone),
     ))
     await db.commit()
 
 
 #: conversation uploads stay in the file box; only their search entries go
 _FILES_KEPT = "첨부 파일은 지우지 않음"
+
+
+def _files_note(files: int, gone: int) -> str:
+    """The audit note on a conversation's files: kept in the file box, or deleted with it."""
+    if not files:
+        return ""
+    return f"파일 {gone}개도 지움" if gone else _FILES_KEPT
 
 
 async def _conversation_counts(db: DbSession, session_ids: list[str]) -> dict[str, int]:
@@ -2714,6 +2727,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
             StoredFile(
                 id=file_id,
                 user_id=user.id,
+                origin="generated",
                 session_id=session.id,
                 name=f"{payload.prompt[:40] or 'image'}.png",
                 mime=image.mime,
@@ -2832,6 +2846,7 @@ async def _draw_chart(
         StoredFile(
             id=file_id,
             user_id=user.id,
+            origin="generated",
             session_id=session.id,
             name=f"{payload.prompt[:40] or 'chart'}.png",
             mime="image/png",
@@ -2995,6 +3010,7 @@ def _store_figure(
         StoredFile(
             id=file_id,
             user_id=user.id,
+            origin="generated",
             session_id=session.id,
             name=f"{title[:40]}.png",
             mime="image/png",
@@ -3085,6 +3101,7 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
         StoredFile(
             id=file_id,
             user_id=user.id,
+            origin="generated",
             session_id=session.id,
             name=f"{payload.prompt[:40] or 'audio'}.{audio.extension}",
             mime=audio.mime,
@@ -3162,6 +3179,7 @@ async def delete_sessions(
 
     artifacts_deleted = await _delete_artifacts_of(db, ids)
     counts["artifacts"] = artifacts_deleted
+    gone = await delete_session_files(db, ids) if payload.files else 0
     await forget_session_files(db, ids)
     for row in rows:
         if row.index_key:
@@ -3170,10 +3188,10 @@ async def delete_sessions(
     await db.exec(delete(ChatSession).where(col(ChatSession.id).in_(ids)))
     db.add(audit_service.deletion(
         user, request, action="conversation.bulk_delete", ids=ids, counts=counts,
-        everything=payload.all, note=_FILES_KEPT if counts["files"] else "",
+        everything=payload.all, note=_files_note(counts["files"], gone),
     ))
     await db.commit()
-    return {"deleted": len(ids), "artifactsDeleted": artifacts_deleted}
+    return {"deleted": len(ids), "artifactsDeleted": artifacts_deleted, "filesDeleted": gone}
 
 
 @router.get("/{session_id}/messages", response_model=list[MessageOut])

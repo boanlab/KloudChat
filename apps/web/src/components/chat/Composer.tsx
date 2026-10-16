@@ -4,6 +4,7 @@ import {
   Boxes,
   Check,
   FileText,
+  FolderOpen,
   ChevronLeft,
   ChevronRight,
   Gauge,
@@ -25,6 +26,7 @@ import type { FileRow, PrivacyDecision, WebSearchSetting } from '@/lib/api'
 import { ApiError, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
+import { FileBoxPicker } from '@/components/files/FileBoxPicker'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure } from '@/lib/failures'
 import { agentDocumentNames, agentHandoffSurface, handoffSurface } from '@/lib/documentRequest'
@@ -554,6 +556,7 @@ export function Composer({
   const designTemplates = useStore((s) => s.designTemplates)
   const ensureDesignTemplates = useStore((s) => s.ensureDesignTemplates)
   const [galleryOpen, setGalleryOpen] = useState(false)
+  const [fileBoxOpen, setFileBoxOpen] = useState(false)
   // A phone opens 「+」 as a bottom sheet.
   const phone = useMediaQuery('(pointer: coarse) and (max-width: 64rem), (max-width: 40rem)')
   const [plusOpen, setPlusOpen] = useState(false)
@@ -1736,6 +1739,18 @@ export function Composer({
                 {t('파일·사진 첨부')}
               </ToolItem>
             )}
+            {!isMedia && (
+              <ToolItem
+                icon={<FolderOpen size={15} />}
+                disabled={editPending}
+                onClick={() => {
+                  closePlus()
+                  setFileBoxOpen(true)
+                }}
+              >
+                {t('파일함에서 고르기')}
+              </ToolItem>
+            )}
             {showTemplates && (
               <ToolItem
                 icon={<LayoutGrid size={15} />}
@@ -2644,6 +2659,21 @@ export function Composer({
         sessionId={sessionId}
         open={galleryOpen}
         onClose={() => setGalleryOpen(false)}
+      />
+
+      <FileBoxPicker
+        open={fileBoxOpen}
+        onClose={() => setFileBoxOpen(false)}
+        attached={attachments.map((file) => file.id)}
+        // Already the person's: attached by id as they are, nothing uploaded again.
+        onPick={(rows) =>
+          setAttachments((current) => {
+            activeRestoreToken.current = null
+            const next = [...current, ...rows.filter((row) => !current.some((file) => file.id === row.id))]
+            liveAttachments.current = next
+            return next
+          })
+        }
       />
     </div>
   )
