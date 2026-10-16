@@ -43,6 +43,13 @@ class OpenedDocument(Wire):
     id: str
 
 
+class FileTextOut(Wire):
+    """A file's extracted text for the file box preview; cut at a limit."""
+
+    text: str
+    truncated: bool
+
+
 class FileOut(Wire):
     id: str
     name: str

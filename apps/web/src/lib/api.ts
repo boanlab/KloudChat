@@ -1166,14 +1166,16 @@ export const filesApi = {
   addProjectUrl: (projectId: string, url: string) =>
     call<FileRow>(`/projects/${projectId}/knowledge/url`, body({ url })),
   downloadUrl: (id: string) => `${BASE_URL}/files/${id}/content`,
+  /** Extracted text for the preview, cut at the server's limit. */
+  text: (id: string) => call<{ text: string; truncated: boolean }>(`/files/${id}/text`),
   /** Reads an uploaded `.hwpx` into a new report session; nothing generated or charged. Returns the session id. */
   openAsDocument: (id: string) =>
     call<{ id: string }>(`/files/${id}/open-as-document`, { method: 'POST' }),
   remove: (id: string) => call<void>(`/files/${id}`, { method: 'DELETE' }),
 }
 
-/** Downloads a stored file under its own name. Fetch + blob so the token travels in a header, not the URL. */
-export async function downloadFile(id: string, name: string) {
+/** A stored file's bytes, typed as the server serves them. Fetch + blob so the token travels in a header, not the URL. */
+export async function fileBlob(id: string): Promise<Blob> {
   const res = await fetch(filesApi.downloadUrl(id), {
     credentials: 'include',
     headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
@@ -1183,8 +1185,12 @@ export async function downloadFile(id: string, name: string) {
     if (res.status === 401) throw new UnauthorizedError(detail)
     throw new ApiError(res.status, detail)
   }
+  return res.blob()
+}
 
-  const url = URL.createObjectURL(await res.blob())
+/** Downloads a stored file under its own name. */
+export async function downloadFile(id: string, name: string) {
+  const url = URL.createObjectURL(await fileBlob(id))
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = name
