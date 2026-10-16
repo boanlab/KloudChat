@@ -300,3 +300,20 @@ def test_an_english_page_or_a_bare_day_leaves_the_reading_to_all_the_evidence():
         answer=before)
     settled = value_guard.settle(before, after, ev).text
     assert "(확인 필요)" not in settled
+
+
+def test_a_companys_own_blog_and_a_sign_in_page_are_not_another_product():
+    # LFLF10: 「… JANDI 블로그 · blog.jandi.com」 and 「Microsoft 365 - Sign into Copilot」
+    blog, m365 = "https://blog.jandi.com/ko/voucher", "https://m365.cloud.microsoft/"
+    spam = "https://www.korealbs.or.kr/product/1"
+    text = ("대상: 잔디(JANDI)\n\n| 항목 | 잔디 | 365 Copilot |\n|---|---|---|\n"
+            f"| 움직임 | 바우처 80% 할인 [[4]]({blog}) | 앱 통합 [[2]]({m365}) |\n"
+            f"| 가격 | 확인 필요 | 월 30달러 [[1]]({spam}) |\n"
+            f"| 고객 | 확인 필요 | E3·E5 고객 [[1]]({spam}) |\n\n"
+            f"- [4] [(2025 클라우드 바우처) 잔디 할인 - JANDI 블로그 · blog.jandi.com]({blog})\n"
+            f"- [2] [Microsoft 365 - Sign into Copilot · m365.cloud.microsoft]({m365})\n"
+            f"- [1] [github copilot priceDownload for Android · korealbs.or.kr]({spam})")
+    found = [(f["row"], f["column"]) for f in claims.check(text, "", {})
+             if "다른 제품" in f["why"]]
+    # a page cited in most of a column's cells is still another product's
+    assert found == [("가격", "365 Copilot"), ("고객", "365 Copilot")]

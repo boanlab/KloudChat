@@ -219,10 +219,16 @@ def _cited_titles(lines: list[str]) -> tuple[dict[str, str], dict[str, str]]:
     return titles, urls
 
 
+#: address endings that name no one: 「blog.jandi.com」 → jandi
+_SUFFIX = frozenset("com net org co or go ac kr io ai dev app me info biz us uk jp cn".split())
+
+
 def _host(url: str) -> str:
-    """The site a page is on: 「learn.microsoft.com」 → microsoft.com."""
-    host = re.sub(r"^https?://", "", url or "").split("/")[0].lower()
-    return ".".join(host.split(".")[-2:])
+    """Whose site a page is on: 「learn.microsoft.com」, 「m365.cloud.microsoft」 → microsoft."""
+    labels = re.sub(r"^https?://", "", url or "").split("/")[0].lower().split(".")
+    while len(labels) > 1 and labels[-1] in _SUFFIX:
+        labels.pop()
+    return labels[-1] if labels else ""
 
 
 def _column_hosts(rows: list, entities: dict[int, set[str]],
@@ -242,17 +248,21 @@ def _column_hosts(rows: list, entities: dict[int, set[str]],
 def _other_product(col: int, numbers: set[str], entities: dict[int, set[str]],
                    titles: dict[str, str], urls: dict[str, str],
                    hosts: dict[int, set[str]]) -> str | None:
-    """Another product of the same name a cell's sources are all about: a page off the
-    column's own sites whose title puts another word before the column's (r10 LFLF7
-    SK-competitor-2: 「GitHub Copilot」 on github.com cited in the 365 Copilot column)."""
+    """Another product of the same name a cell's sources are all about: a page whose title
+    puts another brand than the column's own sites' before the column's name (r10 LFLF7
+    SK-competitor-2: 「GitHub Copilot」 on github.com cited in the 365 Copilot column; LFLF10:
+    a 「github copilot price」 page cited in three of its cells)."""
     names = entities.get(col)
     if not names or not numbers or not hosts.get(col):
         return None
     found = None
     for n in numbers:
         title = titles.get(n)
-        if title is None or _host(urls.get(n, "")) in hosts[col]:
+        site = _host(urls.get(n, ""))
+        if title is None or any(site and site in name for name in names):
             return None
+        # the list's 「· blog.jandi.com」 is where, not what
+        title = re.sub(r"\s·\s[\w.-]+\.[a-z]{2,}\s*$", "", title)
         words = _TITLE_WORD.findall(title)
         # a page on both (「GitHub Copilot vs 365 Copilot」) is about the column's product too:
         # its whole name is there, not one word of it
@@ -264,11 +274,22 @@ def _other_product(col: int, numbers: set[str], entities: dict[int, set[str]],
         hit = next((f"{words[i - 1]} {w}" for i, w in enumerate(words)
                     if i and _flat(w) in names and re.fullmatch(r"[A-Za-z][A-Za-z0-9]+", w)
                     and re.fullmatch(r"[A-Za-z][A-Za-z0-9]+", words[i - 1])
+                    and words[i - 1].lower() not in _PLAIN_WORDS
+                    # the maker of the column's own sources (「Microsoft Copilot」 on a column
+                    # citing microsoft.com) is no other brand
+                    and words[i - 1].lower() not in hosts[col]
                     and not _names(words[i - 1], names)), None)
         if hit is None:
             return None
         found = found or hit
     return found
+
+
+#: words before a product name that are no brand: 「Sign into Copilot」「Try Copilot」
+_PLAIN_WORDS = frozenset(
+    "into in on to for with and or of the a an your our my new get try buy use using sign "
+    "about what how why is are vs versus best free pricing price blog news guide review "
+    "download introducing meet".split())
 
 
 def _names(word: str, names: set[str]) -> bool:
