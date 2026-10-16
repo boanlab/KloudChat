@@ -162,17 +162,6 @@ def test_note_numbers_are_compared_with_their_units() -> None:
 # ── 3. skills ───────────────────────────────────────────────────────────
 
 
-def test_sns_and_ad_copy_share_one_blank_rule() -> None:
-    social = (SKILLS / "social-content" / "SKILL.md").read_text(encoding="utf-8")
-    ads = (SKILLS / "ad-creative" / "SKILL.md").read_text(encoding="utf-8")
-    # r7 A13-T2: 「[체험 신청 경로: 프로필 링크 등 담당자 확인 후 기재]」 in nearly every post
-    assert "[운영 방식: …]" not in social
-    assert "stays true without it" in social and "stays true without it" in ads
-    assert "프로필 링크에서 신청하세요" in social
-    assert "only for what the person alone can fill in" in social
-    assert "SNS 콘텐츠" in ads and "광고 소재" in social
-
-
 def _script(name: str):
     path = SKILLS / "source-check" / "scripts" / f"{name}.py"
     key = f"_source_check_{name}"

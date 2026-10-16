@@ -3,7 +3,7 @@
 Round 8: an agent's always-on skill laid its own frame over a request that named its form. 개조식
 보고 turned 「3줄 요약, 영상에서 설명한 핵심 개념, 스터디 토론 질문 2개로」 into a ~임 report
 (A08, three models), put 현황·붙임 around 「핵심은 5줄 이내 … 영향 3가지와 준비할 일」
-(A02-T2), and 콘텐츠 전략 split 「날짜·채널·형식·주제·본문 초안·해시태그를 표로」 into a
+(A02-T2), and a content-plan skill split 「날짜·채널·형식·주제·본문 초안·해시태그를 표로」 into a
 schedule and a scored priority table (A13-T2). The skill's text is the person's; what code
 can do is see the form the request names and tell the writer the skill's frame yields to it.
 """

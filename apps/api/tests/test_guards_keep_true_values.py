@@ -44,7 +44,7 @@ A16_WRITTEN = (
     "뺀 항목: 없음 (7개 항목 모두 반영, 빠짐 0)"
 )
 
-# what the release-notes check and the rewrite left of it (the final answer as shipped)
+# what a skill post-check and the rewrite left of it (the final answer as shipped)
 A16_GUARDED = (
     "두 문서 모두 개발팀 변경 목록 [수치]개 항목만 근거로 썼습니다.\n\n"
     "**제목** 한빛워크 3.4.1 배포 안내 (11/[수치] 수 22:00~24:00 점검)\n\n"
@@ -86,14 +86,6 @@ def test_the_release_note_dates_and_counts_come_back_and_only_the_wrong_day_is_m
     assert "변경 목록 7개 항목" in out and "(7개 항목 모두 반영" in out
     # 11월 청구서 on 11월 3일: no list line says so
     assert "11월 청구서는 11월 3일(확인 필요)에 도착합니다." in out
-
-
-def test_the_release_notes_script_reads_the_list_s_date_in_another_notation():
-    notes = skill_scripts.module("release-notes", "notes")
-    text = ("2026년 11월 4일(수) 22:00~24:00 점검 중 배포합니다. 변경 목록 7개 항목을 모두 "
-            "반영했습니다.")
-    out = notes.post(text, {"material": A16_REQUEST, "final": True})
-    assert out["text"] == text and not out["fixed"]
 
 
 def test_an_ordinal_is_not_a_quantity_for_the_notice_check():
@@ -300,7 +292,7 @@ def test_the_skill_check_stage_leaves_no_value_blank(monkeypatch):
         answer=A16_WRITTEN, request=A16_REQUEST, model={"id": "m"}, actual_model=None,
         api_key="k", session_id="s", today=None, first_message=A16_REQUEST, messages=[],
         material=A16_REQUEST, check_keys=(), check_material="", tool_outputs=[], judge="",
-        kept_steps=[], usage={}, skill_keys=("release-notes", "internal-comms"), traced=True)
+        kept_steps=[], usage={}, skill_keys=("internal-comms",), traced=True)
 
     async def go():
         return [e async for e in SkillChecks().run(bundle, Context())]

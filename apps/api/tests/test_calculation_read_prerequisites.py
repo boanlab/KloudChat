@@ -264,7 +264,7 @@ async def test_knowledge_no_passages_preserves_no_operand_evidence(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_skill_lookup_is_not_a_read_that_can_end_the_turn(monkeypatch):
-    # A market-sizing turn: the model asks for the skill already on and gets 「없습니다」.
+    # A skill turn: the model asks for the skill already on and gets 「없습니다」.
     lookups = []
     ctx, seen, text, _ = await _run(monkeypatch, [
         [_call("calculate", {"expression": "7+9"})], "16",

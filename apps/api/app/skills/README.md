@@ -19,7 +19,8 @@ Attach a check by key: `checks = ["gap-check", "grounding-check"]` in `app/agent
 `services/check_skills.py` resolves the attached keys and runs them; the pipelines run them as
 `check` stages (`app/pipeline/check_stages.py`: `check:gaps`, `check:grounding`,
 `check:answer-grounding`; docs/architecture.md § Pipelines). `copy-check` runs as a stage of its
-own, `check:copy`, whenever a copy skill is on a chat turn (`services/copy_check.py`).
+own, `check:copy`, whenever a copy skill (`copy_check: true`, such as a person's own ad-copy
+skill) is on a chat turn (`services/copy_check.py`).
 
 The entry script's functions, by stage:
 
