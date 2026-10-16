@@ -18,21 +18,26 @@ function Bars({
 }) {
   const max = Math.max(...rows.map((r) => r.value), 1)
   return (
-    <div className="space-y-2.5">
+    // One grid for all rows: the amount and note columns take their widest entry, so a note
+    // stays on one line and the bar gives up the room.
+    <div className="space-y-2.5 sm:grid sm:grid-cols-[11rem_minmax(0,1fr)_auto_auto] sm:items-center sm:gap-x-3 sm:gap-y-2.5 sm:space-y-0">
       {rows.map((r) => (
-        // A phone puts the label on its own line above the bar.
-        <div key={r.label} className="flex items-center gap-3 max-sm:flex-wrap max-sm:gap-y-1">
-          <span className="w-44 shrink-0 truncate text-base max-sm:w-full">{r.label}</span>
-          <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-elevated">
+        // A phone puts the label and note on one line and the bar under them, so every bar
+        // has the same room; the break is no grid cell (display: none) on wider screens.
+        <div key={r.label} className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:contents">
+          <span className="truncate text-base max-sm:order-1 max-sm:min-w-0 max-sm:flex-1">{r.label}</span>
+          <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-elevated max-sm:order-4">
             <div
               className="h-full rounded-full"
               style={{ width: `${(r.value / max) * 100}%`, background: r.color ?? 'var(--accent)' }}
             />
           </div>
-          <span className="w-28 shrink-0 text-right text-sm tabular-nums text-muted">
+          <span className="min-w-20 text-right text-sm whitespace-nowrap tabular-nums text-muted max-sm:order-5">
             {format(r.value)}
           </span>
-          {r.sub && <span className="w-24 shrink-0 text-right text-xs text-faint">{r.sub}</span>}
+          {/* Always drawn: a missing cell would shift the next row's cells. */}
+          <span className="text-right text-xs whitespace-nowrap text-faint max-sm:order-2">{r.sub}</span>
+          <span aria-hidden className="hidden max-sm:order-3 max-sm:block max-sm:basis-full" />
         </div>
       ))}
     </div>
