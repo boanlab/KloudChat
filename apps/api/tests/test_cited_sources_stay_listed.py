@@ -253,3 +253,33 @@ def test_a_cell_citing_another_product_of_the_same_name_is_unsourced():
     found = [f for f in claims.check(text, "", {}) if f["kind"] == "unsourced_cell"]
     assert [(f["row"], f["column"]) for f in found] == [("고객", "M365 Copilot")]
     assert "GitHub Copilot" in found[0]["why"]
+
+
+def test_a_mark_stays_on_a_value_its_cited_page_does_not_give():
+    # LFLF8 SK-company-3: 2분기 figures cited to a darts-match page lost their marks
+    darts, dart = "https://darts.example/match", "https://dart.fss.or.kr/report"
+    before = (f"2분기 매출은 1,031억 원이다 [[8]]({darts}).\n\n"
+              f"영업이익은 260억 원이다 [[2]]({dart}).")
+    after = before.replace("1,031억 원이다", "1,031억 원(확인 필요)이다").replace(
+        "260억 원이다", "260억 원(확인 필요)이다")
+    ev = value_guard.Evidence.of([
+        f"[8] 다트 경기 결과\n{darts}\n결승은 3대 1로 끝났다.",
+        f"[2] 반기보고서\n{dart}\n매출 1,031억 원, 영업이익 260억 원."], answer=before)
+    settled = value_guard.settle(before, after, ev).text
+    assert "1,031억 원(확인 필요)" in settled and "260억 원이다" in settled
+
+
+def test_a_comparison_page_and_a_korean_maker_are_not_another_product():
+    # LFLF8: 「GitHub Copilot and Microsoft 365 Copilot」 and 「마드라스체크(플로우)」
+    ms = "https://learn.microsoft.com/m365/copilot"
+    text = ("| 항목 | 플로우 | 365 Copilot |\n|---|---|---|\n"
+            f"| 대상 | 확인 필요 | 조직 [[1]]({ms}) |\n"
+            f"| 배포 | 확인 필요 | 클라우드 [[1]]({ms}) |\n"
+            "| 가격 | 세미나 [[3]](https://thevc.kr/madrascheck) | 월 30달러 "
+            "[[6]](https://gptprompts.ai/copilot-pricing) |\n\n"
+            f"- [1] [Microsoft 365 Copilot overview · learn.microsoft.com]({ms})\n"
+            "- [3] [마드라스체크(플로우) - 기업정보 - THE VC · thevc.kr]"
+            "(https://thevc.kr/madrascheck)\n"
+            "- [6] [Copilot Pricing 2026: GitHub Copilot and Microsoft 365 Copilot Cost · "
+            "gptprompts.ai](https://gptprompts.ai/copilot-pricing)")
+    assert not [f for f in claims.check(text, "", {}) if "다른 제품" in f["why"]]

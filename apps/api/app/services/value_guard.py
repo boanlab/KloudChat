@@ -1143,13 +1143,50 @@ def _unmark(before: str, after: str, ev: Evidence, structure: int, out: Settled)
             continue  # the writer marked it
         line, base = _line_at(after, m.start())
         start = m.start() - len(head) + value.start() - base
-        if supported(written, line, start, ev, structure, _table_header(after, m.start())):
+        header = _table_header(after, m.start())
+        if supported(written, line, start, ev, structure, header) and _cited_support(
+                written, line, start, ev, structure, header):
             out.restored.append(written)
             cut = m.start() - (1 if after[m.start() - 1:m.start()] == " " else 0)
             pieces.append(after[at:cut])
             at = m.end()
     pieces.append(after[at:])
     return "".join(pieces)
+
+
+#: a citation the answer linked: 「[[3]](https://…)」
+_CITED_URL = re.compile(r"\[\[\d{1,3}\]\]\((https?://[^)\s]{1,500})\)")
+#: a search result's entry: 「[3] 제목」 then its address and text
+_ENTRY = re.compile(r"(?m)^(?=\[\d{1,3}\]\s)")
+
+
+def pages_at(urls: Iterable[str], texts: Iterable[str]) -> str | None:
+    """What the pages at `urls` said this turn: their search entries and fetched pages (a
+    fetched page's text starts with its address), or None when one was not read."""
+    texts = [t for t in texts if t]
+    pages: list[str] = []
+    for url in dict.fromkeys(urls):
+        found = [part for text in texts if url in text
+                 for part in (_ENTRY.split(text) if _ENTRY.search(text) else [text])
+                 if url in part]
+        if not found:
+            return None
+        pages += found
+    return "\n".join(pages) if pages else None
+
+
+def _cited_support(written: str, line: str, offset: int, ev: Evidence, structure: int,
+                   header: list[str] | None) -> bool:
+    """A value on a line that cites pages read this turn is supported by those pages (r10
+    LFLF8 SK-company-3: figures cited to a darts-match page had their marks taken off because
+    another page held them)."""
+    urls = _CITED_URL.findall(line)
+    cited = pages_at(urls, ev.texts) if urls else None
+    if cited is None:
+        return True
+    narrow = Evidence.of([cited], answer=ev.answer, request=ev.request, today=ev.today,
+                         worked=ev.worked)
+    return supported(written, line, offset, narrow, structure, header)
 
 
 def _dropped_given(old: str, new: str, ev: Evidence) -> str:

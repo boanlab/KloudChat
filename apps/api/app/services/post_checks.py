@@ -8,7 +8,14 @@ import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 
-from app.services import internal_words, skill_packages, skill_scripts, skill_specs, units
+from app.services import (
+    internal_words,
+    skill_packages,
+    skill_scripts,
+    skill_specs,
+    units,
+    value_guard,
+)
 
 log = logging.getLogger(__name__)
 
@@ -454,10 +461,6 @@ def code_reading(quote: str, evidence: str) -> str:
 #: the citations right after a statement: 「… 인수했다 [[1]](https://…)[[3]](https://…)」
 _CITE_RUN = re.compile(r"[\s.,。]{0,3}((?:\[\[\d{1,3}\]\]\(https?://[^)\s]{1,500}\)[\s,]*)+)")
 _CITED_URL = re.compile(r"\[\[\d{1,3}\]\]\((https?://[^)\s]{1,500})\)")
-#: a search result's entry: 「[3] 제목」 then its address and text
-_ENTRY = re.compile(r"(?m)^(?=\[\d{1,3}\]\s)")
-
-
 def cited_pages(quote: str, text: str, computed: list[str]) -> str | None:
     """What the pages a statement cites say: the search entries and fetched pages under the
     addresses of the `[[n]](url)` run after it, or None when it cites none or one of them
@@ -474,15 +477,8 @@ def cited_pages(quote: str, text: str, computed: list[str]) -> str | None:
     if first is None or re.search(r"[.!?。]\s+\S", rest[:first.start()]):
         return None
     run = _CITE_RUN.match(rest, max(0, first.start() - 3)) or _CITE_RUN.search(rest)
-    urls = _CITED_URL.findall(run.group(1) if run else first.group(0))
-    pages = []
-    for url in dict.fromkeys(urls):
-        found = [part for out in computed if url in (out or "")
-                 for part in (_ENTRY.split(out) if _ENTRY.search(out) else [out]) if url in part]
-        if not found:
-            return None
-        pages += found
-    return "\n".join(pages) if pages else None
+    return value_guard.pages_at(_CITED_URL.findall(run.group(1) if run else first.group(0)),
+                                computed)
 
 
 #: the mark a judged statement gets where it stands (`value_guard.MARK`)

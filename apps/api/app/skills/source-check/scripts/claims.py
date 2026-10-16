@@ -254,8 +254,17 @@ def _other_product(col: int, numbers: set[str], entities: dict[int, set[str]],
         if title is None or _host(urls.get(n, "")) in hosts[col]:
             return None
         words = _TITLE_WORD.findall(title)
+        # a page on both (「GitHub Copilot vs 365 Copilot」) is about the column's product too:
+        # its whole name is there, not one word of it
+        single = {_flat(w) for w in words}
+        if any(name not in single and name in _flat(title) for name in names):
+            return None
+        # a Latin brand put before the name (「GitHub Copilot」); a Korean word there is
+        # as often the maker (「마드라스체크 플로우」, r10 LFLF8 SK-competitor-1)
         hit = next((f"{words[i - 1]} {w}" for i, w in enumerate(words)
-                    if i and _flat(w) in names and not _names(words[i - 1], names)), None)
+                    if i and _flat(w) in names and re.fullmatch(r"[A-Za-z][A-Za-z0-9]+", w)
+                    and re.fullmatch(r"[A-Za-z][A-Za-z0-9]+", words[i - 1])
+                    and not _names(words[i - 1], names)), None)
         if hit is None:
             return None
         found = found or hit
