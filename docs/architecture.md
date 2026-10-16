@@ -350,7 +350,9 @@ once and the model is asked to search the rest (`query_terms.unsearched`). A lis
 with no 게시일 carries the day it was read (「· 확인 2026-10-15」). The skills' last check
 (`source-check/post`) also takes out a citation of a page about another company: a company
 directory's profile of another firm in a 「○○ 한눈에」 one-pager, or, in a comparison
-table, sources that name another column's company and not the cell's own.
+table, sources that name another column's company and not the cell's own, or a page off the
+column's own sites about another product of the same name (「GitHub Copilot」 in a 365
+Copilot column).
 
 **Sources are cited by number, never typed.** `run_turn` renumbers the `[n]`
 entries of every search result so the numbers run across the whole turn and
@@ -848,8 +850,9 @@ of the model that actually wrote (`model_tier.group`, `Request.group`):
 
 Two rules hold for every group. **Marking is apart from deleting**: no judge model deletes
 or rewrites a sentence unless code has confirmed that one of its figures or names is in
-none of the evidence (`post_checks.code_reading`); a finding code cannot check is marked or
-shown, never acted on. **Code fixes only what it computes**: a value is replaced by code only
+none of the evidence (`post_checks.code_reading`); a statement that cites pages read this
+turn (`[[n]](url)`) is read against those pages only (`post_checks.cited_pages`), not every
+page the turn searched. A finding code cannot check is marked or shown, never acted on. **Code fixes only what it computes**: a value is replaced by code only
 when code knows the right one (a settled figure, an official hotline, a recomputed date).
 
 Small external models have no round-8 measurement; their column follows round 6 (old code)

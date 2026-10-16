@@ -1143,6 +1143,13 @@ def _unrelated(claim: str, page: str) -> bool:
     return not words & read
 
 
+def _fetched_url(call: dict) -> str:
+    try:
+        return str(json.loads(call.get("arguments") or "{}").get("url") or "").strip()
+    except (json.JSONDecodeError, AttributeError):
+        return ""
+
+
 def _link_citations(answer: str, sources: list[str],
                     seen: dict[str, str] | None = None) -> tuple[str, list[int]]:
     """Link `[n]` citations to sources (code blocks untouched); returns answer and cited numbers.
@@ -2591,7 +2598,10 @@ async def run_turn(
                 # what was searched, so a 0-result search can be read (r7 DSP P07·P31·P56)
                 **({"query": query} if (query := searched_query(call)) else {}),
             }
-            if not result.failed and call["name"] != "web_search":
+            if not result.failed and call["name"] == "fetch_url":
+                # the page under its address: a check reads a cited [[n]](url) against it
+                ctx.outputs.append(f"{_fetched_url(call)}\n{result.content}".lstrip())
+            elif not result.failed and call["name"] != "web_search":
                 ctx.outputs.append(result.content)
             elif not result.failed and not result.empty:
                 ctx.searched.append(result.content)

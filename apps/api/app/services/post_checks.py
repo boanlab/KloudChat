@@ -451,6 +451,40 @@ def code_reading(quote: str, evidence: str) -> str:
     return "present"
 
 
+#: the citations right after a statement: 「… 인수했다 [[1]](https://…)[[3]](https://…)」
+_CITE_RUN = re.compile(r"[\s.,。]{0,3}((?:\[\[\d{1,3}\]\]\(https?://[^)\s]{1,500}\)[\s,]*)+)")
+_CITED_URL = re.compile(r"\[\[\d{1,3}\]\]\((https?://[^)\s]{1,500})\)")
+#: a search result's entry: 「[3] 제목」 then its address and text
+_ENTRY = re.compile(r"(?m)^(?=\[\d{1,3}\]\s)")
+
+
+def cited_pages(quote: str, text: str, computed: list[str]) -> str | None:
+    """What the pages a statement cites say: the search entries and fetched pages under the
+    addresses of the `[[n]](url)` run after it, or None when it cites none or one of them
+    was not read this turn (r10 LFLF7 SK-company-1: 「김상철 회장」 in some other page kept a
+    statement its own source [1] does not make)."""
+    phrase = (quote or "").strip().rstrip(".!?。 ")
+    at = text.find(phrase) if len(phrase) >= 4 else -1
+    if at < 0:
+        return None
+    end = at + len(phrase)
+    line_end = text.find("\n", end)
+    rest = text[end:line_end if line_end >= 0 else len(text)]
+    first = _CITED_URL.search(rest)
+    if first is None or re.search(r"[.!?。]\s+\S", rest[:first.start()]):
+        return None
+    run = _CITE_RUN.match(rest, max(0, first.start() - 3)) or _CITE_RUN.search(rest)
+    urls = _CITED_URL.findall(run.group(1) if run else first.group(0))
+    pages = []
+    for url in dict.fromkeys(urls):
+        found = [part for out in computed if url in (out or "")
+                 for part in (_ENTRY.split(out) if _ENTRY.search(out) else [out]) if url in part]
+        if not found:
+            return None
+        pages += found
+    return "\n".join(pages) if pages else None
+
+
 #: the mark a judged statement gets where it stands (`value_guard.MARK`)
 MARK = "(확인 필요)"
 
@@ -540,8 +574,11 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
     held, marked, absent = [], [], []
     for row in judged:
         quote = _flat(row["text"])
+        # a statement citing pages read this turn is read against those pages only
+        cited = cited_pages(row["text"], text, list(computed))
         reading = "absent" if any(s and (s in quote or quote in s) for s in scripted) \
-            else code_reading(row["text"], everything)
+            else code_reading(row["text"], everything if cited is None else "\n".join(
+                [request, material, attached, cited]))
         if reading == "present":
             held.append({**row, "why": f"{row['why']} (근거에 있는 값이라 남김)"})
         elif reading == "absent" or strong:

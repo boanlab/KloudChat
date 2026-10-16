@@ -202,6 +202,71 @@ def _other_company(col: int, numbers: set[str], entities: dict[int, set[str]],
     return other
 
 
+_LIST_TITLE = re.compile(r"^\s*[-*]?\s*\[(\d{1,3})\]\s+\[([^\]\n]+)\]\((https?://[^)\s]+)\)")
+_TITLE_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z][A-Za-z0-9]+|\d+")
+
+
+def _cited_titles(lines: list[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Each listed number's title and each cited number's address."""
+    titles: dict[str, str] = {}
+    urls: dict[str, str] = {}
+    for line in lines:
+        if found := _LIST_TITLE.match(line):
+            titles[found.group(1)] = found.group(2)
+            urls[found.group(1)] = found.group(3)
+        for n, url in _LINKED_SOURCE.findall(line):
+            urls.setdefault(n, url)
+    return titles, urls
+
+
+def _host(url: str) -> str:
+    """The site a page is on: 「learn.microsoft.com」 → microsoft.com."""
+    host = re.sub(r"^https?://", "", url or "").split("/")[0].lower()
+    return ".".join(host.split(".")[-2:])
+
+
+def _column_hosts(rows: list, entities: dict[int, set[str]],
+                  urls: dict[str, str]) -> dict[int, set[str]]:
+    """The sites two or more of a company column's cells cite: where its sources are."""
+    out: dict[int, set[str]] = {}
+    for col in entities:
+        counts: dict[str, int] = {}
+        for _, cells in rows:
+            if col < len(cells):
+                for host in {_host(urls[n]) for n in _cited_numbers(cells[col]) if n in urls}:
+                    counts[host] = counts.get(host, 0) + 1
+        out[col] = {h for h, k in counts.items() if k >= 2}
+    return out
+
+
+def _other_product(col: int, numbers: set[str], entities: dict[int, set[str]],
+                   titles: dict[str, str], urls: dict[str, str],
+                   hosts: dict[int, set[str]]) -> str | None:
+    """Another product of the same name a cell's sources are all about: a page off the
+    column's own sites whose title puts another word before the column's (r10 LFLF7
+    SK-competitor-2: 「GitHub Copilot」 on github.com cited in the 365 Copilot column)."""
+    names = entities.get(col)
+    if not names or not numbers or not hosts.get(col):
+        return None
+    found = None
+    for n in numbers:
+        title = titles.get(n)
+        if title is None or _host(urls.get(n, "")) in hosts[col]:
+            return None
+        words = _TITLE_WORD.findall(title)
+        hit = next((f"{words[i - 1]} {w}" for i, w in enumerate(words)
+                    if i and _flat(w) in names and not _names(words[i - 1], names)), None)
+        if hit is None:
+            return None
+        found = found or hit
+    return found
+
+
+def _names(word: str, names: set[str]) -> bool:
+    flat = _flat(word)
+    return bool(_EDITION.fullmatch(word)) or any(flat in n or n in flat for n in names)
+
+
 def tables(lines: list[str]) -> list[dict]:
     found = []
     index = 0
@@ -232,6 +297,7 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
     derived = derived_numbers(material)
     lines = (text or "").split("\n")
     pages = _cited_pages(lines)
+    titles, urls = _cited_titles(lines)
     findings: list[dict] = []
     for t_index, table in enumerate(tables(lines)):
         header = table["header"]
@@ -241,6 +307,7 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
         own_cols = {i for i, c in enumerate(header) if OWN_HEADER.search(c)}
         entities = _entity_columns(header, labels, {source_col, verdict_col, *note_cols,
                                                     *own_cols}, text or "")
+        column_hosts = _column_hosts(table["rows"], entities, urls)
         for line_no, cells in table["rows"]:
             row_sourced = False
             if source_col is not None and source_col < len(cells):
@@ -296,6 +363,18 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
                     row_open = True
                     continue
                 foreign = _other_company(col, _cited_numbers(cell) or row_cites, entities, pages)
+                product = _other_product(col, _cited_numbers(cell), entities, titles, urls,
+                                         column_hosts) if foreign is None else None
+                if product is not None:
+                    findings.append({
+                        **base,
+                        "kind": "unsourced_cell",
+                        "why": f"인용한 출처가 다른 제품({product}) 자료입니다",
+                        "suggestion": "이 제품을 다룬 출처를 붙이거나 「확인 필요」로 적으세요",
+                        "placeholder": "확인 필요",
+                    })
+                    row_open = True
+                    continue
                 if foreign is None and (CITED.search(cell) or row_sourced or _in_material(
                         cell, material, material_norm, derived)):
                     continue

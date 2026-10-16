@@ -200,3 +200,56 @@ def test_memo_lines_handed_over_to_check_are_each_searched():
     assert query_terms.unsearched(memo, [*queries, *more]) == []
     # the person's own material to work from is not a list of things to look up
     assert query_terms.memo_items("이 자료만으로 정리해 줘.\n\n- 요금 월 6천 원\n- 고객 30곳") == []
+
+
+def test_a_judged_statement_is_read_against_the_pages_it_cites():
+    import asyncio
+    import json
+
+    # LFLF7 SK-company-1: 「AWS」 in another page kept a statement its own [1] lacks
+    one, two = "https://smartbizn.com/a", "https://news.example/b"
+    answer = (f"노마디안은 AWS와 2025년 협약했다 [[1]]({one}).\n"
+              f"매출은 1,753억 원이다 [[2]]({two}).")
+    computed = [f"[1] 한컴 AI 매출\n{one}\n한컴은 AI 문서 도구를 낸다.",
+                f"[2] 한컴 실적\n{two}\n노마디안은 AWS와 2025년 협약했고 매출 1,753억 원을 냈다."]
+    judged = [{"quote": "노마디안은 AWS와 2025년 협약했다", "why": "자료에 없음"},
+              {"quote": "매출은 1,753억 원이다", "why": "자료에 없음"}]
+
+    async def complete(model, messages, api_key, max_tokens):
+        prompt = messages[0]["content"]
+        if prompt.startswith("You check an answer"):
+            return json.dumps({"unsupported": judged}, ensure_ascii=False), {}
+        if prompt.startswith("Below are the material an answer was written from"):
+            return json.dumps({"verdicts": []}), {}
+        return answer.replace("노마디안은 AWS와 2025년 협약했다 ", ""), {}
+
+    pages = post_checks.cited_pages("노마디안은 AWS와 2025년 협약했다", answer, computed)
+    assert pages.startswith("[1] 한컴 AI 매출")
+    out = asyncio.run(post_checks.run(
+        answer, keys=["company-research"], request="한컴 조사해 줘", material="", attached="",
+        computed=computed, today="2026-10-16", complete=complete, model="w", judge="j",
+        api_key="k"))
+    sent = [row["text"] for row in out.sent]
+    assert "노마디안은 AWS와 2025년 협약했다" in sent and "매출은 1,753억 원이다" not in sent
+    # a page not read this turn (or no citation) leaves the reading to all the evidence
+    assert post_checks.cited_pages("매출은 1,753억 원이다", answer, computed[:1]) is None
+
+
+def test_a_cell_citing_another_product_of_the_same_name_is_unsourced():
+    # LFLF6 SK-competitor-2: GitHub Copilot pages cited in the M365 Copilot column
+    ms = "https://learn.microsoft.com/m365/copilot"
+    text = ("| 항목 | 뤼튼 | M365 Copilot |\n|---|---|---|\n"
+            f"| 대상 | 확인 필요 | 조직 [[1]]({ms}) |\n"
+            f"| 배포 | 확인 필요 | 클라우드 [[2]](https://blogs.microsoft.com/m365) |\n"
+            "| 고객 | 확인 필요 | Duolingo·FedEx [[3]](https://github.com/features/copilot) |\n"
+            "| 앱 | 확인 필요 | Microsoft Copilot 앱 "
+            "[[4]](https://www.microsoft.com/copilot) |\n\n"
+            f"- [1] [Microsoft 365 Copilot overview · learn.microsoft.com]({ms})\n"
+            "- [2] [Introducing Microsoft 365 Copilot · blogs.microsoft.com]"
+            "(https://blogs.microsoft.com/m365)\n"
+            "- [3] [GitHub Copilot · Your AI coding agent · github.com]"
+            "(https://github.com/features/copilot)\n"
+            "- [4] [Download Microsoft Copilot App · microsoft.com](https://www.microsoft.com/copilot)")
+    found = [f for f in claims.check(text, "", {}) if f["kind"] == "unsourced_cell"]
+    assert [(f["row"], f["column"]) for f in found] == [("고객", "M365 Copilot")]
+    assert "GitHub Copilot" in found[0]["why"]
