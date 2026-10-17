@@ -13,7 +13,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent / "skills"
 
-#: renamed keys; old rows still resolve
+#: former catalogue key → current key, for stored rows
 RENAMED = {"calculation-unit-check": "calc-check"}
 
 _FIELDS = ("name", "description", "when_to_use", "kinds", "required_tools", "version", "status",
@@ -238,7 +238,7 @@ def packages() -> dict[str, SkillPackage]:
 
 
 def package_for(key: str | None) -> SkillPackage | None:
-    """Package for a catalogue key (renamed keys included)."""
+    """Package for a catalogue key (former keys included)."""
     if not key:
         return None
     key = key.strip()

@@ -3,9 +3,8 @@
 A writer's table often comes out half-formed: a header and rule with no leading pipe
 (「할 일 | 담당 | 기한」 / 「---|---|---」), a row ending in a bare 「|」, rows split off by a
 blank line or a caption. Later code reads only whole tables (leading pipe, header, rule), so
-such a table was taken apart further — its first row made a header, the rest left as text
-(r9 LFLF R3-A01-T1: the action-item table shipped as an empty header, a table and two loose
-lines). The cells are all there; `rebuild` puts them back under one header. `flatten` is the
+such a table would be taken apart further — its first row made a header, the rest left as
+text. The cells are all there; `rebuild` puts them back under one header. `flatten` is the
 fallback for pipe lines no table can take, `cite` points the text at a table it never names.
 """
 

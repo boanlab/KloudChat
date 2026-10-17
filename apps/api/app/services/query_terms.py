@@ -279,12 +279,10 @@ def memo_items(request: str) -> list[tuple[str, list[str]]]:
 
 
 def unsearched(request: str, queries: Iterable[str]) -> list[str]:
-    """Names the request lists that no query has a word of (r10 SK-competitor-1: 네이버웍스,
-    one of three competitors, never searched), then memo lines no query has two words of
-    (r10 SK-company-3: 「ERP 1위」, 「공공 클라우드」 never searched)."""
+    """Names the request lists that no query has a word of, then memo lines no query has two
+    words of (「ERP 1위」, 「공공 클라우드」)."""
     listed = listed_names(request)
-    # a query naming two of them is the request searched whole (r10 LFLF4 SK-competitor-1:
-    # one query of the whole ask counted all three as searched); each is searched on its own
+    # a query naming two of them is the request searched whole; each is searched on its own
     asked = [q for q in (norm(q) for q in queries)
              if sum(1 for _, tokens in listed if any(norm(t) in q for t in tokens)) < 2]
     names = [name for name, tokens in listed

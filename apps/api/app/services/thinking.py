@@ -50,8 +50,8 @@ def mandatory(model: str) -> bool:
 
 
 def room(model: str, max_tokens: int) -> int:
-    """`max_tokens` for an answer of `max_tokens`: plus thinking room when reasoning cannot be
-    turned off (r7 GLM-5.3 「Reasoning is mandatory」: a section's 1,200 went to thinking)."""
+    """`max_tokens` for an answer of `max_tokens`, plus thinking room when reasoning cannot be
+    turned off."""
     return max_tokens + THINK_ROOM if model in _MANDATORY else max_tokens
 
 
@@ -93,6 +93,5 @@ def starved(payload: dict, asked: int) -> int:
     if not thought:
         # no reasoning reported: answer itself overflowed
         thought = int(usage.get("completion_tokens") or 0)
-    # the answer's whole budget again on top of what was thought, not only a little headroom
-    # (r7 A04-T2: 「thought + 700」 ran out once more and every section came back empty)
+    # the answer's whole budget again on top of what was thought (「thought + 700」 runs out again)
     return asked + thought + max(_HEADROOM, asked) if thought else 0

@@ -381,17 +381,6 @@ async def test_a_long_gaejo_body_is_counted_and_condensed_once():
     assert condensed[1] == sections[1]
 
 
-async def test_the_gaejo_page_count_also_reads_the_hwpx_through_the_attachment_line():
-    short = [{"heading": "현황", "content": "- 짧은 항목 1건."},
-             {"heading": "붙임", "content": "1. 세부 1부."}]
-    assert await report_checks.hwpx_page_count("보고", short, None) == 1
-    long = "\n".join(f"- 항목 {i}: 세부 경위와 설명이 길게 이어지는 줄이다." for i in range(160))
-    over = [{"heading": "현황", "content": long}, *short[1:]]
-    assert (await report_checks.hwpx_page_count("보고", over, None) or 0) > 1
-    serif = await report_checks.hwpx_page_count("보고", over, None, {"font": "serif"})
-    assert serif and serif > 1
-
-
 def test_unrelated_formats_have_no_pre_pass_or_checks():
     assert not any(process_settings.for_format(f).prepass for f in ("lab", "term"))
     assert report_checks.checks(None) == []

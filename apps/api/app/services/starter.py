@@ -91,7 +91,7 @@ def retired_agents() -> frozenset[str]:
 def withdrawn_agents() -> frozenset[str]:
     """Withdrawn catalogue keys (`withdrawn = true`): offered to no one for new use — not
     listed, installed or picked as a base — while the rows, their copies, conversations and
-    published bots keep working. Their abilities are skills now (D21)."""
+    published bots keep working."""
     return frozenset(spec["key"] for spec in _AGENTS if spec.get("withdrawn"))
 
 
@@ -389,7 +389,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                     db.add(copy)
             continue
         if agent is not None:
-            # renamed agent: copies with an old shipped name take the new one
+            # copies under a `former_names` entry take the current name
             if former := [str(n) for n in spec.get("former_names") or ()]:
                 renamed = await db.exec(select(Agent).where(
                     col(Agent.origin_id) == agent.id, col(Agent.name).in_(former)))

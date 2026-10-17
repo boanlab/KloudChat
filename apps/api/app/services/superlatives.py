@@ -72,7 +72,7 @@ def narrow_sweeping_claims(text: str) -> str:
                 r"(?<![\d.])\d[\d,]{0,15}(?:\.\d{1,6})?", line[line.index(label):])}
             if extreme in stated and extreme in values:
                 # the claim names the table's one extreme cell (「전 문항 중 최저(2.89)」): true
-                # as written, not a claim about every column (r7 A06-T1)
+                # as written, not a claim about every column
                 continue
             where = [name for i, name in enumerate(columns)
                      if values[i] == pick(row[i] for row in table.values())]

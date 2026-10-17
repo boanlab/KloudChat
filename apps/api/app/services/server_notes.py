@@ -1,9 +1,8 @@
 """Notes the server adds under an answer, and taking them back off.
 
 A stored answer keeps the server's notes (the reader saw them), but the next turn's model must
-not read them as its own words: r7 P56 sent turn 1's 「_웹 검색이 쓸 만한 결과를 주지 않아…_」
-and 「확인 필요: … 전문가에게 확인하세요.」 back as history, the model wrote both into turn 2 and
-the server added them again — every note twice.
+not read them as its own words: sent back as history, they are copied into the next answer and
+then added again — every note twice.
 """
 
 from __future__ import annotations
@@ -36,8 +35,8 @@ def strip(text: str) -> str:
     return out.rstrip() if out != text else text
 
 
-#: The answer saying itself that it could not confirm (r7 P19 「이번 검색에서 … 확인하지
-#: 못했으니」, P27 「not something I verified in this session」): no note repeats it.
+#: The answer saying itself that it could not confirm (「이번 검색에서 … 확인하지 못했으니」,
+#: 「not something I verified in this session」): no note repeats it.
 _SAYS_UNCONFIRMED = re.compile(
     r"확인(?:하지|할 수|되지)\s?(?:못|않|없)|확인\s?못\s?(?:했|함|한)|찾지\s?못했"
     r"|검색(?:으로|에서|결과[로에]?)?[^.\n]{0,20}(?:나오지\s?않|없었)|"

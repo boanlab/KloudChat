@@ -270,7 +270,7 @@ _CARED = _p(
     r"(?:er|hospital)\s+(?:said|cleared))\b"
 )
 
-#: Earlier user turns read with the latest one (P14: headache in turn 1, the arm in turn 2).
+#: Earlier user turns read with the latest one (headache in turn 1, the arm in turn 2).
 _EARLIER = 2
 
 
