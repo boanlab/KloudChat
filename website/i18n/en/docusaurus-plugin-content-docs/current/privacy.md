@@ -48,6 +48,8 @@ Personal data is masked in every request, and **the conversation history is also
 
 When the administrator turns on this policy, a request that carries attachments, project files or memory is answered by the strict-local twin of the chosen model instead, and that conversation never moves to an external model afterwards. Without a twin, the strict-local safe model set by the administrator answers. Without that either, the request is refused.
 
+Pictures, charts and figures follow the same rule. In a project conversation, a conversation that had attachments, or a strict-local conversation, they are made only on a strict-local model whatever model was picked, and are not made when no strict-local model is available.
+
 ## strict-local models
 
 These are models confirmed not to send anything outside. Selecting one disables web search, page reading, and connectors. A name starting with `local` does not make a model strict-local, so check the label in the list.

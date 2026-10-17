@@ -8,7 +8,7 @@ import {
   errorMessage,
 } from '@/lib/api'
 import { servedAspect } from '@/lib/aspects'
-import { refusalSentence, streamFailureSentence } from '@/lib/failures'
+import { mediaFailure, refusalSentence, streamFailureSentence } from '@/lib/failures'
 import {
   ApiError,
   PrivacyDecisionError,
@@ -2048,7 +2048,7 @@ export const useStore = create<State>((set, get) => ({
           // The drawing step's own sentences are ours to show; server text is not.
           const said =
             err instanceof ApiError
-              ? errorMessage(err, tr('도식을 만들지 못했습니다.'))
+              ? mediaFailure(err, tr('도식을 만들지 못했습니다.'), tr)
               : err instanceof Error && err.message
                 ? err.message
                 : tr('도식을 만들지 못했습니다.')
@@ -2081,7 +2081,7 @@ export const useStore = create<State>((set, get) => ({
       // The server's rows carry the message ids and the settled charge.
       await get().openSession(id)
     } catch (err) {
-      failMediaTurn(set, id, promptId, answerId, errorMessage(err, tr('이미지를 만들지 못했습니다.')))
+      failMediaTurn(set, id, promptId, answerId, mediaFailure(err, tr('이미지를 만들지 못했습니다.'), tr))
     } finally {
       endRun(set, id)
     }

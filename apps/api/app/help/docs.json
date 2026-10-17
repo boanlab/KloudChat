@@ -1054,7 +1054,7 @@
 "path": "privacy",
 "title": "개인정보 보호",
 "heading": "내부 자료는 strict-local로만",
-"text": "관리자가 이 정책을 켜면 첨부 파일, 프로젝트 파일, 메모리가 들어간 요청은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 대화는 이후에도 외부 모델로 넘어가지 않습니다. strict-local 판이 없으면 관리자가 지정한 strict-local 안전 모델이 답하고, 그것도 없으면 전송을 거절합니다."
+"text": "관리자가 이 정책을 켜면 첨부 파일, 프로젝트 파일, 메모리가 들어간 요청은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 대화는 이후에도 외부 모델로 넘어가지 않습니다. strict-local 판이 없으면 관리자가 지정한 strict-local 안전 모델이 답하고, 그것도 없으면 전송을 거절합니다.\n\n이미지, 차트, 도식도 같습니다. 프로젝트 대화, 첨부가 있던 대화, strict-local 대화에서는 고른 모델과 상관없이 strict-local 모델로만 만들고, 쓸 수 있는 strict-local 모델이 없으면 만들지 않습니다."
 },
 {
 "lang": "ko",
@@ -2475,7 +2475,7 @@
 "path": "privacy",
 "title": "Privacy",
 "heading": "Internal material stays strict-local",
-"text": "When the administrator turns on this policy, a request that carries attachments, project files or memory is answered by the strict-local twin of the chosen model instead, and that conversation never moves to an external model afterwards. Without a twin, the strict-local safe model set by the administrator answers. Without that either, the request is refused."
+"text": "When the administrator turns on this policy, a request that carries attachments, project files or memory is answered by the strict-local twin of the chosen model instead, and that conversation never moves to an external model afterwards. Without a twin, the strict-local safe model set by the administrator answers. Without that either, the request is refused.\n\nPictures, charts and figures follow the same rule. In a project conversation, a conversation that had attachments, or a strict-local conversation, they are made only on a strict-local model whatever model was picked, and are not made when no strict-local model is available."
 },
 {
 "lang": "en",

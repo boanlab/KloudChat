@@ -2,7 +2,8 @@ import { ImagePlus, Loader2, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ArtifactPreview } from '@/components/artifacts/ArtifactPanel'
 import { Button, Input } from '@/components/ui'
-import { ApiError, errorMessage, sessionsApi } from '@/lib/api'
+import { ApiError, sessionsApi } from '@/lib/api'
+import { mediaFailure } from '@/lib/failures'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { drawFigure, useStore } from '@/store/useStore'
@@ -121,7 +122,7 @@ export function PicturePicker({
       setError(
         err instanceof Error && !(err instanceof ApiError) && err.message
           ? err.message
-          : errorMessage(err, t('그림을 만들지 못했습니다.')),
+          : mediaFailure(err, t('그림을 만들지 못했습니다.'), t),
       )
     } finally {
       setMaking(false)

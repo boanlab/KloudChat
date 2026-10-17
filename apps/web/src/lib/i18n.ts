@@ -2972,6 +2972,8 @@ const EN: Record<string, string> = {
     'This account may not use that model. Pick another and try again.',
   '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.':
     'No model is available right now. Ask an administrator.',
+  '내부 자료나 개인정보가 있어 strict-local 모델로만 만들 수 있는데, 쓸 수 있는 strict-local 모델이 없습니다. 관리자에게 문의하세요.':
+    'This holds internal material or personal data, so only a strict-local model may make it, and none is available. Ask an administrator.',
   '이번 달 크레딧이 부족합니다.': 'Out of credits for this month.',
   '모델 서버가 응답하지 않습니다. 잠시 후 다시 시도하세요.':
     'The model server is not responding. Try again in a moment.',
