@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import re
 from datetime import datetime
@@ -998,9 +999,62 @@ async def _name_session_after(db: DbSession, user: User, artifact: Artifact) -> 
         db.add(session)
 
 
+
+async def _edit_model(
+    db: DbSession,
+    user: User,
+    request: Request | None,
+    artifact: Artifact | None,
+    catalogue: list[dict],
+    *,
+    kind: str,
+    text: str,
+    follow_session: bool = True,
+    searches: bool = False,
+    own_file: bool = False,
+) -> dict:
+    """The model a document edit may use, inside the chat turn's data boundary.
+
+    Internal material, a strict-local conversation or personal data stay on
+    strict-local models, refused when there is none; the account's allowlist holds.
+    A web fact-check sends its claims to search engines, so it is refused inside.
+    """
+    from app.routers import sessions as chat
+
+    session = (
+        await db.get(ChatSession, artifact.session_id)
+        if artifact is not None and artifact.session_id
+        else None
+    )
+    boundary = await chat._edit_boundary(db, session, catalogue, text, own_file=own_file)
+    if boundary.strict and searches:
+        await chat._audit_media_boundary(
+            user, request, session, boundary, refused=True, surface="edit"
+        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="factcheck_needs_web")
+    asked = (session.model or "") if session is not None and follow_session else ""
+    if boundary.strict and asked.startswith("local/"):
+        # the same model's strict-local entry, when the account may use it
+        asked = "strict-local/" + asked.split("/", 1)[1]
+    model = chat._media_model(user, catalogue, kind=kind, boundary=boundary, asked=asked)
+    if model is None:
+        if boundary.strict:
+            await chat._audit_media_boundary(
+                user, request, session, boundary, refused=True, surface="edit"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="internal_data_requires_strict_local",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
+        )
+    await chat._audit_media_boundary(user, request, session, boundary, surface="edit")
+    return model
+
 @router.post("/artifacts/{artifact_id}/slides/factcheck", response_model=ArtifactOut)
 async def factcheck_slide(
-    artifact_id: str, payload: SlideFactCheck, user: CurrentUser, db: DbSession
+    artifact_id: str, payload: SlideFactCheck, user: CurrentUser, db: DbSession, request: Request
 ):
     """Web fact-check of one slide; verdicts stored. Charged."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
@@ -1018,14 +1072,11 @@ async def factcheck_slide(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slide_not_found")
 
     catalogue = await model_service.list_models()
-    usable = sorted(
-        (m for m in catalogue["models"] if "chat" in m["kinds"]), key=model_service.fallback_order
+    model = await _edit_model(
+        db, user, request, artifact, catalogue["models"],
+        kind="chat", follow_session=False, searches=True,
+        text=json.dumps(target, ensure_ascii=False),
     )
-    if not usable:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
-        )
-    model = usable[0]
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -1095,7 +1146,7 @@ async def store_diagram(
 
 @router.post("/artifacts/{artifact_id}/sections/factcheck", response_model=ArtifactOut)
 async def factcheck_section(
-    artifact_id: str, payload: SectionFactCheck, user: CurrentUser, db: DbSession
+    artifact_id: str, payload: SectionFactCheck, user: CurrentUser, db: DbSession, request: Request
 ):
     """Web fact-check of one report section; verdicts stored. Charged."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
@@ -1113,14 +1164,11 @@ async def factcheck_section(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="section_not_found")
 
     catalogue = await model_service.list_models()
-    usable = sorted(
-        (m for m in catalogue["models"] if "chat" in m["kinds"]), key=model_service.fallback_order
+    model = await _edit_model(
+        db, user, request, artifact, catalogue["models"],
+        kind="chat", follow_session=False, searches=True,
+        text=f"{target.get('heading') or ''}\n{target.get('content') or ''}",
     )
-    if not usable:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
-        )
-    model = usable[0]
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -1187,7 +1235,7 @@ def _reviewable(artifact: Artifact) -> tuple[str, str]:
 
 
 @router.post("/artifacts/{artifact_id}/critique", response_model=ArtifactOut)
-async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
+async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession, request: Request):
     """Model critique stored as `data.critique`. Charged; non-blocking."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     body, rubric = _reviewable(artifact)
@@ -1195,18 +1243,10 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_reviewable")
 
     catalogue = await model_service.list_models()
-    usable = sorted(
-        (m for m in catalogue["models"] if "chat" in m["kinds"]),
-        key=model_service.fallback_order,
+    model = await _edit_model(
+        db, user, request, artifact, catalogue["models"],
+        kind="chat", text=f"{artifact.title or ''}\n{body}",
     )
-    session = await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
-    model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
-        usable[0] if usable else None
-    )
-    if model is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
-        )
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -1526,7 +1566,9 @@ async def add_section_image(
 
 
 @router.post("/artifacts/{artifact_id}/blocks/rewrite", response_model=ArtifactOut)
-async def rewrite_block(artifact_id: str, payload: BlockRewrite, user: CurrentUser, db: DbSession):
+async def rewrite_block(
+    artifact_id: str, payload: BlockRewrite, user: CurrentUser, db: DbSession, request: Request
+):
     """One HTML block rewrite, `content` re-rendered. Charged, snapshotted."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.html:
@@ -1546,18 +1588,12 @@ async def rewrite_block(artifact_id: str, payload: BlockRewrite, user: CurrentUs
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="blocks_not_editable")
 
     catalogue = await model_service.list_models()
-    usable = sorted(
-        (m for m in catalogue["models"] if template.surface.value in m["kinds"]),
-        key=model_service.fallback_order,
+    model = await _edit_model(
+        db, user, request, artifact, catalogue["models"],
+        kind=template.surface.value,
+        text=f"{artifact.title or ''}\n{payload.note or ''}\n"
+        + json.dumps(blocks, ensure_ascii=False),
     )
-    session = await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
-    model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
-        usable[0] if usable else None
-    )
-    if model is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
-        )
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -1637,7 +1673,7 @@ async def rewrite_block(artifact_id: str, payload: BlockRewrite, user: CurrentUs
 
 @router.post("/artifacts/{artifact_id}/sections/rewrite", response_model=ArtifactOut)
 async def rewrite_section(
-    artifact_id: str, payload: SectionRewrite, user: CurrentUser, db: DbSession
+    artifact_id: str, payload: SectionRewrite, user: CurrentUser, db: DbSession, request: Request
 ):
     """One report section rewrite. Charged, snapshotted."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
@@ -1651,19 +1687,12 @@ async def rewrite_section(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="section_not_found")
 
     catalogue = await model_service.list_models()
-    usable = sorted(
-        (m for m in catalogue["models"] if "report" in m["kinds"]),
-        key=model_service.fallback_order,
+    model = await _edit_model(
+        db, user, request, artifact, catalogue["models"],
+        kind="report",
+        text=f"{data.get('request') or artifact.title or ''}\n{payload.note or ''}\n"
+        + json.dumps(sections, ensure_ascii=False),
     )
-    # session model, else cheapest report-capable
-    session = await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
-    model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
-        usable[0] if usable else None
-    )
-    if model is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
-        )
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -1733,7 +1762,9 @@ async def rewrite_section(
 
 
 @router.post("/artifacts/{artifact_id}/slides/rewrite", response_model=ArtifactOut)
-async def rewrite_slide(artifact_id: str, payload: SlideRewrite, user: CurrentUser, db: DbSession):
+async def rewrite_slide(
+    artifact_id: str, payload: SlideRewrite, user: CurrentUser, db: DbSession, request: Request
+):
     """One slide rewrite. Charged, snapshotted."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.deck:
@@ -1746,18 +1777,12 @@ async def rewrite_slide(artifact_id: str, payload: SlideRewrite, user: CurrentUs
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slide_not_found")
 
     catalogue = await model_service.list_models()
-    usable = sorted(
-        (m for m in catalogue["models"] if "slides" in m["kinds"]),
-        key=model_service.fallback_order,
+    model = await _edit_model(
+        db, user, request, artifact, catalogue["models"],
+        kind="slides",
+        text=f"{artifact.title or ''}\n{payload.note or ''}\n"
+        + json.dumps(slides, ensure_ascii=False),
     )
-    session = await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
-    model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
-        usable[0] if usable else None
-    )
-    if model is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
-        )
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -2918,7 +2943,9 @@ async def list_designs(user: CurrentUser, db: DbSession):
 
 
 @router.post("/designs/extract", response_model=DesignExtractOut)
-async def extract_design(payload: DesignExtractIn, user: CurrentUser, db: DbSession):
+async def extract_design(
+    payload: DesignExtractIn, user: CurrentUser, db: DbSession, request: Request
+):
     """Design system proposal from file or URL; not stored. Charged."""
     if bool(payload.file_id) == bool(payload.url):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="file_or_url")
@@ -2948,15 +2975,11 @@ async def extract_design(payload: DesignExtractIn, user: CurrentUser, db: DbSess
             )
 
     catalogue = await model_service.list_models()
-    usable = sorted(
-        (m for m in catalogue["models"] if "chat" in m["kinds"]),
-        key=model_service.fallback_order,
+    model = await _edit_model(
+        db, user, request, None, catalogue["models"],
+        kind="chat", follow_session=False, own_file=bool(payload.file_id),
+        text=source if payload.file_id else "",
     )
-    model = usable[0] if usable else None
-    if model is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
-        )
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"

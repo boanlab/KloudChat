@@ -29,6 +29,8 @@ const REFUSALS: Record<string, string> = {
   no_models_available: '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.',
   internal_data_requires_strict_local:
     '내부 자료나 개인정보가 있어 strict-local 모델로만 만들 수 있는데, 쓸 수 있는 strict-local 모델이 없습니다. 관리자에게 문의하세요.',
+  factcheck_needs_web:
+    '내부 자료나 개인정보가 있는 문서는 웹 검색으로 사실 확인을 할 수 없습니다. 확인할 내용이 외부 검색 엔진으로 나가기 때문입니다.',
   freshness_verification_unavailable:
     '최신 정보를 검증할 수 없어 요청을 진행하지 않았습니다. 검증 가능한 자료를 제공하거나 검색이 허용된 환경에서 다시 시도하세요.',
   calculation_tool_unavailable:
@@ -40,7 +42,7 @@ const REFUSALS: Record<string, string> = {
     '개인정보 검사기를 사용할 수 없어 요청을 보내지 못했습니다. 잠시 후 다시 시도하세요.',
 }
 
-/** A refused picture, chart or figure: our sentence for a known code, else `fallback`. */
+/** A refused picture, figure or document edit: our sentence for a known code, else `fallback`. */
 export function mediaFailure(err: unknown, fallback: string, t: T): string {
   const code = err instanceof ApiError && err.status < 500 ? errorCode(err) : ''
   return code && REFUSALS[code] ? t(REFUSALS[code]) : errorMessage(err, fallback)

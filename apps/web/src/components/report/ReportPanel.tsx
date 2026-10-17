@@ -39,6 +39,7 @@ import { ArtifactRibbon, QuickAccess, RibbonGroup } from '@/components/artifacts
 import { usePanelNarrow } from '@/lib/usePanelNarrow'
 import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, MenuSeparator, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
+import { mediaFailure } from '@/lib/failures'
 import { fromMarkdown, toMarkdown } from '@/lib/reportMarkdown'
 import { cn, formatTokens } from '@/lib/utils'
 import type { LintFinding, ReportArtifact, ReportSection, ReportTitleBlock, Source } from '@/types'
@@ -704,7 +705,7 @@ export function ReportPanel({
       report.version = row.version
       useStore.getState().noteArtifactVersion(report.id, row.version)
     } catch (err) {
-      setCheckError(errorMessage(err, t('확인하지 못했습니다.')))
+      setCheckError(mediaFailure(err, t('확인하지 못했습니다.'), t))
     } finally {
       setChecking(null)
     }
@@ -822,7 +823,7 @@ export function ReportPanel({
       useStore.getState().noteArtifactVersion(report.id, row.version)
       setRewriting(null)
     } catch (err) {
-      setRewriteError(errorMessage(err, t('다시 쓰지 못했습니다.')))
+      setRewriteError(mediaFailure(err, t('다시 쓰지 못했습니다.'), t))
     } finally {
       setRewriteBusy(false)
     }

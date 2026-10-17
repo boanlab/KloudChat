@@ -46,6 +46,7 @@ import { usePanelNarrow } from '@/lib/usePanelNarrow'
 import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, MenuSeparator, Modal, Textarea } from '@/components/ui'
 import { DownloadMenu, ReuseItems } from '@/components/artifacts/ResultActions'
 import { artifactsApi, errorMessage } from '@/lib/api'
+import { mediaFailure } from '@/lib/failures'
 import { FRAMES, drawIntoFitting, frameElement, paperStyles, rasterise, slideTheme } from '@/lib/mermaid'
 import { cn } from '@/lib/utils'
 import type { DeckArtifact, LintFinding, Slide } from '@/types'
@@ -2126,7 +2127,7 @@ export function DeckPanel({
       deck.version = row.version
       useStore.getState().noteArtifactVersion(deck.id, row.version)
     } catch (err) {
-      setError(errorMessage(err, t('확인하지 못했습니다.')))
+      setError(mediaFailure(err, t('확인하지 못했습니다.'), t))
     } finally {
       setChecking(false)
     }
@@ -2339,7 +2340,7 @@ export function DeckPanel({
       useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(data.slides)
     } catch (err) {
-      setError(errorMessage(err, t('다시 쓰지 못했습니다.')))
+      setError(mediaFailure(err, t('다시 쓰지 못했습니다.'), t))
     } finally {
       setRewritingSlide(false)
     }
