@@ -468,7 +468,7 @@ interface State {
   saveGovernance: (patch: Partial<GovernancePolicy>) => Promise<number>
 
   // ── image / audio-video ───────────────────────────────────────────────
-  imageOptions: { aspect: string; style: string; labels: 'auto' | 'ko' | 'en' | 'none'; count: number }
+  imageOptions: { aspect: string; style: string; labels: 'auto' | 'ko' | 'en' | 'none' }
   setImageOptions: (patch: Partial<State['imageOptions']>) => void
   /** Text to drop into the composer; never sent on the user's behalf. */
   draft: string
@@ -2066,7 +2066,7 @@ export const useStore = create<State>((set, get) => ({
         ),
         style: opts.raw ? '없음' : imageOptions.style,
         labels: imageOptions.labels,
-        count: imageOptions.count,
+        count: 1,
         raw: opts.raw,
       })
       set((s) => ({ artifacts: [...rows.map(toArtifact), ...s.artifacts] }))
@@ -2075,7 +2075,7 @@ export const useStore = create<State>((set, get) => ({
         id,
         answerId,
         rows.map((row) => row.id),
-        rows.length < imageOptions.count,
+        rows.length < 1,
       )
       await get().loadSessions()
       // The server's rows carry the message ids and the settled charge.
@@ -2185,7 +2185,7 @@ export const useStore = create<State>((set, get) => ({
     await sessionsApi.rate(messageId, next).catch(() => show(before))
   },
 
-  imageOptions: { aspect: '16:9', style: '자동', labels: 'auto', count: 1 },
+  imageOptions: { aspect: '16:9', style: '자동', labels: 'auto' },
   setImageOptions: (patch) => set((s) => ({ imageOptions: { ...s.imageOptions, ...patch } })),
   draft: '',
   draftTo: null,

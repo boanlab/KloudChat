@@ -1566,6 +1566,8 @@ const EN: Record<string, string> = {
   '소리': 'Sound',
   '소스': 'Source',
   '수채화': 'Watercolour',
+  '정확한 도식': 'Exact figure',
+  '프롬프트 그대로': 'Prompt as written',
   '스킬 관리': 'Manage skills',
   '스킬 편집': 'Edit skill',
   '스타일': 'Style',

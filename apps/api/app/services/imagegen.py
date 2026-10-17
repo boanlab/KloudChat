@@ -63,16 +63,19 @@ _STYLE_PHRASE = {
     ),
 }
 
-#: wire/screen chips (mirrored in web); diagram chips go to draw_native; 도식 accepted, not offered
+#: screen chips (mirrored in web's STYLE_GROUPS): the picture model's looks, then the
+#: figures drawn as shapes or a chart, then the prompt as written. 도식, 미니멀 and 3D 렌더
+#: are still accepted (document figures pass 미니멀) but not offered.
 STYLE_CHOICES = [
     "자동",
-    "인포그래픽",
-    "차트",
     "사진",
     "일러스트",
-    "미니멀",
-    "3D 렌더",
+    "인포그래픽",
     "수채화",
+    "구조도",
+    "흐름도",
+    "개념도",
+    "차트",
     "없음",
 ]
 
@@ -198,7 +201,7 @@ def _measure(data: bytes) -> tuple[int, int]:
 
 
 #: image-only models that honour image_config.aspect_ratio (measured 10-17)
-_ASPECT_FAMILIES = ("seedream", "grok-imagine", "recraft")
+_ASPECT_FAMILIES = ("seedream", "grok-imagine", "recraft", "gpt-5.4-image")
 
 
 def honours_aspect(model_id: str) -> bool:
@@ -211,10 +214,14 @@ def honours_aspect(model_id: str) -> bool:
     )
 
 
+#: GPT-5 Image, GPT-5.4 Image 2, …: a chat model that also draws
+_GPT_IMAGE = re.compile(r"gpt-[0-9.]+-image")
+
+
 def modalities_for(model_id: str) -> list[str]:
-    """OpenRouter refuses image+text on image-only models; Gemini and GPT-5 Image answer in both."""
+    """OpenRouter refuses image+text on image-only models; Gemini and GPT Image answer in both."""
     lowered = model_id.lower()
-    if "gemini" in lowered or "gpt-5-image" in lowered or lowered.startswith(_SELF_HOSTED):
+    if "gemini" in lowered or _GPT_IMAGE.search(lowered) or lowered.startswith(_SELF_HOSTED):
         return ["image", "text"]
     return ["image"]
 

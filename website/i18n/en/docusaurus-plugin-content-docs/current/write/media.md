@@ -13,9 +13,10 @@ Set the image options below the input box.
 | Chip | Choices |
 |---|---|
 | Ratio | 16:9 · 9:16 · 4:3 · 1:1 (only the ones the model supports) |
-| Style | Auto · structure diagram · flow diagram · concept diagram · infographic · chart · photo · illustration · minimal · 3D render · watercolor · none |
+| Style | **Picture**: Auto · photo · illustration · infographic · watercolor<br/>**Exact figure**: structure diagram · flow diagram · concept diagram · chart<br/>Prompt as written |
 | Text | Auto · Korean · English · none |
-| Count | 1 · 2 · 4 |
+
+One picture is made at a time. The **Picture** group is drawn by the picture model; the **Exact figure** group is drawn as shapes or a chart without it, so its text is exact. **Prompt as written** sends the text to the picture model unchanged.
 
 The result card provides enlarged view, download, **Generate again**, **Fix the prompt**, and **View the prompt sent** (the final sentence that was actually sent). A chart is drawn as code by the text model. You can use **View the drawing code** and **Redraw with this code**. If you choose a model that does not support ratio settings, a message tells you that the image is generated as a square.
 

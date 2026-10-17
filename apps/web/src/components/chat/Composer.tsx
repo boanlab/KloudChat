@@ -21,7 +21,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { FileRow, PrivacyDecision, WebSearchSetting } from '@/lib/api'
 import { ApiError, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
@@ -67,8 +67,16 @@ const placeholders: Record<SessionKind, string> = {
   av: '만들고 싶은 영상이나 오디오를 설명하세요',
 }
 
-// Mirrors `imagegen.STYLE_CHOICES`; 구조도·흐름도·개념도 are drawn as deck-export shapes, not by the image model.
-const STYLES = ['자동', '구조도', '흐름도', '개념도', '인포그래픽', '차트', '사진', '일러스트', '미니멀', '3D 렌더', '수채화', '없음']
+// Mirrors `imagegen.STYLE_CHOICES`. The first group is drawn by the picture model; the
+// second is drawn as shapes or a chart (exact, editable text), not by the picture model.
+const STYLE_GROUPS: { label?: string; options: string[] }[] = [
+  { label: '그림', options: ['자동', '사진', '일러스트', '인포그래픽', '수채화'] },
+  { label: '정확한 도식', options: ['구조도', '흐름도', '개념도', '차트'] },
+  { options: ['없음'] },
+]
+const STYLES = STYLE_GROUPS.flatMap((group) => group.options)
+/** `없음` sends the prompt as written. */
+const styleLabel = (style: string) => (style === '없음' ? '프롬프트 그대로' : style)
 const LABELS: { id: 'auto' | 'ko' | 'en' | 'none'; label: string }[] = [
   { id: 'auto', label: '자동' },
   { id: 'ko', label: '한국어' },
@@ -115,12 +123,15 @@ function OptionGroup<T extends string | number>({
   label,
   value,
   options,
+  groups,
   onChange,
   format,
 }: {
   label: string
   value: T
   options: readonly T[]
+  /** Headed sections in place of `options`, a rule between them. */
+  groups?: readonly { label?: string; options: readonly T[] }[]
   onChange: (v: T) => void
   format?: (v: T) => string
 }) {
@@ -138,10 +149,16 @@ function OptionGroup<T extends string | number>({
         </button>
       )}
     >
-      {options.map((o) => (
-        <MenuItem key={String(o)} onClick={() => onChange(o)} checked={o === value}>
-          {format ? format(o) : String(o)}
-        </MenuItem>
+      {(groups ?? [{ options }]).map((group, index) => (
+        <Fragment key={group.label ?? index}>
+          {index > 0 && <MenuSeparator />}
+          {group.label && <MenuLabel>{format ? format(group.label as T) : group.label}</MenuLabel>}
+          {group.options.map((o) => (
+            <MenuItem key={String(o)} onClick={() => onChange(o)} checked={o === value}>
+              {format ? format(o) : String(o)}
+            </MenuItem>
+          ))}
+        </Fragment>
       ))}
     </Dropdown>
   )
@@ -164,8 +181,9 @@ function ImageOptions({ model }: { model: ModelInfo | undefined }) {
         label={t('스타일')}
         value={imageOptions.style}
         options={STYLES}
+        groups={STYLE_GROUPS}
         onChange={(v) => setImageOptions({ style: v })}
-        format={t}
+        format={(v) => t(styleLabel(v))}
       />
       <OptionGroup
         label={t('글자')}
@@ -173,13 +191,6 @@ function ImageOptions({ model }: { model: ModelInfo | undefined }) {
         options={LABELS.map((row) => row.id)}
         onChange={(v) => setImageOptions({ labels: v })}
         format={(v) => t(LABELS.find((row) => row.id === v)?.label ?? v)}
-      />
-      <OptionGroup
-        label={t('장수')}
-        value={imageOptions.count}
-        options={[1, 2, 4]}
-        onChange={(v) => setImageOptions({ count: v })}
-        format={(v) => t('{n}장').replace('{n}', String(v))}
       />
     </>
   )
@@ -980,7 +991,7 @@ export function Composer({
     kind === 'av' && avOptions.mode === 'video' && videoRate === undefined
   const estimate = isMedia
     ? kind === 'image'
-      ? (model?.creditPerImage ?? 0) * imageOptions.count
+      ? (model?.creditPerImage ?? 0)
       : avOptions.mode === 'video'
         ? (videoRate ?? 0) * avOptions.durationSec
         : (model?.creditPerCall ?? model?.creditCost ?? 0)

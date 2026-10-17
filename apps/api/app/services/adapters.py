@@ -56,6 +56,9 @@ MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
     # vision only for contained models: privacy guard can't inspect images
     "strict-local/qwen3.8-27b": {"supports_vision": True},
     "strict-local/qwen3.8-flash": {"supports_vision": True},
+    # ids whose dots became dashes, or whose vendor writes the name with a hyphen
+    "bytedance-seed/seedream-5-0-flash": {"label": "Seedream 5.0 Flash"},
+    "openai/gpt-5.4-image-2": {"label": "GPT-5.4 Image 2"},
 }
 
 # own-hardware providers: zero price is real

@@ -139,8 +139,16 @@ test('흐름도 칩은 서버의 도형 그림으로 가고 이미지 모델을 
   for (const name of ['구조도', '흐름도', '개념도']) {
     await expect(page.getByRole('menuitemcheckbox', { name, exact: true })).toBeVisible()
   }
+  // Two headed groups: what the picture model draws, and figures drawn exactly as shapes.
+  await expect(page.getByText('정확한 도식', { exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitemcheckbox', { name: '프롬프트 그대로', exact: true })).toBeVisible()
+  for (const gone of ['미니멀', '3D 렌더']) {
+    await expect(page.getByRole('menuitemcheckbox', { name: gone, exact: true })).toHaveCount(0)
+  }
   await shot(page, 'image-style-chips')
   await page.getByRole('menuitemcheckbox', { name: '흐름도', exact: true }).click()
+  // One picture a request: no count chip
+  await expect(page.getByRole('button', { name: /^장수/ })).toHaveCount(0)
   await expect(page.getByText('도식은 글 모델이 씁니다 · 그림 요금이 아닙니다')).toBeVisible()
   await page.getByLabel('프롬프트 입력').fill('요청이 게이트웨이를 거쳐 모델로 간다')
   await page.getByLabel('프롬프트 입력').press('Enter')
