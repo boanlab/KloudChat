@@ -2978,6 +2978,8 @@ const EN: Record<string, string> = {
     'No model is available right now. Ask an administrator.',
   '내부 자료나 개인정보가 있어 strict-local 모델로만 만들 수 있는데, 쓸 수 있는 strict-local 모델이 없습니다. 관리자에게 문의하세요.':
     'This holds internal material or personal data, so only a strict-local model may make it, and none is available. Ask an administrator.',
+  '내부 자료나 개인정보가 있는 문서는 웹 검색으로 사실 확인을 할 수 없습니다. 확인할 내용이 외부 검색 엔진으로 나가기 때문입니다.':
+    'A document with internal material or personal data cannot be fact-checked on the web: the claims would go to outside search engines.',
   '이번 달 크레딧이 부족합니다.': 'Out of credits for this month.',
   '모델 서버가 응답하지 않습니다. 잠시 후 다시 시도하세요.':
     'The model server is not responding. Try again in a moment.',

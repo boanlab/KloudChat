@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.models.chat import ChatSession
+from app.models.governance import Governance
 from app.models.user import CreditLedger, User
 from app.models.workspace import Artifact, ArtifactKind, Memory, MemoryType
 from app.routers import sessions as sessions_router
@@ -174,6 +175,10 @@ class _ArtifactDb:
     async def refresh(self, _value) -> None:
         return None
 
+    async def get(self, _model, _key):
+        # the deck's conversation is long gone: no session to keep inside
+        return None
+
 
 @pytest.mark.asyncio
 async def test_a_fact_checked_slide_reaches_the_ledger(monkeypatch) -> None:
@@ -239,9 +244,14 @@ async def test_a_fact_checked_slide_reaches_the_ledger(monkeypatch) -> None:
     monkeypatch.setattr(workspace_router.litellm_service, "ensure_key", ensure_key)
     monkeypatch.setattr(workspace_router.litellm_service, "credentials_for", credentials)
 
+    async def policy():
+        return Governance()
+
+    monkeypatch.setattr(sessions_router, "_require_egress_policy", policy)
+
     db = _ArtifactDb()
     await workspace_router.factcheck_slide(
-        artifact.id, SlideFactCheck(slide_id=_SLIDE["id"]), user, db
+        artifact.id, SlideFactCheck(slide_id=_SLIDE["id"]), user, db, None
     )
 
     assert seen["model"] == "vendor/cheap"

@@ -17,6 +17,7 @@ import { ReportPanel } from '@/components/report/ReportPanel'
 import { sectionText } from '@/components/report/SectionBody'
 import { Badge, Button, ButtonLink, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact, errorMessage, fileUrl } from '@/lib/api'
+import { mediaFailure } from '@/lib/failures'
 import { cn, relativeTime } from '@/lib/utils'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useStore } from '@/store/useStore'
@@ -306,7 +307,7 @@ function RewriteBlock({ artifact }: { artifact: CodeArtifact }) {
       setTarget(null)
       setNote('')
     } catch (err) {
-      setError(errorMessage(err, t('다시 쓰지 못했습니다.')))
+      setError(mediaFailure(err, t('다시 쓰지 못했습니다.'), t))
     } finally {
       setBusy(false)
     }

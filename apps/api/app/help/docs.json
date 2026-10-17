@@ -1054,7 +1054,7 @@
 "path": "privacy",
 "title": "개인정보 보호",
 "heading": "내부 자료는 strict-local로만",
-"text": "관리자가 이 정책을 켜면 첨부 파일, 프로젝트 파일, 메모리가 들어간 요청은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 대화는 이후에도 외부 모델로 넘어가지 않습니다. strict-local 판이 없으면 관리자가 지정한 strict-local 안전 모델이 답하고, 그것도 없으면 전송을 거절합니다.\n\n이미지, 차트, 도식도 같습니다. 프로젝트 대화, 첨부가 있던 대화, strict-local 대화에서는 고른 모델과 상관없이 strict-local 모델로만 만들고, 쓸 수 있는 strict-local 모델이 없으면 만들지 않습니다. 고른 그림 모델이 외부 모델이면 설정 → 환경설정의 **strict-local 그림 모델**로 그립니다."
+"text": "관리자가 이 정책을 켜면 첨부 파일, 프로젝트 파일, 메모리가 들어간 요청은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 대화는 이후에도 외부 모델로 넘어가지 않습니다. strict-local 판이 없으면 관리자가 지정한 strict-local 안전 모델이 답하고, 그것도 없으면 전송을 거절합니다.\n\n이미지, 차트, 도식도 같습니다. 프로젝트 대화, 첨부가 있던 대화, strict-local 대화에서는 고른 모델과 상관없이 strict-local 모델로만 만들고, 쓸 수 있는 strict-local 모델이 없으면 만들지 않습니다. 고른 그림 모델이 외부 모델이면 설정 → 환경설정의 **strict-local 그림 모델**로 그립니다.\n\n문서 편집(섹션·슬라이드·블록 다시 쓰기, 검토, 파일에서 테마 읽기)도 같습니다. 위 대화에서 만든 문서는 strict-local 모델로만 고치고, 개인정보가 들어 있는 문서도 가리지 않고 strict-local 모델로 고칩니다. 가리면 문서에 원문 대신 자리표시가 남기 때문입니다. 쓸 수 있는 strict-local 모델이 없으면 고치지 않습니다. 웹 사실 확인은 확인할 내용이 외부 검색 엔진으로 나가므로 이런 문서에서는 하지 않습니다."
 },
 {
 "lang": "ko",
@@ -2475,7 +2475,7 @@
 "path": "privacy",
 "title": "Privacy",
 "heading": "Internal material stays strict-local",
-"text": "When the administrator turns on this policy, a request that carries attachments, project files or memory is answered by the strict-local twin of the chosen model instead, and that conversation never moves to an external model afterwards. Without a twin, the strict-local safe model set by the administrator answers. Without that either, the request is refused.\n\nPictures, charts and figures follow the same rule. In a project conversation, a conversation that had attachments, or a strict-local conversation, they are made only on a strict-local model whatever model was picked, and are not made when no strict-local model is available. When the picked picture model is external, the **strict-local picture model** in Settings → Preferences draws it."
+"text": "When the administrator turns on this policy, a request that carries attachments, project files or memory is answered by the strict-local twin of the chosen model instead, and that conversation never moves to an external model afterwards. Without a twin, the strict-local safe model set by the administrator answers. Without that either, the request is refused.\n\nPictures, charts and figures follow the same rule. In a project conversation, a conversation that had attachments, or a strict-local conversation, they are made only on a strict-local model whatever model was picked, and are not made when no strict-local model is available. When the picked picture model is external, the **strict-local picture model** in Settings → Preferences draws it.\n\nDocument edits (rewriting a section, slide or block, a review, reading a theme from a file) follow the same rule. A document made in such a conversation is edited only on a strict-local model, and so is a document holding personal data: it is not masked, because masking would leave placeholders in the document. When no strict-local model is available, the edit is not made. A web fact-check sends the claims to outside search engines, so it is not run on such a document."
 },
 {
 "lang": "en",
