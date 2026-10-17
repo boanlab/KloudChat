@@ -12,6 +12,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core.config import settings
 from app.models.user import CreditLedger, User, UserStatus, utcnow
 
 KST = ZoneInfo("Asia/Seoul")
@@ -64,6 +65,17 @@ def charge_for_tokens(model: dict, input_tokens: int, output_tokens: int) -> int
         return 0  # self-hosted
     exact = (input_tokens * per_in + output_tokens * per_out) / 1000
     return max(1, ceil(exact))
+
+
+def charge_for_image(
+    model: dict, input_tokens: int, output_tokens: int, cost_usd: float | None
+) -> int:
+    """One picture: the reported upstream charge (flat per-image models), else per-token rates."""
+    if not (model.get("inputCreditCost") or model.get("creditCost")):
+        return 0  # self-hosted
+    if cost_usd is not None:
+        return max(1, ceil(cost_usd * settings.credits_per_usd))
+    return charge_for_tokens(model, input_tokens, output_tokens)
 
 
 def has_headroom(user: User, model: dict) -> bool:

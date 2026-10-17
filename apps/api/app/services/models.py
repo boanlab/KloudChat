@@ -26,6 +26,10 @@ _IMAGE_TOKENS = {
     "google/gemini-3-pro-image": 1290,
     "openai/gpt-5-image-mini": 5450,
     "openai/gpt-5-image": 5450,
+    # OpenRouter prices these per 1K image as 4,175 tokens (measured 10-17)
+    "bytedance-seed/seedream-5-0-flash": 4175,
+    "x-ai/grok-imagine-image-2.0": 4175,
+    "recraft/recraft-v4.1": 4175,
 }
 
 #: `{model_id: provider}` hidden for missing price, rebuilt per refresh
@@ -62,6 +66,7 @@ _VENDORS = {
     "anthropic": "Anthropic",
     "google": "Google",
     "x-ai": "xAI",
+    "bytedance-seed": "ByteDance",
     "perplexity": "Perplexity",
     "deepseek": "DeepSeek",
     "z-ai": "Z.ai",

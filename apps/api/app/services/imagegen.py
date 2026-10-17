@@ -175,6 +175,8 @@ class GeneratedImage:
     #: measured; 0 when unreadable
     width: int = 0
     height: int = 0
+    #: upstream charge when reported (OpenRouter `usage.cost`)
+    cost_usd: float | None = None
 
     @property
     def aspect(self) -> str:
@@ -195,10 +197,26 @@ def _measure(data: bytes) -> tuple[int, int]:
         return 0, 0
 
 
+#: image-only models that honour image_config.aspect_ratio (measured 10-17)
+_ASPECT_FAMILIES = ("seedream", "grok-imagine", "recraft")
+
+
 def honours_aspect(model_id: str) -> bool:
-    """Whether the model honours image_config.aspect_ratio (Gemini, self-hosted; OpenAI square)."""
+    """Whether image_config.aspect_ratio is honoured (Gemini, self-hosted, _ASPECT_FAMILIES)."""
     lowered = model_id.lower()
-    return "gemini" in lowered or lowered.startswith(("google/", *_SELF_HOSTED))
+    return (
+        "gemini" in lowered
+        or lowered.startswith(("google/", *_SELF_HOSTED))
+        or any(family in lowered for family in _ASPECT_FAMILIES)
+    )
+
+
+def modalities_for(model_id: str) -> list[str]:
+    """OpenRouter refuses image+text on image-only models; Gemini and GPT-5 Image answer in both."""
+    lowered = model_id.lower()
+    if "gemini" in lowered or "gpt-5-image" in lowered or lowered.startswith(_SELF_HOSTED):
+        return ["image", "text"]
+    return ["image"]
 
 
 #: composer ratios; 16:9 default
@@ -358,7 +376,7 @@ async def generate(
     """One picture, or ImageError."""
     payload: dict = {
         "model": model,
-        "modalities": ["image", "text"],
+        "modalities": modalities_for(model),
         "messages": [{"role": "user", "content": prompt}],
     }
     if aspect in _RATIOS:
@@ -395,7 +413,14 @@ async def generate(
         input_tokens=int(usage.get("prompt_tokens") or 0),
         # image_tokens already in completion_tokens
         output_tokens=int(usage.get("completion_tokens") or 0),
+        cost_usd=_reported_cost(usage),
     )
+
+
+def _reported_cost(usage: dict[str, Any]) -> float | None:
+    """OpenRouter's charge for the call; per-image models bill flat whatever the token count."""
+    cost = usage.get("cost")
+    return float(cost) if isinstance(cost, (int, float)) and cost >= 0 else None
 
 
 def store(user_id: str, image: GeneratedImage) -> tuple[str, str]:

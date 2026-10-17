@@ -66,3 +66,4 @@ async def test_a_self_hosted_picture_gets_the_longer_wait(monkeypatch) -> None:
         )
         assert (image.width, image.height) == (1, 1)
     assert seen == [imagegen._SELF_HOSTED_TIMEOUT, imagegen._TIMEOUT]
+

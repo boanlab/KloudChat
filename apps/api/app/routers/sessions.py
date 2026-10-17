@@ -167,7 +167,13 @@ from app.services.context import (
     weather_location,
     with_pictures,
 )
-from app.services.credits import charge_for_tokens, has_headroom, record_searches, settle
+from app.services.credits import (
+    charge_for_image,
+    charge_for_tokens,
+    has_headroom,
+    record_searches,
+    settle,
+)
 from app.services.tools import sandbox_tools
 from app.services.tools.base import Tool, ToolContext, openai_snapshot
 from app.services.tools.builtin import MAX_GIVEN_LINKS
@@ -471,6 +477,15 @@ def _with_actual_model(routing: dict, routed_model: str, actual_model: str) -> d
     else:
         updated.pop("actualModel", None)
     return updated
+
+
+def _document_image_model(user: User, catalogue: dict, *, strict_local: bool) -> dict | None:
+    """Figure model: strict-local turns use a strict-local model only; else the image default."""
+    usable = _allowed_models(user, catalogue["models"], kind="image")
+    if strict_local:
+        return next((m for m in usable if _strict_model(m)), None)
+    default = (catalogue.get("defaultModelByKind") or {}).get("image")
+    return next((m for m in usable if m["id"] == default), usable[0] if usable else None)
 
 
 def _allowed_models(user: User, catalogue: list[dict], *, kind: str) -> list[dict]:
@@ -2763,7 +2778,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         )
         db.add(artifact)
         made.append(artifact)
-        charged += charge_for_tokens(model, image.input_tokens, image.output_tokens)
+        charged += charge_for_image(model, image.input_tokens, image.output_tokens, image.cost_usd)
 
     if charged:
         settle(
@@ -4671,15 +4686,8 @@ async def send_message(
     if outline_model is not None and outline_model["id"] == model["id"]:
         outline_model = None  # the writer plans for itself; nothing to account for apart
 
-    #: image default draws document figures; none = no figure card
-    image_model = next(
-        (
-            m
-            for m in _allowed_models(user, catalogue_models, kind="image")
-            if "image" in (m.get("kinds") or [])
-        ),
-        None,
-    )
+    #: draws document figures; none = no figure card
+    image_model = _document_image_model(user, catalogue, strict_local=strict_local)
 
     render_template = design_templates.get(session.render_template_id)
     #: 「좋아, PDF로 줘」 = file hand-over, not an edit; 「견적 고치고 PDF로」 revises first
