@@ -213,6 +213,8 @@ export interface Preferences {
   /** The model picked on each surface, kept with the account across browsers. */
   modelByKind?: Partial<Record<SessionKind, string>>
   avModelByMode?: Partial<Record<'audio' | 'video', string>>
+  /** Picture model when a picture must stay strict-local and none was picked; '' = first listed. */
+  strictImageModel?: string
 }
 
 export type PrivacyAction = 'route_strict_local' | 'mask_external' | 'send_raw_external'

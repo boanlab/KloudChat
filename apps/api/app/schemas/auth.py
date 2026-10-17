@@ -64,6 +64,8 @@ class Preferences(Wire):
     #: per-surface/per-a/v-mode picks, synced across browsers; unserved ids fall back on screen
     model_by_kind: dict[str, str] = Field(default_factory=dict)
     av_model_by_mode: dict[str, str] = Field(default_factory=dict)
+    #: picture model when a picture must stay strict-local and none was picked; "" = first listed
+    strict_image_model: str = Field(default="", max_length=200)
 
     @field_validator("model_by_kind")
     @classmethod

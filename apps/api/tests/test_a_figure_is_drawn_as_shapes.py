@@ -10,6 +10,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.models.chat import ChatSession, SessionKind
+from app.models.governance import Governance
 from app.routers import sessions as sessions_router
 from app.schemas.chat import DiagramRequest
 from app.services import diagram, diagram_shapes, diagrams
@@ -153,6 +154,7 @@ class _Db:
 
 class _User:
     id = "u1"
+    allowed_models: list[str] = []
 
 
 @pytest.fixture
@@ -171,7 +173,15 @@ def endpoint(monkeypatch):
     async def credentials(_user):
         return "http://x", "k"
 
+    async def policy():
+        return Governance()
+
+    async def no_history(db, session_id):
+        return []
+
     monkeypatch.setattr(sessions_router, "_owned", owned)
+    monkeypatch.setattr(sessions_router, "_require_egress_policy", policy)
+    monkeypatch.setattr(sessions_router, "_history", no_history)
     monkeypatch.setattr(sessions_router.model_service, "list_models", models)
     monkeypatch.setattr(sessions_router, "has_headroom", lambda *_a: True)
     monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", nothing)
@@ -186,7 +196,8 @@ async def test_the_insert_returns_the_figure_drawn_as_shapes(monkeypatch, endpoi
     _renderer(monkeypatch, _PNG)
     db = _Db()
     out = await sessions_router.write_diagram(
-        "s1", DiagramRequest(description="수집해 분석하고 집행한다", figure="flow"), _User(), db
+        "s1", DiagramRequest(description="수집해 분석하고 집행한다", figure="flow"), _User(), db,
+        None,
     )
     assert out.source == _FLOW and out.artifact is not None
     data = out.artifact.data
@@ -211,7 +222,7 @@ async def test_an_insert_that_cannot_be_drawn_is_refused_without_a_picture(
     db = _Db()
     with pytest.raises(HTTPException) as raised:
         await sessions_router.write_diagram(
-            "s1", DiagramRequest(description="…", figure="flow"), _User(), db
+            "s1", DiagramRequest(description="…", figure="flow"), _User(), db, None
         )
     assert raised.value.status_code == 422 and raised.value.detail == detail
     # No artifact, no stored file.

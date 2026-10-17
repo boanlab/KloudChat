@@ -74,7 +74,6 @@ const EN: Record<string, string> = {
   '오디오 기본 모델': 'Default audio model',
   '동영상 기본 모델': 'Default video model',
   '대화 기본 모델을 따름': 'Follow the default chat model',
-  '가장 싼 그림 모델': 'Cheapest image model',
   '가장 싼 오디오 모델': 'Cheapest audio model',
   '가장 싼 동영상 모델': 'Cheapest video model',
   '제목·기억·요약 모델': 'Titles, memories and summaries model',
@@ -87,6 +86,8 @@ const EN: Record<string, string> = {
   '앞의 모델이 실패하면 한 번 더 씁니다.': 'Gets one more try when the model above fails.',
   '대체 모델 없음': 'No fallback',
   '대화 기본 모델은 비워 둘 수 없습니다.': 'The default chat model cannot be left empty.',
+  '그림 기본 모델은 비워 둘 수 없습니다.': 'The default image model cannot be left empty.',
+  '모델을 고르세요': 'Choose a model',
   '보조 작업에는 이 인스턴스가 직접 운영하는 모델만 고를 수 있습니다.': 'Side work can only use models this instance runs itself.',
   '이 작업에 쓸 수 없는 모델입니다. 목록에서 다시 고르세요.': 'That model cannot do this job. Choose again from the list.',
   '작업별 모델': 'Models by job',
@@ -2967,10 +2968,16 @@ const EN: Record<string, string> = {
     'The model stopped responding, so the request was cancelled. Try another model.',
   '이 모델은 지금 이 화면에서 쓸 수 없습니다. 모델을 바꿔 다시 시도하세요.':
     'That model cannot be used on this surface right now. Pick another and try again.',
+  'strict-local 그림 모델': 'strict-local picture model',
+  '목록의 첫 모델 ({model})': 'First in the list ({model})',
+  '내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 할 때, 고른 그림 모델이 외부 모델이면 이 모델로 그립니다.':
+    'When a picture in a conversation or document with internal material must stay strict-local and the picked picture model is external, this model draws it.',
   '이 계정에 허용되지 않은 모델입니다. 모델을 바꿔 다시 시도하세요.':
     'This account may not use that model. Pick another and try again.',
   '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.':
     'No model is available right now. Ask an administrator.',
+  '내부 자료나 개인정보가 있어 strict-local 모델로만 만들 수 있는데, 쓸 수 있는 strict-local 모델이 없습니다. 관리자에게 문의하세요.':
+    'This holds internal material or personal data, so only a strict-local model may make it, and none is available. Ask an administrator.',
   '이번 달 크레딧이 부족합니다.': 'Out of credits for this month.',
   '모델 서버가 응답하지 않습니다. 잠시 후 다시 시도하세요.':
     'The model server is not responding. Try again in a moment.',

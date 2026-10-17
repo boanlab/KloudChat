@@ -102,7 +102,7 @@
 "path": "admin/system",
 "title": "시스템 설정",
 "heading": "모델",
-"text": "사용자가 모델을 고르지 않았을 때 어떤 모델이 어떤 일을 맡을지 정합니다. 서버 설정 파일(`.env`)의 값은 처음 설치할 때 한 번만 쓰이고, 그 뒤에는 여기서 저장한 값이 우선합니다.\n\n- **화면별 기본 모델**: 대화 · 보고서 · 발표 자료 · 그림 · 오디오 · 동영상. 보고서와 발표 자료는 비워 두면 대화 기본 모델을 따르고, 그림·오디오·동영상은 비워 두면 가장 싼 모델을 씁니다. 사용자가 고른 모델이 있으면 그 모델이 우선합니다.\n- **보조 작업 모델**: 제목·기억·요약 모델, 코드 작성 모델과 그 대체 모델. 대화 내용을 읽는 작업이라 이 인스턴스가 직접 운영하는(자체 호스팅) 모델만 고를 수 있습니다. strict-local 대화에서는 고른 모델의 strict-local 판이 맡습니다.\n- **생각**: 자체 호스팅 모델과 외부 모델이 답하기 전에 추론할지 정합니다. 켜면 판정이 정확해지지만 호출마다 수십 초에서 수 분이 더 걸립니다. 기본은 둘 다 끔.\n\n보고서·슬라이드의 구성과 판정을 맡는 **구성 단계 모델**과 Auto의 **난이도 분류 모델**은 **라우팅** 탭에 있습니다.\n\n### 기본 설치의 자체 호스팅 모델\n\n기본값은 기관이 직접 운영하는 두 모델을 씁니다. 게이트웨이에는 각각 `local/`(웹 검색 등 도구 사용 가능)과 `strict-local/`(외부 연결 없음) 이름으로 등록됩니다.\n\n| 모델 | 맡는 일 |\n|---|---|\n| `qwen3.8-27b` | 보고서·슬라이드 기본 모델, 코드 작성 모델 |\n| `qwen3.8-flash` | 대화 기본 모델, 구성 단계 모델(보고서·슬라이드의 구성과 판정), 제목·기억·요약, Auto 난이도 분류와 비용 절약 모델, 글자 읽기 비전 모델, 코드 작성 대체 모델 |\n\n모두 이 탭과 **라우팅**·**기능** 탭에서 다른 모델로 바꿀 수 있습니다."
+"text": "사용자가 모델을 고르지 않았을 때 어떤 모델이 어떤 일을 맡을지 정합니다. 서버 설정 파일(`.env`)의 값은 처음 설치할 때 한 번만 쓰이고, 그 뒤에는 여기서 저장한 값이 우선합니다.\n\n- **화면별 기본 모델**: 대화 · 보고서 · 발표 자료 · 그림 · 오디오 · 동영상. 대화와 그림은 반드시 골라야 합니다. 보고서와 발표 자료는 비워 두면 대화 기본 모델을 따르고, 오디오·동영상은 비워 두면 가장 싼 모델을 씁니다. 사용자가 고른 모델이 있으면 그 모델이 우선합니다.\n- **보조 작업 모델**: 제목·기억·요약 모델, 코드 작성 모델과 그 대체 모델. 대화 내용을 읽는 작업이라 이 인스턴스가 직접 운영하는(자체 호스팅) 모델만 고를 수 있습니다. strict-local 대화에서는 고른 모델의 strict-local 판이 맡습니다.\n- **생각**: 자체 호스팅 모델과 외부 모델이 답하기 전에 추론할지 정합니다. 켜면 판정이 정확해지지만 호출마다 수십 초에서 수 분이 더 걸립니다. 기본은 둘 다 끔.\n\n보고서·슬라이드의 구성과 판정을 맡는 **구성 단계 모델**과 Auto의 **난이도 분류 모델**은 **라우팅** 탭에 있습니다.\n\n### 기본 설치의 자체 호스팅 모델\n\n기본값은 기관이 직접 운영하는 두 모델을 씁니다. 게이트웨이에는 각각 `local/`(웹 검색 등 도구 사용 가능)과 `strict-local/`(외부 연결 없음) 이름으로 등록됩니다.\n\n| 모델 | 맡는 일 |\n|---|---|\n| `qwen3.8-27b` | 보고서·슬라이드 기본 모델, 코드 작성 모델 |\n| `qwen3.8-flash` | 대화 기본 모델, 구성 단계 모델(보고서·슬라이드의 구성과 판정), 제목·기억·요약, Auto 난이도 분류와 비용 절약 모델, 글자 읽기 비전 모델, 코드 작성 대체 모델 |\n\n모두 이 탭과 **라우팅**·**기능** 탭에서 다른 모델로 바꿀 수 있습니다."
 },
 {
 "lang": "ko",
@@ -956,7 +956,7 @@
 "path": "personal/settings",
 "title": "설정",
 "heading": "환경설정",
-"text": "| 항목 | 설명 |\n|---|---|\n| 화면별 기본 모델 | 챗, 보고서, 슬라이드 등 화면마다 새 대화에 적용할 모델입니다. 계정에 저장되므로 모든 기기에서 동일하게 적용됩니다. |\n| 개인정보가 감지된 요청 → 기본 처리 방법 | 매번 확인, strict-local로 전환, 마스킹, 원문 전송(관리자가 허용한 경우) 중에서 선택합니다. 개인정보 보호 |\n| 응답 스트리밍 | 끄면 답변이 완성된 후 한 번에 표시됩니다. |\n| 메모리 자동 저장 | 답변마다 지속적으로 유효한 정보를 자동으로 저장합니다. |\n| 토큰·크레딧 표시 | 답변 하단의 사용량 표시 여부를 설정합니다. |\n\n테마와 언어는 이 탭이 아니라 화면 오른쪽 위의 버튼에서 전환합니다."
+"text": "| 항목 | 설명 |\n|---|---|\n| 화면별 기본 모델 | 챗, 보고서, 슬라이드 등 화면마다 새 대화에 적용할 모델입니다. 계정에 저장되므로 모든 기기에서 동일하게 적용됩니다. |\n| 개인정보가 감지된 요청 → 기본 처리 방법 | 매번 확인, strict-local로 전환, 마스킹, 원문 전송(관리자가 허용한 경우) 중에서 선택합니다. 개인정보 보호 |\n| 개인정보가 감지된 요청 → strict-local 그림 모델 | 내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 하는데 고른 그림 모델이 외부 모델일 때, 대신 그릴 모델입니다. strict-local 그림 모델이 둘 이상일 때만 표시됩니다. 고르지 않으면 목록의 첫 모델을 씁니다. |\n| 응답 스트리밍 | 끄면 답변이 완성된 후 한 번에 표시됩니다. |\n| 메모리 자동 저장 | 답변마다 지속적으로 유효한 정보를 자동으로 저장합니다. |\n| 토큰·크레딧 표시 | 답변 하단의 사용량 표시 여부를 설정합니다. |\n\n테마와 언어는 이 탭이 아니라 화면 오른쪽 위의 버튼에서 전환합니다."
 },
 {
 "lang": "ko",
@@ -1054,7 +1054,7 @@
 "path": "privacy",
 "title": "개인정보 보호",
 "heading": "내부 자료는 strict-local로만",
-"text": "관리자가 이 정책을 켜면 첨부 파일, 프로젝트 파일, 메모리가 들어간 요청은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 대화는 이후에도 외부 모델로 넘어가지 않습니다. strict-local 판이 없으면 관리자가 지정한 strict-local 안전 모델이 답하고, 그것도 없으면 전송을 거절합니다."
+"text": "관리자가 이 정책을 켜면 첨부 파일, 프로젝트 파일, 메모리가 들어간 요청은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 대화는 이후에도 외부 모델로 넘어가지 않습니다. strict-local 판이 없으면 관리자가 지정한 strict-local 안전 모델이 답하고, 그것도 없으면 전송을 거절합니다.\n\n이미지, 차트, 도식도 같습니다. 프로젝트 대화, 첨부가 있던 대화, strict-local 대화에서는 고른 모델과 상관없이 strict-local 모델로만 만들고, 쓸 수 있는 strict-local 모델이 없으면 만들지 않습니다. 고른 그림 모델이 외부 모델이면 설정 → 환경설정의 **strict-local 그림 모델**로 그립니다."
 },
 {
 "lang": "ko",
@@ -1523,7 +1523,7 @@
 "path": "admin/system",
 "title": "System settings",
 "heading": "Models",
-"text": "Decides which model does which job when the user has not chosen one. The values in the server's `.env` file are used once, at installation; after that, what is saved here takes precedence.\n\n- **Default model for each screen**: chat, report, slides, image, audio and video. Left empty, report and slides follow the chat default, and image, audio and video use the cheapest model. A model the user chose always comes first.\n- **Side-work models**: the model for titles, memories and summaries, the code-writing model and its fallback. These read the conversation, so only models this instance runs itself (self-hosted) can be chosen. In a strict-local conversation the strict-local version of the chosen model does the work.\n- **Thinking**: whether self-hosted and external models reason before answering. On makes judgements more exact but adds tens of seconds to minutes to each call. Both are off by default.\n\nThe **planning model** for reports and slides and Auto's **classifier model** are on the **Routing** tab.\n\n### Self-hosted models of the default install\n\nThe defaults use two models the organization runs itself. Each is registered in the gateway under a `local/` name (may use tools such as web search) and a `strict-local/` name (no outside connection).\n\n| Model | Jobs |\n|---|---|\n| `qwen3.8-27b` | Default report and slides model, code model |\n| `qwen3.8-flash` | Default chat model, planning model (outline and judgments for reports and slides), titles, memory and summaries, Auto classifier and cost-saving model, vision model for text reading, code fallback model |\n\nAll of them can be changed on this tab and on the **Routing** and **Features** tabs."
+"text": "Decides which model does which job when the user has not chosen one. The values in the server's `.env` file are used once, at installation; after that, what is saved here takes precedence.\n\n- **Default model for each screen**: chat, report, slides, image, audio and video. Chat and image must be chosen. Left empty, report and slides follow the chat default, and audio and video use the cheapest model. A model the user chose always comes first.\n- **Side-work models**: the model for titles, memories and summaries, the code-writing model and its fallback. These read the conversation, so only models this instance runs itself (self-hosted) can be chosen. In a strict-local conversation the strict-local version of the chosen model does the work.\n- **Thinking**: whether self-hosted and external models reason before answering. On makes judgements more exact but adds tens of seconds to minutes to each call. Both are off by default.\n\nThe **planning model** for reports and slides and Auto's **classifier model** are on the **Routing** tab.\n\n### Self-hosted models of the default install\n\nThe defaults use two models the organization runs itself. Each is registered in the gateway under a `local/` name (may use tools such as web search) and a `strict-local/` name (no outside connection).\n\n| Model | Jobs |\n|---|---|\n| `qwen3.8-27b` | Default report and slides model, code model |\n| `qwen3.8-flash` | Default chat model, planning model (outline and judgments for reports and slides), titles, memory and summaries, Auto classifier and cost-saving model, vision model for text reading, code fallback model |\n\nAll of them can be changed on this tab and on the **Routing** and **Features** tabs."
 },
 {
 "lang": "en",
@@ -2377,7 +2377,7 @@
 "path": "personal/settings",
 "title": "Settings",
 "heading": "Preferences",
-"text": "| Item | Description |\n|---|---|\n| Default model per screen | The model applied to new conversations on each screen, such as Chat, Reports, and Slides. It is saved to the account, so it applies the same way on every device. |\n| A request with personal data in it → What to do by default | Choose from asking every time, switching to strict-local, masking, and sending the original text (when the administrator allows it). Privacy |\n| Response streaming | When it is off, the answer is shown all at once after it is complete. |\n| Save memory automatically | Automatically saves information that stays valid, for each answer. |\n| Token and credit display | Sets whether usage is shown at the bottom of the answer. |\n\nThe theme and the language are switched with the buttons at the top right of the screen, not in this tab."
+"text": "| Item | Description |\n|---|---|\n| Default model per screen | The model applied to new conversations on each screen, such as Chat, Reports, and Slides. It is saved to the account, so it applies the same way on every device. |\n| A request with personal data in it → What to do by default | Choose from asking every time, switching to strict-local, masking, and sending the original text (when the administrator allows it). Privacy |\n| A request with personal data in it → strict-local picture model | The model that draws a picture in a conversation or document with internal material when it must stay strict-local and the picked picture model is external. Shown only when there is more than one strict-local picture model. Unset, the first in the list is used. |\n| Response streaming | When it is off, the answer is shown all at once after it is complete. |\n| Save memory automatically | Automatically saves information that stays valid, for each answer. |\n| Token and credit display | Sets whether usage is shown at the bottom of the answer. |\n\nThe theme and the language are switched with the buttons at the top right of the screen, not in this tab."
 },
 {
 "lang": "en",
@@ -2475,7 +2475,7 @@
 "path": "privacy",
 "title": "Privacy",
 "heading": "Internal material stays strict-local",
-"text": "When the administrator turns on this policy, a request that carries attachments, project files or memory is answered by the strict-local twin of the chosen model instead, and that conversation never moves to an external model afterwards. Without a twin, the strict-local safe model set by the administrator answers. Without that either, the request is refused."
+"text": "When the administrator turns on this policy, a request that carries attachments, project files or memory is answered by the strict-local twin of the chosen model instead, and that conversation never moves to an external model afterwards. Without a twin, the strict-local safe model set by the administrator answers. Without that either, the request is refused.\n\nPictures, charts and figures follow the same rule. In a project conversation, a conversation that had attachments, or a strict-local conversation, they are made only on a strict-local model whatever model was picked, and are not made when no strict-local model is available. When the picked picture model is external, the **strict-local picture model** in Settings → Preferences draws it."
 },
 {
 "lang": "en",

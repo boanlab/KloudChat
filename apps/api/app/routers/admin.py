@@ -216,7 +216,7 @@ _MODEL_ROLE_FIELDS: tuple[tuple[str, str, str, bool], ...] = (
     ("model_chat", settings_store.MODEL_CHAT, "chat", False),
     ("model_report", settings_store.MODEL_REPORT, "report", True),
     ("model_slides", settings_store.MODEL_SLIDES, "slides", True),
-    ("model_image", settings_store.MODEL_IMAGE, "image", True),
+    ("model_image", settings_store.MODEL_IMAGE, "image", False),
     ("model_audio", settings_store.MODEL_AUDIO, "audio", True),
     ("model_video", settings_store.MODEL_VIDEO, "video", True),
     ("model_title", settings_store.MODEL_TITLE, "helper", True),

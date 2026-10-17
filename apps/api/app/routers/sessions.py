@@ -167,7 +167,13 @@ from app.services.context import (
     weather_location,
     with_pictures,
 )
-from app.services.credits import charge_for_tokens, has_headroom, record_searches, settle
+from app.services.credits import (
+    charge_for_image,
+    charge_for_tokens,
+    has_headroom,
+    record_searches,
+    settle,
+)
 from app.services.tools import sandbox_tools
 from app.services.tools.base import Tool, ToolContext, openai_snapshot
 from app.services.tools.builtin import MAX_GIVEN_LINKS
@@ -473,6 +479,17 @@ def _with_actual_model(routing: dict, routed_model: str, actual_model: str) -> d
     return updated
 
 
+def _document_image_model(user: User, catalogue: dict, *, strict_local: bool) -> dict | None:
+    """Figure model: strict-local turns take the person's strict-local pick; else the default."""
+    usable = _allowed_models(user, catalogue["models"], kind="image")
+    if strict_local:
+        inside = sorted((m for m in usable if _strict_model(m)), key=model_service.fallback_order)
+        chosen = model_service.find(inside, Preferences.of(user).strict_image_model)
+        return chosen or (inside[0] if inside else None)
+    default = (catalogue.get("defaultModelByKind") or {}).get("image")
+    return next((m for m in usable if m["id"] == default), usable[0] if usable else None)
+
+
 def _allowed_models(user: User, catalogue: list[dict], *, kind: str) -> list[dict]:
     """Models allowed for this account and surface; empty allowlist = whole catalogue."""
     allowed = set(user.allowed_models or [])
@@ -481,6 +498,120 @@ def _allowed_models(user: User, catalogue: list[dict], *, kind: str) -> list[dic
         for model in catalogue
         if kind in model.get("kinds", []) and (not allowed or model.get("id") in allowed)
     ]
+
+
+@dataclass(slots=True)
+class _MediaBoundary:
+    """Where a picture, chart or figure call may go, and the text it may carry."""
+
+    strict: bool
+    text: str
+    #: "" | strict_session | internal_data | mask_external
+    reason: str
+    findings: list[governance.Finding]
+    legacy_mask: bool = False
+
+    def carry(self, text: str) -> str:
+        """Another field of the same call, masked the same way."""
+        if self.reason != "mask_external" or not text:
+            return text
+        masker = governance.mask_legacy if self.legacy_mask else governance.mask
+        return masker(text)[0]
+
+
+async def _media_boundary(
+    db: DbSession, session: ChatSession, catalogue: list[dict], text: str
+) -> _MediaBoundary:
+    """The chat turn's egress rules for media calls, without the decision dialog."""
+    policy = await _require_egress_policy()
+    current = model_service.find(catalogue, session.model or "")
+    if current is not None and _strict_model(current):
+        return _MediaBoundary(True, text, "strict_session", [])
+    if policy.internal_data_strict_local and _internal_data_present(
+        session, None, None, await _history(db, session.id)
+    ):
+        return _MediaBoundary(True, text, "internal_data", [])
+    rows = (
+        governance.findings({"prompt": text}, legacy=policy.pii_masking)
+        if (policy.external_data_guard or policy.pii_masking)
+        else []
+    )
+    if not rows:
+        return _MediaBoundary(False, text, "", [])
+    # no dialog on media calls: masked, as for reports and decks
+    masked = _MediaBoundary(False, text, "mask_external", rows, policy.pii_masking)
+    masked.text = masked.carry(text)
+    return masked
+
+
+def _media_model(
+    user: User,
+    catalogue: list[dict],
+    *,
+    kind: str,
+    boundary: _MediaBoundary,
+    asked: str = "",
+    default: str | None = None,
+) -> dict | None:
+    """Asked model, else default, else cheapest; allowed only, strict-local only when required.
+
+    Kept strict-local, a picture asked on an outside model goes to the person's strict-local pick.
+    """
+    usable = sorted(_allowed_models(user, catalogue, kind=kind), key=model_service.fallback_order)
+    wanted_ids = [asked, default]
+    if boundary.strict:
+        usable = [m for m in usable if _strict_model(m)]
+        if kind == "image":
+            wanted_ids.insert(1, Preferences.of(user).strict_image_model)
+    for wanted in wanted_ids:
+        found = model_service.find(usable, wanted or "")
+        if found is not None:
+            return found
+    return usable[0] if usable else None
+
+
+def _refuse_unallowed(user: User, catalogue: list[dict], asked: str | None) -> None:
+    """An explicitly asked model outside the account's allowlist is refused, not swapped."""
+    allowed = set(user.allowed_models or [])
+    if asked and allowed and asked not in allowed and model_service.find(catalogue, asked):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="model_not_allowed")
+
+
+def _refuse_outside_boundary(boundary: _MediaBoundary, kind: str) -> HTTPException:
+    """No model for this call: strict-local missing, or nothing allowed at all."""
+    if boundary.strict:
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="internal_data_requires_strict_local"
+        )
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="no_image_models" if kind == "image" else "no_chat_models",
+    )
+
+
+async def _audit_media_boundary(
+    user: User, request: Request, session: ChatSession, boundary: _MediaBoundary, *,
+    refused: bool = False,
+) -> None:
+    """Media calls kept inside the boundary, masked or refused leave the chat turn's trail."""
+    if not boundary.reason or (boundary.reason == "strict_session" and not refused):
+        return
+    action = (
+        "internal_data_requires_strict_local" if refused
+        else "internal_strict_local" if boundary.strict else boundary.reason
+    )
+    await _audit_policy(
+        user,
+        request,
+        f"privacy.{action}",
+        governance.DETECTOR_VERSION,
+        metadata={
+            "sessionId": session.id,
+            "surface": "media",
+            "reason": boundary.reason,
+            **governance.finding_metadata(boundary.findings),
+        },
+    )
 
 
 _widens_boundary = adaptive_routing.widens_boundary
@@ -2603,31 +2734,33 @@ def _record_media(
 
 @router.post("/{session_id}/figure-suggestion", response_model=FigureSuggestion)
 async def suggest_figure(
-    session_id: str, payload: FigureSuggestRequest, user: CurrentUser, db: DbSession
+    session_id: str,
+    payload: FigureSuggestRequest,
+    user: CurrentUser,
+    db: DbSession,
+    request: Request,
 ):
     """Proposes a figure caption and prompt; nothing drawn or charged."""
     session = await _owned(db, user, session_id)
     catalogue = await model_service.list_models()
-    model = model_service.find(catalogue["models"], session.model or "")
-    if model is None or "chat" not in model.get("kinds", []):
-        usable = sorted(
-            (m for m in catalogue["models"] if "chat" in m.get("kinds", [])),
-            key=model_service.fallback_order,
-        )
-        if not usable:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_chat_models"
-            )
-        model = usable[0]
+    said = "\n".join((payload.title or session.title or "", payload.about, payload.context))
+    boundary = await _media_boundary(db, session, catalogue["models"], said)
+    model = _media_model(
+        user, catalogue["models"], kind="chat", boundary=boundary, asked=session.model or ""
+    )
+    if model is None:
+        await _audit_media_boundary(user, request, session, boundary, refused=True)
+        raise _refuse_outside_boundary(boundary, "chat")
+    await _audit_media_boundary(user, request, session, boundary)
     await litellm_service.ensure_key(user)
     if db.is_modified(user):
         db.add(user)
         await db.commit()
     _, api_key = await litellm_service.credentials_for(user)
     figure = await figures.suggest(
-        title=payload.title or session.title or "",
-        about=payload.about,
-        context=payload.context,
+        title=boundary.carry(payload.title or session.title or ""),
+        about=boundary.carry(payload.about),
+        context=boundary.carry(payload.context),
         model=str(model["id"]),
         api_key=api_key,
         look=payload.visual_style,
@@ -2644,24 +2777,26 @@ async def suggest_figure(
 
 
 @router.post("/{session_id}/images", response_model=list[ArtifactOut])
-async def generate_images(session_id: str, payload: ImageRequest, user: CurrentUser, db: DbSession):
+async def generate_images(
+    session_id: str, payload: ImageRequest, user: CurrentUser, db: DbSession, request: Request
+):
     """Makes pictures as artifacts, charged from reported usage."""
     session = await _owned(db, user, session_id)
     catalogue = await model_service.list_models()
+    _refuse_unallowed(user, catalogue["models"], payload.model)
+    boundary = await _media_boundary(db, session, catalogue["models"], payload.prompt)
     if payload.style == "차트":
         # chart drawn from code: see `chart_code`
-        return await _draw_chart(session, payload, user, db, catalogue)
-    model = model_service.find(catalogue["models"], payload.model or session.model or "")
-    if model is None or "image" not in model["kinds"]:
-        usable = sorted(
-            (m for m in catalogue["models"] if "image" in m["kinds"]),
-            key=model_service.fallback_order,
-        )
-        if not usable:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_image_models"
-            )
-        model = usable[0]
+        return await _draw_chart(session, payload, user, db, catalogue, boundary, request)
+    model = _media_model(
+        user, catalogue["models"], kind="image", boundary=boundary,
+        asked=payload.model or session.model or "",
+        default=(catalogue.get("defaultModelByKind") or {}).get("image"),
+    )
+    if model is None:
+        await _audit_media_boundary(user, request, session, boundary, refused=True)
+        raise _refuse_outside_boundary(boundary, "image")
+    await _audit_media_boundary(user, request, session, boundary)
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -2678,18 +2813,15 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
         )
     # LM expands the prompt unless an edited one comes back (`raw`)
-    planned = payload.prompt
+    planned = boundary.text
     if not payload.raw and payload.style != "없음":
-        planner = model_service.find(catalogue["models"], session.model or "")
-        if planner is None or "chat" not in planner.get("kinds", []):
-            chat_models = sorted(
-                (m for m in catalogue["models"] if "chat" in m.get("kinds", [])),
-                key=model_service.fallback_order,
-            )
-            planner = chat_models[0] if chat_models else None
+        # same boundary as the picture; none inside it = drawn as asked
+        planner = _media_model(
+            user, catalogue["models"], kind="chat", boundary=boundary, asked=session.model or ""
+        )
         if planner is not None:
             planned, _ = await imagegen.plan(
-                payload.prompt,
+                boundary.text,
                 style=payload.style,
                 labels=payload.labels,
                 figure=payload.figure,
@@ -2701,7 +2833,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         aspect=payload.aspect,
         style=payload.style,
         design=design_service.image_clause(await design_for(db, user, session)),
-        figure=payload.figure and planned == payload.prompt,
+        figure=payload.figure and planned == boundary.text,
         square_only=not imagegen.honours_aspect(str(model["id"])),
     )
 
@@ -2763,7 +2895,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         )
         db.add(artifact)
         made.append(artifact)
-        charged += charge_for_tokens(model, image.input_tokens, image.output_tokens)
+        charged += charge_for_image(model, image.input_tokens, image.output_tokens, image.cost_usd)
 
     if charged:
         settle(
@@ -2796,20 +2928,22 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
 
 
 async def _draw_chart(
-    session: ChatSession, payload: ImageRequest, user: User, db: DbSession, catalogue: dict
+    session: ChatSession,
+    payload: ImageRequest,
+    user: User,
+    db: DbSession,
+    catalogue: dict,
+    boundary: _MediaBoundary,
+    request: Request,
 ) -> list[ArtifactOut]:
     """차트 style: LM-written matplotlib run in the sandbox; code kept as `composedPrompt`."""
-    writer = model_service.find(catalogue["models"], session.model or "")
-    if writer is None or "chat" not in writer.get("kinds", []):
-        chat_models = sorted(
-            (m for m in catalogue["models"] if "chat" in m.get("kinds", [])),
-            key=model_service.fallback_order,
-        )
-        if not chat_models:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_chat_models"
-            )
-        writer = chat_models[0]
+    writer = _media_model(
+        user, catalogue["models"], kind="chat", boundary=boundary, asked=session.model or ""
+    )
+    if writer is None:
+        await _audit_media_boundary(user, request, session, boundary, refused=True)
+        raise _refuse_outside_boundary(boundary, "chat")
+    await _audit_media_boundary(user, request, session, boundary)
     if not has_headroom(user, writer):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -2821,7 +2955,7 @@ async def _draw_chart(
     _, api_key = await litellm_service.credentials_for(user)
     try:
         chart = await chart_code.draw(
-            payload.prompt,
+            boundary.text,
             aspect=payload.aspect,
             model=str(writer["id"]),
             api_key=api_key,
@@ -2897,21 +3031,31 @@ async def _draw_chart(
 
 
 @router.post("/{session_id}/diagrams", response_model=DiagramOut)
-async def write_diagram(session_id: str, payload: DiagramRequest, user: CurrentUser, db: DbSession):
+async def write_diagram(
+    session_id: str,
+    payload: DiagramRequest,
+    user: CurrentUser,
+    db: DbSession,
+    request: Request,
+):
     """Labelled figure as flowchart source drawn with deck-export shapes; 422 if not drawable."""
     session = await _owned(db, user, session_id)
     catalogue = await model_service.list_models()
-    usable = sorted(
-        (m for m in catalogue["models"] if "chat" in m["kinds"]),
-        key=model_service.fallback_order,
-    )
+    _refuse_unallowed(user, catalogue["models"], payload.model)
+    boundary = await _media_boundary(db, session, catalogue["models"], payload.description)
     # `session.model` is a picture model here; chat model needed
-    asked = model_service.find(catalogue["models"], payload.model or session.model or "")
-    model = asked if asked and "chat" in asked["kinds"] else (usable[0] if usable else None)
+    model = _media_model(
+        user, catalogue["models"], kind="chat", boundary=boundary,
+        asked=payload.model or session.model or "",
+    )
     if model is None:
+        await _audit_media_boundary(user, request, session, boundary, refused=True)
+        if boundary.strict:
+            raise _refuse_outside_boundary(boundary, "chat")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
         )
+    await _audit_media_boundary(user, request, session, boundary)
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -2926,7 +3070,7 @@ async def write_diagram(session_id: str, payload: DiagramRequest, user: CurrentU
     failure = ""
     try:
         source, caption, usage, png = await diagram_service.draw_native(
-            description=payload.description,
+            description=boundary.text,
             figure=payload.figure,
             model=model["id"],
             api_key=api_key,
@@ -4671,15 +4815,8 @@ async def send_message(
     if outline_model is not None and outline_model["id"] == model["id"]:
         outline_model = None  # the writer plans for itself; nothing to account for apart
 
-    #: image default draws document figures; none = no figure card
-    image_model = next(
-        (
-            m
-            for m in _allowed_models(user, catalogue_models, kind="image")
-            if "image" in (m.get("kinds") or [])
-        ),
-        None,
-    )
+    #: draws document figures; none = no figure card
+    image_model = _document_image_model(user, catalogue, strict_local=strict_local)
 
     render_template = design_templates.get(session.render_template_id)
     #: 「좋아, PDF로 줘」 = file hand-over, not an edit; 「견적 고치고 PDF로」 revises first

@@ -1,4 +1,4 @@
-import { errorCode, errorMessage, type StreamEvent } from '@/lib/api'
+import { ApiError, errorCode, errorMessage, type StreamEvent } from '@/lib/api'
 
 /** Sentences for API refusal codes and stream `error` events; unknown codes shown in brackets. */
 type T = (text: string) => string
@@ -27,6 +27,8 @@ const REFUSALS: Record<string, string> = {
   model_unavailable: '이 모델은 지금 이 화면에서 쓸 수 없습니다. 모델을 바꿔 다시 시도하세요.',
   model_not_allowed: '이 계정에 허용되지 않은 모델입니다. 모델을 바꿔 다시 시도하세요.',
   no_models_available: '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.',
+  internal_data_requires_strict_local:
+    '내부 자료나 개인정보가 있어 strict-local 모델로만 만들 수 있는데, 쓸 수 있는 strict-local 모델이 없습니다. 관리자에게 문의하세요.',
   freshness_verification_unavailable:
     '최신 정보를 검증할 수 없어 요청을 진행하지 않았습니다. 검증 가능한 자료를 제공하거나 검색이 허용된 환경에서 다시 시도하세요.',
   calculation_tool_unavailable:
@@ -36,6 +38,12 @@ const REFUSALS: Record<string, string> = {
   surface_not_implemented: '이 화면은 아직 지원되지 않습니다.',
   governance_unavailable:
     '개인정보 검사기를 사용할 수 없어 요청을 보내지 못했습니다. 잠시 후 다시 시도하세요.',
+}
+
+/** A refused picture, chart or figure: our sentence for a known code, else `fallback`. */
+export function mediaFailure(err: unknown, fallback: string, t: T): string {
+  const code = err instanceof ApiError && err.status < 500 ? errorCode(err) : ''
+  return code && REFUSALS[code] ? t(REFUSALS[code]) : errorMessage(err, fallback)
 }
 
 /** A refused request, by its code. `undefined` when there is no code at all. */

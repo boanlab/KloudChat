@@ -51,26 +51,8 @@ ADAPTER_MODELS: list[dict[str, Any]] = [
 # each entry must also be in `videogen.ALIASES`
 
 
-# keyed on `model_name`, merged over `/model/info`; image credit_cost per image
+# keyed on `model_name`, merged over `/model/info`
 MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
-    "nano-banana": {
-        "label": "Nano Banana",
-        "modality": "image",
-        "kinds": ["image"],
-        "description": "Gemini 이미지 생성. 빠르고 저렴한 기본값",
-    },
-    "nano-banana-2": {
-        "label": "Nano Banana 2",
-        "modality": "image",
-        "kinds": ["image"],
-        "description": "Gemini 이미지 생성 상위 모델. 디테일이 필요할 때",
-    },
-    "gpt-image-2": {
-        "label": "GPT Image 2",
-        "modality": "image",
-        "kinds": ["image"],
-        "description": "OpenAI 이미지 생성. 텍스트 렌더링에 강함",
-    },
     # vision only for contained models: privacy guard can't inspect images
     "strict-local/qwen3.8-27b": {"supports_vision": True},
     "strict-local/qwen3.8-flash": {"supports_vision": True},
