@@ -966,7 +966,7 @@ const EN: Record<string, string> = {
   '진행 중 턴': 'Running turns',
   '요청/분': 'Requests/min',
   '응답 p95': 'Response p95',
-  '파이프라인 단계 소요': 'Pipeline stage durations',
+  '진행 과정 단계 소요': 'Process stage durations',
   '이 기간에 끝난 단계가 없습니다.': 'No stages finished in this period.',
   '횟수': 'Runs',
   '최대': 'Max',

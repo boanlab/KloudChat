@@ -158,7 +158,7 @@ class Settings(BaseSettings):
     default_slides_model: str = "local/qwen3.8-27b"
 
     #: Must honour aspect ratio. Unserved → cheapest image model.
-    default_image_model: str = "google/gemini-2.5-flash-image"
+    default_image_model: str = "bytedance-seed/seedream-5-0-flash"
 
     #: Per-modality av defaults. Unserved → cheapest of that modality.
     default_audio_model: str = "openai/gpt-audio-mini"

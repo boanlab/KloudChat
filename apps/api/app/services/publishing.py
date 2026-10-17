@@ -342,7 +342,6 @@ class PublishedTurn:
     #: Raw question for stats (masked before storage).
     question: str = ""
     slot_id: str | None = None
-    first_turn: bool = False
     released: bool = field(default=False)
 
     async def release(self) -> None:

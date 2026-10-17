@@ -146,11 +146,11 @@ def test_strictness_comes_from_the_agent_not_its_name():
 def test_what_needs_review_is_a_custom_order_with_an_export_a_review_or_another_agent():
     own = compose.normalize([{"kind": "agent", "ref": "@self"},
                              {"kind": "check", "ref": "grounding-check"}])
-    assert not bases.needs_review(None, own)
+    assert not bases.needs_review(own)
     for extra in ({"kind": "export", "settings": {"formats": ["pdf"]}},
                   {"kind": "review", "settings": {"model": "m"}},
                   {"kind": "agent", "ref": "someone-else"}):
-        assert bases.needs_review(None, [*own, extra])
+        assert bases.needs_review([*own, extra])
 
 
 # ── the API ─────────────────────────────────────────────────────────────

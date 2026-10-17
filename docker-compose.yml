@@ -20,7 +20,7 @@ x-first-install-seeds: &first-install-seeds
   # Per-surface defaults (empty follows the chat default): documents keep the larger model.
   DEFAULT_REPORT_MODEL: ${KCHAT_DEFAULT_REPORT_MODEL:-local/qwen3.8-27b}
   DEFAULT_SLIDES_MODEL: ${KCHAT_DEFAULT_SLIDES_MODEL:-local/qwen3.8-27b}
-  DEFAULT_IMAGE_MODEL: ${KCHAT_DEFAULT_IMAGE_MODEL:-google/gemini-2.5-flash-image}
+  DEFAULT_IMAGE_MODEL: ${KCHAT_DEFAULT_IMAGE_MODEL:-bytedance-seed/seedream-5-0-flash}
   DEFAULT_AUDIO_MODEL: ${KCHAT_DEFAULT_AUDIO_MODEL:-openai/gpt-audio-mini}
   DEFAULT_VIDEO_MODEL: ${KCHAT_DEFAULT_VIDEO_MODEL:-google/veo-3.1-lite}
   # Titles, memories and the running summary of a long conversation.

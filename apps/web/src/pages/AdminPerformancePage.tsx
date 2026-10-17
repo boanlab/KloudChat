@@ -793,7 +793,7 @@ export function AdminPerformancePage() {
                 ])}
               />
             </Section>
-            <Section title={t('파이프라인 단계 소요')}>
+            <Section title={t('진행 과정 단계 소요')}>
               <Table
                 empty={t('이 기간에 끝난 단계가 없습니다.')}
                 head={[t('단계'), t('횟수'), t('p50'), t('p95'), t('최대')]}
