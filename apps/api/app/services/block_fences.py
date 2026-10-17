@@ -1,8 +1,7 @@
 """The app's own block fences (```callout, ```kpi, ```steps, ```cards, ```chart) written as
 plain Markdown, for surfaces that show text as it is: the Markdown export and the bot API.
 The chat and document views draw these blocks; a Markdown file or an API caller would show
-the fence and its `값 | 이름` rows as they stand (r6 A04-T1: 「```callout」 and 「```kpi」 in
-the exported report)."""
+the fence and its `값 | 이름` rows as they stand."""
 
 from __future__ import annotations
 

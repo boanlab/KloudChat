@@ -740,7 +740,7 @@ _EXPLICIT_WEB_REQUEST = re.compile(
     re.I,
 )
 _DECLINED_WEB_REQUEST = re.compile(
-    # 「웹 검색은 하지 말고」 (r10 SK-competitor-3), 「검색 말고」, 「인터넷에서 찾지 말고」
+    # 「웹 검색은 하지 말고」, 「검색 말고」, 「인터넷에서 찾지 말고」
     # one run of spaces between parts: 「검색\s*(?:은)?\s*」 backtracks on a long blank (CodeQL)
     r"(?:(?:웹|외부|인터넷)\s*)?검색\s*(?:(?:은|는|을|도)\s*)?(?:없이|금지|하지\s*(?:마|말)|안\s*(?:해|하)|말고)|"
     r"(?:웹|인터넷|온라인|외부)(?:에서|으로)?\s*(?:찾지|찾아\s*보지|알아\s*보지)\s*(?:마|말)|"
@@ -902,8 +902,7 @@ _SETUP_SENTENCE = re.compile(
 
 def search_subject(request: str) -> str:
     """The question a search looks up: after a role-play setup, the part the person asks
-    about (r8 P14: the whole 「가상 의사가 되어 줘 … 첫 요청: 며칠째 두통과 어지럼증이 있어」
-    as the query found nothing); else `request` as it is."""
+    about (a whole role-play setup as the query finds nothing); else `request` as it is."""
     text = request or ""
     cues = list(_SUBJECT_CUE.finditer(text))
     if cues and cues[-1].end() < len(text) and _SETUP_SENTENCE.search(text[:cues[-1].start()]):

@@ -63,8 +63,7 @@ FORMATS: tuple[DocFormat, ...] = (
     DocFormat(
         # After minutes: 「회의록」 wins when both are named.
         "agenda", "회의 안건",
-        # 「검토 보고서 써 줘. 경영회의 안건 자료야」: what the report is for, not an agenda (r5
-        # A10-T1 got agenda head fields, its sections and no web search)
+        # 「검토 보고서 써 줘. 경영회의 안건 자료야」: what the report is for, not an agenda
         r"회의\s{0,3}안건(?!별|\s{0,3}(?:자료|으로|에\s{0,3}(?:올|상정|부칠)))"
         r"|안건\s{0,3}(?:지|목록)|안건\s{0,3}표(?!결)|어젠다|(?<![A-Za-z])agenda(?![A-Za-z])",
         ("회의명", "일시", "장소", "참석자", "작성자"), numbering="none", head="memo",
@@ -83,7 +82,7 @@ FORMATS: tuple[DocFormat, ...] = (
     DocFormat(
         "official", "공문·안내문", r"공문|시행\s{0,3}문|안내문|공지문|협조\s{0,3}요청",
         ("수신", "참조", "발신", "시행일"), numbering="official", head="memo", closing=True,
-        # no 참조 in the material: no blank 「[참조]」 to fill (r7 A03-T1)
+        # no 참조 in the material: no blank 「[참조]」 to fill
         optional=("참조",),
     ),
     DocFormat(
@@ -199,8 +198,7 @@ TEMPLATE_FORMATS = _template_formats()
 
 
 #: Formats one bound template cannot tell apart: the request's own word picks among them
-#: (r7 A01-T2: 「회의 안건 초안」 under a minutes agent came out as 회의록, every 담당·시간
-#: 「미정」 and 「회의록 작성을 마쳤습니다」).
+#: (「회의 안건 초안」 under a minutes agent is an agenda).
 _SIBLINGS = (frozenset({"minutes", "agenda"}),)
 #: What asks for the sibling itself — making it, not mentioning it: minutes material says
 #: 「안건 3개를 논의했다」 and stays minutes.

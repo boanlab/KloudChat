@@ -460,7 +460,7 @@ RETIRED_MEDIA = frozenset(
 )
 
 
-#: Retired but kept in the image: still drawn/exported, not choosable (migration 0060).
+#: Retired but kept in the image: still drawn/exported, not choosable.
 RETIRED_KEPT = frozenset({"doc-career-history", "doc-client-proposal"})
 
 

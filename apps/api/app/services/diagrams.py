@@ -137,7 +137,7 @@ async def plan(
     except Exception as exc:  # noqa: BLE001 — a document without figures is still a document
         log.info("figure planning failed: %s", exc)
         text = "[]"
-    planned = parse(text, count=len(parts), limit=limit, eligible=allowed)
+    planned = parse(text, limit=limit, eligible=allowed)
     asked_for = not planned and asks_for_diagrams(request)
     short = len(planned) < min(at_least, len(allowed))
     if asked_for or short:
@@ -160,7 +160,7 @@ async def plan(
                 model, wrap(nudged) if wrap else [{"role": "user", "content": nudged}], api_key, 900
             )
             usage = {k: usage.get(k, 0) + more.get(k, 0) for k in ("inputTokens", "outputTokens")}
-            planned = parse(text, count=len(parts), limit=limit, eligible=allowed)
+            planned = parse(text, limit=limit, eligible=allowed)
         except Exception as exc:  # noqa: BLE001
             log.info("figure planning retry failed: %s", exc)
     document = "\n\n".join(text for _, text in parts)[:40000]
@@ -182,7 +182,7 @@ def asks_for_diagrams(request: str) -> bool:
     return bool(_ASKS_DIAGRAM.search(request or ""))
 
 
-def parse(text: str, *, count: int, limit: int, eligible: Iterable[int]) -> list[Planned]:
+def parse(text: str, *, limit: int, eligible: Iterable[int]) -> list[Planned]:
     """Planner answer as Planned rows: known kinds, eligible parts, one each."""
     block = text[text.find("[") : text.rfind("]") + 1] if "[" in text and "]" in text else ""
     try:

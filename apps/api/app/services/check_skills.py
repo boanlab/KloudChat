@@ -241,8 +241,7 @@ _VALUE_KINDS = frozenset({"number", "date", "month", "time"})
 
 def _kept_when_supported(text: str, found: list[dict], evidence) -> list[dict]:
     """Findings whose value the value guard would give back marked `keep`: a sentence of such
-    values is never dropped as invented (r7 P07: 「데드버그 3세트 × 각 10회, 휴식 45초.」 went
-    whole though its counts were the guard's to keep)."""
+    values is never dropped as invented."""
     if not any(f.get("kind") in _VALUE_KINDS and not f.get("keep") for f in found):
         return found
     lines = (text or "").split("\n")

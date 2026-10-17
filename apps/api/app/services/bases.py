@@ -107,7 +107,7 @@ def get(key: str | None, *, drafts: bool = True) -> Base | None:
                 None) if key else None
 
 
-#: 문서 형식 → base (migration 0060 backfills `agents.base_key`)
+#: 문서 형식 → base (also backfilled into `agents.base_key` by a migration)
 BY_FORMAT = {"gaejo": "gaejo-report", "minutes": "minutes", "comparison": "comparison-report"}
 
 
@@ -133,7 +133,7 @@ def chain(base: Base | None, surface: str, selections: list[dict], known: dict,
             continue
         for item in bundle.items:
             where = bundle_service.target(item, surface)
-            value = bundle_service._value(bundle, item, row["items"], doc_format)
+            value = bundle_service._value(item, row["items"], doc_format)
             if where in ("before", "after") and value:
                 label = item.label or item.ref
                 extra.append(f"{label} ({str(value).upper()})" if item.kind == "export"

@@ -10,8 +10,6 @@ _NUMBER = (
 )
 _OP = r"(\+|-|−|×|x|X|\*|÷|/)"
 _EQ = r"(=|≈|≒|약)"
-#: `A op B = C`, unit words allowed
-_EQUATION = re.compile(rf"{_NUMBER}\s*{_OP}\s*{_NUMBER}\s*{_EQ}\s*{_NUMBER}")
 
 _SCALE = {"억": 100_000_000, "만": 10_000, "천": 1_000, None: 1}
 

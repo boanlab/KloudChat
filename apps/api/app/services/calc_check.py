@@ -67,7 +67,7 @@ _KO_MEASURE = (("wait", "대기"), ("turnaround", "반환"), ("response", "응�
 _AVERAGE = re.compile(r"(?<![A-Za-z])(?:average|avg|mean)(?![A-Za-z])", re.I)
 
 
-#: the English a table may name a Korean row by (r2 A09 T2: 「| Priority | 2.0 |」)
+#: the English a table may name a Korean row by (「| Priority | 2.0 |」)
 _ENGLISH = {"우선순위": re.compile(r"(?<![A-Za-z])priority(?![A-Za-z])", re.I)}
 #: words picking one reading of a shared name, the non-preemptive one first (it holds 「선점」)
 _READINGS = ((r"비\s{0,2}선점|non-?\s?preemptive", "비선점"),
@@ -99,7 +99,7 @@ _GAP_AFTER = re.compile(r"\s{0,2}(?:점|%p|%\s?포인트|포인트|p)?\s{0,2}"
                         r"(?:낮|높|차이|많|적|앞서|뒤|증가|감소|상승|하락|늘|줄|더\s|덜\s)")
 
 
-#: an end of a range: 「1~2점」 (r5 A06-T1: its 1 became 2.89)
+#: an end of a range: 「1~2점」
 _RANGE_AFTER = re.compile(r"\s{0,1}[~∼〜–]\s{0,1}\d")
 _RANGE_BEFORE = re.compile(r"\d\s{0,1}[~∼〜–]\s{0,1}$")
 
@@ -126,7 +126,6 @@ class _Names:
     mark: bool = False
     #: every printed value by row (`check_markdown(keep_row_values=True)`): a written value
     #: the code printed for the row (another label's) is that row's figure, never a slip
-    #: (r8 LFLF A06-T1: 사회과학대학 전반만족 4.17 set to the row's 표본 24)
     by_row: dict[str, list[float]] | None = None
 
     def rows_value(self, row: str, written: str) -> bool:
@@ -465,7 +464,7 @@ def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
             columns = [(j, number) for j in range(1, min(len(cells), len(header)))
                        if (number := _first_number(cells[j], 0, len(cells[j]))) is not None]
 
-            def agree(row: str, columns=columns, cells=cells) -> int:
+            def agree(row: str, columns=columns) -> int:
                 return sum(1 for j, number in columns
                            if (s := label_of(row, header[j])) and _same(number.group(0), s.value))
 
@@ -695,9 +694,7 @@ _TABLE_ROW = re.compile(
 
 def _tabled_apart(s: Stated, printed: tuple[str, ...]) -> bool:
     """Whether the code also printed `s`'s row as a table row without `s`'s value: which
-    group a value written beside that name is for is then unclear, and none is set to `s`
-    (r5 A06-T1: 「온라인학습: 평균=3.06」 printed for one college overwrote the overall table's
-    3.56, printed as 「온라인학습 3.56  4.0  0.83 …」)."""
+    group a value written beside that name is for is then unclear, and none is set to `s`."""
     own = _norm(s.row)
     for line in printed:
         m = _TABLE_ROW.match(line)
