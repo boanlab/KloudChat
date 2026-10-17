@@ -72,24 +72,24 @@ def _dash(m: re.Match) -> str | None:
     if re.search(r"\d$", before) and re.match(r"\d", after):
         return None  # a range: 「10—12」
     if re.search(r"[)\]]$", before) and not re.search(r"[.?!。][)\]]$", before):
-        return None  # 「(…, 2026년 게시) — 자막 기반」: a header's parts (r5 A08-T2)
+        return None  # 「(…, 2026년 게시) — 자막 기반」: a header's parts
     if re.search(r"[」』]$", before) and not re.search(r"[.?!。][」』]$", before):
-        return ": "  # 「#13 「…무료」 — 설명」: a quoted line and its note (r7 A12-T2)
+        return ": "  # 「#13 「…무료」 — 설명」: a quoted line and its note
     if re.search(r"[.?!。」』\"']$", before) and not before.endswith("**"):
         return " "
     line = before[before.rfind("\n") + 1:]
     if line.count("**") % 2 == 1:
         return None  # inside a bold label: 「**기능 블록 1 — 결재 알림 연동**」
-    # 개조식 marks count as list marks: 「□ 영향 1 — …」 (r7 A02-T2)
+    # 개조식 marks count as list marks: 「□ 영향 1 — …」
     item = re.match(r"\s{0,8}(?:[-*+•]\s+|[□■○●◦※▪◆◇▶▷①-⑳]\s*|\d{1,3}[.)]\s+)", line)
     lead = line[item.end():] if item else re.sub(r"^\s{0,8}", "", line)
     if re.match(r"\*\*[^*\n]{1,30}\*\*\s+\S", lead):
-        return None  # 「1. **#5** 헤드라인 — 각도」: the bold is the label; the dash is the line's own (r7 A12-T2)
+        return None  # 「1. **#5** 헤드라인 — 각도」: the bold is the label; the dash is the line's own
     if before.endswith("**") or (len(lead) <= 16 and len(lead.split()) <= 2
                                  and not re.search(r"[.,]|[고며면서다요]$", lead)):
         return ": "
     if item and not re.search(r"[—―:：]", lead):
-        return ": "  # 「- 실수 내용함 — 설명」: the item's label and its note (r5 A08-T1)
+        return ": "  # 「- 실수 내용함 — 설명」: the item's label and its note
     return ", "
 
 
@@ -468,7 +468,7 @@ def post(text: str, args: dict) -> dict:
            if _digits(m.group(0)) and _digits(m.group(0)) not in known
            and not _everyday(m.group(0), span is not None)]
     for raw in dict.fromkeys(new):
-        # code never blanks a number (r5 A12-T1: 「1명부터」 ended as 「(1)명까지」); in an edit
+        # code never blanks a number (「1명부터」 must not end as 「(1)명까지」); in an edit
         # of the person's text the writer is asked once, otherwise it is only shown
         item = {"kind": "number", "text": raw,
                 "why": "원문에 없는 수치입니다. 빼거나 값 뒤에 「(확인 필요)」를 붙이세요."}

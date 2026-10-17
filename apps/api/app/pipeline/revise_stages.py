@@ -351,7 +351,6 @@ class Rewrite(Base):
                             body, earlier, keep_items=gaejo,
                             question=bool(report.QUESTION_HEADING.search(label)))[0]
                     body = internal_words.scrub(body)
-                    # Markdown output; old `html` flag would show literal asterisks
                     # a part's own rename only; the document's title was set by route
                     rename = revise.title_rename(instruction, names)
                     renamed = (rename[0] if rename is not None and index not in widened and (

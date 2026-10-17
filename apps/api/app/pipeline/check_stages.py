@@ -182,8 +182,7 @@ _ADVICE_MARK = re.compile(r" ?" + re.escape(value_guard.MARK))
 
 def _advice_note(text: str, before: str, found: list[dict]) -> str:
     """The marks taken out of the text and their values named once below. The writer's own
-    marks go with the check's (r8 P19 L27F: a draft that already had one kept all of them
-    inline, 18 in one answer)."""
+    marks go with the check's (else a draft with one keeps all of them inline)."""
     # a value the guard found supported after all lost its mark: not listed
     values = [str(f.get("text") or "").strip() for f in found
               if f.get("kind") == "consequence"
@@ -211,8 +210,7 @@ _CITED = re.compile(r"\[\[?\d{1,3}\]")
 
 def _cited_sentences(text: str) -> str:
     """The sentences of an earlier answer that cite a source the search found then: evidence
-    for advice that repeats them (r8 P19: 3.7% cited [4] in the first turn was 「확인하지
-    못했으니」 in the second)."""
+    for advice that repeats them in a later turn."""
     return "\n".join(sentence for line in text.splitlines()
                      for sentence in units.SENTENCE_BREAK.split(line) if _CITED.search(sentence))
 
@@ -235,7 +233,7 @@ class AnswerGrounding(Base):
         # documents it tells them to bring are the guidance itself
         advice_only = bool(req.advice) and not req.traced
         # advice keeps its own reading on the person's material too: a pasted profile or file
-        # does not make an exercise plan's sets and rests facts to source (r7 P07)
+        # does not make an exercise plan's sets and rests facts to source
         traced = check_skills.ground(
             answer_checks(req), before,
             material=f"{bundle.material.given}\n{req.check_material}",

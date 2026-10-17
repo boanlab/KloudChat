@@ -879,7 +879,7 @@ class DesignSystemOut(Wire):
     craft: JsonList = Field(default_factory=list)
     shared: bool = False
     mine: bool = True
-    #: False for legacy shipped themes
+    #: False for an unlisted shipped theme (hidden in pickers)
     listed: bool = True
     updated_at: datetime
 

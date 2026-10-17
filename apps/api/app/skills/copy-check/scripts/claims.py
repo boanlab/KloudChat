@@ -308,7 +308,7 @@ def _stated(quote: str, squashed: str) -> bool:
 
 def _paraphrased(quote: str, squashed: str) -> bool:
     """Half or more of a judged quote's words are the material's and its numbers all are:
-    a listed feature said in plain words (r5 A12-T1: 「결재 알림 연동」 →
+    a listed feature said in plain words (「결재 알림 연동」 →
     「결재가 진행되면 알림이 따라옵니다」)."""
     words = [w[:2] for w in re.findall(r"[가-힣]{2,}", quote) if w[:2] not in _STOP]
     numbers = re.findall(r"\d+", quote)
@@ -317,7 +317,7 @@ def _paraphrased(quote: str, squashed: str) -> bool:
 
 
 #: a guess the copy marks as one (「… 경우가 많을 것 같습니다」): a sales hypothesis, not a
-#: fact (r5 A15-T1: the mail's one reason for the company was taken out with it)
+#: fact
 _GUESS = re.compile(r"(?:것|듯)\s?(?:같|싶|합니다|하다)|(?:ㄹ|을|를)?\s?수도\s?있|아닐까|추측|짐작|가능성이")
 #: a table column of notes on the copy, not the copy: 「추천 채널」, 「활용 이유」, 「용도」
 _NOTE_COLUMN = re.compile(r"이유|용도|채널|추천|활용|설명|메모|비고|근거|노림|의도|포인트|why|note|use", re.I)
@@ -334,8 +334,8 @@ def _cells(line: str) -> list[str]:
 
 
 def _explains(lines: list[str], k: int, at: int) -> bool:
-    """Whether column `at` of table row `k` sits under a notes header (r5 A12-T2: the 「추천
-    채널·활용 이유」 columns of 25 headline rows were emptied as unsupported facts)."""
+    """Whether column `at` of table row `k` sits under a notes header (「추천 채널」, 「활용
+    이유」): not copy, never emptied as unsupported facts."""
     line = lines[k]
     if not line.lstrip().startswith("|"):
         return False

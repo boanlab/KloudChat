@@ -389,8 +389,8 @@ def _subject_names(lines: list[str]) -> set[str]:
 
 
 def other_company_profiles(lines: list[str], refs: dict, ref_lines: set[int]) -> list[dict]:
-    """Citations of a page that profiles another company than the one-pager's own (r10
-    SK-company-2: THE VC's 앳 page cited for 리벨리온's investors)."""
+    """Citations of a page that profiles another company than the one-pager's own (THE
+    VC's 앳 page cited for 리벨리온's investors)."""
     names = _subject_names(lines)
     if not names:
         return []

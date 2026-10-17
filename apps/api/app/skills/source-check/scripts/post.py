@@ -108,7 +108,7 @@ def post(text: str, args: dict) -> dict:
     # frame.py's list of generalities, for the lines sources.py did not already catch.
     for index, line in enumerate(lines):
         hit = frame.GENERIC.search(line)
-        # a source-list line (「- [6] [제목](url)」) is a title, not a claim (r10 SK-company-3)
+        # a source-list line (「- [6] [제목](url)」) is a title, not a claim
         if _SOURCE_LINE.match(line):
             continue
         if hit and index not in generic_lines and not line.lstrip().startswith("#") \

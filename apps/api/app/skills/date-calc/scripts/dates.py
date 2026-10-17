@@ -378,8 +378,8 @@ def find(text: str, base: dt.date, *, absolute: bool = True,
             matches[id(row)] = (m, end)
     found.sort(key=lambda r: r["at"])
     for row in found:
-        # 「다음 주 목요일(10/15)」: the date the text writes beside it is the day (r5 A01-T2
-        # resolved it again from the meeting day and got 10/22)
+        # 「다음 주 목요일(10/15)」: the date the text writes beside it is the day, not one
+        # resolved again from another anchor
         if row["kind"] in ("full_date", "month_day"):
             continue
         given = _GIVEN_AFTER.match(text, matches[id(row)][1])
@@ -711,7 +711,7 @@ def run(options: dict) -> dict:
     op = str(options.get("op") or "resolve")
     if op == "resolve":
         if not options.get("base_date"):
-            # No base given: a full date the expressions write is the base (r7 A16-T2).
+            # No base given: a full date the expressions write is the base.
             given = " ".join(str(e.get("text") if isinstance(e, dict) else e)
                              for e in options.get("expressions") or [])
             try:
@@ -749,7 +749,7 @@ def run(options: dict) -> dict:
     if op == "add_business_days":
         return {"ok": True, "op": op, **_dated(add_business_days(parse_day(options["date"]), int(options["days"])))}
     if op == "weekday":
-        # what day of the week given dates fall on (r7 A16-T2: 「2026-11-04는 수요일」 had no op)
+        # what day of the week given dates fall on (「2026-11-04는 수요일」)
         given = options.get("dates") or ([options["date"]] if options.get("date") else [])
         if not given:
             raise KeyError("dates")
@@ -792,8 +792,8 @@ _EVENT_BASE = re.compile(r"(?:후|이후|뒤|부터|로부터|기준(?:으로)?)
 
 
 def _from_an_event(row: dict) -> bool:
-    """Whether an offset nobody dated counts from an event the text names (r5 A05-T1: a
-    rule's 「출장 종료 후 7일 이내」 read from today as 10-20 moved a right 10-19(월))."""
+    """Whether an offset nobody dated counts from an event the text names (「출장 종료 후
+    7일 이내」), not from today."""
     if row.get("kind") != "offset" or row.get("anchor"):
         return False
     line, said = str(row.get("source_line") or ""), str(row.get("text") or "")
@@ -897,7 +897,7 @@ def main(argv: list[str]) -> int:
         print(json.dumps({"ok": False, "error": f"인자 JSON 오류: {exc}"}, ensure_ascii=False))
         return 1
     except KeyError as exc:
-        # A bare 「'base_date'」 told the caller nothing (r7 A16-T2): name the key, show a call.
+        # a bare 「'base_date'」 tells the caller nothing: name the key, show a call
         key = str(exc.args[0]) if exc.args else ""
         error = f"「{key}」 값이 필요합니다." if key in _NEEDED else str(exc)
         if key in _NEEDED:

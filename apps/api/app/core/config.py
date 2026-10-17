@@ -116,7 +116,7 @@ class Settings(BaseSettings):
     #: Only audio destination; empty: no transcription, no outside fallback.
     whisper_url: str = ""
     code_interpreter_api_key: str = ""
-    # First-install seeds; migration 0068 copies to `system_settings`, stored value wins.
+    # First-install seeds, copied to `system_settings`; stored value wins.
 
     #: `run_code` writer; strict-local uses strict twin. 27B 8/9 right on messy files, Flash 4/8
     code_model: str = "local/qwen3.8-27b"

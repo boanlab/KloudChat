@@ -179,8 +179,7 @@ _ENDINGS = (
     ("bullet", re.compile(r"(?:음|함|임|됨|짐|김|림|움|봄|옴|줌|함\)|기|것|예정|필요|완료|요망|바람|중|등|및)$")),
 )
 _SPLIT = re.compile(r"(?<=[.!?])\s+")
-# a line with no full stop is split at a sentence ending; never inside 「생각보다 잘」 (r10
-# SK-copyedit-3: a 합니다체 paragraph reported as mixed)
+# a line with no full stop is split at a sentence ending; never inside 「생각보다 잘」
 _SPLIT_BARE = re.compile(r"(?<!보)(?<=[다요까])\s+(?=[가-힣A-Z「\"])")
 
 

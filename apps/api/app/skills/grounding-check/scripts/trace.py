@@ -128,7 +128,7 @@ NOT_A_NAME = re.compile(
     r"원어민|강사|외국인|신입|경력|정규|계약|인턴|파트|주문|결제|정산|검색|데이터|분석|백엔드|프론트|조원|"
     r"총|부총|사|과|처|국|실|단|원|청|시|도|군|구|동|면|읍|리|및|또는|겸|대행|직무|업무|임시|차기|역대|"
     r"당시|현재|이후|이전|최초|최종|공학|인문|자연|사회|경영|의과|법학|교육|예술|체육|명|분|여러분|고객님|회원|사용자|이용자|담당자|관리자|"
-    # demonstratives (r8 A15-T1: 「이게 총무·IT 담당자에게 맞는」 → 「[이름] 총무」)
+    # demonstratives (「이게 총무·IT 담당자에게 맞는」 must not become 「[이름] 총무」)
     r"이게|그게|저게|이건|그건|저건|이걸|그걸|이것|그것|저것|여기|거기|이분|그분)$"
 )
 #: The end of a word that is not a name: 「참석한 교수」, 「맡은 대리」.
@@ -223,8 +223,8 @@ _SHORT_LINE = re.compile(
 _CALL_CUE = re.compile(
     r"전화|상담|핫라인|번호|콜\s?센터|☎|신고|긴급|문의|다이얼|직통|"
     r"hotline|helpline|crisis|call|dial|phone", re.I)
-#: National emergency and public help lines, known without a source (r5 P14 「119(확인 필요)에
-#: 전화」, P48 「112(확인 필요)에 신고」): never marked. 1393 is not among them: it became 109.
+#: National emergency and public help lines, known without a source (「119에 전화」, 「112에
+#: 신고」): never marked. 1393 excluded (merged into 109).
 PUBLIC_LINES = frozenset({
     "112", "119", "110", "113", "117", "118", "120", "122", "125", "128", "129", "131", "132",
     "182", "109", "1301", "1332", "1333", "1339", "1345", "1350", "1366", "1388",
@@ -232,7 +232,7 @@ PUBLIC_LINES = frozenset({
 })
 #: Statutory figures an answer may state without a source, each with the words it goes with:
 #: interest and dividend tax 15.4% (14% + local 1.4%), the 2,000만 원 financial income line
-#: (r5 P19), business income withholding 3.3%, VAT 10%.
+#: business income withholding 3.3%, VAT 10%.
 STATUTORY = (
     (15.4, "%", re.compile(r"이자|배당|금융\s?소득|원천")),
     (14.0, "%", re.compile(r"이자|배당|금융\s?소득|원천")),
@@ -246,7 +246,7 @@ _EXAMPLE = re.compile(r"(?:\(|^|\s)(?:예\s?[:：)]|예를\s?들(?:어|면)|예�
 
 
 #: A value the answer states as its own assumption or estimate, in the same sentence: 「…로
-#: 가정하면」, 「대략 9월 22일~10월 1일 출발로 잡았고」 (r7 P02), 「월 150만 원이라면」 (r7 P56).
+#: 가정하면」, 「대략 9월 22일~10월 1일 출발로 잡았고」, 「월 150만 원이라면」.
 _ASSUMED = re.compile(
     r"가정(?:하|해|한|할|합|으로|이며|이고|치|에)|(?:이|으)?라면\s|(?:이|으)?라고\s?(?:하면|치면|보면)"
     r"|대략|어림|추정(?:하면|치|해|하여|으로|값)|(?:으로|로)\s?잡(?:았|고|으면|아|습)|기준으로\s?잡"
@@ -274,7 +274,7 @@ def assumed_lines(lines: list[str]) -> set[int]:
     under = False
     for k, line in enumerate(lines):
         stripped = line.strip()
-        # 「**먼저 합리적으로 가정한 것** (틀리면 알려 주세요):」 (r8 P02 GLP: its 「9월 21일」 marked)
+        # 「**먼저 합리적으로 가정한 것** (틀리면 알려 주세요):」
         if stripped.startswith("#") or _LABEL_LINE.fullmatch(stripped):
             under = bool(_ASSUMED_HEAD.search(stripped))
             continue
@@ -297,8 +297,8 @@ _DATED = re.compile(r"(?:확인|작성|기준|조회|접속|보고|검색|발행
 
 
 def _in_person_part(person: str, mo: int, d: int) -> bool:
-    """Whether the person's words name a part of month `mo` that holds day `d` (r8 P02:
-    「9월 하순 10일」 → 「9월 21일경 출발」)."""
+    """Whether the person's words name a part of month `mo` that holds day `d` (「9월
+    하순 10일」 → 「9월 21일경 출발」)."""
     return any(int(m.group(1)) == mo and d in _PART_DAYS[m.group(2)]
                for m in _PERSON_PART.finditer(person or ""))
 
@@ -357,8 +357,7 @@ _CLOCK_SPAN = re.compile(r"(?<![\d:])(\d{1,2}):([0-5]\d)\s{0,2}[~∼〜-]\s{0,2}
 
 
 def _span_of_line(n: dict, line: str) -> bool:
-    """A duration the line's own clock span gives: 「14:55~15:00(5분)」 (r8 A01-T2: 「5분」 of
-    the agenda's last slot marked twice)."""
+    """A duration the line's own clock span gives: 「14:55~15:00(5분)」."""
     unit = _family(n["unit"])
     if unit not in ("분", "시간"):
         return False
@@ -373,7 +372,7 @@ def _span_of_line(n: dict, line: str) -> bool:
 _DOSE = re.compile(
     r"(?<![\d.,])(?P<n>\d+(?:[.,]\d+)?)\s?(?P<u>mg|㎎|mcg|㎍|μg|mL|ml|㎖|IU|캡슐|"
     r"정(?![가-힣])|알(?![가-힣]))(?![A-Za-z])")
-#: A legal consequence: 「형사처벌」 「벌금」 「면허 취소」; not the psychology of 「자기 처벌」 (r8 P16 LFLF).
+#: A legal consequence: 「형사처벌」 「벌금」 「면허 취소」; not the psychology of 「자기 처벌」.
 _PENALTY = re.compile(
     r"형사\s?처벌|형사\s?책임|형사\s?입건|(?<!자기)(?<!자기 )처벌|징역|벌금|과태료|구속|(?<!이)전과(?!정)|면허\s?(?:취소|정지)|"
     r"criminal(?:ly)?\s+(?:charge\w*|liab\w*|prosecut\w*)|jail|prison", re.I)
@@ -575,8 +574,8 @@ class Sources:
         computed_text = computed if isinstance(computed, str) else "\n".join(computed or [])
         text = f"{material or ''}\n{computed_text}"
         if today and (named := _named_days(material or "", today)):
-            # the days the request names by today's date (r8 P19 「지금」 → 「오늘(10월 14일)」,
-            # P36 「이번 주 금요일」 → 10월 16일)
+            # the days the request names by today's date (「지금」 → 「오늘(10월 14일)」,
+            # 「이번 주 금요일」 → 10월 16일)
             text += "\n" + "\n".join(d.isoformat() for d in named)
         self.text = text
         self.lower = re.sub(r"\s+", "", text).lower()
@@ -624,13 +623,13 @@ class Sources:
             pm = 12 if m.group("half") in ("오후", "저녁", "밤") else 0
             for h in (int(m.group("h1")), int(m.group("h2"))):
                 self.hours.update((h % 24, (h + pm) % 24 if h < 12 else h % 24))
-        # 「다음 달 15일」: that day of next month, by today (r7 P36 「11월 15일」)
+        # 「다음 달 15일」: that day of next month, by today
         if today:
             for m in re.finditer(r"(다음|이번|지난)\s{0,2}(?:달|월)\s{0,2}(\d{1,2})\s{0,2}일", text):
                 shift = {"다음": 1, "이번": 0, "지난": -1}[m.group(1)]
                 n = today.year * 12 + today.month - 1 + shift
                 self._day(n // 12, n % 12 + 1, int(m.group(2)))
-        # 「14시 시작, 1시간」: the end of a span the sources give (r7 A01-T2 15:00)
+        # 「14시 시작, 1시간」: the end of a span the sources give (15:00)
         spans = {int(n) for n in re.findall(r"(?<![\d.])(\d{1,2})\s{0,2}시간", text)
                  if 0 < int(n) <= 12}
         if spans and len(spans) <= 6:
@@ -641,7 +640,7 @@ class Sources:
         # 「시차 9시간」: the other side's clock for every time given
         for shift in {int(n) for n in re.findall(r"시차\s{0,3}(?:는|가)?\s{0,2}(\d{1,2})\s{0,2}시간", text)}:
             self.hours |= {(h + d) % 24 for h in set(self.hours) for d in (shift, -shift)}
-        # 「A2:A6」, 「B1:M1」: the rows a cell range spans are the person's (r8 P46 「6행까지」)
+        # 「A2:A6」, 「B1:M1」: the rows a cell range spans are the person's (「6행까지」)
         text += "".join(f"\n{r}행" for a, b in re.findall(
             r"(?<![A-Za-z])[A-Z]{1,3}(\d{1,7}):[A-Z]{1,3}(\d{1,7})(?!\d)", material or "")
             for r in {int(a), int(b)})
@@ -727,7 +726,7 @@ class Sources:
             return value
         if family == "년" and self.today and value == int(value) and 0 < value < 200 and any(
                 self.today.year - y == int(value) for y in self.years):
-            # years since a year the sources name, to today (r7 A14-T2 「2018년 출시 이후 8년」)
+            # years since a year the sources name, to today (「2018년 출시 이후 8년」)
             return value
         # 「5년」 written as 「60개월」; 「(메일 3, 14일)」 for a day the material dates.
         if family == "개월" and value % 12 == 0 and any(
@@ -1236,7 +1235,7 @@ def _advice_values(lines: list[str], skip: set[int], sources: Sources,
             hit = next((m for m in _PENALTY.finditer(part)
                         if re.sub(r"\s+", "", m.group(0)).lower() not in sources.lower
                         # a condition the advice is given under, not a consequence it states
-                        # (r7 P48 「형사처벌 우려가 있는 사고라면 변호사를 선임하세요」)
+                        # (「형사처벌 우려가 있는 사고라면 변호사를 선임하세요」)
                         and not _CONDITION_AFTER.match(part, m.end())),
                        None)
             if hit is None:
@@ -1366,7 +1365,7 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
     under_assumption = k in (options.get("_assumed_lines") or ())
 
     def assumed(start: int) -> bool:
-        # an example's clock or date (r7 P16 「예컨대 저녁 7시」) is no fact either
+        # an example's clock or date (「예컨대 저녁 7시」) is no fact either
         return under_assumption or _assumed(line, start) or _illustrative(line, start)
 
     def free(start: int, end: int) -> bool:
@@ -1386,15 +1385,15 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
         today = sources.today
         if today and (mo, d) == (today.month, today.day) and y in (None, today.year) \
                 and _DATED.search(line[max(0, m.start() - 12):m.start()]):
-            # the system date a note dates itself with (r8 A15-T2 「(확인일 2026-10-14, …)」)
+            # the system date a note dates itself with (「(확인일 2026-10-14, …)」)
             return
         worked = _worked_dates(line)
         if (y, mo, d) in worked or (y is None and any((wm, wd) == (mo, d) for _, wm, wd in worked)):
             # 「DATE(2026,13,1)은 2027-01-01」, 「`DATE(2026,1,31)`로 쓰면 1월 31일」: the
-            # formula's own date (r7, r8 P46)
+            # formula's own date
             return
         if d in sources.monthly and (mo in sources.months or y is None):
-            # 「매월 1일」 in a month the sources name (r7 A16-T2 「11월 1일」)
+            # 「매월 1일」 in a month the sources name (「11월 1일」)
             return
         if (y is None or (y, mo, d) not in sources.days) and (None, mo, d) not in sources.days:
             # A garbled copy of the person's one deadline that month goes back to it whole.
@@ -1527,8 +1526,8 @@ def _claims(lines: list[str], skip: set[int], sources: Sources) -> list[dict]:
     return out
 
 
-#: advice to the writer on their own text, not a demand on its reader (r7 P36: 「마지막으로
-#: 회신을 받는 경로(메일 답장인지 …)를 밝히면 좋습니다」 went whole as 「자료에 없는 요구」)
+#: advice to the writer on their own text, not a demand on its reader (「마지막으로 회신을
+#: 받는 경로(메일 답장인지 …)를 밝히면 좋습니다」)
 _WRITING_ADVICE = re.compile(
     r"(?:밝히|적|쓰|넣|명시하|덧붙이|추가하|알리|안내하)(?:면|시면)\s{0,2}(?:좋|낫|오해|더|읽는)"
     r"|(?:밝혀|적어|써|넣어|명시해|덧붙여)\s{0,2}(?:두|주)(?:면|시면|세요|는\s?것이)"

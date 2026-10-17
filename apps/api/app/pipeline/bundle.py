@@ -48,8 +48,6 @@ class Request:
     #: writer catalogue entry; model that actually answered
     model_info: dict | None = None
     actual_model: str | None = None
-    #: unused; kept so older stored runs restore
-    check_facts: str = ""
     #: attached/carried file text; also a value source
     check_material: str = ""
     #: chat turn on the person's material: its answer is traced even without check skills
@@ -104,7 +102,7 @@ class Request:
     @property
     def reviser(self) -> str:
         """Who rewrites the writer's text on the checks' findings: the writer itself when it is
-        strong, else the planner as before."""
+        strong, else the planner."""
         return self.model if self.strong else self.judge
 
 

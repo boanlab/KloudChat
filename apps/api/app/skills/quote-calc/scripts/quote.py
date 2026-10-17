@@ -231,7 +231,7 @@ def run(options: dict) -> dict:
     if items:
         result["table_markdown"] = table(result)
         if not [line for line in result["lines"] if not line.get("excluded")]:
-            # a 0원 sum of nothing is no total to quote (r5 A04-T2)
+            # a 0원 sum of nothing is no total to quote
             result["ok"] = False
             result["warning"] = "모든 항목이 제외되어 합계가 없습니다. 0원을 합계로 쓰지 마세요."
     return result

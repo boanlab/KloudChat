@@ -79,13 +79,13 @@ class Normalize(Base):
                                             printed=req.tool_outputs)
         # what code finds off but cannot settle is marked where it stands, every writer: a
         # formula a unit off, a figure ten times a worked result, a profit its own figures
-        # do not leave (r9 A10-T1, A10-T2, P56)
+        # do not leave
         normalized = units.mark_profit_contradictions(units.mark_scaled_restatements(
             units.mark_slipped_formulas(normalized)))
         # 「수정: 합계는 N원」 beside the wrong total: the total corrected, the line gone
         normalized = units.settle_corrections(normalized)
         # sweeping superlatives narrowed to the table's evidence; a strong writer's claim is
-        # its own reading of the table (r7 A06-T1 「전 문항 중 최저(2.89)」 was true)
+        # its own reading of the table
         if not req.strong:
             normalized = superlatives.narrow_sweeping_claims(normalized)
         # a tool call written out as text, never shown
@@ -110,13 +110,13 @@ class Normalize(Base):
         normalized, _ = weekdays.fix_weekdays(
             normalized, context=f"{req.text}\n{bundle.material.given}",
             today=req.today if isinstance(req.today, dt.date) else None)
-        # Cyrillic and kana slipped into Korean words (r8 P07 「턱 인тягивание」, P16 「흥미 или
-        # 즐거움」), every writer: a code repair costs nothing where there is none
+        # Cyrillic and kana slipped into Korean words (「흥미 или 즐거움」), every writer: a
+        # code repair costs nothing where there is none
         normalized, slips = hangul.repair_mixed_script(
             normalized, f"{req.text}\n{bundle.material.given}", keep_sentences=True)
         if slips:
             log.info("mixed script repaired in session %s: %s", req.session_id, slips[:6])
-        # a crisis line's wrong number set to the official one (r8 P16 「1599-9195」 → 109)
+        # a crisis line's wrong number set to the official one (「1599-9195」 → 109)
         normalized, lines = hotlines.fix(normalized, "\n".join([
             req.text, bundle.material.given, req.check_material, *req.tool_outputs,
             *req.evidence, *(str(m.get("content") or "") for m in req.messages
@@ -258,10 +258,9 @@ def _copy_turn(req: Request) -> bool:
 class CopyMarks(Base):
     """Copy written with a copy skill keeps no 「(확인 필요)」 inside it: the marks, from any
     check before, are listed once below as 「보내기 전 확인」. A small external writer's answer
-    gets the same end box, 「확인 필요: …」, in place of inline marks (r6: GLM-5.3 Flash and
-    DeepSeek V4.1 Flash answers read as unusable with 「(확인 필요)」 inside 14 and 17 tasks);
-    self-hosted and strong external writers keep marks where they stand (docs/architecture.md,
-    "Mechanisms by model group")."""
+    gets the same end box, 「확인 필요: …」, in place of inline marks (inline marks make its
+    answers unusable); self-hosted and strong external writers keep marks where they stand
+    (docs/architecture.md, "Mechanisms by model group")."""
 
     name = "copy-marks"
     reads = ("request", "document.answer")
@@ -284,7 +283,7 @@ class CopyMarks(Base):
 
 class MarkLanguage(Base):
     """An answer in English keeps no Korean mark: the checks' 「(확인 필요)」 as 「(needs
-    checking)」 (r6 P27·P46: the Korean mark inside an English reply)."""
+    checking)」."""
 
     name = "answer-marks"
     reads = ("document.answer",)
@@ -333,8 +332,7 @@ class GuideEcho(Base):
 
 class Weekdays(Base):
     """「M월 D일(요일)」 set to the calendar once more, after every stage that may rewrite the
-    answer (r9 A13-T2: the copy check's rewrite came after `answer-normalize` and brought 9
-    wrong weekdays back); every model group."""
+    answer (a later rewrite can bring wrong weekdays back); every model group."""
 
     name = "answer-weekdays"
     reads = ("request", "material.given", "document.answer")

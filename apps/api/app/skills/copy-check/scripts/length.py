@@ -10,7 +10,7 @@ import unicodedata
 UNITS = ("chars", "chars_dw", "chars_no_spaces", "bytes_utf8")
 
 #: channel → field → rule; `hard` = platform rejects/cuts, else advisory (`max` = ceiling).
-#: `visible`: shown before 「더 보기」. Checked 2026-10-08; 「2차」 = no official source.
+#: `visible`: shown before 「더 보기」. 「2차」 = no official source.
 SPECS: dict[str, dict] = {
     "naver_powerlink": {
         "name": "네이버 파워링크",
@@ -195,8 +195,8 @@ def cut(text: str, limit: int, unit: str = "chars") -> str:
     return text[:lo]
 
 
-#: Names writers use for a channel these specs hold under another key (r7 A12-T2: 「kakao_moment」
-#: refused the whole call). Only channels with a spec here; none gets a made-up limit.
+#: Names writers use for a channel these specs hold under another key (「kakao_moment」), so the
+#: call is not refused. Only channels with a spec here; none gets a made-up limit.
 ALIASES = {
     "kakao_moment": "kakao_display", "kakao_moment_display": "kakao_display",
     "kakao_native": "kakao_display", "kakao_talkboard": "kakao_bizboard",
@@ -288,7 +288,7 @@ _CHANNEL_WORDS: tuple[tuple[str, re.Pattern], ...] = (
     ("meta", re.compile(r"메타\s{0,2}(?:\(|광고)|페이스북\s{0,2}광고|인스타(?:그램)?\s{0,2}광고|\bmeta\s{0,2}ads?\b", re.I)),
     ("youtube", re.compile(r"유튜브\s{0,2}(?:영상\s{0,2})?제목")),
     ("email", re.compile(r"(?:메일|뉴스레터)\s{0,2}제목")),
-    # sponsored content, not a member's own post (r3 A13 T1: an intro written as 148, 156 measured)
+    # sponsored content, not a member's own post
     ("linkedin", re.compile(r"링크드\s{0,2}인\s{0,2}(?:스폰서드|광고)|linked\s{0,2}in\s{0,2}(?:ads?|sponsored)", re.I)),
 )
 #: Fields whose text a judge can lift out of an answer whole: short ones.
@@ -299,7 +299,7 @@ FIELD_WORDS = {"title": "제목", "description": "설명", "extra_title": "추�
                "path": "표시 경로", "cta": "행동 유도 문구", "primary_text": "기본 문구",
                "business_name": "업체명", "subject": "메일 제목", "preheader": "미리보기 문구",
                "item": "후보 하나하나",
-               # every other field, so no key reaches the person (r3 A13 T1: 「ad_intro 권장 150」)
+               # every other field, so no key reaches the person (「ad_intro 권장 150」)
                "main_copy": "메인 문구", "sub_copy": "서브 문구", "basic_text": "기본 텍스트",
                "wide_image_text": "와이드 이미지 문구", "wide_list_title": "와이드 리스트 제목",
                "wide_list_first": "와이드 리스트 첫 항목", "wide_list_item": "와이드 리스트 항목",
@@ -384,8 +384,8 @@ def _channels_named(heading: str) -> set[str]:
 
 def table_items(text: str, rows: list[dict]) -> list[dict]:
     """Copy pieces from answer tables: cells under a header naming a field of `rows`, of the
-    channel the heading over the table names when it names one (r5 A13-T1: Meta titles were
-    measured against Naver's 15)."""
+    channel the heading over the table names when it names one (Meta titles not measured
+    against Naver's 15)."""
     if not rows:
         return []
     ranked = sorted(rows, key=lambda r: (not r.get("hard", True), r["key"] != "stated.item"))
@@ -432,7 +432,7 @@ def restate_counts(text: str, rows: list[dict]) -> str:
             tail = line[end:]
             m = _PAREN_COUNT.match(tail)
             # A table cell holding the piece whole, then a cell holding a number alone or over
-            # its limit (「13/15」, r5 A13-T1: rewritten pieces kept their old counts).
+            # its limit (「13/15」): a rewritten piece's old count is replaced.
             cell = re.match(r"(?:\*\*)?[ \t]{0,3}\|[ \t]{0,3}(\d{1,4})[ \t]{0,3}(?:자)?"
                             r"(?:[ \t]{0,2}/[ \t]{0,2}\d{1,4}[ \t]{0,2}(?:자)?)?[ \t]{0,3}(?=\|)", tail)
             whole = re.search(r"\|[ \t]{0,3}(?:\*\*)?$", line[:at]) and re.match(r"(?:\*\*)?[ \t]{0,3}\|", tail)

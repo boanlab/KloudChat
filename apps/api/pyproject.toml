@@ -67,7 +67,7 @@ extend-ignore = ["B008"]
 # The format checks and the cover-letter pass: Korean prompts and patterns.
 "app/services/report_checks.py" = ["E501"]
 "app/services/cover_letter.py" = ["E501"]
-# The report writer's stages: its Korean step labels and prompts, moved verbatim.
+# The report writer's stages: Korean step labels and prompts.
 "app/pipeline/report_stages.py" = ["E501"]
 # OWPML (.hwpx) literals: a line break inside an attribute list breaks the document.
 "app/services/report_export.py" = ["E501"]
