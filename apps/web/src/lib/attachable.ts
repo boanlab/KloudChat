@@ -16,7 +16,7 @@ const BINARY = new Set([
   '.so', '.dylib', '.class', '.o', '.obj',
 ])
 
-export const SUPPORTED_FORMATS = 'PDF·한글(HWP·HWPX)·워드·엑셀·파워포인트·텍스트·CSV·그림·녹음'
+const SUPPORTED_FORMATS = 'PDF·한글(HWP·HWPX)·워드·엑셀·파워포인트·텍스트·CSV·그림·녹음'
 
 /** Why `file` is not uploaded, or null when it may be. */
 export function attachRefusal(file: File, t: (key: string) => string): string | null {

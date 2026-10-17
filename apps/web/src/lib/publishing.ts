@@ -251,7 +251,7 @@ interface SharedBots {
 }
 
 /** Bots listed to members, read once per account; the hub and the composer show them as agents. */
-export const useSharedBots = create<SharedBots>((set, get) => ({
+const useSharedBots = create<SharedBots>((set, get) => ({
   rows: [],
   loadedFor: null,
   readFor: null,
@@ -268,7 +268,7 @@ export const useSharedBots = create<SharedBots>((set, get) => ({
 }))
 
 /** Others' approved bots not already listed as an org-shared agent. */
-export function memberBots(rows: BotListItem[]): BotListItem[] {
+function memberBots(rows: BotListItem[]): BotListItem[] {
   return rows.filter((b) => !b.mine && b.status === 'approved' && !b.sharedAgentId)
 }
 

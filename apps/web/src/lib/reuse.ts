@@ -8,7 +8,7 @@ import type { Artifact, SessionKind } from '@/types'
 const tr = (text: string) => translate(currentLang(), text)
 
 /** Both open a new conversation with the artifact attached; `restart` also fills in the request. */
-export type ReuseHow = 'restart' | 'attach'
+type ReuseHow = 'restart' | 'attach'
 
 /** Artifacts whose words can travel to a new conversation as a file; pictures and clips cannot. */
 export function reusable(artifact: Artifact): boolean {

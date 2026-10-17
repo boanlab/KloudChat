@@ -32,7 +32,7 @@ export function missingMessage(lang: Lang, label: string): string {
   return `${label}${objectParticle(label)} 입력하세요.`
 }
 
-export interface RequiredField<K extends string = string> {
+interface RequiredField<K extends string = string> {
   key: K
   label: string
   value: string

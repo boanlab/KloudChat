@@ -165,7 +165,7 @@ const FIELD_NAMES: Record<string, string> = {
 }
 
 /** Korean sentence for a refused form; the validator's English never shown. */
-export function validationMessage(problems: FieldProblem[]): string {
+function validationMessage(problems: FieldProblem[]): string {
   const first = problems[0] ?? {}
   const wire = String([...(first.loc ?? [])].reverse().find((part) => typeof part === 'string' && part !== 'body') ?? '')
   const field = FIELD_NAMES[wire]
@@ -719,7 +719,7 @@ export interface AuditRow {
   metadata?: (Record<string, unknown> & { changes?: Record<string, [unknown, unknown]> }) | null
 }
 
-export interface AuditPage {
+interface AuditPage {
   items: AuditRow[]
   total: number
   page: number
@@ -1559,7 +1559,7 @@ export const adminSkillsApi = {
   reject: (id: string, note: string) => call<SkillReview>(`/admin/skills/${id}/reject`, body({ note })),
 }
 
-export interface SkillImportResult {
+interface SkillImportResult {
   dryRun: boolean
   items: SkillImportPreview[]
   created: SkillRow[]
@@ -1902,8 +1902,6 @@ export interface RunRow extends PipelineRun {
 export const runsApi = {
   get: (sessionId: string, runId: string) =>
     call<RunRow>(`/sessions/${sessionId}/runs/${runId}`),
-  list: (sessionId: string, limit = 20) =>
-    call<RunRow[]>(`/sessions/${sessionId}/runs?limit=${limit}`),
 }
 
 /** 「이 단계부터 다시」: the same events as a normal turn of that surface. */
@@ -1918,15 +1916,7 @@ export async function* streamRerun(
 
 export const userPipelinesApi = {
   list: () => call<UserPipeline[]>('/user-pipelines'),
-  store: () => call<UserPipeline[]>('/user-pipelines/store'),
   catalogue: () => call<PipelineCatalogue>('/user-pipelines/catalogue'),
-  get: (id: string) => call<UserPipeline>(`/user-pipelines/${id}`),
-  /** A new one: from an agent's shipped flow, from another pipeline, or from steps. */
-  create: (payload: { name?: string; description?: string; stages?: PipelineStep[]; fromAgentId?: string; fromId?: string }) =>
-    call<UserPipeline>('/user-pipelines', body(payload)),
-  update: (id: string, payload: { name?: string; description?: string; stages: PipelineStep[] }) =>
-    call<UserPipeline>(`/user-pipelines/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  remove: (id: string) => call<void>(`/user-pipelines/${id}`, { method: 'DELETE' }),
   validate: (
     stages: PipelineStep[],
     id?: string,
@@ -1939,15 +1929,6 @@ export const userPipelinesApi = {
       '/user-pipelines/validate',
       body({ stages, id, agentId, selfSurface: self?.surface, selfName: self?.name, questions }),
     ),
-  submit: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/submit`, { method: 'POST' }),
-  withdraw: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/withdraw`, { method: 'POST' }),
-  bind: (agentId: string, pipelineId: string | null) =>
-    call<{ agentId: string; pipelineId: string | null }>(`/agents/${agentId}/user-pipeline`, {
-      method: 'PUT',
-      body: JSON.stringify({ pipelineId }),
-    }),
-  start: (id: string) =>
-    call<{ sessionId: string; kind: 'report' | 'chat'; pipelineId: string }>(`/user-pipelines/${id}/start`, { method: 'POST' }),
   adminList: (review = 'pending') => call<UserPipeline[]>(`/admin/user-pipelines?review=${review}`),
   approve: (id: string) => call<UserPipeline>(`/admin/user-pipelines/${id}/approve`, { method: 'POST' }),
   reject: (id: string, note: string) => call<UserPipeline>(`/admin/user-pipelines/${id}/reject`, body({ note })),
@@ -2425,7 +2406,7 @@ export interface BotPage {
 }
 
 /** What a visitor's turn streams: the answer and, as the owner chose, its working. */
-export type BotStreamEvent =
+type BotStreamEvent =
   | { type: 'delta'; text: string }
   | { type: 'retract'; text: string }
   | { type: 'step'; id?: string; label?: string; status?: string; category?: string; detail?: string }
@@ -2685,7 +2666,7 @@ export interface IssueSnapshot {
   truncated: IssueCut[]
 }
 
-export interface IssueCreate {
+interface IssueCreate {
   kind: IssueKind
   body: string
   sessionId?: string
@@ -2763,7 +2744,7 @@ export type PerfLevel = 'ok' | 'warn' | 'critical' | 'info'
 /** `[epoch ms, mean, peak]` per bucket. */
 export type PerfPoint = [number, number, number]
 
-export interface PerfEvidence {
+interface PerfEvidence {
   source: string
   name: string
   subject: string
@@ -2929,7 +2910,7 @@ export interface ArtifactSearchHit {
   updatedAt: string
 }
 
-export interface SearchResult {
+interface SearchResult {
   query: string
   terms: string[]
   sessions: SessionSearchHit[]
@@ -2940,7 +2921,7 @@ export interface SearchResult {
   sessionsTotal: number | null
 }
 
-export type SearchScope = 'all' | 'sessions' | 'artifacts'
+type SearchScope = 'all' | 'sessions' | 'artifacts'
 
 export const searchApi = {
   query: (
@@ -2956,7 +2937,7 @@ export const searchApi = {
 }
 
 /** One page of 대화 기록, newest first; `page` is the one served (the last when asked past it). */
-export interface SessionPage {
+interface SessionPage {
   items: SessionRow[]
   total: number
   page: number

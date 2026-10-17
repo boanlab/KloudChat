@@ -1,7 +1,7 @@
 import type { ModelInfo } from '@/types'
 
 /** The ratios the composer offers, widest first; 16:9 is the default. */
-export const ASPECTS = ['16:9', '9:16', '4:3', '1:1']
+const ASPECTS = ['16:9', '9:16', '4:3', '1:1']
 
 /** Ratios this image model draws, in composer order; none listed: all four, none served: 1:1. */
 export function servedAspects(model: ModelInfo | undefined): string[] {

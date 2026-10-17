@@ -33,7 +33,7 @@ function isOrder(s: string, noun: RegExp): boolean {
 }
 
 /** The person's own instruction without pasted text (first paragraph; same cut as `context.instruction_part`). */
-export function instructionPart(text: string): string {
+function instructionPart(text: string): string {
   const lines = text.trim().split('\n')
   const kept: string[] = []
   for (const [index, line] of lines.entries()) {

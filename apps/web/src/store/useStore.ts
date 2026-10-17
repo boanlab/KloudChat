@@ -253,7 +253,7 @@ type SendOptions = {
 }
 
 /** What the result card asks of the panel it opens. */
-export interface ArtifactIntent {
+interface ArtifactIntent {
   artifactId: string
   /** Changes on every request, so the same request twice is seen twice. */
   nonce: number
@@ -318,8 +318,6 @@ interface State {
   skillStoreLoading: boolean
   /** Whether the shared skill list has answered once; until then 탐색 is loading, not empty. */
   skillStoreLoaded: boolean
-  /** The last listing failed; distinct from empty. */
-  skillStoreError: boolean
   designs: DesignRow[]
   /** Server-shipped, read-only. */
   designTemplates: DesignTemplateRow[]
@@ -335,11 +333,9 @@ interface State {
   /** Per collection: still loading (an empty list alone cannot say). */
   workspaceLoading: boolean
   artifactsLoading: boolean
-  sessionsLoading: boolean
   /** Per collection: the last refresh failed and the list may be stale. */
   workspaceFailed: boolean
   artifactsFailed: boolean
-  sessionsFailed: boolean
   /** False when the proxy did not answer and only adapter models are listed. */
   litellmAvailable: boolean
   autoRouting: ModelCatalogue['autoRouting']
@@ -1143,10 +1139,8 @@ export const useStore = create<State>((set, get) => ({
   artifactsHasMore: false,
   artifactFilter: {},
   artifactCounts: null,
-  sessionsLoading: true,
   workspaceFailed: false,
   artifactsFailed: false,
-  sessionsFailed: false,
   litellmAvailable: true,
   autoRouting: {
     enabled: false,
@@ -1167,7 +1161,6 @@ export const useStore = create<State>((set, get) => ({
   skillStore: [],
   skillStoreLoading: false,
   skillStoreLoaded: false,
-  skillStoreError: false,
   designs: [],
   designTemplates: [],
   availableTools: [],
@@ -1426,8 +1419,6 @@ export const useStore = create<State>((set, get) => ({
       const rows = await sessionsApi.list()
       if (!ownsAccount()) return
       set((s) => ({
-        sessionsLoading: false,
-        sessionsFailed: false,
         // The list carries no transcripts, so held messages are kept; unsent ones are the browser's.
         sessions: [
           ...s.sessions.filter((c) => !rows.some((row) => row.id === c.id) &&
@@ -1438,8 +1429,7 @@ export const useStore = create<State>((set, get) => ({
         ],
       }))
     } catch {
-      if (!ownsAccount()) return
-      set({ sessionsLoading: false, sessionsFailed: true })
+      // The held list stays.
     }
   },
 
@@ -2560,11 +2550,10 @@ export const useStore = create<State>((set, get) => ({
     return saved
   },
   loadSkillStore: async () => {
-    set({ skillStoreLoading: true, skillStoreError: false })
+    set({ skillStoreLoading: true })
     const rows = await skillsApi.store().catch(() => null)
     set((st) => ({
       skillStore: rows ? rows.map(toStoreSkill) : st.skillStore,
-      skillStoreError: rows === null,
       skillStoreLoading: false,
       skillStoreLoaded: true,
     }))
@@ -2870,7 +2859,7 @@ function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T
 const pendingDeletes = new Set<() => void>()
 
 /** Flushes held deletes as the page goes away (`pagehide` on phones), with `keepalive`. */
-export function flushHeldDeletes() {
+function flushHeldDeletes() {
   for (const flush of [...pendingDeletes]) flush()
   pendingDeletes.clear()
 }
@@ -4353,8 +4342,8 @@ export const FIGURE_STYLES: Record<string, 'method' | 'flow' | 'concept' | undef
 }
 
 /** Why a figure came back undrawn, in the person's words. */
-export const FIGURE_UNDRAWABLE = '이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.'
-export const FIGURE_UNRENDERED = '지금은 도식을 그릴 수 없습니다. 잠시 뒤 다시 시도해 주세요.'
+const FIGURE_UNDRAWABLE = '이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.'
+const FIGURE_UNRENDERED = '지금은 도식을 그릴 수 없습니다. 잠시 뒤 다시 시도해 주세요.'
 
 /** Description → flowchart → PNG drawn with the .pptx export's shapes, kept with its source; undrawable figures refused. */
 export async function drawFigure(

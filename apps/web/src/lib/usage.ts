@@ -1,5 +1,5 @@
 /** A turn's token counters: writer, planner, reviewers; the answer line shows the sum. */
-export type UsageCounters = Record<string, number | boolean | undefined>
+type UsageCounters = Record<string, number | boolean | undefined>
 
 export function tokenTotals(usage: UsageCounters | undefined): { input: number; output: number } {
   let input = 0

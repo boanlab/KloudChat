@@ -50,7 +50,7 @@ export const CREATE_ERROR: Record<string, string> = {
   artifact_not_found: '고른 아티팩트를 찾을 수 없습니다.',
 }
 
-export interface IssueTarget {
+interface IssueTarget {
   sessionId?: string
   messageId?: string
   /** The answer's first words, for the pinned chip. */
