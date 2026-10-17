@@ -31,7 +31,7 @@ The answer area shows **Retry** and **Another model** buttons. **Another model**
 
 ## Editing a sent message
 
-In Chat, select **Edit message** (the pencil icon) next to a message you sent. The composer shows **Edit message · New conversation** and fills in the original text and attachments. When you send the edited text, the answer is generated in a **new conversation** that copies everything before that message. The original conversation stays as it was. Use **Cancel edit** or `Esc` to stop editing. You cannot edit while an answer is being generated.
+In Chat, select **Edit message** (the pencil icon) next to a message you sent. The composer shows **Editing · sending starts a new conversation; this one stays as it is** and fills in the original text and attachments. When you send the edited text, the answer is generated in a **new conversation** that copies everything before that message. The original conversation stays as it was. Use **Cancel edit** or `Esc` to stop editing. You cannot edit while an answer is being generated.
 
 ## Keeping conversation context
 
@@ -44,7 +44,7 @@ Use the 🎤 button in the composer. It appears only where the administrator has
 | Method | What it does |
 |---|---|
 | 🎤 button or `Ctrl+Shift+M` | The recording is converted to text and placed in the composer. Edit it, then send. |
-| Hold `Space` in an empty composer and speak | The request is sent the moment you release the key. |
+| Hold `Space` in an empty composer and speak | On release the words are typed into the composer, not sent. Works only with **Hold Space to dictate** on under Settings → Preferences. |
 
 Recordings are not stored. If there is no microphone or no permission, the message "Microphone is unavailable" appears.
 

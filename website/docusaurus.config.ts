@@ -11,8 +11,7 @@ const config: Config = {
   favicon: 'img/favicon.svg',
   future: { v4: true },
 
-  // GitHub Pages 프로젝트 사이트로 나간다. 포크에서 빌드하면 워크플로가 그 포크의 주소를
-  // 환경 변수로 넣어 주므로 이 파일은 손대지 않아도 된다.
+  // GitHub Pages project site; a fork's workflow passes its own address in the environment.
   url: process.env.SITE_URL ?? 'https://boanlab.github.io',
   baseUrl: process.env.SITE_BASE_URL ?? '/KloudChat/',
   organizationName: 'boanlab',

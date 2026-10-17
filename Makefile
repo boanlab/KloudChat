@@ -1,7 +1,7 @@
 # KloudChat — the commands CI runs, so "green locally" and "green in CI" match.
 #
 #   make help     list targets
-#   make check    everything CI checks, in the order CI checks it
+#   make check    CI's lint, build, unit-test, shellcheck and compose checks
 
 SHELL := /usr/bin/env bash
 WEB := apps/web

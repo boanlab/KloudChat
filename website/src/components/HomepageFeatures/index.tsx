@@ -8,11 +8,8 @@ import Reveal from '@site/src/components/Reveal';
 import styles from './styles.module.css';
 
 /**
- * 처음 쓰는 사람이 만나는 순서대로: 대화, 그 아래에 깔린 설정, 데이터가 나가는 경계, 그리고
- * 대화에서 곧장 나오는 문서.
- *
- * 네 칸 중 둘은 실제 화면 캡처를 싣고 둘은 아이콘을 싣는다. 넓은 칸과 좁은 칸이 번갈아 놓여
- * 같은 상자 네 개가 아니라 하나의 짜임으로 읽힌다.
+ * Four tiles in first-use order: chat, settings, data boundary, documents; wide
+ * screenshot tiles alternate with narrow icon tiles.
  */
 
 type Tile = {
@@ -24,7 +21,7 @@ type Tile = {
 };
 
 function useTiles(): Tile[] {
-  // 훅을 먼저, 정해진 순서로 부른다. 아래 표는 그래야 그냥 데이터로 남는다.
+  // Hooks first, in a fixed order, so the table below stays plain data.
   const chatShot = useBaseUrl('/img/guide/chat-with-file.png');
   const slidesShot = useBaseUrl('/img/guide/slides.png');
   return [

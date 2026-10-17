@@ -4,7 +4,7 @@ title: Working with skills and building agents
 
 # Working with skills and building agents
 
-Jobs such as minutes, a bullet-style briefing (개조식 보고) or comparing options are done with **official skills**. Turn a skill on in a conversation and it does that job; for work you do often, combine a few skills into an agent of your own. There are no separate built-in agents. Conversations with the former built-in agents, copies you took of them, and chatbots you published from them keep working.
+Jobs such as minutes, a bullet-style briefing (개조식 보고) or comparing options are done with **official skills**. Turn a skill on in a conversation and it does that job; for work you do often, combine a few skills into an agent of your own. There are no separate built-in agents.
 
 ## Official skills
 
@@ -74,7 +74,7 @@ Skills kept on **개조식 보고**, theme **문서용 명조**, screen **Report
 
 ## A purchase review agent
 
-Skills kept on **비교·결정 보고** + **견적 계산**, screen **Report**. Write your institution's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them.
+Skills kept on **비교·결정 보고** + **견적 계산**, screen **Report**. Write your organization's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them.
 
 ## A tally agent
 

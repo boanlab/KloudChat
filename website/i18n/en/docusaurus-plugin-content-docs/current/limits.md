@@ -36,7 +36,7 @@ Search for the message exactly as it appears on the screen.
 | Message on the screen | Meaning | What to do |
 |---|---|---|
 | You have used all of your credits this month | The monthly limit is used up | Wait for the refill on the 1st of next month. Free models are not affected |
-| You do not have enough credits this month | The remaining credits are less than the estimated cost of this request | Reduce the options such as slide count or length, or use a free model |
+| You do not have enough credits this month | The remaining credits are less than the estimated cost of this request | Reduce the options such as length or resolution, or use a free model |
 | Cannot connect to the model server | Model gateway failure | Try again shortly. Contact your administrator if it continues |
 | Could not get an answer because of a model server error | The gateway refused the request (including when the files or the conversation exceed the model window) | Upload the files again in a new conversation, or narrow the question |
 | The model did not respond, so the request was stopped. Try generating again with another model | No text arrived for 3 minutes | **Another model** |
@@ -49,6 +49,8 @@ Search for the message exactly as it appears on the screen.
 | The request was not sent because the personal data checker is unavailable | Protection feature failure | Contact your administrator. Sending is blocked for safety |
 | An administrator policy blocked this request | The request matches a blocked topic | Check what the request says |
 | The answer was cut off, so only this much remains | The connection dropped (tab closed or network) | Select **Retry**. It generates again from the start |
+| This holds internal material or personal data, so only a strict-local model may make it, and none is available | No strict-local model for a picture, chart or diagram in an internal-material conversation, or for a document edit | Contact your administrator |
+| A document with internal material or personal data cannot be fact-checked on the web | The claims would go to outside search engines, so it is blocked | Check against the material yourself |
 | The attachment could not be found. Attach it again | The file was deleted | Attach it again |
 | The selected skill cannot be applied to this request | The skill conditions (tool or model) are not met | Remove the skill or change the model |
 | This agent reads its instructions from the original, and the original has been deleted or is no longer public | The original of an agent with private content is gone | Use another agent |

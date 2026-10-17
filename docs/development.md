@@ -26,8 +26,9 @@ make build       # or: docker compose -f docker-compose.yml \
 does. `make build` builds every image from this checkout, which is what you
 want while working on any of them.
 
-`make help` lists everything below as a target. `make check` runs exactly what
-CI runs, in the same order.
+`make help` lists everything below as a target. `make check` runs CI's lint,
+build, unit-test, shellcheck and compose checks; the Playwright fixture suite
+and the image builds run separately.
 
 You do not need a model backend to work on most of the app. Projects, skills,
 memory, agents, history, sharing and administration all function without one;

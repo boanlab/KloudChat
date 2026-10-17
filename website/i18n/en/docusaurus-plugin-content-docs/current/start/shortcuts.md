@@ -29,7 +29,7 @@ Press `Ctrl+/` anywhere on the screen to see the full list. On macOS, use `⌘` 
 |---|---|
 | Send | `Enter` |
 | New line | `Shift+Enter` |
-| Dictate | In an empty composer, hold `Space` while you speak. Release it to send immediately |
+| Dictate | In an empty composer, hold `Space` while you speak. Release it to type the words into the box (with **Hold Space to dictate** on in Preferences) |
 
 ## Document editor and presentation mode
 

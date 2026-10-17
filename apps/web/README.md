@@ -37,6 +37,7 @@ src/
 │   ├── slides/         DeckPanel (renderer, thumbnail grid, per-slide editing), slide patterns, type scale
 │   ├── chart/          Chart, underlying-data tab, PNG/SVG/CSV
 │   ├── media/          Asynchronous generation card (progress → result)
+│   ├── files/          File box: list, picker, preview, delete choice
 │   ├── agents/         An agent's knowledge, process (How it works) and gap questions
 │   ├── customize/      Customize hub: agent, skill and template forms, sharing, Use now
 │   ├── publishing/     Publish dialog, channels (link, embed, API, MCP), scope

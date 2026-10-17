@@ -6,22 +6,15 @@ import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import styles from './styles.module.css';
 
 /**
- * 히어로의 화면 모음. 가운데 한 장이 서고 양옆에 다음 장이 조금 걸쳐 보이며, 화살표로 돌린다.
- *
- * 한 장씩 보여 주는 것보다 이 편이 나은 이유는, 첫 화면에서 "여러 가지를 할 수 있다"는 사실이
- * 설명 없이 보이기 때문이다. 양옆의 조각이 아직 안 본 화면이 남아 있다는 표시가 된다.
- *
- * 글로 붙이는 설명은 두지 않는다. 화면 자체가 설명이고, 바로 아래 네 칸에서 같은 내용을 글로
- * 다시 다룬다. 대체 텍스트는 화면 낭독기를 위해 남긴다.
- *
- * 자동으로 넘기지 않는다. 읽는 사람이 누를 때만 움직이므로 글을 읽는 동안 화면이 바뀌지 않고,
- * 모션을 줄이는 설정을 켠 사람에게도 그대로 쓸 수 있다.
+ * Hero screenshot carousel: one centred slide with its neighbours peeking at the sides;
+ * moves only on arrow or key input (no autoplay, safe with reduced motion). Alt text kept
+ * for screen readers.
  */
 
 type Slide = { src: string; alt: string };
 
 function useSlides(): Slide[] {
-  // 훅을 먼저, 정해진 순서로 부른다. 아래 표는 그래야 그냥 데이터로 남는다.
+  // Hooks first, in a fixed order, so the table below stays plain data.
   const report = useBaseUrl('/img/guide/report.png');
   const slides = useBaseUrl('/img/guide/slides.png');
   const files = useBaseUrl('/img/guide/chat-with-file.png');
@@ -74,7 +67,7 @@ export default function HeroDeck(): ReactNode {
 
   const go = useCallback((step: number) => setAt((i) => (i + step + n) % n), [n]);
 
-  // 무대에 초점이 있을 때만 좌우 키를 받는다. 페이지 전체의 키 입력을 가로채지 않는다.
+  // Arrow keys only while the stage has focus; page-wide keys untouched.
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
@@ -100,7 +93,7 @@ export default function HeroDeck(): ReactNode {
         aria-label={translate({ id: 'home.deck.label', message: 'KloudChat 활용 화면' })}
       >
         {slides.map((s, i) => {
-          // 고리처럼 이어 붙인 거리. 마지막 장에서 첫 장으로 넘어갈 때도 옆으로 흐른다.
+          // Ring distance, so last → first still slides sideways.
           let off = i - at;
           if (off > n / 2) off -= n;
           if (off < -n / 2) off += n;

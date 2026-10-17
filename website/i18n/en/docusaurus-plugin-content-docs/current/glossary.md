@@ -14,7 +14,7 @@ title: Glossary
 | Project (프로젝트) | A workspace that groups material, instructions, and conversations |
 | Agent (에이전트) | A helper with set instructions, process, tools, and material. Start one from **+** → **Agents** in the composer |
 | How it works (진행 과정) | The order an agent works in: Answer directly · Start from a base process · Set it up yourself (advanced) |
-| Base process (기본 과정) | The order a former built-in agent (Bullet-style briefing, Minutes, …) worked in. Used only by agents that already started from it |
+| Base process (기본 과정) | The working order of a built-in agent (Bullet-style briefing, Minutes, …). Used only by agents that already started from it |
 | Bundle (묶음) | A group of things an agent does before and after writing. Ticked under Extra work in the agent settings |
 | Skill (스킬) | A way of working you keep on in a conversation. Up to 3 in the composer, up to 6 as an agent's skills kept on. Brings its template, checks and missing-information questions |
 | Official skill (공식 스킬) | A skill the administrator shares with everyone, for jobs such as minutes or a bullet-style briefing. Picking it in the composer adds it to your skills |

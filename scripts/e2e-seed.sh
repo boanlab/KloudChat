@@ -55,19 +55,18 @@ echo "e2e account ready: $E2E_EMAIL ($status, admin)"
 
 # auth.spec.ts signs in with its own account, which is pending on a
 # non-empty database.
-for extra in e2e-admin@example.com; do
-  xid=$(curl -s "$API/admin/users" -H "Authorization: Bearer $admin_token" \
-    | NEEDLE="$extra" python3 -c '
+extra=e2e-admin@example.com
+xid=$(curl -s "$API/admin/users" -H "Authorization: Bearer $admin_token" \
+  | NEEDLE="$extra" python3 -c '
 import json, os, sys
 print(next((u["id"] for u in json.load(sys.stdin) if u["email"] == os.environ["NEEDLE"]), ""))')
-  if [ -n "$xid" ]; then
-    curl -s -o /dev/null -X POST "$API/admin/users/$xid/approve" \
-      -H "Authorization: Bearer $admin_token" -H "$JSON" -d '{"monthlyCredits":2000000}'
-    curl -s -o /dev/null -X POST "$API/admin/users/$xid/role" \
-      -H "Authorization: Bearer $admin_token" -H "$JSON" -d '{"role":"admin"}'
-    echo "  activated $extra (admin)"
-  fi
-done
+if [ -n "$xid" ]; then
+  curl -s -o /dev/null -X POST "$API/admin/users/$xid/approve" \
+    -H "Authorization: Bearer $admin_token" -H "$JSON" -d '{"monthlyCredits":2000000}'
+  curl -s -o /dev/null -X POST "$API/admin/users/$xid/role" \
+    -H "Authorization: Bearer $admin_token" -H "$JSON" -d '{"role":"admin"}'
+  echo "  activated $extra (admin)"
+fi
 
 # ── workspace seed ──────────────────────────────────────────────────────
 # Each screen needs one item to assert on; inserted through the API, checked

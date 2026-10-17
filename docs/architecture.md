@@ -647,8 +647,8 @@ picture without it), and `<hc:img binaryItemIDRef="imageN">` inside an
 `<hh:binDataList>` belongs to the older HML format. Every document also carries
 an `<hp:secPr>` with A4 and its margins in the first paragraph's run: without
 page geometry, an object sized in absolute units is read and never drawn. The
-structure was transcribed from genuine Hancom output (hwpxlib's test corpus)
-and checked in Hancom Office; no independent OWPML reader is installable.
+structure follows genuine Hancom output (hwpxlib's test corpus); no
+independent OWPML reader is installable to check it against.
 
 A picture that has stopped being one — truncated bytes, a format a library
 refuses — costs its own illustration and nothing else: every renderer catches
@@ -834,12 +834,10 @@ artifact has the same per-block rewrite.
 
 ### Mechanisms by model group
 
-The checks and devices after writing help a weak writer and can harm a strong one: in
-round 8 (48 tasks, seven setups) KloudChat beat the direct answer of the self-hosted models
-about four times in five, while with a strong external writer its gain was small and for one
-model the direct answer won more often. A check that overrides the writer pays only when the
-writer is weaker than the check. So each mechanism decides its behaviour by the **model group**
-of the model that actually wrote (`model_tier.group`, `Request.group`):
+The checks and devices after writing help a weak writer and can harm a strong one: a check
+that overrides the writer pays only when the writer is weaker than the check. So each
+mechanism decides its behaviour by the **model group** of the model that actually wrote
+(`model_tier.group`, `Request.group`):
 
 - **self-hosted** — `local/…` and `strict-local/…` (27B, flash). The light-setup evaluation
   switch (`KCHAT_LIGHT_WRITERS`) changes their prompt, not their group.
@@ -855,9 +853,8 @@ turn (`[[n]](url)`) is read against those pages only (`post_checks.cited_pages`)
 page the turn searched. A finding code cannot check is marked or shown, never acted on. **Code fixes only what it computes**: a value is replaced by code only
 when code knows the right one (a settled figure, an official hotline, a recomputed date).
 
-Small external models have no round-8 measurement; their column follows round 6 (old code)
-and the self-hosted column, and is to be re-measured. Change a row here when a fix changes
-what a group gets, and test both a self-hosted and a strong external writer.
+The small-external column mostly follows the self-hosted one. Change a row here when a fix
+changes what a group gets, and test both a self-hosted and a strong external writer.
 
 | Mechanism (code) | Self-hosted | Small external | Strong external |
 |---|---|---|---|
@@ -927,8 +924,8 @@ judged checks, structure rules (sections, tables, summary lines, bullet (개조�
 written review rules and options such as `search`, `fixed_outline` and `draws`. Every name is from a
 closed list the code ships, so a person who sets the same values as a shipped template gets
 the same run. `tests/test_pipelines.py` holds every shipped format to its expected pre-pass
-steps, check families, stages and options. Runs stored under the names of earlier per-format
-pipeline files still open (`registry.LEGACY`).
+steps, check families, stages and options. Runs stored under a per-format pipeline name
+that no longer has a file of its own still open (`registry.LEGACY`).
 
 **The bundle** (`Bundle`) has narrow, typed parts: `request` (what the turn was asked,
 never written), `spec` (format and genre), `material` (each `Part` with its origin:
@@ -1151,7 +1148,9 @@ rather than a value somebody saves without noticing. The prompt says to leave
 — an invented house style is worse than a blank field, because the blank one is
 obviously unfinished.
 
-Costs one call on the cheapest chat model, charged like any other.
+Costs one call on the cheapest allowed chat model, charged like any other; an
+uploaded file is internal material, so it is read on a strict-local model
+(see "Other boundaries", §7).
 
 ### Themes
 
@@ -1326,14 +1325,14 @@ catalogue agent, or a shipped skill that is shared or has been installed), so a
 skill the administrator made private stays private. `former_names` in an agent file renames untouched copies on sync.
 
 Shipped skills are ordinary skills of that account (`source = personal`; copies are
-`workspace` — there is no built-in source, migration 0070 rewrote the old one): the owner
+`workspace` — there is no built-in source): the owner
 can edit or unshare them in **Customize** like any skill of their own (a deleted one is seeded
 again on the next sync, as agents are), and the store
 shows them under the owner's name. `skills.package_hash` is the owner row's content as last
 synced; while the row still hashes to it the sync rewrites it from its package, and copies
 whose content equals the owner row's previous content follow along; an edited owner row
 (hash differs, or `""` for an adopted per-account seed) or an edited copy is left alone.
-Copies seeded before `origin_id` are linked to the owner row by key. Check skills run by key
+A copy without `origin_id` is linked to the owner row by key. Check skills run by key
 from the packages (`skill_specs.resolve`), so an agent's or template's checks work for
 someone who added nothing; a template's text skills come from the owner's shared row only
 (`sessions._template_skills`), never from someone's shared copy.
@@ -1360,11 +1359,12 @@ agents, by slug — so seeded copies count as installed.
 
 ### Skills instead of shipped agents
 
-There are no built-in agents (D21). Each thing a shipped agent did is an admin-owned shared
-skill (`app/skills/<key>/`, seeded and followed like every package), which a person switches
-on in a conversation or builds into an agent of their own. The skill package format gained
-five fields, the same ones a person sets in the skill form (**Server checks**, 서버가 돌리는 점검)
-or an uploaded SKILL.md, stored on `skills.server_fields` and validated in `skill_specs`:
+There are no built-in agents. Each thing a shipped agent file describes is an admin-owned
+shared skill (`app/skills/<key>/`, seeded and followed like every package), which a person
+switches on in a conversation or builds into an agent of their own. Five skill fields carry
+what an agent would — the same ones a person sets in the skill form (**Server checks**,
+서버가 돌리는 점검) or an uploaded SKILL.md, stored on `skills.server_fields` and validated in
+`skill_specs`:
 
 | field | what it brings to a turn the skill is on | an agent's equivalent |
 |---|---|---|
@@ -1385,7 +1385,7 @@ skills a person has not added under **Official skills**; picking one adds the co
 switches it on.
 
 **An agent is built from skills.** `agents.active_skill_ids` (**Skills kept on**, at most
-six, migration 0072) are on in every turn of the agent's conversations, apart from the three
+six) are on in every turn of the agent's conversations, apart from the three
 a person picks per turn; `skill_ids` stays the allow-list of what the composer may add. They
 are resolved where the agent runs (`workspace_context.agent_skill_rows`): the agent owner's
 rows, the person's own, or shared ones — a skill the owner built into a shared agent travels
@@ -1395,9 +1395,9 @@ runs skills; its version freezes the agent's prompt with each built-from skill's
 appended and adds the skills' `post` checks (`publishing.built_from`). A composed pipeline's
 agent step gets the same prompt.
 
-**Language, web search and memory are the agent's own settings** (migration 0074, form
-**Advanced**). They are plain agent fields, not catalogue cases, so a person builds the same
-thing a shipped agent would:
+**Language, web search and memory are the agent's own settings** (form **Advanced**). They
+are plain agent fields, not catalogue cases, so a person builds the same thing a shipped
+agent would:
 
 - `agents.output_language` (`auto`, `ko`, `en`, `ja`, `zh`, or a language name typed in,
   cleaned to one line by `output_language.normalize`). `workspace_context.assemble` adds it as
@@ -1411,21 +1411,20 @@ thing a shipped agent would:
 - `agents.web_search_default` (`auto`, `on`, `off`). The composer opens a conversation with the
   agent on this setting and the person changes it per turn. `SendMessage.web_search` is
   optional: a turn that sends none (API, MCP) takes the agent's default, and without an agent
-  stays off as before. With `off`, current-fact forcing (`freshness`, `exact_facts`) does not
+  stays off. With `off`, current-fact forcing (`freshness`, `exact_facts`) does not
   start a search, since it only forces one when search is on; asking for a search in the words
   still searches.
 - `agents.use_memory` (default true). When false, `assemble` reads no memory block for the
   agent's turns, the turn writes no automatic memory (`_enrich_memory` is not asked), and
   `share_note`, which writes a memory row, is not offered.
 
-**Tool skills on documents.** A report or deck writer runs no tools, so a hand-picked skill
-whose `required_tools` are missing was refused (`skill_tools_unavailable`). A skill whose work
-the server does around the writing is now accepted there (`skill_specs.runs_on_server`: a
-check skill with a `stage`, or `process` with `prepass`, `checks`, `stages` or `code_calc`,
-like `calc-check`, `date-calc` and `quote-calc`); its body reaches the writer without the
-tool steps, and its pre-pass, checks and code calculation join the turn through
-`skill_turn`. A tool skill without such a process is still refused, and the composer greys it
-out with the same rule (`lib/serverSkills.ts`).
+**Tool skills on documents.** A report or deck writer runs no tools. A skill whose work the
+server does around the writing is accepted there (`skill_specs.runs_on_server`: a check skill
+with a `stage`, or `process` with `prepass`, `checks`, `stages` or `code_calc`, like
+`calc-check`, `date-calc` and `quote-calc`); its body reaches the writer without the tool
+steps, and its pre-pass, checks and code calculation join the turn through `skill_turn`. A
+hand-picked tool skill without such a process is refused (`skill_tools_unavailable`), and the
+composer greys it out with the same rule (`lib/serverSkills.ts`).
 
 | withdrawn agent | skill (`app/skills/`) | template | checks | own questions / settings | to rebuild the agent |
 |---|---|---|---|---|---|
@@ -1437,11 +1436,11 @@ out with the same rule (`lib/serverSkills.ts`).
 | regulations and procedures `regulation-guide` | answers from regulations `regulation-answer` (chat) | — | grounding-check | — | keep on `regulation-answer` + `date-calc` · knowledge (the regulation files) · department and contact · the publish-check bundle (hold ungrounded answers, point to the department, mask PII; the hold reads the shelf's hits and the files attached to the conversation) |
 | presentation `slides` (draft) | presentation deck `deck-writing` (slides) | — (deck flow) | — | — | keep on `deck-writing` · screen Slides |
 
-The skill's body is the agent's prompt as it was; the bundles the agents ticked compiled to
-the checks above (the prepare bundle's date and amount pre-passes and the review bundle's
-format checks and repair run inside the report flow for every template that sets them). What
-a skill does not carry is the look — the theme stays a choice of the person or the agent — and
-the agent's 0.3 temperature (a turn without an agent writes at 0.4).
+The skill's body is the agent file's prompt; the agent file's bundles compile to the checks
+above (the prepare bundle's date and amount pre-passes and the review bundle's format checks
+and repair run inside the report flow for every template that sets them). What a skill does
+not carry is the look — the theme stays a choice of the person or the agent — and the agent's
+0.3 temperature (a turn without an agent writes at 0.4).
 
 Two skills tell the model when and how to use the default connectors: YouTube transcript and
 summary `youtube-summary` (needs `mcp__youtube__transcript`, which heads the transcript with the
@@ -1456,7 +1455,7 @@ credentials only for env values the person enters — `{{...}}` identity placeho
 shared skill reads **By: Official** in the hub, as their agents do; a copy reads **Original:
 Official**, and **Edited by me · Original: …** once changed.
 
-Four more work skills fill gaps an agent built only from shipped skills had. Translation
+Four more work skills have no agent file behind them. Translation
 `translation` (chat, report) and press release `press-release` (chat, report; grounding-check
 and generic-language-killer, no search) are instructions only; a press release written as a
 report gets the `press` format's head when the request names it. Excel file `xlsx-build` (chat,
@@ -1496,7 +1495,7 @@ filtered by the key's hash, and writes one ledger row per successful request —
 reason `api.key`, surface `api`, the model, prompt plus completion tokens as
 `units`, and credits at this instance's rates (`charge_for_tokens`, so free
 models record the request at zero). The request id goes in
-`credit_ledger.external_ref` under a unique index (migration 0073), and each
+`credit_ledger.external_ref` under a unique index, and each
 pass re-reads from 30 minutes before the newest such row, so a request is never
 written twice; the first pass starts at the month's cycle start. Credits land
 in `credits_used` only for calls in the current cycle. One replica runs a pass
@@ -1593,14 +1592,45 @@ is an assistant message with an empty body carrying `artifact_ids`, and the
 transcript renders the picture or the player where the answer goes. Nothing is
 written *about* the result — prose invented for a picture would be the model
 quoted saying something it never said. A request that produced nothing marks
-the prompt `no_answer` and leaves no reply; a batch that broke halfway keeps
-what arrived and marks the reply `interrupted`.
+the prompt `no_answer` and leaves no reply.
 
-Image generation is a single upstream call with a prompt rather than a turn
-with a system message, so it never goes through `assemble`. It resolves the
-project's theme on its own (`workspace_context.design_for`).
+**One picture per request.** The composer sends one; the style picks the path.
+The **Picture** group (자동, 사진, 일러스트, 인포그래픽, 수채화) goes to the
+picture model: a chat model in the same boundary first rewrites the request as
+one structured English prompt (`imagegen.plan`), then a single upstream call
+draws it. The **Exact figure** group draws without a picture model: 구조도,
+흐름도 and 개념도 through `POST /sessions/{id}/diagrams` (§6 Templates,
+"Figures a document draws for itself"), 차트 as a chart from code
+(`chart_code`). 없음 (**Prompt as written**) sends the words unplanned.
+`imagegen.STYLE_CHOICES` and the web's `STYLE_GROUPS` mirror each other.
+Image generation never goes through `assemble`; it resolves the project's
+theme on its own (`workspace_context.design_for`).
 
-Both call OpenRouter through LiteLLM via `chat/completions`. Audio **requires
+**Picture models come from the gateway.** External ones are OpenRouter models
+LiteLLM lists with `mode: image_generation`; self-hosted ones are served by the
+gateway's image backend and listed only as `strict-local/<name>`, with no
+external twin. Image-only models are asked for `modalities: ["image"]`, models
+that also write text (Gemini, GPT Image, self-hosted) for `["image", "text"]`
+(`imagegen.modalities_for`). A model that honours `image_config.aspect_ratio`
+offers 16:9, 9:16, 4:3 and 1:1; any other is offered square only
+(`imagegen.aspects_for`). A picture is billed at the `usage.cost` the gateway
+reports, else from its output tokens (`charge_for_image`); the quote uses a
+per-family tokens-per-picture figure (`models._IMAGE_TOKENS`).
+
+**Pictures follow the conversation's boundary.** Pictures, charts, figure
+proposals and diagrams use the chat turn's egress rules without its dialog
+(`sessions._media_boundary`): in a strict-local conversation, or one carrying
+internal material while that policy is on, only strict-local models are used —
+for a picture, the person's **strict-local picture model** preference, else the
+first strict-local picture model — and with none the call is refused
+(`409 internal_data_requires_strict_local`), never sent out. Outside it, a
+prompt with personal data is masked, as for reports and decks. A picture with
+no model named takes the administrator's default; a named model outside the
+account's allowlist is refused (`model_not_allowed`). Pictures inside reports
+and decks follow the same rule (`_document_image_model`). Keeping a call inside
+or refusing it is audited as `privacy.*`, like a chat turn.
+
+Audio calls OpenRouter through LiteLLM via `chat/completions`. It **requires
 `stream: true`**, and streaming yields only `pcm16`, which a 44-byte RIFF header
 turns into a WAV. Without `stream_options.include_usage` the stream carries no
 usage block and the turn bills as one credit.
@@ -1717,7 +1747,7 @@ the answering model's catalogue boundary, `external` unless it is `self_hosted`)
 shows 「외부 대체로 답함」 (or 「대체 모델로 답함」 for a self-hosted fallback), and the
 answer's transaction writes a `model.fallback` audit event (`warn` when external) for the
 administrator. Report and slides writers call the proxy through their own clients and are
-not covered yet.
+not covered.
 
 Strict-local turns disable web search, URL fetching and remote connector tools.
 Their tool registry is built from in-process runners only, rather than building
@@ -1834,6 +1864,15 @@ form only and uses a neutral domain, so its content is not repeated as fact.
   reused, not only the one in force when it was written.
 - Report sections reach storage sanitised on every path — create, update and
   restore alike (`_clean_report_data`).
+- A document edit — fact-check, review, a section, slide or block rewrite, a
+  theme read from a file — picks its model inside the boundary of the
+  conversation that made the document (`workspace._edit_model`): internal
+  material or a strict-local conversation keeps it on strict-local models (a
+  `local/x` conversation model becomes `strict-local/x`), refused with
+  `internal_data_requires_strict_local` when there is none. Personal data in
+  the document also keeps it strict-local rather than masked, because the mask
+  would be written back into the document. A web fact-check inside the
+  boundary is refused (`factcheck_needs_web`). The account's allowlist holds.
 - A video job passes the same gate as a chat turn: egress policy, the intent
   filter, and this account's model allowlist, before the prompt leaves.
 - An index delete that fails leaves the file's record saying where its vectors

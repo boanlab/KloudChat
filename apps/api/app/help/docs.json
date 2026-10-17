@@ -11,7 +11,7 @@
 "path": "admin/bots",
 "title": "공개 챗봇 승인",
 "heading": "검토하는 것",
-"text": "요청을 열면 승인하면 답하게 될 판의 내용이 보입니다.\n\n- 지시, 담당 부서·연락처, 첫 인사, 쓰는 도구와 검사, 답하는 내부 모델\n- 자료 목록과 자료에서 개인정보로 보이는 값의 개수\n- 공개한 사람, 하루 최대 크레딧, 지금까지의 기록(요청, 결정, 새 판)\n\n**승인**하면 요청한 범위와 그 판이 함께 열립니다. **반려**에는 사유를 적어야 하고, 사유는 공개한 사람의 관리 화면에 보입니다. 반려해도 챗봇은 그 전 범위로 계속 답합니다.\n\n로그인하지 않은 사람에게 열린 챗봇에 새 판이 올라오면 같은 방식으로 다시 검토합니다. 승인 전까지는 승인된 판이 답합니다."
+"text": "요청을 열면 승인하면 답하게 될 판의 내용이 보입니다.\n\n- 지시, 담당 부서·연락처, 첫 인사, 쓰는 도구와 검사, 답하는 strict-local 모델\n- 자료 목록과 자료에서 개인정보로 보이는 값의 개수\n- 공개한 사람, 하루 최대 크레딧, 지금까지의 기록(요청, 결정, 새 판)\n\n**승인**하면 요청한 범위와 그 판이 함께 열립니다. **반려**에는 사유를 적어야 하고, 사유는 공개한 사람의 관리 화면에 보입니다. 반려해도 챗봇은 그 전 범위로 계속 답합니다.\n\n로그인하지 않은 사람에게 열린 챗봇에 새 판이 올라오면 같은 방식으로 다시 검토합니다. 승인 전까지는 승인된 판이 답합니다."
 },
 {
 "lang": "ko",
@@ -53,7 +53,7 @@
 "path": "admin/index",
 "title": "관리자 가이드",
 "heading": "초기 설정 순서",
-"text": "1. **시스템 → 프록시**: 모델 게이트웨이 주소와 마스터 키를 입력하고 연결을 확인합니다. 이 설정이 없으면 사용할 모델이 표시되지 않습니다.\n2. **시스템 → 기능**: 사용할 기능을 활성화하고 기능 연동 주소(웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사, 자료 검색)의 연결을 확인합니다.\n3. **시스템 → 회원 가입**: 가입 방식과 허용 이메일 도메인을 설정하고, 메일 서버가 있으면 이메일 인증을 활성화합니다.\n4. **시스템 → 메일**: 비밀번호 재설정과 인증 메일이 필요한 경우 SMTP를 설정합니다.\n5. **시스템 → 브랜딩**: 서비스 이름, 로고, 문의 주소를 설정합니다.\n6. **보안 · 감사 → 정책**: strict-local 안전 모델을 지정하고 개인정보 보호 방식을 결정합니다.\n7. **시스템 → 라우팅**: Auto 모드 사용 여부를 결정합니다.\n8. **사용자 · 크레딧**: 승인 대기 계정을 처리합니다.\n\n각 항목의 상세 내용은 사용자와 크레딧, 정책과 라우팅, 공개 챗봇 승인, 시스템 설정을 참고하십시오."
+"text": "1. **시스템 → 프록시**: 모델 게이트웨이 주소와 마스터 키를 입력하고 연결을 확인합니다. 이 설정이 없으면 사용할 모델이 표시되지 않습니다.\n2. **시스템 → 기능**: 사용할 기능을 활성화하고 기능 연동 주소(웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사, 자료 검색, 글자 읽기(OCR))의 연결을 확인합니다.\n3. **시스템 → 회원 가입**: 가입 방식과 허용 이메일 도메인을 설정하고, 메일 서버가 있으면 이메일 인증을 활성화합니다.\n4. **시스템 → 메일**: 비밀번호 재설정과 인증 메일이 필요한 경우 SMTP를 설정합니다.\n5. **시스템 → 브랜딩**: 서비스 이름, 로고, 문의 주소를 설정합니다.\n6. **보안 · 감사 → 정책**: strict-local 안전 모델을 지정하고 개인정보 보호 방식을 결정합니다.\n7. **시스템 → 라우팅**: Auto 모드 사용 여부를 결정합니다.\n8. **사용자 · 크레딧**: 승인 대기 계정을 처리합니다.\n\n각 항목의 상세 내용은 사용자와 크레딧, 정책과 라우팅, 공개 챗봇 승인, 시스템 설정을 참고하십시오."
 },
 {
 "lang": "ko",
@@ -102,7 +102,7 @@
 "path": "admin/system",
 "title": "시스템 설정",
 "heading": "모델",
-"text": "사용자가 모델을 고르지 않았을 때 어떤 모델이 어떤 일을 맡을지 정합니다. 서버 설정 파일(`.env`)의 값은 처음 설치할 때 한 번만 쓰이고, 그 뒤에는 여기서 저장한 값이 우선합니다.\n\n- **화면별 기본 모델**: 대화 · 보고서 · 발표 자료 · 그림 · 오디오 · 동영상. 대화와 그림은 반드시 골라야 합니다. 보고서와 발표 자료는 비워 두면 대화 기본 모델을 따르고, 오디오·동영상은 비워 두면 가장 싼 모델을 씁니다. 사용자가 고른 모델이 있으면 그 모델이 우선합니다.\n- **보조 작업 모델**: 제목·기억·요약 모델, 코드 작성 모델과 그 대체 모델. 대화 내용을 읽는 작업이라 이 인스턴스가 직접 운영하는(자체 호스팅) 모델만 고를 수 있습니다. strict-local 대화에서는 고른 모델의 strict-local 판이 맡습니다.\n- **생각**: 자체 호스팅 모델과 외부 모델이 답하기 전에 추론할지 정합니다. 켜면 판정이 정확해지지만 호출마다 수십 초에서 수 분이 더 걸립니다. 기본은 둘 다 끔.\n\n보고서·슬라이드의 구성과 판정을 맡는 **구성 단계 모델**과 Auto의 **난이도 분류 모델**은 **라우팅** 탭에 있습니다.\n\n### 기본 설치의 자체 호스팅 모델\n\n기본값은 기관이 직접 운영하는 두 모델을 씁니다. 게이트웨이에는 각각 `local/`(웹 검색 등 도구 사용 가능)과 `strict-local/`(외부 연결 없음) 이름으로 등록됩니다.\n\n| 모델 | 맡는 일 |\n|---|---|\n| `qwen3.8-27b` | 보고서·슬라이드 기본 모델, 코드 작성 모델 |\n| `qwen3.8-flash` | 대화 기본 모델, 구성 단계 모델(보고서·슬라이드의 구성과 판정), 제목·기억·요약, Auto 난이도 분류와 비용 절약 모델, 글자 읽기 비전 모델, 코드 작성 대체 모델 |\n\n모두 이 탭과 **라우팅**·**기능** 탭에서 다른 모델로 바꿀 수 있습니다."
+"text": "사용자가 모델을 고르지 않았을 때 어떤 모델이 어떤 일을 맡을지 정합니다. 서버 설정 파일(`.env`)의 값은 처음 설치할 때 한 번만 쓰이고, 그 뒤에는 여기서 저장한 값이 우선합니다.\n\n- **화면별 기본 모델**: 대화 · 보고서 · 발표 자료 · 그림 · 오디오 · 동영상. 대화와 그림은 반드시 골라야 합니다. 보고서와 발표 자료는 비워 두면 대화 기본 모델을 따르고, 오디오·동영상은 비워 두면 가장 싼 모델을 씁니다. 사용자가 고른 모델이 있으면 그 모델이 우선합니다.\n- **보조 작업 모델**: 제목·기억·요약 모델, 코드 작성 모델과 그 대체 모델. 대화 내용을 읽는 작업이라 이 인스턴스가 직접 운영하는(자체 호스팅) 모델만 고를 수 있습니다. strict-local 대화에서는 고른 모델의 strict-local 판이 맡습니다.\n- **생각**: 자체 호스팅 모델과 외부 모델이 답하기 전에 추론할지 정합니다. 켜면 판정이 정확해지지만 호출마다 수십 초에서 수 분이 더 걸립니다. 기본은 둘 다 끔.\n\n보고서·슬라이드의 구성과 판정을 맡는 **구성 단계 모델**과 Auto의 **난이도 분류 모델**은 **라우팅** 탭에 있습니다.\n\n### 기본 설치의 자체 호스팅 모델\n\n기본값은 기관이 직접 운영하는 두 모델을 씁니다. 게이트웨이에는 각각 두 이름으로 등록됩니다. `local/`은 기관 서버에서 먼저 처리하지만 장애 때 외부 대체 모델이 답할 수 있어 데이터 경계 밖으로 다루고, `strict-local/`은 밖으로 나가지 않는 판으로 내부 자료를 처리할 수 있는 유일한 경로입니다.\n\n| 모델 | 맡는 일 |\n|---|---|\n| `qwen3.8-27b` | 보고서·슬라이드 기본 모델, 코드 작성 모델 |\n| `qwen3.8-flash` | 대화 기본 모델, 구성 단계 모델(보고서·슬라이드의 구성과 판정), 제목·기억·요약, Auto 난이도 분류와 비용 절약 모델, 글자 읽기 비전 모델, 코드 작성 대체 모델 |\n\n모두 이 탭과 **라우팅**·**기능** 탭에서 다른 모델로 바꿀 수 있습니다."
 },
 {
 "lang": "ko",
@@ -312,7 +312,7 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "에이전트로 대화 시작",
-"text": "입력창의 **+** → **에이전트**, 에이전트 목록의 **실행** 중 어느 쪽을 선택해도 해당 에이전트와 새 대화가 시작됩니다.\n\n회의록·개조식 보고 같은 일은 **공식 스킬**로 합니다. 보고서 화면에서 입력창의 **+** → **스킬** → **회의록 작성**을 고른 뒤, 녹취·메모 파일을 첨부하거나 붙여 넣고 「회의록으로 정리해 주세요」라고 보냅니다. 자주 하는 일은 그 스킬을 켜 둔 내 에이전트로 만들어 둡니다(스킬로 일하고 에이전트 짜기).\n\n- 대화 첫 화면에 에이전트의 **사용법**과 **시작 문장**(최대 6개)이 표시됩니다. 시작 문장을 누르면 그대로 전송됩니다.\n- 에이전트 대화는 에이전트에 지정된 모델, 도구, 자료를 사용합니다. 자료가 등록되어 있으면 모델이 **자료 찾기** 도구로 검색합니다. 요청마다 자료 전체를 전달하지는 않습니다.\n- 같은 프로젝트 안에서는 에이전트가 **노트 공유**로 남긴 결론을 다른 대화가 참조합니다.\n\n기본으로 제공하는 에이전트는 없습니다. 예전의 기본 에이전트(규정·업무 안내, 개조식 보고, 비교·결정, 자료 추출·집계, 회의록)가 하던 일은 같은 이름의 공식 스킬이 하고, 그 에이전트로 하던 대화·가져온 사본·공개한 챗봇은 그대로 씁니다. 목록과 기본 과정에는 더 나오지 않습니다."
+"text": "입력창의 **+** → **에이전트**, 에이전트 목록의 **실행** 중 어느 쪽을 선택해도 해당 에이전트와 새 대화가 시작됩니다.\n\n회의록·개조식 보고 같은 일은 **공식 스킬**로 합니다. 보고서 화면에서 입력창의 **+** → **스킬** → **회의록 작성**을 고른 뒤, 녹취·메모 파일을 첨부하거나 붙여 넣고 「회의록으로 정리해 주세요」라고 보냅니다. 자주 하는 일은 그 스킬을 켜 둔 내 에이전트로 만들어 둡니다(스킬로 일하고 에이전트 짜기).\n\n- 대화 첫 화면에 에이전트의 **사용법**과 **시작 문장**(최대 6개)이 표시됩니다. 시작 문장을 누르면 그대로 전송됩니다.\n- 에이전트 대화는 에이전트에 지정된 모델, 도구, 자료를 사용합니다. 자료가 등록되어 있으면 모델이 **자료 찾기** 도구로 검색합니다. 요청마다 자료 전체를 전달하지는 않습니다.\n- 같은 프로젝트 안에서는 에이전트가 **노트 공유**로 남긴 결론을 다른 대화가 참조합니다.\n\n기본으로 제공하는 에이전트는 없습니다. 규정·업무 안내, 개조식 보고, 비교·결정, 자료 추출·집계, 회의록 같은 일은 같은 이름의 공식 스킬이 합니다. 이런 일을 하는 기본 에이전트는 목록과 기본 과정 고르기에 나오지 않지만, 그 에이전트로 한 대화, 가져온 사본, 공개한 챗봇은 그대로 동작합니다."
 },
 {
 "lang": "ko",
@@ -326,14 +326,14 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "진행 과정",
-"text": "에이전트 만들기 폼의 **진행 과정**에서 셋 중 하나를 고릅니다.\n\n- **바로 답하기**: 요청을 받아 대화로 답합니다. 파일(DOCX·HWPX·PDF)은 만들지 않습니다. 파일로 받으려면 문서를 쓰는 **기본 과정에서 시작**을 고르세요. 이름·설명·지시에 「워드」 「DOCX」 「파일로」 같은 말이 있으면 「「개조식 보고 (개조식 보고서)」 과정으로 바꾸기」 버튼이 보입니다. 누르면 그 기본 과정으로 바뀌고 **마무리하기**의 **다 쓰면 파일로 내보내기**도 체크됩니다(형식은 개조식이라 HWPX, 지시에 DOCX나 PDF를 적었으면 그 형식).\n- **기본 과정에서 시작**: 예전 기본 에이전트(개조식 보고, 회의록, 비교·결정 등)가 일하던 순서를 따릅니다. 기본 에이전트가 없어진 지금은 새로 고를 수 있는 기본 과정이 없고, 이미 기본 과정에서 시작한 에이전트는 그 과정을 그대로 씁니다. 새 에이전트는 **바로 답하기**에 **켜 둘 스킬**과 묶음을 더해 같은 일을 하게 만듭니다.\n- **직접 구성 (고급)**: 질문·계산·검사·검토·다른 에이전트·내보내기를 한 단계씩 골라 순서를 짭니다. 맨 처음에는 「이 에이전트」 단계 하나가 들어 있습니다. **이 에이전트가 만드는 것**에서 **보고서(문서)** 또는 **대화(답)**를 고릅니다. 내보내기 단계는 보고서(문서)일 때만 쓸 수 있습니다. 대화(답)에 내보내기 단계를 넣으면 경고 아래 버튼이 이 칸을 보고서(문서)로 바꾸고, 알림의 **되돌리기**로 되돌립니다. 발표 자료에는 직접 구성이 없습니다."
+"text": "에이전트 만들기 폼의 **진행 과정**에서 셋 중 하나를 고릅니다.\n\n- **바로 답하기**: 요청을 받아 곧바로 답합니다. 대화로 답하는 에이전트는 파일(DOCX·HWPX·PDF)을 만들지 않습니다.\n- **기본 과정에서 시작**: 기본 에이전트(개조식 보고, 회의록, 비교·결정 등)의 일하는 순서를 따릅니다. 새로 고를 수 있는 기본 과정은 없고, 이미 기본 과정에서 시작한 에이전트는 그 과정을 그대로 씁니다. 새 에이전트는 **바로 답하기**에 **켜 둘 스킬**과 묶음을 더해 같은 일을 하게 만듭니다.\n- **직접 구성 (고급)**: 질문·계산·검사·검토·다른 에이전트·내보내기를 한 단계씩 골라 순서를 짭니다. 맨 처음에는 「이 에이전트」 단계 하나가 들어 있습니다. **이 에이전트가 만드는 것**에서 **보고서(문서)** 또는 **대화(답)**를 고릅니다. 내보내기 단계는 보고서(문서)일 때만 쓸 수 있습니다. 대화(답)에 내보내기 단계를 넣으면 경고 아래 버튼이 이 칸을 보고서(문서)로 바꾸고, 알림의 **되돌리기**로 되돌립니다. 발표 자료에는 직접 구성이 없습니다."
 },
 {
 "lang": "ko",
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "묶음",
-"text": "묶음은 에이전트가 쓰기 전후에 하는 일을 몇 가지씩 묶은 것입니다. 에이전트 만들기 폼의 **추가로 할 일**에 묶음마다 체크 상자가 하나 있고, **자세히**를 누르면 그 안의 항목을 하나씩 켜고 끌 수 있습니다.\n\n| 묶음 | 항목 |\n|---|---|\n| 쓰기 전에 준비하기 | 빠진 정보 먼저 묻기 · 날짜 미리 계산하기 · 금액·합계 미리 계산하기 |\n| 다 쓴 뒤 검토하기 | 자료에 없는 내용이 없는지 근거 확인하기(수치는 도구 결과에서만 인정 · 직함·제품명까지 확인) · 형식 검사 · 어긋난 곳 고치고 다시 확인하기 |\n| 마무리하기 | 상투적인 표현 걷어내기 · 다 쓰면 파일로 내보내기(DOCX·PDF·HWPX·MD 중 하나) |\n\n- **파일로 받기**: 마무리하기를 체크하면 그 아래에 **다 쓰면 파일로 내보내기** 체크 상자가 따로 보입니다. 파일로 받으려면 이것을 체크하고 옆에서 파일 형식을 고릅니다. 체크하면 공문 계열 문서(간이기안문·공문·추진 계획·결과 보고·개조식)는 HWPX, 그 밖에는 DOCX가 먼저 골라지고, 직접 고른 형식이 우선합니다. 기본 과정(개조식 보고, 회의록, 비교·결정)은 마무리하기가 체크된 채 내보내기는 꺼져 있습니다. 내보내기는 문서를 쓰는 과정에서만 됩니다. 바로 답하기 에이전트의 마무리하기에는 「파일로 내보내기(문서 과정에서)」라고만 보입니다.\n- 보고서 화면에서는 날짜·금액 계산, 형식 검사, 고치고 다시 확인하기가 보고서를 쓰는 과정 안에서 늘 이루어지므로 「이 과정은 늘 합니다」로 표시됩니다. 대화 화면에는 형식 검사와 내보내기가 없습니다.\n- 예전 기본 에이전트도 같은 묶음으로 만들어져 있었습니다. 예를 들어 회의록 = 쓰기 전에 준비하기 + 다 쓴 뒤 검토하기(할 일의 담당자·기한 확인 포함) + 마무리하기(내보내기 꺼짐)이고, 지금은 이 검사들이 **회의록 작성** 스킬과 **회의록** 템플릿에 함께 붙어 있습니다.\n- **내 묶음**: **사용자 지정** → **에이전트** → **추가** → **묶음 만들기**, 또는 직접 구성 화면의 **이 순서를 묶음으로 저장**으로 만듭니다. 만든 묶음은 내 모든 에이전트의 추가로 할 일에 체크 상자로 나옵니다. 추가로 할 일 옆 **묶음 관리**에서 고치고 공유합니다.\n- 공유는 스킬과 같습니다(나만 쓰기 · 모두에게 공개). 파일로 내보내거나, 다른 모델이 검토하거나, 다른 에이전트를 부르는 묶음과 직접 구성은 관리자가 **진행 과정 검토**에서 승인한 뒤에야 다른 사람에게 적용됩니다. 기본 과정과 기본 묶음만 쓰는 에이전트는 승인 없이 바로 공유됩니다."
+"text": "묶음은 에이전트가 쓰기 전후에 하는 일을 몇 가지씩 묶은 것입니다. 에이전트 만들기 폼의 **추가로 할 일**에 묶음마다 체크 상자가 하나 있고, **자세히**를 누르면 그 안의 항목을 하나씩 켜고 끌 수 있습니다.\n\n| 묶음 | 항목 |\n|---|---|\n| 쓰기 전에 준비하기 | 빠진 정보 먼저 묻기 · 날짜 미리 계산하기 · 금액·합계 미리 계산하기 |\n| 다 쓴 뒤 검토하기 | 자료에 없는 내용이 없는지 근거 확인하기(수치는 도구 결과에서만 인정 · 직함·제품명까지 확인) · 형식 검사 · 어긋난 곳 고치고 다시 확인하기 |\n| 마무리하기 | 상투적인 표현 걷어내기 · 다 쓰면 파일로 내보내기(DOCX·PDF·HWPX·MD 중 하나) |\n\n- **파일로 받기**: 마무리하기를 체크하면 그 아래에 **다 쓰면 파일로 내보내기** 체크 상자가 따로 보입니다. 파일로 받으려면 이것을 체크하고 옆에서 파일 형식을 고릅니다. 체크하면 공문 계열 문서(간이기안문·공문·추진 계획·결과 보고·개조식)는 HWPX, 그 밖에는 DOCX가 먼저 골라지고, 직접 고른 형식이 우선합니다. 기본 과정(개조식 보고, 회의록, 비교·결정)은 마무리하기가 체크된 채 내보내기는 꺼져 있습니다. 내보내기는 문서를 쓰는 과정에서만 됩니다. 바로 답하기 에이전트의 마무리하기에는 「파일로 내보내기(문서 과정에서)」라고만 보입니다.\n- 보고서 화면에서는 날짜·금액 계산, 형식 검사, 고치고 다시 확인하기가 보고서를 쓰는 과정 안에서 늘 이루어지므로 「이 과정은 늘 합니다」로 표시됩니다. 대화 화면에는 형식 검사와 내보내기가 없습니다.\n- 기본 과정도 같은 묶음으로 만들어져 있습니다. 예를 들어 회의록 = 쓰기 전에 준비하기 + 다 쓴 뒤 검토하기(할 일의 담당자·기한 확인 포함) + 마무리하기(내보내기 꺼짐)이고, 이 검사들은 **회의록 작성** 스킬과 **회의록** 템플릿에도 함께 붙어 있습니다.\n- **내 묶음**: **사용자 지정** → **에이전트** → **추가** → **묶음 만들기**, 또는 직접 구성 화면의 **이 순서를 묶음으로 저장**으로 만듭니다. 만든 묶음은 내 모든 에이전트의 추가로 할 일에 체크 상자로 나옵니다. 추가로 할 일 옆 **묶음 관리**에서 고치고 공유합니다.\n- 공유는 스킬과 같습니다(나만 쓰기 · 모두에게 공개). 파일로 내보내거나, 다른 모델이 검토하거나, 다른 에이전트를 부르는 묶음과 직접 구성은 관리자가 **진행 과정 검토**에서 승인한 뒤에야 다른 사람에게 적용됩니다. 기본 과정과 기본 묶음만 쓰는 에이전트는 승인 없이 바로 공유됩니다."
 },
 {
 "lang": "ko",
@@ -424,7 +424,7 @@
 "path": "chat/basics",
 "title": "대화 기본",
 "heading": "보낸 메시지 수정",
-"text": "챗에서 보낸 메시지 옆의 **메시지 수정**(연필 아이콘)을 누르면 입력창에 **메시지 수정 · 새 대화**가 표시되고 원래 문장과 첨부 파일이 채워집니다. 고친 뒤 전송하면 그 메시지 앞까지의 대화를 복사한 **새 대화**에서 답변이 생성되며, 원래 대화는 그대로 남습니다. **수정 취소**나 `Esc` 로 편집을 끝냅니다. 답변이 생성되는 동안에는 수정할 수 없습니다."
+"text": "챗에서 보낸 메시지 옆의 **메시지 수정**(연필 아이콘)을 누르면 입력창 위에 **메시지 수정 · 보내면 새 대화로 이어지고, 지금 대화는 그대로 남습니다**가 표시되고 원래 문장과 첨부 파일이 채워집니다. 고친 뒤 전송하면 그 메시지 앞까지의 대화를 복사한 **새 대화**에서 답변이 생성되며, 원래 대화는 그대로 남습니다. **수정 취소**나 `Esc` 로 편집을 끝냅니다. 답변이 생성되는 동안에는 수정할 수 없습니다."
 },
 {
 "lang": "ko",
@@ -438,7 +438,7 @@
 "path": "chat/basics",
 "title": "대화 기본",
 "heading": "말로 쓰기",
-"text": "입력창의 🎤 버튼을 사용합니다. 관리자가 **음성 전사** 서버를 연결한 환경에서만 표시됩니다. 두 가지 방식이 있습니다.\n\n| 방식 | 동작 |\n|---|---|\n| 🎤 버튼 또는 `Ctrl+Shift+M` | 녹음한 내용이 문자로 변환되어 입력창에 입력됩니다. 수정한 뒤 전송합니다. |\n| 빈 입력창에서 `Space` 를 누른 채 발화 | 키를 떼는 순간 즉시 전송됩니다. |\n\n녹음 파일은 저장되지 않습니다. 마이크가 없거나 권한이 없으면 \"마이크를 쓸 수 없습니다\"라는 안내가 표시됩니다."
+"text": "입력창의 🎤 버튼을 사용합니다. 관리자가 **음성 전사** 서버를 연결한 환경에서만 표시됩니다. 두 가지 방식이 있습니다.\n\n| 방식 | 동작 |\n|---|---|\n| 🎤 버튼 또는 `Ctrl+Shift+M` | 녹음한 내용이 문자로 변환되어 입력창에 입력됩니다. 수정한 뒤 전송합니다. |\n| 빈 입력창에서 `Space` 를 누른 채 발화 | 키를 떼면 받아 적은 글이 입력창에 들어가고, 보내지는 않습니다. 설정 → 환경설정의 **스페이스로 말하기**를 켠 경우에만 동작합니다. |\n\n녹음 파일은 저장되지 않습니다. 마이크가 없거나 권한이 없으면 \"마이크를 쓸 수 없습니다\"라는 안내가 표시됩니다."
 },
 {
 "lang": "ko",
@@ -459,14 +459,14 @@
 "path": "chat/bots",
 "title": "챗봇 공개",
 "heading": "",
-"text": "대화로 답하는 에이전트를 **챗봇**으로 공개하면 다른 사람이 그 에이전트에게 물어볼 수 있습니다. 챗봇은 공개한 때의 지시·자료·검사로 고정되고, 이 기관의 내부 모델로만 답합니다. 답하는 데 드는 크레딧은 공개한 사람의 크레딧에서 나가며, 질문은 공개한 사람이 입력한 것과 같은 정책으로 처리됩니다."
+"text": "대화로 답하는 에이전트를 **챗봇**으로 공개하면 다른 사람이 그 에이전트에게 물어볼 수 있습니다. 챗봇은 공개한 때의 지시·자료·검사로 고정되고, 이 기관의 strict-local 모델로만 답합니다. 답하는 데 드는 크레딧은 공개한 사람의 크레딧에서 나가며, 질문은 공개한 사람이 입력한 것과 같은 정책으로 처리됩니다."
 },
 {
 "lang": "ko",
 "path": "chat/bots",
 "title": "챗봇 공개",
 "heading": "공개하기",
-"text": "내 에이전트 화면 위쪽의 **챗봇으로 공개** 버튼. 공개 전에 다음을 확인합니다.\n\n- 답할 내부 모델. 이 기관에 쓸 수 있는 내부 모델이 없으면 공개할 수 없습니다.\n- 챗봇에서는 쓰지 않는 것: 내 메모리, 개인 맞춤 설정, 다른 파일·프로젝트, 커넥터, 웹 검색, 문서·발표 만들기, 스킬. 챗봇은 **자료 찾기**와 **계산**만 씁니다.\n- 자료에서 개인정보로 보이는 값(휴대전화 번호, 이메일 등). 공개하기 전에 지우거나 확인합니다."
+"text": "내 에이전트 화면 위쪽의 **챗봇으로 공개** 버튼. 공개 전에 다음을 확인합니다.\n\n- 답할 strict-local 모델. 쓸 수 있는 strict-local 모델이 없으면 공개할 수 없습니다.\n- 챗봇에서는 쓰지 않는 것: 내 메모리, 개인 맞춤 설정, 다른 파일·프로젝트, 커넥터, 웹 검색, 문서·발표 만들기, 스킬. 챗봇은 **자료 찾기**와 **계산**만 씁니다.\n- 자료에서 개인정보로 보이는 값(휴대전화 번호, 이메일 등). 공개하기 전에 지우거나 확인합니다."
 },
 {
 "lang": "ko",
@@ -515,7 +515,7 @@
 "path": "chat/connectors",
 "title": "커넥터",
 "heading": "",
-"text": "커넥터는 모델이 호출할 수 있는 외부 도구(MCP 서버)입니다. 계정 메뉴 → **커넥터**에서 설치하고, 입력창의 **+** → **커넥터**에서 켜고 끕니다. 켜고 끈 상태는 **계정 전체**에 적용됩니다."
+"text": "커넥터는 모델이 호출할 수 있는 외부 도구(MCP 서버)입니다. **사용자 지정** → **커넥터**에서 설치하고, 입력창의 **+** → **커넥터**에서 켜고 끕니다. 켜고 끈 상태는 **계정 전체**에 적용됩니다."
 },
 {
 "lang": "ko",
@@ -620,7 +620,7 @@
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "",
-"text": "회의록·개조식 보고·비교·결정 같은 일은 **공식 스킬**로 합니다. 대화에서 스킬을 켜면 바로 그 일을 하고, 자주 하는 일은 스킬을 몇 개 묶어 내 에이전트로 만들어 둡니다. 따로 마련된 기본 에이전트는 없습니다. 예전에 쓰던 기본 에이전트의 대화와 내가 가져온 사본, 그것으로 공개한 챗봇은 그대로 씁니다."
+"text": "회의록·개조식 보고·비교·결정 같은 일은 **공식 스킬**로 합니다. 대화에서 스킬을 켜면 바로 그 일을 하고, 자주 하는 일은 스킬을 몇 개 묶어 내 에이전트로 만들어 둡니다. 따로 마련된 기본 에이전트는 없습니다."
 },
 {
 "lang": "ko",
@@ -767,7 +767,7 @@
 "path": "glossary",
 "title": "용어",
 "heading": "",
-"text": "| 용어 | 뜻 |\n|---|---|\n| 화면(챗·보고서·슬라이드·이미지·오디오/동영상) | 홈에서 선택하는 화면. 관리자가 켜고 끔 |\n| 대화 | 한 작업의 기록. 사이드바의 한 줄 |\n| 아티팩트 | 대화에서 만들어진 문서·슬라이드·차트 등. 오른쪽 패널과 갤러리 |\n| 템플릿 | 아티팩트의 구조(구성 규칙·조판·점검 항목). 이 대화 내내 유지 |\n| 테마 | 아티팩트의 모양(색·서체·문체). 에이전트·프로젝트에 붙이고 설정 › 테마에서 관리 |\n| 프로젝트 | 자료·지침·대화를 묶는 작업 공간 |\n| 에이전트 | 지시·진행 과정·도구·자료가 정해진 도우미. 입력창의 **+** → **에이전트**로 시작 |\n| 진행 과정 | 에이전트가 일하는 순서. 바로 답하기 · 기본 과정에서 시작 · 직접 구성(고급) |\n| 기본 과정 | 예전 기본 에이전트(개조식 보고, 회의록 등)가 일하던 순서. 이미 그 과정에서 시작한 에이전트만 씀 |\n| 묶음 | 에이전트가 쓰기 전후에 하는 일을 묶은 것. 에이전트 설정의 「추가로 할 일」에서 체크 |\n| 스킬 | 대화에 켜 두는 작업 방식. 입력창에서 최대 3개, 에이전트의 「켜 둘 스킬」로 6개까지. 템플릿·검사·빠진 정보 질문을 함께 가져옴 |\n| 공식 스킬 | 관리자가 모두에게 공개한 스킬. 회의록·개조식 보고 같은 일을 하며, 입력창에서 고르면 내 스킬에 추가됨 |\n| 숨김 | 목록·스토어·고르기 창에 보이지 않지만 지우지 않은 기본 스킬·템플릿·테마·커넥터. 묶음과 그 항목을 쓰던 대화에서는 그대로 동작하고, 관리자는 「숨김 포함」으로 봄 |\n| 커넥터 | 모델이 쓰는 외부 도구(MCP). 계정 전체에서 켜고 끔 |\n| 메모리 | 대화를 넘어 기억하는 사실. 설정 › 메모리 |\n| strict-local | 외부로 나가지 않는다고 확인된 모델 표시 |\n| Auto | 요청에 따라 모델을 바꾸는 대화 모드(품질 우선·비용 절약) |\n| 크레딧 | 사용량 단위. 무료 모델은 쓰지 않음 |\n| 작업 단계 | 답변 위의 \"작업 완료 · N단계\". 참고한 항목을 표시 |\n| 턴 | 질문 하나와 그에 대한 답변. 화면에는 \"이전 턴 첨부\"처럼 표시 |\n| 이미지 · 그림 · 도식 | 첨부하거나 생성하는 이미지 파일 · 문서에 넣는 그림(UI 라벨) · 텍스트 모델이 그리는 흐름도와 구조도 |\n| 개요 카드 | 보고서·슬라이드를 쓰기 전 구성을 확인하는 카드 |\n| 마스킹 | 개인정보를 자리표시자로 바꿔 보내는 것 |\n| 챗봇 | 다른 사람이 물어볼 수 있게 공개한 에이전트. 구성원·링크·외부 공개 |\n| 문의·신고 | 관리자에게 보내는 오류 신고·기능 요청·문의 |"
+"text": "| 용어 | 뜻 |\n|---|---|\n| 화면(챗·보고서·슬라이드·이미지·오디오/동영상) | 홈에서 선택하는 화면. 관리자가 켜고 끔 |\n| 대화 | 한 작업의 기록. 사이드바의 한 줄 |\n| 아티팩트 | 대화에서 만들어진 문서·슬라이드·차트 등. 오른쪽 패널과 갤러리 |\n| 템플릿 | 아티팩트의 구조(구성 규칙·조판·점검 항목). 이 대화 내내 유지 |\n| 테마 | 아티팩트의 모양(색·서체·문체). 에이전트·프로젝트에 붙이고 설정 › 테마에서 관리 |\n| 프로젝트 | 자료·지침·대화를 묶는 작업 공간 |\n| 에이전트 | 지시·진행 과정·도구·자료가 정해진 도우미. 입력창의 **+** → **에이전트**로 시작 |\n| 진행 과정 | 에이전트가 일하는 순서. 바로 답하기 · 기본 과정에서 시작 · 직접 구성(고급) |\n| 기본 과정 | 기본 에이전트(개조식 보고, 회의록 등)의 일하는 순서. 이미 그 과정에서 시작한 에이전트만 씀 |\n| 묶음 | 에이전트가 쓰기 전후에 하는 일을 묶은 것. 에이전트 설정의 「추가로 할 일」에서 체크 |\n| 스킬 | 대화에 켜 두는 작업 방식. 입력창에서 최대 3개, 에이전트의 「켜 둘 스킬」로 6개까지. 템플릿·검사·빠진 정보 질문을 함께 가져옴 |\n| 공식 스킬 | 관리자가 모두에게 공개한 스킬. 회의록·개조식 보고 같은 일을 하며, 입력창에서 고르면 내 스킬에 추가됨 |\n| 숨김 | 목록·스토어·고르기 창에 보이지 않지만 지우지 않은 기본 스킬·템플릿·테마·커넥터. 묶음과 그 항목을 쓰던 대화에서는 그대로 동작하고, 관리자는 「숨김 포함」으로 봄 |\n| 커넥터 | 모델이 쓰는 외부 도구(MCP). 계정 전체에서 켜고 끔 |\n| 메모리 | 대화를 넘어 기억하는 사실. 설정 › 메모리 |\n| strict-local | 외부로 나가지 않는다고 확인된 모델 표시 |\n| Auto | 요청에 따라 모델을 바꾸는 대화 모드(품질 우선·비용 절약) |\n| 크레딧 | 사용량 단위. 무료 모델은 쓰지 않음 |\n| 작업 단계 | 답변 위의 \"작업 완료 · N단계\". 참고한 항목을 표시 |\n| 턴 | 질문 하나와 그에 대한 답변. 화면에는 \"이전 턴 첨부\"처럼 표시 |\n| 이미지 · 그림 · 도식 | 첨부하거나 생성하는 이미지 파일 · 문서에 넣는 그림(UI 라벨) · 텍스트 모델이 그리는 흐름도와 구조도 |\n| 개요 카드 | 보고서·슬라이드를 쓰기 전 구성을 확인하는 카드 |\n| 마스킹 | 개인정보를 자리표시자로 바꿔 보내는 것 |\n| 챗봇 | 다른 사람이 물어볼 수 있게 공개한 에이전트. 구성원·링크·외부 공개 |\n| 문의·신고 | 관리자에게 보내는 오류 신고·기능 요청·문의 |"
 },
 {
 "lang": "ko",
@@ -781,7 +781,7 @@
 "path": "index",
 "title": "KloudChat 사용자 가이드",
 "heading": "목적별 안내 문서",
-"text": "| 목적 | 사용하는 기능 | 참고 문서 |\n|---|---|---|\n| 질문과 답변, 코드 검토, 문장 교정 | 홈 → **챗** | 대화 기본 |\n| 문서를 첨부해 내용에 근거한 답변 받기 | 입력창 **+** → **파일·사진 첨부** | 파일 첨부 |\n| 최신 정보를 근거로 답변 받기 | 입력창 **+** → 웹 검색 | 웹 검색과 도구 |\n| 보고서 작성 | 홈 → **보고서** | 보고서 작성 |\n| 발표자료 작성 | 홈 → **슬라이드** | 슬라이드 작성 |\n| 작성된 문서를 직접 편집하고 검토받기 | 아티팩트 패널의 리본 | 아티팩트 편집기 |\n| 이미지·음성·영상 생성 | 홈 → **이미지**, **오디오/동영상** | 이미지와 오디오/동영상 |\n| 아티팩트를 링크로 전달 | 대화 상단 **공유** | 공유 |\n| 자료와 지침을 묶어 반복 활용 | 사이드바 → **프로젝트** | 프로젝트 |\n| 역할이 정해진 도우미에게 위임 | 입력창 **+** → 에이전트 | 에이전트와 스킬 |\n| 에이전트를 다른 사람이 묻는 챗봇으로 열기 | 에이전트 화면 → **챗봇으로 공개** | 챗봇 공개 |\n| 아티팩트를 정해진 템플릿으로 받기 | 입력창 **+** → **템플릿 고르기** | 템플릿·테마 |\n| 반복해서 알려야 할 정보를 기억시키기 | 계정 메뉴 → **메모리** | 메모리 |\n| 외부 도구·코드에서 모델 호출 | 계정 메뉴 → **API 연동** | API와 코딩 도구 연동 |\n| 사용량 확인과 대화 정리 | 계정 메뉴 → **사용량**, **대화 기록** | 사용량과 대화 기록 |\n| 오류 신고와 기능 요청 | 계정 메뉴 → **문의·신고** | 문의·신고 |"
+"text": "| 목적 | 사용하는 기능 | 참고 문서 |\n|---|---|---|\n| 질문과 답변, 코드 검토, 문장 교정 | 홈 → **챗** | 대화 기본 |\n| 문서를 첨부해 내용에 근거한 답변 받기 | 입력창 **+** → **파일·사진 첨부** | 파일 첨부 |\n| 최신 정보를 근거로 답변 받기 | 입력창 **+** → 웹 검색 | 웹 검색과 도구 |\n| 보고서 작성 | 홈 → **보고서** | 보고서 작성 |\n| 발표자료 작성 | 홈 → **슬라이드** | 슬라이드 작성 |\n| 작성된 문서를 직접 편집하고 검토받기 | 아티팩트 패널의 리본 | 아티팩트 편집기 |\n| 이미지·음성·영상 생성 | 홈 → **이미지**, **오디오/동영상** | 이미지와 오디오/동영상 |\n| 아티팩트를 링크로 전달 | 대화 상단 **공유** | 공유 |\n| 자료와 지침을 묶어 반복 활용 | 사이드바 → **프로젝트** | 프로젝트 |\n| 역할이 정해진 도우미에게 위임 | 입력창 **+** → 에이전트 | 에이전트와 스킬 |\n| 에이전트를 다른 사람이 묻는 챗봇으로 열기 | 에이전트 화면 → **챗봇으로 공개** | 챗봇 공개 |\n| 아티팩트를 정해진 템플릿으로 받기 | 입력창 **+** → **템플릿 고르기** | 템플릿·테마 |\n| 반복해서 알려야 할 정보를 기억시키기 | 계정 메뉴 → **설정** → **메모리** | 메모리 |\n| 외부 도구·코드에서 모델 호출 | 계정 메뉴 → **API 연동** | API와 코딩 도구 연동 |\n| 사용량 확인과 대화 정리 | 계정 메뉴 → **사용량**, **대화 기록** | 사용량과 대화 기록 |\n| 오류 신고와 기능 요청 | 계정 메뉴 → **문의·신고** | 문의·신고 |"
 },
 {
 "lang": "ko",
@@ -816,7 +816,7 @@
 "path": "limits",
 "title": "제한 사항과 문제 해결",
 "heading": "오류 문구별 대처",
-"text": "화면에 표시된 문구를 그대로 검색하십시오.\n\n| 화면의 문구 | 뜻 | 대처 |\n|---|---|---|\n| 이번 달 크레딧을 모두 썼습니다 | 월 한도 소진 | 다음 달 1일 리필까지 대기. 무료 모델은 영향 없음 |\n| 이번 달 크레딧이 부족합니다 | 남은 크레딧이 이 요청의 예상 비용보다 적음 | 옵션(장수·길이)을 줄이거나 무료 모델로 |\n| 모델 서버에 연결할 수 없습니다 | 모델 게이트웨이 장애 | 잠시 후 재시도. 계속되면 관리자에게 문의 |\n| 모델 서버 오류로 답변을 받지 못했습니다 | 게이트웨이가 거절(파일·대화가 모델 창을 넘은 경우 포함) | 새 대화에서 파일을 다시 올리거나 질문을 좁힘 |\n| 모델이 응답하지 않아 요청을 중단했습니다. 다른 모델로 다시 생성해 보세요 | 3분간 글자가 오지 않음 | **다른 모델로** |\n| 모델 서버의 요청 한도를 넘었습니다 | 게이트웨이 속도 제한 | 잠시 후 재시도 |\n| 모델 서버가 인증을 거부했습니다 | 게이트웨이 키 문제 | 관리자에게 문의 |\n| 모델 서버에 이 모델이 없습니다 | 모델 목록이 바뀜 | 다른 모델 선택. 관리자가 목록 새로고침 |\n| 이 계정에 허용되지 않은 모델입니다 | 관리자가 제한한 모델 | 다른 모델 선택 |\n| 이 모델은 지금 이 화면에서 쓸 수 없습니다 | 화면(보고서 등)과 모델이 안 맞음 | 모델 바꾸기 |\n| 지금 사용할 수 있는 모델이 없습니다 | 게이트웨이 미연결 | 관리자에게 문의 |\n| 개인정보 검사기를 사용할 수 없어 요청을 보내지 못했습니다 | 보호 장치 장애 | 관리자에게 문의. 안전을 위해 전송 차단 |\n| 관리자 정책이 이 요청을 막았습니다 | 차단 주제에 해당 | 요청 내용 확인 |\n| 답변이 중간에 끊겨 여기까지만 남았습니다 | 연결이 끊김(탭 닫힘·네트워크) | **다시 시도** 선택. 처음부터 다시 생성 |\n| 첨부 파일을 찾을 수 없습니다. 다시 첨부하세요 | 파일이 지워짐 | 다시 첨부 |\n| 선택한 스킬을 이 요청에 적용할 수 없습니다 | 스킬 조건(도구·모델) 불충족 | 스킬을 빼거나 모델 바꾸기 |\n| 이 에이전트는 지침을 원본에서 읽는데, 원본이 지워졌거나 공개가 풀렸습니다 | 내용 비공개 에이전트의 원본 소실 | 다른 에이전트 |\n| 이 대화의 에이전트가 꺼져 있어 보낼 수 없습니다 | 에이전트 비활성·삭제 | 새 대화 |\n| 마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요 | 마이크 없음·권한 없음 | 브라우저 권한 |\n| 이 파일에서는 글자를 읽지 못했습니다 | 미지원 형식, 또는 글자 읽기(OCR)가 연결되지 않은 스캔본 | 글자가 있는 파일로, 또는 관리자에게 글자 읽기 연결 요청 |\n| 글자를 읽지 못했습니다. 잠시 뒤 다시 올려 주세요 | 글자 읽기 서비스가 응답하지 않음 | 잠시 후 다시 올리기 |\n| 로그인에 여러 번 실패해 잠시 잠겼습니다 | 15분 안에 다섯 번 연속 실패해 잠금 | 안내된 시간 뒤 재시도, 또는 관리자의 비밀번호 초기화 |\n| 지금은 회원가입을 받지 않습니다 | 관리자가 가입을 막음 | 관리자에게 계정 요청 |"
+"text": "화면에 표시된 문구를 그대로 검색하십시오.\n\n| 화면의 문구 | 뜻 | 대처 |\n|---|---|---|\n| 이번 달 크레딧을 모두 썼습니다 | 월 한도 소진 | 다음 달 1일 리필까지 대기. 무료 모델은 영향 없음 |\n| 이번 달 크레딧이 부족합니다 | 남은 크레딧이 이 요청의 예상 비용보다 적음 | 옵션(길이·해상도)을 줄이거나 무료 모델로 |\n| 모델 서버에 연결할 수 없습니다 | 모델 게이트웨이 장애 | 잠시 후 재시도. 계속되면 관리자에게 문의 |\n| 모델 서버 오류로 답변을 받지 못했습니다 | 게이트웨이가 거절(파일·대화가 모델 창을 넘은 경우 포함) | 새 대화에서 파일을 다시 올리거나 질문을 좁힘 |\n| 모델이 응답하지 않아 요청을 중단했습니다. 다른 모델로 다시 생성해 보세요 | 3분간 글자가 오지 않음 | **다른 모델로** |\n| 모델 서버의 요청 한도를 넘었습니다 | 게이트웨이 속도 제한 | 잠시 후 재시도 |\n| 모델 서버가 인증을 거부했습니다 | 게이트웨이 키 문제 | 관리자에게 문의 |\n| 모델 서버에 이 모델이 없습니다 | 모델 목록이 바뀜 | 다른 모델 선택. 관리자가 목록 새로고침 |\n| 이 계정에 허용되지 않은 모델입니다 | 관리자가 제한한 모델 | 다른 모델 선택 |\n| 이 모델은 지금 이 화면에서 쓸 수 없습니다 | 화면(보고서 등)과 모델이 안 맞음 | 모델 바꾸기 |\n| 지금 사용할 수 있는 모델이 없습니다 | 게이트웨이 미연결 | 관리자에게 문의 |\n| 개인정보 검사기를 사용할 수 없어 요청을 보내지 못했습니다 | 보호 장치 장애 | 관리자에게 문의. 안전을 위해 전송 차단 |\n| 관리자 정책이 이 요청을 막았습니다 | 차단 주제에 해당 | 요청 내용 확인 |\n| 답변이 중간에 끊겨 여기까지만 남았습니다 | 연결이 끊김(탭 닫힘·네트워크) | **다시 시도** 선택. 처음부터 다시 생성 |\n| 내부 자료나 개인정보가 있어 strict-local 모델로만 만들 수 있는데, 쓸 수 있는 strict-local 모델이 없습니다 | 내부 자료 대화의 그림·차트·도식이나 문서 편집에 쓸 strict-local 모델이 없음 | 관리자에게 문의 |\n| 내부 자료나 개인정보가 있는 문서는 웹 검색으로 사실 확인을 할 수 없습니다 | 확인할 내용이 외부 검색 엔진으로 나가므로 막음 | 자료와 직접 대조 |\n| 첨부 파일을 찾을 수 없습니다. 다시 첨부하세요 | 파일이 지워짐 | 다시 첨부 |\n| 선택한 스킬을 이 요청에 적용할 수 없습니다 | 스킬 조건(도구·모델) 불충족 | 스킬을 빼거나 모델 바꾸기 |\n| 이 에이전트는 지침을 원본에서 읽는데, 원본이 지워졌거나 공개가 풀렸습니다 | 내용 비공개 에이전트의 원본 소실 | 다른 에이전트 |\n| 이 대화의 에이전트가 꺼져 있어 보낼 수 없습니다 | 에이전트 비활성·삭제 | 새 대화 |\n| 마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요 | 마이크 없음·권한 없음 | 브라우저 권한 |\n| 이 파일에서는 글자를 읽지 못했습니다 | 미지원 형식, 또는 글자 읽기(OCR)가 연결되지 않은 스캔본 | 글자가 있는 파일로, 또는 관리자에게 글자 읽기 연결 요청 |\n| 글자를 읽지 못했습니다. 잠시 뒤 다시 올려 주세요 | 글자 읽기 서비스가 응답하지 않음 | 잠시 후 다시 올리기 |\n| 로그인에 여러 번 실패해 잠시 잠겼습니다 | 15분 안에 다섯 번 연속 실패해 잠금 | 안내된 시간 뒤 재시도, 또는 관리자의 비밀번호 초기화 |\n| 지금은 회원가입을 받지 않습니다 | 관리자가 가입을 막음 | 관리자에게 계정 요청 |"
 },
 {
 "lang": "ko",
@@ -956,7 +956,7 @@
 "path": "personal/settings",
 "title": "설정",
 "heading": "환경설정",
-"text": "| 항목 | 설명 |\n|---|---|\n| 화면별 기본 모델 | 챗, 보고서, 슬라이드 등 화면마다 새 대화에 적용할 모델입니다. 계정에 저장되므로 모든 기기에서 동일하게 적용됩니다. |\n| 개인정보가 감지된 요청 → 기본 처리 방법 | 매번 확인, strict-local로 전환, 마스킹, 원문 전송(관리자가 허용한 경우) 중에서 선택합니다. 개인정보 보호 |\n| 개인정보가 감지된 요청 → strict-local 그림 모델 | 내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 하는데 고른 그림 모델이 외부 모델일 때, 대신 그릴 모델입니다. strict-local 그림 모델이 둘 이상일 때만 표시됩니다. 고르지 않으면 목록의 첫 모델을 씁니다. |\n| 응답 스트리밍 | 끄면 답변이 완성된 후 한 번에 표시됩니다. |\n| 메모리 자동 저장 | 답변마다 지속적으로 유효한 정보를 자동으로 저장합니다. |\n| 토큰·크레딧 표시 | 답변 하단의 사용량 표시 여부를 설정합니다. |\n\n테마와 언어는 이 탭이 아니라 화면 오른쪽 위의 버튼에서 전환합니다."
+"text": "| 항목 | 설명 |\n|---|---|\n| 화면별 기본 모델 | 챗, 보고서, 슬라이드 등 화면마다 새 대화에 적용할 모델입니다. 계정에 저장되므로 모든 기기에서 동일하게 적용됩니다. |\n| 개인정보가 감지된 요청 → 기본 처리 방법 | 매번 확인, strict-local로 전환, 마스킹, 원문 전송(관리자가 허용한 경우) 중에서 선택합니다. 개인정보 보호 |\n| 개인정보가 감지된 요청 → strict-local 그림 모델 | 내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 하는데 고른 그림 모델이 외부 모델일 때, 대신 그릴 모델입니다. strict-local 그림 모델이 둘 이상일 때만 표시됩니다. 고르지 않으면 목록의 첫 모델을 씁니다. |\n| 응답 스트리밍 | 끄면 답변이 완성된 후 한 번에 표시됩니다. |\n| 메모리 자동 저장 | 답변마다 지속적으로 유효한 정보를 자동으로 저장합니다. |\n| 스페이스로 말하기 | 빈 입력창에서 `Space` 를 누른 채 말하면, 떼는 순간 받아 적어 입력창에 넣습니다. 보내지는 않습니다. 음성 전사가 연결된 경우에만 보이며 기본은 꺼짐입니다. |\n| 토큰·크레딧 표시 | 답변 하단의 사용량 표시 여부를 설정합니다. |\n\n테마와 언어는 이 탭이 아니라 화면 오른쪽 위의 버튼에서 전환합니다."
 },
 {
 "lang": "ko",
@@ -1061,7 +1061,7 @@
 "path": "privacy",
 "title": "개인정보 보호",
 "heading": "strict-local 모델",
-"text": "외부로 전송되지 않는 것이 확인된 모델입니다. 선택하면 웹 검색, 페이지 읽기, 커넥터가 비활성화됩니다. 이름이 `local` 로 시작한다고 해서 strict-local인 것은 아니므로 목록의 표시를 확인하십시오."
+"text": "외부로 전송되지 않는 것이 확인된 모델입니다. 선택하면 웹 검색, 페이지 읽기, 커넥터가 비활성화됩니다. `local/`로 시작하는 모델은 기관 서버에서 먼저 처리하지만 외부 대체 모델로 넘어갈 수 있어 strict-local이 아닙니다. 목록의 표시를 확인하십시오."
 },
 {
 "lang": "ko",
@@ -1082,7 +1082,7 @@
 "path": "start/home",
 "title": "홈 화면 구성",
 "heading": "사이드바",
-"text": "| 영역 | 설명 |\n|---|---|\n| 검색 | 지난 대화(제목과 본문)와 아티팩트를 검색합니다. 단축키 `Ctrl+K`. |\n| 새 대화 | 홈 화면으로 이동해 새 작업을 시작합니다. 단축키 `Alt+Shift+N`. |\n| 프로젝트 · 아티팩트 · 사용자 지정 | 자료를 묶어 둔 작업 공간, 생성된 아티팩트 갤러리, 에이전트(다른 사람이 공유한 에이전트 포함)·스킬·커넥터 관리로 이동합니다. |\n| 대화 목록 | **고정됨**, **최근** 순으로 표시되고, **모든 대화 보기**는 대화 기록 화면을 엽니다. 아이콘으로 종류를 구분하며, 항목의 `…` 메뉴에서 이름 바꾸기, 고정, 프로젝트에서 빼기, 삭제를 수행합니다. |\n| 이번 달 크레딧 | 남은 사용량입니다. 누르면 사용량 화면으로 이동합니다. **무료**로 표시된 모델은 크레딧을 소모하지 않습니다. |\n| 계정 메뉴 | 사용자 지정, 대화 기록, AI 에이전트 연동, API 연동, 사용량, 설정(메모리·테마 포함), 문의·신고, 키보드 단축키, 관리 메뉴(관리자), 로그아웃. |"
+"text": "| 영역 | 설명 |\n|---|---|\n| 검색 | 지난 대화(제목과 본문)와 아티팩트를 검색합니다. 단축키 `Ctrl+K`. |\n| 새 대화 | 홈 화면으로 이동해 새 작업을 시작합니다. 단축키 `Alt+Shift+N`. |\n| 프로젝트 · 아티팩트 · 파일함 · 사용자 지정 | 자료를 묶어 둔 작업 공간, 생성된 아티팩트 갤러리, 올린 파일과 생성된 파일 모음, 에이전트(다른 사람이 공유한 에이전트 포함)·스킬·커넥터 관리로 이동합니다. |\n| 대화 목록 | **고정됨**, **최근** 순으로 표시되고, **모든 대화 보기**는 대화 기록 화면을 엽니다. 아이콘으로 종류를 구분하며, 항목의 `…` 메뉴에서 이름 바꾸기, 고정, 프로젝트에서 빼기, 삭제를 수행합니다. |\n| 이번 달 크레딧 | 남은 사용량입니다. 누르면 사용량 화면으로 이동합니다. **무료**로 표시된 모델은 크레딧을 소모하지 않습니다. |\n| 계정 메뉴 | 사용자 지정, 대화 기록, AI 에이전트 연동, API 연동, 사용량, 설정(메모리·테마 포함), 문의·신고, 키보드 단축키, 관리 메뉴(관리자), 로그아웃. |"
 },
 {
 "lang": "ko",
@@ -1131,7 +1131,7 @@
 "path": "start/shortcuts",
 "title": "키보드 단축키",
 "heading": "입력창",
-"text": "| 기능 | 단축키 |\n|---|---|\n| 전송 | `Enter` |\n| 줄 바꿈 | `Shift+Enter` |\n| 말로 쓰기 | 빈 입력창에서 `Space` 를 누른 채 말하고, 떼면 즉시 전송 |"
+"text": "| 기능 | 단축키 |\n|---|---|\n| 전송 | `Enter` |\n| 줄 바꿈 | `Shift+Enter` |\n| 말로 쓰기 | 빈 입력창에서 `Space` 를 누른 채 말하고, 떼면 입력창에 들어감(환경설정의 **스페이스로 말하기**를 켠 경우) |"
 },
 {
 "lang": "ko",
@@ -1271,7 +1271,7 @@
 "path": "write/media",
 "title": "이미지와 오디오/동영상",
 "heading": "이미지",
-"text": "입력창 아래의 옵션으로 지정합니다.\n\n| 칩 | 선택지 |\n|---|---|\n| 비율 | 16:9 · 9:16 · 4:3 · 1:1 (모델이 지원하는 것만) |\n| 스타일 | **그림**: 자동 · 사진 · 일러스트 · 인포그래픽 · 수채화**정확한 도식**: 구조도 · 흐름도 · 개념도 · 차트프롬프트 그대로 |\n| 글자 | 자동 · 한국어 · 영어 · 없음 |\n\n한 번에 한 장을 만듭니다. **그림** 묶음은 그림 모델이 그리고, **정확한 도식** 묶음은 그림 모델을 쓰지 않고 도형이나 차트로 그려 글자가 정확합니다. **프롬프트 그대로** 는 입력한 문장을 고치지 않고 그림 모델에 보냅니다.\n\n결과 카드에서 확대 보기, 내려받기, **다시 만들기**, **프롬프트 고치기**, **보낸 프롬프트 보기**(실제 전송된 최종 문장)를 제공합니다. 차트는 텍스트 모델이 코드로 그리며 **그린 코드 보기** 와 **이 코드로 다시 그리기** 를 사용할 수 있습니다. 비율 지정을 지원하지 않는 모델을 선택하면 정사각형으로 생성된다는 안내가 표시됩니다.\n\n**구조도 · 흐름도 · 개념도** 는 이미지 모델을 쓰지 않습니다. 텍스트 모델이 설명을 흐름도로 쓰고, 서버가 보고서·슬라이드의 도식과 같은 도형으로 그려 그림으로 남깁니다. 단계가 너무 많거나 흐름도로 옮길 수 없는 내용이면 \"이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.\" 라는 안내가 표시되고 그림은 만들어지지 않습니다.\n\n이미지·오디오·동영상에는 템플릿이 없습니다. 입력창 **+** 메뉴의 템플릿 고르기는 보고서와 슬라이드에만 있습니다. 프로젝트 테마의 색상과 이미지 스타일은 요청문에 함께 반영됩니다."
+"text": "입력창 아래의 옵션으로 지정합니다.\n\n| 칩 | 선택지 |\n|---|---|\n| 비율 | 16:9 · 9:16 · 4:3 · 1:1 (모델이 지원하는 것만) |\n| 스타일 | **그림**: 자동 · 사진 · 일러스트 · 인포그래픽 · 수채화**정확한 도식**: 구조도 · 흐름도 · 개념도 · 차트프롬프트 그대로 |\n| 글자 | 자동 · 한국어 · 영어 · 없음 |\n\n한 번에 한 장을 만듭니다. **그림** 묶음은 그림 모델이 그리고, **정확한 도식** 묶음은 그림 모델을 쓰지 않고 도형이나 차트로 그려 글자가 정확합니다. **프롬프트 그대로** 는 입력한 문장을 고치지 않고 그림 모델에 보냅니다.\n\n그림 모델은 입력창 오른쪽의 모델 이름에서 고릅니다. 목록은 모델 게이트웨이에 등록된 모델로 정해지며, 기본 구성의 외부 그림 모델은 Seedream 5.0 Flash, Recraft V4.1, Grok Imagine Image 2.0, GPT-5.4 Image 2, Gemini 3 Pro Image입니다. 관리자가 자체 호스팅 그림 모델을 연결하면 strict-local 그림 모델도 나옵니다. 프로젝트 대화, 첨부가 있던 대화, strict-local 대화의 그림은 strict-local 모델로만 그립니다. 개인정보 보호\n\n결과 카드에서 확대 보기, 내려받기, **다시 만들기**, **프롬프트 고치기**, **보낸 프롬프트 보기**(실제 전송된 최종 문장)를 제공합니다. 차트는 텍스트 모델이 코드로 그리며 **그린 코드 보기** 와 **이 코드로 다시 그리기** 를 사용할 수 있습니다. 비율 지정을 지원하지 않는 모델을 선택하면 정사각형으로 생성된다는 안내가 표시됩니다.\n\n**구조도 · 흐름도 · 개념도** 는 이미지 모델을 쓰지 않습니다. 텍스트 모델이 설명을 흐름도로 쓰고, 서버가 보고서·슬라이드의 도식과 같은 도형으로 그려 그림으로 남깁니다. 단계가 너무 많거나 흐름도로 옮길 수 없는 내용이면 \"이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.\" 라는 안내가 표시되고 그림은 만들어지지 않습니다.\n\n이미지·오디오·동영상에는 템플릿이 없습니다. 입력창 **+** 메뉴의 템플릿 고르기는 보고서와 슬라이드에만 있습니다. 프로젝트 테마의 색상과 이미지 스타일은 요청문에 함께 반영됩니다."
 },
 {
 "lang": "ko",
@@ -1432,7 +1432,7 @@
 "path": "admin/bots",
 "title": "Approving published chatbots",
 "heading": "What you review",
-"text": "Opening a request shows the version that would answer once approved:\n\n- Instructions, the department and contact line, the greeting, the tools and checks it uses, the internal model it answers with\n- The material and how many values in it look like personal details\n- The publisher, the daily credit limit, and the history so far (requests, decisions, new versions)\n\n**Approve** opens the requested audience and that version together. **Decline** needs a reason, which the publisher sees on their management page. A declined chatbot keeps answering its previous audience.\n\nWhen a new version arrives on a chatbot open to people without an account, it is reviewed the same way. Until approved, the approved version answers."
+"text": "Opening a request shows the version that would answer once approved:\n\n- Instructions, the department and contact line, the greeting, the tools and checks it uses, the strict-local model it answers with\n- The material and how many values in it look like personal details\n- The publisher, the daily credit limit, and the history so far (requests, decisions, new versions)\n\n**Approve** opens the requested audience and that version together. **Decline** needs a reason, which the publisher sees on their management page. A declined chatbot keeps answering its previous audience.\n\nWhen a new version arrives on a chatbot open to people without an account, it is reviewed the same way. Until approved, the approved version answers."
 },
 {
 "lang": "en",
@@ -1460,7 +1460,7 @@
 "path": "admin/bots",
 "title": "Approving published chatbots",
 "heading": "Operating notes",
-"text": "- Visitors without an account are told apart by a browser cookie; per-address limits per minute and per day, and a daily cap on new visitors and conversations per address, guard against abuse. The address comes from the `X-Forwarded-For` the proxy in front sends, so narrow `KCHAT_TRUSTED_PROXIES` on the web container to the actual proxy.\n- Questions answered at once by published chatbots across the institution stay under a cap (16 by default); the rest wait briefly and, if no turn comes, are told the chatbot is busy."
+"text": "- Visitors without an account are told apart by a browser cookie; per-address limits per minute and per day, and a daily cap on new visitors and conversations per address, guard against abuse. The address comes from the `X-Forwarded-For` the proxy in front sends, so narrow `KCHAT_TRUSTED_PROXIES` on the web container to the actual proxy.\n- Questions answered at once by published chatbots across the organization stay under a cap (16 by default); the rest wait briefly and, if no turn comes, are told the chatbot is busy."
 },
 {
 "lang": "en",
@@ -1474,7 +1474,7 @@
 "path": "admin/index",
 "title": "Administrator guide",
 "heading": "Order of initial setup",
-"text": "1. **System → Proxy**: Enter the model gateway address and master key, then check the connection. Until this is set, no models are available to use.\n2. **System → Features**: Enable the features you will use and test the connection to each feature integration address (web search, document import, code execution, deep research, speech transcription, material search).\n3. **System → Sign-up**: Set the sign-up method and the allowed email domains, and enable email verification if you have a mail server.\n4. **System → Mail**: Set up SMTP if you need password reset and verification mail.\n5. **System → Branding**: Set the service name, logo, and contact address.\n6. **Security · Audit → Policy**: Designate the strict-local safe model and decide how personal data is protected.\n7. **System → Routing**: Decide whether to use Auto mode.\n8. **Users · Credits**: Process the accounts waiting for approval.\n\nFor the details of each item, see Users and credits, Policy and routing, Approving published chatbots, and System settings."
+"text": "1. **System → Proxy**: Enter the model gateway address and master key, then check the connection. Until this is set, no models are available to use.\n2. **System → Features**: Enable the features you will use and test the connection to each feature integration address (web search, document import, code execution, deep research, speech transcription, material search, text from scans (OCR)).\n3. **System → Sign-up**: Set the sign-up method and the allowed email domains, and enable email verification if you have a mail server.\n4. **System → Mail**: Set up SMTP if you need password reset and verification mail.\n5. **System → Branding**: Set the service name, logo, and contact address.\n6. **Security · Audit → Policy**: Designate the strict-local safe model and decide how personal data is protected.\n7. **System → Routing**: Decide whether to use Auto mode.\n8. **Users · Credits**: Process the accounts waiting for approval.\n\nFor the details of each item, see Users and credits, Policy and routing, Approving published chatbots, and System settings."
 },
 {
 "lang": "en",
@@ -1523,7 +1523,7 @@
 "path": "admin/system",
 "title": "System settings",
 "heading": "Models",
-"text": "Decides which model does which job when the user has not chosen one. The values in the server's `.env` file are used once, at installation; after that, what is saved here takes precedence.\n\n- **Default model for each screen**: chat, report, slides, image, audio and video. Chat and image must be chosen. Left empty, report and slides follow the chat default, and audio and video use the cheapest model. A model the user chose always comes first.\n- **Side-work models**: the model for titles, memories and summaries, the code-writing model and its fallback. These read the conversation, so only models this instance runs itself (self-hosted) can be chosen. In a strict-local conversation the strict-local version of the chosen model does the work.\n- **Thinking**: whether self-hosted and external models reason before answering. On makes judgements more exact but adds tens of seconds to minutes to each call. Both are off by default.\n\nThe **planning model** for reports and slides and Auto's **classifier model** are on the **Routing** tab.\n\n### Self-hosted models of the default install\n\nThe defaults use two models the organization runs itself. Each is registered in the gateway under a `local/` name (may use tools such as web search) and a `strict-local/` name (no outside connection).\n\n| Model | Jobs |\n|---|---|\n| `qwen3.8-27b` | Default report and slides model, code model |\n| `qwen3.8-flash` | Default chat model, planning model (outline and judgments for reports and slides), titles, memory and summaries, Auto classifier and cost-saving model, vision model for text reading, code fallback model |\n\nAll of them can be changed on this tab and on the **Routing** and **Features** tabs."
+"text": "Decides which model does which job when the user has not chosen one. The values in the server's `.env` file are used once, at installation; after that, what is saved here takes precedence.\n\n- **Default model for each screen**: chat, report, slides, image, audio and video. Chat and image must be chosen. Left empty, report and slides follow the chat default, and audio and video use the cheapest model. A model the user chose always comes first.\n- **Side-work models**: the model for titles, memories and summaries, the code-writing model and its fallback. These read the conversation, so only models this instance runs itself (self-hosted) can be chosen. In a strict-local conversation the strict-local version of the chosen model does the work.\n- **Thinking**: whether self-hosted and external models reason before answering. On makes judgements more exact but adds tens of seconds to minutes to each call. Both are off by default.\n\nThe **planning model** for reports and slides and Auto's **classifier model** are on the **Routing** tab.\n\n### Self-hosted models of the default install\n\nThe defaults use two models the organization runs itself. Each is registered in the gateway under two names. A `local/` model runs on the organization's servers first, but an external fallback may answer when it fails, so it is treated as outside the data boundary. A `strict-local/` model never leaves, and it is the only route for internal material.\n\n| Model | Jobs |\n|---|---|\n| `qwen3.8-27b` | Default report and slides model, code model |\n| `qwen3.8-flash` | Default chat model, planning model (outline and judgments for reports and slides), titles, memory and summaries, Auto classifier and cost-saving model, vision model for text reading, code fallback model |\n\nAll of them can be changed on this tab an"
 },
 {
 "lang": "en",
@@ -1656,7 +1656,7 @@
 "path": "chat/agent-examples",
 "title": "Agent and template examples",
 "heading": "",
-"text": "Examples of agents and templates for work documents you write often. Everything here is made with the **Customize** agent form and template editor. For work an official skill does, such as minutes or a bullet-style briefing, building the agent from **Skills kept on** is quicker (see Working with skills and building agents). Paste the instructions below to start, then adjust them to your side, such as the institution's name or approval line."
+"text": "Examples of agents and templates for work documents you write often. Everything here is made with the **Customize** agent form and template editor. For work an official skill does, such as minutes or a bullet-style briefing, building the agent from **Skills kept on** is quicker (see Working with skills and building agents). Paste the instructions below to start, then adjust them to your side, such as the organization's name or approval line."
 },
 {
 "lang": "en",
@@ -1733,7 +1733,7 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Starting a conversation with an agent",
-"text": "**+** → **Agents** in the composer and **Run** in the agent list both start a new conversation with that agent.\n\nJobs such as minutes or a bullet-point report are **official skills**. For minutes, on the report screen choose **+** → **Skills** → **회의록 작성** (Meeting minutes) in the composer, attach or paste the recording transcript or notes, and send 「회의록으로 정리해 주세요」. Work you do often becomes an agent of your own with that skill kept on (Working with skills and building agents).\n\n- The first screen of the conversation shows the agent's **How to use** text and its **opening prompts**, up to six of them. Select an opening prompt to send it as it is.\n- An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.\n- Within the same project, other conversations reference the conclusions that the agent left through **Shared notes**.\n\nThere are no built-in agents. What the former ones did (Regulations and procedures, Bullet-style briefing, Compare and decide, Extract and tally, Minutes) is done by official skills of the same names, and the conversations you had with them, the copies you took and the chatbots you published keep working. They no longer show in the lists or as base processes."
+"text": "**+** → **Agents** in the composer and **Run** in the agent list both start a new conversation with that agent.\n\nJobs such as minutes or a bullet-point report are **official skills**. For minutes, on the report screen choose **+** → **Skills** → **회의록 작성** (Meeting minutes) in the composer, attach or paste the recording transcript or notes, and send 「회의록으로 정리해 주세요」. Work you do often becomes an agent of your own with that skill kept on (Working with skills and building agents).\n\n- The first screen of the conversation shows the agent's **How to use** text and its **opening prompts**, up to six of them. Select an opening prompt to send it as it is.\n- An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.\n- Within the same project, other conversations reference the conclusions that the agent left through **Shared notes**.\n\nThere are no built-in agents. Jobs such as Regulations and procedures, Bullet-style briefing, Compare and decide, Extract and tally and Minutes are done by official skills of the same names. The built-in agents for these jobs do not show in the lists or among the base processes, but conversations with them, copies you took and chatbots published from them keep working."
 },
 {
 "lang": "en",
@@ -1747,14 +1747,14 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "How it works",
-"text": "Pick one of three under **How it works** in the create-agent form.\n\n- **Answer directly**: answers in the chat. It makes no file (DOCX, HWPX, PDF); to get a file, choose **Start from a base process** with a base that writes a document. When the name, description or instructions mention Word, DOCX or a file, a **Switch to “Bullet-style briefing (개조식)”** button appears. It switches to that base process and also ticks **Export a file when done** under **Finish** (HWPX, as a 개조식 document, or DOCX or PDF when the instructions name that format).\n- **Start from a base process**: follows the order a former built-in agent (Bullet-style briefing, Minutes, Compare and decide, …) worked in. With the built-in agents gone there is no base process to pick anew; an agent that already started from one keeps it. A new agent does the same job with **Answer directly** plus **Skills kept on** and bundles.\n- **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one \"This agent\" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order."
+"text": "Pick one of three under **How it works** in the create-agent form.\n\n- **Answer directly**: answers the request right away. An agent that answers in the chat makes no file (DOCX, HWPX, PDF).\n- **Start from a base process**: follows the working order of a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …). No base process can be picked for a new agent; an agent that already started from one keeps it. A new agent does the same job with **Answer directly** plus **Skills kept on** and bundles.\n- **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one \"This agent\" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order."
 },
 {
 "lang": "en",
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Bundles",
-"text": "A bundle groups a few things an agent does before and after writing. Each bundle is one checkbox under **Extra work** in the create-agent form; **Details** opens its items as checkboxes.\n\n| Bundle | Items |\n|---|---|\n| Prepare before writing | Ask for missing information first · Work out dates ahead · Work out amounts and totals ahead |\n| Review after writing | Check everything against the material (accept numbers only from tool output · check job titles and product names too) · Format checks · Fix what is off and check again |\n| Finish | Strip stock phrases · Export a file when done (DOCX, PDF, HWPX or MD) |\n\n- **Get a file**: with **Finish** ticked, a separate **Export a file when done** checkbox shows under it; tick it and pick the format beside it (HWPX for 공문-type documents, else DOCX). The base processes come with Finish ticked and export off. Export works only in a process that writes a document.\n- On the report screen, date and amount calculations, format checks and fix-and-check-again always happen in report writing (\"Always done\"). The chat screen has no format checks and no export.\n- The former built-in Minutes agent was Prepare + Review + Finish (export off); the **회의록 작성** skill now brings those checks.\n- **Your own bundles**: **Customize** → **Agents** → **Add** → **Create a bundle**, or **Save this order as a bundle** in a custom order. They appear under Extra work in all your agents; edit and share them from **Manage bundles**.\n- Sharing works like skills (Only me · Everyone). A bundle or custom order that exports files, has another model review or calls another agent reaches others only once an administrator approves it under **Process review**; base processes and built-in bundles are shared at once."
+"text": "A bundle groups a few things an agent does before and after writing. Each bundle is one checkbox under **Extra work** in the create-agent form; **Details** opens its items as checkboxes.\n\n| Bundle | Items |\n|---|---|\n| Prepare before writing | Ask for missing information first · Work out dates ahead · Work out amounts and totals ahead |\n| Review after writing | Check everything against the material (accept numbers only from tool output · check job titles and product names too) · Format checks · Fix what is off and check again |\n| Finish | Strip stock phrases · Export a file when done (DOCX, PDF, HWPX or MD) |\n\n- **Get a file**: with **Finish** ticked, a separate **Export a file when done** checkbox shows under it; tick it and pick the format beside it (HWPX for 공문-type documents, else DOCX). The base processes come with Finish ticked and export off. Export works only in a process that writes a document.\n- On the report screen, date and amount calculations, format checks and fix-and-check-again always happen in report writing (\"Always done\"). The chat screen has no format checks and no export.\n- Base processes are built from the same bundles: Minutes is Prepare + Review + Finish (export off). The **회의록 작성** skill and **Minutes** template carry those checks.\n- **Your own bundles**: **Customize** → **Agents** → **Add** → **Create a bundle**, or **Save this order as a bundle** in a custom order. They appear under Extra work in all your agents; edit and share them from **Manage bundles**.\n- Sharing works like skills (Only me · Everyone). A bundle or custom order that exports files, has another model review or calls another agent reaches others only once an administrator approves it under **Process review**; base processes and built-in bundles are shared at once."
 },
 {
 "lang": "en",
@@ -1845,7 +1845,7 @@
 "path": "chat/basics",
 "title": "Conversation basics",
 "heading": "Editing a sent message",
-"text": "In Chat, select **Edit message** (the pencil icon) next to a message you sent. The composer shows **Edit message · New conversation** and fills in the original text and attachments. When you send the edited text, the answer is generated in a **new conversation** that copies everything before that message. The original conversation stays as it was. Use **Cancel edit** or `Esc` to stop editing. You cannot edit while an answer is being generated."
+"text": "In Chat, select **Edit message** (the pencil icon) next to a message you sent. The composer shows **Editing · sending starts a new conversation; this one stays as it is** and fills in the original text and attachments. When you send the edited text, the answer is generated in a **new conversation** that copies everything before that message. The original conversation stays as it was. Use **Cancel edit** or `Esc` to stop editing. You cannot edit while an answer is being generated."
 },
 {
 "lang": "en",
@@ -1859,7 +1859,7 @@
 "path": "chat/basics",
 "title": "Conversation basics",
 "heading": "Dictating a request",
-"text": "Use the 🎤 button in the composer. It appears only where the administrator has connected a **speech transcription** server. There are two ways to use it.\n\n| Method | What it does |\n|---|---|\n| 🎤 button or `Ctrl+Shift+M` | The recording is converted to text and placed in the composer. Edit it, then send. |\n| Hold `Space` in an empty composer and speak | The request is sent the moment you release the key. |\n\nRecordings are not stored. If there is no microphone or no permission, the message \"Microphone is unavailable\" appears."
+"text": "Use the 🎤 button in the composer. It appears only where the administrator has connected a **speech transcription** server. There are two ways to use it.\n\n| Method | What it does |\n|---|---|\n| 🎤 button or `Ctrl+Shift+M` | The recording is converted to text and placed in the composer. Edit it, then send. |\n| Hold `Space` in an empty composer and speak | On release the words are typed into the composer, not sent. Works only with **Hold Space to dictate** on under Settings → Preferences. |\n\nRecordings are not stored. If there is no microphone or no permission, the message \"Microphone is unavailable\" appears."
 },
 {
 "lang": "en",
@@ -1880,21 +1880,21 @@
 "path": "chat/bots",
 "title": "Publishing a chatbot",
 "heading": "",
-"text": "Publish an agent that answers in chat as a **chatbot**, and other people can ask it. A chatbot is fixed to the instructions, material and checks it had when published, and answers with this institution's internal models only. The credits it spends are its publisher's, and questions are handled under the same policy as if the publisher had typed them."
+"text": "Publish an agent that answers in chat as a **chatbot**, and other people can ask it. A chatbot is fixed to the instructions, material and checks it had when published, and answers with this organization's strict-local models only. The credits it spends are its publisher's, and questions are handled under the same policy as if the publisher had typed them."
 },
 {
 "lang": "en",
 "path": "chat/bots",
 "title": "Publishing a chatbot",
 "heading": "Publishing",
-"text": "The **Publish as a chatbot** button at the top of your agent's page. Before publishing you see:\n\n- The internal model it will answer with. Without an internal model you can use, it cannot be published.\n- What a chatbot does not use: your memory, personal settings, other files and projects, connectors, web search, documents and slides, skills. A chatbot uses only **material search** and **calculation**.\n- Values in the material that look like personal details (mobile numbers, emails and so on). Remove or check them before publishing."
+"text": "The **Publish as a chatbot** button at the top of your agent's page. Before publishing you see:\n\n- The strict-local model it will answer with. Without a strict-local model you can use, it cannot be published.\n- What a chatbot does not use: your memory, personal settings, other files and projects, connectors, web search, documents and slides, skills. A chatbot uses only **material search** and **calculation**.\n- Values in the material that look like personal details (mobile numbers, emails and so on). Remove or check them before publishing."
 },
 {
 "lang": "en",
 "path": "chat/bots",
 "title": "Publishing a chatbot",
 "heading": "Audience",
-"text": "| Audience | Who uses it | Opens |\n|---|---|---|\n| Members | Members of this institution, signed in. Members see it as a **shared agent** | At once |\n| Anyone with the link | Anyone with the address, without signing in. Listed nowhere | After an administrator approves |\n| Public | Anyone, without signing in. Listed on the public chatbot page (`/b`) and may show up in search | After an administrator approves |\n\n- Choosing a link or public audience needs a **daily credit limit**. When the day's spending reaches it, the chatbot stops until the next day.\n- While the request waits, members can use the chatbot as usual. The request shows at the top of the management page, and **Withdraw request** takes it back.\n- When a request is declined, the administrator's reason shows on the management page. The chatbot keeps answering its previous audience.\n- Narrowing the audience (public → link → members) needs no approval and applies at once."
+"text": "| Audience | Who uses it | Opens |\n|---|---|---|\n| Members | Members of this organization, signed in. Members see it as a **shared agent** | At once |\n| Anyone with the link | Anyone with the address, without signing in. Listed nowhere | After an administrator approves |\n| Public | Anyone, without signing in. Listed on the public chatbot page (`/b`) and may show up in search | After an administrator approves |\n\n- Choosing a link or public audience needs a **daily credit limit**. When the day's spending reaches it, the chatbot stops until the next day.\n- While the request waits, members can use the chatbot as usual. The request shows at the top of the management page, and **Withdraw request** takes it back.\n- When a request is declined, the administrator's reason shows on the management page. The chatbot keeps answering its previous audience.\n- Narrowing the audience (public → link → members) needs no approval and applies at once."
 },
 {
 "lang": "en",
@@ -1908,7 +1908,7 @@
 "path": "chat/bots",
 "title": "Publishing a chatbot",
 "heading": "Channels: other sites, API, MCP",
-"text": "A chatbot open to people without an account can also be reached through these channels besides its own page. Switch them under **Channels** on the dashboard's **Overview**. Switching one on opens once an administrator approves; switching off applies at once.\n\n| Channel | What it does | Available at |\n|---|---|---|\n| Embed on other sites | Puts the chat on your own sites, such as your institution's homepage | Open to everyone |\n| API | Calls the bot from your service or program, OpenAI-compatible | By link, open to everyone |\n| MCP | Connects the bot as a tool in AI tools such as Claude | By link, open to everyone |\n\n- **Embed on other sites**: list the sites (starting with `https://`, up to 10) and ask. Once approved, paste the one-line embed code before ``: a chat button appears in the corner and opens the chat (full screen on a phone). The chat shows only on approved sites, and inside them it always acts as a visitor without an account.\n- **API and MCP**: on the dashboard's **API** tab, make a key that calls this bot only. A key is shown once, when it is made; keep it then. **Revoke** a key you no longer use and it stops at once.\n  - Call the API at `/api/bots/v1/chat/completions` with the bot's address as `model`. Only checked answers go out, so with `stream` on the answer arrives once it is finished. Cited material is in `kloudchat.citations`.\n  - Connect MCP at `/api/bots/mcp/` with the same key; it offers one tool, `ask`.\n  - Questions through a key have per-minute and per-day limits for that key, and the daily credit cap and the bot's own limits still apply.\n- The **API** tab and **Statistics** show questions by channel (bot page, other sites, API, MCP).\n- When an administrator closes the outside audience, or the audience is narrowed, the channels it can no longe"
+"text": "A chatbot open to people without an account can also be reached through these channels besides its own page. Switch them under **Channels** on the dashboard's **Overview**. Switching one on opens once an administrator approves; switching off applies at once.\n\n| Channel | What it does | Available at |\n|---|---|---|\n| Embed on other sites | Puts the chat on your own sites, such as your organization's homepage | Open to everyone |\n| API | Calls the bot from your service or program, OpenAI-compatible | By link, open to everyone |\n| MCP | Connects the bot as a tool in AI tools such as Claude | By link, open to everyone |\n\n- **Embed on other sites**: list the sites (starting with `https://`, up to 10) and ask. Once approved, paste the one-line embed code before ``: a chat button appears in the corner and opens the chat (full screen on a phone). The chat shows only on approved sites, and inside them it always acts as a visitor without an account.\n- **API and MCP**: on the dashboard's **API** tab, make a key that calls this bot only. A key is shown once, when it is made; keep it then. **Revoke** a key you no longer use and it stops at once.\n  - Call the API at `/api/bots/v1/chat/completions` with the bot's address as `model`. Only checked answers go out, so with `stream` on the answer arrives once it is finished. Cited material is in `kloudchat.citations`.\n  - Connect MCP at `/api/bots/mcp/` with the same key; it offers one tool, `ask`.\n  - Questions through a key have per-minute and per-day limits for that key, and the daily credit cap and the bot's own limits still apply.\n- The **API** tab and **Statistics** show questions by channel (bot page, other sites, API, MCP).\n- When an administrator closes the outside audience, or the audience is narrowed, the channels it can no long"
 },
 {
 "lang": "en",
@@ -1936,7 +1936,7 @@
 "path": "chat/connectors",
 "title": "Connectors",
 "heading": "",
-"text": "A connector is an external tool (an MCP server) that the model can call. Install one from the account menu → **Connectors**, and turn it on or off from **+** → **Connectors** in the composer. The on or off state applies to your **whole account**."
+"text": "A connector is an external tool (an MCP server) that the model can call. Install one from **Customize** → **Connectors**, and turn it on or off from **+** → **Connectors** in the composer. The on or off state applies to your **whole account**."
 },
 {
 "lang": "en",
@@ -2041,7 +2041,7 @@
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "",
-"text": "Jobs such as minutes, a bullet-style briefing (개조식 보고) or comparing options are done with **official skills**. Turn a skill on in a conversation and it does that job; for work you do often, combine a few skills into an agent of your own. There are no separate built-in agents. Conversations with the former built-in agents, copies you took of them, and chatbots you published from them keep working."
+"text": "Jobs such as minutes, a bullet-style briefing (개조식 보고) or comparing options are done with **official skills**. Turn a skill on in a conversation and it does that job; for work you do often, combine a few skills into an agent of your own. There are no separate built-in agents."
 },
 {
 "lang": "en",
@@ -2104,7 +2104,7 @@
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "A purchase review agent",
-"text": "Skills kept on **비교·결정 보고** + **견적 계산**, screen **Report**. Write your institution's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them."
+"text": "Skills kept on **비교·결정 보고** + **견적 계산**, screen **Report**. Write your organization's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them."
 },
 {
 "lang": "en",
@@ -2146,7 +2146,7 @@
 "path": "chat/starters",
 "title": "Templates and themes",
 "heading": "Templates",
-"text": "A template defines the structure rules and the typesetting of reports and slides. Select one and the **What this template checks** list appears. You edit a document in a template by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Create your own document template with **New template** in the template picker or the agent settings (Agents and skills). Images, audio and video have no templates.\n\nThe built-in templates in the picker are seven documents (**Internal approval draft (간이기안문)**, **Implementation plan (draft)**, **Results report**, **Bullet-style briefing (개조식)**, **Comparison report**, **Meeting minutes**, **Meeting agenda**) and the **Briefing deck**. They write straight into the institution's format and show that format's check results when done. Conversations and agents that use a hidden template keep writing and exporting with it."
+"text": "A template defines the structure rules and the typesetting of reports and slides. Select one and the **What this template checks** list appears. You edit a document in a template by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Create your own document template with **New template** in the template picker or the agent settings (Agents and skills). Images, audio and video have no templates.\n\nThe built-in templates in the picker are seven documents (**Internal approval draft (간이기안문)**, **Implementation plan (draft)**, **Results report**, **Bullet-style briefing (개조식)**, **Comparison report**, **Meeting minutes**, **Meeting agenda**) and the **Briefing deck**. They write straight into the organization's format and show that format's check results when done. Conversations and agents that use a hidden template keep writing and exporting with it."
 },
 {
 "lang": "en",
@@ -2188,7 +2188,7 @@
 "path": "glossary",
 "title": "Glossary",
 "heading": "",
-"text": "| Term | Meaning |\n|---|---|\n| Screen (Chat · Report · Slides · Image · Audio/Video) | The screen you choose on the home page. Administrators turn each one on and off |\n| Conversation (대화) | The record of one piece of work. One row in the sidebar |\n| Artifact (아티팩트) | A document, deck, chart or other file produced in a conversation. The right-hand panel and the gallery |\n| Template (템플릿) | The structure of the artifact (structure rules, typesetting, check items). It stays for the whole conversation |\n| Theme (테마) | The look of the artifact (colors, typefaces, tone). Attached to an agent or a project, kept in Settings › Themes |\n| Project (프로젝트) | A workspace that groups material, instructions, and conversations |\n| Agent (에이전트) | A helper with set instructions, process, tools, and material. Start one from **+** → **Agents** in the composer |\n| How it works (진행 과정) | The order an agent works in: Answer directly · Start from a base process · Set it up yourself (advanced) |\n| Base process (기본 과정) | The order a former built-in agent (Bullet-style briefing, Minutes, …) worked in. Used only by agents that already started from it |\n| Bundle (묶음) | A group of things an agent does before and after writing. Ticked under Extra work in the agent settings |\n| Skill (스킬) | A way of working you keep on in a conversation. Up to 3 in the composer, up to 6 as an agent's skills kept on. Brings its template, checks and missing-information questions |\n| Official skill (공식 스킬) | A skill the administrator shares with everyone, for jobs such as minutes or a bullet-style briefing. Picking it in the composer adds it to your skills |\n| Hidden (숨김) | A built-in skill, template, theme or connector kept but not shown in the lists, the store or the pickers. It still works in bundles and earlier conve"
+"text": "| Term | Meaning |\n|---|---|\n| Screen (Chat · Report · Slides · Image · Audio/Video) | The screen you choose on the home page. Administrators turn each one on and off |\n| Conversation (대화) | The record of one piece of work. One row in the sidebar |\n| Artifact (아티팩트) | A document, deck, chart or other file produced in a conversation. The right-hand panel and the gallery |\n| Template (템플릿) | The structure of the artifact (structure rules, typesetting, check items). It stays for the whole conversation |\n| Theme (테마) | The look of the artifact (colors, typefaces, tone). Attached to an agent or a project, kept in Settings › Themes |\n| Project (프로젝트) | A workspace that groups material, instructions, and conversations |\n| Agent (에이전트) | A helper with set instructions, process, tools, and material. Start one from **+** → **Agents** in the composer |\n| How it works (진행 과정) | The order an agent works in: Answer directly · Start from a base process · Set it up yourself (advanced) |\n| Base process (기본 과정) | The working order of a built-in agent (Bullet-style briefing, Minutes, …). Used only by agents that already started from it |\n| Bundle (묶음) | A group of things an agent does before and after writing. Ticked under Extra work in the agent settings |\n| Skill (스킬) | A way of working you keep on in a conversation. Up to 3 in the composer, up to 6 as an agent's skills kept on. Brings its template, checks and missing-information questions |\n| Official skill (공식 스킬) | A skill the administrator shares with everyone, for jobs such as minutes or a bullet-style briefing. Picking it in the composer adds it to your skills |\n| Hidden (숨김) | A built-in skill, template, theme or connector kept but not shown in the lists, the store or the pickers. It still works in bundles and earlier conversatio"
 },
 {
 "lang": "en",
@@ -2202,7 +2202,7 @@
 "path": "index",
 "title": "KloudChat User Guide",
 "heading": "Guide pages by purpose",
-"text": "| Purpose | Feature used | Reference |\n|---|---|---|\n| Questions and answers, code review, proofreading | Home → **Chat** | Conversation basics |\n| Getting answers grounded in a document you attach | **+** → **Attach files or photos** in the composer | Attaching files |\n| Getting answers based on up-to-date information | **+** → Web search in the composer | Web search and tools |\n| Writing a report | Home → **Report** | Writing reports |\n| Writing a slide deck | Home → **Slides** | Writing slides |\n| Editing a finished document yourself and having it reviewed | The ribbon in the artifact panel | Artifact editor |\n| Generating images, audio and video | Home → **Image**, **Audio/Video** | Images and audio/video |\n| Passing an artifact on as a link | **Share** at the top of the conversation | Sharing |\n| Grouping files and instructions for repeated use | Sidebar → **Projects** | Projects |\n| Delegating to an assistant with a defined role | **+** → Agents in the composer | Agents and skills |\n| Opening an agent to others as a chatbot | Agent page → **Publish as a chatbot** | Publishing a chatbot |\n| Getting an artifact in a set template | **+** → **Pick a template** in the composer | Templates and themes |\n| Storing information you have to repeat often | Account menu → **Memory** | Memory |\n| Calling models from external tools and code | Account menu → **API access** | API and coding tool integration |\n| Checking usage and tidying up conversations | Account menu → **Usage**, **Conversation history** | Usage and conversation history |\n| Reporting a bug or requesting a feature | Account menu → **Feedback & issues** | Feedback and issues |"
+"text": "| Purpose | Feature used | Reference |\n|---|---|---|\n| Questions and answers, code review, proofreading | Home → **Chat** | Conversation basics |\n| Getting answers grounded in a document you attach | **+** → **Attach files or photos** in the composer | Attaching files |\n| Getting answers based on up-to-date information | **+** → Web search in the composer | Web search and tools |\n| Writing a report | Home → **Report** | Writing reports |\n| Writing a slide deck | Home → **Slides** | Writing slides |\n| Editing a finished document yourself and having it reviewed | The ribbon in the artifact panel | Artifact editor |\n| Generating images, audio and video | Home → **Image**, **Audio/Video** | Images and audio/video |\n| Passing an artifact on as a link | **Share** at the top of the conversation | Sharing |\n| Grouping files and instructions for repeated use | Sidebar → **Projects** | Projects |\n| Delegating to an assistant with a defined role | **+** → Agents in the composer | Agents and skills |\n| Opening an agent to others as a chatbot | Agent page → **Publish as a chatbot** | Publishing a chatbot |\n| Getting an artifact in a set template | **+** → **Pick a template** in the composer | Templates and themes |\n| Storing information you have to repeat often | Account menu → **Settings** → **Memory** | Memory |\n| Calling models from external tools and code | Account menu → **API access** | API and coding tool integration |\n| Checking usage and tidying up conversations | Account menu → **Usage**, **Conversation history** | Usage and conversation history |\n| Reporting a bug or requesting a feature | Account menu → **Feedback & issues** | Feedback and issues |"
 },
 {
 "lang": "en",
@@ -2237,7 +2237,7 @@
 "path": "limits",
 "title": "Limits and troubleshooting",
 "heading": "What to do for each error message",
-"text": "Search for the message exactly as it appears on the screen.\n\n| Message on the screen | Meaning | What to do |\n|---|---|---|\n| You have used all of your credits this month | The monthly limit is used up | Wait for the refill on the 1st of next month. Free models are not affected |\n| You do not have enough credits this month | The remaining credits are less than the estimated cost of this request | Reduce the options such as slide count or length, or use a free model |\n| Cannot connect to the model server | Model gateway failure | Try again shortly. Contact your administrator if it continues |\n| Could not get an answer because of a model server error | The gateway refused the request (including when the files or the conversation exceed the model window) | Upload the files again in a new conversation, or narrow the question |\n| The model did not respond, so the request was stopped. Try generating again with another model | No text arrived for 3 minutes | **Another model** |\n| The model server request limit was exceeded | Gateway rate limit | Try again shortly |\n| The model server refused authentication | Gateway key problem | Contact your administrator |\n| The model server does not have this model | The model list has changed | Choose another model. The administrator refreshes the list |\n| This model is not allowed for this account | A model the administrator has restricted | Choose another model |\n| This model cannot be used on this screen right now | The screen (a report, for example) and the model do not match | Change the model |\n| No models are available right now | The gateway is not connected | Contact your administrator |\n| The request was not sent because the personal data checker is unavailable | Protection feature failure | Contact your administrator. Sending is"
+"text": "Search for the message exactly as it appears on the screen.\n\n| Message on the screen | Meaning | What to do |\n|---|---|---|\n| You have used all of your credits this month | The monthly limit is used up | Wait for the refill on the 1st of next month. Free models are not affected |\n| You do not have enough credits this month | The remaining credits are less than the estimated cost of this request | Reduce the options such as length or resolution, or use a free model |\n| Cannot connect to the model server | Model gateway failure | Try again shortly. Contact your administrator if it continues |\n| Could not get an answer because of a model server error | The gateway refused the request (including when the files or the conversation exceed the model window) | Upload the files again in a new conversation, or narrow the question |\n| The model did not respond, so the request was stopped. Try generating again with another model | No text arrived for 3 minutes | **Another model** |\n| The model server request limit was exceeded | Gateway rate limit | Try again shortly |\n| The model server refused authentication | Gateway key problem | Contact your administrator |\n| The model server does not have this model | The model list has changed | Choose another model. The administrator refreshes the list |\n| This model is not allowed for this account | A model the administrator has restricted | Choose another model |\n| This model cannot be used on this screen right now | The screen (a report, for example) and the model do not match | Change the model |\n| No models are available right now | The gateway is not connected | Contact your administrator |\n| The request was not sent because the personal data checker is unavailable | Protection feature failure | Contact your administrator. Sending is "
 },
 {
 "lang": "en",
@@ -2377,7 +2377,7 @@
 "path": "personal/settings",
 "title": "Settings",
 "heading": "Preferences",
-"text": "| Item | Description |\n|---|---|\n| Default model per screen | The model applied to new conversations on each screen, such as Chat, Reports, and Slides. It is saved to the account, so it applies the same way on every device. |\n| A request with personal data in it → What to do by default | Choose from asking every time, switching to strict-local, masking, and sending the original text (when the administrator allows it). Privacy |\n| A request with personal data in it → strict-local picture model | The model that draws a picture in a conversation or document with internal material when it must stay strict-local and the picked picture model is external. Shown only when there is more than one strict-local picture model. Unset, the first in the list is used. |\n| Response streaming | When it is off, the answer is shown all at once after it is complete. |\n| Save memory automatically | Automatically saves information that stays valid, for each answer. |\n| Token and credit display | Sets whether usage is shown at the bottom of the answer. |\n\nThe theme and the language are switched with the buttons at the top right of the screen, not in this tab."
+"text": "| Item | Description |\n|---|---|\n| Default model per screen | The model applied to new conversations on each screen, such as Chat, Reports, and Slides. It is saved to the account, so it applies the same way on every device. |\n| A request with personal data in it → What to do by default | Choose from asking every time, switching to strict-local, masking, and sending the original text (when the administrator allows it). Privacy |\n| A request with personal data in it → strict-local picture model | The model that draws a picture in a conversation or document with internal material when it must stay strict-local and the picked picture model is external. Shown only when there is more than one strict-local picture model. Unset, the first in the list is used. |\n| Response streaming | When it is off, the answer is shown all at once after it is complete. |\n| Save memory automatically | Automatically saves information that stays valid, for each answer. |\n| Hold Space to dictate | Hold `Space` in an empty composer and speak; on release the words are typed into the box, not sent. Shown only when speech transcription is connected, and off by default. |\n| Token and credit display | Sets whether usage is shown at the bottom of the answer. |\n\nThe theme and the language are switched with the buttons at the top right of the screen, not in this tab."
 },
 {
 "lang": "en",
@@ -2482,7 +2482,7 @@
 "path": "privacy",
 "title": "Privacy",
 "heading": "strict-local models",
-"text": "These are models confirmed not to send anything outside. Selecting one disables web search, page reading, and connectors. A name starting with `local` does not make a model strict-local, so check the label in the list."
+"text": "These are models confirmed not to send anything outside. Selecting one disables web search, page reading, and connectors. A model whose name starts with `local/` runs on the organization's servers first but may fall back to an external model, so it is not strict-local. Check the label in the list."
 },
 {
 "lang": "en",
@@ -2503,7 +2503,7 @@
 "path": "start/home",
 "title": "Home screen layout",
 "heading": "Sidebar",
-"text": "| Area | Description |\n|---|---|\n| Search | Searches past conversations (titles and messages) and artifacts. Shortcut `Ctrl+K`. |\n| New chat | Goes to the home screen so you can start new work. Shortcut `Alt+Shift+N`. |\n| Projects · Artifacts · Customize | Goes to the workspace that holds your grouped files, the gallery of generated artifacts, and the place to manage agents (including ones others shared), skills and connectors. |\n| Conversation list | Shown in the order **Pinned**, **Recent**. **All conversations** opens the history page. Icons show the type of each item. The `…` menu on an item lets you rename it, pin it, remove it from a project and delete it. |\n| Credit this month | The usage you have left. Press it to go to the usage screen. A model marked **Free** does not consume credit. |\n| Account menu | Customize, History, Agent setup, API access, Usage, Settings (including memory and themes), Feedback & issues, Keyboard shortcuts, the Manage menu (administrators), Sign out. |"
+"text": "| Area | Description |\n|---|---|\n| Search | Searches past conversations (titles and messages) and artifacts. Shortcut `Ctrl+K`. |\n| New chat | Goes to the home screen so you can start new work. Shortcut `Alt+Shift+N`. |\n| Projects · Artifacts · Files · Customize | Goes to the workspace that holds your grouped files, the gallery of generated artifacts, the files you uploaded or made, and the place to manage agents (including ones others shared), skills and connectors. |\n| Conversation list | Shown in the order **Pinned**, **Recent**. **All conversations** opens the history page. Icons show the type of each item. The `…` menu on an item lets you rename it, pin it, remove it from a project and delete it. |\n| Credit this month | The usage you have left. Press it to go to the usage screen. A model marked **Free** does not consume credit. |\n| Account menu | Customize, History, Agent setup, API access, Usage, Settings (including memory and themes), Feedback & issues, Keyboard shortcuts, the Manage menu (administrators), Sign out. |"
 },
 {
 "lang": "en",
@@ -2552,7 +2552,7 @@
 "path": "start/shortcuts",
 "title": "Keyboard shortcuts",
 "heading": "Composer",
-"text": "| Action | Shortcut |\n|---|---|\n| Send | `Enter` |\n| New line | `Shift+Enter` |\n| Dictate | In an empty composer, hold `Space` while you speak. Release it to send immediately |"
+"text": "| Action | Shortcut |\n|---|---|\n| Send | `Enter` |\n| New line | `Shift+Enter` |\n| Dictate | In an empty composer, hold `Space` while you speak. Release it to type the words into the box (with **Hold Space to dictate** on in Preferences) |"
 },
 {
 "lang": "en",
@@ -2692,7 +2692,7 @@
 "path": "write/media",
 "title": "Images and audio/video",
 "heading": "Images",
-"text": "Set the image options below the input box.\n\n| Chip | Choices |\n|---|---|\n| Ratio | 16:9 · 9:16 · 4:3 · 1:1 (only the ones the model supports) |\n| Style | **Picture**: Auto · photo · illustration · infographic · watercolor**Exact figure**: structure diagram · flow diagram · concept diagram · chartPrompt as written |\n| Text | Auto · Korean · English · none |\n\nOne picture is made at a time. The **Picture** group is drawn by the picture model; the **Exact figure** group is drawn as shapes or a chart without it, so its text is exact. **Prompt as written** sends the text to the picture model unchanged.\n\nThe result card provides enlarged view, download, **Generate again**, **Fix the prompt**, and **View the prompt sent** (the final sentence that was actually sent). A chart is drawn as code by the text model. You can use **View the drawing code** and **Redraw with this code**. If you choose a model that does not support ratio settings, a message tells you that the image is generated as a square.\n\n**Structure, flow and concept diagrams** do not use the image model. The text model writes the description as a flowchart, and the server draws it with the same shapes as the diagrams in reports and slides and keeps it as a picture. If there are too many steps or the content cannot be put as a flowchart, the message \"This figure cannot be drawn. Try again with fewer steps.\" appears and no picture is made.\n\nImages, audio and video have no templates. **+** → Pick a template in the composer is offered only for reports and slides. The colors and the image style of the project theme are applied to the request as well."
+"text": "Set the image options below the input box.\n\n| Chip | Choices |\n|---|---|\n| Ratio | 16:9 · 9:16 · 4:3 · 1:1 (only the ones the model supports) |\n| Style | **Picture**: Auto · photo · illustration · infographic · watercolor**Exact figure**: structure diagram · flow diagram · concept diagram · chartPrompt as written |\n| Text | Auto · Korean · English · none |\n\nOne picture is made at a time. The **Picture** group is drawn by the picture model; the **Exact figure** group is drawn as shapes or a chart without it, so its text is exact. **Prompt as written** sends the text to the picture model unchanged.\n\nPick the picture model from the model name at the right of the composer. The list comes from the models registered in the model gateway; the default setup's external picture models are Seedream 5.0 Flash, Recraft V4.1, Grok Imagine Image 2.0, GPT-5.4 Image 2 and Gemini 3 Pro Image. When the administrator connects a self-hosted picture model, strict-local picture models appear as well. Pictures in a project conversation, a conversation with attachments, or a strict-local conversation are drawn by strict-local models only. Privacy\n\nThe result card provides enlarged view, download, **Generate again**, **Fix the prompt**, and **View the prompt sent** (the final sentence that was actually sent). A chart is drawn as code by the text model. You can use **View the drawing code** and **Redraw with this code**. If you choose a model that does not support ratio settings, a message tells you that the image is generated as a square.\n\n**Structure, flow and concept diagrams** do not use the image model. The text model writes the description as a flowchart, and the server draws it with the same shapes as the diagrams in reports and slides and keeps it as a picture. If there are too many steps"
 },
 {
 "lang": "en",
