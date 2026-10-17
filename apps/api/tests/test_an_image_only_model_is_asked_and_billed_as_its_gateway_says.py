@@ -30,9 +30,13 @@ def test_an_image_only_model_is_asked_for_the_image_alone() -> None:
     for model_id in (
         "google/gemini-3-pro-image",
         "openai/gpt-5-image",
+        "openai/gpt-5.4-image-2",
         "strict-local/z-image-turbo",
     ):
         assert imagegen.modalities_for(model_id) == ["image", "text"]
+    # GPT-5.4 Image 2 keeps the asked ratio (1280x720 for 16:9 in a test draw)
+    assert imagegen.honours_aspect("openai/gpt-5.4-image-2")
+    assert not imagegen.modalities_for("openai/gpt-5.4") == ["image", "text"]
 
 
 @pytest.mark.asyncio

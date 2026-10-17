@@ -30,6 +30,8 @@ _IMAGE_TOKENS = {
     "bytedance-seed/seedream-5-0-flash": 4175,
     "x-ai/grok-imagine-image-2.0": 4175,
     "recraft/recraft-v4.1": 4175,
+    # one 16:9 picture: 3,866 output tokens, usage.cost $0.127 (measured 10-17)
+    "openai/gpt-5.4-image-2": 3866,
 }
 
 #: `{model_id: provider}` hidden for missing price, rebuilt per refresh
