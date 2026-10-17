@@ -2,6 +2,7 @@ import { Check, Loader2, Sparkles, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button, Dropdown, MenuLabel } from '@/components/ui'
 import { artifactsApi, errorMessage } from '@/lib/api'
+import { mediaFailure } from '@/lib/failures'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Artifact, Critique, LintFinding } from '@/types'
@@ -138,7 +139,7 @@ export function LintFindings({
       artifact.critique = (row.data as { critique?: Critique } | null)?.critique
       void loadArtifacts()
     } catch (err) {
-      setError(errorMessage(err, t('검토하지 못했습니다.')))
+      setError(mediaFailure(err, t('검토하지 못했습니다.'), t))
     } finally {
       setBusy(false)
     }

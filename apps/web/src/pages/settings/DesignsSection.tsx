@@ -8,6 +8,7 @@ import {
   type DesignRow,
   type DesignTokens,
 } from '@/lib/api'
+import { mediaFailure } from '@/lib/failures'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
@@ -116,7 +117,7 @@ function ExtractForm({
         draft.source,
       )
     } catch (e) {
-      const said = errorMessage(e, t('문서에서 테마를 읽어내지 못했습니다.'))
+      const said = mediaFailure(e, t('문서에서 테마를 읽어내지 못했습니다.'), t)
       setError(REFUSAL[said] ? t(REFUSAL[said]) : said)
     } finally {
       setBusy(false)

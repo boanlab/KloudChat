@@ -506,7 +506,7 @@ class _MediaBoundary:
 
     strict: bool
     text: str
-    #: "" | strict_session | internal_data | mask_external
+    #: "" | strict_session | internal_data | mask_external | personal_data
     reason: str
     findings: list[governance.Finding]
     legacy_mask: bool = False
@@ -542,6 +542,36 @@ async def _media_boundary(
     masked = _MediaBoundary(False, text, "mask_external", rows, policy.pii_masking)
     masked.text = masked.carry(text)
     return masked
+
+
+async def _edit_boundary(
+    db: DbSession,
+    session: ChatSession | None,
+    catalogue: list[dict],
+    text: str,
+    *,
+    own_file: bool = False,
+) -> _MediaBoundary:
+    """A document edit's egress: a media call's, but personal data stays on strict-local.
+
+    The edit is written back into the document, so masking would leave placeholders
+    in it. `own_file`: the text is the person's uploaded file, internal material.
+    """
+    if session is not None:
+        boundary = await _media_boundary(db, session, catalogue, text)
+    else:
+        policy = await _require_egress_policy()
+        if own_file and policy.internal_data_strict_local:
+            return _MediaBoundary(True, text, "internal_data", [])
+        rows = (
+            governance.findings({"prompt": text}, legacy=policy.pii_masking)
+            if (policy.external_data_guard or policy.pii_masking)
+            else []
+        )
+        boundary = _MediaBoundary(False, text, "mask_external" if rows else "", rows)
+    if boundary.reason == "mask_external":
+        return _MediaBoundary(True, text, "personal_data", boundary.findings)
+    return boundary
 
 
 def _media_model(
@@ -590,14 +620,15 @@ def _refuse_outside_boundary(boundary: _MediaBoundary, kind: str) -> HTTPExcepti
 
 
 async def _audit_media_boundary(
-    user: User, request: Request, session: ChatSession, boundary: _MediaBoundary, *,
-    refused: bool = False,
+    user: User, request: Request, session: ChatSession | None, boundary: _MediaBoundary, *,
+    refused: bool = False, surface: str = "media",
 ) -> None:
-    """Media calls kept inside the boundary, masked or refused leave the chat turn's trail."""
+    """Media and edit calls kept inside, masked or refused leave the chat turn's trail."""
     if not boundary.reason or (boundary.reason == "strict_session" and not refused):
         return
     action = (
         "internal_data_requires_strict_local" if refused
+        else "strict_local" if boundary.reason == "personal_data"
         else "internal_strict_local" if boundary.strict else boundary.reason
     )
     await _audit_policy(
@@ -606,8 +637,8 @@ async def _audit_media_boundary(
         f"privacy.{action}",
         governance.DETECTOR_VERSION,
         metadata={
-            "sessionId": session.id,
-            "surface": "media",
+            "sessionId": session.id if session is not None else None,
+            "surface": surface,
             "reason": boundary.reason,
             **governance.finding_metadata(boundary.findings),
         },
