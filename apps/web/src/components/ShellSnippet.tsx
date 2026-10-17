@@ -30,7 +30,7 @@ export function Snippet({ text }: { text: string }) {
   )
 }
 
-export type Shell = 'linux' | 'mac' | 'windows'
+type Shell = 'linux' | 'mac' | 'windows'
 
 const STORAGE_KEY = 'kchat.shell'
 const SHELLS: { id: Shell; label: string }[] = [

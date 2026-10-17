@@ -60,7 +60,7 @@ export function ChartBlock({
 }
 
 /** Mirrors `report_export._chart_block`; short rows dropped, never padded. */
-export function parse(source: string): Parameters<typeof SlideChart>[0]['chart'] | null {
+function parse(source: string): Parameters<typeof SlideChart>[0]['chart'] | null {
   const lines = source
     .split('\n')
     .map((line) => line.trim())

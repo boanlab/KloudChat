@@ -145,7 +145,7 @@ function Checks({ checks }: { checks: string[] }) {
 }
 
 /** Design template card, shared by the gallery and the designs screen. */
-export function DesignTemplateCard({
+function DesignTemplateCard({
   row,
   english,
   onPick,

@@ -58,7 +58,7 @@ export function FileBoxFilter({
 }
 
 /** Where a file lives: its project, its conversation, or a conversation since deleted. */
-export function FilePlace({ row }: { row: FileRow }) {
+function FilePlace({ row }: { row: FileRow }) {
   const t = useT()
   const project = useStore((s) => s.projects.find((p) => p.id === row.projectId))
   const session = useStore((s) => s.sessions.find((c) => c.id === row.sessionId))

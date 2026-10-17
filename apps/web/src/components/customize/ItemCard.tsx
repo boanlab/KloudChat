@@ -33,7 +33,7 @@ const pillTone = {
   review: 'border-accent/25 bg-accent-soft text-accent',
 } as const
 
-export function StatusPill({ item }: { item: HubItem }) {
+function StatusPill({ item }: { item: HubItem }) {
   const t = useT()
   return (
     <span
@@ -53,22 +53,17 @@ export function ItemCard({
   view,
   onTry,
   onAdd,
-  onOpen,
   picking,
   picked,
   onPick,
-  highlight,
 }: {
   item: HubItem
   view: 'mine' | 'explore'
   onTry: (item: HubItem) => Promise<void>
   onAdd?: (item: HubItem) => Promise<void>
-  /** Overrides the card's link (a shipped flow has no detail screen). */
-  onOpen?: (item: HubItem) => void
   picking?: boolean
   picked?: boolean
   onPick?: (item: HubItem) => void
-  highlight?: boolean
 }) {
   const t = useT()
   const navigate = useNavigate()
@@ -76,8 +71,7 @@ export function ItemCard({
   const [lockOpen, setLockOpen] = useState(false)
   const name = t(item.name)
   const open = () => {
-    if (onOpen) onOpen(item)
-    else if (item.to) navigate(item.to)
+    if (item.to) navigate(item.to)
   }
   // Surface glyphs, only when not for every surface.
   const writing = item.surfaces.filter((k) => k === 'report' || k === 'slides')
@@ -88,9 +82,8 @@ export function ItemCard({
       data-testid="item-card"
       data-item={item.key}
       className={cn(
-        'group relative flex min-w-0 items-start gap-3 rounded-card border bg-panel p-4 transition-colors max-sm:p-3',
-        highlight ? 'border-accent ring-2 ring-accent/40' : 'border-line hover:border-line-strong',
-        (item.to || onOpen) && 'cursor-pointer',
+        'group relative flex min-w-0 items-start gap-3 rounded-card border bg-panel p-4 transition-colors hover:border-line-strong max-sm:p-3 border-line',
+        item.to && 'cursor-pointer',
       )}
       onClick={open}
     >
