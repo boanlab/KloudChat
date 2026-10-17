@@ -2968,6 +2968,10 @@ const EN: Record<string, string> = {
     'The model stopped responding, so the request was cancelled. Try another model.',
   '이 모델은 지금 이 화면에서 쓸 수 없습니다. 모델을 바꿔 다시 시도하세요.':
     'That model cannot be used on this surface right now. Pick another and try again.',
+  'strict-local 그림 모델': 'strict-local picture model',
+  '목록의 첫 모델 ({model})': 'First in the list ({model})',
+  '내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 할 때, 고른 그림 모델이 외부 모델이면 이 모델로 그립니다.':
+    'When a picture in a conversation or document with internal material must stay strict-local and the picked picture model is external, this model draws it.',
   '이 계정에 허용되지 않은 모델입니다. 모델을 바꿔 다시 시도하세요.':
     'This account may not use that model. Pick another and try again.',
   '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.':

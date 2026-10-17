@@ -22,6 +22,8 @@ export function PreferencesTab() {
       models.some((m) => m.kinds.includes(kind) && (!modality || m.modality === modality)))
   const [allowRawExternal, setAllowRawExternal] = useState<boolean | null>(null)
   const set = (patch: Partial<Preferences>) => void updateProfile({ preferences: patch })
+  // Pictures kept inside: picked here, offered only when there is a choice.
+  const strictImages = models.filter((m) => m.kinds.includes('image') && m.strictLocal)
 
   useEffect(() => {
     void authConfig
@@ -97,6 +99,25 @@ export function PreferencesTab() {
             {t('모델 전환은 외부 대체 모델이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.')}
           </span>
         </label>
+        {strictImages.length > 1 && (
+          <label className="block max-w-xl space-y-1.5">
+            <span className="text-base font-medium">{t('strict-local 그림 모델')}</span>
+            <Select
+              value={strictImages.some((m) => m.id === prefs?.strictImageModel) ? prefs?.strictImageModel : ''}
+              onChange={(event) => set({ strictImageModel: event.target.value })}
+            >
+              <option value="">{t('목록의 첫 모델 ({model})').replace('{model}', strictImages[0].label)}</option>
+              {strictImages.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </Select>
+            <span className="block text-sm text-faint">
+              {t('내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 할 때, 고른 그림 모델이 외부 모델이면 이 모델로 그립니다.')}
+            </span>
+          </label>
+        )}
       </section>
 
       <section className="space-y-3 border-t border-line pt-6">

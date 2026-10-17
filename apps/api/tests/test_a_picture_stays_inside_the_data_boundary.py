@@ -201,3 +201,39 @@ async def test_a_project_picture_reaches_only_the_strict_local_model(
     assert refused.value.status_code == 409
     assert asked == [STRICT_IMAGE["id"]]
     assert audits[-1] == "privacy.internal_data_requires_strict_local"
+
+
+QWEN_IMAGE = {
+    "id": "strict-local/qwen-image-2512", "kinds": ["image"], "dataBoundary": "self_hosted",
+    "strictLocal": True, "creditCost": 0,
+}
+
+
+@pytest.mark.asyncio
+async def test_the_person_picks_which_strict_local_model_draws(policy) -> None:
+    models = [*EVERYTHING, QWEN_IMAGE]
+    inside = await sessions._media_boundary(None, _session(project="p1"), models, "조직도")
+    unset = _user()
+    picked = _user()
+    picked.preferences = {"strictImageModel": STRICT_IMAGE["id"]}
+    # Unset: the first strict-local picture model listed.
+    assert sessions._media_model(
+        unset, models, kind="image", boundary=inside, asked=EXTERNAL_IMAGE["id"]
+    ) is QWEN_IMAGE
+    # Set: an outside pick goes to it, a strict-local pick stands.
+    assert sessions._media_model(
+        picked, models, kind="image", boundary=inside, asked=EXTERNAL_IMAGE["id"]
+    ) is STRICT_IMAGE
+    assert sessions._media_model(
+        picked, models, kind="image", boundary=inside, asked=QWEN_IMAGE["id"]
+    ) is QWEN_IMAGE
+    # A document's figures follow the same pick.
+    catalogue = {"models": models, "defaultModelByKind": {"image": EXTERNAL_IMAGE["id"]}}
+    assert sessions._document_image_model(picked, catalogue, strict_local=True) is STRICT_IMAGE
+    assert sessions._document_image_model(unset, catalogue, strict_local=True) is QWEN_IMAGE
+    # A pick no longer served: the first listed.
+    gone = _user()
+    gone.preferences = {"strictImageModel": "strict-local/retired"}
+    assert sessions._media_model(
+        gone, models, kind="image", boundary=inside, asked=EXTERNAL_IMAGE["id"]
+    ) is QWEN_IMAGE

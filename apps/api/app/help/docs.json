@@ -956,7 +956,7 @@
 "path": "personal/settings",
 "title": "설정",
 "heading": "환경설정",
-"text": "| 항목 | 설명 |\n|---|---|\n| 화면별 기본 모델 | 챗, 보고서, 슬라이드 등 화면마다 새 대화에 적용할 모델입니다. 계정에 저장되므로 모든 기기에서 동일하게 적용됩니다. |\n| 개인정보가 감지된 요청 → 기본 처리 방법 | 매번 확인, strict-local로 전환, 마스킹, 원문 전송(관리자가 허용한 경우) 중에서 선택합니다. 개인정보 보호 |\n| 응답 스트리밍 | 끄면 답변이 완성된 후 한 번에 표시됩니다. |\n| 메모리 자동 저장 | 답변마다 지속적으로 유효한 정보를 자동으로 저장합니다. |\n| 토큰·크레딧 표시 | 답변 하단의 사용량 표시 여부를 설정합니다. |\n\n테마와 언어는 이 탭이 아니라 화면 오른쪽 위의 버튼에서 전환합니다."
+"text": "| 항목 | 설명 |\n|---|---|\n| 화면별 기본 모델 | 챗, 보고서, 슬라이드 등 화면마다 새 대화에 적용할 모델입니다. 계정에 저장되므로 모든 기기에서 동일하게 적용됩니다. |\n| 개인정보가 감지된 요청 → 기본 처리 방법 | 매번 확인, strict-local로 전환, 마스킹, 원문 전송(관리자가 허용한 경우) 중에서 선택합니다. 개인정보 보호 |\n| 개인정보가 감지된 요청 → strict-local 그림 모델 | 내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 하는데 고른 그림 모델이 외부 모델일 때, 대신 그릴 모델입니다. strict-local 그림 모델이 둘 이상일 때만 표시됩니다. 고르지 않으면 목록의 첫 모델을 씁니다. |\n| 응답 스트리밍 | 끄면 답변이 완성된 후 한 번에 표시됩니다. |\n| 메모리 자동 저장 | 답변마다 지속적으로 유효한 정보를 자동으로 저장합니다. |\n| 토큰·크레딧 표시 | 답변 하단의 사용량 표시 여부를 설정합니다. |\n\n테마와 언어는 이 탭이 아니라 화면 오른쪽 위의 버튼에서 전환합니다."
 },
 {
 "lang": "ko",
@@ -1054,7 +1054,7 @@
 "path": "privacy",
 "title": "개인정보 보호",
 "heading": "내부 자료는 strict-local로만",
-"text": "관리자가 이 정책을 켜면 첨부 파일, 프로젝트 파일, 메모리가 들어간 요청은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 대화는 이후에도 외부 모델로 넘어가지 않습니다. strict-local 판이 없으면 관리자가 지정한 strict-local 안전 모델이 답하고, 그것도 없으면 전송을 거절합니다.\n\n이미지, 차트, 도식도 같습니다. 프로젝트 대화, 첨부가 있던 대화, strict-local 대화에서는 고른 모델과 상관없이 strict-local 모델로만 만들고, 쓸 수 있는 strict-local 모델이 없으면 만들지 않습니다."
+"text": "관리자가 이 정책을 켜면 첨부 파일, 프로젝트 파일, 메모리가 들어간 요청은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 대화는 이후에도 외부 모델로 넘어가지 않습니다. strict-local 판이 없으면 관리자가 지정한 strict-local 안전 모델이 답하고, 그것도 없으면 전송을 거절합니다.\n\n이미지, 차트, 도식도 같습니다. 프로젝트 대화, 첨부가 있던 대화, strict-local 대화에서는 고른 모델과 상관없이 strict-local 모델로만 만들고, 쓸 수 있는 strict-local 모델이 없으면 만들지 않습니다. 고른 그림 모델이 외부 모델이면 설정 → 환경설정의 **strict-local 그림 모델**로 그립니다."
 },
 {
 "lang": "ko",
@@ -2377,7 +2377,7 @@
 "path": "personal/settings",
 "title": "Settings",
 "heading": "Preferences",
-"text": "| Item | Description |\n|---|---|\n| Default model per screen | The model applied to new conversations on each screen, such as Chat, Reports, and Slides. It is saved to the account, so it applies the same way on every device. |\n| A request with personal data in it → What to do by default | Choose from asking every time, switching to strict-local, masking, and sending the original text (when the administrator allows it). Privacy |\n| Response streaming | When it is off, the answer is shown all at once after it is complete. |\n| Save memory automatically | Automatically saves information that stays valid, for each answer. |\n| Token and credit display | Sets whether usage is shown at the bottom of the answer. |\n\nThe theme and the language are switched with the buttons at the top right of the screen, not in this tab."
+"text": "| Item | Description |\n|---|---|\n| Default model per screen | The model applied to new conversations on each screen, such as Chat, Reports, and Slides. It is saved to the account, so it applies the same way on every device. |\n| A request with personal data in it → What to do by default | Choose from asking every time, switching to strict-local, masking, and sending the original text (when the administrator allows it). Privacy |\n| A request with personal data in it → strict-local picture model | The model that draws a picture in a conversation or document with internal material when it must stay strict-local and the picked picture model is external. Shown only when there is more than one strict-local picture model. Unset, the first in the list is used. |\n| Response streaming | When it is off, the answer is shown all at once after it is complete. |\n| Save memory automatically | Automatically saves information that stays valid, for each answer. |\n| Token and credit display | Sets whether usage is shown at the bottom of the answer. |\n\nThe theme and the language are switched with the buttons at the top right of the screen, not in this tab."
 },
 {
 "lang": "en",
@@ -2475,7 +2475,7 @@
 "path": "privacy",
 "title": "Privacy",
 "heading": "Internal material stays strict-local",
-"text": "When the administrator turns on this policy, a request that carries attachments, project files or memory is answered by the strict-local twin of the chosen model instead, and that conversation never moves to an external model afterwards. Without a twin, the strict-local safe model set by the administrator answers. Without that either, the request is refused.\n\nPictures, charts and figures follow the same rule. In a project conversation, a conversation that had attachments, or a strict-local conversation, they are made only on a strict-local model whatever model was picked, and are not made when no strict-local model is available."
+"text": "When the administrator turns on this policy, a request that carries attachments, project files or memory is answered by the strict-local twin of the chosen model instead, and that conversation never moves to an external model afterwards. Without a twin, the strict-local safe model set by the administrator answers. Without that either, the request is refused.\n\nPictures, charts and figures follow the same rule. In a project conversation, a conversation that had attachments, or a strict-local conversation, they are made only on a strict-local model whatever model was picked, and are not made when no strict-local model is available. When the picked picture model is external, the **strict-local picture model** in Settings → Preferences draws it."
 },
 {
 "lang": "en",

@@ -80,12 +80,13 @@ def test_a_strict_local_document_draws_only_on_a_strict_local_model() -> None:
         "kinds": ["image"],
         "dataBoundary": "self_hosted",
         "strictLocal": True,
+        "creditCost": 0,
     }
     catalogue = {
         "models": [other, external, strict],
         "defaultModelByKind": {"image": external["id"]},
     }
-    user = SimpleNamespace(allowed_models=[])
+    user = SimpleNamespace(allowed_models=[], preferences=None)
     assert _document_image_model(user, catalogue, strict_local=True) is strict
     assert _document_image_model(user, catalogue, strict_local=False) is external
     # No strict-local picture model: the strict-local document carries no figure.
@@ -94,7 +95,9 @@ def test_a_strict_local_document_draws_only_on_a_strict_local_model() -> None:
     # The default not allowed for this account: the first allowed one.
     assert (
         _document_image_model(
-            SimpleNamespace(allowed_models=[other["id"]]), catalogue, strict_local=False
+            SimpleNamespace(allowed_models=[other["id"]], preferences=None),
+            catalogue,
+            strict_local=False,
         )
         is other
     )
