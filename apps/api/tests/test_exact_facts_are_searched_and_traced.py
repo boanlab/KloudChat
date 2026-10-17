@@ -1,9 +1,4 @@
-"""Facts that change or must be exact are searched first; advice answers are traced.
-
-Strings are the round-4 chat comparison's prompts (prompts.chat, CC0, in Korean): with search
-「자동」 the 27B model searched in 5 of 60 runs and gave an old hotline (1393), an old
-deposit-insurance limit, invented tax thresholds and an invented criminal consequence.
-"""
+"""Changing or exact facts searched first; advice answers traced."""
 
 from __future__ import annotations
 

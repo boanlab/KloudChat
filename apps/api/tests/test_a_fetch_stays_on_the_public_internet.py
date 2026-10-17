@@ -1,8 +1,4 @@
-"""A page fetch made on someone's behalf reaches the public internet and nothing behind it.
-
-The fetch runs from inside the deployment. Without this, a URL a person typed or a model
-picked could probe the database, LiteLLM, the tool gateway or a cloud metadata address.
-"""
+"""Page fetches limited to the public internet."""
 
 from __future__ import annotations
 

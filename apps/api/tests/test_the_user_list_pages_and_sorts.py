@@ -1,5 +1,4 @@
-"""관리자 › 사용자 reads one page at a time: the search first, then the tab, then the order;
-tab counts follow the search, the cards above the list do not."""
+"""관리자 › 사용자 paging: search, then tab, then order; tab counts follow the search."""
 
 from __future__ import annotations
 

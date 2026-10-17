@@ -112,7 +112,7 @@ test('보고서에는 서식 고르기가 있고, 이미지·오디오/동영상
   await openTemplates(page)
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('회의록', { exact: true })).toBeVisible()
-  // No media blanks are promised any more.
+  // No media blanks promised.
   await expect(dialog.getByText('빈칸')).toHaveCount(0)
   // Settle the open animation for the picture.
   await page.waitForTimeout(400)

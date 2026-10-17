@@ -1,7 +1,4 @@
-"""Stored secrets are sealed with `SECRET_KEY`, not a key derived from the token signing
-secret, and connector credentials (the tokens an administrator enters to install an MCP
-server) are sealed like every other secret.
-"""
+"""Stored secrets, connector credentials included, sealed with `SECRET_KEY`."""
 
 from __future__ import annotations
 

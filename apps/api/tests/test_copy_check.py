@@ -1,5 +1,4 @@
-"""카피 점검(copy-check, stage post): 채팅 답의 근거 없는 표현과 채널 한도를 서버가 고치고,
-붙여 넣은 자료의 「계산」이 계산 사전 점검을 부르지 않는다."""
+"""copy-check (post stage): unsupported phrases and channel limits fixed by the server."""
 
 from __future__ import annotations
 
@@ -184,11 +183,11 @@ def test_run_fixes_by_code_rewrites_once_and_checks_again():
     assert [m for m, _ in model.prompts] == ["judge", "writer", "judge"]
     rewrite = model.prompts[1][1]
     # The writer sees what code left for it: the ranking and the piece over 15; the judged
-    # statement has no figure or name code could look up, so it is marked, not rewritten (r8)
+    # statement has no figure or name code could look up, so it is marked, not rewritten
     problems = rewrite.split("# Problems", 1)[1].split("# Answer", 1)[0]
     assert "업계 1위" in problems and "세무사가 매일 연락드립니다" not in problems
     assert "make it at most 15 (cut at least 5)" in rewrite
-    # The number was blanked by code before the rewrite.
+    # The number blanked by code before the rewrite
     assert "월 [수치] 기장" in rewrite and "89,000" not in rewrite
     assert out.rewritten and out.left == []
     assert out.text == "1. 세무온 기장 대행 (9자)\n2. 월 [수치] 기장 (10자)"
@@ -242,7 +241,7 @@ def test_the_stage_records_its_step(monkeypatch):
         return [e async for e in registry.stage("check:copy").run(bundle, Context())]
 
     events = asyncio.run(go())
-    # 「매일」 goes by code (a qualifier); the judged 「매일 새벽」 is no rewrite order (r8)
+    # 「매일」 goes by code (a qualifier); the judged 「매일 새벽」 is no rewrite order
     assert bundle.document.answer == "매장에서 새벽 직접 로스팅합니다."
     step = bundle.document.kept_steps[-1]
     assert step["id"] == "copy_check" and step["status"] == "done"

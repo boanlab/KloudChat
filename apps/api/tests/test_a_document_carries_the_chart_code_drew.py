@@ -1,9 +1,4 @@
-"""A document that shows a chart the code step drew carries the picture itself.
-
-The data lane's analysis document said the scatter plot was inserted, but the page held
-`<img src="scatter.png">`: the file lived in the chat's files, not beside the document, so the
-panel and the download showed a broken picture.
-"""
+"""Embedding of code-drawn chart pictures in documents."""
 
 from __future__ import annotations
 

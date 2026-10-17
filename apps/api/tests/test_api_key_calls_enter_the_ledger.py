@@ -1,5 +1,4 @@
-"""Calls made with a member's own API key reach the ledger, the month's balance and the usage
-screens once each, at this instance's rates."""
+"""Member API-key calls in the ledger, the month's balance and usage screens, once each."""
 
 from __future__ import annotations
 

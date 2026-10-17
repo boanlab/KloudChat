@@ -1,5 +1,4 @@
-"""A 직접 구성 run does what a turn with the agent does: its own check skills (`skill:<id>`),
-its 서식's strictness and settings, its person's own scripts, and judge-type questions."""
+"""직접 구성 runs with the same skills, 서식 settings, scripts and judges as an agent turn."""
 
 from __future__ import annotations
 

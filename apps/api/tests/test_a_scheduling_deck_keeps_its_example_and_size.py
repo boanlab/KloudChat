@@ -1,7 +1,4 @@
-"""r7 A09 (DSP/QMX): the Gantt pass replaced the 「예제」 slide's process table with the priority
-chart, read 「12장 안팎」 as no limit and grew 14 slides to 18; slide tables lost a fifth column
-and cut a model name mid-word; the agenda stopped at eight; notes led to slides that were not
-next. Slide strings are the round-7 ones."""
+"""Scheduling decks keeping their example slide, slide count, table columns and agenda."""
 
 from __future__ import annotations
 
@@ -14,7 +11,7 @@ _EXAMPLE = [["프로세스", "도착 시간", "실행 시간", "우선순위"], 
 
 
 def _dsp_deck() -> list[dict]:
-    """The 14-slide outline r7 A09-T2 (DSP) wrote, before the Gantt pass."""
+    """A 14-slide scheduling outline before the Gantt pass."""
     return [
         {"layout": "title", "title": "CPU 스케줄링 알고리즘 비교"},
         {"layout": "agenda", "title": "발표 순서", "bullets": ["평가 기준과 예제"]},
@@ -81,7 +78,7 @@ def test_with_room_a_chart_slide_is_still_added():
 
 
 def test_a_slide_table_keeps_five_columns_and_whole_names():
-    # r7 A09-T1 input table
+    # A results table with a fifth column
     rows = deck._clean_rows([
         ["방법", "EM", "F1", "지연(ms)", "파라미터"],
         ["교차 인코더 (bge-reranker-large)", "72.8", "69.1", "412", "560M"],
@@ -100,7 +97,7 @@ def test_the_agenda_lists_nine_parts():
 
 
 def test_an_english_gantt_derivation_slide_takes_its_chart():
-    # r7 A09-T2 (GLM): 「FCFS와 Gantt 도출」 was not seen as the result slide; five slides added
+    # 「FCFS와 Gantt 도출」 as the result slide, with no slides added
     slides = [{"layout": "bullets", "title": "FCFS와 Gantt 도출",
                "bullets": ["도착 순서대로 실행"]}]
     deck.place_gantt_charts(slides, LECTURE, room=None)

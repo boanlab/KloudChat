@@ -1,12 +1,4 @@
-"""Recorded acceptance turns replay to the same events.
-
-Each case under `fixtures/replay/` is one lineup acceptance run (minutes, 개조식, client
-proposal, comparison, career history; the data-analysis and career-docs chat turns) with its
-model calls recorded. The current code, answered from those calls, must emit exactly the
-events and sections stored when they were recorded: a stage moved or rewritten without
-changing behaviour leaves this green, and one that changed a prompt or an outcome fails here
-with the first event that differs. See `replay_build.py` to rebuild a case on purpose.
-"""
+"""Recorded acceptance turns replayed to the same events (cases rebuilt with `replay_build.py`)."""
 
 from __future__ import annotations
 

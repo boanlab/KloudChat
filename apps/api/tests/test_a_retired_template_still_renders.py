@@ -1,5 +1,4 @@
-"""Retired document 서식: gone from every choice, while documents written in one still draw,
-edit and export in the shared seed."""
+"""Retired document 서식: gone from choices; old documents still draw, edit and export."""
 
 from __future__ import annotations
 

@@ -1,8 +1,4 @@
-"""quote-calc leaves out the item a requirement rules out.
-
-The company pack prices 외부 LLM API 사용료 next to the domestic GPU that replaces it, while
-SER-002 keeps processing in the country; the API line is not in the total.
-"""
+"""quote-calc leaving out an item a requirement rules out."""
 
 from __future__ import annotations
 

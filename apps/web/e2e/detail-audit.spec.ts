@@ -127,18 +127,18 @@ async function auditScreen(page: Page, where: string, viewport: string) {
         const who = identity(el)
         const isInput = /^(input|textarea|select)$/i.test(el.tagName)
 
-        // R1: every control has a name; for inputs a real label, not the placeholder.
+        // Every control has a name; for inputs a real label, not the placeholder.
         const named = isInput
           ? !!(aria || el.getAttribute('id') && document.querySelector(`label[for="${el.getAttribute('id')}"]`) || el.closest('label'))
           : !!(text || aria)
         add('name', named, id, '읽어 주지 못하고, 무엇을 넣는 칸인지 알 수 없다', who)
 
-        // R2: icon-only controls need a tooltip.
+        // Icon-only controls need a tooltip.
         if (!text && !!el.querySelector('svg')) {
           add('tooltip', !!title, id, '아이콘만 보고 뜻을 짐작해야 한다', who)
         }
 
-        // R3: hover-revealed controls do not exist on touch.
+        // Hover-revealed controls do not exist on touch.
         if (touch) {
           let hidden = false
           for (let cur: Element | null = el, i = 0; cur && i < 4; cur = cur.parentElement, i++) {
@@ -147,7 +147,7 @@ async function auditScreen(page: Page, where: string, viewport: string) {
           }
           add('touch-reach', !hidden, id, '터치 기기에서는 존재하지 않는 버튼이다', who)
 
-          // R4: tap target under 32px. An input wrapped in a label is as big as the label.
+          // Tap target under 32px. An input wrapped in a label is as big as the label.
           const target = (el.closest('label') as Element | null) ?? el
           const r = target.getBoundingClientRect()
           const tiny = Math.min(r.width, r.height) < 32 && el.tagName !== 'A'
@@ -155,18 +155,18 @@ async function auditScreen(page: Page, where: string, viewport: string) {
             '손가락으로 정확히 누르기 어렵다', who)
         }
 
-        // R5: disabled with no reason on screen.
+        // Disabled with no reason on screen.
         if ((el as HTMLButtonElement).disabled) {
           add('disabled-reason', !!title, id, '왜 못 누르는지 알 수 없다', who)
         }
       }
 
-      // R6: no horizontal scroll.
+      // No horizontal scroll.
       const de = document.documentElement
       add('no-h-scroll', de.scrollWidth <= de.clientWidth + 1,
         `${where} ${de.scrollWidth}>${de.clientWidth}`, '가로로 밀어야 내용이 보인다')
 
-      // R7: an empty state offers an action.
+      // An empty state offers an action.
       for (const el of Array.from(document.querySelectorAll('p')).filter(
         (e) =>
           visible(e) &&
@@ -181,7 +181,7 @@ async function auditScreen(page: Page, where: string, viewport: string) {
           '비어 있다고만 하고 다음 할 일을 주지 않는다')
       }
 
-      // R8: every screen has an h1.
+      // Every screen has an h1.
       add('page-heading', !!document.querySelector('h1'), where, '어느 화면인지 제목이 없다')
 
       return out

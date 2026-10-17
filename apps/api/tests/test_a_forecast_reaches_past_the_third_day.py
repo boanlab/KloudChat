@@ -1,4 +1,4 @@
-"""A multi-day forecast keeps naming days past 모레 instead of running out of words."""
+"""Day names past 모레 in multi-day forecasts."""
 
 from __future__ import annotations
 

@@ -1,10 +1,4 @@
-"""A deck or report draws structure, flow, comparison and concept figures for itself.
-
-The planner reads the drafted parts and names the places where a figure says more than the
-words; `diagram.draw` writes the flowchart in the house style and `diagram.draw_native` draws
-it with the .pptx export's shapes. No
-image model is involved, so nothing is proposed on a card or charged beyond the writer.
-"""
+"""Planned structure, flow, comparison and concept figures in decks and reports."""
 
 from __future__ import annotations
 

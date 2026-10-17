@@ -1,9 +1,4 @@
-"""An upload's type comes from its bytes, and a download renders in place only when the
-bytes prove a type a browser shows as data.
-
-The client's `Content-Type` is a claim. Trusting it would let a script dressed as `image/svg+xml`
-or `image/png` be served inline on the API's own origin.
-"""
+"""Upload types read from the bytes, not the client's `Content-Type`; inline only when proven."""
 
 from __future__ import annotations
 

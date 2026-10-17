@@ -1,9 +1,4 @@
-"""Round-3 persona sweep: guards that cut, bracketed or garbled true text, with its strings.
-
-Each case is a sentence or value an agent wrote correctly from the person's material that a
-post-writing step removed, marked 「(확인 필요)」, bracketed or broke — and the slips the
-steps should have caught (Chinese words, tool vocabulary, markup) but let through.
-"""
+"""Post-writing guards that keep correct text and catch foreign words, tool words and markup."""
 
 from __future__ import annotations
 
@@ -24,7 +19,7 @@ from app.services.value_guard import MARK, Evidence, settle, supported
 
 TODAY = dt.date(2026, 10, 12)
 
-# ── A01 회의록: trims that cut the decision and broke the 「첫째·둘째·셋째」 run ──────────
+# ── 회의록: trims that cut the decision and broke the 「첫째·둘째·셋째」 run ──────────────
 
 A01_MEMO = (
     "[메모] 10/8(목) 14시 본관 3층 소회의실, 교육혁신팀 주간회의\n"
@@ -135,7 +130,7 @@ def test_the_year_of_today_backs_a_month_the_memo_names():
     assert supported("2026년 11월", line, 0, ev, 0)
 
 
-# ── A04 견적 비교: totals worked from the quotes, and formulas the fixers broke ─────────
+# ── 견적 비교: totals worked from the quotes, and formulas the fixers broke ─────────────
 
 A04_QUOTES = (
     "[견적 1] 가온정보통신\n- 단가 1,320,000원(부가세 별도) × 30대\n"
@@ -184,7 +179,7 @@ def test_a_total_one_section_works_out_backs_the_others():
     assert MARK in still[0]["content"]
 
 
-# ── A10·A11: names the person listed, plans of the reader's own, dates in result links ──
+# ── names the person listed, plans of the reader's own, dates in result links ───────────
 
 A10_REQUEST = (
     "알고 싶은 것: 국내 시장 규모와 성장 전망(공개 자료 기준, 추정이면 가정 명시), 고객군 나누기, "
@@ -233,7 +228,7 @@ def test_settle_gives_the_link_dated_day_back_whole():
     assert out == before
 
 
-# ── A13·A15·A16: marks the checks put on true values, and marks inside a date ──────────
+# ── marks the checks put on true values, and marks inside a date ───────────────────────
 
 A13_REQUEST = (
     "캠페인 정보(한빛소프트, 가상 — 아래가 전부임):\n- 기간 11/1~11/30, 목표: 30일 무료 체험 신청\n"

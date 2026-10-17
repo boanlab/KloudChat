@@ -1,5 +1,4 @@
-"""Report and deck turns: internal material stays strict-local, and an Auto session's lane
-chooses the writer the way it does for a chat turn."""
+"""Report and deck turns routed like chat: strict-local internal material, the Auto lane."""
 
 import pytest
 

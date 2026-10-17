@@ -1,7 +1,4 @@
-"""Writing prompts never tell the writer to leave an owner, deadline or figure as a bracket
-blank (「[담당자]」 「[기한]」 「[수치]」): a missing value is written around — a sentence that
-holds without it, 「미정」 in a table cell with one 「확인 필요」 line — and brackets are only for
-what the person fills in themselves (작성자, 서명, 연락처). Never inventing a value stays."""
+"""Writing prompts that write around a missing value instead of a bracket blank."""
 
 from __future__ import annotations
 

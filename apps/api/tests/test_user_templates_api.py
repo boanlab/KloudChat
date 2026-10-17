@@ -1,7 +1,4 @@
-"""A person's own templates: made in the editor, picked like a shipped 서식, shared, and safe.
-
-Every field a shipped document 서식 sets can be set here (`draft_of` fills them all from one);
-what a person writes is stored as text and reaches a page only as text."""
+"""A person's own templates: made in the editor, picked, shared, and stored as text."""
 
 from __future__ import annotations
 

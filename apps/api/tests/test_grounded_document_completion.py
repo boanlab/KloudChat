@@ -1,8 +1,4 @@
-"""Successful document action acknowledgements need no model-accuracy disclaimer.
-
-Writers and persistence are synthetic; these are route-contract tests, not an
-assertion that a live model followed the document-body grounding instruction.
-"""
+"""Document action acknowledgements without a model-accuracy disclaimer (route contract)."""
 
 from __future__ import annotations
 

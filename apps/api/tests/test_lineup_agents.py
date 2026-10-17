@@ -1,8 +1,4 @@
-"""The shipped agents (lineup): their specs hold together and the seeder makes them.
-
-Seven are withdrawn (D21: their abilities are skills now) — offered to no one anew, their rows,
-copies, conversations and bots kept working; two are retired and kept only so the
-conversations made with them still open."""
+"""Shipped agents: consistent specs, seeding, and withdrawn or retired agents that keep working."""
 
 from __future__ import annotations
 

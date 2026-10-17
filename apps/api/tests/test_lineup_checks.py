@@ -1,6 +1,4 @@
-"""The lineup checks the step 3/4 report left open: 개조식 shape, the proposal against its RFP,
-minutes rows and columns, comparison must-haves and recommendation, and the judged (122B)
-checks — each found, repaired once (or shown) and checked again."""
+"""Lineup checks: 개조식 shape, proposal against RFP, minutes tables, comparison, judged checks."""
 
 from __future__ import annotations
 

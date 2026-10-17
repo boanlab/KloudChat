@@ -1,9 +1,4 @@
-"""A slide's note keeps its own words only, and the deck's Markdown shows a chart as a table.
-
-The last slide's note never carries the next slides' JSON
-(「…기억해 두면 됩니다."}]}, {"title": "다음 시간 예고", …」), and the Markdown export does not
-print a chart's data as 「- P1: 0 · 7 · 0 · 0 · 0」 bullets.
-"""
+"""Slide notes without the next slides' JSON; charts exported to Markdown as tables."""
 
 from __future__ import annotations
 

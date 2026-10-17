@@ -1,5 +1,4 @@
-"""Image-only gateway models are asked for the image alone, keep the asked ratio and are billed
-what the gateway reports; a strict-local document draws its figures on a strict-local model."""
+"""Image-only gateway models: image-only asks, kept ratio, gateway billing."""
 
 from __future__ import annotations
 

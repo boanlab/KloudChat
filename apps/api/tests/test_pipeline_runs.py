@@ -1,5 +1,4 @@
-"""Pipeline runs kept across requests: the bundle after each stage, a rerun from a stage, the
-gap card as a stage the run waits at, the marks a document carries, and the read API."""
+"""Pipeline runs across requests: stage bundles, reruns, the gap card, marks, the read API."""
 
 from __future__ import annotations
 

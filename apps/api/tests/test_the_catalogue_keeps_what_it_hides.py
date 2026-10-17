@@ -1,9 +1,4 @@
-"""Hidden is not gone: a shipped skill, 서식, theme or connector entry marked unlisted leaves
-the lists people pick from, and keeps working everywhere it is already used — by name, in a
-bundle, in an old conversation, in an export. Administrators still see it, marked.
-
-Also the step-1 catalogue itself: what is shown, 마무리하기's HWPX default for the 공문
-family, and 엑셀 정리 keeping duplicate rows unless asked (migration 0063 for the rows)."""
+"""Unlisted catalogue entries: hidden from pickers, working wherever already used."""
 
 from __future__ import annotations
 
@@ -57,7 +52,7 @@ WORK_SKILLS = {"minutes-writing", "option-comparison", "gaejo-briefing", "data-t
                "deep-research"}
 #: what agents built only from shipped skills lacked: translation, press releases, files, charts
 MADE_SKILLS = {"translation", "press-release", "xlsx-build", "chart-make"}
-#: published after round 10 (LFLF 3/3, no high finding; the research two after LFLF7)
+#: writing and research skills shown in the catalogue
 R10_SKILLS = {"internal-comms", "copy-editing", "company-research", "competitor-analysis"}
 SHOWN_SKILLS = {"grounding-check", "gap-check", "calc-check", "date-calc", "quote-calc",
                 "xlsx-clean", "pdf-table", "pii-mask"} | WORK_SKILLS | MADE_SKILLS | R10_SKILLS

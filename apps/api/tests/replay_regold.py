@@ -1,15 +1,6 @@
-"""Rebuilds replay fixtures from their own recorded calls when only the code's outcome changed.
+"""Replay fixture rebuild from their own recorded calls when only the code's outcome changes.
 
     python tests/replay_regold.py [<cases>]
-
-`replay_build.py` needs the original acceptance runs. When a change alters what the code
-writes but not what the models are asked to do (a guard that keeps a value instead of
-blanking it), every recorded prompt still has its call, and the prompts that now carry the
-new text are answered as the build answers them: a scripted kind (repair, amend, condense,
-fill, rewrite) from the prompt itself, a model reading (judge, verify) with the reply the
-same stage gave to the same kind of prompt when recorded. The calls and the golden are then
-written as recorded. Rebuild only when the change in behaviour is intended, and say so in
-the commit.
 """
 
 from __future__ import annotations

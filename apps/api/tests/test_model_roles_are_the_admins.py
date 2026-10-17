@@ -1,5 +1,4 @@
-"""Which model does what is the administrator's choice (System › 모델), stored in
-`system_settings`; the environment only seeds a fresh install (migration 0068)."""
+"""Model roles as the administrator's choice in `system_settings`, seeded from the environment."""
 
 from __future__ import annotations
 

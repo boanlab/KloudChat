@@ -1,5 +1,4 @@
-"""The figures the material settled (판매가, 변동비, 고정비 …) are carried as fixed values:
-the writer is told them, and what it wrote is read against them."""
+"""Settled material figures carried as fixed values into writing and checks."""
 
 from __future__ import annotations
 

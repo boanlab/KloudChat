@@ -1,11 +1,4 @@
-"""The whole report pipeline, fed malformed model answers.
-
-Each cleanup step has its own test; this one runs them in their real order on one document
-— outline, approval, draft, cleanup, figures, captions, the final passes — and asks the
-finished sections to pass the quality gate a reader's eye would apply. A step that undoes
-another (a joiner that erases paragraphs, a caption pass that misses a malformed table)
-fails here even when every unit test passes.
-"""
+"""Whole report pipeline on malformed model answers, every cleanup step in its real order."""
 
 from __future__ import annotations
 

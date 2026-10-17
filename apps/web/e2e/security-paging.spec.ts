@@ -26,7 +26,7 @@ function signIns(): SessionRow[] {
 
 async function mockApp(page: Page) {
   // the browser's day is the mock's: past a week 「n일 전」 turns into a full date and the phone
-  // row wraps (CI on 2026-10-16)
+  // row wraps
   await page.clock.setFixedTime(new Date(now))
   const sessions = signIns()
   const events = Array.from({ length: 45 }, (_, i) => ({

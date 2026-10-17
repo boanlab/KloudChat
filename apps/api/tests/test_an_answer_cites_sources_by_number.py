@@ -1,5 +1,4 @@
-"""The model cites search results as `[n]`; the server numbers the results across
-the turn, turns the citations into links and lists the cited sources."""
+"""Numbered `[n]` citations turned into links with a cited-source list."""
 
 from __future__ import annotations
 
@@ -164,11 +163,11 @@ async def test_numbers_run_across_searches_and_citations_become_links(monkeypatc
     assert "[9]는 그대로" in text
     assert "### 출처" in text
     # Named by the search results' titles, not the address's last segment.
-    # the date the search result carried follows the link (r10 SK-company-1·2)
+    # the date the search result carried follows the link
     assert ("- [1] [정책 문서 · example.go.kr](https://example.go.kr/policy/2026) · 2026-03-12"
             in text)
     assert "- [2] [논문 · journal.example.org](https://journal.example.org/article/42)" in text
-    # a result with no date of its own is dated by the day it was read (r10 LFLF3)
+    # a result with no date of its own is dated by the day it was read
     today = agent._checked_on().isoformat()
     assert f"- [3] [기사 · news.example.com](https://news.example.com/a/1) · 확인 {today}" in text
     assert "### 확인한 출처" not in text

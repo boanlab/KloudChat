@@ -1,14 +1,4 @@
-"""A person's skill opts into what the server runs exactly as a shipped SKILL.md does, by
-naming shipped scripts; its own scripts run only in the code sandbox.
-
-- (가) `server` fields (`post_check`, `post_judge`, `stage`/`entry`, `copy_check`,
-  `copy_kinds`, `tables`, `own_stage`, `uses`) are checked against the shipped allowlists in
-  the form and in an uploaded SKILL.md, stored on the row, and read by the same checks: a
-  person's skill with a shipped skill's fields gets the same result.
-- (나) A person's Python scripts are kept in the row, scanned, run by `run_skill_script` in
-  the sandbox (mocked here), never imported by the server; sharing a skill with scripts waits
-  for an administrator.
-"""
+"""A person's skill naming shipped server scripts, and its own scripts in the sandbox."""
 
 from __future__ import annotations
 

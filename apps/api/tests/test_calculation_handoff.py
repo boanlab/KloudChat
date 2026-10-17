@@ -1,8 +1,4 @@
-"""A writer that will not call the calculator hands the calculation to the outline model.
-
-Mix lane D2/c1: qwen3.8-27b skipped `calculate` in 2/5 runs and a correct 429,600원 answer
-was replaced by the 「검산 못 함」 note; Flash called it 2/2. Now Flash takes the gate, the
-writer answers from the verified result, and the note is left for when both fail."""
+"""Calculation handoff to the outline model when the writer will not call the calculator."""
 
 from __future__ import annotations
 

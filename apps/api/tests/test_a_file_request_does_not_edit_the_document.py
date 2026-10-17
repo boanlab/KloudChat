@@ -1,7 +1,4 @@
-"""A follow-up that asks for the document as a file hands the file over and edits nothing.
-
-Sentences are real follow-ups to proposals, minutes, 개조식 and comparison reports.
-"""
+"""File hand-over without edits on a follow-up asking for the document as a file."""
 
 from __future__ import annotations
 

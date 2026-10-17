@@ -1,9 +1,4 @@
-"""Round-2 quality lane R1·R4·R6·R8·R9·R11·R12: the grounding check keeps a day the person gave
-written without its year (「2. 3.(수)」 for 「2027-02-03」) and a bold item title whose dates it
-blanks; date-calc does not take a speaker's line for a meeting header; the code-value set-back
-leaves a sentence whose values two rows share; 「오후 5~8시」 and its other time zone are times
-the person gave; a verb before 「교수」 is no name; figures worked from the document's own table
-stand; and an amount's words follow its figure (scenarios 02, 09, 07, 10, 06, 04, 13)."""
+"""Grounding checks that keep short dates, time ranges, shared values and worked totals."""
 
 from __future__ import annotations
 
@@ -13,7 +8,7 @@ from app.services import agent, skill_scripts
 
 TRACE = skill_scripts.entry("grounding-check")
 
-#: the attached calendar's lines (r2-quality scenarios/02_academic_calendar)
+#: the attached calendar's lines
 CALENDAR = """한빛대학교 2027학년도 1학기 학사일정
 2027-02-03 ~ 2027-02-05  신입생 수강신청 (09:00 시작, 마지막 날 17:00 마감)
 2027-02-15 ~ 2027-02-19  1학기 등록(등록금 납부)

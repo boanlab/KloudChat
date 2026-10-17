@@ -1,8 +1,4 @@
-"""A table cell whose amounts were taken out does not keep the bare words around them.
-
-「검토 150건, LLM 5개」 with both amounts taken out (not in the request as written) does not
-become 「검토 , LLM」.
-"""
+"""Table cells with amounts taken out: no bare leftover words (「검토 , LLM」)."""
 
 from __future__ import annotations
 

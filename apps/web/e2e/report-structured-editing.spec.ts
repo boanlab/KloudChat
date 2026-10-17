@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, openAndSeedReport, ribbonTab } from './helpers'
+import { E2E_ADMIN, openAndSeedReport } from './helpers'
 
 async function enterPageEditor(page: import('@playwright/test').Page) {
   const home = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first()

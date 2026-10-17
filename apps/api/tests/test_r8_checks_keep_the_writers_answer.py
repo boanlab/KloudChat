@@ -1,7 +1,4 @@
-"""Round-8 leftovers: checks that marked right values, a cost pre-pass that dropped a met
-discount, work narration and cut answers that went out, a reasoning-starved turn with no
-answer, and setup the light prompt lost. Strings are the round-8 outputs' own
-(/home/jn/sweep/r8-remeasure/out/<task>/kc_<CFG>.md)."""
+"""Checks that keep the writer's answer: right values, met discounts, narration, starved turns."""
 
 from __future__ import annotations
 
@@ -33,7 +30,7 @@ def _marked(text: str, material: str = "", **options) -> list[str]:
 
 
 def test_a_scale_syllable_that_begins_another_word_is_no_amount():
-    # r8 P46 QMX 「연도 2026 조건(확인 필요)」, A09-T2 QMX 「타임 퀀텀 2만(확인 필요)큼만」
+    # 「연도 2026 조건(확인 필요)」, 「타임 퀀텀 2만(확인 필요)큼만」
     assert trace.ko_number("2026") == 2026
     assert not any("조" in t for t in _marked("**⑤ 연도 2026 조건이 자동으로 포함된다**",
                                                "연도는 2026년만."))
@@ -42,7 +39,7 @@ def test_a_scale_syllable_that_begins_another_word_is_no_amount():
 
 
 def test_a_korean_amount_with_its_bare_tail_is_one_value():
-    # r8 A10-T1 DSP: the source's 「18만 4,102명」 read as 18만 and 4,102, marked
+    # the source's 「18만 4,102명」 read as 18만 and 4,102, marked
     from app.services import value_guard
 
     found = value_guard._NUMBER.search("네이버웍스 18만 4,102명 + 하이웍스")
@@ -53,7 +50,7 @@ def test_a_korean_amount_with_its_bare_tail_is_one_value():
 
 
 def test_today_and_the_days_the_request_names_by_it_are_sources():
-    # r8 P36 DSP 「이번 주 금요일(10월 16일, 확인 필요)」, P19 QMX 「오늘(10월 14일)」
+    # 「이번 주 금요일(10월 16일, 확인 필요)」, 「오늘(10월 14일)」
     request = "이번 주 금요일까지 저에게 회신 부탁드립니다."
     assert _marked("회신은 이번 주 금요일(10월 16일)까지", request) == []
     assert _marked("오늘(10월 14일) 기준으로 정리했습니다.", "지금 단기로 굴리기 좋은 방법은?") == []  # noqa: E501
@@ -62,7 +59,7 @@ def test_today_and_the_days_the_request_names_by_it_are_sources():
 
 
 def test_a_clock_span_s_minutes_and_a_cell_range_s_rows_are_the_line_s_own():
-    # r8 A01-T2 「14:55~15:00(5분(확인 필요), 확인 필요)」, P46 QMX 「아래로 6행(확인 필요)까지」
+    # 「14:55~15:00(5분(확인 필요), 확인 필요)」, 「아래로 6행(확인 필요)까지」
     assert _marked("| 4 | 워크숍(10/22) 준비 점검 | 미정 | 14:55~15:00(5분) | 논의 |",
                    "다음 주 목요일(10/15) 14시 주간회의야. 1시간이고, 워크숍(10/22) 준비 점검.") == []  # noqa: E501
     assert _marked("`B2`에 한 번 넣고 오른쪽으로 M열까지, 아래로 6행까지 드래그하면 됩니다.",
@@ -73,7 +70,7 @@ def test_a_clock_span_s_minutes_and_a_cell_range_s_rows_are_the_line_s_own():
 
 
 def test_a_demonstrative_or_a_verb_before_a_title_is_no_name():
-    # r8 A15-T1 DSP 「이게 총무·IT 담당자」 → 「[이름] 총무」; A12-T2 GLP 「다 들어간 대표 문구」
+    # 「이게 총무·IT 담당자」 → 「[이름] 총무」; 「다 들어간 대표 문구」
     assert _marked("인증 범위가 전 사업장에 걸쳐 있습니다. 이게 총무·IT 담당자에게 맞는 연결고리입니다.",  # noqa: E501
                    "대웅제약") == []
     assert _marked("1. #6: 사실 세 가지가 다 들어간 대표 문구. 배너 메인.", "한빛워크") == []
@@ -83,7 +80,7 @@ def test_a_demonstrative_or_a_verb_before_a_title_is_no_name():
 
 
 def test_a_data_move_is_no_criminal_record():
-    # r8 A11-T2 DSP: 「데이터 이전과 결재 연동 재구축 비용」 matched 「전과」
+    # 「데이터 이전과 결재 연동 재구축 비용」 matched 「전과」
     assert not trace._PENALTY.search("유료 전환 시점에 데이터 이전과 결재 연동 재구축 비용이 발생")
     assert trace._PENALTY.search("전과 기록이 남을 수 있습니다")
 
@@ -144,7 +141,7 @@ def _costs(reading: dict) -> dict:
 
 
 def test_a_quantity_discount_the_order_meets_is_in_the_total_not_a_scenario():
-    # r8 A04-T2 DSP: 「30대 이상 구매 시」 went to a scenario, the scenario was dropped and
+    # 「30대 이상 구매 시」 went to a scenario, the scenario was dropped and
     # 49,005,000원 put 누리컴 over the 4,800만원 budget (right: 46,563,000원)
     costs = _costs(_reading())
     assert costs["options"]["누리컴"]["total"] == 46_563_000
@@ -157,7 +154,7 @@ def test_a_quantity_discount_the_order_meets_is_in_the_total_not_a_scenario():
 
 
 def test_a_buyer_s_choice_stays_a_scenario():
-    # r8 A04-T1: 「연 단위 계약 시 15% 할인」 is the buyer's to choose; code does not apply it
+    # 「연 단위 계약 시 15% 할인」 is the buyer's to choose; code does not apply it
     assert not report_checks.condition_met("연 단위 계약 시", [{"raw": {"count": 40}}], 1)
     assert report_checks.condition_met("30대 이상 구매 시", [{"raw": {"count": 30}}], 3)
     assert not report_checks.condition_met("50대 이상 구매 시", [{"raw": {"count": 30}}], 3)
@@ -243,7 +240,7 @@ def test_the_light_tool_line_says_when_to_compute():
 
 
 def test_tool_turn_narration_before_the_deliverable_goes():
-    # r8 A06-T1 DSP: the figures-retry answer opened with the recount
+    # the figures-retry answer opened with the recount
     a06 = ("수치를 다시 확인했습니다. 이번 실행에서는 의견 분류 기준이 달라져 온라인학습 관련이 10건(55.56%), "  # noqa: E501
            "시설 관련이 1건(5.56%)으로 나왔습니다. 이전 턴의 분류(온라인 12건, 시설 6건)와 차이가 나므로, "  # noqa: E501
            "의견 분류 기준을 명확히 다시 계산해 확정하겠습니다.\n\n"
@@ -253,20 +250,20 @@ def test_tool_turn_narration_before_the_deliverable_goes():
             "3.56~3.88점(5점 척도)으로 중간 수준입니다.\n\n| 문항 | 평균 |\n|---|---|\n"
             + "| 교과내용 | 3.88 |\n" * 12)
     assert internal_words.strip_tool_preamble(a06 + body) == body
-    # r8 A14-T1 DSP: the check monologue, spaces lost between hops, above 「---」
+    # the check monologue, spaces lost between hops, above 「---」
     a14 = ('점검 결과 "1." 번호가 자료에 없는 값으로 잡혔습니다. 이는 목록 번호라 실질적 문제는 아니지만, '  # noqa: E501
            '안전하게 번호 없는 불릿으로 바꿔 다시 확인합니다.여전히 같은 "1"이 잡힙니다. "2층 라운지"라고만 '  # noqa: E501
            '쓰겠습니다.점검 통과했습니다. 완성된 공지문입니다.\n\n---\n\n')
     notice = "**제목** 본사 3~5층 네트워크 장비 교체 공사 안내 (10.23~10.25)\n\n" + "안내 문장입니다. " * 30  # noqa: E501
     assert internal_words.strip_tool_preamble(a14 + notice) == notice
-    # r8 A02-T2 DSP: the search note left in parentheses
+    # the search note left in parentheses
     a02 = "(검색은 최신 사실 확인용이었고, 요약은 제시된 자료에 근거합니다.)\n\n---\n\n"
     summary = "**핵심 요약**\n\n" + "□ 2027년부터 대학 재정지원사업이 개편됨\n" * 20
     assert internal_words.strip_tool_preamble(a02 + summary) == summary
 
 
 def test_a_lead_that_answers_stays():
-    # r8 A05-T1 DSP: the answer's own first sentence above its table
+    # the answer's own first sentence above its table
     answer = ("직급(대리·6급 상당)은 여비 산정에 영향이 없습니다. 별표 1은 「직급에 관계없이 동일하게 "  # noqa: E501
               "적용」하므로, 부산은 광역시라 숙박비 상한이 1박 80,000원입니다.\n\n## 여비 계산 (2박 3일)\n\n"  # noqa: E501
               "| 항목 | 금액 |\n|---|---|\n" + "| 운임 | 119,600원 |\n" * 20)
@@ -336,13 +333,13 @@ def test_the_training_cutoff_notice_goes_where_the_answer_needs_none():
 
 
 def test_an_answer_cut_mid_sentence_is_seen():
-    # r8 A02-T2 DSP: stopped at 「○ 2027년 3월」
+    # stopped at 「○ 2027년 3월」
     cut = ("□ ② RISE 지자체 재량 확대로 지역 연계 성과계획 제출이 의무화됨\n"
            + "○ 일반재정지원의 성과 배분이 30%→40%로 확대됨\n" * 12
            + "○ 지자체 재량 비율이 30%→50%로 높아져, 지자체가 대학별 과제를 직접 설계·배분함\n"
            "○ 2027년 3월")
     assert internal_words.cut_mid_sentence(cut)
-    # r8 A01-T1 DSP: the section stopped at 「…온라인 동시 송출」
+    # the section stopped at 「…온라인 동시 송출」
     assert internal_words.cut_mid_sentence(
         "신청 42명(정원 40명)으로 대기자가 발생합니다. " * 8 + "이수진 차장이 온라인 동시 송출",
         min_chars=150)

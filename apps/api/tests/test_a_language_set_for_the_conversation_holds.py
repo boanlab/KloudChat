@@ -1,8 +1,4 @@
-"""「지금부터 답은 영어로만」 holds after the next Korean question.
-
-The chat default answers in the question's language; a language the person set for the
-conversation wins over it on every later turn.
-"""
+"""A conversation-wide answer language over later questions' language."""
 
 from __future__ import annotations
 

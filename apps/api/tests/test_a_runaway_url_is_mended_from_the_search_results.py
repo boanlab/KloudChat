@@ -1,5 +1,4 @@
-"""A stream whose URL trails off into 「000000…」 is stopped, the run taken back,
-and the address completed from the one the search tool returned."""
+"""Runaway 「000000…」 URLs: the stream stopped and the address taken from the search result."""
 
 from __future__ import annotations
 

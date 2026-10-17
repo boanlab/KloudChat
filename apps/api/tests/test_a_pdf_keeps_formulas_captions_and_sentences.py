@@ -1,5 +1,4 @@
-"""A research plan PDF draws 「Σᵢ wᵢ」, keeps 「표 1.」 on the page of its table, and does not
-break a paragraph after 「vs.」."""
+"""Research plan PDF: 「Σᵢ wᵢ」 drawn, 「표 1.」 beside its table, no break after 「vs.」."""
 
 from __future__ import annotations
 

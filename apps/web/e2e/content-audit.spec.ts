@@ -55,7 +55,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
 
   await signIn(page)
 
-  // R23: content the layout did not choose.
+  // Content the layout did not choose.
   const made: string[] = []
   for (const [kind, title] of Object.entries(HOSTILE)) {
     const row = await post(page, {
@@ -196,7 +196,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
     )
   }
 
-  // R24: a double press must not create two rows.
+  // A double press must not create two rows.
   const name = `중복확인 ${Date.now().toString(36)}`
   await page.goto('/skills')
   await page.waitForTimeout(600)
@@ -230,7 +230,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
     [AS_USER, name] as const,
   )
 
-  // R25: an expired session must be said, not go quietly inert.
+  // An expired session must be said, not go quietly inert.
   await page.goto('/skills')
   await page.waitForTimeout(600)
   await page.route(/\/api\/auth\/refresh$/, (r) =>
@@ -251,7 +251,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
   await page.unroute(/\/api\/auth\/refresh$/)
   await page.unroute(/\/api\/skills(\?|$)/)
 
-  // R26: a late reply for a screen already left must not overwrite the current list.
+  // A late reply for a screen already left must not overwrite the current list.
   await page.goto('/')
   await page.waitForTimeout(600)
   let firstSessions = true
@@ -279,7 +279,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
   }
   await page.unroute(/\/api\/sessions(\?|$)/)
 
-  // R27: Back must not leave the app.
+  // Back must not leave the app.
   await page.goto('/artifacts')
   await page.locator('button.aspect-video').first().waitFor({ timeout: 20_000 }).catch(() => {})
   if ((await page.locator('button.aspect-video').count()) > 0) {

@@ -1,8 +1,4 @@
-"""One pattern table: the panel's `patterns.ts` is the mirror of `slide_patterns.wire()`.
-
-A pattern added to one and not the other would be offered by the writer and drawn as
-bullets by the panel, or picked in the panel and refused by the writer.
-"""
+"""One slide pattern table: the panel's `patterns.ts` mirrors `slide_patterns.wire()`."""
 
 import json
 import re

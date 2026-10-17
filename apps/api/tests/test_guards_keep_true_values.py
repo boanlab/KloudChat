@@ -1,10 +1,4 @@
-"""Post-writing guards keep what is true: the persona-sweep cases, with their own strings.
-
-A guard (grounding trace, skill post-check scripts, copy check, a rewrite) used to blank a
-value it could not match as 「[수치]」 or drop the sentence. The value guard settles each
-repair: a value the evidence supports goes back as written, any other value stays marked
-「(확인 필요)」, and no paragraph is emptied nor a table left with its header alone.
-"""
+"""Post-writing guards that keep true values: supported values restored, others marked."""
 
 from __future__ import annotations
 
@@ -17,7 +11,7 @@ from app.routers import sessions
 from app.services import check_skills, current_evidence, internal_words, report, skill_scripts
 from app.services.value_guard import Evidence, settle
 
-# A16 T2: the change list the person pasted (no blank line under the ask)
+# the change list the person pasted (no blank line under the ask)
 A16_REQUEST = (
     "이번 업데이트 내용으로 사내 공지랑 고객용 릴리스 노트 둘 다 써 줘. 사내 공지는 "
     "영업·고객지원팀이 알아야 할 것 위주로.\n"
@@ -180,13 +174,13 @@ def test_values_the_answer_s_own_table_holds_are_never_blanked():
 
 
 def test_a_computed_total_and_a_delivery_day_are_supported():
-    # A05: a total of the given amounts; A02: the rest of a share
+    # a total of the given amounts; the rest of a share
     total = "숙박비와 교통비를 합해 285,600원입니다."
     assert _settle(total, "숙박비와 교통비를 합해 [수치]입니다.",
                    "숙박 120,000원 2박, 교통 45,600원") == total
     assert _settle("체크리스트 나머지 30% 마무리", "체크리스트 나머지 [수치] 마무리",
                    "모바일 검수 체크리스트 초안 70% 작성") == "체크리스트 나머지 30% 마무리"
-    # A04: 10월 12일 계약, 납기 3주 → 11월 2일
+    # 10월 12일 계약, 납기 3주 → 11월 2일
     text = "가온정보통신의 납기 3주(10월 12일 계약 시 11월 2일 완료) 조건은 충족됩니다."
     material = "가온정보통신 납기 3주, 누리컴 납기 5주. 계약은 10월 12일 예정."
     traced = check_skills.ground(("grounding-check",), text, material=material, computed=[],
@@ -195,7 +189,7 @@ def test_a_computed_total_and_a_delivery_day_are_supported():
 
 
 def test_money_a_search_source_states_stays_in_a_report():
-    # A07: 「약 75억 원」 kept, never 「75억 [금액]」
+    # 「약 75억 원」 kept, never 「75억 [금액]」
     text = "2026년 클라우드 전환 지원 예산은 약 75억 원으로, 전년 대비 두 배 이상입니다."
     out = report._without_invented_money(text, ["행정안전부 2026 예산: 클라우드 전환 지원 75억 원"])
     assert out == text
@@ -217,7 +211,7 @@ def test_ordinals_item_numbers_and_character_counts_come_back():
               "### [1차 메일] (10월 6일, 자료 보내고 4일 뒤)")
     guarded = scan.post(before, {"material": material, "request": "헤드라인 써 줘",
                                  "final": True})["text"]
-    # the script no longer cuts 「11월」 to 「[구체적 수치]1월」
+    # 「11월」 never cut to 「[구체적 수치]1월」
     assert "[구체적 수치]1월" not in guarded
     out = _settle(before, guarded, material, "헤드라인 써 줘")
     # a count the headline bears out (15 characters without spaces) comes back as written

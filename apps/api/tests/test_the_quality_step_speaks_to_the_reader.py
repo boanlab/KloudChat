@@ -1,5 +1,4 @@
-"""The quality step shows the reader a label, not the repair prompt, and the figure judge is
-not asked about sentences copying the material (lineup v1 client-proposal-3__r1)."""
+"""Quality step label for the reader, and the figure judge's scope."""
 
 from __future__ import annotations
 

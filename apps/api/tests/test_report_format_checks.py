@@ -1,5 +1,4 @@
-"""The lineup formats' pre-pass and checks: resolved deadlines kept, conflicting values kept
-side by side, and each format's code checks found, repaired once and checked again."""
+"""Lineup formats' pre-pass and code checks, each repaired once and checked again."""
 
 from __future__ import annotations
 
@@ -409,7 +408,7 @@ async def test_an_unrelated_report_writes_as_before(monkeypatch):
     assert "9월 10일" in sections[1]["content"]
 
 
-# ── client_proposal: the schedule (lineup v1 client-proposal-3__r1) ───
+# ── client_proposal: the schedule ───
 
 KAFI_RFP = (
     "1. 사업명 : 대표 홈페이지 웹 접근성 개선 및 품질인증 취득 사업\n"
@@ -426,8 +425,7 @@ KAFI_SCHEDULE = (
 
 
 async def test_a_picture_in_the_schedule_is_not_a_schedule_line():
-    """The run's only 「일정이 사업 기간을 넘음」 was the figure's base64 (「/M6/」),
-    which no repair can mend."""
+    """A figure's base64 (「/M6/」) is not read as a schedule past the project period."""
     rfp = report_checks.rfp_terms(KAFI_RFP, "")
     assert rfp["months"] == 5
     doc = verify.Doc([{"heading": "추진 일정", "content": KAFI_SCHEDULE}], KAFI_RFP)

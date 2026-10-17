@@ -1,5 +1,4 @@
-"""A worked sum of several terms is computed whole, × before + (「시상금 합계:
-500 + 300 × 2 + 100 × 4 + 50 × 6 + 100 + 50 × 2 = 900」 is caught: the sum is 2,000)."""
+"""Whole-sum checks on worked sums of several terms, × before +."""
 
 from app.services import arithmetic
 

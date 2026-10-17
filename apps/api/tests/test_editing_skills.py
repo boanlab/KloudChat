@@ -1,5 +1,4 @@
-"""교정 스킬(초안): 「교정·윤문」의 맞춤법·띄어쓰기·어투 점검과 값 보존 점검, 「상투어 걷어내기」의
-표현 목록·자동 고침·밀도가 코드로 정해진 대로 나온다."""
+"""Copy-editing skills: spelling, spacing, tone and value checks; cliché fixes and density."""
 
 from __future__ import annotations
 
@@ -50,7 +49,7 @@ def scan():
 
 def test_both_ship_with_their_source():
     packages = skill_packages.packages()
-    # r10: copy-editing published and listed; the cliché sweep stays a hidden draft check
+    # copy-editing published and listed; the cliché sweep a hidden draft check
     assert not packages["copy-editing"].draft and packages["copy-editing"].listed
     assert packages["generic-language-killer"].draft
     for key in KEYS:
@@ -133,7 +132,7 @@ def test_register_names_the_body_register_and_the_sentences_off_it():
 
 
 def test_register_does_not_split_inside_a_sentence():
-    # r10 SK-copyedit-3: 「생각보다 잘」 cut a 합니다체 sentence into a 한다체 one
+    # 「생각보다 잘」 cut a 합니다체 sentence into a 한다체 one
     text = ("저는 데이터 분석에 관심을 가지게 되었습니다. 사용자가 생각보다 잘 쓰지 않는 기능을 "
             "찾았습니다. 그래서 화면을 바꿨습니다.")
     reg = proof().register(text)

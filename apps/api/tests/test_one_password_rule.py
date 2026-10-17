@@ -1,5 +1,4 @@
-"""Every password form holds the same rule, and the sign-in screens read it from `/auth/config`
-instead of repeating it: a person told 「10자 이상」 is never refused for something else."""
+"""One password rule across every form, read from `/auth/config`."""
 
 from __future__ import annotations
 

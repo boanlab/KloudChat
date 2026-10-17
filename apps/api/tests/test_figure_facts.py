@@ -1,6 +1,4 @@
-"""A comparison figure is checked against its section's table before it is kept:
-a box that says what the table does not leaves the figure out, and a
-highlight on an option the report does not recommend comes off."""
+"""Comparison figures checked against their section's table."""
 
 from __future__ import annotations
 

@@ -1,5 +1,4 @@
-"""자기소개서 answers (W8): the submit blocks are measured against the stated limits, rewritten
-(up to twice) when out of range, and what the person's material does not carry is flagged."""
+"""자기소개서 blocks measured against stated limits, rewritten when out of range, gaps flagged."""
 
 from __future__ import annotations
 
@@ -103,7 +102,7 @@ async def test_an_over_long_block_is_rewritten_once_and_measured_again():
     assert rows[1]["value"] == 680 and rows[1]["status"] == "ok" and rows[1]["rewritten"]
     assert rows[2]["value"] == 700 + 2 + len("둘째 문단입니다.") and rows[2]["status"] == "ok"
     assert "가" * 720 not in out.content and "가" * 680 in out.content
-    # The answer's own count table now says what code measured.
+    # The answer's own count table saying what code measured
     assert "| 1 | 700자 | 680자 |" in out.content and "| 2 | 800자 | 711자 |" in out.content
     wire = cover_letter.wire(out)
     assert wire["rows"][0] == {"number": 1, "label": "답안 1", "unit": "chars_with_spaces",
@@ -397,7 +396,7 @@ async def test_career_docs_5_each_block_gets_two_tries_and_the_closest_is_kept()
     assert rows[3]["unit"] == "bytes_utf8"
     assert rows[2]["status"] == "ok" and rows[2]["unit"] == "chars_no_spaces"
     assert "35%" not in out.content
-    # The table's measured and limit columns now say what code measured.
+    # The table's measured and limit columns saying what code measured
     assert f"| 문항3 | UTF-8 1,500바이트 이내 | UTF-8 {rows[3]['value']:,}바이트 | 1,500바이트 |" \
         in out.content
     assert f"| 문항2 | 공백 제외 600자 이내 | {rows[2]['value']}자 | 600자 |" in out.content

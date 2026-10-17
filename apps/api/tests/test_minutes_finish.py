@@ -1,5 +1,4 @@
-"""A minutes document's finish: an empty 기한 column goes with its
-name in the caption, and the turn's line names the document's genre."""
+"""Minutes finish: an empty 기한 column dropped, the genre named in the turn's line."""
 
 from __future__ import annotations
 

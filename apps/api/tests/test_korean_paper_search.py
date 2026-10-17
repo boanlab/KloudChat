@@ -1,9 +1,4 @@
-"""Korean scholarly papers found the way a Korean researcher finds them: the ordinary search
-backend asked with 「학회 논문」·「학술대회 발표」·「학회지」 and inside KCI·DBpia·RISS, the
-hits merged, and each paper's authors, year, venue and DOI read from its landing page's meta
-tags. There is no KCI API key.
-
-Recorded answers only (tests/fixtures/korean_papers): nothing here reaches the network."""
+"""Korean scholarly paper search on recorded answers: queries, merged hits, page metadata."""
 
 from __future__ import annotations
 

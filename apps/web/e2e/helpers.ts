@@ -377,24 +377,8 @@ export async function moreMenu(page: Page, item: string | RegExp) {
   await page.locator('[role="menu"]:visible').getByRole('menuitem', { name: item }).first().click()
 }
 
-/** Where a tab of the old seven-tab ribbon went: the editing tabs, or the reading header. */
-const MOVED: Record<string, string | null> = {
-  // 웹뷰/페이지뷰 sit in the header; 테마·강조색·템플릿 under 편집 › 테마 (formerly 디자인).
-  홈: '테마',
-  디자인: '테마',
-  편집: '글자',
-  레이아웃: '테마',
-  // 목차/장 목록, 발표 and 내려받기 sit in the header: nothing to open.
-  보기: null,
-  '슬라이드 쇼': null,
-  파일: null,
-}
-
-/** Opens one tab of an artifact panel's editing ribbon, switching 「편집」 on first.
- *  Old tab names map to where their commands went (see MOVED). */
+/** Opens one tab of an artifact panel's editing ribbon, switching 「편집」 on first. */
 export async function ribbonTab(page: Page, name: string) {
-  const tab = name in MOVED ? MOVED[name] : name
-  if (tab === null) return
   await editMode(page)
-  await page.getByRole('tab', { name: tab, exact: true }).click()
+  await page.getByRole('tab', { name, exact: true }).click()
 }

@@ -1,14 +1,4 @@
-"""Round 9 comparison pre-pass: durations judged in days, totals settled from the price lines.
-
-R3-A04-T2 (flash): compare-check read 「납기 2주」 as 14 against a 「1달」 limit — 「납기 14달 >
-조건 1달」, 다솜시스템 탈락 — and 「납기 계약 후 3주」 as no value, so 가온정보통신 was 조건 미확인.
-The reading's numbers carry no unit; the material's words do.
-
-R3-A04-T1 (27B, flash) and R3-A04-T2: compare-cost readings split three ways (B안 8,712,000 /
-9,720,080 / 9,720,000), a thinking read ran up to its 360 s cap, and the report took 500-740 s
-with wrong B안 figures and working sentences in the body. The price lines are written plainly;
-code reads them and settles the totals when the readings differ.
-"""
+"""Comparison pre-pass: durations in days, totals settled from price lines."""
 
 from __future__ import annotations
 
@@ -19,7 +9,7 @@ import pytest
 
 from app.services import report, report_checks
 
-#: the tasks as sent (tasks/R3-A04-T1/prompt.md, tasks/R3-A04-T2/prompt.md)
+#: the tasks as sent
 T1 = """우리 팀(교직원 40명) 업무 협업 도구 두 가지 안을 비교·검토하는 보고서 써 줘. 결론적으로 어느 안을 추천하는지까지.
 
 A안: 지금 쓰는 사내 메신저(무료) 유지 + 화상회의 라이선스만 추가 구매
@@ -122,7 +112,7 @@ def test_the_same_unit_compares_exactly():
     assert _verdict("1달", days, "max") == "open"
 
 
-# ── 2. compare-check on R3-A04-T2 ─────────────────────────────────────────
+# ── 2. compare-check on the quote comparison ──────────────────────────────
 
 #: the flash reading behind 「납기 14달 > 조건 1달」: weeks turned into days, limit in months
 FLASH_READING = {
@@ -206,7 +196,7 @@ def test_the_t1_price_lines_settle_both_years_and_the_contract_discount_as_a_sce
     base = {n: (e["total"], e["first_year"], e["next_year"]) for n, e in costs["options"].items()}
     assert base == {"A안": (3_840_000, 3_840_000, 3_840_000),
                     "B안": (9_720_000, 9_720_000, 6_720_000)}
-    # the buyer's choice stays a scenario (r8): 연 단위 계약 시 8,712,000 / 5,712,000
+    # the buyer's choice stays a scenario: 연 단위 계약 시 8,712,000 / 5,712,000
     (scenario,) = costs["scenarios"]
     assert scenario["name"] == "연 단위 계약 시"
     assert scenario["options"]["B안"]["total"] == 8_712_000
@@ -247,7 +237,7 @@ def _t1_reading(b_items: list[dict]) -> dict:
         {"name": "B안", "items": b_items}], "scenarios": []}
 
 
-#: the r9 L27F readings: discount taken unconditionally / a stray 80 won / discount as a condition
+#: three readings: discount taken unconditionally / a stray 80 won / discount as a condition
 UNCONDITIONAL = _t1_reading([
     {"name": "이용료", "unit_price": 14000, "count": 40, "per": "month"},
     {"name": "할인", "unit_price": 14000, "count": 40, "per": "month", "rate": 0.15, "sign": -1},
@@ -302,7 +292,7 @@ async def test_readings_that_split_are_settled_by_the_price_lines_without_a_thin
 
 
 async def test_a_reading_agreeing_with_the_price_lines_takes_the_code_s_scenarios():
-    # r9 LFLF A04-T1: two readings agreed on 9,720,000 but one priced the 연 단위 계약
+    # two readings agreed on 9,720,000 but one priced the 연 단위 계약
     # scenario and the other did not — 「총비용 일부 보류 — 읽을 때마다 다른 할인 조건: B안」
     complete, asked, _ = _replies(NO_SCENARIO, NO_SCENARIO)
     pre = await report_checks.prepare("comparison", T1, report._request_material(T1),

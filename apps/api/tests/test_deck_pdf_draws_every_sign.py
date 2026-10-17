@@ -1,7 +1,4 @@
-"""A deck PDF draws the signs its Korean face lacks as look-alikes, not boxes.
-
-「완료 − 도착 − 실행」 is not drawn as 「완료 □ 도착 □ 실행」: NanumGothic has no U+2212 MINUS SIGN.
-"""
+"""Deck PDF look-alikes for signs the Korean face lacks (U+2212 MINUS SIGN)."""
 
 from __future__ import annotations
 

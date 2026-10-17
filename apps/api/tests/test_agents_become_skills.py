@@ -1,9 +1,4 @@
-"""D21: the shipped agents give way to skills; people build agents from skills.
-
-Each withdrawn agent's abilities are an admin-shared skill package: its instructions, the
-템플릿 it wrote into, the checks its 묶음 attached, its 빠진 정보 질문 and its 진행 설정. A skill
-brings those to any turn it is on, and an agent's 「켜 둘 스킬」 are on in every turn of its
-conversations (and frozen into a published bot's prompt)."""
+"""Admin-shared skill packages in place of shipped agents, and agents built from skills."""
 
 from __future__ import annotations
 

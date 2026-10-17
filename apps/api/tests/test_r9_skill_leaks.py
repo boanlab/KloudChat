@@ -1,11 +1,4 @@
-"""r9 items 4·5: skill examples leaking into answers, and weekdays a late rewrite brought back.
-
-- R3-A15-T2 (both configs): a sales-email output format's example signature 「김현수 드림」
-  became the sender, though the request gives no sender name.
-- R3-A01-T2 L27F: the doc-agenda rule for an empty 사전 자료 section told to the reader.
-- R3-A13-T2 LFLF: `answer-normalize` set the weekdays, then the copy check's rewrite brought
-  back 9 wrong ones (「11월 27일(목)」, a Friday in 2026).
-"""
+"""Skill examples kept out of answers, and weekdays kept right after every rewrite."""
 
 from __future__ import annotations
 
@@ -34,7 +27,7 @@ async def _run(name: str, bundle) -> None:
         _ = [event async for event in stage.run(bundle, Context())]
 
 
-# ── weekdays after every rewrite (R3-A13-T2) ─────────────────────────────
+# ── weekdays after every rewrite ─────────────────────────────
 
 A13_REQUEST = (
     "11월 한 달 회사 SNS(인스타그램, 링크드인) 게시물 계획 짜 줘. 주 2회씩.\n"
@@ -81,9 +74,9 @@ async def test_an_answer_with_no_weekday_is_left_alone():
     assert pipeline_registry.stage("answer-weekdays").skip(bundle) == "no weekday"
 
 
-# ── example names (R3-A15-T2) ────────────────────────────────────────────
+# ── example names ────────────────────────────────────────────
 
-#: a sales-email output format before r9, as the writer read it
+#: a sales-email output format with an example signature
 OLD_FORMAT = (
     "## Output format\n```\n### 제목 (택1)\n1. …\n### 본문\n…\n김현수 드림\n"
     "한빛소프트 영업팀 | [전화번호] | [이메일]\n```\n")
@@ -173,7 +166,7 @@ def test_a_sentence_the_person_wrote_stays():
 
 
 def test_the_agenda_rule_for_an_empty_section_is_not_told_to_the_reader():
-    # R3-A01-T2 L27F, the 사전 자료 section as written
+    # a 사전 자료 section that tells the rule to the reader
     body = ("자료에 사전 배포 목록이 없어 별도의 표를 만들지 않습니다.\n\n"
             "사전 자료 없음. 단, 안건 1(LMS 1차 시안)과 안건 2(견적 비교)는 회의 전 관련 자료가 "
             "참석자에게 공유돼야 합니다.")

@@ -1,6 +1,4 @@
-"""성능 모니터링: the readers turn /proc, cgroup, vLLM and gpu-exporter text and LiteLLM's log
-into samples; the rules name overload only when it lasts; the admin routes are admin-only and
-read back what was stored; the migration matches the model."""
+"""Performance monitoring: readers, sustained-overload rules, admin routes and the migration."""
 
 from __future__ import annotations
 

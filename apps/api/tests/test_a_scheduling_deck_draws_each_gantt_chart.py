@@ -1,8 +1,4 @@
-"""r3 A09 T2 (CPU scheduling lecture): Claude gave every algorithm a Gantt chart; KloudChat's
-27B wrote the intervals as a line of text (none for priority), flash wrote none. Each
-algorithm's chart now comes from the code-run schedule as a table, the agenda follows the
-deck's final slides, and a comparison table's 「Priority」 row is read against the computed
-priority rows. Slide strings are the ones the runs gave."""
+"""CPU scheduling decks: a Gantt chart per algorithm from the code-run schedule."""
 
 from __future__ import annotations
 
@@ -54,10 +50,6 @@ def _27b_deck() -> list[dict]:
         {"layout": "bullets", "title": "확인 퀴즈",
          "bullets": ["Q1: SRTF에서 P3의 대기시간은?", "Q2: RR(q=2)에서 평균 반환시간은?"]},
     ]
-
-
-def _cells(slide: dict) -> str:
-    return "\n".join(" | ".join(row) for row in slide.get("rows") or [])
 
 
 def test_each_algorithm_s_result_slide_becomes_its_gantt_chart():
@@ -167,7 +159,7 @@ def test_a_priority_row_in_english_is_read_as_the_computed_priority_rows():
 
 
 @pytest.mark.parametrize(("row", "kept"), [
-    # flash r3: 「| 우선순위 | 5.5 | 9.5 |」 is the non-preemptive reading, right as it is
+    # 「| 우선순위 | 5.5 | 9.5 |」 is the non-preemptive reading, right as it is
     (["우선순위", "5.5", "9.5"], ["우선순위", "5.5", "9.5"]),
     (["Priority (preemptive)", "5.0", "9.0"], ["Priority (preemptive)", "5.0", "9.0"]),
     # the reading the row names is the one it is held to

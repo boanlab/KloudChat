@@ -1,9 +1,4 @@
-"""Round 3 document and chat leftovers, read against the plain answer with the evaluation's own
-strings: a meeting's 「미정」 stays 미정, a letter's head keeps its deadline out of 시행일, a
-table stays a table, a count stays with its remark, computed totals settle a budget, printed
-values of a group are not swapped for the overall ones, real names stay, a cut-off section
-ends at its sentence, a market review searches, a notice carries no check report, and a
-source link keeps its article id."""
+"""Document and chat guards read against plain answers, with evaluation strings."""
 
 from __future__ import annotations
 
@@ -24,7 +19,7 @@ from app.services import (
     verify,
 )
 
-# ── A01 T1: the weekly meeting memo ──────────────────────────────────────────────────────
+# ── the weekly meeting memo ──────────────────────────────────────────────────────
 
 A01_MEMO = (
     "아래 메모로 회의록 작성해 줘. 결정 사항과 할 일(담당·기한)이 한눈에 보이게.\n\n"
@@ -34,8 +29,8 @@ A01_MEMO = (
     "수용하자고 제안. 팀장 OK. 강사 섭외 완료(외부 강사 1명, 강사료 50만원). 장소 미래관 201호, "
     "10/22(목) 15:00.\n"
     "2. LMS 개편 — 업체(한결소프트) 1차 시안 10/15 도착 예정. 김도윤: 모바일 화면 검수 체크리스트 "
-    "만들어서 다음 회의 때 공유하겠다. 학생 테스트 그룹 모집은 최하늘이 학생회 통해 진행, 10명 목표.\n"  # noqa: E501 — the run as written
-    "3. 우수 강의 사례집 — 원고 12편 중 9편 접수. 미제출 3편은 교수님들께 10/16까지 재요청(최하늘). "  # noqa: E501 — the run as written
+    "만들어서 다음 회의 때 공유하겠다. 학생 테스트 그룹 모집은 최하늘이 학생회 통해 진행, 10명 목표.\n"  # noqa: E501 — verbatim data
+    "3. 우수 강의 사례집 — 원고 12편 중 9편 접수. 미제출 3편은 교수님들께 10/16까지 재요청(최하늘). "  # noqa: E501 — verbatim data
     "디자인 업체 견적 2곳: A사 380만원, B사 420만원. B사가 납기 1주 빠름. 결론 못 냄 → 정현우 과장 "
     "복귀 후 다음 회의에서 결정.\n"
     "4. 기타: 재무팀에서 10/30까지 11월 예산 집행계획 제출 요청 옴. 팀장이 각자 담당 사업 "
@@ -43,14 +38,14 @@ A01_MEMO = (
     "다음 회의 10/15(목) 14시 같은 장소"
 )
 
-#: the 27B writer's action table: 「미정」 with the reason in 비고
+#: one writer's action table: 「미정」 with the reason in 비고
 A01_27B = (
     "| 번호 | 할 일 | 담당 | 기한 | 비고 |\n|------|-------|------|------|------|\n"
-    "| 1 | 모바일 화면 검수 체크리스트 작성 및 공유 | 김도윤 | 2026-10-15(목) | 다음 회의 때 공유 |\n"  # noqa: E501 — the run as written
-    "| 2 | 학생 테스트 그룹 모집(학생회 통해, 10명 목표) | 최하늘 | 미정 | 회의에서 기한을 정하지 않음 |\n"  # noqa: E501 — the run as written
-    "| 3 | 미제출 원고 3편 재요청(교수님들께) | 최하늘 | 2026-10-16(금) | 원고 12편 중 9편 접수 상태 |\n"  # noqa: E501 — the run as written
+    "| 1 | 모바일 화면 검수 체크리스트 작성 및 공유 | 김도윤 | 2026-10-15(목) | 다음 회의 때 공유 |\n"  # noqa: E501 — verbatim data
+    "| 2 | 학생 테스트 그룹 모집(학생회 통해, 10명 목표) | 최하늘 | 미정 | 회의에서 기한을 정하지 않음 |\n"  # noqa: E501 — verbatim data
+    "| 3 | 미제출 원고 3편 재요청(교수님들께) | 최하늘 | 2026-10-16(금) | 원고 12편 중 9편 접수 상태 |\n"  # noqa: E501 — verbatim data
 )
-#: the flash writer's, with 「출처: 회의」 in every 비고 and no reason on the 미정 row
+#: another writer's, with 「출처: 회의」 in every 비고 and no reason on the 미정 row
 A01_FLASH = (
     "| 할 일 | 담당 | 기한 | 비고 |\n|------|------|------|------|\n"
     "| 모바일 화면 검수 체크리스트 작성 및 공유 | 김도윤 대리 | 2026-10-15(목) | 출처: 회의 |\n"
@@ -117,7 +112,7 @@ def test_a_group_owner_is_no_name_to_blank():
     assert "| 각 담당자 |" in out[0]["content"] and "minutes_owner" not in codes
 
 
-# ── A03: the 공문 and the result report ───────────────────────────────────────────────────
+# ── the 공문 and the result report ───────────────────────────────────────────────────
 
 A03_T1 = (
     "각 학과에 보낼 협조 요청 공문을 써 줘.\n\n"
@@ -185,7 +180,7 @@ def test_a_one_part_plan_goes_straight_to_writing():
     assert not straight({"sections": ["본문"], "frame": True}, ask)
 
 
-# ── A04 T2: a budget limit judged on the computed VAT-inclusive totals ──────────────────────
+# ── a budget limit judged on the computed VAT-inclusive totals ──────────────────────
 
 A04_T2 = (
     "[견적 1] 가온정보통신 단가 1,320,000원(부가세 별도) × 30대, 무상 보증 3년\n"
@@ -215,7 +210,7 @@ def test_a_budget_limit_with_no_reading_is_judged_on_the_computed_total():
     assert over_status["status"] == "탈락"
 
 
-# ── A06: values a code turn printed for a group, and a column name ──────────────────────────
+# ── values a code turn printed for a group, and a column name ──────────────────────────
 
 PRINTED = (
     "=== 전체 ===\n전반만족 평균: 3.78\n시설 평균: 3.68\n"
@@ -250,14 +245,14 @@ def test_a_column_name_gets_no_check_mark():
     assert "12월말(확인 필요)" not in settled.text.split("\n")[0]
 
 
-# ── A07: a source's own names, a clause before 「교수」, a section that ran out ───────────────
+# ── a source's own names, a clause before 「교수」, a section that ran out ───────────────
 
 def test_a_school_a_source_names_by_its_short_name_is_kept():
     trace = skill_scripts.module("grounding-check", "trace")
     source = ("[AI돋보기] 'AI로 시험보다가 정학' — 고려대는 계열별 차등 적용을 검토하며 AI 사용 시 "
-              "출처를 표기하면... 아주대학교에서 ‘아주대학교 생성형 AI 교수·학습 활용 가이드라인’을 "  # noqa: E501 — the run as written
+              "출처를 표기하면... 아주대학교에서 ‘아주대학교 생성형 AI 교수·학습 활용 가이드라인’을 "  # noqa: E501 — verbatim data
               "신설했다.")
-    row = "| 고려대학교 | 확인 필요 | 계열별 차등 적용 검토 [2] | AI 사용 시 출처 표기 허용 방향 모색 [2] |"  # noqa: E501 — the run as written
+    row = "| 고려대학교 | 확인 필요 | 계열별 차등 적용 검토 [2] | AI 사용 시 출처 표기 허용 방향 모색 [2] |"  # noqa: E501 — verbatim data
     clause = ("아주대학교는 ‘아주대학교 생성형 AI 교수·학습 활용 가이드라인’을 신설하여 교수·학습 "
               "영역에서의 AI 활용 기준을 공식화했습니다 [1].")
     found = trace.check(f"{row}\n{clause}", source)
@@ -277,7 +272,7 @@ def test_a_section_cut_off_mid_word_ends_at_its_last_sentence():
         assert report.cut_unfinished_tail(whole) == whole
 
 
-# ── A10 T1: a market-entry review searches even with the company's memo ──────────────────────
+# ── a market-entry review searches even with the company's memo ──────────────────────
 
 A10_T1 = (
     "「국내 클라우드 협업툴 시장」에 진입할 만한지 검토 보고서 써 줘. 경영회의 안건 자료야.\n\n"
@@ -288,7 +283,7 @@ A10_T1 = (
     "\"이미 다른 협업툴 사용 중\" 38곳\n"
     "- 검토안: 기존 그룹웨어에 붙는 SaaS형 협업툴(메신저·화상·공동편집) 2027년 하반기 출시\n\n"
     "알고 싶은 것: 국내 시장 규모와 성장 전망(공개 자료 기준, 추정이면 가정 명시), 고객군 나누기, "
-    "주요 경쟁사(네이버웍스, 카카오워크, 잔디, 플로우, 두레이, 마이크로소프트 팀즈, 슬랙 등)의 위치, "  # noqa: E501 — the run as written
+    "주요 경쟁사(네이버웍스, 카카오워크, 잔디, 플로우, 두레이, 마이크로소프트 팀즈, 슬랙 등)의 위치, "  # noqa: E501 — verbatim data
     "산업 환경(규제·공공 클라우드 등), 진입 여부 의견."
 )
 
@@ -300,20 +295,20 @@ def test_a_market_entry_review_with_a_company_memo_still_searches():
     assert report.material_complete(memo_only, "biz")
 
 
-# ── A14: a notice carries no check report ───────────────────────────────────────────────────
+# ── a notice carries no check report ───────────────────────────────────────────────────
 
 def test_a_notice_ends_without_its_check_report():
     flash = ("**문의**\n- 경영지원팀 박소연 매니저 (내선 2050)\n\n감사합니다.\n\n---\n"
-             "날짜 네 개(10. 21.(수)·10. 23.(금)·10. 25.(일)·10. 26.(월))는 드린 자료의 요일과 실제 "  # noqa: E501 — the run as written
+             "날짜 네 개(10. 21.(수)·10. 23.(금)·10. 25.(일)·10. 26.(월))는 드린 자료의 요일과 실제 "  # noqa: E501 — verbatim data
              "달력이 일치합니다. 점검 결과 자료에 없는 값은 없고 채울 빈칸도 없습니다.")
     out = internal_words.strip_work_notes(flash, request="네트워크 공사 공지 써 줘")
     assert out.endswith("감사합니다.")
     eol = ("버튼: 데이터 내보내기 / 한빛워크로 옮기기\n\n---\n\n"
-           "일정 점검: 순서와 요일 모두 맞고 차단 항목 0건입니다. 다만 종료일과 데이터 삭제일이 같은 "  # noqa: E501 — the run as written
+           "일정 점검: 순서와 요일 모두 맞고 차단 항목 0건입니다. 다만 종료일과 데이터 삭제일이 같은 "  # noqa: E501 — verbatim data
            "날(2027. 3. 31.)이라 종료 뒤에 내보낼 기간이 없습니다.")
     kept = internal_words.strip_work_notes(eol, request="서비스 종료 안내 써 줘")
     assert "차단 항목" not in kept and "종료 뒤에 내보낼 기간이 없습니다" in kept
-    heading = ("[자세히 보기] 버튼 텍스트: 「종료 일정과 내보내기 방법」\n\n---\n\n**점검 결과**\n\n"  # noqa: E501 — the run as written
+    heading = ("[자세히 보기] 버튼 텍스트: 「종료 일정과 내보내기 방법」\n\n---\n\n**점검 결과**\n\n"  # noqa: E501 — verbatim data
                "문의처: support@hanbitsoft.example (평일 10~17시)")
     stripped, block = internal_words.strip_check_block(heading)
     assert "점검 결과" not in stripped and block == "**점검 결과**"
@@ -323,7 +318,7 @@ def test_a_notice_ends_without_its_check_report():
     assert internal_words.strip_check_block(own)[0] == own
 
 
-# ── A15 T1: a source link keeps its article id ──────────────────────────────────────────────
+# ── a source link keeps its article id ──────────────────────────────────────────────
 
 def test_a_source_listed_without_its_article_id_takes_the_whole_address():
     bare = "https://www.ftoday.co.kr/news/articleView.html"
@@ -338,7 +333,7 @@ def test_a_source_listed_without_its_article_id_takes_the_whole_address():
     assert agent._source_number("https://example.org/list?page=2", board) == 2
 
 
-# ── A13 T1: a copy answer carries no account of the writer's own edits and checks ───────────
+# ── a copy answer carries no account of the writer's own edits and checks ───────────
 
 def test_copy_carries_no_report_of_the_writers_own_edits_or_checks():
     request = "한빛워크 무료 체험 캠페인 광고 소재를 채널별로 써 줘."

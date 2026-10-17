@@ -1,5 +1,4 @@
-"""시장·경쟁 스킬: 조사 글·비교표·분석 틀은 출처 없는 값과 근거 없는 일반론을
-코드가 찾는다."""
+"""Market and competitor skills: unsourced values and unsupported generalities found by code."""
 
 from __future__ import annotations
 

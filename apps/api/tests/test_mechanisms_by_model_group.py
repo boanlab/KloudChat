@@ -1,9 +1,4 @@
-"""Each post-writing mechanism decides by the writer's model group (docs/architecture.md,
-"Mechanisms by model group"): self-hosted (27B, flash), small external, strong external.
-
-Round 8 ran 48 tasks on seven setups; the cases here use its own strings. Self-hosted writers
-are `local/qwen3.8-27b` and `local/qwen3.8-flash`, a strong external one DeepSeek V4 Pro, a
-small external one GLM-5.3 Flash."""
+"""Post-writing mechanisms by the writer's model group (docs/architecture.md)."""
 
 from __future__ import annotations
 
@@ -60,16 +55,16 @@ class _Judge:
         return self.reply, {}
 
 
-#: r8 A02-T2: the person's own context in the request
+#: the person's own context in the request
 A02_T2 = (
     "아래 발표문을 부서장 보고용으로 정리해 줘. 핵심은 5줄 이내로 요약하고, 우리 대학(비수도권 "
     "사립대, 재학생 약 8,000명, 올해 RISE 사업 참여 중)에 미치는 영향 3가지와 우리가 지금 준비할 "
     "일을 정리해 줘.\n\n---\n[교육부 보도 참고자료(가상)] 2027년 대학 재정지원사업 개편 방향\n\n"
     "교육부는 2027년부터 대학 재정지원사업을 '성과 중심·지역 연계형'으로 개편한다고 밝혔다.")
-#: LFLF's sentence the flash judge called unsupported and the rewrite took out (its opening
+#: a sentence the flash judge called unsupported and the rewrite took out (its opening
 #: as the step showed it)
 A02_SENTENCE = "우리 대학은 올해 RISE 사업 참여 중으로 성과계획을 지역 연계형으로 다시 짜야 합니다."
-#: r8 A11-T2 LFLF: the Free plan the search result [14] gives
+#: the Free plan the search result [14] gives
 A11_SEARCH = ("[14] 네이버웍스 코어 이용요금 - 네이버웍스 · naver.worksmobile.com/pricing\n"
               "Free: 무료, 바로 가입해 쓰는 요금제(화상회의 최대 4명·60분). Lite: 월 3,000원")
 A11_SENTENCE = ("한빛워크는 클라우드형도 있습니다. 다만 네이버웍스처럼 Free 플랜으로 바로 가입해 "
@@ -114,7 +109,7 @@ def test_code_reads_figures_names_and_quotes():
 
 
 def test_a_counted_figure_is_looked_up_with_its_counter():
-    # r10 LFLF SK-company-2: a long search page holds a bare 「306」 and 「9」 by chance
+    # a long search page holds a bare 「306」 and 「9」 by chance
     page = "회사 소개 306 페이지 9 2026 리벨리온 투자 39 기업"
     assert post_checks.code_reading("임직원 수 306명", page) == "absent"
     assert post_checks.code_reading("총 9개 투자 라운드, 투자자 39개사", page) == "absent"
@@ -122,14 +117,14 @@ def test_a_counted_figure_is_looked_up_with_its_counter():
     assert post_checks.code_reading("투자자 39개사", page + " 투자자 39개 회사") == "present"
     # dates stay bare: the page may write them another way
     assert post_checks.code_reading("2026년 9월 투자", page) == "present"
-    # LFLF2 SK-company-1: 「89억」 against a page whose 89 is something else
+    # 「89억」 against a page whose 89 is something else
     assert post_checks.code_reading("시리즈 A 89억 원 유치", page + " 89 시리즈 A") == "absent"
     assert post_checks.code_reading("시리즈 A 89억 원 유치", page + " 시리즈 A 89억원") == "present"
 
 
 @GROUPS
 def test_a_judged_sentence_code_cannot_check_is_marked_not_cut(writer):
-    # r7 helps kept: 「정상 추진 중」 is still caught, now marked where it stands for a
+    # 「정상 추진 중」 still caught: marked where it stands for a
     # self-hosted writer; a strong writer gets it as a note and its revision stands
     answer = "## 현황\n- 1차 시안을 받았습니다.\n- 사업은 일정대로 정상 추진 중입니다."
     out, model = _post(answer, [{"quote": "사업은 일정대로 정상 추진 중입니다",
@@ -146,7 +141,7 @@ def test_a_judged_sentence_code_cannot_check_is_marked_not_cut(writer):
 
 TRACE = check_skills.entry("grounding-check")
 
-#: r8 P02: the person's trip, and GLP's assumption block on it
+#: the person's trip, and a writer's assumption block on it
 P02 = ("느린 기차 여행 플래너가 되어 줘.\n\n내 여행:\n- 출발: 암스테르담 / 도착: 로마\n"
        "- 일정: 9월 하순 10일, 앞뒤로 이틀 조정 가능\n"
        "- 인원: 성인 2명, 한 명은 버스를 타면 멀미함\n"
@@ -187,7 +182,7 @@ def test_the_assumption_label_covers_its_list_only():
 
 
 def test_the_system_date_a_note_dates_itself_with_is_not_marked():
-    # r8 A15-T2 DSP: the research note's 「확인일」
+    # the research note's 「확인일」
     line = ("- 한솔제지 공식 사이트에 대전·장항 외에 천안·신탄진 공장이 확인됨(확인일 2026-10-14, "
             "hansol.com).")
     assert not [f for f in TRACE.check(line, "한솔제지 콜드메일", [], {"today": "2026-10-14"})
@@ -199,13 +194,13 @@ def test_the_system_date_a_note_dates_itself_with_is_not_marked():
 
 
 def test_a_slot_s_own_length_and_a_fraction_are_not_values_to_source():
-    # r8 A01-T2 (DSP·GLP·LFLF·QMX): 「14:55~15:00(5분(확인 필요), 확인 필요)」
+    # 「14:55~15:00(5분(확인 필요), 확인 필요)」
     row = "| 4 | 워크숍(10/22) 준비 점검 | 미정 | 14:55~15:00(5분) | 논의 |"
     ev = value_guard.Evidence.of(["안건 4개, 오후 2시~3시 회의"])
     at = row.index("5분")
     assert value_guard.supported("5분", row, at, ev, 0)
     assert not value_guard.supported("7분", row.replace("5분", "7분"), at, ev, 0)
-    # r8 A09-T1 QMX: 「10분의 1」 read as ten minutes
+    # 「10분의 1」 read as ten minutes
     line = "타임 퀀텀을 10분의 1로 줄이면 문맥 교환이 늘어납니다."
     assert value_guard.supported("10분", line, line.index("10분"), ev, 0)
 
@@ -218,7 +213,7 @@ def test_a_value_marked_twice_over_two_passes_reads_once():
 
 
 def test_self_punishment_is_no_legal_consequence():
-    # r8 P16 LFLF: 「자기 처벌」 marked as a legal consequence
+    # 「자기 처벌」 marked as a legal consequence
     line = "실수한 자신을 자기 처벌처럼 몰아붙이지 않는 것이 먼저입니다."
     assert not TRACE.check(line, "요즘 너무 힘들어", [], {"advice": True})
     assert TRACE.check("음주운전은 형사처벌 대상입니다.", "x", [], {"advice": True})
@@ -226,8 +221,8 @@ def test_self_punishment_is_no_legal_consequence():
 
 @GROUPS
 def test_an_advice_answer_with_marks_of_its_own_still_gets_one_box(writer):
-    # r8 P19 L27F: the draft had its own 「(확인 필요)」, so the 3-mark cleanup was skipped
-    # and 18 marks stayed in the body
+    # a draft with its own 「(확인 필요)」: the 3-mark cleanup still applies,
+    # no marks left in the body
     answer = ("예금 이자는 세전 연 2,000만원(확인 필요) 초과분부터 15.4% 원천징수됩니다. "
               "파킹통장 금리는 연 2.5%, CMA는 연 2.8%, 정기예금은 연 3.1%, 발행어음은 연 3.4% "
               "수준입니다.")
@@ -271,7 +266,7 @@ def test_a_small_external_writer_s_marks_go_to_one_box_at_the_end(writer):
 
 # ── check:quality follow-through (matrix row 10) ──────────────────────────────────
 
-#: r8 A10-T2 LFLF: a figure the check found wrong, shipped unmarked
+#: a figure the check found wrong, shipped unmarked
 A10_SENTENCE = ("전체 초·중·고 학생 500만 명 중 유료 이용 학생의 비중은 확인되지 않았으므로, 가정: "
                 "유료 이용 학생 비율 50%를 설정했습니다 [7].")
 
@@ -310,7 +305,7 @@ def test_a_judge_s_reasoning_never_reaches_the_step():
            "특정되지 않음). 확인 필요.")
     assert report.reader_note("owner_change", why) \
         == "자료의 최종 담당은 「미정」일 수 있다. 확인 필요."
-    # r8 L27L A04-T2: 「표 3」 read as a value, the judge's reasoning shown
+    # 「표 3」 read as a value, the judge's reasoning shown
     bound = ("「60」은 자료에서 「화상회의 동시 참여 인원 (조건)」의 값일 수 있다(문맥상 "
              "'최저 연비 비용'을 선택하는 기준을 설명하는 문장 안에 포함되어 있어). 확인 필요.")
     assert report.reader_note("number_binding", bound) \

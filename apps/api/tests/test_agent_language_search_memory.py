@@ -1,10 +1,4 @@
-"""An agent's own output language, web-search default and memory opt-out.
-
-- 출력 언어: every turn and document of the agent's conversations is written in it, unless the
-  turn names another language; a published bot's frozen copy keeps it.
-- 웹 검색 기본값: a turn that sends no toggle (API, MCP) takes the agent's default.
-- 메모리 사용: off keeps account memories out of its turns and writes none from them.
-"""
+"""An agent's output language, web-search default and memory opt-out."""
 
 from __future__ import annotations
 

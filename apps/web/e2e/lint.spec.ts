@@ -63,7 +63,7 @@ test('검사에서 걸린 곳은 아티팩트 패널에서 셀 수 있고 읽을
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
 
-  // The count is the P0 one.
+  // The count: the P0-severity finding only.
   await ribbonTab(page, '검토')
   const badge = page.getByRole('button', { name: '검사 결과' })
   await expect(badge).toBeVisible({ timeout: 20_000 })

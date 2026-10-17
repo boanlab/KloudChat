@@ -1,5 +1,4 @@
-"""Round-7 skill-script fixes: each check reads the real round-7 strings the way the skill
-meant them (개조식 labels, a 「비고」 source, 「10~17시」, a missing base_date)."""
+"""Skill-script checks on 개조식 labels, a 「비고」 source, time ranges and a missing base_date."""
 
 from __future__ import annotations
 
@@ -8,7 +7,7 @@ import re
 
 from app.services import skill_scripts
 
-# ── generic-language-killer _dash (r7 A02-T2, A12-T2) ───────────────────
+# ── generic-language-killer _dash ───────────────────────────────────────
 
 _DASH = re.compile(r"[ \t]*(?:—|―)[ \t]*|!{2,}")
 
@@ -34,7 +33,7 @@ def test_a_dash_after_a_label_or_quote_becomes_a_colon_not_a_comma():
     assert _undash("10—12") == "10—12"
 
 
-# ── source-check claims (r7 A11-T2) ─────────────────────────────────────
+# ── source-check claims ─────────────────────────────────────────────────
 
 A11_T2_MATERIAL = (
     "- 설치형(온프레미스)과 클라우드형 모두 제공, 설치형은 망분리 환경 지원\n"
@@ -72,7 +71,7 @@ def test_a_source_in_the_notes_column_and_material_values_with_units_are_sourced
     assert [f["kind"] for f in claims.check(bare, A11_T2_MATERIAL)] == ["unsourced_cell"]
 
 
-# ── internal-comms facts (r7 A14-T2) ────────────────────────────────────
+# ── internal-comms facts ────────────────────────────────────────────────
 
 
 def test_a_time_range_reads_its_first_number_as_a_time():
@@ -88,7 +87,7 @@ def test_a_time_range_reads_its_first_number_as_a_time():
     assert not [f for f in check.facts("3~4시간 걸립니다") if f["kind"] == "time"]
 
 
-# ── date-calc (r7 A16-T2) ───────────────────────────────────────────────
+# ── date-calc ───────────────────────────────────────────────────────────
 
 
 def test_a_missing_base_date_names_the_key_or_uses_a_date_in_the_text(capsys):
@@ -107,7 +106,7 @@ def test_a_missing_base_date_names_the_key_or_uses_a_date_in_the_text(capsys):
 
 
 def test_the_weekday_of_given_dates():
-    # r7 A16-T2: every writer needed 「2026-11-04는 수요일」 and there was no op for it
+    # 「2026-11-04는 수요일」: a weekday check every writer needs
     dates = skill_scripts.module("date-calc", "dates")
     result = dates.run({"op": "weekday", "dates": ["2026-11-04", "2026-11-20"]})
     assert [r["shown"] for r in result["items"]] == ["2026-11-04(수)", "2026-11-20(금)"]
@@ -115,7 +114,7 @@ def test_the_weekday_of_given_dates():
 
 
 def test_a_kakao_moment_channel_is_measured():
-    # r7 A12-T2 (QMX): 「kakao_moment」 refused the whole length call
+    # 「kakao_moment」 refused the whole length call
     length = skill_scripts.module("copy-check", "length")
     row = length.measure({"channel": "kakao_moment", "field": "title", "label": "제목",
                           "text": "회의가 끝나면 요약이 도착합니다"})

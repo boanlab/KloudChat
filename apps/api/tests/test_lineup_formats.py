@@ -1,5 +1,4 @@
-"""고객 제안서, 비교·분석 보고서, 경력기술서: what is detected, which 서식 fixes it, and the
-genre rules each brings."""
+"""Proposal, comparison report and career-history formats: detection, template and genre rules."""
 
 from __future__ import annotations
 

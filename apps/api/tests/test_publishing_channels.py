@@ -1,10 +1,4 @@
-"""A published bot's channels: framed on the owner's sites, the OpenAI-compatible API and MCP.
-Each is asked for by the owner and opened by an administrator with an outside audience; the
-API and MCP take a key issued for that bot only, kept as a hash. A turn through any channel is
-the bot's turn — its approved version, strict-local, nothing of the owner's — under the key's
-limits and the owner's daily credit cap. Closing the outside audience closes every channel.
-
-Real HTTP and SQLite on the fixture of `test_publishing`; the model is its fake agent loop."""
+"""Published bot channels: framed sites, the OpenAI-compatible API and MCP."""
 
 from __future__ import annotations
 

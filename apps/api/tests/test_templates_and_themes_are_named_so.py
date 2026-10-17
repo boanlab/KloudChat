@@ -1,7 +1,4 @@
-"""What the person reads says 템플릿 for a document's structure and 테마 for its look.
-
-「서식」 is left to text formatting (bold, italics); 「양식」 and 「디자인」 are not shown.
-"""
+"""템플릿 for a document's structure and 테마 for its look in what people read."""
 
 from __future__ import annotations
 

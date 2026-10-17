@@ -1,6 +1,4 @@
-"""User pipelines: steps held to their contracts before saving, the recursion guard, editing
-and sharing through approval, and a run of a composed pipeline — agent steps handing their
-product on, a check and a review over it, a question card it waits at, a rerun from a step."""
+"""User pipelines: contracts, recursion guard, approval, and composed runs."""
 
 from __future__ import annotations
 

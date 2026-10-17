@@ -1,9 +1,4 @@
-"""The connector catalogue is data administrators keep in the UI; members install from it.
-
-time and youtube, the two entries no one could make before, are made by an administrator
-through the same endpoints the admin screen calls, and they install and run exactly as the
-seeded rows (migration 0062) do — the gateway key still bound to the stt address only.
-Stored values never come back."""
+"""Administrator-kept connector catalogue: created via admin endpoints, installed by members."""
 
 from __future__ import annotations
 

@@ -1,6 +1,4 @@
-"""Tables, styles and faces in the .docx, .hwpx and .pdf exports: no table wider than the
-text column, the head row repeated on every page, figures flush right, Word's own styles
-for headings, lists and table text, and faces each program carries."""
+"""Tables, styles and faces in the .docx, .hwpx and .pdf exports."""
 
 from __future__ import annotations
 

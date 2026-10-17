@@ -1,5 +1,4 @@
-"""An administrator sees every key an account holds, revokes the ones the person issued,
-and can bind a key they already hold as the account's KloudChat key."""
+"""Administrator view, revocation and binding of an account's keys."""
 
 from __future__ import annotations
 

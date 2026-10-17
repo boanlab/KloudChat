@@ -1,7 +1,4 @@
-"""A person could set any variable on a catalogue stdio connector (기본 제공 time, youtube): the
-server process runs `uvx`/`uv` on the API host, and a variable such as an index URL or a preload
-decides what code it runs. A person now sets only the credentials the entry asks for, never the
-command; a person's own stdio connector stays the administrator's, as when adding one."""
+"""Catalogue stdio connectors: a person sets only the asked credentials, never the command."""
 
 from __future__ import annotations
 

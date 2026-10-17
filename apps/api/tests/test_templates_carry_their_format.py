@@ -1,6 +1,4 @@
-"""A 서식 carries its own behaviour as data: the document format it fixes (`doc_format` in
-`template.toml`) and that format's genre rule (`genre.md`), read the way a person's template
-will be — no map in code says which 서식 is which format."""
+"""A 서식's document format and genre rule carried as data in the template."""
 
 from __future__ import annotations
 

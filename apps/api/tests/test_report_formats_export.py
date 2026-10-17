@@ -1,4 +1,4 @@
-"""A document by purpose leaves with its head and its heading numbers in every file."""
+"""Document head and heading numbers in every export of a purpose format."""
 
 from __future__ import annotations
 

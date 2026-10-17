@@ -1,10 +1,4 @@
-"""Weekdays and dates an answer writes, set right by code.
-
-A model counts weekdays and day offsets in its head and misses: 「10월 15일(수)」 for a
-Thursday, 「2027-02-01(일)」 for 「개강 2027-03-02, 30일 전」 (2027-01-31). Every weekday beside
-a date is the calendar's, in a chat answer and in a report; with 날짜 계산 on the turn, a date the
-person's own relative words resolve to is the script's.
-"""
+"""Weekdays and resolved dates in an answer, set right by code."""
 
 from __future__ import annotations
 

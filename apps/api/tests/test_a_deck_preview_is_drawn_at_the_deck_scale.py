@@ -1,5 +1,4 @@
-"""The gallery draws a deck 서식's sample at the deck's own type scale (`deck_type`), not at
-sizes of its own: a sparse slide's body is 22pt, its title 32pt, as in the panel and file."""
+"""Gallery deck samples at the deck's own type scale."""
 
 from __future__ import annotations
 

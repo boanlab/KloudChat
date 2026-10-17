@@ -1,5 +1,4 @@
-"""Checks only find; one repair rewrites; a rewrite is kept only when the check that
-raised it no longer does, and when it keeps its citations (adding only its evidence's)."""
+"""Find-only checks, one repair, and a rewrite kept only when it clears its check."""
 
 from __future__ import annotations
 

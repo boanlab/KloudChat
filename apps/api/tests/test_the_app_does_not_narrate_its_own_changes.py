@@ -1,9 +1,4 @@
-"""The app describes what is there, not how it got there.
-
-A notice such as 「메모리는 설정 › 메모리로 옮겼습니다」 or a guide line such as 「예전 이름 양식」
-explains a reorganisation to people who never saw the old layout. Release notes may say that;
-the screens and the in-app guide (`app/help/docs.json`, built from the website) do not.
-"""
+"""Screens and the in-app guide that describe what is there, not how it got there."""
 
 import json
 import re

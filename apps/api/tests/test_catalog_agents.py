@@ -1,7 +1,4 @@
-"""A catalogue agent end to end: seeded, installed, refreshed, assembled and retired.
-
-The product ships no agents for now; a test-local spec keeps the mechanism covered.
-"""
+"""Catalogue agent lifecycle (seed, install, refresh, assemble, retire) on a test-local spec."""
 
 from __future__ import annotations
 

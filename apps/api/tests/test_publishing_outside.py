@@ -1,9 +1,4 @@
-"""Published agents opened outside: by link or listed for everyone, once an administrator
-approved it. A visitor without an account is a signed cookie: they reach only an approved
-version, only their own conversations, nothing of the owner's, and within limits counted by
-address. Refusing, closing or revoking cuts them off with their next request.
-
-Real HTTP and SQLite on the fixture of `test_publishing`; the model is its fake agent loop."""
+"""Published agents opened outside: cookie visitors, approval, limits and cut-off."""
 
 from __future__ import annotations
 

@@ -1,8 +1,4 @@
-"""An agent's material is searched by the server before the model answers, not left to the
-model's choice of `search_knowledge` (no 연체료 하루 100원 or 일요일 09~18시 from memory where
-its FAQ says there is none and it is closed). With the passages in
-hand the 「공개 전 점검」 hold keeps answers the material gives, and a search that finds
-nothing answers that the material does not cover the question."""
+"""Server-side search of an agent's material before the model answers."""
 
 from __future__ import annotations
 

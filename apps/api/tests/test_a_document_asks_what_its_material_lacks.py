@@ -1,10 +1,4 @@
-"""Before the first draft, the facts the format needs and the material lacks are asked, once.
-
-A minutes memo gives no meeting day; a proposal memo with prices but no VAT
-basis cannot be quoted on the budget's basis. The card asks those and only those; 「있는 자료로
-진행」 (or the evaluation's typed 「더 있는 정보는 없어. 자료대로 진행해 줘.」) goes on with each
-missing fact as its bracket blank; a complete material puts no card up.
-"""
+"""One-time gap questions for facts the format needs and the material lacks."""
 
 from __future__ import annotations
 

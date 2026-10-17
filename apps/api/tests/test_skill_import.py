@@ -1,9 +1,4 @@
-"""Uploading a skill: SKILL.md or a .zip/.skill around one, read safely and scanned.
-
-Archives are read in memory within fixed limits; Python scripts under `scripts/` are kept in
-the row for the sandbox (scanned, never written to disk or imported), other scripts are
-dropped; the text scan warns (and blocks on sharing); a dry run writes nothing.
-"""
+"""Skill upload: SKILL.md or an archive around one, read safely and scanned."""
 
 from __future__ import annotations
 

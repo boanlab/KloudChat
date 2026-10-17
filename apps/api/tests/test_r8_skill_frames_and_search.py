@@ -1,8 +1,4 @@
-"""Round 8: a skill's frame gives way to the form the request names, a turn on the person's
-own material searches nothing on 「auto」, and the answer plan keeps to the person's facts.
-
-The same for every model group (docs/architecture.md, "Mechanisms by model group"): each test
-runs for a self-hosted writer and a strong external one, with the round's own requests."""
+"""Skill frames yielding to a named form, no search on own material, plans kept to the facts."""
 
 from __future__ import annotations
 
@@ -73,7 +69,7 @@ def test_an_always_on_skill_yields_to_the_named_form(writer):
     prompt = context.system_prompt(SessionKind.chat, extra=[block],
                                    light=model_tier.strong(writer))
     assert "This skill's frame gives way to it" in prompt
-    # no named form: the skill's frame as it was
+    # no named form: the skill's own frame
     assert "names its own form" not in _gaejo_block(A02_T1)
 
 
@@ -164,8 +160,7 @@ def test_a_pasted_press_release_forces_no_current_fact_search():
     assert "개편" not in sessions._ask_of(A02_T2)
 
 
-# r10 SK-copyedit-2: 「아직」 in the pasted report forced a search; SK-competitor-3: 「웹 검색은
-# 하지 말고」 was not read as a no
+# 「아직」 in a pasted report forces no search; 「웹 검색은 하지 말고」 is a no
 COPYEDIT_2 = ("팀장님께 올릴 보고서인데 어투가 섞여 있어. 합니다체로 통일하고 문장만 매끄럽게 "
               "다듬어 줘. 숫자·날짜는 그대로 둬야 해.\n\n[보고서 본문]\n지난 3분기 고객 문의는 "
               "총 4,812건이었어요. 이는 전 분기(4,105건) 대비 17.2% 늘어난 수치임. 결제 오류가 "
@@ -194,7 +189,7 @@ def test_a_no_to_search_is_read_with_its_particle():
     assert context.search_plan("auto", "검색해서 알려 줘") == (True, "web_search")
 
 
-# ── R4-P38: the answer plan keeps to the person's facts ──────────────────────
+# ── the answer plan keeps to the person's facts ──────────────────────────────
 
 P38 = ("전문 이메일 작가가 되어 줘. 상황과 목적에 맞게 이메일을 쓰고, 알맞은 인사와 맺음말을 "
        "넣어 줘.\n"

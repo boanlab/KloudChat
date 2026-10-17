@@ -1,10 +1,4 @@
-"""「에이전트로 저장」: a conversation as a draft agent, nothing saved until the form is.
-
-The draft's 「이 대화에서 정한 것」 is distilled from the person's own messages only, by the
-model the conversation ran on (its strict-local model when any turn ran strict-local, with no
-fallback and nothing masked away from it); a sealed agent's prompt is never copied. The
-conversation's files go onto the agent's shelf as copies, the caller's own only.
-"""
+"""「에이전트로 저장」: a conversation as a draft agent, nothing saved until the form is."""
 
 from __future__ import annotations
 

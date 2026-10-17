@@ -1,12 +1,4 @@
-"""r3 leftovers in tool results the answer copies from.
-
-A08 (영상 학습 노트): Claude's note opens with the video's title, channel and length; KloudChat's
-had only the bare link, because the YouTube connector returned the transcript alone. It now heads
-the transcript with them (values below are what yt-dlp gave for the two task videos).
-
-A13 T1 (광고 소재): 27B's LinkedIn table was headed 「ad_intro / ad_headline / ad_description」,
-the copy-check script's field keys, and one intro written as 148 characters measured 156.
-"""
+"""Video notes headed with title, channel and length; copy tables headed with field words."""
 
 from __future__ import annotations
 
@@ -95,7 +87,7 @@ _AD_REQUEST = (
     "- 혜택: 11월 중 신청하면 체험 기간 30일 → 45일\n"
     "채널별 글자 수 제한을 지켜서 각각 2~3안씩, A/B 테스트 아이디어도."
 )
-#: 27B's LinkedIn 3안, headed with the field words the script now gives
+#: A LinkedIn 3안 table headed with the field words the script gives
 _LINKEDIN = (
     "| # | 각도 | 헤드라인 | 글자 | 설명 | 글자 | 도입 문구 | 글자 |\n"
     "|---|------|------------|------|---------------|------|---------|------|\n"

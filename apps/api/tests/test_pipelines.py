@@ -1,9 +1,4 @@
-"""The flows are pipelines declared as data, and the runner records every stage.
-
-The pipeline files (`app/pipelines/*.toml`) replaced the format if-chains of the report
-writer: which pre-pass steps, check families, judged checks and stages a format runs. The
-first tests hold every format to what those chains did; the rest pin the runner's contract.
-"""
+"""Pipelines declared as data (`app/pipelines/*.toml`) and the runner's stage records."""
 
 from __future__ import annotations
 
@@ -60,7 +55,7 @@ def _old_checks(f: str) -> list[str]:
     if f in PREPASS:
         out.append("material-blanks")
     if f == "result_report":
-        # a remark's count kept with its remark (round 3 A03)
+        # a remark's count kept with its remark
         out.append("count-labels")
     return out
 

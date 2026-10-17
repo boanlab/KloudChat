@@ -1,6 +1,4 @@
-"""A request about material pasted under it is not a question about now: the dates, prices
-and versions in that material are what it says, so the current-fact guard adds no
-「학습 시점의 지식」 to a release note written from a commit log."""
+"""Pasted material as no question about now: no current-fact note on it."""
 
 from app.routers.sessions import _reads_pasted_material
 from app.services import freshness

@@ -1,6 +1,4 @@
-"""Demo R3/R4/S1: a weekly report 「from the attached meeting transcript」 whose figures were only
-in the transcript was told 「쓸 수 있는 수치: none」 and wrote 「[사용자 활동률]」 blanks where the
-transcript said 518 of 742; a deck from attached monthly figures got only the request's numbers."""
+"""Figures from an attached transcript or table usable in the document."""
 
 from __future__ import annotations
 

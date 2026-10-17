@@ -1,5 +1,4 @@
-"""The restatement trim keeps an FAQ answer's lead sentence and every sentence the next one
-leans on: Q7 「신청 기간과 방법은?」 keeps 「30일 전부터 14일 전까지」, 「둘째,」 keeps its 첫째."""
+"""Restatement trim keeping FAQ lead sentences and what the next sentence leans on."""
 
 from __future__ import annotations
 

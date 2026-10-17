@@ -32,7 +32,7 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
   await page.locator('button.aspect-video').first().click()
   await expect(page.getByLabel('슬라이드 편집 도구')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '이 장 다시 만들기' })).toBeVisible()
-  await ribbonTab(page, '편집')
+  await ribbonTab(page, '글자')
   await expect(page.getByLabel('슬라이드 편집 도구')).toBeVisible()
   await page.getByLabel('도구막대 강조색').fill('#123456')
   await page.getByLabel('도구막대 레이아웃').selectOption('two-column')
@@ -64,7 +64,7 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
   expect(stored.image.size).toBe('large')
   expect(stored.image.position).toBe('left')
 
-  await ribbonTab(page, '편집')
+  await ribbonTab(page, '글자')
   await page.locator('[data-slide-element="image"]').click()
   await page.keyboard.press('Delete')
   await expect(page.locator('[data-slide-element="image"]')).toHaveCount(0)
@@ -77,8 +77,8 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
   stored = await storedSlide(page, id)
   expect(stored.image).toBeUndefined()
 
-  await ribbonTab(page, '홈')
-  await ribbonTab(page, '편집')
+  await ribbonTab(page, '테마')
+  await ribbonTab(page, '글자')
   await page.getByLabel('로컬 그림 업로드').setInputFiles({
     name: '내그림.png',
     mimeType: 'image/png',
@@ -90,7 +90,7 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
   stored = await storedSlide(page, id)
   expect(stored.image.src).toContain('data:image/png;base64,')
 
-  await ribbonTab(page, '편집')
+  await ribbonTab(page, '글자')
   await page.locator('[contenteditable="true"]').filter({ hasText: '선택한 부분만 바뀌어야 합니다' }).evaluate((element) => {
     const text = element.firstChild?.firstChild ?? element.firstChild
     if (!text) throw new Error('제목 텍스트를 찾지 못했습니다.')
@@ -112,7 +112,7 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
   expect(stored.richText['bullets.0']).toMatch(/ 바뀌어야 합니다$/)
   expect(stored.richText['bullets.0']).toMatch(/<(b|strong)>/)
   expect(stored.richText['bullets.0']).toContain('font-size:1.4em')
-  await ribbonTab(page, '편집')
+  await ribbonTab(page, '글자')
   const visibleFormatting = await page.locator('[contenteditable="true"]').filter({ hasText: '선택한 부분만 바뀌어야 합니다' }).evaluate((element) => {
     const selected = element.querySelector('[style*="font-size:1.4em"]') as HTMLElement | null
     if (!selected) return null

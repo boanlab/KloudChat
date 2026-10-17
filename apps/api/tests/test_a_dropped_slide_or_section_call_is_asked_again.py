@@ -1,7 +1,4 @@
-"""r3 A13 T2 and A16 T1 (flash): the model server dropped the connection (「peer closed
-connection without sending complete message body」) and the work ended there. A slide, a
-report section or a page call is now asked once more on a dropped connection; a chat hop
-already was (#262), and a gateway's 502/503/504 now counts as a drop there too."""
+"""One retry of slide, section, page and chat calls on a dropped connection."""
 
 from __future__ import annotations
 

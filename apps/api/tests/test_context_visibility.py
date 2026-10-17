@@ -167,8 +167,7 @@ async def test_another_conversations_upload_is_not_carried():
 
 
 async def test_a_document_follow_up_without_files_still_reads_the_session_s_files():
-    """gaejo-report-4: the follow-up 「처장님이 예산 부족분 얘기를 맨 위로 올리래 …」 came with no
-    file, was re-planned, and wrote 「제공된 원문 자료(메모) 없음」 over a 912-character memo."""
+    """A file-less follow-up reading the session's memo, not 「제공된 원문 자료(메모) 없음」."""
     memo = _file("gaejo_safety_inspection_notes.txt", "불량 실험실 13곳, 부족 예산 4,200만 원")
     memo.session_id = "session-1"
     export = _file("하반기 실험실 안전점검 결과 보고.pdf", "앞서 만든 보고서 본문")

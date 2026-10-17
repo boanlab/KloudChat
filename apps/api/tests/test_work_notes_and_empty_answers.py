@@ -1,5 +1,4 @@
-"""The writer's work notes and check verdicts never ship; a turn that gathered material but
-wrote nothing is written once more from that material."""
+"""Work notes kept out of answers, and empty answers written from gathered material."""
 
 from __future__ import annotations
 
@@ -10,11 +9,11 @@ from app.pipeline.stage import Context
 from app.services import agent, internal_words, report
 from app.services.tools.base import Tool, ToolContext, ToolResult
 
-# ── work notes (strings from the r3 persona sweep) ────────────────────────────
+# ── work notes ────────────────────────────
 
 
 def test_a_check_verdict_above_the_report_is_dropped() -> None:
-    """A02 flash: the grounding check's verdict opened the answer, a rule under it."""
+    """The grounding check's verdict opened the answer, a rule under it."""
     answer = (
         "근거 대조 결과 근거 없는 값 0개.\n\n---\n\n# 주간 업무 보고서\n\n"
         "**보고 기간:** 10/5 ~ 10/9\n\n## 1. 결정 요청 사항\n\n"
@@ -34,7 +33,7 @@ def test_a_verdict_the_person_asked_for_stays() -> None:
 
 
 def test_section_narration_question_stubs_and_lone_check_go() -> None:
-    """A03 flash: narration about sections, a 「[질문]」 stub, a section that was just 「check」."""
+    """Narration about sections, a 「[질문]」 stub, and a section that is just 「check」."""
     overview = (
         "결과 요약 섹션의 초안 확인을 위해 누락된 정보를 먼저 점검합니다.\n\n"
         "개요 섹션은 행사 및 사업의 기본 현황을 표로 정리하는 영역입니다. "
@@ -59,7 +58,7 @@ def test_section_narration_question_stubs_and_lone_check_go() -> None:
 
 
 def test_an_english_note_in_place_of_a_section_leaves_it_empty() -> None:
-    """A07 27B: the whole 「주요 사례」 section was one English line about the work."""
+    """A 「주요 사례」 section that is one English line about the work."""
     body = ("I'll analyze the available sources to write this section accurately, then verify "
             "against the material.")
     out = internal_words.strip_work_notes(
@@ -68,7 +67,7 @@ def test_an_english_note_in_place_of_a_section_leaves_it_empty() -> None:
 
 
 def test_a_worksheet_section_keeps_only_its_final_text() -> None:
-    """A07 27B: analysis, plan, draft, review and 「최종 텍스트 생성」 all in the section."""
+    """Analysis, plan, draft, review and 「최종 텍스트 생성」 all in the section."""
     body = (
         "먼저 제공된 자료를 분석하여 \"가이드라인 공통 쟁점 분석\"에 해당되는 내용만 추출하고, "
         "요청된 형식(수치 제한, 문체, 출처)에 맞게 작성하겠습니다.\n\n"
@@ -103,7 +102,7 @@ def test_a_worksheet_without_a_final_text_keeps_its_draft() -> None:
 
 
 def test_an_english_process_memo_before_the_answer_goes() -> None:
-    """A11 flash: about forty lines of English notes, then the Korean briefing."""
+    """About forty lines of English notes, then the Korean briefing."""
     answer = (
         "The user is asking me to write the customer research briefing using only what I've "
         "already found, without further tools. Let me carefully review what I actually "
@@ -160,7 +159,7 @@ _DRAFT = "## 개요\n행사는 10월 2일부터 3일까지 미래관에서 열�
 
 
 async def test_a_section_left_as_check_is_written_once_more(monkeypatch) -> None:
-    """A03 flash: 「향후 계획」 shipped as the single word 「check」."""
+    """「향후 계획」 written as the single word 「check」."""
     prompts: list[str] = []
 
     async def complete(model, messages, api_key, max_tokens, **kwargs):
