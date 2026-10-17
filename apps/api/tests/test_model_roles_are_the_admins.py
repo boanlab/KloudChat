@@ -137,6 +137,7 @@ def test_the_code_models_are_the_stored_ones(monkeypatch):
         ("model_chat", "", "model_chat_required"),
         ("model_chat", "google/img", "model_chat_invalid"),
         ("model_report", "local/unknown", "model_report_invalid"),
+        ("model_image", "", "model_image_required"),
         ("model_image", "local/qwen3.8-27b", "model_image_invalid"),
         ("model_audio", "google/film", "model_audio_invalid"),
         # Side work that reads the conversation stays on self-hosted models.

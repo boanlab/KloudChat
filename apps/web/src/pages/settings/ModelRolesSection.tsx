@@ -13,7 +13,7 @@ const SURFACES: { key: ModelKey; label: string; from: keyof Roles['choices']; em
   { key: 'chat', label: '대화 기본 모델', from: 'chat' },
   { key: 'report', label: '보고서 기본 모델', from: 'report', empty: '대화 기본 모델을 따름' },
   { key: 'slides', label: '발표 자료 기본 모델', from: 'slides', empty: '대화 기본 모델을 따름' },
-  { key: 'image', label: '그림 기본 모델', from: 'image', empty: '가장 싼 그림 모델' },
+  { key: 'image', label: '그림 기본 모델', from: 'image' },
   { key: 'audio', label: '오디오 기본 모델', from: 'audio', empty: '가장 싼 오디오 모델' },
   { key: 'video', label: '동영상 기본 모델', from: 'video', empty: '가장 싼 동영상 모델' },
 ]
@@ -54,6 +54,7 @@ const FIELD: Record<ModelKey, string> = {
 /** Server refusals (`model_title_invalid`, …). */
 function refusal(detail: string, t: (s: string) => string): string {
   if (detail === 'model_chat_required') return t('대화 기본 모델은 비워 둘 수 없습니다.')
+  if (detail === 'model_image_required') return t('그림 기본 모델은 비워 둘 수 없습니다.')
   if (/^model_(title|code|code_fallback)_invalid$/.test(detail))
     return t('보조 작업에는 이 인스턴스가 직접 운영하는 모델만 고를 수 있습니다.')
   if (/^model_\w+_invalid$/.test(detail)) return t('이 작업에 쓸 수 없는 모델입니다. 목록에서 다시 고르세요.')
@@ -80,6 +81,12 @@ function ModelSelect({
     <Field label={label} hint={hint}>
       <Select value={value} onChange={(e) => onChange(e.target.value)}>
         {empty !== undefined && <option value="">{empty}</option>}
+        {/* A required job saved empty before it became required: shown as unchosen, not as the first model. */}
+        {empty === undefined && !value && (
+          <option value="" disabled>
+            {t('모델을 고르세요')}
+          </option>
+        )}
         {/* Stored model missing from the catalogue stays selectable, so the choice is not misread. */}
         {value && !choices.some((m) => m.id === value) && (
           <option value={value}>

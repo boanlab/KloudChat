@@ -414,8 +414,9 @@ Which model does which job when the person has not chosen one: the default of
 each surface (chat, report, slides, image, audio, video), the model for
 titles, memories and the running summary, the model that writes `run_code`
 programs and its fallback, and whether self-hosted and external models think
-before answering. Report and slides left empty follow the chat default; image,
-audio and video left empty take the cheapest model of their kind. The
+before answering. Chat and image must be chosen (`422 model_chat_required`,
+`422 model_image_required`); report and slides left empty follow the chat
+default; audio and video left empty take the cheapest model of their kind. The
 side-work models read the conversation, so only self-hosted chat models can be
 chosen (`422 model_title_invalid` and the like otherwise); a strict-local turn
 uses the `strict-local/` twin. A model the gateway stopped serving stays

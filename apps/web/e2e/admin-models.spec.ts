@@ -20,7 +20,7 @@ const external = { id: 'openai/gpt-x', label: 'OpenAI · GPT', strictLocal: fals
 
 function roles(extra: Record<string, unknown>) {
   return {
-    chat: 'local/qwen3.8-27b', report: '', slides: 'local/qwen3.8-27b', image: '', audio: '', video: '',
+    chat: 'local/qwen3.8-27b', report: '', slides: 'local/qwen3.8-27b', image: 'google/img', audio: '', video: '',
     title: 'local/qwen3.8-flash', code: 'local/qwen3.8-27b', codeFallback: 'local/qwen3.8-flash',
     selfHostedThinking: false, externalThinking: false, defaultMonthlyCredits: 500000,
     choices: {
@@ -116,6 +116,8 @@ test('the administrator decides which model does which job', { tag: '@phone' }, 
   const report = card.getByRole('combobox', { name: /^보고서 기본 모델/ })
   await expect(report).toHaveValue('')
   await expect(report.locator('option').first()).toHaveText('대화 기본 모델을 따름')
+  // The picture default is always a named model: no empty choice.
+  await expect(card.getByRole('combobox', { name: /^그림 기본 모델/ }).locator('option')).toHaveText(['Google · Image'])
   // Side work that reads the conversation offers self-hosted models only.
   const title = card.getByRole('combobox', { name: /^제목·기억·요약 모델/ })
   await expect(title.locator('option')).toHaveText(['대화의 모델을 그대로 사용', 'Qwen · 27B', 'Qwen · Flash'])
@@ -128,7 +130,7 @@ test('the administrator decides which model does which job', { tag: '@phone' }, 
   await expect(card.getByText('저장했습니다')).toBeVisible()
   expect(puts.at(-1)).toEqual({
     modelChat: 'local/qwen3.8-27b', modelReport: 'local/qwen3.8-flash', modelSlides: 'local/qwen3.8-27b',
-    modelImage: '', modelAudio: '', modelVideo: '', modelTitle: 'local/qwen3.8-flash',
+    modelImage: 'google/img', modelAudio: '', modelVideo: '', modelTitle: 'local/qwen3.8-flash',
     modelCode: 'local/qwen3.8-27b', modelCodeFallback: '', thinkingSelfHosted: '1', thinkingExternal: '0',
   })
   await expect(card.getByRole('switch', { name: '자체 호스팅 모델이 답하기 전에 생각' }))
