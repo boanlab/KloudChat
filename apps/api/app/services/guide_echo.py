@@ -6,7 +6,7 @@ wrote. Two things from it may not reach the reader unless the person's input or 
 give them:
 
 - example values: a person's name the guidance uses as an example (「김현수 드림」 in an
-  output format, r9 A15-T2) becomes 「[이름]」; a full date from the guidance's examples
+  output format) becomes 「[이름]」; a full date from the guidance's examples
   (「2026. 12. 31.」) becomes 「[날짜]」;
 - rule lines: a sentence that repeats a stretch of the guidance's own wording (outside its
   quoted 「…」 examples, tables and fenced formats, which are there to be copied) and reads as a

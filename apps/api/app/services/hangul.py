@@ -157,7 +157,7 @@ def repair_kana(text: str, vocabulary: str = "", *,
     return (re.sub(r"(?<=\S) {2,}(?=\S)", " ", out) if changed else text), changed
 
 
-#: a whole Cyrillic word between Korean words (r8 P16 flash 「흥미 или 즐거움」): read as Korean
+#: a whole Cyrillic word between Korean words (「흥미 или 즐거움」): read as Korean
 _CYRILLIC_WORD = re.compile(r"(?<![\u0400-\u04FFA-Za-z])[\u0400-\u04FF]+(?![\u0400-\u04FFA-Za-z])")
 _CYRILLIC_KO = {"или": "또는", "и": "및", "но": "하지만", "да": "네", "нет": "아니요",
                 "для": "위한", "в": "", "на": ""}
@@ -193,8 +193,8 @@ def repair_mixed_script(text: str, vocabulary: str = "", *,
                         keep_sentences: bool = False) -> tuple[str, list[str]]:
     """(text, changed): Cyrillic-tainted Korean words fixed or stripped; Greek kept;
     Japanese kana slips read as Korean or dropped (`keep_sentences`: only the kana run goes).
-    A tainted word with one Korean syllable left and no clean match goes whole (r8 P07 27B
-    「턱 인тягивание(chin tuck)」 → 「턱(chin tuck)」, not 「턱 인(chin tuck)」)."""
+    A tainted word with one Korean syllable left and no clean match goes whole
+    (「턱 인тягивание(chin tuck)」 → 「턱(chin tuck)」, not 「턱 인(chin tuck)」)."""
     import difflib
 
     text, kana = repair_kana(text, vocabulary, keep_sentences=keep_sentences)

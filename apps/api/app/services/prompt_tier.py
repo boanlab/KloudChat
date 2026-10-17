@@ -1,11 +1,10 @@
 """Writer prompts by model tier (`model_tier.strong`).
 
 A strong writer gets only what it cannot know: the date, the tools and their results, the
-structure the renderer reads, the person's settings and emergency guidance (round 7: the same
-model wrote worse inside KloudChat than called directly, following writing rules to the
-letter). Document prompts keep one template for both tiers; `for_writer` drops the rule
-bullets below for a strong writer, so a rule is written once and its light form is a list
-of openings here."""
+structure the renderer reads, the person's settings and emergency guidance (writing rules make
+a strong model follow them to the letter and write worse). Document prompts keep one template
+for both tiers; `for_writer` drops the rule bullets below for a strong writer, so a rule is
+written once and its light form is a list of openings here."""
 
 from __future__ import annotations
 

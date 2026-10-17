@@ -181,7 +181,7 @@ async def series(
 async def latest(
     db: AsyncSession, *, since: datetime, source: str | None = None
 ) -> dict[Key, tuple[datetime, float]]:
-    """Newest raw value per series since since."""
+    """Newest raw value per series since `since`."""
     query = select(
         MetricSample.ts,
         MetricSample.source,
@@ -200,7 +200,7 @@ async def latest(
 async def recent(
     db: AsyncSession, *, since: datetime, names: Iterable[str]
 ) -> dict[Key, list[tuple[datetime, float]]]:
-    """Raw points of named series since since, oldest first (rules)."""
+    """Raw points of named series since `since`, oldest first (rules)."""
     query = (
         select(
             MetricSample.ts,

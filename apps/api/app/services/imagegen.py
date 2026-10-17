@@ -65,7 +65,7 @@ _STYLE_PHRASE = {
 
 #: screen chips (mirrored in web's STYLE_GROUPS): the picture model's looks, then the
 #: figures drawn as shapes or a chart, then the prompt as written. 도식, 미니멀 and 3D 렌더
-#: are still accepted (document figures pass 미니멀) but not offered.
+#: are accepted (document figures pass 미니멀) but not offered.
 STYLE_CHOICES = [
     "자동",
     "사진",
@@ -200,7 +200,7 @@ def _measure(data: bytes) -> tuple[int, int]:
         return 0, 0
 
 
-#: image-only models that honour image_config.aspect_ratio (measured 10-17)
+#: image-only models that honour image_config.aspect_ratio
 _ASPECT_FAMILIES = ("seedream", "grok-imagine", "recraft", "gpt-5.4-image")
 
 

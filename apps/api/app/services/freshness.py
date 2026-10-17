@@ -125,7 +125,7 @@ def normalize_answer_notice(
     """No blanket footer; dedupe a model-generated notice only. The notice goes when the
     answer stands on this turn's search or the person's material (`grounded`), when the
     person fixed the answer's form, or when the answer already says what it could not check
-    (r8 P19·P31·P56·A11: 「…학습 기준 연월을 확인할 수 없어…」 under a cited answer, after
+    (「…학습 기준 연월을 확인할 수 없어…」 under a cited answer, after
     「이번 검색에서 현재 금리 수치를 확인하지 못했으므로」)."""
     body, found = _without_trailing_notices(content)
     if not found:

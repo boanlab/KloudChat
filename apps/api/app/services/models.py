@@ -26,11 +26,11 @@ _IMAGE_TOKENS = {
     "google/gemini-3-pro-image": 1290,
     "openai/gpt-5-image-mini": 5450,
     "openai/gpt-5-image": 5450,
-    # OpenRouter prices these per 1K image as 4,175 tokens (measured 10-17)
+    # OpenRouter prices these per 1K image as 4,175 tokens
     "bytedance-seed/seedream-5-0-flash": 4175,
     "x-ai/grok-imagine-image-2.0": 4175,
     "recraft/recraft-v4.1": 4175,
-    # one 16:9 picture: 3,866 output tokens, usage.cost $0.127 (measured 10-17)
+    # one 16:9 picture: 3,866 output tokens, usage.cost $0.127
     "openai/gpt-5.4-image-2": 3866,
 }
 

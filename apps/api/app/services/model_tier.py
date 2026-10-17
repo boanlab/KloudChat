@@ -2,8 +2,7 @@
 
 Small self-hosted models need the guard rails (rules in the prompt, checks that rewrite);
 strong models write better without them, and a weaker judge must not rewrite a stronger
-writer's answer (round 7: the same model scored lower inside KloudChat than called
-directly). Strong writers get tools, material, deterministic checks and marks only."""
+writer's answer. Strong writers get tools, material, deterministic checks and marks only."""
 
 from __future__ import annotations
 

@@ -140,10 +140,10 @@ PROCEED_RULE = """- Do not ask back. The user already chose "있는 자료로 �
   cover show as 「자료 없음」 in the outline."""
 
 
-#: a document's head field the sender fills in (r5 A03-T1: 「공문의 시행(발송)일이 언제입니까?」)
+#: a document's head field the sender fills in (「공문의 시행(발송)일이 언제입니까?」)
 _HEAD_FIELD_ASK = re.compile(
     r"(?:시행|발송|발신|접수)\s?\(?[^)\n]{0,6}\)?\s?(?:일|일자|날짜|번호)|문서\s?번호")
-#: whether to do what was asked, offering a blank instead (r5 A09-T2: 「계산해 넣을지, 자리만
+#: whether to do what was asked, offering a blank instead (「계산해 넣을지, 자리만
 #: 틀어둘까요」 with 「[수치]로 빈칸 두고」)
 _BLANK_OPTION = re.compile(r"\[[^\]\n]{1,12}\]|빈칸|자리만|비워\s?두")
 
