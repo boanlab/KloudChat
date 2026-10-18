@@ -6,7 +6,7 @@ import json
 
 from pptx import Presentation
 
-from app.services import deck, deck_export, diagram_render, figure_kinds
+from app.services import deck, deck_export, diagram_render, figure_kinds, quality_gate
 
 STEPS = {"kind": "steps", "lang": "ko", "steps": [
     {"name": "철거", "note": "긴 테이블 120석과 형광등 철거"},
@@ -80,4 +80,8 @@ def test_a_figure_alone_fills_the_body_without_a_caption_repeating_the_title():
             and s.text_frame.text != "공사 단계"]
     assert len(rows) == 4
     assert deck_export._unless_title("공사 단계 흐름도", {"title": "공사 단계"}) == ""
+    assert deck_export._unless_title("공사 단계", {"title": "공사 4단계"}) == ""
     assert deck_export._unless_title("현재와 리뉴얼 뒤", {"title": "공사 단계"})
+    # and a figure that carries its own words is not a finding
+    codes = [f["code"] for f in quality_gate.deck_findings([slide])]
+    assert "figure_without_words" not in codes

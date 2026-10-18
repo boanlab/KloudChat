@@ -94,10 +94,12 @@ function unnumbered(title: string): string {
 /** A picture's caption, or '' when it only repeats the slide's title (as `deck_export`). */
 function captionOf(slide: Slide): string {
   const caption = slide.image?.caption || slide.diagram?.caption || ''
-  const bare = (text: string) => text.replace(/[\s·:,.\-–—]+/g, '')
-  const said = bare(caption)
-  const title = bare(slide.title || '')
-  return !said || (title && (said.includes(title) || title.includes(said))) ? '' : caption
+  const words = (text: string) => text.match(/[가-힣A-Za-z]+/g) ?? []
+  const said = words(caption)
+  const title = words(slide.title || '').join('')
+  if (!said.length || !title) return said.length ? caption : ''
+  // every word in the title (「공사 단계」 under 「공사 4단계」), or the title in the caption
+  return said.every((word) => title.includes(word)) || said.join('').includes(title) ? '' : caption
 }
 
 /** Whether a slide says anything besides its title and picture. */
