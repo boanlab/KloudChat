@@ -484,8 +484,7 @@ def _document_image_model(user: User, catalogue: dict, *, strict_local: bool) ->
     usable = _allowed_models(user, catalogue["models"], kind="image")
     if strict_local:
         inside = sorted((m for m in usable if _strict_model(m)), key=model_service.fallback_order)
-        chosen = model_service.find(inside, Preferences.of(user).strict_image_model)
-        return chosen or (inside[0] if inside else None)
+        return model_service.strict_image_model(inside, Preferences.of(user).strict_image_model)
     default = (catalogue.get("defaultModelByKind") or {}).get("image")
     return next((m for m in usable if m["id"] == default), usable[0] if usable else None)
 
@@ -585,15 +584,17 @@ def _media_model(
 ) -> dict | None:
     """Asked model, else default, else cheapest; allowed only, strict-local only when required.
 
-    Kept strict-local, a picture asked on an outside model goes to the person's strict-local pick.
+    Kept strict-local, a picture asked on an outside model goes to `strict_image_model`, the rule
+    the settings screen shows.
     """
     usable = sorted(_allowed_models(user, catalogue, kind=kind), key=model_service.fallback_order)
-    wanted_ids = [asked, default]
     if boundary.strict:
         usable = [m for m in usable if _strict_model(m)]
         if kind == "image":
-            wanted_ids.insert(1, Preferences.of(user).strict_image_model)
-    for wanted in wanted_ids:
+            return model_service.find(usable, asked or "") or model_service.strict_image_model(
+                usable, Preferences.of(user).strict_image_model
+            )
+    for wanted in (asked, default):
         found = model_service.find(usable, wanted or "")
         if found is not None:
             return found
