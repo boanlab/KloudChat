@@ -1,0 +1,635 @@
+"""Figures with a fixed shape (steps, cycle, house, compare): slots the model fills, drawn
+to a set layout with native .pptx shapes.
+
+A figure's stored source stays a mermaid flowchart, so the browser view, the fact check and
+editing read it as before; its last line carries the slots as a mermaid comment, and the
+renderer and the deck export draw from those instead of laying the flowchart out.
+"""
+
+from __future__ import annotations
+
+import colorsys
+import json
+import math
+import re
+from typing import Any
+
+from app.services import figure_text
+
+#: comment line carrying the slots under the fallback flowchart
+MARK = "%% kloudchat-figure: "
+KINDS = ("steps", "cycle", "house", "compare")
+
+INK = "#1B2430"
+SUB = "#5A6675"
+NEUTRAL = "#64748B"
+WHITE = "#FFFFFF"
+
+#: shape labels for the choice; only KINDS are drawn here, the rest stay mermaid
+CHOICES = {
+    "steps": "one line of 3-7 phases, one after another, with no branches, no second flow "
+             "and nothing looping back",
+    "cycle": "3-6 stages that repeat in a loop (PDCA, a feedback cycle, a life cycle)",
+    "house": "a framework: one goal on top, 2-5 parallel areas under it, and 1-3 foundations "
+             "every area stands on",
+    "compare": "exactly two options compared side by side on the same aspects",
+    "messages": "parties sending each other messages (client and server, a handshake, "
+                "a protocol)",
+    "options": "three or more options compared",
+    "axes": "two axes crossing (a positioning map, a 2×2 matrix)",
+    "other": "anything else: an architecture, a system, a model's structure, two or more "
+             "flows side by side, a flow that branches or loops back to an earlier step",
+}
+
+_CHOOSE = (
+    "Pick the shape of the figure described by the user. Answer with one label from the list "
+    "and nothing else.\n\n"
+    + "\n".join(f"- {label}: {meaning}" for label, meaning in CHOICES.items())
+)
+
+#: the slots each kind fills, as an example
+_SLOTS = {
+    "steps": '{"kind": "steps", "steps": [{"name": "현황 진단", "note": "업무 흐름 조사"}, …]}',
+    "cycle": '{"kind": "cycle", "center": "PDCA", "center_note": "품질 개선 순환",\n'
+             ' "stages": [{"name": "계획", "en": "Plan", "note": "목표와 개선안 수립"}, …]}',
+    "house": '{"kind": "house", "goal": "신뢰할 수 있는 데이터 활용",\n'
+             ' "pillars": ["데이터 품질 관리", "메타데이터 관리", …],\n'
+             ' "base": [{"name": "거버넌스 조직", "items": ["데이터 위원회", "데이터 관리자"]},\n'
+             '          {"name": "정책 · 표준", "note": "모든 영역이 따르는 규칙"}]}',
+    "compare": '{"kind": "compare", "sides": ["기존 · 수작업 월간 보고", "자동화 보고"],\n'
+               ' "rows": [{"aspect": "수집", "before": "담당자가 5개 시스템에서 엑셀로 수집",\n'
+               '           "after": "파이프라인이 매일 자동 수집"}, …],\n'
+               ' "hot": {"row": "작성", "badge": "3일 → 즉시"}}\n'
+               '`before` is the first side, `after` the second; every row fills both. `hot` '
+               'names the one row that matters most; its `badge` is optional.',
+}
+
+_FILL = """
+You fill the slots of one figure from the user's description. The figure is a {kind}: {meaning}.
+
+Answer with one ```json block and, under it, one caption line starting with 「그림: 」 that
+says in one sentence what the figure shows. The slots, as an example:
+
+{slots}
+
+- Use only what the description says. Never invent a note, number, name or badge; leave an
+  optional field out instead (`note`, `en`, `center`, `center_note`, `items`, `hot`, `badge`).
+- Keep every part the description names; do not merge or drop one to fit.
+- Names are short: a step, stage or pillar name about 8 characters (at most 12), a note at
+  most 24, a compare cell at most 30. Use the description's own terms.
+- `en` only when the description gives the English term.
+- Write the names and the caption in {language}.
+"""
+
+
+def choose_messages(description: str, what: str) -> list[dict[str, str]]:
+    """The shape choice for a figure: one label from CHOICES."""
+    return [
+        {"role": "system", "content": _CHOOSE},
+        {"role": "user", "content": f"그릴 것: {what}\n\n설명:\n{description.strip()}"},
+    ]
+
+
+def chosen(text: str) -> str | None:
+    """The kind a shape choice picked, or None for one drawn as mermaid."""
+    word = re.search(r"[a-z]+", (text or "").lower())
+    return word.group(0) if word and word.group(0) in KINDS else None
+
+
+def fill_messages(kind: str, description: str, language: str) -> list[dict[str, str]]:
+    """The slots of one kind, from the description."""
+    system = _FILL.format(
+        kind=kind, meaning=CHOICES[kind], slots=_SLOTS[kind],
+        language="English" if language == "en" else "Korean",
+    )
+    return [
+        {"role": "system", "content": system.strip()},
+        {"role": "user", "content": f"설명:\n{description.strip()}"},
+    ]
+
+
+# ── slots ─────────────────────────────────────────────────────────────
+
+
+def _text(value: Any, limit: int) -> str:
+    """One line of at most `limit` characters, cut at a space when one is near the end."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    space = cut.rfind(" ")
+    return (cut[:space] if space >= limit // 2 else cut).rstrip(" ·,")
+
+
+def _named(value: Any, limit: int = 24) -> dict[str, str] | None:
+    """`{"name", "note"?, "en"?}` from a dict or a bare name."""
+    if isinstance(value, str):
+        value = {"name": value}
+    if not isinstance(value, dict):
+        return None
+    name = _text(value.get("name"), limit)
+    if not name:
+        return None
+    out = {"name": name}
+    for key, size in (("note", 40), ("en", 16)):
+        if text := _text(value.get(key), size):
+            out[key] = text
+    return out
+
+
+def spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
+    """Checked slots for one figure kind, or None when they don't make that figure."""
+    if not isinstance(data, dict) or data.get("kind") not in KINDS:
+        return None
+    kind = data["kind"]
+    lang = "en" if language == "en" else "ko"
+    if kind in ("steps", "cycle"):
+        key = "steps" if kind == "steps" else "stages"
+        items = [n for v in (data.get(key) or [])[: 7 if kind == "steps" else 6]
+                 if (n := _named(v))]
+        if len(items) < 3:
+            return None
+        out: dict[str, Any] = {"kind": kind, "lang": lang, key: items}
+        if kind == "cycle":
+            for field, size in (("center", 14), ("center_note", 20)):
+                if text := _text(data.get(field), size):
+                    out[field] = text
+        return out
+    if kind == "house":
+        goal = _text(data.get("goal"), 40)
+        pillars = [t for v in (data.get("pillars") or [])[:5] if (t := _text(v, 24))]
+        base = []
+        for row in (data.get("base") or [])[:3]:
+            named = _named(row, 24)
+            if named is None:
+                continue
+            items = [t for v in (row.get("items") or [])[:4] if (t := _text(v, 16))] \
+                if isinstance(row, dict) else []
+            if items:
+                named["items"] = items
+            base.append(named)
+        if not goal or len(pillars) < 2:
+            return None
+        return {"kind": kind, "lang": lang, "goal": goal, "pillars": pillars, "base": base}
+    sides = [t for v in (data.get("sides") or [])[:2] if (t := _text(v, 30))]
+    rows = []
+    for row in (data.get("rows") or [])[:6]:
+        if not isinstance(row, dict):
+            continue
+        aspect, before, after = (_text(row.get(k), 30) for k in ("aspect", "before", "after"))
+        if aspect and before and after:
+            rows.append({"aspect": aspect, "before": before, "after": after})
+    if len(sides) < 2 or len(rows) < 2 or len(rows) < len(data.get("rows") or []):
+        return None  # a row with one side empty is not this comparison
+    out = {"kind": kind, "lang": lang, "sides": sides, "rows": rows}
+    hot = data.get("hot") if isinstance(data.get("hot"), dict) else {}
+    if (row := _text(hot.get("row"), 30)) and any(r["aspect"] == row for r in rows):
+        out["hot"] = {"row": row}
+        if badge := _text(hot.get("badge"), 16):
+            out["hot"]["badge"] = badge
+    return out
+
+
+# ── stored source ─────────────────────────────────────────────────────
+
+
+def _q(text: str) -> str:
+    """Label as a quoted mermaid label."""
+    return '"' + text.replace('"', "'") + '"'
+
+
+def _flowchart(s: dict[str, Any]) -> list[str]:
+    """Plain flowchart of the same figure, for views that draw mermaid."""
+    kind = s["kind"]
+    if kind in ("steps", "cycle"):
+        items = s["steps" if kind == "steps" else "stages"]
+        lines = ["flowchart LR"]
+        for k, item in enumerate(items):
+            hot = ":::hot" if kind == "steps" and k == len(items) - 1 else ""
+            lines.append(f"  s{k}({_q(item['name'])}){hot}")
+        lines.append("  " + " --> ".join(f"s{k}" for k in range(len(items))))
+        if kind == "cycle":
+            lines.append(f"  s{len(items) - 1} -.-> s0")
+        return lines
+    if kind == "house":
+        lines = ["flowchart TB", f"  g({_q(s['goal'])}):::hot"]
+        for k, name in enumerate(s["pillars"]):
+            lines += [f"  p{k}({_q(name)})", f"  g --> p{k}"]
+        for k, row in enumerate(s["base"]):
+            label = row["name"] + (": " + "·".join(row["items"]) if row.get("items") else "")
+            lines.append(f"  b{k}[{_q(label)}]")
+            lines += [f"  p{j} --> b{k}" for j in range(len(s["pillars"]))] if k == 0 else [
+                f"  b{k - 1} --> b{k}"]
+        return lines
+    hot = (s.get("hot") or {}).get("row")
+    lines = ["flowchart LR"]
+    for side, key, field in (("old", "a", "before"), ("new", "b", "after")):
+        title = s["sides"][0 if key == "a" else 1]
+        lines += [f"  subgraph {side}[{_q(title)}]", "    direction TB"]
+        for k, row in enumerate(s["rows"]):
+            mark = ":::hot" if key == "b" and row["aspect"] == hot else ""
+            lines.append(f"    {key}{k}[{_q(row['aspect'] + ': ' + (row[field] or '-'))}]{mark}")
+        if len(s["rows"]) > 1:
+            lines.append("    " + " ~~~ ".join(f"{key}{k}" for k in range(len(s["rows"]))))
+        lines.append("  end")
+    lines.append("  old -.-> new")
+    return lines
+
+
+def to_source(s: dict[str, Any]) -> str:
+    """Stored source: the fallback flowchart, then the slots as a comment line."""
+    slots = json.dumps(s, ensure_ascii=False, separators=(",", ":"))
+    return "\n".join([*_flowchart(s), MARK + slots])
+
+
+def from_source(source: str) -> dict[str, Any] | None:
+    """Slots stored under a flowchart, or None for a plain flowchart."""
+    for line in reversed((source or "").splitlines()):
+        if line.startswith(MARK):
+            try:
+                data = json.loads(line[len(MARK):])
+            except ValueError:
+                return None
+            if not isinstance(data, dict):
+                return None
+            found = spec(data, str(data.get("lang") or "ko"))
+            if found is not None and found.get("hot") and ":::hot" not in source:
+                found.pop("hot")  # the fact check took the highlight off
+            return found
+    return None
+
+
+# ── colour ────────────────────────────────────────────────────────────
+
+
+def _code(r: float, g: float, b: float) -> str:
+    return f"#{round(r):02X}{round(g):02X}{round(b):02X}"
+
+
+def _hexed(colour: Any) -> str:
+    from app.services import diagram_shapes
+
+    return _code(*diagram_shapes._hex(colour))
+
+
+def tint(colour: str, amount: float) -> str:
+    """`colour` mixed toward white by `amount` (0-1)."""
+    c = colour.lstrip("#")
+    rgb = [int(c[i:i + 2], 16) for i in (0, 2, 4)]
+    return _code(*(v + (255 - v) * amount for v in rgb))
+
+
+#: hue steps from the accent for figures with one colour per part (blue → teal, amber, violet)
+_HUES = (0.0, -0.135, 0.455, 0.115, -0.27, 0.3)
+
+
+def _luminance(r: float, g: float, b: float) -> float:
+    """WCAG relative luminance of 0-1 channels."""
+    def channel(c: float) -> float:
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def hues(accent: str, n: int) -> list[str]:
+    """`n` distinct colours around the accent, each dark enough for white text (4.5:1)."""
+    c = accent.lstrip("#")
+    r, g, b = (int(c[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    h, lightness, s = colorsys.rgb_to_hls(r, g, b)
+    out = []
+    for k in range(n):
+        hue, light = (h + _HUES[k % len(_HUES)]) % 1.0, min(lightness, 0.5)
+        sat = max(0.55, min(s, 0.85))
+        rgb = colorsys.hls_to_rgb(hue, light, sat)
+        while _luminance(*rgb) > 0.183 and light > 0.15:
+            light -= 0.02
+            rgb = colorsys.hls_to_rgb(hue, light, sat)
+        out.append(_code(*(v * 255 for v in rgb)))
+    return out
+
+
+# ── drawing ───────────────────────────────────────────────────────────
+
+
+class Pen:
+    """Shapes on a slide in figure units, scaled and centred into the figure's box."""
+
+    def __init__(self, slide, *, left: float, top: float, width: float, height: float,
+                 size: tuple[float, float], font: str) -> None:
+        from pptx.util import Pt
+
+        self.shapes = slide.shapes
+        self.k = min(width / size[0], height / size[1])
+        self.ox = left + (width - size[0] * self.k) / 2
+        self.oy = top + (height - size[1] * self.k) / 2
+        self.font = font
+        self._pt = Pt
+
+    def _x(self, x: float):
+        return self._pt(self.ox + x * self.k)
+
+    def _y(self, y: float):
+        return self._pt(self.oy + y * self.k)
+
+    def _d(self, d: float):
+        return self._pt(d * self.k)
+
+    @staticmethod
+    def _rgb(colour: str):
+        from pptx.dml.color import RGBColor
+
+        return RGBColor.from_string(colour.lstrip("#").upper())
+
+    def _paint(self, shape, fill: str | None, stroke: str | None, sw: float = 1.5,
+               dash: bool = False) -> None:
+        from pptx.enum.dml import MSO_LINE_DASH_STYLE
+        from pptx.oxml.ns import qn
+
+        if fill:
+            shape.fill.solid()
+            shape.fill.fore_color.rgb = self._rgb(fill)
+        else:
+            shape.fill.background()
+        if stroke:
+            shape.line.color.rgb = self._rgb(stroke)
+            shape.line.width = self._d(sw)
+            if dash:
+                shape.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+        else:
+            shape.line.fill.background()
+        # theme style brings a shadow in LibreOffice
+        for style in shape._element.findall(qn("p:style")):
+            shape._element.remove(style)
+
+    def rect(self, x: float, y: float, w: float, h: float, fill: str | None = WHITE,
+             stroke: str | None = None, r: float = 8, sw: float = 1.5, dash: bool = False):
+        from pptx.enum.shapes import MSO_SHAPE
+
+        kind = MSO_SHAPE.ROUNDED_RECTANGLE if r else MSO_SHAPE.RECTANGLE
+        shape = self.shapes.add_shape(kind, self._x(x), self._y(y), self._d(w), self._d(h))
+        if r:
+            shape.adjustments[0] = min(0.5, r / min(w, h))
+        self._paint(shape, fill, stroke, sw, dash)
+        return shape
+
+    def circle(self, x: float, y: float, r: float, fill: str | None, stroke: str | None = None):
+        from pptx.enum.shapes import MSO_SHAPE
+
+        shape = self.shapes.add_shape(
+            MSO_SHAPE.OVAL, self._x(x - r), self._y(y - r), self._d(2 * r), self._d(2 * r))
+        self._paint(shape, fill, stroke)
+        return shape
+
+    def poly(self, pts: list[tuple[float, float]], fill: str | None, stroke: str | None = None,
+             *, closed: bool = True, sw: float = 1.5, dash: bool = False, arrow: bool = False):
+        from pptx.oxml.ns import qn
+
+        build = self.shapes.build_freeform(self._x(pts[0][0]), self._y(pts[0][1]), scale=1.0)
+        build.add_line_segments([(self._x(a), self._y(b)) for a, b in pts[1:]], close=closed)
+        shape = build.convert_to_shape()
+        self._paint(shape, fill, stroke, sw, dash)
+        if arrow:
+            line = shape._element.spPr.find(qn("a:ln"))
+            line.append(line.makeelement(qn("a:tailEnd"),
+                                         {"type": "triangle", "w": "med", "len": "med"}))
+        return shape
+
+    def line(self, pts: list[tuple[float, float]], colour: str, *, arrow: bool = True,
+             sw: float = 1.6, dash: bool = False):
+        return self.poly(pts, None, colour, closed=False, sw=sw, dash=dash, arrow=arrow)
+
+    def _runs(self, frame, lines: list[str], size: float, bold: bool, colour: str,
+              align: str) -> None:
+        from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+        from pptx.oxml.ns import qn
+
+        frame.word_wrap = False
+        frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+        frame.margin_left = frame.margin_right = frame.margin_top = frame.margin_bottom = 0
+        for n, text in enumerate(lines):
+            para = frame.paragraphs[0] if n == 0 else frame.add_paragraph()
+            para.alignment = {"c": PP_ALIGN.CENTER, "l": PP_ALIGN.LEFT, "r": PP_ALIGN.RIGHT}[align]
+            run = para.add_run()
+            run.text = text
+            run.font.name = self.font
+            run.font.size = self._d(size)
+            run.font.bold = bold
+            run.font.color.rgb = self._rgb(colour)
+            props = run._r.get_or_add_rPr()
+            props.append(props.makeelement(qn("a:ea"), {"typeface": self.font}))
+
+    def text(self, x: float, y: float, text: str | list[str], size: float = 14,
+             bold: bool = False, colour: str = INK, anchor: str = "c") -> None:
+        """Lines centred on `y`, centred on `x` or starting/ending there."""
+        lines = text if isinstance(text, list) else text.split("\n")
+        w = max(figure_text.width(line, size, bold) for line in lines) + 8
+        h = len(lines) * size * figure_text.LINE
+        left = {"c": x - w / 2, "l": x, "r": x - w}[anchor]
+        box = self.shapes.add_textbox(self._x(left), self._y(y - h / 2), self._d(w), self._d(h))
+        self._runs(box.text_frame, lines, size, bold, colour, anchor)
+
+    def label(self, x: float, y: float, w: float, h: float, text: str, size: float,
+              bold: bool, colour: str, min_size: float = 9.0) -> None:
+        """`text` fitted into `w` × `h` and centred there."""
+        lines, fitted = figure_text.fit(text, w, h, size, bold, min_size=min_size)
+        self.text(x + w / 2, y + h / 2, lines, fitted, bold, colour)
+
+
+# ── kinds ─────────────────────────────────────────────────────────────
+
+_STEP_W, _STEP_TIP, _STEP_H = 190.0, 26.0, 84.0
+
+
+def _steps_size(s: dict[str, Any]) -> tuple[float, float]:
+    n = len(s["steps"])
+    notes = any(item.get("note") for item in s["steps"])
+    return 40 + n * (_STEP_W - 6) + 6, 50 + _STEP_H + (92 if notes else 50)
+
+
+def _steps(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    items = s["steps"]
+    n = len(items)
+    y = 30.0
+    for i, item in enumerate(items):
+        x = 20 + i * (_STEP_W - 6)
+        last = i == n - 1
+        amount = 0.0 if last else 0.78 - i * (0.62 / max(1, n - 2))
+        colour = accent if last else tint(accent, amount)
+        dark = amount > 0.45
+        pts = [(x, y), (x + _STEP_W - _STEP_TIP, y), (x + _STEP_W, y + _STEP_H / 2),
+               (x + _STEP_W - _STEP_TIP, y + _STEP_H), (x, y + _STEP_H)]
+        if i:
+            pts.append((x + _STEP_TIP, y + _STEP_H / 2))
+        pen.poly(pts, colour, WHITE, sw=3)
+        inner = x + (_STEP_TIP if i else 8)
+        room = _STEP_W - _STEP_TIP - (_STEP_TIP if i else 8) - 2
+        pen.label(inner, y, room, _STEP_H, item["name"], 16, True, INK if dark else WHITE, 11)
+        cx = inner + room / 2
+        number = f"Step {i + 1}" if s["lang"] == "en" else f"{i + 1}단계"
+        pen.text(cx, y + _STEP_H + 22, number, 12, True, SUB)
+        if note := item.get("note"):
+            lines, size = figure_text.fit(note, _STEP_W - 20, 48, 13, min_size=10.5)
+            pen.text(cx, y + _STEP_H + 58, lines, size, False, INK)
+
+
+_RING_OUT, _RING_IN, _CALLOUT = 160.0, 96.0, 176.0
+
+
+def _cycle_size(s: dict[str, Any]) -> tuple[float, float]:
+    callouts = any(stage.get("note") for stage in s["stages"])
+    return 2 * (_RING_OUT + (50 + _CALLOUT if callouts else 10)) + 20, 2 * (_RING_OUT + 50) + 40
+
+
+def _cycle(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    stages = s["stages"]
+    n = len(stages)
+    w, h = _cycle_size(s)
+    cx, cy = w / 2, h / 2
+    span = 360.0 / n
+
+    def at(radius: float, degrees: float) -> tuple[float, float]:
+        return (cx + radius * math.cos(math.radians(degrees)),
+                cy + radius * math.sin(math.radians(degrees)))
+
+    colours = hues(accent, n)
+    for k, stage in enumerate(stages):
+        a0, a1 = -90 + span * k + 3, -90 + span * (k + 1) - 9
+        outer = [at(_RING_OUT, a0 + (a1 - a0) * j / 24) for j in range(25)]
+        inner = [at(_RING_IN, a1 - (a1 - a0) * j / 24) for j in range(25)]
+        pen.poly([*outer, at((_RING_OUT + _RING_IN) / 2, a1 + 7), *inner], colours[k])
+        mid = (a0 + a1) / 2
+        mx, my = at((_RING_OUT + _RING_IN) / 2, mid)
+        name_lines, name_size = figure_text.fit(stage["name"], 76, 40, 17, True, min_size=11)
+        if stage.get("en"):
+            pen.text(mx, my - 9, name_lines, name_size, True, WHITE)
+            pen.text(mx, my + 12, stage["en"], 12, False, tint(colours[k], 0.75))
+        else:
+            pen.text(mx, my, name_lines, name_size, True, WHITE)
+        note = stage.get("note")
+        if not note:
+            continue
+        # the note outside the ring, on the stage's side
+        cos = math.cos(math.radians(mid))
+        side = 0 if abs(cos) < 0.3 else (1 if cos > 0 else -1)
+        ex, ey = at(_RING_OUT + 34, mid)
+        pen.line([at(_RING_OUT + 6, mid), (ex, ey)], tint(colours[k], 0.4), arrow=False, sw=1.2)
+        pen.circle(ex, ey, 3, colours[k])
+        anchor = {1: "l", -1: "r", 0: "c"}[side]
+        tx = ex + side * 8
+        title = stage["name"] + (f" {stage['en']}" if stage.get("en") else "")
+        note_lines, note_size = figure_text.fit(note, _CALLOUT, 56, 13, min_size=10.5)
+        block = 18 + len(note_lines) * note_size * figure_text.LINE
+        if side == 0:  # above or below the ring
+            top = ey - block - 6 if my < cy else ey + 6
+        else:
+            top = ey - block / 2
+        pen.text(tx, top + 9, title, 14, True, colours[k], anchor)
+        pen.text(tx, top + 18 + len(note_lines) * note_size * figure_text.LINE / 2 + 2,
+                 note_lines, note_size, False, INK, anchor)
+    pen.circle(cx, cy, _RING_IN - 14, "#F1F5F9")
+    if center := s.get("center"):
+        lines, size = figure_text.fit(center, 2 * (_RING_IN - 14) - 12, 40, 22, True,
+                                      min_size=13, pad=4)
+        pen.text(cx, cy - (8 if s.get("center_note") else 0), lines, size, True, INK)
+    if note := s.get("center_note"):
+        lines, size = figure_text.fit(note, 2 * (_RING_IN - 14) - 16, 30, 12, min_size=9.5, pad=2)
+        pen.text(cx, cy + (16 if center else 0), lines, size, False, SUB)
+
+
+def _house_size(s: dict[str, Any]) -> tuple[float, float]:
+    return 960.0, 120 + 16 + 202 + 14 + 52 * len(s["base"]) + 10
+
+
+def _house(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    deep = _deepened(accent)
+    pen.poly([(480, 24), (900, 120), (60, 120)], deep)
+    pen.text(480, 58, "Goal" if s["lang"] == "en" else "목표", 11, True, tint(deep, 0.6))
+    pen.label(260, 70, 440, 40, s["goal"], 19, True, WHITE, 12)
+    pillars = s["pillars"]
+    n, gap = len(pillars), 20.0
+    pw = (780 - gap * (n - 1)) / n
+    for i, name in enumerate(pillars):
+        x = 90 + i * (pw + gap)
+        pen.rect(x, 136, pw, 18, tint(deep, 0.55), r=3)
+        pen.rect(x + 12, 154, pw - 24, 170, tint(deep, 0.88), r=0)
+        pen.rect(x, 324, pw, 14, tint(deep, 0.55), r=3)
+        pen.label(x + 12, 154, pw - 24, 170, name, 15, True, deep, 10)
+    for k, row in enumerate(s["base"]):
+        y = 352 + k * 52
+        last = k == len(s["base"]) - 1
+        fill = deep if last and len(s["base"]) > 1 else tint(deep, 0.25)
+        pen.rect(60, y, 840, 46, fill, r=6)
+        if not row.get("items") and not row.get("note"):
+            pen.label(60, y, 840, 46, row["name"], 15, True, WHITE, 11)
+            continue
+        name_lines, name_size = figure_text.fit(row["name"], 150, 46, 13, True, min_size=10, pad=4)
+        pen.text(80, y + 23, name_lines, name_size, True, WHITE, "l")
+        if row.get("items"):
+            pen.label(240, y, 620, 46, "   ·   ".join(row["items"]), 15, True, WHITE, 11)
+        else:
+            pen.label(240, y, 620, 46, row["note"], 13, False, tint(deep, 0.6), 10)
+
+
+def _deepened(accent: str) -> str:
+    """The accent darkened for large fills under white text."""
+    c = accent.lstrip("#")
+    r, g, b = (int(c[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    h, lightness, s = colorsys.rgb_to_hls(r, g, b)
+    rr, gg, bb = colorsys.hls_to_rgb(h, min(lightness, 0.32), s)
+    return _code(rr * 255, gg * 255, bb * 255)
+
+
+def _compare_size(s: dict[str, Any]) -> tuple[float, float]:
+    return 960.0, 92 + 82 * len(s["rows"]) + 4
+
+
+def _compare(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    old, new = NEUTRAL, accent
+    pen.rect(40, 20, 360, 52, tint(old, 0.85), r=10)
+    pen.label(40, 20, 360, 52, s["sides"][0], 16, True, INK, 11)
+    pen.rect(560, 20, 360, 52, new, r=10)
+    pen.label(560, 20, 360, 52, s["sides"][1], 16, True, WHITE, 11)
+    hot = s.get("hot") or {}
+    for i, row in enumerate(s["rows"]):
+        y = 92 + i * 82
+        is_hot = row["aspect"] == hot.get("row")
+        pen.rect(40, y, 360, 66, "#F8FAFC", tint(old, 0.55))
+        if row["before"]:
+            pen.label(40, y, 360, 66, row["before"], 14, False, "#334155", 10)
+        pen.rect(560, y, 360, 66, tint(new, 0.86) if is_hot else WHITE, new)
+        if row["after"]:
+            pen.label(560, y, 360, 66, row["after"], 15 if is_hot else 14, is_hot,
+                      new if is_hot else INK, 10)
+        pen.rect(424, y + 17, 112, 32, tint(INK, 0.9), r=16)
+        pen.label(424, y + 17, 112, 32, row["aspect"], 13, True, INK, 9)
+        pen.line([(402, y + 33), (420, y + 33)], tint(old, 0.4), arrow=False)
+        pen.line([(538, y + 33), (556, y + 33)], new)
+        if is_hot and (badge := hot.get("badge")):
+            bw = figure_text.width(badge, 12, True) + 18
+            pen.rect(740 - bw / 2, y - 11, bw, 22, new, r=11)
+            pen.text(740, y, badge, 12, True, WHITE)
+
+
+_DRAW = {"steps": (_steps_size, _steps), "cycle": (_cycle_size, _cycle),
+         "house": (_house_size, _house), "compare": (_compare_size, _compare)}
+
+
+def size(s: dict[str, Any]) -> tuple[float, float]:
+    """The figure's own width and height in points."""
+    return _DRAW[s["kind"]][0](s)
+
+
+def draw(slide, s: dict[str, Any], *, left: float, top: float, width: float, height: float,
+         accent: Any, font: str = "") -> None:
+    """`s` drawn into the box at its own aspect, centred."""
+    from app.services import diagram_shapes
+
+    pen = Pen(slide, left=left, top=top, width=width, height=height, size=size(s),
+              font=font or diagram_shapes.FONT)
+    _DRAW[s["kind"]][1](pen, s, _hexed(accent))
+
+
+__all__ = [
+    "CHOICES", "KINDS", "MARK", "choose_messages", "chosen", "draw", "fill_messages",
+    "from_source", "size", "spec", "to_source",
+]
