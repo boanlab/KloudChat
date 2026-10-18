@@ -128,15 +128,19 @@ _JSON = re.compile(r"```json\s*\n(.*?)```", re.S)
 _CAPTION = re.compile(r"^\s*(?:그림|Figure)\s*[:：]\s*(.+)$", re.M)
 
 
-def _parse_kind(text: str, language: str) -> tuple[str, str] | None:
-    """Stored source and caption from an answer filling a figure kind, else None."""
+def _parse_kind(text: str, language: str, *, band: bool = False) -> tuple[str, str] | None:
+    """Stored source and caption from an answer filling a figure kind, else None; `band` for a
+    slide's figure strip."""
     block = _JSON.search(text)
     if not block:
         return None
     try:
-        slots = figure_kinds.spec(json.loads(block.group(1)), language)
+        data = json.loads(block.group(1))
     except ValueError:
         return None
+    if isinstance(data, dict):
+        data["band"] = band
+    slots = figure_kinds.spec(data, language)
     if slots is None:
         return None
     caption = _CAPTION.search(text[block.end():])
@@ -176,7 +180,7 @@ def _mend(source: str) -> str:
 
 
 async def _fixed_kind(
-    description: str, figure: str, model: str, api_key: str, language: str
+    description: str, figure: str, model: str, api_key: str, language: str, slide: bool
 ) -> tuple[tuple[str, str] | None, dict[str, Any]]:
     """`((source, caption) | None, usage)`: the figure as a fixed kind when its shape is one."""
     what = FIGURES.get(figure, FIGURES["method"])
@@ -191,7 +195,7 @@ async def _fixed_kind(
         model, figure_kinds.fill_messages(kind, description, language), api_key, max_tokens=1600
     )
     usage = _added(usage, more)
-    drawn = _parse_kind(text, language)
+    drawn = _parse_kind(text, language, band=slide)
     if drawn is None or (figure_kinds.from_source(drawn[0]) or {}).get("kind") != kind:
         log.info("figure slots for %s did not make the figure; drawing it as mermaid", kind)
         return None, usage
@@ -226,7 +230,7 @@ async def draw(
         )
     if not broken:
         # a figure with a fixed shape: its slots, drawn to that shape
-        kind, usage = await _fixed_kind(description, figure, model, api_key, language)
+        kind, usage = await _fixed_kind(description, figure, model, api_key, language, slide)
         if kind is not None:
             return (*kind, usage)
     else:

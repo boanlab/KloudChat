@@ -138,7 +138,15 @@ def _named(value: Any, limit: int = 24) -> dict[str, str] | None:
 
 
 def spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
-    """Checked slots for one figure kind, or None when they don't make that figure."""
+    """Checked slots for one figure kind, or None when they don't make that figure; `band`
+    (a figure for a slide's wide strip) kept."""
+    out = _spec(data, language)
+    if out is not None and isinstance(data, dict) and data.get("band") and out["kind"] in _BAND:
+        out["band"] = True
+    return out
+
+
+def _spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
     if not isinstance(data, dict) or data.get("kind") not in KINDS:
         return None
     kind = data["kind"]
@@ -610,23 +618,120 @@ def _compare(pen: Pen, s: dict[str, Any], accent: str) -> None:
             pen.text(740, y, badge, 12, True, WHITE)
 
 
+# ── wide strips (a slide's figure band, about 5:1) ─────────────────────
+
+
+def _cycle_band_size(s: dict[str, Any]) -> tuple[float, float]:
+    return 960.0, 150.0
+
+
+def _cycle_band(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    stages = s["stages"]
+    n = len(stages)
+    gap = 40.0
+    bw = (920 - gap * (n - 1)) / n
+    colours = hues(accent, n)
+    for k, stage in enumerate(stages):
+        x = 20 + k * (bw + gap)
+        pen.rect(x, 10, bw, 78, colours[k], r=10)
+        sub = stage.get("note") or stage.get("en") or ""
+        if sub:
+            pen.label(x, 12, bw, 36, stage["name"], 16, True, WHITE, 11)
+            pen.label(x, 44, bw, 42, sub, 12, False, tint(colours[k], 0.8), 9)
+        else:
+            pen.label(x, 10, bw, 78, stage["name"], 17, True, WHITE, 11)
+        if k:
+            pen.line([(x - gap + 6, 49), (x - 6, 49)], NEUTRAL)
+    first, last = 20 + bw / 2, 20 + (n - 1) * (bw + gap) + bw / 2
+    pen.line([(last, 90), (last, 126), (first, 126), (first, 92)], tint(NEUTRAL, 0.2),
+             dash=True)
+    if center := s.get("center"):
+        w = figure_text.width(center, 13, True) + 24
+        pen.rect(480 - w / 2, 114, w, 24, WHITE, tint(NEUTRAL, 0.5), r=12)
+        pen.text(480, 126, center, 13, True, INK)
+
+
+def _house_band_size(s: dict[str, Any]) -> tuple[float, float]:
+    return 960.0, 142 + 34 * len(s["base"])
+
+
+def _house_band(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    deep = _deepened(accent)
+    pen.poly([(480, 4), (900, 56), (60, 56)], deep)
+    pen.label(290, 24, 380, 32, s["goal"], 15, True, WHITE, 10)
+    pillars = s["pillars"]
+    n, gap = len(pillars), 16.0
+    pw = (800 - gap * (n - 1)) / n
+    for i, name in enumerate(pillars):
+        x = 80 + i * (pw + gap)
+        pen.rect(x, 64, pw, 8, tint(deep, 0.55), r=2)
+        pen.rect(x + 8, 72, pw - 16, 56, tint(deep, 0.88), r=0)
+        pen.rect(x, 128, pw, 6, tint(deep, 0.55), r=2)
+        pen.label(x + 8, 72, pw - 16, 56, name, 13, True, deep, 9)
+    for k, row in enumerate(s["base"]):
+        y = 142 + k * 34
+        last = k == len(s["base"]) - 1
+        fill = deep if last and len(s["base"]) > 1 else tint(deep, 0.25)
+        pen.rect(60, y, 840, 30, fill, r=5)
+        text = row["name"]
+        if row.get("items"):
+            text += "   " + " · ".join(row["items"])
+        elif row.get("note"):
+            text += "   " + row["note"]
+        pen.label(60, y, 840, 30, text, 12.5, True, WHITE, 9)
+
+
+def _compare_band_size(s: dict[str, Any]) -> tuple[float, float]:
+    return 960.0, 40 + 36 * len(s["rows"])
+
+
+def _compare_band(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    old, new = NEUTRAL, accent
+    pen.rect(40, 0, 360, 30, tint(old, 0.85), r=8)
+    pen.label(40, 0, 360, 30, s["sides"][0], 14, True, INK, 10)
+    pen.rect(560, 0, 360, 30, new, r=8)
+    pen.label(560, 0, 360, 30, s["sides"][1], 14, True, WHITE, 10)
+    hot = s.get("hot") or {}
+    for i, row in enumerate(s["rows"]):
+        y = 40 + i * 36
+        is_hot = row["aspect"] == hot.get("row")
+        pen.rect(40, y, 360, 30, "#F8FAFC", tint(old, 0.55), r=6)
+        pen.label(40, y, 360, 30, row["before"], 12.5, False, "#334155", 9)
+        pen.rect(560, y, 360, 30, tint(new, 0.86) if is_hot else WHITE, new, r=6)
+        after = row["after"] + (f"  ({hot['badge']})" if is_hot and hot.get("badge") else "")
+        pen.label(560, y, 360, 30, after, 12.5, is_hot, new if is_hot else INK, 9)
+        pen.rect(424, y + 3, 112, 24, tint(INK, 0.9), r=12)
+        pen.label(424, y + 3, 112, 24, row["aspect"], 12, True, INK, 8)
+        pen.line([(538, y + 15), (556, y + 15)], new)
+
+
 _DRAW = {"steps": (_steps_size, _steps), "cycle": (_cycle_size, _cycle),
          "house": (_house_size, _house), "compare": (_compare_size, _compare)}
+_BAND = {"cycle": (_cycle_band_size, _cycle_band), "house": (_house_band_size, _house_band),
+         "compare": (_compare_band_size, _compare_band)}
+#: a box this much wider than tall gets the strip layout
+_WIDE = 3.2
+
+
+def _layout(s: dict[str, Any], box: tuple[float, float] | None = None):
+    wide = s.get("band") or (box is not None and box[0] / box[1] > _WIDE)
+    return (_BAND if wide and s["kind"] in _BAND else _DRAW)[s["kind"]]
 
 
 def size(s: dict[str, Any]) -> tuple[float, float]:
     """The figure's own width and height in points."""
-    return _DRAW[s["kind"]][0](s)
+    return _layout(s)[0](s)
 
 
 def draw(slide, s: dict[str, Any], *, left: float, top: float, width: float, height: float,
          accent: Any, font: str = "") -> None:
-    """`s` drawn into the box at its own aspect, centred."""
+    """`s` drawn into the box at its own aspect, centred; a wide box takes the strip layout."""
     from app.services import diagram_shapes
 
-    pen = Pen(slide, left=left, top=top, width=width, height=height, size=size(s),
+    measure, paint = _layout(s, (width, height))
+    pen = Pen(slide, left=left, top=top, width=width, height=height, size=measure(s),
               font=font or diagram_shapes.FONT)
-    _DRAW[s["kind"]][1](pen, s, _hexed(accent))
+    paint(pen, s, _hexed(accent))
 
 
 __all__ = [

@@ -226,3 +226,42 @@ async def test_a_rewrite_of_a_broken_flowchart_skips_the_shape_choice(monkeypatc
     await diagram.draw(description="…", figure="flow", model="m", api_key="k",
                        broken="flowchart LR\n  a(", error="문법 오류")
     assert len(calls) == 1
+
+
+# ── a slide's figure strip ────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("slots", [_CYCLE, _HOUSE, _COMPARE])
+def test_a_figure_for_a_slide_is_drawn_as_a_wide_strip(slots):
+    full = figure_kinds.spec(slots)
+    strip = figure_kinds.spec({**slots, "band": True})
+    assert strip["band"] is True and "band" not in full
+    width, height = figure_kinds.size(strip)
+    # The strip fits a slide's figure band (about 5:1), lower than the full figure.
+    assert width / height >= 3.2 and height < figure_kinds.size(full)[1]
+    assert figure_kinds.from_source(figure_kinds.to_source(strip)) == strip
+
+
+def test_a_wide_box_takes_the_strip_even_for_a_full_figure():
+    from pptx.util import Pt
+
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[6])
+    figure_kinds.draw(slide, figure_kinds.spec(_HOUSE), left=72, top=100, width=816,
+                      height=160, accent="#0F766E")
+    shapes = list(slide.shapes)
+    # Drawn across most of the band, not shrunk into its middle (the full house would span
+    # about a third of it), and inside the band.
+    span = max(s.left + s.width for s in shapes) - min(s.left for s in shapes)
+    assert span > Pt(600)
+    assert min(s.top for s in shapes) >= Pt(99) and max(s.top + s.height for s in shapes) <= Pt(261)
+
+
+@pytest.mark.asyncio
+async def test_a_slide_figure_is_written_for_the_strip(monkeypatch):
+    _answers(monkeypatch, ["cycle", _FILLED])
+    source, _caption, _usage = await diagram.draw(
+        description="계획, 실행, 점검, 개선을 되풀이한다", figure="concept", model="m",
+        api_key="k", slide=True,
+    )
+    assert figure_kinds.from_source(source)["band"] is True
