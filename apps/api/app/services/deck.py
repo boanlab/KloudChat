@@ -3830,6 +3830,11 @@ async def _draw_figures(
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
 
+#: Layouts whose words narrow beside a picture (`deck_export`: bullets and body); pair layouts
+#: such as bands and cards keep the full width and would run under it.
+_PICTURE_LAYOUTS = ("bullets", "statement")
+
+
 async def _draw_pictures(
     slides: list[dict[str, Any]],
     *,
@@ -3843,7 +3848,7 @@ async def _draw_pictures(
     """Pictures the deck draws for itself on text slides with no figure or picture yet."""
     eligible = [
         i for i, slide in enumerate(slides)
-        if slide.get("layout") in _DIAGRAM_LAYOUTS and not slide.get("image")
+        if slide.get("layout") in _PICTURE_LAYOUTS and not slide.get("image")
         and not slide.get("diagram")
     ]
     planned, spent = await illustrations.plan(

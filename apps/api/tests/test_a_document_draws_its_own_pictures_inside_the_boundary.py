@@ -12,7 +12,8 @@ from app.pipeline import report_stages
 from app.routers import sessions as sessions_router
 from app.services import deck, illustrations, imagegen
 
-_LOCAL = {"id": "strict-local/z-image-turbo", "dataBoundary": "self_hosted", "kinds": ["image"], "creditCost": 0}
+_LOCAL = {"id": "strict-local/z-image-turbo", "dataBoundary": "self_hosted", "kinds": ["image"],
+          "creditCost": 0}
 _OUTSIDE = {"id": "bytedance-seed/seedream-5-0-flash", "dataBoundary": "external", "creditCost": 4,
             "kinds": ["image"]}
 _PICK = "where a picture shows what the words cannot"
@@ -140,6 +141,11 @@ async def test_a_deck_draws_its_own_picture_beside_the_words(monkeypatch):
     assert "[2] 함께 쓰는 공간" in picking and "[1] 표지" not in picking
     assert any(e["type"] == "step" and e.get("id") == "fig1" and e["status"] == "done"
                for e in events)
+
+
+def test_pictures_go_only_on_slides_whose_words_make_room():
+    # Bands and cards keep the full width beside a picture; the picture would cover them.
+    assert set(deck._PICTURE_LAYOUTS) == {"bullets", "statement"}
 
 
 @pytest.mark.asyncio
