@@ -180,7 +180,8 @@ def _mend(source: str) -> str:
 
 
 async def _fixed_kind(
-    description: str, figure: str, model: str, api_key: str, language: str, slide: bool
+    description: str, figure: str, model: str, api_key: str, language: str, slide: bool,
+    material: str = "",
 ) -> tuple[tuple[str, str] | None, dict[str, Any]]:
     """`((source, caption) | None, usage)`: the figure as a fixed kind when its shape is one."""
     what = FIGURES.get(figure, FIGURES["method"])
@@ -192,7 +193,8 @@ async def _fixed_kind(
         # a method figure is a structure, never a line of phases
         return None, usage
     text, more = await _complete(
-        model, figure_kinds.fill_messages(kind, description, language), api_key, max_tokens=1600
+        model, figure_kinds.fill_messages(kind, description, language, material), api_key,
+        max_tokens=1600,
     )
     usage = _added(usage, more)
     drawn = _parse_kind(text, language, band=slide)
@@ -212,8 +214,10 @@ async def draw(
     broken: str = "",
     error: str = "",
     slide: bool = False,
+    material: str = "",
 ) -> tuple[str, str, dict[str, Any]]:
-    """One figure as mermaid: (source, caption, usage); broken/error for one retry."""
+    """One figure: (source, caption, usage); broken/error for one retry; `material`, the text
+    the figure goes with, gives a fixed-shape figure its values."""
     messages = _messages(description, figure, language, slide)
     if broken:
         messages.append({"role": "assistant", "content": f"```mermaid\n{broken}\n```"})
@@ -230,7 +234,8 @@ async def draw(
         )
     if not broken:
         # a figure with a fixed shape: its slots, drawn to that shape
-        kind, usage = await _fixed_kind(description, figure, model, api_key, language, slide)
+        kind, usage = await _fixed_kind(
+            description, figure, model, api_key, language, slide, material)
         if kind is not None:
             return (*kind, usage)
     else:
@@ -280,11 +285,12 @@ async def draw_native(
     language: str = "ko",
     slide: bool = False,
     accent: str = ACCENT,
+    material: str = "",
 ) -> tuple[str, str, dict[str, Any], bytes]:
     """One figure drawn natively to PNG: (source, caption, usage, png); no fallback."""
     source, caption, usage = await draw(
         description=description, figure=figure, model=model, api_key=api_key,
-        language=language, slide=slide,
+        language=language, slide=slide, material=material,
     )
     if diagram_shapes.parse(source) is None:
         log.info("figure source not drawable as shapes; asking for a flowchart once")

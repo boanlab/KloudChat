@@ -265,3 +265,23 @@ async def test_a_slide_figure_is_written_for_the_strip(monkeypatch):
         api_key="k", slide=True,
     )
     assert figure_kinds.from_source(source)["band"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_slots_take_their_values_from_the_text_the_figure_goes_with(monkeypatch):
+    from app.services import diagrams
+
+    calls = _answers(monkeypatch, ["compare", "```json\n" + json.dumps(_COMPARE) + "\n```"])
+
+    async def render_png(source, accent="#2563EB"):
+        return b"png"
+
+    monkeypatch.setattr(diagrams.diagram_render, "render_png", render_png)
+    monkeypatch.setattr(diagram.diagram_render, "render_png", render_png)
+    planned = diagrams.Planned(0, "compare", "기존과 자동화를 수집·작성으로 비교", "보고 방식",
+                               context="수집: 엑셀 수작업 → 자동 수집\n작성: 3일 → 즉시")
+    made, _spent, _png = await diagrams.make(planned, model="m", api_key="k", slide=True)
+    assert figure_kinds.from_source(made["source"])["kind"] == "compare"
+    # The shape choice reads the description; the fill also reads the slide's own text.
+    assert "엑셀 수작업" not in calls[0][-1]["content"]
+    assert "그림이 들어갈 글:\n수집: 엑셀 수작업 → 자동 수집" in calls[1][-1]["content"]

@@ -72,8 +72,10 @@ says in one sentence what the figure shows. The slots, as an example:
 
 {slots}
 
-- Use only what the description says. Never invent a note, number, name or badge; leave an
-  optional field out instead (`note`, `en`, `center`, `center_note`, `items`, `hot`, `badge`).
+- Use only what the description and the text the figure goes with say: the description names
+  the figure's parts, and a value it leaves out (a compare cell, a note) comes from that text.
+  Never invent a note, number, name or badge; leave an optional field out instead (`note`,
+  `en`, `center`, `center_note`, `items`, `hot`, `badge`).
 - Keep every part the description names; do not merge or drop one to fit.
 - Names are short: a step, stage or pillar name about 8 characters (at most 12), a note at
   most 24, a compare cell at most 30. Use the description's own terms.
@@ -96,15 +98,18 @@ def chosen(text: str) -> str | None:
     return word.group(0) if word and word.group(0) in KINDS else None
 
 
-def fill_messages(kind: str, description: str, language: str) -> list[dict[str, str]]:
-    """The slots of one kind, from the description."""
+def fill_messages(
+    kind: str, description: str, language: str, material: str = ""
+) -> list[dict[str, str]]:
+    """The slots of one kind, from the description and the text the figure goes with."""
     system = _FILL.format(
         kind=kind, meaning=CHOICES[kind], slots=_SLOTS[kind],
         language="English" if language == "en" else "Korean",
     )
     return [
         {"role": "system", "content": system.strip()},
-        {"role": "user", "content": f"설명:\n{description.strip()}"},
+        {"role": "user", "content": f"설명:\n{description.strip()}" + (
+            f"\n\n그림이 들어갈 글:\n{material.strip()[:2500]}" if material.strip() else "")},
     ]
 
 
