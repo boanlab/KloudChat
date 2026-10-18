@@ -195,9 +195,9 @@ test('디테일 감사 — 페르소나 · 화면 · 규칙', async ({ page }) =
   const seen: Observation[] = []
   let checks = 0
 
-  const record = (rows: { ok: boolean }[] & Observation[]) => {
+  const record = (rows: (Observation & { ok: boolean })[]) => {
     checks += rows.length
-    seen.push(...rows.filter((r) => (r as unknown as { ok: boolean }).ok === false))
+    seen.push(...rows.filter((r) => r.ok === false))
   }
 
   await signIn(page)
@@ -207,7 +207,7 @@ test('디테일 감사 — 페르소나 · 화면 · 규칙', async ({ page }) =
     for (const [path, label] of ROUTES) {
       await page.goto(path)
       await page.waitForTimeout(550)
-      record((await auditScreen(page, label, viewport)) as never)
+      record(await auditScreen(page, label, viewport))
     }
   }
 

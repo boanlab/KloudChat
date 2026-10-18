@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 import { viewport } from './project'
+import type { UserPipeline } from '../src/types'
 
 /**
  * An agent's 직접 구성 (고급) against fixture data: in the agent's own settings, the steps start from
@@ -94,9 +95,11 @@ function verdict(steps: Step[]) {
 }
 
 function pipelineRow(id: string, name: string, stages: Step[], extra: Record<string, unknown> = {}) {
+  // Typed so a store row's `installed`·`mine` and a later binding fit the same row.
+  const store: Pick<UserPipeline, 'boundAgents' | 'installed' | 'mine'> = { boundAgents: [] }
   return {
     id, name, description: '', base: 'comparison-report', originId: null, visibility: 'private', review: '', reviewNote: '',
-    reviewedAt: null, version: 1, installs: 0, ownerId: 'fixture-user', ownerName: 'Fixture', boundAgents: [],
+    reviewedAt: null, version: 1, installs: 0, ownerId: 'fixture-user', ownerName: 'Fixture', ...store,
     createdAt: at, updatedAt: at, ...verdict(stages), stages: stages.map((s) => ({ ...s, title: title(s) })), ...extra,
   }
 }

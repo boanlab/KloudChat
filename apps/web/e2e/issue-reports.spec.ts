@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { openSidebar } from './helpers'
 import { viewport } from './project'
+import type { IssueRow } from '../src/lib/api'
 
 /**
  * 「문의·신고」 against fixture data: a 👎 answer reported with the answer pinned, the session
@@ -60,7 +61,7 @@ function reportRow(extra: Record<string, unknown> = {}) {
     artifactId: null, sessionShared: true, hasScreenshot: true,
     snapshot: { title: '매출 표 정리', kind: 'chat', messages: 2, artifacts: 0, files: 1, bytes: 4000, truncated: [] },
     unread: false, assignee: null, reporter: { id: 'fixture-user', name: '김신고', email: 'fixture@example.test' },
-    replies: 0, createdAt: at, updatedAt: at, adminUpdatedAt: null, ...extra,
+    replies: 0, createdAt: at, updatedAt: at, adminUpdatedAt: null as IssueRow['adminUpdatedAt'], ...extra,
   }
 }
 
