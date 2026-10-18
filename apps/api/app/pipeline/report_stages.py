@@ -33,6 +33,7 @@ from app.services import (
     figures,
     grounding,
     hangul,
+    illustrations,
     internal_words,
     key_figures,
     lint,
@@ -539,8 +540,10 @@ class Outline(Base):
         if mat.web_search and findings.searched and mat.web_selected:
             plan[PLAN_RESEARCH] = research.carried(findings, mat.web_selected)
         # pictures only where the 서식 draws or when asked
-        if req.image_model and not (bundle.spec.settings.draws == "when-asked"
-                                    and not diagrams.asks_for_diagrams(instruction_part(request))):
+        # a self-hosted image model draws on its own after writing (`Figures`): no card
+        if req.image_model and not req.auto_image_model and not (
+                bundle.spec.settings.draws == "when-asked"
+                and not diagrams.asks_for_diagrams(instruction_part(request))):
             drawn = await figures.propose(
                 request=request,
                 title=title,
@@ -1421,6 +1424,54 @@ class Figures(Base):
                 "content": section["content"],
                 "done": True,
             }
+        if req.auto_image_model and not draws_nothing and not illustrations.declined(request):
+            async for event in _illustrate(bundle, sections):
+                yield event
+
+
+async def _illustrate(bundle: Bundle, sections: list[dict]) -> AsyncIterator[dict]:
+    """Pictures the report draws for itself with a self-hosted model, after its diagrams."""
+    report, req = _report(), bundle.request
+    pictured = {
+        i for i, section in enumerate(sections)
+        if re.search(r"data:image/|```mermaid", str(section.get("content") or ""))
+    }
+    eligible = [i for i, section in enumerate(sections)
+                if i not in pictured and i not in bundle.plan.figures
+                and str(section.get("content") or "").strip()]
+    planned, spent = await illustrations.plan(
+        parts=[(str(s["heading"]), str(s.get("content") or "")) for s in sections],
+        eligible=eligible,
+        request=req.text,
+        model=req.model,
+        api_key=req.api_key,
+        complete=report._complete,
+        slide=False,
+        wrap=lambda prompt: _messages(bundle, prompt),
+        limit=1 if len(sections) < 5 else illustrations.MAX_PICTURES,
+    )
+    _count(bundle, spent)
+    for row in planned:
+        section = sections[row.index]
+        name = row.caption or "그림"
+        progress = {"current": row.index + 1, "total": len(sections)}
+        yield {"type": "step", "id": f"fig{row.index}", "label": f"{name} 그리는 중",
+               "status": "running", "progress": progress}
+        picture = await illustrations.draw(
+            row, image_model=req.auto_image_model, api_key=req.api_key, aspect="4:3")
+        if picture is None:
+            yield {"type": "step", "id": f"fig{row.index}", "label": name, "status": "error",
+                   "progress": progress}
+            continue
+        bundle.usage["inputTokens"] += picture.pop("_in", 0)
+        bundle.usage["outputTokens"] += picture.pop("_out", 0)
+        # appended as Markdown, as an approved picture is: every view and exporter reads it
+        caption = str(picture.get("caption") or "").replace("]", " ")
+        section["content"] = f"{section['content'].rstrip()}\n\n![{caption}]({picture['src']})"
+        yield {"type": "step", "id": f"fig{row.index}", "label": name, "status": "done",
+               "progress": progress}
+        yield {"type": "section", "sectionId": section["id"], "heading": section["heading"],
+               "content": section["content"], "done": True}
 
 
 class Additions(Base):

@@ -620,7 +620,13 @@ in the slide's accent. No image model and no card: the only cost is the writer's
 tokens. A picture from the image model placed on that slide replaces the figure. Pictures from the
 image model are proposed on the outline card only for illustration or real
 objects, never for structure or numbers, and a deck's structure slide is moved
-off layouts the figure planner cannot draw on (`deck.structure_as_drawable`).
+off layouts the figure planner cannot draw on (`deck.structure_as_drawable`). When an image
+model served inside the data boundary is open to the account (`dataBoundary: self_hosted`, such
+as `strict-local/z-image-turbo`), the outline card proposes no pictures: after its diagrams the
+document plans pictures on its written parts the way it plans diagrams (`services/illustrations.py`,
+at most two, none is a fine answer) and draws them with that model, a deck on text slides with no
+figure, a report appended to the part as an approved picture is. `illustrations.draw` refuses any
+model outside the boundary, and a request declining pictures (「그림 없이」) gets none.
 
 **Pictures come from the other direction.** The writing model cannot make one
 and cannot reference one — `sanitise` drops every `src` that is not already
