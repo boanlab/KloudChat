@@ -20,6 +20,10 @@ const AdminSystemPage = lazy(() => import('@/pages/AdminSystemPage').then((m) =>
 const AdminPerformancePage = lazy(() =>
   import('@/pages/AdminPerformancePage').then((m) => ({ default: m.AdminPerformancePage })),
 )
+const PerfHostPage = lazy(() => import('@/pages/perf/PerfHostPage').then((m) => ({ default: m.PerfHostPage })))
+const PerfModelsPage = lazy(() => import('@/pages/perf/PerfModelsPage').then((m) => ({ default: m.PerfModelsPage })))
+const PerfGpuPage = lazy(() => import('@/pages/perf/PerfGpuPage').then((m) => ({ default: m.PerfGpuPage })))
+const PerfServerPage = lazy(() => import('@/pages/perf/PerfServerPage').then((m) => ({ default: m.PerfServerPage })))
 const AdminUsagePage = lazy(() => import('@/pages/AdminUsagePage').then((m) => ({ default: m.AdminUsagePage })))
 const AdminUsersPage = lazy(() => import('@/pages/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })))
 const AgentSetupPage = lazy(() => import('@/pages/AgentSetupPage').then((m) => ({ default: m.AgentSetupPage })))
@@ -228,6 +232,10 @@ function Authenticated() {
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="usage" element={<AdminUsagePage />} />
             <Route path="performance" element={<AdminPerformancePage />} />
+            <Route path="performance/host" element={<PerfHostPage />} />
+            <Route path="performance/models" element={<PerfModelsPage />} />
+            <Route path="performance/gpu" element={<PerfGpuPage />} />
+            <Route path="performance/vllm" element={<PerfServerPage />} />
             <Route path="system/*" element={<AdminSystemPage />} />
             <Route path="governance" element={<AdminGovernancePage />} />
             <Route path="issues" element={<AdminIssuesPage />} />

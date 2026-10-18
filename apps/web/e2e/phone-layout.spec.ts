@@ -22,6 +22,8 @@ const PAGES = [
   '/admin/users',
   '/admin/usage',
   '/admin/performance',
+  '/admin/performance/host',
+  '/admin/performance/models',
   '/admin/system',
   '/admin/system/models',
   '/admin/system/routing',
