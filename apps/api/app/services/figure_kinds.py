@@ -126,6 +126,12 @@ def _text(value: Any, limit: int) -> str:
     return (cut[:space] if space >= limit // 2 else cut).rstrip(" ·,")
 
 
+def _repeats(text: str, said: str) -> bool:
+    """Whether every word of `text` is already in `said` (text the figure shows anyway)."""
+    words = re.findall(r"[가-힣A-Za-z0-9%]+", text)
+    return bool(words) and all(word in said for word in words)
+
+
 def _named(value: Any, limit: int = 24) -> dict[str, str] | None:
     """`{"name", "note"?, "en"?}` from a dict or a bare name."""
     if isinstance(value, str):
@@ -139,7 +145,8 @@ def _named(value: Any, limit: int = 24) -> dict[str, str] | None:
     for key, size in (("note", 40), ("en", 16)):
         if text := _text(value.get(key), size):
             out[key] = text
-    if out.get("note") and out["note"].replace(" ", "") in name.replace(" ", ""):
+    if out.get("note") and (out["note"].replace(" ", "") in name.replace(" ", "")
+                            or _repeats(out["note"], name)):
         out.pop("note")  # a note that only repeats the name says nothing
     return out
 
@@ -169,6 +176,8 @@ def _spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
             for field, size in (("center", 14), ("center_note", 20)):
                 if text := _text(data.get(field), size):
                     out[field] = text
+            if out.get("center_note") and _repeats(out["center_note"], out.get("center", "")):
+                out.pop("center_note")
         return out
     if kind == "house":
         goal = _text(data.get("goal"), 40)
@@ -200,7 +209,9 @@ def _spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
     hot = data.get("hot") if isinstance(data.get("hot"), dict) else {}
     if (row := _text(hot.get("row"), 30)) and any(r["aspect"] == row for r in rows):
         out["hot"] = {"row": row}
-        if badge := _text(hot.get("badge"), 16):
+        cells = next(r for r in rows if r["aspect"] == row)
+        if (badge := _text(hot.get("badge"), 16)) and not _repeats(
+                badge, cells["before"] + " " + cells["after"]):
             out["hot"]["badge"] = badge
     return out
 
@@ -531,16 +542,14 @@ def _cycle(pen: Pen, s: dict[str, Any], accent: str) -> None:
         pen.circle(ex, ey, 3, colours[k])
         anchor = {1: "l", -1: "r", 0: "c"}[side]
         tx = ex + side * 8
-        title = stage["name"] + (f" {stage['en']}" if stage.get("en") else "")
-        note_lines, note_size = figure_text.fit(note, _CALLOUT, 56, 13, min_size=10.5)
-        block = 18 + len(note_lines) * note_size * figure_text.LINE
+        # the note alone: the stage's name is already on the ring
+        note_lines, note_size = figure_text.fit(note, _CALLOUT, 56, 14, min_size=10.5)
+        block = len(note_lines) * note_size * figure_text.LINE
         if side == 0:  # above or below the ring
-            top = ey - block - 6 if my < cy else ey + 6
+            middle = ey - block / 2 - 6 if my < cy else ey + block / 2 + 6
         else:
-            top = ey - block / 2
-        pen.text(tx, top + 9, title, 14, True, colours[k], anchor)
-        pen.text(tx, top + 18 + len(note_lines) * note_size * figure_text.LINE / 2 + 2,
-                 note_lines, note_size, False, INK, anchor)
+            middle = ey
+        pen.text(tx, middle, note_lines, note_size, False, INK, anchor)
     pen.circle(cx, cy, _RING_IN - 14, "#F1F5F9")
     if center := s.get("center"):
         lines, size = figure_text.fit(center, 2 * (_RING_IN - 14) - 12, 40, 22, True,

@@ -29,7 +29,7 @@ _HOUSE = {"kind": "house", "goal": "신뢰할 수 있는 데이터 활용",
 _COMPARE = {"kind": "compare", "sides": ["기존 · 수작업 보고", "자동화 보고"], "rows": [
     {"aspect": "수집", "before": "엑셀로 수집", "after": "매일 자동 수집"},
     {"aspect": "작성", "before": "작성에 3일", "after": "즉시 생성"}],
-    "hot": {"row": "작성", "badge": "3일 → 즉시"}}
+    "hot": {"row": "작성", "badge": "90% 단축"}}
 
 
 def _texts(blob: bytes) -> str:
@@ -70,7 +70,15 @@ def test_a_note_that_only_repeats_its_name_is_dropped():
 def test_a_highlight_names_a_row_that_is_there():
     found = figure_kinds.spec({**_COMPARE, "hot": {"row": "없는 행", "badge": "x"}})
     assert "hot" not in found
-    assert figure_kinds.spec(_COMPARE)["hot"] == {"row": "작성", "badge": "3일 → 즉시"}
+    assert figure_kinds.spec(_COMPARE)["hot"] == {"row": "작성", "badge": "90% 단축"}
+
+
+def test_text_the_figure_already_shows_is_not_written_twice():
+    # A badge made of the row's own cells says nothing new.
+    again = figure_kinds.spec({**_COMPARE, "hot": {"row": "작성", "badge": "3일 → 즉시"}})
+    assert again["hot"] == {"row": "작성"}
+    cycle = figure_kinds.spec({**_CYCLE, "center_note": "PDCA"})
+    assert "center_note" not in cycle
 
 
 def test_the_language_names_the_step_numbers():
@@ -124,7 +132,7 @@ def test_each_kind_is_drawn_with_its_names(slots):
     assert abs(deck.slide_height.pt - (height + 36)) < 1
     text = _texts(blob).replace("\n", " ")
     words = json.dumps(slots, ensure_ascii=False)
-    for name in ("현황 진단", "계획", "신뢰할 수 있는 데이터 활용", "자동화 보고", "3일 → 즉시"):
+    for name in ("현황 진단", "계획", "신뢰할 수 있는 데이터 활용", "자동화 보고", "90% 단축"):
         if name in words:
             assert name in text
 
@@ -132,8 +140,9 @@ def test_each_kind_is_drawn_with_its_names(slots):
 def test_a_cycle_stage_without_a_note_has_no_callout():
     blob = diagram_render.figure_deck(figure_kinds.to_source(figure_kinds.spec(_CYCLE)))
     text = _texts(blob)
-    # The stage with a note is named again beside its note; the others only on the ring.
-    assert text.count("계획") == 2 and text.count("실행") == 1
+    # Each stage is named once, on the ring; the one note stands beside it alone.
+    assert text.count("계획") == 1 and text.count("실행") == 1
+    assert "목표와 개선안 수립" in text
 
 
 def test_each_part_of_a_cycle_takes_white_text():
