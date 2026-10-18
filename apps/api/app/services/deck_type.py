@@ -35,6 +35,10 @@ TYPE: dict[str, float] = {
     "metricLabel": 16,
     "cardName": 18,
     "cardText": 16,
+    # a card row whose texts are three lines or fewer: number, larger name and text fill the card
+    "cardMark": 32,
+    "cardNameShort": 22,
+    "cardTextShort": 18,
     "stepBadge": 16,
     "stepName": 18,
     "stepText": 16,

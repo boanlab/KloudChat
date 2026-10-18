@@ -375,7 +375,9 @@ Content fields of a slide — fill only the one for its layout:
 - steps: "steps": [["단계", "내용"], ...], 3~5 entries. The stage a one-word name (no number),
   the content one line. Only procedures the request has.
 - cards: "cards": [["이름", "내용"], ...], 3~4 entries. The name one word, the content one or
-  two sentences within 80 characters. Only items of equal rank.
+  two sentences within 80 characters. Only items of equal rank. Keep what the material says
+  of each item — where, for whom, what for (「햇빛이 드는 창가의 2~4인 좌석」, not 「창가 좌석」);
+  the name is the material's own word for it.
 - statement: "title": the key phrase (within 12 characters), "body": one sentence unpacking it
   (within 60 characters).
 - big-number: "metrics": one [["값", "이름"]], "body": one line on what the number means. The
