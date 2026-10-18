@@ -76,6 +76,9 @@ says in one sentence what the figure shows. The slots, as an example:
   the figure's parts, and a value it leaves out (a compare cell, a note) comes from that text.
   Never invent a note, number, name or badge; leave an optional field out instead (`note`,
   `en`, `center`, `center_note`, `items`, `hot`, `badge`).
+- A note adds what the name does not say: what is done, by whom, how long, with what result,
+  taken from that text. A note that only rewords the name (「설치 작업」, 「운영 시험」,
+  「구체화 과정」) is left out.
 - Keep every part the description names; do not merge or drop one to fit.
 - Names are short: a step, stage or pillar name about 8 characters (at most 12), a note at
   most 24, a compare cell at most 30. Use the description's own terms.
@@ -109,7 +112,7 @@ def fill_messages(
     return [
         {"role": "system", "content": system.strip()},
         {"role": "user", "content": f"설명:\n{description.strip()}" + (
-            f"\n\n그림이 들어갈 글:\n{material.strip()[:2500]}" if material.strip() else "")},
+            f"\n\n그림이 들어갈 글:\n{material.strip()[:4000]}" if material.strip() else "")},
     ]
 
 
@@ -724,6 +727,45 @@ def _compare_band(pen: Pen, s: dict[str, Any], accent: str) -> None:
         pen.line([(538, y + 15), (556, y + 15)], new)
 
 
+# ── tall boxes (a slide whose figure takes the whole body) ────────────
+
+_ROW_H, _ROW_GAP, _ROW_HEAD = 76.0, 14.0, 300.0
+
+
+def _steps_rows_size(s: dict[str, Any]) -> tuple[float, float]:
+    n = len(s["steps"])
+    return 960.0, n * _ROW_H + (n - 1) * _ROW_GAP
+
+
+def _steps_rows(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    """One row per step, top to bottom: a numbered arrow with the name, the note beside it."""
+    items = s["steps"]
+    n = len(items)
+    for i, item in enumerate(items):
+        y = i * (_ROW_H + _ROW_GAP)
+        last = i == n - 1
+        amount = 0.0 if last else 0.78 - i * (0.62 / max(1, n - 2))
+        colour = accent if last else tint(accent, amount)
+        ink = INK if amount > 0.45 else WHITE
+        tip = 22.0
+        pen.poly([(0, y), (_ROW_HEAD - tip, y), (_ROW_HEAD, y + _ROW_H / 2),
+                  (_ROW_HEAD - tip, y + _ROW_H), (0, y + _ROW_H)], colour)
+        number = f"Step {i + 1}" if s["lang"] == "en" else f"{i + 1}단계"
+        pen.text(24, y + _ROW_H / 2, number, 15, True, ink, "l")
+        pen.label(100, y, _ROW_HEAD - tip - 108, _ROW_H, item["name"], 21, True, ink, 13)
+        x = _ROW_HEAD + 20
+        pen.rect(x, y, 960 - x, _ROW_H, WHITE, tint(accent, 0.7), r=8, sw=1.2)
+        if note := item.get("note"):
+            lines, size = figure_text.fit(note, 960 - x - 48, _ROW_H - 16, 19, min_size=13)
+            pen.text(x + 24, y + _ROW_H / 2, lines, size, False, INK, "l")
+
+
+#: a box no wider than this for its height (a slide's whole body, about 3:1) takes the row
+#: layout, when the steps carry notes; a strip under words (5:1 and wider) keeps the arrows
+_TALL = 3.4
+_TALL_KINDS = {"steps": (_steps_rows_size, _steps_rows)}
+
+
 _DRAW = {"steps": (_steps_size, _steps), "cycle": (_cycle_size, _cycle),
          "house": (_house_size, _house), "compare": (_compare_size, _compare)}
 _BAND = {"cycle": (_cycle_band_size, _cycle_band), "house": (_house_band_size, _house_band),
@@ -734,20 +776,32 @@ _WIDE = 3.2
 
 def _layout(s: dict[str, Any], box: tuple[float, float] | None = None):
     wide = s.get("band") or (box is not None and box[0] / box[1] > _WIDE)
-    return (_BAND if wide and s["kind"] in _BAND else _DRAW)[s["kind"]]
+    if wide and s["kind"] in _BAND:
+        return _BAND[s["kind"]]
+    if box is not None and box[0] / box[1] < _TALL and s["kind"] in _TALL_KINDS and _noted(s):
+        return _TALL_KINDS[s["kind"]]
+    return _DRAW[s["kind"]]
 
 
-def size(s: dict[str, Any]) -> tuple[float, float]:
-    """The figure's own width and height in points."""
-    return _layout(s)[0](s)
+def _noted(s: dict[str, Any]) -> bool:
+    """Whether most parts carry a note (a row layout of bare names would be mostly empty)."""
+    parts = s.get("steps") or []
+    return bool(parts) and 2 * sum(bool(p.get("note")) for p in parts) >= len(parts)
+
+
+def size(s: dict[str, Any], box: tuple[float, float] | None = None) -> tuple[float, float]:
+    """The figure's own width and height in points, in the layout `box` would give it."""
+    return _layout(s, box)[0](s)
 
 
 def draw(slide, s: dict[str, Any], *, left: float, top: float, width: float, height: float,
-         accent: Any, font: str = "") -> None:
-    """`s` drawn into the box at its own aspect, centred; a wide box takes the strip layout."""
+         accent: Any, font: str = "", box: tuple[float, float] | None = None) -> None:
+    """`s` drawn into the box at its own aspect, centred; a wide box takes the strip layout,
+    a tall one the row layout. `box`: the slide box the layout is chosen for, when the
+    drawing is made at the figure's own size (a picture of it)."""
     from app.services import diagram_shapes
 
-    measure, paint = _layout(s, (width, height))
+    measure, paint = _layout(s, box or (width, height))
     pen = Pen(slide, left=left, top=top, width=width, height=height, size=measure(s),
               font=font or diagram_shapes.FONT)
     paint(pen, s, _hexed(accent))

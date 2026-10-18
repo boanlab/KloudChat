@@ -114,6 +114,15 @@ def _u(name: str) -> float:
 _PICTURE_SPAN = 300.0
 
 
+def _unless_title(caption: str, data: dict) -> str:
+    """A picture's caption, or '' when it only repeats the slide's title (「공사 단계」 under
+    「공사 단계」)."""
+    def bare(text: str) -> str:
+        return re.sub(r"[\s·:,.\-–—]+", "", str(text or ""))
+    said, title = bare(caption), bare(data.get("title"))
+    return "" if not said or (title and (said in title or title in said)) else caption
+
+
 def _has_words(data: dict) -> bool:
     """Whether the slide has words besides title and picture."""
     return any(
@@ -3394,6 +3403,7 @@ def to_pptx(
 
         if picture:
             image_bytes, image_caption = picture
+            image_caption = _unless_title(image_caption, data)
             alone = not (bullets or rows or metrics or chart or body or pattern_words)
             box = (_W - 260, room) if alone else (picture_span, room)
             fill = str((data.get("image") or {}).get("fit") or "") == "cover"
@@ -4392,6 +4402,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
 
         if picture:
             image_bytes, image_caption = picture
+            image_caption = _unless_title(image_caption, data)
             alone = not (bullets or rows or metrics or chart or body or pattern_words)
             box = (_W - 260, room) if alone else (picture_span, room)
             fill = str((data.get("image") or {}).get("fit") or "") == "cover"

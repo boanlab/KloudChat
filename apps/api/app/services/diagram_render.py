@@ -43,8 +43,10 @@ def figure_size(graph: diagram_shapes.Graph) -> tuple[float, float]:
     return width, height
 
 
-def figure_deck(source: str, accent: str = "#2563EB") -> bytes | None:
-    """One-slide .pptx of the figure, or None if not drawable."""
+def figure_deck(source: str, accent: str = "#2563EB",
+                box: tuple[float, float] | None = None) -> bytes | None:
+    """One-slide .pptx of the figure, or None if not drawable; `box`, the slide box it will
+    fill, picks the layout (rows for a tall one)."""
     from pptx import Presentation
     from pptx.dml.color import RGBColor
     from pptx.util import Pt
@@ -54,7 +56,7 @@ def figure_deck(source: str, accent: str = "#2563EB") -> bytes | None:
     if slots is None and graph is None:
         return None
     if slots is not None:
-        width, height = figure_kinds.size(slots)
+        width, height = figure_kinds.size(slots, box)
         lead = 0.0
     else:
         width, height = figure_size(graph)
@@ -68,7 +70,7 @@ def figure_deck(source: str, accent: str = "#2563EB") -> bytes | None:
     background.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
     if slots is not None:
         figure_kinds.draw(slide, slots, left=_MARGIN, top=_MARGIN, width=width, height=height,
-                          accent=accent)
+                          accent=accent, box=box)
     else:
         diagram_shapes.draw_pptx(
             slide, graph,
@@ -80,12 +82,13 @@ def figure_deck(source: str, accent: str = "#2563EB") -> bytes | None:
     return out.getvalue()
 
 
-async def render_png(source: str, accent: str = "#2563EB") -> bytes | None:
-    """Figure PNG from its python-pptx slide, or None."""
+async def render_png(source: str, accent: str = "#2563EB",
+                     box: tuple[float, float] | None = None) -> bytes | None:
+    """Figure PNG from its python-pptx slide, or None; `box` as in `figure_deck`."""
     base = settings.print_base_url.strip().rstrip("/")
     if not base:
         return None
-    blob = figure_deck(source, accent)
+    blob = figure_deck(source, accent, box)
     if blob is None:
         return None
     try:

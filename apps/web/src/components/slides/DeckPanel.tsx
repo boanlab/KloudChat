@@ -91,6 +91,15 @@ function unnumbered(title: string): string {
   return title.replace(/^\s*(?:\d{1,2}|[IVX]{1,4})\s?[.)．:]\s*/, '').trim() || title
 }
 
+/** A picture's caption, or '' when it only repeats the slide's title (as `deck_export`). */
+function captionOf(slide: Slide): string {
+  const caption = slide.image?.caption || slide.diagram?.caption || ''
+  const bare = (text: string) => text.replace(/[\s·:,.\-–—]+/g, '')
+  const said = bare(caption)
+  const title = bare(slide.title || '')
+  return !said || (title && (said.includes(title) || title.includes(said))) ? '' : caption
+}
+
 /** Whether a slide says anything besides its title and picture. */
 function hasWords(slide: Slide): boolean {
   return Boolean(
@@ -1281,9 +1290,9 @@ export function SlideView({
                     )}
                   </ul>
                 )}
-                {(figureAlone || !figured) && (slide.image?.caption || slide.diagram?.caption) && (
+                {(figureAlone || !figured) && captionOf(slide) && (
                   <p style={{ fontSize: pt(TYPE.caption), color: look.muted, marginTop: px(4) }}>
-                    {slide.image?.caption || slide.diagram?.caption}
+                    {captionOf(slide)}
                   </p>
                 )}
               </div>
