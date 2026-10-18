@@ -14,7 +14,7 @@ When you sign in with an administrator account, a **Manage** item appears in the
 | Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |
 | Feedback & issues | Read bug reports, feature requests and questions from users, set the assignee and status, reply |
 | System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up · Connector catalogue** tabs |
-| Performance | Model latency and error rate, turns in progress, API replica, host and GPU metrics, with overload flags |
+| Performance | One-screen dashboard of verdicts, key figures, GPU nodes and model servers; each item opens trends and details for the host, models, a node or a server |
 
 ## Order of initial setup
 

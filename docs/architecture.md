@@ -1543,6 +1543,9 @@ every open of an attached conversation is an audit event.
 **Performance monitoring** (`/admin/performance`, `services/perf/`) samples each replica,
 the host, the GPU nodes and LiteLLM's request log once a minute into `metric_samples`;
 its settings are in [configuration.md](configuration.md#performance-monitoring).
+The screen is a one-screen dashboard (verdicts, key figures, sortable GPU node and model
+server tables) over the same overview; trends and tables sit on detail screens
+(`/admin/performance/host`, `/models`, `/gpu?node=`, `/vllm?target=`, `apps/web/src/pages/perf/`).
 
 ### Reading scanned pages (OCR)
 
