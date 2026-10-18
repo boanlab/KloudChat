@@ -10,7 +10,7 @@ import pytest
 from app.services import report, report_checks
 
 #: the tasks as sent
-T1 = """우리 팀(교직원 40명) 업무 협업 도구 두 가지 안을 비교·검토하는 보고서 써 줘. 결론적으로 어느 안을 추천하는지까지.
+TOOLS_TASK = """우리 팀(교직원 40명) 업무 협업 도구 두 가지 안을 비교·검토하는 보고서 써 줘. 결론적으로 어느 안을 추천하는지까지.
 
 A안: 지금 쓰는 사내 메신저(무료) 유지 + 화상회의 라이선스만 추가 구매
 - 화상회의 라이선스 1인당 월 8,000원 × 40명
@@ -26,7 +26,7 @@ B안: 통합 협업툴(메신저·화상회의·공동편집·일정·할 일) �
 
 판단 기준: 연간 비용(첫해·이듬해), 업무 효율, 보안, 도입 부담."""  # noqa: E501
 
-T2 = """교직원 업무용 노트북 30대 교체 건, 견적 세 곳 받은 걸로 비교 검토 보고서 써 줘. 어디로 할지 추천까지.
+LAPTOPS_TASK = """교직원 업무용 노트북 30대 교체 건, 견적 세 곳 받은 걸로 비교 검토 보고서 써 줘. 어디로 할지 추천까지.
 (아래는 우리 팀이 받은 견적 자료임 — 한빛대학교 정보전산팀)
 
 [견적 1] 가온정보통신
@@ -76,7 +76,7 @@ def test_a_day_of_a_month_and_a_count_beside_a_duration_are_not_durations():
 def test_a_deadline_counted_from_the_contract_day_is_the_lead_time_limit():
     # the reading's 「1달」 is never the limit; 10월 12일 → 11월 30일 is
     must = {"name": "납기", "kind": "max", "limit": 1, "unit": "달"}
-    limit = report_checks.duration_limit(must, T2, TODAY)
+    limit = report_checks.duration_limit(must, LAPTOPS_TASK, TODAY)
     assert limit["days"] == 49 and limit["text"] == "49일(10월 12일~11월 30일)"
     # a limit written with its unit stands as written
     weeks = {"name": "납기", "kind": "max", "limit": 4, "unit": "주"}
@@ -132,12 +132,12 @@ FLASH_READING = {
 
 
 def _given() -> str:
-    return f"{T2}\n{report._request_material(T2)}"
+    return f"{LAPTOPS_TASK}\n{report._request_material(LAPTOPS_TASK)}"
 
 
 def _code_costs() -> dict:
     given = _given()
-    data = report_checks.price_lines_reading(T2, report._request_material(T2))
+    data = report_checks.price_lines_reading(LAPTOPS_TASK, report._request_material(LAPTOPS_TASK))
     return report_checks.option_costs(report_checks.counted_as_written(data, given),
                                       report_checks._material_numbers(given), material=given)
 
@@ -161,7 +161,7 @@ def test_lead_times_are_judged_in_days_from_the_material_s_words():
 
 
 def test_a_lead_time_past_the_deadline_is_out_with_both_in_days():
-    late = T2.replace("납기 5주", "납기 8주")
+    late = LAPTOPS_TASK.replace("납기 5주", "납기 8주")
     result = report_checks.must_status(FLASH_READING, report_checks._material_numbers(late),
                                        late, today=TODAY)
     assert result["options"]["누리컴"]["failed"] == [
@@ -169,7 +169,7 @@ def test_a_lead_time_past_the_deadline_is_out_with_both_in_days():
 
 
 def test_a_lead_time_no_text_bounds_is_not_judged_and_said_so():
-    loose = T2.replace("11월 30일까지 지급 완료돼야 함(오늘 10월 12일 계약 가정), ", "")
+    loose = LAPTOPS_TASK.replace("11월 30일까지 지급 완료돼야 함(오늘 10월 12일 계약 가정), ", "")
     result = report_checks.must_status(FLASH_READING, report_checks._material_numbers(loose),
                                        loose, today=TODAY)
     assert result["musts"] == ["무상 보증", "데이터 삭제 증빙", "예산"]
@@ -178,7 +178,7 @@ def test_a_lead_time_no_text_bounds_is_not_judged_and_said_so():
 
 
 def test_a_duration_the_material_does_not_write_for_an_option_is_open():
-    bare = T2.replace(", 납기 계약 후 3주", "")
+    bare = LAPTOPS_TASK.replace(", 납기 계약 후 3주", "")
     result = report_checks.must_status(FLASH_READING, report_checks._material_numbers(bare),
                                        bare, today=TODAY)
     assert "납기" in result["options"]["가온정보통신"]["unknown"]
@@ -186,10 +186,10 @@ def test_a_duration_the_material_does_not_write_for_an_option_is_open():
 
 # ── 3. compare-cost: the price lines read by code ─────────────────────────
 
-def test_the_t1_price_lines_settle_both_years_and_the_contract_discount_as_a_scenario():
-    material = report._request_material(T1)
-    given = f"{T1}\n{material}"
-    data = report_checks.price_lines_reading(T1, material)
+def test_the_tool_plan_price_lines_settle_both_years_and_the_contract_discount_as_a_scenario():
+    material = report._request_material(TOOLS_TASK)
+    given = f"{TOOLS_TASK}\n{material}"
+    data = report_checks.price_lines_reading(TOOLS_TASK, material)
     costs = report_checks.option_costs(
         report_checks.counted_as_written(data, given),
         report_checks._material_numbers(given) + report_checks._calendar(given), material=given)
@@ -203,7 +203,7 @@ def test_the_t1_price_lines_settle_both_years_and_the_contract_discount_as_a_sce
     assert scenario["options"]["B안"]["next_year"] == 5_712_000
 
 
-def test_the_t2_price_lines_settle_every_quote():
+def test_the_laptop_price_lines_settle_every_quote():
     costs = _code_costs()
     assert {n: e["total"] for n, e in costs["options"].items()} == {
         "가온정보통신": 43_560_000, "다솜시스템": 43_350_000, "누리컴": 46_563_000}
@@ -221,16 +221,16 @@ def test_the_t2_price_lines_settle_every_quote():
     "- 총액 5% 할인",                                       # a discount beside no price
 ])
 def test_a_line_code_cannot_read_leaves_the_reading_to_the_model(line):
-    text = T1.replace("- 전 직원 교육 2시간 1회 필요", line)
+    text = TOOLS_TASK.replace("- 전 직원 교육 2시간 1회 필요", line)
     assert report_checks.price_lines_reading(text, report._request_material(text)) is None
 
 
 def test_an_amount_outside_the_options_leaves_the_reading_to_the_model():
-    text = T1 + "\n공통: 설치비 50만원"
+    text = TOOLS_TASK + "\n공통: 설치비 50만원"
     assert report_checks.price_lines_reading(text, "") is None
 
 
-def _t1_reading(b_items: list[dict]) -> dict:
+def _tools_reading(b_items: list[dict]) -> dict:
     return {"period": "1년", "years": 1, "options": [
         {"name": "A안", "items": [{"name": "화상회의", "unit_price": 8000, "count": 40,
                                   "per": "month"}]},
@@ -238,15 +238,15 @@ def _t1_reading(b_items: list[dict]) -> dict:
 
 
 #: three readings: discount taken unconditionally / a stray 80 won / discount as a condition
-UNCONDITIONAL = _t1_reading([
+UNCONDITIONAL = _tools_reading([
     {"name": "이용료", "unit_price": 14000, "count": 40, "per": "month"},
     {"name": "할인", "unit_price": 14000, "count": 40, "per": "month", "rate": 0.15, "sign": -1},
     {"name": "컨설팅", "unit_price": 3000000, "count": 1, "per": "once"}])
-STRAY = _t1_reading([
+STRAY = _tools_reading([
     {"name": "이용료", "unit_price": 14000, "count": 40, "per": "month"},
     {"name": "교육", "unit_price": 40, "count": 2, "per": "once"},
     {"name": "컨설팅", "unit_price": 3000000, "count": 1, "per": "once"}])
-NO_SCENARIO = _t1_reading([
+NO_SCENARIO = _tools_reading([
     {"name": "이용료", "unit_price": 14000, "count": 40, "per": "month"},
     {"name": "컨설팅", "unit_price": 3000000, "count": 1, "per": "once"}])
 
@@ -276,7 +276,7 @@ async def test_readings_that_split_are_settled_by_the_price_lines_without_a_thin
     monkeypatch.setattr(report_checks.thinking, "thinks_by_default", lambda m: True)
     complete, asked, deliberate = _replies(UNCONDITIONAL, STRAY)
     pre = await report_checks.prepare(
-        "comparison", T1, report._request_material(T1), complete=complete,
+        "comparison", TOOLS_TASK, report._request_material(TOOLS_TASK), complete=complete,
         model="local/qwen3.8-flash", api_key="k", tiebreak_model="local/qwen3.8-flash",
         deliberate=deliberate, strong=strong)
     assert len(asked) == 2  # the two readings only; no third model call
@@ -295,14 +295,15 @@ async def test_a_reading_agreeing_with_the_price_lines_takes_the_code_s_scenario
     # two readings agreed on 9,720,000 but one priced the 연 단위 계약
     # scenario and the other did not — 「총비용 일부 보류 — 읽을 때마다 다른 할인 조건: B안」
     complete, asked, _ = _replies(NO_SCENARIO, NO_SCENARIO)
-    pre = await report_checks.prepare("comparison", T1, report._request_material(T1),
+    pre = await report_checks.prepare("comparison", TOOLS_TASK,
+                                      report._request_material(TOOLS_TASK),
                                       complete=complete, model="m", api_key="k")
     assert not pre.costs_withheld
     assert pre.costs["options"]["B안"]["total"] == 9_720_000
     assert [sc["name"] for sc in pre.costs["scenarios"]] == ["연 단위 계약 시"]
 
 
-def _t2_reading(extension: bool, discount_when: str | None) -> dict:
+def _laptops_reading(extension: bool, discount_when: str | None) -> dict:
     discount = {"name": "할인", "unit_price": 1480000, "count": 30, "per": "once",
                 "rate": 0.05, "sign": -1, "vat": "excl"}
     if discount_when:
@@ -323,12 +324,13 @@ def _t2_reading(extension: bool, discount_when: str | None) -> dict:
         "scenarios": []}
 
 
-async def test_t2_settles_every_quote_and_judges_lead_times_in_days():
+async def test_the_laptop_comparison_settles_every_quote_and_judges_lead_times_in_days():
     # one reading left out 다솜's extension, the other wrote 누리컴's discount as another
     # condition: no two agree, and before this 다솜시스템·누리컴 were held back
-    complete, asked, _ = _replies(_t2_reading(False, "30대 이상 구매 시"),
-                                  _t2_reading(True, "총액 할인 시"), check=FLASH_READING)
-    pre = await report_checks.prepare("comparison", T2, report._request_material(T2),
+    complete, asked, _ = _replies(_laptops_reading(False, "30대 이상 구매 시"),
+                                  _laptops_reading(True, "총액 할인 시"), check=FLASH_READING)
+    pre = await report_checks.prepare("comparison", LAPTOPS_TASK,
+                                      report._request_material(LAPTOPS_TASK),
                                       complete=complete, model="m", api_key="k", today=TODAY)
     assert not pre.costs_withheld
     assert {n: e["total"] for n, e in pre.costs["options"].items()} == {
@@ -343,6 +345,7 @@ async def test_readings_that_agree_against_the_price_lines_stand():
     # the code's reading is a vote, not a veto: two agreeing readings are kept
     other = json.loads(json.dumps(UNCONDITIONAL))
     complete, _, _ = _replies(other, other)
-    pre = await report_checks.prepare("comparison", T1, report._request_material(T1),
+    pre = await report_checks.prepare("comparison", TOOLS_TASK,
+                                      report._request_material(TOOLS_TASK),
                                       complete=complete, model="m", api_key="k")
     assert pre.costs["options"]["B안"]["total"] == 8_712_000

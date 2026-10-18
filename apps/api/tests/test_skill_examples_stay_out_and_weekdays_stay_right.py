@@ -29,13 +29,13 @@ async def _run(name: str, bundle) -> None:
 
 # ── weekdays after every rewrite ─────────────────────────────
 
-A13_REQUEST = (
+SNS_PLAN_REQUEST = (
     "11월 한 달 회사 SNS(인스타그램, 링크드인) 게시물 계획 짜 줘. 주 2회씩.\n"
     "- 11월 주요 일정: 11/1 무료 체험 45일 캠페인 시작, 11/12~13 「공공 디지털 혁신 박람회」 부스 "
     "참가(코엑스, B-21), 11/20 신기능 「AI 회의록 요약」 베타 출시, 11/27 고객 웨비나 "
     "「망분리 환경에서 협업툴 쓰기」 14시")
 #: rows of the final answer, as the copy check's rewrite left them
-A13_ROWS = (
+SNS_PLAN_ROWS = (
     "| 날짜 | 채널 | 형식 | 주제 |\n|---|---|---|---|\n"
     "| 11/2(월) | 인스타 | 피드 이미지 | 무료 체험 45일 시작 |\n"
     "| 11/6(목) | 인스타 | 릴스(짧은 영상) | 기능 사용 팁: 회의 일정 관리 |\n"
@@ -55,7 +55,7 @@ def test_the_weekday_pass_runs_after_every_stage_that_may_rewrite():
 
 
 async def test_weekdays_a_rewrite_brought_back_are_set_to_the_calendar():
-    bundle = _bundle(A13_ROWS, A13_REQUEST)
+    bundle = _bundle(SNS_PLAN_ROWS, SNS_PLAN_REQUEST)
     await _run("answer-weekdays", bundle)
     out = bundle.document.answer
     for right in ("11/2(월)", "11/6(금)", "11/19(목)", "11월 27일(금)", "11/20(금)", "11/28(토)"):
@@ -70,7 +70,7 @@ async def test_a_year_the_task_names_wins_over_the_current_year():
 
 
 async def test_an_answer_with_no_weekday_is_left_alone():
-    bundle = _bundle("11월 27일 14시 웨비나", A13_REQUEST)
+    bundle = _bundle("11월 27일 14시 웨비나", SNS_PLAN_REQUEST)
     assert pipeline_registry.stage("answer-weekdays").skip(bundle) == "no weekday"
 
 
@@ -80,17 +80,17 @@ async def test_an_answer_with_no_weekday_is_left_alone():
 OLD_FORMAT = (
     "## Output format\n```\n### 제목 (택1)\n1. …\n### 본문\n…\n김현수 드림\n"
     "한빛소프트 영업팀 | [전화번호] | [이메일]\n```\n")
-A15_REQUEST = (
+FOLLOW_UP_EMAIL_REQUEST = (
     "한솔제지 정보시스템팀 박지훈 차장에게 보낼 후속 메일 써 줘. 9월 28일 온라인 미팅, "
     "10월 2일 데모 영상·일정 연동 답변 보냄, 이후 답 없음. 우리는 한빛소프트.")
-A15_ANSWER = (
+FOLLOW_UP_EMAIL_ANSWER = (
     "### 본문\n차장님, 안녕하세요. 한빛소프트 김현수입니다.\n\n"
     "지난 9월 28일 온라인 미팅에서 말씀 나눈 현장 직원용 모바일 기능 관련해 연락드립니다.\n\n"
     "김현수 드림  \n한빛소프트 영업팀 | [전화번호] | [이메일]")
 
 
 def test_the_example_signature_name_becomes_a_blank():
-    echoes = guide_echo.scrub(A15_ANSWER, OLD_FORMAT, [A15_REQUEST])
+    echoes = guide_echo.scrub(FOLLOW_UP_EMAIL_ANSWER, OLD_FORMAT, [FOLLOW_UP_EMAIL_REQUEST])
     assert "김현수" not in echoes.text
     assert "한빛소프트 [이름]입니다." in echoes.text and "[이름] 드림" in echoes.text
     assert echoes.names == ["김현수"]
@@ -99,8 +99,9 @@ def test_the_example_signature_name_becomes_a_blank():
 
 
 def test_a_name_the_person_gives_stays():
-    request = A15_REQUEST + " 보내는 사람은 영업팀 김현수."
-    assert guide_echo.scrub(A15_ANSWER, OLD_FORMAT, [request]).text == A15_ANSWER
+    request = FOLLOW_UP_EMAIL_REQUEST + " 보내는 사람은 영업팀 김현수."
+    assert guide_echo.scrub(FOLLOW_UP_EMAIL_ANSWER, OLD_FORMAT,
+                            [request]).text == FOLLOW_UP_EMAIL_ANSWER
 
 
 def test_a_persons_own_skill_is_read_the_same_way():
@@ -108,12 +109,13 @@ def test_a_persons_own_skill_is_read_the_same_way():
     spec = skill_specs.Spec(key="skill:abc", name="내 후속 메일", body=OLD_FORMAT)
     guide = guide_echo.guidance(["skill:abc"], {"skill:abc": spec})
     assert "김현수" in guide
-    assert "김현수" not in guide_echo.scrub(A15_ANSWER, guide, [A15_REQUEST]).text
+    assert "김현수" not in guide_echo.scrub(FOLLOW_UP_EMAIL_ANSWER, guide,
+                                            [FOLLOW_UP_EMAIL_REQUEST]).text
 
 
 async def test_the_chat_stage_blanks_the_name_and_says_so():
     spec = skill_specs.Spec(key="skill:abc", name="내 후속 메일", body=OLD_FORMAT)
-    bundle = _bundle(A15_ANSWER, A15_REQUEST, skill_keys=("skill:abc",),
+    bundle = _bundle(FOLLOW_UP_EMAIL_ANSWER, FOLLOW_UP_EMAIL_REQUEST, skill_keys=("skill:abc",),
                      skill_specs={"skill:abc": spec})
     await _run("answer-echo", bundle)
     assert "김현수" not in bundle.document.answer

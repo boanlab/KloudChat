@@ -78,7 +78,7 @@ def test_a_failed_transcript_is_still_an_error_not_a_header(monkeypatch):
     assert out.startswith("Error: audio download failed") and "Title" not in out
 
 
-#: tasks/A13/T1/prompt.md as sent
+#: the ad-copy request as sent
 _AD_REQUEST = (
     "「한빛워크」 무료 체험 캠페인 광고 소재 만들어 줘. 채널은 네이버 검색광고, "
     "메타(페이스북·인스타그램) 피드, 링크드인 스폰서드 콘텐츠.\n"

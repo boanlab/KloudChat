@@ -22,7 +22,7 @@ from app.services.tools.base import Tool, ToolContext, ToolResult
 
 # ── 1. block fences in the Markdown export ───────────────────────────────────
 
-A04_SECTION = (
+DISCOUNT_SECTION = (
     "B안의 15% 할인은 연 단위 계약 시에만 적용되는 이용료 할인입니다.\n\n"
     "```callout\n비교 전제\n두 안 모두 40명 기준 월 단가로 산정하며, B안의 15% 할인은 이용료에만 "
     "적용되고 초기 전환 비용 300만원은 제외됩니다.\n```\n\n"
@@ -34,7 +34,7 @@ A04_SECTION = (
 
 
 def test_the_markdown_export_writes_callout_and_kpi_as_markdown() -> None:
-    md = report.to_markdown("협업툴 검토", [{"heading": "비용", "content": A04_SECTION}])
+    md = report.to_markdown("협업툴 검토", [{"heading": "비용", "content": DISCOUNT_SECTION}])
     assert "```" not in md
     assert "> **비교 전제**" in md
     assert "> 두 안 모두 40명 기준 월 단가로 산정하며" in md
@@ -81,12 +81,14 @@ def test_the_bot_api_answer_carries_no_block_fence() -> None:
 
 # ── 2. a tool call written as the answer (second turn) ───────────────────────
 
-P16_SECOND = (" <tool_call>web_search<arg_key>query</arg_key><arg_value>정신건강복지센터 "
-              "정신건강상담 무료 예약 방법</arg_value></tool_call>")
+COUNSELLOR_SECOND_TURN_CALL = (
+    " <tool_call>web_search<arg_key>query</arg_key><arg_value>정신건강복지센터 "
+    "정신건강상담 무료 예약 방법</arg_value></tool_call>")
 
 
 @pytest.mark.parametrize(("written", "call"), [
-    (P16_SECOND, ("web_search", {"query": "정신건강복지센터 정신건강상담 무료 예약 방법"})),
+    (COUNSELLOR_SECOND_TURN_CALL,
+     ("web_search", {"query": "정신건강복지센터 정신건강상담 무료 예약 방법"})),
     ('<tool_call>\n{"name": "web_search", "arguments": {"query": "x"}}\n</tool_call>',
      ("web_search", {"query": "x"})),
     ('<|tool_call|>[{"name":"fetch_url","arguments":{"url":"https://a.example"}}]',
@@ -207,7 +209,7 @@ async def test_a_written_call_to_an_offered_tool_is_run(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_a_reply_that_is_only_a_call_to_no_tool_is_written_again(monkeypatch) -> None:
-    written = P16_SECOND
+    written = COUNSELLOR_SECOND_TURN_CALL
     answer = "몇 달째 이어진 무기력은 전문 상담을 받아 볼 신호입니다."
     events, seen, ran = await _turn(monkeypatch, [_said(written), _said(answer)],
                                     "몇 달째 아침에 일어나기가 힘들어.")
@@ -259,19 +261,20 @@ def test_the_copy_check_marks_after_the_whole_value() -> None:
 
 # ── 4. the answer's language (an English question answered in Korean) ──────────────
 
-P27 = ("I want you to act as a historian. You will research and analyze cultural, economic, "
-       "political, and social events in the past. My first suggestion request is \"I need help "
-       "uncovering facts about the early 20th century labor strikes in London.\"")
+HISTORIAN_REQUEST = (
+    "I want you to act as a historian. You will research and analyze cultural, economic, "
+    "political, and social events in the past. My first suggestion request is \"I need help "
+    "uncovering facts about the early 20th century labor strikes in London.\"")
 
 
 def test_the_loops_notes_keep_an_english_answer_english() -> None:
     system = [{"role": "system", "content": "You are KloudChat's assistant."}]
-    assert not agent._writes_korean(P27, system)
+    assert not agent._writes_korean(HISTORIAN_REQUEST, system)
     assert agent._writes_korean("런던 파업을 정리해 줘", system)
     # the turn's own ask wins; then the agent's set language
     assert not agent._writes_korean("런던 파업을 영어로 정리해 줘", system)
     set_ko = [{"role": "system", "content": output_language.rule("ko")}]
-    assert agent._writes_korean(P27, set_ko)
+    assert agent._writes_korean(HISTORIAN_REQUEST, set_ko)
     assert agent._answer_anomaly("same " * 20, [
         {"role": "assistant", "content": "same " * 20}], korean=False)[1] == agent._ECHO_EN
 
@@ -292,7 +295,7 @@ def _notes(seen: list[dict]) -> list[str]:
 @pytest.mark.asyncio
 async def test_the_search_cap_note_is_english_in_an_english_conversation(monkeypatch) -> None:
     replies = [_searched(1), _searched(2), _searched(3), _said("The Great Unrest ran 1910-14.")]
-    _, seen, _ = await _turn(monkeypatch, replies, P27, tool_name="web_search")
+    _, seen, _ = await _turn(monkeypatch, replies, HISTORIAN_REQUEST, tool_name="web_search")
     notes = _notes(seen)
     assert notes == [agent._SEARCH_CAP_EN.format(done="You have searched the web enough.")]
     assert not any(re.search(r"[가-힣]", n) for n in notes)
@@ -310,7 +313,8 @@ async def test_a_korean_conversation_keeps_korean_notes(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_a_note_after_an_empty_reply_is_in_the_question_language(monkeypatch) -> None:
     answer = "The 1911 dock strike began in August."
-    _, seen, _ = await _turn(monkeypatch, [[_CALL, "data: [DONE]"], _EMPTY, _said(answer)], P27)
+    _, seen, _ = await _turn(monkeypatch, [[_CALL, "data: [DONE]"], _EMPTY, _said(answer)],
+                             HISTORIAN_REQUEST)
     assert agent._EMPTY_EN in _notes(seen)
     assert not any(re.search(r"[가-힣]", n) for n in _notes(seen))
 

@@ -68,13 +68,15 @@ MINUTES_4_PROSE = (
     "말까지 "
     "제공해야 합니다. 안전교육 자료 기한은 1월 15일까지로 정해졌으나, 확정 날짜 블록에서 이 표현이 "
     "코드 해석되지 않아 표의 기한 칸은 미정으로 유지합니다(표 4).")
-MINUTES_1_R1 = ("이 두 작업의 기한은 코드가 계산해 준 확정 날짜를 그대로 적용하며, 교무처 제출 "
-                "서류 취합은 "
-                "외부 마감일과 내부 기한이 겹쳐 별도 표기로 관리합니다(표 4).")
-MINUTES_1_R2 = ("원문 표현은 「다음 주 금요일」입니다. 교무처 마감은 외부 마감이며, 내부 취합 완료 "
-                "시점은 확정 "
-                "수치 블록에 해당 날짜 해석값이 없어 [기안 내부 취합 기한]으로 표시합니다.")
-MINUTES_5_R1 = (
+MINUTES_1_DEADLINE_NOTE = (
+    "이 두 작업의 기한은 코드가 계산해 준 확정 날짜를 그대로 적용하며, 교무처 제출 "
+    "서류 취합은 "
+    "외부 마감일과 내부 기한이 겹쳐 별도 표기로 관리합니다(표 4).")
+MINUTES_1_WORDING_NOTE = (
+    "원문 표현은 「다음 주 금요일」입니다. 교무처 마감은 외부 마감이며, 내부 취합 완료 "
+    "시점은 확정 "
+    "수치 블록에 해당 날짜 해석값이 없어 [기안 내부 취합 기한]으로 표시합니다.")
+MINUTES_5_POSTING_NOTE = (
     "2차 회의에서 류○○는 포스터 공고문 초안은 작성했으나 게시는 하지 않았다고 보고했고, 회의에서는 "
     "다음 주 "
     "월요일까지 게시하기로 했습니다. 확정 날짜 기준 2026년 11월 16일(월)로 풀렸으나, 이는 2차 회의 "
@@ -84,7 +86,8 @@ MINUTES_5_R1 = (
 
 
 def test_the_runs_internal_wording_is_found():
-    for text in (MINUTES_4_TABLE, MINUTES_4_PROSE, MINUTES_1_R1, MINUTES_1_R2, MINUTES_5_R1):
+    for text in (MINUTES_4_TABLE, MINUTES_4_PROSE, MINUTES_1_DEADLINE_NOTE, MINUTES_1_WORDING_NOTE,
+                 MINUTES_5_POSTING_NOTE):
         assert internal_words.found(text), text
     for said in ("견적 확정 블록의 7,727,273원과 다릅니다", "사전 계산 결과", "date-calc가 풀었다",
                  "확정 수치에 따르면", "총비용 계산(코드)"):
@@ -104,14 +107,14 @@ def test_a_table_cell_keeps_its_subject_and_loses_the_internal_clause():
 def test_prose_loses_the_sentence_that_names_a_block_and_keeps_the_rest():
     cleaned = internal_words.scrub(MINUTES_4_PROSE)
     assert cleaned.startswith("유주임은 동선 계획과") and "블록" not in cleaned
-    assert internal_words.scrub(MINUTES_1_R2) == "원문 표현은 「다음 주 금요일」입니다."
-    kept = internal_words.scrub(MINUTES_5_R1)
+    assert internal_words.scrub(MINUTES_1_WORDING_NOTE) == "원문 표현은 「다음 주 금요일」입니다."
+    kept = internal_words.scrub(MINUTES_5_POSTING_NOTE)
     assert "게시하기로 했습니다." in kept and "확정 날짜" not in kept
 
 
 def test_final_sections_and_answers_are_scrubbed():
     sections = report.final_tidy([{"heading": "실행 항목", "content": MINUTES_4_TABLE + "\n\n"
-                                   + MINUTES_1_R1}])
+                                   + MINUTES_1_DEADLINE_NOTE}])
     assert not internal_words.found(sections[0]["content"])
     # An answer may say it ran code; it may not name a block or a step.
     answer = "코드로 계산한 결과 평균은 3.47입니다. 확정 수치 블록에 없는 값은 쓰지 않았습니다."
@@ -556,13 +559,15 @@ STAFF_PLAN = ("[투입 계획 — 내부 메모]\n- PM 1명 1.0MM, AI 엔지니�
               "1.5MM\n"
               "- GPU 서버 임차: 월 1,200,000원 × 3개월")
 #: Two staffing paragraphs of one proposal.
-STAFF_R1 = ("본 사업에는 PM 1명(1.0MM), AI 엔지니어 3명(3.0MM), 데이터 엔지니어 1.5명(1.5MM)이 "
-            "투입되며, "
-            "GPU 서버 임차를 수행사가 제공합니다(표 3).")
-STAFF_R1_TABLE = ("| 역할 | 인원 | 투입 기간(MM) | 담당 업무 |\n| --- | --- | --- | --- |\n"
-                  "| AI 엔지니어 | 3명 | 3.0 | 요약·분류 모델 개발 |\n"
-                  "| 데이터 엔지니어 | 1.5명 | 1.5 | 데이터 정제 |")
-STAFF_R2 = "본 사업에는 프로젝트 매니저 1명(AI 엔지니어 3명)과 데이터 엔지니어 1.5명이 참여합니다."
+STAFF_PARAGRAPH = (
+    "본 사업에는 PM 1명(1.0MM), AI 엔지니어 3명(3.0MM), 데이터 엔지니어 1.5명(1.5MM)이 "
+    "투입되며, "
+    "GPU 서버 임차를 수행사가 제공합니다(표 3).")
+STAFF_TABLE = ("| 역할 | 인원 | 투입 기간(MM) | 담당 업무 |\n| --- | --- | --- | --- |\n"
+               "| AI 엔지니어 | 3명 | 3.0 | 요약·분류 모델 개발 |\n"
+               "| 데이터 엔지니어 | 1.5명 | 1.5 | 데이터 정제 |")
+STAFF_SECOND_PARAGRAPH = ("본 사업에는 프로젝트 매니저 1명(AI 엔지니어 3명)과 데이터 엔지니어 "
+                          "1.5명이 참여합니다.")
 
 
 def test_the_plan_s_people_and_mm_are_read_apart():
@@ -576,8 +581,8 @@ def test_the_plan_s_people_and_mm_are_read_apart():
 
 async def test_mm_written_as_headcount_is_found_and_repaired_once():
     roles = report_checks.staffing(STAFF_PLAN)
-    sections = [{"heading": "수행 조직", "content": STAFF_R1 + "\n\n" + STAFF_R1_TABLE},
-                {"heading": "투입 인력", "content": STAFF_R2}]
+    sections = [{"heading": "수행 조직", "content": STAFF_PARAGRAPH + "\n\n" + STAFF_TABLE},
+                {"heading": "투입 인력", "content": STAFF_SECOND_PARAGRAPH}]
     pre = report_checks.Prepass(format_id="client_proposal", staff=roles)
     doc = verify.Doc(sections, STAFF_PLAN)
     found, _ = await verify.find(doc, report_checks.checks(pre))
@@ -585,13 +590,14 @@ async def test_mm_written_as_headcount_is_found_and_repaired_once():
     assert len(staff) == 4
     assert any("자료는 AI 엔지니어 1명 × 3MM" in f.why for f in staff)
     fixes = {
-        STAFF_R1: STAFF_R1.replace("AI 엔지니어 3명", "AI 엔지니어 1명").replace(
+        STAFF_PARAGRAPH: STAFF_PARAGRAPH.replace("AI 엔지니어 3명", "AI 엔지니어 1명").replace(
             "데이터 엔지니어 1.5명", "데이터 엔지니어 1명"),
         "| AI 엔지니어 | 3명 | 3.0 | 요약·분류 모델 개발 "
         "|": "| AI 엔지니어 | 1명 | 3.0 | 요약·분류 모델 개발 |",
         "| 데이터 엔지니어 | 1.5명 | 1.5 | 데이터 정제 "
         "|": "| 데이터 엔지니어 | 1명 | 1.5 | 데이터 정제 |",
-        STAFF_R2: "본 사업에는 프로젝트 매니저 1명, AI 엔지니어 1명(3.0MM)과 데이터 엔지니어 "
+        STAFF_SECOND_PARAGRAPH:
+            "본 사업에는 프로젝트 매니저 1명, AI 엔지니어 1명(3.0MM)과 데이터 엔지니어 "
                   "1명(1.5MM)이 참여합니다.",
     }
 

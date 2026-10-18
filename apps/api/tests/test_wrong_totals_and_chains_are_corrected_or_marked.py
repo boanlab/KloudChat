@@ -34,9 +34,10 @@ def _normalized(answer: str, request: str, *, writer: str,
 
 # ── 329,600원 in the head sentence and the total row (429,600원) ─────────
 
-A05_REQUEST = ("다음 주 부산 출장 2박 3일이야. 직급은 대리(6급 상당)이고, KTX 왕복 119,600원, "
-               "숙소는 1박 95,000원짜리로 잡았어. 여비 총 얼마 받을 수 있어?")
-A05_ANSWER = (
+TRAVEL_EXPENSE_REQUEST = (
+    "다음 주 부산 출장 2박 3일이야. 직급은 대리(6급 상당)이고, KTX 왕복 119,600원, "
+    "숙소는 1박 95,000원짜리로 잡았어. 여비 총 얼마 받을 수 있어?")
+TRAVEL_EXPENSE_ANSWER = (
     "부산 출장 2박 3일 여비는 운임 119,600원 + 일비 75,000원 + 식비 75,000원 + 숙박비 160,000원"
     "으로 합계 329,600원입니다. [별표 1] 부산 상한은 1박 80,000원이라 1박 95,000원 중 15,000원을 "
     "초과해 이 부분은 본인이 부담합니다.\n\n"
@@ -54,7 +55,7 @@ A05_ANSWER = (
 
 @WRITERS
 def test_a_sum_after_its_listed_amounts_and_the_total_row_are_recomputed(writer):
-    out = _normalized(A05_ANSWER, A05_REQUEST, writer=writer)
+    out = _normalized(TRAVEL_EXPENSE_ANSWER, TRAVEL_EXPENSE_REQUEST, writer=writer)
     assert "숙박비 160,000원으로 합계 429,600원입니다." in out
     assert "| **합계** | | 119,600 + 75,000 + 75,000 + 160,000 | **429,600원** |" in out
     assert "329,600" not in out
@@ -87,7 +88,8 @@ def test_a_bold_result_is_recomputed():
 
 @WRITERS
 def test_a_result_a_tool_printed_is_marked_never_rewritten(writer):
-    out = _normalized(LFLF_SENTENCE, A05_REQUEST, writer=writer, tool_outputs=[CALC_CHECK_STDOUT])
+    out = _normalized(LFLF_SENTENCE, TRAVEL_EXPENSE_REQUEST, writer=writer,
+                      tool_outputs=[CALC_CHECK_STDOUT])
     assert "= **477,600원**(확인 필요)입니다." in out
 
 
@@ -121,7 +123,7 @@ def test_rates_averages_and_mixed_units_are_not_added():
 
 # ── a chain ten times over; restatements; a company label on invented shares ─
 
-A10_CHAIN = (
+MARKET_SIZE_CHAIN = (
     "상향식 TAM은 학생 수 500만 명[2] × 연 비용 118,800원 = 5조 9,400억 원, SAM은 5조 9,400억 원 "
     "× 30% = 1조 7,820억 원, SOM은 1조 7,820억 원 × 2% = 356억 4,000만 원으로 계산합니다.\n\n"
     "| 구분 | 계산식 | 산출 값 |\n|---|---|---|\n"
@@ -130,7 +132,7 @@ A10_CHAIN = (
 
 
 def test_a_wrong_step_of_a_chain_is_carried_into_the_next_steps():
-    out = units.fix_written_arithmetic(A10_CHAIN)
+    out = units.fix_written_arithmetic(MARKET_SIZE_CHAIN)
     assert ("500만 명[2] × 연 비용 118,800원 = 5,940억 원, SAM은 5,940억 원 × 30% = 1,782억 원, "
             "SOM은 1,782억 원 × 2% = 35억 6,400만 원") in out
     assert "| TAM | 학생 수 500만 명 × 연 구독료 118,800원 | 5,940억 원 |" in out
@@ -202,9 +204,9 @@ def test_a_formula_a_unit_off_is_marked(writer):
 
 # ── an operating profit its own figures do not leave ────────────────────────
 
-P56_REQUEST = ("직원 6명짜리 동네 베이커리 카페야. 연 매출은 약 4억 원, 임대료가 월 600만 원, "
-               "원재료비는 매출의 35%쯤 돼. 2년 안에 2호점을 내고 싶어.")
-P56_HEAD = (
+BAKERY_REQUEST = ("직원 6명짜리 동네 베이커리 카페야. 연 매출은 약 4억 원, 임대료가 월 600만 원, "
+                  "원재료비는 매출의 35%쯤 돼. 2년 안에 2호점을 내고 싶어.")
+BAKERY_HEAD = (
     "주어진 숫자만으로는 2호점 자금이 2년 안에 모이는지 단정할 수 없습니다. 연매출 4억 원에서 "
     "원재료비 1억 4,000만 원(35%)과 임대료 7,200만 원을 뺀 나머지가 인건비 6명과 공공요금, 기타 "
     "운영비로 얼마나 남느냐가 전부이기 때문입니다. 인건비를 월 1,800만 원(직원 1인 평균 300만 원, "
@@ -214,11 +216,11 @@ P56_HEAD = (
 
 @WRITERS
 def test_a_profit_its_own_figures_do_not_leave_is_marked_not_rewritten(writer):
-    out = _normalized(P56_HEAD, P56_REQUEST, writer=writer)
+    out = _normalized(BAKERY_HEAD, BAKERY_REQUEST, writer=writer)
     assert ("세전 영업이익은 연 1억 원(확인 필요: 4억 − 1억 4,000만 − 7,200만 − 2억 1,600만 = "
             "−2,800만 원) 안팎") in out
     assert out.replace("(확인 필요: 4억 − 1억 4,000만 − 7,200만 − 2억 1,600만 = −2,800만 원)",
-                       "") == P56_HEAD
+                       "") == BAKERY_HEAD
     assert units.mark_profit_contradictions(out) == out
 
 

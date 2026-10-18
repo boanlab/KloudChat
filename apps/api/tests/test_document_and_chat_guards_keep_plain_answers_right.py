@@ -1,4 +1,4 @@
-"""Document and chat guards read against plain answers, with evaluation strings."""
+"""Document and chat guards read against plain answers, with strings from real answers."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from app.services import (
 
 # ── the weekly meeting memo ──────────────────────────────────────────────────────
 
-A01_MEMO = (
+MEETING_MEMO_REQUEST = (
     "아래 메모로 회의록 작성해 줘. 결정 사항과 할 일(담당·기한)이 한눈에 보이게.\n\n"
     "[메모] 10/8(목) 14시 본관 3층 소회의실, 교육혁신팀 주간회의\n"
     "참석: 박정민 팀장, 이수진 차장, 김도윤 대리, 최하늘 주임 (정현우 과장 출장으로 불참)\n"
@@ -39,14 +39,14 @@ A01_MEMO = (
 )
 
 #: one writer's action table: 「미정」 with the reason in 비고
-A01_27B = (
+ACTION_TABLE_WITH_REASONS = (
     "| 번호 | 할 일 | 담당 | 기한 | 비고 |\n|------|-------|------|------|------|\n"
     "| 1 | 모바일 화면 검수 체크리스트 작성 및 공유 | 김도윤 | 2026-10-15(목) | 다음 회의 때 공유 |\n"  # noqa: E501 — verbatim data
     "| 2 | 학생 테스트 그룹 모집(학생회 통해, 10명 목표) | 최하늘 | 미정 | 회의에서 기한을 정하지 않음 |\n"  # noqa: E501 — verbatim data
     "| 3 | 미제출 원고 3편 재요청(교수님들께) | 최하늘 | 2026-10-16(금) | 원고 12편 중 9편 접수 상태 |\n"  # noqa: E501 — verbatim data
 )
 #: another writer's, with 「출처: 회의」 in every 비고 and no reason on the 미정 row
-A01_FLASH = (
+ACTION_TABLE_WITH_SOURCES = (
     "| 할 일 | 담당 | 기한 | 비고 |\n|------|------|------|------|\n"
     "| 모바일 화면 검수 체크리스트 작성 및 공유 | 김도윤 대리 | 2026-10-15(목) | 출처: 회의 |\n"
     "| 학생 테스트 그룹 모집(학생회 경유) | 최하늘 주임 | 미정 | 10명 목표, 출처: 회의 |\n"
@@ -58,7 +58,8 @@ async def _minutes_dates() -> list[dict]:
     async def offline(*_a, **_k):
         raise RuntimeError("offline")
 
-    pre = await report_checks.prepare("minutes", A01_MEMO, A01_MEMO, complete=offline,
+    pre = await report_checks.prepare("minutes", MEETING_MEMO_REQUEST, MEETING_MEMO_REQUEST,
+                                      complete=offline,
                                       model="m", api_key="", today=dt.date(2026, 10, 7))
     return pre.dates
 
@@ -77,11 +78,11 @@ async def test_a_due_the_meeting_left_open_stays_open_and_no_row_borrows_another
     dates = await _minutes_dates()
     said = next(d for d in dates if d["text"].startswith("다음 회의 때"))
     assert said["date"] == "2026-10-15"
-    out = _repaired(A01_27B, dates)
+    out = _repaired(ACTION_TABLE_WITH_REASONS, dates)
     # the writer's 「미정」 with its reason: not the checklist's 「다음 회의 때」
     assert "| 최하늘 | 미정 | 회의에서 기한을 정하지 않음 |" in out
     assert "원문 「다음 회의 때」" not in out
-    flash = _repaired(A01_FLASH, dates)
+    flash = _repaired(ACTION_TABLE_WITH_SOURCES, dates)
     # no reason in 비고, yet the date's sentence is the checklist's, not the test group's
     assert "| 최하늘 주임 | 미정 |" in flash and "다음 회의 때" not in flash
 
@@ -89,9 +90,9 @@ async def test_a_due_the_meeting_left_open_stays_open_and_no_row_borrows_another
 @pytest.mark.asyncio
 async def test_a_one_meeting_action_table_has_no_source_column_saying_meeting_on_every_row():
     dates = await _minutes_dates()
-    out = _repaired(A01_27B, dates)
+    out = _repaired(ACTION_TABLE_WITH_REASONS, dates)
     assert out.splitlines()[0] == "| 번호 | 할 일 | 담당 | 기한 | 비고 |"
-    flash = _repaired(A01_FLASH, dates)
+    flash = _repaired(ACTION_TABLE_WITH_SOURCES, dates)
     assert "출처" not in flash
     assert "| 김도윤 대리 | 2026-10-15(목) | - |" in flash
     assert "| 10명 목표 |" in flash
@@ -108,20 +109,21 @@ async def test_a_one_meeting_action_table_has_no_source_column_saying_meeting_on
 def test_a_group_owner_is_no_name_to_blank():
     table = ("| 할 일 | 담당 | 기한 |\n|---|---|---|\n"
              "| 담당 사업별 11월 예산 집행계획 작성·팀장 제출 | 각 담당자 | 2026-10-23(금) |\n")
-    out, codes = report_checks.minutes_grounding([{"heading": "할 일", "content": table}], A01_MEMO)
+    out, codes = report_checks.minutes_grounding([{"heading": "할 일", "content": table}],
+                                                 MEETING_MEMO_REQUEST)
     assert "| 각 담당자 |" in out[0]["content"] and "minutes_owner" not in codes
 
 
 # ── the 공문 and the result report ───────────────────────────────────────────────────
 
-A03_T1 = (
+OFFICIAL_LETTER_REQUEST = (
     "각 학과에 보낼 협조 요청 공문을 써 줘.\n\n"
     "- 제목 취지: 2027학년도 실험실습 기자재 수요조사 협조 요청\n"
     "- 발신: 한빛대학교 기획처장 / 수신: 각 학과(부)장\n"
     "- 제출 기한: 2026. 11. 6.(금) 18:00까지\n"
     "- 붙임: 실험실습 기자재 수요조사서 1부"
 )
-A03_T2 = (
+EVENT_REPORT_REQUEST = (
     "아래 자료로 행사 결과보고서 써 줘. 총장님까지 올라가는 내부 보고야.\n\n"
     "- 만족도 조사(응답 141명): 전반 만족 4.5/5, 멘토링 4.6, 장소·시설 4.1, 식음료 3.8. 주관식에서 "
     "'밤샘 중 휴식 공간 부족' 23건, '와이파이 끊김' 17건 지적\n"
@@ -132,12 +134,13 @@ A03_T2 = (
 def test_a_deadline_the_letter_gives_is_not_its_issue_day():
     fmt = doc_formats.BY_ID["official"]
     block = doc_formats.title_block(fmt, {"fields": {
-        "수신": "각 학과(부)장", "발신": "한빛대학교 기획처장", "시행일": "2026. 11. 6."}}, A03_T1)
+        "수신": "각 학과(부)장", "발신": "한빛대학교 기획처장", "시행일": "2026. 11. 6."}},
+        OFFICIAL_LETTER_REQUEST)
     assert dict(block["fields"])["시행일"] == ""
     assert dict(block["fields"])["발신"] == "한빛대학교 기획처장"
     # a 시행일 the request names as such is kept
     named = doc_formats.title_block(fmt, {"fields": {"시행일": "2026. 11. 2."}},
-                                    A03_T1 + "\n- 시행일: 2026. 11. 2.")
+                                    OFFICIAL_LETTER_REQUEST + "\n- 시행일: 2026. 11. 2.")
     assert dict(named["fields"])["시행일"] == "2026. 11. 2."
 
 
@@ -162,7 +165,7 @@ async def test_a_remark_count_stays_with_its_remark():
               "'와이파이 끊김' 17건 지적")
     right = "- 휴식 공간 부족: 밤샘 중 쉴 곳 부족(주관식 23건)\n- 와이파이 장애 17건"
     doc = verify.Doc([{"heading": "성과 및 문제점", "content": f"{flash}\n\n{nested}\n\n{right}"}],
-                     A03_T2)
+                     EVENT_REPORT_REQUEST)
     found, _ = await report_checks.count_labels(doc)
     by_line = {f.sentence: f.why for f in found}
     assert "밤샘 중 휴식 공간 부족" in by_line[flash.strip()]
@@ -182,7 +185,7 @@ def test_a_one_part_plan_goes_straight_to_writing():
 
 # ── a budget limit judged on the computed VAT-inclusive totals ──────────────────────
 
-A04_T2 = (
+LAPTOP_QUOTES = (
     "[견적 1] 가온정보통신 단가 1,320,000원(부가세 별도) × 30대, 무상 보증 3년\n"
     "[견적 2] 다솜시스템 단가 1,390,000원(부가세 포함) × 30대, 무상 보증 2년\n"
     "[견적 3] 누리컴 단가 1,480,000원(부가세 별도) × 30대, 무상 보증 3년\n"
@@ -196,7 +199,7 @@ def test_a_budget_limit_with_no_reading_is_judged_on_the_computed_total():
             "options": [{"name": "가온정보통신", "musts": {"무상 보증": 3}},
                         {"name": "다솜시스템", "musts": {"무상 보증": 2}},
                         {"name": "누리컴", "musts": {"무상 보증": 3}}]}
-    numbers = report_checks._material_numbers(A04_T2)
+    numbers = report_checks._material_numbers(LAPTOP_QUOTES)
     unread = report_checks.must_status(data, numbers)
     assert unread["options"]["가온정보통신"]["status"] == "조건 미확인"
     costs = {"budget": {"amount": 48000000, "vat": "incl", "compared": {
@@ -274,7 +277,7 @@ def test_a_section_cut_off_mid_word_ends_at_its_last_sentence():
 
 # ── a market-entry review searches even with the company's memo ──────────────────────
 
-A10_T1 = (
+MARKET_ENTRY_REQUEST = (
     "「국내 클라우드 협업툴 시장」에 진입할 만한지 검토 보고서 써 줘. 경영회의 안건 자료야.\n\n"
     "우리 회사 자료(한빛소프트, 가상 회사 — 아래는 사내 자료임):\n"
     "- 업력 12년, 직원 85명, 주력은 중견기업용 전자결재·그룹웨어(설치형), 고객사 약 340곳\n"
@@ -289,9 +292,10 @@ A10_T1 = (
 
 
 def test_a_market_entry_review_with_a_company_memo_still_searches():
-    assert not report.material_complete(A10_T1, "biz")
+    assert not report.material_complete(MARKET_ENTRY_REQUEST, "biz")
     # the company memo alone, nothing asked from outside: written from it
-    memo_only = A10_T1.split("\n\n알고 싶은 것")[0] + "\n\n알고 싶은 것: 진입 여부 의견."
+    memo_only = (MARKET_ENTRY_REQUEST.split("\n\n알고 싶은 것")[0]
+                 + "\n\n알고 싶은 것: 진입 여부 의견.")
     assert report.material_complete(memo_only, "biz")
 
 

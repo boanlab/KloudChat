@@ -9,7 +9,7 @@ from app.services import agent, server_notes
 from app.services.tools.base import Tool, ToolResult
 
 #: a first turn as stored: the answer, the search note, the advice line.
-_P56_TURN1 = (
+_BAKERY_FIRST_TURN = (
     "연 매출 4억 원이면 월 매출은 약 3,333만 원입니다. 정책자금은 소상공인시장진흥공단에 "
     "직접 문의하세요."
     + server_notes.WEB_NONE_KO
@@ -19,7 +19,7 @@ _P56_TURN1 = (
 
 
 def test_a_stored_answer_goes_back_without_the_server_notes():
-    assert server_notes.strip(_P56_TURN1) == (
+    assert server_notes.strip(_BAKERY_FIRST_TURN) == (
         "연 매출 4억 원이면 월 매출은 약 3,333만 원입니다. 정책자금은 소상공인시장진흥공단에 "
         "직접 문의하세요.")
     for note in server_notes.WEB_NOTES:

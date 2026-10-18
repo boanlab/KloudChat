@@ -14,7 +14,7 @@ from app.services.workspace_context import AppliedSkill
 # ── answers that are only a work plan ────────────────────────────────────────────────
 
 #: the whole answer, after the opening 「The user wants …」 note went
-A02_PLAN = (
+WEEKLY_REPORT_PLAN = (
     'Key points from the skeleton:\n'
     '- 보고 기간·보고 대상·결론 3줄로 시작\n'
     '- 4개 과제별 추진 내용·현황 표\n'
@@ -115,13 +115,13 @@ A02_PLAN = (
     'check.'
 )
 
-A02_REQUEST = (
+WEEKLY_REPORT_REQUEST = (
     "아래 메모로 이번 주 주간 업무 보고서 써 줘. 팀장님께 올릴 거야.\n\n"
     "- 기간: 10/5~10/9\n"
     "- 이슈: 디자인 업체 견적 A사 380만원 / B사 420만원(납기 1주 빠름) — 결정 필요"
 )
 
-A02_REPORT = (
+WEEKLY_REPORT = (
     "# 주간 업무 보고(10/5~10/9)\n\n"
     "□ 핵심\n ○ LMS 개편·워크숍·사례집 정상 진행, 디자인 업체 선정 결정 필요\n\n"
     "| 안 | 견적 | 비고 |\n|---|---|---|\n| A사 | 380만원 | — |\n"
@@ -129,7 +129,7 @@ A02_REPORT = (
 )
 
 #: written with no transcript, claiming one
-A08_INVENTED = (
+VIDEO_NOTE_INVENTED = (
     "전사 추출로 영상의 실제 내용을 확인했습니다.\n\n## 3줄 요약\n\n"
     "- 이 영상은 금리가 무엇인지, 명목금리와 실질금리를 어떻게 구분하는지, 그리고 기준금리가 "
     "시중 금리에 어떻게 전파되는지를 다루는 경제 기초 강의입니다.\n\n"
@@ -137,7 +137,7 @@ A08_INVENTED = (
     "- 「명목금리에서 물가 상승률을 빼면 실질금리가 됩니다」"
 )
 
-A08_REQUEST = (
+VIDEO_NOTE_REQUEST = (
     "이 영상 보고 금리 개념 학습 노트 정리해 줘. 신입 직원 경제 기초 스터디에서 같이 볼 거야.\n"
     "https://www.youtube.com/watch?v=EAs8qDciTak\n"
     "3줄 요약, 영상에서 설명한 핵심 개념, 스터디 토론 질문 2개로."
@@ -150,15 +150,15 @@ SOURCE = "mcp__youtube__transcript"
 # ── the plan detector ────────────────────────────────────────────────────────
 
 
-def test_the_a02_plan_is_a_plan() -> None:
-    assert internal_words.is_work_plan(A02_PLAN, request=A02_REQUEST)
+def test_the_weekly_report_plan_is_a_plan() -> None:
+    assert internal_words.is_work_plan(WEEKLY_REPORT_PLAN, request=WEEKLY_REPORT_REQUEST)
     opened = ("The user wants a weekly report in bullet-point format for their team leader. "
-              "Let me organize the memo content following the skills.\n\n" + A02_PLAN)
-    assert internal_words.is_work_plan(opened, request=A02_REQUEST)
+              "Let me organize the memo content following the skills.\n\n" + WEEKLY_REPORT_PLAN)
+    assert internal_words.is_work_plan(opened, request=WEEKLY_REPORT_REQUEST)
 
 
 def test_deliverables_are_not_plans() -> None:
-    assert not internal_words.is_work_plan(A02_REPORT, request=A02_REQUEST)
+    assert not internal_words.is_work_plan(WEEKLY_REPORT, request=WEEKLY_REPORT_REQUEST)
     # notes before the briefing: stripped, not regenerated
     memo = (
         "The user is asking me to write the customer research briefing using only what I've "
@@ -177,7 +177,7 @@ def test_deliverables_are_not_plans() -> None:
     )
     assert not internal_words.is_work_plan(letter, request="영문 영업 메일 써 줘")
     # an English conversation
-    assert not internal_words.is_work_plan(A02_PLAN, request="Write the weekly report.")
+    assert not internal_words.is_work_plan(WEEKLY_REPORT_PLAN, request="Write the weekly report.")
 
 
 # ── run_turn with a scripted model ───────────────────────────────────────────
@@ -254,20 +254,22 @@ def _shown(events: list[dict]) -> str:
 
 @pytest.mark.asyncio
 async def test_a_plan_only_answer_is_written_once_more_as_the_report(monkeypatch) -> None:
-    events, seen = await _turn(monkeypatch, [A02_PLAN, A02_REPORT], request=A02_REQUEST)
+    events, seen = await _turn(monkeypatch, [WEEKLY_REPORT_PLAN, WEEKLY_REPORT],
+                               request=WEEKLY_REPORT_REQUEST)
 
-    assert _shown(events) == A02_REPORT
+    assert _shown(events) == WEEKLY_REPORT
     assert len(seen) == 2
     again = seen[-1]
     assert "tools" not in again
     assert "plan of the work" in again["messages"][-1]["content"]
-    assert A02_PLAN not in json.dumps(again, ensure_ascii=False)
+    assert WEEKLY_REPORT_PLAN not in json.dumps(again, ensure_ascii=False)
     assert len([e for e in events if e["type"] == "usage"]) == 1
 
 
 @pytest.mark.asyncio
 async def test_a_plan_twice_is_never_shipped(monkeypatch) -> None:
-    events, seen = await _turn(monkeypatch, [A02_PLAN, A02_PLAN], request=A02_REQUEST)
+    events, seen = await _turn(monkeypatch, [WEEKLY_REPORT_PLAN, WEEKLY_REPORT_PLAN],
+                               request=WEEKLY_REPORT_REQUEST)
 
     assert _shown(events).strip() == ""
     assert len(seen) == 2  # once more, not more
@@ -275,9 +277,9 @@ async def test_a_plan_twice_is_never_shipped(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_a_report_is_not_written_twice(monkeypatch) -> None:
-    events, seen = await _turn(monkeypatch, [A02_REPORT], request=A02_REQUEST)
+    events, seen = await _turn(monkeypatch, [WEEKLY_REPORT], request=WEEKLY_REPORT_REQUEST)
 
-    assert _shown(events) == A02_REPORT
+    assert _shown(events) == WEEKLY_REPORT
     assert len(seen) == 1
 
 
@@ -300,7 +302,7 @@ async def test_no_transcript_called_means_no_summary(monkeypatch) -> None:
     """A note claiming a transcript tool that never ran, and quoting the video."""
     calls: list[dict] = []
     events, _ = await _turn(
-        monkeypatch, [A08_INVENTED], request=A08_REQUEST,
+        monkeypatch, [VIDEO_NOTE_INVENTED], request=VIDEO_NOTE_REQUEST,
         tools=[_transcript_tool(TRANSCRIPT, calls)], source_tools=frozenset({SOURCE}))
 
     shown = _shown(events)
@@ -315,7 +317,7 @@ async def test_a_failed_server_fetch_ends_the_turn_without_writing(monkeypatch) 
     tool = _transcript_tool("Error: transcription failed: Whisper transcription failed or "
                             "returned empty.", calls)
     events, seen = await _turn(
-        monkeypatch, [A08_INVENTED], request=A08_REQUEST, tools=[tool],
+        monkeypatch, [VIDEO_NOTE_INVENTED], request=VIDEO_NOTE_REQUEST, tools=[tool],
         source_tools=frozenset({SOURCE}),
         preset_call=(SOURCE, {"url": "https://www.youtube.com/watch?v=EAs8qDciTak"}))
 
@@ -331,7 +333,8 @@ async def test_a_fetched_transcript_is_what_the_note_is_written_from(monkeypatch
     calls: list[dict] = []
     note = "## 3줄 요약\n\n- 금리는 돈을 빌린 대가로, 300만 원을 3%로 맡기면 9만 원입니다."
     events, seen = await _turn(
-        monkeypatch, [note], request=A08_REQUEST, tools=[_transcript_tool(TRANSCRIPT, calls)],
+        monkeypatch, [note], request=VIDEO_NOTE_REQUEST,
+        tools=[_transcript_tool(TRANSCRIPT, calls)],
         source_tools=frozenset({SOURCE}),
         preset_call=(SOURCE, {"url": "https://www.youtube.com/watch?v=EAs8qDciTak"}))
 
@@ -350,13 +353,13 @@ def _skill(*tools: str) -> AppliedSkill:
 
 def test_a_declared_connector_given_its_link_is_fetched_first() -> None:
     tool = _transcript_tool(TRANSCRIPT, [])
-    assert sessions._source_call([_skill(SOURCE)], [tool], A08_REQUEST) == (
+    assert sessions._source_call([_skill(SOURCE)], [tool], VIDEO_NOTE_REQUEST) == (
         SOURCE, {"url": "https://www.youtube.com/watch?v=EAs8qDciTak"})
     # no link in the message (a follow-up on the note): nothing fetched
     assert sessions._source_call([_skill(SOURCE)], [tool], "토론 질문 하나 더 만들어 줘") is None
     # a skill that does not declare it, or a connector that is not connected
-    assert sessions._source_call([_skill()], [tool], A08_REQUEST) is None
-    assert sessions._source_call([_skill(SOURCE)], [], A08_REQUEST) is None
+    assert sessions._source_call([_skill()], [tool], VIDEO_NOTE_REQUEST) is None
+    assert sessions._source_call([_skill(SOURCE)], [], VIDEO_NOTE_REQUEST) is None
 
 
 def test_built_in_tools_and_tools_needing_more_than_a_link_are_left_to_the_model() -> None:
@@ -365,52 +368,54 @@ def test_built_in_tools_and_tools_needing_more_than_a_link_are_left_to_the_model
 
     fetch = Tool(name="fetch_url", description="", run=run, label="열기",
                  parameters={"type": "object", "required": ["url"]})
-    assert sessions._source_call([_skill("fetch_url")], [fetch], A08_REQUEST) is None
+    assert sessions._source_call([_skill("fetch_url")], [fetch], VIDEO_NOTE_REQUEST) is None
     two = Tool(name="mcp__x__clip", description="", run=run, label="자르기", source="mcp",
                parameters={"type": "object", "required": ["url", "start"]})
-    assert sessions._source_call([_skill("mcp__x__clip")], [two], A08_REQUEST) is None
+    assert sessions._source_call([_skill("mcp__x__clip")], [two], VIDEO_NOTE_REQUEST) is None
 
 
 # ── an answer that only says what it is about to do ──
 
-A11_REQUEST = (
+CLIENT_BRIEF_REQUEST = (
     "다음 주에 한국수자원공사(K-water) 정보화 담당 부서와 첫 미팅이 있어. 미팅 전에 읽을 "
     "고객사 조사 자료 만들어 줘.\n- 기관 개요(규모, 주요 사업, 최근 이슈) — 공개 자료로, "
     "출처 달기\n- 우리가 미팅에서 물어볼 질문 5개, 예상 이슈")
-A11_INTENT = ("K-water 개요·조직·재무, 최근 정보화·DX 사업, 최근 12개월 이슈를 각각 공개 "
-              "자료로 확인하겠습니다.\n\n\n\n")
-A11_BRIEF = (
+CLIENT_BRIEF_INTENT = ("K-water 개요·조직·재무, 최근 정보화·DX 사업, 최근 12개월 이슈를 각각 공개 "
+                       "자료로 확인하겠습니다.\n\n\n\n")
+CLIENT_BRIEF = (
     "## 기관 개요\n한국수자원공사(K-water)는 1967년 설립된 물관리 공기업입니다.\n\n"
     "## 미팅 질문\n1. 현재 쓰는 협업 도구는 무엇입니까?")
 
 
 def test_an_intent_line_is_no_deliverable() -> None:
-    assert internal_words.is_intent_only(A11_INTENT, request=A11_REQUEST)
-    assert internal_words.is_work_plan(A11_INTENT, request=A11_REQUEST)
+    assert internal_words.is_intent_only(CLIENT_BRIEF_INTENT, request=CLIENT_BRIEF_REQUEST)
+    assert internal_words.is_work_plan(CLIENT_BRIEF_INTENT, request=CLIENT_BRIEF_REQUEST)
     assert internal_words.is_intent_only(
-        "관련 자료를 찾아보겠습니다. 잠시만 기다려 주세요.", request=A11_REQUEST)
+        "관련 자료를 찾아보겠습니다. 잠시만 기다려 주세요.", request=CLIENT_BRIEF_REQUEST)
     # a deliverable, or a short answer that is not a promise of work
-    assert not internal_words.is_intent_only(A11_BRIEF, request=A11_REQUEST)
+    assert not internal_words.is_intent_only(CLIENT_BRIEF, request=CLIENT_BRIEF_REQUEST)
     assert not internal_words.is_intent_only(
         "네, 다음부터는 존댓말로 답하겠습니다.", request="존댓말로 해 줘")
     assert not internal_words.is_intent_only(
         "K-water는 1967년에 설립됐습니다. 최근 이슈는 공개 자료로 더 확인하겠습니다.",
-        request=A11_REQUEST)
+        request=CLIENT_BRIEF_REQUEST)
     assert not internal_words.is_intent_only("I'll check the sources.", request="Check it")
 
 
 @pytest.mark.asyncio
 async def test_an_intent_line_is_written_once_more_as_the_brief(monkeypatch) -> None:
-    events, seen = await _turn(monkeypatch, [A11_INTENT, A11_BRIEF], request=A11_REQUEST)
+    events, seen = await _turn(monkeypatch, [CLIENT_BRIEF_INTENT, CLIENT_BRIEF],
+                               request=CLIENT_BRIEF_REQUEST)
 
-    assert _shown(events) == A11_BRIEF
+    assert _shown(events) == CLIENT_BRIEF
     assert len(seen) == 2
     assert "tools" not in seen[-1]
 
 
 @pytest.mark.asyncio
 async def test_an_intent_line_twice_is_never_shipped(monkeypatch) -> None:
-    events, seen = await _turn(monkeypatch, [A11_INTENT, A11_INTENT], request=A11_REQUEST)
+    events, seen = await _turn(monkeypatch, [CLIENT_BRIEF_INTENT, CLIENT_BRIEF_INTENT],
+                               request=CLIENT_BRIEF_REQUEST)
 
     assert _shown(events).strip() == ""
     assert len(seen) == 2

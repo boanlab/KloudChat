@@ -5,7 +5,7 @@ from __future__ import annotations
 from app.pipeline import report_stages
 from app.services import verify
 
-_A07_ASK = (
+_SAAS_POLICY_ASK = (
     "「공공기관의 민간 클라우드(SaaS) 이용 확대 정책 동향」을 조사해서 보고서로 정리해 줘. "
     "사실마다 출처를 달고, 확인 못 한 건 확인 필요로 표시해 줘."
 )
@@ -22,12 +22,12 @@ def _left(section: int, sentence: str) -> verify.Finding:
 def test_contradicted_sentences_are_marked_when_the_request_asks():
     sections = [{"heading": "정책 흐름", "content": f"{_HELD} [5] {_N2SF}"}]
     assert report_stages.mark_web_disputes(
-        sections, [_left(0, _HELD), _left(0, _N2SF)], _A07_ASK) == 2
+        sections, [_left(0, _HELD), _left(0, _N2SF)], _SAAS_POLICY_ASK) == 2
     text = sections[0]["content"]
     assert "설명회를 개최했습니다 (확인 필요)." in text
     assert "종합적으로 고려합니다 (확인 필요)." in text
     # once only
-    assert report_stages.mark_web_disputes(sections, [_left(0, _HELD)], _A07_ASK) == 0
+    assert report_stages.mark_web_disputes(sections, [_left(0, _HELD)], _SAAS_POLICY_ASK) == 0
 
 
 def test_unmarked_when_the_request_did_not_ask():

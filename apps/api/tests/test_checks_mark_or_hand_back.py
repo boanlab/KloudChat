@@ -43,7 +43,7 @@ def test_the_tier_table_is_the_shared_one():
 
 # ── a pasted client profile, an exercise plan ──────────────────────────
 
-P07 = (
+TRAINER_REQUEST = (
     "퍼스널 트레이너가 되어 줘. 더 건강하고 튼튼해지고 싶은 사람의 정보를 줄 테니, "
     "현재 체력·목표·생활 습관에 맞는 최선의 계획을 짜 줘. 운동과학, 영양 지식 등 관련 "
     "지식을 써서.\n\n"
@@ -61,7 +61,7 @@ P07 = (
     "줘.")
 #: the plan's Monday and Friday as written before the check (the final answer kept only
 #: 「허리를 바닥에 붙인 채 …」 and 「 덤벨을 골반 위에 올려도 됩니다.」 of these)
-P07_PLAN = (
+TRAINER_PLAN = (
     "**월요일 — 하체 + 코어 (약 28분)**\n"
     "고블릿 스쿼트 3세트 × 12회, 휴식 60초. 덤벨 한 개를 가슴 앞에 세워 들고 앉습니다. "
     "불가리안 스플릿 스쿼트 3세트 × 각 다리 10회, 휴식 60초. 뒤쪽 발을 소파나 의자에 "
@@ -75,8 +75,8 @@ P07_PLAN = (
 
 
 def test_a_pasted_client_profile_is_not_material_to_trace():
-    assert not sessions._memo_pasted(P07)
-    assert not sessions._pasted_in([{"role": "user", "content": P07}])
+    assert not sessions._memo_pasted(TRAINER_REQUEST)
+    assert not sessions._pasted_in([{"role": "user", "content": TRAINER_REQUEST}])
 
 
 def _ground(answer: str, request: str, *, writer: str, traced: bool, advice: str = "") -> str:
@@ -97,7 +97,7 @@ def _ground(answer: str, request: str, *, writer: str, traced: bool, advice: str
 @TIERS
 @pytest.mark.parametrize("advice", ["medical", ""])
 def test_the_prescriptions_stay_whole(writer, advice):
-    out = _ground(P07_PLAN, P07, writer=writer, traced=True, advice=advice)
+    out = _ground(TRAINER_PLAN, TRAINER_REQUEST, writer=writer, traced=True, advice=advice)
     for sentence in ("데드버그 3세트 × 각 10회, 휴식 45초.",
                      "글루트 브릿지 3세트 × 15회, 휴식 45초.", "슈퍼맨 3세트 × 12회, 휴식 45초."):
         assert sentence in out
@@ -107,19 +107,19 @@ def test_the_prescriptions_stay_whole(writer, advice):
 
 # ── the judge's notes on a landing page's feature blocks ───────────────
 
-A12_MATERIAL = (
+LANDING_PAGE_REQUEST = (
     "「한빛워크」 랜딩 페이지 문구 써 줘. 히어로(헤드라인·서브), 기능 3개 블록, 고객 사례 "
     "한 줄, CTA까지.\n"
     "제품 정보(한빛소프트, 가상 — 아래 자료가 전부임):\n"
     "- 공공기관·중견기업용 협업툴: 메신저, 화상회의(최대 50명), 문서 공동편집, 결재 알림 연동\n"
     "- 설치형·클라우드형 둘 다 제공, 설치형은 망분리 환경 지원")
-A12_ANSWER = (
+LANDING_PAGE_ANSWER = (
     "**메신저와 화상회의**\n화상회의에는 최대 50명이 한자리에 모일 수 있어, 부서 회의나 전 직원 "
     "회의를 별도 도구 없이 진행할 수 있습니다.\n\n"
     "**문서 공동편집**\n여러 사람이 같은 문서를 동시에 고치므로, 파일을 주고받으며 버전을 맞출 "
     "필요가 없습니다.\n\n"
     "**쓸 때 주의**\n게시 전에 그 수치의 산정 기준(집계 기간·대상)을 확인하세요.")
-A12_JUDGED = [
+LANDING_PAGE_JUDGED = [
     {"quote": "부서 회의나 전 직원 회의를 별도 도구 없이 진행할 수 있습니다",
      "why": "자료에 언급 없음"},
     {"quote": "여러 사람이 같은 문서를 동시에 고치므로, 파일을 주고받으며 버전을 맞출 필요가 "
@@ -148,14 +148,14 @@ class _Writer:
 
 def _post(writer: str, model: _Writer) -> post_checks.Outcome:
     return asyncio.run(post_checks.run(
-        A12_ANSWER, keys=["generic-language-killer"], request="랜딩 페이지 문구 써 줘",
-        material=A12_MATERIAL, attached="", computed=[], today="2026-10-13", complete=model,
+        LANDING_PAGE_ANSWER, keys=["generic-language-killer"], request="랜딩 페이지 문구 써 줘",
+        material=LANDING_PAGE_REQUEST, attached="", computed=[], today="2026-10-13", complete=model,
         model=writer, judge="flash", api_key="k", strong=model_tier.strong(writer)))
 
 
 @TIERS
 def test_the_answer_s_own_suggestion_is_never_a_finding(writer):
-    model = _Writer(A12_JUDGED, A12_ANSWER)
+    model = _Writer(LANDING_PAGE_JUDGED, LANDING_PAGE_ANSWER)
     out = _post(writer, model)
     sent = [row["text"] for row in out.sent]
     assert not any("산정 기준" in quote for quote in sent)
@@ -163,33 +163,34 @@ def test_the_answer_s_own_suggestion_is_never_a_finding(writer):
 
 
 def test_a_strong_writer_weighs_the_notes_itself_and_keeps_what_it_kept():
-    model = _Writer(A12_JUDGED, A12_ANSWER)  # the writer keeps its sentences
+    model = _Writer(LANDING_PAGE_JUDGED, LANDING_PAGE_ANSWER)  # the writer keeps its sentences
     out = _post(STRONG, model)
     # no weaker model reads or rewrites it
     assert {m for m, _ in model.prompts} == {STRONG}
     revise = model.prompts[-1][1]
     assert "it may be wrong" in revise and "a listed feature's plain use" in revise
     # what it kept stays, shown in the step only
-    assert out.text == A12_ANSWER and not out.dropped
+    assert out.text == LANDING_PAGE_ANSWER and not out.dropped
     assert any("작성 모델이 근거를 보고 남김" in row["why"] for row in out.flags)
 
 
 def test_a_small_writer_s_judged_statement_is_marked_unless_code_confirms_it():
     # a judge's 「자료에 없음」 is no reason to cut; code finds no figure or name to look
     # up in 「부서 회의나 전 직원 회의를 …」, so it is marked where it stands
-    model = _Writer(A12_JUDGED, A12_ANSWER)
+    model = _Writer(LANDING_PAGE_JUDGED, LANDING_PAGE_ANSWER)
     out = _post(SMALL, model)
     assert [m for m, _ in model.prompts][:2] == ["flash", "flash"]
     assert "별도 도구 없이 진행할 수 있습니다(확인 필요)." in out.text and not out.dropped
     # a statement with a figure the material lacks still goes
     judged = [{"quote": "화상회의에는 최대 300명이 한자리에 모일 수 있습니다",
                "why": "자료는 50명"}]
-    answer = A12_ANSWER.replace("최대 50명이 한자리에 모일 수 있어, 부서 회의나 전 직원 회의를 "
-                                "별도 도구 없이 진행할 수 있습니다.",
-                                "최대 300명이 한자리에 모일 수 있습니다.")
+    answer = LANDING_PAGE_ANSWER.replace(
+        "최대 50명이 한자리에 모일 수 있어, 부서 회의나 전 직원 회의를 "
+        "별도 도구 없이 진행할 수 있습니다.",
+        "최대 300명이 한자리에 모일 수 있습니다.")
     out = asyncio.run(post_checks.run(
         answer, keys=["generic-language-killer"], request="랜딩 페이지 문구 써 줘",
-        material=A12_MATERIAL, attached="", computed=[], today="2026-10-13",
+        material=LANDING_PAGE_REQUEST, attached="", computed=[], today="2026-10-13",
         complete=_Writer(judged, answer), model=SMALL, judge="flash", api_key="k"))
     assert "300명" not in out.text and out.dropped
 
@@ -225,7 +226,8 @@ def test_copy_notes_go_to_the_writer_of_a_strong_answer_only(writer):
     judged = [{"quote": "결재 진행 상황을 따로 물어보지 않아도 됩니다", "why": "자료에 없음"}]
     model = _Writer(judged, answer)
     out = asyncio.run(copy_check.run(
-        answer, request="랜딩 페이지 문구", material=A12_MATERIAL, complete=model, model=writer,
+        answer, request="랜딩 페이지 문구", material=LANDING_PAGE_REQUEST, complete=model,
+        model=writer,
         judge="flash", api_key="k", strong=model_tier.strong(writer)))
     readers = [m for m, p in model.prompts if p.startswith("You check marketing copy")]
     if model_tier.strong(writer):
@@ -282,7 +284,7 @@ def test_a_strong_writer_gets_the_totals_as_data_not_a_verdict():
         assert figure in data
 
 
-A04_T2 = (
+LAPTOP_QUOTES = (
     "[견적 2] 다솜시스템\n- 단가 1,390,000원(부가세 포함) × 30대\n"
     "- 무상 보증 2년(센터 입고), 3년 연장 시 대당 45,000원(부가세 포함)\n"
     "- 납기 2주, 기존 기기 수거는 대당 10,000원(부가세 포함)\n"
@@ -300,20 +302,20 @@ def test_a_warranty_extension_is_added_never_swapped_for_the_laptops():
              "vat": "incl", "when": "3년 연장 시"},
             {"name": "기존 기기 수거", "unit_price": 10000, "count": 30, "per": "once",
              "vat": "incl"}]}]}
-    costs = report_checks.option_costs(reading, report_checks._material_numbers(A04_T2),
-                                       material=A04_T2)
+    costs = report_checks.option_costs(reading, report_checks._material_numbers(LAPTOP_QUOTES),
+                                       material=LAPTOP_QUOTES)
     # 42,000,000원 in a block: the extension left out of the base
     assert costs["options"]["다솜시스템"]["total"] == 43_350_000
 
 
-A04_FINDING = verify.Finding(
+RECOMMENDATION_FINDING = verify.Finding(
     1, "따라서 가온정보통신을 권고합니다.", "recommend_mismatch", "조건 미확인", auto=True)
-A04_SECTIONS = [
+RECOMMENDATION_SECTIONS = [
     {"heading": "요약", "content": "결론은 가온정보통신입니다."},
     {"heading": "권고", "content": "따라서 가온정보통신을 권고합니다. 누리컴보다 약 3,003,000원 "
                                  "저렴하고 납기도 11월 2일(월)로 약 2주 빠릅니다."},
 ]
-A04_MUSTS = {"musts": ["예산"], "options": {
+RECOMMENDATION_MUSTS = {"musts": ["예산"], "options": {
     "가온정보통신": {"status": "조건 미확인", "failed": [], "unknown": ["예산"]},
     "누리컴": {"status": "조건 미확인", "failed": [], "unknown": ["예산"]}}}
 
@@ -321,8 +323,9 @@ A04_MUSTS = {"musts": ["예산"], "options": {
 def test_settling_the_verdict_never_deletes_a_later_sentence():
     second = verify.Finding(1, "누리컴보다 약 3,003,000원 저렴하고 납기도 11월 2일(월)로 약 2주 "
                                "빠릅니다.", "recommend_mismatch", "x", auto=True)
-    sections, still = report_checks.settle_verdict(A04_SECTIONS, [A04_FINDING, second],
-                                                   A04_MUSTS)
+    sections, still = report_checks.settle_verdict(RECOMMENDATION_SECTIONS,
+                                                   [RECOMMENDATION_FINDING, second],
+                                                   RECOMMENDATION_MUSTS)
     assert "누리컴보다 약 3,003,000원 저렴하고" in sections[1]["content"]
     assert second in still
 
@@ -331,13 +334,13 @@ def test_settling_the_verdict_never_deletes_a_later_sentence():
 def test_the_verdict_overrides_only_a_small_writer(writer, monkeypatch):
     async def found(doc, checks, **kwargs):
         found.model = kwargs["model"]
-        return doc.sections, [A04_FINDING], {}
+        return doc.sections, [RECOMMENDATION_FINDING], {}
 
     monkeypatch.setattr(report_stages.verify, "verify_and_repair", found)
     bundle = Bundle(request=Request(text="노트북 견적 비교 보고서", model=writer, api_key="k",
                                     outline_model="flash"))
-    bundle.document.sections = [dict(s) for s in A04_SECTIONS]
-    bundle.computed.prepass = report_checks.Prepass(musts=A04_MUSTS)
+    bundle.document.sections = [dict(s) for s in RECOMMENDATION_SECTIONS]
+    bundle.computed.prepass = report_checks.Prepass(musts=RECOMMENDATION_MUSTS)
     asyncio.run(report_stages.Verify().apply(bundle, Context()))
     body = bundle.document.sections[1]["content"]
     if model_tier.strong(writer):
@@ -438,12 +441,14 @@ def test_an_assumed_range_and_the_end_of_a_given_hour_are_not_unsourced():
                "오전 7시 이전 출발 금지. 정보가 모자라면 합리적으로 가정한 뒤 맨 위에 적어.")
     answer = ("9월 하순(대략 9월 22일~10월 1일) 출발로 잡았고, 하루 이동 6시간 이하를 지켰습니다.")
     assert TRACE.check(answer, request, [], {}) == []
-    a01 = ("다음 주 목요일(10/15) 14시 교육혁신팀 주간회의야. 1시간이고, 다룰 것: LMS 1차 시안 "
-           "검토, 워크숍(10/22) 준비 점검.")
-    assert not [f for f in TRACE.check("회의는 14시부터 15시까지입니다.", a01, [], {})
+    agenda_request = (
+        "다음 주 목요일(10/15) 14시 교육혁신팀 주간회의야. 1시간이고, 다룰 것: LMS 1차 시안 "
+        "검토, 워크숍(10/22) 준비 점검.")
+    assert not [f for f in TRACE.check("회의는 14시부터 15시까지입니다.", agenda_request, [], {})
                 if f["kind"] == "time"]
-    a16 = "- change(billing): 클라우드형 요금 청구서 메일 발송일 매월 1일 → 매월 3일 (배포 11월)"
-    assert TRACE.check("11월 1일 청구서는 이미 발송됐습니다.", a16, [], {}) == []
+    change_line = ("- change(billing): 클라우드형 요금 청구서 메일 발송일 매월 1일 → 매월 3일 "
+                   "(배포 11월)")
+    assert TRACE.check("11월 1일 청구서는 이미 발송됐습니다.", change_line, [], {}) == []
 
 
 def test_a_mark_after_a_time_takes_the_hour_word_with_it():
@@ -491,11 +496,12 @@ def test_a_strong_writer_s_sentence_is_marked_where_a_small_one_s_is_dropped(wri
 
 def test_an_example_s_clock_and_next_month_s_day_are_not_unsourced():
     # 「예컨대 "저녁 7시(확인 필요)에 …"」, 「실제 월(예: 「11월 15일(확인 필요)」)」
-    p16 = ('예컨대 "저녁 7시에 집 앞 편의점까지 걷기", "아침에 이불 정리하기" 수준이면 '
-           "충분합니다.")
-    assert TRACE.check(p16, "우울할 때 할 수 있는 걸 알려 줘", [], {"advice": True}) == []
-    p36 = "프로젝트 마감일이 이번달 말에서 다음달 15일로 변경되였습니다."
-    found = TRACE.check("마감일은 11월 15일입니다.", p36, [], {"today": "2026-10-13"})
+    walking_advice = ('예컨대 "저녁 7시에 집 앞 편의점까지 걷기", "아침에 이불 정리하기" 수준이면 '
+                      "충분합니다.")
+    assert TRACE.check(walking_advice, "우울할 때 할 수 있는 걸 알려 줘", [],
+                       {"advice": True}) == []
+    deadline_notice = "프로젝트 마감일이 이번달 말에서 다음달 15일로 변경되였습니다."
+    found = TRACE.check("마감일은 11월 15일입니다.", deadline_notice, [], {"today": "2026-10-13"})
     assert not [f for f in found if f["kind"] == "date"]
 
 
@@ -505,9 +511,10 @@ def test_years_since_a_given_year_and_a_conditional_penalty_are_not_marked():
     answer = "2018년 출시 이후 8년 동안 「한빛메모」를 사용해 주신 모든 분께 감사드립니다."
     assert TRACE.check(answer, material, [], {"today": "2026-10-13"}) == []
     # 「…사고(인사사고, 뺑소니, 12대 중과실)라면 지금 바로 변호사를 선임하세요 (확인 필요).」
-    p48 = ("형사처벌 우려가 있는 사고(인사사고, 뺑소니, 12대 중과실)라면 지금 바로 변호사를 "
-           "선임하세요.")
-    assert TRACE.check(p48, "교통사고 났어. 조언만 해 줘", [], {"advice": True}) == []
+    accident_advice = (
+        "형사처벌 우려가 있는 사고(인사사고, 뺑소니, 12대 중과실)라면 지금 바로 변호사를 "
+        "선임하세요.")
+    assert TRACE.check(accident_advice, "교통사고 났어. 조언만 해 줘", [], {"advice": True}) == []
 
 
 @TIERS
@@ -526,11 +533,11 @@ def test_a_question_about_blanks_that_all_went_back_is_taken_out(writer):
 # ── marks sit after the whole value, never in a doubled bracket ─────────────────
 
 @pytest.mark.parametrize("line, value, whole", [
-    ("머리가 2.5cm 앞으로", "2.5", "2.5cm"),     # r7 P07 「2.5(확인 필요)cm」
-    ("5kg → 6~7kg 덤벨", "6~7", "6~7kg"),       # r7 P07 「6~7(확인 필요)kg」
-    ("오전 8시 이후 출발", "8", "8시"),           # r7 P02 「오전 8(확인 필요)시」
-    ("금요일 18시까지", "18", "18시"),            # r7 P36 「18(확인 필요)시」
-    ("머리글 아래 3행에", "3", "3행"),             # r7 P46 「3(확인 필요)행」
+    ("머리가 2.5cm 앞으로", "2.5", "2.5cm"),     # a trainer plan 「2.5(확인 필요)cm」
+    ("5kg → 6~7kg 덤벨", "6~7", "6~7kg"),       # a trainer plan 「6~7(확인 필요)kg」
+    ("오전 8시 이후 출발", "8", "8시"),           # a train trip 「오전 8(확인 필요)시」
+    ("금요일 18시까지", "18", "18시"),            # a proofread notice 「18(확인 필요)시」
+    ("머리글 아래 3행에", "3", "3행"),             # a spreadsheet formula 「3(확인 필요)행」
     ("2m 거리에서", "2", "2m"),
     ("5GB 용량", "5", "5GB"),
 ])
@@ -591,7 +598,7 @@ def test_a_small_writer_s_invented_assertion_is_still_marked(quote):
     assert f"{quote}(확인 필요)." in out.text and "1차 시안을 받았습니다." in out.text
 
 
-A02_T2 = (
+PRESS_BRIEF_REQUEST = (
     "아래 발표문을 부서장 보고용으로 정리해 줘. 핵심은 5줄 이내로 요약하고, 우리 대학(비수도권 "
     "사립대, 재학생 약 8,000명, 올해 RISE 사업 참여 중)에 미치는 영향 3가지와 우리가 지금 준비할 "
     "일을 정리해 줘.\n\n---\n[교육부 보도 참고자료(가상)] 2027년 대학 재정지원사업 개편 방향\n\n"
@@ -604,7 +611,7 @@ def test_a_pasted_press_release_makes_no_medical_question():
     # 「재정 진단」 in the pasted release forced a medical search and reading
     from app.services import exact_facts
 
-    ask = sessions._ask_of(A02_T2)
+    ask = sessions._ask_of(PRESS_BRIEF_REQUEST)
     assert exact_facts.advice_domain(ask) is None and exact_facts.search_reason(ask) is None
     # pasted results under 「봐 줘」 are still read whole
     lab = ("이 검사 결과 괜찮은 건지 봐 줘.\n\n---\n공복혈당 130 mg/dL, 당화혈색소 6.8%, "

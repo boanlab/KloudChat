@@ -15,7 +15,7 @@ L27, STRONG = "local/qwen3.8-27b", "deepseek/deepseek-v4-pro-0813"
 GROUPS = pytest.mark.parametrize("writer", [L27, STRONG])
 
 #: the market-size task
-A10_T2 = "\n".join([
+MARKET_SIZE_REQUEST = "\n".join([
     "국내 초·중·고 대상 「AI 학습 튜터(에듀테크)」 시장 규모를 추정해 줘. 신사업 TF 1차 검토용이야.",  # noqa: E501
     "- TAM·SAM·SOM 구분해서, 하향식과 상향식 둘 다로",
     "- 학생 수 등 기초 통계는 공개 출처(교육부·통계청 등)를 찾아서 쓰고 출처 달기",
@@ -51,7 +51,7 @@ async def test_one_finished_program_is_used_when_the_check_run_is_late(monkeypat
     monkeypatch.setattr(calc.settings_store, "tools_config", tools_config)
     monkeypatch.setattr(calc, "_one_run", one_run)
     block, _, status = await calc.computed_values(
-        A10_T2, ["학생 수 5,130,000명, 9,900원, 2%, 12개월"], complete=None, model="m",
+        MARKET_SIZE_REQUEST, ["학생 수 5,130,000명, 9,900원, 2%, 12개월"], complete=None, model="m",
         api_key="k", deadline=0.2)
     assert status == "partial"
     assert "검산 전" in block and "SOM = 609,444,000,000 × 0.02 = 12,188,880,000" in block
@@ -66,7 +66,7 @@ async def test_a_partial_run_reaches_the_writer_as_code_values(monkeypatch, writ
                 {"inputTokens": 0, "outputTokens": 0}, "partial")
 
     monkeypatch.setattr(report_stages.calc, "computed_values", partial)
-    bundle = report_stages.bundle_for(request=A10_T2, model=writer, api_key="k")
+    bundle = report_stages.bundle_for(request=MARKET_SIZE_REQUEST, model=writer, api_key="k")
     events = [e async for e in report_stages.Calc().run(bundle, Context())]
     assert events[-1]["status"] == "done" and "한 번 실행한 값" in events[-1]["label"]
     assert "TAM(연) = 609,444,000,000" in bundle.computed.values
@@ -79,7 +79,7 @@ async def test_a_timed_out_pass_has_the_writer_mark_its_own_figures(monkeypatch,
         return "", {"inputTokens": 0, "outputTokens": 0}, "timeout"
 
     monkeypatch.setattr(report_stages.calc, "computed_values", timed_out)
-    bundle = report_stages.bundle_for(request=A10_T2, model=writer, api_key="k")
+    bundle = report_stages.bundle_for(request=MARKET_SIZE_REQUEST, model=writer, api_key="k")
     events = [e async for e in report_stages.Calc().run(bundle, Context())]
     assert "추정" in events[-1]["label"]
     assert "「(추정)」" in report_stages.CALC_MISSING_NOTE
@@ -89,21 +89,24 @@ async def test_a_timed_out_pass_has_the_writer_mark_its_own_figures(monkeypatch,
 # ── verify: a repair reply's shape ──────────────────────────────────────
 
 #: the sentence that came out as 「{'sentence': '이에 대한 첫 단계로, …'}」
-A07_OLD = ("이에 대한 첫 단계로, 교육부의 ‘학교에서의 안전한 AI 도입·활용 가이드라인’(2026년 3월 "
-           "발표)[11]을 바탕으로 교내 시범 교과목 2~30개를 선정하여 소규모 파일럿을 가동합니다.")
-A07_NEW = ("이에 대한 첫 단계로, 교육부의 ‘학교에서의 안전한 AI 도입·활용 가이드라인’(2026년 3월 "
-           "예정)[11] 발표 전까지는 교내 시범 교과목 2~30개를 선정하여 소규모 파일럿을 가동합니다.")
+GUIDELINE_SENTENCE_OLD = (
+    "이에 대한 첫 단계로, 교육부의 ‘학교에서의 안전한 AI 도입·활용 가이드라인’(2026년 3월 "
+    "발표)[11]을 바탕으로 교내 시범 교과목 2~30개를 선정하여 소규모 파일럿을 가동합니다.")
+GUIDELINE_SENTENCE_NEW = (
+    "이에 대한 첫 단계로, 교육부의 ‘학교에서의 안전한 AI 도입·활용 가이드라인’(2026년 3월 "
+    "예정)[11] 발표 전까지는 교내 시범 교과목 2~30개를 선정하여 소규모 파일럿을 가동합니다.")
 
 
 @pytest.mark.parametrize("reply, kept", [
-    ([{"sentence": A07_NEW}], True),
-    ([A07_NEW], True),
+    ([{"sentence": GUIDELINE_SENTENCE_NEW}], True),
+    ([GUIDELINE_SENTENCE_NEW], True),
     ([{"problem": "시점"}], False),
     ([7], False),
 ])
 def test_a_repair_reply_item_is_a_sentence_or_nothing(reply, kept):
-    doc = verify.Doc(sections=[{"heading": "추진 방안", "content": f"{A07_OLD} 다음 문장."}])
-    finding = verify.Finding(section=0, sentence=A07_OLD, code="date", why="시점")
+    doc = verify.Doc(sections=[
+        {"heading": "추진 방안", "content": f"{GUIDELINE_SENTENCE_OLD} 다음 문장."}])
+    finding = verify.Finding(section=0, sentence=GUIDELINE_SENTENCE_OLD, code="date", why="시점")
 
     async def complete(*_a, **_k):
         return json.dumps(reply, ensure_ascii=False), {}
@@ -112,24 +115,24 @@ def test_a_repair_reply_item_is_a_sentence_or_nothing(reply, kept):
         doc, [finding], complete=complete, model="m", api_key="k"))
     content = sections[0]["content"]
     assert "{'sentence'" not in content and "{\"sentence\"" not in content
-    assert (A07_NEW in content) is kept
+    assert (GUIDELINE_SENTENCE_NEW in content) is kept
     assert (finding in left) is not kept
 
 
 # ── code-values: marked, never rewritten ───────────────────────────────
 
 #: the code's per-college lines (표본, 전반만족)
-A06_PRINTED = ["\n".join([
+COLLEGE_PRINTED = ["\n".join([
     "사회과학대학: 표본 = 24, 전반만족 = 4.17",
     "인문대학: 표본 = 25, 전반만족 = 3.92",
     "예술대학: 표본 = 18, 전반만족 = 3.39",
 ])]
-A06_ANSWER = ("단과대학별 전반만족은 사회과학대학 4.17점이 가장 높고 예술대학 3.39점이 가장 "
-              "낮습니다.")
+COLLEGE_ANSWER = ("단과대학별 전반만족은 사회과학대학 4.17점이 가장 높고 예술대학 3.39점이 가장 "
+                  "낮습니다.")
 
 
 def _stated():
-    return calc_check.printed_values(A06_PRINTED)
+    return calc_check.printed_values(COLLEGE_PRINTED)
 
 
 def test_the_printed_lines_read_by_row():
@@ -145,24 +148,24 @@ def _marks(writer: str) -> bool:
 
 @GROUPS
 def test_a_correct_value_is_never_rewritten_to_another_label_s(writer):
-    text, found = agent.code_checked(A06_ANSWER, A06_PRINTED, mark=_marks(writer))
-    assert text == A06_ANSWER and found == []
-    # the round's slip: a sentence read as naming the row's sample size. Without the row
+    text, found = agent.code_checked(COLLEGE_ANSWER, COLLEGE_PRINTED, mark=_marks(writer))
+    assert text == COLLEGE_ANSWER and found == []
+    # the slip: a sentence read as naming the row's sample size. Without the row
     # guard (the textbook schedule's check) it became 「24」; the code-values check leaves the
     # row's own printed 4.17 as written, in either group
     bound = "사회과학대학 표본은 4.17점으로 가장 높습니다."
-    old, fixes = calc_check.check_markdown(bound, _stated(), A06_PRINTED)
+    old, fixes = calc_check.check_markdown(bound, _stated(), COLLEGE_PRINTED)
     assert "24" in old and fixes
-    text, found = agent.code_checked(bound, A06_PRINTED, mark=_marks(writer))
+    text, found = agent.code_checked(bound, COLLEGE_PRINTED, mark=_marks(writer))
     assert text == bound and found == []
 
 
 @GROUPS
 def test_a_value_the_code_never_printed_for_the_row_is_marked_or_set_by_group(writer):
-    wrong = A06_ANSWER.replace("4.17점", "4.71점")
+    wrong = COLLEGE_ANSWER.replace("4.17점", "4.71점")
     table = "| 단과대학 | 표본 | 전반만족 |\n|---|---|---|\n| 사회과학대학 | 24 | 4.71 |"
-    text, found = agent.code_checked(wrong, A06_PRINTED, mark=_marks(writer))
-    cell, _ = agent.code_checked(table, A06_PRINTED, mark=_marks(writer))
+    text, found = agent.code_checked(wrong, COLLEGE_PRINTED, mark=_marks(writer))
+    cell, _ = agent.code_checked(table, COLLEGE_PRINTED, mark=_marks(writer))
     assert len(found) == 1
     if _marks(writer):
         # self-hosted: marked where it stands, the writer's number kept
@@ -175,7 +178,7 @@ def test_a_value_the_code_never_printed_for_the_row_is_marked_or_set_by_group(wr
 # ── citations: a number on a page that does not say it ────────────────
 
 #: the first search returned two msn articles, the second the pricing page
-A11_SEARCH = "\n".join([
+PRICING_SEARCH = "\n".join([
     "'네이버웍스 요금' 검색 결과:", "",
     "[1] \"유튜브, 넷플릭스, 챗GPT\"…하나둘 구독했더니 '텅장'",
     "https://www.msn.com/ko-kr/news/other/ar-AA2dENeP",
@@ -187,7 +190,7 @@ A11_SEARCH = "\n".join([
     "https://naver.worksmobile.com/pricing/",
     "네이버웍스 Lite 월 4,000원(연간 3,000원), Standard 월 8,500원, 화상회의 최대 200명.",
 ])
-A11_ANSWER = "\n".join([
+PRICING_ANSWER = "\n".join([
     "| 요금제 | 월간 | 연간 | 비고 |",
     "|---|---|---|---|",
     "| 네이버웍스 Lite | 4,000원 | 3,000원 | 메신저 중심, 화상 200명 [1] |",
@@ -200,7 +203,7 @@ A11_ANSWER = "\n".join([
 def _numbered() -> tuple[list[str], dict[str, str]]:
     sources: list[str] = []
     seen: dict[str, str] = {}
-    agent._number_sources(A11_SEARCH, sources, {"name": "web_search", "arguments": "{}"}, {},
+    agent._number_sources(PRICING_SEARCH, sources, {"name": "web_search", "arguments": "{}"}, {},
                           seen)
     return sources, seen
 
@@ -214,13 +217,13 @@ def test_the_writer_s_reading_is_kept_by_url():
 
 def test_a_citation_on_an_unrelated_page_is_taken_out():
     sources, seen = _numbered()
-    linked, cited = agent._link_citations(A11_ANSWER, sources, seen)
+    linked, cited = agent._link_citations(PRICING_ANSWER, sources, seen)
     assert sources[0] not in linked and sources[1] not in linked
     assert cited == [3]
     assert linked.count("[[3]](https://naver.worksmobile.com/pricing/)") == 2
     assert "강하고, 요금은" in linked
     # without what was read, numbers are linked as before
-    plain, plain_cited = agent._link_citations(A11_ANSWER, sources)
+    plain, plain_cited = agent._link_citations(PRICING_ANSWER, sources)
     assert sources[0] in plain and sources[1] in plain and plain_cited == [1, 2, 3]
 
 
@@ -245,7 +248,7 @@ def test_a_page_in_another_language_or_too_short_is_not_judged():
 # ── deck tables: turned, not cut ────────────────────────────────────────
 
 #: the comparison table the writer gave, six columns
-A09_ROWS = [
+SCHEDULING_ROWS = [
     ["구분", "FCFS", "SJF", "SRTF", "RR(q=2)", "우선순위"],
     ["평균 대기시간", "4.75", "4.0", "3.0", "5.0", "5.5"],
     ["선점", "아니오", "아니오", "예", "예", "아니오"],
@@ -253,7 +256,7 @@ A09_ROWS = [
 
 
 def test_a_wide_short_table_keeps_every_column_turned():
-    rows = deck._clean_rows(A09_ROWS)
+    rows = deck._clean_rows(SCHEDULING_ROWS)
     assert rows[0] == ["구분", "평균 대기시간", "선점"]
     assert ["우선순위", "5.5", "아니오"] in rows
     assert len(rows) == 6 and all(len(r) <= 5 for r in rows)
@@ -270,4 +273,4 @@ def test_a_table_too_long_to_turn_keeps_the_cap():
 def test_the_same_for_every_group(writer):
     # none of these depend on the writer's group: code decides each
     assert model_tier.group(writer) in model_tier.GROUPS
-    assert deck._clean_rows(A09_ROWS)[0][0] == "구분"
+    assert deck._clean_rows(SCHEDULING_ROWS)[0][0] == "구분"

@@ -35,12 +35,12 @@ def test_a_dash_after_a_label_or_quote_becomes_a_colon_not_a_comma():
 
 # ── source-check claims ─────────────────────────────────────────────────
 
-A11_T2_MATERIAL = (
+PRODUCT_MATERIAL = (
     "- 설치형(온프레미스)과 클라우드형 모두 제공, 설치형은 망분리 환경 지원\n"
     "- 가격: 클라우드형 1인 월 6,000원(부가세 별도), 설치형은 100명 기준 연 1,800만원\n"
     "- 약점: 모바일 앱 평점 3.6, 외부 서비스 연동(구글·슬랙 등)이 적음, 화상회의 최대 50명"
 )
-A11_T2_TABLE = "\n".join(
+PRICE_COMPARISON_TABLE = "\n".join(
     [
         "| 구분 | 한빛워크 | 네이버웍스 | 비고 |",
         "|---|---|---|---|",
@@ -56,19 +56,19 @@ A11_T2_TABLE = "\n".join(
 
 def test_a_source_in_the_notes_column_and_material_values_with_units_are_sourced():
     claims = skill_scripts.module("source-check", "claims")
-    findings = claims.check(A11_T2_TABLE, A11_T2_MATERIAL)
+    findings = claims.check(PRICE_COMPARISON_TABLE, PRODUCT_MATERIAL)
     assert not findings, findings
-    assert "확인하지 못함 (확인 필요)" not in claims.fix(A11_T2_TABLE, findings)
+    assert "확인하지 못함 (확인 필요)" not in claims.fix(PRICE_COMPARISON_TABLE, findings)
     # the skill's own 「확인하지 못함」 is an open cell, even with no source in the row
     open_row = ("| 구분 | 네이버웍스 |\n|---|---|\n"
                 "| 설치형 | 공개 자료에서 설치형 제공 확인하지 못함 |\n| 온프레미스 | 확인 못 함 |")
-    assert not claims.check(open_row, A11_T2_MATERIAL)
-    norm = claims._norm(A11_T2_MATERIAL)
-    assert claims._in_material("6,000원 (클라우드형)", A11_T2_MATERIAL, norm)
-    assert claims._in_material("1인/월, 부가세 별도", A11_T2_MATERIAL, norm)
+    assert not claims.check(open_row, PRODUCT_MATERIAL)
+    norm = claims._norm(PRODUCT_MATERIAL)
+    assert claims._in_material("6,000원 (클라우드형)", PRODUCT_MATERIAL, norm)
+    assert claims._in_material("1인/월, 부가세 별도", PRODUCT_MATERIAL, norm)
     # a figure with a word the material lacks, in a row with no source, is still unsourced
     bare = "| 구분 | 한빛워크 |\n|---|---|\n| 가격 | 6,000원 최저가 보장 |"
-    assert [f["kind"] for f in claims.check(bare, A11_T2_MATERIAL)] == ["unsourced_cell"]
+    assert [f["kind"] for f in claims.check(bare, PRODUCT_MATERIAL)] == ["unsourced_cell"]
 
 
 # ── internal-comms facts ────────────────────────────────────────────────

@@ -242,7 +242,7 @@ test('phone: one line, tools in a bottom sheet, answers full width, no sideways 
   expect(unexpected).toEqual([])
 })
 
-test('N6: 「+」 › 에이전트 lists every agent, each on its own screen, and offers 에이전트 만들기', async ({ page }, info) => {
+test('「+」 › 에이전트 lists every agent, each on its own screen, and offers 에이전트 만들기', async ({ page }, info) => {
   const { unexpected, created, sends } = await composerFixture(page, info)
   await page.goto('/new/chat')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
@@ -305,7 +305,7 @@ test('「+」 › 에이전트 puts others\' shared and published agents under �
   expect(unexpected.filter((u) => !u.startsWith('GET /b/'))).toEqual([])
 })
 
-test('M1: an agent row shows its own name once, the other screen as a badge, and one row per agent', async ({ page }, info) => {
+test('an agent row shows its own name once, the other screen as a badge, and one row per agent', async ({ page }, info) => {
   // The person's copy of 개조식 보고서 and the catalogue original it came from, both report-only.
   const report = { kinds: ['report'], surface: 'report' }
   const { unexpected, created, sends } = await composerFixture(page, info, {

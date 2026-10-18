@@ -12,7 +12,7 @@ from app.services import check_skills, current_evidence, internal_words, report,
 from app.services.value_guard import Evidence, settle
 
 # the change list the person pasted (no blank line under the ask)
-A16_REQUEST = (
+RELEASE_NOTES_REQUEST = (
     "이번 업데이트 내용으로 사내 공지랑 고객용 릴리스 노트 둘 다 써 줘. 사내 공지는 "
     "영업·고객지원팀이 알아야 할 것 위주로.\n"
     "(개발팀 변경 목록 — 한빛소프트 「한빛워크」 3.4.1, 가상, 배포 2026-11-04 수요일 22시~24시 "
@@ -26,7 +26,7 @@ A16_REQUEST = (
     "- 점검 중(22~24시) 웹·앱 접속 불가"
 )
 
-A16_WRITTEN = (
+RELEASE_NOTES_WRITTEN = (
     "두 문서 모두 개발팀 변경 목록 7개 항목만 근거로 썼습니다.\n\n"
     "**제목** 한빛워크 3.4.1 배포 안내 (11/4 수 22:00~24:00 점검)\n\n"
     "2026년 11월 4일 수요일 22:00~24:00 점검 중 한빛워크 3.4.1이 배포되고, 이 시간에는 웹과 앱 "
@@ -39,7 +39,7 @@ A16_WRITTEN = (
 )
 
 # what a skill post-check and the rewrite left of it (the final answer as shipped)
-A16_GUARDED = (
+RELEASE_NOTES_GUARDED = (
     "두 문서 모두 개발팀 변경 목록 [수치]개 항목만 근거로 썼습니다.\n\n"
     "**제목** 한빛워크 3.4.1 배포 안내 (11/[수치] 수 22:00~24:00 점검)\n\n"
     "2026년 11월 [수치] 수요일 22:00~24:00 점검 중 한빛워크 3.4.1이 배포되고, 이 시간에는 웹과 앱 "
@@ -72,7 +72,7 @@ def test_a_given_date_matches_in_every_notation():
 
 
 def test_the_release_note_dates_and_counts_come_back_and_only_the_wrong_day_is_marked():
-    out = _settle(A16_WRITTEN, A16_GUARDED, A16_REQUEST)
+    out = _settle(RELEASE_NOTES_WRITTEN, RELEASE_NOTES_GUARDED, RELEASE_NOTES_REQUEST)
     assert "[수치]" not in out and "[날짜]" not in out
     assert "(11/4 수 22:00~24:00 점검)" in out
     assert "2026년 11월 4일 수요일" in out and "2026. 11. 4.(수)" in out
@@ -91,28 +91,33 @@ def test_an_ordinal_is_not_a_quantity_for_the_notice_check():
 
 # ── this turn's web search and fetched pages are evidence ────────────────
 
-A15_PARAGRAPH = ("대웅제약은 지속가능경영보고서에서 정보보안·개인정보보호를 핵심 정책 영역으로 "
-                 "다루고 있고, 2025년 정보보호 공시에서 정보보호 투자액 32억 원을 밝혔습니다.")
-A15_SEARCH = ("[1] 대웅제약 지속가능경영보고서 2025 — 정보보안·개인정보보호를 핵심 정책 영역으로 "
-              "관리 … 2025년 정보보호 공시: 정보보호 투자액 32억 원")
-A15_TABLE = ("| 출처 | 내용 |\n|---|---|\n"
-             "| 지속가능경영보고서 | 정보보안·개인정보보호 핵심 정책 |\n"
-             "| 정보보호 공시 | 투자액 32억 원 |")
+COMPANY_SECURITY_PARAGRAPH = (
+    "대웅제약은 지속가능경영보고서에서 정보보안·개인정보보호를 핵심 정책 영역으로 "
+    "다루고 있고, 2025년 정보보호 공시에서 정보보호 투자액 32억 원을 밝혔습니다.")
+COMPANY_SECURITY_SEARCH = (
+    "[1] 대웅제약 지속가능경영보고서 2025 — 정보보안·개인정보보호를 핵심 정책 영역으로 "
+    "관리 … 2025년 정보보호 공시: 정보보호 투자액 32억 원")
+COMPANY_SECURITY_TABLE = ("| 출처 | 내용 |\n|---|---|\n"
+                          "| 지속가능경영보고서 | 정보보안·개인정보보호 핵심 정책 |\n"
+                          "| 정보보호 공시 | 투자액 32억 원 |")
 
 
 def test_a_research_paragraph_a_search_supports_is_kept_unmarked():
-    before = f"안녕하세요.\n\n{A15_PARAGRAPH}\n\n{A15_TABLE}\n\n감사합니다."
+    before = (f"안녕하세요.\n\n{COMPANY_SECURITY_PARAGRAPH}\n\n{COMPANY_SECURITY_TABLE}"
+              "\n\n감사합니다.")
     after = "안녕하세요.\n\n| 출처 | 내용 |\n|---|---|\n\n감사합니다."
-    out = _settle(before, after, "대웅제약 총무·IT 담당자에게 보낼 첫 영업 메일", A15_SEARCH)
-    assert A15_PARAGRAPH in out and f"{A15_PARAGRAPH} (확인 필요)" not in out
+    out = _settle(before, after, "대웅제약 총무·IT 담당자에게 보낼 첫 영업 메일",
+                  COMPANY_SECURITY_SEARCH)
+    assert COMPANY_SECURITY_PARAGRAPH in out
+    assert f"{COMPANY_SECURITY_PARAGRAPH} (확인 필요)" not in out
     # never a table with its header alone
     assert "| 정보보호 공시 | 투자액 32억 원 |" in out
 
 
 def test_without_the_search_the_kept_paragraph_is_marked():
-    before = f"안녕하세요.\n\n{A15_PARAGRAPH}\n\n감사합니다."
+    before = f"안녕하세요.\n\n{COMPANY_SECURITY_PARAGRAPH}\n\n감사합니다."
     out = _settle(before, "안녕하세요.\n\n감사합니다.", "대웅제약에 보낼 영업 메일")
-    assert f"{A15_PARAGRAPH} (확인 필요)" in out
+    assert f"{COMPANY_SECURITY_PARAGRAPH} (확인 필요)" in out
 
 
 def test_search_results_reach_the_answer_grounding_stage():
@@ -122,7 +127,7 @@ def test_search_results_reach_the_answer_grounding_stage():
         api_key="k", session_id="s", today=None, first_message="", messages=[],
         material="대웅제약에 보낼 메일", check_keys=(), check_material="영업 기록: 첫 연락",
         tool_outputs=[], judge="", kept_steps=[], usage={}, traced=True,
-        evidence=[A15_SEARCH])
+        evidence=[COMPANY_SECURITY_SEARCH])
 
     async def go():
         return [e async for e in AnswerGrounding().run(bundle, Context())]
@@ -133,7 +138,7 @@ def test_search_results_reach_the_answer_grounding_stage():
 
 # ── the answer's own tables and simple arithmetic ────────────────────────
 
-A06_TABLE = (
+BUDGET_EXECUTION_TABLE = (
     "| 부서 | 사업명 | 예산액(원) | 9월말 집행액(원) | 집행률(%) | 잔여액(원) "
     "| 월평균 집행 필요액(원) | 9월까지 월평균 집행액(원) |\n|---|---|---|---|---|---|---|---|\n"
     "| 교육혁신팀 | LMS 개편 | 180,000,000 | 54,000,000 | 30.0 | 126,000,000 | 42,000,000 | "
@@ -169,7 +174,8 @@ def test_values_the_answer_s_own_table_holds_are_never_blanked():
     ]
     material = "9월말 예산 집행 현황 분석해 줘. 적정 집행률은 75%"
     for written, guarded in lines:
-        before, after = f"{written}\n\n{A06_TABLE}", f"{guarded}\n\n{A06_TABLE}"
+        before = f"{written}\n\n{BUDGET_EXECUTION_TABLE}"
+        after = f"{guarded}\n\n{BUDGET_EXECUTION_TABLE}"
         assert _settle(before, after, material) == before, written
 
 
@@ -231,8 +237,8 @@ def test_one_place_is_an_idiom_not_a_count():
 
 
 def test_a_pasted_change_list_is_the_person_s_material_not_a_present_fact():
-    assert sessions._reads_pasted_material(A16_REQUEST)
-    assert sessions._memo_pasted(A16_REQUEST)
+    assert sessions._reads_pasted_material(RELEASE_NOTES_REQUEST)
+    assert sessions._memo_pasted(RELEASE_NOTES_REQUEST)
     assert not sessions._reads_pasted_material("삼성전자 대표가 누구야?")
 
 
@@ -243,9 +249,9 @@ def test_the_answer_on_given_material_drops_the_caveat_the_check_block_and_echoe
               "- 사내 공지: 남은 빈칸은 [문의처] 1개."
               + current_evidence.caveat("릴리스 노트 써 줘"))
     bundle = chat_stages.bundle_for(
-        answer=answer, request=A16_REQUEST, model={"id": "m"}, actual_model=None, api_key="k",
-        session_id="s", today=None, first_message=A16_REQUEST, messages=[],
-        material=A16_REQUEST, check_keys=(), check_material="", tool_outputs=[], judge="",
+        answer=answer, request=RELEASE_NOTES_REQUEST, model={"id": "m"}, actual_model=None,
+        api_key="k", session_id="s", today=None, first_message=RELEASE_NOTES_REQUEST, messages=[],
+        material=RELEASE_NOTES_REQUEST, check_keys=(), check_material="", tool_outputs=[], judge="",
         kept_steps=[], usage={}, traced=True)
 
     async def go():
@@ -283,9 +289,10 @@ def test_the_skill_check_stage_leaves_no_value_blank(monkeypatch):
 
     monkeypatch.setattr(report, "_complete", complete)
     bundle = chat_stages.bundle_for(
-        answer=A16_WRITTEN, request=A16_REQUEST, model={"id": "m"}, actual_model=None,
-        api_key="k", session_id="s", today=None, first_message=A16_REQUEST, messages=[],
-        material=A16_REQUEST, check_keys=(), check_material="", tool_outputs=[], judge="",
+        answer=RELEASE_NOTES_WRITTEN, request=RELEASE_NOTES_REQUEST, model={"id": "m"},
+        actual_model=None, api_key="k", session_id="s", today=None,
+        first_message=RELEASE_NOTES_REQUEST, messages=[],
+        material=RELEASE_NOTES_REQUEST, check_keys=(), check_material="", tool_outputs=[], judge="",
         kept_steps=[], usage={}, skill_keys=("internal-comms",), traced=True)
 
     async def go():

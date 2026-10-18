@@ -56,19 +56,21 @@ class _Judge:
 
 
 #: the person's own context in the request
-A02_T2 = (
+PRESS_BRIEF_REQUEST = (
     "아래 발표문을 부서장 보고용으로 정리해 줘. 핵심은 5줄 이내로 요약하고, 우리 대학(비수도권 "
     "사립대, 재학생 약 8,000명, 올해 RISE 사업 참여 중)에 미치는 영향 3가지와 우리가 지금 준비할 "
     "일을 정리해 줘.\n\n---\n[교육부 보도 참고자료(가상)] 2027년 대학 재정지원사업 개편 방향\n\n"
     "교육부는 2027년부터 대학 재정지원사업을 '성과 중심·지역 연계형'으로 개편한다고 밝혔다.")
 #: a sentence the flash judge called unsupported and the rewrite took out (its opening
 #: as the step showed it)
-A02_SENTENCE = "우리 대학은 올해 RISE 사업 참여 중으로 성과계획을 지역 연계형으로 다시 짜야 합니다."
+RISE_SENTENCE = ("우리 대학은 올해 RISE 사업 참여 중으로 성과계획을 지역 연계형으로 "
+                 "다시 짜야 합니다.")
 #: the Free plan the search result [14] gives
-A11_SEARCH = ("[14] 네이버웍스 코어 이용요금 - 네이버웍스 · naver.worksmobile.com/pricing\n"
-              "Free: 무료, 바로 가입해 쓰는 요금제(화상회의 최대 4명·60분). Lite: 월 3,000원")
-A11_SENTENCE = ("한빛워크는 클라우드형도 있습니다. 다만 네이버웍스처럼 Free 플랜으로 바로 가입해 "
-                "쓰는 구조는 아닙니다.")
+PRICING_SEARCH = ("[14] 네이버웍스 코어 이용요금 - 네이버웍스 · naver.worksmobile.com/pricing\n"
+                  "Free: 무료, 바로 가입해 쓰는 요금제(화상회의 최대 4명·60분). Lite: 월 3,000원")
+FREE_PLAN_SENTENCE = (
+    "한빛워크는 클라우드형도 있습니다. 다만 네이버웍스처럼 Free 플랜으로 바로 가입해 "
+    "쓰는 구조는 아닙니다.")
 
 
 def _post(answer, judged, *, writer, request, computed=()):
@@ -82,11 +84,11 @@ def _post(answer, judged, *, writer, request, computed=()):
 
 @GROUPS
 def test_a_judged_sentence_on_the_person_s_own_facts_is_never_cut(writer):
-    answer = f"## 영향\n- {A02_SENTENCE}\n- 재정 진단 지표 공개에 대비합니다."
-    out, model = _post(answer, [{"quote": A02_SENTENCE.rstrip("."),
+    answer = f"## 영향\n- {RISE_SENTENCE}\n- 재정 진단 지표 공개에 대비합니다."
+    out, model = _post(answer, [{"quote": RISE_SENTENCE.rstrip("."),
                                  "why": "재료는 대학의 주체 포함 여부를 명시하지 않았음"}],
-                       writer=writer, request=A02_T2)
-    assert A02_SENTENCE in out.text and not out.dropped and not out.sent
+                       writer=writer, request=PRESS_BRIEF_REQUEST)
+    assert RISE_SENTENCE in out.text and not out.dropped and not out.sent
     assert any("근거에 있는 값이라 남김" in f["why"] for f in out.flags)
     # nothing went to a rewrite
     assert not any(p.startswith("Below are the material and") for _, p in model.prompts)
@@ -94,18 +96,20 @@ def test_a_judged_sentence_on_the_person_s_own_facts_is_never_cut(writer):
 
 @GROUPS
 def test_a_judged_sentence_a_search_page_bears_out_stays(writer):
-    out, _ = _post(A11_SENTENCE, [{"quote": A11_SENTENCE, "why": "Free 플랜 언급 없음"}],
-                   writer=writer, request="경쟁 비교 카드 만들어 줘", computed=[A11_SEARCH])
-    assert out.text == A11_SENTENCE and not out.sent
+    out, _ = _post(FREE_PLAN_SENTENCE,
+                   [{"quote": FREE_PLAN_SENTENCE, "why": "Free 플랜 언급 없음"}],
+                   writer=writer, request="경쟁 비교 카드 만들어 줘", computed=[PRICING_SEARCH])
+    assert out.text == FREE_PLAN_SENTENCE and not out.sent
 
 
 def test_code_reads_figures_names_and_quotes():
     assert post_checks.key_tokens("재학생 약 8,000명, RISE 참여") == ["8000", "rise"]
-    assert post_checks.code_reading("재학생 약 8,000명", A02_T2) == "present"
-    assert post_checks.code_reading("재학생 약 9,000명", A02_T2) == "absent"
-    assert post_checks.code_reading("사업은 일정대로 정상 추진 중입니다", A02_T2) == "unchecked"
+    assert post_checks.code_reading("재학생 약 8,000명", PRESS_BRIEF_REQUEST) == "present"
+    assert post_checks.code_reading("재학생 약 9,000명", PRESS_BRIEF_REQUEST) == "absent"
+    assert post_checks.code_reading("사업은 일정대로 정상 추진 중입니다",
+                                    PRESS_BRIEF_REQUEST) == "unchecked"
     # 「80」 is not read inside 「8,000」
-    assert post_checks.code_reading("80명", A02_T2) == "absent"
+    assert post_checks.code_reading("80명", PRESS_BRIEF_REQUEST) == "absent"
 
 
 def test_a_counted_figure_is_looked_up_with_its_counter():
@@ -142,14 +146,15 @@ def test_a_judged_sentence_code_cannot_check_is_marked_not_cut(writer):
 TRACE = check_skills.entry("grounding-check")
 
 #: the person's trip, and a writer's assumption block on it
-P02 = ("느린 기차 여행 플래너가 되어 줘.\n\n내 여행:\n- 출발: 암스테르담 / 도착: 로마\n"
-       "- 일정: 9월 하순 10일, 앞뒤로 이틀 조정 가능\n"
-       "- 인원: 성인 2명, 한 명은 버스를 타면 멀미함\n"
-       "- 교통비 예산: 두 사람 합쳐 약 600유로")
-P02_ANSWER = ("# 암스테르담 → 로마, 느린 기차 10일\n\n"
-              "**먼저 합리적으로 가정한 것** (틀리면 알려 주세요):\n"
-              "- 9월 하순 = 9월 21일경 출발, 10일 = 9박 10일로 계산\n"
-              "- 숙박비는 예산에 포함 안 함(교통비 600유로만 계산)\n")
+TRAIN_TRIP_REQUEST = (
+    "느린 기차 여행 플래너가 되어 줘.\n\n내 여행:\n- 출발: 암스테르담 / 도착: 로마\n"
+    "- 일정: 9월 하순 10일, 앞뒤로 이틀 조정 가능\n"
+    "- 인원: 성인 2명, 한 명은 버스를 타면 멀미함\n"
+    "- 교통비 예산: 두 사람 합쳐 약 600유로")
+TRAIN_TRIP_ANSWER = ("# 암스테르담 → 로마, 느린 기차 10일\n\n"
+                     "**먼저 합리적으로 가정한 것** (틀리면 알려 주세요):\n"
+                     "- 9월 하순 = 9월 21일경 출발, 10일 = 9박 10일로 계산\n"
+                     "- 숙박비는 예산에 포함 안 함(교통비 600유로만 계산)\n")
 
 
 def _ground(answer: str, request: str, *, writer: str, advice: str = "") -> str:
@@ -169,16 +174,17 @@ def _ground(answer: str, request: str, *, writer: str, advice: str = "") -> str:
 
 @GROUPS
 def test_a_day_the_writer_assumed_inside_the_person_s_month_part_is_not_marked(writer):
-    out = _ground(P02_ANSWER, P02, writer=writer)
+    out = _ground(TRAIN_TRIP_ANSWER, TRAIN_TRIP_REQUEST, writer=writer)
     assert "9월 21일경 출발" in out and "9월 21일(확인 필요)" not in out
 
 
 def test_the_assumption_label_covers_its_list_only():
-    lines = P02_ANSWER.split("\n") + ["", "**솔직한 결론 하나**: 1인당 약 370유로"]
+    lines = TRAIN_TRIP_ANSWER.split("\n") + ["", "**솔직한 결론 하나**: 1인당 약 370유로"]
     under = TRACE.assumed_lines(lines)
     assert 3 in under and len(lines) - 1 not in under
     # a day in the person's 「9월 하순」, not in 「9월 초」
-    assert TRACE._in_person_part(P02, 9, 21) and not TRACE._in_person_part(P02, 9, 5)
+    assert TRACE._in_person_part(TRAIN_TRIP_REQUEST, 9, 21)
+    assert not TRACE._in_person_part(TRAIN_TRIP_REQUEST, 9, 5)
 
 
 def test_the_system_date_a_note_dates_itself_with_is_not_marked():
@@ -267,8 +273,9 @@ def test_a_small_external_writer_s_marks_go_to_one_box_at_the_end(writer):
 # ── check:quality follow-through (matrix row 10) ──────────────────────────────────
 
 #: a figure the check found wrong, shipped unmarked
-A10_SENTENCE = ("전체 초·중·고 학생 500만 명 중 유료 이용 학생의 비중은 확인되지 않았으므로, 가정: "
-                "유료 이용 학생 비율 50%를 설정했습니다 [7].")
+PAID_SHARE_SENTENCE = (
+    "전체 초·중·고 학생 500만 명 중 유료 이용 학생의 비중은 확인되지 않았으므로, 가정: "
+    "유료 이용 학생 비율 50%를 설정했습니다 [7].")
 
 
 @GROUPS
@@ -276,7 +283,7 @@ def test_a_figure_code_still_finds_wrong_is_fixed_once_then_marked(writer, monke
     from app.pipeline import report_stages
     from app.services import verify
 
-    finding = verify.Finding(0, A10_SENTENCE, "judged_figure", "학생 수는 503만 5천 명",
+    finding = verify.Finding(0, PAID_SHARE_SENTENCE, "judged_figure", "학생 수는 503만 5천 명",
                              rank=1, auto=False, still=lambda s: "500만" in s)
 
     async def found(doc, checks, **kwargs):
@@ -291,7 +298,8 @@ def test_a_figure_code_still_finds_wrong_is_fixed_once_then_marked(writer, monke
     monkeypatch.setattr(report_stages.verify, "repair", repair)
     bundle = Bundle(request=Request(text="에듀테크 시장 규모 보고서", model=writer, api_key="k",
                                     outline_model="flash"))
-    bundle.document.sections = [{"heading": "상향식", "content": f"{A10_SENTENCE} 다음 문장."}]
+    bundle.document.sections = [
+        {"heading": "상향식", "content": f"{PAID_SHARE_SENTENCE} 다음 문장."}]
     asyncio.run(report_stages.Verify().apply(bundle, Context()))
     # fixed once by the writer when strong, by the planner for a self-hosted writer
     assert repair.model == (STRONG_EXT if model_tier.strong(writer) else "flash")
