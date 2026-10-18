@@ -53,9 +53,9 @@ WORK_SKILLS = {"minutes-writing", "option-comparison", "gaejo-briefing", "data-t
 #: what agents built only from shipped skills lacked: translation, press releases, files, charts
 MADE_SKILLS = {"translation", "press-release", "xlsx-build", "chart-make"}
 #: writing and research skills shown in the catalogue
-R10_SKILLS = {"internal-comms", "copy-editing", "company-research", "competitor-analysis"}
+WRITING_SKILLS = {"internal-comms", "copy-editing", "company-research", "competitor-analysis"}
 SHOWN_SKILLS = {"grounding-check", "gap-check", "calc-check", "date-calc", "quote-calc",
-                "xlsx-clean", "pdf-table", "pii-mask"} | WORK_SKILLS | MADE_SKILLS | R10_SKILLS
+                "xlsx-clean", "pdf-table", "pii-mask"} | WORK_SKILLS | MADE_SKILLS | WRITING_SKILLS
 SHOWN_DOCUMENTS = {"doc-internal-draft", "doc-event-plan", "doc-result-report",
                    "doc-gaejo-report", "doc-comparison", "doc-minutes", "doc-agenda"}
 HIDDEN_DECKS = {"deck-case", "deck-defense", "deck-editorial", "deck-lecture", "deck-proposal",

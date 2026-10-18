@@ -435,15 +435,16 @@ async def test_a_rate_limit_is_retried_before_it_is_reported(monkeypatch) -> Non
 
 
 #: a pasted press release, an empty search, an answer made of the release
-_A02_T2 = ("아래 발표문을 부서장 보고용으로 정리해 줘. 핵심은 5줄 이내로 요약하고, 우리 대학에 "
-           "미치는 영향 3가지와 우리가 지금 준비할 일을 정리해 줘.\n\n---\n"
-           "[교육부 보도 참고자료(가상)] 2027년 대학 재정지원사업 개편 방향\n\n" + "교육부는 " * 80)
+_PRESS_BRIEF_REQUEST = (
+    "아래 발표문을 부서장 보고용으로 정리해 줘. 핵심은 5줄 이내로 요약하고, 우리 대학에 "
+    "미치는 영향 3가지와 우리가 지금 준비할 일을 정리해 줘.\n\n---\n"
+    "[교육부 보도 참고자료(가상)] 2027년 대학 재정지원사업 개편 방향\n\n" + "교육부는 " * 80)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("request_text", "material", "footer"), [
     ("선행연구 정리", False, True),
-    (_A02_T2, True, False),
+    (_PRESS_BRIEF_REQUEST, True, False),
     # the person's material and a lookup asked for: the empty search still matters
     ("아래 회사 소개를 보고 최신 기사도 검색해서 정리해 줘\n\n---\n" + "소개 " * 200, True, True),
 ])

@@ -11,7 +11,7 @@ from app.services import query_terms, research
 from app.services.tools import builtin
 from app.services.tools.base import Tool
 
-#: The request that searched prompt injection and single characters (eval session b857d25f).
+#: The request that searched prompt injection and single characters.
 REQUEST = (
     "오픈라우터 LLM 모델을 이용해서 실험을 한 top-tier conference 또는 journal에 발표된 논문 찾아줘"
 )

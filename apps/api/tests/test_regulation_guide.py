@@ -196,7 +196,7 @@ def test_a_partial_answer_gets_the_contact_as_written_once():
     assert f"나와 있지 않습니다.\n\n담당 부서·연락처: {_CONTACT}\n\n### 출처" in fixed
     assert note.check(fixed, "", [], _options()) == []
     assert note.check("휴학 기한은 학기 개시일 전까지입니다 [1].", "", [], _options()) == []
-    # Seen in the evaluation: a parenthesis between 「자료」 and what it does not hold.
+    # Seen in an answer: a parenthesis between 「자료」 and what it does not hold.
     worded = "수수료는 제공된 자료 (장학금 지급 규정 및 학칙) 에 명시되어 있지 않아 문의해 주세요."
     assert note.check(worded, "", [], _options())
 

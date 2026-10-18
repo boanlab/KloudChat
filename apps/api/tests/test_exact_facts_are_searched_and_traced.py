@@ -18,46 +18,46 @@ from app.schemas.chat import SendMessage
 from app.services import check_skills, exact_facts, freshness, query_terms
 from app.services.tools.base import Tool
 
-P14 = [
+DOCTOR_TURNS = [
     "가상 의사가 되어 줘. 내가 증상을 말하면 진단과 치료 계획을 알려 줘. "
     "진단과 치료 계획만 답하고 다른 건 쓰지 마. 설명도 쓰지 마. "
     "첫 요청: 며칠째 두통과 어지럼증이 있어.",
     "36살 남자고, 요즘 야근이 많아서 하루 5시간쯤 자. "
     "일어설 때 어지러운 게 제일 심하고, 오늘 아침엔 한쪽 팔이 좀 저렸어.",
 ]
-P16 = [
+COUNSELLOR_TURNS = [
     "정신건강 상담가가 되어 줘. "
     "감정, 스트레스, 불안 같은 정신건강 문제를 다루는 법을 찾는 사람에게 "
     "인지행동치료, 명상, 마음챙김 등 치료적 방법을 써서 실천할 수 있는 전략을 세워 줘. "
     "첫 요청: 우울 증상을 다스리는 데 도움을 받고 싶어.",
 ]
-P19 = [
+INVESTING_TURNS = [
     "금융시장 경험이 많은 사람의 조언이 필요해. "
     "인플레이션, 기대수익률, 장기 주가 흐름 같은 걸 고려해서 섹터를 이해하게 돕고, "
     "내 필요와 관심에 맞춰 가장 안전한 선택지를 알려 줘. "
     "첫 질문: 지금 단기적으로 돈을 굴리기 가장 좋은 방법은 뭐야?",
     "1년 안에 전세 보증금에 보탤 3천만 원이야. 원금 손실은 싫어.",
 ]
-P35 = [
+TRANSLATOR_TURNS = [
     "영어 번역가이자 맞춤법 교정·문장 개선가가 되어 줘. "
     "내가 어떤 언어로 말하든 언어를 알아내서 번역하고, 영어로 고치고 다듬은 문장으로 답해 줘. "
     "고친 문장만 답하고, 다른 건 쓰지 마. 첫 문장: "
     '"istanbulu cok seviyom burada olmak cok guzel"',
     "요즘 회사 일이 너무 많아서 주말에 아무것도 안 하고 그냥 잤어",
 ]
-P46 = (
+EXCEL_FORMULA_REQUEST = (
     "엑셀 수식 생성기가 되어 줘. 지역별·월별 매출 합계를 계산하는 수식이 필요해.\n\n"
     "데이터: '판매' 시트에 A열 날짜, B열 지역, C열 담당자, D열 금액이 2행부터 약 5,000행까지 "
     "있어.\n\n조건: 반품은 금액이 음수로 들어오는데 이건 빼고 합계를 내고 싶어. 연도는 2026년만. "
     "회사에 엑셀 2016을 쓰는 사람이 있어서 거기서도 돌아가야 해."
 )
-P48 = [
+LEGAL_ADVICE_TURNS = [
     "내 법률 자문가가 되어 줘. 법적 상황을 설명하면 어떻게 대처할지 조언해 줘. 조언만 답하고, 다른 "
     "건 쓰지 마. 설명도 쓰지 마. 첫 요청: 교통사고가 났는데 어떻게 해야 할지 모르겠어.",
     "방금 사거리에서 신호 대기 중에 뒤차가 내 차를 박았어. 다친 데는 없는 것 같은데 목이 좀 "
     "뻐근해. 상대방은 보험 처리 말고 현금으로 합의하자고 해.",
 ]
-P56 = [
+ACCOUNTANT_TURNS = [
     "회계사가 되어 줘. 재정을 관리할 창의적인 방법을 생각해 줘. "
     "예산, 투자 전략, 위험 관리를 고려해서 재무 계획을 세우고, "
     "필요하면 이익을 늘리는 데 도움이 될 세법·규정 조언도 해 줘. "
@@ -65,7 +65,7 @@ P56 = [
     "직원 6명짜리 동네 베이커리 카페야. 연 매출은 약 4억 원, 임대료가 월 600만 원, 원재료비는 "
     "매출의 35%쯤 돼. 2년 안에 2호점을 내고 싶어.",
 ]
-P60 = [
+SALES_CALL_TURNS = [
     "영업사원이 되어 줘. 나한테 뭔가를 팔아 봐. 실제보다 더 값어치 있어 보이게 해서 내가 사도록 "
     "설득해. 이제 네가 나한테 전화를 걸었다고 치고 내가 무슨 일로 전화했는지 물어볼게. 여보세요, "
     "무슨 일로 전화하셨어요?",
@@ -78,13 +78,14 @@ P60 = [
 
 
 @pytest.mark.parametrize(("turns", "reason"), [
-    (P19[:1], "financial"),
-    (P19, "financial"),           # the follow-up gives only the amount: the thread decides
-    (P14[:1], "medical"),
-    (P14, "medical"),
-    (P16, "medical"),
-    (P48, "legal"),
-    (P56, "tax"),
+    (INVESTING_TURNS[:1], "financial"),
+    # the follow-up gives only the amount: the thread decides
+    (INVESTING_TURNS, "financial"),
+    (DOCTOR_TURNS[:1], "medical"),
+    (DOCTOR_TURNS, "medical"),
+    (COUNSELLOR_TURNS, "medical"),
+    (LEGAL_ADVICE_TURNS, "legal"),
+    (ACCOUNTANT_TURNS, "tax"),
     (["자살예방 상담전화 번호가 뭐야?"], "medical"),
     (["여권 재발급 문의처 전화번호 알려 줘"], "contact"),
     (["예금자보호 한도가 얼마야?"], "financial"),
@@ -98,9 +99,10 @@ def test_facts_that_change_or_must_be_exact_force_the_search(turns, reason):
 
 
 @pytest.mark.parametrize("turns", [
-    [P46],                        # a spreadsheet formula
-    P35[:1], P35,                 # a translator, and its next sentence to translate
-    P60[:1], P60[:2], P60,        # a pretend sales call: its price is the role-play's
+    [EXCEL_FORMULA_REQUEST],                                # a spreadsheet formula
+    TRANSLATOR_TURNS[:1], TRANSLATOR_TURNS,                 # a translator, and its next sentence
+    # a pretend sales call: its price is the role-play's
+    SALES_CALL_TURNS[:1], SALES_CALL_TURNS[:2], SALES_CALL_TURNS,
     ["확률이 뭔지 개념부터 설명해 줘. 주사위 두 개를 던질 때 합이 7일 확률은?"],
     ["사랑에 관한 시를 써 줘."],
     ["Explain this revenue SQL query to a non-engineer: SELECT SUM(amount) FROM orders"],
@@ -114,7 +116,8 @@ def test_writing_translation_code_role_play_and_learning_are_left_alone(turns):
 
 
 @pytest.mark.parametrize(("turns", "domain"), [
-    (P48, "legal"), (P56, "tax"), (P19, "financial"), (P14, "medical"), (P16, "medical"),
+    (LEGAL_ADVICE_TURNS, "legal"), (ACCOUNTANT_TURNS, "tax"), (INVESTING_TURNS, "financial"),
+    (DOCTOR_TURNS, "medical"), (COUNSELLOR_TURNS, "medical"),
 ])
 def test_advice_domains(turns, domain):
     assert exact_facts.advice_domain(turns[-1], turns[:-1]) == domain
@@ -184,7 +187,7 @@ async def _route(monkeypatch, content: str, *, toggle="auto", earlier: list[str]
 
 @pytest.mark.asyncio
 async def test_an_advice_question_searches_first_and_is_traced(monkeypatch):
-    captured = await _route(monkeypatch, P19[0])
+    captured = await _route(monkeypatch, INVESTING_TURNS[0])
     assert captured["force_tool"] == "web_search"
     assert captured["advice"] == "financial"
     assert TRACE in captured["check_keys"]
@@ -194,7 +197,7 @@ async def test_an_advice_question_searches_first_and_is_traced(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_follow_up_is_searched_by_the_model_with_the_thread_in_view(monkeypatch):
-    captured = await _route(monkeypatch, P19[1], earlier=P19[:1])
+    captured = await _route(monkeypatch, INVESTING_TURNS[1], earlier=INVESTING_TURNS[:1])
     assert captured["force_tool"] == "web_search"
     # the amount alone is no query: the model writes it from the conversation
     assert captured["preset_call"] is None
@@ -202,7 +205,8 @@ async def test_a_follow_up_is_searched_by_the_model_with_the_thread_in_view(monk
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("content", [P46, P35[0], P60[0]])
+@pytest.mark.parametrize("content",
+                         [EXCEL_FORMULA_REQUEST, TRANSLATOR_TURNS[0], SALES_CALL_TURNS[0]])
 async def test_other_turns_are_not_forced_or_traced(monkeypatch, content):
     captured = await _route(monkeypatch, content)
     assert captured["force_tool"] is None
@@ -212,8 +216,8 @@ async def test_other_turns_are_not_forced_or_traced(monkeypatch, content):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("content", "toggle"), [
-    (P19[0], False),
-    (P19[0] + " 검색하지 마.", "auto"),
+    (INVESTING_TURNS[0], False),
+    (INVESTING_TURNS[0] + " 검색하지 마.", "auto"),
 ])
 async def test_search_off_or_declined_is_kept(monkeypatch, content, toggle):
     captured = await _route(monkeypatch, content, toggle=toggle)
@@ -247,7 +251,7 @@ async def test_an_invented_criminal_consequence_is_marked():
         "1. 사고 현장과 차량 사진을 찍어 두세요.\n"
         "2. 과실비율이 높으면 형사처벌을 받을 수 있습니다.\n"
         "3. 목이 뻐근하면 오늘 병원 진료를 받고 진단서를 받아 보험사에 제출하세요.",
-        request=P48[1], domain="legal")
+        request=LEGAL_ADVICE_TURNS[1], domain="legal")
     events = await _ground(bundle)
     answer = bundle.document.answer
     assert "형사처벌을 받을 수 있습니다 (확인 필요)." in answer
@@ -260,7 +264,7 @@ async def test_an_invented_criminal_consequence_is_marked():
 async def test_a_consequence_the_search_results_state_stands():
     searched = ["교통사고처리특례법: 12대 중과실 사고는 보험 가입과 관계없이 형사처벌 대상이다."]
     bundle = _advice("신호위반 같은 12대 중과실이면 형사처벌 대상이 될 수 있습니다.",
-                     request=P48[1], domain="legal", searched=searched)
+                     request=LEGAL_ADVICE_TURNS[1], domain="legal", searched=searched)
     events = await _ground(bundle)
     assert "(확인 필요)" not in bundle.document.answer
     assert events[-1]["label"] == "근거 확인(법률): 확인 필요한 값 없음"
@@ -271,7 +275,7 @@ async def test_an_old_hotline_is_marked_and_the_searched_one_stands():
     searched = ["자살예방 상담전화 109 (2024년 1월 1일부터 통합 운영)"]
     bundle = _advice(
         "혼자 견디지 마세요. 위급하면 자살예방상담전화 1393이나 109로 전화하세요.",
-        request=P16[0], domain="medical", searched=searched)
+        request=COUNSELLOR_TURNS[0], domain="medical", searched=searched)
     await _ground(bundle)
     answer = bundle.document.answer
     assert "1393(확인 필요)" in answer
@@ -286,7 +290,7 @@ async def test_invented_tax_thresholds_are_marked_once_below_the_answer():
         "원재료비는 1억 4천만 원(35%)입니다. "
         "소득세 최고세율 45%는 매출 10억 원 이상에 적용됩니다.\n\n"
         "2주 안에 세무사와 상담해 보세요.",
-        request=P56[1], domain="tax")
+        request=ACCOUNTANT_TURNS[1], domain="tax")
     events = await _ground(bundle)
     answer = bundle.document.answer
     # the person's own figures and their arithmetic stand
@@ -306,7 +310,7 @@ async def test_an_old_deposit_limit_is_marked_and_a_searched_rate_stands():
     bundle = _advice(
         "원금 손실이 싫다면 예금자보호가 되는 상품이 맞습니다. 보호 한도는 1인당 5천만원입니다. "
         "파킹통장은 연 2.5% 수준입니다.",
-        request=P19[1], domain="financial", searched=searched)
+        request=INVESTING_TURNS[1], domain="financial", searched=searched)
     await _ground(bundle)
     answer = bundle.document.answer
     assert "5천만원(확인 필요)" in answer
@@ -319,7 +323,7 @@ async def test_a_dose_is_marked_but_durations_are_guidance():
     bundle = _advice(
         "수면을 하루 7시간 이상으로 늘리세요. 타이레놀 500mg을 드세요. 2주 이상 계속되면 "
         "신경과 진료를 받으세요. 팔 저림이 다시 오면 바로 응급실로 가세요.",
-        request=P14[1], domain="medical")
+        request=DOCTOR_TURNS[1], domain="medical")
     await _ground(bundle)
     answer = bundle.document.answer
     assert "500mg(확인 필요)" in answer
@@ -330,12 +334,13 @@ async def test_a_dose_is_marked_but_durations_are_guidance():
 @pytest.mark.asyncio
 async def test_an_earlier_answer_is_no_evidence_for_advice():
     bundle = chat_stages.bundle_for(
-        answer="위급하면 1393으로 전화하세요.", request=P16[0], model={"id": "m"},
-        actual_model=None, api_key="k", session_id="s", today=None, first_message=P16[0],
-        messages=[{"role": "user", "content": P16[0]},
+        answer="위급하면 1393으로 전화하세요.", request=COUNSELLOR_TURNS[0], model={"id": "m"},
+        actual_model=None, api_key="k", session_id="s", today=None,
+        first_message=COUNSELLOR_TURNS[0],
+        messages=[{"role": "user", "content": COUNSELLOR_TURNS[0]},
                   {"role": "assistant", "content": "자살예방상담전화는 1393입니다."}],
-        material=P16[0], check_keys=(TRACE,), check_material="", tool_outputs=[], judge="",
-        kept_steps=[], usage={}, advice="medical",
+        material=COUNSELLOR_TURNS[0], check_keys=(TRACE,), check_material="", tool_outputs=[],
+        judge="", kept_steps=[], usage={}, advice="medical",
     )
     await _ground(bundle)
     assert "1393(확인 필요)" in bundle.document.answer
@@ -352,11 +357,13 @@ def test_the_trace_marks_nothing_twice():
 
 def test_the_writer_is_told_to_source_advice_figures():
     messages = freshness.with_answer_policy(
-        [{"role": "user", "content": P48[1]}], {"id": "m"}, current_fact=False, advice="legal")
+        [{"role": "user", "content": LEGAL_ADVICE_TURNS[1]}], {"id": "m"}, current_fact=False,
+        advice="legal")
     system = messages[0]["content"]
     assert "This turn asks for legal guidance" in system
     assert "Never invent a tax rule" in system
-    plain = freshness.with_answer_policy([{"role": "user", "content": P46}], {"id": "m"})
+    plain = freshness.with_answer_policy([{"role": "user", "content": EXCEL_FORMULA_REQUEST}],
+                                         {"id": "m"})
     assert "This turn asks for" not in plain[0]["content"]
 
 

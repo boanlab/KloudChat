@@ -8,7 +8,7 @@ import pytest
 
 from app.services import calc_check, deck, scheduling
 
-#: tasks/A09/T2/prompt.md as sent
+#: the lecture-deck request as sent
 LECTURE = (
     "운영체제(학부 3학년) 50분 강의용 슬라이드 만들어 줘. 주제는 CPU 스케줄링 — FCFS, SJF(비선점), "
     "SRTF, 라운드 로빈(타임 퀀텀 2), 우선순위 스케줄링. 12장 안팎.\n"
@@ -20,7 +20,7 @@ LECTURE = (
 
 
 def _27b_deck() -> list[dict]:
-    """out3/A09/T2/final.md, the algorithm slides and their neighbours."""
+    """A 27B deck as written: the algorithm slides and their neighbours."""
     return [
         {"layout": "title", "title": "CPU 스케줄링 알고리즘 비교"},
         {"layout": "agenda", "title": "목차",
@@ -87,7 +87,7 @@ def test_each_algorithm_s_result_slide_becomes_its_gantt_chart():
 
 
 def test_flash_s_wait_tables_and_a_two_algorithm_slide_get_their_charts():
-    # out3/A09/T2/flash/final.md: 「…과 간트 차트」 slides holding only the waiting times, and
+    # a flash deck as written: 「…과 간트 차트」 slides holding only the waiting times, and
     # SRTF only named beside RR
     slides = [
         {"layout": "table", "title": "FCFS 스케줄링과 간트 차트",
@@ -146,7 +146,7 @@ def test_the_agenda_follows_the_slides_that_ship():
 
 
 def test_a_priority_row_in_english_is_read_as_the_computed_priority_rows():
-    # out2/A09/T2/final.md: 「| Priority | 2.0 |」 under the averages (5.5 or 5 by code)
+    # a deck as written: 「| Priority | 2.0 |」 under the averages (5.5 or 5 by code)
     block = scheduling.computed_block(LECTURE)
     slides = [{"layout": "table", "title": "알고리즘 간 평균 대기시간 비교",
                "rows": [["알고리즘", "평균 대기시간"], ["FCFS", "6.0"], ["SJF", "4.0"],

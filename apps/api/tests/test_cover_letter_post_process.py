@@ -205,7 +205,7 @@ async def test_a_chat_turn_measures_rewrites_and_records_the_counts(monkeypatch)
 
 #: An answer with its own count table without outer pipes (397 / 573): not part of block 2,
 #: and not flagged by the number check.
-R0_ANSWER = (
+UNPIPED_COUNT_TABLE_ANSWER = (
     "[제출용 답안 1]\n"
     "학생식당 잔반 데이터를 활용해 다음 날 식수를 예측하고 발주량 조정안을"
     " 만든 경험과, 지역 의원에서 예약 데이터의 노쇼율을 계산하여 알림"
@@ -251,14 +251,15 @@ R0_ANSWER = (
 
 
 async def test_the_answer_s_pipe_less_count_table_shows_the_measured_values():
-    out = await cover_letter.post_process(R0_ANSWER, request=CAREER_1, material=CAREER_1)
+    out = await cover_letter.post_process(UNPIPED_COUNT_TABLE_ANSWER, request=CAREER_1,
+                                          material=CAREER_1)
     rows = {r["number"]: r for r in out.rows}
     assert (rows[1]["value"], rows[2]["value"]) == (512, 621)
     assert "1 | 공백 포함 700자 이내 | 512자 | 700자" in out.content
     assert "2 | 공백 포함 800자 이내 | 621자 | 800자" in out.content
     assert "397자" not in out.content and "573자" not in out.content
     # The table is not part of block 2, and its numbers are not 「자료에 없는 숫자」.
-    assert "문항 | 기준" not in cover_letter.blocks(R0_ANSWER)[1].text
+    assert "문항 | 기준" not in cover_letter.blocks(UNPIPED_COUNT_TABLE_ANSWER)[1].text
     assert "397" not in out.flags and "573" not in out.flags
 
 
@@ -270,7 +271,8 @@ async def test_a_block_still_short_after_two_rewrites_is_said_with_the_measured_
         block = messages[0]["content"].split("글:\n", 1)[1]
         return block + " 더 썼습니다.", {}
 
-    out = await cover_letter.post_process(R0_ANSWER, request=CAREER_1, material=CAREER_1,
+    out = await cover_letter.post_process(UNPIPED_COUNT_TABLE_ANSWER, request=CAREER_1,
+                                          material=CAREER_1,
                                           complete=complete, model="m", api_key="k")
     wire = cover_letter.wire(out)
     first = wire["rows"][0]

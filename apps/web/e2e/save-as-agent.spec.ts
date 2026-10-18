@@ -38,7 +38,7 @@ test('the form is prefilled from the conversation and nothing is saved before �
   expect(state.unexpected).toEqual([])
 })
 
-/** B-1: a conversation made with an official agent; the draft names the person's own theme. */
+/** A conversation made with an official agent; the draft names the person's own theme. */
 const officialDraft = {
   ...agentDraft, name: '회의록 에이전트', base: 'minutes', designSystemId: 'd1', renderTemplateId: null,
   systemPrompt: '이 대화에서 정한 것:\n- 결정과 할 일을 표로 둔다.', decided: ['결정과 할 일을 표로 둔다.'], files: [],
@@ -68,7 +68,7 @@ test('a refused save says which field to fix', async ({ page }, testInfo) => {
   await expect(page.getByText('design_system_not_found')).toHaveCount(0)
 })
 
-/** N1: a distillation that timed out says so, with 다시 시도; it never claims a filled 지시. */
+/** A distillation that timed out says so, with 다시 시도; it never claims a filled 지시. */
 test('a failed distillation says so and 다시 시도 fills the 지시', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo, {
     decided: [

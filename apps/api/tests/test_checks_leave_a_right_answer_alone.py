@@ -96,7 +96,7 @@ def test_an_earlier_answer_s_cited_sentences_back_advice_that_repeats_them():
 
 # ── 2. compare-cost: a condition the material meets is applied ────────────
 
-A04_T2 = """교직원 업무용 노트북 30대 교체 건, 견적 세 곳 받은 걸로 비교 검토 보고서 써 줘. 어디로 할지 추천까지.
+LAPTOP_QUOTES_REQUEST = """교직원 업무용 노트북 30대 교체 건, 견적 세 곳 받은 걸로 비교 검토 보고서 써 줘. 어디로 할지 추천까지.
 
 [견적 1] 가온정보통신
 - 단가 1,320,000원(부가세 별도) × 30대
@@ -135,9 +135,9 @@ def _reading(discount_when: str | None = "30대 이상 구매 시") -> dict:
 
 
 def _costs(reading: dict) -> dict:
-    numbers = report_checks._material_numbers(A04_T2)
-    return report_checks.option_costs(report_checks.counted_as_written(reading, A04_T2),
-                                      numbers, material=A04_T2)
+    numbers = report_checks._material_numbers(LAPTOP_QUOTES_REQUEST)
+    counted = report_checks.counted_as_written(reading, LAPTOP_QUOTES_REQUEST)
+    return report_checks.option_costs(counted, numbers, material=LAPTOP_QUOTES_REQUEST)
 
 
 def test_a_quantity_discount_the_order_meets_is_in_the_total_not_a_scenario():
@@ -208,13 +208,15 @@ def test_a_stream_that_thought_through_its_budget_and_wrote_nothing_is_starved()
 
 # ── 4. the notice genre only when a notice is asked for ───────────────────
 
-A07_T1 = ("「국내 대학의 생성형 AI 활용 가이드라인 동향」을 조사해서 보고서로 정리해 줘. 우리 대학(한빛대학교, "  # noqa: E501
-          "가상) 교무처에서 자체 가이드라인을 만들기 전에 참고하려는 거야.")
-A07_T2 = ("「공공기관의 민간 클라우드(SaaS) 이용 확대 정책 동향」을 조사해서 보고서로 정리해 줘. 우리 "  # noqa: E501
-          "회사(한빛소프트, 가상 — 협업툴 SaaS 개발사)가 공공 시장 진출을 검토하려고 해.")
+AI_GUIDELINE_RESEARCH_REQUEST = ("「국내 대학의 생성형 AI 활용 가이드라인 동향」을 조사해서 보고서로 정리해 줘. 우리 대학(한빛대학교, "  # noqa: E501
+                                 "가상) 교무처에서 자체 가이드라인을 만들기 전에 참고하려는 거야.")
+SAAS_POLICY_RESEARCH_REQUEST = (
+    "「공공기관의 민간 클라우드(SaaS) 이용 확대 정책 동향」을 조사해서 보고서로 정리해 줘. 우리 "  # noqa: E501
+    "회사(한빛소프트, 가상 — 협업툴 SaaS 개발사)가 공공 시장 진출을 검토하려고 해.")
 
 
-@pytest.mark.parametrize("request_text", [A07_T1, A07_T2])
+@pytest.mark.parametrize("request_text",
+                         [AI_GUIDELINE_RESEARCH_REQUEST, SAAS_POLICY_RESEARCH_REQUEST])
 def test_a_report_about_guidelines_or_policy_is_not_a_notice(request_text):
     assert "안내·정책 문서" not in report._genre_rule(request_text)
 
@@ -241,25 +243,25 @@ def test_the_light_tool_line_says_when_to_compute():
 
 def test_tool_turn_narration_before_the_deliverable_goes():
     # the figures-retry answer opened with the recount
-    a06 = ("수치를 다시 확인했습니다. 이번 실행에서는 의견 분류 기준이 달라져 온라인학습 관련이 10건(55.56%), "  # noqa: E501
-           "시설 관련이 1건(5.56%)으로 나왔습니다. 이전 턴의 분류(온라인 12건, 시설 6건)와 차이가 나므로, "  # noqa: E501
-           "의견 분류 기준을 명확히 다시 계산해 확정하겠습니다.\n\n"
-           "의견 분류가 확정되었습니다(온라인학습 12건 66.67%, 시설 6건 33.33%). 이전 턴의 답에 있던 "  # noqa: E501
-           "3.5와 66.7은 이제 실행 출력값으로 확인된 수치(3.56, 66.67)로 교체해 답을 다시 씁니다.\n\n")  # noqa: E501
+    recount_answer = ("수치를 다시 확인했습니다. 이번 실행에서는 의견 분류 기준이 달라져 온라인학습 관련이 10건(55.56%), "  # noqa: E501
+                      "시설 관련이 1건(5.56%)으로 나왔습니다. 이전 턴의 분류(온라인 12건, 시설 6건)와 차이가 나므로, "  # noqa: E501
+                      "의견 분류 기준을 명확히 다시 계산해 확정하겠습니다.\n\n"
+                      "의견 분류가 확정되었습니다(온라인학습 12건 66.67%, 시설 6건 33.33%). 이전 턴의 답에 있던 "  # noqa: E501
+                      "3.5와 66.7은 이제 실행 출력값으로 확인된 수치(3.56, 66.67)로 교체해 답을 다시 씁니다.\n\n")  # noqa: E501
     body = ("# 2026-1학기 강의 만족도 조사 분석 (응답 120명)\n\n**결론 요약:** 5개 문항 평균이 모두 "  # noqa: E501
             "3.56~3.88점(5점 척도)으로 중간 수준입니다.\n\n| 문항 | 평균 |\n|---|---|\n"
             + "| 교과내용 | 3.88 |\n" * 12)
-    assert internal_words.strip_tool_preamble(a06 + body) == body
+    assert internal_words.strip_tool_preamble(recount_answer + body) == body
     # the check monologue, spaces lost between hops, above 「---」
-    a14 = ('점검 결과 "1." 번호가 자료에 없는 값으로 잡혔습니다. 이는 목록 번호라 실질적 문제는 아니지만, '  # noqa: E501
-           '안전하게 번호 없는 불릿으로 바꿔 다시 확인합니다.여전히 같은 "1"이 잡힙니다. "2층 라운지"라고만 '  # noqa: E501
-           '쓰겠습니다.점검 통과했습니다. 완성된 공지문입니다.\n\n---\n\n')
+    check_monologue = ('점검 결과 "1." 번호가 자료에 없는 값으로 잡혔습니다. 이는 목록 번호라 실질적 문제는 아니지만, '  # noqa: E501
+                       '안전하게 번호 없는 불릿으로 바꿔 다시 확인합니다.여전히 같은 "1"이 잡힙니다. "2층 라운지"라고만 '  # noqa: E501
+                       '쓰겠습니다.점검 통과했습니다. 완성된 공지문입니다.\n\n---\n\n')
     notice = "**제목** 본사 3~5층 네트워크 장비 교체 공사 안내 (10.23~10.25)\n\n" + "안내 문장입니다. " * 30  # noqa: E501
-    assert internal_words.strip_tool_preamble(a14 + notice) == notice
+    assert internal_words.strip_tool_preamble(check_monologue + notice) == notice
     # the search note left in parentheses
-    a02 = "(검색은 최신 사실 확인용이었고, 요약은 제시된 자료에 근거합니다.)\n\n---\n\n"
+    search_note = "(검색은 최신 사실 확인용이었고, 요약은 제시된 자료에 근거합니다.)\n\n---\n\n"
     summary = "**핵심 요약**\n\n" + "□ 2027년부터 대학 재정지원사업이 개편됨\n" * 20
-    assert internal_words.strip_tool_preamble(a02 + summary) == summary
+    assert internal_words.strip_tool_preamble(search_note + summary) == summary
 
 
 def test_a_lead_that_answers_stays():

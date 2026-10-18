@@ -7,7 +7,7 @@ from test_an_answer_cites_sources_by_number import _calls, _collect, _content, _
 from app.services import agent
 from app.services.tools.base import Tool, ToolResult
 
-_A11_T1 = (
+_CLIENT_BRIEF_WITH_SOURCES = (
     "- **의사결정 구조**: 정보화 부서가 기획·예산을 잡습니다 [4].\n\n"
     "## 출처\n\n"
     "[1] ALIO, 「주요 통계 — 임직원 현황」, 2026-06-말 기준, "
@@ -20,9 +20,9 @@ _A11_T1 = (
 
 
 def test_a_list_followed_by_a_paragraph_is_still_the_answers_own():
-    at, end, numbers = agent._own_source_list(_A11_T1)
-    assert _A11_T1[at:].startswith("## 출처") and numbers == [1, 2]
-    assert _A11_T1[end:].strip().startswith("---")
+    at, end, numbers = agent._own_source_list(_CLIENT_BRIEF_WITH_SOURCES)
+    assert _CLIENT_BRIEF_WITH_SOURCES[at:].startswith("## 출처") and numbers == [1, 2]
+    assert _CLIENT_BRIEF_WITH_SOURCES[end:].strip().startswith("---")
 
 
 async def test_the_server_list_replaces_it_and_the_paragraph_stays(monkeypatch):
@@ -34,7 +34,7 @@ async def test_the_server_list_replaces_it_and_the_paragraph_stays(monkeypatch):
 
     tools = [Tool(name="web_search", description="웹 검색", parameters={"type": "object"},
                   run=run, label="웹 검색")]
-    answer = [_content(_A11_T1.replace("[4]", "[2]")), "data: [DONE]"]
+    answer = [_content(_CLIENT_BRIEF_WITH_SOURCES.replace("[4]", "[2]")), "data: [DONE]"]
     _, events = await _collect(monkeypatch, [_calls("web_search", {"query": "K-water"}), answer],
                                tools)
     text = _final_text(events)

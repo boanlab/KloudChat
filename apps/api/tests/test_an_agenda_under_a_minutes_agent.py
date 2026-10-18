@@ -6,7 +6,7 @@ from app.pipeline import report_stages
 from app.services import doc_formats, process_settings
 
 #: An agenda request sent through the 회의록 비서 agent (template doc-minutes).
-_A01_T2 = (
+_AGENDA_REQUEST = (
     "다음 주 회의 안건 초안을 같이 잡아 줘.\n\n다음 주 목요일(10/15) 14시 교육혁신팀 주간회의야. "
     "1시간이고, 다룰 것: LMS 1차 시안 검토(업체 담당자 30분 참석 예정), 우수 강의 사례집 디자인 "
     "업체 결정(A사 380만원 vs B사 420만원·납기 1주 빠름), 11월 예산 집행계획 취합 현황, "
@@ -15,9 +15,9 @@ _A01_T2 = (
 
 
 def test_the_request_names_the_agenda_over_the_minutes_template():
-    found = doc_formats.detect(_A01_T2, "doc-minutes")
+    found = doc_formats.detect(_AGENDA_REQUEST, "doc-minutes")
     assert found is not None and found.id == "agenda"
-    assert doc_formats.detect(_A01_T2, None, "minutes").id == "agenda"
+    assert doc_formats.detect(_AGENDA_REQUEST, None, "minutes").id == "agenda"
 
 
 def test_minutes_material_that_mentions_its_agenda_stays_minutes():
@@ -33,7 +33,7 @@ def test_minutes_material_that_mentions_its_agenda_stays_minutes():
 
 def test_the_agenda_gets_its_own_settings_and_no_minutes_repair():
     bundle = report_stages.bundle_for(
-        request=_A01_T2, model="m", api_key="k", template_id="doc-minutes",
+        request=_AGENDA_REQUEST, model="m", api_key="k", template_id="doc-minutes",
         process={"stages": ["minutes-repair", "minutes-reground"], "checks": ["minutes-rows"]})
     assert bundle.spec.format_id == "agenda"
     assert bundle.request.template_id == "doc-agenda"

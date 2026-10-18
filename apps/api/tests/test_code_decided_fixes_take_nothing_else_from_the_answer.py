@@ -20,7 +20,7 @@ SKILLS = Path(__file__).resolve().parents[1] / "app" / "skills"
 # ── 1. calc timeout: the given figures' own arithmetic ─────────────────
 
 #: the market-size task as sent
-A10_T2 = "\n".join([
+MARKET_SIZE_REQUEST = "\n".join([
     "국내 초·중·고 대상 「AI 학습 튜터(에듀테크)」 시장 규모를 추정해 줘. 신사업 TF 1차 검토용이야.",  # noqa: E501
     "- TAM·SAM·SOM 구분해서, 하향식과 상향식 둘 다로",
     "- 학생 수 등 기초 통계는 공개 출처(교육부·통계청 등)를 찾아서 쓰고 출처 달기",
@@ -30,7 +30,8 @@ A10_T2 = "\n".join([
 
 
 def test_the_given_figures_are_worked_out_by_code() -> None:
-    assert calc.given_values(A10_T2) == ["월 구독료 9,900원 × 12개월 = 연 구독료 118,800원"]
+    assert calc.given_values(MARKET_SIZE_REQUEST) == [
+        "월 구독료 9,900원 × 12개월 = 연 구독료 118,800원"]
     # written products, the monthly one over a year too
     assert calc.given_values("- 화상회의 라이선스 1인당 월 8,000원 × 40명") == [
         "월 8,000원 × 40명 = 320,000원", "월 320,000원 × 12개월 = 연 3,840,000원"]
@@ -49,7 +50,7 @@ async def test_a_calc_timeout_hands_the_writer_the_given_arithmetic(monkeypatch)
         return "", {"inputTokens": 0, "outputTokens": 0}, "timeout"
 
     monkeypatch.setattr(report_stages.calc, "computed_values", timed_out)
-    bundle = report_stages.bundle_for(request=A10_T2, model="m", api_key="k")
+    bundle = report_stages.bundle_for(request=MARKET_SIZE_REQUEST, model="m", api_key="k")
     events = [e async for e in report_stages.Calc().run(bundle, Context())]
     assert events[-1]["label"] == "코드 계산 시간 초과 — 모델이 계산한 값은 추정으로 표시"
     texts = [p.text for p in bundle.material.trusted]
@@ -128,7 +129,7 @@ def test_the_pdf_wraps_a_category_at_its_spaces() -> None:
 
 
 #: the task's results table and its notes
-A09_T1 = """실험 결과 (생성 모델: 3B sLM, 검색 상위 100개 후보, A100 1장)
+RERANKING_RESULTS = """실험 결과 (생성 모델: 3B sLM, 검색 상위 100개 후보, A100 1장)
 | 재순위화 방식 | KorQuAD-RAG EM | 사내 QA 정확도 | 재순위화 지연(ms/질의) | 파라미터 |
 | 없음(BM25만) | 61.2 | 58.4 | 0 | - |
 | 교차 인코더(bge-reranker-large) | 72.8 | 69.1 | 412 | 560M |
@@ -140,15 +141,16 @@ A09_T1 = """실험 결과 (생성 모델: 3B sLM, 검색 상위 100개 후보, A
 
 
 def test_note_numbers_are_compared_with_their_units() -> None:
-    facts = deck._facts_set(A09_T1)
+    facts = deck._facts_set(RERANKING_RESULTS)
     # 「96%의 정확도」 passed on MiniLM's 96 ms
     invented = "오늘 기억하실 것은 96%의 정확도를 지키면서 지연을 38밀리초로 줄였다는 점입니다."
-    assert deck.notes_grounded(invented, facts, A09_T1) == ""
+    assert deck.notes_grounded(invented, facts, RERANKING_RESULTS) == ""
     # 「25만」 in 「BM25만」 is no figure
-    assert deck.notes_grounded("하루 질의가 25만 건이라면 문제입니다.", facts, A09_T1) == ""
+    assert deck.notes_grounded("하루 질의가 25만 건이라면 문제입니다.", facts,
+                               RERANKING_RESULTS) == ""
     right = ("긴 문서에서는 EM이 3.1%p 떨어집니다. 사내 QA 정확도는 68.3%입니다. "
              "재순위화 지연은 96ms입니다. EM은 72.1입니다.")
-    assert deck.notes_grounded(right, facts, A09_T1) == right
+    assert deck.notes_grounded(right, facts, RERANKING_RESULTS) == right
     # the same amount in another scale is the given one
     assert deck.notes_grounded("예산은 5만 원이고 인원은 40명입니다.", set(),
                                "예산 50,000원, 40명") == "예산은 5만 원이고 인원은 40명입니다."
@@ -171,7 +173,7 @@ def _script(name: str):
 
 
 #: our product's material
-A11_T2 = """- 가격: 클라우드형 1인 월 6,000원(부가세 별도), 설치형은 100명 기준 연 1,800만원
+OUR_MATERIAL = """- 가격: 클라우드형 1인 월 6,000원(부가세 별도), 설치형은 100명 기준 연 1,800만원
 - 고객 지원: 전담 매니저, 평일 9~18시 전화 지원
 - 약점: 모바일 앱 평점 3.6, 외부 서비스 연동(구글·슬랙 등)이 적음, 화상회의 최대 50명"""
 
@@ -182,14 +184,15 @@ def test_a_price_worked_out_from_the_material_is_not_unsourced() -> None:
              "| 설치형 1인 월 환산 | 15,000원/인/월(부가세 별도) | 확인 필요 |\n"
              "| 클라우드형 연 100명 | 720만원 | 확인 필요 |\n"
              "| 지어낸 할인가 | 13,700원/인/월 | 확인 필요 |")
-    flagged = [f["text"] for f in claims.check(table, A11_T2) if f["kind"] == "unsourced_cell"]
+    flagged = [f["text"] for f in claims.check(table,
+                                               OUR_MATERIAL) if f["kind"] == "unsourced_cell"]
     assert flagged == ["13,700원/인/월"]
     # 「…1인당 월 환산 시 15,000원(부가세 별도)입니다.
     # 「출처 미확인」」
     line = "설치형은 1인당 월 환산 시 15,000원(부가세 별도)입니다."
-    assert post.post(line, {"material": A11_T2})["text"] == line
+    assert post.post(line, {"material": OUR_MATERIAL})["text"] == line
     assert "출처 미확인" in post.post("설치형은 1인당 월 13,700원입니다.",
-                                       {"material": A11_T2})["text"]
+                                       {"material": OUR_MATERIAL})["text"]
 
 
 async def test_a_reference_value_is_not_drawn_on_a_category() -> None:

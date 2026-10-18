@@ -24,17 +24,17 @@ dates = skill_scripts.module("date-calc", "dates")
 
 # ── 1. empty and announced answers ───────────────────────────────────────────
 
-P05_REQUEST = ("혈당 관리 중인데 저녁 메뉴로 GI 낮고 단백질 많은 요리 하나 추천해 줘. "
-               "1인분 열량이랑 탄단지도 알려 줘.")
-P05_ANSWER = ("I have enough verified data. Let me compute the recipe's calorie and "
-              "macronutrient totals precisely.")
-A12_CUT = ("### 페이지 카피\n\n**메일 제목**\n"
-           "한빛워크 회의록 요약, 11월 한 달 기존 고객 무료 (29자)\n"
-           "*미리보기 문구: 화상회의 후 5분 안에 요약본을 보내드*")
+LOW_GI_RECIPE_REQUEST = ("혈당 관리 중인데 저녁 메뉴로 GI 낮고 단백질 많은 요리 하나 추천해 줘. "
+                         "1인분 열량이랑 탄단지도 알려 줘.")
+ANNOUNCED_ANSWER = ("I have enough verified data. Let me compute the recipe's calorie and "
+                    "macronutrient totals precisely.")
+CUT_OFF_PAGE_COPY = ("### 페이지 카피\n\n**메일 제목**\n"
+                     "한빛워크 회의록 요약, 11월 한 달 기존 고객 무료 (29자)\n"
+                     "*미리보기 문구: 화상회의 후 5분 안에 요약본을 보내드*")
 
 
 def test_a_one_line_english_announcement_is_no_answer() -> None:
-    assert internal_words.is_work_plan(P05_ANSWER, request=P05_REQUEST)
+    assert internal_words.is_work_plan(ANNOUNCED_ANSWER, request=LOW_GI_RECIPE_REQUEST)
     # English asked for: still only an announcement
     assert internal_words.is_work_plan("Let me check the latest rates first.",
                                        request="What is the current base rate?")
@@ -47,9 +47,10 @@ def test_a_one_line_english_announcement_is_no_answer() -> None:
 
 def test_a_rewrite_cut_off_short_beside_rich_results_is_not_shown() -> None:
     results = "헤드라인 매트릭스\n" + "회의 끝나고 5분이면 정리까지 끝나는 이유\n" * 120
-    assert not agent._usable_rewrite(A12_CUT, request="헤드라인 여러 안", results=results)
+    assert not agent._usable_rewrite(CUT_OFF_PAGE_COPY, request="헤드라인 여러 안", results=results)
     assert agent._usable_rewrite("기준금리는 연 2.50%입니다.", request="기준금리?", results=results)
-    assert not agent._usable_rewrite(P05_ANSWER, request=P05_REQUEST, results=results)
+    assert not agent._usable_rewrite(ANNOUNCED_ANSWER, request=LOW_GI_RECIPE_REQUEST,
+                                     results=results)
 
 
 class _Response:
@@ -118,10 +119,11 @@ async def _turn(monkeypatch, *, rescue: str | None, writer_says: list[str] | Non
         event
         async for event in agent.run_turn(
             "local/qwen3.8-flash",
-            [{"role": "system", "content": "시스템"}, {"role": "user", "content": P05_REQUEST}],
+            [{"role": "system", "content": "시스템"},
+             {"role": "user", "content": LOW_GI_RECIPE_REQUEST}],
             [tool],
             ToolContext(user_id="user", session_id="session", api_key="key",
-                        request=P05_REQUEST),
+                        request=LOW_GI_RECIPE_REQUEST),
             rescue_model=rescue,
         )
     ]
@@ -144,9 +146,9 @@ async def test_an_empty_answer_is_written_by_the_other_local_model(monkeypatch) 
 @pytest.mark.asyncio
 async def test_an_announcement_is_rewritten_by_the_other_local_model(monkeypatch) -> None:
     events, seen = await _turn(monkeypatch, rescue="local/qwen3.8-27b",
-                               writer_says=_said(P05_ANSWER))
+                               writer_says=_said(ANNOUNCED_ANSWER))
     retracted = [e["text"] for e in events if e["type"] == "retract"]
-    assert P05_ANSWER in retracted
+    assert ANNOUNCED_ANSWER in retracted
     assert seen[-1]["model"] == "local/qwen3.8-27b"
 
 
@@ -158,7 +160,7 @@ async def test_no_other_model_and_an_external_one_is_never_the_rescuer(monkeypat
 
 # ── 2. code values: a group's value never overwrites the overall one ─────────
 
-A06_PRINTED = [
+SURVEY_PRINTED = [
     "(1) 문항별 전체 통계 (평균 오름차순)\n"
     "   문항   평균  중위값  표준편차  1~2점비율(%)  4~5점비율(%)  낮은점(1~2)건수\n"
     "온라인학습 3.56  4.0  0.83       10.8       55.8          13\n"
@@ -171,7 +173,7 @@ A06_PRINTED = [
     "  시설: 평균=2.89, 1~2점 건수=4\n  온라인학습: 평균=3.06, 1~2점 건수=2\n"
     "  전반만족: 평균=3.39, 1~2점 건수=0\n",
 ]
-A06_ANSWER = (
+SURVEY_ANSWER = (
     "**1. 문항별 결과 (n=120, 5점 리커트, 평균 오름차순)**\n\n"
     "| 문항 | 평균 | 중위값 | 표준편차 | 1~2점 비율 | 4~5점 비율 |\n"
     "|---|---|---|---|---|---|\n"
@@ -184,8 +186,8 @@ A06_ANSWER = (
 
 
 def test_one_colleges_values_never_overwrite_the_overall_table() -> None:
-    out, fixes = agent.code_checked(A06_ANSWER, A06_PRINTED)
-    assert fixes == [] and out == A06_ANSWER
+    out, fixes = agent.code_checked(SURVEY_ANSWER, SURVEY_PRINTED)
+    assert fixes == [] and out == SURVEY_ANSWER
 
 
 def test_a_value_printed_once_is_still_set() -> None:
@@ -197,9 +199,9 @@ def test_a_value_printed_once_is_still_set() -> None:
 
 # ── 3. copy check: each table measured by its own channel ────────────────────
 
-A13_REQUEST = ("한빛워크 체험 신청 광고 소재 만들어 줘. 네이버 검색광고, 메타 광고, 링크드인 "
-               "광고 채널별로 3안씩, 채널별 글자 수 제한을 지켜서.")
-A13_ANSWER = (
+AD_COPY_REQUEST = ("한빛워크 체험 신청 광고 소재 만들어 줘. 네이버 검색광고, 메타 광고, 링크드인 "
+                   "광고 채널별로 3안씩, 채널별 글자 수 제한을 지켜서.")
+AD_COPY_ANSWER = (
     "## 네이버 검색광고 (파워링크)\n\n"
     "| # | 각도 | 제목 | 자 | 설명 | 자 |\n|---|---|---|---|---|---|\n"
     "| 1 | 기능·혜택 | 망분리·설치·클라우드 | 13/15 | "
@@ -212,25 +214,25 @@ A13_ANSWER = (
 
 
 def test_a_meta_title_is_measured_against_metas_limit() -> None:
-    rows = length.targets(A13_REQUEST)
-    items = {i["text"]: i["key"] for i in length.table_items(A13_ANSWER, rows)}
+    rows = length.targets(AD_COPY_REQUEST)
+    items = {i["text"]: i["key"] for i in length.table_items(AD_COPY_ANSWER, rows)}
     assert items["망분리 지원, 설치형·클라우드형 선택"] == "meta.headline"
     assert items["망분리·설치·클라우드"] == "naver_powerlink.title"
     assert items["11월 중 신청 시 체험 기간 45일"] == "meta.description"
 
 
 def test_counts_written_over_their_limit_are_measured_again() -> None:
-    rows = length.targets(A13_REQUEST)
-    measured = length.measured(length.table_items(A13_ANSWER, rows), rows)
-    out = length.restate_counts(A13_ANSWER, measured)
+    rows = length.targets(AD_COPY_REQUEST)
+    measured = length.measured(length.table_items(AD_COPY_ANSWER, rows), rows)
+    out = length.restate_counts(AD_COPY_ANSWER, measured)
     assert "| 망분리·설치·클라우드 | 11/15 |" in out
     assert "| 11월 신청 시 체험 기간 45일 연장 | 21/45 |" in out
 
 
 def test_a_clause_of_a_measured_cell_is_not_measured_alone() -> None:
-    rows = length.targets(A13_REQUEST)
+    rows = length.targets(AD_COPY_REQUEST)
     judged = {"items": [{"key": "naver_powerlink.description", "text": "11월 신청 시 체험 기간"}]}
-    texts = [i["text"] for i in copy_check._items(judged, A13_ANSWER, rows)]
+    texts = [i["text"] for i in copy_check._items(judged, AD_COPY_ANSWER, rows)]
     assert "11월 신청 시 체험 기간" not in texts
 
 
@@ -246,7 +248,7 @@ def test_a_rewrite_that_brings_a_site_or_a_link_is_not_kept() -> None:
 
 # ── 4. a deck's quiz is the request's, not the material's ────────────────────
 
-A09_REQUEST = (
+TALK_DECK_REQUEST = (
     "다음 주 학회(한국정보과학회 추계) 구두 발표용 슬라이드 만들어 줘. 발표 15분, 10장 안팎. "
     "아래 초록과 실험 결과로.\n\n"
     "제목: 소형 언어모델을 위한 검색 증강 생성에서의 문서 재순위화 경량화\n"
@@ -261,7 +263,7 @@ A09_REQUEST = (
 def test_items_counted_in_the_material_ask_for_no_quiz() -> None:
     slides = [{"title": "연구 배경"}, {"title": "평가 데이터셋과 설정",
                                       "bullets": ["KorQuAD-RAG", "사내 QA 1,200문항"]}]
-    assert deck.requested_contents(slides, A09_REQUEST) == {}
+    assert deck.requested_contents(slides, TALK_DECK_REQUEST) == {}
     asked = ("운영체제 50분 강의용 슬라이드 만들어 줘. 마지막에 비교 표와 확인 퀴즈 2문제를 "
              "넣어 줘.\n\n예제 (도착 시간, 실행 시간)\nP1 0 8")
     quiz = [{"title": "개요"}, {"title": "확인 퀴즈", "bullets": ["정리"]}]
@@ -296,7 +298,8 @@ def test_an_earlier_number_keeps_its_source_and_new_results_follow_it() -> None:
 
 
 def test_the_writers_own_closing_list_is_found() -> None:
-    answer = ("본문 [1].\n\n### 출처\n- [1] [A](https://a.example/x)\n- [2] [B](https://b.example/y)")
+    answer = (
+        "본문 [1].\n\n### 출처\n- [1] [A](https://a.example/x)\n- [2] [B](https://b.example/y)")
     at, end, numbers = agent._own_source_list(answer)
     assert answer[at:].startswith("### 출처") and numbers == [1, 2] and end == len(answer)
     assert agent._own_source_list("본문.\n\n### 출처\n그 밖의 말") is None
@@ -310,30 +313,34 @@ def test_the_writers_own_closing_list_is_found() -> None:
 
 
 def test_needless_questions_are_dropped() -> None:
-    a03 = ('{"needs": [{"question": "이 협조 요청 공문의 시행(발송)일이 언제입니까?", '
-           '"options": ["2026. 10. 13.(화)", "다른 날짜 (입력)"]}]}')
-    assert grounding.parse_needs(a03, "각 학과에 보낼 협조 요청 공문을 써 줘.") is None
-    a09 = ('{"needs": [{"question": "간트 차트와 대기시간을 실제로 계산해 넣을지, 자리만 '
-           '틀어둘까요.", "options": ["코드로 계산해 숫자를 채우겠습니다", '
-           '"[수치]로 빈칸 두고 발표자가 채웁니다"]}]}')
+    official_letter_needs = (
+        '{"needs": [{"question": "이 협조 요청 공문의 시행(발송)일이 언제입니까?", '
+        '"options": ["2026. 10. 13.(화)", "다른 날짜 (입력)"]}]}')
+    assert grounding.parse_needs(official_letter_needs,
+                                 "각 학과에 보낼 협조 요청 공문을 써 줘.") is None
+    deck_needs = ('{"needs": [{"question": "간트 차트와 대기시간을 실제로 계산해 넣을지, 자리만 '
+                  '틀어둘까요.", "options": ["코드로 계산해 숫자를 채우겠습니다", '
+                  '"[수치]로 빈칸 두고 발표자가 채웁니다"]}]}')
     assert grounding.parse_needs(
-        a09, "모든 알고리즘의 간트 차트와 평균 대기시간을 계산해서") is None
-    a04 = ('{"needs": [{"question": "어떤 시점을 계약일로 봐서 납기를 비교할까요?", '
-           '"options": ["오늘(10월 12일) 계약 가정", "다른 날짜로 잡아 주세요"]}]}')
-    assert grounding.parse_needs(a04, "납기는 오늘 10월 12일 계약 가정으로 비교해 줘") is None
+        deck_needs, "모든 알고리즘의 간트 차트와 평균 대기시간을 계산해서") is None
+    quote_needs = ('{"needs": [{"question": "어떤 시점을 계약일로 봐서 납기를 비교할까요?", '
+                   '"options": ["오늘(10월 12일) 계약 가정", "다른 날짜로 잡아 주세요"]}]}')
+    assert grounding.parse_needs(quote_needs,
+                                 "납기는 오늘 10월 12일 계약 가정으로 비교해 줘") is None
     real = ('{"needs": [{"question": "무엇을 결정하는 보고서입니까?", "options": []}]}')
     assert grounding.parse_needs(real, "처장님 결재용 한 장 보고") is not None
 
 
 # ── 7. a rule's offset counts from its event, not today ──────────────────────
 
-A05_RULE = "제12조(정산) 출장자는 출장 종료 후 7일 이내에 영수증을 첨부하여 여비를 정산하여야 한다."
+SETTLEMENT_RULE = ("제12조(정산) 출장자는 출장 종료 후 7일 이내에 영수증을 첨부하여 여비를 "
+                   "정산하여야 한다.")
 
 
 def test_an_offset_from_an_event_does_not_move_a_right_date() -> None:
     answer = "예를 들어 다음 주 월요일은 2026-10-19(월)이므로 정산 기한도 그에 맞춰 계산됩니다."
     out = dates.post(answer, {"today": "2026-10-13", "request": "다음 주 부산 출장",
-                              "material": A05_RULE})
+                              "material": SETTLEMENT_RULE})
     assert out["text"] == answer and not out["fixed"]
     # an offset from today still sets its date
     out = dates.post("마감은 2026-10-21입니다.", {"today": "2026-10-13",
@@ -343,7 +350,7 @@ def test_an_offset_from_an_event_does_not_move_a_right_date() -> None:
 
 # ── 8. minutes: a blanked due comes back from the memo ───────────────────────
 
-A01_MEMO = (
+MEETING_MEMO = (
     "[메모] 10/8(목) 14시 본관 3층 소회의실, 교육혁신팀 주간회의\n"
     "참석: 박정민 팀장, 이수진 차장, 김도윤 대리, 최하늘 주임\n"
     "3. 우수 강의 사례집 — 원고 12편 중 9편 접수. 미제출 3편은 교수님들께 10/16까지 "
@@ -355,7 +362,7 @@ def test_a_due_blanked_by_a_check_gets_the_memos_date() -> None:
     sections = [{"heading": "할 일(담당·기한)", "content": (
         "| 할 일 | 담당 | 기한 | 비고 |\n|---|---|---|---|\n"
         "| 미제출 원고 3편 재요청 | 최하늘 | [기한] | 교수님들께 재요청 |")}]
-    found = dates.scan(A01_MEMO, dt.date(2026, 10, 8))
+    found = dates.scan(MEETING_MEMO, dt.date(2026, 10, 8))
     out, filled = report_checks.minutes_due_fill(sections, found, blanked=True)
     assert filled == 1 and "[기한]" not in out[0]["content"]
     assert "10" in out[0]["content"].split("| 최하늘 |")[1].split("|")[0]

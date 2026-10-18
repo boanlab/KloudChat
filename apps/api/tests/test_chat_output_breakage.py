@@ -277,14 +277,14 @@ def test_a_spreadsheet_formula_request_is_not_held_for_the_calculator() -> None:
     # A formula request: no calculator gate, so no 「검산을 완료하지 못해…」
     from app.services import calculation_policy
 
-    p46 = (
+    excel_formula_request = (
         "엑셀 수식 생성기가 되어 줘. 지역별·월별 매출 합계를 계산하는 수식이 필요해.\n\n"
         "데이터: '판매' 시트에 A열 날짜(2026-01-03 같은 날짜 값), B열 지역(서울/부산/대구/광주/"
         "대전), C열 담당자, D열 금액이 2행부터 약 5,000행까지 있어. '요약' 시트에 지역은 A2:A6, "
         "월은 B1:M1(1~12월 숫자)로 놓을 거야.\n\n"
         "조건: 반품은 금액이 음수로 들어오는데 이건 빼고 합계를 내고 싶어. 연도는 2026년만."
     )
-    assert not calculation_policy.requires_calculation(p46)
+    assert not calculation_policy.requires_calculation(excel_formula_request)
     assert not calculation_policy.requires_calculation(
         "Give me an Excel formula that sums column D when B is 서울 and D > 0, rows 2 to 5000.")
     # a number asked of the given numbers still goes to the calculator
@@ -292,7 +292,7 @@ def test_a_spreadsheet_formula_request_is_not_held_for_the_calculator() -> None:
 
 
 #: A stored first turn: the model's reasoning in brackets above the answer.
-_P59_THINKING = (
+_INTERVIEW_THINKING = (
     "[Thinking: The user wants me to role-play as an admissions interviewer for the School of "
     "Informatics at the University of Edinburgh, and to conduct a mock interview that lasts "
     "about 30 minutes. I should start the interview now, ask the first question, and maintain "
@@ -301,7 +301,7 @@ _P59_THINKING = (
     "professional and encouraging, in Korean.\n\nLength: moderate — a short scene-setting "
     "paragraph plus the opening question. Don't overload.]\n\n"
 )
-_P59_ANSWER = (
+_INTERVIEW_ANSWER = (
     "좋습니다. 지금부터 저는 에든버러 대학교 정보학과(School of Informatics) 입학 면접관입니다. "
     "편하게 임해 주세요.\n\n첫 질문입니다. 먼저 2분 내외로 자기소개를 부탁드립니다."
 )
@@ -310,16 +310,18 @@ _P59_ANSWER = (
 def test_reasoning_written_into_the_answer_is_taken_out() -> None:
     from app.services import internal_words
 
-    assert internal_words.strip_reasoning(_P59_THINKING + _P59_ANSWER) == _P59_ANSWER
-    tagged = "<think>사용자는 면접을 원한다. 첫 질문부터.</think>\n\n" + _P59_ANSWER
-    assert internal_words.strip_reasoning(tagged) == _P59_ANSWER
+    stripped = internal_words.strip_reasoning(_INTERVIEW_THINKING + _INTERVIEW_ANSWER)
+    assert stripped == _INTERVIEW_ANSWER
+    tagged = "<think>사용자는 면접을 원한다. 첫 질문부터.</think>\n\n" + _INTERVIEW_ANSWER
+    assert internal_words.strip_reasoning(tagged) == _INTERVIEW_ANSWER
     opened_by_template = (
-        "The user wants an interview. Start with a greeting.\n</think>\n\n" + _P59_ANSWER)
-    assert internal_words.strip_reasoning(opened_by_template) == _P59_ANSWER
+        "The user wants an interview. Start with a greeting.\n</think>\n\n" + _INTERVIEW_ANSWER)
+    assert internal_words.strip_reasoning(opened_by_template) == _INTERVIEW_ANSWER
     # a short bracket is content, and a reasoning-only reply is left for the turn to judge
-    short = "(생각: 30초 안에 답하기)\n" + _P59_ANSWER
+    short = "(생각: 30초 안에 답하기)\n" + _INTERVIEW_ANSWER
     assert internal_words.strip_reasoning(short) == short
-    assert internal_words.strip_reasoning(_P59_THINKING.strip()) == _P59_THINKING.strip()
+    thinking_only = _INTERVIEW_THINKING.strip()
+    assert internal_words.strip_reasoning(thinking_only) == thinking_only
 
 
 def test_a_check_mark_never_splits_a_word() -> None:

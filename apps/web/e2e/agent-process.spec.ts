@@ -135,7 +135,7 @@ test('설정 › 메모리 holds what the hub\'s 메모리 tab held', async ({ p
 
 // ── agent form: bundles, bases and naming ─────────────────────────────
 
-test('B-3: 바로 답하기 with 마무리하기 says it cannot export; a document base shows the export choice', async ({ page }, testInfo) => {
+test('바로 답하기 with 마무리하기 says it cannot export; a document base shows the export choice', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   const form = await openForm(page)
   const bundles = page.getByTestId('agent-bundles')
@@ -156,7 +156,7 @@ test('B-3: 바로 답하기 with 마무리하기 says it cannot export; a docume
   expect(state.problems).toEqual([])
 })
 
-test('B-7: a base is named with what it makes', async ({ page }, testInfo) => {
+test('a base is named with what it makes', async ({ page }, testInfo) => {
   await hubFixture(page, testInfo)
   const form = await openForm(page)
   await form.getByRole('radio', { name: /기본 과정에서 시작/ }).check()
@@ -168,7 +168,7 @@ test('B-7: a base is named with what it makes', async ({ page }, testInfo) => {
   await expect(select.locator('option', { hasText: /^회의록$/ })).toHaveCount(1)
 })
 
-test('B-5: a new agent\'s 직접 구성 is judged as the agent it will be, and says what it makes', async ({ page }, testInfo) => {
+test('a new agent\'s 직접 구성 is judged as the agent it will be, and says what it makes', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   const form = await openForm(page)
   await form.getByRole('textbox', { name: '이름' }).fill('새 보고 도우미')
@@ -179,7 +179,7 @@ test('B-5: a new agent\'s 직접 구성 is judged as the agent it will be, and s
     .toMatchObject({ selfSurface: 'report', selfName: '새 보고 도우미' })
 })
 
-test('B-6, B-9: 사용자 지정 does not narrate where things moved; the brightness toggle is not called 테마', async ({ page }, testInfo) => {
+test('사용자 지정 does not narrate where things moved; the brightness toggle is not called 테마', async ({ page }, testInfo) => {
   await hubFixture(page, testInfo)
   await page.goto('/customize')
   await expect(page.getByRole('tabpanel')).toBeVisible({ timeout: 15_000 })
@@ -196,7 +196,7 @@ async function shot(page: Page, name: string, target?: import('@playwright/test'
   else await page.screenshot({ path: file, fullPage: false })
 }
 
-test('N3: 바로 답하기 says it answers in the chat, and a file asked for in the 지시 offers a document base', async ({ page }, testInfo) => {
+test('바로 답하기 says it answers in the chat, and a file asked for in the 지시 offers a document base', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   const form = await openForm(page)
   await expect(form.getByRole('radio', { name: /바로 답하기/ })).toBeChecked()
@@ -216,14 +216,14 @@ test('N3: 바로 답하기 says it answers in the chat, and a file asked for in 
   await expect(form.getByRole('radio', { name: /기본 과정에서 시작/ })).toBeChecked()
   await expect(page.getByTestId('process-base').getByRole('combobox', { name: '기본 과정' })).toHaveValue('gaejo-report')
   await expect(suggestion).toHaveCount(0)
-  // M3: the person asked for a file, so the export comes ticked, as DOCX.
+  // The person asked for a file, so the export comes ticked, as DOCX.
   const exportRow = finish.getByTestId('bundle-export')
   await expect(exportRow.getByRole('checkbox', { name: '다 쓰면 파일로 내보내기' })).toBeChecked()
   await expect(exportRow.getByRole('combobox', { name: '파일 형식' })).toHaveValue('docx')
   expect(state.problems).toEqual([])
 })
 
-test('M3: the switch a file asked for ticks the export in the format the 지시 names', async ({ page }, testInfo) => {
+test('the switch a file asked for ticks the export in the format the 지시 names', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   const form = await openForm(page)
   await form.getByRole('textbox', { name: '이름' }).fill('주간 결과 보고')
@@ -242,7 +242,7 @@ test('M3: the switch a file asked for ticks the export in the format the 지시 
   expect(state.problems).toEqual([])
 })
 
-test('N3: the 마무리하기 warning switches to a document base in one click', async ({ page }, testInfo) => {
+test('the 마무리하기 warning switches to a document base in one click', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   const form = await openForm(page)
   const finish = page.getByTestId('agent-bundles').getByTestId('bundle-row').filter({ hasText: '마무리하기' })
@@ -278,7 +278,7 @@ async function addStep(page: Page, group: string, name: string) {
   await expect(picker).toBeHidden()
 }
 
-test('B-5, N2, N1: 직접 구성 points at what fixes each problem, and a question is checked before saving', async ({ page }, testInfo) => {
+test('직접 구성 points at what fixes each problem, and a question is checked before saving', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   await judgeSteps(page)
   const form = await openForm(page)
@@ -296,7 +296,7 @@ test('B-5, N2, N1: 직접 구성 points at what fixes each problem, and a questi
   await shot(page, 'b5-export-fix', custom)
   const makes = custom.getByRole('combobox', { name: '이 에이전트가 만드는 것' })
   await expect(makes).toHaveValue('chat')
-  // M3: the button sets it, and the notice can put it back.
+  // The button sets it, and the notice can put it back.
   await custom.getByTestId('export-fix').click()
   await expect(makes).toHaveValue('report')
   await expect(makes).toBeFocused()
@@ -310,7 +310,7 @@ test('B-5, N2, N1: 직접 구성 points at what fixes each problem, and a questi
   await expect(makes).toHaveValue('report')
   await expect(custom).not.toContainText('앞 단계에서 만든 문서가 있어야 합니다')
 
-  // N2: the 확인 질문 warning follows the questions on the form.
+  // The 확인 질문 warning follows the questions on the form.
   await expect(custom).toContainText('이 단계는 건너뜁니다')
   await custom.getByTestId('ask-fix').click()
   const group = page.getByTestId('agent-gap-group')
@@ -320,7 +320,7 @@ test('B-5, N2, N1: 직접 구성 points at what fixes each problem, and a questi
   await question.getByRole('textbox', { name: '물어볼 것' }).fill('과장님이 결정해야 할 사항은 무엇인가요?')
   await expect(custom).not.toContainText('이 단계는 건너뜁니다')
 
-  // N1: the words a 낱말 question needs are marked, and checked here, beside the field.
+  // The words a 낱말 question needs are marked, and checked here, beside the field.
   await expect(question.getByRole('textbox', { name: '이 낱말이 있으면 답한 것' })).toHaveAttribute('aria-required', 'true')
   await form.getByRole('button', { name: '만들기' }).click()
   await expect(form.getByRole('status').first()).toContainText('빠진 정보 질문에 채우지 않은 칸이 있습니다')
@@ -342,7 +342,7 @@ test('B-5, N2, N1: 직접 구성 points at what fixes each problem, and a questi
   expect(state.problems).toEqual([])
 })
 
-test('N1: a refusal the form cannot foresee reads as a sentence and opens where to fix it', async ({ page }, testInfo) => {
+test('a refusal the form cannot foresee reads as a sentence and opens where to fix it', async ({ page }, testInfo) => {
   await hubFixture(page, testInfo)
   await page.route('**/api/agents', (route) =>
     route.request().method() === 'POST'
@@ -375,7 +375,7 @@ test('N1: a refusal the form cannot foresee reads as a sentence and opens where 
   await expect(page.getByText(/unknown_tools|mcp__gone/)).toHaveCount(0)
 })
 
-test('N5: the process\'s detailed settings are not called 진행 과정 설정', async ({ page }, testInfo) => {
+test('the process\'s detailed settings are not called 진행 과정 설정', async ({ page }, testInfo) => {
   await hubFixture(page, testInfo)
   const form = await openForm(page)
   await form.getByRole('radio', { name: /기본 과정에서 시작/ }).check()
@@ -386,7 +386,7 @@ test('N5: the process\'s detailed settings are not called 진행 과정 설정',
   await shot(page, 'n5-settings-group', page.getByTestId('agent-process').locator('..'))
 })
 
-test('B-10: after choosing a base, the new agent\'s template list holds every template of that screen', async ({ page }, testInfo) => {
+test('after choosing a base, the new agent\'s template list holds every template of that screen', async ({ page }, testInfo) => {
   await hubFixture(page, testInfo)
   const row = (id: string, surface: string, name: string, kind = 'document') => ({
     id, kind, surface, name, nameEn: name, category: '보고', categoryEn: 'Report', description: '', descriptionEn: '',
@@ -409,7 +409,7 @@ test('B-10: after choosing a base, the new agent\'s template list holds every te
   await expect(select).toHaveValue('doc-result-report')
 })
 
-test('R2: ticking the export by hand after choosing a base picks the format the 지시 names', async ({ page }, testInfo) => {
+test('ticking the export by hand after choosing a base picks the format the 지시 names', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   const form = await openForm(page)
   await form.getByRole('textbox', { name: '지시' }).fill('과장님께 올릴 1쪽 요약을 쓴다. 다 쓰면 워드 파일로 준다.')
