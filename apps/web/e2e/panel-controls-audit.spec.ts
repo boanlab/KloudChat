@@ -58,7 +58,7 @@ async function open(page: Page, kind: string, least = 1): Promise<boolean> {
 async function ribbon(page: Page, name: string) {
   // 파일, 보기 and 슬라이드 쇼: header buttons; the rest: editing tabs behind 「편집」.
   if (['파일', '보기', '슬라이드 쇼'].includes(name)) return
-  const target = ({ 홈: '디자인', 레이아웃: '디자인', 편집: '글자' } as Record<string, string>)[name] ?? name
+  const target = ({ 홈: '테마', 레이아웃: '테마', 편집: '글자' } as Record<string, string>)[name] ?? name
   const toggle = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first()
     .getByRole('button', { name: '편집', exact: true })
   if ((await toggle.getAttribute('aria-pressed').catch(() => null)) === 'false') await toggle.click()
@@ -89,7 +89,7 @@ test('보고서 패널이 약속한 컨트롤을 내놓는다', async ({ page })
   // Reading header first, then each editing tab.
   named.push(...await controls(page.getByRole('dialog')))
   await page.getByRole('dialog').locator('header').first().getByRole('button', { name: '편집', exact: true }).click()
-  for (const tab of ['글자', '삽입', '디자인', '검토']) {
+  for (const tab of ['글자', '삽입', '테마', '검토']) {
     await ribbon(page, tab)
     named.push(...await controls(page.getByRole('dialog')))
   }
@@ -173,7 +173,7 @@ test('슬라이드 패널이 약속한 컨트롤을 내놓는다', async ({ page
   test.skip(!(await open(page, 'deck')), '덱 아티팩트가 없습니다')
   const named: string[] = []
   named.push(...await controls(page.getByRole('dialog')))
-  for (const tab of ['글자', '삽입', '디자인', '검토']) {
+  for (const tab of ['글자', '삽입', '테마', '검토']) {
     await ribbon(page, tab)
     named.push(...await controls(page.getByRole('dialog')))
   }

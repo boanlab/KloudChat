@@ -42,7 +42,8 @@ jobs:
       - name: Test config paths
         run: npm run test:config
 
-      # `tsc -b && vite build`: the type check is part of the build.
+      # `tsc -b && vite build`: the type check is part of the build; `tsc -b` checks the app,
+      # `vite.config.ts` and the e2e specs (`tsconfig.json` references all three).
       - name: Typecheck and build
         run: npm run build
 

@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { agentRow, hubFixture, myAgents } from './customize-fixture'
 import { viewport } from './project'
+import type { BotChannels, Publication } from '../src/lib/api'
 
 /**
  * 공개 챗봇 against fixture data: the publish dialog with its audience (members at once; a link
@@ -26,6 +27,8 @@ const limits = { perVisitorPerMinute: 10, perVisitorPerDay: 200, perBotPerMinute
 const SITE = 'https://www.example.ac.kr'
 
 function publication(extra: Record<string, unknown> = {}) {
+  // Typed so a channel request (`requestedChannels`) can replace the empty one.
+  const channels: Pick<Publication, 'channels' | 'requestedChannels'> = { channels: {}, requestedChannels: null }
   return {
     id: PUB, slug: SLUG, title: '학사 안내', description: '학칙과 학사 일정을 안내합니다.', agentId: AGENT, agentName: '논문 리뷰어',
     ownerName: 'Fixture', visibility: 'internal', status: 'approved', pauseReason: '', activeVersionId: 'v2',
@@ -33,7 +36,7 @@ function publication(extra: Record<string, unknown> = {}) {
     showProcess: 'summary', showSources: true, allowCopy: false, retentionDays: 30, conversationView: 'off', consentVersion: 1,
     limits, defaults: limits, createdAt: at, updatedAt: at, publishedAt: at,
     requestedVisibility: '', reviewState: '', reviewNote: '', reviewedAt: null, pendingVersionId: null, needsLook: false,
-    channels: {}, requestedChannels: null,
+    ...channels,
     versions: [
       { id: 'v2', number: 2, model: 'strict-local/qwen', note: '2026학년도 학칙', active: true, createdAt: at,
         summary: { knowledge: [{ name: '학칙.pdf', chars: 12000 }] } },
@@ -254,7 +257,7 @@ async function botRoutes(
     }
     if (path === `/publications/${PUB}/channels` && method === 'POST') {
       const sent = body as { embed?: { on: boolean; origins: string[] }; api?: boolean; mcp?: boolean }
-      const wanted: Record<string, unknown> = {}
+      const wanted: BotChannels = {}
       if (sent.embed?.on) wanted.embed = { origins: sent.embed.origins }
       if (sent.api) wanted.api = {}
       if (sent.mcp) wanted.mcp = {}

@@ -75,7 +75,7 @@ export async function resultsFixture(page: Page, testInfo: TestInfo, options: { 
     session(reportSession, 'report', audit.title, reportId, reportMessages),
     session(deckSession, 'slides', deckFixture.title, deckId, deckMessages),
   ]
-  const artifacts: Record<string, { title: string; data: unknown; version?: number }> = { [reportId]: report, [deckId]: deck }
+  const artifacts: Record<string, { title: string; data: unknown; version?: number; updatedAt?: string }> = { [reportId]: report, [deckId]: deck }
   const models = [{ id: 'fixture/base', label: 'Fixture', name: 'Fixture', vendor: 'Fixture', provider: 'fixture',
     kinds: ['chat', 'report', 'slides'], modality: 'chat', dataBoundary: 'external', creditCost: 1,
     inputCreditCost: 1, supportsTools: true, contextWindow: 64000 }]

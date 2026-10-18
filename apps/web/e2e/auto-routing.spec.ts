@@ -662,7 +662,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
           messageCount: 0,
         },
       ]
-      let releasePatch = () => undefined
+      let releasePatch: () => void = () => {}
       const patchGate = new Promise<void>((resolve) => {
         releasePatch = resolve
       })
