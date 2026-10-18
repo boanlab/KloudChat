@@ -60,6 +60,13 @@ def test_a_long_slot_is_cut_at_a_space():
     assert steps["steps"][2]["note"] == "가" * 30
 
 
+def test_a_note_that_only_repeats_its_name_is_dropped():
+    steps = figure_kinds.spec({"kind": "steps", "steps": [
+        {"name": "현황 진단", "note": "진단"}, {"name": "시범 운영", "note": "일부 부서 먼저"},
+        {"name": "전사 확산", "note": "전사 확산"}]})
+    assert [item.get("note") for item in steps["steps"]] == [None, "일부 부서 먼저", None]
+
+
 def test_a_highlight_names_a_row_that_is_there():
     found = figure_kinds.spec({**_COMPARE, "hot": {"row": "없는 행", "badge": "x"}})
     assert "hot" not in found

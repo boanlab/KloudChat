@@ -139,6 +139,8 @@ def _named(value: Any, limit: int = 24) -> dict[str, str] | None:
     for key, size in (("note", 40), ("en", 16)):
         if text := _text(value.get(key), size):
             out[key] = text
+    if out.get("note") and out["note"].replace(" ", "") in name.replace(" ", ""):
+        out.pop("note")  # a note that only repeats the name says nothing
     return out
 
 
