@@ -29,48 +29,40 @@ def test_the_panel_and_the_exporters_read_one_table() -> None:
     assert f"export const BODY_BOTTOM = {deck_type.BODY_BOTTOM}" in text
 
 
-def test_a_sparse_list_keeps_its_size_and_a_crowded_one_steps_down() -> None:
-    """Nothing grows to fill a slide; a crowded slide takes the next step of the ladder."""
+def test_a_slide_is_set_at_18_a_sparse_one_at_22_and_a_crowded_one_steps_down() -> None:
+    """18 pt is the body size; a slide its words barely fill takes 22 so it is not left empty,
+    and one that overflows walks down the ladder."""
     sparse = {
         "layout": "bullets",
         "title": "왜 문제인가",
         "bullets": ["에이전트는 입력을 명령으로 오인할 수 있음"] * 3,
     }
-    assert "textScale" not in deck.auto_fit(dict(sparse))
-
-    crowded = {
-        "layout": "bullets",
-        "title": "왜 문제인가",
-        "bullets": [
-            "시스템 권한이 부여된 에이전트는 외부 문서에 숨은 악성 지시를 수행할 위험이 크다"
-        ]
-        * 9,
-    }
+    assert deck.auto_fit(dict(sparse))["textScale"] == deck_type.SCALES[0]
+    line = "시스템 권한이 부여된 에이전트는 외부 문서에 숨은 악성 지시를 수행할 위험이 크다"
+    ordinary = {"layout": "bullets", "title": "왜 문제인가", "bullets": [line] * 6}
+    assert "textScale" not in deck.auto_fit(dict(ordinary))
+    crowded = {**ordinary, "bullets": [line] * 10}
     scale = deck.auto_fit(dict(crowded))["textScale"]
     assert scale in deck_type.SCALES and scale < 1
-    # Six such lines need one step, nine need more: the ladder is walked, not jumped.
-    six = deck.auto_fit({**crowded, "bullets": crowded["bullets"][:6]})["textScale"]
-    assert six > scale
+    # More lines need more steps: the ladder is walked, not jumped.
+    more = deck.auto_fit({**crowded, "bullets": [line] * 12})["textScale"]
+    assert more < scale
 
 
 def test_the_ladder_is_the_powerpoint_sizes() -> None:
     assert deck_type.STEPS == (22, 18, 16, 14, 12)
-    assert deck_type.TYPE["title"] == 32 and deck_type.TYPE["body"] == 22
-    assert [round(22 * s) for s in deck_type.SCALES] == [22, 18, 16, 14, 12]
+    assert deck_type.TYPE["title"] == 26 and deck_type.TYPE["body"] == 18
+    assert [round(18 * s) for s in deck_type.SCALES] == [22, 18, 16, 14, 12]
+    assert deck_type.SCALES[1] == 1.0
 
 
-def test_a_title_that_would_wrap_steps_down_to_28_and_no_further() -> None:
-    assert deck_type.title_pt("요약") == 32
-    assert deck_type.title_pt("문서 검색 시스템 도입 검토 보고서의 주요 결론 정리") == 32
-    assert deck_type.title_pt("문서 검색 시스템 도입 검토 보고서의 주요 결론과 권고 사항") == 30
-    assert (
-        deck_type.title_pt("문서 검색 시스템 도입 검토 보고서의 주요 결론과 권고 사항 정리") == 28
-    )
+def test_a_title_is_26pt_and_a_long_one_wraps() -> None:
+    assert deck_type.title_pt("요약") == 26
     two_lines = (
         "문서 검색 시스템 도입 검토 보고서의 주요 결론 정리 및 후속 조치 권고 사항과 일정 계획"
     )
-    assert deck_type.title_pt(two_lines) == 28
-    assert deck_type.lines(two_lines, 28 / deck_type.K, deck_type.TITLE_WIDTH) == 2
+    assert deck_type.title_pt(two_lines) == 26
+    assert deck_type.lines(two_lines, 26 / deck_type.K, deck_type.TITLE_WIDTH) == 2
 
 
 def test_a_long_title_takes_its_room_from_the_body() -> None:
@@ -89,10 +81,11 @@ def test_a_long_title_takes_its_room_from_the_body() -> None:
 
 
 def test_tables_and_cards_size_themselves() -> None:
+    """Short tables and card rows sit at the 18 pt body size or above, never below."""
     table = {"layout": "table", "title": "비교", "rows": [["구분", "값"], ["가", "1"], ["나", "2"]]}
-    assert "textScale" not in deck.auto_fit(dict(table))
+    assert deck.auto_fit(dict(table)).get("textScale", 1.0) >= 1.0
     cards = {"layout": "cards", "title": "네 가지", "cards": [["이름", "설명"]] * 2}
-    assert "textScale" not in deck.auto_fit(dict(cards))
+    assert deck.auto_fit(dict(cards)).get("textScale", 1.0) >= 1.0
     cover = {"layout": "title", "title": "표지", "bullets": []}
     assert "textScale" not in deck.auto_fit(dict(cover))
 
@@ -103,18 +96,18 @@ def test_a_deck_settles_on_one_body_size() -> None:
     slides = [
         {"layout": "title", "title": "표지"},
         {"layout": "bullets", "title": "하나", "bullets": ["짧은 줄"] * 3},
-        {"layout": "bullets", "title": "둘", "bullets": [line] * 9},
+        {"layout": "bullets", "title": "둘", "bullets": [line] * 13},
         {"layout": "bullets", "title": "셋", "bullets": ["짧은 줄"] * 4},
         {"layout": "closing", "title": "마무리"},
     ]
     for slide in slides:
         deck.auto_fit(slide)
     deck.harmonize(slides)
-    eighteen = deck_type.SCALES[1]
-    assert slides[1]["textScale"] == eighteen and slides[3]["textScale"] == eighteen
-    assert slides[2]["textScale"] < eighteen
+    # Short slides alone would be 22 pt; one ordinary slide holds the deck at 18 (no scale).
+    assert "textScale" not in slides[1] and "textScale" not in slides[3]
+    assert slides[2]["textScale"] < 1
     assert "textScale" not in slides[0] and "textScale" not in slides[4]
-    assert deck.deck_scale(slides) == eighteen
+    assert deck.deck_scale(slides) == 1.0
 
 
 def test_a_hand_set_scale_is_left_alone() -> None:

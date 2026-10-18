@@ -4561,6 +4561,8 @@ def filled(slides: list[dict]) -> list[dict]:
 _SCALES = deck_type.SCALES
 #: Deck-wide body floor; a crowded slide keeps its own smaller step.
 _COMMON_FLOOR = _SCALES[1]
+#: at 18 pt the words fill under this share of the body: set at 22 pt instead
+_SPARSE = 0.5
 
 #: Layout whose runs get every other slide re-planned.
 _MONOTONE = "bullets"
@@ -5177,19 +5179,20 @@ def _need(slide: dict, scale: float) -> float:
 
 
 def auto_fit(slide: dict) -> dict:
-    """Sets `textScale` to the first fitting ladder step (22 → 12 pt); manual scales kept."""
+    """Sets `textScale`: 18 pt by default, 22 when the words fill little of the body, a lower
+    step (16 → 12) when they overflow; manual scales kept."""
     if (
         slide.get("textScale") not in (None, 1, 1.0)
         or slide.get("layout") in _STRUCTURAL
         and slide.get("layout") != "agenda"
+        or slide.get("layout") == "closing"
     ):
         return slide
     room = deck_type.BODY_BOTTOM - deck_type.BODY_TOP
-    for scale in _SCALES:
-        if _need(slide, scale) <= room:
-            break
+    if _need(slide, 1.0) <= room * _SPARSE and _need(slide, _SCALES[0]) <= room:
+        scale = _SCALES[0]
     else:
-        scale = _SCALES[-1]
+        scale = next((s for s in _SCALES[1:] if _need(slide, s) <= room), _SCALES[-1])
     if scale == 1.0:
         slide.pop("textScale", None)
     else:
@@ -5207,14 +5210,15 @@ def _body_slides(slides: list[dict]) -> list[dict]:
 
 
 def harmonize(slides: list[dict]) -> list[dict]:
-    """One deck body size: smallest needed step, not below 18 pt (crowded slides keep their own)."""
+    """One deck body size: smallest needed step, not below 18 pt (crowded slides keep their own);
+    22 only when every body slide is sparse."""
     body = _body_slides(slides)
     needed = [float(s.get("textScale") or 1.0) for s in body]
     common = max(min(needed, default=1.0), _COMMON_FLOOR)
     for slide in body:
         own = float(slide.get("textScale") or 1.0)
         scale = min(own, common)
-        if scale >= 1.0:
+        if scale == 1.0:
             slide.pop("textScale", None)
         else:
             slide["textScale"] = scale

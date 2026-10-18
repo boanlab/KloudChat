@@ -231,7 +231,11 @@ def _fit(fragment: str, measure: float) -> SlideFit:
     extra = max(0, deck_type.lines(title_text, title / _K, title_width) - 1) * title * 1.25
     width = INNER if layout in ("table", "split") else measure
     blocks = [n for n in section.children if n.tag not in ("h2", "#text", "span")]
-    for scale in deck_type.SCALES:
+    # 18 pt; 22 when the words fill little of the body; smaller only on overflow
+    if (extra + _stack_need(blocks, 1.0, width, layout) <= ROOM * 0.5
+            and extra + _stack_need(blocks, deck_type.SCALES[0], width, layout) <= ROOM):
+        return SlideFit(layout, deck_type.SCALES[0], title, rows)
+    for scale in deck_type.SCALES[1:]:
         if extra + _stack_need(blocks, scale, width, layout) <= ROOM:
             break
     else:

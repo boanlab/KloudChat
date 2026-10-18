@@ -59,7 +59,7 @@ import { useStore } from '@/store/useStore'
 import { SlideChart } from '@/components/slides/SlideChart'
 import { PatternView } from '@/components/slides/PatternView'
 import { BASE_LAYOUTS, PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
-import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, TYPE, columnShares, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
+import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, STEPS, TYPE, columnShares, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
 import { useT } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
 import { ArtifactRibbon, QuickAccess, RibbonGroup } from '@/components/artifacts/ArtifactRibbon'
@@ -562,7 +562,7 @@ export function SlideView({
   const type = (n: number) => `${Math.max(n * (slide.textScale ?? 1), units(FLOOR_PT)) * scale}px`
   // A size from the shared table, in points.
   const pt = (points: number) => type(units(points))
-  // The title keeps its own size: 32pt, or 30 or 28 when it would otherwise wrap.
+  // The title keeps its own size: 26pt; a long one wraps to a second line.
   const titleSize = `${units(titlePt(slide.title ?? '')) * scale}px`
   // Tint percentages match `deck_export._mix`.
   const tint = look.tint ? `color-mix(in srgb, ${accent} ${look.tint}%, ${look.bg})` : '#f2f2f2'
@@ -2164,14 +2164,14 @@ export function DeckPanel({
       return
     }
     const scale = slideDraft?.textScale ?? 1
-    if (scale <= 0.65) {
+    if (scale <= FLOOR_PT / TYPE.body) {
       setAutoFitting(false)
       setFitLimitReached(true)
       return
     }
     const timer = window.setTimeout(() => setSlideDraft((current) => current ? ({
       ...current,
-      textScale: Math.max(0.65, Math.round(((current.textScale ?? 1) - 0.05) * 100) / 100),
+      textScale: Math.max(FLOOR_PT / TYPE.body, Math.round(((current.textScale ?? 1) - 0.05) * 100) / 100),
     }) : current), 100)
     return () => window.clearTimeout(timer)
   }, [autoFitting, overflowing, slideDraft?.textScale])
@@ -3664,7 +3664,7 @@ export function DeckPanel({
                       ))}
                       <MenuLabel>{t('글자 크기')}</MenuLabel>
                       <MenuItem
-                        onClick={() => setTextScale(1.25)}
+                        onClick={() => setTextScale(STEPS[0] / TYPE.body)}
                         hint={(slide.textScale ?? 1) > 1 ? '✓' : undefined}
                       >
                         {t('크게')}
@@ -3676,7 +3676,7 @@ export function DeckPanel({
                         {t('보통')}
                       </MenuItem>
                       <MenuItem
-                        onClick={() => setTextScale(0.8)}
+                        onClick={() => setTextScale(STEPS[2] / TYPE.body)}
                         hint={(slide.textScale ?? 1) < 1 ? '✓' : undefined}
                       >
                         {t('작게')}

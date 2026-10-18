@@ -2,7 +2,7 @@
 /** Points per slide unit: the exporters' 960-point page over this 400-unit panel. */
 export const K = 2.4
 
-/** Sizes in points: titles 32, body 22 stepping down `STEPS` on overflow, never up; floor 12. */
+/** Sizes in points: titles 26, body 18 (22 on a sparse deck) stepping down `STEPS`; floor 12. */
 export const TYPE = {
   // Covers.
   cover: 36,
@@ -15,8 +15,8 @@ export const TYPE = {
   sectionNumber: 18,
   splitNumber: 80,
   // Body slides.
-  title: 32,
-  body: 22,
+  title: 26,
+  body: 18,
   bodyNarrow: 18,
   paragraph: 18,
   agenda: 18,
@@ -61,7 +61,7 @@ export function units(pt: number): number {
 }
 
 /** Slide titles are 32pt; one that would wrap steps down to 30, then 28, and stays at 28. */
-export const TITLE_STEPS = [32, 30, 28] as const
+export const TITLE_STEPS = [26] as const
 
 /** How many lines `text` takes at `size` slide units in a column `width` units wide. */
 export function lines(text: string, size: number, width: number): number {
@@ -93,7 +93,7 @@ export const LEADING = {
 export const BULLET_GAP = 0.35
 
 /** Body-slide geometry in slide units; the title sits above the body box. */
-export const BODY_TOP = 66.5
+export const BODY_TOP = 60
 export const BODY_BOTTOM = 190
 export const PAD_X = 28
 
