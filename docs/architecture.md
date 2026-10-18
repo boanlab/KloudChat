@@ -601,7 +601,10 @@ words; a report writer can also place one inline with a `[[그림: …]]` mark (
 style and `diagram.draw_native` draws it: code lays the flowchart out
 (`flow_layout`), `diagram_shapes` draws it as native python-pptx shapes on a
 one-slide deck (`diagram_render`), and the print sidecar renders that slide to
-PNG through LibreOffice (`POST /pptx/png`). The panel, the PDF and the report
+PNG through LibreOffice (`POST /pptx/png`). The slide goes through `.odp` on the way, with
+Asian–Latin autospacing switched off, so a label keeps its own spacing (「AI 보안」, 「수집:」);
+`apps/print/fonts.conf` maps the faces an export names (맑은 고딕, 바탕, Segoe UI, Georgia) to
+installed ones (Pretendard, 나눔명조, Selawik, Gelasio). The panel, the PDF and the report
 show that picture, and the deck's `.pptx` carries the same shapes, editable. A source the shapes cannot read (not a flowchart, more than
 `diagram_shapes.MAX_NODES` nodes) goes back to the writer once, told why; still
 unreadable, or with no sidecar answering (logged as a warning), the figure is

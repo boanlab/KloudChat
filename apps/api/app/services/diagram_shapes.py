@@ -472,13 +472,6 @@ def _add_svg_picture(slide, svg: bytes, png: bytes, left, top, size) -> None:
     blip.append(ext_list)
 
 
-def _tighten(text: str) -> str:
-    """Drops the space at Hangul–Latin boundaries (「AI 보안」)."""
-    text = re.sub(r"(?<=[A-Za-z0-9:)\]%])[ ](?=[가-힣])", "", text)
-    text = re.sub(r"(?<=[가-힣])[ ](?=[A-Za-z0-9(\[:])", "", text)
-    return re.sub(r"(?<=[A-Za-z0-9)\]]) (?=:)", "", text)
-
-
 def _sides(a: Placed, b: Placed, lr: bool) -> tuple[str, str]:
     """Exit/entry sides: along the flow between layers, across within a layer."""
     if lr:
@@ -711,7 +704,6 @@ def draw_pptx(
     accent: tuple[float, float, float] | str,
     font: str = "",
     pt=None,
-    tight: bool = False,
 ) -> None:
     """Native shapes and routed lines for `graph`, in points (960 × 540 slide)."""
     from pptx.dml.color import RGBColor
@@ -762,8 +754,7 @@ def draw_pptx(
             para = frame.paragraphs[0] if n == 0 else frame.add_paragraph()
             para.alignment = PP_ALIGN.CENTER
             run = para.add_run()
-            # LibreOffice adds its own Hangul–Latin gap: avoid double space
-            run.text = _tighten(line) if tight else line
+            run.text = line
             run.font.name = font
             run.font.size = pt(size)
             run.font.bold = bold
