@@ -73,10 +73,9 @@ _LIGHT_DROPS: tuple[str, ...] = (
 #: Rule bullets a strong writer gets in a shorter form: opening → replacement bullet.
 _LIGHT_SWAPS: dict[str, str] = {
     "Prose is the default. Values by item go in tables": (
-        "- Values by item go in tables (no blank lines between rows). Two or three numbers "
-        "that conclude the document may go once in a ```kpi block (`값 | 이름` per line, at "
-        "most 4); the one premise everything rests on once in a ```callout block (first line "
-        "title, next line text). No other blocks."
+        "- Values by item go in tables (no blank lines between rows); no separate strip of key "
+        "figures. The one premise everything rests on goes once in a ```callout block (first "
+        "line title, next line text). No other blocks."
     ),
 }
 

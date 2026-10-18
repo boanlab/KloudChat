@@ -577,7 +577,8 @@ def report_design(
     if design_tokens:
         return design_tokens
     requested_style = str((approved_plan or {}).get("visualStyle") or "")
-    accent = str((approved_plan or {}).get("accent") or deck_rules.topic_accent(request))
+    # an official navy unless the plan carries a colour (not the deck's topic rotation)
+    accent = str((approved_plan or {}).get("accent") or design.DOC_ACCENT)
     if requested_style and requested_style != "editorial":
         return design.normalise_tokens(
             {
@@ -1236,7 +1237,7 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         return clean
     given_text = "\n".join([request, *document_context])
     clean = units.fix_magnitude_slips(units.fix_unit_labels(clean, given_text), given_text)
-    clean = report.drop_redundant_kpi(report.drop_repeated_figures(clean))
+    clean = report.drop_kpi(report.drop_repeated_figures(clean))
     # owners and dates from request, material or source only
     clean = report._unsourced_owner_dates(
         clean,
