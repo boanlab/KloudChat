@@ -1,5 +1,14 @@
-import { ChevronDown, Search } from 'lucide-react'
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Search } from 'lucide-react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react'
 import { adminApi, usageApi, type AuditQuery, type AuditRow } from '@/lib/api'
 import {
   ACTION_GROUPS,
@@ -11,9 +20,9 @@ import {
   targetParts,
   valueWords,
 } from '@/lib/auditLabels'
-import { Badge, Card, Input, ResourceStatus, Select } from '@/components/ui'
+import { Badge, Card, Input, Modal, ResourceStatus, Select } from '@/components/ui'
 import { Pager } from '@/components/ui/Pager'
-import { browserName, cn, formatDateTime } from '@/lib/utils'
+import { browserName, formatDateTime } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import { useResource } from '@/lib/useResource'
@@ -74,7 +83,7 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
   const [to, setTo] = useState('')
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(50)
-  const [open, setOpen] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<AuditRow | null>(null)
   const settledQuery = useSettled(query)
   const settledAccount = useSettled(account)
 
@@ -106,7 +115,7 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
   const data = audit.data
   useEffect(() => {
     if (!audit.data) return
-    setOpen(new Set())
+    setSelected(null)
     if (!request.q && !request.account && !request.action && !request.since && !request.until) {
       onTotal?.(audit.data.total)
     }
@@ -120,13 +129,26 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
     setPage(1)
   }
 
-  const toggle = (id: string) =>
-    setOpen((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  // Whole row is the control: click, Enter or Space opens its details.
+  const rowProps = (e: AuditRow) => ({
+    role: 'button',
+    tabIndex: 0,
+    'data-testid': 'audit-row',
+    'aria-label': t('자세히 보기: {action} · {actor} · {at}')
+      .replace('{action}', t(actionLabel(e)))
+      .replace('{actor}', t(e.actor))
+      .replace('{at}', formatDateTime(e.at)),
+    onClick: (ev: MouseEvent<HTMLElement>) => {
+      // Safari does not focus on click; the dialog returns focus here.
+      ev.currentTarget.focus()
+      setSelected(e)
+    },
+    onKeyDown: (ev: KeyboardEvent<HTMLElement>) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return
+      ev.preventDefault()
+      setSelected(e)
+    },
+  })
 
   const filtered = Boolean(query || account || group || period !== 'all')
   const total = data?.total ?? 0
@@ -207,14 +229,14 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          {/* Wide: table with wrapping cells. */}
+          {/* Wide: one line per event; the whole row opens its details. */}
           <table className="hidden w-full table-fixed text-base lg:table">
             <colgroup>
-              <col className="w-[13rem]" />
-              <col className="w-[19%]" />
+              <col className="w-[11.5rem]" />
+              <col className="w-[18%]" />
               <col />
-              <col className="w-[16%]" />
-              <col className="w-[13rem]" />
+              <col className="w-[18%]" />
+              <col className="w-[15rem]" />
             </colgroup>
             <thead className="border-b border-line text-left text-xs tracking-wide text-faint uppercase">
               <tr>
@@ -227,60 +249,69 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
             </thead>
             <tbody className="divide-y divide-line">
               {data.items.map((e) => (
-                <Fragment key={e.id}>
-                  <tr className="align-top hover:bg-elevated" data-testid="audit-row">
-                    <td className="px-4 py-2.5 tabular-nums text-muted">{formatDateTime(e.at)}</td>
-                    <td className="px-4 py-2.5 break-words" title={e.actor}>
-                      {/* Breaks before the domain, not mid-word. */}
-                      {t(e.actor).replace('@', '\u200b@')}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <ActionCell row={e} open={open.has(e.id)} onToggle={() => toggle(e.id)} modelName={modelName} />
-                    </td>
-                    <td className="px-4 py-2.5 break-words text-muted">
-                      <Target row={e} />
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-faint">
-                      <Where row={e} />
-                    </td>
-                  </tr>
-                  {open.has(e.id) && (
-                    <tr className="bg-elevated/50">
-                      <td colSpan={5} className="px-4 pt-1 pb-3">
-                        <Changes row={e} modelName={modelName} />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+                <tr
+                  key={e.id}
+                  {...rowProps(e)}
+                  className="cursor-pointer whitespace-nowrap hover:bg-elevated focus-visible:bg-elevated focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                >
+                  <td className="truncate px-4 py-2 tabular-nums text-muted">{formatDateTime(e.at)}</td>
+                  <td className="truncate px-4 py-2" title={e.actor}>
+                    {t(e.actor)}
+                  </td>
+                  <td className="px-4 py-2">
+                    <ActionCell row={e} modelName={modelName} />
+                  </td>
+                  <td className="truncate px-4 py-2 text-muted">
+                    <Target row={e} />
+                  </td>
+                  <td className="truncate px-4 py-2 text-xs text-faint">
+                    <Where row={e} />
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>
 
-          {/* Narrow: one block per event. */}
+          {/* Narrow: a short summary per event; tapping opens the same details. */}
           <ul className="divide-y divide-line lg:hidden">
             {data.items.map((e) => (
-              <li key={e.id} className="space-y-1.5 px-4 py-3" data-testid="audit-row">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                  <span className="text-sm tabular-nums text-muted">{formatDateTime(e.at)}</span>
+              <li
+                key={e.id}
+                {...rowProps(e)}
+                className="cursor-pointer space-y-1 px-4 py-2.5 hover:bg-elevated focus-visible:bg-elevated focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+              >
+                <div className="flex items-baseline justify-between gap-x-3">
+                  <span className="shrink-0 text-sm tabular-nums text-muted">{formatDateTime(e.at)}</span>
                   <span className="min-w-0 truncate text-sm" title={e.actor}>
                     {t(e.actor)}
                   </span>
                 </div>
-                <ActionCell row={e} open={open.has(e.id)} onToggle={() => toggle(e.id)} modelName={modelName} />
-                {targetParts(e).length > 0 && (
-                  <p className="text-sm break-words text-muted">
-                    <span className="text-faint">{t('대상')} · </span>
-                    <Target row={e} />
-                  </p>
-                )}
-                <p className="text-xs text-faint">
-                  <Where row={e} />
+                <ActionCell row={e} modelName={modelName} />
+                <p className="flex min-w-0 gap-x-2 text-xs text-faint">
+                  {targetParts(e).length > 0 && (
+                    <span className="min-w-0 truncate text-muted">
+                      <Target row={e} />
+                    </span>
+                  )}
+                  <span className="min-w-0 truncate">
+                    <Where row={e} />
+                  </span>
                 </p>
-                {open.has(e.id) && <Changes row={e} modelName={modelName} />}
               </li>
             ))}
           </ul>
         </Card>
+      )}
+
+      {selected && (
+        <Modal
+          open
+          onClose={() => setSelected(null)}
+          title={t(actionLabel(selected))}
+          width="max-w-2xl"
+        >
+          <Details row={selected} modelName={modelName} />
+        </Modal>
       )}
 
       {data && total > 0 && (
@@ -310,17 +341,8 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
   )
 }
 
-function ActionCell({
-  row,
-  open,
-  onToggle,
-  modelName,
-}: {
-  row: AuditRow
-  open: boolean
-  onToggle: () => void
-  modelName: (id: string) => string
-}) {
+/** Badge plus at most a one-line hint; the details live in the dialog. */
+function ActionCell({ row, modelName }: { row: AuditRow; modelName: (id: string) => string }) {
   const t = useT()
   const fields = changedFields(row)
   const words = detailWords(row, t)
@@ -330,30 +352,22 @@ function ActionCell({
     only && !(only[0] === SECRET && only[1] === SECRET)
       ? `${t(FIELD_LABEL[fields[0]] ?? fields[0])}: ${valueWords(fields[0], only[0], t, modelName)} → ${valueWords(fields[0], only[1], t, modelName)}`
       : null
+  const hint =
+    words ||
+    summary ||
+    (fields.length
+      ? shown.map((f) => t(FIELD_LABEL[f] ?? f)).join(' · ') +
+        (fields.length > shown.length ? ` ${t('외 {n}개').replace('{n}', String(fields.length - shown.length))}` : '')
+      : '')
   return (
-    <div className="min-w-0 space-y-1">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <Badge tone={SEVERITY[row.severity] ?? 'neutral'}>{t(actionLabel(row))}</Badge>
-        {words && <span className="text-sm break-words text-muted">{words}</span>}
-      </div>
-      {fields.length > 0 && (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          className="flex max-w-full items-start gap-1 text-left text-sm text-muted hover:text-fg"
-        >
-          <ChevronDown
-            size={14}
-            className={cn('mt-0.5 shrink-0 transition-transform', open ? 'rotate-0' : '-rotate-90')}
-          />
-          <span className="min-w-0 break-words">
-            {summary ?? shown.map((f) => t(FIELD_LABEL[f] ?? f)).join(' · ')}
-            {!summary &&
-              fields.length > shown.length &&
-              ` ${t('외 {n}개').replace('{n}', String(fields.length - shown.length))}`}
-          </span>
-        </button>
+    <div className="flex min-w-0 items-center gap-x-2">
+      <Badge tone={SEVERITY[row.severity] ?? 'neutral'} className="shrink-0">
+        {t(actionLabel(row))}
+      </Badge>
+      {hint && (
+        <span className="min-w-0 truncate text-sm text-muted" title={hint}>
+          {hint}
+        </span>
       )}
     </div>
   )
@@ -364,15 +378,57 @@ function Target({ row }: { row: AuditRow }) {
   return <>{targetParts(row).map((part) => t(part)).join(' · ') || '—'}</>
 }
 
+/** IP · region · browser on one line, so a cell can cut it short. */
 function Where({ row }: { row: AuditRow }) {
   const t = useT()
   const browser = browserName(row.userAgent)
   return (
-    <span className="flex flex-wrap gap-x-2">
+    <span title={row.userAgent || undefined}>
       <span className="font-mono tabular-nums">{row.ip || '—'}</span>
-      {row.region && <span>{t(row.region)}</span>}
-      {browser && <span title={row.userAgent}>{browser}</span>}
+      {row.region && ` · ${t(row.region)}`}
+      {browser && ` · ${browser}`}
     </span>
+  )
+}
+
+/** The dialog body: every recorded fact, then what changed. */
+function Details({ row, modelName }: { row: AuditRow; modelName: (id: string) => string }) {
+  const t = useT()
+  const words = detailWords(row, t)
+  const browser = browserName(row.userAgent)
+  const place = [row.ip, row.region ? t(row.region) : ''].filter(Boolean).join(' · ')
+  const item = (label: string, value: ReactNode) => (
+    <Fragment key={label}>
+      <dt className="text-faint">{t(label)}</dt>
+      <dd className="min-w-0 break-words">{value}</dd>
+    </Fragment>
+  )
+  return (
+    <>
+      <dl
+        className="grid gap-x-4 gap-y-2 text-base sm:grid-cols-[minmax(6rem,max-content)_1fr]"
+        data-testid="audit-detail"
+      >
+        {item('시각', <span className="tabular-nums">{formatDateTime(row.at)}</span>)}
+        {item('계정', t(row.actor))}
+        {item('행위', <Badge tone={SEVERITY[row.severity] ?? 'neutral'}>{t(actionLabel(row))}</Badge>)}
+        {item('대상', <Target row={row} />)}
+        {item('내용', words || '—')}
+        {item('접속 위치', <span className="font-mono tabular-nums">{place || '—'}</span>)}
+        {item(
+          '브라우저',
+          row.userAgent ? (
+            <>
+              {browser && <span className="block">{browser}</span>}
+              <span className="block font-mono text-xs break-all text-muted">{row.userAgent}</span>
+            </>
+          ) : (
+            '—'
+          ),
+        )}
+      </dl>
+      {changedFields(row).length > 0 && <Changes row={row} modelName={modelName} />}
+    </>
   )
 }
 
