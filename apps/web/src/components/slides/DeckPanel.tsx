@@ -94,6 +94,8 @@ function unnumbered(title: string): string {
 /** A picture's caption, or '' when it only repeats the slide's title (as `deck_export`). */
 function captionOf(slide: Slide): string {
   const caption = slide.image?.caption || slide.diagram?.caption || ''
+  // a figure alone on its slide: the title names it
+  if (slide.diagram && !hasWords(slide)) return ''
   const words = (text: string) => text.match(/[가-힣A-Za-z]+/g) ?? []
   const said = words(caption)
   const title = words(slide.title || '').join('')

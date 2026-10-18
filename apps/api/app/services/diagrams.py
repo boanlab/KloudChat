@@ -362,6 +362,56 @@ async def make(
     }, png
 
 
+def _cell_stems(text: str) -> list[str]:
+    return [w[:max(2, len(w) - 1)] for w in re.findall(r"[가-힣A-Za-z0-9]{2,}", text or "")]
+
+
+def _in(text: str, cells: str) -> bool:
+    """Whether most words of `text` are in `cells` (stems, so particles do not count)."""
+    stems = _cell_stems(text)
+    return bool(stems) and sum(stem in cells for stem in stems) >= 0.75 * len(stems)
+
+
+def repeats_table(made: dict[str, Any], table: str) -> bool:
+    """Whether a drawn comparison or line of steps says no more than `table` (one Markdown
+    table): a comparison whose criteria are the table's rows, two in three of them with both
+    sides the same; steps that a two-column table lists by name, with at most two other rows."""
+    from app.services import figure_kinds  # local: figure_kinds draws, this module plans
+
+    slots = figure_kinds.from_source(str(made.get("source") or ""))
+    if slots is None:
+        return False
+    rows = [r for t in figure_facts._tables(table) for r in t[1:]]
+    lines = [" ".join(r) for r in rows]
+    if slots.get("kind") == "steps":
+        # a table of the steps by name, with a line or two besides (「총 기간」)
+        names = [step["name"] for step in slots.get("steps") or []]
+        return (bool(names) and len(rows) <= len(names) + 2
+                and max((len(r) for r in rows), default=0) <= 2
+                and all(any(_in(name, line) for line in lines) for name in names))
+    if slots.get("kind") != "compare":
+        return False
+    compared = slots.get("rows") or []
+    # every criterion is a table row, and at least two in three rows say both sides the same
+    same = [any(_in(row["aspect"], line) and _in(row["before"], line)
+                and _in(row["after"], line) for line in lines) for row in compared]
+    return (bool(compared) and all(any(_in(row["aspect"], line) for line in lines)
+                                   for row in compared)
+            and sum(same) * 3 >= 2 * len(compared))
+
+
+def too_thin(made: dict[str, Any]) -> bool:
+    """Whether a structure drawn without a fixed kind has fewer than four boxes: a sentence says
+    as much."""
+    from app.services import diagram_shapes, figure_kinds  # local: both draw
+
+    source = str(made.get("source") or "")
+    if figure_kinds.from_source(source) is not None:
+        return False
+    graph = diagram_shapes.parse(source)
+    return graph is not None and len(graph.nodes) < 4
+
+
 def fence(made: dict[str, Any]) -> str:
     """Figure as report Markdown: mermaid fence plus caption."""
     caption = str(made.get("caption") or "").strip()
@@ -369,4 +419,5 @@ def fence(made: dict[str, Any]) -> str:
     return f"{block}\n\n*그림: {caption}*" if caption else block
 
 
-__all__ = ["FIGURES", "MAX_FIGURES", "Planned", "fence", "make", "parse", "plan"]
+__all__ = ["FIGURES", "MAX_FIGURES", "Planned", "fence", "make", "parse", "plan", "repeats_table",
+           "too_thin"]

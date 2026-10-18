@@ -1580,6 +1580,26 @@ def _figure_markdown(made: dict, png: bytes) -> str:
     return f"![{caption}]({diagram_render.data_uri(png)})\n\n*그림: {caption}*"
 
 
+#: prose pointing at a table by place: 「위 표」「아래 표」「다음 표」「이 표」
+_TABLE_POINTER = re.compile(r"(?:위|아래|다음|앞의|이)\s?표(?=[에의와를로는가이은도]|\s|$)")
+
+
+def drop_table(body: str, table: str) -> str:
+    """`body` without one Markdown table and the caption line right above it (「**표: …**」);
+    prose that pointed at it by place points at the figure."""
+    at = body.find(table)
+    if at < 0:
+        return body
+    head = body[:at].rstrip("\n").split("\n")
+    if head and _TABLE_CAPTION_LINE.match(head[-1]):
+        head.pop()
+    rest = body[at + len(table):].lstrip("\n")
+    joined = "\n".join(head).rstrip()
+    out = re.sub(r"\n{3,}", "\n\n", f"{joined}\n\n{rest}" if rest else joined).strip("\n")
+    # the figure stands in for the table: 「위 표에 따라」 → 「그림에 따라」
+    return _TABLE_POINTER.sub("그림", out)
+
+
 def figure_marks(body: str) -> list[dict[str, str]]:
     """Placed figures: kind, caption, description, mark."""
     out = []
