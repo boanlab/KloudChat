@@ -173,22 +173,48 @@ test('감사 로그는 무엇이 바뀌었는지 한국어로 보여 주고 쪽�
   await expect(visibleRows.nth(2)).toContainText('시스템 설정 · 가입')
   await expect(visibleRows.nth(6)).toContainText('로그인 실패')
 
-  // 「무엇이 바뀌었나」: item · before → after, model ids as their names, secrets masked.
-  await visibleRows.first().getByRole('button', { expanded: false }).click()
-  const changes = page.locator('[data-testid="audit-changes"]:visible').first()
+  // One line per row (three short lines on a phone); the changes stay out of the list.
+  await expect(page.locator('[data-testid="audit-changes"]')).toHaveCount(0)
+  await expect(body).not.toContainText('Mock · Economy B')
+  const tallest = await visibleRows.evaluateAll((rows) => Math.max(...rows.slice(0, 10).map((r) => r.getBoundingClientRect().height)))
+  expect(tallest).toBeLessThanOrEqual(viewport(test.info()) === 'phone' ? 128 : 56)
+
+  // A row opens its details: who, from where, with which browser, and 「무엇이 바뀌었나」.
+  const first = visibleRows.first()
+  await expect(first).toHaveAttribute('aria-label', /^자세히 보기: 정책 변경 · admin@example\.com · /)
+  await first.click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('admin@example.com')
+  await expect(dialog).toContainText('10.0.0.7')
+  await expect(dialog).toContainText('Mozilla/5.0 Chrome/129.0 Safari/537.36')
+  const changes = dialog.getByTestId('audit-changes')
   await expect(changes).toContainText('무엇이 바뀌었나')
   await expect(changes).toContainText('Mock · 분류기')
   await expect(changes).toContainText('Mock · Economy B, Mock · Economy A')
   await expect(changes).toContainText('사용자 원문 외부 전송 허용')
-  await expect(changes).not.toContainText('strict-local/classifier')
-  await visibleRows.nth(1).getByRole('button', { expanded: false }).click()
-  const settings = page.locator('[data-testid="audit-changes"]:visible').nth(1)
-  await expect(settings).toContainText('바로 사용')
-  await expect(settings).toContainText('새 값으로 바뀜 (값은 기록하지 않음)')
-  await visibleRows.nth(2).getByRole('button', { expanded: false }).click()
-  await expect(page.locator('[data-testid="audit-changes"]:visible').nth(2)).toContainText('가입 가능한 이메일 도메인')
-  await visibleRows.first().scrollIntoViewIfNeeded()
-  await shot(page, 'expanded')
+  await expect(dialog).not.toContainText('strict-local/classifier')
+  await expect(dialog).not.toContainText('governance.update')
+  await shot(page, 'detail')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(first).toBeFocused()
+
+  // Keyboard opens it too; secrets stay masked.
+  await visibleRows.nth(1).focus()
+  await page.keyboard.press('Enter')
+  await expect(dialog.getByTestId('audit-changes')).toContainText('바로 사용')
+  await expect(dialog.getByTestId('audit-changes')).toContainText('새 값으로 바뀜 (값은 기록하지 않음)')
+  // The backdrop closes it.
+  await page.mouse.click(5, 5)
+  await expect(dialog).toHaveCount(0)
+
+  // Older rows name their fields only.
+  await visibleRows.nth(2).click()
+  await expect(dialog.getByTestId('audit-changes')).toContainText('가입 가능한 이메일 도메인')
+  await expect(dialog).not.toContainText('litellm')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
 
   // Paging.
   await page.getByRole('button', { name: '다음 페이지' }).click()

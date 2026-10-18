@@ -3031,6 +3031,7 @@ const EN: Record<string, string> = {
   '자산': 'Assets',
   '에이전트에게 맡기기': 'Hand it to an agent',
   '자세히 보기': 'View details',
+  '자세히 보기: {action} · {actor} · {at}': 'View details: {action} · {actor} · {at}',
   '여기에 놓으면 첨부됩니다': 'Drop to attach',
   '여기에 놓으면 자료로 추가됩니다': 'Drop to add as a document',
   '여기에 놓으면 참고 파일로 추가됩니다': 'Drop to add as a reference file',
