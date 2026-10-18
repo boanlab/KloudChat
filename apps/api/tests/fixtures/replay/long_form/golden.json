@@ -582,8 +582,8 @@
  },
  {
   "type": "usage",
-  "inputTokens": 44531,
-  "outputTokens": 5439,
+  "inputTokens": 45031,
+  "outputTokens": 5443,
   "outlineInputTokens": 9348,
   "outlineOutputTokens": 1005
  }
