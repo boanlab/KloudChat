@@ -85,7 +85,6 @@ function phoneModelLabel(m: ModelInfo, t: (s: string) => string): string {
 export function ModelPicker({
   kind,
   sessionId,
-  compact = false,
   variant = 'toolbar',
   label,
   modality,
@@ -95,7 +94,6 @@ export function ModelPicker({
   kind: SessionKind
   /** When set, the picker reads and writes this session's model. */
   sessionId?: string | null
-  compact?: boolean
   /** `field` styles the trigger as a form control (settings). */
   variant?: 'toolbar' | 'field'
   /** Accessible name prefix for the field variant. */
@@ -218,7 +216,7 @@ export function ModelPicker({
               </span>
             )}
           </span>
-          {!compact && <ChevronDown size={14} className="shrink-0 text-faint" />}
+          <ChevronDown size={14} className="shrink-0 text-faint" />
         </button>
       )}
     >

@@ -51,10 +51,10 @@ authorizes raw, masked or strict-local egress.
 | Deployment | `SANDBOX_IN_BOUNDARY`, `SELF_HOSTED_THINKING_MODELS`, `OCR_VISION_MODEL`, `SKILL_DRAFTS`, `TIMEZONE` | Facts about the infrastructure: whether the sandbox is inside the boundary, which served models think unless told not to, which served vision model reads pages best when the administrator picked **Auto**, whether this is an evaluation instance, the install's time zone. |
 | Deployment | `CREDITS_PER_USD`, `LITELLM_BUDGET_HEADROOM` | Accounting constants (shown read-only under **System › Proxy**). |
 | Deployment | `PERF_*` | Performance monitoring: mounts, targets and thresholds of this host. |
-| Product, new in the admin screen | `DEFAULT_CHAT_MODEL`, `DEFAULT_REPORT_MODEL`, `DEFAULT_SLIDES_MODEL`, `DEFAULT_IMAGE_MODEL`, `DEFAULT_AUDIO_MODEL`, `DEFAULT_VIDEO_MODEL`, `TITLE_MODEL`, `CODE_MODEL`, `CODE_FALLBACK_MODEL`, `SELF_HOSTED_CHAT_THINKING`, `EXTERNAL_CHAT_THINKING` | **System › Model** (`models.*`, `thinking.*` in `system_settings`). The environment seeds a fresh install once. |
-| Product, new in the admin screen | `DEFAULT_MONTHLY_CREDITS` | **System › Signup** (`credits.default_monthly`). Seeded once the same way. |
-| Product, already in the admin screen | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `OUTLINE_MODEL_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
-| Product, already in the admin screen | `BRAND_NAME`, `SIGNUP_MODE`, `SMTP_HOST` … `SMTP_FROM` | **System › Branding / Signup / Mail**. A stored value wins; with none stored the environment applies. |
+| Product, seeded once | `DEFAULT_CHAT_MODEL`, `DEFAULT_REPORT_MODEL`, `DEFAULT_SLIDES_MODEL`, `DEFAULT_IMAGE_MODEL`, `DEFAULT_AUDIO_MODEL`, `DEFAULT_VIDEO_MODEL`, `TITLE_MODEL`, `CODE_MODEL`, `CODE_FALLBACK_MODEL`, `SELF_HOSTED_CHAT_THINKING`, `EXTERNAL_CHAT_THINKING` | **System › Model** (`models.*`, `thinking.*` in `system_settings`). The environment seeds a fresh install once. |
+| Product, seeded once | `DEFAULT_MONTHLY_CREDITS` | **System › Signup** (`credits.default_monthly`). Seeded once the same way. |
+| Product, environment as fallback | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `OUTLINE_MODEL_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
+| Product, environment as fallback | `BRAND_NAME`, `SIGNUP_MODE`, `SMTP_HOST` … `SMTP_FROM` | **System › Branding / Signup / Mail**. A stored value wins; with none stored the environment applies. |
 | Product, admin screen only | enabled surfaces, OCR on/off, reading mode, vision model, page limit, contact address, signup domains and verification, logo, governance policies | No environment variable. |
 
 ---
@@ -153,13 +153,16 @@ it when nobody is mid-turn):
 | `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `500000` | First-install seed of **System › Signup › Monthly credits for new accounts**, which then decides. Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 500,000 ≈ $5/month. |
 | `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.8-flash` | First-install seed of **System › Model › Default chat model** (as are the four rows below). Falls back to the surface's cheapest model when absent from the catalogue. |
 | `KCHAT_DEFAULT_REPORT_MODEL` / `KCHAT_DEFAULT_SLIDES_MODEL` | `DEFAULT_REPORT_MODEL` / `DEFAULT_SLIDES_MODEL` | `local/qwen3.8-27b` | Per-surface defaults for Report and Slides; documents keep the larger model while chat uses the faster one. Empty falls back to the chat default. |
-| `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `google/gemini-2.5-flash-image` | Default picture model. Gemini's image models take the aspect ratio as a parameter; the OpenAI ones return a square whatever is asked. Absent from the catalogue → cheapest image model. |
+| `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `bytedance-seed/seedream-5-0-flash` | Default picture model, for the image surface and for pictures in reports and decks. The picture models are whatever the gateway's catalogue lists; one that does not honour an aspect ratio is offered square only (`imagegen.aspects_for`). Absent from the catalogue → another usable picture model. A strict-local conversation never uses it: see [Governance](#governance-security--audit-admingovernance). |
 | `KCHAT_DEFAULT_AUDIO_MODEL` / `KCHAT_DEFAULT_VIDEO_MODEL` | `DEFAULT_AUDIO_MODEL` / `DEFAULT_VIDEO_MODEL` | `openai/gpt-audio-mini` / `google/veo-3.1-lite` | The Audio / Video surface keeps one default per modality. Absent from the catalogue → cheapest model of that modality. |
 
 ### Auto routing
 
-Auto has two lanes, each with its own switch under **System › Routing**, and
-both are off until an administrator configures them:
+Auto has two lanes, each with its own switch under **System › Routing**. A
+fresh governance row turns both on (`ADAPTIVE_ROUTING_DEFAULT`,
+`ADAPTIVE_QUALITY_DEFAULT`), with `local/qwen3.8-flash` as the economy model
+and `deepseek/deepseek-v4.1-flash`, `z-ai/glm-5.3-flash` as upgrade models;
+a lane with no usable model is not offered:
 
 - **Auto · Save credits** (cost) sends a turn classified as low-complexity to one of
   one to three ordered economy models: cheaper than the chosen model on known
@@ -172,11 +175,15 @@ both are off until an administrator configures them:
 Both need one live classifier model declared by LiteLLM as `self_hosted` and
 `strictLocal`, with zero input and output credit cost.
 
-`unknown` models are never economy candidates; a `hybrid` one qualifies only
-under a `hybrid` or `external` chosen model, an `external` one only under an
-`external` chosen model. A
-local-looking alias can fall back to an external provider, so its advertised
-zero cost is not sufficient evidence that the turn stays inside.
+A model's boundary comes from the gateway's catalogue metadata
+(`kchat_data_boundary`): `external`; `hybrid`, a `local/` model that runs on
+the organisation's GPUs first but may fall back to an external twin;
+`self_hosted`, a `local/` model with no such twin; and `self_hosted` with
+`kchat_strict_local`, a `strict-local/` model that never leaves. Only
+strict-local is inside the data boundary. `unknown` models are never economy
+candidates; a `hybrid` one qualifies only under a `hybrid` or `external` chosen
+model, an `external` one only under an `external` chosen model. A `local/`
+alias's advertised zero cost is not evidence that the turn stays inside.
 The classifier may be `privacyOnly`; answer models may not, which keeps privacy
 capacity reserved for protected traffic.
 
@@ -430,9 +437,8 @@ a document before the surface's own model writes it.
 
 #### Which model does what
 
-With the two self-hosted models, the defaults split the work by what each did
-better on Korean institutional requests (measured with the app's own prompts;
-blind pairs judged twice):
+With the two self-hosted models, the defaults split the work by what each does
+better on Korean institutional requests:
 
 | Work | Model | Set by |
 | --- | --- | --- |
@@ -450,29 +456,19 @@ blind pairs judged twice):
 
 Why this split:
 
-- **Writing goes to the 27B.** In 12 blind chat pairs a judge preferred the
-  27B 10 times. Flash added details nobody gave, such as a booth size, setup
-  hours or a promise to pay costs in an official letter, which made the letter
-  unusable. It also let Chinese characters and English words slip into Korean
-  in 3 of 12 answers; the 27B did so in none of 18. Reports and decks came out
-  even, 3 to 3.
-- **Reading and judging go to Flash.** Copying costs out of the material, Flash
-  gave the right totals in 12 of 15 readings and the 27B in 8. The 27B returned
-  an empty key-figure list in 3 of 9 tries. In calculation programs, Flash's
-  values were right 93% of the time and the 27B's 84%, and Flash always closed
-  its code block. As the classifier, Flash answered 24 of 24 in a valid shape,
-  the 27B 22. In a long conversation's summary, Flash kept 8.5 of 11 key facts
-  and the 27B 6.5.
-- **Code that reads files stays on the 27B.** Flash's pandas code normalised
-  dates wrongly and returned wrong counts without failing (4 of 8 runs right,
-  27B 8 of 9).
-- **Thinking stays off.** Thinking on made Flash's readings exact, but it took
-  70–340 s a call instead of 2–20 s. In outlines it ran past 6,000 tokens of
-  thought before the JSON.
+- **Writing goes to the 27B.** Flash adds details nobody gave (a booth size, a
+  promise to pay costs in an official letter) and lets Chinese characters and
+  English words slip into Korean; the 27B does neither.
+- **Reading and judging go to Flash.** It copies totals out of the material,
+  writes calculation programs and classifies in a valid shape more reliably,
+  and keeps more key facts in a long conversation's summary.
+- **Code that reads files stays on the 27B.** Flash's pandas code can return
+  wrong counts without failing.
+- **Thinking stays off.** It makes Flash's readings exact but takes minutes a
+  call instead of seconds.
 - **Load is split by node.** Prose, the bulk of the tokens, runs on the 27B's
-  node, which serves more sequences at once. Flash's node takes the many short
-  readings. A single Flash stream is quicker, about 20 against 14 tokens a
-  second, but at eight streams at once Flash gives each about 8.
+  node, which serves more sequences at once; Flash's node takes the many short
+  readings.
 
 ### Connector catalogue
 
@@ -535,6 +531,15 @@ available:
   model (`local/x` → `strict-local/x`), else the first strict-local safe model,
   else it is refused with `internal_data_requires_strict_local`. This is decided
   before any Auto lane, and a strict-local writer is never moved outward.
+  Pictures, charts, figures and document edits (fact-check, review, section,
+  slide or block rewrite, a theme read from a file) follow the boundary of the
+  conversation they belong to: inside it they use strict-local models only — a
+  picture goes to the person's **strict-local picture model** preference, else
+  the first strict-local picture model — and are refused with the same code
+  when there is none. A document edit carrying personal data also stays
+  strict-local rather than being masked, since the mask would be written back
+  into the document; a web fact-check of such a document is refused
+  (`factcheck_needs_web`).
 
 - **PII masking** is the organisation-wide upper bound. When enabled,
   matching content is always masked and raw external delivery cannot be
@@ -564,7 +569,7 @@ sources, model metadata contract and surface limits.
 | Screen | Contents |
 | --- | --- |
 | `/settings` | Profile, password |
-| `/settings/preferences` | Default model, interface behaviour, privacy default action |
+| `/settings/preferences` | Default model, interface behaviour, privacy default action, the strict-local picture model (shown when two or more exist) |
 | `/settings/personalization` | About-me and response-style text prepended to every chat |
 | `/settings/memory` | Memories, global or per project |
 | `/settings/themes` | Themes — your own looks (colour, type, voice) beside the shipped ones |

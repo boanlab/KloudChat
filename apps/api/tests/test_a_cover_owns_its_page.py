@@ -1,7 +1,4 @@
-"""A cover head (`doc_formats` head="cover") and the shared seed's cover are a page of their own:
-the accent bar at the top, label and title on the upper third, the head table narrower and
-centred, the body from the next page. Measured in millimetres of the page, never `vh`, which
-in a tall preview frame is the frame and pushed the title half a frame down."""
+"""Cover head as a page of its own, measured in page millimetres."""
 
 from __future__ import annotations
 

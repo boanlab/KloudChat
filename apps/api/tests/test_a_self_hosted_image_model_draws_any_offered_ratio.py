@@ -1,5 +1,4 @@
-"""Self-hosted image models (vllm-omni behind the LiteLLM image shim) take every offered ratio,
-wait longer than a hosted one, and show their maker rather than the transport."""
+"""Self-hosted image models: every offered ratio, a longer wait, the maker shown."""
 
 from __future__ import annotations
 

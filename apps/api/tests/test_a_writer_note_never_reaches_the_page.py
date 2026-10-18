@@ -1,5 +1,4 @@
-"""A `[[…]]` note the writer left itself goes whole, and the summary under it stays: the
-「핵심 요약」 of a 장학금 공고 shipped 「… 한두 문장으로 압축.]]」 and lost its real sentence."""
+"""Writer `[[…]]` self-notes removed whole, the summary under them kept."""
 
 from __future__ import annotations
 

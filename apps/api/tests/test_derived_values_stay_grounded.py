@@ -1,11 +1,4 @@
-"""What an answer works out from given values stays.
-
-The grounding trace keeps values that are plain arithmetic of grounded ones
-(「22시간을 제외하면 49.5시간, 544,500원」), dates counted from a given date by the material's
-own offsets (「개강 3월 2일, 30일 전」 → 2027년 1월 31일), and cells copied from the attached
-sheet under a 「(천원)」 header.
-Invented values are still blanked.
-"""
+"""Grounding trace keeping values derived from grounded ones; invented values blanked."""
 
 from __future__ import annotations
 

@@ -1,13 +1,4 @@
-"""Round 9: wrong totals, chained results and conclusions code can read are corrected or
-marked, not only pointed at.
-
-What code computes from the answer's own written figures it corrects, for every model group
-(docs/architecture.md, "Mechanisms by model group"): a sum after its listed amounts, a table's
-total row over plain rows, a wrong step of a written chain. What code finds off but cannot
-settle is marked 「(확인 필요)」 where it stands, every group: a result a tool printed (as
-`agent.code_checked`), a total over a table with subtotals or blanks, a formula a unit off, a
-figure ten times a worked result, a profit above what its own figures leave. The sentences
-come from the round-9 answers (L27F and LFLF A05-T1, A10-T1, A10-T2, P56)."""
+"""Wrong totals, chained results and conclusions corrected or marked by code."""
 
 from __future__ import annotations
 
@@ -41,7 +32,7 @@ def _normalized(answer: str, request: str, *, writer: str,
     return bundle.document.answer
 
 
-# ── A05-T1 L27F: 329,600원 in the head sentence and the total row (429,600원) ─────────
+# ── 329,600원 in the head sentence and the total row (429,600원) ─────────
 
 A05_REQUEST = ("다음 주 부산 출장 2박 3일이야. 직급은 대리(6급 상당)이고, KTX 왕복 119,600원, "
                "숙소는 1박 95,000원짜리로 잡았어. 여비 총 얼마 받을 수 있어?")
@@ -82,7 +73,7 @@ def test_a_listed_sum_the_code_cannot_read_whole_is_left():
     assert units.fix_written_sums(right) == right
 
 
-# ── A05-T1 LFLF: a bold result after 「=」, the check script having printed it ────────
+# ── a bold result after 「=」, the check script having printed it ────────
 
 LFLF_SENTENCE = ("이때 숙박비는 190,000원, 여비 합계는 119,600 + 75,000 + 75,000 + 190,000 = "
                  "**477,600원**입니다.")
@@ -128,7 +119,7 @@ def test_rates_averages_and_mixed_units_are_not_added():
     assert units.fix_table_totals(plain) == plain
 
 
-# ── A10-T2 L27F: a chain ten times over; restatements; a company label on invented shares ─
+# ── a chain ten times over; restatements; a company label on invented shares ─
 
 A10_CHAIN = (
     "상향식 TAM은 학생 수 500만 명[2] × 연 비용 118,800원 = 5조 9,400억 원, SAM은 5조 9,400억 원 "
@@ -200,7 +191,7 @@ def test_after_a_finished_calculation_nothing_is_labelled():
     assert report_stages._figures_marked(bundle, bundle.document.sections)[0]["content"] == content
 
 
-# ── A10-T1 L27F: a product a unit off ─────────────────────────────────────────────────
+# ── a product a unit off ─────────────────────────────────────────────────
 
 @WRITERS
 def test_a_formula_a_unit_off_is_marked(writer):
@@ -209,7 +200,7 @@ def test_a_formula_a_unit_off_is_marked(writer):
     assert "= 1200억 원(확인 필요)(연간)" in out
 
 
-# ── P56 LFLF: an operating profit its own figures do not leave ────────────────────────
+# ── an operating profit its own figures do not leave ────────────────────────
 
 P56_REQUEST = ("직원 6명짜리 동네 베이커리 카페야. 연 매출은 약 4억 원, 임대료가 월 600만 원, "
                "원재료비는 매출의 35%쯤 돼. 2년 안에 2호점을 내고 싶어.")

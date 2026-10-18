@@ -39,7 +39,7 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
 
   await signIn(page)
 
-  // R18: offline, a screen must not report an empty workspace.
+  // Offline, a screen must not report an empty workspace.
   for (const [route, where, link, via] of [
     ['/artifacts', '아티팩트', '아티팩트', 'sidebar'],
     ['/memory', '메모리', '메모리', 'account'],
@@ -72,7 +72,7 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
   await page.goto('/artifacts')
   await page.waitForTimeout(600)
 
-  // R19: two tabs, one document; the second save must not silently overwrite.
+  // Two tabs, one document; the second save must not silently overwrite.
   const report = await page.evaluate(
     async ([fn, body]) =>
       await eval(fn as string)('/api/artifacts', {
@@ -146,7 +146,7 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
     )
   }
 
-  // R20: a 400-row list, served synthetically.
+  // A 400-row list, served synthetically.
   const many = Array.from({ length: 400 }, (_, i) => ({
     id: `${i.toString(16).padStart(32, '0')}`,
     kind: 'chat',

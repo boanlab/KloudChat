@@ -87,9 +87,8 @@ _REWRITE = (
     "them.\n\n# Material\n{material}\n\n# Problems\n{problems}\n\n# Answer\n{text}"
 )
 
-#: A strong writer gets the findings as evidence to weigh, not orders (r7 A12-T1: told to
-#: 「take out the unsupported clause」 for a feature's obvious use, the writer left 「문서를 함께
-#: 편집합니다. 문서 공동편집 기능을 제공합니다.」).
+#: A strong writer gets the findings as evidence to weigh, not orders (told to 「take out the
+#: unsupported clause」, it would cut a feature's obvious use).
 _REVISE = (
     "Below are the material and your answer. A check read the answer against the material and "
     "noted the items listed under Notes; it may be wrong. Weigh each note yourself against the "
@@ -225,7 +224,7 @@ def _json(text: str) -> dict:
 
 _ASKS = re.compile(r"\?\s*$|(?:알려|말씀해|확인해|정해|보내)\s?주(?:세요|십시오)|할까요|인가요")
 #: a recommendation or caveat of the answer's own, which the judge's prompt leaves out but a
-#: small judge lists anyway (r7 A12-T1: 「게시 전에 그 수치의 산정 기준을 확인하세요」)
+#: small judge lists anyway (「게시 전에 그 수치의 산정 기준을 확인하세요」)
 _SUGGESTS = re.compile(
     r"(?:확인하|검토하|고려하|참고하|살펴보|점검하)(?:세요|십시오|시기\s?바랍니다)"
     r"|(?:권합니다|권장합니다|권고합니다|추천합니다|제안합니다|바람직합니다)[.!]?\s*$"
@@ -370,7 +369,7 @@ _IDENT = re.compile(r"(?<![A-Za-z0-9_/])(?:/[A-Za-z][A-Za-z0-9_./-]*|[A-Za-z][A-
 
 def names_the_material(statement: str, material: str) -> bool:
     """Whether every name, version and path the statement writes is the material's own
-    (r5 A16-T1: 「… v2의 /messages로 전환해 주세요」 from 「(v2 /messages 사용)」 was taken out)."""
+    (「… v2의 /messages로 전환해 주세요」 from 「(v2 /messages 사용)」 was taken out)."""
     names = {m.group(0).rstrip(".") for m in _IDENT.finditer(statement or "")}
     names = {n for n in names if len(n) >= 2}
     low = (material or "").lower()
@@ -415,9 +414,8 @@ _KEY_NUMBER = re.compile(r"(?<![\d.])\d[\d,]{0,15}(?:\.\d{1,6})?")
 _KEY_LATIN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9+-]{1,30}")
 _KEY_QUOTED = re.compile(r"「([^」\n]{2,40})」|“([^”\n]{2,40})”")
 #: a counted figure is looked up with its counter: in a long search page a bare 「9」 or
-#: 「306」 turns up by chance (r10 LFLF SK-company-2: 「306명」 and 「9개 투자 라운드」
-#: judged unstated, kept as 「근거에 있는 값」); so are 억·조 (LFLF2 SK-company-1: 「89억」 kept
-#: on a bare 89). Dates and 만 stay bare (「2026. 4.」, 「1.2만」 against 「12,000」).
+#: 「306」 turns up by chance (「306명」, 「9개 투자 라운드」); so are 억·조 (「89억」 not
+#: matched on a bare 89). Dates and 만 stay bare (「2026. 4.」, 「1.2만」 against 「12,000」).
 _COUNTED = re.compile(
     r"(?<![\d.])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s?(%|개사|라운드|[명개곳건회원배위대종차석억조])")
 
@@ -439,8 +437,7 @@ def _searchable(text: str) -> str:
 def code_reading(quote: str, evidence: str) -> str:
     """What code can say about a judged statement before any of it is rewritten or taken
     out: 「absent」 when one of its key tokens is in none of the evidence, 「present」 when all
-    are, 「unchecked」 when it has none (r8 LFLF A02-T2: the person's own 「8,000명·RISE 참여」,
-    A11-T2: the Free plan of source [14], both judged unsupported and cut)."""
+    are, 「unchecked」 when it has none."""
     tokens = key_tokens(quote)
     if not tokens:
         return "unchecked"
@@ -464,8 +461,8 @@ _CITED_URL = re.compile(r"\[\[\d{1,3}\]\]\((https?://[^)\s]{1,500})\)")
 def cited_pages(quote: str, text: str, computed: list[str]) -> str | None:
     """What the pages a statement cites say: the search entries and fetched pages under the
     addresses of the `[[n]](url)` run after it, or None when it cites none or one of them
-    was not read this turn (r10 LFLF7 SK-company-1: 「김상철 회장」 in some other page kept a
-    statement its own source [1] does not make)."""
+    was not read this turn (a name found on some other page does not back a statement its own
+    source does not make)."""
     phrase = (quote or "").strip().rstrip(".!?。 ")
     at = text.find(phrase) if len(phrase) >= 4 else -1
     if at < 0:
@@ -660,9 +657,9 @@ def _split_list(text: str) -> tuple[str, str, dict[int, str], str]:
 def cited_sources_listed(before: str, text: str) -> str:
     """`text` with each linked 「[[n]](url)」 of its body listed under it.
 
-    A rewrite took list lines out with the sentences it fixed (r10 SK-company-3: 「- [6] …」
-    read as a generality), or a guard gave a cell back after its line had gone (SK-company-2
-    「[[2]]」): a line the list had before comes back; a citation no list ever had comes out."""
+    A rewrite can take list lines out with the sentences it fixed, or a guard can give a cell
+    back after its line had gone: a line the list had before comes back; a citation no list
+    ever had comes out."""
     body, heading, listed, tail = _split_list(text)
     _, old_heading, was, _ = _split_list(before)
     if not was:

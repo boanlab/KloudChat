@@ -4,7 +4,7 @@ import { ApiError } from '@/lib/api'
 export type AgentErrorPlace = 'name' | 'gap' | 'settings' | 'output' | 'tools' | 'advanced' | 'process'
 
 /** Message and place for every agent-save refusal code; `tests/test_agent_save_errors.py` checks coverage. */
-export const AGENT_SAVE_ERRORS: Record<string, { message: string; place?: AgentErrorPlace }> = {
+const AGENT_SAVE_ERRORS: Record<string, { message: string; place?: AgentErrorPlace }> = {
   slug_taken: { message: '이미 쓰는 핸들입니다. 다른 핸들을 붙이세요.', place: 'name' },
   not_found: { message: '에이전트를 찾을 수 없습니다. 목록을 새로 고친 뒤 다시 여세요.' },
   agent_retired: { message: '더 이상 제공하지 않는 에이전트라 바꿀 수 없습니다.' },

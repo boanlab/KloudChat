@@ -1,6 +1,4 @@
-"""A plan's tables keep the material's rows (S13 공모 계획서, verify2 N3): a header with no rows,
-a budget whose rows miss a listed item or do not add up to its 합계, are found; a missing budget
-item is put back from the material."""
+"""Plan tables that keep the material's rows and budget items."""
 
 from app.services import table_integrity
 

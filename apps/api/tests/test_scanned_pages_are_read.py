@@ -1,11 +1,4 @@
-"""Scanned pages and document photos are read in the background, by the engine first and a
-strict-local vision model for the pages the engine is unsure of.
-
-The readers are replaced by fakes here; what is checked is which pages are read, by
-whom, what is kept, when a page is marked for review, that a page never reaches a model
-that is not strict-local with vision, and that the job survives replicas, failures and
-deletion.
-"""
+"""Background reading of scanned pages and document photos by engine and local vision."""
 
 from __future__ import annotations
 

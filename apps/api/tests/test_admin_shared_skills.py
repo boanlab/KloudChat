@@ -1,8 +1,4 @@
-"""Shipped skills are the administrator's own skills, shared with everyone.
-
-The owner row follows its package until the owner edits it; copies follow until their owner
-edits them; checks run by key whether or not anyone added the skill.
-"""
+"""Shipped skills as the administrator's own skills shared with everyone."""
 
 from __future__ import annotations
 

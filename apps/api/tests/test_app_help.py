@@ -1,9 +1,4 @@
-"""A question about KloudChat itself is answered from its own user guide, read in process.
-
-「에이전트를 어떻게 만들어?」 gets the app's own answer, not generic advice. The guide's
-sections ship with the API (`app/help/docs.json`) and the best few are given to the turn as a
-trusted block.
-"""
+"""Questions about KloudChat answered from its own user guide (`app/help/docs.json`)."""
 
 from __future__ import annotations
 
@@ -146,7 +141,7 @@ def test_the_guide_says_sources_are_not_resummarised_on_a_schedule():
     ko, en = _agents_page("ko"), _agents_page("en")
     assert "자료를 주기적으로 다시 읽거나 요약하지 않으며" in ko["템플릿·테마와 자료"]
     assert "never runs by itself on a schedule" in en["Creating an agent"]
-    # The persona's 「매주」 question reads that line among its sections.
+    # The 「매주」 question reads that line among its sections.
     assert "정해진 때에 저절로 실행되거나" in app_help.block(_PERSONA)
 
 

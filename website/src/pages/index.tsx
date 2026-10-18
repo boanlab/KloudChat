@@ -12,13 +12,9 @@ import Reveal from '@site/src/components/Reveal';
 import styles from './index.module.css';
 
 /**
- * 첫 페이지. 세 가지 규칙을 따른다.
- *
- * 1. 제품을 보여 준다. 화면이 곧 사용법이므로 실제 캡처가 지면을 끌고 가고 설명은 짧게 둔다.
- *    그린 그림은 한 장도 쓰지 않는다.
- * 2. 밝은 화면과 어두운 화면 모두 한 가지 바탕으로 간다. 히어로가 제 색을 강제하지 않고 사이트
- *    테마를 따르므로, 읽다가 다른 사이트로 넘어온 느낌이 나지 않는다.
- * 3. 화면에 보이는 모든 문자열은 Translate를 거친다. 영어는 i18n/en/code.json에 있다.
+ * Landing page: real screenshots only, no drawn illustrations; the hero follows the site
+ * theme in light and dark; every visible string goes through Translate (English in
+ * i18n/en/code.json).
  */
 
 function Hero() {
@@ -95,7 +91,7 @@ function Formats() {
                 </dt>
                 <dd>
                   <Translate id="home.formats.in3.v">
-                    PNG, JPG, GIF, WebP. 이미지를 읽는 모델에서만
+                    PNG, JPG, GIF, WebP. 이미지를 읽는 strict-local 모델에서만
                   </Translate>
                 </dd>
                 <dt>
@@ -137,7 +133,7 @@ function Formats() {
                     ),
                   }}
                 >
-                  {'스캔한 이미지와 구형 오피스 형식(.doc, .ppt, .xls)은 읽지 못합니다. 자세한 조건은 {link}에 있습니다.'}
+                  {'구형 오피스 형식(.doc, .ppt, .xls)은 읽지 못하고, 스캔본은 관리자가 글자 읽기(OCR)를 연결한 경우에만 읽습니다. 자세한 조건은 {link}에 있습니다.'}
                 </Translate>
               </p>
             </div>
@@ -209,8 +205,7 @@ function DocMap() {
 
 export default function Home(): ReactNode {
   const { siteConfig } = useDocusaurusContext();
-  // 설명 메타 태그. siteConfig.tagline 은 Docusaurus 가 번역 대상으로 뽑지 않아서, 그대로
-  // 쓰면 영어 페이지에도 한국어 문장이 실린다. 여기서 따로 번역한다.
+  // Description meta tag, translated here: Docusaurus does not extract siteConfig.tagline.
   const description = translate({
     id: 'home.tagline',
     message: '업무에 쓰는 AI를 조직이 직접 운영합니다',

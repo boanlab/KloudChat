@@ -1,9 +1,4 @@
-"""What kind of document is asked for is read from the ask, not from the memo under it.
-
-「아래 자료로 행사 결과보고서 써 줘」 over a memo line 「- 문제: 2일차 새벽 … 와이파이 장애」 is a
-result report, not an 장애 보고서; a 공모사업 신청용 사업계획서 is not the start-up business-plan
-genre (핵심 가정, monthly profit and loss).
-"""
+"""Document kind read from the ask, not from the memo under it."""
 
 from __future__ import annotations
 

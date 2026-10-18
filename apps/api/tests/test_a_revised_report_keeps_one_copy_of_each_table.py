@@ -1,7 +1,4 @@
-"""Revising a finished 결과보고서 over several turns: a table edit goes to the part holding
-that table, the table is edited not copied, captions stay over tables, block tokens never
-reach the page, 「제목을 「…」로」 renames the document, and the reply says when an asked
-table shape is not there (2026 하계 SW 캠프, four follow-ups)."""
+"""Multi-turn 결과보고서 revisions: table edits in place, captions kept, renames, missing shapes."""
 
 from __future__ import annotations
 

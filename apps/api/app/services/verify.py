@@ -220,7 +220,7 @@ async def repair(
         for finding, new in zip(items, rewritten, strict=True):
             new = _sentence_of(new)
             if new is None:
-                # r8 L27L A07-T1: a reply item `{'sentence': …}` went into the text as written
+                # an unparsable reply item (e.g. `{'sentence': …}`) never goes into the text
                 left.append(finding)
                 continue
             new = clean(new.strip().strip("「」"))

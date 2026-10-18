@@ -9,7 +9,7 @@ from html.parser import HTMLParser
 from app.services import deck_type
 
 #: slide page (pt)
-PAGE_W, PAGE_H = 960.0, 540.0
+PAGE_W = 960.0
 _K = deck_type.K
 #: title top in slide units (`SlideView` padding)
 TITLE_TOP = 24

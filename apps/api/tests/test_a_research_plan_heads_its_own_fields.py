@@ -1,8 +1,4 @@
-"""A professor's research plan is not headed 「지도교수」.
-
-In the 연구·조사 계획서 head, 지도교수 and 연구 기간 are shown only when the
-request or its material gives them; a student's plan that names an advisor keeps the row.
-"""
+"""Research plan head rows (지도교수, 연구 기간) only when the request or material gives them."""
 
 from __future__ import annotations
 

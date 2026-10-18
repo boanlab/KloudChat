@@ -1,7 +1,4 @@
-"""A 개조식 보고 keeps its 공문서 dates whole (no 「- 1안: 2026. 11.」 with 「12. 31. 만료)」 split
-off its item, no 「12. 7.(월) 오픈)가 …」 without its start): no
-sentence splitter ends a sentence inside 「2026. 11. 16.(월)」, typed markers are list lines,
-and a date cut at its dots is joined back by the 개조식 normaliser."""
+"""Whole 공문서 dates in a 개조식 보고."""
 
 from __future__ import annotations
 

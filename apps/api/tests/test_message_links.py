@@ -1,5 +1,4 @@
-"""Each answer names the document (and version) its turn wrote, old transcripts included:
-document turns keep no artifact ids on the message, their pipeline run does."""
+"""Each answer's link to the document and version its turn wrote."""
 
 from __future__ import annotations
 

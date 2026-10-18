@@ -1,5 +1,4 @@
-"""A strong writer gets only what it cannot know; a small one keeps its guard rails (round 7:
-the same strong model wrote worse inside KloudChat than called directly)."""
+"""Writer setup by tier: strong writers get only what they cannot know."""
 
 from __future__ import annotations
 
@@ -84,8 +83,7 @@ def test_the_answer_policy_is_short_for_a_strong_writer_and_the_emergency_rule_s
 
 
 def test_a_small_writer_may_draw_a_table_and_state_assumptions() -> None:
-    """r7 P20 (a grid asked for, prose only) and A10 (no estimate without given numbers):
-    the full rules no longer forbid either."""
+    """Full rules that allow a requested table and an estimate stated as an assumption."""
     full = _chat(False)
     assert "use a table" in full
     assert "Do not guess numbers that are not given" not in full
@@ -93,7 +91,7 @@ def test_a_small_writer_may_draw_a_table_and_state_assumptions() -> None:
 
 
 def test_search_on_keeps_established_knowledge_for_a_small_writer() -> None:
-    """r7 P27: well-known history is not dropped because the results miss it."""
+    """Well-known history is not dropped because the results miss it."""
     nudge = context.system_prompt(SessionKind.chat, with_tools=True, web_search=True)
     assert "Well-established background" in nudge
     assert "Do not assert items you could not verify by search" not in nudge
@@ -131,7 +129,7 @@ def test_a_strong_report_writer_keeps_only_the_structure_rules() -> None:
 
 
 def test_the_full_section_rules_allow_a_stated_assumption_for_an_estimate() -> None:
-    """r7 A10-T2: 「Never invent … ratios」 beat 「state an assumption」, and no TAM came out."""
+    """「state an assumption」 not overridden by 「Never invent … ratios」."""
     rules = report._SECTION_PROMPT
     assert "ratios, causes of failure" not in rules
     assert "TAM·SAM·SOM" in rules and "stated 「가정」 with their basis" in rules
@@ -237,7 +235,7 @@ def _loop_notes(seen: list) -> list[str]:
 
 @pytest.mark.asyncio
 async def test_empty_searches_do_not_use_up_the_cap(monkeypatch) -> None:
-    """r7 P31: four 0-result searches and the cap note, then a Fermi estimate refused."""
+    """0-result searches that do not count toward the search cap."""
     seen: list = []
     _scripted(monkeypatch, [_call(1), _call(2), _call(3), _call(4),
                             {"text": "가정: 가구 약 400만 … 약 400명으로 추정합니다."}], seen)
@@ -268,7 +266,7 @@ async def test_a_runaway_of_empty_searches_still_stops(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_a_deep_searching_skill_gets_twice_the_searches(monkeypatch) -> None:
-    """r10 SK-competitor-2: three competitors, and the cap note after the third search."""
+    """A deep-searching skill with twice the searches before the cap note."""
     seen: list = []
     _scripted(monkeypatch, [_call(n) for n in range(1, 7)] + [{"text": "답입니다 [1]."}], seen)
     request = "세 경쟁사를 비교해 줘"
@@ -284,7 +282,7 @@ async def test_a_deep_searching_skill_gets_twice_the_searches(monkeypatch) -> No
 @pytest.mark.asyncio
 async def test_a_deep_search_gets_a_search_more_for_each_thing_the_request_lists(
         monkeypatch) -> None:
-    """r10 LFLF6 SK-company-3: six searches spent before two of four memo lines were looked up."""
+    """One more search for each item the request lists."""
     seen: list = []
     _scripted(monkeypatch, [_call(n) for n in range(1, 9)] + [{"text": "답입니다 [1]."}], seen)
     request = "더존비즈온 조사해 줘.\n\n- ERP 1위라고 들음\n- 공공 클라우드 한다고 함"
@@ -299,7 +297,7 @@ async def test_a_deep_search_gets_a_search_more_for_each_thing_the_request_lists
 @pytest.mark.asyncio
 async def test_a_deep_search_answer_is_held_once_for_a_listed_name_never_searched(
         monkeypatch) -> None:
-    """r10 SK-competitor-1: 잔디·플로우 searched, 네이버웍스 never, and the answer written."""
+    """An answer held once for a listed name (네이버웍스) never searched."""
     def ask(n: int, query: str) -> dict:
         return {"text": "", "calls": [{"id": f"s{n}", "name": "web_search",
                                        "arguments": json.dumps({"query": query})}]}
@@ -325,7 +323,7 @@ async def test_a_deep_search_answer_is_held_once_for_a_listed_name_never_searche
 
 
 def test_the_grounding_note_keeps_established_knowledge() -> None:
-    """r7 P27: the 1911 London dock strike dropped as 「확인 못 함」 next to Liverpool hits."""
+    """Known history kept, not dropped as 「확인 못 함」, beside partial search hits."""
     for light in (False, True):
         note = agent.search_grounding_instruction(light=light)
         assert "history" in note and "textbook" in note
@@ -345,7 +343,7 @@ async def test_the_grounding_note_follows_the_tier(monkeypatch, model, note) -> 
 
 @pytest.mark.asyncio
 async def test_a_fixed_form_gets_no_source_list_or_grounding_paragraphs(monkeypatch) -> None:
-    """r7 P48: 「조언만 답하고, 다른 건 쓰지 마」 got a 「### 출처」 list and reasons."""
+    """「조언만 답하고, 다른 건 쓰지 마」 answered with no 「### 출처」 list or reasons."""
     seen: list = []
     _scripted(monkeypatch, [_call(1), {"text": "- 현금 합의는 거절하세요 [1]."}], seen)
     request = "교통사고가 났어. 조언만 답하고, 다른 건 쓰지 마. 설명도 쓰지 마."
@@ -358,8 +356,7 @@ async def test_a_fixed_form_gets_no_source_list_or_grounding_paragraphs(monkeypa
 
 @pytest.mark.asyncio
 async def test_a_short_preamble_with_a_table_stays(monkeypatch) -> None:
-    """r7 A05-T1: the item table written before the calculator call was taken back and the
-    answer began 「합계: …」."""
+    """An item table written before the calculator call, kept ahead of 「합계: …」."""
     table = ("부산은 광역시라 숙박비 상한은 1박 80,000원입니다.\n\n| 항목 | 금액 |\n|---|---|\n"
              "| 숙박 | 160,000원 |\n| 교통 | 119,600원 |")
     assert len(table) < agent._NARRATION_CHARS
@@ -379,7 +376,7 @@ def test_pure_narration_is_still_narration() -> None:
 
 @pytest.mark.asyncio
 async def test_punctuation_between_written_calls_is_not_shown(monkeypatch) -> None:
-    """r7 A11-T2: two calls written as text left 「\\n, \\n\\n」 on screen before the answer."""
+    """No 「\\n, \\n\\n」 left on screen by two calls written as text."""
     def call(q: str) -> str:
         return (f"<tool_call>web_search<arg_key>query</arg_key><arg_value>{q}</arg_value>"
                 "</tool_call>")
@@ -395,7 +392,7 @@ async def test_punctuation_between_written_calls_is_not_shown(monkeypatch) -> No
 
 @pytest.mark.asyncio
 async def test_a_paragraph_after_the_writers_list_brings_no_second_list(monkeypatch) -> None:
-    """r7 A11-T1: 「## 출처」, then a paragraph, then the server's 「### 출처」 once more."""
+    """「## 출처」, then a paragraph, then the server's 「### 출처」 once more."""
     answer = (f"부두 파업 [1].\n\n## 출처\n- [1] [Great Unrest]({_URL})\n\n"
               "보완이 필요한 항목: 정원 [1].")
     seen: list = []
@@ -406,7 +403,7 @@ async def test_a_paragraph_after_the_writers_list_brings_no_second_list(monkeypa
 
 
 def test_a_bare_double_bracket_citation_is_linked() -> None:
-    """r7 P19: 「[[2]][[3]]」 copied from the earlier linked answer stayed raw."""
+    """「[[2]][[3]]」 copied from an earlier linked answer, linked too."""
     linked, cited = agent._link_citations("인상 가능성 [[1]][[2]].", ["https://a.example/1",
                                                                   "https://b.example/2"])
     assert linked == "인상 가능성 [[1]](https://a.example/1)[[2]](https://b.example/2)."
@@ -415,7 +412,7 @@ def test_a_bare_double_bracket_citation_is_linked() -> None:
 
 @pytest.mark.asyncio
 async def test_the_search_step_records_its_query(monkeypatch) -> None:
-    """r7 DSP P07·P31·P56: 0-result searches with no record of what was searched."""
+    """0-result searches recorded with what was searched."""
     seen: list = []
     _scripted(monkeypatch, [_call(1), {"text": "모르겠습니다."}], seen)
     events = await _turn(SMALL, "x를 찾아 줘", _search([_nothing()]))

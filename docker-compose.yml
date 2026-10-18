@@ -3,7 +3,8 @@
 #   docker compose up -d
 #
 # Models and tools live in KloudChat-LLM, reached through one gateway URL
-# (BACKEND_BASE_URL in .env, or the address saved under System › Features › Integrations). With that backend down, sign-in, history, workspace and
+# (BACKEND_BASE_URL in .env, or the address saved under System › Features ›
+# Integrations). With that backend down, sign-in, history, workspace and
 # settings keep working; model calls and tools report "not connected".
 #
 # `latest` moves with every push to main. Pin a version tag in production.
@@ -19,12 +20,12 @@ x-first-install-seeds: &first-install-seeds
   # Per-surface defaults (empty follows the chat default): documents keep the larger model.
   DEFAULT_REPORT_MODEL: ${KCHAT_DEFAULT_REPORT_MODEL:-local/qwen3.8-27b}
   DEFAULT_SLIDES_MODEL: ${KCHAT_DEFAULT_SLIDES_MODEL:-local/qwen3.8-27b}
-  DEFAULT_IMAGE_MODEL: ${KCHAT_DEFAULT_IMAGE_MODEL:-google/gemini-2.5-flash-image}
+  DEFAULT_IMAGE_MODEL: ${KCHAT_DEFAULT_IMAGE_MODEL:-bytedance-seed/seedream-5-0-flash}
   DEFAULT_AUDIO_MODEL: ${KCHAT_DEFAULT_AUDIO_MODEL:-openai/gpt-audio-mini}
   DEFAULT_VIDEO_MODEL: ${KCHAT_DEFAULT_VIDEO_MODEL:-google/veo-3.1-lite}
   # Titles, memories and the running summary of a long conversation.
   TITLE_MODEL: ${KCHAT_TITLE_MODEL:-local/qwen3.8-flash}
-  # 1 credit = $0.00001; 1,000,000 ≈ $10/month.
+  # 1 credit = $0.00001; 500,000 ≈ $5/month.
   DEFAULT_MONTHLY_CREDITS: ${KCHAT_DEFAULT_MONTHLY_CREDITS:-500000}
   SELF_HOSTED_CHAT_THINKING: ${KCHAT_SELF_HOSTED_CHAT_THINKING:-false}
   EXTERNAL_CHAT_THINKING: ${KCHAT_EXTERNAL_CHAT_THINKING:-false}

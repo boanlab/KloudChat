@@ -98,7 +98,7 @@ export function agentItem(a: Agent, me: string | undefined): HubItem {
 }
 
 /** A member-published agent, shown with the shared agents under its publisher's name. */
-export function botItem(b: BotListItem): HubItem {
+function botItem(b: BotListItem): HubItem {
   return {
     key: `bot:${b.slug}`,
     type: 'agent',

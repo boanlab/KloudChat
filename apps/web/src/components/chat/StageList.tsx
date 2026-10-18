@@ -38,7 +38,7 @@ const TONE_CLASS: Record<StageTone, string> = {
 }
 
 /** ✓ ! ? – ✕ in a dot, with its meaning for screen readers and on hover. */
-export function StageIcon({ tone, size = 'md' }: { tone: StageTone; size?: 'sm' | 'md' }) {
+function StageIcon({ tone, size = 'md' }: { tone: StageTone; size?: 'sm' | 'md' }) {
   const t = useT()
   return (
     <span

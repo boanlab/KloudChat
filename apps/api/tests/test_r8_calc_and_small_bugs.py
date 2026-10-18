@@ -1,18 +1,4 @@
-"""Round 8: the calculation pass's time limit and four small bugs, with the round's own strings.
-
-- calc (all groups): at 120 s the pass timed out on every setup's market-size task and the
-  writer's own arithmetic went 10~100x wrong (A10-T2: TAM < SAM); now 240 s, one finished
-  program's lines are used unchecked, and figures the writer works out itself are marked
-  「(추정)」.
-- verify (all groups; seen on the light 27B): a repair reply item `{'sentence': …}` went into
-  the text as a dict (L27L A07-T1).
-- code-values (all groups): a correct 4.17 bound to the row's sample size became 「24점」
-  (LFLF A06-T1); clashes are marked, never rewritten.
-- citations (all groups): 네이버웍스 prices linked to msn articles on streaming subscriptions
-  (L27F A11-T2); a number whose page shares no word with its sentence is taken out.
-- deck tables (all groups): a six-column comparison lost the priority algorithm to the
-  five-column cap (LFLF A09-T2); a wide, short table is turned instead.
-"""
+"""Calculation pass time limit, repair items, code values, citations and wide deck tables."""
 
 from __future__ import annotations
 
@@ -28,7 +14,7 @@ from app.services import agent, calc, calc_check, deck, model_tier, verify
 L27, STRONG = "local/qwen3.8-27b", "deepseek/deepseek-v4-pro-0813"
 GROUPS = pytest.mark.parametrize("writer", [L27, STRONG])
 
-#: r8 tasks/R3-A10-T2 (the same task as r7)
+#: the market-size task
 A10_T2 = "\n".join([
     "국내 초·중·고 대상 「AI 학습 튜터(에듀테크)」 시장 규모를 추정해 줘. 신사업 TF 1차 검토용이야.",  # noqa: E501
     "- TAM·SAM·SOM 구분해서, 하향식과 상향식 둘 다로",
@@ -102,7 +88,7 @@ async def test_a_timed_out_pass_has_the_writer_mark_its_own_figures(monkeypatch,
 
 # ── verify: a repair reply's shape ──────────────────────────────────────
 
-#: r8 L27L A07-T1, the sentence that came out as 「{'sentence': '이에 대한 첫 단계로, …'}」
+#: the sentence that came out as 「{'sentence': '이에 대한 첫 단계로, …'}」
 A07_OLD = ("이에 대한 첫 단계로, 교육부의 ‘학교에서의 안전한 AI 도입·활용 가이드라인’(2026년 3월 "
            "발표)[11]을 바탕으로 교내 시범 교과목 2~30개를 선정하여 소규모 파일럿을 가동합니다.")
 A07_NEW = ("이에 대한 첫 단계로, 교육부의 ‘학교에서의 안전한 AI 도입·활용 가이드라인’(2026년 3월 "
@@ -132,7 +118,7 @@ def test_a_repair_reply_item_is_a_sentence_or_nothing(reply, kept):
 
 # ── code-values: marked, never rewritten ───────────────────────────────
 
-#: r8 LFLF A06-T1: the code's per-college lines (표본, 전반만족)
+#: the code's per-college lines (표본, 전반만족)
 A06_PRINTED = ["\n".join([
     "사회과학대학: 표본 = 24, 전반만족 = 4.17",
     "인문대학: 표본 = 25, 전반만족 = 3.92",
@@ -188,7 +174,7 @@ def test_a_value_the_code_never_printed_for_the_row_is_marked_or_set_by_group(wr
 
 # ── citations: a number on a page that does not say it ────────────────
 
-#: r8 L27F A11-T2: the first search returned two msn articles, the second the pricing page
+#: the first search returned two msn articles, the second the pricing page
 A11_SEARCH = "\n".join([
     "'네이버웍스 요금' 검색 결과:", "",
     "[1] \"유튜브, 넷플릭스, 챗GPT\"…하나둘 구독했더니 '텅장'",
@@ -258,7 +244,7 @@ def test_a_page_in_another_language_or_too_short_is_not_judged():
 
 # ── deck tables: turned, not cut ────────────────────────────────────────
 
-#: r8 LFLF A09-T2: the comparison table the writer gave, six columns
+#: the comparison table the writer gave, six columns
 A09_ROWS = [
     ["구분", "FCFS", "SJF", "SRTF", "RR(q=2)", "우선순위"],
     ["평균 대기시간", "4.75", "4.0", "3.0", "5.0", "5.5"],

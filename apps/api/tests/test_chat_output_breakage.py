@@ -1,5 +1,4 @@
-"""27B chat answers that broke in the r4 chat sweep: a list loop, a loop-only answer, a stream
-dropped mid-answer and the same question asked twice. Strings are the ones the runs gave."""
+"""Broken chat answers: list loops, loop-only answers, dropped streams, repeated questions."""
 
 from __future__ import annotations
 
@@ -12,7 +11,7 @@ from app.services import agent
 from app.services.chat import ChatStreamError
 from app.services.tools.base import ToolContext
 
-#: P06 shopping list as 27B wrote it, up to where it started looping.
+#: A shopping list up to where it starts looping.
 _LIST_HEAD = (
     "## 장보기 목록 (총 80,000원)\n\n"
     "**채소·과일 코너 (25,000원)**\n"
@@ -114,7 +113,7 @@ async def test_a_second_loop_keeps_one_copy_and_says_it_stopped(monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_a_loop_with_nothing_before_it_is_no_answer_not_a_note(monkeypatch) -> None:
-    # P03: the whole answer was the note; now the turn ends empty and reports no_answer.
+    # A loop-only answer: an empty turn reporting no_answer, not a note.
     loop_only = "인천 → 리스본 최저가 경로 후보\n" * 12
     events = await _turn(monkeypatch, [(loop_only, "looped"), (loop_only, "looped")], [])
     assert _shown(events).strip() == ""
@@ -122,7 +121,7 @@ async def test_a_loop_with_nothing_before_it_is_no_answer_not_a_note(monkeypatch
 
 @pytest.mark.asyncio
 async def test_a_stream_dropped_mid_answer_is_asked_again(monkeypatch) -> None:
-    # P02: 2,400 characters in, the proxy closed the stream; the answer stopped mid item 3.
+    # A stream closed by the proxy 2,400 characters in, mid item 3
     half = "### 3. 승차권 vs 레일패스 비교\n\n**레일패스 (Interrail Global Pass)**:\n- 1인당 3일권"
     whole = half + " 또는 4일권 기준 약 200~300유로입니다.\n\n### 4. 일정\n- 1일차: 암스테르담\n"
     dropped = ChatStreamError("upstream_unreachable: ReadError")
@@ -148,7 +147,7 @@ async def test_a_refusal_is_not_retried(monkeypatch) -> None:
 
 
 def test_the_same_question_asked_twice_is_an_anomaly() -> None:
-    # P13 turn 2, after the person gave the occasion instead of the tax basis
+    # A second turn giving the occasion instead of the tax basis
     messages = [
         {"role": "user",
          "content": "내 개인 쇼퍼가 되어 줘. 첫 요청: 예산 100달러로 새 원피스를 찾고 있어."},
@@ -275,7 +274,7 @@ async def test_a_dropped_stream_names_its_cause(monkeypatch) -> None:
 
 
 def test_a_spreadsheet_formula_request_is_not_held_for_the_calculator() -> None:
-    # P46: 27B wrote the formula, the calculator gate replaced it with 「검산을 완료하지 못해…」
+    # A formula request: no calculator gate, so no 「검산을 완료하지 못해…」
     from app.services import calculation_policy
 
     p46 = (
@@ -292,7 +291,7 @@ def test_a_spreadsheet_formula_request_is_not_held_for_the_calculator() -> None:
     assert calculation_policy.requires_calculation("1,250,000원의 15%와 3%를 더하면 얼마야?")
 
 
-#: P59 (flash) turn 1 as stored: the model's reasoning in brackets above the answer.
+#: A stored first turn: the model's reasoning in brackets above the answer.
 _P59_THINKING = (
     "[Thinking: The user wants me to role-play as an admissions interviewer for the School of "
     "Informatics at the University of Edinburgh, and to conduct a mock interview that lasts "
@@ -324,7 +323,7 @@ def test_reasoning_written_into_the_answer_is_taken_out() -> None:
 
 
 def test_a_check_mark_never_splits_a_word() -> None:
-    # P55: 「0→1, 조직·사람 관리」 read as 「1, 조」 (one trillion) and marked inside 「조직」
+    # 「0→1, 조직·사람 관리」 read as 「1, 조」 (one trillion) and marked inside 「조직」
     from app.services.value_guard import Evidence, settle
 
     before = (

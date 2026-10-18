@@ -1,18 +1,8 @@
-"""Builds the replay fixtures from recorded agent runs.
+"""Replay fixture builder from recorded agent runs.
 
     python tests/replay_build.py <accept-runs-dir> <data-dir> [<out-dir> [<cases>]] [--live]
 
-Each case takes one run's request, approved outline and written sections (report), or its
-answer as streamed and its tool steps (chat). The current code is run against a scripted
-model that answers each prompt kind from that run — the outline the run approved, the
-sections it wrote, readings of its material — and every call is recorded with its reply.
-What the code emitted is stored as the golden; `test_pipeline_replay` replays the recorded
-calls and must emit the same.
-
-With `--live` every prompt kind the case does not script goes to the live models through
-LiteLLM instead (`LiveResponder`), so a prompt change is recorded with what the models now
-write. Run it inside the API test image with the output directory mounted writable. Rebuild a
-fixture only when a change in behaviour is intended, and say so in the commit.
+`--live` sends every prompt kind the case does not script to the live models via LiteLLM.
 """
 
 from __future__ import annotations

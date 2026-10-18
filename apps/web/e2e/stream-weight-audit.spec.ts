@@ -20,7 +20,7 @@ test('스트림·적재 감사 — 끊긴 답변과 첫 화면 비용', async ({
 
   await signIn(page)
 
-  // R21: an event stream that ends after a few deltas, with no `error` and no `done`.
+  // An event stream that ends after a few deltas, with no `error` and no `done`.
   await page.route('**/api/sessions/*/messages', async (route) => {
     if (route.request().method() !== 'POST') return route.continue()
     await route.fulfill({
@@ -71,7 +71,7 @@ test('스트림·적재 감사 — 끊긴 답변과 첫 화면 비용', async ({
   }
   await page.unroute('**/api/sessions/*/messages')
 
-  // R22: a cold visit's cost, counted off the wire.
+  // A cold visit's cost, counted off the wire.
   const weighed = await page.context().newPage()
   let bytes = 0
   const perFile: Record<string, number> = {}

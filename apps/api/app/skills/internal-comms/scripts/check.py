@@ -129,7 +129,7 @@ def facts(text: str) -> list[dict]:
                 continue
             hours = [hour] if match.group(3) is not None and match.group(1) is None else _hour(match.group(1), hour)
             add("time", match, sorted({h * 60 + minute for h in hours}))
-        # 「10~17시」「10-17시」: the range's first number is a time too (r7 A14-T2).
+        # 「10~17시」「10-17시」: the range's first number is a time too.
         for match in _TIME_FROM.finditer(line):
             if free(*match.span(2)) and int(match.group(2)) <= 24:
                 hours = _hour(match.group(1), int(match.group(2)))
@@ -185,9 +185,8 @@ def _grounded(fact: dict, ground: dict) -> bool:
 
 def _years_for(month: int, day: int, dated: list[tuple], today: str | None) -> set[int]:
     """Years a year-less 「12월 31일」 may be in: the year written with the same day
-    elsewhere, else every year the material or answer names and today's (r5 A14-T2: a
-    schedule from 2026-11-02 to 2027-03-31 put 「12월 31일」 in 2027 and turned its (목)
-    into (금))."""
+    elsewhere, else every year the material or answer names and today's (a schedule spanning
+    a new year must not move 「12월 31일」 into the later one)."""
     same = {y for y, m, d in dated if y and (m, d) == (month, day)}
     if same:
         return same
@@ -235,7 +234,7 @@ def _fact_findings(text: str, material: str, today: str | None) -> list[dict]:
     for index, line in enumerate(text.split("\n")):
         for match in _RELATIVE.finditer(line):
             if _RECURRING.search(line[:match.start()]):
-                # 「매월 25일까지 다음 달 근무계획」 is a rule, not a date to pin (r10 SK-notice-2)
+                # 「매월 25일까지 다음 달 근무계획」 is a rule, not a date to pin
                 continue
             findings.append({"severity": "check", "type": "relative_date", "text": match.group(0),
                              "line": index, "start": match.start(), "end": match.end(),

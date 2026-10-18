@@ -1,12 +1,11 @@
-"""A request for a meeting agenda under a minutes agent is an agenda (r7 A01-T2: 「회의 안건
-초안」 came out in the 회의록 format, every 담당·시간 「미정」, 「회의록 작성을 마쳤습니다」)."""
+"""Agenda requests under a minutes agent written as agendas."""
 
 from __future__ import annotations
 
 from app.pipeline import report_stages
 from app.services import doc_formats, process_settings
 
-#: R3-A01-T2's request, sent through the 회의록 비서 agent (template doc-minutes).
+#: An agenda request sent through the 회의록 비서 agent (template doc-minutes).
 _A01_T2 = (
     "다음 주 회의 안건 초안을 같이 잡아 줘.\n\n다음 주 목요일(10/15) 14시 교육혁신팀 주간회의야. "
     "1시간이고, 다룰 것: LMS 1차 시안 검토(업체 담당자 30분 참석 예정), 우수 강의 사례집 디자인 "
@@ -57,7 +56,7 @@ def test_minutes_keep_their_repair():
 
 
 def test_an_everyone_owner_is_not_blanked():
-    # r7 A01-T1 (GLM): 「전원」 became 「[담당자]」 because the memo never says 「전원」
+    # 「전원」 not blanked to 「[담당자]」 when the memo never says 「전원」
     from app.services import report
 
     table = ("| 할 일 | 담당 | 기한 |\n|---|---|---|\n"

@@ -1,6 +1,4 @@
-"""r6 writer-model comparison (GLM-5.3-flash, DeepSeek-v4.1-flash): what reached the reader
-that never should — the app's block fences in the Markdown export, a tool call written as the
-answer, a 「(확인 필요)」 inside a number, and an English question answered in Korean."""
+"""Leaks kept from the reader: block fences, tool calls as answers, marks in numbers, language."""
 
 from __future__ import annotations
 
@@ -22,7 +20,7 @@ from app.services import (
 )
 from app.services.tools.base import Tool, ToolContext, ToolResult
 
-# ── 1. block fences in the Markdown export (R3-A04-T1 GLM) ───────────────────
+# ── 1. block fences in the Markdown export ───────────────────────────────────
 
 A04_SECTION = (
     "B안의 15% 할인은 연 단위 계약 시에만 적용되는 이용료 할인입니다.\n\n"
@@ -81,7 +79,7 @@ def test_the_bot_api_answer_carries_no_block_fence() -> None:
     assert cited == [{"index": 1, "source": "보고서", "url": "https://a.example/r"}]
 
 
-# ── 2. a tool call written as the answer (R4-P16 GLM, second turn) ───────────
+# ── 2. a tool call written as the answer (second turn) ───────────────────────
 
 P16_SECOND = (" <tool_call>web_search<arg_key>query</arg_key><arg_value>정신건강복지센터 "
               "정신건강상담 무료 예약 방법</arg_value></tool_call>")
@@ -219,7 +217,7 @@ async def test_a_reply_that_is_only_a_call_to_no_tool_is_written_again(monkeypat
     assert "tools" not in seen[-1]
 
 
-# ── 3. a mark never inside a number (R3-A16-T2 DSK 「3.5(확인 필요).0」) ──────
+# ── 3. a mark never inside a number (「3.5(확인 필요).0」) ────────────────────
 
 _EV = value_guard.Evidence.of(["변경 목록: 한빛워크 3.4.1 수정 버전. 퇴사자 일괄 비활성화 추가."])
 
@@ -259,7 +257,7 @@ def test_the_copy_check_marks_after_the_whole_value() -> None:
     assert copy_check.mark_left(text, found) == "이번 버전은 3.5.0 (확인 필요)입니다."
 
 
-# ── 4. the answer's language (R4-P27 GLM: an English question answered in Korean) ──
+# ── 4. the answer's language (an English question answered in Korean) ──────────────
 
 P27 = ("I want you to act as a historian. You will research and analyze cultural, economic, "
        "political, and social events in the past. My first suggestion request is \"I need help "

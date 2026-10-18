@@ -27,7 +27,7 @@ test('긴 표와 차트를 구조를 보존해 두 장으로 나눈다', async (
     await page.goto('/artifacts')
     await page.getByRole('tab', { name: /^슬라이드/ }).click()
     await page.locator('button.aspect-video').first().click()
-    await ribbonTab(page, '편집')
+    await ribbonTab(page, '글자')
   }
   await open()
   await page.getByRole('button', { name: '이 장을 두 장으로 나누기' }).click()

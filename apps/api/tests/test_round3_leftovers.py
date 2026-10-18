@@ -1,5 +1,4 @@
-"""Round 3 third-pass leftovers, with the evaluation's own strings: settled comparisons in the
-cost block, no needless gap questions, and the fixes that keep work text out of deliverables."""
+"""Settled comparisons, needless gap questions, and work text kept out of deliverables."""
 
 from __future__ import annotations
 
@@ -15,7 +14,7 @@ from app.services import (
     units,
 )
 
-# ── A04 T2: three laptop quotes, VAT-exclusive and VAT-inclusive side by side ──────────
+# ── three laptop quotes, VAT-exclusive and VAT-inclusive side by side ──────────
 
 A04_T2 = """교직원 업무용 노트북 30대 교체 건, 견적 세 곳 받은 걸로 비교 검토 보고서 써 줘.
 어디로 할지 추천까지.
@@ -64,14 +63,14 @@ def _a04_costs() -> dict:
 def test_mixed_vat_quotes_are_compared_on_one_basis() -> None:
     costs = _a04_costs()
     totals = {name: entry["total"] for name, entry in costs["options"].items()}
-    # 27B wrote 39,600,000 and 42,330,000 (VAT-exclusive) beside 다솜's inclusive 43,350,000
+    # VAT-exclusive 39,600,000 and 42,330,000 beside 다솜's inclusive 43,350,000
     assert totals == {"가온정보통신": 43_560_000, "다솜시스템": 43_350_000, "누리컴": 46_563_000}
     assert costs["vat_basis"] == "incl" and costs["lowest"] == "다솜시스템"
 
 
 def test_the_budget_is_judged_by_code() -> None:
     costs = _a04_costs()
-    # flash judged 누리컴 「예산 대비 1,465,000원을 초과」; it is within, 1,437,000원 left
+    # 누리컴 is within budget, 1,437,000원 left, not 「예산 대비 1,465,000원을 초과」
     assert costs["budget"]["room"] == {
         "가온정보통신": 4_440_000, "다솜시스템": 4_650_000, "누리컴": 1_437_000}
     block = report_checks._cost_block(costs)
@@ -116,7 +115,7 @@ def test_quote_calc_block_ranks_the_vendors() -> None:
     assert "가장 낮은 견적: 다솜시스템; 가온정보통신 +210,000원" in block
 
 
-# ── A01 T2 / A07 T1: no question the request already answers ─────────────────────────
+# ── no question the request already answers ─────────────────────────
 
 A01_T2 = ("다음 주 회의 안건 초안을 같이 잡아 줘.\n\n다음 주 목요일(10/15) 14시 교육혁신팀 "
           "주간회의야. 1시간이고, 다룰 것: LMS 1차 시안 검토(업체 담당자 30분 참석 예정), "
@@ -150,7 +149,7 @@ def test_a_web_research_request_is_not_asked_for_material() -> None:
                                         web=True)
 
 
-# ── work text in deliverables (A09·A10·A12·A13·A16) ──────────────────────────────────
+# ── work text in deliverables ──────────────────────────────────
 
 A09_T1_NOTES = (
     "1단계에서는 조기 종료로 질의-문서 쌍의 토큰 처리를 줄입니다. 수정: 근거 없는 수치를 "
@@ -193,7 +192,7 @@ def test_report_sections_lose_the_writer_s_account() -> None:
     assert internal_words.strip_work_notes(A10_T1_LINE, document=True) == ""
     assert internal_words.strip_work_notes(A10_T2_LINE, document=True) == (
         "학원 구매는 학원 내 디지털 교육 도구 도입 관점에서 접근합니다.")
-    # a document's own 「확인이 필요함」 stays (A02 T1 27B)
+    # a document's own 「확인이 필요함」 stays
     kept = "- B사 납기 1주 차이가 실제 일정에 미치는 영향은 자료에 근거가 없어 확인이 필요함"
     assert internal_words.strip_work_notes(kept, document=True) == kept
     # a chat answer may tell the person what to fill in
@@ -218,7 +217,7 @@ def test_copy_check_verdicts_leave_the_copy() -> None:
     assert internal_words.strip_reports(flash).strip() == "본문"
 
 
-# ── A09 T1 flash: template blanks and a value in brackets ─────────────────────────────
+# ── template blanks and a value in brackets ─────────────────────────────
 
 A09_ABSTRACT = ("LiteRerank는 조기 종료와 상위 20개 후보 제한으로 지연을 412ms에서 38ms로 줄였다. "
                 "다만 2,000토큰 이상의 긴 문서에서는 EM이 3.1포인트 하락했다.")
@@ -247,7 +246,7 @@ def test_a_comparison_left_as_its_template_is_rewritten() -> None:
     assert deck.template_blanks(fields) == []
 
 
-# ── A05 T1: a 「수정:」 line beside the wrong total ─────────────────────────────────────
+# ── a 「수정:」 line beside the wrong total ─────────────────────────────────────
 
 A05_T1 = (
     "부산 출장 2박 3일 여비는 총 409,600원이며, 숙박비 1박당 상한 80,000원을 초과한 15,000원은 "
@@ -272,7 +271,7 @@ def test_a_self_correction_settles_the_total() -> None:
     assert units.settle_corrections(notes) == notes
 
 
-# ── A12·A13·A15 T1: 「(확인 필요)」 inside copy ──────────────────────────────────────
+# ── 「(확인 필요)」 inside copy ──────────────────────────────────────
 
 A12_T1 = (
     "**헤드라인**\n메일 첨부 파일을 주고받을 때마다 사라지는 시간, 줄이세요 (확인 필요)\n\n"
@@ -299,7 +298,7 @@ def test_copy_marks_move_below_the_copy() -> None:
     assert copy_check.lift_marks("표시 없는 카피") == "표시 없는 카피"
 
 
-# ── A10 T2 27B: a table 100× the prose's worked SOM ─────────────────────────────────
+# ── a table 100× the prose's worked SOM ─────────────────────────────────
 
 A10_T2_DOWN = (
     "**표 2. 하향식 TAM·SAM·SOM**\n\n| 구분 | 수치 | 산출 방식 |\n|---|---|---|\n"

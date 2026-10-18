@@ -1,8 +1,4 @@
-"""A deck agent's check skills run on the deck as they do on a report, and no slide reaches the
-person empty or holding the writer's internal text (round-3 A09: a CPU scheduling lecture whose
-averages were worked in the model's head and disagreed between the body and the comparison
-table, a slide body 「> 이 장을 쓰지 못했습니다.」, notes reading
-`[ { "slide_id": "slide-cover`)."""
+"""Deck check skills and the guard against empty or internal-text slides."""
 
 from __future__ import annotations
 
@@ -24,7 +20,7 @@ from app.services import (
     skill_turn,
 )
 
-#: tasks/A09/T2/prompt.md as sent
+#: A CPU scheduling lecture request with a worked example.
 LECTURE = (
     "운영체제(학부 3학년) 50분 강의용 슬라이드 만들어 줘. 주제는 CPU 스케줄링 — FCFS, SJF(비선점), "
     "SRTF, 라운드 로빈(타임 퀀텀 2), 우선순위 스케줄링. 12장 안팎.\n"
@@ -34,7 +30,7 @@ LECTURE = (
     "P1: 0, 7, 3\nP2: 2, 4, 1\nP3: 4, 1, 4\nP4: 5, 4, 2"
 )
 
-#: tasks/A09/T1/prompt.md, the results table (no calculation asked)
+#: A conference talk request with its results table (no calculation asked).
 TALK = (
     "다음 주 학회(한국정보과학회 추계) 구두 발표용 슬라이드 만들어 줘. 발표 15분, 10장 안팎. 아래 "
     "초록과 실험 결과로.\n\n"
@@ -86,7 +82,7 @@ async def test_a_scheduling_exercise_needs_no_program_and_no_sandbox(monkeypatch
 
 
 def test_the_27b_deck_s_worked_averages_are_set_to_the_computed_ones():
-    """The 27B deck: 7.75 in the FCFS body and 6.0 in the table, 8.25 and 10.0 for RR."""
+    """A written deck: 7.75 in the FCFS body and 6.0 in the table, 8.25 and 10.0 for RR."""
     slides = [
         {"layout": "bands", "title": "FCFS: 선입 선처리", "items": [
             ["정의", "도착 순서대로 CPU를 분배하며 선점이 불가하다."],
@@ -174,14 +170,14 @@ async def test_the_grounding_skill_traces_a_deck_built_on_the_request_s_own_figu
 
 def test_internal_text_never_stays_on_a_slide():
     slides = [
-        # 27B T1: the stand-in above bullets a later pass filled in
+        # the stand-in above bullets a later pass filled in
         {"layout": "bullets", "title": "성능 및 지연 개선", "body": deck.UNWRITTEN,
          "bullets": ["EM 71.9로 성능 유지", "38ms로 지연 대폭 절감"],
          "notes": "제안 모델 LiteRerank는 EM 71.9로 기존 방식과 동등한 성능을 냈습니다."},
-        # flash T2: the next slides' JSON as the notes
+        # the next slides' JSON as the notes
         {"layout": "bullets", "title": "알고리즘별 평균 대기시간 비교",
          "bullets": ["숫자가 낮을수록 대기시간이 적음"], "notes": '[ { "slide_id": "slide-cover'},
-        # flash T1: notes that broke off mid-sentence
+        # notes that broke off mid-sentence
         {"layout": "bullets", "title": "LiteRerank: 2단계 경량 구조",
          "bullets": ["총 22M 파라미터의 경량 재순위화기"],
          "notes": "한빛대학교 컴퓨터공학과 이서준입니다. 동시에 지연은 412ms에서 38ms로"},

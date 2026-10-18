@@ -1,5 +1,4 @@
-"""Retired image, audio and video 서식: the catalogue has none, a request or saved choice that
-still names one is read as naming none, and what was made with one still opens."""
+"""Retired image, audio and video 서식: gone from choices, read as none, old results still open."""
 
 from __future__ import annotations
 

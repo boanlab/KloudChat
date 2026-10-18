@@ -1,5 +1,4 @@
-"""공지·안내 스킬(초안): 사내 공지 패키지가 초안으로 묶이고, 스크립트가 자료에 없는 값과
-빠진 항목을 잡는다."""
+"""Notice skills: the company notice package and its script checks."""
 
 from __future__ import annotations
 
@@ -41,7 +40,7 @@ def test_the_notice_skills_ship_published_with_their_source_and_scripts():
     packages = skill_packages.packages()
     for key, script in NOTICE_SKILLS.items():
         package = packages[key]
-        # r10: published and listed after the LFLF round (3/3, no high finding)
+        # published and listed
         assert not package.draft and package.listed, key
         assert package.required_tools == ("run_skill_script",)
         assert script in package.scripts, key
@@ -96,7 +95,7 @@ def test_invented_contacts_dates_and_wrong_weekdays_are_blocked():
 
 
 def test_a_relative_date_inside_a_recurring_rule_is_not_flagged():
-    # r10 SK-notice-2: 「매월 25일까지 다음 달 근무계획」 is the rule itself
+    # 「매월 25일까지 다음 달 근무계획」 is the rule itself
     material = "신청: 매월 25일까지 다음 달 근무계획을 인사시스템에 입력"
     text = "매월 25일까지 다음 달 근무계획을 입력해 주십시오."
     rule = _run("internal-comms", "check", {"text": text, "material": material, "kind": "change"})

@@ -103,13 +103,13 @@ test('키보드·일관성 감사', async ({ page }) => {
     await page.goto(path)
     await page.waitForTimeout(500)
 
-    // R9: focus is visible.
+    // Focus is visible.
     for (const c of await focusRingReport(page)) {
       checks++
       if (!c.ring) note('focus-ring', c.name, where, '키보드로 어디에 있는지 보이지 않는다')
     }
 
-    // R13: one action, one word.
+    // One action, one word.
     for (const text of await page.evaluate(() =>
       Array.from(document.querySelectorAll('button'))
         .filter((b) => {
@@ -138,7 +138,7 @@ test('키보드·일관성 감사', async ({ page }) => {
     }
   }
 
-  // R10–R12: modals take focus, trap Tab, and restore focus on close.
+  // Modals take focus, trap Tab, and restore focus on close.
   const MODALS: [route: string, open: string, where: string][] = [
     ['/agents', '새 에이전트', '에이전트 · 새로 만들기'],
     ['/skills', '새 스킬', '스킬 · 새로 만들기'],
@@ -155,7 +155,6 @@ test('키보드·일관성 감사', async ({ page }) => {
     if ((await dialog.count()) === 0) continue
     await page.waitForTimeout(300)
 
-    // R10
     checks++
     const inside = await page.evaluate(() => {
       const d = document.querySelector('[role="dialog"]')
@@ -163,7 +162,7 @@ test('키보드·일관성 감사', async ({ page }) => {
     })
     if (!inside) note('modal-focus', open, where, '열려도 초점이 뒤 화면에 남는다')
 
-    // R11: twenty-five stops is more than any of these dialogs holds.
+    // Twenty-five stops is more than any of these dialogs holds.
     checks++
     let escaped = false
     for (let i = 0; i < 25; i++) {
@@ -179,7 +178,6 @@ test('키보드·일관성 감사', async ({ page }) => {
     }
     if (escaped) note('modal-trap', open, where, 'Tab 이 뒤 화면으로 새어 나간다')
 
-    // R12
     await page.keyboard.press('Escape')
     await page.waitForTimeout(300)
     checks++
@@ -190,7 +188,7 @@ test('키보드·일관성 감사', async ({ page }) => {
     if (!restored) note('modal-restore', open, where, '닫으면 초점이 문서 맨 앞으로 튄다')
   }
 
-  // R14: destroying something asks first. Run against throwaway rows.
+  // Destroying something asks first. Run against throwaway rows.
   const THROWAWAY: [route: string, open: string, nameField: string, where: string][] = [
     ['/skills', '새 스킬', '이름', '스킬'],
     ['/memory', '새 메모리', '이름', '메모리'],

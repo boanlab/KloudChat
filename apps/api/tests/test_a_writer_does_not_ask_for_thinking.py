@@ -1,5 +1,4 @@
-"""Every writer call asks for no thinking (`thinking.switch`, which is `reasoning:
-{"enabled": false}` unless the provider refused it); chat does not."""
+"""No-thinking requests (`thinking.switch`) on every writer call, not on chat."""
 
 from __future__ import annotations
 

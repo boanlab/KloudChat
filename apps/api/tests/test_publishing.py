@@ -1,8 +1,4 @@
-"""Published agents (공개 챗봇), phase 1: the owner publishes, a member asks, and the turn runs on
-the owner's account under the bot's fixed version — strict-local, without the owner's memory,
-settings or other files — while the owner sees statistics, not conversations.
-
-Real HTTP and SQLite; the model is a fake agent loop that reads the bot's tools."""
+"""Published agents (공개 챗봇): member turns on the bot's fixed version (real HTTP and SQLite)."""
 
 from __future__ import annotations
 

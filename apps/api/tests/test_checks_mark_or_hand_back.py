@@ -1,12 +1,4 @@
-"""Checks edit only what code decides; model judgments mark or go back to the writer.
-
-Round 7 ran the same strong models inside KloudChat and directly. Where KloudChat lost, a check
-had rewritten a true sentence: a pasted client profile turned off the advice reading and a
-prescription went whole (P07), a judge's note cut a feature's plain use (A12-T1), the cost
-pre-pass settled a no-discount base and next year at 0원 (A04), a sum fixer read 「8만 2,080명」
-as 「8만」 (A10-T2). Each case here uses the round's own strings, for a small writer and a
-strong one (`model_tier.strong`).
-"""
+"""Checks editing only what code decides; model judgments marked or handed back."""
 
 from __future__ import annotations
 
@@ -49,7 +41,7 @@ def test_the_tier_table_is_the_shared_one():
     assert Request(text="", model=SMALL, api_key="", outline_model="o").reviser == "o"
 
 
-# ── P07: a pasted client profile, an exercise plan ──────────────────────────
+# ── a pasted client profile, an exercise plan ──────────────────────────
 
 P07 = (
     "퍼스널 트레이너가 되어 줘. 더 건강하고 튼튼해지고 싶은 사람의 정보를 줄 테니, "
@@ -113,7 +105,7 @@ def test_the_prescriptions_stay_whole(writer, advice):
     assert "2.5(확인 필요)cm" not in out
 
 
-# ── A12-T1: the judge's notes on a landing page's feature blocks ───────────────
+# ── the judge's notes on a landing page's feature blocks ───────────────
 
 A12_MATERIAL = (
     "「한빛워크」 랜딩 페이지 문구 써 줘. 히어로(헤드라인·서브), 기능 3개 블록, 고객 사례 "
@@ -183,7 +175,7 @@ def test_a_strong_writer_weighs_the_notes_itself_and_keeps_what_it_kept():
 
 
 def test_a_small_writer_s_judged_statement_is_marked_unless_code_confirms_it():
-    # r8: a judge's 「자료에 없음」 is no reason to cut; code finds no figure or name to look
+    # a judge's 「자료에 없음」 is no reason to cut; code finds no figure or name to look
     # up in 「부서 회의나 전 직원 회의를 …」, so it is marked where it stands
     model = _Writer(A12_JUDGED, A12_ANSWER)
     out = _post(SMALL, model)
@@ -203,7 +195,7 @@ def test_a_small_writer_s_judged_statement_is_marked_unless_code_confirms_it():
 
 
 def test_what_a_judge_took_out_is_not_brought_back_by_the_guard():
-    # r7 A02-T2: the narration the judge took out came back marked
+    # the narration the judge took out came back marked
     before = ("검색 결과는 실제 2027년 개편안을 확인해 주지 못합니다.\n\n## 요약\n- 개편안 발표")
     after = "## 요약\n- 개편안 발표"
     ev = value_guard.Evidence.of(["개편안 발표"])
@@ -220,7 +212,7 @@ def test_a_strong_writer_s_revision_stands_as_written():
 
 
 def test_a_cell_that_said_check_needed_is_marked_once():
-    # r7 A11-T2: 「확인 필요 (확인 필요)」
+    # 「확인 필요 (확인 필요)」
     before = "| 항목 | 가격 |\n|---|---|\n| 기본 | 확인 필요 |"
     after = "| 항목 | 가격 |\n|---|---|\n| 기본 | 확인 필요 |".replace("| 확인 필요 |", "|  |")
     out = value_guard.settle(before, after, value_guard.Evidence.of([]))
@@ -245,14 +237,14 @@ def test_copy_notes_go_to_the_writer_of_a_strong_answer_only(writer):
         assert set(readers) == {"flash"}
 
 
-# ── A04: the comparison pre-pass offers data ───────────────────────────────
+# ── the comparison pre-pass offers data ───────────────────────────────
 
 COLLAB = ("우리 팀(교직원 40명) 업무 협업 도구 두 가지 안을 비교·검토하는 보고서 써 줘.\n\n"
           "A안: 사내 메신저 유지 + 화상회의 라이선스 추가\n"
           "- 화상회의 라이선스 1인당 월 8,000원 × 40명\n\n"
           "B안: 통합 협업툴 전환\n- 1인당 월 14,000원 × 40명, 연 단위 계약 시 15% 할인\n"
           "- 초기 전환 컨설팅·데이터 이전 1회 300만원\n\n판단 기준: 연간 비용(첫해·이듬해)")
-#: DSP's reading: the monthly items with the comparison's 12 months
+#: One reading: the monthly items with the comparison's 12 months
 COLLAB_DSP = {"period": "1년", "years": 1, "options": [
     {"name": "A안", "items": [
         {"name": "화상회의 라이선스", "unit_price": 8000, "count": 40, "per": "month",
@@ -310,7 +302,7 @@ def test_a_warranty_extension_is_added_never_swapped_for_the_laptops():
              "vat": "incl"}]}]}
     costs = report_checks.option_costs(reading, report_checks._material_numbers(A04_T2),
                                        material=A04_T2)
-    # QMX's block had 42,000,000원: the extension left out of the base
+    # 42,000,000원 in a block: the extension left out of the base
     assert costs["options"]["다솜시스템"]["total"] == 43_350_000
 
 
@@ -357,7 +349,7 @@ def test_the_verdict_overrides_only_a_small_writer(writer, monkeypatch):
         assert "조건이 확인되면 권고합니다" in body
 
 
-# ── A07-T2: the person asked for unconfirmed points to be marked ───────────────
+# ── the person asked for unconfirmed points to be marked ───────────────
 
 def test_unsettled_web_findings_are_marked_when_the_person_asked():
     request = "사실마다 출처를 달고, 확인 못 한 건 확인 필요로 표시해 줘."
@@ -373,20 +365,20 @@ def test_unsettled_web_findings_are_marked_when_the_person_asked():
 # ── answer tidying: code fixes only what it computes ──────────────────────────
 
 def test_a_mixed_scale_amount_is_read_whole():
-    # r7 A10-T2 QMX: became 「8.21만 2,080명 … = 2억 4,710만 원/년」
+    # became 「8.21만 2,080명 … = 2억 4,710만 원/년」
     text = ("410만 4천 명 × 2% = 8만 2,080명, 8만 2,080명 × 9,900원 × 12개월 = 97억 5,110만 "
             "원/년입니다.")
     assert units.fix_written_sums(units.fix_written_arithmetic(text)) == text
 
 
 def test_a_result_run_on_into_a_word_is_left_alone():
-    # r7 A05-T1 GLP: 「= 104,000박당 104,000원」
+    # 「= 104,000박당 104,000원」
     text = "이 경우 80,000원 + 24,000원 = 1박당 104,000원까지 인정되어"
     assert units.fix_written_sums(text) == text
 
 
 def test_the_tail_of_a_longer_sum_is_not_the_sum():
-    # r7 A03-T2 GLP: the last terms read as the whole sum, 2,000만원 → 3,200만원
+    # the last terms read as the whole sum, 2,000만원 → 3,200만원
     text = ("시상금 계: 500만원×1 + 300만원×2 + 100만원×4 + 50만원×6 + 100만원×1 + 50만원×2 "
             "+ 50만원×2 + 50만원×2 = 2,200만원")
     assert units.fix_written_sums(units.fix_written_arithmetic(text)) == text
@@ -396,7 +388,7 @@ def test_the_tail_of_a_longer_sum_is_not_the_sum():
 
 
 def test_a_true_claim_about_the_table_s_one_extreme_cell_stands():
-    # r7 A06-T1: 「전 단과대학·전 문항 중」 became 「전 단과대학·교과내용·시설·… 문항 중」
+    # 「전 단과대학·전 문항 중」 became 「전 단과대학·교과내용·시설·… 문항 중」
     text = ("| 단과대학 | 응답 | 교과내용 | 교수법 | 시설 | 온라인학습 | 전반만족 |\n"
             "|---|---|---|---|---|---|---|\n"
             "| 사회과학대학 | 24 | 4.38 | 3.92 | 3.92 | 3.83 | 4.17 |\n"
@@ -407,20 +399,16 @@ def test_a_true_claim_about_the_table_s_one_extreme_cell_stands():
 
 
 @pytest.mark.parametrize("before, after", [
-    # r7 P02
     ("날씨 도구는 잘못 호출됐네요. 이 여행은 9월 하순 계획이라 날씨 조회가 필요 없으니, 바로 "
      "계획을 짜 드리겠습니다.\n\n먼저 가정을 정리합니다. 예산 600유로는 두 사람 합계입니다.",
      "먼저 가정을 정리합니다. 예산 600유로는 두 사람 합계입니다."),
-    # r7 A16-T2
     ("2026-11-04는 수요일로 확인됐습니다. 사용자가 준 요일(수요일)과 일치합니다.\n\n이제 두 "
      "문서를 작성합니다. 청구서 발송일 변경(1일→3일)은 12월 청구분부터 처음 적용됩니다.\n\n"
      "## 사내 공지",
      "청구서 발송일 변경(1일→3일)은 12월 청구분부터 처음 적용됩니다.\n\n## 사내 공지"),
-    # r7 A16-T1, A13-T1
     ("두 버전으로 작성합니다.\n\n## 고객용", "## 고객용"),
     ("이제 소재를 정리해 드리겠습니다.\n\n| 소재 | 문구 |\n|---|---|",
      "| 소재 | 문구 |\n|---|---|"),
-    # r7 A15-T1 QMX, A02-T1 GLP, A12-T2 DSP
     ("점검 결과: 콜드메일 check 0 block(제목 3안은 택1), 카피 claims 0 block, 「30일 무료」는 "
      "근거 있음으로 판정. 남은 `[전화번호]`만 채우시면 됩니다.",
      "남은 `[전화번호]`만 채우시면 됩니다."),
@@ -459,20 +447,20 @@ def test_an_assumed_range_and_the_end_of_a_given_hour_are_not_unsourced():
 
 
 def test_a_mark_after_a_time_takes_the_hour_word_with_it():
-    # r7 P02 「오전 8(확인 필요)시」
+    # 「오전 8(확인 필요)시」
     line = "오전 8시 이후 출발"
     assert line[:value_guard.token_end(line, line.index("8") + 1)] == "오전 8시"
 
 
 def test_a_linking_ending_before_a_title_is_no_name():
-    # r7 A05-T2 QMX 「규정에 적혀 있지 [이름] 총무 담당 부서」
+    # 「규정에 적혀 있지 [이름] 총무 담당 부서」
     found = TRACE.check("규정에 적혀 있지 않으니 총무 담당 부서에 확인해 주세요.",
                         "출장비 규정을 알려 줘", [], {})
     assert not [f for f in found if f["kind"] == "person"]
 
 
 def test_a_discount_and_vat_chain_from_the_quotes_is_supported():
-    # r7 A04-T2 DSP: correct totals marked 「(확인 필요)」
+    # correct totals marked 「(확인 필요)」
     material = ("[견적 3] 누리컴\n- 단가 1,480,000원(부가세 별도) × 30대, 30대 이상 구매 시 "
                 "총액 5% 할인\n- 데이터 삭제 확인서는 별도 대당 5,000원(부가세 별도)\n"
                 "[견적 1] 가온정보통신\n- 단가 1,320,000원(부가세 별도) × 30대")
@@ -499,10 +487,10 @@ def test_a_strong_writer_s_sentence_is_marked_where_a_small_one_s_is_dropped(wri
         assert "등록금 납부" not in fixed
 
 
-# ── round 7 GLM cases ─────────────────────────────────────────────────────────
+# ── example clocks, dates and units ─────────────────────────────────────────────────────────
 
 def test_an_example_s_clock_and_next_month_s_day_are_not_unsourced():
-    # r7 P16 「예컨대 "저녁 7시(확인 필요)에 …"」, P36 「실제 월(예: 「11월 15일(확인 필요)」)」
+    # 「예컨대 "저녁 7시(확인 필요)에 …"」, 「실제 월(예: 「11월 15일(확인 필요)」)」
     p16 = ('예컨대 "저녁 7시에 집 앞 편의점까지 걷기", "아침에 이불 정리하기" 수준이면 '
            "충분합니다.")
     assert TRACE.check(p16, "우울할 때 할 수 있는 걸 알려 줘", [], {"advice": True}) == []
@@ -512,11 +500,11 @@ def test_an_example_s_clock_and_next_month_s_day_are_not_unsourced():
 
 
 def test_years_since_a_given_year_and_a_conditional_penalty_are_not_marked():
-    # r7 A14-T2 「2018년 출시 이후 8년(확인 필요)」
+    # 「2018년 출시 이후 8년(확인 필요)」
     material = "- 서비스: 개인용 메모 앱 「한빛메모」(무료, 2018년 출시), 현재 월 이용자 약 3,200명"
     answer = "2018년 출시 이후 8년 동안 「한빛메모」를 사용해 주신 모든 분께 감사드립니다."
     assert TRACE.check(answer, material, [], {"today": "2026-10-13"}) == []
-    # r7 P48 「…사고(인사사고, 뺑소니, 12대 중과실)라면 지금 바로 변호사를 선임하세요 (확인 필요).」
+    # 「…사고(인사사고, 뺑소니, 12대 중과실)라면 지금 바로 변호사를 선임하세요 (확인 필요).」
     p48 = ("형사처벌 우려가 있는 사고(인사사고, 뺑소니, 12대 중과실)라면 지금 바로 변호사를 "
            "선임하세요.")
     assert TRACE.check(p48, "교통사고 났어. 조언만 해 줘", [], {"advice": True}) == []
@@ -524,7 +512,7 @@ def test_years_since_a_given_year_and_a_conditional_penalty_are_not_marked():
 
 @TIERS
 def test_a_question_about_blanks_that_all_went_back_is_taken_out(writer):
-    # r7 A14-T2 GLP: 「확인이 필요한 날짜(자료에 없어 로 두었습니다. …): - 공지일() 기준 …」
+    # 「확인이 필요한 날짜(자료에 없어 로 두었습니다. …): - 공지일() 기준 …」
     before = "공지일은 2026. 10. 14.입니다. 종료일은 2027. 3. 31.입니다."
     after = ("공지일은 [날짜]입니다. 종료일은 2027. 3. 31.입니다.\n\n"
              "확인이 필요한 날짜(자료에 없어 [날짜]로 두었습니다. 언제로 할지 정해 주세요):\n"
@@ -552,7 +540,7 @@ def test_a_mark_goes_after_the_unit(line, value, whole):
 
 
 def test_a_mark_closing_a_bracket_goes_inside_it():
-    # r7 P36 QMX 「(이번 주 금요일 10월 16일(확인 필요))」
+    # 「(이번 주 금요일 10월 16일(확인 필요))」
     before = "회신은 (이번 주 금요일 10월 16일)까지 부탁드립니다."
     after = before.replace("10월 16일", "[일자]")
     out = value_guard.settle(before, after, value_guard.Evidence.of(["교정해 줘"])).text
@@ -560,19 +548,19 @@ def test_a_mark_closing_a_bracket_goes_inside_it():
 
 
 def test_a_year_running_into_buteo_is_no_value():
-    # r7 P46 DSP 「2007부」 read as a count of 부: would become 「[수치]터」
+    # 「2007부」 read as a count of 부: would become 「[수치]터」
     line = "SUMIFS는 엑셀 2007부터 쓸 수 있습니다."
     assert TRACE.fix(line, TRACE.check(line, "엑셀 2016에서 쓸 수식 알려 줘", [], {})) == line
 
 
 def test_a_date_formula_s_rolled_over_day_is_its_own():
-    # r7 P46 QMX 「DATE(2026,13,1)=2027-01-01」 marked
+    # 「DATE(2026,13,1)=2027-01-01」 marked
     line = "=DATE(2026,13,1)은 2027-01-01이 되어 그 전날까지 셉니다."
     assert TRACE.check(line, "12월 합계 수식 알려 줘", [], {}) == []
 
 
 def test_a_day_written_another_way_is_the_material_s():
-    # r7 A01-T2: the material writes 「워크숍(10/22)」, the answer 「10월 22일」
+    # the material writes 「워크숍(10/22)」, the answer 「10월 22일」
     material = "다음 주 목요일(10/15) 14시 교육혁신팀 주간회의야. 워크숍(10/22) 준비 점검."
     assert TRACE.check("워크숍은 10월 22일(목)입니다.", material, [], {}) == []
     before = "워크숍은 10월 22일입니다."
@@ -581,7 +569,7 @@ def test_a_day_written_another_way_is_the_material_s():
 
 
 def test_advice_to_the_writer_on_their_own_text_is_no_demand_to_drop():
-    # r7 P36 GLP: a proofreading suggestion went whole as 「자료에 없는 준비·제출 요구」
+    # a proofreading suggestion went whole as 「자료에 없는 준비·제출 요구」
     material = ("교정자가 되어 줘.\n\n안녕하세요. 프로젝트 마감일이 이번달 말에서 다음달 15일로 "
                 "변경되였습니다. 각 팀은 변경된 일정에 맞춰 업무 계획을 수정하시고, 금요일 까지 "
                 "저에게 회신 부탁드립니다.")
@@ -592,8 +580,8 @@ def test_advice_to_the_writer_on_their_own_text_is_no_demand_to_drop():
 
 @pytest.mark.parametrize("quote", ["사업은 일정대로 정상 추진 중입니다", "추가 비용은 없습니다"])
 def test_a_small_writer_s_invented_assertion_is_still_marked(quote):
-    # r7 helps: 「정상 추진 중」, 「추가 비용 없음」 caught in a 개조식 report; since r8 they are
-    # marked where they stand (no figure or name for code to confirm absent)
+    # 「정상 추진 중」, 「추가 비용 없음」 in a 개조식 report: marked where they stand
+    # (no figure or name for code to confirm absent)
     answer = f"## 현황\n- 1차 시안을 받았습니다.\n- {quote}."
     model = _Writer([{"quote": quote, "why": "자료에 없음"}], answer)
     out = asyncio.run(post_checks.run(
@@ -613,7 +601,7 @@ A02_T2 = (
 
 
 def test_a_pasted_press_release_makes_no_medical_question():
-    # r7 A02-T2 DSP·GLP: 「재정 진단」 in the pasted release forced a medical search and reading
+    # 「재정 진단」 in the pasted release forced a medical search and reading
     from app.services import exact_facts
 
     ask = sessions._ask_of(A02_T2)
@@ -625,7 +613,7 @@ def test_a_pasted_press_release_makes_no_medical_question():
 
 
 def test_a_second_call_written_after_a_comma_is_taken_too():
-    # r7 A11-T2: two JSON calls in a row, the second left visible after 「, 」
+    # two JSON calls in a row, the second left visible after 「, 」
     text = ('찾아보겠습니다.\n{"name": "web_search", "arguments": {"query": "한빛소프트 매출"}}, '
             '{"name": "web_search", "arguments": {"query": "한빛소프트 직원 수"}}\n\n본문입니다.')
     out, calls = internal_words.written_tool_calls(text, {"web_search"})

@@ -393,7 +393,7 @@ async def test_a_skill_that_became_a_package_keeps_its_row_and_gets_the_new_body
     assert [row.catalog_key for row in db.rows].count("calc-check") == 1
 
 
-#: A test-local catalogue agent; the product ships none for now.
+#: A test-local catalogue agent; the product ships none.
 _CATALOGUE_AGENT = {
     "key": "practice-coach",
     "name": "연습 코치",

@@ -1,6 +1,4 @@
-"""「용어는 영어 원문을 병기해 줘」 reaches the slide writer as a rule, with the material's terms:
-English originals shown, no coined Korean terms such as 「단문」, 「추록」.
-"""
+"""Slide-writer rule for English originals beside the material's terms."""
 
 from __future__ import annotations
 

@@ -705,11 +705,10 @@ async def _rescue_model(
     *, user: User, catalogue: list[dict], writer: dict, strict_local: bool,
     outline: dict | None,
 ) -> dict | None:
-    """The other self-hosted model that writes an answer once more when the writer left it
-    empty or only announced it (r5 P07·P05): flash for 27B and 27B for flash, read from the
-    model roles (chat, report, slides, code fallback), else the outline model; `None` when
-    there is none. An external writer gets the chat model (r8 A13-T2: qwen3.8-max thought
-    through its whole budget twice and the person got no answer)."""
+    """Rescue writer for an empty or announced-only answer: the other self-hosted model.
+
+    Read from the model roles (chat, report, slides, code fallback), else the outline model;
+    `None` when there is none. An external writer gets the chat model."""
     roles = await settings_store.model_roles()
     if not str(writer.get("id") or "").startswith(("local/", "strict-local/")):
         if strict_local or not roles.chat or roles.chat == writer.get("id"):
@@ -1650,9 +1649,10 @@ _PROFILE_HEAD = re.compile(
 
 
 def _profile(rest: str) -> bool:
-    """Whether the pasted part is a profile of the person (or the client they ask about), not a
-    memo or document: a short labelled list most of whose lines describe the person (r7 P07:
-    traced as material, it turned the exercise plan's sets and rests into values to source)."""
+    """Whether the pasted part is a profile of the person (or their client), not a memo.
+
+    A short labelled list most of whose lines describe the person; tracing it as material
+    would turn advice built on it into values to source."""
     lines = [line for line in (rest or "").splitlines() if line.strip()]
     if not 3 <= len(lines) <= 30 or len(rest) > 2000:
         return False
@@ -1670,7 +1670,7 @@ _WORKS_ON_TEXT = re.compile(
 def _ask_of(content: str) -> str:
     """The ask that decides a turn's forced search and advice reading: the instruction alone
     when it works on text the person pasted under it (a 「재정 진단」 in a pasted press release
-    asked to be summarised makes no medical question, r7 A02-T2); else the whole message
+    asked to be summarised makes no medical question); else the whole message
     (lab results pasted under 「봐 줘」 stay a medical question)."""
     from app.services.context import lead_instruction, pasted_material
 
@@ -3811,7 +3811,7 @@ def _freshness_routing(reason: str) -> dict[str, Any]:
 
 
 def _freshness_followup_index(history: list[Message], session_id: str, content: str) -> int | None:
-    """Keeps search consent for a short same-topic nudge, legacy holds included."""
+    """Keeps search consent for a short same-topic nudge, server-policy holds included."""
     if not freshness.is_same_fact_followup(content):
         return None
     for index in range(len(history) - 2, -1, -2):
@@ -3819,7 +3819,7 @@ def _freshness_followup_index(history: list[Message], session_id: str, content: 
         routing = answer.routing or {}
         verification = routing.get("freshness") or {}
         grounded = (routing.get("accuracy") or {}).get("policy") == freshness.ACCURACY_POLICY
-        legacy_hold = (
+        policy_hold = (
             answer.model is None
             and routing.get("answerOrigin") == "server_policy"
             and routing.get("actualModel") is None
@@ -3828,7 +3828,7 @@ def _freshness_followup_index(history: list[Message], session_id: str, content: 
         if (
             question.session_id != session_id or answer.session_id != session_id
             or question.role is not Role.user or answer.role is not Role.assistant
-            or not (grounded or legacy_hold)
+            or not (grounded or policy_hold)
         ):
             return None
         if not freshness.is_same_fact_followup(question.content) and (
@@ -3952,7 +3952,7 @@ async def send_message(
         pending and not payload.approve and payload.answers is not None and not payload.answers
     )
     #: a question card answered once — picked, typed, or 「알아서 진행」 — is not asked again
-    #: in the same run (r5 A04-T2: a second card came back after 「알아서 판단해 진행」)
+    #: in the same run
     asked_once = bool(pending and pending.get("stage") == "clarify" and not payload.approve)
     #: files new to this reply; only these rechecked
     reply_brings_files = bool(
@@ -4134,7 +4134,7 @@ async def send_message(
     if session.agent_id:
         agent_row = await db.get(WorkspaceAgent, session.agent_id)
     if payload.web_search is None:
-        # caller sent no toggle (API, MCP): the agent's default, else off as before
+        # caller sent no toggle (API, MCP): the agent's default, else off
         payload = payload.model_copy(update={"web_search": _agent_web_search(agent_row)})
     specs, own_scripts = await _skill_specs(db, user, agent_row)
     if published is not None:
@@ -4159,7 +4159,7 @@ async def send_message(
     if pending and payload.web_search is False:
         # approval/answer has no toggle: the plan's starting turn chose it
         payload = payload.model_copy(update={"web_search": _planned_web_search(history)})
-    # text pasted under an editing ask is not a question (r10 SK-copyedit-2)
+    # text pasted under an editing ask is not a question
     effective_web_search, forced_tool = search_plan(
         payload.web_search,
         _ask_of(content) if report_service.edits_given_text(content) else content)
@@ -4179,8 +4179,7 @@ async def send_message(
     ):
         # Auto isn't renewed consent for an explicitly offline question
         effective_web_search, forced_tool = False, None
-    # the ask, not the material pasted under it, decides (r8 QMX A02-T2: a made-up press
-    # release forced a search)
+    # the ask, not the material pasted under it, decides
     fresh_fact = published is None and (freshness.current_fact_required(_ask_of(content)) or (
         fresh_followup_index is not None
         and freshness.current_fact_required(history[fresh_followup_index].content)
@@ -4193,7 +4192,7 @@ async def send_message(
         forced_tool = "web_search"
     earlier_asks = [m.content for m in history if m.role is Role.user]
     #: the ask without the material pasted under it: a 「재정 진단」 in a pasted press release
-    #: makes no medical question (r7 A02-T2)
+    #: makes no medical question
     asked = _ask_of(content)
     #: why the first search is forced though no current-fact wording asked for it
     #: (a hotline, a tax rule, a rate, advice): `exact_facts`, every model alike
@@ -4311,8 +4310,7 @@ async def send_message(
     if _material_only_turn(session, payload, forced_tool, content, workspace,
                            published=published is not None):
         # the person gave the material (pasted, attached or marked made up) and asked for
-        # nothing to be looked up: no automatic search, every model alike (r8 A02-T2, A12-T2,
-        # A16-T2: searches for a made-up press release and product)
+        # nothing to be looked up: no automatic search, every model alike
         effective_web_search = web_search_auto = False
         candidate_tools = [t for t in candidate_tools if t.name != "web_search"]
         strict_tools = [t for t in strict_tools if t.name != "web_search"]
@@ -5085,8 +5083,7 @@ async def send_message(
                     context_steps=context_steps,
                     outline_model=outline_model,
                     # no network on strict-local; on 「auto」 a talk built from the person's own
-                    # material looks nothing up (r8 A09-T1: 2–19 searches beside a given
-                    # abstract and results table)
+                    # material looks nothing up
                     web_search=effective_web_search and not strict_local and not (
                         payload.web_search == "auto"
                         and report_service.given_material_suffices(
@@ -5178,7 +5175,7 @@ async def send_message(
             # a follow-up forced by `exact_facts` leans on earlier turns: the model plans it
             preset_call = (
                 "web_search", {
-                    # the question, not a role-play setup around it (r8 P14)
+                    # the question, not a role-play setup around it
                     "query": search_query(search_subject(lookup_content),
                                           prefer_primary=fresh_fact),
                     **search_hints(lookup_content),
@@ -5198,8 +5195,7 @@ async def send_message(
     if source_fetch is not None and preset_call is None and (
             forced_tool is None or (forced_tool == "web_search" and exact_reason)):
         # the link's content is the turn's material: read first; a search forced by the topic
-        # alone (「금리」 → financial) stays offered, not forced (r5 A08-T2: three searches and
-        # the transcript never fetched)
+        # alone (「금리」 → financial) stays offered, not forced
         preset_call = source_fetch
         forced_tool = None
     elif given_links and source_fetch is None:
@@ -5232,7 +5228,7 @@ async def send_message(
         and not routed_down
         and not calculation_required
         and not tables
-        # every tier: r7 P38 (all three strong models) gained ready-to-send detail from it
+        # every tier, strong models included
         and answer_plan.wanted(content)
     ):
         plan_model, plan_key = model["id"], api_key
@@ -5330,7 +5326,7 @@ async def send_message(
                     if calculation_required and preflight_tool == "calculate" else None
                 ),
                 # an answer the writer left empty or only announced: the other local model
-                # writes it once more (r5 P07, P05)
+                # writes it once more
                 rescue=await _rescue_model(
                     user=user, catalogue=catalogue_models, writer=model,
                     strict_local=strict_local, outline=outline_model),

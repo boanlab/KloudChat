@@ -1,8 +1,4 @@
-"""Round-2 R2W-04: a code turn's answer keeps the value each printed 「label = value」 pair
-names (「RR TQ2 avg wait=5.25 avg resp=4.75」 is two values, not one), leaves signed and
-percent figures alone, says its corrections as a step rather than a footer, never narrates a
-code tool's failure, and a CPU scheduling exercise is read against the textbook run of the
-request's own process table (sc/a08_calc, sc/n08_ts)."""
+"""Code-turn answers keeping printed 「label = value」 pairs and the textbook schedule."""
 
 from __future__ import annotations
 

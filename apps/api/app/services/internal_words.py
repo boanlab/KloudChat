@@ -31,7 +31,7 @@ TERMS = re.compile(
 DOCUMENT_TERMS = re.compile(
     TERMS.pattern
     + r"|코드(?:가|로)\s{0,2}(?:계산|풀|해석)|\(\s{0,2}코드\s{0,2}계산[^()\n]{0,24}\)|\(코드\)"
-    # 「코드에서 확정된 금액」 (r5 A04-T1)
+    # 「코드에서 확정된 금액」
     r"|코드(?:에서|가|로|를\s{0,2}통해)\s{0,2}(?:확정|산출|정해|정한|고정)"
     r"|코드\s{0,2}계산"
 )
@@ -70,7 +70,7 @@ def scrub(text: str, *, document: bool = True) -> str:
     for line in text.split("\n"):
         stripped = line.lstrip()
         if stripped.startswith("```"):
-            # a callout or kpi box is prose the reader sees (r5 A04-T1)
+            # a callout or kpi box is prose the reader sees
             fence = "" if fence else (
                 "prose" if stripped[3:].strip().lower() in ("callout", "kpi") else "code")
             out.append(line)
@@ -92,7 +92,7 @@ def scrub(text: str, *, document: bool = True) -> str:
     return re.sub(r"\n{3,}", "\n\n", text)
 
 
-#: tool/script reports copied into the answer (skills g2–g4)
+#: tool/script reports copied into the answer
 TOOL_REPORT = re.compile(
     r"`(?:block|check|info|pass|lost|added|risky|format_changed)`"
     r"|(?<![A-Za-z_])(?:block|check|info)\s{0,2}\d{1,4}\s{0,2}건"
@@ -114,11 +114,10 @@ TOOL_REPORT = re.compile(
     r"|(?<![\w/])[a-z_]{2,20}\.py(?![\w])"
     r"|(?<![A-Za-z])(?:preserve|proof|scan|sources|claims|frame)\s{0,2}"
     r"(?:검사|점검|결과|스크립트)"
-    # a check's findings named by its verdict word (r3 A12 T1: 「두 check는 …」, A13 T1:
-    # 「차단(block) 표현은 0건」)
+    # a check's findings named by its verdict word (「두 check는 …」, 「차단(block) 표현은 0건」)
     r"|(?<![A-Za-z_])(?:두|세|네|이|그|이번)\s{1,2}(?:check|block)(?:는|은|가|를|도|의)?(?![A-Za-z])"
     r"|\(\s{0,2}(?:block|check)\s{0,2}\)\s{0,2}표현"
-    # how the values were made (A13 T2: 「코드로 계산한 출력값」 「코드 출력 그대로」)
+    # how the values were made (「코드로 계산한 출력값」 「코드 출력 그대로」)
     r"|코드로\s?계산한\s?출력값|코드\s?출력\s?그대로|계산\s?도구로\s?(?:구한|계산한)"
 )
 #: a table row reporting a check's verdict count (「| CTA 2건 | check 2건 (…) |」)
@@ -171,7 +170,7 @@ def strip_reports(text: str) -> str:
 
 #: writer apologising for its own tool call
 TOOL_APOLOGY = re.compile(
-    # any particle after the tool (r7 P02 「날씨 도구는 잘못 호출됐네요.」)
+    # any particle after the tool (「날씨 도구는 잘못 호출됐네요.」)
     r"(?:도구|툴|tool|함수)(?:를|을|는|은|가|이|도)?\s{0,2}잘못\s{0,2}(?:호출|사용|실행|불러)"
     # a code tool's run told by its name: 「직전 `run_code`는 … syntax error로 실패」
     r"|`?(?<![A-Za-z_])(?:run_code|execute_code|run_skill_script)(?![A-Za-z_])`?", re.I)
@@ -250,7 +249,7 @@ def has_tool_call(text: str) -> bool:
 
 
 #: a tool call in a model's own call template, written into the text instead of sent as a
-#: call (r6 P16: GLM's 「<tool_call>web_search<arg_key>query</arg_key><arg_value>…」): Qwen·GLM
+#: call (GLM's 「<tool_call>web_search<arg_key>query</arg_key><arg_value>…」): Qwen·GLM
 #: 「<tool_call>…</tool_call>」, 「<|tool_call|>…」, 「<function_call>…」, DeepSeek's
 #: 「<｜tool▁calls▁begin｜>…<｜tool▁calls▁end｜>」 and 「<function=name>…</function>」; an
 #: unclosed one runs to the end of the text
@@ -576,8 +575,8 @@ _CHECK_REPLY = re.compile(
 
 
 def strip_rewrite_preface(new: str, before: str) -> str:
-    """A check rewrite without the paragraphs it put above the answer to answer the check
-    (r5 A12-T2·A15-T2): paragraphs before the first one the answer had, that the answer
+    """A check rewrite without the paragraphs it put above the answer to answer the check:
+    paragraphs before the first one the answer had, that the answer
     did not have and that talk about the check. Never down to nothing."""
     if not new or not before:
         return new
@@ -657,7 +656,7 @@ _KO_NOTE = re.compile(
     r"섹션의\s?(?:초안|범위|영역)|섹션은\s[^\n]{0,80}?영역입니다"
     r"|(?:제공된|주어진)\s?자료를\s?(?:먼저\s?)?(?:분석|검토|확인)하여[^\n]{0,160}?하겠습니다"
     r"|요청된\s?형식\s?\("
-    # an instruction to the writer copied into the text (r3 A09 T1 notes:
+    # an instruction to the writer copied into the text:
     # 「수정: 근거 없는 수치를 「[수치]」 등으로 비워 두고, 요청의 값을 채워 넣어 주세요.」)
     r"|수정\s?[:：][^\n]{0,200}?(?:비워\s?두|채워\s?넣|바꿔\s?주|고쳐\s?주|빼\s?주)"
     # a check's mark explained (「확인 전까지는 「확인 필요」 상태로 남겨둡니다」)
@@ -668,14 +667,14 @@ _KO_NOTE = re.compile(
 #: the writer's account of its own work
 _DOC_NOTE = re.compile(
     r"채워\s?넣어\s?주(?:세요|십시오)"
-    # what it left out (r3 A09 T1: 「96퍼센트와 33퍼센트는 자료에 근거가 없어 … 쓰지 않습니다」)
+    # what it left out (「96퍼센트와 33퍼센트는 자료에 근거가 없어 … 쓰지 않습니다」)
     r"|자료에\s?근거가\s?없어[^\n.]{0,60}?(?:쓰지\s?않|적지\s?않|넣지\s?않|뺐|뺍니다|생략)"
-    # why a part is not there (r9 A01-T2: 「자료에 사전 배포 목록이 없어 별도의 표를 만들지
+    # why a part is not there (「자료에 사전 배포 목록이 없어 별도의 표를 만들지
     # 않습니다」, the template's rule for an empty section told to the reader)
     r"|자료에\s?[^\n.]{0,40}?(?:없어|없으므로|없기\s?때문에)\s?[^\n.]{0,40}?"
     r"(?:표|절|열|칸|항목|목록|섹션)[을를은는]?\s?(?:따로\s?|별도로\s?)?"
     r"(?:만들지|두지|넣지|싣지|쓰지|적지|작성하지)\s?(?:않습니다|않았습니다|않음)"
-    # how the values were made (A09 T2: 「여러 수치와 수식은 계산 도구로 구한 결과입니다」)
+    # how the values were made (「여러 수치와 수식은 계산 도구로 구한 결과입니다」)
     r"|계산\s?도구로\s?(?:구한|계산한|얻은)|코드로\s?계산한\s?출력값|코드\s?출력\s?그대로")
 
 
@@ -704,28 +703,28 @@ _CHECK_RESULT = re.compile(
     r"[^\n]{0,80}?(?:0\s?건|없습니다|없고|맞습니다|맞고|일치합니다|일치하고|통과)"
     r"|(?:요일|날짜)[^\n.]{0,60}?(?:실제\s?)?달력(?:과|이|와)\s?(?:모두\s?)?일치합니다"
     r"|차단\s?(?:\(block\)\s?)?(?:항목|값|표현|사항)\S{0,2}\s?\d{1,3}\s?건"
-    # a script's coverage told as a sentence (r8 A16-T1 「항목 9개 중 노트 7 · 뺌 2 · 빠짐 0,
-    # 점검 차단 사항 0건…입니다」, A16-T2 「두 문서 모두 항목 7개 대비 빠짐 0, 차단 0으로 검증을
+    # a script's coverage told as a sentence (「항목 9개 중 노트 7 · 뺌 2 · 빠짐 0,
+    # 점검 차단 사항 0건…입니다」, 「두 문서 모두 항목 7개 대비 빠짐 0, 차단 0으로 검증을
     # 마쳤습니다」)
     r"|\d{1,3}\s?개\s?(?:중|대비)[^\n.]{0,60}?(?:빠짐|뺌|누락|차단)\s?\d"
     r"|(?:빠짐|뺌|누락|차단)\s?\d{1,3}\s?(?:건|개)?\s?(?:으로|이고|이며)?\s?(?:검증|점검|검수)"
     r"(?:을|를)?\s?마쳤"
-    # a script's count told bare (r8 A12-T1 「block 0입니다.」)
+    # a script's count told bare (「block 0입니다.」)
     r"|^\W{0,4}(?:block|check)\s?\d{1,3}\s?(?:건|개)?\s?(?:입니다|이고|이며|,)"
-    # a script's verdict by its own words (r7 A15-T1 「점검 결과: … check 0 block …」)
+    # a script's verdict by its own words (「점검 결과: … check 0 block …」)
     r"|(?<![A-Za-z])(?:check|claims|scan)\s?\d{1,3}\s?block"
-    # a check told as done (r7 A02-T1 「근거 대조 점검을 마쳤고, 메모에 없는 수치·날짜는
+    # a check told as done (「근거 대조 점검을 마쳤고, 메모에 없는 수치·날짜는
     # 없습니다.」)
     r"|(?:근거\s?대조|출처\s?점검|카피\s?점검|자체\s?점검|검산|대조)\s?(?:점검)?\s?(?:을|를)?\s?마쳤"
-    # a length the writer measured on its own copy (r7 A12-T2 「…는 18자로 한도 안입니다.」)
+    # a length the writer measured on its own copy (「…는 18자로 한도 안입니다.」)
     r"|\d{1,4}\s?자(?:로|라서?)?\s?(?:한도|제한)\s?(?:안|내|이내)(?:입니다|이고|예요)"
-    # a weekday the writer checked (r7 A16-T2 「2026-11-04는 수요일로 확인됐습니다.」)
+    # a weekday the writer checked (「2026-11-04는 수요일로 확인됐습니다.」)
     r"|(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\s?월\s?\d{1,2}\s?일)(?:\s?\([월화수목금토일]\))?(?:은|는)"
     r"\s?[월화수목금토일]요일(?:로|임이|인\s?것으로)\s?확인(?:됐|되었|했)"
     r"|사용자가\s?(?:준|주신|적은|말한)\s?(?:요일|날짜)[^\n.]{0,20}?(?:과|와)\s?(?:모두\s?)?일치합니다")
-#: the writer announcing its next piece of work before the answer starts (r7 A16-T2 「이제 두
-#: 문서를 작성합니다.」, A16-T1 「두 버전으로 작성합니다.」, A13-T1 「이제 소재를 정리해
-#: 드리겠습니다.」, A12-T2 「최종 확정된 25개입니다.」): dropped only ahead of the first
+#: the writer announcing its next piece of work before the answer starts (「이제 두
+#: 문서를 작성합니다.」, 「두 버전으로 작성합니다.」, 「이제 소재를 정리해
+#: 드리겠습니다.」, 「최종 확정된 25개입니다.」): dropped only ahead of the first
 #: content line
 _OPENING_NARRATION = re.compile(
     r"^(?:이제|먼저|그럼|그러면|바로|자,)?\s?[^\n.?!]{0,30}?(?:작성합니다|작성하겠습니다|작성해\s?드리겠습니다"
@@ -767,7 +766,7 @@ def _latin_share(text: str) -> float:
 
 def _english_note(paragraph: str, *, opening: bool = False) -> bool:
     """`opening`: the answer's first paragraph, ahead of Korean text — there a first-person
-    plan of the work is a note even without naming the task (r8 P05 flash: 「I need to design
+    plan of the work is a note even without naming the task (「I need to design
     a vegetarian meal for 2 servings … so I'm thinking through …, then calculating …」)."""
     if not (len(_LATIN.findall(paragraph)) >= 20 and _latin_share(paragraph) >= 0.7
             and _EN_NOTE_OPEN.match(paragraph)):
@@ -782,7 +781,7 @@ _EN_NOTE_PLAN = re.compile(
     r"\b(?:I'm\s(?:thinking|going\sto|planning|considering)|thinking\sthrough"
     r"|I(?:'ll|\swill)\s(?:start|first|now|then|calculate|compute|check|draft|write|structure)"
     r"|make\ssure\sit|then\s(?:calculat|comput|check|verify|draft|writ)|let\sme)", re.I)
-#: an English answer's opening line narrating a tool step (r8 P53 flash: 「Let me re-run with a
+#: an English answer's opening line narrating a tool step (「Let me re-run with a
 #: fixed reference date so the 90-day window is deterministic and the edge cases actually
 #: show.」): one sentence, ahead of the answer
 _EN_TOOL_STEP = re.compile(
@@ -912,9 +911,9 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
     return re.sub(r"(?:\n\s*(?:-{3,}|\*{3,}|_{3,})\s*)+$", "", cleaned).strip("\n")
 
 
-#: a sentence about the work between tool calls (r8 A12-T2 「…스크립트로 각도별 배분을
-#: 받겠습니다.」「각도별 배분이 나왔습니다.」, A14-T1 「점검 통과했습니다.」, A06-T1 「수치를 다시
-#: 확인했습니다.」 「…로 교체해 답을 다시 씁니다.」, A02-T2 「(검색은 최신 사실 확인용이었고 …)」)
+#: a sentence about the work between tool calls (「…스크립트로 각도별 배분을
+#: 받겠습니다.」「각도별 배분이 나왔습니다.」, 「점검 통과했습니다.」, 「수치를 다시
+#: 확인했습니다.」 「…로 교체해 답을 다시 씁니다.」, 「(검색은 최신 사실 확인용이었고 …)」)
 _WORK_SENTENCE = re.compile(
     r"(?:하겠습니다|겠습니다|할게요|볼게요|받겠습니다|드릴게요)[.!…]?\)?$"
     r"|(?:확인|점검|검증|검산|계산|재계산|실행|검색|조사|분류|수정|교체|반영|통과|완료|확정|파악|정리)"
@@ -961,8 +960,8 @@ _ITEM_MARK = re.compile(r"^\s{0,8}(?:[-*+•·]|\d{1,3}[.)]|[□○◦▪■●�
 
 
 def cut_mid_sentence(text: str, *, min_chars: int = 400) -> bool:
-    """Whether a long answer or section stops in the middle of its last sentence (r8 A02-T2:
-    「○ 2027년 3월」 after items ending 「…배분함」; A01-T1: 「이수진 차장이 온라인 동시 송출」).
+    """Whether a long answer or section stops in the middle of its last sentence
+    (「○ 2027년 3월」 after items ending 「…배분함」; 「이수진 차장이 온라인 동시 송출」).
     A table, heading, fence, label line (「출처: …」) or link ends whole; a list item counts as
     cut only when the items above it end in sentence endings and it does not."""
     body = (text or "").rstrip()
@@ -1009,7 +1008,7 @@ _KO_WAIT = re.compile(r"^(?:잠시만?|조금만)\s?기다려\s?주(?:세요|십
 
 def is_intent_only(text: str, *, request: str = "") -> bool:
     """Whether a Korean answer is only a line or two saying the work is about to be done
-    (r3 A11 T1: 「K-water 개요·조직·재무 … 공개 자료로 확인하겠습니다.」), no deliverable."""
+    (「K-water 개요·조직·재무 … 공개 자료로 확인하겠습니다.」), no deliverable."""
     body = (text or "").strip()
     if not body or len(body) > 300 or _latin_share(request or body) >= 0.5:
         return False
@@ -1033,7 +1032,7 @@ _EN_ANNOUNCE = re.compile(
 
 def is_announcement(text: str) -> bool:
     """Whether a short reply, in any language asked for, only announces work still to do
-    (r5 P05: 「I have enough verified data. Let me compute the recipe's calorie and
+    (「I have enough verified data. Let me compute the recipe's calorie and
     macronutrient totals precisely.」 was the whole answer): no list, table or heading, at
     most three sentences, the last one an announcement, almost no Hangul."""
     body = (text or "").strip()

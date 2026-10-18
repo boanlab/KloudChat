@@ -44,7 +44,6 @@ class Plan:
     back: set[int] = field(default_factory=set)  # back-edge indices
     icons: bool = True  # icons only when they cost no text size
     cell: float = 0.0
-    smallest: int = 0  # smallest box text (pt)
 
 
 def applies(graph: Graph) -> bool:
@@ -267,7 +266,7 @@ def _place(
     ]
     return Plan(rows=rows, placed=placed, width=used_w, height=height,
                 min_font=min(b - f for b, f in zip(bare, floors, strict=True)),
-                back=back, icons=icons, cell=cell, smallest=min(bare))
+                back=back, icons=icons, cell=cell)
 
 
 def plan(graph: Graph, width: float, height: float | None = None) -> Plan | None:

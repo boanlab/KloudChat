@@ -1,7 +1,4 @@
-"""Default 회의록 path (verify2 N7, N8, Q16): stacked action tables stay two tables, a
-combined 「담당·기한」 column is not blanked, 「미정(사유)」 keeps the reason out of the owner
-cell, 「다음 회의 때」 is the next meeting's date the memo gives, and today's date is no
-deadline."""
+"""Default minutes path: action tables, owner and deadline cells kept through repair."""
 
 import datetime as dt
 

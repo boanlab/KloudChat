@@ -149,7 +149,7 @@ test.describe('슬라이드 패널', () => {
     await page.keyboard.press('Escape')
 
     // Editing: the four editing tabs fit, End reaches the last.
-    await ribbonTab(page, '디자인')
+    await ribbonTab(page, '테마')
     const menu = panel.getByRole('tablist', { name: '슬라이드 메뉴' })
     for (const tab of ['글자', '삽입', '디자인', '검토']) await expect(menu.getByRole('tab', { name: tab })).toBeVisible()
     await menu.getByRole('tab', { name: '디자인' }).focus()
@@ -160,7 +160,7 @@ test.describe('슬라이드 패널', () => {
     expect(lastTabBox?.x).toBeGreaterThanOrEqual(0)
     expect((lastTabBox?.x ?? 0) + (lastTabBox?.width ?? 0)).toBeLessThanOrEqual(320)
 
-    await ribbonTab(page, '디자인')
+    await ribbonTab(page, '테마')
     await panel.getByRole('button', { name: '슬라이드 디자인 고르기' }).click()
     const designMenu = page.getByRole('menu')
     await expect(designMenu).toBeVisible()
@@ -298,14 +298,14 @@ test.describe('슬라이드 패널', () => {
     const panel = await openPreview(page, title)
     await expect(panel.getByLabel('빠른 도구').getByRole('button', { name: '편집', exact: true })).toHaveCount(1)
     await expect(panel.getByLabel('즐겨찾기')).toHaveCount(0)
-    await ribbonTab(page, '편집')
+    await ribbonTab(page, '글자')
     await expect(panel.getByLabel('슬라이드 편집 도구')).toBeVisible()
   })
 
   test('슬라이드 변경을 저장하지 않고 닫으려면 먼저 확인한다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await ribbonTab(page, '편집')
+    await ribbonTab(page, '글자')
     await panel.getByLabel('슬라이드 텍스트').fill('아직 저장하지 않은 슬라이드 본문')
     await panel.getByLabel('발표 노트').fill('아직 저장하지 않은 발표 노트')
     await panel.getByLabel('빠른 도구').getByRole('button', { name: '닫기' }).click()
@@ -321,7 +321,7 @@ test.describe('슬라이드 패널', () => {
   test('슬라이드 편집 중 다른 저장을 덮어쓰지 않고 최신본으로 복구한다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await ribbonTab(page, '편집')
+    await ribbonTab(page, '글자')
     await panel.getByLabel('슬라이드 텍스트').fill('로컬 제목\n로컬 편집 내용')
 
     await page.evaluate(async ([fn, id]) => {
@@ -352,7 +352,7 @@ test.describe('슬라이드 패널', () => {
   test('Ctrl+S로 슬라이드 편집을 저장한다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await ribbonTab(page, '편집')
+    await ribbonTab(page, '글자')
     const source = panel.getByLabel('슬라이드 텍스트')
     await source.fill('키보드 저장\nCtrl+S로 저장한 슬라이드')
     expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(false)
@@ -375,7 +375,7 @@ test.describe('슬라이드 패널', () => {
     }), [AS_USER, deckId, changed, before.version] as const)
 
     const panel = await openPreview(page, title)
-    await ribbonTab(page, '편집')
+    await ribbonTab(page, '글자')
     await panel.getByLabel('슬라이드 텍스트').fill('저장하지 않은 슬라이드 편집')
     await ribbonTab(page, '검토')
     await panel.getByRole('button', { name: /버전 기록/ }).click()
@@ -391,8 +391,8 @@ test.describe('슬라이드 패널', () => {
     await expect(panel.getByLabel('슬라이드 텍스트')).toHaveCount(0)
     await expect(panel.getByText('복원하면 사라질 슬라이드 문장')).toHaveCount(0)
 
-    await ribbonTab(page, '홈')
-    await ribbonTab(page, '편집')
+    await ribbonTab(page, '테마')
+    await ribbonTab(page, '글자')
     await panel.getByLabel('슬라이드 텍스트').fill('복원 뒤 재저장\n정상 저장 확인')
     await panel.getByLabel('빠른 도구').getByRole('button', { name: '저장' }).click()
     await expect(panel.getByLabel('슬라이드 텍스트')).toHaveCount(0)
@@ -813,7 +813,7 @@ test.describe('보고서 패널', () => {
       expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320)
     }
     // Editing: the tab row scrolls rather than wraps, and stays one row.
-    await ribbonTab(page, '디자인')
+    await ribbonTab(page, '테마')
     const webMenu = panel.getByRole('tablist', { name: '보고서 메뉴' })
     await expect(webMenu).toHaveCSS('display', 'flex')
     await expect(webMenu).toHaveCSS('overflow-x', 'auto')
@@ -884,7 +884,7 @@ test.describe('보고서 패널', () => {
     await panel.getByLabel('빠른 도구').getByRole('button', { name: '편집', exact: true }).click()
     await expect(panel.getByLabel('보고서 편집 페이지')).toBeVisible()
     await expect(panel.getByRole('button', { name: '페이지 설정' })).toHaveCount(0)
-    await ribbonTab(page, '레이아웃')
+    await ribbonTab(page, '테마')
     await panel.getByRole('button', { name: '페이지 설정' }).click()
     await expect(panel.getByLabel('페이지 설정 도구')).toBeVisible()
   })
@@ -940,7 +940,7 @@ test.describe('보고서 패널', () => {
     await expect(panel.getByRole('button', { name: '페이지뷰' })).toHaveCount(1)
     await ribbonTab(page, '검토')
     await expect(panel.getByRole('button', { name: /출처 2/ })).toHaveCount(1)
-    await ribbonTab(page, '레이아웃')
+    await ribbonTab(page, '테마')
     await expect(panel.getByRole('button', { name: '페이지 설정' })).toHaveCount(1)
     await expect(panel.getByRole('button', { name: '내려받기' })).toHaveCount(1)
     await ribbonTab(page, '검토')

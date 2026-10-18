@@ -1,11 +1,4 @@
-"""An agent's kept-on skills reach every writing surface they are meant for.
-
-A 날짜 계산 or 견적 계산 kept on in a report agent used to be dropped without a word (its
-`kinds` named only chat), and 개조식 보고 in a chat agent likewise. The shared calculation,
-research and writing skills now name every surface they help on; on a document they bring
-the server step that does their work (pre-pass, code check, deeper search), and saving an
-agent says which of its skills still apply on none of its surfaces.
-"""
+"""Kept-on agent skills on every writing surface they are meant for."""
 
 from __future__ import annotations
 

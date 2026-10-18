@@ -45,7 +45,7 @@ const STATE_TONE: Record<ChannelState, 'success' | 'accent' | 'neutral' | 'warn'
 const day = (iso: string | null | undefined) => (iso ? formatDate(iso) : '')
 
 /** Copies text, confirms briefly. */
-function CopyButton({ text, label }: { text: string; label?: string }) {
+function CopyButton({ text }: { text: string }) {
   const t = useT()
   const [copied, setCopied] = useState(false)
   return (
@@ -58,7 +58,7 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
       }}
     >
       <Copy size={13} />
-      {copied ? t('복사됨') : (label ?? t('복사'))}
+      {copied ? t('복사됨') : t('복사')}
     </Button>
   )
 }

@@ -1,6 +1,4 @@
-"""A decision report's verdict follows the code's must-have matrix (verify2 N6, R-03 GPU): the
-first-year cost settles an annual-limit must the reading left blank, the opening line's
-recommendation is checked too, and a recommendation the repair did not fix is replaced by code."""
+"""A decision report's verdict following the code's must-have matrix."""
 
 from app.services import report_checks, verify
 

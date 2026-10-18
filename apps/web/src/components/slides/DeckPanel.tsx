@@ -67,7 +67,7 @@ import { copyText } from '@/lib/clipboard'
 import { fontFamilyFor } from '@/components/report/docType'
 
 /** Whether a slide has content in any field; mirrors `deck.has_content` on the server. */
-export function hasContent(slide: Slide): boolean {
+function hasContent(slide: Slide): boolean {
   if (STRUCTURAL.includes(slide.layout)) return true
   return Boolean(
     slide.bullets?.length ||

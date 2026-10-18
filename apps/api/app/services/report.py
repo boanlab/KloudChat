@@ -498,7 +498,7 @@ _FROM_GIVEN = re.compile(
     r"(?:자료|내용|메모|초안|초록|결과|목록|기록|정보|표|데이터|보도\s{0,2}자료|발표문|공지|문서|원고)"
     r"\s{0,2}(?:만으로|만|으로|로|대로|를|을|에서|기반으로|바탕으로|참고해)")
 #: material the person marks as made up or complete: 「(가상)」, 「아래 자료가 전부임」 — the web
-#: holds nothing about it (r8 A12-T2, A13-T2, A16-T2: searches for a made-up product)
+#: holds nothing about it
 _SELF_CONTAINED = re.compile(
     r"\(\s{0,2}가상|가상\s{0,2}[)—-]|가상\s{0,2}(?:회사|제품|자료|기업|서비스|사례)|"
     r"(?:아래|위)(?:\s{0,2}(?:자료|내용))?(?:가|이)\s{0,2}전부")
@@ -506,10 +506,8 @@ _SELF_CONTAINED = re.compile(
 
 def given_material_suffices(request: str, *, has_files: bool = False) -> bool:
     """The ask works on material the person gives (pasted under it, attached, or marked made
-    up) and names nothing to look up: an automatic web search adds only unrelated pages (r8
-    A09-T1: 19 searches for a talk built from its own abstract and results; A02-T2: a made-up
-    press release checked on the web). An explicit 「조사해서」, 「찾아봐」, 「최신」 still
-    searches."""
+    up) and names nothing to look up: an automatic web search adds only unrelated pages. An
+    explicit 「조사해서」, 「찾아봐」, 「최신」 still searches."""
     if edits_given_text(request, has_files=has_files):
         # the ask alone is read: 「만족도 조사」 in the text to polish asks for nothing
         return True
@@ -534,8 +532,8 @@ _EDITS_TEXT = re.compile(
 def edit_ask(request: str, *, has_files: bool = False) -> str:
     """The ask, when it proofreads or polishes the text that comes with it (the first
     paragraph over pasted text, or the message over a file) and names nothing to look up;
-    else "". That text is the whole job and nothing in it is a question (r10 SK-copyedit-2:
-    「아직」 in a pasted report started four unrelated searches)."""
+    else "". That text is the whole job and nothing in it is a question (「아직」 in a pasted
+    report is no search)."""
     instruction = instruction_part(request or "")
     head, gap, rest = instruction.strip().partition("\n\n")
     ask = head if gap and rest.strip() else instruction
@@ -613,8 +611,8 @@ def _genre_rule(request: str, fmt: doc_formats.DocFormat | None = None,
     for instruction in dict.fromkeys((lead_instruction(request), instruction_part(request))):
         for pattern, rule, unless in _GENRES:
             if pattern.search(instruction) and not (unless and unless.search(instruction)):
-                # the request's own parts come first (r8 A07: a genre's closing 「시행일·문의처」
-                # over a report that named its sections)
+                # the request's own parts come first (no genre closing 「시행일·문의처」
+                # over a report that names its sections)
                 return f"{rule} {GENRE_YIELD}" if asked_form.asked(request) else rule
     return ""
 
@@ -843,7 +841,7 @@ def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = No
                         if k < len(cells) and _OWNER_HEADER.search(
                                 header[k] if k < len(header) else "") \
                                 and report_checks._ANY_OWNER.search(cells[k].strip()):
-                            # 「전원」 「각 담당자」: everyone, no one invented (r7 A01-T1)
+                            # 「전원」 「각 담당자」: everyone, no one invented
                             continue
                         if k < len(cells) and not _cell_sourced(cells[k], compact, row, dates):
                             cells[k] = placeholders.for_header(header[k] if k < len(header) else "")
@@ -893,8 +891,7 @@ def local_today() -> dt.date:
 def _facts_line(request: str, sources: list[dict[str, Any]], material: str = "") -> str:
     """Closed list of numbers the document may use: the request's, the attachments', the sources'."""
     found: list[str] = []
-    # attachments too: figures only a meeting transcript holds were told 「none」 and left as
-    # 「[사용자 수]」 blanks (demo R3, R4)
+    # attachments too: figures only a meeting transcript holds are still allowed
     for text in [request, material, *[str(s.get("quote") or "") for s in sources]]:
         for match in _NUMBER.finditer(text):
             token = re.sub(r"\s+", "", match.group(0))
@@ -993,7 +990,7 @@ def derived_values(text: str) -> list[str]:
         for h in horizons:
             lines.append(f"{name}{_won(value)} × {h}개월 = {_won(value * h)}")
     if added and monthly:
-        base_label, base = monthly[0]
+        _, base = monthly[0]
         for a in added:
             for h in horizons:
                 lines.append(
@@ -1234,8 +1231,7 @@ async def _complete(
         payload = response.json()
 
     # reasoning model may exhaust the ceiling thinking; asked twice, the second time with
-    # what the first re-ask thought on top (r7 A04-T2: GLM-5.3 thought through 3,100 tokens
-    # too and every section failed 「empty section」)
+    # what the first re-ask thought on top
     asked = thinking.room(model, max_tokens)
     for _ in range(2):
         bigger = min(thinking.starved(payload, asked), _MOST_TOKENS)
@@ -1407,7 +1403,7 @@ _TRAILING_TABLE_CAPTION = re.compile(
 def repair_pipe_tables(body: str) -> str:
     """Bare 「a | b | c」 lines (2+, equal cells) as a Markdown table; a half-formed table (a
     bare header and rule, a row ending in a bare 「|」) rebuilt whole first, so its first row
-    never becomes the header (r9 LFLF R3-A01-T1)."""
+    never becomes the header."""
     lines = table_mend.rebuild(body or "").split("\n")
     out: list[str] = []
     i = 0
@@ -1566,8 +1562,7 @@ def collapse_repeated_citations(body: str) -> str:
     return "".join(out)
 
 
-#: 「[[그림: kind | caption | body]]」; the body may hold single brackets (「[김도윤: 검수]」, r5
-#: A01-T1 left the whole mark in the minutes)
+#: 「[[그림: kind | caption | body]]」; the body may hold single brackets (「[김도윤: 검수]」)
 _FIGURE_MARK = re.compile(r"\[\[\s*그림\s*[:：]\s*(?P<body>(?:[^\]\n]|\](?!\])){3,900}?)\s*\]\]")
 #: a mark left open to the line's end: taken out, never shown
 _FIGURE_OPEN = re.compile(r"[ \t]*\[\[\s*그림\s*[:：][^\n]*")
@@ -1755,8 +1750,7 @@ _INSTRUCTION = re.compile(r"(?:고쳐|맞춰|답하|써|바로잡|채우|빼|확
 def reader_note(code: str, why: str) -> str:
     """Reader-facing finding text, never the repair prompt nor a judge model's reasoning: a
     model-labelled finding keeps what it found (「「60」은 자료에서 「…」의 값일 수 있다」), not
-    the judge's account of why (r8 L27L A01-T1·A04-T2, L27F·QMX A04-T1: 「(판정: …)」 and
-    the judge's thinking in the step)."""
+    the judge's account of why (「(판정: …)」, the judge's thinking)."""
     if code in report_checks.MODEL_LABELS:
         why = _JUDGE_WHY.sub(r"\1. 확인 필요.", why or "")
     if code == "judged_figure" or _INSTRUCTION.search(why or ""):
@@ -1874,7 +1868,7 @@ def fix_table_formulas(body: str) -> str:
         if formula is None:
             out.append(line)
             continue
-        # 「475만 명 × 2% × 118,800원」: a rate is a hundredth (r3 A10 T2 SOM row)
+        # 「475만 명 × 2% × 118,800원」: a rate is a hundredth
         factors = [None if (a := _amount(part)) is None else a / 100 if "%" in part else a
                    for part in formula.split("×")]
         if not factors or any(f is None for f in factors):
@@ -1939,9 +1933,8 @@ def _power_slip(value: float, against: dict[float, str], near: str) -> int:
 
 def fix_table_magnitudes(sections: list[dict]) -> list[dict]:
     """A table or KPI amount a power of ten off an amount the prose works out (「= N원」)
-    scaled back, with the column it totals (r3 A10 T2 27B: prose SOM 「= 11,286,000,000원
-    ≈ 113억 원」, table 「11,286억 원」 and rows summing to it). An amount the prose also
-    states as written is left alone."""
+    scaled back, with the column it totals (prose 「= 11,286,000,000원 ≈ 113억 원」, table
+    「11,286억 원」). An amount the prose also states as written is left alone."""
     prose = [line for sec in sections for line in str(sec.get("content") or "").split("\n")
              if not line.lstrip().startswith("|")]
     worked = {v: line for line in prose for m in _WORKED.finditer(line) if (v := _won_value(m.group(1)))}
@@ -3018,8 +3011,7 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                         given = below
                         lines[k] = ""
                 # no caption given: the nearest label or heading, else a descriptive section
-                # name, else the number alone; never its column names (「표 1. 항목·내용·비고」,
-                # r5 A03-T2·A07-T1·A01-T1)
+                # name, else the number alone; never its column names (「표 1. 항목·내용·비고」)
                 title = given or next((t for t in (_lead_caption(result), section_name)
                                        if t and t not in used_titles), "")
                 if title:
@@ -3224,7 +3216,7 @@ def _carries_material(request: str) -> bool:
 
 def _results_without_data(request: str, attached: list[str], *, web: bool = False) -> bool:
     """Request needs material nothing attached carries; `web`: search is on this turn, so a
-    research request (「…동향을 조사해서」) has its material coming (r3 A07 T1)."""
+    research request (「…동향을 조사해서」) has its material coming."""
     if any(block.strip() for block in attached) or _carries_material(request):
         return False
     if _MATERIAL.search(request):
@@ -4180,8 +4172,8 @@ def _stems(text: str) -> set[str]:
 
 
 #: test lines: never trimmed (wrong choices repeat numbers)
-#: a formula or a numbered step: never a restatement to trim (r5 A10-T2 lost 「연간 시장 규모(원) =
-#: N(명) × 9,900원 × 12개월 × c」 and its 「2단계」 paragraph)
+#: a formula or a numbered step: never a restatement to trim (「연간 시장 규모(원) =
+#: N(명) × 9,900원 × 12개월 × c」, a 「2단계」 paragraph)
 _WORKED_LINE = re.compile(r"[=×÷]|\d\s?[x*/]\s?\d|(?:^|\s|\()\d{1,2}\s?단계")
 _ASSESSMENT_LINE = re.compile(
     r"[①-⑩]|^\s*(?:\*\*)?(?:서술형\s?)?\d{1,2}\s?[.)번](?:\*\*)?\s|^\s*\*\*서술형|"
@@ -4931,7 +4923,7 @@ def word_count(sections: list[dict]) -> int:
 
 def to_markdown(title: str, sections: list[dict]) -> str:
     """The document as a Markdown file; the app's block fences (callout, kpi, chart …), which a
-    Markdown viewer shows as they stand, written as plain Markdown (r6 A04-T1)."""
+    Markdown viewer shows as they stand, written as plain Markdown."""
     parts = [f"# {title}"]
     for section in sections:
         # untitled lone 「본문」 (공문·안내문): no empty 「## 」

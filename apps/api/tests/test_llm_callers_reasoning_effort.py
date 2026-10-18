@@ -1,5 +1,4 @@
-"""/llm 호출자의 추론 단계: 끌 수 없는 모델에 「끄기」를 보내면 가장 낮은 단계로 바꿔 보내고,
-모델 목록에는 모델마다 받는 단계를 붙인다. 바꿀 것이 없는 요청은 바이트 그대로 간다."""
+"""/llm callers' reasoning effort: lowest supported level for "off", levels in the model list."""
 
 from __future__ import annotations
 

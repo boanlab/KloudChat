@@ -158,8 +158,7 @@ def _items(reply: dict, text: str = "", rows: list[dict] | None = None) -> list[
     seen = {i["text"] for i in found}
     for item in reply.get("items") or []:
         piece = str(item.get("text") or "").strip() if isinstance(item, dict) else ""
-        # a clause of a cell already measured whole is not a piece of its own (r5 A13-T1:
-        # 「11월 신청 시 체험 45일」 out of a 36-character description, measured as one 15/45)
+        # a clause of a cell already measured whole is not a piece of its own
         if piece and not any(piece in cell for cell in seen):
             found.append(item)
     return found
@@ -173,8 +172,7 @@ _LINK = re.compile(r"https?://[^\s)\]>\"'」]+")
 
 def added_facts(new: str, old: str, material: str) -> list[str]:
     """Sites and links a rewrite brought that neither the answer before it nor the material
-    has (r5 A15-T1: asked to fix one claim, the rewrite wrote 「본사와 이천 공장」 and a home
-    page no search had shown); such a rewrite is not kept."""
+    has; such a rewrite is not kept."""
     known = f"{old}\n{material}"
     sites = [m.group(0) for m in _SITE.finditer(new or "") if m.group(1) not in known]
     links = [u.rstrip(".,;:") for u in _LINK.findall(new or "")
@@ -196,8 +194,7 @@ def _rewrite_prompt(text: str, material: str, findings: list[dict], over: list[d
                      f"spaces included; make it {bound} {unit}, keeping its meaning — drop a "
                      "word rather than squeeze, and update any count written beside it.")
     if strong:
-        # a strong writer weighs the notes itself (r7 A12-T1: a feature's everyday use was cut
-        # to 「같은 문서를 여러 명이 함께 고칩니다.」 on a judge's note)
+        # a strong writer weighs the notes itself
         return (
             "Below are the material and your copy. A check noted the items listed under Notes; "
             "a claim note may be wrong. Weigh each claim note against the material: keep the "
@@ -241,9 +238,8 @@ def _cleaned(reply: str) -> str:
     return internal_words.strip_echoed_heading(text)
 
 
-#: what is left after the rewrite is marked, never dropped: a sentence or a row taken out
-#: whole emptied blocks and took facts with it (r5 A12-T1 feature blocks, A15-T1 the mail's
-#: one reason for the company)
+#: what is left after the rewrite is marked, never dropped: removing a whole sentence or row
+#: empties blocks and takes facts with it
 _MARKED = ("drop", "rewrite")
 
 
@@ -269,9 +265,8 @@ def mark_left(text: str, found: list[dict]) -> str:
 def _gate(reply: dict, material: str, *, strong: bool) -> tuple[dict, list[dict]]:
     """The judge's claim notes code may act on (`post_checks.code_reading`, every model
     group): a note whose figures and names the material all holds is no note; for a small
-    writer one code cannot check (no figure, no name) is only marked, never rewritten or cut
-    (r8 L27L A12-T1: the noted clause cut left the empathy sentence hanging; LFLF A15-T1: the
-    mail's reason for the company gone). Returns the reply left and the notes to mark."""
+    writer one code cannot check (no figure, no name) is only marked, never rewritten or cut.
+    Returns the reply left and the notes to mark."""
     notes = [u for u in reply.get("unsupported") or []
              if isinstance(u, dict) and str(u.get("quote") or "").strip()]
     if not notes:
@@ -406,9 +401,9 @@ def _marked_phrase(before: str, after: str, row: str = "") -> str:
 
 def lift_marks(text: str, *, answer: bool = False) -> str:
     """Copy keeps no 「(확인 필요)」: each mark comes out of the text it sits in, and what it
-    was on is listed once below as 「보내기 전 확인」 (r3 A12·A13·A15 T1: marks inside the
-    headline, the CTA and the mail body). `answer`: any answer's end box, 「확인 필요: …」 (a
-    small external writer's, docs/architecture.md "Mechanisms by model group")."""
+    was on is listed once below as 「보내기 전 확인」. `answer`: any answer's end box,
+    「확인 필요: …」 (a small external writer's; docs/architecture.md, "Mechanisms by model
+    group")."""
     if not text or not _MARK.search(text):
         return text
     listed: list[str] = []

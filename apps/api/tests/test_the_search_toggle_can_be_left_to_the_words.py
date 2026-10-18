@@ -1,6 +1,4 @@
-"""The web-search toggle's 「자동」 setting: the web tools are offered, and a first
-search is forced only when the words ask for research or for something that
-changes with time. Weather questions go to the weather tool."""
+"""The web-search toggle's 「자동」 setting: search forced only when the words ask."""
 
 from __future__ import annotations
 

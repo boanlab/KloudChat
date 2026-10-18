@@ -20,7 +20,7 @@ Jobs such as minutes or a bullet-point report are **official skills**. For minut
 - An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.
 - Within the same project, other conversations reference the conclusions that the agent left through **Shared notes**.
 
-There are no built-in agents. What the former ones did (Regulations and procedures, Bullet-style briefing, Compare and decide, Extract and tally, Minutes) is done by official skills of the same names, and the conversations you had with them, the copies you took and the chatbots you published keep working. They no longer show in the lists or as base processes.
+There are no built-in agents. Jobs such as Regulations and procedures, Bullet-style briefing, Compare and decide, Extract and tally and Minutes are done by official skills of the same names. The built-in agents for these jobs do not show in the lists or among the base processes, but conversations with them, copies you took and chatbots published from them keep working.
 
 ## Creating an agent
 
@@ -45,8 +45,8 @@ The enable toggle pauses an agent. Deleting it also deletes its sources, index a
 
 Pick one of three under **How it works** in the create-agent form.
 
-- **Answer directly**: answers in the chat. It makes no file (DOCX, HWPX, PDF); to get a file, choose **Start from a base process** with a base that writes a document. When the name, description or instructions mention Word, DOCX or a file, a **Switch to “Bullet-style briefing (개조식)”** button appears. It switches to that base process and also ticks **Export a file when done** under **Finish** (HWPX, as a 개조식 document, or DOCX or PDF when the instructions name that format).
-- **Start from a base process**: follows the order a former built-in agent (Bullet-style briefing, Minutes, Compare and decide, …) worked in. With the built-in agents gone there is no base process to pick anew; an agent that already started from one keeps it. A new agent does the same job with **Answer directly** plus **Skills kept on** and bundles.
+- **Answer directly**: answers the request right away. An agent that answers in the chat makes no file (DOCX, HWPX, PDF).
+- **Start from a base process**: follows the working order of a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …). No base process can be picked for a new agent; an agent that already started from one keeps it. A new agent does the same job with **Answer directly** plus **Skills kept on** and bundles.
 - **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one "This agent" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order.
 
 ## Bundles
@@ -61,7 +61,7 @@ A bundle groups a few things an agent does before and after writing. Each bundle
 
 - **Get a file**: with **Finish** ticked, a separate **Export a file when done** checkbox shows under it; tick it and pick the format beside it (HWPX for 공문-type documents, else DOCX). The base processes come with Finish ticked and export off. Export works only in a process that writes a document.
 - On the report screen, date and amount calculations, format checks and fix-and-check-again always happen in report writing ("Always done"). The chat screen has no format checks and no export.
-- The former built-in Minutes agent was Prepare + Review + Finish (export off); the **회의록 작성** skill now brings those checks.
+- Base processes are built from the same bundles: Minutes is Prepare + Review + Finish (export off). The **회의록 작성** skill and **Minutes** template carry those checks.
 - **Your own bundles**: **Customize** → **Agents** → **Add** → **Create a bundle**, or **Save this order as a bundle** in a custom order. They appear under Extra work in all your agents; edit and share them from **Manage bundles**.
 - Sharing works like skills (Only me · Everyone). A bundle or custom order that exports files, has another model review or calls another agent reaches others only once an administrator approves it under **Process review**; base processes and built-in bundles are shared at once.
 

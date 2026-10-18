@@ -1,10 +1,4 @@
-"""A report is drawn while it is written in the look it is saved with.
-
-UX audit (eval instance, 「사내 클라우드 보안 점검 결과」): the panel showed 「편집형 / 보라」
-while the sections streamed and switched to 「미니멀 / 먹」 when the document arrived. The
-look was decided only in `report-save`; until then the panel had nothing but its own
-default. Now `approved-plan` announces the same decision before the first section.
-"""
+"""A report's saved look, announced by `approved-plan` before the first section streams."""
 
 from __future__ import annotations
 

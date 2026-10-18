@@ -768,7 +768,7 @@ def tool_free_body(body: str) -> str:
 def _skill_blocks(resolved: list[tuple[Skill, dict]],
                   kind: SessionKind = SessionKind.chat, *, form: str = "") -> list[ContextBlock]:
     """One block per skill; `form` (`asked_form.note`) told with each when the request names
-    its own form, so the skill's frame yields to it (r8 A08, A02-T2, A13-T2)."""
+    its own form, so the skill's frame yields to it."""
     blocks: list[ContextBlock] = []
     for skill, metadata in resolved:
         head = f"# 활성 스킬 — {skill.name}"

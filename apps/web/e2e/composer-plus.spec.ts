@@ -22,7 +22,7 @@ test('「+」 holds the tools; nothing else sits beside the input', async ({ pag
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
 
   expect(await toolNames(page)).toEqual(['파일·사진 첨부', '파일함에서 고르기', '스킬', '웹 검색: 자동', '커넥터 1개', '에이전트'])
-  // The old toolbar buttons are gone, and model comparison with them.
+  // No separate toolbar buttons, and no model comparison.
   for (const gone of ['템플릿 고르기', '스킬', '모델 비교', '도구 더보기', '첨부', '@']) {
     await expect(page.getByRole('button', { name: gone, exact: true })).toHaveCount(0)
   }
@@ -179,7 +179,7 @@ test('home: example requests per surface fill the box and send nothing', async (
 
   await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '슬라이드' }).click()
   await expect(examples.first()).toHaveText('다음 주 회의 전에 돌릴 사내 브리핑 5장')
-  // R4: only what the one shown deck template (사내 브리핑) makes; no hidden deck's talk.
+  // Only what the one shown deck template (사내 브리핑) makes; no hidden deck's talk.
   for (const text of await examples.allTextContents()) expect(text).not.toMatch(/세미나|제안|강의|교육|디펜스|심사/)
   await examples.nth(1).click()
   await expect(input).toHaveValue('프로젝트 결과 보고 15분 발표')

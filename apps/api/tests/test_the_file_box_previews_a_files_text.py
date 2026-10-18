@@ -1,5 +1,4 @@
-"""파일함 미리보기: 그림·PDF가 아닌 파일은 뽑아 둔 글을 보여 준다.
-길면 앞부분만, 남의 파일은 없는 것처럼."""
+"""File box preview of a file's extracted text, cut short and owner-only."""
 
 from __future__ import annotations
 

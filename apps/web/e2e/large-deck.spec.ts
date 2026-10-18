@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, signIn, ribbonTab } from './helpers'
+import { E2E_ADMIN, signIn } from './helpers'
 
 test('60장 덱을 열고 끝까지 탐색해 PPTX와 PDF로 내보낸다', async ({ page }) => {
   test.setTimeout(90_000)

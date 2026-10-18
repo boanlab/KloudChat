@@ -1,6 +1,4 @@
-"""「문의·신고」: a report carries the session only when the reporter agrees, the copy does not
-move when the session does, people see only their own, and administrators work a status flow
-whose every snapshot open is in the audit trail."""
+"""Issue reports: consented session copy, own-only listing, audited admin status flow."""
 
 from __future__ import annotations
 

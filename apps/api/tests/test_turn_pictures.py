@@ -1,7 +1,4 @@
-"""Pictures attached to a turn: which rasters travel, and only strict-local vision models look.
-
-The privacy guard inspects text only, so an image may reach a strict-local model and no other.
-"""
+"""Pictures attached to a turn: which rasters travel, seen only by strict-local vision."""
 
 from __future__ import annotations
 

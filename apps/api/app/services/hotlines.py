@@ -1,15 +1,14 @@
 """Korean crisis lines an answer names, set to the official number by code.
 
-A small writer names the right line with a wrong number (r8 P16 27B light: 「자살예방 및 정신건강
-위기상담: 1599-9195」; the line is 109). The grounding check could only mark it, and the person
-in crisis got the marked wrong number. Here a number written right after a crisis line's name
-is replaced by that line's official number unless the person's text, a file or a search result
-gives it; numbers of other lines (생명의전화 1588-9191 and the public ones) are left alone.
+A small writer can name the right line with a wrong number (「자살예방 및 정신건강 위기상담:
+1599-9195」; the line is 109), which a check could only mark. A number written right after a
+crisis line's name is replaced by that line's official number unless the person's text, a file
+or a search result gives it; numbers of other lines (생명의전화 1588-9191 and the public ones)
+are left alone.
 
 Official numbers (Ministry of Health and Welfare, Ministry of Gender Equality and Family):
-109 자살예방상담전화 (one number since 2024-01-01, replacing 1393 and the others),
-1577-0199 정신건강위기상담전화, 1366 여성긴급전화, 1388 청소년상담전화; 1393 (the old
-자살예방 line) is set to 109.
+109 자살예방상담전화 (the single national line, merging 1393 and the others), 1577-0199
+정신건강위기상담전화, 1366 여성긴급전화, 1388 청소년상담전화; 1393 is set to 109.
 """
 
 from __future__ import annotations

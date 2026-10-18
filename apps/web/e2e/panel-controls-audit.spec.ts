@@ -56,7 +56,7 @@ async function open(page: Page, kind: string, least = 1): Promise<boolean> {
 }
 
 async function ribbon(page: Page, name: string) {
-  // 파일, 보기 and 슬라이드 쇼 became header buttons; the rest are editing tabs behind 「편집」.
+  // 파일, 보기 and 슬라이드 쇼: header buttons; the rest: editing tabs behind 「편집」.
   if (['파일', '보기', '슬라이드 쇼'].includes(name)) return
   const target = ({ 홈: '디자인', 레이아웃: '디자인', 편집: '글자' } as Record<string, string>)[name] ?? name
   const toggle = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first()

@@ -317,7 +317,7 @@ _RETRY_NOISE = re.compile(
 
 def _broader_query(query: str) -> str:
     """One broader query after an empty search: no dates or framing words, at most five
-    words (r8 P19: 「2026년 10월 초 단기 자금 운용 MMF CMA 금리 비교」 → 0 results, three times)."""
+    words."""
     words = re.sub(r"\s+", " ", _RETRY_NOISE.sub(" ", _core_query(query))).strip().split()
     return " ".join(words[-5:]) if words else query
 
@@ -642,7 +642,7 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     if not query:
         return ToolResult(content="오류: query 가 비었습니다.", failed=True)
     kind = str(args.get("kind") or "web")
-    if kind in ("korean_papers", "kci"):  # legacy name
+    if kind in ("korean_papers", "kci"):  # "kci": alias
         return await _korean_papers_search(query)
     if kind not in ("web", *_LANES):
         kind = "web"
@@ -714,8 +714,7 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
         hits = trusted
     hits.sort(key=lambda hit: credibility.tier(hit["url"]) < 2)
     if not hits:
-        # what to do next, as for unrelated results (r7 P31: four empty searches and the
-        # model declined a Fermi estimate it could have worked from what it knows)
+        # what to do next, as for unrelated results: answer from what is known, not refuse
         return ToolResult(
             content=(
                 f"'{query}' 에 대한 검색 결과가 없습니다. 같은 검색을 되풀이하지 말고, 아는 것과 "
@@ -1469,8 +1468,8 @@ _VALUE_LINE = re.compile(r"\d[\d,.]*\s{0,2}(?:%|퍼센트)|(?:기준|목표|적�
 
 
 def _value_line(item: dict, x: str) -> bool:
-    """Whether a mark is a horizontal reference value put on a category (r7 A06-T2: 「적정 75%」
-    drawn as a vertical line at 「해외 단기연수」)."""
+    """Whether a mark is a horizontal reference value put on a category (「적정 75%」 on
+    「해외 단기연수」)."""
     label = str(item.get("label") or "")
     return item.get("y") is not None or bool(_VALUE_LINE.search(label) and not any(
         n in x for n in re.findall(r"\d[\d,.]*", label)))

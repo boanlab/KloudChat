@@ -19,7 +19,7 @@ When you sign in with an administrator account, a **Manage** item appears in the
 ## Order of initial setup
 
 1. **System → Proxy**: Enter the model gateway address and master key, then check the connection. Until this is set, no models are available to use.
-2. **System → Features**: Enable the features you will use and test the connection to each feature integration address (web search, document import, code execution, deep research, speech transcription, material search).
+2. **System → Features**: Enable the features you will use and test the connection to each feature integration address (web search, document import, code execution, deep research, speech transcription, material search, text from scans (OCR)).
 3. **System → Sign-up**: Set the sign-up method and the allowed email domains, and enable email verification if you have a mail server.
 4. **System → Mail**: Set up SMTP if you need password reset and verification mail.
 5. **System → Branding**: Set the service name, logo, and contact address.

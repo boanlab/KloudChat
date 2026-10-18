@@ -22,7 +22,7 @@ The **planning model** for reports and slides and Auto's **classifier model** ar
 
 ### Self-hosted models of the default install
 
-The defaults use two models the organization runs itself. Each is registered in the gateway under a `local/` name (may use tools such as web search) and a `strict-local/` name (no outside connection).
+The defaults use two models the organization runs itself. Each is registered in the gateway under two names. A `local/` model runs on the organization's servers first, but an external fallback may answer when it fails, so it is treated as outside the data boundary. A `strict-local/` model never leaves, and it is the only route for internal material.
 
 | Model | Jobs |
 |---|---|

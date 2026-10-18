@@ -1,11 +1,4 @@
-"""Round 9: what the quality read finds is mended, or marked — never only listed.
-
-The report's last read named defects correctly and the document shipped with them: the
-action-item table of a meeting minutes broken into an empty header, a table and loose lines
-(LFLF R3-A01-T1), tables the text never names (LFLF R3-A03-T2, L27F R3-A01-T1), a 「납기 14달」
-the judge tied to the source's 「납기 2주」 (LFLF R3-A04-T2). A deck's last comparison table
-went out as the names it compares, and the deck's read said nothing (L27F R3-A09-T2). Strings
-are the runs' own."""
+"""Quality-read findings mended or marked, never only listed."""
 
 from __future__ import annotations
 
@@ -23,7 +16,7 @@ L27, LFL = "local/qwen3.8-27b", "local/qwen3.8-flash"
 STRONG_EXT = "deepseek/deepseek-v4-pro-0813"
 GROUPS = pytest.mark.parametrize("writer", [LFL, STRONG_EXT])
 
-#: LFLF R3-A01-T1: the 「할 일」 section as it shipped
+#: a minutes 「할 일」 section as written
 SHIPPED_ACTIONS = """표: 할 일·담당·기한
 할 일 | 담당 | 기한 | 비고
 ---|---|---|---
@@ -119,7 +112,7 @@ def test_the_minutes_quality_findings_are_mended_and_read_again():
     assert mended[0]["content"].startswith("할 일은 표 1과 같습니다.\n\n**표 1. 할 일**")
 
 
-#: LFLF R3-A03-T2: tables under a heading and after a list item, none named in the text
+#: tables under a heading and after a list item, none named in the text
 RESULT_REPORT = [
     {"heading": "개요", "content": "**표 1. 행사 기본 현황**\n\n| 구분 | 내용 |\n|---|---|\n"
                                    "| 행사명 | 2026 한빛 AI 해커톤 |\n| 주관 | SW중심대학사업단 |"},
@@ -160,7 +153,7 @@ def test_a_header_with_no_rows_is_marked_where_it_stands():
 
 
 def test_this_meeting_and_the_next_are_no_value_conflict():
-    # L27F R3-A01-T1: 「일시」 in the meeting's table and in the next meeting's
+    # 「일시」 in the meeting's table and in the next meeting's
     sections = [
         {"heading": "회의 개요", "content": "**표 1. 회의 개요**\n\n| 구분 | 내용 |\n|---|---|\n"
                                         "| 일시 | 2026-10-08(목) 14:00 |\n\n표 1과 같다."},
@@ -194,7 +187,6 @@ async def _collect(gen):
 
 # ── a number tied to another item, confirmed by code, is repaired once, then marked ──
 
-#: LFLF R3-A04-T2
 QUOTES = """[견적 2] 다솜시스템
 - 단가 1,390,000원(부가세 포함) × 30대
 - 납기 2주, 기존 기기 수거는 대당 10,000원(부가세 포함)"""
@@ -283,7 +275,7 @@ def test_the_deck_read_finds_a_table_with_no_values():
 
 LECTURE = ("운영체제 50분 강의용 슬라이드 만들어 줘. FCFS, SJF, SRTF, RR 비교. 마지막에 비교 표.\n"
            "P1 도착 0 실행 7, P2 도착 2 실행 4, P3 도착 4 실행 1, P4 도착 5 실행 4")
-#: L27F R3-A09-T2: the comparison slide came back as its names only
+#: the comparison slide came back as its names only
 NAMES_ONLY = {"title": "네 알고리즘 비교", "layout": "table",
               "columns": ["알고리즘", "FCFS", "SJF", "SRTF", "RR(q=2)"],
               "notes": "네 알고리즘을 비교합니다. 평균 대기시간이 가장 짧은 것은 SRTF입니다."}

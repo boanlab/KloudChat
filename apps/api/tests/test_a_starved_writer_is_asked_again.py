@@ -1,6 +1,4 @@
-"""r7 A04-T2 (GLM-5.3): a section call thought through its 1,200 tokens, the one re-ask (3,100)
-thought through too, every section failed 「empty section」, and the empty document went on
-through every check to be saved as 「1개 절로 비교·분석 보고서 작성을 마쳤습니다」."""
+"""Section calls that think through their budget: asked again, never saved empty."""
 
 from __future__ import annotations
 
@@ -107,7 +105,7 @@ async def test_a_section_no_call_could_write_says_so(monkeypatch):
 
 
 async def test_a_calc_timeout_leaves_the_writer_computing(monkeypatch):
-    # r7 A10-T2: 「코드 계산 시간 초과 — 모델이 계산」 and no TAM·SAM·SOM figure at all
+    # 「코드 계산 시간 초과 — 모델이 계산」 and no TAM·SAM·SOM figure at all
     from app.pipeline.bundle import Part
     from app.pipeline.stage import Context
 

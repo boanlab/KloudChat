@@ -1,12 +1,4 @@
-"""Each document 서식's gallery preview is a finished document in that format.
-
-The sample opens with the head block the product draws, carries every section of the
-format's outline in order, and its figures hold: rows add up to their total, 부가세 is 10%
-of 공급가액, 수량 × 단가 is the 금액, a 「금…원(금…원)」 reads the same in both, and every
-date's weekday is the calendar's. The preview route draws it with the web's own format rules
-(`format_css`), whose copies are kept equal to the TypeScript here, and a column of words is
-never set flush right as if it were figures.
-"""
+"""Gallery previews of document 서식 as finished documents whose figures hold."""
 
 from __future__ import annotations
 

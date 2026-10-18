@@ -1,6 +1,4 @@
-"""A conversation longer than the model's window keeps its thread: the oldest turns
-leave as a summary, this turn's attachment sits next to its question, and a window
-the provider still refuses is named as such."""
+"""Thread keeping for conversations longer than the model's window."""
 
 from __future__ import annotations
 
@@ -226,7 +224,7 @@ def _patch_summariser(monkeypatch, calls: list[tuple[str | None, list[dict]]]):
     monkeypatch.setattr(sessions_router.conversation_summary, "summarize", summarize)
 
 
-async def _summarise(db, session, rows, monkeypatch_calls=None):
+async def _summarise(db, session, rows):
     return await sessions_router._conversation_summary(
         db,
         session,
@@ -1888,7 +1886,7 @@ def test_an_external_writer_gets_the_local_model_as_its_revision_judge():
     from app.core.config import settings
     from app.routers import sessions as sessions_router
 
-    # the judge is the document writer's model (27B), not the faster chat default
+    # the judge is the document writer's model, not the faster chat default
     local = {"id": settings.default_report_model, "kinds": ["chat", "report", "slides"],
              "dataBoundary": "hybrid", "creditCost": 0}
     external = {"id": "deepseek/deepseek-v4-flash", "kinds": ["chat", "report", "slides"],

@@ -780,7 +780,7 @@ async def put_process(agent_id: str, payload: ProcessIn, user: CurrentUser, db: 
                 own.review, own.visibility, own.review_note = "", "private", ""
             own.stages, own.base = stored, base.key if base else None
             own.updated_at = utcnow()
-        if custom and bases.needs_review(base, steps):
+        if custom and bases.needs_review(steps):
             if agent.visibility is Visibility.org and own.review in ("", "rejected"):
                 verdict = await _verdict(db, user, steps, self_id=own.id, agents=agents,
                                          sharing=True)
@@ -815,8 +815,7 @@ async def runs_for_others(db: DbSession, agent: Agent, row: UserPipeline) -> boo
         surface = agent.surface or next(iter(agent.kinds or []), None) or "chat"
         known = await bundles_named(db, agent.bundles, agent.owner_id)
         return not bundle_service.compile(surface, agent.bundles, known).unapproved
-    return row.review == "approved" or not bases.needs_review(
-        bases.get(agent.catalog_key or agent.base_key), compose.normalize(row.stages))
+    return row.review == "approved" or not bases.needs_review(compose.normalize(row.stages))
 
 
 async def submit_shared_process(db: DbSession, user: User, agent: Agent) -> None:
@@ -827,7 +826,7 @@ async def submit_shared_process(db: DbSession, user: User, agent: Agent) -> None
     if row is None or row.agent_id != agent.id or row.review not in ("", "rejected"):
         return
     steps = compose.normalize(row.stages)
-    if not bases.needs_review(bases.get(agent.catalog_key or agent.base_key), steps):
+    if not bases.needs_review(steps):
         return
     agents = with_self(await agents_for(db, user), agent.id)
     if (await _verdict(db, user, steps, self_id=row.id, agents=agents, sharing=True)).ok:

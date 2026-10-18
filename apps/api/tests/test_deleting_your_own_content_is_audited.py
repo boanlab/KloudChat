@@ -1,10 +1,4 @@
-"""A person deleting their own content leaves one audit event per request.
-
-On 2026-10-12 one bulk delete removed 1,416 conversations and wrote nothing an
-administrator could find. Every delete of a person's own conversations, projects,
-files, artifacts and memories now records what went (counts and ids), never what
-it said.
-"""
+"""One audit event (counts and ids) per delete of a person's own content."""
 
 from __future__ import annotations
 

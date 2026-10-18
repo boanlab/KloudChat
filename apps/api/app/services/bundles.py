@@ -178,8 +178,7 @@ def export_default(item: Item, doc_format: str | None = None) -> str:
     return str((item.settings.get("formats") or ["docx"])[0])
 
 
-def _value(bundle: Bundle, item: Item, ticks: dict[str, Any],
-           doc_format: str | None = None) -> Any:
+def _value(item: Item, ticks: dict[str, Any], doc_format: str | None = None) -> Any:
     """Item tick: user's, else bundle default; export tick is its format."""
     raw = ticks.get(item.id, item.default)
     if item.kind == "export":
@@ -236,7 +235,7 @@ def compile(surface: str, selections: list[dict[str, Any]],
         placed_after = False
         for item in bundle.items:
             where = target(item, surface)
-            value = _value(bundle, item, selection["items"], doc_format)
+            value = _value(item, selection["items"], doc_format)
             if where is None or not value:
                 continue
             if where == "check":
@@ -279,7 +278,7 @@ def settled(surface: str, selections: list[dict[str, Any]],
         if bundle is not None:
             for item in bundle.items:
                 if item.kind == "export" and target(item, surface) is None \
-                        and _value(bundle, item, items, doc_format):
+                        and _value(item, items, doc_format):
                     items[item.id] = False
         out.append({"bundle": row["bundle"], "items": items})
     return out
@@ -308,7 +307,7 @@ def view(selections: list[dict[str, Any]], known: dict[str, Bundle], *,
         if bundle is None:
             continue
         out.append({"bundle": bundle.ref, "items": {
-            i.id: _value(bundle, i, row["items"], doc_format) for i in bundle.items}})
+            i.id: _value(i, row["items"], doc_format) for i in bundle.items}})
     return out
 
 
@@ -321,7 +320,7 @@ def lines(surface: str, selections: list[dict[str, Any]],
         if bundle is None:
             continue
         for item in bundle.items:
-            value = _value(bundle, item, row["items"], doc_format)
+            value = _value(item, row["items"], doc_format)
             if not value or target(item, surface) in (None, "self"):
                 continue
             label = item.label or item.ref or item.kind

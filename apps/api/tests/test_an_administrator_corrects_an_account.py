@@ -1,6 +1,4 @@
-"""An administrator can correct a name or address, reset a password, and see the whole
-catalogue when restricting an account.
-"""
+"""Administrator corrections to an account: name, address, password and catalogue."""
 
 from __future__ import annotations
 

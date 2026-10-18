@@ -1,5 +1,4 @@
-"""What the request and material do not give is a bracket blank naming it (「[담당자]」), never
-made up; checks read one as a valid gap and count it for the reader."""
+"""Bracket blanks (「[담당자]」) for what is not given, read by checks as valid gaps."""
 
 from __future__ import annotations
 

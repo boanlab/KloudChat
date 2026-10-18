@@ -1,6 +1,4 @@
-"""스킬 사후 점검(post_check): 스킬이 켜진 채팅 답을 서버가 그 스킬의 스크립트로 점검해
-코드로 고칠 것은 고치고, 나머지는 한 번 고쳐 쓰게 한 뒤 다시 점검한다. 도구 보고 줄은 답에서
-빠지고, 단계 기록은 쓴 토큰을 남긴다."""
+"""Skill post-checks on chat answers: code fixes, one rewrite, a recheck, token records."""
 
 from __future__ import annotations
 
@@ -176,7 +174,7 @@ def test_run_fixes_by_code_and_marks_what_code_cannot_confirm():
         answer, keys=["internal-comms"], request="공지 써 줘", material=memo, attached="",
         computed=[], today="2026-10-08", complete=model, model="w", judge="j", api_key="k",
         usage=usage))
-    # the judged sentence has no figure or name code could look up: marked, never cut (r8)
+    # the judged sentence has no figure or name code could look up: marked, never cut
     assert "기존 신청분은 자동으로 옮겨집니다(확인 필요)." in out.text
     assert "11월 9일" not in out.text
     # nothing code confirmed absent: no rewrite
@@ -354,7 +352,7 @@ def test_the_source_check_post_leaves_worked_values_and_checklists_unmarked():
 
 
 def test_a_source_list_line_is_not_a_generality():
-    # r10 SK-company-3: a listed source's title (「…급성장…」) was sent back as a claim and
+    # a listed source's title (「…급성장…」) sent back as a claim, and
     # the writer deleted the list line, leaving its [[6]] orphaned
     text = ("영림원소프트랩은 ERP를 만든다 [6].\n\n### 출처\n"
             "- [6] [영림원소프트랩, 클라우드 ERP 급성장 · example.com](https://example.com/a)")

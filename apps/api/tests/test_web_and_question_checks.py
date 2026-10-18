@@ -1,5 +1,4 @@
-"""The web check keeps a 「틀림」 only on a page about the same thing whose words show it;
-the question check reads assessment items, not a lesson plan's class questions."""
+"""Web check 「틀림」 verdicts on matching pages, and question checks on assessment items."""
 
 from __future__ import annotations
 

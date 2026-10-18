@@ -1,8 +1,4 @@
-"""Reports, decks and the image surface draw every figure with the .pptx export's shapes.
-
-A source the shapes cannot read goes back to the writer once; still unreadable, or no
-renderer answering, the figure is left out. No mermaid fence and no browser drawing stand in.
-"""
+"""Figures drawn with the .pptx export's shapes across reports, decks and images."""
 
 from __future__ import annotations
 

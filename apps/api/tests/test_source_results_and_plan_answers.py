@@ -1,5 +1,4 @@
-"""An answer made of a source tool's result says so when that result never came, and a
-chat answer that is only a work plan is written once more as the deliverable (r3 rerun)."""
+"""Missing source tool results, and work-plan-only answers written once more."""
 
 from __future__ import annotations
 
@@ -12,9 +11,9 @@ from app.services import agent, internal_words
 from app.services.tools.base import Tool, ToolContext, ToolResult
 from app.services.workspace_context import AppliedSkill
 
-# ── strings from the r3 rerun ────────────────────────────────────────────────
+# ── answers that are only a work plan ────────────────────────────────────────────────
 
-#: A02 T1 flash: the whole answer, after the opening 「The user wants …」 note went
+#: the whole answer, after the opening 「The user wants …」 note went
 A02_PLAN = (
     'Key points from the skeleton:\n'
     '- 보고 기간·보고 대상·결론 3줄로 시작\n'
@@ -129,7 +128,7 @@ A02_REPORT = (
     "| B사 | 420만원 | 납기 1주 빠름 |"
 )
 
-#: A08 T2 27B: written with no transcript, claiming one
+#: written with no transcript, claiming one
 A08_INVENTED = (
     "전사 추출로 영상의 실제 내용을 확인했습니다.\n\n## 3줄 요약\n\n"
     "- 이 영상은 금리가 무엇인지, 명목금리와 실질금리를 어떻게 구분하는지, 그리고 기준금리가 "
@@ -298,7 +297,7 @@ def _transcript_tool(result: str | Exception, calls: list[dict]) -> Tool:
 
 @pytest.mark.asyncio
 async def test_no_transcript_called_means_no_summary(monkeypatch) -> None:
-    """A08 27B: the transcript tool never ran, yet the note claimed it and quoted the video."""
+    """A note claiming a transcript tool that never ran, and quoting the video."""
     calls: list[dict] = []
     events, _ = await _turn(
         monkeypatch, [A08_INVENTED], request=A08_REQUEST,
@@ -372,7 +371,7 @@ def test_built_in_tools_and_tools_needing_more_than_a_link_are_left_to_the_model
     assert sessions._source_call([_skill("mcp__x__clip")], [two], A08_REQUEST) is None
 
 
-# ── an answer that only says what it is about to do (r3 third pass, A11 T1 27B) ──
+# ── an answer that only says what it is about to do ──
 
 A11_REQUEST = (
     "다음 주에 한국수자원공사(K-water) 정보화 담당 부서와 첫 미팅이 있어. 미팅 전에 읽을 "

@@ -5,7 +5,7 @@
 //     - 네트워크 전면 교체
 //     ```
 
-export interface Card {
+interface Card {
   title: string
   items: string[]
 }

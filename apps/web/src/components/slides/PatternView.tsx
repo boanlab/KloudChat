@@ -6,7 +6,7 @@ import { BODY_BOTTOM, BODY_TOP, LEADING, PAD_X, TYPE, em, units } from '@/compon
 import type { Pattern } from '@/components/slides/patterns'
 
 /** What `SlideView` lends a pattern: its look, accent and unit helpers. */
-export interface PatternKit {
+interface PatternKit {
   accent: string
   /** Look tokens the other layouts draw with. */
   look: {

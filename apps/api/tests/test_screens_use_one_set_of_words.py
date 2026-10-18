@@ -1,14 +1,4 @@
-"""Screens and server messages use one set of words for one thing.
-
-A document's structure is a 템플릿 and its look a 테마; an agent's steps are its 진행 과정;
-what a conversation produces (a report, a deck, a chart, a file) is an 아티팩트.
-The words those replaced (양식, 디자인, 워크플로, 작동 단계, 결과물) and the hub's old 추천
-do not come back on a screen, in the dictionary, in a step label or check result, or in the
-in-app guide.
-「서식」 alone stays: it is text formatting (bold, italics).
-
-An allowed use is listed with the reason; a new one goes into `_ALLOWED` the same way.
-"""
+"""One set of words for one thing across screens, server messages and the guide."""
 
 import json
 import re

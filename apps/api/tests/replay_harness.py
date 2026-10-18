@@ -1,16 +1,4 @@
-"""Replays a report or chat turn from recorded model calls, without a live model.
-
-A case under `tests/fixtures/replay/<name>/` holds `input.json` (what the turn was given),
-`calls.json` (every model call the turn made: its key, the pipeline stage that made it, a
-short head of the prompt and the reply) and `golden.json` (the events the code produced
-when the calls were recorded).
-
-Every POST to `/chat/completions` goes through `Gateway`: recording, a responder answers and
-the call is kept; replaying, the reply comes from `calls.json` by the call's key (model,
-messages, max_tokens). A key that is not there is a prompt the code no longer makes the same
-way — in a refactor that must not change behaviour, a regression — and the test fails on it.
-Any other HTTP call fails as offline, recorded or not, so both runs see the same failure.
-"""
+"""Report and chat turn replay from recorded model calls, without a live model."""
 
 from __future__ import annotations
 

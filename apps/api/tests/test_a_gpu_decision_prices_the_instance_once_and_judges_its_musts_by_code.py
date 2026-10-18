@@ -1,9 +1,4 @@
-"""Round-2 R2W-07: the verify2 GPU decision. A hourly price for 「A100 80GB 4장」 is the whole
-instance's — the cost reading's count of four is not the material's and is set back to one
-(A = 24,000,000원/년, 72,000,000원 over 3 years). The yearly money limit is judged on that
-code-computed yearly cost, a cloud option fails 「데이터 외부 반출 불가」, and a written
-product with units in every term (「12,000원 × 2,000시간 × 3년 = 6,000원」) is recomputed
-(sc/v_gpu)."""
+"""Per-instance GPU pricing and code-judged must-haves in a GPU decision."""
 
 from __future__ import annotations
 
@@ -11,7 +6,7 @@ import json
 
 from app.services import report, report_checks, units
 
-#: the persona's request, every figure inline (sc/v_gpu/spec.json)
+#: A GPU decision request, every figure inline.
 GPU = ("연구실 GPU 연산 자원 도입 안을 비교해서 결정 보고서로 써 줘. A안: 클라우드 GPU(A100 80GB "
        "4장) 시간당 12,000원, 연간 예상 사용 2,000시간, 초기비용 없음. B안: 온프레미스 서버(A100 "
        "80GB 4장) 구매가 1억 2천만원, 연간 전기·유지비 900만원, 내용연수 5년. 필수 조건: "

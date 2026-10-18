@@ -1,7 +1,4 @@
-"""What agents built only from shipped skills could not do (round 3): 번역, 보도자료, an Excel
-file built by code in a chat turn, a chart artifact. Each is a shipped skill people pick or an
-administrator shares; the Excel file comes from the sandbox script and is a download. The
-회의 안건 is a document template beside the 회의록, with the same head."""
+"""Shipped work skills: 번역, 보도자료, an Excel file by code, a chart artifact, 회의 안건."""
 
 from __future__ import annotations
 

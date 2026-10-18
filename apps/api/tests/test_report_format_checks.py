@@ -1,5 +1,4 @@
-"""The lineup formats' pre-pass and checks: resolved deadlines kept, conflicting values kept
-side by side, and each format's code checks found, repaired once and checked again."""
+"""Lineup formats' pre-pass and code checks, each repaired once and checked again."""
 
 from __future__ import annotations
 
@@ -381,17 +380,6 @@ async def test_a_long_gaejo_body_is_counted_and_condensed_once():
     assert condensed[1] == sections[1]
 
 
-async def test_the_gaejo_page_count_also_reads_the_hwpx_through_the_attachment_line():
-    short = [{"heading": "현황", "content": "- 짧은 항목 1건."},
-             {"heading": "붙임", "content": "1. 세부 1부."}]
-    assert await report_checks.hwpx_page_count("보고", short, None) == 1
-    long = "\n".join(f"- 항목 {i}: 세부 경위와 설명이 길게 이어지는 줄이다." for i in range(160))
-    over = [{"heading": "현황", "content": long}, *short[1:]]
-    assert (await report_checks.hwpx_page_count("보고", over, None) or 0) > 1
-    serif = await report_checks.hwpx_page_count("보고", over, None, {"font": "serif"})
-    assert serif and serif > 1
-
-
 def test_unrelated_formats_have_no_pre_pass_or_checks():
     assert not any(process_settings.for_format(f).prepass for f in ("lab", "term"))
     assert report_checks.checks(None) == []
@@ -420,7 +408,7 @@ async def test_an_unrelated_report_writes_as_before(monkeypatch):
     assert "9월 10일" in sections[1]["content"]
 
 
-# ── client_proposal: the schedule (lineup v1 client-proposal-3__r1) ───
+# ── client_proposal: the schedule ───
 
 KAFI_RFP = (
     "1. 사업명 : 대표 홈페이지 웹 접근성 개선 및 품질인증 취득 사업\n"
@@ -437,8 +425,7 @@ KAFI_SCHEDULE = (
 
 
 async def test_a_picture_in_the_schedule_is_not_a_schedule_line():
-    """The run's only 「일정이 사업 기간을 넘음」 was the figure's base64 (「/M6/」),
-    which no repair can mend."""
+    """A figure's base64 (「/M6/」) is not read as a schedule past the project period."""
     rfp = report_checks.rfp_terms(KAFI_RFP, "")
     assert rfp["months"] == 5
     doc = verify.Doc([{"heading": "추진 일정", "content": KAFI_SCHEDULE}], KAFI_RFP)

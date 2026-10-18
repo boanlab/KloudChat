@@ -1,6 +1,4 @@
-"""One type scale for documents: the page seeds, the reportlab PDF, the `.docx`, the
-`.hwpx` and the web view read the same table.
-"""
+"""One document type scale for page seeds, PDF, `.docx`, `.hwpx` and the web view."""
 
 import io
 import re

@@ -6,7 +6,6 @@ export function EditableLine({
   value,
   editable,
   onChange,
-  placeholder,
   className,
   numberLabel,
 }: {
@@ -15,7 +14,6 @@ export function EditableLine({
   editable: boolean
   /** On blur and Enter, never per keystroke. */
   onChange: (next: string) => void
-  placeholder?: string
   className?: string
   /** `data-num`, drawn by CSS; never part of the value. */
   numberLabel?: string
@@ -41,7 +39,6 @@ export function EditableLine({
       contentEditable={editable}
       suppressContentEditableWarning
       spellCheck={false}
-      data-placeholder={placeholder}
       data-num={numberLabel || undefined}
       className={className}
       onBlur={commit}

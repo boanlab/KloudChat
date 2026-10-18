@@ -26,7 +26,7 @@ _RESTRICTED = re.compile(
     r"\d+\s{0,2}(?:자|단어|줄|문장|단락|문단)\s{0,2}(?:이내|이하|안팎|내외|로|으로|만)|"
     r"(?:한|두|세)\s{0,2}(?:줄|문장|단락|문단)\s{0,2}(?:로|으로|만|이내)|"
     r"(?:표|목록)\s{0,2}(?:로만|만으로)|"
-    # 「- 길이: 짧게」, 「짧게 써 줘」: the length is set (r8 QMX P38: a plan grew the mail)
+    # 「- 길이: 짧게」, 「짧게 써 줘」: the length is set (a plan would lengthen it)
     r"길이\s{0,2}[:：]\s{0,2}(?:짧|간단|간결)|(?:짧고|짧게|간단히|간결하게)\s{0,2}(?:써|적어|작성해)|"
     r"(?:다음|아래)\s{0,2}(?:형식|양식|순서|구성|틀|절|항목)\s{0,2}(?:으로|대로|에\s{0,2}맞|을\s{0,2}따|로)|"
     r"\b(?:answer only|only (?:the|a|one)|don'?t explain|no explanations?|in \d+ words|"

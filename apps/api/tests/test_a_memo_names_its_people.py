@@ -1,9 +1,4 @@
-"""A meeting memo without an attendance line still names its people.
-
-「포스터 → 지민」, 「… 하자 (회장)」, 「수아가 하기로」: the head's 참석자 lists them, marked as
-read from the material, and the gap card does not ask who attended. A figure caption in
-brackets is no blank.
-"""
+"""Attendees read from a meeting memo without an attendance line."""
 
 from __future__ import annotations
 

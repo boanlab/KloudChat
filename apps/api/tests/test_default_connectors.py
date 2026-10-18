@@ -1,10 +1,4 @@
-"""기본 제공 connectors: an administrator marks a catalogue entry, every active person has it.
-
-Turning the switch on installs it for everyone active at once (not pending people); a person
-who becomes active gets it then. Their copy is an ordinary installed connector that starts
-connected with the server's tools, can be switched off, and cannot be removed. Migration 0069
-makes the three shipped entries 기본 제공, attributed to the oldest administrator, without
-overriding an entry an administrator saved."""
+"""기본 제공 connectors: installed for every active person, switchable, not removable."""
 
 from __future__ import annotations
 

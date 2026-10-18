@@ -4,13 +4,13 @@ title: Publishing a chatbot
 
 # Publishing a chatbot
 
-Publish an agent that answers in chat as a **chatbot**, and other people can ask it. A chatbot is fixed to the instructions, material and checks it had when published, and answers with this institution's internal models only. The credits it spends are its publisher's, and questions are handled under the same policy as if the publisher had typed them.
+Publish an agent that answers in chat as a **chatbot**, and other people can ask it. A chatbot is fixed to the instructions, material and checks it had when published, and answers with this organization's strict-local models only. The credits it spends are its publisher's, and questions are handled under the same policy as if the publisher had typed them.
 
 ## Publishing
 
 The **Publish as a chatbot** button at the top of your agent's page. Before publishing you see:
 
-- The internal model it will answer with. Without an internal model you can use, it cannot be published.
+- The strict-local model it will answer with. Without a strict-local model you can use, it cannot be published.
 - What a chatbot does not use: your memory, personal settings, other files and projects, connectors, web search, documents and slides, skills. A chatbot uses only **material search** and **calculation**.
 - Values in the material that look like personal details (mobile numbers, emails and so on). Remove or check them before publishing.
 
@@ -18,7 +18,7 @@ The **Publish as a chatbot** button at the top of your agent's page. Before publ
 
 | Audience | Who uses it | Opens |
 |---|---|---|
-| Members | Members of this institution, signed in. Members see it as a **shared agent** | At once |
+| Members | Members of this organization, signed in. Members see it as a **shared agent** | At once |
 | Anyone with the link | Anyone with the address, without signing in. Listed nowhere | After an administrator approves |
 | Public | Anyone, without signing in. Listed on the public chatbot page (`/b`) and may show up in search | After an administrator approves |
 
@@ -39,7 +39,7 @@ A chatbot open to people without an account can also be reached through these ch
 
 | Channel | What it does | Available at |
 |---|---|---|
-| Embed on other sites | Puts the chat on your own sites, such as your institution's homepage | Open to everyone |
+| Embed on other sites | Puts the chat on your own sites, such as your organization's homepage | Open to everyone |
 | API | Calls the bot from your service or program, OpenAI-compatible | By link, open to everyone |
 | MCP | Connects the bot as a tool in AI tools such as Claude | By link, open to everyone |
 

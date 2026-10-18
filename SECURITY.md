@@ -40,8 +40,10 @@ In scope, and treated as vulnerabilities:
   material, expose another visitor's conversation, answer on an audience or
   channel (link, embed, API, MCP) an administrator has not approved, or can be
   framed by a site outside their embed list.
-- Turns carrying internal material, or detected personal data, reaching an
-  external model against the governance policy.
+- Turns, pictures or document edits carrying internal material, or detected
+  personal data, reaching a model outside `strict-local/` (an external model,
+  or a `local/` one that may fall back to an external twin) against the
+  governance policy.
 - Server-side request forgery through connector, gateway, or fetch URLs.
 - Path traversal or unauthorised reads against the file store.
 - Stored XSS in rendered Markdown, artifacts, or branding assets.

@@ -7,7 +7,7 @@ body:
       value: |
         Model calls and tools live in a separate service (`KloudChat-LLM`).
         If the symptom is "not connected" or an empty model list, check
-        **Settings → System → Integrations** first — a missing gateway URL
+        **System › Features › Integrations** (account menu) first — a missing gateway URL
         disables those features by design.
 
   - type: textarea

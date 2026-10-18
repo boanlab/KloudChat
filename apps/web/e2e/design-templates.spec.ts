@@ -15,7 +15,7 @@ function zipNames(buffer: Buffer): string[] {
 }
 
 /** Design templates (서식) from the card to the exported file: the HTML document path.
- *  One deck and one document generated per run. Image, audio and video 서식 are retired. */
+ *  One deck and one document generated per run. No image, audio or video 서식. */
 
 /** A named screenshot under `test-results/shots/`. */
 async function shot(page: Page, name: string) {

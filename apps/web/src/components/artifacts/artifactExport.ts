@@ -5,7 +5,7 @@ import type { Artifact, ChartArtifact, DeckArtifact, ReportArtifact, ReportSecti
 /** Export formats; mirrors server `export_formats`. */
 export type ExportFormat = 'pdf' | 'docx' | 'hwpx' | 'pptx' | 'md' | 'html' | 'source' | 'csv' | 'file'
 
-export interface ExportChoice {
+interface ExportChoice {
   format: ExportFormat
   /** Korean label, translated where shown. */
   label: string
@@ -61,7 +61,7 @@ export function exportChoices(artifact: Artifact, templateKind?: string): Export
 }
 
 /** Pre-export warning, e.g. 「근거 확인 필요 2장」. */
-export interface ExportCheck {
+interface ExportCheck {
   /** Korean label with `{n}`. */
   label: string
   count: number
@@ -79,7 +79,7 @@ export function citationNumbers(sections: ReportSection[]): number[] {
   return [...found].sort((left, right) => left - right)
 }
 
-export interface NumericEvidenceGap {
+interface NumericEvidenceGap {
   section: ReportSection
   excerpts: string[]
 }
@@ -119,7 +119,7 @@ export function overflowRisk(slide: Slide): boolean {
 }
 
 /** Unbacked citations plus uncited numeric claims. */
-export function reportEvidenceWarnings(report: ReportArtifact): number {
+function reportEvidenceWarnings(report: ReportArtifact): number {
   const known = new Set(report.sources.map((source) => source.ordinal))
   return (
     citationNumbers(report.sections).filter((number) => !known.has(number)).length +
@@ -128,7 +128,7 @@ export function reportEvidenceWarnings(report: ReportArtifact): number {
 }
 
 /** Slide indices with an unsupported fact-check claim. */
-export function weakSlideIndexes(deck: DeckArtifact): number[] {
+function weakSlideIndexes(deck: DeckArtifact): number[] {
   return deck.slides
     .map((s, i) => (s.factCheck?.claims.some((c) => c.verdict !== 'supported') ? i : -1))
     .filter((i) => i >= 0)

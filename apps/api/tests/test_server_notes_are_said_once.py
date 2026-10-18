@@ -1,6 +1,4 @@
-"""The server's notes under an answer are said once (r7 P16·P19·P27·P56): an answer that
-already says what it could not confirm gets no search note, and a stored answer goes back to
-the model as history without the notes the server added to it."""
+"""Server notes under an answer, said once and left out of history."""
 
 from __future__ import annotations
 
@@ -10,7 +8,7 @@ from app.pipeline import check_stages
 from app.services import agent, server_notes
 from app.services.tools.base import Tool, ToolResult
 
-#: R4-P56 (DSP) turn 1 as stored: the answer, the search note, the advice line.
+#: a first turn as stored: the answer, the search note, the advice line.
 _P56_TURN1 = (
     "연 매출 4억 원이면 월 매출은 약 3,333만 원입니다. 정책자금은 소상공인시장진흥공단에 "
     "직접 문의하세요."
@@ -38,7 +36,6 @@ def test_the_advice_line_the_check_writes_is_the_one_taken_off():
 
 
 def test_answers_that_say_they_could_not_confirm():
-    # R4-P19 (DSP) turn 2, R4-P27 (DSP) turn 2
     assert server_notes.says_unconfirmed(
         "이번 검색에서 특정 은행의 당일 최고 금리 수치는 확인하지 못했으니 파인에서 확인하세요.")
     assert server_notes.says_unconfirmed(
@@ -48,7 +45,7 @@ def test_answers_that_say_they_could_not_confirm():
 
 
 async def test_an_empty_search_says_to_answer_from_what_is_known(monkeypatch):
-    # r7 P31 (DSP): four empty searches and a Fermi estimate declined
+    # four empty searches and a Fermi estimate declined
     from app.services.tools import builtin
 
     async def tools_config():

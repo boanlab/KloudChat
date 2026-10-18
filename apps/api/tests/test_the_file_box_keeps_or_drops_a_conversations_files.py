@@ -1,5 +1,4 @@
-"""계정 파일함: 파일은 올린 것과 대화에서 만들어진 것으로 나뉘고, 대화를 지울 때 고르면
-그 대화의 파일도 함께 지운다. 프로젝트나 에이전트가 가진 파일은 남는다."""
+"""File box: uploaded and generated files, dropped with a conversation on request."""
 
 from __future__ import annotations
 

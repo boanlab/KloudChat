@@ -37,7 +37,7 @@ test('회복력 감사 — 느릴 때와 실패할 때', async ({ page }) => {
 
   await signIn(page)
 
-  // R17: a list still in flight must not read as empty.
+  // A list still in flight must not read as empty.
   for (const [route, api, where] of LISTS) {
     await page.route(api, async (r) => {
       await new Promise((done) => setTimeout(done, 2500))
@@ -57,7 +57,7 @@ test('회복력 감사 — 느릴 때와 실패할 때', async ({ page }) => {
     await page.unroute(api)
   }
 
-  // R16: a failed write is said on screen, in readable words.
+  // A failed write is said on screen, in readable words.
   const FAILURES: [route: string, api: RegExp, act: (p: Page) => Promise<void>, where: string][] = [
     [
       '/skills',
@@ -122,7 +122,7 @@ test('회복력 감사 — 느릴 때와 실패할 때', async ({ page }) => {
     await page.unroute(api)
   }
 
-  // R15: `role="menu"` promises arrow keys.
+  // `role="menu"` promises arrow keys.
   const MENUS: [route: string, open: string, where: string][] = [
     ['/new/chat', '모델', '모델 선택기'],
   ]

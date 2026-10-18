@@ -185,7 +185,7 @@ test('서식을 바꾸면 문서가 그 양식으로 나간다', async ({ page }
 
 test('페이지 설정을 저장하고 실제 페이지와 DOCX·PDF·HWPX에 적용한다', async ({ page }) => {
   await openPageView(page)
-  await ribbonTab(page, '레이아웃')
+  await ribbonTab(page, '테마')
   await page.getByRole('toolbar', { name: '디자인' }).getByRole('button', { name: '페이지 설정' }).click()
   await page.getByRole('textbox', { name: '머리말', exact: true }).fill('대외비 검토본')
   await page.getByRole('textbox', { name: '꼬리말', exact: true }).fill('전략기획실')

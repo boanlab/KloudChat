@@ -1,5 +1,4 @@
-"""The quote names its VAT basis, and minutes bind dates to their own rows and never invent
-a meeting date (lineup v1 client-proposal-3, minutes-2, minutes-3)."""
+"""Quote VAT basis, and minutes dates bound to their own rows."""
 
 from __future__ import annotations
 

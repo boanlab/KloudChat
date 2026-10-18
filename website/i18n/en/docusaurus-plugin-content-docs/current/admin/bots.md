@@ -10,7 +10,7 @@ When a member publishes an agent as a chatbot, other members can use it at once.
 
 Opening a request shows the version that would answer once approved:
 
-- Instructions, the department and contact line, the greeting, the tools and checks it uses, the internal model it answers with
+- Instructions, the department and contact line, the greeting, the tools and checks it uses, the strict-local model it answers with
 - The material and how many values in it look like personal details
 - The publisher, the daily credit limit, and the history so far (requests, decisions, new versions)
 
@@ -43,4 +43,4 @@ Every action needs a reason and is recorded in the audit log. Reading a publishe
 ## Operating notes
 
 - Visitors without an account are told apart by a browser cookie; per-address limits per minute and per day, and a daily cap on new visitors and conversations per address, guard against abuse. The address comes from the `X-Forwarded-For` the proxy in front sends, so narrow `KCHAT_TRUSTED_PROXIES` on the web container to the actual proxy.
-- Questions answered at once by published chatbots across the institution stay under a cap (16 by default); the rest wait briefly and, if no turn comes, are told the chatbot is busy.
+- Questions answered at once by published chatbots across the organization stay under a cap (16 by default); the rest wait briefly and, if no turn comes, are told the chatbot is busy.

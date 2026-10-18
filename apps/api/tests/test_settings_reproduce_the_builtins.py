@@ -1,14 +1,4 @@
-"""What a shipped 서식 does, a person sets the same way, and the recorded runs come out the same.
-
-Each recorded lineup turn (`fixtures/replay/`) is replayed with the shipped 서식's behaviour
-coming from what a person can set instead of from the shipped file:
-
-- 진행 과정 설정 on the agent (`Agent.process_settings`) in place of the 서식's `[process]`;
-- a person's template (`UserTemplate`) made from the editor's fields in place of the 서식.
-
-The events must be the ones recorded (a person's template's own format id aside: it names the
-template, `ut-<id>`).
-"""
+"""Recorded lineup turns replayed with shipped 서식 behaviour from person-set settings."""
 
 from __future__ import annotations
 

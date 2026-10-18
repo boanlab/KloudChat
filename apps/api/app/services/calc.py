@@ -73,9 +73,8 @@ _UNASKED = (
 _CITATION = re.compile(
     r"\[\d{1,3}(?:\s{0,2}[-~,]\s{0,2}\d{1,3}){0,8}\](?:\s{0,2}~\s{0,2}\[\d{1,3}\])?")
 
-#: settle deadline (s); writer proceeds without values after it. r8: at 120 s the pass timed
-#: out on every setup's market-size and quote tasks (A04-T1/T2, A10-T2) and the writer's own
-#: arithmetic went 10~100x wrong (TAM < SAM); a report spends minutes writing anyway
+#: settle deadline (s); writer proceeds without values after it. Generous: a writer's own
+#: arithmetic on market-size and quote tasks goes 10~100x wrong, and a report takes minutes anyway
 DEADLINE = 240.0
 
 
@@ -95,7 +94,7 @@ def needed(request: str, context: list[str] | None = None, *, always: bool = Fal
 def _code_of(text: str) -> str:
     match = re.search(r"```(?:python|py)?\s{0,4}\n(.{1,20000}?)```", text or "", re.S)
     if not match:
-        # unclosed fence still holds the whole program (27B, 5/12)
+        # unclosed fence still holds the whole program
         match = re.search(r"```(?:python|py)?\s{0,4}\n(.{1,20000})\Z", (text or "").rstrip(), re.S)
     return (match.group(1) if match else "").strip()
 
@@ -314,7 +313,7 @@ async def computed_values(
 
     def partial() -> str:
         """One program's lines when the check run did not finish in time: code arithmetic,
-        unchecked, still beats the writer's own (r8 A10-T2: SOM 100x off after a time-out)."""
+        unchecked, still beats the writer's own."""
         if len(runs) != 1:
             return ""
         return (
@@ -436,7 +435,7 @@ def replace_tables(sections: list[dict], block: str) -> tuple[list[dict], int]:
     return out, changed
 
 
-# --- given-value arithmetic when the code pass doesn't finish (r7 A10-T2) ---
+# --- given-value arithmetic when the code pass doesn't finish ---
 
 #: a written quantity: 「9,900원」 「1,320,000원」 「40명」 「12개월」 「1.2만 원」
 _QTY = (r"(?P<n{i}>\d[\d,]{{0,15}}(?:\.\d{{1,6}})?)\s{{0,2}}(?P<s{i}>억|만|천)?\s{{0,2}}"

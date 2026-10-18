@@ -1,5 +1,4 @@
-"""date-calc, quote-calc and text-fit: the lineup's acceptance numbers, run as the sandbox runs
-them and as the server imports them."""
+"""date-calc, quote-calc and text-fit acceptance numbers, in the sandbox and imported."""
 
 from __future__ import annotations
 

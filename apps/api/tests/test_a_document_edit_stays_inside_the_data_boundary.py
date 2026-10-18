@@ -1,6 +1,4 @@
-"""Document edits (fact-check, critique, rewrites, design extraction) follow the chat
-turn's egress rules: internal material, a strict-local conversation or personal data
-stay on strict-local models, refused when there is none, and the allowlist holds."""
+"""Chat-turn egress rules for document edits."""
 
 from __future__ import annotations
 

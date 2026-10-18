@@ -4,8 +4,8 @@ import { openTool, toolNames } from './composer-tools'
 import { viewport } from './project'
 
 /**
- * 템플릿 is a document's structure (the shipped report and slide templates, formerly 양식), 테마 is
- * its look (formerly 디자인). A template is picked in the composer's 「+ › 템플릿 고르기」 and in the
+ * 템플릿 is a document's structure (the shipped report and slide templates), 테마 is
+ * its look. A template is picked in the composer's 「+ › 템플릿 고르기」 and in the
  * agent form's 아티팩트; a theme in the agent form and the panel, and themes are kept in 설정 › 테마.
  * Neither is a hub tab. Fixture data only; NAMING_SHOTS (a directory) also saves screenshots.
  */

@@ -1,6 +1,4 @@
-"""Figures the person wrote in 만 원 stay in 만 원: an operand that is the person's own digits is
-not blown up to won (「편성 45,000,000만 원」), and a bare ratio operand never gains a second
-「만」 (「강사비 4,200만만 원」)."""
+"""Figures written in 만 원 kept in 만 원, with no doubled 「만」."""
 
 from app.services import report, units
 

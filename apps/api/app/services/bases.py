@@ -107,11 +107,11 @@ def get(key: str | None, *, drafts: bool = True) -> Base | None:
                 None) if key else None
 
 
-#: 문서 형식 → base (migration 0060 backfills `agents.base_key`)
+#: 문서 형식 → base (also backfilled into `agents.base_key` by a migration)
 BY_FORMAT = {"gaejo": "gaejo-report", "minutes": "minutes", "comparison": "comparison-report"}
 
 
-def needs_review(base: Base | None, steps: list[dict[str, Any]]) -> bool:
+def needs_review(steps: list[dict[str, Any]]) -> bool:
     """Whether a 직접 구성 needs admin approval: exports, model review, or another agent."""
     return any(s.get("kind") in ("export", "review")
                or (s.get("kind") == "agent" and s.get("ref") != SELF)
@@ -133,7 +133,7 @@ def chain(base: Base | None, surface: str, selections: list[dict], known: dict,
             continue
         for item in bundle.items:
             where = bundle_service.target(item, surface)
-            value = bundle_service._value(bundle, item, row["items"], doc_format)
+            value = bundle_service._value(item, row["items"], doc_format)
             if where in ("before", "after") and value:
                 label = item.label or item.ref
                 extra.append(f"{label} ({str(value).upper()})" if item.kind == "export"
@@ -169,7 +169,7 @@ def process_of(agent, row, *, owner: bool, known: dict[str, bundle_service.Bundl
     out: dict[str, Any] = {
         "mode": "custom", "base": base.key if base else None, "bundles": [],
         "chain": [names.get(s["id"]) or compose.KIND_WORDS.get(s["kind"], "단계") for s in steps],
-        "review": row.review, "needsReview": needs_review(base, steps),
+        "review": row.review, "needsReview": needs_review(steps),
     }
     if owner:
         out["steps"] = steps

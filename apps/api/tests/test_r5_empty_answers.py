@@ -1,6 +1,4 @@
-"""r5 config B (flash as writer): an empty, announced-only or cut-off answer is written once
-more by the other self-hosted model; and the checks around the answer stop damaging it —
-code values, copy lengths, a deck's quiz, citations across turns, question cards, dates."""
+"""Empty or cut-off answers rewritten by the other local model; checks that keep the answer."""
 
 from __future__ import annotations
 
@@ -82,7 +80,7 @@ def _said(text: str) -> list[str]:
 
 
 class _Client:
-    """The writer calls the tool once, then stays empty (r5 P07); the other model answers."""
+    """The writer calls the tool once, then stays empty; the other model answers."""
 
     def __init__(self, seen: list[dict], writer_says: list[str] | None = None) -> None:
         self._seen, self._writer_says = seen, writer_says
@@ -135,7 +133,7 @@ async def test_an_empty_answer_is_written_by_the_other_local_model(monkeypatch) 
     events, seen = await _turn(monkeypatch, rescue="local/qwen3.8-27b")
     text = "".join(e["text"] for e in events if e["type"] == "delta")
     assert text.startswith("렌틸콩 시금치 커리")
-    # the empty writer is not asked a second time (r5 P07: it stalled for 180 s)
+    # the empty writer is not asked a second time (a stall costs 180 s)
     assert [s["model"] for s in seen].count("local/qwen3.8-27b") == 1
     assert seen[-1]["model"] == "local/qwen3.8-27b" and "tools" not in seen[-1]
     usage = next(e for e in events if e["type"] == "usage")
@@ -302,7 +300,7 @@ def test_the_writers_own_closing_list_is_found() -> None:
     at, end, numbers = agent._own_source_list(answer)
     assert answer[at:].startswith("### 출처") and numbers == [1, 2] and end == len(answer)
     assert agent._own_source_list("본문.\n\n### 출처\n그 밖의 말") is None
-    # r7 A11: a paragraph after the list does not hide it
+    # a paragraph after the list does not hide it
     tail = answer + "\n\n보완이 필요한 항목: 예산 [2]."
     at, end, numbers = agent._own_source_list(tail)
     assert numbers == [1, 2] and tail[end:].strip() == "보완이 필요한 항목: 예산 [2]."

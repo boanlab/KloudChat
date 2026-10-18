@@ -101,10 +101,6 @@ function pipelineRow(id: string, name: string, stages: Step[], extra: Record<str
   }
 }
 
-function sse(events: unknown[]) {
-  return events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('')
-}
-
 function composedRun() {
   const runId = 'rc0000000000000000000000000000001'
   const rec = (name: string, label: string, kind: string, summary: string, status = 'done') => ({

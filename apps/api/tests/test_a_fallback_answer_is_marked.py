@@ -1,7 +1,4 @@
-"""A model call LiteLLM's fallback answered is recorded where people look: the message's
-routing (the 「외부 대체로 답함」 badge), and the audit log as `model.fallback`. A published bot
-keeps its agent's output language in the frozen copy it answers with.
-"""
+"""Fallback-answered model calls in message routing and the audit log."""
 
 from __future__ import annotations
 

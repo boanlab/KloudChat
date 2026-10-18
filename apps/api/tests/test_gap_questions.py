@@ -1,11 +1,4 @@
-"""빠진 정보 질문 are data: a 서식 and an agent carry them, a person edits them in the agent form,
-and the shipped agents ask theirs through the same path.
-
-- The shipped lists live in `template.toml` / `agents/*.toml`.
-- A person's agent with the same questions puts up the same card as the shipped agent.
-- Any agent can ask: a 바로 답하기 agent with its own questions, a report on a 서식 with them.
-- Detectors: built-in names, keywords, bounded patterns, the judge model (quoted evidence).
-"""
+"""Missing-information questions (빠진 정보 질문) as data on templates and agents."""
 
 from __future__ import annotations
 

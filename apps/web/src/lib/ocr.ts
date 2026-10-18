@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { filesApi, type FileRow } from '@/lib/api'
 
 /** What a file row says about its scanned pages being read (`services/ocr_jobs.py`). */
-export interface OcrFields {
+interface OcrFields {
   id: string
   ocrState?: FileRow['ocrState']
   ocrTotal?: number

@@ -1,8 +1,4 @@
-"""Round 7 leftovers: what the code can decide is done by code, and nothing else is taken from
-the writer — given-value arithmetic when the calculation pass times out (A10-T2), agenda
-numbers after slides are added (A09-T2), whole chart categories and unit-aware note numbers
-(A09-T1), one blank rule for SNS and ad copy (A13-T2), derived prices accepted (A11-T2), no
-reference line drawn on a category (A06-T2), and repair prompts in the writer's tier."""
+"""Code-decided fixes that take nothing else from the writer's answer."""
 
 from __future__ import annotations
 
@@ -23,7 +19,7 @@ SKILLS = Path(__file__).resolve().parents[1] / "app" / "skills"
 
 # ── 1. calc timeout: the given figures' own arithmetic ─────────────────
 
-#: r7 tasks/R3-A10-T2/prompt.md
+#: the market-size task as sent
 A10_T2 = "\n".join([
     "국내 초·중·고 대상 「AI 학습 튜터(에듀테크)」 시장 규모를 추정해 줘. 신사업 TF 1차 검토용이야.",  # noqa: E501
     "- TAM·SAM·SOM 구분해서, 하향식과 상향식 둘 다로",
@@ -35,7 +31,7 @@ A10_T2 = "\n".join([
 
 def test_the_given_figures_are_worked_out_by_code() -> None:
     assert calc.given_values(A10_T2) == ["월 구독료 9,900원 × 12개월 = 연 구독료 118,800원"]
-    # r7 A04-T1 / A04-T2 lines: written products, the monthly one over a year too
+    # written products, the monthly one over a year too
     assert calc.given_values("- 화상회의 라이선스 1인당 월 8,000원 × 40명") == [
         "월 8,000원 × 40명 = 320,000원", "월 320,000원 × 12개월 = 연 3,840,000원"]
     assert calc.given_values("- 단가 1,320,000원(부가세 별도) × 30대") == [
@@ -72,7 +68,7 @@ def _slide(title: str, layout: str = "bullets") -> dict:
 
 
 def test_agenda_numbers_follow_the_slides_added_between_them() -> None:
-    # r7 out/R3-A09-T2/kc_GLP.md: a 12-slide outline, five Gantt slides added by code
+    # a 12-slide outline, five Gantt slides added by code
     agenda = {"title": "목차", "layout": "agenda", "bullets": [
         "개요·예제 프로세스 설정 8분 (1~3번)", "다섯 알고리즘 간트 차트 도출 25분 (4~8번)",
         "비교 표와 퀀텀 이야기 9분 (9~10번)", "확인 퀴즈 5분 (11번)", "정리 3분 (12번)"]}
@@ -90,7 +86,7 @@ def test_agenda_numbers_follow_the_slides_added_between_them() -> None:
 
 
 def test_agenda_slide_ranges_follow_the_slides_and_times_are_kept() -> None:
-    # r7 out/R3-A09-T2/kc_QMX.md: 「(슬라이드 5~7)」 after a Gantt slide behind FCFS and SJF
+    # 「(슬라이드 5~7)」 after a Gantt slide behind FCFS and SJF
     agenda = {"title": "발표 순서", "layout": "agenda", "bullets": [
         "도입: 개념과 예제 (슬라이드 1~4) — 7분", "비선점형: FCFS·SJF (슬라이드 5~7) — 10분",
         "퀴즈와 정리 (슬라이드 8~9) — 8분"]}
@@ -107,7 +103,7 @@ def test_agenda_slide_ranges_follow_the_slides_and_times_are_kept() -> None:
 
 
 def test_chart_categories_keep_their_words() -> None:
-    # r7 A09-T1: 「2단계구조제거시」 and 「교차인코더」
+    # 「2단계구조제거시」 and 「교차인코더」
     chart = deck._clean_chart({"kind": "bar", "categories": [
         "LiteRerank(제안)", "조기 종료 제거 시", "2단계 구조 제거 시",
         "교차 인코더(bge-reranker-large)"],
@@ -131,7 +127,7 @@ def test_the_pdf_wraps_a_category_at_its_spaces() -> None:
     assert deck_export._category_lines("FCFS", font, 12, 200) == ["FCFS"]
 
 
-#: r7 tasks/R3-A09-T1/prompt.md (the results table and its notes)
+#: the task's results table and its notes
 A09_T1 = """실험 결과 (생성 모델: 3B sLM, 검색 상위 100개 후보, A100 1장)
 | 재순위화 방식 | KorQuAD-RAG EM | 사내 QA 정확도 | 재순위화 지연(ms/질의) | 파라미터 |
 | 없음(BM25만) | 61.2 | 58.4 | 0 | - |
@@ -145,7 +141,7 @@ A09_T1 = """실험 결과 (생성 모델: 3B sLM, 검색 상위 100개 후보, A
 
 def test_note_numbers_are_compared_with_their_units() -> None:
     facts = deck._facts_set(A09_T1)
-    # r7 out/R3-A09-T1/kc_DSP.md: 「96%의 정확도」 passed on MiniLM's 96 ms
+    # 「96%의 정확도」 passed on MiniLM's 96 ms
     invented = "오늘 기억하실 것은 96%의 정확도를 지키면서 지연을 38밀리초로 줄였다는 점입니다."
     assert deck.notes_grounded(invented, facts, A09_T1) == ""
     # 「25만」 in 「BM25만」 is no figure
@@ -174,7 +170,7 @@ def _script(name: str):
     return module
 
 
-#: r7 tasks/R3-A11-T2/prompt.md (our product's material)
+#: our product's material
 A11_T2 = """- 가격: 클라우드형 1인 월 6,000원(부가세 별도), 설치형은 100명 기준 연 1,800만원
 - 고객 지원: 전담 매니저, 평일 9~18시 전화 지원
 - 약점: 모바일 앱 평점 3.6, 외부 서비스 연동(구글·슬랙 등)이 적음, 화상회의 최대 50명"""
@@ -188,7 +184,7 @@ def test_a_price_worked_out_from_the_material_is_not_unsourced() -> None:
              "| 지어낸 할인가 | 13,700원/인/월 | 확인 필요 |")
     flagged = [f["text"] for f in claims.check(table, A11_T2) if f["kind"] == "unsourced_cell"]
     assert flagged == ["13,700원/인/월"]
-    # r7 out/R3-A11-T2/diff_DSP.md: 「…1인당 월 환산 시 15,000원(부가세 별도)입니다.
+    # 「…1인당 월 환산 시 15,000원(부가세 별도)입니다.
     # 「출처 미확인」」
     line = "설치형은 1인당 월 환산 시 15,000원(부가세 별도)입니다."
     assert post.post(line, {"material": A11_T2})["text"] == line
@@ -197,7 +193,7 @@ def test_a_price_worked_out_from_the_material_is_not_unsourced() -> None:
 
 
 async def test_a_reference_value_is_not_drawn_on_a_category() -> None:
-    # r7 A06-T2: marks [{"x": "해외 단기연수", "label": "적정 75%"}] drew a vertical line there
+    # marks [{"x": "해외 단기연수", "label": "적정 75%"}] drew a vertical line there
     ctx = ToolContext(user_id="u", session_id="s")
     result = await builtin.create_chart({
         "title": "사업별 9월말 집행률", "yLabel": "%",

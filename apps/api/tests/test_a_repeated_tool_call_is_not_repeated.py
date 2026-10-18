@@ -1,6 +1,4 @@
-"""A model that cannot tell it already has an answer keeps calling the same
-tool with the same arguments hop after hop; the loop must not pay for the
-same call twice, and must tell the model so."""
+"""Repeated identical tool calls: paid once, and the model told so."""
 
 from __future__ import annotations
 

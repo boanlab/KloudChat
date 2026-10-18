@@ -1,8 +1,4 @@
-"""Options priced by parts settle their 5-year totals before writing.
-
-The pack has no 「단가」 or 「×」 line for quote-calc and no weights or must-haves, yet the
-totals (197,900,000 / 282,000,000 / 296,250,000) are computed by code, not by the writer.
-"""
+"""Code-computed 5-year totals for options priced by parts."""
 
 from __future__ import annotations
 

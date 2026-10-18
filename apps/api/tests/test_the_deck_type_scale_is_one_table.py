@@ -1,6 +1,4 @@
-"""One type scale: the panel, the `.pptx` and the `.pdf` read the same table, and the fit
-grows a sparse slide as readily as it shrinks a crowded one.
-"""
+"""One deck type scale for the panel, `.pptx` and `.pdf`, and a fit both ways."""
 
 import io
 import re

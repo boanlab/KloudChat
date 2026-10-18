@@ -174,7 +174,7 @@ const redirects: [string, RegExp][] = [
   ['/customize?tab=designs', /\/settings\/themes$/],
   ['/memory', /\/settings\/memory$/],
   ['/customize?tab=memory', /\/settings\/memory$/],
-  // Members' published bots are shared agents now.
+  // Members' published bots: shared agents.
   ['/bots', /\/customize\?tab=agents&view=explore$/],
 ]
 

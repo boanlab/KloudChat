@@ -1,5 +1,4 @@
-"""A deck ships every approved slide, reads 「10장 내외」 as a count, and keeps whole bullets,
-never cut mid-word. The retold-slide case is in test_explicit_document_size.py."""
+"""Approved slide count, 「10장 내외」 as a count, and whole bullets."""
 
 from __future__ import annotations
 

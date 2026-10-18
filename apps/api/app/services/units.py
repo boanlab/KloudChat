@@ -213,7 +213,7 @@ def restore_material_scale(text: str, material: str) -> str:
 _SCALE_WORD = r"(?:조(?![건사정직치합언각])|천억|억|천만|만(?![큼약일족])|천(?![국재억]))"
 _TERM = (
     rf"\d[\d,]*(?:\.\d+)?\s?{_SCALE_WORD}(?:\s?\d[\d,]*(?:\.\d+)?\s?{_SCALE_WORD})*"
-    # a bare tail under the last scale word is part of the amount: 「8만 2,080」 (r7 A10-T2)
+    # a bare tail under the last scale word is part of the amount: 「8만 2,080」
     rf"(?:\s?(?:\d{{1,3}},\d{{3}}|\d{{1,4}})(?![\d,.]|\s?{_SCALE_WORD}))?"
     r"|\d[\d,]*(?:\.\d+)?"
 )
@@ -221,7 +221,7 @@ _TERM = (
 _UNIT_WORD = (r"(?:\s?(?:원|명|박스|회차|회|개월|개년|개|건|세트|가구|곳|%|배"
               r"|시간|년|장|대|일|주|km|kWh)"
               r"(?:\s?/\s?(?:월|년|연|박스|개|명|회|건|가구|세트|주|일|석|인|곳|사))?)?")
-#: a source number after an operand: 「500만 명[2]」 (r9 A10-T2: the 「[2]」 hid the product)
+#: a source number after an operand: 「500만 명[2]」
 _CITE = r"(?:\s?\[\d{1,3}\])*"
 #: short name between operator and amount: 「× 연 비용 118,800원」
 _NAMED = r"(?:[가-힣]{1,6}\s){0,2}"
@@ -307,7 +307,7 @@ def inside_longer_expression(text: str, start: int) -> bool:
 
 
 #: what may follow a result the code reads whole: not a word run on from its digits (「= 1박당
-#: 104,000원」 reads 「1」, r7 A05-T1) and not more digits
+#: 104,000원」 is not 「1」) and not more digits
 _RESULT_CUT = re.compile(r"[가-힣A-Za-z]|\s?\d")
 
 
@@ -318,8 +318,7 @@ def _cut_result(m: re.Match) -> bool:
 
 
 def _cut_expression(m: re.Match) -> bool:
-    """Whether the left side `m` read is only the tail of a longer calculation (r7 A03-T2: the
-    last four of twelve terms read as the whole sum)."""
+    """Whether the left side `m` read is only the tail of a longer calculation."""
     line_start = m.string.rfind("\n", 0, m.start()) + 1
     return bool(re.search(r"(?:[\d)]|[×x*÷+\-−])\s{0,3}$", m.string[line_start:m.start()]))
 
@@ -327,7 +326,7 @@ def _cut_expression(m: re.Match) -> bool:
 def fix_written_arithmetic(text: str) -> str:
     """Wrong 「A × B = D」 results replaced everywhere D repeats; sums/percentages elsewhere.
     A wrong result the next step of a chain starts from is carried into it and that step
-    redone (r9 A10-T2: 「500만 명 × 118,800원 = 5조 9,400억 원」 then 「5조 9,400억 원 × 30%
+    redone (「500만 명 × 118,800원 = 5조 9,400억 원」 then 「5조 9,400억 원 × 30%
     = …」 and 「… × 2% = …」, each ten times over)."""
     if not text or ("×" not in text and "÷" not in text):
         return text
@@ -455,7 +454,7 @@ def _fix_products(text: str) -> tuple[str, dict[str, str]]:
 
 #: written calc with +/− and parens; short word after 「=」 skipped
 _OPERAND = rf"\(?\s?(?:{_TERM}){_UNIT_WORD}{_CITE}\s?\)?"
-#: the result may be bold: 「= **477,600원**」 (r9 A05-T1)
+#: the result may be bold: 「= **477,600원**」
 _SUM_EXPRESSION = re.compile(
     rf"(?P<lhs>{_OPERAND}(?:\s?[×x*÷+\-−]\s?{_OPERAND}){{1,6}})"
     rf"\s?=\s?(?:\*\*)?(?:[가-힣]{{1,6}}\s)?(?:\*\*)?(?:약\s?|월\s?|연\s?|총\s?)?"
@@ -561,7 +560,7 @@ def _mark_after(text: str, end: int) -> str:
 def fix_written_sums(text: str, printed=()) -> str:
     """Wrong sum/difference results replaced; ≥1000× off left as written. A sum written after
     its listed amounts (「운임 119,600원 + … + 숙박비 160,000원으로 합계 329,600원」) and a table's
-    total row are recomputed too (r9 A05-T1). A stated result that code printed itself
+    total row are recomputed too. A stated result that code printed itself
     (`printed`: script stdout) is marked, never rewritten: the printed run and the written
     operands disagree, and code cannot tell which is meant (every writer, as `code_checked`)."""
     if not text:
@@ -698,7 +697,7 @@ def _cell_amount(cell: str) -> tuple[float, str, str] | None:
 
 def fix_table_totals(text: str, *, printed=(), fixes: dict[str, str] | None = None) -> str:
     """A table's 「합계」 row set to the sum of the rows above it where those rows are plain
-    amounts of one unit (r9 A05-T1: 「| **합계** | … | **329,600원** |」 over 119,600 + 75,000 +
+    amounts of one unit (「| **합계** | … | **329,600원** |」 over 119,600 + 75,000 +
     75,000 + 160,000); where the rows are not that plain (a subtotal, a blank, a second total
     below a first), a total that matches no reading is marked 「(확인 필요)」. Rates, averages,
     unit prices and other columns that do not add are left alone."""
@@ -838,7 +837,7 @@ def _total_stated(text: str, amount: str) -> bool:
 
 def settle_corrections(text: str) -> str:
     """A 「수정: 합계는 N원」 line taken off, its value put in place of the differing total it
-    corrects (the unconditioned total named before it; r3 A05 T1: 「총 409,600원」 then
+    corrects (the unconditioned total named before it; 「총 409,600원」 then
     「수정: 합계는 429,600원입니다.」). A line with no single total amount stays."""
     if not text or not re.search(r"수정|정정|바로잡음", text):
         return text
@@ -871,7 +870,7 @@ def settle_corrections(text: str) -> str:
 
 def mark_slipped_formulas(text: str) -> str:
     """A written 「A × B = D」 whose D is off by 1000× or more is marked 「(확인 필요)」: an
-    operand or the result slipped a unit, and code cannot tell which (r9 A10-T1: 「25곳 × 1명 ×
+    operand or the result slipped a unit, and code cannot tell which (「25곳 × 1명 ×
     40만 원/석 × 12개월 = 1200억 원」 is 1억 2,000만 원). `fix_written_arithmetic` leaves such a
     formula as written."""
     if not text or ("×" not in text and "÷" not in text):
@@ -916,7 +915,7 @@ def _significand(value: float) -> str:
 
 def mark_scaled_restatements(text: str, reference: str = "") -> str:
     """An amount with the same digits as a worked result in the answer (or `reference`, the
-    whole document) but a power of ten off is marked 「(확인 필요)」 (r9 A10-T2: 「하향식 SOM은
+    whole document) but a power of ten off is marked 「(확인 필요)」 (「하향식 SOM은
     175억 2천만 원」 in the summary, 「1조 7,520억 원」 in a table, over the body's 「8조 7,600억
     원 × 2% = 1,752억 원」). Only results of three significant digits or more count, so 「1억」
     and 「10억」 never read as one figure; the restatement is marked, not rewritten: code
@@ -989,7 +988,7 @@ def _yearly(m: re.Match, default: str) -> float:
 
 def mark_profit_contradictions(text: str) -> str:
     """A stated profit above what the paragraph's own revenue less its named costs leaves is
-    marked with that arithmetic (r9 P56: 「연매출 4억 원에서 원재료비 1억 4,000만 원과 임대료
+    marked with that arithmetic (「연매출 4억 원에서 원재료비 1억 4,000만 원과 임대료
     7,200만 원을 뺀 … 인건비를 월 1,800만 원으로 잡으면 세전 영업이익은 연 1억 원 안팎」, though
     4억 − 1억 4,000만 − 7,200만 − 2억 1,600만 = −2,800만 원). Costs the paragraph does not name
     only lower the profit, so only a profit above the bound is a contradiction; the sentence
@@ -1059,8 +1058,7 @@ def _constant(token: re.Match) -> bool:
 def label_estimates(text: str, known_text: str) -> str:
     """Each worked result in `text` that is none of `known_text`'s figures (the person's
     material and what code printed) gets 「(추정)」 after it: on a turn whose code calculation
-    did not finish, those are the writer's own arithmetic (r9 A10-T2 L27F: the SAM·SOM chain
-    after 「검산 시간 초과 — 한 번 실행한 값」 read as code's). A result already marked
+    did not finish, those are the writer's own arithmetic, not code's. A result already marked
     (「(추정)」, 「(확인 필요)」, 「(가정)」) stays as it is."""
     if not text or "=" not in text:
         return text
@@ -1111,9 +1109,8 @@ def _valued(text: str) -> list[tuple[float, str]]:
 
 def label_assumptions(text: str, person: str) -> str:
     """A table row whose basis says the person's company set it (「가정(사내)」) while none of
-    its figures is in what the person gave is relabelled 「가정(본 검토 설정)」 (r9 A10-T2:
-    「고객군 비중 | 학부모 70% / 학원 25% / 학교·교육청 5% | 가정(사내)」 though the request
-    gave only 9,900원 and 2%). A row with one given figure (「118,800원 (9,900 × 12)」) stays."""
+    its figures is in what the person gave is relabelled 「가정(본 검토 설정)」. A row with one
+    given figure (「118,800원 (9,900 × 12)」) stays."""
     if not text or "|" not in text or not _COMPANY_CLAIM.search(text):
         return text
     given = _valued(person)

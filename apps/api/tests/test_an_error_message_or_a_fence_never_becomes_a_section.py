@@ -1,6 +1,4 @@
-"""A model's tool error in place of a section (「required_context_missing / Required context is
-missing. Provide the required_context argument …」) is written again, never shipped; prose
-fenced as ```markdown is set as the body, not a code block."""
+"""Rewrite of tool errors and ```markdown fences returned as sections."""
 
 from __future__ import annotations
 

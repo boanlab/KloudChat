@@ -75,13 +75,18 @@ the public bot list — and its embed, OpenAI-compatible API and MCP channels
 are approved by an administrator. A bot answers on the strict-local model with
 its approved version, under the owner's credits and policies.
 
-**Data stays inside when it should.** Models are labelled by boundary in the
-LiteLLM catalogue (self-hosted, `strictLocal`, hybrid, external). Turns that
-carry the organisation's own material — attachments, project files, memories —
-run on strict-local models by default; a privacy guard and PII masking decide
-what may go to an external model. Scanned PDFs and document photos are read by
-an OCR engine and, for pages it is unsure of, a strict-local vision model —
-never anything else.
+**Data stays inside when it should.** Each model's boundary is declared in the
+LiteLLM catalogue. External models run outside. A `local/` model runs on the
+organisation's own GPUs first but may fall back to an external twin, so it
+counts as outside the data boundary. A `strict-local/` model never leaves the
+deployment; it is the only data boundary. Turns that carry the organisation's
+own material — attachments, project files, memories, an earlier strict-local
+turn — run on strict-local models by default; a privacy guard and PII masking
+decide what may go anywhere else. Pictures, charts, diagrams and document edits
+(rewrites, reviews, fact-checks) follow the boundary of the conversation they
+belong to, and are refused rather than sent out when no strict-local model
+exists. Scanned PDFs and document photos are read by an OCR engine and, for
+pages it is unsure of, a strict-local vision model — never anything else.
 
 **Accounting is per person.** An approved account gets its own LiteLLM
 virtual key, so spend and audit logs on the proxy are per person; the master
@@ -246,12 +251,13 @@ without a translation fall back to Korean. The user guide is published at
 | `/s/:id` | A conversation, with its artifacts in the right-hand panel |
 | `/projects` · `/projects/:id` | Project instructions, knowledge files, conversations and memories |
 | `/artifacts` | Every artifact, filtered by kind, with a way back to its conversation |
-| `/bots` | Old link to the members' chatbot list; redirects to **Customize** → **Agents** → **Explore** (shared agents), where members' published bots show as agents. `/b/:slug` is a bot's own page, `/b` the public list, `/embed/b/:slug` the embeddable frame |
+| `/files` | The file box: uploads and generated files, listed apart |
+| `/bots` | Redirects to **Customize** → **Agents** → **Explore** (shared agents), where members' published bots show as agents. `/b/:slug` is a bot's own page, `/b` the public list, `/embed/b/:slug` the embeddable frame |
 | `/customize` | **Customize** — agents, skills and connectors (`?tab=agents\|skills\|connectors`), including what others shared; bundles at `/customize/bundles` |
 | `/history` | Conversation history — selective and bulk deletion |
 | `/usage` | Your own usage, by day, model and surface |
 | `/issues` | Questions and reports you sent, with the answers |
-| `/settings` · `/preferences` · `/personalization` · `/memory` · `/themes` · `/keys` · `/access` | Profile and password / defaults / about-me and response style / memories / themes / API keys / sign-ins |
+| `/settings` · `/settings/{preferences,personalization,memory,themes,keys,access}` | Profile and password / defaults / about-me and response style / memories / themes / API keys / sign-ins |
 | `/agent-setup` · `/api-setup` | Coding-agent and API connection guides |
 | `/share/:token` | A read-only shared link |
 | `/admin/…` | See [What an administrator controls](#what-an-administrator-controls) |
@@ -267,8 +273,13 @@ without a translation fall back to Korean. The user guide is published at
 - **Slides** — the outline is approved first, then each slide is filled in.
   Thumbnail grid, speaker notes, per-slide editing; preview and exports share
   one 16:9 geometry, so what you saw is what the file contains.
-- **Image** — an option bar above the composer (aspect ratio, style, count).
-  The prompt and the picture read as an ordinary turn.
+- **Image** — one picture per request, with options in the composer: aspect
+  ratio, labels, and a style from one of two groups. **Picture** styles (auto,
+  photo, illustration, infographic, watercolour) are drawn by the picture model;
+  **Exact figure** styles (structure, flow and concept diagrams, chart) are
+  drawn as shapes or a chart, so their text is exact. **Prompt as written**
+  sends the words unchanged. The prompt and the picture read as an ordinary
+  turn.
 - **Audio / Video** — the same turn shape, with a job card standing in the
   answer's place while a clip is made. Picking resolution, audio and duration
   updates the quote in place. A failure states the cause and that nothing was

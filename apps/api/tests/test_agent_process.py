@@ -1,14 +1,5 @@
 # ruff: noqa: F811 — fixtures imported from test_user_pipelines are parameters here.
-"""An agent's 진행 과정: 바로 답하기, 기본 과정에서 시작 with the 묶음 it ticks, 직접 구성.
-
-묶음 are data, the shipped ones (`app/bundles/*.toml`) and a person's own alike, and an
-official agent is its base and its bundles: a person ticking the same bundles on the same base
-gets the same agent. Bundle items that are checks run inside the agent's own flow; only a step
-(a chat agent's calculation, an export, a person's bundle with a review or another agent)
-makes a pipeline of the agent's own, whose `@self` step runs the agent's own flow with the
-turn's web search and connectors. A 직접 구성 or a person's bundle that exports, reviews or
-runs another agent waits for an administrator before others run it.
-"""
+"""An agent's 진행 과정: 바로 답하기, 기본 과정에서 시작 with 묶음, and 직접 구성."""
 
 from __future__ import annotations
 
@@ -89,8 +80,8 @@ def test_the_shipped_bundles_are_data_in_the_users_shape():
 
 
 def test_the_bases_are_the_offered_agents_with_their_steps_and_bundles():
-    # The shipped agents are withdrawn (skills now): no base is offered anew, while an agent
-    # already built on one keeps it.
+    # Shipped agents withdrawn in favour of skills: no base offered anew; an agent already
+    # built on one keeps it.
     assert bases.bases() == [] and bases.bases(drafts=True) == []
     everyone = [b.key for b in bases.bases(withdrawn=True)]
     admins = [b.key for b in bases.bases(drafts=True, withdrawn=True)]
@@ -155,11 +146,11 @@ def test_strictness_comes_from_the_agent_not_its_name():
 def test_what_needs_review_is_a_custom_order_with_an_export_a_review_or_another_agent():
     own = compose.normalize([{"kind": "agent", "ref": "@self"},
                              {"kind": "check", "ref": "grounding-check"}])
-    assert not bases.needs_review(None, own)
+    assert not bases.needs_review(own)
     for extra in ({"kind": "export", "settings": {"formats": ["pdf"]}},
                   {"kind": "review", "settings": {"model": "m"}},
                   {"kind": "agent", "ref": "someone-else"}):
-        assert bases.needs_review(None, [*own, extra])
+        assert bases.needs_review([*own, extra])
 
 
 # ── the API ─────────────────────────────────────────────────────────────

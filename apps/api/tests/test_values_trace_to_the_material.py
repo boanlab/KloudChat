@@ -1,10 +1,4 @@
-"""Every value a finished document states traces to the material or to code, or it is blanked.
-
-The fixtures are the lineup v1 acceptance runs (tests/fixtures/grounding): the request, the
-material, what code computed for that run (the date-calc block, the quote totals, run_code's
-output), and the document or answer as it was written. The invented values the reviewers
-found are caught and blanked; the grounded ones in the same documents are left as written.
-"""
+"""Document values traced to the material or to code, or blanked."""
 
 from __future__ import annotations
 

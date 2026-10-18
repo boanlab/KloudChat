@@ -269,12 +269,6 @@ def scholar_queries(text: str, request: str) -> tuple[list[str], list[str]]:
     return kept[:_SCHOLAR_QUERIES], entities
 
 
-async def literature_queries(request: str, model: str, api_key: str) -> list[str]:
-    """English literature queries; [] if none."""
-    queries, _ = await literature_plan(request, model, api_key)
-    return queries
-
-
 async def literature_plan(request: str, model: str, api_key: str) -> tuple[list[str], list[str]]:
     """`(queries, entities)` for a literature question; queries [] if none."""
     queries, _, entities = await _planned(

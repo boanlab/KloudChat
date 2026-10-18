@@ -27,8 +27,6 @@ export function DownloadMenu({
   compact,
   disabled,
   onError,
-  align = 'right',
-  className,
   label,
 }: {
   artifact: Artifact
@@ -45,8 +43,6 @@ export function DownloadMenu({
   compact?: boolean
   disabled?: boolean
   onError?: (message: string) => void
-  align?: 'left' | 'right'
-  className?: string
 }) {
   const t = useT()
   const setNotice = useStore((s) => s.setNotice)
@@ -74,8 +70,7 @@ export function DownloadMenu({
 
   return (
     <Dropdown
-      align={align}
-      className={className}
+      align="right"
       trigger={() => (
         <Button
           size="sm"

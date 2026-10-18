@@ -1,7 +1,7 @@
 """One more try for a whole-answer model call whose connection dropped.
 
 A slide or report section is one non-streaming call; when the model server drops it (「peer
-closed connection without sending complete message body」, r3 A13 T2 and A16 T1), nothing of it
+closed connection without sending complete message body」), nothing of it
 reached the person, so asking once more costs only the wait. The chat path does the same for a
 streamed hop and takes the half answer back (`agent.run_turn`).
 """

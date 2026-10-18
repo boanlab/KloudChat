@@ -1,10 +1,4 @@
-"""Round 8: the writer's English reasoning and check reports out of a chat answer, Cyrillic and
-kana repaired in chat answers too, a crisis line's wrong number set by code.
-
-All three run in `answer-normalize` for every model group (docs/architecture.md, "Mechanisms
-by model group"): they are code with no judge, the slips came from self-hosted writers (flash
-P05·P53·A12-T1·A16, 27B P07·P16), and on a strong external writer they find nothing to do or do
-the same safe fix. Each case runs for a self-hosted writer and a strong external one."""
+"""Answer normalization: English reasoning, Cyrillic and kana, crisis-line numbers."""
 
 from __future__ import annotations
 
@@ -37,7 +31,7 @@ def _normalized(answer: str, request: str, *, writer: str, material: str = "",
     return bundle.document.answer, events
 
 
-# ── flash's untagged English reasoning (P05) and tool-step narration (P53) ──────────────
+# ── flash's untagged English reasoning and tool-step narration ──────────────────────────
 
 P05_REQUEST = ("영양사로서 2인분 채식 요리를 하나 짜려고 해. 1인분에 약 500kcal이고 "
                "혈당지수(GI)가 낮은 걸로. 제안해 줄 수 있어?")
@@ -87,7 +81,7 @@ def test_an_english_answer_that_opens_with_its_point_stays():
     assert internal_words.strip_work_notes(text, request=P53_REQUEST) == text
 
 
-# ── check reports told as sentences (A16-T1, A16-T2, A12-T1) ─────────────────────────
+# ── check reports told as sentences ──────────────────────────────────────────────────
 
 A16_T2 = (
     "두 문서 모두 항목 7개 대비 빠짐 0, 차단 0으로 검증을 마쳤습니다. 청구서 메일 첫 적용월은 "
@@ -116,7 +110,7 @@ def test_a_count_the_person_asked_to_check_stays():
     assert internal_words.strip_work_notes(text, request="빠진 항목이 있는지 점검해 줘") == text
 
 
-# ── Cyrillic and kana in chat answers (P07 27B light, P16 flash light) ──────────────
+# ── Cyrillic and kana in chat answers ───────────────────────────────────────────────
 
 P07 = ("- **턱 인тягивание(chin tuck):** 앉아서 턱을 뒤로 당겨 이중턱 만드는 동작, "
        "10회 × 3세트. 경추 중립 회복에 핵심.")
@@ -147,7 +141,7 @@ def test_russian_the_person_asked_about_stays():
     assert hangul.repair_mixed_script(code)[0] == code
 
 
-# ── a crisis line's wrong number (P16 27B light) ───────────────────────────────────
+# ── a crisis line's wrong number ───────────────────────────────────────────────────
 
 P16_LINES = (
     "* **자살예방 및 정신건강 위기상담:** 1599-9195 (24시간)\n"

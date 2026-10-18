@@ -1,11 +1,4 @@
-"""Round 5: the scaffolding around an answer steps back where it over-constrained it.
-
-Each case is a request from the round-5 comparison (R3/R4 tasks) where the plain answer was
-right and KloudChat's own step broke it: an expert skeleton against 「진단과 치료 계획만」,
-an invented 「앞선 대화에서…」, an approval card with nothing to approve, a 「무엇에 대한
-발표입니까?」 over a complete abstract, a search footer on a proofreading answer, search off
-for a market review, an English e-mail rewritten in Korean, and a closing hop's one line
-standing in for the battle card."""
+"""Answer scaffolding that steps back where it would over-constrain the answer."""
 
 from __future__ import annotations
 

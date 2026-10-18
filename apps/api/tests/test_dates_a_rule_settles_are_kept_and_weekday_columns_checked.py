@@ -1,8 +1,4 @@
-"""Round-2 R2W-05: a date the request's own rule settles is the one that ships. A date a few
-days off the rule's, written with the rule day's weekday (「2. 1.(일)」 for 1/31(일)), is the
-slip — its date is set, its weekday kept; a 요일 column is read against its row's date; a row
-named like a rule's line gets the rule's period; and the writer is given those dates by code,
-with 「오늘부터 며칠」 counted from the server's date (sc/n01_scholar, sc/n02_haksa)."""
+"""Dates settled by the request's rule, 요일 columns checked against their dates."""
 
 from __future__ import annotations
 

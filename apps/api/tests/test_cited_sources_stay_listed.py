@@ -1,5 +1,4 @@
-"""10차 검증(LFLF2)의 기업 조사·경쟁사 분석: 본문의 인용과 답 아래 출처 목록이 서로 맞고,
-인용 고침이 링크째 바뀌며, 쓴 사람이 목록에 적은 날짜가 남고, 조사 스킬은 검색을 더 한다."""
+"""Company and competitor research: citations matching the 출처 list, dates kept, more searches."""
 
 from __future__ import annotations
 
@@ -21,7 +20,7 @@ URL1 = "https://www.rebellions.ai/about"
 
 
 def test_a_linked_citation_judged_wrong_goes_whole():
-    # SK-company-3: 「[[3]](url)」 became 「[「출처 미확인」](url)」, the mark as a link label
+    # 「[[3]](url)」 became 「[「출처 미확인」](url)」, the mark as a link label
     text = f"본사는 춘천이다 [[3]]({URL1})."
     found = [{"kind": "cite_mismatch", "line": 0, "start": text.index("[3]"),
               "end": text.index("[3]") + 3, "text": "[3]"}]
@@ -32,7 +31,7 @@ def test_a_linked_citation_judged_wrong_goes_whole():
 
 
 def test_a_citation_a_check_took_out_of_a_cell_is_not_given_back():
-    # SK-company-2: the rewrite emptied the 출처 cell; the guard put 「[[2]]」 back
+    # the rewrite emptied the 출처 cell; the guard put 「[[2]]」 back
     before = (f"| 항목 | 내용 | 출처 |\n|---|---|---|\n| 설립 | 2020년 | [[2]]({URL2}) |\n"
               f"| 본사 | 서울 | [[1]]({URL1}) |")
     after = (f"| 항목 | 내용 | 출처 |\n|---|---|---|\n| 설립 | 2020년 |  |\n"
@@ -57,7 +56,7 @@ def test_a_list_line_a_rewrite_lost_comes_back_and_a_citation_never_listed_goes(
 
 
 def test_the_writers_own_list_dates_stay_when_the_server_lists_the_sources():
-    # SK-company-2: 「출처랑 날짜도」 asked; the server's list replaced the writer's dated one
+    # 「출처랑 날짜도」 asked; the server's list replaced the writer's dated one
     own = (f"## 출처\n[1] 회사 소개, 2026.3.12 확인, {URL1}\n"
            f"- [2] [릴리스 2025.09 투자]({URL2})\n")
     dates = agent._own_list_dates(own, [URL1, URL2])
@@ -65,7 +64,7 @@ def test_the_writers_own_list_dates_stay_when_the_server_lists_the_sources():
 
 
 def test_a_material_named_in_a_cell_is_its_source():
-    # SK-competitor-3: 「[경쟁 A 자료]」 cells marked 「(확인 필요)」 as unsourced
+    # 「[경쟁 A 자료]」 cells marked 「(확인 필요)」 as unsourced
     table = ("| 항목 | 자사 | 경쟁 A |\n|---|---|---|\n"
              "| 회의록 | 자동 요약 [자사 자료] | 화자 구분 지원 [경쟁 A 자료] |")
     found = claims.check(table, "", {})
@@ -78,11 +77,11 @@ def test_the_research_skills_search_deep_on_a_chat_turn():
         assert spec is not None and spec.process.get("deep_search") is True
         assert sessions._deep_search((key,), {key: spec})
     assert not sessions._deep_search(("copy-editing",), {})
-    # LFLF5: the test account's copy had no stored fields, so the turn's specs lacked it
+    # the test account's copy had no stored fields, so the turn's specs lacked it
     assert sessions._deep_search(("competitor-analysis",), {})
 
 
-# ── LFLF3: searched what the request lists, a cell's own source, opportunities on unknowns ──
+# ── searched what the request lists, a cell's own source, opportunities on unknowns ──
 
 COMPETITORS = ("국내 업무용 협업툴 경쟁사 비교표 만들어 줘. 잔디, 플로우, 네이버웍스를 대상으로 "
                "포지셔닝, 주요 기능, 가격(요금제) 정리하고 출처 달아 줘.")
@@ -132,14 +131,14 @@ def test_an_opportunity_resting_on_an_unknown_is_labelled_a_guess():
 def test_the_whole_ask_as_one_query_does_not_count_as_searching_each_name():
     from app.services import query_terms
 
-    # LFLF4 SK-competitor-1: the first query was the request itself
+    # the first query was the request itself
     whole = COMPETITORS[:60]
     assert query_terms.unsearched(COMPETITORS, [whole, "잔디 요금제", "플로우 요금제"]) == [
         "네이버웍스"]
 
 
 def test_the_persons_own_product_in_their_words_is_not_marked():
-    # LFLF4 SK-competitor-2: 14 own-product facts marked 「(확인 필요)」
+    # 14 own-product facts marked 「(확인 필요)」
     material = "우리 제품은 사내 설치형 AI 챗봇이야(자체 GPU 서버, 문서 기반 답변, 보고서 생성)."
     table = ("| 항목 | 자사 | 뤼튼 |\n|---|---|---|\n"
              "| 설치 | 지원 (자체 GPU 서버) | 확인 필요 |\n"
@@ -150,7 +149,7 @@ def test_the_persons_own_product_in_their_words_is_not_marked():
 
 
 def test_a_page_profiling_another_company_is_not_a_one_pagers_source():
-    # LFLF6 SK-company-2: THE VC's 앳 page cited for 리벨리온's series C investors
+    # THE VC's 앳 page cited for 리벨리온's series C investors
     text = ("## 리벨리온(Rebellions) 한눈에\n\n"
             "시리즈C에 산업은행이 참여했습니다 [[2]](https://thevc.kr/at-1). "
             "설립은 2020년입니다 [[1]](https://thevc.kr/rebellions).\n\n"
@@ -167,7 +166,7 @@ def test_a_page_profiling_another_company_is_not_a_one_pagers_source():
 
 
 def test_a_cell_whose_only_source_is_about_another_competitor_is_unsourced():
-    # LFLF6 SK-competitor-1: a JANDI blog the row's only source, a 네이버웍스 fact beside it
+    # a JANDI blog the row's only source, a 네이버웍스 fact beside it
     text = ("대상: 잔디(JANDI), 플로우(Flow), 네이버웍스(Naver Works)\n\n"
             "| 항목 | 잔디 | 플로우 | 네이버웍스 | 출처 |\n|---|---|---|---|---|\n"
             "| 최근 움직임 | 연동 확대 | 확인 필요 | 클로바노트 별도 상품 | "
@@ -188,7 +187,7 @@ def test_a_cell_whose_only_source_is_about_another_competitor_is_unsourced():
 def test_memo_lines_handed_over_to_check_are_each_searched():
     from app.services import query_terms
 
-    # LFLF6 SK-company-3: 「ERP 1위」 and 「공공 클라우드」 never searched
+    # 「ERP 1위」 and 「공공 클라우드」 never searched
     memo = ("아래 메모로 더존비즈온 기업 조사 한 장 만들어 줘.\n\n[영업팀 메모]\n"
             "- 더존비즈온, ERP 1위 업체라고 들음\n- 본사 강원도 춘천?\n"
             "- 최근 AI 넣은 ERP 냈다고 함 (이름 모름)\n- 공공 클라우드 사업도 한다고 함")
@@ -206,7 +205,7 @@ def test_a_judged_statement_is_read_against_the_pages_it_cites():
     import asyncio
     import json
 
-    # LFLF7 SK-company-1: 「AWS」 in another page kept a statement its own [1] lacks
+    # 「AWS」 in another page kept a statement its own [1] lacks
     one, two = "https://smartbizn.com/a", "https://news.example/b"
     answer = (f"노마디안은 AWS와 2025년 협약했다 [[1]]({one}).\n"
               f"매출은 1,753억 원이다 [[2]]({two}).")
@@ -236,7 +235,7 @@ def test_a_judged_statement_is_read_against_the_pages_it_cites():
 
 
 def test_a_cell_citing_another_product_of_the_same_name_is_unsourced():
-    # LFLF6 SK-competitor-2: GitHub Copilot pages cited in the M365 Copilot column
+    # GitHub Copilot pages cited in the M365 Copilot column
     ms = "https://learn.microsoft.com/m365/copilot"
     text = ("| 항목 | 뤼튼 | M365 Copilot |\n|---|---|---|\n"
             f"| 대상 | 확인 필요 | 조직 [[1]]({ms}) |\n"
@@ -256,7 +255,7 @@ def test_a_cell_citing_another_product_of_the_same_name_is_unsourced():
 
 
 def test_a_mark_stays_on_a_value_its_cited_page_does_not_give():
-    # LFLF8 SK-company-3: 2분기 figures cited to a darts-match page lost their marks
+    # 2분기 figures cited to a darts-match page lost their marks
     darts, dart = "https://darts.example/match", "https://dart.fss.or.kr/report"
     before = (f"2분기 매출은 1,031억 원이다 [[8]]({darts}).\n\n"
               f"영업이익은 260억 원이다 [[2]]({dart}).")
@@ -270,7 +269,7 @@ def test_a_mark_stays_on_a_value_its_cited_page_does_not_give():
 
 
 def test_a_comparison_page_and_a_korean_maker_are_not_another_product():
-    # LFLF8: 「GitHub Copilot and Microsoft 365 Copilot」 and 「마드라스체크(플로우)」
+    # 「GitHub Copilot and Microsoft 365 Copilot」 and 「마드라스체크(플로우)」
     ms = "https://learn.microsoft.com/m365/copilot"
     text = ("| 항목 | 플로우 | 365 Copilot |\n|---|---|---|\n"
             f"| 대상 | 확인 필요 | 조직 [[1]]({ms}) |\n"
@@ -286,7 +285,7 @@ def test_a_comparison_page_and_a_korean_maker_are_not_another_product():
 
 
 def test_an_english_page_or_a_bare_day_leaves_the_reading_to_all_the_evidence():
-    # LFLF9 SK-company-2: 「8억5,000만 달러」 cited to an English newsroom page, 「12월 1일」 to
+    # 「8억5,000만 달러」 cited to an English newsroom page, 「12월 1일」 to
     # an article that says 「지난 1일」
     news, daum = "https://rebellions.ai/newsroom/pre-ipo", "https://v.daum.net/v/20241202"
     before = (f"누적 투자액은 8억5,000만 달러다 [[1]]({news}).\n\n"
@@ -303,7 +302,7 @@ def test_an_english_page_or_a_bare_day_leaves_the_reading_to_all_the_evidence():
 
 
 def test_a_companys_own_blog_and_a_sign_in_page_are_not_another_product():
-    # LFLF10: 「… JANDI 블로그 · blog.jandi.com」 and 「Microsoft 365 - Sign into Copilot」
+    # 「… JANDI 블로그 · blog.jandi.com」 and 「Microsoft 365 - Sign into Copilot」
     blog, m365 = "https://blog.jandi.com/ko/voucher", "https://m365.cloud.microsoft/"
     spam = "https://www.korealbs.or.kr/product/1"
     text = ("대상: 잔디(JANDI)\n\n| 항목 | 잔디 | 365 Copilot |\n|---|---|---|\n"

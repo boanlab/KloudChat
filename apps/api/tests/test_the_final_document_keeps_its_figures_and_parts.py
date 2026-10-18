@@ -1,5 +1,4 @@
-"""Late-pipeline guards: a deck in another language, a deck pasted into a note, a settled
-figure off by a power of ten, a per-unit formula, a run of months cut short."""
+"""Late-pipeline guards on language, pasted decks, settled figures and month runs."""
 
 from app.services import deck, quality_gate, units
 from app.services import key_figures as kf

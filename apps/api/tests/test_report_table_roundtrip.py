@@ -1,8 +1,4 @@
-"""Real save/read/export routes using only an in-memory synthetic workspace.
-
-The JSON fixtures are PATCH bodies as the web table editor sends them.
-Authentication is stubbed; persistence and exporters are not.
-"""
+"""Real table save, read and export routes over an in-memory workspace."""
 
 from __future__ import annotations
 

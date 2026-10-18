@@ -56,12 +56,6 @@ class PublicationStatus(StrEnum):
     revoked = "revoked"
 
 
-#: `off`: stats and sent conversations only; `on` (「대화 열람」): all after consent
-CONVERSATION_VIEW = ("off", "on")
-#: visitor-visible working detail
-SHOW_PROCESS = ("none", "summary", "full")
-
-
 class Publication(SQLModel, table=True):
     __tablename__ = "publications"
 
@@ -82,11 +76,13 @@ class Publication(SQLModel, table=True):
     limits: dict | None = Field(default=None, sa_column=_json(nullable=True))
     #: reserved; unknown keys ignored
     features: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: visitor-visible working detail: `none` · `summary` · `full`
     show_process: str = Field(default="summary", max_length=20)
     show_sources: bool = Field(default=True)
     #: 「복사 허용」: members may copy the bot (instructions included) as their own agent
     allow_copy: bool = Field(default=False)
     retention_days: int = Field(default=30)
+    #: `off`: stats and sent conversations only; `on` (「대화 열람」): all after consent
     conversation_view: str = Field(default="off", max_length=8)
     #: bumped on notice change; consent is per version
     consent_version: int = Field(default=1)
@@ -213,8 +209,6 @@ class PublicationKey(SQLModel, table=True):
 
 
 __all__ = [
-    "CONVERSATION_VIEW",
-    "SHOW_PROCESS",
     "Publication",
     "PublicationCounter",
     "PublicationKey",

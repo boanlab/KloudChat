@@ -1,5 +1,4 @@
-"""A shipped workflow is shown as a few plain steps: each pipeline file says what its chain's
-steps do, and every check it names has a person's name (never only its id)."""
+"""Plain step summaries of shipped workflows, with a person's name for every check."""
 
 import re
 

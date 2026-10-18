@@ -1317,8 +1317,7 @@ async def run_published_turn(db: DbSession, pub: Publication, visitor: Publicati
         return _too_many("bot_busy", 5)
     turn = publishing.PublishedTurn(
         publication_id=pub.id, version_id=version.id, visitor_id=visitor.id,
-        model_id=version.model, question=question or content, slot_id=slot,
-        first_turn=asked == 0)
+        model_id=version.model, question=question or content, slot_id=slot)
     token = sessions._PUBLISHED.set(turn)
     try:
         response = await sessions.send_message(

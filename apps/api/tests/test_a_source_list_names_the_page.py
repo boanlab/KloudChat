@@ -1,8 +1,4 @@
-"""The 출처 list under a searched answer names each page by its title, not its URL slug.
-
-Not 「arxiv.org · 2508.11823v1」 or
-「proceedings.neurips.cc · 3c1e1fdf305195cd620c118aaa9717ad Abstract Confer」.
-"""
+"""출처 list entries named by page title, not URL slug."""
 
 from __future__ import annotations
 

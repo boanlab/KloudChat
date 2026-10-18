@@ -1,7 +1,4 @@
-"""A 개조식 보고 is set like a 1쪽 공문서 보고 in every renderer: its own type scale and spacing
-(`doc_type.FORMAT_*`), the 붙임 section as the closing 「붙임  1. ○○ 1부.  끝.」 lines rather
-than a numbered heading, and a ※ note under an item with ※ as its own marker (~900
-characters on one page, no 「4. 붙임」 heading, no 「○ ※ …」)."""
+"""One-page 공문서 setting of a 개조식 보고 in every renderer."""
 
 from __future__ import annotations
 

@@ -1,6 +1,4 @@
-"""A skill that tells the reader to call `run_skill_script` reaches a document writer (no tools)
-without that step, and a tool call the writer still writes out as JSON never ships: the section is
-written once more, or the block is dropped."""
+"""Tool-call steps kept out of document writers; JSON tool calls never shipped as a section."""
 
 from __future__ import annotations
 

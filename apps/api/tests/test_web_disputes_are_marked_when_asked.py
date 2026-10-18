@@ -1,5 +1,4 @@
-"""r7 A07-T2 (DSP): the request asked unconfirmed points to be marked 「확인 필요」; three
-sentences the web check found contradicted went out unmarked (listed in the step only)."""
+"""Web-check contradictions marked 「확인 필요」 when the request asks for marks."""
 
 from __future__ import annotations
 

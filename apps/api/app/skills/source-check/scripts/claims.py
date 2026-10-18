@@ -8,16 +8,16 @@ import sys
 
 CITED = re.compile(
     r"\[\d{1,3}\]|https?://|출처\s*[:：]|자료\s*[:：]|\((?:자사|제공|사용자|내부)\s?자료[^)]*\)|\[자료\]"
-    # the person's material cited by its name: 「[경쟁 A 자료]」 (r10 SK-competitor-3)
+    # the person's material cited by its name: 「[경쟁 A 자료]」
     r"|\[[^\[\]\n]{1,30}\s자료\]"
 )
 OPEN = re.compile(
     r"확인\s?필요|출처\s?미확인|자료\s?없음|판단\s?보류|가정\s*[:：)]|\(가정|해당\s?없음|N/?A"
-    # the battlecard's own 「공개 자료에서 확인하지 못함」 (r7 A11-T2)
+    # the battlecard's own 「공개 자료에서 확인하지 못함」
     r"|확인하지\s?못(?:함|했)|확인\s?못\s?함",
     re.I,
 )
-#: Units and modifiers around a figure the material gives (「6,000원/인/월(부가세 별도)」, r7 A11-T2).
+#: Units and modifiers around a figure the material gives (「6,000원/인/월(부가세 별도)」).
 _UNIT_WORDS = re.compile(
     r"만원|억원|천원|원|명|인당|인|월|연|년|일|개월|개|건|회|시간|시|분|초|배|%|GB|MB|TB|"
     r"약|최대|최소|이상|이하|미만|초과|기준|당|부가세|VAT|별도|포함", re.I
@@ -72,7 +72,7 @@ def _shown(value: float) -> set[str]:
 
 def derived_numbers(material: str) -> set[str]:
     """Figures one or two steps of arithmetic away from the material's own: a total per head or
-    per month (「연 1,800만원」 for 「100명」 → 1인 월 15,000원, r7 A11-T2), a price times a count,
+    per month (「연 1,800만원」 for 「100명」 → 1인 월 15,000원), a price times a count,
     a month's amount over a year (「1인 월 6,000원」 × 100명 × 12). Written as digits."""
     values: set[float] = set()
     for m in _AMOUNT.finditer(material or ""):
@@ -186,7 +186,7 @@ def _entity_columns(header: list[str], labels: int, skip: set, text: str) -> dic
 def _other_company(col: int, numbers: set[str], entities: dict[int, set[str]],
                    pages: dict[str, str]) -> int | None:
     """The other company a cell's sources are all about, when none names its own column's
-    (r10 SK-competitor-1: a JANDI blog the only source of a 네이버웍스 cell)."""
+    (a JANDI blog the only source of a 네이버웍스 cell)."""
     if col not in entities or not numbers or any(n not in pages for n in numbers):
         return None
     other = None
@@ -249,9 +249,8 @@ def _other_product(col: int, numbers: set[str], entities: dict[int, set[str]],
                    titles: dict[str, str], urls: dict[str, str],
                    hosts: dict[int, set[str]]) -> str | None:
     """Another product of the same name a cell's sources are all about: a page whose title
-    puts another brand than the column's own sites' before the column's name (r10 LFLF7
-    SK-competitor-2: 「GitHub Copilot」 on github.com cited in the 365 Copilot column; LFLF10:
-    a 「github copilot price」 page cited in three of its cells)."""
+    puts another brand than the column's own sites' before the column's name (「GitHub
+    Copilot」 on github.com cited in the 365 Copilot column)."""
     names = entities.get(col)
     if not names or not numbers or not hosts.get(col):
         return None
@@ -270,7 +269,7 @@ def _other_product(col: int, numbers: set[str], entities: dict[int, set[str]],
         if any(name not in single and name in _flat(title) for name in names):
             return None
         # a Latin brand put before the name (「GitHub Copilot」); a Korean word there is
-        # as often the maker (「마드라스체크 플로우」, r10 LFLF8 SK-competitor-1)
+        # as often the maker (「마드라스체크 플로우」)
         hit = next((f"{words[i - 1]} {w}" for i, w in enumerate(words)
                     if i and _flat(w) in names and re.fullmatch(r"[A-Za-z][A-Za-z0-9]+", w)
                     and re.fullmatch(r"[A-Za-z][A-Za-z0-9]+", words[i - 1])
@@ -343,9 +342,8 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
             if source_col is not None and source_col < len(cells):
                 src = cells[source_col]
                 row_sourced = bool(src) and src not in EMPTY and not OPEN.fullmatch(src)
-            # A [n] in a notes column (「비고」) is the row's source too (r7 A11-T2); one in
-            # another competitor's cell is that cell's only (r10 SK-competitor-1: 잔디's [1]
-            # passed the uncited 플로우·네이버웍스 cells of its row).
+            # A [n] in a notes column (「비고」) is the row's source too; one in another
+            # competitor's cell is that cell's only.
             row_sourced = row_sourced or any(
                 CITED.search(c) for k, c in enumerate(cells)
                 if k in note_cols and k != verdict_col)
@@ -419,8 +417,7 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
                     row_open = True
                     continue
                 if col in own_cols and _in_own_words(cell, material):
-                    # the person's own product in their words (r10 LFLF4 SK-competitor-2:
-                    # 「지원 (자체 GPU 서버)」 marked once a row's [n] stopped covering it)
+                    # the person's own product in their words (「지원 (자체 GPU 서버)」)
                     continue
                 findings.append(
                     {
@@ -511,7 +508,7 @@ def _open_rows(lines: list[str]) -> dict[str, bool]:
 
 def opportunities_on_unknowns(lines: list[str]) -> list[dict]:
     """Opportunities resting on what was not found: every row they cite is open, or an unknown
-    is their reason (r10 SK-competitor-1·2·3: 「확인되지 않으므로 자사만 충족」). One already
+    is their reason (「확인되지 않으므로 자사만 충족」). One already
     labelled 「가설」 is a guess the skill allows."""
     rows = _open_rows(lines)
     out = []

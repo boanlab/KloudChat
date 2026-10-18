@@ -13,7 +13,7 @@ import { ToolPicker } from './Pickers'
 import { SkillServerFields } from './SkillServerFields'
 
 /** Monospace editor; line numbers scroll with the text. */
-export function LineNumberedEditor({
+function LineNumberedEditor({
   value,
   onChange,
   label,

@@ -168,8 +168,7 @@ async def test_a_turn_that_ends_saying_nothing_tells_the_person(monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_an_answer_the_finish_stages_clean_to_nothing_tells_the_person(monkeypatch) -> None:
-    """r3 A14 T1 27B: the only text was a written tool name, cleaned away after the stream;
-    the question was stored unanswered but the stream sent no error."""
+    """An answer cleaned to nothing after the stream, sent as an error, not stored silently."""
     turn = _Turn()
     chunks = await _drain(turn, monkeypatch, [
         {"type": "delta", "text": "run_skill_script"},

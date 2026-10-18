@@ -133,7 +133,7 @@ test('설정 › 메모리 holds what the hub\'s 메모리 tab held', async ({ p
   expect(state.problems).toEqual([])
 })
 
-// ── persona A/B fixes ───────────────────────────────────────────────────
+// ── agent form: bundles, bases and naming ─────────────────────────────
 
 test('B-3: 바로 답하기 with 마무리하기 says it cannot export; a document base shows the export choice', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
@@ -161,7 +161,7 @@ test('B-7: a base is named with what it makes', async ({ page }, testInfo) => {
   const form = await openForm(page)
   await form.getByRole('radio', { name: /기본 과정에서 시작/ }).check()
   const select = page.getByTestId('process-base').getByRole('combobox', { name: '기본 과정' })
-  // R3: what it makes is in brackets only when it adds words: 「개조식 보고서」 adds none.
+  // What it makes is in brackets only when it adds words: 「개조식 보고서」 adds none.
   await expect(select.locator('option', { hasText: /^개조식 보고$/ })).toHaveCount(1)
   await expect(select.locator('option', { hasText: '(개조식 보고서)' })).toHaveCount(0)
   // A base named for what it makes says it once.
@@ -187,7 +187,7 @@ test('B-6, B-9: 사용자 지정 does not narrate where things moved; the bright
   await expect(page.getByRole('button', { name: /^테마: / })).toHaveCount(0)
 })
 
-// ── persona A/B, 2nd run ─────────────────────────────────────────────────
+// ── agent form: exports, checks and refusals ───────────────────────────
 
 const shotDir = process.env.SHOT_DIR ?? 'test-results/shots'
 async function shot(page: Page, name: string, target?: import('@playwright/test').Locator) {

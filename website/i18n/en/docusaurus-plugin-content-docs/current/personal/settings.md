@@ -23,6 +23,7 @@ You can change your name (the password is on the **Security** tab). You can chec
 | A request with personal data in it → strict-local picture model | The model that draws a picture in a conversation or document with internal material when it must stay strict-local and the picked picture model is external. Shown only when there is more than one strict-local picture model. Unset, the first in the list is used. |
 | Response streaming | When it is off, the answer is shown all at once after it is complete. |
 | Save memory automatically | Automatically saves information that stays valid, for each answer. |
+| Hold Space to dictate | Hold `Space` in an empty composer and speak; on release the words are typed into the box, not sent. Shown only when speech transcription is connected, and off by default. |
 | Token and credit display | Sets whether usage is shown at the bottom of the answer. |
 
 The theme and the language are switched with the buttons at the top right of the screen, not in this tab.

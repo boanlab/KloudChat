@@ -3,7 +3,7 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
-  // 에이전트 출력 언어·웹 검색 기본값·메모리, 대체 모델 표시
+  // Agent output language, web search default, memory; fallback-model notes
   '출력 언어': 'Output language',
   '모든 답과 문서를 이 언어로 씁니다. 사용자가 그 턴에 다른 언어를 직접 요청하면 그 요청을 따릅니다.':
     'Every answer and document is written in this language. When someone asks for another language in a turn, that turn follows the request.',
@@ -24,7 +24,7 @@ const EN: Record<string, string> = {
   '요청한 모델 {asked}이(가) 응답하지 못해 대체 모델 {served}이(가) 답했습니다.':
     'The requested model {asked} did not answer, so the fallback model {served} did.',
   '대체 모델이 답함': 'Fallback model answered',
-  // 스킬로 짜는 에이전트·공식 스킬·커넥터 도구
+  // Skill-built agents, official skills, connector tools
   '켜 둔 스킬이 없습니다.': 'No skills kept on.',
   '최대 6개까지 켜 둘 수 있습니다.': 'You can keep up to six on.',
   '켜 둘 스킬 고르기': 'Choose skills to keep on',
@@ -66,7 +66,7 @@ const EN: Record<string, string> = {
   'YouTube 영상 전사·요약': 'YouTube transcript and summary',
   '원본': 'Original',
   '내가 수정함': 'Edited by me',
-  // 시스템 › 모델 · 새 계정 월 크레딧
+  // System › models; monthly credits for new accounts
   '대화 기본 모델': 'Default chat model',
   '보고서 기본 모델': 'Default report model',
   '발표 자료 기본 모델': 'Default slides model',
@@ -105,19 +105,19 @@ const EN: Record<string, string> = {
   '자체 호스팅 모델 생각': 'Self-hosted models think',
   '외부 모델 생각': 'External models think',
   '새 계정 월 크레딧': 'Monthly credits for new accounts',
-  // 관리자 · 정지 확인
+  // Admin: suspend confirmation
   '{name} 정지': 'Suspend {name}',
   '{name} 정지 해제': 'Reinstate {name}',
   '{name}님의 접속을 막을까요?': 'Block {name} from signing in?',
   '바로 로그아웃되고 키도 막힙니다. 이 사람이 공개한 챗봇도 함께 멈춥니다. 「정지 해제」로 되돌릴 수 있습니다.': 'They are signed out at once and their keys stop working. Bots they published stop too. Reinstate undoes this.',
   '{n} 크레딧 · 0~100,000,000 · 이번 달 사용량은 그대로 유지됩니다.': '{n} credits · 0–100,000,000 · this month\'s usage stays as it is.',
   '0~100,000,000 크레딧 · 이번 달 사용량은 그대로 유지됩니다.': '0–100,000,000 credits · this month\'s usage stays as it is.',
-  // 건너뛰기 링크 · 새 버전 안내
+  // Skip link; new-version notice
   '본문으로 건너뛰기': 'Skip to main content',
   '새 버전으로 다시 불러와야 합니다': 'Reload to get the new version',
   '그사이 KloudChat이 새로 배포되었습니다. 새로고침하면 이어서 쓸 수 있고, 대화 내용은 서버에 그대로 있습니다.': 'KloudChat was updated in the meantime. Reload to carry on; your conversations are kept on the server.',
   '새로고침': 'Reload',
-  // 용어 · 사이드바 · 모델 고르기 · 챗봇
+  // Terms, sidebar, model picker, chatbots
   '사용자가 누구인지 — 역할, 전문성, 선호': 'Who you are — role, expertise, preferences',
   '작업 방식에 대한 지시 — 왜 그런지 함께': 'How to work — with the reason why',
   '진행 중인 일과 지켜야 할 조건 — 자료만 봐서는 모르는 것': 'Work in progress and conditions to keep — what the material alone does not say',
@@ -128,10 +128,10 @@ const EN: Record<string, string> = {
   '내부 전용': 'Internal only',
   '로컬': 'Local',
   '외부': 'External',
-  // 에이전트 · 두 번 저장
+  // Agents: double save
   '같은 이름의 에이전트를 방금 만들었습니다.': 'You just made an agent with this name.',
   '다른 이름으로': 'Use another name',
-  // 불러오기 · 다시 시도
+  // Loading and retry
   '불러오지 못했습니다.': 'Could not load.',
   '평소보다 오래 걸립니다.': 'This is taking longer than usual.',
   '기본 과정을 불러오지 못했습니다.': 'Could not load the standard processes.',
@@ -139,14 +139,14 @@ const EN: Record<string, string> = {
   '모델 목록을 불러오는 중…': 'Loading models…',
   '모델 목록을 불러오지 못했습니다.': 'Could not load the models.',
   '기록을 불러오지 못했습니다.': 'Could not load the records.',
-  // 필수 칸 · 스킬 · 템플릿 · 프로젝트
+  // Required fields, skills, templates, projects
   '프로젝트를 만들지 못했습니다. 잠시 후 다시 시도하세요.': 'Could not create the project. Try again shortly.',
   '모델이 이 순서대로 따릅니다. 한 줄에 한 단계씩 번호를 붙여 적습니다.': 'The model follows these in order. Write one numbered step per line.',
   '초안으로 두기': 'Keep as a draft',
   '초안 꺼짐 · 입력창에서 고를 수 있습니다': 'Draft off · can be picked in the composer',
   '초안 켜짐 · 입력창에 나오지 않습니다': 'Draft on · not shown in the composer',
   '예: 회의명, 일시, 장소, 참석자를 한 줄에 하나씩': 'e.g. meeting, date, place, attendees — one per line',
-  // 프로젝트 · 웹 자료 · 참고 파일
+  // Projects: web sources, reference files
   'http:// 또는 https://로 시작하는 주소를 입력하세요.': 'Enter an address that starts with http:// or https://.',
   '웹페이지 주소를 입력하세요.': 'Enter the web page address.',
   '이 주소를 열 수 없습니다(호스트 없음). 주소를 확인하거나 PDF로 저장해 올리세요.': 'This address cannot be opened (no such host). Check it, or save the page as a PDF and upload that.',
@@ -156,14 +156,14 @@ const EN: Record<string, string> = {
   '웹페이지를 읽어 오지 못했습니다. 주소를 확인하거나 PDF로 저장해 올리세요.': 'Could not read the web page. Check the address, or save it as a PDF and upload that.',
   '{name}: 빈 파일이라 올리지 않았습니다.': '{name}: empty, so it was not uploaded.',
   '{name}: 실행 파일은 읽을 수 없어 올리지 않았습니다. 문서·PDF·텍스트 파일을 올리세요.': '{name}: programs cannot be read, so it was not uploaded. Upload documents, PDFs or text files.',
-  // 관리자 · 월 크레딧
+  // Admin: monthly credits
   '{name}의 월 크레딧을 {n}{로} 바꿨습니다.': 'Set {name}\'s monthly credits to {n}{로}.',
   '월 크레딧을 바꾸지 못했습니다. 잠시 후 다시 시도하세요.': 'Could not change the monthly credits. Try again shortly.',
   '0으로 저장': 'Save as 0',
   '0부터 100,000,000 사이의 정수로 입력하세요.': 'Enter a whole number from 0 to 100,000,000.',
   '이 사용자는 다음 리필까지 모델을 쓸 수 없습니다.': 'This person cannot use any model until the next refill.',
   '{name} 계정 삭제': 'Delete {name}\'s account',
-  // 로그인·가입·비밀번호
+  // Sign-in, sign-up, password
   '{n}자 이상': 'At least {n} characters',
   '지금 {n}자': 'now {n}',
   '충족': 'met',
@@ -173,7 +173,7 @@ const EN: Record<string, string> = {
   '{n}번 더 틀리면 {m}분 동안 잠깁니다.': '{n} more wrong tries locks sign-in for {m} minutes.',
   '설정 메뉴': 'Settings menu',
   '시스템 메뉴': 'System menu',
-  // 입력 확인 · 필수 칸
+  // Input checks: required fields
   '표시는 꼭 채워야 하는 칸입니다.': 'marks a field that must be filled.',
   '{field}{을} 입력하세요.': 'Enter {field}{을}.',
   '질문은 {n}자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.': 'A question can be up to {n} characters. Attach longer material with "Attach files or photos".',
@@ -184,7 +184,7 @@ const EN: Record<string, string> = {
   '{field} 값을 확인하세요.': 'Check the {field}.',
   '입력한 값을 확인하세요.': 'Check what you entered.',
   '제목': 'Title',
-  // 공개 챗봇 채널 · 키 · 관리자 열람
+  // Public chatbot channels, keys, admin reads
   'API·MCP 채널이 아직 열리지 않았습니다. 개요의 채널에서 켜고 관리자 승인을 받으면 아래 키로 부를 수 있습니다. 키는 미리 만들어 둘 수 있습니다.': 'The API and MCP channels are not open yet. Switch them on under Channels in Overview; once an administrator approves, call the bot with a key below. You can make keys ahead of time.',
   'API로 부르기': 'Call it through the API',
   'MCP로 연결하기': 'Connect it over MCP',
@@ -411,7 +411,7 @@ const EN: Record<string, string> = {
   '자료로 답할 수 없는 질문에 이 내용을 적힌 그대로 안내합니다. 비워 두면 「담당 부서에 문의해 주세요」라고 답합니다.': 'Given word for word when the material cannot answer a question. Left empty, the answer says to contact the office in charge.',
   '예: 학사지원팀 02-760-1234, haksa@example.ac.kr': 'e.g. Academic Affairs 02-760-1234, haksa@example.ac.kr',
   '공개 챗봇': 'Published chatbots',
-  // 공개 챗봇: 링크 공개 · 외부 공개 · 로그인하지 않은 방문자 · 관리자 승인
+  // Public chatbots: link sharing, external publishing, signed-out visitors, admin approval
   '구성원 공개': 'Members',
   '링크 공개': 'Anyone with the link',
   '외부 공개': 'Public',
@@ -534,7 +534,7 @@ const EN: Record<string, string> = {
   '일시 중지되었습니다.': 'Paused.',
   '자료가 없습니다.': 'No material.',
   '{n}자': '{n} characters',
-  // 진행 과정 · 파일 내보내기 · 빠진 정보 질문
+  // Process, file export, missing-information questions
   '파일로 내보내기(문서 과정에서)': 'Export to a file (in a document process)',
   '기본 과정(보고서)으로 바꾸기': 'Switch to a report base',
   '「이 에이전트가 만드는 것」에서 보고서(문서)를 고르세요': 'Choose Report (document) under “What this agent makes”',
@@ -593,7 +593,7 @@ const EN: Record<string, string> = {
   '이 기본 과정은 직접 구성할 수 없습니다. 기본 과정 그대로 쓰세요.': 'This base process cannot be customised. Use it as it is.',
   '마지막 단계가 만드는 것과 이 에이전트가 만드는 것이 다릅니다. 진행 과정의 「이 에이전트가 만드는 것」을 확인하세요.': 'The last step makes something other than what this agent makes. Check “What this agent makes” under Process.',
   '진행 과정의 단계를 확인해 주세요. 문제가 있는 단계에 이유가 적혀 있습니다.': 'Check the process steps. Each step with a problem says why.',
-  // 스킬의 서버 점검·스크립트 · 빠진 정보 질문
+  // Skill server checks and scripts; missing-information questions
   '직접 올린 스크립트': 'Your own scripts',
   '답 점검 스크립트': 'Answer check scripts',
   '이 스킬로 쓴 챗 답을 서버가 기본 제공 스크립트로 점검하고, 코드로 고칠 수 있는 것은 고칩니다.': 'The server checks chat answers written with this skill using the built-in scripts and fixes what code can fix.',
@@ -714,7 +714,7 @@ const EN: Record<string, string> = {
   '교정·윤문': 'Copy editing',
   '출처 점검': 'Source check',
   '글자 수 맞춤': 'Text fit',
-  // 진행 과정 · 묶음 · 에이전트로 저장 · 설정 › 메모리·테마
+  // Process, bundles, save as agent; settings › memory and themes
   '이 에이전트': 'This agent',
   '진행 과정': 'How it works',
   '진행 과정 검토': 'Process review',
@@ -850,7 +850,7 @@ const EN: Record<string, string> = {
   '커넥터 카탈로그 삭제': 'Connector catalogue entry removed',
   '진행 과정 반려': 'Process rejected',
   '이 대화에서 정한 것:': 'Settled in this conversation:',
-  // 템플릿·테마
+  // Templates and themes
   '테마': 'Theme',
   '기본 템플릿': 'Default templates',
   '{kind} 템플릿': '{kind} template',
@@ -966,7 +966,7 @@ const EN: Record<string, string> = {
   '진행 중 턴': 'Running turns',
   '요청/분': 'Requests/min',
   '응답 p95': 'Response p95',
-  '파이프라인 단계 소요': 'Pipeline stage durations',
+  '진행 과정 단계 소요': 'Process stage durations',
   '이 기간에 끝난 단계가 없습니다.': 'No stages finished in this period.',
   '횟수': 'Runs',
   '최대': 'Max',
@@ -995,7 +995,7 @@ const EN: Record<string, string> = {
   '동시 스트림': 'Open streams',
   '수신': 'Received',
   '송신': 'Sent',
-  // issue reports (문의·신고)
+  // issue reports
   '(선택)': '(optional)',
   'PNG, JPEG, GIF, WebP · 5MB 이하': 'PNG, JPEG, GIF, WebP · up to 5 MB',
   '{name} 받기': 'Download {name}',
@@ -1795,7 +1795,6 @@ const EN: Record<string, string> = {
   '비밀번호 바꾸기': 'Change password',
   // ── lists · settings · administration ───────────────────────────────
   '오늘': 'Today',
-  '지난 7일': 'Last 7 days',
   '이전': 'Earlier',
   'Codex · OpenAI 호환 도구': 'Codex · OpenAI-compatible tools',
   '이 계정이 쓴 크레딧입니다. 매달 1일에 배정량으로 다시 채워집니다.': 'What this account has spent. It refills to the allowance on the 1st of each month.',
@@ -2186,7 +2185,7 @@ const EN: Record<string, string> = {
   '다음 슬라이드': 'Next slide',
   '{n}번 슬라이드': 'Slide {n}',
   '슬라이드 목록': 'Slides',
-  // ── 템플릿 · 버전 · 프로젝트 자료 ─────────────────────────
+  // ── templates · versions · project sources ─────────────────────
   '어떤 인상으로 만들까요?': 'What impression should it make?',
   '강한 인상': 'Bold',
   '어떻게 사용할 자료인가요?': 'How will this be used?',
@@ -2281,8 +2280,8 @@ const EN: Record<string, string> = {
   '스킬을 불러오는 중…': 'Loading skills…',
   '날짜 없음': 'No date',
   '어제': 'Yesterday',
-  // ── 보고서 편집기 ──────────────────────────────────────
-  // 아이콘 대신 쓰는 두 글자. 영어는 Row/Col.
+  // ── report editor ──────────────────────────────────────────────
+  // Two-letter labels in place of icons; English uses Row/Col.
   '행+': 'Row+',
   '행−': 'Row−',
   '열+': 'Col+',
@@ -2423,7 +2422,7 @@ const EN: Record<string, string> = {
   '{n}개 미해결': '{n} open',
   '검토 의견을 입력하세요': 'Write your comment',
   '선택한 문장에 메모를 남겨 보세요.': 'Select a sentence and leave a note on it.',
-  // ── 슬라이드 편집기 ────────────────────────────────────
+  // ── slide editor ───────────────────────────────────────────────
   '내용이 비었습니다 — 텍스트 수정으로 채워 주세요.': 'Nothing in it yet — fill it in with Edit text.',
   '표 데이터': 'Table data',
   '행 추가': 'Add a row',
@@ -2696,7 +2695,7 @@ const EN: Record<string, string> = {
   '계속하면 이 장에서 바꾼 내용이 사라집니다.': 'Carrying on loses what you changed on this slide.',
   '저장하지 않고 닫기': 'Close without saving',
   '변경 내용 버리기': 'Discard the changes',
-  // ── 작업 시작하기 ──────────────────────────────────────
+  // ── getting started ────────────────────────────────────────────
   '어떤 템플릿으로 받을까요?': 'Which template should it come in?',
   '모델 목록을 다시 읽지 못했습니다.': 'Could not reload the model list.',
   '모델 목록을 다시 읽었습니다 · 모델 {n}종': 'Model list reloaded · {n} models',
@@ -3210,8 +3209,7 @@ const EN: Record<string, string> = {
   '미디어': 'Media',
   '⌘/Ctrl+Enter 저장 · Esc 취소 · 저장하면 이전 판은 버전 기록에 남습니다': '⌘/Ctrl+Enter to save · Esc to cancel · the previous version is kept in history',
 
-  // ── 작업 단계 카드 ───────────────────────────────────────────────────
-  '작업 목록': 'Work',
+  // ── stage cards ──────────────────────────────────────────────────
   '작업 중': 'Working',
   '중단됨': 'Stopped',
   // a turn's header: what is happening, or what happened
@@ -3278,7 +3276,7 @@ const EN: Record<string, string> = {
   '추론': 'Reasoning',
   '도구 사용': 'Using a tool',
 
-  // ── 보고서 ──────────────────────────────────────────────────────────
+  // ── reports ─────────────────────────────────────────────────────────
   '저장 시점': 'Versions',
   '넓게 보기': 'Widen',
   '패널 좁히기': 'Narrow',
@@ -3288,7 +3286,7 @@ const EN: Record<string, string> = {
     'Say what to change here. e.g. two sentences, with a source.',
   '이 부분을 고쳐 주세요: “{quote}”\n{note}': 'Rewrite this passage: “{quote}”\n{note}',
 
-  // ── 슬라이드 ────────────────────────────────────────────────────────
+  // ── slides ──────────────────────────────────────────────────────────
   '발표': 'Present',
   '발표 모드': 'Presenter view',
   '발표 끝내기': 'End presentation',
@@ -3299,7 +3297,7 @@ const EN: Record<string, string> = {
   '다음 장': 'Next slide',
   '노트': 'Notes',
   '← → 로 넘기고 Esc 로 끝냅니다': '← → to move, Esc to exit',
-  // ── 도구 설명과 비활성 사유 ───────────────────────────────────────
+  // ── tool descriptions and disabled reasons ───────────────────────
   '패널을 넓혀 크게 봅니다': 'Widen the panel',
   '원래 너비로 되돌립니다': 'Back to the normal width',
   '패널을 닫습니다': 'Close the panel',
@@ -3346,7 +3344,7 @@ const EN: Record<string, string> = {
 
 
 
-  // ── 답을 받지 못한 턴, 그리고 지목할 모델이 없는 몫 ─────────────
+  // ── unanswered turns; shares with no model to name ───────────────
   '기타': 'Other',
   '답변을 받지 못했습니다.': 'No answer came back.',
   '이 대화의 에이전트가 꺼져 있어 보낼 수 없습니다. 에이전트 화면에서 다시 켜거나 다른 대화를 시작하세요.':
@@ -3379,7 +3377,7 @@ const EN: Record<string, string> = {
   '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
   '여기서 멈췄습니다.': 'Stopped here.',
 
-  // ── 왜 눌리지 않는지 ────────────────────────────────────────────
+  // ── why a control is disabled ─────────────────────────────────────
   '절약 모델은 3개까지만 추가할 수 있습니다': 'At most three economy models',
   '이미 가장 먼저 시도하는 모델입니다': 'Already tried first',
   '한 칸 위로 올려 더 먼저 시도합니다': 'Move it up, so it is tried sooner',
@@ -3387,19 +3385,19 @@ const EN: Record<string, string> = {
   '한 칸 아래로 내려 더 나중에 시도합니다': 'Move it down, so it is tried later',
   '이 모델을 절약 목록에서 뺍니다': 'Take this model off the economy list',
 
-  // ── 템플릿 갤러리 ─────────────────────────────────────────────────
+  // ── template gallery ──────────────────────────────────────────────
   '이전 쪽': 'Previous page',
   '다음 쪽': 'Next page',
 
-  // ── 컨트롤 상태 ─────────────────────────────────────────────────
+  // ── control states ────────────────────────────────────────────────
   '이 답변이 도움이 되었습니다': 'This answer helped',
   '이 답변이 잘못되었습니다': 'This answer was wrong',
 
-  // ── 테마가 실제로 닿는 곳 ──────────────────────────────
+  // ── where a theme applies ─────────────────────────────────────────
   '말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.':
     'The voice reaches chat, reports and slides; colour and type reach slides and report covers; style reaches pictures. Audio and video are untouched.',
 
-  // ── 이 턴에 들어간 것 ───────────────────────────────────────────
+  // ── what went into this turn ──────────────────────────────────────
   '외 {n}건': 'and {n} more',
   '외 {n}개': 'and {n} more',
   '메모리 {n}건 참고': 'Drew on {n} memories',
@@ -3425,7 +3423,7 @@ const EN: Record<string, string> = {
   '{name} 분량을 넘겨 제외': '{name} — over budget, left out',
   '{name} 읽지 못함': '{name} — could not be read',
 
-  // ── 이번 턴에만 적용되는 것과, 계정 전체에 적용되는 것 ──────────
+  // ── this turn only vs. the whole account ──────────────────────────
   'strict-local 모델은 웹 검색 도구를 쓸 수 없습니다.':
     'A strict-local model cannot use the web search tool.',
   '웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다':
@@ -3437,7 +3435,7 @@ const EN: Record<string, string> = {
   '계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.':
     'This is an account-wide setting. Turning it off here turns it off everywhere.',
 
-  // ── 공유 상태와 가려진 기록 ─────────────────────────────────────
+  // ── share state and hidden records ───────────────────────────────
   '공유 중': 'Shared',
   '링크 공개 중': 'Public link',
   '링크를 아는 누구나 계정 없이 이 대화를 읽을 수 있습니다.':
@@ -3452,27 +3450,27 @@ const EN: Record<string, string> = {
   'IP 주소': 'IP address',
   '개인키': 'Private key',
 
-  // ── 에이전트가 정하는 것 ────────────────────────────────────────
+  // ── what the agent sets ──────────────────────────────────────────
   '낮을수록 일관되게, 높을수록 다양하게 답합니다. 대화 화면에만 적용됩니다.':
     'Lower answers more consistently, higher more variously. Applies on the chat surface only.',
 
-  // ── 대화가 가지고 시작하는 것 ───────────────────────────────────
+  // ── what a conversation starts with ──────────────────────────────
   '이 대화가 가지고 시작하는 것': 'What this conversation starts with',
   '이 에이전트가 답합니다': 'answers here',
   '이 프로젝트의 지침과 자료를 함께 씁니다': 'its instructions and files come along',
   '이 에이전트로 대화를 시작합니다.': 'Starting this conversation with the agent.',
   '{kind}에서 이 에이전트의 지시대로 답합니다.': 'It answers on {kind} the way this agent tells it to.',
 
-  // ── 시작점 (stored on older turns) ──────────────────────────
+  // ── starting points (stored on older turns) ──────────────────────
   '시작점 {name}': 'From {name}',
 
-  // ── 관리자 화면의 탭 ────────────────────────────────────────────
+  // ── admin tabs ────────────────────────────────────────────────────
   '프록시': 'Proxy',
   '라우팅': 'Routing',
   '기능': 'Features',
   '메일': 'Mail',
 
-  // ── 템플릿 카탈로그 ───────────────────────────────────────────────
+  // ── template catalogue ────────────────────────────────────────────
   '서식': 'Formatting',
   '파일 첨부': 'A file attached',
   '도식을 만들지 못했습니다.': 'The figure could not be made.',
@@ -3491,14 +3489,14 @@ const EN: Record<string, string> = {
   '장 목록을 접었다 폅니다': 'Show or hide the slide list',
   '편집하기 좋은 한 줄 문서로 봅니다': 'Show it as one flowing document, easier to edit',
 
-  // ── 프로젝트의 기본 템플릿 ────────────────────────────────────────
+  // ── project default template ─────────────────────────────────────
   '이 프로젝트에서 새로 시작하는 작업이 어떤 템플릿으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.':
     'Sets the template work started in this project comes out in. Each conversation can still pick its own.',
 
-  // ── 버전 기록 ───────────────────────────────────────────────────
+  // ── version history ──────────────────────────────────────────────
   '되돌리지 못했습니다.': 'Could not restore.',
 
-  // ── 문서에서 테마 읽기 ───────────────────────────────────────────
+  // ── reading a theme from a document ──────────────────────────────
   '문서에서 가져오기': 'Read from a document',
   '지난 공문이나 보고서를 올리면 색·서체·문체를 읽어 초안을 만듭니다. 저장은 확인한 뒤에 합니다.':
     'Upload an earlier letter or report, and its colours, type and voice become a draft. Nothing is saved until you have read it.',
@@ -3550,7 +3548,7 @@ const EN: Record<string, string> = {
   '쓰지 않은 사람의 눈으로 한 번 읽습니다. 모델을 한 번 호출합니다.':
     'One reading by somebody who did not write it. Costs one model call.',
 
-  // ── 블록 다시 쓰기 ───────────────────────────────────────────────
+  // ── block rewrite ─────────────────────────────────────────────────
   '어느 부분을 다시 쓸까요?': 'Which part should be rewritten?',
   '제목 없음': 'Untitled',
   '무엇을 고칠지 적으면 그것만 반영합니다. 비워 두면 그냥 다시 씁니다.':
@@ -3559,16 +3557,16 @@ const EN: Record<string, string> = {
   '고칠 내용': 'What to change',
   '예: 숫자를 빼고 무엇을 결정해야 하는지만 남겨 주세요.': 'e.g. Drop the figures and leave only what has to be decided.',
 
-  // ── 아티팩트 검사 ─────────────────────────────────────────────────
+  // ── artifact checks ───────────────────────────────────────────────
   '검사 결과': 'Checks',
   '고칠 곳 {n}': '{n} to fix',
   '볼 곳 {n}': '{n} to look at',
 
-  // ── 템플릿 ───────────────────────────────────────────────
+  // ── templates ─────────────────────────────────────────────────────
   '원본 HTML': 'Original HTML',
   '텍스트': 'Text',
   '문서를 만들지 못했습니다.': 'The document could not be produced.',
-  // ── 테마 ───────────────────────────────────────────────
+  // ── themes ────────────────────────────────────────────────────────
   '사용 안 함 — 기본 모양': 'None — the default look',
   '사용 안 함 — 기본 템플릿': 'None — the default template',
   '끊긴 답 · 끝까지 쓰지 못했습니다': 'Cut off · this answer was not finished',
@@ -3943,7 +3941,7 @@ const EN: Record<string, string> = {
   '확인 중': 'Checking',
   '해결': 'Resolved',
   '보류': 'On hold',
-  // 사용자 지정 hub
+  // Customize hub
   '이미 쓰는 핸들입니다. 다른 핸들을 붙이세요.': 'That handle is taken. Pick another.',
   '핸들': 'Handle',
   '입력창의 @ 버튼과 목록에서 이 이름으로 부릅니다.': 'The name the composer’s @ button and lists call it by.',
@@ -4143,7 +4141,7 @@ const EN: Record<string, string> = {
   '저장하거나 취소한 뒤 그림을 넣을 수 있습니다': 'Save or cancel first to insert a picture',
   '{name} 더보기': 'More for {name}',
   '{name} 내려받기': 'Download {name}',
-  // search dialog (⌘K) and 대화 기록 search
+  // search dialog (⌘K) and history search
   '대화·아티팩트 검색': 'Search conversations and artifacts',
   '검색하지 못했습니다. 잠시 뒤 다시 해 보세요.': 'Search failed. Try again in a moment.',
   '대화 더 보기': 'More conversations',
@@ -4155,7 +4153,7 @@ const EN: Record<string, string> = {
   '대화': 'Conversations',
   '대화 기록에서 보기': 'Open in history',
   '제목과 내용으로 찾기': 'Search titles and messages',
-  // 대화 기록 paging
+  // history paging
   '페이지 이동(위)': 'Pages (top)',
   '{page} / {pages}쪽': 'Page {page} of {pages}',
   '첫 페이지': 'First page',
@@ -4336,7 +4334,7 @@ const EN: Record<string, string> = {
   '끄면 템플릿(또는 문서 형식)이 정한 계산·검사·구조를 그대로 씁니다. 켜면 그 값에서 시작해 바꿉니다.': 'Off: the template\'s (or document format\'s) calculations, checks and structure apply as they are. On: start from them and change them.',
   '커넥터 카탈로그': 'Connector catalogue',
   '사용자가 사용자 지정 › 커넥터에서 설치할 수 있는 MCP 서버입니다. 명령으로 실행하는 서버(stdio)는 여기서만 추가할 수 있습니다.': 'MCP servers people can install from Customize › Connectors. Servers run as a command (stdio) can only be added here.',
-  // 대화 답 단계 이름(서버가 보내는 한국어 키)
+  // Answer stage names (Korean keys sent by the server)
   '다른 모델로 답 쓰기': 'Answer written by another model',
   '코드 출력값 대조': 'Values checked against the code output',
   '스케줄링 결과 검산': 'Scheduling result checked',

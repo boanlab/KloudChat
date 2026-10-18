@@ -36,7 +36,7 @@
     "message": "Images"
   },
   "home.formats.in3.v": {
-    "message": "PNG, JPG, GIF, WebP. Only on models that recognize images"
+    "message": "PNG, JPG, GIF, WebP. Only on strict-local models that recognize images"
   },
   "home.formats.in4.k": {
     "message": "Audio and video"
@@ -60,7 +60,7 @@
     "message": "PowerPoint, PDF, text with speaker notes"
   },
   "home.formats.note": {
-    "message": "Scanned images and the older Office formats (.doc, .ppt, .xls) cannot be read. The exact conditions are in {link}."
+    "message": "The older Office formats (.doc, .ppt, .xls) cannot be read, and scans are read only when the administrator has connected text from scans (OCR). The exact conditions are in {link}."
   },
   "home.formats.noteLink": {
     "message": "Attaching files"

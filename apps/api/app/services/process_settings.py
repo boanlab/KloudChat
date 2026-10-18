@@ -342,7 +342,7 @@ def add(base: Process, settings: dict[str, Any] | None) -> Process:
 
 
 #: Steps that read one format's own parts (회의록 실행 항목 표): elsewhere they repair what is
-#: not there (r7 A01-T2: an agenda's 담당·시간 칸 all 「미정」 under a minutes agent).
+#: not there (an agenda's 담당·시간 칸 all 「미정」 under a minutes agent).
 FORMAT_ONLY = {
     "minutes": {"stages": ("minutes-repair", "minutes-reground"), "checks": ("minutes-rows",)},
 }

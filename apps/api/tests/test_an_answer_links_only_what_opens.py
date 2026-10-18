@@ -1,6 +1,4 @@
-"""A chat answer's links and pictures point only where a browser can go: no broken
-`![부서별 집행률](sandbox:chart_1.png)`, no dead `[x.xlsx](x.xlsx)`, and no raw
-`[산점도: …](artifact:산점도: …)` text."""
+"""Chat answer links and pictures limited to what a browser can open."""
 
 from __future__ import annotations
 

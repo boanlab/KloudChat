@@ -1,6 +1,4 @@
-"""Pictures, charts and figures follow the chat turn's egress rules: internal material or a
-strict-local conversation stays on strict-local models, personal data is masked,
-and an account's allowlist holds; with no model inside the boundary nothing is sent."""
+"""Egress rules for pictures, charts and figures: strict-local, masking and allowlists."""
 
 from __future__ import annotations
 

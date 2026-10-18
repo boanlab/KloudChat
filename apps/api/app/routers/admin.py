@@ -617,14 +617,14 @@ def _user_order(sort: UserSort, order: Literal["asc", "desc"]) -> list:
             (col(User.status) == UserStatus.active, 1),
             else_=2,
         )
-        # Within a status the newest sign-up first, as the list always read.
+        # within a status: newest sign-up first
         key = [rank.desc() if desc else rank.asc(), col(User.created_at).desc(), name]
     elif sort == "credits":
         used = col(User.credits_used)
         key = [used.desc() if desc else used.asc(), name]
     else:
         seen = col(User.last_active_at)
-        # Never-active accounts last either way.
+        # never-active accounts last either way
         key = [
             case((seen.is_(None), 1), else_=0),
             seen.desc() if desc else seen.asc(),

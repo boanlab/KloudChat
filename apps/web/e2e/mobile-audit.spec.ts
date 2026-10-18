@@ -51,7 +51,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
   await page.setViewportSize(PHONE)
   await signIn(page)
 
-  // R28: the drawer, and the way back out.
+  // The drawer, and the way back out.
   await page.goto('/')
   await page.waitForTimeout(700)
   const toggle = page.getByRole('button', { name: '사이드바 토글' })
@@ -119,7 +119,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     }
   }
 
-  // R29: a dialog taller than the phone still reaches its save button.
+  // A dialog taller than the phone still reaches its save button.
   for (const [route, open, where] of [
     ['/agents', '새 에이전트', '에이전트'],
     ['/memory', '새 메모리', '메모리'],
@@ -153,7 +153,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     await page.waitForTimeout(400)
   }
 
-  // R30: the artifact panel takes the whole screen; its contents must fit and it must be closable.
+  // The artifact panel takes the whole screen; its contents must fit and it must be closable.
   const deck = await page.evaluate(
     async ([fn, body]) =>
       await eval(fn as string)('/api/artifacts', {
@@ -242,7 +242,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     )
   }
 
-  // R31: the composer.
+  // The composer.
   await page.goto('/new/chat')
   await page.waitForTimeout(700)
   checks++
@@ -265,7 +265,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     note('composer-overflow', `${overTyping}px`, '/new/chat', '길게 쓰면 화면이 옆으로 밀린다')
   }
 
-  // R32: landscape.
+  // Landscape.
   await page.setViewportSize(LANDSCAPE)
   for (const [route, open, where] of [
     ['/agents', '새 에이전트', '에이전트'],

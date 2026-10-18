@@ -1,8 +1,4 @@
-"""A chat turn that ran code keeps the values the code printed (verify2 S08 handoff): an answer
-that calls the code's output wrong and 「corrects」 it by hand is sent back once to rerun the
-code; without a new run its hand values give way to what the code printed. A number naming a
-printed quantity is set to it, and the deck built from such a conversation is read against
-the computed values, its zero-only chart rows dropped."""
+"""Printed code values kept over hand corrections in chat turns and their decks."""
 
 from __future__ import annotations
 
@@ -13,7 +9,7 @@ import pytest
 from app.services import agent, calc_check, deck
 from app.services.tools.base import Tool, ToolContext, ToolResult
 
-#: What the S08 simulation printed (the averages a simulation gives for the four processes).
+#: The simulation's printed averages for the four processes.
 _PRINTED = (
     "stdout:\n"
     "동점 규칙: 먼저 도착한 프로세스 먼저\n"
@@ -29,8 +25,7 @@ _PRINTED = (
     "Average waiting time: 4.50"
 )
 
-#: The S08 chat answer's shape (qf/scenarios/08_lecture_slides/handoff/chat.md): a section per
-#: algorithm with hand-traced tables, a claim the code was wrong, and a summary table.
+#: A chat answer: hand-traced tables per algorithm, a claim the code is wrong, a summary table.
 _ANSWER = """# CPU 스케줄링 시뮬레이션 결과
 
 ## 1. FCFS (First-Come, First-Served)
@@ -217,7 +212,7 @@ async def test_a_number_naming_a_printed_value_is_set_to_it_and_said(monkeypatch
     assert text.startswith("## 3. SRTF (선점)\n\n**평균 대기시간: 3")
     assert "0.50" not in text and "FCFS 평균 대기시간은 4.75" in text
     assert "(확인 필요)" not in text
-    # said as a step, not a footer on the answer (R2W-04)
+    # said as a step, not a footer on the answer
     assert "바로잡았습니다" not in text
 
 
@@ -231,7 +226,7 @@ _COMPUTED = "# 코드로 계산한 값\n설명.\n\n" + "\n".join([
 
 
 def test_the_s08_handoff_deck_reads_its_slides_against_the_computed_values():
-    # Slides as the S08 handoff deck shipped them (artifact_deck.json slides 10, 13, 15).
+    # Slides of a handoff deck built from that conversation.
     slides = [
         {"layout": "bullets", "title": "알고리즘별 평균 대기시간",
          "bullets": ["SRTF: 0.50 (최단)", "우선순위(비선점): 5.50 (최장)"]},
@@ -254,15 +249,14 @@ def test_the_s08_handoff_deck_reads_its_slides_against_the_computed_values():
 
 
 def test_a_chart_row_of_zeros_is_dropped_and_categories_keep_their_brackets():
-    # S08 handoff slide 6: 「SRTF | 0.0 | 0.0 | …」 over the gantt times.
+    # 「SRTF | 0.0 | 0.0 | …」 over the gantt times
     zeros = {"kind": "bar", "unit": "", "categories": ["0", "2", "4", "5", "7", "11", "16"],
              "series": [{"name": "SRTF", "values": [0, 0, 0, 0, 0, 0, 0]}]}
     assert deck._clean_chart(zeros) is None
     mixed = {"kind": "bar", "categories": ["FCFS", "SRTF"],
              "series": [{"name": "평균", "values": [4.75, 3]}, {"name": "빈", "values": [0, 0]}]}
     assert [s["name"] for s in deck._clean_chart(mixed)["series"]] == ["평균"]
-    # S08 slide 9: both round-robin columns were cut to 「라운드 로빈 (q=」; r7 A09-T1: kept
-    # whole, the renderers wrap them at their spaces
+    # category names kept whole (no 「라운드 로빈 (q=」); the renderers wrap them at spaces
     named = {"kind": "bar", "categories": ["라운드 로빈 (q=2)", "라운드 로빈 (q=4)",
                                            "라운드 로빈(타임 퀀텀 2)", "SJF (비선점)"],
              "series": [{"name": "평균 대기시간", "values": [5, 4.5, 5, 4]}]}

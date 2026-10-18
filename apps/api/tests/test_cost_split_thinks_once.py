@@ -1,7 +1,4 @@
-"""Two cost readings that differ are settled by one more on the outline model, thinking on.
-
-Mix lane: Flash read 12/15 cost cases plain and 15/15 with thinking (150 s median); the
-thinking reading is capped in time, and past the cap the plain third reading settles."""
+"""Differing cost readings settled by one thinking reading on the outline model, time-capped."""
 
 from __future__ import annotations
 

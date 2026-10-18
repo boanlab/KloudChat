@@ -1,6 +1,4 @@
-"""Web search: a time-sensitive query also runs the news lane, whose hits come
-first; front pages and a host's third hit are benched; a published date reaches
-the model."""
+"""News lane, benching and published dates for time-sensitive web search."""
 
 from __future__ import annotations
 

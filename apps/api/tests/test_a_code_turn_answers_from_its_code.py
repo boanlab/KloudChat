@@ -1,5 +1,4 @@
-"""A chat turn that ran code answers with the code's values: no 「코드가 실행 한도에 막혀 … 수동
-계산」 while its runs finished, and no hand-worked averages in place of the computed ones."""
+"""Code-run chat answers drawn from the code's own values."""
 
 from __future__ import annotations
 

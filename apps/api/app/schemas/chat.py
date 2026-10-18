@@ -60,8 +60,8 @@ class ImageRequest(Wire):
     style: str = ""
     #: retired 서식 id ignored; others refused
     template_id: str | None = Field(default=None, max_length=60)
-    #: one upstream call and charge each
-    count: int = Field(default=1, ge=1, le=4)
+    #: one picture per request
+    count: int = Field(default=1, ge=1, le=1)
     #: in-document request; adds `imagegen._FIGURE_CLAUSE`
     figure: bool = False
     labels: str = Field(default="auto", max_length=8)

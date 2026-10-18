@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 /** How long a load may take before the screen says it is slow. */
-export const SLOW_MS = 10_000
+const SLOW_MS = 10_000
 
 /** Fetched resource in three states; failures are `error`, slow loads flagged past `SLOW_MS`. */
 export interface Resource<T> {

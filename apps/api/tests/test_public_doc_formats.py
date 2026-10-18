@@ -1,5 +1,4 @@
-"""Korean public documents: 개조식, 간이기안문, 추진 계획(안), 결과 보고서 — what is detected,
-which 서식 fixes it, and how every exporter sets the lists, the 결재란 and 「끝.」."""
+"""Korean public document formats: detection, templates, and exported lists, 결재란 and 「끝.」."""
 
 from __future__ import annotations
 

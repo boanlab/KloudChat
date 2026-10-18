@@ -4,7 +4,7 @@ title: Agent and template examples
 
 # Agent and template examples
 
-Examples of agents and templates for work documents you write often. Everything here is made with the **Customize** agent form and template editor. For work an official skill does, such as minutes or a bullet-style briefing, building the agent from **Skills kept on** is quicker (see [Working with skills and building agents](skill-recipes)). Paste the instructions below to start, then adjust them to your side, such as the institution's name or approval line.
+Examples of agents and templates for work documents you write often. Everything here is made with the **Customize** agent form and template editor. For work an official skill does, such as minutes or a bullet-style briefing, building the agent from **Skills kept on** is quicker (see [Working with skills and building agents](skill-recipes)). Paste the instructions below to start, then adjust them to your side, such as the organization's name or approval line.
 
 ## Settings that work
 

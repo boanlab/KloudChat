@@ -109,8 +109,8 @@ def reads_english(text: str) -> bool:
 
 
 def localize_marks(text: str) -> str:
-    """An answer in English with the checks' 「(확인 필요)」 as 「(needs checking)」 (r6: the
-    Korean mark inside an English answer); a Korean answer as it is."""
+    """An answer in English with the checks' 「(확인 필요)」 as 「(needs checking)」; a Korean
+    answer as it is."""
     if not text or "확인" not in text or not reads_english(text):
         return text
     return _KO_MARK.sub(lambda m: f"{m.group(1)}{EN_MARK}{m.group(2)}", text)

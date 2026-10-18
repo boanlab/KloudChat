@@ -210,9 +210,10 @@ are what upstream calls are made with.
   explains why, if that is not obvious.
 - Fill in the pull request template — particularly the verification section.
   "Tested locally" is not a verification.
-- CI must be green: lint, config tests, build and the focused Playwright
-  configs for the web app, `ruff` and `pytest` for the API, `shellcheck` for
-  the scripts, and every changed image must build.
+- CI must be green: lint, config-path tests, typecheck and build, and the
+  sharded Playwright fixture suite for the web app; `ruff` and `pytest` for the
+  API; `shellcheck` for the scripts; compose validation; and every changed
+  image must build.
 
 ## Where things live
 

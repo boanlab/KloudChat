@@ -48,11 +48,10 @@ _SPAN = re.compile(
     r"(?<![\d.영업])(?P<n>\d{1,3})\s{0,2}(?:(?P<u>주일|주|개월|달)(?!차)"
     r"|(?P<d>일)(?=\s{0,2}(?:간|동안|전|후|뒤|이내|안에|만에|이후|이전|가량|정도|짜리)))")
 
-#: a scale word, not the first syllable of another word: 「2026 조건」, 「2만큼만」 (r8 P46,
-#: A09-T2: 「2026조」 and 「2만(확인 필요)큼만」)
+#: a scale word, not the first syllable of another word: 「2026 조건」, 「2만큼만」
 _SCALE = r"(?:조(?![건사정직치합언각])|억|천만|백만|만(?![큼약일족])|천(?![국재]))"
 #: a number with its scale words: 「5억 7,499만」, 「8억 8천만」, 「1.2조」, 「26」, and the bare
-#: tail under the last scale word, 「18만 4,102」 (r8 A10-T1: read as 18만 and 4,102)
+#: tail under the last scale word, 「18만 4,102」 (one amount, not 18만 and 4,102)
 _TERM = (rf"\d(?:,?\d)*(?:\.\d+)?\s?{_SCALE}"
          rf"(?:\s?\d(?:,?\d)*(?:\.\d+)?\s?{_SCALE})*"
          rf"(?:\s?(?:\d{{1,3}},\d{{3}}|\d{{1,4}})(?![\d,.]|\s?{_SCALE}))?"
@@ -61,8 +60,8 @@ _UNITS = ("%p", "%", "퍼센트", "원", "달러", "명", "건", "개월", "개"
           "일", "시간", "분", "초", "회", "배", "점", "자", "줄", "장", "쪽", "대", "팀", "세트",
           "행",
           "시")
-#: measures written in Latin letters; a mark never goes between one and its number (r7 P07
-#: 「2.5(확인 필요)cm」, 「6~7(확인 필요)kg」)
+#: measures written in Latin letters; a mark never goes between one and its number
+#: (no 「2.5(확인 필요)cm」)
 _LATIN_UNITS = ("kcal", "km", "cm", "mm", "kg", "mg", "mL", "ml", "g", "L")
 _UNIT = "|".join([*map(re.escape, _UNITS),
                   *(f"{re.escape(u)}(?![A-Za-z])" for u in _LATIN_UNITS)])
@@ -506,7 +505,7 @@ def _derived(pool: list[float], *, vat: bool = False,
                 out.update(pair * c for c in counts[:12])
                 out.update((pair + d) * c for d in units_[j + 1:] for c in counts[:12])
         # a price times a count with the material's discount taken off, then its VAT, then
-        # another priced line added (r7 A04-T2: 1,480,000원 × 30대, 5% 할인 → 42,180,000원,
+        # another priced line added (1,480,000원 × 30대, 5% 할인 → 42,180,000원,
         # VAT → 46,398,000원; with 5,000원 × 30대 → 46,563,000원)
         kept = [(100 - v) / 100 for v in sorted(rates)[:6] if 0 < v < 100]
         priced = [a for a in units_ if a >= 1000]
@@ -520,7 +519,7 @@ def _derived(pool: list[float], *, vat: bool = False,
                     if vat:
                         out.add(net * 1.1)
                         out.update(x * 1.1 for x in extra)
-        # a figure scaled by a ratio of two others: 「1억 × 6/106」 (r7 P56)
+        # a figure scaled by a ratio of two others: 「1억 × 6/106」
         small = sorted({v for v in pool if 1 < v <= 1000})[:20]
         for a in (a for a in units_ if a >= 1e4):
             out.update(a * x / y for x in small for y in small if x < y)
@@ -655,11 +654,10 @@ def _exempt(line: str, start: int, end: int, raw: str, unit: str, ev: Evidence,
     if unit in ("자",) or (not unit and _CHARS_AFTER.match(after)):
         return True
     if re.match(r"\s?분의\s?\d", after):
-        # 「10분의 1」: a fraction, not ten minutes (r8 A09-T1 QMX)
+        # 「10분의 1」: a fraction, not ten minutes
         return True
     if unit in ("분", "시간") and _clock_span(line, value * (60 if unit == "시간" else 1)):
-        # 「14:55~15:00(5분)」: the length of the line's own time slot (r8 A01-T2, four
-        # setups: 「5분(확인 필요), 확인 필요」)
+        # 「14:55~15:00(5분)」: the length of the line's own time slot
         return True
     if _BEFORE_ORDINAL.search(before) or before.endswith("#"):
         return True
@@ -849,7 +847,7 @@ _TOKEN_TAIL = re.compile(
 
 def token_end(text: str, end: int) -> int:
     """`end` moved past the rest of the token it stops inside, so a mark never splits one:
-    「3.5」 of 「3.5.0」 (r6 A16-T2 「3.5(확인 필요).0」), 「10/15」 of 「10/15(목)」, 「3.5」 of
+    「3.5」 of 「3.5.0」 (「3.5(확인 필요).0」), 「10/15」 of 「10/15(목)」, 「3.5」 of
     「3.5%」."""
     if not 0 < end <= len(text) or not text[end - 1].isdigit():
         return end
@@ -989,8 +987,8 @@ _ONLY_CITES = re.compile(r"\s*(?:(?:\[\[\d{1,3}\]\]\([^)\s]{1,500}\)|\[\d{1,3}\]
 
 
 def _refill_cells(old: str, new: str, out: Settled) -> str:
-    """A table cell a guard emptied, given back as written (r5 A12-T2: the 「추천 채널·활용
-    이유」 cells of 25 rows came back blank): rows matched in order, same width only."""
+    """A table cell a guard emptied, given back as written: rows matched in order, same width
+    only."""
     olds = [line for line in old.split("\n") if line.strip().startswith("|")]
     lines = new.split("\n")
     rows = [i for i, line in enumerate(lines) if line.strip().startswith("|")]
@@ -1004,11 +1002,11 @@ def _refill_cells(old: str, new: str, out: Settled) -> str:
         for c, cell in enumerate(after):
             if _ONLY_CITES.fullmatch(before[c]):
                 # a citation a check took out stays out: put back, it named a page that did
-                # not say it, and its list line had gone (r10 SK-company-2·3 「[[2]]」)
+                # not say it, and its list line is gone (「[[2]]」)
                 continue
             if before[c].strip() and not re.sub(r"\(?확인\s?필요\)?", "", cell).strip():
                 # a cell judged unsupported keeps its words, marked; a cell that already said
-                # 「확인 필요」 keeps saying it once (r7 A11-T2 「확인 필요 (확인 필요)」)
+                # 「확인 필요」 keeps saying it once (「확인 필요 (확인 필요)」)
                 verdict = ("확인" in cell and MARK not in before[c]
                            and not re.search(r"확인\s?필요", before[c]))
                 after[c] = f"{before[c].rstrip()} {MARK} " if verdict else before[c]
@@ -1031,7 +1029,7 @@ def settle(before: str, after: str, ev: Evidence, *, keep_out: Iterable[str] = (
     """`after` (a guard's output for `before`) with blanks and emptied blocks undone.
 
     `keep_out`: sentences a check took out on purpose (judged invented, work narration): a
-    block holding one is not brought back (r7 A02-T2, A16-T2). `writer`: `after` is the
+    block holding one is not brought back. `writer`: `after` is the
     writer's own revision on the checks' evidence (a strong writer): what it took out or
     reworded stays as it wrote it; only blanks go back to values."""
     out = Settled(after)
@@ -1089,10 +1087,10 @@ _MARK_IN_BRACKET = re.compile(r"\(([^()\n]{1,60}?)\s?\(확인 필요\)\)")
 
 def tidy_marks(text: str) -> str:
     """A mark that closes a bracket goes inside it, no doubled bracket: 「(10월 16일, 확인
-    필요)」 (r7 P36 「10월 16일(확인 필요))」)."""
+    필요)」 (「10월 16일(확인 필요))」)."""
     text = _MARK_IN_BRACKET.sub(r"(\1, 확인 필요)", text or "")
     # a value marked twice over two passes reads once: 「(5분(확인 필요), 확인 필요)」 → 「(5분,
-    # 확인 필요)」, 「0건(확인 필요)(확인 필요)」 → 「0건(확인 필요)」 (r8 A01-T2, A03-T2, A16-T1)
+    # 확인 필요)」, 「0건(확인 필요)(확인 필요)」 → 「0건(확인 필요)」
     text = _MARK_THEN_NOTE.sub(r"\1, 확인 필요)", text)
     return _MARK_TWICE.sub(MARK, text)
 
@@ -1104,7 +1102,7 @@ _MARK_TWICE = re.compile(r"\(확인 필요\)(?:\s?\(확인 필요\))+")
 def _without_stale_asks(before: str, after: str, text: str) -> str:
     """Lines the guard added around its own blanks (「확인이 필요한 날짜(자료에 없어 [날짜]로
     두었습니다 …)」 and the items under it) taken out once every blank went back: left in, they
-    read 「자료에 없어 로 두었습니다 … 공지일() 기준」 (r7 A14-T2)."""
+    read 「자료에 없어 로 두었습니다 … 공지일() 기준」."""
     if GUARD_BLANK.search(text) or not GUARD_BLANK.search(after):
         return text
     had = {line.strip() for line in (before or "").split("\n")}
@@ -1177,7 +1175,7 @@ def pages_at(urls: Iterable[str], texts: Iterable[str]) -> str | None:
 
 def same_script(line: str, page: str) -> bool:
     """Whether a page is written in the line's script: a Korean line's 「8억5,000만 달러」 is
-    not looked for in an English page's 「$850 million」 (r10 LFLF9 SK-company-2)."""
+    not looked for in an English page's 「$850 million」."""
     korean = len(re.findall(r"[가-힣]", line or "")) >= 4
     hangul = len(re.findall(r"[가-힣]", page or ""))
     return not korean or hangul >= 0.2 * len(re.findall(r"[가-힣A-Za-z]", page or "")) > 0
@@ -1185,13 +1183,12 @@ def same_script(line: str, page: str) -> bool:
 
 def _cited_support(written: str, line: str, offset: int, ev: Evidence, structure: int,
                    header: list[str] | None) -> bool:
-    """A value on a line that cites pages read this turn is supported by those pages (r10
-    LFLF8 SK-company-3: figures cited to a darts-match page had their marks taken off because
-    another page held them)."""
+    """A value on a line that cites pages read this turn is supported by those pages, not by
+    another page that happens to hold it."""
     urls = _CITED_URL.findall(line)
     cited = pages_at(urls, ev.texts) if urls else None
     # a day the page gives as 「지난 1일」 under its own dateline is read on all the evidence
-    # (r10 LFLF9 SK-company-2: 「2024년 12월 1일」 cited to a 12월 2일 article)
+    # (「2024년 12월 1일」 cited to a 12월 2일 article)
     if cited is None or _days_in(written) or _YEAR_MONTH.search(written) \
             or not same_script(line, cited):
         return True

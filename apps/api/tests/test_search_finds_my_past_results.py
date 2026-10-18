@@ -1,5 +1,4 @@
-"""⌘K search: the caller's own conversations and results, by title and by what they say;
-report and slides conversations named after their document unless the person renamed them."""
+"""⌘K search over the caller's own conversations and results."""
 
 from __future__ import annotations
 

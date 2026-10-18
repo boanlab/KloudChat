@@ -89,7 +89,7 @@ def _report():
 
 async def _written(*args, **kwargs) -> tuple[str, dict]:
     """`report._complete` for the draft and a section, asked once more when the connection
-    dropped (r3: a section otherwise ends 「이 섹션을 쓰지 못했습니다」)."""
+    dropped (a section otherwise ends 「이 섹션을 쓰지 못했습니다」)."""
     return await model_retry.once_more(lambda: _report()._complete(*args, **kwargs),
                                        "report call")
 
@@ -152,9 +152,8 @@ class Research(Base):
                 or report.material_complete(req.text, bundle.spec.format_id,
                                             has_files=bool(req.untrusted))):
             web_search = False
-        # writing an approved outline: the outline pass's pages carry over (r7 A07-T2: a fresh
-        # search kept 7 of the 17 sources, digitalmarket.kr among the lost, and the
-        # 디지털서비스몰 section came out blank); only headings they miss are searched again
+        # writing an approved outline: the outline pass's pages carry over (a fresh search
+        # loses sources and blanks their sections); only headings they miss are searched again
         kept = (research.from_carried(req.approved_plan.get(PLAN_RESEARCH))
                 if req.approved_plan is not None else None)
         if kept is not None:
@@ -670,8 +669,7 @@ class Calc(Base):
             bundle.computed.values = computed
             bundle.material.trusted.append(Part(computed, "computed"))
         elif status in ("timeout", "unavailable", "failed"):
-            # r7 A10-T2: a timeout left TAM·SAM·SOM uncomputed, only formula names. The given
-            # figures' own arithmetic is done here; the writer works out the rest
+            # the given figures' own arithmetic done here; the writer works out the rest
             if given := calc.given_block(req.text, [_given(bundle)]):
                 bundle.computed.values = given
                 bundle.material.trusted.append(Part(given, "computed"))
@@ -1038,9 +1036,8 @@ class Sections(Base):
                                 section["heading"])
                     body = noted
                 if internal_words.cut_mid_sentence(body, min_chars=150):
-                    # stops mid-sentence (r8 A01-T1: 「이수진 차장이 온라인 동시 송출」 and the
-                    # rest of the agenda missing): written once more with more room, kept when
-                    # the new one ends whole
+                    # stops mid-sentence: written once more with more room, kept when the new
+                    # one ends whole
                     log.warning("section %r stops mid-sentence; written again",
                                 section["heading"])
                     _count(bundle, spent)
@@ -1063,8 +1060,8 @@ class Sections(Base):
             except _CAUGHT as exc:
                 log.warning("report section %r failed: %s; asked once more with more room",
                             section["heading"], exc)
-                # one more call with a much larger budget (r7 GLM-5.3: thinking it could not
-                # turn off took the section's whole budget, twice)
+                # one more call with a much larger budget (a model's unswitchable thinking can
+                # take the whole section budget)
                 body = ""
                 try:
                     body, spent = await write_section(index, section, written,
@@ -1190,9 +1187,7 @@ class Sections(Base):
                 "done": True,
             }
         if sections and len(failed) == len(sections):
-            # nothing written: no document to check, save and call finished (r7 A04-T2 GLP:
-            # six empty sections went on through every check and were saved as 「1개 절로 …
-            # 작성을 마쳤습니다」 holding only a code-added line)
+            # nothing written: no document to check or save
             yield {"type": "error",
                    "message": "보고서의 어느 절도 쓰지 못했습니다. 잠시 뒤 다시 시도해 주세요."}
             yield _usage(bundle)
@@ -1217,8 +1212,7 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     # reference lists exempt from prose number/owner guards
     is_reference = bool(report._REFERENCE_HEADING.search(str(section["heading"] or "")))
     trimmed: list[str] = []
-    # a strong writer's sentences are its own: no code cut on a reading of 「restated」 (r7
-    # A10-T1: a strength's supporting sentence went as a repeat of an earlier figure)
+    # a strong writer's sentences are its own: no code cut on a reading of 「restated」
     if not is_reference and not bundle.request.strong:
         body, trimmed = report.trim_restatements(
             body, earlier, keep_items=doc_format is not None and doc_format.lists == "gaejo",
@@ -1266,7 +1260,7 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
             units.fix_written_arithmetic(clean), printed=[bundle.computed.values])),
         given_text,
     )
-    # a formula a unit off and a profit its own figures do not leave: marked (r9 A10-T1)
+    # a formula a unit off and a profit its own figures do not leave: marked
     clean = units.mark_profit_contradictions(units.mark_slipped_formulas(clean))
     clean = report._grounded_figures(
         report.trim_table_echo(
@@ -1522,7 +1516,7 @@ def _figures_marked(bundle: Bundle, sections: list[dict]) -> list[dict]:
     """What code finds in the document's figures but cannot settle, marked where it stands
     (every writer): a figure ten times a worked result elsewhere in the document, the writer's
     own results when the code calculation did not finish (「(추정)」), and a company-assumption
-    label on figures the person never gave (r9 A10-T2)."""
+    label on figures the person never gave."""
     person = "\n".join([bundle.request.text, bundle.material.given])
     known = "\n".join([person, bundle.computed.values or ""])
     unchecked = bundle.computed.calc_status in UNCHECKED_CALC
@@ -1836,7 +1830,6 @@ class Verify(Base):
         if disputed and req.strong:
             # the web check's contradictions go back to the strong writer once, evidence
             # attached; it fixes the sentence or keeps it when the page is about something else
-            # (r8 A07·A10: flagged in the step detail, left in the text unmarked)
             try:
                 bundle.document.sections, unfixed, spent = await verify.repair(
                     _doc(bundle), [dataclasses.replace(f, auto=True) for f in disputed],
@@ -1848,13 +1841,11 @@ class Verify(Base):
             except Exception:  # noqa: BLE001 — the sentences stay; they are marked below
                 log.exception("hand-back of web disputes failed")
         # a judged figure code still finds at odds with a settled figure is fixed once, by the
-        # writer when strong and by the planner otherwise, and marked if it stands (r8 L27F·LFLF
-        # A10-T2, A03-T2: found in the check, shipped in the text unmarked)
+        # writer when strong and by the planner otherwise, and marked if it stands
         confirmed = [f for f in still if not f.auto and f.code == "judged_figure"
                      and f.still is not None and f.still(f.sentence)]
         # a number a judge read as another item's whose value with its unit is in none of the
-        # evidence goes the same way (r9 LFLF R3-A04-T2: 「납기 14달」 flagged with the
-        # source's 「납기 2주」, shipped as written)
+        # evidence goes the same way (「납기 14달」 against the source's 「납기 2주」)
         evidence = "\n".join([context_text, bundle.computed.values,
                               *(str(getattr(x, "value", "")) for x in settled or [])])
         bound = {id(f): token for f in still if not f.auto and f.code == "number_binding"
@@ -1876,17 +1867,16 @@ class Verify(Base):
             confirmed = [f for f in confirmed if f in still]
         if (pre := bundle.computed.prepass) is not None and pre.musts and not req.strong:
             # a recommendation still against the must-have matrix: the code's verdict instead;
-            # a strong writer's recommendation stands, the finding reported (r7 A04-T2)
+            # a strong writer's recommendation stands, the finding reported
             bundle.document.sections, still = report_checks.settle_verdict(
                 bundle.document.sections, still, pre.musts, pre.scores)
         if _MARKS_ASKED.search(req.text or ""):
             # the person asked for unconfirmed points to be marked: a sentence a check found at
-            # odds with the sources and no rule could settle is marked where it stands (r7 A07-T2)
+            # odds with the sources and no rule could settle is marked where it stands
             bundle.document.sections = mark_unsettled(bundle.document.sections, still)
         elif disputed or confirmed:
             # a sentence a web page contradicts, or a figure code still finds wrong, standing,
-            # is marked for the reader whatever the request said (r8 A07·A10: left unmarked, in
-            # the step detail only)
+            # is marked for the reader whatever the request said
             bundle.document.sections = mark_unsettled(
                 bundle.document.sections, [f for f in still if f.code == "fact"] + confirmed)
         bundle.findings.still = still
@@ -1909,8 +1899,7 @@ class MinutesReground(Base):
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         known = f"{bundle.request.text}\n{bundle.material.given}"
-        # a due the checks blanked to 「[기한]」 gets the material's date back (r5 A01-T1: a
-        # wrong 11/16 was blanked, the memo's 10/16 never restored)
+        # a due the checks blanked to 「[기한]」 gets the material's date back
         sections, _ = report_checks.minutes_due_fill(bundle.document.sections,
                                                      bundle.computed.prepass.dates, blanked=True)
         sections, again = report_checks.minutes_grounding(sections, known)
@@ -2085,8 +2074,7 @@ _ASKS_MARKS = re.compile(
 
 def mark_web_disputes(sections: list[dict], still: list, request: str) -> int:
     """Sentences the web check found contradicted, still standing after the repair, marked
-    「(확인 필요)」 in the text when the request asked unconfirmed points to be marked (r7
-    A07-T2: three such sentences went out unmarked; they were in the step detail only).
+    「(확인 필요)」 in the text when the request asked unconfirmed points to be marked.
     Returns how many were marked."""
     if not _ASKS_MARKS.search(instruction_part(request or "")):
         return 0
@@ -2124,7 +2112,7 @@ def _markdown(sec: dict) -> bool:
 
 
 def _rows_marked(body: str) -> str:
-    """A header-only table marked once under its rule (r9 LFLF R3-A01-T1: it shipped bare)."""
+    """A header-only table marked once under its rule."""
     lines = body.split("\n")
     out: list[str] = []
     for i, line in enumerate(lines):
@@ -2211,8 +2199,7 @@ class Quality(Base):
 
         findings = read(sections)
         # a broken table or an unnamed one is mended by code and read again, once; kept only
-        # when it adds no finding nor a new kind (r9 LFLF R3-A01-T1, A03-T2: found here,
-        # shipped as found)
+        # when it adds no finding nor a new kind
         mended_count = 0
         gaejo = getattr(bundle.spec.format, "lists", "") == "gaejo"
         if (mended := mend_shapes(sections, findings, gaejo=gaejo)) != sections:

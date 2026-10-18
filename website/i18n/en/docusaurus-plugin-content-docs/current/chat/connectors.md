@@ -4,7 +4,7 @@ title: Connectors
 
 # Connectors
 
-A connector is an external tool (an MCP server) that the model can call. Install one from the account menu → **Connectors**, and turn it on or off from **+** → **Connectors** in the composer. The on or off state applies to your **whole account**.
+A connector is an external tool (an MCP server) that the model can call. Install one from **Customize** → **Connectors**, and turn it on or off from **+** → **Connectors** in the composer. The on or off state applies to your **whole account**.
 
 ![The Connectors screen](/img/guide/connectors.png)
 

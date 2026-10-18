@@ -1,7 +1,7 @@
 /** Mermaid rendering shared by the web and page views, so the stored digest matches. */
 
 /** The diagram as an SVG string, or `null` if mermaid would not draw it. `look` is the surface's theme. */
-export async function draw(source: string, look: object): Promise<string | null> {
+async function draw(source: string, look: object): Promise<string | null> {
   try {
     const { default: mermaid } = await import('mermaid')
     mermaid.initialize({
@@ -29,7 +29,7 @@ export async function draw(source: string, look: object): Promise<string | null>
 }
 
 /** Draws into `node` via mermaid `run` (no markup string passes through); null if it would not draw. */
-export async function drawInto(node: HTMLElement, source: string, look: object): Promise<SVGSVGElement | null> {
+async function drawInto(node: HTMLElement, source: string, look: object): Promise<SVGSVGElement | null> {
   try {
     const { default: mermaid } = await import('mermaid')
     mermaid.initialize({
@@ -238,7 +238,7 @@ function shades(accent: string, paper: string, count: number): string[] {
 }
 
 /** Frames for a document's figures: fixed width; height follows the drawing within `minAspect`–`maxAspect`. */
-export interface Frame {
+interface Frame {
   width: number
   minAspect: number
   maxAspect: number
@@ -259,7 +259,7 @@ function tooTall(size: { width: number; height: number }, frame: Frame): boolean
 }
 
 /** Natural size of a drawn SVG, from its viewBox (mermaid always writes one). */
-export function measure(svg: string): { width: number; height: number } | null {
+function measure(svg: string): { width: number; height: number } | null {
   const tag = /<svg\b[^>]*>/.exec(svg)?.[0] ?? ''
   const box = /viewBox="[\d.-]+[ ,][\d.-]+[ ,]([\d.]+)[ ,]([\d.]+)"/.exec(tag)
   if (box) return { width: Number(box[1]), height: Number(box[2]) }
@@ -277,7 +277,7 @@ function misfit(size: { width: number; height: number }, frame: Frame): number {
 }
 
 /** Top-level direction turned (LR↔TB); null when none or when subgraphs set their own. */
-export function flipped(source: string): string | null {
+function flipped(source: string): string | null {
   if (/^\s*direction\s/m.test(source)) return null
   const head = /^(\s*(?:flowchart|graph)\s+)(LR|RL|TB|TD|BT)\b/m.exec(source)
   if (!head) return null

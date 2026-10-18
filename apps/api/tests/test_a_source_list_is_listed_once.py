@@ -1,5 +1,4 @@
-"""r7 A11-T1 (QMX): the answer's own 「## 출처」 list had a paragraph after it, so the server's
-「### 출처」 came too; r7 P19 (QMX): 「[[2]][[3]]」 copied from an earlier answer stayed raw."""
+"""One 출처 list per answer, and copied 「[[2]][[3]]」 marks resolved."""
 
 from __future__ import annotations
 

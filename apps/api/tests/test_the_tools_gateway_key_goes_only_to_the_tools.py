@@ -1,9 +1,4 @@
-"""The gateway's `/tools/*` key rides on every tool-backend request and nowhere else.
-
-KloudChat-LLM's gateway answers `/tools/*` with 401 unless the request carries
-`X-Tools-Key`. Each client below is the one a real call site uses; the transport is
-replaced so every outgoing request is recorded with the headers it left with.
-"""
+"""The gateway's `/tools/*` key on every tool-backend request and nowhere else."""
 
 from __future__ import annotations
 

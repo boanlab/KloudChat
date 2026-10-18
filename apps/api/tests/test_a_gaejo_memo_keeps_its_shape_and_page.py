@@ -1,5 +1,4 @@
-"""A 1-page 개조식 보고 keeps its fixed sections, draws no pictures it was not asked for, and is
-condensed toward the measured overflow, not left at 7 sections, 2 figures and 3 pages."""
+"""Fixed sections, no unasked pictures and overflow condensing for a 1-page 개조식 보고."""
 
 from __future__ import annotations
 

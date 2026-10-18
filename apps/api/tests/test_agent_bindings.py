@@ -1,5 +1,4 @@
-"""Agent bindings: the surface, 서식, format and design an agent opens with, and the
-handoff from an agent chat to its document."""
+"""Agent bindings: opening surface, 서식, format, design and the chat-to-document handoff."""
 
 from __future__ import annotations
 

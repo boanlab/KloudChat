@@ -1,7 +1,4 @@
-"""규정·업무 안내: answers cite the regulation by number with its document, article, page and
-시행일; what the material does not hold is held back and sent to the 담당 부서; personal
-details are masked — each by a part a person attaches the same way (the 「공개 전 점검」 묶음 and
-the 담당 부서·연락처 field), so an agent built in the form is the official one."""
+"""Regulation guide answers: cited articles, held-back gaps, masked personal details."""
 
 from __future__ import annotations
 

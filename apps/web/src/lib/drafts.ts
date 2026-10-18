@@ -2,7 +2,7 @@
 
 const PREFIX = 'kc.draft.'
 
-export function draftStorageKey(userId: string | undefined, key: string): string {
+function draftStorageKey(userId: string | undefined, key: string): string {
   return `${PREFIX}${userId ?? 'anon'}.${key}`
 }
 

@@ -140,7 +140,7 @@ def report_findings(
                 continue
             if _WHEN.search(value):
                 # a date or time names its own event: this meeting's 일시 and the next one's
-                # are two rows, not one value written twice (r9 L27F R3-A01-T1)
+                # are two rows, not one value written twice
                 continue
             number = re.sub(r"[^\d.]", "", value)
             # generic labels repeat by design; skipped
@@ -237,7 +237,7 @@ def deck_findings(slides: list[dict[str, Any]]) -> list[dict[str, str]]:
         words = {k: v for k, v in slide.items() if k not in ("image", "diagram")}
         text = " ".join(_strings(words))
         if layout == "table" and not deck_service.table_values(slide):
-            # a header and no values compares nothing (r9 L27F R3-A09-T2)
+            # a header and no values compares nothing
             add("empty_table", where)
         if layout == "section" and _NUMBERED.match(str(slide.get("title") or "")):
             add("numbered_divider", where)

@@ -1,6 +1,4 @@
-"""Writing an approved outline starts from the pages the outline was planned on (r7 A07-T2:
-a fresh search kept 7 of 17 sources, digitalmarket.kr among the lost, and the 디지털서비스몰
-section came out 「확인하지 못했습니다」); a heading those pages miss is searched for and merged."""
+"""An approved outline's planning pages kept as the writing sources."""
 
 from __future__ import annotations
 
@@ -26,7 +24,7 @@ _OUTLINE_PAGES = [
           "클라우드 보안인증(CSAP) 상·중·하 등급 체계 개편, 하 등급 논리적 망분리."),
 ]
 
-#: The outline approved in r7 A07-T2 (DSP).
+#: An approved outline.
 _HEADINGS = [
     "조사 배경과 범위",
     "공공부문 클라우드 전환 정책 흐름 (행정안전부·과기정통부)",
