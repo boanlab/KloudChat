@@ -12,6 +12,7 @@ import asyncio
 import base64
 import shutil
 import tempfile
+import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -128,6 +129,25 @@ async def pdf(job: Job) -> Response:
     return Response(content=out, media_type="application/pdf")
 
 
+#: The .odp paragraph property behind the gap, and its off value.
+_AUTOSPACE = (b'style:text-autospace="ideograph-alpha"', b'style:text-autospace="none"')
+
+
+def _without_autospace(odp: Path) -> None:
+    """Rewrites `odp` in place with no Asian–Latin autospacing in its styles."""
+    fixed = odp.with_suffix(".fixed")
+    with zipfile.ZipFile(odp) as src, zipfile.ZipFile(fixed, "w") as out:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename in ("content.xml", "styles.xml"):
+                data = data.replace(*_AUTOSPACE)
+            # ODF: `mimetype` first and stored.
+            stored = item.filename == "mimetype"
+            out.writestr(item, data,
+                         compress_type=zipfile.ZIP_STORED if stored else zipfile.ZIP_DEFLATED)
+    fixed.replace(odp)
+
+
 async def _run(*command: str, timeout: float) -> None:
     process = await asyncio.create_subprocess_exec(
         *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
@@ -154,12 +174,16 @@ async def pptx_png(job: SlideJob) -> Response:
     try:
         source = work / "figure.pptx"
         source.write_bytes(blob)
+        office = ("soffice", f"-env:UserInstallation=file://{work}/profile", "--headless",
+                  "--norestore")
         async with _office:
-            await _run(
-                "soffice", f"-env:UserInstallation=file://{work}/profile", "--headless",
-                "--norestore", "--convert-to", "pdf", "--outdir", str(work), str(source),
-                timeout=60,
-            )
+            # Through .odp: an imported paragraph gets Asian–Latin autospacing (a gap at
+            # every 한글–Latin boundary), and no .pptx property turns it off.
+            await _run(*office, "--convert-to", "odp", "--outdir", str(work), str(source),
+                       timeout=60)
+            _without_autospace(work / "figure.odp")
+            await _run(*office, "--convert-to", "pdf", "--outdir", str(work),
+                       str(work / "figure.odp"), timeout=60)
         await _run(
             "pdftoppm", "-r", str(job.dpi), "-f", "1", "-l", "1", "-png", "-singlefile",
             str(work / "figure.pdf"), str(work / "figure"),

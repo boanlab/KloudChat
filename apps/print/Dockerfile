@@ -32,7 +32,23 @@ RUN curl -fsSL -o /tmp/pretendard.zip \
       "https://github.com/orioncactus/pretendard/releases/download/v${PRETENDARD_VERSION}/Pretendard-${PRETENDARD_VERSION}.zip" \
     && mkdir -p /usr/share/fonts/opentype/pretendard \
     && unzip -j -o /tmp/pretendard.zip "public/static/Pretendard-*.otf" -d /usr/share/fonts/opentype/pretendard \
-    && rm /tmp/pretendard.zip && fc-cache -f >/dev/null
+    && rm /tmp/pretendard.zip
+
+# Stand-ins for faces a .pptx names but no free licence covers (fonts.conf maps them):
+# Selawik and Gelasio match Segoe UI's and Georgia's widths. Both SIL OFL 1.1, pinned.
+ARG SELAWIK_VERSION=1.01
+ARG GELASIO_COMMIT=7ab20e7e5c42791e603b9ee3201a0b49849cfdb2
+RUN curl -fsSL -o /tmp/selawik.zip \
+      "https://github.com/microsoft/Selawik/releases/download/${SELAWIK_VERSION}/Selawik_Release.zip" \
+    && mkdir -p /usr/share/fonts/truetype/selawik /usr/share/fonts/truetype/gelasio \
+    && unzip -j -o /tmp/selawik.zip selawk.ttf selawksb.ttf selawkb.ttf -d /usr/share/fonts/truetype/selawik \
+    && for style in Regular Italic Bold BoldItalic; do \
+         curl -fsSL -o "/usr/share/fonts/truetype/gelasio/Gelasio-${style}.ttf" \
+           "https://raw.githubusercontent.com/SorkinType/Gelasio/${GELASIO_COMMIT}/fonts/ttf/Gelasio-${style}.ttf"; \
+       done \
+    && rm /tmp/selawik.zip
+COPY fonts.conf /etc/fonts/local.conf
+RUN fc-cache -f >/dev/null
 
 RUN pip install --no-cache-dir \
       "fastapi==0.115.6" "uvicorn[standard]==0.34.0" "playwright==1.55.0" \

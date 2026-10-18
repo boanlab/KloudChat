@@ -62,7 +62,7 @@ def figure_deck(source: str, accent: str = "#2563EB") -> bytes | None:
     diagram_shapes.draw_pptx(
         slide, graph,
         left=_MARGIN, top=_MARGIN + (8.0 if graph.groups else 0.0),
-        width=width, height=height, accent=accent, tight=True,
+        width=width, height=height, accent=accent,
     )
     out = io.BytesIO()
     deck.save(out)
