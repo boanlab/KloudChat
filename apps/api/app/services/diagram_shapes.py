@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app.services import flow_layout
+from app.services import figure_text, flow_layout
 
 MAX_NODES = 18
 
@@ -718,8 +718,7 @@ def draw_pptx(
     primary_rgb = _hex(accent)
     # primary for emphasis, pale tint for boxes, neutrals for groups/lines/text
     primary = RGBColor(*primary_rgb)
-    secondary = RGBColor(*_tint(primary_rgb, 0.86))
-    group_line = RGBColor(*_tint(primary_rgb, 0.6))
+    panel = RGBColor(*_tint(primary_rgb, 0.92))
     text_dark = RGBColor(0x1F, 0x29, 0x37)
     text_light = RGBColor(0xFF, 0xFF, 0xFF)
     line_grey = RGBColor(0x94, 0xA3, 0xB8)
@@ -791,16 +790,14 @@ def draw_pptx(
             MSO_SHAPE.ROUNDED_RECTANGLE, pt(x0), pt(y0), pt(x1 - x0), pt(y1 - y0)
         )
         g.adjustments[0] = 0.06
-        # flat: thin dashed outline on white
+        # a pale panel of the accent, as the fixed-shape figures draw a group (`figure_kinds`)
         g.fill.solid()
-        g.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-        g.line.color.rgb = group_line
-        g.line.width = pt(0.75)
-        g.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+        g.fill.fore_color.rgb = panel
+        g.line.fill.background()
         flat(g)
         # rows printed at own size: 10 pt title
         title_pt = 10 if any(p.row >= 0 for p in placed.values()) else 9
-        set_text(g, label, title_pt, label_grey, bold=True, anchor=MSO_ANCHOR.TOP)
+        set_text(g, label, title_pt, primary, bold=True, anchor=MSO_ANCHOR.TOP)
 
     shapes = {}
     kinds = {
@@ -814,24 +811,23 @@ def draw_pptx(
             kinds.get(node.shape, MSO_SHAPE.ROUNDED_RECTANGLE), pt(x), pt(y), pt(p.w), pt(p.h)
         )
         if node.shape in ("box", "round"):
-            s.adjustments[0] = 0.12 if node.shape == "box" else 0.3
+            s.adjustments[0] = 0.08 if node.shape == "box" else 0.18
+        # white with an accent edge, the emphasised one filled: the fixed-shape figures' tone
         s.fill.solid()
-        s.fill.fore_color.rgb = primary if node.hot else secondary
-        s.line.fill.background()
+        s.fill.fore_color.rgb = primary if node.hot else RGBColor(0xFF, 0xFF, 0xFF)
+        if node.hot:
+            s.line.fill.background()
+        else:
+            s.line.color.rgb = primary
+            s.line.width = pt(1.25)
         flat(s)
-        text_w, text_h, icon = text_area(node, p.w, p.h, graph.icons)
-        icon_size = min(p.h * 0.42, 22.0)
+        text_w, text_h, _icon = text_area(node, p.w, p.h, False)
+        lines, size = figure_text.fit(node.label, text_w, text_h, 14, node.hot,
+                                      min_size=8, pad=4)
         set_text(
-            s, node.label, _font_size(node.label, text_w, text_h),
+            s, "\n".join(lines), size,
             text_light if node.hot else text_dark, bold=node.hot,
         )
-        if icon:
-            s.text_frame.margin_left = pt(8 + icon_size + 4)
-            ink = (0xFF, 0xFF, 0xFF) if node.hot else primary_rgb
-            svg, png = _icon_blobs(icon, ink)
-            _add_svg_picture(
-                slide, svg, png, pt(x + 8), pt(y + (p.h - icon_size) / 2), pt(icon_size)
-            )
         shapes[nid] = s
 
     # polylines routed around boxes (connectors cut through)
