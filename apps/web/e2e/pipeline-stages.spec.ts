@@ -242,7 +242,7 @@ async function fixture(page: Page, testInfo: TestInfo) {
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/catalog',
       '/jobs', '/designs', '/shares', '/design-templates', '/skills/store',
-      '/user-pipelines', '/user-pipelines/store'].includes(path)) return route.fulfill({ json: [] })
+      '/user-pipelines'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })
   })

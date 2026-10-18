@@ -177,15 +177,6 @@ def test_settings_are_cleaned_to_what_each_kind_reads():
     assert steps[3]["settings"] == {}
 
 
-def test_a_shipped_flow_becomes_its_card_and_its_agent():
-    minutes = compose.from_shipped(_AGENTS["mins"], "minutes")
-    assert [(s["kind"], s["ref"]) for s in minutes] == [("human", "gaps"), ("agent", "mins")]
-    data = compose.from_shipped(_info("data", "answer", catalog_key="data-analysis",
-                                      checks=("grounding-check",)), "data-analysis")
-    assert [(s["kind"], s["ref"]) for s in data] == [("human", "gaps"), ("agent", "data"),
-                                                      ("check", "grounding-check")]
-
-
 # ── storage, editing and approval ──────────────────────────────────────
 
 
@@ -273,95 +264,61 @@ async def _people(local) -> SimpleNamespace:
                                their_private=agents[5])
 
 
-async def test_a_pipeline_is_cloned_edited_shared_and_approved(wired):
+async def _pipeline(db, user: User, name: str, stages: list[dict], **fields) -> UserPipeline:
+    """A stored pipeline, its agent steps keyed as the process form stores them."""
+    agents = await up.agents_for(db, user)
+    row = UserPipeline(owner_id=user.id, name=name,
+                       stages=up._with_keys(compose.normalize(stages), agents), **fields)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def test_a_pending_pipeline_is_approved_or_rejected_with_a_reason(wired):
     p = await _people(wired.local)
     async with wired.local() as db:
-        made = await up.create(up.PipelineIn(from_agent_id=p.cmp.id), p.me, db)
-        assert made["name"] == "비교 보고서 진행 과정" and made["base"] == "report"
-        assert [(s["kind"], s["title"]) for s in made["stages"]] == [
-            ("human", "확인 질문"), ("agent", "비교 보고서")]
-        assert made["surface"] == "report" and made["problems"] == []
-
-        # 데이터 분석 → 비교 보고서 → 개조식 1쪽 요약 is the shape people build; a broken order
-        # is refused with every problem.
-        bad = [{"kind": "check", "ref": "grounding-check"}, *made["stages"]]
+        made = await _pipeline(db, p.me, "분석→비교", [
+            {"kind": "agent", "ref": p.data.id}, {"kind": "agent", "ref": p.cmp.id}],
+            review="pending")
+        assert [r["id"] for r in await up.admin_list(p.admin, db)] == [made.id]
         with pytest.raises(HTTPException) as caught:
-            await up.update(made["id"], up.PipelineIn(stages=bad), p.me, db)
-        assert caught.value.status_code == 422
-        assert caught.value.detail["problems"][0]["message"].startswith("1번 검사(근거 대조)")
-        steps = [{"kind": "agent", "ref": p.data.id}, *made["stages"],
-                 {"kind": "review", "settings": {"model": _JUDGE["id"], "repair": True}}]
-        edited = await up.update(made["id"], up.PipelineIn(name="분석→비교", stages=steps),
-                                 p.me, db)
-        assert edited["version"] == 2 and len(edited["stages"]) == 4
-        # Agent steps remember their catalogue agent, so a copy can find its own.
-        assert edited["stages"][0]["settings"]["catalogKey"] == "data-analysis"
-
-        # A step running an agent nobody else can run cannot be shared.
-        own = await up.create(up.PipelineIn(name="메모", stages=[
-            {"kind": "agent", "ref": p.memo.id}]), p.me, db)
-        with pytest.raises(HTTPException) as caught:
-            await up.submit(own["id"], p.me, db)
-        assert caught.value.detail["problems"][0]["code"] == "agent_private"
-
-        submitted = await up.submit(made["id"], p.me, db)
-        assert submitted["review"] == "pending" and submitted["visibility"] == "private"
-        assert [r["id"] for r in await up.admin_list(p.admin, db)] == [made["id"]]
-        assert await up.list_store(p.other, db) == []
-        with pytest.raises(HTTPException) as caught:
-            await up.reject(made["id"], up.RejectIn(note=" "), p.admin, db)
+            await up.reject(made.id, up.RejectIn(note=" "), p.admin, db)
         assert caught.value.detail == "reason_required"
-        approved = await up.approve(made["id"], p.admin, db)
+        approved = await up.approve(made.id, p.admin, db)
         assert (approved["review"], approved["visibility"]) == ("approved", "org")
-        with pytest.raises(HTTPException):
-            await up.approve(made["id"], p.admin, db)
+        with pytest.raises(HTTPException) as caught:
+            await up.approve(made.id, p.admin, db)
+        assert caught.value.status_code == 409
+        assert await up.admin_list(p.admin, db) == []
 
-        # In the store for others; their copy runs their own catalogue agents.
-        store = await up.list_store(p.other, db)
-        assert [r["id"] for r in store] == [made["id"]] and not store[0]["installed"]
-        theirs = await up.create(up.PipelineIn(from_id=made["id"]), p.other, db)
-        refs = [s["ref"] for s in theirs["stages"] if s["kind"] == "agent"]
-        assert p.their_cmp.id in refs and p.cmp.id not in refs
-        assert theirs["originId"] == made["id"]
-        assert (await up.list_store(p.other, db))[0]["installed"]
+        # An approved pipeline runs for others; a private one only for its author.
+        own = await _pipeline(db, p.me, "메모", [{"kind": "agent", "ref": p.memo.id}])
+        shared = ChatSession(user_id=p.other.id, kind=SessionKind.report, pipeline_id=made.id)
+        private = ChatSession(user_id=p.other.id, kind=SessionKind.chat, pipeline_id=own.id)
+        assert (await up.bound(db, p.other, shared, None)).id == made.id
+        assert await up.bound(db, p.other, private, None) is None
 
-        # Editing an approved pipeline takes it out of the store until approved again.
-        again = await up.update(made["id"], up.PipelineIn(stages=steps), p.me, db)
-        assert (again["review"], again["visibility"]) == ("", "private")
-        assert await up.list_store(p.other, db) == []
-        rejected_one = await up.submit(made["id"], p.me, db)
-        assert rejected_one["review"] == "pending"
-        no = await up.reject(made["id"], up.RejectIn(note="검토 모델이 비쌉니다"), p.admin, db)
+        again = await _pipeline(db, p.me, "다시", [{"kind": "agent", "ref": p.cmp.id}],
+                                review="pending")
+        no = await up.reject(again.id, up.RejectIn(note="검토 모델이 비쌉니다"), p.admin, db)
         assert (no["review"], no["reviewNote"]) == ("rejected", "검토 모델이 비쌉니다")
-
-        # Someone else's private pipeline is not theirs to read or edit.
-        with pytest.raises(HTTPException):
-            await up.get_one(own["id"], p.other, db)
-        with pytest.raises(HTTPException):
-            await up.update(own["id"], up.PipelineIn(stages=[]), p.other, db)
+        assert no["visibility"] == "private"
 
 
-async def test_binding_an_agent_is_guarded_against_itself_and_the_wrong_surface(wired):
+async def test_a_pipeline_cannot_run_the_agent_it_is_bound_to(wired):
     p = await _people(wired.local)
     async with wired.local() as db:
-        doc = await up.create(up.PipelineIn(name="비교", stages=[
-            {"kind": "agent", "ref": p.data.id}, {"kind": "agent", "ref": p.cmp.id}]), p.me, db)
-        with pytest.raises(HTTPException) as caught:
-            await up.bind_agent(p.cmp.id, up.BindIn(pipeline_id=doc["id"]), p.me, db)
-        assert caught.value.detail["problems"][0]["code"] == "bind_recursion"
-        with pytest.raises(HTTPException) as caught:
-            await up.bind_agent(p.memo.id, up.BindIn(pipeline_id=doc["id"]), p.me, db)
-        assert caught.value.detail["problems"][0]["code"] == "bound_surface"
-        bound = await up.bind_agent(p.mins.id, up.BindIn(pipeline_id=doc["id"]), p.me, db)
-        assert bound["pipelineId"] == doc["id"]
+        doc = await _pipeline(db, p.me, "비교", [
+            {"kind": "agent", "ref": p.data.id}, {"kind": "agent", "ref": p.cmp.id}])
+        mins = await db.get(Agent, p.mins.id)
+        mins.pipeline_id = doc.id
+        db.add(mins)
+        await db.commit()
         # Now 회의록 runs `doc`; a pipeline that runs 회의록 would call itself.
-        loop = await up.validate_draft(up.ValidateIn(id=doc["id"], stages=[
+        loop = await up.validate_draft(up.ValidateIn(id=doc.id, stages=[
             {"kind": "agent", "ref": p.mins.id}]), p.me, db)
         assert [x["code"] for x in loop["problems"]] == ["recursion"]
-        got = await up.get_one(doc["id"], p.me, db)
-        assert got["boundAgents"] == [{"id": p.mins.id, "name": "회의록"}]
-        await up.delete(doc["id"], p.me, db)
-        assert (await db.get(Agent, p.mins.id)).pipeline_id is None
 
 
 # ── running one ────────────────────────────────────────────────────────
@@ -437,16 +394,15 @@ async def _run(local, user, session, row, *, request="A안과 B안을 비교해 
 async def test_a_composed_run_hands_each_product_on_and_reviews_the_last(wired, writers):
     p = await _people(wired.local)
     async with wired.local() as db:
-        made = await up.create(up.PipelineIn(name="분석→비교", stages=[
+        row = await _pipeline(db, p.me, "분석→비교", [
             {"kind": "agent", "ref": p.data.id},
             {"kind": "agent", "ref": p.cmp.id, "settings": {"instruction": "결론만 1쪽"}},
             {"kind": "check", "ref": "grounding-check"},
             {"kind": "review", "settings": {"model": _JUDGE["id"], "repair": True}},
-        ]), p.me, db)
-        session = ChatSession(user_id=p.me.id, kind=SessionKind.report, pipeline_id=made["id"])
+        ])
+        session = ChatSession(user_id=p.me.id, kind=SessionKind.report, pipeline_id=row.id)
         db.add(session)
         await db.commit()
-        row = await db.get(UserPipeline, made["id"])
         assert (await up.bound(db, p.me, session, None)).id == row.id
     events = await _run(wired.local, p.me, session, row)
 
@@ -505,12 +461,11 @@ async def test_a_composed_run_hands_each_product_on_and_reviews_the_last(wired, 
 async def test_a_run_waits_at_its_card_and_resumes_with_the_answers(wired, writers):
     p = await _people(wired.local)
     async with wired.local() as db:
-        made = await up.create(up.PipelineIn(name="회의록", stages=[
-            {"kind": "human", "ref": "gaps"}, {"kind": "agent", "ref": p.mins.id}]), p.me, db)
+        row = await _pipeline(db, p.me, "회의록", [
+            {"kind": "human", "ref": "gaps"}, {"kind": "agent", "ref": p.mins.id}])
         session = ChatSession(user_id=p.me.id, kind=SessionKind.report)
         db.add(session)
         await db.commit()
-        row = await db.get(UserPipeline, made["id"])
     first = await _run(wired.local, p.me, session, row, request="회의록 써 줘")
     assert [e["type"] for e in first][-3:] == ["needs", "usage", "done"]
     questions = next(e for e in first if e["type"] == "needs")["questions"]
@@ -542,13 +497,11 @@ async def test_a_chat_pipeline_stores_the_answer_as_the_message(wired, writers, 
     monkeypatch.setattr(sessions, "_release_turn", release)
     p = await _people(wired.local)
     async with wired.local() as db:
-        made = await up.create(up.PipelineIn(name="분석", stages=[
-            {"kind": "agent", "ref": p.data.id}, {"kind": "check", "ref": "grounding-check"}]),
-            p.me, db)
+        row = await _pipeline(db, p.me, "분석", [
+            {"kind": "agent", "ref": p.data.id}, {"kind": "check", "ref": "grounding-check"}])
         session = ChatSession(user_id=p.me.id, kind=SessionKind.chat)
         db.add(session)
         await db.commit()
-        row = await db.get(UserPipeline, made["id"])
     events = await _run(wired.local, p.me, session, row, request="견적 비교")
     assert next(e for e in events if e["type"] == "delta")["text"].startswith("분석:")
     done = events[-1]
@@ -559,9 +512,7 @@ async def test_a_chat_pipeline_stores_the_answer_as_the_message(wired, writers, 
         assert message.content.startswith("분석:") and message.routing["run"]["flow"] == "compose"
     # A pipeline that writes a document is not run on a chat screen.
     async with wired.local() as db:
-        doc = await up.create(up.PipelineIn(name="문서", stages=[
-            {"kind": "agent", "ref": p.cmp.id}]), p.me, db)
-        row = await db.get(UserPipeline, doc["id"])
+        row = await _pipeline(db, p.me, "문서", [{"kind": "agent", "ref": p.cmp.id}])
     refused = await _run(wired.local, p.me, session, row)
     assert refused[0]["code"] == "pipeline_surface"
 
@@ -628,24 +579,21 @@ def test_runs_of_a_user_pipeline_are_rerunnable_flows():
     assert "compose" in runs_router.RERUNNABLE
 
 
-async def test_binding_refuses_a_cycle_through_another_pipeline(wired):
+async def test_a_pipeline_bound_to_an_agent_is_not_a_starting_point(wired):
     p = await _people(wired.local)
     async with wired.local() as db:
-        runs_cmp = await up.create(up.PipelineIn(name="비교까지", stages=[
-            {"kind": "agent", "ref": p.data.id}, {"kind": "agent", "ref": p.cmp.id}]), p.me, db)
-        runs_mins = await up.create(up.PipelineIn(name="회의록까지", stages=[
-            {"kind": "agent", "ref": p.data.id}, {"kind": "agent", "ref": p.mins.id}]), p.me, db)
-        await up.bind_agent(p.mins.id, up.BindIn(pipeline_id=runs_cmp["id"]), p.me, db)
-        # 비교 → 회의록까지 → 회의록 → 비교까지 → 비교: both would stop running.
-        with pytest.raises(HTTPException) as caught:
-            await up.bind_agent(p.cmp.id, up.BindIn(pipeline_id=runs_mins["id"]), p.me, db)
-        problem = caught.value.detail["problems"][0]
-        assert problem["code"] == "bind_cycle"
-        assert "「비교까지」" in problem["message"]
-        for made in (runs_cmp, runs_mins):
-            assert (await up.get_one(made["id"], p.me, db))["problems"] == []
+        runs_cmp = await _pipeline(db, p.me, "비교까지", [
+            {"kind": "agent", "ref": p.data.id}, {"kind": "agent", "ref": p.cmp.id}])
+        runs_mins = await _pipeline(db, p.me, "회의록까지", [
+            {"kind": "agent", "ref": p.data.id}, {"kind": "agent", "ref": p.mins.id}])
+        mins = await db.get(Agent, p.mins.id)
+        mins.pipeline_id = runs_cmp.id
+        db.add(mins)
+        await db.commit()
         # A pipeline bound to an agent is that agent's 진행 과정 now, not one to start from.
-        assert [r["id"] for r in await up.list_mine(p.me, db)] == [runs_mins["id"]]
+        listed = await up.list_mine(p.me, db)
+        assert [r["id"] for r in listed] == [runs_mins.id]
+        assert listed[0]["problems"] == [] and listed[0]["boundAgents"] == []
 
 
 def test_product_messages_take_the_right_particle():
@@ -702,24 +650,18 @@ async def test_a_shared_pipeline_runs_on_the_takers_own_copies(wired):
                          catalog_key="comparison-report", visibility=Visibility.org)
         db.add(original)
         await db.commit()
-        made = await up.create(up.PipelineIn(name="비교만", stages=[
-            {"kind": "agent", "ref": p.cmp.id}]), p.me, db)
-        await up.submit(made["id"], p.me, db)
-        await up.approve(made["id"], p.admin, db)
+        made = await _pipeline(db, p.me, "비교만", [{"kind": "agent", "ref": p.cmp.id}],
+                               review="pending")
+        await up.approve(made.id, p.admin, db)
         # The author's step runs the author's private copy; the taker holds their own copy
         # and also sees the organisation's original: their copy is the one it runs on.
-        store = [r for r in await up.list_store(p.other, db) if r["id"] == made["id"]]
-        assert [(s["ref"], s["title"]) for s in store[0]["stages"]] == [
-            (p.their_cmp.id, "남의 비교 보고서")]
-        seen = await up.get_one(made["id"], p.other, db)
-        assert seen["problems"] == [] and seen["stages"][0]["ref"] == p.their_cmp.id
-        taken = await up.create(up.PipelineIn(from_id=made["id"]), p.other, db)
-        assert taken["stages"][0]["ref"] == p.their_cmp.id
+        row = await db.get(UserPipeline, made.id)
+        steps = up._steps_for(row, p.other, await up.agents_for(db, p.other))
+        assert steps[0]["ref"] == p.their_cmp.id
         # Someone with no copy runs the organisation's original.
         third = User(email="t@example.com", name="셋", password_hash="x")
         db.add(third)
         await db.commit()
-        row = await db.get(UserPipeline, made["id"])
         steps = up._steps_for(row, third, await up.agents_for(db, third))
         assert steps[0]["ref"] == original.id
         # The author's own view is untouched.

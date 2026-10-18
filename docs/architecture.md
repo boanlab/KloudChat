@@ -1024,13 +1024,11 @@ list of at most twelve coarse **steps** `{id, kind, ref, settings}` —
 (grounding check) needs a document or answer from an earlier step"), plus warnings (a card
 before an agent with no facts to ask is skipped). The **recursion guard** refuses an agent step
 whose agent is bound to this pipeline, directly or through the pipelines its agents are bound
-to, and binding an agent to a pipeline that runs it. The last agent decides the surface:
-`report` for a document, `chat` for an answer; an agent can only be bound to a pipeline whose
-surface matches its own.
+to. The last agent decides the surface: `report` for a document, `chat` for an answer; an
+agent's own pipeline must end on the agent's own surface.
 
-**Running.** A conversation runs a user pipeline when it was started with one
-(`POST /user-pipelines/{id}/start`, `sessions.pipeline_id`) or its agent is bound to one
-(`PUT /agents/{id}/user-pipeline`, `agents.pipeline_id`). `send_message` then skips the agent's
+**Running.** A conversation runs a user pipeline when `sessions.pipeline_id` names one or its
+agent has one (`agents.pipeline_id`, set by `PUT /agents/{id}/process`). `send_message` then skips the agent's
 own gap card and, for a new request on the report or chat route, hands the turn to
 `user_pipelines.turn_response`; a follow-up on a finished document still revises it with the
 document's own `revise` flow. `compose.compile_steps` makes one stage per step (named
@@ -1098,11 +1096,11 @@ never copied. The base is the conversation's agent's, else inferred from its tem
 conversation's files go onto the new agent's shelf as copies
 (`POST /agents/{id}/knowledge/from-files`, the caller's own files only).
 
-**Sharing.** Private by default. `POST /user-pipelines/{id}/submit` (every agent step must be
-one others can run: a catalogue agent or one shared with the organisation) sets `review`
-`pending`; an administrator approves (`visibility` org, listed in `GET /user-pipelines/store`)
-or rejects with a reason (`/admin/user-pipelines/{id}/approve|reject`, the queue on the admin
-users page). A saved edit takes an approved pipeline back to private. A copy from the store
+**Sharing.** Private by default. Sharing an agent whose set-it-up-yourself pipeline needs
+review sets that pipeline's `review` `pending` when every agent step is one others can run (a
+catalogue agent or one shared with the organisation); an administrator approves (`visibility`
+org) or rejects with a reason (`/admin/user-pipelines/{id}/approve|reject`, the queue on the
+admin users page). A saved edit takes an approved pipeline back to private. A copy of the agent
 remaps catalogue agents to the taker's own copies (`settings.catalogKey`).
 
 ### Asking for a review

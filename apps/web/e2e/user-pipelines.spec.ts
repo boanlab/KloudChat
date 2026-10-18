@@ -31,7 +31,7 @@ const agents = [
   agentRow('c2222222222222222222222222222222', '비교 보고서', 'report', { catalogKey: 'comparison-report', docFormat: 'comparison' }),
   agentRow('c3333333333333333333333333333333', '개조식 보고', 'report', { catalogKey: 'gaejo-report', docFormat: 'gaejo' }),
 ]
-const [dataAgent, cmpAgent, gaejoAgent] = agents
+const [dataAgent, cmpAgent] = agents
 
 const shipped = {
   name: 'comparison-report', formats: ['comparison'], agents: ['comparison-report'], options: {}, checks: ['grounding-check', 'gap-check'],
@@ -131,14 +131,6 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
     { id: 's2', kind: 'agent', ref: cmpAgent.id, settings: {} },
     { id: 's3', kind: 'review', ref: '', settings: { model: 'fixture/judge', repair: true } },
   ], { review: 'pending', ownerId: 'u2', ownerName: '김동료' })]
-  const store = [pipelineRow('p7', '분석 → 비교 → 개조식 요약', [
-    { id: 's1', kind: 'agent', ref: dataAgent.id, settings: {} },
-    { id: 's2', kind: 'agent', ref: cmpAgent.id, settings: {} },
-    { id: 's3', kind: 'check', ref: 'grounding-check', settings: {} },
-    { id: 's4', kind: 'agent', ref: gaejoAgent.id, settings: {} },
-    { id: 's5', kind: 'export', ref: '', settings: { formats: ['hwpx'] } },
-  ], { review: 'approved', visibility: 'org', ownerId: 'u2', ownerName: '김동료', installs: 3, mine: false, installed: false,
-    description: '데이터를 분석해 비교 보고서를 쓰고, 1쪽 개조식 요약까지 만듭니다.' })]
   const composed = {
     id: composedSession, kind: 'report', title: '사업자 견적 비교', projectId: null, agentId: null, model: 'fixture/base',
     routingMode: 'manual', artifactId: null, pending: null, skillIds: [], renderTemplateId: null, pinned: false,
@@ -151,9 +143,8 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
         failure: null, createdAt: at },
     ],
   }
-  let started = false
   const processes: Record<string, unknown>[] = []
-  let mine: ReturnType<typeof pipelineRow>[] = [pipelineRow('p5', '예전에 만든 분석 → 비교', [
+  const mine = [pipelineRow('p5', '예전에 만든 분석 → 비교', [
     { id: 's1', kind: 'agent', ref: dataAgent.id, settings: {} },
     { id: 's2', kind: 'agent', ref: cmpAgent.id, settings: {} },
   ])]
@@ -180,7 +171,7 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
       dataBoundary: 'external', creditCost: 1, inputCreditCost: 1, supportsTools: true, contextWindow: 64000 }],
       defaultChatModel: 'fixture/base', litellmAvailable: false, autoRouting: { enabled: false, available: false } } })
     if (method === 'GET' && path === '/credits') return route.fulfill({ json: { monthlyCredits: 1000, creditsUsed: 0, creditsRemaining: 1000 } })
-    if (method === 'GET' && path === '/sessions') return route.fulfill({ json: started ? [{ ...composed, messages: null }] : [] })
+    if (method === 'GET' && path === '/sessions') return route.fulfill({ json: [] })
     if (method === 'GET' && path === `/sessions/${composedSession}`) return route.fulfill({ json: composed })
     if (method === 'GET' && path === '/agents') return route.fulfill({ json: agents })
     if (method === 'GET' && /^\/agents\/[^/]+\/pipeline$/.test(path)) return route.fulfill({ json: shipped })
@@ -199,58 +190,14 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
     }
     // user pipelines
     if (method === 'GET' && path === '/user-pipelines') return route.fulfill({ json: mine })
-    if (method === 'GET' && path === '/user-pipelines/store') return route.fulfill({ json: store })
     if (method === 'GET' && path === '/user-pipelines/catalogue') return route.fulfill({ json: catalogue })
     if (method === 'POST' && path === '/user-pipelines/validate') {
       const stages = json().stages as Step[]
       return route.fulfill({ json: { ...verdict(stages), titles: stages.map(title) } })
     }
-    if (method === 'POST' && path === '/user-pipelines') {
-      const body = json()
-      if (body.fromId) {
-        store[0] = { ...store[0], installed: true, installs: store[0].installs + 1 }
-        const copy = pipelineRow('p8', store[0].name, store[0].stages as Step[], { originId: 'p7' })
-        mine = [...mine, copy]
-        return route.fulfill({ status: 201, json: copy })
-      }
-      const made = pipelineRow('p1', '비교 보고서 워크플로', [
-        { id: 's1', kind: 'human', ref: 'gaps', settings: {} },
-        { id: 's2', kind: 'agent', ref: cmpAgent.id, settings: { catalogKey: 'comparison-report' } },
-      ])
-      mine = [...mine, made]
-      return route.fulfill({ status: 201, json: made })
-    }
-    const own = mine.find((p) => path.startsWith(`/user-pipelines/${p.id}`))
-    if (own && method === 'PUT') {
-      const body = json() as { name: string; stages: Step[] }
-      const next = pipelineRow(own.id, body.name, body.stages, { version: own.version + 1, boundAgents: own.boundAgents })
-      mine = mine.map((p) => (p.id === own.id ? next : p))
-      return route.fulfill({ json: next })
-    }
-    if (own && method === 'POST' && path.endsWith('/submit')) {
-      const next = { ...own, review: 'pending' }
-      mine = mine.map((p) => (p.id === own.id ? next : p))
-      return route.fulfill({ json: next })
-    }
-    if (method === 'POST' && path.endsWith('/start')) {
-      started = true
-      return route.fulfill({ status: 201, json: { sessionId: composedSession, kind: 'report', pipelineId: 'p1' } })
-    }
-    if (method === 'GET' && /^\/user-pipelines\/[^/]+$/.test(path)) {
-      const row = mine.find((p) => path === `/user-pipelines/${p.id}`)
-      return row ? route.fulfill({ json: row }) : route.fulfill({ status: 404, json: { detail: 'pipeline_not_found' } })
-    }
     if (method === 'PATCH' && /^\/agents\/[^/]+$/.test(path)) {
       const row = agents.find((a) => path === `/agents/${a.id}`)
       return route.fulfill({ json: { ...row, ...json() } })
-    }
-    if (method === 'PUT' && /^\/agents\/[^/]+\/user-pipeline$/.test(path)) {
-      const agentId = path.split('/')[2]
-      const { pipelineId } = json() as { pipelineId: string | null }
-      const agentName = agents.find((a) => a.id === agentId)?.name ?? ''
-      mine = mine.map((p) => ({ ...p, boundAgents: p.id === pipelineId ? [{ id: agentId, name: agentName }]
-        : p.boundAgents.filter((b) => b.id !== agentId) }))
-      return route.fulfill({ json: { agentId, pipelineId } })
     }
     if (method === 'GET' && path === '/admin/user-pipelines') return route.fulfill({ json: pending })
     if (method === 'GET' && path === '/admin/skills') return route.fulfill({ json: [] })

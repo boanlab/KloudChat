@@ -72,7 +72,7 @@ test('the draft report wears the look it is saved with', async ({ page }, testIn
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && ['/artifacts', '/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/catalog',
       '/jobs', '/designs', '/shares', '/design-templates', '/skills/store', '/agents',
-      '/user-pipelines', '/user-pipelines/store'].includes(path)) return route.fulfill({ json: [] })
+      '/user-pipelines'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })
   })
