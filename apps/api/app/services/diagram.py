@@ -128,9 +128,11 @@ _JSON = re.compile(r"```json\s*\n(.*?)```", re.S)
 _CAPTION = re.compile(r"^\s*(?:그림|Figure)\s*[:：]\s*(.+)$", re.M)
 
 
-def _parse_kind(text: str, language: str, *, band: bool = False) -> tuple[str, str] | None:
+def _parse_kind(
+    text: str, language: str, *, band: bool = False, material: str = ""
+) -> tuple[str, str] | None:
     """Stored source and caption from an answer filling a figure kind, else None; `band` for a
-    slide's figure strip."""
+    slide's figure strip; notes kept to the counts `material` gives each part."""
     block = _JSON.search(text)
     if not block:
         return None
@@ -143,6 +145,7 @@ def _parse_kind(text: str, language: str, *, band: bool = False) -> tuple[str, s
     slots = figure_kinds.spec(data, language)
     if slots is None:
         return None
+    slots = figure_kinds.grounded(slots, material)
     caption = _CAPTION.search(text[block.end():])
     return figure_kinds.to_source(slots), (caption.group(1).strip() if caption else "")
 
@@ -197,7 +200,7 @@ async def _fixed_kind(
         max_tokens=1600,
     )
     usage = _added(usage, more)
-    drawn = _parse_kind(text, language, band=slide)
+    drawn = _parse_kind(text, language, band=slide, material=material)
     if drawn is None or (figure_kinds.from_source(drawn[0]) or {}).get("kind") != kind:
         log.info("figure slots for %s did not make the figure; drawing it as mermaid", kind)
         return None, usage
