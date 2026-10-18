@@ -368,6 +368,16 @@ def find(models: list[dict[str, Any]], model_id: str) -> dict[str, Any] | None:
     return next((m for m in models if m["id"] == model_id), None)
 
 
+#: Picture model of a strict-local turn when the person has not picked one.
+STRICT_IMAGE_DEFAULT = "strict-local/z-image-turbo"
+
+
+def strict_image_model(models: list[dict[str, Any]], wanted: str) -> dict[str, Any] | None:
+    """Strict-local picture model: the person's pick if served, else the default, else the first."""
+    chosen = find(models, wanted) or find(models, STRICT_IMAGE_DEFAULT)
+    return chosen or (models[0] if models else None)
+
+
 async def list_models(force: bool = False) -> dict[str, Any]:
     """Merged catalogue plus LiteLLM availability (unavailable is a result, not an error)."""
     now = time.monotonic()
@@ -437,12 +447,23 @@ async def list_models(force: bool = False) -> dict[str, Any]:
     }
     if "video" in by_mode:
         by_kind["av"] = by_mode["video"]
+    strict_images = sorted(
+        (
+            m for m in merged
+            if "image" in m["kinds"]
+            and m.get("strictLocal")
+            and m.get("dataBoundary") == "self_hosted"
+        ),
+        key=fallback_order,
+    )
+    strict_image = strict_image_model(strict_images, "")
     result = {
         "models": merged,
         "litellmAvailable": available,
         "defaultChatModel": default_chat,
         "defaultModelByKind": by_kind,
         "defaultAvModelByMode": by_mode,
+        "strictImageDefault": strict_image["id"] if strict_image else "",
     }
     _CACHE.update(at=now, value=result)
     return result
@@ -480,6 +501,7 @@ async def list_models_for_egress() -> dict[str, Any]:
             "defaultChatModel": "",
             "defaultModelByKind": {},
             "defaultAvModelByMode": {},
+            "strictImageDefault": "",
         }
     return catalogue
 

@@ -24,6 +24,10 @@ export function PreferencesTab() {
   const set = (patch: Partial<Preferences>) => void updateProfile({ preferences: patch })
   // Pictures kept inside: picked here, offered only when there is a choice.
   const strictImages = models.filter((m) => m.kinds.includes('image') && m.strictLocal)
+  const strictImageDefault = useStore((s) => s.strictImageDefault)
+  // The model the server draws with: the pick if served, else its default, else the first.
+  const served = (id?: string) => (id && strictImages.some((m) => m.id === id) ? id : undefined)
+  const strictImage = served(prefs?.strictImageModel) ?? served(strictImageDefault) ?? strictImages[0]?.id
 
   useEffect(() => {
     void authConfig
@@ -103,10 +107,9 @@ export function PreferencesTab() {
           <label className="block max-w-xl space-y-1.5">
             <span className="text-base font-medium">{t('strict-local 그림 모델')}</span>
             <Select
-              value={strictImages.some((m) => m.id === prefs?.strictImageModel) ? prefs?.strictImageModel : ''}
+              value={strictImage}
               onChange={(event) => set({ strictImageModel: event.target.value })}
             >
-              <option value="">{t('목록의 첫 모델 ({model})').replace('{model}', strictImages[0].label)}</option>
               {strictImages.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.label}

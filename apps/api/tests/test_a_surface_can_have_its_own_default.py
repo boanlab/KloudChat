@@ -140,3 +140,29 @@ def test_an_image_model_says_which_ratios_it_can_draw() -> None:
     shaped = model_service._shape(picture)
     if shaped is not None:  # shaped only when the row carries enough to list
         assert shaped["aspects"] == ["1:1"]
+
+
+@pytest.mark.asyncio
+async def test_the_catalogue_names_the_strict_local_picture_default(monkeypatch) -> None:
+    """z-image-turbo when served, else the first strict-local picture model, else blank."""
+    from app.services import litellm
+
+    async def proxy_down():
+        raise litellm.LiteLLMError("down")
+
+    monkeypatch.setattr(litellm, "model_info", proxy_down)
+    rows = _catalogue("local/small")
+    base = {**rows[0], "kinds": ["image"], "modality": "image", "strictLocal": True,
+            "dataBoundary": "self_hosted"}
+    qwen = {**base, "id": "strict-local/qwen-image-2512"}
+    zimage = {**base, "id": "strict-local/z-image-turbo"}
+    outside = {**base, "id": "openai/gpt-5-image-mini", "strictLocal": False,
+               "dataBoundary": "external"}
+
+    async def picture_default(entries):
+        monkeypatch.setattr(model_service, "_adapter_entries", lambda: rows + entries)
+        return (await model_service.list_models(force=True))["strictImageDefault"]
+
+    assert await picture_default([qwen, zimage, outside]) == "strict-local/z-image-turbo"
+    assert await picture_default([qwen, outside]) == "strict-local/qwen-image-2512"
+    assert await picture_default([outside]) == ""

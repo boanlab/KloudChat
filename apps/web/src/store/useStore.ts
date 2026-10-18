@@ -338,6 +338,8 @@ interface State {
   artifactsFailed: boolean
   /** False when the proxy did not answer and only adapter models are listed. */
   litellmAvailable: boolean
+  /** Strict-local picture model the server uses when the person picked none. */
+  strictImageDefault: string
   autoRouting: ModelCatalogue['autoRouting']
   loadModels: () => Promise<void>
 
@@ -1142,6 +1144,7 @@ export const useStore = create<State>((set, get) => ({
   workspaceFailed: false,
   artifactsFailed: false,
   litellmAvailable: true,
+  strictImageDefault: '',
   autoRouting: {
     enabled: false,
     available: false,
@@ -1262,6 +1265,7 @@ export const useStore = create<State>((set, get) => ({
         defaultChatModel,
         defaultModelByKind,
         defaultAvModelByMode,
+        strictImageDefault,
         autoRouting,
       } = await modelsApi.list()
       set((s) => ({
@@ -1272,6 +1276,7 @@ export const useStore = create<State>((set, get) => ({
           s.user?.preferences.avModelByMode,
         ),
         litellmAvailable,
+        strictImageDefault: strictImageDefault ?? '',
         autoRouting: autoRouting ?? {
           enabled: false,
           available: false,

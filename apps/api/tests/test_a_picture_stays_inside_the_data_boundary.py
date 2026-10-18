@@ -214,24 +214,45 @@ async def test_the_person_picks_which_strict_local_model_draws(policy) -> None:
     unset = _user()
     picked = _user()
     picked.preferences = {"strictImageModel": STRICT_IMAGE["id"]}
-    # Unset: the first strict-local picture model listed.
+    # Unset: z-image-turbo, the strict-local picture default.
     assert sessions._media_model(
         unset, models, kind="image", boundary=inside, asked=EXTERNAL_IMAGE["id"]
-    ) is QWEN_IMAGE
-    # Set: an outside pick goes to it, a strict-local pick stands.
-    assert sessions._media_model(
-        picked, models, kind="image", boundary=inside, asked=EXTERNAL_IMAGE["id"]
     ) is STRICT_IMAGE
+    # Set: an outside pick goes to it, a strict-local pick stands.
+    chose_qwen = _user()
+    chose_qwen.preferences = {"strictImageModel": QWEN_IMAGE["id"]}
+    assert sessions._media_model(
+        chose_qwen, models, kind="image", boundary=inside, asked=EXTERNAL_IMAGE["id"]
+    ) is QWEN_IMAGE
     assert sessions._media_model(
         picked, models, kind="image", boundary=inside, asked=QWEN_IMAGE["id"]
     ) is QWEN_IMAGE
-    # A document's figures follow the same pick.
+    # A document's figures follow the same rule.
     catalogue = {"models": models, "defaultModelByKind": {"image": EXTERNAL_IMAGE["id"]}}
-    assert sessions._document_image_model(picked, catalogue, strict_local=True) is STRICT_IMAGE
-    assert sessions._document_image_model(unset, catalogue, strict_local=True) is QWEN_IMAGE
-    # A pick no longer served: the first listed.
+    assert sessions._document_image_model(chose_qwen, catalogue, strict_local=True) is QWEN_IMAGE
+    assert sessions._document_image_model(unset, catalogue, strict_local=True) is STRICT_IMAGE
+    # A pick no longer served: the default.
     gone = _user()
     gone.preferences = {"strictImageModel": "strict-local/retired"}
     assert sessions._media_model(
         gone, models, kind="image", boundary=inside, asked=EXTERNAL_IMAGE["id"]
+    ) is STRICT_IMAGE
+    # No z-image-turbo served: the first strict-local picture model listed.
+    without_default = [m for m in models if m is not STRICT_IMAGE]
+    assert sessions._media_model(
+        gone, without_default, kind="image", boundary=inside, asked=EXTERNAL_IMAGE["id"]
     ) is QWEN_IMAGE
+    assert sessions._document_image_model(
+        unset, {**catalogue, "models": without_default}, strict_local=True
+    ) is QWEN_IMAGE
+
+
+def test_the_strict_local_picture_rule() -> None:
+    """Pick if served, else z-image-turbo, else the first listed, else none."""
+    rule = sessions.model_service.strict_image_model
+    both = [QWEN_IMAGE, STRICT_IMAGE]
+    assert rule(both, QWEN_IMAGE["id"]) is QWEN_IMAGE
+    assert rule(both, "") is STRICT_IMAGE
+    assert rule(both, "strict-local/retired") is STRICT_IMAGE
+    assert rule([QWEN_IMAGE], "") is QWEN_IMAGE
+    assert rule([], STRICT_IMAGE["id"]) is None

@@ -290,6 +290,8 @@ export interface ModelCatalogue {
   defaultModelByKind?: Partial<Record<SessionKind, string>>
   /** 오디오/동영상 is one surface with two kinds of model, so one default each. */
   defaultAvModelByMode?: Partial<Record<'audio' | 'video', string>>
+  /** Strict-local picture model when the person picked none; empty when none is served. */
+  strictImageDefault?: string
   autoRouting: {
     enabled: boolean
     available: boolean
