@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -50,6 +52,35 @@ async def scrape(client: httpx.AsyncClient, base: str, target: str) -> str | Non
     return response.text[:4_000_000]
 
 
+@dataclass(frozen=True)
+class Target:
+    name: str
+    kind: str  # "vllm" | "gpu"
+    node: str = ""  # node hostname, listed targets only
+
+
+async def targets(client: httpx.AsyncClient, base: str, fixed: list[str]) -> list[Target]:
+    """`fixed` names (`gpu-*` read as gpu-exporter), else the gateway's own list."""
+    if fixed:
+        return [Target(name, "gpu" if name.startswith("gpu-") else "vllm") for name in fixed]
+    text = await scrape(client, base, "targets")
+    if text is None:
+        return []
+    try:
+        listed = json.loads(text).get("targets", [])
+    except (ValueError, AttributeError):
+        return []
+    return [
+        Target(
+            str(row["name"]),
+            "gpu" if row.get("kind") == "gpu" else "vllm",
+            str(row.get("node") or ""),
+        )
+        for row in listed
+        if isinstance(row, dict) and row.get("name")
+    ]
+
+
 class VllmReader:
     """Gauges as read; counters/histograms as deltas since last scrape."""
 
@@ -57,12 +88,18 @@ class VllmReader:
         self.prev: dict[str, tuple[float, dict]] = {}
         self.model_of: dict[str, str] = {}
 
-    def rows(self, target: str, text: str | None, now: float | None = None) -> list[Row]:
+    def rows(
+        self, target: str, text: str | None, now: float | None = None, node: str = ""
+    ) -> list[Row]:
+        """Subject: the served model, with its node when the target names one."""
         now = time.time() if now is None else now
         if text is None:
-            return [("vllm", "up", self.model_of.get(target, target), 0.0)]
+            fallback = f"{target} · {node}" if node else target
+            return [("vllm", "up", self.model_of.get(target, fallback), 0.0)]
         samples = prom.parse(text)
         model = next((s.labels["model_name"] for s in samples if "model_name" in s.labels), target)
+        if node:
+            model = f"{model} · {node}"
         self.model_of[target] = model
         out: list[Row] = [("vllm", "up", model, 1.0)]
         for name, metric in (
@@ -122,14 +159,18 @@ class GpuReader:
         self.prev: dict[str, tuple[float, float]] = {}
         self.subject_of: dict[str, str] = {}
 
-    def rows(self, target: str, text: str | None) -> list[Row]:
+    def rows(self, target: str, text: str | None, node: str = "") -> list[Row]:
+        """Subject: the node's hostname for a listed target, else `name · hostname`."""
         if text is None:
-            return [("gpu", "up", self.subject_of.get(target, target), 0.0)]
+            return [("gpu", "up", self.subject_of.get(target, node or target), 0.0)]
         samples = prom.parse(text)
         host = next(
             (s.labels.get("hostname", "") for s in samples if s.name == "kloudchat_node_info"), ""
         )
-        subject = f"{target} · {host}" if host else target
+        if node:
+            subject = host or node
+        else:
+            subject = f"{target} · {host}" if host else target
         self.subject_of[target] = subject
         out: list[Row] = [("gpu", "up", subject, 1.0)]
 
@@ -190,18 +231,19 @@ class GpuReader:
         return out
 
 
-async def scrape_targets(targets: list[str], vllm: VllmReader, gpu: GpuReader) -> list[Row]:
+async def scrape_targets(fixed: list[str], vllm: VllmReader, gpu: GpuReader) -> list[Row]:
     base = await metrics_base()
-    if not base or not targets:
+    if not base:
         return []
     async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
-        texts = await asyncio.gather(*(scrape(client, base, t) for t in targets))
+        found = await targets(client, base, fixed)
+        texts = await asyncio.gather(*(scrape(client, base, t.name) for t in found))
     rows: list[Row] = []
-    for target, text in zip(targets, texts, strict=True):
-        if target.startswith("gpu-"):
-            rows += gpu.rows(target, text)
+    for target, text in zip(found, texts, strict=True):
+        if target.kind == "gpu":
+            rows += gpu.rows(target.name, text, node=target.node)
         else:
-            rows += vllm.rows(target, text)
+            rows += vllm.rows(target.name, text, node=target.node)
     return rows
 
 

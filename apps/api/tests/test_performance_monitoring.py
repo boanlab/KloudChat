@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
@@ -103,6 +105,49 @@ def test_the_gpu_reader_reads_the_exporter():
     )
     assert {r[1]: r[3] for r in reader.rows("gpu-1", later)}["node_cpu_percent"] == 50.0
     assert reader.rows("gpu-1", None) == [("gpu", "up", "gpu-1 · spark-254", 0.0)]
+
+
+async def test_an_empty_target_list_reads_what_the_gateway_lists(monkeypatch):
+    listed = {
+        "targets": [
+            {"name": "vllm-172-29-52-2-8001", "kind": "vllm", "node": "gpu1"},
+            {"name": "gpu-172-29-52-2", "kind": "gpu", "node": "gpu1"},
+            {"name": "gpu-10-40-0-253", "kind": "gpu", "node": "10.40.0.253"},
+        ]
+    }
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        name = request.url.path.rsplit("/", 1)[1]
+        if name == "targets":
+            return httpx.Response(200, text=json.dumps(listed))
+        if name.startswith("vllm-"):
+            return httpx.Response(200, text=_vllm(1, 0, 0.1, 10, {"+Inf": 1}))
+        if name == "gpu-172-29-52-2":
+            return httpx.Response(200, text='kloudchat_node_info{hostname="gpu1"} 1\n')
+        return httpx.Response(502)
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        sources.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(answer), **kw)
+    )
+
+    async def base() -> str:
+        return "http://gw/metrics"
+
+    monkeypatch.setattr(sources, "metrics_base", base)
+    rows = await sources.scrape_targets([], sources.VllmReader(), sources.GpuReader())
+    up = {(r[0], r[2]): r[3] for r in rows if r[1] == "up"}
+    assert up == {
+        ("vllm", "local/qwen3.8-27b · gpu1"): 1.0,
+        ("gpu", "gpu1"): 1.0,
+        ("gpu", "10.40.0.253"): 0.0,
+    }
+
+
+async def test_a_listed_target_set_skips_the_gateway_list():
+    async with httpx.AsyncClient() as client:
+        found = await sources.targets(client, "http://unused", ["vllm-27b", "gpu-1"])
+    assert found == [sources.Target("vllm-27b", "vllm"), sources.Target("gpu-1", "gpu")]
 
 
 def test_the_model_log_becomes_latency_errors_and_a_minute_marker():

@@ -410,7 +410,7 @@ async def overview(admin: AdminUser, db: DbSession, range: str = RangeName):  # 
             "modelLogAt": (
                 m.isoformat() if (m := await store.last_sample_at(db, "model")) else None
             ),
-            "targets": settings.perf_targets.split(","),
+            "targets": [t.strip() for t in settings.perf_targets.split(",") if t.strip()],
         },
         "host": host,
         "components": components,

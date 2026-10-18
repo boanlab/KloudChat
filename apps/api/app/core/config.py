@@ -179,7 +179,7 @@ class Settings(BaseSettings):
     perf_dns_names: str = "web,db,print,kloudchat-web,kloudchat-db,kloudchat-print"
     #: `/metrics/<name>` source; empty: `<backend>/metrics`.
     perf_metrics_url: str = ""
-    perf_targets: str = "vllm-27b,vllm-flashnext,vllm-bgem3,vllm-rerank,vllm-whisper,gpu-1,gpu-2"
+    perf_targets: str = ""  # empty: the gateway's /metrics/targets list
     perf_model_logs: bool = True
     #: Minute rows kept, then folded to 10-minute rows.
     perf_raw_hours: int = 48
