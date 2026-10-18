@@ -166,12 +166,6 @@ export const storeSkills = [
 ]
 
 const myPipelines = [pipelineRow('p1111111111111111111111111111111', '비교 → 요약', { review: 'pending' })]
-const storePipelines = [
-  pipelineRow('p2222222222222222222222222222222', '분석 → 비교 → 개조식', {
-    ownerId: 'u2', ownerName: '김동료', review: 'approved', visibility: 'org', installs: 5, mine: false, installed: false,
-  }),
-]
-
 export const tools = [
   { name: 'web_search', label: '웹 검색', available: true, group: '기본 도구', title: '웹 검색', description: '웹에서 최신 자료를 찾아 출처와 함께 답합니다.' },
   { name: 'calculate', label: '수치 계산', available: true, group: '기본 도구', title: '수치 계산', description: '사칙연산과 거듭제곱을 정확히 계산합니다.' },
@@ -238,7 +232,6 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
   const problems: string[] = []
   const calls: { method: string; path: string; body: Record<string, unknown> }[] = []
   const reads: string[] = []
-  let made: ReturnType<typeof pipelineRow>[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
   let agents = [...(emptyMine ? [] : myAgents), ...storeAgents]
   let skills = emptyMine ? [] : [...mySkills, ...(hiddenSkill ? [hiddenSkillRow] : [])]
@@ -326,14 +319,9 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     }
     if (method === 'GET' && path === '/admin/settings') return json(null, 404)
     if (method === 'GET' && path === '/user-pipelines') return json(emptyMine ? [] : myPipelines)
-    if (method === 'GET' && path === '/user-pipelines/store') return json(storePipelines)
     if (method === 'GET' && path === '/user-pipelines/catalogue') return json({ maxSteps: 12, skills: [], checks: [], human: [
       { ref: 'gaps', name: '확인 질문', description: '' }, { ref: 'outline', name: '개요 확인', description: '' }],
       exportFormats: ['docx', 'pdf', 'hwpx', 'md'], reviewModels: [] })
-    if (method === 'GET' && /^\/user-pipelines\/[^/]+$/.test(path)) {
-      const row = [...myPipelines, ...made].find((p) => path.endsWith(p.id))
-      return row ? json(row) : json({ detail: 'pipeline_not_found' }, 404)
-    }
     if (method === 'GET' && /^\/agents\/[^/]+\/pipeline$/.test(path)) return json({ name: 'comparison-report', formats: [], agents: [],
       options: {}, checks: [], flows: { write: [{ name: 'draft', label: '초안', kind: 'model' }] } })
     if (method === 'GET' && /^\/agents\/[^/]+\/knowledge/.test(path)) return json([])
@@ -377,21 +365,6 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     if (method === 'PATCH' && path.startsWith('/sessions/')) {
       sessions = sessions.map((s) => ({ ...s, ...body }))
       return json({ ...sessions[0], messages: null })
-    }
-    if (method === 'POST' && /^\/user-pipelines\/[^/]+\/start$/.test(path)) {
-      sessions = [{ id: newSessionId, kind: 'report', title: '워크플로', projectId: null, agentId: null, model: 'fixture/base',
-        routingMode: 'manual', artifactId: null, pending: null, skillIds: [], renderTemplateId: null, pinned: false, createdAt: at,
-        updatedAt: at, messages: null, preview: null, messageCount: 0, made: null }]
-      return json({ sessionId: newSessionId, kind: 'report', pipelineId: path.split('/')[2] }, 201)
-    }
-    if (method === 'POST' && path === '/user-pipelines') {
-      const row = pipelineRow('p9999999999999999999999999999999', '새 워크플로', { description: '', stages: [], version: 1 })
-      made.push(row)
-      return json(row, 201)
-    }
-    if (method === 'DELETE' && /^\/user-pipelines\/[^/]+$/.test(path)) {
-      made = made.filter((p) => !path.endsWith(p.id))
-      return route.fulfill({ status: 204 })
     }
     if (method === 'POST' && /^\/skills\/[^/]+\/install$/.test(path)) {
       const id = path.split('/')[2]

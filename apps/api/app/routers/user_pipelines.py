@@ -24,7 +24,6 @@ from app.pipeline.runner import Runner
 from app.pipeline.stage import Context
 from app.schemas.auth import Wire
 from app.services import (
-    audit,
     bases,
     check_skills,
     design_templates,
@@ -42,15 +41,6 @@ router = APIRouter(tags=["user-pipelines"])
 _REVIEWS = ("", "pending", "approved", "rejected")
 
 
-class PipelineIn(Wire):
-    name: str = Field(default="", max_length=80)
-    description: str = Field(default="", max_length=400)
-    stages: list[dict[str, Any]] | None = None
-    #: clone sources (create only)
-    from_agent_id: str | None = Field(default=None, max_length=64)
-    from_id: str | None = Field(default=None, max_length=64)
-
-
 class ValidateIn(Wire):
     stages: list[dict[str, Any]] = Field(default_factory=list)
     id: str | None = Field(default=None, max_length=64)
@@ -65,10 +55,6 @@ class ValidateIn(Wire):
 
 class RejectIn(Wire):
     note: str = Field(default="", max_length=400)
-
-
-class BindIn(Wire):
-    pipeline_id: str | None = Field(default=None, max_length=64)
 
 
 class ProcessIn(Wire):
@@ -275,13 +261,6 @@ def _out(row: UserPipeline, agents: dict[str, compose.AgentInfo], *,
     }
 
 
-async def _own(db: DbSession, user: User, pipeline_id: str) -> UserPipeline:
-    row = await db.get(UserPipeline, pipeline_id)
-    if row is None or row.owner_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pipeline_not_found")
-    return row
-
-
 def _visible(row: UserPipeline | None, user: User) -> bool:
     return row is not None and (row.owner_id == user.id or (
         row.visibility == "org" and row.review == "approved"))
@@ -316,41 +295,11 @@ async def list_mine(user: CurrentUser, db: DbSession):
     return out
 
 
-@router.get("/user-pipelines/store")
-async def list_store(user: CurrentUser, db: DbSession):
-    """Org-shared approved pipelines, others' first."""
-    rows = (await db.exec(select(UserPipeline).where(UserPipeline.visibility == "org",
-                                                     UserPipeline.review == "approved",
-                                                     UserPipeline.kind != "bundle")
-                          .order_by(col(UserPipeline.installs).desc()))).all()
-    agents = await agents_for(db, user)
-    owners = {r.owner_id for r in rows}
-    names = dict((await db.exec(select(User.id, User.name).where(col(User.id).in_(owners))))
-                 .all()) if owners else {}
-    mine = {r.origin_id for r in (await db.exec(
-        select(UserPipeline).where(UserPipeline.owner_id == user.id))).all() if r.origin_id}
-    return [{**_out(r, agents, owner_name=names.get(r.owner_id, ""),
-                    steps=_steps_for(r, user, agents)),
-             "installed": r.id in mine, "mine": r.owner_id == user.id} for r in rows]
-
-
 @router.get("/user-pipelines/catalogue")
 async def get_catalogue(user: CurrentUser):
     return {**compose.catalogue(),
             "reviewModels": [{"id": m["id"], "label": m.get("label") or m["id"]}
                              for m in await review_models(user)]}
-
-
-@router.get("/user-pipelines/{pipeline_id}")
-async def get_one(pipeline_id: str, user: CurrentUser, db: DbSession):
-    row = await db.get(UserPipeline, pipeline_id)
-    if not _visible(row, user):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pipeline_not_found")
-    agents = await agents_for(db, user)
-    steps = _steps_for(row, user, agents)
-    verdict = await _verdict(db, user, steps, self_id=row.id, agents=agents)
-    return _out(row, agents, verdict=verdict, steps=steps,
-                bound=await _bound(db, user, row.id) if row.owner_id == user.id else [])
 
 
 @router.post("/user-pipelines/validate")
@@ -376,180 +325,6 @@ async def validate_draft(payload: ValidateIn, user: CurrentUser, db: DbSession):
         agents = {**agents, compose.SELF: dataclasses.replace(me, questions=tuple(asked))}
     verdict = await _verdict(db, user, steps, self_id=payload.id, agents=agents)
     return {**verdict.wire(), "titles": [compose.step_title(s, agents) for s in steps]}
-
-
-@router.post("/user-pipelines", status_code=status.HTTP_201_CREATED)
-async def create(payload: PipelineIn, user: CurrentUser, db: DbSession):
-    agents = await agents_for(db, user)
-    base: str | None = None
-    origin: UserPipeline | None = None
-    name = payload.name.strip()
-    if payload.from_agent_id:
-        info = agents.get(payload.from_agent_id)
-        if info is None or info.output not in ("document", "answer"):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="agent_not_found")
-        from app.routers.pipelines import pipeline_for_agent
-
-        pipe = pipeline_for_agent(info.catalog_key or None, info.doc_format or None,
-                                  "report" if info.output == "document" else "chat")
-        base = pipe.name
-        steps = compose.from_shipped(info, pipe.name)
-        name = name or f"{info.name} 진행 과정"
-    elif payload.from_id:
-        origin = await db.get(UserPipeline, payload.from_id)
-        if not _visible(origin, user):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail="pipeline_not_found")
-        steps = _remap(compose.normalize(origin.stages), agents)
-        base = origin.base
-        name = name or (origin.name if origin.owner_id != user.id else f"{origin.name} 사본")
-    else:
-        steps = compose.normalize(payload.stages or [])
-    if not name:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail="name_required")
-    row = UserPipeline(owner_id=user.id, name=name[:80],
-                       description=payload.description or (origin.description if origin else ""),
-                       base=base, stages=_with_keys(steps, agents),
-                       origin_id=origin.id if origin is not None and origin.owner_id != user.id
-                       else None)
-    if payload.stages is not None and not (payload.from_agent_id or payload.from_id):
-        # explicit steps held to contracts like an edit
-        verdict = await _verdict(db, user, steps, self_id=None, agents=agents)
-        if not verdict.ok:
-            raise _invalid(verdict)
-    db.add(row)
-    if origin is not None and origin.owner_id != user.id:
-        origin.installs += 1
-        db.add(origin)
-    await db.commit()
-    await db.refresh(row)
-    verdict = await _verdict(db, user, compose.normalize(row.stages), self_id=row.id,
-                             agents=agents)
-    return _out(row, agents, verdict=verdict)
-
-
-@router.put("/user-pipelines/{pipeline_id}")
-async def update(pipeline_id: str, payload: PipelineIn, user: CurrentUser, db: DbSession):
-    row = await _own(db, user, pipeline_id)
-    agents = await agents_for(db, user)
-    steps = compose.normalize(payload.stages if payload.stages is not None else row.stages)
-    verdict = await _verdict(db, user, steps, self_id=row.id, agents=agents)
-    if not verdict.ok:
-        raise _invalid(verdict)
-    bound = await _bound(db, user, row.id)
-    if bound and verdict.surface:
-        # bound agents must still show their output
-        rows = [await db.get(Agent, b["id"]) for b in bound]
-        if any(a is not None and _output(a) != {"report": "document", "chat": "answer"}
-               .get(verdict.surface) for a in rows):
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
-                "code": "invalid_pipeline", "ok": False, "surface": verdict.surface,
-                "problems": [{"step": 0, "code": "bound_surface",
-                              "message": ("이 진행 과정을 쓰는 에이전트가 만드는 것과 "
-                                          "마지막 에이전트가 만드는 것이 다릅니다. "
-                                          "묶음을 먼저 풀어 주세요.")}],
-                "warnings": []})
-    if payload.name.strip():
-        row.name = payload.name.strip()[:80]
-    row.description = payload.description
-    row.stages = _with_keys(steps, agents)
-    row.version += 1
-    if row.review in ("pending", "approved"):
-        # approval void after edit
-        row.review, row.visibility, row.review_note = "", "private", ""
-    row.updated_at = utcnow()
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    return _out(row, agents, verdict=verdict, bound=bound)
-
-
-@router.delete("/user-pipelines/{pipeline_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete(pipeline_id: str, user: CurrentUser, db: DbSession,
-                 request: HttpRequest = None):  # type: ignore[assignment]
-    row = await _own(db, user, pipeline_id)
-    for agent in (await db.exec(select(Agent).where(Agent.pipeline_id == row.id))).all():
-        agent.pipeline_id = None
-        db.add(agent)
-    for session in (await db.exec(select(ChatSession).where(
-            ChatSession.pipeline_id == row.id))).all():
-        session.pipeline_id = None
-        db.add(session)
-    await db.delete(row)
-    db.add(audit.deletion(user, request, action="pipeline.delete", ids=[row.id],
-                          counts={"pipelines": 1}))
-    await db.commit()
-
-
-@router.post("/user-pipelines/{pipeline_id}/submit")
-async def submit(pipeline_id: str, user: CurrentUser, db: DbSession):
-    row = await _own(db, user, pipeline_id)
-    agents = await agents_for(db, user)
-    verdict = await _verdict(db, user, compose.normalize(row.stages), self_id=row.id,
-                             agents=agents, sharing=True)
-    if not verdict.ok:
-        raise _invalid(verdict)
-    row.review, row.review_note, row.updated_at = "pending", "", utcnow()
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    return _out(row, agents, verdict=verdict, bound=await _bound(db, user, row.id))
-
-
-@router.post("/user-pipelines/{pipeline_id}/withdraw")
-async def withdraw(pipeline_id: str, user: CurrentUser, db: DbSession):
-    """Out of review or store."""
-    row = await _own(db, user, pipeline_id)
-    row.review, row.visibility, row.updated_at = "", "private", utcnow()
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    agents = await agents_for(db, user)
-    return _out(row, agents, bound=await _bound(db, user, row.id))
-
-
-@router.put("/agents/{agent_id}/user-pipeline")
-async def bind_agent(agent_id: str, payload: BindIn, user: CurrentUser, db: DbSession):
-    agent = await db.get(Agent, agent_id)
-    if agent is None or agent.owner_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    if payload.pipeline_id:
-        row = await _own(db, user, payload.pipeline_id)
-        steps = compose.normalize(row.stages)
-        agents = await agents_for(db, user)
-        verdict = await _verdict(db, user, steps, self_id=row.id, agents=agents)
-        problems = list(verdict.problems)
-        if any(s["kind"] == "agent" and s["ref"] == agent.id for s in steps):
-            problems.append(compose.Problem(0, "bind_recursion",
-                                            compose.MESSAGES["bind_recursion"]))
-        else:
-            # no cycle back to this agent via another bound pipeline (both would stop)
-            graph = await _graph(db, user, agents)
-            holders = (await db.exec(select(UserPipeline).where(
-                UserPipeline.owner_id == user.id, UserPipeline.id != row.id))).all()
-            for other in holders:
-                if any(s["kind"] == "agent" and s["ref"] == agent.id
-                       for s in compose.normalize(other.stages)) and \
-                        compose._reaches(row.id, other.id, graph):
-                    problems.append(compose.Problem(0, "bind_cycle", compose.MESSAGES[
-                        "bind_cycle"].format(name=other.name)))
-                    break
-        want = {"report": "document", "chat": "answer"}.get(verdict.surface, "")
-        if want and _output(agent) != want:
-            problems.append(compose.Problem(0, "bound_surface", (
-                "문서를 만드는 진행 과정이라 보고서 에이전트에만 쓸 수 있습니다."
-                if want == "document"
-                else "답을 만드는 진행 과정이라 대화 에이전트에만 쓸 수 있습니다.")))
-        if problems:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
-                "code": "invalid_pipeline", "ok": False, "surface": verdict.surface,
-                "problems": [p.wire() for p in problems], "warnings": []})
-    agent.pipeline_id = payload.pipeline_id or None
-    agent.updated_at = utcnow()
-    db.add(agent)
-    await db.commit()
-    return {"agentId": agent.id, "pipelineId": agent.pipeline_id}
 
 
 def _usable(row: UserPipeline, user: User) -> bool:
@@ -1008,29 +783,6 @@ async def delete_bundle(bundle_id: str, user: CurrentUser, db: DbSession):
     row = await _own_bundle(db, user, bundle_id)
     await db.delete(row)
     await db.commit()
-
-
-@router.post("/user-pipelines/{pipeline_id}/start", status_code=status.HTTP_201_CREATED)
-async def start(pipeline_id: str, user: CurrentUser, db: DbSession):
-    """New conversation running this pipeline (own or approved shared)."""
-    from app.routers import sessions
-    from app.schemas.chat import SessionCreate
-
-    row = await db.get(UserPipeline, pipeline_id)
-    if not _visible(row, user):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pipeline_not_found")
-    agents = await agents_for(db, user)
-    verdict = await _verdict(db, user, _steps_for(row, user, agents), self_id=row.id,
-                             agents=agents)
-    if not verdict.ok:
-        raise _invalid(verdict)
-    created = await sessions.create_session(SessionCreate(kind=SessionKind(verdict.surface)),
-                                            user, db)
-    session = await db.get(ChatSession, created.id)
-    session.pipeline_id = row.id
-    db.add(session)
-    await db.commit()
-    return {"sessionId": session.id, "kind": verdict.surface, "pipelineId": row.id}
 
 
 @router.get("/admin/user-pipelines")

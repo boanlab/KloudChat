@@ -231,11 +231,6 @@ MESSAGES = {
     "agent_disabled": "{at}: 꺼져 있는 에이전트입니다.",
     "recursion": ("{at}: 이 진행 과정을 쓰는 에이전트라 넣을 수 없습니다. "
                   "자기 자신을 다시 부르게 됩니다."),
-    "bind_recursion": ("이 에이전트가 단계로 들어 있는 진행 과정이라 쓸 수 없습니다. "
-                       "자기 자신을 다시 부르게 됩니다."),
-    "bind_cycle": ("그러면 「{name}」 진행 과정을 거쳐 이 에이전트를 다시 부르게 되어 "
-                   "쓸 수 없습니다. 그 진행 과정에서 이 에이전트를 빼거나 "
-                   "다른 순서를 골라 주세요."),
     "agent_private": "{at}: 공유하려면 이 에이전트도 조직에 공유되어 있어야 합니다.",
     "skill_unknown": "{n}번 스킬({ref})은 진행 과정에 넣을 수 없는 스킬입니다.",
     "check_unknown": "{n}번 검사({ref})는 진행 과정에 넣을 수 없는 검사입니다.",
@@ -362,24 +357,6 @@ def validate(steps: list[dict[str, Any]], *, agents: dict[str, AgentInfo],
 def gap_facts(info: AgentInfo) -> list[dict[str, Any]]:
     """빠진 정보 질문 for the gap card (empty: none)."""
     return [dict(q) for q in info.questions]
-
-
-def from_shipped(info: AgentInfo, pipeline_name: str) -> list[dict[str, Any]]:
-    """Steps equal to an agent's shipped flow."""
-    from app.pipeline import registry
-
-    try:
-        pipe = registry.pipeline(pipeline_name)
-    except KeyError:
-        pipe = None
-    steps: list[dict[str, Any]] = []
-    if pipe is not None and "check:gaps" in pipe.flow("pre") and gap_facts(info):
-        steps.append({"kind": "human", "ref": "gaps", "settings": {}})
-    steps.append({"kind": "agent", "ref": info.id,
-                  "settings": {"catalogKey": info.catalog_key} if info.catalog_key else {}})
-    if info.output == "answer" and "grounding-check" in info.checks:
-        steps.append({"kind": "check", "ref": "grounding-check", "settings": {}})
-    return normalize(steps)
 
 
 def catalogue() -> dict[str, Any]:
@@ -1287,4 +1264,4 @@ def compile_steps(steps: list[dict[str, Any]], agents: dict[str, AgentInfo]) -> 
 
 __all__ = ["CHECKS", "EXPORT_FORMATS", "FLOW", "HUMAN", "KIND_WORDS", "MAX_STEPS", "PREFIX", "SELF",
            "SKILLS", "STEP_KINDS", "AgentInfo", "AgentStep", "Problem", "Verdict", "catalogue",
-           "compile_steps", "from_shipped", "gap_facts", "normalize", "step_title", "validate"]
+           "compile_steps", "gap_facts", "normalize", "step_title", "validate"]

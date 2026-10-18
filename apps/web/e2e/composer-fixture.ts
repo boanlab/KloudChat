@@ -230,7 +230,7 @@ export async function composerFixture(
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && (path.endsWith('/jobs') || [
       '/projects', '/artifacts', '/memory', '/tools', '/connectors/catalog', '/designs', '/shares',
-      '/skills/store', '/user-pipelines', '/user-pipelines/store', '/jobs',
+      '/skills/store', '/user-pipelines', '/jobs',
     ].includes(path))) return json([])
     unexpected.push(`${method} ${path}`)
     return json({ detail: 'Unmocked fixture request' }, 501)

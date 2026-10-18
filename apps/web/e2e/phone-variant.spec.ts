@@ -71,7 +71,7 @@ async function mockChat(page: Page) {
     if (request.method() === 'GET' && [
       '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
       '/connectors', '/connectors/catalog', '/jobs', '/designs', '/design-templates',
-      '/shares', `/sessions/${sessionId}/jobs`, '/skills/store', '/user-pipelines', '/user-pipelines/store',
+      '/shares', `/sessions/${sessionId}/jobs`, '/skills/store', '/user-pipelines',
     ].includes(path)) return json([])
     unexpected.push(`${request.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })
