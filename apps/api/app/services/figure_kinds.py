@@ -201,6 +201,9 @@ def _spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
         if not isinstance(row, dict):
             continue
         aspect, before, after = (_text(row.get(k), 30) for k in ("aspect", "before", "after"))
+        # 「-」 or 「없음」 stands in for a cell the writer had no value for
+        before, after = ("" if re.fullmatch(r"[-–—·.\s]*|없음|해당\s?없음", cell) else cell
+                         for cell in (before, after))
         if aspect and before and after:
             rows.append({"aspect": aspect, "before": before, "after": after})
     if len(sides) < 2 or len(rows) < 2 or len(rows) < len(data.get("rows") or []):

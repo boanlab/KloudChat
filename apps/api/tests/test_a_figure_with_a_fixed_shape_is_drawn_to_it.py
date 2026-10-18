@@ -50,6 +50,10 @@ def test_slots_that_do_not_make_their_kind_are_refused():
     # A comparison row with one side empty is not a two-sided comparison.
     half = {**_COMPARE, "rows": [*_COMPARE["rows"], {"aspect": "비용", "before": "높음"}]}
     assert figure_kinds.spec(half) is None
+    # A dash in a cell is a cell with nothing in it.
+    dashed = {**_COMPARE, "rows": [*_COMPARE["rows"], {"aspect": "비용", "before": "-",
+                                                      "after": "낮음"}]}
+    assert figure_kinds.spec(dashed) is None
 
 
 def test_a_long_slot_is_cut_at_a_space():
