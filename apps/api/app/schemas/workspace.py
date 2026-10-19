@@ -672,6 +672,11 @@ class AgentIn(Wire):
     process_settings: dict[str, Any] | None = None
 
 
+class AgentCreateIn(AgentIn):
+    #: 진행 과정 (`PUT /agents/{id}/process` body), saved with the agent or neither
+    process: dict[str, Any] | None = None
+
+
 def _inherited_settings(a: Agent) -> dict:
     """Settings of its 서식 (format-bound or named user template), as form defaults."""
     from app.services import process_settings

@@ -275,6 +275,8 @@ _PLACE_WORD = re.compile(
     r"\d{2,4}\s{0,2}호|회의실|강당|세미나실|\d\s{0,2}층|홀$|센터$|관\s{0,2}\d")
 #: 「작성자는 나(조교 정다은)로」 → parenthesised name.
 _SAID_ME = r"\s{0,2}(?:는|은)\s{0,2}(?:나|저)\s{0,2}\(([^()\n]{2,30})\)"
+#: 「작성자는 「교육혁신팀 김에이전트」로 적는다」 → the quoted words.
+_SAID_QUOTED = r"\s{0,2}(?:는|은|[:：])?\s{0,2}[「『“\"]([^」』”\"\n]{2,40})[」』”\"]"
 #: 「보고자는 시설팀 김도윤 주무관.」
 _SAID_VALUE = (r"(?:\s{0,2}(?:는|은)\s{0,2}|\s{1,2})([가-힣A-Za-z0-9○][^,.:\n]{1,30}?)\s{0,2}"
                r"(?:(?:으로|로)\s{0,2}(?:해|써|적어|넣어|부탁)|이야|입니다|이고|예요|[.\n]|$)")
@@ -326,7 +328,9 @@ def field_value(name: str, value: str) -> bool:
     value = (value or "").strip()
     if not value:
         return True
-    if re.search(r"일시|일자|날짜|기간|시간", name) and not re.search(r"\d|\[", value):
+    if re.search(r"일시|일자|날짜|기간|시간", name) and (
+            not re.search(r"\d|\[", value) or re.fullmatch(r"(?:19|20)\d{2}\s{0,2}년?", value)):
+        # a year alone (「2026」, the answer to 「연도 포함」) dates nothing
         return False
     return not (len(value) > 20 and _SENTENCE_VALUE.search(value))
 
@@ -353,6 +357,7 @@ def head_values(fmt: DocFormat, text: str) -> dict[str, str]:
             if not field_name or field_name in out:
                 continue
             said = (re.search(re.escape(base) + _SAID_ME, line)
+                    or re.search(re.escape(base) + _SAID_QUOTED, line)
                     or re.search(re.escape(base) + _SAID_VALUE, line))
             if said and not said.group(1).startswith(("나", "저")):
                 put(field_name, said.group(1))

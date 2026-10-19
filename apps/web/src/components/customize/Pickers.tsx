@@ -1,13 +1,19 @@
 import { ChevronDown, Search, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Input } from '@/components/ui'
+import { directionParticle } from '@/lib/formCheck'
 import { kindMeta } from '@/lib/kinds'
 import { isListed } from '@/lib/listed'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
-import type { SessionKind, Skill, ToolCatalogEntry } from '@/types'
+import type { SessionKind, Skill, StoreSkill, ToolCatalogEntry } from '@/types'
 
 const BUILTIN = '기본 도구'
+/** Official skills not yet added, as the chat's 「+ › 스킬」 lists them. */
+const OFFICIAL_TO_ADD = '공식 스킬 · 고르면 내 스킬에 추가됩니다'
+/** Prefix of an official store row's option id until its copy exists. */
+const STORE = 'store:'
 
 interface Option {
   id: string
@@ -63,12 +69,15 @@ function PickerPanel({
   chosen,
   onToggle,
   searchLabel,
+  empty,
 }: {
   label: string
   options: Option[]
   chosen: string[]
   onToggle: (id: string) => void
   searchLabel: string
+  /** Shown under an empty search instead of 「검색 결과가 없습니다」 when nothing is listed. */
+  empty?: ReactNode
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
@@ -167,7 +176,12 @@ function PickerPanel({
                 })}
               </fieldset>
             ))}
-            {groups.length === 0 && <p className="px-1.5 py-3 text-sm text-faint">{t('검색 결과가 없습니다')}</p>}
+            {groups.length === 0 &&
+              (options.length === 0 && empty ? (
+                <div className="px-1.5 py-3 text-sm text-faint">{empty}</div>
+              ) : (
+                <p className="px-1.5 py-3 text-sm text-faint">{t('검색 결과가 없습니다')}</p>
+              ))}
           </div>
         </div>
       )}
@@ -296,27 +310,70 @@ export function ToolPicker({
   )
 }
 
-/** Agent skill allowlist; null follows the turn's selection. */
-export function SkillPicker({
-  value,
-  onChange,
-  skills,
-}: {
-  value: string[] | null
-  onChange: (next: string[] | null) => void
-  skills: Skill[]
-}) {
-  const t = useT()
-  const chosen = value ?? []
-  const options: Option[] = skills
+/** The person's skills, then official ones not added yet (picking one adds it, as in the chat). */
+function skillOptions(skills: Skill[], chosen: string[], store: StoreSkill[]): Option[] {
+  // A copy just added comes back without 「원본: 공식」; its store row says so.
+  const officialIds = new Set(store.filter((s) => s.official).map((s) => s.id))
+  const mine: Option[] = skills
     .filter((s) => (s.enabled && isListed(s)) || chosen.includes(s.id))
     .map((s) => ({
       id: s.id,
       title: s.name,
       description: s.description,
-      group: s.originId ? '공유받은 스킬' : '내 스킬',
+      group: s.originOfficial || officialIds.has(s.originId ?? '') ? '공식 스킬' : s.originId ? '공유받은 스킬' : '내 스킬',
     }))
-  const toggle = (id: string) => onChange(chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id])
+  const official: Option[] = store
+    .filter((s) => s.official && s.enabled && isListed(s) && !skills.some((m) => m.originId === s.id))
+    .map((s) => ({ id: `${STORE}${s.id}`, title: s.name, description: s.description, group: OFFICIAL_TO_ADD }))
+  return [...mine, ...official]
+}
+
+/** Toggles a skill id; an official row is added to the person's skills first, its copy picked. */
+function useSkillToggle(chosen: string[], apply: (next: string[]) => void, add?: (storeId: string) => Promise<string | null>) {
+  const [adding, setAdding] = useState(false)
+  const toggle = (id: string) => {
+    if (!id.startsWith(STORE)) return apply(chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id])
+    if (!add || adding) return
+    setAdding(true)
+    void add(id.slice(STORE.length))
+      .then((copy) => {
+        if (copy && !chosen.includes(copy)) apply([...chosen, copy])
+      })
+      .finally(() => setAdding(false))
+  }
+  return toggle
+}
+
+/** Nothing to pick at all: where skills come from. */
+function NoSkills() {
+  const t = useT()
+  return (
+    <Link to="/customize?tab=skills&view=explore" className="text-accent hover:underline">
+      {t('탐색에서 스킬 추가')}
+    </Link>
+  )
+}
+
+/** Agent skill allowlist; null follows the turn's selection. */
+export function SkillPicker({
+  value,
+  onChange,
+  skills,
+  store = [],
+  onAddOfficial,
+}: {
+  value: string[] | null
+  onChange: (next: string[] | null) => void
+  skills: Skill[]
+  /** The skill store: its official rows not added yet are offered too. */
+  store?: StoreSkill[]
+  /** Adds an official skill; resolves to the person's copy. */
+  onAddOfficial?: (storeId: string) => Promise<string | null>
+}) {
+  const t = useT()
+  const chosen = value ?? []
+  const options = skillOptions(skills, chosen, onAddOfficial ? store : [])
+  const toggle = useSkillToggle(chosen, onChange, onAddOfficial)
   return (
     <div className="space-y-2" data-testid="skill-picker">
       <ModeSwitch
@@ -337,6 +394,7 @@ export function SkillPicker({
             chosen={chosen}
             onToggle={toggle}
             searchLabel={t('스킬 검색')}
+            empty={<NoSkills />}
           />
         </>
       )}
@@ -372,27 +430,78 @@ export function OffSurfaceNote({ ids, skills, surfaces }: { ids: string[]; skill
   )
 }
 
+/** Kept-on skills that run on one of the agent's screens but not the one it opens on: said
+ * there, since a new conversation would start where they do nothing. */
+export function StartSurfaceNote({
+  ids,
+  skills,
+  surfaces,
+  start,
+}: {
+  ids: string[]
+  skills: Skill[]
+  surfaces: SessionKind[]
+  start: SessionKind
+}) {
+  const t = useT()
+  const shown = ids
+    .map((id) => skills.find((s) => s.id === id))
+    .filter((s): s is Skill => !!s && s.kinds.length > 0 && s.kinds.some((k) => surfaces.includes(k)))
+  if (shown.length === 0) return null
+  const words = (kinds: SessionKind[]) => kinds.map((k) => t(kindMeta[k].label)).join('·')
+  const off = shown.filter((s) => !s.kinds.includes(start))
+  return (
+    <ul
+      role="status"
+      data-testid="skill-start-note"
+      className={cn(
+        'space-y-1 rounded-control border px-3 py-2 text-sm',
+        off.length > 0 ? 'border-warn/30 bg-warn/10 text-warn' : 'border-line bg-elevated text-muted',
+      )}
+    >
+      {shown.map((s) => (
+        <li key={s.id}>
+          {s.kinds.includes(start)
+            ? t('「{name}」 스킬은 {skill} 화면에서 작동합니다. 이 에이전트는 {start} 화면에서 시작합니다.')
+                .replace('{name}', s.name)
+                .replace('{skill}', words(s.kinds))
+                .replace('{start}', t(kindMeta[start].label))
+            : t('「{name}」 스킬은 {skill} 화면에서만 작동해, {start} 화면에서 시작하는 새 대화에서는 쓰이지 않습니다. 고급 › 처음 여는 화면을 {skill}{로} 바꾸세요.')
+                .replace('{name}', s.name)
+                .replaceAll('{skill}', words(s.kinds))
+                .replace('{로}', directionParticle(words(s.kinds)))
+                .replace('{start}', t(kindMeta[start].label))}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function ActiveSkillPicker({
   value,
   onChange,
   skills,
+  store = [],
+  onAddOfficial,
 }: {
   value: string[]
   onChange: (next: string[]) => void
   skills: Skill[]
+  /** The skill store: its official rows not added yet are offered too. */
+  store?: StoreSkill[]
+  /** Adds an official skill; resolves to the person's copy. */
+  onAddOfficial?: (storeId: string) => Promise<string | null>
 }) {
   const t = useT()
-  const options: Option[] = skills
-    .filter((s) => (s.enabled && isListed(s)) || value.includes(s.id))
-    .map((s) => ({
-      id: s.id,
-      title: s.name,
-      description: s.description,
-      group: s.originId ? '공유받은 스킬' : '내 스킬',
-    }))
   const full = value.length >= 6
-  const toggle = (id: string) =>
-    onChange(value.includes(id) ? value.filter((x) => x !== id) : full ? value : [...value, id])
+  const options = skillOptions(skills, value, onAddOfficial ? store : []).map((o) =>
+    full && o.id.startsWith(STORE) ? { ...o, disabled: true, why: t('최대 6개까지 켜 둘 수 있습니다.') } : o,
+  )
+  const toggle = useSkillToggle(
+    value,
+    (next) => onChange(next.length > value.length && full ? value : next),
+    onAddOfficial,
+  )
   return (
     <div className="space-y-2" data-testid="active-skill-picker">
       <ChosenChips options={options} chosen={value} onRemove={toggle} />
@@ -404,6 +513,7 @@ export function ActiveSkillPicker({
         chosen={value}
         onToggle={toggle}
         searchLabel={t('스킬 검색')}
+        empty={<NoSkills />}
       />
     </div>
   )

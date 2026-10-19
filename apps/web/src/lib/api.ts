@@ -1669,7 +1669,8 @@ export const agentsApi = {
   removeMany: (ids: string[]) =>
     call<{ deleted: number }>('/agents/delete', body({ ids })),
   list: () => call<AgentRow[]>('/agents'),
-  create: (payload: Partial<AgentRow> & { name: string }) =>
+  /** `process`: its 진행 과정, saved with it or neither. */
+  create: (payload: Partial<Omit<AgentRow, 'process'>> & { name: string; process?: Record<string, unknown> }) =>
     call<AgentRow>('/agents', body(payload)),
   update: (id: string, patch: Partial<AgentRow>) =>
     call<AgentRow>(`/agents/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),

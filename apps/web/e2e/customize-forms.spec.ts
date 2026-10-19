@@ -91,7 +91,8 @@ test('agent form: essentials and 진행 과정 in view, folded groups, tools by 
   const created = state.calls.find((c) => c.method === 'POST' && c.path === '/agents')
   expect(created?.body).toMatchObject({ name: '이슈 정리 도우미', tools: ['mcp__github__list_open_issues'], skillIds: null, kinds: ['chat'] })
   // A new agent's 진행 과정 is saved with it.
-  expect(state.calls.find((c) => c.method === 'PUT' && c.path.endsWith('/process'))?.body).toMatchObject({ mode: 'direct', bundles: [] })
+  expect((state.calls.find((c) => c.method === 'POST' && c.path === '/agents')?.body as { process?: unknown } | undefined)?.process).toMatchObject({ mode: 'direct', bundles: [] })
+  expect(state.calls.some((c) => c.method === 'PUT' && c.path.endsWith('/process'))).toBe(false)
   // The detail screen shows what it does and, for its owner, its settings.
   await expect(page.getByRole('heading', { level: 1, name: '이슈 정리 도우미' })).toBeVisible()
   await expect(page.getByRole('region', { name: '설정' })).toBeVisible()

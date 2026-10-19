@@ -18,10 +18,10 @@ import { useTemplateCatalogue } from '@/lib/templates'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { Agent, SessionKind, WebSearchMode } from '@/types'
+import type { Agent, SessionKind, Skill, WebSearchMode } from '@/types'
 import { slugify } from './formModel'
 import { isListed } from '@/lib/listed'
-import { ActiveSkillPicker, OffSurfaceNote, SkillPicker, ToolPicker } from './Pickers'
+import { ActiveSkillPicker, OffSurfaceNote, SkillPicker, StartSurfaceNote, ToolPicker } from './Pickers'
 
 /** Draft with `kinds`, minus bindings those kinds don't offer. */
 function withinKinds(draft: Agent, kinds: SessionKind[]): Agent {
@@ -35,6 +35,23 @@ function withinKinds(draft: Agent, kinds: SessionKind[]): Agent {
     renderTemplateId: template && !offered.includes(template.surface) ? null : next.renderTemplateId,
     docFormat: offered.includes('report') ? next.docFormat : null,
   }
+}
+
+/** Kept-on skills set; a newly kept skill that runs only on other screens, while none is chosen
+ * to open on, makes the agent open on its screen (added to 사용할 화면 when missing). */
+function withSkillSurface(draft: Agent, activeSkillIds: string[], skills: Skill[]): Agent {
+  const next = { ...draft, activeSkillIds }
+  if (draft.surface) return next
+  const start = agentKinds(draft)[0] ?? 'chat'
+  const added = activeSkillIds
+    .filter((id) => !draft.activeSkillIds.includes(id))
+    .map((id) => skills.find((s) => s.id === id))
+    .find((s) => !!s && s.kinds.length > 0 && !s.kinds.includes(start))
+  if (!added) return next
+  const offered = agentKinds(draft)
+  const kind = added.kinds.find((k) => offered.includes(k)) ?? added.kinds[0]
+  const kinds = draft.kinds.length === 0 || draft.kinds.includes(kind) ? draft.kinds : [...draft.kinds, kind]
+  return { ...withinKinds(next, kinds), surface: kind }
 }
 
 /** Folded settings group, closed by default. */
@@ -261,6 +278,10 @@ export function AgentForm({
   const modelsLoading = useStore((s) => s.modelsLoading)
   const loadModels = useStore((s) => s.loadModels)
   const skills = useStore((s) => s.skills)
+  const skillStore = useStore((s) => s.skillStore)
+  const skillStoreLoaded = useStore((s) => s.skillStoreLoaded)
+  const loadSkillStore = useStore((s) => s.loadSkillStore)
+  const installSkill = useStore((s) => s.installSkill)
   const availableTools = useStore((s) => s.availableTools)
   const designs = useStore((s) => s.designs)
   const designTemplates = useStore((s) => s.designTemplates)
@@ -312,6 +333,23 @@ export function AgentForm({
     setDone(false)
     setDraft(next)
   }
+
+  // Official skills, offered in the pickers before any is added (as the chat's 「+ › 스킬」).
+  useEffect(() => {
+    if (!skillStoreLoaded) void loadSkillStore()
+  }, [skillStoreLoaded, loadSkillStore])
+  const addOfficial = useCallback(
+    async (storeId: string) => {
+      try {
+        await installSkill(storeId)
+      } catch {
+        setError(t('스킬을 추가하지 못했습니다.'))
+        return null
+      }
+      return useStore.getState().skills.find((mine) => mine.originId === storeId)?.id ?? null
+    },
+    [installSkill, t],
+  )
 
   // Late model list: default fills the untouched field once.
   const modelPicked = useRef(!creating)
@@ -370,12 +408,21 @@ export function AgentForm({
     try {
       // On/off switch lives in the detail header; never overridden here.
       const live = useStore.getState().agents.find((a) => a.id === draft.id)
-      const saved = await upsertAgent({
-        ...draft,
-        enabled: live?.enabled ?? draft.enabled,
-        slug: draftSlug,
-        updatedAt: new Date().toISOString(),
-      })
+      // First save carries the 진행 과정: a refused one leaves no half-made agent.
+      const first = creating && !savedId && processDirty
+      const saved = await upsertAgent(
+        {
+          ...draft,
+          enabled: live?.enabled ?? draft.enabled,
+          slug: draftSlug,
+          updatedAt: new Date().toISOString(),
+        },
+        first ? processPayload(process) : undefined,
+      )
+      if (first) {
+        setBaseline(process)
+        setProcessSaved(true)
+      }
       setDraft((d) => ({ ...d, id: saved.id, slug: saved.slug }))
       setSavedId(saved.id)
       return saved
@@ -395,14 +442,16 @@ export function AgentForm({
     } finally {
       setSaving(false)
     }
-  }, [draft, draftSlug, upsertAgent, t, reveal, creating, savedId, loadWorkspace])
+  }, [draft, draftSlug, upsertAgent, t, reveal, creating, savedId, loadWorkspace, processDirty, process])
 
   const save = async () => {
+    // Saved with the agent on its first save (`persist`).
+    const processAfter = processDirty && !(creating && !savedId)
     const saved = await persist()
     if (!saved) return
     setSaving(true)
     try {
-      if (processDirty) {
+      if (processAfter) {
         try {
           const out = await processApi.put(saved.id, processPayload(process))
           setBaseline(process)
@@ -770,13 +819,22 @@ export function AgentForm({
           >
             <ActiveSkillPicker
               value={draft.activeSkillIds}
-              onChange={(activeSkillIds) => edit({ ...draft, activeSkillIds })}
+              onChange={(activeSkillIds) => edit(withSkillSurface(draft, activeSkillIds, useStore.getState().skills))}
               skills={skills}
+              store={skillStore}
+              onAddOfficial={addOfficial}
             />
             <OffSurfaceNote ids={draft.activeSkillIds} skills={skills} surfaces={offered} />
+            <StartSurfaceNote ids={draft.activeSkillIds} skills={skills} surfaces={offered} start={surface} />
           </Block>
           <Block label={t('입력창에서 고를 수 있는 스킬')}>
-            <SkillPicker value={draft.skillIds} onChange={(skillIds) => edit({ ...draft, skillIds })} skills={skills} />
+            <SkillPicker
+              value={draft.skillIds}
+              onChange={(skillIds) => edit({ ...draft, skillIds })}
+              skills={skills}
+              store={skillStore}
+              onAddOfficial={addOfficial}
+            />
             <OffSurfaceNote
               ids={(draft.skillIds ?? []).filter((id) => !draft.activeSkillIds.includes(id))}
               skills={skills}
@@ -802,7 +860,14 @@ export function AgentForm({
                   <Chip
                     key={k}
                     on={on}
-                    onClick={() => edit(withinKinds(draft, on ? draft.kinds.filter((x) => x !== k) : [...draft.kinds, k]))}
+                    onClick={() =>
+                      edit(
+                        on
+                          ? withinKinds(draft, draft.kinds.filter((x) => x !== k))
+                          : // A screen added while none is chosen to open on: the agent opens there.
+                            { ...withinKinds(draft, [...draft.kinds, k]), surface: draft.surface ?? k },
+                      )
+                    }
                   >
                     {t(kindMeta[k].label)}
                   </Chip>

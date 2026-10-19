@@ -49,6 +49,7 @@ from app.services import (
     units,
     value_guard,
     verify,
+    workspace_context,
 )
 from app.services import deck as deck_rules
 from app.services import outline as plan_rules
@@ -428,9 +429,12 @@ class Outline(Base):
             and report._from_the_web(request)
         )
         title, headings = report._parse_outline(text)
-        # pasted outline: person's sections; 개조식 keeps its fixed shape
+        # pasted outline: person's sections; then the order the agent's 지시 gives; 개조식
+        # keeps its fixed shape
+        instructed = report.instructed_sections(
+            "\n".join(workspace_context.standing_of(req.trusted)))
         fixed = report.given_outline(request) or (
-            list(bundle.spec.settings.outline) if not wanted else []
+            (instructed or list(bundle.spec.settings.outline)) if not wanted else []
         )
         if fixed:
             headings = fixed
@@ -1631,7 +1635,9 @@ class TitleBlock(Base):
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, prepass = _report(), bundle.request, bundle.computed.prepass
-        given = bundle.material.given
+        # the agent's 지시 fills the head too (「작성자는 …로 적는다」, 「…께 올리는 보고」)
+        given = "\n".join([bundle.material.given,
+                           *workspace_context.standing_of(req.trusted)]).strip()
         block, spent = await report.title_block_for(
             bundle.spec.format, req.text, bundle.plan.title, req.judge, req.api_key, given)
         bundle.usage["inputTokens"] += spent.get("inputTokens", 0)

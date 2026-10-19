@@ -38,6 +38,7 @@ from app.models.workspace import (
 from app.pipeline import compose
 from app.schemas.chat import MessageOut, MessageRatingIn
 from app.schemas.workspace import (
+    AgentCreateIn,
     AgentIn,
     AgentOut,
     ArtifactIn,
@@ -2418,19 +2419,40 @@ async def _processes(db: DbSession, rows: list[Agent], *, viewer_id: str) -> dic
 
 
 @router.post("/agents", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
-async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
+async def create_agent(payload: AgentCreateIn, user: CurrentUser, db: DbSession):
+    """New agent; with `process`, its 진행 과정 in the same transaction (a refused process
+    leaves no agent behind)."""
+    from pydantic import ValidationError
+
+    from app.routers import user_pipelines
+
+    process = None
+    if (raw := getattr(payload, "process", None)) is not None:
+        try:
+            process = user_pipelines.ProcessIn.model_validate(raw)
+        except ValidationError:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="process_invalid") from None
     await _validate_skill_ids(db, user, payload.skill_ids)
     await _validate_skill_ids(db, user, payload.active_skill_ids)
     await _validate_tool_names(db, user, payload.tools)
-    bindings = await _validate_agent_bindings(db, user, payload.model_dump())
-    checks = await _validated_checks(db, user, payload.model_dump())
+    fields = payload.model_dump(exclude={"process"})
+    bindings = await _validate_agent_bindings(db, user, fields)
+    checks = await _validated_checks(db, user, fields)
     slug = await _claim_slug(db, user.id, payload.slug or payload.name)
     agent = Agent(
         owner_id=user.id,
         slug=slug,
-        **{**payload.model_dump(exclude={"slug"}), **bindings, **checks},
+        **{**{k: v for k, v in fields.items() if k != "slug"}, **bindings, **checks},
     )
     db.add(agent)
+    if process is not None:
+        await db.flush()
+        try:
+            await user_pipelines.apply_process(db, user, agent, process)
+        except Exception:
+            await db.rollback()
+            raise
     await db.commit()
     await db.refresh(agent)
     out = AgentOut.of(

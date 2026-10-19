@@ -401,7 +401,15 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
       if (body.designSystemId && !designs.some((d) => d.id === body.designSystemId)) {
         return json({ detail: 'design_system_not_found' }, 404)
       }
-      const made = agentRow('a9999999999999999999999999999999', String(body.name), { ...body })
+      // Its 진행 과정 comes with it, saved in the same request.
+      const { process: asked, ...fields } = body as Record<string, unknown> & { process?: Record<string, unknown> }
+      const process = asked
+        ? { mode: asked.mode, base: asked.base ?? null, bundles: asked.bundles ?? [], chain: ['바로 답합니다'], review: '',
+            needsReview: false }
+        : undefined
+      const made = agentRow('a9999999999999999999999999999999', String(body.name), {
+        ...fields, ...(process ? { process, baseKey: asked?.base ?? null } : {}),
+      })
       agents = [made, ...agents]
       return json(made, 201)
     }

@@ -262,6 +262,9 @@ _SAID_DAY = re.compile(
 )
 #: gap-card answer merged into request: 「- 회의 일시: 10월 7일 오후 2시」
 _ANSWERED_DAY = re.compile(r"회의\s{0,2}일시\s{0,2}[:：]\s{0,4}(\d{1,2})\s{0,2}(?:월|[/.])\s{0,2}(\d{1,2})")
+#: the same answer giving the year only (「- 회의 일시: 2026」): the memo's day takes it
+_ANSWERED_YEAR = re.compile(
+    r"회의\s{0,2}일시\s{0,2}[:：]\s{0,4}((?:19|20)\d{2})\s{0,2}년?\s{0,2}$", re.M)
 _DAYS_BACK = {"오늘": 0, "금일": 0, "어제": 1, "어저께": 1, "그저께": 2, "그제": 2}
 
 
@@ -271,6 +274,14 @@ def meeting_base(request: str, material: str, today: dt.date | None) -> tuple[dt
         return found, "text"
     if found := file_date(material):
         return found, "file"
+    if year := _ANSWERED_YEAR.search(request or ""):
+        for text in (request, material):
+            for line in (text or "").splitlines():
+                if _MEETING.search(line) and (m := _YEARLESS_DAY.search(line)):
+                    try:
+                        return dt.date(int(year.group(1)), int(m.group(1)), int(m.group(2))), "text"
+                    except ValueError:
+                        break
     if today and (said := _ANSWERED_DAY.search(request or "")):
         # yearless 「회의 일시」 answer: latest such day not after today
         try:

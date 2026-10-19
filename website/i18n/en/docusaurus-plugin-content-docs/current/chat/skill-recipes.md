@@ -55,7 +55,7 @@ The **회의 안건** (Meeting agenda) template is the minutes' counterpart. On 
 
 ## Building an agent from skills
 
-In **Customize** → **Agents** → **Add** → **Create an agent**, the skills you choose under **Skills and tools** › **Skills kept on** are on in every conversation with that agent (up to six). Each skill's template, checks and missing-information questions come with it; a template or detailed settings set on the agent itself come first. **Skills you can pick in the composer** narrows what can be turned on during a conversation.
+In **Customize** → **Agents** → **Add** → **Create an agent**, the skills you choose under **Skills and tools** › **Skills kept on** are on in every conversation with that agent (up to six). The list shows your skills and the **official skills** you have not added yet; picking one adds it to your skills. Picking a skill that works only on reports or slides sets the agent's first screen to that screen. Each skill's template, checks and missing-information questions come with it; a template or detailed settings set on the agent itself come first. **Skills you can pick in the composer** narrows what can be turned on during a conversation.
 
 ## A minutes agent
 
