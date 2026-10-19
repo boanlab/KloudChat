@@ -4,6 +4,7 @@ of its conversations is written in, unless the turn itself names another languag
 from __future__ import annotations
 
 import re
+from typing import Any
 
 AUTO = "auto"
 
@@ -116,5 +117,16 @@ def localize_marks(text: str) -> str:
     return _KO_MARK.sub(lambda m: f"{m.group(1)}{EN_MARK}{m.group(2)}", text)
 
 
+def english_marks(value: Any) -> Any:
+    """`value` (text, or lists and dicts of it) with the checks' marks in English."""
+    if isinstance(value, str):
+        return _KO_MARK.sub(lambda m: f"{m.group(1)}{EN_MARK}{m.group(2)}", value)
+    if isinstance(value, list):
+        return [english_marks(item) for item in value]
+    if isinstance(value, dict):
+        return {key: english_marks(item) for key, item in value.items()}
+    return value
+
+
 __all__ = ["AUTO", "EN_MARK", "HEADING", "LANGUAGES", "asks_language", "condition",
-           "localize_marks", "name_of", "normalize", "reads_english", "rule"]
+           "english_marks", "localize_marks", "name_of", "normalize", "reads_english", "rule"]

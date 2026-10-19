@@ -13,6 +13,6 @@ Type what you want changed into the input box at the bottom of a finished report
 | "Extend it to 20 slides", "add 3 slides", "merge 2 and 3", "change the order" | Proposes the structure again, waits for your approval, and then writes. Parts that are kept reuse their existing titles. |
 | "Write it again", "start over", "with a different topic" | Keeps the existing document and writes a new one. |
 
-When the revision is finished, a message saying "n places were fixed" appears and the panel updates at once. On slides, an asked layout (such as "make slide 3 a table") or picture removal that does not show on the new slide is not reported as fixed; the message names what was not applied. Each revision saves the previous body text as a version.
+When the revision is finished, a message saying "n places were fixed" appears and the panel updates at once. On slides, an asked layout (such as "make slide 3 a table") or picture removal that does not show on the new slide is not reported as fixed; the message names what was not applied. "Remove the picture" also removes a diagram the deck drew itself and says which slide lost what; when there is no picture to remove, it says nothing was changed. Each revision saves the previous body text as a version.
 
 Even for a partial revision, it refers to the original request and the attached material again. To reflect new material, attach it and then ask for the revision.

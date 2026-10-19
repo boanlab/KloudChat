@@ -208,6 +208,8 @@ class Document:
     failed: list[str] = field(default_factory=list)
     #: revision: asked changes the new slides do not show (「3장 표」 still drawn as tiles)
     unmet: list[str] = field(default_factory=list)
+    #: revision: pictures taken off slides (「7장의 흐름도」)
+    removed: list[str] = field(default_factory=list)
     #: handover: artifact, files step, reply
     artifact: Any = None
     handed: dict | None = None
