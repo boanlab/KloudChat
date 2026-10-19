@@ -1163,7 +1163,7 @@ rather than a value somebody saves without noticing. The prompt says to leave
 — an invented house style is worse than a blank field, because the blank one is
 obviously unfinished.
 
-Costs one call on the cheapest allowed chat model, charged like any other; an
+Costs one call on the chat default model (`models.pick_default`), charged like any other; an
 uploaded file is internal material, so it is read on a strict-local model
 (see "Other boundaries", §7).
 

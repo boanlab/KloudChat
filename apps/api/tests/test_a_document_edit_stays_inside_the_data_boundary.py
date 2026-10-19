@@ -122,9 +122,13 @@ async def test_a_plain_edit_keeps_the_conversations_model_within_the_allowlist(
 ) -> None:
     db = _Db(_session())
     assert await _pick(db, EVERYTHING) is EXTERNAL
-    # a fact-check takes the cheapest, not the conversation's
-    assert await _pick(db, EVERYTHING, follow_session=False, searches=True) in (LOCAL, CHEAP)
-    # the conversation's model no longer allowed: the cheapest allowed one
+    # a fact-check takes the admin's default for the surface, not the conversation's
+    listing = {"models": EVERYTHING, "defaultChatModel": CHEAP["id"],
+               "defaultModelByKind": {"report": LOCAL["id"]}}
+    assert await _pick(db, listing, follow_session=False, searches=True) is LOCAL
+    # no default given: the first allowed model listed, not the cheapest
+    assert await _pick(db, EVERYTHING, follow_session=False, searches=True) is EXTERNAL
+    # the conversation's model no longer allowed: the first allowed one
     narrow = _user([CHEAP["id"]])
     assert await _pick(db, EVERYTHING, user=narrow) is CHEAP
     assert await _pick(_Db(None), EVERYTHING, user=narrow) is CHEAP

@@ -486,8 +486,7 @@ def _document_image_model(user: User, catalogue: dict, *, strict_local: bool) ->
     if strict_local:
         inside = sorted((m for m in usable if _strict_model(m)), key=model_service.fallback_order)
         return model_service.strict_image_model(inside, Preferences.of(user).strict_image_model)
-    default = (catalogue.get("defaultModelByKind") or {}).get("image")
-    return next((m for m in usable if m["id"] == default), usable[0] if usable else None)
+    return model_service.pick_default(usable, catalogue, "image")
 
 
 def _auto_image_model(user: User, catalogue: dict) -> dict | None:
@@ -591,12 +590,17 @@ def _media_model(
     boundary: _MediaBoundary,
     asked: str = "",
     default: str | None = None,
+    defaults: tuple[str, ...] = (),
 ) -> dict | None:
-    """Asked model, else default, else cheapest; allowed only, strict-local only when required.
+    """Asked model, else the admin's `defaults` (`configured_defaults`); allowed only,
+    strict-local only when required. Never the cheapest: past the defaults a chat surface takes
+    the first allowed model, and a picture only when its default is outside the allowlist.
 
     Kept strict-local, a picture asked on an outside model goes to `strict_image_model`, the rule
     the settings screen shows.
     """
+    if default:
+        defaults = (default, *defaults)
     usable = sorted(_allowed_models(user, catalogue, kind=kind), key=model_service.fallback_order)
     if boundary.strict:
         usable = [m for m in usable if _strict_model(m)]
@@ -604,10 +608,19 @@ def _media_model(
             return model_service.find(usable, asked or "") or model_service.strict_image_model(
                 usable, Preferences.of(user).strict_image_model
             )
-    for wanted in (asked, default):
+        # a default's strict-local entry, as an asked `local/` model's
+        defaults = tuple(
+            "strict-local/" + wanted.removeprefix("local/") if wanted.startswith("local/")
+            else wanted
+            for wanted in defaults
+        )
+    for wanted in (asked, *defaults):
         found = model_service.find(usable, wanted or "")
         if found is not None:
             return found
+    served = any(model_service.find(catalogue, wanted) for wanted in defaults)
+    if kind not in model_service.CHAT_SURFACES and not served:
+        return None
     return usable[0] if usable else None
 
 
@@ -2837,6 +2850,11 @@ async def generate_images(
     )
     if model is None:
         await _audit_media_boundary(user, request, session, boundary, refused=True)
+        if not boundary.strict and _allowed_models(user, catalogue["models"], kind="image"):
+            # pictures exist but the admin has not chosen which one draws
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="default_image_model_unset"
+            )
         raise _refuse_outside_boundary(boundary, "image")
     await _audit_media_boundary(user, request, session, boundary)
     if not has_headroom(user, model):
@@ -3245,7 +3263,13 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
     def _audio_models():
         return [m for m in catalogue["models"] if "av" in m["kinds"]]
 
-    model = model_service.find(catalogue["models"], payload.model or "")
+    # asked, else the admin's audio default; none chosen: no silent pick
+    default = (catalogue.get("defaultAvModelByMode") or {}).get("audio") or ""
+    if not payload.model and not default:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="default_audio_model_unset"
+        )
+    model = model_service.find(catalogue["models"], payload.model or default)
     # model must match kind; mismatch = proxy 400
     wanted_id = "gpt-audio" if speech else "lyria"
     if model is None or "av" not in model["kinds"] or wanted_id not in model["id"]:
@@ -4087,13 +4111,12 @@ async def send_message(
     if model not in usable:
         model = None
     if model is None:
-        # fallback stays inside the allowlist
-        usable = sorted(usable, key=model_service.fallback_order)
-        if not usable:
+        # the admin's default for the surface; fallback stays inside the allowlist
+        model = model_service.pick_default(usable, catalogue, session.kind.value)
+        if model is None:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
             )
-        model = usable[0]
     requested_model = model
 
     history = await _history(db, session_id)

@@ -22,10 +22,10 @@ test('에이전트로 시작한 대화는 에이전트의 모델을 쓰고, 작�
   const dialog = page.getByRole('dialog')
 
   const select = dialog.getByLabel('모델')
-  // 화면 기본 모델 is "no pinned model", not a model.
+  // 기본 모델 (…) is "no pinned model", not a model.
   const labels = (await select.locator('option').allTextContents())
     .map((s) => s.trim())
-    .filter((label) => label !== '화면 기본 모델')
+    .filter((label) => !label.startsWith('기본 모델'))
   const pinned = labels.find((label) => label !== surfaceDefault)
   test.skip(!pinned, '모델이 하나뿐인 인스턴스에서는 우선순위를 구분할 수 없습니다.')
 
@@ -75,7 +75,7 @@ test('에이전트로 시작한 대화는 에이전트의 모델을 쓰고, 작�
   await expect(page.getByText(name)).toHaveCount(0, { timeout: 15_000 })
 })
 
-/** The editor can leave an agent with no pinned model (화면 기본 모델) and reads it back as such. */
+/** The editor can leave an agent with no pinned model (기본 모델) and reads it back as such. */
 test('모델을 고정하지 않은 에이전트를 편집기에서 만들 수 있고, 다시 열어도 그대로다', async ({
   page,
 }) => {

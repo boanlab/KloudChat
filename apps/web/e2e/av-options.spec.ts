@@ -56,13 +56,14 @@ test('종류를 영상으로 바꾸면 그 모델이 만들 수 있는 조합으
         models: [speech, soundOnlyVideo],
         litellmAvailable: true,
         defaultChatModel: '',
+        defaultAvModelByMode: { audio: speech.id, video: soundOnlyVideo.id },
       }),
     })
   })
   await signIn(page)
   await page.goto('/new/av')
 
-  // 영상 on arrival: the remembered (cheapest) av model is a speech model, so mode and model are paired.
+  // 영상 on arrival: the admin's video default, so mode and model are paired.
   await expect(page.getByRole('button', { name: /Sound Only/ })).toBeVisible()
   await expect(page.getByText('예상 1,200 크레딧')).toBeVisible()
 

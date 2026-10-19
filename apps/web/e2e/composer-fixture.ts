@@ -153,6 +153,7 @@ export async function composerFixture(
     if (method === 'GET' && path === '/models') return json({
       litellmAvailable: true, defaultChatModel: 'fixture/model',
       defaults: { chat: 'fixture/model', report: 'fixture/model', slides: 'fixture/model', image: 'fixture/image' },
+      defaultModelByKind: { report: 'fixture/model', slides: 'fixture/model', image: 'fixture/image' },
       models: [
         model('fixture/model', '검증 모델', ['chat', 'report', 'slides']),
         model('fixture/local', '로컬 모델', ['chat'], { strictLocal: true, dataBoundary: 'strict_local' }),

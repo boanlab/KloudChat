@@ -238,7 +238,6 @@ export function AgentForm({
   initialProcess,
   draftFiles = [],
   addedPrompt = '',
-  defaultModel = '',
 }: {
   initial: Agent
   creating: boolean
@@ -252,12 +251,11 @@ export function AgentForm({
   draftFiles?: { id: string; name: string; size: number }[]
   /** 「에이전트로 저장」: the 지시 section distilled after the form opened, added once. */
   addedPrompt?: string
-  /** New agent's model once the list arrives; only while unpicked. */
-  defaultModel?: string
 }) {
   const t = useT()
   const agents = useStore((s) => s.agents)
   const models = useStore((s) => s.models)
+  const modelByKind = useStore((s) => s.modelByKind)
   const modelsLoading = useStore((s) => s.modelsLoading)
   const loadModels = useStore((s) => s.loadModels)
   const skills = useStore((s) => s.skills)
@@ -306,20 +304,14 @@ export function AgentForm({
   )
   const pickableDesigns = designs.filter((d) => isListed(d) || d.id === draft.designSystemId)
   const surface: SessionKind = draft.surface ?? offered[0] ?? 'chat'
+  // What an unpinned agent runs on here: the surface's model (the person's pick, else the admin's).
+  const surfaceDefault = models.find((m) => m.id === modelByKind[surface])
   // Retired format stays where set; not newly pickable.
   const formats = DOC_FORMATS.filter((f) => !RETIRED_FORMATS.includes(f.id) || f.id === initial.docFormat)
   const edit = (next: Agent) => {
     setDone(false)
     setDraft(next)
   }
-
-  // Late model list: default fills the untouched field once.
-  const modelPicked = useRef(!creating)
-  useEffect(() => {
-    if (modelPicked.current || !defaultModel) return
-    modelPicked.current = true
-    setDraft((d) => (d.model ? d : { ...d, model: defaultModel }))
-  }, [defaultModel])
 
   // Late distillation: appended below what's written.
   const added = useRef('')
@@ -837,12 +829,12 @@ export function AgentForm({
               ) : (
                 <Select
                   value={draft.model}
-                  onChange={(e) => {
-                    modelPicked.current = true
-                    edit({ ...draft, model: e.target.value })
-                  }}
+                  onChange={(e) => edit({ ...draft, model: e.target.value })}
                 >
-                  <option value="">{t('화면 기본 모델')}</option>
+                  {/* Saved empty: the agent keeps following the surface's default as it changes. */}
+                  <option value="">
+                    {surfaceDefault ? t('기본 모델 ({name})').replace('{name}', surfaceDefault.label) : t('기본 모델')}
+                  </option>
                   {models.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.label}

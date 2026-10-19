@@ -1,7 +1,7 @@
 import { uid } from '@/lib/utils'
 import type { Agent, Skill, SkillServer } from '@/types'
 
-/** Blank agent on the cheapest chat model (surface-default rule). */
+/** Blank agent; `model` '' follows the surface's default model. */
 export function emptyAgent(model: string): Agent {
   return {
     id: uid('ag'),

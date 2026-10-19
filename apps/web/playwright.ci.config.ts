@@ -106,7 +106,13 @@ const groups: Record<string, Group> = {
     projects: { desktop, phone: pixel },
   },
   agents: {
-    files: ['agent-process.spec.ts', 'save-as-agent.spec.ts', 'restructure-shots.spec.ts', 'agent-skill-surface.spec.ts'],
+    files: [
+      'agent-process.spec.ts',
+      'save-as-agent.spec.ts',
+      'restructure-shots.spec.ts',
+      'agent-skill-surface.spec.ts',
+      'agent-default-model.spec.ts',
+    ],
     projects: { desktop },
   },
   results: { files: ['results.spec.ts', 'panel-header.spec.ts'], projects: { desktop, phone: pixel } },

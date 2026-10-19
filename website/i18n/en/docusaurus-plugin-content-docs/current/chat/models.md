@@ -40,6 +40,6 @@ Auto does not apply to requests that use files, projects, agents, skills, or web
 
 - **Selecting on the home screen** saves the model to your account as the **default model** for that screen, such as Chat, Reports, or Slides. It applies when you sign in from another device, and you can also change it in Settings → Preferences.
 - **Selecting during a conversation** applies to that conversation only.
-- An agent conversation uses the model set on the agent.
+- An agent conversation uses the model set on the agent. An agent with no model of its own (**Default model**) follows that screen's default model.
 - When the administrator limits which models an account may use, only the allowed models appear.
 

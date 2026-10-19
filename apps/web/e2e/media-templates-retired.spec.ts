@@ -60,6 +60,7 @@ async function fixture(page: Page, testInfo: TestInfo, diagram: 'drawn' | 'undra
       models: [model('fixture/chat', ['chat', 'report'], 'chat'), model('fixture/image', ['image'], 'image')],
       defaultChatModel: 'fixture/chat',
       defaults: { chat: 'fixture/chat', report: 'fixture/chat', image: 'fixture/image' },
+      defaultModelByKind: { report: 'fixture/chat', image: 'fixture/image' },
       litellmAvailable: false, autoRouting: { enabled: false, available: false },
     } })
     // The catalogue as the server ships it: writing 서식 only.
