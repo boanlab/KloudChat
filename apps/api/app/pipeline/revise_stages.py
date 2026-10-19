@@ -278,7 +278,19 @@ class Rewrite(Base):
             label = names[index] or f"{index + 1}"
             yield {"type": "step", "id": f"r{index}", "label": label, "status": "running"}
             try:
-                if is_deck:
+                if is_deck and deck_service.asks_slide_figure(instruction):
+                    # 「구조도로 바꿔 줘」: the slide drawn as that diagram, not rewritten as words
+                    written, spent = await deck_service.figure_slide(
+                        request=request,
+                        slides=parts,
+                        target_id=str(part.get("id") or ""),
+                        instruction=instruction,
+                        model=req.model,
+                        api_key=req.api_key,
+                    )
+                    parts[index] = written
+                    yield {"type": "slide", "slide": written, "done": True}
+                elif is_deck:
                     written, spent = await deck_service.rewrite_slide(
                         request=request,
                         slides=parts,

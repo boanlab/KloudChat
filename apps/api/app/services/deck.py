@@ -33,6 +33,7 @@ from app.services import (
     internal_words,
     key_figures,
     model_retry,
+    output_language,
     pictures,
     placeholders,
     quality_gate,
@@ -3007,7 +3008,11 @@ def _clean_pairs(value: Any, layout: str) -> list[list[str]]:
         pair = item if isinstance(item, list) else []
         if len(pair) < 2:
             continue
-        left = _cut(" ".join(str(pair[0]).split()), left_max)
+        left = " ".join(str(pair[0]).split())
+        # a band's Latin name (「kube-controller-manager」) is half as wide a letter: the
+        # renderers fit it to its label, so it is never cut through
+        left = _cut(left, left_max if layout != "bands" or re.search(r"[가-힣]", left)
+                    else 2 * left_max + 4)
         right = _cut(" ".join(str(pair[1]).split()), right_max)
         if left and right:
             out.append([left, right])
@@ -3793,15 +3798,19 @@ async def _draw_figures(
     # 「구조와 흐름은 그림으로」 opens step slides to the planner
     asked = diagrams.asks_for_diagrams(request)
     layouts = (*_DIAGRAM_LAYOUTS, "steps") if asked else _DIAGRAM_LAYOUTS
+    # a title naming a structure, relation or flow opens its slide whatever its words' shape
+    marked = {i: kind for i, slide in enumerate(slides)
+              if (kind := figure_wanted(slide, request))}
     eligible = [
         i
         for i, slide in enumerate(slides)
-        if slide["layout"] in layouts
+        if (slide["layout"] in layouts
+            or i in marked and slide["layout"] not in _NO_FIGURE_LAYOUTS)
         and not slide.get("image")
         and slide.get("body") != UNWRITTEN
     ]
     planned, spent = await diagrams.plan(
-        parts=[(str(slide["title"]), _drafted_text(slide)) for slide in slides],
+        parts=[(str(slide["title"]), _figure_source(slide)) for slide in slides],
         eligible=eligible,
         request=request,
         model=model,
@@ -3809,6 +3818,8 @@ async def _draw_figures(
         complete=_complete,
         slide=True,
         wrap=wrap,
+        marked=marked,
+        language=deck_language(slides),
     )
     usage["inputTokens"] += spent["inputTokens"]
     usage["outputTokens"] += spent["outputTokens"]
@@ -3846,31 +3857,13 @@ async def _draw_figures(
             continue
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
-        if _figure_adds_nothing(slide, made):
+        if _figure_adds_nothing(slide, made) and row.index not in marked:
             # a box per card the cards already name: the slide reads better without it
             log.info("slide figure %r dropped: it only names the slide's own entries", name)
             yield {"type": "step", "id": f"dia{row.index}", "label": name,
                    "status": "done", "progress": progress}
             continue
-        slide["diagram"] = made
-        # drawn with the deck's own shapes: panel/PDF/report match the .pptx
-        slide["image"] = {
-            "src": diagram_render.data_uri(png),
-            "caption": str(made.get("caption") or ""),
-            "fit": "contain",
-            "position": "right",
-            "size": "full",
-            "diagram": True,
-            "renderer": "pptx",
-            "key": made.get("key", ""),
-        }
-        _words_under_figure(slide)
-        if _figure_alone(slide) and figure_kinds.from_source(str(made.get("source") or "")):
-            # the figure takes the whole body: its picture drawn for that box, as the .pptx
-            tall = await diagram_render.render_png(
-                str(made["source"]), accent or "#2563EB", box=FIGURE_BODY)
-            if tall:
-                slide["image"]["src"] = diagram_render.data_uri(tall)
+        await _place_figure(slide, made, png, accent)
         yield {
             "type": "step",
             "id": f"dia{row.index}",
@@ -3884,6 +3877,135 @@ async def _draw_figures(
 #: Layouts whose words narrow beside a picture (`deck_export`: bullets); pair layouts such as
 #: bands and cards and the centred statement keep the full width and would run under it.
 _PICTURE_LAYOUTS = ("bullets",)
+
+#: Layouts no figure goes on: covers, numbers, a sentence, a table's cells.
+_NO_FIGURE_LAYOUTS = ("title", "section", "agenda", "closing", "statement", "quote", "table",
+                      *_NUMBERS_LAYOUTS, *sorted(slide_patterns.NUMERIC))
+
+
+def figure_wanted(slide: dict, request: str = "") -> str:
+    """`relation`, `method` or `flow` when the slide's title names one
+    (`diagrams.wanted_figure`)."""
+    if slide.get("layout") in ("title", "section", "agenda", "closing"):
+        return ""
+    return diagrams.wanted_figure(str(slide.get("title") or ""), request)
+
+
+def deck_language(slides: list[dict]) -> str:
+    """`en` for a deck written in English, else `ko`: its figures' labels and captions follow."""
+    text = " ".join(f"{s.get('title') or ''} {_figure_source(s)}" for s in slides)
+    return "en" if output_language.reads_english(text) else "ko"
+
+
+def _figure_source(slide: dict) -> str:
+    """Slide words a figure is planned and drawn from: the drafted text, a pattern's items and
+    columns, a table's rows."""
+    parts = [_drafted_text(slide)]
+    parts += [_entry_line(entry) for entry in slide.get("items") or []]
+    for column in slide.get("columns") or []:
+        if isinstance(column, dict):
+            items = " / ".join(str(item) for item in column.get("items") or [])
+            parts.append(f"{column.get('title') or ''}: {items}".strip(": "))
+    parts += [" | ".join(str(cell) for cell in row) for row in slide.get("rows") or []
+              if isinstance(row, list)]
+    return "\n".join(part for part in parts if part)
+
+
+async def _place_figure(slide: dict, made: dict, png: bytes, accent: str) -> None:
+    """The drawn figure on its slide, words under it (`_words_under_figure`)."""
+    slide["diagram"] = made
+    # drawn with the deck's own shapes: panel/PDF/report match the .pptx
+    slide["image"] = {
+        "src": diagram_render.data_uri(png),
+        "caption": str(made.get("caption") or ""),
+        "fit": "contain",
+        "position": "right",
+        "size": "full",
+        "diagram": True,
+        "renderer": "pptx",
+        "key": made.get("key", ""),
+    }
+    _words_under_figure(slide)
+    if _figure_alone(slide) and figure_kinds.from_source(str(made.get("source") or "")):
+        # the figure takes the whole body: its picture drawn for that box, as the .pptx
+        tall = await diagram_render.render_png(
+            str(made["source"]), accent or "#2563EB", box=FIGURE_BODY)
+        if tall:
+            slide["image"]["src"] = diagram_render.data_uri(tall)
+
+
+#: 「4장을 구조도로 바꿔 줘」: a diagram asked for on a slide
+_FIGURE_ASK = re.compile(
+    r"(?:구조도|흐름도|관계도|개념도|비교도|다이어그램|도식|도해|(?:구조|흐름|관계|과정|절차)[^\n.]{0,12}?그림)"
+    r"\s{0,3}(?:[(（][^()（）]{0,12}[)）]\s{0,3})?(?:으로|로|을|를|도)?\s{0,8}"
+    r"(?:바꿔|바꾸|그려|그리|만들|넣어|넣|보여|표현|추가|해\s{0,2}줘)"
+    r"|\b(?:draw|make|turn)\b.{0,40}\b(?:diagram|flowchart)\b",
+    re.I,
+)
+_FIGURE_DROP = re.compile(r"빼|지워|삭제|없애|제거|\b(?:remove|delete|drop)\b", re.I)
+#: kind a slide figure ask names; the slide title's when it names none
+_ASKED_KIND = (
+    (re.compile(r"관계"), "relation"),
+    (re.compile(r"흐름|과정|절차|flow", re.I), "flow"),
+    (re.compile(r"비교"), "compare"),
+    (re.compile(r"개념"), "concept"),
+    (re.compile(r"구조|아키텍처|architecture", re.I), "method"),
+)
+
+
+def asks_slide_figure(text: str) -> bool:
+    """Whether an edit asks for a diagram on the slide (「구조도(그림)로 바꿔줘」), not for its
+    removal."""
+    return bool(_FIGURE_ASK.search(text or "")) and not _FIGURE_DROP.search(text or "")
+
+
+def asked_figure_kind(text: str, slide: dict, request: str = "") -> str:
+    """`method`, `flow`, `compare`, `concept` or `relation` for an edit's diagram ask: the kind
+    it names, else the slide title's, else a structure."""
+    head = (_FIGURE_ASK.search(text or "") or re.match("", "")).group(0)
+    for pattern, kind in _ASKED_KIND:
+        if pattern.search(head):
+            return kind
+    return figure_wanted(slide, request) or "method"
+
+
+async def figure_slide(
+    *,
+    request: str,
+    slides: list[dict],
+    target_id: str,
+    instruction: str,
+    model: str,
+    api_key: str,
+) -> tuple[dict, dict]:
+    """One slide redrawn as the diagram an edit asks for → `(slide, usage)`: drawn from the
+    slide's own words and the ask, its words moved under the figure; raises when undrawable."""
+    target = next((s for s in slides if s.get("id") == target_id), None)
+    if target is None:
+        raise KeyError(target_id)
+    kind = asked_figure_kind(instruction, target, request)
+    title = str(target.get("title") or "")
+    words = _figure_source(target)
+    planned = diagrams.Planned(
+        index=0,
+        figure="method" if kind == "relation" else kind,
+        description=f"{instruction.strip()[:400]}\n{title}: {' / '.join(words.splitlines())}"[
+            :1200],
+        caption=title[:40],
+        context=words,
+        request=request,
+        language=deck_language(slides),
+        relation=kind == "relation",
+    )
+    accent = str(target.get("accent") or "")
+    made, usage, png = await diagrams.make(
+        planned, model=model, api_key=api_key, slide=True, accent=accent)
+    result = {k: v for k, v in target.items() if k not in ("image", "diagram", "textScale")}
+    if result.get("layout") in _NO_FIGURE_LAYOUTS:
+        result["layout"] = "bullets"
+    await _place_figure(result, made, png, accent)
+    result.pop("factCheck", None)
+    return auto_fit(result), usage
 
 
 async def _draw_pictures(
@@ -3901,6 +4023,8 @@ async def _draw_pictures(
         i for i, slide in enumerate(slides)
         if slide.get("layout") in _PICTURE_LAYOUTS and not slide.get("image")
         and not slide.get("diagram")
+        # a structure, relation or flow is a diagram's, never an illustration's
+        and not figure_wanted(slide, request)
     ]
     planned, spent = await illustrations.plan(
         parts=[(str(s.get("title") or ""), _drafted_text(s)) for s in slides],
@@ -3912,6 +4036,7 @@ async def _draw_pictures(
         slide=True,
         wrap=wrap,
         limit=1 if len(slides) < 6 else illustrations.MAX_PICTURES,
+        language=deck_language(slides),
     )
     usage["inputTokens"] += spent["inputTokens"]
     usage["outputTokens"] += spent["outputTokens"]
@@ -4321,7 +4446,7 @@ async def write(
     )
     # after all retries: listed parts stay separate
     plan = keep_enumerated(plan, request, wanted)
-    plan = structure_as_drawable(plan)
+    plan = structure_as_drawable(plan, request)
 
     # after structural changes: agenda must not exceed an exact total
     if wanted and plan and len(plan) != wanted:
@@ -5187,6 +5312,9 @@ def _words_under_figure(slide: dict) -> None:
                 name = str(pair[0]).strip()
                 text = " ".join(str(cell).strip() for cell in pair[1:] if str(cell).strip())
                 lines.append(f"{name}: {text}" if name and text else name or text)
+        # a table's rows under their header, a line each
+        rows = [row for row in slide.pop("rows", None) or [] if isinstance(row, list)]
+        lines.extend(_entry_line(row) for row in rows[1:] or rows)
         lines.extend(str(b).strip() for b in (slide.get("bullets") or []) if str(b).strip())
         if body := str(slide.get("body") or "").strip():
             lines.append(body)
@@ -5691,27 +5819,20 @@ def ensure_agenda(plan: list[dict]) -> list[dict]:
     return plan
 
 
-#: Structure slide (components and relations, not sequence).
-_STRUCTURE_TITLE = re.compile(
-    r"구조|아키텍처|구성\s*(?:요소|도)|시스템\s*구성|전체\s*구성|컴포넌트|모듈\s*구성|"
-    r"\b(?:architecture|structure|components?|topology)\b",
-    re.I,
-)
-
-
-def structure_as_drawable(plan: list[dict]) -> list[dict]:
-    """Structure slides on `_NOT_FOR_STRUCTURE` layouts → `bullets` (drawable)."""
+def structure_as_drawable(plan: list[dict], request: str = "") -> list[dict]:
+    """Structure and relation slides (their titles, or a structure the request names that the
+    title covers) on `_NOT_FOR_STRUCTURE` layouts → `bullets` (drawable)."""
     out = []
     for slide in plan:
-        structural = _STRUCTURE_TITLE.search(str(slide.get("title") or ""))
-        if structural and slide.get("layout") in _NOT_FOR_STRUCTURE:
+        if slide.get("layout") in _NOT_FOR_STRUCTURE and diagrams.wanted_figure(
+                str(slide.get("title") or ""), request) in ("method", "relation"):
             slide = {**slide, "layout": "bullets"}
         out.append(slide)
     return out
 
 
-#: Layouts an architecture slide can't be.
-_NOT_FOR_STRUCTURE = ("steps", "chart", "table", "metrics", "big-number", "timeline")
+#: Layouts an architecture or relation slide can't be: sequences read as order, numbers as data.
+_NOT_FOR_STRUCTURE = ("steps", "process", "chart", "table", "metrics", "big-number", "timeline")
 
 
 def vary_layouts(plan: list[dict]) -> list[dict]:
