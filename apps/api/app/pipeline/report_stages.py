@@ -1456,7 +1456,7 @@ class Figures(Base):
                 "content": section["content"],
                 "done": True,
             }
-        if req.auto_image_model and not draws_nothing and not illustrations.declined(request):
+        if req.auto_image_model and not draws_nothing and illustrations.wanted(request):
             async for event in _illustrate(bundle, sections):
                 yield event
 
