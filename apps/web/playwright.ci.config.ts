@@ -72,7 +72,7 @@ const groups: Record<string, Group> = {
     projects: { desktop, phone: touchPhone },
   },
   'i18n-gates': { files: ['i18n-audit-gates.spec.ts'], projects: { default: { ...devices['Desktop Chrome'] } } },
-  'report-table': { files: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts'], projects: { default: desktop } },
+  'report-table': { files: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts', 'report-broken-picture.spec.ts'], projects: { default: desktop } },
   'session-hydration': {
     files: [
       'session-hydration.spec.ts',

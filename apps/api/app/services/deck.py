@@ -3523,8 +3523,8 @@ async def _write_slides(
         ),
     ):
         yield event
-    # its own pictures too, when an image model is served inside the data boundary
-    if auto_image_model and not illustrations.declined(request):
+    # its own pictures too, when asked and an image model is served inside the data boundary
+    if auto_image_model and illustrations.wanted(request):
         async for event in _draw_pictures(
             slides,
             image_model=auto_image_model,
@@ -3878,9 +3878,9 @@ async def _draw_figures(
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
 
-#: Layouts whose words narrow beside a picture (`deck_export`: bullets and body); pair layouts
-#: such as bands and cards keep the full width and would run under it.
-_PICTURE_LAYOUTS = ("bullets", "statement")
+#: Layouts whose words narrow beside a picture (`deck_export`: bullets); pair layouts such as
+#: bands and cards and the centred statement keep the full width and would run under it.
+_PICTURE_LAYOUTS = ("bullets",)
 
 
 async def _draw_pictures(

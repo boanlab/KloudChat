@@ -1,6 +1,6 @@
-"""Pictures a document draws for itself, planned on its written parts the way its diagrams are,
-with a self-hosted image model only. External image models stay with the outline card, where
-the person approves each picture and its cost."""
+"""Pictures a document draws for itself when the person asks for them, planned on its written
+parts the way its diagrams are, with a self-hosted image model only. External image models stay
+with the outline card, where the person approves each picture and its cost."""
 
 from __future__ import annotations
 
@@ -53,6 +53,15 @@ _DECLINED = re.compile(
 )
 
 
+#: 「삽화를 곁들여」, 「사진도 넣어」, "with illustrations": the person asked for pictures
+_ASKED = re.compile(
+    r"삽화|일러스트|illustrat"
+    r"|(?:그림|이미지|사진)[^\n.]{0,12}?(?:넣|포함|곁들|추가|붙|담아|들어가|있는|와\s?함께|과\s?함께)"
+    r"|(?:add|include|with)\s+(?:some\s+|a\s+few\s+)?(?:pictures|images|photos)",
+    re.I,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class Planned:
     """One picture for part `index` (0-based)."""
@@ -69,6 +78,11 @@ def self_hosted(model: dict | None) -> bool:
 
 def declined(request: str) -> bool:
     return bool(_DECLINED.search(request or ""))
+
+
+def wanted(request: str) -> bool:
+    """Whether the request asks for pictures; decorative ones are never added unasked."""
+    return bool(_ASKED.search(request or "")) and not declined(request)
 
 
 def _parse(text: str, allowed: set[int], limit: int) -> list[Planned]:
@@ -161,4 +175,4 @@ async def draw(
     }
 
 
-__all__ = ["MAX_PICTURES", "Planned", "declined", "draw", "plan", "self_hosted"]
+__all__ = ["MAX_PICTURES", "Planned", "declined", "draw", "plan", "self_hosted", "wanted"]

@@ -890,6 +890,8 @@ _PAIRED = ("bands", "tiles", "timeline", "steps", "cards")
 
 #: Layouts drawn reversed out of the accent.
 _COVERS = ("title", "section", "closing")
+#: words centred across the whole slide; a picture there would cover them (web shows none)
+_WORDS_ACROSS = ("statement", "quote")
 
 
 def _written(slides: list[dict]) -> list[dict]:
@@ -3013,7 +3015,7 @@ def to_pptx(
             if isinstance(pair, list) and len(pair) >= 2
         ]
         chart = _chart_of(data)
-        picture = _picture_of(data)
+        picture = None if layout in _WORDS_ACROSS else _picture_of(data)
         picture_span = _picture_span(data)
         pairs = _pairs_of(data, layout)
         pattern = slide_patterns.BY_NAME.get(layout)
@@ -4086,7 +4088,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             if isinstance(pair, list) and len(pair) >= 2
         ]
         chart = _chart_of(data)
-        picture = _picture_of(data)
+        picture = None if layout in _WORDS_ACROSS else _picture_of(data)
         picture_span = _picture_span(data)
         pairs = _pairs_of(data, layout)
         pattern = slide_patterns.BY_NAME.get(layout)
