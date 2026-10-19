@@ -116,9 +116,11 @@ _PICTURE_SPAN = 300.0
 
 def _unless_title(caption: str, data: dict) -> str:
     """A picture's caption, or '' when it only repeats the slide's title (「공사 단계」 under
-    「공사 단계」)."""
+    「공사 단계」) or names a figure that stands alone under the title."""
     def words(text: object) -> list[str]:
         return re.findall(r"[가-힣A-Za-z]+", str(text or ""))
+    if isinstance(data.get("diagram"), dict) and not _has_words(data):
+        return ""  # a figure alone on its slide: the title names it
     said, title = words(caption), "".join(words(data.get("title")))
     if not said or not title:
         return caption if said else ""

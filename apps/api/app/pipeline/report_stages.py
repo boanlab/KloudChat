@@ -1289,6 +1289,24 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     return richtext.tidy_tables(clean)
 
 
+def _figure_says_more(made: dict, sections: list[dict], asked: bool) -> bool:
+    """Whether a drawn figure is kept. A structure of fewer than four boxes is not. A comparison
+    that only repeats one of the report's tables is not, unless the request asked for figures:
+    then the figure stands and the table it repeats is taken out."""
+    if diagrams.too_thin(made):
+        return False
+    report = _report()
+    for section in sections:
+        content = str(section.get("content") or "")
+        for table in report._TABLE.finditer(content):
+            if diagrams.repeats_table(made, table.group(0)):
+                if not asked:
+                    return False
+                section["content"] = report.drop_table(content, table.group(0))
+                return True
+    return True
+
+
 class Figures(Base):
     """Mermaid figures: writer-placed first, then the planner's."""
 
@@ -1306,6 +1324,7 @@ class Figures(Base):
             and not diagrams.asks_for_diagrams(instruction_part(request))
         )
         figure_cap = min(5, max(diagrams.MAX_FIGURES, len(sections) // 2 + 1))
+        asked = diagrams.asks_for_diagrams(instruction_part(request))
         # writer-placed (〔그림〕) first; planner only looks at sections with none
         drawn = 0
         # drawn flowcharts: one figure per procedure; a numbered procedure shows every step
@@ -1341,6 +1360,13 @@ class Figures(Base):
                            "status": "error", "progress": progress}
                     continue
                 _count(bundle, spent)
+                if not _figure_says_more(made, sections, asked):
+                    log.info("placed figure %r left out: it repeats the text", name)
+                    section["content"] = report.drop_figure(content, mark["mark"])
+                    yield {"type": "step", "id": f"dia{index}", "label": name,
+                           "status": "done", "progress": progress}
+                    continue
+                content = str(section.get("content") or "")
                 section["content"] = content.replace(
                     mark["mark"], report._figure_markdown(made, png), 1)
                 drawn += 1
@@ -1409,6 +1435,11 @@ class Figures(Base):
                 }
                 continue
             _count(bundle, spent)
+            if not _figure_says_more(made, sections, asked):
+                log.info("report figure %r left out: it repeats the text", name)
+                yield {"type": "step", "id": f"dia{row.index}", "label": name,
+                       "status": "done", "progress": progress}
+                continue
             section["content"] = (f"{section['content'].rstrip()}\n\n"
                                   f"{report._figure_markdown(made, png)}")
             yield {
