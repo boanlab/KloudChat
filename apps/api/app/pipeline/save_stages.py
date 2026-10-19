@@ -65,7 +65,7 @@ class ReportSave(Base):
 
     name = "report-save"
     kind = "io"
-    reads = ("request", "document.sections", "usage", "wire")
+    reads = ("request", "document.sections", "usage", "wire", "material.research")
     writes = ("document.sections", "document.saved")
 
     def skip(self, bundle: Bundle) -> str:
@@ -109,6 +109,11 @@ class ReportSave(Base):
                         yield {"type": "section", "sectionId": section.get("id"),
                                "heading": section.get("heading"),
                                "content": section.get("content"), "done": True}
+        # an attached file's figures credited to it, not to a web result the writer named
+        research_found = bundle.material.research
+        sections = citations.credit_attachments(sections, sources, citations.source_texts(
+            sources, research_found.context if research_found is not None else "",
+            list(req.untrusted)))
         # references numbered by first citation; venue-as-author replaced by the work's name
         sections, sources = citations.tidy(sections, sources)
         # last pass after every repair: weekdays to the calendar, the guidance's example

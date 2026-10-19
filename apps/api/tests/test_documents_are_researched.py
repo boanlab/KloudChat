@@ -232,6 +232,36 @@ async def test_project_knowledge_becomes_numbered_report_evidence(searched):
     assert all("[2] 내부 조사.md" in _system(post) for post in posts)
 
 
+async def test_an_attached_file_is_a_numbered_source_of_its_own(searched):
+    posts: list[dict] = []
+    replies = ["본문 [2]"] * 3
+    searched.setattr(report.httpx, "AsyncClient", lambda **kw: _Client(replies, posts, **kw))
+
+    events = [
+        e
+        async for e in report.write(
+            request="첨부한 논문을 선행연구 근거로 연구 계획서를 써줘.",
+            model="m",
+            api_key="k",
+            untrusted_context=["# 이번 요청에 첨부된 파일\n\n## kim_park_2025.pdf\nRecall 38.2%"],
+            approved_plan={"title": "제목", "sections": ["가", "나", "다"]},
+            project_sources=[{"id": "file-1", "name": "kim_park_2025.pdf",
+                              "state": "included", "attached": True}],
+        )
+    ]
+
+    shelf = next(e["sources"] for e in events if e["type"] == "sources")
+    paper = shelf[-1]
+    assert (paper["ordinal"], paper["title"], paper["originLabel"]) == (
+        len(shelf), "kim_park_2025.pdf", "첨부 파일")
+    assert paper["attached"] is True
+    audit = next(e["research"] for e in events if e["type"] == "research")
+    assert audit["projectSelected"] == 0
+    writers = [post for post in posts if any(m["role"] == "system" for m in post["messages"])]
+    assert writers and all(f"[{len(shelf)}] kim_park_2025.pdf" in _system(p) for p in writers)
+    assert "never a web result's number" in _system(writers[0])
+
+
 # ── and when it cannot run, it says so ─────────────────────────────────
 
 

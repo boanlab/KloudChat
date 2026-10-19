@@ -4364,6 +4364,10 @@ async def send_message(
         web_search_auto = True
 
     requested_tools = strict_tools if requested_is_strict else candidate_tools
+    if session.kind is SessionKind.chat and published is None and (
+            deep := _deep_research_tool(content, requested_tools)):
+        # 「심층 리서치로」 named: the deep mode runs, not a quick search the model picks
+        forced_tool = deep
 
     # attachment shortfalls asked before planning; pending replies: new files only
     short = grounding.file_shortfalls(workspace.attachments) if _plans_first(session) else []
@@ -5077,6 +5081,10 @@ async def send_message(
                             "locations": list(item.locations),
                         }
                         for item in workspace.knowledge
+                    ] + [
+                        # attached files are sources with their own number, like project files
+                        {"id": item.id, "name": item.name, "state": item.state, "attached": True}
+                        for item in (*workspace.attachments, *workspace.carried)
                     ],
                     # no network on strict-local
                     web_search=effective_web_search and not strict_local,
@@ -5389,6 +5397,22 @@ async def send_message(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+#: an explicit ask for the deep research mode
+_DEEP_RESEARCH = re.compile(r"심층\s{0,2}(?:리서치|조사)|딥\s{0,2}리서치|deep\s{0,2}research", re.I)
+
+
+def _deep_research_tool(content: str, tools: list[Tool]) -> str | None:
+    """The deep-research connector's thorough mode when the ask names deep research and the
+    connector offers it (else its quick mode), or None."""
+    if not _DEEP_RESEARCH.search(_ask_of(content)):
+        return None
+    names = sorted(tool.name for tool in tools)
+    for mode in ("detailed_research", "quick_research"):
+        if found := next((name for name in names if name.endswith(f"__{mode}")), None):
+            return found
+    return None
 
 
 async def _route_turn(facts: dict[str, Any]) -> tuple[str, StepRecord]:

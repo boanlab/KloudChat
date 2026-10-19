@@ -167,6 +167,23 @@ FORMATS: tuple[DocFormat, ...] = (
     ),
 )
 
+#: after a document noun: it names what a product does or what the writing draws on, not what
+#: to write — 「회의록(녹취 요약) 서비스 시장 조사 보고서」, 「회의록을 바탕으로 결과 보고서」
+_NOT_THE_OBJECT = re.compile(
+    r"\s{0,2}(?:\([^()\n]{0,40}\)|（[^（）\n]{0,40}）|[^()\n]{0,20}\))?\s{0,2}(?:"
+    r"(?:작성|자동|요약|생성|정리)?\s{0,2}(?:서비스|솔루션|앱|어플|애플리케이션|도구|툴|플랫폼|프로그램"
+    r"|소프트웨어|기능|시장|산업|업체|기업|스타트업|자동화|시스템|제품|SaaS|AI)"
+    r"|(?:을|를)?\s{0,2}(?:바탕으로|토대로|기반으로|근거로|참고(?:해|하여|로))|에서\s{0,2}(?:나온|뽑)"
+    r")", re.I)
+
+
+def asked(pattern: re.Pattern[str], instruction: str) -> bool:
+    """Whether `pattern` names what the instruction asks to produce: a hit naming a product
+    (「회의록 서비스」) or the source material (「회의록을 바탕으로」) is a mention only."""
+    text = instruction or ""
+    return any(not _NOT_THE_OBJECT.match(text, m.end()) for m in pattern.finditer(text))
+
+
 BY_ID: dict[str, DocFormat] = {f.id: f for f in FORMATS}
 #: Retired formats: kept by existing agents, never newly chosen.
 RETIRED = frozenset({"client_proposal", "career_history"})
@@ -241,7 +258,7 @@ def detect(
     if fixed and fixed in BY_ID:
         return _sibling_named(fixed, instruction) or BY_ID[fixed]
     for fmt, pattern in (*_COMPILED, *_FALLBACKS):
-        if pattern.search(instruction or ""):
+        if asked(pattern, instruction):
             return fmt
     return None
 

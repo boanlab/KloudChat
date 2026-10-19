@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     auto_routing_classifier_timeout_sec: float = 8.0
     # Per-tool ceiling; max_tool_hops bounds the turn.
     tool_timeout_sec: float = 300.0
+    #: Deep research modes that take 5-30 minutes (`detailed_research`, `generate_report`).
+    research_timeout_sec: float = 1800.0
     max_tool_hops: int = 8
     chat_stall_sec: int = 180
 

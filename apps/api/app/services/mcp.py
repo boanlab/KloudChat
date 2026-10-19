@@ -127,11 +127,12 @@ class _StdioSession:
             return message.get("result")
 
 
-async def _http_request(url: str, method: str, params: dict[str, Any] | None = None) -> Any:
+async def _http_request(url: str, method: str, params: dict[str, Any] | None = None,
+                        timeout: float | None = None) -> Any:
     """One MCP call over streamable HTTP, handshake included; keeps `Mcp-Session-Id`."""
     # gateway key only to the deep-research address
     async with tools_gateway.client(
-        timeout=settings.tool_timeout_sec, features=("research",)
+        timeout=timeout or settings.tool_timeout_sec, features=("research",)
     ) as client:
         headers = {"Accept": "application/json, text/event-stream"}
 
@@ -234,12 +235,14 @@ async def call_tool(
     name: str,
     arguments: dict[str, Any],
     env: dict[str, str] | None = None,
+    timeout: float | None = None,
 ) -> str:
     if transport == "stdio":
         async with _StdioSession(expand(endpoint, env), env or {}) as session:
             result = await session._request("tools/call", {"name": name, "arguments": arguments})
     else:
-        result = await _http_request(endpoint, "tools/call", {"name": name, "arguments": arguments})
+        result = await _http_request(endpoint, "tools/call", {"name": name, "arguments": arguments},
+                                     timeout=timeout)
     if isinstance(result, dict) and result.get("isError"):
         raise McpError(_flatten(result) or "도구가 오류를 반환했습니다.")
     return _flatten(result)

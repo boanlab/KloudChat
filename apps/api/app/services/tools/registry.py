@@ -37,17 +37,41 @@ def qualified(slug: str, tool_name: str) -> str:
     return f"{_NS}{slug}__{tool_name}"
 
 
+#: connector modes named for people: 「심층 리서치 · 빠른 조사(1~5분)」, not 「quick research」
+_MODE_LABELS = {
+    "quick_research": ("빠른 조사(1~5분)", "빠른 조사"),
+    "detailed_research": ("자세한 조사(5~15분)", "자세한 조사"),
+    "generate_report": ("조사 보고서(10~30분)", "조사 보고서"),
+}
+
+
 def _label_for(connector: Connector, tool_name: str) -> str:
-    pretty = tool_name.replace("_", " ")
+    pretty = _MODE_LABELS.get(tool_name, (tool_name.replace("_", " "),))[0]
     return f"{connector.name} · {pretty}"
+
+
+def _title_for(connector: Connector, tool_name: str) -> str:
+    """Finished-step noun; empty keeps `label`."""
+    mode = _MODE_LABELS.get(tool_name)
+    return f"{connector.name} · {mode[1]}" if mode else ""
+
+
+#: modes that run past the per-tool ceiling
+_SLOW_MODES = frozenset({"detailed_research", "generate_report"})
+
+
+def _timeout_for(tool_name: str) -> float | None:
+    return settings.research_timeout_sec if tool_name in _SLOW_MODES else None
 
 
 def _make_runner(connector: Connector, tool_name: str, env: dict[str, str]):
     async def run(arguments: dict) -> ToolResult:
         try:
             endpoint = await catalog.effective_endpoint(connector)
+            slow = _timeout_for(tool_name)
             text = await mcp.call_tool(
-                connector.transport.value, endpoint, tool_name, arguments, env
+                connector.transport.value, endpoint, tool_name, arguments, env,
+                **({"timeout": slow} if slow else {}),
             )
         except mcp.McpError as exc:
             return ToolResult(content=f"오류: {exc}", failed=True)
@@ -103,6 +127,8 @@ async def connector_tools(db: AsyncSession, user: User) -> list[Tool]:
                 parameters=row.parameters or {"type": "object", "properties": {}},
                 run=_make_runner(connector, row.name, env),
                 label=_label_for(connector, row.name),
+                title=_title_for(connector, row.name),
+                timeout_sec=_timeout_for(row.name),
                 read_only=row.read_only,
                 source=connector.slug,
             )

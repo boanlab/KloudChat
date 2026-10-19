@@ -10,7 +10,7 @@ This page lists causes and actions by symptom. To look something up by the error
 Your account is waiting for approval. The waiting screen switches over automatically once an administrator approves it. Use **Contact the administrator** on the waiting screen to get in touch.
 
 ### I typed in Chat but it switched to the report screen
-A sentence that asks for a document, such as "Write a report" or "Make a slide deck", switches automatically to a new conversation on that screen. To continue in Chat, phrase the request around existing content, such as "Summarize this".
+A sentence that asks for a document, such as "Write a report" or "Make a slide deck", switches automatically to a new conversation on that screen. The document is written with that screen's default model; when it differs from the model picked in Chat, a note above the input box says so. Short pieces such as a press release, notice or email stay in Chat and are written there (to get one as a report, ask on the report screen). To continue in Chat, phrase the request around existing content, such as "Summarize this".
 
 ### It says the file I attached could not be read
 The file is an older Office format (.doc, .ppt, .xls), or a scan while text from scans (OCR) is not connected. Attach it again as a PDF, Word, Hangul, Excel, or text file that contains text, or ask the administrator to connect text from scans. [Attaching files](chat/files)
