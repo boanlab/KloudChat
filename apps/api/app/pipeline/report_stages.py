@@ -256,8 +256,9 @@ class Assemble(Base):
         project_excluded = 0
         project_reference_lines: list[str] = []
         for item in req.project_sources or []:
+            attached = bool(item.get("attached"))
             if item.get("state") not in ("included", "truncated"):
-                project_excluded += 1
+                project_excluded += not attached
                 continue
             ordinal = len(findings.sources) + 1
             title = str(item.get("name") or "프로젝트 자료")[:200]
@@ -267,10 +268,13 @@ class Assemble(Base):
                     "id": str(item.get("id") or f"project-{ordinal}"),
                     "ordinal": ordinal,
                     "title": title,
-                    "publisher": research._publisher(url) if url else "프로젝트 파일",
+                    "publisher": research._publisher(url) if url else (
+                        "첨부 파일" if attached else "프로젝트 파일"),
                     "url": url,
                     "origin": "web" if url else "file",
-                    "originLabel": "프로젝트 웹 자료" if url else "프로젝트 파일",
+                    **({"attached": True} if attached else {}),
+                    "originLabel": "첨부 파일" if attached else (
+                        "프로젝트 웹 자료" if url else "프로젝트 파일"),
                     "quote": (
                         " · ".join(str(v) for v in (item.get("locations") or []))
                         or (
@@ -282,7 +286,7 @@ class Assemble(Base):
                 }
             )
             project_reference_lines.append(f"- [{ordinal}] {title}")
-            project_selected += 1
+            project_selected += not attached
         mat.sources = findings.sources
 
         # research log for the report artifact
@@ -317,9 +321,11 @@ class Assemble(Base):
         mat.trusted = [Part(text, "trusted") for text in req.trusted]
         if project_reference_lines:
             mat.trusted.append(Part(
-                "# 프로젝트 자료 인용 번호\n"
-                "End each sentence that uses a fact from the project material with its exact "
-                "number below. Do not make up numbers that are not on the list.\n" + "\n".join(project_reference_lines),
+                "# 첨부·프로젝트 자료 인용 번호\n"
+                "End each sentence that uses a fact from an attached file or the project "
+                "material with that file's exact number below, never a web result's number. "
+                "Do not make up numbers that are not on the list.\n"
+                + "\n".join(project_reference_lines),
                 "project"))
         mat.grounded = deck_rules.has_numbers(req.text, mat.document)
         if block := research.context_block(findings):
@@ -440,6 +446,9 @@ class Outline(Base):
             report.without_instruction_aside(h, request)
             for h in report.with_listed_sections(headings, request)
         ]
+        if bundle.spec.format_id == "press" and not fixed:
+            # 제목·부제 are the title block; 리드 opens the 본문 section
+            headings = report.press_headings(headings)
         if wanted and len(headings) != wanted:
             try:
                 retry_text, retry_spent = await ask(

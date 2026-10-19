@@ -608,7 +608,9 @@ def _genre_rule(request: str, fmt: doc_formats.DocFormat | None = None,
     # ask's first paragraph first: memo lines don't change the genre
     for instruction in dict.fromkeys((lead_instruction(request), instruction_part(request))):
         for pattern, rule, unless in _GENRES:
-            if pattern.search(instruction) and not (unless and unless.search(instruction)):
+            # what the ask is for: 「회의록 서비스 시장 조사」 is no 회의록
+            if doc_formats.asked(pattern, instruction) and not (
+                    unless and unless.search(instruction)):
                 # the request's own parts come first (no genre closing 「시행일·문의처」
                 # over a report that names its sections)
                 return f"{rule} {GENRE_YIELD}" if asked_form.asked(request) else rule
@@ -1354,8 +1356,8 @@ _subject_missing = grounding.subject_missing
 _RESULTS = re.compile(r"결과|시험|실험|측정|캡스톤|제안서|설계 변경|기획서|연구 ?계획")
 #: web-sourced documents needing a search
 _FROM_THE_WEB = re.compile(
-    r"동향|조사해|문헌|선행 ?연구|최근 (?:\d+ ?년|연구)|연구를 정리|현황을 조사|비교표|인용|"
-    r"참고문헌|시카고|APA|출처를"
+    r"동향|조사해|시장 ?조사|최신 ?자료|문헌|선행 ?연구|최근 (?:\d+ ?년|연구)|연구를 정리|"
+    r"현황을 조사|비교표|인용|참고문헌|시카고|APA|출처를"
 )
 
 
@@ -1363,6 +1365,9 @@ def _from_the_web(request: str) -> bool:
     return bool(_FROM_THE_WEB.search(request))
 
 
+#: words pointing at an upload: 「첨부 파일의」, 「표를 붙여」, 「학위논문 3장」
+_UPLOAD = re.compile(
+    r"파일|첨부|학위논문|논문 ?\d+ ?장|(?:표|자료)를 (?:붙|드립|줍|보냅|첨부)")
 #: words pointing at unattached material
 _MATERIAL = re.compile(
     r"녹취|녹음|피드백|기록을|표가 있|파일|첨부|메모를|학위논문|논문 ?\d+ ?장"
@@ -3235,10 +3240,12 @@ def _results_without_data(request: str, attached: list[str], *, web: bool = Fals
     research request (「…동향을 조사해서」) has its material coming."""
     if any(block.strip() for block in attached) or _carries_material(request):
         return False
+    if web and _from_the_web(request):
+        # a market or trend study searched this turn: only an upload it points at is missing
+        # (「회의 녹취 요약 서비스 시장 조사」 names 녹취 as the topic, not as material)
+        return bool(_UPLOAD.search(request))
     if _MATERIAL.search(request):
         return True
-    if web and _from_the_web(request):
-        return False
     if not _RESULTS.search(request):
         return False
     return not deck_rules.has_numbers(request, [])
@@ -3318,6 +3325,17 @@ def without_instruction_aside(heading: str, request: str) -> str:
     if m and m.group(2).strip() in instruction_part(request):
         return m.group(1).strip()
     return heading
+
+
+#: press-release parts the title block or the opening paragraph already are
+_PRESS_PARTS = re.compile(r"(?:제목|부제|부제목|헤드라인|리드|리드문|전문)")
+
+
+def press_headings(headings: list[str]) -> list[str]:
+    """보도자료 outline: 제목·부제 sections dropped (the title block holds them), 리드 folded into
+    the first body section; at least one section kept."""
+    kept = [h for h in headings if not _PRESS_PARTS.fullmatch(re.sub(r"\s{1,8}", "", h))]
+    return kept or ["본문"]
 
 
 def with_listed_sections(headings: list[str], request: str) -> list[str]:

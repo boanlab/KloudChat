@@ -51,8 +51,9 @@ def test_the_press_release_checks_its_figures_and_keeps_to_the_material():
     assert package.checks == ("grounding-check", "generic-language-killer")
     assert package.process == {"search": False, "draws": "when-asked"}
     body = package.body
-    # quotes only from the material, contact as the person's own brackets
-    assert "only words the material attributes to a named person" in body
+    # quotes from the material; a named spokesperson without words gets one marked draft
+    assert "words the material attributes to a named person are quoted" in body
+    assert "「(가안, 본인 확인 필요)」" in body and "never written as labels or headings" in body
     assert "[담당 부서] [담당자 이름] [전화] [이메일]" in body
     assert "[보고서에서]" in body and "[채팅에서]" in body
 

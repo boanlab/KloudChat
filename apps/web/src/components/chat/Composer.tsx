@@ -1510,8 +1510,16 @@ export function Composer({
     const generalHandoff = detected && !session?.agentId ? detected : null
     // Earlier turns go along as material (「대화 기록.txt」 plus files), so a deck can reuse values computed above.
     const carried = agentHandoff ?? (sessionId && (session?.messages.length ?? 0) > 0 ? generalHandoff : null)
+    // The document surface writes with its own default model: said, not switched silently.
+    const surfaceModel = (target: SessionKind) => {
+      const next = models.find((m) => m.id === modelByKind[target])
+      if (next && model && next.id !== model.id) {
+        setNotice(t('문서는 문서 화면의 기본 모델 {model}로 씁니다.').replace('{model}', next.label))
+      }
+    }
     // The skills on go along to the document, those that work there; the rest are named.
     const skillsFor = (target: SessionKind) => {
+      surfaceModel(target)
       const fits = activeSkills.filter((s) => (s.kinds.length === 0 || s.kinds.includes(target)) && s.requiredTools.length === 0)
       const left = activeSkills.filter((s) => !fits.includes(s))
       if (left.length) {

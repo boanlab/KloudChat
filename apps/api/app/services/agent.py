@@ -1436,17 +1436,41 @@ def _published_of(url: str, seen: dict[str, str]) -> str:
     return f" · {found.group(1)}" if found else ""
 
 
-def _source_label(url: str, title: str = "") -> str:
-    """`title · host`, else `host · last segment`."""
+#: a stored file's name in place of a title: 「176335726922156.hwp」, 「download.pdf」, 「a1b2c3」
+_FILE_ID = re.compile(
+    r"[\w.-]{0,80}\.(?:hwpx?|pdf|docx?|xlsx?|pptx?|zip|txt)|[\d_-]{6,}|[0-9a-f]{12,}", re.I)
+#: an excerpt line that is no title: an address, a date, a page counter
+_NO_TITLE = re.compile(r"https?://|^\[\d{1,3}\]|^[\d\s./:-]+$|^(?:출처|게시일|작성일|조회)\b")
+
+
+def _excerpt_title(excerpt: str) -> str:
+    """First line of a read document that can stand as its title, or ''."""
+    for line in (excerpt or "").splitlines()[1:12]:
+        line = line.strip(" #*-·\t")
+        if 6 <= len(line) <= 90 and not _NO_TITLE.search(line) and not _FILE_ID.fullmatch(line):
+            return line
+    return ""
+
+
+def _source_label(url: str, title: str = "", excerpt: str = "") -> str:
+    """`title · host`, else `host · last segment`; a file name as title becomes the read
+    document's first line, else 「host 게시 문서(HWP)」."""
     from urllib.parse import unquote, urlparse
 
     parsed = urlparse(url)
     host = parsed.netloc.removeprefix("www.")
     title = re.sub(r"\s+", " ", title or "").strip().replace("[", "(").replace("]", ")")
-    if title and not _URL.fullmatch(title) and title != url:
-        return f"{title[:90]}{'…' if len(title) > 90 else ''} · {host}"
     leaf = unquote(parsed.path.rstrip("/").rsplit("/", 1)[-1]).replace("-", " ")
     leaf = re.sub(r"\s+", " ", leaf).strip()
+    named = title if title and not _URL.fullmatch(title) and title != url else ""
+    if _FILE_ID.fullmatch(named or leaf or "-"):
+        named = _excerpt_title(excerpt).replace("[", "(").replace("]", ")")
+        if not named:
+            kind = (named or leaf or title).rsplit(".", 1)
+            return f"{host} 게시 문서" + (f"({kind[1].upper()})" if len(kind) == 2
+                                        and kind[1].isalpha() else "")
+    if named:
+        return f"{named[:90]}{'…' if len(named) > 90 else ''} · {host}"
     return f"{host} · {leaf[:48]}" if leaf and leaf.lower() not in {"index.html", "index"} else host
 
 
@@ -1566,7 +1590,7 @@ async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
         parsed["query"] = query_terms.keep_entities(parsed["query"], ctx.request)
 
     try:
-        async with asyncio.timeout(settings.tool_timeout_sec):
+        async with asyncio.timeout(tool.timeout_sec or settings.tool_timeout_sec):
             output = await (tool.run(parsed, ctx) if tool.wants_context else tool.run(parsed))
     except TimeoutError:
         return ToolResult(
@@ -3011,12 +3035,15 @@ async def run_turn(
     def _dated(url: str) -> str:
         return _published_of(url, source_seen) or own_dates.get(url, "") or checked
 
+    def _labelled(url: str) -> str:
+        return _source_label(url, source_titles.get(url, ""), source_seen.get(url, ""))
+
     if cited and not own_list and not form_fixed:
         # a form the person fixed (「조언만, 다른 건 쓰지 마」) keeps the inline links only
         appendix = ("\n\n### 출처\n" if reply_korean else "\n\n### Sources\n") + "\n".join(
             f"- [{n}] {sources[n - 1].removeprefix(MATERIAL_SOURCE)}"
             if sources[n - 1].startswith(MATERIAL_SOURCE)
-            else f"- [{n}] [{_source_label(sources[n - 1], source_titles.get(sources[n - 1], ''))}]"
+            else f"- [{n}] [{_labelled(sources[n - 1])}]"
             f"({sources[n - 1]}){_dated(sources[n - 1])}"
             for n in cited
         )
