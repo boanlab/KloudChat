@@ -154,6 +154,55 @@ def _named(value: Any, limit: int = 24) -> dict[str, str] | None:
     return out
 
 
+#: a count with its unit: 「3주」「120석」「2,000만 원」, 「간」「동안」 kept with it
+_QUANTITY = re.compile(r"\d[\d,.]*\s{0,2}"
+                       r"(?:개월|주|일|시간|분|년|명|석|회|건|단계|%|만\s?원|억\s?원|원)"
+                       r"(?:간|\s{0,2}동안)?")
+#: one clause of the material: sentences cut at 「,」「;」 and line ends
+_CLAUSE = re.compile(r"[^,;，、\n.!?。]+")
+
+
+def _stems(name: str) -> list[str]:
+    return [w[:max(2, len(w) - 1)] for w in re.findall(r"[가-힣A-Za-z]{2,}", name)]
+
+
+def _owns(clause: str, part: list[str], others: list[list[str]]) -> bool:
+    """Whether a clause speaks of this part alone (no other part named in it)."""
+    names = lambda stems: any(stem in clause for stem in stems)  # noqa: E731
+    return names(part) and not any(names(o) for o in others)
+
+
+def grounded(s: dict[str, Any], material: str) -> dict[str, Any]:
+    """Step and stage notes kept to counts the material gives that part: a count the material
+    says only of the whole (「공사는 3주 동안 철거·설치·시범 운영」) or never says is cut from
+    a note, and a note left saying nothing is dropped."""
+    key = {"steps": "steps", "cycle": "stages"}.get(s.get("kind", ""))
+    if not key or not material.strip():
+        return s
+    parts = s[key]
+    stems = [_stems(p["name"]) for p in parts]
+    clauses = [c for c in _CLAUSE.findall(material) if c.strip()]
+    for k, part in enumerate(parts):
+        note = part.get("note")
+        if not note:
+            continue
+        others = stems[:k] + stems[k + 1:]
+        for m in list(_QUANTITY.finditer(note)):
+            count = re.match(r"\d[\d,.]*\s{0,2}\D+?(?=간|\s{0,2}동안|$)", m.group(0))
+            bare = re.sub(r"\s", "", (count or m).group(0))
+            if any(bare in re.sub(r"\s", "", c) and _owns(c, stems[k], others) for c in clauses):
+                continue
+            note = note.replace(m.group(0), " ")
+        note = re.sub(r"\s+", " ", note).strip(" ·,")
+        if note != part["note"]:
+            if len(note) < 2 or _repeats(note, part["name"]) or \
+                    note.replace(" ", "") in part["name"].replace(" ", ""):
+                part.pop("note")
+            else:
+                part["note"] = note
+    return s
+
+
 def spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
     """Checked slots for one figure kind, or None when they don't make that figure; `band`
     (a figure for a slide's wide strip) kept."""
@@ -808,6 +857,6 @@ def draw(slide, s: dict[str, Any], *, left: float, top: float, width: float, hei
 
 
 __all__ = [
-    "CHOICES", "KINDS", "MARK", "choose_messages", "chosen", "draw", "fill_messages",
+    "CHOICES", "KINDS", "MARK", "choose_messages", "chosen", "draw", "fill_messages", "grounded",
     "from_source", "size", "spec", "to_source",
 ]
