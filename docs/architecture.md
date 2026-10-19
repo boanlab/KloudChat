@@ -838,7 +838,9 @@ twenty-five characters, and without this its own rule would be the one rule
 nothing enforces.
 
 `P0` means the document is wrong: a placeholder nobody replaced, a block that
-never got written, a figure nobody could have sourced. `P1` means it reads
+never got written, a figure nobody could have sourced, the writer's plan or
+instructions written in place of the text (「…을 한 문장씩 압축합니다」, 「지시된
+대로 표와 그림은 배제하고」). `P1` means it reads
 badly: filler adjectives, an emoji leading a line, a line repeated from another
 section, a slide too crowded or too long to read from the back of a room. The
 numbers rule is narrow on purpose — an ordinary "12% 증가" ("12% increase") is what a report is
@@ -848,6 +850,15 @@ flagged. A check that fires on ordinary writing is one people learn to ignore.
 Nothing is corrected automatically. The panel shows a count and a list; the
 report surface already has **Rewrite just this section** for acting on it, and an HTML
 artifact has the same per-block rewrite.
+
+**A follow-up edit does not commit a new P0.** A report section rewritten by a chat
+follow-up first loses the writer's plan by code (`internal_words.strip_plan_preface`,
+then the plan sentences); a P0 the rewrite still brings in — one the section did not
+have and the person's own words do not set off (`revise.new_faults`) — is sent back to
+the writer once with the finding as the reason. If the second version fails too, the
+section stays as it was and the reply says which part was kept (all of them kept: no new
+version is stored). Markdown bold labels are not counted there: a markdown section renders
+them.
 
 ### Mechanisms by model group
 
@@ -878,7 +889,7 @@ changes what a group gets, and test both a self-hosted and a strong external wri
 | Writing rules (`prompt_tier`, `context`) | full rule bundle | full rule bundle | light: one anti-fabrication line |
 | Judge findings of skill post-checks (`post_checks.run`) | judge is the planner; a finding whose figures and names are all in the evidence is dropped; one with none is marked 「(확인 필요)」 where it stands; one with a figure or name in none of the evidence (or a script's own finding) goes to one rewrite and may come out | as self-hosted | the writer judges its own answer; dropped findings as for every group; the rest go back to it once as notes to weigh; nothing it kept is taken out |
 | Copy check claims (`copy_check.run`) | as post-checks: dropped / marked / rewritten by the same code reading; numbers, offers and lengths fixed by code | as self-hosted | notes to the writer; what it kept is marked |
-| Value marks (`value_guard`, `grounding-check/scripts/trace.py`) | marked, never cut; not marked: the person's values and the days inside a month part they give (「9월 하순」), values under a heading or bold label naming assumptions or examples, the system date on a date label (「확인일」), a time slot's own length, fractions (「10분의 1」); a value marked twice reads once | as self-hosted | as self-hosted; its own revision stands (`settle(writer=True)`) |
+| Value marks (`value_guard`, `grounding-check/scripts/trace.py`) | marked, never cut; not marked: the person's values, also in another notation (「November 3rd」 → 11월 3일, 「nine」, 「1.2 million」, a printed fraction as its percent), and the days inside a month part they give (「9월 하순」), values under a heading or bold label naming assumptions or examples, the system date on a date label (「확인일」), a time slot's own length, fractions (「10분의 1」); a value marked twice reads once | as self-hosted | as self-hosted; its own revision stands (`settle(writer=True)`) |
 | Where marks stand in a chat answer (`copy-marks`, `check_stages._advice_note`) | inline; an advice answer with more than three marks gets one 「확인 필요: …」 line, the writer's own marks included | always one 「확인 필요: …」 line at the end | inline, as self-hosted |
 | Report quality follow-through (`report_stages.Verify`, `Quality`) | a web-contradicted sentence is marked; a judged figure code still finds at odds with a settled one, and a number a judge tied to another item whose value with its unit is in none of the evidence (`bound_token`), are repaired once by the planner and marked if they stand; the step shows what a judge found, never its reasoning | as self-hosted | web contradictions, code-confirmed judged figures and code-confirmed bound numbers go back to the writer once; what stands is marked; reasoning hidden |
 | Table and figure shape after the last read (`report_stages.mend_shapes`, `table_mend`) | broken pipe tables rebuilt under one header (also while drafting, `repair_pipe_tables`), uncaptioned tables captioned, a table or figure the text never names pointed at, pipe lines no table takes written as items, a header with no rows marked; read again once and kept only when no finding is added; no model call | same | same |

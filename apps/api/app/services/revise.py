@@ -311,6 +311,23 @@ def meta_talk(body: str) -> bool:
     return bool(_META_OPENING.search(text) or _META_TALK.search(text[:4000]))
 
 
+#: P0 rules a markdown part sets off by itself (bold labels read across lines, a short part)
+_NOT_FAULTS = frozenset({"markup", "empty"})
+
+
+def new_faults(old: str, new: str, *, heading: str, instruction: str) -> list[str]:
+    """P0 lint findings a rewritten part brought in: not on the part before and not set off
+    by the words the person typed (「99.9% 문구를 넣어 줘」)."""
+    from app.services import lint
+
+    def p0(text: str) -> list:
+        return [f for f in lint.check(lint.from_sections([{"heading": heading, "content": text}]))
+                if f.severity == "P0" and f.rule not in _NOT_FAULTS]
+
+    had = {f.rule for f in p0(old)} | {f.rule for f in p0(instruction)}
+    return [f.message for f in p0(new) if f.rule not in had]
+
+
 #: Quoted term swap.
 _TERM_SWAP = re.compile(
     r"[「\"“']([^」\"”']{1,80})[」\"”']\s{0,8}(?:를|을|은|는)?\s{0,8}(?:전부|모두|다)?\s{0,8}"

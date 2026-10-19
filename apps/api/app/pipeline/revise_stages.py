@@ -263,7 +263,7 @@ class Rewrite(Base):
     name = "revise-rewrite"
     kind = "model"
     reads = ("request", "document", "material.parts", "computed.prepass", "plan")
-    writes = ("document.sections", "document.changed", "document.missed")
+    writes = ("document.sections", "document.changed", "document.missed", "document.failed")
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, doc = _report(), bundle.request, bundle.document
@@ -292,64 +292,94 @@ class Rewrite(Base):
                     )
                     if revise.meta_talk(" ".join(strings(written))):
                         raise ValueError("본문 대신 대화 답이 나옴")
+                    if isinstance(written.get("notes"), str):
+                        # what the speaker says, not how the writer made it
+                        written["notes"] = internal_words.strip_work_sentences(written["notes"])
                     parts[index] = written
                     yield {"type": "slide", "slide": written, "done": True}
                 else:
-                    body, spent = await report.rewrite_section(
-                        request=request,
-                        heading=label,
-                        sections=richtext.normalise(parts),
-                        target_id=str(part.get("id") or ""),
-                        model=req.model,
-                        api_key=req.api_key,
-                        # planner paraphrase + typed words, so dropped details still land
-                        note=(
-                            consistency.dependent_note(instruction)
-                            if index in widened
-                            else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
-                            f"{(plan.typed or instruction).strip()[:400]}"
-                        ),
-                        sources=list(data.get("sources") or []),
-                        material=[*material, *settled_blocks],
-                        doc_format=doc_format,
-                    )
-                    if not body.strip():
-                        raise ValueError("빈 결과")
-                    if revise.meta_talk(body) or report.error_text(body, request):
-                        # reply to the person or an error message, not a part: keep the part
-                        raise ValueError("본문 대신 대화 답이 나옴")
-                    # existing figure kept unless redrawn or removal asked
-                    body = revise.keep_figure(str(part.get("content") or ""), body, instruction)
-                    body = richtext.detach_tables(body)
-                    # arithmetic checked, not trusted
-                    body = report.trim_table_echo(
-                        report.drop_kpi(
-                            report.fix_point_units(
-                                report.undouble_words(
-                                    report.fix_percent_formulas(
-                                        report.fix_ledger_magnitudes(
-                                            report.fix_products(body), request
+                    before = str(part.get("content") or "")
+                    spent = {"inputTokens": 0, "outputTokens": 0}
+                    rejected = ""
+                    for _attempt in range(2):
+                        body, used = await report.rewrite_section(
+                            request=request,
+                            heading=label,
+                            sections=richtext.normalise(parts),
+                            target_id=str(part.get("id") or ""),
+                            model=req.model,
+                            api_key=req.api_key,
+                            # planner paraphrase + typed words, so dropped details still land
+                            note=(
+                                consistency.dependent_note(instruction)
+                                if index in widened
+                                else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
+                                f"{(plan.typed or instruction).strip()[:400]}"
+                            ) + (f"\nThe last version of this section was rejected: {rejected}. "
+                                 "Write only the section's text for its reader: no plan of the "
+                                 "rewrite, no notes on how it is written, no instructions."
+                                 if rejected else ""),
+                            sources=list(data.get("sources") or []),
+                            material=[*material, *settled_blocks],
+                            doc_format=doc_format,
+                        )
+                        for key in spent:
+                            spent[key] += used[key]
+                        if not body.strip():
+                            raise ValueError("빈 결과")
+                        if revise.meta_talk(body) or report.error_text(body, request):
+                            # reply to the person or an error message, not a part: keep it
+                            raise ValueError("본문 대신 대화 답이 나옴")
+                        # existing figure kept unless redrawn or removal asked
+                        body = revise.keep_figure(before, body, instruction)
+                        body = richtext.detach_tables(body)
+                        # arithmetic checked, not trusted
+                        body = report.trim_table_echo(
+                            report.drop_kpi(
+                                report.fix_point_units(
+                                    report.undouble_words(
+                                        report.fix_percent_formulas(
+                                            report.fix_ledger_magnitudes(
+                                                report.fix_products(body), request
+                                            )
                                         )
                                     )
                                 )
                             )
                         )
-                    )
-                    # no repeats of earlier sections, except requested additions
-                    if not re.search(r"추가|넣어|덧붙|더\s*써|보태", instruction):
-                        earlier = [
-                            re.sub(r"<[^<>]{0,2000}>", " ", str(p.get("content") or ""))
-                            for p in parts[:index]
-                            if not is_deck
-                        ]
-                        gaejo = any(
-                            f.id == (data.get("titleBlock") or {}).get("format")
-                            and f.lists == "gaejo"
-                            for f in doc_formats.FORMATS
-                        )
-                        body = report.trim_restatements(
-                            body, earlier, keep_items=gaejo,
-                            question=bool(report.QUESTION_HEADING.search(label)))[0]
+                        # no repeats of earlier sections, except requested additions
+                        if not re.search(r"추가|넣어|덧붙|더\s*써|보태", instruction):
+                            earlier = [
+                                re.sub(r"<[^<>]{0,2000}>", " ", str(p.get("content") or ""))
+                                for p in parts[:index]
+                                if not is_deck
+                            ]
+                            gaejo = any(
+                                f.id == (data.get("titleBlock") or {}).get("format")
+                                and f.lists == "gaejo"
+                                for f in doc_formats.FORMATS
+                            )
+                            body = report.trim_restatements(
+                                body, earlier, keep_items=gaejo,
+                                question=bool(report.QUESTION_HEADING.search(label)))[0]
+                        # the writer's plan and notes, not the text; spacing as written
+                        noted = internal_words.strip_work_notes(body, request=request,
+                                                                document=True)
+                        if noted.strip() and re.sub(r"\s", "", noted) != re.sub(r"\s", "", body):
+                            body = noted
+                        # a P0 the rewrite brought in: sent back once, then the part stays
+                        faults = revise.new_faults(before, body, heading=label,
+                                                   instruction=instruction)
+                        if not faults:
+                            break
+                        rejected = " / ".join(faults)[:400]
+                        log.warning("revision of %r failed the checks: %s", logs.safe(label),
+                                    logs.safe(rejected))
+                    if faults:
+                        bundle.usage["inputTokens"] += spent["inputTokens"]
+                        bundle.usage["outputTokens"] += spent["outputTokens"]
+                        doc.failed.append(label)
+                        raise ValueError(f"검사를 통과하지 못함: {rejected}")
                     body = internal_words.scrub(body)
                     # a part's own rename only; the document's title was set by route
                     rename = revise.title_rename(instruction, names)
@@ -382,7 +412,9 @@ class Rewrite(Base):
             doc.changed += 1
             yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
         if not doc.changed:
-            for event in _stopped(bundle, error="고치지 못했습니다."):
+            said = ("고친 글이 검사를 통과하지 못해 이전 버전을 그대로 두었습니다. "
+                    "다시 요청해 주세요." if doc.failed else "고치지 못했습니다.")
+            for event in _stopped(bundle, error=said):
                 yield event
             raise Stop("nothing changed")
         for event in _tidy_tables(bundle):
