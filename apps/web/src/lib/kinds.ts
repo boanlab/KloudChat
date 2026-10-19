@@ -1,5 +1,5 @@
 import { Clapperboard, FileText, Image, MessageSquare, Presentation } from 'lucide-react'
-import type { Agent, SessionKind } from '@/types'
+import type { Agent, SessionKind, Skill } from '@/types'
 
 /** Single source of truth for the five surfaces: nav, empty states, badges and routing read from here. */
 export const kindMeta: Record<
@@ -55,6 +55,13 @@ export const kindOrder: SessionKind[] = ['chat', 'report', 'slides', 'image', 'a
 /** Surfaces an agent offers, in `kindOrder`; all of them when it names none. */
 export function agentKinds(agent: Pick<Agent, 'kinds'>): SessionKind[] {
   return agent.kinds.length ? kindOrder.filter((k) => agent.kinds.includes(k)) : kindOrder
+}
+
+/** Chosen skills whose `kinds` share no surface with the agent: they are skipped there. */
+export function skillsOffSurface(ids: string[], skills: Skill[], surfaces: SessionKind[]): Skill[] {
+  return ids
+    .map((id) => skills.find((s) => s.id === id))
+    .filter((s): s is Skill => !!s && s.kinds.length > 0 && !s.kinds.some((k) => surfaces.includes(k)))
 }
 
 /** Surface a new conversation with this agent opens on: bound surface, else the current one if offered, else the first. */

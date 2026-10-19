@@ -30,6 +30,8 @@ const EN: Record<string, string> = {
   '켜 둘 스킬 고르기': 'Choose skills to keep on',
   '「{name}」 스킬은 {skill} 화면에서만 쓰여 이 에이전트의 화면({agent})에서는 적용되지 않습니다. 고급 › 사용할 화면에서 {skill} 화면을 더하거나 스킬을 빼세요.':
     'The skill “{name}” runs only on {skill}, so it will not apply on this agent\'s surfaces ({agent}). Add {skill} under Advanced › Surfaces, or remove the skill.',
+  '{skills} 스킬이 {screen} 화면에서 작동해 {screen} 화면은 켜 둡니다. 빼려면 스킬을 먼저 빼세요.':
+    '{skills} runs on {screen}, so {screen} stays on. Remove the skill first to turn it off.',
   '켜 둘 스킬로 에이전트를 짜고, 쓸 수 있는 스킬과 도구를 좁힙니다': 'Build the agent from skills it keeps on, and narrow the skills and tools it may use',
   '켜 둘 스킬': 'Skills kept on',
   '이 에이전트의 모든 대화에서 늘 켜집니다. 스킬의 템플릿·검사·빠진 정보 질문도 함께 따라옵니다.': 'On in every conversation with this agent. Each skill\'s template, checks and missing-information questions come with it.',

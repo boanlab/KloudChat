@@ -66,7 +66,15 @@ test('a report-only skill makes the agent open on the report screen', async ({ p
   )
   await page.getByText('고급', { exact: true }).click()
   await expect(form.getByRole('combobox', { name: '처음 여는 화면' })).toHaveValue('report')
-  await expect(form.getByRole('button', { name: '보고서', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  const report = form.getByRole('button', { name: '보고서', exact: true })
+  await expect(report).toHaveAttribute('aria-pressed', 'true')
+  // Clicked again by someone who did not see it was added: the skill needs it, so it stays on.
+  await report.click()
+  await expect(report).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('screen-held')).toHaveText(
+    '「개조식 보고」 스킬이 보고서 화면에서 작동해 보고서 화면은 켜 둡니다. 빼려면 스킬을 먼저 빼세요.',
+  )
+  await expect(form.getByRole('combobox', { name: '처음 여는 화면' })).toHaveValue('report')
 
   await form.getByRole('button', { name: '만들기' }).click()
   await expect(page).toHaveURL(/\/customize\/agents\/a9999/)

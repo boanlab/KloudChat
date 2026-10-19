@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Input } from '@/components/ui'
 import { directionParticle } from '@/lib/formCheck'
-import { kindMeta } from '@/lib/kinds'
+import { kindMeta, skillsOffSurface } from '@/lib/kinds'
 import { isListed } from '@/lib/listed'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
@@ -405,12 +405,6 @@ export function SkillPicker({
 }
 
 /** The skills an agent keeps on in every turn: what it is built from (at most six). */
-/** Chosen skills whose `kinds` share no surface with the agent: they are skipped there. */
-function skillsOffSurface(ids: string[], skills: Skill[], surfaces: SessionKind[]): Skill[] {
-  return ids
-    .map((id) => skills.find((s) => s.id === id))
-    .filter((s): s is Skill => !!s && s.kinds.length > 0 && !s.kinds.some((k) => surfaces.includes(k)))
-}
 
 /** Says which chosen skills none of the agent's surfaces will run, and why. */
 export function OffSurfaceNote({ ids, skills, surfaces }: { ids: string[]; skills: Skill[]; surfaces: SessionKind[] }) {

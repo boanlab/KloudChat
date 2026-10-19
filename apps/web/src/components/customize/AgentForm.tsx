@@ -12,7 +12,7 @@ import { agentSaveError, type AgentErrorPlace } from '@/lib/agentErrors'
 import { agentsApi, errorCode, errorMessage, processApi, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { processOf, processPayload, useProcessCatalogue, type ProcessDraft } from '@/lib/process'
-import { agentKinds, kindMeta, kindOrder } from '@/lib/kinds'
+import { agentKinds, kindMeta, kindOrder, skillsOffSurface } from '@/lib/kinds'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useTemplateCatalogue } from '@/lib/templates'
 import { useT } from '@/lib/useT'
@@ -288,6 +288,8 @@ export function AgentForm({
   const english = currentLang() === 'en'
 
   const [draft, setDraft] = useState<Agent>(initial)
+  // A screen a kept skill needs, kept on when clicked; said under the screens.
+  const [heldScreen, setHeldScreen] = useState<{ kind: SessionKind; skills: string[] } | null>(null)
   // Set once created: a first knowledge file saves early.
   const [savedId, setSavedId] = useState<string | null>(creating ? null : initial.id)
   const [editingSlug, setEditingSlug] = useState(false)
@@ -852,20 +854,38 @@ export function AgentForm({
                   <Chip
                     key={k}
                     on={on}
-                    onClick={() =>
+                    onClick={() => {
+                      if (on) {
+                        const rest = draft.kinds.filter((x) => x !== k)
+                        const before = skillsOffSurface(draft.activeSkillIds, skills, offered).map((s) => s.id)
+                        const lost = skillsOffSurface(draft.activeSkillIds, skills, agentKinds({ kinds: rest }))
+                          .filter((s) => !before.includes(s.id))
+                        if (lost.length > 0) {
+                          setHeldScreen({ kind: k, skills: lost.map((s) => s.name) })
+                          return
+                        }
+                      }
+                      setHeldScreen(null)
                       edit(
                         on
                           ? withinKinds(draft, draft.kinds.filter((x) => x !== k))
                           : // A screen added while none is chosen to open on: the agent opens there.
                             { ...withinKinds(draft, [...draft.kinds, k]), surface: draft.surface ?? k },
                       )
-                    }
+                    }}
                   >
                     {t(kindMeta[k].label)}
                   </Chip>
                 )
               })}
             </div>
+            {heldScreen && draft.kinds.includes(heldScreen.kind) && (
+              <p role="status" data-testid="screen-held" className="text-sm text-muted">
+                {t('{skills} 스킬이 {screen} 화면에서 작동해 {screen} 화면은 켜 둡니다. 빼려면 스킬을 먼저 빼세요.')
+                  .replace('{skills}', heldScreen.skills.map((name) => `「${name}」`).join(', '))
+                  .replaceAll('{screen}', t(kindMeta[heldScreen.kind].label))}
+              </p>
+            )}
           </Block>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label={t('처음 여는 화면')} hint={t('이 에이전트로 새 대화를 열 때의 화면입니다.')}>
