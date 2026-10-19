@@ -53,7 +53,7 @@ _ARTIFACTS = sa.table(
 def _rewrite(ratio: float) -> None:
     bind = op.get_bind()
     rows = bind.execute(
-        sa.select(_ARTIFACTS.c.id, _ARTIFACTS.c.data).where(_ARTIFACTS.c.kind == "deck")
+        sa.select(_ARTIFACTS.c.id, _ARTIFACTS.c.data).where(sa.cast(_ARTIFACTS.c.kind, sa.String) == "deck")
     ).all()
     for row_id, data in rows:
         if isinstance(data, str):
