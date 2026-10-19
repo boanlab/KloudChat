@@ -36,13 +36,13 @@ log = logging.getLogger(__name__)
 TEXT_PT, EDGE_PT, TITLE_PT = 12.0, 9.0, 10.0
 #: a label's widest line before it wraps, a box's least size, and its padding around the text
 LINE_W = 132.0
-MIN_W, MIN_H = 84.0, 40.0
+MIN_W, MIN_H = 84.0, 32.0
 #: each layout is also tried compact (narrower labels wrapped, gaps closed in): a narrow box,
 #: the document column, keeps larger text so
-COMPACT = (72.0, 0.7)
-PAD_X, PAD_Y = 10.0, 10.0
+COMPACT = (60.0, 0.5)
+PAD_X, PAD_Y = 10.0, 7.0
 #: a group's frame: sides, and the title strip on top
-FRAME_PAD, TITLE = 12.0, 24.0
+FRAME_PAD, TITLE = 12.0, 20.0
 #: the most a figure is enlarged past its measured size
 GROW = 1.15
 #: a figure without groups is laid out here only when it is this short (layers along the flow)
@@ -247,7 +247,8 @@ def _label(text: str, size: float, bold: bool = False) -> dict:
 
 
 def _requests(graph: Graph) -> list[dict]:
-    """ELK graphs for `graph`, one per flow and group direction, each roomy and compact; links
+    """ELK graphs for `graph`, one per flow direction, each roomy and compact (a group's own
+    `direction` is not sent: ELK lays the groups out with the figure's flow); links
     back against the flow are sent reversed, so the cycle is cut where the writer meant
     (`feedback`)."""
     against = feedback(graph)
@@ -271,41 +272,38 @@ def _requests(graph: Graph) -> list[dict]:
             w, h = _box(graph, nid, height, line_w)
             return {"id": nid, "width": round(w, 1), "height": round(h, 1)}
 
-        insides = (flow, "DOWN" if flow == "RIGHT" else "RIGHT") if graph.groups else (flow,)
-        for inside in insides:
-            children = [node(n) for n in graph.nodes if owner[n] == n]
-            for gid, (title, members) in graph.groups.items():
-                kept = [m for m in members if m in graph.nodes]
-                if not kept:
-                    continue
-                children.append({
-                    "id": f"g:{gid}",
-                    "labels": [_label(title, TITLE_PT, True)],
-                    "layoutOptions": {
-                        "elk.direction": _DIRECTION.get(graph.group_dirs.get(gid, ""), inside),
-                        "elk.padding": f"[top={TITLE},left={FRAME_PAD},bottom={FRAME_PAD},"
-                                       f"right={FRAME_PAD}]",
-                        "elk.nodeLabels.placement": "[H_CENTER, V_TOP, INSIDE]",
-                        "elk.nodeSize.constraints": "[NODE_LABELS]",
-                        **spacing,
-                    },
-                    "children": [node(m) for m in kept],
-                })
-            out.append({
-                "id": "root",
+        children = [node(n) for n in graph.nodes if owner[n] == n]
+        for gid, (title, members) in graph.groups.items():
+            kept = [m for m in members if m in graph.nodes]
+            if not kept:
+                continue
+            children.append({
+                "id": f"g:{gid}",
+                "labels": [_label(title, TITLE_PT, True)],
                 "layoutOptions": {
-                    "elk.algorithm": "layered",
-                    "elk.direction": flow,
-                    "elk.hierarchyHandling": "INCLUDE_CHILDREN",
-                    "elk.edgeRouting": "ORTHOGONAL",
-                    "elk.edgeLabels.placement": "CENTER",
-                    "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-                    "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+                    "elk.padding": f"[top={TITLE},left={FRAME_PAD},bottom={FRAME_PAD},"
+                                   f"right={FRAME_PAD}]",
+                    "elk.nodeLabels.placement": "[H_CENTER, V_TOP, INSIDE]",
+                    "elk.nodeSize.constraints": "[NODE_LABELS]",
                     **spacing,
                 },
-                "children": children,
-                "edges": edges,
+                "children": [node(m) for m in kept],
             })
+        out.append({
+            "id": "root",
+            "layoutOptions": {
+                "elk.algorithm": "layered",
+                "elk.direction": flow,
+                "elk.hierarchyHandling": "INCLUDE_CHILDREN",
+                "elk.edgeRouting": "ORTHOGONAL",
+                "elk.edgeLabels.placement": "CENTER",
+                "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+                "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+                **spacing,
+            },
+            "children": children,
+            "edges": edges,
+        })
     return out
 
 
@@ -440,9 +438,14 @@ def place(graph: Graph, width: float, height: float) -> Laid | None:
         for section in laid["sections"]:
             run = [section["startPoint"], *section.get("bendPoints", []), section["endPoint"]]
             for p in run:
-                at = (left + (ox + p["x"]) * scale, top + (oy + p["y"]) * scale)
-                if not points or points[-1] != at:
-                    points.append(at)
+                x, y = left + (ox + p["x"]) * scale, top + (oy + p["y"]) * scale
+                if points:
+                    # ELK's sections meet a hair apart: square the run again
+                    px, py = points[-1]
+                    x = px if abs(x - px) < 1.0 else x
+                    y = py if abs(y - py) < 1.0 else y
+                if not points or points[-1] != (x, y):
+                    points.append((x, y))
         if (edge.a, edge.b) in against:
             points.reverse()
         label = None

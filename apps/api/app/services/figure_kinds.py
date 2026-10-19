@@ -878,7 +878,12 @@ _RING_OUT, _RING_IN, _CALLOUT = 160.0, 96.0, 176.0
 
 def _cycle_size(s: dict[str, Any]) -> tuple[float, float]:
     callouts = any(stage.get("note") for stage in s["stages"])
-    return 2 * (_RING_OUT + (50 + _CALLOUT if callouts else 10)) + 20, 2 * (_RING_OUT + 50) + 40
+    # a note goes above or below the ring only for a stage at the top or the bottom
+    span = 360.0 / len(s["stages"])
+    ends = any(stage.get("note") and abs(math.cos(math.radians(-90 + span * k + span / 2 - 3)))
+               < 0.3 for k, stage in enumerate(s["stages"]))
+    return (2 * (_RING_OUT + (50 + _CALLOUT if callouts else 10)) + 20,
+            2 * (_RING_OUT + (50 if ends else 16)) + 40)
 
 
 def _cycle(pen: Pen, s: dict[str, Any], accent: str) -> None:
@@ -935,11 +940,23 @@ def _cycle(pen: Pen, s: dict[str, Any], accent: str) -> None:
         pen.text(cx, cy + (16 if center else 0), lines, size, False, SUB)
 
 
-def _house_size(s: dict[str, Any]) -> tuple[float, float]:
-    return 960.0, 120 + 16 + 202 + 14 + 52 * len(s["base"]) + 10
+#: a pillar's shaft, and a lower one for a wide box (a slide's body)
+_SHAFT, _SHAFT_LOW = 170.0, 100.0
 
 
-def _house(pen: Pen, s: dict[str, Any], accent: str) -> None:
+def _house_size(s: dict[str, Any], shaft: float = _SHAFT) -> tuple[float, float]:
+    return 960.0, 120 + 16 + 32 + shaft + 14 + 52 * len(s["base"]) + 10
+
+
+def _house_low_size(s: dict[str, Any]) -> tuple[float, float]:
+    return _house_size(s, _SHAFT_LOW)
+
+
+def _house_low(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    _house(pen, s, accent, _SHAFT_LOW)
+
+
+def _house(pen: Pen, s: dict[str, Any], accent: str, shaft: float = _SHAFT) -> None:
     deep = _deepened(accent)
     pen.poly([(480, 24), (900, 120), (60, 120)], deep)
     pen.text(480, 58, "Goal" if s["lang"] == "en" else "목표", 11, True, tint(deep, 0.6))
@@ -950,11 +967,11 @@ def _house(pen: Pen, s: dict[str, Any], accent: str) -> None:
     for i, name in enumerate(pillars):
         x = 90 + i * (pw + gap)
         pen.rect(x, 136, pw, 18, tint(deep, 0.55), r=3)
-        pen.rect(x + 12, 154, pw - 24, 170, tint(deep, 0.88), r=0)
-        pen.rect(x, 324, pw, 14, tint(deep, 0.55), r=3)
-        pen.label(x + 12, 154, pw - 24, 170, name, 15, True, deep, 10)
+        pen.rect(x + 12, 154, pw - 24, shaft, tint(deep, 0.88), r=0)
+        pen.rect(x, 154 + shaft, pw, 14, tint(deep, 0.55), r=3)
+        pen.label(x + 12, 154, pw - 24, shaft, name, 15, True, deep, 10)
     for k, row in enumerate(s["base"]):
-        y = 352 + k * 52
+        y = 182 + shaft + k * 52
         last = k == len(s["base"]) - 1
         fill = deep if last and len(s["base"]) > 1 else tint(deep, 0.25)
         pen.rect(60, y, 840, 46, fill, r=6)
@@ -1071,6 +1088,8 @@ def _options_draw(pen: Pen, s: dict[str, Any], accent: str) -> None:
 
 
 _AX0, _AX1, _AY0, _AY1 = 130.0, 900.0, 30.0, 410.0
+#: the plot's foot in a wide box (a slide's body): a lower plot, the same width
+_AY1_LOW = 290.0
 _AT = {"low": 0.25, "mid": 0.5, "high": 0.75}
 
 
@@ -1078,30 +1097,38 @@ def _axes_size(s: dict[str, Any]) -> tuple[float, float]:
     return 960.0, 480.0
 
 
-def _axes_draw(pen: Pen, s: dict[str, Any], accent: str) -> None:
-    mx, my = (_AX0 + _AX1) / 2, (_AY0 + _AY1) / 2
-    pen.rect(_AX0, _AY0, _AX1 - _AX0, _AY1 - _AY0, "#F8FAFC", r=6)
+def _axes_low_size(s: dict[str, Any]) -> tuple[float, float]:
+    return 960.0, _AY1_LOW + 70
+
+
+def _axes_low(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    _axes_draw(pen, s, accent, _AY1_LOW)
+
+
+def _axes_draw(pen: Pen, s: dict[str, Any], accent: str, bottom: float = _AY1) -> None:
+    mx, my = (_AX0 + _AX1) / 2, (_AY0 + bottom) / 2
+    pen.rect(_AX0, _AY0, _AX1 - _AX0, bottom - _AY0, "#F8FAFC", r=6)
     hot = next((i for i in s["items"] if i["name"] == s.get("hot")), None)
     if hot and hot["x"] != "mid" and hot["y"] != "mid":
         qx = _AX0 if hot["x"] == "low" else mx
         qy = _AY0 if hot["y"] == "high" else my
         pen.rect(qx, qy, mx - _AX0, my - _AY0, tint(accent, 0.93), r=0)
-    pen.line([(mx, _AY0), (mx, _AY1)], tint(NEUTRAL, 0.55), arrow=False, sw=1, dash=True)
+    pen.line([(mx, _AY0), (mx, bottom)], tint(NEUTRAL, 0.55), arrow=False, sw=1, dash=True)
     pen.line([(_AX0, my), (_AX1, my)], tint(NEUTRAL, 0.55), arrow=False, sw=1, dash=True)
-    pen.line([(_AX0, _AY1), (_AX1 + 20, _AY1)], INK)
-    pen.line([(_AX0, _AY1), (_AX0, _AY0 - 14)], INK)
+    pen.line([(_AX0, bottom), (_AX1 + 20, bottom)], INK)
+    pen.line([(_AX0, bottom), (_AX0, _AY0 - 14)], INK)
     x, y = s["x"], s["y"]
-    pen.text(mx, _AY1 + 46, x["name"], 14, True, INK)
+    pen.text(mx, bottom + 46, x["name"], 14, True, INK)
     if x.get("low"):
-        pen.text(_AX0 + 6, _AY1 + 20, x["low"], 12, False, SUB, "l")
+        pen.text(_AX0 + 6, bottom + 20, x["low"], 12, False, SUB, "l")
     if x.get("high"):
-        pen.text(_AX1, _AY1 + 20, x["high"], 12, False, SUB, "r")
+        pen.text(_AX1, bottom + 20, x["high"], 12, False, SUB, "r")
     if s["lang"] == "en":
         pen.text(_AX0 + 10, _AY0 - 14, y["name"], 14, True, INK, "l")
     else:  # read top to bottom beside the axis
         pen.text(70, my, list(y["name"].replace(" ", "")), 14, True, INK)
     if y.get("low"):
-        pen.text(_AX0 - 12, _AY1 - 10, y["low"], 12, False, SUB, "r")
+        pen.text(_AX0 - 12, bottom - 10, y["low"], 12, False, SUB, "r")
     if y.get("high"):
         pen.text(_AX0 - 12, _AY0 + 12, y["high"], 12, False, SUB, "r")
     cells: dict[tuple[str, str], list[dict[str, str]]] = {}
@@ -1110,7 +1137,7 @@ def _axes_draw(pen: Pen, s: dict[str, Any], accent: str) -> None:
     letter = 0
     for (px, py), group in cells.items():
         cx = _AX0 + (_AX1 - _AX0) * _AT[px]
-        cy = _AY1 - (_AY1 - _AY0) * _AT[py]
+        cy = bottom - (bottom - _AY0) * _AT[py]
         spread = min(130.0, (_AX1 - _AX0) / 2 / max(1, len(group)))
         for k, item in enumerate(group):
             ix = cx + (k - (len(group) - 1) / 2) * spread
@@ -1129,11 +1156,11 @@ def _axes_draw(pen: Pen, s: dict[str, Any], accent: str) -> None:
             pen.text(ix, cy + 40, lines, size, True, INK)
 
 
-_MSG_TOP = 100.0
+_MSG_TOP = 86.0
 
 
 def _messages_step(s: dict[str, Any]) -> float:
-    return 62.0 if any(m.get("note") for m in s["messages"]) else 46.0
+    return 54.0 if any(m.get("note") for m in s["messages"]) else 42.0
 
 
 def _messages_size(s: dict[str, Any]) -> tuple[float, float]:
@@ -1400,6 +1427,9 @@ _DRAW = {"steps": (_steps_size, _steps), "cycle": (_cycle_size, _cycle),
          "lanes": (_lanes_size, _lanes_draw)}
 _BAND = {"cycle": (_cycle_band_size, _cycle_band), "house": (_house_band_size, _house_band),
          "compare": (_compare_band_size, _compare_band)}
+#: a box wider than _LOW (a slide's body) draws these lower
+_LOW = 2.2
+_LOW_KINDS = {"axes": (_axes_low_size, _axes_low), "house": (_house_low_size, _house_low)}
 #: a box this much wider than tall gets the strip layout
 _WIDE = 3.2
 
@@ -1408,6 +1438,8 @@ def _layout(s: dict[str, Any], box: tuple[float, float] | None = None):
     wide = s.get("band") or (box is not None and box[0] / box[1] > _WIDE)
     if wide and s["kind"] in _BAND:
         return _BAND[s["kind"]]
+    if box is not None and box[0] / box[1] > _LOW and s["kind"] in _LOW_KINDS:
+        return _LOW_KINDS[s["kind"]]
     if box is not None and box[0] / box[1] < _TALL and s["kind"] in _TALL_KINDS and _noted(s):
         return _TALL_KINDS[s["kind"]]
     return _DRAW[s["kind"]]

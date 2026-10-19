@@ -3501,13 +3501,15 @@ def to_pptx(
                 crop_left = crop_top = crop_right = crop_bottom = 0.0
             left = (72 if picture_left else 72 + text_width + 24) if not alone else (_W - width) / 2
             top = body_top + max(0.0, (room - height) / 2)
+            # the caption's line under the figure only when there is a caption
+            figure_room = room - 30 if image_caption else room
             if (data.get("image") or {}).get("diagram") and native_figure(
                 slide, data,
                 left=(72 if picture_left else 72 + text_width + 24) if not alone else 72.0,
-                top=body_top, width=box[0] if not alone else _W - 144, height=room - 30,
+                top=body_top, width=box[0] if not alone else _W - 144, height=figure_room,
                 accent=accent,
             ):
-                width, height = (box[0] if not alone else _W - 144), room - 30
+                width, height = (box[0] if not alone else _W - 144), figure_room
                 left = (72 if picture_left else 72 + text_width + 24) if not alone else 72.0
                 top = body_top
                 fill = False
