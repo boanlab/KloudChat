@@ -27,7 +27,7 @@ test('the form is prefilled from the conversation and nothing is saved before ì 
   await expect(page).toHaveURL(/\/customize\/agents\/a9999999999999999999999999999999$/)
   const writes = state.calls.map((c) => `${c.method} ${c.path}`)
   expect(writes).toEqual(expect.arrayContaining([
-    'POST /agents', 'PUT /agents/a9999999999999999999999999999999/process',
+    'POST /agents',
     'POST /agents/a9999999999999999999999999999999/knowledge/from-files',
   ]))
   expect(state.calls.find((c) => c.path.endsWith('/from-files'))?.body).toEqual({ ids: [agentDraft.files[0].id] })

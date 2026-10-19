@@ -55,8 +55,8 @@ test('기본 과정에서 시작 ticks the base\'s own 묶음; the report flow\'
 
   await form.getByRole('button', { name: '만들기' }).click()
   await expect(page).toHaveURL(/\/customize\/agents\/a9999999999999999999999999999999$/)
-  const put = state.calls.find((c) => c.method === 'PUT' && c.path.endsWith('/process'))
-  expect(put?.body).toMatchObject({
+  // Saved with the agent: a refused 진행 과정 leaves no agent behind.
+  expect((state.calls.find((c) => c.method === 'POST' && c.path === '/agents')?.body as { process?: unknown } | undefined)?.process).toMatchObject({
     mode: 'base', base: 'gaejo-report',
     bundles: [{ bundle: 'prepare' }, { bundle: 'review' }, { bundle: 'finish', items: { export: 'hwpx' } }],
   })
@@ -103,7 +103,7 @@ test('직접 구성 starts from the agent itself and can be kept as a 묶음', a
   })
   await form.getByRole('button', { name: '만들기' }).click()
   await expect(page).toHaveURL(/\/customize\/agents\/a9999/)
-  expect(state.calls.find((c) => c.method === 'PUT' && c.path.endsWith('/process'))?.body).toMatchObject({
+  expect((state.calls.find((c) => c.method === 'POST' && c.path === '/agents')?.body as { process?: unknown } | undefined)?.process).toMatchObject({
     mode: 'custom', base: 'gaejo-report', stages: [{ kind: 'human', ref: 'outline' }, { kind: 'agent', ref: '@self' }],
   })
   expect(state.problems).toEqual([])
@@ -235,7 +235,7 @@ test('the switch a file asked for ticks the export in the format the 지시 name
   await expect(exportRow.getByRole('combobox', { name: '파일 형식' })).toHaveValue('hwpx')
   await form.getByRole('button', { name: '만들기' }).click()
   await expect(page).toHaveURL(/\/customize\/agents\/a9999/)
-  const body = state.calls.find((c) => c.method === 'PUT' && /^\/agents\/[^/]+\/process$/.test(c.path))?.body as {
+  const body = (state.calls.find((c) => c.method === 'POST' && c.path === '/agents')?.body as { process?: unknown } | undefined)?.process as {
     bundles?: { bundle: string; items: Record<string, unknown> }[]
   }
   expect(body.bundles?.find((b) => b.bundle === 'finish')?.items.export).toBe('hwpx')

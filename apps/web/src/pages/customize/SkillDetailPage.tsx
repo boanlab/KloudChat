@@ -181,7 +181,7 @@ export function SkillDetailPage() {
           navigate('/customize?tab=skills')
         }}
         title={t('{name} 삭제').replace('{name}', t(skill.name))}
-        description={t('되돌릴 수 없습니다. 이 스킬을 쓰던 대화는 그대로 남습니다.')}
+        description={t('삭제 직후 알림의 실행 취소로 되돌릴 수 있고, 그 뒤에는 되돌릴 수 없습니다. 이 스킬을 쓰던 대화는 그대로 남습니다.')}
       />
     </>
   )

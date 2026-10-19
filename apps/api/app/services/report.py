@@ -3316,6 +3316,27 @@ def given_outline(request: str) -> list[str]:
     return runs[-1]
 
 
+#: 「금주 실적, 이슈, 차주 계획 순서」: an order an agent's 지시 gives its documents
+_ORDER_TAIL = re.compile(
+    r"\s{0,2}(?:의\s{0,2})?(?:순서|순|차례)(?:로|대로|으로)?"
+    r"(?:\s{0,2}(?:쓴다|씁니다|적는다|작성한다|작성|구성한다|구성|정리한다|정리|나눈다))?\s{0,2}$")
+_ORDER_LEAD = re.compile(r"^\s{0,3}(?:목차|구성|절|순서|본문)\s{0,2}(?:는|은|:|：)\s{0,3}")
+
+
+def instructed_sections(text: str) -> list[str]:
+    """Sections a standing instruction lists in order (two to twelve short items), else `[]`."""
+    for sentence in re.split(r"[.。\n]", text or ""):
+        tail = _ORDER_TAIL.search(sentence)
+        if not tail:
+            continue
+        body = _ORDER_LEAD.sub("", sentence[: tail.start()]).strip()
+        joint = r"[,，]|→|->|>" if re.search(r"[,，]|→|->|>", body) else r"[·ㆍ/]"
+        items = [" ".join(part.split()).strip(" ·") for part in re.split(joint, body)]
+        if 2 <= len(items) <= 12 and all(2 <= len(item) <= 20 for item in items):
+            return items
+    return []
+
+
 _LISTED = re.compile(r"구성(?:은|:|：)\s{0,3}([^.。\n]{6,300})")
 
 

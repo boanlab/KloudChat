@@ -600,7 +600,8 @@ interface State {
   deleteMemory: (id: string) => Promise<void>
   togglePinMemory: (id: string) => Promise<void>
   /** Resolves to the saved row (a new one carries the server's id). */
-  upsertAgent: (a: Agent) => Promise<Agent>
+  /** `process` on a new agent: saved with it or neither (`POST /agents`). */
+  upsertAgent: (a: Agent, process?: Record<string, unknown>) => Promise<Agent>
   /** Copies a shared agent and the skills it runs on. */
   installAgent: (a: Agent) => Promise<void>
   deleteAgent: (id: string) => Promise<void>
@@ -2659,7 +2660,7 @@ export const useStore = create<State>((set, get) => ({
     // The original's install count and `installed` flag moved.
     await get().loadWorkspace()
   },
-  upsertAgent: async (a) => {
+  upsertAgent: async (a, process) => {
     touchWorkspace()
     const payload = {
       name: a.name,
@@ -2692,7 +2693,9 @@ export const useStore = create<State>((set, get) => ({
       ...(a.processSettings !== undefined ? { processSettings: a.processSettings } : {}),
     }
     const exists = get().agents.some((x) => x.id === a.id)
-    const row = exists ? await agentsApi.update(a.id, payload) : await agentsApi.create(payload)
+    const row = exists
+      ? await agentsApi.update(a.id, payload)
+      : await agentsApi.create(process ? { ...payload, process } : payload)
     const saved = toAgent(row)
     set((s) => ({
       agents: exists

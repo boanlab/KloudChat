@@ -234,7 +234,7 @@ export function AgentDetailPage() {
           navigate('/customize?tab=agents')
         }}
         title={t('{name} 삭제').replace('{name}', t(agent.name))}
-        description={t('되돌릴 수 없습니다. 이 에이전트로 하던 대화는 그대로 남습니다.')}
+        description={t('삭제 직후 알림의 실행 취소로 되돌릴 수 있고, 그 뒤에는 되돌릴 수 없습니다. 이 에이전트로 하던 대화는 그대로 남습니다.')}
       />
     </>
   )

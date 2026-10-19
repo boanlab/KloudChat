@@ -42,6 +42,10 @@ _MEMORY_TYPE_LABEL = {
 }
 
 
+#: block sources a person set once, not per turn
+STANDING = ("user.instructions", "agent.instructions", "project.instructions")
+
+
 class WorkspaceContextError(ValueError):
     """Stable refusal code, router-safe."""
 
@@ -121,6 +125,12 @@ class WorkspaceContext:
     @property
     def untrusted(self) -> list[str]:
         return [block.text for block in self.blocks if not block.trusted and block.text]
+
+    @property
+    def standing(self) -> list[str]:
+        """Instructions set once (account, agent, project): what they state is known before
+        any question is asked (「시설과장님께 올리는 주간보고」 answers 보고 대상)."""
+        return [block.text for block in self.blocks if block.source in STANDING and block.text]
 
     @property
     def estimated_skill_tokens(self) -> int:
@@ -257,6 +267,16 @@ def surface_body(body: str, kind: SessionKind) -> str:
     return surface_prompt(body, kind.value)
 
 
+#: headings of the agent's and the project's instruction blocks (`standing_of`)
+_AGENT_HEADING = "# 역할\n"
+_PROJECT_HEADING = "# 프로젝트 지침 — "
+
+
+def standing_of(trusted: list[str]) -> list[str]:
+    """The agent's and the project's instructions among a writer's trusted texts."""
+    return [text for text in trusted or () if text.startswith((_AGENT_HEADING, _PROJECT_HEADING))]
+
+
 def _agent_block(agent: Agent | None, kind: SessionKind) -> str:
     if agent is None:
         return ""
@@ -268,7 +288,7 @@ def _agent_block(agent: Agent | None, kind: SessionKind) -> str:
             "# 담당 부서·연락처\n"
             "When the material does not answer the question, or answers it only in part, "
             "point the person to this contact, copied exactly as written:\n" + contact)
-    return f"# 역할\n{prompt}" if prompt else ""
+    return f"{_AGENT_HEADING}{prompt}" if prompt else ""
 
 
 #: Knowledge's minimum share of the file budget.
@@ -283,7 +303,7 @@ def knowledge_budget_after(file_budget: int, spent_on_files: int) -> int:
 def _project_instructions(project: Project | None) -> str:
     if project is None or not project.instructions.strip():
         return ""
-    return f"# 프로젝트 지침 — {project.name}\n{project.instructions.strip()}"
+    return f"{_PROJECT_HEADING}{project.name}\n{project.instructions.strip()}"
 
 
 async def _project_knowledge(
@@ -1130,10 +1150,12 @@ __all__ = [
     "ContextFile",
     "MAX_ACTIVE_SKILLS",
     "MAX_AGENT_SKILLS",
+    "STANDING",
     "agent_skill_rows",
     "WorkspaceContext",
     "WorkspaceContextError",
     "agent_settings",
     "assemble",
     "design_for",
+    "standing_of",
 ]

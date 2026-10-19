@@ -327,6 +327,8 @@ export function ProcessSection({
   const surfaceRef = useRef<HTMLSelectElement>(null)
   // First document-writing base: target for a 바로 답하기 agent needing a file.
   const documentBase = cat?.bases.find((b) => b.surface === 'report' && !b.draft) ?? null
+  // Shown once the catalogue has one (or failed, with its retry); an agent on one keeps it.
+  const offersBase = (cat?.bases.length ?? 0) > 0 || catState.status === 'error' || value.mode === 'base'
   const wantsFile = WANTS_FILE.test(`${agent.name}\n${agent.description}\n${agent.systemPrompt}`)
   const baseLabel = (name: string, made: string | undefined) => {
     const label = baseLabelOf(name, made)
@@ -450,7 +452,11 @@ export function ProcessSection({
         {radio(
           'direct',
           '바로 답하기',
-          on === 'chat' ? '요청을 받아 대화로 답합니다 (파일로 받으려면 기본 과정을 고르세요).' : '요청을 받아 곧바로 답합니다.',
+          on !== 'chat'
+            ? '요청을 받아 곧바로 답합니다.'
+            : documentBase
+              ? '요청을 받아 대화로 답합니다 (파일로 받으려면 기본 과정을 고르세요).'
+              : '요청을 받아 대화로 답합니다 (파일로 받으려면 고급 › 처음 여는 화면을 보고서로 하고 마무리하기의 파일로 내보내기를 켜세요).',
           fixed,
         )}
         {value.mode === 'direct' && on === 'chat' && wantsFile && toDocumentBase && documentBase && (
@@ -467,7 +473,7 @@ export function ProcessSection({
             </Button>
           </div>
         )}
-        {radio(
+        {offersBase && radio(
           'base',
           '기본 과정에서 시작',
           cat

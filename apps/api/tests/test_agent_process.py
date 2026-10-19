@@ -15,7 +15,7 @@ from sqlalchemy import JSON, MetaData
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 
 # The `wired` and `writers` fixtures are shared with the pipeline tests.
 from test_user_pipelines import _MODEL, wired, writers  # noqa: F401
@@ -37,7 +37,7 @@ from app.routers import sessions
 from app.routers import user_pipelines as up
 from app.routers import workspace as ws
 from app.routers.pipelines import describe, pipeline_for_agent
-from app.schemas.workspace import AgentIn
+from app.schemas.workspace import AgentCreateIn, AgentIn
 from app.services import (
     bases,
     bundles,
@@ -650,6 +650,47 @@ async def test_a_chat_agent_stores_no_export_it_cannot_make(wired):
         row = await db.get(Agent, made.id)
         assert row.bundles == [{"bundle": "finish", "items": {"export": False}}]
         assert not any("DOCX" in line for line in out["chain"])
+
+
+async def test_a_refused_process_leaves_no_half_made_agent(wired):
+    """`POST /agents` with its 진행 과정: both saved, or neither (no agent left to save twice)."""
+    me, _, _ = await _people(wired.local)
+    async with wired.local() as db:
+        with pytest.raises(HTTPException) as caught:
+            await ws.create_agent(AgentCreateIn(
+                name="테스트 기본과정", system_prompt="", process={"mode": "base", "base": None}),
+                me, db)
+        assert caught.value.detail["problems"][0]["code"] == "base_required"
+        with pytest.raises(HTTPException) as caught:
+            await ws.create_agent(AgentCreateIn(name="테스트", process={"mode": 3}), me, db)
+        assert caught.value.detail == "process_invalid"
+    async with wired.local() as db:
+        assert (await db.exec(select(Agent).where(Agent.owner_id == me.id))).all() == []
+        made = await ws.create_agent(AgentCreateIn(
+            name="테스트 기본과정", kinds=["chat"],
+            process={"mode": "direct", "bundles": [{"bundle": "review"}]}), me, db)
+        row = await db.get(Agent, made.id)
+        assert row.check_skills == ["grounding-check"] and made.process["mode"] == "direct"
+
+
+async def test_the_guides_minutes_agent_exports_hwpx_without_a_base(wired):
+    """사용 안내의 회의록 에이전트: 켜 둘 스킬 회의록 작성, 사용할 화면 보고서, 마무리하기 HWPX."""
+    me, _, _ = await _people(wired.local)
+    assert bases.bases() == []
+    async with wired.local() as db:
+        made = await ws.create_agent(AgentCreateIn(
+            name="우리 팀 회의록", kinds=["chat", "report"], surface="report",
+            system_prompt="작성자는 「기획팀 [이름]」으로 적는다.", process={
+                "mode": "direct", "bundles": [
+                    {"bundle": "prepare"}, {"bundle": "review"},
+                    {"bundle": "finish", "items": {"export": "hwpx"}}]}), me, db)
+        row = await db.get(Agent, made.id)
+        assert row.surface == "report" and row.base_key is None
+        pipe = await db.get(UserPipeline, row.pipeline_id)
+        assert [(s["kind"], s["ref"]) for s in pipe.stages][-2:] == [("agent", "@self"),
+                                                                    ("export", "")]
+        assert pipe.stages[-1]["settings"]["formats"] == ["hwpx"]
+        assert made.process["chain"][-1] == "다 쓰면 파일로 내보내기 (HWPX)"
 
 
 async def test_a_new_agents_own_steps_are_judged_as_they_will_run(wired):

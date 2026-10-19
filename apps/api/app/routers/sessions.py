@@ -4429,7 +4429,9 @@ async def send_message(
         file_questions = [gap]
     pre = await _gaps(check_keys, questions=asking, judge=(judge_model, judge_key),
                       request=content,
-                      material="\n".join(workspace.untrusted), first_draft=first_draft,
+                      # what the agent's 지시 already states is not asked again
+                      material="\n".join([*workspace.untrusted, *workspace.standing]),
+                      first_draft=first_draft,
                       doc_format=workspace.doc_format, agent_key=agent_key, specs=specs, card={
                           "plans_first": _plans_first(session),
                           "may_ask": not pending or reply_brings_files,

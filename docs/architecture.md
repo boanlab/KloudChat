@@ -297,7 +297,12 @@ scripts waits for an administrator (`/admin/skills`, **Skill review**). A person
 format needs (`[[questions]]` in `template.toml`), an agent adds its own
 (`agents.gap_questions`, the agent form; a shipped agent's come from its file). Each names
 a detector — a built-in one from `gap-check/scripts/gaps.py`, keywords, a bounded pattern,
-or the judge model, which must quote the answer from the material. A template's document format
+or the judge model, which must quote the answer from the material. Detectors read the
+request, the material and the instructions set once (account, agent, project:
+`WorkspaceContext.standing`), so an agent whose instructions say 「시설과장님께 올리는
+주간보고」 is not asked whom it reports to; the report writer also takes the head fields
+(「작성자는 「…」로 적는다」) and a section order (「금주 실적, 이슈, 차주 계획 순서」,
+`report.instructed_sections`) from those instructions. A template's document format
 (`doc_format`) and genre rule (`genre.md`) are carried by the template too. The sandbox sits in
 the self-hosted stack with networking off, so with `SANDBOX_IN_BOUNDARY` (on) both tools
 are offered to strict-local turns, and `run_code` then writes on the `strict-local/`
@@ -1074,13 +1079,15 @@ step** raises `Wait`: what the run spent is billed, the card (`needs`) or the ou
 next message resumes the run from that step with the answers or the approved outline.
 
 **An agent's process** (`app/services/bases.py`, `app/services/bundles.py`,
-`PUT /agents/{id}/process`). The agent form offers **How it works** — **Answer directly** (no base), **Start from a
+`PUT /agents/{id}/process`, or `process` on `POST /agents`: a new agent and its process are
+saved in one transaction, so a refused process leaves no agent). The agent form offers **How it works** — **Answer directly** (no base), **Start from a
 base process** (a **base**: an offered catalogue agent, `agents.base_key`) or **Set it up
 yourself (advanced)** (the step editor above, not offered for slides) — and **Extra work**,
 one checkbox per **bundle**.
 
 - A **base** is any offered agent file (`starter.offered_agents`; drafts for
-  administrators only). Its plain steps are its pipeline's `[summary]` lines (at most five);
+  administrators only). With none offered the form hides the choice (an agent already on a
+  withdrawn base keeps it). Its plain steps are its pipeline's `[summary]` lines (at most five);
   `sessions._agent_catalog_key` resolves `catalog_key`, then `base_key`, then the original's,
   so a person's agent with a base runs that base's question card, format, template and
   pipeline. Picking a base sets `surface`, `doc_format` and (when the agent has none that
