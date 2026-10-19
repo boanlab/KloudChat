@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.pipeline.report_stages import report_design
-from app.services import deck, design, report
+from app.services import design, report
 
 REQUEST = (
     "사내 클라우드 보안 점검 결과를 정리한 1쪽 보고서. 점검 항목 5개, 발견 사항, 개선 권고로 구성"
@@ -41,7 +41,8 @@ async def test_the_look_is_announced_before_the_first_section(monkeypatch):
     announced = next(e["design"] for e in events if e["type"] == "design")
     # The planner's 미니멀 and the subject's 먹 — what the saved report carried.
     assert announced["visualStyle"] == "minimal"
-    assert announced["accent"] == deck.topic_accent(REQUEST) == "#334155"
+    # an official navy, not the deck's topic colour
+    assert announced["accent"] == design.DOC_ACCENT == "#1e3a8a"
     # Exactly what `report-save` stores.
     assert announced == report_design(REQUEST, PLAN, None, None)
 

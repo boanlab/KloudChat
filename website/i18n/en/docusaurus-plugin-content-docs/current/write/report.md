@@ -24,6 +24,8 @@ It writes section by section in order, and shows the first section in the right-
 
 ![A finished report](/img/guide/report.png)
 
+The default look is an official document: body text justified, a navy accent, and plain statements with their basis instead of strong adjectives. Numbers stay in the sentences and tables that use them; there is no separate strip of key figures at the end. Change the colour and theme from **Edit → Theme** on the ribbon.
+
 ## Step 3: Revising
 
 Two methods are provided.

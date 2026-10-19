@@ -293,7 +293,10 @@
     text-wrap: balance; line-height: var(--doc-leading-heading); }
   /* Not justified. Korean with `keep-all` breaks at spaces, so justifying
      stretches the few spaces a line has into rivers down the page. */
-  p { margin: 0 0 0.95rem; text-wrap: pretty; }
+  /* justified as an official document reads; spread between letters, not only words, so
+     whole-word Korean wrapping leaves no rivers */
+  p { margin: 0 0 0.95rem; text-wrap: pretty; text-align: justify; text-justify: inter-character; }
+  .cover p, td p, th p, figure p { text-align: inherit; }
   ul, ol { margin: 0 0 1.05rem; padding-left: 1.25rem; }
   li { margin: 0 0 0.35rem; }
   li::marker { color: var(--accent); }

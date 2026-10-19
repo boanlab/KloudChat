@@ -21,6 +21,9 @@ VISUAL_STYLES = (
     "paper",
 )
 
+#: report accent with no design chosen: the navy of an official document
+DOC_ACCENT = "#1e3a8a"
+
 #: no-design defaults; match deck._ACCENT and exporters
 DEFAULT_TOKENS: dict[str, str] = {
     "accent": "#5b5bd6",
@@ -239,6 +242,7 @@ def venue_style_for(request: str) -> str:
 
 __all__ = [
     "CRAFT",
+    "DOC_ACCENT",
     "VISUAL_STYLES",
     "DEFAULT_TOKENS",
     "FONTS",
