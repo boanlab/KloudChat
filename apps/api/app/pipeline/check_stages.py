@@ -17,6 +17,7 @@ from app.services import (
     copy_check,
     gap_questions,
     key_figures,
+    output_language,
     post_checks,
     skill_specs,
     units,
@@ -506,9 +507,78 @@ def trace_slides(slides: list[dict], *, material: str, computed: list[str],
         if deck_rules.chart_title_mismatch(slide):
             out.setdefault(n, []).append(f"title 「{slide.get('title')}」 does not name what "
                                          "the chart plots")
+    for n, slide in enumerate(slides):
+        out_of_place = misplaced_cells(slide, "\n".join([material, *computed]))
+        if out_of_place:
+            out.setdefault(n, []).extend(out_of_place)
     for n, _ in points:
         out.setdefault(n, [])
     return out
+
+
+_FOR_THAT_ROW = "put there only what the material gives for that row"
+#: label words a value's place in the material is judged by
+_LABEL_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{3,}")
+#: material read around a value for its label
+_LABEL_REACH = 60
+
+
+def misplaced_cells(slide: dict, material: str) -> list[str]:
+    """Table values the material states fewer times than the table writes them, in the rows
+    whose label the material does not put beside the value (「Quality score 91%」 when 91% is
+    given only for long documents)."""
+    rows = slide.get("rows") or []
+    return [f"「{rows[r][j]}」 in row 「{rows[r][0]}」 is the material's figure for another "
+            f"item; {_FOR_THAT_ROW}" for r, j in _misplaced(slide, material)]
+
+
+def _misplaced(slide: dict, material: str) -> list[tuple[int, int]]:
+    """`misplaced_cells` as (row, column) places."""
+    rows = slide.get("rows")
+    if not isinstance(rows, list) or len(rows) < 3:
+        return []
+    at: dict[tuple[float, str], list[tuple[int, int]]] = {}
+    for r, row in enumerate(rows[1:], start=1):
+        if not isinstance(row, list) or len(row) < 2:
+            continue
+        for j, cell in enumerate(row[1:], start=1):
+            mine = _figures_of(str(cell))
+            if len(mine) == 1:
+                at.setdefault(mine[0], []).append((r, j))
+    if not any(len({r for r, _ in uses}) > 1 for uses in at.values()):
+        return []
+    spots: dict[tuple[float, str], list[str]] = {}
+    for m in value_guard._NUMBER.finditer(material or ""):
+        for key in _figures_of(m.group(0)):
+            spots.setdefault(key, []).append(
+                material[max(0, m.start() - _LABEL_REACH):m.end() + _LABEL_REACH].lower())
+    out = []
+    for key, uses in at.items():
+        written = spots.get(key, [])
+        if not written or len({r for r, _ in uses}) <= len(written):
+            continue
+        bound = {r: any(any(w.lower() in near for w in _LABEL_WORD.findall(str(rows[r][0])))
+                        for near in written) for r, _ in uses}
+        if any(bound.values()) and not all(bound.values()):
+            out += [(r, j) for r, j in uses if not bound[r]]
+    return out
+
+
+def mark_misplaced(slides: list[dict], material: str) -> tuple[list[dict], int]:
+    """`misplaced_cells` left after the hand-back, marked in place."""
+    mark = value_guard.MARK
+    out, count = [], 0
+    for slide in slides:
+        places = _misplaced(slide, material)
+        if places:
+            rows = [list(row) if isinstance(row, list) else row for row in slide["rows"]]
+            for r, j in places:
+                if mark not in str(rows[r][j]):
+                    rows[r][j] = f"{rows[r][j]} {mark}"
+                    count += 1
+            slide = {**slide, "rows": rows}
+        out.append(slide)
+    return out, count
 
 
 def _traced(slides: list[dict], *, material: str, computed: list[str], options: dict):
@@ -700,11 +770,15 @@ class DeckGrounding(Base):
         current = bundle.document.sections
         slides, found = ground_slides(
             current, material=material, computed=computed, options=options)
-        if not found and not handed:
+        slides, placed = mark_misplaced(slides, "\n".join([material, *computed]))
+        if deck_rules.deck_language(slides) == "en":
+            # an English deck's marks in English
+            slides = output_language.english_marks(slides)
+        if not found and not handed and not placed:
             return
         bundle.document.sections = slides
         step = {"category": "thinking", "id": "grounding", "status": "done",
-                "label": (f"근거 없는 값 {len(found)}개 → 확인 필요" if found
+                "label": (f"근거 없는 값 {len(found) + placed}개 → 확인 필요" if found or placed
                           else "근거 없는 값 → 다시 써서 고침"),
                 "detail": " · ".join(x for x in (
                     f"다시 쓴 장 {len(handed)}개" if handed else "",
@@ -721,7 +795,8 @@ _HAND_BACK = 4
 _GIVEN_DATA = 4
 _GIVEN_FIGURE = re.compile(
     r"(?<![\w.])\d[\d,]{0,15}(?:\.\d{1,6})?\s?(?:%|퍼센트|%p|조|억|만|천|원|달러|명|건|곳|대|개|배|점"
-    r"|톤|일|개월|ms|초)(?![가-힣A-Za-z])")
+    r"|톤|일|개월|ms|초|s|pages?|tasks?|reviewers?|documents?|docs|users?|days?|hours?|months?)"
+    r"(?![가-힣A-Za-z])|(?<![\w.])\$\s?\d[\d,]{0,15}(?:\.\d{1,6})?")
 #: the person or their agent forbids figures the material does not hold
 _NO_INVENTION = re.compile(
     r"근거\s?없는\s?(?:수치|숫자|값)|(?:자료|근거)에\s?없는\s?(?:수치|숫자|값)"
@@ -758,12 +833,16 @@ async def _hand_back(bundle: Bundle, *, material: str, computed: list[str],
     kept: list[dict] = []
     for n in worst:
         slide = slides[n]
-        listed = ", ".join(f"「{v[:60]}」" for v in pending[n]) or "the chart's values"
-        note = (f"These on this slide are in none of the material, the sources or the code's "
-                f"results: {listed}. Write the slide again with only figures the material gives "
-                "or works out from its numbers. Leave a figure out, or write the item without "
-                "it, rather than guess; a chart plots only given values, and its title names "
-                "what the chart plots.")
+        placed = [v for v in pending[n] if v.endswith(_FOR_THAT_ROW)]
+        listed = ", ".join(f"「{v[:60]}」" for v in pending[n] if v not in placed) or (
+            "" if placed else "the chart's values")
+        said = [f"These on this slide are in none of the material, the sources or the code's "
+                f"results: {listed}."] if listed else []
+        note = " ".join([*said, *(f"{v}." for v in placed)]) + (
+            " Write the slide again with only figures the material gives "
+            "or works out from its numbers. Leave a figure out, or write the item without "
+            "it, rather than guess; a chart plots only given values, and its title names "
+            "what the chart plots.")
         try:
             written, spent = await deck_rules.rewrite_slide(
                 request=req.text, slides=slides, target_id=str(slide.get("id") or ""),

@@ -860,6 +860,11 @@ _ASK_BREAK = re.compile(
     r"|,\s*(?=\d{1,2}\s?(?:번째\s?)?(?:장|슬라이드))")
 
 
+def named_slides(text: str) -> set[int]:
+    """Slide numbers (one-based) the words name."""
+    return {int(a or b) for a, b in _SLIDE_REF.findall(text or "")}
+
+
 def slide_clause(instruction: str, index: int) -> str:
     """The part of a many-slide instruction meant for slide `index` (zero-based): 「3장을 표로
     바꿔줘. 그리고 8장 그림은 빼줘.」 → 「8장 그림은 빼줘.」 for the eighth. An instruction naming

@@ -60,6 +60,13 @@ def last_pass(bundle: Bundle, sections: list[dict], template: Any,
     return changed
 
 
+def removed_said(removed: list[str]) -> str:
+    """「7장의 흐름도를 뺐습니다.」 for the pictures a slide edit took off."""
+    last = removed[-1][-1:] or " "
+    final = "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28
+    return f"{', '.join(removed)}{'을' if final else '를'} 뺐습니다."
+
+
 class ReportSave(Base):
     """Stores the report: carried parts, artifact (new version if one exists), message, bill."""
 
@@ -357,6 +364,10 @@ class ReviseSave(Base):
                 )
                 session.artifact_id = artifact_id
                 reply = f"{changed}곳을 고쳤습니다."
+                if removed := bundle.document.removed:
+                    # which slide lost what, not a bare count
+                    took = removed_said(removed)
+                    reply = took if changed <= len(removed) else f"{reply} {took}"
                 if missed := bundle.document.missed:
                     reply = (f"{changed}곳을 고쳤지만 요청한 {', '.join(missed)}은 문서에서 "
                              "찾지 못했습니다. 다시 요청해 주세요.")
@@ -425,5 +436,5 @@ def _written_note(count: int, title_block: dict | None) -> str:
     return f"{count}개 절로 {genre} 작성을 마쳤습니다."
 
 
-__all__ = ["rerun_note"]
+__all__ = ["removed_said", "rerun_note"]
 

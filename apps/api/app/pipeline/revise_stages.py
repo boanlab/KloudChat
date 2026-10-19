@@ -170,6 +170,20 @@ class Route(Base):
         elif typed:
             yield {"type": "step", "id": "route", "label": "무엇을 고칠지 보는 중",
                    "status": "running"}
+        if (plan is None and is_deck and swap is None and reorder is None
+                and revise.only_removes_picture(typed)):
+            # 「그림 빼줘」: the slides that carry one (a drawn diagram counts), by hand
+            named = revise.named_slides(typed)
+            pictured = [i for i, part in enumerate(parts) if deck_service.picture_of(part)
+                        and (not named or i + 1 in named)]
+            if not pictured:
+                where = ("·".join(f"{n}장" for n in sorted(named)) + "에는" if named
+                         else "슬라이드에")
+                yield {"type": "step", "id": "route", "label": "뺄 그림 없음", "status": "done"}
+                for event in _stopped(bundle, f"{where} 뺄 그림이 없어 바꾼 것이 없습니다."):
+                    yield event
+                raise Stop("no picture to remove")
+            plan = revise.Plan(scope="parts", targets=pictured, note=typed)
         plan = plan or await revise.plan(
             message=typed, title=bundle.plan.title, parts=names,
             model=req.outline_model or req.model, api_key=req.api_key,
@@ -310,8 +324,9 @@ class Rewrite(Base):
                     # a many-slide instruction: each slide reads its own ask (「3장을 표로…
                     # 8장 그림은 빼줘」 does not turn 8장 into a table)
                     asked = revise.slide_clause(instruction, index)
-                    if revise.removes_picture(asked) and part.get("image"):
-                        part = parts[index] = {k: v for k, v in part.items() if k != "image"}
+                    if revise.removes_picture(asked) and (what := deck_service.picture_of(part)):
+                        part = parts[index] = deck_service.without_picture(part)
+                        doc.removed.append(f"{index + 1}장의 {what}")
                         if revise.only_removes_picture(asked):
                             # by hand: nothing else to write
                             yield {"type": "slide", "slide": part, "done": True}
