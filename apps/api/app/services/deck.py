@@ -378,7 +378,9 @@ Content fields of a slide — fill only the one for its layout:
 - steps: "steps": [["단계", "내용"], ...], 3~5 entries. The stage a one-word name (no number),
   the content one line. Only procedures the request has.
 - cards: "cards": [["이름", "내용"], ...], 3~4 entries. The name one word, the content one or
-  two sentences within 80 characters. Only items of equal rank.
+  two sentences within 80 characters. Only items of equal rank. Keep what the material says
+  of each item — where, for whom, what for (「햇빛이 드는 창가의 2~4인 좌석」, not 「창가 좌석」);
+  the name is the material's own word for it.
 - statement: "title": the key phrase (within 12 characters), "body": one sentence unpacking it
   (within 60 characters).
 - big-number: "metrics": one [["값", "이름"]], "body": one line on what the number means. The
@@ -2937,6 +2939,22 @@ _CALENDAR = re.compile(
 )
 
 
+#: a value that is only a blank to fill: 「[금액]」「[ ]」
+_BLANK_VALUE = re.compile(r"\[[^\[\]]{0,20}\]")
+
+
+def blank_numbers(slide: dict) -> bool:
+    """Whether a big-number or metrics slide has only blanks for its values, or a statement
+    slide's key phrase is a blank (「[금액] 소요」)."""
+    if slide.get("layout") == "statement":
+        return bool(_BLANK_VALUE.search(str(slide.get("title") or "")))
+    if slide.get("layout") not in ("big-number", "metrics"):
+        return False
+    values = [str(m[0]).strip() for m in slide.get("metrics") or []
+              if isinstance(m, (list, tuple)) and m]
+    return bool(values) and all(_BLANK_VALUE.fullmatch(v) for v in values)
+
+
 def _clean_metrics(value: Any) -> list[list[str]]:
     """`[[값, 이름]]` pairs; half-empty and date-part labels dropped."""
     items = value if isinstance(value, list) else []
@@ -3644,11 +3662,26 @@ async def _write_slides(
                 "the names of what it compares. Write it as one table: the first row is the "
                 "header, every other row gives one item's values, taken from the earlier "
                 "slides and the computed values. Copy the numbers; never make one up."))
+    # a number slide whose every value is a blank (「[금액]」) shows a bracket large and little
+    # else: written once more as bullets
+    as_bullets: set[str] = set()
+    for index, slide in enumerate(slides):
+        if blank_numbers(slide):
+            as_bullets.add(str(slide.get("id")))
+            needs.setdefault(index, (
+                "This slide shows a blank (「[금액]」 and the like) as its big number or key "
+                "phrase; a blank is not a figure. Write the slide as bullets instead, with a "
+                "title that names its subject (「예산과 일정」): 3~4 short items taken from the "
+                "material and the earlier slides, the blank kept as it is in one item (「총 "
+                "예산: [금액]」). Do not invent an amount."))
     for index in sorted(needs):
         slide = slides[index]
         table_ask = str(slide.get("id")) in as_table
         if table_ask:
             slides[index] = {**slide, "layout": "table"}
+        if str(slide.get("id")) in as_bullets:
+            slide = {k: v for k, v in slide.items() if k not in ("metrics", "body")}
+            slides[index] = slide = {**slide, "layout": "bullets"}
         try:
             fixed, spent = await rewrite_slide(
                 request=request, slides=slides, target_id=str(slide.get("id")),

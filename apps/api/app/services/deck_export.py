@@ -465,6 +465,32 @@ def _font(
         properties.append(element)
 
 
+def _card_style(
+    pairs: list[tuple[str, str]], font: str | None, scale: float, span: float, height: float
+) -> str:
+    """How a card row fills its cards: 'marked' (number, then larger name and text) when every
+    text is three lines or fewer, 'large' (larger name and text) when they still fit the card,
+    else '' (the regular sizes)."""
+    if not font or not pairs:
+        return ""
+    name_pt, text_pt = _u("cardNameShort") * scale, _u("cardTextShort") * scale
+    if any(len(_wrap(name, font, name_pt, span - 28)) > 1 for name, _ in pairs):
+        return ""
+    most = max(len(_wrap(text, font, text_pt, span - 28)) for _, text in pairs)
+    if most <= 3:
+        return "marked"
+    need = 16 + name_pt * 1.4 + 8 + most * text_pt * deck_type.LEADING["cardText"] + 14
+    return "large" if need <= height else ""
+
+
+def _card_words(name: str, text: str, font: str, bold: str, scale: float, width: float) -> float:
+    """Height of a large card's name, gap and text; the row's tallest sets every card's words
+    at the same height above the foot."""
+    name_pt, text_pt = _u("cardNameShort") * scale, _u("cardTextShort") * scale
+    return (name_pt * 1.3 * len(_wrap(name, bold, name_pt, width)) + 8
+            + text_pt * deck_type.LEADING["cardText"] * len(_wrap(text, font, text_pt, width)))
+
+
 def _pptx_pairs(
     slide,
     pairs: list[tuple[str, str]],
@@ -601,6 +627,9 @@ def _pptx_pairs(
                 for name, text in pairs
             )
             height = min(max(height, need), room - 24)
+        style = "" if compact else _card_style(pairs, measure, scale, span, height)
+        if style == "marked":
+            height = room - 24
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
             _box(
@@ -614,6 +643,36 @@ def _pptx_pairs(
                 line=hair,
             )
             _block(slide, left=item_left, top=top + 10, width=span, height=5, colour=accent)
+            if style:
+                # name and text a step larger; a number above them, spread down the card
+                mark_pt, name_pt, text_pt = (
+                    _u("cardMark"), _u("cardNameShort"), _u("cardTextShort"))
+                words_top = top + 26
+                if style == "marked":
+                    mark = _textbox(slide, left=item_left + 14, top=top + 26, width=span - 28,
+                                    height=mark_pt * scale * 1.3)
+                    run = mark.paragraphs[0].add_run()
+                    run.text = f"{index + 1:02d}"
+                    paint(run, size=mark_pt, bold=True, colour=_mix(accent, 45, onto=tint))
+                    # name and text at the foot of the card
+                    words_top = top + 10 + height - 14 - max(
+                        _card_words(n, t, measure, measure, scale, span - 28) for n, t in pairs) - 8
+                title = _textbox(slide, left=item_left + 14, top=words_top, width=span - 28,
+                                 height=name_pt * scale * 1.4)
+                run = title.paragraphs[0].add_run()
+                run.text = name
+                paint(run, size=name_pt, bold=True, colour=accent)
+                body = _textbox(
+                    slide, left=item_left + 14, top=words_top + name_pt * scale * 1.4 + 8,
+                    width=span - 28,
+                    height=top + 10 + height - 14 - (words_top + name_pt * scale * 1.4 + 8),
+                )
+                body.paragraphs[0].line_spacing = Pt(
+                    text_pt * scale * deck_type.LEADING["cardText"])
+                run = body.paragraphs[0].add_run()
+                run.text = text
+                paint(run, size=text_pt)
+                continue
             name_lines = len(_wrap(name, measure, name_pt * scale, span - 28)) if measure else 1
             name_height = name_pt * scale * 1.3 * max(1, name_lines) + 6
             title = _textbox(
@@ -1540,6 +1599,11 @@ def _pattern_scene(
         span = (W - gap * (cols - 1)) / cols
         cap = {"card": 200.0, "feature": 150.0, "person": 170.0}.get(style, 200.0)
         height = min((R - 8 - gap * (rows - 1)) / rows, cap)
+        # one row with little to say: larger words, numbered when short, the card the body tall
+        fill = (_card_style(pairs, font, scale, span - 4, height)
+                if rows == 1 and style == "card" else "")
+        if fill == "marked":
+            height = R - 24
         for position, (name, text) in enumerate(pairs):
             row, col = divmod(position, cols)
             in_row = min(cols, count - row * cols)
@@ -1624,23 +1688,30 @@ def _pattern_scene(
                 )
             else:
                 sc.rect(x, y, span, 5, fill=accent)
+                words = y + 20
+                if fill == "marked":
+                    # number at the top, name and text at the foot of the card
+                    sc.text(f"{position + 1:02d}", x + 16, y + 20, span - 32, 60, _u("cardMark"),
+                            colour=_mix_floats(accent, 45, onto=tint), bold=True)
+                    words = y + height - 16 - max(
+                        _card_words(n, t, font, bold, scale, span - 32) for n, t in pairs)
                 used = sc.text(
                     name,
                     x + 16,
-                    y + 20,
+                    words,
                     span - 32,
                     min(64.0, height * 0.4),
-                    _u("cardName") + (4 if cols == 2 else 0),
+                    _u("cardNameShort") if fill else _u("cardName") + (4 if cols == 2 else 0),
                     colour=accent,
                     bold=True,
                 )
                 sc.text(
                     text,
                     x + 16,
-                    y + 20 + used + 8,
+                    words + used + 8,
                     span - 32,
-                    height - used - 40,
-                    _u("cardText") + (2 if cols == 2 else 0),
+                    y + height - (words + used + 8) - 12,
+                    _u("cardTextShort") if fill else _u("cardText") + (2 if cols == 2 else 0),
                     colour=ink,
                     leading=1.5,
                 )
@@ -3683,6 +3754,9 @@ def _pdf_pairs(
                 for name, text in pairs
             )
             height = min(max(height, need), room - 24)
+        style = "" if compact else _card_style(pairs, font, scale, span, height)
+        if style == "marked":
+            height = room - 24
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
             _pdf_box(
@@ -3698,6 +3772,27 @@ def _pdf_pairs(
             )
             pdf.setFillColorRGB(*accent)
             pdf.rect(item_left, card_top - 5, span, 5, stroke=0, fill=1)
+            if style:
+                # as `_pptx_pairs`: larger name and text, a number above them
+                mark_size, name_size_s, text_size_s = (
+                    S(_u("cardMark")), S(_u("cardNameShort")), S(_u("cardTextShort")))
+                words_top = card_top - 16
+                if style == "marked":
+                    pdf.setFillColorRGB(*_mix_floats(accent, 45, onto=tint))
+                    pdf.setFont(bold, mark_size)
+                    pdf.drawString(item_left + 14, card_top - 20 - mark_size, f"{index + 1:02d}")
+                    words_top = card_top - height + 14 + max(
+                        _card_words(n, t, font, bold, scale, span - 28) for n, t in pairs) + 8
+                pdf.setFillColorRGB(*accent)
+                pdf.setFont(bold, name_size_s)
+                pdf.drawString(item_left + 14, words_top - name_size_s, name)
+                pdf.setFillColorRGB(*ink)
+                pdf.setFont(font, text_size_s)
+                lead = text_size_s * deck_type.LEADING["cardText"]
+                first = words_top - name_size_s * 1.4 - 8 - text_size_s
+                for offset, line in enumerate(_wrap(text, font, text_size_s, span - 28)):
+                    pdf.drawString(item_left + 14, first - offset * lead, line)
+                continue
             pdf.setFont(bold, name_size)
             name_lines = _wrap(name, bold, name_size, span - 28)[:2]
             name_base = card_top - 20 - name_size

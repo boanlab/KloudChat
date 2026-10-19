@@ -59,7 +59,7 @@ import { useStore } from '@/store/useStore'
 import { SlideChart } from '@/components/slides/SlideChart'
 import { PatternView } from '@/components/slides/PatternView'
 import { BASE_LAYOUTS, PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
-import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, STEPS, TYPE, columnShares, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
+import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, STEPS, TYPE, columnShares, lines, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
 import { useT } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
 import { ArtifactRibbon, QuickAccess, RibbonGroup } from '@/components/artifacts/ArtifactRibbon'
@@ -597,6 +597,20 @@ export function SlideView({
   const pairs = (paired ? (slide[paired] ?? []) : []).filter(
     ([left, right]) => left?.trim() && right?.trim(),
   )
+  // How a card row fills its cards, as `deck_export._card_style`: 'marked' (number, larger
+  // words) at three lines or fewer, 'large' while larger words still fit the 100-unit card.
+  const cardSpan = (400 - 2 * PAD_X - 8 * (pairs.length - 1)) / Math.max(pairs.length, 1) - 14
+  const cardScale = slide.textScale ?? 1
+  const cardText = units(TYPE.cardTextShort) * cardScale
+  const cardMost = Math.max(0, ...pairs.map(([, text]) => lines(text, cardText, cardSpan)))
+  const cardStyle: '' | 'marked' | 'large' =
+    slide.layout !== 'cards' || pairs.length === 0 || pairs.some(([name]) => lines(name, units(TYPE.cardNameShort) * cardScale, cardSpan) > 1)
+      ? ''
+      : cardMost <= 3
+        ? 'marked'
+        : units(16 + TYPE.cardNameShort * cardScale * 1.4 + 8 + cardMost * TYPE.cardTextShort * cardScale * LEADING.cardText + 14) <= 100
+          ? 'large'
+          : ''
   const chart = pattern ? undefined : slide.chart
   const contentElement: SlideElement = pattern
     ? pattern.shape === 'chart' ? 'chart' : pattern.shape === 'metrics' ? 'metrics' : 'cards'
@@ -954,17 +968,32 @@ export function SlideView({
                 </div>
               )}
               {pairs.length > 0 && slide.layout === 'cards' && (
-                <div className="flex" style={{ gap: px(8), marginTop: px(4), height: px(100) }}>
-                  {pairs.map(([name, text], i) => (
-                    <div
-                      key={i}
-                      className="flex min-w-0 flex-1 flex-col overflow-hidden"
-                      style={boxed({ borderTop: `${px(2)} solid ${accent}`, padding: `${px(8)} ${px(7)}` })}
-                    >
-                      <div style={{ fontSize: pt(TYPE.cardName), fontWeight: 700, color: accent, lineHeight: 1.3 }}>{name}</div>
-                      <div style={{ fontSize: pt(TYPE.cardText), marginTop: px(5), lineHeight: LEADING.cardText }}>{text}</div>
-                    </div>
-                  ))}
+                <div className="flex" style={{ gap: px(8), marginTop: px(4), height: px(cardStyle === 'marked' ? BODY_BOTTOM - BODY_TOP - units(24) : 100) }}>
+                  {pairs.map(([name, text], i) =>
+                    cardStyle ? (
+                      // larger name and text; when short, a number at the top and the words at the foot
+                      <div
+                        key={i}
+                        className="flex min-w-0 flex-1 flex-col overflow-hidden"
+                        style={boxed({ borderTop: `${px(2)} solid ${accent}`, padding: `${px(8)} ${px(7)}` })}
+                      >
+                        {cardStyle === 'marked' && (
+                          <div style={{ fontSize: pt(TYPE.cardMark), fontWeight: 700, color: `color-mix(in srgb, ${accent} 45%, ${tint})`, lineHeight: 1.3 }}>{String(i + 1).padStart(2, '0')}</div>
+                        )}
+                        <div style={{ fontSize: pt(TYPE.cardNameShort), fontWeight: 700, color: accent, lineHeight: 1.4, marginTop: cardStyle === 'marked' ? 'auto' : 0 }}>{name}</div>
+                        <div style={{ fontSize: pt(TYPE.cardTextShort), marginTop: px(3), lineHeight: LEADING.cardText, minHeight: cardStyle === 'marked' ? `calc(${pt(TYPE.cardTextShort)} * ${LEADING.cardText * cardMost})` : undefined }}>{text}</div>
+                      </div>
+                    ) : (
+                      <div
+                        key={i}
+                        className="flex min-w-0 flex-1 flex-col overflow-hidden"
+                        style={boxed({ borderTop: `${px(2)} solid ${accent}`, padding: `${px(8)} ${px(7)}` })}
+                      >
+                        <div style={{ fontSize: pt(TYPE.cardName), fontWeight: 700, color: accent, lineHeight: 1.3 }}>{name}</div>
+                        <div style={{ fontSize: pt(TYPE.cardText), marginTop: px(5), lineHeight: LEADING.cardText }}>{text}</div>
+                      </div>
+                    ),
+                  )}
                 </div>
               )}
               {pairs.length > 0 && slide.layout === 'timeline' && (
