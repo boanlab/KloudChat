@@ -129,10 +129,11 @@ _CAPTION = re.compile(r"^\s*(?:그림|Figure)\s*[:：]\s*(.+)$", re.M)
 
 
 def _parse_kind(
-    text: str, language: str, *, band: bool = False, material: str = ""
+    text: str, language: str, *, band: bool = False, material: str = "", described: str = ""
 ) -> tuple[str, str] | None:
     """Stored source and caption from an answer filling a figure kind, else None; `band` for a
-    slide's figure strip; notes kept to the counts `material` gives each part."""
+    slide's figure strip; slots kept to what `described` (the figure's description) and
+    `material` say (`figure_kinds.grounded`)."""
     block = _JSON.search(text)
     if not block:
         return None
@@ -145,7 +146,7 @@ def _parse_kind(
     slots = figure_kinds.spec(data, language)
     if slots is None:
         return None
-    slots = figure_kinds.grounded(slots, material)
+    slots = figure_kinds.grounded(slots, material, described)
     caption = _CAPTION.search(text[block.end():])
     return figure_kinds.to_source(slots), (caption.group(1).strip() if caption else "")
 
@@ -182,6 +183,10 @@ def _mend(source: str) -> str:
     return source
 
 
+#: kinds a method figure (a model's or system's structure) is never drawn as
+_NOT_METHOD = ("steps", "messages")
+
+
 async def _fixed_kind(
     description: str, figure: str, model: str, api_key: str, language: str, slide: bool,
     material: str = "",
@@ -192,16 +197,19 @@ async def _fixed_kind(
         model, figure_kinds.choose_messages(description, what), api_key, max_tokens=16
     )
     kind = figure_kinds.chosen(text)
-    if kind is None or (kind == "steps" and figure == "method"):
-        # a method figure is a structure, never a line of phases
+    if kind is None or (kind in _NOT_METHOD and figure == "method"):
+        # a method figure is a structure, never a line of phases or a talk between parties
         return None, usage
     text, more = await _complete(
         model, figure_kinds.fill_messages(kind, description, language, material), api_key,
         max_tokens=1600,
     )
     usage = _added(usage, more)
-    drawn = _parse_kind(text, language, band=slide, material=material)
-    if drawn is None or (figure_kinds.from_source(drawn[0]) or {}).get("kind") != kind:
+    drawn = _parse_kind(text, language, band=slide, material=material, described=description)
+    got = (figure_kinds.from_source(drawn[0]) or {}).get("kind") if drawn else None
+    # stages written without their tasks come back as a line of steps
+    if got is None or (got != kind and (kind, got) != ("stages", "steps")) or (
+            got in _NOT_METHOD and figure == "method"):
         log.info("figure slots for %s did not make the figure; drawing it as mermaid", kind)
         return None, usage
     return drawn, usage

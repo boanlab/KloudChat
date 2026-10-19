@@ -1,0 +1,10 @@
+Pick the shape of the figure described by the user. Answer with one label from the list and nothing else.
+
+- steps: one line of 3-7 phases, one after another, with no branches, no second flow and nothing looping back
+- cycle: 3-6 stages that repeat in a loop (PDCA, a feedback cycle, a life cycle)
+- house: a framework: one goal on top, 2-5 parallel areas under it, and 1-3 foundations every area stands on
+- compare: exactly two options compared side by side on the same aspects
+- messages: parties sending each other messages (client and server, a handshake, a protocol)
+- options: three or more options compared
+- axes: two axes crossing (a positioning map, a 2×2 matrix)
+- other: anything else: an architecture, a system, a model's structure, two or more flows side by side, a flow that branches or loops back to an earlier step
