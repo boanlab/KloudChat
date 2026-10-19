@@ -328,20 +328,22 @@ function skillOptions(skills: Skill[], chosen: string[], store: StoreSkill[]): O
   return [...mine, ...official]
 }
 
-/** Toggles a skill id; an official row is added to the person's skills first, its copy picked. */
+/** Toggles a skill id; an official row is added to the person's skills first, its copy picked.
+ * The row shows as picked while it is being added. */
 function useSkillToggle(chosen: string[], apply: (next: string[]) => void, add?: (storeId: string) => Promise<string | null>) {
-  const [adding, setAdding] = useState(false)
+  const [adding, setAdding] = useState<string | null>(null)
   const toggle = (id: string) => {
     if (!id.startsWith(STORE)) return apply(chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id])
     if (!add || adding) return
-    setAdding(true)
+    setAdding(id)
     void add(id.slice(STORE.length))
       .then((copy) => {
         if (copy && !chosen.includes(copy)) apply([...chosen, copy])
       })
-      .finally(() => setAdding(false))
+      .finally(() => setAdding(null))
   }
-  return toggle
+  const shown = adding ? [...chosen, adding] : chosen
+  return { toggle, shown }
 }
 
 /** Nothing to pick at all: where skills come from. */
@@ -373,7 +375,7 @@ export function SkillPicker({
   const t = useT()
   const chosen = value ?? []
   const options = skillOptions(skills, chosen, onAddOfficial ? store : [])
-  const toggle = useSkillToggle(chosen, onChange, onAddOfficial)
+  const { toggle, shown } = useSkillToggle(chosen, onChange, onAddOfficial)
   return (
     <div className="space-y-2" data-testid="skill-picker">
       <ModeSwitch
@@ -391,7 +393,7 @@ export function SkillPicker({
           <PickerPanel
             label={t('스킬 고르기')}
             options={options}
-            chosen={chosen}
+            chosen={shown}
             onToggle={toggle}
             searchLabel={t('스킬 검색')}
             empty={<NoSkills />}
@@ -497,7 +499,7 @@ export function ActiveSkillPicker({
   const options = skillOptions(skills, value, onAddOfficial ? store : []).map((o) =>
     full && o.id.startsWith(STORE) ? { ...o, disabled: true, why: t('최대 6개까지 켜 둘 수 있습니다.') } : o,
   )
-  const toggle = useSkillToggle(
+  const { toggle, shown } = useSkillToggle(
     value,
     (next) => onChange(next.length > value.length && full ? value : next),
     onAddOfficial,
@@ -510,7 +512,7 @@ export function ActiveSkillPicker({
       <PickerPanel
         label={t('켜 둘 스킬 고르기')}
         options={options}
-        chosen={value}
+        chosen={shown}
         onToggle={toggle}
         searchLabel={t('스킬 검색')}
         empty={<NoSkills />}

@@ -221,7 +221,7 @@ def test_an_edit_asking_for_a_diagram_is_told_from_one_removing_it():
     from app.pipeline import revise_stages
 
     source = inspect.getsource(revise_stages.Rewrite.run)
-    assert "asks_slide_figure(instruction)" in source and "figure_slide(" in source
+    assert "asks_slide_figure(asked)" in source and "figure_slide(" in source
 
 
 @pytest.mark.asyncio
