@@ -97,7 +97,9 @@ def test_every_edge_is_drawn_as_a_line_or_a_note_naming_where_it_goes():
     marks = [t for t in texts if "→" in t]
     # A routed line per edge, and a stub plus a note per marked edge.
     assert len(lines) == len(graph.edges) and len(marks) == 2
-    assert all(graph.nodes[n].label in texts for n in graph.nodes)
+    # labels fitted line by line: compare them as one line each
+    flat = [t.replace("\n", " ") for t in texts]
+    assert all(graph.nodes[n].label in flat for n in graph.nodes)
     # Boxes alike: no box gets an icon that would make its text smaller than the others'.
     assert not [p for p in prs.part.package.iter_parts() if str(p.partname).endswith(".svg")]
 
