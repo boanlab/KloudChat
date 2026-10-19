@@ -2,7 +2,7 @@ import { ArrowRight, Check, RefreshCw, Star, Target } from 'lucide-react'
 import { Fragment, type CSSProperties, type FocusEvent, type ReactNode } from 'react'
 import type { Slide } from '@/types'
 import { SlideChart } from '@/components/slides/SlideChart'
-import { BODY_BOTTOM, BODY_TOP, LEADING, PAD_X, TYPE, em, units } from '@/components/slides/typeScale'
+import { BODY_BOTTOM, BODY_TOP, LEADING, PAD_X, TYPE, em, lines, units } from '@/components/slides/typeScale'
 import type { Pattern } from '@/components/slides/patterns'
 
 /** What `SlideView` lends a pattern: its look, accent and unit helpers. */
@@ -131,6 +131,18 @@ function Grid({ items, pattern, kit }: { items: Pairs; pattern: Pattern; kit: Pa
   const size = sizesFor(rows, cols)
   // One row of cards at its own height; people and two-row grids fill the body.
   const fill = rows > 1 || style === 'person'
+  // One row with little to say: larger words, numbered when short (`deck_export._card_style`).
+  const textScale = kit.current().textScale ?? 1
+  const span = (400 - PAD_X - (kit.gutter ? 40 : PAD_X) - 8 * (cols - 1)) / cols - 14
+  const most = Math.max(0, ...items.map(([, text]) => lines(text, units(TYPE.cardTextShort) * textScale, span)))
+  const large =
+    rows === 1 && style === 'card' && items.every(([name]) => lines(name, units(TYPE.cardNameShort) * textScale, span) <= 1)
+      ? most <= 3
+        ? 'marked'
+        : units(16 + TYPE.cardNameShort * textScale * 1.4 + 8 + most * TYPE.cardTextShort * textScale * LEADING.cardText + 14) <= 83
+          ? 'large'
+          : ''
+      : ''
   return (
     <div
       className="grid min-h-0"
@@ -164,9 +176,14 @@ function Grid({ items, pattern, kit }: { items: Pairs; pattern: Pattern; kit: Pa
             </div>
           </div>
         ) : (
-          <div key={i} className="flex min-w-0 flex-col overflow-hidden" style={kit.boxed({ borderTop: `${px(2)} solid ${accent}`, padding: `${px(10)} ${px(9)}` })}>
-            <PairText kit={kit} i={i} side={0} text={name} style={{ fontSize: pt(size.name), fontWeight: 700, color: accent, lineHeight: 1.3 }} />
-            <PairText kit={kit} i={i} side={1} text={text} style={{ fontSize: pt(size.text), marginTop: px(5), lineHeight: LEADING.cardText }} />
+          <div key={i} className="flex min-w-0 flex-col overflow-hidden" style={kit.boxed({ borderTop: `${px(2)} solid ${accent}`, padding: `${px(10)} ${px(9)}`, height: large === 'marked' ? px(BODY_BOTTOM - BODY_TOP - units(24)) : undefined })}>
+            {large === 'marked' && (
+              <div aria-hidden style={{ fontSize: pt(TYPE.cardMark), fontWeight: 700, color: `color-mix(in srgb, ${accent} 45%, ${kit.tint})`, lineHeight: 1.3, marginBottom: 'auto' }}>
+                {String(i + 1).padStart(2, '0')}
+              </div>
+            )}
+            <PairText kit={kit} i={i} side={0} text={name} style={{ fontSize: pt(large ? TYPE.cardNameShort : size.name), fontWeight: 700, color: accent, lineHeight: 1.3 }} />
+            <PairText kit={kit} i={i} side={1} text={text} style={{ fontSize: pt(large ? TYPE.cardTextShort : size.text), marginTop: px(5), lineHeight: LEADING.cardText, minHeight: large === 'marked' ? `calc(${pt(TYPE.cardTextShort)} * ${LEADING.cardText * most})` : undefined }} />
           </div>
         ),
       )}

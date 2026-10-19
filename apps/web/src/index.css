@@ -472,6 +472,9 @@ body {
 .doc-web section h3 { font-size: var(--doc-h2); }
 .doc-web section h4 { font-size: var(--doc-h3); }
 .doc-web section p, .doc-web section li, .doc-web section .text-md { font-size: var(--doc-body); line-height: var(--doc-leading-body); }
+/* justified, as an official document reads; cells and captions keep their own alignment */
+.doc-web section p, .doc-web section li { text-align: justify; text-justify: inter-character; }
+.doc-web section td p, .doc-web section th p, .doc-web section figure p { text-align: inherit; }
 .doc-web section table { font-size: var(--doc-table); line-height: var(--doc-leading-table); }
 .doc-web section figcaption, .doc-web section small { font-size: var(--doc-small); }
 /* An inserted picture fills the column in the web view too; the zoom button wraps it. */

@@ -29,6 +29,8 @@ class Request:
     may_ask: bool = True
     figures_plan: list[dict] | None = None
     image_model: dict | None = None
+    #: self-hosted image model: pictures planned and drawn like diagrams, no card
+    auto_image_model: dict | None = None
     web_search: bool = True
     project_sources: list[dict[str, Any]] | None = None
     template_id: str | None = None

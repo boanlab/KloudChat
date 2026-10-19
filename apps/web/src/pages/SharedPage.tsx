@@ -218,7 +218,7 @@ export function SharedArtifact({ payload, title }: { payload: { data: unknown; t
   }
   if (data.sections) {
     const visual = data.design?.visualStyle ?? 'editorial'
-    const accent = data.design?.accent ?? '#5b5bd6'
+    const accent = data.design?.accent ?? '#1e3a8a'
     const block = cleanTitleBlock(data.titleBlock)
     const numbers = sectionNumbers(data.sections, block?.numbering ?? 'none')
     const closingAt = closingIndex(block, data.sections.length)

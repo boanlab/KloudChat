@@ -246,9 +246,9 @@ Rules:
   **Never draw the same table again in another section** — one comparison table per document.
 - Prose is the default. Values by item go in tables (no blank lines between rows, 3–5
   rows), at most two tables in the document, with one sentence before (what is compared)
-  and one after (so what). The two or three numbers that conclude the document go once in
-  a ```kpi block (`값 | 이름` per line, at most 4). The one premise everything rests on
-  goes once in a ```callout block (first line title, next line text). No other blocks.
+  and one after (so what). Numbers stay in the sentences and tables that use them; no
+  separate strip of key figures. The one premise everything rests on goes once in a
+  ```callout block (first line title, next line text). No other blocks.
 - **If the request has a table of measured data, the results section shows that table
   again** — the request's columns plus the computed ones (gain, dB, theory, error %).
   This counts toward the two tables.
@@ -272,6 +272,9 @@ Rules:
   pasted. No sources, no numbers.
 - One register for the whole document: 「~합니다」. No first person (「저는」 「우리는」) —
   「클라우드 이전을 권고합니다」, not 「저는 … 권고합니다」.
+- Official tone: plain, objective statements an organization would sign. No exclamation
+  marks, rhetorical questions, emoji, slang or hype words (「획기적인」 「혁신적인」 「놀라운」
+  「최고의」); a claim carries its basis (a number, a source, the material), not an adjective.
 - Numbers in a comparison table are the values computed earlier, copied as they are; do
   not recompute in the table, and never give the same item two values in table and text.
 - Break into paragraphs where the point changes: one point per paragraph, two to four sentences.
@@ -345,11 +348,6 @@ _BLOCK_SYNTAX = {
         "      | 기준 | 대안 A | 대안 B |\n"
         "      | --- | --- | --- |\n"
         "      | 초기 비용 | 0원 | 약 3억 원 |"
-    ),
-    "kpi": (
-        "- If two or three numbers conclude the section, put them in a ```kpi block, one `값 | 이름` per line (at most 4).\n"
-        "  Do not repeat values that are in a table. The text says what the numbers mean.\n"
-        "      ```kpi\n      32% | 오탐 감소\n      1.4초 | 평균 응답 시간\n      ```"
     ),
     "steps": (
         "- Work done in order goes in a ```steps block, one `이름 | 설명` per line (at most 8 steps).\n"
@@ -1049,8 +1047,6 @@ def _section_role(heading: str, index: int, total: int, written: str) -> tuple[s
         allowed.append("chart")
     if has(_COMPARE_WORDS):
         allowed.append("table")
-        if "```kpi" not in written:
-            allowed.append("kpi")
     if has(_PLAN_WORDS):
         allowed.append("steps")
         allowed.append("table")
@@ -3571,6 +3567,8 @@ async def write(
     figures_plan: list[dict] | None = None,
     #: empty disables figure proposal
     image_model: dict | None = None,
+    #: self-hosted image model: the report draws its own pictures (`illustrations`), no card
+    auto_image_model: dict | None = None,
     web_search: bool = True,
     project_sources: list[dict[str, Any]] | None = None,
     #: session 서식; may fix format and genre
@@ -3607,8 +3605,8 @@ async def write(
         request=request, model=model, api_key=api_key, trusted_context=trusted_context,
         untrusted_context=untrusted_context, outline_model=outline_model,
         approved_plan=approved_plan, may_ask=may_ask, figures_plan=figures_plan,
-        image_model=image_model, web_search=web_search, project_sources=project_sources,
-        template_id=template_id, format_id=format_id, design_tokens=design_tokens,
+        image_model=image_model, auto_image_model=auto_image_model, web_search=web_search,
+        project_sources=project_sources, template_id=template_id, format_id=format_id, design_tokens=design_tokens,
         check_keys=check_keys, turn=dict(turn or {}), session_id=session_id,
         derived=list(derived_context or []), tool_outputs=list(tool_outputs or []),
         check_options=dict(check_options or {}), skill_specs=dict(skill_specs or {}),
@@ -4364,6 +4362,15 @@ def drop_repeated_figures(text: str) -> str:
     for index in sorted(drop, reverse=True):
         m = blocks[index]
         out = out[: m.start()] + out[m.end():]
+    return re.sub(r"\n{3,}", "\n\n", out).strip() + ("\n" if text.endswith("\n") else "")
+
+
+def drop_kpi(text: str) -> str:
+    """No strip of key figures in a report: every ```kpi block dropped (the numbers stay in the
+    sentences and tables that state them)."""
+    if "```kpi" not in (text or ""):
+        return text
+    out = _KPI_FENCE.sub("", text)
     return re.sub(r"\n{3,}", "\n\n", out).strip() + ("\n" if text.endswith("\n") else "")
 
 

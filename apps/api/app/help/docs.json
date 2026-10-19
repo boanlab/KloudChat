@@ -1306,7 +1306,7 @@
 "path": "write/report",
 "title": "보고서 작성",
 "heading": "2단계: 작성",
-"text": "절 단위로 순서대로 작성하며, 첫 절이 완성되는 즉시 오른쪽 패널에 표시합니다. 작성에 실패한 절은 실패로 표시하고 나머지 절의 작성을 계속합니다."
+"text": "절 단위로 순서대로 작성하며, 첫 절이 완성되는 즉시 오른쪽 패널에 표시합니다. 작성에 실패한 절은 실패로 표시하고 나머지 절의 작성을 계속합니다.\n\n기본 모양은 공식 문서 형식입니다. 본문은 양쪽 정렬, 강조색은 남색이며, 과장된 표현 없이 근거와 함께 씁니다. 수치는 그 수치를 쓰는 문장과 표에 두고, 끝에 따로 모은 수치 띠는 넣지 않습니다. 색과 테마는 리본의 **편집 → 테마**에서 바꿀 수 있습니다."
 },
 {
 "lang": "ko",
@@ -2727,7 +2727,7 @@
 "path": "write/report",
 "title": "Writing reports",
 "heading": "Step 2: Writing",
-"text": "It writes section by section in order, and shows the first section in the right-hand panel as soon as it is complete. A section that fails is marked as failed, and writing continues for the remaining sections."
+"text": "It writes section by section in order, and shows the first section in the right-hand panel as soon as it is complete. A section that fails is marked as failed, and writing continues for the remaining sections.\n\nThe default look is an official document: body text justified, a navy accent, and plain statements with their basis instead of strong adjectives. Numbers stay in the sentences and tables that use them; there is no separate strip of key figures at the end. Change the colour and theme from **Edit → Theme** on the ribbon."
 },
 {
 "lang": "en",

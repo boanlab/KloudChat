@@ -113,6 +113,7 @@ from app.services import (
     gap_questions,
     governance,
     grounding,
+    illustrations,
     imagegen,
     index_client,
     lint,
@@ -487,6 +488,15 @@ def _document_image_model(user: User, catalogue: dict, *, strict_local: bool) ->
         return model_service.strict_image_model(inside, Preferences.of(user).strict_image_model)
     default = (catalogue.get("defaultModelByKind") or {}).get("image")
     return next((m for m in usable if m["id"] == default), usable[0] if usable else None)
+
+
+def _auto_image_model(user: User, catalogue: dict) -> dict | None:
+    """A self-hosted image model this account may use: documents then draw their own pictures
+    with it, as they draw diagrams (`illustrations`); none leaves pictures to the figure card."""
+    usable = _allowed_models(user, catalogue["models"], kind="image")
+    inside = sorted((m for m in usable if illustrations.self_hosted(m)),
+                    key=model_service.fallback_order)
+    return model_service.strict_image_model(inside, Preferences.of(user).strict_image_model)
 
 
 def _allowed_models(user: User, catalogue: list[dict], *, kind: str) -> list[dict]:
@@ -4847,6 +4857,8 @@ async def send_message(
 
     #: draws document figures; none = no figure card
     image_model = _document_image_model(user, catalogue, strict_local=strict_local)
+    #: draws pictures on its own, like diagrams; only inside the data boundary
+    auto_image_model = _auto_image_model(user, catalogue)
 
     render_template = design_templates.get(session.render_template_id)
     #: 「좋아, PDF로 줘」 = file hand-over, not an edit; 「견적 고치고 PDF로」 revises first
@@ -5002,6 +5014,7 @@ async def send_message(
                     may_ask=not (proceed_as_is or asked_once) and not _brings_material(content),
                     figures_plan=approved_figures,
                     image_model=image_model,
+                    auto_image_model=auto_image_model,
                     template=render_template,
                     format_id=workspace.doc_format,
                     check_keys=_traced(check_keys, material_turn),
@@ -5064,6 +5077,7 @@ async def send_message(
                     may_ask=not (proceed_as_is or asked_once) and not _brings_material(content),
                     figures_plan=approved_figures,
                     image_model=image_model,
+                    auto_image_model=auto_image_model,
                     user_id=user.id,
                     api_key=api_key,
                     session_id=session.id,
@@ -6785,6 +6799,8 @@ async def _run_deck(
     figures_plan: list[dict] | None = None,
     #: draws figures (image default, not the writer)
     image_model: dict | None = None,
+    #: self-hosted image model: the document draws its own pictures
+    auto_image_model: dict | None = None,
     #: restructure source; untouched parts carried over
     carry_from: str | None = None,
     carry_note: str = "",
@@ -6811,6 +6827,7 @@ async def _run_deck(
         "carry_note": carry_note, "traced": traced, "check_keys": list(check_keys),
         "writer": {
             "web_search": web_search, "figures_plan": figures_plan, "image_model": image_model,
+            "auto_image_model": auto_image_model,
             "code_calc": code_calc,
             "request": request, "approved_plan": approved_plan, "may_ask": may_ask,
             "model": model["id"], "outline_model": (outline_model or {}).get("id", ""),
@@ -7431,6 +7448,8 @@ async def _run_report(
     figures_plan: list[dict] | None = None,
     #: draws figures (image default, not the writer)
     image_model: dict | None = None,
+    #: self-hosted image model: the document draws its own pictures
+    auto_image_model: dict | None = None,
     project_sources: list[dict[str, Any]] | None = None,
     #: restructure source; untouched parts carried over
     carry_from: str | None = None,
@@ -7479,6 +7498,7 @@ async def _run_report(
             web_search=web_search,
             figures_plan=figures_plan,
             image_model=image_model,
+            auto_image_model=auto_image_model,
             request=request,
             approved_plan=approved_plan,
             may_ask=may_ask,

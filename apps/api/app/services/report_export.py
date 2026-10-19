@@ -959,7 +959,7 @@ def _docx_margins(document, margins: dict[str, float]) -> None:
 
 def _docx_type_scale(document, fmt: str | None = None) -> None:
     """Word built-in styles at document scale; template faces/colours kept."""
-    from docx.enum.text import WD_LINE_SPACING
+    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
     from docx.shared import Pt
 
     scale, leading = doc_type.type_for(fmt), doc_type.leading_for(fmt)
@@ -992,6 +992,9 @@ def _docx_type_scale(document, fmt: str | None = None) -> None:
             style.font.bold = True
         if key == "body":
             style.paragraph_format.line_spacing = leading["body"]
+            if not name.startswith("Heading"):
+                # justified, as an official document reads
+                style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         elif key == "table":
             style.paragraph_format.line_spacing = leading["table"]
         if space is None:
@@ -1415,7 +1418,7 @@ def _docx_chart(document, chart: dict, index: int, style: dict | None) -> bool:
         chart["categories"],
         chart["series"],
         unit=chart.get("unit") or "",
-        accent=RGBColor.from_string((style["accent"] if style else "#5b5bd6").lstrip("#").upper()),
+        accent=RGBColor.from_string((style["accent"] if style else design.DOC_ACCENT).lstrip("#").upper()),
         muted=RGBColor.from_string((style["muted"] if style else "#666666").lstrip("#").upper()),
         faces=chartkit.FACES["serif" if style and style.get("font") == "serif" else "gothic"],
     )
@@ -2123,7 +2126,7 @@ def to_docx(
                 run.font.bold = level == 0
         if visual_style == "poster" and level == 0:
             shade = OxmlElement("w:shd")
-            shade.set(qn("w:fill"), (style or {}).get("accent", "#5b5bd6").lstrip("#"))
+            shade.set(qn("w:fill"), (style or {}).get("accent", design.DOC_ACCENT).lstrip("#"))
             paragraph._p.get_or_add_pPr().append(shade)
 
     numbers = _HeadingNumbers(head_block)
@@ -2315,7 +2318,7 @@ def _pdf_chart(chart: dict, style: dict | None):
     from reportlab.graphics.shapes import Drawing, String
     from reportlab.graphics.widgets.markers import makeMarker
 
-    accent = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
+    accent = HexColor(style["accent"]) if style else HexColor(design.DOC_ACCENT)
     muted = HexColor(style["muted"]) if style else HexColor("#666666")
     korean = fonts.korean(style["font"] if style else "serif")
     width, height = 170 * mm, 80 * mm
@@ -2383,7 +2386,7 @@ def _pdf_cards(
     """Card grid, drawn."""
     if not cards:
         return None
-    accent = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
+    accent = HexColor(style["accent"]) if style else HexColor(design.DOC_ACCENT)
     hair = HexColor(style["muted"]) if style else HexColor("#666666")
     head = ParagraphStyle(
         "cardTitle",
@@ -2437,7 +2440,7 @@ def _pdf_callout(callout: tuple[str, list[str]], styles: dict, style: dict | Non
     title, lines = callout
     if not title:
         return None
-    accent = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
+    accent = HexColor(style["accent"]) if style else HexColor(design.DOC_ACCENT)
     head = ParagraphStyle(
         "calloutTitle",
         parent=styles["body"],
@@ -2473,7 +2476,7 @@ def _pdf_steps(steps: list[tuple[str, str]], styles: dict, style: dict | None) -
     """Procedure, drawn as a rail."""
     if not steps:
         return None
-    accent = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
+    accent = HexColor(style["accent"]) if style else HexColor(design.DOC_ACCENT)
     muted = HexColor(style["muted"]) if style else HexColor("#666666")
     number = ParagraphStyle(
         "stepNumber",
@@ -2513,7 +2516,7 @@ def _pdf_kpi(figures: list[tuple[str, str]], styles: dict, style: dict | None) -
     """Figure strip, drawn."""
     if not figures:
         return None
-    accent = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
+    accent = HexColor(style["accent"]) if style else HexColor(design.DOC_ACCENT)
     muted = HexColor(style["muted"]) if style else HexColor("#666666")
     big = ParagraphStyle(
         "kpiValue",
@@ -2916,7 +2919,7 @@ def to_pdf(
         bold_face = fonts.korean("gothic", bold=True)
 
     visual_style = (style or {}).get("visualStyle") or "editorial"
-    accent_colour = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
+    accent_colour = HexColor(style["accent"]) if style else HexColor(design.DOC_ACCENT)
     base = getSampleStyleSheet()
     title_size, h1_size = T["title"], T["h1"]
     title_options = (
@@ -2987,14 +2990,14 @@ def to_pdf(
             spaceBefore=10,
             spaceAfter=4,
         ),
-        # left-aligned: no Korean hyphenation, justified Latin gaps
+        # justified, as an official document reads (body and bullets)
         "body": ParagraphStyle(
             "b",
             parent=base["BodyText"],
             fontName=korean,
             fontSize=T["body"],
             leading=T["body"] * L["body"],
-            alignment=TA_LEFT,
+            alignment=TA_JUSTIFY,
             spaceAfter=6,
         ),
         "bullet": ParagraphStyle(
@@ -3003,6 +3006,7 @@ def to_pdf(
             fontName=korean,
             fontSize=T["body"],
             leading=T["body"] * L["body"],
+            alignment=TA_JUSTIFY,
             leftIndent=10 * mm,
             bulletIndent=4 * mm,
             spaceAfter=3,
@@ -3108,7 +3112,7 @@ def to_pdf(
                 story.append(PageBreak())
                 continue
             if kind == "table":
-                accent = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
+                accent = HexColor(style["accent"]) if style else HexColor(design.DOC_ACCENT)
                 if drawn := _pdf_table(text, styles, accent, text_width):
                     gap = Spacer(1, 2 * mm)
                     # 「표 1.」 caption moves with its table

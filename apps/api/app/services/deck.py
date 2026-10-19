@@ -28,6 +28,7 @@ from app.services import (
     figures,
     grounding,
     hangul,
+    illustrations,
     imagegen,
     internal_words,
     key_figures,
@@ -377,7 +378,9 @@ Content fields of a slide — fill only the one for its layout:
 - steps: "steps": [["단계", "내용"], ...], 3~5 entries. The stage a one-word name (no number),
   the content one line. Only procedures the request has.
 - cards: "cards": [["이름", "내용"], ...], 3~4 entries. The name one word, the content one or
-  two sentences within 80 characters. Only items of equal rank.
+  two sentences within 80 characters. Only items of equal rank. Keep what the material says
+  of each item — where, for whom, what for (「햇빛이 드는 창가의 2~4인 좌석」, not 「창가 좌석」);
+  the name is the material's own word for it.
 - statement: "title": the key phrase (within 12 characters), "body": one sentence unpacking it
   (within 60 characters).
 - big-number: "metrics": one [["값", "이름"]], "body": one line on what the number means. The
@@ -2936,6 +2939,22 @@ _CALENDAR = re.compile(
 )
 
 
+#: a value that is only a blank to fill: 「[금액]」「[ ]」
+_BLANK_VALUE = re.compile(r"\[[^\[\]]{0,20}\]")
+
+
+def blank_numbers(slide: dict) -> bool:
+    """Whether a big-number or metrics slide has only blanks for its values, or a statement
+    slide's key phrase is a blank (「[금액] 소요」)."""
+    if slide.get("layout") == "statement":
+        return bool(_BLANK_VALUE.search(str(slide.get("title") or "")))
+    if slide.get("layout") not in ("big-number", "metrics"):
+        return False
+    values = [str(m[0]).strip() for m in slide.get("metrics") or []
+              if isinstance(m, (list, tuple)) and m]
+    return bool(values) and all(_BLANK_VALUE.fullmatch(v) for v in values)
+
+
 def _clean_metrics(value: Any) -> list[list[str]]:
     """`[[값, 이름]]` pairs; half-empty and date-part labels dropped."""
     items = value if isinstance(value, list) else []
@@ -3081,6 +3100,7 @@ async def _write_slides(
     research_rule: str = "",
     figures_plan: list[dict] | None = None,
     image_model: dict | None = None,
+    auto_image_model: dict | None = None,
     density: str = "speaker",
     frame: bool = False,
     settled: list | None = None,
@@ -3503,6 +3523,25 @@ async def _write_slides(
         ),
     ):
         yield event
+    # its own pictures too, when an image model is served inside the data boundary
+    if auto_image_model and not illustrations.declined(request):
+        async for event in _draw_pictures(
+            slides,
+            image_model=auto_image_model,
+            request=request,
+            model=model,
+            api_key=api_key,
+            usage=usage,
+            wrap=lambda prompt: build_document_messages(
+                SessionKind.slides,
+                prompt,
+                request=request,
+                trusted_context=trusted_context,
+                untrusted_context=untrusted_context,
+                research_rule=research_rule,
+            ),
+        ):
+            yield event
 
     if (wanted := requested_slides(request)) and len(slides) != wanted:
         log.warning(
@@ -3623,11 +3662,26 @@ async def _write_slides(
                 "the names of what it compares. Write it as one table: the first row is the "
                 "header, every other row gives one item's values, taken from the earlier "
                 "slides and the computed values. Copy the numbers; never make one up."))
+    # a number slide whose every value is a blank (「[금액]」) shows a bracket large and little
+    # else: written once more as bullets
+    as_bullets: set[str] = set()
+    for index, slide in enumerate(slides):
+        if blank_numbers(slide):
+            as_bullets.add(str(slide.get("id")))
+            needs.setdefault(index, (
+                "This slide shows a blank (「[금액]」 and the like) as its big number or key "
+                "phrase; a blank is not a figure. Write the slide as bullets instead, with a "
+                "title that names its subject (「예산과 일정」): 3~4 short items taken from the "
+                "material and the earlier slides, the blank kept as it is in one item (「총 "
+                "예산: [금액]」). Do not invent an amount."))
     for index in sorted(needs):
         slide = slides[index]
         table_ask = str(slide.get("id")) in as_table
         if table_ask:
             slides[index] = {**slide, "layout": "table"}
+        if str(slide.get("id")) in as_bullets:
+            slide = {k: v for k, v in slide.items() if k not in ("metrics", "body")}
+            slides[index] = slide = {**slide, "layout": "bullets"}
         try:
             fixed, spent = await rewrite_slide(
                 request=request, slides=slides, target_id=str(slide.get("id")),
@@ -3824,6 +3878,60 @@ async def _draw_figures(
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
 
+#: Layouts whose words narrow beside a picture (`deck_export`: bullets and body); pair layouts
+#: such as bands and cards keep the full width and would run under it.
+_PICTURE_LAYOUTS = ("bullets", "statement")
+
+
+async def _draw_pictures(
+    slides: list[dict[str, Any]],
+    *,
+    image_model: dict,
+    request: str,
+    model: str,
+    api_key: str,
+    usage: dict[str, int],
+    wrap,
+) -> AsyncIterator[dict[str, Any]]:
+    """Pictures the deck draws for itself on text slides with no figure or picture yet."""
+    eligible = [
+        i for i, slide in enumerate(slides)
+        if slide.get("layout") in _PICTURE_LAYOUTS and not slide.get("image")
+        and not slide.get("diagram")
+    ]
+    planned, spent = await illustrations.plan(
+        parts=[(str(s.get("title") or ""), _drafted_text(s)) for s in slides],
+        eligible=eligible,
+        request=request,
+        model=model,
+        api_key=api_key,
+        complete=_complete,
+        slide=True,
+        wrap=wrap,
+        limit=1 if len(slides) < 6 else illustrations.MAX_PICTURES,
+    )
+    usage["inputTokens"] += spent["inputTokens"]
+    usage["outputTokens"] += spent["outputTokens"]
+    for row in planned:
+        slide = slides[row.index]
+        name = row.caption or "그림"
+        progress = {"current": row.index + 1, "total": len(slides)}
+        yield {"type": "step", "id": f"fig{row.index}", "label": f"{name} 그리는 중",
+               "status": "running", "progress": progress}
+        picture = await illustrations.draw(
+            row, image_model=image_model, api_key=api_key, aspect="4:3")
+        if picture is None:
+            yield {"type": "step", "id": f"fig{row.index}", "label": name, "status": "error",
+                   "progress": progress}
+            continue
+        usage["inputTokens"] += picture.pop("_in", 0)
+        usage["outputTokens"] += picture.pop("_out", 0)
+        slide["image"] = {"src": picture["src"], "caption": picture["caption"]}
+        yield {"type": "step", "id": f"fig{row.index}", "label": name, "status": "done",
+               "progress": progress}
+        yield {"type": "slide", "slide": auto_fit(slide), "done": True}
+
+
 #: Bilingual-term request (「영어 원문 병기」).
 _BILINGUAL = re.compile(
     r"(?:영어|영문|원문|원어)\s{0,3}(?:원문\s{0,3})?(?:을|를)?\s{0,3}(?:함께\s{0,3})?"
@@ -3885,6 +3993,8 @@ async def write(
     #: `None` on planning pass, `[]` for 그림 없이.
     figures_plan: list[dict] | None = None,
     image_model: dict | None = None,
+    #: Self-hosted image model: the deck draws its own pictures (`illustrations`), no card.
+    auto_image_model: dict | None = None,
     #: Research before the outline.
     web_search: bool = True,
     #: a calculation skill is on: derived values by code even when the request names none
@@ -4026,6 +4136,7 @@ async def write(
             research_rule=research_rule,
             figures_plan=figures_plan,
             image_model=image_model,
+            auto_image_model=auto_image_model,
             density=str(approved_plan.get("density") or "speaker"),
             frame=bool(approved_plan.get("frame")),
         ):
@@ -4293,8 +4404,9 @@ async def write(
         ),
         "slides": [{"title": item["title"], "layout": item["layout"]} for item in plan],
     }
-    # pictures proposed with the outline, approved on a second card
-    if image_model:
+    # pictures proposed with the outline, approved on a second card; a self-hosted model
+    # draws on its own after writing instead
+    if image_model and not auto_image_model:
         drawn = await figures.propose(
             request=request,
             title=title,
@@ -4576,6 +4688,8 @@ def filled(slides: list[dict]) -> list[dict]:
 _SCALES = deck_type.SCALES
 #: Deck-wide body floor; a crowded slide keeps its own smaller step.
 _COMMON_FLOOR = _SCALES[1]
+#: at 18 pt the words fill under this share of the body: set at 22 pt instead
+_SPARSE = 0.5
 
 #: Layout whose runs get every other slide re-planned.
 _MONOTONE = "bullets"
@@ -5313,19 +5427,20 @@ def _need(slide: dict, scale: float) -> float:
 
 
 def auto_fit(slide: dict) -> dict:
-    """Sets `textScale` to the first fitting ladder step (22 → 12 pt); manual scales kept."""
+    """Sets `textScale`: 18 pt by default, 22 when the words fill little of the body, a lower
+    step (16 → 12) when they overflow; manual scales kept."""
     if (
         slide.get("textScale") not in (None, 1, 1.0)
         or slide.get("layout") in _STRUCTURAL
         and slide.get("layout") != "agenda"
+        or slide.get("layout") == "closing"
     ):
         return slide
     room = deck_type.BODY_BOTTOM - deck_type.BODY_TOP
-    for scale in _SCALES:
-        if _need(slide, scale) <= room:
-            break
+    if _need(slide, 1.0) <= room * _SPARSE and _need(slide, _SCALES[0]) <= room:
+        scale = _SCALES[0]
     else:
-        scale = _SCALES[-1]
+        scale = next((s for s in _SCALES[1:] if _need(slide, s) <= room), _SCALES[-1])
     if scale == 1.0:
         slide.pop("textScale", None)
     else:
@@ -5343,14 +5458,15 @@ def _body_slides(slides: list[dict]) -> list[dict]:
 
 
 def harmonize(slides: list[dict]) -> list[dict]:
-    """One deck body size: smallest needed step, not below 18 pt (crowded slides keep their own)."""
+    """One deck body size: smallest needed step, not below 18 pt (crowded slides keep their own);
+    22 only when every body slide is sparse."""
     body = _body_slides(slides)
     needed = [float(s.get("textScale") or 1.0) for s in body]
     common = max(min(needed, default=1.0), _COMMON_FLOOR)
     for slide in body:
         own = float(slide.get("textScale") or 1.0)
         scale = min(own, common)
-        if scale >= 1.0:
+        if scale == 1.0:
             slide.pop("textScale", None)
         else:
             slide["textScale"] = scale

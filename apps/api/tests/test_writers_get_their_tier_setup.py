@@ -139,7 +139,7 @@ def test_the_full_section_rules_allow_a_stated_assumption_for_an_estimate() -> N
 
 def test_a_strong_writer_keeps_the_block_syntax_of_the_draft() -> None:
     light = prompt_tier.for_writer(report._DRAFT_PROMPT, light=True)
-    assert "```kpi" in light and "```callout" in light and "Prose is the default" not in light
+    assert "```kpi" not in light and "```callout" in light and "Prose is the default" not in light
     assert "## 제목" in light
 
 

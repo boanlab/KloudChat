@@ -878,7 +878,7 @@ export function ReportPanel({
   const [templateId, setTemplateId] = useState(report.templateId || '_document')
   const [templateSaving, setTemplateSaving] = useState(false)
   const [visualStyle, setVisualStyle] = useState(report.design?.visualStyle ?? 'editorial')
-  const [documentAccent, setDocumentAccent] = useState(report.design?.accent ?? '#5b5bd6')
+  const [documentAccent, setDocumentAccent] = useState(report.design?.accent ?? '#1e3a8a')
   // Design arriving after mount: stream `design` event, or saved copy replacing the draft.
   const shownStyle = report.design?.visualStyle
   const shownAccent = report.design?.accent
@@ -1020,7 +1020,7 @@ export function ReportPanel({
       const latest = await artifactsApi.get(report.id)
       const current = report.design
       const design = {
-        accent: current?.accent ?? '#5b5bd6', ink: current?.ink ?? '#1a1a1a',
+        accent: current?.accent ?? '#1e3a8a', ink: current?.ink ?? '#1a1a1a',
         muted: current?.muted ?? '#666666', font: current?.font ?? 'serif' as const,
         ...(current?.footer ? { footer: current.footer } : {}),
         ...(current?.logo ? { logo: current.logo } : {}), visualStyle: next,
