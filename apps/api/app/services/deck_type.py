@@ -5,7 +5,7 @@ from __future__ import annotations
 #: points per slide unit (960 / 400)
 K = 2.4
 
-#: PowerPoint pt; title 32, body 22 down the `STEPS` ladder on overflow, floor 12
+#: PowerPoint pt; title 26, body 18 (22 on a sparse deck) down the `STEPS` ladder, floor 12
 TYPE: dict[str, float] = {
     # Covers.
     "cover": 36,
@@ -18,8 +18,8 @@ TYPE: dict[str, float] = {
     "sectionNumber": 18,
     "splitNumber": 80,
     # Body slides.
-    "title": 32,
-    "body": 22,
+    "title": 26,
+    "body": 18,
     "bodyNarrow": 18,
     "paragraph": 18,
     "agenda": 18,
@@ -53,13 +53,13 @@ TYPE: dict[str, float] = {
     "gutterNumber": 22,
 }
 
-#: body ladder (pt)
+#: body ladder (pt); 18 is the body size, 22 a sparse deck's
 STEPS: tuple[int, ...] = (22, 18, 16, 14, 12)
-#: ladder as `textScale` multipliers
-SCALES: tuple[float, ...] = tuple(round(step / STEPS[0], 4) for step in STEPS)
+#: ladder as `textScale` multipliers of the 18 pt body (1.0 = 18 pt)
+SCALES: tuple[float, ...] = tuple(round(step / TYPE["body"], 4) for step in STEPS)
 FLOOR_PT = 12
-#: title 32 → 30 → 28, then wraps at 28
-TITLE_STEPS: tuple[int, ...] = (32, 30, 28)
+#: title 26, wrapping to a second line rather than shrinking
+TITLE_STEPS: tuple[int, ...] = (26,)
 
 #: line height ratio
 LEADING: dict[str, float] = {
@@ -78,7 +78,7 @@ LEADING: dict[str, float] = {
 BULLET_GAP = 0.35
 
 #: body box geometry (slide units); each extra title line pushes the box down
-BODY_TOP = 66.5
+BODY_TOP = 60
 BODY_BOTTOM = 190
 PAD_X = 28
 TITLE_WIDTH = 400 - 2 * PAD_X
@@ -108,7 +108,7 @@ def lines(text: str, size: float, width: float) -> int:
 
 def pt(name: str, scale: float = 1.0) -> float:
     """Exporter size in pt at the slide's text scale, floored."""
-    return max(FLOOR_PT, TYPE[name] * scale) if scale < 1 else TYPE[name]
+    return max(FLOOR_PT, TYPE[name] * scale)
 
 
 def units(name: str) -> float:
@@ -117,7 +117,7 @@ def units(name: str) -> float:
 
 
 def title_pt(title: str, width: float | None = None) -> float:
-    """Title size in pt: 32 if one line, else 30 or 28."""
+    """Title size in pt: 26 (a long title wraps)."""
     column = TITLE_WIDTH if width is None else width
     for size in TITLE_STEPS:
         if lines(title, size / K, column) <= 1:

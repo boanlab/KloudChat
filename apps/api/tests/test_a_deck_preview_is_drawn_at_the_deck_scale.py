@@ -24,14 +24,14 @@ def _declared(html: str, name: str) -> list[str]:
     return re.findall(rf"{re.escape(name)}:\s*([^;]+);", html)
 
 
-def test_a_sparse_slide_is_drawn_at_22pt_under_a_32pt_title() -> None:
+def test_a_sample_slide_is_drawn_at_the_deck_body_size_under_a_26pt_title() -> None:
     # 「권고」: three short bullets.
     with _client() as client:
         page = client.get("/design-templates/deck-case/preview?slide=2").text
-    assert _declared(page, "--deck-body") == ["22pt"]
-    # The slide's own rule wins over `:root`: full step, one-line title.
+    assert _declared(page, "--deck-body") == ["18pt"]
+    # The slide's own rule wins over `:root`: the deck's 18 pt step, one-line title.
     assert "--text-scale: 1;" in page
-    assert _declared(page, "--deck-title")[-1] == "32pt"
+    assert _declared(page, "--deck-title")[-1] == "26pt"
     assert "li { font-size: var(--fs-body)" in page
 
 
@@ -42,7 +42,7 @@ def test_the_seed_declares_the_one_type_table() -> None:
     assert f"--deck-floor: {deck_type.FLOOR_PT}pt;" in declared
     for template in _DECKS:
         assert "{{DECK_TYPE}}" not in template.seed
-        assert "--deck-body: 22pt;" in template.seed
+        assert "--deck-body: 18pt;" in template.seed
 
 
 #: A size that follows the window, not the slide.
@@ -84,10 +84,11 @@ def test_a_crowded_slide_steps_down_and_the_deck_follows_to_18pt() -> None:
     crowded = _bullets(*["한 줄에 다 들어가지 않을 만큼 길게 쓴 설명 문장이 계속 이어진다" * 2] * 6)
     alone = deck_preview.fits([sparse], seed)
     together = deck_preview.fits([sparse, crowded], seed)
-    assert alone[0].scale == 1.0
-    assert together[1].scale < deck_type.SCALES[1]
+    # Alone, two short items take the 22 pt step rather than leave the slide empty.
+    assert alone[0].scale == deck_type.SCALES[0]
+    assert together[1].scale < 1.0
     # One step for the deck, not below 18pt on account of one crowded slide.
-    assert together[0].scale == deck_type.SCALES[1]
+    assert together[0].scale == 1.0
 
 
 def test_a_table_slide_carries_its_row_size() -> None:

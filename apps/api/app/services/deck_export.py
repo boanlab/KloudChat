@@ -3467,7 +3467,6 @@ def to_pptx(
 
         # foot: logo, title, footer left; number right
         if not cover:
-            _block(slide, left=72, top=_H - 58, width=_W - 144, height=0.75, colour=hair)
             edge = 72.0
             if mark:
                 blob, mark_width, mark_height = mark
