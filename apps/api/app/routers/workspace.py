@@ -1735,7 +1735,7 @@ async def rewrite_section(
             summary=f"{target.get('heading')} 다시 씀",
         )
     )
-    target["content"] = hangul.tidy_spacing(hangul.read_back(body)[0])
+    target["content"] = pictures.drop_broken(hangul.tidy_spacing(hangul.read_back(body)[0]))
     # model output is Markdown
     target["format"] = "markdown"
     target["status"] = "done"

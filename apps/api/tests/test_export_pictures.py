@@ -383,5 +383,7 @@ def test_a_picture_never_covers_words_centred_across_the_slide(layout):
     archive = zipfile.ZipFile(io.BytesIO(deck_export.to_pptx("t", [slide], tokens=TOKENS)))
     assert not [name for name in archive.namelist() if name.startswith("ppt/media/")]
     with_picture = deck_export.to_pdf("t", [slide], tokens=TOKENS)
-    bare = deck_export.to_pdf("t", [{k: v for k, v in slide.items() if k != "image"}], tokens=TOKENS)
+    bare = deck_export.to_pdf(
+        "t", [{k: v for k, v in slide.items() if k != "image"}], tokens=TOKENS
+    )
     assert with_picture.count(b"/Image") == bare.count(b"/Image")

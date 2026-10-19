@@ -640,7 +640,10 @@ Statement and quote slides never carry a picture in the exports: their words spa
 
 **Pictures come from the other direction.** The writing model cannot make one
 and cannot reference one — `sanitise` drops every `src` that is not already
-inside the file. What a person can do is put a picture this workspace made on
+inside the file. A Markdown section is held to the same rule: a `data:` picture
+the writer typed out that does not open as an image is dropped with its 「(그림 N)」
+mention (`pictures.drop_broken`), and the web view shows a cut-off one as its
+caption in italics, never as base64 text. What a person can do is put a picture this workspace made on
 the image surface into a block: `POST /artifacts/{id}/blocks/image` reads the
 stored blob, inlines it as a `data:` URI and re-renders the document. Raster
 only (`image/svg+xml` is a document that can carry script), capped at 3 MB
