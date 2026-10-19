@@ -26,7 +26,7 @@ from app.services import (
     units,
     weekdays,
 )
-from app.services.chat_format import normalize_raw_payload, unlink_local_targets
+from app.services.chat_format import draft_shape, normalize_raw_payload, unlink_local_targets
 
 log = logging.getLogger("app.routers.sessions")
 
@@ -106,6 +106,8 @@ class Normalize(Base):
             # skill script report lines
             normalized = internal_words.strip_reports(normalized)
         normalized = internal_words.strip_tool_apologies(normalized)
+        # a drafted document's genre heading under its title and the writer's notes on it
+        normalized = draft_shape(normalized, first or req.text)
         # the material's 「(가상)」 test tag stays out of the copy
         normalized = internal_words.strip_test_label(normalized, first or req.text)
         # sandbox links open nothing; files are in the chips

@@ -706,7 +706,8 @@ _COMPUTE_BLANKS = (
 #: Code tools; printed lines = computed values.
 _CODE_TOOLS = frozenset({"run_code", "execute_code"})
 #: Stated decimal (not versions or codes).
-_DECIMAL = re.compile(r"(?<![A-Za-z0-9_.])\d{1,9}\.\d{1,6}(?![A-Za-z0-9_.])")
+_DECIMAL = re.compile(
+    r"(?<![A-Za-z0-9_.,])(?:\d{1,3}(?:,\d{3})+|\d{1,9})\.\d{1,6}(?![A-Za-z0-9_.])")
 _ANY_NUMBER = re.compile(r"(?<![A-Za-z0-9_.])-?\d[\d,]{0,15}(?:\.\d{1,10})?")
 _FENCED = re.compile(r"```.*?(?:```|\Z)", re.S)
 #: Claim that code hit a run limit.
@@ -842,11 +843,12 @@ def _numbers(text: str) -> list[float]:
 
 
 def _unverified_figures(answer: str, known_text: str) -> list[str]:
-    """Answer decimals absent from given text (rounding/percent allowed): hand-worked values."""
-    known = _numbers(known_text)
+    """Answer decimals absent from given text (rounding/percent allowed): hand-worked values.
+    A printed 「-24.58」 is the answer's 「24.58% 감소」; 「174,056.31」 is one value."""
+    known = [abs(k) for k in _numbers(known_text)]
     missing: list[str] = []
     for token in _DECIMAL.findall(_FENCED.sub(" ", answer or "")):
-        value = float(token)
+        value = float(token.replace(",", ""))
         places = len(token.split(".", 1)[1])
         tolerance = 0.5 * 10 ** -places + 1e-9
         if any(abs(value - k) <= tolerance or abs(value - k * 100) <= tolerance

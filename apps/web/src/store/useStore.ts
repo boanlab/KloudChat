@@ -1000,7 +1000,10 @@ export const useStore = create<State>((set, get) => ({
       setAccessToken(session.accessToken)
       set({ authenticated: true, user: session.user, authLoading: false, signedOutReason: null })
       scheduleRefresh(session.expiresIn, () => void get().bootstrap())
-      armIdleWatch(get().idleTimeoutMinutes, () => void get().logout('idle'))
+      // Enabled kinds and the idle limit of this workspace, not the signed-out defaults.
+      void get().refreshConfig().then(() => {
+        if (get().authenticated) armIdleWatch(get().idleTimeoutMinutes, () => void get().logout('idle'))
+      })
       // `/models`, `/sessions` and the workspace are gated on `active`.
       if (session.user.status === 'active') {
         void get().loadModels()
@@ -1020,6 +1023,7 @@ export const useStore = create<State>((set, get) => ({
     set((state) => ({ authenticated: true, user: session.user, authLoading: false, authError: null,
       accountEpoch: state.accountEpoch + 1, messageEdit: null, messageEditBusy: false }))
     scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+    void get().refreshConfig()
     void get().loadModels()
   },
 
@@ -1032,6 +1036,7 @@ export const useStore = create<State>((set, get) => ({
         setAccessToken(session.accessToken)
         set({ authenticated: true, user: session.user, authLoading: false })
         scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+        void get().refreshConfig()
         void get().loadModels()
       } else {
         // Pending: log in so the waiting screen has an identity to show.

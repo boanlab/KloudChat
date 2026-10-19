@@ -6,7 +6,7 @@ const member = { id: 'member-1', name: '새 사용자', email: 'new@example.test
   monthlyCredits: 1000, creditsUsed: 0, avatarColor: '#168267', allowedModels: [], createdAt: at,
   preferences: { autoMemory: false, showUsage: false, streamResponses: true } }
 
-async function signedOutApp(page: Page, testInfo: TestInfo) {
+async function signedOutApp(page: Page, testInfo: TestInfo, kinds = ['chat']) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
   let signedIn = false
   await page.context().route('**/*', async (route) => {
@@ -24,7 +24,7 @@ async function signedOutApp(page: Page, testInfo: TestInfo) {
     }
     if (path === '/auth/me') return route.fulfill({ json: member })
     if (path === '/auth/config') return route.fulfill({ json: { brand: { name: 'KloudChat', logo: '' },
-      enabledKinds: ['chat'], privacy: { externalDataGuard: false }, passwordResetEnabled: false, dictationEnabled: false } })
+      enabledKinds: kinds, privacy: { externalDataGuard: false }, passwordResetEnabled: false, dictationEnabled: false } })
     if (path === '/models') return route.fulfill({ json: { models: [], defaultChatModel: '', litellmAvailable: false,
       autoRouting: { enabled: false, available: false } } })
     if (path === '/credits') return route.fulfill({ json: { monthlyCredits: 1000, creditsUsed: 0, creditsRemaining: 1000 } })
@@ -43,4 +43,14 @@ test('a member signing in on an admin address lands at home, not on 권한 없�
   await page.getByRole('button', { name: '로그인', exact: true }).last().click()
   await expect(page).toHaveURL(/\/$/, { timeout: 15_000 })
   await expect(page.getByText(/관리자 권한이 필요한/)).toHaveCount(0)
+})
+
+test('the surfaces this workspace switched on show on home right after signing in', async ({ page }, testInfo) => {
+  await signedOutApp(page, testInfo, ['chat', 'report', 'slides', 'image', 'av'])
+  await page.goto('/')
+  await page.getByLabel('이메일').fill(member.email)
+  await page.getByLabel('비밀번호').fill('long-enough-password')
+  await page.getByRole('button', { name: '로그인', exact: true }).last().click()
+  await expect(page.getByRole('group', { name: '만들 것' }).getByRole('button'))
+    .toHaveText(['챗', '보고서', '슬라이드', '이미지', '오디오/동영상'])
 })

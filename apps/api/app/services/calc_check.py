@@ -137,9 +137,19 @@ class _Names:
             return False
         if any(abs(value - v) < 1e-9 for v in (self.by_row or {}).get(row, ())):
             return True
-        # printed on a line that names the row (「사회과학대학 n=24, 전반만족 4.17」)
-        token = re.compile(rf"(?<![\d.]){re.escape(written)}(?![\d])")
-        return bool(row) and any(row in line and token.search(line) for line in self.printed)
+        # printed on a line that names the row (「사회과학대학 n=24, 전반만족 4.17」), in any
+        # spelling (「58,277,000」 for a printed 「58277000.0」)
+        if row and any(row in line and self._on(written, line) for line in self.printed):
+            return True
+        # a value of five or more digits the code printed anywhere is the code's, not a slip:
+        # marked, it would doubt the code's own figure
+        return self.mark and len(re.sub(r"\D", "", written).lstrip("0")) >= 5 and any(
+            self._on(written, line) for line in self.printed)
+
+    @staticmethod
+    def _on(written: str, line: str) -> bool:
+        return any(_same(written, float(m.group(0).replace(",", "")))
+                   for m in _NUMBER.finditer(line))
 
     def vouched(self, written: str, sentence: str, s: Stated) -> bool:
         """Whether `written` is printed on a line naming a group the sentence also names
