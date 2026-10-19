@@ -2788,7 +2788,8 @@ async def suggest_figure(
     said = "\n".join((payload.title or session.title or "", payload.about, payload.context))
     boundary = await _media_boundary(db, session, catalogue["models"], said)
     model = _media_model(
-        user, catalogue["models"], kind="chat", boundary=boundary, asked=session.model or ""
+        user, catalogue["models"], kind="chat", boundary=boundary,
+        asked=session.model or "", default=catalogue.get("defaultChatModel"),
     )
     if model is None:
         await _audit_media_boundary(user, request, session, boundary, refused=True)
@@ -2859,7 +2860,8 @@ async def generate_images(
     if not payload.raw and payload.style != "없음":
         # same boundary as the picture; none inside it = drawn as asked
         planner = _media_model(
-            user, catalogue["models"], kind="chat", boundary=boundary, asked=session.model or ""
+            user, catalogue["models"], kind="chat", boundary=boundary,
+            asked=session.model or "", default=catalogue.get("defaultChatModel"),
         )
         if planner is not None:
             planned, _ = await imagegen.plan(
@@ -2877,6 +2879,7 @@ async def generate_images(
         design=design_service.image_clause(await design_for(db, user, session)),
         figure=payload.figure and planned == boundary.text,
         square_only=not imagegen.honours_aspect(str(model["id"])),
+        labels=payload.labels,
     )
 
     made: list[Artifact] = []
@@ -2980,7 +2983,8 @@ async def _draw_chart(
 ) -> list[ArtifactOut]:
     """차트 style: LM-written matplotlib run in the sandbox; code kept as `composedPrompt`."""
     writer = _media_model(
-        user, catalogue["models"], kind="chat", boundary=boundary, asked=session.model or ""
+        user, catalogue["models"], kind="chat", boundary=boundary,
+        asked=session.model or "", default=catalogue.get("defaultChatModel"),
     )
     if writer is None:
         await _audit_media_boundary(user, request, session, boundary, refused=True)

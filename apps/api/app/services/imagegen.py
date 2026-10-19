@@ -243,11 +243,15 @@ def compose_prompt(
     design: str = "",
     figure: bool = False,
     square_only: bool = False,
+    labels: str = "",
 ) -> str:
     """Prompt as sent; later phrases win; stored prompt stays as typed."""
     parts = [prompt.strip().rstrip(".").strip()]
     if figure:
         parts.append(_FIGURE_CLAUSE)
+    # chosen text option holds with or without the planner
+    if rule := _LABEL_RULE.get(labels):
+        parts.append(rule)
     phrase = _STYLE_PHRASE.get(style)
     # planned prompt ends with its own Style line
     if phrase and "\nStyle:" not in prompt:
