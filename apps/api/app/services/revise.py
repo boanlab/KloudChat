@@ -76,6 +76,10 @@ class Plan:
     usage: dict[str, int] = field(default_factory=lambda: {"inputTokens": 0, "outputTokens": 0})
     #: what the rewrite is told the person typed, minus what code already did (a title)
     typed: str = ""
+    #: each target's own asks, when every ask of the instruction names its part
+    clauses: dict[int, list[str]] = field(default_factory=dict)
+    #: lines of a summary asked at the document's start (written by code, not a rewrite)
+    summary: int = 0
 
     @property
     def revises(self) -> bool:
@@ -1200,6 +1204,150 @@ def document_block(parts: list[str], texts: list[str]) -> str:
         "as they are. What is here is a fact of this document even if the original request does "
         "not have it.\n\n" + "\n\n".join(chunks)
     )
+
+
+#: where one ask of a report edit ends: a sentence end, 「그리고」, 「…빼고,」
+_CLAUSE_BREAK = re.compile(
+    r"(?<=[.!?。])\s+|\n+|\s*(?:그리고|또한|그다음|다음으로)\s+|(?<=[가-힣]고),\s*|(?<=[가-힣]며),\s*")
+#: a part named by number: 「2절의」, 「제3장」; not a count (「3장으로」)
+_SECTION_REF = re.compile(
+    r"(?<![\d.])(?:제\s?)?(\d{1,2})\s?(?:절|장)(?!\s?(?:으로|로|짜리|씩))")
+_COUNT_WORD = {"한": 1, "두": 2, "세": 3, "네": 4, "다섯": 5}
+#: a summary asked into the document: 「3줄 요약을 넣어줘」, 「요약 3줄 추가」
+_SUMMARY_ASK = re.compile(
+    r"(?:(?P<n>\d|한|두|세|네|다섯)\s?(?:줄|문장)(?:\s?(?:짜리|로\s?된))?\s?(?:핵심\s?)?요약"
+    r"|요약\s?(?:을|를)?\s?(?P<m>\d|한|두|세|네|다섯)\s?(?:줄|문장))"
+    r"[^.!?\n]{0,16}?(?:넣|추가|달|붙|써|만들|작성)")
+_FRONT = re.compile(r"맨\s?(?:앞|위|처음)|첫머리|서두|문서\s?(?:앞|첫)|앞부분|상단")
+#: wording the person points at: 「…4%라는 표현」, 「'허용 한도'라는 문구」
+_PHRASE_REF = re.compile(
+    r"(?P<p>[^,.!?\n]{2,60}?)\s?(?:이?라는|라고\s?(?:쓴|적은|한))\s?(?:표현|문구|말|문장|부분|내용)")
+_QUOTED = re.compile(r"[「『'\"‘“]([^」』'\"’”\n]{2,60})[」』'\"’”]")
+_VALUE = re.compile(r"\d[\d,.]*\s?(?:%|만\s?원|억\s?원?|원|명|건|개월|일)")
+_PARTICLE = re.compile(r"(?:까지|에서|으로|이라|라는|이가|은|는|이|가|을|를|의|에|로|과|와|도)$")
+
+
+def _plain_words(text: str) -> set[str]:
+    out = set()
+    for word in re.findall(r"[가-힣A-Za-z]{2,20}", text or ""):
+        word = _PARTICLE.sub("", word)
+        if len(word) >= 2:
+            out.add(word)
+    return out
+
+
+def summary_lines_asked(clause: str) -> int:
+    """Lines of a summary the clause asks put in (「3줄 요약을 넣어줘」 → 3), else 0."""
+    m = _SUMMARY_ASK.search(" ".join((clause or "").split()))
+    if not m:
+        return 0
+    word = m.group("n") or m.group("m")
+    return int(word) if word.isdigit() else _COUNT_WORD.get(word, 0)
+
+
+def rewords(clause: str) -> bool:
+    """Whether the clause corrects wording it points at (「…라는 표현은 … 고쳐줘」), not a value."""
+    return bool(_PHRASE_REF.search(clause or "") or _QUOTED.search(clause or ""))
+
+
+def _phrase_holders(clause: str, texts: list[str]) -> list[int]:
+    """Parts whose text states the wording the clause points at."""
+    quoted = [q.strip() for q in _QUOTED.findall(clause)]
+    if quoted:
+        return [i for i, t in enumerate(texts) if any(q in t for q in quoted)]
+    m = _PHRASE_REF.search(clause)
+    if not m:
+        return []
+    phrase = m.group("p")
+    values = [re.sub(r"\s", "", v) for v in _VALUE.findall(phrase)]
+    words = _plain_words(_VALUE.sub(" ", phrase))
+    if not values and len(words) < 2:
+        return []
+    holders = []
+    for i, text in enumerate(texts):
+        for line in re.split(r"(?<=[.!?。])\s+|\n", text or ""):
+            flat = re.sub(r"\s", "", line)
+            if all(v in flat for v in values) and (
+                    len(words & _plain_words(line)) >= (1 if values else 2)):
+                holders.append(i)
+                break
+    return holders
+
+
+def section_asks(instruction: str, parts: list[str], texts: list[str]
+                 ) -> tuple[dict[int, list[str]], int] | None:
+    """`({part: its asks}, summary lines)` when every ask of a report edit names its part: by
+    number (「2절의 표 2는 빼고」), by its name, as a summary at the start (「맨 앞에 3줄 요약」,
+    part 0) or by wording only some parts state (「…4%라는 표현은 … 고쳐줘」). None when an ask
+    names no part (the planner decides)."""
+    clauses = [c.strip(" ,") for c in _CLAUSE_BREAK.split(instruction or "") if c and c.strip(" ,")]
+    if not clauses or not parts:
+        return None
+    out: dict[int, list[str]] = {}
+    summary = 0
+    for clause in clauses:
+        numbered = {int(n) - 1 for n in _SECTION_REF.findall(clause)}
+        if any(not 0 <= n < len(parts) for n in numbered):
+            return None
+        named = {i for i, name in enumerate(parts)
+                 if len(name.strip()) >= 3 and name.strip() in clause}
+        lines = summary_lines_asked(clause)
+        if lines and (_FRONT.search(clause) or not numbered | named):
+            summary = lines
+            out.setdefault(0, []).append(clause)
+            continue
+        holders = set(numbered | named) or set(_phrase_holders(clause, texts))
+        if not holders:
+            return None
+        for i in holders:
+            out.setdefault(i, []).append(clause)
+    return out, summary
+
+
+#: summary the person asked for at the document's start; code builds the block
+SUMMARY_PROMPT = """Write the summary the person asked to put at the very start of the
+document below: exactly {n} lines, each one sentence, in the document's language and tone.
+
+Rules:
+- Only content and numbers stated in the document. Nothing new.
+- No title, author, team, date or period line; no heading, no label such as 「요약」 or
+  「핵심」, no list marks or numbers.
+- Reply with the {n} lines only.
+
+문서 제목: {title}
+
+{document}"""
+
+
+_SENTENCE_END = re.compile(r"(?:[다요음함됨임]|필요|예정|요청)[.!?。]?$|[.!?。]$")
+
+
+def _title_line(line: str, heads: set[str]) -> bool:
+    """A line restating the title block: its words mostly the title's or the head fields', or
+    a short line sharing them that is no sentence (「2026년 10월 3주차(10/12~10/16) 주간 업무
+    보고」)."""
+    words = [_PARTICLE.sub("", w) for w in re.findall(r"[가-힣A-Za-z0-9]{2,}", line)]
+    if not words:
+        return True
+    shared = sum(1 for w in words if any(w.startswith(h) or h.startswith(w) for h in heads))
+    return 5 * shared >= 3 * len(words) or (
+        shared > 0 and len(line) <= 40 and not _SENTENCE_END.search(line))
+
+
+def summary_block(text: str, n: int, title: str, fields: list[str]) -> str | None:
+    """The asked summary as the first part's 「핵심」 callout: `n` lines, the title block's
+    lines (title, author, period) left out. None when fewer than `n` lines remain."""
+    heads = {w for h in [title, *fields] for w in re.findall(r"[가-힣A-Za-z0-9]{2,}", h or "")}
+    kept = []
+    for line in (text or "").split("\n"):
+        line = re.sub(r"^\s{0,4}(?:[-*•·]|\d{1,2}[.)])\s{0,3}", "", line).strip().strip("*_ ")
+        if not line or line.startswith("```") or re.fullmatch(r"(?:핵심|요약)\s?[:：]?", line):
+            continue
+        if not _title_line(line, heads):
+            kept.append(line)
+    if len(kept) < n:
+        return None
+    return "```callout\n핵심\n" + "\n".join(kept[:n]) + "\n```"
 
 
 def label(plan: Plan, parts: list[str]) -> str:

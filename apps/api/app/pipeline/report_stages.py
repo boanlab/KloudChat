@@ -1241,8 +1241,9 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         log.info("trimmed %d sentence(s) from %r: %s", len(trimmed), section["heading"],
                  trimmed[0][:80])
     clean, _ = hangul.read_back(report._without_own_heading(body, section["heading"]))
-    # a written-out picture that does not open is the writer's invention
-    clean = pictures.drop_broken(clean)
+    # a written-out picture that does not open is the writer's invention; a fence around
+    # it (or around a table) taken off first, never left holding the table
+    clean = pictures.drop_broken(report.unfence_pictures(clean))
     # section = level-two heading; subheadings below
     clean = report._FIGURE_MARK.sub(lambda m: f"\n\n{m.group(0)}\n\n", clean)
     clean = report.split_long_paragraphs(

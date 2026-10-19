@@ -1750,7 +1750,7 @@ _QUALITY_LABELS = {
     "cut_table_row": "잘린 표 행", "table_rows": "빠진 표 행·합계와 다른 행",
     "carried_number_changed": "자료와 자릿수가 다른 수치",
     "formula_unit_slip": "단위가 어긋난 계산식",
-    "picture_in_code": "코드 블록 속 그림",
+    "picture_in_code": "코드 블록 속 그림", "table_in_code": "코드 블록 속 표",
     "settled_figure_changed": "정해진 수치와 다른 값",
     "fact": "웹 자료와 다른 주장(확인 필요)",
     "question": "평가 문항 검토 필요",
@@ -2703,8 +2703,10 @@ def unfence_pictures(body: str) -> str:
             continue
         inner = lines[i + 1:j]
         if (opening.group(1).lower() in _PROSE_FENCES
-                or any(_FIGURE_LINE.match(x.strip()) or "](data:image/" in x for x in inner)):
-            # a picture, or prose wrapped as 「```markdown」: the body itself
+                or any(_FIGURE_LINE.match(x.strip()) or "](data:image/" in x for x in inner)
+                or (not opening.group(1) and _fenced_table(inner))):
+            # a picture, prose wrapped as 「```markdown」, or a table with its caption in a
+            # bare fence: the body itself
             out.extend(inner)
         else:
             out.extend(lines[i:j + 1])
@@ -2733,6 +2735,17 @@ def error_text(body: str, request: str = "") -> bool:
     if request and len(re.findall(r"[가-힣]", request)) < len(re.findall(r"[A-Za-z]", request)):
         return False  # an English document
     return len(_ERROR_WORDS.findall(text)) >= 2
+
+
+_TABLE_RULE = re.compile(r"^\s{0,8}\|?\s{0,8}:?-{3,}:?\s{0,8}(?:\|\s{0,8}:?-{3,}:?\s{0,8}){0,40}\|?\s*$")
+
+
+def _fenced_table(inner: list[str]) -> bool:
+    """Lines of a bare fence that are only a Markdown table: its rows with a rule row, and a
+    caption (「**표 1. …**」) or blank lines around them."""
+    rows = [x.strip() for x in inner if x.strip()]
+    return (any(_TABLE_RULE.match(x) for x in rows)
+            and all(x.startswith("|") or _CAPTION_LINE.match(x) for x in rows))
 
 
 #: fence language that only wraps document prose: 「```markdown」

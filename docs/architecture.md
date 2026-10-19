@@ -490,6 +490,14 @@ that names its neighbour (「요청 사항 장 앞에」, "before the requests s
 (`place_insert`). The deck writer is told that every figure the person wrote
 must appear once.
 
+**Each ask goes to its part.** When every ask of a report edit names its part — by number
+(「2절의 표 2는 빼고」), by name, as a summary at the start (「맨 앞에 3줄 요약」) or by wording
+only some parts state (「…4%라는 표현은 … 고쳐줘」) — only those parts are rewritten, each
+told its own asks, and a wording fix spreads to no other part (`revise.section_asks`). An
+asked summary is written by code as the first part's 「핵심」 callout: the model gives the
+lines, and a line restating the title block (title, author, period) is left out
+(`revise.summary_block`); fewer lines than asked is said in the reply.
+
 **A term swap is done by hand.** 「문서 전체에서 「A」를 「B」로 통일해 줘」 ("use B for A throughout") is a string
 replacement across every text field (`revise.term_swap`, `replace_term`): exact,
 instant, and nothing else moves, rather than a model retyping and possibly

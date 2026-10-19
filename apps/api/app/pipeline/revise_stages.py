@@ -180,6 +180,13 @@ class Route(Base):
             # a table edit goes where that table is, whatever the planner guessed
             plan = revise.table_target(plan, names, [str(p.get("content") or "") for p in parts],
                                        typed)
+            asks = (revise.section_asks(typed, names, [str(p.get("content") or "") for p in parts])
+                    if plan.scope in ("parts", "whole") else None)
+            if asks is not None:
+                # every ask names its part: those parts only, each with its own asks
+                plan = revise.Plan(scope="parts", targets=sorted(asks[0]), note=plan.note,
+                                   usage=plan.usage, typed=plan.typed, clauses=asks[0],
+                                   summary=asks[1])
         bundle.usage["inputTokens"] += plan.usage["inputTokens"]
         bundle.usage["outputTokens"] += plan.usage["outputTokens"]
         if plan.inserts:
@@ -237,8 +244,13 @@ class Widen(Base):
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, doc = _report(), bundle.request, bundle.document
-        bundle.plan.order = list(bundle.plan.revision.targets)
+        plan = bundle.plan.revision
+        bundle.plan.order = list(plan.targets)
         typed = _typed(bundle)
+        if plan.clauses:
+            # asks that each name their part: only one stating a new value reaches others
+            typed = " ".join(c for asks in plan.clauses.values() for c in asks
+                             if consistency._STATED_VALUE.search(c) and not revise.rewords(c))
         if doc.by_hand or req.is_deck or not consistency.changes_content(typed):
             return
         names = _names(bundle)
@@ -288,6 +300,10 @@ class Rewrite(Base):
         for index in bundle.plan.order:
             part = parts[index]
             label = names[index] or f"{index + 1}"
+            # this part's own asks; an asked summary is written by code after the loop
+            asks = [c for c in plan.clauses.get(index, []) if not revise.summary_lines_asked(c)]
+            if not is_deck and plan.clauses and not asks and index not in widened:
+                continue
             yield {"type": "step", "id": f"r{index}", "label": label, "status": "running"}
             try:
                 if is_deck:
@@ -338,6 +354,16 @@ class Rewrite(Base):
                     before = str(part.get("content") or "")
                     spent = {"inputTokens": 0, "outputTokens": 0}
                     rejected = ""
+                    note = (
+                        consistency.dependent_note(instruction)
+                        if index in widened
+                        else "Change only what the request below asks of this section; leave "
+                        "every other sentence, table and figure of it as written.\n"
+                        f"사용자가 이 절에 요청한 것(그대로 반영): {' / '.join(asks)}"
+                        if asks
+                        else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
+                        f"{(plan.typed or instruction).strip()[:400]}"
+                    )
                     for _attempt in range(2):
                         body, used = await report.rewrite_section(
                             request=request,
@@ -347,15 +373,11 @@ class Rewrite(Base):
                             model=req.model,
                             api_key=req.api_key,
                             # planner paraphrase + typed words, so dropped details still land
-                            note=(
-                                consistency.dependent_note(instruction)
-                                if index in widened
-                                else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
-                                f"{(plan.typed or instruction).strip()[:400]}"
-                            ) + (f"\nThe last version of this section was rejected: {rejected}. "
-                                 "Write only the section's text for its reader: no plan of the "
-                                 "rewrite, no notes on how it is written, no instructions."
-                                 if rejected else ""),
+                            note=note + (
+                                f"\nThe last version of this section was rejected: {rejected}. "
+                                "Write only the section's text for its reader: no plan of the "
+                                "rewrite, no notes on how it is written, no instructions."
+                                if rejected else ""),
                             sources=list(data.get("sources") or []),
                             material=[*material, *settled_blocks],
                             doc_format=doc_format,
@@ -450,6 +472,23 @@ class Rewrite(Base):
             bundle.usage["outputTokens"] += spent["outputTokens"]
             doc.changed += 1
             yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
+        if not is_deck and plan.summary and parts:
+            # the asked summary: its lines by the model, the block and its place by code
+            yield {"type": "step", "id": "summary", "label": f"{plan.summary}줄 요약",
+                   "status": "running"}
+            block = await _summary(bundle, plan.summary)
+            if block is not None:
+                first = str(parts[0].get("content") or "")
+                # an earlier 「핵심」 block replaced, not stacked
+                first = re.sub(r"^\s*```callout\n핵심\n[\s\S]*?\n```\s*", "", first)
+                parts[0] = {**parts[0], "content": f"{block}\n\n{first.lstrip()}",
+                            "format": "markdown", "status": "done"}
+                parts[0].pop("factCheck", None)
+                yield {"type": "section", "sectionId": parts[0].get("id"),
+                       "heading": names[0], "content": parts[0]["content"], "done": True}
+                doc.changed += 1
+            yield {"type": "step", "id": "summary", "label": f"{plan.summary}줄 요약",
+                   "status": "done" if block is not None else "error"}
         if is_deck:
             # said only when the slide as drawn shows it (a table, the picture gone)
             doc.unmet = [f"{i + 1}장 {what}" for i in bundle.plan.order if i < len(parts)
@@ -467,6 +506,38 @@ class Rewrite(Base):
             # said only when the asked table shape is really there
             doc.missed = revise.missing_shapes(
                 _typed(bundle), [str(p.get("content") or "") for p in doc.sections])
+            if plan.summary and not _summary_made(doc.sections):
+                doc.missed.append(f"{plan.summary}줄 요약")
+
+
+def _summary_made(parts: list[dict]) -> bool:
+    return bool(parts) and str(parts[0].get("content") or "").startswith("```callout\n핵심\n")
+
+
+async def _summary(bundle: Bundle, lines: int) -> str | None:
+    """The summary asked at the document's start, `lines` lines; None when it did not come."""
+    report, req, doc = _report(), bundle.request, bundle.document
+    document = "\n\n".join(
+        f"## {p.get('heading') or ''}\n"
+        + re.sub(r"!\[[^\]]*\]\([^)]*\)|```callout\n핵심\n[\s\S]*?\n```", "",
+                 str(p.get("content") or ""))
+        for p in doc.sections)[:8000]
+    head = doc.data.get("titleBlock") or {}
+    fields = [str(f[1]) for f in head.get("fields") or [] if isinstance(f, list) and len(f) > 1]
+    try:
+        text, used = await report._complete(
+            req.model,
+            [{"role": "user", "content": revise.SUMMARY_PROMPT.format(
+                n=lines, title=bundle.plan.title, document=document)}],
+            req.api_key,
+            600,
+        )
+    except Exception as exc:  # noqa: BLE001 — the rest of the edit stands
+        log.warning("summary for the edit failed: %s", logs.safe(exc))
+        return None
+    bundle.usage["inputTokens"] += used.get("inputTokens", 0)
+    bundle.usage["outputTokens"] += used.get("outputTokens", 0)
+    return revise.summary_block(text, lines, bundle.plan.title, fields)
 
 
 class Consistency(Base):

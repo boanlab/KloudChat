@@ -90,7 +90,7 @@ def report_findings(
             add("unbalanced_fence", heading)
         raw = str(sec.get("content") or "")
         if report.unfence_pictures(raw) != raw:
-            add("picture_in_code", heading)
+            add("picture_in_code" if "![" in raw else "table_in_code", heading)
         rule = re.compile(r"^\s{0,16}\|?\s{0,16}:?-{2}")
         table_starts = [i for i, line in enumerate(lines[:-1])
                         if line.strip().startswith("|") and rule.match(lines[i + 1])]

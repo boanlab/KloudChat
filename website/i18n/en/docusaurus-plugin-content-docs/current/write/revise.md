@@ -9,6 +9,7 @@ Type what you want changed into the input box at the bottom of a finished report
 | Example request | How it is handled |
 |---|---|
 | "Cut section 2 in half", "add a schedule table to the conclusion" | Writes only that part again. The rest is kept. |
+| "Drop the table in section 2 and put a 3-line summary at the top" | Writes again only the parts each ask points at. The summary goes at the top of the first section as a 「핵심」 box with exactly the lines asked, without repeating the title or author line. |
 | "Make the whole thing more concise", "change the tone to polite form" | Writes every part again. |
 | "Extend it to 20 slides", "add 3 slides", "merge 2 and 3", "change the order" | Proposes the structure again, waits for your approval, and then writes. Parts that are kept reuse their existing titles. |
 | "Write it again", "start over", "with a different topic" | Keeps the existing document and writes a new one. |

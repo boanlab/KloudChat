@@ -229,21 +229,60 @@ def drop_restated_references(sections: list[dict], sources: list[dict] | None) -
 #: figures that identify a result: 「38.2%」, 「0.71」, 「1,250」; years and small counts left out
 _TELLING = re.compile(r"(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d+\.\d+|\d+(?=\s?%))(?![\d,]|\.\d)")
 #: a sentence end before a citation: 「…했다. 」, a line break; not a decimal point
-_SENTENCE_END = re.compile(r"[.!?。](?=\s)|\n")
+_SENTENCE_END = re.compile(r"(?<!\bal)[.!?。](?=\s)|\n")
 
 
 def _has_figure(text: str, figure: str) -> bool:
     return re.search(r"(?<![\d.,])" + re.escape(figure) + r"(?![\d,]|\.\d)", text) is not None
 
 
+#: a work named by author and year: 「Kim & Park(2025)」, 「(Kim & Park, 2025)」,
+#: 「Ryu et al.(2025)」, 「Kim과 Park(2025)」; the first surname and the year
+_NAMED_WORK = re.compile(
+    r"(?<![A-Za-z])(?P<name>[A-Z][a-z][A-Za-z'’-]{0,30})"
+    r"(?:\s?(?:&|and|와|과|및|·)\s?[A-Z][a-z][A-Za-z'’-]{0,30})?"
+    r"(?:\s?et\s?al\.?|\s?외|\s?등)?\s?(?:\(|,\s?)\s?(?P<year>(?:19|20)\d{2})")
+
+
+def _names(text: str, surname: str) -> bool:
+    found = re.search(rf"(?<![A-Za-z]){re.escape(surname)}(?![A-Za-z])", text or "", re.I)
+    return found is not None
+
+
+def _by_work(source: dict, head: str, surname: str, year: str) -> bool:
+    """Whether `source` is the work 「surname (year)」: its author field, else the head of what
+    it gave the writer (an attached paper's byline)."""
+    author = str(source.get("author") or "")
+    if author:
+        said_year = str(source.get("year") or "")
+        return _names(author, surname) and (not said_year or said_year == year)
+    return _names(head[:600], surname) and year in head[:600]
+
+
 def credit_attachments(sections: list[dict], sources: list[dict] | None,
                        texts: dict[int, str]) -> list[dict]:
-    """A sentence citing a web result for figures only an attached file holds cites that
-    file. `texts`: what each source number gave the writer (attachment text, page excerpt)."""
-    attached = [int(s.get("ordinal") or i) for i, s in enumerate(sources or [], 1)
-                if s.get("attached") and texts.get(int(s.get("ordinal") or i))]
-    if not attached:
+    """A sentence citing a source that is not the work it names (「Kim & Park(2025)…[1]」 with
+    [1] another paper) cites the source that is; one citing a web result for figures only an
+    attached file holds cites that file. `texts`: what each source number gave the writer
+    (attachment text, page excerpt)."""
+    by_number = {int(s.get("ordinal") or i): s for i, s in enumerate(sources or [], 1)}
+    attached = [n for n, s in by_number.items() if s.get("attached") and texts.get(n)]
+    if not by_number:
         return sections
+
+    def named(sentence: str, number: int) -> int | None:
+        """The source the sentence names: the cited one when it is that work, else the one
+        other source that is."""
+        works = [(m.group("name"), m.group("year")) for m in _NAMED_WORK.finditer(sentence)]
+        if not works or number not in by_number:
+            return None
+        if any(_by_work(by_number[number], texts.get(number, ""), *w) for w in works):
+            return number
+        if len(works) != 1:
+            return None
+        holders = [n for n, s in by_number.items() if n != number and (
+            (s.get("author") or n in attached) and _by_work(s, texts.get(n, ""), *works[0]))]
+        return holders[0] if len(holders) == 1 else None
 
     def fix(piece: str) -> str:
         out, last = [], 0
@@ -251,10 +290,17 @@ def credit_attachments(sections: list[dict], sources: list[dict] | None,
             numbers = _numbers(m.group(1))
             start = max((e.end() for e in _SENTENCE_END.finditer(piece, last, m.start())),
                         default=last)
-            figures = _TELLING.findall(piece[start:m.start()])
             out.append(piece[last:m.start()])
             last = m.end()
-            if len(numbers) != 1 or numbers[0] in attached or not figures:
+            if len(numbers) != 1:
+                out.append(m.group(0))
+                continue
+            if (work := named(piece[start:m.start()], numbers[0])) is not None:
+                # the named work, never moved off by a figure it shares with the attachment
+                out.append(m.group(0) if work == numbers[0] else f"[{work}]")
+                continue
+            figures = _TELLING.findall(piece[start:m.start()])
+            if numbers[0] in attached or not figures or not attached:
                 out.append(m.group(0))
                 continue
             cited = texts.get(numbers[0], "")
