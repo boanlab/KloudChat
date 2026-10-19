@@ -86,6 +86,7 @@ from app.services import (
     design_templates,
     diagram_render,
     doc_formats,
+    elk_layout,
     factcheck,
     hangul,
     hwpx_import,
@@ -2693,7 +2694,7 @@ def _export_code_source(artifact: Artifact) -> Response:
     return response
 
 
-def _export_deck(artifact: Artifact, format: str) -> Response:
+async def _export_deck(artifact: Artifact, format: str) -> Response:
     """Deck as `.pptx`, `.pdf` or Markdown."""
     slides = list((artifact.data or {}).get("slides") or [])
     tokens = (artifact.data or {}).get("design") or None
@@ -2714,6 +2715,7 @@ def _export_deck(artifact: Artifact, format: str) -> Response:
         )
     if format in ("pptx", "docx"):
         # `docx` default → `.pptx` for decks
+        await elk_layout.prepare(deck_export.figure_sources(slides))
         return _attachment(
             deck_export.to_pptx(
                 title,
@@ -2767,6 +2769,7 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
             )
         if format in ("pptx", "docx"):
             # `docx` default → `.pptx` for decks
+            await elk_layout.prepare(deck_export.figure_sources(slides))
             return _attachment(
                 deck_export.to_pptx(
                     title,
@@ -2856,7 +2859,7 @@ async def _export_document(artifact: Artifact, format: str) -> Response:
         return await _export_page(artifact, format)
 
     if artifact.kind is ArtifactKind.deck:
-        return _export_deck(artifact, format)
+        return await _export_deck(artifact, format)
 
     # exporters read Markdown; HTML sections converted first
     data = artifact.data or {}

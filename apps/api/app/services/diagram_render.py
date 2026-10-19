@@ -11,7 +11,7 @@ import logging
 import httpx
 
 from app.core.config import settings
-from app.services import diagram_shapes, figure_kinds, flow_layout
+from app.services import diagram_shapes, elk_layout, figure_kinds, flow_layout
 
 log = logging.getLogger(__name__)
 
@@ -20,8 +20,12 @@ _TIMEOUT = httpx.Timeout(90.0, connect=5.0)
 _MARGIN = 18.0
 
 
-def figure_size(graph: diagram_shapes.Graph) -> tuple[float, float]:
-    """Figure box in points within a 16:9 slide; flows sized in rows for the text column."""
+def figure_size(graph: diagram_shapes.Graph,
+                box: tuple[float, float] | None = None) -> tuple[float, float]:
+    """Figure box in points within a 16:9 slide; flows sized in rows for the text column, and a
+    structure ELK laid out fitted to `box` (the text column by default)."""
+    if (laid := elk_layout.frame_size(graph, box)) is not None:
+        return laid
     if (rows := flow_layout.frame_size(graph)) is not None:
         return rows
     placed = diagram_shapes.layout(graph, 100, 100)
@@ -59,7 +63,7 @@ def figure_deck(source: str, accent: str = "#2563EB",
         width, height = figure_kinds.size(slots, box)
         lead = 0.0
     else:
-        width, height = figure_size(graph)
+        width, height = figure_size(graph, box)
         lead = 8.0 if graph.groups else 0.0
     deck = Presentation()
     deck.slide_width = Pt(width + 2 * _MARGIN)
@@ -88,6 +92,7 @@ async def render_png(source: str, accent: str = "#2563EB",
     base = settings.print_base_url.strip().rstrip("/")
     if not base:
         return None
+    await elk_layout.prepare([source])
     blob = figure_deck(source, accent, box)
     if blob is None:
         return None

@@ -2719,6 +2719,16 @@ def _without_written_numbers(slides: list[dict]) -> list[dict]:
     return out
 
 
+def figure_sources(slides: list[dict]) -> list[str]:
+    """The drawn figures' sources, to lay out ahead (`elk_layout.prepare`) of `to_pptx`."""
+    out = []
+    for slide in slides:
+        made = slide.get("diagram")
+        if isinstance(made, dict) and made.get("source"):
+            out.append(str(made["source"]))
+    return out
+
+
 def to_pptx(
     title: str,
     slides: list[dict],
