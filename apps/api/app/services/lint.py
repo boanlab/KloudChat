@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from app.services import arithmetic
+from app.services import arithmetic, internal_words
 
 #: below this: unwritten block
 _MIN_BLOCK_CHARS = 12
@@ -299,6 +299,16 @@ def check(
                     "envelope",
                     "답이 내용이 아니라 그것을 담을 껍데기로 왔습니다 — "
                     "이 블록은 다시 써야 합니다.",
+                    where,
+                )
+            )
+        if found := internal_words.PLAN_NOTE.search(text):
+            findings.append(
+                Finding(
+                    "P0",
+                    "plan",
+                    "쓸 내용 대신 작성 계획이나 지시문이 들어갔습니다 — "
+                    f"“{found.group(0).strip()}”.",
                     where,
                 )
             )

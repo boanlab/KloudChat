@@ -360,6 +360,9 @@ class ReviseSave(Base):
                 if missed := bundle.document.missed:
                     reply = (f"{changed}곳을 고쳤지만 요청한 {', '.join(missed)}은 문서에서 "
                              "찾지 못했습니다. 다시 요청해 주세요.")
+                if failed := bundle.document.failed:
+                    reply += (f" {', '.join(failed)}은 고친 글이 검사를 통과하지 못해 이전 "
+                              "내용을 그대로 두었습니다.")
                 if note := rerun_note(turn):
                     reply = f"{note} {reply}"
                 handed = None

@@ -312,6 +312,8 @@ _NARRATION_CHARS = 400
 _DIGIT = re.compile(r"\d")
 #: a table row, list item or heading: content, not narration
 _CONTENT_LINE = re.compile(r"(?m)^\s{0,3}(?:#|\||[-*+]\s|\d{1,2}[.)]\s)")
+#: a kept text ending a sentence with nothing after it: the next hop's text would glue on
+_GLUED = re.compile(r"[.!?…:)\]」』다요]$")
 #: Longest closing reply still read as a preamble rather than the answer.
 _PREAMBLE_CHARS = 160
 #: A sentence about the work, done or still to do (「…확인했습니다」, 「이제 …검증하겠습니다」,
@@ -1930,6 +1932,10 @@ async def run_turn(
                     **stream_kwargs,
                 ):
                     if kind == "delta":
+                        if not hop_text and answer_text and _GLUED.search(answer_text[-1]) \
+                                and value[:1].strip():
+                            # the text after a tool call starts its own paragraph
+                            value = "\n\n" + value
                         hop_text.append(value)
                         if not preflight_tool and not freshness_request:
                             answer_text.append(value)

@@ -2654,10 +2654,13 @@ def _object_particle(word: str) -> str:
 def fill_missing_notes(
     slides: list[dict[str, Any]], request: str, *, title: str = "", subtitle: str = ""
 ) -> list[int]:
-    """Notes for every slide when asked; no facts beyond the slide."""
+    """Notes for every slide when asked, or when the deck speaks on most of its slides (the
+    opening ones not left silent); no facts beyond the slide."""
     from app.services.context import instruction_part
 
-    if not _NOTES_ASK.search(instruction_part(request or "")):
+    noted = sum(1 for slide in slides if str(slide.get("notes") or "").strip())
+    if not _NOTES_ASK.search(instruction_part(request or "")) and (
+            noted < 3 or noted * 2 < len(slides)):
         return []
     changed: list[int] = []
     for index, slide in enumerate(slides):
