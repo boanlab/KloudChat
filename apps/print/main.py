@@ -1,4 +1,5 @@
 """HTML in, PDF out: prints the self-contained documents `design_templates.render` produces.
+Also figure slides (.pptx) to PNG, and figure layouts by ELK (`/layout`).
 
 **Nothing here reaches the network.** Every request is aborted except the
 `about:blank` the page starts on; seeds embed pictures as `data:` URIs. The
@@ -10,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import shutil
 import tempfile
 import zipfile
@@ -28,6 +30,13 @@ MAX_HTML = 32 * 1024 * 1024
 TIMEOUT_MS = 30_000
 
 
+#: elkjs (Dockerfile): the layered layout figures with groups are placed by.
+ELK_JS = Path("/opt/elk/elk.bundled.js")
+#: A figure has at most a few dozen boxes; this bounds a hostile request.
+MAX_LAYOUTS, MAX_LAYOUT_CHARS = 16, 256 * 1024
+LAYOUT_TIMEOUT_MS = 10_000
+
+
 class Job(BaseModel):
     html: str = Field(max_length=MAX_HTML)
 
@@ -43,6 +52,11 @@ class SlideJob(BaseModel):
     dpi: int = Field(default=192, ge=72, le=300)
 
 
+class LayoutJob(BaseModel):
+    #: ELK graphs (JSON: children, edges, layoutOptions), each laid out on its own.
+    graphs: list[dict] = Field(min_length=1, max_length=MAX_LAYOUTS)
+
+
 #: LibreOffice runs one conversion at a time: its user profile is not shared safely.
 _office = asyncio.Lock()
 
@@ -54,6 +68,30 @@ class _Chromium:
         self._playwright = None
         self._browser: Browser | None = None
         self._lock = asyncio.Lock()
+        #: A page with elkjs loaded (~0.4 s to load), kept for the next layout.
+        self._elk = None
+        self._elk_lock = asyncio.Lock()
+
+    async def elk_page(self):
+        """The ELK page, loaded on first use and again after a failure (`drop_elk`)."""
+        async with self._elk_lock:
+            if self._elk is None or self._elk.is_closed():
+                context = await self.new_context()
+                page = await context.new_page()
+                await page.route("**/*", lambda route: asyncio.ensure_future(route.abort()))
+                page.set_default_timeout(LAYOUT_TIMEOUT_MS)
+                await page.add_script_tag(content=ELK_JS.read_text())
+                self._elk = page
+            return self._elk
+
+    async def drop_elk(self) -> None:
+        async with self._elk_lock:
+            if self._elk is not None:
+                try:
+                    await self._elk.context.close()
+                except PlaywrightError:
+                    pass
+                self._elk = None
 
     async def page_context(self):
         async with self._lock:
@@ -84,6 +122,7 @@ class _Chromium:
             raise RuntimeError("unreachable")
 
     async def close(self) -> None:
+        self._elk = None
         if self._browser is not None:
             await self._browser.close()
             self._browser = None
@@ -127,6 +166,25 @@ async def pdf(job: Job) -> Response:
     finally:
         await context.close()
     return Response(content=out, media_type="application/pdf")
+
+
+@app.post("/layout")
+async def layout(job: LayoutJob) -> dict[str, list[dict]]:
+    """Each graph laid out by ELK (positions, sizes, edge routes), in the order sent.
+
+    The graphs are data passed to `ELK.layout`, never script; the page loads nothing."""
+    if any(len(json.dumps(g)) > MAX_LAYOUT_CHARS for g in job.graphs):
+        raise HTTPException(status_code=413, detail="layout_too_large")
+    page = await chromium.elk_page()
+    try:
+        out = await page.evaluate(
+            "graphs => Promise.all(graphs.map(g => new ELK().layout(g)))", job.graphs
+        )
+    except PlaywrightError as exc:
+        # a graph ELK rejects, or the page gone: a fresh page for the next request
+        await chromium.drop_elk()
+        raise HTTPException(status_code=422, detail=f"layout_failed: {str(exc)[-300:]}") from exc
+    return {"graphs": out}
 
 
 #: The .odp paragraph property behind the gap, and its off value.

@@ -151,6 +151,8 @@ def parse(source: str) -> Graph | None:
     graph = Graph(direction="LR" if head.group(1).upper() in ("LR", "RL") else "TB")
     stack: list[str] = []
     hot: set[str] = set()
+    # the group a node is in, and whether it got there by a bare mention (an edge's end)
+    owner: dict[str, tuple[str, bool]] = {}
 
     def node(match: re.Match) -> str:
         nid = match.group("id")
@@ -163,10 +165,16 @@ def parse(source: str) -> Graph | None:
             existing.shape = _shape_of(match.group("shape"))
         if match.group("cls") == "hot":
             hot.add(nid)
-        if stack:
-            members = graph.groups[stack[-1]][1]
-            if nid not in members and nid not in graph.groups:
-                members.append(nid)
+        if stack and nid not in graph.groups:
+            # a node is in the group that defines it: a later group naming it in a link does
+            # not take it, unless it was only named there before
+            group, bare = stack[-1], not label
+            held = owner.get(nid)
+            if held is None or (held[0] != group and held[1] and not bare):
+                if held is not None:
+                    graph.groups[held[0]][1].remove(nid)
+                graph.groups[group][1].append(nid)
+                owner[nid] = (group, bare)
         return nid
 
     for line in lines[1:]:
@@ -723,7 +731,6 @@ def draw_pptx(
     text_light = RGBColor(0xFF, 0xFF, 0xFF)
     line_grey = RGBColor(0x94, 0xA3, 0xB8)
     label_grey = RGBColor(0x47, 0x55, 0x69)
-    placed = layout(graph, width, height)
 
     def flat(shape) -> None:
         """No shadow/glow/bevel: empty effect list overrides the theme."""
@@ -766,6 +773,89 @@ def draw_pptx(
                 rpr.append(ea)
             ea.set("typeface", font)
 
+    from app.services import elk_layout
+
+    def polyline(path: list[tuple[float, float]], edge: Edge) -> None:
+        builder = slide.shapes.build_freeform(pt(path[0][0]), pt(path[0][1]), scale=1.0)
+        builder.add_line_segments([(pt(x), pt(y)) for x, y in path[1:]], close=False)
+        line = builder.convert_to_shape()
+        line.fill.background()
+        line.line.color.rgb = line_grey
+        line.line.width = pt(1.25)
+        flat(line)
+        if edge.dashed:
+            line.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+        if edge.arrow:
+            ln = line.line._get_or_add_ln()
+            head = {"type": "triangle", "w": "med", "len": "med"}
+            ln.append(ln.makeelement(qn("a:tailEnd"), head))
+
+    kinds = {
+        "box": MSO_SHAPE.ROUNDED_RECTANGLE, "round": MSO_SHAPE.ROUNDED_RECTANGLE,
+        "diamond": MSO_SHAPE.DIAMOND, "circle": MSO_SHAPE.OVAL,
+    }
+
+    def node_shape(node: Node, x: float, y: float, w: float, h: float, size: float,
+                   least: float = 8) -> None:
+        s = slide.shapes.add_shape(
+            kinds.get(node.shape, MSO_SHAPE.ROUNDED_RECTANGLE), pt(x), pt(y), pt(w), pt(h)
+        )
+        if node.shape in ("box", "round"):
+            s.adjustments[0] = 0.08 if node.shape == "box" else 0.18
+        # white with an accent edge, the emphasised one filled: the fixed-shape figures' tone
+        s.fill.solid()
+        s.fill.fore_color.rgb = primary if node.hot else RGBColor(0xFF, 0xFF, 0xFF)
+        if node.hot:
+            s.line.fill.background()
+        else:
+            s.line.color.rgb = primary
+            s.line.width = pt(1.25)
+        flat(s)
+        text_w, text_h, _icon = text_area(node, w, h, False)
+        lines, size = figure_text.fit(node.label, text_w, text_h, size, node.hot,
+                                      min_size=least, pad=4)
+        set_text(
+            s, "\n".join(lines), size,
+            text_light if node.hot else text_dark, bold=node.hot,
+        )
+
+    if (laid := elk_layout.place(graph, width, height)) is not None:
+        # laid out by ELK: frames, then boxes, then its square routes
+        for title, (x0, y0, x1, y1) in laid.frames:
+            g = slide.shapes.add_shape(
+                MSO_SHAPE.ROUNDED_RECTANGLE, pt(left + x0), pt(top + y0), pt(x1 - x0),
+                pt(y1 - y0),
+            )
+            g.adjustments[0] = min(0.12, 10.0 / max(1.0, min(x1 - x0, y1 - y0)))
+            g.fill.solid()
+            g.fill.fore_color.rgb = panel
+            g.line.fill.background()
+            flat(g)
+            set_text(g, title, max(8, round(elk_layout.TITLE_PT * min(laid.scale, 1.0))),
+                     primary, bold=True, anchor=MSO_ANCHOR.TOP)
+            g.text_frame.margin_top = pt(4 * laid.scale)
+        size = min(14.0, laid.text_pt)
+        for nid, (x0, y0, x1, y1) in laid.boxes.items():
+            node_shape(graph.nodes[nid], left + x0, top + y0, x1 - x0, y1 - y0, size,
+                       least=min(8.0, size))
+        label_pt = max(7, round(elk_layout.EDGE_PT * min(laid.scale, 1.0)))
+        for edge, path, _label in laid.links:
+            polyline([(left + x, top + y) for x, y in path], edge)
+        for edge, _path, label in laid.links:
+            if label is None:
+                continue
+            x0, y0, x1, y1 = label
+            grow = 4.0
+            tb = slide.shapes.add_textbox(pt(left + x0 - grow), pt(top + y0 - 1),
+                                          pt(x1 - x0 + 2 * grow), pt(y1 - y0 + 2))
+            tb.fill.solid()
+            tb.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+            set_text(tb, edge.label, label_pt, label_grey)
+            tb.text_frame.margin_top = tb.text_frame.margin_bottom = pt(0)
+            tb.text_frame.margin_left = tb.text_frame.margin_right = pt(1)
+        return
+
+    placed = layout(graph, width, height)
     # group backgrounds first (under members)
     pad, title_room = 8.0, 16.0
     frames: list[tuple[float, float, float, float]] = []
@@ -799,36 +889,9 @@ def draw_pptx(
         title_pt = 10 if any(p.row >= 0 for p in placed.values()) else 9
         set_text(g, label, title_pt, primary, bold=True, anchor=MSO_ANCHOR.TOP)
 
-    shapes = {}
-    kinds = {
-        "box": MSO_SHAPE.ROUNDED_RECTANGLE, "round": MSO_SHAPE.ROUNDED_RECTANGLE,
-        "diamond": MSO_SHAPE.DIAMOND, "circle": MSO_SHAPE.OVAL,
-    }
     for nid, node in graph.nodes.items():
         p = placed[nid]
-        x, y = left + p.x - p.w / 2, top + p.y - p.h / 2
-        s = slide.shapes.add_shape(
-            kinds.get(node.shape, MSO_SHAPE.ROUNDED_RECTANGLE), pt(x), pt(y), pt(p.w), pt(p.h)
-        )
-        if node.shape in ("box", "round"):
-            s.adjustments[0] = 0.08 if node.shape == "box" else 0.18
-        # white with an accent edge, the emphasised one filled: the fixed-shape figures' tone
-        s.fill.solid()
-        s.fill.fore_color.rgb = primary if node.hot else RGBColor(0xFF, 0xFF, 0xFF)
-        if node.hot:
-            s.line.fill.background()
-        else:
-            s.line.color.rgb = primary
-            s.line.width = pt(1.25)
-        flat(s)
-        text_w, text_h, _icon = text_area(node, p.w, p.h, False)
-        lines, size = figure_text.fit(node.label, text_w, text_h, 14, node.hot,
-                                      min_size=8, pad=4)
-        set_text(
-            s, "\n".join(lines), size,
-            text_light if node.hot else text_dark, bold=node.hot,
-        )
-        shapes[nid] = s
+        node_shape(node, left + p.x - p.w / 2, top + p.y - p.h / 2, p.w, p.h, 14)
 
     # polylines routed around boxes (connectors cut through)
 
@@ -860,19 +923,7 @@ def draw_pptx(
             frames=frames, used=used, owner=edge.a,
             bounds=(left - 30, top - 40, left + width + 30, top + height + 40),
         )
-        builder = slide.shapes.build_freeform(pt(path[0][0]), pt(path[0][1]), scale=1.0)
-        builder.add_line_segments([(pt(x), pt(y)) for x, y in path[1:]], close=False)
-        line = builder.convert_to_shape()
-        line.fill.background()
-        line.line.color.rgb = line_grey
-        line.line.width = pt(1.25)
-        flat(line)
-        if edge.dashed:
-            line.line.dash_style = MSO_LINE_DASH_STYLE.DASH
-        if edge.arrow:
-            ln = line.line._get_or_add_ln()
-            head = {"type": "triangle", "w": "med", "len": "med"}
-            ln.append(ln.makeelement(qn("a:tailEnd"), head))
+        polyline(path, edge)
         if edge.label:
             # beside a run, first free spot; long labels wrap to two lines
             two = len(edge.label) > 8

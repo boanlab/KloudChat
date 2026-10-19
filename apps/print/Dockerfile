@@ -1,4 +1,4 @@
-# The printer: finished HTML in, PDF out.
+# The printer: finished HTML in, PDF out (and figure slides to PNG, figure layouts by ELK).
 #
 # A container of its own: it opens model-authored markup, so it runs with no
 # database, no secrets and (see main.py) no network; and a browser is ~740 MB
@@ -49,6 +49,17 @@ RUN curl -fsSL -o /tmp/selawik.zip \
     && rm /tmp/selawik.zip
 COPY fonts.conf /etc/fonts/local.conf
 RUN fc-cache -f >/dev/null
+
+# elkjs, the Eclipse Layout Kernel compiled to JavaScript: lays out structure figures (/layout)
+# in the Chromium below, so no Node runtime. Pinned tarball, checked (EPL-2.0).
+ARG ELKJS_VERSION=0.9.3
+ARG ELKJS_SHA256=b95b224bd1ab71fd40f6d9a6365c28d989745dff6b0d514407bc1eb68f2f561e
+RUN curl -fsSL -o /tmp/elkjs.tgz "https://registry.npmjs.org/elkjs/-/elkjs-${ELKJS_VERSION}.tgz" \
+    && echo "${ELKJS_SHA256}  /tmp/elkjs.tgz" | sha256sum -c - \
+    && mkdir -p /opt/elk \
+    && tar -xzf /tmp/elkjs.tgz -C /opt/elk --strip-components=2 package/lib/elk.bundled.js \
+    && tar -xzf /tmp/elkjs.tgz -C /opt/elk --strip-components=1 package/LICENSE.md \
+    && rm /tmp/elkjs.tgz
 
 RUN pip install --no-cache-dir \
       "fastapi==0.115.6" "uvicorn[standard]==0.34.0" "playwright==1.55.0" \
