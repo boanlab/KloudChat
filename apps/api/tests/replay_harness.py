@@ -161,7 +161,7 @@ PINNED_PROMPTS = FIXTURES / "_pinned_prompts"
 
 def pin_recorded_prompts(patch: Patch) -> None:
     from app.pipeline import report_stages
-    from app.services import calc, report, report_checks, verify
+    from app.services import calc, figure_kinds, report, report_checks, verify
 
     def pinned(name: str) -> str:
         return (PINNED_PROMPTS / name).read_text(encoding="utf-8")
@@ -176,6 +176,8 @@ def pin_recorded_prompts(patch: Patch) -> None:
     patch(report, "_TABLE_FIX_PROMPT", pinned("report_table_fix.txt"))
     patch(report, "_AMEND_PROMPT", pinned("report_amend.txt"))
     patch(verify, "_REPAIR_PROMPT", pinned("verify_repair.txt"))
+    # The figure shape choice before stages and lanes had their own labels.
+    patch(figure_kinds, "_CHOOSE", pinned("figure_choose.txt"))
     patch(report_stages, "DERIVED_NOTE", pinned("derived_note.txt"))
     patch(report, "PLACEHOLDER_LEFT", "자리표시(「(미정)」, 「(여기에 …)」 등)가 남아 있다. "
           "자료에 있는 값으로 채우고, 없으면 그 자리 이름을 「[담당자]」 「[금액]」처럼 "

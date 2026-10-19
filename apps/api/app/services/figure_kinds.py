@@ -1,5 +1,5 @@
-"""Figures with a fixed shape (steps, cycle, house, compare, options, axes, messages): slots
-the model fills, drawn to a set layout with native .pptx shapes.
+"""Figures with a fixed shape (steps, cycle, house, compare, options, axes, messages, stages,
+lanes): slots the model fills, drawn to a set layout with native .pptx shapes.
 
 A figure's stored source stays a mermaid flowchart, so the browser view, the fact check and
 editing read it as before; its last line carries the slots as a mermaid comment, and the
@@ -18,7 +18,7 @@ from app.services import figure_text
 
 #: comment line carrying the slots under the fallback flowchart
 MARK = "%% kloudchat-figure: "
-KINDS = ("steps", "cycle", "house", "compare", "options", "axes", "messages")
+KINDS = ("steps", "cycle", "house", "compare", "options", "axes", "messages", "stages", "lanes")
 
 INK = "#1B2430"
 SUB = "#5A6675"
@@ -27,18 +27,23 @@ WHITE = "#FFFFFF"
 
 #: shape labels for the choice; only KINDS are drawn here, the rest stay mermaid
 CHOICES = {
-    "steps": "one line of 3-7 phases, one after another, with no branches, no second flow "
-             "and nothing looping back",
+    "steps": "one line of 3-7 phases, one after another, with no branches, no second flow, "
+             "nothing looping back and no list of tasks under each phase",
     "cycle": "3-6 stages that repeat in a loop (PDCA, a feedback cycle, a life cycle)",
     "house": "a framework: one goal on top, 2-5 parallel areas under it, and 1-3 foundations "
              "every area stands on",
-    "compare": "exactly two options compared side by side on the same aspects",
+    "compare": "exactly two options compared side by side on the same aspects (a third "
+               "option, even a mix of the two, makes it options)",
     "messages": "parties sending each other messages (client and server, a handshake, "
                 "a protocol)",
     "options": "three or more options compared",
     "axes": "two axes crossing (a positioning map, a 2×2 matrix)",
-    "other": "anything else: an architecture, a system, a model's structure, two or more "
-             "flows side by side, a flow that branches or loops back to an earlier step",
+    "stages": "3-5 phases one after another where the description lists two or more tasks "
+              "under most phases; a later result may feed back to an earlier phase",
+    "lanes": "two flows side by side (indexing and querying, ordering and delivery), each a "
+             "line of steps, optionally sharing one store",
+    "other": "anything else: an architecture, a system, a model's structure, a flow that "
+             "branches",
 }
 
 _CHOOSE = (
@@ -82,6 +87,21 @@ _SLOTS = {
                 '               "note": "지원 암호 목록 · 키 공유"}, …]}\n'
                 '`from` and `to` are names from `parties`; the messages are in the order they '
                 'are sent.',
+    "stages": '{"kind": "stages", "stages": [{"name": "서류 심사",\n'
+              '  "items": ["지원서 접수", "자격 요건 확인"]}, {"name": "면접",\n'
+              '  "items": ["실무 면접", "임원 면접"]}, …],\n'
+              ' "back": {"from": "입사 후 평가", "to": "자격 요건 확인",\n'
+              '          "note": "평가 결과 → 요건 보완"}}\n'
+              '`items` are the tasks the text lists under that stage. `back` only when the text '
+              'says a later stage feeds an earlier one; `from` and `to` are a stage or item name.',
+    "lanes": '{"kind": "lanes", "lanes": [{"name": "주문",\n'
+             '  "steps": ["주문 접수", "결제", "주문 확정"]},\n'
+             ' {"name": "배송", "steps": ["재고 확인", "포장", "출고"]}],\n'
+             ' "store": {"name": "주문 DB", "from": "주문 확정", "to": "재고 확인",\n'
+             '           "note": "조회"}}\n'
+             'Exactly two lanes, named as the text names the two flows. `store` only when the text '
+             'says the first flow writes something the second reads; `from` is a step of the '
+             'first lane, `to` a step of the second.',
 }
 
 _FILL = """
@@ -193,10 +213,43 @@ def _owns(clause: str, part: list[str], others: list[list[str]]) -> bool:
     return names(part) and not any(names(o) for o in others)
 
 
-def grounded(s: dict[str, Any], material: str) -> dict[str, Any]:
-    """Step and stage notes kept to counts the material gives that part: a count the material
-    says only of the whole (「공사는 3주 동안 철거·설치·시범 운영」) or never says is cut from
-    a note, and a note left saying nothing is dropped."""
+#: words that say a later result goes back to an earlier part
+_FEEDBACK = re.compile(r"되먹|피드백|되돌|환류|반영|다시")
+
+
+def _said(text: str, source: str) -> bool:
+    """Whether two in three words of `text` are in `source` (spacing aside): a task the text
+    names, give or take a word the writer added (「공개 데이터셋 3종 활용」)."""
+    flat = re.sub(r"\s", "", source)
+    stems = _stems(text)
+    return bool(stems) and 3 * sum(stem in flat for stem in stems) >= 2 * len(stems)
+
+
+def _stages_said(s: dict[str, Any], source: str) -> dict[str, Any]:
+    """Stage tasks and the feedback arrow kept to what the description and the text say: a task
+    whose words they do not have is dropped, a feedback arrow they never speak of is dropped,
+    and phases left without their tasks are a line of steps."""
+    for stage in s["stages"]:
+        stage["items"] = [item for item in stage["items"] if _said(item, source)]
+    back = s.get("back")
+    if back and (not _FEEDBACK.search(source)
+                 or any(_stage_of(s["stages"], back[e]) is None for e in ("from", "to"))):
+        s.pop("back")
+    elif back and back.get("note") and not _said(back["note"], source):
+        back.pop("note")
+    if 2 * sum(bool(stage["items"]) for stage in s["stages"]) < len(s["stages"]):
+        return {"kind": "steps", "lang": s["lang"],
+                "steps": [{k: v for k, v in st.items() if k != "items"} for st in s["stages"]]}
+    return s
+
+
+def grounded(s: dict[str, Any], material: str, described: str = "") -> dict[str, Any]:
+    """Slots kept to what the figure's description and its text say. Step and stage notes keep
+    only counts the material gives that part: a count the material says only of the whole
+    (「공사는 3주 동안 철거·설치·시범 운영」) or never says is cut from a note, and a note left
+    saying nothing is dropped. Stage tasks and feedback follow `_stages_said`."""
+    if s.get("kind") == "stages" and (described.strip() or material.strip()):
+        s = _stages_said(s, described + "\n" + material)
     key = {"steps": "steps", "cycle": "stages"}.get(s.get("kind", ""))
     if not key or not material.strip():
         return s
@@ -274,6 +327,12 @@ def _spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
         return _axes(data, lang)
     if kind == "messages":
         return _messages(data, lang)
+    if kind == "stages":
+        return _stages(data, lang)
+    if kind == "lanes":
+        return _lanes(data, lang)
+    if len(data.get("sides") or []) > 2:
+        return None  # a third option would be dropped; three or more are `options`
     sides = [t for v in (data.get("sides") or [])[:2] if (t := _text(v, 30))]
     rows = []
     for row in (data.get("rows") or [])[:6]:
@@ -389,6 +448,61 @@ def _messages(data: dict, lang: str) -> dict[str, Any] | None:
     return {"kind": "messages", "lang": lang, "parties": parties, "messages": sent}
 
 
+def _stages(data: dict, lang: str) -> dict[str, Any] | None:
+    stages = []
+    for value in (data.get("stages") or [])[:5]:
+        named = _named(value, 16)
+        if named is None:
+            continue
+        items = [t for v in ((value.get("items") or []) if isinstance(value, dict) else [])[:4]
+                 if (t := _text(v, 24))]
+        named.pop("en", None)
+        stages.append({**named, "items": items})
+    if len(stages) < 3:
+        return None
+    if 2 * sum(bool(st["items"]) for st in stages) < len(stages):
+        # phases without their tasks are a line of steps
+        return {"kind": "steps", "lang": lang,
+                "steps": [{k: v for k, v in st.items() if k != "items"} for st in stages]}
+    out: dict[str, Any] = {"kind": "stages", "lang": lang, "stages": stages}
+    back = data.get("back") if isinstance(data.get("back"), dict) else {}
+    ends = [_text(back.get(k), 24) for k in ("from", "to")]
+    where = [_stage_of(stages, e) for e in ends]
+    if None not in where and where[1] < where[0]:  # feeds an earlier stage
+        out["back"] = {"from": ends[0], "to": ends[1]}
+        if note := _text(back.get("note"), 30):
+            out["back"]["note"] = note
+    return out
+
+
+def _stage_of(stages: list[dict[str, Any]], name: str) -> int | None:
+    """The stage a stage or item name is in."""
+    for k, stage in enumerate(stages):
+        if name and (name == stage["name"] or name in stage["items"]):
+            return k
+    return None
+
+
+def _lanes(data: dict, lang: str) -> dict[str, Any] | None:
+    lanes = []
+    for lane in (data.get("lanes") or [])[:2]:
+        if not isinstance(lane, dict) or not (name := _text(lane.get("name"), 24)):
+            continue
+        steps = [t for v in (lane.get("steps") or [])[:7] if (t := _text(v, 16))]
+        if len(steps) >= 2:
+            lanes.append({"name": name, "steps": steps})
+    if len(lanes) < 2:
+        return None
+    out: dict[str, Any] = {"kind": "lanes", "lang": lang, "lanes": lanes}
+    store = data.get("store") if isinstance(data.get("store"), dict) else {}
+    name, start, end = (_text(store.get(k), 16) for k in ("name", "from", "to"))
+    if name and start in lanes[0]["steps"] and end in lanes[1]["steps"]:
+        out["store"] = {"name": name, "from": start, "to": end}
+        if note := _text(store.get("note"), 12):
+            out["store"]["note"] = note
+    return out
+
+
 # ── stored source ─────────────────────────────────────────────────────
 
 
@@ -473,7 +587,45 @@ def _messages_flow(s: dict[str, Any]) -> list[str]:
     return lines
 
 
-_FLOWS = {"options": _options_flow, "axes": _axes_flow, "messages": _messages_flow}
+def _stages_flow(s: dict[str, Any]) -> list[str]:
+    lines = ["flowchart LR"]
+    for k, stage in enumerate(s["stages"]):
+        lines += [f"  subgraph g{k}[{_q(f'{k + 1}. ' + stage['name'])}]", "    direction TB"]
+        lines += [f"    g{k}i{j}[{_q(item)}]" for j, item in enumerate(stage["items"])]
+        if not stage["items"]:
+            lines.append(f"    g{k}i0[{_q(stage['name'])}]")
+        lines.append("  end")
+    lines.append("  " + " --> ".join(f"g{k}" for k in range(len(s["stages"]))))
+    if back := s.get("back"):
+        ids = {}
+        for k, stage in enumerate(s["stages"]):
+            ids[stage["name"]] = f"g{k}"
+            ids.update({item: f"g{k}i{j}" for j, item in enumerate(stage["items"])})
+        label = f"|{_q(back['note'])}|" if back.get("note") else ""
+        lines.append(f"  {ids[back['from']]} -.->{label} {ids[back['to']]}")
+    return lines
+
+
+def _lanes_flow(s: dict[str, Any]) -> list[str]:
+    lines = ["flowchart LR"]
+    ids: dict[tuple[int, str], str] = {}
+    for k, lane in enumerate(s["lanes"]):
+        lines += [f"  subgraph l{k}[{_q(lane['name'])}]", "    direction LR"]
+        for j, step in enumerate(lane["steps"]):
+            ids[(k, step)] = f"l{k}s{j}"
+            hot = ":::hot" if k == 1 and j == len(lane["steps"]) - 1 else ""
+            lines.append(f"    l{k}s{j}({_q(step)}){hot}")
+        lines.append("    " + " --> ".join(f"l{k}s{j}" for j in range(len(lane["steps"]))))
+        lines.append("  end")
+    if store := s.get("store"):
+        label = f"|{_q(store['note'])}|" if store.get("note") else ""
+        lines += [f"  db[({_q(store['name'])})]", f"  {ids[(0, store['from'])]} --> db",
+                  f"  db -.->{label} {ids[(1, store['to'])]}"]
+    return lines
+
+
+_FLOWS = {"options": _options_flow, "axes": _axes_flow, "messages": _messages_flow,
+          "stages": _stages_flow, "lanes": _lanes_flow}
 
 
 def to_source(s: dict[str, Any]) -> str:
@@ -617,6 +769,15 @@ class Pen:
 
         shape = self.shapes.add_shape(
             MSO_SHAPE.OVAL, self._x(x - r), self._y(y - r), self._d(2 * r), self._d(2 * r))
+        self._paint(shape, fill, stroke)
+        return shape
+
+    def can(self, x: float, y: float, w: float, h: float, fill: str | None, stroke: str | None):
+        """A store: a cylinder standing upright."""
+        from pptx.enum.shapes import MSO_SHAPE
+
+        shape = self.shapes.add_shape(MSO_SHAPE.CAN, self._x(x), self._y(y), self._d(w), self._d(h))
+        shape.adjustments[0] = min(0.5, 14 / max(h, 1))
         self._paint(shape, fill, stroke)
         return shape
 
@@ -1002,6 +1163,110 @@ def _messages_draw(pen: Pen, s: dict[str, Any], accent: str) -> None:
             pen.text((a + b) / 2, y + 14, lines[:1], size, False, SUB)
 
 
+_STAGE_GAP, _STAGE_ITEM = 50.0, 46.0
+_BACK = "#B42318"
+
+
+def _stages_size(s: dict[str, Any]) -> tuple[float, float]:
+    most = max(len(st["items"]) for st in s["stages"])
+    return 960.0, 30 + 70 + _STAGE_ITEM * most + (64 if s.get("back") else 10)
+
+
+def _stages_draw(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    stages = s["stages"]
+    n = len(stages)
+    w = (912 - _STAGE_GAP * (n - 1)) / n
+    most = max(len(st["items"]) for st in stages)
+    card = 70 + _STAGE_ITEM * most - 6
+    colours = hues(accent, n)
+    for k, stage in enumerate(stages):
+        x = 24 + k * (w + _STAGE_GAP)
+        c = colours[k]
+        pen.rect(x, 30, w, card, tint(c, 0.93), r=12)
+        pen.circle(x + 26, 58, 13, c)
+        pen.text(x + 26, 58, str(k + 1), 13, True, WHITE)
+        lines, size = figure_text.fit(stage["name"], w - 56, 30, 16, True, min_size=11)
+        pen.text(x + 48, 58, lines[:1], size, True, c, "l")
+        for j, item in enumerate(stage["items"]):
+            y = 90 + j * _STAGE_ITEM
+            pen.rect(x + 14, y, w - 28, 36, WHITE, tint(c, 0.6), sw=1.2)
+            pen.label(x + 18, y, w - 36, 36, item, 13, False, INK, 9.5)
+        if k < n - 1:
+            ax, ay = x + w + 10, 30 + card / 2
+            pen.poly([(ax, ay - 13), (ax + 20, ay - 13), (ax + 20, ay - 23), (ax + 34, ay),
+                      (ax + 20, ay + 23), (ax + 20, ay + 13), (ax, ay + 13)], tint(c, 0.5))
+    if back := s.get("back"):
+        where = {stage["name"]: k for k, stage in enumerate(stages)}
+        where.update({item: k for k, stage in enumerate(stages) for item in stage["items"]})
+        xs = [24 + where[back[e]] * (w + _STAGE_GAP) + w / 2 for e in ("from", "to")]
+        low = 30 + card + 40
+        pen.line([(xs[0], 30 + card), (xs[0], low), (xs[1], low), (xs[1], 30 + card + 2)],
+                 _BACK, dash=True)
+        if note := back.get("note"):
+            lines, size = figure_text.fit(note, abs(xs[0] - xs[1]) - 24, 22, 12, min_size=9.5)
+            wide = figure_text.width(lines[0], size) + 12
+            pen.rect((xs[0] + xs[1]) / 2 - wide / 2, low - 11, wide, 22, WHITE, r=3)
+            pen.text((xs[0] + xs[1]) / 2, low, lines[:1], size, False, _BACK)
+
+
+_STORE = "#6D28D9"
+
+
+def _lanes_plan(s: dict[str, Any]) -> tuple[int, int, int]:
+    """Column offsets of both lanes and the column count: the store sits under the step that
+    writes it and over the step that reads it, when both fit."""
+    first, second = (len(lane["steps"]) for lane in s["lanes"])
+    store = s.get("store")
+    if not store:
+        return 0, 0, max(first, second)
+    write = s["lanes"][0]["steps"].index(store["from"])
+    read = s["lanes"][1]["steps"].index(store["to"])
+    best = min((abs((a + write) - (b + read)), max(a + first, b + second), a, b)
+               for a in range(8 - first) for b in range(8 - second))
+    return best[2], best[3], best[1]
+
+
+def _lanes_size(s: dict[str, Any]) -> tuple[float, float]:
+    return 960.0, 360.0 if s.get("store") else 270.0
+
+
+def _lanes_draw(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    first, second = hues(accent, 2)
+    a, b, columns = _lanes_plan(s)
+    pitch = min(200.0, 934 / columns)
+    box = pitch - 22
+    left = (960 - (columns * pitch - 22)) / 2
+    x_of = lambda column: left + column * pitch  # noqa: E731
+    store = s.get("store")
+    tops = (24.0, 234.0 if store else 144.0)
+    for k, (lane, offset, colour) in enumerate(zip(s["lanes"], (a, b), (first, second),
+                                                   strict=True)):
+        top = tops[k]
+        pen.rect(12, top, 936, 108, tint(colour, 0.92), r=12)
+        wide = figure_text.width(lane["name"], 12, True) + 20
+        pen.rect(24, top + 8, wide, 22, colour, r=11)
+        pen.text(24 + wide / 2, top + 19, lane["name"], 12, True, WHITE)
+        for j, step in enumerate(lane["steps"]):
+            x = x_of(offset + j)
+            hot = k == 1 and j == len(lane["steps"]) - 1
+            pen.rect(x, top + 42, box, 50, colour if hot else WHITE, colour)
+            pen.label(x + 4, top + 42, box - 8, 50, step, 14, hot, WHITE if hot else INK, 9.5)
+            if j:
+                pen.line([(x - 20, top + 67), (x - 2, top + 67)], colour)
+    if store:
+        write = x_of(a + s["lanes"][0]["steps"].index(store["from"])) + box / 2
+        read = x_of(b + s["lanes"][1]["steps"].index(store["to"])) + box / 2
+        pen.can(write - box / 2 - 4, 152, box + 8, 60, tint(_STORE, 0.88), _STORE)
+        pen.label(write - box / 2, 160, box, 50, store["name"], 14, True, INK, 9.5)
+        pen.line([(write, 24 + 92), (write, 150)], first)
+        route = [(write, 212), (write, 224), (read, 224), (read, tops[1] + 40)] \
+            if abs(write - read) > 1 else [(write, 212), (read, tops[1] + 40)]
+        pen.line(route, _STORE, dash=True)
+        if note := store.get("note"):
+            pen.text(write + 12, 222 if abs(write - read) <= 1 else 214, note, 11, True,
+                     _STORE, "l")
+
+
 # ── wide strips (a slide's figure band, about 5:1) ─────────────────────
 
 
@@ -1131,7 +1396,8 @@ _TALL_KINDS = {"steps": (_steps_rows_size, _steps_rows)}
 _DRAW = {"steps": (_steps_size, _steps), "cycle": (_cycle_size, _cycle),
          "house": (_house_size, _house), "compare": (_compare_size, _compare),
          "options": (_options_size, _options_draw), "axes": (_axes_size, _axes_draw),
-         "messages": (_messages_size, _messages_draw)}
+         "messages": (_messages_size, _messages_draw), "stages": (_stages_size, _stages_draw),
+         "lanes": (_lanes_size, _lanes_draw)}
 _BAND = {"cycle": (_cycle_band_size, _cycle_band), "house": (_house_band_size, _house_band),
          "compare": (_compare_band_size, _compare_band)}
 #: a box this much wider than tall gets the strip layout
