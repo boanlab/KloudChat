@@ -485,6 +485,27 @@ def _card_style(
     return "large" if need <= height else ""
 
 
+def _column_rows(
+    columns: list[tuple[str, list[str]]], font: str | None, scale: float, span: float, height: float
+) -> float:
+    """Item size when comparison columns draw one row per item, the same row at the same height
+    in every column: the larger of `columnRow`, `columnRowSmall` at which every item is two lines
+    or fewer within its row, else 0 (the dotted list). Measured as `_fit_text` wraps."""
+    if not font or not columns:
+        return 0.0
+    count = max(len(items) for _, items in columns)
+    if not 1 <= count <= 5:
+        return 0.0
+    row, measure = height / count, (span - 54) * 0.94
+    words = [item for _, items in columns for item in items]
+    for key in ("columnRow", "columnRowSmall"):
+        size = _u(key) * scale
+        most = max((len(_wrap(item, font, size, measure)) for item in words), default=0)
+        if most <= 2 and most * size * 1.3 + 16 <= row:
+            return size
+    return 0.0
+
+
 def _card_words(name: str, text: str, font: str, bold: str, scale: float, width: float) -> float:
     """Height of a large card's name, gap and text; the row's tallest sets every card's words
     at the same height above the foot."""
@@ -1517,6 +1538,11 @@ def _pattern_scene(
         span = (W - gap * (count - 1)) / count
         height = R - 10
         head = 48.0
+        most = max(len(items) for _, items in columns)
+        # pros and cons are not point-for-point, so they keep the list
+        rows = 0.0
+        if tone != "posneg":
+            rows = _column_rows(columns, sc.font, scale, span, height - head - 6)
         for position, (name, items) in enumerate(columns):
             x = L + position * (span + gap)
             if tone == "posneg":
@@ -1548,6 +1574,29 @@ def _pattern_scene(
             )
             body_fill = _mix_floats(colour, max(look.tint, 7), onto=ground)
             sc.panel(x, T + 6 + head + 6, span, height - head - 6, fill=body_fill, line=hair)
+            if rows:
+                # one row per item: the same point sits at the same height in every column
+                inner = T + 6 + head + 6
+                each = (height - head - 6) / most
+                for index, item in enumerate(items):
+                    y = inner + index * each
+                    if index:
+                        sc.rect(x + 18, y, span - 36, 0.75, fill=hair)
+                    sc.oval(x + 20, y + each / 2 - 3, 6, 6, fill=colour)
+                    sc.text(
+                        item,
+                        x + 36,
+                        y,
+                        span - 54,
+                        each,
+                        rows,
+                        colour=ink,
+                        valign="middle",
+                        leading=1.3,
+                        fixed=True,
+                        floor=rows,
+                    )
+                continue
             sc.bullets(
                 items,
                 x + 18,
