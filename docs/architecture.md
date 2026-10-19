@@ -601,7 +601,15 @@ words; a report writer can also place one inline with a `[[그림: …]]` mark (
 style and `diagram.draw_native` draws it: code lays the flowchart out
 (`flow_layout`), `diagram_shapes` draws it as native python-pptx shapes on a
 one-slide deck (`diagram_render`), and the print sidecar renders that slide to
-PNG through LibreOffice (`POST /pptx/png`). The slide goes through `.odp` on the way, with
+PNG through LibreOffice (`POST /pptx/png`). A figure with a fixed shape skips the flowchart
+layout: a short first call picks the shape, and for a line of steps, a cycle, a house (goal,
+pillars, base) or a two-sided comparison a second call fills that kind's slots as JSON
+(`figure_kinds`), drawn to a set layout with labels measured in Pretendard (`figure_text`).
+Any other shape (messages between parties, three or more options, two axes, a structure) is
+written as mermaid as before, and slots that don't make their kind fall back to it. The
+stored source stays a flowchart of the same figure with the slots on a last
+`%% kloudchat-figure:` comment line, so the browser view, the fact check and editing read a
+flowchart while the renderer and the deck export draw the slots. The slide goes through `.odp` on the way, with
 Asian–Latin autospacing switched off, so a label keeps its own spacing (「AI 보안」, 「수집:」);
 `apps/print/fonts.conf` maps the faces an export names (맑은 고딕, 바탕, Segoe UI, Georgia) to
 installed ones (Pretendard, 나눔명조, Selawik, Gelasio). The panel, the PDF and the report
@@ -620,7 +628,13 @@ in the slide's accent. No image model and no card: the only cost is the writer's
 tokens. A picture from the image model placed on that slide replaces the figure. Pictures from the
 image model are proposed on the outline card only for illustration or real
 objects, never for structure or numbers, and a deck's structure slide is moved
-off layouts the figure planner cannot draw on (`deck.structure_as_drawable`).
+off layouts the figure planner cannot draw on (`deck.structure_as_drawable`). When an image
+model served inside the data boundary is open to the account (`dataBoundary: self_hosted`, such
+as `strict-local/z-image-turbo`), the outline card proposes no pictures: after its diagrams the
+document plans pictures on its written parts the way it plans diagrams (`services/illustrations.py`,
+at most two, none is a fine answer) and draws them with that model, a deck on text slides with no
+figure, a report appended to the part as an approved picture is. `illustrations.draw` refuses any
+model outside the boundary, and a request declining pictures (「그림 없이」) gets none.
 
 **Pictures come from the other direction.** The writing model cannot make one
 and cannot reference one — `sanitise` drops every `src` that is not already

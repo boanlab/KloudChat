@@ -53,16 +53,20 @@ def test_the_slide_gets_native_shapes_and_routed_lines():
                    for s in slide.shapes)
 
 
-def test_labels_get_material_icons_embedded_as_svg():
-    assert ds.icon_for("서버") == "dns" and ds.icon_for("데이터 암호화") == "lock"
-    assert ds.icon_for("1920년대 신문") is None
+def test_boxes_are_drawn_in_the_fixed_figures_tone():
+    """White boxes with an accent edge, no icons: a flowchart looks like the fixed-shape
+    figures beside it (`figure_kinds`)."""
     prs = Presentation()
     prs.slide_width, prs.slide_height = Inches(13.333), Inches(7.5)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    graph = ds.parse("flowchart LR\n  a[사용자 요청] --> b[API 서버] --> c[(데이터베이스)]")
+    graph = ds.parse("flowchart LR\n  a[사용자 요청] --> b[API 서버] --> c[(데이터베이스)]:::hot")
     ds.draw_pptx(slide, graph, left=72, top=100, width=816, height=300, accent="#2563EB")
-    svgs = [p for p in prs.part.package.iter_parts() if str(p.partname).endswith(".svg")]
-    assert len(svgs) >= 2 and b'fill="#' in svgs[0].blob
+    assert not [p for p in prs.part.package.iter_parts() if str(p.partname).endswith(".svg")]
+    boxes = {s.text_frame.text.replace("\n", " "): s for s in slide.shapes
+             if s.has_text_frame and s.text_frame.text.strip()}
+    plain, hot = boxes["사용자 요청"], boxes["데이터베이스"]
+    assert str(plain.fill.fore_color.rgb) == "FFFFFF" and str(plain.line.color.rgb) == "2563EB"
+    assert str(hot.fill.fore_color.rgb) == "2563EB"
 
 
 def test_a_figure_deck_is_one_white_slide_sized_to_the_figure():

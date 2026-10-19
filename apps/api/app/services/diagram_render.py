@@ -1,4 +1,5 @@
-"""Mermaid flowchart drawn with `diagram_shapes`, PNG via sidecar; None → caller keeps mermaid."""
+"""Figure drawn with `diagram_shapes` (or `figure_kinds` for a fixed shape), PNG via sidecar;
+None → caller keeps mermaid."""
 
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ import logging
 import httpx
 
 from app.core.config import settings
-from app.services import diagram_shapes, flow_layout
+from app.services import diagram_shapes, figure_kinds, flow_layout
 
 log = logging.getLogger(__name__)
 
@@ -42,39 +43,52 @@ def figure_size(graph: diagram_shapes.Graph) -> tuple[float, float]:
     return width, height
 
 
-def figure_deck(source: str, accent: str = "#2563EB") -> bytes | None:
-    """One-slide .pptx of the figure, or None if not drawable."""
+def figure_deck(source: str, accent: str = "#2563EB",
+                box: tuple[float, float] | None = None) -> bytes | None:
+    """One-slide .pptx of the figure, or None if not drawable; `box`, the slide box it will
+    fill, picks the layout (rows for a tall one)."""
     from pptx import Presentation
     from pptx.dml.color import RGBColor
     from pptx.util import Pt
 
-    graph = diagram_shapes.parse(source)
-    if graph is None:
+    slots = figure_kinds.from_source(source)
+    graph = diagram_shapes.parse(source) if slots is None else None
+    if slots is None and graph is None:
         return None
-    width, height = figure_size(graph)
+    if slots is not None:
+        width, height = figure_kinds.size(slots, box)
+        lead = 0.0
+    else:
+        width, height = figure_size(graph)
+        lead = 8.0 if graph.groups else 0.0
     deck = Presentation()
     deck.slide_width = Pt(width + 2 * _MARGIN)
-    deck.slide_height = Pt(height + 2 * _MARGIN + (8.0 if graph.groups else 0.0))
+    deck.slide_height = Pt(height + 2 * _MARGIN + lead)
     slide = deck.slides.add_slide(deck.slide_layouts[6])
     background = slide.background.fill
     background.solid()
     background.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-    diagram_shapes.draw_pptx(
-        slide, graph,
-        left=_MARGIN, top=_MARGIN + (8.0 if graph.groups else 0.0),
-        width=width, height=height, accent=accent,
-    )
+    if slots is not None:
+        figure_kinds.draw(slide, slots, left=_MARGIN, top=_MARGIN, width=width, height=height,
+                          accent=accent, box=box)
+    else:
+        diagram_shapes.draw_pptx(
+            slide, graph,
+            left=_MARGIN, top=_MARGIN + lead,
+            width=width, height=height, accent=accent,
+        )
     out = io.BytesIO()
     deck.save(out)
     return out.getvalue()
 
 
-async def render_png(source: str, accent: str = "#2563EB") -> bytes | None:
-    """Figure PNG from its python-pptx slide, or None."""
+async def render_png(source: str, accent: str = "#2563EB",
+                     box: tuple[float, float] | None = None) -> bytes | None:
+    """Figure PNG from its python-pptx slide, or None; `box` as in `figure_deck`."""
     base = settings.print_base_url.strip().rstrip("/")
     if not base:
         return None
-    blob = figure_deck(source, accent)
+    blob = figure_deck(source, accent, box)
     if blob is None:
         return None
     try:

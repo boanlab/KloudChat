@@ -27,6 +27,7 @@ from app.services import (
     deck_type,
     design,
     diagram_shapes,
+    figure_kinds,
     fonts,
     pictures,
     slide_patterns,
@@ -111,6 +112,18 @@ def _u(name: str) -> float:
 
 #: Default width of a picture beside text.
 _PICTURE_SPAN = 300.0
+
+
+def _unless_title(caption: str, data: dict) -> str:
+    """A picture's caption, or '' when it only repeats the slide's title (「공사 단계」 under
+    「공사 단계」)."""
+    def words(text: object) -> list[str]:
+        return re.findall(r"[가-힣A-Za-z]+", str(text or ""))
+    said, title = words(caption), "".join(words(data.get("title")))
+    if not said or not title:
+        return caption if said else ""
+    # every word in the title (「공사 단계」 under 「공사 4단계」), or the title in the caption
+    return "" if all(w in title for w in said) or title in "".join(said) else caption
 
 
 def _has_words(data: dict) -> bool:
@@ -2755,15 +2768,20 @@ def to_pptx(
     ) -> bool:
         """Slide's own figure as shapes; False keeps the picture."""
         made = data.get("diagram")
-        source = made.get("source") if isinstance(made, dict) else None
-        graph = diagram_shapes.parse(str(source or ""))
-        if graph is None:
+        source = str((made.get("source") if isinstance(made, dict) else None) or "")
+        slots = figure_kinds.from_source(source)
+        graph = diagram_shapes.parse(source) if slots is None else None
+        if slots is None and graph is None:
             return False
         try:
-            diagram_shapes.draw_pptx(
-                slide, graph, left=left, top=top, width=width, height=height,
-                accent=accent, font=faces[1],
-            )
+            if slots is not None:
+                figure_kinds.draw(slide, slots, left=left, top=top, width=width,
+                                  height=height, accent=accent, font=faces[1])
+            else:
+                diagram_shapes.draw_pptx(
+                    slide, graph, left=left, top=top, width=width, height=height,
+                    accent=accent, font=faces[1],
+                )
         except Exception as exc:  # noqa: BLE001 — picture is the fallback
             log.warning("figure not drawn as shapes, keeping the picture: %s", exc)
             return False
@@ -3459,6 +3477,7 @@ def to_pptx(
 
         if picture:
             image_bytes, image_caption = picture
+            image_caption = _unless_title(image_caption, data)
             alone = not (bullets or rows or metrics or chart or body or pattern_words)
             box = (_W - 260, room) if alone else (picture_span, room)
             fill = str((data.get("image") or {}).get("fit") or "") == "cover"
@@ -4480,6 +4499,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
 
         if picture:
             image_bytes, image_caption = picture
+            image_caption = _unless_title(image_caption, data)
             alone = not (bullets or rows or metrics or chart or body or pattern_words)
             box = (_W - 260, room) if alone else (picture_span, room)
             fill = str((data.get("image") or {}).get("fit") or "") == "cover"

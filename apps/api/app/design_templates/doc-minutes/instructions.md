@@ -62,15 +62,11 @@ most important line and describe the rest in words.
 - Do not transcribe remarks verbatim; reduce them to what was argued. Use `<blockquote>`
   only when the wording itself must be kept.
 
-## 표·강조 수치·절차
+## 표·절차
 
-The layout draws these three separately. The format controls size and color, so do not
+The layout draws these two separately. The format controls size and color, so do not
 use `style`.
 
-- **강조 수치** — if two or three numbers are the conclusion of a section, write them
-  inside `<div class="kpi">`, one `<div><strong>값</strong><span>이름</span></div>` per cell.
-  At most 4. Keep values short, like `32%`, `1.4초`. Do not copy figures from a table — a
-  table is for comparing, this block is for **making one thing remembered**.
 - **절차** — write steps done in order as `<ol class="steps">` with `<li><strong>이름
   </strong> <span>설명</span></li>`. The layout adds the numbers, so do not write them.
   A branching flow is not a procedure.

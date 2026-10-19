@@ -94,6 +94,8 @@ class Planned:
     document: str = ""
     #: steps the request numbers (①…): a flow of that procedure shows every one
     steps: tuple[str, ...] = ()
+    #: the request the document was written from: facts a slide's few words left out
+    request: str = ""
 
 
 async def plan(
@@ -328,6 +330,8 @@ async def make(
         model=model,
         api_key=api_key,
         slide=slide,
+        material="\n\n".join(filter(None, [
+            planned.context, f"요청:\n{planned.request[:1500]}" if planned.request else ""])),
         accent=accent or diagram.ACCENT,
     )
     if planned.figure == "flow" and planned.steps and not covers_steps(source, planned.steps):

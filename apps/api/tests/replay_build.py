@@ -144,6 +144,7 @@ KINDS = [
     ("scores", "scoring the alternatives and checking the must-have conditions"),
     ("head", "의 머리 정보를 채워라"),
     ("diagram_plan", "도식의 종류"),
+    ("figure_shape", "Pick the shape of the figure"),
     ("diagram", "그릴 것:"),
     ("repair", "Some sentences in the report have problems"),
     ("amend", "Only add to the section below."),
@@ -239,6 +240,8 @@ class Responder:
             rows = [{"part": int(re.sub(r"\D", "", e["id"]) or 0) + 1, "figure": "flow",
                      "description": e["label"], "caption": e["label"]} for e in self.figures]
             return kind, json.dumps(rows, ensure_ascii=False)
+        if kind == "figure_shape":  # runs recorded before the shape choice drew mermaid
+            return kind, "other"
         if kind == "diagram":
             what = _after(last, "설명:")[:40] or "단계"
             return kind, f"```mermaid\nflowchart LR\n  a[{what}] --> b[검토] --> c[결정]\n```"

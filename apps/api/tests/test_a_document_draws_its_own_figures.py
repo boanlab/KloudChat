@@ -262,7 +262,8 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
         return {
             "figure": planned.figure,
             "description": planned.description,
-            "source": "flowchart LR\n  a(검색기) --> b(계획기)",
+            # a box the cards do not name: a figure that only repeats them is not drawn
+            "source": "flowchart LR\n  a(검색기) --> b(계획기) --> c(근거 저장소)",
             "caption": planned.caption,
             "key": "abcdef0123456789",
         }, {"inputTokens": 2, "outputTokens": 2}, b"\x89PNG"

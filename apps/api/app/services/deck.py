@@ -22,10 +22,13 @@ from app.services import (
     deck_type,
     design,
     diagram_render,
+    diagram_shapes,
     diagrams,
+    figure_kinds,
     figures,
     grounding,
     hangul,
+    illustrations,
     imagegen,
     internal_words,
     key_figures,
@@ -3097,6 +3100,7 @@ async def _write_slides(
     research_rule: str = "",
     figures_plan: list[dict] | None = None,
     image_model: dict | None = None,
+    auto_image_model: dict | None = None,
     density: str = "speaker",
     frame: bool = False,
     settled: list | None = None,
@@ -3519,6 +3523,25 @@ async def _write_slides(
         ),
     ):
         yield event
+    # its own pictures too, when an image model is served inside the data boundary
+    if auto_image_model and not illustrations.declined(request):
+        async for event in _draw_pictures(
+            slides,
+            image_model=auto_image_model,
+            request=request,
+            model=model,
+            api_key=api_key,
+            usage=usage,
+            wrap=lambda prompt: build_document_messages(
+                SessionKind.slides,
+                prompt,
+                request=request,
+                trusted_context=trusted_context,
+                untrusted_context=untrusted_context,
+                research_rule=research_rule,
+            ),
+        ):
+            yield event
 
     if (wanted := requested_slides(request)) and len(slides) != wanted:
         log.warning(
@@ -3788,7 +3811,8 @@ async def _draw_figures(
     usage["outputTokens"] += spent["outputTokens"]
     # a numbered procedure in the request: its flow shows every step
     steps = diagrams.given_steps(request)
-    planned = [dataclasses.replace(row, steps=steps) if row.figure == "flow" else row
+    planned = [dataclasses.replace(row, steps=steps if row.figure == "flow" else row.steps,
+                                   request=request)
                for row in planned]
     if not planned:
         log.info("deck figures: none planned for %d eligible slides", len(eligible))
@@ -3819,6 +3843,12 @@ async def _draw_figures(
             continue
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
+        if _figure_adds_nothing(slide, made):
+            # a box per card the cards already name: the slide reads better without it
+            log.info("slide figure %r dropped: it only names the slide's own entries", name)
+            yield {"type": "step", "id": f"dia{row.index}", "label": name,
+                   "status": "done", "progress": progress}
+            continue
         slide["diagram"] = made
         # drawn with the deck's own shapes: panel/PDF/report match the .pptx
         slide["image"] = {
@@ -3832,6 +3862,12 @@ async def _draw_figures(
             "key": made.get("key", ""),
         }
         _words_under_figure(slide)
+        if _figure_alone(slide) and figure_kinds.from_source(str(made.get("source") or "")):
+            # the figure takes the whole body: its picture drawn for that box, as the .pptx
+            tall = await diagram_render.render_png(
+                str(made["source"]), accent or "#2563EB", box=FIGURE_BODY)
+            if tall:
+                slide["image"]["src"] = diagram_render.data_uri(tall)
         yield {
             "type": "step",
             "id": f"dia{row.index}",
@@ -3839,6 +3875,60 @@ async def _draw_figures(
             "status": "done",
             "progress": progress,
         }
+        yield {"type": "slide", "slide": auto_fit(slide), "done": True}
+
+
+#: Layouts whose words narrow beside a picture (`deck_export`: bullets and body); pair layouts
+#: such as bands and cards keep the full width and would run under it.
+_PICTURE_LAYOUTS = ("bullets", "statement")
+
+
+async def _draw_pictures(
+    slides: list[dict[str, Any]],
+    *,
+    image_model: dict,
+    request: str,
+    model: str,
+    api_key: str,
+    usage: dict[str, int],
+    wrap,
+) -> AsyncIterator[dict[str, Any]]:
+    """Pictures the deck draws for itself on text slides with no figure or picture yet."""
+    eligible = [
+        i for i, slide in enumerate(slides)
+        if slide.get("layout") in _PICTURE_LAYOUTS and not slide.get("image")
+        and not slide.get("diagram")
+    ]
+    planned, spent = await illustrations.plan(
+        parts=[(str(s.get("title") or ""), _drafted_text(s)) for s in slides],
+        eligible=eligible,
+        request=request,
+        model=model,
+        api_key=api_key,
+        complete=_complete,
+        slide=True,
+        wrap=wrap,
+        limit=1 if len(slides) < 6 else illustrations.MAX_PICTURES,
+    )
+    usage["inputTokens"] += spent["inputTokens"]
+    usage["outputTokens"] += spent["outputTokens"]
+    for row in planned:
+        slide = slides[row.index]
+        name = row.caption or "그림"
+        progress = {"current": row.index + 1, "total": len(slides)}
+        yield {"type": "step", "id": f"fig{row.index}", "label": f"{name} 그리는 중",
+               "status": "running", "progress": progress}
+        picture = await illustrations.draw(
+            row, image_model=image_model, api_key=api_key, aspect="4:3")
+        if picture is None:
+            yield {"type": "step", "id": f"fig{row.index}", "label": name, "status": "error",
+                   "progress": progress}
+            continue
+        usage["inputTokens"] += picture.pop("_in", 0)
+        usage["outputTokens"] += picture.pop("_out", 0)
+        slide["image"] = {"src": picture["src"], "caption": picture["caption"]}
+        yield {"type": "step", "id": f"fig{row.index}", "label": name, "status": "done",
+               "progress": progress}
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
 
@@ -3903,6 +3993,8 @@ async def write(
     #: `None` on planning pass, `[]` for 그림 없이.
     figures_plan: list[dict] | None = None,
     image_model: dict | None = None,
+    #: Self-hosted image model: the deck draws its own pictures (`illustrations`), no card.
+    auto_image_model: dict | None = None,
     #: Research before the outline.
     web_search: bool = True,
     #: a calculation skill is on: derived values by code even when the request names none
@@ -4044,6 +4136,7 @@ async def write(
             research_rule=research_rule,
             figures_plan=figures_plan,
             image_model=image_model,
+            auto_image_model=auto_image_model,
             density=str(approved_plan.get("density") or "speaker"),
             frame=bool(approved_plan.get("frame")),
         ):
@@ -4311,8 +4404,9 @@ async def write(
         ),
         "slides": [{"title": item["title"], "layout": item["layout"]} for item in plan],
     }
-    # pictures proposed with the outline, approved on a second card
-    if image_model:
+    # pictures proposed with the outline, approved on a second card; a self-hosted model
+    # draws on its own after writing instead
+    if image_model and not auto_image_model:
         drawn = await figures.propose(
             request=request,
             title=title,
@@ -4959,23 +5053,125 @@ def _clipped(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
+def _figure_words(slide: dict) -> str:
+    """Every word the slide's figure shows (names, notes, cells, labels)."""
+    source = str((slide.get("diagram") or {}).get("source") or "")
+    slots = figure_kinds.from_source(source)
+    if slots is not None:
+        return " ".join(quality_gate._strings(slots))
+    try:
+        graph = diagram_shapes.parse(source)
+    except Exception:  # noqa: BLE001 — unparsed: nothing counts as shown
+        graph = None
+    if graph is None:
+        return ""
+    return " ".join([*(n.label for n in graph.nodes.values()),
+                     *(e.label for e in graph.edges if e.label)])
+
+
+def _figure_names(slide: dict) -> list[str]:
+    """The names of a fixed-shape figure's parts (steps, stages, pillars, sides, aspects)."""
+    slots = figure_kinds.from_source(str((slide.get("diagram") or {}).get("source") or ""))
+    if slots is None:
+        return []
+    names: list[str] = []
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                if key in ("name", "aspect") and isinstance(inner, str):
+                    names.append(inner)
+                else:
+                    walk(inner)
+        elif isinstance(value, list):
+            for inner in value:
+                if isinstance(inner, str) and len(inner) <= 24:
+                    names.append(inner)  # pillars, sides
+                else:
+                    walk(inner)
+    walk(slots)
+    return names
+
+
+def _names_a_part(line: str, names: list[str]) -> bool:
+    """Whether a 「label: words」 line is about one of the figure's parts (「철거: …」 beside
+    the step 「철거」, 「시범: …」 beside 「시범 운영」)."""
+    label, colon, rest = line.partition(":")
+    label = re.sub(r"\s+", "", label)
+    if not colon or not rest.strip() or not 2 <= len(label) <= 12:
+        return False
+    return any(label in re.sub(r"\s+", "", name) or re.sub(r"\s+", "", name) in label
+               for name in names)
+
+
+def _restates(line: str, shown: str) -> bool:
+    """Whether a line only says what the figure shows: most of its words, endings off
+    (「배치합니다」 → 「배치」), are in the figure."""
+    name, colon, rest = line.partition(":")
+    if colon and rest.strip() and len(name) <= 12:
+        line = rest  # 「구체: 가구를 배치합니다」: the words after a short label
+    words = [w for w in re.findall(r"[가-힣A-Za-z0-9%~]+", line) if len(w) >= 2]
+    if not words or not shown:
+        return False
+    seen = sum(word[:max(2, len(word) - 3)] in shown for word in words)
+    return seen >= 0.75 * len(words)
+
+
+#: the body box a figure alone on a slide fills (`deck_export`: slide width less margins,
+#: body height less the caption line)
+FIGURE_BODY = (deck_type.TITLE_WIDTH * deck_type.K,
+               (deck_type.BODY_BOTTOM - deck_type.BODY_TOP) * deck_type.K - 30)
+
+
+def _figure_alone(slide: dict) -> bool:
+    """Whether nothing but the figure is left on the slide."""
+    return not any(slide.get(key) for key in (
+        "bullets", "body", "rows", "metrics", "chart", "items", "columns", *_PAIRED))
+
+
+def _figure_adds_nothing(slide: dict, made: dict) -> bool:
+    """A free-drawn figure (no fixed shape) on a cards, steps or other paired slide whose
+    every box only repeats words the slide already shows."""
+    if not any(slide.get(key) for key in _PAIRED):
+        return False
+    source = str(made.get("source") or "")
+    if figure_kinds.from_source(source) is not None:
+        return False
+    try:
+        graph = diagram_shapes.parse(source)
+    except Exception:  # noqa: BLE001 — unparsed: keep what was drawn
+        graph = None
+    if graph is None:
+        return False
+    labels = [n.label for n in graph.nodes.values()]
+    said = " ".join(quality_gate._strings({k: slide.get(k) for k in ("title", *_PAIRED)}))
+    return bool(labels) and all(_restates(label, said) for label in labels)
+
+
 def _words_under_figure(slide: dict) -> None:
-    """Figured slide: few words under the figure (≤ 4 cards or ≤ 3 bullets), rest to notes."""
+    """Figured slide: few words under the figure (≤ 4 cards or ≤ 3 bullets), rest to notes;
+    words that only restate the figure go to notes too, and a figure that says it all takes
+    the whole body."""
     layout = str(slide.get("layout") or "")
     spill: list[str] = []
+    shown = _figure_words(slide)
     if layout == "cards":
         pairs = [p for p in (slide.get("cards") or []) if isinstance(p, list) and p]
         kept: list[list[str]] = []
         for pair in pairs:
             name = str(pair[0]).strip()
             text = " ".join(str(cell).strip() for cell in pair[1:] if str(cell).strip())
-            if len(kept) < _UNDER_CARDS:
+            if _restates(f"{name}: {text}" if text else name, shown):
+                spill.append(f"{name}: {text}" if text else name)
+            elif len(kept) < _UNDER_CARDS:
                 kept.append([name, _clipped(text, _CARD_CHARS)])
                 if len(text) > _CARD_CHARS:
                     spill.append(f"{name}: {text}")
             else:
                 spill.append(f"{name}: {text}")
         slide["cards"] = kept
+        if not kept:
+            slide["layout"] = "bullets"  # the figure says it all: it takes the whole body
+            slide.pop("cards", None)
     else:
         lines: list[str] = []
         for key in _PAIRED:
@@ -4992,6 +5188,25 @@ def _words_under_figure(slide: dict) -> None:
         if body := str(slide.get("body") or "").strip():
             lines.append(body)
         lines = [line for line in lines if line]
+        said = [line for line in lines if _restates(line, shown)]
+        names = _figure_names(slide)
+        about = [line for line in lines if _names_a_part(line, names)]
+        covered = [line for line in lines if line in about or line in said]
+        if about and 4 * len(covered) >= 3 * len(lines):
+            # a line per part: the figure's own list again (its notes were drawn from them)
+            said = covered
+        if said:
+            spill.extend(said)
+            lines = [line for line in lines if line not in said]
+            if not lines:
+                # the figure says it all: it takes the whole body
+                slide["layout"] = "bullets"
+                slide["bullets"], slide["body"] = [], ""
+                for key in ("items", "columns", "metrics"):
+                    slide.pop(key, None)
+                notes = str(slide.get("notes") or "").strip()
+                slide["notes"] = "\n".join(filter(None, [notes, *spill]))[:800]
+                return
         if not lines:
             # other shapes count as words
             for key in ("items", "columns", "metrics"):

@@ -245,7 +245,7 @@ def deck_findings(slides: list[dict[str, Any]]) -> list[dict[str, str]]:
             add("numbered_agenda", where)
         if slide.get("diagram") and layout not in ("title", "section", "closing") and not (
             slide.get("bullets") or slide.get("body") or slide.get("cards") or slide.get("items")
-        ):
+        ) and not _says_it_all(slide["diagram"]):
             add("figure_without_words", where)
         text_checks = (("mixed_script", _MIXED), ("literal_br", _BR),
                        ("placeholder", _PLACEHOLDER), ("json_residue", _JSON_RESIDUE))
@@ -253,6 +253,15 @@ def deck_findings(slides: list[dict[str, Any]]) -> list[dict[str, str]]:
             if m := pattern.search(text):
                 add(code, where, text[max(0, m.start() - 20): m.end() + 20])
     return out
+
+
+def _says_it_all(diagram: object) -> bool:
+    """A fixed-shape figure carries its own words (names and notes): alone on a slide by design
+    (`deck._words_under_figure`)."""
+    from app.services import figure_kinds
+
+    source = str((diagram or {}).get("source") or "") if isinstance(diagram, dict) else ""
+    return figure_kinds.from_source(source) is not None
 
 
 __all__ = ["deck_findings", "report_findings"]

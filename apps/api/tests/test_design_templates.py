@@ -146,10 +146,15 @@ def test_a_picture_cannot_grow_past_the_page_it_is_on(template):
     assert re.search(r"figure img \{[^}]*max-height", template.seed), template.id
 
 
-@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
-def test_no_seed_justifies_korean(template):
-    """No seed justifies text; with `keep-all` that leaves rivers in Korean."""
-    assert "text-align: justify" not in template.seed
+@pytest.mark.parametrize(
+    "template", [t for t in dt.all_templates() if t.kind == "document"], ids=lambda t: t.id
+)
+def test_body_text_is_justified_between_letters(template):
+    """A document seed justifies body text as an official document does, spreading between
+    letters too: with whole-word (`keep-all`) wrapping, word gaps alone leave rivers."""
+    rule = re.search(r"\n  p \{[^}]*\}", template.seed)
+    assert rule and "text-align: justify" in rule.group(0), template.id
+    assert "text-justify: inter-character" in rule.group(0), template.id
 
 
 @pytest.mark.parametrize(

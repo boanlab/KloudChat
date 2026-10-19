@@ -323,7 +323,7 @@ class Rewrite(Base):
                     body = richtext.detach_tables(body)
                     # arithmetic checked, not trusted
                     body = report.trim_table_echo(
-                        report.drop_redundant_kpi(
+                        report.drop_kpi(
                             report.fix_point_units(
                                 report.undouble_words(
                                     report.fix_percent_formulas(
