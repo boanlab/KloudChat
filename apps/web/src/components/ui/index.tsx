@@ -508,8 +508,9 @@ export function Dropdown({
     openChange.current?.(value)
   }, [])
   // Opening direction and height cap, measured against the viewport.
-  const [placement, setPlacement] = useState<{ up: boolean; maxHeight: number; left: number; top: number; bottom: number; width: number }>({
+  const [placement, setPlacement] = useState<{ up: boolean; maxHeight: number; left: number; top: number; bottom: number; width: number; inDialog: boolean }>({
     up: false,
+    inDialog: false,
     maxHeight: 0,
     width: 0,
     left: 0,
@@ -538,6 +539,8 @@ export function Dropdown({
       left,
       top: rect.bottom + 6,
       bottom: window.innerHeight - rect.top + 6,
+      // Opened from a dialog: above it (z-[150]), while stray menus stay below.
+      inDialog: !!ref.current?.closest('[role="dialog"]'),
     })
   }, [align, matchTrigger])
 
@@ -647,7 +650,7 @@ export function Dropdown({
       </div>
       {open && typeof document !== 'undefined' && createPortal(
         <MenuCtx.Provider value={{ close: () => setOpen(false) }}>
-          {sheet && <div className="fixed inset-0 z-[99] bg-black/30" aria-hidden />}
+          {sheet && <div className={cn('fixed inset-0 bg-black/30', placement.inDialog ? 'z-[159]' : 'z-[99]')} aria-hidden />}
           <div
             ref={menuRef}
             role="menu"
@@ -664,10 +667,11 @@ export function Dropdown({
                   }
             }
             className={cn(
+              placement.inDialog ? 'z-[160]' : 'z-[100]',
               sheet
-                ? 'animate-fade-up fixed inset-x-0 bottom-0 z-[100] max-h-[80dvh] overflow-y-auto rounded-t-panel border-t border-line bg-panel p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-overlay'
+                ? 'animate-fade-up fixed inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto rounded-t-panel border-t border-line bg-panel p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-overlay'
                 : cn(
-                    'animate-fade-up z-[100] min-w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-card border border-line bg-panel p-1 shadow-overlay',
+                    'animate-fade-up min-w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-card border border-line bg-panel p-1 shadow-overlay',
                     className,
                   ),
             )}

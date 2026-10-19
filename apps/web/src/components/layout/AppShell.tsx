@@ -104,6 +104,27 @@ function NoticeBar() {
   )
 }
 
+/** Workspace config (enabled kinds, brand) re-read on return to the tab and every 5 minutes. */
+function useConfigWatch() {
+  const refreshConfig = useStore((s) => s.refreshConfig)
+  useEffect(() => {
+    let last = 0
+    const refresh = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < 15_000) return
+      last = Date.now()
+      void refreshConfig()
+    }
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    const timer = setInterval(refresh, 5 * 60_000)
+    return () => {
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+      clearInterval(timer)
+    }
+  }, [refreshConfig])
+}
+
 export function AppShell() {
   const t = useT()
   const narrow = useNarrowLayout()
@@ -112,6 +133,7 @@ export function AppShell() {
   const location = useLocation()
   useIssueBadge()
   useBotAttentionBadge()
+  useConfigWatch()
 
   // Narrow layout: sidebar overlays, so navigation closes it.
   useEffect(() => {

@@ -3207,9 +3207,10 @@ export function DeckPanel({
       }}
     >
       <header className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2 max-sm:px-2">
-        <div ref={head.ref} className="flex w-full min-w-0 items-center gap-1.5">
+        <div ref={head.ref} className={cn('flex w-full min-w-0 items-center gap-1.5', head.narrow && 'flex-wrap')}>
           <Presentation size={15} className="shrink-0 text-accent" />
-          <p className="min-w-0 flex-1 truncate whitespace-nowrap text-base font-medium" title={deck.title}>
+          {/* Narrow: the title takes its own row, so the actions below keep their words. */}
+          <p className={cn('min-w-0 flex-1 truncate whitespace-nowrap text-base font-medium', head.narrow && 'min-w-[calc(100%-1.5rem)]')} title={deck.title}>
             {deck.title}
           </p>
           {!head.narrow && (
@@ -3268,6 +3269,7 @@ export function DeckPanel({
             )}
             <DownloadMenu
               artifact={deck}
+              // Narrow: 발표 and 검토 take the room; 편집 keeps its word.
               compact={head.narrow}
               disabled={writing || editing}
               checksHeading={t('내보내기 전 확인 {n}건').replace('{n}', String(exportWarningCount))}
@@ -3300,10 +3302,11 @@ export function DeckPanel({
               aria-label={t('편집')}
               title={editMode ? t('편집 도구를 닫고 읽기로 돌아갑니다') : t('이 장을 고칩니다')}
               disabled={writing}
+              data-labelled={head.narrow && editing ? undefined : ''}
               onClick={() => (editMode ? leaveEditMode() : enterEditMode())}
             >
               <Pencil size={13} />
-              {!head.narrow && t('편집')}
+              {!(head.narrow && editing) && t('편집')}
             </Button>
             <Dropdown
               align="right"

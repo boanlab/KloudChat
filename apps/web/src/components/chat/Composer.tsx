@@ -58,6 +58,8 @@ const GATEWAY_NOTICE =
 
 /** The prompt box grows to this height, then scrolls. */
 const COMPOSER_MAX_PX = 280
+// Chip ×: a 24px target that keeps the chip's height.
+const chipRemove = '-my-1 -mr-1 grid size-6 shrink-0 place-items-center rounded-control text-faint hover:text-fg'
 
 const placeholders: Record<SessionKind, string> = {
   chat: '무엇이든 물어보세요',
@@ -2156,7 +2158,7 @@ export function Composer({
           </span>
         </div>
       )}
-      <div className="rounded-panel border border-line bg-panel shadow-raised transition-colors focus-within:border-line-strong">
+      <div className="rounded-panel border border-line bg-panel shadow-raised transition-colors has-[textarea:focus]:border-accent has-[textarea:focus]:ring-2 has-[textarea:focus]:ring-accent/30">
         {editing && (
           <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-sm">
             <Pencil size={14} className="shrink-0 text-accent" />
@@ -2201,9 +2203,9 @@ export function Composer({
                     onClick={() => setWebSearchMode('auto')}
                     aria-label={t('웹 검색 자동으로 되돌리기')}
                     title={t('웹 검색 자동으로 되돌리기')}
-                    className="ml-0.5 text-faint hover:text-fg"
+                    className={chipRemove}
                   >
-                    <X size={10} />
+                    <X size={12} />
                   </button>
                 </Badge>
               ))}
@@ -2238,9 +2240,9 @@ export function Composer({
                     '{name}',
                     templateText(shownTemplate, currentLang() === 'en').name,
                   )}
-                  className="ml-0.5 text-faint hover:text-fg"
+                  className={chipRemove}
                 >
-                  <X size={10} />
+                  <X size={12} />
                 </button>
               </Badge>
             )}
@@ -2259,9 +2261,9 @@ export function Composer({
                     setActivatedSkillIds(next)
                   }}
                   aria-label={t('{name} 제거').replace('{name}', skill.name)}
-                  className="ml-0.5 text-faint hover:text-fg"
+                  className={chipRemove}
                 >
-                  <X size={10} />
+                  <X size={12} />
                 </button>
               </Badge>
             ))}
@@ -2316,10 +2318,10 @@ export function Composer({
                     })
                   }}
                   data-attachment-remove=""
-                  className="text-faint hover:text-fg"
+                  className={chipRemove}
                   aria-label={t('{name} 제거').replace('{name}', f.name)}
                 >
-                  <X size={10} />
+                  <X size={12} />
                 </button>
               </span>
               )
@@ -2343,10 +2345,10 @@ export function Composer({
                     dropPasted(at)
                     requestAnimationFrame(() => ref.current?.focus())
                   }}
-                  className="text-faint hover:text-fg"
+                  className={chipRemove}
                   aria-label={t('붙여 넣은 텍스트 제거')}
                 >
-                  <X size={10} />
+                  <X size={12} />
                 </button>
               </span>
             ))}
