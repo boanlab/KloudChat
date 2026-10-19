@@ -4190,11 +4190,22 @@ async def send_message(
     ):
         # Auto isn't renewed consent for an explicitly offline question
         effective_web_search, forced_tool = False, None
+    #: a draft, edit, translation or code fix of the person's own facts on 「auto」: no
+    #: search forced or offered, every model alike; a named lookup or world value still searches
+    own_work = (
+        session.kind is SessionKind.chat and payload.web_search == "auto"
+        and published is None and fresh_followup_index is None
+        and forced_tool != "weather" and not requests_web_search(content)
+        and exact_facts.own_work(_ask_of(content))
+    )
+    if own_work:
+        forced_tool = None
     # the ask, not the material pasted under it, decides
-    fresh_fact = published is None and (freshness.current_fact_required(_ask_of(content)) or (
-        fresh_followup_index is not None
-        and freshness.current_fact_required(history[fresh_followup_index].content)
-    ))
+    fresh_fact = not own_work and published is None and (
+        freshness.current_fact_required(_ask_of(content)) or (
+            fresh_followup_index is not None
+            and freshness.current_fact_required(history[fresh_followup_index].content)
+        ))
     #: first search forced by the current-fact rule alone
     forced_by_freshness = False
     if fresh_fact and effective_web_search and forced_tool != "weather":
@@ -4210,7 +4221,7 @@ async def send_message(
     exact_reason = (
         exact_facts.search_reason(asked, earlier_asks)
         if session.kind is SessionKind.chat and published is None and not fresh_fact
-        and effective_web_search and forced_tool is None
+        and not own_work and effective_web_search and forced_tool is None
         and not is_small_talk(content)
         else None
     )
@@ -4318,8 +4329,8 @@ async def send_message(
             forced_tool = None
             web_search_auto = payload.web_search == "auto"
 
-    if _material_only_turn(session, payload, forced_tool, content, workspace,
-                           published=published is not None):
+    if own_work or _material_only_turn(session, payload, forced_tool, content, workspace,
+                                       published=published is not None):
         # the person gave the material (pasted, attached or marked made up) and asked for
         # nothing to be looked up: no automatic search, every model alike
         effective_web_search = web_search_auto = False

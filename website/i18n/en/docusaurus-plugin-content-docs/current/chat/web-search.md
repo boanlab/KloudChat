@@ -16,7 +16,7 @@ Choose **Web search** from the **+** button in the composer and set it to **Auto
 
 When a search runs, the answer shows numbers in the form `[n]` and a source list. One request performs at most three searches and reads at most six pages. Weather uses a dedicated tool instead of search. If you select a strict-local model, web search cannot be chosen.
 
-Writing, translation and proofreading, code and spreadsheet formulas, role-play, concept explanations, and questions about attached or pasted material are not searched first in Auto. A follow-up (for example "it's 30 million won I need within a year" after an investment question) is judged with the conversation before it. Writing "don't search" or choosing **Off** keeps the turn offline.
+Writing, translation and proofreading, code and spreadsheet formulas, role-play, concept explanations, and questions about attached or pasted material are not searched first in Auto. A draft, edit, translation or code fix made from what you give (a meeting agenda, an email draft, a bug in pasted code) is not searched at all in Auto unless it names something to look up, such as "latest", an exchange rate or the weather (choose **Always** to search anyway). A follow-up (for example "it's 30 million won I need within a year" after an investment question) is judged with the conversation before it. Writing "don't search" or choosing **Off** keeps the turn offline.
 
 Requests about current information need a search. "Exchange rate trends this quarter" and "Changes in Python 3.14" are examples. Calculation, translation, summarizing an attached text, and fixing code do not need a search. Setting the mode to **Off** for those makes the answer faster and avoids unnecessary sources.
 

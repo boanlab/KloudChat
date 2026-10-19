@@ -42,6 +42,14 @@ _CODE = re.compile(
     r"\b(?:write|fix|debug|explain|review)\s+(?:this\s+|the\s+|a\s+|my\s+)?(?:code|function|script)\b",
     re.I,
 )
+#: Code the person pasted (a fenced block).
+_FENCED_CODE = re.compile(r"```[^\n]*\n.*?(?:```|$)", re.S)
+#: An ask to fix or explain the pasted code.
+_CODE_FIX = re.compile(
+    r"고쳐|수정|버그|오류|에러|디버그|리뷰|설명|"
+    r"\b(?:fix|debug|bugs?|wrong|crash\w*|errors?|explain|review|refactor)\b",
+    re.I,
+)
 _ROLEPLAY = re.compile(
     r"역할극|롤플레이|상황극|(?:다|라)고\s*치고|연기해|흉내|모의\s*(?:면접|인터뷰|협상)|"
     r"면접관|영업\s*사원|판매원|손님\s*역할|고객\s*역할|"
@@ -53,6 +61,13 @@ _DRAFT = re.compile(
     r"초안|양식|템플릿|서식|(?:메일|이메일|편지|공지|안내문|계약서|합의서)[^.!?\n]{0,12}"
     r"(?:써|작성|만들)|\b(?:draft|template|write\s+(?:an?\s+)?(?:email|letter|agreement|"
     r"contract))\b",
+    re.I,
+)
+#: A plan of the person's own event to lay out: an agenda, a running order, a checklist.
+_PLAN_DRAFT = re.compile(
+    r"(?:안건|아젠다|어젠다|회의\s*(?:순서|진행표)|진행\s*순서|식순|일정표|체크\s*리스트)"
+    r"[^.!?\n]{0,24}(?:짜|써|작성|만들|정리|구성)|"
+    r"\b(?:write|plan|draw\s+up|prepare)\s+(?:an?\s+|the\s+)?(?:meeting\s+)?agenda\b",
     re.I,
 )
 _EXPLAIN = re.compile(
@@ -182,6 +197,54 @@ def _left_alone(text: str) -> bool:
     return bool(_EXPLAIN.search(text) and not _EXACT_ASK.search(text))
 
 
+#: An ask that names something to look up.
+_LOOKUP = re.compile(
+    r"검색|찾아|조사|알아봐|최신|최근|요즘|트렌드|동향|뉴스|소식|실시간|시세|"
+    r"(?:오늘|현재|지금)\s*(?:기준|시점)|https?://|"
+    r"\b(?:search|look\s*up|latest|recent|current|today'?s|news|trends?)\b",
+    re.I,
+)
+#: World values a draft may need from outside (a rate, a price, the weather, a statute).
+_WORLD_VALUE = re.compile(
+    r"환율|주가|금리|물가|가격|요금|수수료|날씨|기온|예보|미세먼지|순위|경기\s*결과|선거|"
+    r"최저\s*임금|세율|공휴일|법정|통계|"
+    r"\b(?:exchange\s+rates?|stock\s+prices?|interest\s+rates?|prices?|weather|forecast|"
+    r"ranking|minimum\s+wage|tax\s+rates?|holidays?|statistics)\b",
+    re.I,
+)
+#: A question about the world, outside the task sentence.
+_INFO_ASK = re.compile(
+    r"[?？]|알려|얼마|언제|어디|누가|누구|무엇|뭐(?:야|지|예요|에요|가)|뭔지|"
+    r"\b(?:tell\s+me|what\s+is|who\s+is|when\s+is|where\s+is|how\s+much)\b",
+    re.I,
+)
+_SENTENCE = re.compile(r"(?<=[.!?。？])\s+|\n+")
+
+
+def own_work(request: str) -> bool:
+    """A draft, an edit, a translation or a code fix made from what the person gives, with
+    nothing to look up: no outside fact, no world value, no question besides the task. A web
+    search only brings unrelated pages to such a turn (an agenda citing an outsourcing
+    checklist)."""
+    text = _clean(request)
+    code = bool(_FENCED_CODE.search(text))
+    text = _FENCED_CODE.sub(" ", text)
+    if not text.strip() or _LOOKUP.search(text) or _WORLD_VALUE.search(text):
+        return False
+    if any(pattern.search(text) for _, pattern in _DOMAINS):
+        return False
+
+    def task(sentence: str) -> bool:
+        return bool(_TRANSLATE.search(sentence) or _CODE.search(sentence)
+                    or _DRAFT.search(sentence) or _PLAN_DRAFT.search(sentence)
+                    or (code and _CODE_FIX.search(sentence)))
+
+    sentences = [part for part in _SENTENCE.split(text) if part.strip()]
+    if not any(task(part) for part in sentences):
+        return False
+    return not any(_INFO_ASK.search(part) for part in sentences if not task(part))
+
+
 def _set_up_as_other(earlier: Sequence[str]) -> bool:
     """The conversation opened as a translator, a role-play, a formula generator…"""
     if not earlier:
@@ -228,4 +291,4 @@ def search_reason(request: str, earlier: Sequence[str] = ()) -> str | None:
     return None
 
 
-__all__ = ["LABELS", "advice_domain", "not_a_lookup", "search_reason"]
+__all__ = ["LABELS", "advice_domain", "not_a_lookup", "own_work", "search_reason"]
