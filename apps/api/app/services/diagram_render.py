@@ -1,4 +1,5 @@
-"""Mermaid flowchart drawn with `diagram_shapes`, PNG via sidecar; None → caller keeps mermaid."""
+"""Figure drawn with `diagram_shapes` (or `figure_kinds` for a fixed shape), PNG via sidecar;
+None → caller keeps mermaid."""
 
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ import logging
 import httpx
 
 from app.core.config import settings
-from app.services import diagram_shapes, flow_layout
+from app.services import diagram_shapes, figure_kinds, flow_layout
 
 log = logging.getLogger(__name__)
 
@@ -48,22 +49,32 @@ def figure_deck(source: str, accent: str = "#2563EB") -> bytes | None:
     from pptx.dml.color import RGBColor
     from pptx.util import Pt
 
-    graph = diagram_shapes.parse(source)
-    if graph is None:
+    slots = figure_kinds.from_source(source)
+    graph = diagram_shapes.parse(source) if slots is None else None
+    if slots is None and graph is None:
         return None
-    width, height = figure_size(graph)
+    if slots is not None:
+        width, height = figure_kinds.size(slots)
+        lead = 0.0
+    else:
+        width, height = figure_size(graph)
+        lead = 8.0 if graph.groups else 0.0
     deck = Presentation()
     deck.slide_width = Pt(width + 2 * _MARGIN)
-    deck.slide_height = Pt(height + 2 * _MARGIN + (8.0 if graph.groups else 0.0))
+    deck.slide_height = Pt(height + 2 * _MARGIN + lead)
     slide = deck.slides.add_slide(deck.slide_layouts[6])
     background = slide.background.fill
     background.solid()
     background.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-    diagram_shapes.draw_pptx(
-        slide, graph,
-        left=_MARGIN, top=_MARGIN + (8.0 if graph.groups else 0.0),
-        width=width, height=height, accent=accent,
-    )
+    if slots is not None:
+        figure_kinds.draw(slide, slots, left=_MARGIN, top=_MARGIN, width=width, height=height,
+                          accent=accent)
+    else:
+        diagram_shapes.draw_pptx(
+            slide, graph,
+            left=_MARGIN, top=_MARGIN + lead,
+            width=width, height=height, accent=accent,
+        )
     out = io.BytesIO()
     deck.save(out)
     return out.getvalue()

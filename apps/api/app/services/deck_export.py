@@ -27,6 +27,7 @@ from app.services import (
     deck_type,
     design,
     diagram_shapes,
+    figure_kinds,
     fonts,
     pictures,
     slide_patterns,
@@ -2684,15 +2685,20 @@ def to_pptx(
     ) -> bool:
         """Slide's own figure as shapes; False keeps the picture."""
         made = data.get("diagram")
-        source = made.get("source") if isinstance(made, dict) else None
-        graph = diagram_shapes.parse(str(source or ""))
-        if graph is None:
+        source = str((made.get("source") if isinstance(made, dict) else None) or "")
+        slots = figure_kinds.from_source(source)
+        graph = diagram_shapes.parse(source) if slots is None else None
+        if slots is None and graph is None:
             return False
         try:
-            diagram_shapes.draw_pptx(
-                slide, graph, left=left, top=top, width=width, height=height,
-                accent=accent, font=faces[1],
-            )
+            if slots is not None:
+                figure_kinds.draw(slide, slots, left=left, top=top, width=width,
+                                  height=height, accent=accent, font=faces[1])
+            else:
+                diagram_shapes.draw_pptx(
+                    slide, graph, left=left, top=top, width=width, height=height,
+                    accent=accent, font=faces[1],
+                )
         except Exception as exc:  # noqa: BLE001 — picture is the fallback
             log.warning("figure not drawn as shapes, keeping the picture: %s", exc)
             return False

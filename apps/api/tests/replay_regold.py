@@ -21,7 +21,7 @@ import replay_build as build  # noqa: E402
 import replay_harness as harness  # noqa: E402
 
 #: Kinds the build answers from the prompt alone.
-SCRIPTED = ("repair", "amend", "condense", "fill", "rewrite", "key_figures")
+SCRIPTED = ("repair", "amend", "condense", "fill", "rewrite", "key_figures", "figure_shape")
 
 
 def _scripted(kind: str, last: str) -> str:
@@ -38,6 +38,8 @@ def _scripted(kind: str, last: str) -> str:
     if kind == "rewrite":
         text = last.rsplit("\n글:\n", 1)[-1].strip()
         return text + " 맡은 일을 끝까지 확인하며 성실히 일하겠습니다."
+    if kind == "figure_shape":  # recorded before the shape choice: the figure stays mermaid
+        return "other"
     return "[]"
 
 

@@ -16,6 +16,18 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tzdata curl ca-certificates git fonts-nanum \
     && rm -rf /var/lib/apt/lists/*
 
+# Pretendard, the figure face, so labels are measured with the widths the renderer draws.
+# Same pinned release as the print image (SIL Open Font License 1.1); fetched at build.
+ARG PRETENDARD_VERSION=1.3.9
+RUN apt-get update && apt-get install -y --no-install-recommends unzip \
+    && curl -fsSL -o /tmp/pretendard.zip \
+      "https://github.com/orioncactus/pretendard/releases/download/v${PRETENDARD_VERSION}/Pretendard-${PRETENDARD_VERSION}.zip" \
+    && mkdir -p /usr/share/fonts/opentype/pretendard \
+    && unzip -j -o /tmp/pretendard.zip "public/static/Pretendard-Regular.otf" "public/static/Pretendard-Bold.otf" \
+      -d /usr/share/fonts/opentype/pretendard \
+    && rm /tmp/pretendard.zip \
+    && apt-get purge -y unzip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
 # MCP stdio servers: PEP 723 scripts and PyPI servers via uv/uvx, the MCP
 # project's reference servers via node/npx.
 COPY --from=ghcr.io/astral-sh/uv:0.5.29 /uv /uvx /usr/local/bin/

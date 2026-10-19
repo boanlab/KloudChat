@@ -328,6 +328,7 @@ async def make(
         model=model,
         api_key=api_key,
         slide=slide,
+        material=planned.context,
         accent=accent or diagram.ACCENT,
     )
     if planned.figure == "flow" and planned.steps and not covers_steps(source, planned.steps):
