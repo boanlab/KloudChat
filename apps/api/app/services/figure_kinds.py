@@ -1,5 +1,5 @@
-"""Figures with a fixed shape (steps, cycle, house, compare): slots the model fills, drawn
-to a set layout with native .pptx shapes.
+"""Figures with a fixed shape (steps, cycle, house, compare, options, axes, messages): slots
+the model fills, drawn to a set layout with native .pptx shapes.
 
 A figure's stored source stays a mermaid flowchart, so the browser view, the fact check and
 editing read it as before; its last line carries the slots as a mermaid comment, and the
@@ -18,7 +18,7 @@ from app.services import figure_text
 
 #: comment line carrying the slots under the fallback flowchart
 MARK = "%% kloudchat-figure: "
-KINDS = ("steps", "cycle", "house", "compare")
+KINDS = ("steps", "cycle", "house", "compare", "options", "axes", "messages")
 
 INK = "#1B2430"
 SUB = "#5A6675"
@@ -62,6 +62,26 @@ _SLOTS = {
                ' "hot": {"row": "작성", "badge": "3일 → 즉시"}}\n'
                '`before` is the first side, `after` the second; every row fills both. `hot` '
                'names the one row that matters most; its `badge` is optional.',
+    "options": '{"kind": "options", "options": ["외부 API", "자체 호스팅", "하이브리드"],\n'
+               ' "rows": [{"aspect": "초기 비용", "cells": [{"text": "낮음", "mark": "good"},\n'
+               '           {"text": "GPU 서버 비용 높음", "mark": "bad"}, {"text": "중간"}]}, …],\n'
+               ' "hot": "하이브리드"}\n'
+               '`cells` follow `options` in order, one per option; a cell the text gives no value '
+               'for is "". `mark` is good, caution or bad, only where the text judges that cell. '
+               '`hot` names the option the text recommends; leave it out when it recommends none.',
+    "axes": '{"kind": "axes", "x": {"name": "가격", "low": "낮음", "high": "높음"},\n'
+            ' "y": {"name": "기능 범위", "low": "좁음", "high": "넓음"},\n'
+            ' "items": [{"name": "메신저", "x": "low", "y": "low"},\n'
+            '           {"name": "우리 제품", "x": "low", "y": "high"}, …],\n'
+            ' "hot": "우리 제품"}\n'
+            'Each item\'s `x` and `y` is low, mid or high, where the text places it; an item the '
+            'text does not place on both axes is left out. `hot` names the item the text is about '
+            '(our product, the target); optional.',
+    "messages": '{"kind": "messages", "parties": ["클라이언트", "서버"],\n'
+                ' "messages": [{"from": "클라이언트", "to": "서버", "name": "ClientHello",\n'
+                '               "note": "지원 암호 목록 · 키 공유"}, …]}\n'
+                '`from` and `to` are names from `parties`; the messages are in the order they '
+                'are sent.',
 }
 
 _FILL = """
@@ -75,13 +95,14 @@ says in one sentence what the figure shows. The slots, as an example:
 - Use only what the description and the text the figure goes with say: the description names
   the figure's parts, and a value it leaves out (a compare cell, a note) comes from that text.
   Never invent a note, number, name or badge; leave an optional field out instead (`note`,
-  `en`, `center`, `center_note`, `items`, `hot`, `badge`).
+  `en`, `center`, `center_note`, `items`, `hot`, `badge`, `mark`).
 - A note adds what the name does not say: what is done, by whom, how long, with what result,
   taken from that text. A note that only rewords the name (「설치 작업」, 「운영 시험」,
   「구체화 과정」) is left out.
 - Keep every part the description names; do not merge or drop one to fit.
 - Names are short: a step, stage or pillar name about 8 characters (at most 12), a note at
-  most 24, a compare cell at most 30. Use the description's own terms.
+  most 24, a compare or options cell at most 30, an option, axis or item name at most 12, a
+  message name at most 40. Use the description's own terms.
 - `en` only when the description gives the English term.
 - Write the names and the caption in {language}.
 """
@@ -247,6 +268,12 @@ def _spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
         if not goal or len(pillars) < 2:
             return None
         return {"kind": kind, "lang": lang, "goal": goal, "pillars": pillars, "base": base}
+    if kind == "options":
+        return _options(data, lang)
+    if kind == "axes":
+        return _axes(data, lang)
+    if kind == "messages":
+        return _messages(data, lang)
     sides = [t for v in (data.get("sides") or [])[:2] if (t := _text(v, 30))]
     rows = []
     for row in (data.get("rows") or [])[:6]:
@@ -269,6 +296,97 @@ def _spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
                 badge, cells["before"] + " " + cells["after"]):
             out["hot"]["badge"] = badge
     return out
+
+
+#: 「-」 or 「없음」 stands in for a cell the writer had no value for
+_EMPTY = re.compile(r"[-–—·.\s]*|없음|해당\s?없음")
+_MARKS = ("good", "caution", "bad")
+
+
+def _options(data: dict, lang: str) -> dict[str, Any] | None:
+    names = [t for v in (data.get("options") or [])[:4] if (t := _text(v, 20))]
+    if len(names) < 3 or len(set(names)) < len(names):
+        return None  # two options are a compare
+    rows = []
+    for row in (data.get("rows") or [])[:7]:
+        if not isinstance(row, dict) or not (aspect := _text(row.get("aspect"), 16)):
+            continue
+        cells = []
+        for cell in list(row.get("cells") or [])[: len(names)]:
+            cell = cell if isinstance(cell, dict) else {"text": cell}
+            text = _text(cell.get("text"), 30)
+            text = "" if _EMPTY.fullmatch(text) else text
+            out = {"text": text}
+            if text and (mark := str(cell.get("mark") or "").strip().lower()) in _MARKS:
+                out["mark"] = mark
+            cells.append(out)
+        cells += [{"text": ""}] * (len(names) - len(cells))
+        if sum(bool(c["text"]) for c in cells) >= 2:
+            rows.append({"aspect": aspect, "cells": cells})
+    if len(rows) < 2:
+        return None
+    out: dict[str, Any] = {"kind": "options", "lang": lang, "options": names, "rows": rows}
+    if (hot := _text(data.get("hot"), 20)) in names:
+        out["hot"] = hot
+    return out
+
+
+_PLACES = ("low", "mid", "high")
+
+
+def _axis(value: Any) -> dict[str, str] | None:
+    if isinstance(value, str):
+        value = {"name": value}
+    if not isinstance(value, dict) or not (name := _text(value.get("name"), 12)):
+        return None
+    out = {"name": name}
+    for end in ("low", "high"):
+        if text := _text(value.get(end), 10):
+            out[end] = text
+    return out
+
+
+def _axes(data: dict, lang: str) -> dict[str, Any] | None:
+    x, y = _axis(data.get("x")), _axis(data.get("y"))
+    if x is None or y is None:
+        return None
+    items, seen = [], set()
+    for item in (data.get("items") or [])[:8]:
+        if not isinstance(item, dict) or not (name := _text(item.get("name"), 14)):
+            continue
+        at = [str(item.get(k) or "").strip().lower() for k in ("x", "y")]
+        if name in seen or any(p not in _PLACES for p in at):
+            continue  # an item the text does not place on both axes
+        seen.add(name)
+        items.append({"name": name, "x": at[0], "y": at[1]})
+    if len(items) < 3:
+        return None
+    out: dict[str, Any] = {"kind": "axes", "lang": lang, "x": x, "y": y, "items": items}
+    if (hot := _text(data.get("hot"), 14)) in seen:
+        out["hot"] = hot
+    return out
+
+
+def _messages(data: dict, lang: str) -> dict[str, Any] | None:
+    parties = list(dict.fromkeys(
+        t for v in (data.get("parties") or [])[:4] if (t := _text(v, 14))))
+    if len(parties) < 2:
+        return None
+    sent = []
+    for message in (data.get("messages") or [])[:10]:
+        if not isinstance(message, dict):
+            continue
+        ends = [_text(message.get(k), 14) for k in ("from", "to")]
+        name = _text(message.get("name"), 40)
+        if not name or ends[0] == ends[1] or any(e not in parties for e in ends):
+            continue
+        out = {"from": ends[0], "to": ends[1], "name": name}
+        if (note := _text(message.get("note"), 30)) and not _repeats(note, name):
+            out["note"] = note
+        sent.append(out)
+    if len(sent) < 2:
+        return None
+    return {"kind": "messages", "lang": lang, "parties": parties, "messages": sent}
 
 
 # ── stored source ─────────────────────────────────────────────────────
@@ -302,6 +420,8 @@ def _flowchart(s: dict[str, Any]) -> list[str]:
             lines += [f"  p{j} --> b{k}" for j in range(len(s["pillars"]))] if k == 0 else [
                 f"  b{k - 1} --> b{k}"]
         return lines
+    if kind in _FLOWS:
+        return _FLOWS[kind](s)
     hot = (s.get("hot") or {}).get("row")
     lines = ["flowchart LR"]
     for side, key, field in (("old", "a", "before"), ("new", "b", "after")):
@@ -315,6 +435,45 @@ def _flowchart(s: dict[str, Any]) -> list[str]:
         lines.append("  end")
     lines.append("  old -.-> new")
     return lines
+
+
+def _options_flow(s: dict[str, Any]) -> list[str]:
+    lines = ["flowchart LR"]
+    for k, name in enumerate(s["options"]):
+        lines += [f"  subgraph o{k}[{_q(name)}]", "    direction TB"]
+        for j, row in enumerate(s["rows"]):
+            mark = ":::hot" if j == 0 and name == s.get("hot") else ""
+            cell = row["cells"][k]["text"] or "-"
+            lines.append(f"    o{k}r{j}[{_q(row['aspect'] + ': ' + cell)}]{mark}")
+        if len(s["rows"]) > 1:
+            lines.append("    " + " ~~~ ".join(f"o{k}r{j}" for j in range(len(s["rows"]))))
+        lines.append("  end")
+    return lines
+
+
+def _axes_flow(s: dict[str, Any]) -> list[str]:
+    lines = ["flowchart TB"]
+    places = {"low": "low", "mid": "mid", "high": "high"}
+    for k, item in enumerate(s["items"]):
+        where = (f"{s['x']['name']} {s['x'].get(item['x'], places[item['x']])} · "
+                 f"{s['y']['name']} {s['y'].get(item['y'], places[item['y']])}")
+        mark = ":::hot" if item["name"] == s.get("hot") else ""
+        lines.append(f"  i{k}[{_q(item['name'] + ': ' + where)}]{mark}")
+    return lines
+
+
+def _messages_flow(s: dict[str, Any]) -> list[str]:
+    lines = ["flowchart TB"]
+    for k, m in enumerate(s["messages"]):
+        label = f"{k + 1}. {m['from']} → {m['to']}: {m['name']}"
+        if m.get("note"):
+            label += f" ({m['note']})"
+        lines.append(f"  m{k}[{_q(label)}]")
+    lines.append("  " + " --> ".join(f"m{k}" for k in range(len(s["messages"]))))
+    return lines
+
+
+_FLOWS = {"options": _options_flow, "axes": _axes_flow, "messages": _messages_flow}
 
 
 def to_source(s: dict[str, Any]) -> str:
@@ -689,6 +848,160 @@ def _compare(pen: Pen, s: dict[str, Any], accent: str) -> None:
             pen.text(740, y, badge, 12, True, WHITE)
 
 
+_GOOD, _CAUTION, _BAD = "#15803D", "#B45309", "#B42318"
+_MARK_COLOUR = {"good": _GOOD, "caution": _CAUTION, "bad": _BAD}
+_MARK_WORD = {"ko": {"good": "유리", "caution": "주의", "bad": "불리"},
+              "en": {"good": "Favourable", "caution": "Caution", "bad": "Unfavourable"}}
+_OPT_X, _OPT_ROW = 190.0, 56.0
+
+
+def _marked(s: dict[str, Any]) -> list[str]:
+    used = {c.get("mark") for row in s["rows"] for c in row["cells"]}
+    return [m for m in _MARKS if m in used]
+
+
+def _options_size(s: dict[str, Any]) -> tuple[float, float]:
+    return 960.0, 78 + _OPT_ROW * len(s["rows"]) + (40 if _marked(s) else 8)
+
+
+def _options_draw(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    names, rows = s["options"], s["rows"]
+    m, gap = len(names), 10.0
+    cw = (960 - _OPT_X - 20 - gap * (m - 1)) / m
+    # the recommended option takes the accent, the others hues clear of the marks' green, amber
+    # and red
+    spare = [c for k, c in enumerate(hues(accent, 6)) if k in (0, 1, 3, 5)]
+    hot = names.index(s["hot"]) if s.get("hot") in names else None
+    order = iter(spare[1:] if hot is not None else spare)
+    colours = [accent if k == hot else next(order) for k in range(m)]
+    bottom = 78 + _OPT_ROW * len(rows) - 4
+    for j in range(0, len(rows), 2):
+        pen.rect(20, 78 + j * _OPT_ROW, 920, _OPT_ROW - 4, "#F6F8FA", r=6)
+    for k, name in enumerate(names):
+        x = _OPT_X + k * (cw + gap)
+        if name == s.get("hot"):
+            pen.rect(x, 72, cw, bottom - 72 + 6, tint(colours[k], 0.9), tint(colours[k], 0.5), r=10)
+        pen.rect(x, 20, cw, 46, colours[k], r=10)
+        pen.label(x + 8, 20, cw - 16, 46, name, 16, True, WHITE, 11)
+    for j, row in enumerate(rows):
+        y = 78 + j * _OPT_ROW
+        mid = y + (_OPT_ROW - 4) / 2
+        lines, size = figure_text.fit(row["aspect"], _OPT_X - 52, _OPT_ROW - 8, 14, True,
+                                      min_size=10)
+        pen.text(36, mid, lines, size, True, INK, "l")
+        for k, cell in enumerate(row["cells"]):
+            if not cell["text"]:
+                continue
+            x = _OPT_X + k * (cw + gap)
+            left = x + 14
+            if mark := cell.get("mark"):
+                pen.circle(x + 18, mid, 6, _MARK_COLOUR[mark])
+                left = x + 32
+            lines, size = figure_text.fit(cell["text"], x + cw - 8 - left, _OPT_ROW - 8, 14,
+                                          min_size=10)
+            pen.text(left, mid, lines, size, False, INK, "l")
+    x = 24.0
+    for mark in _marked(s):
+        y = bottom + 24
+        pen.circle(x, y, 5, _MARK_COLOUR[mark])
+        word = _MARK_WORD[s["lang"]][mark]
+        pen.text(x + 10, y, word, 12, False, SUB, "l")
+        x += figure_text.width(word, 12) + 36
+
+
+_AX0, _AX1, _AY0, _AY1 = 130.0, 900.0, 30.0, 410.0
+_AT = {"low": 0.25, "mid": 0.5, "high": 0.75}
+
+
+def _axes_size(s: dict[str, Any]) -> tuple[float, float]:
+    return 960.0, 480.0
+
+
+def _axes_draw(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    mx, my = (_AX0 + _AX1) / 2, (_AY0 + _AY1) / 2
+    pen.rect(_AX0, _AY0, _AX1 - _AX0, _AY1 - _AY0, "#F8FAFC", r=6)
+    hot = next((i for i in s["items"] if i["name"] == s.get("hot")), None)
+    if hot and hot["x"] != "mid" and hot["y"] != "mid":
+        qx = _AX0 if hot["x"] == "low" else mx
+        qy = _AY0 if hot["y"] == "high" else my
+        pen.rect(qx, qy, mx - _AX0, my - _AY0, tint(accent, 0.93), r=0)
+    pen.line([(mx, _AY0), (mx, _AY1)], tint(NEUTRAL, 0.55), arrow=False, sw=1, dash=True)
+    pen.line([(_AX0, my), (_AX1, my)], tint(NEUTRAL, 0.55), arrow=False, sw=1, dash=True)
+    pen.line([(_AX0, _AY1), (_AX1 + 20, _AY1)], INK)
+    pen.line([(_AX0, _AY1), (_AX0, _AY0 - 14)], INK)
+    x, y = s["x"], s["y"]
+    pen.text(mx, _AY1 + 46, x["name"], 14, True, INK)
+    if x.get("low"):
+        pen.text(_AX0 + 6, _AY1 + 20, x["low"], 12, False, SUB, "l")
+    if x.get("high"):
+        pen.text(_AX1, _AY1 + 20, x["high"], 12, False, SUB, "r")
+    if s["lang"] == "en":
+        pen.text(_AX0 + 10, _AY0 - 14, y["name"], 14, True, INK, "l")
+    else:  # read top to bottom beside the axis
+        pen.text(70, my, list(y["name"].replace(" ", "")), 14, True, INK)
+    if y.get("low"):
+        pen.text(_AX0 - 12, _AY1 - 10, y["low"], 12, False, SUB, "r")
+    if y.get("high"):
+        pen.text(_AX0 - 12, _AY0 + 12, y["high"], 12, False, SUB, "r")
+    cells: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for item in s["items"]:
+        cells.setdefault((item["x"], item["y"]), []).append(item)
+    letter = 0
+    for (px, py), group in cells.items():
+        cx = _AX0 + (_AX1 - _AX0) * _AT[px]
+        cy = _AY1 - (_AY1 - _AY0) * _AT[py]
+        spread = min(130.0, (_AX1 - _AX0) / 2 / max(1, len(group)))
+        for k, item in enumerate(group):
+            ix = cx + (k - (len(group) - 1) / 2) * spread
+            if item is hot:
+                halo = [(ix + 38 * math.cos(math.radians(a)), cy + 38 * math.sin(math.radians(a)))
+                        for a in range(0, 360, 10)]
+                pen.poly(halo, None, accent, sw=1.5, dash=True)
+                pen.circle(ix, cy, 24, accent)
+                lines, size = figure_text.fit(item["name"], spread - 8, 34, 13, True, min_size=10)
+                pen.text(ix, cy + 58, lines, size, True, accent)
+                continue
+            pen.circle(ix, cy, 22, WHITE, NEUTRAL)
+            pen.text(ix, cy, chr(ord("A") + letter), 15, True, NEUTRAL)
+            letter += 1
+            lines, size = figure_text.fit(item["name"], spread - 8, 34, 13, True, min_size=10)
+            pen.text(ix, cy + 40, lines, size, True, INK)
+
+
+_MSG_TOP = 100.0
+
+
+def _messages_step(s: dict[str, Any]) -> float:
+    return 62.0 if any(m.get("note") for m in s["messages"]) else 46.0
+
+
+def _messages_size(s: dict[str, Any]) -> tuple[float, float]:
+    return 960.0, _MSG_TOP + _messages_step(s) * (len(s["messages"]) - 1) + 40
+
+
+def _messages_draw(pen: Pen, s: dict[str, Any], accent: str) -> None:
+    parties = s["parties"]
+    n = len(parties)
+    xs = {p: 140 + k * (680 / (n - 1)) for k, p in enumerate(parties)}
+    _, h = _messages_size(s)
+    for party, x in xs.items():
+        pen.line([(x, 58), (x, h - 6)], tint(NEUTRAL, 0.5), arrow=False, sw=1.5, dash=True)
+        pen.rect(x - 80, 14, 160, 44, INK, r=8)
+        pen.label(x - 76, 14, 152, 44, party, 15, True, WHITE, 10)
+    step = _messages_step(s)
+    for k, m in enumerate(s["messages"]):
+        y = _MSG_TOP + k * step
+        a, b = xs[m["from"]], xs[m["to"]]
+        colour = INK if m["from"] == parties[0] else accent
+        pen.line([(a, y), (b + (-4 if b > a else 4), y)], colour, sw=1.8)
+        room = abs(b - a) - 24
+        lines, size = figure_text.fit(m["name"], room, 20, 14, True, min_size=10)
+        pen.text((a + b) / 2, y - 13, lines[:1], size, True, colour)
+        if note := m.get("note"):
+            lines, size = figure_text.fit(note, room, 18, 12, min_size=9.5)
+            pen.text((a + b) / 2, y + 14, lines[:1], size, False, SUB)
+
+
 # ── wide strips (a slide's figure band, about 5:1) ─────────────────────
 
 
@@ -816,7 +1129,9 @@ _TALL_KINDS = {"steps": (_steps_rows_size, _steps_rows)}
 
 
 _DRAW = {"steps": (_steps_size, _steps), "cycle": (_cycle_size, _cycle),
-         "house": (_house_size, _house), "compare": (_compare_size, _compare)}
+         "house": (_house_size, _house), "compare": (_compare_size, _compare),
+         "options": (_options_size, _options_draw), "axes": (_axes_size, _axes_draw),
+         "messages": (_messages_size, _messages_draw)}
 _BAND = {"cycle": (_cycle_band_size, _cycle_band), "house": (_house_band_size, _house_band),
          "compare": (_compare_band_size, _compare_band)}
 #: a box this much wider than tall gets the strip layout

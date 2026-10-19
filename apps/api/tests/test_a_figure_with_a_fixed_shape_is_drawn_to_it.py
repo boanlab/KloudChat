@@ -210,13 +210,13 @@ async def test_a_figure_with_a_fixed_shape_is_written_as_its_slots(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_any_other_shape_is_written_as_mermaid(monkeypatch):
-    calls = _answers(monkeypatch, ["messages", _MERMAID])
+    calls = _answers(monkeypatch, ["other", _MERMAID])
     source, _caption, usage = await diagram.draw(
-        description="클라이언트와 서버가 메시지를 주고받는다", figure="flow", model="m", api_key="k"
+        description="웹 서버와 DB, 캐시로 이루어진 구성", figure="flow", model="m", api_key="k"
     )
     assert figure_kinds.from_source(source) is None and source.startswith("flowchart LR")
     # The mermaid prompt is the one it always was.
-    assert calls[1] == diagram._messages("클라이언트와 서버가 메시지를 주고받는다", "flow", "ko")
+    assert calls[1] == diagram._messages("웹 서버와 DB, 캐시로 이루어진 구성", "flow", "ko")
     assert usage == {"inputTokens": 6, "outputTokens": 4}
 
 
