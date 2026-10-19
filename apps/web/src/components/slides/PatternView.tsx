@@ -497,6 +497,20 @@ function Columns({ columns, pattern, kit }: { columns: { title: string; items: s
   const cols = columns.slice(0, pattern.count[1])
   const most = Math.max(1, ...cols.map((c) => c.items.length))
   const size = most <= 3 ? 18 : most <= 4 ? 16 : 14
+  // Few, short items: one row per item at the same height in every column (`deck_export._column_rows`).
+  const textScale = kit.current().textScale ?? 1
+  const between = tone === 'vs' || tone === 'beforeafter' ? 22 : 8
+  const span = (400 - PAD_X - (kit.gutter ? 40 : PAD_X) - between * (cols.length - 1)) / Math.max(1, cols.length)
+  const rowPt = (() => {
+    if (tone === 'posneg' || most > 5) return 0
+    const row = (FILL_HEIGHT - units(18) * 1.25 - 12) / most
+    for (const points of [TYPE.columnRow, TYPE.columnRowSmall]) {
+      const at = units(points * textScale)
+      const widest = Math.max(0, ...cols.flatMap((col) => col.items.map((item) => lines(item, at, (span - 30) * 0.94))))
+      if (widest <= 2 && widest * at * 1.3 + units(16) <= row) return points
+    }
+    return 0
+  })()
   const colourOf = (i: number) =>
     tone === 'posneg' ? (i === 0 ? accent : NEGATIVE) : tone === 'beforeafter' ? (i === 0 ? look.faint : accent) : accent
   const slot = (c: number, key: string, read: (text: string) => Partial<Slide>) => kit.typed(`columns.${c}.${key}`, read)
@@ -549,9 +563,18 @@ function Columns({ columns, pattern, kit }: { columns: { title: string; items: s
               >
                 {kit.rich(`columns.${c}.title`, col.title)}
               </div>
-              <ul className="m-0 flex list-none flex-col p-0" style={{ padding: `${px(7)} ${px(9)}`, gap: px(4) }}>
+              <ul
+                className={`m-0 flex list-none flex-col p-0${rowPt ? ' min-h-0 flex-1' : ''}`}
+                style={{ padding: `${px(7)} ${px(9)}`, gap: rowPt ? 0 : px(4) }}
+              >
                 {col.items.map((item, j) => item.trim() && (
-                  <li key={j} className="flex" style={{ gap: px(6), fontSize: pt(size), lineHeight: 1.4 }}>
+                  <li
+                    key={j}
+                    className={rowPt ? 'flex items-center' : 'flex'}
+                    style={rowPt
+                      ? { gap: px(6), fontSize: pt(rowPt), lineHeight: 1.3, height: `${100 / most}%`, borderTop: j ? `1px solid ${look.hair}` : undefined }
+                      : { gap: px(6), fontSize: pt(size), lineHeight: 1.4 }}
+                  >
                     <span style={{ color: colour }} aria-hidden>{tone === 'posneg' ? (c === 0 ? '+' : '−') : '•'}</span>
                     <span
                       className="min-w-0"

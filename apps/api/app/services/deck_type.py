@@ -39,6 +39,9 @@ TYPE: dict[str, float] = {
     "cardMark": 32,
     "cardNameShort": 22,
     "cardTextShort": 18,
+    # comparison columns with few, short items: one row per item, aligned across the columns
+    "columnRow": 22,
+    "columnRowSmall": 18,
     "stepBadge": 16,
     "stepName": 18,
     "stepText": 16,
