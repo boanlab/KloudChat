@@ -17,6 +17,8 @@ Check the values in the finished text against the material. Do not judge in your
    - For a data-analysis answer, `"bare": true, "numbers": "computed"` — numbers come only from execution results.
    - For career documents, `"titles": true, "products": true` — job titles and tool names are checked too.
    - `"today": "YYYY-MM-DD"` counts as grounds only when the request said 「오늘」.
+   - `"estimates": false` — an approximation or estimate the text calls one (「약 1,500만 원」, 「…로 가정하면」) is traced too:
+     the request or the agent forbids figures without a basis. The server sets it on a deck asked that way.
    - `"requirements": true` — a sentence telling the reader to bring or hand in an item (「신분증 지참」 「노트북을 가져오세요」)
      the material never names is dropped. The server sets it on chat answers.
    - `"advice": true` — legal, tax, financial or medical advice: only money and rates among the numbers,

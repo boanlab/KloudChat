@@ -94,6 +94,18 @@ def strings(value: Any) -> list[str]:
     return []
 
 
+def _policy_marked(body: str, request: str, material: list[str], data: dict) -> str:
+    """`body` with 「(확인 필요)」 on what states a limit, approval or rule no material does."""
+    from app.services import stated_policy
+
+    given = "\n".join([request, *material,
+                       *(str(src.get("quote") or "") for src in data.get("sources") or [])])
+    for piece in stated_policy.pieces(body):
+        if said := stated_policy.untraced(piece, given):
+            body = stated_policy.mark(body, piece, said)
+    return body
+
+
 class Route(Base):
     """Revision target: swaps and term replacements by hand; else the planner."""
 
@@ -278,13 +290,26 @@ class Rewrite(Base):
             label = names[index] or f"{index + 1}"
             yield {"type": "step", "id": f"r{index}", "label": label, "status": "running"}
             try:
-                if is_deck and deck_service.asks_slide_figure(instruction):
+                if is_deck:
+                    # a many-slide instruction: each slide reads its own ask (「3장을 표로…
+                    # 8장 그림은 빼줘」 does not turn 8장 into a table)
+                    asked = revise.slide_clause(instruction, index)
+                    if revise.removes_picture(asked) and part.get("image"):
+                        part = parts[index] = {k: v for k, v in part.items() if k != "image"}
+                        if revise.only_removes_picture(asked):
+                            # by hand: nothing else to write
+                            yield {"type": "slide", "slide": part, "done": True}
+                            doc.changed += 1
+                            yield {"type": "step", "id": f"r{index}", "label": label,
+                                   "status": "done"}
+                            continue
+                if is_deck and deck_service.asks_slide_figure(asked):
                     # 「구조도로 바꿔 줘」: the slide drawn as that diagram, not rewritten as words
                     written, spent = await deck_service.figure_slide(
                         request=request,
                         slides=parts,
                         target_id=str(part.get("id") or ""),
-                        instruction=instruction,
+                        instruction=asked,
                         model=req.model,
                         api_key=req.api_key,
                     )
@@ -297,10 +322,10 @@ class Rewrite(Base):
                         target_id=str(part.get("id") or ""),
                         model=req.model,
                         api_key=req.api_key,
-                        note=plan.note,
+                        note=plan.note if asked == instruction else asked,
                         material=material,
-                        typed=instruction,
-                        notes_only=revise.notes_only(instruction),
+                        typed=asked,
+                        notes_only=revise.notes_only(asked),
                     )
                     if revise.meta_talk(" ".join(strings(written))):
                         raise ValueError("본문 대신 대화 답이 나옴")
@@ -393,6 +418,8 @@ class Rewrite(Base):
                         doc.failed.append(label)
                         raise ValueError(f"검사를 통과하지 못함: {rejected}")
                     body = internal_words.scrub(body)
+                    # a limit, approval or rule the material only asks about: marked
+                    body = _policy_marked(body, request, material, data)
                     # a part's own rename only; the document's title was set by route
                     rename = revise.title_rename(instruction, names)
                     renamed = (rename[0] if rename is not None and index not in widened and (
@@ -423,6 +450,11 @@ class Rewrite(Base):
             bundle.usage["outputTokens"] += spent["outputTokens"]
             doc.changed += 1
             yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
+        if is_deck:
+            # said only when the slide as drawn shows it (a table, the picture gone)
+            doc.unmet = [f"{i + 1}장 {what}" for i in bundle.plan.order if i < len(parts)
+                         for what in deck_service.unmet_asks(
+                             parts[i], revise.slide_clause(instruction, i))]
         if not doc.changed:
             said = ("고친 글이 검사를 통과하지 못해 이전 버전을 그대로 두었습니다. "
                     "다시 요청해 주세요." if doc.failed else "고치지 못했습니다.")

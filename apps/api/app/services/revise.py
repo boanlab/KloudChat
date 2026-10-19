@@ -846,6 +846,51 @@ _NOTES_ASK = re.compile(
 _BODY_TOO = re.compile(r"본문도|내용도|슬라이드도|글머리표도|함께\s*고쳐|같이\s*고쳐")
 
 
+#: a slide named by number: 「3장」, 「8번째 장」, 「슬라이드 5」
+_SLIDE_REF = re.compile(
+    r"(?<!\d)(\d{1,2})\s?(?:번째\s?)?(?:장|번\s?슬라이드|슬라이드|페이지|쪽)(?!점|단|면|소|비|기)"
+    r"|슬라이드\s?(\d{1,2})(?!\d)")
+#: where one ask ends and the next begins: a sentence end, 「그리고」, a comma before a slide
+_ASK_BREAK = re.compile(
+    r"(?<=[.!?。])\s+|\n+|\s*(?:그리고|또한|또|그다음|다음으로)\s+"
+    r"|,\s*(?=\d{1,2}\s?(?:번째\s?)?(?:장|슬라이드))")
+
+
+def slide_clause(instruction: str, index: int) -> str:
+    """The part of a many-slide instruction meant for slide `index` (zero-based): 「3장을 표로
+    바꿔줘. 그리고 8장 그림은 빼줘.」 → 「8장 그림은 빼줘.」 for the eighth. An instruction naming
+    no slide number is meant whole for every target."""
+    clauses = [c.strip() for c in _ASK_BREAK.split(instruction or "") if c and c.strip()]
+    named = [(c, {int(a or b) for a, b in _SLIDE_REF.findall(c)}) for c in clauses]
+    if not any(numbers for _, numbers in named):
+        return instruction
+    mine = [c for c, numbers in named if index + 1 in numbers]
+    if mine:
+        return " ".join(mine)
+    return " ".join(c for c, numbers in named if not numbers) or instruction
+
+
+#: a picture on a slide asked away: 「8장 그림은 빼줘」, 「사진 지워 줘」
+_REMOVE_PICTURE = re.compile(
+    r"(?:그림|사진|이미지|일러스트|삽화|도식|도해|다이어그램)\S{0,3}\s{0,8}"
+    r"(?:빼|지워|지우|삭제|없애|제거|없이)\S{0,6}"
+    r"(?:\s{0,4}(?:줘|주세요|주십시오|줄래|해\s?줘|해\s?주세요|바랍니다))?")
+_FILLER = frozenset({"그리고", "슬라이드", "부탁해", "부탁합니다", "주세요", "해줘", "그냥"})
+
+
+def removes_picture(text: str) -> bool:
+    """Whether the words ask a slide's picture away."""
+    return bool(_REMOVE_PICTURE.search(text or ""))
+
+
+def only_removes_picture(text: str) -> bool:
+    """Whether removing the picture is all the words ask (nothing left to rewrite)."""
+    if not removes_picture(text):
+        return False
+    rest = _REMOVE_PICTURE.sub(" ", _SLIDE_REF.sub(" ", text or ""))
+    return not [w for w in re.findall(r"[가-힣A-Za-z]{2,}", rest) if w not in _FILLER]
+
+
 def notes_only(message: str) -> bool:
     """Speaker-notes-only request."""
     text = " ".join((message or "").split())

@@ -149,7 +149,13 @@ def _bundle(text: str, turn: dict, slides: list[dict]) -> Bundle:
 
 
 @pytest.mark.asyncio
-async def test_the_grounding_skill_traces_a_deck_built_on_the_request_s_own_figures():
+async def test_the_grounding_skill_traces_a_deck_built_on_the_request_s_own_figures(
+        monkeypatch):
+    async def rewrite_slide(**kwargs):
+        raise deck.SlideNotWritten("빈 슬라이드", {})
+
+    # the writer hands back nothing better: the code marks
+    monkeypatch.setattr(deck, "rewrite_slide", rewrite_slide)
     slides = [{"layout": "bullets", "title": "FCFS", "bullets": [
         "간트: P1 0-7, P2 7-11, P3 11-12, P4 12-16", "평균 대기시간 4.75", "문맥 교환 1.5ms"]}]
     turn = {"traced": False, "check_keys": [], "writer": {"untrusted_context": []}}

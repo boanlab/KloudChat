@@ -45,6 +45,7 @@ from app.services import (
     report_checks,
     research,
     richtext,
+    stated_policy,
     table_integrity,
     table_mend,
     units,
@@ -1859,6 +1860,19 @@ def mark_unsettled(sections: list[dict], still: list) -> list[dict]:
     return out
 
 
+def mark_policy(sections: list[dict], still: list) -> list[dict]:
+    """Sections with 「(확인 필요)」 on each sentence or table cell still stating a limit,
+    approval or rule the material does not (`stated_policy`)."""
+    out = [dict(sec) for sec in sections]
+    for f in still:
+        if getattr(f, "code", "") != "unsourced_policy" or not 0 <= f.section < len(out):
+            continue
+        content = str(out[f.section].get("content") or "")
+        said = stated_policy.untraced(f.sentence, "")
+        out[f.section]["content"] = stated_policy.mark(content, f.sentence, said)
+    return out
+
+
 #: a number-binding finding's own words: 「「14달」은 자료에서 「납기 2주」의 값일 수 있다」
 _BOUND = re.compile(r"^「(?P<n>[^」]{1,24})」은 자료에서 「(?P<b>[^」]{0,80})」")
 
@@ -1980,6 +1994,9 @@ class Verify(Base):
             # is marked for the reader whatever the request said
             bundle.document.sections = mark_unsettled(
                 bundle.document.sections, [f for f in still if f.code == "fact"] + confirmed)
+        # a limit, approval or rule the material only asks about, standing after its repair,
+        # is marked where it stands whatever the writer
+        bundle.document.sections = mark_policy(bundle.document.sections, still)
         bundle.findings.still = still
         format_codes = set(report_checks.LABELS)
         bundle.findings.after += [f.code for f in still if f.code in format_codes]

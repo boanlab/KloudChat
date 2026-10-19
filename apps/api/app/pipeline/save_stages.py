@@ -363,6 +363,12 @@ class ReviseSave(Base):
                 if failed := bundle.document.failed:
                     reply += (f" {', '.join(failed)}은 고친 글이 검사를 통과하지 못해 이전 "
                               "내용을 그대로 두었습니다.")
+                if unmet := bundle.document.unmet:
+                    # an asked change the new slides do not show is said, not passed off
+                    reply = (f"{reply} 다만 요청한 {', '.join(unmet)}는 반영되지 않았습니다. "
+                             "다시 요청해 주세요." if changed > len({u.split()[0] for u in unmet})
+                             else f"요청한 {', '.join(unmet)}는 반영하지 못했습니다. "
+                             "다시 요청해 주세요.")
                 if note := rerun_note(turn):
                     reply = f"{note} {reply}"
                 handed = None

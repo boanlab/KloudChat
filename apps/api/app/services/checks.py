@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.services import key_figures, quality_gate, units
+from app.services import key_figures, quality_gate, stated_policy, units
 from app.services.verify import Check, Doc, Finding, model_check
 
 
@@ -129,5 +129,22 @@ async def scaled_metrics(doc: Doc):
     return found, {}
 
 
-CODE_CHECKS: list[Check] = [numbers, metrics, innards, figures, scaled_metrics]
+def policy_material(doc: Doc) -> str:
+    """What a stated limit, approval or rule may come from: material and source quotes."""
+    return "\n".join([doc.material, *(str(src.get("quote") or "") for src in doc.sources or [])])
+
+
+async def stated_rules(doc: Doc):
+    """Limits, approvals and rules stated as settled that the material only asks about."""
+    report, material = _report(), policy_material(doc)
+    found = [
+        Finding(i, sentence, "unsourced_policy", stated_policy.why(said), rank=1,
+                still=lambda s, m=material: bool(stated_policy.untraced(s, m)))
+        for i, sentence, said in stated_policy.findings(doc.sections, material,
+                                                        report._REFERENCE_HEADING)
+    ]
+    return found, {}
+
+
+CODE_CHECKS: list[Check] = [numbers, metrics, innards, figures, scaled_metrics, stated_rules]
 
