@@ -28,6 +28,7 @@ from app.services import (
     design,
     diagram_shapes,
     figure_kinds,
+    figure_text,
     fonts,
     pictures,
     slide_patterns,
@@ -514,6 +515,19 @@ def _card_words(name: str, text: str, font: str, bold: str, scale: float, width:
             + text_pt * deck_type.LEADING["cardText"] * len(_wrap(text, font, text_pt, width)))
 
 
+def _band_labels(
+    names: list[str], size: float, width: float, height: float
+) -> tuple[float, list[tuple[list[str], float]]]:
+    """Bands' label column, as wide as the widest name at `size` (96 pt up to a third of the
+    row), and each name's lines and size in it: shrunk to the floor, then wrapped, never cut;
+    a tenth to spare for the viewer's own face."""
+    need = max((figure_text.width(name, size, bold=True) for name in names), default=0) * 1.1 + 18
+    label = max(96.0, min(need, width / 3))
+    floor = min(size, deck_type.FLOOR_PT)
+    return label, [figure_text.fit(name, label, height, size, bold=True, min_size=floor)
+                   for name in names]
+
+
 def _pptx_pairs(
     slide,
     pairs: list[tuple[str, str]],
@@ -537,10 +551,11 @@ def _pptx_pairs(
     look = look or _LOOKS["editorial"]
     hair = hair or RGBColor(0xE6, 0xE6, 0xE6)
     if layout == "bands":
-        label = 96.0
         height = min(72.0, (room - 10 * (len(pairs) - 1)) / max(len(pairs), 1))
         band = max(_u("bandMin"), min(_u("bandMax"), height / 3))
-        for index, (name, text) in enumerate(pairs):
+        label, names = _band_labels([name for name, _ in pairs],
+                                    max(deck_type.FLOOR_PT, band * scale), width, height)
+        for index, (_name, text) in enumerate(pairs):
             y = top + index * (height + 10)
             _box(
                 slide, look, left=left, top=y, width=label, height=height, fill=accent, line=accent
@@ -557,11 +572,15 @@ def _pptx_pairs(
                 fill=tint,
                 line=hair,
             )
-            box = _textbox(slide, left=left, top=y + height / 2 - 12, width=label, height=24)
-            box.paragraphs[0].alignment = PP_ALIGN.CENTER
-            run = box.paragraphs[0].add_run()
-            run.text = name
-            paint(run, size=band, bold=True, colour=_WHITE)
+            box = _textbox(slide, left=left, top=y, width=label, height=height)
+            box.vertical_anchor = MSO_ANCHOR.MIDDLE
+            lines, fitted = names[index]
+            for k, line in enumerate(lines):
+                paragraph = box.paragraphs[0] if k == 0 else box.add_paragraph()
+                paragraph.alignment = PP_ALIGN.CENTER
+                run = paragraph.add_run()
+                run.text = line
+                paint(run, size=int(fitted), bold=True, colour=_WHITE, fixed=True)
             body = _textbox(
                 slide,
                 left=left + label + 24,
@@ -3715,11 +3734,11 @@ def _pdf_pairs(
         return n * scale
 
     if layout == "bands":
-        label = 96.0
         height = min(72.0, (room - 10 * (len(pairs) - 1)) / max(len(pairs), 1))
         band = max(_u("bandMin"), min(_u("bandMax"), height / 3))
         lead = band * deck_type.LEADING["band"]
-        for index, (name, text) in enumerate(pairs):
+        label, names = _band_labels([name for name, _ in pairs], S(band), width, height)
+        for index, (_name, text) in enumerate(pairs):
             bottom = top - height - index * (height + 10)
             pdf.setFillColorRGB(*accent)
             pdf.rect(left, bottom, label, height, stroke=0, fill=1)
@@ -3735,8 +3754,15 @@ def _pdf_pairs(
                 bg=bg,
             )
             pdf.setFillColorRGB(1, 1, 1)
-            pdf.setFont(bold, S(band))
-            pdf.drawCentredString(left + label / 2, bottom + height / 2 - S(band) * 0.35, name)
+            lines, fitted = names[index]
+            pdf.setFont(bold, fitted)
+            step = fitted * figure_text.LINE
+            for k, line in enumerate(lines):
+                pdf.drawCentredString(
+                    left + label / 2,
+                    bottom + height / 2 + step * ((len(lines) - 1) / 2 - k) - fitted * 0.35,
+                    line,
+                )
             pdf.setFillColorRGB(*ink)
             pdf.setFont(font, S(band))
             lines = _wrap(text, font, S(band), width - label - 40)[:3]

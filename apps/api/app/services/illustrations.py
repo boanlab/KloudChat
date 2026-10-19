@@ -37,8 +37,8 @@ Rules:
 - `prompt` is one English sentence for the image model: the subject and the setting, as a flat
   editorial illustration. No text, letters, numbers, logos, charts or screens with words.
   Do not draw real, named people.
-- `caption` is a short Korean caption (under 30 characters) naming what the picture shows, in the
-  part's own terms.
+- `caption` is a short {language} caption (under 30 characters) naming what the picture shows, in
+  the part's own terms.
 
 Answer with a JSON array only, for example:
 [{{"part": 2,
@@ -106,8 +106,10 @@ async def plan(
     slide: bool,
     wrap: Wrap | None = None,
     limit: int = MAX_PICTURES,
+    language: str = "ko",
 ) -> tuple[list[Planned], dict[str, int]]:
-    """Pictures for (title, text) parts, eligible indices only; never raises."""
+    """Pictures for (title, text) parts, eligible indices only; never raises; captions in
+    `language` (`ko`, `en`)."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     allowed = sorted(set(eligible))
     if not allowed or limit < 1:
@@ -120,6 +122,7 @@ async def plan(
         request=request[:1200],
         parts=listed[:7000],
         limit=limit,
+        language="English" if language == "en" else "Korean",
     )
     try:
         text, usage = await complete(
