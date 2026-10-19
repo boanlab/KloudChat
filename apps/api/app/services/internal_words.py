@@ -860,6 +860,22 @@ _EN_TOOL_STEP = re.compile(
     r"|verify|query)\b[^\n]{0,240}?[.!:]\s*$", re.I)
 
 
+#: the writer auditing this turn's own run for the reader (「화면에 떠 있는 두 차트는 이 턴의
+#: 코드 출력에 없는 값으로 그려진 것입니다」): the reader has no turns; the steps show the checks
+_SELF_AUDIT = re.compile(
+    r"(?:(?<![가-힣])(?:이|이번|현재)\s?턴(?:의|에서|에)?\s(?=[^\n]{0,40}?(?:코드|출력|실행|도구|차트))"
+    r"|코드\s?(?:실행\s?)?출력에\s?(?:없는|없던|나오지\s?않은)"
+    r"|이번\s?(?:실행|출력)\s?결과(?:와|에)\s?(?:맞지|다르|어긋))")
+
+
+def _self_audit(paragraph: str) -> bool:
+    """A prose paragraph opening with the writer's audit of its own run."""
+    if _structural(paragraph) or _DELIVERABLE_LINE.match(paragraph.lstrip()):
+        return False
+    first = next((x for x in units.SENTENCE_BREAK.split(paragraph.strip()) if x.strip()), "")
+    return bool(_SELF_AUDIT.search(first))
+
+
 def _structural(paragraph: str) -> bool:
     return paragraph.lstrip().startswith(("#", "|", "```", "!["))
 
@@ -931,6 +947,8 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
         whole_korean = _latin_share("\n".join(paragraphs)) < 0.5
         paragraphs = [p for p in paragraphs if _structural(p) or not _english_note(p)
                       or not (whole_korean or _EN_NOTE_TASK.search(p))]
+        if not asked_check:
+            paragraphs = [p for p in paragraphs if not _self_audit(p)]
     else:
         # an English answer: its first paragraph, one line narrating a tool step, goes
         first = next((i for i, p in enumerate(paragraphs) if p.strip()), None)

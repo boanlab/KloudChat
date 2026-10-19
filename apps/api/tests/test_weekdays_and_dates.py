@@ -181,3 +181,21 @@ def test_date_arithmetic_on_a_given_date_does_not_force_a_web_search():
     assert context.search_plan("auto", N16) == (True, None)
     # A schedule the person did not give is still looked up.
     assert context.needs_web_search("2027학년도 1학기 개강일은 언제예요?")
+
+
+def test_a_weekday_the_person_gives_against_the_calendar_is_kept_and_flagged_not_changed():
+    # 2026-10-21 is a Wednesday; the memo says 화.
+    memo = "10/14 교육혁신팀 주간회의. … 다음 회의 10/21 화 10시 3층 회의실."
+    today = dt.date(2026, 10, 19)
+    fixed, fixes = weekdays.fix_weekdays("- 다음 회의: 2026년 10월 21일 (수) 10:00, 3층 회의실",
+                                         context=memo, today=today)
+    assert fixed == "- 다음 회의: 2026년 10월 21일 (화, 확인 필요: 달력상 수요일) 10:00, 3층 회의실"
+    assert "확인 필요" in fixes[0].why
+    # The person's weekday written back is flagged too, once; a second pass leaves it.
+    again, _ = weekdays.fix_weekdays("10월 21일 화요일 10시", context=memo, today=today)
+    assert again == "10월 21일 화요일(확인 필요: 달력상 수요일) 10시"
+    assert weekdays.fix_weekdays(again, context=memo, today=today) == (again, [])
+    assert weekdays.fix_weekdays(fixed, context=memo, today=today) == (fixed, [])
+    # A weekday that matches the calendar, and other days, are as before.
+    assert weekdays.fix_weekdays("10월 14일(수)", context=memo, today=today)[1] == []
+    assert weekdays.fix_weekdays("10월 22일(수)", context=memo, today=today)[0] == "10월 22일(목)"

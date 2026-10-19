@@ -62,9 +62,17 @@ def context_years(context: str) -> set[int]:
     return {int(y) for y in _YEAR.findall(context or "")}
 
 
+#: a weekday written bare after a day in a memo: 「10/21 화 10시」, 「10월 21일 화 오전」
+_BARE_STATED = re.compile(
+    rf"(?<![\d./])(?P<m>\d{{1,2}})\s{{0,2}}(?:/|월\s{{0,2}})(?P<d>\d{{1,2}})(?![\d/])\s{{0,2}}일?"
+    rf"\s{{1,2}}(?P<wd>[{WEEKDAYS}])(?![가-힣A-Za-z])")
+
+
 def _stated(context: str) -> dict[tuple[int | None, int, int], set[str]]:
     """Weekdays the person gives per day: 「3월 2일 화요일」 → {(None, 3, 2): {화}}."""
     out: dict[tuple[int | None, int, int], set[str]] = {}
+    for m in _BARE_STATED.finditer(context or ""):
+        out.setdefault((None, int(m.group("m")), int(m.group("d"))), set()).add(m.group("wd"))
     for m in _DATE.finditer(context or ""):
         g = m.groupdict()
         if g["y"]:
@@ -79,6 +87,40 @@ def _stated(context: str) -> dict[tuple[int | None, int, int], set[str]]:
             out.setdefault(key, set()).add(wd)
             out.setdefault((None, key[1], key[2]), set()).add(wd)
     return out
+
+
+def _conflicts(stated: dict[tuple[int | None, int, int], set[str]], given_year: int | None,
+               named: set[int], today: dt.date) -> dict[dt.date, str]:
+    """Days the person gives one weekday for that the calendar does not: day → their weekday."""
+    out: dict[dt.date, str] = {}
+    for (year, month, dom), said in stated.items():
+        if len(said) != 1:
+            continue
+        wd = next(iter(said))
+        if year is None:
+            if any(_weekday_in(y, month, dom) == wd for y in named):
+                continue
+            if given_year is not None:
+                year = given_year
+            else:
+                near = _nearest(month, dom, today)
+                if near is None or not near[1]:
+                    continue
+                year = near[0].year
+        real = _weekday_in(year, month, dom)
+        if real and real != wd:
+            out[dt.date(year, month, dom)] = wd
+    return out
+
+
+def _flagged(written: str, said: str, real: str) -> str:
+    """`written` with the person's weekday and the calendar's beside it, to be checked."""
+    note = f"확인 필요: 달력상 {real}요일"
+    m = re.search(rf"\(\s{{0,2}}[{WEEKDAYS}](?:요일)?\s{{0,2}}\)", written)
+    if m:
+        return written[:m.start()] + f"({said}, {note})" + written[m.end():]
+    return re.sub(rf"[{WEEKDAYS}]요일$", f"{said}요일({note})", written.rstrip()) + written[
+        len(written.rstrip()):]
 
 
 def _anchor_year(text: str, at: int, month: int) -> tuple[int, int] | None:
@@ -157,6 +199,7 @@ def fix_weekdays(text: str, *, context: str = "",
     stated = _stated(context)
     ruled = date_rules.settled(context, today) if context else []
     rules = {d for r in ruled for d in (r.start, r.end)}
+    conflicts = _conflicts(stated, given_year, named, today)
     text, column_fixes = _fix_weekday_columns(text, given_year, today, ruled)
     fences = [m.span() for m in _FENCE.finditer(text)]
     fixes: list[Fix] = []
@@ -200,6 +243,16 @@ def fix_weekdays(text: str, *, context: str = "",
         except (TypeError, ValueError):
             continue
         real = WEEKDAYS[day.weekday()]
+        if wd and (said := conflicts.get(day)) and "달력상" not in text[m.end():m.end() + 20]:
+            # the person's weekday against the calendar: kept and flagged, never picked
+            written = m.group(0)
+            fixed = _flagged(written, said, real)
+            out.append(text[last:m.start()])
+            out.append(fixed)
+            last = m.end()
+            fixes.append(Fix(written.strip(), fixed.strip(),
+                             f"원문 {said}요일, {day.isoformat()}은 {real}요일 — 확인 필요"))
+            continue
         if not wd or wd == real:
             continue
         if rules and (ruled := _rule_day(day, wd, rules)) is not None:

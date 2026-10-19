@@ -77,3 +77,42 @@ def unlink_local_targets(text: str, made: set[str] | frozenset[str] = frozenset(
         at = fence.end()
     out.append(_LINK.sub(swap, text[at:]))
     return "".join(out)
+
+
+#: the writer's account of how it wrote a draft, after the draft: 「**작성 시 반영한 점**」
+_DRAFT_NOTES_HEAD = re.compile(
+    r"^\s{0,3}(?:#{1,4}\s{1,3})?(?:\*\*)?\s{0,2}(?:작성\s{0,2}(?:시|하며|하면서|할\s{0,2}때|에)?\s{0,2}"
+    r"(?:반영|고려|유의|신경\s{0,2}쓴)한?\s{0,2}(?:점|사항|내용|부분)|작성\s{0,2}(?:포인트|의도|메모|노트)"
+    r"|반영\s{0,2}(?:사항|내용))\s{0,2}(?:\*\*)?\s{0,2}[:：]?\s{0,2}(?:\*\*)?\s{0,2}$")
+_LIST_ITEM = re.compile(r"^\s{0,6}(?:[-*+•]|\d{1,2}[.)])\s")
+_RULE = re.compile(r"^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$")
+
+
+def draft_shape(content: str, request: str) -> str:
+    """A document drafted in chat (보도자료, 공문, …) as its reader gets it: the genre's name
+    above the title rather than a heading under it, and no list of how it was written."""
+    from app.services import doc_formats
+
+    fmt = doc_formats.detect(request or "")
+    if fmt is None or not content:
+        return content
+    lines = original = content.split("\n")
+    filled = [i for i, line in enumerate(lines) if line.strip()]
+    if len(filled) >= 2 and lines[filled[0]].lstrip().startswith("# "):
+        label = re.sub(r"^#{1,4}\s{1,3}|\*\*", "", lines[filled[1]].strip()).strip()
+        if label == fmt.label and lines[filled[1]].lstrip().startswith("#"):
+            lines = [f"**{fmt.label}**", "", lines[filled[0]], *lines[filled[1] + 1:]]
+    head = next((i for i in range(len(lines) - 1, len(lines) // 2 - 1, -1)
+                 if _DRAFT_NOTES_HEAD.match(lines[i])), None)
+    if head is not None:
+        end = head + 1
+        while end < len(lines) and (not lines[end].strip() or _LIST_ITEM.match(lines[end])):
+            end += 1
+        start = head
+        while start > 0 and (not lines[start - 1].strip() or _RULE.match(lines[start - 1])):
+            start -= 1
+        rest = lines[end:]
+        lines = lines[:start] + ([""] + rest if any(line.strip() for line in rest) else [])
+    if lines == original:
+        return content
+    return "\n".join(lines).rstrip() + ("\n" if content.endswith("\n") else "")
