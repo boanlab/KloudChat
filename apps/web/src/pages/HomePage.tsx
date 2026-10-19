@@ -110,9 +110,9 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
       <TopBar left={<span className="text-base font-medium">{t('홈')}</span>} />
       {/* As a session: content scrolls, composer docked with the surface chips. */}
       <div className="min-h-0 flex-1 overflow-y-auto" data-testid="home-scroll">
-      <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-6 sm:px-6 sm:py-8">
-        {/* Top-aligned; short content leaves space below, over the dock. */}
-        <div className="mt-[min(8vh,4rem)] mb-5 text-center phone:mt-[min(14vh,7rem)]">
+      <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-6 sm:px-6 sm:py-8 short:py-2">
+        {/* Top-aligned; short content leaves space below, over the dock. A short screen keeps the examples instead. */}
+        <div className="mt-[min(8vh,4rem)] mb-5 text-center phone:mt-[min(14vh,7rem)] short:sr-only">
           <h1 className="text-2xl font-semibold tracking-tight">
             {t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')}
           </h1>
@@ -120,7 +120,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
         </div>
 
         {/* Click fills the box, sends nothing. */}
-        <section aria-label={t('예시')} className="mx-auto mb-8 w-full max-w-3xl sm:px-4">
+        <section aria-label={t('예시')} className="mx-auto mb-8 w-full max-w-3xl sm:px-4 short:mb-2">
           <div className="grid gap-2 sm:grid-cols-2">
             {EXAMPLES[active].map((example, index) => (
               <button

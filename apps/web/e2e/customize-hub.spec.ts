@@ -284,3 +284,17 @@ test('a built-in connector is marked and can be switched off, not removed', asyn
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
 })
+
+test('a card keeps 바로 쓰기 in words and inside the screen, a phone included', { tag: '@phone' }, async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  await page.goto('/customize?tab=agents&view=explore')
+  const card = page.getByTestId('item-card').first()
+  await expect(card).toBeVisible({ timeout: 15_000 })
+  const name = (await card.getByRole('button').first().textContent())!.trim()
+  const button = card.getByRole('button', { name: `${name} 바로 쓰기` })
+  await expect(button).toContainText('바로 쓰기')
+  await expect(button).toBeInViewport({ ratio: 1 })
+  const width = await button.evaluate((el) => el.getBoundingClientRect().width)
+  expect(width).toBeGreaterThan(48)
+  expect(state.unexpected).toEqual([])
+})

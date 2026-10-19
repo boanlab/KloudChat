@@ -103,6 +103,7 @@ export async function composerFixture(
     connectors = true,
     extraAgents = [],
     files = [],
+    kinds = ['chat', 'report', 'slides', 'image', 'av'],
   }: {
     skills?: boolean
     agents?: boolean
@@ -110,6 +111,8 @@ export async function composerFixture(
     extraAgents?: Record<string, unknown>[]
     /** The account's file box (`GET /files`); `DELETE /files/:id` takes one out. */
     files?: Record<string, unknown>[]
+    /** Enabled surfaces (`/auth/config`), read on every request: a test may change them mid-way. */
+    kinds?: string[]
   } = {},
 ) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
@@ -147,7 +150,7 @@ export async function composerFixture(
 
     if (path === '/auth/refresh') return json({ accessToken: 'fixture-only', expiresIn: 3600, user })
     if (method === 'GET' && path === '/auth/config') return json({
-      brand: { name: 'KloudChat', logo: '' }, enabledKinds: ['chat', 'report', 'slides', 'image', 'av'],
+      brand: { name: 'KloudChat', logo: '' }, enabledKinds: [...kinds],
       privacy: { externalDataGuard: false }, passwordResetEnabled: false, dictationEnabled: false,
     })
     if (method === 'GET' && path === '/models') return json({

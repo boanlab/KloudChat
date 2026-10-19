@@ -35,6 +35,8 @@
     @slot;
   }
 }
+/* Short: 200% zoom or a phone on its side, where the composer dock takes most of the height. */
+@custom-variant short (@media (max-height: 35rem));
 
 /* Surfaces: --bg page, --panel card, --elevated raised/hovered card, --sidebar nav column.
    Text tokens must keep WCAG AA (4.5:1) against all four surfaces in both themes. */

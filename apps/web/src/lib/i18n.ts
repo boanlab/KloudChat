@@ -343,6 +343,7 @@ const EN: Record<string, string> = {
   '만든 사람이 복사를 허용하지 않아 내 에이전트로 가져올 수 없습니다.': 'Its maker does not allow copies, so it cannot be added as your agent.',
   '만든 사람이 복사를 허용하지 않아 바로 쓰기만 할 수 있습니다': 'Its maker does not allow copies; you can only use it directly',
   '{name} 복사 잠김': '{name} copy locked',
+  '복사 잠김': 'Copy locked',
   '내 대화': 'My conversations',
   '아직 대화가 없습니다.': 'No conversations yet.',
   '대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.': 'Conversations are deleted {n} days after their last question.',

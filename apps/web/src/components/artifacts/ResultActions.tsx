@@ -77,13 +77,14 @@ export function DownloadMenu({
           disabled={disabled || busy !== null}
           aria-label={label ?? t('내려받기')}
           title={t('파일로 내려받기')}
+          data-labelled={compact ? undefined : ''}
           className={cn(compact && 'size-8 px-0 max-sm:size-10')}
         >
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
           {!compact && (
             <>
               {t('내려받기')}
-              <ChevronDown size={13} className="text-muted" />
+              <ChevronDown size={13} className="text-muted max-sm:hidden" />
             </>
           )}
         </Button>
