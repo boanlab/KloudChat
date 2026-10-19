@@ -3551,6 +3551,8 @@ async def write(
     figures_plan: list[dict] | None = None,
     #: empty disables figure proposal
     image_model: dict | None = None,
+    #: self-hosted image model: the report draws its own pictures (`illustrations`), no card
+    auto_image_model: dict | None = None,
     web_search: bool = True,
     project_sources: list[dict[str, Any]] | None = None,
     #: session 서식; may fix format and genre
@@ -3587,8 +3589,8 @@ async def write(
         request=request, model=model, api_key=api_key, trusted_context=trusted_context,
         untrusted_context=untrusted_context, outline_model=outline_model,
         approved_plan=approved_plan, may_ask=may_ask, figures_plan=figures_plan,
-        image_model=image_model, web_search=web_search, project_sources=project_sources,
-        template_id=template_id, format_id=format_id, design_tokens=design_tokens,
+        image_model=image_model, auto_image_model=auto_image_model, web_search=web_search,
+        project_sources=project_sources, template_id=template_id, format_id=format_id, design_tokens=design_tokens,
         check_keys=check_keys, turn=dict(turn or {}), session_id=session_id,
         derived=list(derived_context or []), tool_outputs=list(tool_outputs or []),
         check_options=dict(check_options or {}), skill_specs=dict(skill_specs or {}),

@@ -28,6 +28,7 @@ from app.services import (
     figures,
     grounding,
     hangul,
+    illustrations,
     imagegen,
     internal_words,
     key_figures,
@@ -3081,6 +3082,7 @@ async def _write_slides(
     research_rule: str = "",
     figures_plan: list[dict] | None = None,
     image_model: dict | None = None,
+    auto_image_model: dict | None = None,
     density: str = "speaker",
     frame: bool = False,
     settled: list | None = None,
@@ -3503,6 +3505,25 @@ async def _write_slides(
         ),
     ):
         yield event
+    # its own pictures too, when an image model is served inside the data boundary
+    if auto_image_model and not illustrations.declined(request):
+        async for event in _draw_pictures(
+            slides,
+            image_model=auto_image_model,
+            request=request,
+            model=model,
+            api_key=api_key,
+            usage=usage,
+            wrap=lambda prompt: build_document_messages(
+                SessionKind.slides,
+                prompt,
+                request=request,
+                trusted_context=trusted_context,
+                untrusted_context=untrusted_context,
+                research_rule=research_rule,
+            ),
+        ):
+            yield event
 
     if (wanted := requested_slides(request)) and len(slides) != wanted:
         log.warning(
@@ -3824,6 +3845,60 @@ async def _draw_figures(
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
 
+#: Layouts whose words narrow beside a picture (`deck_export`: bullets and body); pair layouts
+#: such as bands and cards keep the full width and would run under it.
+_PICTURE_LAYOUTS = ("bullets", "statement")
+
+
+async def _draw_pictures(
+    slides: list[dict[str, Any]],
+    *,
+    image_model: dict,
+    request: str,
+    model: str,
+    api_key: str,
+    usage: dict[str, int],
+    wrap,
+) -> AsyncIterator[dict[str, Any]]:
+    """Pictures the deck draws for itself on text slides with no figure or picture yet."""
+    eligible = [
+        i for i, slide in enumerate(slides)
+        if slide.get("layout") in _PICTURE_LAYOUTS and not slide.get("image")
+        and not slide.get("diagram")
+    ]
+    planned, spent = await illustrations.plan(
+        parts=[(str(s.get("title") or ""), _drafted_text(s)) for s in slides],
+        eligible=eligible,
+        request=request,
+        model=model,
+        api_key=api_key,
+        complete=_complete,
+        slide=True,
+        wrap=wrap,
+        limit=1 if len(slides) < 6 else illustrations.MAX_PICTURES,
+    )
+    usage["inputTokens"] += spent["inputTokens"]
+    usage["outputTokens"] += spent["outputTokens"]
+    for row in planned:
+        slide = slides[row.index]
+        name = row.caption or "그림"
+        progress = {"current": row.index + 1, "total": len(slides)}
+        yield {"type": "step", "id": f"fig{row.index}", "label": f"{name} 그리는 중",
+               "status": "running", "progress": progress}
+        picture = await illustrations.draw(
+            row, image_model=image_model, api_key=api_key, aspect="4:3")
+        if picture is None:
+            yield {"type": "step", "id": f"fig{row.index}", "label": name, "status": "error",
+                   "progress": progress}
+            continue
+        usage["inputTokens"] += picture.pop("_in", 0)
+        usage["outputTokens"] += picture.pop("_out", 0)
+        slide["image"] = {"src": picture["src"], "caption": picture["caption"]}
+        yield {"type": "step", "id": f"fig{row.index}", "label": name, "status": "done",
+               "progress": progress}
+        yield {"type": "slide", "slide": auto_fit(slide), "done": True}
+
+
 #: Bilingual-term request (「영어 원문 병기」).
 _BILINGUAL = re.compile(
     r"(?:영어|영문|원문|원어)\s{0,3}(?:원문\s{0,3})?(?:을|를)?\s{0,3}(?:함께\s{0,3})?"
@@ -3885,6 +3960,8 @@ async def write(
     #: `None` on planning pass, `[]` for 그림 없이.
     figures_plan: list[dict] | None = None,
     image_model: dict | None = None,
+    #: Self-hosted image model: the deck draws its own pictures (`illustrations`), no card.
+    auto_image_model: dict | None = None,
     #: Research before the outline.
     web_search: bool = True,
     #: a calculation skill is on: derived values by code even when the request names none
@@ -4026,6 +4103,7 @@ async def write(
             research_rule=research_rule,
             figures_plan=figures_plan,
             image_model=image_model,
+            auto_image_model=auto_image_model,
             density=str(approved_plan.get("density") or "speaker"),
             frame=bool(approved_plan.get("frame")),
         ):
@@ -4293,8 +4371,9 @@ async def write(
         ),
         "slides": [{"title": item["title"], "layout": item["layout"]} for item in plan],
     }
-    # pictures proposed with the outline, approved on a second card
-    if image_model:
+    # pictures proposed with the outline, approved on a second card; a self-hosted model
+    # draws on its own after writing instead
+    if image_model and not auto_image_model:
         drawn = await figures.propose(
             request=request,
             title=title,
