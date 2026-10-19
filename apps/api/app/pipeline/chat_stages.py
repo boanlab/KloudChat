@@ -31,6 +31,13 @@ from app.services.chat_format import normalize_raw_payload, unlink_local_targets
 log = logging.getLogger("app.routers.sessions")
 
 
+def _grounded(req: Request) -> bool:
+    """The person's material, or a search or page read that succeeded this turn (a model's
+    own search included)."""
+    return bool(req.traced or req.evidence or req.check_material.strip() or any(
+        out.startswith(("http://", "https://")) for out in req.tool_outputs))
+
+
 class Normalize(Base):
     """Code fixes for model slips: policy notice, raw payload, units/sums, script reports."""
 
@@ -50,7 +57,8 @@ class Normalize(Base):
         # reasoning the model wrote out (「[Thinking: …]」) is never the answer
         streamed = internal_words.strip_reasoning(bundle.document.streamed)
         streamed = internal_words.strip_echoed_heading(streamed)
-        if req.traced or req.evidence or req.check_material.strip():
+        grounded = _grounded(req)
+        if grounded:
             # grounded in the person's material or this turn's search: no training-time caveat
             streamed = current_evidence.strip_caveat(streamed)
         # verification notes are the steps' to show, not the body's
@@ -63,7 +71,7 @@ class Normalize(Base):
         first = req.first_message
         normalized = freshness.normalize_answer_notice(
             streamed, req.text, req.model_info, req.actual_model,
-            grounded=bool(req.traced or req.evidence or req.check_material.strip()),
+            grounded=grounded,
             form_fixed=answer_plan.restricted(req.text or ""))
         # `first`: stored user text, not the merged reference envelope
         normalized = normalize_raw_payload(normalized, first)

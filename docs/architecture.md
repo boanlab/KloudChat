@@ -319,7 +319,10 @@ legal, tax, financial or medical advice; a short follow-up is read with the earl
 turns, and the model then writes the query from the conversation. Writing, translation,
 code and formulas, role-play, drafting, concept explanations and turns on the person's
 own material are left alone (`exact_facts.not_a_lookup`), and an explicit opt-out or Off
-stands. A model-written query keeps the request's named things
+stands. On Auto, a draft, edit, translation or code fix made from the person's own facts
+(`exact_facts.own_work`: no lookup word, no world value such as a rate, a price or the
+weather, no question besides the task) is not offered `web_search` at all, so the model
+cannot wander into unrelated pages; On still searches it. A model-written query keeps the request's named things
 (`query_terms.keep_entities`).
 
 **Advice answers are traced by default.** `exact_facts.advice_domain` puts the
