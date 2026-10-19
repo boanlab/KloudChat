@@ -1145,7 +1145,8 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
         if _illustrative(line, m.start()) or _statutory(n["value"], n["unit"], line) \
                 or _worked_in_line(n, numbers) or _span_of_line(n, line) \
                 or n["line"] in options["_assumed_lines"] \
-                or _assumed(line, m.start()):
+                or (options.get("estimates", True) and _assumed(line, m.start())):
+            # 「"estimates": false」: no figure without a basis, an estimate either
             continue
         start = m.start("num") if m.group("sign") is None else m.start()
         found.append(_finding("number", lines[n["line"]], n["line"], start, m.end()))

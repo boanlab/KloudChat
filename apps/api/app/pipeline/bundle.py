@@ -204,6 +204,8 @@ class Document:
     by_hand: bool = False
     #: revision: asked table shapes found nowhere in the document after it
     missed: list[str] = field(default_factory=list)
+    #: revision: asked changes the new slides do not show (「3장 표」 still drawn as tiles)
+    unmet: list[str] = field(default_factory=list)
     #: handover: artifact, files step, reply
     artifact: Any = None
     handed: dict | None = None

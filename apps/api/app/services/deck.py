@@ -395,7 +395,8 @@ Content fields of a slide — fill only the one for its layout:
   figures.** If there are none, do not use this layout; change it to bullets.
 - chart: "chart": {{"kind": "bar"|"line", "unit": "단위", "categories": [...],
   "series": [{{"name": "이름", "values": [...]}}]}}. Values only from the usable figures. If
-  there are none, use bullets.
+  there are none, use bullets. A period or item with no given value is left off the axis; the
+  slide title names what the series measure.
 - quote: "body": "한 문장" (within 60 characters). If there is no sentence worth keeping, use
   bullets. **Only a sentence from the request or a one-sentence summary in the presenter's own
   voice.** Do not invent other people's words, such as remarks by staff, customers or experts or
@@ -1414,13 +1415,16 @@ Already said on earlier slides:
 Rules:
 - chart.kind is "bar" or "line". bar for comparing sizes by item, line for a trend over
   time.
-- chart.categories are the horizontal-axis items. **3~8.** Names within 8 characters.
+- chart.categories are the horizontal-axis items. **2~8.** Names within 8 characters.
+  A category whose value the material neither gives nor works out from its numbers is left
+  out: fewer categories, never a guessed value to fill the axis.
 - chart.series is the list of series. **1~2.** Each series' values must have **the same count
   as categories.**
 - chart.unit is the vertical axis's unit in one word — `건`, `%`, `억 원`. An empty string if
   none.
 - **Do not write made-up figures. Without a basis, do not write this
   slide; answer with bullets.** A chart reads as even more factual than numbers.
+- The slide title names what the series measure (a series of 이익률 is not titled 매출).
 - notes say what this chart shows. 2~3 sentences.
 - Write in Korean unless the request itself is written in English.
 
@@ -2866,6 +2870,47 @@ def _clean_chart(value: Any) -> dict[str, Any] | None:
         "categories": categories[:width],
         "series": [{"name": s["name"], "values": s["values"][:width]} for s in series],
     }
+
+
+#: what a chart title may name as its measure (「매출 및 영업이익 추이」)
+_MEASURES = re.compile(
+    r"영업\s?이익률|순이익률|이익률|영업\s?이익|순이익|매출\s?총이익|매출액?|원가율?|비용|예산|점유율|비중"
+    r"|성장률|증가율|감소율|전환율|이탈률|만족도|인원|건수|처리량|대기\s?시간|지연|수익률?")
+
+
+def _compact(text: str) -> str:
+    return re.sub(r"\s+", "", re.sub(r"[(（][^()（）]*[)）]", "", text or ""))
+
+
+def chart_title_mismatch(slide: dict) -> bool:
+    """Whether a chart slide's title names a measure none of its series or categories plot
+    (「매출 및 영업이익 추이」 over a series of 이익률)."""
+    chart = slide.get("chart")
+    if not isinstance(chart, dict):
+        return False
+    title = _compact(str(slide.get("title") or ""))
+    named = {_compact(m.group(0)) for m in _MEASURES.finditer(title)}
+    plotted = [_compact(str(s.get("name") or "")) for s in chart.get("series") or []
+               if isinstance(s, dict)] + [_compact(str(c)) for c in chart.get("categories") or []]
+    plotted = [p for p in plotted if len(p) >= 2]
+    if not named or not plotted:
+        return False
+    return not any(n in p or p in title for n in named for p in plotted)
+
+
+#: a category axis of periods (「2026 2분기」, 「3월」, 「2025년」)
+_PERIOD = re.compile(r"분기|반기|\d\s?월|\d{4}|Q[1-4]|\d\s?년|주차")
+
+
+def plotted_title(slide: dict) -> str:
+    """A title naming what the chart plots: its series over periods (「이익률 추이」) or by item."""
+    chart = slide.get("chart") or {}
+    names = [str(s.get("name") or "").strip() for s in chart.get("series") or []
+             if isinstance(s, dict) and str(s.get("name") or "").strip()]
+    if not names:
+        return str(slide.get("title") or "")
+    periods = all(_PERIOD.search(str(c)) for c in chart.get("categories") or [])
+    return f"{' · '.join(names)} {'추이' if periods else '비교'}"
 
 
 def _number(cell: str) -> float | None:
@@ -4486,6 +4531,41 @@ def requested_layout(text: str) -> str | None:
 
 
 
+def shown_layout(slide: dict) -> str:
+    """The shape the renderers draw a slide as: their order of fields, not its `layout` name
+    (a table whose old tiles stayed is drawn as tiles)."""
+    layout = str(slide.get("layout") or "bullets")
+    pattern = slide_patterns.BY_NAME.get(layout)
+    if pattern is not None and has_content(slide):
+        return layout
+    if layout in _PAIRED and slide.get(layout):
+        return layout
+    if isinstance(slide.get("chart"), dict) and slide["chart"].get("series"):
+        return layout if layout.startswith("chart") else "chart"
+    if slide.get("metrics"):
+        return "big-number" if layout == "big-number" else "metrics"
+    if slide.get("rows"):
+        return "table"
+    return layout if layout not in _NUMBERS_LAYOUTS else "bullets"
+
+
+#: what an unmet shape is called in the reply
+_SHAPE_WORDS = {"table": "표", "chart": "차트", "metrics": "지표", "big-number": "큰 숫자",
+                "bullets": "글머리표", "timeline": "연표", "steps": "단계", "cards": "카드"}
+
+
+def unmet_asks(slide: dict, words: str) -> list[str]:
+    """What `words` asked of a slide that the slide as drawn does not show."""
+    out = []
+    asked = requested_layout(words)
+    drawn = shown_layout(slide)
+    if asked and drawn != asked and not (asked == "chart" and drawn.startswith("chart")):
+        out.append(f"{_SHAPE_WORDS.get(asked, asked)}로 바꾸기")
+    if revise.removes_picture(words) and slide.get("image"):
+        out.append("그림 빼기")
+    return out
+
+
 class SlideNotWritten(ValueError):
     """Empty rewrite; carries billed usage."""
 
@@ -4505,6 +4585,8 @@ async def rewrite_slide(
     material: list[str] | None = None,
     typed: str = "",
     notes_only: bool = False,
+    #: the slide keeps its layout whatever the note says (a check's hand-back)
+    keep_layout: bool = False,
 ) -> tuple[dict, dict]:
     """Rewrites one slide in deck context → `(slide, usage)`; `typed` checked for layout changes."""
     target = next((s for s in slides if s.get("id") == target_id), None)
@@ -4519,7 +4601,8 @@ async def rewrite_slide(
     )
     layout = str(target.get("layout") or "bullets")
     # layout change: user's words first, planner's paraphrase second
-    layout = requested_layout(typed) or requested_layout(note) or layout
+    if not keep_layout:
+        layout = requested_layout(typed) or requested_layout(note) or layout
     template = _PROMPTS.get(layout) or (_TABLE_PROMPT if layout == "table" else _BULLETS_PROMPT)
     prompt = template.format(
         heading=target.get("title") or "",
@@ -4612,10 +4695,12 @@ async def rewrite_slide(
         rows, pairs, bullets = [], [], []
         if layout == "metrics":
             body = ""
+    # what the new words are drawn as; an older shape's fields would be drawn first
+    structured = bool(chart or metrics or rows or pairs)
     if rows:
         result["rows"] = rows
         result["layout"] = "table"
-        for field in ("bullets", "body", *_PAIRED):
+        for field in ("bullets", "body", "metrics", "chart", *_PAIRED):
             result.pop(field, None)
         bullets, body = [], ""
     elif pairs:
@@ -4625,6 +4710,12 @@ async def rewrite_slide(
         for field in ("bullets", "body", "rows", "chart", "metrics", *others):
             result.pop(field, None)
         bullets, body = [], ""
+    if (bullets or body) and not structured and layout != str(target.get("layout") or ""):
+        # a change of shape asked and words came back: the old shape's fields go
+        for field in ("rows", "metrics", "chart", *_PAIRED):
+            result.pop(field, None)
+        if result.get("layout") in _NUMBERS_LAYOUTS:
+            result["layout"] = "bullets"
     if bullets:
         result["bullets"] = bullets
         # old body (maybe UNWRITTEN) must go
