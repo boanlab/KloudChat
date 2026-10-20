@@ -10,7 +10,7 @@ import { errorMessage, sessionsApi } from '@/lib/api'
 import type { ProcessDraft } from '@/lib/process'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
-import type { Agent, AgentDraft, DistillState } from '@/types'
+import type { Agent, AgentDraft, DistillState, Skill } from '@/types'
 
 /** Distillation arrives after the rest of the form. */
 interface Decided {
@@ -114,6 +114,56 @@ function fromDraft(base: Agent, d: AgentDraft): Agent {
   }
 }
 
+/** 「이 스킬로 에이전트 만들기」: `?from=skill:<id>` (the person's skill or a store one). */
+function useSkillSource(): { skill: Skill | null | undefined; store: boolean; asked: boolean } {
+  const [params] = useSearchParams()
+  const from = params.get('from') ?? ''
+  const skillId = from.startsWith('skill:') ? from.slice('skill:'.length) : ''
+  const skills = useStore((s) => s.skills)
+  const skillStore = useStore((s) => s.skillStore)
+  const workspaceLoading = useStore((s) => s.workspaceLoading)
+  const skillStoreLoaded = useStore((s) => s.skillStoreLoaded)
+  const loadSkillStore = useStore((s) => s.loadSkillStore)
+  useEffect(() => {
+    if (skillId && !skillStoreLoaded) void loadSkillStore()
+  }, [skillId, skillStoreLoaded, loadSkillStore])
+  if (!skillId) return { skill: null, store: false, asked: false }
+  const own = skills.find((s) => s.id === skillId)
+  if (own) return { skill: own, store: false, asked: true }
+  // A store skill already installed: its copy.
+  const copy = skills.find((s) => s.originId === skillId)
+  if (copy) return { skill: copy, store: false, asked: true }
+  if (workspaceLoading || !skillStoreLoaded) return { skill: undefined, store: false, asked: true }
+  const row = skillStore.find((s) => s.id === skillId)
+  return { skill: row ?? null, store: !!row, asked: true }
+}
+
+/** Agent drafted from one skill, kept on in every turn: what it is built from. */
+function fromSkill(base: Agent, skill: Skill): Agent {
+  const lines = [
+    skill.description.trim(),
+    `「${skill.name}」 스킬을 매 턴 적용해 일합니다. 스킬의 절차와 형식을 그대로 따릅니다.`,
+    skill.whenToUse.trim() && skill.whenToUse.trim() !== skill.description.trim() ? `이럴 때 씁니다: ${skill.whenToUse.trim()}` : '',
+  ]
+  return {
+    ...base,
+    name: skill.name,
+    description: skill.description,
+    systemPrompt: lines.filter(Boolean).join('\n\n'),
+    kinds: [...skill.kinds],
+    surface: skill.kinds[0] ?? null,
+    tools: skill.requiredTools.length > 0 ? [...skill.requiredTools] : base.tools,
+    skillIds: [skill.id],
+    activeSkillIds: [skill.id],
+  }
+}
+
+/** Where a save goes: `?return=<path>` (same-app relative only) with `added=<id>`, else the agent. */
+function afterSave(back: string | null, id: string): string {
+  if (!back || !back.startsWith('/') || back.startsWith('//') || back.startsWith('/\\')) return `/customize/agents/${id}`
+  return `${back}${back.includes('?') ? '&' : '?'}added=${encodeURIComponent(id)}`
+}
+
 /** Four essentials, rest folded; saving opens the agent. */
 export function AgentCreatePage() {
   const t = useT()
@@ -125,13 +175,19 @@ export function AgentCreatePage() {
     void ensureDesignTemplates()
   }, [ensureWorkspace, ensureDesignTemplates])
 
+  const [params] = useSearchParams()
   const { draft, error, decided, retry } = useSessionDraft()
+  const source = useSkillSource()
   // No model pinned: the agent follows the surface's default (`AgentForm` 모델 field).
+  const sourceId = source.skill?.id
   const initial = useMemo(() => {
-    if (draft === undefined) return null
+    if (draft === undefined || source.skill === undefined) return null
     const blank = emptyAgent('')
+    if (source.skill) return fromSkill(blank, source.skill)
     return draft ? fromDraft(blank, draft) : blank
-  }, [draft])
+    // Drafted once per skill, not on every store refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, sourceId, source.skill === undefined])
   const initialProcess: ProcessDraft | undefined = draft
     ? { mode: draft.mode, base: draft.base, bundles: draft.bundles, steps: [] }
     : undefined
@@ -143,25 +199,33 @@ export function AgentCreatePage() {
         <div className="mx-auto max-w-3xl">
         <BackLink tab="agents" label="에이전트" />
         <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t('새 에이전트')}</h1>
-        {draft ? (
+        {source.skill ? (
+          <p className="mb-6 rounded-control border border-accent/30 bg-accent-soft/40 px-3 py-2 text-base text-fg" data-testid="skill-draft-notice" role="status">
+            {t('「{name}」 스킬로 채워 두었습니다. 이름을 확인하고 저장하세요.').replace('{name}', t(source.skill.name))}
+            {source.store && ` ${t('저장하면 이 스킬이 내 스킬에 설치됩니다.')}`}
+          </p>
+        ) : draft ? (
           <DraftNotice decided={decided} onRetry={retry} />
         ) : (
           <p className="mb-6 text-base text-muted">{t('이름과 지시만 있으면 됩니다. 나머지는 나중에 바꿔도 됩니다.')}</p>
         )}
         {error && <p role="alert" className="mb-4 text-sm text-danger">{error}</p>}
+        {source.skill === null && source.asked && (
+          <p role="alert" className="mb-4 text-sm text-danger">{t('이 스킬을 찾을 수 없습니다. 빈 에이전트로 시작합니다.')}</p>
+        )}
         {initial ? (
           <AgentForm
-            key={draft ? 'draft' : 'blank'}
+            key={source.skill ? `skill:${source.skill.id}` : draft ? 'draft' : 'blank'}
             initial={initial}
             initialProcess={initialProcess}
             draftFiles={draft?.files ?? []}
             addedPrompt={decided.prompt}
             creating
-            onSaved={(saved) => navigate(`/customize/agents/${saved.id}`, { replace: true })}
+            onSaved={(saved) => navigate(afterSave(params.get('return'), saved.id), { replace: true })}
             onCancel={() => navigate('/customize?tab=agents')}
           />
         ) : (
-          <LoadingState label={t('대화를 읽는 중입니다')} />
+          <LoadingState label={source.asked ? t('스킬을 읽는 중입니다') : t('대화를 읽는 중입니다')} />
         )}
         </div>
       </PageBody>

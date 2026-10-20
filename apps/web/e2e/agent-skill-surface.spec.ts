@@ -11,9 +11,11 @@ test.use({ serviceWorkers: 'block' })
 
 const reportOnly = { ...mySkills[1], id: 'k7777777777777777777777777777777', name: '개조식 보고', kinds: ['report'] }
 
-const pickSkill = async (page: import('@playwright/test').Page, name: RegExp) => {
-  await page.getByTestId('active-skill-picker').getByRole('button', { name: '켜 둘 스킬 고르기' }).click()
-  await page.getByRole('dialog', { name: '켜 둘 스킬 고르기' }).getByRole('checkbox', { name }).check()
+/** 「+ 스킬 추가」: a skill added under 「기본값 따르기」 applies on every turn. */
+const pickSkill = async (page: import('@playwright/test').Page, name: RegExp, button = '추가') => {
+  await page.getByTestId('agent-skill-list').getByRole('button', { name: '+ 스킬 추가 (스토어 포함)' }).click()
+  await page.getByRole('dialog', { name: '스킬 추가' }).getByRole('listitem').filter({ hasText: name })
+    .getByRole('button', { name: button }).click()
   await page.keyboard.press('Escape')
 }
 
@@ -100,7 +102,7 @@ test('a screen added in 사용할 화면 is the one a new conversation opens on'
   expect(state.problems).toEqual([])
 })
 
-test('a new account keeps on an official skill without adding it first', async ({ page }, testInfo) => {
+test('a new account keeps on a store skill without adding it first', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   await page.route('**/api/skills', (route) =>
     route.request().method() === 'GET' ? route.fulfill({ json: [] }) : route.fallback(),
@@ -109,21 +111,21 @@ test('a new account keeps on an official skill without adding it first', async (
   const form = page.getByTestId('agent-form')
   await expect(form).toBeVisible({ timeout: 15_000 })
   await page.getByText('스킬과 도구', { exact: true }).click()
-  await page.getByTestId('active-skill-picker').getByRole('button', { name: '켜 둘 스킬 고르기' }).click()
-  const dialog = page.getByRole('dialog', { name: '켜 둘 스킬 고르기' })
-  // Official skills are listed as in the chat's 「+ › 스킬」; another person's shared skill is not.
-  await expect(dialog.getByText('공식 스킬 · 고르면 내 스킬에 추가됩니다')).toBeVisible()
-  await expect(dialog.getByText('검색 결과가 없습니다')).toHaveCount(0)
-  await expect(dialog.getByRole('checkbox', { name: /보도자료 교정/ })).toHaveCount(0)
-  await dialog.getByRole('checkbox', { name: /견적 계산/ }).check()
+  await page.getByTestId('agent-skill-list').getByRole('button', { name: '+ 스킬 추가 (스토어 포함)' }).click()
+  const dialog = page.getByRole('dialog', { name: '스킬 추가' })
+  // The store's skills are listed, official and a colleague's shared one alike.
+  await expect(dialog.getByText('스토어 · 설치하면 내 스킬에 복사됩니다')).toBeVisible()
+  await expect(dialog.getByRole('listitem').filter({ hasText: '보도자료 교정' })).toBeVisible()
+  await dialog.getByRole('listitem').filter({ hasText: '견적 계산' }).getByRole('button', { name: '설치하고 추가' }).click()
   await page.keyboard.press('Escape')
 
-  const picker = page.getByTestId('active-skill-picker')
-  await expect(picker.getByText('견적 계산', { exact: true })).toBeVisible()
+  const row = page.getByTestId('agent-skill-row').filter({ hasText: '견적 계산' })
+  await expect(row).toBeVisible()
+  await expect(row.getByRole('radio', { name: '항상 적용' })).toHaveAttribute('aria-checked', 'true')
   await expect.poll(() => state.calls.some((c) => c.method === 'POST' && c.path === `/skills/${storeSkills[0].id}/install`)).toBe(true)
-  // Now one of the person's skills, under 공식 스킬.
-  await picker.getByRole('button', { name: '켜 둘 스킬 고르기' }).click()
-  await expect(dialog.getByRole('group', { name: '공식 스킬' }).getByRole('checkbox', { name: /견적 계산/ })).toBeChecked()
+  // Now one of the person's skills: no longer offered from the store.
+  await page.getByTestId('agent-skill-list').getByRole('button', { name: '+ 스킬 추가 (스토어 포함)' }).click()
+  await expect(dialog.getByRole('listitem').filter({ hasText: '견적 계산' })).toHaveCount(0)
   expect(state.problems).toEqual([])
 })
 
@@ -144,9 +146,7 @@ test('an agent saved while an official skill is still being added keeps that ski
   await expect(form).toBeVisible({ timeout: 15_000 })
   await form.getByRole('textbox', { name: '이름' }).fill('견적 도우미')
   await page.getByText('스킬과 도구', { exact: true }).click()
-  await page.getByTestId('active-skill-picker').getByRole('button', { name: '켜 둘 스킬 고르기' }).click()
-  await page.getByRole('dialog', { name: '켜 둘 스킬 고르기' }).getByRole('checkbox', { name: /견적 계산/ }).check()
-  await page.keyboard.press('Escape')
+  await pickSkill(page, /견적 계산/, '설치하고 추가')
   // Typed while the add is pending: kept too.
   await form.getByRole('textbox', { name: '이름' }).fill('견적 도우미 2')
   await form.getByRole('button', { name: '만들기' }).click()

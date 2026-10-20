@@ -112,6 +112,7 @@ const groups: Record<string, Group> = {
       'save-as-agent.spec.ts',
       'restructure-shots.spec.ts',
       'agent-skill-surface.spec.ts',
+      'agent-from-skill.spec.ts',
       'agent-default-model.spec.ts',
     ],
     projects: { desktop },
