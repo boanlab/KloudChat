@@ -268,8 +268,11 @@ _ANSWERED_YEAR = re.compile(
 _DAYS_BACK = {"오늘": 0, "금일": 0, "어제": 1, "어저께": 1, "그저께": 2, "그제": 2}
 
 
-def meeting_base(request: str, material: str, today: dt.date | None) -> tuple[dt.date | None, str]:
-    """Relative-date base and source: text, file name, or 'today/yesterday' (KST); never handover day."""
+def meeting_base(request: str, material: str, today: dt.date | None,
+                 nearest: bool = False) -> tuple[dt.date | None, str]:
+    """Relative-date base and source: text, file name, or 'today/yesterday' (KST); never handover
+    day. With `nearest` (the year question already asked or skipped), a yearless meeting day takes
+    the year nearest today when that is clear."""
     if found := meeting_date(request, material, today):
         return found, "text"
     if found := file_date(material):
@@ -294,13 +297,37 @@ def meeting_base(request: str, material: str, today: dt.date | None) -> tuple[dt
             return day, "text"
     if today and (said := _SAID_DAY.search(request or "")):
         return today - dt.timedelta(days=_DAYS_BACK[said.group(1)]), "said:" + said.group(1)
+    if nearest and today and (day := _nearest_meeting_day(request, material, today)):
+        return day, "near"
     return None, ""
+
+
+#: the next meeting's clause: 「다음 회의 10/21 화 10시 3층 회의실.」
+_NEXT_MEETING = re.compile(
+    r"(?:다음|차기)\s{0,2}(?:회의|모임|미팅)[^\n;]*?(?=(?<!\d)\.(?!\s{0,2}\d)|[\n;]|$)")
+
+
+def _nearest_meeting_day(request: str, material: str, today: dt.date) -> dt.date | None:
+    """The first yearless day on a meeting line (the next meeting's clause aside), in the year
+    nearest today when that day is within `weekdays._SURE_DAYS`."""
+    from app.services import weekdays
+
+    for text in (request, material):
+        for line in (text or "").splitlines():
+            if not _MEETING.search(line):
+                continue
+            if m := _YEARLESS_DAY.search(_NEXT_MEETING.sub(" ", line)):
+                near = weekdays._nearest(int(m.group(1)), int(m.group(2)), today)
+                return near[0] if near and near[1] else None
+    return None
 
 
 def _base_words(source: str) -> str:
     """Base-date source, as step and date block word it."""
     if source == "file":
         return "첨부 파일 이름의 날짜"
+    if source == "near":
+        return "연도 없는 회의 날짜를 대화 날짜에 가장 가까운 해로 셈"
     if source.startswith("said:"):
         return f"요청의 「{source[5:]}」을 대화 날짜(한국 시간)로 셈"
     return ""
@@ -1850,15 +1877,20 @@ async def _date_calc(pre: Prepass, job: PrepassJob) -> None:
     request, material, today = job.request, job.material, job.today
     meeting = pre.counts_from_meeting
     # minutes only: RFP/memo relative dates never read from today
-    base, source = (meeting_base(request, material, today) if meeting
+    base, source = (meeting_base(request, material, today, nearest=True) if meeting
                     else (meeting_date(request, material, today), "text"))
+    scanned = material
+    if meeting and not skill_scripts.dates().scan(material, base or today or dt.date.today()):
+        # a memo typed as the request itself (the material holds no day): its days are read
+        typed = [ln for ln in (request or "").splitlines() if ln.strip() and ln.strip() not in material]
+        scanned = "\n".join([*typed, material]).strip()
     if base is None and meeting:
         # meeting date 「[회의 일자]」: relative deadlines stay words
         probe = today or dt.date.today()
-        rows = _undated(skill_scripts.dates().scan(material, probe), probe)
+        rows = _undated(skill_scripts.dates().scan(scanned, probe), probe)
     else:
-        rows = skill_scripts.dates().scan(material, base)
-    _with_context(rows, material)
+        rows = skill_scripts.dates().scan(scanned, base)
+    _with_context(rows, scanned)
     pre.dates = rows
     first = next((r["base_date"] for r in rows if r.get("base_date")),
                  base.isoformat() if base else "")
