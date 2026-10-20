@@ -235,7 +235,7 @@
 "path": "chat/agent-examples",
 "title": "에이전트·템플릿 만들기 예시",
 "heading": "",
-"text": "자주 쓰는 업무 문서를 에이전트와 템플릿으로 만들어 두는 예시입니다. 모두 **사용자 지정**의 에이전트 만들기 폼과 템플릿 편집기로 만들 수 있습니다. 회의록·개조식 보고처럼 공식 스킬이 있는 일은 스킬로 일하고 에이전트 짜기처럼 **켜 둘 스킬**로 짜는 편이 빠릅니다. 아래 지시를 그대로 붙여 넣고 시작한 뒤, 기관 이름·결재선처럼 우리 쪽 사정에 맞게 고칩니다."
+"text": "자주 쓰는 업무 문서를 에이전트와 템플릿으로 만들어 두는 예시입니다. 모두 **사용자 지정**의 에이전트 만들기 폼과 템플릿 편집기로 만들 수 있습니다. 회의록·개조식 보고처럼 공식 스킬이 있는 일은 스킬로 일하고 에이전트 짜기처럼 **항상 적용** 스킬로 짜는 편이 빠릅니다. 아래 지시를 그대로 붙여 넣고 시작한 뒤, 기관 이름·결재선처럼 우리 쪽 사정에 맞게 고칩니다."
 },
 {
 "lang": "ko",
@@ -319,14 +319,14 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "에이전트 만들기",
-"text": "**사용자 지정** → **에이전트** → **추가** → **에이전트 만들기**. 입력창의 **+** → **에이전트** 목록 맨 끝의 **에이전트 만들기**로도 엽니다.\n\n폼은 위에서부터 이렇게 놓여 있습니다.\n\n1. **이름**, **한 줄 설명**, **지시**(이 에이전트가 늘 따를 역할과 규칙). 화면마다 다른 지시는 `[채팅에서]`, `[보고서에서]`, `[슬라이드에서]` 한 줄 아래에 적으면 그 화면에서만 붙습니다(그 줄 앞의 내용은 모든 화면에 붙습니다).\n2. **진행 과정**: 바로 답하기 · 기본 과정에서 시작 · 직접 구성 (고급) 중 하나(아래 「진행 과정」).\n3. **추가로 할 일**: 묶음 체크 상자(아래 「묶음」). 직접 구성을 고르면 이 칸은 없고 단계로 짭니다.\n4. **세부 설정 — 진행 과정의 계산·검사·목차**: 보고서를 쓰는 에이전트에만 보입니다(아래 「세부 설정과 내 템플릿」).\n5. **빠진 정보 질문**: 쓰기 전에 자료에 없으면 물어볼 것. 「빠진 정보 먼저 묻기」가 켜져 있을 때 한 번에 네 개까지 묻습니다. * 표시는 꼭 채울 칸입니다.\n6. **더 설정하기** 아래: **템플릿·테마**, **대화 시작**, **자료**, **스킬과 도구**, **고급**, **공유**(아래 「템플릿·테마와 자료」). **켜 둘 스킬**은 모든 대화에서 켜집니다(예시).\n\n새 에이전트는 **만들기**를 눌러야 저장됩니다. 지시에 적은 내용은 그 에이전트의 모든 대화에 붙으므로, 늘 지킬 역할과 규칙만 적습니다. 에이전트는 대화를 열어 요청할 때 일합니다. 매주처럼 정해진 때에 저절로 실행되거나 자료를 다시 요약하지 않습니다.\n\n활성화 토글로 일시적으로 사용을 중지할 수 있습니다. 삭제하면 자료와 색인, 그 에이전트의 직접 구성이 함께 삭제되며 기존 대화는 유지됩니다. 에이전트 상세의 개요에는 「이렇게 일합니다: …」 한 줄로 진행 과정이 보이고, **자세히 보기**로 체크한 묶음을 확인합니다."
+"text": "**사용자 지정** → **에이전트** → **추가** → **에이전트 만들기**. 입력창의 **+** → **에이전트** 목록 맨 끝의 **에이전트 만들기**로도 엽니다.\n\n폼은 위에서부터 이렇게 놓여 있습니다.\n\n1. **이름**, **한 줄 설명**, **지시**(이 에이전트가 늘 따를 역할과 규칙). 화면마다 다른 지시는 `[채팅에서]`, `[보고서에서]`, `[슬라이드에서]` 한 줄 아래에 적으면 그 화면에서만 붙습니다(그 줄 앞의 내용은 모든 화면에 붙습니다).\n2. **진행 과정**: 바로 답하기 · 기본 과정에서 시작 · 직접 구성 (고급) 중 하나(아래 「진행 과정」).\n3. **추가로 할 일**: 묶음 체크 상자(아래 「묶음」). 직접 구성을 고르면 이 칸은 없고 단계로 짭니다.\n4. **세부 설정 — 진행 과정의 계산·검사·목차**: 보고서를 쓰는 에이전트에만 보입니다(아래 「세부 설정과 내 템플릿」).\n5. **빠진 정보 질문**: 쓰기 전에 자료에 없으면 물어볼 것. 「빠진 정보 먼저 묻기」가 켜져 있을 때 한 번에 네 개까지 묻습니다. * 표시는 꼭 채울 칸입니다.\n6. **더 설정하기** 아래: **템플릿·테마**, **대화 시작**, **자료**, **스킬과 도구**, **고급**, **공유**(아래 「템플릿·테마와 자료」). **스킬과 도구** › **스킬**에서 스킬마다 **항상 적용**과 **필요할 때**를 고릅니다(아래 「에이전트의 스킬」).\n\n새 에이전트는 **만들기**를 눌러야 저장됩니다. 지시에 적은 내용은 그 에이전트의 모든 대화에 붙으므로, 늘 지킬 역할과 규칙만 적습니다. 에이전트는 대화를 열어 요청할 때 일합니다. 매주처럼 정해진 때에 저절로 실행되거나 자료를 다시 요약하지 않습니다.\n\n활성화 토글로 일시적으로 사용을 중지할 수 있습니다. 삭제하면 자료와 색인, 그 에이전트의 직접 구성이 함께 삭제되며 기존 대화는 유지됩니다. 에이전트 상세의 개요에는 「이렇게 일합니다: …」 한 줄로 진행 과정이 보이고, **자세히 보기**로 체크한 묶음을 확인합니다."
 },
 {
 "lang": "ko",
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "진행 과정",
-"text": "에이전트 만들기 폼의 **진행 과정**에서 셋 중 하나를 고릅니다. 새 에이전트는 진행 과정과 함께 저장되어, 진행 과정에 문제가 있으면 에이전트도 만들어지지 않고 폼에 그대로 남습니다.\n\n- **바로 답하기**: 요청을 받아 곧바로 답합니다. 대화로 답하는 에이전트는 파일(DOCX·HWPX·PDF)을 만들지 않습니다.\n- **기본 과정에서 시작**: 기본 에이전트(개조식 보고, 회의록, 비교·결정 등)의 일하는 순서를 따릅니다. 새로 고를 수 있는 기본 과정이 없으면 이 칸은 보이지 않고, 이미 기본 과정에서 시작한 에이전트에만 보입니다(그 과정을 그대로 씁니다). 새 에이전트는 **바로 답하기**에 **켜 둘 스킬**과 묶음을 더해 같은 일을 하게 만듭니다. 파일로 받으려면 **고급** › 처음 여는 화면을 **보고서**로 하고 마무리하기의 **다 쓰면 파일로 내보내기**를 켭니다.\n- **직접 구성 (고급)**: 질문·계산·검사·검토·다른 에이전트·내보내기를 한 단계씩 골라 순서를 짭니다. 맨 처음에는 「이 에이전트」 단계 하나가 들어 있습니다. **이 에이전트가 만드는 것**에서 **보고서(문서)** 또는 **대화(답)**를 고릅니다. 내보내기 단계는 보고서(문서)일 때만 쓸 수 있습니다. 대화(답)에 내보내기 단계를 넣으면 경고 아래 버튼이 이 칸을 보고서(문서)로 바꾸고, 알림의 **되돌리기**로 되돌립니다. 발표 자료에는 직접 구성이 없습니다."
+"text": "에이전트 만들기 폼의 **진행 과정**에서 셋 중 하나를 고릅니다. 새 에이전트는 진행 과정과 함께 저장되어, 진행 과정에 문제가 있으면 에이전트도 만들어지지 않고 폼에 그대로 남습니다.\n\n- **바로 답하기**: 요청을 받아 곧바로 답합니다. 대화로 답하는 에이전트는 파일(DOCX·HWPX·PDF)을 만들지 않습니다.\n- **기본 과정에서 시작**: 기본 에이전트(개조식 보고, 회의록, 비교·결정 등)의 일하는 순서를 따릅니다. 새로 고를 수 있는 기본 과정이 없으면 이 칸은 보이지 않고, 이미 기본 과정에서 시작한 에이전트에만 보입니다(그 과정을 그대로 씁니다). 새 에이전트는 **바로 답하기**에 **항상 적용** 스킬과 묶음을 더해 같은 일을 하게 만듭니다. 파일로 받으려면 **고급** › 처음 여는 화면을 **보고서**로 하고 마무리하기의 **다 쓰면 파일로 내보내기**를 켭니다.\n- **직접 구성 (고급)**: 질문·계산·검사·검토·다른 에이전트·내보내기를 한 단계씩 골라 순서를 짭니다. 맨 처음에는 「이 에이전트」 단계 하나가 들어 있습니다. **이 에이전트가 만드는 것**에서 **보고서(문서)** 또는 **대화(답)**를 고릅니다. 내보내기 단계는 보고서(문서)일 때만 쓸 수 있습니다. 대화(답)에 내보내기 단계를 넣으면 경고 아래 버튼이 이 칸을 보고서(문서)로 바꾸고, 알림의 **되돌리기**로 되돌립니다. 발표 자료에는 직접 구성이 없습니다."
 },
 {
 "lang": "ko",
@@ -340,7 +340,7 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "템플릿·테마와 자료",
-"text": "에이전트 만들기 폼의 **더 설정하기** 아래에 있습니다.\n\n- **템플릿·테마**: **템플릿**(보고서·슬라이드의 구성)과 **테마**(색·글꼴·문체)를 고릅니다. 템플릿 아래 **새 템플릿**은 내 템플릿을 만들고, 테마 아래 **테마 관리**는 설정 › 테마로 갑니다. 기본 과정에서 시작한 에이전트는 템플릿을 비워 두면(「기본 과정의 템플릿」) 기본 과정의 템플릿을 쓰고, 문서 형식도 그 템플릿이 정합니다. **문서 형식** 칸은 보고서를 쓰는 에이전트가 바로 답하기나 직접 구성일 때만 보입니다.\n- **대화 시작**: **사용법**(대화 첫 화면에 보이는 안내)과 **시작 문장**(한 줄에 하나, 여섯 개까지).\n- **자료**: 이 에이전트가 검색해서 근거로 쓸 파일과 웹 주소(**파일 붙이기**, **URL 추가**). 대화마다 통째로 들어가지 않고 필요할 때 찾아 씁니다. URL은 추가한 시점의 내용을 저장하고, 페이지가 바뀌어도 따라가지 않습니다. 자료를 주기적으로 다시 읽거나 요약하지 않으며, 에이전트가 정해진 시각에 저절로 실행되지도 않습니다. 대화를 열어 요청할 때 일합니다.\n- **스킬과 도구**, **고급**(사용할 화면, 처음 여는 화면, 모델, 출력 언어, 웹 검색 기본값, 다양성, 색, 메모리 사용). 처음 여는 화면을 정하지 않은 채 사용할 화면에 화면을 더하면 그 화면이 처음 여는 화면이 됩니다. **켜 둘 스킬**에 보고서·슬라이드에서만 작동하는 스킬(회의록 작성, 개조식 보고 등)을 고르면, 처음 여는 화면을 따로 정하지 않았을 때 그 화면으로 정해지고, 스킬 칸 아래에 어느 화면에서 작동하는지 적힙니다. **공유**(**나만 쓰기** 또는 **모두에게 공개**; 공개할 때 **가져가서 편집할 수 있게** 또는 **가져갈 수 있지만 내용은 비공개**)."
+"text": "에이전트 만들기 폼의 **더 설정하기** 아래에 있습니다.\n\n- **템플릿·테마**: **템플릿**(보고서·슬라이드의 구성)과 **테마**(색·글꼴·문체)를 고릅니다. 템플릿 아래 **새 템플릿**은 내 템플릿을 만들고, 테마 아래 **테마 관리**는 설정 › 테마로 갑니다. 기본 과정에서 시작한 에이전트는 템플릿을 비워 두면(「기본 과정의 템플릿」) 기본 과정의 템플릿을 쓰고, 문서 형식도 그 템플릿이 정합니다. **문서 형식** 칸은 보고서를 쓰는 에이전트가 바로 답하기나 직접 구성일 때만 보입니다.\n- **대화 시작**: **사용법**(대화 첫 화면에 보이는 안내)과 **시작 문장**(한 줄에 하나, 여섯 개까지).\n- **자료**: 이 에이전트가 검색해서 근거로 쓸 파일과 웹 주소(**파일 붙이기**, **URL 추가**). 대화마다 통째로 들어가지 않고 필요할 때 찾아 씁니다. URL은 추가한 시점의 내용을 저장하고, 페이지가 바뀌어도 따라가지 않습니다. 자료를 주기적으로 다시 읽거나 요약하지 않으며, 에이전트가 정해진 시각에 저절로 실행되지도 않습니다. 대화를 열어 요청할 때 일합니다.\n- **스킬과 도구**, **고급**(사용할 화면, 처음 여는 화면, 모델, 출력 언어, 웹 검색 기본값, 다양성, 색, 메모리 사용). 처음 여는 화면을 정하지 않은 채 사용할 화면에 화면을 더하면 그 화면이 처음 여는 화면이 됩니다. **항상 적용**으로 둔 스킬이 보고서·슬라이드에서만 작동하는 스킬(회의록 작성, 개조식 보고 등)이면, 처음 여는 화면을 따로 정하지 않았을 때 그 화면으로 정해지고, 스킬 칸 아래에 어느 화면에서 작동하는지 적힙니다. **공유**(**나만 쓰기** 또는 **모두에게 공개**; 공개할 때 **가져가서 편집할 수 있게** 또는 **가져갈 수 있지만 내용은 비공개**)."
 },
 {
 "lang": "ko",
@@ -355,6 +355,20 @@
 "title": "에이전트와 스킬",
 "heading": "세부 설정과 내 템플릿",
 "text": "보고서를 쓰는 에이전트는 진행 과정 아래 **세부 설정 — 진행 과정의 계산·검사·목차**에서 **이 에이전트에서 따로 정하기**를 켜면 템플릿이 정한 값에서 시작해 바꿀 수 있습니다. 끄면 템플릿(또는 문서 형식)의 설정을 그대로 씁니다.\n\n- **쓰기 전에 계산**: 날짜 계산, 견적 합계, 투입 인력, 대안별 총비용, 필수 조건·가중 점수, 경력 기간 같은 기본 제공 계산을 고릅니다. **날짜 기준**(자료의 날짜 또는 회의한 날)도 정합니다.\n- **쓰는 방식**: 웹 검색 안 함, 그림은 요청할 때만, 고정 목차.\n- **구조 규칙**: 목차(순서), 필수 표(열 이름), 맨 위 핵심 요약 줄 수, 개조식 문체, 쪽수 제한. 코드가 확인합니다.\n- **검토 규칙**: 말로 적은 규칙입니다. 다 쓴 뒤 판단 모델이 어긋나는 문장을 찾아 보여 주고 고치지는 않습니다.\n- **계산 확인**, **판정 검사**, **값 맞추기**, **빠진 것 채우기**: 기본 제공 확인과 보정 단계를 이름으로 붙입니다.\n- **자료끼리 값이 다를 때**: 비워 두면 어느 값을 썼는지와 그 이유를 적게 합니다.\n\n**템플릿·테마** › 템플릿 아래 **새 템플릿**(또는 템플릿 고르기 창의 **새 템플릿**)에서 내 문서 템플릿을 만듭니다. **기본 템플릿에서 시작**을 고르면 그 템플릿의 모든 설정(문서 형식의 머리 항목·번호·머리 배치·개조식·「끝.」, 지침, 장르 규칙, 점검표, 빠진 정보 질문, 검사, 세부 설정)이 채워집니다. DOCX·HWPX 예시 문서를 올리면 그 글을 쓰는 모델이 참고합니다. 모양은 테마의 색과 글꼴로 그립니다. **모두에게 공개**하면 다른 사람이 고를 수 있고, 편집은 만든 사람만 합니다. 만든 템플릿은 템플릿 고르기 창의 **내 템플릿**에 보입니다."
+},
+{
+"lang": "ko",
+"path": "chat/agents",
+"title": "에이전트와 스킬",
+"heading": "에이전트의 스킬",
+"text": "**스킬과 도구** › **스킬**에 이 에이전트가 쓰는 스킬이 한 줄씩 놓이고, 줄마다 적용 방식을 고릅니다.\n\n- **항상 적용**: 이 에이전트의 모든 대화에서 매 턴 지시에 넣습니다. 입력창에서 고른 스킬과 같은 방식이며, 둘 다에 있으면 한 번만 들어갑니다. 여섯 개까지, 합계 약 8,000 토큰까지 둘 수 있습니다. 나중에 스킬을 고쳐 길어지면 순서대로 들어가다가 남는 것만 그 턴에서 빠집니다.\n- **필요할 때**: 매 턴 넣지 않고, 챗 화면에서 도구를 쓰는 모델이 스킬의 설명을 보고 필요할 때 꺼내 씁니다.\n- 줄마다 **본문 미리 보기**와 대략의 토큰 수가 보이고, **항상 적용** 합계도 적힙니다.\n- **기본값 따르기**: 내 스킬은 모두 **필요할 때**로 쓸 수 있고, 입력창에서도 아무 스킬이나 고릅니다. 늘 쓸 스킬만 더해 **항상 적용**으로 둡니다.\n- **직접 고르기**: 목록에 있는 스킬만 씁니다. 입력창에서도 이 스킬만 고를 수 있습니다. 아무 스킬도 두지 않으면 이 에이전트는 스킬을 쓰지 않습니다(입력창에서 골라도 쓰이지 않습니다). 폼에도 그렇게 표시됩니다.\n- **+ 스킬 추가 (스토어 포함)**: 내 스킬과 스토어의 스킬(공식 스킬과 동료가 공개한 스킬)이 보입니다. 스토어 스킬은 **설치하고 추가**를 누르면 내 스킬에 사본이 생기고 목록에 들어갑니다."
+},
+{
+"lang": "ko",
+"path": "chat/agents",
+"title": "에이전트와 스킬",
+"heading": "스킬로 에이전트 만들기",
+"text": "스킬 상세 화면의 **이 스킬로 에이전트 만들기**(스킬 카드의 에이전트 단추도 같음)를 누르면 에이전트 만들기 화면이 채워진 채로 열립니다. 이름을 확인하고 **만들기**를 누르면 됩니다.\n\n- 이름·한 줄 설명은 스킬에서, 지시는 스킬의 설명과 사용 시점으로 채웁니다. 스킬 본문은 **항상 적용**으로 매 턴 들어가므로 지시에 다시 옮기지 않습니다.\n- 그 스킬이 **항상 적용**으로 들어가고, 사용할 화면은 스킬의 화면을, 도구는 스킬의 필수 도구를 따릅니다(필수 도구가 없으면 기본값 따르기).\n- 스토어의 스킬이면 **만들기**를 누를 때 내 스킬에 설치됩니다. 이미 설치한 스킬이면 그 사본을 써서 다시 설치하지 않습니다."
 },
 {
 "lang": "ko",
@@ -375,7 +389,14 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "스킬",
-"text": "스킬은 대화에 켜 두는 작업 방식입니다. 입력창의 **+** → **스킬**에서 최대 3개까지 고르면 그 대화가 끝날 때까지 켜져 있고, 다시 눌러 끕니다. 설치만 해서는 적용되지 않습니다. **공식 스킬**은 고르면 내 스킬에 추가되면서 켜집니다. 스킬은 자기 템플릿·검사·빠진 정보 질문을 함께 가져옵니다. 기본 스킬은 아래 「기본 스킬」에 있습니다.\n\n- **사용자 지정** → **스킬**에서 설치와 사용 중지, 직접 만들기(이름, 설명, 사용 시점, 절차, 필수 도구, 공개 범위)를 수행합니다. **서버가 돌리는 점검**에서 **쓸 템플릿**, **켜면 붙는 검사**, **웹 검색**·**그림**, **빠진 정보 질문**도 정합니다. 공개한 스킬은 스토어에 등록되며 다른 사용자는 사본으로 가져갑니다.\n- **사용자 지정 › 스킬 › 추가 › 스킬 업로드**에서 SKILL.md(.md) 또는 SKILL.md가 든 .zip·.skill 파일을 여러 개 한 번에 올릴 수 있습니다. .md는 맨 앞 YAML 머리에 `name`과 `description`이 있어야 하고, `resources/`의 .md·.txt는 본문 끝 「참고 자료」에 붙습니다. 올리기 전에 파일마다 미리 보기와 보안 스캔 결과(막음·주의)를 보여 줍니다. `scripts/` 아래의 Python 스크립트는 스킬과 함께 저장되어 코드 실행 샌드박스에서만 실행되고, 그 밖의 스크립트(.sh, .js 등)는 제외합니다. 스크립트가 있는 스킬을 공개하면 관리자가 **스킬 검토**에서 승인한 뒤에 다른 사람이 가져갈 수 있습니다. 검사는 휴리스틱이라 모든 위험을 찾지는 못합니다. **초안으로 올리기**를 고르면 꺼진 상태로 저장됩니다.\n- 스킬 상세의 **⋯ → 내보내기 (SKILL.md)**로 내 스킬을 SKILL.md 파일로 받습니다. 키·토큰처럼 보이는 문자열이나 보이지 않는 방향 제어 문자가 있으면 공개(공유)가 거절됩니다.\n- 도구가 필요한 스킬은 챗 화면에서, 도구 호출을 지원하는 모델을 사용하며, 해당 도구가 연결된 경우에만 활성화됩니다. 조건을 충족하지 못하면 사유가 표시됩니다.\n- 프로젝트의 **스킬** 탭에서 **스킬 고르기**로 고른 스킬은 그 프로젝트의 입력창에서 먼저 보입니다."
+"text": "스킬은 대화에 켜 두는 작업 방식입니다. 입력창의 **+** → **스킬**에서 최대 3개까지 고르면 그 대화가 끝날 때까지 켜져 있고, 다시 눌러 끕니다. 고르지 않은 스킬도 쓰입니다(아래 「필요할 때 쓰이는 스킬」). **공식 스킬**은 고르면 내 스킬에 추가되면서 켜집니다. 스킬은 자기 템플릿·검사·빠진 정보 질문을 함께 가져옵니다. 기본 스킬은 아래 「기본 스킬」에 있습니다.\n\n- **사용자 지정** → **스킬**에서 설치와 사용 중지, 직접 만들기(이름, 설명, 사용 시점, 절차, 필수 도구, 공개 범위)를 수행합니다. **서버가 돌리는 점검**에서 **쓸 템플릿**, **켜면 붙는 검사**, **웹 검색**·**그림**, **빠진 정보 질문**도 정합니다. 공개한 스킬은 스토어에 등록되며 다른 사용자는 사본으로 가져갑니다.\n- **사용자 지정 › 스킬 › 추가 › 스킬 업로드**에서 SKILL.md(.md) 또는 SKILL.md가 든 .zip·.skill 파일을 여러 개 한 번에 올릴 수 있습니다. .md는 맨 앞 YAML 머리에 `name`과 `description`이 있어야 하고, `resources/`의 .md·.txt는 본문 끝 「참고 자료」에 붙습니다. 올리기 전에 파일마다 미리 보기와 보안 스캔 결과(막음·주의)를 보여 줍니다. `scripts/` 아래의 Python 스크립트는 스킬과 함께 저장되어 코드 실행 샌드박스에서만 실행되고, 그 밖의 스크립트(.sh, .js 등)는 제외합니다. 스크립트가 있는 스킬을 공개하면 관리자가 **스킬 검토**에서 승인한 뒤에 다른 사람이 가져갈 수 있습니다. 검사는 휴리스틱이라 모든 위험을 찾지는 못합니다. **초안으로 올리기**를 고르면 꺼진 상태로 저장됩니다.\n- 스킬 상세의 **⋯ → 내보내기 (SKILL.md)**로 내 스킬을 SKILL.md 파일로 받습니다. 키·토큰처럼 보이는 문자열이나 보이지 않는 방향 제어 문자가 있으면 공개(공유)가 거절됩니다.\n- 도구가 필요한 스킬은 챗 화면에서, 도구 호출을 지원하는 모델을 사용하며, 해당 도구가 연결된 경우에만 활성화됩니다. 조건을 충족하지 못하면 사유가 표시됩니다.\n- 프로젝트의 **스킬** 탭에서 **스킬 고르기**로 고른 스킬은 그 프로젝트의 입력창에서 먼저 보입니다."
+},
+{
+"lang": "ko",
+"path": "chat/agents",
+"title": "에이전트와 스킬",
+"heading": "필요할 때 쓰이는 스킬",
+"text": "스킬은 골라야만 쓰이는 것이 아닙니다. 챗 화면에서 도구를 쓰는 모델이면, 이번 턴에 이미 적용된 것을 뺀 내 스킬(스토어에서 설치한 사본 포함, 켜 둔 것, 열두 개까지)의 설명을 모델이 보고 요청에 필요하면 꺼내 씁니다. **직접 고르기**로 스킬을 정한 에이전트와의 대화에서는 그 목록의 스킬만 후보가 됩니다. 매 턴 쓰게 하려면 입력창에서 고르거나 에이전트에서 **항상 적용**으로 둡니다.\n\n스킬에 딸린 Python 스크립트(올린 스킬의 `scripts/`)는 스킬과 함께 저장됩니다. 그 스킬을 쓰는 챗 턴에서 모델이 스킬 스크립트 실행 도구로 돌리며, 코드 실행 샌드박스에서만 돌고 서버에서 직접 돌지 않습니다."
 },
 {
 "lang": "ko",
@@ -662,49 +683,49 @@
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "스킬로 에이전트 짜기",
-"text": "**사용자 지정** → **에이전트** → **추가** → **에이전트 만들기**에서 **스킬과 도구** › **켜 둘 스킬**에 스킬을 고르면, 그 에이전트의 모든 대화에서 그 스킬이 켜집니다(여섯 개까지). 고르는 목록에는 내 스킬과 함께 아직 추가하지 않은 **공식 스킬**도 보이고, 고르면 내 스킬에 추가됩니다. 보고서·슬라이드에서만 작동하는 스킬을 고르면 처음 여는 화면이 그 화면으로 정해집니다. 스킬의 템플릿·검사·빠진 정보 질문도 함께 따라오고, 에이전트에서 따로 정한 템플릿·세부 설정이 있으면 그것이 먼저입니다. **입력창에서 고를 수 있는 스킬**은 대화 중에 더 켤 수 있는 스킬을 좁히는 칸입니다."
+"text": "**사용자 지정** → **에이전트** → **추가** → **에이전트 만들기**에서 **스킬과 도구** › **스킬**의 **+ 스킬 추가 (스토어 포함)**로 스킬을 더하고 **항상 적용**으로 두면, 그 에이전트의 모든 대화에서 그 스킬이 켜집니다(여섯 개까지). 더하는 목록에는 내 스킬과 함께 스토어의 스킬도 보이고, **설치하고 추가**를 누르면 내 스킬에 사본이 생깁니다. 스킬 하나로 시작하려면 스킬 상세의 **이 스킬로 에이전트 만들기**를 누릅니다. 보고서·슬라이드에서만 작동하는 스킬을 **항상 적용**으로 두면 처음 여는 화면이 그 화면으로 정해집니다. 스킬의 템플릿·검사·빠진 정보 질문도 함께 따라오고, 에이전트에서 따로 정한 템플릿·세부 설정이 있으면 그것이 먼저입니다. **필요할 때**로 둔 스킬은 매 턴 넣지 않고 모델이 필요할 때 꺼내 씁니다. **직접 고르기**로 바꾸면 목록에 있는 스킬만 쓰고, 입력창에서도 그 스킬만 고를 수 있습니다(에이전트의 스킬)."
 },
 {
 "lang": "ko",
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "회의록 에이전트",
-"text": "| 칸 | 넣을 값 |\n|---|---|\n| 이름 | 우리 팀 회의록 |\n| 지시 | 작성자는 「기획팀 [이름]」으로 적는다. 실행 항목은 담당 팀 순서로 정렬한다. (팀 사정만 적고, 회의록 쓰는 법은 스킬이 맡습니다) |\n| 켜 둘 스킬 | 회의록 작성 |\n| 추가로 할 일 | 쓰기 전에 준비하기 · 다 쓴 뒤 검토하기 · 마무리하기(다 쓰면 파일로 내보내기: HWPX) |\n| 템플릿·테마 › 테마 | 문서용 명조 |\n| 고급 › 사용할 화면 | 보고서 |"
+"text": "| 칸 | 넣을 값 |\n|---|---|\n| 이름 | 우리 팀 회의록 |\n| 지시 | 작성자는 「기획팀 [이름]」으로 적는다. 실행 항목은 담당 팀 순서로 정렬한다. (팀 사정만 적고, 회의록 쓰는 법은 스킬이 맡습니다) |\n| 항상 적용 스킬 | 회의록 작성 |\n| 추가로 할 일 | 쓰기 전에 준비하기 · 다 쓴 뒤 검토하기 · 마무리하기(다 쓰면 파일로 내보내기: HWPX) |\n| 템플릿·테마 › 테마 | 문서용 명조 |\n| 고급 › 사용할 화면 | 보고서 |"
 },
 {
 "lang": "ko",
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "개조식 보고 에이전트",
-"text": "켜 둘 스킬 **개조식 보고**, 테마 **문서용 명조**, 사용할 화면 **보고서**. 지시에는 보고 대상(「시설과장님」)과 결재선처럼 늘 같은 것만 적습니다."
+"text": "항상 적용 스킬 **개조식 보고**, 테마 **문서용 명조**, 사용할 화면 **보고서**. 지시에는 보고 대상(「시설과장님」)과 결재선처럼 늘 같은 것만 적습니다."
 },
 {
 "lang": "ko",
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "구매 검토 에이전트",
-"text": "켜 둘 스킬 **비교·결정 보고** + **견적 계산**, 사용할 화면 **보고서**. 지시에 「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」처럼 우리 기관의 기준을 적어 두면 요청마다 쓰지 않아도 됩니다."
+"text": "항상 적용 스킬 **비교·결정 보고** + **견적 계산**, 사용할 화면 **보고서**. 지시에 「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」처럼 우리 기관의 기준을 적어 두면 요청마다 쓰지 않아도 됩니다."
 },
 {
 "lang": "ko",
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "자료 집계 에이전트",
-"text": "켜 둘 스킬 **자료 추출·집계**, 스킬과 도구 › 도구에서 **파일 작업**, **차트 그리기**, **수치 계산**, 사용할 화면 **대화**. 엑셀을 올리고 「부서별 합계와 비율을 표로」라고 하면 기한·기간·분모 기준이 자료에 없을 때 먼저 묻습니다."
+"text": "항상 적용 스킬 **자료 추출·집계**, 스킬과 도구 › 도구에서 **파일 작업**, **차트 그리기**, **수치 계산**, 사용할 화면 **대화**. 엑셀을 올리고 「부서별 합계와 비율을 표로」라고 하면 기한·기간·분모 기준이 자료에 없을 때 먼저 묻습니다."
 },
 {
 "lang": "ko",
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "규정 안내 챗봇",
-"text": "1. 에이전트를 만들고 켜 둘 스킬 **규정 근거 답변** + **날짜 계산**을 고릅니다.\n2. **자료**에 학칙·규정 파일을 올리고, **담당 부서·연락처**를 적습니다.\n3. **추가로 할 일**에서 **공개 전 점검**(근거 없는 답 보류 · 담당 부서 안내 · 개인정보 가리기)을 체크합니다.\n4. 시험해 본 뒤 챗봇으로 공개합니다. 챗봇은 스킬 지시를 공개한 판에 함께 담아 답합니다."
+"text": "1. 에이전트를 만들고 항상 적용 스킬 **규정 근거 답변** + **날짜 계산**을 고릅니다.\n2. **자료**에 학칙·규정 파일을 올리고, **담당 부서·연락처**를 적습니다.\n3. **추가로 할 일**에서 **공개 전 점검**(근거 없는 답 보류 · 담당 부서 안내 · 개인정보 가리기)을 체크합니다.\n4. 시험해 본 뒤 챗봇으로 공개합니다. 챗봇은 스킬 지시를 공개한 판에 함께 담아 답합니다."
 },
 {
 "lang": "ko",
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "영상·조사 에이전트",
-"text": "- **강의 영상 정리**: 켜 둘 스킬 **YouTube 영상 전사·요약**, 사용할 화면 **대화**. 지시에 「핵심 다섯 줄과 용어 풀이 표」처럼 원하는 모양을 적습니다. **YouTube 전사** 커넥터가 켜져 있어야 합니다.\n- **동향 조사**: 켜 둘 스킬 **심층 조사** + **근거 대조**, 사용할 화면 **대화**. **심층 리서치** 커넥터가 켜져 있어야 하며, 한 번에 몇 분 걸립니다."
+"text": "- **강의 영상 정리**: 항상 적용 스킬 **YouTube 영상 전사·요약**, 사용할 화면 **대화**. 지시에 「핵심 다섯 줄과 용어 풀이 표」처럼 원하는 모양을 적습니다. **YouTube 전사** 커넥터가 켜져 있어야 합니다.\n- **동향 조사**: 항상 적용 스킬 **심층 조사** + **근거 대조**, 사용할 화면 **대화**. **심층 리서치** 커넥터가 켜져 있어야 하며, 한 번에 몇 분 걸립니다."
 },
 {
 "lang": "ko",
@@ -767,7 +788,7 @@
 "path": "glossary",
 "title": "용어",
 "heading": "",
-"text": "| 용어 | 뜻 |\n|---|---|\n| 화면(챗·보고서·슬라이드·이미지·오디오/동영상) | 홈에서 선택하는 화면. 관리자가 켜고 끔 |\n| 대화 | 한 작업의 기록. 사이드바의 한 줄 |\n| 아티팩트 | 대화에서 만들어진 문서·슬라이드·차트 등. 오른쪽 패널과 갤러리 |\n| 템플릿 | 아티팩트의 구조(구성 규칙·조판·점검 항목). 이 대화 내내 유지 |\n| 테마 | 아티팩트의 모양(색·서체·문체). 에이전트·프로젝트에 붙이고 설정 › 테마에서 관리 |\n| 프로젝트 | 자료·지침·대화를 묶는 작업 공간 |\n| 에이전트 | 지시·진행 과정·도구·자료가 정해진 도우미. 입력창의 **+** → **에이전트**로 시작 |\n| 진행 과정 | 에이전트가 일하는 순서. 바로 답하기 · 기본 과정에서 시작 · 직접 구성(고급) |\n| 기본 과정 | 기본 에이전트(개조식 보고, 회의록 등)의 일하는 순서. 이미 그 과정에서 시작한 에이전트만 씀 |\n| 묶음 | 에이전트가 쓰기 전후에 하는 일을 묶은 것. 에이전트 설정의 「추가로 할 일」에서 체크 |\n| 스킬 | 대화에 켜 두는 작업 방식. 입력창에서 최대 3개, 에이전트의 「켜 둘 스킬」로 6개까지. 템플릿·검사·빠진 정보 질문을 함께 가져옴 |\n| 공식 스킬 | 관리자가 모두에게 공개한 스킬. 회의록·개조식 보고 같은 일을 하며, 입력창에서 고르면 내 스킬에 추가됨 |\n| 숨김 | 목록·스토어·고르기 창에 보이지 않지만 지우지 않은 기본 스킬·템플릿·테마·커넥터. 묶음과 그 항목을 쓰던 대화에서는 그대로 동작하고, 관리자는 「숨김 포함」으로 봄 |\n| 커넥터 | 모델이 쓰는 외부 도구(MCP). 계정 전체에서 켜고 끔 |\n| 메모리 | 대화를 넘어 기억하는 사실. 설정 › 메모리 |\n| strict-local | 외부로 나가지 않는다고 확인된 모델 표시 |\n| Auto | 요청에 따라 모델을 바꾸는 대화 모드(품질 우선·비용 절약) |\n| 크레딧 | 사용량 단위. 무료 모델은 쓰지 않음 |\n| 작업 단계 | 답변 위의 \"작업 완료 · N단계\". 참고한 항목을 표시 |\n| 턴 | 질문 하나와 그에 대한 답변. 화면에는 \"이전 턴 첨부\"처럼 표시 |\n| 이미지 · 그림 · 도식 | 첨부하거나 생성하는 이미지 파일 · 문서에 넣는 그림(UI 라벨) · 텍스트 모델이 그리는 흐름도와 구조도 |\n| 개요 카드 | 보고서·슬라이드를 쓰기 전 구성을 확인하는 카드 |\n| 마스킹 | 개인정보를 자리표시자로 바꿔 보내는 것 |\n| 챗봇 | 다른 사람이 물어볼 수 있게 공개한 에이전트. 구성원·링크·외부 공개 |\n| 문의·신고 | 관리자에게 보내는 오류 신고·기능 요청·문의 |"
+"text": "| 용어 | 뜻 |\n|---|---|\n| 화면(챗·보고서·슬라이드·이미지·오디오/동영상) | 홈에서 선택하는 화면. 관리자가 켜고 끔 |\n| 대화 | 한 작업의 기록. 사이드바의 한 줄 |\n| 아티팩트 | 대화에서 만들어진 문서·슬라이드·차트 등. 오른쪽 패널과 갤러리 |\n| 템플릿 | 아티팩트의 구조(구성 규칙·조판·점검 항목). 이 대화 내내 유지 |\n| 테마 | 아티팩트의 모양(색·서체·문체). 에이전트·프로젝트에 붙이고 설정 › 테마에서 관리 |\n| 프로젝트 | 자료·지침·대화를 묶는 작업 공간 |\n| 에이전트 | 지시·진행 과정·도구·자료가 정해진 도우미. 입력창의 **+** → **에이전트**로 시작 |\n| 진행 과정 | 에이전트가 일하는 순서. 바로 답하기 · 기본 과정에서 시작 · 직접 구성(고급) |\n| 기본 과정 | 기본 에이전트(개조식 보고, 회의록 등)의 일하는 순서. 이미 그 과정에서 시작한 에이전트만 씀 |\n| 묶음 | 에이전트가 쓰기 전후에 하는 일을 묶은 것. 에이전트 설정의 「추가로 할 일」에서 체크 |\n| 스킬 | 대화에 켜 두는 작업 방식. 입력창에서 최대 3개, 에이전트의 「항상 적용」으로 6개까지, 고르지 않은 스킬은 모델이 필요할 때 꺼내 씀. 템플릿·검사·빠진 정보 질문을 함께 가져옴 |\n| 공식 스킬 | 관리자가 모두에게 공개한 스킬. 회의록·개조식 보고 같은 일을 하며, 입력창에서 고르면 내 스킬에 추가됨 |\n| 숨김 | 목록·스토어·고르기 창에 보이지 않지만 지우지 않은 기본 스킬·템플릿·테마·커넥터. 묶음과 그 항목을 쓰던 대화에서는 그대로 동작하고, 관리자는 「숨김 포함」으로 봄 |\n| 커넥터 | 모델이 쓰는 외부 도구(MCP). 계정 전체에서 켜고 끔 |\n| 메모리 | 대화를 넘어 기억하는 사실. 설정 › 메모리 |\n| strict-local | 외부로 나가지 않는다고 확인된 모델 표시 |\n| Auto | 요청에 따라 모델을 바꾸는 대화 모드(품질 우선·비용 절약) |\n| 크레딧 | 사용량 단위. 무료 모델은 쓰지 않음 |\n| 작업 단계 | 답변 위의 \"작업 완료 · N단계\". 참고한 항목을 표시 |\n| 턴 | 질문 하나와 그에 대한 답변. 화면에는 \"이전 턴 첨부\"처럼 표시 |\n| 이미지 · 그림 · 도식 | 첨부하거나 생성하는 이미지 파일 · 문서에 넣는 그림(UI 라벨) · 텍스트 모델이 그리는 흐름도와 구조도 |\n| 개요 카드 | 보고서·슬라이드를 쓰기 전 구성을 확인하는 카드 |\n| 마스킹 | 개인정보를 자리표시자로 바꿔 보내는 것 |\n| 챗봇 | 다른 사람이 물어볼 수 있게 공개한 에이전트. 구성원·링크·외부 공개 |\n| 문의·신고 | 관리자에게 보내는 오류 신고·기능 요청·문의 |"
 },
 {
 "lang": "ko",
@@ -1656,7 +1677,7 @@
 "path": "chat/agent-examples",
 "title": "Agent and template examples",
 "heading": "",
-"text": "Examples of agents and templates for work documents you write often. Everything here is made with the **Customize** agent form and template editor. For work an official skill does, such as minutes or a bullet-style briefing, building the agent from **Skills kept on** is quicker (see Working with skills and building agents). Paste the instructions below to start, then adjust them to your side, such as the organization's name or approval line."
+"text": "Examples of agents and templates for work documents you write often. Everything here is made with the **Customize** agent form and template editor. For work an official skill does, such as minutes or a bullet-style briefing, building the agent from skills set to **Always** is quicker (see Working with skills and building agents). Paste the instructions below to start, then adjust them to your side, such as the organization's name or approval line."
 },
 {
 "lang": "en",
@@ -1747,7 +1768,7 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "How it works",
-"text": "Pick one of three under **How it works** in the create-agent form. A new agent and its process are saved together: if the process is refused, no agent is made and the form stays as it was.\n\n- **Answer directly**: answers the request right away. An agent that answers in the chat makes no file (DOCX, HWPX, PDF).\n- **Start from a base process**: follows the working order of a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …). When no base process can be picked this option is hidden; it shows only on an agent that already started from one (which keeps it). A new agent does the same job with **Answer directly** plus **Skills kept on** and bundles. To get a file, set **Advanced** › first screen to **Report** and tick **Export a file when done** under Finish.\n- **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one \"This agent\" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order."
+"text": "Pick one of three under **How it works** in the create-agent form. A new agent and its process are saved together: if the process is refused, no agent is made and the form stays as it was.\n\n- **Answer directly**: answers the request right away. An agent that answers in the chat makes no file (DOCX, HWPX, PDF).\n- **Start from a base process**: follows the working order of a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …). When no base process can be picked this option is hidden; it shows only on an agent that already started from one (which keeps it). A new agent does the same job with **Answer directly** plus skills set to **Always** and bundles. To get a file, set **Advanced** › first screen to **Report** and tick **Export a file when done** under Finish.\n- **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one \"This agent\" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order."
 },
 {
 "lang": "en",
@@ -1761,7 +1782,7 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Template & theme and sources",
-"text": "These sit under **More settings** in the create-agent form.\n\n- **Template & theme**: pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **New template** under the template makes your own; **Manage themes** under the theme opens Settings › Themes. An agent started from a base process uses the base's template when the template is left empty (\"The base's template\"), and that template sets the document format. The **Document format** field shows only for a report-writing agent on Answer directly or Set it up yourself.\n- **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).\n- **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.\n- **Skills and tools** and **Advanced** (screens, first screen, model, output language, web search default, variety, colour, use memory). Adding a screen while no first screen is chosen makes it the first screen. Keeping on a skill that works only on reports or slides (회의록 작성, 개조식 보고, …) sets the first screen to that screen when none is chosen, and a line under the skills says where each one works. **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**."
+"text": "These sit under **More settings** in the create-agent form.\n\n- **Template & theme**: pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **New template** under the template makes your own; **Manage themes** under the theme opens Settings › Themes. An agent started from a base process uses the base's template when the template is left empty (\"The base's template\"), and that template sets the document format. The **Document format** field shows only for a report-writing agent on Answer directly or Set it up yourself.\n- **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).\n- **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.\n- **Skills and tools** and **Advanced** (screens, first screen, model, output language, web search default, variety, colour, use memory). Adding a screen while no first screen is chosen makes it the first screen. Setting a skill that works only on reports or slides to **Always** (회의록 작성, 개조식 보고, …) sets the first screen to that screen when none is chosen, and a line under the skills says where each one works. **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**."
 },
 {
 "lang": "en",
@@ -1776,6 +1797,20 @@
 "title": "Agents and skills",
 "heading": "Detailed settings and your own templates",
 "text": "An agent that writes reports can turn on **Set for this agent** under **Detailed settings — The process's calculations, checks and outline** below the process and change what its template sets, starting from the template's values. Turned off, the template's (or document format's) settings apply as they are.\n\n- **Calculate before writing**: built-in calculations such as dates, quote totals, staffing, total cost per option, must-haves and weighted scores, career periods; and the **date basis** (the material's date or the meeting day).\n- **How it writes**: no web search, figures only when asked, a fixed outline.\n- **Structure rules**: sections in order, required tables (columns), summary lines at the top, bullet style, page limit. Checked by code.\n- **Review rules**: rules in your own words. After writing, a judge model shows the sentences that break them; nothing is rewritten.\n- **Calculation checks**, **Judged checks**, **Value fixes**, **Fill in what is missing**: built-in checks and repair steps attached by name.\n- **When the material disagrees**: left empty, the writing says which value it used and why.\n\nMake your own document template with **New template** under **Template & theme** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX sample document is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker."
+},
+{
+"lang": "en",
+"path": "chat/agents",
+"title": "Agents and skills",
+"heading": "An agent's skills",
+"text": "**Skills and tools** › **Skills** lists the skills the agent uses, one per row, each with how it applies.\n\n- **Always**: added to the instructions on every turn of every conversation with this agent, the same way as a skill picked in the composer; one in both goes in once. Up to six, about 8,000 tokens together. If a skill later grows past that, they go in in order and only what no longer fits is left out of that turn.\n- **When needed**: not added every turn; on the Chat screen a tool-calling model reads the skill's description and pulls it in when it needs it.\n- Each row shows **Preview the body** and its rough token count, and the **Always** total is shown.\n- **Use defaults**: all your skills are available when needed, and any skill can be picked in the composer. Add only the ones to use every turn and set them to **Always**.\n- **Choose**: only the skills in the list are used, and only these can be picked in the composer. With none listed the agent uses no skills, not even ones picked in the composer; the form says so.\n- **+ Add a skill (store included)** lists your skills and the store's (official skills and ones colleagues shared). **Install and add** on a store skill copies it into your skills and lists it."
+},
+{
+"lang": "en",
+"path": "chat/agents",
+"title": "Agents and skills",
+"heading": "Make an agent from a skill",
+"text": "**Make an agent from this skill** on a skill's page (or the agent button on a skill card) opens the create-agent screen filled in. Check the name and press **Create**.\n\n- The name and one-line description come from the skill; the instructions from its description and when-to-use. The skill's body goes in every turn as an **Always** skill, so it is not copied into the instructions.\n- The skill is set to **Always**; the screens follow the skill's, and the tools its required tools (none required: **Use defaults**).\n- A store skill is installed into your skills when you press **Create**. One already installed is used as it is, not installed again."
 },
 {
 "lang": "en",
@@ -1796,7 +1831,14 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Skills",
-"text": "A skill is a working method kept on in a conversation: select up to three from **+** → **Skills** (again to turn one off). An **official skill** is added to your skills when picked. A skill brings its template, checks and questions.\n\n- Use **Customize** → **Skills** to install a skill, stop using one, or build your own with a name, description, when to use it, steps, required tools, and visibility. A published skill is listed in the store, and other users import it as a copy.\n- **Customize › Skills › Add › Upload skill** takes a SKILL.md (.md) or a .zip/.skill file containing one, several at a time. A .md file needs YAML front matter with `name` and `description`; .md and .txt files under `resources/` are appended to the body under 「참고 자료」 (References). Before anything is saved, each file shows a preview and its security-scan findings (blocked or warning). Python scripts under `scripts/` are stored with the skill and run only in the code execution sandbox; other scripts (.sh, .js and the like) are left out. A published skill with scripts can be copied by others only after an administrator approves it under **Skill review**. The checks are heuristic and will not catch every risk. **Upload as draft** saves the skill switched off.\n- A skill's **⋯ → Export (SKILL.md)** downloads your skill as a SKILL.md file. Sharing is refused while a skill contains key- or token-like strings or invisible direction-control characters.\n- A skill that requires tools is enabled only when all of these hold: you are on the Chat screen, the model supports tool calling, and that tool is connected. When a condition is not met, the reason is shown.\n- Skills you pick with **Choose skills** on a project's **Skills** tab appear first in that project's composer."
+"text": "A skill is a working method kept on in a conversation: select up to three from **+** → **Skills** (again to turn one off). Unpicked skills are used too (see \"Skills used when needed\"). An **official skill** is added to your skills when picked. A skill brings its template, checks and questions.\n\n- Use **Customize** → **Skills** to install a skill, stop using one, or build your own with a name, description, when to use it, steps, required tools, and visibility. A published skill is listed in the store, and other users import it as a copy.\n- **Customize › Skills › Add › Upload skill** takes a SKILL.md (.md) or a .zip/.skill file containing one, several at a time. A .md file needs YAML front matter with `name` and `description`; .md and .txt files under `resources/` are appended to the body under 「참고 자료」 (References). Before anything is saved, each file shows a preview and its security-scan findings (blocked or warning). Python scripts under `scripts/` are stored with the skill and run only in the code execution sandbox; other scripts (.sh, .js and the like) are left out. A published skill with scripts can be copied by others only after an administrator approves it under **Skill review**. The checks are heuristic and will not catch every risk. **Upload as draft** saves the skill switched off.\n- A skill's **⋯ → Export (SKILL.md)** downloads your skill as a SKILL.md file. Sharing is refused while a skill contains key- or token-like strings or invisible direction-control characters.\n- A skill that requires tools works only on the Chat screen, with a tool-calling model and that tool connected. When a condition is not met, the reason is shown.\n- Skills you pick with **Choose skills** on a project's **Skills** tab appear first in that project's composer."
+},
+{
+"lang": "en",
+"path": "chat/agents",
+"title": "Agents and skills",
+"heading": "Skills used when needed",
+"text": "A skill does not have to be picked to be used. On the Chat screen with a tool-calling model, the model sees the descriptions of your switched-on skills that this turn does not already apply (store copies you installed included, up to twelve) and pulls one in when the request needs it. In a conversation with an agent set to **Choose**, only the skills in its list are offered. To have a skill used on every turn, pick it in the composer or set it to **Always** in an agent.\n\nA skill's own Python scripts (the `scripts/` of an uploaded skill) are stored with it. On a chat turn that uses the skill, the model runs them with the skill-script tool, only in the code execution sandbox and never on the server itself."
 },
 {
 "lang": "en",
@@ -2083,49 +2125,49 @@
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "Building an agent from skills",
-"text": "In **Customize** → **Agents** → **Add** → **Create an agent**, the skills you choose under **Skills and tools** › **Skills kept on** are on in every conversation with that agent (up to six). The list shows your skills and the **official skills** you have not added yet; picking one adds it to your skills. Picking a skill that works only on reports or slides sets the agent's first screen to that screen. Each skill's template, checks and missing-information questions come with it; a template or detailed settings set on the agent itself come first. **Skills you can pick in the composer** narrows what can be turned on during a conversation."
+"text": "In **Customize** → **Agents** → **Add** → **Create an agent**, skills you add with **+ Add a skill (store included)** under **Skills and tools** › **Skills** and set to **Always** are on in every conversation with that agent (up to six). The list shows your skills and the store's; **Install and add** copies a store skill into your skills. To start from one skill, press **Make an agent from this skill** on its page. Setting a skill that works only on reports or slides to **Always** sets the agent's first screen to that screen. Each skill's template, checks and missing-information questions come with it; a template or detailed settings set on the agent itself come first. A skill set to **When needed** is not added every turn; the model pulls it in when it needs it. With **Choose** only the listed skills are used, and only these can be picked in the composer (An agent's skills)."
 },
 {
 "lang": "en",
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "A minutes agent",
-"text": "| Field | Value |\n|---|---|\n| Name | Our team's minutes |\n| Instructions | 작성자는 「기획팀 [이름]」으로 적는다. 실행 항목은 담당 팀 순서로 정렬한다. (Only your team's specifics; the skill knows how to write minutes) |\n| Skills kept on | 회의록 작성 |\n| Extra work | Prepare before writing · Review after writing · Finish (export a file when done: HWPX) |\n| Template & theme › Theme | 문서용 명조 |\n| Advanced › Screens | Report |"
+"text": "| Field | Value |\n|---|---|\n| Name | Our team's minutes |\n| Instructions | 작성자는 「기획팀 [이름]」으로 적는다. 실행 항목은 담당 팀 순서로 정렬한다. (Only your team's specifics; the skill knows how to write minutes) |\n| Always | 회의록 작성 |\n| Extra work | Prepare before writing · Review after writing · Finish (export a file when done: HWPX) |\n| Template & theme › Theme | 문서용 명조 |\n| Advanced › Screens | Report |"
 },
 {
 "lang": "en",
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "A briefing agent",
-"text": "Skills kept on **개조식 보고**, theme **문서용 명조**, screen **Report**. Put only what never changes in the instructions, such as the addressee (「시설과장님」) and the approval line."
+"text": "**개조식 보고** set to Always, theme **문서용 명조**, screen **Report**. Put only what never changes in the instructions, such as the addressee (「시설과장님」) and the approval line."
 },
 {
 "lang": "en",
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "A purchase review agent",
-"text": "Skills kept on **비교·결정 보고** + **견적 계산**, screen **Report**. Write your organization's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them."
+"text": "**비교·결정 보고** + **견적 계산** set to Always, screen **Report**. Write your organization's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them."
 },
 {
 "lang": "en",
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "A tally agent",
-"text": "Skills kept on **자료 추출·집계**; under Skills and tools › Tools, **파일 작업**, **차트 그리기** and **수치 계산**; screen **Chat**. Upload a spreadsheet and ask 「부서별 합계와 비율을 표로」; it first asks for the deadline, period or denominator basis when the material does not give it."
+"text": "**자료 추출·집계** set to Always; under Skills and tools › Tools, **파일 작업**, **차트 그리기** and **수치 계산**; screen **Chat**. Upload a spreadsheet and ask 「부서별 합계와 비율을 표로」; it first asks for the deadline, period or denominator basis when the material does not give it."
 },
 {
 "lang": "en",
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "A regulations chatbot",
-"text": "1. Create an agent with **규정 근거 답변** + **날짜 계산** kept on.\n2. Upload the regulation files under **Sources** and fill in **Department and contact**.\n3. Under **Extra work**, tick **공개 전 점검** (the pre-publication check: hold answers without grounds · point to the department · mask personal information).\n4. Try it, then publish it as a chatbot. The bot answers with the skills' instructions frozen into the published version."
+"text": "1. Create an agent with **규정 근거 답변** + **날짜 계산** set to Always.\n2. Upload the regulation files under **Sources** and fill in **Department and contact**.\n3. Under **Extra work**, tick **공개 전 점검** (the pre-publication check: hold answers without grounds · point to the department · mask personal information).\n4. Try it, then publish it as a chatbot. The bot answers with the skills' instructions frozen into the published version."
 },
 {
 "lang": "en",
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "Video and research agents",
-"text": "- **Lecture video notes**: **YouTube 영상 전사·요약** kept on, screen **Chat**. Write the shape you want in the instructions (「핵심 다섯 줄과 용어 풀이 표」). The **YouTube 전사** connector must be on.\n- **Trend research**: **심층 조사** + **근거 대조** kept on, screen **Chat**. The **심층 리서치** connector must be on, and one run takes a few minutes."
+"text": "- **Lecture video notes**: **YouTube 영상 전사·요약** set to Always, screen **Chat**. Write the shape you want in the instructions (「핵심 다섯 줄과 용어 풀이 표」). The **YouTube 전사** connector must be on.\n- **Trend research**: **심층 조사** + **근거 대조** set to Always, screen **Chat**. The **심층 리서치** connector must be on, and one run takes a few minutes."
 },
 {
 "lang": "en",
@@ -2188,7 +2230,7 @@
 "path": "glossary",
 "title": "Glossary",
 "heading": "",
-"text": "| Term | Meaning |\n|---|---|\n| Screen (Chat · Report · Slides · Image · Audio/Video) | The screen you choose on the home page. Administrators turn each one on and off |\n| Conversation (대화) | The record of one piece of work. One row in the sidebar |\n| Artifact (아티팩트) | A document, deck, chart or other file produced in a conversation. The right-hand panel and the gallery |\n| Template (템플릿) | The structure of the artifact (structure rules, typesetting, check items). It stays for the whole conversation |\n| Theme (테마) | The look of the artifact (colors, typefaces, tone). Attached to an agent or a project, kept in Settings › Themes |\n| Project (프로젝트) | A workspace that groups material, instructions, and conversations |\n| Agent (에이전트) | A helper with set instructions, process, tools, and material. Start one from **+** → **Agents** in the composer |\n| How it works (진행 과정) | The order an agent works in: Answer directly · Start from a base process · Set it up yourself (advanced) |\n| Base process (기본 과정) | The working order of a built-in agent (Bullet-style briefing, Minutes, …). Used only by agents that already started from it |\n| Bundle (묶음) | A group of things an agent does before and after writing. Ticked under Extra work in the agent settings |\n| Skill (스킬) | A way of working you keep on in a conversation. Up to 3 in the composer, up to 6 as an agent's skills kept on. Brings its template, checks and missing-information questions |\n| Official skill (공식 스킬) | A skill the administrator shares with everyone, for jobs such as minutes or a bullet-style briefing. Picking it in the composer adds it to your skills |\n| Hidden (숨김) | A built-in skill, template, theme or connector kept but not shown in the lists, the store or the pickers. It still works in bundles and earlier conversatio"
+"text": "| Term | Meaning |\n|---|---|\n| Screen (Chat · Report · Slides · Image · Audio/Video) | The screen you choose on the home page. Administrators turn each one on and off |\n| Conversation (대화) | The record of one piece of work. One row in the sidebar |\n| Artifact (아티팩트) | A document, deck, chart or other file produced in a conversation. The right-hand panel and the gallery |\n| Template (템플릿) | The structure of the artifact (structure rules, typesetting, check items). It stays for the whole conversation |\n| Theme (테마) | The look of the artifact (colors, typefaces, tone). Attached to an agent or a project, kept in Settings › Themes |\n| Project (프로젝트) | A workspace that groups material, instructions, and conversations |\n| Agent (에이전트) | A helper with set instructions, process, tools, and material. Start one from **+** → **Agents** in the composer |\n| How it works (진행 과정) | The order an agent works in: Answer directly · Start from a base process · Set it up yourself (advanced) |\n| Base process (기본 과정) | The working order of a built-in agent (Bullet-style briefing, Minutes, …). Used only by agents that already started from it |\n| Bundle (묶음) | A group of things an agent does before and after writing. Ticked under Extra work in the agent settings |\n| Skill (스킬) | A way of working you keep on in a conversation. Up to 3 in the composer, up to 6 set to Always on an agent; skills not picked are pulled in by the model when needed. Brings its template, checks and missing-information questions |\n| Official skill (공식 스킬) | A skill the administrator shares with everyone, for jobs such as minutes or a bullet-style briefing. Picking it in the composer adds it to your skills |\n| Hidden (숨김) | A built-in skill, template, theme or connector kept but not shown in the lists, the store or the pic"
 },
 {
 "lang": "en",

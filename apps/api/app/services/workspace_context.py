@@ -638,6 +638,14 @@ def gives_material(question: str, attachment_ids: list[str] | None) -> bool:
 
 #: Skills an agent may keep on (its own composition), apart from the three picked per turn.
 MAX_AGENT_SKILLS = 6
+#: Estimated tokens the kept-on skills may take in each turn together; the first always runs.
+AGENT_SKILL_TOKEN_BUDGET = 8_000
+
+
+def skill_tokens(skill: Skill) -> int:
+    """Estimated prompt cost of one skill."""
+    return skill.estimated_tokens or starter.estimate_tokens(
+        skill.when_to_use, skill.body, skill.description)
 
 
 async def agent_skill_rows(db: AsyncSession, user_id: str, agent: Agent | None,
@@ -655,6 +663,7 @@ async def agent_skill_rows(db: AsyncSession, user_id: str, agent: Agent | None,
     rows = (await db.exec(select(Skill).where(col(Skill.id).in_(ids)))).all()
     by_id = {row.id: row for row in rows}
     out: list[Skill] = []
+    spent = 0
     for skill_id in ids[:MAX_AGENT_SKILLS]:
         row = by_id.get(skill_id)
         if row is None or not row.enabled:
@@ -663,6 +672,10 @@ async def agent_skill_rows(db: AsyncSession, user_id: str, agent: Agent | None,
             continue
         if kind and row.kinds and kind not in row.kinds:
             continue
+        cost = skill_tokens(row)
+        if out and spent + cost > AGENT_SKILL_TOKEN_BUDGET:
+            continue
+        spent += cost
         out.append(row)
     return out
 
@@ -1149,9 +1162,11 @@ __all__ = [
     "ContextBlock",
     "ContextFile",
     "MAX_ACTIVE_SKILLS",
+    "AGENT_SKILL_TOKEN_BUDGET",
     "MAX_AGENT_SKILLS",
     "STANDING",
     "agent_skill_rows",
+    "skill_tokens",
     "WorkspaceContext",
     "WorkspaceContextError",
     "agent_settings",

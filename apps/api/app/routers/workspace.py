@@ -198,6 +198,27 @@ async def _validate_skill_ids(
         raise HTTPException(status_code=422, detail="invalid_skill_ids")
 
 
+def _allowlist_with_active(skill_ids: list | None, active: list | None) -> list | None:
+    """A skill list that names its kept-on skills too: 「항상 적용」 is part of what it may use."""
+    if skill_ids is None:
+        return None
+    return [*skill_ids, *(x for x in active or [] if x not in skill_ids)]
+
+
+async def _check_active_tokens(
+    db: DbSession, active: list[str] | None, *, before: list | None = None
+) -> None:
+    """Kept-on skills within the per-turn budget; one that adds a skill past it is refused,
+    while trimming an over-budget set (or keeping it) stays allowed."""
+    ids = [str(x) for x in active or []]
+    if len(ids) < 2 or set(ids) <= {str(x) for x in before or []}:
+        return
+    rows = (await db.exec(select(Skill).where(col(Skill.id).in_(ids)))).all()
+    total = sum(workspace_context.skill_tokens(row) for row in rows)
+    if total > workspace_context.AGENT_SKILL_TOKEN_BUDGET:
+        raise HTTPException(status_code=422, detail="active_skills_too_long")
+
+
 async def _skill_warnings(db: DbSession, agent: Agent) -> list[SkillWarning]:
     """Kept-on and pickable skills that apply on none of the agent's surfaces."""
     active = [str(x) for x in agent.active_skill_ids or []]
@@ -2443,8 +2464,11 @@ async def create_agent(payload: AgentCreateIn, user: CurrentUser, db: DbSession)
                                 detail="process_invalid") from None
     await _validate_skill_ids(db, user, payload.skill_ids)
     await _validate_skill_ids(db, user, payload.active_skill_ids)
+    await _check_active_tokens(db, payload.active_skill_ids)
     await _validate_tool_names(db, user, payload.tools)
     fields = payload.model_dump(exclude={"process"})
+    fields["skill_ids"] = _allowlist_with_active(fields.get("skill_ids"),
+                                                 fields.get("active_skill_ids"))
     bindings = await _validate_agent_bindings(db, user, fields)
     checks = await _validated_checks(db, user, fields)
     slug = await _claim_slug(db, user.id, payload.slug or payload.name)
@@ -2520,6 +2544,7 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         skill_ids = copied if copied or not wanted else None
     # the skills it is built from, as the person's own copies
     active_skill_ids = await copied_skills(list(origin.active_skill_ids or [])) or None
+    skill_ids = _allowlist_with_active(skill_ids, active_skill_ids)
 
     # missing-knowledge note in editable description
     description = origin.description
@@ -2594,6 +2619,14 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
             changes["active_skill_ids"],
             grandfathered=set(agent.active_skill_ids or []),
         )
+        await _check_active_tokens(db, changes["active_skill_ids"],
+                                   before=agent.active_skill_ids)
+    if "skill_ids" in changes or "active_skill_ids" in changes:
+        allow = changes.get("skill_ids", agent.skill_ids)
+        merged = _allowlist_with_active(
+            allow, changes.get("active_skill_ids", agent.active_skill_ids))
+        if merged != allow:
+            changes["skill_ids"] = merged
     if "tools" in changes:
         await _validate_tool_names(
             db,

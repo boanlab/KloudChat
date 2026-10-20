@@ -24,6 +24,39 @@ const EN: Record<string, string> = {
   '요청한 모델 {asked}이(가) 응답하지 못해 대체 모델 {served}이(가) 답했습니다.':
     'The requested model {asked} did not answer, so the fallback model {served} did.',
   '대체 모델이 답함': 'Fallback model answered',
+  // 항상 적용 / 필요할 때, agents made from a skill
+  '항상 적용할 스킬로 에이전트를 짜고, 필요할 때 쓸 스킬과 도구를 좁힙니다':
+    'Build the agent from skills applied every turn, and narrow the skills and tools it uses when needed',
+  '항상 적용': 'Always',
+  '필요할 때': 'When needed',
+  '{name} 적용 방식': 'How {name} applies',
+  '+ 스킬 추가 (스토어 포함)': '+ Add a skill (store included)',
+  '스킬 추가': 'Add a skill',
+  '스토어 · 설치하면 내 스킬에 복사됩니다': 'Store · installing copies it into your skills',
+  '설치하는 중…': 'Installing…',
+  '설치하고 추가': 'Install and add',
+  '항상 적용은 {n}개까지입니다.': 'Up to {n} skills can apply every turn.',
+  '항상 적용 스킬은 합계 약 {n} 토큰까지입니다.': 'Skills applied every turn may take about {n} tokens together.',
+  '항상 적용: 매 턴 지시에 넣습니다. 필요할 때: 모델이 설명을 보고 고릅니다.':
+    'Always: added to the instructions every turn. When needed: the model picks it from its description.',
+  '내 스킬은 모두 「필요할 때」로 쓸 수 있습니다. 늘 쓸 스킬만 더해 「항상 적용」으로 두세요.':
+    'All your skills are available when needed. Add only the ones to use every turn and set them to Always.',
+  '「직접 고르기」에서 아무 스킬도 두지 않으면 이 에이전트는 스킬을 쓰지 않습니다. 입력창에서 골라도 쓰이지 않습니다.':
+    'With Choose and no skills listed, this agent uses no skills, not even ones picked in the composer.',
+  '이 목록의 스킬만 씁니다. 입력창에서도 이 스킬만 고를 수 있습니다.':
+    'Only the skills in this list are used, and only these can be picked in the composer.',
+  '저장하면 내 스킬에 설치됩니다.': 'Installed into your skills on save.',
+  '본문 미리 보기': 'Preview the body',
+  '항상 적용 {n}/{max}개 · 약 {tokens} / {limit} 토큰': 'Always: {n}/{max} · about {tokens} / {limit} tokens',
+  '「{name}」 스킬로 채워 두었습니다. 이름을 확인하고 저장하세요.': 'Filled in from the skill “{name}”. Check the name and save.',
+  '저장하면 이 스킬이 내 스킬에 설치됩니다.': 'Saving installs this skill into your skills.',
+  '이 스킬을 찾을 수 없습니다. 빈 에이전트로 시작합니다.': 'This skill was not found. Starting from a blank agent.',
+  '스킬을 읽는 중입니다': 'Reading the skill',
+  '이 스킬로 에이전트 만들기': 'Make an agent from this skill',
+  '{name} 스킬로 에이전트 만들기': 'Make an agent from {name}',
+  '에이전트로': 'As agent',
+  '항상 적용할 스킬이 너무 깁니다(합계 약 8,000 토큰까지). 하나를 「필요할 때」로 바꾸세요.':
+    'The skills applied every turn are too long (about 8,000 tokens together at most). Set one to When needed.',
   // Skill-built agents, official skills, connector tools
   '켜 둔 스킬이 없습니다.': 'No skills kept on.',
   '최대 6개까지 켜 둘 수 있습니다.': 'You can keep up to six on.',

@@ -1,4 +1,4 @@
-import { Check, Globe, Loader2, Lock, MessageCircle, Plus } from 'lucide-react'
+import { Bot, Check, Globe, Loader2, Lock, MessageCircle, Plus } from 'lucide-react'
 import { createElement, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PickBox } from '@/components/ui/BulkSelect'
@@ -160,6 +160,19 @@ export function ItemCard({
           {busy === 'try' ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
           <span>{t('바로 쓰기')}</span>
         </button>
+        {item.type === 'skill' && (
+          <button
+            type="button"
+            aria-label={t('{name} 스킬로 에이전트 만들기').replace('{name}', name)}
+            title={t('이 스킬로 에이전트 만들기')}
+            data-testid="skill-make-agent"
+            onClick={() => navigate(`/customize/agents/new?from=skill:${item.id}`)}
+            className="flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-control border border-line bg-panel text-sm text-fg transition-colors hover:bg-elevated max-sm:px-2.5"
+          >
+            <Bot size={15} aria-hidden />
+            <span className="sm:hidden">{t('에이전트로')}</span>
+          </button>
+        )}
         {view === 'explore' && onAdd ? (
           item.added ? (
             <span
