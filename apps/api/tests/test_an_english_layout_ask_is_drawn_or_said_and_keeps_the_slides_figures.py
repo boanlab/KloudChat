@@ -124,3 +124,64 @@ def test_an_english_ask_gets_an_english_reply():
         "Removed the chart on slide 4, Table 2 from section 2. Put a 3-line summary at the "
         "top. Revised slides 1, 3–5. However, Figure 3 could not be found in the document. "
         "Please ask again.")
+
+
+#: the slide before and after a numbered-list rewrite (reverify-j d1)
+GAP = {"id": "d", "layout": "bullets", "title": "The Long-Context Quality Gap",
+       "bullets": ["Local model failed often past 20 pages", "Local: 64 percent",
+                   "Cloud: 91 percent", "A 27 point gap"]}
+GAP_LISTED = {"id": "d", "layout": "numbered", "title": "The Long-Context Quality Gap",
+              "items": [["27B local model", "82% of the frontier score"],
+                        ["Short documents", "$4 vs $38 per 1k docs"],
+                        ["Documents above 20 pages", "64% vs 91%"]]}
+
+
+def test_only_figures_really_gone_are_lost_however_they_are_written():
+    # 「64 percent」 is 「64%」 in a list item; 「27 point」 is not 「27B」
+    assert deck.lost_figures(GAP, GAP_LISTED, ASK) == ["27 point"]
+    assert deck.lost_figures({"bullets": ["매출 420만원, 3.5%p 상승"]},
+                             {"bullets": ["매출 420만 원", "3.5 포인트 올랐다"]}) == []
+    assert deck.lost_figures({"bullets": ["$4 per 1k docs, 9s"]},
+                             {"bullets": ["4 docs"]}) == ["$4", "1k", "9s"]
+    # 「64 vs 91」: 「vs」 is no unit
+    assert deck.lost_figures({"bullets": ["64 vs 91"]}, {"rows": [["64%", "91%"]]}) == []
+
+
+T1_PARTS = ["1. 이번 주 업무 요약 및 성과", "2. 주간 주요 업무 추진 현황",
+            "3. 이슈 및 협조 요청 사항", "4. 다음 주 업무 계획"]
+T1_ASK = "표 2와 그림 1은 빼고, 맨 앞에 3줄 요약을 넣어줘."
+
+
+def test_numbered_removals_with_asks_naming_their_parts_need_no_planner():
+    texts = ["요약", "표 1 표 2", "표 3", "표 4"]
+    assert revise.settled_by_code(T1_ASK, T1_PARTS, texts)
+    assert revise.settled_by_code("표 2는 빼 줘", T1_PARTS, texts)
+    # a structure change, or an ask naming no part: the planner reads it
+    assert not revise.settled_by_code("표 2는 빼고 2절을 둘로 나눠줘", T1_PARTS, texts)
+    assert not revise.settled_by_code("표 2는 빼고 전체적으로 더 간결하게", T1_PARTS, texts)
+    assert not revise.settled_by_code("맨 앞에 3줄 요약을 넣어줘.", T1_PARTS, texts)
+
+
+@pytest.mark.asyncio
+async def test_a_removal_and_a_summary_go_to_the_edit_not_to_a_new_outline(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.models.workspace import ArtifactKind
+    from app.routers import sessions as sessions_router
+
+    sections = [{"heading": h, "content": f"{h} 본문"} for h in T1_PARTS]
+
+    class Db:
+        async def get(self, _model, _id):
+            return SimpleNamespace(title="주간 업무 보고", kind=ArtifactKind.report,
+                                   data={"sections": sections})
+
+    async def planner(**_kwargs):
+        # the reading that regenerated the whole report
+        return revise.Plan(scope="outline", note="요약 절을 맨 앞에 추가")
+
+    monkeypatch.setattr(revise, "plan", planner)
+    plan, _ = await sessions_router._revision_plan(
+        Db(), SimpleNamespace(artifact_id="a1"),
+        instruction=T1_ASK, model={"id": "m"}, api_key="k")
+    assert plan is not None and not plan.restructures and plan.targets == []

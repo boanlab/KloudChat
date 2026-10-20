@@ -4904,18 +4904,33 @@ def unmet_asks(slide: dict, words: str) -> list[str]:
 #: slide fields the audience does not read as its figures
 _NOT_SHOWN = frozenset({"id", "notes", "accent", "layout", "image", "diagram", "factCheck",
                         "textScale"})
-_SHOWN_FIGURE = re.compile(r"(?<![\d.,])\d{1,3}(?:,\d{3})*(?:\.\d{1,3})?%?(?![\d,])")
+#: a figure as shown: currency, number, unit (「$4」, 「64 percent」, 「27 point」, 「420만」)
+_SHOWN_FIGURE = re.compile(
+    r"(?<![\d.,])([$€₩£]\s?)?(\d{1,3}(?:,\d{3})*(?:\.\d{1,3})?)(?![\d,])"
+    r"(\s?(?:%p?|퍼센트|포인트|percent|per\s?cent|points?|pts?|pp|"
+    r"억|만|천|원|명|건|개월|개|배|점|초|분|시간|일|주|년|월|위|회|쪽)"
+    r"|(?:[bkmxsh]|ms|gb|tb|pg)\b)?", re.I)
+#: one unit however it is written
+_UNIT_SAME = {"퍼센트": "%", "percent": "%", "per cent": "%",
+              "%p": "pt", "포인트": "pt", "point": "pt", "points": "pt", "pts": "pt", "pp": "pt"}
 #: an ask that may take figures away: 「줄여」, 「빼」, 「remove」, 「shorten」
 _DROPS_FIGURES = re.compile(
     r"빼|지워|지우|삭제|없애|줄여|줄이|간단|짧게|요약|수치\s?없이|"
     r"\b(?:remove|delete|drop|shorten|cut|fewer|simplif\w{0,4}|summari[sz]\w{0,3})\b", re.I)
 
 
-def _shown_figures(slide: dict) -> list[str]:
+def _shown_figures(slide: dict) -> list[tuple[str, str, str]]:
+    """`(number, unit, as written)` for each figure the slide shows."""
     words = " ".join(t for k, v in slide.items() if k not in _NOT_SHOWN
                      for t in _strings(v))
-    # a lone digit is a list number or slide count, not a figure
-    return list(dict.fromkeys(f for f in _SHOWN_FIGURE.findall(words) if len(f) > 1))
+    out: dict[tuple[str, str], str] = {}
+    for m in _SHOWN_FIGURE.finditer(words):
+        number, unit = m.group(2).replace(",", ""), " ".join((m.group(3) or "").split()).lower()
+        unit = "$" if m.group(1) else _UNIT_SAME.get(unit, unit)
+        if len(number) == 1 and not unit:
+            continue  # a lone digit is a list number or slide count, not a figure
+        out.setdefault((number, unit), m.group(0).strip())
+    return [(number, unit, said) for (number, unit), said in out.items()]
 
 
 def _strings(value: Any) -> list[str]:
@@ -4933,8 +4948,10 @@ def lost_figures(old: dict, new: dict, asked: str = "") -> list[str]:
     ask may take some away."""
     if _DROPS_FIGURES.search(asked or ""):
         return []
-    kept = set(_shown_figures(new))
-    return [f for f in _shown_figures(old) if f not in kept]
+    shown = _shown_figures(new)
+    # kept when the number stays with its unit, or one side writes no unit (「64」 in a cell)
+    return [said for number, unit, said in _shown_figures(old)
+            if not any(n == number and (u == unit or not u or not unit) for n, u, _ in shown)]
 
 
 def picture_of(slide: dict) -> str:

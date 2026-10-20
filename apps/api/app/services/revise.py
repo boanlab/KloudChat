@@ -1392,6 +1392,17 @@ def numbered_removals(instruction: str) -> list[tuple[str, int]]:
     return out
 
 
+def settled_by_code(instruction: str, parts: list[str], texts: list[str]) -> bool:
+    """Whether a report edit is numbered removals plus asks that each name their part (「표 2와
+    그림 1은 빼고, 맨 앞에 3줄 요약을 넣어줘」): routed and done without the planner, whose reading
+    may turn it into a new outline."""
+    if not numbered_removals(instruction):
+        return False
+    rest = without_numbered_removals(instruction)
+    return not rest or (not _STRUCTURAL_ASK.search(rest)
+                        and section_asks(rest, parts, texts) is not None)
+
+
 def without_numbered_removals(instruction: str) -> str:
     """The instruction minus its asks that only take numbered tables or figures away."""
     return " ".join(c for c in _clauses(instruction) if not _only_removal(c))

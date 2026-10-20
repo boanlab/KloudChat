@@ -7279,10 +7279,11 @@ async def _revision_plan(
         # 「위험 장을 하나 추가해 줘」 is an insert; a new-document reading would refuse it
         return added, skeleton
     deck = getattr(artifact, "kind", None) == ArtifactKind.deck
-    if (not deck and revise.numbered_removals(instruction)
-            and not revise.without_numbered_removals(instruction)) or deck and (
-            revise.only_removes_picture(instruction) or revise.only_removes_chart(instruction)):
-        # taken away by hand in the revise route: nothing for the planner to read
+    by_code = (revise.only_removes_picture(instruction) or revise.only_removes_chart(instruction)
+               if deck else revise.settled_by_code(instruction, skeleton, _part_texts(artifact)))
+    if by_code:
+        # taken away by hand in the revise route, the rest asked of the parts it names: nothing
+        # for the planner to read (nor to read as a new outline)
         return revise.Plan(scope="parts", targets=[], note=instruction), skeleton
     plan = await revise.plan(
         message=instruction,
