@@ -10,12 +10,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
+from test_a_file_request_does_not_edit_the_document import _DDL
 
 from app.models.chat import ChatSession, Message, Role, SessionKind, TurnFailure
 from app.models.workspace import Artifact, ArtifactKind
 from app.routers import sessions
 from app.services import deck, revise
-from tests.test_a_file_request_does_not_edit_the_document import _DDL
 
 SLIDES = [
     {"id": "s0", "layout": "title", "title": "3분기 실적 보고"},
