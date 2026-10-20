@@ -31,7 +31,7 @@ import type {
 } from '@/types'
 import { SELF } from '@/lib/process'
 
-const KIND_ICON: Record<PipelineStepKind, LucideIcon> = {
+export const KIND_ICON: Record<PipelineStepKind, LucideIcon> = {
   agent: Bot,
   skill: Calculator,
   check: ShieldCheck,
@@ -40,7 +40,7 @@ const KIND_ICON: Record<PipelineStepKind, LucideIcon> = {
   export: Download,
 }
 
-const STEP_KIND_LABEL: Record<PipelineStepKind, string> = {
+export const STEP_KIND_LABEL: Record<PipelineStepKind, string> = {
   agent: '에이전트',
   skill: '스킬',
   check: '검사',
@@ -73,7 +73,7 @@ function useCatalogue() {
 }
 
 /** Step's Korean name: server's, else catalogue's. */
-function stepTitle(step: PipelineStep, agents: Agent[], cat: PipelineCatalogue | null): string {
+export function stepTitle(step: PipelineStep, agents: Agent[], cat: PipelineCatalogue | null): string {
   if (step.kind === 'agent') return agents.find((a) => a.id === step.ref)?.name ?? step.title ?? '에이전트'
   if (step.kind === 'skill') return cat?.skills.find((s) => s.ref === step.ref)?.name ?? step.title ?? step.ref
   if (step.kind === 'check') return cat?.checks.find((s) => s.ref === step.ref)?.name ?? step.title ?? step.ref
@@ -252,7 +252,7 @@ function StepSummary({ step, cat }: { step: PipelineStep; cat: PipelineCatalogue
   return <p className="ml-7 truncate text-sm text-muted">{t(text)}</p>
 }
 
-function StepSettings({
+export function StepSettings({
   step,
   cat,
   onChange,

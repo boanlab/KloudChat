@@ -166,6 +166,11 @@ export function AgentDetailPage() {
             </div>
           )}
           <ProcessChain agent={agent} />
+          {editable && !agent.catalogKey && (
+            <Link to={`/customize/agents/${agent.id}/chain`} className="inline-block text-sm text-accent hover:underline" data-testid="open-chain">
+              {t('파이프라인 캔버스에서 편집')}
+            </Link>
+          )}
           {!agent.description && !agent.guide && agent.starters.length === 0 && (
             <p className="text-base text-faint">{t('설명이 아직 없습니다.')}</p>
           )}
