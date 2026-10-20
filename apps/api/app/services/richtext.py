@@ -574,6 +574,50 @@ def tidy_tables(text: str) -> str:
     return "\n".join(out)
 
 
+#: a quoted line: 「> | 사업 | 상태 |」
+_QUOTED = re.compile(r"^[ \t]{0,3}>[ \t]?")
+#: a table caption line: 「표 1. …」, 「**표: …**」
+_QUOTED_CAPTION = re.compile(
+    r"^[*_]{0,2}[ \t]{0,2}(?:표|Table)[ \t]{0,2}\d{0,3}[ \t]{0,2}[.:．：]", re.I)
+
+
+def unquote_tables(text: str) -> str:
+    """A table written behind 「> 」 taken out of the quote, its rows together: quoted rows
+    split by blank lines print as text (「> | 사업 | 추진 내용 | 상태 |」)."""
+    if ">" not in (text or ""):
+        return text
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if not _QUOTED.match(lines[i]):
+            out.append(lines[i])
+            i += 1
+            continue
+        j = i
+        while j < len(lines) and (_QUOTED.match(lines[j]) or not lines[j].strip()):
+            j += 1
+        while j > i and not lines[j - 1].strip():
+            j -= 1
+        inner = [_QUOTED.sub("", ln, count=1).rstrip() for ln in lines[i:j]]
+        filled = [ln.strip() for ln in inner if ln.strip()]
+        rows = [ln for ln in filled if ln.startswith("|") and ln.endswith("|")]
+        table = (any(_SEPARATOR_ROW.match(ln) for ln in rows)
+                 and all(ln in rows or _QUOTED_CAPTION.match(ln) for ln in filled))
+        if table:
+            # caption on its own paragraph, rows with no gap
+            for ln in filled:
+                if ln not in rows and out and out[-1].strip():
+                    out.append("")
+                out.append(ln)
+                if ln not in rows:
+                    out.append("")
+        else:
+            out.extend(lines[i:j])
+        i = j
+    return "\n".join(out)
+
+
 def as_markdown(section: dict) -> str:
     """Section body as Markdown, any stored `format`."""
     body = str(section.get("content") or "")
@@ -603,6 +647,7 @@ __all__ = [
     "normalise",
     "tidy_tables",
     "to_markdown",
+    "unquote_tables",
 ]
 
 

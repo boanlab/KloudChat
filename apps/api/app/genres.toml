@@ -72,13 +72,11 @@ rule = '''Genre: 프로젝트 제안서. Requirements as a table with IDs (FR-01
 
 [[genres]]
 id = "status-report"
-match = '주간|월간|업무 ?보고|진행 ?상황|현황 ?보고|진척'
+match = '주간(?!\s{0,2}회의)|월간|업무 ?보고|진행 ?상황|현황 ?보고|진척'
 rule = '''Genre: 현황·주간 보고. It reads on one page — three or four short-sentence items per section, never more than two paragraphs. Instead of a 「요약」 section, the first line of the first section is this week's conclusion in one sentence. No recommendation section; what needs a decision goes under 「이슈」 as a question, with a small table of the options (안 | 금액 | 납기 …). Results go in one table (사업 | 추진 내용 | 상태) and next week's plan in another (일정(요일) | 내용), not as paragraphs. Add no causes, interpretations or outlooks the material does not give (「~때문으로 판단됩니다」「달성 가능성 높음」).'''
 
 [[genres]]
-id = "minutes"
-match = '회의록|녹취|미팅 ?메모|회의 ?메모'
-rule = '''Genre: 회의록. Decisions, actions and open items as tables (항목·담당·기한). Summarise remarks without adding judgement, and make no summary or recommendation section. An owner or deadline the material does not give is 「미정」, never invented or a bracket blank, with one 「확인 필요」 line under the table naming it; what the meeting agreed to postpone is written in the material's words, like 「미정(다음 회의에서 결정)」.'''
+format = "minutes"
 
 [[genres]]
 id = "incident"

@@ -1247,7 +1247,7 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     clean, _ = hangul.read_back(report._without_own_heading(body, section["heading"]))
     # a written-out picture that does not open is the writer's invention; a fence around
     # it (or around a table) taken off first, never left holding the table
-    clean = pictures.drop_broken(report.unfence_pictures(clean))
+    clean = pictures.drop_broken(richtext.unquote_tables(report.unfence_pictures(clean)))
     # section = level-two heading; subheadings below
     clean = report._FIGURE_MARK.sub(lambda m: f"\n\n{m.group(0)}\n\n", clean)
     clean = report.split_long_paragraphs(
@@ -1765,6 +1765,9 @@ class MinutesRepair(Base):
         sections, _ = report_checks.minutes_deferred(sections)
         sections, filled = report_checks.minutes_due_fill(sections, prepass.dates)
         sections = report_checks.minutes_head_day(sections, bundle.document.head_block, prepass)
+        # a column the memo never names and no cell fills (「납기 | 미정」)
+        sections, blank = report_checks.minutes_blank_columns(sections, known)
+        before += ["minutes_blank_column"] * blank
         before += ["minutes_due"] * filled
         if prepass.undated:
             # no meeting date: nothing dated as the meeting's
@@ -2023,6 +2026,13 @@ class Verify(Base):
         # a limit, approval, rule or weekday the material only asks about or never gives,
         # standing after its repair, is marked where it stands whatever the writer
         bundle.document.sections = mark_policy(bundle.document.sections, still, _doc(bundle))
+        pre = bundle.computed.prepass
+        if pre is not None and "minutes-rows" in pre.settings.code_checks:
+            # a meeting length, month part, open question or owner-less row the memo never
+            # gives, standing after the writer's repair: marked for a strong writer, else out
+            doc = _doc(bundle)
+            bundle.document.sections = report_checks.settle_unsourced(
+                bundle.document.sections, doc.given or doc.material, strong=req.strong)
         bundle.findings.still = still
         format_codes = set(report_checks.LABELS)
         bundle.findings.after += [f.code for f in still if f.code in format_codes]

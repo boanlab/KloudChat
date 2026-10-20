@@ -2686,6 +2686,118 @@ async def minutes_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict
     return found, {}
 
 
+#: a memo clause that gives someone a task or leaves one open: 「…하기로 함」, 「검토」
+_ACTION_SAID = re.compile(r"기로|가져오|맡|담당|검토|예정|해야|필요|정하지|미정|추후|나중에|요청")
+_UNOWNED = re.compile(r"^(?:미정|확인\s{0,2}필요|\[[가-힣 ·]{1,10}\])")
+_MEMO_CLAUSE = re.compile(r"[\n.,:;。]|(?<=[함음됨임])\s")
+UNASSIGNED_WHY = ("이 행의 할 일은 자료에서 누구에게도 맡겨지지 않았다(결정이나 안건일 뿐이다). "
+                  "실행 항목 표에서 이 행을 빼라 — 결정이면 결정 사항에만 둔다.")
+
+
+def unassigned_rows(sections: list[dict], material: str) -> list[tuple[int, str, list[str]]]:
+    """(section, row, [task]) for action rows with no owner whose task no memo clause gives
+    anyone or leaves open: 「2학기 튜터링 모집 시행 | 미정」 from 「모집 기간은 11/3~11/14로 확정」."""
+    from app.services import stated_days
+
+    clauses = [re.sub(r"\s+", "", c).lower() for c in _MEMO_CLAUSE.split(material or "")
+               if _ACTION_SAID.search(c)]
+    out = []
+    for table in tables(sections):
+        owner, due = _owner_due(table.header)
+        if owner is None or due is None:
+            continue
+        task = _task_column(table.header, (owner, due, _column(table.header, r"비고|사유|메모|원문")))
+        for line, row in table.rows:
+            if task is None or len(row) <= max(owner, task):
+                continue
+            if not _UNOWNED.match(row[owner].strip(" *")):
+                continue
+            words = stated_days._words(row[task])
+            if words and not any(w in c for w in words for c in clauses):
+                out.append((table.section, line, [row[task].strip(" *")]))
+    return out
+
+
+def _reference_heading() -> re.Pattern:
+    from app.services import report
+
+    return report._REFERENCE_HEADING
+
+
+def minutes_unsourced(doc: Doc) -> list[Finding]:
+    """Findings sent back to the writer once; what stands is settled by `settle_unsourced`."""
+    from app.services import stated_meeting
+
+    material = doc.given or doc.material
+    rows = [Finding(i, row, "minutes_unsourced", UNASSIGNED_WHY, rank=1,
+                    still=lambda s, t=task[0]: t in s)
+            for i, row, task in unassigned_rows(doc.sections, material)]
+    return rows + [Finding(i, piece, "minutes_unsourced", stated_meeting.why(said), rank=1,
+                           still=lambda s, m=material: bool(stated_meeting.untraced(s, m)))
+                   for i, piece, said in stated_meeting.findings(
+                       doc.sections, material, _reference_heading())]
+
+
+def settle_unsourced(sections: list[dict], material: str, *, strong: bool) -> list[dict]:
+    """What the writer left of `minutes_unsourced` after its one repair (`stated_meeting.settle`
+    for sentences): a strong writer's row is marked 「(확인 필요)」, anyone else's goes with the
+    「※」 line naming its task."""
+    from app.services import stated_meeting, stated_policy
+
+    out = [dict(sec) for sec in sections]
+    for index, row, task in unassigned_rows(out, material):
+        content = str(out[index].get("content") or "")
+        if strong:
+            out[index]["content"] = stated_policy.mark(content, row, task)
+            continue
+        # the 「※」 line may name it short: 「3번(튜터링 모집 시행)」
+        short = " ".join(task[0].split()[-2:])
+        out[index]["content"] = "\n".join(
+            ln for ln in content.split("\n") if ln.strip() != row.strip()
+            and not (short and ln.lstrip().startswith("※") and short in ln))
+    for index, piece, said in stated_meeting.findings(out, material, _reference_heading()):
+        out[index]["content"] = stated_meeting.settle(
+            str(out[index].get("content") or ""), piece, said, strong=strong)
+    return out
+
+
+#: a cell that says nothing: 「미정」, 「확인 필요」, 「-」
+_EMPTY_CELL = re.compile(r"\(?(?:미정|확인\s{0,2}필요|해당\s{0,2}없음|-|—|–)?\)?")
+_RULE_ROW = re.compile(r"\|?(?:[ \t]{0,4}:?-{2,}:?[ \t]{0,4}\|){1,40}[ \t]{0,4}(?::?-{2,}:?)?[ \t]{0,4}$")
+#: columns minutes keep even when empty
+_ACTION_COLUMN = re.compile(r"할\s{0,2}일|담당|책임|기한|마감|비고|출처|안건|항목|결정|내용|구분|상태")
+
+
+def minutes_blank_columns(sections: list[dict], material: str) -> tuple[list[dict], int]:
+    """Table columns no memo word names and no cell fills (「납기 | 미정 | 미정」) taken out."""
+    flat = re.sub(r"\s+", "", material or "").lower()
+    out, dropped = [], 0
+    for sec in sections:
+        lines = str(sec.get("content") or "").split("\n")
+        i = 0
+        while i < len(lines):
+            if not (lines[i].lstrip().startswith("|") and i + 1 < len(lines)
+                    and _RULE_ROW.match(lines[i + 1].strip())):
+                i += 1
+                continue
+            j = i + 2
+            while j < len(lines) and lines[j].lstrip().startswith("|"):
+                j += 1
+            header = cells(lines[i])
+            body = [cells(ln) for ln in lines[i + 2:j]]
+            gone = [k for k, name in enumerate(header)
+                    if body and len(header) > 2 and not _ACTION_COLUMN.search(name)
+                    and re.sub(r"\s+|\([^)]{0,20}\)|[*_`]", "", name).lower() not in flat
+                    and all(len(r) <= k or _EMPTY_CELL.fullmatch(r[k].strip(" *")) for r in body)]
+            if gone and len(gone) < len(header) - 1:
+                lines[i:j] = ["| " + " | ".join(c for k, c in enumerate(row) if k not in gone)
+                              + " |" for row in (header, cells(lines[i + 1]), *body)]
+                dropped += len(gone)
+            i = j
+        out.append({**sec, "content": "\n".join(lines)})
+    return out, dropped
+
+
 _REPEAT_CELL = re.compile(r"(?:매주|격주)\s{0,2}[월화수목금토일]요일")
 
 
@@ -3083,7 +3195,7 @@ def _minutes_rows_check(pre: Prepass) -> Check:
     async def minutes_check(doc: Doc):
         table_rows, _ = await minutes_rows(doc, dates)
         list_rows, _ = await minutes_list_rows(doc, dates)
-        return table_rows + list_rows, {}
+        return table_rows + list_rows + minutes_unsourced(doc), {}
 
     return minutes_check
 
@@ -3896,9 +4008,43 @@ _BLANK_DAY_ROW = re.compile(
     r"\s{0,3}(?:\||[:：])\s{0,3})(?P<blank>\[[^\[\]\n]{0,12}\])(?P<tail>\s{0,3}\|?\s{0,3})$", re.M)
 
 
+#: a body line giving the meeting place as nothing: 「- 장소: 미정」, 「| 장소 | [장소] |」
+_BLANK_PLACE_ROW = re.compile(
+    r"^(?P<lead>\s{0,4}(?:\|\s{0,3}|[-*>]\s{0,3})?(?:\*\*)?(?:회의\s{0,2})?장소(?:\*\*)?"
+    r"\s{0,3}(?:\||[:：])\s{0,3})(?P<blank>미정|\[[^\[\]\n]{0,12}\]|-|—)(?P<tail>\s{0,3}\|?\s{0,3})$",
+    re.M)
+#: a section about the next meeting, whose place is another one
+_NEXT_HEADING = re.compile(r"다음|차기|향후")
+
+
+def minutes_head_place(sections: list[dict], head: dict | None) -> list[dict]:
+    """The body's blank meeting place agrees with the head: the head's place, or, with the
+    head blank too, the line goes (「[장소]」 in the head and 「미정」 in the overview read as two
+    answers; the head is where the person fills it)."""
+    place = next((str(f[1] if len(f) > 1 else "").strip() for f in (head or {}).get("fields") or []
+                  if f and str(f[0]) in ("장소", "회의 장소")), None)
+    if place is None:
+        return sections
+    known = place if place and not placeholders.is_blank(place) else ""
+
+    def settle(m: re.Match) -> str:
+        return m.group("lead") + known + m.group("tail") if known else "\x00"
+
+    out = []
+    for sec in sections:
+        content = str(sec.get("content") or "")
+        if _NEXT_HEADING.search(str(sec.get("heading") or "")) or not _BLANK_PLACE_ROW.search(content):
+            out.append(sec)
+            continue
+        lines = _BLANK_PLACE_ROW.sub(settle, content).split("\n")
+        out.append({**sec, "content": "\n".join(ln for ln in lines if ln != "\x00")})
+    return out
+
+
 def minutes_head_day(sections: list[dict], head: dict | None, pre: Prepass | None) -> list[dict]:
     """A blank meeting day in the body (the overview table's 일시) takes the head's, when code
-    resolved that day; else it stays."""
+    resolved that day; else it stays. A blank place takes the head's (`minutes_head_place`)."""
+    sections = minutes_head_place(sections, head)
     if not head or pre is None or not pre.base_date:
         return sections
     day = next((str(f[1]) for f in head.get("fields") or []
@@ -5732,6 +5878,8 @@ LABELS = {
     "minutes_undated_due": "회의 일자 없이 날짜로 푼 기한",
     "minutes_owner": "자료에 없는 담당",
     "minutes_spec": "자료에 없는 수치",
+    "minutes_unsourced": "자료에 없는 회의 내용·실행 항목",
+    "minutes_blank_column": "자료에 없는 빈 열",
     "recommend_mismatch": "권고가 필수 조건·점수와 어긋남",
     "status_missing": "탈락·조건 미확인 표시 없음",
     "lead_time_date": "납기 날짜·기한 판정이 계산과 다름",
