@@ -1810,3 +1810,94 @@ __all__ = [
     "plan",
     "without_export",
 ]
+
+
+#: a sentence count asked of a part: 「두 문장으로」, 「2문장」, 「in two sentences」
+_SENTENCES_ASK = re.compile(
+    r"(?P<n>\d{1,2}|한|두|세|네|다섯)\s?(?:개의\s?)?문장\s?(?:(?P<most>이내|이하)|으로|로|짜리)"
+    r"|\b(?:in|to|into)\s{1,3}(?:just\s{1,3}|only\s{1,3})?"
+    r"(?P<m>\d{1,2}|one|two|three|four|five)\s{1,3}sentences?\b", re.I)
+_EN_COUNT = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
+#: an ask that makes a part shorter
+_SHORTENS = re.compile(r"줄여|줄이|짧게|간추|요약|압축|\b(?:shorten|condense|trim|summari[sz]e|"
+                       r"cut\s{1,3}down)\b", re.I)
+#: names a part states: 「A사」, 「CRM」, 「GPT-4」
+_NAME = re.compile(r"(?<![A-Za-z0-9])(?:[A-Z]{1,3}사|[A-Z][A-Z0-9&]{1,15}(?:-\d{1,3})?)"
+                   r"(?![A-Za-z0-9])")
+#: a sentence's end: 「다.」, 「?」 (not the point in 「5.5%」)
+_SENTENCE_END = re.compile(r"[.!?。](?=[\s\"'」』”’)\]]|$)")
+
+
+def sentences_asked(clause: str) -> tuple[int, bool]:
+    """`(sentences, at most)` the clause asks a part to be (「2절을 두 문장으로 줄여줘」 →
+    `(2, False)`, 「세 문장 이내로」 → `(3, True)`), else `(0, False)`."""
+    if summary_lines_asked(clause):
+        return 0, False
+    m = _SENTENCES_ASK.search(clause or "")
+    if not m:
+        return 0, False
+    word = (m.group("n") or m.group("m")).lower()
+    count = int(word) if word.isdigit() else _COUNT_WORD.get(word) or _EN_COUNT.get(word, 0)
+    return count, bool(m.group("most"))
+
+
+def _prose_lines(text: str) -> list[str]:
+    """A part's text lines, minus tables, blocks, headings and list marks."""
+    text = re.sub(r"```[\s\S]*?(?:```|\Z)|<[^<>]{0,2000}>|!\[[^\]]*\]\([^)]*\)", " ", text or "")
+    lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith(("|", "#")):
+            continue
+        lines.append(re.sub(r"^(?:[-*•·]|\d{1,2}[.)])\s+", "", line).replace("**", ""))
+    return lines
+
+
+def sentence_count(text: str) -> int:
+    """Sentences in a part's text: each end mark, and a line that stops without one."""
+    count = 0
+    for line in _prose_lines(text):
+        ends = _SENTENCE_END.findall(line)
+        last = line.rstrip("\"'」』”’)] ")[-1:]
+        count += len(ends) + (0 if last in ".!?。" else 1)
+    return count
+
+
+def lost_facts(old: str, new: str) -> list[str]:
+    """Figures and names `old` states that `new` no longer does, read the same way on both
+    sides (deck.figures_in)."""
+    from app.services import deck
+
+    plain = " ".join(_prose_lines(new))
+    shown = deck.figures_in(plain)
+    names = set(_NAME.findall(plain))
+    lost = []
+    for number, unit, said in deck.figures_in(" ".join(_prose_lines(old))):
+        if not any(n == number and (u == unit or not u or not unit) for n, u, _ in shown):
+            lost.append(said)
+    old_names = dict.fromkeys(_NAME.findall(" ".join(_prose_lines(old))))
+    return lost + [n for n in old_names if n not in names]
+
+
+def shortening_faults(old: str, new: str, asked: str) -> list[str]:
+    """What a shortened part misses of its ask, for the writer: the sentence count asked, the
+    section's figures and names gone. Empty for an ask that does not shorten."""
+    want, most = sentences_asked(asked)
+    if not want and not _SHORTENS.search(asked or ""):
+        return []
+    faults = []
+    got = sentence_count(new)
+    if want and (got > want if most else got != want):
+        faults.append(f"The request asks for exactly {want} sentence{'s' if want > 1 else ''}; "
+                      f"this version has {got}")
+    if lost := lost_facts(old, new):
+        faults.append("Keep the section's facts, said briefly if needed: " + ", ".join(lost))
+    return faults
+
+
+def shortening_misses(old: str, new: str, asked: str) -> int:
+    """How far a shortened part is from its ask: a sentence count off, each fact gone."""
+    want, most = sentences_asked(asked)
+    got = sentence_count(new)
+    off = bool(want) and (got > want if most else got != want)
+    return int(off) + len(lost_facts(old, new))

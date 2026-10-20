@@ -126,9 +126,13 @@ def _english_reply(document: Any, summary: int, touched: list[int], is_deck: boo
     if document.unmet:
         said.append(f"{'However, ' if said else ''}{', '.join(map(_en_item, document.unmet))} "
                     "did not show in the result. Please ask again.")
+    for part, asked, got in getattr(document, "counted", []):
+        said.append(f"Section {part} has {got} sentence{'s' if got != 1 else ''}, not the "
+                    f"{asked} asked.")
     for lost in document.dropped:
-        at, _, values = lost.partition("장 ")
-        said.append(f"On slide {at}, {values} dropped out of the rewrite; ask again to put them "
+        at, _, values = lost.partition(" ")
+        where = f"{'slide' if at.endswith('장') else 'section'} {at[:-1]}"
+        said.append(f"On {where}, {values} dropped out of the rewrite; ask again to put them "
                     "back if they belong there.")
     return " ".join(said)
 
@@ -170,6 +174,8 @@ def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = F
         said.append(f"다만 요청한 {', '.join(unmet)}는 반영되지 않았습니다. 다시 요청해 주세요."
                     if said else f"요청한 {', '.join(unmet)}는 반영하지 못했습니다. "
                     "다시 요청해 주세요.")
+    for part, asked, got in getattr(document, "counted", []):
+        said.append(f"{part}절은 요청한 {asked}문장이 아니라 {got}문장입니다.")
     for lost in document.dropped:
         # figures the slide showed that its rewrite left out: said, not passed over
         at, _, values = lost.partition(" ")

@@ -467,7 +467,17 @@ layout the words ask for — 「연표로」 (as a timeline), 「단계로」 (a
 「큰 숫자로」 (as big numbers), 「표로」 (as a table) (`deck.requested_layout`;
 「연표」 "timeline" is not a 「표」 "table") — and writes with that layout's
 prompt; a chart or metrics answer replaces the slide's chart or metrics, not
-just its notes, and a title the person asked to change (「제목을 …로 바꿔 줘」, "change the title to …") is
+just its notes. An ask for another shape and nothing else (「4장을 번호 목록으로 바꿔줘」,
+"Can you make slide 3 a table?", `deck.form_only`) is done by code from the slide's own
+content (`deck.reshaped`: a chart's points, a table's rows or bullets as list items; a chart,
+metrics, items or bullets whose fields line up as table rows), so no item is rewritten or
+invented and the title stays; a table written back as lines (「Local 27B – $4 – 9s」) is put
+into rows the same way, and a shape that still does not come leaves the slide as it was and
+is said. Figures a rewrite lost are read the same way on both sides (`deck.figures_in`: a
+Korean word after a number is read whole, 「3분기」 not 「3분」; chart values count).
+A section shortened to a sentence count (「2절을 두 문장으로 줄여줘」) is checked for that count
+and for the section's figures and names (`revise.shortening_faults`), sent back to the writer
+once with the reason, and what still misses is said in the reply. A title the person asked to change (「제목을 …로 바꿔 줘」, "change the title to …") is
 taken, quoted text verbatim. 「위험 장을 하나 추가해 줘」 ("add a risk slide") is an `insert`: the
 revision planner names the new part and its place, the router slots a blank
 part in and rewrites only it, so the other slides stay byte for byte. A restructure (「6장으로 줄여」, "cut it to six slides") is told to hit the count
