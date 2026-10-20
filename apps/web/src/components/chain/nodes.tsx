@@ -126,36 +126,61 @@ export function StepNode({ id, selected }: NodeProps) {
   )
 }
 
+/** Branch label colours, in branch order (예 · 아니오 · …). */
+const BRANCH_TONE = ['border-success/50 text-success', 'border-danger/40 text-danger', 'border-accent/40 text-accent', 'border-warn/50 text-warn']
+
+/** A condition: a diamond, its branches leaving on the right with their labels. */
 export function ConditionNode({ id, selected }: NodeProps) {
   const t = useT()
   const view = useView()
   const step = view.step(id)
   const branches = isCondition(step) ? step.branches : []
-  const taken = view.run?.(id)?.branchTaken
+  const record = view.run?.(id)
+  const problems = view.problems(id)
+  const taken = record?.branchTaken
   return (
-    <Frame id={id} selected={selected} className="border-warn/60 pr-5">
-      <Handle type="target" position={Position.Left} className={handleClass} />
-      <Title id={id} />
+    <div
+      className="relative grid h-[132px] w-[168px] place-items-center text-center text-sm leading-snug"
+      data-testid="chain-node"
+      data-step={id}
+      data-status={record?.status}
+      data-shape="diamond"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          'absolute size-[92px] rotate-45 rounded-[10px] border-2 bg-panel',
+          record ? RUN_FRAME[record.status] : problems.length ? 'border-warn' : 'border-warn/60',
+          selected && 'ring-4 ring-accent/25 outline-2 outline-accent',
+        )}
+      />
+      <span className="relative flex max-w-[118px] flex-col items-center gap-0.5">
+        <Title id={id} />
+      </span>
+      <Handle type="target" position={Position.Left} className={handleClass} style={{ left: 18 }} />
       {branches.map((b, i) => (
         <Handle
           key={b.key}
           id={b.key}
           type="source"
           position={Position.Right}
-          className={handleClass}
-          style={{ top: `${((i + 1) * 100) / (branches.length + 1)}%` }}
+          className={cn(handleClass, '!size-3.5')}
+          style={{ right: 18, top: `${((i + 1) * 100) / (branches.length + 1)}%` }}
         >
           <span
             className={cn(
-              'pointer-events-none absolute left-3 -translate-y-1/2 rounded-control border bg-panel px-1 text-xs whitespace-nowrap',
-              taken === b.key ? 'border-accent text-accent' : 'border-line text-muted',
+              'pointer-events-none absolute left-4 -translate-y-1/2 rounded-control border bg-panel px-1.5 py-0.5 text-xs font-medium whitespace-nowrap',
+              BRANCH_TONE[i % BRANCH_TONE.length],
+              taken === b.key && 'ring-2 ring-accent/40',
+              taken && taken !== b.key && 'opacity-50',
             )}
           >
             {t(b.label)}
           </span>
         </Handle>
       ))}
-    </Frame>
+      {!record && <ProblemBadge count={problems.length} />}
+    </div>
   )
 }
 

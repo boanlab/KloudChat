@@ -53,7 +53,7 @@ CONDITION_VALUES: tuple[dict[str, str], ...] = (
     {"step_kind": "request", "key": "attachments", "label": "첨부 수", "type": "number"},
     {"step_kind": "request", "key": "attachment_types", "label": "첨부 형식", "type": "text"},
     {"step_kind": "request", "key": "text", "label": "요청 글", "type": "text"},
-    {"step_kind": "agent", "key": "kind", "label": "결과 종류(document·answer)", "type": "text"},
+    {"step_kind": "agent", "key": "kind", "label": "결과 종류(문서·답)", "type": "text"},
     {"step_kind": "agent", "key": "sections", "label": "쓴 장 수", "type": "number"},
     {"step_kind": "agent", "key": "chars", "label": "결과 글자 수", "type": "number"},
     {"step_kind": "agent", "key": "text", "label": "결과 글", "type": "text"},
@@ -421,8 +421,11 @@ class Verdict:
                 "warnings": [p.wire() for p in self.warnings]}
 
 
-#: Product a step needs, with subject particle.
+#: Product a step needs, with subject particle, and how to give it one.
 _PRODUCT_WORDS = {"document": "문서가", "answer": "답이", "text": "문서나 답이"}
+_PRODUCT_FIX = {"문서가": "이 단계 앞에 보고서(문서)를 쓰는 에이전트를 두세요.",
+                "답이": "이 단계 앞에 대화(답)를 하는 에이전트를 두세요.",
+                "문서나 답이": "이 단계 앞에 에이전트 단계를 두세요."}
 
 
 def _reaches(start: str, target: str, graph: dict[str, set[str]]) -> bool:
@@ -453,10 +456,11 @@ MESSAGES = {
     "agent_private": "{at}: 공유하려면 이 에이전트도 조직에 공유되어 있어야 합니다.",
     "skill_unknown": "{n}번 스킬({ref})은 진행 과정에 넣을 수 없는 스킬입니다.",
     "check_unknown": "{n}번 검사({ref})는 진행 과정에 넣을 수 없는 검사입니다.",
-    "needs_product": "{at}: 앞 단계에서 만든 {word} 있어야 합니다.",
+    "needs_product": "{at}: 앞 단계에서 만든 {word} 있어야 합니다. {fix}",
     "model_not_allowed": "{at}: 검토 모델 {model}은 쓸 수 없는 모델입니다.",
     "human_unknown": "{n}번 사람 확인의 종류를 알 수 없습니다.",
-    "needs_agent_after": "{at}: 뒤에 에이전트 단계가 있어야 합니다.",
+    "needs_agent_after": ("{at}: 뒤에 에이전트 단계가 있어야 합니다. 받은 답으로 쓸 에이전트를 "
+                          "이 단계 뒤에 이으세요."),
     "nothing_to_ask": ("{at}: 뒤 에이전트({name})는 물을 항목이 정해져 있지 않아 "
                        "이 단계는 건너뜁니다."),
     "outline_needs_writer": "{at}: 바로 뒤에 문서를 쓰는 에이전트가 와야 합니다.",
@@ -658,10 +662,11 @@ def _check_path(steps: list[dict[str, Any]], numbers: list[int], tell, *,
                 say(n, "check_unknown", ref=ref or "?")
             elif product not in needs:
                 word = _PRODUCT_WORDS["text" if len(needs) > 1 else needs[0]]
-                say(n, "needs_product", step=step, word=word)
+                say(n, "needs_product", step=step, word=word, fix=_PRODUCT_FIX[word])
         elif kind == "review":
             if not product:
-                say(n, "needs_product", step=step, word=_PRODUCT_WORDS["text"])
+                say(n, "needs_product", step=step, word=_PRODUCT_WORDS["text"],
+                    fix=_PRODUCT_FIX[_PRODUCT_WORDS["text"]])
             model = str((step.get("settings") or {}).get("model") or "")
             if model and allowed_models is not None and model not in allowed_models:
                 say(n, "model_not_allowed", step=step, model=model)
@@ -684,7 +689,8 @@ def _check_path(steps: list[dict[str, Any]], numbers: list[int], tell, *,
         elif kind == "export":
             exported_at = exported_at or n
             if product != "document":
-                say(n, "needs_product", step=step, word=_PRODUCT_WORDS["document"])
+                say(n, "needs_product", step=step, word=_PRODUCT_WORDS["document"],
+                    fix=_PRODUCT_FIX[_PRODUCT_WORDS["document"]])
             if not (step.get("settings") or {}).get("formats"):
                 say(n, "no_formats", step=step)
     # chat answer flows on unchecked unless a check/review reads it
@@ -1441,17 +1447,17 @@ class OutlineStep(Step):
 
 
 _BRANCH_PROMPT = """You decide which branch a pipeline takes next. Read the request and the
-latest result of the earlier steps, answer the question, and pick exactly one branch key from
-the list. Judge only from the text below; when it does not settle the question, pick the last
+latest result of the earlier steps, answer the question, and pick exactly one branch from the
+list. Judge only from the text below; when it does not settle the question, pick the last
 branch.
 
 Question: {question}
 
-Branches (key: meaning):
+Branches (number: name):
 {branches}
 
-Reply with JSON only, no prose:
-{{"branch": "<one key from the list>", "reason": "<why, one short sentence in Korean>"}}
+Reply with JSON only, no prose. In the reason, call a branch by its name, never by its number:
+{{"branch": <one number from the list>, "reason": "<why, one short sentence in Korean>"}}
 
 # Request
 {request}
@@ -1493,7 +1499,11 @@ class ConditionStep(Step):
             return "no", "읽을 값이 없어(그 단계가 돌지 않음) 「아니오」로 갑니다.", True
         hit = rule_holds(rule, values[key])
         shown = values[key] if not isinstance(values[key], str) else f"{len(values[key])}자 글"
-        return ("yes" if hit else "no"), f"값 {shown} → {'예' if hit else '아니오'}", False
+        if key == "kind":
+            shown = _KIND_SAID.get(str(values[key]), shown)
+        named = next((v["label"] for v in CONDITION_VALUES if v["key"] == key
+                      and (v["step_kind"] == "request") == (source == REQUEST)), "값")
+        return ("yes" if hit else "no"), f"{named} {shown} → {'예' if hit else '아니오'}", False
 
     async def _judge(self, bundle: Bundle,
                      branches: list[dict[str, str]]) -> tuple[str, str, bool]:
@@ -1503,7 +1513,7 @@ class ConditionStep(Step):
         last = branches[-1]["key"] if branches else ""
         prompt = _BRANCH_PROMPT.format(
             question=str(self.spec.get("question") or "")[:500],
-            branches="\n".join(f"- {b['key']}: {b['label']}" for b in branches),
+            branches="\n".join(f"{i}: {b['label']}" for i, b in enumerate(branches, 1)),
             request=req.text[:3000] or "(none)", text=_product_text(bundle)[:12_000] or "(none)")
         try:
             reply, spent = await report._complete(_branch_model(bundle),
@@ -1515,15 +1525,25 @@ class ConditionStep(Step):
         for k in ("inputTokens", "outputTokens"):
             bundle.usage[k] = bundle.usage.get(k, 0) + int((spent or {}).get(k, 0))
         data = _json_object(re.sub(r"<think>.*?</think>", "", reply or "", flags=re.S))
-        key = str(data.get("branch") or "").strip()
-        if key not in {b["key"] for b in branches}:
+        picked = str(data.get("branch") or "").strip()
+        # A number from the list; a key or a label as written is taken too.
+        key = next((b["key"] for i, b in enumerate(branches, 1)
+                    if picked in (str(i), b["key"], b["label"])), "")
+        if not key:
             return last, "판단 모델이 갈래를 고르지 않아 마지막 갈래로 갑니다.", True
         return key, str(data.get("reason") or "").strip()[:300], False
 
 
+#: A result kind as the canvas says it, and back.
+_KIND_SAID = {"document": "문서", "answer": "답"}
+_KIND_OF = {v: k for k, v in _KIND_SAID.items()}
+
+
 def rule_holds(rule: dict[str, Any], value: Any) -> bool:
-    """Whether `value` passes the rule's comparison."""
+    """Whether `value` passes the rule's comparison; 「문서」·「답」 stand for a result kind."""
     op, target = rule.get("op"), str(rule.get("target") or "").strip()
+    if value in _KIND_SAID:
+        target = _KIND_OF.get(target, target)
     if op == "empty":
         return value in (None, "", 0) or (isinstance(value, str) and not value.strip())
     if op == "contains":

@@ -4,6 +4,14 @@ export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
   // Pipeline canvas
+  '여기에 넣으면': 'If added here',
+  '단계 목록을 불러오는 중…': 'Loading the step list…',
+  '단계 목록을 불러오지 못했습니다.': 'Could not load the step list.',
+  '보내면 파이프라인 {n}단계가 차례로 돕니다: {chain}. 단계마다 한 일은 에이전트의 실행 기록에 남습니다.': "Sending runs the pipeline's {n} steps in turn: {chain}. What each step did is kept in the agent's run records.",
+  '첨부 {n}개': '{n} attachments',
+  '마쳤습니다': 'Finished',
+  '건너뛰었습니다': 'Skipped',
+  '기다리는 중입니다': 'Waiting',
   '파이프라인': 'Pipeline',
   '파이프라인 캔버스에서 편집': 'Edit on the pipeline canvas',
   '캔버스에서 편집': 'Edit on the canvas',

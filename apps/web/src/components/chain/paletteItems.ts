@@ -1,8 +1,12 @@
 import { Bot, Calculator, Download, GitFork, MessageCircleQuestion, Play, ScanSearch, ShieldCheck, Sparkles, type LucideIcon } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { pipelineGraphApi } from '@/lib/api'
+import { fromCanvas, insertAfter, newStepId, tailFor, type CanvasEdge } from '@/lib/pipelineGraph'
 import { SELF } from '@/lib/process'
 import { agentOutput } from '@/lib/userPipelines'
 import type { Agent, PipelineStep, Skill } from '@/types'
-import type { ConditionStep, GraphCatalogue } from '@/types/pipelineGraph'
+import type { ConditionStep, GraphCatalogue, GraphProblem, GraphStep } from '@/types/pipelineGraph'
+import { problemText } from './stepInfo'
 
 /** What a palette item adds: a step, or (a skill) an agent draft made from it. */
 export type PaletteMake =
@@ -72,3 +76,53 @@ export function paletteGroups(self: Agent, agents: Agent[], skills: Skill[], cat
   ] as { label: string; items: PaletteItem[]; store?: boolean }[]
 }
 
+
+/** What the server would say of each 확인·내보내기 item put after the selected step: its first
+ *  problem (else warning) on that step, asked through validate so the rules stay the server's. */
+export function usePaletteNotes(
+  agentId: string,
+  groups: { items: PaletteItem[] }[],
+  steps: GraphStep[],
+  lines: CanvasEdge[],
+  selected: string | null,
+): Record<string, string> {
+  const [notes, setNotes] = useState<Record<string, string>>({})
+  const items = groups
+    .flatMap((g) => g.items)
+    .filter((i) => 'step' in i.make && i.make.step.kind !== 'agent' && i.make.step.kind !== 'condition')
+  const key = JSON.stringify({ agentId, steps, lines: lines.map((l) => [l.source, l.target, l.sourceHandle]), selected, items: items.map((i) => i.key) })
+  const latest = useRef({ items, steps, lines, selected })
+  useEffect(() => {
+    latest.current = { items, steps, lines, selected }
+  })
+  useEffect(() => {
+    if (!agentId) return
+    let live = true
+    const timer = window.setTimeout(() => {
+      const { items: now, steps: at, lines: drawn, selected: picked } = latest.current
+      const tail = tailFor(at, drawn, picked)
+      void Promise.all(
+        now.map(async (item) => {
+          if (!('step' in item.make)) return [item.key, ''] as const
+          const step = { ...item.make.step, id: newStepId(at) } as GraphStep
+          const all = [...at, step]
+          const graph = fromCanvas(all, insertAfter(all, drawn, tail, step).lines)
+          const index = graph.steps.findIndex((s) => s.id === step.id) + 1
+          try {
+            const v = await pipelineGraphApi.validate({ stages: graph.steps, edges: graph.edges, agentId })
+            const mine = (p: GraphProblem) => p.stepId === step.id || (!p.stepId && p.step === index)
+            const found = (v.problems ?? []).find(mine) ?? (v.warnings ?? []).find(mine)
+            return [item.key, found ? problemText(found) : ''] as const
+          } catch {
+            return [item.key, ''] as const
+          }
+        }),
+      ).then((rows) => live && setNotes(Object.fromEntries(rows.filter(([, note]) => note))))
+    }, 600)
+    return () => {
+      live = false
+      window.clearTimeout(timer)
+    }
+  }, [agentId, key])
+  return notes
+}

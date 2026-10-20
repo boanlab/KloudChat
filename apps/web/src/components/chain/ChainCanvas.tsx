@@ -18,8 +18,8 @@ import { ConditionNode, StartNode, StepNode } from './nodes'
 
 const NODE_TYPES = { step: StepNode, condition: ConditionNode, start: StartNode }
 
-/** Readable at the smallest fit; a wider chain is panned. */
-const FIT = { padding: 0.15, maxZoom: 1, minZoom: 0.6 }
+/** The whole chain in view, however long; zoom in from there. */
+const FIT = { padding: 0.12, maxZoom: 1, minZoom: 0.15 }
 
 const FLOW_STYLE = {
   '--xy-background-color': 'var(--bg)',
@@ -122,7 +122,7 @@ export function ChainCanvas({
           deleteKeyCode={readOnly ? null : ['Delete', 'Backspace']}
           fitView
           fitViewOptions={FIT}
-          minZoom={0.3}
+          minZoom={0.15}
           maxZoom={1.6}
           colorMode={theme}
           proOptions={{ hideAttribution: true }}

@@ -8,31 +8,34 @@ import {
   type Node,
   type NodeChange,
 } from '@xyflow/react'
-import { AlertTriangle, Bot } from 'lucide-react'
+import { AlertTriangle, Bot, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { StepList } from '@/components/agents/PipelineEditor'
 import { ChainCanvas } from '@/components/chain/ChainCanvas'
 import { ChainContext, edgeFor, linesOf, nodeFor, nodesOf, type ChainView } from '@/components/chain/flow'
 import { Palette } from '@/components/chain/Palette'
-import { paletteGroups, type PaletteItem } from '@/components/chain/paletteItems'
+import { paletteGroups, usePaletteNotes, type PaletteItem } from '@/components/chain/paletteItems'
 import { RunView } from '@/components/chain/RunView'
 import { StepPanel } from '@/components/chain/StepPanel'
 import { loadGraphCatalogue, problemText, savedGraph, stepAgent, stepName } from '@/components/chain/stepInfo'
 import { HubTopBar } from '@/components/customize/DetailLayout'
 import { PageBody } from '@/components/layout/AppShell'
-import { Badge, Button, EmptyState, LoadingState } from '@/components/ui'
+import { Badge, Button, EmptyState, LoadingState, Modal } from '@/components/ui'
 import { agentsApi, errorMessage, pipelineGraphApi } from '@/lib/api'
 import { agentStartKind } from '@/lib/kinds'
 import {
   START,
   canvasEdges,
   connect,
+  freeSpot,
   fromCanvas,
+  insertAfter,
   isCondition,
   isLinear,
   linearEdges,
   newStepId,
+  tailFor,
   wouldCycle,
   type CanvasEdge,
 } from '@/lib/pipelineGraph'
@@ -50,6 +53,7 @@ const VIEWS: { id: View; label: string }[] = [
 ]
 
 const COL = 230
+const ROW = 150
 
 type NewStep = Omit<PipelineStep, 'id'> | Omit<ConditionStep, 'id'>
 
@@ -109,13 +113,20 @@ export function ChainPage() {
   }, [ensureWorkspace])
 
   const [cat, setCat] = useState<GraphCatalogue | null>(null)
+  const [catFailed, setCatFailed] = useState(false)
+  const [catTry, setCatTry] = useState(0)
   useEffect(() => {
     let live = true
-    void loadGraphCatalogue().then((c) => live && setCat(c))
+    void loadGraphCatalogue().then((c) => {
+      if (!live) return
+      setCat(c)
+      setCatFailed(!c)
+    })
     return () => {
       live = false
     }
-  }, [])
+  }, [catTry])
+  const [sheet, setSheet] = useState(false)
 
   const [steps, setSteps] = useState<GraphStep[]>([])
   const [nodes, setNodes] = useState<Node[]>([])
@@ -237,6 +248,12 @@ export function ChainPage() {
     [steps, nameOf, agentOf, models, skills, problemsOf],
   )
 
+  const groups = useMemo(
+    () => (agent ? paletteGroups({ ...agent, ...patches[agent.id] }, merged, skills.filter((s) => s.enabled), cat, me) : []),
+    [agent, patches, merged, skills, cat, me],
+  )
+  const paletteNotes = usePaletteNotes(agent?.id ?? '', groups, steps, lines, selected)
+
   /* ── changes ──────────────────────────────────────────────────────── */
 
   const changed = () => {
@@ -252,25 +269,15 @@ export function ChainPage() {
     let nextLines = lines
     let position = at
     if (!at) {
-      const tail =
-        (selected && (selected === START || steps.some((s) => s.id === selected)) ? selected : null) ??
-        [START, ...graph.steps.map((s) => s.id)].filter((x) => !lines.some((l) => l.source === x)).at(-1) ??
-        graph.steps.at(-1)?.id ??
-        START
-      const tailStep = steps.find((s) => s.id === tail)
-      const handle = isCondition(tailStep)
-        ? (tailStep.branches.find((b) => !lines.some((l) => l.source === tail && l.sourceHandle === b.key)) ?? tailStep.branches[0]).key
-        : null
-      const old = lines.find((l) => l.source === tail && (l.sourceHandle ?? null) === handle)
-      nextLines = connect(nextLines, tail, id, handle)
-      // Put in between: what followed the tail follows the new step (a condition's first branch).
-      if (old) nextLines = connect(nextLines, id, old.target, isCondition(step) ? step.branches[0]?.key : null)
+      const tail = tailFor(steps, lines, selected)
+      const put = insertAfter([...steps, step], lines, tail, step)
+      nextLines = put.lines
       const base = placeOf(tail) ?? { x: 0, y: 0 }
-      position = { x: base.x + COL, y: base.y + (isCondition(tailStep) && handle !== tailStep.branches[0]?.key ? 150 : 0) }
-      if (old) {
-        // Push what follows to the right.
-        setNodes((ns) => ns.map((n) => (n.position.x >= position!.x ? { ...n, position: { ...n.position, x: n.position.x + COL } } : n)))
-      }
+      const want = { x: base.x + COL, y: base.y + put.lane * ROW }
+      // What followed moves right; the new step takes the first place no node covers.
+      const moved = put.pushed ? nodes.map((n) => (n.position.x >= want.x ? { ...n, position: { ...n.position, x: n.position.x + COL } } : n)) : nodes
+      position = freeSpot(moved.map((n) => n.position), want)
+      if (put.pushed) setNodes(moved)
     } else if (steps.length === 0) {
       nextLines = connect(nextLines, START, id)
     }
@@ -445,8 +452,27 @@ export function ChainPage() {
     )
   }
   const mine = agent.ownerId === me && !agent.catalogKey
-  const groups = paletteGroups({ ...agent, ...patches[agent.id] }, merged, skills.filter((s) => s.enabled), cat, me)
   const max = cat?.maxSteps ?? 12
+  const paletteBody = cat ? (
+    <Palette
+      groups={groups}
+      notes={paletteNotes}
+      onPick={(item) => {
+        setSheet(false)
+        pick(item)
+      }}
+      full={steps.length >= max}
+    />
+  ) : catFailed ? (
+    <p className="text-sm text-danger" role="alert">
+      {t('단계 목록을 불러오지 못했습니다.')}{' '}
+      <button type="button" className="underline" onClick={() => setCatTry((n) => n + 1)}>
+        {t('다시 시도')}
+      </button>
+    </p>
+  ) : (
+    <LoadingState label={t('단계 목록을 불러오는 중…')} />
+  )
   const linearNow = !steps.some(isCondition) && isLinear(graph.steps, graph.edges ?? linearEdges(graph.steps))
 
   return (
@@ -543,8 +569,8 @@ export function ChainPage() {
         ) : (
           <ChainContext.Provider value={viewCtx}>
             <div className="flex flex-wrap" data-testid="chain-editor">
-              <aside aria-label={t('단계 목록')} className="flex-[1_1_240px] border-line bg-panel p-4 lg:max-w-[280px] lg:border-r max-lg:order-3 max-lg:border-t">
-                <Palette groups={groups} onPick={(item) => pick(item)} full={steps.length >= max} />
+              <aside aria-label={t('단계 목록')} className="flex-[1_1_240px] border-line bg-panel p-4 max-lg:hidden lg:max-w-[280px] lg:border-r">
+                {paletteBody}
               </aside>
               <main className="flex min-w-0 flex-[999_1_480px] flex-col gap-3 p-4 max-lg:order-1">
                 {(flagged.length > 0 || overall.length > 0) && (
@@ -589,9 +615,15 @@ export function ChainPage() {
                       if (item) pick(item, at)
                     }}
                     footer={
+                      <>
+                      <Button type="button" size="sm" variant="primary" className="lg:hidden" onClick={() => setSheet(true)}>
+                        <Plus size={13} />
+                        {t('단계 추가')}
+                      </Button>
                       <span className="text-sm text-muted">
                         {t('{n}단계 · 저장하면 목록으로 보기에도 같은 순서로 보입니다.').replace('{n}', String(steps.length))}
                       </span>
+                      </>
                     }
                   />
                 </ReactFlowProvider>
@@ -632,6 +664,10 @@ export function ChainPage() {
           </ChainContext.Provider>
         )}
       </div>
+      {/* Phone: the step list as a sheet over the canvas. */}
+      <Modal open={sheet} onClose={() => setSheet(false)} title={t('단계 추가')} width="max-w-md">
+        <div data-testid="palette-sheet">{paletteBody}</div>
+      </Modal>
     </>
   )
 }

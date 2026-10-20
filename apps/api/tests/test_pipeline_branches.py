@@ -280,6 +280,8 @@ async def test_a_run_follows_only_the_branch_its_rule_picks(wired, writers):
         assert (run["status"], run["session_id"], run["pipeline_id"]) == (
             "done", session.id, yes.id)
         assert set(run) >= {"id", "status", "started_at", "ended_at", "session_id", "steps"}
+        # Told apart by number and the request's opening words.
+        assert run["number"] == 1 and run["request_text"]
         steps = {s["step_id"]: s for s in run["steps"]}
         assert list(steps) == ["w", "if", "chk", "rev"]
         assert steps["w"]["input_summary"] == "요청"
@@ -370,3 +372,49 @@ def test_the_migration_gives_stored_steps_the_ids_they_were_shown_under():
         with Operations.context(MigrationContext.configure(conn)):
             migration.downgrade()
         assert "edges" not in {c["name"] for c in sa.inspect(conn).get_columns("user_pipelines")}
+
+
+# ── what the person reads ──────────────────────────────────────────────
+
+
+def test_rule_values_are_named_in_korean_and_a_result_kind_reads_as_said():
+    labels = [v["label"] for v in compose.CONDITION_VALUES]
+    assert all(not any("a" <= c <= "z" for c in label.lower()) for label in labels)
+    assert compose.rule_holds({"op": "eq", "target": "문서"}, "document")
+    assert compose.rule_holds({"op": "eq", "target": "답"}, "answer")
+    assert not compose.rule_holds({"op": "eq", "target": "문서"}, "answer")
+
+
+async def test_a_rule_says_which_value_it_read():
+    work = _condition_bundle()
+    work.wire["values"] = {"w": {"sections": 3}}
+    spec = compose.normalize([_RULE])[0]
+    out = [e async for e in compose.ConditionStep(1, spec, "조건").run(work, Context())]
+    assert out[-1]["branch"]["reason"] == "쓴 장 수 3 → 예"
+
+
+async def test_the_judge_picks_by_number_and_never_sees_the_branch_keys(monkeypatch):
+    prompts: list[str] = []
+
+    async def complete(model, messages, api_key, max_tokens):
+        prompts.append(messages[-1]["content"])
+        return json.dumps({"branch": 2, "reason": "「회의록만」이 맞습니다."}), {}
+
+    monkeypatch.setattr(report, "_complete", complete)
+    spec = compose.normalize([{"id": "ask", "kind": "condition", "mode": "ai", "question": "과제?",
+                               "branches": [{"key": "yes", "label": "메일 초안"},
+                                            {"key": "no", "label": "회의록만"}]}])[0]
+    work = _condition_bundle()
+    out = [e async for e in compose.ConditionStep(1, spec, "조건").run(work, Context())]
+    assert work.wire["branches"] == {"ask": "no"}
+    assert out[-1]["branch"]["label"] == "회의록만"
+    assert "1: 메일 초안\n2: 회의록만" in prompts[0]
+    assert "yes" not in prompts[0].split("# Request")[0].replace("JSON only", "")
+
+
+def test_a_step_the_server_refuses_says_how_to_fix_it():
+    agents = {"c": compose.AgentInfo(id="c", name="즉답", output="answer")}
+    said = [p.message for p in compose.validate([
+        {"kind": "agent", "ref": "c"}, {"kind": "human", "ref": "gaps"}], agents=agents).problems]
+    assert said == ["2번 사람 확인(확인 질문): 뒤에 에이전트 단계가 있어야 합니다. "
+                    "받은 답으로 쓸 에이전트를 이 단계 뒤에 이으세요."]

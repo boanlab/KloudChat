@@ -31,6 +31,11 @@ test('an own skill becomes an agent with the name checked and saved', async ({ p
   const row = page.getByTestId('agent-skill-row').filter({ hasText: '주간 현황 보고' })
   await expect(row.getByRole('radio', { name: '항상 적용' })).toHaveAttribute('aria-checked', 'true')
   await expect(row).toContainText('약 320 토큰')
+  // Its last 항상 적용 skill turned 필요할 때 and back: the group stays open where the person is.
+  await row.getByRole('radio', { name: '필요할 때' }).click()
+  await expect(page.getByTestId('agent-tools-group')).toHaveAttribute('open', '')
+  await row.getByRole('radio', { name: '항상 적용' }).click()
+  await expect(page.getByTestId('agent-tools-group')).toHaveAttribute('open', '')
 
   await form.getByRole('button', { name: '만들기' }).click()
   await expect(page).toHaveURL(/\/customize\/agents\/a9999/)
@@ -96,7 +101,7 @@ test('each skill is applied always or when needed, and an empty chosen list says
   await expect(analysis.getByRole('radio', { name: '항상 적용' })).toHaveAttribute('aria-checked', 'true')
   await expect(list.getByTestId('pinned-total')).toHaveText('항상 적용 1/6개 · 약 320 / 8,000 토큰')
   await analysis.getByText('본문 미리 보기').click()
-  await expect(analysis.getByTestId('skill-body-preview')).toContainText('1. 자료를 읽는다')
+  await expect(analysis.getByTestId('skill-body-preview').getByRole('listitem').first()).toContainText('자료를 읽는다')
 
   await form.getByRole('button', { name: '만들기' }).click()
   await expect(page).toHaveURL(/\/customize\/agents\/a9999/)

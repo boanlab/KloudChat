@@ -8,7 +8,7 @@ import { START, canvasEdges, isCondition, readRun, runIsOpen } from '@/lib/pipel
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types'
-import type { PipelineRunRecord, RunStepStatus } from '@/types/pipelineGraph'
+import type { PipelineRunRecord, PipelineRunStep, RunStepStatus } from '@/types/pipelineGraph'
 import { ChainCanvas } from './ChainCanvas'
 import { ChainContext, edgeFor, nodesOf } from './flow'
 import { RUN_LABEL, RUN_TEXT, kindLabel, savedGraph } from './stepInfo'
@@ -20,6 +20,15 @@ const RUN_STATUS: Record<string, string> = {
   failed: '실패',
   stopped: '멈춤',
   cancelled: '취소됨',
+}
+
+/** 한 일 when the record says nothing more: what its status means. */
+function didOf(record: PipelineRunStep | undefined): string {
+  if (!record) return ''
+  if (record.status === 'done') return record.outputSummary ? `마쳤습니다 · ${record.outputSummary}` : '마쳤습니다'
+  if (record.status === 'skipped') return '건너뛰었습니다'
+  if (record.status === 'waiting') return '기다리는 중입니다'
+  return ''
 }
 
 const when = (iso: string | null) =>
@@ -123,7 +132,7 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
         )}
         {runs.length === 0 && !failed && <p className="text-sm text-faint">{t('아직 실행 기록이 없습니다. 시험 실행으로 대화를 열면 여기에 남습니다.')}</p>}
         <ul className="flex flex-col gap-1.5">
-          {runs.map((r, i) => (
+          {runs.map((r) => (
             <li key={r.id}>
               <button
                 type="button"
@@ -136,9 +145,14 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
                 data-testid="run-row"
               >
                 <b>
-                  {when(r.startedAt)} · {t(RUN_STATUS[r.status] ?? r.status)}
+                  {r.number ? `#${r.number} · ` : ''}
+                  {t(RUN_STATUS[r.status] ?? r.status)}
                 </b>
-                {i === 0 && <span className="text-muted">{t('가장 최근')}</span>}
+                <span className="text-muted">
+                  {when(r.startedAt)}
+                  {r.requestText ? ` · ${r.requestText}` : ''}
+                  {r.attachments ? ` · ${t('첨부 {n}개').replace('{n}', String(r.attachments))}` : ''}
+                </span>
               </button>
             </li>
           ))}
@@ -149,8 +163,10 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
         {run ? (
           <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-card border border-line bg-panel px-3.5 py-2.5 text-sm" data-testid="run-status">
             <b>
-              {when(run.startedAt)} {t(RUN_STATUS[run.status] ?? run.status)}
+              {run.number ? `#${run.number} ` : ''}
+              {t(RUN_STATUS[run.status] ?? run.status)}
             </b>
+            <span className="text-muted">{when(run.startedAt)}</span>
             <span className="text-muted">
               {[
                 counts('done') && t('{n}단계 끝').replace('{n}', String(counts('done'))),
@@ -199,12 +215,12 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
             </div>
             {[
               { label: '받은 것', text: record?.inputSummary },
-              { label: '한 일', text: [record?.note, branch ? `${t('고른 갈래')}: ${t(branch)}` : ''].filter(Boolean).join('\n') },
+              { label: '한 일', text: [record?.note || didOf(record), branch ? `${t('고른 갈래')}: ${t(branch)}` : ''].filter(Boolean).join('\n') },
               { label: '넘긴 것', text: record?.outputSummary ? `${record.outputSummary}${next.length ? ` → ${next.map((n) => t(n)).join(', ')}` : ''}` : '' },
             ].map((row) => (
               <div key={row.label} className="flex flex-col gap-1">
                 <span className="text-sm text-muted">{t(row.label)}</span>
-                <div className="rounded-card bg-elevated/60 p-3 text-sm leading-relaxed whitespace-pre-line">{row.text ? t(row.text) : t('아직 없습니다')}</div>
+                <div className="rounded-card bg-elevated/60 p-3 text-sm leading-relaxed whitespace-pre-line">{row.text ? t(row.text) : t(record && record.status !== 'waiting' && record.status !== 'running' ? '없음' : '아직 없습니다')}</div>
               </div>
             ))}
             <Button type="button" size="sm" className="self-start" onClick={() => onEditStep(step.id)}>

@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react'
+import { AlertTriangle, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Input } from '@/components/ui'
@@ -10,10 +10,13 @@ import type { PaletteItem } from './paletteItems'
 /** Left side: what can be put on the canvas; click (or Enter) adds after the selected step, drag places it. */
 export function Palette({
   groups,
+  notes = {},
   onPick,
   full,
 }: {
   groups: { label: string; items: PaletteItem[]; store?: boolean }[]
+  /** Per item: what the server would say of it put after the selected step. */
+  notes?: Record<string, string>
   onPick: (item: PaletteItem) => void
   /** At the step limit: steps can no longer be added. */
   full: boolean
@@ -35,27 +38,38 @@ export function Palette({
           {g.items.length === 0 && !g.store && <p className="text-sm text-faint">{t('넣을 수 있는 것이 없습니다.')}</p>}
           {g.items.map((item) => {
             const disabled = full && 'step' in item.make
+            const note = notes[item.key]
+            const noteId = `palette-note-${item.key.replace(/[^a-z0-9-]/gi, '-')}`
             return (
-              <button
-                key={item.key}
-                type="button"
-                draggable={!disabled}
-                disabled={disabled}
-                onDragStart={(e) => {
-                  e.dataTransfer.setData(DRAG_TYPE, item.key)
-                  e.dataTransfer.effectAllowed = 'copy'
-                }}
-                onClick={() => onPick(item)}
-                className={cn(
-                  'flex h-9 items-center gap-2 rounded-control border border-line bg-panel px-2.5 text-left text-sm text-fg',
-                  'hover:border-accent hover:bg-elevated focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-45',
+              <div key={item.key} className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  draggable={!disabled}
+                  disabled={disabled}
+                  aria-describedby={note ? noteId : undefined}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(DRAG_TYPE, item.key)
+                    e.dataTransfer.effectAllowed = 'copy'
+                  }}
+                  onClick={() => onPick(item)}
+                  className={cn(
+                    'flex h-9 items-center gap-2 rounded-control border bg-panel px-2.5 text-left text-sm text-fg',
+                    'hover:border-accent hover:bg-elevated focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-45',
+                    note ? 'border-warn/50 border-dashed text-muted' : 'border-line',
+                  )}
+                  data-testid="palette-item"
+                  data-warn={note ? 'true' : undefined}
+                >
+                  <item.icon size={15} className={cn('shrink-0', item.tone)} aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">{t(item.name)}</span>
+                  {note ? <AlertTriangle size={13} className="shrink-0 text-warn" aria-hidden /> : <Plus size={13} className="shrink-0 text-faint" aria-hidden />}
+                </button>
+                {note && (
+                  <p id={noteId} className="text-xs leading-snug text-warn" data-testid="palette-note">
+                    {t('여기에 넣으면')}: {t(note)}
+                  </p>
                 )}
-                data-testid="palette-item"
-              >
-                <item.icon size={15} className={cn('shrink-0', item.tone)} aria-hidden />
-                <span className="min-w-0 flex-1 truncate">{t(item.name)}</span>
-                <Plus size={13} className="shrink-0 text-faint" aria-hidden />
-              </button>
+              </div>
             )
           })}
           {g.store && (

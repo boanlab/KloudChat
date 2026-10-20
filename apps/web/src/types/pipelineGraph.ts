@@ -118,6 +118,11 @@ export interface PipelineRunStep {
 /** One run of a user pipeline, readable by its owner. */
 export interface PipelineRunRecord {
   id: string
+  /** Its place among the owner's runs of this pipeline (1 = first); 0 when not said. */
+  number: number
+  /** The request's opening words. */
+  requestText: string
+  attachments: number
   status: string
   startedAt: string | null
   endedAt: string | null

@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import type { PipelineStep } from '@/types'
 import type { ConditionStep, GraphStep, PipelineGraph } from '@/types/pipelineGraph'
-import { START, canvasEdges, connect, fromCanvas, layout, newStepId, readConditionValues, readRun, wouldCycle } from '@/lib/pipelineGraph'
+import {
+  START,
+  canvasEdges,
+  connect,
+  freeSpot,
+  fromCanvas,
+  insertAfter,
+  layout,
+  newStepId,
+  readConditionValues,
+  readRun,
+  tailFor,
+  wouldCycle,
+} from '@/lib/pipelineGraph'
 
 const agent = (id: string): PipelineStep => ({ id, kind: 'agent', ref: `a-${id}`, settings: {} })
 const cond = (id: string): ConditionStep => ({
@@ -116,5 +129,38 @@ describe('graph and steps', () => {
       { stepKind: 'request', key: 'attachments', label: '첨부 수', type: 'number' },
       { stepKind: 'human', key: 'gaps', label: '빈칸 수', type: 'number', ref: 'gaps' },
     ])
+  })
+
+  it('a run record carries its number, the request\'s opening words and its attachments', () => {
+    const run = readRun({ id: 'r', number: 3, request_text: '주간회의 메모', attachments: 1, status: 'done', steps: [] })
+    expect(run).toMatchObject({ number: 3, requestText: '주간회의 메모', attachments: 1 })
+  })
+
+  it('a step put after a condition takes its next free branch, on its own lane', () => {
+    const steps: GraphStep[] = [agent('s1'), cond('c1'), agent('s2')]
+    const lines = connect(connect(connect([], START, 's1'), 's1', 'c1'), 'c1', 's2', 'yes')
+    const put = insertAfter([...steps, agent('s3')], lines, 'c1', agent('s3'))
+    expect(put.lines.find((l) => l.target === 's3')).toMatchObject({ source: 'c1', sourceHandle: 'no' })
+    expect(put.lane).toBe(1)
+    expect(put.pushed).toBe(false)
+  })
+
+  it('a step put between two takes over the line that was there', () => {
+    const lines = connect(connect([], START, 's1'), 's1', 's2')
+    const put = insertAfter([agent('s1'), agent('s2'), agent('s3')], lines, 's1', agent('s3'))
+    expect(put.pushed).toBe(true)
+    expect(fromCanvas([agent('s1'), agent('s2'), agent('s3')], put.lines).steps.map((s) => s.id)).toEqual(['s1', 's3', 's2'])
+  })
+
+  it('with nothing selected a step goes after the last step nothing follows', () => {
+    const lines = connect(connect([], START, 's1'), 's1', 's2')
+    expect(tailFor([agent('s1'), agent('s2')], lines, null)).toBe('s2')
+    expect(tailFor([agent('s1'), agent('s2')], lines, 's1')).toBe('s1')
+  })
+
+  it('a new node never lands on another one', () => {
+    const taken = [{ x: 230, y: 0 }, { x: 230, y: 150 }]
+    expect(freeSpot(taken, { x: 230, y: 0 })).toEqual({ x: 230, y: 300 })
+    expect(freeSpot(taken, { x: 460, y: 0 })).toEqual({ x: 460, y: 0 })
   })
 })

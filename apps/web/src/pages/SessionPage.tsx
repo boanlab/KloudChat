@@ -304,7 +304,14 @@ function Intro({
               ? t('무엇을 도와드릴까요?')
               : t(meta.tagline)}
         </p>
-        {agent && !agent.guide && (
+        {agent?.process?.mode === 'custom' && agent.process.chain.length > 0 && (
+          <p className="mt-2 text-sm text-muted" data-testid="chain-start-note">
+            {t('보내면 파이프라인 {n}단계가 차례로 돕니다: {chain}. 단계마다 한 일은 에이전트의 실행 기록에 남습니다.')
+              .replace('{n}', String(agent.process.chain.length))
+              .replace('{chain}', agent.process.chain.map((c) => t(c)).join(' → '))}
+          </p>
+        )}
+        {agent && !agent.guide && agent.process?.mode !== 'custom' && (
           <p className="mt-2 text-sm text-faint">
             {t('{kind}에서 이 에이전트의 지시대로 답합니다.').replace('{kind}', t(meta.label))}
           </p>

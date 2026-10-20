@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi import Request as HttpRequest
 from fastapi.responses import StreamingResponse
 from pydantic import Field
-from sqlmodel import col, select
+from sqlmodel import col, func, select
 
 from app.core.deps import AdminUser, CurrentUser, DbSession, client_ip
 from app.models.chat import ChatSession, Message, PipelineRun, Role, SessionKind
@@ -348,11 +348,13 @@ def _clip(text: Any, limit: int = 200) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def run_out(run: PipelineRun) -> dict[str, Any]:
+def run_out(run: PipelineRun, number: int = 0) -> dict[str, Any]:
     """A user-pipeline run per step: status, what it got and handed on, branch taken. Built
-    from the stored records only (labels and summaries, never the text the steps read)."""
+    from the stored records only (labels and summaries, never the text the steps read); the
+    request's opening words and `number` (its place among the owner's runs) tell runs apart."""
     request = (run.params or {}).get("request") or {}
     turn = pipeline_runs.decode((request.get("f") or {}).get("turn")) or {}
+    asked = pipeline_runs.decode((request.get("f") or {}).get("text"))
     steps = compose.normalize((turn.get("compose") or {}).get("stages"))
     records = [r for r in run.stages or [] if isinstance(r, dict)]
     open_run = run.status in ("running", "waiting")
@@ -408,7 +410,10 @@ def run_out(run: PipelineRun) -> dict[str, Any]:
                         "status": "waiting" if open_run else "skipped",
                         "started_at": None, "ended_at": None, "input_summary": "",
                         "output_summary": "", "note": "", "branch_taken": None})
-    return {"id": run.id, "status": run.status, "pipeline_id": run.pipeline[len(compose.PREFIX):],
+    return {"id": run.id, "number": number, "status": run.status,
+            "pipeline_id": run.pipeline[len(compose.PREFIX):],
+            "request_text": _clip(asked if isinstance(asked, str) else "", 60),
+            "attachments": attached,
             "session_id": run.session_id, "parent_id": run.parent_id,
             "from_stage": run.from_stage,
             "started_at": run.created_at.isoformat() if run.created_at else None,
@@ -423,7 +428,10 @@ async def get_run(run_id: str, user: CurrentUser, db: DbSession):
     run = await db.get(PipelineRun, run_id)
     if run is None or run.user_id != user.id or not run.pipeline.startswith(compose.PREFIX):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run_not_found")
-    return run_out(run)
+    number = (await db.exec(select(func.count()).select_from(PipelineRun).where(
+        PipelineRun.user_id == user.id, PipelineRun.pipeline == run.pipeline,
+        col(PipelineRun.created_at) <= run.created_at))).one()
+    return run_out(run, int(number))
 
 
 @router.get("/user-pipelines/{pipeline_id}/runs")
@@ -432,10 +440,11 @@ async def list_runs(pipeline_id: str, user: CurrentUser, db: DbSession):
     row = await db.get(UserPipeline, pipeline_id)
     if row is None or row.owner_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pipeline_not_found")
-    runs = (await db.exec(select(PipelineRun).where(
-        PipelineRun.user_id == user.id, PipelineRun.pipeline == f"{compose.PREFIX}{row.id}")
-        .order_by(col(PipelineRun.created_at).desc()).limit(_MAX_RUNS))).all()
-    return [run_out(r) for r in runs]
+    mine = (PipelineRun.user_id == user.id, PipelineRun.pipeline == f"{compose.PREFIX}{row.id}")
+    runs = (await db.exec(select(PipelineRun).where(*mine)
+                          .order_by(col(PipelineRun.created_at).desc()).limit(_MAX_RUNS))).all()
+    total = int((await db.exec(select(func.count()).select_from(PipelineRun).where(*mine))).one())
+    return [run_out(r, total - i) for i, r in enumerate(runs)]
 
 
 def _usable(row: UserPipeline, user: User) -> bool:

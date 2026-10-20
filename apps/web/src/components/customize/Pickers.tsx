@@ -8,6 +8,7 @@ import { isListed } from '@/lib/listed'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import type { SessionKind, Skill, StoreSkill, ToolCatalogEntry } from '@/types'
+import { Markdown } from '@/components/chat/Markdown'
 
 const BUILTIN = '기본 도구'
 
@@ -683,9 +684,9 @@ export function AgentSkillList({
                 {body && (
                   <details className="mt-1 text-sm">
                     <summary className="cursor-pointer text-muted select-none hover:text-fg">{t('본문 미리 보기')}</summary>
-                    <p className="mt-1 max-h-40 overflow-y-auto rounded-control bg-elevated px-2 py-1.5 whitespace-pre-wrap text-muted" data-testid="skill-body-preview">
-                      {body.length > 1200 ? `${body.slice(0, 1200)}…` : body}
-                    </p>
+                    <div className="mt-1 max-h-40 overflow-y-auto rounded-control bg-elevated px-2 py-1.5 text-muted" data-testid="skill-body-preview">
+                      <Markdown className="text-sm leading-relaxed">{body.length > 1200 ? `${body.slice(0, 1200)}…` : body}</Markdown>
+                    </div>
                   </details>
                 )}
               </li>

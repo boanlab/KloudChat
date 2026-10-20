@@ -204,8 +204,12 @@ const RUN_STEP_STATUS: RunStepStatus[] = ['waiting', 'running', 'done', 'failed'
 /** A run row as the server sends it, read into `PipelineRunRecord`. */
 export function readRun(row: Raw): PipelineRunRecord {
   const steps = Array.isArray(row.steps) ? (row.steps as Raw[]) : []
+  const count = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
   return {
     id: text(row.id),
+    number: count(row.number),
+    requestText: text(field(row, 'request_text')),
+    attachments: count(row.attachments),
     status: text(row.status),
     startedAt: textOrNull(field(row, 'started_at')),
     endedAt: textOrNull(field(row, 'ended_at')),
@@ -243,4 +247,35 @@ export function readConditionValues(cat: Raw | null): ConditionValue[] {
     type: text(r.type),
     ...(text(r.ref) ? { ref: text(r.ref) } : {}),
   }))
+}
+
+/** Where a new step goes when none is picked: the selected step, else the last one nothing follows. */
+export function tailFor(steps: GraphStep[], lines: CanvasEdge[], selected: string | null): string {
+  if (selected && (selected === START || steps.some((s) => s.id === selected))) return selected
+  const order = fromCanvas(steps, lines).steps.map((s) => s.id)
+  return [START, ...order].filter((x) => !lines.some((l) => l.source === x)).at(-1) ?? order.at(-1) ?? START
+}
+
+/** Lines with `step` put after `tail`: on the tail's first free branch, taking over what followed. */
+export function insertAfter(steps: GraphStep[], lines: CanvasEdge[], tail: string, step: GraphStep) {
+  const tailStep = steps.find((s) => s.id === tail)
+  const handle = isCondition(tailStep)
+    ? (tailStep.branches.find((b) => !lines.some((l) => l.source === tail && l.sourceHandle === b.key)) ?? tailStep.branches[0]).key
+    : null
+  const old = lines.find((l) => l.source === tail && (l.sourceHandle ?? null) === handle)
+  let next = connect(lines, tail, step.id, handle)
+  if (old) next = connect(next, step.id, old.target, isCondition(step) ? step.branches[0]?.key : null)
+  const lane = isCondition(tailStep) ? Math.max(0, tailStep.branches.findIndex((b) => b.key === handle)) : 0
+  return { lines: next, pushed: !!old, lane }
+}
+
+/** Node box with room around it, for overlap. */
+const BOX = { w: COL - 20, h: ROW - 30 }
+
+/** `want`, or the first place below it no node covers. */
+export function freeSpot(taken: { x: number; y: number }[], want: { x: number; y: number }) {
+  const at = { ...want }
+  const hit = () => taken.some((p) => Math.abs(p.x - at.x) < BOX.w && Math.abs(p.y - at.y) < BOX.h)
+  for (let i = 0; i < 50 && hit(); i++) at.y += ROW
+  return at
 }

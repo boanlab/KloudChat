@@ -94,7 +94,7 @@
       {
         "step_kind": "agent",
         "key": "kind",
-        "label": "결과 종류(document·answer)",
+        "label": "결과 종류(문서·답)",
         "type": "text"
       },
       {
@@ -188,13 +188,23 @@
     "branch_dead_end": "{at}: 「{label}」 갈래 뒤에 이어질 단계가 없습니다.",
     "condition_incomplete": "{at}: {what}",
     "parallel_next": "{at}: 조건 단계가 아니면 다음 단계는 하나만 이을 수 있습니다.",
-    "cycle": "{at}: 앞 단계로 되돌아가는 선이 있습니다. 반복은 둘 수 없습니다."
+    "cycle": "{at}: 앞 단계로 되돌아가는 선이 있습니다. 반복은 둘 수 없습니다.",
+    "needs_agent_after": "{at}: 뒤에 에이전트 단계가 있어야 합니다. 받은 답으로 쓸 에이전트를 이 단계 뒤에 이으세요.",
+    "needs_product": "{at}: 앞 단계에서 만든 {word} 있어야 합니다. {fix}"
+  },
+  "productFixes": {
+    "문서가": "이 단계 앞에 보고서(문서)를 쓰는 에이전트를 두세요.",
+    "답이": "이 단계 앞에 대화(답)를 하는 에이전트를 두세요.",
+    "문서나 답이": "이 단계 앞에 에이전트 단계를 두세요."
   },
   "runs": [
     {
       "id": "r2",
+      "number": 2,
       "status": "waiting",
       "pipeline_id": "p1",
+      "request_text": "주간회의 메모로 회의록을 정리하고 후속 메일까지 써 줘",
+      "attachments": 1,
       "session_id": "a5555555555555555555555555555555",
       "parent_id": null,
       "from_stage": null,
@@ -241,8 +251,11 @@
     },
     {
       "id": "r1",
+      "number": 1,
       "status": "failed",
       "pipeline_id": "p1",
+      "request_text": "기획회의 메모 정리",
+      "attachments": 1,
       "session_id": "a5555555555555555555555555555555",
       "parent_id": null,
       "from_stage": null,

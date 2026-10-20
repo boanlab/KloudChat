@@ -59,7 +59,7 @@ const catalogue = { ...api.catalogue, reviewModels: [{ id: 'fixture/judge', labe
 const KIND = api.kindWords as Record<string, string>
 
 /** The server's graph checks, as far as these screens need them, in its words (`compose.validate`). */
-function verdict(stages: Step[], edges: Edge[] | null, agents: { id: string; name: string }[]) {
+function verdict(stages: Step[], edges: Edge[] | null, agents: { id: string; name: string; surface: string }[]) {
   const lines: Edge[] = edges ?? stages.slice(1).map((s, i) => ({ from: stages[i].id, to: s.id }))
   const title = (s: Step) =>
     s.kind === 'agent' ? (agents.find((a) => a.id === s.ref)?.name ?? '에이전트')
@@ -77,8 +77,12 @@ function verdict(stages: Step[], edges: Edge[] | null, agents: { id: string; nam
     changed = false
     for (const l of lines) if (reached.has(l.from) && !reached.has(l.to)) changed = reached.add(l.to) && true
   }
+  let made = ''
   stages.forEach((s, i) => {
     if (!reached.has(s.id)) return say(i, 'unreachable_step')
+    if (s.kind === 'agent') made = agents.find((a) => a.id === s.ref)?.surface ?? ''
+    if (s.kind === 'human' && s.ref === 'gaps' && !stages.slice(i + 1).some((x) => x.kind === 'agent')) say(i, 'needs_agent_after')
+    if (s.kind === 'export' && made !== 'report') say(i, 'needs_product', { word: '문서가', fix: api.productFixes['문서가'] })
     if (s.kind !== 'condition') return
     const rule = s.rule as { step?: string; op?: string; target?: string } | undefined
     if (s.mode === 'rule' && !rule?.step) say(i, 'condition_incomplete', { what: '규칙이 읽을 값을 이 조건 앞 단계에서 골라 주세요.' })
@@ -196,9 +200,9 @@ test('build a chain on the canvas: add, drag, connect, skills, save the same ste
   // Click: added after the selected step.
   await node(page, 's3').click()
   await expect(panel(page).getByText('후속 메일 초안').first()).toBeVisible()
-  await palette(page).getByRole('button', { name: 'PDF·Word 내보내기' }).click()
+  await palette(page).getByRole('button', { name: '검토' }).click()
   await expect(page.getByTestId('chain-node')).toHaveCount(5)
-  await expect(panel(page)).toContainText('내보내기')
+  await expect(panel(page)).toContainText('검토')
 
   // Drag: placed loose, so it is flagged until a line reaches it.
   await palette(page).getByRole('button', { name: '개요 확인' }).dragTo(page.getByTestId('chain-canvas'), { targetPosition: { x: 200, y: 320 } })
@@ -206,7 +210,7 @@ test('build a chain on the canvas: add, drag, connect, skills, save the same ste
   await expect(page.getByTestId('chain-banner')).toContainText('확인할 단계가 1개 있습니다')
   await expect(node(page, 's5').getByTestId('node-problem')).toBeVisible()
 
-  // Keyboard way: 다음 단계 from the export step.
+  // Keyboard way: 다음 단계 from the review step.
   await node(page, 's4').click()
   await panel(page).getByTestId('next-step').selectOption('s5')
   await expect(page.getByTestId('chain-banner')).toHaveCount(0)
@@ -222,14 +226,14 @@ test('build a chain on the canvas: add, drag, connect, skills, save the same ste
   await expect(page.getByText('저장했습니다.')).toBeVisible()
   const saved = state.processes.at(-1) as { mode: string; stages: Step[]; edges: Edge[] | null }
   expect(saved.mode).toBe('custom')
-  expect(saved.stages.map((s) => `${s.id}:${s.kind}`)).toEqual(['s1:agent', 's2:check', 's3:agent', 's4:export', 's5:human'])
+  expect(saved.stages.map((s) => `${s.id}:${s.kind}`)).toEqual(['s1:agent', 's2:check', 's3:agent', 's4:review', 's5:human'])
   expect(saved.edges).toBeNull()
   expect(saved.stages[2].settings).toEqual({ instruction: '실행 과제와 담당자만 뽑아 메일 초안을 씁니다.' })
   expect(state.patches).toEqual([{ id: MAIL, body: { activeSkillIds: ['k2'], skillIds: ['k2'], model: 'fixture/base' } }])
 
   // The same steps as a list.
   await page.getByRole('tab', { name: '목록으로 보기' }).click()
-  await expect(page.getByTestId('chain-list').getByTestId('pipeline-step')).toHaveText([/회의록 정리/, /근거 대조/, /후속 메일 초안/, /내보내기/, /개요 확인/])
+  await expect(page.getByTestId('chain-list').getByTestId('pipeline-step')).toHaveText([/회의록 정리/, /근거 대조/, /후속 메일 초안/, /검토/, /개요 확인/])
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
 })
@@ -252,7 +256,7 @@ test('a condition step: rule from a preceding value, two branches, saved as edge
   const value = side.getByTestId('condition-rule').getByLabel('값')
   // The request and what the steps before it leave behind (catalogue `condition_values`).
   await expect(value.locator('option')).toHaveText(['값 고르기', '요청 · 첨부 수', '요청 · 첨부 형식', '요청 · 요청 글',
-    '회의록 정리 · 결과 종류(document·answer)', '회의록 정리 · 쓴 장 수', '회의록 정리 · 결과 글자 수', '회의록 정리 · 결과 글'])
+    '회의록 정리 · 결과 종류(문서·답)', '회의록 정리 · 쓴 장 수', '회의록 정리 · 결과 글자 수', '회의록 정리 · 결과 글'])
   await value.selectOption({ label: '회의록 정리 · 쓴 장 수' })
   await side.getByLabel('비교').selectOption({ label: '보다 크면' })
   await side.getByLabel('기준').fill('0')
@@ -321,7 +325,8 @@ test('a skill dropped opens its agent draft, and the agent made comes back as a 
 test('실행 기록: per-step status on the canvas, what a step took and gave, read again on 새로 고침', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
   await openCanvas(page, '?view=runs')
-  await expect(page.getByTestId('run-row')).toHaveText([/기다리는 중/, /실패/])
+  await expect(page.getByTestId('run-row')).toHaveText([/#2 · 기다리는 중.*주간회의 메모로 회의록을.*첨부 1개/, /#1 · 실패.*기획회의 메모 정리/])
+  await expect(page.getByTestId('run-status')).toContainText('#2 기다리는 중')
   await expect(page.getByTestId('run-status')).toContainText('2단계 끝 · 1단계 대기')
   await expect(node(page, 's1')).toHaveAttribute('data-status', 'done')
   await expect(node(page, 's3')).toHaveAttribute('data-status', 'waiting')
@@ -330,6 +335,9 @@ test('실행 기록: per-step status on the canvas, what a step took and gave, r
   await expect(io).toContainText('근거 대조')
   await expect(io).toContainText('「회의록 정리」 회의록 1부')
   await expect(io).toContainText('메모에 없는 문장 2곳 표시 → 후속 메일 초안')
+  // A finished step says it finished, never 「아직 없습니다」.
+  await expect(io).toContainText('마쳤습니다 · 메모에 없는 문장 2곳 표시')
+  await expect(io).not.toContainText('아직 없습니다')
   await shot(page, testInfo, 'runs')
   // One read per run picked; 새로 고침 reads again.
   expect(state.runReads()).toBe(1)
@@ -346,21 +354,86 @@ test('실행 기록: per-step status on the canvas, what a step took and gave, r
   expect(state.unexpected).toEqual([])
 })
 
-test('@phone the canvas fits a phone: canvas, panel and palette stack, nothing scrolls sideways', async ({ page }, testInfo) => {
+test('@phone on a phone the step list is a sheet opened beside the canvas, and nothing scrolls sideways', async ({ page }, testInfo) => {
   test.skip(viewport(testInfo) !== 'phone', 'phone width only')
   const state = await fixture(page, testInfo)
   const canvas = await openCanvas(page)
   await node(page, 's1').click()
-  const pal = await palette(page).boundingBox()
   const box = await canvas.boundingBox()
   const side = await panel(page).boundingBox()
-  expect(pal && box && side).toBeTruthy()
-  // The canvas first, then the selected step, then what can be added.
   expect(side!.y).toBeGreaterThan(box!.y)
-  expect(pal!.y).toBeGreaterThan(side!.y)
   expect(box!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+  await expect(palette(page)).toBeHidden()
+  const add = page.getByRole('button', { name: '단계 추가' })
+  // Within one screen of the canvas.
+  const at = await add.boundingBox()
+  expect(at!.y - (box!.y + box!.height)).toBeLessThan(120)
+  await add.click()
+  const sheet = page.getByRole('dialog', { name: '단계 추가' })
+  await sheet.getByRole('button', { name: '검토' }).click()
+  await expect(sheet).toBeHidden()
+  await expect(page.getByTestId('chain-node')).toHaveCount(5)
   const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(wide).toBeLessThanOrEqual(1)
   await shot(page, testInfo, 'phone')
   expect(state.unexpected).toEqual([])
+})
+
+test('a step the server would refuse is flagged in the palette before it is added, with how to fix it', async ({ page }, testInfo) => {
+  const state = await fixture(page, testInfo)
+  await openCanvas(page)
+  await expect(palette(page).getByTestId('palette-item').first()).toBeVisible()
+  // After 후속 메일 초안 (a chat agent): an export has no document, a question card no agent after it.
+  await node(page, 's3').click()
+  const exporting = palette(page).getByRole('button', { name: 'PDF·Word 내보내기' })
+  await expect(exporting).toHaveAttribute('data-warn', 'true', { timeout: 8_000 })
+  await expect(exporting).toHaveAccessibleDescription(/앞 단계에서 만든 문서가 있어야 합니다\. 이 단계 앞에 보고서\(문서\)를 쓰는 에이전트를 두세요\./)
+  const asking = palette(page).getByRole('button', { name: '확인 질문' })
+  await expect(asking).toHaveAccessibleDescription(/뒤에 에이전트 단계가 있어야 합니다\. 받은 답으로 쓸 에이전트를 이 단계 뒤에 이으세요\./)
+  // Before 회의록 정리 the card is fine.
+  await node(page, '__start').click()
+  await expect(asking).not.toHaveAttribute('data-warn', 'true', { timeout: 8_000 })
+  // Added anyway, the node is flagged before saving.
+  await node(page, 's3').click()
+  await exporting.click()
+  await expect(node(page, 's4').getByTestId('node-problem')).toBeVisible()
+  await expect(page.getByTestId('chain-banner')).toContainText('이 단계 앞에 보고서(문서)를 쓰는 에이전트를 두세요')
+  expect(state.problems).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
+test('화면에 맞추기 shows every step of a long chain, and new branch steps do not overlap', async ({ page }, testInfo) => {
+  const state = await fixture(page, testInfo)
+  const canvas = await openCanvas(page)
+  for (const name of ['검토', '개요 확인', '날짜 계산', '카피 점검']) {
+    await palette(page).getByRole('button', { name }).click()
+  }
+  await expect(page.getByTestId('chain-node')).toHaveCount(8)
+  await page.getByRole('button', { name: '화면에 맞추기' }).click()
+  await page.waitForTimeout(400)
+  const frame = (await canvas.boundingBox())!
+  for (const box of await page.getByTestId('chain-node').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()))) {
+    expect(box.left).toBeGreaterThanOrEqual(frame.x - 1)
+    expect(box.right).toBeLessThanOrEqual(frame.x + frame.width + 1)
+  }
+
+  // An AI condition with three branches, a step added on each: no two nodes overlap.
+  await node(page, 's1').click()
+  await palette(page).getByRole('button', { name: '조건' }).click()
+  const side = panel(page)
+  await side.getByRole('radio', { name: /AI 판단으로/ }).click()
+  await side.getByRole('button', { name: /갈래 추가/ }).click()
+  for (const name of ['검토', '날짜 계산', '근거 대조']) {
+    await node(page, 's8').click()
+    await palette(page).getByRole('button', { name }).click()
+  }
+  const boxes = await page.getByTestId('chain-node').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()))
+  for (const [i, a] of boxes.entries()) {
+    for (const b of boxes.slice(i + 1)) {
+      const apart = a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top
+      expect(apart).toBe(true)
+    }
+  }
+  await shot(page, testInfo, 'long')
+  expect(state.problems).toEqual([])
 })

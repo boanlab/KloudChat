@@ -309,6 +309,8 @@ export function AgentForm({
   // 빠진 정보 질문 fields a save stopped on, by question id.
   const [gapErrors, setGapErrors] = useState<Record<string, GapProblem>>({})
   const formRef = useRef<HTMLFormElement>(null)
+  // Opened once, from the skills it starts with; a toggle inside never closes it.
+  const [skillsOpen] = useState(() => initial.activeSkillIds.length > 0 || undefined)
   const [baseline, setBaseline] = useState<ProcessDraft>(() => initialProcess ?? processOf(initial))
   const [process, setProcess] = useState<ProcessDraft>(baseline)
   const [processSaved, setProcessSaved] = useState(!creating)
@@ -840,7 +842,7 @@ export function AgentForm({
           title={t('스킬과 도구')}
           hint={t('항상 적용할 스킬로 에이전트를 짜고, 필요할 때 쓸 스킬과 도구를 좁힙니다')}
           testId="agent-tools-group"
-          open={draft.activeSkillIds.length > 0 || undefined}
+          open={skillsOpen}
         >
           <Block label={t('스킬')}>
             <AgentSkillList

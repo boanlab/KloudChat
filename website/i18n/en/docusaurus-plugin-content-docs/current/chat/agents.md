@@ -63,11 +63,11 @@ A **condition** step in a custom order looks at what earlier steps produced and 
 
 An agent of yours that works in a custom order opens its steps as a picture with **Edit on the pipeline canvas** on its page (or **Edit on the canvas** under the custom order). The tabs are **Edit** · **Runs** · **List view**; either way the same order is saved.
 
-- **Adding steps**: click an item on the left to add it after the selected step, or drag it onto the canvas to place it there. Draw a line from the dot on a step's right to the next step, or pick it under **Next step** in the side panel (this works from the keyboard too). A step that is not a condition leads to one next step, and the step joined to **Request** is saved as the first step.
+- **Adding steps**: click an item on the left to add it after the selected step, or drag it onto the canvas to place it there. Draw a line from the dot on a step's right to the next step, or pick it under **Next step** in the side panel (this works from the keyboard too). A step that is not a condition leads to one next step, and the step joined to **Request** is saved as the first step. An item that would not save where it would go (an export after a chat agent, a question card with no agent after it) is shown dashed in the list with the reason and the fix.
 - **Skills**: dropping a skill opens an agent draft made from it; once saved, the new agent comes in as a step. The chips under an agent are its skills (filled = always, dashed = when needed). The side panel changes the name, instructions, model and how each skill applies.
 - **What to check**: a step the pre-save checks flag carries a 「!」 and a notice appears on top.
-- **Runs**: the last 30 runs, each step's status (done · waiting · failed · skipped) and what it got, did and handed on. **Refresh** reads them again.
-- An order with branches is read-only in the list view and the agent form; edit it on the canvas. On a phone the canvas, the selected step and the step list stack in that order.
+- **Runs**: the last 30 runs by number (#N), status and the start of the request, each step's status (done · waiting · failed · skipped) and what it got, did and handed on. **Refresh** reads them again.
+- An order with branches is read-only in the list view and the agent form; edit it on the canvas. On a phone, **Add step** under the canvas opens the step list.
 
 ## Bundles
 

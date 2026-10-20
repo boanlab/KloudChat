@@ -1140,7 +1140,8 @@ incoming lines all come from steps not reached or branches not taken is recorded
 (`compose.OTHER_BRANCH`); the condition's record keeps `evidence.branch = {key, label, reason,
 missing}`. `GET /user-pipelines/{id}/runs` (the pipeline's owner, their own runs, newest 30) and
 `GET /user-pipelines/runs/{run_id}` (the run's owner) read the stored records per step:
-`{id, status, pipeline_id, session_id, parent_id, from_stage, started_at, ended_at, steps: [{step_id,
+`{id, number (its place among the owner's runs), status, pipeline_id, request_text (the request's
+opening words), attachments, session_id, parent_id, from_stage, started_at, ended_at, steps: [{step_id,
 kind, title, status (waiting · running · done · failed · skipped), started_at, ended_at,
 input_summary, output_summary, note, branch_taken, branch_label?}]}`, summaries built from the
 records' labels only, never the text a step read.
@@ -1151,7 +1152,9 @@ to wait) and 목록으로 보기 (the list editor, read-only once there are bran
 `lib/pipelineGraph.ts` turns canvas lines into `stages` + `edges`: the step the start node leads to
 is stored first, the rest in reading order (branches in their order), and `edges` is `null` when
 the lines only repeat that order; a step (or a condition branch) keeps one outgoing line, and a line
-that would close a loop is refused. It saves with `PUT /agents/{id}/process` and marks problems by
+that would close a loop is refused. Before a 확인·내보내기 item is added, the palette asks
+`POST /user-pipelines/validate` about the graph with it put after the selected step and shows the
+problem it would have on that step (the server's rules, not a copy). It saves with `PUT /agents/{id}/process` and marks problems by
 their `stepId` (else their number). Dropping a skill opens `/customize/agents/new?from=skill:<id>`
 with `return`, and the agent saved there comes back as a step (`?added=<id>`); unsaved canvas state
 waits in `sessionStorage`. Its e2e answers with `apps/web/e2e/fixtures/chain-canvas.json`, which

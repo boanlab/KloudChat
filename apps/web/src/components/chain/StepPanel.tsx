@@ -427,7 +427,11 @@ function ConditionPanel({ step, props }: { step: ConditionStep; props: PanelProp
         </Button>
       </div>
       <p className="text-xs leading-relaxed text-muted">
-        {t('앞 단계로 되돌아가는 선(반복)은 막습니다. 값이 없으면 「아니오」로 갑니다.')}
+        {t(
+          step.mode === 'rule'
+            ? '앞 단계로 되돌아가는 선(반복)은 막습니다. 값이 없으면 「아니오」로 갑니다.'
+            : '앞 단계로 되돌아가는 선(반복)은 막습니다. 판단 모델이 갈래를 고르지 못하면 마지막 갈래로 갑니다.',
+        )}
       </p>
       <Flow props={props} />
       <RemoveButton props={props} />
