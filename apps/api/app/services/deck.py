@@ -4064,12 +4064,18 @@ async def figure_slide(
     # a structure's groups hold the parts the deck names for them on their own slides
     members = group_members(slides, target) if kind in ("method", "relation") else {}
     held = "\n".join(f"{group}: {', '.join(names)}" for group, names in members.items())
+    own = _part_names(target)
+    # the slide's points say what its subject does: the subject's parts are the boxes
+    roles = bool(members) and not any(group in own for group in members)
     planned = diagrams.Planned(
         index=0,
         figure="method" if kind == "relation" else kind,
         description=f"{instruction.strip()[:400]}\n{title}: {' / '.join(words.splitlines())}"[
             :1200] + (f"\nDraw every one of these parts inside its group:\n{held}"
-                      if held else ""),
+                      if held else "") + (
+            f"\nThe slide's points ({' / '.join(own)}) say what the group does, not its parts:"
+            " the boxes are the parts listed above; a point may name a line or stay out."
+            if roles and own else ""),
         caption=title[:40],
         context="\n".join(filter(None, [words, held])),
         request=request,
@@ -4096,6 +4102,30 @@ async def figure_slide(
             missing = [n for n in left_out if not _drawn(n, str(redone.get("source") or ""))]
             if len(missing) < len(left_out):
                 made, png = redone, repng
+    # boxes named in the slide (its words, the parts the deck lists for it) or the deck
+    local = "\n".join([instruction, title, words, held, request])
+    wider = "\n".join(f"{s.get('title') or ''}\n{_figure_source(s)}" for s in slides)
+    # a structure's boxes only: a flow's steps may say the slide's sentences in short
+    invented = (diagrams.ungrounded(str(made.get("source") or ""), local, wider)
+                if kind in ("method", "relation") else [])
+    if invented:
+        # a box the text never names (「클러스터 운영」 over three points): drawn once more
+        again = dataclasses.replace(planned, description=(
+            f"{planned.description}\nThe last drawing had boxes no text names: "
+            f"{', '.join(invented)}. Every box is a part the slide or the deck names, "
+            "in its words; no box summing the others up."))
+        try:
+            redone, more, repng = await diagrams.make(
+                again, model=model, api_key=api_key, slide=True, accent=accent)
+        except Exception as exc:  # noqa: BLE001 — judged below
+            log.info("figure redraw for invented parts failed: %s", exc)
+        else:
+            usage = {k: usage.get(k, 0) + more.get(k, 0) for k in ("inputTokens", "outputTokens")}
+            still = diagrams.ungrounded(str(redone.get("source") or ""), local, wider)
+            if len(still) < len(invented):
+                made, png, invented = redone, repng, still
+        if invented:
+            raise ValueError(f"figure names parts the deck does not: {', '.join(invented)}")
     result = {k: v for k, v in target.items() if k not in ("image", "diagram", "textScale")}
     if result.get("layout") in _NO_FIGURE_LAYOUTS:
         result["layout"] = "bullets"
@@ -4129,6 +4159,32 @@ def group_members(slides: list[dict], target: dict) -> dict[str, list[str]]:
     """Per group the target slide names (its cards', bands' heads), the parts another slide
     titled after that group lists (「컨트롤 플레인」 → kube-apiserver, etcd …)."""
     groups = _part_names(target)
+    out = _members_of(slides, target, groups, groups)
+    subject = title_subject(str(target.get("title") or ""))
+    if not out and subject and subject not in groups:
+        # cards naming what the subject does (「전체 제어」), not its parts: the subject's parts
+        # as the deck lists them (「컨트롤 플레인: 클러스터의 두뇌」 → API Server, etcd …)
+        out = _members_of(slides, target, [subject], [subject, *groups])
+    return out
+
+
+#: 「컨트롤 플레인: 클러스터의 두뇌」 → 컨트롤 플레인
+_TITLE_HEAD = re.compile(r"^\s*([^:：—–\n]{2,24}?)\s*(?:[:：—–]|\s-\s)")
+_SUBJECT_TAIL = re.compile(r"\s*(?:의\s*)?(?:역할|기능|개요|소개|특징|구조|구성)$")
+
+
+def title_subject(title: str) -> str:
+    """What a slide title is about: its head before 「:」, else the title minus a closing
+    「역할·기능·개요…」 (「워커 노드의 역할」 → 워커 노드); `` when that leaves the title."""
+    if m := _TITLE_HEAD.match(title or ""):
+        return m.group(1).strip()
+    bare = _SUBJECT_TAIL.sub("", (title or "").strip())
+    return bare if bare and bare != (title or "").strip() and len(bare) >= 2 else ""
+
+
+def _members_of(slides: list[dict], target: dict, groups: list[str],
+                known: list[str]) -> dict[str, list[str]]:
+    """Per group, the parts other slides titled after it (and no other `known` group) list."""
     out: dict[str, list[str]] = {}
     for group in groups:
         key = re.sub(r"\s", "", group).lower()
@@ -4138,9 +4194,9 @@ def group_members(slides: list[dict], target: dict) -> dict[str, list[str]]:
             title = re.sub(r"\s", "", str(slide.get("title") or "")).lower()
             # a slide about this group alone, not one comparing the groups
             if key not in title or any(re.sub(r"\s", "", g).lower() in title
-                                       for g in groups if g != group):
+                                       for g in known if g != group):
                 continue
-            names = [n for n in _part_names(slide) if n not in groups]
+            names = [n for n in _part_names(slide) if n not in known]
             if names:
                 out.setdefault(group, [])
                 out[group] = list(dict.fromkeys([*out[group], *names]))[:_GROUP_PARTS]

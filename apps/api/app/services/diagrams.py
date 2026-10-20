@@ -547,6 +547,34 @@ def too_thin(made: dict[str, Any]) -> bool:
     return graph is not None and len(graph.nodes) < 4
 
 
+def _flat(text: str) -> str:
+    return re.sub(r"[\s\-_·/]", "", text or "").lower()
+
+
+def ungrounded(source: str, local: str, wider: str = "") -> list[str]:
+    """Boxes and groups of a drawn structure that the text never names: a label is grounded
+    when the text holds it whole or holds one of its Latin words (「API 서버」 for API Server,
+    「etcd 저장소」). A Hangul-only label summing up three points (「클러스터 운영」) is not."""
+    from app.services import diagram_shapes  # local: diagram_shapes draws
+
+    graph = diagram_shapes.parse(source or "")
+    if graph is None:
+        return []
+    text = f"{local}\n{wider}"
+    flat = _flat(text)
+    latin = {w.lower() for w in re.findall(r"[A-Za-z][A-Za-z0-9]+", text)}
+    labels = [node.label for node in graph.nodes.values() if node.label != node.id]
+    labels += [label for gid, (label, _) in graph.groups.items() if label != gid]
+    out = []
+    for label in dict.fromkeys(labels):
+        line = label.split("\n")[0].strip()
+        if not _WORD.search(line) or _flat(line) in flat or any(
+                w.lower() in latin for w in re.findall(r"[A-Za-z][A-Za-z0-9]+", line)):
+            continue
+        out.append(line)
+    return out
+
+
 def fence(made: dict[str, Any]) -> str:
     """Figure as report Markdown: mermaid fence plus caption."""
     caption = str(made.get("caption") or "").strip()
@@ -555,4 +583,5 @@ def fence(made: dict[str, Any]) -> str:
 
 
 __all__ = ["FIGURES", "MAX_FIGURES", "MAX_MARKED", "Planned", "asked_topics", "fence", "make",
-           "parse", "plan", "repeats_table", "settle_marked", "too_thin", "wanted_figure"]
+           "parse", "plan", "repeats_table", "settle_marked", "too_thin", "ungrounded",
+           "wanted_figure"]
