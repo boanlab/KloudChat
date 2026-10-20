@@ -63,6 +63,24 @@ def korean(style: str = "gothic", *, bold: bool = False) -> str:
     return fallback
 
 
+#: reportlab's own Bitstream Vera: accented Latin (í, ü, ş) the Nanum faces lack
+_LATIN = {False: ("Latin-Vera", "Vera.ttf"), True: ("Latin-Vera-bold", "VeraBd.ttf")}
+
+
+def latin(*, bold: bool = False) -> str | None:
+    """Registered name of the accented-Latin face, or None."""
+    name, file = _LATIN[bold]
+    if name in _resolved:
+        return _resolved[name] or None
+    try:
+        pdfmetrics.registerFont(TTFont(name, file))
+        _resolved[name] = name
+    except Exception:  # noqa: BLE001 — a missing face leaves the letters to stand-ins
+        log.warning("could not register %s", file)
+        _resolved[name] = ""
+    return _resolved[name] or None
+
+
 def _register(style: str) -> str | None:
     """Register the first installed candidate for style, or None."""
 
@@ -123,4 +141,4 @@ def drawable_tree(value, *names: str):
     return value
 
 
-__all__ = ["drawable", "drawable_tree", "embedded", "korean"]
+__all__ = ["drawable", "drawable_tree", "embedded", "korean", "latin"]
