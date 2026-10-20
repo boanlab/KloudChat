@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 
 from app.services import stated_policy
-from app.services.stated_days import _words
+from app.services.stated_days import _PARTICLE, _words
 
 #: a length of time: 「약 20분 만에」, 「1시간 동안」, 「30분간」, 「2시간이 소요」
 _DURATION = re.compile(
@@ -63,9 +63,25 @@ def values(piece: str, material: str) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def _memo_words(piece: str, flat: str) -> tuple[bool, bool]:
+    """(names or Latin words, numbers) of `piece` that are the memo's own: a name, a tool
+    (「구글폼」, 「Slack」) or a figure ties a sentence to what was said."""
+    named = any(
+        len(w := _PARTICLE.sub("", t)) >= 3 and w.lower() in flat
+        for t in re.findall(r"[가-힣]{3,12}", piece)) or any(
+        t.lower() in flat for t in re.findall(r"[A-Za-z]{2,30}", piece))
+    figures = {t.rstrip(".,").replace(",", "") for t in re.findall(r"\d[\d,.]{0,12}", flat)}
+    numbered = any(t.rstrip(".,").replace(",", "") in figures
+                   for t in re.findall(r"\d[\d,.]{0,12}", piece))
+    return named, numbered
+
+
 def asks_anew(piece: str, material: str) -> bool:
-    """An open question (「…정산할지」) most of whose words the memo lacks."""
+    """An open question (「…정산할지」) most of whose words the memo lacks and that names none
+    of the memo's people or tools."""
     if piece.lstrip().startswith("|") or stated_policy.MARK in piece or not _QUESTION.search(piece):
+        return False
+    if _memo_words(piece, _flat(material))[0]:
         return False
     novel, words = _novel(piece, _flat(material))
     return novel >= _NOVEL_WORDS and novel >= words * _NOVEL_SHARE
@@ -86,17 +102,20 @@ def untraced(piece: str, material: str) -> list[str]:
 _OWN_LENGTH = re.compile(r"회의|미팅|모임")
 
 
-def settle(content: str, piece: str, phrases: list[str], *, strong: bool) -> str:
+def settle(content: str, piece: str, phrases: list[str], *, strong: bool,
+           material: str = "") -> str:
     """`content` with what stands of `piece` after the writer's repair: a strong writer's is
     marked 「(확인 필요)」 (each value where it stands, a question at its end); anyone else's
-    question goes, and so does a sentence about the meeting's own length; a value elsewhere is
-    marked."""
+    question goes, and so does a sentence about the meeting's own length, unless it holds a
+    name, tool or figure of the memo (then marked: what was said never goes); a value elsewhere
+    is marked."""
     if piece not in content:
         return content
     whole = [p for p in phrases if p == piece.strip().rstrip(".!?。")]
     lengthy = bool(_OWN_LENGTH.search(piece) and phrases and not whole
                    and not any(_MONTH_PART.fullmatch(p) for p in phrases))
-    if not strong and (whole or lengthy) and not piece.lstrip().startswith("|"):
+    kept = any(_memo_words(piece, _flat(material)))
+    if not strong and (whole or lengthy) and not kept and not piece.lstrip().startswith("|"):
         lines = [re.sub(r" {2,}", " ", ln.replace(piece, "", 1)).strip() if piece in ln else ln
                  for ln in content.split("\n")]
         return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
@@ -126,7 +145,8 @@ def findings(sections: list[dict], material: str, skip_heading: re.Pattern | Non
 def why(phrases: list[str]) -> str:
     shown = ", ".join(f"「{p[:60]}」" for p in phrases)
     return (f"{shown}: 회의 자료에 없는 내용이다(회의 시간·종료 시각·기간, 자료가 묻지 않은 "
-            "질문). 지어 쓰지 말고 이 부분을 빼라. 문장 전체가 그런 내용이면 문장을 빼라.")
+            "질문). 지어 쓴 이 부분만 빼라. 자료에 있는 이름·도구·수치·결정(「구글폼 vs "
+            "네이버폼」, 「결정 못 함」)은 자료의 말 그대로 남겨라.")
 
 
 __all__ = ["asks_anew", "findings", "settle", "untraced", "values", "why"]
