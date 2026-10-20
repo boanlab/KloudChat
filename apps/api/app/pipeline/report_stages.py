@@ -45,6 +45,7 @@ from app.services import (
     report_checks,
     research,
     richtext,
+    stated_days,
     stated_policy,
     table_integrity,
     table_mend,
@@ -1785,10 +1786,21 @@ def settled_sections(before: list[dict], after: list[dict], evidence: list[str])
     return out
 
 
+def _person_given(bundle: Bundle) -> str:
+    """What the person gave: request, files, pasted text, card answers, agent instructions;
+    none of the pipeline's own blocks (settled figures under model-made names, notes, pages)."""
+    mat = bundle.material
+    return "\n".join([
+        mat.given or bundle.request.text,
+        *(p.text for p in mat.parts if p.origin in ("attachment", "pasted", "answer")),
+        *(p.text for p in mat.trusted if p.origin == "trusted"),
+    ])
+
+
 def _doc(bundle: Bundle) -> verify.Doc:
     return verify.Doc(bundle.document.sections, _material_text(bundle), bundle.request.text,
                       list(bundle.material.sources or []), bundle.computed.settled,
-                      bundle.computed.conflicts)
+                      bundle.computed.conflicts, _person_given(bundle))
 
 
 class FormatFind(Base):
@@ -1861,16 +1873,25 @@ def mark_unsettled(sections: list[dict], still: list) -> list[dict]:
     return out
 
 
-def mark_policy(sections: list[dict], still: list) -> list[dict]:
+def mark_policy(sections: list[dict], still: list, doc: verify.Doc | None = None
+                ) -> list[dict]:
     """Sections with 「(확인 필요)」 on each sentence or table cell still stating a limit,
-    approval or rule the material does not (`stated_policy`)."""
+    approval or rule (`stated_policy`), or a weekday (`stated_days`), the material does not;
+    with `doc`, read again over the sections as they stand (a finding merged under another
+    check's code, a failed repair)."""
     out = [dict(sec) for sec in sections]
-    for f in still:
-        if getattr(f, "code", "") != "unsourced_policy" or not 0 <= f.section < len(out):
+    standing = [(f.section, f.sentence, stated_policy.untraced(f.sentence, ""))
+                for f in still if getattr(f, "code", "") == "unsourced_policy"]
+    if doc is not None:
+        material, quotes = checks.policy_material(doc)
+        refs = _report()._REFERENCE_HEADING
+        standing += stated_policy.findings(out, material, refs, quotes)
+        standing += stated_days.findings(out, material, refs)
+    for index, sentence, said in standing:
+        if not 0 <= index < len(out):
             continue
-        content = str(out[f.section].get("content") or "")
-        said = stated_policy.untraced(f.sentence, "")
-        out[f.section]["content"] = stated_policy.mark(content, f.sentence, said)
+        content = str(out[index].get("content") or "")
+        out[index]["content"] = stated_policy.mark(content, sentence, said)
     return out
 
 
@@ -1995,9 +2016,9 @@ class Verify(Base):
             # is marked for the reader whatever the request said
             bundle.document.sections = mark_unsettled(
                 bundle.document.sections, [f for f in still if f.code == "fact"] + confirmed)
-        # a limit, approval or rule the material only asks about, standing after its repair,
-        # is marked where it stands whatever the writer
-        bundle.document.sections = mark_policy(bundle.document.sections, still)
+        # a limit, approval, rule or weekday the material only asks about or never gives,
+        # standing after its repair, is marked where it stands whatever the writer
+        bundle.document.sections = mark_policy(bundle.document.sections, still, _doc(bundle))
         bundle.findings.still = still
         format_codes = set(report_checks.LABELS)
         bundle.findings.after += [f.code for f in still if f.code in format_codes]

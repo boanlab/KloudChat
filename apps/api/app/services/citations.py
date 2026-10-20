@@ -63,34 +63,72 @@ def cited(sections: list[dict]) -> list[int]:
     return seen
 
 
+#: a DOI in a link or a field: 「https://doi.org/10.3390/app151910447」
+_DOI = re.compile(r"10\.\d{4,9}/[^\s\"'<>?#]+", re.I)
+
+
+def _identity(source: dict) -> set[str]:
+    """What names one work across search results: its DOI, its link, its title."""
+    keys: set[str] = set()
+    url = str(source.get("url") or "").strip()
+    for text in (url, str(source.get("doi") or "")):
+        if m := _DOI.search(text):
+            keys.add("doi:" + m.group(0).lower().rstrip(".)"))
+    if url:
+        keys.add("url:" + re.sub(r"^https?://(?:www\.)?", "", url.lower()).rstrip("/"))
+    if len(title := _key(str(source.get("title") or ""))) >= 16:
+        keys.add("title:" + title)
+    return keys
+
+
+def same_works(sources: list[dict]) -> dict[int, int]:
+    """Source number → the earlier number of the same work (one paper found twice, as its DOI
+    and its publisher page); attached files stand alone."""
+    alias: dict[int, int] = {}
+    seen: dict[str, int] = {}
+    for index, source in enumerate(sources, 1):
+        number = int(source.get("ordinal") or index)
+        if source.get("attached"):
+            continue
+        keys = _identity(source)
+        first = next((seen[k] for k in keys if k in seen), None)
+        if first is not None and first != number:
+            alias[number] = first
+        for k in keys:
+            seen.setdefault(k, first if first is not None else number)
+    return alias
+
+
 def cite_order(sections: list[dict], sources: list[dict] | None
                ) -> tuple[list[dict], list[dict]]:
-    """Uncited sources dropped, rest renumbered by first citation."""
+    """Uncited sources dropped, one work listed once, rest renumbered by first citation; a
+    number no source has is dropped from the text."""
     sources = list(sources or [])
     if not sources:
         return sections, sources
     if any(_REFERENCE_HEADING.search(str(s.get("heading") or "")) for s in sections):
         return sections, sources
+    alias = same_works(sources)
     by_number: dict[int, dict] = {}
     for index, source in enumerate(sources, 1):
-        by_number.setdefault(int(source.get("ordinal") or index), source)
-    order = [n for n in cited(sections) if n in by_number]
+        number = int(source.get("ordinal") or index)
+        if number not in alias:
+            by_number.setdefault(number, source)
+    written = cited(sections)
+    order = list(dict.fromkeys(alias.get(n, n) for n in written if alias.get(n, n) in by_number))
     if not order:
         return sections, sources
     # an attached file is the document's own material: listed even when never cited
     order += [n for n, s in by_number.items() if s.get("attached") and n not in order]
     mapping = {old: new for new, old in enumerate(order, 1)}
-    if all(old == new for old, new in mapping.items()) and len(order) == len(sources):
+    if (all(old == new for old, new in mapping.items()) and len(order) == len(sources)
+            and all(n in by_number for n in written)):
         return sections, sources
 
     def renumber(piece: str) -> str:
         def one(m: re.Match[str]) -> str:
-            wanted: list[int] = []
-            for n in _numbers(m.group(1)):
-                if n in mapping:
-                    wanted.append(mapping[n])
-                elif n not in by_number and n > len(order):
-                    wanted.append(n)  # dangling: left for the panel
+            wanted = [mapping[alias.get(n, n)] for n in _numbers(m.group(1))
+                      if alias.get(n, n) in mapping]
             return _written(wanted) if wanted else ""
 
         piece = _CITATION.sub(one, piece)
@@ -259,12 +297,39 @@ def _by_work(source: dict, head: str, surname: str, year: str) -> bool:
     return _names(head[:600], surname) and year in head[:600]
 
 
+#: a technical term in Korean prose: 「citation-forcing」, 「BM25」, 「multilingual-e5」, 「7B」
+_TERM = re.compile(r"(?<![A-Za-z0-9])(?:[A-Za-z][A-Za-z0-9]{2,}(?:-[A-Za-z0-9]+)*"
+                   r"|\d{1,3}[BM](?![A-Za-z]))(?![A-Za-z0-9])")
+#: terms only the attachment has, for a sentence to move to it
+_TERMS_TO_MOVE = 3
+
+
+def _term_holder(sentence: str, cited: str, attached: dict[int, str]) -> int | None:
+    """The attached file a Korean sentence's Latin terms come from: at least three of them
+    in it and none only in the cited page (a method taken from the attached paper)."""
+    hangul = len(re.findall(r"[가-힣]", sentence))
+    if hangul * 3 < len(re.findall(r"[A-Za-z]", sentence)):
+        return None
+    terms = {t.lower() for t in _TERM.findall(sentence)}
+
+    def has(text: str, term: str) -> bool:
+        return re.search(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", text,
+                         re.I) is not None
+
+    if any(has(cited, t) and not any(has(x, t) for x in attached.values()) for t in terms):
+        return None
+    scored = [(sum(has(text, t) and not has(cited, t) for t in terms), n)
+              for n, text in attached.items()]
+    best = max(scored, default=(0, None))
+    return best[1] if best[0] >= _TERMS_TO_MOVE else None
+
+
 def credit_attachments(sections: list[dict], sources: list[dict] | None,
                        texts: dict[int, str]) -> list[dict]:
     """A sentence citing a source that is not the work it names (「Kim & Park(2025)…[1]」 with
-    [1] another paper) cites the source that is; one citing a web result for figures only an
-    attached file holds cites that file. `texts`: what each source number gave the writer
-    (attachment text, page excerpt)."""
+    [1] another paper) cites the source that is; one citing a web result for figures, or for
+    technical terms, only an attached file holds cites that file. `texts`: what each source
+    number gave the writer (attachment text, page excerpt)."""
     by_number = {int(s.get("ordinal") or i): s for i, s in enumerate(sources or [], 1)}
     attached = [n for n, s in by_number.items() if s.get("attached") and texts.get(n)]
     if not by_number:
@@ -299,8 +364,9 @@ def credit_attachments(sections: list[dict], sources: list[dict] | None,
                 # the named work, never moved off by a figure it shares with the attachment
                 out.append(m.group(0) if work == numbers[0] else f"[{work}]")
                 continue
-            figures = _TELLING.findall(piece[start:m.start()])
-            if numbers[0] in attached or not figures or not attached:
+            sentence = piece[start:m.start()]
+            figures = _TELLING.findall(sentence)
+            if numbers[0] in attached or not attached:
                 out.append(m.group(0))
                 continue
             cited = texts.get(numbers[0], "")
@@ -309,6 +375,8 @@ def credit_attachments(sections: list[dict], sources: list[dict] | None,
                 continue
             holder = next((a for a in attached
                            if any(_has_figure(texts[a], f) for f in figures)), None)
+            if holder is None and cited:
+                holder = _term_holder(sentence, cited, {a: texts[a] for a in attached})
             out.append(f"[{holder}]" if holder is not None else m.group(0))
         return "".join(out) + piece[last:]
 
@@ -352,4 +420,4 @@ def tidy(sections: list[dict], sources: list[dict] | None
 
 
 __all__ = ["cite_order", "cited", "credit_attachments", "drop_restated_references",
-           "name_works", "source_texts", "tidy"]
+           "name_works", "same_works", "source_texts", "tidy"]

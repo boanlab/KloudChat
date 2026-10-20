@@ -71,6 +71,9 @@ class Doc:
     settled: list = field(default_factory=list)
     #: `key_figures.Conflict`s from the material; never merged
     conflicts: list = field(default_factory=list)
+    #: what the person gave (request, files, answers, agent instructions), without the
+    #: pipeline's own blocks (settled figures, notes, search pages); "" = `material`
+    given: str = ""
 
 
 Check = Callable[[Doc], Awaitable[tuple[list[Finding], dict]]]
@@ -257,7 +260,8 @@ async def verify_and_repair(
     shown = [f for f in left if not f.auto and f.sentence in "\n".join(
         str(s.get("content") or "") for s in sections)]
     # recheck with free code checks only
-    again = Doc(sections, doc.material, doc.request, doc.sources, doc.settled, doc.conflicts)
+    again = Doc(sections, doc.material, doc.request, doc.sources, doc.settled, doc.conflicts,
+                doc.given)
     remaining, spent = await find(again, [c for c in checks if not getattr(c, "uses_model", False)])
     _add(usage, spent)
     return sections, remaining + shown, usage

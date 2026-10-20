@@ -18,7 +18,7 @@ KINDS: tuple[tuple[str, re.Pattern, re.Pattern], ...] = (
     ("한도", re.compile(r"(?:허용|결재|승인|전결|위임|내부|인하|할인|집행|예산|지출)"
                       r"\s?(?:권\s?)?한도|한도\s?(?:초과|이내|내에서|를\s?넘|를\s?초과)"),
      re.compile(r"한도")),
-    ("허용 범위", re.compile(r"허용\s?(?:범위|최대치?|최대\s?폭|상한|하한|기준|치)"),
+    ("허용 범위", re.compile(r"허용\s?(?:범위|최대치?|최대\s?폭|상한|하한|기준|치|초과|이내)"),
      re.compile(r"허용\s?(?:범위|최대치?|최대\s?폭|상한|하한|기준|치|한도)")),
     ("승인 사실", re.compile(
         r"(?:승인|결재|재가|허가)\s?(?:이|을|를|가)?\s?(?:완료|받았|받은|났|되었|됐|됨|된|되어|마쳤|"
@@ -42,10 +42,17 @@ _ASKS = re.compile(
 _SKIP_LINE = re.compile(r"^\s*(?:```|!\[|#|<)")
 
 
-def untraced(sentence: str, material: str) -> list[str]:
-    """Phrases of `sentence` stating a limit, an approval or a rule the material never states."""
+#: a citation marker: the sentence draws on a cited source
+_CITES = re.compile(r"\[\d{1,3}(?:\s?[,\-–]\s?\d{1,3})*\]")
+
+
+def untraced(sentence: str, material: str, quotes: str = "") -> list[str]:
+    """Phrases of `sentence` stating a limit, an approval or a rule the material never states.
+    Source `quotes` count for a sentence citing one (a page's rule is no internal one)."""
     if not sentence or _ASKS.search(sentence):
         return []
+    if quotes and _CITES.search(sentence):
+        material = f"{material}\n{quotes}"
     out = []
     for _, said, given in KINDS:
         if not given.search(material or ""):
@@ -67,15 +74,15 @@ def pieces(content: str) -> list[str]:
     return out
 
 
-def findings(sections: list[dict], material: str,
-             skip_heading: re.Pattern | None = None) -> list[tuple[int, str, list[str]]]:
+def findings(sections: list[dict], material: str, skip_heading: re.Pattern | None = None,
+             quotes: str = "") -> list[tuple[int, str, list[str]]]:
     """(section, sentence or row, untraced phrases) over a document."""
     out = []
     for index, sec in enumerate(sections):
         if skip_heading is not None and skip_heading.search(str(sec.get("heading") or "")):
             continue
         for piece in pieces(str(sec.get("content") or "")):
-            if said := untraced(piece, material):
+            if said := untraced(piece, material, quotes):
                 out.append((index, piece, said))
     return out
 
