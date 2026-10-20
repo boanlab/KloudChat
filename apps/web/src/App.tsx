@@ -40,6 +40,7 @@ const SkillDetailPage = lazy(() =>
 )
 const SkillCreatePage = lazy(() => import('@/pages/customize/CreatePages').then((m) => ({ default: m.SkillCreatePage })))
 const SkillUploadPage = lazy(() => import('@/pages/customize/SkillUploadPage').then((m) => ({ default: m.SkillUploadPage })))
+const ChainPage = lazy(() => import('@/pages/customize/ChainPage').then((m) => ({ default: m.ChainPage })))
 const BundlesPage = lazy(() => import('@/pages/customize/BundlesPage').then((m) => ({ default: m.BundlesPage })))
 const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage').then((m) => ({ default: m.ArtifactsPage })))
 const FilesPage = lazy(() => import('@/pages/FilesPage').then((m) => ({ default: m.FilesPage })))
@@ -204,6 +205,7 @@ function Authenticated() {
           <Route path="customize/templates/new" element={<TemplateEditPage />} />
           <Route path="customize/templates/:templateId" element={<TemplateEditPage />} />
           <Route path="customize/agents/:agentId" element={<AgentDetailPage />} />
+          <Route path="customize/agents/:agentId/chain" element={<ChainPage />} />
           <Route path="customize/skills/new" element={<SkillCreatePage />} />
           <Route path="customize/skills/upload" element={<SkillUploadPage />} />
           <Route path="customize/skills/:skillId" element={<SkillDetailPage />} />

@@ -528,13 +528,27 @@ export function ProcessSection({
                 </Select>
               </Field>
             )}
-            <StepList
-              steps={value.steps}
-              onChange={(steps) => onChange({ ...value, steps })}
-              verdict={verdict}
-              selfName={selfName}
-              actionFor={actionFor}
-            />
+            {value.edges ? (
+              <p className="rounded-control border border-line bg-elevated/40 px-3 py-2 text-sm text-muted" data-testid="process-branched">
+                {t('이 순서에는 갈래(조건)가 있어 캔버스에서만 고칩니다.')}
+              </p>
+            ) : (
+              <StepList
+                steps={value.steps}
+                onChange={(steps) => onChange({ ...value, steps })}
+                verdict={verdict}
+                selfName={selfName}
+                actionFor={actionFor}
+              />
+            )}
+            {agent.id && (
+              <p className="text-sm text-muted">
+                <Link to={`/customize/agents/${agent.id}/chain`} className="text-accent hover:underline">
+                  {t('캔버스에서 편집')}
+                </Link>{' '}
+                · {t('갈래(조건)는 캔버스에서 넣습니다. 여기서 바꾼 것은 먼저 저장하세요.')}
+              </p>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               <SaveAsBundle steps={value.steps} onSaved={() => setReloaded((n) => n + 1)} />
               {(imports ?? []).length > 0 && (
