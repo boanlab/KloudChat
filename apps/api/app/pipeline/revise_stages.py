@@ -611,8 +611,9 @@ class Rewrite(Base):
                         if not faults:
                             short = revise.shortening_faults(
                                 before, body, " / ".join(asks) or _typed(bundle))
-                            if short and not passed:
-                                # the sentence count or the facts missed: sent back once
+                            if short and not passed and revise.sentences_asked(
+                                    " / ".join(asks) or _typed(bundle))[0]:
+                                # a sentence count asked and missed: sent back once
                                 passed, rejected = body, " / ".join(short)[:600]
                                 continue
                             break
@@ -624,8 +625,8 @@ class Rewrite(Base):
                                    > revise.shortening_misses(before, passed, asked_of)):
                         # the version sent back came out worse: the first one stands
                         body, faults = passed, []
-                    if passed:
-                        # what the shortened part still misses: said in the reply
+                    if not faults and revise.shortening_faults(before, body, asked_of):
+                        # what the shortened part misses: said in the reply
                         want, most = revise.sentences_asked(asked_of)
                         got = revise.sentence_count(body)
                         if want and (got > want if most else got != want):

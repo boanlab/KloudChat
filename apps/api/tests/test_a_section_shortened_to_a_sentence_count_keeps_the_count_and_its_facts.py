@@ -52,16 +52,16 @@ PARTS = [{"id": "s0", "heading": "개요", "content": "주간 보고입니다.",
          {"id": "s1", "heading": "금주 진행 현황", "content": BEFORE, "format": "markdown"}]
 
 
-def _bundle():
+def _bundle(ask: str = ASK):
     return revise_stages.bundle_for(
-        request="주간 업무 보고서를 만들어줘.", instruction=ASK, model={"id": "m"},
+        request="주간 업무 보고서를 만들어줘.", instruction=ask, model={"id": "m"},
         planner=None, api_key="k", is_deck=False, title="주간 업무 보고", data={},
         parts=[dict(p) for p in PARTS], material=[],
-        plan=revise.Plan(scope="parts", targets=[1], note=ASK, clauses={1: [ASK]}),
+        plan=revise.Plan(scope="parts", targets=[1], note=ask, clauses={1: [ask]}),
         format_id="", usage={"inputTokens": 0, "outputTokens": 0})
 
 
-async def _rewrite(monkeypatch, answers):
+async def _rewrite(monkeypatch, answers, ask: str = ASK):
     notes: list[str] = []
     given = iter(answers)
 
@@ -70,7 +70,7 @@ async def _rewrite(monkeypatch, answers):
         return next(given), {"inputTokens": 1, "outputTokens": 1}
 
     monkeypatch.setattr(revise_stages._report(), "rewrite_section", rewrite_section)
-    bundle = _bundle()
+    bundle = _bundle(ask)
     bundle.plan.order = [1]
     _ = [e async for e in revise_stages.Rewrite().run(bundle, Context())]
     return bundle.document, notes
@@ -97,3 +97,10 @@ async def test_what_still_misses_after_the_second_try_is_said(monkeypatch):
         "Revised section 2. Section 2 has 1 sentence, not the 2 asked. On section 2, 10/16, 5%, "
         "4%, 2건, 420만, A사 dropped out of the rewrite; ask again to put them back if they "
         "belong there.")
+
+
+@pytest.mark.asyncio
+async def test_a_plain_shortening_is_not_sent_back_and_its_dropped_facts_are_said(monkeypatch):
+    doc, notes = await _rewrite(monkeypatch, [ONE], ask="2절을 줄여줘")
+    assert len(notes) == 1 and doc.sections[1]["content"] == ONE
+    assert doc.counted == [] and doc.dropped == ["2절 10/16, 5%, 4%, 2건, 420만, A사"]
