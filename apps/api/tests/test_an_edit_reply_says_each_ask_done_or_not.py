@@ -204,3 +204,11 @@ def test_notes_do_not_say_a_slide_lacks_what_it_shows():
     assert deck.notes_agree(CHARTED[3], notes) == "매출은 128억 원으로 12% 늘었습니다."
     # no chart on the slide: the sentence is true and stays
     assert deck.notes_agree(CHARTED[1], notes) == notes
+
+
+def test_a_long_run_of_spaces_in_an_edit_ask_splits_fast():
+    import time
+
+    started = time.monotonic()
+    revise.numbered_removals("표 2 빼고" + " " * 50000 + "x")
+    assert time.monotonic() - started < 0.5

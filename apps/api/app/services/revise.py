@@ -1232,7 +1232,7 @@ def document_block(parts: list[str], texts: list[str]) -> str:
 
 #: where one ask of a report edit ends: a sentence end, 「그리고」, 「…빼고,」
 _CLAUSE_BREAK = re.compile(
-    r"(?<=[.!?。])\s+|\n+|\s*(?:그리고|또한|그다음|다음으로)\s+|(?<=[가-힣]고),\s*|(?<=[가-힣]며),\s*")
+    r"(?<=[.!?。])\s+|\n+|(?:그리고|또한|그다음|다음으로)\s+|(?<=[가-힣]고),\s*|(?<=[가-힣]며),\s*")
 #: a part named by number: 「2절의」, 「제3장」; not a count (「3장으로」)
 _SECTION_REF = re.compile(
     r"(?<![\d.])(?:제\s?)?(\d{1,2})\s?(?:절|장)(?!\s?(?:으로|로|짜리|씩))")
