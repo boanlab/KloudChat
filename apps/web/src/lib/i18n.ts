@@ -2562,7 +2562,7 @@ const EN: Record<string, string> = {
   '강조색 고르기': 'Choose the accent colour',
   '제목 밑줄, 표 머리, 번호, 표지에 쓰는 색': 'Used for title rules, table heads, numbers and the cover',
   '직접 고른 색': 'Custom colour',
-  '직접 고르기': 'Pick a colour',
+  '직접 고르기': 'Choose',
   '파스텔': 'Pastel',
   '숲': 'Forest',
   '강철': 'Slate',
@@ -4446,6 +4446,7 @@ export function translate(lang: Lang, text: string): string {
 const EN_IN: Record<string, string> = {
   'hub|탐색': 'Explore',
   'hub|개요': 'Overview',
+  'colour|직접 고르기': 'Pick a colour',
 }
 
 export function translateIn(lang: Lang, context: string, text: string): string {

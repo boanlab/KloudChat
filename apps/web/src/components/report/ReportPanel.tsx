@@ -57,7 +57,7 @@ import { RunStagesButton } from '@/components/artifacts/RunStages'
 import { DocMarksLayer } from './DocMarks'
 import { fillBlank, useDocMarks } from '@/lib/docMarks'
 import { useStore } from '@/store/useStore'
-import { useT } from '@/lib/useT'
+import { useT, useTIn } from '@/lib/useT'
 
 /** Picker order. */
 const DOC_LOOKS: { id: 'editorial' | 'poster' | 'minimal'; label: string; why: string }[] = [
@@ -560,6 +560,7 @@ export function ReportPanel({
   onDirtyChange?: (dirty: boolean) => void
 }) {
   const t = useT()
+  const tColour = useTIn('colour')
   const [activeId, setActiveId] = useState<string | null>(null)
   const [mode, setMode] = useState<PanelMode>('wide')
   // Reading: calm header; 「편집」: ribbon with editing tabs only.
@@ -1774,8 +1775,8 @@ export function ReportPanel({
                 <MenuItem key={colour} icon={<span className="block size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: colour }} />} checked={documentAccent.toLowerCase() === colour} onClick={() => void chooseDocumentAccent(colour)}>{t(label)}</MenuItem>
               ))}
               <label className="mt-1 flex cursor-pointer items-center gap-2 border-t border-line px-3 py-2 text-sm text-fg hover:bg-elevated">
-                <input type="color" value={documentAccent} onChange={(event) => void chooseDocumentAccent(event.target.value)} className="size-4 cursor-pointer border-0 bg-transparent p-0" aria-label={t('직접 고르기')} />
-                {t('직접 고르기')}
+                <input type="color" value={documentAccent} onChange={(event) => void chooseDocumentAccent(event.target.value)} className="size-4 cursor-pointer border-0 bg-transparent p-0" aria-label={tColour('직접 고르기')} />
+                {tColour('직접 고르기')}
               </label>
             </Dropdown></RibbonGroup>
           )}
