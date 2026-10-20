@@ -200,6 +200,82 @@ async def test_a_structure_figure_asked_on_a_slide_holds_the_parts_the_deck_name
     assert not any(text.endswith("…") for text in texts)
 
 
+LECTURE = [
+    {"id": "a", "layout": "title", "title": "Kubernetes 구조와 동작 원리"},
+    {"id": "b", "layout": "cards", "title": "컨트롤 플레인: 클러스터의 두뇌",
+     "cards": [["전체 제어", "클러스터 전반의 상태를 관리하며 스케줄링을 담당하는 컨트롤 플레인은 "
+                "전체 작동을 이끕니다."],
+               ["상태 동기화", "원하는 상태가 실제 상태와 일치하도록 지속적으로 모니터링하고 "
+                "조정합니다."],
+               ["고용량 설계", "프로덕션 환경에서는 여러 컴퓨터로 나누어 실행하여 안정성을 "
+                "높입니다."]]},
+    {"id": "c", "layout": "bullets", "title": "컨트롤 플레인 핵심 구성 요소",
+     "bullets": ["API Server: 모든 요청의 중심", "etcd: 클러스터 상태 저장소",
+                 "Scheduler: 노드 할당 담당", "Controller Manager: 상태 유지"]},
+    {"id": "d", "layout": "cards", "title": "워커 노드: 애플리케이션 실행 환경",
+     "cards": [["Kubelet", "파드 실행 지시를 받아 컨테이너를 만듭니다."],
+               ["Kube-proxy", "서비스 간 네트워크 통신을 돕습니다."]]},
+    {"id": "e", "layout": "bullets", "title": "정리",
+     "bullets": ["Deployment와 Service는 안정적 운영의 핵심 조합입니다"]},
+]
+
+_HUB = ("flowchart LR\n  subgraph cp[컨트롤 플레인]\n    a[고용량 설계]\n    b[전체 제어]\n"
+        "    c[상태 동기화]\n  end\n  h[클러스터 운영]\n  a --> h\n  b --> h\n  c --> h")
+_PARTS = ("flowchart LR\n  subgraph cp[컨트롤 플레인]\n    a[API Server]\n    e[(etcd)]\n"
+          "    s[Scheduler]\n    m[Controller Manager]\n  end\n  a -->|상태 저장| e\n"
+          "  s --> a\n  m --> a")
+
+
+@pytest.mark.asyncio
+async def test_a_structure_asked_on_a_slide_of_points_draws_the_parts_the_deck_names(
+        monkeypatch):
+    # cards say what the control plane does; the next slide names its parts
+    assert deck.title_subject("컨트롤 플레인: 클러스터의 두뇌") == "컨트롤 플레인"
+    assert deck.title_subject("워커 노드의 역할") == "워커 노드"
+    assert deck.title_subject("Kubernetes 구조와 동작 원리") == ""
+    assert deck.group_members(LECTURE, LECTURE[1]) == {
+        "컨트롤 플레인": ["API Server", "etcd", "Scheduler", "Controller Manager"]}
+    # a box summing up the points is named nowhere; the parts and the points are
+    local = "\n".join(deck._figure_source(s) for s in LECTURE[1:3])
+    assert deck.diagrams.ungrounded(_HUB, local) == ["클러스터 운영"]
+    assert deck.diagrams.ungrounded(_PARTS, local) == []
+    # a label saying a named part in Korean is the part; a Hangul-only summary is not
+    translated = ("flowchart LR\n  a[API 서버]\n  e[(etcd 저장소)]\n  s[스케줄러 모듈]\n"
+                  "  h[클러스터 운영]\n  a --> e")
+    assert deck.diagrams.ungrounded(translated, local) == ["스케줄러 모듈", "클러스터 운영"]
+    drawn: list[str] = []
+
+    async def make(planned, *, model, api_key, slide, accent=""):
+        drawn.append(planned.description)
+        # the redraw for left-out parts sums them up again
+        source = _HUB if len(drawn) <= 2 else _PARTS
+        return ({"figure": planned.figure, "description": planned.description,
+                 "source": source, "caption": planned.caption, "key": "k" * 16},
+                {"inputTokens": 1, "outputTokens": 1}, b"\x89PNG")
+
+    monkeypatch.setattr(deck.diagrams, "make", make)
+    written, usage = await deck.figure_slide(
+        request="신입 개발자 대상 Kubernetes 강의", slides=LECTURE, target_id="b",
+        instruction="2장을 구조도로 바꿔줘", model="m", api_key="k")
+    assert "API Server" in drawn[0] and "Controller Manager" in drawn[0]
+    assert "say what the group does, not its parts" in drawn[0]
+    assert "no text names: 클러스터 운영" in drawn[2]
+    assert written["diagram"]["source"] == _PARTS
+    assert usage == {"inputTokens": 3, "outputTokens": 3}
+
+    # a figure still inventing its boxes is not placed
+    async def stubborn(planned, *, model, api_key, slide, accent=""):
+        return ({"figure": planned.figure, "description": planned.description,
+                 "source": _HUB, "caption": planned.caption, "key": "k" * 16},
+                {"inputTokens": 1, "outputTokens": 1}, b"\x89PNG")
+
+    monkeypatch.setattr(deck.diagrams, "make", stubborn)
+    with pytest.raises(ValueError, match="클러스터 운영"):
+        await deck.figure_slide(
+            request="Kubernetes 강의", slides=LECTURE, target_id="b",
+            instruction="2장을 구조도로 바꿔줘", model="m", api_key="k")
+
+
 def test_words_under_a_figure_are_cut_at_a_sentence_not_mid_word():
     long = ("클러스터의 상태를 저장하는 중앙 저장소입니다. 모든 오브젝트의 스펙과 상태가 "
             "키-값 형태로 보관되며 장애 시 복구의 기준이 됩니다.")
