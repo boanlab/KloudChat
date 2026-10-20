@@ -70,16 +70,19 @@ TITLE_CHARS = 40
 
 #: subject the prompt names (「주제: …」, 「제목: …」, 「주제는 '…'」)
 _NAMED_SUBJECT = re.compile(
-    r"(?:^|(?<=[\s.,;(]))(?:발표\s{0,2}|논문\s{0,2}|보고서\s{0,2})?(?:제목|주제)\s{0,2}[:：]\s*"
-    r"(?P<named>.+?)\s*(?:[.。](?=\s|$)|\n|$)"
+    r"(?:^|(?<=[\s.,;(]))(?:발표\s{0,2}|논문\s{0,2}|보고서\s{0,2})?(?:제목|주제)\s{0,2}[:：]"
+    r"(?P<named>[^\n]*)"
     r"|주제는\s{0,2}['\"‘“「『](?P<quoted>[^'\"’”」』\n]{2,})['\"’”」』]"
 )
+#: a named subject ends at the first sentence stop
+_SENTENCE_END = re.compile(r"[.。](?=\s|$)")
 
 
 def provisional_title(prompt: str) -> str:
     """Session title from the prompt; final on media surfaces, else replaced by `generate_title`."""
     named = _NAMED_SUBJECT.search(prompt or "")
     subject = (named.group("named") or named.group("quoted") or "") if named else ""
+    subject = _SENTENCE_END.split(subject, 1)[0]
     subject = " ".join(subject.strip(" '\"‘’“”「」『』").split())
     if len(subject) >= 2:
         return subject[:TITLE_CHARS]

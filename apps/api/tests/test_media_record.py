@@ -92,3 +92,11 @@ def test_a_document_session_is_not_summarised_this_way():
     """Only media artifact kinds are summarised; documents use their transcript."""
     assert made_from_artifacts([("report", {"wordCount": 900})]) is None
     assert made_from_artifacts([("html", {"language": "html"})]) is None
+
+
+def test_a_long_run_of_spaces_after_a_named_subject_stays_fast():
+    import time
+
+    started = time.monotonic()
+    chat_service.provisional_title("주제: a" + " " * 50000 + "b")
+    assert time.monotonic() - started < 0.5
