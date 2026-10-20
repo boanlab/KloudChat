@@ -4094,10 +4094,12 @@ async def figure_slide(
     own = _part_names(target)
     # the slide's points say what its subject does: the subject's parts are the boxes
     roles = bool(members) and not any(group in own for group in members)
+    #: what the figure shows, kept with it (the ask is the drawing's, not the figure's)
+    about = f"{title}: {' / '.join(words.splitlines())}"[:1200]
     planned = diagrams.Planned(
         index=0,
         figure="method" if kind == "relation" else kind,
-        description=f"{instruction.strip()[:400]}\n{title}: {' / '.join(words.splitlines())}"[
+        description=f"{instruction.strip()[:400]}\n{about}"[
             :1200] + (f"\nDraw every one of these parts inside its group:\n{held}"
                       if held else "") + (
             f"\nThe slide's points ({' / '.join(own)}) say what the group does, not its parts:"
@@ -4156,6 +4158,7 @@ async def figure_slide(
     result = {k: v for k, v in target.items() if k not in ("image", "diagram", "textScale")}
     if result.get("layout") in _NO_FIGURE_LAYOUTS:
         result["layout"] = "bullets"
+    made = {**made, "description": about}
     await _place_figure(result, made, png, accent)
     result.pop("factCheck", None)
     return auto_fit(result), usage

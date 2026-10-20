@@ -941,7 +941,8 @@ def draw_pptx(
             set_text(tb, edge.label, 8, label_grey)
     for edge, a in back_marks:
         text = flow_layout.marker_text(edge.label, graph.nodes[edge.b].label)
-        tw = min(max(a.w + 40, 60.0), 9.0 * len(text) + 14)
+        # never narrower than its words at 8 pt (one line, nothing cut)
+        tw = max(min(max(a.w + 40, 60.0), 9.0 * len(text) + 14), flow_layout.marker_width(text))
         below = a.lane == a.lanes - 1
         cx = left + a.x
         y0 = top + a.y + (a.h / 2 if below else -a.h / 2)

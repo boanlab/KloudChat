@@ -343,13 +343,25 @@ def sides(a: Placed, b: Placed) -> tuple[str, str]:
     return "bottom", "top"
 
 
+#: target name a marker shows whole
+_MARKER_CHARS = 18
+
+
 def marker_text(label: str, target: str) -> str:
     """Marker text: edge label, then target step."""
     target = " ".join(target.split())
-    if len(target) > 12:
-        target = target[:11] + "…"
+    if len(target) > _MARKER_CHARS:
+        # whole words where they fit: 「Desired State」, not 「Desired Sta…」
+        cut = target[:_MARKER_CHARS - 1]
+        target = (cut.rsplit(" ", 1)[0] if " " in cut else cut) + "…"
     label = " ".join((label or "").split())
     return f"{label} → {target}" if label else f"→ {target}"
+
+
+def marker_width(text: str) -> float:
+    """Marker width its text needs on one line at 8 pt, margins in."""
+    return sum(8.0 if ord(ch) >= 0x1100 and ch not in "…→" else 4.8
+               for ch in text) + 14
 
 
 def frames(graph: Graph, placed: dict[str, Placed]) -> list[tuple[str, list[str]]]:
@@ -369,5 +381,5 @@ def frames(graph: Graph, placed: dict[str, Placed]) -> list[tuple[str, list[str]
 
 __all__ = [
     "BOX_PT", "DOCUMENT_WIDTH", "EDGE_PT", "Plan", "applies", "frame_size", "frames", "kind",
-    "marker_text", "place", "plan", "sides",
+    "marker_text", "marker_width", "place", "plan", "sides",
 ]

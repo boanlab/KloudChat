@@ -212,6 +212,24 @@ def obviously_new(message: str) -> bool:
     return bool(_START_OVER.search(message))
 
 
+#: a question, not an ask: 「몇 장이야?」, 「발표자는 누구인가요」, 「무슨 뜻이야」
+_QUESTION_WORD = re.compile(
+    r"몇|얼마|무엇|뭐|무슨|어디|언제|누가|누구|왜|어떻게|어떤|인가요|나요|니까")
+_QUESTION_END = re.compile(r"(?:\?|？|까|니|나|냐|지|야|요)$")
+_ASK_VERB = re.compile(
+    r"줘|주세요|주십시오|주실|줄\s?수|바랍니다|부탁|고쳐|바꿔|넣어|빼|지워|만들어|써\s?(?:줘|주)|해\s?(?:줘|주)")
+
+
+def asks_question(message: str) -> bool:
+    """Whether the words ask something rather than ask for a change (「지금 슬라이드가 몇
+    장이야?」); a polite ask (「바꿔 줄 수 있나요?」) is not one."""
+    text = (message or "").strip()[-400:].rstrip(" .!")
+    if not text or _ASK_VERB.search(text):
+        return False
+    return text.endswith(("?", "？")) or bool(
+        _QUESTION_WORD.search(text) and _QUESTION_END.search(text))
+
+
 #: Export format words; 「한글」 counts only beside a file word or hand-over verb.
 _FORMAT_WORDS = (
     ("pdf", r"PDF|피디에프"),
@@ -1530,6 +1548,56 @@ def drop_numbered(parts: list[dict], asked: list[tuple[str, int]]
             part.pop("factCheck", None)
         out.append(part)
     return out, taken, absent
+
+
+#: an ask for a new table or figure in the same edit: 「표로 정리해」, 「흐름도를 넣어」
+_ASKS_BLOCK = {
+    kind: re.compile(
+        rf"(?:{words})\s?(?:으로|로|을|를|도|하나)?\s?(?:넣|추가|그려|그리|만들|바꿔|정리)")
+    for kind, words in (("표", "표"), ("그림", "그림|도식|도해|구조도|흐름도|개념도|다이어그램"))}
+
+
+def _block_rows(text: str, start: int, end: int) -> set[str]:
+    """A table's or figure's lines without its caption, spacing evened."""
+    return {" ".join(line.split()) for line in text.split("\n")[start:end]
+            if line.strip() and not _CAPTION_OF["표"].match(line)
+            and not _CAPTION_OF["그림"].match(line)}
+
+
+def drop_added(old: str, new: str, removed: list[str], asked: str = "") -> str:
+    """`new` without the tables or figures its rewrite added to a part a numbered one was just
+    taken out of (`removed`: 「표 2」): the removal holds through the same edit's rewrite, unless
+    `asked` asks for a new one."""
+    kinds = {name.split(" ", 1)[0] for name in removed}
+    kinds = {k for k in kinds if k in _ASKS_BLOCK and not _ASKS_BLOCK[k].search(asked or "")}
+    if not kinds:
+        return new
+    had = [b for b in _blocks_in(old) if b[0] in kinds]
+    has = [b for b in _blocks_in(new) if b[0] in kinds]
+    old_rows = [_block_rows(old, b[1], b[2]) for b in had]
+
+    def kinship(block: tuple[str, int, int, int | None]) -> int:
+        rows = _block_rows(new, block[1], block[2])
+        return max((len(rows & seen) for seen in old_rows), default=0)
+
+    gone: list[tuple[str, int, int, int | None]] = []
+    for kind in kinds:
+        mine = [b for b in has if b[0] == kind]
+        extra = len(mine) - sum(1 for b in had if b[0] == kind)
+        if extra > 0:
+            # the least like any block the part kept
+            gone += sorted(mine, key=kinship)[:extra]
+    if not gone:
+        return new
+    lines = new.split("\n")
+    for _, start, end, _ in sorted(gone, key=lambda b: b[1], reverse=True):
+        del lines[start:end]
+    text = "\n".join(lines)
+    kept = {(b[0], b[3]) for b in has if b not in gone}
+    for kind, _, _, number in gone:
+        if number is not None and (kind, number) not in kept:
+            text = _drop_references(text, f"{kind} {number}")
+    return re.sub(r"\n{3,}", "\n\n", text).strip("\n")
 
 
 #: summary the person asked for at the document's start; code builds the block

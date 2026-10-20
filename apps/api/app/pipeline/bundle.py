@@ -210,6 +210,8 @@ class Document:
     unmet: list[str] = field(default_factory=list)
     #: revision: pictures, charts, tables taken off (「7장의 흐름도」, 「2절의 표 2」)
     removed: list[str] = field(default_factory=list)
+    #: revision: per part id, the numbered tables and figures taken out of it (「표 2」)
+    emptied: dict[str, list[str]] = field(default_factory=dict)
     #: revision: parts rewritten (zero-based), for the reply
     touched: list[int] = field(default_factory=list)
     #: handover: artifact, files step, reply

@@ -185,6 +185,11 @@ class Route(Base):
             parts, taken, absent = revise.drop_numbered(parts, removals)
             doc.removed += taken
             doc.missed += absent
+            for name in taken:
+                # 「2절의 표 2」: the part it left, for the rewrite of the same edit
+                at, _, what = name.partition("절의 ")
+                part_id = str(parts[int(at) - 1].get("id") or "")
+                doc.emptied.setdefault(part_id, []).append(what)
             changed += len(taken)
             rest = revise.without_numbered_removals(typed)
             yield {"type": "step", "id": "route", "status": "done" if taken else "error",
@@ -294,6 +299,16 @@ class Route(Base):
         doc.by_hand, bundle.plan.revision = by_hand, plan
         if not by_hand and not plan.revises:
             # new-document request: said, not acted on
+            if revise.asks_question(typed):
+                # a question about the document: this screen only edits; said how to ask it
+                yield {"type": "step", "id": "route", "label": "질문", "status": "done"}
+                example = "3장을 표로 바꿔줘" if is_deck else "2절을 두 문장으로 줄여줘"
+                for event in _stopped(bundle, (
+                        "질문으로 보여 바꾼 것이 없습니다. 이 화면에서는 "
+                        f"「{example}」처럼 고칠 곳을 알려 주시면 고칩니다. 내용을 물어보려면 "
+                        "내려받은 파일을 챗에 첨부해 물어보세요.")):
+                    yield event
+                raise Stop("a question")
             yield {"type": "step", "id": "route", "label": "새 문서 요청", "status": "done"}
             for event in _stopped(bundle, "이건 지금 문서를 고치는 요청으로 보이지 않습니다. "
                                           "새로 쓰려면 '새로 써 줘' 라고 알려 주세요."):
@@ -446,6 +461,11 @@ class Rewrite(Base):
                         else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
                         f"{(plan.typed or instruction).strip()[:400]}"
                     )
+                    #: numbered tables and figures this edit took out of the part
+                    emptied = doc.emptied.get(str(part.get("id") or ""), [])
+                    if emptied:
+                        note += (f"\nThe person had {', '.join(emptied)} taken out of this "
+                                 "section: add no table or figure in its place.")
                     for _attempt in range(2):
                         body, used = await report.rewrite_section(
                             request=request,
@@ -473,6 +493,10 @@ class Rewrite(Base):
                             raise ValueError("본문 대신 대화 답이 나옴")
                         # existing figure kept unless redrawn or removal asked
                         body = revise.keep_figure(before, body, instruction)
+                        # a table or figure asked away stays away
+                        body = revise.drop_added(before, body, emptied,
+                                                 revise.without_numbered_removals(
+                                                     " ".join(asks) or _typed(bundle)))
                         body = richtext.detach_tables(body)
                         # arithmetic checked, not trusted
                         body = report.trim_table_echo(
