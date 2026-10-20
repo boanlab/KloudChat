@@ -613,6 +613,8 @@ class UserPipeline(SQLModel, table=True):
     #: "" pipeline | `bundle` (묶음)
     kind: str = Field(default="", max_length=20)
     stages: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: `[{from, to, branch?}]` by step id; null: steps run in order
+    edges: list | None = Field(default=None, sa_column=_json(nullable=True))
     #: org only via approval
     visibility: str = Field(default="private")
     #: "" · pending · approved · rejected

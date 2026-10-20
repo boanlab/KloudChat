@@ -332,6 +332,13 @@
 "lang": "ko",
 "path": "chat/agents",
 "title": "에이전트와 스킬",
+"heading": "조건 단계와 실행 기록",
+"text": "직접 구성에 **조건** 단계를 넣으면 앞 단계의 결과를 보고 갈래 하나만 이어 갑니다. 단계 사이를 선으로 잇고, 조건 단계에서는 갈래마다 선을 하나씩 긋습니다.\n\n- **규칙**: 앞 단계가 남긴 값을 비교합니다(보다 크면 · 같으면 · 비어 있으면 · 들어 있으면). 모델을 부르지 않으며 갈래는 **예**와 **아니오**입니다. 읽을 수 있는 값: 요청(첨부 수 · 첨부 형식 · 요청 글), 에이전트(결과 종류 · 쓴 장 수 · 글자 수 · 결과 글), 계산(계산 결과), 검사(찾은 곳 수 · 남은 곳 수), 검토(지적 수 · 고친 수 · 남은 지적 수), 확인 질문(빈칸 수 · 받은 답 수), 개요 확인(장 수).\n- **AI 판단**: 적은 질문으로 판단 모델이 갈래(2~4개) 하나를 고르고 이유를 실행 기록에 남깁니다. strict-local 대화에서는 밖으로 나가지 않는 모델만 쓰고, 쓴 토큰은 그 턴의 크레딧에 들어갑니다.\n- **값이 없을 때**: 읽을 단계가 돌지 않았거나 값이 없으면 규칙은 **아니오**로, AI 판단이 갈래를 고르지 못하면 마지막 갈래로 가며 그 까닭이 기록됩니다.\n- **저장 전 확인**: 되돌아가는 선(반복), 이어질 단계가 없는 갈래, 첫 단계에서 닿지 않는 단계, 덜 채운 조건, 조건이 아닌 단계에서 두 갈래로 나가는 선이 있으면 저장되지 않습니다. 갈래마다 마지막 에이전트가 만드는 것(문서 또는 답)이 같아야 하고, 확인 질문과 그 뒤 에이전트 사이에는 조건을 둘 수 없습니다. 묶음에는 조건을 넣을 수 없습니다.\n- **실행 기록**: 고르지 않은 갈래의 단계는 「다른 갈래라 건너뜀」으로 남습니다. 실행마다 단계별 상태, 받은 것과 넘긴 것의 요약, 고른 갈래가 보이며 실행한 사람만 봅니다."
+},
+{
+"lang": "ko",
+"path": "chat/agents",
+"title": "에이전트와 스킬",
 "heading": "묶음",
 "text": "묶음은 에이전트가 쓰기 전후에 하는 일을 몇 가지씩 묶은 것입니다. 에이전트 만들기 폼의 **추가로 할 일**에 묶음마다 체크 상자가 하나 있고, **자세히**를 누르면 그 안의 항목을 하나씩 켜고 끌 수 있습니다.\n\n| 묶음 | 항목 |\n|---|---|\n| 쓰기 전에 준비하기 | 빠진 정보 먼저 묻기 · 날짜 미리 계산하기 · 금액·합계 미리 계산하기 |\n| 다 쓴 뒤 검토하기 | 자료에 없는 내용이 없는지 근거 확인하기(수치는 도구 결과에서만 인정 · 직함·제품명까지 확인) · 형식 검사 · 어긋난 곳 고치고 다시 확인하기 |\n| 마무리하기 | 상투적인 표현 걷어내기 · 다 쓰면 파일로 내보내기(DOCX·PDF·HWPX·MD 중 하나) |\n\n- **파일로 받기**: 마무리하기를 체크하면 그 아래에 **다 쓰면 파일로 내보내기** 체크 상자가 따로 보입니다. 파일로 받으려면 이것을 체크하고 옆에서 파일 형식을 고릅니다. 체크하면 공문 계열 문서(간이기안문·공문·추진 계획·결과 보고·개조식)는 HWPX, 그 밖에는 DOCX가 먼저 골라지고, 직접 고른 형식이 우선합니다. 기본 과정(개조식 보고, 회의록, 비교·결정)은 마무리하기가 체크된 채 내보내기는 꺼져 있습니다. 내보내기는 문서를 쓰는 과정에서만 됩니다. 바로 답하기 에이전트의 마무리하기에는 「파일로 내보내기(문서 과정에서)」라고만 보입니다.\n- 보고서 화면에서는 날짜·금액 계산, 형식 검사, 고치고 다시 확인하기가 보고서를 쓰는 과정 안에서 늘 이루어지므로 「이 과정은 늘 합니다」로 표시됩니다. 대화 화면에는 형식 검사와 내보내기가 없습니다.\n- 기본 과정도 같은 묶음으로 만들어져 있습니다. 예를 들어 회의록 = 쓰기 전에 준비하기 + 다 쓴 뒤 검토하기(할 일의 담당자·기한 확인 포함) + 마무리하기(내보내기 꺼짐)이고, 이 검사들은 **회의록 작성** 스킬과 **회의록** 템플릿에도 함께 붙어 있습니다.\n- **내 묶음**: **사용자 지정** → **에이전트** → **추가** → **묶음 만들기**, 또는 직접 구성 화면의 **이 순서를 묶음으로 저장**으로 만듭니다. 만든 묶음은 내 모든 에이전트의 추가로 할 일에 체크 상자로 나옵니다. 추가로 할 일 옆 **묶음 관리**에서 고치고 공유합니다.\n- 공유는 스킬과 같습니다(나만 쓰기 · 모두에게 공개). 파일로 내보내거나, 다른 모델이 검토하거나, 다른 에이전트를 부르는 묶음과 직접 구성은 관리자가 **진행 과정 검토**에서 승인한 뒤에야 다른 사람에게 적용됩니다. 기본 과정과 기본 묶음만 쓰는 에이전트는 승인 없이 바로 공유됩니다."
 },
@@ -1748,6 +1755,13 @@
 "title": "Agents and skills",
 "heading": "How it works",
 "text": "Pick one of three under **How it works** in the create-agent form. A new agent and its process are saved together: if the process is refused, no agent is made and the form stays as it was.\n\n- **Answer directly**: answers the request right away. An agent that answers in the chat makes no file (DOCX, HWPX, PDF).\n- **Start from a base process**: follows the working order of a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …). When no base process can be picked this option is hidden; it shows only on an agent that already started from one (which keeps it). A new agent does the same job with **Answer directly** plus **Skills kept on** and bundles. To get a file, set **Advanced** › first screen to **Report** and tick **Export a file when done** under Finish.\n- **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one \"This agent\" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order."
+},
+{
+"lang": "en",
+"path": "chat/agents",
+"title": "Agents and skills",
+"heading": "Condition steps and run records",
+"text": "A **condition** step in a custom order looks at what earlier steps produced and goes on along one branch only. Steps are joined by lines; a condition has one line per branch.\n\n- **Rule**: compares a value an earlier step left (greater than · equals · is empty · contains). No model is called; the branches are **Yes** and **No**. Values: the request (attachments · attachment types · text), an agent (result kind · sections · characters · text), a calculation (result), a check (found · left), a review (findings · fixed · left), the question card (blanks · answers), the outline approval (sections).\n- **AI judgement**: the judge model answers your question by picking one of 2–4 branches, and its reason goes into the run record. A strict-local conversation uses only models that stay inside; the tokens count toward that turn's credits.\n- **No value**: when the step a rule reads did not run or left no value, the rule takes **No**; when the judgement names no branch, the last branch is taken. The record says why.\n- **Checked before saving**: a line back to an earlier step (a loop), a branch with nothing after it, a step the first step never reaches, an unfinished condition, or two lines out of a step that is not a condition stop the save. Every branch's last agent must make the same thing (a document or an answer), and no condition may sit between the question card and its agent. Bundles hold no conditions.\n- **Run records**: steps on a branch not taken are recorded as skipped. Each run shows every step's status, a short summary of what it got and handed on, and the branch taken; only the person who ran it sees it."
 },
 {
 "lang": "en",

@@ -14,7 +14,7 @@ from app.pipeline.stage import Base, Context, Stage, Wait
 
 log = logging.getLogger(__name__)
 
-STEP_KINDS = ("agent", "skill", "check", "review", "human", "export")
+STEP_KINDS = ("agent", "skill", "check", "review", "human", "export", "condition")
 MAX_STEPS = 12
 #: Pipeline name of a user-pipeline run (`user:<id>`) and its flow.
 PREFIX = "user:"
@@ -24,7 +24,7 @@ FLOW = "compose"
 SELF = "@self"
 
 KIND_WORDS = {"agent": "에이전트", "skill": "스킬", "check": "검사", "review": "검토",
-              "human": "사람 확인", "export": "내보내기"}
+              "human": "사람 확인", "export": "내보내기", "condition": "조건"}
 
 #: Script skills runnable as code steps.
 SKILLS: dict[str, str] = {
@@ -39,6 +39,36 @@ CHECKS: dict[str, tuple[str, ...]] = {
 }
 HUMAN = {"gaps": "확인 질문", "outline": "개요 확인"}
 EXPORT_FORMATS = ("docx", "pdf", "hwpx", "md")
+
+#: Condition step: how it decides, rule comparisons, branches per AI condition.
+CONDITION_MODES = ("rule", "ai")
+RULE_OPS = ("gt", "eq", "empty", "contains")
+MAX_BRANCHES = 4
+RULE_BRANCHES = ({"key": "yes", "label": "예"}, {"key": "no", "label": "아니오"})
+#: Rule source standing for the request and its attachments.
+REQUEST = "@request"
+
+#: What a rule can read, per step kind: values the steps really leave behind.
+CONDITION_VALUES: tuple[dict[str, str], ...] = (
+    {"step_kind": "request", "key": "attachments", "label": "첨부 수", "type": "number"},
+    {"step_kind": "request", "key": "attachment_types", "label": "첨부 형식", "type": "text"},
+    {"step_kind": "request", "key": "text", "label": "요청 글", "type": "text"},
+    {"step_kind": "agent", "key": "kind", "label": "결과 종류(document·answer)", "type": "text"},
+    {"step_kind": "agent", "key": "sections", "label": "쓴 장 수", "type": "number"},
+    {"step_kind": "agent", "key": "chars", "label": "결과 글자 수", "type": "number"},
+    {"step_kind": "agent", "key": "text", "label": "결과 글", "type": "text"},
+    {"step_kind": "skill", "key": "computed", "label": "계산 결과", "type": "text"},
+    {"step_kind": "check", "key": "found", "label": "찾은 곳 수", "type": "number"},
+    {"step_kind": "check", "key": "left", "label": "고치지 못하고 남은 곳 수", "type": "number"},
+    {"step_kind": "review", "key": "found", "label": "지적 수", "type": "number"},
+    {"step_kind": "review", "key": "fixed", "label": "고친 수", "type": "number"},
+    {"step_kind": "review", "key": "left", "label": "남은 지적 수", "type": "number"},
+    {"step_kind": "human", "ref": "gaps", "key": "gaps", "label": "빈칸 수", "type": "number"},
+    {"step_kind": "human", "ref": "gaps", "key": "answers", "label": "받은 답 수",
+     "type": "number"},
+    {"step_kind": "human", "ref": "outline", "key": "sections", "label": "개요 장 수",
+     "type": "number"},
+)
 
 _MAX_INSTRUCTION = 1000
 _MAX_FOCUS = 500
@@ -135,6 +165,38 @@ def _clean_settings(kind: str, raw: Any) -> dict[str, Any]:
     return {}
 
 
+def _clean_id(value: Any) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "", str(value or ""))[:40]
+
+
+def _clean_condition(row: dict[str, Any]) -> dict[str, Any]:
+    """Condition fields: mode, rule or question, branches (rule: yes/no)."""
+    mode = str(row.get("mode") or "").strip()
+    mode = mode if mode in CONDITION_MODES else ""
+    given = [b for b in row.get("branches") or [] if isinstance(b, dict)]
+    out: dict[str, Any] = {"name": str(row.get("name") or "").strip()[:80], "mode": mode}
+    if mode == "rule":
+        raw = row.get("rule") if isinstance(row.get("rule"), dict) else {}
+        source = str(raw.get("step") or "").strip()
+        op = str(raw.get("op") or "").strip()
+        out["rule"] = {"step": REQUEST if source == REQUEST else _clean_id(source),
+                       "value": _clean_id(raw.get("value")),
+                       "op": op if op in RULE_OPS else "",
+                       "target": str(raw.get("target") or "").strip()[:200]}
+        labels = {_clean_id(b.get("key")): str(b.get("label") or "").strip()[:40] for b in given}
+        out["branches"] = [{"key": b["key"], "label": labels.get(b["key"]) or b["label"]}
+                           for b in RULE_BRANCHES]
+        return out
+    out["question"] = str(row.get("question") or "").strip()[:500]
+    branches: list[dict[str, str]] = []
+    for b in given[:MAX_BRANCHES + 1]:
+        key = _clean_id(b.get("key"))
+        if key and all(key != x["key"] for x in branches):
+            branches.append({"key": key, "label": str(b.get("label") or "").strip()[:40] or key})
+    out["branches"] = branches
+    return out
+
+
 def normalize(raw: Any) -> list[dict[str, Any]]:
     """Steps as stored, ids unique (`s1`, `s2` …); shape only."""
     out: list[dict[str, Any]] = []
@@ -143,12 +205,35 @@ def normalize(raw: Any) -> list[dict[str, Any]]:
         if not isinstance(row, dict):
             row = {}
         kind = str(row.get("kind") or "").strip()
-        sid = re.sub(r"[^A-Za-z0-9_-]", "", str(row.get("id") or ""))[:40] or f"s{i + 1}"
+        sid = _clean_id(row.get("id")) or f"s{i + 1}"
         while sid in seen:
             sid = f"{sid}x"
         seen.add(sid)
-        out.append({"id": sid, "kind": kind, "ref": str(row.get("ref") or "").strip()[:80],
-                    "settings": _clean_settings(kind, row.get("settings"))})
+        step = {"id": sid, "kind": kind, "ref": str(row.get("ref") or "").strip()[:80],
+                "settings": _clean_settings(kind, row.get("settings"))}
+        if kind == "condition":
+            step = {**step, "ref": "", **_clean_condition(row)}
+        out.append(step)
+    return out
+
+
+def normalize_edges(raw: Any, steps: list[dict[str, Any]]) -> list[dict[str, str]] | None:
+    """Edges as stored (None: linear in step order); unknown steps dropped, branch only from a
+    condition."""
+    if not isinstance(raw, list):
+        return None
+    kinds = {s["id"]: s["kind"] for s in steps}
+    out: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        a, b = _clean_id(row.get("from")), _clean_id(row.get("to"))
+        branch = _clean_id(row.get("branch")) if kinds.get(a) == "condition" else ""
+        if a not in kinds or b not in kinds or (a, b, branch) in seen:
+            continue
+        seen.add((a, b, branch))
+        out.append({"from": a, "to": b, **({"branch": branch} if branch else {})})
     return out
 
 
@@ -171,7 +256,138 @@ def step_title(step: dict[str, Any], agents: dict[str, AgentInfo]) -> str:
         return "검토"
     if kind == "export":
         return "내보내기"
+    if kind == "condition":
+        return str(step.get("name") or "") or "조건"
     return kind or "단계"
+
+
+#: Paths a branching pipeline is checked along, at most.
+_MAX_PATHS = 256
+
+
+@dataclass(slots=True)
+class Flow:
+    """Step graph from `edges`: first step starts, a condition goes on by one branch."""
+
+    ids: list[str]
+    #: step id → [(next id, branch key or "")]
+    nexts: dict[str, list[tuple[str, str]]]
+    prevs: dict[str, list[tuple[str, str]]]
+
+    @classmethod
+    def of(cls, steps: list[dict[str, Any]], edges: list[dict] | None) -> Flow | None:
+        """Graph, or None when steps simply run in order (no edges, or edges that say so)."""
+        if edges is None:
+            return None
+        ids = [s["id"] for s in steps]
+        linear = [{"from": a, "to": b} for a, b in zip(ids, ids[1:], strict=False)]
+        if edges == linear and all(s["kind"] != "condition" for s in steps):
+            return None
+        nexts: dict[str, list[tuple[str, str]]] = {i: [] for i in ids}
+        prevs: dict[str, list[tuple[str, str]]] = {i: [] for i in ids}
+        for e in edges:
+            if e["from"] in nexts and e["to"] in nexts:
+                nexts[e["from"]].append((e["to"], e.get("branch") or ""))
+                prevs[e["to"]].append((e["from"], e.get("branch") or ""))
+        return cls(ids=ids, nexts=nexts, prevs=prevs)
+
+    @property
+    def start(self) -> str:
+        return self.ids[0] if self.ids else ""
+
+    def reached(self, sid: str, choices: dict[str, str]) -> bool:
+        """Whether a run with these branch choices comes to `sid`."""
+        memo: dict[str, bool] = {}
+
+        def walk(node: str, seen: frozenset[str]) -> bool:
+            if node == self.start:
+                return True
+            if node in memo:
+                return memo[node]
+            hit = any(src not in seen and (not branch or choices.get(src) == branch)
+                      and walk(src, seen | {src}) for src, branch in self.prevs.get(node, ()))
+            memo[node] = hit
+            return hit
+
+        return walk(sid, frozenset({sid}))
+
+    def reachable(self) -> set[str]:
+        seen: set[str] = set()
+        todo = [self.start] if self.start else []
+        while todo:
+            node = todo.pop()
+            if node not in seen:
+                seen.add(node)
+                todo.extend(n for n, _ in self.nexts.get(node, ()))
+        return seen
+
+    def ancestors(self, sid: str) -> set[str]:
+        seen: set[str] = set()
+        todo = [p for p, _ in self.prevs.get(sid, ())]
+        while todo:
+            node = todo.pop()
+            if node not in seen:
+                seen.add(node)
+                todo.extend(p for p, _ in self.prevs.get(node, ()))
+        return seen
+
+    def cycle(self) -> str:
+        """A step on a loop, or ""."""
+        state: dict[str, int] = {}
+
+        def visit(node: str) -> str:
+            state[node] = 1
+            for nxt, _ in self.nexts.get(node, ()):
+                if state.get(nxt) == 1:
+                    return nxt
+                if not state.get(nxt) and (found := visit(nxt)):
+                    return found
+            state[node] = 2
+            return ""
+
+        for node in self.ids:
+            if not state.get(node) and (found := visit(node)):
+                return found
+        return ""
+
+    def paths(self) -> list[list[str]]:
+        """Every start-to-end path (acyclic graph), at most `_MAX_PATHS`."""
+        out: list[list[str]] = []
+
+        def walk(path: list[str]) -> None:
+            if len(out) >= _MAX_PATHS:
+                return
+            nxt = self.nexts.get(path[-1]) or []
+            if not nxt:
+                out.append(path)
+            for node, _ in nxt:
+                if node not in path:
+                    walk([*path, node])
+
+        if self.start:
+            walk([self.start])
+        return out
+
+    def order(self, steps: list[dict[str, Any]]) -> list[int]:
+        """Reachable step indices in run order: graph order, exports last, else list order."""
+        index = {s["id"]: i for i, s in enumerate(steps)}
+        live = self.reachable()
+        waiting = {i: sum(1 for p, _ in self.prevs[i] if p in live) for i in live}
+        ready = [i for i in live if not waiting[i]]
+        out: list[int] = []
+        while ready:
+            ready.sort(key=lambda i: (steps[index[i]]["kind"] == "export", index[i]))
+            node = ready.pop(0)
+            out.append(index[node])
+            for nxt, _ in self.nexts[node]:
+                waiting[nxt] -= 1
+                if not waiting[nxt]:
+                    ready.append(nxt)
+        return out
+
+
+def flow_of(steps: list[dict[str, Any]], edges: list[dict] | None) -> Flow | None:
+    return Flow.of(steps, normalize_edges(edges, steps))
 
 
 @dataclass(slots=True)
@@ -180,9 +396,12 @@ class Problem:
     step: int
     code: str
     message: str
+    #: the step's stable id ("" = whole pipeline)
+    step_id: str = ""
 
     def wire(self) -> dict[str, Any]:
-        return {"step": self.step, "code": self.code, "message": self.message}
+        return {"step": self.step, "code": self.code, "message": self.message,
+                **({"stepId": self.step_id} if self.step_id else {})}
 
 
 @dataclass(slots=True)
@@ -245,6 +464,15 @@ MESSAGES = {
     "no_agent": "진행 과정에 에이전트 단계가 하나는 있어야 합니다.",
     "export_needs_document": ("{n}번 내보내기: 마지막 에이전트가 문서를 써야 "
                               "파일로 내보낼 수 있습니다."),
+    "cycle": "{at}: 앞 단계로 되돌아가는 선이 있습니다. 반복은 둘 수 없습니다.",
+    "unreachable_step": "{at}: 첫 단계에서 이어지지 않아 실행되지 않는 단계입니다.",
+    "branch_dead_end": "{at}: 「{label}」 갈래 뒤에 이어질 단계가 없습니다.",
+    "condition_incomplete": "{at}: {what}",
+    "parallel_next": "{at}: 조건 단계가 아니면 다음 단계는 하나만 이을 수 있습니다.",
+    "card_before_branch": ("{at}: 확인 질문과 그 뒤 에이전트 사이에는 조건 단계를 둘 수 "
+                           "없습니다. 묻는 항목이 갈래마다 달라집니다."),
+    "branch_surface": ("갈래마다 마지막 에이전트가 만드는 것이 다릅니다. 모든 갈래가 문서를 "
+                       "쓰거나 모두 답을 해야 합니다."),
     "answer_unchecked": ("{at}: 뒤에 검사나 검토 단계가 없습니다. 답의 수치를 다음 단계가 그대로 "
                          "믿지 않도록 근거 대조나 검토를 넣는 것이 좋습니다."),
 }
@@ -252,27 +480,153 @@ MESSAGES = {
 
 def validate(steps: list[dict[str, Any]], *, agents: dict[str, AgentInfo],
              allowed_models: set[str] | None = None, self_id: str | None = None,
-             graph: dict[str, set[str]] | None = None, sharing: bool = False) -> Verdict:
-    """Korean problems with this step order; `graph`: recursion guard, `sharing`: shared rules."""
+             graph: dict[str, set[str]] | None = None, sharing: bool = False,
+             edges: list[dict] | None = None) -> Verdict:
+    """Korean problems with this step order, or along every path of `edges`; `graph`: recursion
+    guard, `sharing`: shared rules."""
     verdict = Verdict()
+    steps = [s if s.get("id") else {**s, "id": f"s{i + 1}"} for i, s in enumerate(steps)]
+    numbers = {s["id"]: i + 1 for i, s in enumerate(steps)}
+    seen: set[tuple[int, str, str]] = set()
 
     def say(n: int, code: str, *, warn: bool = False, step: dict | None = None,
             **values: Any) -> None:
         at = (f"{n}번 {KIND_WORDS.get(step['kind'], '단계')}({step_title(step, agents)})"
               if step is not None else "")
         text = MESSAGES[code].format(n=n, at=at, max=MAX_STEPS, **values)
-        (verdict.warnings if warn else verdict.problems).append(Problem(n, code, text))
+        if (n, code, text) in seen:
+            return
+        seen.add((n, code, text))
+        sid = step["id"] if step is not None else (steps[n - 1]["id"] if 0 < n <= len(steps)
+                                                    else "")
+        (verdict.warnings if warn else verdict.problems).append(Problem(n, code, text, sid))
 
     if not steps:
         say(0, "empty")
         return verdict
     if len(steps) > MAX_STEPS:
         say(0, "too_many")
+    flow = flow_of(steps, edges)
+    by_id = {s["id"]: s for s in steps}
+    if flow is None:
+        for step in steps:
+            if step["kind"] == "condition":
+                _check_condition(step, None, by_id, numbers, say)
+        verdict.surface = _check_path(steps, list(range(1, len(steps) + 1)), say, agents=agents,
+                                      allowed_models=allowed_models, self_id=self_id,
+                                      graph=graph, sharing=sharing)
+        return verdict
+    if looped := flow.cycle():
+        say(numbers[looped], "cycle", step=by_id[looped])
+        return verdict
+    live = flow.reachable()
+    for step in steps:
+        n = numbers[step["id"]]
+        if step["id"] not in live:
+            say(n, "unreachable_step", step=step)
+            continue
+        if step["kind"] == "condition":
+            _check_condition(step, flow, by_id, numbers, say)
+        elif len(flow.nexts[step["id"]]) > 1:
+            say(n, "parallel_next", step=step)
+    surfaces: set[str] = set()
+    for path in flow.paths():
+        rows = [by_id[i] for i in path]
+        surfaces.add(_check_path(rows, [numbers[i] for i in path], say, agents=agents,
+                                 allowed_models=allowed_models, self_id=self_id, graph=graph,
+                                 sharing=sharing))
+        for i, row in enumerate(rows):
+            if row["kind"] == "human" and row["ref"] == "gaps":
+                later = next((r["kind"] for r in rows[i + 1:]
+                              if r["kind"] in ("agent", "condition")), "")
+                if later == "condition":
+                    say(numbers[row["id"]], "card_before_branch", step=row)
+    made = surfaces - {""}
+    if len(made) > 1:
+        say(0, "branch_surface")
+    verdict.surface = next(iter(made), "")
+    return verdict
+
+
+def rule_value(source: dict[str, Any] | None, key: str) -> dict[str, str] | None:
+    """`CONDITION_VALUES` row a rule reads from `source` (None = the request)."""
+    kind = "request" if source is None else source["kind"]
+    ref = "" if source is None else source.get("ref") or ""
+    return next((v for v in CONDITION_VALUES if v["step_kind"] == kind and v["key"] == key
+                 and v.get("ref", ref) == ref), None)
+
+
+def _check_condition(step: dict[str, Any], flow: Flow | None, by_id: dict[str, dict],
+                     numbers: dict[str, int], say) -> None:
+    n = numbers[step["id"]]
+
+    def incomplete(what: str) -> None:
+        say(n, "condition_incomplete", step=step, what=what)
+
+    mode, branches = step.get("mode"), step.get("branches") or []
+    if mode not in CONDITION_MODES:
+        incomplete("판단 방식(규칙·AI 판단)을 골라 주세요.")
+    elif mode == "rule":
+        rule = step.get("rule") or {}
+        source = rule.get("step") or ""
+        row = None if source == REQUEST else by_id.get(source)
+        before = flow.ancestors(step["id"]) if flow is not None else {
+            s for s, i in numbers.items() if i < n}
+        value = rule_value(row, rule.get("value") or "") \
+            if source == REQUEST or row is not None else None
+        if source != REQUEST and (row is None or source not in before):
+            incomplete("규칙이 읽을 값을 이 조건 앞 단계에서 골라 주세요.")
+        elif value is None:
+            incomplete("그 단계가 남기지 않는 값입니다. 다른 값을 골라 주세요.")
+        elif not rule.get("op") or (rule["op"] != "empty" and not rule.get("target")):
+            incomplete("비교 방법과 기준을 채워 주세요.")
+        elif rule["op"] == "gt" and (value["type"] != "number"
+                                     or not _number(rule.get("target"))[0]):
+            incomplete("「보다 크면」은 숫자 값과 숫자 기준에만 쓸 수 있습니다.")
+        elif rule["op"] == "contains" and value["type"] != "text":
+            incomplete("「들어 있으면」은 글 값에만 쓸 수 있습니다.")
+    else:
+        if not str(step.get("question") or "").strip():
+            incomplete("판단 모델에게 물을 질문을 적어 주세요.")
+        elif not 2 <= len(branches) <= MAX_BRANCHES:
+            incomplete(f"갈래는 2개에서 {MAX_BRANCHES}개까지 둘 수 있습니다.")
+    if flow is None:
+        incomplete("갈래마다 이어질 단계를 선으로 이어 주세요.")
+        return
+    keys = [b["key"] for b in branches]
+    outs = flow.nexts.get(step["id"], [])
+    if any(not branch or branch not in keys for _, branch in outs) or \
+            len({b for _, b in outs}) != len(outs):
+        incomplete("선마다 갈래 하나를 정해 주세요. 한 갈래에 선은 하나입니다.")
+    for b in branches:
+        if all(branch != b["key"] for _, branch in outs):
+            say(n, "branch_dead_end", step=step, label=b["label"])
+
+
+def _number(value: Any) -> tuple[bool, float]:
+    try:
+        return True, float(str(value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return False, 0.0
+
+
+def _check_path(steps: list[dict[str, Any]], numbers: list[int], tell, *,
+                agents: dict[str, AgentInfo], allowed_models: set[str] | None,
+                self_id: str | None, graph: dict[str, set[str]] | None,
+                sharing: bool) -> str:
+    """One run's steps in order; numbers as the person sees them. Returns the surface."""
+    flagged: set[int] = set()
+
+    def say(n: int, code: str, *, warn: bool = False, **kw: Any) -> None:
+        if not warn:
+            flagged.add(n)
+        tell(n, code, warn=warn, **kw)
+
     product = last_agent_output = ""
     exported_at = 0
     agent_steps = [i for i, s in enumerate(steps) if s.get("kind") == "agent"]
     for i, step in enumerate(steps):
-        n, kind, ref = i + 1, step.get("kind"), str(step.get("ref") or "")
+        n, kind, ref = numbers[i], step.get("kind"), str(step.get("ref") or "")
         if kind not in STEP_KINDS:
             say(n, "unknown_kind")
             continue
@@ -344,14 +698,13 @@ def validate(steps: list[dict[str, Any]], *, agents: dict[str, AgentInfo],
                 break
             later.append(nxt.get("kind"))
         if not {"check", "review"} & set(later):
-            say(i + 1, "answer_unchecked", warn=True, step=steps[i])
+            say(numbers[i], "answer_unchecked", warn=True, step=steps[i])
     if not agent_steps:
         say(0, "no_agent")
-    if exported_at and last_agent_output and last_agent_output != "document" and not any(
-            p.step == exported_at for p in verdict.problems):
+    if exported_at and last_agent_output and last_agent_output != "document" and \
+            exported_at not in flagged:
         say(exported_at, "export_needs_document")
-    verdict.surface = {"document": "report", "answer": "chat"}.get(last_agent_output, "")
-    return verdict
+    return {"document": "report", "answer": "chat"}.get(last_agent_output, "")
 
 
 def gap_facts(info: AgentInfo) -> list[dict[str, Any]]:
@@ -377,6 +730,10 @@ def catalogue() -> dict[str, Any]:
                   {"ref": "outline", "name": HUMAN["outline"],
                    "description": "뒤 에이전트가 잡은 개요를 확인받고 씁니다."}],
         "exportFormats": list(EXPORT_FORMATS),
+        "conditionModes": list(CONDITION_MODES),
+        "ruleOps": list(RULE_OPS),
+        "maxBranches": MAX_BRANCHES,
+        "condition_values": [dict(v) for v in CONDITION_VALUES],
     }
 
 
@@ -453,8 +810,16 @@ def _usage_from(event: dict) -> dict[str, int]:
     return {k: v for k, v in event.items() if k != "type" and isinstance(v, int)}
 
 
+#: Skip reason of a step on a branch the run did not take.
+OTHER_BRANCH = "다른 갈래로 가서 건너뜀"
+
+
 class Step(Base):
     """Compiled step: position, saved spec, Korean title."""
+
+    #: branching pipeline's graph (None: in order); values a later condition reads
+    flow: Flow | None = None
+    wanted: frozenset[str] = frozenset()
 
     def __init__(self, index: int, spec: dict[str, Any], title: str) -> None:
         self.index = index
@@ -465,6 +830,23 @@ class Step(Base):
     @property
     def settings(self) -> dict[str, Any]:
         return dict(self.spec.get("settings") or {})
+
+    def skip(self, bundle: Bundle) -> str:
+        if self.flow is not None and not self.flow.reached(
+                self.spec["id"], dict(bundle.wire.get("branches") or {})):
+            return OTHER_BRANCH
+        return self.own_skip(bundle)
+
+    def own_skip(self, bundle: Bundle) -> str:
+        return ""
+
+
+def _note(bundle: Bundle, step: Step, values: dict[str, Any]) -> None:
+    """Values of this step a later condition reads, on `wire.values`."""
+    kept = {k: (v[:20_000] if isinstance(v, str) else v)
+            for k, v in values.items() if k in step.wanted}
+    if kept:
+        bundle.wire["values"] = {**(bundle.wire.get("values") or {}), step.spec["id"]: kept}
 
 
 def _handoff(bundle: Bundle) -> None:
@@ -520,6 +902,11 @@ class AgentStep(Step):
                    "status": "done"}
         bundle.wire["product"] = {"stage": self.name, "kind": self.output, "title": info.name,
                                   "checkOptions": dict(info.check_options)}
+        text = _product_text(bundle)
+        _note(bundle, self, {"kind": self.output, "chars": len(text), "text": text, **(
+            {"sections": sum(1 for s in bundle.document.sections
+                             if (s.get("content") or "").strip())}
+            if self.output == "document" else {})})
 
     async def _document(self, bundle: Bundle, info: AgentInfo) -> AsyncIterator[dict]:
         approved = dict(bundle.plan.proposal) if (
@@ -741,6 +1128,7 @@ class SkillStep(Step):
         if pre.blocks:
             bundle.material.parts = [*bundle.material.parts,
                                      Part("\n\n".join(pre.blocks), "prepass", ref)]
+        _note(bundle, self, {"computed": "\n\n".join(pre.blocks)})
         yield {"type": "step", "id": f"compose:{self.name}",
                "label": said or ("계산할 것 없음" if not pre.blocks else "계산함"),
                "status": "done"}
@@ -781,6 +1169,7 @@ class CheckStep(Step):
                                           computed=computed, options=options)
             bundle.document.answer = outcome.text
         code = "generic_wording" if ref == "generic-language-killer" else "ungrounded_value"
+        _note(bundle, self, {"found": len(outcome.found), "left": len(outcome.left)})
         bundle.findings.before = [*bundle.findings.before, *[code] * len(outcome.found)]
         bundle.findings.after = [*bundle.findings.after, *[code] * len(outcome.left)]
         said = (f"상투적인 표현 {len(outcome.found)}개 고침" if ref == "generic-language-killer"
@@ -801,6 +1190,7 @@ class CheckStep(Step):
         bundle.document.answer = outcome.text
         bundle.findings.before = [*bundle.findings.before, *["copy_claim"] * len(outcome.found)]
         bundle.findings.after = [*bundle.findings.after, *["copy_claim"] * len(outcome.left)]
+        _note(bundle, self, {"found": len(outcome.found), "left": len(outcome.left)})
         yield {"type": "step", "id": f"compose:{self.name}",
                "label": (f"근거 없는 표현 {len(outcome.found)}개" if outcome.found
                          else "고칠 것 없음"),
@@ -932,6 +1322,7 @@ class ReviewStep(Step):
             else:
                 bundle.document.answer = answer
         left = [f for f in found if not f.get("fixed")]
+        _note(bundle, self, {"found": len(found), "fixed": fixed, "left": len(left)})
         bundle.findings.before = [*bundle.findings.before, *["review"] * len(found)]
         bundle.findings.after = [*bundle.findings.after, *["review"] * len(left)]
         if kind == "document":
@@ -958,7 +1349,7 @@ class GapsStep(Step):
         super().__init__(index, spec, title)
         self.questions = questions
 
-    def skip(self, bundle: Bundle) -> str:
+    def own_skip(self, bundle: Bundle) -> str:
         return "" if self.questions else "the next agent declares no questions to ask"
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
@@ -999,9 +1390,12 @@ class GapsStep(Step):
             bundle.material.parts = parts
             said = (f"답 {len(lines)}개" if lines
                     else f"있는 자료로 진행 · 빈칸 {len(bundle.findings.gaps)}개")
+            _note(bundle, self, {"answers": len(lines),
+                                 "gaps": max(0, len(bundle.findings.gaps) - len(lines))})
             yield {"type": "step", "id": f"compose:{self.name}", "label": said, "status": "done"}
             return
         if not bundle.findings.gaps:
+            _note(bundle, self, {"answers": 0, "gaps": 0})
             yield {"type": "step", "id": f"compose:{self.name}", "label": "물을 것 없음",
                    "status": "done"}
             return
@@ -1030,6 +1424,7 @@ class OutlineStep(Step):
         if req.turn.get("resume") == self.name and isinstance(approved, dict) and approved:
             bundle.plan.proposal = dict(approved)
             n = len(approved.get("sections") or approved.get("headings") or [])
+            _note(bundle, self, {"sections": n})
             yield {"type": "step", "id": f"compose:{self.name}",
                    "label": f"개요 승인 · {n}개 장" if n else "개요 승인", "status": "done"}
             return
@@ -1043,6 +1438,136 @@ class OutlineStep(Step):
         raise Wait("waiting for the outline", summary=f"개요 {n}개 장" if n else "개요",
                    evidence={"plan": plan})
         yield {}  # async generator
+
+
+_BRANCH_PROMPT = """You decide which branch a pipeline takes next. Read the request and the
+latest result of the earlier steps, answer the question, and pick exactly one branch key from
+the list. Judge only from the text below; when it does not settle the question, pick the last
+branch.
+
+Question: {question}
+
+Branches (key: meaning):
+{branches}
+
+Reply with JSON only, no prose:
+{{"branch": "<one key from the list>", "reason": "<why, one short sentence in Korean>"}}
+
+# Request
+{request}
+
+# Latest result
+{text}
+"""
+
+
+class ConditionStep(Step):
+    """Picks one branch: a rule over an earlier step's value, or the judge model's reading."""
+
+    reads = ("request", "document", "wire")
+    writes = ()
+
+    def __init__(self, index: int, spec: dict[str, Any], title: str) -> None:
+        super().__init__(index, spec, title)
+        self.kind = "model" if spec.get("mode") == "ai" else "compute"
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        branches = list(self.spec.get("branches") or [])
+        if self.spec.get("mode") == "ai":
+            key, reason, missing = await self._judge(bundle, branches)
+        else:
+            key, reason, missing = await self._rule(bundle)
+        label = next((b["label"] for b in branches if b["key"] == key), key)
+        bundle.wire["branches"] = {**(bundle.wire.get("branches") or {}), self.spec["id"]: key}
+        yield {"type": "step", "id": f"compose:{self.name}", "label": f"「{label}」 갈래로",
+               "status": "done", **({"detail": reason[:300]} if reason else {}),
+               "branch": {"key": key, "label": label, "reason": reason[:300],
+                          "missing": missing}}
+
+    async def _rule(self, bundle: Bundle) -> tuple[str, str, bool]:
+        rule = dict(self.spec.get("rule") or {})
+        source, key = rule.get("step") or "", rule.get("value") or ""
+        values = (await _request_values(bundle) if source == REQUEST
+                  else dict((bundle.wire.get("values") or {}).get(source) or {}))
+        if key not in values:
+            return "no", "읽을 값이 없어(그 단계가 돌지 않음) 「아니오」로 갑니다.", True
+        hit = rule_holds(rule, values[key])
+        shown = values[key] if not isinstance(values[key], str) else f"{len(values[key])}자 글"
+        return ("yes" if hit else "no"), f"값 {shown} → {'예' if hit else '아니오'}", False
+
+    async def _judge(self, bundle: Bundle,
+                     branches: list[dict[str, str]]) -> tuple[str, str, bool]:
+        from app.services import report
+
+        req = bundle.request
+        last = branches[-1]["key"] if branches else ""
+        prompt = _BRANCH_PROMPT.format(
+            question=str(self.spec.get("question") or "")[:500],
+            branches="\n".join(f"- {b['key']}: {b['label']}" for b in branches),
+            request=req.text[:3000] or "(none)", text=_product_text(bundle)[:12_000] or "(none)")
+        try:
+            reply, spent = await report._complete(_branch_model(bundle),
+                                                  [{"role": "user", "content": prompt}],
+                                                  req.api_key, 400)
+        except Exception as exc:  # noqa: BLE001 — an unread question takes the last branch
+            log.info("branch judge failed: %r", exc)
+            return last, "판단 모델을 부르지 못해 마지막 갈래로 갑니다.", True
+        for k in ("inputTokens", "outputTokens"):
+            bundle.usage[k] = bundle.usage.get(k, 0) + int((spent or {}).get(k, 0))
+        data = _json_object(re.sub(r"<think>.*?</think>", "", reply or "", flags=re.S))
+        key = str(data.get("branch") or "").strip()
+        if key not in {b["key"] for b in branches}:
+            return last, "판단 모델이 갈래를 고르지 않아 마지막 갈래로 갑니다.", True
+        return key, str(data.get("reason") or "").strip()[:300], False
+
+
+def rule_holds(rule: dict[str, Any], value: Any) -> bool:
+    """Whether `value` passes the rule's comparison."""
+    op, target = rule.get("op"), str(rule.get("target") or "").strip()
+    if op == "empty":
+        return value in (None, "", 0) or (isinstance(value, str) and not value.strip())
+    if op == "contains":
+        return bool(target) and target.lower() in str(value).lower()
+    ok_v, number = _number(value) if isinstance(value, (int, float)) else (False, 0.0)
+    ok_t, limit = _number(target)
+    if op == "gt":
+        return ok_v and ok_t and number > limit
+    if op == "eq":
+        if ok_v and ok_t:
+            return number == limit
+        return str(value).strip().lower() == target.lower()
+    return False
+
+
+async def _request_values(bundle: Bundle) -> dict[str, Any]:
+    """The request's values: text, attachment count and file types."""
+    from sqlmodel import col, select
+
+    from app.models.workspace import StoredFile
+
+    ids = [str(i) for i in bundle.request.turn.get("attachments") or []]
+    kinds: list[str] = []
+    user_id = str(bundle.request.turn.get("user_id") or bundle.request.user_id or "")
+    if ids and user_id:
+        async with _host().SessionLocal() as db:
+            rows = (await db.exec(select(StoredFile).where(
+                col(StoredFile.id).in_(ids), StoredFile.user_id == user_id))).all()
+        for row in rows:
+            ext = row.name.rsplit(".", 1)[-1].lower() if "." in row.name else ""
+            kinds.append(ext or row.mime or "")
+    return {"text": bundle.request.text, "attachments": len(ids),
+            "attachment_types": ", ".join(sorted({k for k in kinds if k}))}
+
+
+def _branch_model(bundle: Bundle) -> str:
+    """Judge model; the writer when a strict-local run's judge is not local."""
+    req = bundle.request
+    writer, outline = req.turn.get("model") or {}, req.turn.get("outline_model") or {}
+    strict = _host()._strict_model
+    if isinstance(writer, dict) and strict(writer) and isinstance(outline, dict) and outline \
+            and not strict(outline):
+        return req.model
+    return req.judge
 
 
 def _host():
@@ -1184,7 +1709,7 @@ class ExportStep(Step):
     reads = ("request", "document.saved")
     writes = ("files", "document.handed", "document.reply")
 
-    def skip(self, bundle: Bundle) -> str:
+    def own_skip(self, bundle: Bundle) -> str:
         return "" if (bundle.document.saved or {}).get("artifactId") else "no stored document"
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
@@ -1222,46 +1747,85 @@ class ExportStep(Step):
             yield {"type": "delta", "text": f"\n\n{temp.document.reply}"}
 
 
-def compile_steps(steps: list[dict[str, Any]], agents: dict[str, AgentInfo]) -> list[Stage]:
-    """Stages for validated steps: one per step, save before first export (or last)."""
+def compile_steps(steps: list[dict[str, Any]], agents: dict[str, AgentInfo],
+                  edges: list[dict] | None = None) -> list[Stage]:
+    """Stages for validated steps: one per step in run order, save before first export (or
+    last); a branching pipeline's steps skip themselves off the branch taken."""
+    flow = flow_of(steps, edges)
+    index = {s["id"]: i for i, s in enumerate(steps)}
+    if flow is None:
+        order = list(range(len(steps)))
+        paths = [order]
+    else:
+        order = flow.order(steps)
+        paths = [[index[i] for i in path] for path in flow.paths()]
+    wanted: dict[str, set[str]] = {}
+    for spec in steps:
+        rule = spec.get("rule") or {}
+        if spec["kind"] == "condition" and spec.get("mode") == "rule" and rule.get("step"):
+            wanted.setdefault(rule["step"], set()).add(str(rule.get("value") or ""))
+
+    def last_agent(path: list[int]) -> int:
+        return next((i for i in reversed(path) if steps[i]["kind"] == "agent"), -1)
+
+    def around(i: int) -> tuple[list[int], int]:
+        path = next((p for p in paths if i in p), [i])
+        return path, path.index(i)
+
+    def next_agent(i: int) -> AgentInfo | None:
+        path, at = around(i)
+        later = [j for j in path[at + 1:] if steps[j]["kind"] == "agent"]
+        return agents.get(steps[later[0]]["ref"]) if later else None
+
+    first = last_agent(paths[0]) if paths else -1
+    surface = agents[steps[first]["ref"]].output if first >= 0 else "answer"
+    finals = {last_agent(p) for p in paths}
     out: list[Stage] = []
-    agent_at = [i for i, s in enumerate(steps) if s["kind"] == "agent"]
-    last_agent = agent_at[-1] if agent_at else -1
-    surface = agents[steps[last_agent]["ref"]].output if last_agent >= 0 else "answer"
     saved = False
-    for i, spec in enumerate(steps):
+    for i in order:
+        spec = steps[i]
         kind, title = spec["kind"], step_title(spec, agents)
         if kind == "export" and not saved:
             out.append(ReportSaveStep() if surface == "document" else AnswerSaveStep())
             saved = True
-        later = [j for j in agent_at if j > i]
-        nxt = agents.get(steps[later[0]]["ref"]) if later else None
+        nxt = next_agent(i)
+        path, at = around(i)
+        stage: Step | None = None
         if kind == "agent":
             info = agents[spec["ref"]]
-            out.append(AgentStep(i, spec, title, output=info.output,
-                                 after_outline=i > 0 and steps[i - 1]["kind"] == "human"
-                                 and steps[i - 1]["ref"] == "outline",
-                                 final=i == last_agent))
+            before = [steps[p[p.index(i) - 1]] for p in paths if i in p and p.index(i) > 0]
+            stage = AgentStep(i, spec, title, output=info.output,
+                              after_outline=any(b["kind"] == "human" and b["ref"] == "outline"
+                                                for b in before),
+                              final=i in finals)
         elif kind == "skill":
-            out.append(SkillStep(i, spec, title, format_id=(nxt.doc_format if nxt else "")))
+            stage = SkillStep(i, spec, title, format_id=(nxt.doc_format if nxt else ""))
         elif kind == "check":
-            out.append(CheckStep(i, spec, title))
+            stage = CheckStep(i, spec, title)
         elif kind == "review":
-            out.append(ReviewStep(i, spec, title))
+            stage = ReviewStep(i, spec, title)
         elif kind == "human" and spec["ref"] == "gaps":
-            out.append(GapsStep(i, spec, title, questions=gap_facts(nxt) if nxt else []))
+            stage = GapsStep(i, spec, title, questions=gap_facts(nxt) if nxt else [])
         elif kind == "human":
-            writer = steps[i + 1]
-            out.append(OutlineStep(i, spec, title, writer=writer["ref"],
-                                   instruction=str((writer.get("settings") or {})
-                                                   .get("instruction") or "")))
+            writer = steps[path[at + 1]]
+            stage = OutlineStep(i, spec, title, writer=writer["ref"],
+                                instruction=str((writer.get("settings") or {})
+                                                .get("instruction") or ""))
         elif kind == "export":
-            out.append(ExportStep(i, spec, title))
+            stage = ExportStep(i, spec, title)
+        elif kind == "condition":
+            stage = ConditionStep(i, spec, title)
+        if stage is not None:
+            stage.flow = flow
+            stage.wanted = frozenset(wanted.get(spec["id"], ()))
+            out.append(stage)
     if not saved:
         out.append(ReportSaveStep() if surface == "document" else AnswerSaveStep())
     return out
 
 
-__all__ = ["CHECKS", "EXPORT_FORMATS", "FLOW", "HUMAN", "KIND_WORDS", "MAX_STEPS", "PREFIX", "SELF",
-           "SKILLS", "STEP_KINDS", "AgentInfo", "AgentStep", "Problem", "Verdict", "catalogue",
-           "compile_steps", "gap_facts", "normalize", "step_title", "validate"]
+__all__ = ["CHECKS", "CONDITION_VALUES", "EXPORT_FORMATS", "FLOW", "HUMAN", "KIND_WORDS",
+           "MAX_STEPS", "OTHER_BRANCH", "PREFIX", "REQUEST", "SELF", "SKILLS", "STEP_KINDS",
+           "AgentInfo", "AgentStep", "ConditionStep", "Flow", "Problem", "Verdict", "catalogue",
+           "compile_steps", "flow_of", "gap_facts", "normalize", "normalize_edges", "rule_holds",
+           "step_title", "validate"]

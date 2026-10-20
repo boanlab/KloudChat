@@ -1086,6 +1086,21 @@ list of at most twelve coarse **steps** `{id, kind, ref, settings}` —
 | `review` | `model` (one the person may use), `repair`, `focus` | a product | findings in the grounding check's shape |
 | `human` | `gaps` (the question card) · `outline` (approval; just before a document agent) | a later agent | answers · an approved plan |
 | `export` | `formats` | a document | files (after the save) |
+| `condition` | `name`, `mode` `rule` (`rule: {step, value, op, target}`, branches `yes`/`no`) or `ai` (`question`, 2–4 `branches: [{key, label}]`) | an earlier step's value (rule) | one branch taken |
+
+Step ids are stable (`s1`, `s2` … when none is given; migration 0077 wrote them into stored
+rows). `user_pipelines.edges` (`[{from, to, branch?}]` by step id; `null` = the steps run in
+their stored order, as every pipeline before branches did, and edges that only repeat that order
+are read as `null`) makes the steps a graph from the first step; only a condition step may have
+more than one line out, one per branch. A **rule** reads a value the step it names left behind
+(`compose.CONDITION_VALUES`, also `condition_values` in `GET /user-pipelines/catalogue`: the
+request's attachments, attachment types and text; an agent's result kind, sections, characters
+and text; a calculation's result; a check's found/left; a review's found/fixed/left; the card's
+blanks and answers; the outline's sections) and compares it (`gt`, `eq`, `empty`, `contains`).
+An **AI** condition asks the judge model (`Request.judge`; the writer when a strict-local run's
+judge is not local) one small prompt and keeps its reason; its tokens join the run's usage like
+the card's judge. A rule whose value is missing (that step was on another branch or left none)
+takes `no`, an AI reply naming no branch the last branch, and the record says so.
 
 `compose.validate` holds the order to these contracts before every save and on
 `POST /user-pipelines/validate` (the editor's live messages), one Korean line per problem
@@ -1094,7 +1109,13 @@ list of at most twelve coarse **steps** `{id, kind, ref, settings}` —
 before an agent with no facts to ask is skipped). The **recursion guard** refuses an agent step
 whose agent is bound to this pipeline, directly or through the pipelines its agents are bound
 to. The last agent decides the surface: `report` for a document, `chat` for an answer; an
-agent's own pipeline must end on the agent's own surface.
+agent's own pipeline must end on the agent's own surface. With edges the graph is checked first
+(`cycle`, `unreachable_step`, `branch_dead_end` for a branch with no line, `condition_incomplete`
+with what is missing, `parallel_next` for two lines out of a non-condition step), then the order
+rules along every path from the first step; all paths must end on the same surface
+(`branch_surface`) and no condition may sit between a card and its agent (`card_before_branch`).
+Every problem carries `step` (1-based number) and, for a step, `stepId`. A run refuses a
+pipeline with problems (`pipeline_invalid`). Bundles hold no condition steps.
 
 **Running.** A conversation runs a user pipeline when `sessions.pipeline_id` names one or its
 agent has one (`agents.pipeline_id`, set by `PUT /agents/{id}/process`). `send_message` then skips the agent's
@@ -1105,7 +1126,18 @@ document's own `revise` flow. `compose.compile_steps` makes one stage per step (
 message) before the first export; the existing `Runner` and `runs.Recorder` run them as flow
 `compose` of pipeline `user:<id>`, so every step is recorded, kept and rerunnable
 (`POST …/runs/{id}/rerun` routes a `compose` run to `user_pipelines.rerun`, on the steps as they
-were when it ran: the definition, the agents and the review models ride on `Request.turn`).
+were when it ran: the definition with its edges, the agents and the review models ride on
+`Request.turn`). With edges the stages come in graph order (exports last, so the save still
+precedes them); a condition stage writes its choice to `wire.branches` and the steps a later
+rule reads note their values on `wire.values`, both kept in the snapshots, and every step whose
+incoming lines all come from steps not reached or branches not taken is recorded as skipped
+(`compose.OTHER_BRANCH`); the condition's record keeps `evidence.branch = {key, label, reason,
+missing}`. `GET /user-pipelines/{id}/runs` (the pipeline's owner, their own runs, newest 30) and
+`GET /user-pipelines/runs/{run_id}` (the run's owner) read the stored records per step:
+`{id, status, pipeline_id, session_id, parent_id, from_stage, started_at, ended_at, steps: [{step_id,
+kind, title, status (waiting · running · done · failed · skipped), started_at, ended_at,
+input_summary, output_summary, note, branch_taken, branch_label?}]}`, summaries built from the
+records' labels only, never the text a step read.
 An **agent step** runs that agent's own flow as a sub-run: a document agent its format's
 `plan` (or the outline a `human:outline` step got approved) then `write`, with no save of its
 own; a chat agent one answer on its own prompt (tools stay with the conversation surface). What

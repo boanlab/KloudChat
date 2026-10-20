@@ -298,6 +298,9 @@ class Witness:
                 for e in self._steps if e.get("code") or e.get("stdout")]
         if code:
             evidence["code"] = code[:5]
+        if branch := next((e["branch"] for e in self._steps
+                           if isinstance(e.get("branch"), dict)), None):
+            evidence["branch"] = branch
         record.evidence = evidence
         if not record.summary and record.status == "done":
             record.summary = self._summary(record)
