@@ -5107,8 +5107,8 @@ _NOT_SHOWN = frozenset({"id", "notes", "accent", "layout", "image", "diagram", "
 #: Korean word after the number is read whole (「3분기」 is not 「3분」)
 _SHOWN_FIGURE = re.compile(
     r"(?<![\d.,/])([$€₩£]\s?)?(\d{1,2}/\d{1,2}(?![\d/])|\d{1,3}(?:,\d{3})*(?:\.\d{1,3})?)"
-    r"(?![\d,])(\s?(?:%p?|percent|per\s?cent|points?|pts?|pp)"
-    r"|(?:[bkmxsh]|ms|gb|tb|pg)\b|\s?[가-힣]{1,6})?", re.I)
+    r"(?![\d,])( ?(?:%p?|percent|per\s?cent|points?|pts?|pp)"
+    r"|(?:[bkmxsh]|ms|gb|tb|pg)\b| ?[가-힣]{1,6})?", re.I)
 #: Korean units a number carries, longest first (「분기」 before 「분」)
 _KOREAN_UNITS = ("퍼센트", "포인트", "개월", "시간", "분기", "반기", "억", "만", "천", "원",
                  "명", "건", "개", "배", "점", "초", "분", "일", "주", "년", "월", "위", "회", "쪽")
@@ -5145,24 +5145,38 @@ def _without_particle(word: str) -> str:
     return word
 
 
+def _counter(word: str, spaced: bool) -> str:
+    """The counter a number carries from the Korean word after it: the unit it starts with
+    (「억원입니다」 → 억, 「분기에는」 → 분기, 「주차」 → 주차), else a one-syllable counter
+    (「3곳에서」 → 곳); none for a particle (「1의」) or a word of the sentence."""
+    known = next((u for u in _KOREAN_UNITS if word.startswith(u)), "")
+    if known:
+        rest = word[len(known):]
+        return known + rest[:1] if rest[:1] in ("차", "째") else known
+    if spaced:
+        return ""
+    core = _without_particle(word)
+    return core if len(core) == 1 and core not in _PARTICLES else ""
+
+
+#: a number that names a table, figure or slide (「표 1의」), not a figure
+_REFERENCE_BEFORE = re.compile(
+    r"(?:(?<![가-힣])(?:표|그림)|\b(?:table|figure|slide|section))\s?$", re.I)
+
+
 def figures_in(words: str) -> list[tuple[str, str, str]]:
     """`(number, unit, as written)` for each figure in `words`, each once: the same reading
     for the text before an edit and after it."""
     out: dict[tuple[str, str], str] = {}
     for m in _SHOWN_FIGURE.finditer(words):
+        if _REFERENCE_BEFORE.search(words[max(0, m.start() - 8):m.start()]):
+            continue
         number, unit = m.group(2).replace(",", ""), " ".join((m.group(3) or "").split()).lower()
         said = m.group(0)
         if re.fullmatch(r"[가-힣]+", unit):
-            # the counter word after the number, read whole minus its particle (「4분기」,
-            # 「3곳」, 「3주차」; 「128억원」 is 「128억」)
-            core = _without_particle(unit)
-            if core[:1] in "억만천" and core[1:] == "원":
-                core = core[0]
             spaced = said[len((m.group(1) or "") + m.group(2)):][:1] == " "
-            if spaced and core not in _KOREAN_UNITS:
-                core = ""  # a word after a space is the sentence's, not the number's
-            said = f"{m.group(1) or ''}{m.group(2)}{' ' if spaced and core else ''}{core}"
-            unit = core
+            unit = _counter(unit, spaced)
+            said = f"{m.group(1) or ''}{m.group(2)}{' ' if spaced and unit else ''}{unit}"
         unit = "$" if m.group(1) else _UNIT_SAME.get(unit, unit)
         if len(number) == 1 and not unit:
             continue  # a lone digit is a list number or slide count, not a figure
@@ -5170,11 +5184,55 @@ def figures_in(words: str) -> list[tuple[str, str, str]]:
     return [(number, unit, said) for (number, unit), said in out.items()]
 
 
+#: Korean money units in won
+_WON = {"억": 100_000_000, "만": 10_000, "천": 1_000, "원": 1}
+#: 「38억 5천만」, 「1억 2,000만」: one amount in two parts
+_COMPOUND_WON = re.compile(r"(\d{1,4}(?:\.\d{1,3})?)\s?억\s?(\d{1,3}(?:,\d{3})?)\s?(천만|백만|만)")
+
+
+def _won(number: str, unit: str) -> float | None:
+    try:
+        return round(float(number) * _WON[unit], 2) if unit in _WON else None
+    except ValueError:
+        return None
+
+
+def amounts_in(words: str) -> set[float]:
+    """Money in `words` as won, however it is written (「38.5억」, 「38억 5천만」,
+    「3,850,000,000원」)."""
+    out = {v for number, unit, _ in figures_in(words) if (v := _won(number, unit)) is not None}
+    scale = {"천만": 10_000_000, "백만": 1_000_000, "만": 10_000}
+    for m in _COMPOUND_WON.finditer(words):
+        out.add(round(float(m.group(1)) * 100_000_000
+                      + float(m.group(2).replace(",", "")) * scale[m.group(3)], 2))
+    return out
+
+
+def figure_kept(figure: tuple[str, str, str], shown: list[tuple[str, str, str]],
+                amounts: set[float]) -> bool:
+    """Whether `figure` is still among `shown`: the same number with its unit (or one side
+    without one), or the same amount of money written another way."""
+    number, unit, _ = figure
+    if any(n == number and (u == unit or not u or not unit) for n, u, _ in shown):
+        return True
+    return (value := _won(number, unit)) is not None and value in amounts
+
+
+def _shown_words(slide: dict) -> str:
+    """Everything the slide shows as words: its fields, its chart's values, the labels of the
+    diagram drawn on it."""
+    drawn = [slide.get("diagram"), (slide.get("image") or {}).get("diagram")
+             if isinstance(slide.get("image"), dict) else None]
+    labels = [str(d.get("source") or "") + " " + str(d.get("caption") or "")
+              for d in drawn if isinstance(d, dict)]
+    return " ".join([*(t for k, v in slide.items() if k not in _NOT_SHOWN
+                       for t in _strings(v)), *_chart_figures(slide), *labels])
+
+
 def _shown_figures(slide: dict) -> list[tuple[str, str, str]]:
-    """`(number, unit, as written)` for each figure the slide shows, its chart's values too."""
-    words = " ".join([*(t for k, v in slide.items() if k not in _NOT_SHOWN
-                        for t in _strings(v)), *_chart_figures(slide)])
-    return figures_in(words)
+    """`(number, unit, as written)` for each figure the slide shows, its chart's values and
+    diagram labels too."""
+    return figures_in(_shown_words(slide))
 
 
 def _strings(value: Any) -> list[str]:
@@ -5192,21 +5250,21 @@ def lost_figures(old: dict, new: dict, asked: str = "") -> list[str]:
     ask may take some away."""
     if _DROPS_FIGURES.search(asked or ""):
         return []
-    shown = _shown_figures(new)
+    shown, amounts = _shown_figures(new), amounts_in(_shown_words(new))
     # kept when the number stays with its unit, or one side writes no unit (「64」 in a cell)
-    return [said for number, unit, said in _shown_figures(old)
-            if not any(n == number and (u == unit or not u or not unit) for n, u, _ in shown)]
+    return [f[2] for f in _shown_figures(old) if not figure_kept(f, shown, amounts)]
 
 
 def lost_across(old: list[dict], new: list[dict]) -> list[str]:
     """Figures the deck `old` showed anywhere that the deck `new` shows nowhere (a deck cut to
     fewer slides), read as `lost_figures` reads one slide."""
     shown = [f for slide in new for f in _shown_figures(slide)]
+    amounts = amounts_in(" ".join(_shown_words(slide) for slide in new))
     out: dict[str, None] = {}
     for slide in old:
-        for number, unit, said in _shown_figures(slide):
-            if not any(n == number and (u == unit or not u or not unit) for n, u, _ in shown):
-                out.setdefault(said)
+        for figure in _shown_figures(slide):
+            if not figure_kept(figure, shown, amounts):
+                out.setdefault(figure[2])
     return list(out)
 
 
@@ -5214,7 +5272,9 @@ def lost_across(old: list[dict], new: list[dict]) -> list[str]:
 _ITEMS_ASK = re.compile(
     r"(?P<n>하나|한\s?개|두\s?개|세\s?개|네\s?개|\d{1,2}\s?개)\s?(?:의\s?)?(?:항목|요점|글머리)?\s?"
     r"(?:로|으로)\s?(?:줄|합|묶|정리)"
-    r"|\b(?P<m>one|two|three|four|\d{1,2})\s{1,3}(?:items?|points?|bullets?)\b", re.I)
+    r"|\b(?P<m>one|two|three|four|\d{1,2})\s{1,3}(?:items?|points?|bullets?)\b"
+    # 「Merge the items on slide 4 into one」
+    r"|\binto\s{1,3}(?P<k>one|two|three|four|a\s{1,3}single)\b", re.I)
 _ITEM_WORDS = {"하나": 1, "한개": 1, "두개": 2, "세개": 3, "네개": 4,
                "one": 1, "two": 2, "three": 3, "four": 4}
 
@@ -5224,7 +5284,9 @@ def items_asked(text: str) -> int:
     m = _ITEMS_ASK.search(text or "")
     if not m:
         return 0
-    word = re.sub(r"\s|개", "", m.group("n") or m.group("m") or "").lower() or "x"
+    if (k := (m.group("k") or "").lower()).startswith("a"):
+        return 1
+    word = re.sub(r"\s|개", "", m.group("n") or m.group("m") or k).lower() or "x"
     if word.isdigit():
         return int(word)
     return _ITEM_WORDS.get(word, _ITEM_WORDS.get(word + "개", 0))
@@ -5238,6 +5300,13 @@ def _points(slide: dict) -> list[str]:
         return [": ".join(str(c) for c in p if str(c).strip()) for p in slide["items"]
                 if isinstance(p, list) and p]
     return [f"{m[1]} {m[0]}" for m in slide.get("metrics") or [] if len(m) > 1]
+
+
+def joined_items(slide: dict, count: int) -> dict | None:
+    """`slide` with its items joined into `count` (「2장 항목을 하나로 합쳐줘」): every point
+    kept, nothing rewritten; None when it has no more items than that."""
+    return merged_points(slide, {k: v for k, v in slide.items()
+                                 if k not in ("bullets", "items", "metrics")}, count)
 
 
 def merged_points(old: dict, new: dict, count: int) -> dict | None:
