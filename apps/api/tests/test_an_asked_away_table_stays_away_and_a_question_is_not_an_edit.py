@@ -225,3 +225,47 @@ async def test_an_edit_asked_as_a_question_goes_on_to_its_slide(monkeypatch):
     bundle = _deck_bundle("3장을 표로 바꿔줄래?")
     _ = [e async for e in revise_stages.Route().run(bundle, Context())]
     assert bundle.plan.revision.targets == [2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("written", [
+    # one sentence a line, as asked
+    "대성유통은 5% 인하를 요구하고 있습니다.\n한솔마트 반품 420만원을 처리했습니다.\n"
+    "CRM 병합 작업은 다음 주 수요일 완료 예정입니다.",
+    # the three run together as one paragraph
+    "대성유통은 5% 인하를 요구하고 있습니다. 한솔마트 반품 420만원을 처리했습니다. "
+    "CRM 병합 작업은 다음 주 수요일 완료 예정입니다.",
+])
+async def test_tables_asked_away_and_a_summary_asked_at_the_top_are_both_done(monkeypatch,
+                                                                              written):
+    from app.pipeline import save_stages
+
+    async def planner(**_kwargs):
+        raise AssertionError("each ask names its place: no planner")
+
+    async def complete(_model, _messages, _key, _limit):
+        return written, {"inputTokens": 1, "outputTokens": 1}
+
+    async def rewrite_section(**kwargs):
+        raise AssertionError(f"{kwargs['heading']} is not rewritten for a summary")
+
+    monkeypatch.setattr(revise_stages.revise, "plan", planner)
+    monkeypatch.setattr(revise_stages._report(), "_complete", complete)
+    monkeypatch.setattr(revise_stages._report(), "rewrite_section", rewrite_section)
+    parts = [dict(p) for p in WEEKLY]
+    parts[0]["heading"] = "1. 이번 주 업무 요약 및 성과"
+    bundle = revise_stages.bundle_for(
+        request="주간 업무 보고서를 만들어줘.",
+        instruction="표 2와 그림 1은 빼고, 맨 앞에 3줄 요약을 넣어줘.",
+        model={"id": "m"}, planner=None, api_key="k", is_deck=False,
+        title="영업2팀 주간 업무 보고 (2026년 10월 3주차)", data={}, parts=parts, material=[],
+        plan=None, format_id="", usage={"inputTokens": 0, "outputTokens": 0})
+    for stage in (revise_stages.Route(), revise_stages.Widen(), revise_stages.Rewrite()):
+        _ = [e async for e in stage.run(bundle, Context())]
+    doc = bundle.document
+    first = doc.sections[0]["content"]
+    assert first.startswith("```callout\n핵심\n대성유통은 5% 인하를 요구하고 있습니다.\n")
+    assert first.count("```callout") == 1
+    assert doc.removed == ["2절의 표 2", "3절의 그림 1"] and doc.missed == []
+    assert save_stages.revision_reply(doc, bundle.plan.revision, is_deck=False) == (
+        "2절의 표 2, 3절의 그림 1을 뺐습니다. 맨 앞에 3줄 요약을 넣었습니다.")

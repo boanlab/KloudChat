@@ -1644,6 +1644,10 @@ def summary_block(text: str, n: int, title: str, fields: list[str]) -> str | Non
         if not _title_line(line, heads):
             kept.append(line)
     if len(kept) < n:
+        # the lines run together as one paragraph: one sentence a line
+        kept = [x.strip() for line in kept for x in _SENTENCE_SPLIT.split(line)
+                if x.strip() and not _title_line(x.strip(), heads)]
+    if len(kept) < n:
         return None
     return "```callout\n핵심\n" + "\n".join(kept[:n]) + "\n```"
 
