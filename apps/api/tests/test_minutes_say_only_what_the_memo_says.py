@@ -204,3 +204,44 @@ def test_minutes_of_a_weekly_meeting_take_the_minutes_genre():
     # with no 서식, a 「주간회의」 memo is no weekly report either
     assert not report._genre_rule(SALES).startswith("Genre: 현황·주간 보고")
     assert report._genre_rule("주간 업무 보고를 써 줘").startswith("Genre: 현황·주간 보고")
+
+
+def test_a_question_naming_the_memos_tools_is_the_memos_and_never_goes():
+    own = ("구글폼과 네이버폼 중 무엇을 쓸지, 비용과 사용 편의는 어떤지 등 세부 기준은 아직 "
+           "정하지 못했습니다.")
+    assert not stated_meeting.untraced(own, TUTOR)
+    # a made-up question holding a memo figure is marked, never taken out
+    figured = ("50만원 안에서 매달 얼마씩 사용할지, 카드 결제 후 현금 정산할지 등 운영 "
+               "메커니즘은 논의되지 않았습니다.")
+    section = [{"heading": "미결 사항", "content": f"설문 도구는 미결입니다. {figured}"}]
+    out = report_checks.settle_unsourced(section, TUTOR, strong=False)
+    assert "논의되지 않았습니다 (확인 필요)." in out[0]["content"]
+    assert "50만원 안에서" in out[0]["content"]
+
+
+def test_a_division_written_the_wrong_way_round_keeps_its_result():
+    from app.services import units
+
+    assert units.fix_written_arithmetic("나눈 값(80만원 ÷ 30만원 = 0.375)이며") == \
+        "나눈 값(30만원 ÷ 80만원 = 0.375)이며"
+    # a wrong result is still recomputed
+    assert units.fix_written_arithmetic("(80만원 ÷ 40만원 = 3)") == "(80만원 ÷ 40만원 = 2)"
+
+
+def test_a_head_day_given_with_its_year_reads_in_one_form():
+    pre = report_checks.Prepass(format_id="minutes")
+    assert report_checks._head_year("2026년 10/14", pre, None) == "2026-10-14(수)"
+    assert report_checks._head_year("2026년 10월 21일 화 10시", pre, None) == \
+        "2026-10-21(화, 확인 필요: 달력상 수요일) 10시"
+
+
+def test_a_table_caption_rule_written_into_prose_goes():
+    from app.services import internal_words
+
+    body = ("간식비 예산을 50만원으로 합의합니다. 표: 확정된 결정 사항 목록 아래와 같이 "
+            "정리합니다(표 1).\n\n**표 1. 확정된 결정 사항**\n\n| 항목 | 내용 |\n|---|---|\n"
+            "| 간식비 | 50만원 |")
+    out = internal_words.strip_work_notes(body, document=True)
+    assert "아래와 같이 정리합니다" not in out
+    assert out.startswith("간식비 예산을 50만원으로 합의합니다.")
+    assert "| 간식비 | 50만원 |" in out

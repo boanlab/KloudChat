@@ -2757,7 +2757,7 @@ def settle_unsourced(sections: list[dict], material: str, *, strong: bool) -> li
             and not (short and ln.lstrip().startswith("※") and short in ln))
     for index, piece, said in stated_meeting.findings(out, material, _reference_heading()):
         out[index]["content"] = stated_meeting.settle(
-            str(out[index].get("content") or ""), piece, said, strong=strong)
+            str(out[index].get("content") or ""), piece, said, strong=strong, material=material)
     return out
 
 
@@ -4129,18 +4129,28 @@ def _head_year(written: str, pre: Prepass, today: dt.date | None) -> str:
     clear, else 「[연도]」; a weekday the person wrote is kept, flagged when the calendar differs."""
     from app.services import weekdays
 
+    # 「2026년 10/14」: the year the person gave, the day in one form
+    year = re.match(r"(20\d{2})\s{0,2}(?:년|[.-])\s{0,2}(?=\d{1,2}\s{0,2}(?:/|월))", written)
+    if year:
+        written = written[year.end():]
     m = _HEAD_DAY.match(written)
     if not m or _FULL_DATE.search(written):
-        return written
+        return year.group(0) + written if year else written
     month, dom = int(m.group("m")), int(m.group("d"))
     day = None
-    if pre.base_date:
+    if year:
+        try:
+            day = dt.date(int(year.group(1)), month, dom)
+        except ValueError:
+            return year.group(0) + written
+    elif pre.base_date:
         try:
             base = dt.date.fromisoformat(pre.base_date)
             day = base if (base.month, base.day) == (month, dom) else None
         except ValueError:
             day = None
-    if day is None and today is not None and (near := weekdays._nearest(month, dom, today)):
+    if day is None and not year and today is not None and (
+            near := weekdays._nearest(month, dom, today)):
         day = near[0] if near[1] else None
     rest = written[m.end():].strip()
     said = m.group("wd") or m.group("wd2")
