@@ -1139,6 +1139,10 @@ class Sections(Base):
                     refilled = richtext.detach_tables(report.unwrap_json_prose(refilled))
                     if refilled.strip() and not report.placeholder_heavy(refilled):
                         body = refilled
+            if slipped := report.chinese_paragraphs(body, _slip_vocabulary(bundle)):
+                # Chinese slipped into Korean: those paragraphs sent back to the writer, read
+                # in Hanja only where the writer's paragraph does not hold
+                body = await _korean_again(bundle, section["heading"], body, slipped)
             section["content"] = _cleaned(bundle, index, section, body)
             material = _material_text(bundle)
             if gaps := table_integrity.problems(section["content"], material):
@@ -1216,6 +1220,50 @@ class Sections(Base):
                    "message": "보고서의 어느 절도 쓰지 못했습니다. 잠시 뒤 다시 시도해 주세요."}
             yield _usage(bundle)
             raise Stop("every section failed")
+
+
+def _slip_vocabulary(bundle: Bundle) -> str:
+    """Text whose ideographs are the person's or a page's, never a writer's slip."""
+    research = bundle.material.research
+    return "\n".join([_material_text(bundle), *bundle.request.untrusted,
+                      research.context if research is not None else ""])
+
+
+#: paragraphs of one section sent back at most
+_SLIPS_SENT_BACK = 6
+
+
+async def _korean_again(bundle: Bundle, heading: str, body: str,
+                        slipped: list[tuple[int, list[str]]]) -> str:
+    """`body` with each paragraph holding Chinese slips written again in Korean by the writer;
+    one the answer does not stand for (a number or citation lost) left as it was."""
+    report, req = _report(), bundle.request
+    paragraphs = body.split("\n\n")
+    given = _slip_vocabulary(bundle)
+
+    async def again(i: int, slips: list[str]) -> tuple[int, str]:
+        try:
+            text, spent = await report._complete(
+                req.model,
+                # the paragraph alone, no material: only its words change
+                build_document_messages(SessionKind.report, report._KOREAN_AGAIN_PROMPT.format(
+                    heading=heading, words=", ".join(f"「{w}」" for w in slips[:8]),
+                    paragraph=paragraphs[i][:4000]), request=req.text, model=req.model),
+                req.api_key,
+                min(2400, 200 + len(paragraphs[i])),
+            )
+        except _CAUGHT as exc:
+            log.info("Korean rewrite of a paragraph in %r failed: %s", heading, exc)
+            return i, paragraphs[i]
+        _count(bundle, spent)
+        text = internal_words.strip_tool_calls(text).strip()
+        return i, text if report.korean_again(paragraphs[i], text, given) else paragraphs[i]
+
+    for i, text in await asyncio.gather(*(again(i, w) for i, w in slipped[:_SLIPS_SENT_BACK])):
+        if text != paragraphs[i]:
+            log.info("paragraph %d of %r written again in Korean", i, heading)
+        paragraphs[i] = text
+    return "\n\n".join(paragraphs)
 
 
 #: what a section no call could write says, in place of a blank heading
