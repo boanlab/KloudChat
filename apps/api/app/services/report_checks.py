@@ -3919,8 +3919,43 @@ def minutes_undated(sections: list[dict], dates: list[dict], known: str) -> tupl
     return out, codes
 
 
-def minutes_head(block: dict | None, pre: Prepass | None) -> dict | None:
-    """Blank 일시: code-read meeting date, else 「[회의 일자]」; never guessed from today."""
+#: a yearless day written in the head: 「10/14」, 「10월 14일 (화) 10시」
+_HEAD_DAY = re.compile(
+    rf"^(?P<m>\d{{1,2}})\s{{0,2}}(?:/|월\s{{0,2}})(?P<d>\d{{1,2}})(?![\d/])(?:\s{{0,2}}일)?"
+    rf"(?:\s{{0,2}}\(\s{{0,2}}(?P<wd>[{_WD}])(?:요일)?\s{{0,2}}\)|\s{{1,2}}(?P<wd2>[{_WD}])(?:요일)?(?![가-힣]))?")
+
+
+def _head_year(written: str, pre: Prepass, today: dt.date | None) -> str:
+    """「10/14」 → 「2026-10-14(수)」: the read meeting date, else the year nearest today when
+    clear, else 「[연도]」; a weekday the person wrote is kept, flagged when the calendar differs."""
+    from app.services import weekdays
+
+    m = _HEAD_DAY.match(written)
+    if not m or _FULL_DATE.search(written):
+        return written
+    month, dom = int(m.group("m")), int(m.group("d"))
+    day = None
+    if pre.base_date:
+        try:
+            base = dt.date.fromisoformat(pre.base_date)
+            day = base if (base.month, base.day) == (month, dom) else None
+        except ValueError:
+            day = None
+    if day is None and today is not None and (near := weekdays._nearest(month, dom, today)):
+        day = near[0] if near[1] else None
+    rest = written[m.end():].strip()
+    said = m.group("wd") or m.group("wd2")
+    if day is None:
+        return " ".join(filter(None, [f"[연도] {month}월 {dom}일" + (f"({said})" if said else ""), rest]))
+    real = _WD[day.weekday()]
+    mark = real if not said or said == real else f"{said}, 확인 필요: 달력상 {real}요일"
+    return " ".join(filter(None, [f"{day.isoformat()}({mark})", rest]))
+
+
+def minutes_head(block: dict | None, pre: Prepass | None,
+                 today: dt.date | None = None) -> dict | None:
+    """Head 일시: code-read meeting date, else 「[회의 일자]」, never guessed from today; a
+    yearless written day gets its year."""
     if not block or pre is None or "meeting-date" not in pre.settings.head:
         return None
     fields = [list(f) for f in block.get("fields") or []]
@@ -3929,7 +3964,11 @@ def minutes_head(block: dict | None, pre: Prepass | None) -> dict | None:
         return None
     written = str(fields[at][1] or "").strip()
     if written and not placeholders.is_blank(written):
-        return None
+        dated = _head_year(written, pre, today)
+        if dated == written:
+            return None
+        fields[at][1] = dated
+        return {**block, "fields": fields}
     if pre.base_source and pre.base_date:
         try:
             day = dt.date.fromisoformat(pre.base_date)

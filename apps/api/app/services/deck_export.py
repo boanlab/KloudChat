@@ -4463,8 +4463,11 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 span = (text_width - 24 * (len(metrics) - 1)) / len(metrics)
                 figure_size = S(_u("metric"))
                 label_size = S(_u("metricLabel"))
-                box_height = figure_size * 1.1 + 6 + label_size * 1.5 + 30
-                for position, (figure, label) in enumerate(metrics):
+                # labels wrap between words (≤ 2 lines), never run past the tile
+                labels = [_wrap(label, font, label_size, span - 28)[:2] for _, label in metrics]
+                extra = label_size * 1.25 * (max(len(lines) for lines in labels) - 1)
+                box_height = figure_size * 1.1 + 6 + label_size * 1.5 + 30 + extra
+                for position, (figure, _label) in enumerate(metrics):
                     left = text_left + position * (span + 24)
                     _pdf_box(
                         pdf,
@@ -4484,9 +4487,13 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     pdf.drawString(left + 14, y - 8 - 14 - figure_size, figure)
                     pdf.setFillColorRGB(*muted)
                     pdf.setFont(font, label_size)
-                    pdf.drawString(
-                        left + 14, y - 8 - 14 - figure_size * 1.1 - 6 - label_size, label
-                    )
+                    for offset, line in enumerate(labels[position]):
+                        pdf.drawString(
+                            left + 14,
+                            y - 8 - 14 - figure_size * 1.1 - 6 - label_size
+                            - offset * label_size * 1.25,
+                            line,
+                        )
             elif rows:
                 # panel's column shares; wrapped cells grow rows (≤ 2 lines)
                 widths = [text_width * share for share in deck_type.column_shares(rows)]
