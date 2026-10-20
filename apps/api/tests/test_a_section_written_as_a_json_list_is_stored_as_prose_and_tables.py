@@ -12,7 +12,7 @@ ANSWER = '''```json
 [
   {
     "section": "6. 자료 수집 도구 및 측정 항목",
-    "body": "정확도는 평가 집합 1,200건에 대해 정답 일치율로 측정한다[6].\\n\\n지연시간은 폐쇄형 1.8초, BM25 RAG 3.1초로 보고되었다[6].",
+    "body": "정확도는 정답 일치율로 측정한다[6].\\n\\n지연시간은 1.8초로 보고되었다[6].",
     "tables": [
       {
         "caption": "표: 측정 항목·산출 방식",
@@ -29,8 +29,8 @@ ANSWER = '''```json
 def test_a_json_list_section_becomes_its_body_and_a_markdown_table():
     body = report.unwrap_json_prose(ANSWER)
     assert body == (
-        "정확도는 평가 집합 1,200건에 대해 정답 일치율로 측정한다[6].\n\n"
-        "지연시간은 폐쇄형 1.8초, BM25 RAG 3.1초로 보고되었다[6].\n\n"
+        "정확도는 정답 일치율로 측정한다[6].\n\n"
+        "지연시간은 1.8초로 보고되었다[6].\n\n"
         "표: 측정 항목·산출 방식\n\n| 측정 항목 | 단위 |\n|---|---|\n"
         "| 정답 일치율(EM) | % |\n| 허구 인용 비율 | %[6] |")
     # an object with tables reads the same; prose and other JSON are left as they were
