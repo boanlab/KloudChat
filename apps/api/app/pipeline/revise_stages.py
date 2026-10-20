@@ -100,13 +100,15 @@ def strings(value: Any) -> list[str]:
 
 
 def _policy_marked(body: str, request: str, material: list[str], data: dict) -> str:
-    """`body` with 「(확인 필요)」 on what states a limit, approval or rule no material does."""
-    from app.services import stated_policy
+    """`body` with 「(확인 필요)」 on what states a limit, approval, rule or weekday no
+    material does."""
+    from app.services import stated_days, stated_policy
 
-    given = "\n".join([request, *material,
-                       *(str(src.get("quote") or "") for src in data.get("sources") or [])])
+    given = "\n".join([request, *material])
+    quotes = "\n".join(str(src.get("quote") or "") for src in data.get("sources") or [])
     for piece in stated_policy.pieces(body):
-        if said := stated_policy.untraced(piece, given):
+        if said := (stated_policy.untraced(piece, given, quotes)
+                    or stated_days.untraced(piece, given)):
             body = stated_policy.mark(body, piece, said)
     return body
 
