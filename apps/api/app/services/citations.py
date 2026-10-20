@@ -345,6 +345,11 @@ _TERM = re.compile(r"(?<![A-Za-z0-9])(?:[A-Za-z][A-Za-z0-9]{2,}(?:-[A-Za-z0-9]+)
                    r"|\d{1,3}[BM](?![A-Za-z]))(?![A-Za-z0-9])")
 #: terms only the attachment has, for a sentence to move to it
 _TERMS_TO_MOVE = 3
+#: a web result standing in for the attached file: at least this many sentences cite it alone
+#: for the file's own terms or figures (this many of them at least), three times as many as
+#: cite it for its page's own
+_STAND_IN_CITES = 3
+_STAND_IN_TERMS = 4
 
 
 def _has_term(text: str, term: str) -> bool:
@@ -418,6 +423,64 @@ def credit_attachments(sections: list[dict], sources: list[dict] | None,
             return number
         return next(iter(said)) if len(said) == 1 else None
 
+    def evidence(sentence: str, number: int) -> tuple[set[str], set[str]]:
+        """(attachment-only, page-only): the Korean sentence's Latin terms and telling figures
+        that only an attached file, or only the cited page, holds."""
+        hangul = len(re.findall(r"[가-힣]", sentence))
+        if hangul * 3 < len(re.findall(r"[A-Za-z]", sentence)):
+            return set(), set()
+        page = texts.get(number, "")
+        terms = {t.lower() for t in _TERM.findall(sentence)}
+        figures = set(_TELLING.findall(sentence))
+
+        def holds(text: str, token: str) -> bool:
+            return _has_figure(text, token) if token in figures else _has_term(text, token)
+
+        files = [texts[a] for a in attached]
+        tokens = terms | figures
+        only_files = {t for t in tokens if not holds(page, t) and any(holds(x, t) for x in files)}
+        only_page = {t for t in tokens if holds(page, t) and not any(holds(x, t) for x in files)}
+        return only_files, only_page
+
+    def stand_ins() -> dict[int, int]:
+        """Web results the writer cited for the attached file throughout (its design, models
+        and figures in Korean words, few terms of the result's own page): result → file."""
+        cites: dict[int, list[str]] = {}
+
+        def collect(piece: str) -> str:
+            last = 0
+            for m in _CITATION.finditer(piece):
+                start = max((e.end() for e in _SENTENCE_END.finditer(piece, last, m.start())),
+                            default=last)
+                numbers = _numbers(m.group(1))
+                if len(numbers) == 1 and named(piece[start:m.start()], numbers[0]) is None \
+                        and titled(piece[start:m.start()], numbers[0]) is None:
+                    cites.setdefault(numbers[0], []).append(piece[start:m.start()])
+                last = m.end()
+            return piece
+
+        for section in sections:
+            if _prose(section):
+                _outside_code(str(section.get("content") or ""), collect)
+        out: dict[int, int] = {}
+        for number, sentences in cites.items():
+            if number in attached or not texts.get(number) or len(sentences) < _STAND_IN_CITES:
+                continue
+            found = [evidence(sentence, number) for sentence in sentences]
+            for_file = [f for f, p in found if f and not p]
+            for_page = sum(bool(p) for _, p in found)
+            only_files = set().union(*for_file)
+            if len(for_file) < _STAND_IN_CITES or len(only_files) < _STAND_IN_TERMS \
+                    or 3 * for_page > len(for_file) or 2 * len(for_file) < len(sentences):
+                continue
+            held = sorted(((sum(_has_figure(texts[a], t) or _has_term(texts[a], t)
+                                for t in only_files), a) for a in attached), reverse=True)
+            if len(held) == 1 or held[0][0] > held[1][0]:
+                out[number] = held[0][1]
+        return out
+
+    moved = stand_ins() if attached else {}
+
     def fix(piece: str) -> str:
         out, last = [], 0
         for m in _CITATION.finditer(piece):
@@ -454,6 +517,11 @@ def credit_attachments(sections: list[dict], sources: list[dict] | None,
                            if n != numbers[0] and n in by_number
                            and any(_has_figure(text, f) for f in marks)]
                 holder = holders[0] if len(holders) == 1 else None
+            if holder is None and numbers[0] in moved and (
+                    (found := evidence(sentence, numbers[0]))[0] and not found[1]):
+                # a result standing in for the attached file: each sentence with the file's
+                # own terms or figures cites the file
+                holder = moved[numbers[0]]
             out.append(f"[{holder}]" if holder is not None else m.group(0))
         return "".join(out) + piece[last:]
 
