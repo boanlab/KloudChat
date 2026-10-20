@@ -359,9 +359,50 @@ def _video_rates(model_id: str) -> dict[str, int]:
 _MODALITY_ORDER = {"chat": 0, "image": 1, "audio": 2, "video": 3}
 
 
-def fallback_order(model: dict[str, Any]) -> tuple[int, float]:
-    """Default-model sort key: non-strict-local, cheapest, id."""
-    return (1 if model.get("strictLocal") else 0, model["creditCost"], model["id"])
+def fallback_order(model: dict[str, Any]) -> int:
+    """Sort key when no configured default serves: non-strict-local first, catalogue order kept.
+
+    Never price: a free self-hosted model is not a default for being free.
+    """
+    return 1 if model.get("strictLocal") else 0
+
+
+#: Surfaces that fall back to the chat default and, past it, to any allowed model.
+CHAT_SURFACES = frozenset({"chat", "report", "slides"})
+
+
+def configured_defaults(catalogue: dict[str, Any], kind: str) -> tuple[str, ...]:
+    """Served admin defaults for `kind`, in order: the surface's, then the chat default
+    for report and slides. Image and av have only their own; empty when unset or unserved."""
+    by_kind = catalogue.get("defaultModelByKind") or {}
+    chat = catalogue.get("defaultChatModel") or ""
+    if kind == "chat":
+        wanted: tuple[str, ...] = (chat,)
+    elif kind in CHAT_SURFACES:
+        wanted = (by_kind.get(kind) or "", chat)
+    else:
+        wanted = (by_kind.get(kind) or "",)
+    return tuple(dict.fromkeys(w for w in wanted if w))
+
+
+def pick_default(
+    usable: list[dict[str, Any]], catalogue: dict[str, Any], kind: str
+) -> dict[str, Any] | None:
+    """The model a call runs on when nobody picked one: the admin's default for `kind`.
+
+    `usable`: the account's allowed models for `kind`. A default outside the allowlist gives way
+    to the first allowed model (`fallback_order`); so does a chat surface whose defaults are not
+    served. Image and av without a served default have none: the admin must pick one.
+    """
+    defaults = configured_defaults(catalogue, kind)
+    for wanted in defaults:
+        found = find(usable, wanted)
+        if found is not None:
+            return found
+    if not defaults and kind not in CHAT_SURFACES:
+        return None
+    ordered = sorted(usable, key=fallback_order)
+    return ordered[0] if ordered else None
 
 
 def find(models: list[dict[str, Any]], model_id: str) -> dict[str, Any] | None:

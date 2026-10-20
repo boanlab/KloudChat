@@ -48,6 +48,7 @@ const AGENT_SAVE_ERRORS: Record<string, { message: string; place?: AgentErrorPla
   process_draws: { message: '세부 설정: 그림 설정을 고르세요.', place: 'settings' },
   process_outline: { message: '세부 설정: 고정 목차를 쓰려면 목차를 적으세요.', place: 'settings' },
   process_mode_unknown: { message: '진행 과정을 다시 고르세요.', place: 'process' },
+  process_invalid: { message: '진행 과정을 읽지 못했습니다. 진행 과정을 다시 고르세요.', place: 'process' },
   pipeline_not_found: { message: '가져오려던 순서를 찾을 수 없습니다. 진행 과정에서 다시 고르세요.', place: 'process' },
   base_fixed: { message: '기본으로 제공되는 에이전트는 기본 과정을 바꿀 수 없습니다.', place: 'process' },
   base_unknown: { message: '고를 수 없는 기본 과정입니다. 진행 과정에서 다시 고르세요.', place: 'process' },

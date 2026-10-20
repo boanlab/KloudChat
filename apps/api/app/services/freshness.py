@@ -99,6 +99,11 @@ _NOTICE_LINE = re.compile(
 )
 
 
+#: the source list the agent appends under a cited answer (`agent` 「### 출처」)
+_SOURCE_APPENDIX = re.compile(
+    r"\n\n### (?:출처|Sources)\n(?:- \[\d+\][^\n]*(?:\n|$))+\s*$")
+
+
 def _without_trailing_notices(content: str) -> tuple[str, bool]:
     lines = content.splitlines(keepends=True)
     removed = False
@@ -127,15 +132,20 @@ def normalize_answer_notice(
     person fixed the answer's form, or when the answer already says what it could not check
     (「…학습 기준 연월을 확인할 수 없어…」 under a cited answer, after
     「이번 검색에서 현재 금리 수치를 확인하지 못했으므로」)."""
-    body, found = _without_trailing_notices(content)
+    # the turn's cited sources close the answer: the notice stands above them
+    listed = _SOURCE_APPENDIX.search(content or "")
+    head, sources = (content[:listed.start()], content[listed.start():]) if listed else (
+        content, "")
+    body, found = _without_trailing_notices(head)
     if not found:
         return content
     from app.services import current_evidence
 
-    if body and (grounded or form_fixed or current_evidence.has_caveat(body)):
-        return body
+    # a source list of this turn's search or reading is grounding of its own
+    if body and (grounded or sources or form_fixed or current_evidence.has_caveat(body)):
+        return body + sources
     notice = accuracy_caveat(request, model, actual_model)
-    return body + "\n\n" + notice if body else notice
+    return (body + "\n\n" + notice if body else notice) + sources
 
 
 def _korean_caveat(request: str) -> bool:

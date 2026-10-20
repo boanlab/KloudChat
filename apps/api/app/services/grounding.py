@@ -228,7 +228,8 @@ def focus_terms(answers: dict[str, str]) -> str:
 
 #: the request names its own subject (「제목: …」, 「주제는 …」, 「「…」 보고서」)
 _STATED_SUBJECT = re.compile(
-    r"(?m)^\s*(?:제목|주제|발표\s{0,2}제목|논문\s{0,2}제목)\s{0,2}[:：]\s*\S|주제는\s{0,2}\S|「[^」\n]{4,}」"
+    r"(?m)(?:^|(?<=[\s.,;(]))(?:제목|주제|발표\s{0,2}제목|논문\s{0,2}제목)\s{0,2}[:：]\s*\S"
+    r"|주제는\s{0,2}\S|「[^」\n]{4,}」"
 )
 #: request plus material this long carries its subject
 _SUBSTANTIAL_CHARS = 300

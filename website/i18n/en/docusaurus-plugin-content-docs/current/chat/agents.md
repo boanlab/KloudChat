@@ -43,10 +43,10 @@ The enable toggle pauses an agent. Deleting it also deletes its sources, index a
 
 ## How it works
 
-Pick one of three under **How it works** in the create-agent form.
+Pick one of three under **How it works** in the create-agent form. A new agent and its process are saved together: if the process is refused, no agent is made and the form stays as it was.
 
 - **Answer directly**: answers the request right away. An agent that answers in the chat makes no file (DOCX, HWPX, PDF).
-- **Start from a base process**: follows the working order of a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …). No base process can be picked for a new agent; an agent that already started from one keeps it. A new agent does the same job with **Answer directly** plus **Skills kept on** and bundles.
+- **Start from a base process**: follows the working order of a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …). When no base process can be picked this option is hidden; it shows only on an agent that already started from one (which keeps it). A new agent does the same job with **Answer directly** plus **Skills kept on** and bundles. To get a file, set **Advanced** › first screen to **Report** and tick **Export a file when done** under Finish.
 - **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one "This agent" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order.
 
 ## Bundles
@@ -72,7 +72,7 @@ These sit under **More settings** in the create-agent form.
 - **Template & theme**: pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **New template** under the template makes your own; **Manage themes** under the theme opens Settings › Themes. An agent started from a base process uses the base's template when the template is left empty ("The base's template"), and that template sets the document format. The **Document format** field shows only for a report-writing agent on Answer directly or Set it up yourself.
 - **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).
 - **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.
-- **Skills and tools**, **Advanced** (screens, first screen, model, output language, web search default, variety, colour, use memory) and **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**.
+- **Skills and tools** and **Advanced** (screens, first screen, model, output language, web search default, variety, colour, use memory). Adding a screen while no first screen is chosen makes it the first screen. Keeping on a skill that works only on reports or slides (회의록 작성, 개조식 보고, …) sets the first screen to that screen when none is chosen, and a line under the skills says where each one works. **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**.
 
 ## Output language, web search and memory
 

@@ -38,6 +38,7 @@ from app.models.workspace import (
 from app.pipeline import compose
 from app.schemas.chat import MessageOut, MessageRatingIn
 from app.schemas.workspace import (
+    AgentCreateIn,
     AgentIn,
     AgentOut,
     ArtifactIn,
@@ -1006,7 +1007,7 @@ async def _edit_model(
     user: User,
     request: Request | None,
     artifact: Artifact | None,
-    catalogue: list[dict],
+    listing: dict | list[dict],
     *,
     kind: str,
     text: str,
@@ -1019,8 +1020,14 @@ async def _edit_model(
     Internal material, a strict-local conversation or personal data stay on
     strict-local models, refused when there is none; the account's allowlist holds.
     A web fact-check sends its claims to search engines, so it is refused inside.
+    `listing`: `list_models()`, whose admin defaults apply, or its bare model rows.
     """
     from app.routers import sessions as chat
+
+    catalogue = listing["models"] if isinstance(listing, dict) else listing
+    defaults = (
+        model_service.configured_defaults(listing, kind) if isinstance(listing, dict) else ()
+    )
 
     session = (
         await db.get(ChatSession, artifact.session_id)
@@ -1037,7 +1044,9 @@ async def _edit_model(
     if boundary.strict and asked.startswith("local/"):
         # the same model's strict-local entry, when the account may use it
         asked = "strict-local/" + asked.split("/", 1)[1]
-    model = chat._media_model(user, catalogue, kind=kind, boundary=boundary, asked=asked)
+    model = chat._media_model(
+        user, catalogue, kind=kind, boundary=boundary, asked=asked, defaults=defaults
+    )
     if model is None:
         if boundary.strict:
             await chat._audit_media_boundary(
@@ -1074,7 +1083,7 @@ async def factcheck_slide(
 
     catalogue = await model_service.list_models()
     model = await _edit_model(
-        db, user, request, artifact, catalogue["models"],
+        db, user, request, artifact, catalogue,
         kind="chat", follow_session=False, searches=True,
         text=json.dumps(target, ensure_ascii=False),
     )
@@ -1166,7 +1175,7 @@ async def factcheck_section(
 
     catalogue = await model_service.list_models()
     model = await _edit_model(
-        db, user, request, artifact, catalogue["models"],
+        db, user, request, artifact, catalogue,
         kind="chat", follow_session=False, searches=True,
         text=f"{target.get('heading') or ''}\n{target.get('content') or ''}",
     )
@@ -1245,7 +1254,7 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession, 
 
     catalogue = await model_service.list_models()
     model = await _edit_model(
-        db, user, request, artifact, catalogue["models"],
+        db, user, request, artifact, catalogue,
         kind="chat", text=f"{artifact.title or ''}\n{body}",
     )
     if not has_headroom(user, model):
@@ -1590,7 +1599,7 @@ async def rewrite_block(
 
     catalogue = await model_service.list_models()
     model = await _edit_model(
-        db, user, request, artifact, catalogue["models"],
+        db, user, request, artifact, catalogue,
         kind=template.surface.value,
         text=f"{artifact.title or ''}\n{payload.note or ''}\n"
         + json.dumps(blocks, ensure_ascii=False),
@@ -1689,7 +1698,7 @@ async def rewrite_section(
 
     catalogue = await model_service.list_models()
     model = await _edit_model(
-        db, user, request, artifact, catalogue["models"],
+        db, user, request, artifact, catalogue,
         kind="report",
         text=f"{data.get('request') or artifact.title or ''}\n{payload.note or ''}\n"
         + json.dumps(sections, ensure_ascii=False),
@@ -1735,7 +1744,7 @@ async def rewrite_section(
             summary=f"{target.get('heading')} 다시 씀",
         )
     )
-    target["content"] = hangul.tidy_spacing(hangul.read_back(body)[0])
+    target["content"] = pictures.drop_broken(hangul.tidy_spacing(hangul.read_back(body)[0]))
     # model output is Markdown
     target["format"] = "markdown"
     target["status"] = "done"
@@ -1779,7 +1788,7 @@ async def rewrite_slide(
 
     catalogue = await model_service.list_models()
     model = await _edit_model(
-        db, user, request, artifact, catalogue["models"],
+        db, user, request, artifact, catalogue,
         kind="slides",
         text=f"{artifact.title or ''}\n{payload.note or ''}\n"
         + json.dumps(slides, ensure_ascii=False),
@@ -2418,19 +2427,40 @@ async def _processes(db: DbSession, rows: list[Agent], *, viewer_id: str) -> dic
 
 
 @router.post("/agents", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
-async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
+async def create_agent(payload: AgentCreateIn, user: CurrentUser, db: DbSession):
+    """New agent; with `process`, its 진행 과정 in the same transaction (a refused process
+    leaves no agent behind)."""
+    from pydantic import ValidationError
+
+    from app.routers import user_pipelines
+
+    process = None
+    if (raw := getattr(payload, "process", None)) is not None:
+        try:
+            process = user_pipelines.ProcessIn.model_validate(raw)
+        except ValidationError:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="process_invalid") from None
     await _validate_skill_ids(db, user, payload.skill_ids)
     await _validate_skill_ids(db, user, payload.active_skill_ids)
     await _validate_tool_names(db, user, payload.tools)
-    bindings = await _validate_agent_bindings(db, user, payload.model_dump())
-    checks = await _validated_checks(db, user, payload.model_dump())
+    fields = payload.model_dump(exclude={"process"})
+    bindings = await _validate_agent_bindings(db, user, fields)
+    checks = await _validated_checks(db, user, fields)
     slug = await _claim_slug(db, user.id, payload.slug or payload.name)
     agent = Agent(
         owner_id=user.id,
         slug=slug,
-        **{**payload.model_dump(exclude={"slug"}), **bindings, **checks},
+        **{**{k: v for k, v in fields.items() if k != "slug"}, **bindings, **checks},
     )
     db.add(agent)
+    if process is not None:
+        await db.flush()
+        try:
+            await user_pipelines.apply_process(db, user, agent, process)
+        except Exception:
+            await db.rollback()
+            raise
     await db.commit()
     await db.refresh(agent)
     out = AgentOut.of(
@@ -2979,7 +3009,7 @@ async def extract_design(
 
     catalogue = await model_service.list_models()
     model = await _edit_model(
-        db, user, request, None, catalogue["models"],
+        db, user, request, None, catalogue,
         kind="chat", follow_session=False, own_file=bool(payload.file_id),
         text=source if payload.file_id else "",
     )

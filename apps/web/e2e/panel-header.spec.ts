@@ -35,12 +35,24 @@ async function fitsOneRow(page: Page) {
   expect(Math.max(...middles) - Math.min(...middles)).toBeLessThan(4)
 }
 
+/** The main actions show their words at every width, a phone included. */
+async function keepsWords(page: Page, names: string[]) {
+  for (const name of names) {
+    const button = header(page).getByRole('button', { name, exact: true })
+    await expect(button).toBeInViewport()
+    await expect(button).toContainText(name)
+    // Not an icon square with its words shrunk to nothing.
+    expect(await button.evaluate((el) => getComputedStyle(el).fontSize), name).not.toBe('0px')
+  }
+}
+
 test('report: reading shows no ribbon and downloads from the header', { tag: '@phone' }, async ({ page }, testInfo) => {
   const recorded = await resultsFixture(page, testInfo)
   await open(page, reportSession)
   await expect(panel(page).getByRole('tablist')).toHaveCount(0)
   await fitsOneRow(page)
   await shot(page, 'report-reading', viewport(testInfo))
+  await keepsWords(page, ['내려받기', '편집'])
 
   const download = header(page).getByRole('button', { name: '내려받기' })
   await expect(download).toBeInViewport()
@@ -102,6 +114,7 @@ test('slides: 발표 and 내려받기 in the header, editing tabs only while edi
   await expect(panel(page).getByRole('tablist')).toHaveCount(0)
   await fitsOneRow(page)
   await expect(header(page).getByRole('button', { name: '발표' })).toBeVisible()
+  await keepsWords(page, viewport(testInfo) === 'phone' ? ['편집'] : ['내려받기', '편집'])
   await shot(page, 'deck-reading', viewport(testInfo))
   await header(page).getByRole('button', { name: '내려받기' }).click()
   for (const name of ['PowerPoint', 'PDF \\(발표용\\)', '텍스트']) {

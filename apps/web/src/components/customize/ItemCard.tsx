@@ -82,7 +82,7 @@ export function ItemCard({
       data-testid="item-card"
       data-item={item.key}
       className={cn(
-        'group relative flex min-w-0 items-start gap-3 rounded-card border bg-panel p-4 transition-colors hover:border-line-strong max-sm:p-3 border-line',
+        'group relative flex min-w-0 items-start gap-3 rounded-card border bg-panel p-4 transition-colors hover:border-line-strong max-sm:flex-wrap max-sm:p-3 border-line',
         item.to && 'cursor-pointer',
       )}
       onClick={open}
@@ -140,7 +140,8 @@ export function ItemCard({
           )}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      {/* Phone: a row of its own under the name, buttons with their words. */}
+      <div className="flex shrink-0 items-center gap-1.5 max-sm:w-full max-sm:justify-end" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
           aria-label={t('{name} 바로 쓰기').replace('{name}', name)}
@@ -154,19 +155,20 @@ export function ItemCard({
               setBusy(null)
             }
           }}
-          className="inline-flex h-8 items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 text-sm font-medium text-fg transition-colors hover:bg-elevated disabled:opacity-50 max-sm:w-8 max-sm:justify-center max-sm:px-0"
+          className="inline-flex h-8 items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 text-sm font-medium text-fg transition-colors hover:bg-elevated disabled:opacity-50"
         >
           {busy === 'try' ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
-          <span className="max-sm:hidden">{t('바로 쓰기')}</span>
+          <span>{t('바로 쓰기')}</span>
         </button>
         {view === 'explore' && onAdd ? (
           item.added ? (
             <span
               title={t('이미 내 항목에 있습니다')}
               aria-label={t('{name} 추가됨').replace('{name}', name)}
-              className="grid size-8 place-items-center rounded-control border border-line text-success"
+              className="flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-control border border-line text-sm text-success max-sm:px-2.5"
             >
-              <Check size={15} />
+              <Check size={15} aria-hidden />
+              <span className="sm:hidden">{t('추가됨')}</span>
             </span>
           ) : item.bot && !item.bot.copyable ? (
             // Locked bot: answers on its page only; no copy, no instructions. The reason opens by
@@ -190,9 +192,10 @@ export function ItemCard({
                     setLockOpen(false)
                   }
                 }}
-                className="grid size-8 place-items-center rounded-control border border-line text-faint hover:bg-elevated"
+                className="flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-control border border-line text-sm text-faint hover:bg-elevated max-sm:px-2.5"
               >
-                <Lock size={14} />
+                <Lock size={14} aria-hidden />
+                <span className="sm:hidden">{t('복사 잠김')}</span>
               </button>
               {lockOpen && (
                 <span
@@ -219,9 +222,10 @@ export function ItemCard({
                   setBusy(null)
                 }
               }}
-              className="grid size-8 place-items-center rounded-control border border-line bg-panel text-fg transition-colors hover:bg-elevated disabled:opacity-50"
+              className="flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-control border border-line bg-panel text-sm text-fg transition-colors hover:bg-elevated disabled:opacity-50 max-sm:px-2.5"
             >
               {busy === 'add' ? <Loader2 size={14} className="animate-spin" /> : <Plus size={15} />}
+              <span className="sm:hidden">{t('추가')}</span>
             </button>
           )
         ) : (

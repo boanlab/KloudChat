@@ -486,8 +486,7 @@ def _document_image_model(user: User, catalogue: dict, *, strict_local: bool) ->
     if strict_local:
         inside = sorted((m for m in usable if _strict_model(m)), key=model_service.fallback_order)
         return model_service.strict_image_model(inside, Preferences.of(user).strict_image_model)
-    default = (catalogue.get("defaultModelByKind") or {}).get("image")
-    return next((m for m in usable if m["id"] == default), usable[0] if usable else None)
+    return model_service.pick_default(usable, catalogue, "image")
 
 
 def _auto_image_model(user: User, catalogue: dict) -> dict | None:
@@ -591,12 +590,17 @@ def _media_model(
     boundary: _MediaBoundary,
     asked: str = "",
     default: str | None = None,
+    defaults: tuple[str, ...] = (),
 ) -> dict | None:
-    """Asked model, else default, else cheapest; allowed only, strict-local only when required.
+    """Asked model, else the admin's `defaults` (`configured_defaults`); allowed only,
+    strict-local only when required. Never the cheapest: past the defaults a chat surface takes
+    the first allowed model, and a picture only when its default is outside the allowlist.
 
     Kept strict-local, a picture asked on an outside model goes to `strict_image_model`, the rule
     the settings screen shows.
     """
+    if default:
+        defaults = (default, *defaults)
     usable = sorted(_allowed_models(user, catalogue, kind=kind), key=model_service.fallback_order)
     if boundary.strict:
         usable = [m for m in usable if _strict_model(m)]
@@ -604,10 +608,19 @@ def _media_model(
             return model_service.find(usable, asked or "") or model_service.strict_image_model(
                 usable, Preferences.of(user).strict_image_model
             )
-    for wanted in (asked, default):
+        # a default's strict-local entry, as an asked `local/` model's
+        defaults = tuple(
+            "strict-local/" + wanted.removeprefix("local/") if wanted.startswith("local/")
+            else wanted
+            for wanted in defaults
+        )
+    for wanted in (asked, *defaults):
         found = model_service.find(usable, wanted or "")
         if found is not None:
             return found
+    served = any(model_service.find(catalogue, wanted) for wanted in defaults)
+    if kind not in model_service.CHAT_SURFACES and not served:
+        return None
     return usable[0] if usable else None
 
 
@@ -2788,7 +2801,8 @@ async def suggest_figure(
     said = "\n".join((payload.title or session.title or "", payload.about, payload.context))
     boundary = await _media_boundary(db, session, catalogue["models"], said)
     model = _media_model(
-        user, catalogue["models"], kind="chat", boundary=boundary, asked=session.model or ""
+        user, catalogue["models"], kind="chat", boundary=boundary,
+        asked=session.model or "", default=catalogue.get("defaultChatModel"),
     )
     if model is None:
         await _audit_media_boundary(user, request, session, boundary, refused=True)
@@ -2837,6 +2851,11 @@ async def generate_images(
     )
     if model is None:
         await _audit_media_boundary(user, request, session, boundary, refused=True)
+        if not boundary.strict and _allowed_models(user, catalogue["models"], kind="image"):
+            # pictures exist but the admin has not chosen which one draws
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="default_image_model_unset"
+            )
         raise _refuse_outside_boundary(boundary, "image")
     await _audit_media_boundary(user, request, session, boundary)
     if not has_headroom(user, model):
@@ -2859,7 +2878,8 @@ async def generate_images(
     if not payload.raw and payload.style != "없음":
         # same boundary as the picture; none inside it = drawn as asked
         planner = _media_model(
-            user, catalogue["models"], kind="chat", boundary=boundary, asked=session.model or ""
+            user, catalogue["models"], kind="chat", boundary=boundary,
+            asked=session.model or "", default=catalogue.get("defaultChatModel"),
         )
         if planner is not None:
             planned, _ = await imagegen.plan(
@@ -2877,6 +2897,7 @@ async def generate_images(
         design=design_service.image_clause(await design_for(db, user, session)),
         figure=payload.figure and planned == boundary.text,
         square_only=not imagegen.honours_aspect(str(model["id"])),
+        labels=payload.labels,
     )
 
     made: list[Artifact] = []
@@ -2980,7 +3001,8 @@ async def _draw_chart(
 ) -> list[ArtifactOut]:
     """차트 style: LM-written matplotlib run in the sandbox; code kept as `composedPrompt`."""
     writer = _media_model(
-        user, catalogue["models"], kind="chat", boundary=boundary, asked=session.model or ""
+        user, catalogue["models"], kind="chat", boundary=boundary,
+        asked=session.model or "", default=catalogue.get("defaultChatModel"),
     )
     if writer is None:
         await _audit_media_boundary(user, request, session, boundary, refused=True)
@@ -3245,7 +3267,13 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
     def _audio_models():
         return [m for m in catalogue["models"] if "av" in m["kinds"]]
 
-    model = model_service.find(catalogue["models"], payload.model or "")
+    # asked, else the admin's audio default; none chosen: no silent pick
+    default = (catalogue.get("defaultAvModelByMode") or {}).get("audio") or ""
+    if not payload.model and not default:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="default_audio_model_unset"
+        )
+    model = model_service.find(catalogue["models"], payload.model or default)
     # model must match kind; mismatch = proxy 400
     wanted_id = "gpt-audio" if speech else "lyria"
     if model is None or "av" not in model["kinds"] or wanted_id not in model["id"]:
@@ -4087,13 +4115,12 @@ async def send_message(
     if model not in usable:
         model = None
     if model is None:
-        # fallback stays inside the allowlist
-        usable = sorted(usable, key=model_service.fallback_order)
-        if not usable:
+        # the admin's default for the surface; fallback stays inside the allowlist
+        model = model_service.pick_default(usable, catalogue, session.kind.value)
+        if model is None:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
             )
-        model = usable[0]
     requested_model = model
 
     history = await _history(db, session_id)
@@ -4190,11 +4217,22 @@ async def send_message(
     ):
         # Auto isn't renewed consent for an explicitly offline question
         effective_web_search, forced_tool = False, None
+    #: a draft, edit, translation or code fix of the person's own facts on 「auto」: no
+    #: search forced or offered, every model alike; a named lookup or world value still searches
+    own_work = (
+        session.kind is SessionKind.chat and payload.web_search == "auto"
+        and published is None and fresh_followup_index is None
+        and forced_tool != "weather" and not requests_web_search(content)
+        and exact_facts.own_work(_ask_of(content))
+    )
+    if own_work:
+        forced_tool = None
     # the ask, not the material pasted under it, decides
-    fresh_fact = published is None and (freshness.current_fact_required(_ask_of(content)) or (
-        fresh_followup_index is not None
-        and freshness.current_fact_required(history[fresh_followup_index].content)
-    ))
+    fresh_fact = not own_work and published is None and (
+        freshness.current_fact_required(_ask_of(content)) or (
+            fresh_followup_index is not None
+            and freshness.current_fact_required(history[fresh_followup_index].content)
+        ))
     #: first search forced by the current-fact rule alone
     forced_by_freshness = False
     if fresh_fact and effective_web_search and forced_tool != "weather":
@@ -4210,7 +4248,7 @@ async def send_message(
     exact_reason = (
         exact_facts.search_reason(asked, earlier_asks)
         if session.kind is SessionKind.chat and published is None and not fresh_fact
-        and effective_web_search and forced_tool is None
+        and not own_work and effective_web_search and forced_tool is None
         and not is_small_talk(content)
         else None
     )
@@ -4318,8 +4356,8 @@ async def send_message(
             forced_tool = None
             web_search_auto = payload.web_search == "auto"
 
-    if _material_only_turn(session, payload, forced_tool, content, workspace,
-                           published=published is not None):
+    if own_work or _material_only_turn(session, payload, forced_tool, content, workspace,
+                                       published=published is not None):
         # the person gave the material (pasted, attached or marked made up) and asked for
         # nothing to be looked up: no automatic search, every model alike
         effective_web_search = web_search_auto = False
@@ -4337,6 +4375,10 @@ async def send_message(
         web_search_auto = True
 
     requested_tools = strict_tools if requested_is_strict else candidate_tools
+    if session.kind is SessionKind.chat and published is None and (
+            deep := _deep_research_tool(content, requested_tools)):
+        # 「심층 리서치로」 named: the deep mode runs, not a quick search the model picks
+        forced_tool = deep
 
     # attachment shortfalls asked before planning; pending replies: new files only
     short = grounding.file_shortfalls(workspace.attachments) if _plans_first(session) else []
@@ -4387,7 +4429,9 @@ async def send_message(
         file_questions = [gap]
     pre = await _gaps(check_keys, questions=asking, judge=(judge_model, judge_key),
                       request=content,
-                      material="\n".join(workspace.untrusted), first_draft=first_draft,
+                      # what the agent's 지시 already states is not asked again
+                      material="\n".join([*workspace.untrusted, *workspace.standing]),
+                      first_draft=first_draft,
                       doc_format=workspace.doc_format, agent_key=agent_key, specs=specs, card={
                           "plans_first": _plans_first(session),
                           "may_ask": not pending or reply_brings_files,
@@ -5050,6 +5094,10 @@ async def send_message(
                             "locations": list(item.locations),
                         }
                         for item in workspace.knowledge
+                    ] + [
+                        # attached files are sources with their own number, like project files
+                        {"id": item.id, "name": item.name, "state": item.state, "attached": True}
+                        for item in (*workspace.attachments, *workspace.carried)
                     ],
                     # no network on strict-local
                     web_search=effective_web_search and not strict_local,
@@ -5362,6 +5410,22 @@ async def send_message(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+#: an explicit ask for the deep research mode
+_DEEP_RESEARCH = re.compile(r"심층\s{0,2}(?:리서치|조사)|딥\s{0,2}리서치|deep\s{0,2}research", re.I)
+
+
+def _deep_research_tool(content: str, tools: list[Tool]) -> str | None:
+    """The deep-research connector's thorough mode when the ask names deep research and the
+    connector offers it (else its quick mode), or None."""
+    if not _DEEP_RESEARCH.search(_ask_of(content)):
+        return None
+    names = sorted(tool.name for tool in tools)
+    for mode in ("detailed_research", "quick_research"):
+        if found := next((name for name in names if name.endswith(f"__{mode}")), None):
+            return found
+    return None
 
 
 async def _route_turn(facts: dict[str, Any]) -> tuple[str, StepRecord]:
@@ -7211,6 +7275,12 @@ async def _revision_plan(
     if (added := revise.explicit_insert(instruction, skeleton)) is not None:
         # 「위험 장을 하나 추가해 줘」 is an insert; a new-document reading would refuse it
         return added, skeleton
+    deck = getattr(artifact, "kind", None) == ArtifactKind.deck
+    if (not deck and revise.numbered_removals(instruction)
+            and not revise.without_numbered_removals(instruction)) or deck and (
+            revise.only_removes_picture(instruction) or revise.only_removes_chart(instruction)):
+        # taken away by hand in the revise route: nothing for the planner to read
+        return revise.Plan(scope="parts", targets=[], note=instruction), skeleton
     plan = await revise.plan(
         message=instruction,
         title=artifact.title or "",
@@ -7313,15 +7383,28 @@ async def _revise_pass(work: PipelineBundle, pipe: Any, recorder: pipeline_runs.
     runner = PipelineRunner(_revise_stages(pipe), name=f"{pipe.name}.revise", recorder=recorder)
     runner.attempts = dict(attempts or {})
     recorder.begin(work, carried=carried)
+    said, errors = [], []
     try:
         async for event in runner.run(work, PipelineContext(options=dict(pipe.options),
                                                             run_id=recorder.run_id),
                                       start=start):
+            if event.get("type") == "delta":
+                said.append(str(event.get("text") or ""))
+            elif event.get("type") == "error":
+                errors.append(str(event.get("message") or ""))
             yield chat_service.sse(event)
     finally:
         if parent is not None:
             _carry_records(work, parent, start)
     saved = work.document.saved or {}
+    if not saved.get("messageId"):
+        # a turn that ended before the save (nothing to change, a failed rewrite) still
+        # leaves its reply, so a reload shows it and the composer is free
+        message_id = await _store_unsaved_revision(
+            work, session_id=session_id, text="".join(said).strip(),
+            error=" ".join(e for e in errors if e).strip())
+        if message_id:
+            saved = {**saved, "messageId": message_id}
     await _persist_run(work, recorder, session_id=session_id, user_id=user_id, saved=saved,
                        parent=parent, from_stage=start)
     if any(r.status == "stopped" for r in work.steps):
@@ -7339,6 +7422,33 @@ async def _revise_pass(work: PipelineBundle, pipe: Any, recorder: pipeline_runs.
     yield chat_service.sse({"type": "usage", **work.usage,
                             "credits": int(saved.get("credits") or 0)})
     yield chat_service.sse({"type": "done"})
+
+
+async def _store_unsaved_revision(work: PipelineBundle, *, session_id: str, text: str,
+                                  error: str) -> str | None:
+    """The reply of a revise turn that stopped before `revise-save`: what it said, marked as
+    no answer when it failed or said nothing; best effort."""
+    turn = work.request.turn
+    model = turn.get("model") or {}
+    try:
+        async with SessionLocal() as db:
+            session = await db.get(ChatSession, session_id)
+            if session is None:
+                return None
+            message = Message(
+                session_id=session_id, role=Role.assistant, content=text or error,
+                failure=TurnFailure.no_answer if error or not text else None,
+                usage={**work.usage, "credits": 0}, model=model.get("id"),
+                routing=turn.get("routing"),
+            )
+            db.add(message)
+            session.updated_at = utcnow()
+            db.add(session)
+            await db.commit()
+            return message.id
+    except Exception:  # noqa: BLE001 — the live reply already reached the person
+        log.exception("could not keep the reply of a stopped revision")
+        return None
 
 
 def _carry_records(work: PipelineBundle, parent: Any, start: str | None) -> None:

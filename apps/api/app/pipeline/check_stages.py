@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 from collections.abc import AsyncIterator
 from zoneinfo import ZoneInfo
@@ -16,11 +17,15 @@ from app.services import (
     copy_check,
     gap_questions,
     key_figures,
+    output_language,
     post_checks,
     skill_specs,
     units,
     value_guard,
 )
+from app.services import deck as deck_rules
+
+log = logging.getLogger(__name__)
 
 
 def chat_evidence(bundle: Bundle, before: str) -> value_guard.Evidence:
@@ -377,13 +382,13 @@ class SkillChecks(Base):
         yield {"type": "step", **step}
 
 
-#: Slide fields holding words: a string, a list of strings, or rows of strings.
+#: Slide fields holding words: a string, a list of strings, or pairs of strings.
 _SLIDE_TEXT = ("title", "subtitle", "body", "bullets", "left", "right", "cards", "steps", "bands",
-               "tiles", "timeline", "rows", "metrics", "notes")
+               "tiles", "timeline", "items", "metrics", "notes")
 
 
 def _slide_leaves(slide: dict) -> list[tuple[tuple, str]]:
-    """(path, text) of each word-bearing value on a slide."""
+    """(path, text) of each word-bearing value on a slide outside its table and chart."""
     out: list[tuple[tuple, str]] = []
     for key in _SLIDE_TEXT:
         value = slide.get(key)
@@ -396,48 +401,323 @@ def _slide_leaves(slide: dict) -> list[tuple[tuple, str]]:
                 elif isinstance(item, list):
                     out += [((key, i, j), cell) for j, cell in enumerate(item)
                             if isinstance(cell, str)]
+    for i, column in enumerate(slide.get("columns") or []):
+        if not isinstance(column, dict):
+            continue
+        if isinstance(column.get("title"), str):
+            out.append((("columns", i, "title"), column["title"]))
+        out += [(("columns", i, "items", j), item)
+                for j, item in enumerate(column.get("items") or []) if isinstance(item, str)]
     return out
 
 
-def ground_slides(slides: list[dict], *, material: str, computed: list[str],
-                  options: dict) -> tuple[list[dict], list[dict]]:
-    """Slides with unsourced values blanked (one trace over the deck); the findings."""
+def _value_text(value: object, unit: str) -> str:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return str(value)
+    return f"{number:g}{unit}"
+
+
+def _slide_tables(slide: dict) -> list[tuple[str, list[list[str]]]]:
+    """A slide's table rows and its chart as rows (「| 2025 3분기 | 7.8% |」 under the series
+    names), so a value is traced with its row and column as in a report's table."""
+    out = []
+    rows = slide.get("rows")
+    if isinstance(rows, list) and rows:
+        out.append(("rows", [[str(c) for c in row] if isinstance(row, list) else [str(row)]
+                             for row in rows]))
+    chart = slide.get("chart")
+    if isinstance(chart, dict) and chart.get("series"):
+        unit = str(chart.get("unit") or "").replace(" ", "")
+        series = [s for s in chart.get("series") or [] if isinstance(s, dict)]
+        table = [["구분", *(str(s.get("name") or "") for s in series)]]
+        for c, category in enumerate(chart.get("categories") or []):
+            table.append([str(category), *(
+                _value_text(values[c], unit) if c < len(values := list(s.get("values") or []))
+                else "" for s in series)])
+        out.append(("chart", table))
+    return out
+
+
+def _row_line(cells: list[str]) -> tuple[str, list[tuple[int, int]]]:
+    """A markdown table row and each cell's span in it."""
+    line, spans = "|", []
+    for cell in cells:
+        line += " "
+        spans.append((len(line), len(line) + len(cell)))
+        line += cell.replace("\n", " ") + " |"
+    return line, spans
+
+
+def _set(slide: dict, path: tuple, value: object) -> None:
+    """`slide` with the value at `path` replaced, each list or dict on the way copied."""
+    node: object = slide
+    for key in path[:-1]:
+        child = node[key]  # type: ignore[index]
+        child = list(child) if isinstance(child, list) else dict(child)
+        node[key] = child  # type: ignore[index]
+        node = child
+    node[path[-1]] = value  # type: ignore[index]
+
+
+def _chart_fixed(slide: dict, gone: set[tuple[int, int]], strong: bool) -> None:
+    """A chart plotting only traced values: a category holding an untraced value left out
+    (a strong writer's kept, its label marked); a chart left with under two points becomes
+    the traced values as bullets, the rest as blanks for the person."""
+    chart = dict(slide["chart"])
+    categories = list(chart.get("categories") or [])
+    bad = {c for c, _ in gone}
+    if strong:
+        chart["categories"] = [f"{label} {value_guard.MARK}" if c in bad else label
+                               for c, label in enumerate(categories)]
+        slide["chart"] = chart
+        return
+    keep = [c for c in range(len(categories)) if c not in bad]
+    series = [dict(s) for s in chart.get("series") or [] if isinstance(s, dict)]
+    if len(keep) >= 2:
+        chart["categories"] = [categories[c] for c in keep]
+        for s in series:
+            values = list(s.get("values") or [])
+            s["values"] = [values[c] for c in keep if c < len(values)]
+        chart["series"] = series
+        slide["chart"] = chart
+        return
+    unit = str(chart.get("unit") or "").replace(" ", "")
+    bullets = []
+    for c, label in enumerate(categories):
+        for k, s in enumerate(series):
+            values = list(s.get("values") or [])
+            value = "[수치]" if (c, k) in gone or c >= len(values) else _value_text(values[c], unit)
+            bullets.append(f"{label} {s.get('name') or ''}: {value}".replace("  ", " "))
+    slide.pop("chart", None)
+    slide["layout"] = "bullets"
+    slide["bullets"] = bullets[:5]
+
+
+def trace_slides(slides: list[dict], *, material: str, computed: list[str],
+                 options: dict) -> dict[int, list[str]]:
+    """Per slide, the values no material, source or code result gives, as written; and a chart
+    title naming a measure the chart does not plot."""
+    _, found, points = _traced(slides, material=material, computed=computed, options=options)
+    out: dict[int, list[str]] = {}
+    for n, f in found:
+        out.setdefault(n, []).append(str(f.get("text") or ""))
+    for n, slide in enumerate(slides):
+        if deck_rules.chart_title_mismatch(slide):
+            out.setdefault(n, []).append(f"title 「{slide.get('title')}」 does not name what "
+                                         "the chart plots")
+    for n, slide in enumerate(slides):
+        out_of_place = misplaced_cells(slide, "\n".join([material, *computed]))
+        if out_of_place:
+            out.setdefault(n, []).extend(out_of_place)
+    for n, _ in points:
+        out.setdefault(n, [])
+    return out
+
+
+_FOR_THAT_ROW = "put there only what the material gives for that row"
+#: label words a value's place in the material is judged by
+_LABEL_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{3,}")
+#: material read around a value for its label
+_LABEL_REACH = 60
+
+
+def misplaced_cells(slide: dict, material: str) -> list[str]:
+    """Table values the material states fewer times than the table writes them, in the rows
+    whose label the material does not put beside the value (「Quality score 91%」 when 91% is
+    given only for long documents)."""
+    rows = slide.get("rows") or []
+    return [f"「{rows[r][j]}」 in row 「{rows[r][0]}」 is the material's figure for another "
+            f"item; {_FOR_THAT_ROW}" for r, j in _misplaced(slide, material)]
+
+
+def _misplaced(slide: dict, material: str) -> list[tuple[int, int]]:
+    """`misplaced_cells` as (row, column) places."""
+    rows = slide.get("rows")
+    if not isinstance(rows, list) or len(rows) < 3:
+        return []
+    at: dict[tuple[float, str], list[tuple[int, int]]] = {}
+    for r, row in enumerate(rows[1:], start=1):
+        if not isinstance(row, list) or len(row) < 2:
+            continue
+        for j, cell in enumerate(row[1:], start=1):
+            mine = _figures_of(str(cell))
+            if len(mine) == 1:
+                at.setdefault(mine[0], []).append((r, j))
+    if not any(len({r for r, _ in uses}) > 1 for uses in at.values()):
+        return []
+    spots: dict[tuple[float, str], list[str]] = {}
+    for m in value_guard._NUMBER.finditer(material or ""):
+        for key in _figures_of(m.group(0)):
+            spots.setdefault(key, []).append(
+                material[max(0, m.start() - _LABEL_REACH):m.end() + _LABEL_REACH].lower())
+    out = []
+    for key, uses in at.items():
+        written = spots.get(key, [])
+        if not written or len({r for r, _ in uses}) <= len(written):
+            continue
+        bound = {r: any(any(w.lower() in near for w in _LABEL_WORD.findall(str(rows[r][0])))
+                        for near in written) for r, _ in uses}
+        if any(bound.values()) and not all(bound.values()):
+            out += [(r, j) for r, j in uses if not bound[r]]
+    return out
+
+
+def mark_misplaced(slides: list[dict], material: str) -> tuple[list[dict], int]:
+    """`misplaced_cells` left after the hand-back, marked in place."""
+    mark = value_guard.MARK
+    out, count = [], 0
+    for slide in slides:
+        places = _misplaced(slide, material)
+        if places:
+            rows = [list(row) if isinstance(row, list) else row for row in slide["rows"]]
+            for r, j in places:
+                if mark not in str(rows[r][j]):
+                    rows[r][j] = f"{rows[r][j]} {mark}"
+                    count += 1
+            slide = {**slide, "rows": rows}
+        out.append(slide)
+    return out, count
+
+
+def _traced(slides: list[dict], *, material: str, computed: list[str], options: dict):
+    """The trace over a deck: the check's findings with each one's place, untraced chart
+    points by slide."""
     module = check_skills.entry(TRACE)
-    leaves = [(n, path, text) for n, slide in enumerate(slides)
-              for path, text in _slide_leaves(slide)]
+    places: list[tuple] = []
     lines: list[str] = []
-    spans: list[tuple[int, int]] = []
-    for _, _, text in leaves:
-        parts = text.split("\n")
-        spans.append((len(lines), len(parts)))
-        lines += parts
-    found = module.check("\n".join(lines), material, computed, options)
-    if not found:
-        return slides, []
-    out = [dict(slide) for slide in slides]
-    evidence = value_guard.Evidence.of([material, *computed])
-    dropped: dict[tuple[int, str], set[int]] = {}
-    for (n, path, text), (first, count) in zip(leaves, spans, strict=True):
+    for n, slide in enumerate(slides):
+        for path, text in _slide_leaves(slide):
+            parts = text.split("\n")
+            places.append(("leaf", n, path, text, len(lines), len(parts)))
+            lines += parts
+        for key, table in _slide_tables(slide):
+            for r, cells in enumerate(table):
+                line, spans = _row_line(cells)
+                places.append(("cell", n, (key, r), spans, len(lines), 1))
+                lines.append(line)
+    found = module.check("\n".join(lines), material, computed, options) if lines else []
+    located = []
+    texts: list[tuple[int, dict]] = []
+    points: set[tuple[int, tuple[int, int]]] = set()
+    for place in places:
+        first, count = place[4], place[5]
         mine = [{**f, "line": f["line"] - first} for f in found
                 if first <= f["line"] < first + count]
         if not mine:
             continue
+        kind, n = place[0], place[1]
+        if kind == "leaf":
+            located.append((place, mine))
+            texts += [(n, f) for f in mine]
+            continue
+        (key, r), spans = place[2], place[3]
+        for f in mine:
+            j = next((j for j, (a, b) in enumerate(spans) if a <= int(f["start"]) < b), None)
+            if j is None:
+                continue
+            if key == "chart":
+                # labels and series names are not plotted values
+                if r and j:
+                    points.add((n, (r - 1, j - 1)))
+                    texts.append((n, f))
+                continue
+            a, _ = spans[j]
+            located.append((("cell", n, ("rows", r, j), slides[n]["rows"][r][j], 0, 1),
+                            [{**f, "line": 0, "start": int(f["start"]) - a,
+                              "end": int(f["end"]) - a}]))
+            texts.append((n, f))
+    given = _figures_of("\n".join([material, *computed]))
+    flat = re.sub(r"\s+", "", "\n".join([material, *computed]))
+    for n, slide in enumerate(slides):
+        for key, table in _slide_tables(slide):
+            if key != "chart":
+                continue
+            for r, cells in enumerate(table[1:], start=1):
+                for j, cell in enumerate(cells[1:], start=1):
+                    if (n, (r - 1, j - 1)) in points or not cell or _stated(cell, given) \
+                            or _bound(cells[0], flat):
+                        continue
+                    # worked out of figures for another period or item: not this point's value
+                    points.add((n, (r - 1, j - 1)))
+                    texts.append((n, {"kind": "number", "text": cell, "line": 0, "start": 0,
+                                      "end": len(cell), "placeholder": "[수치]"}))
+    return located, texts, points
+
+
+def _figures_of(text: str) -> list[tuple[float, str]]:
+    """Every figure `text` writes with its unit family (「7.5%」 → (7.5, "%"))."""
+    out = []
+    for m in value_guard._NUMBER.finditer(text or ""):
+        try:
+            value = value_guard.ko_number(m.group("num"))
+        except ValueError:
+            continue
+        unit = m.group("unit") or ""
+        out.append((value, {"퍼센트": "%"}.get(unit, unit)))
+    return out
+
+
+def _stated(cell: str, given: list[tuple[float, str]]) -> bool:
+    """Whether a chart value is written in the material or a code result as it stands."""
+    mine = _figures_of(cell)
+    if not mine:
+        return False
+    value, family = mine[0]
+    raw = value_guard._NUMBER.search(cell).group("num")  # type: ignore[union-attr]
+    places = len(raw.split(".", 1)[1].rstrip("조억만천 ")) if "." in raw else 0
+    tol = abs(value) * 1e-9 + 0.5 * 10 ** -places
+    return any(abs(k - value) <= tol and (not family or not f or f == family)
+               for k, f in given)
+
+
+def _bound(label: str, flat: str) -> bool:
+    """Whether every name and year of a chart category is in the material (「수도권」, 「2026」)."""
+    words = re.findall(r"[가-힣A-Za-z]{2,}|\d{4}", label)
+    return bool(words) and all(w in flat for w in words)
+
+
+def ground_slides(slides: list[dict], *, material: str, computed: list[str],
+                  options: dict) -> tuple[list[dict], list[dict]]:
+    """Slides with unsourced values marked (one trace over the deck), charts plotting only
+    traced values, a chart's title naming what it plots; the findings."""
+    module = check_skills.entry(TRACE)
+    located, texts, points = _traced(slides, material=material, computed=computed,
+                                     options=options)
+    strong = bool(options.get("strong"))
+    retitle = [n for n, slide in enumerate(slides) if deck_rules.chart_title_mismatch(slide)]
+    if not (located or points or retitle):
+        return slides, []
+    out = [dict(slide) for slide in slides]
+    evidence = value_guard.Evidence.of([material, *computed])
+    dropped: dict[tuple[int, str], set[int]] = {}
+    for place, mine in located:
+        _, n, path, text = place[:4]
         fixed = value_guard.settle(text, module.fix(text, mine), evidence).text
-        slide, key = out[n], path[0]
         if len(path) == 1:
             # a title or body emptied whole keeps its words; its values are blanked in place
-            slide[key] = fixed if fixed.strip() else text
-        elif len(path) == 2:
-            items = slide[key] = list(slide[key])
-            items[path[1]] = fixed
-            if not fixed.strip():
-                dropped.setdefault((n, key), set()).add(path[1])
+            _set(out[n], path, fixed if fixed.strip() else text)
+        elif not fixed.strip() and isinstance(path[-1], int) and len(path) in (2, 4):
+            dropped.setdefault((n, path[:-1]), set()).add(path[-1])
         else:
-            rows = slide[key] = [list(row) if isinstance(row, list) else row for row in slide[key]]
-            rows[path[1]][path[2]] = fixed
-    for (n, key), gone in dropped.items():
-        out[n][key] = [item for i, item in enumerate(out[n][key]) if i not in gone]
-    return out, found
+            _set(out[n], path, fixed)
+    for (n, parent), gone in dropped.items():
+        node: object = out[n]
+        for key in parent:
+            node = node[key]  # type: ignore[index]
+        _set(out[n], parent, [item for i, item in enumerate(node)  # type: ignore[arg-type]
+                              if i not in gone])
+    for n in sorted({n for n, _ in points}):
+        _chart_fixed(out[n], {p for m, p in points if m == n}, strong)
+    for n in retitle:
+        if not strong and "chart" in out[n]:
+            # a weak writer's chart titled by what it plots; a strong writer's title stands
+            out[n]["title"] = deck_rules.plotted_title(out[n])
+    findings = [f for _, f in texts]
+    findings += [{"kind": "claim", "text": str(slides[n].get("title") or ""),
+                  "placeholder": ""} for n in retitle]
+    return out, findings
 
 
 #: a figure in the person's words
@@ -451,7 +731,9 @@ def _material(bundle: Bundle) -> str:
 
 
 class DeckGrounding(Base):
-    """Slide values traced to the person's material and code results; the rest → blanks."""
+    """Slide values traced to the person's material, sources and code results: the slides
+    holding others go back to the writer once with the list, what still has none is marked,
+    and a chart plots only traced values under a title naming them."""
 
     name = "deck-ground"
     kind = "check"
@@ -460,10 +742,11 @@ class DeckGrounding(Base):
 
     def skip(self, bundle: Bundle) -> str:
         turn = bundle.request.turn
-        if not turn.get("traced"):
-            if TRACE not in (turn.get("check_keys") or ()):
+        if not turn.get("traced") and not _no_invented_figures(bundle):
+            given = _given_figures(bundle.request.text)
+            if TRACE not in (turn.get("check_keys") or ()) and given < _GIVEN_DATA:
                 return "no material of the person's on this turn"
-            # the grounding skill on: the request's own figures are the material
+            # the grounding skill on, or figures given in the request: they are the material
             if len(_FIGURES.findall(_material(bundle))) < 4:
                 return "no material to trace against"
         if not bundle.document.sections:
@@ -476,22 +759,110 @@ class DeckGrounding(Base):
         material = _material(bundle)
         today = dt.datetime.now(ZoneInfo(settings.timezone)).date()
         options = {**check_skills.options_for(today, surface="deck"), "person": material,
-                   "requirements": True, **({"strong": True} if bundle.request.strong else {})}
+                   "requirements": True, **({"strong": True} if bundle.request.strong else {}),
+                   **({"estimates": False} if _no_invented_figures(bundle) else {})}
         before = bundle.document.sections
         computed = [bundle.computed.values or "",
                     *(report._source_text(row) for row in bundle.material.sources or [])]
+        handed = await _hand_back(bundle, material=material, computed=computed, options=options)
+        for slide in handed:
+            yield {"type": "slide", "slide": slide, "done": True}
+        current = bundle.document.sections
         slides, found = ground_slides(
-            before, material=material, computed=computed, options=options)
-        if not found:
+            current, material=material, computed=computed, options=options)
+        slides, placed = mark_misplaced(slides, "\n".join([material, *computed]))
+        if deck_rules.deck_language(slides) == "en":
+            # an English deck's marks in English
+            slides = output_language.english_marks(slides)
+        if not found and not handed and not placed:
             return
         bundle.document.sections = slides
-        step = {"category": "thinking", "id": "grounding",
-                "label": f"근거 없는 값 {len(found)}개 → 확인 필요", "status": "done",
-                "detail": check_skills.entry(TRACE).summary(found)[:1500]}
+        step = {"category": "thinking", "id": "grounding", "status": "done",
+                "label": (f"근거 없는 값 {len(found) + placed}개 → 확인 필요" if found or placed
+                          else "근거 없는 값 → 다시 써서 고침"),
+                "detail": " · ".join(x for x in (
+                    f"다시 쓴 장 {len(handed)}개" if handed else "",
+                    check_skills.entry(TRACE).summary(found)) if x)[:1500]}
         yield {"type": "step", **step}
         for old, new in zip(before, slides, strict=True):
-            if old != new:
+            if old != new and new not in handed:
                 yield {"type": "slide", "slide": new, "done": True}
+
+
+#: slides sent back to the writer at most
+_HAND_BACK = 4
+#: a request giving its own data: this many figures with a measure (「128억」, 「7.5%」, 「3곳」)
+_GIVEN_DATA = 4
+_GIVEN_FIGURE = re.compile(
+    r"(?<![\w.])\d[\d,]{0,15}(?:\.\d{1,6})?\s?(?:%|퍼센트|%p|조|억|만|천|원|달러|명|건|곳|대|개|배|점"
+    r"|톤|일|개월|ms|초|s|pages?|tasks?|reviewers?|documents?|docs|users?|days?|hours?|months?)"
+    r"(?![가-힣A-Za-z])|(?<![\w.])\$\s?\d[\d,]{0,15}(?:\.\d{1,6})?")
+#: the person or their agent forbids figures the material does not hold
+_NO_INVENTION = re.compile(
+    r"근거\s?없는\s?(?:수치|숫자|값)|(?:자료|근거)에\s?없는\s?(?:수치|숫자|값)"
+    r"|(?:수치|숫자)(?:를|는)?\s?(?:지어|만들어\s?내|임의로|추정하지)|(?:세부\s?)?수치\s?(?:는\s?)?없(?:음|다|어|습)"
+    r"|no\s+(?:made[- ]up|invented|unsourced)\s+(?:figures|numbers)", re.I)
+
+
+def _given_figures(request: str) -> int:
+    """Distinct figures with a measure the request writes."""
+    return len({re.sub(r"\s", "", m.group(0)) for m in _GIVEN_FIGURE.finditer(request or "")})
+
+
+def _no_invented_figures(bundle: Bundle) -> bool:
+    """Whether the request or the agent's own instructions forbid figures with no basis."""
+    writer = bundle.request.turn.get("writer") or {}
+    agent = [t for t in writer.get("trusted_context") or [] if str(t).startswith("# 역할")]
+    return any(_NO_INVENTION.search(str(t)) for t in [bundle.request.text, *agent])
+
+
+async def _hand_back(bundle: Bundle, *, material: str, computed: list[str],
+                     options: dict) -> list[dict]:
+    """Slides holding untraced values rewritten once by the writer, the values listed; a
+    rewrite kept only when it holds fewer of them. The kept rewrites."""
+    req, turn = bundle.request, bundle.request.turn
+    if not turn.get("writer") or not req.model:
+        return []
+    slides = bundle.document.sections
+    try:
+        pending = trace_slides(slides, material=material, computed=computed, options=options)
+    except Exception:  # noqa: BLE001 — the code marks below
+        log.exception("deck trace before hand-back failed")
+        return []
+    worst = sorted(pending, key=lambda n: -len(pending[n]))[:_HAND_BACK]
+    kept: list[dict] = []
+    for n in worst:
+        slide = slides[n]
+        placed = [v for v in pending[n] if v.endswith(_FOR_THAT_ROW)]
+        listed = ", ".join(f"「{v[:60]}」" for v in pending[n] if v not in placed) or (
+            "" if placed else "the chart's values")
+        said = [f"These on this slide are in none of the material, the sources or the code's "
+                f"results: {listed}."] if listed else []
+        note = " ".join([*said, *(f"{v}." for v in placed)]) + (
+            " Write the slide again with only figures the material gives "
+            "or works out from its numbers. Leave a figure out, or write the item without "
+            "it, rather than guess; a chart plots only given values, and its title names "
+            "what the chart plots.")
+        try:
+            written, spent = await deck_rules.rewrite_slide(
+                request=req.text, slides=slides, target_id=str(slide.get("id") or ""),
+                model=req.model, api_key=req.api_key, note=note,
+                material=[material, *[c for c in computed if c]], keep_layout=True)
+        except Exception as exc:  # noqa: BLE001 — the slide stays; the code marks it
+            log.info("hand-back of slide %d failed: %s", n, exc)
+            continue
+        bundle.usage["inputTokens"] = bundle.usage.get("inputTokens", 0) + int(
+            spent.get("inputTokens", 0))
+        bundle.usage["outputTokens"] = bundle.usage.get("outputTokens", 0) + int(
+            spent.get("outputTokens", 0))
+        trial = [*slides[:n], written, *slides[n + 1:]]
+        left = trace_slides(trial, material=material, computed=computed,
+                                options=options).get(n, [])
+        if len(left) < len(pending[n]) and deck_rules.has_content(written):
+            slides = trial
+            kept.append(written)
+    bundle.document.sections = slides
+    return kept
 
 
 for _stage in (GapCheck(), GapCard(), GroundCheck("check:grounding", again=False),

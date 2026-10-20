@@ -8,14 +8,14 @@ type Roles = NonNullable<SystemSettings['modelRoles']>
 type Choice = Roles['choices']['chat'][number]
 type ModelKey = 'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video' | 'title' | 'code' | 'codeFallback'
 
-/** Label, source list, and what empty means (none: required). */
-const SURFACES: { key: ModelKey; label: string; from: keyof Roles['choices']; empty?: string }[] = [
+/** Label, source list, and what empty means (none: required; `none`: required only while one is served). */
+const SURFACES: { key: ModelKey; label: string; from: keyof Roles['choices']; empty?: string; none?: string }[] = [
   { key: 'chat', label: '대화 기본 모델', from: 'chat' },
   { key: 'report', label: '보고서 기본 모델', from: 'report', empty: '대화 기본 모델을 따름' },
   { key: 'slides', label: '발표 자료 기본 모델', from: 'slides', empty: '대화 기본 모델을 따름' },
   { key: 'image', label: '그림 기본 모델', from: 'image' },
-  { key: 'audio', label: '오디오 기본 모델', from: 'audio', empty: '가장 싼 오디오 모델' },
-  { key: 'video', label: '동영상 기본 모델', from: 'video', empty: '가장 싼 동영상 모델' },
+  { key: 'audio', label: '오디오 기본 모델', from: 'audio', none: '제공되는 오디오 모델 없음' },
+  { key: 'video', label: '동영상 기본 모델', from: 'video', none: '제공되는 동영상 모델 없음' },
 ]
 
 const HELPERS: { key: ModelKey; label: string; hint: string; empty: string }[] = [
@@ -55,6 +55,8 @@ const FIELD: Record<ModelKey, string> = {
 function refusal(detail: string, t: (s: string) => string): string {
   if (detail === 'model_chat_required') return t('대화 기본 모델은 비워 둘 수 없습니다.')
   if (detail === 'model_image_required') return t('그림 기본 모델은 비워 둘 수 없습니다.')
+  if (detail === 'model_audio_required') return t('오디오 기본 모델은 비워 둘 수 없습니다.')
+  if (detail === 'model_video_required') return t('동영상 기본 모델은 비워 둘 수 없습니다.')
   if (/^model_(title|code|code_fallback)_invalid$/.test(detail))
     return t('보조 작업에는 이 인스턴스가 직접 운영하는 모델만 고를 수 있습니다.')
   if (/^model_\w+_invalid$/.test(detail)) return t('이 작업에 쓸 수 없는 모델입니다. 목록에서 다시 고르세요.')
@@ -193,7 +195,13 @@ export function ModelRolesSection({
             label={t(row.label)}
             value={models[row.key]}
             choices={roles.choices[row.from]}
-            empty={row.empty === undefined ? undefined : t(row.empty)}
+            empty={
+              row.empty !== undefined
+                ? t(row.empty)
+                : row.none !== undefined && roles.choices[row.from].length === 0
+                  ? t(row.none)
+                  : undefined
+            }
             onChange={pick(row.key)}
           />
         ))}

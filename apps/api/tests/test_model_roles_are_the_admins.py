@@ -139,6 +139,9 @@ def test_the_code_models_are_the_stored_ones(monkeypatch):
         ("model_image", "", "model_image_required"),
         ("model_image", "local/qwen3.8-27b", "model_image_invalid"),
         ("model_audio", "google/film", "model_audio_invalid"),
+        # No cheapest-model fallback: a served mode needs the admin's pick.
+        ("model_audio", "", "model_audio_required"),
+        ("model_video", "", "model_video_required"),
         # Side work that reads the conversation stays on self-hosted models.
         ("model_title", "openai/gpt-x", "model_title_invalid"),
         ("model_code", "openai/gpt-x", "model_code_invalid"),

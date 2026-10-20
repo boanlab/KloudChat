@@ -76,6 +76,10 @@ class Plan:
     usage: dict[str, int] = field(default_factory=lambda: {"inputTokens": 0, "outputTokens": 0})
     #: what the rewrite is told the person typed, minus what code already did (a title)
     typed: str = ""
+    #: each target's own asks, when every ask of the instruction names its part
+    clauses: dict[int, list[str]] = field(default_factory=dict)
+    #: lines of a summary asked at the document's start (written by code, not a rewrite)
+    summary: int = 0
 
     @property
     def revises(self) -> bool:
@@ -309,6 +313,23 @@ def meta_talk(body: str) -> bool:
     """Rewritten part contains assistant meta-talk."""
     text = str(body or "")
     return bool(_META_OPENING.search(text) or _META_TALK.search(text[:4000]))
+
+
+#: P0 rules a markdown part sets off by itself (bold labels read across lines, a short part)
+_NOT_FAULTS = frozenset({"markup", "empty"})
+
+
+def new_faults(old: str, new: str, *, heading: str, instruction: str) -> list[str]:
+    """P0 lint findings a rewritten part brought in: not on the part before and not set off
+    by the words the person typed (「99.9% 문구를 넣어 줘」)."""
+    from app.services import lint
+
+    def p0(text: str) -> list:
+        return [f for f in lint.check(lint.from_sections([{"heading": heading, "content": text}]))
+                if f.severity == "P0" and f.rule not in _NOT_FAULTS]
+
+    had = {f.rule for f in p0(old)} | {f.rule for f in p0(instruction)}
+    return [f.message for f in p0(new) if f.rule not in had]
 
 
 #: Quoted term swap.
@@ -829,6 +850,75 @@ _NOTES_ASK = re.compile(
 _BODY_TOO = re.compile(r"본문도|내용도|슬라이드도|글머리표도|함께\s*고쳐|같이\s*고쳐")
 
 
+#: a slide named by number: 「3장」, 「8번째 장」, 「슬라이드 5」
+_SLIDE_REF = re.compile(
+    r"(?<!\d)(\d{1,2})\s?(?:번째\s?)?(?:장|번\s?슬라이드|슬라이드|페이지|쪽)(?!점|단|면|소|비|기)"
+    r"|슬라이드\s?(\d{1,2})(?!\d)")
+#: where one ask ends and the next begins: a sentence end, 「그리고」, a comma before a slide
+_ASK_BREAK = re.compile(
+    r"(?<=[.!?。])\s+|\n+|\s*(?:그리고|또한|또|그다음|다음으로)\s+"
+    r"|,\s*(?=\d{1,2}\s?(?:번째\s?)?(?:장|슬라이드))")
+
+
+def named_slides(text: str) -> set[int]:
+    """Slide numbers (one-based) the words name."""
+    return {int(a or b) for a, b in _SLIDE_REF.findall(text or "")}
+
+
+def slide_clause(instruction: str, index: int) -> str:
+    """The part of a many-slide instruction meant for slide `index` (zero-based): 「3장을 표로
+    바꿔줘. 그리고 8장 그림은 빼줘.」 → 「8장 그림은 빼줘.」 for the eighth. An instruction naming
+    no slide number is meant whole for every target."""
+    clauses = [c.strip() for c in _ASK_BREAK.split(instruction or "") if c and c.strip()]
+    named = [(c, {int(a or b) for a, b in _SLIDE_REF.findall(c)}) for c in clauses]
+    if not any(numbers for _, numbers in named):
+        return instruction
+    mine = [c for c, numbers in named if index + 1 in numbers]
+    if mine:
+        return " ".join(mine)
+    return " ".join(c for c, numbers in named if not numbers) or instruction
+
+
+#: a picture on a slide asked away: 「8장 그림은 빼줘」, 「사진 지워 줘」
+_REMOVE_PICTURE = re.compile(
+    r"(?:그림|사진|이미지|일러스트|삽화|도식|도해|다이어그램)\S{0,3}\s{0,8}"
+    r"(?:빼|지워|지우|삭제|없애|제거|없이)\S{0,6}"
+    r"(?:\s{0,4}(?:줘|주세요|주십시오|줄래|해\s?줘|해\s?주세요|바랍니다))?")
+_FILLER = frozenset({"그리고", "슬라이드", "부탁해", "부탁합니다", "주세요", "해줘", "그냥"})
+
+
+def removes_picture(text: str) -> bool:
+    """Whether the words ask a slide's picture away."""
+    return bool(_REMOVE_PICTURE.search(text or ""))
+
+
+def only_removes_picture(text: str) -> bool:
+    """Whether removing the picture is all the words ask (nothing left to rewrite)."""
+    if not removes_picture(text):
+        return False
+    rest = _REMOVE_PICTURE.sub(" ", _SLIDE_REF.sub(" ", text or ""))
+    return not [w for w in re.findall(r"[가-힣A-Za-z]{2,}", rest) if w not in _FILLER]
+
+
+#: a chart on a slide asked away: 「4장 차트 빼줘」, 「그래프는 지워 줘」
+_REMOVE_CHART = re.compile(
+    r"(?:차트|그래프)\S{0,3}\s{0,8}(?:빼|지워|지우|삭제|없애|제거|없이)\S{0,6}"
+    r"(?:\s{0,4}(?:줘|주세요|주십시오|줄래|해\s?줘|해\s?주세요|바랍니다))?")
+
+
+def removes_chart(text: str) -> bool:
+    """Whether the words ask a slide's chart away."""
+    return bool(_REMOVE_CHART.search(text or ""))
+
+
+def only_removes_chart(text: str) -> bool:
+    """Whether removing the chart is all the words ask."""
+    if not removes_chart(text):
+        return False
+    rest = _REMOVE_CHART.sub(" ", _SLIDE_REF.sub(" ", text or ""))
+    return not [w for w in re.findall(r"[가-힣A-Za-z]{2,}", rest) if w not in _FILLER]
+
+
 def notes_only(message: str) -> bool:
     """Speaker-notes-only request."""
     text = " ".join((message or "").split())
@@ -1138,6 +1228,354 @@ def document_block(parts: list[str], texts: list[str]) -> str:
         "as they are. What is here is a fact of this document even if the original request does "
         "not have it.\n\n" + "\n\n".join(chunks)
     )
+
+
+#: where one ask of a report edit ends: a sentence end, 「그리고」, 「…빼고,」
+_CLAUSE_BREAK = re.compile(
+    r"(?<=[.!?。])\s+|\n+|(?:그리고|또한|그다음|다음으로)\s+|(?<=[가-힣]고),\s*|(?<=[가-힣]며),\s*")
+#: a part named by number: 「2절의」, 「제3장」; not a count (「3장으로」)
+_SECTION_REF = re.compile(
+    r"(?<![\d.])(?:제\s?)?(\d{1,2})\s?(?:절|장)(?!\s?(?:으로|로|짜리|씩))")
+_COUNT_WORD = {"한": 1, "두": 2, "세": 3, "네": 4, "다섯": 5}
+#: a summary asked into the document: 「3줄 요약을 넣어줘」, 「요약 3줄 추가」
+_SUMMARY_ASK = re.compile(
+    r"(?:(?P<n>\d|한|두|세|네|다섯)\s?(?:줄|문장)(?:\s?(?:짜리|로\s?된))?\s?(?:핵심\s?)?요약"
+    r"|요약\s?(?:을|를)?\s?(?P<m>\d|한|두|세|네|다섯)\s?(?:줄|문장))"
+    r"[^.!?\n]{0,16}?(?:넣|추가|달|붙|써|만들|작성)")
+_FRONT = re.compile(r"맨\s?(?:앞|위|처음)|첫머리|서두|문서\s?(?:앞|첫)|앞부분|상단")
+#: wording the person points at: 「…4%라는 표현」, 「'허용 한도'라는 문구」
+_PHRASE_REF = re.compile(
+    r"(?P<p>[^,.!?\n]{2,60}?)\s?(?:이?라는|라고\s?(?:쓴|적은|한))\s?(?:표현|문구|말|문장|부분|내용)")
+_QUOTED = re.compile(r"[「『'\"‘“]([^」』'\"’”\n]{2,60})[」』'\"’”]")
+_VALUE = re.compile(r"\d[\d,.]*\s?(?:%|만\s?원|억\s?원?|원|명|건|개월|일)")
+_PARTICLE = re.compile(r"(?:까지|에서|으로|이라|라는|이가|은|는|이|가|을|를|의|에|로|과|와|도)$")
+
+
+def _plain_words(text: str) -> set[str]:
+    out = set()
+    for word in re.findall(r"[가-힣A-Za-z]{2,20}", text or ""):
+        word = _PARTICLE.sub("", word)
+        if len(word) >= 2:
+            out.add(word)
+    return out
+
+
+def summary_lines_asked(clause: str) -> int:
+    """Lines of a summary the clause asks put in (「3줄 요약을 넣어줘」 → 3), else 0."""
+    m = _SUMMARY_ASK.search(" ".join((clause or "").split()))
+    if not m:
+        return 0
+    word = m.group("n") or m.group("m")
+    return int(word) if word.isdigit() else _COUNT_WORD.get(word, 0)
+
+
+def rewords(clause: str) -> bool:
+    """Whether the clause corrects wording it points at (「…라는 표현은 … 고쳐줘」), not a value."""
+    return bool(_PHRASE_REF.search(clause or "") or _QUOTED.search(clause or ""))
+
+
+def _phrase_holders(clause: str, texts: list[str]) -> list[int]:
+    """Parts whose text states the wording the clause points at."""
+    quoted = [q.strip() for q in _QUOTED.findall(clause)]
+    if quoted:
+        return [i for i, t in enumerate(texts) if any(q in t for q in quoted)]
+    m = _PHRASE_REF.search(clause)
+    if not m:
+        return []
+    phrase = m.group("p")
+    values = [re.sub(r"\s", "", v) for v in _VALUE.findall(phrase)]
+    words = _plain_words(_VALUE.sub(" ", phrase))
+    if not values and len(words) < 2:
+        return []
+    holders = []
+    for i, text in enumerate(texts):
+        for line in re.split(r"(?<=[.!?。])\s+|\n", text or ""):
+            flat = re.sub(r"\s", "", line)
+            if all(v in flat for v in values) and (
+                    len(words & _plain_words(line)) >= (1 if values else 2)):
+                holders.append(i)
+                break
+    return holders
+
+
+def section_asks(instruction: str, parts: list[str], texts: list[str]
+                 ) -> tuple[dict[int, list[str]], int] | None:
+    """`({part: its asks}, summary lines)` when every ask of a report edit names its part: by
+    number (「2절의 표 2는 빼고」), by its name, as a summary at the start (「맨 앞에 3줄 요약」,
+    part 0) or by wording only some parts state (「…4%라는 표현은 … 고쳐줘」). None when an ask
+    names no part (the planner decides)."""
+    clauses = [c.strip(" ,") for c in _CLAUSE_BREAK.split(instruction or "") if c and c.strip(" ,")]
+    if not clauses or not parts:
+        return None
+    out: dict[int, list[str]] = {}
+    summary = 0
+    for clause in clauses:
+        numbered = {int(n) - 1 for n in _SECTION_REF.findall(clause)}
+        if any(not 0 <= n < len(parts) for n in numbered):
+            return None
+        named = {i for i, name in enumerate(parts)
+                 if len(name.strip()) >= 3 and name.strip() in clause}
+        lines = summary_lines_asked(clause)
+        if lines and (_FRONT.search(clause) or not numbered | named):
+            summary = lines
+            out.setdefault(0, []).append(clause)
+            continue
+        holders = set(numbered | named) or set(_phrase_holders(clause, texts))
+        if not holders:
+            return None
+        for i in holders:
+            out.setdefault(i, []).append(clause)
+    return out, summary
+
+
+#: numbered tables and figures asked away: 「표 2와 그림 1은 빼고」, 「그림 3 삭제해 줘」
+_NUMBERED = r"(?:표|그림)\s?\d{1,3}(?![\d.])"
+_NUMBERED_REMOVAL = re.compile(
+    rf"{_NUMBERED}(?:\s{{0,4}}(?:와|과|,|및|·|하고|그리고)\s{{0,4}}{_NUMBERED})*"
+    r"\s{0,4}(?:은|는|을|를|도)?\s{0,8}(?:모두\s{0,4}|다\s{0,4}|전부\s{0,4})?"
+    r"(?:빼|지워|지우|삭제|없애|제거)\S{0,6}"
+    r"(?:\s{0,4}(?:줘|주세요|주십시오|해\s?줘|해\s?주세요|바랍니다))?")
+_NUMBERED_ITEM = re.compile(r"(표|그림)\s?(\d{1,3})(?![\d.])")
+_REMOVAL_FILLER = frozenset({*_FILLER, "모두", "전부", "부탁드립니다", "해주세요", "주십시오",
+                             "바랍니다"})
+
+
+def _only_removal(clause: str) -> bool:
+    """Whether taking numbered tables or figures away is all the clause asks (「표 2는 빼고
+    그 내용은 글로 풀어 줘」 asks more: that is a rewrite's)."""
+    if not _NUMBERED_REMOVAL.search(clause):
+        return False
+    rest = _SECTION_REF.sub(" ", _NUMBERED_REMOVAL.sub(" ", clause))
+    words = [_PARTICLE.sub("", w) for w in re.findall(r"[가-힣A-Za-z]{2,}", rest)]
+    return not [w for w in words if len(w) > 1 and w not in _REMOVAL_FILLER]
+
+
+#: an ask leaning on what goes: 「그 내용은 본문으로」, 「대신 글로 풀어」
+_POINTS_BACK = re.compile(r"그\s?(?:내용|표|그림|수치|자료)|해당\s?(?:내용|표|그림)|대신|풀어")
+
+
+def _clauses(instruction: str) -> list[str]:
+    return [c.strip(" ,") for c in _CLAUSE_BREAK.split(instruction or "") if c and c.strip(" ,")]
+
+
+def numbered_removals(instruction: str) -> list[tuple[str, int]]:
+    """`[("표", 2), ("그림", 1)]` for the numbered tables and figures the words only ask away."""
+    clauses = _clauses(instruction)
+    if any(_POINTS_BACK.search(c) for c in clauses if not _only_removal(c)):
+        return []  # 「…빼고, 그 내용은 글로」: the rewrite reads the table before it goes
+    out: list[tuple[str, int]] = []
+    for clause in filter(_only_removal, clauses):
+        for m in _NUMBERED_REMOVAL.finditer(clause):
+            for kind, n in _NUMBERED_ITEM.findall(m.group(0)):
+                if (kind, int(n)) not in out:
+                    out.append((kind, int(n)))
+    return out
+
+
+def without_numbered_removals(instruction: str) -> str:
+    """The instruction minus its asks that only take numbered tables or figures away."""
+    return " ".join(c for c in _clauses(instruction) if not _only_removal(c))
+
+
+_TABLE_RULE = re.compile(r"^\s{0,3}\|?\s{0,3}:?-{2,}")
+_PICTURE_LINE = re.compile(r"^\s*!\[(?P<alt>[^\]]{0,200})\]\([^)\s]+\)\s*$")
+_CAPTION_OF = {"표": re.compile(r"^\s{0,12}(?:\*\*)?\s?<?\s?표\s?(\d{1,3})\s?[.:：>*]"),
+               "그림": re.compile(r"^\s{0,12}[*_]{0,2}\s?그림\s?(\d{1,3})\s?[.:：*]")}
+_REFERENCE_PART = re.compile(r"참고\s?문헌|참고\s?자료|references|bibliography", re.I)
+
+
+def _blocks_in(text: str) -> list[tuple[str, int, int, int | None]]:
+    """`(kind, first line, end line, captioned number)` for each table and figure of a part."""
+    lines = text.split("\n")
+    out: list[tuple[str, int, int, int | None]] = []
+    i, fenced = 0, False
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if stripped.startswith("```") and not stripped.startswith("```mermaid"):
+            fenced = not fenced
+            i += 1
+            continue
+        if fenced:
+            i += 1
+            continue
+        if (picture := _PICTURE_LINE.match(line)) or stripped.startswith("```mermaid"):
+            end = i + 1
+            if not picture:
+                while end < len(lines) and not lines[end].strip().startswith("```"):
+                    end += 1
+                end += 1
+            number = None
+            if picture and (m := _CAPTION_OF["그림"].match(picture.group("alt"))):
+                number = int(m.group(1))
+            j = end
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            if j < len(lines) and (m := _CAPTION_OF["그림"].match(lines[j])):
+                number = number or int(m.group(1))
+                end = j + 1
+            out.append(("그림", i, end, number))
+            i = end
+            continue
+        if stripped.startswith("|") and i + 1 < len(lines) and _TABLE_RULE.match(lines[i + 1]):
+            start, end = i, i
+            while end < len(lines) and lines[end].strip().startswith("|"):
+                end += 1
+            k = start - 1
+            while k >= 0 and not lines[k].strip():
+                k -= 1
+            number = None
+            if k >= 0 and (m := _CAPTION_OF["표"].match(lines[k])):
+                number, start = int(m.group(1)), k
+            out.append(("표", start, end, number))
+            i = end
+            continue
+        i += 1
+    return out
+
+
+def _particle(word: str, closed: str, opened: str) -> str:
+    """`closed` after a final consonant (digits read aloud), else `opened`."""
+    last = (word or " ")[-1]
+    if "가" <= last <= "힣":
+        return closed if (ord(last) - 0xAC00) % 28 else opened
+    if last.isdigit():
+        return closed if last in "013678" else opened
+    return opened
+
+
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?。])\s+")
+
+
+def _drop_references(text: str, name: str) -> str:
+    """Prose citing `name` (a table or figure taken away) without the citation: 「(표 2)」
+    goes, a sentence that is about it goes, 「표 2와 같이」 goes from its sentence."""
+    kind, n = name.split(" ", 1)
+    num = rf"{kind}\s?{n}"
+    if not re.search(rf"{num}(?![\d.])", text):
+        return text
+    out = []
+    for line in text.split("\n"):
+        if line.lstrip().startswith(("|", "![", "```")) or _CAPTION_OF["표"].match(line) \
+                or _CAPTION_OF["그림"].match(line) or not re.search(rf"{num}(?![\d.])", line):
+            out.append(line)
+            continue
+        # in a bracket: 「(표 2)」 gone, 「(표 1, 표 2)」 → 「(표 1)」
+        line = re.sub(rf"\s?\(\s?{num}\s?\)", "", line)
+        line = re.sub(rf"(\((?:[^()]{{0,40}}?))(?:,\s?|·){num}(?![\d.])", r"\1", line)
+        line = re.sub(rf"\({num}(?:,\s?|·)", "(", line)
+        lead = re.match(r"\s{0,24}(?:[-*+]\s{1,4})?", line).group(0)
+        kept = []
+        for sentence in _SENTENCE_SPLIT.split(line[len(lead):]):
+            if not re.search(rf"{num}(?![\d.])", sentence):
+                kept.append(sentence)
+                continue
+            if re.search(rf"{num}(?:은|는|이|가|의)(?=\s)", sentence):
+                continue  # about the gone table or figure
+            sentence = re.sub(
+                rf"(?:위|아래|다음)?\s?{num}(?:과|와|에서|에|을|를|의|처럼|로|으로)?\s?"
+                r"(?:같이|처럼|보듯이|보듯|나타낸 것처럼|정리한 것처럼|나타냈듯이)?\s?,?\s?", "",
+                sentence)
+            if sentence.strip():
+                kept.append(sentence.strip())
+        if kept:
+            out.append(lead + " ".join(kept))
+        elif not line.strip():
+            out.append(line)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
+
+
+def drop_numbered(parts: list[dict], asked: list[tuple[str, int]]
+                  ) -> tuple[list[dict], list[str], list[str]]:
+    """`(parts, taken, absent)`: the asked tables and figures removed by hand, with their
+    captions and the prose that cites them; numbered as the reader sees them (the caption, else
+    the order in the document). `taken` says where each was (「2절의 표 2」)."""
+    captioned: dict[tuple[str, int], tuple[int, int, int]] = {}
+    ordinal: dict[tuple[str, int], tuple[int, int, int]] = {}
+    counts = {"표": 0, "그림": 0}
+    for index, part in enumerate(parts):
+        if _REFERENCE_PART.search(str(part.get("heading") or "")):
+            continue
+        for kind, start, end, number in _blocks_in(str(part.get("content") or "")):
+            counts[kind] += 1
+            ordinal[(kind, counts[kind])] = (index, start, end)
+            if number is not None:
+                captioned.setdefault((kind, number), (index, start, end))
+    found = {**ordinal, **captioned}
+    spans: dict[int, list[tuple[int, int]]] = {}
+    taken, absent = [], []
+    for kind, n in asked:
+        where = found.get((kind, n))
+        if where is None:
+            absent.append(f"{kind} {n}")
+            continue
+        index, start, end = where
+        if (start, end) in spans.get(index, []):
+            continue
+        spans.setdefault(index, []).append((start, end))
+        taken.append(f"{index + 1}절의 {kind} {n}")
+    out = []
+    for index, part in enumerate(parts):
+        text = str(part.get("content") or "")
+        if index in spans:
+            lines = text.split("\n")
+            for start, end in sorted(spans[index], reverse=True):
+                del lines[start:end]
+            text = "\n".join(lines)
+        for name in (t.split("의 ", 1)[1] for t in taken):
+            text = _drop_references(text, name)
+        text = re.sub(r"\n{3,}", "\n\n", text).strip("\n")
+        if text != str(part.get("content") or "").strip("\n"):
+            part = {**part, "content": text}
+            part.pop("factCheck", None)
+        out.append(part)
+    return out, taken, absent
+
+
+#: summary the person asked for at the document's start; code builds the block
+SUMMARY_PROMPT = """Write the summary the person asked to put at the very start of the
+document below: exactly {n} lines, each one sentence, in the document's language and tone.
+
+Rules:
+- Only content and numbers stated in the document. Nothing new.
+- No title, author, team, date or period line; no heading, no label such as 「요약」 or
+  「핵심」, no list marks or numbers.
+- Reply with the {n} lines only.
+
+문서 제목: {title}
+
+{document}"""
+
+
+_SENTENCE_END = re.compile(r"(?:[다요음함됨임]|필요|예정|요청)[.!?。]?$|[.!?。]$")
+
+
+def _title_line(line: str, heads: set[str]) -> bool:
+    """A line restating the title block: its words mostly the title's or the head fields', or
+    a short line sharing them that is no sentence (「2026년 10월 3주차(10/12~10/16) 주간 업무
+    보고」)."""
+    words = [_PARTICLE.sub("", w) for w in re.findall(r"[가-힣A-Za-z0-9]{2,}", line)]
+    if not words:
+        return True
+    shared = sum(1 for w in words if any(w.startswith(h) or h.startswith(w) for h in heads))
+    return 5 * shared >= 3 * len(words) or (
+        shared > 0 and len(line) <= 40 and not _SENTENCE_END.search(line))
+
+
+def summary_block(text: str, n: int, title: str, fields: list[str]) -> str | None:
+    """The asked summary as the first part's 「핵심」 callout: `n` lines, the title block's
+    lines (title, author, period) left out. None when fewer than `n` lines remain."""
+    heads = {w for h in [title, *fields] for w in re.findall(r"[가-힣A-Za-z0-9]{2,}", h or "")}
+    kept = []
+    for line in (text or "").split("\n"):
+        line = re.sub(r"^\s{0,4}(?:[-*•·]|\d{1,2}[.)])\s{0,3}", "", line).strip().strip("*_ ")
+        if not line or line.startswith("```") or re.fullmatch(r"(?:핵심|요약)\s?[:：]?", line):
+            continue
+        if not _title_line(line, heads):
+            kept.append(line)
+    if len(kept) < n:
+        return None
+    return "```callout\n핵심\n" + "\n".join(kept[:n]) + "\n```"
 
 
 def label(plan: Plan, parts: list[str]) -> str:

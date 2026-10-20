@@ -600,7 +600,8 @@ interface State {
   deleteMemory: (id: string) => Promise<void>
   togglePinMemory: (id: string) => Promise<void>
   /** Resolves to the saved row (a new one carries the server's id). */
-  upsertAgent: (a: Agent) => Promise<Agent>
+  /** `process` on a new agent: saved with it or neither (`POST /agents`). */
+  upsertAgent: (a: Agent, process?: Record<string, unknown>) => Promise<Agent>
   /** Copies a shared agent and the skills it runs on. */
   installAgent: (a: Agent) => Promise<void>
   deleteAgent: (id: string) => Promise<void>
@@ -700,7 +701,11 @@ const initialAvModelByMode: Record<AvMode, string> = {
   ...readRememberedAvModels(),
 }
 
-/** Per av mode: the remembered pick if still served, else the instance default, else the cheapest. Storage is never rewritten here. */
+/**
+ * Per av mode: the remembered pick if still served, else the instance default. No default set:
+ * none (the admin picks one; never the cheapest). A default this account may not use gives way to
+ * the first one it may. Storage is never rewritten here.
+ */
 function reconcileAvModels(
   available: ModelInfo[],
   byMode: Partial<Record<AvMode, string>> = {},
@@ -709,14 +714,12 @@ function reconcileAvModels(
   const remembered = readRememberedAvModels(account)
   const next = { audio: '', video: '' }
   for (const mode of ['audio', 'video'] as const) {
-    const usable = available
-      .filter((m) => m.kinds.includes('av') && m.modality === mode)
-      .sort((a, b) => a.creditCost - b.creditCost)
+    const usable = available.filter((m) => m.kinds.includes('av') && m.modality === mode)
     const kept = remembered[mode]
     next[mode] =
       (kept && usable.some((m) => m.id === kept) ? kept : '') ||
       usable.find((m) => m.id === byMode[mode])?.id ||
-      usable[0]?.id ||
+      (byMode[mode] ? usable[0]?.id : '') ||
       ''
   }
   return next
@@ -828,7 +831,15 @@ function handToTheComposer(set: Set, text: string) {
   set({ draft: text, draftTo: null })
 }
 
-/** Remembered pick if still served on the surface, else surface/instance default, else cheapest; storage untouched. */
+/** Surfaces that fall back to the chat default (`reconcileDefaults`). */
+const CHAT_SURFACES: SessionKind[] = ['chat', 'report', 'slides']
+
+/**
+ * Remembered pick if still served on the surface, else the surface's default, else (chat, report,
+ * slides) the chat default; never by price. Past those a chat surface takes the first model listed
+ * (a strict-local one last), a picture or av surface only when its default is outside this
+ * account's allowlist. Storage untouched.
+ */
 function reconcileDefaults(
   current: Record<SessionKind, string>,
   available: ModelInfo[],
@@ -847,16 +858,15 @@ function reconcileDefaults(
     if (available.some((m) => m.id === next[kind] && m.kinds.includes(kind))) continue
     const usable = available
       .filter((m) => m.kinds.includes(kind))
-      // Cheapest first; a strict-local model only when nothing else serves the surface.
-      .sort(
-        (a, b) =>
-          Number(a.strictLocal ?? false) - Number(b.strictLocal ?? false) ||
-          a.creditCost - b.creditCost,
-      )
+      // Catalogue order; a strict-local model only when nothing else serves the surface.
+      .sort((a, b) => Number(a.strictLocal ?? false) - Number(b.strictLocal ?? false))
+    const chatSurface = CHAT_SURFACES.includes(kind)
     const preferred =
-      usable.find((m) => m.id === byKind[kind]) ?? usable.find((m) => m.id === instanceDefault)
+      usable.find((m) => m.id === byKind[kind]) ??
+      (chatSurface ? usable.find((m) => m.id === instanceDefault) : undefined)
     if (preferred) next[kind] = preferred.id
-    else if (usable.length) next[kind] = usable[0].id
+    else if (usable.length && (chatSurface || byKind[kind])) next[kind] = usable[0].id
+    else next[kind] = ''
   }
   return next
 }
@@ -990,7 +1000,10 @@ export const useStore = create<State>((set, get) => ({
       setAccessToken(session.accessToken)
       set({ authenticated: true, user: session.user, authLoading: false, signedOutReason: null })
       scheduleRefresh(session.expiresIn, () => void get().bootstrap())
-      armIdleWatch(get().idleTimeoutMinutes, () => void get().logout('idle'))
+      // Enabled kinds and the idle limit of this workspace, not the signed-out defaults.
+      void get().refreshConfig().then(() => {
+        if (get().authenticated) armIdleWatch(get().idleTimeoutMinutes, () => void get().logout('idle'))
+      })
       // `/models`, `/sessions` and the workspace are gated on `active`.
       if (session.user.status === 'active') {
         void get().loadModels()
@@ -1010,6 +1023,7 @@ export const useStore = create<State>((set, get) => ({
     set((state) => ({ authenticated: true, user: session.user, authLoading: false, authError: null,
       accountEpoch: state.accountEpoch + 1, messageEdit: null, messageEditBusy: false }))
     scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+    void get().refreshConfig()
     void get().loadModels()
   },
 
@@ -1022,6 +1036,7 @@ export const useStore = create<State>((set, get) => ({
         setAccessToken(session.accessToken)
         set({ authenticated: true, user: session.user, authLoading: false })
         scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+        void get().refreshConfig()
         void get().loadModels()
       } else {
         // Pending: log in so the waiting screen has an identity to show.
@@ -1334,7 +1349,9 @@ export const useStore = create<State>((set, get) => ({
   setModel: (kind, id) =>
     set((s) => {
       const next = { ...s.modelByKind, [kind]: id }
-      localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(next))
+      // Only picks are remembered: a surface left on its default keeps following the admin's.
+      const picks = { ...readRememberedModels(s.user?.preferences.modelByKind), [kind]: id }
+      localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(picks))
       // An av pick is also remembered for its own mode.
       const modality = kind === 'av' ? s.models.find((m) => m.id === id)?.modality : undefined
       const byMode =
@@ -1343,7 +1360,7 @@ export const useStore = create<State>((set, get) => ({
           : undefined
       if (byMode) localStorage.setItem(AV_MODEL_STORAGE_KEY, JSON.stringify(byMode))
       // The pick follows the account, so the next browser opens on it too.
-      const kept = { modelByKind: next, ...(byMode ? { avModelByMode: byMode } : {}) }
+      const kept = { modelByKind: picks, ...(byMode ? { avModelByMode: byMode } : {}) }
       if (s.user) rememberOnAccount(kept)
       return {
         modelByKind: next,
@@ -2235,12 +2252,11 @@ export const useStore = create<State>((set, get) => ({
       const wanted = patch.mode === 'video' ? 'video' : 'audio'
       const current = s.models.find((m) => m.id === s.modelByKind.av)
       if (current?.modality === wanted) return next
-      const usable = s.models
-        .filter((m) => m.kinds.includes('av') && m.modality === wanted)
-        .sort((a, b) => a.creditCost - b.creditCost)
-      const chosen = usable.find((m) => m.id === s.avModelByMode[wanted]) ?? usable[0]
-      if (!chosen) return next
-      return { ...next, modelByKind: { ...s.modelByKind, av: chosen.id } }
+      // No model for the mode (no admin default): none, not another mode's or the cheapest.
+      const chosen = s.models.find(
+        (m) => m.kinds.includes('av') && m.modality === wanted && m.id === s.avModelByMode[wanted],
+      )
+      return { ...next, modelByKind: { ...s.modelByKind, av: chosen?.id ?? '' } }
     }),
   cancelJob: async (id) => {
     const before = get().jobs.find((j) => j.id === id)
@@ -2649,7 +2665,7 @@ export const useStore = create<State>((set, get) => ({
     // The original's install count and `installed` flag moved.
     await get().loadWorkspace()
   },
-  upsertAgent: async (a) => {
+  upsertAgent: async (a, process) => {
     touchWorkspace()
     const payload = {
       name: a.name,
@@ -2682,7 +2698,9 @@ export const useStore = create<State>((set, get) => ({
       ...(a.processSettings !== undefined ? { processSettings: a.processSettings } : {}),
     }
     const exists = get().agents.some((x) => x.id === a.id)
-    const row = exists ? await agentsApi.update(a.id, payload) : await agentsApi.create(payload)
+    const row = exists
+      ? await agentsApi.update(a.id, payload)
+      : await agentsApi.create(process ? { ...payload, process } : payload)
     const saved = toAgent(row)
     set((s) => ({
       agents: exists

@@ -25,6 +25,8 @@ class Tool:
     source: str = "builtin"
     #: `run` gets `ToolContext` as second arg.
     wants_context: bool = False
+    #: Own ceiling for a slow tool (a deep research mode); None = `tool_timeout_sec`.
+    timeout_sec: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

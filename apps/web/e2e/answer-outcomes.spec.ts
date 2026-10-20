@@ -138,6 +138,22 @@ test('a planning turn that asked questions says it asked, not that it showed an 
   await expect(page.getByText('0ms')).toHaveCount(0)
 })
 
+test('a revision that stopped before saving says nothing changed, not that it revised', async ({ page }, testInfo) => {
+  const stage = (name: string, status: string, reason?: string) => ({
+    id: `r1:${name}:1`, name, label: name, kind: 'model', status, ...(reason ? { reason } : {}),
+    startedAt: at, finishedAt: at, ms: 0,
+  })
+  await sessionFixture(page, testInfo, [{ ...question, content: '그림 빼 줘.' }, {
+    id: 'm2', role: 'assistant', content: '뺄 그림이 없습니다.', createdAt: at, model: 'fixture/model',
+    routing: { run: { id: 'r1', flow: 'revise', status: 'stopped', stages: [
+      stage('revise-load', 'done'), stage('revise-route', 'stopped', 'nothing to remove'),
+      stage('revise-save', 'skipped', 'stopped at revise-route')] } },
+  }], { kind: 'slides', artifactId: '55555555555555555555555555555555' })
+  await page.goto(`/s/${id}`)
+  await expect(page.getByText('바꾼 것이 없습니다')).toBeVisible()
+  await expect(page.getByText('슬라이드를 고쳤습니다')).toHaveCount(0)
+})
+
 test('once the deck is made, the box asks what to change, not for a new topic', async ({ page }, testInfo) => {
   await sessionFixture(page, testInfo, [{ ...question, content: '세미나 발표 자료를 만들어 줘.' }, {
     id: 'm2', role: 'assistant', content: '10장짜리 슬라이드를 만들었습니다.', createdAt: at, model: 'fixture/model',

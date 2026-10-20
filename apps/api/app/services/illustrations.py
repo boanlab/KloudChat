@@ -1,6 +1,6 @@
-"""Pictures a document draws for itself, planned on its written parts the way its diagrams are,
-with a self-hosted image model only. External image models stay with the outline card, where
-the person approves each picture and its cost."""
+"""Pictures a document draws for itself when the person asks for them, planned on its written
+parts the way its diagrams are, with a self-hosted image model only. External image models stay
+with the outline card, where the person approves each picture and its cost."""
 
 from __future__ import annotations
 
@@ -37,8 +37,8 @@ Rules:
 - `prompt` is one English sentence for the image model: the subject and the setting, as a flat
   editorial illustration. No text, letters, numbers, logos, charts or screens with words.
   Do not draw real, named people.
-- `caption` is a short Korean caption (under 30 characters) naming what the picture shows, in the
-  part's own terms.
+- `caption` is a short {language} caption (under 30 characters) naming what the picture shows, in
+  the part's own terms.
 
 Answer with a JSON array only, for example:
 [{{"part": 2,
@@ -50,6 +50,15 @@ Answer with a JSON array only, for example:
 _DECLINED = re.compile(
     r"(?:그림|이미지|삽화|일러스트|사진)\s{0,2}(?:은|는|을|를)?\s{0,2}"
     r"(?:없이|빼|넣지\s{0,2}마|필요\s{0,2}없)"
+)
+
+
+#: 「삽화를 곁들여」, 「사진도 넣어」, "with illustrations": the person asked for pictures
+_ASKED = re.compile(
+    r"삽화|일러스트|illustrat"
+    r"|(?:그림|이미지|사진)[^\n.]{0,12}?(?:넣|포함|곁들|추가|붙|담아|들어가|있는|와\s?함께|과\s?함께)"
+    r"|(?:add|include|with)\s+(?:some\s+|a\s+few\s+)?(?:pictures|images|photos)",
+    re.I,
 )
 
 
@@ -69,6 +78,11 @@ def self_hosted(model: dict | None) -> bool:
 
 def declined(request: str) -> bool:
     return bool(_DECLINED.search(request or ""))
+
+
+def wanted(request: str) -> bool:
+    """Whether the request asks for pictures; decorative ones are never added unasked."""
+    return bool(_ASKED.search(request or "")) and not declined(request)
 
 
 def _parse(text: str, allowed: set[int], limit: int) -> list[Planned]:
@@ -106,8 +120,10 @@ async def plan(
     slide: bool,
     wrap: Wrap | None = None,
     limit: int = MAX_PICTURES,
+    language: str = "ko",
 ) -> tuple[list[Planned], dict[str, int]]:
-    """Pictures for (title, text) parts, eligible indices only; never raises."""
+    """Pictures for (title, text) parts, eligible indices only; never raises; captions in
+    `language` (`ko`, `en`)."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     allowed = sorted(set(eligible))
     if not allowed or limit < 1:
@@ -120,6 +136,7 @@ async def plan(
         request=request[:1200],
         parts=listed[:7000],
         limit=limit,
+        language="English" if language == "en" else "Korean",
     )
     try:
         text, usage = await complete(
@@ -161,4 +178,4 @@ async def draw(
     }
 
 
-__all__ = ["MAX_PICTURES", "Planned", "declined", "draw", "plan", "self_hosted"]
+__all__ = ["MAX_PICTURES", "Planned", "declined", "draw", "plan", "self_hosted", "wanted"]

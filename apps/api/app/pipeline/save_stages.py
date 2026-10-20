@@ -60,12 +60,67 @@ def last_pass(bundle: Bundle, sections: list[dict], template: Any,
     return changed
 
 
+def removed_said(removed: list[str]) -> str:
+    """「7장의 흐름도를 뺐습니다.」 for the pictures, charts and tables an edit took off."""
+    from app.services import revise
+
+    return f"{', '.join(removed)}{revise._particle(removed[-1], '을', '를')} 뺐습니다."
+
+
+def _numbers(numbers: list[int]) -> str:
+    """「1·4·7~9」: part numbers, a run of three or more as a range."""
+    runs: list[list[int]] = []
+    for n in numbers:
+        if runs and n == runs[-1][-1] + 1:
+            runs[-1].append(n)
+        else:
+            runs.append([n])
+    return "·".join(f"{r[0]}~{r[-1]}" if len(r) >= 3 else "·".join(map(str, r)) for r in runs)
+
+
+def revision_reply(document: Any, plan: Any, *, is_deck: bool) -> str:
+    """What an edit did, ask by ask: what went (and where), the summary put in, the parts
+    rewritten by number, and what was asked but not found or not shown."""
+    from app.services import revise
+
+    unit = "장" if is_deck else "절"
+    removed, missed = list(document.removed), list(document.missed)
+    summary = getattr(plan, "summary", 0) if plan is not None else 0
+    summary = summary if summary and f"{summary}줄 요약" not in missed else 0
+    unmet_slides = {u.split()[0] for u in document.unmet}
+    touched = [i for i in dict.fromkeys(document.touched)
+               if f"{i + 1}{unit}" not in unmet_slides]
+    said = []
+    if removed:
+        said.append(removed_said(removed))
+    if summary:
+        said.append(f"맨 앞에 {summary}줄 요약을 넣었습니다.")
+    if touched:
+        said.append(_numbers(sorted(i + 1 for i in touched)) + f"{unit}을 고쳤습니다.")
+    elif not removed and not summary and not document.unmet and document.changed:
+        # by hand (a term or an order): the count is what changed
+        said.append(f"{document.changed}곳을 고쳤습니다.")
+    if missed:
+        said.append(f"{'다만 ' if said else ''}요청한 {', '.join(missed)}"
+                    f"{revise._particle(missed[-1], '은', '는')} 문서에서 찾지 못했습니다. "
+                    "다시 요청해 주세요.")
+    if failed := document.failed:
+        said.append(f"{', '.join(failed)}은 고친 글이 검사를 통과하지 못해 이전 내용을 그대로 "
+                    "두었습니다.")
+    if unmet := document.unmet:
+        # an asked change the new slides do not show is said, not passed off
+        said.append(f"다만 요청한 {', '.join(unmet)}는 반영되지 않았습니다. 다시 요청해 주세요."
+                    if said else f"요청한 {', '.join(unmet)}는 반영하지 못했습니다. "
+                    "다시 요청해 주세요.")
+    return " ".join(said)
+
+
 class ReportSave(Base):
     """Stores the report: carried parts, artifact (new version if one exists), message, bill."""
 
     name = "report-save"
     kind = "io"
-    reads = ("request", "document.sections", "usage", "wire")
+    reads = ("request", "document.sections", "usage", "wire", "material.research")
     writes = ("document.sections", "document.saved")
 
     def skip(self, bundle: Bundle) -> str:
@@ -109,6 +164,11 @@ class ReportSave(Base):
                         yield {"type": "section", "sectionId": section.get("id"),
                                "heading": section.get("heading"),
                                "content": section.get("content"), "done": True}
+        # an attached file's figures credited to it, not to a web result the writer named
+        research_found = bundle.material.research
+        sections = citations.credit_attachments(sections, sources, citations.source_texts(
+            sources, research_found.context if research_found is not None else "",
+            list(req.untrusted)))
         # references numbered by first citation; venue-as-author replaced by the work's name
         sections, sources = citations.tidy(sections, sources)
         # last pass after every repair: weekdays to the calendar, the guidance's example
@@ -320,7 +380,7 @@ class ReviseSave(Base):
         export_after = turn.get("export_after")
         is_deck = req.is_deck
         kind = ArtifactKind.deck if is_deck else ArtifactKind.report
-        parts, title, changed = bundle.document.sections, bundle.plan.title, bundle.document.changed
+        parts, title = bundle.document.sections, bundle.plan.title
         aligned_step = bundle.findings.aligned
         data = dict(bundle.document.data)
         credits = host.charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
@@ -351,10 +411,7 @@ class ReviseSave(Base):
                     data=data,
                 )
                 session.artifact_id = artifact_id
-                reply = f"{changed}곳을 고쳤습니다."
-                if missed := bundle.document.missed:
-                    reply = (f"{changed}곳을 고쳤지만 요청한 {', '.join(missed)}은 문서에서 "
-                             "찾지 못했습니다. 다시 요청해 주세요.")
+                reply = revision_reply(bundle.document, bundle.plan.revision, is_deck=is_deck)
                 if note := rerun_note(turn):
                     reply = f"{note} {reply}"
                 handed = None
@@ -411,5 +468,5 @@ def _written_note(count: int, title_block: dict | None) -> str:
     return f"{count}개 절로 {genre} 작성을 마쳤습니다."
 
 
-__all__ = ["rerun_note"]
+__all__ = ["removed_said", "rerun_note", "revision_reply"]
 

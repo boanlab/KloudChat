@@ -55,6 +55,11 @@ def _stopped(bundle: Bundle, text: str = "", *, error: str = "") -> list[dict]:
     return events
 
 
+def _listed(names: list[str], closed: str, opened: str) -> str:
+    """「표 5, 그림 3은」: names joined, the particle after the last read aloud."""
+    return ", ".join(names) + revise._particle(names[-1] if names else "", closed, opened)
+
+
 def _typed(bundle: Bundle) -> str:
     """The instruction as the rewrite reads it: minus what route did by hand (a title)."""
     plan = bundle.plan.revision
@@ -92,6 +97,20 @@ def strings(value: Any) -> list[str]:
     if isinstance(value, list):
         return [s for v in value for s in strings(v)]
     return []
+
+
+def _policy_marked(body: str, request: str, material: list[str], data: dict) -> str:
+    """`body` with 「(확인 필요)」 on what states a limit, approval, rule or weekday no
+    material does."""
+    from app.services import stated_days, stated_policy
+
+    given = "\n".join([request, *material])
+    quotes = "\n".join(str(src.get("quote") or "") for src in data.get("sources") or [])
+    for piece in stated_policy.pieces(body):
+        if said := (stated_policy.untraced(piece, given, quotes)
+                    or stated_days.untraced(piece, given)):
+            body = stated_policy.mark(body, piece, said)
+    return body
 
 
 class Route(Base):
@@ -158,6 +177,70 @@ class Route(Base):
         elif typed:
             yield {"type": "step", "id": "route", "label": "무엇을 고칠지 보는 중",
                    "status": "running"}
+        removals = (revise.numbered_removals(typed) if typed and not is_deck and swap is None
+                    and reorder is None else [])
+        if removals:
+            # 「표 2와 그림 1은 빼고」: those blocks and the prose citing them, by hand
+            before = [str(p.get("content") or "") for p in parts]
+            parts, taken, absent = revise.drop_numbered(parts, removals)
+            doc.removed += taken
+            doc.missed += absent
+            changed += len(taken)
+            rest = revise.without_numbered_removals(typed)
+            yield {"type": "step", "id": "route", "status": "done" if taken else "error",
+                   "label": "빼는 중: " + ", ".join(f"{k} {n}" for k, n in removals)}
+            for i, part in enumerate(parts):
+                if str(part.get("content") or "") != before[i]:
+                    yield _part_event(part, False)
+            if not changed and not rest:
+                doc.sections = parts
+                for event in _stopped(bundle, f"요청한 {_listed(absent, '은', '는')} 문서에서 "
+                                              "찾지 못해 바꾼 것이 없습니다."):
+                    yield event
+                raise Stop("nothing numbered to remove")
+            if rest != typed:
+                if plan is not None:
+                    # the planner read the whole sentence; the rest is planned again
+                    bundle.usage["inputTokens"] += plan.usage["inputTokens"]
+                    bundle.usage["outputTokens"] += plan.usage["outputTokens"]
+                typed = rest
+                plan = None if typed else revise.Plan(scope="parts", targets=[], note=", ".join(
+                    taken))
+                if typed and (asks := revise.section_asks(
+                        typed, names, [str(p.get("content") or "") for p in parts])):
+                    plan = revise.Plan(scope="parts", targets=sorted(asks[0]), note=typed,
+                                       clauses=asks[0], summary=asks[1])
+        visual = (is_deck and swap is None and reorder is None
+                  and not (plan is not None and (plan.inserts or plan.restructures))
+                  and (revise.only_removes_picture(typed) or revise.only_removes_chart(typed)))
+        if visual:
+            # 「그림 빼줘」 / 「차트 빼줘」: the slides that carry one, by hand, whatever the
+            # planner guessed
+            chart = revise.only_removes_chart(typed)
+            named = revise.named_slides(typed)
+            within = [i for i in range(len(parts)) if not named or i + 1 in named]
+            carrying = [i for i in within if (deck_service.chart_of(parts[i]) if chart
+                                              else deck_service.picture_of(parts[i]))]
+            if not carrying:
+                where = ("·".join(f"{n}장" for n in sorted(named)) + "에는" if named
+                         else "슬라이드에")
+                said = f"{where} 뺄 {'차트가' if chart else '그림이'} 없어 바꾼 것이 없습니다."
+                charts = [] if chart else [i for i in within if deck_service.chart_of(parts[i])]
+                if charts:
+                    # a chart may be what 「그림」 means: asked, not guessed
+                    said += (" 차트는 " + ", ".join(
+                        f"{i + 1}장 「{parts[i].get('title') or ''}」" for i in charts)
+                        + f"에 있습니다. 차트를 빼려면 「{charts[0] + 1}장 차트 빼줘」처럼 "
+                        "알려 주세요.")
+                yield {"type": "step", "id": "route", "status": "done",
+                       "label": "뺄 차트 없음" if chart else "뺄 그림 없음"}
+                for event in _stopped(bundle, said):
+                    yield event
+                raise Stop("nothing to remove")
+            if plan is not None:
+                bundle.usage["inputTokens"] += plan.usage["inputTokens"]
+                bundle.usage["outputTokens"] += plan.usage["outputTokens"]
+            plan = revise.Plan(scope="parts", targets=carrying, note=typed)
         plan = plan or await revise.plan(
             message=typed, title=bundle.plan.title, parts=names,
             model=req.outline_model or req.model, api_key=req.api_key,
@@ -168,6 +251,13 @@ class Route(Base):
             # a table edit goes where that table is, whatever the planner guessed
             plan = revise.table_target(plan, names, [str(p.get("content") or "") for p in parts],
                                        typed)
+            asks = (revise.section_asks(typed, names, [str(p.get("content") or "") for p in parts])
+                    if plan.scope in ("parts", "whole") else None)
+            if asks is not None:
+                # every ask names its part: those parts only, each with its own asks
+                plan = revise.Plan(scope="parts", targets=sorted(asks[0]), note=plan.note,
+                                   usage=plan.usage, typed=plan.typed, clauses=asks[0],
+                                   summary=asks[1])
         bundle.usage["inputTokens"] += plan.usage["inputTokens"]
         bundle.usage["outputTokens"] += plan.usage["outputTokens"]
         if plan.inserts:
@@ -225,8 +315,13 @@ class Widen(Base):
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, doc = _report(), bundle.request, bundle.document
-        bundle.plan.order = list(bundle.plan.revision.targets)
+        plan = bundle.plan.revision
+        bundle.plan.order = list(plan.targets)
         typed = _typed(bundle)
+        if plan.clauses:
+            # asks that each name their part: only one stating a new value reaches others
+            typed = " ".join(c for asks in plan.clauses.values() for c in asks
+                             if consistency._STATED_VALUE.search(c) and not revise.rewords(c))
         if doc.by_hand or req.is_deck or not consistency.changes_content(typed):
             return
         names = _names(bundle)
@@ -263,7 +358,7 @@ class Rewrite(Base):
     name = "revise-rewrite"
     kind = "model"
     reads = ("request", "document", "material.parts", "computed.prepass", "plan")
-    writes = ("document.sections", "document.changed", "document.missed")
+    writes = ("document.sections", "document.changed", "document.missed", "document.failed")
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, doc = _report(), bundle.request, bundle.document
@@ -273,84 +368,162 @@ class Rewrite(Base):
         names, widened = _names(bundle), bundle.plan.widened
         settled_blocks = consistency.blocks_for_rewrite(bundle.computed.prepass)
         doc_format = bundle.spec.format_id
+        #: a part whose rewrite came back empty, unparsable or as talk
+        unreadable = False
         for index in bundle.plan.order:
             part = parts[index]
             label = names[index] or f"{index + 1}"
+            # this part's own asks; an asked summary is written by code after the loop
+            asks = [c for c in plan.clauses.get(index, []) if not revise.summary_lines_asked(c)]
+            if not is_deck and plan.clauses and not asks and index not in widened:
+                continue
             yield {"type": "step", "id": f"r{index}", "label": label, "status": "running"}
             try:
                 if is_deck:
+                    # a many-slide instruction: each slide reads its own ask (「3장을 표로…
+                    # 8장 그림은 빼줘」 does not turn 8장 into a table)
+                    asked = revise.slide_clause(instruction, index)
+                    taken = []
+                    if revise.removes_picture(asked) and (what := deck_service.picture_of(part)):
+                        part = parts[index] = deck_service.without_picture(part)
+                        taken.append(what)
+                    if revise.removes_chart(asked) and deck_service.chart_of(part):
+                        part = parts[index] = deck_service.without_chart(part)
+                        taken.append("차트")
+                    doc.removed += [f"{index + 1}장의 {what}" for what in taken]
+                    if taken and (revise.only_removes_picture(asked)
+                                  or revise.only_removes_chart(asked)):
+                        # by hand: nothing else to write
+                        yield {"type": "slide", "slide": part, "done": True}
+                        doc.changed += 1
+                        yield {"type": "step", "id": f"r{index}", "label": label,
+                               "status": "done"}
+                        continue
+                if is_deck and deck_service.asks_slide_figure(asked):
+                    # 「구조도로 바꿔 줘」: the slide drawn as that diagram, not rewritten as words
+                    written, spent = await deck_service.figure_slide(
+                        request=request,
+                        slides=parts,
+                        target_id=str(part.get("id") or ""),
+                        instruction=asked,
+                        model=req.model,
+                        api_key=req.api_key,
+                    )
+                    parts[index] = written
+                    yield {"type": "slide", "slide": written, "done": True}
+                elif is_deck:
                     written, spent = await deck_service.rewrite_slide(
                         request=request,
                         slides=parts,
                         target_id=str(part.get("id") or ""),
                         model=req.model,
                         api_key=req.api_key,
-                        note=plan.note,
+                        note=plan.note if asked == instruction else asked,
                         material=material,
-                        typed=instruction,
-                        notes_only=revise.notes_only(instruction),
+                        typed=asked,
+                        notes_only=revise.notes_only(asked),
                     )
                     if revise.meta_talk(" ".join(strings(written))):
                         raise ValueError("본문 대신 대화 답이 나옴")
+                    if isinstance(written.get("notes"), str):
+                        # what the speaker says, not how the writer made it; nothing the slide
+                        # shows said to be absent
+                        written["notes"] = deck_service.notes_agree(
+                            written, internal_words.strip_work_sentences(written["notes"]))
                     parts[index] = written
                     yield {"type": "slide", "slide": written, "done": True}
                 else:
-                    body, spent = await report.rewrite_section(
-                        request=request,
-                        heading=label,
-                        sections=richtext.normalise(parts),
-                        target_id=str(part.get("id") or ""),
-                        model=req.model,
-                        api_key=req.api_key,
-                        # planner paraphrase + typed words, so dropped details still land
-                        note=(
-                            consistency.dependent_note(instruction)
-                            if index in widened
-                            else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
-                            f"{(plan.typed or instruction).strip()[:400]}"
-                        ),
-                        sources=list(data.get("sources") or []),
-                        material=[*material, *settled_blocks],
-                        doc_format=doc_format,
+                    before = str(part.get("content") or "")
+                    spent = {"inputTokens": 0, "outputTokens": 0}
+                    rejected = ""
+                    note = (
+                        consistency.dependent_note(instruction)
+                        if index in widened
+                        else "Change only what the request below asks of this section; leave "
+                        "every other sentence, table and figure of it as written.\n"
+                        f"사용자가 이 절에 요청한 것(그대로 반영): {' / '.join(asks)}"
+                        if asks
+                        else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
+                        f"{(plan.typed or instruction).strip()[:400]}"
                     )
-                    if not body.strip():
-                        raise ValueError("빈 결과")
-                    if revise.meta_talk(body) or report.error_text(body, request):
-                        # reply to the person or an error message, not a part: keep the part
-                        raise ValueError("본문 대신 대화 답이 나옴")
-                    # existing figure kept unless redrawn or removal asked
-                    body = revise.keep_figure(str(part.get("content") or ""), body, instruction)
-                    body = richtext.detach_tables(body)
-                    # arithmetic checked, not trusted
-                    body = report.trim_table_echo(
-                        report.drop_kpi(
-                            report.fix_point_units(
-                                report.undouble_words(
-                                    report.fix_percent_formulas(
-                                        report.fix_ledger_magnitudes(
-                                            report.fix_products(body), request
+                    for _attempt in range(2):
+                        body, used = await report.rewrite_section(
+                            request=request,
+                            heading=label,
+                            sections=richtext.normalise(parts),
+                            target_id=str(part.get("id") or ""),
+                            model=req.model,
+                            api_key=req.api_key,
+                            # planner paraphrase + typed words, so dropped details still land
+                            note=note + (
+                                f"\nThe last version of this section was rejected: {rejected}. "
+                                "Write only the section's text for its reader: no plan of the "
+                                "rewrite, no notes on how it is written, no instructions."
+                                if rejected else ""),
+                            sources=list(data.get("sources") or []),
+                            material=[*material, *settled_blocks],
+                            doc_format=doc_format,
+                        )
+                        for key in spent:
+                            spent[key] += used[key]
+                        if not body.strip():
+                            raise ValueError("빈 결과")
+                        if revise.meta_talk(body) or report.error_text(body, request):
+                            # reply to the person or an error message, not a part: keep it
+                            raise ValueError("본문 대신 대화 답이 나옴")
+                        # existing figure kept unless redrawn or removal asked
+                        body = revise.keep_figure(before, body, instruction)
+                        body = richtext.detach_tables(body)
+                        # arithmetic checked, not trusted
+                        body = report.trim_table_echo(
+                            report.drop_kpi(
+                                report.fix_point_units(
+                                    report.undouble_words(
+                                        report.fix_percent_formulas(
+                                            report.fix_ledger_magnitudes(
+                                                report.fix_products(body), request
+                                            )
                                         )
                                     )
                                 )
                             )
                         )
-                    )
-                    # no repeats of earlier sections, except requested additions
-                    if not re.search(r"추가|넣어|덧붙|더\s*써|보태", instruction):
-                        earlier = [
-                            re.sub(r"<[^<>]{0,2000}>", " ", str(p.get("content") or ""))
-                            for p in parts[:index]
-                            if not is_deck
-                        ]
-                        gaejo = any(
-                            f.id == (data.get("titleBlock") or {}).get("format")
-                            and f.lists == "gaejo"
-                            for f in doc_formats.FORMATS
-                        )
-                        body = report.trim_restatements(
-                            body, earlier, keep_items=gaejo,
-                            question=bool(report.QUESTION_HEADING.search(label)))[0]
+                        # no repeats of earlier sections, except requested additions
+                        if not re.search(r"추가|넣어|덧붙|더\s*써|보태", instruction):
+                            earlier = [
+                                re.sub(r"<[^<>]{0,2000}>", " ", str(p.get("content") or ""))
+                                for p in parts[:index]
+                                if not is_deck
+                            ]
+                            gaejo = any(
+                                f.id == (data.get("titleBlock") or {}).get("format")
+                                and f.lists == "gaejo"
+                                for f in doc_formats.FORMATS
+                            )
+                            body = report.trim_restatements(
+                                body, earlier, keep_items=gaejo,
+                                question=bool(report.QUESTION_HEADING.search(label)))[0]
+                        # the writer's plan and notes, not the text; spacing as written
+                        noted = internal_words.strip_work_notes(body, request=request,
+                                                                document=True)
+                        if noted.strip() and re.sub(r"\s", "", noted) != re.sub(r"\s", "", body):
+                            body = noted
+                        # a P0 the rewrite brought in: sent back once, then the part stays
+                        faults = revise.new_faults(before, body, heading=label,
+                                                   instruction=instruction)
+                        if not faults:
+                            break
+                        rejected = " / ".join(faults)[:400]
+                        log.warning("revision of %r failed the checks: %s", logs.safe(label),
+                                    logs.safe(rejected))
+                    if faults:
+                        bundle.usage["inputTokens"] += spent["inputTokens"]
+                        bundle.usage["outputTokens"] += spent["outputTokens"]
+                        doc.failed.append(label)
+                        raise ValueError(f"검사를 통과하지 못함: {rejected}")
                     body = internal_words.scrub(body)
+                    # a limit, approval or rule the material only asks about: marked
+                    body = _policy_marked(body, request, material, data)
                     # a part's own rename only; the document's title was set by route
                     rename = revise.title_rename(instruction, names)
                     renamed = (rename[0] if rename is not None and index not in widened and (
@@ -375,22 +548,82 @@ class Rewrite(Base):
                     }
             except Exception as exc:  # noqa: BLE001 — one bad part is not a failed turn
                 log.warning("revision of %r failed: %s", logs.safe(label), logs.safe(exc))
+                unreadable = True
                 yield {"type": "step", "id": f"r{index}", "label": label, "status": "error"}
                 continue
             bundle.usage["inputTokens"] += spent["inputTokens"]
             bundle.usage["outputTokens"] += spent["outputTokens"]
             doc.changed += 1
+            doc.touched.append(index)
             yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
+        if not is_deck and plan.summary and parts:
+            # the asked summary: its lines by the model, the block and its place by code
+            yield {"type": "step", "id": "summary", "label": f"{plan.summary}줄 요약",
+                   "status": "running"}
+            block = await _summary(bundle, plan.summary)
+            if block is not None:
+                first = str(parts[0].get("content") or "")
+                # an earlier 「핵심」 block replaced, not stacked
+                first = re.sub(r"^\s*```callout\n핵심\n[\s\S]*?\n```\s*", "", first)
+                parts[0] = {**parts[0], "content": f"{block}\n\n{first.lstrip()}",
+                            "format": "markdown", "status": "done"}
+                parts[0].pop("factCheck", None)
+                yield {"type": "section", "sectionId": parts[0].get("id"),
+                       "heading": names[0], "content": parts[0]["content"], "done": True}
+                doc.changed += 1
+            yield {"type": "step", "id": "summary", "label": f"{plan.summary}줄 요약",
+                   "status": "done" if block is not None else "error"}
+        if is_deck:
+            # said only when the slide as drawn shows it (a table, the picture gone)
+            doc.unmet = [f"{i + 1}장 {what}" for i in bundle.plan.order if i < len(parts)
+                         for what in deck_service.unmet_asks(
+                             parts[i], revise.slide_clause(instruction, i))]
         if not doc.changed:
-            for event in _stopped(bundle, error="고치지 못했습니다."):
+            said = ("고친 글이 검사를 통과하지 못해 이전 버전을 그대로 두었습니다. "
+                    "다시 요청해 주세요." if doc.failed
+                    else "모델이 보낸 답을 읽지 못해 고치지 못했습니다. 다시 요청해 주세요."
+                    if unreadable else "고치지 못했습니다. 다시 요청해 주세요.")
+            for event in _stopped(bundle, error=said):
                 yield event
             raise Stop("nothing changed")
         for event in _tidy_tables(bundle):
             yield event
         if not is_deck:
             # said only when the asked table shape is really there
-            doc.missed = revise.missing_shapes(
+            doc.missed += revise.missing_shapes(
                 _typed(bundle), [str(p.get("content") or "") for p in doc.sections])
+            if plan.summary and not _summary_made(doc.sections):
+                doc.missed.append(f"{plan.summary}줄 요약")
+
+
+def _summary_made(parts: list[dict]) -> bool:
+    return bool(parts) and str(parts[0].get("content") or "").startswith("```callout\n핵심\n")
+
+
+async def _summary(bundle: Bundle, lines: int) -> str | None:
+    """The summary asked at the document's start, `lines` lines; None when it did not come."""
+    report, req, doc = _report(), bundle.request, bundle.document
+    document = "\n\n".join(
+        f"## {p.get('heading') or ''}\n"
+        + re.sub(r"!\[[^\]]*\]\([^)]*\)|```callout\n핵심\n[\s\S]*?\n```", "",
+                 str(p.get("content") or ""))
+        for p in doc.sections)[:8000]
+    head = doc.data.get("titleBlock") or {}
+    fields = [str(f[1]) for f in head.get("fields") or [] if isinstance(f, list) and len(f) > 1]
+    try:
+        text, used = await report._complete(
+            req.model,
+            [{"role": "user", "content": revise.SUMMARY_PROMPT.format(
+                n=lines, title=bundle.plan.title, document=document)}],
+            req.api_key,
+            600,
+        )
+    except Exception as exc:  # noqa: BLE001 — the rest of the edit stands
+        log.warning("summary for the edit failed: %s", logs.safe(exc))
+        return None
+    bundle.usage["inputTokens"] += used.get("inputTokens", 0)
+    bundle.usage["outputTokens"] += used.get("outputTokens", 0)
+    return revise.summary_block(text, lines, bundle.plan.title, fields)
 
 
 class Consistency(Base):

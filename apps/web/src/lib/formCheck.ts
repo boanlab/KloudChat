@@ -18,6 +18,14 @@ export function objectParticle(word: string): string {
   return shut === null ? '을(를)' : shut ? '을' : '를'
 }
 
+/** `으로` or `로` after `word` (`로` after ㄹ too). */
+export function directionParticle(word: string): string {
+  const shut = closes(word)
+  if (shut === null) return '(으)로'
+  const code = word.trim().charCodeAt(word.trim().length - 1) - 0xac00
+  return shut && code % 28 !== 8 ? '으로' : '로'
+}
+
 /** `은` or `는` after `word`. */
 export function topicParticle(word: string): string {
   const shut = closes(word)

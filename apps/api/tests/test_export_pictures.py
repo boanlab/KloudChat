@@ -369,3 +369,21 @@ def test_cards_under_a_figure_keep_every_word_in_the_deck_pdf():
     text = re.sub(r"\s+", "", "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages))
     for _, sentence in cards:
         assert re.sub(r"\s+", "", sentence) in text
+
+
+@pytest.mark.parametrize("layout", ["statement", "quote"])
+def test_a_picture_never_covers_words_centred_across_the_slide(layout):
+    """Statement and quote words span the slide; a picture there is left out, as on the web."""
+    slide = {
+        "layout": layout,
+        "title": "예산 1.5억 승인 요청",
+        "body": "영남 물류 인프라 강화 및 운영 안정화",
+        "image": {"src": f"data:image/png;base64,{_PNG}", "caption": "다리 보수"},
+    }
+    archive = zipfile.ZipFile(io.BytesIO(deck_export.to_pptx("t", [slide], tokens=TOKENS)))
+    assert not [name for name in archive.namelist() if name.startswith("ppt/media/")]
+    with_picture = deck_export.to_pdf("t", [slide], tokens=TOKENS)
+    bare = deck_export.to_pdf(
+        "t", [{k: v for k, v in slide.items() if k != "image"}], tokens=TOKENS
+    )
+    assert with_picture.count(b"/Image") == bare.count(b"/Image")

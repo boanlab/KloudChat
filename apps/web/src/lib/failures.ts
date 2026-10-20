@@ -27,6 +27,10 @@ const REFUSALS: Record<string, string> = {
   model_unavailable: '이 모델은 지금 이 화면에서 쓸 수 없습니다. 모델을 바꿔 다시 시도하세요.',
   model_not_allowed: '이 계정에 허용되지 않은 모델입니다. 모델을 바꿔 다시 시도하세요.',
   no_models_available: '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.',
+  default_image_model_unset:
+    '그림 기본 모델이 정해지지 않았습니다. 모델을 직접 고르거나, 관리자가 설정 › 모델에서 그림 기본 모델을 고르면 쓸 수 있습니다.',
+  default_audio_model_unset:
+    '오디오 기본 모델이 정해지지 않았습니다. 모델을 직접 고르거나, 관리자가 설정 › 모델에서 오디오 기본 모델을 고르면 쓸 수 있습니다.',
   internal_data_requires_strict_local:
     '내부 자료나 개인정보가 있어 strict-local 모델로만 만들 수 있는데, 쓸 수 있는 strict-local 모델이 없습니다. 관리자에게 문의하세요.',
   factcheck_needs_web:

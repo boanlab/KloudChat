@@ -131,7 +131,10 @@ export function ModelPicker({
     !session && kind === 'av' && (modality === 'audio' || modality === 'video')
       ? avModelByMode[modality] || effectiveModelId(session, kind, agents, modelByKind)
       : effectiveModelId(session, kind, agents, modelByKind)
-  const active = usable.find((m) => m.id === currentId) ?? usable[0]
+  const current = usable.find((m) => m.id === currentId)
+  const active = current ?? usable[0]
+  // A picture or av surface without the admin's default: none chosen, said so (never the first or cheapest).
+  const noDefault = !current && (kind === 'image' || kind === 'av')
   const autoLane = kind === 'chat' && session?.routingMode !== 'manual'
     ? session?.routingMode
     : undefined
@@ -167,7 +170,11 @@ export function ModelPicker({
       </span>
     )
   }
-  const modelLabel = unresolvedAgentModel ? t('Agent 기본 모델') : active.label
+  const modelLabel = unresolvedAgentModel
+    ? t('Agent 기본 모델')
+    : noDefault
+      ? t('기본 모델 없음 · 모델 고르기')
+      : active.label
   const triggerText = autoActive
     ? `${autoLane === 'auto_quality' ? t('Auto · 품질 우선') : t('Auto · 비용 절약')} · ${modelLabel}`
     : modelLabel
@@ -210,7 +217,7 @@ export function ModelPicker({
               <span className="hidden min-w-[120px] truncate phone:inline">
                 {autoActive
                   ? `Auto · ${unresolvedAgentModel ? modelLabel : phoneModelLabel(active, t)}`
-                  : unresolvedAgentModel
+                  : unresolvedAgentModel || noDefault
                     ? modelLabel
                     : phoneModelLabel(active, t)}
               </span>
@@ -223,7 +230,7 @@ export function ModelPicker({
       <ModelMenu
         usable={usable}
         active={active}
-        unresolvedAgentModel={unresolvedAgentModel}
+        unresolvedAgentModel={unresolvedAgentModel || noDefault}
         autoLane={autoLane}
         autoRouting={autoRouting}
         showAuto={canRouteAuto}

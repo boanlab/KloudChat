@@ -13,6 +13,7 @@ import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
 import { Badge, Button, LoadingState } from '@/components/ui'
 import { agentKinds, kindMeta } from '@/lib/kinds'
+import { directionParticle } from '@/lib/formCheck'
 import { templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { startFailure } from '@/lib/failures'
@@ -198,7 +199,7 @@ function AgentSurfaces({
         const name =
           template && template.surface === k
             ? t('{name} 만들기').replace('{name}', templateText(template, currentLang() === 'en').name)
-            : t('{kind}로 시작').replace('{kind}', t(kindMeta[k].label))
+            : t('{kind}{로} 시작').replace('{kind}', t(kindMeta[k].label)).replace('{로}', directionParticle(kindMeta[k].label))
         return (
           <Button
             key={k}

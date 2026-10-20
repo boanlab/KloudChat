@@ -452,13 +452,28 @@ async def _drop(db: DbSession, row: UserPipeline) -> None:
 @router.put("/agents/{agent_id}/process")
 async def put_process(agent_id: str, payload: ProcessIn, user: CurrentUser, db: DbSession):
     """Agent 진행 과정 in one transaction: base, compiled 묶음, or 직접 구성."""
-    from app.models.user import UserRole
-
     agent = await db.get(Agent, agent_id)
     if agent is None or agent.owner_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     if agent.retired:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="agent_retired")
+    warnings = await apply_process(db, user, agent, payload)
+    await db.commit()
+    await db.refresh(agent)
+    return {**await process_out(db, user, agent), "warnings": warnings,
+            "agent": {"surface": agent.surface, "kinds": list(agent.kinds or []),
+                      "docFormat": agent.doc_format, "renderTemplateId": agent.render_template_id,
+                      "baseKey": agent.base_key, "pipelineId": agent.pipeline_id,
+                      "checkSkills": list(agent.check_skills or []),
+                      "checkOptions": dict(agent.check_options or {}),
+                      "bundles": agent.bundles}}
+
+
+async def apply_process(db: DbSession, user: User, agent: Agent,
+                        payload: ProcessIn) -> list[dict]:
+    """Agent 진행 과정 onto `agent`, uncommitted (a new agent's save commits both); warnings."""
+    from app.models.user import UserRole
+
     if payload.mode not in bases.MODES:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail="process_mode_unknown")
@@ -571,15 +586,7 @@ async def put_process(agent_id: str, payload: ProcessIn, user: CurrentUser, db: 
         agent.pipeline_id = own.id
     agent.updated_at = utcnow()
     db.add(agent)
-    await db.commit()
-    await db.refresh(agent)
-    return {**await process_out(db, user, agent), "warnings": warnings,
-            "agent": {"surface": agent.surface, "kinds": list(agent.kinds or []),
-                      "docFormat": agent.doc_format, "renderTemplateId": agent.render_template_id,
-                      "baseKey": agent.base_key, "pipelineId": agent.pipeline_id,
-                      "checkSkills": list(agent.check_skills or []),
-                      "checkOptions": dict(agent.check_options or {}),
-                      "bundles": agent.bundles}}
+    return warnings
 
 
 async def runs_for_others(db: DbSession, agent: Agent, row: UserPipeline) -> bool:

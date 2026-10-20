@@ -22,10 +22,28 @@ import { rehypePlaceholders } from '@/lib/placeholders'
 const EMBEDDED_PICTURE =
   /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/i
 
+// `![alt](data:…)`, closed or cut off at the line end.
+const WRITTEN_PICTURE = /!\[([^\]\n]*)\]\((data:[^)\n]*)\)?/g
+
+/** A written-out `data:` picture that is not an embedded raster becomes its alt in italics, never base64 text. */
+function withoutBrokenPictures(text: string): string {
+  return text
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part.replace(WRITTEN_PICTURE, (whole, alt: string, url: string) =>
+            whole.endsWith(')') && EMBEDDED_PICTURE.test(url) ? whole : alt.trim() ? `*${alt.trim()}*` : '',
+          ),
+    )
+    .join('')
+}
+
 /** An inline picture that opens full-size on click; Escape or a click outside closes it. */
 function ZoomableImage({ src, alt }: { src: string | undefined; alt: string }) {
   const t = useT()
   const [open, setOpen] = useState(false)
+  const [broken, setBroken] = useState(false)
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -34,6 +52,8 @@ function ZoomableImage({ src, alt }: { src: string | undefined; alt: string }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
+  // undecodable picture: its alt only
+  if (broken || !src) return alt ? <em className="text-muted">{alt}</em> : null
   return (
     <span className="my-3 block">
       <button
@@ -42,7 +62,7 @@ function ZoomableImage({ src, alt }: { src: string | undefined; alt: string }) {
         aria-label={t('그림 크게 보기')}
         className="block max-w-full cursor-zoom-in rounded-card border border-line"
       >
-        <img src={src} alt={alt} className="block h-auto max-w-full rounded-card" />
+        <img src={src} alt={alt} onError={() => setBroken(true)} className="block h-auto max-w-full rounded-card" />
       </button>
       {alt ? <span className="mt-1.5 block text-center text-base text-muted">{alt}</span> : null}
       {open && (
@@ -244,7 +264,7 @@ export function MarkdownBody({
   className?: string
   owner?: DiagramOwner
 }) {
-  const source = useMemo(() => detachTables(normaliseMath(children)), [children])
+  const source = useMemo(() => detachTables(normaliseMath(withoutBrokenPictures(children))), [children])
   return (
     <div
       className={cn(

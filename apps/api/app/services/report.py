@@ -608,7 +608,9 @@ def _genre_rule(request: str, fmt: doc_formats.DocFormat | None = None,
     # ask's first paragraph first: memo lines don't change the genre
     for instruction in dict.fromkeys((lead_instruction(request), instruction_part(request))):
         for pattern, rule, unless in _GENRES:
-            if pattern.search(instruction) and not (unless and unless.search(instruction)):
+            # what the ask is for: 「회의록 서비스 시장 조사」 is no 회의록
+            if doc_formats.asked(pattern, instruction) and not (
+                    unless and unless.search(instruction)):
                 # the request's own parts come first (no genre closing 「시행일·문의처」
                 # over a report that names its sections)
                 return f"{rule} {GENRE_YIELD}" if asked_form.asked(request) else rule
@@ -1354,8 +1356,8 @@ _subject_missing = grounding.subject_missing
 _RESULTS = re.compile(r"결과|시험|실험|측정|캡스톤|제안서|설계 변경|기획서|연구 ?계획")
 #: web-sourced documents needing a search
 _FROM_THE_WEB = re.compile(
-    r"동향|조사해|문헌|선행 ?연구|최근 (?:\d+ ?년|연구)|연구를 정리|현황을 조사|비교표|인용|"
-    r"참고문헌|시카고|APA|출처를"
+    r"동향|조사해|시장 ?조사|최신 ?자료|문헌|선행 ?연구|최근 (?:\d+ ?년|연구)|연구를 정리|"
+    r"현황을 조사|비교표|인용|참고문헌|시카고|APA|출처를"
 )
 
 
@@ -1363,6 +1365,9 @@ def _from_the_web(request: str) -> bool:
     return bool(_FROM_THE_WEB.search(request))
 
 
+#: words pointing at an upload: 「첨부 파일의」, 「표를 붙여」, 「학위논문 3장」
+_UPLOAD = re.compile(
+    r"파일|첨부|학위논문|논문 ?\d+ ?장|(?:표|자료)를 (?:붙|드립|줍|보냅|첨부)")
 #: words pointing at unattached material
 _MATERIAL = re.compile(
     r"녹취|녹음|피드백|기록을|표가 있|파일|첨부|메모를|학위논문|논문 ?\d+ ?장"
@@ -1745,7 +1750,7 @@ _QUALITY_LABELS = {
     "cut_table_row": "잘린 표 행", "table_rows": "빠진 표 행·합계와 다른 행",
     "carried_number_changed": "자료와 자릿수가 다른 수치",
     "formula_unit_slip": "단위가 어긋난 계산식",
-    "picture_in_code": "코드 블록 속 그림",
+    "picture_in_code": "코드 블록 속 그림", "table_in_code": "코드 블록 속 표",
     "settled_figure_changed": "정해진 수치와 다른 값",
     "fact": "웹 자료와 다른 주장(확인 필요)",
     "question": "평가 문항 검토 필요",
@@ -2698,8 +2703,10 @@ def unfence_pictures(body: str) -> str:
             continue
         inner = lines[i + 1:j]
         if (opening.group(1).lower() in _PROSE_FENCES
-                or any(_FIGURE_LINE.match(x.strip()) or "](data:image/" in x for x in inner)):
-            # a picture, or prose wrapped as 「```markdown」: the body itself
+                or any(_FIGURE_LINE.match(x.strip()) or "](data:image/" in x for x in inner)
+                or (not opening.group(1) and _fenced_table(inner))):
+            # a picture, prose wrapped as 「```markdown」, or a table with its caption in a
+            # bare fence: the body itself
             out.extend(inner)
         else:
             out.extend(lines[i:j + 1])
@@ -2728,6 +2735,17 @@ def error_text(body: str, request: str = "") -> bool:
     if request and len(re.findall(r"[가-힣]", request)) < len(re.findall(r"[A-Za-z]", request)):
         return False  # an English document
     return len(_ERROR_WORDS.findall(text)) >= 2
+
+
+_TABLE_RULE = re.compile(r"^\s{0,8}\|?\s{0,8}:?-{3,}:?\s{0,8}(?:\|\s{0,8}:?-{3,}:?\s{0,8}){0,40}\|?\s*$")
+
+
+def _fenced_table(inner: list[str]) -> bool:
+    """Lines of a bare fence that are only a Markdown table: its rows with a rule row, and a
+    caption (「**표 1. …**」) or blank lines around them."""
+    rows = [x.strip() for x in inner if x.strip()]
+    return (any(_TABLE_RULE.match(x) for x in rows)
+            and all(x.startswith("|") or _CAPTION_LINE.match(x) for x in rows))
 
 
 #: fence language that only wraps document prose: 「```markdown」
@@ -3235,10 +3253,12 @@ def _results_without_data(request: str, attached: list[str], *, web: bool = Fals
     research request (「…동향을 조사해서」) has its material coming."""
     if any(block.strip() for block in attached) or _carries_material(request):
         return False
+    if web and _from_the_web(request):
+        # a market or trend study searched this turn: only an upload it points at is missing
+        # (「회의 녹취 요약 서비스 시장 조사」 names 녹취 as the topic, not as material)
+        return bool(_UPLOAD.search(request))
     if _MATERIAL.search(request):
         return True
-    if web and _from_the_web(request):
-        return False
     if not _RESULTS.search(request):
         return False
     return not deck_rules.has_numbers(request, [])
@@ -3309,6 +3329,27 @@ def given_outline(request: str) -> list[str]:
     return runs[-1]
 
 
+#: 「금주 실적, 이슈, 차주 계획 순서」: an order an agent's 지시 gives its documents
+_ORDER_TAIL = re.compile(
+    r"\s{0,2}(?:의\s{0,2})?(?:순서|순|차례)(?:로|대로|으로)?"
+    r"(?:\s{0,2}(?:쓴다|씁니다|적는다|작성한다|작성|구성한다|구성|정리한다|정리|나눈다))?\s{0,2}$")
+_ORDER_LEAD = re.compile(r"^\s{0,3}(?:목차|구성|절|순서|본문)\s{0,2}(?:는|은|:|：)\s{0,3}")
+
+
+def instructed_sections(text: str) -> list[str]:
+    """Sections a standing instruction lists in order (two to twelve short items), else `[]`."""
+    for sentence in re.split(r"[.。\n]", text or ""):
+        tail = _ORDER_TAIL.search(sentence)
+        if not tail:
+            continue
+        body = _ORDER_LEAD.sub("", sentence[: tail.start()]).strip()
+        joint = r"[,，]|→|->|>" if re.search(r"[,，]|→|->|>", body) else r"[·ㆍ/]"
+        items = [" ".join(part.split()).strip(" ·") for part in re.split(joint, body)]
+        if 2 <= len(items) <= 12 and all(2 <= len(item) <= 20 for item in items):
+            return items
+    return []
+
+
 _LISTED = re.compile(r"구성(?:은|:|：)\s{0,3}([^.。\n]{6,300})")
 
 
@@ -3318,6 +3359,17 @@ def without_instruction_aside(heading: str, request: str) -> str:
     if m and m.group(2).strip() in instruction_part(request):
         return m.group(1).strip()
     return heading
+
+
+#: press-release parts the title block or the opening paragraph already are
+_PRESS_PARTS = re.compile(r"(?:제목|부제|부제목|헤드라인|리드|리드문|전문)")
+
+
+def press_headings(headings: list[str]) -> list[str]:
+    """보도자료 outline: 제목·부제 sections dropped (the title block holds them), 리드 folded into
+    the first body section; at least one section kept."""
+    kept = [h for h in headings if not _PRESS_PARTS.fullmatch(re.sub(r"\s{1,8}", "", h))]
+    return kept or ["본문"]
 
 
 def with_listed_sections(headings: list[str], request: str) -> list[str]:

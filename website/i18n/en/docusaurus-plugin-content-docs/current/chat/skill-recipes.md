@@ -20,9 +20,9 @@ Skills the administrator shares with everyone. They show under **Official skills
 | Extract and tally (자료 추출·집계) | Chat | Reads Excel and CSV with code, pulls columns, totals by item into tables and charts, and records the rows it removed or changed. |
 | Answers from regulations (규정 근거 답변) | Chat | Answers from regulations and guidelines with the article cited as [n], and points what the material does not cover to the department. |
 | YouTube transcript and summary (YouTube 영상 전사·요약) | Chat | Gets the captions (or a transcription of the audio) through the **YouTube 전사** connector and summarises from that alone. |
-| Deep research (심층 조사) | Chat | Searches the web and papers many times through the **심층 리서치** connector and sums up the sourced findings. Takes a few minutes. |
+| Deep research (심층 조사) | Chat | Searches the web and papers many times through the **심층 리서치** connector and sums up the sourced findings. Takes a few minutes. Saying 「심층 리서치로」 in the request runs the detailed mode (5–15 minutes), and the step shows which mode ran (quick or detailed). |
 | Translation (번역) | Chat, Report | Translates between Korean and English (other languages on request) without leaving anything out. Names, numbers, units, tables, lists and code stay as they are; one term stays one term throughout; only genuinely ambiguous spots get a 「번역 메모」 (translator's note). Ask for 「직역」 (literal) or 「의역」 (free), 「격식체」 (formal) or 「평어체」 (plain) and it follows. |
-| Press release (보도자료) | Chat, Report | A press release with headline, subheadline, a who-what-when-where-why lead, the body most important first, the organisation's boilerplate and contact. Quotes only words the material gives to a named person, and no figures the material does not give. Only the release date, embargo and contact are left as brackets for you to fill. Give a length (「A4 1장」, 「800자 이내」) and it keeps to it. |
+| Press release (보도자료) | Chat, Report | A press release with headline, subheadline, a who-what-when-where-why lead, the body most important first, the organisation's boilerplate and contact. Quotes only words the material gives to a named person (a name alone gets a quote draft marked 「가안」), and no figures the material does not give. Only the release date, embargo and contact are left as brackets for you to fill. Give a length (「A4 1장」, 「800자 이내」) and it keeps to it. |
 | Make an Excel file (엑셀 파일 만들기) | Chat | Turns a pasted table, an attached CSV or Excel file, or a computed table into a downloadable Excel (.xlsx) file. Total rows and columns such as totals or rates go in as formulas; on request it adds an Excel chart too. |
 | Make a chart (차트 만들기) | Chat | Draws a bar, line or stacked bar chart from a table's numbers beside the conversation. Only values in the material or computed by code. |
 
@@ -45,7 +45,7 @@ Use **개조식 보고** (「과장님께 올릴 1쪽 보고로」) and **비교
 ## Translation, press releases, Excel files and charts
 
 - **번역** (Translation): turn it on in a conversation, paste the text and send something like 「영어로, 의역, 격식체로」 (into English, free, formal). To fix terms, add them: 「용어: 학생지원팀 = Student Support Office」. To translate a whole document as a document, turn it on on the report screen; it follows the source's headings and order and adds no summary or recommendation.
-- **보도자료** (Press release): paste the event, agreement or award material and send 「보도자료로, A4 1장」. If the material has no quote, it writes no quote paragraph and says so at the end. On the report screen, say 「보도자료」 in the request and the page head gets the release date, embargo and contact fields.
+- **보도자료** (Press release): paste the event, agreement or award material and send 「보도자료로, A4 1장」. If the material has no quote, it writes no quote paragraph and says so at the end. When only a spokesperson's name is given (a CEO, say), it drafts one quote for that person from the material's purpose and plan and marks it 「(가안, 본인 확인 필요)」. On the report screen, say 「보도자료」 in the request and the page head gets the release date, embargo and contact fields.
 - **엑셀 파일 만들기** (Make an Excel file): paste a table or attach a CSV or Excel file and send 「엑셀 파일로, 합계 행과 증감률 열은 수식으로」 (as an Excel file, total row and change-rate column as formulas). The file appears under the answer as a download button. For a messy sheet, turn on **엑셀 정리** (Excel cleanup) too; for aggregates, **자료 추출·집계** (Extract and tally), and you get the computed table as a file. Code execution (the sandbox) must be on.
 - **차트 만들기** (Make a chart): paste a table and send 「지점별 월 매출을 막대 차트로」 (monthly sales by branch as a bar chart); the chart opens beside the conversation. To put the chart inside the Excel file too, turn on **엑셀 파일 만들기** as well and add 「엑셀 차트도」.
 
@@ -55,7 +55,7 @@ The **회의 안건** (Meeting agenda) template is the minutes' counterpart. On 
 
 ## Building an agent from skills
 
-In **Customize** → **Agents** → **Add** → **Create an agent**, the skills you choose under **Skills and tools** › **Skills kept on** are on in every conversation with that agent (up to six). Each skill's template, checks and missing-information questions come with it; a template or detailed settings set on the agent itself come first. **Skills you can pick in the composer** narrows what can be turned on during a conversation.
+In **Customize** → **Agents** → **Add** → **Create an agent**, the skills you choose under **Skills and tools** › **Skills kept on** are on in every conversation with that agent (up to six). The list shows your skills and the **official skills** you have not added yet; picking one adds it to your skills. Picking a skill that works only on reports or slides sets the agent's first screen to that screen. Each skill's template, checks and missing-information questions come with it; a template or detailed settings set on the agent itself come first. **Skills you can pick in the composer** narrows what can be turned on during a conversation.
 
 ## A minutes agent
 

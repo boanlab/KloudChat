@@ -297,7 +297,12 @@ scripts waits for an administrator (`/admin/skills`, **Skill review**). A person
 format needs (`[[questions]]` in `template.toml`), an agent adds its own
 (`agents.gap_questions`, the agent form; a shipped agent's come from its file). Each names
 a detector — a built-in one from `gap-check/scripts/gaps.py`, keywords, a bounded pattern,
-or the judge model, which must quote the answer from the material. A template's document format
+or the judge model, which must quote the answer from the material. Detectors read the
+request, the material and the instructions set once (account, agent, project:
+`WorkspaceContext.standing`), so an agent whose instructions say 「시설과장님께 올리는
+주간보고」 is not asked whom it reports to; the report writer also takes the head fields
+(「작성자는 「…」로 적는다」) and a section order (「금주 실적, 이슈, 차주 계획 순서」,
+`report.instructed_sections`) from those instructions. A template's document format
 (`doc_format`) and genre rule (`genre.md`) are carried by the template too. The sandbox sits in
 the self-hosted stack with networking off, so with `SANDBOX_IN_BOUNDARY` (on) both tools
 are offered to strict-local turns, and `run_code` then writes on the `strict-local/`
@@ -319,7 +324,10 @@ legal, tax, financial or medical advice; a short follow-up is read with the earl
 turns, and the model then writes the query from the conversation. Writing, translation,
 code and formulas, role-play, drafting, concept explanations and turns on the person's
 own material are left alone (`exact_facts.not_a_lookup`), and an explicit opt-out or Off
-stands. A model-written query keeps the request's named things
+stands. On Auto, a draft, edit, translation or code fix made from the person's own facts
+(`exact_facts.own_work`: no lookup word, no world value such as a rate, a price or the
+weather, no question besides the task) is not offered `web_search` at all, so the model
+cannot wander into unrelated pages; On still searches it. A model-written query keeps the request's named things
 (`query_terms.keep_entities`).
 
 **Advice answers are traced by default.** `exact_facts.advice_domain` puts the
@@ -482,6 +490,14 @@ that names its neighbour (「요청 사항 장 앞에」, "before the requests s
 (`place_insert`). The deck writer is told that every figure the person wrote
 must appear once.
 
+**Each ask goes to its part.** When every ask of a report edit names its part — by number
+(「2절의 표 2는 빼고」), by name, as a summary at the start (「맨 앞에 3줄 요약」) or by wording
+only some parts state (「…4%라는 표현은 … 고쳐줘」) — only those parts are rewritten, each
+told its own asks, and a wording fix spreads to no other part (`revise.section_asks`). An
+asked summary is written by code as the first part's 「핵심」 callout: the model gives the
+lines, and a line restating the title block (title, author, period) is left out
+(`revise.summary_block`); fewer lines than asked is said in the reply.
+
 **A term swap is done by hand.** 「문서 전체에서 「A」를 「B」로 통일해 줘」 ("use B for A throughout") is a string
 replacement across every text field (`revise.term_swap`, `replace_term`): exact,
 instant, and nothing else moves, rather than a model retyping and possibly
@@ -630,15 +646,20 @@ image model are proposed on the outline card only for illustration or real
 objects, never for structure or numbers, and a deck's structure slide is moved
 off layouts the figure planner cannot draw on (`deck.structure_as_drawable`). When an image
 model served inside the data boundary is open to the account (`dataBoundary: self_hosted`, such
-as `strict-local/z-image-turbo`), the outline card proposes no pictures: after its diagrams the
-document plans pictures on its written parts the way it plans diagrams (`services/illustrations.py`,
-at most two, none is a fine answer) and draws them with that model, a deck on text slides with no
-figure, a report appended to the part as an approved picture is. `illustrations.draw` refuses any
-model outside the boundary, and a request declining pictures (「그림 없이」) gets none.
+as `strict-local/z-image-turbo`), the outline card proposes no pictures: when the request asks for
+pictures (「삽화를 곁들여」, 「사진도 넣어」; `illustrations.wanted`), after its diagrams the document
+plans pictures on its written parts the way it plans diagrams (`services/illustrations.py`, at most
+two, none is a fine answer) and draws them with that model, a deck on bullet slides with no figure,
+a report appended to the part as an approved picture is. A request that does not ask, or declines
+pictures (「그림 없이」), gets none. `illustrations.draw` refuses any model outside the boundary.
+Statement and quote slides never carry a picture in the exports: their words span the slide.
 
 **Pictures come from the other direction.** The writing model cannot make one
 and cannot reference one — `sanitise` drops every `src` that is not already
-inside the file. What a person can do is put a picture this workspace made on
+inside the file. A Markdown section is held to the same rule: a `data:` picture
+the writer typed out that does not open as an image is dropped with its 「(그림 N)」
+mention (`pictures.drop_broken`), and the web view shows a cut-off one as its
+caption in italics, never as base64 text. What a person can do is put a picture this workspace made on
 the image surface into a block: `POST /artifacts/{id}/blocks/image` reads the
 stored blob, inlines it as a `data:` URI and re-renders the document. Raster
 only (`image/svg+xml` is a document that can carry script), capped at 3 MB
@@ -838,7 +859,9 @@ twenty-five characters, and without this its own rule would be the one rule
 nothing enforces.
 
 `P0` means the document is wrong: a placeholder nobody replaced, a block that
-never got written, a figure nobody could have sourced. `P1` means it reads
+never got written, a figure nobody could have sourced, the writer's plan or
+instructions written in place of the text (「…을 한 문장씩 압축합니다」, 「지시된
+대로 표와 그림은 배제하고」). `P1` means it reads
 badly: filler adjectives, an emoji leading a line, a line repeated from another
 section, a slide too crowded or too long to read from the back of a room. The
 numbers rule is narrow on purpose — an ordinary "12% 증가" ("12% increase") is what a report is
@@ -848,6 +871,15 @@ flagged. A check that fires on ordinary writing is one people learn to ignore.
 Nothing is corrected automatically. The panel shows a count and a list; the
 report surface already has **Rewrite just this section** for acting on it, and an HTML
 artifact has the same per-block rewrite.
+
+**A follow-up edit does not commit a new P0.** A report section rewritten by a chat
+follow-up first loses the writer's plan by code (`internal_words.strip_plan_preface`,
+then the plan sentences); a P0 the rewrite still brings in — one the section did not
+have and the person's own words do not set off (`revise.new_faults`) — is sent back to
+the writer once with the finding as the reason. If the second version fails too, the
+section stays as it was and the reply says which part was kept (all of them kept: no new
+version is stored). Markdown bold labels are not counted there: a markdown section renders
+them.
 
 ### Mechanisms by model group
 
@@ -878,7 +910,7 @@ changes what a group gets, and test both a self-hosted and a strong external wri
 | Writing rules (`prompt_tier`, `context`) | full rule bundle | full rule bundle | light: one anti-fabrication line |
 | Judge findings of skill post-checks (`post_checks.run`) | judge is the planner; a finding whose figures and names are all in the evidence is dropped; one with none is marked 「(확인 필요)」 where it stands; one with a figure or name in none of the evidence (or a script's own finding) goes to one rewrite and may come out | as self-hosted | the writer judges its own answer; dropped findings as for every group; the rest go back to it once as notes to weigh; nothing it kept is taken out |
 | Copy check claims (`copy_check.run`) | as post-checks: dropped / marked / rewritten by the same code reading; numbers, offers and lengths fixed by code | as self-hosted | notes to the writer; what it kept is marked |
-| Value marks (`value_guard`, `grounding-check/scripts/trace.py`) | marked, never cut; not marked: the person's values and the days inside a month part they give (「9월 하순」), values under a heading or bold label naming assumptions or examples, the system date on a date label (「확인일」), a time slot's own length, fractions (「10분의 1」); a value marked twice reads once | as self-hosted | as self-hosted; its own revision stands (`settle(writer=True)`) |
+| Value marks (`value_guard`, `grounding-check/scripts/trace.py`) | marked, never cut; not marked: the person's values, also in another notation (「November 3rd」 → 11월 3일, 「nine」, 「1.2 million」, a printed fraction as its percent), and the days inside a month part they give (「9월 하순」), values under a heading or bold label naming assumptions or examples, the system date on a date label (「확인일」), a time slot's own length, fractions (「10분의 1」); a value marked twice reads once | as self-hosted | as self-hosted; its own revision stands (`settle(writer=True)`) |
 | Where marks stand in a chat answer (`copy-marks`, `check_stages._advice_note`) | inline; an advice answer with more than three marks gets one 「확인 필요: …」 line, the writer's own marks included | always one 「확인 필요: …」 line at the end | inline, as self-hosted |
 | Report quality follow-through (`report_stages.Verify`, `Quality`) | a web-contradicted sentence is marked; a judged figure code still finds at odds with a settled one, and a number a judge tied to another item whose value with its unit is in none of the evidence (`bound_token`), are repaired once by the planner and marked if they stand; the step shows what a judge found, never its reasoning | as self-hosted | web contradictions, code-confirmed judged figures and code-confirmed bound numbers go back to the writer once; what stands is marked; reasoning hidden |
 | Table and figure shape after the last read (`report_stages.mend_shapes`, `table_mend`) | broken pipe tables rebuilt under one header (also while drafting, `repair_pipe_tables`), uncaptioned tables captioned, a table or figure the text never names pointed at, pipe lines no table takes written as items, a header with no rows marked; read again once and kept only when no finding is added; no model call | same | same |
@@ -892,11 +924,16 @@ changes what a group gets, and test both a self-hosted and a strong external wri
 | Written sums and chains (`units.fix_written_sums`, `fix_table_totals`, `fix_written_arithmetic`) | recomputed from the answer's own figures: 「A + B = C」 (a bold C too), a sum after its listed amounts (「A원 + B원으로 합계 N원」), a table's total row over plain rows of one unit, a wrong step of a chain and the steps that start from it; marked 「(확인 필요)」, not rewritten: a result a tool or the calculation printed, a total over subtotals, blanks or a second total that matches no reading, a sum off by 1000× or more; rates, averages, unit prices and rows of other units are not added | same | same |
 | Figures code finds off but cannot settle (`units.mark_slipped_formulas`, `mark_scaled_restatements`, `mark_profit_contradictions`) | marked where they stand, never rewritten: a product a unit off, an amount with a worked result's digits a power of ten off under the same name, a profit above what its paragraph's revenue less its named costs leaves (the arithmetic shown in the mark) | same | same |
 | Company-assumption labels (`units.label_assumptions`) | a report table row labelled 「가정(사내)」 whose figures the person never gave reads 「가정(본 검토 설정)」 | same | same |
-| Weekdays beside dates (`weekdays.fix_weekdays`; chat `answer-weekdays`, report `save_stages.last_pass`, composed `compose._last_pass`) | set to the calendar again after every stage that may rewrite; the year the task names, else the one nearest today (within 120 days), else left as written | same | same |
+| Weekdays beside dates (`weekdays.fix_weekdays`; chat `answer-weekdays`, report `save_stages.last_pass`, composed `compose._last_pass`) | set to the calendar again after every stage that may rewrite; the year the task names, else the one nearest today (within 120 days), else left as written; a weekday the person gave that the calendar contradicts (「10/21 화」 on a Wednesday) is kept and flagged 「(화, 확인 필요: 달력상 수요일)」, never picked for them | same | same |
 | Guidance echoes (`guide_echo.scrub`; chat `answer-echo`, report and composed last pass) | an example name from a skill's or template's text (「김현수 드림」) → 「[이름]」, an example full date → 「[날짜]」, a sentence repeating the guidance's own rule wording dropped — each only when the person's input, sources, tool output and today do not give it; quoted 「…」 examples, tables and fenced formats are meant to be copied and count as no echo; a person's own skill is read the same way | same | same |
-| Code-printed values (`agent.code_checked`) | a row's own printed values are kept; a mismatch is marked, never rewritten | as self-hosted | as self-hosted |
+| Code-printed values (`agent.code_checked`) | a row's own printed values, and any value of five or more digits printed in any run, are kept; a mismatch is marked, never rewritten | as self-hosted | as self-hosted |
 | Citation links (`agent._link_citations`) | a number whose page shares no word with the claim is dropped | same | same |
 | Repair replies (`verify.repair`) | only a sentence string (or `{sentence: …}`) is written into the text | same | same |
+| Limits, approvals and rules the material only asks about (`stated_policy`, `checks.stated_rules`, `report_stages.mark_policy`; revisions `revise_stages._policy_marked`) | a sentence or table row stating a limit (「허용 한도」), an approval given (「결재 완료」), an approval precondition (「승인 없이는 …않습니다」) or a rule (「규정상」) of a kind the person's material (request, files, card answers, agent instructions; not the pipeline's settled-figure block or notes) never states, or a cited source's quote for a sentence citing it, goes to one repair; what stands after it, read again over the final text whichever check found it first, is marked 「(확인 필요)」 (the sentence's end, a row's cell); a sentence asking about it (「허용 여부」, 「결재를 요청드립니다」) or setting it as a condition (「…라면」) is left alone; a revision's rewritten part is marked, not repaired | as self-hosted | as self-hosted (the writer repairs its own sentence) |
+| Weekdays the material never gives an item (`stated_days`, `checks.stated_dates`, `report_stages.mark_policy`; revisions `revise_stages._policy_marked`) | a plan-table row under a weekday cell, or a sentence's clause with 「X요일」 (not beside a date, not citing a source), whose item shares no word with any stretch of the person's material on that weekday (a 「- 금:」 line, the clause around 「금요일」 or 「(금)」) goes to one repair (drop the day, 「미정」); what stands is marked 「(확인 필요)」 | as self-hosted | as self-hosted (the writer repairs its own sentence) |
+| Report reference list (`citations.cite_order`, `same_works`, `credit_attachments`) | a citation number no listed source has is dropped from the text; one work found twice (same DOI, link or title) is listed once and its numbers merged; a Korean sentence citing a web page for figures, or for three or more Latin technical terms, only the attached file holds (none of its terms only in the cited page) cites the file | same | same |
+| Deck values (`check_stages.DeckGrounding`, `ground_slides`) | runs on the person's material, a request writing four or more figures with a measure, or a request or agent instruction forbidding figures with no basis (「근거 없는 수치」, 「세부 수치 없음」); tables and charts are traced row by row as report tables; up to four slides holding untraced values (or a chart titled by a measure it does not plot) go back to the writer once with the list, kept only with fewer; what stays untraced is marked; a chart category holding an untraced value is left out (under two points left: the values as bullets, the rest 「[수치]」) and a chart's title names its series | as self-hosted | the hand-back as self-hosted; then a chart category is marked, not cut, and the title stands |
+| Deck revisions (`revise.slide_clause`, `deck.shown_layout`, `deck.unmet_asks`) | each slide reads its own part of a many-slide instruction; a picture asked away is removed by code (no rewrite when that is all); a layout change drops the old shape's fields; the reply names an asked layout or removal the new slide does not show | same | same |
 | Deck table width (`deck._clean_rows`) | a wide, short table is transposed; else the five-column cap | same | same |
 | Skill frames and genre rules (`asked_form`, `skill_turn`, `report._genre_rule`, `skills/*/SKILL.md`) | the request's own parts, order, counts, columns and tone are the structure; a skill's frame, default count and extra tables fill only what the request leaves open | same | same |
 | Automatic web search (`report.given_material_suffices`, `routers/sessions.py`) | off on an 「자동」 turn whose given material does the job and that asks for no research or current facts; forced searches (current facts, contacts, advice) and the empty-result retry stay | same | same |
@@ -1066,13 +1103,15 @@ step** raises `Wait`: what the run spent is billed, the card (`needs`) or the ou
 next message resumes the run from that step with the answers or the approved outline.
 
 **An agent's process** (`app/services/bases.py`, `app/services/bundles.py`,
-`PUT /agents/{id}/process`). The agent form offers **How it works** — **Answer directly** (no base), **Start from a
+`PUT /agents/{id}/process`, or `process` on `POST /agents`: a new agent and its process are
+saved in one transaction, so a refused process leaves no agent). The agent form offers **How it works** — **Answer directly** (no base), **Start from a
 base process** (a **base**: an offered catalogue agent, `agents.base_key`) or **Set it up
 yourself (advanced)** (the step editor above, not offered for slides) — and **Extra work**,
 one checkbox per **bundle**.
 
 - A **base** is any offered agent file (`starter.offered_agents`; drafts for
-  administrators only). Its plain steps are its pipeline's `[summary]` lines (at most five);
+  administrators only). With none offered the form hides the choice (an agent already on a
+  withdrawn base keeps it). Its plain steps are its pipeline's `[summary]` lines (at most five);
   `sessions._agent_catalog_key` resolves `catalog_key`, then `base_key`, then the original's,
   so a person's agent with a base runs that base's question card, format, template and
   pipeline. Picking a base sets `surface`, `doc_format` and (when the agent has none that
@@ -1163,7 +1202,7 @@ rather than a value somebody saves without noticing. The prompt says to leave
 — an invented house style is worse than a blank field, because the blank one is
 obviously unfinished.
 
-Costs one call on the cheapest allowed chat model, charged like any other; an
+Costs one call on the chat default model (`models.pick_default`), charged like any other; an
 uploaded file is internal material, so it is read on a strict-local model
 (see "Other boundaries", §7).
 

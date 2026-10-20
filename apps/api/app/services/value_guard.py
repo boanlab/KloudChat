@@ -33,9 +33,11 @@ _FULL_DAY = re.compile(
 _MONTH_DAY = re.compile(
     r"(?<![\d.])(?P<m>\d{1,2})\s{0,2}월\s{0,2}(?P<d>\d{1,2})\s{0,2}일"
     rf"(?:\s{{0,2}}\(\s?[{_WD}](?:요일)?\s?\))?")
-#: 「11/4」, 「11. 4.」, 「11.4(수)」; not a version (「3.4.1」) nor a fraction run
+#: 「11/4」, 「11. 4.」, 「11.4(수)」; not a version (「3.4.1」), a fraction run nor a share
+#: (「3.5%」, 「3.2~3.5%」)
 _SHORT_DAY = re.compile(
-    rf"(?<![\d./])(?P<m>\d{{1,2}})\s{{0,1}}(?:/|\.\s{{0,1}})(?P<d>\d{{1,2}})(?![\d/]|\.\d)\.?"
+    rf"(?<![\d./])(?P<m>\d{{1,2}})\s{{0,1}}(?:/|\.\s{{0,1}})(?P<d>\d{{1,2}})(?![\d/]|\.\d)"
+    r"(?!\s?(?:%|퍼센트)|\s?[~∼〜–-]\s?\d{1,2}\.\d{1,2}\s?(?:%|퍼센트))\.?"
     rf"(?:\s{{0,2}}\(\s?[{_WD}](?:요일)?\s?\))?")
 #: 「2026. 11.」, 「2026년 11월」: a month of a year
 _YEAR_MONTH = re.compile(
@@ -142,6 +144,63 @@ def _days_in(text: str) -> list[tuple[int | None, int, int, tuple[int, int]]]:
     return out
 
 
+_EN_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august",
+              "september", "october", "november", "december")
+_EN_MONTH = (r"(?P<mon>January|February|March|April|May|June|July|August|September|October"
+             r"|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.?")
+_EN_YEAR = r"(?:,?\s(?P<y>(?:19|20)\d{2}))?"
+#: 「November 3rd」, 「Nov. 3, 2026」 / 「3rd of November」, 「3 November 2026」
+_EN_MONTH_DAY = re.compile(
+    rf"\b{_EN_MONTH}\s(?P<d>\d{{1,2}})(?:st|nd|rd|th)?(?![\d:]){_EN_YEAR}", re.I)
+_EN_DAY_MONTH = re.compile(
+    rf"(?<![\d.])(?P<d>\d{{1,2}})(?:st|nd|rd|th)?\s(?:of\s)?{_EN_MONTH}(?![a-z]){_EN_YEAR}", re.I)
+#: a month named alone (not 「may」 the verb)
+_EN_MONTH_ALONE = re.compile(
+    r"\b(?:January|February|March|April|June|July|August|September|October|November"
+    r"|December)\b")
+_EN_COUNTS = {w: n for n, w in enumerate(
+    ("two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen "
+     "sixteen seventeen eighteen nineteen twenty").split(), start=2)}
+_EN_COUNTS.update({"thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
+                   "eighty": 80, "ninety": 90, "hundred": 100})
+_EN_COUNT = re.compile(r"\b(" + "|".join(_EN_COUNTS) + r")\b", re.I)
+#: 「1.2 million」, 「$3.5bn」, 「40k」
+_EN_SCALED = re.compile(
+    r"(?<![\w.])(?P<n>\d+(?:\.\d+)?)\s?(?P<s>(?i:thousand|million|billion|trillion|bn)|[kK]|M)\b")
+_EN_SCALE = {"thousand": 1e3, "k": 1e3, "million": 1e6, "m": 1e6, "billion": 1e9, "bn": 1e9,
+             "trillion": 1e12}
+#: a share written as a fraction a tool printed (「0.034772」)
+_FRACTION = re.compile(r"(?<![\d.])0\.\d{2,}")
+
+
+def _month_of(name: str) -> int:
+    name = name.lower().rstrip(".")
+    return next(i for i, full in enumerate(_EN_MONTHS, start=1) if full.startswith(name[:3]))
+
+
+def _english_days(text: str) -> list[tuple[int | None, int, int]]:
+    """Days written in English (「November 3rd」), the person's own a translation gives back."""
+    out = []
+    for pattern in (_EN_MONTH_DAY, _EN_DAY_MONTH):
+        for m in pattern.finditer(text or ""):
+            d = int(m.group("d"))
+            if 1 <= d <= 31:
+                out.append((int(m.group("y")) if m.group("y") else None,
+                            _month_of(m.group("mon")), d))
+    return out
+
+
+def _converted(text: str) -> list[tuple[float, str]]:
+    """Values the text gives in another notation: English counts and scales (「nine」,
+    「1.2 million」), a printed fraction as its percent (「0.0348」 → 3.48%)."""
+    out: list[tuple[float, str]] = [(float(_EN_COUNTS[m.group(1).lower()]), "")
+                                    for m in _EN_COUNT.finditer(text or "")]
+    out += [(float(m.group("n")) * _EN_SCALE[m.group("s").lower()], "")
+            for m in _EN_SCALED.finditer(text or "")]
+    out += [(float(m.group(0)) * 100, "%") for m in _FRACTION.finditer(text or "")]
+    return out
+
+
 @dataclass(slots=True)
 class Evidence:
     """What the answer may say: the person's words and files, answers, tool results."""
@@ -213,6 +272,12 @@ class Evidence:
             self.months.add(m)
             if y:
                 self.years.add(y)
+        for y, m, d in _english_days(joined):
+            self.days.update({(y, m, d), (None, m, d)})
+            self.months.add(m)
+            if y:
+                self.years.add(y)
+        self.months |= {_month_of(m.group(0)) for m in _EN_MONTH_ALONE.finditer(joined)}
         for m in _MONTH.finditer(joined):
             if 1 <= int(m.group("m")) <= 12:
                 self.months.add(int(m.group("m")))
@@ -226,7 +291,7 @@ class Evidence:
             if 0 < n <= 400:
                 weeks = 7 if unit.startswith("주") else 1
                 self.spans.add(-n if unit in ("개월", "달") else n * weeks)
-        self.values = _values(joined)
+        self.values = [*_values(joined), *_converted(joined)]
         self.sorted_values = sorted({abs(v) for v, _ in self.values if v})
         own_rows = [x for r in self.rows for x in r[1]]
         tables = [*_table_sums(joined), *(_table_sums(self.answer) if own_rows else [])]

@@ -33,6 +33,7 @@ from app.services import (
     internal_words,
     key_figures,
     model_retry,
+    output_language,
     pictures,
     placeholders,
     quality_gate,
@@ -395,7 +396,8 @@ Content fields of a slide — fill only the one for its layout:
   figures.** If there are none, do not use this layout; change it to bullets.
 - chart: "chart": {{"kind": "bar"|"line", "unit": "단위", "categories": [...],
   "series": [{{"name": "이름", "values": [...]}}]}}. Values only from the usable figures. If
-  there are none, use bullets.
+  there are none, use bullets. A period or item with no given value is left off the axis; the
+  slide title names what the series measure.
 - quote: "body": "한 문장" (within 60 characters). If there is no sentence worth keeping, use
   bullets. **Only a sentence from the request or a one-sentence summary in the presenter's own
   voice.** Do not invent other people's words, such as remarks by staff, customers or experts or
@@ -1414,13 +1416,16 @@ Already said on earlier slides:
 Rules:
 - chart.kind is "bar" or "line". bar for comparing sizes by item, line for a trend over
   time.
-- chart.categories are the horizontal-axis items. **3~8.** Names within 8 characters.
+- chart.categories are the horizontal-axis items. **2~8.** Names within 8 characters.
+  A category whose value the material neither gives nor works out from its numbers is left
+  out: fewer categories, never a guessed value to fill the axis.
 - chart.series is the list of series. **1~2.** Each series' values must have **the same count
   as categories.**
 - chart.unit is the vertical axis's unit in one word — `건`, `%`, `억 원`. An empty string if
   none.
 - **Do not write made-up figures. Without a basis, do not write this
   slide; answer with bullets.** A chart reads as even more factual than numbers.
+- The slide title names what the series measure (a series of 이익률 is not titled 매출).
 - notes say what this chart shows. 2~3 sentences.
 - Write in Korean unless the request itself is written in English.
 
@@ -2654,17 +2659,25 @@ def _object_particle(word: str) -> str:
 def fill_missing_notes(
     slides: list[dict[str, Any]], request: str, *, title: str = "", subtitle: str = ""
 ) -> list[int]:
-    """Notes for every slide when asked; no facts beyond the slide."""
+    """Notes for every slide when asked, or when the deck speaks on most of its slides (the
+    opening ones not left silent); no facts beyond the slide."""
     from app.services.context import instruction_part
 
-    if not _NOTES_ASK.search(instruction_part(request or "")):
+    noted = sum(1 for slide in slides if str(slide.get("notes") or "").strip())
+    if not _NOTES_ASK.search(instruction_part(request or "")) and (
+            noted < 3 or noted * 2 < len(slides)):
         return []
+    english = deck_language(slides) == "en"
     changed: list[int] = []
     for index, slide in enumerate(slides):
         if str(slide.get("notes") or "").strip():
             continue
         layout = str(slide.get("layout") or "")
         name = str(slide.get("title") or title or "").strip()
+        if english:
+            slide["notes"] = _english_note(slide, index, name, subtitle)
+            changed.append(index)
+            continue
         if layout == "title" or index == 0:
             lead = f" {subtitle.strip()}" if subtitle.strip() and subtitle.strip() != name else ""
             note = f"안녕하세요. 오늘은 「{name}」에 대해 발표하겠습니다.{lead}"
@@ -2691,6 +2704,38 @@ def fill_missing_notes(
         slide["notes"] = note
         changed.append(index)
     return changed
+
+
+def _english_note(slide: dict[str, Any], index: int, name: str, subtitle: str) -> str:
+    """`fill_missing_notes` for a deck written in English."""
+    layout = str(slide.get("layout") or "")
+    if layout == "title" or index == 0:
+        lead = f" {subtitle.strip()}" if subtitle.strip() and subtitle.strip() != name else ""
+        lead = f" {_period(lead.strip())}" if lead else ""
+        if name.endswith("?"):
+            return f"Hello, everyone. Today's question: {name}{lead}"
+        return f"Hello, everyone. Today I will talk about {_period(name)}{lead}"
+    if layout == "agenda":
+        items = [str(b).strip() for b in (slide.get("bullets") or []) if str(b).strip()]
+        return (f"I will cover {', '.join(items[:-1])}, and {items[-1]}."
+                if len(items) >= 2 else "Let me start with the outline of the talk.")
+    if layout == "closing":
+        return "That concludes my talk. I am happy to take your questions."
+    if layout == "section":
+        return f"Next, {_period(name)}"
+    lines = [str(b).strip() for b in (slide.get("bullets") or []) if str(b).strip()]
+    lines += [str(i[0]).strip() for i in (slide.get("items") or []) if i and str(i[0]).strip()]
+    rows = slide.get("rows") or []
+    if not lines and rows and isinstance(rows[0], list):
+        lines = [str(c).strip() for c in rows[0][1:] if str(c).strip()]
+    points = [line.rstrip(".;:") for line in lines[:3]]
+    point = f" The key points are {_period(', '.join(points))}" if points else ""
+    return f"On this slide, we look at {_period(name)}{point}"
+
+
+def _period(text: str) -> str:
+    """`text` ending a sentence: one stop, none added after 「?」, 「!」 or 「.」."""
+    return text if text.endswith((".", "?", "!")) else f"{text}."
 
 
 def pad_to_floor(plan: list[dict[str, str]], floor: int) -> list[dict[str, str]]:
@@ -2868,6 +2913,47 @@ def _clean_chart(value: Any) -> dict[str, Any] | None:
     }
 
 
+#: what a chart title may name as its measure (「매출 및 영업이익 추이」)
+_MEASURES = re.compile(
+    r"영업\s?이익률|순이익률|이익률|영업\s?이익|순이익|매출\s?총이익|매출액?|원가율?|비용|예산|점유율|비중"
+    r"|성장률|증가율|감소율|전환율|이탈률|만족도|인원|건수|처리량|대기\s?시간|지연|수익률?")
+
+
+def _compact(text: str) -> str:
+    return re.sub(r"\s+", "", re.sub(r"[(（][^()（）]*[)）]", "", text or ""))
+
+
+def chart_title_mismatch(slide: dict) -> bool:
+    """Whether a chart slide's title names a measure none of its series or categories plot
+    (「매출 및 영업이익 추이」 over a series of 이익률)."""
+    chart = slide.get("chart")
+    if not isinstance(chart, dict):
+        return False
+    title = _compact(str(slide.get("title") or ""))
+    named = {_compact(m.group(0)) for m in _MEASURES.finditer(title)}
+    plotted = [_compact(str(s.get("name") or "")) for s in chart.get("series") or []
+               if isinstance(s, dict)] + [_compact(str(c)) for c in chart.get("categories") or []]
+    plotted = [p for p in plotted if len(p) >= 2]
+    if not named or not plotted:
+        return False
+    return not any(n in p or p in title for n in named for p in plotted)
+
+
+#: a category axis of periods (「2026 2분기」, 「3월」, 「2025년」)
+_PERIOD = re.compile(r"분기|반기|\d\s?월|\d{4}|Q[1-4]|\d\s?년|주차")
+
+
+def plotted_title(slide: dict) -> str:
+    """A title naming what the chart plots: its series over periods (「이익률 추이」) or by item."""
+    chart = slide.get("chart") or {}
+    names = [str(s.get("name") or "").strip() for s in chart.get("series") or []
+             if isinstance(s, dict) and str(s.get("name") or "").strip()]
+    if not names:
+        return str(slide.get("title") or "")
+    periods = all(_PERIOD.search(str(c)) for c in chart.get("categories") or [])
+    return f"{' · '.join(names)} {'추이' if periods else '비교'}"
+
+
 def _number(cell: str) -> float | None:
     """Table cell as a number (「-3.09」, 「1,590」, 「0.7 V」), or None."""
     match = re.fullmatch(
@@ -2955,6 +3041,24 @@ def blank_numbers(slide: dict) -> bool:
     return bool(values) and all(_BLANK_VALUE.fullmatch(v) for v in values)
 
 
+def _label_fit(label: str) -> str:
+    """Metric label within `_MAX_LABEL` wide characters (Latin counts half), cut between words:
+    「Local accuracy above 20 pages」 whole, never 「Local accuracy a」."""
+    def width(text: str) -> float:
+        return sum(0.55 if ord(ch) < 0x2E80 else 1.0 for ch in text)
+
+    if width(label) <= _MAX_LABEL:
+        return label
+    kept = ""
+    for word in label.split(" "):
+        if width(f"{kept} {word}".strip()) > _MAX_LABEL:
+            break
+        kept = f"{kept} {word}".strip()
+    kept = re.sub(r"\s+(?:a|an|the|of|in|on|at|for|to|and|or|by|with|above|below|over|under"
+                  r"|vs\.?|및|와|과|의)$", "", kept, flags=re.I)
+    return kept or label[:_MAX_LABEL]
+
+
 def _clean_metrics(value: Any) -> list[list[str]]:
     """`[[값, 이름]]` pairs; half-empty and date-part labels dropped."""
     items = value if isinstance(value, list) else []
@@ -2964,7 +3068,7 @@ def _clean_metrics(value: Any) -> list[list[str]]:
         if len(pair) < 2:
             continue
         figure = str(pair[0]).strip()[:_MAX_VALUE]
-        label = str(pair[1]).strip()[:_MAX_LABEL]
+        label = _label_fit(" ".join(str(pair[1]).split()))
         last = label.split()[-1] if label.split() else ""
         if figure and label and not _CALENDAR.match(last):
             out.append([figure, label])
@@ -3004,7 +3108,11 @@ def _clean_pairs(value: Any, layout: str) -> list[list[str]]:
         pair = item if isinstance(item, list) else []
         if len(pair) < 2:
             continue
-        left = _cut(" ".join(str(pair[0]).split()), left_max)
+        left = " ".join(str(pair[0]).split())
+        # a band's Latin name (「kube-controller-manager」) is half as wide a letter: the
+        # renderers fit it to its label, so it is never cut through
+        left = _cut(left, left_max if layout != "bands" or re.search(r"[가-힣]", left)
+                    else 2 * left_max + 4)
         right = _cut(" ".join(str(pair[1]).split()), right_max)
         if left and right:
             out.append([left, right])
@@ -3455,6 +3563,8 @@ async def _write_slides(
                                 heading=slide["title"], shown=_slide_lines_text(slide),
                                 neighbours=notes_neighbours(slides, index),
                                 request=request[:1200],
+                                language=(
+                                    "English" if deck_language(slides) == "en" else "Korean"),
                             )
                             + (
                                 "\n\nThe request made 「적어 준 것만」 a condition. Say it only "
@@ -3523,8 +3633,8 @@ async def _write_slides(
         ),
     ):
         yield event
-    # its own pictures too, when an image model is served inside the data boundary
-    if auto_image_model and not illustrations.declined(request):
+    # its own pictures too, when asked and an image model is served inside the data boundary
+    if auto_image_model and illustrations.wanted(request):
         async for event in _draw_pictures(
             slides,
             image_model=auto_image_model,
@@ -3790,15 +3900,19 @@ async def _draw_figures(
     # 「구조와 흐름은 그림으로」 opens step slides to the planner
     asked = diagrams.asks_for_diagrams(request)
     layouts = (*_DIAGRAM_LAYOUTS, "steps") if asked else _DIAGRAM_LAYOUTS
+    # a title naming a structure, relation or flow opens its slide whatever its words' shape
+    marked = {i: kind for i, slide in enumerate(slides)
+              if (kind := figure_wanted(slide, request))}
     eligible = [
         i
         for i, slide in enumerate(slides)
-        if slide["layout"] in layouts
+        if (slide["layout"] in layouts
+            or i in marked and slide["layout"] not in _NO_FIGURE_LAYOUTS)
         and not slide.get("image")
         and slide.get("body") != UNWRITTEN
     ]
     planned, spent = await diagrams.plan(
-        parts=[(str(slide["title"]), _drafted_text(slide)) for slide in slides],
+        parts=[(str(slide["title"]), _figure_source(slide)) for slide in slides],
         eligible=eligible,
         request=request,
         model=model,
@@ -3806,6 +3920,8 @@ async def _draw_figures(
         complete=_complete,
         slide=True,
         wrap=wrap,
+        marked=marked,
+        language=deck_language(slides),
     )
     usage["inputTokens"] += spent["inputTokens"]
     usage["outputTokens"] += spent["outputTokens"]
@@ -3843,31 +3959,13 @@ async def _draw_figures(
             continue
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
-        if _figure_adds_nothing(slide, made):
+        if _figure_adds_nothing(slide, made) and row.index not in marked:
             # a box per card the cards already name: the slide reads better without it
             log.info("slide figure %r dropped: it only names the slide's own entries", name)
             yield {"type": "step", "id": f"dia{row.index}", "label": name,
                    "status": "done", "progress": progress}
             continue
-        slide["diagram"] = made
-        # drawn with the deck's own shapes: panel/PDF/report match the .pptx
-        slide["image"] = {
-            "src": diagram_render.data_uri(png),
-            "caption": str(made.get("caption") or ""),
-            "fit": "contain",
-            "position": "right",
-            "size": "full",
-            "diagram": True,
-            "renderer": "pptx",
-            "key": made.get("key", ""),
-        }
-        _words_under_figure(slide)
-        if _figure_alone(slide) and figure_kinds.from_source(str(made.get("source") or "")):
-            # the figure takes the whole body: its picture drawn for that box, as the .pptx
-            tall = await diagram_render.render_png(
-                str(made["source"]), accent or "#2563EB", box=FIGURE_BODY)
-            if tall:
-                slide["image"]["src"] = diagram_render.data_uri(tall)
+        await _place_figure(slide, made, png, accent)
         yield {
             "type": "step",
             "id": f"dia{row.index}",
@@ -3878,9 +3976,264 @@ async def _draw_figures(
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
 
-#: Layouts whose words narrow beside a picture (`deck_export`: bullets and body); pair layouts
-#: such as bands and cards keep the full width and would run under it.
-_PICTURE_LAYOUTS = ("bullets", "statement")
+#: Layouts whose words narrow beside a picture (`deck_export`: bullets); pair layouts such as
+#: bands and cards and the centred statement keep the full width and would run under it.
+_PICTURE_LAYOUTS = ("bullets",)
+
+#: Layouts no figure goes on: covers, numbers, a sentence, a table's cells.
+_NO_FIGURE_LAYOUTS = ("title", "section", "agenda", "closing", "statement", "quote", "table",
+                      *_NUMBERS_LAYOUTS, *sorted(slide_patterns.NUMERIC))
+
+
+def figure_wanted(slide: dict, request: str = "") -> str:
+    """`relation`, `method` or `flow` when the slide's title names one
+    (`diagrams.wanted_figure`)."""
+    if slide.get("layout") in ("title", "section", "agenda", "closing"):
+        return ""
+    return diagrams.wanted_figure(str(slide.get("title") or ""), request)
+
+
+def deck_language(slides: list[dict]) -> str:
+    """`en` for a deck written in English, else `ko`: its figures' labels and captions follow."""
+    text = " ".join(f"{s.get('title') or ''} {_figure_source(s)}" for s in slides)
+    return "en" if output_language.reads_english(text) else "ko"
+
+
+def _figure_source(slide: dict) -> str:
+    """Slide words a figure is planned and drawn from: the drafted text, a pattern's items and
+    columns, a table's rows."""
+    parts = [_drafted_text(slide)]
+    parts += [_entry_line(entry) for entry in slide.get("items") or []]
+    for column in slide.get("columns") or []:
+        if isinstance(column, dict):
+            items = " / ".join(str(item) for item in column.get("items") or [])
+            parts.append(f"{column.get('title') or ''}: {items}".strip(": "))
+    parts += [" | ".join(str(cell) for cell in row) for row in slide.get("rows") or []
+              if isinstance(row, list)]
+    return "\n".join(part for part in parts if part)
+
+
+async def _place_figure(slide: dict, made: dict, png: bytes, accent: str) -> None:
+    """The drawn figure on its slide, words under it (`_words_under_figure`)."""
+    slide["diagram"] = made
+    # drawn with the deck's own shapes: panel/PDF/report match the .pptx
+    slide["image"] = {
+        "src": diagram_render.data_uri(png),
+        "caption": str(made.get("caption") or ""),
+        "fit": "contain",
+        "position": "right",
+        "size": "full",
+        "diagram": True,
+        "renderer": "pptx",
+        "key": made.get("key", ""),
+    }
+    _words_under_figure(slide)
+    if _figure_alone(slide) and figure_kinds.from_source(str(made.get("source") or "")):
+        # the figure takes the whole body: its picture drawn for that box, as the .pptx
+        tall = await diagram_render.render_png(
+            str(made["source"]), accent or "#2563EB", box=FIGURE_BODY)
+        if tall:
+            slide["image"]["src"] = diagram_render.data_uri(tall)
+
+
+#: 「4장을 구조도로 바꿔 줘」: a diagram asked for on a slide
+_FIGURE_ASK = re.compile(
+    r"(?:구조도|흐름도|관계도|개념도|비교도|다이어그램|도식|도해|(?:구조|흐름|관계|과정|절차)[^\n.]{0,12}?그림)"
+    r"\s{0,3}(?:[(（][^()（）]{0,12}[)）]\s{0,3})?(?:으로|로|을|를|도)?\s{0,8}"
+    r"(?:바꿔|바꾸|그려|그리|만들|넣어|넣|보여|표현|추가|해\s{0,2}줘)"
+    r"|\b(?:draw|make|turn)\b.{0,40}\b(?:diagram|flowchart)\b",
+    re.I,
+)
+_FIGURE_DROP = re.compile(r"빼|지워|삭제|없애|제거|\b(?:remove|delete|drop)\b", re.I)
+#: kind a slide figure ask names; the slide title's when it names none
+_ASKED_KIND = (
+    (re.compile(r"관계"), "relation"),
+    (re.compile(r"흐름|과정|절차|flow", re.I), "flow"),
+    (re.compile(r"비교"), "compare"),
+    (re.compile(r"개념"), "concept"),
+    (re.compile(r"구조|아키텍처|architecture", re.I), "method"),
+)
+
+
+def asks_slide_figure(text: str) -> bool:
+    """Whether an edit asks for a diagram on the slide (「구조도(그림)로 바꿔줘」), not for its
+    removal."""
+    return bool(_FIGURE_ASK.search(text or "")) and not _FIGURE_DROP.search(text or "")
+
+
+def asked_figure_kind(text: str, slide: dict, request: str = "") -> str:
+    """`method`, `flow`, `compare`, `concept` or `relation` for an edit's diagram ask: the kind
+    it names, else the slide title's, else a structure."""
+    head = (_FIGURE_ASK.search(text or "") or re.match("", "")).group(0)
+    for pattern, kind in _ASKED_KIND:
+        if pattern.search(head):
+            return kind
+    return figure_wanted(slide, request) or "method"
+
+
+async def figure_slide(
+    *,
+    request: str,
+    slides: list[dict],
+    target_id: str,
+    instruction: str,
+    model: str,
+    api_key: str,
+) -> tuple[dict, dict]:
+    """One slide redrawn as the diagram an edit asks for → `(slide, usage)`: drawn from the
+    slide's own words and the ask, its words moved under the figure; raises when undrawable."""
+    target = next((s for s in slides if s.get("id") == target_id), None)
+    if target is None:
+        raise KeyError(target_id)
+    kind = asked_figure_kind(instruction, target, request)
+    title = str(target.get("title") or "")
+    words = _figure_source(target)
+    # a structure's groups hold the parts the deck names for them on their own slides
+    members = group_members(slides, target) if kind in ("method", "relation") else {}
+    held = "\n".join(f"{group}: {', '.join(names)}" for group, names in members.items())
+    own = _part_names(target)
+    # the slide's points say what its subject does: the subject's parts are the boxes
+    roles = bool(members) and not any(group in own for group in members)
+    planned = diagrams.Planned(
+        index=0,
+        figure="method" if kind == "relation" else kind,
+        description=f"{instruction.strip()[:400]}\n{title}: {' / '.join(words.splitlines())}"[
+            :1200] + (f"\nDraw every one of these parts inside its group:\n{held}"
+                      if held else "") + (
+            f"\nThe slide's points ({' / '.join(own)}) say what the group does, not its parts:"
+            " the boxes are the parts listed above; a point may name a line or stay out."
+            if roles and own else ""),
+        caption=title[:40],
+        context="\n".join(filter(None, [words, held])),
+        request=request,
+        language=deck_language(slides),
+        relation=kind == "relation",
+    )
+    accent = str(target.get("accent") or "")
+    made, usage, png = await diagrams.make(
+        planned, model=model, api_key=api_key, slide=True, accent=accent)
+    left_out = [name for names in members.values() for name in names
+                if not _drawn(name, str(made.get("source") or ""))]
+    if left_out:
+        # parts left out: drawn once more with them named
+        again = dataclasses.replace(planned, description=(
+            f"{planned.description}\nThe last drawing left out {', '.join(left_out)}; "
+            "draw every listed part."))
+        try:
+            redone, more, repng = await diagrams.make(
+                again, model=model, api_key=api_key, slide=True, accent=accent)
+        except Exception as exc:  # noqa: BLE001 — the first drawing stands
+            log.info("figure redraw for left-out parts failed: %s", exc)
+        else:
+            usage = {k: usage.get(k, 0) + more.get(k, 0) for k in ("inputTokens", "outputTokens")}
+            missing = [n for n in left_out if not _drawn(n, str(redone.get("source") or ""))]
+            if len(missing) < len(left_out):
+                made, png = redone, repng
+    # boxes named in the slide (its words, the parts the deck lists for it) or the deck
+    local = "\n".join([instruction, title, words, held, request])
+    wider = "\n".join(f"{s.get('title') or ''}\n{_figure_source(s)}" for s in slides)
+    # a structure's boxes only: a flow's steps may say the slide's sentences in short
+    invented = (diagrams.ungrounded(str(made.get("source") or ""), local, wider)
+                if kind in ("method", "relation") else [])
+    if invented:
+        # a box the text never names (「클러스터 운영」 over three points): drawn once more
+        again = dataclasses.replace(planned, description=(
+            f"{planned.description}\nThe last drawing had boxes no text names: "
+            f"{', '.join(invented)}. Every box is a part the slide or the deck names, "
+            "in its words; no box summing the others up."))
+        try:
+            redone, more, repng = await diagrams.make(
+                again, model=model, api_key=api_key, slide=True, accent=accent)
+        except Exception as exc:  # noqa: BLE001 — judged below
+            log.info("figure redraw for invented parts failed: %s", exc)
+        else:
+            usage = {k: usage.get(k, 0) + more.get(k, 0) for k in ("inputTokens", "outputTokens")}
+            still = diagrams.ungrounded(str(redone.get("source") or ""), local, wider)
+            if len(still) < len(invented):
+                made, png, invented = redone, repng, still
+        if invented:
+            raise ValueError(f"figure names parts the deck does not: {', '.join(invented)}")
+    result = {k: v for k, v in target.items() if k not in ("image", "diagram", "textScale")}
+    if result.get("layout") in _NO_FIGURE_LAYOUTS:
+        result["layout"] = "bullets"
+    await _place_figure(result, made, png, accent)
+    result.pop("factCheck", None)
+    return auto_fit(result), usage
+
+
+#: a part name read off a line (「kube-apiserver: 모든 API 요청 처리」 → kube-apiserver)
+_PART_HEAD = re.compile(r"^\s*([^:：\n]{2,30}?)\s*[:：]")
+#: parts a group holds at most
+_GROUP_PARTS = 8
+
+
+def _part_names(slide: dict) -> list[str]:
+    """The parts a slide lists by name: paired heads, items, 「name: words」 bullets."""
+    names: list[str] = []
+    for key in (*_PAIRED, "items"):
+        for entry in slide.get(key) or []:
+            head = (entry[0] if isinstance(entry, list) and entry
+                    else entry.get("title") or entry.get("name") if isinstance(entry, dict)
+                    else "")
+            names.append(str(head or "").strip())
+    for bullet in slide.get("bullets") or []:
+        if m := _PART_HEAD.match(str(bullet)):
+            names.append(m.group(1).strip())
+    return [n for n in dict.fromkeys(names) if 2 <= len(n) <= 30 and not n.isdigit()]
+
+
+def group_members(slides: list[dict], target: dict) -> dict[str, list[str]]:
+    """Per group the target slide names (its cards', bands' heads), the parts another slide
+    titled after that group lists (「컨트롤 플레인」 → kube-apiserver, etcd …)."""
+    groups = _part_names(target)
+    out = _members_of(slides, target, groups, groups)
+    subject = title_subject(str(target.get("title") or ""))
+    if not out and subject and subject not in groups:
+        # cards naming what the subject does (「전체 제어」), not its parts: the subject's parts
+        # as the deck lists them (「컨트롤 플레인: 클러스터의 두뇌」 → API Server, etcd …)
+        out = _members_of(slides, target, [subject], [subject, *groups])
+    return out
+
+
+#: 「컨트롤 플레인: 클러스터의 두뇌」 → 컨트롤 플레인
+_TITLE_HEAD = re.compile(r"^\s*([^:：—–\n]{2,24}?)\s*(?:[:：—–]|\s-\s)")
+_SUBJECT_TAIL = re.compile(r"\s*(?:의\s*)?(?:역할|기능|개요|소개|특징|구조|구성)$")
+
+
+def title_subject(title: str) -> str:
+    """What a slide title is about: its head before 「:」, else the title minus a closing
+    「역할·기능·개요…」 (「워커 노드의 역할」 → 워커 노드); `` when that leaves the title."""
+    if m := _TITLE_HEAD.match(title or ""):
+        return m.group(1).strip()
+    bare = _SUBJECT_TAIL.sub("", (title or "").strip())
+    return bare if bare and bare != (title or "").strip() and len(bare) >= 2 else ""
+
+
+def _members_of(slides: list[dict], target: dict, groups: list[str],
+                known: list[str]) -> dict[str, list[str]]:
+    """Per group, the parts other slides titled after it (and no other `known` group) list."""
+    out: dict[str, list[str]] = {}
+    for group in groups:
+        key = re.sub(r"\s", "", group).lower()
+        for slide in slides:
+            if slide is target or slide.get("id") == target.get("id"):
+                continue
+            title = re.sub(r"\s", "", str(slide.get("title") or "")).lower()
+            # a slide about this group alone, not one comparing the groups
+            if key not in title or any(re.sub(r"\s", "", g).lower() in title
+                                       for g in known if g != group):
+                continue
+            names = [n for n in _part_names(slide) if n not in known]
+            if names:
+                out.setdefault(group, [])
+                out[group] = list(dict.fromkeys([*out[group], *names]))[:_GROUP_PARTS]
+    return out
+
+
+def _drawn(name: str, source: str) -> bool:
+    """Whether a figure's source names a part (case and spacing aside)."""
+    flat = re.sub(r"[\s\-_]", "", source).lower()
+    return re.sub(r"[\s\-_]", "", name).lower() in flat
 
 
 async def _draw_pictures(
@@ -3898,6 +4251,8 @@ async def _draw_pictures(
         i for i, slide in enumerate(slides)
         if slide.get("layout") in _PICTURE_LAYOUTS and not slide.get("image")
         and not slide.get("diagram")
+        # a structure, relation or flow is a diagram's, never an illustration's
+        and not figure_wanted(slide, request)
     ]
     planned, spent = await illustrations.plan(
         parts=[(str(s.get("title") or ""), _drafted_text(s)) for s in slides],
@@ -3909,6 +4264,7 @@ async def _draw_pictures(
         slide=True,
         wrap=wrap,
         limit=1 if len(slides) < 6 else illustrations.MAX_PICTURES,
+        language=deck_language(slides),
     )
     usage["inputTokens"] += spent["inputTokens"]
     usage["outputTokens"] += spent["outputTokens"]
@@ -4318,7 +4674,7 @@ async def write(
     )
     # after all retries: listed parts stay separate
     plan = keep_enumerated(plan, request, wanted)
-    plan = structure_as_drawable(plan)
+    plan = structure_as_drawable(plan, request)
 
     # after structural changes: agenda must not exceed an exact total
     if wanted and plan and len(plan) != wanted:
@@ -4486,6 +4842,122 @@ def requested_layout(text: str) -> str | None:
 
 
 
+def shown_layout(slide: dict) -> str:
+    """The shape the renderers draw a slide as: their order of fields, not its `layout` name
+    (a table whose old tiles stayed is drawn as tiles)."""
+    layout = str(slide.get("layout") or "bullets")
+    pattern = slide_patterns.BY_NAME.get(layout)
+    if pattern is not None and has_content(slide):
+        return layout
+    if layout in _PAIRED and slide.get(layout):
+        return layout
+    if isinstance(slide.get("chart"), dict) and slide["chart"].get("series"):
+        return layout if layout.startswith("chart") else "chart"
+    if slide.get("metrics"):
+        return "big-number" if layout == "big-number" else "metrics"
+    if slide.get("rows"):
+        return "table"
+    return layout if layout not in _NUMBERS_LAYOUTS else "bullets"
+
+
+#: what an unmet shape is called in the reply
+_SHAPE_WORDS = {"table": "표", "chart": "차트", "metrics": "지표", "big-number": "큰 숫자",
+                "bullets": "글머리표", "timeline": "연표", "steps": "단계", "cards": "카드"}
+
+
+def unmet_asks(slide: dict, words: str) -> list[str]:
+    """What `words` asked of a slide that the slide as drawn does not show."""
+    out = []
+    asked = requested_layout(words)
+    drawn = shown_layout(slide)
+    if asked and drawn != asked and not (asked == "chart" and drawn.startswith("chart")):
+        out.append(f"{_SHAPE_WORDS.get(asked, asked)}로 바꾸기")
+    if revise.removes_picture(words) and picture_of(slide):
+        out.append("그림 빼기")
+    if revise.removes_chart(words) and chart_of(slide):
+        out.append("차트 빼기")
+    return out
+
+
+def picture_of(slide: dict) -> str:
+    """The picture a slide carries, named for the reply (「흐름도」, 「그림」); empty if none."""
+    image = slide.get("image") if isinstance(slide.get("image"), dict) else {}
+    made = slide.get("diagram") if isinstance(slide.get("diagram"), dict) else image.get("diagram")
+    if isinstance(made, dict) or made:
+        figure = str(made.get("figure") or "") if isinstance(made, dict) else ""
+        return diagrams.FIGURES.get(figure, "도식")
+    return "그림" if image.get("src") or slide.get("image") else ""
+
+
+def without_picture(slide: dict) -> dict:
+    """The slide minus its picture: a drawn diagram goes with the image made from it."""
+    return {k: v for k, v in slide.items() if k not in ("image", "diagram")}
+
+
+def chart_of(slide: dict) -> bool:
+    """Whether the slide draws a chart."""
+    chart = slide.get("chart")
+    return isinstance(chart, dict) and bool(chart.get("series"))
+
+
+def _chart_value(value: Any, unit: str) -> str:
+    text = f"{value:g}" if isinstance(value, float) else str(value)
+    return f"{text}{unit}"
+
+
+#: a speaker-note sentence about a chart the slide no longer has
+_CHART_WORDS = re.compile(r"차트|그래프|chart|graph", re.I)
+
+
+def without_chart(slide: dict) -> dict:
+    """The slide minus its chart: a slide left empty says the chart's own values as bullets;
+    notes stop pointing at the chart."""
+    chart = slide.get("chart") if isinstance(slide.get("chart"), dict) else {}
+    out = {k: v for k, v in slide.items() if k != "chart"}
+    if str(out.get("layout") or "").startswith("chart"):
+        out["layout"] = "bullets"
+    if not has_content(out):
+        unit = str(chart.get("unit") or "")
+        series = [s for s in chart.get("series") or [] if isinstance(s, dict)]
+        bullets = []
+        for i, category in enumerate(chart.get("categories") or []):
+            said = [(str(s.get("name") or ""), (s.get("values") or [])[i])
+                    for s in series if i < len(s.get("values") or [])
+                    and (s.get("values") or [])[i] is not None]
+            if not said:
+                continue
+            if len(series) == 1:
+                bullets.append(f"{category}: {_chart_value(said[0][1], unit)}")
+            else:
+                bullets.append(f"{category}: " + ", ".join(
+                    f"{name} {_chart_value(value, unit)}".strip() for name, value in said))
+        if bullets:
+            out["bullets"] = bullets
+    if isinstance(out.get("notes"), str) and _CHART_WORDS.search(out["notes"]):
+        kept = [s for s in re.split(r"(?<=[.!?。])\s+", out["notes"])
+                if s.strip() and not _CHART_WORDS.search(s)]
+        out["notes"] = " ".join(kept)
+    return out
+
+
+#: a note saying the slide lacks what it shows: 「차트를 사용하지 않고」, 「표 없이」
+_DENIED = re.compile(
+    r"(?P<what>차트|그래프|표|그림|도식|이미지)\S{0,2}\s{0,4}(?:사용하지\s?않|쓰지\s?않|넣지\s?않"
+    r"|없이|생략하|제외하|빼고)")
+
+
+def notes_agree(slide: dict, notes: str) -> str:
+    """Notes minus sentences saying the slide lacks a chart, table or picture it shows."""
+    if not notes or not _DENIED.search(notes):
+        return notes
+    shown = {"차트": chart_of(slide), "그래프": chart_of(slide), "표": bool(slide.get("rows")),
+             "그림": bool(picture_of(slide)), "도식": bool(picture_of(slide)),
+             "이미지": bool(picture_of(slide))}
+    kept = [s for s in re.split(r"(?<=[.!?。])\s+", notes)
+            if not ((m := _DENIED.search(s)) and shown.get(m.group("what")))]
+    return " ".join(k for k in kept if k.strip())
+
+
 class SlideNotWritten(ValueError):
     """Empty rewrite; carries billed usage."""
 
@@ -4505,6 +4977,8 @@ async def rewrite_slide(
     material: list[str] | None = None,
     typed: str = "",
     notes_only: bool = False,
+    #: the slide keeps its layout whatever the note says (a check's hand-back)
+    keep_layout: bool = False,
 ) -> tuple[dict, dict]:
     """Rewrites one slide in deck context → `(slide, usage)`; `typed` checked for layout changes."""
     target = next((s for s in slides if s.get("id") == target_id), None)
@@ -4519,7 +4993,8 @@ async def rewrite_slide(
     )
     layout = str(target.get("layout") or "bullets")
     # layout change: user's words first, planner's paraphrase second
-    layout = requested_layout(typed) or requested_layout(note) or layout
+    if not keep_layout:
+        layout = requested_layout(typed) or requested_layout(note) or layout
     template = _PROMPTS.get(layout) or (_TABLE_PROMPT if layout == "table" else _BULLETS_PROMPT)
     prompt = template.format(
         heading=target.get("title") or "",
@@ -4612,10 +5087,12 @@ async def rewrite_slide(
         rows, pairs, bullets = [], [], []
         if layout == "metrics":
             body = ""
+    # what the new words are drawn as; an older shape's fields would be drawn first
+    structured = bool(chart or metrics or rows or pairs)
     if rows:
         result["rows"] = rows
         result["layout"] = "table"
-        for field in ("bullets", "body", *_PAIRED):
+        for field in ("bullets", "body", "metrics", "chart", *_PAIRED):
             result.pop(field, None)
         bullets, body = [], ""
     elif pairs:
@@ -4625,6 +5102,12 @@ async def rewrite_slide(
         for field in ("bullets", "body", "rows", "chart", "metrics", *others):
             result.pop(field, None)
         bullets, body = [], ""
+    if (bullets or body) and not structured and layout != str(target.get("layout") or ""):
+        # a change of shape asked and words came back: the old shape's fields go
+        for field in ("rows", "metrics", "chart", *_PAIRED):
+            result.pop(field, None)
+        if result.get("layout") in _NUMBERS_LAYOUTS:
+            result["layout"] = "bullets"
     if bullets:
         result["bullets"] = bullets
         # old body (maybe UNWRITTEN) must go
@@ -4710,7 +5193,7 @@ should remember, and words that lead to the next slide named above (on the last 
 close; never a slide the deck does not have). Write the words themselves, not
 directions saying what to say such as 「~을 강조합니다」「~을 설명합니다」.
 (Example: 「이 숫자가 중요한 이유는 …입니다.」) Do not invent figures or facts the request does
-not have. Output only the sentences, in Korean unless the request itself is written in English.
+not have. Output only the sentences, in {language}, the language of the slides.
 
 Original request: {request}"""
 
@@ -4867,6 +5350,41 @@ def _quantity_given(value: float, unit: str, given: list[tuple[float, str]]) -> 
     return any(same(v) and (not unit or not u or u == unit) for v, u in given)
 
 
+#: a sentence opening one point of an enumeration: 「Second, …」, 「둘째, …」, 「두 번째로 …」
+_ORDINAL = re.compile(
+    r"^(?:(?P<en>first|second|third|fourth|fifth)(?:ly)?\s{0,2}[,:]"
+    r"|(?:(?P<ko>첫|둘|셋|넷|다섯)째|(?P<ko2>첫|두|세|네|다섯)\s?번째)(?:로\s{0,2},?|\s{0,2},))"
+    r"\s{0,2}", re.I)
+_ORDINAL_AT = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+               "첫": 1, "둘": 2, "셋": 3, "넷": 4, "두": 2, "세": 3, "네": 4, "다섯": 5}
+#: a sentence announcing how many points follow: 「Three things to remember.」, 「세 가지입니다」
+_POINT_COUNT = re.compile(
+    r"\b(?:two|three|four|five|[2-5])\s+(?:things|points|takeaways|lessons|reasons|key\b)"
+    r"|(?:두|세|네|다섯|[2-5])\s?가지", re.I)
+
+
+def _ordinal(sentence: str) -> int:
+    m = _ORDINAL.match(sentence)
+    return _ORDINAL_AT[(m.group("en") or m.group("ko") or m.group("ko2")).lower()] if m else 0
+
+
+def _mended_ordinals(kept: list[str]) -> list[str]:
+    """Notes whose enumeration lost a point (「Three things… Second…」 with no 「First」):
+    the ordinal words and the count sentence go, the points stay."""
+    found = [n for n in map(_ordinal, kept) if n]
+    if not found or found == list(range(1, len(found) + 1)):
+        return kept
+    out = []
+    for sentence in kept:
+        if _POINT_COUNT.search(sentence) and not _ordinal(sentence):
+            continue
+        if m := _ORDINAL.match(sentence):
+            rest = sentence[m.end():]
+            sentence = rest[:1].upper() + rest[1:]
+        out.append(sentence)
+    return out
+
+
 def notes_grounded(notes: str, facts: set[str], source: str | None = None) -> str:
     """Notes minus sentences with numbers not in the request; with `source`, numbers are
     compared with their scale and unit (「96%」 is not 「96 ms」)."""
@@ -4881,7 +5399,7 @@ def notes_grounded(notes: str, facts: set[str], source: str | None = None) -> st
             ok = _numbers_come_from(re.findall(r"\d[\d,.]*(?:\s*(?:만|억|천))?", sentence), facts)
         if ok:
             kept.append(sentence.strip())
-    return " ".join(kept)
+    return " ".join(_mended_ordinals(kept))
 
 
 #: Stage directions instead of speech.
@@ -5013,13 +5531,14 @@ def notes_without_echo(notes: str, slide: dict) -> str:
             and len(_stems_ko(sentence) - {t.lower() for t in tokens}) <= 3
             for tokens in short_lines
         )
-        if echo or covered >= 0.85 or spoken:
+        if (echo or covered >= 0.85 or spoken) and not _ordinal(sentence):
+            # one point of an enumeration stays even when it reads its bullet
             continue
         if _META_NOTE.search(sentence) and not re.search(r"\d", sentence):
             # 「…을 강조합니다」: not speech
             continue
         kept.append(sentence)
-    return " ".join(kept)
+    return " ".join(_mended_ordinals(kept))
 
 
 def _drafted_text(data: dict | None) -> str:
@@ -5051,6 +5570,22 @@ _SHORT_LINE_CHARS = 24
 
 def _clipped(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+#: a card under a figure holds more on a row of fewer cards (it wraps, never clipped)
+_CARD_ROOM = {1: 120, 2: 90, 3: 60}
+_SENTENCE_END = re.compile(r"(?<=[.!?。])\s+|(?<=[다요죠음함됨임])\.\s*")
+
+
+def _fitted(text: str, limit: int) -> str:
+    """`text` within `limit` characters: whole, else its whole leading sentences, else
+    clipped."""
+    if len(text) <= limit:
+        return text
+    ends = [m.start() for m in _SENTENCE_END.finditer(text) if 0 < m.start() <= limit]
+    if ends and ends[-1] >= limit // 3:
+        return text[:ends[-1]].rstrip() + ("." if text[ends[-1] - 1] not in ".!?。" else "")
+    return _clipped(text, limit)
 
 
 def _figure_words(slide: dict) -> str:
@@ -5157,14 +5692,17 @@ def _words_under_figure(slide: dict) -> None:
     if layout == "cards":
         pairs = [p for p in (slide.get("cards") or []) if isinstance(p, list) and p]
         kept: list[list[str]] = []
+        shown_count = min(_UNDER_CARDS, sum(
+            1 for pair in pairs if not _restates(_entry_line(pair), shown)))
+        room = _CARD_ROOM.get(shown_count, _CARD_CHARS)
         for pair in pairs:
             name = str(pair[0]).strip()
             text = " ".join(str(cell).strip() for cell in pair[1:] if str(cell).strip())
             if _restates(f"{name}: {text}" if text else name, shown):
                 spill.append(f"{name}: {text}" if text else name)
             elif len(kept) < _UNDER_CARDS:
-                kept.append([name, _clipped(text, _CARD_CHARS)])
-                if len(text) > _CARD_CHARS:
+                kept.append([name, _fitted(text, room)])
+                if len(text) > room:
                     spill.append(f"{name}: {text}")
             else:
                 spill.append(f"{name}: {text}")
@@ -5184,6 +5722,9 @@ def _words_under_figure(slide: dict) -> None:
                 name = str(pair[0]).strip()
                 text = " ".join(str(cell).strip() for cell in pair[1:] if str(cell).strip())
                 lines.append(f"{name}: {text}" if name and text else name or text)
+        # a table's rows under their header, a line each
+        rows = [row for row in slide.pop("rows", None) or [] if isinstance(row, list)]
+        lines.extend(_entry_line(row) for row in rows[1:] or rows)
         lines.extend(str(b).strip() for b in (slide.get("bullets") or []) if str(b).strip())
         if body := str(slide.get("body") or "").strip():
             lines.append(body)
@@ -5224,7 +5765,7 @@ def _words_under_figure(slide: dict) -> None:
         keep = _UNDER_LINES_SHORT if len(lines) <= _UNDER_LINES_SHORT and all(
             len(line) <= _SHORT_LINE_CHARS for line in lines
         ) else _UNDER_LINES
-        slide["bullets"] = [_clipped(line, _LINE_CHARS) for line in lines[:keep]]
+        slide["bullets"] = [_fitted(line, _LINE_CHARS) for line in lines[:keep]]
         slide["body"] = ""
         spill = [line for line in lines[:keep] if len(line) > _LINE_CHARS] + lines[keep:]
     if spill:
@@ -5688,27 +6229,20 @@ def ensure_agenda(plan: list[dict]) -> list[dict]:
     return plan
 
 
-#: Structure slide (components and relations, not sequence).
-_STRUCTURE_TITLE = re.compile(
-    r"구조|아키텍처|구성\s*(?:요소|도)|시스템\s*구성|전체\s*구성|컴포넌트|모듈\s*구성|"
-    r"\b(?:architecture|structure|components?|topology)\b",
-    re.I,
-)
-
-
-def structure_as_drawable(plan: list[dict]) -> list[dict]:
-    """Structure slides on `_NOT_FOR_STRUCTURE` layouts → `bullets` (drawable)."""
+def structure_as_drawable(plan: list[dict], request: str = "") -> list[dict]:
+    """Structure and relation slides (their titles, or a structure the request names that the
+    title covers) on `_NOT_FOR_STRUCTURE` layouts → `bullets` (drawable)."""
     out = []
     for slide in plan:
-        structural = _STRUCTURE_TITLE.search(str(slide.get("title") or ""))
-        if structural and slide.get("layout") in _NOT_FOR_STRUCTURE:
+        if slide.get("layout") in _NOT_FOR_STRUCTURE and diagrams.wanted_figure(
+                str(slide.get("title") or ""), request) in ("method", "relation"):
             slide = {**slide, "layout": "bullets"}
         out.append(slide)
     return out
 
 
-#: Layouts an architecture slide can't be.
-_NOT_FOR_STRUCTURE = ("steps", "chart", "table", "metrics", "big-number", "timeline")
+#: Layouts an architecture or relation slide can't be: sequences read as order, numbers as data.
+_NOT_FOR_STRUCTURE = ("steps", "process", "chart", "table", "metrics", "big-number", "timeline")
 
 
 def vary_layouts(plan: list[dict]) -> list[dict]:

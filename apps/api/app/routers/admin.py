@@ -217,12 +217,15 @@ _MODEL_ROLE_FIELDS: tuple[tuple[str, str, str, bool], ...] = (
     ("model_report", settings_store.MODEL_REPORT, "report", True),
     ("model_slides", settings_store.MODEL_SLIDES, "slides", True),
     ("model_image", settings_store.MODEL_IMAGE, "image", False),
-    ("model_audio", settings_store.MODEL_AUDIO, "audio", True),
-    ("model_video", settings_store.MODEL_VIDEO, "video", True),
+    ("model_audio", settings_store.MODEL_AUDIO, "audio", False),
+    ("model_video", settings_store.MODEL_VIDEO, "video", False),
     ("model_title", settings_store.MODEL_TITLE, "helper", True),
     ("model_code", settings_store.MODEL_CODE, "helper", True),
     ("model_code_fallback", settings_store.MODEL_CODE_FALLBACK, "helper", True),
 )
+
+#: required only while the catalogue offers one: an instance without them has nothing to pick
+_REQUIRED_WHEN_OFFERED = frozenset({"model_audio", "model_video"})
 
 #: default monthly credit cap (≈ $10,000)
 _MAX_DEFAULT_CREDITS = 1_000_000_000
@@ -312,7 +315,7 @@ async def _check_model_roles(payload: SystemSettingsIn) -> None:
         }
         for field, key, role, optional, value in wanted:
             if not value:
-                if not optional:
+                if not optional and (field not in _REQUIRED_WHEN_OFFERED or choices[role]):
                     raise HTTPException(status_code=422, detail=f"{field}_required")
                 continue
             if value == current[key]:

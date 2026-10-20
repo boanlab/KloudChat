@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     auto_routing_classifier_timeout_sec: float = 8.0
     # Per-tool ceiling; max_tool_hops bounds the turn.
     tool_timeout_sec: float = 300.0
+    #: Deep research modes that take 5-30 minutes (`detailed_research`, `generate_report`).
+    research_timeout_sec: float = 1800.0
     max_tool_hops: int = 8
     chat_stall_sec: int = 180
 
@@ -157,10 +159,10 @@ class Settings(BaseSettings):
     default_report_model: str = "local/qwen3.8-27b"
     default_slides_model: str = "local/qwen3.8-27b"
 
-    #: Must honour aspect ratio. Unserved → cheapest image model.
+    #: Must honour aspect ratio. Unserved → pictures unavailable until the admin picks one.
     default_image_model: str = "bytedance-seed/seedream-5-0-flash"
 
-    #: Per-modality av defaults. Unserved → cheapest of that modality.
+    #: Per-modality av defaults. Unserved → that mode unavailable until the admin picks one.
     default_audio_model: str = "openai/gpt-audio-mini"
     default_video_model: str = "google/veo-3.1-lite"
 

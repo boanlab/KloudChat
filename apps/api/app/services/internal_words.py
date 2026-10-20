@@ -675,18 +675,75 @@ _DOC_NOTE = re.compile(
     r"(?:표|절|열|칸|항목|목록|섹션)[을를은는]?\s?(?:따로\s?|별도로\s?)?"
     r"(?:만들지|두지|넣지|싣지|쓰지|적지|작성하지)\s?(?:않습니다|않았습니다|않음)"
     # how the values were made (「여러 수치와 수식은 계산 도구로 구한 결과입니다」)
-    r"|계산\s?도구로\s?(?:구한|계산한|얻은)|코드로\s?계산한\s?출력값|코드\s?출력\s?그대로")
+    r"|계산\s?도구로\s?(?:구한|계산한|얻은)|코드로\s?계산한\s?출력값|코드\s?출력\s?그대로"
+    # how the writer shaped this text (「보고 톤에 맞춰 … 두 문장으로 구성했습니다」)
+    r"|(?:톤|어조|문체|말투|분량)에\s?맞춰[^\n.]{0,60}?(?:구성|작성|정리|다듬)(?:했|하였)습니다")
+#: the writer's plan for the text, written into it: 「…을 한 문장씩 압축합니다」, 「지시된 대로 표와
+#: 그림은 배제하고 … '합니다/입니다'체로만 작성합니다」, 「3줄 요약 (본문 앞부분)」
+PLAN_NOTE = re.compile(
+    r"(?:지시|요청)(?:된|하신|받은|한)?\s?대로[^\n.]{0,80}?"
+    r"(?:표|그림|본문|문장|요약|문체|체로|서술|작성|배제)"
+    r"|['\"‘“「]?(?:합니다|입니다)\s?/\s?(?:합니다|입니다)['\"’”」]?\s?체"
+    r"|(?:한\s?문장씩|(?:[한두세네]|다섯|\d{1,2})\s?(?:문장|줄|단락|문단)(?:으로|씩))\s?"
+    r"(?:압축|정리|구성|요약|서술|작성)(?:합니다|하겠습니다|했습니다)"
+    r"|\((?:본문|문서)\s?(?:맨\s?)?(?:앞|첫)\s?부분\)"
+    r"|(?:수정|변경)하여\s?(?:서술|작성|기재)(?:합니다|하겠습니다)")
+#: a thematic break line (「***」, 「---」)
+_RULE_LINE = re.compile(r"^[ \t]{0,3}(?:\*[ \t]*){3,}$|^[ \t]{0,3}(?:-[ \t]*){3,}$"
+                        r"|^[ \t]{0,3}(?:_[ \t]*){3,}$", re.M)
+
+
+#: a plan's item: 「1. **3줄 요약**: …」, 「- **주의사항**: …」, 「*주의사항*: …」
+_PLAN_ITEM = re.compile(
+    r"^\s{0,4}(?:(?:\d{1,2}[.)]|[-*])\s{1,3})?[*_]{1,2}[^*_\n]{1,40}[*_]{1,2}\s?[:：]")
+
+
+def _plan_shaped(paragraph: str) -> bool:
+    """A paragraph of the plan: it names the plan, and is a list of labelled items or at least
+    half of it is plan sentences."""
+    if not PLAN_NOTE.search(paragraph):
+        return False
+    lines = [line for line in paragraph.split("\n") if line.strip()]
+    if all(_PLAN_ITEM.match(line) for line in lines):
+        return True
+    sentences = [x for line in lines for x in units.SENTENCE_BREAK.split(line) if x.strip()]
+    return 2 * sum(1 for x in sentences if PLAN_NOTE.search(x)) >= len(sentences)
+
+
+def strip_plan_preface(text: str) -> str:
+    """`text` without the writer's plan above it: the paragraphs ahead of the content (a
+    numbered plan, a 「주의사항: 지시된 대로 …」 line), through the rule under them when one is
+    there. Never down to nothing."""
+    if not text or not PLAN_NOTE.search(text):
+        return text
+    paragraphs = re.split(r"\n[ \t]*\n", text.strip("\n"))
+    rule = next((i for i, p in enumerate(paragraphs[:6]) if _RULE_LINE.fullmatch(p.strip())),
+                None)
+    if rule and any(PLAN_NOTE.search(p) for p in paragraphs[:rule]):
+        cut = rule + 1
+    else:
+        cut = 0
+        while cut < len(paragraphs) and _plan_shaped(paragraphs[cut]):
+            cut += 1
+        while cut and cut < len(paragraphs) and _RULE_LINE.fullmatch(paragraphs[cut].strip()):
+            cut += 1
+    if not cut:
+        return text
+    rest = "\n\n".join(paragraphs[cut:]).strip("\n")
+    return rest if len(_HANGUL.findall(rest)) + len(_LATIN.findall(rest)) >= 40 else text
 
 
 def strip_work_sentences(text: str) -> str:
     """Sentences of `text` that are the writer's notes or instructions dropped (a slide's
     speaker notes); lines otherwise kept as written."""
-    if not text or not (_KO_NOTE.search(text) or _DOC_NOTE.search(text)):
+    if not text or not (_KO_NOTE.search(text) or _DOC_NOTE.search(text)
+                        or PLAN_NOTE.search(text)):
         return text
     out = []
     for line in text.split("\n"):
         sentences = [s for s in units.SENTENCE_BREAK.split(line) if s.strip()]
-        left = [s for s in sentences if not (_KO_NOTE.search(s) or _DOC_NOTE.search(s))]
+        left = [s for s in sentences if not (_KO_NOTE.search(s) or _DOC_NOTE.search(s)
+                                             or PLAN_NOTE.search(s))]
         if len(left) == len(sentences):
             out.append(line)
         elif left:
@@ -722,6 +779,19 @@ _CHECK_RESULT = re.compile(
     r"|(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\s?월\s?\d{1,2}\s?일)(?:\s?\([월화수목금토일]\))?(?:은|는)"
     r"\s?[월화수목금토일]요일(?:로|임이|인\s?것으로)\s?확인(?:됐|되었|했)"
     r"|사용자가\s?(?:준|주신|적은|말한)\s?(?:요일|날짜)[^\n.]{0,20}?(?:과|와)\s?(?:모두\s?)?일치합니다")
+#: the writer telling the reader what this turn's own checks said (「The automated check
+#: flagged the "thanks → thank" line as a scope change, but that is just word-level alignment
+#: noise」, 「자동 점검이 「11월 3일」을 확인 필요로 표시했지만」): the steps show the checks
+_CHECK_TALK_EN = re.compile(
+    r"\b(?:the|an?|our)\s(?:automated|automatic|internal)\s(?:checks?|checker|scripts?|scan"
+    r"|review|grounding)\b"
+    r"|\bthe\s(?:checker|check\sscript|preserve\sscript|grounding\scheck)\b"
+    r"|\b(?:check|checker|script|tool)\s(?:flagged|marked)\b|\balignment\snoise\b", re.I)
+_CHECK_TALK_KO = re.compile(
+    r"(?:자동\s?(?:점검|검사|확인)|점검\s?스크립트|근거\s?(?:확인|대조))(?:이|가|에서는?|은|는)\s?"
+    r"[^\n.]{0,80}?(?:짚|잡았|잡혔|표시|지적|걸렀)")
+#: an English sentence's end
+_EN_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"“(])")
 #: the writer announcing its next piece of work before the answer starts (「이제 두
 #: 문서를 작성합니다.」, 「두 버전으로 작성합니다.」, 「이제 소재를 정리해
 #: 드리겠습니다.」, 「최종 확정된 25개입니다.」): dropped only ahead of the first
@@ -790,6 +860,22 @@ _EN_TOOL_STEP = re.compile(
     r"|verify|query)\b[^\n]{0,240}?[.!:]\s*$", re.I)
 
 
+#: the writer auditing this turn's own run for the reader (「화면에 떠 있는 두 차트는 이 턴의
+#: 코드 출력에 없는 값으로 그려진 것입니다」): the reader has no turns; the steps show the checks
+_SELF_AUDIT = re.compile(
+    r"(?:(?<![가-힣])(?:이|이번|현재)\s?턴(?:의|에서|에)?\s(?=[^\n]{0,40}?(?:코드|출력|실행|도구|차트))"
+    r"|코드\s?(?:실행\s?)?출력에\s?(?:없는|없던|나오지\s?않은)"
+    r"|이번\s?(?:실행|출력)\s?결과(?:와|에)\s?(?:맞지|다르|어긋))")
+
+
+def _self_audit(paragraph: str) -> bool:
+    """A prose paragraph opening with the writer's audit of its own run."""
+    if _structural(paragraph) or _DELIVERABLE_LINE.match(paragraph.lstrip()):
+        return False
+    first = next((x for x in units.SENTENCE_BREAK.split(paragraph.strip()) if x.strip()), "")
+    return bool(_SELF_AUDIT.search(first))
+
+
 def _structural(paragraph: str) -> bool:
     return paragraph.lstrip().startswith(("#", "|", "```", "!["))
 
@@ -831,6 +917,8 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
     or slide, whose reader is not the requester (the writer's account of its work goes too)."""
     if not text or not text.strip():
         return text
+    if document:
+        text = strip_plan_preface(text)
     korean = _latin_share(request) < 0.5 if request.strip() else _latin_share(text) < 0.5
     asked_check = bool(_ASKED_CHECK.search(request or ""))
     asked_edit = bool(_ASKED_EDIT.search(request or ""))
@@ -859,6 +947,8 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
         whole_korean = _latin_share("\n".join(paragraphs)) < 0.5
         paragraphs = [p for p in paragraphs if _structural(p) or not _english_note(p)
                       or not (whole_korean or _EN_NOTE_TASK.search(p))]
+        if not asked_check:
+            paragraphs = [p for p in paragraphs if not _self_audit(p)]
     else:
         # an English answer: its first paragraph, one line narrating a tool step, goes
         first = next((i for i, p in enumerate(paragraphs) if p.strip()), None)
@@ -886,8 +976,10 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
             sentences = [s for s in units.SENTENCE_BREAK.split(line[len(lead):]) if s.strip()]
             left = [s for s in sentences
                     if not _KO_NOTE.search(s)
-                    and not (document and _DOC_NOTE.search(s))
+                    and not (document and (_DOC_NOTE.search(s) or PLAN_NOTE.search(s)))
                     and (asked_check or not _CHECK_RESULT.search(s))
+                    and (asked_check or not _CHECK_TALK_KO.search(s))
+                    and not _CHECK_TALK_EN.search(s)
                     and (asked_edit or not _SELF_EDIT.search(s))
                     and not (first_line and not asked_check and len(line) <= 100
                              and _OPENING_VERDICT.match(s))]
@@ -900,6 +992,14 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
                     kept.append(lead + " ".join(s.strip() for s in left))
                     started = True
                 continue
+        elif stripped and _CHECK_TALK_EN.search(line):
+            lead = re.match(r"\s{0,24}(?:(?:[-*+]|\d{1,3}[.)])\s{1,4})?", line).group(0)
+            sentences = [s for s in _EN_SENTENCE_END.split(line[len(lead):]) if s.strip()]
+            left = [s for s in sentences if not _CHECK_TALK_EN.search(s)]
+            if left:
+                kept.append(lead + " ".join(s.strip() for s in left))
+                started = True
+            continue
         if stripped:
             started = True
         kept.append(line)
@@ -936,6 +1036,15 @@ def strip_tool_preamble(text: str) -> str:
     (their first sentence and at least half of them) and the deliverable after them is the
     longer part. Prose that answers stays: a lead without a work sentence first, or one
     followed by little, is the answer."""
+    # a first paragraph of nothing but work sentences, glued across the tool calls (「…먼저
+    # 확인해 보겠습니다.바다 조망 명소의 … 확인하겠습니다.」), above prose that answers; one
+    # with a figure may be the finding itself
+    head, gap, after = (text or "").lstrip("\n").partition("\n\n")
+    if gap and not _DELIVERABLE_LINE.match(head) and not re.search(r"\d", head) \
+            and len(after.strip()) >= max(300, 2 * len(head)):
+        sentences = [x.strip() for x in _KO_SENTENCE_END.split(head) if x and x.strip()]
+        if sentences and all(_WORK_SENTENCE.search(x) for x in sentences):
+            return re.sub(r"^(?:\s*(?:-{3,}|\*{3,}|_{3,})\s*\n)+", "", after.lstrip("\n"))
     lines = (text or "").split("\n")
     at = next((i for i, line in enumerate(lines) if _DELIVERABLE_LINE.match(line)), None)
     if not at:
@@ -1079,6 +1188,7 @@ __all__ = ["DOCUMENT_TERMS", "JSON_LINE", "TERMS", "TOOL_APOLOGY", "TOOL_REPORT"
            "found", "has_tool_call", "has_work_notes", "is_announcement", "is_intent_only",
            "is_work_plan", "scrub",
            "strip_check_block",
-           "strip_echoed_heading", "strip_reports", "strip_tool_apologies", "strip_tool_calls",
+           "PLAN_NOTE", "strip_echoed_heading", "strip_plan_preface", "strip_reports",
+           "strip_tool_apologies", "strip_tool_calls",
            "written_tool_calls",
            "strip_work_notes"]

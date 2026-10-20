@@ -62,9 +62,23 @@ def context_years(context: str) -> set[int]:
     return {int(y) for y in _YEAR.findall(context or "")}
 
 
+#: a weekday written bare after a day in a memo: 「10/21 화 10시」, 「10월 21일 화 오전」
+_BARE_STATED = re.compile(
+    rf"(?<![\d./])(?P<m>\d{{1,2}})\s{{0,2}}(?:/|월\s{{0,2}})(?P<d>\d{{1,2}})(?![\d/])\s{{0,2}}일?"
+    rf"\s{{1,2}}(?P<wd>[{WEEKDAYS}])(?![가-힣A-Za-z])")
+
+
+#: a block the code wrote into the material (「# 확정 날짜(코드 계산)」): the calendar's words
+_CODE_BLOCK = re.compile(r"^#[^\n]*\(코드 계산\)[^\n]*(?:\n(?!#\s)[^\n]*)*", re.M)
+
+
 def _stated(context: str) -> dict[tuple[int | None, int, int], set[str]]:
-    """Weekdays the person gives per day: 「3월 2일 화요일」 → {(None, 3, 2): {화}}."""
+    """Weekdays the person gives per day: 「3월 2일 화요일」 → {(None, 3, 2): {화}}; the code's
+    own date blocks are not the person's."""
+    context = _CODE_BLOCK.sub("", context or "")
     out: dict[tuple[int | None, int, int], set[str]] = {}
+    for m in _BARE_STATED.finditer(context or ""):
+        out.setdefault((None, int(m.group("m")), int(m.group("d"))), set()).add(m.group("wd"))
     for m in _DATE.finditer(context or ""):
         g = m.groupdict()
         if g["y"]:
@@ -79,6 +93,40 @@ def _stated(context: str) -> dict[tuple[int | None, int, int], set[str]]:
             out.setdefault(key, set()).add(wd)
             out.setdefault((None, key[1], key[2]), set()).add(wd)
     return out
+
+
+def _conflicts(stated: dict[tuple[int | None, int, int], set[str]], given_year: int | None,
+               named: set[int], today: dt.date) -> dict[dt.date, str]:
+    """Days the person gives one weekday for that the calendar does not: day → their weekday."""
+    out: dict[dt.date, str] = {}
+    for (year, month, dom), said in stated.items():
+        if len(said) != 1:
+            continue
+        wd = next(iter(said))
+        if year is None:
+            if any(_weekday_in(y, month, dom) == wd for y in named):
+                continue
+            if given_year is not None:
+                year = given_year
+            else:
+                near = _nearest(month, dom, today)
+                if near is None or not near[1]:
+                    continue
+                year = near[0].year
+        real = _weekday_in(year, month, dom)
+        if real and real != wd:
+            out[dt.date(year, month, dom)] = wd
+    return out
+
+
+def _flagged(written: str, said: str, real: str) -> str:
+    """`written` with the person's weekday and the calendar's beside it, to be checked."""
+    note = f"확인 필요: 달력상 {real}요일"
+    m = re.search(rf"\(\s{{0,2}}[{WEEKDAYS}](?:요일)?\s{{0,2}}\)", written)
+    if m:
+        return written[:m.start()] + f"({said}, {note})" + written[m.end():]
+    return re.sub(rf"[{WEEKDAYS}]요일$", f"{said}요일({note})", written.rstrip()) + written[
+        len(written.rstrip()):]
 
 
 def _anchor_year(text: str, at: int, month: int) -> tuple[int, int] | None:
@@ -147,7 +195,7 @@ def fix_weekdays(text: str, *, context: str = "",
     """`text` with weekdays matching their dates, plus changes. A date off by a few days from
     one the request's rules settle, written with that day's weekday, is the slip: the date
     is set to the rule's and the weekday kept. 요일 columns are read against their row's date."""
-    if not text or not re.search(rf"[{WEEKDAYS}]", text):
+    if not text or not re.search(rf"[{WEEKDAYS}]", f"{text}{context}"):
         return text, []
     from app.services import date_rules
 
@@ -157,6 +205,7 @@ def fix_weekdays(text: str, *, context: str = "",
     stated = _stated(context)
     ruled = date_rules.settled(context, today) if context else []
     rules = {d for r in ruled for d in (r.start, r.end)}
+    conflicts = _conflicts(stated, given_year, named, today)
     text, column_fixes = _fix_weekday_columns(text, given_year, today, ruled)
     fences = [m.span() for m in _FENCE.finditer(text)]
     fixes: list[Fix] = []
@@ -165,7 +214,6 @@ def fix_weekdays(text: str, *, context: str = "",
     year: int | None = None
     year_at = -1
     month: int | None = None
-
     for m in _DATE.finditer(text):
         if any(a <= m.start() < b for a, b in fences):
             continue
@@ -200,6 +248,18 @@ def fix_weekdays(text: str, *, context: str = "",
         except (TypeError, ValueError):
             continue
         real = WEEKDAYS[day.weekday()]
+        said = conflicts.get(day)
+        noted = "달력상" in text[m.end():m.end() + 20]
+        if wd and said and not noted:
+            # the person's weekday against the calendar: kept and flagged, never picked
+            written = m.group(0)
+            fixed = _flagged(written, said, real)
+            out.append(text[last:m.start()])
+            out.append(fixed)
+            last = m.end()
+            fixes.append(Fix(written.strip(), fixed.strip(),
+                             f"원문 {said}요일, {day.isoformat()}은 {real}요일 — 확인 필요"))
+            continue
         if not wd or wd == real:
             continue
         if rules and (ruled := _rule_day(day, wd, rules)) is not None:
@@ -238,10 +298,33 @@ def fix_weekdays(text: str, *, context: str = "",
         out.append(fixed)
         last = m.end()
         fixes.append(Fix(written.strip(), fixed.strip(), f"{day.isoformat()}은 {real}요일"))
-    if not fixes:
-        return text, column_fixes
-    out.append(text[last:])
-    return "".join(out), column_fixes + fixes
+    if fixes:
+        out.append(text[last:])
+        text = "".join(out)
+    text, bare_fixes = _flag_bare(text, conflicts)
+    return text, column_fixes + fixes + bare_fixes
+
+
+def _flag_bare(text: str, conflicts: dict[dt.date, str]) -> tuple[str, list[Fix]]:
+    """A day the person gave a weekday for, written bare by the writer: its first mention takes
+    the person's weekday back, flagged — unless a mention is flagged already."""
+    fixes: list[Fix] = []
+    for day, said in conflicts.items():
+        mention = re.compile(
+            rf"(?<![\d./-])(?:{day.year}\s{{0,2}}(?:년\s{{0,2}}|[.\-/]\s{{0,2}}))?0?{day.month}"
+            rf"\s{{0,2}}(?:월\s{{0,2}}|[/.\-]\s{{0,2}})0?{day.day}(?![\d/])(?:\s{{0,2}}일|\.)?")
+        found = list(mention.finditer(text))
+        if not found or any("달력상" in text[m.end():m.end() + 24] for m in found):
+            continue
+        m = found[0]
+        if re.match(rf"\s{{0,2}}(?:\(|[{WEEKDAYS}]요일)", text[m.end():]):
+            continue
+        real = WEEKDAYS[day.weekday()]
+        fixed = f"{m.group(0)}({said}, 확인 필요: 달력상 {real}요일)"
+        text = text[:m.start()] + fixed + text[m.end():]
+        fixes.append(Fix(m.group(0), fixed,
+                         f"원문 {said}요일, {day.isoformat()}은 {real}요일 — 확인 필요"))
+    return text, fixes
 
 
 #: a date in a table cell, the year optional: 「2027. 2. 15.」 「2. 18.」 「3월 2일」 「2027-03-02」

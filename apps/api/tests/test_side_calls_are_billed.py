@@ -218,7 +218,9 @@ async def test_a_fact_checked_slide_reaches_the_ledger(monkeypatch) -> None:
                     "creditCost": 2,
                     "inputCreditCost": 1,
                 },
-            ]
+            ],
+            # the checker is the admin's chat default, not the cheapest model
+            "defaultChatModel": "vendor/cheap",
         }
 
     seen: dict = {}

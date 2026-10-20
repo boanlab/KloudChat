@@ -68,11 +68,11 @@ const groups: Record<string, Group> = {
   },
   phone: { files: ['phone-variant.spec.ts'], projects: { default: { browserName: 'chromium' } } },
   composer: {
-    files: ['composer-plus.spec.ts', 'composer-races.spec.ts', 'share-sign-in.spec.ts', 'file-box.spec.ts'],
+    files: ['composer-plus.spec.ts', 'composer-races.spec.ts', 'share-sign-in.spec.ts', 'file-box.spec.ts', 'home-layout.spec.ts'],
     projects: { desktop, phone: touchPhone },
   },
   'i18n-gates': { files: ['i18n-audit-gates.spec.ts'], projects: { default: { ...devices['Desktop Chrome'] } } },
-  'report-table': { files: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts'], projects: { default: desktop } },
+  'report-table': { files: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts', 'report-broken-picture.spec.ts'], projects: { default: desktop } },
   'session-hydration': {
     files: [
       'session-hydration.spec.ts',
@@ -106,7 +106,13 @@ const groups: Record<string, Group> = {
     projects: { desktop, phone: pixel },
   },
   agents: {
-    files: ['agent-process.spec.ts', 'save-as-agent.spec.ts', 'restructure-shots.spec.ts', 'agent-skill-surface.spec.ts'],
+    files: [
+      'agent-process.spec.ts',
+      'save-as-agent.spec.ts',
+      'restructure-shots.spec.ts',
+      'agent-skill-surface.spec.ts',
+      'agent-default-model.spec.ts',
+    ],
     projects: { desktop },
   },
   results: { files: ['results.spec.ts', 'panel-header.spec.ts'], projects: { desktop, phone: pixel } },

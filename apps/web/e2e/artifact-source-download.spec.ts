@@ -164,3 +164,26 @@ test('HTML keeps its preview, source tabs and existing export formats', async ({
   expect(state.exports).toEqual([{ format: 'html', authorization: 'Bearer fixture-only' }])
   expect(state.unexpected).toEqual([])
 })
+
+test('the 아티팩트 page dialog opens its 내려받기 menu above itself and downloads from it', async ({ page }, testInfo) => {
+  const state = await fixture(page, testInfo, { kind: 'html', language: 'html' })
+  await page.goto('/artifacts')
+  await page.getByRole('button', { name: /열기$/ }).first().click()
+  const dialog = page.getByRole('dialog', { name: '주간 일정' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: '내려받기', exact: true }).click()
+  const item = page.getByRole('menuitem').filter({ hasText: 'HTML' })
+  await expect(item).toBeVisible()
+  // The menu is what the pointer reaches, not the dialog under it.
+  const hit = await item.evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))
+  })
+  expect(hit).toBe(true)
+  const pending = page.waitForEvent('download')
+  await item.click()
+  expect((await pending).suggestedFilename()).toBe('주간 일정.html')
+  expect(state.exports).toEqual([{ format: 'html', authorization: 'Bearer fixture-only' }])
+  await expect(dialog).toBeVisible()
+  expect(state.unexpected).toEqual([])
+})

@@ -1,5 +1,6 @@
-"""With an image model served inside the data boundary, decks and reports plan and draw their
-own pictures after writing, as they do diagrams; an outside model is never used for that."""
+"""Asked for pictures, with an image model served inside the data boundary, decks and reports
+plan and draw their own pictures after writing, as they do diagrams; an outside model is never
+used for that, and an unasked document gets none."""
 
 from __future__ import annotations
 
@@ -80,6 +81,20 @@ def test_a_request_that_mentions_pictures_otherwise_is_not_a_refusal():
     assert not illustrations.declined("그림을 넣어서 발표 자료를 만들어 줘")
 
 
+@pytest.mark.parametrize("request_text", [
+    "그림을 넣어서 발표 자료를 만들어 줘", "삽화를 곁들인 안내문", "사진도 몇 장 넣어 줘",
+    "a talk deck with some pictures"])
+def test_a_request_for_pictures_is_heard(request_text):
+    assert illustrations.wanted(request_text)
+
+
+@pytest.mark.parametrize("request_text", [
+    "팀장님께 올릴 주간 보고서를 써 줘", "임원 보고용 예산 승인 요청 슬라이드", "협업 도구 소개",
+    "그림 없이 정리해 줘", "사진 동아리 활동 보고서"])
+def test_a_document_that_does_not_ask_draws_no_picture(request_text):
+    assert not illustrations.wanted(request_text)
+
+
 # ── drawing ───────────────────────────────────────────────────────────
 
 
@@ -115,7 +130,7 @@ def _deck_model(picks: list[dict]):
     return complete, prompts
 
 
-async def _write(monkeypatch, auto, picks):
+async def _write(monkeypatch, auto, picks, request="삽화를 곁들인 협업 도구 소개"):
     complete, prompts = _deck_model(picks)
     calls: list[dict] = []
     monkeypatch.setattr(deck, "_complete", complete)
@@ -123,7 +138,7 @@ async def _write(monkeypatch, auto, picks):
     plan = [{"title": "표지", "layout": "title"}, {"title": "함께 쓰는 공간", "layout": "bullets"},
             {"title": "마무리", "layout": "closing"}]
     events = [e async for e in deck._write_slides(
-        plan=plan, title="발표", subtitle="", accent="#5b5bd6", request="협업 도구 소개",
+        plan=plan, title="발표", subtitle="", accent="#5b5bd6", request=request,
         model="m", api_key="k", trusted_context=None, untrusted_context=None,
         usage={"inputTokens": 0, "outputTokens": 0}, auto_image_model=auto)]
     return events, prompts, calls
@@ -143,9 +158,18 @@ async def test_a_deck_draws_its_own_picture_beside_the_words(monkeypatch):
                for e in events)
 
 
+@pytest.mark.asyncio
+async def test_a_deck_not_asked_for_pictures_plans_none(monkeypatch):
+    events, prompts, calls = await _write(
+        monkeypatch, _LOCAL, [{"part": 2, "prompt": "x", "caption": "x"}], request="협업 도구 소개")
+    assert not any(_PICK in p for p in prompts) and calls == []
+    slides = next(e for e in events if e["type"] == "deck")["slides"]
+    assert "image" not in slides[1]
+
+
 def test_pictures_go_only_on_slides_whose_words_make_room():
-    # Bands and cards keep the full width beside a picture; the picture would cover them.
-    assert set(deck._PICTURE_LAYOUTS) == {"bullets", "statement"}
+    # Bands, cards and the centred statement keep the full width; a picture would cover them.
+    assert set(deck._PICTURE_LAYOUTS) == {"bullets"}
 
 
 @pytest.mark.asyncio

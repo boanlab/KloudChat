@@ -18,7 +18,7 @@ _SAVE = (workspace._claim_slug, workspace._own, workspace._validate_skill_ids,
          workspace._validate_tool_names, workspace._validated_checks,
          workspace._validate_design_system_id, workspace._validate_agent_bindings,
          workspace.create_agent, workspace.patch_agent, user_pipelines.put_process,
-         user_pipelines._invalid)
+         user_pipelines.apply_process, user_pipelines._invalid)
 
 
 def _raised() -> set[str]:

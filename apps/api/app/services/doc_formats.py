@@ -167,6 +167,23 @@ FORMATS: tuple[DocFormat, ...] = (
     ),
 )
 
+#: after a document noun: it names what a product does or what the writing draws on, not what
+#: to write — 「회의록(녹취 요약) 서비스 시장 조사 보고서」, 「회의록을 바탕으로 결과 보고서」
+_NOT_THE_OBJECT = re.compile(
+    r"\s{0,2}(?:\([^()\n]{0,40}\)|（[^（）\n]{0,40}）|[^()\n]{0,20}\))?\s{0,2}(?:"
+    r"(?:작성|자동|요약|생성|정리)?\s{0,2}(?:서비스|솔루션|앱|어플|애플리케이션|도구|툴|플랫폼|프로그램"
+    r"|소프트웨어|기능|시장|산업|업체|기업|스타트업|자동화|시스템|제품|SaaS|AI)"
+    r"|(?:을|를)?\s{0,2}(?:바탕으로|토대로|기반으로|근거로|참고(?:해|하여|로))|에서\s{0,2}(?:나온|뽑)"
+    r")", re.I)
+
+
+def asked(pattern: re.Pattern[str], instruction: str) -> bool:
+    """Whether `pattern` names what the instruction asks to produce: a hit naming a product
+    (「회의록 서비스」) or the source material (「회의록을 바탕으로」) is a mention only."""
+    text = instruction or ""
+    return any(not _NOT_THE_OBJECT.match(text, m.end()) for m in pattern.finditer(text))
+
+
 BY_ID: dict[str, DocFormat] = {f.id: f for f in FORMATS}
 #: Retired formats: kept by existing agents, never newly chosen.
 RETIRED = frozenset({"client_proposal", "career_history"})
@@ -241,7 +258,7 @@ def detect(
     if fixed and fixed in BY_ID:
         return _sibling_named(fixed, instruction) or BY_ID[fixed]
     for fmt, pattern in (*_COMPILED, *_FALLBACKS):
-        if pattern.search(instruction or ""):
+        if asked(pattern, instruction):
             return fmt
     return None
 
@@ -275,6 +292,8 @@ _PLACE_WORD = re.compile(
     r"\d{2,4}\s{0,2}호|회의실|강당|세미나실|\d\s{0,2}층|홀$|센터$|관\s{0,2}\d")
 #: 「작성자는 나(조교 정다은)로」 → parenthesised name.
 _SAID_ME = r"\s{0,2}(?:는|은)\s{0,2}(?:나|저)\s{0,2}\(([^()\n]{2,30})\)"
+#: 「작성자는 「교육혁신팀 김에이전트」로 적는다」 → the quoted words.
+_SAID_QUOTED = r"\s{0,2}(?:는|은|[:：])?\s{0,2}[「『“\"]([^」』”\"\n]{2,40})[」』”\"]"
 #: 「보고자는 시설팀 김도윤 주무관.」
 _SAID_VALUE = (r"(?:\s{0,2}(?:는|은)\s{0,2}|\s{1,2})([가-힣A-Za-z0-9○][^,.:\n]{1,30}?)\s{0,2}"
                r"(?:(?:으로|로)\s{0,2}(?:해|써|적어|넣어|부탁)|이야|입니다|이고|예요|[.\n]|$)")
@@ -326,7 +345,9 @@ def field_value(name: str, value: str) -> bool:
     value = (value or "").strip()
     if not value:
         return True
-    if re.search(r"일시|일자|날짜|기간|시간", name) and not re.search(r"\d|\[", value):
+    if re.search(r"일시|일자|날짜|기간|시간", name) and (
+            not re.search(r"\d|\[", value) or re.fullmatch(r"(?:19|20)\d{2}\s{0,2}년?", value)):
+        # a year alone (「2026」, the answer to 「연도 포함」) dates nothing
         return False
     return not (len(value) > 20 and _SENTENCE_VALUE.search(value))
 
@@ -353,6 +374,7 @@ def head_values(fmt: DocFormat, text: str) -> dict[str, str]:
             if not field_name or field_name in out:
                 continue
             said = (re.search(re.escape(base) + _SAID_ME, line)
+                    or re.search(re.escape(base) + _SAID_QUOTED, line)
                     or re.search(re.escape(base) + _SAID_VALUE, line))
             if said and not said.group(1).startswith(("나", "저")):
                 put(field_name, said.group(1))
@@ -463,6 +485,22 @@ def _issue_day(name: str, value: str, request: str) -> str:
     return value
 
 
+#: the next meeting's clause: 「다음 회의 10/21 화 10시 3층 회의실.」
+_NEXT_MEETING = re.compile(
+    r"(?:다음|차기)\s{0,2}(?:회의|모임|미팅|일정)[^\n;]*?(?=(?<!\d)\.(?!\s{0,2}\d)|[\n;]|$)")
+#: head fields naming the meeting's own day and place
+_MEETING_FIELD = re.compile(r"일시|일자|날짜|장소")
+
+
+def _this_meeting(name: str, value: str, request: str) -> str:
+    """A 일시/장소 value found only in the next meeting's clause is no value for this one."""
+    if not value or not _MEETING_FIELD.search(name) or not _NEXT_MEETING.search(request or ""):
+        return value
+    rest = re.sub(r"\s+", "", _NEXT_MEETING.sub(" ", request or ""))
+    tokens = [t for t in re.split(r"[\s,·/()]+", value) if t]
+    return value if all(re.sub(r"\s+", "", t) in rest for t in tokens) else ""
+
+
 def title_block(
     fmt: DocFormat, answer: dict[str, Any], request: str, read: dict[str, str] | None = None
 ) -> dict[str, Any]:
@@ -482,6 +520,7 @@ def title_block(
     fields = [[name, grounded((read or {}).get(name))
                or _issue_day(name, grounded(raw.get(name)), request)]
               for name in fmt.fields]
+    fields = [[name, _this_meeting(name, value, request)] for name, value in fields]
     fields = [[name, value if field_value(name, value) else ""] for name, value in fields]
     fields = [[name, value] for name, value in fields if value or name not in fmt.optional]
     block: dict[str, Any] = {

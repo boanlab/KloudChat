@@ -42,7 +42,7 @@ class SystemSettingsIn(Wire):
     #: "" follows chat default
     model_report: str | None = None
     model_slides: str | None = None
-    #: "" = surface's cheapest
+    #: required (audio/video: when any is served); no price fallback
     model_image: str | None = None
     model_audio: str | None = None
     model_video: str | None = None

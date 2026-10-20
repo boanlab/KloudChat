@@ -103,8 +103,17 @@ _SLIDE_RULES = """
 """
 
 
+#: a relationship figure: what it is, after what to draw
+_RELATION = (
+    "\nThis is a relationship figure (관계도): draw the things as boxes and connect only the "
+    "pairs the description relates, each line labelled with how the two relate in a word or "
+    "two (관리, 선택, 포함 / manages, selects, contains). Do not line the things up as a chain "
+    "of steps."
+)
+
+
 def _messages(
-    description: str, figure: str, language: str, slide: bool = False
+    description: str, figure: str, language: str, slide: bool = False, relation: bool = False
 ) -> list[dict[str, str]]:
     what = FIGURES.get(figure, FIGURES["method"])
     lang = "영어로" if language == "en" else "한국어로"
@@ -117,7 +126,8 @@ def _messages(
         {
             "role": "user",
             "content": (
-                f"그릴 것: {what}\n노드 이름과 캡션은 {lang} 쓴다.\n\n설명:\n{description.strip()}"
+                f"그릴 것: {what}{_RELATION if relation else ''}\n"
+                f"노드 이름과 캡션은 {lang} 쓴다.\n\n설명:\n{description.strip()}"
             ),
         },
     ]
@@ -226,10 +236,12 @@ async def draw(
     error: str = "",
     slide: bool = False,
     material: str = "",
+    relation: bool = False,
 ) -> tuple[str, str, dict[str, Any]]:
     """One figure: (source, caption, usage); broken/error for one retry; `material`, the text
-    the figure goes with, gives a fixed-shape figure its values."""
-    messages = _messages(description, figure, language, slide)
+    the figure goes with, gives a fixed-shape figure its values; `relation`, things and how
+    they relate: no fixed shape, every line named."""
+    messages = _messages(description, figure, language, slide, relation)
     if broken:
         messages.append({"role": "assistant", "content": f"```mermaid\n{broken}\n```"})
         messages.append(
@@ -243,7 +255,7 @@ async def draw(
                 ),
             }
         )
-    if not broken:
+    if not broken and not relation:
         # a figure with a fixed shape: its slots, drawn to that shape
         kind, usage = await _fixed_kind(
             description, figure, model, api_key, language, slide, material)
@@ -297,11 +309,12 @@ async def draw_native(
     slide: bool = False,
     accent: str = ACCENT,
     material: str = "",
+    relation: bool = False,
 ) -> tuple[str, str, dict[str, Any], bytes]:
     """One figure drawn natively to PNG: (source, caption, usage, png); no fallback."""
     source, caption, usage = await draw(
         description=description, figure=figure, model=model, api_key=api_key,
-        language=language, slide=slide, material=material,
+        language=language, slide=slide, material=material, relation=relation,
     )
     if diagram_shapes.parse(source) is None:
         log.info("figure source not drawable as shapes; asking for a flowchart once")
@@ -309,7 +322,7 @@ async def draw_native(
             source, again, more = await draw(
                 description=description, figure=figure, model=model, api_key=api_key,
                 language=language, slide=slide, broken=source,
-                error=_NOT_DRAWABLE.format(n=diagram_shapes.MAX_NODES),
+                error=_NOT_DRAWABLE.format(n=diagram_shapes.MAX_NODES), relation=relation,
             )
         except ValueError as exc:
             raise Undrawable("not_drawable", usage) from exc

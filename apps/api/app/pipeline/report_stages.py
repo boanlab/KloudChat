@@ -38,17 +38,21 @@ from app.services import (
     key_figures,
     lint,
     model_retry,
+    pictures,
     placeholders,
     process_settings,
     quality_gate,
     report_checks,
     research,
     richtext,
+    stated_days,
+    stated_policy,
     table_integrity,
     table_mend,
     units,
     value_guard,
     verify,
+    workspace_context,
 )
 from app.services import deck as deck_rules
 from app.services import outline as plan_rules
@@ -256,8 +260,9 @@ class Assemble(Base):
         project_excluded = 0
         project_reference_lines: list[str] = []
         for item in req.project_sources or []:
+            attached = bool(item.get("attached"))
             if item.get("state") not in ("included", "truncated"):
-                project_excluded += 1
+                project_excluded += not attached
                 continue
             ordinal = len(findings.sources) + 1
             title = str(item.get("name") or "프로젝트 자료")[:200]
@@ -267,10 +272,13 @@ class Assemble(Base):
                     "id": str(item.get("id") or f"project-{ordinal}"),
                     "ordinal": ordinal,
                     "title": title,
-                    "publisher": research._publisher(url) if url else "프로젝트 파일",
+                    "publisher": research._publisher(url) if url else (
+                        "첨부 파일" if attached else "프로젝트 파일"),
                     "url": url,
                     "origin": "web" if url else "file",
-                    "originLabel": "프로젝트 웹 자료" if url else "프로젝트 파일",
+                    **({"attached": True} if attached else {}),
+                    "originLabel": "첨부 파일" if attached else (
+                        "프로젝트 웹 자료" if url else "프로젝트 파일"),
                     "quote": (
                         " · ".join(str(v) for v in (item.get("locations") or []))
                         or (
@@ -282,7 +290,7 @@ class Assemble(Base):
                 }
             )
             project_reference_lines.append(f"- [{ordinal}] {title}")
-            project_selected += 1
+            project_selected += not attached
         mat.sources = findings.sources
 
         # research log for the report artifact
@@ -317,9 +325,11 @@ class Assemble(Base):
         mat.trusted = [Part(text, "trusted") for text in req.trusted]
         if project_reference_lines:
             mat.trusted.append(Part(
-                "# 프로젝트 자료 인용 번호\n"
-                "End each sentence that uses a fact from the project material with its exact "
-                "number below. Do not make up numbers that are not on the list.\n" + "\n".join(project_reference_lines),
+                "# 첨부·프로젝트 자료 인용 번호\n"
+                "End each sentence that uses a fact from an attached file or the project "
+                "material with that file's exact number below, never a web result's number. "
+                "Do not make up numbers that are not on the list.\n"
+                + "\n".join(project_reference_lines),
                 "project"))
         mat.grounded = deck_rules.has_numbers(req.text, mat.document)
         if block := research.context_block(findings):
@@ -428,9 +438,12 @@ class Outline(Base):
             and report._from_the_web(request)
         )
         title, headings = report._parse_outline(text)
-        # pasted outline: person's sections; 개조식 keeps its fixed shape
+        # pasted outline: person's sections; then the order the agent's 지시 gives; 개조식
+        # keeps its fixed shape
+        instructed = report.instructed_sections(
+            "\n".join(workspace_context.standing_of(req.trusted)))
         fixed = report.given_outline(request) or (
-            list(bundle.spec.settings.outline) if not wanted else []
+            (instructed or list(bundle.spec.settings.outline)) if not wanted else []
         )
         if fixed:
             headings = fixed
@@ -440,6 +453,9 @@ class Outline(Base):
             report.without_instruction_aside(h, request)
             for h in report.with_listed_sections(headings, request)
         ]
+        if bundle.spec.format_id == "press" and not fixed:
+            # 제목·부제 are the title block; 리드 opens the 본문 section
+            headings = report.press_headings(headings)
         if wanted and len(headings) != wanted:
             try:
                 retry_text, retry_spent = await ask(
@@ -758,6 +774,9 @@ class Prepass(Base):
         format_id, given = bundle.spec.format_id, bundle.material.given
         quiet = bundle.spec.settings.prepass_quiet
         prepass: report_checks.Prepass | None = None
+        if not given and bundle.spec.settings.date_base == "meeting":
+            # minutes from a memo typed as the request: its dates still count from the meeting
+            given = req.text
         if given:
             prepass_usage: dict[str, int] = {"inputTokens": 0, "outputTokens": 0}
             try:
@@ -1226,6 +1245,9 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         log.info("trimmed %d sentence(s) from %r: %s", len(trimmed), section["heading"],
                  trimmed[0][:80])
     clean, _ = hangul.read_back(report._without_own_heading(body, section["heading"]))
+    # a written-out picture that does not open is the writer's invention; a fence around
+    # it (or around a table) taken off first, never left holding the table
+    clean = pictures.drop_broken(report.unfence_pictures(clean))
     # section = level-two heading; subheadings below
     clean = report._FIGURE_MARK.sub(lambda m: f"\n\n{m.group(0)}\n\n", clean)
     clean = report.split_long_paragraphs(
@@ -1456,7 +1478,7 @@ class Figures(Base):
                 "content": section["content"],
                 "done": True,
             }
-        if req.auto_image_model and not draws_nothing and not illustrations.declined(request):
+        if req.auto_image_model and not draws_nothing and illustrations.wanted(request):
             async for event in _illustrate(bundle, sections):
                 yield event
 
@@ -1631,7 +1653,9 @@ class TitleBlock(Base):
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, prepass = _report(), bundle.request, bundle.computed.prepass
-        given = bundle.material.given
+        # the agent's 지시 fills the head too (「작성자는 …로 적는다」, 「…께 올리는 보고」)
+        given = "\n".join([bundle.material.given,
+                           *workspace_context.standing_of(req.trusted)]).strip()
         block, spent = await report.title_block_for(
             bundle.spec.format, req.text, bundle.plan.title, req.judge, req.api_key, given)
         bundle.usage["inputTokens"] += spent.get("inputTokens", 0)
@@ -1643,7 +1667,7 @@ class TitleBlock(Base):
             bundle.findings.head_fixed = head_fixed
             bundle.findings.client_problem = client_problem
             block = head_fixed or block
-        block = report_checks.minutes_head(block, prepass) or block
+        block = report_checks.minutes_head(block, prepass, report.local_today()) or block
         bundle.document.head_block = block
         yield {"type": "titleBlock", "titleBlock": block}
 
@@ -1740,6 +1764,7 @@ class MinutesRepair(Base):
         # 「미정(사유)」: reason to 비고 by code, so no rewrite reads it as an owner
         sections, _ = report_checks.minutes_deferred(sections)
         sections, filled = report_checks.minutes_due_fill(sections, prepass.dates)
+        sections = report_checks.minutes_head_day(sections, bundle.document.head_block, prepass)
         before += ["minutes_due"] * filled
         if prepass.undated:
             # no meeting date: nothing dated as the meeting's
@@ -1765,10 +1790,21 @@ def settled_sections(before: list[dict], after: list[dict], evidence: list[str])
     return out
 
 
+def _person_given(bundle: Bundle) -> str:
+    """What the person gave: request, files, pasted text, card answers, agent instructions;
+    none of the pipeline's own blocks (settled figures under model-made names, notes, pages)."""
+    mat = bundle.material
+    return "\n".join([
+        mat.given or bundle.request.text,
+        *(p.text for p in mat.parts if p.origin in ("attachment", "pasted", "answer")),
+        *(p.text for p in mat.trusted if p.origin == "trusted"),
+    ])
+
+
 def _doc(bundle: Bundle) -> verify.Doc:
     return verify.Doc(bundle.document.sections, _material_text(bundle), bundle.request.text,
                       list(bundle.material.sources or []), bundle.computed.settled,
-                      bundle.computed.conflicts)
+                      bundle.computed.conflicts, _person_given(bundle))
 
 
 class FormatFind(Base):
@@ -1838,6 +1874,28 @@ def mark_unsettled(sections: list[dict], still: list) -> list[dict]:
             body = body[:-1]
         content = content.replace(sentence, f"{body} {_MARK}{tail}", 1)
         out[f.section]["content"] = content
+    return out
+
+
+def mark_policy(sections: list[dict], still: list, doc: verify.Doc | None = None
+                ) -> list[dict]:
+    """Sections with 「(확인 필요)」 on each sentence or table cell still stating a limit,
+    approval or rule (`stated_policy`), or a weekday (`stated_days`), the material does not;
+    with `doc`, read again over the sections as they stand (a finding merged under another
+    check's code, a failed repair)."""
+    out = [dict(sec) for sec in sections]
+    standing = [(f.section, f.sentence, stated_policy.untraced(f.sentence, ""))
+                for f in still if getattr(f, "code", "") == "unsourced_policy"]
+    if doc is not None:
+        material, quotes = checks.policy_material(doc)
+        refs = _report()._REFERENCE_HEADING
+        standing += stated_policy.findings(out, material, refs, quotes)
+        standing += stated_days.findings(out, material, refs)
+    for index, sentence, said in standing:
+        if not 0 <= index < len(out):
+            continue
+        content = str(out[index].get("content") or "")
+        out[index]["content"] = stated_policy.mark(content, sentence, said)
     return out
 
 
@@ -1962,6 +2020,9 @@ class Verify(Base):
             # is marked for the reader whatever the request said
             bundle.document.sections = mark_unsettled(
                 bundle.document.sections, [f for f in still if f.code == "fact"] + confirmed)
+        # a limit, approval, rule or weekday the material only asks about or never gives,
+        # standing after its repair, is marked where it stands whatever the writer
+        bundle.document.sections = mark_policy(bundle.document.sections, still, _doc(bundle))
         bundle.findings.still = still
         format_codes = set(report_checks.LABELS)
         bundle.findings.after += [f.code for f in still if f.code in format_codes]

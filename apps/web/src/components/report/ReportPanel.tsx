@@ -1560,9 +1560,10 @@ export function ReportPanel({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header ref={setHeaderEl} className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2 max-sm:px-2">
-          <div ref={head.ref} className="flex w-full min-w-0 items-center gap-1.5">
+          <div ref={head.ref} className={cn('flex w-full min-w-0 items-center gap-1.5', head.narrow && 'flex-wrap')}>
             <FileText size={15} className="shrink-0 text-accent" />
-            <p className="min-w-0 flex-1 truncate whitespace-nowrap text-base font-medium" title={report.title}>
+            {/* Narrow: the title takes its own row, so the actions below keep their words. */}
+            <p className={cn('min-w-0 flex-1 truncate whitespace-nowrap text-base font-medium', head.narrow && 'min-w-[calc(100%-1.5rem)]')} title={report.title}>
               {report.title}
             </p>
             {!head.narrow && (
@@ -1627,7 +1628,7 @@ export function ReportPanel({
               )}
               <DownloadMenu
                 artifact={report}
-                compact={head.narrow}
+                compact={head.narrow && (editing || pageDirty)}
                 disabled={writing}
                 take={exportAs}
                 onError={setExportError}
@@ -1650,10 +1651,11 @@ export function ReportPanel({
                 aria-label={t('편집')}
                 title={editMode ? t('편집 도구를 닫고 읽기로 돌아갑니다') : t('보면서 바로 고칩니다')}
                 disabled={writing}
+                data-labelled={head.narrow && editing ? undefined : ''}
                 onClick={() => (editMode ? leaveEditMode() : enterEditMode())}
               >
                 <Pencil size={13} />
-                {!head.narrow && t('편집')}
+                {!(head.narrow && editing) && t('편집')}
               </Button>
               <Dropdown
                 align="right"

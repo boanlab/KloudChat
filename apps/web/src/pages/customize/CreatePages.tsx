@@ -118,7 +118,6 @@ function fromDraft(base: Agent, d: AgentDraft): Agent {
 export function AgentCreatePage() {
   const t = useT()
   const navigate = useNavigate()
-  const models = useStore((s) => s.models)
   const ensureWorkspace = useStore((s) => s.ensureWorkspace)
   const ensureDesignTemplates = useStore((s) => s.ensureDesignTemplates)
   useEffect(() => {
@@ -126,11 +125,8 @@ export function AgentCreatePage() {
     void ensureDesignTemplates()
   }, [ensureWorkspace, ensureDesignTemplates])
 
-  // Cheapest chat model, as the surface defaults.
-  const defaultModel =
-    [...models].filter((m) => m.kinds.includes('chat')).sort((a, b) => a.creditCost - b.creditCost)[0]?.id ?? ''
   const { draft, error, decided, retry } = useSessionDraft()
-  // Form opens without waiting for models; 모델 fills on arrival (`defaultModel`).
+  // No model pinned: the agent follows the surface's default (`AgentForm` 모델 field).
   const initial = useMemo(() => {
     if (draft === undefined) return null
     const blank = emptyAgent('')
@@ -161,7 +157,6 @@ export function AgentCreatePage() {
             draftFiles={draft?.files ?? []}
             addedPrompt={decided.prompt}
             creating
-            defaultModel={defaultModel}
             onSaved={(saved) => navigate(`/customize/agents/${saved.id}`, { replace: true })}
             onCancel={() => navigate('/customize?tab=agents')}
           />
