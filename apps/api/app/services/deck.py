@@ -5129,6 +5129,22 @@ def _chart_figures(slide: dict) -> list[str]:
             for v in s.get("values") or [] if isinstance(v, (int, float))]
 
 
+#: particles after a counter word: 「3곳에서」, 「4분기에는」
+_PARTICLES = ("에서는", "에서", "에게", "으로", "부터", "까지", "에는", "에도", "이며", "이고",
+              "이다", "와", "과", "은", "는", "이", "가", "을", "를", "에", "의", "로", "도", "만",
+              "씩", "간", "째")
+
+
+def _without_particle(word: str) -> str:
+    """`word` minus the particles it ends with, its first syllable kept."""
+    for _ in range(2):
+        tail = next((p for p in _PARTICLES if word.endswith(p) and len(word) > len(p)), "")
+        if not tail or word in _KOREAN_UNITS:
+            break
+        word = word[: -len(tail)]
+    return word
+
+
 def figures_in(words: str) -> list[tuple[str, str, str]]:
     """`(number, unit, as written)` for each figure in `words`, each once: the same reading
     for the text before an edit and after it."""
@@ -5137,12 +5153,16 @@ def figures_in(words: str) -> list[tuple[str, str, str]]:
         number, unit = m.group(2).replace(",", ""), " ".join((m.group(3) or "").split()).lower()
         said = m.group(0)
         if re.fullmatch(r"[가-힣]+", unit):
-            # the unit that starts the word, written up to its end (「4분기」, 「128억」)
-            known = next((u for u in _KOREAN_UNITS if unit.startswith(u)), "")
-            said = said[: len(said) - len(unit) + len(known)] if known else m.group(2)
-            if not known:
-                said = (m.group(1) or "") + said
-            unit = known
+            # the counter word after the number, read whole minus its particle (「4분기」,
+            # 「3곳」, 「3주차」; 「128억원」 is 「128억」)
+            core = _without_particle(unit)
+            if core[:1] in "억만천" and core[1:] == "원":
+                core = core[0]
+            spaced = said[len((m.group(1) or "") + m.group(2)):][:1] == " "
+            if spaced and core not in _KOREAN_UNITS:
+                core = ""  # a word after a space is the sentence's, not the number's
+            said = f"{m.group(1) or ''}{m.group(2)}{' ' if spaced and core else ''}{core}"
+            unit = core
         unit = "$" if m.group(1) else _UNIT_SAME.get(unit, unit)
         if len(number) == 1 and not unit:
             continue  # a lone digit is a list number or slide count, not a figure
@@ -5176,6 +5196,64 @@ def lost_figures(old: dict, new: dict, asked: str = "") -> list[str]:
     # kept when the number stays with its unit, or one side writes no unit (「64」 in a cell)
     return [said for number, unit, said in _shown_figures(old)
             if not any(n == number and (u == unit or not u or not unit) for n, u, _ in shown)]
+
+
+def lost_across(old: list[dict], new: list[dict]) -> list[str]:
+    """Figures the deck `old` showed anywhere that the deck `new` shows nowhere (a deck cut to
+    fewer slides), read as `lost_figures` reads one slide."""
+    shown = [f for slide in new for f in _shown_figures(slide)]
+    out: dict[str, None] = {}
+    for slide in old:
+        for number, unit, said in _shown_figures(slide):
+            if not any(n == number and (u == unit or not u or not unit) for n, u, _ in shown):
+                out.setdefault(said)
+    return list(out)
+
+
+#: an item count asked of a slide: 「항목을 하나로」, 「두 개로」, 「two bullets」
+_ITEMS_ASK = re.compile(
+    r"(?P<n>하나|한\s?개|두\s?개|세\s?개|네\s?개|\d{1,2}\s?개)\s?(?:의\s?)?(?:항목|요점|글머리)?\s?"
+    r"(?:로|으로)\s?(?:줄|합|묶|정리)"
+    r"|\b(?P<m>one|two|three|four|\d{1,2})\s{1,3}(?:items?|points?|bullets?)\b", re.I)
+_ITEM_WORDS = {"하나": 1, "한개": 1, "두개": 2, "세개": 3, "네개": 4,
+               "one": 1, "two": 2, "three": 3, "four": 4}
+
+
+def items_asked(text: str) -> int:
+    """Items the ask leaves a slide with (「9장 항목을 하나로 줄여줘」 → 1), else 0."""
+    m = _ITEMS_ASK.search(text or "")
+    if not m:
+        return 0
+    word = re.sub(r"\s|개", "", m.group("n") or m.group("m") or "").lower() or "x"
+    if word.isdigit():
+        return int(word)
+    return _ITEM_WORDS.get(word, _ITEM_WORDS.get(word + "개", 0))
+
+
+def _points(slide: dict) -> list[str]:
+    """The slide's items as lines: bullets, pattern items (「head: detail」), metrics."""
+    if slide.get("bullets"):
+        return _bullet_points(slide)
+    if isinstance(slide.get("items"), list) and slide["items"]:
+        return [": ".join(str(c) for c in p if str(c).strip()) for p in slide["items"]
+                if isinstance(p, list) and p]
+    return [f"{m[1]} {m[0]}" for m in slide.get("metrics") or [] if len(m) > 1]
+
+
+def merged_points(old: dict, new: dict, count: int) -> dict | None:
+    """`new` with `old`'s items joined into the `count` items asked when the rewrite left
+    fewer (「하나로」 answered with none); None when nothing needs joining."""
+    have = len(_points(new)) + len(new.get("rows") or []) + int(chart_of(new))
+    points = _points(old)
+    if not count or have >= count or len(points) <= count:
+        return None
+    size = -(-len(points) // count)
+    merged = [" · ".join(points[i:i + size]) for i in range(0, len(points), size)]
+    out = {k: v for k, v in new.items() if k not in ("items", "metrics")}
+    if out.get("layout") in slide_patterns.BY_NAME:
+        out["layout"] = "bullets"
+    out["bullets"] = merged
+    return out
 
 
 def picture_of(slide: dict) -> str:

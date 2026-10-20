@@ -477,7 +477,13 @@ is said. Figures a rewrite lost are read the same way on both sides (`deck.figur
 Korean word after a number is read whole, 「3분기」 not 「3분」; chart values count).
 A section shortened to a sentence count (「2절을 두 문장으로 줄여줘」) is checked for that count
 and for the section's figures and names (`revise.shortening_faults`), sent back to the writer
-once with the reason, and what still misses is said in the reply. A title the person asked to change (「제목을 …로 바꿔 줘」, "change the title to …") is
+once with the reason, and what still misses is said in the reply; facts are read over the
+whole section (tables, lists, captions), a sentence restating the ask is dropped before
+counting (`revise.without_ask_echo`), and a figure or date neither the section nor the
+material states counts as a fault (`revise.added_facts`). A slide cut to fewer items
+(「항목을 하나로」, `deck.items_asked`) that came back with none gets its old items joined
+(`deck.merged_points`), figures such a cut drops are said, and a deck cut to fewer slides says
+the figures it shows nowhere any more (`deck.lost_across`). A title the person asked to change (「제목을 …로 바꿔 줘」, "change the title to …") is
 taken, quoted text verbatim. 「위험 장을 하나 추가해 줘」 ("add a risk slide") is an `insert`: the
 revision planner names the new part and its place, the router slots a blank
 part in and rewrites only it, so the other slides stay byte for byte. A restructure (「6장으로 줄여」, "cut it to six slides") is told to hit the count

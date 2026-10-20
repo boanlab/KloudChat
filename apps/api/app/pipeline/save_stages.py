@@ -129,6 +129,10 @@ def _english_reply(document: Any, summary: int, touched: list[int], is_deck: boo
     for part, asked, got in getattr(document, "counted", []):
         said.append(f"Section {part} has {got} sentence{'s' if got != 1 else ''}, not the "
                     f"{asked} asked.")
+    for added in getattr(document, "added", []):
+        at, _, values = added.partition(" ")
+        said.append(f"Section {at[:-1]} now states {values}, which the section and the "
+                    "material did not; please check.")
     for lost in document.dropped:
         at, _, values = lost.partition(" ")
         where = f"{'slide' if at.endswith('장') else 'section'} {at[:-1]}"
@@ -176,6 +180,10 @@ def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = F
                     "다시 요청해 주세요.")
     for part, asked, got in getattr(document, "counted", []):
         said.append(f"{part}절은 요청한 {asked}문장이 아니라 {got}문장입니다.")
+    for added in getattr(document, "added", []):
+        at, _, values = added.partition(" ")
+        said.append(f"{at}에 원래 없던 {values}{revise._particle(values, '이', '가')} "
+                    "들어갔습니다. 확인해 주세요.")
     for lost in document.dropped:
         # figures the slide showed that its rewrite left out: said, not passed over
         at, _, values = lost.partition(" ")
