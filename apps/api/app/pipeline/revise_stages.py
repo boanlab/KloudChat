@@ -446,6 +446,13 @@ class Rewrite(Base):
                     written, spent = shaped, {"inputTokens": 0, "outputTokens": 0}
                     parts[index] = written
                     yield {"type": "slide", "slide": written, "done": True}
+                elif is_deck and revise.joins_items(asked) and (
+                        joined := deck_service.joined_items(
+                            part, deck_service.items_asked(asked))) is not None:
+                    # the slide's items joined into the count asked by code, every fact kept
+                    written, spent = joined, {"inputTokens": 0, "outputTokens": 0}
+                    parts[index] = written
+                    yield {"type": "slide", "slide": written, "done": True}
                 elif is_deck and deck_service.asks_slide_figure(asked):
                     # 「구조도로 바꿔 줘」: the slide drawn as that diagram, not rewritten as words
                     written, spent = await deck_service.figure_slide(

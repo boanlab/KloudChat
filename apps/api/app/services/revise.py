@@ -894,6 +894,11 @@ def without_counts(request: str) -> str:
 _TARGET_COUNT = re.compile(
     r"(?:총|전체(?:를)?|모두)?\s{0,8}(\d{1,3})\s{0,8}(?:장|절|쪽|페이지|슬라이드)\s{0,8}(?:으로|로)\s{0,8}"
     r"(?:줄여|늘려|맞춰|만들|다시|재구성|정리|압축|요약)"
+    # 「Shrink to 3 slides」, 「cut the deck down to 6 slides」, 「make it 8 slides」
+    r"|\b(?:shrink|shorten|cut|reduce|trim|condense|expand|extend|grow|make|bring)\b"
+    r"(?:\s{1,3}[a-z]{1,8}){0,3}?\s{1,3}(?:(?:down|up)\s{1,3})?(?:to|into)?\s{0,3}"
+    r"(\d{1,3})\s{1,3}(?:slides|sections|pages)\b",
+    re.I,
 )
 
 
@@ -951,13 +956,30 @@ _RESTRUCTURE = re.compile(
     r"\d{1,3}\s{0,4}(?:장|절|쪽|페이지|슬라이드)\s{0,4}(?:으로|로|더|짜리|만)|장\s?수|"
     r"늘려|늘리|처음부터|새로\s{0,4}(?:써|작성|만들)|다시\s{0,4}(?:써|짜|만들)|전체|전부|모든|"
     r"\b(?:add|insert|remove|delete|drop|merge|split|reorder|restructure|outline|more|fewer|"
-    r"whole|entire|all\s{1,4}slides|start\s{1,4}over|from\s{1,4}scratch)\b", re.I)
+    r"whole|entire|all\s{1,4}slides|start\s{1,4}over|from\s{1,4}scratch)\b"
+    r"|\b(?:to|into)\s{1,3}\d{1,3}\s{1,3}(?:slides|sections|pages)\b", re.I)
+#: words that join or split, which within one named part act on its items
+_JOINS = re.compile(r"합쳐|합치|병합|나눠|분리|묶어|묶|\b(?:merge|split|combine|join)\b", re.I)
+#: a part's own items: 「항목」, 「bullets」
+_ITEM_WORD = re.compile(r"항목|요점|글머리|불릿|\b(?:items?|bullets?|points?)\b", re.I)
+
+
+def joins_items(message: str) -> bool:
+    """Whether the words join or split a part's items (「항목을 하나로 합쳐줘」, 「merge the
+    bullets」)."""
+    return bool(_JOINS.search(message or "") and _ITEM_WORD.search(message or ""))
 
 
 def asks_restructure(message: str) -> bool:
     """Whether the words ask for a new structure or the whole document anew, not one part's
-    change: only these may re-plan the outline."""
-    return bool(_RESTRUCTURE.search(" ".join((message or "").split())))
+    change: only these may re-plan the outline. Items of one named part joined or split
+    (「2장 항목을 하나로 합쳐줘」, 「Merge the items on slide 4 into one」) are that part's edit."""
+    text = " ".join((message or "").split())
+    found = [m.group(0) for m in _RESTRUCTURE.finditer(text)]
+    if found and all(_JOINS.fullmatch(f) for f in found) and _ITEM_WORD.search(text) and len(
+            named_slides(text) | {int(n) for n in _SECTION_REF.findall(text)}) == 1:
+        return False
+    return bool(found)
 
 
 def numbered_parts(message: str, parts: list[str]) -> list[int] | None:
@@ -1071,7 +1093,7 @@ def count_change(plan: Plan, parts: list[str], message: str) -> Plan:
     match = _TARGET_COUNT.search(" ".join((message or "").split()))
     if not match:
         return plan
-    wanted = int(match.group(1))
+    wanted = int(match.group(1) or match.group(2))
     if wanted <= 0 or wanted == len(parts):
         return plan
     # One count only, word-led so 「- 6장으로」 isn't a range.
@@ -1841,22 +1863,20 @@ def sentences_asked(clause: str) -> tuple[int, bool]:
     return count, bool(m.group("most"))
 
 
-def _prose_lines(text: str) -> list[str]:
-    """A part's text lines, minus tables, blocks, headings and list marks."""
-    text = re.sub(r"```[\s\S]*?(?:```|\Z)|<[^<>]{0,2000}>|!\[[^\]]*\]\([^)]*\)", " ", text or "")
-    lines = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith(("|", "#")):
-            continue
-        lines.append(re.sub(r"^(?:[-*•·]|\d{1,2}[.)])\s+", "", line).replace("**", ""))
-    return lines
+#: a line that is not prose: a caption (「표 2. 진행 사항」), a bold label, a list row
+_NOT_PROSE = re.compile(r"(?:표|그림|table|figure)\s?\d{1,3}\s?[.:)]|\*\*[^*\n]{1,200}\*\*$"
+                        r"|(?:[-*•·]|\d{1,2}[.)])\s", re.I)
 
 
 def sentence_count(text: str) -> int:
-    """Sentences in a part's text: each end mark, and a line that stops without one."""
+    """Sentences of a part's prose: each end mark, and a line that stops without one; tables,
+    captions, list rows and blocks are not sentences."""
+    text = re.sub(r"```[\s\S]*?(?:```|\Z)|<[^<>]{0,2000}>|!\[[^\]]*\]\([^)]*\)", " ", text or "")
     count = 0
-    for line in _prose_lines(text):
+    for line in (raw.strip() for raw in text.splitlines()):
+        if not line or line.startswith(("|", "#")) or _NOT_PROSE.match(line):
+            continue
+        line = line.replace("**", "")
         ends = _SENTENCE_END.findall(line)
         last = line.rstrip("\"'」』”’)] ")[-1:]
         count += len(ends) + (0 if last in ".!?。" else 1)
@@ -1887,12 +1907,10 @@ def lost_facts(old: str, new: str) -> list[str]:
     from app.services import deck
 
     plain = _whole_text(new)
-    shown = deck.figures_in(plain)
+    shown, amounts = deck.figures_in(plain), deck.amounts_in(plain)
     names = set(_NAME.findall(plain))
-    lost = []
-    for number, unit, said in deck.figures_in(_whole_text(old)):
-        if not any(n == number and (u == unit or not u or not unit) for n, u, _ in shown):
-            lost.append(said)
+    lost = [f[2] for f in deck.figures_in(_whole_text(old))
+            if not deck.figure_kept(f, shown, amounts)]
     old_names = dict.fromkeys(_NAME.findall(_whole_text(old)))
     return lost + [n for n in old_names if n not in names]
 

@@ -10,7 +10,7 @@ import pytest
 
 from app.pipeline import revise_stages, save_stages
 from app.pipeline.stage import Context
-from app.services import revise
+from app.services import deck, revise
 
 BEFORE = ("대성유통 협상은 견적서 발송(10/16 목)을 완료했으며, 상대 측의 5% 단가 인하 요구와 자사 "
           "허용 한도인 4% 사이의 폭이 남아 있습니다. 경쟁사 A사의 동일 품목 4% 낮은 단가 제시는 "
@@ -35,7 +35,8 @@ def test_the_sentence_count_an_ask_names_is_read(words, asked):
 
 def test_a_shortened_section_is_checked_for_its_count_and_facts():
     assert revise.sentence_count(BEFORE) == 3 and revise.sentence_count(ONE) == 1
-    assert revise.sentence_count("5.5% 올랐다. 「확정」이다.」\n- 남은 일") == 3
+    # a list row is not a sentence
+    assert revise.sentence_count("5.5% 올랐다. 「확정」이다.」\n- 남은 일") == 2
     assert revise.lost_facts(BEFORE, ONE) == ["10/16", "5%", "4%", "2건", "420만", "A사"]
     assert revise.shortening_faults(BEFORE, TWO, ASK) == []
     assert revise.shortening_faults(BEFORE, BEFORE, "2절 표현을 다듬어줘") == []
@@ -154,3 +155,31 @@ async def test_an_echoed_ask_and_an_invented_date_are_sent_back_then_said(monkey
     assert doc.counted == [] and doc.added == ["2절 13일"]
     assert save_stages.revision_reply(doc, None, is_deck=False) == (
         "2절을 고쳤습니다. 2절에 원래 없던 13일이 들어갔습니다. 확인해 주세요.")
+
+
+#: one sentence and the table (reverify-p): one sentence, not three
+WITH_TABLE = ("3분기 팀 매출은 41.2억원으로 목표 40억 대비 103%를 달성해, 전분기 38.5억 대비 7% "
+              "성장했습니다(표 2).\n\n**표 2. 진행 사항**\n\n| 일정 | 내용 |\n| --- | --- |\n"
+              "| 월 | 대성유통 1차 미팅 (5% 인하 요구) |\n\n- 남은 일: CRM 병합")
+
+
+def test_only_prose_sentences_are_counted():
+    assert revise.sentence_count(WITH_TABLE) == 1
+    faults = revise.shortening_faults(WITH_TABLE, WITH_TABLE, ASK)
+    assert faults[0].endswith("the last version had 1")
+    started = time.monotonic()
+    revise.sentence_count("**" + "a" * 50000)
+    revise.sentence_count("표 1" + " " * 50000)
+    assert time.monotonic() - started < 0.5
+
+
+def test_figures_are_real_figures_and_money_is_compared_as_money():
+    said = [s for *_, s in deck.figures_in("표 1의 항목, 2.7억원입니다, 3곳에서, 목표 40억 대비")]
+    assert said == ["2.7억", "3곳", "40억"]
+    assert revise.lost_facts("전분기 38.5억 원", "전분기 38억 5천만 원보다 늘었다") == []
+    assert revise.lost_facts("전분기 38.5억 원", "전분기 3,850,000,000원") == []
+    assert revise.lost_facts("전분기 38.5억원보다", "38.5 억 원") == []
+    assert revise.lost_facts("전분기 38.5억 원", "전분기 38억 원") == ["38.5억"]
+    started = time.monotonic()
+    deck.amounts_in("1억" + " " * 50000 + "5")
+    assert time.monotonic() - started < 0.5
