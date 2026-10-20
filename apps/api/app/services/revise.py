@@ -223,14 +223,50 @@ _ASK_VERB = re.compile(
     r"써\s?(?:줘|주)|해\s?(?:줘|주|줄|봐)|(?:로|으로)\s?(?:해|하|할)")
 
 
+#: an edit asked in English: 「Make slide 3 a table」, 「Can you shorten slide 2?」
+_ASK_VERB_EN = re.compile(
+    r"\b(?:change|make|turn|rewrite|reword|shorten|lengthen|add|remove|delete|drop|convert|"
+    r"replace|fix|update|move|merge|split|put|insert|simplify|expand|cut|trim|swap|rename|"
+    r"translate|tighten|condense)\b", re.I)
+#: no change wanted, said outright: 「설명만 해줘」, 「don't change anything」
+_NO_CHANGE = re.compile(
+    r"설명만|알려만|답만|대답만|말만\s?해|아무것도\s?(?:바꾸|고치|건드리)지|"
+    r"\b(?:do\s?n[o']?t|do\s+not)\s+(?:change|edit|touch|modify)\s+anything\b|"
+    r"\bwithout\s+changing\b|\bno\s+changes?\b|"
+    r"\bjust\s+(?:answer|explain|tell)\b|\bonly\s+(?:answer|explain)\b", re.I)
+#: no change wanted, beside a question: 「바꾸지 말고 …뭐야?」, 「don't change it, why …?」
+_KEEP_AS_IS = re.compile(
+    r"바꾸지\s?(?:마|말)|고치지\s?(?:마|말)|그대로\s?두|"
+    r"\b(?:do\s?n[o']?t|do\s+not)\s+(?:change|edit|touch)\b|\bleave\s+it\b", re.I)
+#: a question in English: 「What is …?」, 「Why does slide 3 …?」
+_QUESTION_EN = re.compile(
+    r"(?:^|[.!?]\s{1,4})(?:what|why|where|which|who|whose|when|how|is|are|does|do|did)\b",
+    re.I)
+
+
 def asks_question(message: str) -> bool:
     """Whether the words ask something rather than ask for a change (「지금 슬라이드가 몇
-    장이야?」); a polite ask (「바꿔 줄 수 있나요?」) is not one."""
+    장이야?」, 「핵심이 뭐야? 설명만 해줘」, 「What is …? Don't change anything.」); a polite
+    ask (「바꿔 줄 수 있나요?」, 「Can you make slide 3 a table?」) is not one."""
     text = (message or "").strip()[-400:].rstrip(" .!")
-    if not text or _ASK_VERB.search(text):
+    if not text:
+        return False
+    if _NO_CHANGE.search(text):
+        return True
+    shaped = "?" in text or "？" in text or bool(
+        _QUESTION_WORD.search(text) and _QUESTION_END.search(text))
+    if _KEEP_AS_IS.search(text) and shaped:
+        return True
+    if _ASK_VERB.search(text) or _ASK_VERB_EN.search(text):
         return False
     return text.endswith(("?", "？")) or bool(
-        _QUESTION_WORD.search(text) and _QUESTION_END.search(text))
+        _QUESTION_WORD.search(text) and _QUESTION_END.search(text)) or bool(
+        "?" in text and _QUESTION_EN.search(text))
+
+
+def asks_edit(message: str) -> bool:
+    """Whether the words carry a concrete edit verb (Korean or English)."""
+    return bool(_ASK_VERB.search(message or "") or _ASK_VERB_EN.search(message or ""))
 
 
 #: Export format words; 「한글」 counts only beside a file word or hand-over verb.

@@ -7296,10 +7296,11 @@ async def _revision_plan(
         api_key=api_key,
     )
     if plan.restructures and not revise.asks_restructure(instruction):
-        # an outline reading of words asking no new structure: every part edited in place,
-        # never the document written anew
-        plan = revise.Plan(scope="whole", targets=list(range(len(skeleton))), note=plan.note,
-                           usage=plan.usage)
+        # an outline reading of words asking no new structure: never the document written
+        # anew; every part edited in place only for a concrete edit, else asked what to change
+        plan = (revise.Plan(scope="whole", targets=list(range(len(skeleton))), note=plan.note,
+                            usage=plan.usage) if revise.asks_edit(instruction)
+                else revise.Plan(scope="ask", note=plan.note, usage=plan.usage))
     return plan, skeleton
 
 

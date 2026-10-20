@@ -16,6 +16,7 @@ from app.services import (
     consistency,
     doc_formats,
     internal_words,
+    output_language,
     revise,
     revised_tables,
     richtext,
@@ -80,7 +81,8 @@ def _tidy_tables(bundle: Bundle) -> list[dict]:
     unfenced = [p if str(p.get("format") or "markdown") != "markdown"
                 else {**p, "content": report.unfence_pictures(str(p.get("content") or ""))}
                 for p in parts]
-    tidied = report.caption_figures_and_tables(revised_tables.tidy(unfenced, rank))
+    tidied = report.caption_figures_and_tables(revised_tables.tidy(
+        unfenced, rank, bundle.document.original))
     if [str(p.get("content") or "") for p in tidied] == before:
         return []
     bundle.document.sections = tidied
@@ -127,12 +129,19 @@ class Route(Base):
         is_deck, instruction, parts = req.is_deck, req.instruction, doc.sections
         names = _names(bundle)
         plan = bundle.plan.revision
+        # the document as loaded: tables it had are no copies this edit made
+        doc.original = [str(p.get("content") or "") for p in parts]
         if revise.asks_question(instruction):
             # a question about the document, whatever the planner read: nothing rewritten;
             # this screen only edits, so said how to ask it
             yield {"type": "step", "id": "route", "label": "질문", "status": "done"}
             example = "3장을 표로 바꿔줘" if is_deck else "2절을 두 문장으로 줄여줘"
+            sample = "Make slide 3 a table" if is_deck else "Shorten section 2"
             for event in _stopped(bundle, (
+                    "This reads as a question, so nothing was changed. On this screen, say "
+                    f"what to change (「{sample}」). To ask about the content, attach the "
+                    "downloaded file in Chat."
+                    if output_language.typed_in_english(instruction) else
                     "질문으로 보여 바꾼 것이 없습니다. 이 화면에서는 "
                     f"「{example}」처럼 고칠 곳을 알려 주시면 고칩니다. 내용을 물어보려면 "
                     "내려받은 파일을 챗에 첨부해 물어보세요.")):
@@ -308,6 +317,19 @@ class Route(Base):
         doc.sections = parts
         by_hand = swap is not None or reorder is not None or not typed
         doc.by_hand, bundle.plan.revision = by_hand, plan
+        if not by_hand and plan.scope == "ask":
+            # an outline reading of words that ask no change: nothing done, asked what to change
+            yield {"type": "step", "id": "route", "label": "고칠 곳 묻기", "status": "done"}
+            english = output_language.typed_in_english(instruction)
+            example = "3장을 표로 바꿔줘" if is_deck else "2절을 두 문장으로 줄여줘"
+            sample = "Make slide 3 a table" if is_deck else "Shorten section 2"
+            for event in _stopped(bundle, (
+                    "Nothing was changed. Say which part to change and how, for example "
+                    f"「{sample}」."
+                    if english else "바꾼 것이 없습니다. 어디를 어떻게 고칠지 알려 주세요. "
+                    f"예: 「{example}」")):
+                yield event
+            raise Stop("what to change")
         if not by_hand and not plan.revises:
             # new-document request: said, not acted on
             yield {"type": "step", "id": "route", "label": "새 문서 요청", "status": "done"}

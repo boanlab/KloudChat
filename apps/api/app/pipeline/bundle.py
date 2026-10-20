@@ -212,6 +212,8 @@ class Document:
     removed: list[str] = field(default_factory=list)
     #: revision: per part id, the numbered tables and figures taken out of it (「표 2」)
     emptied: dict[str, list[str]] = field(default_factory=dict)
+    #: revision: each part's text as loaded, before the edit
+    original: list[str] = field(default_factory=list)
     #: revision: figures a slide showed that its rewrite left out (「4장 64%, 91%」)
     dropped: list[str] = field(default_factory=list)
     #: revision: parts rewritten (zero-based), for the reply

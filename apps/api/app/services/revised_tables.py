@@ -79,9 +79,20 @@ def _blocks(text: str) -> list[tuple[int, int]]:
     return spans
 
 
-def drop_superseded(sections: list[dict], rank: dict[int, int]) -> list[dict]:
+def _same_rows(a: str, b: str) -> bool:
+    return _rows(a) == _rows(b)
+
+
+def drop_superseded(sections: list[dict], rank: dict[int, int],
+                    before: list[str] | None = None) -> list[dict]:
     """One copy of each table: the fuller one, then the higher-ranked section's (revised
-    parts above the rest), then the first. The others go with their captions."""
+    parts above the rest), then the first. The others go with their captions. Two tables
+    both in the document `before` the edit stay: only a copy the edit made goes."""
+    old = [text[s:e] for text in before or [] for s, e in _blocks(text)]
+
+    def kept_before(table: str) -> bool:
+        return any(_same_rows(table, t) for t in old)
+
     found: list[tuple[int, int, int, str]] = []  # (section, start, end, table)
     for index, sec in enumerate(sections):
         text = str(sec.get("content") or "")
@@ -92,6 +103,8 @@ def drop_superseded(sections: list[dict], rank: dict[int, int]) -> list[dict]:
         for j, (sj, aj, _, tb) in enumerate(found):
             if i == j or (sj, aj) in drop or not same_table(ta, tb):
                 continue
+            if kept_before(ta) and kept_before(tb):
+                continue  # neither is this edit's: the person named neither
             ca, cb = cells(ta), cells(tb)
             if _share(ca, cb) >= 0.8 and len(cb) > len(ca):
                 loses = True  # the other is this one plus more
@@ -195,16 +208,17 @@ def outdent_tables(body: str) -> str:
     return "\n".join(out)
 
 
-def tidy(sections: list[dict], rank: dict[int, int]) -> list[dict]:
-    """A revised document's tables: flush, one copy each, every caption over a table, no
-    block token left in the prose."""
+def tidy(sections: list[dict], rank: dict[int, int],
+         before: list[str] | None = None) -> list[dict]:
+    """A revised document's tables: flush, one copy each (none of two the document had
+    `before` the edit), every caption over a table, no block token left in the prose."""
     out = []
     for sec in sections:
         if str(sec.get("format") or "markdown") != "markdown":
             out.append(sec)
             continue
         out.append({**sec, "content": outdent_tables(str(sec.get("content") or ""))})
-    out = drop_superseded(out, rank)
+    out = drop_superseded(out, rank, before)
     return [
         sec if str(sec.get("format") or "markdown") != "markdown"
         else {**sec, "content": drop_block_tokens(
