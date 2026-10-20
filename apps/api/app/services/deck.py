@@ -4791,6 +4791,8 @@ def unmet_asks(slide: dict, words: str) -> list[str]:
         out.append(f"{_SHAPE_WORDS.get(asked, asked)}로 바꾸기")
     if revise.removes_picture(words) and picture_of(slide):
         out.append("그림 빼기")
+    if revise.removes_chart(words) and chart_of(slide):
+        out.append("차트 빼기")
     return out
 
 
@@ -4807,6 +4809,70 @@ def picture_of(slide: dict) -> str:
 def without_picture(slide: dict) -> dict:
     """The slide minus its picture: a drawn diagram goes with the image made from it."""
     return {k: v for k, v in slide.items() if k not in ("image", "diagram")}
+
+
+def chart_of(slide: dict) -> bool:
+    """Whether the slide draws a chart."""
+    chart = slide.get("chart")
+    return isinstance(chart, dict) and bool(chart.get("series"))
+
+
+def _chart_value(value: Any, unit: str) -> str:
+    text = f"{value:g}" if isinstance(value, float) else str(value)
+    return f"{text}{unit}"
+
+
+#: a speaker-note sentence about a chart the slide no longer has
+_CHART_WORDS = re.compile(r"차트|그래프|chart|graph", re.I)
+
+
+def without_chart(slide: dict) -> dict:
+    """The slide minus its chart: a slide left empty says the chart's own values as bullets;
+    notes stop pointing at the chart."""
+    chart = slide.get("chart") if isinstance(slide.get("chart"), dict) else {}
+    out = {k: v for k, v in slide.items() if k != "chart"}
+    if str(out.get("layout") or "").startswith("chart"):
+        out["layout"] = "bullets"
+    if not has_content(out):
+        unit = str(chart.get("unit") or "")
+        series = [s for s in chart.get("series") or [] if isinstance(s, dict)]
+        bullets = []
+        for i, category in enumerate(chart.get("categories") or []):
+            said = [(str(s.get("name") or ""), (s.get("values") or [])[i])
+                    for s in series if i < len(s.get("values") or [])
+                    and (s.get("values") or [])[i] is not None]
+            if not said:
+                continue
+            if len(series) == 1:
+                bullets.append(f"{category}: {_chart_value(said[0][1], unit)}")
+            else:
+                bullets.append(f"{category}: " + ", ".join(
+                    f"{name} {_chart_value(value, unit)}".strip() for name, value in said))
+        if bullets:
+            out["bullets"] = bullets
+    if isinstance(out.get("notes"), str) and _CHART_WORDS.search(out["notes"]):
+        kept = [s for s in re.split(r"(?<=[.!?。])\s+", out["notes"])
+                if s.strip() and not _CHART_WORDS.search(s)]
+        out["notes"] = " ".join(kept)
+    return out
+
+
+#: a note saying the slide lacks what it shows: 「차트를 사용하지 않고」, 「표 없이」
+_DENIED = re.compile(
+    r"(?P<what>차트|그래프|표|그림|도식|이미지)\S{0,2}\s{0,4}(?:사용하지\s?않|쓰지\s?않|넣지\s?않"
+    r"|없이|생략하|제외하|빼고)")
+
+
+def notes_agree(slide: dict, notes: str) -> str:
+    """Notes minus sentences saying the slide lacks a chart, table or picture it shows."""
+    if not notes or not _DENIED.search(notes):
+        return notes
+    shown = {"차트": chart_of(slide), "그래프": chart_of(slide), "표": bool(slide.get("rows")),
+             "그림": bool(picture_of(slide)), "도식": bool(picture_of(slide)),
+             "이미지": bool(picture_of(slide))}
+    kept = [s for s in re.split(r"(?<=[.!?。])\s+", notes)
+            if not ((m := _DENIED.search(s)) and shown.get(m.group("what")))]
+    return " ".join(k for k in kept if k.strip())
 
 
 class SlideNotWritten(ValueError):

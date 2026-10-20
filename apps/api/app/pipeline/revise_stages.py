@@ -55,6 +55,11 @@ def _stopped(bundle: Bundle, text: str = "", *, error: str = "") -> list[dict]:
     return events
 
 
+def _listed(names: list[str], closed: str, opened: str) -> str:
+    """「표 5, 그림 3은」: names joined, the particle after the last read aloud."""
+    return ", ".join(names) + revise._particle(names[-1] if names else "", closed, opened)
+
+
 def _typed(bundle: Bundle) -> str:
     """The instruction as the rewrite reads it: minus what route did by hand (a title)."""
     plan = bundle.plan.revision
@@ -170,20 +175,70 @@ class Route(Base):
         elif typed:
             yield {"type": "step", "id": "route", "label": "무엇을 고칠지 보는 중",
                    "status": "running"}
-        if (plan is None and is_deck and swap is None and reorder is None
-                and revise.only_removes_picture(typed)):
-            # 「그림 빼줘」: the slides that carry one (a drawn diagram counts), by hand
+        removals = (revise.numbered_removals(typed) if typed and not is_deck and swap is None
+                    and reorder is None else [])
+        if removals:
+            # 「표 2와 그림 1은 빼고」: those blocks and the prose citing them, by hand
+            before = [str(p.get("content") or "") for p in parts]
+            parts, taken, absent = revise.drop_numbered(parts, removals)
+            doc.removed += taken
+            doc.missed += absent
+            changed += len(taken)
+            rest = revise.without_numbered_removals(typed)
+            yield {"type": "step", "id": "route", "status": "done" if taken else "error",
+                   "label": "빼는 중: " + ", ".join(f"{k} {n}" for k, n in removals)}
+            for i, part in enumerate(parts):
+                if str(part.get("content") or "") != before[i]:
+                    yield _part_event(part, False)
+            if not changed and not rest:
+                doc.sections = parts
+                for event in _stopped(bundle, f"요청한 {_listed(absent, '은', '는')} 문서에서 "
+                                              "찾지 못해 바꾼 것이 없습니다."):
+                    yield event
+                raise Stop("nothing numbered to remove")
+            if rest != typed:
+                if plan is not None:
+                    # the planner read the whole sentence; the rest is planned again
+                    bundle.usage["inputTokens"] += plan.usage["inputTokens"]
+                    bundle.usage["outputTokens"] += plan.usage["outputTokens"]
+                typed = rest
+                plan = None if typed else revise.Plan(scope="parts", targets=[], note=", ".join(
+                    taken))
+                if typed and (asks := revise.section_asks(
+                        typed, names, [str(p.get("content") or "") for p in parts])):
+                    plan = revise.Plan(scope="parts", targets=sorted(asks[0]), note=typed,
+                                       clauses=asks[0], summary=asks[1])
+        visual = (is_deck and swap is None and reorder is None
+                  and not (plan is not None and (plan.inserts or plan.restructures))
+                  and (revise.only_removes_picture(typed) or revise.only_removes_chart(typed)))
+        if visual:
+            # 「그림 빼줘」 / 「차트 빼줘」: the slides that carry one, by hand, whatever the
+            # planner guessed
+            chart = revise.only_removes_chart(typed)
             named = revise.named_slides(typed)
-            pictured = [i for i, part in enumerate(parts) if deck_service.picture_of(part)
-                        and (not named or i + 1 in named)]
-            if not pictured:
+            within = [i for i in range(len(parts)) if not named or i + 1 in named]
+            carrying = [i for i in within if (deck_service.chart_of(parts[i]) if chart
+                                              else deck_service.picture_of(parts[i]))]
+            if not carrying:
                 where = ("·".join(f"{n}장" for n in sorted(named)) + "에는" if named
                          else "슬라이드에")
-                yield {"type": "step", "id": "route", "label": "뺄 그림 없음", "status": "done"}
-                for event in _stopped(bundle, f"{where} 뺄 그림이 없어 바꾼 것이 없습니다."):
+                said = f"{where} 뺄 {'차트가' if chart else '그림이'} 없어 바꾼 것이 없습니다."
+                charts = [] if chart else [i for i in within if deck_service.chart_of(parts[i])]
+                if charts:
+                    # a chart may be what 「그림」 means: asked, not guessed
+                    said += (" 차트는 " + ", ".join(
+                        f"{i + 1}장 「{parts[i].get('title') or ''}」" for i in charts)
+                        + f"에 있습니다. 차트를 빼려면 「{charts[0] + 1}장 차트 빼줘」처럼 "
+                        "알려 주세요.")
+                yield {"type": "step", "id": "route", "status": "done",
+                       "label": "뺄 차트 없음" if chart else "뺄 그림 없음"}
+                for event in _stopped(bundle, said):
                     yield event
-                raise Stop("no picture to remove")
-            plan = revise.Plan(scope="parts", targets=pictured, note=typed)
+                raise Stop("nothing to remove")
+            if plan is not None:
+                bundle.usage["inputTokens"] += plan.usage["inputTokens"]
+                bundle.usage["outputTokens"] += plan.usage["outputTokens"]
+            plan = revise.Plan(scope="parts", targets=carrying, note=typed)
         plan = plan or await revise.plan(
             message=typed, title=bundle.plan.title, parts=names,
             model=req.outline_model or req.model, api_key=req.api_key,
@@ -324,16 +379,22 @@ class Rewrite(Base):
                     # a many-slide instruction: each slide reads its own ask (「3장을 표로…
                     # 8장 그림은 빼줘」 does not turn 8장 into a table)
                     asked = revise.slide_clause(instruction, index)
+                    taken = []
                     if revise.removes_picture(asked) and (what := deck_service.picture_of(part)):
                         part = parts[index] = deck_service.without_picture(part)
-                        doc.removed.append(f"{index + 1}장의 {what}")
-                        if revise.only_removes_picture(asked):
-                            # by hand: nothing else to write
-                            yield {"type": "slide", "slide": part, "done": True}
-                            doc.changed += 1
-                            yield {"type": "step", "id": f"r{index}", "label": label,
-                                   "status": "done"}
-                            continue
+                        taken.append(what)
+                    if revise.removes_chart(asked) and deck_service.chart_of(part):
+                        part = parts[index] = deck_service.without_chart(part)
+                        taken.append("차트")
+                    doc.removed += [f"{index + 1}장의 {what}" for what in taken]
+                    if taken and (revise.only_removes_picture(asked)
+                                  or revise.only_removes_chart(asked)):
+                        # by hand: nothing else to write
+                        yield {"type": "slide", "slide": part, "done": True}
+                        doc.changed += 1
+                        yield {"type": "step", "id": f"r{index}", "label": label,
+                               "status": "done"}
+                        continue
                 if is_deck and deck_service.asks_slide_figure(asked):
                     # 「구조도로 바꿔 줘」: the slide drawn as that diagram, not rewritten as words
                     written, spent = await deck_service.figure_slide(
@@ -361,8 +422,10 @@ class Rewrite(Base):
                     if revise.meta_talk(" ".join(strings(written))):
                         raise ValueError("본문 대신 대화 답이 나옴")
                     if isinstance(written.get("notes"), str):
-                        # what the speaker says, not how the writer made it
-                        written["notes"] = internal_words.strip_work_sentences(written["notes"])
+                        # what the speaker says, not how the writer made it; nothing the slide
+                        # shows said to be absent
+                        written["notes"] = deck_service.notes_agree(
+                            written, internal_words.strip_work_sentences(written["notes"]))
                     parts[index] = written
                     yield {"type": "slide", "slide": written, "done": True}
                 else:
@@ -486,6 +549,7 @@ class Rewrite(Base):
             bundle.usage["inputTokens"] += spent["inputTokens"]
             bundle.usage["outputTokens"] += spent["outputTokens"]
             doc.changed += 1
+            doc.touched.append(index)
             yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
         if not is_deck and plan.summary and parts:
             # the asked summary: its lines by the model, the block and its place by code
@@ -519,7 +583,7 @@ class Rewrite(Base):
             yield event
         if not is_deck:
             # said only when the asked table shape is really there
-            doc.missed = revise.missing_shapes(
+            doc.missed += revise.missing_shapes(
                 _typed(bundle), [str(p.get("content") or "") for p in doc.sections])
             if plan.summary and not _summary_made(doc.sections):
                 doc.missed.append(f"{plan.summary}줄 요약")

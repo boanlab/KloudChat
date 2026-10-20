@@ -165,16 +165,17 @@ def test_the_edit_rewrites_only_the_asked_parts_and_puts_the_summary_first(monke
 
     asyncio.run(run())
     sections = bundle.document.sections
-    # two parts rewritten, the summary put in by code; the untouched part as it was
+    # one part rewritten, the summary put in by code; the untouched parts as they were (the
+    # asked 표 2 and 그림 1 are not in this document: taken by code, so not a rewrite)
     rewrites = [p for p in asked if not p.startswith("Write the summary")]
-    assert len(rewrites) == 2
+    assert len(rewrites) == 1
     # each part is told its own ask only
     own = [p.split("사용자가 이 절에 요청한 것(그대로 반영): ")[1].split("\n")[0] for p in rewrites]
-    assert own == ["2절의 표 2와 그림 1은 빼고",
-                   "내부 허용 한도가 4%라는 표현은 메모에 없으니 결재 요청으로 고쳐줘."]
+    assert own == ["내부 허용 한도가 4%라는 표현은 메모에 없으니 결재 요청으로 고쳐줘."]
+    assert sections[1]["content"] == PARTS[1]["content"]
     assert sections[3]["content"] == PARTS[3]["content"]
     first = sections[0]["content"]
     assert first.startswith("```callout\n핵심\n3분기 팀 매출은")
     assert "박서연" not in first and "주간 업무 보고\n" not in first
     assert first.endswith(PARTS[0]["content"])
-    assert bundle.document.changed == 3 and bundle.document.missed == []
+    assert bundle.document.changed == 2 and bundle.document.missed == ["표 2", "그림 1"]
