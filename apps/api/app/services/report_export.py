@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextvars
 import hashlib
 import io
+import itertools
 import logging
 import math
 import re
@@ -102,29 +103,39 @@ def _with_fallback(markup: str, font: str) -> str:
         return markup
     bold = font.endswith("-bold")
     fallback = fonts.korean("gothic", bold=bold)
-    if fallback == font:
-        return markup
-    if fallback not in _GLYPHS:
-        _GLYPHS[fallback] = _glyphs(fallback)
-    spare = _GLYPHS[fallback] or frozenset()
+    # faces tried in turn: the gothic one (Hanja, é), then accented Latin (ş, ğ)
+    faces = [f for f in (fallback, fonts.latin(bold=bold)) if f and f != font]
+    for face in faces:
+        if face not in _GLYPHS:
+            _GLYPHS[face] = _glyphs(face)
+
+    def drawn_by(character: str) -> str | None:
+        code = ord(character)
+        if code < 0x80 or code in have:
+            return None
+        return next((f for f in faces if code in (_GLYPHS[f] or ())), None)
 
     def swap(text: str) -> str:
         out: list[str] = []
-        run: list[str] = []
-        for character in text:
-            code = ord(character)
-            if code > 0x2000 and code not in have and code in spare:
-                run.append(character)
+        for face, run in itertools.groupby(text, drawn_by):
+            piece = "".join(run)
+            if face is not None:
+                out.append(f'<font name="{face}">{piece}</font>')
                 continue
-            if run:
-                out.append(f'<font name="{fallback}">{"".join(run)}</font>')
-                run = []
-            out.append(character)
-        if run:
-            out.append(f'<font name="{fallback}">{"".join(run)}</font>')
+            # no face draws it: an accented letter as its base letter, never a gap
+            out.append("".join(
+                base if ord(ch) >= 0x80 and ord(ch) not in have
+                and (base := _base_letter(ch)) else ch for ch in piece))
         return "".join(out)
 
     return "".join(part if part.startswith("<") else swap(part) for part in _MARKUP.split(markup))
+
+
+def _base_letter(character: str) -> str:
+    """「ş」 → 「s」: a Latin letter without its marks, or ''."""
+    base = "".join(c for c in unicodedata.normalize("NFKD", character)
+                   if not unicodedata.combining(c))
+    return base if base.isascii() and base.isalpha() else ""
 
 
 class Paragraph(_Paragraph):

@@ -36,10 +36,13 @@ _CHINESE_WORD = re.compile("|".join(sorted(map(re.escape, _CHINESE_WORDS), key=l
 
 
 def _read_run(run: str, before: str) -> str:
-    """A Hanja run in Hangul; a Chinese word as its Korean word, set off by a space from the
-    Korean it was glued to (Chinese writes none)."""
+    """A Hanja run in Hangul; a Chinese word as its Korean word; a run of three or more set off
+    by a space from the Korean it was glued to (Chinese writes none: 「한국어形态分析器」), a
+    shorter one read as the word's end (「대학生」)."""
+    glued = len(run) >= 3 and re.match(r"[가-힣]", before[-1:]) is not None
     if not _CHINESE_WORD.search(run):
-        return hanja.translate(run, "substitution")
+        read = hanja.translate(run, "substitution")
+        return f" {read}" if glued and read != run else read
     parts, at = [], 0
     for m in _CHINESE_WORD.finditer(run):
         if m.start() > at:
