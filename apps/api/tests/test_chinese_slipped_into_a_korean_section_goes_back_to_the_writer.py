@@ -22,7 +22,8 @@ def test_hanja_reading_of_a_chinese_word_is_no_korean_word():
 
 
 def test_only_prose_paragraphs_with_slips_not_in_the_material_are_sent():
-    body = f"첫 문단은 한국어로만 쓴다.\n\n{_SLIPPED}\n\n{_TABLE}\n\n접미어(接尾語)는 괄호 안에 둔다."
+    body = (f"첫 문단은 한국어로만 쓴다.\n\n{_SLIPPED}\n\n{_TABLE}\n\n"
+            "접미어(接尾語)는 괄호 안에 둔다.")
     assert report.chinese_paragraphs(body) == [(1, ["数据来源", "集合", "两名"])]
     # a word the person or a page wrote is theirs
     assert report.chinese_paragraphs(body, "자료: 数据来源 集合 两名") == []
@@ -31,8 +32,8 @@ def test_only_prose_paragraphs_with_slips_not_in_the_material_are_sent():
 
 
 def test_a_rewrite_stands_only_when_it_keeps_every_number_citation_and_term():
-    good = ("기존 연구는 공공 FAQ를 데이터 출처로 삼아 1,200건을 평가했다[2]. 평가 데이터 집합을 두 "
-            "명의 annotators가 검토했다.")
+    good = ("기존 연구는 공공 FAQ를 데이터 출처로 삼아 1,200건을 평가했다[2]. "
+            "평가 데이터 집합을 두 명의 annotators가 검토했다.")
     assert report.korean_again(_SLIPPED, good)
     assert not report.korean_again(_SLIPPED, good.replace("[2]", ""))
     assert not report.korean_again(_SLIPPED, good.replace("1,200", "1,300"))
