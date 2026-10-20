@@ -1,5 +1,5 @@
 import { ChevronDown, Search, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Input } from '@/components/ui'
 import { directionParticle } from '@/lib/formCheck'
@@ -332,13 +332,19 @@ function skillOptions(skills: Skill[], chosen: string[], store: StoreSkill[]): O
  * The row shows as picked while it is being added. */
 function useSkillToggle(chosen: string[], apply: (next: string[]) => void, add?: (storeId: string) => Promise<string | null>) {
   const [adding, setAdding] = useState<string | null>(null)
+  // What is chosen when the add answers, not when it was clicked.
+  const latest = useRef({ chosen, apply })
+  useLayoutEffect(() => {
+    latest.current = { chosen, apply }
+  })
   const toggle = (id: string) => {
     if (!id.startsWith(STORE)) return apply(chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id])
     if (!add || adding) return
     setAdding(id)
     void add(id.slice(STORE.length))
       .then((copy) => {
-        if (copy && !chosen.includes(copy)) apply([...chosen, copy])
+        const now = latest.current
+        if (copy && !now.chosen.includes(copy)) now.apply([...now.chosen, copy])
       })
       .finally(() => setAdding(null))
   }
