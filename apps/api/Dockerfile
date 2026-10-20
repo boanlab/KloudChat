@@ -11,9 +11,11 @@ WORKDIR /srv
 # tzdata: services/credits.py resolves Asia/Seoul for the monthly reset.
 # curl/git: uv fetches PEP 723 script dependencies on first run.
 # fonts-nanum: embedded in exported PDFs; reportlab's CID fonts render Korean
-# only where the viewer ships the Adobe-Korea1 CMaps.
+# only where the viewer ships the Adobe-Korea1 CMaps. fonts-dejavu-core: accented Latin
+# names (ř, ő, ễ) the Nanum faces lack.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tzdata curl ca-certificates git fonts-nanum \
+       fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Pretendard, the figure face, so labels are measured with the widths the renderer draws.
