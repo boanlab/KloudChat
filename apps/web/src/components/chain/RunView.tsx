@@ -4,7 +4,7 @@ import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, EmptyState, LoadingState } from '@/components/ui'
 import { pipelineGraphApi } from '@/lib/api'
-import { START, canvasEdges, isCondition, readRun, runIsLive } from '@/lib/pipelineGraph'
+import { START, canvasEdges, isCondition, readRun, runIsOpen } from '@/lib/pipelineGraph'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types'
@@ -12,8 +12,6 @@ import type { PipelineRunRecord, RunStepStatus } from '@/types/pipelineGraph'
 import { ChainCanvas } from './ChainCanvas'
 import { ChainContext, edgeFor, nodesOf } from './flow'
 import { RUN_LABEL, RUN_TEXT, kindLabel, savedGraph } from './stepInfo'
-
-const POLL_MS = 2500
 
 const RUN_STATUS: Record<string, string> = {
   running: '진행 중',
@@ -58,27 +56,28 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
     void loadRuns()
   }, [loadRuns])
 
+  // Runs are stored when they end or stop to wait, so one read each; 새로 고침 and coming back read again.
+  const [reads, setReads] = useState(0)
   useEffect(() => {
     if (!runId) return
     let live = true
-    let timer = 0
-    const tick = async () => {
-      try {
-        const next = readRun(await pipelineGraphApi.run(runId))
-        if (!live) return
-        setFetched(next)
-        if (runIsLive(next)) timer = window.setTimeout(() => void tick(), POLL_MS)
-        else void loadRuns()
-      } catch {
-        if (live) timer = window.setTimeout(() => void tick(), POLL_MS * 2)
-      }
-    }
-    void tick()
+    pipelineGraphApi
+      .run(runId)
+      .then((row) => live && setFetched(readRun(row)))
+      .catch(() => live && setFailed(true))
     return () => {
       live = false
-      window.clearTimeout(timer)
     }
-  }, [runId, loadRuns])
+  }, [runId, reads])
+  useEffect(() => {
+    const again = () => {
+      if (document.visibilityState !== 'visible') return
+      void loadRuns()
+      setReads((n) => n + 1)
+    }
+    document.addEventListener('visibilitychange', again)
+    return () => document.removeEventListener('visibilitychange', again)
+  }, [loadRuns])
 
   const recordOf = useCallback((id: string) => run?.steps.find((s) => s.stepId === id), [run])
   const ctx = useMemo(
@@ -87,7 +86,8 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
         ...parent,
         step: (id: string) => graph.steps.find((s) => s.id === id),
         problems: () => [],
-        run: (id: string) => (id === START ? undefined : recordOf(id) ?? (run ? { stepId: id, status: 'waiting' as RunStepStatus, startedAt: null, endedAt: null, inputSummary: '', outputSummary: '', note: '', branchTaken: null } : undefined)),
+        name: (id: string) => parent.name(id) || recordOf(id)?.title || '',
+        run: (id: string) => (id === START ? undefined : recordOf(id) ?? (run ? { stepId: id, kind: '', title: '', status: (runIsOpen(run) ? 'waiting' : 'skipped') as RunStepStatus, startedAt: null, endedAt: null, inputSummary: '', outputSummary: '', note: '', branchTaken: null, branchLabel: '' } : undefined)),
       },
     [parent, graph, recordOf, run],
   )
@@ -97,13 +97,22 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
   const step = graph.steps.find((s) => s.id === picked)
   const record = picked ? recordOf(picked) : undefined
   const index = step ? graph.steps.indexOf(step) + 1 : 0
-  const next = edges.filter((e) => e.source === picked).map((e) => parent?.name(e.target) ?? '')
-  const branch = isCondition(step) ? step.branches.find((b) => b.key === record?.branchTaken)?.label : undefined
+  const shownName = (id: string) => parent?.name(id) || recordOf(id)?.title || ''
+  const next = edges.filter((e) => e.source === picked && (!record?.branchTaken || !e.sourceHandle || e.sourceHandle === record.branchTaken)).map((e) => shownName(e.target))
+  const branch = record?.branchLabel || (isCondition(step) ? step.branches.find((b) => b.key === record?.branchTaken)?.label : undefined)
 
   return (
     <div className="flex flex-wrap" data-testid="chain-runs">
       <aside aria-label={t('실행 목록')} className="flex flex-[1_1_240px] flex-col gap-2 border-line bg-panel p-4 lg:max-w-[280px] lg:border-r max-lg:border-b">
-        <h2 className="text-sm font-semibold text-muted">{t('실행 기록')}</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-muted">{t('실행 기록')}</h2>
+          <Button type="button" size="sm" variant="ghost" onClick={() => {
+            void loadRuns()
+            setReads((n) => n + 1)
+          }}>
+            {t('새로 고침')}
+          </Button>
+        </div>
         {failed && (
           <p className="text-sm text-danger" role="alert">
             {t('실행 기록을 불러오지 못했습니다.')}{' '}
@@ -127,20 +136,20 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
                 data-testid="run-row"
               >
                 <b>
-                  #{runs.length - i} · {t(RUN_STATUS[r.status] ?? r.status)}
+                  {when(r.startedAt)} · {t(RUN_STATUS[r.status] ?? r.status)}
                 </b>
-                <span className="text-muted">{when(r.startedAt)}</span>
+                {i === 0 && <span className="text-muted">{t('가장 최근')}</span>}
               </button>
             </li>
           ))}
         </ul>
-        <p className="text-xs leading-relaxed text-muted">{t('실행마다 대화 하나로 남고, 아티팩트는 기존 아티팩트 화면에서 열립니다.')}</p>
+        <p className="text-xs leading-relaxed text-muted">{t('최근 30번까지 보입니다. 실행마다 대화 하나로 남고, 아티팩트는 기존 아티팩트 화면에서 열립니다.')}</p>
       </aside>
       <main className="flex min-w-0 flex-[999_1_480px] flex-col gap-3 p-4">
         {run ? (
           <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-card border border-line bg-panel px-3.5 py-2.5 text-sm" data-testid="run-status">
             <b>
-              #{runs.length - runs.findIndex((r) => r.id === run.id)} {t(RUN_STATUS[run.status] ?? run.status)}
+              {when(run.startedAt)} {t(RUN_STATUS[run.status] ?? run.status)}
             </b>
             <span className="text-muted">
               {[
@@ -185,7 +194,7 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
               <span className="text-sm text-muted">
                 {t('{n}단계').replace('{n}', String(index))} · {t(kindLabel(step))}
               </span>
-              <b className="text-lg">{t(parent.name(step.id))}</b>
+              <b className="text-lg">{t(shownName(step.id))}</b>
               {record && <span className={cn('text-sm', RUN_TEXT[record.status])}>{t(RUN_LABEL[record.status])}</span>}
             </div>
             {[

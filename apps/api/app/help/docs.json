@@ -339,6 +339,13 @@
 "lang": "ko",
 "path": "chat/agents",
 "title": "에이전트와 스킬",
+"heading": "파이프라인 캔버스",
+"text": "직접 구성으로 일하는 내 에이전트는 상세 화면의 **파이프라인 캔버스에서 편집**(또는 직접 구성 아래 **캔버스에서 편집**)으로 단계를 그림으로 엽니다. 탭은 **편집** · **실행 기록** · **목록으로 보기**이고, 어느 쪽에서 고쳐도 같은 순서로 저장됩니다.\n\n- **단계 넣기**: 왼쪽 목록에서 누르면 고른 단계 뒤에 붙고, 캔버스로 끌어 놓으면 그 자리에 놓입니다. 단계 오른쪽 점에서 다음 단계로 선을 잇거나, 옆 칸의 **다음 단계**에서 고릅니다(키보드로도 됩니다). 조건이 아닌 단계는 다음 단계를 하나만 잇고, **요청 받기**에서 이어진 단계가 첫 단계로 저장됩니다.\n- **스킬**: 스킬을 끌어 놓으면 그 스킬로 에이전트 초안이 열리고, 저장하면 새 에이전트가 단계로 들어옵니다. 에이전트 아래 칩은 붙은 스킬입니다(채움 = 항상 적용, 점선 = 필요할 때). 옆 칸에서 이름 · 지시 · 모델 · 스킬 적용 방식을 고칩니다.\n- **확인할 점**: 저장 전 확인에 걸린 단계에는 「!」가 붙고 위쪽에 안내가 나옵니다.\n- **실행 기록**: 최근 30번의 실행과 단계별 상태(끝 · 기다리는 중 · 실패 · 건너뜀), 받은 것 · 한 일 · 넘긴 것이 보입니다. **새로 고침**으로 다시 읽습니다.\n- 갈래가 있는 순서는 목록으로 보기와 에이전트 폼에서 볼 수만 있고 캔버스에서 고칩니다. 휴대폰에서는 캔버스, 선택한 단계, 단계 목록 순으로 쌓입니다."
+},
+{
+"lang": "ko",
+"path": "chat/agents",
+"title": "에이전트와 스킬",
 "heading": "묶음",
 "text": "묶음은 에이전트가 쓰기 전후에 하는 일을 몇 가지씩 묶은 것입니다. 에이전트 만들기 폼의 **추가로 할 일**에 묶음마다 체크 상자가 하나 있고, **자세히**를 누르면 그 안의 항목을 하나씩 켜고 끌 수 있습니다.\n\n| 묶음 | 항목 |\n|---|---|\n| 쓰기 전에 준비하기 | 빠진 정보 먼저 묻기 · 날짜 미리 계산하기 · 금액·합계 미리 계산하기 |\n| 다 쓴 뒤 검토하기 | 자료에 없는 내용이 없는지 근거 확인하기(수치는 도구 결과에서만 인정 · 직함·제품명까지 확인) · 형식 검사 · 어긋난 곳 고치고 다시 확인하기 |\n| 마무리하기 | 상투적인 표현 걷어내기 · 다 쓰면 파일로 내보내기(DOCX·PDF·HWPX·MD 중 하나) |\n\n- **파일로 받기**: 마무리하기를 체크하면 그 아래에 **다 쓰면 파일로 내보내기** 체크 상자가 따로 보입니다. 파일로 받으려면 이것을 체크하고 옆에서 파일 형식을 고릅니다. 체크하면 공문 계열 문서(간이기안문·공문·추진 계획·결과 보고·개조식)는 HWPX, 그 밖에는 DOCX가 먼저 골라지고, 직접 고른 형식이 우선합니다. 기본 과정(개조식 보고, 회의록, 비교·결정)은 마무리하기가 체크된 채 내보내기는 꺼져 있습니다. 내보내기는 문서를 쓰는 과정에서만 됩니다. 바로 답하기 에이전트의 마무리하기에는 「파일로 내보내기(문서 과정에서)」라고만 보입니다.\n- 보고서 화면에서는 날짜·금액 계산, 형식 검사, 고치고 다시 확인하기가 보고서를 쓰는 과정 안에서 늘 이루어지므로 「이 과정은 늘 합니다」로 표시됩니다. 대화 화면에는 형식 검사와 내보내기가 없습니다.\n- 기본 과정도 같은 묶음으로 만들어져 있습니다. 예를 들어 회의록 = 쓰기 전에 준비하기 + 다 쓴 뒤 검토하기(할 일의 담당자·기한 확인 포함) + 마무리하기(내보내기 꺼짐)이고, 이 검사들은 **회의록 작성** 스킬과 **회의록** 템플릿에도 함께 붙어 있습니다.\n- **내 묶음**: **사용자 지정** → **에이전트** → **추가** → **묶음 만들기**, 또는 직접 구성 화면의 **이 순서를 묶음으로 저장**으로 만듭니다. 만든 묶음은 내 모든 에이전트의 추가로 할 일에 체크 상자로 나옵니다. 추가로 할 일 옆 **묶음 관리**에서 고치고 공유합니다.\n- 공유는 스킬과 같습니다(나만 쓰기 · 모두에게 공개). 파일로 내보내거나, 다른 모델이 검토하거나, 다른 에이전트를 부르는 묶음과 직접 구성은 관리자가 **진행 과정 검토**에서 승인한 뒤에야 다른 사람에게 적용됩니다. 기본 과정과 기본 묶음만 쓰는 에이전트는 승인 없이 바로 공유됩니다."
 },
@@ -1783,6 +1790,13 @@
 "title": "Agents and skills",
 "heading": "Condition steps and run records",
 "text": "A **condition** step in a custom order looks at what earlier steps produced and goes on along one branch only. Steps are joined by lines; a condition has one line per branch.\n\n- **Rule**: compares a value an earlier step left (greater than · equals · is empty · contains). No model is called; the branches are **Yes** and **No**. Values: the request (attachments · attachment types · text), an agent (result kind · sections · characters · text), a calculation (result), a check (found · left), a review (findings · fixed · left), the question card (blanks · answers), the outline approval (sections).\n- **AI judgement**: the judge model answers your question by picking one of 2–4 branches, and its reason goes into the run record. A strict-local conversation uses only models that stay inside; the tokens count toward that turn's credits.\n- **No value**: when the step a rule reads did not run or left no value, the rule takes **No**; when the judgement names no branch, the last branch is taken. The record says why.\n- **Checked before saving**: a line back to an earlier step (a loop), a branch with nothing after it, a step the first step never reaches, an unfinished condition, or two lines out of a step that is not a condition stop the save. Every branch's last agent must make the same thing (a document or an answer), and no condition may sit between the question card and its agent. Bundles hold no conditions.\n- **Run records**: steps on a branch not taken are recorded as skipped. Each run shows every step's status, a short summary of what it got and handed on, and the branch taken; only the person who ran it sees it."
+},
+{
+"lang": "en",
+"path": "chat/agents",
+"title": "Agents and skills",
+"heading": "Pipeline canvas",
+"text": "An agent of yours that works in a custom order opens its steps as a picture with **Edit on the pipeline canvas** on its page (or **Edit on the canvas** under the custom order). The tabs are **Edit** · **Runs** · **List view**; either way the same order is saved.\n\n- **Adding steps**: click an item on the left to add it after the selected step, or drag it onto the canvas to place it there. Draw a line from the dot on a step's right to the next step, or pick it under **Next step** in the side panel (this works from the keyboard too). A step that is not a condition leads to one next step, and the step joined to **Request** is saved as the first step.\n- **Skills**: dropping a skill opens an agent draft made from it; once saved, the new agent comes in as a step. The chips under an agent are its skills (filled = always, dashed = when needed). The side panel changes the name, instructions, model and how each skill applies.\n- **What to check**: a step the pre-save checks flag carries a 「!」 and a notice appears on top.\n- **Runs**: the last 30 runs, each step's status (done · waiting · failed · skipped) and what it got, did and handed on. **Refresh** reads them again.\n- An order with branches is read-only in the list view and the agent form; edit it on the canvas. On a phone the canvas, the selected step and the step list stack in that order."
 },
 {
 "lang": "en",

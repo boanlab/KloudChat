@@ -2,13 +2,13 @@ import { Plus, Trash2, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StepSettings } from '@/components/agents/PipelineEditor'
 import { Button, Field, Input, Select, Textarea } from '@/components/ui'
-import { ancestors, isCondition, START, type CanvasEdge } from '@/lib/pipelineGraph'
+import { REQUEST, ancestors, isCondition, START, type CanvasEdge } from '@/lib/pipelineGraph'
 import { agentOutput } from '@/lib/userPipelines'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import type { Agent, ModelInfo, PipelineStep, Skill } from '@/types'
 import type { ConditionOp, ConditionStep, GraphCatalogue, GraphProblem, GraphStep } from '@/types/pipelineGraph'
-import { kindLabel } from './stepInfo'
+import { kindLabel, problemText } from './stepInfo'
 
 /** Skills 항상 적용 at most (the server's limit on active skills). */
 export const MAX_ACTIVE = 6
@@ -110,7 +110,7 @@ function Problems({ problems }: { problems: GraphProblem[] }) {
   return (
     <ul className="space-y-1 rounded-card border border-warn/40 bg-warn/5 p-3 text-sm text-warn" role="alert">
       {problems.map((p) => (
-        <li key={`${p.code}-${p.message}`}>{t(p.message)}</li>
+        <li key={`${p.code}-${p.message}`}>{t(problemText(p))}</li>
       ))}
     </ul>
   )
@@ -292,13 +292,21 @@ function ConditionPanel({ step, props }: { step: ConditionStep; props: PanelProp
   const t = useT()
   const set = (patch: Partial<ConditionStep>) => props.onStep({ ...step, ...patch })
   const before = ancestors(props.lines, step.id)
-  const values = props.steps
-    .filter((s) => before.has(s.id) && !isCondition(s))
-    .flatMap((s) =>
-      (props.cat?.conditionValues ?? [])
-        .filter((v) => v.stepKind === s.kind)
-        .map((v) => ({ value: `${s.id}|${v.key}`, label: `${props.name(s.id)} · ${v.label}` })),
-    )
+  const known = props.cat?.conditionValues ?? []
+  const values = [
+    ...known
+      .filter((v) => v.stepKind === 'request')
+      .map((v) => ({ value: `${REQUEST}|${v.key}`, label: `요청 · ${v.label}` })),
+    ...props.steps
+      .filter((s) => before.has(s.id) && !isCondition(s))
+      .flatMap((s) =>
+        known
+          .filter((v) => v.stepKind === s.kind && (!v.ref || (!isCondition(s) && v.ref === s.ref)))
+          .map((v) => ({ value: `${s.id}|${v.key}`, label: `${props.name(s.id)} · ${v.label}` })),
+      ),
+  ]
+  const ops = props.cat?.ruleOps ?? (Object.keys(OP_LABEL) as ConditionOp[])
+  const maxBranches = props.cat?.maxBranches ?? 4
   const rule = step.rule ?? { step: '', value: '', op: 'gt' as ConditionOp, target: '' }
   const ruleKey = rule.step && rule.value ? `${rule.step}|${rule.value}` : ''
   const setMode = (mode: 'rule' | 'ai') =>
@@ -360,7 +368,7 @@ function ConditionPanel({ step, props }: { step: ConditionStep; props: PanelProp
           </Field>
           <Field label={t('비교')}>
             <Select value={rule.op} onChange={(e) => set({ rule: { ...rule, op: e.target.value as ConditionOp } })}>
-              {(Object.keys(OP_LABEL) as ConditionOp[]).map((op) => (
+              {ops.map((op) => (
                 <option key={op} value={op}>
                   {t(OP_LABEL[op])}
                 </option>
@@ -411,11 +419,11 @@ function ConditionPanel({ step, props }: { step: ConditionStep; props: PanelProp
         <Button
           type="button"
           size="sm"
-          disabled={step.mode === 'rule'}
+          disabled={step.mode === 'rule' || step.branches.length >= maxBranches}
           onClick={() => set({ branches: [...step.branches, { key: nextKey(), label: t('갈래 {n}').replace('{n}', String(step.branches.length + 1)) }] })}
         >
           <Plus size={13} />
-          {t('갈래 추가 (AI 판단에서 여러 갈래)')}
+          {t('갈래 추가 (AI 판단에서 {n}개까지)').replace('{n}', String(maxBranches))}
         </Button>
       </div>
       <p className="text-xs leading-relaxed text-muted">

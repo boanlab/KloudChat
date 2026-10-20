@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PipelineStep } from '@/types'
 import type { ConditionStep, GraphStep, PipelineGraph } from '@/types/pipelineGraph'
-import { START, canvasEdges, connect, fromCanvas, layout, newStepId, wouldCycle } from '@/lib/pipelineGraph'
+import { START, canvasEdges, connect, fromCanvas, layout, newStepId, readConditionValues, readRun, wouldCycle } from '@/lib/pipelineGraph'
 
 const agent = (id: string): PipelineStep => ({ id, kind: 'agent', ref: `a-${id}`, settings: {} })
 const cond = (id: string): ConditionStep => ({
@@ -86,5 +86,35 @@ describe('graph and steps', () => {
     expect(at.s2.x).toBe(at.s3.x)
     expect(at.s3.y).toBeGreaterThan(at.s2.y)
     expect(at.c1.x).toBeGreaterThan(at.s1.x)
+  })
+
+  it('the step the start leads to is saved first, even when another line comes into it', () => {
+    const steps: GraphStep[] = [agent('s1'), cond('c1'), agent('s2')]
+    let lines = connect([], START, 'c1')
+    lines = connect(lines, 'c1', 's1', 'yes')
+    lines = connect(lines, 'c1', 's2', 'no')
+    lines = connect(lines, 's2', 'c1')
+    expect(fromCanvas(steps, lines).steps[0].id).toBe('c1')
+  })
+
+  it("a run record reads the server's snake_case, branch label included", () => {
+    const run = readRun({
+      id: 'r1', status: 'done', started_at: '2026-10-20T05:00:00Z', ended_at: null, session_id: 'x',
+      steps: [{ step_id: 'c1', kind: 'condition', title: '과제가 있나?', status: 'done', started_at: null, ended_at: null,
+        input_summary: '요청', output_summary: '', note: '과제 3개', branch_taken: 'yes', branch_label: '예' }],
+    })
+    expect(run.steps[0]).toMatchObject({ stepId: 'c1', kind: 'condition', title: '과제가 있나?', branchTaken: 'yes', branchLabel: '예' })
+    expect(run.sessionId).toBe('x')
+  })
+
+  it('rule values keep the request source and a 사람 확인 ref', () => {
+    const values = readConditionValues({ condition_values: [
+      { step_kind: 'request', key: 'attachments', label: '첨부 수', type: 'number' },
+      { step_kind: 'human', ref: 'gaps', key: 'gaps', label: '빈칸 수', type: 'number' },
+    ] })
+    expect(values).toEqual([
+      { stepKind: 'request', key: 'attachments', label: '첨부 수', type: 'number' },
+      { stepKind: 'human', key: 'gaps', label: '빈칸 수', type: 'number', ref: 'gaps' },
+    ])
   })
 })

@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { isCondition } from '@/lib/pipelineGraph'
 import type { Agent, Skill } from '@/types'
 import { ChainContext } from './flow'
-import { RUN_FRAME, RUN_LABEL, RUN_TEXT, kindIcon, kindLabel, kindTone } from './stepInfo'
+import { RUN_FRAME, RUN_LABEL, RUN_TEXT, kindIcon, kindLabel, kindTone, problemText } from './stepInfo'
 
 function useView() {
   const view = useContext(ChainContext)
@@ -71,7 +71,7 @@ function Title({ id }: { id: string }) {
             {record.outputSummary && record.status === 'done' ? ` · ${t(record.outputSummary)}` : ''}
           </span>
         ) : problems.length ? (
-          <span className="block truncate text-warn" title={t(problems[0].message)}>{t(problems[0].message)}</span>
+          <span className="block truncate text-warn" title={t(problemText(problems[0]))}>{t(problemText(problems[0]))}</span>
         ) : (
           <span className="block truncate text-muted">{t(kindLabel(step))}{note ? ` · ${t(note)}` : ''}</span>
         )}

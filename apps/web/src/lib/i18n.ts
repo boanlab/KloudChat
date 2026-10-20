@@ -3,6 +3,37 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // Pipeline canvas
+  '파이프라인': 'Pipeline',
+  '파이프라인 캔버스에서 편집': 'Edit on the pipeline canvas',
+  '캔버스에서 편집': 'Edit on the canvas',
+  '갈래(조건)는 캔버스에서 넣습니다. 여기서 바꾼 것은 먼저 저장하세요.': 'Branches (conditions) are added on the canvas. Save changes made here first.',
+  '이 순서에는 갈래(조건)가 있어 캔버스에서만 고칩니다.': 'This order has branches (conditions), so it is edited on the canvas only.',
+  '실행 기록': 'Runs',
+  '목록으로 보기': 'List view',
+  '시험 실행': 'Try it',
+  '저장 안 됨': 'Not saved',
+  '단계 목록': 'Step list',
+  '단계 찾기': 'Find a step',
+  '선택한 단계': 'Selected step',
+  '다음 단계': 'Next step',
+  '이어지지 않음': 'Not joined',
+  '요청 받기': 'Request',
+  '받는 것': 'Gets',
+  '넘기는 것': 'Hands on',
+  '받은 것': 'Got',
+  '한 일': 'Did',
+  '넘긴 것': 'Handed on',
+  '규칙으로': 'By a rule',
+  'AI 판단으로': 'By AI judgement',
+  '판단 방식': 'How it decides',
+  '갈래': 'Branches',
+  '이어지는 단계': 'Leads to',
+  '에이전트 전체 설정 열기': 'Open all agent settings',
+  '이 단계 설정 고치기': 'Edit this step',
+  '화면에 맞추기': 'Fit to screen',
+  '확대': 'Zoom in',
+  '축소': 'Zoom out',
   // Agent output language, web search default, memory; fallback-model notes
   '출력 언어': 'Output language',
   '모든 답과 문서를 이 언어로 씁니다. 사용자가 그 턴에 다른 언어를 직접 요청하면 그 요청을 따릅니다.':
@@ -1965,8 +1996,6 @@ const EN: Record<string, string> = {
   '되돌릴 수 없습니다. 이 대화들이 만든 아티팩트(보고서·슬라이드·이미지·오디오·동영상)도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.': 'This cannot be undone. What these conversations produced (reports, decks, images, audio, video) is deleted with them and their share links stop working. Projects and memory stay.',
   '대화 {n}개가 있습니다. 삭제한 대화는 되돌릴 수 없고, 그 대화에서 만든 아티팩트도 함께 지워집니다.': 'You have {n} conversations. Deleting one cannot be undone, and what it produced is deleted with it.',
   '확대/축소': 'Zoom',
-  '축소': 'Zoom out',
-  '확대': 'Zoom in',
   '폭에 맞춤': 'Fit to width',
   '대화 {n}개를 삭제할까요?': 'Delete {n} conversation(s)?',
 

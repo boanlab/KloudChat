@@ -59,6 +59,16 @@ A **condition** step in a custom order looks at what earlier steps produced and 
 - **Checked before saving**: a line back to an earlier step (a loop), a branch with nothing after it, a step the first step never reaches, an unfinished condition, or two lines out of a step that is not a condition stop the save. Every branch's last agent must make the same thing (a document or an answer), and no condition may sit between the question card and its agent. Bundles hold no conditions.
 - **Run records**: steps on a branch not taken are recorded as skipped. Each run shows every step's status, a short summary of what it got and handed on, and the branch taken; only the person who ran it sees it.
 
+## Pipeline canvas
+
+An agent of yours that works in a custom order opens its steps as a picture with **Edit on the pipeline canvas** on its page (or **Edit on the canvas** under the custom order). The tabs are **Edit** · **Runs** · **List view**; either way the same order is saved.
+
+- **Adding steps**: click an item on the left to add it after the selected step, or drag it onto the canvas to place it there. Draw a line from the dot on a step's right to the next step, or pick it under **Next step** in the side panel (this works from the keyboard too). A step that is not a condition leads to one next step, and the step joined to **Request** is saved as the first step.
+- **Skills**: dropping a skill opens an agent draft made from it; once saved, the new agent comes in as a step. The chips under an agent are its skills (filled = always, dashed = when needed). The side panel changes the name, instructions, model and how each skill applies.
+- **What to check**: a step the pre-save checks flag carries a 「!」 and a notice appears on top.
+- **Runs**: the last 30 runs, each step's status (done · waiting · failed · skipped) and what it got, did and handed on. **Refresh** reads them again.
+- An order with branches is read-only in the list view and the agent form; edit it on the canvas. On a phone the canvas, the selected step and the step list stack in that order.
+
 ## Bundles
 
 A bundle groups a few things an agent does before and after writing. Each bundle is one checkbox under **Extra work** in the create-agent form; **Details** opens its items as checkboxes.

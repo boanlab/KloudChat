@@ -1138,6 +1138,19 @@ missing}`. `GET /user-pipelines/{id}/runs` (the pipeline's owner, their own runs
 kind, title, status (waiting · running · done · failed · skipped), started_at, ended_at,
 input_summary, output_summary, note, branch_taken, branch_label?}]}`, summaries built from the
 records' labels only, never the text a step read.
+**Canvas.** The web edits an agent's custom order as a graph at `/customize/agents/{id}/chain`
+(`pages/customize/ChainPage.tsx`, `@xyflow/react`): tabs 편집 (the canvas), 실행 기록 (the two run
+reads above, read once per run and again on 새로 고침, since runs are stored when they end or stop
+to wait) and 목록으로 보기 (the list editor, read-only once there are branches).
+`lib/pipelineGraph.ts` turns canvas lines into `stages` + `edges`: the step the start node leads to
+is stored first, the rest in reading order (branches in their order), and `edges` is `null` when
+the lines only repeat that order; a step (or a condition branch) keeps one outgoing line, and a line
+that would close a loop is refused. It saves with `PUT /agents/{id}/process` and marks problems by
+their `stepId` (else their number). Dropping a skill opens `/customize/agents/new?from=skill:<id>`
+with `return`, and the agent saved there comes back as a step (`?added=<id>`); unsaved canvas state
+waits in `sessionStorage`. Its e2e answers with `apps/web/e2e/fixtures/chain-canvas.json`, which
+`tests/test_the_chain_canvas_fixture_is_the_apis.py` keeps equal to the API's catalogue, problem
+sentences and run reads.
 An **agent step** runs that agent's own flow as a sub-run: a document agent its format's
 `plan` (or the outline a `human:outline` step got approved) then `write`, with no save of its
 own; a chat agent one answer on its own prompt (tools stay with the conversation surface). What

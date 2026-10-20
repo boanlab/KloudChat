@@ -1,8 +1,13 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import api from './fixtures/chain-canvas.json' with { type: 'json' }
 import { viewport } from './project'
 import { shellRead } from './shell-mocks'
 
 /**
+ * Answers come from `fixtures/chain-canvas.json`, which the API test
+ * `test_the_chain_canvas_fixture_is_the_apis.py` keeps equal to what the API sends (catalogue,
+ * problem sentences, runs read per step).
+ *
  * The pipeline canvas of an agent's 직접 구성 against fixture data: steps placed from the palette
  * (click and drag), lines drawn from the side panel, problems on the node and in the banner, an
  * agent's skills 항상 적용 / 필요할 때, a condition step with a rule and branches, the same steps in
@@ -19,7 +24,10 @@ const MINUTES = 'c1111111111111111111111111111111'
 const MAIL = 'c2222222222222222222222222222222'
 const MADE = 'c3333333333333333333333333333333'
 
-type Step = { id: string; kind: string; ref: string; settings?: Record<string, unknown>; name?: string; branches?: { key: string }[] }
+type Step = {
+  id: string; kind: string; ref: string; settings?: Record<string, unknown>; name?: string; mode?: string
+  rule?: Record<string, unknown>; branches?: { key: string; label: string }[]
+}
 type Edge = { from: string; to: string; branch?: string }
 
 function agentRow(id: string, name: string, surface: 'report' | 'chat', extra: Record<string, unknown> = {}) {
@@ -46,39 +54,37 @@ const savedSteps: Step[] = [
   { id: 's3', kind: 'agent', ref: MAIL, settings: { instruction: '실행 과제와 담당자만 뽑아 메일 초안을 씁니다.' } },
 ]
 
-const catalogue = {
-  maxSteps: 12,
-  skills: [{ ref: 'date-calc', name: '날짜 계산', description: '', summary: '상대 날짜를 풉니다.' }],
-  checks: [{ ref: 'grounding-check', name: '근거 확인', description: '수치·날짜가 자료에 있는지 대조합니다.', needs: ['document', 'answer'] }],
-  human: [{ ref: 'outline', name: '사람 확인', description: '확인받고 넘깁니다.' }],
-  exportFormats: ['docx', 'pdf'],
-  reviewModels: [{ id: 'fixture/judge', label: 'Fixture Judge' }],
-  condition_values: [
-    { step_kind: 'agent', key: 'action_items', label: '실행 과제 수', type: 'number' },
-    { step_kind: 'check', key: 'flagged', label: '표시한 곳 수', type: 'number' },
-  ],
-}
+const catalogue = { ...api.catalogue, reviewModels: [{ id: 'fixture/judge', label: 'Fixture Judge' }] }
 
-/** The server's graph checks, as far as these screens need them. */
-function verdict(stages: Step[], edges: Edge[] | null) {
+const KIND = api.kindWords as Record<string, string>
+
+/** The server's graph checks, as far as these screens need them, in its words (`compose.validate`). */
+function verdict(stages: Step[], edges: Edge[] | null, agents: { id: string; name: string }[]) {
   const lines: Edge[] = edges ?? stages.slice(1).map((s, i) => ({ from: stages[i].id, to: s.id }))
-  const problems: { step: number | string; code: string; message: string }[] = []
+  const title = (s: Step) =>
+    s.kind === 'agent' ? (agents.find((a) => a.id === s.ref)?.name ?? '에이전트')
+      : s.kind === 'check' ? (catalogue.checks.find((c) => c.ref === s.ref)?.name ?? s.ref)
+        : s.kind === 'human' ? (catalogue.human.find((c) => c.ref === s.ref)?.name ?? '사람 확인')
+          : s.kind === 'condition' ? (s.name || '조건') : KIND[s.kind]
+  const problems: { step: number; stepId: string; code: string; message: string }[] = []
+  const say = (i: number, code: keyof typeof api.messages, values: Record<string, string> = {}) => {
+    const at = `${i + 1}번 ${KIND[stages[i].kind]}(${title(stages[i])})`
+    const message = Object.entries({ at, ...values }).reduce((m, [k, v]) => m.replace(`{${k}}`, v), api.messages[code])
+    problems.push({ step: i + 1, stepId: stages[i].id, code, message })
+  }
+  const reached = new Set([stages[0]?.id])
+  for (let changed = true; changed; ) {
+    changed = false
+    for (const l of lines) if (reached.has(l.from) && !reached.has(l.to)) changed = reached.add(l.to) && true
+  }
   stages.forEach((s, i) => {
-    if (i > 0 && !lines.some((l) => l.to === s.id)) problems.push({ step: s.id, code: 'unreachable_step', message: '시작에서 닿지 않는 단계입니다. 앞 단계와 이으세요.' })
-    if (s.kind === 'condition' && s.branches?.some((b) => !lines.some((l) => l.from === s.id && l.branch === b.key))) {
-      problems.push({ step: s.id, code: 'branch_dead_end', message: '모든 갈래가 다음 단계로 이어져야 합니다.' })
-    }
+    if (!reached.has(s.id)) return say(i, 'unreachable_step')
+    if (s.kind !== 'condition') return
+    const rule = s.rule as { step?: string; op?: string; target?: string } | undefined
+    if (s.mode === 'rule' && !rule?.step) say(i, 'condition_incomplete', { what: '규칙이 읽을 값을 이 조건 앞 단계에서 골라 주세요.' })
+    for (const b of s.branches ?? []) if (!lines.some((l) => l.from === s.id && l.branch === b.key)) say(i, 'branch_dead_end', { label: b.label })
   })
   return { ok: problems.length === 0, surface: 'report', problems, warnings: [] }
-}
-
-function run(id: string, status: string, steps: [string, string, string, string, string?][]) {
-  return {
-    id, status, started_at: at, ended_at: status === 'running' ? null : at, session_id: 'a5555555555555555555555555555555',
-    steps: steps.map(([step_id, s, input_summary, output_summary, note]) => ({
-      step_id, status: s, started_at: at, ended_at: null, input_summary, output_summary, note: note ?? '', branch_taken: null,
-    })),
-  }
 }
 
 async function fixture(page: Page, testInfo: TestInfo, { withMade = false } = {}) {
@@ -91,7 +97,9 @@ async function fixture(page: Page, testInfo: TestInfo, { withMade = false } = {}
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
   const agents = [
     agentRow(CHAIN, '회의 후속 처리', 'report', {
-      process: { mode: 'custom', base: null, bundles: [], chain: [], review: '', needsReview: false, steps: savedSteps, pipelineId: 'p1' },
+      // `bases.process_of` for the owner: titled steps, edges (null: in order), the pipeline id.
+      process: { mode: 'custom', base: null, bundles: [], chain: ['회의록 정리', '근거 대조', '후속 메일 초안'], review: '',
+        needsReview: false, steps: savedSteps.map((s) => ({ ...s, title: '' })), edges: null, pipelineId: 'p1' },
     }),
     agentRow(MINUTES, '회의록 정리', 'report', { model: 'fixture/base', skillIds: ['k1', 'k2'], activeSkillIds: ['k1'] }),
     agentRow(MAIL, '후속 메일 초안', 'chat', { skillIds: ['k2'], activeSkillIds: [] }),
@@ -125,31 +133,27 @@ async function fixture(page: Page, testInfo: TestInfo, { withMade = false } = {}
     if (method === 'GET' && path === '/user-pipelines/catalogue') return route.fulfill({ json: catalogue })
     if (method === 'POST' && path === '/user-pipelines/validate') {
       const body = json()
-      return route.fulfill({ json: verdict(body.stages as Step[], (body.edges as Edge[] | null) ?? null) })
+      const stages = body.stages as Step[]
+      return route.fulfill({ json: { ...verdict(stages, (body.edges as Edge[] | null) ?? null, agents), titles: stages.map(() => '') } })
     }
     if (method === 'PUT' && path === `/agents/${CHAIN}/process`) {
       const body = json()
       processes.push(body)
       return route.fulfill({ json: { mode: 'custom', base: null, bundles: [], chain: [], review: '', needsReview: false,
-        steps: body.stages, edges: body.edges, pipelineId: 'p1', warnings: [], agent: {} } })
+        steps: body.stages, edges: body.edges, pipelineId: 'p1', warnings: [],
+        agent: { surface: 'report', kinds: ['report'], docFormat: null, renderTemplateId: null, baseKey: null, pipelineId: 'p1',
+          checkSkills: [], checkOptions: {}, bundles: null } } })
     }
     if (method === 'PATCH' && /^\/agents\/[^/]+$/.test(path)) {
       const id = path.split('/')[2]
       patches.push({ id, body: json() })
       return route.fulfill({ json: { ...agents.find((a) => a.id === id), ...json() } })
     }
-    if (method === 'GET' && path === '/user-pipelines/p1/runs') return route.fulfill({ json: [
-      run('r2', 'running', []),
-      run('r1', 'failed', []),
-    ] })
-    if (method === 'GET' && path === '/user-pipelines/runs/r2') {
+    if (method === 'GET' && path === '/user-pipelines/p1/runs') return route.fulfill({ json: api.runs })
+    const one = api.runs.find((r) => path === `/user-pipelines/runs/${r.id}`)
+    if (method === 'GET' && one) {
       runReads += 1
-      const done = runReads > 1
-      return route.fulfill({ json: run('r2', done ? 'done' : 'running', [
-        ['s1', 'done', '주간회의 메모.txt', '회의록 1부'],
-        ['s2', 'done', '회의록 정리의 회의록 1부', '표시를 붙인 회의록', '메모에 없는 문장 2곳에 「(확인 필요)」를 붙였습니다.'],
-        ['s3', done ? 'done' : 'running', '표시를 붙인 회의록', done ? '메일 초안' : ''],
-      ]) })
+      return route.fulfill({ json: one })
     }
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: {}, total: 0 } })
     const shell = shellRead(method, path)
@@ -197,7 +201,7 @@ test('build a chain on the canvas: add, drag, connect, skills, save the same ste
   await expect(panel(page)).toContainText('내보내기')
 
   // Drag: placed loose, so it is flagged until a line reaches it.
-  await palette(page).getByRole('button', { name: '사람 확인' }).dragTo(page.getByTestId('chain-canvas'), { targetPosition: { x: 200, y: 320 } })
+  await palette(page).getByRole('button', { name: '개요 확인' }).dragTo(page.getByTestId('chain-canvas'), { targetPosition: { x: 200, y: 320 } })
   await expect(page.getByTestId('chain-node')).toHaveCount(6)
   await expect(page.getByTestId('chain-banner')).toContainText('확인할 단계가 1개 있습니다')
   await expect(node(page, 's5').getByTestId('node-problem')).toBeVisible()
@@ -225,7 +229,7 @@ test('build a chain on the canvas: add, drag, connect, skills, save the same ste
 
   // The same steps as a list.
   await page.getByRole('tab', { name: '목록으로 보기' }).click()
-  await expect(page.getByTestId('chain-list').getByTestId('pipeline-step')).toHaveText([/회의록 정리/, /근거 확인/, /후속 메일 초안/, /내보내기/, /사람 확인/])
+  await expect(page.getByTestId('chain-list').getByTestId('pipeline-step')).toHaveText([/회의록 정리/, /근거 대조/, /후속 메일 초안/, /내보내기/, /개요 확인/])
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
 })
@@ -238,14 +242,18 @@ test('a condition step: rule from a preceding value, two branches, saved as edge
   const cond = node(page, 's4')
   await expect(cond).toContainText('조건')
   // Its 예 took over the old line; 아니오 leads nowhere yet.
-  await expect(page.getByTestId('chain-banner')).toContainText('모든 갈래가 다음 단계로 이어져야 합니다')
-
   const side = panel(page)
+  await expect(page.getByTestId('chain-banner')).toContainText('확인할 단계가 1개 있습니다')
+  await expect(side.getByRole('alert')).toContainText('규칙이 읽을 값을 이 조건 앞 단계에서 골라 주세요.')
+  await expect(side.getByRole('alert')).toContainText('「아니오」 갈래 뒤에 이어질 단계가 없습니다')
+
   await side.getByLabel('이름').fill('실행 과제가 있나?')
   await expect(side.getByRole('radio', { name: /규칙으로/ })).toHaveAttribute('aria-checked', 'true')
   const value = side.getByTestId('condition-rule').getByLabel('값')
-  await expect(value.locator('option')).toHaveText(['값 고르기', '회의록 정리 · 실행 과제 수'])
-  await value.selectOption({ label: '회의록 정리 · 실행 과제 수' })
+  // The request and what the steps before it leave behind (catalogue `condition_values`).
+  await expect(value.locator('option')).toHaveText(['값 고르기', '요청 · 첨부 수', '요청 · 첨부 형식', '요청 · 요청 글',
+    '회의록 정리 · 결과 종류(document·answer)', '회의록 정리 · 쓴 장 수', '회의록 정리 · 결과 글자 수', '회의록 정리 · 결과 글'])
+  await value.selectOption({ label: '회의록 정리 · 쓴 장 수' })
   await side.getByLabel('비교').selectOption({ label: '보다 크면' })
   await side.getByLabel('기준').fill('0')
   const branches = side.getByTestId('condition-branch')
@@ -257,8 +265,11 @@ test('a condition step: rule from a preceding value, two branches, saved as edge
 
   // AI 판단 offers more branches; back to a rule it is 예/아니오 again.
   await side.getByRole('radio', { name: /AI 판단으로/ }).click()
+  // Up to the catalogue's `maxBranches` (4).
   await side.getByRole('button', { name: /갈래 추가/ }).click()
-  await expect(branches).toHaveCount(3)
+  await side.getByRole('button', { name: /갈래 추가/ }).click()
+  await expect(branches).toHaveCount(4)
+  await expect(side.getByRole('button', { name: /갈래 추가/ })).toBeDisabled()
   await side.getByRole('radio', { name: /규칙으로/ }).click()
   await expect(branches).toHaveCount(2)
 
@@ -274,7 +285,7 @@ test('a condition step: rule from a preceding value, two branches, saved as edge
   expect(saved.stages.map((s) => s.id)).toEqual(['s1', 's4', 's2', 's3'])
   expect(saved.stages[1]).toMatchObject({
     kind: 'condition', id: 's4', name: '실행 과제가 있나?', mode: 'rule',
-    rule: { step: 's1', value: 'action_items', op: 'gt', target: '0' },
+    rule: { step: 's1', value: 'sections', op: 'gt', target: '0' },
     branches: [{ key: 'yes', label: '예' }, { key: 'no', label: '아니오' }],
   })
   expect(saved.edges).toEqual([
@@ -307,25 +318,30 @@ test('a skill dropped opens its agent draft, and the agent made comes back as a 
   expect(state.problems).toEqual([])
 })
 
-test('실행 기록: per-step status on the canvas, what a step took and gave, polled while running', async ({ page }, testInfo) => {
+test('실행 기록: per-step status on the canvas, what a step took and gave, read again on 새로 고침', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
   await openCanvas(page, '?view=runs')
-  await expect(page.getByTestId('run-row')).toHaveText([/#2 · 진행 중/, /#1 · 실패/])
-  await expect(page.getByTestId('run-status')).toContainText('2단계 끝')
+  await expect(page.getByTestId('run-row')).toHaveText([/기다리는 중/, /실패/])
+  await expect(page.getByTestId('run-status')).toContainText('2단계 끝 · 1단계 대기')
   await expect(node(page, 's1')).toHaveAttribute('data-status', 'done')
-  await expect(node(page, 's3')).toHaveAttribute('data-status', /running|done/)
+  await expect(node(page, 's3')).toHaveAttribute('data-status', 'waiting')
   await node(page, 's2').click()
   const io = page.getByTestId('run-step')
-  await expect(io).toContainText('근거 확인')
-  await expect(io).toContainText('회의록 정리의 회의록 1부')
-  await expect(io).toContainText('메모에 없는 문장 2곳에 「(확인 필요)」를 붙였습니다.')
-  await expect(io).toContainText('표시를 붙인 회의록 → 후속 메일 초안')
-  // Polled until it ends.
-  await expect(node(page, 's3')).toHaveAttribute('data-status', 'done', { timeout: 8_000 })
-  expect(state.runReads()).toBeGreaterThan(1)
+  await expect(io).toContainText('근거 대조')
+  await expect(io).toContainText('「회의록 정리」 회의록 1부')
+  await expect(io).toContainText('메모에 없는 문장 2곳 표시 → 후속 메일 초안')
   await shot(page, testInfo, 'runs')
+  // One read per run picked; 새로 고침 reads again.
+  expect(state.runReads()).toBe(1)
+  await page.getByRole('button', { name: '새로 고침' }).click()
+  await expect.poll(state.runReads).toBe(2)
+  await page.getByTestId('run-row').nth(1).click()
+  await expect(node(page, 's2')).toHaveAttribute('data-status', 'failed')
+  await expect(node(page, 's3')).toHaveAttribute('data-status', 'skipped')
+  await node(page, 's2').click()
+  await expect(io).toContainText('이 단계에서 멈췄습니다')
   await io.getByRole('button', { name: '이 단계 설정 고치기' }).click()
-  await expect(panel(page)).toContainText('근거 확인')
+  await expect(panel(page)).toContainText('근거 대조')
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
 })

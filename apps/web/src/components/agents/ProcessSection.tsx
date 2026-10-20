@@ -550,7 +550,10 @@ export function ProcessSection({
               </p>
             )}
             <div className="flex flex-wrap items-center gap-2">
-              <SaveAsBundle steps={value.steps} onSaved={() => setReloaded((n) => n + 1)} />
+              {/* A 묶음 has no condition steps. */}
+              {!value.edges && !value.steps.some((s) => (s.kind as string) === 'condition') && (
+                <SaveAsBundle steps={value.steps} onSaved={() => setReloaded((n) => n + 1)} />
+              )}
               {(imports ?? []).length > 0 && (
                 <Select
                   aria-label={t('저장한 순서 가져오기')}

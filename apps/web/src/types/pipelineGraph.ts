@@ -7,7 +7,7 @@ export type ConditionOp = 'gt' | 'eq' | 'empty' | 'contains'
 
 /** A rule-mode condition: one value a preceding step produced, compared with `target`. */
 export interface ConditionRule {
-  /** Id of the preceding step whose value is read. */
+  /** Id of the preceding step whose value is read, or `@request` (the request and its attachments). */
   step: string
   /** `condition_values` key. */
   value: string
@@ -45,21 +45,39 @@ export interface PipelineEdge {
 
 /** A value a rule can read from a preceding step of `stepKind`. */
 export interface ConditionValue {
+  /** A step kind, or `request`. */
   stepKind: string
   key: string
   label: string
+  /** `number` or `text`. */
   type: string
+  /** Only steps with this ref (a 사람 확인 kind) leave it. */
+  ref?: string
 }
 
-/** The catalogue with what rules can read. */
-export type GraphCatalogue = PipelineCatalogue & { conditionValues: ConditionValue[] }
+/** The catalogue with what conditions can do. */
+export type GraphCatalogue = PipelineCatalogue & {
+  conditionValues: ConditionValue[]
+  conditionModes: ('rule' | 'ai')[]
+  ruleOps: ConditionOp[]
+  /** Branches an AI condition may have, at most. */
+  maxBranches: number
+}
 
 /** Problem codes the graph adds to a pipeline verdict. */
-export type GraphProblemCode = 'branch_dead_end' | 'cycle' | 'condition_incomplete' | 'unreachable_step'
+export type GraphProblemCode =
+  | 'branch_dead_end'
+  | 'cycle'
+  | 'condition_incomplete'
+  | 'unreachable_step'
+  | 'parallel_next'
+  | 'branch_surface'
+  | 'card_before_branch'
 
-/** A pipeline problem; `step` is a 1-based position (0: the whole pipeline) or, for graph codes, a step id. */
+/** A pipeline problem: `step` 1-based (0: the whole pipeline), `stepId` the step it names. */
 export interface GraphProblem {
-  step: number | string
+  step: number
+  stepId?: string
   code: string
   message: string
 }
@@ -83,14 +101,18 @@ export type RunStepStatus = 'waiting' | 'running' | 'done' | 'failed' | 'skipped
 /** What one step of a run received, did and handed on. */
 export interface PipelineRunStep {
   stepId: string
+  kind: string
+  /** The step's name when it ran. */
+  title: string
   status: RunStepStatus
   startedAt: string | null
   endedAt: string | null
   inputSummary: string
   outputSummary: string
   note: string
-  /** A condition step: the branch key it took. */
+  /** A condition step: the branch it took. */
   branchTaken: string | null
+  branchLabel: string
 }
 
 /** One run of a user pipeline, readable by its owner. */

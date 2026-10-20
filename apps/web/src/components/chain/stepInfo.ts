@@ -4,7 +4,15 @@ import { SELF } from '@/lib/process'
 import { userPipelinesApi } from '@/lib/api'
 import { isCondition, readConditionValues, START } from '@/lib/pipelineGraph'
 import type { Agent, PipelineCatalogue, PipelineStep } from '@/types'
-import type { GraphCatalogue, GraphStep, PipelineEdge, PipelineGraph, RunStepStatus } from '@/types/pipelineGraph'
+import type {
+  GraphCatalogue,
+  GraphProblem,
+  GraphProblemCode,
+  GraphStep,
+  PipelineEdge,
+  PipelineGraph,
+  RunStepStatus,
+} from '@/types/pipelineGraph'
 
 /** Step kind's Korean name, a condition and the start included. */
 export function kindLabel(step: GraphStep | null): string {
@@ -76,7 +84,16 @@ let catalogue: Promise<GraphCatalogue | null> | null = null
 export function loadGraphCatalogue() {
   catalogue ??= userPipelinesApi
     .catalogue()
-    .then((c) => ({ ...c, conditionValues: readConditionValues(c as unknown as Record<string, unknown>) }))
+    .then((c) => {
+      const raw = c as unknown as Partial<GraphCatalogue>
+      return {
+        ...c,
+        conditionValues: readConditionValues(c as unknown as Record<string, unknown>),
+        conditionModes: raw.conditionModes ?? ['rule', 'ai'],
+        ruleOps: raw.ruleOps ?? ['gt', 'eq', 'empty', 'contains'],
+        maxBranches: raw.maxBranches ?? 4,
+      }
+    })
     .catch(() => {
       catalogue = null
       return null
@@ -93,3 +110,17 @@ export function savedGraph(agent: Agent): PipelineGraph {
   return { steps: [{ id: 's1', kind: 'agent', ref: SELF, settings: {} }], edges: null }
 }
 
+
+/** Korean words for the graph codes, when a problem comes without its sentence. */
+const GRAPH_MESSAGE: Record<GraphProblemCode, string> = {
+  cycle: '앞 단계로 되돌아가는 선이 있습니다. 반복은 둘 수 없습니다.',
+  unreachable_step: '첫 단계에서 이어지지 않아 실행되지 않는 단계입니다.',
+  branch_dead_end: '갈래 뒤에 이어질 단계가 없습니다.',
+  condition_incomplete: '조건을 다 채우지 않았습니다.',
+  parallel_next: '조건 단계가 아니면 다음 단계는 하나만 이을 수 있습니다.',
+  card_before_branch: '확인 질문과 그 뒤 에이전트 사이에는 조건 단계를 둘 수 없습니다.',
+  branch_surface: '갈래마다 마지막 에이전트가 만드는 것이 다릅니다. 모든 갈래가 문서를 쓰거나 모두 답을 해야 합니다.',
+}
+
+/** A problem's sentence: the server's, else ours for its code. */
+export const problemText = (p: GraphProblem) => p.message || GRAPH_MESSAGE[p.code as GraphProblemCode] || p.code

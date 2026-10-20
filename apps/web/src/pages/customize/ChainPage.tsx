@@ -18,7 +18,7 @@ import { Palette } from '@/components/chain/Palette'
 import { paletteGroups, type PaletteItem } from '@/components/chain/paletteItems'
 import { RunView } from '@/components/chain/RunView'
 import { StepPanel } from '@/components/chain/StepPanel'
-import { loadGraphCatalogue, savedGraph, stepAgent, stepName } from '@/components/chain/stepInfo'
+import { loadGraphCatalogue, problemText, savedGraph, stepAgent, stepName } from '@/components/chain/stepInfo'
 import { HubTopBar } from '@/components/customize/DetailLayout'
 import { PageBody } from '@/components/layout/AppShell'
 import { Badge, Button, EmptyState, LoadingState } from '@/components/ui'
@@ -208,7 +208,7 @@ export function ChainPage() {
   }, [agent, graph])
 
   const stepIdOf = useCallback(
-    (p: GraphProblem) => (typeof p.step === 'string' ? p.step : p.step > 0 ? (graph.steps[p.step - 1]?.id ?? '') : ''),
+    (p: GraphProblem) => p.stepId || (p.step > 0 ? (graph.steps[p.step - 1]?.id ?? '') : ''),
     [graph],
   )
   const problemsOf = useCallback(
@@ -565,11 +565,11 @@ export function ChainPage() {
                               </button>
                             </span>
                           ))}
-                          {flagged.length === 1 && ` — ${t(problemsOf(flagged[0].id)[0]?.message ?? '')}`}
+                          {flagged.length === 1 && problemsOf(flagged[0].id)[0] && ` — ${t(problemText(problemsOf(flagged[0].id)[0]))}`}
                         </p>
                       )}
                       {overall.map((p) => (
-                        <p key={`${p.code}-${p.message}`}>{t(p.message)}</p>
+                        <p key={`${p.code}-${p.message}`}>{t(problemText(p))}</p>
                       ))}
                     </div>
                   </div>

@@ -12,6 +12,9 @@ import type {
 /** The canvas's start node: where a run begins; never stored. */
 export const START = '__start'
 
+/** A rule's source standing for the request and its attachments. */
+export const REQUEST = '@request'
+
 /** A line on the canvas; `sourceHandle` is the condition branch it leaves by. */
 export interface CanvasEdge {
   id: string
@@ -96,13 +99,15 @@ export function fromCanvas(steps: GraphStep[], lines: CanvasEdge[]): PipelineGra
     .map((l) => (l.sourceHandle ? { from: l.source, to: l.target, branch: l.sourceHandle } : { from: l.source, to: l.target }))
   const byId = new Map(steps.map((s) => [s.id, s]))
   const ordered = readingOrder(steps, edges, entry).map((id) => byId.get(id)!)
+  // The first stored step is where a run starts.
+  if (entry && ordered[0]?.id !== entry) ordered.unshift(...ordered.splice(ordered.findIndex((s) => s.id === entry), 1))
   const pos = new Map(ordered.map((s, i) => [s.id, i]))
   const branchRank = (e: PipelineEdge) => {
     const from = byId.get(e.from)
     return isCondition(from) ? from.branches.findIndex((b) => b.key === e.branch) : 0
   }
   edges.sort((a, b) => pos.get(a.from)! - pos.get(b.from)! || branchRank(a) - branchRank(b))
-  const linear = isLinear(ordered, edges) && (ordered.length === 0 || !entry || entry === ordered[0].id)
+  const linear = isLinear(ordered, edges)
   return { steps: ordered, edges: linear ? null : edges }
 }
 
@@ -209,6 +214,8 @@ export function readRun(row: Raw): PipelineRunRecord {
       const status = text(s.status) as RunStepStatus
       return {
         stepId: text(field(s, 'step_id')),
+        kind: text(s.kind),
+        title: text(s.title),
         status: RUN_STEP_STATUS.includes(status) ? status : 'waiting',
         startedAt: textOrNull(field(s, 'started_at')),
         endedAt: textOrNull(field(s, 'ended_at')),
@@ -216,14 +223,14 @@ export function readRun(row: Raw): PipelineRunRecord {
         outputSummary: text(field(s, 'output_summary')),
         note: text(s.note),
         branchTaken: textOrNull(field(s, 'branch_taken')),
+        branchLabel: text(field(s, 'branch_label')),
       }
     }),
   }
 }
 
-/** A run still moving: polled. */
-export const runIsLive = (run: PipelineRunRecord) =>
-  run.status === 'running' || run.status === 'waiting' || run.steps.some((s) => s.status === 'running')
+/** A run not ended yet: waiting on the person, or (rarely seen) running. */
+export const runIsOpen = (run: PipelineRunRecord) => run.status === 'running' || run.status === 'waiting'
 
 /** The catalogue's rule values in either casing. */
 export function readConditionValues(cat: Raw | null): ConditionValue[] {
@@ -234,5 +241,6 @@ export function readConditionValues(cat: Raw | null): ConditionValue[] {
     key: text(r.key),
     label: text(r.label),
     type: text(r.type),
+    ...(text(r.ref) ? { ref: text(r.ref) } : {}),
   }))
 }
