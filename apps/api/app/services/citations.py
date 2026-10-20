@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import re
 
-#: 「[1]」「[2, 5]」「[3-4]」「［2］」; not link text or footnotes
-_CITATION = re.compile(r"(?<!\[)[\[［]\s*(\d{1,3}(?:\s*[,，\-–]\s*\d{1,3}){0,9})\s*[\]］](?!\()")
+#: 「[1]」「[2, 5]」「[3-4]」「[7~9]」「[2; 5]」「［2］」; not link text or footnotes
+_CITATION = re.compile(
+    r"(?<!\[)[\[［]\s{0,3}(\d{1,3}(?:\s{0,3}[,，;\-–~～]\s{0,3}\d{1,3}){0,9})\s{0,3}[\]］](?!\()")
 _REFERENCE_HEADING = re.compile(r"참고\s{0,3}문헌|references|bibliography|인용\s{0,3}문헌", re.I)
 _FENCE = "```"
 
 
 def _numbers(spec: str) -> list[int]:
     out: list[int] = []
-    for part in re.split(r"\s*[,，]\s*", spec.strip()):
-        if re.fullmatch(r"\d+\s*[\-–]\s*\d+", part):
-            lo, hi = (int(x) for x in re.split(r"\s*[\-–]\s*", part))
+    for part in re.split(r"\s{0,3}[,，;]\s{0,3}", spec.strip()):
+        if re.fullmatch(r"\d+\s{0,3}[\-–~～]\s{0,3}\d+", part):
+            lo, hi = (int(x) for x in re.split(r"\s{0,3}[\-–~～]\s{0,3}", part))
             out.extend(range(lo, hi + 1) if lo <= hi <= lo + 20 else [lo, hi])
         elif part.isdigit():
             out.append(int(part))
@@ -39,10 +40,15 @@ def _prose(section: dict) -> bool:
             and not _REFERENCE_HEADING.search(str(section.get("heading") or "")))
 
 
+#: the app's prose blocks (```callout, ```kpi, ```steps, ```cards): their text cites too
+_PROSE_FENCE = re.compile(r"(?:callout|kpi|steps|cards)(?![A-Za-z0-9])", re.I)
+
+
 def _outside_code(text: str, fn) -> str:
     pieces = text.split(_FENCE)
-    for i in range(0, len(pieces), 2):
-        pieces[i] = fn(pieces[i])
+    for i, piece in enumerate(pieces):
+        if i % 2 == 0 or _PROSE_FENCE.match(piece.lstrip(" \t")):
+            pieces[i] = fn(piece)
     return _FENCE.join(pieces)
 
 
@@ -54,7 +60,7 @@ def cited(sections: list[dict]) -> list[int]:
             continue
         content = str(section.get("content") or "")
         for i, piece in enumerate(content.split(_FENCE)):
-            if i % 2:
+            if i % 2 and not _PROSE_FENCE.match(piece.lstrip(" \t")):
                 continue
             for m in _CITATION.finditer(piece):
                 for n in _numbers(m.group(1)):
@@ -264,14 +270,26 @@ def drop_restated_references(sections: list[dict], sources: list[dict] | None) -
     return out
 
 
-#: figures that identify a result: 「38.2%」, 「0.71」, 「1,250」; years and small counts left out
-_TELLING = re.compile(r"(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d+\.\d+|\d+(?=\s?%))(?![\d,]|\.\d)")
+#: figures that identify a result: 「38.2%」, 「0.71」, 「1,250」, 「41%」; years and small
+#: counts left out
+_TELLING = re.compile(r"(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d+\.\d+|\d+\s?[%％])(?!\d|[.,]\d)")
 #: a sentence end before a citation: 「…했다. 」, a line break; not a decimal point
 _SENTENCE_END = re.compile(r"(?<!\bal)[.!?。](?=\s)|\n")
 
 
 def _has_figure(text: str, figure: str) -> bool:
-    return re.search(r"(?<![\d.,])" + re.escape(figure) + r"(?![\d,]|\.\d)", text) is not None
+    """`figure` in `text`; a bare percent 「41%」 only as a percent, never as any 「41」."""
+    if figure[-1] in "%％":
+        number = figure.rstrip("%％ ")
+        tail = r"\s?(?:[%％]|percent|퍼센트)"
+        return re.search(rf"(?<![\d.,]){number}{tail}", text, re.I) is not None
+    # a comma after it ends a list (「80.53, UAT」), never a thousands group
+    return re.search(r"(?<![\d.,])" + re.escape(figure) + r"(?!\d|[.,]\d)", text) is not None
+
+
+def _distinct(figure: str) -> bool:
+    """A figure no second page shares by chance: a decimal or a thousands figure."""
+    return figure[-1] not in "%％" and ("." in figure or "," in figure)
 
 
 #: a work named by author and year: 「Kim & Park(2025)」, 「(Kim & Park, 2025)」,
@@ -304,6 +322,12 @@ _TERM = re.compile(r"(?<![A-Za-z0-9])(?:[A-Za-z][A-Za-z0-9]{2,}(?:-[A-Za-z0-9]+)
 _TERMS_TO_MOVE = 3
 
 
+def _has_term(text: str, term: str) -> bool:
+    """`term` as a word in `text`; its hyphens optional (「multilingual-e5large」 in a PDF)."""
+    pattern = r"-?\s?".join(re.escape(part) for part in term.split("-"))
+    return re.search(rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])", text, re.I) is not None
+
+
 def _term_holder(sentence: str, cited: str, attached: dict[int, str]) -> int | None:
     """The attached file a Korean sentence's Latin terms come from: at least three of them
     in it and none only in the cited page (a method taken from the attached paper)."""
@@ -311,25 +335,32 @@ def _term_holder(sentence: str, cited: str, attached: dict[int, str]) -> int | N
     if hangul * 3 < len(re.findall(r"[A-Za-z]", sentence)):
         return None
     terms = {t.lower() for t in _TERM.findall(sentence)}
-
-    def has(text: str, term: str) -> bool:
-        return re.search(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", text,
-                         re.I) is not None
-
-    if any(has(cited, t) and not any(has(x, t) for x in attached.values()) for t in terms):
+    if any(_has_term(cited, t) and not any(_has_term(x, t) for x in attached.values())
+           for t in terms):
         return None
-    scored = [(sum(has(text, t) and not has(cited, t) for t in terms), n)
+    scored = [(sum(_has_term(text, t) and not _has_term(cited, t) for t in terms), n)
               for n, text in attached.items()]
     best = max(scored, default=(0, None))
     return best[1] if best[0] >= _TERMS_TO_MOVE else None
 
 
+#: a work's own name, its title's head: 「Face4Rag: Factual Consistency…」 → 「Face4Rag」
+_WORK_NAME = re.compile(r"^\s{0,3}([A-Za-z][A-Za-z0-9-]{2,30})\s{0,3}:")
+
+
+def _work_name(source: dict) -> str:
+    m = _WORK_NAME.match(str(source.get("title") or ""))
+    return m.group(1) if m and re.search(r"[A-Z].{0,30}[A-Z0-9]", m.group(1)) else ""
+
+
 def credit_attachments(sections: list[dict], sources: list[dict] | None,
                        texts: dict[int, str]) -> list[dict]:
     """A sentence citing a source that is not the work it names (「Kim & Park(2025)…[1]」 with
-    [1] another paper) cites the source that is; one citing a web result for figures, or for
-    technical terms, only an attached file holds cites that file. `texts`: what each source
-    number gave the writer (attachment text, page excerpt)."""
+    [1] another paper, or 「Face4RAG…[11]」 with [11] not Face4Rag) cites the source that is;
+    one citing a web result for figures, or for technical terms, only an attached file holds
+    cites that file; one citing a page without its decimal figures cites the one other page
+    with them. `texts`: what each source number gave the writer (attachment text, page
+    excerpt)."""
     by_number = {int(s.get("ordinal") or i): s for i, s in enumerate(sources or [], 1)}
     attached = [n for n, s in by_number.items() if s.get("attached") and texts.get(n)]
     if not by_number:
@@ -349,6 +380,19 @@ def credit_attachments(sections: list[dict], sources: list[dict] | None,
             (s.get("author") or n in attached) and _by_work(s, texts.get(n, ""), *works[0]))]
         return holders[0] if len(holders) == 1 else None
 
+    def titled(segment: str, number: int) -> int | None:
+        """The source whose own name (its title's head, 「Face4Rag」) the words before the
+        citation give: the cited one when its name or its page says it, else the one other."""
+        said = {n for n, s in by_number.items()
+                if (name := _work_name(s)) and _has_term(segment, name)}
+        if not said:
+            return None
+        cited = by_number.get(number)
+        if number in said or any(_has_term(texts.get(number, ""), _work_name(by_number[n]))
+                                 for n in said) or cited is None:
+            return number
+        return next(iter(said)) if len(said) == 1 else None
+
     def fix(piece: str) -> str:
         out, last = [], 0
         for m in _CITATION.finditer(piece):
@@ -365,18 +409,26 @@ def credit_attachments(sections: list[dict], sources: list[dict] | None,
                 out.append(m.group(0) if work == numbers[0] else f"[{work}]")
                 continue
             sentence = piece[start:m.start()]
-            figures = _TELLING.findall(sentence)
-            if numbers[0] in attached or not attached:
-                out.append(m.group(0))
+            if (work := titled(sentence, numbers[0])) is not None:
+                out.append(m.group(0) if work == numbers[0] else f"[{work}]")
                 continue
+            figures = _TELLING.findall(sentence)
             cited = texts.get(numbers[0], "")
             if any(_has_figure(cited, f) for f in figures):
                 out.append(m.group(0))
                 continue
-            holder = next((a for a in attached
-                           if any(_has_figure(texts[a], f) for f in figures)), None)
-            if holder is None and cited:
-                holder = _term_holder(sentence, cited, {a: texts[a] for a in attached})
+            holder = None
+            if attached and numbers[0] not in attached:
+                holder = next((a for a in attached
+                               if any(_has_figure(texts[a], f) for f in figures)), None)
+                if holder is None and cited:
+                    holder = _term_holder(sentence, cited, {a: texts[a] for a in attached})
+            if holder is None and cited and (marks := [f for f in figures if _distinct(f)]):
+                # a decimal or thousands figure the cited page lacks, held by one other page
+                holders = [n for n, text in texts.items()
+                           if n != numbers[0] and n in by_number
+                           and any(_has_figure(text, f) for f in marks)]
+                holder = holders[0] if len(holders) == 1 else None
             out.append(f"[{holder}]" if holder is not None else m.group(0))
         return "".join(out) + piece[last:]
 
