@@ -185,3 +185,23 @@ async def test_a_removal_and_a_summary_go_to_the_edit_not_to_a_new_outline(monke
         Db(), SimpleNamespace(artifact_id="a1"),
         instruction=T1_ASK, model={"id": "m"}, api_key="k")
     assert plan is not None and not plan.restructures and plan.targets == []
+
+
+@pytest.mark.parametrize("words, layout", [
+    ("Can you make slide 3 a table?", "table"), ("Make slide 3 a table", "table"),
+    ("Make slide 3 into a table please", "table"), ("Change slide 4 to a chart", "chart"),
+    ("Convert slide 2 into bullets", "bullets"),
+    ("Show slide 4 as a numbered list", "numbered"),
+    ("Make slide 3 shorter and keep the table", None), ("Make the table smaller", None),
+])
+def test_an_english_make_or_turn_ask_names_its_layout(words, layout):
+    assert deck.requested_layout(words) == layout
+
+
+def test_a_slide_asked_as_a_table_in_english_and_still_bullets_is_said_as_not_done():
+    bullets = {"id": "c", "layout": "bullets", "title": "Costs",
+               "bullets": ["Local 27B – $4 – 9s", "Cloud – $38 – 14s"]}
+    assert deck.unmet_asks(bullets, "Make slide 3 a table") == ["표로 바꾸기"]
+    doc = Document(touched=[2], changed=1, unmet=["3장 표로 바꾸기"])
+    assert save_stages.revision_reply(doc, None, is_deck=True, english=True) == (
+        "slide 3 as a table did not show in the result. Please ask again.")

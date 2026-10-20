@@ -4838,7 +4838,10 @@ _LAYOUT_ASK = re.compile(
 
 #: 「as a numbered list」, 「into a table」, 「to a timeline」: the ask in front of the word
 _LAYOUT_ASK_BEFORE = re.compile(
-    r"\b(?:(?:as|into)\s{1,4}(?:an?\s{1,4}|the\s{1,4})?|to\s{1,4}an?\s{1,4})"
+    r"(?:\b(?:(?:as|into)\s{1,4}(?:an?\s{1,4}|the\s{1,4})?|to\s{1,4}an?\s{1,4})"
+    # 「Make slide 3 a table」, 「turn it into a chart」, 「show slide 4 as bullets」
+    r"|\b(?:make|turn|change|convert|show|redo|recast|rewrite|reformat|present|display|put)"
+    r"(?:\s{1,4}[A-Za-z0-9-]{1,15}){0,4}\s{1,4}(?:in\s{1,4})?an?\s{1,4})"
     r"(?:[A-Za-z0-9-]{1,15}\s{1,4}){0,2}$", re.I)
 
 
@@ -4850,7 +4853,7 @@ def requested_layout(text: str) -> str | None:
             tail = text[match.end() : match.end() + 12]
             asked = re.match(r"\s{0,8}(?:로|으로)(?:\b|[\s,.]|$)", tail) or _LAYOUT_ASK.match(tail)
             # English puts the ask before the word: 「as a numbered list」, 「into a table」
-            asked = asked or _LAYOUT_ASK_BEFORE.search(text[max(0, match.start() - 40):
+            asked = asked or _LAYOUT_ASK_BEFORE.search(text[max(0, match.start() - 60):
                                                             match.start()])
             if asked:
                 return layout
