@@ -4957,9 +4957,59 @@ def _prose_in(data, depth: int = 0) -> list[str]:
     return []
 
 
+#: a key left with no value (「"figures":」 before 「}」) and a comma before a close
+_DANGLING_KEY = re.compile(r',?[ \t\n]{0,200}"[^"\n]{1,40}"[ \t]{0,8}:[ \t\n]{0,200}(?=[}\]])')
+_TRAILING_COMMA = re.compile(r",[ \t\n]{0,200}(?=[}\]])")
+
+
+def _json_table(table: dict) -> str:
+    """A written-out table (「headers」 and 「rows」) as a Markdown table under its caption."""
+    headers = [str(h).replace("|", "/") for h in table.get("headers") or []]
+    rows = [r for r in table.get("rows") or [] if isinstance(r, list)]
+    if not headers or not rows:
+        return ""
+    lines = ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
+    lines += ["| " + " | ".join(str(c).replace("|", "/").replace("\n", " ") for c in r) + " |"
+              for r in rows]
+    caption = str(table.get("caption") or "").strip()
+    return "\n".join([caption, "", *lines] if caption else lines)
+
+
+def _sections_answer(text: str) -> str | None:
+    """A section written as a JSON list or object (「[{"section": …, "body": …, "tables": …}]」)
+    as Markdown: bodies, then tables; a key left without a value or a trailing comma mended
+    first. None when it is no such answer."""
+    if (text[:1], text[-1:]) not in (("[", "]"), ("{", "}")):
+        return None
+    data = None
+    for attempt in (text, _TRAILING_COMMA.sub("", _DANGLING_KEY.sub("", text))):
+        try:
+            data = json.loads(attempt, strict=False)
+            break
+        except (json.JSONDecodeError, ValueError):
+            continue
+    # an object only when it carries tables; other objects are unwrapped below
+    items = data if isinstance(data, list) else [data] if (
+        isinstance(data, dict) and isinstance(data.get("tables"), list)) else None
+    if not items or not all(isinstance(item, dict) for item in items):
+        return None
+    parts: list[str] = []
+    for item in items:
+        parts += _prose_in({k: v for k, v in item.items() if k != "tables"})[:1]
+        for table in item.get("tables") or []:
+            if isinstance(table, dict) and (drawn := _json_table(table)):
+                parts.append(drawn)
+    return "\n\n".join(parts) if parts else None
+
+
 def unwrap_json_prose(text: str) -> str:
-    """Body wrapped as one-key JSON unwrapped; else unchanged."""
+    """Body wrapped as one-key JSON unwrapped, or a JSON list of sections as Markdown; else
+    unchanged."""
     stripped = (text or "").strip()
+    listed = re.fullmatch(r"```(?:json)?[ \t]{0,8}\n?(.{0,200000}?)\n?[ \t]{0,8}```", stripped, re.S)
+    if (answer := _sections_answer((listed.group(1) if listed else stripped).strip())) \
+            is not None:
+        return answer
     fence = re.fullmatch(r"```(?:json)?\s{0,64}(\{.{0,200000}\})\s{0,64}```", stripped, re.S)
     if fence:
         stripped = fence.group(1)
