@@ -485,6 +485,22 @@ def _issue_day(name: str, value: str, request: str) -> str:
     return value
 
 
+#: the next meeting's clause: 「다음 회의 10/21 화 10시 3층 회의실.」
+_NEXT_MEETING = re.compile(
+    r"(?:다음|차기)\s{0,2}(?:회의|모임|미팅|일정)[^\n;]*?(?=(?<!\d)\.(?!\s{0,2}\d)|[\n;]|$)")
+#: head fields naming the meeting's own day and place
+_MEETING_FIELD = re.compile(r"일시|일자|날짜|장소")
+
+
+def _this_meeting(name: str, value: str, request: str) -> str:
+    """A 일시/장소 value found only in the next meeting's clause is no value for this one."""
+    if not value or not _MEETING_FIELD.search(name) or not _NEXT_MEETING.search(request or ""):
+        return value
+    rest = re.sub(r"\s+", "", _NEXT_MEETING.sub(" ", request or ""))
+    tokens = [t for t in re.split(r"[\s,·/()]+", value) if t]
+    return value if all(re.sub(r"\s+", "", t) in rest for t in tokens) else ""
+
+
 def title_block(
     fmt: DocFormat, answer: dict[str, Any], request: str, read: dict[str, str] | None = None
 ) -> dict[str, Any]:
@@ -504,6 +520,7 @@ def title_block(
     fields = [[name, grounded((read or {}).get(name))
                or _issue_day(name, grounded(raw.get(name)), request)]
               for name in fmt.fields]
+    fields = [[name, _this_meeting(name, value, request)] for name, value in fields]
     fields = [[name, value if field_value(name, value) else ""] for name, value in fields]
     fields = [[name, value] for name, value in fields if value or name not in fmt.optional]
     block: dict[str, Any] = {

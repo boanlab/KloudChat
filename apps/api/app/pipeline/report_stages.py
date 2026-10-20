@@ -1664,7 +1664,7 @@ class TitleBlock(Base):
             bundle.findings.head_fixed = head_fixed
             bundle.findings.client_problem = client_problem
             block = head_fixed or block
-        block = report_checks.minutes_head(block, prepass) or block
+        block = report_checks.minutes_head(block, prepass, report.local_today()) or block
         bundle.document.head_block = block
         yield {"type": "titleBlock", "titleBlock": block}
 

@@ -2711,7 +2711,10 @@ def _english_note(slide: dict[str, Any], index: int, name: str, subtitle: str) -
     layout = str(slide.get("layout") or "")
     if layout == "title" or index == 0:
         lead = f" {subtitle.strip()}" if subtitle.strip() and subtitle.strip() != name else ""
-        return f"Hello, everyone. Today I will talk about {name}.{lead}"
+        lead = f" {_period(lead.strip())}" if lead else ""
+        if name.endswith("?"):
+            return f"Hello, everyone. Today's question: {name}{lead}"
+        return f"Hello, everyone. Today I will talk about {_period(name)}{lead}"
     if layout == "agenda":
         items = [str(b).strip() for b in (slide.get("bullets") or []) if str(b).strip()]
         return (f"I will cover {', '.join(items[:-1])}, and {items[-1]}."
@@ -2719,14 +2722,20 @@ def _english_note(slide: dict[str, Any], index: int, name: str, subtitle: str) -
     if layout == "closing":
         return "That concludes my talk. I am happy to take your questions."
     if layout == "section":
-        return f"Next, {name}."
+        return f"Next, {_period(name)}"
     lines = [str(b).strip() for b in (slide.get("bullets") or []) if str(b).strip()]
     lines += [str(i[0]).strip() for i in (slide.get("items") or []) if i and str(i[0]).strip()]
     rows = slide.get("rows") or []
     if not lines and rows and isinstance(rows[0], list):
         lines = [str(c).strip() for c in rows[0][1:] if str(c).strip()]
-    point = f" The key points are {', '.join(lines[:3])}." if lines else ""
-    return f"On this slide, we look at {name}.{point}"
+    points = [line.rstrip(".;:") for line in lines[:3]]
+    point = f" The key points are {_period(', '.join(points))}" if points else ""
+    return f"On this slide, we look at {_period(name)}{point}"
+
+
+def _period(text: str) -> str:
+    """`text` ending a sentence: one stop, none added after 「?」, 「!」 or 「.」."""
+    return text if text.endswith((".", "?", "!")) else f"{text}."
 
 
 def pad_to_floor(plan: list[dict[str, str]], floor: int) -> list[dict[str, str]]:
@@ -3032,6 +3041,24 @@ def blank_numbers(slide: dict) -> bool:
     return bool(values) and all(_BLANK_VALUE.fullmatch(v) for v in values)
 
 
+def _label_fit(label: str) -> str:
+    """Metric label within `_MAX_LABEL` wide characters (Latin counts half), cut between words:
+    「Local accuracy above 20 pages」 whole, never 「Local accuracy a」."""
+    def width(text: str) -> float:
+        return sum(0.55 if ord(ch) < 0x2E80 else 1.0 for ch in text)
+
+    if width(label) <= _MAX_LABEL:
+        return label
+    kept = ""
+    for word in label.split(" "):
+        if width(f"{kept} {word}".strip()) > _MAX_LABEL:
+            break
+        kept = f"{kept} {word}".strip()
+    kept = re.sub(r"\s+(?:a|an|the|of|in|on|at|for|to|and|or|by|with|above|below|over|under"
+                  r"|vs\.?|및|와|과|의)$", "", kept, flags=re.I)
+    return kept or label[:_MAX_LABEL]
+
+
 def _clean_metrics(value: Any) -> list[list[str]]:
     """`[[값, 이름]]` pairs; half-empty and date-part labels dropped."""
     items = value if isinstance(value, list) else []
@@ -3041,7 +3068,7 @@ def _clean_metrics(value: Any) -> list[list[str]]:
         if len(pair) < 2:
             continue
         figure = str(pair[0]).strip()[:_MAX_VALUE]
-        label = str(pair[1]).strip()[:_MAX_LABEL]
+        label = _label_fit(" ".join(str(pair[1]).split()))
         last = label.split()[-1] if label.split() else ""
         if figure and label and not _CALENDAR.match(last):
             out.append([figure, label])
@@ -5323,6 +5350,41 @@ def _quantity_given(value: float, unit: str, given: list[tuple[float, str]]) -> 
     return any(same(v) and (not unit or not u or u == unit) for v, u in given)
 
 
+#: a sentence opening one point of an enumeration: 「Second, …」, 「둘째, …」, 「두 번째로 …」
+_ORDINAL = re.compile(
+    r"^(?:(?P<en>first|second|third|fourth|fifth)(?:ly)?\s{0,2}[,:]"
+    r"|(?:(?P<ko>첫|둘|셋|넷|다섯)째|(?P<ko2>첫|두|세|네|다섯)\s?번째)(?:로\s{0,2},?|\s{0,2},))"
+    r"\s{0,2}", re.I)
+_ORDINAL_AT = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+               "첫": 1, "둘": 2, "셋": 3, "넷": 4, "두": 2, "세": 3, "네": 4, "다섯": 5}
+#: a sentence announcing how many points follow: 「Three things to remember.」, 「세 가지입니다」
+_POINT_COUNT = re.compile(
+    r"\b(?:two|three|four|five|[2-5])\s+(?:things|points|takeaways|lessons|reasons|key\b)"
+    r"|(?:두|세|네|다섯|[2-5])\s?가지", re.I)
+
+
+def _ordinal(sentence: str) -> int:
+    m = _ORDINAL.match(sentence)
+    return _ORDINAL_AT[(m.group("en") or m.group("ko") or m.group("ko2")).lower()] if m else 0
+
+
+def _mended_ordinals(kept: list[str]) -> list[str]:
+    """Notes whose enumeration lost a point (「Three things… Second…」 with no 「First」):
+    the ordinal words and the count sentence go, the points stay."""
+    found = [n for n in map(_ordinal, kept) if n]
+    if not found or found == list(range(1, len(found) + 1)):
+        return kept
+    out = []
+    for sentence in kept:
+        if _POINT_COUNT.search(sentence) and not _ordinal(sentence):
+            continue
+        if m := _ORDINAL.match(sentence):
+            rest = sentence[m.end():]
+            sentence = rest[:1].upper() + rest[1:]
+        out.append(sentence)
+    return out
+
+
 def notes_grounded(notes: str, facts: set[str], source: str | None = None) -> str:
     """Notes minus sentences with numbers not in the request; with `source`, numbers are
     compared with their scale and unit (「96%」 is not 「96 ms」)."""
@@ -5337,7 +5399,7 @@ def notes_grounded(notes: str, facts: set[str], source: str | None = None) -> st
             ok = _numbers_come_from(re.findall(r"\d[\d,.]*(?:\s*(?:만|억|천))?", sentence), facts)
         if ok:
             kept.append(sentence.strip())
-    return " ".join(kept)
+    return " ".join(_mended_ordinals(kept))
 
 
 #: Stage directions instead of speech.
@@ -5469,13 +5531,14 @@ def notes_without_echo(notes: str, slide: dict) -> str:
             and len(_stems_ko(sentence) - {t.lower() for t in tokens}) <= 3
             for tokens in short_lines
         )
-        if echo or covered >= 0.85 or spoken:
+        if (echo or covered >= 0.85 or spoken) and not _ordinal(sentence):
+            # one point of an enumeration stays even when it reads its bullet
             continue
         if _META_NOTE.search(sentence) and not re.search(r"\d", sentence):
             # 「…을 강조합니다」: not speech
             continue
         kept.append(sentence)
-    return " ".join(kept)
+    return " ".join(_mended_ordinals(kept))
 
 
 def _drafted_text(data: dict | None) -> str:
