@@ -7285,6 +7285,9 @@ async def _revision_plan(
         # taken away by hand in the revise route, the rest asked of the parts it names: nothing
         # for the planner to read (nor to read as a new outline)
         return revise.Plan(scope="parts", targets=[], note=instruction), skeleton
+    if (named := revise.numbered_parts(instruction, skeleton)) is not None:
+        # 「4장을 번호 목록으로」: the part named by number, as asked; no outline reading
+        return revise.Plan(scope="parts", targets=named, note=instruction), skeleton
     plan = await revise.plan(
         message=instruction,
         title=artifact.title or "",
@@ -7292,6 +7295,11 @@ async def _revision_plan(
         model=model["id"],
         api_key=api_key,
     )
+    if plan.restructures and not revise.asks_restructure(instruction):
+        # an outline reading of words asking no new structure: every part edited in place,
+        # never the document written anew
+        plan = revise.Plan(scope="whole", targets=list(range(len(skeleton))), note=plan.note,
+                           usage=plan.usage)
     return plan, skeleton
 
 

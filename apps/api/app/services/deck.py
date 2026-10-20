@@ -2456,7 +2456,7 @@ def _clean_bullets(value: Any) -> list[str]:
         if text.count("|") >= 2:
             continue
         if text:
-            out.append(_cut_at_word(text, _BULLET_HARD))
+            out.append(_within_sentences(text, _BULLET_HARD))
     return out[:6]
 
 
@@ -5878,8 +5878,10 @@ def _fill_pattern(slide: dict, data: dict) -> None:
     if pattern.shape == "pairs":
         raw = data.get("items")
         if raw is None:
-            # field named after the layout or an older paired layout
+            # field named after the layout or an older paired layout, or pairs under bullets
             raw = next((data[k] for k in (slide["layout"], *_PAIRED) if data.get(k)), None)
+        if raw is None and any(isinstance(b, (list, dict)) for b in data.get("bullets") or []):
+            raw = data["bullets"]
         if items := slide_patterns.clean_pairs(pattern.name, raw):
             slide["items"] = items
             return
@@ -5921,12 +5923,18 @@ def _pairs_from_bullets(name: str, bullets: list[str]) -> list[list[str]]:
     if not bullets:
         return []
     matches = [_HEAD_LINE.match(b) for b in bullets]
+    dashed = [b.split(" – ", 1) for b in bullets]
     if all(matches):
         pairs = [[m.group("head").strip(), m.group("body").strip()] for m in matches if m]
+    elif all(len(d) == 2 for d in dashed):
+        # 「headline – detail」, a pair joined into a line
+        pairs = [[d[0].strip().rstrip("."), d[1].strip()] for d in dashed]
     else:
         pairs = [[b, ""] for b in bullets]
     items = slide_patterns.clean_pairs(name, pairs)
-    return items if items == pairs else []
+    # cut at a word or a sentence's end is still the item; a half-gone one is not
+    return items if len(items) == len(pairs) and all(
+        len(new[0]) >= len(old[0]) // 2 for new, old in zip(items, pairs, strict=True)) else []
 
 
 def _pattern_need(slide: dict, scale: float, width: float) -> float:

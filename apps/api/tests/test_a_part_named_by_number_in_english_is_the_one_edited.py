@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from app.services import revise, slide_patterns
 
 SLIDES = ["Title", "Cost", "Latency", "Operational cost and latency benchmarks", "Hybrid Routing"]
@@ -61,3 +63,86 @@ def test_a_sentence_pointing_at_a_removed_table_by_place_goes_with_it():
     out, taken, _ = revise.drop_numbered(parts, [("표", 1)])
     assert taken == ["1절의 표 1"]
     assert out[0]["content"] == "물류팀 협의가 필요합니다. 위 표현은 확정이 아닙니다."
+
+
+def test_a_part_named_by_number_needs_no_planner_unless_the_structure_changes():
+    deck_parts = [f"장 {i}" for i in range(1, 11)]
+    assert revise.numbered_parts("4장을 번호 목록으로 바꿔줘", deck_parts) == [3]
+    assert revise.numbered_parts(ASK, SLIDES) == [3]
+    assert revise.numbered_parts("2절을 절반으로 줄여 주세요", ["a", "b", "c"]) == [1]
+    for ask in ("20장으로 늘려줘", "4장 뒤에 위험 장을 추가해 줘", "3장과 4장을 합쳐 줘",
+                "Add a slide after slide 4", "4장 순서를 바꿔 줘", "Fix slide 12"):
+        assert revise.numbered_parts(ask, deck_parts) is None, ask
+    assert not revise.asks_restructure("4장을 번호 목록으로 바꿔줘")
+    assert revise.asks_restructure("전체 구성을 다시 짜 줘")
+
+
+class _Db:
+    def __init__(self, titles):
+        from types import SimpleNamespace
+
+        from app.models.workspace import ArtifactKind
+
+        self.artifact = SimpleNamespace(title="보고", kind=ArtifactKind.deck,
+                                        data={"slides": [{"title": t} for t in titles]})
+
+    async def get(self, _model, _id):
+        return self.artifact
+
+
+async def _plan(monkeypatch, ask, planned):
+    from types import SimpleNamespace
+
+    from app.routers import sessions as sessions_router
+
+    asked = []
+
+    async def planner(**_kwargs):
+        asked.append(1)
+        return planned
+
+    monkeypatch.setattr(revise, "plan", planner)
+    titles = [f"장 {i}" for i in range(1, 11)]
+    plan, _ = await sessions_router._revision_plan(
+        _Db(titles), SimpleNamespace(artifact_id="a1"), instruction=ask, model={"id": "m"},
+        api_key="k")
+    return plan, bool(asked)
+
+
+@pytest.mark.asyncio
+async def test_a_named_slide_is_edited_and_no_reading_rewrites_the_deck_unasked(monkeypatch):
+    outline = revise.Plan(scope="outline", note="4장을 번호 목록으로 다시 구성")
+    plan, asked = await _plan(monkeypatch, "4장을 번호 목록으로 바꿔줘", outline)
+    assert not asked and plan.targets == [3] and not plan.restructures
+    # the planner's outline reading of an ask for no new structure: edited in place
+    plan, asked = await _plan(monkeypatch, "결론을 더 설득력 있게 고쳐줘", outline)
+    assert asked and not plan.restructures and plan.scope == "whole"
+    # a structure asked: re-planned as before
+    plan, _ = await _plan(monkeypatch, "20장으로 늘려줘", outline)
+    assert plan.restructures
+
+
+def test_list_items_written_under_bullets_or_joined_into_lines_are_the_list():
+    from app.services import deck
+
+    detail = ("On tasks over 20 pages, the 27B local model scored 64%, while the cloud model "
+              "reached 91%. Short-form drafting remains highly effective locally, but extended")
+    slide = {"id": "d", "layout": "numbered", "title": "Long-Context Failure Analysis"}
+    deck._fill_pattern(slide, {"bullets": [
+        ["Long documents go to the cloud", detail],
+        ["Short drafts stay local", "Below 20 pages the local model is enough."],
+        ["Check the threshold", "Twenty pages is the line."]]})
+    assert slide["layout"] == "numbered" and len(slide["items"]) == 3
+    # cut at a sentence's end, not mid-sentence
+    assert slide["items"][0][1] == ("On tasks over 20 pages, the 27B local model scored 64%, "
+                                    "while the cloud model reached 91%.")
+    joined = {"id": "d", "layout": "numbered", "title": "x"}
+    deck._fill_pattern(joined, {"bullets": [
+        "Long documents go to the cloud. – Above 20 pages the cloud reaches 91%.",
+        "Short drafts stay local. – Below 20 pages local is enough.",
+        "Check the threshold. – Twenty pages is the line."]})
+    assert joined["layout"] == "numbered"
+    assert joined["items"][0] == ["Long documents go to the cloud",
+                                  "Above 20 pages the cloud reaches 91%."]
+    long = "Hybrid routing resolves this by reserving complex work for cloud APIs. " * 3
+    assert deck._clean_bullets([long])[0].endswith("cloud APIs.")

@@ -908,14 +908,41 @@ def named_slides(text: str) -> set[int]:
     return {int(a or b) for a, b in _SLIDE_REF.findall(text or "")} | _english_refs(text)
 
 
-def numbered_target(plan: Plan, parts: list[str], message: str) -> Plan:
-    """The parts the words name by number (「4장」, 「2절」, 「slide 4」) as the targets, whatever
-    the planner picked; a structure change is left to it."""
-    if plan.scope not in ("parts", "whole") or _STRUCTURAL_ASK.search(message or ""):
-        return plan
+#: a change of the document's structure or a rewrite of it all: parts added, cut, merged, split,
+#: moved or counted again, the outline or the whole document
+_RESTRUCTURE = re.compile(
+    r"추가|삭제|빼\s{0,8}줘|빼고|없애|합쳐|합치|병합|나눠|분리|순서|옮겨|옮기|구성|목차|개요|"
+    r"\d{1,3}\s{0,4}(?:장|절|쪽|페이지|슬라이드)\s{0,4}(?:으로|로|더|짜리|만)|장\s?수|"
+    r"늘려|늘리|처음부터|새로\s{0,4}(?:써|작성|만들)|다시\s{0,4}(?:써|짜|만들)|전체|전부|모든|"
+    r"\b(?:add|insert|remove|delete|drop|merge|split|reorder|restructure|outline|more|fewer|"
+    r"whole|entire|all\s{1,4}slides|start\s{1,4}over|from\s{1,4}scratch)\b", re.I)
+
+
+def asks_restructure(message: str) -> bool:
+    """Whether the words ask for a new structure or the whole document anew, not one part's
+    change: only these may re-plan the outline."""
+    return bool(_RESTRUCTURE.search(" ".join((message or "").split())))
+
+
+def numbered_parts(message: str, parts: list[str]) -> list[int] | None:
+    """Zero-based parts the words name by number (「4장」, 「2절」, 「slide 4」) when that is
+    where the ask goes: all within the document, at most `MAX_TARGETS`, no structure change."""
+    if asks_restructure(message):
+        return None
     numbers = named_slides(message) | {int(n) for n in _SECTION_REF.findall(message or "")}
     targets = sorted(n - 1 for n in numbers if 1 <= n <= len(parts))
     if not targets or len(targets) != len(numbers) or len(targets) > MAX_TARGETS:
+        return None
+    return targets
+
+
+def numbered_target(plan: Plan, parts: list[str], message: str) -> Plan:
+    """The parts the words name by number (「4장」, 「2절」, 「slide 4」) as the targets, whatever
+    the planner picked; a structure change is left to it."""
+    if plan.scope not in ("parts", "whole", "outline"):
+        return plan
+    targets = numbered_parts(message, parts)
+    if targets is None:
         return plan
     if plan.scope == "parts" and plan.targets == targets:
         return plan

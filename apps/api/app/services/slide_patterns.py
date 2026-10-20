@@ -346,6 +346,9 @@ def fit(text: str, limit: int) -> str:
         limit = int(limit * _LATIN_ROOM)
     if len(text) <= limit:
         return text
+    ends = [m.end() for m in re.finditer(r"[.!?。](?=\s|$)", text[: limit + 1])]
+    if ends and ends[-1] >= limit // 3:
+        return text[: ends[-1]]  # a whole sentence before a cut one
     at = text.rfind(" ", 0, limit + 1)
     words = (text[:at] if at > limit // 2 else text[:limit]).split(" ")
     while len(words) > 1 and words[-1].lower() in _DANGLING:
