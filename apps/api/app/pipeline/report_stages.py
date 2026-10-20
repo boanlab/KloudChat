@@ -37,6 +37,7 @@ from app.services import (
     internal_words,
     key_figures,
     lint,
+    meeting_tense,
     model_retry,
     pictures,
     placeholders,
@@ -2060,7 +2061,11 @@ class MinutesReground(Base):
         if again:
             sections, left = report_checks.minutes_grounding(sections, known)
             bundle.findings.after += left
-        bundle.document.sections = settled_sections(bundle.document.sections, sections, [known])
+        sections = settled_sections(bundle.document.sections, sections, [known])
+        # prose calling a deadline open that its action row dates from the memo
+        sections, _ = report_checks.minutes_open_due(sections, bundle.computed.prepass.dates)
+        # the meeting held told in the past; what comes next stays ahead
+        bundle.document.sections, _ = meeting_tense.held(sections, _report()._REFERENCE_HEADING)
 
 
 class FormatAmend(Base):
@@ -2454,10 +2459,11 @@ def bundle_for(*, request: str, model: str, api_key: str, **kwargs: Any) -> Bund
         # (회의록's 「미정」 owners and 확인 필요 line) would empty the asked document's cells
         req.trusted = [*req.trusted, sibling_note(doc_formats.BY_ID[bound], doc_format)]
     # 서식 settings, then the agent's own; repair stages of one format stay on it
+    governing = process_settings.governing_template(req.template_id, format_id)
     process = process_settings.only_for_format(
         process_settings.resolve(template_id=req.template_id, format_id=format_id,
-                                 own=req.process), format_id)
-    governing = process_settings.governing_template(req.template_id, format_id)
+                                 own=req.process), format_id,
+        process_settings.of_template(governing) if governing is not None else None)
     if governing is not None and governing.check_options:
         # 서식 strictness joins the agent's
         req.check_options = {**{k: True for k in governing.check_options},
