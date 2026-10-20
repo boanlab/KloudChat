@@ -2732,8 +2732,12 @@ def minutes_unsourced(doc: Doc) -> list[Finding]:
     rows = [Finding(i, row, "minutes_unsourced", UNASSIGNED_WHY, rank=1,
                     still=lambda s, t=task[0]: t in s)
             for i, row, task in unassigned_rows(doc.sections, material)]
+    def next_part(index: int) -> bool:
+        return stated_meeting.is_next_part(str(doc.sections[index].get("heading") or ""))
+
     return rows + [Finding(i, piece, "minutes_unsourced", stated_meeting.why(said), rank=1,
-                           still=lambda s, m=material: bool(stated_meeting.untraced(s, m)))
+                           still=lambda s, m=material, n=next_part(i): bool(
+                               stated_meeting.untraced(s, m, next_part=n)))
                    for i, piece, said in stated_meeting.findings(
                        doc.sections, material, _reference_heading())]
 
@@ -2756,8 +2760,11 @@ def settle_unsourced(sections: list[dict], material: str, *, strong: bool) -> li
             ln for ln in content.split("\n") if ln.strip() != row.strip()
             and not (short and ln.lstrip().startswith("※") and short in ln))
     for index, piece, said in stated_meeting.findings(out, material, _reference_heading()):
+        whole = "\n".join(str(sec.get("content") or "") for sec in out).replace(piece, "", 1)
         out[index]["content"] = stated_meeting.settle(
-            str(out[index].get("content") or ""), piece, said, strong=strong, material=material)
+            str(out[index].get("content") or ""), piece, said, strong=strong, material=material,
+            elsewhere=whole,
+            next_part=stated_meeting.is_next_part(str(out[index].get("heading") or "")))
     return out
 
 
@@ -4540,6 +4547,58 @@ def _due_value(entry: dict) -> str:
 
 #: 「미정(정현우 과장 복귀 후)」: undecided, with the reason
 _DEFERRED = re.compile(r"^\**\s{0,2}미정\s{0,2}[(（]\s{0,2}(?P<why>[^()（）]{1,60}?)\s{0,2}[)）]\s{0,2}\**$")
+
+
+#: prose calling a deadline open: 「시안 제출 기한은 미정입니다」, 「마감이 정해지지 않았습니다」
+_OPEN_DUE = re.compile(
+    r"(기한|마감일?|제출일|완료일)\s?(?:은|는|이|가)\s?(?:아직\s?)?"
+    r"(?:미정|정해지지\s?않았|정하지\s?않았|확정되지\s?않았)"
+    r"(입니다|습니다|이며|으며|이고|이다|고|음|다)(?![가-힣])")
+_OPEN_TAIL = {"이며": "이며", "으며": "이며", "이고": "이고", "고": "이고", "음": "임", "이다": "이다",
+              "다": "이다"}
+_DUE_CELL = re.compile(r"(\d{4}-\d{2}-\d{2})(?:\([월화수목금토일]\))?")
+
+
+def minutes_open_due(sections: list[dict], dates: list[dict]) -> tuple[list[dict], int]:
+    """A sentence calling a task's deadline open (「시안 제출 기한은 미정입니다」) while the one
+    action row for that task gives the memo's date: the sentence takes the row's date."""
+    from app.services import stated_days, stated_policy
+
+    known = {d.get("date") for d in dates if d.get("status") in ("ok", "repeat") and d.get("date")}
+    rows: list[tuple[set[str], str]] = []
+    for table in tables(sections):
+        owner, due = _owner_due(table.header)
+        if due is None:
+            continue
+        for _, row in table.rows:
+            if len(row) <= due:
+                continue
+            cell = row[due].strip(" *")
+            if (m := _DUE_CELL.fullmatch(cell)) and m.group(1) in known:
+                task = " ".join(c for k, c in enumerate(row) if k not in (owner, due))
+                rows.append((stated_days._words(task), cell))
+    if not rows:
+        return sections, 0
+    out, fixed = [dict(s) for s in sections], 0
+    for index, sec in enumerate(out):
+        content = str(sec.get("content") or "")
+        for piece in stated_policy.pieces(content):
+            if piece.lstrip().startswith("|") or not (m := _OPEN_DUE.search(piece)):
+                continue
+            clause = piece[:m.end()].rsplit(",", 1)[-1]
+            words = stated_days._words(clause) or stated_days._words(piece)
+            hits = {cell for task, cell in rows if task & words}
+            if len(hits) != 1:
+                continue
+            cell = hits.pop()
+            noun = m.group(1)
+            josa = "은" if (ord(noun[-1]) - 0xAC00) % 28 else "는"
+            tail = _OPEN_TAIL.get(m.group(2), "입니다")
+            mended = f"{piece[:m.start()]}{noun}{josa} {cell}{tail}{piece[m.end():]}"
+            content = content.replace(piece, mended, 1)
+            fixed += 1
+        out[index] = {**sec, "content": content}
+    return out, fixed
 
 
 def minutes_deferred(sections: list[dict]) -> tuple[list[dict], int]:

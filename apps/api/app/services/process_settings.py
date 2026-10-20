@@ -348,13 +348,16 @@ FORMAT_ONLY = {
 }
 
 
-def only_for_format(process: Process, format_id: str | None) -> Process:
-    """`process` without the steps of formats other than `format_id`."""
+def only_for_format(process: Process, format_id: str | None,
+                    own: dict[str, Any] | None = None) -> Process:
+    """`process` without the steps of formats other than `format_id`; those the governing 서식
+    names in its `own` settings (a person's copy of the 회의록 서식) stay."""
     changes: dict[str, Any] = {}
     for fmt, keys in FORMAT_ONLY.items():
         if fmt == format_id:
             continue
         for key, names in keys.items():
+            names = tuple(n for n in names if n not in ((own or {}).get(key) or ()))
             kept = tuple(n for n in changes.get(key, getattr(process, key)) if n not in names)
             if kept != getattr(process, key):
                 changes[key] = kept
