@@ -52,3 +52,32 @@ def test_the_persons_weekday_left_out_by_the_writer_is_put_back_flagged_once():
     # already flagged: left as it is
     again, more = weekdays.fix_weekdays(fixed, context=MEMO, today=TODAY)
     assert again == fixed and not more
+
+
+#: the date block the code puts in the material, with the calendar's weekday
+BLOCK = ("# 확정 날짜(코드 계산)\n기준일 2026-10-14. The code resolved the material's relative "
+         "dates.\n- 「다음 회의」 → 2026-10-21(수) — 출처: 「다음 회의 10/21 화 10시」")
+
+
+def test_the_calendars_weekday_written_for_the_persons_day_is_flagged_with_theirs():
+    context = f"{MEMO}\n{BLOCK}"
+    text = "| 설문 도구 비교표 | 최다은 | 2026-10-21(수) | 다음 회의에서 |"
+    fixed, _ = weekdays.fix_weekdays(text, context=context, today=TODAY)
+    assert fixed == ("| 설문 도구 비교표 | 최다은 | 2026-10-21(화, 확인 필요: 달력상 수요일) | "
+                     "다음 회의에서 |")
+    said, _ = weekdays.fix_weekdays("다음 회의는 2026년 10월 21일 수요일 10시입니다.",
+                                    context=context, today=TODAY)
+    assert said == "다음 회의는 2026년 10월 21일 화요일(확인 필요: 달력상 수요일) 10시입니다."
+
+
+def test_the_overview_tables_blank_day_follows_the_head_the_code_dated():
+    sections = [{"heading": "회의 개요", "content": "| 구분 | 내용 |\n|---|---|\n"
+                 "| 일시 | [회의 일자] |\n| 장소 | 미정 |"}]
+    head = {"format": "minutes", "fields": [["회의명", "주간회의"], ["일시", "2026-10-14(수)"]]}
+    pre = report_checks.Prepass(format_id="minutes", base_date="2026-10-14", base_source="near")
+    out = report_checks.minutes_head_day(sections, head, pre)
+    assert "| 일시 | 2026-10-14(수) |" in out[0]["content"]
+    assert "| 장소 | 미정 |" in out[0]["content"]
+    # a head the code did not date leaves the blank
+    unread = report_checks.Prepass(format_id="minutes")
+    assert report_checks.minutes_head_day(sections, head, unread) == sections

@@ -1764,6 +1764,7 @@ class MinutesRepair(Base):
         # 「미정(사유)」: reason to 비고 by code, so no rewrite reads it as an owner
         sections, _ = report_checks.minutes_deferred(sections)
         sections, filled = report_checks.minutes_due_fill(sections, prepass.dates)
+        sections = report_checks.minutes_head_day(sections, bundle.document.head_block, prepass)
         before += ["minutes_due"] * filled
         if prepass.undated:
             # no meeting date: nothing dated as the meeting's

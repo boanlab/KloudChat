@@ -68,8 +68,14 @@ _BARE_STATED = re.compile(
     rf"\s{{1,2}}(?P<wd>[{WEEKDAYS}])(?![가-힣A-Za-z])")
 
 
+#: a block the code wrote into the material (「# 확정 날짜(코드 계산)」): the calendar's words
+_CODE_BLOCK = re.compile(r"^#[^\n]*\(코드 계산\)[^\n]*(?:\n(?!#\s)[^\n]*)*", re.M)
+
+
 def _stated(context: str) -> dict[tuple[int | None, int, int], set[str]]:
-    """Weekdays the person gives per day: 「3월 2일 화요일」 → {(None, 3, 2): {화}}."""
+    """Weekdays the person gives per day: 「3월 2일 화요일」 → {(None, 3, 2): {화}}; the code's
+    own date blocks are not the person's."""
+    context = _CODE_BLOCK.sub("", context or "")
     out: dict[tuple[int | None, int, int], set[str]] = {}
     for m in _BARE_STATED.finditer(context or ""):
         out.setdefault((None, int(m.group("m")), int(m.group("d"))), set()).add(m.group("wd"))

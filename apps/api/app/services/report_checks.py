@@ -3890,6 +3890,27 @@ def _day_known(day: str, known: str) -> bool:
                                      f"-{month:02d}-{date:02d}", f"{month:02d}.{date:02d}"))
 
 
+#: a body line giving the meeting day as a blank: 「| 일시 | [회의 일자] |」, 「일시: [회의 일자]」
+_BLANK_DAY_ROW = re.compile(
+    r"^(?P<lead>\s{0,4}(?:\|\s{0,3}|[-*>]\s{0,3})?(?:\*\*)?(?:회의\s{0,2})?(?:일시|일자|날짜)(?:\*\*)?"
+    r"\s{0,3}(?:\||[:：])\s{0,3})(?P<blank>\[[^\[\]\n]{0,12}\])(?P<tail>\s{0,3}\|?\s{0,3})$", re.M)
+
+
+def minutes_head_day(sections: list[dict], head: dict | None, pre: Prepass | None) -> list[dict]:
+    """A blank meeting day in the body (the overview table's 일시) takes the head's, when code
+    resolved that day; else it stays."""
+    if not head or pre is None or not pre.base_date:
+        return sections
+    day = next((str(f[1]) for f in head.get("fields") or []
+                if len(f) >= 2 and str(f[0]) in ("일시", "회의 일시", "일자")), "")
+    if not day.startswith(pre.base_date):
+        return sections
+    return [{**sec, "content": _BLANK_DAY_ROW.sub(
+        lambda m: m.group("lead") + day + m.group("tail")
+        if placeholders.is_blank(m.group("blank")) else m.group(0), str(sec.get("content") or ""))}
+        for sec in sections]
+
+
 def minutes_undated(sections: list[dict], dates: list[dict], known: str) -> tuple[list[dict], list[str]]:
     """No meeting date known: meeting day → 「[회의 일자]」, word/invented deadlines → 「[기한]」 + 비고."""
     words = [d for d in dates if d.get("status") == _NO_BASE]

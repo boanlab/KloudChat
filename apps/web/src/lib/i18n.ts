@@ -3264,6 +3264,7 @@ const EN: Record<string, string> = {
   '답했습니다': 'Answered',
   '보고서를 썼습니다': 'Wrote the report',
   '보고서를 고쳤습니다': 'Revised the report',
+  '바꾼 것이 없습니다': 'Nothing changed',
   '슬라이드를 만들었습니다': 'Made the slides',
   '슬라이드를 고쳤습니다': 'Revised the slides',
   '파일을 만들었습니다': 'Made the file',

@@ -71,11 +71,19 @@ export function doingPhrase(kind: Kind | undefined, run?: PipelineRun): string {
   return '답을 쓰는 중…'
 }
 
+/** A revision that stopped before saving (nothing to remove, an ask-back): no new version. */
+function unchanged(run?: PipelineRun): boolean {
+  if (run?.flow !== 'revise') return false
+  const save = run.stages.find((s) => s.name === 'revise-save')
+  return !!save && save.status !== 'done'
+}
+
 /** What the finished turn did: 「보고서를 썼습니다」. */
 export function donePhrase(kind: Kind | undefined, run?: PipelineRun): string {
   if (planned(run)) return kind === 'slides' ? '구성을 보여 드렸습니다' : '개요를 보여 드렸습니다'
   if (asked(run) || run?.flow === 'pre' || run?.stages.some((s) => s.status === 'waiting')) return '확인할 것을 여쭸습니다'
   if (run?.flow === 'export') return '파일을 만들었습니다'
+  if (unchanged(run)) return '바꾼 것이 없습니다'
   if (kind === 'report') return run?.flow === 'revise' ? '보고서를 고쳤습니다' : '보고서를 썼습니다'
   if (kind === 'slides') return run?.flow === 'revise' ? '슬라이드를 고쳤습니다' : '슬라이드를 만들었습니다'
   if (kind === 'image' || kind === 'av') return '만들었습니다'
