@@ -182,3 +182,46 @@ def test_a_question_is_told_from_an_ask():
     started = time.monotonic()
     revise.asks_question("몇" + " " * 50000 + "x")
     assert time.monotonic() - started < 0.5
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("question", ["4장 수치는 어디서 나온 거야?", "지금 슬라이드가 몇 장이야?"])
+@pytest.mark.parametrize("planned", [
+    revise.Plan(scope="parts", targets=[3], note="4장 수치 출처를 밝힌다"),
+    revise.Plan(scope="whole", targets=list(range(len(CHARTED))), note="전체 수치 출처"),
+])
+async def test_a_question_rewrites_nothing_whatever_the_planner_read(monkeypatch, question,
+                                                                     planned):
+    async def planner(**_kwargs):
+        return planned
+
+    monkeypatch.setattr(revise_stages.revise, "plan", planner)
+    for given in (planned, None):
+        bundle = _deck_bundle(question)
+        bundle.plan.revision = given
+        events = []
+        with pytest.raises(Stop, match="a question"):
+            async for event in revise_stages.Route().run(bundle, Context()):
+                events.append(event)
+        assert not [e for e in events if e["type"] in ("slide", "section")]
+        assert bundle.document.sections == CHARTED
+        assert bundle.plan.revision is given
+        assert "".join(e.get("text", "") for e in events if e["type"] == "delta").startswith(
+            "질문으로 보여 바꾼 것이 없습니다.")
+
+
+@pytest.mark.parametrize("ask", ["3장을 표로 바꿔줄래?", "2절을 두 문장으로 줄여줄래?",
+                                 "표 하나 추가할 수 있어?", "4장은 표로 할래?"])
+def test_an_edit_asked_as_a_question_is_still_an_edit(ask):
+    assert not revise.asks_question(ask)
+
+
+@pytest.mark.asyncio
+async def test_an_edit_asked_as_a_question_goes_on_to_its_slide(monkeypatch):
+    async def planner(**_kwargs):
+        return revise.Plan(scope="parts", targets=[2], note="표로")
+
+    monkeypatch.setattr(revise_stages.revise, "plan", planner)
+    bundle = _deck_bundle("3장을 표로 바꿔줄래?")
+    _ = [e async for e in revise_stages.Route().run(bundle, Context())]
+    assert bundle.plan.revision.targets == [2]

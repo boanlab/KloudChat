@@ -7259,6 +7259,9 @@ async def _revision_plan(
     skeleton = _skeleton(artifact)
     if not skeleton:
         return None, []
+    if revise.asks_question(instruction):
+        # a question is no edit: not planned (nor re-planned as a new outline)
+        return revise.Plan(scope="parts", targets=[], note=instruction), skeleton
     rename = (revise.title_rename(instruction, skeleton)
               if getattr(artifact, "kind", None) != ArtifactKind.deck else None)
     if rename is not None and rename[1] is None:

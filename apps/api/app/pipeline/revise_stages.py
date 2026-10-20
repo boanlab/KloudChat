@@ -127,6 +127,17 @@ class Route(Base):
         is_deck, instruction, parts = req.is_deck, req.instruction, doc.sections
         names = _names(bundle)
         plan = bundle.plan.revision
+        if revise.asks_question(instruction):
+            # a question about the document, whatever the planner read: nothing rewritten;
+            # this screen only edits, so said how to ask it
+            yield {"type": "step", "id": "route", "label": "질문", "status": "done"}
+            example = "3장을 표로 바꿔줘" if is_deck else "2절을 두 문장으로 줄여줘"
+            for event in _stopped(bundle, (
+                    "질문으로 보여 바꾼 것이 없습니다. 이 화면에서는 "
+                    f"「{example}」처럼 고칠 곳을 알려 주시면 고칩니다. 내용을 물어보려면 "
+                    "내려받은 파일을 챗에 첨부해 물어보세요.")):
+                yield event
+            raise Stop("a question")
         changed = 0
         typed = instruction
         rename = None if is_deck else revise.title_rename(instruction, names)
@@ -299,16 +310,6 @@ class Route(Base):
         doc.by_hand, bundle.plan.revision = by_hand, plan
         if not by_hand and not plan.revises:
             # new-document request: said, not acted on
-            if revise.asks_question(typed):
-                # a question about the document: this screen only edits; said how to ask it
-                yield {"type": "step", "id": "route", "label": "질문", "status": "done"}
-                example = "3장을 표로 바꿔줘" if is_deck else "2절을 두 문장으로 줄여줘"
-                for event in _stopped(bundle, (
-                        "질문으로 보여 바꾼 것이 없습니다. 이 화면에서는 "
-                        f"「{example}」처럼 고칠 곳을 알려 주시면 고칩니다. 내용을 물어보려면 "
-                        "내려받은 파일을 챗에 첨부해 물어보세요.")):
-                    yield event
-                raise Stop("a question")
             yield {"type": "step", "id": "route", "label": "새 문서 요청", "status": "done"}
             for event in _stopped(bundle, "이건 지금 문서를 고치는 요청으로 보이지 않습니다. "
                                           "새로 쓰려면 '새로 써 줘' 라고 알려 주세요."):
