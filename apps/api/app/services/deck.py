@@ -4794,6 +4794,10 @@ _LAYOUT_WORDS: tuple[tuple[str, str], ...] = (
     (r"(?<![A-Za-z])swot(?![A-Za-z])", "swot"),
     (r"장단점|장점과\s{0,3}단점|pros\s{0,3}(?:and|&)?\s{0,3}cons", "pros-cons"),
     (r"체크\s{0,3}리스트|점검표|(?<![A-Za-z])checklist(?![A-Za-z])", "checklist"),
+    (r"번호\s{0,3}(?:목록|리스트)|번호를?\s{0,3}매긴\s{0,3}목록"
+     r"|(?<![A-Za-z])numbered\s{1,3}(?:list|points|items)(?![A-Za-z])", "numbered"),
+    (r"글머리\s{0,3}(?:기호|표)?|목록|리스트|(?<![A-Za-z])bullet(?:ed)?s?(?:\s{1,3}(?:list|points))?"
+     r"(?![A-Za-z])|(?<![A-Za-z])list(?![A-Za-z])", "bullets"),
     (r"(?<![A-Za-z])faq(?![A-Za-z])|질의\s{0,3}응답|문답|Q\s{0,2}&\s{0,2}A", "faq"),
     (r"용어\s{0,3}(?:정리|풀이|사전)|(?<![A-Za-z])glossary(?![A-Za-z])", "glossary"),
     (r"피라미드|(?<![A-Za-z])pyramid(?![A-Za-z])", "pyramid"),
@@ -4832,6 +4836,12 @@ _LAYOUT_ASK = re.compile(
 )
 
 
+#: 「as a numbered list」, 「into a table」, 「to a timeline」: the ask in front of the word
+_LAYOUT_ASK_BEFORE = re.compile(
+    r"\b(?:(?:as|into)\s{1,4}(?:an?\s{1,4}|the\s{1,4})?|to\s{1,4}an?\s{1,4})"
+    r"(?:[A-Za-z0-9-]{1,15}\s{1,4}){0,2}$", re.I)
+
+
 def requested_layout(text: str) -> str | None:
     """Layout the words ask for (「연표로 바꿔 줘」), or None; requires a 「…로」 construction."""
     text = text or ""
@@ -4839,6 +4849,9 @@ def requested_layout(text: str) -> str | None:
         for match in re.finditer(pattern, text, re.I):
             tail = text[match.end() : match.end() + 12]
             asked = re.match(r"\s{0,8}(?:로|으로)(?:\b|[\s,.]|$)", tail) or _LAYOUT_ASK.match(tail)
+            # English puts the ask before the word: 「as a numbered list」, 「into a table」
+            asked = asked or _LAYOUT_ASK_BEFORE.search(text[max(0, match.start() - 40):
+                                                            match.start()])
             if asked:
                 return layout
     return None
@@ -4865,7 +4878,11 @@ def shown_layout(slide: dict) -> str:
 
 #: what an unmet shape is called in the reply
 _SHAPE_WORDS = {"table": "표", "chart": "차트", "metrics": "지표", "big-number": "큰 숫자",
-                "bullets": "글머리표", "timeline": "연표", "steps": "단계", "cards": "카드"}
+                "bullets": "글머리표", "timeline": "연표", "steps": "단계", "cards": "카드",
+                "numbered": "번호 목록"}
+#: drawn shapes that show an asked one (a numbered list is a list)
+_SHOWS = {"bullets": {"numbered", "checklist", "takeaways", "objectives"},
+          "numbered": {"steps", "process"}}
 
 
 def unmet_asks(slide: dict, words: str) -> list[str]:
@@ -4873,13 +4890,51 @@ def unmet_asks(slide: dict, words: str) -> list[str]:
     out = []
     asked = requested_layout(words)
     drawn = shown_layout(slide)
-    if asked and drawn != asked and not (asked == "chart" and drawn.startswith("chart")):
-        out.append(f"{_SHAPE_WORDS.get(asked, asked)}로 바꾸기")
+    if asked and drawn != asked and drawn not in _SHOWS.get(asked, ()) and not (
+            asked == "chart" and drawn.startswith("chart")):
+        shape = _SHAPE_WORDS.get(asked, asked)
+        out.append(f"{shape}{revise._particle(shape, '으로', '로')} 바꾸기")
     if revise.removes_picture(words) and picture_of(slide):
         out.append("그림 빼기")
     if revise.removes_chart(words) and chart_of(slide):
         out.append("차트 빼기")
     return out
+
+
+#: slide fields the audience does not read as its figures
+_NOT_SHOWN = frozenset({"id", "notes", "accent", "layout", "image", "diagram", "factCheck",
+                        "textScale"})
+_SHOWN_FIGURE = re.compile(r"(?<![\d.,])\d{1,3}(?:,\d{3})*(?:\.\d{1,3})?%?(?![\d,])")
+#: an ask that may take figures away: 「줄여」, 「빼」, 「remove」, 「shorten」
+_DROPS_FIGURES = re.compile(
+    r"빼|지워|지우|삭제|없애|줄여|줄이|간단|짧게|요약|수치\s?없이|"
+    r"\b(?:remove|delete|drop|shorten|cut|fewer|simplif\w{0,4}|summari[sz]\w{0,3})\b", re.I)
+
+
+def _shown_figures(slide: dict) -> list[str]:
+    words = " ".join(t for k, v in slide.items() if k not in _NOT_SHOWN
+                     for t in _strings(v))
+    # a lone digit is a list number or slide count, not a figure
+    return list(dict.fromkeys(f for f in _SHOWN_FIGURE.findall(words) if len(f) > 1))
+
+
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+def lost_figures(old: dict, new: dict, asked: str = "") -> list[str]:
+    """Figures `old` showed that its rewrite `new` no longer shows (「64%」, 「91%」), unless the
+    ask may take some away."""
+    if _DROPS_FIGURES.search(asked or ""):
+        return []
+    kept = set(_shown_figures(new))
+    return [f for f in _shown_figures(old) if f not in kept]
 
 
 def picture_of(slide: dict) -> str:

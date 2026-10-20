@@ -441,6 +441,27 @@ class Rewrite(Base):
                     )
                     if revise.meta_talk(" ".join(strings(written))):
                         raise ValueError("본문 대신 대화 답이 나옴")
+                    if lost := deck_service.lost_figures(part, written, asked):
+                        # figures the slide showed, left out: asked once more to keep them
+                        try:
+                            again, more = await deck_service.rewrite_slide(
+                                request=request, slides=parts,
+                                target_id=str(part.get("id") or ""), model=req.model,
+                                api_key=req.api_key,
+                                note=(plan.note if asked == instruction else asked)
+                                + f"\nKeep every figure the slide shows now: {', '.join(lost)}.",
+                                material=material, typed=asked)
+                        except Exception as exc:  # noqa: BLE001 — the first rewrite stands
+                            log.info("slide rewrite to keep figures failed: %s", logs.safe(exc))
+                        else:
+                            spent = {k: spent.get(k, 0) + more.get(k, 0)
+                                     for k in ("inputTokens", "outputTokens")}
+                            still = deck_service.lost_figures(part, again, asked)
+                            if len(still) < len(lost) and not revise.meta_talk(
+                                    " ".join(strings(again))):
+                                written, lost = again, still
+                        if lost:
+                            doc.dropped.append(f"{index + 1}장 {', '.join(lost)}")
                     if isinstance(written.get("notes"), str):
                         # what the speaker says, not how the writer made it; nothing the slide
                         # shows said to be absent

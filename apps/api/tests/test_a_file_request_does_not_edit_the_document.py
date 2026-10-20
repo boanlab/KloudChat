@@ -75,7 +75,8 @@ def test_the_revision_rejects_a_reply_in_place_of_the_part():
     from app.pipeline import revise_stages
 
     source = inspect.getsource(revise_stages.Rewrite.run)
-    assert source.count("revise.meta_talk(") == 2
+    # the part's rewrite, a slide's, and a slide's second ask to keep its figures
+    assert source.count("revise.meta_talk(") == 3
 
 
 def test_the_file_turn_is_routed_before_revision():

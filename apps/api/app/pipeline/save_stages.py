@@ -78,9 +78,65 @@ def _numbers(numbers: list[int]) -> str:
     return "·".join(f"{r[0]}~{r[-1]}" if len(r) >= 3 else "·".join(map(str, r)) for r in runs)
 
 
-def revision_reply(document: Any, plan: Any, *, is_deck: bool) -> str:
+#: an edit's reply words in English, for an ask typed in English
+_EN_THINGS = {"차트": "chart", "그림": "picture", "도식": "diagram", "글머리표": "bullet list",
+              "번호 목록": "numbered list", "표": "table", "지표": "metrics",
+              "큰 숫자": "big number", "연표": "timeline", "단계": "steps", "카드": "cards"}
+
+
+def _en_item(item: str) -> str:
+    """「4장의 차트」 → 「the chart on slide 4」, 「표 5」 → 「Table 5」, 「3줄 요약」 → 「the
+    3-line summary」, 「3장 표로 바꾸기」 → 「slide 3 as a table」."""
+    import re
+
+    if m := re.fullmatch(r"(\d{1,3})(장|절)의 (.+)", item):
+        where = f"{'slide' if m.group(2) == '장' else 'section'} {m.group(1)}"
+        return f"{_en_item(m.group(3))} from {where}" if m.group(3)[:1] in "표그" and re.search(
+            r"\d", m.group(3)) else f"the {_EN_THINGS.get(m.group(3), 'diagram')} on {where}"
+    if m := re.fullmatch(r"(표|그림)\s?(\d{1,3})", item):
+        return f"{'Table' if m.group(1) == '표' else 'Figure'} {m.group(2)}"
+    if m := re.fullmatch(r"(\d{1,2})줄 요약", item):
+        return f"the {m.group(1)}-line summary"
+    if m := re.fullmatch(r"(\d{1,3})장 (.+?)(?:으로|로) 바꾸기", item):
+        return f"slide {m.group(1)} as a {_EN_THINGS.get(m.group(2), m.group(2))}"
+    if m := re.fullmatch(r"(\d{1,3})장 (그림|차트) 빼기", item):
+        return f"removing the {_EN_THINGS[m.group(2)]} on slide {m.group(1)}"
+    return item
+
+
+def _english_reply(document: Any, summary: int, touched: list[int], is_deck: bool) -> str:
+    unit = "slide" if is_deck else "section"
+    said = []
+    if document.removed:
+        said.append("Removed " + ", ".join(map(_en_item, document.removed)) + ".")
+    if summary:
+        said.append(f"Put a {summary}-line summary at the top.")
+    if touched:
+        numbers = _numbers(sorted(i + 1 for i in touched)).replace("·", ", ").replace("~", "–")
+        said.append(f"Revised {unit}{'s' if len(touched) > 1 else ''} {numbers}.")
+    elif not document.removed and not summary and not document.unmet and document.changed:
+        said.append(f"Changed {document.changed} place{'s' if document.changed > 1 else ''}.")
+    if document.missed:
+        said.append(f"{'However, ' if said else ''}"
+                    f"{', '.join(map(_en_item, document.missed))} could not be found in the "
+                    "document. Please ask again.")
+    if document.failed:
+        said.append(f"{', '.join(document.failed)} kept as before: the rewrite did not pass the "
+                    "checks.")
+    if document.unmet:
+        said.append(f"{'However, ' if said else ''}{', '.join(map(_en_item, document.unmet))} "
+                    "did not show in the result. Please ask again.")
+    for lost in document.dropped:
+        at, _, values = lost.partition("장 ")
+        said.append(f"On slide {at}, {values} dropped out of the rewrite; ask again to put them "
+                    "back if they belong there.")
+    return " ".join(said)
+
+
+def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = False) -> str:
     """What an edit did, ask by ask: what went (and where), the summary put in, the parts
-    rewritten by number, and what was asked but not found or not shown."""
+    rewritten by number, what was asked but not found or not shown, and figures a slide's
+    rewrite left out; in English for an ask typed in English."""
     from app.services import revise
 
     unit = "장" if is_deck else "절"
@@ -90,6 +146,8 @@ def revision_reply(document: Any, plan: Any, *, is_deck: bool) -> str:
     unmet_slides = {u.split()[0] for u in document.unmet}
     touched = [i for i in dict.fromkeys(document.touched)
                if f"{i + 1}{unit}" not in unmet_slides]
+    if english:
+        return _english_reply(document, summary, touched, is_deck)
     said = []
     if removed:
         said.append(removed_said(removed))
@@ -112,6 +170,11 @@ def revision_reply(document: Any, plan: Any, *, is_deck: bool) -> str:
         said.append(f"다만 요청한 {', '.join(unmet)}는 반영되지 않았습니다. 다시 요청해 주세요."
                     if said else f"요청한 {', '.join(unmet)}는 반영하지 못했습니다. "
                     "다시 요청해 주세요.")
+    for lost in document.dropped:
+        # figures the slide showed that its rewrite left out: said, not passed over
+        at, _, values = lost.partition(" ")
+        said.append(f"{at}에서 {values}{revise._particle(values, '이', '가')} 빠졌습니다. "
+                    "필요하면 다시 넣어 달라고 해 주세요.")
     return " ".join(said)
 
 
@@ -411,7 +474,8 @@ class ReviseSave(Base):
                     data=data,
                 )
                 session.artifact_id = artifact_id
-                reply = revision_reply(bundle.document, bundle.plan.revision, is_deck=is_deck)
+                reply = revision_reply(bundle.document, bundle.plan.revision, is_deck=is_deck,
+                                       english=output_language.typed_in_english(req.instruction))
                 if note := rerun_note(turn):
                     reply = f"{note} {reply}"
                 handed = None
