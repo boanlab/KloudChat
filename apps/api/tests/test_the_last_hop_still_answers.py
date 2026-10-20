@@ -547,6 +547,62 @@ async def test_narration_before_a_tool_is_taken_back(monkeypatch) -> None:
     assert "검색해 보겠습니다." in (seen[1]["messages"][-2].get("content") or "")
 
 
+_THINKING = ("I need to figure out what date next Monday falls on, given that today is "
+             "Tuesday, October 20, 2026.")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("request_text", "taken"), [
+    ("다음 주 월요일 회의 안건을 짜 줘", True),
+    ("Plan the agenda for next Monday's meeting", False),
+])
+async def test_english_thinking_before_a_tool_leaves_a_korean_answer(
+        monkeypatch, request_text, taken) -> None:
+    """A Korean request: the model's English line beside the tool call is taken back."""
+    seen: list[dict] = []
+
+    class _Thinking(_Client):
+        def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
+            self._seen.append(json)
+            if len(self._seen) == 1:
+                return _Response(
+                    [
+                        'data: {"choices":[{"delta":{"content":"' + _THINKING + '"}}]}',
+                        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1",'
+                        '"function":{"name":"lookup","arguments":"{}"}}]}}]}',
+                        "data: [DONE]",
+                    ]
+                )
+            return _Response(
+                ['data: {"choices":[{"delta":{"content":"회의 일시는 10월 26일(월)입니다."}}]}',
+                 "data: [DONE]"]
+            )
+
+    async def client(*_args, **_kwargs):
+        return _Thinking(seen)
+
+    monkeypatch.setattr(agent, "_client", client)
+
+    async def lookup(_args):
+        return ToolResult(content="2026-10-26")
+
+    tool = Tool(
+        name="lookup", description="찾는다", parameters={"type": "object"}, run=lookup, label="찾기"
+    )
+    events = [
+        event
+        async for event in agent.run_turn(
+            "vendor/model",
+            [{"role": "user", "content": request_text}],
+            [tool],
+            ToolContext(user_id="user", session_id="session", api_key="key",
+                        request=request_text),
+        )
+    ]
+    retracted = [e["text"] for e in events if e["type"] == "retract"]
+    assert (_THINKING in retracted) is taken
+
+
 def test_an_answer_written_twice_around_a_tool_is_recognised() -> None:
     first = (
         "SELECT c.course_id, COUNT(*)\nFROM courses c JOIN enrollments e ON …\n"
