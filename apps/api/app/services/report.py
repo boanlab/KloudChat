@@ -36,6 +36,7 @@ from app.services import (
     report_checks,
     research,
     revised_tables,
+    richtext,
     settings_store,
     table_mend,
     thinking,
@@ -2856,7 +2857,8 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
                 '\\n', "\n"))
         if not _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
             body = unfence_pictures(_LONE_LANGUAGE.sub(r"```\1", mend_kpi_fences(body)))
-            body = drop_empty_columns(body)
+            body = placeholders.drop_beside_values(
+                richtext.unquote_tables(drop_empty_columns(body)))
             # 「<br>」 as 「 · 」
             body = "\n".join(
                 re.sub(r"\s{0,32}<\s{0,8}br\s{0,8}/?\s{0,8}>\s{0,32}", " · " if line.lstrip().startswith("|") else " ",

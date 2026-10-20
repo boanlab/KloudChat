@@ -25,6 +25,33 @@ def _protected(text: str) -> list[tuple[int, int]]:
     return [(m.start(), m.end()) for m in (*_GLOSSED.finditer(text), *_CODE.finditer(text))]
 
 
+#: Chinese words a model slips into Korean whose Hanja reading is no Korean word
+#: (「本次会议」 read 「본차회의」, 「补提」 read 「보제」): the Korean word instead
+_CHINESE_WORDS = {
+    "本次": "이번", "本周": "이번 주", "下周": "다음 주", "下次": "다음", "上周": "지난주",
+    "补提": "보완 제출", "补交": "보완 제출", "提交": "제출", "负责人": "담당자", "负责": "담당",
+    "截止": "마감", "讨论": "논의",
+}
+_CHINESE_WORD = re.compile("|".join(sorted(map(re.escape, _CHINESE_WORDS), key=len, reverse=True)))
+
+
+def _read_run(run: str, before: str) -> str:
+    """A Hanja run in Hangul; a Chinese word as its Korean word, set off by a space from the
+    Korean it was glued to (Chinese writes none)."""
+    if not _CHINESE_WORD.search(run):
+        return hanja.translate(run, "substitution")
+    parts, at = [], 0
+    for m in _CHINESE_WORD.finditer(run):
+        if m.start() > at:
+            parts.append(hanja.translate(run[at:m.start()], "substitution"))
+        parts.append(_CHINESE_WORDS[m.group(0)])
+        at = m.end()
+    if at < len(run):
+        parts.append(hanja.translate(run[at:], "substitution"))
+    read = " ".join(parts)
+    return f" {read}" if re.match(r"[가-힣]", before[-1:]) else read
+
+
 def read_back(text: str) -> tuple[str, list[str]]:
     """(text, replaced) with Hanja runs read in Hangul."""
     if not text or not _HANJA.search(text):
@@ -38,7 +65,7 @@ def read_back(text: str) -> tuple[str, list[str]]:
         if any(start <= found.start() < end for start, end in keep):
             continue
         run = found.group(0)
-        read = hanja.translate(run, "substitution")
+        read = _read_run(run, text[:found.start()])
         if read == run:  # no reading known; `lint` still reports it
             continue
         out.append(text[at : found.start()])

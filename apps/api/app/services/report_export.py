@@ -398,7 +398,7 @@ def _markdown_to_lines(
     text: str, grids: list[richtext.Grid] | None = None, levels: int = len(_MARKERS)
 ) -> list[tuple[str, Any, str, int]]:
     """`(kind, payload, marker, depth)` per line; depth capped at `levels`."""
-    text = richtext.detach_tables(text)
+    text = richtext.detach_tables(richtext.unquote_tables(text))
     out: list[tuple[str, Any, str, int]] = []
     number = 0
     counts: dict[int, int] = {}
