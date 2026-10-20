@@ -84,7 +84,28 @@ def _identity(source: dict) -> set[str]:
         keys.add("url:" + re.sub(r"^https?://(?:www\.)?", "", url.lower()).rstrip("/"))
     if len(title := _key(str(source.get("title") or ""))) >= 16:
         keys.add("title:" + title)
+    if head := _title_head(source):
+        keys.add("title:" + head)
     return keys
+
+
+#: a title a search page cut short: 「…Studen....」, 「…Studen…」
+_CUT_TITLE = re.compile(r"(?:\.{3,}|…)\s{0,3}$")
+#: a cut title's own words, enough to name one work
+_TITLE_HEAD = 40
+
+
+def _title_head(source: dict) -> str:
+    """The key of a title, marked 「~」 at the end when the page cut it short."""
+    title = str(source.get("title") or "").strip()
+    key = _key(_CUT_TITLE.sub("", title))
+    return key + ("~" if _CUT_TITLE.search(title) else "") if len(key) >= _TITLE_HEAD else ""
+
+
+def _same_title(head: str, key: str) -> bool:
+    """One title the start of the other, the shorter cut short and long enough to be one work."""
+    short, long_ = sorted((head, key), key=len)
+    return short.endswith("~") and long_.rstrip("~").startswith(short[:-1])
 
 
 def same_works(sources: list[dict]) -> dict[int, int]:
@@ -98,6 +119,10 @@ def same_works(sources: list[dict]) -> dict[int, int]:
             continue
         keys = _identity(source)
         first = next((seen[k] for k in keys if k in seen), None)
+        if first is None and (title := _title_head(source)):
+            # a title cut short on a search page (「…International Studen....」) and the whole
+            first = next((n for k, n in seen.items() if k.startswith("title:")
+                          and _same_title(title, k[6:])), None)
         if first is not None and first != number:
             alias[number] = first
         for k in keys:

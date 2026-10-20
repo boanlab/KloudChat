@@ -1481,9 +1481,17 @@ def balance_fences(body: str) -> str:
     return "\n".join(lines).rstrip() + "\n```"
 
 
+#: a bare fence whose first line names the app's block: 「```\nsteps: 이름 | 설명」
+_NAMED_UNDER_FENCE = re.compile(
+    r"(?m)^```[ \t]{0,8}\n[ \t]{0,3}(callout|kpi|steps|cards|chart)"
+    r"(?:[ \t]{0,3}[:：][ \t]{0,3}|[ \t]{0,3}(?=\n))(?:\n)?", re.I)
+
+
 def unglue_blocks(body: str) -> str:
-    """Fence or table row glued to a sentence moved to its own line."""
-    body = re.sub(r"(?m)^([^\n`|]*\S)[ \t]+(```[A-Za-z]*)[ \t]*$", r"\1\n\n\2", body or "")
+    """Fence or table row glued to a sentence moved to its own line; a block named on the
+    line under a bare fence (「```」 then 「steps: 자료 전처리 | …」) named on the fence."""
+    body = _NAMED_UNDER_FENCE.sub(lambda m: f"```{m.group(1).lower()}\n", body or "")
+    body = re.sub(r"(?m)^([^\n`|]*\S)[ \t]+(```[A-Za-z]*)[ \t]*$", r"\1\n\n\2", body)
     body = re.sub(r"(?m)^(?!```)([^\n`]*[.!?。])[ \t]+```[ \t]*$", r"\1\n```", body)
     return re.sub(r"(?m)^([^\n|]*[.!?。\]])[ \t]+(\|[^\n]*\|)[ \t]*$", r"\1\n\n\2", body)
 
