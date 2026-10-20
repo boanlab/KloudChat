@@ -774,6 +774,9 @@ class Prepass(Base):
         format_id, given = bundle.spec.format_id, bundle.material.given
         quiet = bundle.spec.settings.prepass_quiet
         prepass: report_checks.Prepass | None = None
+        if not given and bundle.spec.settings.date_base == "meeting":
+            # minutes from a memo typed as the request: its dates still count from the meeting
+            given = req.text
         if given:
             prepass_usage: dict[str, int] = {"inputTokens": 0, "outputTokens": 0}
             try:
