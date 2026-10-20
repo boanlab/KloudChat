@@ -40,7 +40,8 @@ def test_a_shortened_section_is_checked_for_its_count_and_facts():
     assert revise.shortening_faults(BEFORE, TWO, ASK) == []
     assert revise.shortening_faults(BEFORE, BEFORE, "2절 표현을 다듬어줘") == []
     faults = revise.shortening_faults(BEFORE, ONE, ASK)
-    assert faults[0] == "The request asks for exactly 2 sentences; this version has 1"
+    assert faults[0] == ("The section must be exactly 2 sentences of its own content; the last "
+                         "version had 1")
     assert "5%, 4%" in faults[1]
     started = time.monotonic()
     revise.sentences_asked("두" + " " * 50000 + "문장")
@@ -79,7 +80,8 @@ async def _rewrite(monkeypatch, answers, ask: str = ASK):
 @pytest.mark.asyncio
 async def test_a_one_sentence_rewrite_is_sent_back_with_the_reason(monkeypatch):
     doc, notes = await _rewrite(monkeypatch, [ONE, TWO])
-    assert len(notes) == 2 and "exactly 2 sentences; this version has 1" in notes[1]
+    assert len(notes) == 2
+    assert "exactly 2 sentences of its own content; the last version had 1" in notes[1]
     assert "A사" in notes[1]
     assert doc.sections[1]["content"].startswith("대성유통은 10/16")
     assert doc.counted == [] and doc.dropped == []
@@ -92,9 +94,11 @@ async def test_what_still_misses_after_the_second_try_is_said(monkeypatch):
     assert doc.counted == [(2, 2, 1)]
     assert save_stages.revision_reply(doc, None, is_deck=False) == (
         "2절을 고쳤습니다. 2절은 요청한 2문장이 아니라 1문장입니다. "
+        "2절에 원래 없던 3주차가 들어갔습니다. 확인해 주세요. "
         "2절에서 10/16, 5%, 4%, 2건, 420만, A사가 빠졌습니다. 필요하면 다시 넣어 달라고 해 주세요.")
     assert save_stages.revision_reply(doc, None, is_deck=False, english=True) == (
-        "Revised section 2. Section 2 has 1 sentence, not the 2 asked. On section 2, 10/16, 5%, "
+        "Revised section 2. Section 2 has 1 sentence, not the 2 asked. Section 2 now states "
+        "3주차, which the section and the material did not; please check. On section 2, 10/16, 5%, "
         "4%, 2건, 420만, A사 dropped out of the rewrite; ask again to put them back if they "
         "belong there.")
 
@@ -104,3 +108,49 @@ async def test_a_plain_shortening_is_not_sent_back_and_its_dropped_facts_are_sai
     doc, notes = await _rewrite(monkeypatch, [ONE], ask="2절을 줄여줘")
     assert len(notes) == 1 and doc.sections[1]["content"] == ONE
     assert doc.counted == [] and doc.dropped == ["2절 10/16, 5%, 4%, 2건, 420만, A사"]
+
+
+TABLED = ("목요일에는 대성유통에게 견적서를 발송했으며, 경쟁사 A사가 4% 낮은 단가를 "
+          "제시했습니다.\n\n"
+          "**표 1. 일별 업무 추진 현황**\n\n| 일정 | 내용 |\n|---|---|\n"
+          "| 목 | 대성유통 견적서 발송, 경쟁사 A사 4% 낮음 |")
+CUT = ("대성유통 견적서를 보냈습니다(표 1).\n\n**표 1. 일별 업무 추진 현황**\n\n| 일정 | 내용 |\n"
+       "|---|---|\n| 목 | 대성유통 견적서 발송, 경쟁사 A사 4% 낮음 |")
+#: the retry that wrote the reason into the section and a date from nowhere (reverify-o)
+ECHOED = "2절을 두 문장만 유지해야 합니다.\n\n10월 13일 기준 " + TWO
+
+
+def test_facts_still_in_the_sections_table_are_not_called_dropped():
+    assert revise.lost_facts(TABLED, CUT) == []
+    assert revise.lost_facts(TABLED, CUT.split("\n\n")[0]) == ["4%", "A사"]
+
+
+def test_the_ask_restated_in_the_section_is_taken_out_before_counting():
+    kept = revise.without_ask_echo(ECHOED)
+    assert not kept.startswith("2절을") and revise.sentence_count(kept) == 2
+    # a section that names another section by number is left alone
+    assert revise.without_ask_echo("자세한 일정은 3절에 정리했습니다.") == (
+        "자세한 일정은 3절에 정리했습니다.")
+    started = time.monotonic()
+    revise.without_ask_echo("2절 " + " " * 50000 + "문장")
+    revise.added_facts("1" + " " * 50000, "2" + " " * 50000, "")
+    assert time.monotonic() - started < 0.5
+
+
+def test_a_figure_or_date_from_nowhere_is_a_fault():
+    # 10 is in the section's 10/16: only the day comes from nowhere
+    assert revise.added_facts(BEFORE, "10월 13일 기준 " + TWO, "") == ["13일"]
+    assert revise.added_facts(BEFORE, TWO, "") == []
+    faults = revise.shortening_faults(BEFORE, "10월 13일 기준 " + TWO, ASK)
+    assert any("Add no figure or date" in f and "13일" in f for f in faults)
+    assert faults[-1].startswith("Write none of these remarks")
+
+
+@pytest.mark.asyncio
+async def test_an_echoed_ask_and_an_invented_date_are_sent_back_then_said(monkeypatch):
+    doc, notes = await _rewrite(monkeypatch, [ECHOED, ECHOED])
+    assert len(notes) == 2 and "13일" in notes[1]
+    assert not doc.sections[1]["content"].startswith("2절을")
+    assert doc.counted == [] and doc.added == ["2절 13일"]
+    assert save_stages.revision_reply(doc, None, is_deck=False) == (
+        "2절을 고쳤습니다. 2절에 원래 없던 13일이 들어갔습니다. 확인해 주세요.")

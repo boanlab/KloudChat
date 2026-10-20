@@ -7071,11 +7071,25 @@ async def _deck_carry(work: PipelineBundle) -> AsyncIterator[dict]:
     # carried slides may drop restated numbers: recheck the person's figures
     deck_service.restate_missing_facts(slides, request)
     work.document.sections = slides
+    # figures the old deck showed that the new one shows nowhere: said in the reply
+    work.document.dropped = deck_service.lost_across(old_slides, slides)
     if carried:
         yield {"type": "step", "id": "carry", "label": f"그대로 둔 장 {carried}개",
                "status": "done"}
         for slide in slides:
             yield {"type": "slide", "slide": slide, "done": True}
+
+
+def _lost_said(lost: list[str], instruction: str) -> str:
+    """「 줄이면서 4일, 3곳이 빠졌습니다. …」: figures a restructure left out of the deck."""
+    if not lost:
+        return ""
+    values = ", ".join(lost)
+    if output_language.typed_in_english(instruction):
+        return (f" {values} no longer appear anywhere in the deck; ask again to put them back "
+                "if they belong there.")
+    return (f" 고치면서 {values}{revise._particle(values, '이', '가')} 슬라이드에서 빠졌습니다. "
+            "필요하면 다시 넣어 달라고 해 주세요.")
 
 
 async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
@@ -7168,7 +7182,8 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                 message = Message(
                     session_id=session_id,
                     role=Role.assistant,
-                    content=rerun_note(turn) or f"{len(written)}장짜리 슬라이드를 만들었습니다.",
+                    content=rerun_note(turn) or f"{len(written)}장짜리 슬라이드를 만들었습니다."
+                    + _lost_said(work.document.dropped if carry_from else [], carry_note),
                     usage={**usage, "credits": credits},
                     model=model["id"],
                     steps=_prelude_steps(skills_event, context_steps) or None,

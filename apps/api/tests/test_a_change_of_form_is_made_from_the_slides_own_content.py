@@ -155,3 +155,71 @@ def test_long_input_is_read_in_linear_time():
     deck.form_only("3장을 표로" + " " * 50000 + "바꿔줘")
     deck.reshaped({"layout": "bullets", "bullets": ["a" + " " * 50000 + ": 1 vs 2"] * 2}, "table")
     assert time.monotonic() - started < 0.5
+
+
+CLOSING = {"id": "z", "layout": "closing", "title": "핵심 내용 및 결의 사항",
+           "body": "여러분의 결정을 부탁드립니다.",
+           "bullets": ["3분기 매출 128억 원, 영업이익률 7.5% 달성",
+                       "4분기 매출 140억 원, 출고 지연 0일 목표",
+                       "영남 물류 안정화 예산 1.5억 원 승인 요청"]}
+DELAY = {"id": "y", "layout": "bullets", "title": "출고 지연 원인",
+         "bullets": ["영남 물류센터 이전으로 출고 업무 중단", "이전 기간 4일 간 출고 지연 발생",
+                     "신규 거래처 3곳 확보에도 불구하고 품질 리스크"]}
+
+
+@pytest.mark.parametrize("words, count", [
+    ("9장 항목을 하나로 줄여줘", 1), ("6장 항목을 두 개로 줄여줘", 2), ("3개로 묶어줘", 3),
+    ("Cut slide 6 to two bullets", 2), ("6장을 줄여줘", 0),
+])
+def test_the_item_count_an_ask_names_is_read(words, count):
+    assert deck.items_asked(words) == count
+
+
+def test_items_merged_into_one_keep_their_facts():
+    emptied = {**CLOSING, "body": "감사합니다"}
+    emptied.pop("bullets")
+    joined = deck.merged_points(CLOSING, emptied, 1)
+    assert len(joined["bullets"]) == 1 and deck.lost_figures(CLOSING, joined) == []
+    assert deck.merged_points(CLOSING, CLOSING, 1) is None
+    started = time.monotonic()
+    deck.items_asked("두" + " " * 50000 + "개로 줄여")
+    assert time.monotonic() - started < 0.5
+
+
+@pytest.mark.asyncio
+async def test_a_slide_cut_to_fewer_items_says_the_figures_it_dropped(monkeypatch):
+    async def rewrite_slide(**_kwargs):
+        return {**DELAY, "bullets": ["영남 물류센터 이전", "출고 지연 발생"]}, {
+            "inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(revise_stages.deck_service, "rewrite_slide", rewrite_slide)
+    bundle = _bundle("2장 항목을 두 개로 줄여줘", [SLIDES[0], DELAY])
+    bundle.plan.order = [1]
+    _ = [e async for e in revise_stages.Rewrite().run(bundle, Context())]
+    assert bundle.document.dropped == ["2장 4일, 3곳"]
+    assert save_stages.revision_reply(bundle.document, None, is_deck=True) == (
+        "2장을 고쳤습니다. 2장에서 4일, 3곳이 빠졌습니다. 필요하면 다시 넣어 달라고 해 주세요.")
+
+
+@pytest.mark.asyncio
+async def test_items_asked_into_one_and_answered_with_none_are_joined(monkeypatch):
+    async def rewrite_slide(**_kwargs):
+        return {k: v for k, v in CLOSING.items() if k != "bullets"} | {"body": "감사합니다"}, {
+            "inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(revise_stages.deck_service, "rewrite_slide", rewrite_slide)
+    bundle = _bundle("2장 항목을 하나로 줄여줘", [SLIDES[0], CLOSING])
+    bundle.plan.order = [1]
+    _ = [e async for e in revise_stages.Rewrite().run(bundle, Context())]
+    slide = bundle.document.sections[1]
+    assert len(slide["bullets"]) == 1 and "128억" in slide["bullets"][0]
+    assert bundle.document.dropped == []
+
+
+def test_a_deck_cut_to_fewer_slides_says_the_figures_it_no_longer_shows():
+    from app.routers import sessions
+
+    assert deck.lost_across([TREND, DELAY], [TREND]) == ["4일", "3곳"]
+    assert sessions._lost_said(["4일", "3곳"], "6장으로 줄여줘") == (
+        " 고치면서 4일, 3곳이 슬라이드에서 빠졌습니다. 필요하면 다시 넣어 달라고 해 주세요.")
+    assert sessions._lost_said([], "6장으로 줄여줘") == ""
