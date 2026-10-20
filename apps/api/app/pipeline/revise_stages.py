@@ -473,7 +473,15 @@ class Rewrite(Base):
                     )
                     if revise.meta_talk(" ".join(strings(written))):
                         raise ValueError("본문 대신 대화 답이 나옴")
-                    if lost := deck_service.lost_figures(part, written, asked):
+                    if (joined := deck_service.merged_points(
+                            part, written, deck_service.items_asked(asked))) is not None:
+                        # 「항목을 하나로」 answered with none: the items joined, not dropped
+                        written = joined
+                    lost = deck_service.lost_figures(part, written, asked)
+                    if not lost and (gone := deck_service.lost_figures(part, written)):
+                        # an ask that may take figures away: not asked again, said
+                        doc.dropped.append(f"{index + 1}장 {', '.join(gone)}")
+                    if lost:
                         # figures the slide showed, left out: asked once more to keep them
                         try:
                             again, more = await deck_service.rewrite_slide(
@@ -539,6 +547,8 @@ class Rewrite(Base):
                                  "section: add no table or figure in its place.")
                     #: a first version that passed the checks but missed a shortening ask
                     passed = ""
+                    #: what the section may state besides itself: the request and material
+                    given = "\n".join([request, *material])
                     for _attempt in range(2):
                         body, used = await report.rewrite_section(
                             request=request,
@@ -605,14 +615,16 @@ class Rewrite(Base):
                                                                 document=True)
                         if noted.strip() and re.sub(r"\s", "", noted) != re.sub(r"\s", "", body):
                             body = noted
+                        asked_of = " / ".join(asks) or _typed(bundle)
+                        if revise.shortening_asked(asked_of):
+                            # the ask restated as a sentence of the part: not its content
+                            body = revise.without_ask_echo(body)
                         # a P0 the rewrite brought in: sent back once, then the part stays
                         faults = revise.new_faults(before, body, heading=label,
                                                    instruction=instruction)
                         if not faults:
-                            short = revise.shortening_faults(
-                                before, body, " / ".join(asks) or _typed(bundle))
-                            if short and not passed and revise.sentences_asked(
-                                    " / ".join(asks) or _typed(bundle))[0]:
+                            short = revise.shortening_faults(before, body, asked_of, given)
+                            if short and not passed and revise.sentences_asked(asked_of)[0]:
                                 # a sentence count asked and missed: sent back once
                                 passed, rejected = body, " / ".join(short)[:600]
                                 continue
@@ -621,18 +633,20 @@ class Rewrite(Base):
                         log.warning("revision of %r failed the checks: %s", logs.safe(label),
                                     logs.safe(rejected))
                     asked_of = " / ".join(asks) or _typed(bundle)
-                    if passed and (faults or revise.shortening_misses(before, body, asked_of)
-                                   > revise.shortening_misses(before, passed, asked_of)):
+                    if passed and (faults or revise.shortening_misses(before, body, asked_of, given)
+                                   > revise.shortening_misses(before, passed, asked_of, given)):
                         # the version sent back came out worse: the first one stands
                         body, faults = passed, []
-                    if not faults and revise.shortening_faults(before, body, asked_of):
-                        # what the shortened part misses: said in the reply
+                    if not faults and revise.shortening_faults(before, body, asked_of, given):
+                        # what the shortened part misses or brought in: said in the reply
                         want, most = revise.sentences_asked(asked_of)
                         got = revise.sentence_count(body)
                         if want and (got > want if most else got != want):
                             doc.counted.append((index + 1, want, got))
                         if lost := revise.lost_facts(before, body):
                             doc.dropped.append(f"{index + 1}절 {', '.join(lost)}")
+                        if added := revise.added_facts(before, body, given):
+                            doc.added.append(f"{index + 1}절 {', '.join(added)}")
                     if faults:
                         bundle.usage["inputTokens"] += spent["inputTokens"]
                         bundle.usage["outputTokens"] += spent["outputTokens"]

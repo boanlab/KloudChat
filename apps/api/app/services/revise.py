@@ -1863,41 +1863,98 @@ def sentence_count(text: str) -> int:
     return count
 
 
+def _whole_text(text: str) -> str:
+    """Everything a part shows as one line of words: prose, list items, table cells, captions
+    and boxes; markup and pictures out."""
+    text = re.sub(r"<[^<>]{0,2000}>|!\[[^\]]*\]\([^)]*\)", " ", text or "")
+    lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("```") or re.fullmatch(r"[|:\- ]{3,}", line):
+            continue
+        lines.append(line.replace("|", " ").replace("**", "").lstrip("#").strip())
+    return " ".join(lines)
+
+
+def shortening_asked(asked: str) -> bool:
+    """Whether the ask makes a part shorter or names its sentence count."""
+    return bool(sentences_asked(asked)[0] or _SHORTENS.search(asked or ""))
+
+
 def lost_facts(old: str, new: str) -> list[str]:
-    """Figures and names `old` states that `new` no longer does, read the same way on both
-    sides (deck.figures_in)."""
+    """Figures and names `old` states that `new` no longer does anywhere (its prose, tables,
+    lists and captions), read the same way on both sides (deck.figures_in)."""
     from app.services import deck
 
-    plain = " ".join(_prose_lines(new))
+    plain = _whole_text(new)
     shown = deck.figures_in(plain)
     names = set(_NAME.findall(plain))
     lost = []
-    for number, unit, said in deck.figures_in(" ".join(_prose_lines(old))):
+    for number, unit, said in deck.figures_in(_whole_text(old)):
         if not any(n == number and (u == unit or not u or not unit) for n, u, _ in shown):
             lost.append(said)
-    old_names = dict.fromkeys(_NAME.findall(" ".join(_prose_lines(old))))
+    old_names = dict.fromkeys(_NAME.findall(_whole_text(old)))
     return lost + [n for n in old_names if n not in names]
 
 
-def shortening_faults(old: str, new: str, asked: str) -> list[str]:
+def added_facts(old: str, new: str, given: str = "") -> list[str]:
+    """Figures and dates `new` states whose number neither the part before (`old`) nor the
+    request and material (`given`) state (「10월 13일 기준」 out of nowhere)."""
+    from app.services import deck
+
+    known = set(re.findall(r"\d+(?:\.\d+)?", f"{_whole_text(old)} {given}".replace(",", "")))
+    return [said for number, _unit, said in deck.figures_in(_whole_text(new))
+            if not set(re.findall(r"\d+(?:\.\d+)?", number)) <= known]
+
+
+#: a part named by its number, as an instruction names it: 「2절을」, 「section 2」
+_PART_NAMED = re.compile(r"\d{1,2}\s?(?:절|장)|\bsection\s{1,3}\d{1,2}\b|\bthis\s{1,3}section\b",
+                         re.I)
+#: what an ask about a part's length is about: 「두 문장」, 「줄여」, 「요청」
+_ASK_TOPIC = re.compile(r"문장|줄여|줄이|요청|유지해야|sentences?|shorten|request", re.I)
+
+
+def without_ask_echo(text: str) -> str:
+    """The part minus sentences that restate the ask instead of saying the part's content
+    (「2절을 두 문장만 유지해야 합니다.」); tables and blocks as they are."""
+    out, block = [], False
+    for line in (text or "").split("\n"):
+        if line.strip().startswith("```"):
+            block = not block
+        if block or line.strip().startswith(("|", "```")) or not _PART_NAMED.search(line):
+            out.append(line)
+            continue
+        kept = [s for s in re.split(r"(?<=[.!?。])\s+", line)
+                if not (_PART_NAMED.search(s) and _ASK_TOPIC.search(s))]
+        out.append(" ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
+def shortening_faults(old: str, new: str, asked: str, given: str = "") -> list[str]:
     """What a shortened part misses of its ask, for the writer: the sentence count asked, the
-    section's figures and names gone. Empty for an ask that does not shorten."""
-    want, most = sentences_asked(asked)
-    if not want and not _SHORTENS.search(asked or ""):
+    section's figures and names gone, figures it brought in. Empty for an ask that does not
+    shorten."""
+    if not shortening_asked(asked):
         return []
+    want, most = sentences_asked(asked)
     faults = []
     got = sentence_count(new)
     if want and (got > want if most else got != want):
-        faults.append(f"The request asks for exactly {want} sentence{'s' if want > 1 else ''}; "
-                      f"this version has {got}")
+        faults.append(f"The section must be exactly {want} sentence{'s' if want > 1 else ''} "
+                      f"of its own content; the last version had {got}")
     if lost := lost_facts(old, new):
         faults.append("Keep the section's facts, said briefly if needed: " + ", ".join(lost))
+    if added := added_facts(old, new, given):
+        faults.append("Add no figure or date the section does not state: " + ", ".join(added))
+    if faults:
+        faults.append("Write none of these remarks, nor the request, into the text")
     return faults
 
 
-def shortening_misses(old: str, new: str, asked: str) -> int:
-    """How far a shortened part is from its ask: a sentence count off, each fact gone."""
+def shortening_misses(old: str, new: str, asked: str, given: str = "") -> int:
+    """How far a shortened part is from its ask: a sentence count off, each fact gone or
+    brought in."""
     want, most = sentences_asked(asked)
     got = sentence_count(new)
     off = bool(want) and (got > want if most else got != want)
-    return int(off) + len(lost_facts(old, new))
+    return int(off) + len(lost_facts(old, new)) + len(added_facts(old, new, given))
