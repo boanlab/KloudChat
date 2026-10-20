@@ -1,5 +1,5 @@
 import { ChevronRight, Globe, Lock } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AgentKnowledge } from '@/components/agents/AgentKnowledge'
 import { GapQuestionsEditor, InheritedQuestions } from '@/components/agents/GapQuestionsEditor'
@@ -288,6 +288,13 @@ export function AgentForm({
   const english = currentLang() === 'en'
 
   const [draft, setDraft] = useState<Agent>(initial)
+  // The draft as of the last edit: a save waiting on an official skill's add reads it.
+  const draftRef = useRef(draft)
+  useLayoutEffect(() => {
+    draftRef.current = draft
+  }, [draft])
+  // Official skills being added: a save waits for them, so the agent keeps them.
+  const adding = useRef(new Set<Promise<unknown>>())
   // A screen a kept skill needs, kept on when clicked; said under the screens.
   const [heldScreen, setHeldScreen] = useState<{ kind: SessionKind; skills: string[] } | null>(null)
   // Set once created: a first knowledge file saves early.
@@ -333,6 +340,7 @@ export function AgentForm({
   const formats = DOC_FORMATS.filter((f) => !RETIRED_FORMATS.includes(f.id) || f.id === initial.docFormat)
   const edit = (next: Agent) => {
     setDone(false)
+    draftRef.current = next
     setDraft(next)
   }
 
@@ -341,14 +349,19 @@ export function AgentForm({
     if (!skillStoreLoaded) void loadSkillStore()
   }, [skillStoreLoaded, loadSkillStore])
   const addOfficial = useCallback(
-    async (storeId: string) => {
-      try {
-        await installSkill(storeId)
-      } catch {
-        setError(t('스킬을 추가하지 못했습니다.'))
-        return null
-      }
-      return useStore.getState().skills.find((mine) => mine.originId === storeId)?.id ?? null
+    (storeId: string) => {
+      const added = (async () => {
+        try {
+          await installSkill(storeId)
+        } catch {
+          setError(t('스킬을 추가하지 못했습니다.'))
+          return null
+        }
+        return useStore.getState().skills.find((mine) => mine.originId === storeId)?.id ?? null
+      })()
+      adding.current.add(added)
+      void added.finally(() => adding.current.delete(added))
+      return added
     },
     [installSkill, t],
   )
@@ -383,6 +396,14 @@ export function AgentForm({
   }, [])
 
   const persist = useCallback(async (): Promise<Agent | null> => {
+    if (adding.current.size > 0) {
+      setSaving(true)
+      // The picker takes the copy before this resumes (its handler was attached first).
+      await Promise.allSettled([...adding.current])
+      setSaving(false)
+    }
+    const draft = draftRef.current
+    const draftSlug = slugify(draft.slug || draft.name)
     if (!draft.name.trim()) {
       setNameError(t('이름을 입력하세요.'))
       nameRef.current?.focus()
@@ -436,7 +457,7 @@ export function AgentForm({
     } finally {
       setSaving(false)
     }
-  }, [draft, draftSlug, upsertAgent, t, reveal, creating, savedId, loadWorkspace, processDirty, process])
+  }, [upsertAgent, t, reveal, creating, savedId, loadWorkspace, processDirty, process])
 
   const save = async () => {
     // Saved with the agent on its first save (`persist`).
@@ -813,7 +834,7 @@ export function AgentForm({
           >
             <ActiveSkillPicker
               value={draft.activeSkillIds}
-              onChange={(activeSkillIds) => edit(withSkillSurface(draft, activeSkillIds, useStore.getState().skills))}
+              onChange={(activeSkillIds) => edit(withSkillSurface(draftRef.current, activeSkillIds, useStore.getState().skills))}
               skills={skills}
               store={skillStore}
               onAddOfficial={addOfficial}
@@ -824,7 +845,7 @@ export function AgentForm({
           <Block label={t('입력창에서 고를 수 있는 스킬')}>
             <SkillPicker
               value={draft.skillIds}
-              onChange={(skillIds) => edit({ ...draft, skillIds })}
+              onChange={(skillIds) => edit({ ...draftRef.current, skillIds })}
               skills={skills}
               store={skillStore}
               onAddOfficial={addOfficial}

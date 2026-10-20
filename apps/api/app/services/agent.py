@@ -326,15 +326,19 @@ _PREAMBLE_SENTENCE = re.compile(
     r"(?:했|하였|었)습니다|합니다)\s?[.!…]?$")
 
 
-def _pure_narration(text: str, *, request: str) -> bool:
+def _pure_narration(text: str, *, request: str, korean: bool = False) -> bool:
     """Whether short text written beside a tool call only narrates the work (「검색해
     보겠습니다.」): no table, list or heading, and no figure outside a line about the work.
-    Text with content stays."""
+    Text with content stays. Beside a Korean answer, a line with no Korean at all is the
+    model thinking aloud (「I need to figure out what date next Monday falls on…」)."""
     body = (text or "").strip()
     if not body:
         return True
     if _CONTENT_LINE.search(body):
         return False
+    if (korean and "```" not in body and not _HANGUL_CHARS.search(body)
+            and len(_LATIN_CHARS.findall(body)) >= 10):
+        return True
     if not _DIGIT.search(body):
         return True
     if internal_words.is_intent_only(body, request=request):
@@ -2159,7 +2163,7 @@ async def run_turn(
             # Short pre-tool narration taken back; content (short or long) held.
             spoken = "".join(hop_text)
             if len(spoken) < _NARRATION_CHARS and _pure_narration(
-                    spoken, request=ctx.request or ""):
+                    spoken, request=ctx.request or "", korean=reply_korean):
                 del answer_text[len(answer_text) - len(hop_text) :]
                 yield {"type": "retract", "text": spoken}
             elif len(spoken) >= _NARRATION_CHARS and _DIGIT.search(spoken):
