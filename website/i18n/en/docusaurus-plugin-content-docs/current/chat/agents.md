@@ -49,6 +49,16 @@ Pick one of three under **How it works** in the create-agent form. A new agent a
 - **Start from a base process**: follows the working order of a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …). When no base process can be picked this option is hidden; it shows only on an agent that already started from one (which keeps it). A new agent does the same job with **Answer directly** plus **Skills kept on** and bundles. To get a file, set **Advanced** › first screen to **Report** and tick **Export a file when done** under Finish.
 - **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one "This agent" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order.
 
+## Condition steps and run records
+
+A **condition** step in a custom order looks at what earlier steps produced and goes on along one branch only. Steps are joined by lines; a condition has one line per branch.
+
+- **Rule**: compares a value an earlier step left (greater than · equals · is empty · contains). No model is called; the branches are **Yes** and **No**. Values: the request (attachments · attachment types · text), an agent (result kind · sections · characters · text), a calculation (result), a check (found · left), a review (findings · fixed · left), the question card (blanks · answers), the outline approval (sections).
+- **AI judgement**: the judge model answers your question by picking one of 2–4 branches, and its reason goes into the run record. A strict-local conversation uses only models that stay inside; the tokens count toward that turn's credits.
+- **No value**: when the step a rule reads did not run or left no value, the rule takes **No**; when the judgement names no branch, the last branch is taken. The record says why.
+- **Checked before saving**: a line back to an earlier step (a loop), a branch with nothing after it, a step the first step never reaches, an unfinished condition, or two lines out of a step that is not a condition stop the save. Every branch's last agent must make the same thing (a document or an answer), and no condition may sit between the question card and its agent. Bundles hold no conditions.
+- **Run records**: steps on a branch not taken are recorded as skipped. Each run shows every step's status, a short summary of what it got and handed on, and the branch taken; only the person who ran it sees it.
+
 ## Bundles
 
 A bundle groups a few things an agent does before and after writing. Each bundle is one checkbox under **Extra work** in the create-agent form; **Details** opens its items as checkboxes.

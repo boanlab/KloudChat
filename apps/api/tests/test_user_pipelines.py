@@ -566,8 +566,9 @@ def test_the_migration_adds_and_drops_user_pipelines_on_sqlite():
         with Operations.context(MigrationContext.configure(conn)):
             migration.upgrade()
         columns = {c["name"] for c in sa.inspect(conn).get_columns("user_pipelines")}
-        # `agent_id` and `kind` came later (0060).
-        assert {c.name for c in UserPipeline.__table__.columns} - {"agent_id", "kind"} == columns
+        # `agent_id` and `kind` came later (0060), `edges` with branches (0077).
+        assert {c.name for c in UserPipeline.__table__.columns} - {
+            "agent_id", "kind", "edges"} == columns
         assert "pipeline_id" in {c["name"] for c in sa.inspect(conn).get_columns("agents")}
         assert "pipeline_id" in {c["name"] for c in sa.inspect(conn).get_columns("sessions")}
         with Operations.context(MigrationContext.configure(conn)):

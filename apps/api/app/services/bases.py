@@ -173,6 +173,7 @@ def process_of(agent, row, *, owner: bool, known: dict[str, bundle_service.Bundl
     }
     if owner:
         out["steps"] = steps
+        out["edges"] = compose.normalize_edges(getattr(row, "edges", None), steps)
         out["pipelineId"] = row.id
     return out
 
