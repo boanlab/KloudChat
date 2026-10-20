@@ -7383,15 +7383,28 @@ async def _revise_pass(work: PipelineBundle, pipe: Any, recorder: pipeline_runs.
     runner = PipelineRunner(_revise_stages(pipe), name=f"{pipe.name}.revise", recorder=recorder)
     runner.attempts = dict(attempts or {})
     recorder.begin(work, carried=carried)
+    said, errors = [], []
     try:
         async for event in runner.run(work, PipelineContext(options=dict(pipe.options),
                                                             run_id=recorder.run_id),
                                       start=start):
+            if event.get("type") == "delta":
+                said.append(str(event.get("text") or ""))
+            elif event.get("type") == "error":
+                errors.append(str(event.get("message") or ""))
             yield chat_service.sse(event)
     finally:
         if parent is not None:
             _carry_records(work, parent, start)
     saved = work.document.saved or {}
+    if not saved.get("messageId"):
+        # a turn that ended before the save (nothing to change, a failed rewrite) still
+        # leaves its reply, so a reload shows it and the composer is free
+        message_id = await _store_unsaved_revision(
+            work, session_id=session_id, text="".join(said).strip(),
+            error=" ".join(e for e in errors if e).strip())
+        if message_id:
+            saved = {**saved, "messageId": message_id}
     await _persist_run(work, recorder, session_id=session_id, user_id=user_id, saved=saved,
                        parent=parent, from_stage=start)
     if any(r.status == "stopped" for r in work.steps):
@@ -7409,6 +7422,33 @@ async def _revise_pass(work: PipelineBundle, pipe: Any, recorder: pipeline_runs.
     yield chat_service.sse({"type": "usage", **work.usage,
                             "credits": int(saved.get("credits") or 0)})
     yield chat_service.sse({"type": "done"})
+
+
+async def _store_unsaved_revision(work: PipelineBundle, *, session_id: str, text: str,
+                                  error: str) -> str | None:
+    """The reply of a revise turn that stopped before `revise-save`: what it said, marked as
+    no answer when it failed or said nothing; best effort."""
+    turn = work.request.turn
+    model = turn.get("model") or {}
+    try:
+        async with SessionLocal() as db:
+            session = await db.get(ChatSession, session_id)
+            if session is None:
+                return None
+            message = Message(
+                session_id=session_id, role=Role.assistant, content=text or error,
+                failure=TurnFailure.no_answer if error or not text else None,
+                usage={**work.usage, "credits": 0}, model=model.get("id"),
+                routing=turn.get("routing"),
+            )
+            db.add(message)
+            session.updated_at = utcnow()
+            db.add(session)
+            await db.commit()
+            return message.id
+    except Exception:  # noqa: BLE001 — the live reply already reached the person
+        log.exception("could not keep the reply of a stopped revision")
+        return None
 
 
 def _carry_records(work: PipelineBundle, parent: Any, start: str | None) -> None:

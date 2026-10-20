@@ -368,6 +368,8 @@ class Rewrite(Base):
         names, widened = _names(bundle), bundle.plan.widened
         settled_blocks = consistency.blocks_for_rewrite(bundle.computed.prepass)
         doc_format = bundle.spec.format_id
+        #: a part whose rewrite came back empty, unparsable or as talk
+        unreadable = False
         for index in bundle.plan.order:
             part = parts[index]
             label = names[index] or f"{index + 1}"
@@ -546,6 +548,7 @@ class Rewrite(Base):
                     }
             except Exception as exc:  # noqa: BLE001 — one bad part is not a failed turn
                 log.warning("revision of %r failed: %s", logs.safe(label), logs.safe(exc))
+                unreadable = True
                 yield {"type": "step", "id": f"r{index}", "label": label, "status": "error"}
                 continue
             bundle.usage["inputTokens"] += spent["inputTokens"]
@@ -577,7 +580,9 @@ class Rewrite(Base):
                              parts[i], revise.slide_clause(instruction, i))]
         if not doc.changed:
             said = ("고친 글이 검사를 통과하지 못해 이전 버전을 그대로 두었습니다. "
-                    "다시 요청해 주세요." if doc.failed else "고치지 못했습니다.")
+                    "다시 요청해 주세요." if doc.failed
+                    else "모델이 보낸 답을 읽지 못해 고치지 못했습니다. 다시 요청해 주세요."
+                    if unreadable else "고치지 못했습니다. 다시 요청해 주세요.")
             for event in _stopped(bundle, error=said):
                 yield event
             raise Stop("nothing changed")
