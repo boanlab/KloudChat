@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -331,6 +332,27 @@ def catalogue() -> str:
     return "\n".join(f"- {p.name}: {p.use}" for p in PATTERNS)
 
 
+#: Latin letters drawn about this much narrower than Hangul at one size
+_LATIN_ROOM = 1.6
+#: words a cut heading does not end on
+_DANGLING = frozenset({"a", "an", "the", "to", "of", "for", "and", "or", "on", "in", "at",
+                       "with", "by", "from", "as", "vs", "vs."})
+
+
+def fit(text: str, limit: int) -> str:
+    """`text` within `limit` (Hangul-wide characters; Latin text gets more room), cut at the
+    last word that fits (「Route short, routine drafts」, not 「Route short, routine dra」)."""
+    if len(text) > limit and not re.search(r"[가-힣ㄱ-ㅎ一-鿿]", text):
+        limit = int(limit * _LATIN_ROOM)
+    if len(text) <= limit:
+        return text
+    at = text.rfind(" ", 0, limit + 1)
+    words = (text[:at] if at > limit // 2 else text[:limit]).split(" ")
+    while len(words) > 1 and words[-1].lower() in _DANGLING:
+        words.pop()  # 「… documents to」 reads cut off
+    return " ".join(words).rstrip(" ,，;:·—–-(")
+
+
 def clean_pairs(name: str, value: Any) -> list[list[str]]:
     """Clamped `items`; half-empty pairs dropped (checklist right side may be empty)."""
     pattern = BY_NAME[name]
@@ -344,8 +366,8 @@ def clean_pairs(name: str, value: Any) -> list[list[str]]:
             item = list(item.values())
         if not isinstance(item, list) or not item:
             continue
-        left = " ".join(str(item[0]).split())[: pattern.left_max]
-        right = " ".join(str(item[1]).split())[: pattern.right_max] if len(item) > 1 else ""
+        left = fit(" ".join(str(item[0]).split()), pattern.left_max)
+        right = fit(" ".join(str(item[1]).split()), pattern.right_max) if len(item) > 1 else ""
         # copied table row is not an item
         if "|" in left or right.count("|") >= 2:
             continue

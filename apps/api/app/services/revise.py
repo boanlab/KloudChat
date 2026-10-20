@@ -197,6 +197,7 @@ async def plan(
     }
     decided = within_named_parts(decided, parts, message)
     decided = named_target(into_existing_part(decided, parts, message), parts, message)
+    decided = numbered_target(decided, parts, message)
     decided = count_change(decided, parts, message)
     decided = notes_everywhere(decided, parts, message)
     return place_insert(decided, parts, message)
@@ -880,9 +881,45 @@ _ASK_BREAK = re.compile(
     r"|,\s*(?=\d{1,2}\s?(?:번째\s?)?(?:장|슬라이드))")
 
 
+#: a slide or section named by number in English: 「slide 4」, 「slides 2-3」, 「the 4th slide」
+_EN_PART_REF = re.compile(
+    r"\b(?:slides?|sections?|pages?)\s{1,3}(\d{1,2})"
+    r"(?:\s{0,3}(?:-|–|to|and|&)\s{0,3}(\d{1,2}))?(?!\d)"
+    r"|\bthe\s{1,3}(\d{1,2}|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)"
+    r"(?:st|nd|rd|th)?\s{1,3}(?:slide|section|page)\b", re.I)
+_ORDINAL = {w: i + 1 for i, w in enumerate(
+    "first second third fourth fifth sixth seventh eighth ninth tenth".split())}
+
+
+def _english_refs(text: str) -> set[int]:
+    out: set[int] = set()
+    for first, last, nth in _EN_PART_REF.findall(text or ""):
+        if nth:
+            out.add(_ORDINAL.get(nth.lower()) or int(nth))
+        elif last and int(first) < int(last) <= int(first) + 9:
+            out.update(range(int(first), int(last) + 1))
+        else:
+            out.update({int(first), *([int(last)] if last else [])})
+    return out
+
+
 def named_slides(text: str) -> set[int]:
-    """Slide numbers (one-based) the words name."""
-    return {int(a or b) for a, b in _SLIDE_REF.findall(text or "")}
+    """Slide numbers (one-based) the words name, in Korean or English."""
+    return {int(a or b) for a, b in _SLIDE_REF.findall(text or "")} | _english_refs(text)
+
+
+def numbered_target(plan: Plan, parts: list[str], message: str) -> Plan:
+    """The parts the words name by number (「4장」, 「2절」, 「slide 4」) as the targets, whatever
+    the planner picked; a structure change is left to it."""
+    if plan.scope not in ("parts", "whole") or _STRUCTURAL_ASK.search(message or ""):
+        return plan
+    numbers = named_slides(message) | {int(n) for n in _SECTION_REF.findall(message or "")}
+    targets = sorted(n - 1 for n in numbers if 1 <= n <= len(parts))
+    if not targets or len(targets) != len(numbers) or len(targets) > MAX_TARGETS:
+        return plan
+    if plan.scope == "parts" and plan.targets == targets:
+        return plan
+    return Plan(scope="parts", targets=targets, note=plan.note, usage=plan.usage)
 
 
 def slide_clause(instruction: str, index: int) -> str:
@@ -890,7 +927,7 @@ def slide_clause(instruction: str, index: int) -> str:
     바꿔줘. 그리고 8장 그림은 빼줘.」 → 「8장 그림은 빼줘.」 for the eighth. An instruction naming
     no slide number is meant whole for every target."""
     clauses = [c.strip() for c in _ASK_BREAK.split(instruction or "") if c and c.strip()]
-    named = [(c, {int(a or b) for a, b in _SLIDE_REF.findall(c)}) for c in clauses]
+    named = [(c, named_slides(c)) for c in clauses]
     if not any(numbers for _, numbers in named):
         return instruction
     mine = [c for c, numbers in named if index + 1 in numbers]
@@ -1330,7 +1367,8 @@ def section_asks(instruction: str, parts: list[str], texts: list[str]
     out: dict[int, list[str]] = {}
     summary = 0
     for clause in clauses:
-        numbered = {int(n) - 1 for n in _SECTION_REF.findall(clause)}
+        numbered = {int(n) - 1 for n in _SECTION_REF.findall(clause)} | {
+            n - 1 for n in _english_refs(clause)}
         if any(not 0 <= n < len(parts) for n in numbered):
             return None
         named = {i for i, name in enumerate(parts)
@@ -1516,6 +1554,25 @@ def _drop_references(text: str, name: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
 
 
+#: a sentence pointing at a table or figure by place: 「아래 표와 같습니다」, 「위 그림처럼」
+_POINTER = {kind: re.compile(rf"(?:아래|위|다음|하단|상단)(?:의)?\s?{kind}(?!{not_it})")
+            for kind, not_it in (("표", "현|준|시|정|본|기|명|지|면"), ("그림", "자"))}
+
+
+def _drop_pointers(text: str, kind: str) -> str:
+    """`text` without its short sentences pointing at a `kind` by place (none is left)."""
+    out = []
+    for line in text.split("\n"):
+        if line.lstrip().startswith(("|", "![", "```")) or not _POINTER[kind].search(line):
+            out.append(line)
+            continue
+        kept = [x for x in _SENTENCE_SPLIT.split(line)
+                if not (_POINTER[kind].search(x) and len(x) <= 80)]
+        if kept:
+            out.append(" ".join(kept))
+    return "\n".join(out)
+
+
 def drop_numbered(parts: list[dict], asked: list[tuple[str, int]]
                   ) -> tuple[list[dict], list[str], list[str]]:
     """`(parts, taken, absent)`: the asked tables and figures removed by hand, with their
@@ -1553,6 +1610,11 @@ def drop_numbered(parts: list[dict], asked: list[tuple[str, int]]
             for start, end in sorted(spans[index], reverse=True):
                 del lines[start:end]
             text = "\n".join(lines)
+            for kind in ("표", "그림"):
+                if any(t.startswith(f"{index + 1}절의 {kind} ") for t in taken) and not any(
+                        b[0] == kind for b in _blocks_in(text)):
+                    # 「아래 표와 같습니다」 with no table left under it
+                    text = _drop_pointers(text, kind)
         for name in (t.split("의 ", 1)[1] for t in taken):
             text = _drop_references(text, name)
         text = re.sub(r"\n{3,}", "\n\n", text).strip("\n")
