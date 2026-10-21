@@ -3921,15 +3921,19 @@ def _agent_web_search(agent: WorkspaceAgent | None) -> bool | str:
 
 
 def _sets_card_aside(session: ChatSession, payload: SendMessage) -> bool:
-    """Whether a typed message while a question card is open on a finished document is not
-    the card's answer: a question about the document (「4장 수치는 어디서 나온 거야?」) or an
-    edit that names its part by number (「4장을 번호 목록으로 바꿔줘」)."""
+    """Whether a typed message while a card is open on a finished document is not the card's
+    answer: a question about the document (「4장 수치는 어디서 나온 거야?」), or, on a question
+    card, an edit that names its part by number (「4장을 번호 목록으로 바꿔줘」)."""
     pending = session.pending or {}
-    if (pending.get("stage") != "clarify" or not session.artifact_id or payload.approve
+    if (not pending or not session.artifact_id or payload.approve
             or payload.answers is not None or not _plans_first(session)):
         return False
     text = payload.content or ""
-    return revise.asks_question(text) or bool(revise.asks_edit(text) and (
+    if revise.asks_question(text):
+        # any card (questions, a proposed outline): a question is not its answer or a note
+        return True
+    # a numbered edit leaves a question card; on a proposed outline it may be a note on it
+    return pending.get("stage") == "clarify" and bool(revise.asks_edit(text) and (
         revise.named_slides(text) or revise.numbered_parts(text, [""] * 50)))
 
 
