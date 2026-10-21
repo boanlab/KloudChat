@@ -3690,6 +3690,10 @@ async def write(
             trace.extend(bundle.records)
 
 
+#: a picture inlined as data: its bytes are not words to revise
+_INLINE_PICTURE = re.compile(r"!\[[^\]]{0,200}\]\(data:[^)]*\)")
+
+
 async def rewrite_section(
     *,
     request: str,
@@ -3735,6 +3739,13 @@ async def rewrite_section(
         genre=genre,
     )
     prompt = _shaped(prompt, genre)
+    current = str(next((s.get("content") for s in sections if s.get("id") == target_id), "")
+                  or "").strip()
+    if current:
+        # the section's own text: what is revised, so it stays this section (not a neighbour)
+        prompt += ("\n\nThis section as it stands now (revise this text; it stays about the same "
+                   "subject, and other sections keep theirs):\n" + _INLINE_PICTURE.sub(
+                       "", current)[:4000])
     if note.strip():
         # last and labelled, else read as the original request
         prompt += (

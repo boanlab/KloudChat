@@ -490,7 +490,14 @@ captions and list rows are not), a figure is a number with its unit or counter (
 items (「2장 항목을 하나로 합쳐줘」, "Merge the items on slide 4 into one") is that slide's edit,
 done by code (`deck.joined_items`), not a restructure; "Shrink to 3 slides" is read like
 「3장으로 줄여줘」. A question or a numbered edit typed while a question card is open is not
-the card's answer (`sessions._sets_card_aside`). A title the person asked to change (「제목을 …로 바꿔 줘」, "change the title to …") is
+the card's answer (`sessions._sets_card_aside`); a question leaves any open card as it was.
+A section rewrite is shown the section's own current text, so a shortened section stays
+itself; a line to the person about the rewrite is dropped (`revise.without_preamble`), and a
+shortened section that reads as another section or points at a table or figure it lacks is
+sent back once, then kept as it was (`revise.drift_faults`); figures and boxes a shortening
+drops are named (`revise.removed_blocks`). A table's rows are not joined as items: that ask
+is said and the slide kept. English figures are read whole (「Qwen3.8」 holds no figure,
+「1K」 = 「1,000」). A title the person asked to change (「제목을 …로 바꿔 줘」, "change the title to …") is
 taken, quoted text verbatim. 「위험 장을 하나 추가해 줘」 ("add a risk slide") is an `insert`: the
 revision planner names the new part and its place, the router slots a blank
 part in and rewrites only it, so the other slides stay byte for byte. A restructure (「6장으로 줄여」, "cut it to six slides") is told to hit the count

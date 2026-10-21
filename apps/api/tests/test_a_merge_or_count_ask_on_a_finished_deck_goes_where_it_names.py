@@ -84,7 +84,8 @@ def test_a_question_or_a_named_edit_while_a_card_is_open_is_not_its_answer():
     assert sessions._sets_card_aside(_session(), _payload("4장을 번호 목록으로 바꿔줘"))
     assert not sessions._sets_card_aside(_session(), _payload("4장과 5장"))
     assert not sessions._sets_card_aside(_session(), _payload("모두 한 장으로"))
-    assert not sessions._sets_card_aside(_session("plan"), _payload("4장 수치는 어디서 나온 거야?"))
+    # a question leaves any card, a proposed outline too
+    assert sessions._sets_card_aside(_session("plan"), _payload("4장 수치는 어디서 나온 거야?"))
 
 
 def test_a_drawn_diagrams_figures_are_shown():

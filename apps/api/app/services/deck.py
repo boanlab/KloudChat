@@ -5106,7 +5106,7 @@ _NOT_SHOWN = frozenset({"id", "notes", "accent", "layout", "image", "diagram", "
 #: a figure as shown: currency, number, unit (「$4」, 「64 percent」, 「27 point」, 「420만」); a
 #: Korean word after the number is read whole (「3분기」 is not 「3분」)
 _SHOWN_FIGURE = re.compile(
-    r"(?<![\d.,/])([$€₩£]\s?)?(\d{1,2}/\d{1,2}(?![\d/])|\d{1,3}(?:,\d{3})*(?:\.\d{1,3})?)"
+    r"(?<![\dA-Za-z.,/])([$€₩£]\s?)?(\d{1,2}/\d{1,2}(?![\d/])|\d{1,3}(?:,\d{3})*(?:\.\d{1,3})?)"
     r"(?![\d,])( ?(?:%p?|percent|per\s?cent|points?|pts?|pp)"
     r"|(?:[bkmxsh]|ms|gb|tb|pg)\b| ?[가-힣]{1,6})?", re.I)
 #: Korean units a number carries, longest first (「분기」 before 「분」)
@@ -5184,23 +5184,26 @@ def figures_in(words: str) -> list[tuple[str, str, str]]:
     return [(number, unit, said) for (number, unit), said in out.items()]
 
 
-#: Korean money units in won
-_WON = {"억": 100_000_000, "만": 10_000, "천": 1_000, "원": 1}
+#: Korean money units in won, and the thousands and billions of English figures (「1K」)
+_SCALE = {"억": 100_000_000, "만": 10_000, "천": 1_000, "원": 1, "k": 1_000, "b": 1_000_000_000}
 #: 「38억 5천만」, 「1억 2,000만」: one amount in two parts
 _COMPOUND_WON = re.compile(r"(\d{1,4}(?:\.\d{1,3})?)\s?억\s?(\d{1,3}(?:,\d{3})?)\s?(천만|백만|만)")
 
 
-def _won(number: str, unit: str) -> float | None:
+def _value(number: str, unit: str) -> float | None:
+    """The figure as one number, its scale applied (「38.5억」, 「1K」, a bare 「1,000」)."""
     try:
-        return round(float(number) * _WON[unit], 2) if unit in _WON else None
+        if unit in _SCALE or not unit:
+            return round(float(number) * _SCALE.get(unit, 1), 2)
     except ValueError:
         return None
+    return None
 
 
 def amounts_in(words: str) -> set[float]:
-    """Money in `words` as won, however it is written (「38.5억」, 「38억 5천만」,
-    「3,850,000,000원」)."""
-    out = {v for number, unit, _ in figures_in(words) if (v := _won(number, unit)) is not None}
+    """The figures in `words` as numbers, however they are written (「38.5억」, 「38억 5천만」,
+    「3,850,000,000원」; 「1K」, 「1,000」)."""
+    out = {v for number, unit, _ in figures_in(words) if (v := _value(number, unit)) is not None}
     scale = {"천만": 10_000_000, "백만": 1_000_000, "만": 10_000}
     for m in _COMPOUND_WON.finditer(words):
         out.add(round(float(m.group(1)) * 100_000_000
@@ -5215,7 +5218,7 @@ def figure_kept(figure: tuple[str, str, str], shown: list[tuple[str, str, str]],
     number, unit, _ = figure
     if any(n == number and (u == unit or not u or not unit) for n, u, _ in shown):
         return True
-    return (value := _won(number, unit)) is not None and value in amounts
+    return unit in _SCALE and (value := _value(number, unit)) is not None and value in amounts
 
 
 def _shown_words(slide: dict) -> str:

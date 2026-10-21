@@ -1976,3 +1976,76 @@ def shortening_misses(old: str, new: str, asked: str, given: str = "") -> int:
     got = sentence_count(new)
     off = bool(want) and (got > want if most else got != want)
     return int(off) + len(lost_facts(old, new)) + len(added_facts(old, new, given))
+
+
+#: a line addressed to the person about the rewrite (「다음은 요청하신 대로 … 절입니다.」)
+_PREAMBLE = re.compile(
+    r"^\s{0,4}(?:(?:다음은|아래는|이하는)[^\n]{0,120}?(?:요청|축약|줄인|줄였|수정|고친|다듬은|버전|"
+    r"절입니다|내용입니다)|[^\n]{0,80}?요청하신\s?대로[^\n]{0,80}?(?:입니다|습니다)[.:]?\s{0,2}$"
+    r"|(?:here\s+is|below\s+is)\b[^\n]{0,120}?\b(?:shortened|revised|rewritten|version|section)"
+    r")", re.I)
+_NUMBERED_REF = re.compile(r"(?<![가-힣])(표|그림)\s?(\d{1,2})(?!\d)")
+
+
+def without_preamble(text: str) -> str:
+    """The part minus lines that speak to the person about the rewrite instead of to the
+    reader (「다음은 요청하신 대로 … 절입니다.」)."""
+    lines = (text or "").split("\n")
+    kept = [line for line in lines if not (len(line) <= 200 and _PREAMBLE.match(line))]
+    if len(kept) == len(lines):
+        return text
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+
+
+def _terms(text: str) -> set[str]:
+    """A part's own terms: Hangul words by their first two syllables, names, figures."""
+    from app.services import deck
+
+    plain = _whole_text(text)
+    words = {w[:2] for w in re.findall(r"[가-힣]{2,}", plain)} - _COMMON_TERMS
+    return words | set(_NAME.findall(plain)) | {s for *_, s in deck.figures_in(plain)}
+
+
+#: words any section of a report uses
+_COMMON_TERMS = frozenset({"있습", "합니", "입니", "니다", "있으", "하고", "하여", "위한", "대한",
+                           "통해", "이번", "다음", "현재", "진행", "필요", "관련", "내용", "주요"})
+
+
+def drift_faults(old: str, new: str, others: list[str]) -> list[str]:
+    """Why a rewritten part is no longer itself, for the writer: its terms are another
+    part's, or it points at a table or figure that is not there."""
+    faults = []
+    terms, own = _terms(new), _terms(old)
+    if terms and own:
+        mine = len(terms & own) / len(terms)
+        theirs = max((len(terms & _terms(o)) / len(terms) for o in others if o.strip()),
+                     default=0.0)
+        if mine < 0.5 and theirs > mine:
+            faults.append("It reads as another section's content: keep to this section's own "
+                          "subject and facts as it stands now")
+    shown = {kind for kind, *_ in _blocks_in(new)}
+    if any(kind not in shown and pointer.search(new) for kind, pointer in _POINTER.items()):
+        faults.append("It points at a table or figure above or below that this section does "
+                      "not have")
+    numbered = {(kind, n) for text in (new, *others) for kind, _, _, n in _blocks_in(text)
+                if n is not None}
+    if missing := sorted({f"{k} {n}" for k, n in _NUMBERED_REF.findall(new)
+                          if (k, int(n)) not in numbered}):
+        faults.append("It cites " + ", ".join(missing) + ", which the document does not have")
+    return faults
+
+
+#: a box in a part: its first line is its title
+_CALLOUT = re.compile(r"```callout\n([^\n`]{1,80})\n")
+
+
+def removed_blocks(old: str, new: str, part: int) -> list[str]:
+    """Numbered figures and boxes `old` showed that `new` no longer does (「2절의 그림 1」,
+    「2절의 「단가 승인 지연 시 협상 교착」 상자」), for the reply."""
+    kept = {(k, n) for k, _, _, n in _blocks_in(new)}
+    out = [f"{part}절의 {k} {n}" for k, _, _, n in _blocks_in(old)
+           if k == "그림" and n is not None and (k, n) not in kept]
+    had, has = _CALLOUT.findall(old), _CALLOUT.findall(new)
+    # a box retitled is still there: only as many named as are gone
+    gone = [t for t in had if t not in has][:max(0, len(had) - len(has))]
+    return out + [f"{part}절의 「{t}」 상자" for t in gone]
