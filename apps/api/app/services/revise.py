@@ -894,6 +894,11 @@ def without_counts(request: str) -> str:
 _TARGET_COUNT = re.compile(
     r"(?:총|전체(?:를)?|모두)?\s{0,8}(\d{1,3})\s{0,8}(?:장|절|쪽|페이지|슬라이드)\s{0,8}(?:으로|로)\s{0,8}"
     r"(?:줄여|늘려|맞춰|만들|다시|재구성|정리|압축|요약)"
+    # 「Shrink to 3 slides」, 「cut the deck down to 6 slides」, 「make it 8 slides」
+    r"|\b(?:shrink|shorten|cut|reduce|trim|condense|expand|extend|grow|make|bring)\b"
+    r"(?:\s{1,3}[a-z]{1,8}){0,3}?\s{1,3}(?:(?:down|up)\s{1,3})?(?:to|into)?\s{0,3}"
+    r"(\d{1,3})\s{1,3}(?:slides|sections|pages)\b",
+    re.I,
 )
 
 
@@ -951,13 +956,30 @@ _RESTRUCTURE = re.compile(
     r"\d{1,3}\s{0,4}(?:장|절|쪽|페이지|슬라이드)\s{0,4}(?:으로|로|더|짜리|만)|장\s?수|"
     r"늘려|늘리|처음부터|새로\s{0,4}(?:써|작성|만들)|다시\s{0,4}(?:써|짜|만들)|전체|전부|모든|"
     r"\b(?:add|insert|remove|delete|drop|merge|split|reorder|restructure|outline|more|fewer|"
-    r"whole|entire|all\s{1,4}slides|start\s{1,4}over|from\s{1,4}scratch)\b", re.I)
+    r"whole|entire|all\s{1,4}slides|start\s{1,4}over|from\s{1,4}scratch)\b"
+    r"|\b(?:to|into)\s{1,3}\d{1,3}\s{1,3}(?:slides|sections|pages)\b", re.I)
+#: words that join or split, which within one named part act on its items
+_JOINS = re.compile(r"합쳐|합치|병합|나눠|분리|묶어|묶|\b(?:merge|split|combine|join)\b", re.I)
+#: a part's own items: 「항목」, 「bullets」
+_ITEM_WORD = re.compile(r"항목|요점|글머리|불릿|\b(?:items?|bullets?|points?)\b", re.I)
+
+
+def joins_items(message: str) -> bool:
+    """Whether the words join or split a part's items (「항목을 하나로 합쳐줘」, 「merge the
+    bullets」)."""
+    return bool(_JOINS.search(message or "") and _ITEM_WORD.search(message or ""))
 
 
 def asks_restructure(message: str) -> bool:
     """Whether the words ask for a new structure or the whole document anew, not one part's
-    change: only these may re-plan the outline."""
-    return bool(_RESTRUCTURE.search(" ".join((message or "").split())))
+    change: only these may re-plan the outline. Items of one named part joined or split
+    (「2장 항목을 하나로 합쳐줘」, 「Merge the items on slide 4 into one」) are that part's edit."""
+    text = " ".join((message or "").split())
+    found = [m.group(0) for m in _RESTRUCTURE.finditer(text)]
+    if found and all(_JOINS.fullmatch(f) for f in found) and _ITEM_WORD.search(text) and len(
+            named_slides(text) | {int(n) for n in _SECTION_REF.findall(text)}) == 1:
+        return False
+    return bool(found)
 
 
 def numbered_parts(message: str, parts: list[str]) -> list[int] | None:
@@ -1071,7 +1093,7 @@ def count_change(plan: Plan, parts: list[str], message: str) -> Plan:
     match = _TARGET_COUNT.search(" ".join((message or "").split()))
     if not match:
         return plan
-    wanted = int(match.group(1))
+    wanted = int(match.group(1) or match.group(2))
     if wanted <= 0 or wanted == len(parts):
         return plan
     # One count only, word-led so 「- 6장으로」 isn't a range.
@@ -1841,22 +1863,20 @@ def sentences_asked(clause: str) -> tuple[int, bool]:
     return count, bool(m.group("most"))
 
 
-def _prose_lines(text: str) -> list[str]:
-    """A part's text lines, minus tables, blocks, headings and list marks."""
-    text = re.sub(r"```[\s\S]*?(?:```|\Z)|<[^<>]{0,2000}>|!\[[^\]]*\]\([^)]*\)", " ", text or "")
-    lines = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith(("|", "#")):
-            continue
-        lines.append(re.sub(r"^(?:[-*•·]|\d{1,2}[.)])\s+", "", line).replace("**", ""))
-    return lines
+#: a line that is not prose: a caption (「표 2. 진행 사항」), a bold label, a list row
+_NOT_PROSE = re.compile(r"(?:표|그림|table|figure)\s?\d{1,3}\s?[.:)]|\*\*[^*\n]{1,200}\*\*$"
+                        r"|(?:[-*•·]|\d{1,2}[.)])\s", re.I)
 
 
 def sentence_count(text: str) -> int:
-    """Sentences in a part's text: each end mark, and a line that stops without one."""
+    """Sentences of a part's prose: each end mark, and a line that stops without one; tables,
+    captions, list rows and blocks are not sentences."""
+    text = re.sub(r"```[\s\S]*?(?:```|\Z)|<[^<>]{0,2000}>|!\[[^\]]*\]\([^)]*\)", " ", text or "")
     count = 0
-    for line in _prose_lines(text):
+    for line in (raw.strip() for raw in text.splitlines()):
+        if not line or line.startswith(("|", "#")) or _NOT_PROSE.match(line):
+            continue
+        line = line.replace("**", "")
         ends = _SENTENCE_END.findall(line)
         last = line.rstrip("\"'」』”’)] ")[-1:]
         count += len(ends) + (0 if last in ".!?。" else 1)
@@ -1887,12 +1907,10 @@ def lost_facts(old: str, new: str) -> list[str]:
     from app.services import deck
 
     plain = _whole_text(new)
-    shown = deck.figures_in(plain)
+    shown, amounts = deck.figures_in(plain), deck.amounts_in(plain)
     names = set(_NAME.findall(plain))
-    lost = []
-    for number, unit, said in deck.figures_in(_whole_text(old)):
-        if not any(n == number and (u == unit or not u or not unit) for n, u, _ in shown):
-            lost.append(said)
+    lost = [f[2] for f in deck.figures_in(_whole_text(old))
+            if not deck.figure_kept(f, shown, amounts)]
     old_names = dict.fromkeys(_NAME.findall(_whole_text(old)))
     return lost + [n for n in old_names if n not in names]
 
@@ -1958,3 +1976,76 @@ def shortening_misses(old: str, new: str, asked: str, given: str = "") -> int:
     got = sentence_count(new)
     off = bool(want) and (got > want if most else got != want)
     return int(off) + len(lost_facts(old, new)) + len(added_facts(old, new, given))
+
+
+#: a line addressed to the person about the rewrite (「다음은 요청하신 대로 … 절입니다.」)
+_PREAMBLE = re.compile(
+    r"^\s{0,4}(?:(?:다음은|아래는|이하는)[^\n]{0,120}?(?:요청|축약|줄인|줄였|수정|고친|다듬은|버전|"
+    r"절입니다|내용입니다)|[^\n]{0,80}?요청하신\s?대로[^\n]{0,80}?(?:입니다|습니다)[.:]?\s{0,2}$"
+    r"|(?:here\s+is|below\s+is)\b[^\n]{0,120}?\b(?:shortened|revised|rewritten|version|section)"
+    r")", re.I)
+_NUMBERED_REF = re.compile(r"(?<![가-힣])(표|그림)\s?(\d{1,2})(?!\d)")
+
+
+def without_preamble(text: str) -> str:
+    """The part minus lines that speak to the person about the rewrite instead of to the
+    reader (「다음은 요청하신 대로 … 절입니다.」)."""
+    lines = (text or "").split("\n")
+    kept = [line for line in lines if not (len(line) <= 200 and _PREAMBLE.match(line))]
+    if len(kept) == len(lines):
+        return text
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+
+
+def _terms(text: str) -> set[str]:
+    """A part's own terms: Hangul words by their first two syllables, names, figures."""
+    from app.services import deck
+
+    plain = _whole_text(text)
+    words = {w[:2] for w in re.findall(r"[가-힣]{2,}", plain)} - _COMMON_TERMS
+    return words | set(_NAME.findall(plain)) | {s for *_, s in deck.figures_in(plain)}
+
+
+#: words any section of a report uses
+_COMMON_TERMS = frozenset({"있습", "합니", "입니", "니다", "있으", "하고", "하여", "위한", "대한",
+                           "통해", "이번", "다음", "현재", "진행", "필요", "관련", "내용", "주요"})
+
+
+def drift_faults(old: str, new: str, others: list[str]) -> list[str]:
+    """Why a rewritten part is no longer itself, for the writer: its terms are another
+    part's, or it points at a table or figure that is not there."""
+    faults = []
+    terms, own = _terms(new), _terms(old)
+    if terms and own:
+        mine = len(terms & own) / len(terms)
+        theirs = max((len(terms & _terms(o)) / len(terms) for o in others if o.strip()),
+                     default=0.0)
+        if mine < 0.5 and theirs > mine:
+            faults.append("It reads as another section's content: keep to this section's own "
+                          "subject and facts as it stands now")
+    shown = {kind for kind, *_ in _blocks_in(new)}
+    if any(kind not in shown and pointer.search(new) for kind, pointer in _POINTER.items()):
+        faults.append("It points at a table or figure above or below that this section does "
+                      "not have")
+    numbered = {(kind, n) for text in (new, *others) for kind, _, _, n in _blocks_in(text)
+                if n is not None}
+    if missing := sorted({f"{k} {n}" for k, n in _NUMBERED_REF.findall(new)
+                          if (k, int(n)) not in numbered}):
+        faults.append("It cites " + ", ".join(missing) + ", which the document does not have")
+    return faults
+
+
+#: a box in a part: its first line is its title
+_CALLOUT = re.compile(r"```callout\n([^\n`]{1,80})\n")
+
+
+def removed_blocks(old: str, new: str, part: int) -> list[str]:
+    """Numbered figures and boxes `old` showed that `new` no longer does (「2절의 그림 1」,
+    「2절의 「단가 승인 지연 시 협상 교착」 상자」), for the reply."""
+    kept = {(k, n) for k, _, _, n in _blocks_in(new)}
+    out = [f"{part}절의 {k} {n}" for k, _, _, n in _blocks_in(old)
+           if k == "그림" and n is not None and (k, n) not in kept]
+    had, has = _CALLOUT.findall(old), _CALLOUT.findall(new)
+    # a box retitled is still there: only as many named as are gone
+    gone = [t for t in had if t not in has][:max(0, len(had) - len(has))]
+    return out + [f"{part}절의 「{t}」 상자" for t in gone]

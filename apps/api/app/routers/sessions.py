@@ -3920,6 +3920,23 @@ def _agent_web_search(agent: WorkspaceAgent | None) -> bool | str:
     return {"auto": "auto", "on": True}.get(agent.web_search_default, False)
 
 
+def _sets_card_aside(session: ChatSession, payload: SendMessage) -> bool:
+    """Whether a typed message while a card is open on a finished document is not the card's
+    answer: a question about the document (「4장 수치는 어디서 나온 거야?」), or, on a question
+    card, an edit that names its part by number (「4장을 번호 목록으로 바꿔줘」)."""
+    pending = session.pending or {}
+    if (not pending or not session.artifact_id or payload.approve
+            or payload.answers is not None or not _plans_first(session)):
+        return False
+    text = payload.content or ""
+    if revise.asks_question(text):
+        # any card (questions, a proposed outline): a question is not its answer or a note
+        return True
+    # a numbered edit leaves a question card; on a proposed outline it may be a note on it
+    return pending.get("stage") == "clarify" and bool(revise.asks_edit(text) and (
+        revise.named_slides(text) or revise.numbered_parts(text, [""] * 50)))
+
+
 def _plans_first(session: ChatSession) -> bool:
     """Whether this surface offers an outline first (report, slides)."""
     return session.kind in (SessionKind.report, SessionKind.slides)
@@ -3961,8 +3978,13 @@ async def send_message(
             }
         )
 
+    #: a question about the document, or an edit of a named part, while a card waits: not
+    #: its answer; the card stays for a question, goes for an edit
+    card_aside = _sets_card_aside(session, payload)
+    if card_aside and not revise.asks_question(payload.content):
+        session.pending = None
     # document surfaces plan first; a message while `session.pending` is a note on it
-    pending = (
+    pending = {} if card_aside else (
         dict(session.pending or {})
         if _plans_first(session) or (session.pending or {}).get("stage") == "clarify"
         else {}

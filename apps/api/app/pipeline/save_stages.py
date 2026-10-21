@@ -89,6 +89,9 @@ def _en_item(item: str) -> str:
     3-line summary」, 「3장 표로 바꾸기」 → 「slide 3 as a table」."""
     import re
 
+    if m := re.fullmatch(r"(\d{1,3})(장|절)의 (「[^」]{1,80}」) 상자", item):
+        return f"the box {m.group(3)} from {'slide' if m.group(2) == '장' else 'section'} " \
+            f"{m.group(1)}"
     if m := re.fullmatch(r"(\d{1,3})(장|절)의 (.+)", item):
         where = f"{'slide' if m.group(2) == '장' else 'section'} {m.group(1)}"
         return f"{_en_item(m.group(3))} from {where}" if m.group(3)[:1] in "표그" and re.search(
@@ -99,6 +102,8 @@ def _en_item(item: str) -> str:
         return f"the {m.group(1)}-line summary"
     if m := re.fullmatch(r"(\d{1,3})장 (.+?)(?:으로|로) 바꾸기", item):
         return f"slide {m.group(1)} as a {_EN_THINGS.get(m.group(2), m.group(2))}"
+    if m := re.fullmatch(r"(\d{1,3})장 항목 합치기", item):
+        return f"joining the items on slide {m.group(1)}"
     if m := re.fullmatch(r"(\d{1,3})장 (그림|차트) 빼기", item):
         return f"removing the {_EN_THINGS[m.group(2)]} on slide {m.group(1)}"
     return item

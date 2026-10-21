@@ -483,7 +483,21 @@ counting (`revise.without_ask_echo`), and a figure or date neither the section n
 material states counts as a fault (`revise.added_facts`). A slide cut to fewer items
 (「항목을 하나로」, `deck.items_asked`) that came back with none gets its old items joined
 (`deck.merged_points`), figures such a cut drops are said, and a deck cut to fewer slides says
-the figures it shows nowhere any more (`deck.lost_across`). A title the person asked to change (「제목을 …로 바꿔 줘」, "change the title to …") is
+the figures it shows nowhere any more (`deck.lost_across`). Only prose sentences are counted (tables,
+captions and list rows are not), a figure is a number with its unit or counter (「3곳」, not
+「표 1의」), money is compared as won (「38.5억」 = 「38억 5천만」 = 「3,850,000,000원」,
+`deck.amounts_in`), and a drawn diagram's labels count as shown. Joining one named slide's
+items (「2장 항목을 하나로 합쳐줘」, "Merge the items on slide 4 into one") is that slide's edit,
+done by code (`deck.joined_items`), not a restructure; "Shrink to 3 slides" is read like
+「3장으로 줄여줘」. A question or a numbered edit typed while a question card is open is not
+the card's answer (`sessions._sets_card_aside`); a question leaves any open card as it was.
+A section rewrite is shown the section's own current text, so a shortened section stays
+itself; a line to the person about the rewrite is dropped (`revise.without_preamble`), and a
+shortened section that reads as another section or points at a table or figure it lacks is
+sent back once, then kept as it was (`revise.drift_faults`); figures and boxes a shortening
+drops are named (`revise.removed_blocks`). A table's rows are not joined as items: that ask
+is said and the slide kept. English figures are read whole (「Qwen3.8」 holds no figure,
+「1K」 = 「1,000」). A title the person asked to change (「제목을 …로 바꿔 줘」, "change the title to …") is
 taken, quoted text verbatim. 「위험 장을 하나 추가해 줘」 ("add a risk slide") is an `insert`: the
 revision planner names the new part and its place, the router slots a blank
 part in and rewrites only it, so the other slides stay byte for byte. A restructure (「6장으로 줄여」, "cut it to six slides") is told to hit the count
