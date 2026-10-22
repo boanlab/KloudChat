@@ -42,7 +42,7 @@ _WEIGHTS = re.compile(
 _FULL_DATE = re.compile(
     r"(20\d{2})\s{0,2}(?:[-./]|년)\s{0,2}(\d{1,2})\s{0,2}(?:[-./]|월)\s{0,2}(\d{1,2})"
 )
-_MEETING = re.compile(r"회의|미팅|모임|위원회|간담회|녹음|전사")
+_MEETING = re.compile(r"회의|미팅|모임|위원회|간담회|녹음|전사|\b(?:[Mm]eeting|[Ss]ync)\b")
 _REQ_ID = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{2,4}-\d{2,3})(?![\d])")
 _VALIDITY = re.compile(r"(?:견적\s{0,2})?유효\s{0,2}기간\s{0,2}(?:은|는|:|：)?\s{0,2}([^\n,.;]{2,30})")
 _TABLE_RULE = re.compile(r"^\s{0,8}\|?\s{0,8}:?-{2,}")
@@ -220,6 +220,8 @@ def meeting_date(request: str, material: str, today: dt.date | None = None) -> d
         for line in (text or "").splitlines():
             if not _MEETING.search(line):
                 continue
+            # the next meeting's day is no day of this one
+            line = _NEXT_MEETING.sub(" ", line)
             if m := _DAY_WITH_WEEKDAY.search(line):
                 month, day, weekday = int(m.group(1)), int(m.group(2)), m.group(3)
             elif m := _WEEKDAY_WITH_DAY.search(line):
@@ -272,7 +274,10 @@ def meeting_base(request: str, material: str, today: dt.date | None,
                  nearest: bool = False) -> tuple[dt.date | None, str]:
     """Relative-date base and source: text, file name, or 'today/yesterday' (KST); never handover
     day. With `nearest` (the year question already asked or skipped), a yearless meeting day takes
-    the year nearest today when that is clear."""
+    the year nearest today when that is clear. English days (「Oct 19」) read as numbers."""
+    from app.services import weekdays
+
+    request, material = weekdays.english_days(request), weekdays.english_days(material)
     if found := meeting_date(request, material, today):
         return found, "text"
     if found := file_date(material):
@@ -304,7 +309,8 @@ def meeting_base(request: str, material: str, today: dt.date | None,
 
 #: the next meeting's clause: 「다음 회의 10/21 화 10시 3층 회의실.」
 _NEXT_MEETING = re.compile(
-    r"(?:다음|차기)\s{0,2}(?:회의|모임|미팅)[^\n;]*?(?=(?<!\d)\.(?!\s{0,2}\d)|[\n;]|$)")
+    r"(?:(?:다음|차기)\s{0,2}(?:회의|모임|미팅)|[Nn]ext\s{1,2}(?:meeting|sync))[^\n;]*?"
+    r"(?=(?<!\d)\.(?!\s{0,2}\d)|[\n;]|$)")
 
 
 def _nearest_meeting_day(request: str, material: str, today: dt.date) -> dt.date | None:
@@ -377,7 +383,7 @@ _UNDATED_HEAD = (
 )
 
 
-def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bool = False) -> str:
+def _date_block(rows: list[dict], base: str, *, undated: bool = False) -> str:
     relative = [r for r in rows if r.get("kind") not in ("full_date", "month_day", "weekday")
                 or r.get("status") in ("unclear", "unresolved", _NO_BASE)]
     if not relative and not undated:
@@ -388,8 +394,12 @@ def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bo
             lines.append(f"- 「{r['text']}」 → not resolved (no meeting date): 기한 「[기한]」, in 비고 "
                          f"원문 「{r['text']}」 — 출처: 「{r['source_line'][:120]}」")
             continue
-        where = f" — 출처: 「{r['source_line'][:120]}」(기준 {r['base_date']}"
-        where += ", 메일 발신일)" if r.get("base_kind") == "mail" else ")"
+        where = f" — 출처: 「{r['source_line'][:120]}」"
+        if r.get("base_kind") == "mail":
+            where += f"(기준 {r['base_date']}, 메일 발신일)"
+        elif r.get("base_date") != base:
+            # a base other than the block's head
+            where += f"(기준 {r['base_date']})"
         if r["status"] == "ok":
             note = " (주말)" if r.get("weekend") else ""
             note += f" ({r['holiday']})" if r.get("holiday") else ""
@@ -402,15 +412,13 @@ def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bo
         else:
             lines.append(f"- 「{r['text']}」 → not one definite date: 기한 「미정」, the original wording in 비고{where}")
     head = f"기준일 {base}." if base else ""
-    if base and base_note:
-        head = f"기준일 {base}({base_note} — state this basis in the minutes)."
     if undated and not any(r["status"] in ("ok", "repeat") for r in relative):
         return "# 확정 날짜(코드 계산)\n" + _UNDATED_HEAD + ("\n" + "\n".join(lines) if lines else "")
     if undated:
         head = _UNDATED_HEAD + f" Only lines that carry a date, such as mails, were resolved from that date ({base})."
     return (
         "# 확정 날짜(코드 계산)\n" + head + " The code resolved the material's relative dates. In the "
-        "기한 cell write the dates below like 「2026-10-23(금)」 and put the original wording in 비고. "
+        "기한 cell write the dates below like 「2026-10-23(금)」, the date alone. "
         "Do not recalculate. Do not move a date that falls on a weekend unless the material says "
         "to.\n" + "\n".join(lines)
     )
@@ -1897,7 +1905,7 @@ async def _date_calc(pre: Prepass, job: PrepassJob) -> None:
     pre.base_date = first
     pre.base_source = source if base else ""
     undated = meeting and base is None
-    if block := _date_block(rows, first, _base_words(pre.base_source), undated=undated):
+    if block := _date_block(rows, first, undated=undated):
         pre.blocks.append(block)
     # 「발주 후 8주」: from material's absolute date regardless of meeting date
     lead = skill_scripts.dates().lead_times(material)
@@ -2661,7 +2669,7 @@ async def minutes_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict
                 problems.append(EMPTY_DUE)
             elif not _DUE_CELL_OK.match(when):
                 if _RELATIVE_WORDS.search(when) or len(when) > 16:
-                    problems.append("기한 칸에는 값만 쓴다(날짜(요일)·미정·[기한]) — 원문 표현은 비고로")
+                    problems.append("기한 칸에는 값만 쓴다(날짜(요일)·미정·[기한])")
             if note is not None and len(row) > note and not row[note].strip(" -—*"):
                 if "미정" in (who + when):
                     problems.append("「미정」이면 비고에 사유(회의에서 정하지 않음 등)를 적는다")
@@ -2697,15 +2705,20 @@ UNASSIGNED_WHY = ("이 행의 할 일은 자료에서 누구에게도 맡겨지�
 
 def unassigned_rows(sections: list[dict], material: str) -> list[tuple[int, str, list[str]]]:
     """(section, row, [task]) for action rows with no owner whose task no memo clause gives
-    anyone or leaves open: 「2학기 튜터링 모집 시행 | 미정」 from 「모집 기간은 11/3~11/14로 확정」."""
-    from app.services import stated_meeting
+    anyone or leaves open: 「2학기 튜터링 모집 시행 | 미정」 from 「모집 기간은 11/3~11/14로 확정」.
+    A task sharing a word with a memo clause giving one of its people a task is that person's
+    (the writer left the owner out), and a decision table's rows are no action rows."""
+    from app.services import stated_days, stated_meeting
 
     clauses = [re.sub(r"\s+", "", c).lower() for c in _MEMO_CLAUSE.split(material or "")
                if _ACTION_SAID.search(c)]
+    named = [c for c in clauses if stated_meeting._ASSIGNED.search(c)
+             and any(n in c for n in stated_meeting.people(material))]
     out = []
     for table in tables(sections):
         owner, due = _owner_due(table.header)
-        if owner is None or due is None:
+        if owner is None or due is None or _DECIDED_TABLE.search(
+                " ".join([*table.header, str(sections[table.section].get("heading") or "")])):
             continue
         task = _task_column(table.header, (owner, due, _column(table.header, r"비고|사유|메모|원문")))
         for line, row in table.rows:
@@ -2713,9 +2726,14 @@ def unassigned_rows(sections: list[dict], material: str) -> list[tuple[int, str,
                 continue
             if not _UNOWNED.match(row[owner].strip(" *")):
                 continue
-            if not stated_meeting.task_given(row[task], clauses):
+            if not stated_meeting.task_given(row[task], clauses) and not any(
+                    w in c for w in stated_days._words(row[task]) for c in named):
                 out.append((table.section, line, [row[task].strip(" *")]))
     return out
+
+
+#: a table of what was decided, whose rows no one is to do
+_DECIDED_TABLE = re.compile(r"결정|합의|의결")
 
 
 def _reference_heading() -> re.Pattern:
@@ -2745,23 +2763,6 @@ def minutes_unsourced(doc: Doc) -> list[Finding]:
                                or (w and stated_meeting.unset_agenda(s, m, listed=True))))
                    for i, piece, said in stated_meeting.findings(
                        doc.sections, material, _reference_heading())]
-
-
-def minutes_pasted(doc: Doc) -> list[Finding]:
-    """Prose that pastes the memo's lines as they stand, or says a phrase over and over, sent
-    back to the writer once; what stands is settled by `meeting_memo.settle_copies`."""
-    from app.services import meeting_memo
-
-    memo = doc.memo or doc.given
-    refs = _reference_heading()
-    copies = [Finding(i, piece, "minutes_copy", meeting_memo.COPY_WHY, rank=2,
-                      still=lambda s, m=memo: meeting_memo.copied(s, m))
-              for i, piece in meeting_memo.copies(doc.sections, memo, refs)]
-    seen = {(f.section, f.sentence) for f in copies}
-    return copies + [
-        Finding(i, piece, "minutes_copy", meeting_memo.repeat_why(phrase), rank=2,
-                still=lambda s, p=meeting_memo.squash(phrase): p in meeting_memo.squash(s))
-        for i, piece, phrase in meeting_memo.repeats(doc.sections) if (i, piece) not in seen]
 
 
 def settle_unsourced(sections: list[dict], material: str, *, strong: bool) -> list[dict]:
@@ -3229,7 +3230,7 @@ def _minutes_rows_check(pre: Prepass) -> Check:
     async def minutes_check(doc: Doc):
         table_rows, _ = await minutes_rows(doc, dates)
         list_rows, _ = await minutes_list_rows(doc, dates)
-        return table_rows + list_rows + minutes_unsourced(doc) + minutes_pasted(doc), {}
+        return table_rows + list_rows + minutes_unsourced(doc), {}
 
     return minutes_check
 
@@ -3571,8 +3572,6 @@ async def count_labels(doc: Doc) -> tuple[list[Finding], dict]:
                     evidence="\n".join(f"자료: 「{lb}」 {n}{u}" for lb, n, u in counts), rank=1,
                     still=lambda s, c=counts: bool(count_label_problems(s, [s], 0, c))))
     return found, {}
-
-
 
 
 # ── after writing: add missing, never rewrite ──
@@ -4026,12 +4025,14 @@ UNDATED_NOTE = "회의 일자 미기재로 날짜 미확정"
 
 
 def _day_known(day: str, known: str) -> bool:
-    """Whether material or request writes this month and day."""
-    found = _cell_dates(day)
+    """Whether material or request writes this month and day (「Oct 28」 too)."""
+    from app.services import weekdays
+
+    found = _cell_dates(weekdays.english_days(day))
     if not found:
         return False
     _, month, date = found[0]
-    flat = re.sub(r"\s+", "", known or "")
+    flat = re.sub(r"\s+", "", weekdays.english_days(known or ""))
     return any(sp in flat for sp in (f"{month}월{date}일", f"{month}/{date}", f"{month}.{date}",
                                      f"-{month:02d}-{date:02d}", f"{month:02d}.{date:02d}"))
 
@@ -4698,7 +4699,7 @@ def _in_date_sentence(action: str, entry: dict) -> bool:
 
 def minutes_due_fill(sections: list[dict], dates: list[dict], *,
                      blanked: bool = False) -> tuple[list[dict], int]:
-    """Fill 「미정」/「[기한]」 action rows with date-calc's resolved date; original words to 비고.
+    """Fill 「미정」/「[기한]」 action rows with date-calc's resolved date.
     `blanked`: after the checks, only 「[기한]」 cells, and the material's own written dates too."""
     # meeting date only: lines re-dated by later header or mail left to writer
     base = next((d.get("base_date") for d in dates), "")
@@ -4736,9 +4737,6 @@ def minutes_due_fill(sections: list[dict], dates: list[dict], *,
                 continue
             row = list(row)
             row[due] = _due_value(entries[0])
-            if note is not None and len(row) > note and entries[0]["text"] not in row[note]:
-                said = f"원문 「{entries[0]['text']}」"
-                row[note] = f"{row[note].strip(' -—')}, {said}" if row[note].strip(" -—") else said
             content = content.replace(line, "| " + " | ".join(row) + " |", 1)
             filled += 1
         out[table.section] = {**out[table.section], "content": content}
@@ -4848,23 +4846,8 @@ def _skip_line(line: str) -> bool:
             or bool(re.match(r"^\*\*(?:표|그림)\s{0,2}\d", stripped)))
 
 
-def _owner_tasked(cell: str, task: str, people: dict[str, list[str]], material: str) -> bool:
-    """Whether every memo person named in an owner cell has the row's task from a memo item
-    naming them (「박민호」 on 「간식비 집행 계획 수립」 from 「박민호가 간식비 80만원을 요청」:
-    no)."""
-    from app.services import stated_meeting
-
-    named = [names for name, names in people.items() if name in cell]
-    return all(stated_meeting.task_given(task, stated_meeting.items_of(material, names))
-               for names in named)
-
-
-def minutes_grounding(sections: list[dict], material: str, *, strong: bool = False
-                      ) -> tuple[list[dict], list[str]]:
-    """Repair owners/quantities absent from material; returns sections and repair codes. A
-    memo person on a task the memo never gives them is 「미정」, a strong writer's marked."""
-    from app.services import stated_meeting
-
+def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], list[str]]:
+    """Repair owners/quantities absent from material; returns sections and repair codes."""
     flat = re.sub(r"\s+", "", material or "")
     numbers = _material_numbers(material)
     given = {(v, u) for v, u, _ in _quantities(_digits(material))}
@@ -4907,27 +4890,16 @@ def minutes_grounding(sections: list[dict], material: str, *, strong: bool = Fal
         last = blank(clauses[-1]) if bad[-1] else clauses[-1]
         return " ".join([*kept, last])
 
-    people = stated_meeting.people(material)
     for table in tables(out):
         owner, due = _owner_due(table.header, r"기한|마감|완료일|due|일시|시점")
         # one 「담당·기한」 column: its row is a sentence, kept whole
         combined = owner is None and _column(table.header, r"담당|책임|owner") is not None
-        task = None if owner is None else _task_column(
-            table.header, (owner, due, _column(table.header, r"비고|사유|메모|원문")))
         content = str(out[table.section].get("content") or "")
         for line, row in table.rows:
             row = list(row)
             changed = False
             if owner is not None and len(row) > owner and not _owner_known(row[owner], flat):
                 row[owner] = placeholders.for_header(table.header[owner])
-                codes.append("minutes_owner")
-                changed = True
-            elif task is not None and len(row) > max(owner, task) \
-                    and stated_policy.MARK not in row[owner] \
-                    and not _owner_tasked(row[owner], row[task], people, material):
-                # a memo person on a task no memo item gives them: the owner is open (a strong
-                # writer's cell marked where it stands)
-                row[owner] = f"{row[owner].strip()} {stated_policy.MARK}" if strong else "미정"
                 codes.append("minutes_owner")
                 changed = True
             around = " ".join([*table.header, *row])
@@ -6003,7 +5975,6 @@ LABELS = {
     "minutes_owner": "자료에 없는 담당",
     "minutes_spec": "자료에 없는 수치",
     "minutes_unsourced": "자료에 없는 회의 내용·실행 항목",
-    "minutes_copy": "메모 줄을 그대로 옮기거나 되풀이한 문장",
     "minutes_blank_column": "자료에 없는 빈 열",
     "recommend_mismatch": "권고가 필수 조건·점수와 어긋남",
     "status_missing": "탈락·조건 미확인 표시 없음",

@@ -1151,11 +1151,8 @@ class Sections(Base):
                 # a self-hosted writer's odd words: the judge names them, code swaps the safe ones
                 body, more = await word_fix.fix(
                     body, model=word_fix.checker(req.model, req.judge), complete=report._complete,
-                    api_key=req.api_key, given=f"{section['heading']}\n{_slip_vocabulary(bundle)}",
-                    writer=req.model)
+                    api_key=req.api_key, given=f"{section['heading']}\n{_slip_vocabulary(bundle)}")
                 _count(bundle, more, planner=True)
-            # 「A 또는 A」: one value offered as its own alternative
-            body = word_fix.twin_alternatives(body)
             section["content"] = _cleaned(bundle, index, section, body)
             material = _material_text(bundle)
             if gaps := table_integrity.problems(section["content"], material):
@@ -1854,8 +1851,7 @@ class MinutesRepair(Base):
         # 「오전 10시」 for the memo's bare 「10시」: the 오전 off by code, the clock kept
         sections, _ = stated_meeting.bare_clocks(sections, _meeting_given(bundle))
         # owners/quantities repaired by code, rechecked after verify rewrites
-        repaired, ungrounded = report_checks.minutes_grounding(
-            sections, known, strong=bundle.request.strong)
+        repaired, ungrounded = report_checks.minutes_grounding(sections, known)
         before += ungrounded
         bundle.document.sections = settled_sections(sections, repaired, [known])
 
@@ -2159,10 +2155,9 @@ class MinutesReground(Base):
         # a due the checks blanked to 「[기한]」 gets the material's date back
         sections, _ = report_checks.minutes_due_fill(bundle.document.sections,
                                                      bundle.computed.prepass.dates, blanked=True)
-        strong = bundle.request.strong
-        sections, again = report_checks.minutes_grounding(sections, known, strong=strong)
+        sections, again = report_checks.minutes_grounding(sections, known)
         if again:
-            sections, left = report_checks.minutes_grounding(sections, known, strong=strong)
+            sections, left = report_checks.minutes_grounding(sections, known)
             bundle.findings.after += left
         sections = settled_sections(bundle.document.sections, sections, [known])
         # prose calling a deadline open that its action row dates from the memo
@@ -2171,31 +2166,22 @@ class MinutesReground(Base):
             # what the memo never says, written again by a repair after the verify settle
             sections = report_checks.settle_unsourced(sections, _meeting_given(bundle),
                                                       strong=bundle.request.strong)
-        # a day, clock, place or 「다음 회의」 deadline called missing that the memo gives, the
-        # next meeting's day, room or clock in this one's overview, a memo decision no decision
-        # row holds, a decision given the value the meeting changed, a row written twice, a
-        # count its list no longer has, and a value offered as its own alternative
+        # a day, clock, place or 「다음 회의」 deadline called missing that the memo gives, a
+        # decision given the value the meeting changed, a row written twice, and a count its
+        # list no longer has
         memo = _meeting_given(bundle)
-        sections = meeting_memo.overview_day(sections, bundle.document.head_block, memo)
-        sections, _ = meeting_memo.borrowed_next(sections, memo)
         sections, _ = meeting_memo.false_absences(sections, memo)
         sections, _ = meeting_memo.false_dues(sections, memo)
-        sections, _ = meeting_memo.decision_rows(sections, memo)
         sections, _ = meeting_memo.decided_values(sections, memo)
         sections, _ = meeting_memo.dedupe_rows(sections)
         # a count before a table or list that rows dropped above left behind
         sections, _ = meeting_memo.counted(sections)
-        # the writer's notes on its working in cells, and a pointer at open rows no longer there
-        sections, _ = meeting_memo.cell_notes(sections, memo)
-        sections, _ = meeting_memo.rest_open(sections)
         # the memo's lines pasted as they stand, a phrase said over and over, a marker alone
         sections, _ = meeting_memo.settle_copies(sections, memo, strong=bundle.request.strong)
         sections, _ = meeting_memo.bare_marks(sections)
         # a date's weekday flag said once, and a 「확인 필요:」 line a marked row already holds
         sections, _ = meeting_memo.restated_checks(sections)
         sections, _ = weekdays.flag_once(sections)
-        sections = [{**sec, "content": word_fix.twin_alternatives(str(sec.get("content") or ""))}
-                    for sec in sections]
         # the meeting held told in the past; what comes next stays ahead
         bundle.document.sections, _ = meeting_tense.held(sections, _report()._REFERENCE_HEADING)
 

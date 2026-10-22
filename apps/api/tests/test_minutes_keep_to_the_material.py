@@ -73,8 +73,9 @@ async def test_a_resolved_deadline_reaches_the_table_cell():
     sections = [{"heading": "실행 항목", "content": RUN_ACTIONS}]
     filled, n = report_checks.minutes_due_fill(sections, pre.dates)
     content = filled[0]["content"]
+    # the date alone: the memo's words are no note beside a resolved due
     assert ("| 데이터 정제 | 서○○ | 2026-10-21(수) | 회의 | 정제 스크립트는 기존에 만든 것을 "
-            "활용할 예정, 원문 「다음 주 수요일") in content
+            "활용할 예정 |") in content and "원문 「다음 주 수요일" not in content
     assert "| GPU 서버 예약표 갱신 | 문○○ | 매주 월요일(2026-10-19부터) |" in content
     # Nothing in the recording dates the 연구비 확인: it stays 미정.
     assert "| 12월 부산 학회 연구비 확인 | 한교수 | 미정 |" in content

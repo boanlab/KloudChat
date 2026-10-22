@@ -803,13 +803,6 @@ def _from_an_event(row: dict) -> bool:
 
 #: relative days a person counts from today: 「다음 주 월요일」, 「모레」, 「3일 후」
 _TODAY_KINDS = ("day_word", "week_day", "offset", "business", "month_part")
-#: a question asking for a day: 「며칠이야」, 「언제」, 「날짜」, 「무슨 요일」
-_ASKS_DAY = re.compile(r"며칠|몇\s{0,2}(?:월|일)|언제|날짜|무슨\s{0,2}요일"
-                       r"|what\s{1,2}date|which\s{1,2}day", re.I)
-#: what stands between the person's words and the day the answer gives them: 「은 」, 「(」, 「: 」
-_SAYS = re.compile(r"\s{0,2}(?:이면|라면|은|는|이|가|도)?\s{0,2}(?:[:=→(]|바로)?\s{0,2}")
-#: how far a stated day may be from the counted one and still be the slip
-_TODAY_SLIP = 31
 
 
 def from_today(text: str, today: dt.date) -> list[dict]:
@@ -827,49 +820,6 @@ def from_today(text: str, today: dt.date) -> list[dict]:
     return out
 
 
-def _bare(words: str) -> str:
-    return re.sub(r"\s", "", words)
-
-
-def _today_days(text: str, request: str, today: dt.date) -> tuple[str, list[dict]]:
-    """A day the answer states for the person's 「다음 주 월요일」 that is not the one counted
-    from today, set to it: the date right after the words, or the answer's only date when the
-    question asks for that one day."""
-    rows = from_today(request, today)
-    if not rows or not text:
-        return text, []
-    counted = {_bare(r["text"]): r for r in rows}
-    days = {r["date"] for r in rows}
-    found = find(text, today)
-    said = [r for r in found if r["kind"] in ("full_date", "month_day") and r.get("status") == "ok"]
-    echoed = [r for r in found if r["kind"] in _TODAY_KINDS and _bare(r["text"]) in counted]
-    fixes: list[dict] = []
-    for row in sorted(said, key=lambda r: r["at"], reverse=True):
-        if row["date"] in days:
-            continue
-        before = [e for e in echoed if e["at"] + len(e["text"]) <= row["at"]
-                  and _SAYS.fullmatch(text[e["at"] + len(e["text"]):row["at"]])]
-        if before:
-            want = counted[_bare(max(before, key=lambda e: e["at"])["text"])]
-        elif len(days) == 1 and len(said) == 1 and len(text) <= 300 and _ASKS_DAY.search(request):
-            want = rows[0]
-        else:
-            continue
-        day, new = dt.date.fromisoformat(row["date"]), dt.date.fromisoformat(want["date"])
-        if not 0 < abs((new - day).days) <= _TODAY_SLIP:
-            continue
-        start, end = row["at"], row["at"] + len(row["text"])
-        fixed = _redate(text[start:end], day, new)
-        tail = re.match(r"(\.?)\s{0,2}\(\s{0,2}[월화수목금토일](?:요일)?\s{0,2}\)", text[end:])
-        if tail:
-            end += tail.end()
-            fixed += f"{tail.group(1)}({WEEKDAYS[new.weekday()]})"
-        fixes.append({"kind": "date", "text": text[start:end],
-                      "why": f"{want['text']} → {iso_weekday(new)} (오늘 {iso_weekday(today)} 기준)"})
-        text = text[:start] + fixed + text[end:]
-    return text, fixes
-
-
 def post(text: str, args: dict) -> dict:
     """Answer dates missing a worked-out relative date by days (or blank) set to it (code)."""
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
@@ -877,10 +827,6 @@ def post(text: str, args: dict) -> dict:
         today = parse_day(str(args.get("today") or "")) if args.get("today") else dt.date.today()
     except ValueError:
         today = dt.date.today()
-    if args.get("from_today"):
-        # the person's 「다음 주 월요일」 counted from today, every answer
-        text, out["fixed"] = _today_days(text, str(args.get("request") or ""), today)
-        out["text"] = text
     source = "\n".join(str(args.get(k) or "") for k in ("request", "material"))
     scanned = scan(source, today)
     # `anchored_only`: only an offset counted from a date the person gave, never from today.

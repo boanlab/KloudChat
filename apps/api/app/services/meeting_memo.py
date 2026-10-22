@@ -4,8 +4,8 @@ A memo opens with the meeting (「10/14 교육혁신팀 주간회의. 참석 …
 next one (「다음 회의 10/21 화 10시 3층 회의실.」). Minutes that call a day, clock, place or
 attendance missing (「시간은 자료에 없음」, 「장소 | 미정」, 「나와 있는 내용은 날짜뿐」) while the
 memo gives it get the memo's value or lose the claim; a head field left empty takes the memo's
-value or a bracket to fill; and every decision the memo states (「… 50만원으로 줄이자고 했고
-합의」) gets a row of the decision table.
+value or a bracket to fill; and a decision the memo changed (「… 50만원으로 줄이자고 했고
+합의」) keeps its new value.
 """
 
 from __future__ import annotations
@@ -22,7 +22,8 @@ _DAY = re.compile(
     r"|20\d{2}\s{0,2}[-./]\s{0,2}\d{1,2}\s{0,2}[-./]\s{0,2}\d{1,2}"
     r"|(?<![\d/])\d{1,2}\s{0,2}/\s{0,2}\d{1,2}(?![\d/])")
 _WEEKDAY = re.compile(
-    r"\s{0,2}(?:\(\s{0,2}[월화수목금토일](?:요일)?\s{0,2}\)|(?<![가-힣])[월화수목금토일](?:요일)?(?![가-힣]))")
+    r"\s{0,2}(?:\(\s{0,2}[월화수목금토일](?:요일)?\s{0,2}\)"
+    r"|(?<![가-힣\d])[월화수목금토일](?:요일)?(?![가-힣]))")
 #: a clock: 「10시」, 「오후 2시 30분」, 「14:00」 (not 「1시간」)
 _CLOCK = re.compile(
     r"(?:(?:오전|오후)\s{0,2})?\d{1,2}\s{0,2}시(?![간작각])(?:\s{0,2}\d{1,2}\s{0,2}분|\s{0,2}반)?"
@@ -36,6 +37,8 @@ _PLACE = re.compile(
     r"|온라인|화상\s{0,2}회의|비대면|Zoom|줌|Teams|팀즈")
 _ATTENDED = re.compile(r"참석(?:자|인원)?\s{0,2}[:：]?\s{0,2}([^.\n;]{2,80})")
 _MEETING_WORD = re.compile(r"회의|위원회|미팅|모임|세미나|워크숍|간담회|협의회")
+#: a meeting's name ends in its kind: 「교육혁신팀 주간회의」, not 「… 회의록을 만들어줘」
+_NAMED = re.compile(r"(?:회의|위원회|미팅|모임|세미나|워크숍|간담회|협의회)$")
 #: where the memo turns from the meeting's head to its agenda
 _AGENDA_START = re.compile(r"안건|의제|논의|결정|^\s{0,2}\d{1,2}[.)]")
 
@@ -116,11 +119,12 @@ def _meeting(stretches: list[str], *, named: bool) -> Meeting:
             if not _MEETING_WORD.search(stretch) or _ATTENDED.match(stretch):
                 continue
             bare = _CLOCK.sub(" ", _WEEKDAY.sub(" ", _DAY.sub(" ", stretch)))
-            head = re.split(r"[,，]|\s장소", bare)[0]
-            name = " ".join(head.split())
-            if _MEETING_WORD.search(name) and len(name) <= 40:
-                found.name = name.strip(" ,")
-            break
+            # the part naming the meeting, its 「[녹취]」, 「(메모)」 tags off
+            parts = (" ".join(re.sub(r"^(?:\s{0,2}[\[(][^\])\n]{0,20}[\])])+", "", p).split())
+                     for p in re.split(r"[,，/:：~]|\s장소", bare))
+            if name := next((p for p in parts if _NAMED.search(p) and len(p) <= 40), ""):
+                found.name = name
+                break
     return found
 
 
@@ -324,13 +328,12 @@ _HEAD_BLANK = {"장소": "[장소]", "회의명": "[회의명]", "참석자": "[
 
 
 def fill_head(block: dict | None, memo_text: str) -> dict | None:
-    """A minutes head whose 회의명, 장소 or 참석자 is empty (or holds the next meeting's room or
-    clock) takes the meeting's own value from the memo, else a bracket for the person to fill;
+    """A minutes head whose 회의명, 장소 or 참석자 is empty takes the meeting's own value from
+    the memo, else a bracket for the person to fill;
     an 일시 with no clock takes the memo's. None when nothing changes."""
     if not block or not (memo_text or "").strip():
         return None
-    memo = read(memo_text)
-    this = memo.this
+    this = read(memo_text).this
     fields = [list(f) for f in block.get("fields") or []]
     changed = False
     for f in fields:
@@ -338,13 +341,6 @@ def fill_head(block: dict | None, memo_text: str) -> dict | None:
             continue
         name, value = str(f[0]), str(f[1] or "").strip()
         attr = next((a for n, a in _HEAD if name == n or name == f"회의 {n}"), None)
-        field = {"장소": "장소", "일시": "시간"}.get(name.removeprefix("회의 "))
-        if field and value and (left := _borrowed(field, value, memo)) is not None:
-            # the next meeting's room or clock is no value of this one's head
-            key = name.removeprefix("회의 ")
-            f[1] = _HEAD_BLANK.get(key, f"[{key}]") if left == "미정" else left
-            value = str(f[1])
-            changed = True
         if attr and not value:
             f[1] = getattr(this, attr) or _HEAD_BLANK[name.removeprefix("회의 ")]
             changed = True
@@ -355,122 +351,13 @@ def fill_head(block: dict | None, memo_text: str) -> dict | None:
     return {**block, "fields": fields} if changed else None
 
 
-def overview_day(sections: list[dict], head: dict | None, memo_text: str) -> list[dict]:
-    """An 일시 row outside the next-meeting part that holds the next meeting's day, not the
-    head's, takes the head's 일시."""
-    day = next((str(f[1]) for f in (head or {}).get("fields") or []
-                if len(f) >= 2 and str(f[0]) in ("일시", "회의 일시")), "")
-    nxt = read(memo_text).next.day
-    if not day or "[" in day or not nxt:
-        return sections
-    month_day = _month_day(nxt)
-    if not month_day or month_day == _month_day(day):
-        return sections
-    out = []
-    for sec in sections:
-        if _NEXT_HEADING.search(str(sec.get("heading") or "")):
-            out.append(sec)
-            continue
-        lines = str(sec.get("content") or "").split("\n")
-        for i, line in enumerate(lines):
-            parts = line.strip().strip("|").split("|")
-            if line.lstrip().startswith("|") and len(parts) == 2 \
-                    and re.fullmatch(r"\**\s{0,2}(?:회의\s{0,2})?(?:일시|일자|날짜)\s{0,2}\**",
-                                     parts[0].strip()) \
-                    and _month_day(parts[1]) == month_day:
-                lines[i] = f"| {parts[0].strip()} | {day} |"
-        out.append({**sec, "content": "\n".join(lines)})
-    return out
-
-
-#: a field label of a 2-cell row or a list line: 「장소」, 「**회의 일시**」
-_ROW_FIELD = re.compile(r"\**\s{0,2}(?:회의\s{0,2})?(장소|일시|시간|시각)\s{0,2}\**")
-#: a sentence saying where the meeting is held: 「3층 회의실에서 열렸습니다」
-_HELD_AT = re.compile(r"장소|열렸|열린|열리|개최|진행|모여|모였")
-
-
-def _hours(text: str) -> set[int]:
-    out = set()
-    for m in _CLOCK.finditer(text or ""):
-        hour = int(re.search(r"\d{1,2}", m.group(0)).group(0))
-        out.add(hour + 12 if m.group(0).startswith("오후") and hour < 12 else hour)
-    return out
-
-
-def _borrowed(field: str, value: str, memo: Memo) -> str | None:
-    """`value` of this meeting's `field` less what is the next meeting's (its place, its clock)
-    where the memo gives this meeting none: this meeting's own value, else 「미정」; None when
-    nothing is borrowed."""
-    this, nxt = memo.this, memo.next
-    if field == "장소":
-        if not nxt.place or this.place or _flat(nxt.place) not in _flat(value) \
-                or _flat(nxt.place) in _flat(memo.rest):
-            return None
-        return "미정"
-    if not nxt.clock or this.clock or not (_hours(value) & _hours(nxt.clock)) \
-            or _hours(memo.rest) & _hours(nxt.clock):
-        return None
-    left = " ".join(_CLOCK.sub(" ", value).split()).strip(" ,")
-    return left or "미정"
-
-
-def borrowed_next(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
-    """This meeting's place or clock outside the next-meeting part that is the next meeting's
-    (「장소 | 3층 회의실」 when only the next meeting's clause gives a room): the row or list line
-    takes 「미정」 (an 일시 keeps its day), and a sentence holding the meeting there goes."""
-    memo = read(memo_text)
-    if not (memo.next.place and not memo.this.place) \
-            and not (memo.next.clock and not memo.this.clock):
-        return sections, 0
-    out, fixed = [], 0
-    for sec in sections:
-        if _NEXT_HEADING.search(str(sec.get("heading") or "")):
-            out.append(sec)
-            continue
-        content = str(sec.get("content") or "")
-        lines = content.split("\n")
-        gone: list[str] = []
-        for i, line in enumerate(lines):
-            parts = line.strip().strip("|").split("|")
-            if line.lstrip().startswith("|") and len(parts) == 2 \
-                    and (m := _ROW_FIELD.fullmatch(parts[0].strip())) \
-                    and not _NEXT_SAID.search(parts[1]):
-                field = "장소" if m.group(1) == "장소" else "시간"
-                if (value := _borrowed(field, parts[1], memo)) is not None:
-                    lines[i] = f"| {parts[0].strip()} | {value} |"
-                    fixed += 1
-            elif not line.lstrip().startswith(("|", "#")) and memo.next.place \
-                    and not memo.this.place:
-                gone += [p for p in _sentences(line) if _flat(memo.next.place) in _flat(p)
-                         and _HELD_AT.search(p) and not _NEXT_SAID.search(p)]
-        text = "\n".join(lines)
-        for piece in gone:
-            text = drop(text, piece)
-        fixed += len(gone)
-        out.append({**sec, "content": text} if text != content else sec)
-    return out, fixed
-
-
-def _month_day(text: str) -> tuple[int, int] | None:
-    m = _DAY.search(text or "")
-    if not m:
-        return None
-    nums = [int(n) for n in re.findall(r"\d{1,4}", m.group(0))]
-    nums = nums[1:] if nums and nums[0] > 31 else nums
-    return (nums[0], nums[1]) if len(nums) >= 2 else None
-
-
 # ── decisions ──
 
 #: a clause stating a decision: 「… 확정」, 「… 합의」, 「결정함」
 _DECIDED = re.compile(r"확정|합의|결정(?:함|했|됨|되었|하였)|채택|의결|가결")
 #: …or one left open: 「결정 못 함」, 「보류」
 _UNDECIDED = re.compile(r"못|않|보류|미정|미결|추후|재논의")
-_FIGURE = re.compile(r"\d[\d,./]{0,12}(?:\s{0,2}[~∼-]\s{0,2}\d[\d,./]{0,12})?"
-                     r"(?:\s{0,2}(?:만원|억원|원|명|건|%|개|곳|회))?")
 _DECISION_TABLE = re.compile(r"결정|합의|의결")
-_ACTION_TABLE = re.compile(r"실행|할\s{0,2}일|조치|후속|담당|기한")
-_ORDINAL = re.compile(r"^(?:첫째|둘째|셋째|넷째|다섯째|마지막으로|또한|그리고)\s{0,2},?\s{0,2}")
 
 
 def _flat(text: str) -> str:
@@ -489,77 +376,6 @@ def decisions(memo_text: str) -> list[tuple[str, str]]:
             if _DECIDED.search(clause) and not _UNDECIDED.search(clause):
                 out.append((label.strip(), clause))
     return out
-
-
-def _days(text: str) -> set[tuple[int, int]]:
-    return {d for m in _DAY.finditer(text or "") if (d := _month_day(m.group(0)))}
-
-
-def _covers(row: str, clause: str) -> bool:
-    figures = [_flat(f) for f in _FIGURE.findall(clause)]
-    if (days := _days(clause)) and days <= _days(row):
-        # 「11/3~11/14」 in a row written 「2026년 11월 3일~2026년 11월 14일」
-        return True
-    if figures:
-        return figures[-1] in _flat(row)
-    words = {w[:2] for w in _words(clause)} - {"확정", "합의", "결정"}
-    return len(words & {w[:2] for w in _words(row)}) >= 2
-
-
-def decision_rows(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
-    """A decision of the memo no row of the decision table holds gets one: the minutes' own
-    sentence on it (its figure, a decision word), else the memo's clause."""
-    from app.services import report_checks, units
-
-    stated = decisions(memo_text)
-    if not stated:
-        return sections, 0
-    found = [t for t in report_checks.tables(sections)
-             if (_DECISION_TABLE.search(" ".join(t.header))
-                 or _DECISION_TABLE.search(str(sections[t.section].get("heading") or "")))
-             and not _ACTION_TABLE.search(" ".join(t.header)) and t.rows]
-    if len(found) != 1:
-        return sections, 0
-    table = found[0]
-    prose = [p.strip() for sec in sections for line in str(sec.get("content") or "").split("\n")
-             if not line.lstrip().startswith(("|", "#", "**표", "**그림"))
-             for p in units.SENTENCE_BREAK.split(line) if p.strip()]
-    out = [dict(s) for s in sections]
-    added = 0
-    rows = [line for line, _ in table.rows]
-    for label, clause in stated:
-        if any(_covers(r, clause) for r in rows):
-            continue
-        figures = [_flat(f) for f in _FIGURE.findall(clause)]
-        own = next((p for p in prose if _DECIDED.search(p) and figures
-                    and figures[-1] in _flat(p) and len(p) <= 120), "")
-        text = _POINTER.sub("", _ORDINAL.sub("", own)).strip().rstrip(".") or clause
-        row = _decision_row(table, len(rows) + 1, label, text)
-        content = str(out[table.section].get("content") or "")
-        out[table.section]["content"] = content.replace(rows[-1], f"{rows[-1]}\n{row}", 1)
-        rows.append(row)
-        added += 1
-    return out, added
-
-
-def _decision_row(table, number: int, label: str, text: str) -> str:
-    agenda = re.match(r"안건\s{0,2}\d{1,2}", label)
-    cells = []
-    for k, head in enumerate(table.header):
-        column = [r[k].strip() for _, r in table.rows if len(r) > k]
-        if re.search(r"번호|순번|No|#", head) and all(c.isdigit() for c in column):
-            cells.append(str(number))
-        elif re.search(r"결정|내용|사항", head):
-            cells.append(text)
-        elif agenda and column and all(re.fullmatch(r"안건\s{0,2}\d{1,2}", c) for c in column):
-            cells.append(agenda.group(0))
-        elif re.search(r"안건|구분|항목", head) and label:
-            cells.append(re.sub(r"^안건\s{0,2}\d{1,2}\s{0,2}", "", label) or label)
-        else:
-            cells.append("-")
-    if text not in cells:
-        cells[min(1, len(cells) - 1)] = text
-    return "| " + " | ".join(cells) + " |"
 
 
 #: a value given as what was decided: 「80만원으로 합의했습니다」, 「50만원으로 확정」
@@ -798,138 +614,6 @@ def counted(sections: list[dict]) -> tuple[list[dict], int]:
 
 # ── the writer's notes in cells, and pointers at rows gone ──
 
-#: a basis in brackets: 「(기준 2026-10-14)」, 「(2026-10-14 기준)」, 「(기준일: 10/14)」
-_BASIS = re.compile(r"[ \t]{0,2}\((?:[ \t]{0,2}기준일?[ \t]{0,2}[:：]?[ \t]{0,2}[^()\n|]{1,24}"
-                    r"|[^()\n|]{1,24}[ \t]기준)[ \t]{0,2}\)")
-#: a cell telling only where its value came from: 「회의 자료에서 명시」, 「메모에 기재됨」
-_SOURCE_CELL = re.compile(
-    r"(?:회의[ \t]?)?(?:자료|메모|원문|원본|회의록|기록|발언)"
-    r"[ \t]?(?:에서|에|상|에[ \t]?따름|에[ \t]?근거)?[ \t]?(?:명시|기재|확인|근거|언급|표기)"
-    r"(?:됨|함|되어[ \t]?있음|된[ \t]?(?:내용|값|정보))?")
-
-
-#: a bracketed part of a cell, and the memo words it may quote
-_BRACKET = re.compile(r"[ \t]{0,2}\(([^()\n|]{2,160})\)")
-_QUOTE_IN = re.compile(r"「([^」\n]{1,40})」")
-_CHECK = re.compile(r"확인[ \t]?필요")
-
-
-#: the memo's words quoted as the writer's working: 「원문 표현: "다음 주 금요일"」,
-#: 「회의 발언: 「다음 회의에서」」, 「원문 「모레」」
-_WORDING = re.compile(
-    r"(?:원문|원본|메모|회의[ \t]?발언|발언)(?:[ \t]?(?:표현|문구|표기|기재))?[ \t]?[:：]?[ \t]?"
-    r"(?:「[^」\n]{1,60}」|\"[^\"\n]{1,60}\"|“[^”\n]{1,60}”|'[^'\n]{1,60}')")
-#: a written date: 「2026-10-23」, 「10/23」, 「10월 23일」
-_A_DATE = re.compile(r"\d{4}-\d{1,2}-\d{1,2}|(?<!\d)\d{1,2}/\d{1,2}(?!\d)|\d{1,2}월[ \t]?\d{1,2}일")
-
-
-def _unquoted(cell: str) -> str:
-    """`cell` less the memo words it quotes as the original, its separators closed."""
-    cut = _WORDING.sub("", cell)
-    if cut == cell:
-        return cell
-    cut = re.sub(r"[ \t]{0,2}[,;·][ \t]{0,2}(?=[,;·]|$)", "", cut)
-    return re.sub(r" {2,}", " ", cut).strip(" ,;·—-")
-
-
-def cell_notes(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
-    """Table cells less the writer's note on its own working: a basis or a note in brackets
-    (「(기준 2026-10-14)」, 「2026-10-14 (기준일: … 해석)」) goes, its 「확인 필요」 kept, and a
-    cell that only says where its value came from (「회의 자료에서 명시」) or how it was worked
-    out (`stated_meeting.self_note`) reads 「-」. The memo words a cell quotes as the original
-    (「원문 표현: "다음 주 금요일"」) go from a row whose due is a date; a row with no date
-    keeps them as its only due (「원문 「다음 주 금요일」」). The first cell, which names the
-    row, stays."""
-    from app.services import report_checks, stated_meeting
-
-    def note(text: str) -> bool:
-        return bool(_SOURCE_CELL.fullmatch(text) or stated_meeting.self_note(text, memo_text))
-
-    def unbracketed(cell: str) -> str:
-        # a value with the note on its working in brackets: the value, a 「확인 필요」 kept
-        def cut(m: re.Match) -> str:
-            inner = m.group(1).strip()
-            if not note(inner):
-                return m.group(0)
-            return " (확인 필요)" if _CHECK.search(inner) else ""
-        return re.sub(r" {2,}", " ", _BRACKET.sub(cut, cell)).strip()
-
-    memo_flat = squash(memo_text)
-    out = [dict(s) for s in sections]
-    fixed = 0
-    for table in report_checks.tables(out):
-        content = str(out[table.section].get("content") or "")
-        _, due = report_checks._owner_due(table.header)
-        for line, row in table.rows:
-            cells = list(row)
-            dated = due is not None and due < len(cells) and bool(_A_DATE.search(cells[due]))
-            for k in range(1, len(cells)):
-                cell = cells[k]
-                if len(cell) <= 300:
-                    cell = unbracketed(_BASIS.sub("", cell).strip())
-                if dated and k != due:
-                    cell = _unquoted(cell)
-                bare = cell.strip(" *.")
-                if bare and note(bare):
-                    # the memo's own words it quotes stay as the due a dateless row has
-                    said = [q for q in _QUOTE_IN.findall(bare) if squash(q) in memo_flat]
-                    cell = " ".join(f"원문 「{q}」" for q in said) if said and not dated else "-"
-                cells[k] = cell or "-"
-            if cells != list(row):
-                content = content.replace(line, "| " + " | ".join(cells) + " |", 1)
-                fixed += 1
-        out[table.section]["content"] = content
-    return out, fixed
-
-
-#: a clause pointing at the other items as open: 「나머지 항목은 확인이 필요합니다」
-_REST_OPEN = re.compile(
-    r"(?:나머지|그[ \t]?외|기타|남은)[ \t]?(?:항목|과제|업무|일|사항|안건|행)[가-힣]{0,2}[ \t]"
-    r"[^,.\n]{0,20}(?:(?:확인|확정|결정|지정)(?:이|가)?[ \t]?필요|미정|정해지지[ \t]?않)")
-#: a clause's end again once the clause after it went: 「작성하며」 → 「작성합니다」
-_RE_END = ((re.compile(r"([었았였했])(?:으며|고)$"), r"\1습니다"),
-           (re.compile(r"하(?:며|고)$"), "합니다"), (re.compile(r"되(?:며|고)$"), "됩니다"))
-
-
-def rest_open(sections: list[dict]) -> tuple[list[dict], int]:
-    """A clause calling the other items open (「…, 나머지 항목은 확인이 필요합니다(표 2)」) while
-    no table row holds an open cell (the row it pointed at went) goes; the sentence before it
-    ends again and keeps its table pointer, a sentence of that clause alone goes."""
-    from app.services import stated_meeting, stated_policy
-
-    rows = stated_meeting.open_rows(sections)
-    if rows is None or rows:
-        return sections, 0
-    out = [dict(s) for s in sections]
-    gone = 0
-    for sec in out:
-        content = str(sec.get("content") or "")
-        for piece in stated_policy.pieces(content):
-            if piece.lstrip().startswith("|") or not _REST_OPEN.search(piece[:400]):
-                continue
-            # the sentence's last clause only
-            clauses = piece.split(", ")
-            at = len(clauses) - 1
-            if not _REST_OPEN.search(clauses[at][:400]):
-                continue
-            pointer = "".join(_POINTER.findall(clauses[at]))
-            if at == 0:
-                plain = f"정리하면 다음과 같습니다{pointer}." if pointer else ""
-                content = content.replace(piece, plain, 1) if plain else drop(content, piece)
-                gone += 1
-                continue
-            last = clauses[at - 1]
-            for rx, polite in _RE_END:
-                if rx.search(last):
-                    clauses[at - 1] = rx.sub(polite, last)
-                    break
-            else:
-                continue
-            content = content.replace(piece, ", ".join(clauses[:at]) + f"{pointer}.", 1)
-            gone += 1
-        sec["content"] = content
-    return out, gone
-
 
 # ── memo lines copied as they stand, and a phrase said over and over ──
 
@@ -997,10 +681,6 @@ def copies(sections: list[dict], memo: str, skip_heading: re.Pattern | None = No
     return out
 
 
-COPY_WHY = ("메모 줄을 그대로 옮겼다(메모의 줄임말 「…함」·「…있었음」·「A vs B」·안건 라벨). 이 "
-            "문장을 회의록 문장(합니다체)으로 고쳐 써라: 메모의 이름·수치·결정은 그대로 두고 "
-            "새 내용은 보태지 마라. 앞뒤 문장이 이미 같은 말을 하면 원래 문장을 그대로 돌려줘라.")
-
 #: a clause long enough to count as a phrase said again
 _PHRASE = 8
 #: a phrase said this often in one document reads as pasted
@@ -1057,26 +737,25 @@ def repeats(sections: list[dict]) -> list[tuple[int, str, str]]:
     return out
 
 
-def repeat_why(phrase: str) -> str:
-    return (f"「{phrase[:60]}」를 문서에서 이미 여러 번 썼다. 이 문장에서는 그 말을 되풀이하지 "
-            "말고 빼라(남는 내용이 없으면 문장째 빼고 빈 문자열로 답하지 말고 원래 문장을 "
-            "그대로 돌려줘라).")
-
-
 def _facts(piece: str, memo: str) -> set[str]:
-    """What a sentence holds that the reader needs: its numbers and the memo's people."""
+    """What a sentence holds that the reader needs: its numbers, the memo's people and its own
+    words, memo labels aside."""
     from app.services import stated_meeting
 
     found = {m.group(0).replace(",", "")
              for m in re.finditer(r"\d[\d,.]{0,12}", _AGENDA_LABEL.sub("", piece))}
     found |= {name for name in stated_meeting.people(memo) if name in piece}
-    return found
+    # a thing named: a Latin word (「approval」, 「PG」), a Hangul one of three letters or more
+    # that no verb ending closes (「간편결제」, 「재논의」, not 「요청했으나」)
+    return found | {squash(w) for w in _words(_SIGN.sub(" ", _AGENDA_LABEL.sub("", piece)))
+                    if re.fullmatch(r"[a-z][a-z0-9]{1,30}", w)
+                    or (len(w) >= 3 and not w.endswith(("다", "며", "고", "서", "나", "면", "지")))}
 
 
 def settle_copies(sections: list[dict], memo: str, *, strong: bool) -> tuple[list[dict], int]:
     """What the writer left pasted after its one repair: a sentence said again word for word
     goes; for a writer not strong, a memo line copied or a sentence repeating a phrase said
-    over and over goes when the rest of the document holds its numbers and people (the
+    over and over goes when the rest of the document holds its numbers, people and words (the
     first saying stays), and a cell repeating an open item's phrase reads 「미정」."""
     from app.services import report_checks, stated_policy
 
@@ -1102,8 +781,8 @@ def settle_copies(sections: list[dict], memo: str, *, strong: bool) -> tuple[lis
         content = str(out[index].get("content") or "")
         if piece not in content:
             continue
-        rest = "\n".join(str(s.get("content") or "") for s in out).replace(piece, "", 1)
-        if all(fact in rest.replace(",", "") for fact in _facts(piece, memo)):
+        rest = squash("\n".join(str(s.get("content") or "") for s in out).replace(piece, "", 1))
+        if all(squash(fact) in rest for fact in _facts(piece, memo)):
             out[index]["content"] = drop(content, piece)
             gone += 1
     # a cell repeating an open item's words said over and over, in cells or sentences
@@ -1192,8 +871,7 @@ def bare_marks(sections: list[dict]) -> tuple[list[dict], int]:
     return out, gone
 
 
-__all__ = ["COPY_WHY", "Meeting", "Memo", "bare_marks", "borrowed_next", "cell_notes", "copied",
-           "copies", "counted", "decision_rows", "decisions", "dedupe_rows", "drop",
-           "false_absences", "false_dues", "fill_head", "of_request", "overview_day", "read",
-           "relative_dues", "repeat_why", "repeats", "rest_open", "restated_checks",
-           "settle_copies", "squash"]
+__all__ = ["Meeting", "Memo", "bare_marks", "copied", "copies",
+           "counted", "decided_values", "decisions", "dedupe_rows", "drop", "false_absences",
+           "false_dues", "fill_head", "of_request", "read", "relative_dues",
+           "repeats", "restated_checks", "settle_copies", "squash"]

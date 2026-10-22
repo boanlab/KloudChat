@@ -29,6 +29,8 @@ Rules:
 - Do not make up names, dates, amounts or figures that are not in the material; rewrite the
   sentence so it holds without them (a table cell: 「미정」). Keep existing bracket blanks
   as they are.
+- Answer each item with the fixed sentence alone, as it will stand in the document: no
+  note on what you changed, left out or why.
 - If you judge the finding wrong (e.g. the sentence is about a different case), answer
   with the original sentence unchanged.
 
@@ -153,35 +155,6 @@ def _acceptable(old: str, new: str, finding: Finding) -> bool:
     return not (finding.still and finding.still(new))
 
 
-#: a reply that is a marker alone: 「확인 필요」, 「(미정)」
-_MARK_ONLY = re.compile(r"\(?[ \t]{0,2}(?:확인[ \t]?필요|미정|해당[ \t]?없음)[ \t]{0,2}\)?[.:]?")
-
-
-def pasted(old: str, new: str, content: str, memo: str = "") -> bool:
-    """A prose rewrite that pastes instead of writing: a marker alone where a sentence was
-    (「확인 필요」), a sentence the section already holds or one keeping nothing of the old that
-    only says the section's words again (`restates`), a word or two left of a sentence, or
-    the memo's own line in its shorthand (`meeting_memo.copied`) where the sentence was prose."""
-    from app.services import meeting_memo
-
-    if old.lstrip().startswith("|"):
-        return False
-    if _MARK_ONLY.fullmatch(new.strip()) and not _MARK_ONLY.fullmatch(old.strip()):
-        return True
-    flat = re.sub(r"[\s,.:;·!?()「」\"']", "", new)
-    rest = re.sub(r"[\s,.:;·!?()「」\"']", "", content.replace(old, "", 1))
-    if len(flat) >= 16 and flat in rest:
-        return True
-    if restates(new, old, content.replace(old, "", 1)):
-        return True
-    # a word or two left of a whole sentence (「함.」)
-    if len(flat) < 8 and len(flat) * 3 < len(re.sub(r"[\s,.:;·!?()「」\"']", "", old)):
-        return True
-    pieces = [p for p in re.split(r"(?<=[.!?])\s+", new.strip()) if p.strip()]
-    return bool(memo) and not meeting_memo.copied(old, memo) \
-        and any(meeting_memo.copied(p, memo) for p in pieces)
-
-
 #: a blank for the person to fill: 「[회의 일자]」, 「[담당자]」
 _BLANK = re.compile(r"\[[^\[\]\n\d]{1,20}\]")
 
@@ -230,18 +203,6 @@ def filled_twin(new: str, content: str) -> str | None:
     return None
 
 
-#: the writer reporting its own act of writing: 「그 값을 넣지 않은 문장으로 쓰도록 했습니다」,
-#: 「회의록에 기록하지 않았습니다」, 「해당 내용을 뺐습니다」
-WROTE = re.compile(
-    r"(?:쓰|적|기록하|기재하|넣|표기하|표시하|반영하|작성하|싣|담|남기|제외하|삭제하|수정하|고치|바꾸)"
-    r"(?:도록\s?(?:했|하였)|지\s?(?:않았|않도록\s?했)|었|았|였)습니다"
-    r"|(?:썼|적었|뺐|넣었|고쳤|바꿨|실었|담았|남겼)습니다")
-#: what a writer's note names of the document itself, which ties it to no sentence
-_DOC_WORDS = frozenset(("회의록", "보고서", "문서", "문장", "내용", "자료", "항목", "부분",
-                        "참고로", "해당"))
-_SENTENCE_END = re.compile(r"(?<=[다요][.!?])\s+")
-
-
 def _stems(text: str) -> set[str]:
     out = set()
     for word in re.findall(r"[가-힣A-Za-z0-9]{2,}", text or ""):
@@ -250,28 +211,6 @@ def _stems(text: str) -> set[str]:
         if len(word) >= 2:
             out.add(word.lower())
     return out
-
-
-def edit_note(sentence: str, near: str = "") -> bool:
-    """A sentence reporting how the text was written (「그 값을 넣지 않은 문장으로 쓰도록
-    했습니다」): an act of writing, no figure, and no word of `near` (the sentence it stands
-    for) but the document's own (「회의록」, 「문장」)."""
-    body = (sentence or "").strip()
-    # the act is the sentence's predicate, at its end
-    if not body or body.startswith("|") or not WROTE.search(body[-40:]) \
-            or re.search(r"\d", body):
-        return False
-    return not (_stems(body) & _stems(near)) - _DOC_WORDS
-
-
-def without_edit_notes(old: str, new: str) -> str:
-    """A repair reply less the sentences that only report the edit; "" when nothing else is
-    left (the reply then repairs nothing)."""
-    if not new or new.lstrip().startswith("|"):
-        return new
-    parts = [p for p in _SENTENCE_END.split(new.strip()) if p.strip()]
-    kept = [p for p in parts if not edit_note(p, old)]
-    return new if len(kept) == len(parts) else " ".join(kept)
 
 
 #: keys a repair reply puts its fixed sentence under when it answers objects, not strings
@@ -350,8 +289,7 @@ async def repair(
                 # an unparsable reply item (e.g. `{'sentence': …}`) never goes into the text
                 left.append(finding)
                 continue
-            # the writer's account of the fix (「…쓰도록 했습니다」) is no sentence of the text
-            new = without_edit_notes(finding.sentence, clean(new.strip().strip("「」")))
+            new = clean(new.strip().strip("「」"))
             # a fix keeps the document's 합니다체 (no 「…대상으로 한다.」 in a notice)
             new = keep_register(finding.sentence, new) or ""
             if new and _acceptable(finding.sentence, new, finding) \
@@ -363,7 +301,8 @@ async def repair(
                 log.info("repair of [%s] filled the blank it restates in %r", finding.code,
                          out[index].get("heading"))
             elif new != finding.sentence and _acceptable(finding.sentence, new, finding) \
-                    and not pasted(finding.sentence, new, content, doc.memo):
+                    and not restates(new, finding.sentence,
+                                     content.replace(finding.sentence, "", 1)):
                 content = content.replace(finding.sentence, new, 1)
                 log.info("repaired [%s] in %r", finding.code, out[index].get("heading"))
             else:

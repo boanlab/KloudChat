@@ -31,10 +31,6 @@ _CHINESE_WORDS = {
     "本次": "이번", "本周": "이번 주", "下周": "다음 주", "下次": "다음", "上周": "지난주",
     "补提": "보완 제출", "补交": "보완 제출", "提交": "제출", "负责人": "담당자", "负责": "담당",
     "截止": "마감", "讨论": "논의",
-    # question and pointing words, read as no word at all (「哪一个」 read 「나일개」)
-    "哪一个": "어느 것", "哪个": "어느 것", "哪些": "어떤 것", "哪里": "어디", "什么": "무엇",
-    "怎么": "어떻게", "怎样": "어떻게", "为什么": "왜", "这个": "이것", "那个": "그것",
-    "这些": "이것들", "那些": "그것들", "还是": "또는", "或者": "또는", "以及": "및",
 }
 _CHINESE_WORD = re.compile("|".join(sorted(map(re.escape, _CHINESE_WORDS), key=len, reverse=True)))
 
@@ -79,31 +75,8 @@ def read_back(text: str) -> tuple[str, list[str]]:
         out.append(read)
         replaced.append(run)
         at = found.end()
-        if particle := _AFTER.match(text, at):
-            # the particle the Chinese word carried agrees with its Korean word
-            out.append(_agree(read, particle.group(1)))
-            at = particle.end()
     out.append(text[at:])
     return "".join(out), replaced
-
-
-#: a particle right after a run, which changes with the word's last syllable
-_AFTER = re.compile(r"(으로|를|을|는|은|가|이|와|과|로)(?![가-힣])")
-_FORMS = {"를": ("를", "을"), "을": ("를", "을"), "는": ("는", "은"), "은": ("는", "은"),
-          "가": ("가", "이"), "이": ("가", "이"), "와": ("와", "과"), "과": ("와", "과"),
-          "로": ("로", "으로"), "으로": ("로", "으로")}
-
-
-def _agree(word: str, particle: str) -> str:
-    """`particle` in the form `word`'s last syllable takes (「어느 것」 + 를 → 을)."""
-    last = word[-1:]
-    if not re.match(r"[가-힣]", last):
-        return particle
-    final = (ord(last) - 0xAC00) % 28
-    vowel, consonant = _FORMS[particle]
-    if particle in ("로", "으로"):
-        return vowel if final in (0, 8) else consonant
-    return vowel if final == 0 else consonant
 
 
 def chinese_slips(text: str, given: str = "") -> list[str]:
@@ -137,25 +110,12 @@ _PARTICLE = re.compile(
 )
 
 
-#: a numbered item named by a copula on its number: 「안건 2인 예산 안건」 (read 「2명」)
-_NUMBERED_COPULA = re.compile(r"(?<![가-힣])(안건|의제|항목)\s?([1-9]\d?)인(?=\s[가-힣])")
-_ORDINAL_WORDS = ("첫", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉", "열")
-
-
-def _ordinal_item(m: re.Match) -> str:
-    n = int(m.group(2))
-    word = _ORDINAL_WORDS[n - 1] if n <= len(_ORDINAL_WORDS) else str(n)
-    return f"{word} 번째 {m.group(1)}인"
-
-
 def tidy_spacing(text: str) -> str:
-    """Close spaces before counters and particles; a numbered item's copula said as its
-    ordinal (「안건 2인 예산 안건」 → 「두 번째 안건인 예산 안건」)."""
+    """Close spaces before counters and particles."""
     if not text:
         return text
     text = _COUNTER_LONG.sub(r"\1\2", text)
     text = _COUNTER_SHORT.sub(r"\1\2", text)
-    text = _NUMBERED_COPULA.sub(_ordinal_item, text)
     return _PARTICLE.sub(r"\1\2", text)
 
 

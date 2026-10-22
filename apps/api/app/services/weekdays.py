@@ -505,5 +505,27 @@ def flag_once(sections: list[dict]) -> tuple[list[dict], int]:
     return out, changed
 
 
-__all__ = ["WEEKDAYS_RX", "Fix", "context_year", "context_years", "fix_weekdays", "flag_once"]
+
+#: an English month and day, with its weekday: 「Oct 19」, 「October 26 (Mon)」, 「19 Oct」
+_EN_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+_EN_WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+_EN_MONTH = r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]{0,6}\.?"
+_EN_DAY = re.compile(
+    rf"\b(?:{_EN_MONTH}[ \t]{{1,2}}(\d{{1,2}})|(\d{{1,2}})[ \t]{{1,2}}{_EN_MONTH})"
+    r"(?:st|nd|rd|th)?\b(?:,?[ \t]{0,2}\(?(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]{0,6}\.?\)?)?")
+
+
+def english_days(text: str) -> str:
+    """`text` with each English month and day written as the code reads dates: 「Oct 26 (Mon)」
+    → 「10/26(월)」, so a memo in English dates its meeting and deadlines too."""
+    def numeric(m: re.Match) -> str:
+        month = _EN_MONTHS.index((m.group(1) or m.group(4))[:3].lower()) + 1
+        day = m.group(2) or m.group(3)
+        weekday = f"({WEEKDAYS[_EN_WEEKDAYS.index(m.group(5)[:3].lower())]})" if m.group(5) else ""
+        return f"{month}/{day}{weekday}"
+
+    return _EN_DAY.sub(numeric, text or "") if text else text
+
+__all__ = ["WEEKDAYS_RX", "Fix", "context_year", "context_years", "english_days", "fix_weekdays",
+           "flag_once"]
 
