@@ -140,6 +140,12 @@ def mail_line(piece: str, material: str) -> bool:
     return bool(_MAIL_LINE.match(piece)) and not _MAIL_ASKED.search(material or "")
 
 
+def mail_lines(standing: list[str]) -> list[str]:
+    """Lines of the agent's or project's instructions that ask for a mail: they let its
+    「제목:/본문:」 lines stand, while the rest of the instructions are no memo."""
+    return [line for text in standing for line in text.splitlines() if _MAIL_ASKED.search(line)]
+
+
 def promised(piece: str, material: str) -> bool:
     """A promise to tell more later (「추가 안건은 확정되는 대로 안내합니다」) in minutes of a memo
     that promises nothing of the kind."""
@@ -358,5 +364,5 @@ def why(phrases: list[str], piece: str = "", material: str = "",
 
 
 __all__ = ["all_set", "asks_anew", "findings", "gap_note", "guessed", "is_next_part", "mail_line",
-           "open_rows", "promised", "settle", "unraised", "unset_agenda", "untraced",
+           "mail_lines", "open_rows", "promised", "settle", "unraised", "unset_agenda", "untraced",
            "values", "why"]

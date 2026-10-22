@@ -120,3 +120,13 @@ def test_the_open_point_checks_finish_on_a_long_run_of_spaces():
         stated_meeting.untraced(text, SALES, rows=[("1", {"출장비"})])
         stated_meeting.settle(text, text, [text], strong=False, material=SALES)
     assert time.perf_counter() - started < 0.5
+
+
+def test_an_agent_asking_for_an_announcement_mail_keeps_its_subject_line():
+    agent = "# 역할\n회의록 끝에 참석자에게 보낼 안내 메일 초안을 붙인다.\n다음 회의는 쓰지 않는다."
+    lines = stated_meeting.mail_lines([agent])
+    assert lines == ["회의록 끝에 참석자에게 보낼 안내 메일 초안을 붙인다."]
+    piece = "제목: 영업1팀 주간회의 결과 안내"
+    assert not stated_meeting.mail_line(piece, SALES + "\n" + "\n".join(lines))
+    # a skill's own words about mails are no ask
+    assert stated_meeting.mail_line(piece, SALES)

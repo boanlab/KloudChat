@@ -47,6 +47,7 @@ from app.services import (
     research,
     richtext,
     stated_days,
+    stated_meeting,
     stated_policy,
     table_integrity,
     table_mend,
@@ -1861,12 +1862,15 @@ def _person_given(bundle: Bundle) -> str:
 
 
 def _meeting_given(bundle: Bundle) -> str:
-    """What the person gave of the meeting: request, files, pasted text, card answers; no
-    instructions or skills (a skill's 「메일」, 「다음 회의 (일시·장소·예정 안건)」 are no memo's)."""
+    """What the person gave of the meeting: request, files, pasted text, card answers, and the
+    instructions' lines asking for a mail; no skills or other instructions (a skill's 「메일」,
+    「다음 회의 (일시·장소·예정 안건)」 are no memo's)."""
     mat = bundle.material
+    standing = workspace_context.standing_of([p.text for p in mat.trusted])
     return "\n".join([
         mat.given or bundle.request.text,
         *(p.text for p in mat.parts if p.origin in ("attachment", "pasted", "answer")),
+        *stated_meeting.mail_lines(standing),
     ])
 
 
