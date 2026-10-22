@@ -1,15 +1,13 @@
 """Minutes keep the memo through card answers and repairs: the 「덧붙인 조건」 block the card
-adds is not the meeting, a repair's account of its own edit never lands in the text, a note on
-how the minutes were written goes though another check marked its sentence, an agreement the
+adds is not the meeting, a repair is asked for the sentence alone, a note on what the writer
+left out goes though another check marked its sentence, an agreement the
 memo never states is cut or marked, a deadline the memo gives as 「다음 회의에서」 is not called
 missing, and a row written twice goes. Shapes from the round 16 re-verify (tc, tc2)."""
 
 from __future__ import annotations
 
-import json
 import time
 
-import pytest
 from test_minutes_say_only_what_the_memo_says import SALES, TUTOR
 
 from app.pipeline.bundle import Bundle, Material, Request, Spec
@@ -75,48 +73,15 @@ def test_with_the_memo_kept_an_hour_part_it_never_gives_goes():
     assert "2026년 10월 21일 10시에 3층 회의실" in out[0]["content"]
 
 
-def test_a_repair_reply_that_reports_its_edit_repairs_nothing():
-    old = "회의 시간은 약 1시간이었습니다."
-    note = "참고로, 그 값을 넣지 않은 문장으로 쓰도록 했습니다."
-    assert verify.without_edit_notes(old, note) == ""
-    assert verify.without_edit_notes(old, "회의록에 기록하지 않았습니다.") == ""
-    # the fixed sentence stays, the account beside it goes
-    fixed = "포스터 시안은 이수연이 준비합니다."
-    assert verify.without_edit_notes("포스터 시안은 다음 주 금요일까지 준비합니다.",
-                                     f"{fixed} 해당 값은 넣지 않았습니다.") == fixed
-    # what someone in the meeting wrote, with its figure or its words, is no edit note
-    assert not verify.edit_note("박민호가 간식비 80만원을 요청서에 적었습니다.")
-    assert not verify.edit_note("이수연이 포스터 시안을 고쳤습니다.",
-                                "이수연이 포스터 시안을 냅니다.")
+def test_the_repair_asks_for_the_sentence_alone():
+    # a reply is the sentence as it will stand, never an account of the edit
+    assert "no\n  note on what you changed, left out or why" in verify._REPAIR_PROMPT
 
 
-@pytest.mark.asyncio
-async def test_the_repair_leaves_the_sentence_when_the_reply_only_reports_the_edit():
-    async def complete(model, messages, api_key, max_tokens=0, **kwargs):
-        return json.dumps(["참고로, 그 값을 넣지 않은 문장으로 쓰도록 했습니다."],
-                          ensure_ascii=False), {}
-
-    sentence = "포스터 시안이 지연될 경우 모집 기간 전체를 조정해야 합니다."
-    doc = verify.Doc([_sec("남은 쟁점", sentence)], TUTOR, TUTOR)
-    finding = verify.Finding(0, sentence, "minutes_unsourced", "지어 쓴 부분")
-    sections, left, _ = await verify.repair(doc, [finding], complete=complete, model="m",
-                                            api_key="k")
-    assert sections[0]["content"] == sentence and left == [finding]
-
-
-def test_a_note_on_the_writing_goes_though_another_check_marked_its_sentence():
-    decided = ("첫 번째로, 모집 기간이 확정되었습니다. 회의에서 다음 주 금요일을 기한으로 지정한 "
-               "뒤, 기준일인 2026년 10월 14일을 바탕으로 기한을 2026년 10월 23일(금)으로 해석하여 "
-               "확정하였으며, 모집 기간은 11월 3일부터 11월 14일까지로 정하였습니다 (확인 필요).")
-    out = report_checks.settle_unsourced([_sec("결정 사항", decided)], TUTOR, strong=False)
-    text = out[0]["content"]
-    assert "기준일" not in text and "해석" not in text
-    assert "기한을 2026년 10월 23일(금)으로 확정하였으며, 모집 기간은 11월 3일부터" in text
-    overview = ("회의록 작성자는 교육혁신팀 김에이전트입니다. 회의록에 기록하지 않았습니다.\n\n"
-                "포스터 시안의 경우, 2026-10-14 기준 '다음 주 금요일'에 해당하는 2026-10-23(금)이 "
-                "확정 날짜로 산출되었습니다 (확인 필요).\n\n"
-                "회의 일시, 장소, 시간은 모두 자료에 근거한 정보입니다.\n\n"
-                "참고로, 그 값을 넣지 않은 문장으로 쓰도록 했습니다.")
+def test_a_note_on_what_the_writer_left_out_goes_though_another_check_marked_it():
+    overview = ("회의록 작성자는 교육혁신팀 김에이전트입니다.\n\n"
+                "점심 메뉴와 주차 이야기는 회의 안건과 무관하여 본문에 반영하지 않았습니다 "
+                "(확인 필요).")
     for strong in (False, True):
         left = report_checks.settle_unsourced([_sec("회의 개요", overview)], TUTOR,
                                               strong=strong)[0]["content"]
@@ -177,6 +142,4 @@ def test_the_new_patterns_finish_on_long_spaces():
     meeting_memo.of_request(f"메모{spaces}\n\n덧붙인 조건:\n- {spaces}쓴다")
     meeting_memo.false_dues([_sec("실행 항목", f"기한{spaces}없음")], TUTOR)
     stated_meeting.untraced(f"기준일{spaces}을 바탕으로 동의{spaces}, 합의{spaces}.", TUTOR)
-    stated_meeting.note_cut(f"기준일{spaces}바탕으로 {spaces}해석하여 확정", TUTOR)
-    verify.without_edit_notes("a", f"값을{spaces}넣지 않았습니다.{spaces}적었습니다.")
     assert time.perf_counter() - start < 0.5

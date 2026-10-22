@@ -1,6 +1,5 @@
 """Minutes cut an agreement word without cutting the list it heads, give no memo person a task
-the memo never gives them, keep no note on how the writer worked out the next meeting, and
-count what the list after a count holds. Shapes from the
+the memo never gives them, and count what the list after a count holds. Shapes from the
 round 16 re-verify (reverify-x tc, tc2)."""
 
 from __future__ import annotations
@@ -71,24 +70,6 @@ def test_an_unowned_row_whose_task_no_memo_clause_gives_is_unassigned():
     assert ["튜터링 포스터 시안 준비"] not in [task for _, _, task in rows]
 
 
-def test_how_the_writer_worked_out_the_next_meeting_is_no_part_of_it():
-    worked = ("회의 개요와 실행 계획 단계에서 확인한 바와 같이, 다음 회의 예정 일시는 "
-              "2026-10-21(10/21 화)로 계산되었습니다.")
-    source = ("그러나 원본 회의 기록에서는 '화'요일로 명시되어 있으므로, 실제 요일은 확인이 "
-              "필요합니다(표 4).")
-    for note in (worked, source):
-        assert stated_meeting.self_note(note, TUTOR), note
-    # a field the memo does not give is another check's
-    assert not stated_meeting.self_note("3번의 기한은 회의 자료에 명시되지 않았습니다.", TUTOR)
-    assert not stated_meeting.self_note("최다은이 비교표를 가져오기로 했습니다.", TUTOR)
-    content = (f"최다은이 비교표를 가져오기로 했습니다.\n\n{worked} {source}\n\n"
-               "**표 4. 다음 회의 정보**\n\n| 항목 | 내용 |\n| --- | --- |\n| 장소 | 3층 회의실 |")
-    out = report_checks.settle_unsourced([_sec("다음 회의", content)], TUTOR, strong=False)
-    text = out[0]["content"]
-    assert "계산되었습니다" not in text and "원본" not in text
-    assert text.startswith("최다은이 비교표를 가져오기로 했습니다(표 4).")
-
-
 def test_a_count_says_how_many_the_list_after_it_holds():
     lead = ("회의에서 분담한 일은 세 가지입니다. 이수연은 포스터 시안을 준비하고, 최다은은 "
             "비교표를 작성합니다(표 2).")
@@ -108,28 +89,10 @@ def test_a_count_says_how_many_the_list_after_it_holds():
     assert meeting_memo.counted([_sec("행동 항목", apart)])[1] == 0
 
 
-def test_a_cell_holds_no_note_on_how_the_writer_got_its_value():
-    table = ("| 항목 | 내용 | 비고 |\n| --- | --- | --- |\n"
-             "| 포스터 시안 | 2026-10-23(금) | 회의 발언: '다음 주 금요일까지' "
-             "(기준 2026-10-14) |\n"
-             "| 장소 | 3층 회의실 | 회의 자료에서 명시 |\n"
-             "| 모집 기간 | 2026-11-03 ~ 2026-11-14 | 회의에서 확정 |")
-    out, fixed = meeting_memo.cell_notes([_sec("다음 회의", table)], TUTOR)
-    text = out[0]["content"]
-    assert fixed == 2
-    assert "| 회의 발언: '다음 주 금요일까지' |" in text and "(기준" not in text
-    assert "| 장소 | 3층 회의실 | - |" in text
-    # what the meeting did stays
-    assert "| 회의에서 확정 |" in text
-
-
 def test_the_new_checks_finish_on_a_long_run_of_spaces():
     gap = " " * 50_000
     start = time.perf_counter()
-    stated_meeting.self_note(f"원본{gap}에서는 명시되어", TUTOR)
     stated_meeting.unowned_task(f"박민호가{gap}집행합니다.", TUTOR)
     stated_meeting.consent_cut(f"합의한{gap}업무, 그리고 3건입니다.", f"합의한{gap}업무")
     meeting_memo.counted([_sec("행동", f"다음{gap}3건입니다.\n\n- a\n- b")])
-    row = f"| 항목 | 비고 |\n|---|---|\n| a | (기준{gap}2026) 회의{gap}자료에서{gap}명시 |"
-    meeting_memo.cell_notes([_sec("행동", row)], TUTOR)
     assert time.perf_counter() - start < 0.5

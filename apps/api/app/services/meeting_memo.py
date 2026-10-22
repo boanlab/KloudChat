@@ -610,89 +610,6 @@ def counted(sections: list[dict]) -> tuple[list[dict], int]:
 
 # ── the writer's notes in cells, and pointers at rows gone ──
 
-#: a basis in brackets: 「(기준 2026-10-14)」, 「(2026-10-14 기준)」, 「(기준일: 10/14)」
-_BASIS = re.compile(r"[ \t]{0,2}\((?:[ \t]{0,2}기준일?[ \t]{0,2}[:：]?[ \t]{0,2}[^()\n|]{1,24}"
-                    r"|[^()\n|]{1,24}[ \t]기준)[ \t]{0,2}\)")
-#: a cell telling only where its value came from: 「회의 자료에서 명시」, 「메모에 기재됨」
-_SOURCE_CELL = re.compile(
-    r"(?:회의[ \t]?)?(?:자료|메모|원문|원본|회의록|기록|발언)"
-    r"[ \t]?(?:에서|에|상|에[ \t]?따름|에[ \t]?근거)?[ \t]?(?:명시|기재|확인|근거|언급|표기)"
-    r"(?:됨|함|되어[ \t]?있음|된[ \t]?(?:내용|값|정보))?")
-
-
-#: a bracketed part of a cell, and the memo words it may quote
-_BRACKET = re.compile(r"[ \t]{0,2}\(([^()\n|]{2,160})\)")
-_QUOTE_IN = re.compile(r"「([^」\n]{1,40})」")
-_CHECK = re.compile(r"확인[ \t]?필요")
-
-
-#: the memo's words quoted as the writer's working: 「원문 표현: "다음 주 금요일"」,
-#: 「회의 발언: 「다음 회의에서」」, 「원문 「모레」」
-_WORDING = re.compile(
-    r"(?:원문|원본|메모|회의[ \t]?발언|발언)(?:[ \t]?(?:표현|문구|표기|기재))?[ \t]?[:：]?[ \t]?"
-    r"(?:「[^」\n]{1,60}」|\"[^\"\n]{1,60}\"|“[^”\n]{1,60}”|'[^'\n]{1,60}')")
-#: a written date: 「2026-10-23」, 「10/23」, 「10월 23일」
-_A_DATE = re.compile(r"\d{4}-\d{1,2}-\d{1,2}|(?<!\d)\d{1,2}/\d{1,2}(?!\d)|\d{1,2}월[ \t]?\d{1,2}일")
-
-
-def _unquoted(cell: str) -> str:
-    """`cell` less the memo words it quotes as the original, its separators closed."""
-    cut = _WORDING.sub("", cell)
-    if cut == cell:
-        return cell
-    cut = re.sub(r"[ \t]{0,2}[,;·][ \t]{0,2}(?=[,;·]|$)", "", cut)
-    return re.sub(r" {2,}", " ", cut).strip(" ,;·—-")
-
-
-def cell_notes(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
-    """Table cells less the writer's note on its own working: a basis or a note in brackets
-    (「(기준 2026-10-14)」, 「2026-10-14 (기준일: … 해석)」) goes, its 「확인 필요」 kept, and a
-    cell that only says where its value came from (「회의 자료에서 명시」) or how it was worked
-    out (`stated_meeting.self_note`) reads 「-」. The memo words a cell quotes as the original
-    (「원문 표현: "다음 주 금요일"」) go from a row whose due is a date; a row with no date
-    keeps them as its only due (「원문 「다음 주 금요일」」). The first cell, which names the
-    row, stays."""
-    from app.services import report_checks, stated_meeting
-
-    def note(text: str) -> bool:
-        return bool(_SOURCE_CELL.fullmatch(text) or stated_meeting.self_note(text, memo_text))
-
-    def unbracketed(cell: str) -> str:
-        # a value with the note on its working in brackets: the value, a 「확인 필요」 kept
-        def cut(m: re.Match) -> str:
-            inner = m.group(1).strip()
-            if not note(inner):
-                return m.group(0)
-            return " (확인 필요)" if _CHECK.search(inner) else ""
-        return re.sub(r" {2,}", " ", _BRACKET.sub(cut, cell)).strip()
-
-    memo_flat = squash(memo_text)
-    out = [dict(s) for s in sections]
-    fixed = 0
-    for table in report_checks.tables(out):
-        content = str(out[table.section].get("content") or "")
-        _, due = report_checks._owner_due(table.header)
-        for line, row in table.rows:
-            cells = list(row)
-            dated = due is not None and due < len(cells) and bool(_A_DATE.search(cells[due]))
-            for k in range(1, len(cells)):
-                cell = cells[k]
-                if len(cell) <= 300:
-                    cell = unbracketed(_BASIS.sub("", cell).strip())
-                if dated and k != due:
-                    cell = _unquoted(cell)
-                bare = cell.strip(" *.")
-                if bare and note(bare):
-                    # the memo's own words it quotes stay as the due a dateless row has
-                    said = [q for q in _QUOTE_IN.findall(bare) if squash(q) in memo_flat]
-                    cell = " ".join(f"원문 「{q}」" for q in said) if said and not dated else "-"
-                cells[k] = cell or "-"
-            if cells != list(row):
-                content = content.replace(line, "| " + " | ".join(cells) + " |", 1)
-                fixed += 1
-        out[table.section]["content"] = content
-    return out, fixed
-
 
 # ── memo lines copied as they stand, and a phrase said over and over ──
 
@@ -945,7 +862,7 @@ def bare_marks(sections: list[dict]) -> tuple[list[dict], int]:
     return out, gone
 
 
-__all__ = ["Meeting", "Memo", "bare_marks", "cell_notes", "copied", "copies",
+__all__ = ["Meeting", "Memo", "bare_marks", "copied", "copies",
            "counted", "decided_values", "decisions", "dedupe_rows", "drop", "false_absences",
            "false_dues", "fill_head", "of_request", "read", "relative_dues",
            "repeats", "restated_checks", "settle_copies", "squash"]

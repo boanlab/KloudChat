@@ -16,15 +16,14 @@ sentence calls every owner and deadline set while a cell says 미정. Nor does a
 writer's advice (「… 작성하는 것이 좋습니다」), what follows if a task is not done (「미제출 시 …
 지연되어」), an 오전·오후 it never puts before its own 「10시」, or the next meeting's agenda in a
 table or in any sentence that speaks of the next meeting. Nor does it hold the writer's note on
-how it wrote the minutes
-(「상대 날짜를 해석하는 기준일은 …」, 「… 그대로 반영합니다」).
+what it kept out of the minutes (「… 본문에 반영하지 않았습니다」).
 """
 
 from __future__ import annotations
 
 import re
 
-from app.services import meeting_memo, stated_policy, verify
+from app.services import meeting_memo, stated_policy
 from app.services.stated_days import _GENERIC, _PARTICLE, _words
 
 #: a length of time: 「약 20분 만에」, 「1시간 동안」, 「30분간」, 「2시간이 소요」
@@ -122,55 +121,6 @@ _MAIL_LINE = re.compile(
     r"^\s{0,4}(?:[-*>`]\s{0,3}){0,3}(?:\*\*)?(?:제목|본문|수신|발신|참조|subject|body)(?:\*\*)?"
     r"\s?[:：]", re.I)
 _MAIL_ASKED = re.compile(r"메일|이메일|공지|안내문|제목|본문")
-#: the writer's note on its own method: 「상대 날짜를 해석하는 기준일은」, 「그대로 반영합니다」
-_SELF_NOTE = re.compile(
-    r"해석(?:하여|해서|하는|했|한|합니다)|기준일|상대\s?날짜|각\s?해당\s?(?:섹션|항목|절|장)"
-    # a note in noun form, as a cell holds it: 「「다음 주 금요일」 기준 날짜 해석」
-    r"|(?:날짜|기한|일자|요일|기준)\s?해석(?![가-힣])"
-    r"|그대로\s?(?:반영|옮겨|적)"
-    # 「2026-10-14 기준 '다음 주 금요일'에 해당하는 … 산출되었습니다」, 「모두 자료에 근거한 정보」
-    r"|\d\)?\s?기준(?:으로)?\s|산출(?:되었|됐|했|하였|합니다|된다)|환산(?:하여|해|했|한)"
-    r"|자료에\s?근거(?:한|하여|해)|자료를\s?(?:바탕|근거|토대)으로"
-    # a day or year the writer took as its basis: 「2026년을 기준으로 확정했습니다」
-    r"|(?:년|일|시점|날짜|연도|날)(?:을|를|이|로)?\s?기준(?:으로|삼아|을\s?삼)"
-    # a value the writer worked out: 「… 2026-10-21로 계산되었습니다」
-    r"|계산(?:되었|됐|했|하였|한\s?결과|된\s?결과)"
-    # the document's own earlier parts: 「실행 계획 단계에서 확인한 바와 같이」
-    r"|(?:확인|살펴|정리|언급)한\s?바와\s?같이"
-    r"|(?:앞서|위에서|앞에서)\s?(?:살펴본|정리한|확인한|언급한)"
-    # the memo as a written source: 「원본 회의 기록에서는 '화'요일로 명시되어」
-    r"|(?:원본|원문|메모)[가-힣 ]{0,8}(?:상|에서는|에서|에는|에)\s"
-    r"[^.\n]{0,24}(?:명시|기재|표기|적혀|적힌|쓰여)(?!되지|하지|지\s?않)")
-#: the writer's account of how it records the meeting, at a sentence's end: 「… 기록합니다」,
-#: 「… 비고에 남깁니다」, 「… 기준으로 정리했습니다」
-_RECORDS = re.compile(
-    r"(?:기록|정리|기재|표기|기입|명기|반영)(?:합니다|했습니다|하였습니다|해[ ]?둡니다)"
-    r"|(?:남깁|적습|씁)니다|남겼습니다|적었습니다|썼습니다")
-#: …and what it records by: a cell or column, the memo's own wording, a basis
-_RECORDED_BY = re.compile(
-    r"칸(?:에는|에|은|엔)?\s|비고(?:에|란|칸)|이에\s?따라|기준으로\s?(?:정리|기록|작성|기재)"
-    r"|(?:자료|메모|원문)(?:에서|에|가|이)\s[^.\n]{0,40}(?:명시|기재|적혀|적고|나와)"
-    r"|(?:발언|원문|표현)\s?그대로")
-#: a table pointer or a mark closing a sentence after its predicate: 「(표 3)」, 「(확인 필요)」
-_CLOSING = re.compile(r"\((?:표|그림|확인)[ \d필요]{1,8}\)$")
-
-
-def _predicate_tail(sentence: str) -> str:
-    """`sentence`'s last words less the pointers, marks and stops after its predicate."""
-    tail = sentence.strip()[-60:]
-    for _ in range(4):
-        tail = _CLOSING.sub("", tail.rstrip(" \t.!?"))
-    return tail.rstrip(" \t.!?")[-12:]
-
-
-def _records(text: str) -> bool:
-    """A sentence telling how the writer records the meeting (「기한 칸에는 확정 날짜만 쓰고,
-    회의 발언 그대로는 비고에 남깁니다」): a writing act as its predicate, done by a cell, the
-    memo's wording or a basis."""
-    for sentence in re.split(r"(?<=[다요])[.!?]", text or ""):
-        if _RECORDS.search(_predicate_tail(sentence)) and _RECORDED_BY.search(sentence):
-            return True
-    return False
 
 
 #: the document itself as a place: 「본문에」, 「회의록에는」, 「표 1에」
@@ -181,11 +131,6 @@ _DOC_PLACE = re.compile(
 _LEFT_OUT = re.compile(
     r"(?:반영|기재|기록|포함|수록|표기|명기|게재|작성|정리)\s?(?:하|되)지\s?않"
     r"|(?:반영|기재|기록|포함|수록|표기|명기)되어\s?있지\s?않|(?:적|싣|넣|담)지\s?않")
-#: the note inside a sentence that says more: 「기준일인 2026년 10월 14일을 바탕으로 」,
-#: 「(…으로) 해석하여 」
-_NOTE_PHRASE = re.compile(
-    r"기준일(?:인|은|이|로|을)?\s?[^,.\n]{0,24}?(?:을|를)?\s?(?:바탕으로|기준으로|토대로)\s?,?\s?"
-    r"|(?<=로)\s?해석(?:하여|해서|해)(?=\s)")
 
 
 def _stretches(material: str) -> list[str]:
@@ -259,22 +204,13 @@ def mail_lines(standing: list[str]) -> list[str]:
 
 
 def self_note(piece: str, material: str) -> bool:
-    """The writer's note on how it wrote the minutes (「상대 날짜를 해석하는 기준일은 …」,
-    「담당자와 기한은 … 그대로 반영합니다」) in minutes of a memo that says no such thing."""
+    """The writer's note on what it kept out of the minutes (「… 이는 회의 안건과 무관하여 본문에
+    반영하지 않았습니다」) in minutes of a memo that says no such thing."""
     if piece.lstrip().startswith("|"):
         return False
     # a mark another check put on it (a weekday, a rule) hides no note
     piece = piece.replace(stated_policy.MARK, "")
-    if verify.edit_note(piece, material):
-        # the writer's account of what it wrote (「회의록에 기록하지 않았습니다」)
-        return True
-    if _left_out(piece) and not _left_out(material or ""):
-        # what it kept out of the document, whatever the meeting words beside it
-        return True
-    if _records(piece) and not _records(material or ""):
-        # how it records the meeting: by a cell, the memo's wording, a basis
-        return True
-    return bool(_SELF_NOTE.search(piece)) and not _SELF_NOTE.search(material or "")
+    return _left_out(piece) and not _left_out(material or "")
 
 
 def _left_out(text: str) -> bool:
@@ -289,17 +225,6 @@ def _left_out(text: str) -> bool:
 
 #: a table pointer at a sentence's end: 「(표 1)」
 _POINTER_TAIL = re.compile(r"\(\s{0,2}(?:표|그림)\s{0,2}\d{1,3}\s{0,2}\)\s{0,2}[.!?]?$")
-
-
-def note_cut(piece: str, material: str) -> str:
-    """`piece` without the note on how it was written when the rest says something of the
-    meeting (「기준일인 10월 14일을 바탕으로 기한을 23일로 해석하여 확정」 → 「기한을 23일로
-    확정」); "" when the note is the sentence."""
-    plain = re.sub(r" {2,}", " ", _NOTE_PHRASE.sub(" ", piece)).strip(" ,")
-    plain = re.sub(r"\s+,", ",", plain)
-    if plain == piece.strip() or self_note(plain, material) or len(_words(plain)) < 3:
-        return ""
-    return plain
 
 
 #: agreement stated: 「참석자들이 동의」, 「전원 동의」, 「이의 없이」, 「만장일치」, 「합의」
@@ -753,18 +678,11 @@ def settle(content: str, piece: str, phrases: list[str], *, strong: bool,
                    and not any(_MONTH_PART.fullmatch(p) for p in phrases))
     kept = any(_memo_words(piece, _flat(material)))
     # a mail's lines are no one's sentences, a strong writer's neither, nor the writer's note
-    # on its own method, whatever names it holds
+    # on what it left out, whatever names it holds
     mail = bool(whole) and mail_line(piece, material)
     note = bool(whole) and self_note(piece, material)
     if kept and whole and _goes_whole(piece, material, next_part, rows):
         kept = not _said_elsewhere(piece, material, elsewhere)
-    if note and (plain := note_cut(piece, material)):
-        # a note within a sentence about the meeting goes; the meeting's part stays
-        return content.replace(piece, plain, 1)
-    if note and kept and _records(piece):
-        # how it records a meeting fact said nowhere else (「… 10시, 3층 회의실로 기록합니다」):
-        # the fact outweighs the note, which stays as written
-        return content
     if (not strong or mail or note) and (whole or lengthy) and (not kept or note) \
             and not piece.lstrip().startswith("|"):
         # a table pointer the sentence held stays on the sentence before
@@ -844,7 +762,7 @@ def why(phrases: list[str], piece: str = "", material: str = "",
         *(["회의록은 권고하지 않는다(「…하는 것이 좋습니다」)."]
           if advised(piece, material) else []),
         *(["하지 않으면 어떻게 되는지는 자료에 없다."] if if_not(piece, material) else []),
-        *(["회의록을 어떻게 썼는지(날짜 해석 기준, 반영 방식)는 적지 않는다."]
+        *(["회의록에 무엇을 넣지 않았는지는 적지 않는다."]
           if self_note(piece, material) else []),
         *(["자료가 이 안건에 동의·합의를 적지 않았으니 누가 동의했다고 쓰지 마라."]
           if consents(piece, material) else []),
@@ -857,6 +775,6 @@ def why(phrases: list[str], piece: str = "", material: str = "",
 
 __all__ = ["advised", "all_set", "asks_anew", "consent_cut", "consents", "findings",
            "gap_note", "guessed", "if_not", "is_next_part", "items_of", "mail_line",
-           "mail_lines", "note_cut", "open_rows", "people", "promised", "self_note",
+           "mail_lines", "open_rows", "people", "promised", "self_note",
            "settle", "task_given", "unowned_task", "unraised", "unset_agenda",
            "untraced", "values", "why"]

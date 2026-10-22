@@ -2178,8 +2178,6 @@ class MinutesReground(Base):
         sections, _ = meeting_memo.dedupe_rows(sections)
         # a count before a table or list that rows dropped above left behind
         sections, _ = meeting_memo.counted(sections)
-        # the writer's notes on its working in cells
-        sections, _ = meeting_memo.cell_notes(sections, memo)
         # the memo's lines pasted as they stand, a phrase said over and over, a marker alone
         sections, _ = meeting_memo.settle_copies(sections, memo, strong=bundle.request.strong)
         sections, _ = meeting_memo.bare_marks(sections)

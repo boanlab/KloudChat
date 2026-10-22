@@ -1,6 +1,6 @@
 """Minutes tell the memo in their own sentences: memo lines and a phrase said over and over
-left by the writer go when the rest holds their facts; a cell's note on its working goes, its
-value kept. Shapes from the round 16 re-verify (reverify-y tc, tc2)."""
+left by the writer go when the rest holds their facts, and a marker left alone goes. Shapes from
+the round 16 re-verify (reverify-y tc, tc2)."""
 
 from __future__ import annotations
 
@@ -77,23 +77,6 @@ def test_a_cell_repeating_an_open_items_phrase_reads_undecided():
     assert rows[3] == "| 숙소 | 미정 | - |" and rows[4] == "| 교통편 | 미정 | - |"
 
 
-def test_a_cells_note_on_its_working_goes_and_its_value_stays():
-    table = ("| 할 일 | 담당 | 기한 | 비고 |\n| --- | --- | --- | --- |\n"
-             "| 견적 가져오기 | 정하늘 | 2026-10-14(화) | 「다음 회의에서」 기준 날짜 해석 |\n"
-             "\n| 항목 | 내용 |\n| --- | --- |\n"
-             "| 일시 | 2026-10-07 (기준일: 대화 날짜에 가장 가까운 연도로 해석) |\n"
-             "| 다음 일시 | 2026-10-14 (원문 「화」 기재 — 기준일 10-07은 화요일이라 확인 필요) |\n"
-             "| 장소 | 2층 회의실 |")
-    out, fixed = meeting_memo.cell_notes([_sec("회의 개요", table)], MEMO)
-    rows = out[0]["content"].split("\n")
-    assert fixed == 3
-    # a dated due needs no memo wording beside it
-    assert rows[2] == "| 견적 가져오기 | 정하늘 | 2026-10-14(화) | - |"
-    assert "| 일시 | 2026-10-07 |" in rows
-    assert "| 다음 일시 | 2026-10-14 (확인 필요) |" in rows
-    assert "| 장소 | 2층 회의실 |" in rows
-
-
 def test_a_marker_left_alone_on_its_line_goes():
     content = "장소는 정하지 못했습니다.\n\n확인 필요\n\n(확인 필요)\n\n견적은 확인 필요합니다."
     out, gone = meeting_memo.bare_marks([_sec("남은 쟁점", content)])
@@ -105,8 +88,6 @@ def test_the_paste_checks_finish_fast_on_a_long_run_of_spaces():
     gap = " " * 50_000
     start = time.perf_counter()
     meeting_memo.copied(f"강릉{gap}함.", MEMO)
-    cell = f"| 항목 | 내용 |\n| --- | --- |\n| 일시 | 10/7 ({gap}) |"
-    meeting_memo.cell_notes([_sec("표", cell)], MEMO)
     meeting_memo.bare_marks([_sec("끝", f"확인{gap}필요")])
     meeting_memo.settle_copies([_sec("끝", f"강릉 vs 속초{gap}결정 못 함.")], MEMO, strong=False)
     assert time.perf_counter() - start < 0.5

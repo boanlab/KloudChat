@@ -105,12 +105,14 @@ _CHANGED_TO = re.compile(
     r"\s?(?:으로|로)\s?(?:[가-힣]{1,6}\s){0,2}"
     r"(?:줄|조정|변경|감액|증액|늘|낮|올|인하|인상|삭감|축소|확대|수정|하향|상향|바꾸|바꿔|바꿨"
     r"|합의|확정|결정)")
+#: …or an arrow or 「에서」 right before the new value: 「420만원 → 355만원」, 「80만원에서」
+_CHANGED_FROM = re.compile(r"[ \t]{0,2}(?:→|->|⇒|에서)[ \t]{0,2}")
 
 
 def changes(text: str) -> list[tuple[str, float, float, str, str]]:
     """`(unit, before, after, before as written, after as written)` of each value a stretch of
     `text` sets in place of an earlier one of the same unit: 「간식비 80만원을 요청했으나 팀장이
-    50만원으로 줄이자고 했고 합의」 → 80만원 → 50만원."""
+    50만원으로 줄이자고 했고 합의」 → 80만원 → 50만원, 「전기료 월 420만원 → 355만원」."""
     out = []
     for stretch in re.split(r"(?<!\d)\.(?!\d)|[\n;。]", text or ""):
         found = []
@@ -120,7 +122,8 @@ def changes(text: str) -> list[tuple[str, float, float, str, str]]:
             except ValueError:
                 continue
         for k, (m, after) in enumerate(found):
-            if not _CHANGED_TO.match(stretch, m.end()):
+            arrow = k > 0 and _CHANGED_FROM.fullmatch(stretch, found[k - 1][0].end(), m.start())
+            if not (arrow or _CHANGED_TO.match(stretch, m.end())):
                 continue
             before = next(((b, v) for b, v in reversed(found[:k])
                            if b.group("unit") == m.group("unit")
@@ -271,6 +274,8 @@ def parse_all(text: str, material: str) -> tuple[list[Figure], list[Conflict]]:
             continue
         figures.append(figure)
     changed = changes(material)
+    # a value the material changed (「420만원 → 355만원」) is no conflict to settle
+    conflicts = [c for c in conflicts if not _a_change(c, changed)]
     for figure in figures:
         # an item the material gives a new value (「80만원 요청 → 50만원으로 줄이자고 합의」) or
         # another one contests: only the figure's full name holds its value, not the bare item
@@ -281,6 +286,14 @@ def parse_all(text: str, material: str) -> tuple[list[Figure], list[Conflict]]:
         figure.aliases = [a for a in figure.aliases
                           if not any(_flat_name(a) in _flat_name(c.name) for c in conflicts)]
     return figures[:MAX_FIGURES], conflicts[:MAX_CONFLICTS]
+
+
+def _a_change(conflict: Conflict, changed: list[tuple[str, float, float, str, str]]) -> bool:
+    """Whether a conflict's values are one change's old and new value."""
+    numbers = conflict.numbers()
+    return len(numbers) == 2 and any(
+        {u for u, _ in numbers} == {unit} and {round(v, 6) for _, v in numbers} == {
+            round(before, 6), round(after, 6)} for unit, before, after, _, _ in changed)
 
 
 def _flat_name(text: str) -> str:

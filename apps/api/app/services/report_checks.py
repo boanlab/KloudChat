@@ -377,7 +377,7 @@ _UNDATED_HEAD = (
 )
 
 
-def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bool = False) -> str:
+def _date_block(rows: list[dict], base: str, *, undated: bool = False) -> str:
     relative = [r for r in rows if r.get("kind") not in ("full_date", "month_day", "weekday")
                 or r.get("status") in ("unclear", "unresolved", _NO_BASE)]
     if not relative and not undated:
@@ -388,8 +388,12 @@ def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bo
             lines.append(f"- 「{r['text']}」 → not resolved (no meeting date): 기한 「[기한]」, in 비고 "
                          f"원문 「{r['text']}」 — 출처: 「{r['source_line'][:120]}」")
             continue
-        where = f" — 출처: 「{r['source_line'][:120]}」(기준 {r['base_date']}"
-        where += ", 메일 발신일)" if r.get("base_kind") == "mail" else ")"
+        where = f" — 출처: 「{r['source_line'][:120]}」"
+        if r.get("base_kind") == "mail":
+            where += f"(기준 {r['base_date']}, 메일 발신일)"
+        elif r.get("base_date") != base:
+            # a base other than the block's head
+            where += f"(기준 {r['base_date']})"
         if r["status"] == "ok":
             note = " (주말)" if r.get("weekend") else ""
             note += f" ({r['holiday']})" if r.get("holiday") else ""
@@ -402,15 +406,13 @@ def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bo
         else:
             lines.append(f"- 「{r['text']}」 → not one definite date: 기한 「미정」, the original wording in 비고{where}")
     head = f"기준일 {base}." if base else ""
-    if base and base_note:
-        head = f"기준일 {base}({base_note} — state this basis in the minutes)."
     if undated and not any(r["status"] in ("ok", "repeat") for r in relative):
         return "# 확정 날짜(코드 계산)\n" + _UNDATED_HEAD + ("\n" + "\n".join(lines) if lines else "")
     if undated:
         head = _UNDATED_HEAD + f" Only lines that carry a date, such as mails, were resolved from that date ({base})."
     return (
         "# 확정 날짜(코드 계산)\n" + head + " The code resolved the material's relative dates. In the "
-        "기한 cell write the dates below like 「2026-10-23(금)」 and put the original wording in 비고. "
+        "기한 cell write the dates below like 「2026-10-23(금)」, the date alone. "
         "Do not recalculate. Do not move a date that falls on a weekend unless the material says "
         "to.\n" + "\n".join(lines)
     )
@@ -1897,7 +1899,7 @@ async def _date_calc(pre: Prepass, job: PrepassJob) -> None:
     pre.base_date = first
     pre.base_source = source if base else ""
     undated = meeting and base is None
-    if block := _date_block(rows, first, _base_words(pre.base_source), undated=undated):
+    if block := _date_block(rows, first, undated=undated):
         pre.blocks.append(block)
     # 「발주 후 8주」: from material's absolute date regardless of meeting date
     lead = skill_scripts.dates().lead_times(material)
@@ -2661,7 +2663,7 @@ async def minutes_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict
                 problems.append(EMPTY_DUE)
             elif not _DUE_CELL_OK.match(when):
                 if _RELATIVE_WORDS.search(when) or len(when) > 16:
-                    problems.append("기한 칸에는 값만 쓴다(날짜(요일)·미정·[기한]) — 원문 표현은 비고로")
+                    problems.append("기한 칸에는 값만 쓴다(날짜(요일)·미정·[기한])")
             if note is not None and len(row) > note and not row[note].strip(" -—*"):
                 if "미정" in (who + when):
                     problems.append("「미정」이면 비고에 사유(회의에서 정하지 않음 등)를 적는다")
@@ -4679,7 +4681,7 @@ def _in_date_sentence(action: str, entry: dict) -> bool:
 
 def minutes_due_fill(sections: list[dict], dates: list[dict], *,
                      blanked: bool = False) -> tuple[list[dict], int]:
-    """Fill 「미정」/「[기한]」 action rows with date-calc's resolved date; original words to 비고.
+    """Fill 「미정」/「[기한]」 action rows with date-calc's resolved date.
     `blanked`: after the checks, only 「[기한]」 cells, and the material's own written dates too."""
     # meeting date only: lines re-dated by later header or mail left to writer
     base = next((d.get("base_date") for d in dates), "")
@@ -4717,9 +4719,6 @@ def minutes_due_fill(sections: list[dict], dates: list[dict], *,
                 continue
             row = list(row)
             row[due] = _due_value(entries[0])
-            if note is not None and len(row) > note and entries[0]["text"] not in row[note]:
-                said = f"원문 「{entries[0]['text']}」"
-                row[note] = f"{row[note].strip(' -—')}, {said}" if row[note].strip(" -—") else said
             content = content.replace(line, "| " + " | ".join(row) + " |", 1)
             filled += 1
         out[table.section] = {**out[table.section], "content": content}

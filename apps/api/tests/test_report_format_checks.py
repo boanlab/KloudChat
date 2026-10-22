@@ -62,7 +62,7 @@ def test_the_date_block_names_the_phrase_its_line_and_the_base():
     rows = report_checks.skill_scripts.dates().scan(MINUTES_1)
     block = report_checks._date_block(rows, "2026-10-12")
     assert "「다음 주 금요일」 → 2026-10-23(금)" in block
-    assert "강의계획서 초안 → 이교수" in block and "기준 2026-10-12" in block
+    assert "강의계획서 초안 → 이교수" in block and "기준일 2026-10-12." in block
     assert pre.bound_dates == []
 
 

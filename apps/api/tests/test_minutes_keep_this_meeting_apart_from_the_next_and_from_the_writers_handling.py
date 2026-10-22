@@ -1,5 +1,5 @@
 """Minutes keep apart from the writer's handling of the text: a sentence saying what the writer
-kept out of the document or which year it took as its basis goes, and an agreement told of an
+kept out of the document goes, and an agreement told of an
 item by pointing back (「이는 … 동의한 최종 합의 사항입니다」) is judged by the sentence it
 points to. Shapes from the round 16 re-verify (tc, tc2)."""
 
@@ -29,13 +29,14 @@ def _sec(heading: str, content: str) -> dict:
     return {"heading": heading, "content": content}
 
 
-def test_what_the_writer_kept_out_of_the_text_and_the_year_it_took_go():
+def test_what_the_writer_kept_out_of_the_text_goes():
     left = ("점심 메뉴와 주차 관련 대화가 간략히 있었으나, 이는 회의 안건과 무관하여 본문에 "
             "반영하지 않았습니다(표 1).")
     year = ("회의 날짜는 연도가 기재되지 않아 대화 발생 시점과 가장 가까운 연도인 2026년을 "
             "기준으로 확정했습니다.")
     assert stated_meeting.self_note(left, TUTOR)
-    assert stated_meeting.self_note(year, TUTOR)
+    # the year it took is no longer asked of it: the code's date block states no basis to repeat
+    assert not stated_meeting.self_note(year, TUTOR)
     assert stated_meeting.self_note("해당 비교표의 내용은 이번 회의록에는 포함되어 있지 "
                                     "않습니다.", TUTOR)
     # the meeting's own act stays
@@ -44,7 +45,7 @@ def test_what_the_writer_kept_out_of_the_text_and_the_year_it_took_go():
     assert not stated_meeting.self_note("후속 조치는 아래 표에 정리했습니다(표 3).", TUTOR)
     out = report_checks.settle_unsourced([_sec("회의 개요", OVERVIEW)], TUTOR, strong=False)
     text = out[0]["content"]
-    assert "반영하지 않았" not in text and "기준으로 확정" not in text
+    assert "반영하지 않았" not in text
     # the table pointer the dropped sentence held stays on the sentence before
     assert "설문 도구 논의를 다뤘습니다(표 1)." in text
 

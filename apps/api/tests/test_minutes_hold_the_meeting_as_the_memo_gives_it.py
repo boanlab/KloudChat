@@ -1,6 +1,6 @@
 """Minutes hold the meeting as the memo gives it: no day, clock or place called missing that
-the memo gives, no empty head field it fills, and no note on its own writing the memo never
-gives. Shapes from the round 16 re-verify (tc, tc2, fpm)."""
+the memo gives and no empty head field it fills. Shapes from the round 16 re-verify (tc, tc2,
+fpm)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import time
 
 from test_minutes_say_only_what_the_memo_says import SALES, TUTOR
 
-from app.services import meeting_memo, report_checks, stated_meeting
+from app.services import meeting_memo, stated_meeting
 
 NEXT = ("자료에 나와 있는 내용은 날짜뿐이며(표 5).\n\n**표 5. 다음 회의**\n\n| 항목 | 내용 |\n"
         "|------|------|\n"
@@ -81,18 +81,6 @@ def test_the_memo_s_decisions_are_its_decided_clauses():
         "박민호가 간식비 80만원을 요청했으나 팀장이 50만원으로 줄이자고 했고 합의"]
     # a memo with no decision (「결정 못 함」 alone) has none
     assert meeting_memo.decisions("안건3 설문 도구: 구글폼 vs 네이버폼 논의, 결정 못 함") == []
-
-
-def test_a_note_on_the_writing_the_memo_never_gives_goes():
-    note = "본 회의록에서 상대 날짜를 해석하는 기준일은 회의 일자 2026-10-14입니다."
-    pointed = "「다음 회의」를 2026-10-21로 해석하여 기한에 반영했습니다(표 1)."
-    lead = "회의는 세 가지 안건으로 진행했습니다."
-    table = "**표 1. 회의 개요**\n\n| 항목 | 내용 |\n|---|---|\n| 참석 | 김지훈 |"
-    content = f"{lead}\n\n{note} {pointed}\n\n{table}"
-    for strong in (False, True):
-        text = report_checks.settle_unsourced([_sec("회의 개요", content)], TUTOR,
-                                              strong=strong)[0]["content"]
-        assert "해석" not in text and text.startswith("회의는 세 가지 안건으로 진행했습니다(표 1).")
 
 
 def test_the_memo_checks_finish_on_a_long_run_of_spaces():
