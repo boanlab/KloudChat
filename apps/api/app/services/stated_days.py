@@ -3,7 +3,9 @@
 A memo's 「요청사항: 물류팀 출고 SLA 협의 자리 마련」 asks for a meeting and names no day; a plan
 table row 「금요일 | 4분기 목표 초안 작성, 물류팀 출고 SLA 협의(예정)」 reads as a fixed date.
 An item may stand on a weekday only when a stretch of the material on that weekday (a 「- 금:」
-line, the clause around 「금요일」 or 「(금)」) shares one of its words.
+line, the clause around 「금요일」 or 「(금)」) shares one of its words, and a this-week stretch
+holds no next-week plan the material lists on no day and words more closely (「- 화: 한솔마트
+재고 클레임」 does not put 「한솔마트 재고 점검 방문」, under 「다음주 계획」, on a 화요일).
 """
 
 from __future__ import annotations
@@ -33,6 +35,8 @@ _GENERIC = frozenset((
 _PARTICLE = re.compile(r"(?:으로|에서|에게|까지|부터|이며|하며|하고|에는|은|는|이|가|을|를|에|의|"
                        r"과|와|로|도|만)$")
 _CITES = re.compile(r"\[\d{1,3}(?:\s?[,\-–]\s?\d{1,3})*\]")
+#: a stretch about next week: 「다음주 계획」, 「차주」
+_NEXT_WEEK = re.compile(r"다음\s?주|차주|내주|next\s?week", re.I)
 
 
 def _split(text: str) -> list[str]:
@@ -73,12 +77,43 @@ def days_of(material: str) -> dict[str, list[str]]:
     return out
 
 
-def _held(item: str, day: str, days: dict[str, list[str]]) -> bool:
+def _all_words(text: str) -> set[str]:
+    """`_words` with the generic ones kept: how closely a stretch says the same item."""
+    out = set()
+    for word in re.findall(r"[가-힣A-Za-z0-9]{2,}", text):
+        word = _PARTICLE.sub("", word) if re.search(r"[가-힣]", word) else word
+        if len(word) >= 2 and not word.isdigit():
+            out.add(word.lower())
+    return out
+
+
+def _overlap(words: set[str], stretch: str) -> int:
+    squeezed = re.sub(r"\s+", "", stretch).lower()
+    return sum(1 for w in words if w in squeezed)
+
+
+def _next_week_items(material: str) -> list[str]:
+    """Clauses of the material's next-week lines that name no weekday: 「다음주 계획: …, 한솔마트
+    재고 점검 방문, …」 → 「한솔마트 재고 점검 방문」."""
+    return [clause for line in (material or "").split("\n") if _NEXT_WEEK.search(line)
+            for clause in _split(line) if not _MATERIAL_DAY.search(clause)
+            and not _DAY_LINE.match(clause)]
+
+
+def _held(item: str, day: str, days: dict[str, list[str]], material: str = "") -> bool:
     words = _words(item)
     if not words:
         return True
-    squeezed = [re.sub(r"\s+", "", c).lower() for c in days.get(day, [])]
-    return any(w in c for w in words for c in squeezed)
+    hits = [c for c in days.get(day, []) if _overlap(words, c)]
+    if not hits:
+        return False
+    if any(_NEXT_WEEK.search(c) for c in hits):
+        return True
+    # this week's 「- 화: 한솔마트 재고 클레임」 holds no next-week plan the material puts on no
+    # day and says more closely (「한솔마트 재고 점검 방문」)
+    every = _all_words(item)
+    best = max(_overlap(every, c) for c in hits)
+    return not any(_overlap(every, c) > best for c in _next_week_items(material))
 
 
 def untraced(piece: str, material: str) -> list[str]:
@@ -93,13 +128,15 @@ def untraced(piece: str, material: str) -> list[str]:
         rest = [c for c in cells[1:] if c]
         if day is None or not rest:
             return []
-        out += [item for item in _split(max(rest, key=len)) if not _held(item, day, days)]
+        out += [item for item in _split(max(rest, key=len))
+                if not _held(item, day, days, material)]
         return out
     for clause in _split(piece):
         for m in _SAID_DAY.finditer(clause):
             if _AFTER_DATE.search(clause[:m.start()]):
                 continue
-            if not _held(clause[:m.start()] + clause[m.end():], m.group(1), days):
+            if not _held(clause[:m.start()] + clause[m.end():], m.group(1), days,
+                         material):
                 out.append(clause.rstrip(".!? "))
                 break
     return out

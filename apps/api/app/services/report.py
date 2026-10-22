@@ -724,6 +724,17 @@ def _without_invented_money(text: str, evidence: list[str] | None = None) -> str
     return "".join(out)
 
 
+def _without_invented_percents(text: str, evidence: list[str] | None = None) -> str:
+    """Percentages no source gives nor works out from its figures marked 「(확인 필요)」, never
+    blanked; a share of two given figures of one measure (71억 of 128억 → 55.5%) stays."""
+    from app.services import value_guard
+
+    if not value_guard.percents_in(text or ""):
+        return text
+    return value_guard.mark_unbacked_percents(
+        text, value_guard.percent_basis(list(evidence or [])))[0]
+
+
 def unmark_worked(sections: list[dict], evidence: list[str]) -> list[dict]:
     """Money marked unsupported in one section, unmarked where another section works it out
     from the material (「(1,480,000 × 30 × 0.95 + 5,000 × 30) × 1.1 = 46,563,000원」)."""

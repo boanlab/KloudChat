@@ -581,6 +581,75 @@ def mark_misplaced(slides: list[dict], material: str) -> tuple[list[dict], int]:
     return out, count
 
 
+def _marked(cell: str) -> bool:
+    return value_guard.MARK in cell or output_language.EN_MARK in cell
+
+
+def mark_unbacked_percents(slides: list[dict], texts: list[str], *,
+                           strong: bool = False) -> tuple[list[dict], int]:
+    """Slides with each percentage `texts` neither give nor work out marked in its words and
+    table cells, a chart's such point handled as an untraced one; the count marked."""
+    basis = value_guard.percent_basis(texts)
+    out, count = [], 0
+    for slide in slides:
+        slide = dict(slide)
+        for path, text in _slide_leaves(slide):
+            fixed, n = value_guard.mark_unbacked_percents(text, basis)
+            if n:
+                _set(slide, path, fixed)
+                count += n
+        rows = slide.get("rows")
+        if isinstance(rows, list):
+            for r, row in enumerate(rows):
+                for j, cell in enumerate(row if isinstance(row, list) else []):
+                    line = " | ".join(str(c) for c in row)
+                    for m, value, unit in value_guard.percents_in(str(cell)):
+                        about = bool(value_guard.ABOUT.search(str(cell)[:m.start()]))
+                        if not _marked(str(cell)) and not basis.backs(
+                                value, m.group("num"), line, unit, about):
+                            _set(slide, ("rows", r, j), f"{cell} {value_guard.MARK}")
+                            count += 1
+                            break
+        chart = slide.get("chart")
+        if isinstance(chart, dict) and "%" in str(chart.get("unit") or ""):
+            gone = set()
+            for k, series in enumerate(chart.get("series") or []):
+                for c, value in enumerate(series.get("values") or []
+                                          if isinstance(series, dict) else []):
+                    try:
+                        number = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if not basis.backs(number, f"{number:g}"):
+                        gone.add((c, k))
+            if gone:
+                _chart_fixed(slide, gone, strong)
+                count += len(gone)
+        out.append(slide)
+    return out, count
+
+
+def edited_percents(slides: list[dict], edited: list[int], *, request: str,
+                    material: list[str], before: str, strong: bool = False) -> list[int]:
+    """The edited slides with percentages marked that neither the deck before the edit nor the
+    person's material gives or works out, in place; the slides changed. A deck made from no
+    figures of the person's is not checked, as when it was made."""
+    if _given_figures(request) < _GIVEN_DATA and not any(t.strip() for t in material):
+        return []
+    texts = [request, *material, before]
+    changed = []
+    for n in edited:
+        if not 0 <= n < len(slides):
+            continue
+        marked, count = mark_unbacked_percents([slides[n]], texts, strong=strong)
+        if count:
+            slide = marked[0]
+            slides[n] = (output_language.english_marks(slide)
+                         if deck_rules.deck_language(slides) == "en" else slide)
+            changed.append(n)
+    return changed
+
+
 def _traced(slides: list[dict], *, material: str, computed: list[str], options: dict):
     """The trace over a deck: the check's findings with each one's place, untraced chart
     points by slide."""
@@ -771,6 +840,11 @@ class DeckGrounding(Base):
         slides, found = ground_slides(
             current, material=material, computed=computed, options=options)
         slides, placed = mark_misplaced(slides, "\n".join([material, *computed]))
+        # a percentage the material neither gives nor works out (「82% of frontier」 → cloud
+        # 「100%」): marked, whatever the trace's arithmetic found for it
+        slides, unbacked = mark_unbacked_percents(slides, [material, *computed],
+                                                  strong=bool(bundle.request.strong))
+        placed += unbacked
         if deck_rules.deck_language(slides) == "en":
             # an English deck's marks in English
             slides = output_language.english_marks(slides)

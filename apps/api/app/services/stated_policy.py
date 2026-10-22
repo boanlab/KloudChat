@@ -1,10 +1,11 @@
 """Limits, approvals and rules a document states as settled that the material never states.
 
 A memo that asks 「최대 4%까지 허용 여부 결재 필요」 holds a request, not a limit: 「내부 허용
-한도는 최대 4%」, 「안 1은 결재권 한도 초과」, 「승인 없이는 견적서를 발송하지 않습니다」 read as
-facts the reader will act on. Each kind below is traced as a whole: a sentence may state a limit
-only when the material (request, files, sources) states one, an approval only when the material
-says it was given, a rule only when the material names it.
+한도는 최대 4%」, 「팀 내에서 검토한 최대 허용 인하 폭」, 「안 1은 결재권 한도 초과」, 「승인 없이는
+견적서를 발송하지 않습니다」 read as facts the reader will act on. Each kind below is traced as a
+whole: a sentence may state a limit only when the material (request, files, sources) states one,
+an approval only when the material says it was given, a rule only when the material names it, a
+review done within the team only when the material says one was.
 """
 
 from __future__ import annotations
@@ -13,13 +14,17 @@ import re
 
 from app.services import units
 
+#: a span stated as the allowed one: 「최대 허용 인하 폭」, 「허용 할인 폭」
+_ALLOWED_SPAN = (r"(?:최대|최소)\s?허용\s?(?:(?:인하|할인|증액|감액|조정)\s?)?"
+                 r"(?:폭|범위|치|한도|선|수준)|허용\s?(?:인하|할인|조정)\s?폭")
 #: (kind, what a sentence states, what the material must state for it)
 KINDS: tuple[tuple[str, re.Pattern, re.Pattern], ...] = (
     ("한도", re.compile(r"(?:허용|결재|승인|전결|위임|내부|인하|할인|집행|예산|지출)"
                       r"\s?(?:권\s?)?한도|한도\s?(?:초과|이내|내에서|를\s?넘|를\s?초과)"),
      re.compile(r"한도")),
-    ("허용 범위", re.compile(r"허용\s?(?:범위|최대치?|최대\s?폭|상한|하한|기준|치|초과|이내)"),
-     re.compile(r"허용\s?(?:범위|최대치?|최대\s?폭|상한|하한|기준|치|한도)")),
+    ("허용 범위", re.compile(r"허용\s?(?:범위|최대치?|최대\s?폭|상한|하한|기준|치|초과|이내)"
+                         rf"|{_ALLOWED_SPAN}"),
+     re.compile(rf"허용\s?(?:범위|최대치?|최대\s?폭|상한|하한|기준|치|한도)|{_ALLOWED_SPAN}")),
     ("승인 사실", re.compile(
         r"(?:승인|결재|재가|허가)\s?(?:이|을|를|가)?\s?(?:완료|받았|받은|났|되었|됐|됨|된|되어|마쳤|"
         r"끝났)"),
@@ -30,6 +35,10 @@ KINDS: tuple[tuple[str, re.Pattern, re.Pattern], ...] = (
         r"(?:나|되)지\s?않으면|전에는|전까지는|전까지|이전에는)"),
      re.compile(r"(?:승인|결재|재가|허가)\s?(?:이|가)?\s?(?:완료\s?)?(?:없이|없으면|"
                 r"(?:나|되)지\s?않으면|전에는|전까지|이전에는)")),
+    ("검토 사실", re.compile(
+        r"(?:팀|부서|내부|사내|회사)\s?(?:내에서|안에서|에서|차원에서)?\s?(?:검토|합의)"
+        r"(?:한|된|했|하였|해\s?온|를\s?거친|를\s?마친|가\s?끝난)"),
+     re.compile(r"(?:검토|합의)(?!\s?(?:요청|필요|부탁|바람|바랍|해\s?주|하여\s?주))")),
     ("규정", re.compile(r"(?:사내|내부|회사|당사|팀)\s?(?:규정|내규|방침|정책|지침)"
                       r"|(?:규정|내규)(?:상|에\s?따라|에\s?따르면|에\s?의해)"),
      re.compile(r"규정|내규|방침|정책|지침")),
