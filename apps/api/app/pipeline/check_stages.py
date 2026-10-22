@@ -419,6 +419,19 @@ def _value_text(value: object, unit: str) -> str:
     return f"{number:g}{unit}"
 
 
+def _point_unit(unit: str, category: int, series: int, chart: dict) -> str:
+    """A point's own unit under a chart's mixed one: 「억원/%」 over the categories 매출 and
+    이익률 is 억원 for the first, % for the second (per series when the series count matches)."""
+    parts = [p for p in unit.split("/") if p]
+    if len(parts) < 2 or not {"%", "%p"} & set(parts):
+        return unit
+    if len(parts) == len(chart.get("categories") or []):
+        return parts[category]
+    if len(parts) == len([s for s in chart.get("series") or [] if isinstance(s, dict)]):
+        return parts[series]
+    return ""
+
+
 def _slide_tables(slide: dict) -> list[tuple[str, list[list[str]]]]:
     """A slide's table rows and its chart as rows (「| 2025 3분기 | 7.8% |」 under the series
     names), so a value is traced with its row and column as in a report's table."""
@@ -434,8 +447,9 @@ def _slide_tables(slide: dict) -> list[tuple[str, list[list[str]]]]:
         table = [["구분", *(str(s.get("name") or "") for s in series)]]
         for c, category in enumerate(chart.get("categories") or []):
             table.append([str(category), *(
-                _value_text(values[c], unit) if c < len(values := list(s.get("values") or []))
-                else "" for s in series)])
+                _value_text(values[c], _point_unit(unit, c, k, chart))
+                if c < len(values := list(s.get("values") or [])) else ""
+                for k, s in enumerate(series))])
         out.append(("chart", table))
     return out
 
@@ -464,7 +478,7 @@ def _set(slide: dict, path: tuple, value: object) -> None:
 def _chart_fixed(slide: dict, gone: set[tuple[int, int]], strong: bool) -> None:
     """A chart plotting only traced values: a category holding an untraced value left out
     (a strong writer's kept, its label marked); a chart left with under two points becomes
-    the traced values as bullets, the rest as blanks for the person."""
+    the values as bullets, an untraced one marked as `value_guard.settle` marks it."""
     chart = dict(slide["chart"])
     categories = list(chart.get("categories") or [])
     bad = {c for c, _ in gone}
@@ -488,7 +502,11 @@ def _chart_fixed(slide: dict, gone: set[tuple[int, int]], strong: bool) -> None:
     for c, label in enumerate(categories):
         for k, s in enumerate(series):
             values = list(s.get("values") or [])
-            value = "[수치]" if (c, k) in gone or c >= len(values) else _value_text(values[c], unit)
+            if c >= len(values):
+                continue
+            value = _value_text(values[c], _point_unit(unit, c, k, chart))
+            if (c, k) in gone:
+                value = f"{value} {value_guard.MARK}"
             bullets.append(f"{label} {s.get('name') or ''}: {value}".replace("  ", " "))
     slide.pop("chart", None)
     slide["layout"] = "bullets"
@@ -620,7 +638,8 @@ def mark_unbacked_percents(slides: list[dict], texts: list[str], *,
                         number = float(value)
                     except (TypeError, ValueError):
                         continue
-                    if not basis.backs(number, f"{number:g}"):
+                    unit = _point_unit(str(chart.get("unit")).replace(" ", ""), c, k, chart)
+                    if "%" in unit and not basis.backs(number, f"{number:g}"):
                         gone.add((c, k))
             if gone:
                 _chart_fixed(slide, gone, strong)

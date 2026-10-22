@@ -83,13 +83,31 @@ def test_a_strong_writer_s_chart_is_marked_not_cut_or_retitled():
     assert slides[0]["title"] == "매출 및 영업이익 추이"
 
 
-def test_a_chart_left_with_one_given_point_becomes_its_values_with_blanks():
+def test_a_chart_left_with_one_given_point_becomes_its_values_the_other_marked():
     one = [{"id": "c", "layout": "chart", "title": "이익률",
             "chart": {"kind": "bar", "unit": "%", "categories": ["2025 3분기", "2026 3분기"],
                       "series": [{"name": "이익률", "values": [7.1, 7.5]}]}}]
     slides, _ = ground_slides(one, material=EXEC, computed=[], options=_options(EXEC))
     assert "chart" not in slides[0] and slides[0]["layout"] == "bullets"
-    assert slides[0]["bullets"] == ["2025 3분기 이익률: [수치]", "2026 3분기 이익률: 7.5%"]
+    assert slides[0]["bullets"] == ["2025 3분기 이익률: 7.1% (확인 필요)",
+                                    "2026 3분기 이익률: 7.5%"]
+
+
+def test_a_chart_under_a_mixed_unit_reads_each_point_in_its_own_unit():
+    mixed = {"id": "c", "layout": "chart", "title": "분기별 매출 및 이익률 추이",
+             "chart": {"kind": "bar", "unit": "억원/%", "categories": ["매출", "이익률"],
+                       "series": [{"name": "실적", "values": [128, 7.5]}]}}
+    # 7.5 is the given margin, not 7.5억원: the chart stands, nothing blanked
+    slides, found = ground_slides(_copy([mixed]), material=EXEC, computed=[],
+                                  options=_options(EXEC))
+    assert slides[0]["chart"] == mixed["chart"] and not found
+    slides, _ = check_stages.mark_unbacked_percents(_copy([mixed]), [EXEC])
+    assert slides[0]["chart"] == mixed["chart"]
+    # an untraced one among them: its own unit and the mark, no blank nor 「억원/%」
+    mixed["chart"]["series"][0]["values"] = [128, 7.1]
+    slides, _ = ground_slides(_copy([mixed]), material=EXEC, computed=[],
+                              options=_options(EXEC))
+    assert slides[0]["bullets"] == ["매출 실적: 128억원", "이익률 실적: 7.1% (확인 필요)"]
 
 
 def test_every_invented_figure_on_a_no_figures_proposal_is_marked():
