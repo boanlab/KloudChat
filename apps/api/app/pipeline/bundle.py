@@ -219,6 +219,9 @@ class Document:
     #: revision: parts shortened to another sentence count than asked (part number, asked,
     #: written)
     counted: list[tuple[int, int, int]] = field(default_factory=list)
+    #: revision: parts kept as they were because they already had the sentence count asked
+    #: (part number, asked)
+    already: list[tuple[int, int]] = field(default_factory=list)
     #: revision: figures a shortened part states that neither it nor the material did
     #: (「2절 13일」)
     added: list[str] = field(default_factory=list)

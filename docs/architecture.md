@@ -480,7 +480,12 @@ and for the section's figures and names (`revise.shortening_faults`), sent back 
 once with the reason, and what still misses is said in the reply; facts are read over the
 whole section (tables, lists, captions), a sentence restating the ask is dropped before
 counting (`revise.without_ask_echo`), and a figure or date neither the section nor the
-material states counts as a fault (`revise.added_facts`). A slide cut to fewer items
+material states counts as a fault (`revise.added_facts`), as does a date the section did not
+state; a date put beside a weekday the section names is taken out by code
+(`revise.without_added_dates`) and weekdays beside dates are set to the calendar. A sentence
+that only points at the section's table is folded into the one before it as its 「(표 1)」
+(`revise.fold_table_pointers`), and a section that already had the count stays when the
+rewrites miss it, which the reply says. A slide cut to fewer items
 (「항목을 하나로」, `deck.items_asked`) that came back with none gets its old items joined
 (`deck.merged_points`), figures such a cut drops are said, and a deck cut to fewer slides says
 the figures it shows nowhere any more (`deck.lost_across`). Only prose sentences are counted (tables,
@@ -488,9 +493,14 @@ captions and list rows are not), a figure is a number with its unit or counter (
 「표 1의」), money is compared as won (「38.5억」 = 「38억 5천만」 = 「3,850,000,000원」,
 `deck.amounts_in`), and a drawn diagram's labels count as shown. Joining one named slide's
 items (「2장 항목을 하나로 합쳐줘」, "Merge the items on slide 4 into one") is that slide's edit,
-done by code (`deck.joined_items`), not a restructure; "Shrink to 3 slides" is read like
-「3장으로 줄여줘」. A question or a numbered edit typed while a question card is open is not
-the card's answer (`sessions._sets_card_aside`); a question leaves any open card as it was.
+done by code (`deck.joined_items`, which also splits joined items into the count asked,
+「두 개로 나눠줘」), not a restructure; "Shrink to 3 slides" is read like 「3장으로 줄여줘」: the
+count is put in the outline note even when the planner already chose a new outline
+(`revise.count_change`), English counts in the original request ("an 8-slide talk") are taken
+out, and an English deck is not judged Korean by the conditions the code adds. A table slide
+that repeats an earlier slide's rows is written as points (`deck.repeats_table`). A question or a numbered edit typed while a question card is open is not
+the card's answer (`sessions._sets_card_aside`), nor is a numbered edit that keeps the
+structure on a proposed outline; a question leaves any open card as it was.
 A section rewrite is shown the section's own current text, so a shortened section stays
 itself; a line to the person about the rewrite is dropped (`revise.without_preamble`), and a
 shortened section that reads as another section or points at a table or figure it lacks is
