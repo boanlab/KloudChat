@@ -102,8 +102,9 @@ def _en_item(item: str) -> str:
         return f"the {m.group(1)}-line summary"
     if m := re.fullmatch(r"(\d{1,3})장 (.+?)(?:으로|로) 바꾸기", item):
         return f"slide {m.group(1)} as a {_EN_THINGS.get(m.group(2), m.group(2))}"
-    if m := re.fullmatch(r"(\d{1,3})장 항목 합치기", item):
-        return f"joining the items on slide {m.group(1)}"
+    if m := re.fullmatch(r"(\d{1,3})장 항목 (합치기|나누기)", item):
+        return f"{'joining' if m.group(2) == '합치기' else 'splitting'} the items on slide " \
+            f"{m.group(1)}"
     if m := re.fullmatch(r"(\d{1,3})장 (그림|차트) 빼기", item):
         return f"removing the {_EN_THINGS[m.group(2)]} on slide {m.group(1)}"
     return item

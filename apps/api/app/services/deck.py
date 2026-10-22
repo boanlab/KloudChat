@@ -5322,17 +5322,25 @@ def amounts_in(words: str) -> set[float]:
     for m in _COMPOUND_WON.finditer(words):
         out.add(round(float(m.group(1)) * 100_000_000
                       + float(m.group(2).replace(",", "")) * scale[m.group(3)], 2))
+    # a count written without its thousands comma: 「per 1000」 for 「1,000」
+    out |= {float(n) for n in _BARE_THOUSANDS.findall(words)}
     return out
+
+
+#: a number of four or more digits with no comma (「1000」), not part of a longer figure
+_BARE_THOUSANDS = re.compile(r"(?<![\d.,])\d{4,12}(?![\d,]|\.\d)")
 
 
 def figure_kept(figure: tuple[str, str, str], shown: list[tuple[str, str, str]],
                 amounts: set[float]) -> bool:
     """Whether `figure` is still among `shown`: the same number with its unit (or one side
-    without one), or the same amount of money written another way."""
+    without one), or the same amount written another way (「38억 5천만」, 「1000」 for 「1,000」,
+    「1k」)."""
     number, unit, _ = figure
     if any(n == number and (u == unit or not u or not unit) for n, u, _ in shown):
         return True
-    return unit in _SCALE and (value := _value(number, unit)) is not None and value in amounts
+    return (not unit or unit in _SCALE) and (value := _value(number, unit)) is not None and (
+        value in amounts)
 
 
 def _shown_words(slide: dict) -> str:

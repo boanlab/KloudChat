@@ -1019,6 +1019,16 @@ def joins_items(message: str) -> bool:
     return bool((_JOINS.search(text) or _COUNT_INTO.search(text)) and _ITEM_WORD.search(text))
 
 
+#: words that take a part's items apart: 「나눠」, 「쪼개」, 「split」
+_SPLITS = re.compile(r"나눠|나누|분리|쪼개|\b(?:split|break\s{1,3}up|separate)\b", re.I)
+
+
+def splits_items(message: str) -> bool:
+    """Whether the words take a part's items apart (「7장 항목을 두 개로 나눠줘」) rather than
+    join them (「하나로 합쳐줘」)."""
+    return bool(_SPLITS.search(message or ""))
+
+
 def asks_restructure(message: str) -> bool:
     """Whether the words ask for a new structure or the whole document anew, not one part's
     change: only these may re-plan the outline. Items of one named part joined or split
@@ -2217,7 +2227,128 @@ def lost_facts(old: str, new: str) -> list[str]:
     days = [*_named_days(plain), *(("", d) for d in _SHORT_DAY.findall(plain))]
     gone = [said for key, said in _named_days(_whole_text(old)).items()
             if not any(_same_day(key, have) for have in days)]
-    return lost + [n for n in old_names if n not in names] + gone + _lost_done(old, plain)
+    out = lost + [n for n in old_names if n not in names] + gone + _lost_done(old, plain)
+    return _with_caveats(out, old, new)
+
+
+#: a word that says a figure is not settled: 「확정된 사실이 아닙니다」, 「추정」, 「(확인 필요)」
+_HEDGE = re.compile(
+    r"미확정|확정(?:된|되지|이)?\s?(?:[가-힣]{1,4}(?:은|는|이)\s?)?(?:아니|아닙|아님|아닌|않)"
+    r"|미확인|확인(?:되지|이)?\s?(?:않|필요)|추정|추산|잠정|예상|전망|가능성"
+    r"|것으로\s?(?:파악|알려|보이|보입|전해)"
+    r"|\b(?:unconfirmed|not\s(?:yet\s)?confirmed|unverified|estimated?|projected|expected"
+    r"|tentative|preliminary|reportedly|needs\s(?:checking|confirmation)|to\sbe\sconfirmed)\b",
+    re.I)
+#: the label a hedge is named by, the strongest first
+_HEDGE_LABELS = (("확정", "확정 아님"), ("미확인", "미확인"), ("확인되지", "미확인"),
+                 ("확인", "확인 필요"), ("추", "추정"), ("잠정", "잠정"), ("예상", "예상"),
+                 ("전망", "예상"), ("가능성", "가능성"), ("것으로 파", "파악됨"),
+                 ("것으로파", "파악됨"), ("것으로", "추정"))
+#: a clause that speaks of the one before: 「다만 해당 단가는 …」, 「This is …」
+_REFERS_BACK = re.compile(
+    r"(?:다만|단,|하지만|그러나|이는|이\s|그\s|해당|\b(?:however|but|this|these|that)\b)", re.I)
+#: where one clause ends and the next begins: a sentence's end, 「…했으며, 」, 「…있고, 」
+_CLAUSE_END = re.compile(r"(?<=[.!?。])\s|(?<=며),\s|(?<=고),\s")
+
+
+def _hedge_label(word: str) -> str:
+    if word.isascii():
+        return " ".join(word.lower().split())
+    return next((label for start, label in _HEDGE_LABELS if start in word[:6]), word)
+
+
+def _clauses(text: str) -> list[str]:
+    """A part's clauses in order: each table row, list item and caption, its prose split at
+    sentence ends and clause joints; blocks and pictures out."""
+    text = re.sub(r"```[\s\S]*?(?:```|\Z)|<[^<>]{0,2000}>|!\[[^\]]*\]\([^)]*\)", " ", text or "")
+    out = []
+    for line in text.splitlines():
+        line = line.strip().replace("**", "")
+        if not line or re.fullmatch(r"[|:\- ]{3,}", line):
+            continue
+        if line.startswith("|"):
+            out.append(line.replace("|", " "))
+            continue
+        out += [c for c in _CLAUSE_END.split(line) if c.strip()]
+    return out
+
+
+def _subjects(clause: str) -> tuple[list[tuple[str, str, str]], list[str]]:
+    from app.services import deck
+
+    return deck.figures_in(clause), list(dict.fromkeys(_NAME.findall(clause)))
+
+
+def _hedged(text: str) -> list[tuple[list[tuple[str, str, str]], list[str], str]]:
+    """`(figures, names, label)` for each hedge in `text` and what it qualifies: the figures
+    and names of its clause, or of the clause before when its own has none (「A사가 4% 낮은
+    단가를 제시했습니다. 다만 확정된 사실은 아닙니다.」)."""
+    out: dict[tuple, tuple] = {}
+    clauses = _clauses(text)
+    for i, clause in enumerate(clauses):
+        words = [m.group(0) for m in _HEDGE.finditer(clause)]
+        if not words:
+            continue
+        figures, names = _subjects(clause)
+        if not figures and not names and i and _REFERS_BACK.match(clause.strip()[:12]):
+            figures, names = _subjects(clauses[i - 1])
+        if not figures and not names:
+            continue
+        key = (tuple(f[:2] for f in figures), tuple(names))
+        labels = [_hedge_label(w) for w in words]
+        if key in out:
+            labels = [out[key][2], *labels]
+        order = [label for _, label in _HEDGE_LABELS]
+        best = min(labels, key=lambda x: order.index(x) if x in order else len(order))
+        out[key] = (figures, names, best)
+    return list(out.values())
+
+
+def _states(figures: list[tuple[str, str, str]], names: list[str], text: str) -> bool:
+    """Whether `text` states what a hedge qualifies: its names when it has any (「A사」 says
+    more than a 「4%」 found elsewhere), else one of its figures."""
+    from app.services import deck
+
+    if names:
+        return all(n in _NAME.findall(text) for n in names)
+    shown, amounts = deck.figures_in(text), deck.amounts_in(text)
+    return any(deck.figure_kept(f, shown, amounts) for f in figures)
+
+
+def _still_hedged(figures: list[tuple[str, str, str]], names: list[str], new: str) -> bool:
+    """Whether a clause of `new` that states one of the figures or names is still hedged, in
+    itself or by the clause after it."""
+    clauses = _clauses(new)
+    for i, clause in enumerate(clauses):
+        if not _states(figures, names, clause):
+            continue
+        after = clauses[i + 1] if i + 1 < len(clauses) else ""
+        if _HEDGE.search(clause) or _HEDGE.search(after) and not any(_subjects(after)):
+            return True
+    return False
+
+
+def _with_caveats(lost: list[str], old: str, new: str) -> list[str]:
+    """`lost` with the hedges `old` puts on a figure or name (「A사 4%는 확정 아님」) that `new`
+    drops: a figure still stated without it is named with its mark (「A사 4%의 「확정 아님」
+    표시」), one gone altogether carries the mark in the list (「A사(확정 아님)」)."""
+    plain = _whole_text(new)
+    out = list(lost)
+    for figures, names, label in _hedged(old):
+        if _still_hedged(figures, names, new):
+            continue
+        said = [*names, *(f[2] for f in figures)][:4]
+        english = label.isascii()
+        if _states(figures, names, plain):
+            item = (f"the '{label}' mark on {' '.join(said)}" if english
+                    else f"{' '.join(said)}의 「{label}」 표시")
+            out = [x for x in out if x not in said] + [item]
+        else:
+            # the name carries the mark when there is one: a bare 「4%」 may be another 4%
+            marked = names or said
+            out = [f"{x} ({label})" if english and x in marked else f"{x}({label})"
+                   if x in marked else x for x in out]
+    return list(dict.fromkeys(out))
 
 
 #: a thing said done or settled: 「처리를 완료했습니다」, 「일정이 확정되었습니다」; not one still

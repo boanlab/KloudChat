@@ -493,7 +493,14 @@ each value with the shortest phrase it counts, 「40 tasks」, 「3 reviewers」
 tables it shows nowhere any more (`deck.lost_across`, `deck.lost_blocks`), in English for an
 English deck; a shortened section's lost facts include days named without a date (「다음 주
 수요일」, `revise.lost_facts`) and things it said were done or settled (「처리를 완료했습니다」 →
-「처리 완료」, `revise._lost_done`; not 「확정되는 대로」 nor 「마무리할 예정」); after a cut to
+「처리 완료」, `revise._lost_done`; not 「확정되는 대로」 nor 「마무리할 예정」) and the caveat
+it put on a figure or name (「확정된 사실이 아닙니다」, 「추정」, 「(확인 필요)」, 「것으로 파악됩니다」,
+unconfirmed; in the clause or a following clause that points back, 「다만 해당 단가는 …」,
+`revise._with_caveats`): a figure still stated without it is named with its mark (「A사 4%의
+「확정 아님」 표시」), a name gone with it carries the mark (「A사(확정 아님)」), both sent to the
+writer once like any lost fact (a bare figure is not re-marked by code: it may be another
+figure with the same number); a figure written another way still counts as shown (「1,000」 as
+「1000」 or 「1k」, `deck.figure_kept`); after a cut to
 fewer slides the deck's ask (승인, 결재, 요청, approval) is put back when no slide asks any more,
 as the title of the slide holding its figures or as a point (`revise.keep_ask`), a summary slide
 placed after slides whose figures the old deck showed later moves up before them unless an order
@@ -535,8 +542,9 @@ A section rewrite is shown the section's own current text, so a shortened sectio
 itself; a line to the person about the rewrite is dropped (`revise.without_preamble`), and a
 shortened section that reads as another section or points at a table or figure it lacks is
 sent back once, then kept as it was (`revise.drift_faults`); figures and boxes a shortening
-drops are named (`revise.removed_blocks`). A table's rows are not joined as items: that ask
-is said and the slide kept. English figures are read whole (「Qwen3.8」 holds no figure,
+drops are named (`revise.removed_blocks`). A table's rows are not joined or split as items: that
+ask is said as the action asked (「항목 합치기」, 「항목 나누기」, `revise.splits_items`) and the
+slide kept. English figures are read whole (「Qwen3.8」 holds no figure,
 「1K」 = 「1,000」). A title the person asked to change (「제목을 …로 바꿔 줘」, "change the title to …") is
 taken, quoted text verbatim. 「위험 장을 하나 추가해 줘」 ("add a risk slide") is an `insert`: the
 revision planner names the new part and its place, the router slots a blank
