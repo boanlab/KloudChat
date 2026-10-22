@@ -74,6 +74,9 @@ class Doc:
     #: what the person gave (request, files, answers, agent instructions), without the
     #: pipeline's own blocks (settled figures, notes, search pages); "" = `material`
     given: str = ""
+    #: the meeting itself (request, files, pasted text, answers), without instructions or
+    #: skills that speak of meetings in general; "" = `given`
+    memo: str = ""
 
 
 Check = Callable[[Doc], Awaitable[tuple[list[Finding], dict]]]
