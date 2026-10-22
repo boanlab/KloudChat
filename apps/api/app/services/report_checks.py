@@ -2776,11 +2776,15 @@ def settle_unsourced(sections: list[dict], material: str, *, strong: bool) -> li
         if strong:
             out[index]["content"] = stated_policy.mark(content, row, task)
             continue
-        # the 「※」 line may name it short: 「3번(튜터링 모집 시행)」
+        # the 「※」 line may name it short: 「3번(튜터링 모집 시행)」, or by its number alone
         short = " ".join(task[0].split()[-2:])
+        number = re.match(r"\|\s{0,4}(\d{1,2})\s{0,4}\|", row.strip())
+        by_number = re.compile(rf"※\s{{0,2}}{number.group(1)}\s{{0,2}}번(?!\d)") if number else None
+
         out[index]["content"] = "\n".join(
             ln for ln in content.split("\n") if ln.strip() != row.strip()
-            and not (short and ln.lstrip().startswith("※") and short in ln))
+            and not (ln.lstrip().startswith("※") and (
+                (short and short in ln) or (by_number and by_number.match(ln.lstrip())))))
     held = stated_meeting.open_rows(out)
     for index, piece, said in stated_meeting.findings(out, material, _reference_heading()):
         whole = "\n".join(str(sec.get("content") or "") for sec in out).replace(piece, "", 1)
@@ -4654,10 +4658,12 @@ def minutes_deferred(sections: list[dict]) -> tuple[list[dict], int]:
 
 
 def _task_column(header: list[str], others: tuple[int | None, ...]) -> int | None:
-    """Task column: 「할 일」, else first non-owner·due·note column."""
-    found = _column(header, r"할\s{0,2}일|내용|항목|조치|과제|업무|실행")
-    if found is not None and found not in others:
-        return found
+    """Task column: 「할 일」, else 「조치」·「과제」…, 「내용」, 「항목」 (a number column before a
+    「할 일」 one is no task), else first non-owner·due·note column."""
+    for pattern in (r"할\s{0,2}일", r"조치|과제|업무|실행", r"내용", r"항목"):
+        found = _column(header, pattern)
+        if found is not None and found not in others:
+            return found
     return next((k for k in range(len(header)) if k not in others), None)
 
 

@@ -2478,6 +2478,8 @@ def normalize_document(
     # calendar weekdays override the writer's
     out = [{**sec, "content": weekdays.fix_weekdays(
         str(sec.get("content") or ""), context=f"{request}\n{context}")[0]} for sec in out]
+    # a date's flag on the person's weekday said once over the document
+    out = weekdays.flag_once(out)[0]
     out = [
         sec if _REFERENCE_HEADING.search(str(sec.get("heading") or ""))
         else {**sec, "content": collapse_repeated_citations(str(sec.get("content") or ""))}
@@ -3814,6 +3816,8 @@ async def rewrite_section(
     # same normalisation as `write`
     body = hangul.tidy_spacing(hangul.read_back(_without_own_heading(
         internal_words.strip_tool_calls(body), heading))[0])
+    # a script neither Korean nor the material's (「결정이 نشده 미결된」): the run goes
+    body = hangul.drop_foreign_runs(body, "\n".join([request, *(material or [])]))[0]
     target = next((s for s in sections if s.get("id") == target_id), {})
     others = [str(s.get("content") or "") for s in sections if s.get("id") != target_id]
     body = _without_borrowed_tables(body, target.get("content") or "", others, note)
@@ -4292,8 +4296,9 @@ Korean. Do not wrap it in JSON.
 
 
 _KOREAN_AGAIN_PROMPT = """Below is one paragraph of the report's "{heading}" section. While writing
-it you slipped into Chinese: {words}. Write the same paragraph again in Korean, each Chinese word
-replaced by the Korean word it means (「研究对象」 → 「연구 대상」, 「三名」 → 「세 명」). Change nothing
+it you slipped out of Korean: {words}. Write the same paragraph again in Korean, each such word
+replaced by the Korean word it means (「研究对象」 → 「연구 대상」, 「三名」 → 「세 명」, 「결정이 نشده」 →
+「결정되지 않은」), the sentence around it put in natural Korean. Change nothing
 else: keep every sentence, number, name, English term, citation mark such as [3] and Markdown mark
 as written. Answer with the paragraph only.
 
@@ -4305,12 +4310,14 @@ _KEPT_TOKEN = re.compile(r"\d+(?:[.,]\d+)*|\[\d{1,3}(?:[,\-–] ?\d{1,3}){0,9}\]
 
 def chinese_paragraphs(body: str, given: str = "") -> list[tuple[int, list[str]]]:
     """(index, slips) of the plain prose paragraphs of `body` (split on blank lines) holding
-    Chinese a writer slipped into Korean; tables, fences and headings left out."""
+    Chinese, or a script neither Korean nor the material's (Arabic, Thai, ...), a writer slipped
+    into Korean; tables, fences and headings left out."""
     out = []
     for i, paragraph in enumerate(body.split("\n\n")):
         if re.search(r"^\s{0,3}(?:\||```|#)", paragraph, re.M):
             continue
-        if slips := hangul.chinese_slips(paragraph, given):
+        if slips := [*hangul.chinese_slips(paragraph, given),
+                     *hangul.foreign_slips(paragraph, given)]:
             out.append((i, slips))
     return out
 
@@ -4319,7 +4326,8 @@ def korean_again(before: str, after: str, given: str = "") -> bool:
     """Whether `after`, a paragraph written again in Korean, can stand for `before`: no
     Chinese slip left, every number, citation mark and Latin word kept, about as long."""
     after = after.strip()
-    if not after or hangul.chinese_slips(after, given) or "\n\n" in after:
+    if not after or hangul.chinese_slips(after, given) or hangul.foreign_slips(after, given) \
+            or "\n\n" in after:
         return False
     if not 0.7 <= len(after) / max(len(before.strip()), 1) <= 1.4:
         return False

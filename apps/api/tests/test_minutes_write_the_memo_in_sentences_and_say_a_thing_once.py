@@ -1,7 +1,7 @@
 """Minutes tell the memo in their own sentences: a repair that pastes the memo's lines, a
 marker alone, a sentence already there or a word left of one is not taken; memo lines and a
 phrase said over and over left by the writer go back once and then go when the rest holds their
-facts; a cell's note on its working goes, its value and the memo words it quotes kept. Shapes
+facts; a cell's note on its working goes, its value kept. Shapes
 from the round 16 re-verify (reverify-y tc, tc2)."""
 
 from __future__ import annotations
@@ -112,7 +112,7 @@ def test_a_cell_repeating_an_open_items_phrase_reads_undecided():
     assert rows[3] == "| 숙소 | 미정 | - |" and rows[4] == "| 교통편 | 미정 | - |"
 
 
-def test_a_cells_note_on_its_working_goes_and_its_value_and_quote_stay():
+def test_a_cells_note_on_its_working_goes_and_its_value_stays():
     table = ("| 할 일 | 담당 | 기한 | 비고 |\n| --- | --- | --- | --- |\n"
              "| 견적 가져오기 | 정하늘 | 2026-10-14(화) | 「다음 회의에서」 기준 날짜 해석 |\n"
              "\n| 항목 | 내용 |\n| --- | --- |\n"
@@ -122,7 +122,8 @@ def test_a_cells_note_on_its_working_goes_and_its_value_and_quote_stay():
     out, fixed = meeting_memo.cell_notes([_sec("회의 개요", table)], MEMO)
     rows = out[0]["content"].split("\n")
     assert fixed == 3
-    assert rows[2] == "| 견적 가져오기 | 정하늘 | 2026-10-14(화) | 원문 「다음 회의에서」 |"
+    # a dated due needs no memo wording beside it
+    assert rows[2] == "| 견적 가져오기 | 정하늘 | 2026-10-14(화) | - |"
     assert "| 일시 | 2026-10-07 |" in rows
     assert "| 다음 일시 | 2026-10-14 (확인 필요) |" in rows
     assert "| 장소 | 2층 회의실 |" in rows

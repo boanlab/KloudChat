@@ -142,6 +142,38 @@ _SELF_NOTE = re.compile(
     # the memo as a written source: 「원본 회의 기록에서는 '화'요일로 명시되어」
     r"|(?:원본|원문|메모)[가-힣 ]{0,8}(?:상|에서는|에서|에는|에)\s"
     r"[^.\n]{0,24}(?:명시|기재|표기|적혀|적힌|쓰여)(?!되지|하지|지\s?않)")
+#: the writer's account of how it records the meeting, at a sentence's end: 「… 기록합니다」,
+#: 「… 비고에 남깁니다」, 「… 기준으로 정리했습니다」
+_RECORDS = re.compile(
+    r"(?:기록|정리|기재|표기|기입|명기|반영)(?:합니다|했습니다|하였습니다|해[ ]?둡니다)"
+    r"|(?:남깁|적습|씁)니다|남겼습니다|적었습니다|썼습니다")
+#: …and what it records by: a cell or column, the memo's own wording, a basis
+_RECORDED_BY = re.compile(
+    r"칸(?:에는|에|은|엔)?\s|비고(?:에|란|칸)|이에\s?따라|기준으로\s?(?:정리|기록|작성|기재)"
+    r"|(?:자료|메모|원문)(?:에서|에|가|이)\s[^.\n]{0,40}(?:명시|기재|적혀|적고|나와)"
+    r"|(?:발언|원문|표현)\s?그대로")
+#: a table pointer or a mark closing a sentence after its predicate: 「(표 3)」, 「(확인 필요)」
+_CLOSING = re.compile(r"\((?:표|그림|확인)[ \d필요]{1,8}\)$")
+
+
+def _predicate_tail(sentence: str) -> str:
+    """`sentence`'s last words less the pointers, marks and stops after its predicate."""
+    tail = sentence.strip()[-60:]
+    for _ in range(4):
+        tail = _CLOSING.sub("", tail.rstrip(" \t.!?"))
+    return tail.rstrip(" \t.!?")[-12:]
+
+
+def _records(text: str) -> bool:
+    """A sentence telling how the writer records the meeting (「기한 칸에는 확정 날짜만 쓰고,
+    회의 발언 그대로는 비고에 남깁니다」): a writing act as its predicate, done by a cell, the
+    memo's wording or a basis."""
+    for sentence in re.split(r"(?<=[다요])[.!?]", text or ""):
+        if _RECORDS.search(_predicate_tail(sentence)) and _RECORDED_BY.search(sentence):
+            return True
+    return False
+
+
 #: the document itself as a place: 「본문에」, 「회의록에는」, 「표 1에」
 _DOC_PLACE = re.compile(
     r"(?:본문|회의록|문서|보고서|본\s?자료|(?:위|아래|이|본)\s?표|표\s?\d{1,2})"
@@ -247,6 +279,9 @@ def self_note(piece: str, material: str) -> bool:
         return True
     if _left_out(piece) and not _left_out(material or ""):
         # what it kept out of the document, whatever the meeting words beside it
+        return True
+    if _records(piece) and not _records(material or ""):
+        # how it records the meeting: by a cell, the memo's wording, a basis
         return True
     return bool(_SELF_NOTE.search(piece)) and not _SELF_NOTE.search(material or "")
 
@@ -761,6 +796,10 @@ def settle(content: str, piece: str, phrases: list[str], *, strong: bool,
     if note and (plain := note_cut(piece, material)):
         # a note within a sentence about the meeting goes; the meeting's part stays
         return content.replace(piece, plain, 1)
+    if note and kept and _records(piece):
+        # how it records a meeting fact said nowhere else (「… 10시, 3층 회의실로 기록합니다」):
+        # the fact outweighs the note, which stays as written
+        return content
     if (not strong or mail or note) and (whole or lengthy) and (not kept or note) \
             and not piece.lstrip().startswith("|"):
         # a table pointer the sentence held stays on the sentence before

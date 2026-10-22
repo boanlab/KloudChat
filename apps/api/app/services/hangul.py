@@ -159,7 +159,66 @@ def tidy_spacing(text: str) -> str:
     return _PARTICLE.sub(r"\1\2", text)
 
 
-__all__ = ["chinese_slips", "read_back", "tidy_spacing"]
+#: scripts a Korean writer never needs and a sampling slip brings in (「결정이 نشده 미결된」), as
+#: (name, first, last); Hanja, kana and Cyrillic have their own repairs, Greek is math
+_OTHER_SCRIPTS = (
+    ("armenian", 0x0530, 0x058F), ("hebrew", 0x0590, 0x05FF), ("arabic", 0x0600, 0x06FF),
+    ("syriac", 0x0700, 0x074F), ("arabic", 0x0750, 0x077F), ("thaana", 0x0780, 0x07BF),
+    ("arabic", 0x08A0, 0x08FF), ("indic", 0x0900, 0x0DFF), ("thai", 0x0E00, 0x0EFF),
+    ("tibetan", 0x0F00, 0x0FFF), ("myanmar", 0x1000, 0x109F), ("georgian", 0x10A0, 0x10FF),
+    ("ethiopic", 0x1200, 0x139F), ("khmer", 0x1780, 0x17FF), ("hebrew", 0xFB1D, 0xFB4F),
+    ("arabic", 0xFB50, 0xFDFF), ("arabic", 0xFE70, 0xFEFF),
+)
+_OTHER_CLASS = "".join(f"\\u{a:04X}-\\u{b:04X}" for _, a, b in _OTHER_SCRIPTS)
+#: a run of such letters, joiners and single spaces between its words kept with it
+_OTHER_RUN = re.compile(
+    f"[{_OTHER_CLASS}](?:[{_OTHER_CLASS}\u200c\u200d]|[ ](?=[{_OTHER_CLASS}]))*")
+
+
+def _script(ch: str) -> str:
+    code = ord(ch)
+    return next((name for name, a, b in _OTHER_SCRIPTS if a <= code <= b), "")
+
+
+def _scripts(text: str) -> set[str]:
+    """`_OTHER_SCRIPTS` names `text` writes in."""
+    return {_script(m.group(0)[0]) for m in _OTHER_RUN.finditer(text or "")}
+
+
+def foreign_slips(text: str, given: str = "") -> list[str]:
+    """Runs of a script neither Korean nor the material's (Arabic, Thai, Devanagari, ...) in
+    Korean prose, outside code: a sampling slip, once each. Text mostly in that script, or
+    material that writes it, is the writer's language and has none."""
+    if not text or not _OTHER_RUN.search(text):
+        return []
+    runs = list(_OTHER_RUN.finditer(text))
+    if len(re.findall(r"[가-힣]", text)) <= sum(len(m.group(0)) for m in runs):
+        return []
+    own = _scripts(given)
+    keep = _protected(text)
+    return list(dict.fromkeys(
+        m.group(0) for m in runs
+        if _script(m.group(0)[0]) not in own and not any(a <= m.start() < b for a, b in keep)))
+
+
+def drop_foreign_runs(text: str, given: str = "") -> tuple[str, list[str]]:
+    """(text, dropped): every `foreign_slips` run taken out, the gap it leaves closed
+    (「결정이 نشده 미결된」 → 「결정이 미결된」)."""
+    slips = foreign_slips(text, given)
+    if not slips:
+        return text, []
+    keep = _protected(text)
+    wanted = set(slips)
+
+    def drop(m: re.Match) -> str:
+        if m.group(0) not in wanted or any(a <= m.start() < b for a, b in keep):
+            return m.group(0)
+        return _GONE
+
+    return _closed(_OTHER_RUN.sub(drop, text)), slips
+
+
+__all__ = ["chinese_slips", "drop_foreign_runs", "foreign_slips", "read_back", "tidy_spacing"]
 
 
 #: Cyrillic inside a Korean word: sampling slip
@@ -275,12 +334,15 @@ def _lone_cyrillic(text: str, vocabulary: str) -> tuple[str, list[str]]:
 def repair_mixed_script(text: str, vocabulary: str = "", *,
                         keep_sentences: bool = False) -> tuple[str, list[str]]:
     """(text, changed): Cyrillic-tainted Korean words fixed or stripped; Greek kept;
-    Japanese kana slips read as Korean or dropped (`keep_sentences`: only the kana run goes).
+    Japanese kana slips read as Korean or dropped (`keep_sentences`: only the kana run goes);
+    a run of a script neither Korean nor the vocabulary's (Arabic, Thai, ...) taken out.
     A tainted word with one Korean syllable left and no clean match goes whole
     (「턱 인тягивание(chin tuck)」 → 「턱(chin tuck)」, not 「턱 인(chin tuck)」)."""
     import difflib
 
     text, kana = repair_kana(text, vocabulary, keep_sentences=keep_sentences)
+    text, other = drop_foreign_runs(text, vocabulary)
+    kana += [f"{run}→" for run in other]
     if not _STRAY.search(text or ""):
         return text, kana
     text, lone = _lone_cyrillic(text, vocabulary)
@@ -322,6 +384,7 @@ def _closed(text: str) -> str:
     """No gap where a word went: 「턱 (chin tuck)」 → 「턱(chin tuck)」, two spaces → one."""
     if _GONE not in text:
         return text
+    text = re.sub(r" ?\(\x00\)", "", text)
     text = re.sub(r" ?\x00(?=\()", "", text)
     text = re.sub(r"(?<=\S) \x00 (?=\S)", " ", text)
     return text.replace(_GONE, "")
