@@ -1370,10 +1370,12 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
 
 def _unbacked_marked(text: str, evidence: list[str], *, computed: str, grounded: bool) -> str:
     """Percentages the sources state or work out stay, the rest marked, never blanked; money
-    likewise when the material has no figures (with figures the trace settles it)."""
+    likewise when the material has no figures (with figures the trace settles it); a count of
+    whole things with a fraction no source states is marked."""
     report = _report()
     if not grounded:
         text = report._without_invented_money(text, evidence)
+    text = report._without_fractional_counts(text, evidence)
     return report._without_invented_percents(text, [*evidence, computed])
 
 

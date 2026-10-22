@@ -149,11 +149,18 @@ async def stated_rules(doc: Doc):
 
 
 async def stated_dates(doc: Doc):
-    """Items put on a weekday the person's material never gives them."""
+    """Items put on a weekday, or in a week, the person's material never gives them."""
     report, material = _report(), doc.given or doc.material
+
+    def context(i: int, piece: str) -> str:
+        sec = doc.sections[i]
+        return stated_days.context_of(str(sec.get("heading") or ""),
+                                      str(sec.get("content") or ""), piece)
+
     found = [
         Finding(i, piece, "unsourced_day", stated_days.why(items), rank=1,
-                still=lambda s, m=material: bool(stated_days.untraced(s, m)))
+                still=lambda s, m=material, c=context(i, piece): bool(
+                    stated_days.untraced(s, m, c)))
         for i, piece, items in stated_days.findings(doc.sections, material,
                                                     report._REFERENCE_HEADING)
     ]

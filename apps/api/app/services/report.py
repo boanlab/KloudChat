@@ -735,6 +735,39 @@ def _without_invented_percents(text: str, evidence: list[str] | None = None) -> 
         text, value_guard.percent_basis(list(evidence or [])))[0]
 
 
+#: a count of whole things written with a fraction: 「14.8건」, 「2.5곳」 (not 「3.5개월」)
+_FRACTION_COUNT = re.compile(
+    r"(?<![\d,.])\d{1,6}\.\d{1,3}\s?(?:가지|건|개|곳|명|팀|장|대|회)(?!월|년|국|소|사|체|화|선|수)")
+#: a rate or average, where a fraction of a count stands: 「일평균 14.8건」, 「1인당 2.5개」
+_RATE = re.compile(r"평균|(?:인|건|명|개|회|곳|대|일|시간)\s?당|마다|하루|매일|매주|매월|per\b|"
+                   r"average|/\s?[일주월년]", re.I)
+
+
+def _without_fractional_counts(text: str, evidence: list[str] | None = None) -> str:
+    """Counts of whole things with a fraction no source states (「잔여 14.8건」 of 37건 × 40%)
+    marked 「(확인 필요)」; an average or rate (「일평균 2.5건」) stays."""
+    from app.services import value_guard
+
+    found = list(_FRACTION_COUNT.finditer(text or ""))
+    if not found:
+        return text
+    given = re.sub(r"\s+", "", "\n".join(evidence or [])).replace(",", "")
+    out, at = [], 0
+    for m in found:
+        line, base = _line_of(text, m.start())
+        out.append(text[at:m.end()])
+        at = m.end()
+        if text[at:at + len(value_guard.MARK) + 1].lstrip().startswith(value_guard.MARK):
+            continue
+        clause = re.split(r"[,.;|]\s", line[:m.start() - base])[-1]
+        if re.sub(r"\s+", "", m.group(0)) in given or _RATE.search(clause) \
+                or _RATE.search(line[m.end() - base:m.end() - base + 4]):
+            continue
+        out.append(value_guard.MARK)
+    out.append(text[at:])
+    return "".join(out)
+
+
 def unmark_worked(sections: list[dict], evidence: list[str]) -> list[dict]:
     """Money marked unsupported in one section, unmarked where another section works it out
     from the material (「(1,480,000 × 30 × 0.95 + 5,000 × 30) × 1.1 = 46,563,000원」)."""

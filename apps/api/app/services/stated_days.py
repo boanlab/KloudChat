@@ -4,8 +4,13 @@ A memo's 「요청사항: 물류팀 출고 SLA 협의 자리 마련」 asks for 
 table row 「금요일 | 4분기 목표 초안 작성, 물류팀 출고 SLA 협의(예정)」 reads as a fixed date.
 An item may stand on a weekday only when a stretch of the material on that weekday (a 「- 금:」
 line, the clause around 「금요일」 or 「(금)」) shares one of its words, and a this-week stretch
-holds no next-week plan the material lists on no day and words more closely (「- 화: 한솔마트
-재고 클레임」 does not put 「한솔마트 재고 점검 방문」, under 「다음주 계획」, on a 화요일).
+holds no next-week plan the material lists on no day and words more closely or in full
+(「- 화: 한솔마트 재고 클레임」 does not put 「한솔마트 재고 점검 방문」, under 「다음주 계획」,
+on a 화요일).
+An item the document places in one week (「이번 주 목요일」, a 「다음 주 업무 계획」 section, the
+report's own 「10월 3주차」) stands only on a stretch of that week, and not where the other week's
+stretch on that day says it more closely (「다음주 계획: … (목요일 2차 미팅)」 is no 「이번 주
+목요일 2차 미팅」).
 """
 
 from __future__ import annotations
@@ -37,6 +42,13 @@ _PARTICLE = re.compile(r"(?:으로|에서|에게|까지|부터|이며|하며|하
 _CITES = re.compile(r"\[\d{1,3}(?:\s?[,\-–]\s?\d{1,3})*\]")
 #: a stretch about next week: 「다음주 계획」, 「차주」
 _NEXT_WEEK = re.compile(r"다음\s?주|차주|내주|next\s?week", re.I)
+_THIS_WEEK = re.compile(r"이번\s?주|금주|this\s?week", re.I)
+#: a named week: 「10월 3주차」
+_WEEK_LABEL = re.compile(r"\d{1,2}월\s?\d\s?주\s?차")
+#: a memo line's label: 「- 다음주 계획:」
+_LABEL = re.compile(r"^\s*(?:[-*·•]\s*)?[^:：\n]{0,20}[:：]")
+#: a list item, not a heading over a block of lines
+_BULLET = re.compile(r"^\s*(?:[-*·•]|\d{1,2}[.)])\s")
 
 
 def _split(text: str) -> list[str]:
@@ -64,17 +76,45 @@ def _words(text: str) -> set[str]:
     return out
 
 
+def week_of(text: str, material: str = "") -> str | None:
+    """"this" or "next" for a text that says which week (「이번 주」, 「다음주」, a 「10월 3주차」
+    the material says on a line of that week), else None."""
+    nxt, this = bool(_NEXT_WEEK.search(text or "")), bool(_THIS_WEEK.search(text or ""))
+    if nxt != this:
+        return "next" if nxt else "this"
+    if nxt or not material:
+        return None
+    for m in _WEEK_LABEL.finditer(text or ""):
+        label = re.sub(r"\s+", "", m.group(0))
+        for line in material.split("\n"):
+            if label in re.sub(r"\s+", "", line) and (week := week_of(line)):
+                return week
+    return None
+
+
+def _stretches(material: str) -> dict[str, list[tuple[str, str | None]]]:
+    """(stretch, week) of the material per weekday: a day-labelled line whole, else the clause
+    around the weekday; the week the stretch, its line or the heading over its block says."""
+    out: dict[str, list[tuple[str, str | None]]] = {}
+    block = None
+    for line in (material or "").split("\n"):
+        day_line = _DAY_LINE.match(line)
+        if line.strip() and not day_line and not _BULLET.match(line):
+            block = week_of(line)
+        line_week = week_of(line) or block
+        if day_line:
+            out.setdefault(day_line.group(1), []).append((line, line_week))
+        for clause in _split(line):
+            for m in _MATERIAL_DAY.finditer(clause):
+                out.setdefault(m.group(1) or m.group(2), []).append(
+                    (clause, week_of(clause) or line_week))
+    return out
+
+
 def days_of(material: str) -> dict[str, list[str]]:
     """Stretches of the material per weekday: a day-labelled line whole, else the clause
     around the weekday."""
-    out: dict[str, list[str]] = {}
-    for line in (material or "").split("\n"):
-        if m := _DAY_LINE.match(line):
-            out.setdefault(m.group(1), []).append(line)
-        for clause in _split(line):
-            for m in _MATERIAL_DAY.finditer(clause):
-                out.setdefault(m.group(1) or m.group(2), []).append(clause)
-    return out
+    return {day: [c for c, _ in found] for day, found in _stretches(material).items()}
 
 
 def _all_words(text: str) -> set[str]:
@@ -100,27 +140,43 @@ def _next_week_items(material: str) -> list[str]:
             and not _DAY_LINE.match(clause)]
 
 
-def _held(item: str, day: str, days: dict[str, list[str]], material: str = "") -> bool:
+def _says(item: str, plan: str) -> bool:
+    """Whether `item` says every word of a material plan clause (its 「다음주 계획:」 label
+    aside)."""
+    words = _all_words(_LABEL.sub("", plan))
+    return len(words) >= 2 and _overlap(words, item) == len(words)
+
+
+def _held(item: str, day: str, days: dict[str, list[tuple[str, str | None]]],
+          material: str = "", week: str | None = None) -> bool:
     words = _words(item)
     if not words:
         return True
-    hits = [c for c in days.get(day, []) if _overlap(words, c)]
-    if not hits:
+    hits = [(c, w) for c, w in days.get(day, []) if _overlap(words, c)]
+    every = _all_words(item)
+    same = [c for c, w in hits if week is None or w in (None, week)]
+    other = [c for c, w in hits if c not in same]
+    if not same:
         return False
-    if any(_NEXT_WEEK.search(c) for c in hits):
+    best = max(_overlap(every, c) for c in same)
+    # the other week's stretch on this day says it more closely: the item moved weeks
+    if other and max(_overlap(every, c) for c in other) > best:
+        return False
+    if any(w == "next" for c, w in hits if c in same):
         return True
     # this week's 「- 화: 한솔마트 재고 클레임」 holds no next-week plan the material puts on no
-    # day and says more closely (「한솔마트 재고 점검 방문」)
-    every = _all_words(item)
-    best = max(_overlap(every, c) for c in hits)
-    return not any(_overlap(every, c) > best for c in _next_week_items(material))
+    # day and says more closely or in full (「한솔마트 재고 점검 방문」)
+    return not any(_overlap(every, c) > best or _says(item, c)
+                   for c in _next_week_items(material))
 
 
-def untraced(piece: str, material: str) -> list[str]:
-    """Items of a sentence or table row put on a weekday the material never gives them."""
+def untraced(piece: str, material: str, context: str = "") -> list[str]:
+    """Items of a sentence or table row put on a weekday, or in a week (its own words, else
+    `context`: the section heading, a table's caption), the material never gives them."""
     if not piece or _CITES.search(piece) or not (material or "").strip():
         return []
-    days = days_of(material)
+    days = _stretches(material)
+    around = week_of(context, material)
     out: list[str] = []
     if piece.lstrip().startswith("|"):
         cells = [c.strip() for c in piece.strip().strip("|").split("|")]
@@ -128,38 +184,57 @@ def untraced(piece: str, material: str) -> list[str]:
         rest = [c for c in cells[1:] if c]
         if day is None or not rest:
             return []
+        week = week_of(cells[0], material) or around
         out += [item for item in _split(max(rest, key=len))
-                if not _held(item, day, days, material)]
+                if not _held(item, day, days, material, week)]
         return out
     for clause in _split(piece):
         for m in _SAID_DAY.finditer(clause):
             if _AFTER_DATE.search(clause[:m.start()]):
                 continue
+            week = (week_of(clause[max(0, m.start() - 16):m.start()], material)
+                    or week_of(clause, material) or week_of(piece, material) or around)
             if not _held(clause[:m.start()] + clause[m.end():], m.group(1), days,
-                         material):
+                         material, week):
                 out.append(clause.rstrip(".!? "))
                 break
     return out
 
 
+def context_of(heading: str, content: str, piece: str) -> str:
+    """What places a piece in a week beside its own words: the section heading, and for a table
+    row the caption or line over its table."""
+    out = [heading or ""]
+    if piece.lstrip().startswith("|") and (at := (content or "").find(piece)) >= 0:
+        above = [line for line in content[:at].split("\n") if line.strip()]
+        while above and above[-1].lstrip().startswith("|"):
+            above.pop()
+        if above:
+            out.append(above[-1])
+    return "\n".join(out)
+
+
 def findings(sections: list[dict], material: str, skip_heading: re.Pattern | None = None
              ) -> list[tuple[int, str, list[str]]]:
-    """(section, sentence or row, items on an untraced day) over a document."""
+    """(section, sentence or row, items on an untraced day or week) over a document."""
     out = []
     for index, sec in enumerate(sections):
-        if skip_heading is not None and skip_heading.search(str(sec.get("heading") or "")):
+        heading = str(sec.get("heading") or "")
+        if skip_heading is not None and skip_heading.search(heading):
             continue
-        for piece in stated_policy.pieces(str(sec.get("content") or "")):
-            if items := untraced(piece, material):
+        content = str(sec.get("content") or "")
+        for piece in stated_policy.pieces(content):
+            if items := untraced(piece, material, context_of(heading, content, piece)):
                 out.append((index, piece, items))
     return out
 
 
 def why(items: list[str]) -> str:
     shown = ", ".join(f"「{i}」" for i in items)
-    return (f"{shown}: 자료에는 이 일을 이 요일에 한다는 말이 없다(요청·과제뿐이다). 요일을 "
-            "지어 붙이지 말고, 표에서는 이 항목을 빼거나 「미정」으로 두고, 문장에서는 요일 없이 "
-            "자료가 말한 대로 써라.")
+    return (f"{shown}: 자료에는 이 일을 이 요일에 한다는 말이 없다(요청·과제뿐이거나 다른 주의 "
+            "일이다). 요일을 지어 붙이거나 자료가 다음 주라고 한 일을 이번 주로(또는 그 반대로) "
+            "옮기지 말고, 표에서는 이 항목을 빼거나 「미정」으로 두고, 문장에서는 요일 없이 자료가 "
+            "말한 대로 써라.")
 
 
-__all__ = ["days_of", "findings", "untraced", "why"]
+__all__ = ["context_of", "days_of", "findings", "untraced", "week_of", "why"]

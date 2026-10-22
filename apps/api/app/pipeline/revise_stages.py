@@ -112,7 +112,8 @@ def _policy_marked(body: str, request: str, material: list[str], data: dict) -> 
     quotes = "\n".join(str(src.get("quote") or "") for src in data.get("sources") or [])
     for piece in stated_policy.pieces(body):
         if said := (stated_policy.untraced(piece, given, quotes)
-                    or stated_days.untraced(piece, given)):
+                    or stated_days.untraced(piece, given,
+                                            stated_days.context_of("", body, piece))):
             body = stated_policy.mark(body, piece, said)
     return body
 
@@ -121,12 +122,13 @@ def _figures_marked(body: str, request: str, material: list[str], data: dict,
                     original: list[str]) -> str:
     """`body` with 「(확인 필요)」 on a percentage, and with no figures in the material a sum of
     money, that neither the document before the edit nor the request, material or sources
-    give or work out."""
+    give or work out, and on a count of whole things with a fraction none states."""
     report = _report()
     quotes = [str(src.get("quote") or "") for src in data.get("sources") or []]
     evidence = [request, *material, *quotes, *original]
     if not deck_service.has_numbers(request, material):
         body = report._without_invented_money(body, evidence)
+    body = report._without_fractional_counts(body, evidence)
     return report._without_invented_percents(body, evidence)
 
 
