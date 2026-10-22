@@ -104,6 +104,7 @@ from app.services import (
     chart_code,
     check_skills,
     conversation_summary,
+    date_rules,
     design_templates,
     exact_facts,
     fallback_watch,
@@ -4724,6 +4725,9 @@ async def send_message(
         if privacy_resolution and privacy_resolution.mask_outbound:
             brief = _mask_list([brief], legacy=policy.pii_masking)[0]
         trusted_context = [*trusted_context, brief]
+    # 「다음 주 월요일」 counted from today by code, not by the writer
+    if session.kind is SessionKind.chat and (dated := date_rules.today_block(content, _today())):
+        trusted_context = [*trusted_context, dated]
     calculation_required = (
         session.kind is SessionKind.chat and not tables and (
             calculation_policy.requires_calculation(content)

@@ -91,4 +91,25 @@ def block(request: str, material: str, today: dt.date | None = None) -> str:
     )
 
 
-__all__ = ["Settled", "block", "expected", "settled"]
+def today_block(request: str, today: dt.date | None = None) -> str:
+    """The days the request counts from today (「다음 주 월요일」, 「모레」) for a chat writer,
+    or ''."""
+    today = today or dt.date.today()
+    try:
+        rows = skill_scripts.dates().from_today(request or "", today)
+    except Exception:  # noqa: BLE001 — no block; the answer is still checked after writing
+        log.exception("days from today could not be read")
+        return ""
+    lines = list(dict.fromkeys(
+        f"- 「{r['text']}」: {_shown(dt.date.fromisoformat(r['date']))}" for r in rows
+        if r["date"] != today.isoformat()))
+    if not lines:
+        return ""
+    return (
+        f"# 오늘 기준 날짜(코드 계산)\nThe code counted these days in the request from today, "
+        f"{_shown(today)}; a week runs Monday to Sunday, so 「다음 주」 is the week after this "
+        "one. Use these dates as they are; do not count them again.\n" + "\n".join(lines)
+    )
+
+
+__all__ = ["Settled", "block", "expected", "settled", "today_block"]

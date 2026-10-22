@@ -140,14 +140,15 @@ class Normalize(Base):
 
 
 def _dates_from_given(answer: str, req: Request, material: str) -> str:
-    """Dates offset from the person's own date recomputed by the date-calc script."""
+    """Dates offset from the person's own date, and the day their 「다음 주 월요일」 names
+    counted from today, recomputed by the date-calc script."""
     from app.services import skill_scripts
 
     today = req.today if isinstance(req.today, dt.date) else dt.date.today()
     try:
         checked = skill_scripts.module("date-calc", "dates").post(answer, {
             "request": req.text, "material": material, "today": today.isoformat(),
-            "anchored_only": True,
+            "anchored_only": True, "from_today": True,
         })
     except Exception:  # noqa: BLE001 — the answer stands as written
         log.exception("date check failed for session %s", req.session_id)
