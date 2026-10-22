@@ -129,7 +129,17 @@ _SELF_NOTE = re.compile(
     r"|그대로\s?(?:반영|옮겨|적)"
     # 「2026-10-14 기준 '다음 주 금요일'에 해당하는 … 산출되었습니다」, 「모두 자료에 근거한 정보」
     r"|\d\)?\s?기준(?:으로)?\s|산출(?:되었|됐|했|하였|합니다|된다)|환산(?:하여|해|했|한)"
-    r"|자료에\s?근거(?:한|하여|해)|자료를\s?(?:바탕|근거|토대)으로")
+    r"|자료에\s?근거(?:한|하여|해)|자료를\s?(?:바탕|근거|토대)으로"
+    # a day or year the writer took as its basis: 「2026년을 기준으로 확정했습니다」
+    r"|(?:년|일|시점|날짜|연도|날)(?:을|를|이|로)?\s?기준(?:으로|삼아|을\s?삼)")
+#: the document itself as a place: 「본문에」, 「회의록에는」, 「표 1에」
+_DOC_PLACE = re.compile(
+    r"(?:본문|회의록|문서|보고서|본\s?자료|(?:위|아래|이|본)\s?표|표\s?\d{1,2})"
+    r"(?:에|에는|에서|에서는|상|으로|로)(?![가-힣])")
+#: …and the writer leaving something out of it: 「반영하지 않았습니다」, 「포함되어 있지 않습니다」
+_LEFT_OUT = re.compile(
+    r"(?:반영|기재|기록|포함|수록|표기|명기|게재|작성|정리)\s?(?:하|되)지\s?않"
+    r"|(?:반영|기재|기록|포함|수록|표기|명기)되어\s?있지\s?않|(?:적|싣|넣|담)지\s?않")
 #: the note inside a sentence that says more: 「기준일인 2026년 10월 14일을 바탕으로 」,
 #: 「(…으로) 해석하여 」
 _NOTE_PHRASE = re.compile(
@@ -225,7 +235,24 @@ def self_note(piece: str, material: str) -> bool:
     if verify.edit_note(piece, material):
         # the writer's account of what it wrote (「회의록에 기록하지 않았습니다」)
         return True
+    if _left_out(piece) and not _left_out(material or ""):
+        # what it kept out of the document, whatever the meeting words beside it
+        return True
     return bool(_SELF_NOTE.search(piece)) and not _SELF_NOTE.search(material or "")
+
+
+def _left_out(text: str) -> bool:
+    """A sentence whose predicate leaves something out of the document itself (「… 본문에
+    반영하지 않았습니다(표 1)」)."""
+    for sentence in re.split(r"(?<=[다요])[.!?]", text or ""):
+        tail = _POINTER_TAIL.sub("", sentence.strip())[-30:]
+        if _LEFT_OUT.search(tail) and _DOC_PLACE.search(sentence):
+            return True
+    return False
+
+
+#: a table pointer at a sentence's end: 「(표 1)」
+_POINTER_TAIL = re.compile(r"\(\s{0,2}(?:표|그림)\s{0,2}\d{1,3}\s{0,2}\)\s{0,2}[.!?]?$")
 
 
 def note_cut(piece: str, material: str) -> str:
@@ -278,22 +305,27 @@ _CONSENT = re.compile(r"동의|찬성|이의\s?(?:가\s?)?없|만장\s?일치|�
 _ITEM_BREAK = re.compile(r"(?=안건\s?\d)|(?<!\d)\.(?!\d)|[\n;。]")
 
 
-def _item_agreed(piece: str, material: str) -> bool:
-    """Whether the memo item `piece` speaks of (the items sharing most of its words, any item
-    when it shares none) states an agreement."""
+def _item_agreed(piece: str, material: str, before: str = "") -> bool:
+    """Whether the memo item `piece` speaks of (the items sharing most of its words; those of
+    `before`, the sentence it follows, when it shares none (「이는 … 최종 합의 사항입니다」);
+    any item when neither does) states an agreement."""
     # the head's attendance (「참석 김지훈(팀장), …」) is no item anyone agrees on
     items = [i for i in _ITEM_BREAK.split(material or "") if i.strip()
              and not re.search(r"참석|불참", i)]
-    words = {w for w in _words(_CONSENT.sub(" ", piece)) if not w.endswith(("다", "며", "고"))}
-    scored = [(sum(1 for w in words if w[:2] in _flat(i)), i) for i in items]
-    best = max((n for n, _ in scored), default=0)
+    for said in (piece, before):
+        words = {w for w in _words(_CONSENT.sub(" ", said)) if not w.endswith(("다", "며", "고"))}
+        scored = [(sum(1 for w in words if w[:2] in _flat(i)), i) for i in items]
+        best = max((n for n, _ in scored), default=0)
+        if best:
+            break
     return any(_CONSENT.search(i) for n, i in scored if n == best)
 
 
-def consents(piece: str, material: str) -> list[str]:
+def consents(piece: str, material: str, before: str = "") -> list[str]:
     """Statements of agreement (「참석자들이 이에 동의하였습니다」, 「전원 동의」) on an item the
-    memo states none for: the clause (a cell's part) that holds it, or the sentence whole."""
-    if not _CONSENT.search(piece) or _item_agreed(piece, material):
+    memo states none for: the clause (a cell's part) that holds it, or the sentence whole;
+    `before` is the sentence `piece` follows, which a sentence naming no item speaks of."""
+    if not _CONSENT.search(piece) or _item_agreed(piece, material, before):
         return []
     if piece.lstrip().startswith("|"):
         return [part.strip() for cell in piece.strip().strip("|").split("|")
@@ -462,20 +494,28 @@ def asks_anew(piece: str, material: str) -> bool:
 
 
 def _goes_whole(piece: str, material: str, next_part: bool,
-                rows: list[tuple[str, set[str]]] | None) -> bool:
+                rows: list[tuple[str, set[str]]] | None, before: str = "") -> bool:
     """A whole-sentence finding that goes once the memo's names in it stand elsewhere."""
     row = piece.lstrip().startswith("|")
     return (guessed(piece, material) or gap_note(piece, material) or mail_line(piece, material)
             or promised(piece, material) or unraised(piece, material, rows)
             or all_set(piece, rows) or advised(piece, material) or if_not(piece, material)
             or self_note(piece, material) or unknowable(piece, material)
-            or (not row and consents(piece, material) == [piece.strip().rstrip(".!?。")])
+            or (not row and consents(piece, material, before) == [piece.strip().rstrip(".!?。")])
             or ((next_part or (not row and bool(_NEXT_SAID.search(piece))))
                 and unset_agenda(piece, material)))
 
 
+#: a gap no sentence holds, which every check reads as one space
+_LONG_GAP = re.compile(r"[ \t\u3000]{64,}")
+
+
+def _squeezed(text: str) -> str:
+    return _LONG_GAP.sub(" ", text) if len(text) > 64 else text
+
+
 def untraced(piece: str, material: str, *, next_part: bool = False,
-             rows: list[tuple[str, set[str]]] | None = None) -> list[str]:
+             rows: list[tuple[str, set[str]]] | None = None, before: str = "") -> list[str]:
     """Phrases of a sentence or table row stating a meeting length, an end time, a month's
     part, a part of the day, or (the sentence whole) an open question, a guess, a missing-detail
     note, a promise, something left open the memo and `rows` (the tables' open rows) never
@@ -484,11 +524,16 @@ def untraced(piece: str, material: str, *, next_part: bool = False,
     sentence naming the next meeting) also an agenda it never sets."""
     if not piece or not (material or "").strip():
         return []
+    if (plain := _squeezed(piece)) != piece:
+        # the checks read a long gap as one space; the sentence whole stays as written
+        whole = plain.strip().rstrip(".!?。")
+        return [piece.strip().rstrip(".!?。") if p == whole else p
+                for p in untraced(plain, material, next_part=next_part, rows=rows, before=before)]
     out = values(piece, material) + reasons(piece, material)
-    out += [c for c in consents(piece, material) if c not in out]
+    out += [c for c in consents(piece, material, before) if c not in out]
     whole = piece.strip().rstrip(".!?。")
     if whole not in out and (asks_anew(piece, material)
-                             or _goes_whole(piece, material, next_part, rows)):
+                             or _goes_whole(piece, material, next_part, rows, before)):
         out.append(whole)
     return out
 
@@ -602,12 +647,15 @@ def findings(sections: list[dict], material: str, skip_heading: re.Pattern | Non
         nxt = is_next_part(str(sec.get("heading") or ""))
         content = str(sec.get("content") or "")
         captions = [ln for ln in content.split("\n") if _CAPTION.match(ln)]
+        before = ""
         for piece in stated_policy.pieces(content):
             # a caption names its table; a table's header row names columns, not an agenda
             if any(piece in ln for ln in captions):
                 continue
             head = piece.startswith("|") and report_checks.cells(piece) in heads
-            said = untraced(piece, material, next_part=nxt and not head, rows=rows)
+            said = untraced(piece, material, next_part=nxt and not head, rows=rows,
+                            before=before)
+            before = before if piece.startswith("|") else piece
             if not said and piece in listed and unset_agenda(piece, material, listed=True):
                 said = [piece.strip()]
             if said:

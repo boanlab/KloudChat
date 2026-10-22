@@ -1150,8 +1150,11 @@ class Sections(Base):
                 # a self-hosted writer's odd words: the judge names them, code swaps the safe ones
                 body, more = await word_fix.fix(
                     body, model=word_fix.checker(req.model, req.judge), complete=report._complete,
-                    api_key=req.api_key, given=f"{section['heading']}\n{_slip_vocabulary(bundle)}")
+                    api_key=req.api_key, given=f"{section['heading']}\n{_slip_vocabulary(bundle)}",
+                    writer=req.model)
                 _count(bundle, more, planner=True)
+            # 「A 또는 A」: one value offered as its own alternative
+            body = word_fix.twin_alternatives(body)
             section["content"] = _cleaned(bundle, index, section, body)
             material = _material_text(bundle)
             if gaps := table_integrity.problems(section["content"], material):
@@ -2161,14 +2164,17 @@ class MinutesReground(Base):
             sections = report_checks.settle_unsourced(sections, _meeting_given(bundle),
                                                       strong=bundle.request.strong)
         # a day, clock, place or 「다음 회의」 deadline called missing that the memo gives, the
-        # next meeting's day in this one's overview, a memo decision no decision row holds, and
-        # a row written twice
+        # next meeting's day, room or clock in this one's overview, a memo decision no decision
+        # row holds, a row written twice, and a value offered as its own alternative
         memo = _meeting_given(bundle)
         sections = meeting_memo.overview_day(sections, bundle.document.head_block, memo)
+        sections, _ = meeting_memo.borrowed_next(sections, memo)
         sections, _ = meeting_memo.false_absences(sections, memo)
         sections, _ = meeting_memo.false_dues(sections, memo)
         sections, _ = meeting_memo.decision_rows(sections, memo)
         sections, _ = meeting_memo.dedupe_rows(sections)
+        sections = [{**sec, "content": word_fix.twin_alternatives(str(sec.get("content") or ""))}
+                    for sec in sections]
         # the meeting held told in the past; what comes next stays ahead
         bundle.document.sections, _ = meeting_tense.held(sections, _report()._REFERENCE_HEADING)
 

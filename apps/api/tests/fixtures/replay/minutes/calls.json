@@ -44,6 +44,17 @@
   }
  },
  {
+  "key": "29e95736293e7fca4e1c96c5",
+  "stage": "verify",
+  "kind": "repair",
+  "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
+  "reply": "[\"아래 일정은 확정 날짜를 기준으로 정리합니다.\", \"참석자는 김교수(위원장), 박교수, 이교수, 학생대표 최○○, 조교 정다은입니다.\"]",
+  "usage": {
+   "prompt_tokens": 707,
+   "completion_tokens": 20
+  }
+ },
+ {
   "key": "ba84375a017ad845a8a921db",
   "stage": "verify",
   "kind": "repair",
@@ -63,17 +74,6 @@
   "usage": {
    "prompt_tokens": 664,
    "completion_tokens": 12
-  }
- },
- {
-  "key": "bc2b6a1f21887cc30f7f8ddd",
-  "stage": "verify",
-  "kind": "repair",
-  "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
-  "reply": "[\"참석자는 김교수(위원장), 박교수, 이교수, 학생대표 최○○, 조교 정다은입니다.\"]",
-  "usage": {
-   "prompt_tokens": 630,
-   "completion_tokens": 13
   }
  }
 ]
