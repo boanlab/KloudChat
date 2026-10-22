@@ -24,10 +24,12 @@ def test_english_days_read_as_numbers():
 
 
 def test_the_memo_s_first_day_is_the_meeting_s_not_the_next_meeting_s():
+    # the year the memo's weekdays fix (「Oct 26 (Mon)」 is 2026's) dates the yearless day
     assert report_checks.meeting_base("회의록으로 정리해 줘", MEMO, TODAY, nearest=True) == (
-        dt.date(2026, 10, 19), "near")
-    korean = "10/14 교육혁신팀 주간회의. 참석 김지훈. 다음 회의 10/21(화) 10시 3층 회의실."
-    assert report_checks.meeting_date("회의록", korean, TODAY) is None
+        dt.date(2026, 10, 19), "text")
+    korean = "10/14 교육혁신팀 주간회의. 참석 김지훈. 다음 회의 10/21(수) 10시 3층 회의실."
+    assert report_checks.meeting_date("회의록", korean, TODAY) == dt.date(2026, 10, 14)
+    assert report_checks.meeting_date("회의록", korean.replace("(수)", ""), TODAY) is None
 
 
 def test_a_deadline_the_english_memo_gives_is_known():

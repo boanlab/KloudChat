@@ -2109,6 +2109,19 @@ def fill_undecided_cells(sections: list[dict]) -> list[dict]:
     return out
 
 
+#: prose pointing at the table that follows: 「아래 표는」, 「다음 표와 같이」
+_TABLE_BELOW = re.compile(r"(?:아래|다음)\s?표(?=[에의와를로는가이은도]|\s|$)")
+
+
+def _without_pointer(line: str) -> str:
+    """A prose line less its sentences pointing at the table below (「〔표〕는 …」, 「아래 표는 …」)."""
+    if not line.strip() or re.match(r"^\s{0,8}(?:\||#)", line):
+        return line
+    parts = re.split(r"(?<=[.!?。])\s{1,8}", line.strip())
+    kept = [p for p in parts if _TABLE_REF not in p and not _TABLE_BELOW.search(p)]
+    return " ".join(kept) if len(kept) < len(parts) else line
+
+
 def drop_repeated_tables(sections: list[dict]) -> list[dict]:
     """Duplicate table removed with its caption."""
     seen: dict[str, str] = {}
@@ -2138,6 +2151,12 @@ def drop_repeated_tables(sections: list[dict]) -> list[dict]:
                     cap -= 1
                 if cap >= 0 and re.match(r"^\s*(?:\*\*)?표\s?\d{0,3}\s?[.:：]", lines[cap]):
                     start = cap
+                    cap -= 1
+                    while cap >= 0 and not lines[cap].strip():
+                        cap -= 1
+                if cap >= 0 and (kept := _without_pointer(lines[cap])) != lines[cap]:
+                    # the sentence introducing the dropped table goes with it
+                    lines[cap] = kept
                 drop.append((start, end))
             else:
                 for label, value, _, _ in rows:

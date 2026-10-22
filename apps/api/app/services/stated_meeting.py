@@ -344,6 +344,9 @@ _DOER = r"(?:이|가|은|는|께서)(?=\s)"
 _ASSIGNED = re.compile(r"기로|키로|맡|담당|가져오|해야|하도록|할\s?것")
 #: a task given ahead at a sentence's end: 「…하기로 했습니다」, 「… 예정입니다」
 _SET_AHEAD = re.compile(r"(?:기로\s?(?:했|하였|정했)|예정|할\s?것)[가-힣]{0,4}$")
+#: a decision told at a sentence's end: 「…하기로 정했습니다」, 「…으로 확정했습니다」
+_DECIDED_SAID = re.compile(
+    r"(?:기로\s?(?:했|하였|정했|정하였|결정했|결정하였)|확정했|확정하였|결정했|결정하였)[가-힣]{0,4}[.!?。]?$")
 #: a state, no act: 「확인이 필요합니다」, 「…에 해당합니다」
 _STATE_END = re.compile(r"(?:필요|해당|가능|중요|의미|동일|유사)합니다$")
 
@@ -452,6 +455,9 @@ def unowned_task(piece: str, material: str) -> bool:
             # an act for no one on a memo task's thing (「포스터에 … 제작합니다」 by 「이수연이
             # 포스터 시안을 … 준비하기로 함」)
             names, texts = [], tasks
+            if _DECIDED_SAID.search(clause):
+                # a decision told (「…축소하기로 정했습니다」): any memo item may hold it
+                texts = [_flat(i) for i in _ITEM_BREAK.split(material or "") if i.strip()]
             if _NEXT_SAID.search(clause) or _PART_NAMED.search(clause) or not any(
                     w in t for w in _things(clause) if len(w) >= 3 and not re.search(r"\d", w)
                     for t in texts):
