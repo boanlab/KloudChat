@@ -66,6 +66,11 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("business", re.compile(
         rf"(?:영업일\s{{0,2}}(?:기준\s{{0,2}})?(?P<n1>{_N})\s{{0,2}}일|(?P<n2>{_N})\s{{0,2}}영업일)"
         r"\s{0,2}(?P<dir>뒤|후|이내|안에|내|전)?")),
+    ("month_week", re.compile(
+        r"(?:(?P<which>이번|요번|이|다다음|다음|담|지난|저번)\s{0,2}(?:달|월)"
+        r"|(?<![\d.])(?P<month>\d{1,2})\s{0,2}월)\s{0,2}"
+        r"(?P<nth>(?:첫|둘|두|셋|세|넷|네|다섯|\d)\s{0,2}(?:번\s{0,2})?째|첫|마지막)\s{0,2}"
+        r"(?P<week>주\s{0,2})?(?P<wd>[월화수목금토일])요일")),
     ("week_day", re.compile(
         r"(?P<shift>지지난|지난|저번|이번|요번|다다음|다음|담|금|차)\s{0,2}주\s{0,2}"
         r"(?P<wd>[월화수목금토일])요일")),
@@ -143,6 +148,25 @@ def _week_day(base: dt.date, weekday: int, shift: int) -> dt.date:
     return monday + dt.timedelta(weeks=shift, days=weekday)
 
 
+_NTH = {"첫": 1, "둘": 2, "두": 2, "셋": 3, "세": 3, "넷": 4, "네": 4, "다섯": 5}
+_MONTH_SHIFT = {"이번": 0, "이": 0, "요번": 0, "다음": 1, "담": 1, "다다음": 2, "지난": -1,
+                "저번": -1}
+
+
+def _month_week_day(first: dt.date, nth: int, weekday: int, week: bool) -> dt.date | None:
+    """The month's `nth` (-1: last) `weekday`, or with `week` that weekday of its `nth` week;
+    weeks run Monday to Sunday and a month's first week holds its first Thursday. None when
+    the day falls outside the month."""
+    last = _month_end(first.year, first.month)
+    anchor = 3 if week else weekday
+    start = first + dt.timedelta(days=(anchor - first.weekday()) % 7)
+    end = last - dt.timedelta(days=(last.weekday() - anchor) % 7)
+    pick = end if nth < 0 else start + dt.timedelta(weeks=nth - 1)
+    if week:
+        pick += dt.timedelta(days=weekday - 3)
+    return pick if pick.month == first.month and pick.year == first.year else None
+
+
 def _upcoming(base: dt.date, weekday: int) -> dt.date:
     ahead = (weekday - base.weekday()) % 7 or 7
     return base + dt.timedelta(days=ahead)
@@ -213,6 +237,22 @@ def _resolve_match(kind: str, m: re.Match[str], base: dt.date, *, count: int = 4
     if kind == "business":
         n = _count(g.get("n1") or g.get("n2"))
         return _dated(add_business_days(base, -n if g.get("dir") == "전" else n), business_days=n)
+    if kind == "month_week":
+        if g.get("month"):
+            month = int(g["month"])
+            if not 1 <= month <= 12:
+                return {"status": "unresolved", "reason": "달이 맞지 않음"}
+            first, rolled = _year_for(base, month, 1)
+        else:
+            first, rolled = _add_months(base.replace(day=1), _MONTH_SHIFT[g["which"]]), False
+        word = re.sub(r"\s|번|째", "", g["nth"])
+        nth = -1 if word == "마지막" else int(word) if word.isdigit() else _NTH[word]
+        day = _month_week_day(first, nth, WEEKDAYS.index(g["wd"]), bool(g.get("week"))) \
+            if nth else None
+        if day is None:
+            return {"status": "unresolved", "reason": "그 달에 없는 날"}
+        return _dated(day, **({"year_assumed": True} if rolled else {}),
+                      **({"past": True} if day < base else {}))
     if kind == "week_day":
         day = _week_day(base, WEEKDAYS.index(g["wd"]), _WEEK_SHIFT[g["shift"]])
         return _dated(day, **({"past": True} if day < base else {}))
@@ -770,8 +810,8 @@ def today() -> dt.date:
 
 
 #: What the person's relative dates resolve to, as a post check compares them with the answer.
-_WORKED_KINDS = ("offset", "day_word", "week_day", "business", "month_part", "month_end",
-                 "named_month_end", "quarter", "year_end")
+_WORKED_KINDS = ("offset", "day_word", "week_day", "month_week", "business", "month_part",
+                 "month_end", "named_month_end", "quarter", "year_end")
 _BLANK_AFTER = r"\s{0,2}(?:은|는|이|가|:|=|→)?\s{0,3}(\[[^\]\n]{1,12}\])"
 
 
@@ -802,7 +842,7 @@ def _from_an_event(row: dict) -> bool:
 
 
 #: relative days a person counts from today: 「다음 주 월요일」, 「모레」, 「3일 후」
-_TODAY_KINDS = ("day_word", "week_day", "offset", "business", "month_part")
+_TODAY_KINDS = ("day_word", "week_day", "month_week", "offset", "business", "month_part")
 
 
 def from_today(text: str, today: dt.date) -> list[dict]:

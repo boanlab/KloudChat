@@ -4725,8 +4725,12 @@ async def send_message(
         if privacy_resolution and privacy_resolution.mask_outbound:
             brief = _mask_list([brief], legacy=policy.pii_masking)[0]
         trusted_context = [*trusted_context, brief]
-    # 「다음 주 월요일」 counted from today by code, not by the writer
-    if session.kind is SessionKind.chat and (dated := date_rules.today_block(content, _today())):
+    # 「다음 주 월요일」 counted from today by code, not by the writer; 「그날까지」 leans on
+    # the person's last turn
+    asked_before = [body for message, body in zip(history, outbound_history, strict=False)
+                    if message.role is Role.user][-1:]
+    if session.kind is SessionKind.chat and (
+            dated := date_rules.today_block(content, _today(), asked_before)):
         trusted_context = [*trusted_context, dated]
     calculation_required = (
         session.kind is SessionKind.chat and not tables and (

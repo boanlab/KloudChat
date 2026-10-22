@@ -67,10 +67,18 @@ def _split(text: str) -> list[str]:
     return [p.strip() for p in out if p.strip()]
 
 
+def _bare(word: str) -> str:
+    """A word less its particle, unless that leaves one syllable (「회의」 is no 「회」+「의」)."""
+    if not re.search(r"[가-힣]", word):
+        return word
+    stem = _PARTICLE.sub("", word)
+    return stem if len(stem) >= 2 else word
+
+
 def _words(text: str) -> set[str]:
     out = set()
     for word in re.findall(r"[가-힣A-Za-z0-9]{2,}", text):
-        word = _PARTICLE.sub("", word) if re.search(r"[가-힣]", word) else word
+        word = _bare(word)
         if len(word) >= 2 and word not in _GENERIC and not word.isdigit() \
                 and not re.fullmatch(rf"[{_DAYS}]요일", word):
             out.add(word.lower())
@@ -122,7 +130,7 @@ def _all_words(text: str) -> set[str]:
     """`_words` with the generic ones kept: how closely a stretch says the same item."""
     out = set()
     for word in re.findall(r"[가-힣A-Za-z0-9]{2,}", text):
-        word = _PARTICLE.sub("", word) if re.search(r"[가-힣]", word) else word
+        word = _bare(word)
         if len(word) >= 2 and not word.isdigit():
             out.add(word.lower())
     return out
@@ -159,6 +167,9 @@ def _held(item: str, day: str, days: dict[str, list[tuple[str, str | None]]],
     other = [c for c, w in hits if c not in same]
     if not same:
         return False
+    # every word of that day's stretch in the week, and more (「결제 오류 사후 검토 회의(…)」)
+    if any(_says(item, _MATERIAL_DAY.sub(" ", c)) for c in same):
+        return True
     best = max(_overlap(every, c) for c in same)
     # the other week's stretch on this day says it more closely: the item moved weeks (a week
     # the item says itself; one a heading gives may hold both weeks' talk of the day)

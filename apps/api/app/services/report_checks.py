@@ -205,9 +205,39 @@ def _upcoming_day(month: int, day: int, today: dt.date) -> dt.date | None:
     return None
 
 
+#: a deadline or start day, not a meeting's: 「10/23(금)까지」, 「11/2(월)부터」
+_DUE_TAIL = re.compile(r"\s{0,2}(?:\([월화수목금토일]\))?\s{0,2}(?:까지|마감|부터|이전|전에|내로)")
+#: clause end in a one-line memo: 「…주간회의. 참석 …」, not 「10. 8.」
+_CLAUSE_END = re.compile(r"(?<!\d)\.(?!\s{0,2}\d)|[;。]")
+
+
+def _meeting_clauses(line: str) -> list[str]:
+    """Clauses of a line that name a meeting, the next meeting's clause aside."""
+    return [c for c in _CLAUSE_END.split(_NEXT_MEETING.sub(" ", line)) if _MEETING.search(c)]
+
+
+def _own_days(pattern: re.Pattern, clause: str) -> list[re.Match]:
+    """Day matches in a meeting clause, deadlines (「10/23(금)까지」) aside."""
+    return [m for m in pattern.finditer(clause) if not _DUE_TAIL.match(clause, m.end())]
+
+
+def _weekday_year(text: str, today: dt.date) -> int | None:
+    """The one year every weekday-marked day in the text agrees on (「10/23(금)」, 「11/2(월)」)."""
+    years: set[int | None] = set()
+    for m in _DAY_WITH_WEEKDAY.finditer(text or ""):
+        day = _year_of(int(m.group(1)), int(m.group(2)), m.group(3), today)
+        years.add(day.year if day else None)
+    for m in _WEEKDAY_WITH_DAY.finditer(text or ""):
+        day = _year_of(int(m.group(2)), int(m.group(3)), m.group(1), today)
+        years.add(day.year if day else None)
+    return years.pop() if len(years) == 1 and None not in years else None
+
+
 def meeting_date(request: str, material: str, today: dt.date | None = None) -> dt.date | None:
-    """Meeting date from the person or material header; yearless day resolved by weekday,
-    or, for a meeting the request says is still to come, by the next such day."""
+    """Meeting date from the person or material header: the day in the clause naming the meeting
+    (not a deadline's or the next meeting's); yearless day resolved by its weekday or the year the
+    text's other weekdays fix, or, for a meeting the request says is still to come, by the next
+    such day."""
     for text in (request, material):
         for line in (text or "").splitlines():
             if (m := _FULL_DATE.search(line)) and _MEETING.search(line):
@@ -217,19 +247,24 @@ def meeting_date(request: str, material: str, today: dt.date | None = None) -> d
                     continue
     today = today or dt.date.today()
     for text in (request, material):
+        year = _weekday_year(text, today)
         for line in (text or "").splitlines():
-            if not _MEETING.search(line):
-                continue
-            # the next meeting's day is no day of this one
-            line = _NEXT_MEETING.sub(" ", line)
-            if m := _DAY_WITH_WEEKDAY.search(line):
-                month, day, weekday = int(m.group(1)), int(m.group(2)), m.group(3)
-            elif m := _WEEKDAY_WITH_DAY.search(line):
-                month, day, weekday = int(m.group(2)), int(m.group(3)), m.group(1)
-            else:
-                continue
-            if found := _year_of(month, day, weekday, today):
-                return found
+            for clause in _meeting_clauses(line):
+                if days := _own_days(_DAY_WITH_WEEKDAY, clause):
+                    m = days[0]
+                    month, day, weekday = int(m.group(1)), int(m.group(2)), m.group(3)
+                elif days := _own_days(_WEEKDAY_WITH_DAY, clause):
+                    m = days[0]
+                    month, day, weekday = int(m.group(2)), int(m.group(3)), m.group(1)
+                elif year and (days := _own_days(_YEARLESS_DAY, clause)):
+                    try:
+                        return dt.date(year, int(days[0].group(1)), int(days[0].group(2)))
+                    except ValueError:
+                        continue
+                else:
+                    continue
+                if found := _year_of(month, day, weekday, today):
+                    return found
     for line in (request or "").splitlines():
         # 「다음 주 목요일(10/15) 14시 주간회의」: a meeting to come is this year's next one
         if _MEETING.search(line) and _UPCOMING.search(line) and (
@@ -320,11 +355,10 @@ def _nearest_meeting_day(request: str, material: str, today: dt.date) -> dt.date
 
     for text in (request, material):
         for line in (text or "").splitlines():
-            if not _MEETING.search(line):
-                continue
-            if m := _YEARLESS_DAY.search(_NEXT_MEETING.sub(" ", line)):
-                near = weekdays._nearest(int(m.group(1)), int(m.group(2)), today)
-                return near[0] if near and near[1] else None
+            for clause in _meeting_clauses(line):
+                if days := _own_days(_YEARLESS_DAY, clause):
+                    near = weekdays._nearest(int(days[0].group(1)), int(days[0].group(2)), today)
+                    return near[0] if near and near[1] else None
     return None
 
 
