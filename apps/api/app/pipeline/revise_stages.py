@@ -636,10 +636,10 @@ class Rewrite(Base):
                                                  revise.without_numbered_removals(
                                                      " ".join(asks) or _typed(bundle)))
                         body = richtext.detach_tables(body)
-                        # written sums and rate results on the rewritten lines only
+                        # written sums on the rewritten lines only
                         body = revise.on_new_lines(
-                            before, body, lambda t, given=given: units.fix_rate_results(
-                                units.fix_written_sums(units.fix_written_arithmetic(t)), given))
+                            before, body,
+                            lambda t: units.fix_written_sums(units.fix_written_arithmetic(t)))
                         # arithmetic checked, not trusted
                         body = report.drop_kpi(
                             report.fix_point_units(
@@ -689,8 +689,6 @@ class Rewrite(Base):
                         if shortening:
                             # the ask restated as a sentence of the part: not its content
                             body = revise.without_ask_echo(body)
-                            # a box the shortening put in: the part says less, it frames nothing
-                            body = revise.without_added_boxes(before, body)
                             # a day put beside a weekday the part says: the weekday stays
                             body = revise.without_added_dates(before, body)
                             if want := revise.sentences_asked(asked_of)[0]:

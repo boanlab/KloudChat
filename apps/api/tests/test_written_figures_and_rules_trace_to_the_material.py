@@ -110,6 +110,19 @@ def test_a_chart_under_a_mixed_unit_reads_each_point_in_its_own_unit():
     assert slides[0]["bullets"] == ["매출 실적: 128억원", "이익률 실적: 7.1% (확인 필요)"]
 
 
+def test_a_chart_whose_series_name_their_units_reads_each_point_in_the_unit_named():
+    """audit-g H4 C: 「분·점」 over 「평균 대기 시간(분)」 and 「민원인 만족도(점)」 read 78 as
+    78분·점, so the given 78점 was marked and the chart broken into 「78분·점 (확인 필요)」."""
+    memo = "무인발급기 도입 1년. 평균 대기 시간 14분에서 9분, 민원인 만족도 78점에서 86점."
+    chart = {"kind": "line", "unit": "분·점", "categories": ["도입 전", "1년 후"],
+             "series": [{"name": "평균 대기 시간(분)", "values": [14.0, 9.0]},
+                        {"name": "민원인 만족도(점)", "values": [78.0, 86.0]}]}
+    slide = {"id": "c", "layout": "chart", "title": "대기 시간과 만족도", "chart": chart}
+    slides, found = ground_slides(_copy([slide]), material=memo, computed=[],
+                                  options=_options(memo))
+    assert slides[0]["chart"] == chart and not found
+
+
 def test_every_invented_figure_on_a_no_figures_proposal_is_marked():
     # the agent forbids figures with no basis: an estimate (「약 1,500만 원」) is one too
     slides, found = ground_slides(_copy(PROPOSAL_SLIDES), material=PROPOSAL, computed=[],

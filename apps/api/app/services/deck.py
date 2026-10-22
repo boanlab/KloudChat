@@ -763,11 +763,6 @@ _FAREWELL_TITLE = re.compile(
 )
 
 
-#: a closing title that names points to show: 「핵심 요약」, 「요청 사항」, 「Key takeaways」
-_CLAIMS_POINTS = re.compile(r"요약|정리|요청|사항|핵심|결론|시사점|summary|takeaways?|key\s+points|"
-                            r"recap|asks?\b", re.I)
-
-
 def closing_title(title: str) -> str:
     """Closing title with a bare farewell replaced by 「마무리」."""
     return "마무리" if _FAREWELL_TITLE.match(title or "") or not title.strip() else title
@@ -775,16 +770,12 @@ def closing_title(title: str) -> str:
 
 def fill_closing(slide: dict, data: dict) -> None:
     """The closing slide's points and line from the writer's `data`; a bare thanks when it
-    wrote neither, under a title that names no points it does not show."""
+    wrote neither."""
     slide["bullets"] = _clean_bullets(data.get("bullets"))[:3]
     slide["body"] = " ".join(str(data.get("body") or "").split())[:60]
-    title = str(slide.get("title") or "")
     if not slide["bullets"] and not slide["body"]:
         slide["body"] = "감사합니다"
-        if _CLAIMS_POINTS.search(title):
-            # 「핵심 요약 및 승인 요청 사항」 over a bare thanks
-            title = ""
-    slide["title"] = closing_title(title)
+    slide["title"] = closing_title(str(slide.get("title") or ""))
 
 
 #: Boundary between request and planner's own conditions.
@@ -879,12 +870,29 @@ def _add_to_label(slide: dict, clause: str, words: set[str]) -> bool:
                 continue
             for j, cell in enumerate(pair):
                 cell = str(cell)
-                if re.match(r"\s{0,2}[-+$€₩£]?\d", cell) or not words & set(
-                        re.findall(r"[가-힣A-Za-z]{2,}", cell)):
+                if re.match(r"\s{0,2}[-+$€₩£]?\d", cell) or not words & _word_set(cell):
                     continue
                 pair[j] = f"{cell[:-1]}, {clause})" if cell.endswith(")") else f"{cell} ({clause})"
                 return True
     return False
+
+
+def _qualified(text: str, start: int, end: int) -> tuple[str, str]:
+    """`(term, aside)` when the figure at `text[start:end]` sits in the parenthesis after the term
+    it qualifies (「영업이익 9.6억(이익률 7.5%, 전분기 6.8%)」 gives 「영업이익 9.6억」 and
+    「이익률 7.5%, 전분기 6.8%」); `("", "")` otherwise."""
+    opened, closed = text.rfind("(", max(0, start - 48), start), text.find(")", end, end + 48)
+    if opened < 0 or closed < 0 or ")" in text[opened:start] or "(" in text[end:closed]:
+        return "", ""
+    left = max((m.end() for m in _CLAUSE_BREAK.finditer(text, 0, opened)), default=0)
+    term = text[left:opened].strip(" -–—:")
+    if not term or len(term) > 40:
+        return "", ""
+    return term, text[opened + 1:closed].strip()
+
+
+def _word_set(text: str) -> set[str]:
+    return set(re.findall(r"[가-힣a-z]{2,}", text.lower()))
 
 
 def restate_missing_facts(slides: list[dict], request: str) -> list[int]:
@@ -941,19 +949,22 @@ def restate_missing_facts(slides: list[dict], request: str) -> list[int]:
         clause = _clause_around(text, match.start(), match.end())
         if not clause or _ASK_WORDS.search(clause) or len(clause) < len(quantity) + 2:
             continue
-        words = {w for w in re.findall(r"[가-힣A-Za-z]{2,}", clause)}
-        # what the clause is about when it names nothing itself: 「영업이익 9.6억(이익률 7.5%」
-        owner = set(re.findall(r"[가-힣A-Za-z]{2,}", text[max(0, match.start() - 24):
-                                                         match.start()])) | words
+        # an aside goes where the term it qualifies is (「영업이익 9.6억(이익률 7.5%」), and one
+        # naming nothing before its figure (「93% of target」) is said with that term
+        term, aside = _qualified(text, match.start(), match.end())
+        beside = clause  # what goes beside the term's label
+        if aside and re.match(r"[-+$€₩£]?\d", clause):
+            clause, beside = f"{term} ({aside})", aside
+        named, words = _word_set(term or clause), _word_set(clause)
 
         def shared(i: int, said: set[str]) -> int:
-            return len(said & set(re.findall(r"[가-힣A-Za-z]{2,}", _slide_words(slides[i]))))
+            return len(said & _word_set(_slide_words(slides[i])))
 
         scored = sorted(
             bodies,
             key=lambda i: (
+                -shared(i, named),
                 -shared(i, words),
-                -shared(i, owner),
                 0 if isinstance(slides[i].get("bullets"), list) else 1,
                 i,
             ),
@@ -966,7 +977,7 @@ def restate_missing_facts(slides: list[dict], request: str) -> list[int]:
             continue
         if isinstance(slide.get("bullets"), list):
             slide["bullets"].append(clause)
-        elif _add_to_label(slide, clause, owner):
+        elif _add_to_label(slide, beside, named):
             pass  # beside the metric it belongs to
         elif slide.get("body"):
             slide["body"] = f"{str(slide['body']).rstrip()} {clause}."
@@ -1207,42 +1218,8 @@ def repeats_table(rows: list[list[str]], earlier: list[Any]) -> bool:
     return len(mine) >= 2 and any(mine <= body(table) for table in earlier)
 
 
-def _same_word(a: str, b: str) -> bool:
-    """One label word however shortened: 「Avg」 for 「Average」, 「Qty」 for 「Quantity」."""
-    if a == b:
-        return True
-    short, long = sorted((a, b), key=len)
-    if re.search(r"\d", a + b) or not short.isascii() or len(short) < 2 or short[0] != long[0]:
-        return False
-    rest = iter(long)
-    return all(ch in rest for ch in short)
-
-
-def _same_row(a: list, b: list) -> bool:
-    """Two table rows of one label (its words alike, 「Avg Latency」 and 「Average Latency」)
-    whose values never differ where both have one."""
-    if len(a) != len(b) or not a:
-        return False
-    la, lb = (re.findall(r"[가-힣A-Za-z0-9]+", str(r[0]).lower()) for r in (a, b))
-    if not la or len(la) != len(lb) or not all(map(_same_word, la, lb)):
-        return False
-    pairs = [(" ".join(str(x).split()), " ".join(str(y).split()))
-             for x, y in zip(a[1:], b[1:], strict=True)]
-    return all(x == y or not x or not y for x, y in pairs)
-
-
-def _joined_row(a: list, b: list) -> list:
-    """The row of `a` and `b` with more values, the other's values filling its blanks."""
-    def filled(row: list) -> int:
-        return sum(bool(str(c).strip()) for c in row)
-
-    first, other = (a, b) if filled(a) >= filled(b) else (b, a)
-    return [x if str(x).strip() else y for x, y in zip(first, other, strict=True)]
-
-
 def dedupe_rows(rows: list[list[str]]) -> list[list[str]]:
-    """Drops later table rows repeating an earlier row (same numbers + 2 shared words, or the
-    same label with no value differing)."""
+    """Drops later table rows repeating an earlier row (same numbers + 2 shared words)."""
     if len(rows) < 3:
         return rows
 
@@ -1255,11 +1232,6 @@ def dedupe_rows(rows: list[list[str]]) -> list[list[str]]:
 
     kept = [rows[0]]
     for row in rows[1:]:
-        twin = next((i for i, prev in enumerate(kept[1:], 1) if _same_row(prev, row)), 0)
-        if twin:
-            # one row under two spellings of its label: one row, every value kept
-            kept[twin] = _joined_row(kept[twin], row)
-            continue
         mine_n, mine_w = numbers(row), words(row)
         same = any(
             (mine_n and mine_n <= numbers(prev) and len(mine_w & words(prev)) >= 2)
@@ -5313,10 +5285,38 @@ _REFERENCE_BEFORE = re.compile(
     r"(?:(?<![가-힣])(?:표|그림)|\b(?:table|figure|slide|section))\s?$", re.I)
 
 
+#: one amount written in two scaled parts: 「4만 8천」, 「1억 2천만」
+_SCALED_PARTS = re.compile(
+    r"(?<![\d.,])(\d{1,4}(?:\.\d{1,2})?) ?(억|만) ?(\d{1,4}(?:,\d{3})?) ?(천만|백만|만|천)"
+    r"(?![가-힣]?\d)")
+_PART_SCALE = {"억": 100_000_000, "천만": 10_000_000, "백만": 1_000_000, "만": 10_000, "천": 1_000}
+
+
+def _scaled_amounts(words: str) -> tuple[str, list[tuple[str, str, str]]]:
+    """`words` with each two-part amount blanked, and those amounts as one figure each
+    (「4만 8천 건」 is 48000 건, 「1억 2천만원」 120000000 원)."""
+    found = []
+    for m in _SCALED_PARTS.finditer(words):
+        big, small = _PART_SCALE[m.group(2)], _PART_SCALE[m.group(4)]
+        if small >= big:
+            continue
+        value = float(m.group(1)) * big + float(m.group(3).replace(",", "")) * small
+        word = re.match(r"( ?)([가-힣]{1,6})", words[m.end():])
+        unit = _counter(word.group(2), bool(word.group(1))) if word else ""
+        said = m.group(0) + (word.group(1) + unit if unit else "")
+        found.append((m.start(), m.end(), (f"{value:.0f}", _UNIT_SAME.get(unit, unit), said)))
+    for start, end, _ in reversed(found):
+        words = words[:start] + " " * (end - start) + words[end:]
+    return words, [f for *_, f in found]
+
+
 def figures_in(words: str) -> list[tuple[str, str, str]]:
     """`(number, unit, as written)` for each figure in `words`, each once: the same reading
     for the text before an edit and after it."""
     out: dict[tuple[str, str], str] = {}
+    words, scaled = _scaled_amounts(words)
+    for number, unit, said in scaled:
+        out.setdefault((number, unit), said)
     for m in _SHOWN_FIGURE.finditer(words):
         if _REFERENCE_BEFORE.search(words[max(0, m.start() - 8):m.start()]):
             continue
@@ -5335,8 +5335,6 @@ def figures_in(words: str) -> list[tuple[str, str, str]]:
 
 #: Korean money units in won, and the thousands and billions of English figures (「1K」)
 _SCALE = {"억": 100_000_000, "만": 10_000, "천": 1_000, "원": 1, "k": 1_000, "b": 1_000_000_000}
-#: 「38억 5천만」, 「1억 2,000만」: one amount in two parts
-_COMPOUND_WON = re.compile(r"(\d{1,4}(?:\.\d{1,3})?)\s?억\s?(\d{1,3}(?:,\d{3})?)\s?(천만|백만|만)")
 
 
 def _value(number: str, unit: str) -> float | None:
@@ -5353,10 +5351,6 @@ def amounts_in(words: str) -> set[float]:
     """The figures in `words` as numbers, however they are written (「38.5억」, 「38억 5천만」,
     「3,850,000,000원」; 「1K」, 「1,000」)."""
     out = {v for number, unit, _ in figures_in(words) if (v := _value(number, unit)) is not None}
-    scale = {"천만": 10_000_000, "백만": 1_000_000, "만": 10_000}
-    for m in _COMPOUND_WON.finditer(words):
-        out.add(round(float(m.group(1)) * 100_000_000
-                      + float(m.group(2).replace(",", "")) * scale[m.group(3)], 2))
     # a count written without its thousands comma: 「per 1000」 for 「1,000」
     out |= {float(n) for n in _BARE_THOUSANDS.findall(words)}
     return out
@@ -5669,37 +5663,13 @@ def lost_blocks(old: list[dict], new: list[dict], *, english: bool = False) -> l
 
 #: a value's unit left over from a chart's mixed one: 「128억원/%」
 _DANGLING_UNIT = re.compile(r"(\d[\d,.]{0,15} ?[가-힣A-Za-z]{1,3}) ?/ ?%p?(?![\w%])")
-#: an item that is a label and nothing more: 「이익률 실적:」
-_LABEL_ONLY = re.compile(r"[^:：\d]{1,40}[:：]?")
 
 
 def settle_blanks(slides: list[dict]) -> int:
-    """Slides with no guard blank standing as a point's whole value (「이익률 실적: [수치]」
-    left out while its list keeps another point) and no unit left dangling from a mixed one
-    (「128억원/%」 → 「128억원」); fill-in fields (「[담당자]」) stay. The count changed."""
-    from app.services import value_guard
-
-    def empty(point: object) -> bool:
-        if isinstance(point, list):
-            cells = [str(c).strip() for c in point]
-            label = " ".join(c for c in cells if not value_guard.GUARD_BLANK.fullmatch(c))
-            blanked = len(label) < len(" ".join(cells))
-        else:
-            text = str(point).rstrip()
-            ends = [m for m in value_guard.GUARD_BLANK.finditer(text) if m.end() == len(text)]
-            label, blanked = (text[:ends[0].start()] if ends else text), bool(ends)
-        return blanked and bool(_LABEL_ONLY.fullmatch(label.strip() or ":"))
-
+    """Slides with no unit left dangling from a chart's mixed one (「128억원/%」 → 「128억원」);
+    a guard blank (「이익률 실적: [수치]」) stays for the reader to see. The count changed."""
     changed = 0
     for slide in slides:
-        for key in ("bullets", "items", "metrics"):
-            points = slide.get(key)
-            if not isinstance(points, list):
-                continue
-            kept = [p for p in points if not empty(p)]
-            if kept and len(kept) < len(points):
-                changed += len(points) - len(kept)
-                slide[key] = kept
         for key, value in list(slide.items()):
             if key in _NOT_SHOWN or key == "chart":
                 continue
@@ -6580,24 +6550,22 @@ def _figure_words(slide: dict) -> str:
 
 
 def _figure_names(slide: dict) -> list[str]:
-    """The names of a fixed-shape figure's parts (steps, stages, pillars, sides, aspects)."""
+    """The names of a fixed-shape figure's parts that it draws with their words (a step and
+    its note, a compared aspect and its cells); a bare name (a pillar, a side) draws none."""
     slots = figure_kinds.from_source(str((slide.get("diagram") or {}).get("source") or ""))
     if slots is None:
         return []
     names: list[str] = []
     def walk(value: object) -> None:
         if isinstance(value, dict):
-            for key, inner in value.items():
-                if key in ("name", "aspect") and isinstance(inner, str):
-                    names.append(inner)
-                else:
-                    walk(inner)
+            name = value.get("name") if value.get("note") else value.get("aspect")
+            if isinstance(name, str):
+                names.append(name)
+            for inner in value.values():
+                walk(inner)
         elif isinstance(value, list):
             for inner in value:
-                if isinstance(inner, str) and len(inner) <= 24:
-                    names.append(inner)  # pillars, sides
-                else:
-                    walk(inner)
+                walk(inner)
     walk(slots)
     return names
 

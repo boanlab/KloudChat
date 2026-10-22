@@ -51,7 +51,8 @@ Rules:
   document replaces wholesale the text the user was looking at.
 
 note: one or two sentences on how to change that part. Do not copy the user's words; state the
-change to make. Write note in Korean.
+change to make. Write note in Korean; a part title it names, kept or new, is in the outline's
+own language (an English outline's titles stay English).
 
 Reply with a JSON object only.
 예: {{"scope": "parts", "targets": [3], "note": "분량을 절반으로 줄이고 표는 남긴다"}}
@@ -1733,8 +1734,9 @@ def _values_of(text: str) -> set[tuple[str, str]]:
 
 def keep_phrasing(new: list[dict], old: list[dict]) -> list[dict]:
     """A short new point restating two or more values that one old point alone gave (with at
-    most one more), in words that point does not use (「Blend $4 and $38 costs」 for 「Local
-    wins on cost: $4 vs $38 per 1,000」), takes the old point back as written."""
+    most one more), mostly in words that point does not use (「Blend $4 and $38 costs」 for
+    「Local wins on cost: $4 vs $38 per 1,000」), takes the old point back as written; a cut of
+    the old point's own words stays."""
     from app.services import deck
 
     points = list(dict.fromkeys(p for s in old for p in deck.points_of(s)))
@@ -1752,9 +1754,9 @@ def keep_phrasing(new: list[dict], old: list[dict]) -> list[dict]:
                      and len(theirs - mine) <= 1]
             if len(given) != 1 or given[0] == bullet or len(given[0]) > 80:
                 continue
-            words = {w.lower() for w in _POINT_WORD.findall(given[0])}
-            shared = words & {w.lower() for w in _POINT_WORD.findall(bullet)}
-            if len(shared) * 2 < len(words):
+            mine_words = {w.lower() for w in _POINT_WORD.findall(bullet)}
+            shared = mine_words & {w.lower() for w in _POINT_WORD.findall(given[0])}
+            if len(shared) * 2 < len(mine_words):
                 bullets[b] = given[0]
     return new
 
@@ -2266,6 +2268,8 @@ def sentences_asked(clause: str) -> tuple[int, bool]:
     return count, bool(m.group("most"))
 
 
+#: a list row's marker: 「- 」, 「1. 」
+_LIST_ROW = re.compile(r"\s{0,8}(?:[-*•·]|\d{1,2}[.)])\s")
 #: a line that is not prose: a caption (「표 2. 진행 사항」), a bold label, a list row
 _NOT_PROSE = re.compile(r"(?:표|그림|table|figure)\s?\d{1,3}\s?[.:)]|\*\*[^*\n]{1,200}\*\*$"
                         r"|(?:[-*•·]|\d{1,2}[.)])\s", re.I)
@@ -2273,17 +2277,26 @@ _NOT_PROSE = re.compile(r"(?:표|그림|table|figure)\s?\d{1,3}\s?[.:)]|\*\*[^*\
 
 def sentence_count(text: str) -> int:
     """Sentences of a part's prose: each end mark, and a line that stops without one; tables,
-    captions, list rows and blocks are not sentences."""
+    captions, list rows and blocks are not sentences. A part written as a list only (개조식)
+    counts its top-level rows that way instead."""
     text = re.sub(r"```[\s\S]*?(?:```|\Z)|<[^<>]{0,2000}>|!\[[^\]]*\]\([^)]*\)", " ", text or "")
-    count = 0
-    for line in (raw.strip() for raw in text.splitlines()):
-        if not line or line.startswith(("|", "#")) or _NOT_PROSE.match(line):
-            continue
+
+    def said(line: str) -> int:
         line = line.replace("**", "")
-        ends = _SENTENCE_END.findall(line)
         last = line.rstrip("\"'」』”’)] ")[-1:]
-        count += len(ends) + (0 if last in ".!?。" else 1)
-    return count
+        return len(_SENTENCE_END.findall(line)) + (0 if last in ".!?。" else 1)
+
+    prose = rows = 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("|", "#")):
+            continue
+        row = _LIST_ROW.match(raw)
+        if row:
+            rows += said(raw[row.end():]) if raw[:1] not in " \t" else 0
+        elif not _NOT_PROSE.match(line):
+            prose += said(line)
+    return prose or rows
 
 
 def _whole_text(text: str) -> str:
@@ -2754,21 +2767,6 @@ def better_shortening(old: str, first: str, second: str, asked: str, given: str 
                                                                              given)
 
 
-def without_added_boxes(old: str, new: str) -> str:
-    """`new` minus the boxes (「```callout」) beyond those `old` has, the last ones first."""
-    extra = len(_CALLOUT.findall(new or "")) - len(_CALLOUT.findall(old or ""))
-    if extra <= 0:
-        return new
-    boxes = list(_CALLOUT_BLOCK.finditer(new))
-    had = set(_CALLOUT.findall(old or ""))
-    # a box under a title the part had stays; the others go, newest first
-    gone = [m for m in reversed(boxes) if m.group(1) not in had][:extra]
-    out = new
-    for m in sorted(gone, key=lambda m: m.start(), reverse=True):
-        out = out[:m.start()] + out[m.end():]
-    return re.sub(r"\n{3,}", "\n\n", out).strip()
-
-
 def shortening_misses(old: str, new: str, asked: str, given: str = "") -> int:
     """How far a shortened part is from its ask: a sentence count off, each fact gone or
     brought in."""
@@ -2837,8 +2835,6 @@ def drift_faults(old: str, new: str, others: list[str]) -> list[str]:
 
 #: a box in a part: its first line is its title
 _CALLOUT = re.compile(r"```callout\n([^\n`]{1,80})\n")
-#: a whole box, title to closing fence
-_CALLOUT_BLOCK = re.compile(r"```callout\n([^\n`]{1,80})\n[^`]{0,4000}?```")
 
 
 def removed_blocks(old: str, new: str, part: int) -> list[str]:

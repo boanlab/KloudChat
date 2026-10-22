@@ -7124,8 +7124,9 @@ async def _deck_carry(work: PipelineBundle) -> AsyncIterator[dict]:
     slides = revise.keep_timeline_layout(
         slides, old_slides, mentioned=carry_note, request=request
     )
-    # the old deck's wording of a figure pair, its ask and its order kept
-    slides = revise.keep_phrasing(slides, old_slides)
+    # the old deck's wording of a figure pair (never over a strong writer's), its ask and order
+    if not model_tier.strong(work.request.model):
+        slides = revise.keep_phrasing(slides, old_slides)
     slides = revise.keep_ask(slides, old_slides, mentioned=carry_note)
     slides = revise.keep_order(slides, old_slides, mentioned=carry_note)
     slides = revise.refresh_agenda(slides)

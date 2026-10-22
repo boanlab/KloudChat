@@ -421,13 +421,23 @@ def _value_text(value: object, unit: str) -> str:
 
 def _point_unit(unit: str, category: int, series: int, chart: dict) -> str:
     """A point's own unit under a chart's mixed one: 「억원/%」 over the categories 매출 and
-    이익률 is 억원 for the first, % for the second (per series when the series count matches)."""
-    parts = [p for p in unit.split("/") if p]
-    if len(parts) < 2 or not {"%", "%p"} & set(parts):
+    이익률 is 억원 for the first, % for the second (per series when the series count matches);
+    「분·점」 over the series 「대기 시간(분)」 and 「만족도(점)」 is the one each names."""
+    parts = [p for p in re.split(r"[/·]", unit) if p]
+    if len(parts) < 2 or ("·" not in unit and not {"%", "%p"} & set(parts)):
         return unit
-    if len(parts) == len(chart.get("categories") or []):
+    categories = list(chart.get("categories") or [])
+    series_list = [s for s in chart.get("series") or [] if isinstance(s, dict)]
+    # the unit a series or category names: 「만족도(점)」
+    for names, at in ((series_list, series), (categories, category)):
+        name = names[at] if at < len(names) else ""
+        name = str(name.get("name") or "") if isinstance(name, dict) else str(name)
+        named = re.search(r"[(（]([^()（）]{1,4})[)）]\s{0,2}$", name)
+        if named and named.group(1) in parts:
+            return named.group(1)
+    if len(parts) == len(categories):
         return parts[category]
-    if len(parts) == len([s for s in chart.get("series") or [] if isinstance(s, dict)]):
+    if len(parts) == len(series_list):
         return parts[series]
     return ""
 
