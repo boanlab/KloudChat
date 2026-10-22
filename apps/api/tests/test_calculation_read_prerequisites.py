@@ -237,7 +237,7 @@ async def test_mcp_empty_adapter_preserves_no_operand_evidence(monkeypatch):
     async def endpoint(_connector):
         return "https://unused.invalid"
 
-    async def empty_call(*_args):
+    async def empty_call(*_args, **_kwargs):
         calls.append(True)
         return ""
 

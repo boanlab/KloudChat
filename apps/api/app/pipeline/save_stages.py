@@ -134,6 +134,8 @@ def _english_reply(document: Any, summary: int, touched: list[int], is_deck: boo
     for part, asked, got in getattr(document, "counted", []):
         said.append(f"Section {part} has {got} sentence{'s' if got != 1 else ''}, not the "
                     f"{asked} asked.")
+    if already := getattr(document, "already", []):
+        said.append(already_said(already, english=True))
     for added in getattr(document, "added", []):
         at, _, values = added.partition(" ")
         said.append(f"Section {at[:-1]} now states {values}, which the section and the "
@@ -144,6 +146,15 @@ def _english_reply(document: Any, summary: int, touched: list[int], is_deck: boo
         said.append(f"On {where}, {values} dropped out of the rewrite; ask again to put them "
                     "back if they belong there.")
     return " ".join(said)
+
+
+def already_said(already: list[tuple[int, int]], *, english: bool = False) -> str:
+    """「2절은 이미 2문장이어서 그대로 두었습니다.」 for parts that had the count asked."""
+    if english:
+        return " ".join(f"Section {part} already has {asked} sentence{'s' if asked != 1 else ''}"
+                        ", so it was kept as it was." for part, asked in already)
+    return " ".join(f"{part}절은 이미 {asked}문장이어서 그대로 두었습니다."
+                    for part, asked in already)
 
 
 def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = False) -> str:
@@ -185,6 +196,8 @@ def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = F
                     "다시 요청해 주세요.")
     for part, asked, got in getattr(document, "counted", []):
         said.append(f"{part}절은 요청한 {asked}문장이 아니라 {got}문장입니다.")
+    if already := getattr(document, "already", []):
+        said.append(already_said(already))
     for added in getattr(document, "added", []):
         at, _, values = added.partition(" ")
         said.append(f"{at}에 원래 없던 {values}{revise._particle(values, '이', '가')} "

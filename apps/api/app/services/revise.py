@@ -883,12 +883,15 @@ def keep_figure(old: str, new: str, instruction: str) -> str:
 _COUNT_MENTION = re.compile(
     r"(?:장수|분량|길이)?\s{0,8}[:：]?\s{0,8}(?:총|전체)?\s{0,8}\d{1,3}\s{0,8}(?:장|쪽|페이지|슬라이드|절)\s{0,8}"
     r"(?:안팎|내외|정도|으로|로|을|를|이|가|은|는)?"
+    # 「an 8-slide talk」, 「in 10 slides」
+    r"|\b\d{1,3}(?:-|\s{1,3})(?:slides?|pages?|sections?)\b",
+    re.I,
 )
 
 
 def without_counts(request: str) -> str:
     """Request minus part counts; planner reads the note's count."""
-    return " ".join(_COUNT_MENTION.sub(" ", request or "").split())
+    return " ".join(_COUNT_MENTION.sub(" ", " ".join((request or "").split())).split())
 
 
 _TARGET_COUNT = re.compile(
@@ -962,12 +965,16 @@ _RESTRUCTURE = re.compile(
 _JOINS = re.compile(r"합쳐|합치|병합|나눠|분리|묶어|묶|\b(?:merge|split|combine|join)\b", re.I)
 #: a part's own items: 「항목」, 「bullets」
 _ITEM_WORD = re.compile(r"항목|요점|글머리|불릿|\b(?:items?|bullets?|points?)\b", re.I)
+#: a count the items are made into, the verb left out: 「항목을 하나로」, 「두 개로 해줘」
+_COUNT_INTO = re.compile(r"(?:하나|한\s?개|두\s?개|세\s?개|네\s?개|\d{1,2}\s?개)\s?(?:로|으로)"
+                         r"(?:\s?(?:만들|해|정리)|[\s.!~]{0,3}$)")
 
 
 def joins_items(message: str) -> bool:
     """Whether the words join or split a part's items (「항목을 하나로 합쳐줘」, 「merge the
-    bullets」)."""
-    return bool(_JOINS.search(message or "") and _ITEM_WORD.search(message or ""))
+    bullets」, 「4장 항목을 하나로」)."""
+    text = message or ""
+    return bool((_JOINS.search(text) or _COUNT_INTO.search(text)) and _ITEM_WORD.search(text))
 
 
 def asks_restructure(message: str) -> bool:
@@ -1087,8 +1094,9 @@ def notes_everywhere(plan: Plan, parts: list[str], message: str) -> Plan:
 
 
 def count_change(plan: Plan, parts: list[str], message: str) -> Plan:
-    """Outline plan for a stated new part count."""
-    if plan.scope == "outline" or not parts:
+    """Outline plan for a stated new part count, the count said in the note in the words the
+    deck planner reads (a planner's own outline note may state it otherwise or not at all)."""
+    if not parts:
         return plan
     match = _TARGET_COUNT.search(" ".join((message or "").split()))
     if not match:
@@ -1097,8 +1105,46 @@ def count_change(plan: Plan, parts: list[str], message: str) -> Plan:
     if wanted <= 0 or wanted == len(parts):
         return plan
     # One count only, word-led so 「- 6장으로」 isn't a range.
-    note = f"장수는 {wanted}장으로 맞춘다. {without_counts(plan.note)}".strip()
-    return Plan(scope="outline", note=note[:600], usage=plan.usage)
+    lead = f"장수는 {wanted}장으로 맞춘다."
+    note = f"{lead} {note_without_totals(plan.note)}".strip()[:600]
+    from app.services import outline as plan_rules
+
+    units = ("장", "슬라이드", "페이지", "쪽", "절")
+    if plan_rules.requested_count(note, units, maximum=99) != wanted or plan_rules.requested_range(
+            note, units, maximum=99):
+        # a count the planner put otherwise would outweigh the asked one
+        note = lead
+    return Plan(scope="outline", note=note, usage=plan.usage)
+
+
+#: a part count or part number in a planner's note: 「전체 8개 장을」, 「1-2장」, 「3장과」
+_NOTE_COUNT = re.compile(
+    r"(?<![\d.])(?P<a>\d{1,3})\s{0,3}[-~–～]\s{0,3}(?P<b>\d{1,3})\s{0,3}(?:번째\s{0,2})?"
+    r"(?P<ru>장|슬라이드|절|쪽|페이지)"
+    r"|(?P<pre>(?:총|전체|모두|현재|기존|원래)\s{0,3})?(?<![\d.])(?P<n>\d{1,3})\s{0,3}"
+    r"(?P<many>개\s{0,3})?(?P<u>장|슬라이드|절|쪽|페이지)(?!점|단|면|소|비|기)"
+    r"(?P<tail>\s{0,3}(?:짜리|안팎|내외|정도|으로|로|을|를|이|가|은|는|에서|의)?)"
+)
+
+
+def _note_count(match: re.Match[str]) -> str:
+    if match.group("a"):
+        # a span of parts named: 「1-2번 장」, not a range of totals
+        return f"{match.group('a')}~{match.group('b')}번 {match.group('ru')}"
+    tail = match.group("tail") or ""
+    total = match.group("pre") or match.group("many") or tail.strip() in (
+        "짜리", "안팎", "내외", "정도", "으로", "로")
+    if total:
+        return " "
+    # one part named: 「3번 장과」
+    return f"{match.group('n')}번 {match.group('u')}{tail}"
+
+
+def note_without_totals(note: str) -> str:
+    """A planner's note minus the part counts it states (the code states the one asked), the
+    parts it names by number kept as numbers that are not counts (「1-2장」 → 「1~2번 장」)."""
+    text = " ".join((note or "").split())
+    return " ".join(_NOTE_COUNT.sub(_note_count, text).split())
 
 
 #: Part text chars shown to restructure planner/writer.
@@ -1917,12 +1963,120 @@ def lost_facts(old: str, new: str) -> list[str]:
 
 def added_facts(old: str, new: str, given: str = "") -> list[str]:
     """Figures and dates `new` states whose number neither the part before (`old`) nor the
-    request and material (`given`) state (「10월 13일 기준」 out of nowhere)."""
+    request and material (`given`) state (「10월 13일 기준」 out of nowhere), and dates the part
+    before did not state (a shortening says less, it dates nothing anew)."""
     from app.services import deck
 
     known = set(re.findall(r"\d+(?:\.\d+)?", f"{_whole_text(old)} {given}".replace(",", "")))
-    return [said for number, _unit, said in deck.figures_in(_whole_text(new))
-            if not set(re.findall(r"\d+(?:\.\d+)?", number)) <= known]
+    figures = [said for number, _unit, said in deck.figures_in(_whole_text(new))
+               if not set(re.findall(r"\d+(?:\.\d+)?", number)) <= known]
+    dated = [said for said in added_dates(old, new)
+             if not any(said in f or f in said for f in figures)]
+    return figures + dated
+
+
+#: a day as a part writes it: 「10월 16일」, 「10/16」
+_DAY = re.compile(r"(?<![\d.])(\d{1,2})\s{0,2}월\s{0,2}(\d{1,2})\s{0,2}일"
+                  r"|(?<![\d./])(\d{1,2})/(\d{1,2})(?![\d/])")
+#: the weekday written right after a day: 「 목요일」, 「(목)」
+_DAY_WEEKDAY = re.compile(r"\s{0,2}(?:\(\s{0,2}([월화수목금토일])(?:요일)?\s{0,2}\)"
+                          r"|([월화수목금토일])요일)")
+
+
+def _days(text: str) -> set[tuple[int, int]]:
+    return {(int(a or c), int(b or d)) for a, b, c, d in _DAY.findall(text or "")}
+
+
+def added_dates(old: str, new: str) -> list[str]:
+    """Days `new` writes that `old` does not (「10월 16일」), as written."""
+    have = _days(old)
+    out = dict.fromkeys(m.group(0) for m in _DAY.finditer(new or "")
+                        if (int(m.group(1) or m.group(3)), int(m.group(2) or m.group(4)))
+                        not in have)
+    return list(out)
+
+
+def without_added_dates(old: str, new: str) -> str:
+    """`new` minus the days it puts beside a weekday that `old` does not date (「10월 16일
+    목요일에」 for the part's 「목요일에」): the weekday stays, the day the shortening made up
+    goes."""
+    have = _days(old)
+    out, last = [], 0
+    for m in _DAY.finditer(new or ""):
+        after = _DAY_WEEKDAY.match(new, m.end())
+        if after is None or (int(m.group(1) or m.group(3)), int(m.group(2) or m.group(4))) in have:
+            continue
+        weekday = after.group(1) or after.group(2)
+        if f"{weekday}요일" not in (old or "") and f"({weekday})" not in (old or ""):
+            # the weekday is new too: left for the checks to name
+            continue
+        out += [new[last:m.start()], f"{weekday}요일"]
+        last = after.end()
+    if not out:
+        return new
+    return "".join([*out, new[last:]])
+
+
+#: a sentence that points at the part's table or figure: 「표와 같습니다(표 1).」
+_TABLE_POINTER = re.compile(r"(?<![가-힣])(?:표|그림)\s?(\d{1,2})(?!\d)"
+                      r"|(?:위|아래|다음)\s?(?:의\s?)?(?:표|그림)|(?<![가-힣])(?:표|그림)(?:와|과)\s?같")
+#: the caption of a part's table or figure: 「**표 1. 주요 업무」
+_CAPTION_NUMBER = re.compile(r"(?m)^\s{0,3}\*{0,2}(표|그림)\s?(\d{1,2})\s?[.:]")
+#: the end of a sentence, citations before it: 「 [1].」
+_SENTENCE_TAIL = re.compile(r"(?:\s?\[\d{1,3}(?:[,\-–]\s?\d{1,3})*\])*[.!?。]$")
+
+
+def _only_points(sentence: str) -> bool:
+    """Whether the sentence says nothing but where the table or figure is: no figure, no name."""
+    from app.services import deck
+
+    if not _TABLE_POINTER.search(sentence):
+        return False
+    rest = _TABLE_POINTER.sub(" ", sentence)
+    return not deck.figures_in(rest) and not _NAME.search(rest)
+
+
+def fold_table_pointers(text: str, want: int) -> str:
+    """`text` with sentences that only point at the part's table or figure (「요약하면 표와
+    같습니다(표 1).」) folded into the sentence before them, as its 「(표 1)」, while the part has
+    more sentences than the `want` asked: the table is the part's, not one of its sentences."""
+    over = sentence_count(text) - want
+    if over <= 0:
+        return text
+    caption = _CAPTION_NUMBER.search(text or "")
+    lines = (text or "").split("\n")
+    prev: tuple[int, int] | None = None
+    sentences: dict[int, list[str]] = {}
+    block = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            block = not block
+            continue
+        if (block or not stripped or stripped.startswith(("|", "#"))
+                or _NOT_PROSE.match(stripped)):
+            continue
+        sentences[i] = re.split(r"(?<=[.!?。])\s+", stripped)
+        kept: list[str] = []
+        for sent in sentences[i]:
+            if over > 0 and prev is not None and _only_points(sent):
+                named = _NUMBERED_REF.search(sent) or caption
+                ref = f"{named.group(1)} {named.group(2)}" if named else ""
+                row, j = prev
+                target = kept if row == i else sentences[row]
+                last = target[j]
+                end = len(last) - 40 if len(last) > 40 else 0
+                if ref and ref not in last and (tail := _SENTENCE_TAIL.search(last[end:])):
+                    cut = end + tail.start()
+                    target[j] = f"{last[:cut]}({ref}){last[cut:]}"
+                over -= 1
+                continue
+            kept.append(sent)
+            prev = (i, len(kept) - 1)
+        sentences[i] = kept
+    for i, kept in sentences.items():
+        lines[i] = " ".join(kept)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
 #: a part named by its number, as an instruction names it: 「2절을」, 「section 2」
@@ -1967,6 +2121,12 @@ def shortening_faults(old: str, new: str, asked: str, given: str = "") -> list[s
     if faults:
         faults.append("Write none of these remarks, nor the request, into the text")
     return faults
+
+
+def count_met(text: str, want: int, most: bool = False) -> bool:
+    """Whether the part has the sentence count asked (at most `want` for 「이내」)."""
+    got = sentence_count(text)
+    return got <= want if most else got == want
 
 
 def shortening_misses(old: str, new: str, asked: str, given: str = "") -> int:

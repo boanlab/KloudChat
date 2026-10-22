@@ -39,9 +39,14 @@ _STATED_VALUE = re.compile(
     r"|\d{4}[.-]\s?\d{1,2}|바뀌|바꿨|변경|아니라|틀렸|틀려|다시\s{0,2}(?:봐|계산|확인|따져)")
 
 
+#: the part an ask names and the count it asks (「2절」, 「slide 3」, 「3줄」): no value
+_PART_OR_COUNT = re.compile(
+    r"\d{1,3}\s?(?:절|장|번째|문장|줄)|\b(?:section|slide|part)\s{0,3}\d{1,3}\b", re.I)
+
+
 def changes_content(instruction: str) -> bool:
     """Whether a follow-up changes facts others restate, not only the shape of a part."""
-    text = instruction or ""
+    text = _PART_OR_COUNT.sub(" ", instruction or "")
     if _RESHAPE.search(text) and not _STATED_VALUE.search(text):
         return False
     return bool(_CONTENT_CHANGE.search(text))

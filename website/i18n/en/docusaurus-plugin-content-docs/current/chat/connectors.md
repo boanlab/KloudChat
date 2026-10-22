@@ -22,7 +22,7 @@ The catalogue shows only the entries the administrator made visible in the conne
 
 ## Adding a server directly
 
-If you already use an MCP server, connect it with **Add server directly**. Enter the name, the transport (stdio, http, or sse), the run command or endpoint address, the environment variables, and the authentication method. Environment variables and credentials are not shown again after saving.
+If you already use an MCP server, connect it with **Add server directly**. Enter the name, the transport (stdio, http, or sse), the run command or endpoint address, the environment variables, and the authentication method. Environment variables and credentials are not shown again after saving. A stdio server runs on the API server, so you can register only a command an administrator allows, exactly as allowed, and without environment variables. An http or sse server you add yourself as a non-administrator must be on the public internet: addresses that point inside the network, such as `localhost` or `127.0.0.1`, private ranges (`10.x`, `172.16-31.x`, `192.168.x`), the cloud metadata address and the deployment's own service names, are refused both when you save and when the server is called. Ask an administrator to add an in-house MCP server to the connector catalogue.
 
 ## Tool permissions
 

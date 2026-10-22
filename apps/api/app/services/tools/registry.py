@@ -8,7 +8,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.workspace import Connector, ConnectorStatus, ConnectorTool
 from app.services import mcp, settings_store
 from app.services.tools import blurbs, catalog
@@ -64,16 +64,20 @@ def _timeout_for(tool_name: str) -> float | None:
     return settings.research_timeout_sec if tool_name in _SLOW_MODES else None
 
 
-def _make_runner(connector: Connector, tool_name: str, env: dict[str, str]):
+def _make_runner(connector: Connector, tool_name: str, env: dict[str, str], *,
+                 owner_is_admin: bool = False):
     async def run(arguments: dict) -> ToolResult:
         try:
+            await catalog.check_runnable(connector, owner_is_admin=owner_is_admin)
             endpoint = await catalog.effective_endpoint(connector)
             slow = _timeout_for(tool_name)
+            guarded = catalog.public_only(connector, owner_is_admin=owner_is_admin)
             text = await mcp.call_tool(
                 connector.transport.value, endpoint, tool_name, arguments, env,
                 **({"timeout": slow} if slow else {}),
+                **({"public_only": True} if guarded else {}),
             )
-        except mcp.McpError as exc:
+        except (mcp.McpError, catalog.NotRunnable) as exc:
             return ToolResult(content=f"오류: {exc}", failed=True)
         if not text:
             return ToolResult(content="(빈 응답)", detail="결과 없음", empty=True)
@@ -125,7 +129,8 @@ async def connector_tools(db: AsyncSession, user: User) -> list[Tool]:
                 name=qualified(connector.slug, row.name),
                 description=row.description or f"{connector.name} 의 {row.name} 도구",
                 parameters=row.parameters or {"type": "object", "properties": {}},
-                run=_make_runner(connector, row.name, env),
+                run=_make_runner(connector, row.name, env,
+                                 owner_is_admin=user.role is UserRole.admin),
                 label=_label_for(connector, row.name),
                 title=_title_for(connector, row.name),
                 timeout_sec=_timeout_for(row.name),

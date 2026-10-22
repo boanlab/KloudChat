@@ -83,7 +83,7 @@ test('an administrator adds a catalogue entry; stored values never come back', a
   await dialog.getByRole('textbox', { name: '변수 이름' }).fill('API_TOKEN')
   await dialog.getByRole('textbox', { name: '값' }).fill('s3cret')
   await shot(page, testInfo, 'connector-catalog-entry')
-  await page.getByRole('button', { name: '저장' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '저장' }).click()
   await expect(admin.getByTestId('catalog-entry')).toHaveCount(3)
   expect(state.calls.find((c) => c.method === 'POST' && c.path === '/admin/connector-catalog')?.body).toMatchObject({
     slug: 'wiki', transport: 'http', endpoint: 'https://wiki.example.com/mcp', env: { API_TOKEN: 's3cret' }, listed: true })
@@ -106,9 +106,29 @@ test('an administrator makes a catalogue entry 기본 제공', async ({ page }) 
   const box = page.getByTestId('catalog-entry-default')
   await expect(box).not.toBeChecked()
   await box.check()
-  await page.getByRole('button', { name: '저장' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '저장' }).click()
   await expect(youtube).toContainText('기본 제공')
   expect(state.calls.find((c) => c.method === 'PUT' && c.path === '/admin/connector-catalog/e2')?.body).toMatchObject({
     slug: 'youtube', byDefault: true, listed: false })
   expect(state.problems).toEqual([])
+})
+
+test('a connector the API refuses keeps the add dialog open with the reason', async ({ page }, testInfo) => {
+  await hubFixture(page, testInfo)
+  await page.route('**/api/connectors', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    await route.fulfill({
+      status: 422,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: '내부 네트워크 주소의 커넥터는 관리자만 등록할 수 있습니다.' }),
+    })
+  })
+  await page.goto('/connectors')
+  await page.getByRole('button', { name: /직접 추가|서버 추가|커스텀/ }).first().click()
+  const form = page.getByRole('dialog')
+  await form.getByRole('textbox', { name: '이름' }).fill('사내 도구')
+  await form.getByPlaceholder('https://mcp.example.com').fill('http://127.0.0.1:9/mcp')
+  await form.getByRole('button', { name: '추가', exact: true }).click()
+  await expect(form.getByText('내부 네트워크 주소의 커넥터는 관리자만 등록할 수 있습니다.')).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(1)
 })

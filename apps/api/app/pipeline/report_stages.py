@@ -47,12 +47,14 @@ from app.services import (
     research,
     richtext,
     stated_days,
+    stated_meeting,
     stated_policy,
     table_integrity,
     table_mend,
     units,
     value_guard,
     verify,
+    word_fix,
     workspace_context,
 )
 from app.services import deck as deck_rules
@@ -1143,6 +1145,12 @@ class Sections(Base):
                 # Chinese slipped into Korean: those paragraphs sent back to the writer, read
                 # in Hanja only where the writer's paragraph does not hold
                 body = await _korean_again(bundle, section["heading"], body, slipped)
+            if word_fix.wanted(req.group, body):
+                # a self-hosted writer's odd words: the judge names them, code swaps the safe ones
+                body, more = await word_fix.fix(
+                    body, model=word_fix.checker(req.model, req.judge), complete=report._complete,
+                    api_key=req.api_key, given=f"{section['heading']}\n{_slip_vocabulary(bundle)}")
+                _count(bundle, more, planner=True)
             section["content"] = _cleaned(bundle, index, section, body)
             material = _material_text(bundle)
             if gaps := table_integrity.problems(section["content"], material):
@@ -1853,10 +1861,23 @@ def _person_given(bundle: Bundle) -> str:
     ])
 
 
+def _meeting_given(bundle: Bundle) -> str:
+    """What the person gave of the meeting: request, files, pasted text, card answers, and the
+    instructions' lines asking for a mail; no skills or other instructions (a skill's 「메일」,
+    「다음 회의 (일시·장소·예정 안건)」 are no memo's)."""
+    mat = bundle.material
+    standing = workspace_context.standing_of([p.text for p in mat.trusted])
+    return "\n".join([
+        mat.given or bundle.request.text,
+        *(p.text for p in mat.parts if p.origin in ("attachment", "pasted", "answer")),
+        *stated_meeting.mail_lines(standing),
+    ])
+
+
 def _doc(bundle: Bundle) -> verify.Doc:
     return verify.Doc(bundle.document.sections, _material_text(bundle), bundle.request.text,
                       list(bundle.material.sources or []), bundle.computed.settled,
-                      bundle.computed.conflicts, _person_given(bundle))
+                      bundle.computed.conflicts, _person_given(bundle), _meeting_given(bundle))
 
 
 class FormatFind(Base):
@@ -2081,7 +2102,8 @@ class Verify(Base):
             # gives, standing after the writer's repair: marked for a strong writer, else out
             doc = _doc(bundle)
             bundle.document.sections = report_checks.settle_unsourced(
-                bundle.document.sections, doc.given or doc.material, strong=req.strong)
+                bundle.document.sections, doc.memo or doc.given or doc.material,
+                strong=req.strong)
         bundle.findings.still = still
         format_codes = set(report_checks.LABELS)
         bundle.findings.after += [f.code for f in still if f.code in format_codes]
@@ -2092,7 +2114,8 @@ class MinutesReground(Base):
 
     name = "minutes-reground"
     kind = "check"
-    reads = ("request", "material.given", "computed.prepass", "document.sections")
+    reads = ("request", "material.given", "material.parts", "computed.prepass",
+             "document.sections")
     writes = ("document.sections", "findings.after")
 
     def skip(self, bundle: Bundle) -> str:
@@ -2112,6 +2135,10 @@ class MinutesReground(Base):
         sections = settled_sections(bundle.document.sections, sections, [known])
         # prose calling a deadline open that its action row dates from the memo
         sections, _ = report_checks.minutes_open_due(sections, bundle.computed.prepass.dates)
+        if "minutes-rows" in bundle.computed.prepass.settings.code_checks:
+            # what the memo never says, written again by a repair after the verify settle
+            sections = report_checks.settle_unsourced(sections, _meeting_given(bundle),
+                                                      strong=bundle.request.strong)
         # the meeting held told in the past; what comes next stays ahead
         bundle.document.sections, _ = meeting_tense.held(sections, _report()._REFERENCE_HEADING)
 

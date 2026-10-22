@@ -120,7 +120,7 @@ Make your own document template with **New template** under **Template & theme**
 **Skills and tools** › **Skills** lists the skills the agent uses, one per row, each with how it applies.
 
 - **Always**: added to the instructions on every turn of every conversation with this agent, the same way as a skill picked in the composer; one in both goes in once. Up to six, about 8,000 tokens together. If a skill later grows past that, they go in in order and only what no longer fits is left out of that turn.
-- **When needed**: not added every turn; on the Chat screen a tool-calling model reads the skill's description and pulls it in when it needs it.
+- **When needed**: not added every turn; on the Chat screen a tool-calling model reads the skill's description and pulls it in when it needs it. A skill that works only on reports or slides (Meeting minutes and the like) has no model there to pull it in, so on that screen it applies as if set to **Always**.
 - Each row shows **Preview the body** and its rough token count, and the **Always** total is shown.
 - **Use defaults**: all your skills are available when needed, and any skill can be picked in the composer. Add only the ones to use every turn and set them to **Always**.
 - **Choose**: only the skills in the list are used, and only these can be picked in the composer. With none listed the agent uses no skills, not even ones picked in the composer; the form says so.

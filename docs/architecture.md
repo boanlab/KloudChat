@@ -480,17 +480,33 @@ and for the section's figures and names (`revise.shortening_faults`), sent back 
 once with the reason, and what still misses is said in the reply; facts are read over the
 whole section (tables, lists, captions), a sentence restating the ask is dropped before
 counting (`revise.without_ask_echo`), and a figure or date neither the section nor the
-material states counts as a fault (`revise.added_facts`). A slide cut to fewer items
+material states counts as a fault (`revise.added_facts`), as does a date the section did not
+state; a date put beside a weekday the section names is taken out by code
+(`revise.without_added_dates`) and weekdays beside dates are set to the calendar. A sentence
+that only points at the section's table is folded into the one before it as its 「(표 1)」
+(`revise.fold_table_pointers`), and a section that already had the count stays when the
+rewrites miss it, which the reply says. A slide cut to fewer items
 (「항목을 하나로」, `deck.items_asked`) that came back with none gets its old items joined
 (`deck.merged_points`), figures such a cut drops are said, and a deck cut to fewer slides says
 the figures it shows nowhere any more (`deck.lost_across`). Only prose sentences are counted (tables,
 captions and list rows are not), a figure is a number with its unit or counter (「3곳」, not
 「표 1의」), money is compared as won (「38.5억」 = 「38억 5천만」 = 「3,850,000,000원」,
 `deck.amounts_in`), and a drawn diagram's labels count as shown. Joining one named slide's
-items (「2장 항목을 하나로 합쳐줘」, "Merge the items on slide 4 into one") is that slide's edit,
-done by code (`deck.joined_items`), not a restructure; "Shrink to 3 slides" is read like
-「3장으로 줄여줘」. A question or a numbered edit typed while a question card is open is not
-the card's answer (`sessions._sets_card_aside`); a question leaves any open card as it was.
+items (「2장 항목을 하나로 합쳐줘」, 「4장 항목을 하나로」 with no verb, "Merge the items on slide 4
+into one") is that slide's edit,
+done by code (`deck.joined_items`, which also splits joined items into the count asked,
+「두 개로 나눠줘」; a chart is not one of the items, so the points beside it are joined and the
+chart stays), not a restructure; "Shrink to 3 slides" is read like 「3장으로 줄여줘」: the
+count is put in the outline note even when the planner already chose a new outline
+(`revise.count_change`), English counts in the original request ("an 8-slide talk") are taken
+out, and an English deck is not judged Korean by the conditions the code adds. A table slide
+that repeats an earlier slide's rows is written as points (`deck.repeats_table`). A question or a numbered edit typed while a question card is open is not
+the card's answer (`sessions._sets_card_aside`; on a question card a numbered part put into a
+shape or an item count with no verb, 「3장을 번호 목록으로」, counts too), nor is a numbered edit
+that keeps the structure on a proposed outline; a question leaves any open card as it was.
+The sentence count is read after internal block names are scrubbed, a part number or sentence
+count in the ask (「2절을 두 문장으로」) is not a changed fact that sends the edit through the
+consistency repair, and a repair that undoes the count asked is said in the reply.
 A section rewrite is shown the section's own current text, so a shortened section stays
 itself; a line to the person about the rewrite is dropped (`revise.without_preamble`), and a
 shortened section that reads as another section or points at a table or figure it lacks is
@@ -549,7 +565,9 @@ to itself — 「Slides: 5 to 12. (6 is fine)」, repeated section names, an Eng
 plan for a Korean request. `deck.sane_outline` refuses it so the outline is
 asked for once more. A restructure strips the original request's part counts
 (`revise.without_counts`) so the note's count is the only one the planner
-reads. A section rewrite that drops the section's mermaid
+reads; the planner's own note loses the totals it states (「전체 8개 장」, 「총 10개 슬라이드」)
+and keeps slides it names by number as numbers that are not counts (「1-2장」 → 「1~2번 장」,
+`revise.note_without_totals`), and a note that still reads as another count is left out. A section rewrite that drops the section's mermaid
 figure, or redraws it as ASCII boxes, gets the figure back (`revise.keep_figure`)
 unless the person asked for it to go.
 
@@ -951,6 +969,7 @@ changes what a group gets, and test both a self-hosted and a strong external wri
 | Work notes and check reports (`internal_words.strip_work_notes`) | stripped, also an untagged English plan paragraph, an English tool-step opener, 「N개 중 … 확인」 report sentences | same | same |
 | Mixed script in a chat answer (`hangul.repair_mixed_script`) | on (Cyrillic and kana inside Korean words) | on | on |
 | Chinese slipped into a Korean report section (`report_stages._korean_again`, `hangul.chinese_slips`) | each prose paragraph with ideographs the request, files and pages lack goes back to the writer once as that paragraph alone; the answer stands only with no slip left and every number, citation mark and Latin word kept, else the Hanja are read in Hangul (`hangul.read_back`) | same | same (rarely fires) |
+| Odd Korean words in a report section or deck draft (`word_fix`, `report_stages`, `deck._write_slides`) | after the section is written (the deck draft once), the judge model (its `strict-local/` twin, else the writer, on a strict-local turn) lists `{from, to}` pairs for wrong words, misspellings and English or Chinese fused into Korean, with the fused words, lowercase English and glossed words code finds named first; code swaps a pair only where it stands verbatim outside code, links and figure markers, and refuses one that touches a digit, a citation or Markdown mark, an acronym or capitalized name, a negation, a word of the request or material, drops a word, or swaps a whole Korean word (one letter only, unless an English gloss beside it pins the meaning); any failure keeps the text | off | off |
 | Calculation time limit (`calc.DEADLINE`, `Calc.run`) | 240 s; a finished run is handed over unchecked; with none, the writer marks its own figures 「(추정)」; after any run short of a checked one (timeout, one run, none), code also gives 「(추정)」 to each worked amount in the document that is neither the material's nor code's (`report_stages._figures_marked`, `units.label_estimates`) | same | same |
 | Written sums and chains (`units.fix_written_sums`, `fix_table_totals`, `fix_written_arithmetic`) | recomputed from the answer's own figures: 「A + B = C」 (a bold C too), a sum after its listed amounts (「A원 + B원으로 합계 N원」), a table's total row over plain rows of one unit, a wrong step of a chain and the steps that start from it; marked 「(확인 필요)」, not rewritten: a result a tool or the calculation printed, a total over subtotals, blanks or a second total that matches no reading, a sum off by 1000× or more; rates, averages, unit prices and rows of other units are not added | same | same |
 | Figures code finds off but cannot settle (`units.mark_slipped_formulas`, `mark_scaled_restatements`, `mark_profit_contradictions`) | marked where they stand, never rewritten: a product a unit off, an amount with a worked result's digits a power of ten off under the same name, a profit above what its paragraph's revenue less its named costs leaves (the arithmetic shown in the mark) | same | same |
@@ -962,7 +981,7 @@ changes what a group gets, and test both a self-hosted and a strong external wri
 | Repair replies (`verify.repair`) | only a sentence string (or `{sentence: …}`) is written into the text | same | same |
 | Limits, approvals and rules the material only asks about (`stated_policy`, `checks.stated_rules`, `report_stages.mark_policy`; revisions `revise_stages._policy_marked`) | a sentence or table row stating a limit (「허용 한도」), an approval given (「결재 완료」), an approval precondition (「승인 없이는 …않습니다」, 「결재가 없으면 …할 수 없습니다」) or a rule (「규정상」) of a kind the person's material (request, files, card answers, agent instructions; not the pipeline's settled-figure block or notes) never states, or a cited source's quote for a sentence citing it, goes to one repair; what stands after it, read again over the final text whichever check found it first, is marked 「(확인 필요)」 (the sentence's end, a row's cell); a sentence asking about it (「허용 여부」, 「결재를 요청드립니다」) or setting it as a condition (「…라면」) is left alone; a revision's rewritten part is marked, not repaired | as self-hosted | as self-hosted (the writer repairs its own sentence) |
 | Weekdays the material never gives an item (`stated_days`, `checks.stated_dates`, `report_stages.mark_policy`; revisions `revise_stages._policy_marked`) | a plan-table row under a weekday cell, or a sentence's clause with 「X요일」 (not beside a date, not citing a source), whose item shares no word with any stretch of the person's material on that weekday (a 「- 금:」 line, the clause around 「금요일」 or 「(금)」) goes to one repair (drop the day, 「미정」); what stands is marked 「(확인 필요)」 | as self-hosted | as self-hosted (the writer repairs its own sentence) |
-| What minutes say about the meeting that the memo never says (`stated_meeting`, `report_checks.minutes_unsourced`, `settle_unsourced`) | in a 회의록, a meeting length or end time (「약 20분 만에」, 「11시에 종료」) or a month part (「10월 말까지」) whose number the memo does not give, an open question (「…정산할지」) most of whose words the memo lacks and that names none of its people or tools, a guess (「…보고될 가능성이 높습니다」) no memo line of doubt shares a word with, a next-meeting agenda sentence no memo line on the next meeting shares a word with, a note that the memo lacks a detail other than an owner, deadline, date or place, a 「제목:/본문:」 mail line when no mail was asked for, and an action row with no owner (「미정」) whose task no memo clause gives anyone or leaves open, go to one repair; what stands: the question, the row (with the 「※」 line naming it) and a sentence about the meeting's own length go unless they hold a memo name, tool or figure (then marked), a guess, agenda, missing-detail note or mail line also goes when each such name stands elsewhere in the document, another value is marked 「(확인 필요)」 where it stands | as self-hosted | all marked 「(확인 필요)」 (the writer repairs its own sentence first); only mail lines are taken out |
+| What minutes say about the meeting that the memo never says (`stated_meeting`, `report_checks.minutes_unsourced`, `settle_unsourced`) | in a 회의록, a meeting length or end time (「약 20분 만에」, 「11시에 종료」) or a month part (「10월 말까지」) whose number the memo does not give, an open question (「…정산할지」) most of whose words the memo lacks and that names none of its people or tools, a guess (「…보고될 가능성이 높습니다」) no memo line of doubt shares a word with, a next-meeting agenda sentence no memo line on the next meeting shares a word with, a note that the memo lacks a detail other than an owner, deadline, date or place, something called left open (「집행 담당자가 회의에서 지정되지 않았습니다」) that no memo line leaving things open and no 미정 table row shares a word with, a sentence calling every owner and deadline set beside a 미정 row, a promise to tell more later (「확정되는 대로 안내합니다」), a part of the day (「오전 시간대에」) the memo does not give, the writer's own open flag (「배포 방법은 확인 필요합니다」) on anything but an owner or deadline that no memo line leaving things open shares a word with, the writer's advice (「…하는 것이 좋습니다」), what follows an undone task (「미제출 시 … 지연되어」), a next-meeting agenda in any sentence naming the next meeting or in a row of an agenda table of that part (a date or 「안건」 ties no word to the memo; header, caption and 「다음과 같습니다」 pointer sentences are skipped), a 「제목:/본문:」 mail line when no mail was asked for, and an action row with no owner (「미정」) whose task no memo clause gives anyone or leaves open, go to one repair; what stands: the question, the row (with the 「※」 line naming it) and a sentence about the meeting's own length go unless they hold a memo name, tool or figure (then marked), a guess, agenda, missing-detail note, open point, every-set claim, promise or mail line also goes when each such name stands elsewhere in the document (the checks read the memo alone, never the skill's or agent's instructions, whose 「메일」 and 「다음 회의」 would hide them; they run again after the post-verify minutes repair), an 오전·오후 put before the memo's bare clock (「오전 10시」 for 「10시」) is dropped by code, an agenda row is marked in its last cell, another value is marked 「(확인 필요)」 where it stands | as self-hosted | all marked 「(확인 필요)」 (the writer repairs its own sentence first); only mail lines are taken out |
 | Minutes told as the meeting was (`meeting_tense.held`, `report_checks.minutes_open_due`, in `minutes-reground`) | in a 회의록, a sentence ending in one of the meeting's own acts (열립니다, 합의합니다, 이르지 못합니다, …하기로 합니다) outside the next-meeting and follow-up parts, tables and forward-looking sentences is put in the past by code; prose calling a deadline open (「시안 제출 기한은 미정입니다」) while the one action row for that task gives a date the memo yields takes that date | as self-hosted | as self-hosted |
 | Empty columns in minutes (`report_checks.minutes_blank_columns`) | a table column no memo word names and no cell fills (a 「납기」 column of 「미정」) goes; 할 일·담당·기한·비고·출처 columns stay | same | same |
 | Report reference list (`citations.cite_order`, `same_works`, `credit_attachments`) | a citation number no listed source has is dropped from the text; one work found twice (same DOI, link or title) is listed once and its numbers merged; a Korean sentence citing a web page for figures, or for three or more Latin technical terms (hyphens optional), only the attached file holds (none of its terms only in the cited page) cites the file; a web page the writer cited alone in three or more Korean sentences for the attached file's own terms or figures (four or more of them, at least half its sentences, and three times as many as cite it for its page's own terms) stands in for the file: each of those sentences cites the file, the rest keep the page; a sentence naming a work by its own name (the title's head, e.g. Face4Rag) or giving a decimal figure the cited page lacks and exactly one other page has cites that work or page; markers like [7, 11], [7–9], [7~9], [7; 11] and those in the app's prose blocks (callout, kpi, steps, cards) are renumbered with the list | same | same |
@@ -1997,11 +2016,30 @@ form only and uses a neutral domain, so its content is not repeated as fact.
 
 ### Other boundaries
 
-- A `stdio` connector is a command the API server runs: only an administrator
-  may register one, and the child inherits a minimal environment (`PATH`,
-  `HOME`, locale, `TZ`), never the API's own secrets (`mcp._INHERITED_ENV`).
-- A cached conversation summary is masked under the policy in force when it is
-  reused, not only the one in force when it was written.
+- A `stdio` connector is a command the API server runs. An administrator may
+  register any; a member only a command line on the administrator's allowlist
+  (**System › Connector catalogue › Commands members may register themselves**,
+  setting `connectors.stdio_allow`), matched argument for argument, and with no
+  environment variables of its own. The rule is checked again before every
+  spawn (`catalog.check_runnable`), so a row saved before it is refused with an
+  error instead of run; catalogue connectors run the catalogue's command. The
+  child inherits a minimal environment (`PATH`, `HOME`, locale, `TZ`), never
+  the API's own secrets (`mcp._INHERITED_ENV`), and a `${VAR}` in a connector's
+  env reads only those names from the API's environment.
+- A member's own `http`/`sse` connector reaches the public internet only, by
+  the same rule as page fetches (`netguard`): an endpoint on loopback,
+  link-local (metadata `169.254.169.254` included), private (RFC 1918, ULA) or
+  CGNAT addresses, a dotless or reserved-suffix service name, or a
+  `${TOOLS_*_URL}` placeholder is refused when saved (`422`) and again before
+  every call (`catalog.check_runnable`). The call itself dials through
+  `netguard.PublicTransport`, which resolves the host, checks every address and
+  connects to the checked one (Host header and TLS name unchanged), so a name
+  that turns internal after saving, or a redirect to an internal host, is not
+  dialed; environment proxies are not used for these calls. Catalogue
+  connectors and an administrator's own may name internal hosts.
+- A cached conversation summary is part of the turn's privacy scan (with the
+  history) and is masked under the policy in force when it is reused, not only
+  the one in force when it was written.
 - Report sections reach storage sanitised on every path — create, update and
   restore alike (`_clean_report_data`).
 - A document edit — fact-check, review, a section, slide or block rewrite, a
@@ -2013,8 +2051,12 @@ form only and uses a neutral domain, so its content is not repeated as fact.
   the document also keeps it strict-local rather than masked, because the mask
   would be written back into the document. A web fact-check inside the
   boundary is refused (`factcheck_needs_web`). The account's allowlist holds.
-- A video job passes the same gate as a chat turn: egress policy, the intent
-  filter, and this account's model allowlist, before the prompt leaves.
+- A video job passes the media gate pictures use (`sessions._media_gate`): the
+  intent filter the chat turn applies, the account's model allowlist (a named
+  model is refused, never swapped), then the conversation's boundary — inside
+  it the job is refused (`409 internal_data_requires_strict_local`) unless a
+  strict-local video model exists, outside it personal data in the prompt is
+  masked before it leaves.
 - An index delete that fails leaves the file's record saying where its vectors
   are, for the next attempt; a vector hit for a document no longer on the shelf
   is dropped before it can become evidence.

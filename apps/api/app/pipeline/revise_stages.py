@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import re
 import uuid
@@ -20,6 +21,7 @@ from app.services import (
     revise,
     revised_tables,
     richtext,
+    weekdays,
 )
 from app.services import deck as deck_service
 
@@ -410,6 +412,7 @@ class Rewrite(Base):
         unreadable = False
         #: slides asked to join items they do not have as a list (a table's rows): said, kept
         unjoined: list[int] = []
+        today = req.today if isinstance(req.today, dt.date) else None
         for index in bundle.plan.order:
             part = parts[index]
             label = names[index] or f"{index + 1}"
@@ -492,6 +495,12 @@ class Rewrite(Base):
                             part, written, deck_service.items_asked(asked))) is not None:
                         # 「항목을 하나로」 answered with none: the items joined, not dropped
                         written = joined
+                    elif (want := deck_service.items_asked(asked)) and len(
+                            deck_service.points_of(written)) > want and (
+                            fewer := deck_service.joined_items(written, want)) is not None:
+                        # more items than asked (「두 개로 나눠줘」 answered with six): joined
+                        # into the count, every point kept
+                        written = fewer
                     lost = deck_service.lost_figures(part, written, asked)
                     if not lost and (gone := deck_service.lost_figures(part, written)):
                         # an ask that may take figures away: not asked again, said
@@ -633,10 +642,19 @@ class Rewrite(Base):
                         asked_of = " / ".join(asks) or _typed(bundle)
                         # a line to the person about the rewrite (「다음은 요청하신 대로 …」)
                         body = revise.without_preamble(body)
+                        # sentences naming internal blocks go before the count is read
+                        body = internal_words.scrub(body)
                         shortening = revise.shortening_asked(asked_of)
                         if shortening:
                             # the ask restated as a sentence of the part: not its content
                             body = revise.without_ask_echo(body)
+                            # a day put beside a weekday the part says: the weekday stays
+                            body = revise.without_added_dates(before, body)
+                            if want := revise.sentences_asked(asked_of)[0]:
+                                # a sentence pointing at the table: the table's, not counted
+                                body = revise.fold_table_pointers(body, want)
+                        # a weekday beside a date: the calendar's
+                        body = weekdays.fix_weekdays(body, context=given, today=today)[0]
                         # a P0 the rewrite brought in, or a shortened part that became another
                         # part: sent back once, then the part stays
                         faults = revise.new_faults(before, body, heading=label,
@@ -660,15 +678,24 @@ class Rewrite(Base):
                                    > revise.shortening_misses(before, passed, asked_of, given)):
                         # the version sent back came out worse: the first one stands
                         body, faults = passed, []
+                    want, most = revise.sentences_asked(asked_of)
+                    if (want and not faults and revise.count_met(before, want, most)
+                            and not revise.count_met(body, want, most)):
+                        # the part already has the count asked and the rewrites missed it:
+                        # it stays as it was, the reply says so
+                        doc.already.append((index + 1, want))
+                        bundle.usage["inputTokens"] += spent["inputTokens"]
+                        bundle.usage["outputTokens"] += spent["outputTokens"]
+                        yield {"type": "step", "id": f"r{index}", "label": label,
+                               "status": "done"}
+                        continue
                     if not faults and revise.shortening_asked(asked_of):
                         # figures and boxes the shortening took out: said, not passed over
                         doc.removed += revise.removed_blocks(before, body, index + 1)
                     if not faults and revise.shortening_faults(before, body, asked_of, given):
                         # what the shortened part misses or brought in: said in the reply
-                        want, most = revise.sentences_asked(asked_of)
-                        got = revise.sentence_count(body)
-                        if want and (got > want if most else got != want):
-                            doc.counted.append((index + 1, want, got))
+                        if want and not revise.count_met(body, want, most):
+                            doc.counted.append((index + 1, want, revise.sentence_count(body)))
                         if lost := revise.lost_facts(before, body):
                             doc.dropped.append(f"{index + 1}절 {', '.join(lost)}")
                         if added := revise.added_facts(before, body, given):
@@ -743,6 +770,14 @@ class Rewrite(Base):
                     instruction))):
                 yield event
             raise Stop("shape not made")
+        if not doc.changed and doc.already and not doc.failed and not unreadable:
+            # every part asked already had the sentence count: nothing to change, said
+            from app.pipeline.save_stages import already_said
+
+            for event in _stopped(bundle, already_said(
+                    doc.already, english=output_language.typed_in_english(instruction))):
+                yield event
+            raise Stop("count already met")
         if not doc.changed:
             said = ("고친 글이 검사를 통과하지 못해 이전 버전을 그대로 두었습니다. "
                     "다시 요청해 주세요." if doc.failed
@@ -846,8 +881,15 @@ class Consistency(Base):
             aligned = {"type": "step", "id": "consistency", "status": "error",
                        "label": "앞뒤 맞춤 검사 실패"}
         doc.sections = parts
+        clauses = bundle.plan.revision.clauses if bundle.plan.revision is not None else {}
         for index, part in enumerate(parts):
-            if str(part.get("content") or "") != before_parts[index]:
+            content = str(part.get("content") or "")
+            want, most = revise.sentences_asked(" / ".join(clauses.get(index, [])))
+            if (want and content != before_parts[index] and revise.count_met(
+                    before_parts[index], want, most) and not revise.count_met(content, want, most)):
+                # the count the rewrite met, undone by the repair: said
+                doc.counted.append((index + 1, want, revise.sentence_count(content)))
+            if content != before_parts[index]:
                 yield {
                     "type": "section", "sectionId": part.get("id"), "heading": part.get("heading"),
                     "content": part.get("content"), "done": True,

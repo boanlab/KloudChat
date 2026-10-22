@@ -309,6 +309,39 @@ async def test_a_stale_cache_whose_anchor_was_edited_away_starts_over(monkeypatc
     assert len(turns) == 4
 
 
+@pytest.mark.asyncio
+async def test_a_summary_cached_with_protection_off_is_scanned_and_masked_once_it_is_on(
+    monkeypatch,
+):
+    from app.services import governance
+
+    calls: list[tuple[str | None, list[dict]]] = []
+    _patch_summariser(monkeypatch, calls)
+    db = _Db()
+    rows = _rows(2)
+    # written while protection was off: stored as said
+    session = ChatSession(
+        id="s1", user_id="u1", kind=SessionKind.chat,
+        summary={"through": rows[-1].id, "text": "홍길동 연락처 010-1234-5678", "turns": 4},
+    )
+
+    # protection on: the cached summary is part of the turn's privacy scan
+    sources = sessions_router._privacy_sources(
+        "다음 질문", [], None, summary=session.summary["text"]
+    )
+    assert any(row.source == "conversation_history" for row in governance.findings(sources))
+
+    # and the reused text reaches the prompt under today's masker
+    reused = await sessions_router._conversation_summary(
+        db, session, rows=rows, turns=_wire(rows),
+        writer={"id": "model-a", "creditCost": 1, "inputCreditCost": 1}, api_key="key",
+        strict_local=False, disable_fallbacks=False, masker=governance.mask,
+        mask_at_rest=True, redact_logging=True,
+    )
+    assert reused[0] is not None and "010-1234-5678" not in reused[0]
+    assert calls == []
+
+
 def test_the_timeline_names_what_happened_to_the_old_turns():
     step = sessions_router._summary_context_step(8, summarised=True)
     assert step["label"] == "앞선 대화 8개 메시지를 요약해 전달"

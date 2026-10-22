@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 import re
+import shlex
 import time
 from typing import Any
 
-from app.services import settings_store, tools_gateway
+from app.services import netguard, settings_store, tools_gateway
 
 log = logging.getLogger(__name__)
 
@@ -148,6 +149,70 @@ async def resolve_env(env: dict[str, str] | None) -> dict[str, str]:
     return out
 
 
+async def stdio_allowlist() -> list[str]:
+    """Commands an administrator lets members run as stdio connectors of their own."""
+    raw = (await settings_store.all_values()).get(settings_store.CONNECTOR_STDIO_ALLOW, "")
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
+def _argv(command: str) -> list[str]:
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return []
+
+
+async def stdio_allowed(command: str) -> bool:
+    """The whole command line on the allowlist (argument for argument), not only its program."""
+    argv = _argv(command)
+    return bool(argv) and any(_argv(line) == argv for line in await stdio_allowlist())
+
+
+class NotRunnable(RuntimeError):
+    pass
+
+
+#: Member's own remote connector aimed at the deployment's network.
+INTERNAL_ENDPOINT = "내부 네트워크 주소의 커넥터는 관리자만 등록할 수 있습니다."
+
+
+def public_only(connector: Any, *, owner_is_admin: bool) -> bool:
+    """Whether a remote connector may reach only public addresses: a member's own; catalogue
+    entries and an administrator's own may name internal hosts."""
+    transport = str(getattr(connector.transport, "value", connector.transport))
+    return transport != "stdio" and not getattr(connector, "official", False) \
+        and not owner_is_admin
+
+
+async def endpoint_refusal(endpoint: str) -> str | None:
+    """Why a member's remote endpoint is refused (internal, a tool-address placeholder, or not
+    http(s)), or None; a name that does not resolve now is left to the connect-time check."""
+    if "${" in endpoint:
+        return INTERNAL_ENDPOINT
+    reason = await netguard.refusal(endpoint)
+    if reason == netguard.UNRESOLVED:
+        return None
+    return INTERNAL_ENDPOINT if reason == netguard.INTERNAL else reason
+
+
+async def check_runnable(connector: Any, *, owner_is_admin: bool) -> None:
+    """A stdio command runs only as a catalogue entry's, an administrator's own, or an allowed
+    command line without env of its own; a member's remote one only to a public address; rows
+    saved before the rules are refused here too."""
+    if public_only(connector, owner_is_admin=owner_is_admin):
+        if "${" in (getattr(connector, "endpoint", None) or ""):
+            raise NotRunnable(INTERNAL_ENDPOINT)
+        if reason := await endpoint_refusal(await effective_endpoint(connector)):
+            raise NotRunnable(reason)
+        return
+    if str(getattr(connector.transport, "value", connector.transport)) != "stdio":
+        return
+    if getattr(connector, "official", False) or owner_is_admin:
+        return
+    if connector.env or not await stdio_allowed(connector.endpoint or ""):
+        raise NotRunnable("관리자가 허용하지 않은 실행 명령이라 실행하지 않았습니다.")
+
+
 #: Tool-name words that mark a write tool (off until opted in).
 _WRITE_HINTS = (
     "create",
@@ -273,6 +338,8 @@ def admin_wire(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-__all__ = ["KINDS", "TRANSPORTS", "EntryError", "admin_wire", "catalog_entry", "clean",
-           "connector_env", "effective_endpoint", "entries", "entry", "looks_like_write",
-           "provided", "refresh", "resolve_env", "resolve_urls", "use"]
+__all__ = ["INTERNAL_ENDPOINT", "KINDS", "TRANSPORTS", "EntryError", "NotRunnable", "admin_wire",
+           "catalog_entry", "check_runnable", "clean", "connector_env", "effective_endpoint",
+           "endpoint_refusal", "entries", "entry", "looks_like_write", "provided",
+           "public_only", "refresh", "resolve_env", "resolve_urls",
+           "stdio_allowed", "stdio_allowlist", "use"]

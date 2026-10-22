@@ -38,7 +38,7 @@ def test_a_next_meeting_agenda_the_memo_never_sets_is_found_only_in_that_part():
     sections = [
         {"heading": "토의 내용", "content": AGENDA},
         {"heading": "다음 회의 안내", "content": (
-            "다음 회의는 2026년 10월 21일 오전 10시에 3층 회의실에서 열립니다. "
+            "다음 회의는 2026년 10월 21일 10시에 3층 회의실에서 열립니다. "
             f"예정된 주요 안건은 설문 도구 비교 검토입니다. {AGENDA}")},
     ]
     found = stated_meeting.findings(sections, TUTOR)
