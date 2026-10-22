@@ -276,6 +276,22 @@ _CLAUSE_END = ((re.compile(r"([었았였했])(?:으며|고)$"), r"\1습니다"),
 #: a clause's own end before a comma: 「…요청했으며」, 「…했고」, 「…했지만」
 _CLAUSE_TAIL = re.compile(
     r"(?:[하되이으]며|[하했되됐었았였이않]고|지만|는데|으나|[어아여해]서|므로)$")
+#: an agreement verb, and the plain one put for it: 「…메우기로 합의했습니다」 → 「…정했습니다」
+_CONSENT_VERB = re.compile(r"(?:합의|동의|찬성)(되었|됐|된|되|하였|했|한|하)")
+_PLAIN_VERB = {"되었": "정해졌", "됐": "정해졌", "된": "정해진", "되": "정해지", "하였": "정하였",
+               "했": "정했", "한": "정한", "하": "정하"}
+
+
+def _consent_only(phrase: str) -> bool:
+    """Whether a clause says little but the agreement (「참석자 전원이 이에 동의했습니다」), not a
+    decision told with an agreement verb (「…야간 연장근무로 메우기로 합의했습니다」)."""
+    return len({w for w in _words(phrase) if not _CONSENT.search(w)}) <= 3
+
+
+def _plain(phrase: str) -> str:
+    return _CONSENT_VERB.sub(lambda m: _PLAIN_VERB[m.group(1)], phrase)
+
+
 #: an agreement word modifying a noun: 「합의한 업무」, 「합의된 사항」, 「동의한 일정」
 _AGREED_NOUN = re.compile(r"(?:합의|동의|찬성)(한|된|하신)(?=\s[가-힣])")
 _NEUTRAL = {"한": "정한", "하신": "정한", "된": "정해진"}
@@ -573,7 +589,8 @@ def _goes_whole(piece: str, material: str, next_part: bool,
             or promised(piece, material) or unraised(piece, material, rows)
             or all_set(piece, rows) or advised(piece, material) or if_not(piece, material)
             or self_note(piece, material) or unowned_task(piece, material)
-            or (not row and consents(piece, material, before) == [piece.strip().rstrip(".!?。")])
+            or (not row and consents(piece, material, before) == [piece.strip().rstrip(".!?。")]
+                and _consent_only(piece))
             or ((next_part or (not row and bool(_NEXT_SAID.search(piece))))
                 and unset_agenda(piece, material)))
 
@@ -663,15 +680,23 @@ def settle(content: str, piece: str, phrases: list[str], *, strong: bool,
         if not phrases:
             return content
     whole = [p for p in phrases if p == piece.strip().rstrip(".!?。")]
-    agreed = [p for p in phrases if p not in whole and _CONSENT.search(p)]
+    row = piece.lstrip().startswith("|")
+    agreed = [p for p in phrases if _CONSENT.search(p) and (
+        p not in whole or (not row and not _consent_only(p)))]
     if agreed and not strong:
-        # an agreement the memo never states, cut by code from anyone's but a strong writer's
+        # an agreement the memo never states, by code from anyone's but a strong writer's: a
+        # decision told with an agreement verb takes a plain one, a clause of agreement alone
+        # goes
         plain = piece
         for p in agreed:
-            plain = consent_cut(plain, p) or plain
+            if not row and not _consent_only(p) and not _CONSENT.search(said := _plain(p)):
+                plain = plain.replace(p, said, 1)
+            elif p not in whole:
+                plain = consent_cut(plain, p) or plain
         if plain != piece:
             content, piece = content.replace(piece, plain, 1), plain
             phrases = [p for p in phrases if p not in agreed]
+            whole = [p for p in whole if p in phrases]
             if not phrases:
                 return content
     lengthy = bool(_OWN_LENGTH.search(piece) and phrases and not whole
@@ -729,9 +754,10 @@ def findings(sections: list[dict], material: str, skip_heading: re.Pattern | Non
             # a caption names its table; a table's header row names columns, not an agenda
             if any(piece in ln for ln in captions):
                 continue
-            head = piece.startswith("|") and report_checks.cells(piece) in heads
-            said = untraced(piece, material, next_part=nxt and not head, rows=rows,
-                            before=before)
+            if piece.startswith("|") and report_checks.cells(piece) in heads:
+                # a header row names columns (「합의 내용」), nothing the meeting did
+                continue
+            said = untraced(piece, material, next_part=nxt, rows=rows, before=before)
             before = before if piece.startswith("|") else piece
             if not said and piece in listed and unset_agenda(piece, material, listed=True):
                 said = [piece.strip()]

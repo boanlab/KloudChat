@@ -62,7 +62,7 @@ _CITES = re.compile(r"\[\d{1,3}(?:\s?[,\-–]\s?\d{1,3})*\]")
 def untraced(sentence: str, material: str, quotes: str = "") -> list[str]:
     """Phrases of `sentence` stating a limit, an approval or a rule the material never states.
     Source `quotes` count for a sentence citing one (a page's rule is no internal one)."""
-    if not sentence or MARK in sentence:
+    if not sentence or MARK in sentence or not _korean(material):
         return []
     if quotes and _CITES.search(sentence):
         material = f"{material}\n{quotes}"
@@ -72,6 +72,13 @@ def untraced(sentence: str, material: str, quotes: str = "") -> list[str]:
             out += [m.group(0).strip() for m in said.finditer(sentence)
                     if not _asked(sentence, m.start())]
     return list(dict.fromkeys(out))
+
+
+def _korean(material: str) -> bool:
+    """Whether the material is written in Korean: the kinds are read in Korean words, so an
+    English memo's 「approved」 would read as no approval at all."""
+    hangul = len(re.findall(r"[가-힣]", material or ""))
+    return hangul * 4 >= len(re.findall(r"[A-Za-z]", material or ""))
 
 
 def _clauses(sentence: str) -> list[tuple[int, int]]:

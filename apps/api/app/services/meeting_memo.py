@@ -22,7 +22,8 @@ _DAY = re.compile(
     r"|20\d{2}\s{0,2}[-./]\s{0,2}\d{1,2}\s{0,2}[-./]\s{0,2}\d{1,2}"
     r"|(?<![\d/])\d{1,2}\s{0,2}/\s{0,2}\d{1,2}(?![\d/])")
 _WEEKDAY = re.compile(
-    r"\s{0,2}(?:\(\s{0,2}[월화수목금토일](?:요일)?\s{0,2}\)|(?<![가-힣])[월화수목금토일](?:요일)?(?![가-힣]))")
+    r"\s{0,2}(?:\(\s{0,2}[월화수목금토일](?:요일)?\s{0,2}\)"
+    r"|(?<![가-힣\d])[월화수목금토일](?:요일)?(?![가-힣]))")
 #: a clock: 「10시」, 「오후 2시 30분」, 「14:00」 (not 「1시간」)
 _CLOCK = re.compile(
     r"(?:(?:오전|오후)\s{0,2})?\d{1,2}\s{0,2}시(?![간작각])(?:\s{0,2}\d{1,2}\s{0,2}분|\s{0,2}반)?"
@@ -36,6 +37,8 @@ _PLACE = re.compile(
     r"|온라인|화상\s{0,2}회의|비대면|Zoom|줌|Teams|팀즈")
 _ATTENDED = re.compile(r"참석(?:자|인원)?\s{0,2}[:：]?\s{0,2}([^.\n;]{2,80})")
 _MEETING_WORD = re.compile(r"회의|위원회|미팅|모임|세미나|워크숍|간담회|협의회")
+#: a meeting's name ends in its kind: 「교육혁신팀 주간회의」, not 「… 회의록을 만들어줘」
+_NAMED = re.compile(r"(?:회의|위원회|미팅|모임|세미나|워크숍|간담회|협의회)$")
 #: where the memo turns from the meeting's head to its agenda
 _AGENDA_START = re.compile(r"안건|의제|논의|결정|^\s{0,2}\d{1,2}[.)]")
 
@@ -116,11 +119,12 @@ def _meeting(stretches: list[str], *, named: bool) -> Meeting:
             if not _MEETING_WORD.search(stretch) or _ATTENDED.match(stretch):
                 continue
             bare = _CLOCK.sub(" ", _WEEKDAY.sub(" ", _DAY.sub(" ", stretch)))
-            head = re.split(r"[,，]|\s장소", bare)[0]
-            name = " ".join(head.split())
-            if _MEETING_WORD.search(name) and len(name) <= 40:
-                found.name = name.strip(" ,")
-            break
+            # the part naming the meeting, its 「[녹취]」, 「(메모)」 tags off
+            parts = (" ".join(re.sub(r"^(?:\s{0,2}[\[(][^\])\n]{0,20}[\])])+", "", p).split())
+                     for p in re.split(r"[,，/:：~]|\s장소", bare))
+            if name := next((p for p in parts if _NAMED.search(p) and len(p) <= 40), ""):
+                found.name = name
+                break
     return found
 
 
@@ -734,19 +738,24 @@ def repeats(sections: list[dict]) -> list[tuple[int, str, str]]:
 
 
 def _facts(piece: str, memo: str) -> set[str]:
-    """What a sentence holds that the reader needs: its numbers and the memo's people."""
+    """What a sentence holds that the reader needs: its numbers, the memo's people and its own
+    words, memo labels aside."""
     from app.services import stated_meeting
 
     found = {m.group(0).replace(",", "")
              for m in re.finditer(r"\d[\d,.]{0,12}", _AGENDA_LABEL.sub("", piece))}
     found |= {name for name in stated_meeting.people(memo) if name in piece}
-    return found
+    # a thing named: a Latin word (「approval」, 「PG」), a Hangul one of three letters or more
+    # that no verb ending closes (「간편결제」, 「재논의」, not 「요청했으나」)
+    return found | {squash(w) for w in _words(_SIGN.sub(" ", _AGENDA_LABEL.sub("", piece)))
+                    if re.fullmatch(r"[a-z][a-z0-9]{1,30}", w)
+                    or (len(w) >= 3 and not w.endswith(("다", "며", "고", "서", "나", "면", "지")))}
 
 
 def settle_copies(sections: list[dict], memo: str, *, strong: bool) -> tuple[list[dict], int]:
     """What the writer left pasted after its one repair: a sentence said again word for word
     goes; for a writer not strong, a memo line copied or a sentence repeating a phrase said
-    over and over goes when the rest of the document holds its numbers and people (the
+    over and over goes when the rest of the document holds its numbers, people and words (the
     first saying stays), and a cell repeating an open item's phrase reads 「미정」."""
     from app.services import report_checks, stated_policy
 
@@ -772,8 +781,8 @@ def settle_copies(sections: list[dict], memo: str, *, strong: bool) -> tuple[lis
         content = str(out[index].get("content") or "")
         if piece not in content:
             continue
-        rest = "\n".join(str(s.get("content") or "") for s in out).replace(piece, "", 1)
-        if all(fact in rest.replace(",", "") for fact in _facts(piece, memo)):
+        rest = squash("\n".join(str(s.get("content") or "") for s in out).replace(piece, "", 1))
+        if all(squash(fact) in rest for fact in _facts(piece, memo)):
             out[index]["content"] = drop(content, piece)
             gone += 1
     # a cell repeating an open item's words said over and over, in cells or sentences

@@ -2699,15 +2699,20 @@ UNASSIGNED_WHY = ("이 행의 할 일은 자료에서 누구에게도 맡겨지�
 
 def unassigned_rows(sections: list[dict], material: str) -> list[tuple[int, str, list[str]]]:
     """(section, row, [task]) for action rows with no owner whose task no memo clause gives
-    anyone or leaves open: 「2학기 튜터링 모집 시행 | 미정」 from 「모집 기간은 11/3~11/14로 확정」."""
-    from app.services import stated_meeting
+    anyone or leaves open: 「2학기 튜터링 모집 시행 | 미정」 from 「모집 기간은 11/3~11/14로 확정」.
+    A task sharing a word with a memo clause giving one of its people a task is that person's
+    (the writer left the owner out), and a decision table's rows are no action rows."""
+    from app.services import stated_days, stated_meeting
 
     clauses = [re.sub(r"\s+", "", c).lower() for c in _MEMO_CLAUSE.split(material or "")
                if _ACTION_SAID.search(c)]
+    named = [c for c in clauses if stated_meeting._ASSIGNED.search(c)
+             and any(n in c for n in stated_meeting.people(material))]
     out = []
     for table in tables(sections):
         owner, due = _owner_due(table.header)
-        if owner is None or due is None:
+        if owner is None or due is None or _DECIDED_TABLE.search(
+                " ".join([*table.header, str(sections[table.section].get("heading") or "")])):
             continue
         task = _task_column(table.header, (owner, due, _column(table.header, r"비고|사유|메모|원문")))
         for line, row in table.rows:
@@ -2715,9 +2720,14 @@ def unassigned_rows(sections: list[dict], material: str) -> list[tuple[int, str,
                 continue
             if not _UNOWNED.match(row[owner].strip(" *")):
                 continue
-            if not stated_meeting.task_given(row[task], clauses):
+            if not stated_meeting.task_given(row[task], clauses) and not any(
+                    w in c for w in stated_days._words(row[task]) for c in named):
                 out.append((table.section, line, [row[task].strip(" *")]))
     return out
+
+
+#: a table of what was decided, whose rows no one is to do
+_DECIDED_TABLE = re.compile(r"결정|합의|의결")
 
 
 def _reference_heading() -> re.Pattern:

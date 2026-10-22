@@ -8,9 +8,10 @@ holds no next-week plan the material lists on no day and words more closely or i
 (「- 화: 한솔마트 재고 클레임」 does not put 「한솔마트 재고 점검 방문」, under 「다음주 계획」,
 on a 화요일).
 An item the document places in one week (「이번 주 목요일」, a 「다음 주 업무 계획」 section, the
-report's own 「10월 3주차」) stands only on a stretch of that week, and not where the other week's
-stretch on that day says it more closely (「다음주 계획: … (목요일 2차 미팅)」 is no 「이번 주
-목요일 2차 미팅」).
+report's own 「10월 3주차」) stands only on a stretch of that week, and, when its own words name
+the week, not where the other week's stretch on that day says it more closely (「다음주 계획: …
+(목요일 2차 미팅)」 is no 「이번 주 목요일 2차 미팅」). The item a clause dates may be named in the
+sentence's other clauses (「CRM 병합은 60% 진행되었고, 완료 시점은 다음 주 수요일입니다」).
 """
 
 from __future__ import annotations
@@ -148,7 +149,7 @@ def _says(item: str, plan: str) -> bool:
 
 
 def _held(item: str, day: str, days: dict[str, list[tuple[str, str | None]]],
-          material: str = "", week: str | None = None) -> bool:
+          material: str = "", week: str | None = None, own: bool = True) -> bool:
     words = _words(item)
     if not words:
         return True
@@ -159,8 +160,9 @@ def _held(item: str, day: str, days: dict[str, list[tuple[str, str | None]]],
     if not same:
         return False
     best = max(_overlap(every, c) for c in same)
-    # the other week's stretch on this day says it more closely: the item moved weeks
-    if other and max(_overlap(every, c) for c in other) > best:
+    # the other week's stretch on this day says it more closely: the item moved weeks (a week
+    # the item says itself; one a heading gives may hold both weeks' talk of the day)
+    if own and other and max(_overlap(every, c) for c in other) > best:
         return False
     if any(w == "next" for c, w in hits if c in same):
         return True
@@ -192,10 +194,16 @@ def untraced(piece: str, material: str, context: str = "") -> list[str]:
         for m in _SAID_DAY.finditer(clause):
             if _AFTER_DATE.search(clause[:m.start()]):
                 continue
-            week = (week_of(clause[max(0, m.start() - 16):m.start()], material)
-                    or week_of(clause, material) or week_of(piece, material) or around)
-            if not _held(clause[:m.start()] + clause[m.end():], m.group(1), days,
-                         material, week):
+            said = (week_of(clause[max(0, m.start() - 16):m.start()], material)
+                    or week_of(clause, material) or week_of(piece, material))
+            week, own = said or around, said is not None
+            # the item the clause dates may be named in the sentence's other clauses
+            # (「CRM 병합은 60% 진행되었고, 완료 시점은 다음 주 수요일입니다」)
+            if not any(_held(text[:at] + text[at + len(m.group(0)):], m.group(1), days, material,
+                             week, own)
+                       for text, at in ((clause, m.start()),
+                                        (piece, piece.find(m.group(0), piece.find(clause))))
+                       if at >= 0):
                 out.append(clause.rstrip(".!? "))
                 break
     return out
