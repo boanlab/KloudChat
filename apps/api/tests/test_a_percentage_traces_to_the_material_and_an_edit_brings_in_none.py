@@ -133,6 +133,16 @@ def test_a_report_marks_an_unstated_percentage_and_keeps_worked_ones():
     assert report._without_invented_percents("값이 없다.", [SALES]) == "값이 없다."
 
 
+def test_a_report_with_figures_marks_an_unstated_percentage_and_leaves_its_money_to_the_trace():
+    from app.pipeline import report_stages
+
+    text = "수도권 매출은 71억 원으로 55.5%이고, 점유율은 12%, 광고비는 3억 원이다."
+    marked = report_stages._unbacked_marked(text, [SALES], computed="", grounded=True)
+    assert marked == (
+        "수도권 매출은 71억 원으로 55.5%이고, 점유율은 12%(확인 필요), 광고비는 3억 원이다.")
+    loose = report_stages._unbacked_marked(text, [SALES], computed="", grounded=False)
+    assert "3억 원(확인 필요)" in loose and "12%(확인 필요)" in loose
+
 def test_a_report_edit_marks_a_new_percentage_and_keeps_the_ones_it_had():
     original = ["수도권 비중은 55.5%이며 목표 대비 103%다."]
     body = "수도권 비중은 55.5%, 목표 대비 103%, 이익률은 9%다."
