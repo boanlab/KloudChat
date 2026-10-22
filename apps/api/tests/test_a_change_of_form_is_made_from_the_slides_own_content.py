@@ -220,6 +220,78 @@ def test_a_deck_cut_to_fewer_slides_says_the_figures_it_no_longer_shows():
     from app.routers import sessions
 
     assert deck.lost_across([TREND, DELAY], [TREND]) == ["4일", "3곳"]
-    assert sessions._lost_said(["4일", "3곳"], "6장으로 줄여줘") == (
-        " 고치면서 4일, 3곳이 슬라이드에서 빠졌습니다. 필요하면 다시 넣어 달라고 해 주세요.")
-    assert sessions._lost_said([], "6장으로 줄여줘") == ""
+    assert sessions._restructured_said([TREND, DELAY], [TREND], english=False) == (
+        "1장짜리 슬라이드를 만들었습니다. 고치면서 4일, 3곳이 슬라이드에서 빠졌습니다. "
+        "필요하면 다시 넣어 달라고 해 주세요.")
+    assert sessions._restructured_said([], [TREND], english=False) == (
+        "1장짜리 슬라이드를 만들었습니다.")
+
+
+#: reverify-u kd2: a pie and a line chart the shrink took off; kd1: a figure kept only in notes
+PIE = {"id": "p", "layout": "chart", "title": "지역별 매출 구성 현황",
+       "chart": {"kind": "pie", "unit": "%", "categories": ["수도권", "영남", "호남"],
+                 "series": [{"name": "매출 구성비", "values": [55.5, 25.8, 10.9]}]}}
+MARGIN = {"id": "m", "layout": "chart", "title": "이익률 추이와 수익성 변화",
+          "chart": {"kind": "line", "unit": "%", "categories": ["전분기", "3분기"],
+                    "series": [{"name": "이익률", "values": [6.8, 7.5]}]},
+          "bullets": ["영업이익률 7.5%"]}
+NOTED = {"id": "n", "layout": "bullets", "title": "3분기 주요 지표", "bullets": ["전분기 6.8%"],
+         "notes": "3분기 매출은 128억 원, 영업이익률은 7.5%입니다."}
+
+
+def test_a_shrink_names_the_charts_it_took_off_and_counts_no_figure_kept_only_in_notes():
+    from app.routers import sessions
+
+    kept = {"id": "k", "layout": "bullets", "title": "요약", "bullets": ["3분기 매출 128억 원"]}
+    assert deck.lost_blocks([PIE, MARGIN], [NOTED]) == [
+        "「지역별 매출 구성 현황」 원형 차트", "「이익률 추이와 수익성 변화」 선 차트"]
+    assert deck.lost_blocks([PIE], [{**NOTED, "chart": PIE["chart"]}]) == []
+    # values only the gone chart plotted are said with it, not one by one
+    plotted = deck.charted_only([PIE, MARGIN], [NOTED])
+    assert {"55.5%", "25.8%", "10.9%"} <= plotted and "7.5%" not in plotted
+    assert sessions._restructured_said([kept, PIE, MARGIN], [NOTED], english=False) == (
+        "1장짜리 슬라이드를 만들었습니다. 고치면서 128억, 7.5%와 「지역별 매출 구성 현황」 원형 "
+        "차트, 「이익률 추이와 수익성 변화」 선 차트가 슬라이드에서 빠졌습니다. 필요하면 다시 넣어 "
+        "달라고 해 주세요.")
+
+
+#: reverify-u ed1: an English deck cut to three slides
+EN_TABLE = {"id": "t", "layout": "table", "title": "Performance and Cost Comparison",
+            "rows": [["Criterion", "27B Local", "Frontier API"], ["Cost / 1k docs", "$4", "$38"],
+                     ["Latency", "9s", "14s"], ["Long-ctx (20+ pg)", "64%", "91%"]]}
+EN_LEFT = {"id": "l", "layout": "bullets", "title": "Benchmark",
+           "bullets": ["27B: 64% vs 91% above 20 pages"]}
+
+
+def test_an_english_shrink_is_said_in_english_with_whole_values_and_the_table_named():
+    from app.routers import sessions
+
+    assert deck.lost_across([EN_TABLE], [EN_LEFT]) == ["1k docs", "$4", "$38", "9s", "14s"]
+    assert sessions._restructured_said([EN_TABLE], [EN_LEFT], english=True) == (
+        "Made a 1-slide deck. No slide shows these any more: 1k docs, $4, $38, 9s, 14s; the "
+        "table on 'Performance and Cost Comparison'. Ask again to put them back if they belong "
+        "there.")
+    started = time.monotonic()
+    deck._whole_figure(("1", "k", "1k"), "1k" + " " * 50000 + "docs")
+    assert time.monotonic() - started < 0.5
+
+
+def test_a_timeline_put_back_takes_no_slide_whose_figures_it_would_drop():
+    old = [{"id": "t", "layout": "timeline", "title": "4분기 목표 및 물류 안정화 전략",
+            "timeline": [["4분기 시작", "출고 지연 0일 목표"], ["4분기 말", "안정화 완료"]]}]
+    new = [{"id": "a", "layout": "metrics", "title": "3분기 주요 지표 및 지역별 매출 구성",
+            "metrics": [["128억", "매출"], ["7.5%", "영업이익률"]], "chart": PIE["chart"]},
+           {"id": "b", "layout": "roadmap", "title": "영남 물류 안정화 전략 및 4분기 계획",
+            "items": [["4분기 초", "물류 일정 재편"], ["4분기 중", "출고 지연 0일"]]}]
+    out = revise.keep_timeline_layout([dict(s) for s in new], old, mentioned="6장으로 줄여줘")
+    assert out[0]["layout"] == "metrics" and out[0]["chart"] == PIE["chart"]
+    assert out[1]["layout"] == "timeline"
+
+
+def test_a_closing_with_no_points_names_none():
+    slide = {"layout": "closing", "title": "핵심 요약 및 승인 요청 사항"}
+    deck.fill_closing(slide, {"bullets": [], "body": ""})
+    assert slide["title"] == "마무리" and slide["body"] == "감사합니다"
+    slide = {"layout": "closing", "title": "핵심 요약 및 승인 요청 사항"}
+    deck.fill_closing(slide, {"bullets": ["3분기 매출 128억 원", "1.5억 예산 승인"]})
+    assert slide["title"] == "핵심 요약 및 승인 요청 사항" and len(slide["bullets"]) == 2

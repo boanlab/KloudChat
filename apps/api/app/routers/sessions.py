@@ -7122,8 +7122,8 @@ async def _deck_carry(work: PipelineBundle) -> AsyncIterator[dict]:
     # carried slides may drop restated numbers: recheck the person's figures
     deck_service.restate_missing_facts(slides, request)
     work.document.sections = slides
-    # figures the old deck showed that the new one shows nowhere: said in the reply
-    work.document.dropped = deck_service.lost_across(old_slides, slides)
+    # what the old deck showed that the new one shows nowhere: read at save, said in the reply
+    work.document.before = old_slides
     if carried:
         yield {"type": "step", "id": "carry", "label": f"그대로 둔 장 {carried}개",
                "status": "done"}
@@ -7131,16 +7131,30 @@ async def _deck_carry(work: PipelineBundle) -> AsyncIterator[dict]:
             yield {"type": "slide", "slide": slide, "done": True}
 
 
-def _lost_said(lost: list[str], instruction: str) -> str:
-    """「 줄이면서 4일, 3곳이 빠졌습니다. …」: figures a restructure left out of the deck."""
-    if not lost:
-        return ""
-    values = ", ".join(lost)
-    if output_language.typed_in_english(instruction):
-        return (f" {values} no longer appear anywhere in the deck; ask again to put them back "
+def _restructured_said(before: list[dict], slides: list[dict], *, english: bool) -> str:
+    """「6장짜리 슬라이드를 만들었습니다. 고치면서 4일, 3곳과 「…」 차트가 빠졌습니다. …」: the
+    deck made and what of the old deck its slides no longer show (notes do not count), in the
+    deck's or the request's language."""
+    count = len(deck_service.filled(slides))
+    plotted = deck_service.charted_only(before, slides)
+    lost = [f for f in deck_service.lost_across(before, slides) if f not in plotted]
+    blocks = deck_service.lost_blocks(before, slides, english=english) if before else []
+    if english:
+        made = f"Made a {count}-slide deck."
+        if not lost and not blocks:
+            return made
+        what = "; ".join(x for x in (", ".join(lost), ", ".join(blocks)) if x)
+        return (f"{made} No slide shows these any more: {what}. Ask again to put them back "
                 "if they belong there.")
-    return (f" 고치면서 {values}{revise._particle(values, '이', '가')} 슬라이드에서 빠졌습니다. "
-            "필요하면 다시 넣어 달라고 해 주세요.")
+    made = f"{count}장짜리 슬라이드를 만들었습니다."
+    if not lost and not blocks:
+        return made
+    what = ", ".join(lost)
+    if blocks:
+        what = f"{what}{revise._particle(what, '과', '와')} " if what else ""
+        what += ", ".join(blocks)
+    return (f"{made} 고치면서 {what}{revise._particle(what, '이', '가')} 슬라이드에서 "
+            "빠졌습니다. 필요하면 다시 넣어 달라고 해 주세요.")
 
 
 async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
@@ -7233,8 +7247,11 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                 message = Message(
                     session_id=session_id,
                     role=Role.assistant,
-                    content=rerun_note(turn) or f"{len(written)}장짜리 슬라이드를 만들었습니다."
-                    + _lost_said(work.document.dropped if carry_from else [], carry_note),
+                    content=rerun_note(turn) or _restructured_said(
+                        work.document.before if carry_from else [], slides,
+                        english=bool(carry_from) and (
+                            deck_service.deck_language(slides) == "en"
+                            or output_language.typed_in_english(carry_note))),
                     usage={**usage, "credits": credits},
                     model=model["id"],
                     steps=_prelude_steps(skills_event, context_steps) or None,

@@ -105,11 +105,13 @@ async def test_a_shortening_that_became_another_section_is_sent_back_then_kept_o
 
 
 @pytest.mark.asyncio
-async def test_a_dropped_figure_and_box_are_said(monkeypatch):
+async def test_a_dropped_box_is_said_and_the_picture_stays(monkeypatch):
     doc, _, _ = await _shorten(monkeypatch, [SHORT], before=BOXED)
-    assert doc.removed == ["2절의 그림 1", "2절의 「단가 승인 지연 시 협상 교착」 상자"]
+    # the picture, not shown to the writer, is put back; the box it left out is said
+    assert "![그림 1. 단가 협상 범위](data:image/png;base64,AAAA)" in doc.sections[1]["content"]
+    assert doc.removed == ["2절의 「단가 승인 지연 시 협상 교착」 상자"]
     assert save_stages.revision_reply(doc, None, is_deck=False).startswith(
-        "2절의 그림 1, 2절의 「단가 승인 지연 시 협상 교착」 상자를 뺐습니다. 2절을 고쳤습니다.")
+        "2절의 「단가 승인 지연 시 협상 교착」 상자를 뺐습니다. 2절을 고쳤습니다.")
 
 
 @pytest.mark.asyncio

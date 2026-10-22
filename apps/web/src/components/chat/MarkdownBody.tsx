@@ -1,5 +1,6 @@
 import { Check, Copy, X } from 'lucide-react'
 import { detachTables } from '@/lib/markdownTables'
+import { escapeCurrency } from '@/lib/mathDollars'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
@@ -212,14 +213,14 @@ function CodeBlock({ children, className }: { children: ReactNode; className?: s
   )
 }
 
-/** Rewrites `\\[…\\]` / `\\(…\\)` to `$$…$$` / `$…$` for remark-math; code spans are left alone. */
+/** Rewrites `\\[…\\]` / `\\(…\\)` to `$$…$$` / `$…$` for remark-math, a price's `$` escaped; code spans are left alone. */
 function normaliseMath(text: string): string {
   return text
     .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
     .map((part, i) =>
       i % 2 === 1
         ? part
-        : part
+        : escapeCurrency(part)
             .replace(/\\\[([\s\S]*?)\\\]/g, (_, body) => `\n$$${body}$$\n`)
             .replace(/\\\(([\s\S]*?)\\\)/g, (_, body) => `$${body}$`),
     )

@@ -606,19 +606,20 @@ class Rewrite(Base):
                                                      " ".join(asks) or _typed(bundle)))
                         body = richtext.detach_tables(body)
                         # arithmetic checked, not trusted
-                        body = report.trim_table_echo(
-                            report.drop_kpi(
-                                report.fix_point_units(
-                                    report.undouble_words(
-                                        report.fix_percent_formulas(
-                                            report.fix_ledger_magnitudes(
-                                                report.fix_products(body), request
-                                            )
+                        body = report.drop_kpi(
+                            report.fix_point_units(
+                                report.undouble_words(
+                                    report.fix_percent_formulas(
+                                        report.fix_ledger_magnitudes(
+                                            report.fix_products(body), request
                                         )
                                     )
                                 )
                             )
                         )
+                        #: the sentences as written, before echoes and repeats are cut
+                        uncut = body
+                        body = report.trim_table_echo(body)
                         # no repeats of earlier sections, except requested additions
                         if not re.search(r"추가|넣어|덧붙|더\s*써|보태", instruction):
                             earlier = [
@@ -634,6 +635,11 @@ class Rewrite(Base):
                             body = report.trim_restatements(
                                 body, earlier, keep_items=gaejo,
                                 question=bool(report.QUESTION_HEADING.search(label)))[0]
+                        counted = revise.sentences_asked(" / ".join(asks) or _typed(bundle))
+                        if counted[0] and revise.count_met(uncut, *counted) and not (
+                                revise.count_met(body, *counted)):
+                            # the sentences counted out as asked: none cut as an echo
+                            body = uncut
                         # the writer's plan and notes, not the text; spacing as written
                         noted = internal_words.strip_work_notes(body, request=request,
                                                                 document=True)
@@ -648,6 +654,8 @@ class Rewrite(Base):
                         if shortening:
                             # the ask restated as a sentence of the part: not its content
                             body = revise.without_ask_echo(body)
+                            # a box the shortening put in: the part says less, it frames nothing
+                            body = revise.without_added_boxes(before, body)
                             # a day put beside a weekday the part says: the weekday stays
                             body = revise.without_added_dates(before, body)
                             if want := revise.sentences_asked(asked_of)[0]:
@@ -655,6 +663,8 @@ class Rewrite(Base):
                                 body = revise.fold_table_pointers(body, want)
                         # a weekday beside a date: the calendar's
                         body = weekdays.fix_weekdays(body, context=given, today=today)[0]
+                        # the part's pictures, which the writer is not shown, kept like its figure
+                        body = revise.keep_pictures(before, body, instruction)
                         # a P0 the rewrite brought in, or a shortened part that became another
                         # part: sent back once, then the part stays
                         faults = revise.new_faults(before, body, heading=label,
@@ -665,8 +675,14 @@ class Rewrite(Base):
                                 if i != index])
                         if not faults:
                             short = revise.shortening_faults(before, body, asked_of, given)
-                            if short and not passed and revise.sentences_asked(asked_of)[0]:
+                            want, most = revise.sentences_asked(asked_of)
+                            if short and not passed and want:
                                 # a sentence count asked and missed: sent back once
+                                if revise.count_met(body, want, most):
+                                    # the count met, facts missed: the count holds
+                                    short.insert(0, f"Keep it to {want} sentence"
+                                                 f"{'s' if want > 1 else ''}: put the facts "
+                                                 "below into them")
                                 passed, rejected = body, " / ".join(short)[:600]
                                 continue
                             break
@@ -674,11 +690,14 @@ class Rewrite(Base):
                         log.warning("revision of %r failed the checks: %s", logs.safe(label),
                                     logs.safe(rejected))
                     asked_of = " / ".join(asks) or _typed(bundle)
-                    if passed and (faults or revise.shortening_misses(before, body, asked_of, given)
-                                   > revise.shortening_misses(before, passed, asked_of, given)):
+                    want, most = revise.sentences_asked(asked_of)
+                    if passed and (faults or revise.better_shortening(
+                            before, passed, body, asked_of, given)):
                         # the version sent back came out worse: the first one stands
                         body, faults = passed, []
-                    want, most = revise.sentences_asked(asked_of)
+                    if want and not faults and not revise.count_met(body, want, most):
+                        # still off the count: clauses joined or split where they meet, by code
+                        body = revise.fit_count(body, want)
                     if (want and not faults and revise.count_met(before, want, most)
                             and not revise.count_met(body, want, most)):
                         # the part already has the count asked and the rewrites missed it:

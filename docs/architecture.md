@@ -487,8 +487,16 @@ that only points at the section's table is folded into the one before it as its 
 (`revise.fold_table_pointers`), and a section that already had the count stays when the
 rewrites miss it, which the reply says. A slide cut to fewer items
 (「항목을 하나로」, `deck.items_asked`) that came back with none gets its old items joined
-(`deck.merged_points`), figures such a cut drops are said, and a deck cut to fewer slides says
-the figures it shows nowhere any more (`deck.lost_across`). Only prose sentences are counted (tables,
+(`deck.merged_points`), figures such a cut drops are said, and a deck cut to fewer slides says,
+at save after grounding, the figures (notes not counted, English values with what they count,
+「1k docs」) and the charts and tables it shows nowhere any more (`deck.lost_across`,
+`deck.lost_blocks`), in English for an English deck; a timeline put back takes no slide whose
+chart or figures it would drop (`revise.keep_timeline_layout`), and a closing with no points gets
+a plain title (`deck.fill_closing`). A sentence count still off after the retry is met by code at
+clause joints (「…필요하며,」 ↔ 「…필요합니다.」, `revise.fit_count`), the retry that misses a count
+the first version met does not replace it (`revise.better_shortening`), no sentence is cut as a
+table echo below the count asked, a box a shortening adds is taken out, and the part's inline
+pictures, which the writer is not shown, are put back (`revise.keep_pictures`). Only prose sentences are counted (tables,
 captions and list rows are not), a figure is a number with its unit or counter (「3곳」, not
 「표 1의」), money is compared as won (「38.5억」 = 「38억 5천만」 = 「3,850,000,000원」,
 `deck.amounts_in`), and a drawn diagram's labels count as shown. Joining one named slide's

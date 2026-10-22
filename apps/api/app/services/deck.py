@@ -763,9 +763,28 @@ _FAREWELL_TITLE = re.compile(
 )
 
 
+#: a closing title that names points to show: 「핵심 요약」, 「요청 사항」, 「Key takeaways」
+_CLAIMS_POINTS = re.compile(r"요약|정리|요청|사항|핵심|결론|시사점|summary|takeaways?|key\s+points|"
+                            r"recap|asks?\b", re.I)
+
+
 def closing_title(title: str) -> str:
     """Closing title with a bare farewell replaced by 「마무리」."""
     return "마무리" if _FAREWELL_TITLE.match(title or "") or not title.strip() else title
+
+
+def fill_closing(slide: dict, data: dict) -> None:
+    """The closing slide's points and line from the writer's `data`; a bare thanks when it
+    wrote neither, under a title that names no points it does not show."""
+    slide["bullets"] = _clean_bullets(data.get("bullets"))[:3]
+    slide["body"] = " ".join(str(data.get("body") or "").split())[:60]
+    title = str(slide.get("title") or "")
+    if not slide["bullets"] and not slide["body"]:
+        slide["body"] = "감사합니다"
+        if _CLAIMS_POINTS.search(title):
+            # 「핵심 요약 및 승인 요청 사항」 over a bare thanks
+            title = ""
+    slide["title"] = closing_title(title)
 
 
 #: Boundary between request and planner's own conditions.
@@ -3514,11 +3533,7 @@ async def _write_slides(
                 slide["layout"] = "bullets"
                 slide["bullets"] = _clean_bullets(data.get("bullets"))
         elif slide["layout"] == "closing":
-            slide["bullets"] = _clean_bullets(data.get("bullets"))[:3]
-            slide["body"] = " ".join(str(data.get("body") or "").split())[:60]
-            if not slide["bullets"] and not slide["body"]:
-                slide["body"] = "감사합니다"
-            slide["title"] = closing_title(str(slide.get("title") or ""))
+            fill_closing(slide, data)
         elif slide["layout"] in _PAIRED:
             if pairs := _clean_pairs(data.get(slide["layout"]), slide["layout"]):
                 slide[slide["layout"]] = pairs
@@ -5295,12 +5310,81 @@ def lost_across(old: list[dict], new: list[dict]) -> list[str]:
     fewer slides), read as `lost_figures` reads one slide."""
     shown = [f for slide in new for f in _shown_figures(slide)]
     amounts = amounts_in(" ".join(_shown_words(slide) for slide in new))
-    out: dict[str, None] = {}
+    out: dict[tuple[str, str], str] = {}
     for slide in old:
+        words = _shown_words(slide)
         for figure in _shown_figures(slide):
             if not figure_kept(figure, shown, amounts):
-                out.setdefault(figure[2])
-    return list(out)
+                out.setdefault(figure[:2], _whole_figure(figure, words))
+    return list(dict.fromkeys(out.values()))
+
+
+#: what an English figure counts, right after it: 「1k docs」, 「20+ pg」
+_COUNTED_NOUN = re.compile(r"\+?\s?[A-Za-z]{1,12}\b")
+
+
+def _whole_figure(figure: tuple[str, str, str], words: str) -> str:
+    """A figure as the reply names it: a bare or scaled English number with what it counts
+    (「1k docs」, not 「1k」), else as written."""
+    number, unit, said = figure
+    if unit not in ("", "k", "m", "b") or re.search(r"[가-힣]", words):
+        return said
+    for m in re.finditer(rf"(?<![\w.,$]){re.escape(said)}(?![\d,.])", words):
+        if counted := _COUNTED_NOUN.match(words, m.end()):
+            return f"{said}{counted.group(0)}"
+    return said
+
+
+#: a chart's kind as the reply names it
+_CHART_WORD = {"bar": ("막대", "bar"), "line": ("선", "line"), "pie": ("원형", "pie"),
+               "donut": ("도넛", "donut")}
+
+
+def _chart_values(slide: dict) -> set[float]:
+    chart = slide.get("chart") if isinstance(slide.get("chart"), dict) else {}
+    return {round(float(v), 3) for s in chart.get("series") or [] if isinstance(s, dict)
+            for v in s.get("values") or [] if isinstance(v, (int, float))}
+
+
+def _table_keys(slide: dict) -> set[str]:
+    rows = slide.get("rows") if isinstance(slide.get("rows"), list) else []
+    return {" ".join(str(r[0]).split()).lower() for r in rows[1:]
+            if isinstance(r, list) and r and str(r[0]).strip()}
+
+
+def _chart_gone(slide: dict, new: list[dict]) -> bool:
+    """Whether the chart `slide` draws is drawn on no slide of `new` (its values plotted)."""
+    values = _chart_values(slide)
+    return chart_of(slide) and not any(
+        values and values <= _chart_values(other) for other in new if chart_of(other))
+
+
+def charted_only(old: list[dict], new: list[dict]) -> set[str]:
+    """Figures of `old` that only a chart `new` no longer draws plotted (said with the chart,
+    not again one by one)."""
+    gone = [s for s in old if _chart_gone(s, new)]
+    plotted = {f[2] for s in gone for f in figures_in(" ".join(_chart_figures(s)))}
+    written = {f[2] for s in old for f in figures_in(" ".join(
+        t for k, v in s.items() if k not in (*_NOT_SHOWN, "chart") for t in _strings(v)))}
+    return plotted - written
+
+
+def lost_blocks(old: list[dict], new: list[dict], *, english: bool = False) -> list[str]:
+    """Charts and tables the deck `old` drew that the deck `new` draws nowhere (a deck cut to
+    fewer slides), named by their slide: 「「지역별 매출 구성」 원형 차트」."""
+    tables = [_table_keys(s) for s in new if _table_keys(s)]
+    out: list[str] = []
+    for slide in old:
+        title = " ".join(str(slide.get("title") or "").split())[:60]
+        if chart_of(slide):
+            if _chart_gone(slide, new):
+                kind = _CHART_WORD.get(str(slide["chart"].get("kind") or ""), ("", ""))
+                out.append(f"the {kind[1] + ' ' if kind[1] else ''}chart on '{title}'" if english
+                           else f"「{title}」 {kind[0] + ' ' if kind[0] else ''}차트")
+        keys = _table_keys(slide)
+        if keys and not any(len(keys & other) * 2 >= len(keys) for other in tables):
+            out.append(f"the table on '{title}'" if english else f"「{title}」 표")
+    return out
 
 
 #: an item count asked of a slide: 「항목을 하나로」, 「두 개로」, 「two bullets」

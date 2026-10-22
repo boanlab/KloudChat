@@ -880,6 +880,35 @@ def keep_figure(old: str, new: str, instruction: str) -> str:
     return f"{body.rstrip()}\n\n{fence.group(0).strip()}"
 
 
+def keep_pictures(old: str, new: str, instruction: str) -> str:
+    """Rewrite with the part's pictures (「![그림 2. …](…)」, not shown to the writer) put back
+    where it names them, else at its end, unless a figure's removal was asked."""
+    if _REMOVE_FIGURE.search(instruction or ""):
+        return new
+    lines = (old or "").split("\n")
+    blocks = [("\n".join(lines[start:end]).strip(), number)
+              for kind, start, end, number in _blocks_in(old or "")
+              if kind == "그림" and _PICTURE_LINE.match(lines[start])]
+    out = (new or "").rstrip()
+    for block, number in blocks:
+        if _PICTURE_LINE.match(block.split("\n")[0]).group(0).strip() in out:
+            continue
+        paragraphs = out.split("\n\n")
+        at = next((i for i, p in enumerate(paragraphs) if number is not None and not
+                   p.lstrip().startswith(("|", "!", "```"))
+                   and re.search(rf"그림\s?{number}(?!\d)", p)), None)
+        if at is None:
+            paragraphs.append(block)
+        else:
+            # after the table that follows the paragraph naming it, as the part had it
+            while (at + 1 < len(paragraphs) and paragraphs[at + 1].lstrip().startswith(("|", "**"))
+                   and not re.search(r"그림", paragraphs[at + 1].split("\n")[0])):
+                at += 1
+            paragraphs.insert(at + 1, block)
+        out = "\n\n".join(paragraphs)
+    return out
+
+
 _COUNT_MENTION = re.compile(
     r"(?:장수|분량|길이)?\s{0,8}[:：]?\s{0,8}(?:총|전체)?\s{0,8}\d{1,3}\s{0,8}(?:장|쪽|페이지|슬라이드|절)\s{0,8}"
     r"(?:안팎|내외|정도|으로|로|을|를|이|가|은|는)?"
@@ -1114,7 +1143,14 @@ def count_change(plan: Plan, parts: list[str], message: str) -> Plan:
             note, units, maximum=99):
         # a count the planner put otherwise would outweigh the asked one
         note = lead
+    if wanted < len(parts):
+        note = f"{note} {_MERGED_KEEP}"
     return Plan(scope="outline", note=note, usage=plan.usage)
+
+
+#: a deck cut to fewer slides: the slides merged keep their figures
+_MERGED_KEEP = ("Slides merged keep their figures: each cost, time, rate or count the deck "
+                "shows now goes on the slide that takes its subject, as a point or a table row.")
 
 
 #: a part count or part number in a planner's note: 「전체 8개 장을」, 「1-2장」, 「3장과」
@@ -1327,6 +1363,24 @@ def _timeline_keys(slide: dict) -> set[str]:
 _TIMELINE_WORDS = ("단계", "일정", "로드맵", "타임라인", "계획", "마일스톤", "스케줄")
 
 
+#: layouts that already set things out in order
+_SEQUENCE_LAYOUTS = ("steps", "roadmap", "timeline")
+
+
+def _timeline_takes(host: dict, timeline: dict, slides: list[dict]) -> bool:
+    """Whether drawing `timeline` on `host` would take a chart or a figure off the deck: what
+    the host shows that no other slide and not the timeline does."""
+    from app.services import deck
+
+    if deck.chart_of(host):
+        return True
+    if host.get("layout") in _SEQUENCE_LAYOUTS:
+        # steps in order: what a timeline redraws
+        return False
+    rest = [s for s in slides if s is not host] + [{"timeline": timeline.get("timeline")}]
+    return bool(deck.lost_across([host], rest))
+
+
 def keep_timeline_layout(
     new: list[dict], old: list[dict], *, mentioned: str, request: str = ""
 ) -> list[dict]:
@@ -1349,6 +1403,8 @@ def keep_timeline_layout(
                     _title_tokens(str(s.get("title") or "")) & tokens
                     or any(w in str(s.get("title") or "") for w in _TIMELINE_WORDS)
                 )
+                # a slide whose chart or figures the timeline would take off the deck stays
+                and not _timeline_takes(s, gone, new)
             ),
             None,
         )
@@ -1893,7 +1949,7 @@ _SHORTENS = re.compile(r"줄여|줄이|짧게|간추|요약|압축|\b(?:shorten|
 _NAME = re.compile(r"(?<![A-Za-z0-9])(?:[A-Z]{1,3}사|[A-Z][A-Z0-9&]{1,15}(?:-\d{1,3})?)"
                    r"(?![A-Za-z0-9])")
 #: a sentence's end: 「다.」, 「?」 (not the point in 「5.5%」)
-_SENTENCE_END = re.compile(r"[.!?。](?=[\s\"'」』”’)\]]|$)")
+_SENTENCE_END = re.compile(r"(?<![^A-Za-z][Vv][Ss])[.!?。](?=[\s\"'」』”’)\]]|$)")
 
 
 def sentences_asked(clause: str) -> tuple[int, bool]:
@@ -2054,7 +2110,7 @@ def fold_table_pointers(text: str, want: int) -> str:
             block = not block
             continue
         if (block or not stripped or stripped.startswith(("|", "#"))
-                or _NOT_PROSE.match(stripped)):
+                or _NOT_PROSE.match(stripped) or _PICTURE_LINE.match(stripped)):
             continue
         sentences[i] = re.split(r"(?<=[.!?。])\s+", stripped)
         kept: list[str] = []
@@ -2123,10 +2179,111 @@ def shortening_faults(old: str, new: str, asked: str, given: str = "") -> list[s
     return faults
 
 
+#: a polite sentence ending and the joining form of the same verb: 「필요합니다.」 ↔ 「필요하며,」
+_JOINED_FORM = (("했습니다", "했으며"), ("였습니다", "였으며"), ("었습니다", "었으며"),
+                ("았습니다", "았으며"), ("있습니다", "있으며"), ("없습니다", "없으며"),
+                ("합니다", "하며"), ("입니다", "이며"), ("됩니다", "되며"))
+#: a clause joined in the middle of a sentence: 「…필요하며, 」, 「…있고, 」
+_JOINED_AT = re.compile(r"(했|였|었|았|있|없|하|이|되)(?:으며|며|고), ")
+_JOINED_STEM = {"했": "했습니다", "였": "였습니다", "었": "었습니다", "았": "았습니다",
+                "있": "있습니다", "없": "없습니다", "하": "합니다", "이": "입니다", "되": "됩니다"}
+
+
+def _join_two(first: str, second: str) -> str | None:
+    """「A합니다.」 and 「B」 as 「A하며, B」; None when `first` does not end so."""
+    for ending, joined in _JOINED_FORM:
+        if first.endswith(f"{ending}."):
+            return f"{first[:-len(ending) - 1]}{joined}, {second}"
+    return None
+
+
+def _split_one(sentence: str) -> str | None:
+    """「A하며, B」 as 「A합니다. B」 at the joint nearest its middle; None when it has none."""
+    joints = [m for m in _JOINED_AT.finditer(sentence)
+              if m.start() > 8 and len(sentence) - m.end() > 8]
+    if not joints:
+        return None
+    m = min(joints, key=lambda j: abs(j.end() - len(sentence) / 2))
+    return f"{sentence[:m.start()]}{_JOINED_STEM[m.group(1)]}. {sentence[m.end():]}"
+
+
+def _prose_line(line: str) -> bool:
+    stripped = line.strip()
+    return bool(stripped) and not (stripped.startswith(("|", "#", "!", "```", "**"))
+                                   or _NOT_PROSE.match(stripped))
+
+
+def fit_count(text: str, want: int) -> str:
+    """`text` brought to `want` sentences by joining or splitting at a clause joint (「…필요하며,
+    …」 ↔ 「…필요합니다. …」), nothing reworded; as it was when that does not get there."""
+    lines = (text or "").split("\n")
+    split = re.compile(r"(?<=[.!?。])\s+")
+    for _ in range(4):
+        got = sentence_count("\n".join(lines))
+        if not want or got == want:
+            break
+        prose = [i for i, line in enumerate(lines) if _prose_line(line)]
+        said = {i: split.split(lines[i].strip()) for i in prose}
+        if got > want:
+            # the shortest neighbouring pair: in one paragraph, or two with only blanks between
+            pairs = [(len(a) + len(b), i, k, i) for i in prose
+                     for k, (a, b) in enumerate(zip(said[i], said[i][1:], strict=False))
+                     if _join_two(a, b)]
+            pairs += [(len(said[i][-1]) + len(said[j][0]), i, len(said[i]) - 1, j)
+                      for i, j in zip(prose, prose[1:], strict=False)
+                      if not any(x.strip() for x in lines[i + 1:j])
+                      and _join_two(said[i][-1], said[j][0])]
+            if not pairs:
+                break
+            _, i, k, j = min(pairs)
+            if i == j:
+                said[i][k:k + 2] = [_join_two(said[i][k], said[i][k + 1])]
+                lines[i] = " ".join(said[i])
+            else:
+                said[i][-1] = _join_two(said[i][-1], said[j][0])
+                lines[i] = " ".join(said[i] + said[j][1:])
+                del lines[i + 1:j + 1]
+        else:
+            longest = max(((len(sent), i, k) for i in prose for k, sent in enumerate(said[i])),
+                          default=None)
+            if longest is None or (cut := _split_one(said[longest[1]][longest[2]])) is None:
+                break
+            _, i, k = longest
+            said[i][k] = cut
+            lines[i] = " ".join(said[i])
+    out = "\n".join(lines)
+    return out if sentence_count(out) == want else text
+
+
 def count_met(text: str, want: int, most: bool = False) -> bool:
     """Whether the part has the sentence count asked (at most `want` for 「이내」)."""
     got = sentence_count(text)
     return got <= want if most else got == want
+
+
+def better_shortening(old: str, first: str, second: str, asked: str, given: str = "") -> bool:
+    """Whether the `first` shortening of `old` answers the ask better than the `second`: the
+    sentence count asked first (a fact it leaves out is said in the reply), then fewer misses."""
+    want, most = sentences_asked(asked)
+    if want and count_met(first, want, most) != count_met(second, want, most):
+        return count_met(first, want, most)
+    return shortening_misses(old, second, asked, given) > shortening_misses(old, first, asked,
+                                                                             given)
+
+
+def without_added_boxes(old: str, new: str) -> str:
+    """`new` minus the boxes (「```callout」) beyond those `old` has, the last ones first."""
+    extra = len(_CALLOUT.findall(new or "")) - len(_CALLOUT.findall(old or ""))
+    if extra <= 0:
+        return new
+    boxes = list(_CALLOUT_BLOCK.finditer(new))
+    had = set(_CALLOUT.findall(old or ""))
+    # a box under a title the part had stays; the others go, newest first
+    gone = [m for m in reversed(boxes) if m.group(1) not in had][:extra]
+    out = new
+    for m in sorted(gone, key=lambda m: m.start(), reverse=True):
+        out = out[:m.start()] + out[m.end():]
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
 
 
 def shortening_misses(old: str, new: str, asked: str, given: str = "") -> int:
@@ -2197,6 +2354,8 @@ def drift_faults(old: str, new: str, others: list[str]) -> list[str]:
 
 #: a box in a part: its first line is its title
 _CALLOUT = re.compile(r"```callout\n([^\n`]{1,80})\n")
+#: a whole box, title to closing fence
+_CALLOUT_BLOCK = re.compile(r"```callout\n([^\n`]{1,80})\n[^`]{0,4000}?```")
 
 
 def removed_blocks(old: str, new: str, part: int) -> list[str]:
