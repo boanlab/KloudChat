@@ -2689,7 +2689,8 @@ async def minutes_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict
 #: a memo clause that gives someone a task or leaves one open: 「…하기로 함」, 「검토」
 _ACTION_SAID = re.compile(r"기로|가져오|맡|담당|검토|예정|해야|필요|정하지|미정|추후|나중에|요청")
 _UNOWNED = re.compile(r"^(?:미정|확인\s{0,2}필요|\[[가-힣 ·]{1,10}\])")
-_MEMO_CLAUSE = re.compile(r"[\n.,:;。]|(?<=[함음됨임])\s")
+#: a memo's clauses: at stops and commas, after 「…함」「…됨」「…했음」 (not 「다음」「모임」)
+_MEMO_CLAUSE = re.compile(r"[\n.,:;。]|(?<=[함됨])\s|(?<=[었았였했있없]음)\s")
 UNASSIGNED_WHY = ("이 행의 할 일은 자료에서 누구에게도 맡겨지지 않았다(결정이나 안건일 뿐이다). "
                   "실행 항목 표에서 이 행을 빼라 — 결정이면 결정 사항에만 둔다.")
 
@@ -2697,7 +2698,7 @@ UNASSIGNED_WHY = ("이 행의 할 일은 자료에서 누구에게도 맡겨지�
 def unassigned_rows(sections: list[dict], material: str) -> list[tuple[int, str, list[str]]]:
     """(section, row, [task]) for action rows with no owner whose task no memo clause gives
     anyone or leaves open: 「2학기 튜터링 모집 시행 | 미정」 from 「모집 기간은 11/3~11/14로 확정」."""
-    from app.services import stated_days
+    from app.services import stated_meeting
 
     clauses = [re.sub(r"\s+", "", c).lower() for c in _MEMO_CLAUSE.split(material or "")
                if _ACTION_SAID.search(c)]
@@ -2712,8 +2713,7 @@ def unassigned_rows(sections: list[dict], material: str) -> list[tuple[int, str,
                 continue
             if not _UNOWNED.match(row[owner].strip(" *")):
                 continue
-            words = stated_days._words(row[task])
-            if words and not any(w in c for w in words for c in clauses):
+            if not stated_meeting.task_given(row[task], clauses):
                 out.append((table.section, line, [row[task].strip(" *")]))
     return out
 
@@ -4825,8 +4825,21 @@ def _skip_line(line: str) -> bool:
             or bool(re.match(r"^\*\*(?:표|그림)\s{0,2}\d", stripped)))
 
 
+def _owner_tasked(cell: str, task: str, people: dict[str, list[str]], material: str) -> bool:
+    """Whether every memo person named in an owner cell has the row's task from a memo item
+    naming them (「박민호」 on 「간식비 집행 계획 수립」 from 「박민호가 간식비 80만원을 요청」:
+    no)."""
+    from app.services import stated_meeting
+
+    named = [names for name, names in people.items() if name in cell]
+    return all(stated_meeting.task_given(task, stated_meeting.items_of(material, names))
+               for names in named)
+
+
 def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], list[str]]:
     """Repair owners/quantities absent from material; returns sections and repair codes."""
+    from app.services import stated_meeting
+
     flat = re.sub(r"\s+", "", material or "")
     numbers = _material_numbers(material)
     given = {(v, u) for v, u, _ in _quantities(_digits(material))}
@@ -4869,16 +4882,25 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
         last = blank(clauses[-1]) if bad[-1] else clauses[-1]
         return " ".join([*kept, last])
 
+    people = stated_meeting.people(material)
     for table in tables(out):
         owner, due = _owner_due(table.header, r"기한|마감|완료일|due|일시|시점")
         # one 「담당·기한」 column: its row is a sentence, kept whole
         combined = owner is None and _column(table.header, r"담당|책임|owner") is not None
+        task = None if owner is None else _task_column(
+            table.header, (owner, due, _column(table.header, r"비고|사유|메모|원문")))
         content = str(out[table.section].get("content") or "")
         for line, row in table.rows:
             row = list(row)
             changed = False
             if owner is not None and len(row) > owner and not _owner_known(row[owner], flat):
                 row[owner] = placeholders.for_header(table.header[owner])
+                codes.append("minutes_owner")
+                changed = True
+            elif task is not None and len(row) > max(owner, task) \
+                    and not _owner_tasked(row[owner], row[task], people, material):
+                # a memo person on a task no memo item gives them: the owner is open
+                row[owner] = "미정"
                 codes.append("minutes_owner")
                 changed = True
             around = " ".join([*table.header, *row])

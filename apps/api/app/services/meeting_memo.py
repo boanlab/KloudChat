@@ -676,6 +676,62 @@ def dedupe_rows(sections: list[dict]) -> tuple[list[dict], int]:
     return out, gone
 
 
-__all__ = ["Meeting", "Memo", "borrowed_next", "decision_rows", "decisions", "dedupe_rows", "drop",
-           "false_absences", "false_dues", "fill_head", "of_request", "overview_day", "read",
-           "relative_dues"]
+# ── counts ──
+
+_COUNT_WORDS = ("한", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉", "열")
+#: a count announcing the items that follow: 「분담한 일은 세 가지입니다」, 「다음 3건」
+_ANNOUNCED = re.compile(
+    r"(?<![가-힣\d])(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|[1-9]\d?)\s?(가지|건|개)"
+    r"(?=입니다|이다|이며|이고|로\s정리|를\s정리|은\s(?:다음|아래)|는\s(?:다음|아래))"
+    r"|(?<=다음\s)(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|[1-9]\d?)\s?(가지|건|개)(?![가-힣])")
+_LIST_ITEM = re.compile(r"^\s{0,4}(?:[-*•]|\d{1,2}[.)])\s")
+_CAPTION_START = re.compile(r"\s{0,4}\*{0,2}\s{0,2}(?:표|그림)\s?\d")
+_RULE_LINE = re.compile(r"^\s{0,4}\|?[\s|:-]{3,}$")
+
+
+def _block_items(block: str) -> int:
+    """Rows of a table block (no header or rule line), or items of a list block; 0 otherwise."""
+    lines = [ln for ln in block.split("\n") if ln.strip()]
+    if lines and all(ln.lstrip().startswith("|") for ln in lines):
+        rules = [k for k, ln in enumerate(lines) if _RULE_LINE.match(ln)]
+        return len(lines) - rules[0] - 1 if rules and rules[0] >= 1 else 0
+    if lines and all(_LIST_ITEM.match(ln) for ln in lines):
+        return len(lines)
+    return 0
+
+
+def counted(sections: list[dict]) -> tuple[list[dict], int]:
+    """A paragraph announcing N items (「분담한 일은 세 가지입니다」) right before the table or
+    list that holds them (its caption between) says the number of items that list holds."""
+    out = [dict(s) for s in sections]
+    fixed = 0
+    for sec in out:
+        # blocks at even places, the blank lines between them kept as written
+        parts = re.split(r"(\n[ \t]{0,4}\n)", str(sec.get("content") or ""))
+        blocks = list(range(0, len(parts), 2))
+        for at, k in enumerate(blocks[:-1]):
+            block = parts[k]
+            found = list(_ANNOUNCED.finditer(block))
+            if len(found) != 1 or _LIST_ITEM.match(block) \
+                    or block.lstrip().startswith(("|", "#", "```", "**표", "**그림")):
+                continue
+            nxt = blocks[at + 1]
+            if _CAPTION_START.match(parts[nxt]) and at + 2 < len(blocks):
+                nxt = blocks[at + 2]
+            items = _block_items(parts[nxt])
+            m = found[0]
+            said = m.group(1) or m.group(3)
+            n = int(said) if said.isdigit() else _COUNT_WORDS.index(said) + 1
+            if not items or items == n or items > len(_COUNT_WORDS):
+                continue
+            start = m.start(1) if m.group(1) else m.start(3)
+            word = str(items) if said.isdigit() else _COUNT_WORDS[items - 1]
+            parts[k] = block[:start] + word + block[start + len(said):]
+            fixed += 1
+        sec["content"] = "".join(parts)
+    return out, fixed
+
+
+__all__ = ["Meeting", "Memo", "borrowed_next", "counted", "decision_rows", "decisions",
+           "dedupe_rows", "drop", "false_absences", "false_dues", "fill_head", "of_request",
+           "overview_day", "read", "relative_dues"]

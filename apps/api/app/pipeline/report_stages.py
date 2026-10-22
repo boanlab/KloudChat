@@ -2167,7 +2167,8 @@ class MinutesReground(Base):
                                                       strong=bundle.request.strong)
         # a day, clock, place or 「다음 회의」 deadline called missing that the memo gives, the
         # next meeting's day, room or clock in this one's overview, a memo decision no decision
-        # row holds, a row written twice, and a value offered as its own alternative
+        # row holds, a row written twice, a count its list no longer has, and a value offered
+        # as its own alternative
         memo = _meeting_given(bundle)
         sections = meeting_memo.overview_day(sections, bundle.document.head_block, memo)
         sections, _ = meeting_memo.borrowed_next(sections, memo)
@@ -2175,6 +2176,8 @@ class MinutesReground(Base):
         sections, _ = meeting_memo.false_dues(sections, memo)
         sections, _ = meeting_memo.decision_rows(sections, memo)
         sections, _ = meeting_memo.dedupe_rows(sections)
+        # a count before a table or list that rows dropped above left behind
+        sections, _ = meeting_memo.counted(sections)
         sections = [{**sec, "content": word_fix.twin_alternatives(str(sec.get("content") or ""))}
                     for sec in sections]
         # the meeting held told in the past; what comes next stays ahead
