@@ -642,6 +642,8 @@ class Rewrite(Base):
                         asked_of = " / ".join(asks) or _typed(bundle)
                         # a line to the person about the rewrite (「다음은 요청하신 대로 …」)
                         body = revise.without_preamble(body)
+                        # sentences naming internal blocks go before the count is read
+                        body = internal_words.scrub(body)
                         shortening = revise.shortening_asked(asked_of)
                         if shortening:
                             # the ask restated as a sentence of the part: not its content
@@ -879,8 +881,15 @@ class Consistency(Base):
             aligned = {"type": "step", "id": "consistency", "status": "error",
                        "label": "앞뒤 맞춤 검사 실패"}
         doc.sections = parts
+        clauses = bundle.plan.revision.clauses if bundle.plan.revision is not None else {}
         for index, part in enumerate(parts):
-            if str(part.get("content") or "") != before_parts[index]:
+            content = str(part.get("content") or "")
+            want, most = revise.sentences_asked(" / ".join(clauses.get(index, [])))
+            if (want and content != before_parts[index] and revise.count_met(
+                    before_parts[index], want, most) and not revise.count_met(content, want, most)):
+                # the count the rewrite met, undone by the repair: said
+                doc.counted.append((index + 1, want, revise.sentence_count(content)))
+            if content != before_parts[index]:
                 yield {
                     "type": "section", "sectionId": part.get("id"), "heading": part.get("heading"),
                     "content": part.get("content"), "done": True,

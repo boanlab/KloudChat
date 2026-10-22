@@ -5306,7 +5306,7 @@ def lost_across(old: list[dict], new: list[dict]) -> list[str]:
 #: an item count asked of a slide: 「항목을 하나로」, 「두 개로」, 「two bullets」
 _ITEMS_ASK = re.compile(
     r"(?P<n>하나|한\s?개|두\s?개|세\s?개|네\s?개|\d{1,2}\s?개)\s?(?:의\s?)?(?:항목|요점|글머리)?\s?"
-    r"(?:로|으로)\s?(?:줄|합|묶|정리|나눠|나누|분리|쪼개)"
+    r"(?:로|으로)\s?(?:줄|합|묶|정리|나눠|나누|분리|쪼개|만들|해|(?=[\s.!~]{0,3}$))"
     r"|\b(?P<m>one|two|three|four|\d{1,2})\s{1,3}(?:items?|points?|bullets?)\b"
     # 「Merge the items on slide 4 into one」
     r"|\binto\s{1,3}(?P<k>one|two|three|four|a\s{1,3}single)\b", re.I)
