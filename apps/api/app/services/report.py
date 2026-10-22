@@ -3722,7 +3722,8 @@ async def rewrite_section(
     """Rewrites one section in document context; `material` is the request's own data."""
     outline = "\n".join(f"{i + 1}. {s.get('heading') or ''}" for i, s in enumerate(sections))
     written = "\n\n".join(
-        f"## {s.get('heading')}\n{s.get('content') or ''}"
+        # a picture's bytes are no words of the section
+        f"## {s.get('heading')}\n{_INLINE_PICTURE.sub('', s.get('content') or '')}"
         for s in sections
         if s.get("id") != target_id and (s.get("content") or "").strip()
     )
@@ -3969,6 +3970,19 @@ def _collapse_arithmetic(body: str) -> str:
     return "\n".join(out)
 
 
+#: where a sentence's clauses part: 「…하며, …」
+_CLAUSE_BREAK = re.compile(r",\s")
+
+
+def _says_more(sentence: str) -> bool:
+    """Whether a sentence has a clause of its own with no figure (「…4% 허용 여부를 결재받아야
+    하며, 영남 출고 SLA 협의 자리가 필요합니다」): more than the row's figures read back."""
+    clauses = _CLAUSE_BREAK.split(sentence)
+    return len(clauses) > 1 and any(
+        not _NUMBER_TOKEN.search(c) and len(re.findall(r"[가-힣A-Za-z]", c)) >= 8
+        for c in clauses)
+
+
 def trim_table_echo(body: str) -> str:
     """Sentences only echoing same-section table cells dropped; last prose sentence kept."""
     lines = body.split("\n")
@@ -3996,7 +4010,8 @@ def trim_table_echo(body: str) -> str:
         for sentence in sentences:
             numbers = _number_keys(sentence)
             # an echo: the row's figures and nothing more; who decided what stays (회의록)
-            echo = len(numbers) >= 2 and numbers <= table_cells and not _DECIDED.search(sentence)
+            echo = (len(numbers) >= 2 and numbers <= table_cells and not _DECIDED.search(sentence)
+                    and not _says_more(sentence))
             keep.append(not echo or bool(_ENUMERATED.match(sentence)))
         # a cut sentence the next kept one leans on comes back
         for i in range(len(sentences) - 2, -1, -1):

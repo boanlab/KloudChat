@@ -13,8 +13,9 @@ _LABEL_SPOT = re.compile(
 )
 _CELL_NUMBER = re.compile(r"^\**\s{0,2}(-?\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}\**$")
 
-#: zero-width after sentence marks, never inside dotted dates/number runs
-NO_NUMBER_DOT_BREAK = r"(?!(?<=\d\.)\s{0,8}[\d(])(?<!\d\.\s\d\.)(?<!\d\.\s\d\d\.)"
+#: zero-width after sentence marks, never inside dotted dates/number runs nor after 「vs.」
+NO_NUMBER_DOT_BREAK = (r"(?!(?<=\d\.)\s{0,8}[\d(])(?<!\d\.\s\d\.)(?<!\d\.\s\d\d\.)"
+                       r"(?<![^A-Za-z][Vv][Ss]\.)")
 #: sentence-ending whitespace outside dotted runs
 SENTENCE_BREAK = re.compile(r"(?<=[.!?。])" + NO_NUMBER_DOT_BREAK + r"\s+")
 

@@ -183,3 +183,145 @@ def test_figures_are_real_figures_and_money_is_compared_as_money():
     started = time.monotonic()
     deck.amounts_in("1억" + " " * 50000 + "5")
     assert time.monotonic() - started < 0.5
+
+
+#: reverify-u t1e 2절: prose, a table and a picture the writer is not shown
+PICTURE = "![그림 2. 단가 인하 옵션 대비](data:image/png;base64,iVBORw0KGgo=)"
+OPTIONS = ("**표 2. 진행 중 이슈 및 요청 사항**\n\n| 안 | 금액 |\n|----|------|\n"
+           "| 5% 인하 (요구 수용) | 미정 |\n| 4% 인하 (최대 허용) | 미정 |")
+ISSUES = ("단가 인하 폭에 대한 결재와 물류팀과의 SLA 협의가 필요합니다.\n\n대성유통의 5% 인하 "
+          "요구에 대해 최대 허용 인하 폭은 4%이므로, 4%까지의 인하 여부에 대한 결재를 "
+          "요청합니다.\n\n영남 출고 지연이 반복되지 않도록 물류팀과의 출고 SLA 협의 자리를 "
+          "마련해 주십시오. CRM 중복 거래처 37건의 병합은 60% 진행되었습니다(표 2, 그림 2)."
+          f"\n\n{OPTIONS}\n\n{PICTURE}")
+#: two sentences: the first holds the table's figures and a clause of its own
+ISSUES_TWO = ("대성유통 단가 인하(5% 요구)에 대해 최대 4% 허용 여부를 결재받아야 하며, 영남 "
+              "출고 지연 재발 방지를 위해 물류팀과의 출고 SLA 협의 자리가 필요합니다.\nCRM "
+              "중복 거래처 37건의 병합 작업은 현재 60% 진행되었습니다.")
+
+
+def test_a_sentence_saying_more_than_its_tables_figures_is_no_echo():
+    from app.services import report
+
+    body = f"{ISSUES_TWO}\n\n{OPTIONS}"
+    assert report.trim_table_echo(body) == body
+    # a sentence that only reads the rows back still goes
+    echo = f"첫 문장입니다. 5% 인하와 4% 인하 두 안이 있습니다.\n\n{OPTIONS}"
+    assert "두 안이" not in report.trim_table_echo(echo)
+    started = time.monotonic()
+    report._says_more("5%, " * 20000)
+    assert time.monotonic() - started < 0.5
+
+
+def test_a_rewrite_keeps_the_parts_pictures_unless_their_removal_is_asked():
+    kept = revise.keep_pictures(ISSUES, f"{ISSUES_TWO}\n\n{OPTIONS}", ASK)
+    assert kept.endswith(PICTURE) and kept.count(PICTURE) == 1
+    assert revise.keep_pictures(ISSUES, kept, ASK) == kept
+    assert PICTURE not in revise.keep_pictures(ISSUES, ISSUES_TWO, "2절 그림을 빼줘")
+    started = time.monotonic()
+    revise.keep_pictures("![a](b)\n" + " " * 50000, " " * 50000, ASK)
+    assert time.monotonic() - started < 0.5
+
+
+@pytest.mark.asyncio
+async def test_a_section_with_a_table_and_a_picture_shortens_to_the_count_asked(monkeypatch):
+    parts = [PARTS[0], {"id": "s1", "heading": "진행 중 이슈 및 요청 사항", "content": ISSUES,
+                        "format": "markdown"}]
+    notes: list[str] = []
+
+    async def rewrite_section(**kwargs):
+        notes.append(kwargs["note"])
+        return f"{ISSUES_TWO}\n\n{OPTIONS}", {"inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(revise_stages._report(), "rewrite_section", rewrite_section)
+    bundle = _bundle()
+    bundle.document.sections = [dict(p) for p in parts]
+    bundle.plan.order = [1]
+    _ = [e async for e in revise_stages.Rewrite().run(bundle, Context())]
+    content = bundle.document.sections[1]["content"]
+    assert len(notes) == 1 and revise.sentence_count(content) == 2
+    # numbered anew with the document; the picture is the one the part had
+    assert "영남 출고 지연" in content and "단가 인하 옵션 대비](data:image/png;base64," in content
+    assert save_stages.revision_reply(bundle.document, None, is_deck=False) == "2절을 고쳤습니다."
+
+
+def test_a_box_a_shortening_brought_in_is_taken_out_and_one_the_part_had_stays():
+    box = "```callout\n협상 일정\n목요일 2차 미팅 전 확정\n```"
+    assert revise.without_added_boxes(BEFORE, f"{box}\n\n{TWO}") == TWO
+    assert revise.without_added_boxes(f"{BEFORE}\n\n{box}", f"{TWO}\n\n{box}") == (
+        f"{TWO}\n\n{box}")
+    started = time.monotonic()
+    revise.without_added_boxes("", "```callout\nx\n" + " " * 50000)
+    assert time.monotonic() - started < 0.5
+
+
+@pytest.mark.asyncio
+async def test_two_sentences_whose_figures_are_the_tables_are_not_cut_below_the_count(
+        monkeypatch):
+    # the first sentence's figures are all in the table: no echo cut under a count asked
+    asked = ("대성유통의 5% 인하 요구에 대해 최대 4%까지의 인하 여부를 결재해 주십시오. 영남 출고 "
+             "지연 재발 방지를 위한 물류팀 출고 SLA 협의 자리를 마련해 주십시오.")
+    parts = [PARTS[0], {"id": "s1", "heading": "진행 중 이슈 및 요청 사항", "content": ISSUES,
+                        "format": "markdown"}]
+
+    async def rewrite_section(**_kwargs):
+        return f"{asked}\n\n{OPTIONS}", {"inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(revise_stages._report(), "rewrite_section", rewrite_section)
+    bundle = _bundle()
+    bundle.document.sections = [dict(p) for p in parts]
+    bundle.plan.order = [1]
+    _ = [e async for e in revise_stages.Rewrite().run(bundle, Context())]
+    content = bundle.document.sections[1]["content"]
+    assert content.startswith("대성유통의 5% 인하 요구") and revise.sentence_count(content) == 2
+
+
+def test_the_shortening_that_meets_the_count_is_the_better_one():
+    assert revise.better_shortening(BEFORE, TWO, ONE, ASK)
+    assert not revise.better_shortening(BEFORE, ONE, TWO, ASK)
+    # both off the count: the one missing less
+    assert revise.better_shortening(BEFORE, BEFORE, ONE, ASK)
+
+
+def test_vs_ends_no_sentence_and_a_picture_is_no_pointer_sentence():
+    from app.services import report
+
+    one = ("단가 인하 폭(5% 요구 vs. 최대 허용 4%)의 결재와 물류팀 SLA 협의 자리 마련이 "
+           "요청 사항이며, CRM 병합은 60% 진행되었습니다.")
+    assert revise.sentence_count(one) == 1
+    assert report.trim_restatements(one, ["대성유통은 5% 인하를 요구했습니다."])[0] == one
+    three = f"첫 문장입니다. 둘째 문장입니다. 셋째 문장입니다.\n\n{OPTIONS}\n\n{PICTURE}"
+    assert revise.fold_table_pointers(three, 2).endswith(PICTURE)
+
+
+@pytest.mark.asyncio
+async def test_a_retry_off_the_count_the_first_version_met_does_not_replace_it(monkeypatch):
+    # two sentences without A사; the retry puts it back but writes the section out again
+    thin = ("대성유통은 10/16 견적서를 보냈고 5% 인하 요구와 4% 한도 사이의 폭이 남았습니다. "
+            "한솔마트 클레임 2건은 420만원 정산으로 마쳤습니다.")
+    doc, notes = await _rewrite(monkeypatch, [thin, BEFORE])
+    assert len(notes) == 2 and "Keep it to 2 sentences" in notes[1] and "A사" in notes[1]
+    assert doc.sections[1]["content"] == thin
+    assert doc.counted == [] and doc.dropped == ["2절 A사"]
+
+
+def test_a_count_still_off_is_met_by_joining_or_splitting_clauses():
+    three = ("진행 중 이슈는 단가 결재입니다. 물류팀 SLA 협의가 필요합니다. CRM 병합은 다음 주에 "
+             "마칩니다.")
+    assert revise.fit_count(three, 2) == (
+        "진행 중 이슈는 단가 결재이며, 물류팀 SLA 협의가 필요합니다. CRM 병합은 다음 주에 "
+        "마칩니다.")
+    one = ("대성유통 단가 인하 폭에 대한 결재가 필요하며, 영남 출고 지연 재발 방지를 위해 물류팀 "
+           "SLA 협의 자리를 마련해 주십시오.")
+    assert revise.fit_count(f"{one}\n\n{OPTIONS}", 2) == (
+        "대성유통 단가 인하 폭에 대한 결재가 필요합니다. 영남 출고 지연 재발 방지를 위해 물류팀 "
+        f"SLA 협의 자리를 마련해 주십시오.\n\n{OPTIONS}")
+    # across paragraphs, and nothing reworded where no joint is
+    paragraphs = "가는 됩니다.\n\n나는 했습니다.\n\n다다."
+    assert revise.sentence_count(revise.fit_count(paragraphs, 2)) == 2
+    plain = "요청 드립니다. 확인 바랍니다. 끝."
+    assert revise.fit_count(plain, 2) == plain
+    started = time.monotonic()
+    revise.fit_count("하며, " * 10000, 2)
+    revise.fit_count("합니다. " * 2000, 1)
+    assert time.monotonic() - started < 0.5

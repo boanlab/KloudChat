@@ -154,7 +154,7 @@
   }
  },
  {
-  "key": "674b225330ef5361bcdcc3be",
+  "key": "d3f4ee6fb62002461636b2b1",
   "stage": "figures",
   "kind": "diagram_plan",
   "head": "아래는 보고서의 부분들이다. 각 부분의 제목과 내용을 읽고, **글보다 도식이 더\n잘 전달하는 곳**에만 도식을 하나씩 제안하라.\n\n원래 요청:\n그린텍스타일 인사팀이랑 미팅한 메모야. 이걸로 교육 제안서 만들어 줘. 1인당 비용도 보여 줘.\n\n[미팅 메모 — 그린텍스타일(주) 인사팀, ",
@@ -220,7 +220,7 @@
   }
  },
  {
-  "key": "d9434992987589b4b147f5bc",
+  "key": "fab150efbde163492e8b0e9f",
   "stage": "verify",
   "kind": "verify-neutral",
   "head": "Below are the material and the document's sentences with numbers. Pick only the sentences where the number\nbelongs to a different target in the material (anothe",

@@ -286,7 +286,9 @@ def test_a_shrink_of_an_edited_deck_keeps_the_asked_count_over_the_planners_tota
 def test_a_planner_count_the_code_cannot_read_away_leaves_only_the_asked_one():
     plan = revise.count_change(revise.Plan(scope="outline", note="전체 열 장을 줄인다"),
                                ["a"] * 9, "6장으로 줄여줘")
-    assert plan.note == "장수는 6장으로 맞춘다."
+    assert plan.note == f"장수는 6장으로 맞춘다. {revise._MERGED_KEEP}"
+    assert revise._MERGED_KEEP not in revise.count_change(
+        revise.Plan(scope="outline", note=""), ["a"] * 4, "6장으로 늘려줘").note
 
 
 #: a chart slide with points beside it (reverify-t kd1 5장)
