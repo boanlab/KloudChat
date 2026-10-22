@@ -1,5 +1,7 @@
 """Odd-word fixes on a self-hosted writer's Korean: a checker model names {from, to} pairs,
-code applies only the exact-match ones that keep every number, citation, name and acronym."""
+code applies only the exact-match ones that keep every number, citation, name and acronym; a
+whole word swapped stands when the writer, asked, agrees its own word was wrong. Also one value
+offered as its own alternative (「A 또는 A」) put once, by code."""
 
 from __future__ import annotations
 
@@ -39,8 +41,21 @@ corrected; every other word and ending in it stays as written. At most {limit} f
 Text:
 {text}"""
 
+CONFIRM_PROMPT = """A proofreader suggests swapping a word in Korean prose you wrote. For each
+numbered suggestion, decide whether the swap gives the word the sentence means. Answer yes only
+when the original word is wrong in that sentence (a slip, or a real word that cannot mean what is
+meant); no when the original word is a correct, natural choice, even if the suggestion also fits.
+
+{items}
+
+Answer with JSON only: {{"swap": [numbers answered yes]}}."""
+
 #: fixes asked for and applied per call
 LIMIT = 12
+#: whole-word swaps put to the writer per call
+_CONFIRM_LIMIT = 6
+#: context shown around a swap put to the writer
+_CONTEXT = 70
 #: below this many Hangul syllables: no prose to proofread
 _MIN_HANGUL = 40
 #: text sent to the checker
@@ -177,10 +192,12 @@ def _distance(a: str, b: str) -> int:
     return row[-1]
 
 
-def refusal(old: str, new: str, given: str = "", glossed: bool = False) -> str:
+def refusal(old: str, new: str, given: str = "", glossed: bool = False,
+            confirmed: bool = False) -> str:
     """Why the pair (old → new) is not applied, or "" when it may be. A Korean-only pair is a
     slip of one letter (「날자」 → 「날짜」); a whole word swapped stands only where an English
-    gloss beside it pins the meaning (`glossed`): the checker's reading is no evidence."""
+    gloss beside it pins the meaning (`glossed`) or the writer agreed its word was wrong
+    (`confirmed`): the checker's reading alone is no evidence."""
     if not old.strip() or not new.strip() or old == new:
         return "empty or unchanged"
     if len(old) > 60 or len(new) > 60 or len(new) > 2 * len(old) + 6 or len(old.split()) > 4:
@@ -212,7 +229,8 @@ def refusal(old: str, new: str, given: str = "", glossed: bool = False) -> str:
         # English alone may be a title or a reference; the Korean around it shows it is prose
         return "no Korean around"
     slips = _FOREIGN.findall(old)
-    if (not slips or all(w in new for w in slips)) and not glossed and _distance(old, new) > 1:
+    if (not slips or all(w in new for w in slips)) and not glossed and not confirmed \
+            and _distance(old, new) > 1:
         return "word swapped"
     # a word of the person's or the material's (a name, their term) is theirs to keep
     if given and any(len(w) > 1 and _HANGUL.match(w) and not _FUSED.search(w) and w not in new
@@ -301,10 +319,12 @@ def _bounded(text: str, start: int, end: int, whole: bool = False) -> bool:
                 and near_after.isalpha())
 
 
-def apply(text: str, fixes: list[tuple[str, str]], given: str = ""
+def apply(text: str, fixes: list[tuple[str, str]], given: str = "",
+          confirmed: frozenset[tuple[str, str]] = frozenset()
           ) -> tuple[str, list[tuple[str, str]], list[tuple[str, str, str]]]:
     """(text, applied, refused): each pair replaced where it stands verbatim outside code, links,
-    figure markers and glosses; a refused pair carries the reason."""
+    figure markers and glosses; a refused pair carries the reason. A pair in `confirmed` the
+    writer agreed to may swap a whole word."""
     applied: list[tuple[str, str]] = []
     refused: list[tuple[str, str, str]] = []
     seen: set[str] = set()
@@ -315,7 +335,7 @@ def apply(text: str, fixes: list[tuple[str, str]], given: str = ""
         if len(applied) >= LIMIT:
             refused.append((old, new, "too many"))
             continue
-        if why := refusal(old, new, given, glossed):
+        if why := refusal(old, new, given, glossed, (old, new) in confirmed):
             refused.append((old, new, why))
             continue
         keep = _protected(text)
@@ -347,10 +367,34 @@ def apply(text: str, fixes: list[tuple[str, str]], given: str = ""
 Complete = Callable[[str, list[dict[str, str]], str, int], Awaitable[tuple[str, dict]]]
 
 
-async def fix(text: str, *, model: str, complete: Complete, api_key: str, given: str = ""
-              ) -> tuple[str, dict]:
-    """(text, usage): `text` with its odd words fixed by one `model` call; the text as it was on
-    any failure."""
+def confirm_prompt(text: str, pairs: list[tuple[str, str]]) -> str:
+    """The writer's prompt for whole-word swaps, each with the text around its first place."""
+    items = []
+    for n, (old, new) in enumerate(pairs, 1):
+        at = text.find(old)
+        around = text[max(at - _CONTEXT, 0):at + len(old) + _CONTEXT].replace("\n", " ").strip()
+        items.append(f"{n}. text: …{around}…\n   「{old}」 → 「{new}」")
+    return CONFIRM_PROMPT.format(items="\n".join(items))
+
+
+def parse_confirm(answer: str, pairs: list[tuple[str, str]]) -> frozenset[tuple[str, str]]:
+    """The pairs the writer's JSON answer agrees to; none when it is not one."""
+    start, end = (answer or "").find("{"), (answer or "").rfind("}")
+    try:
+        data = json.loads(answer[start:end + 1]) if 0 <= start < end else {}
+    except json.JSONDecodeError:
+        return frozenset()
+    numbers = data.get("swap") if isinstance(data, dict) else None
+    if not isinstance(numbers, list):
+        return frozenset()
+    return frozenset(pairs[n - 1] for n in numbers
+                     if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(pairs))
+
+
+async def fix(text: str, *, model: str, complete: Complete, api_key: str, given: str = "",
+              writer: str = "") -> tuple[str, dict]:
+    """(text, usage): `text` with its odd words fixed by one `model` call, and the whole-word
+    swaps it refused put to the `writer` once; the text as it was on any failure."""
     usage = {"inputTokens": 0, "outputTokens": 0}
     try:
         answer, usage = await complete(
@@ -363,7 +407,68 @@ async def fix(text: str, *, model: str, complete: Complete, api_key: str, given:
     except Exception as exc:  # noqa: BLE001 - the text stands on any failure
         log.info("word fix failed: %r", exc)
         return text, usage
+    swapped = [(old, new) for old, new, why in refused if why == "word swapped"][:_CONFIRM_LIMIT]
+    if writer and swapped:
+        try:
+            said, more = await complete(
+                writer, [{"role": "user", "content": confirm_prompt(fixed, swapped)}], api_key, 120)
+            agreed = parse_confirm(said, swapped)
+            usage = {k: usage.get(k, 0) + more.get(k, 0) for k in ("inputTokens", "outputTokens")}
+        except Exception as exc:  # noqa: BLE001 - the refusals stand on any failure
+            log.info("word swap confirm failed: %r", exc)
+            agreed = frozenset()
+        if agreed:
+            fixed, more_applied, _ = apply(fixed, sorted(agreed), given, agreed)
+            applied += more_applied
+            refused = [r for r in refused if (r[0], r[1]) not in set(more_applied)]
     if applied or refused:
         log.info("word fix: %d applied %s, %d refused %s", len(applied), applied[:6],
                  len(refused), [(o, n, why) for o, n, why in refused[:6]])
     return fixed, usage
+
+
+#: words that offer an alternative: 「A 또는 A」, 「A 혹은 A」, 「A나 A」
+_ALTERNATIVE = re.compile(r" (?:또는|혹은|내지) |(?<=[가-힣])(?:이나|나) ")
+#: what may end a value before its twin's end: a particle, then no more Hangul
+_TWIN_END = re.compile(
+    r"(?:으로|에서|까지|부터|에|의|로|은|는|이|가|을|를|와|과|도)?(?![가-힣A-Za-z0-9])")
+#: longest value compared
+_TWIN_MAX = 80
+#: words a value may have
+_TWIN_WORDS = 6
+#: what may stand before a value
+_TWIN_START = frozenset(" \t\n|(「『\"'")
+_TWIN_STARTS = re.compile(r"[ \t\n|(「『\"']")
+
+
+def twin_alternatives(text: str) -> str:
+    """`text` with each value offered as its own alternative (「2026-10-21(수) 또는
+    2026-10-21(수)」, 「구글폼이나 구글폼」) put once."""
+    if not text or not _ALTERNATIVE.search(text):
+        return text
+    out, at = [], 0
+    for m in _ALTERNATIVE.finditer(text):
+        if m.start() < at:
+            continue
+        first = text[m.end():m.end() + 1]
+        lo = max(m.start() - _TWIN_MAX, at)
+        # within its cell or line, at most six words
+        lo = max(lo, text.rfind("|", lo, m.start()) + 1, text.rfind("\n", lo, m.start()) + 1)
+        words = text[lo:m.start()].split(" ")
+        lo = m.start() - len(" ".join(words[-_TWIN_WORDS:]))
+        starts = [lo] + [b.end() for b in _TWIN_STARTS.finditer(text, lo, m.start())]
+        for start in starts:
+            # a value starts a word and begins as its twin does
+            if start >= m.start() - 1 or text[start] != first \
+                    or (start and text[start - 1] not in _TWIN_START):
+                continue
+            size = m.start() - start
+            value = text[start:m.start()]
+            if not value.strip() or value != text[m.end():m.end() + size]:
+                continue
+            if _TWIN_END.match(text, m.end() + size):
+                out.append(text[at:m.start()])
+                at = m.end() + size
+                break
+    out.append(text[at:])
+    return "".join(out)

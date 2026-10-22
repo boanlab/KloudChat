@@ -65,6 +65,8 @@ class Meeting:
 class Memo:
     this: Meeting
     next: Meeting
+    #: the memo less its next-meeting clauses
+    rest: str = ""
 
 
 #: the block of card answers and server rules the request carries after the memo
@@ -134,7 +136,7 @@ def read(memo: str) -> Memo:
         head.append(stretch)
     nxt = next((m for c in clauses if (m := _meeting([c], named=False)).has("일시")
                 or m.place), Meeting())
-    return Memo(_meeting(head, named=True), nxt)
+    return Memo(_meeting(head, named=True), nxt, rest)
 
 
 # ── absence claims ──
@@ -322,12 +324,13 @@ _HEAD_BLANK = {"장소": "[장소]", "회의명": "[회의명]", "참석자": "[
 
 
 def fill_head(block: dict | None, memo_text: str) -> dict | None:
-    """A minutes head whose 회의명, 장소 or 참석자 is empty takes the meeting's own value from
-    the memo, else a bracket for the person to fill; an 일시 with no clock takes the memo's.
-    None when nothing changes."""
+    """A minutes head whose 회의명, 장소 or 참석자 is empty (or holds the next meeting's room or
+    clock) takes the meeting's own value from the memo, else a bracket for the person to fill;
+    an 일시 with no clock takes the memo's. None when nothing changes."""
     if not block or not (memo_text or "").strip():
         return None
-    this = read(memo_text).this
+    memo = read(memo_text)
+    this = memo.this
     fields = [list(f) for f in block.get("fields") or []]
     changed = False
     for f in fields:
@@ -335,6 +338,13 @@ def fill_head(block: dict | None, memo_text: str) -> dict | None:
             continue
         name, value = str(f[0]), str(f[1] or "").strip()
         attr = next((a for n, a in _HEAD if name == n or name == f"회의 {n}"), None)
+        field = {"장소": "장소", "일시": "시간"}.get(name.removeprefix("회의 "))
+        if field and value and (left := _borrowed(field, value, memo)) is not None:
+            # the next meeting's room or clock is no value of this one's head
+            key = name.removeprefix("회의 ")
+            f[1] = _HEAD_BLANK.get(key, f"[{key}]") if left == "미정" else left
+            value = str(f[1])
+            changed = True
         if attr and not value:
             f[1] = getattr(this, attr) or _HEAD_BLANK[name.removeprefix("회의 ")]
             changed = True
@@ -371,6 +381,74 @@ def overview_day(sections: list[dict], head: dict | None, memo_text: str) -> lis
                 lines[i] = f"| {parts[0].strip()} | {day} |"
         out.append({**sec, "content": "\n".join(lines)})
     return out
+
+
+#: a field label of a 2-cell row or a list line: 「장소」, 「**회의 일시**」
+_ROW_FIELD = re.compile(r"\**\s{0,2}(?:회의\s{0,2})?(장소|일시|시간|시각)\s{0,2}\**")
+#: a sentence saying where the meeting is held: 「3층 회의실에서 열렸습니다」
+_HELD_AT = re.compile(r"장소|열렸|열린|열리|개최|진행|모여|모였")
+
+
+def _hours(text: str) -> set[int]:
+    out = set()
+    for m in _CLOCK.finditer(text or ""):
+        hour = int(re.search(r"\d{1,2}", m.group(0)).group(0))
+        out.add(hour + 12 if m.group(0).startswith("오후") and hour < 12 else hour)
+    return out
+
+
+def _borrowed(field: str, value: str, memo: Memo) -> str | None:
+    """`value` of this meeting's `field` less what is the next meeting's (its place, its clock)
+    where the memo gives this meeting none: this meeting's own value, else 「미정」; None when
+    nothing is borrowed."""
+    this, nxt = memo.this, memo.next
+    if field == "장소":
+        if not nxt.place or this.place or _flat(nxt.place) not in _flat(value) \
+                or _flat(nxt.place) in _flat(memo.rest):
+            return None
+        return "미정"
+    if not nxt.clock or this.clock or not (_hours(value) & _hours(nxt.clock)) \
+            or _hours(memo.rest) & _hours(nxt.clock):
+        return None
+    left = " ".join(_CLOCK.sub(" ", value).split()).strip(" ,")
+    return left or "미정"
+
+
+def borrowed_next(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
+    """This meeting's place or clock outside the next-meeting part that is the next meeting's
+    (「장소 | 3층 회의실」 when only the next meeting's clause gives a room): the row or list line
+    takes 「미정」 (an 일시 keeps its day), and a sentence holding the meeting there goes."""
+    memo = read(memo_text)
+    if not (memo.next.place and not memo.this.place) \
+            and not (memo.next.clock and not memo.this.clock):
+        return sections, 0
+    out, fixed = [], 0
+    for sec in sections:
+        if _NEXT_HEADING.search(str(sec.get("heading") or "")):
+            out.append(sec)
+            continue
+        content = str(sec.get("content") or "")
+        lines = content.split("\n")
+        gone: list[str] = []
+        for i, line in enumerate(lines):
+            parts = line.strip().strip("|").split("|")
+            if line.lstrip().startswith("|") and len(parts) == 2 \
+                    and (m := _ROW_FIELD.fullmatch(parts[0].strip())) \
+                    and not _NEXT_SAID.search(parts[1]):
+                field = "장소" if m.group(1) == "장소" else "시간"
+                if (value := _borrowed(field, parts[1], memo)) is not None:
+                    lines[i] = f"| {parts[0].strip()} | {value} |"
+                    fixed += 1
+            elif not line.lstrip().startswith(("|", "#")) and memo.next.place \
+                    and not memo.this.place:
+                gone += [p for p in _sentences(line) if _flat(memo.next.place) in _flat(p)
+                         and _HELD_AT.search(p) and not _NEXT_SAID.search(p)]
+        text = "\n".join(lines)
+        for piece in gone:
+            text = drop(text, piece)
+        fixed += len(gone)
+        out.append({**sec, "content": text} if text != content else sec)
+    return out, fixed
 
 
 def _month_day(text: str) -> tuple[int, int] | None:
@@ -598,6 +676,6 @@ def dedupe_rows(sections: list[dict]) -> tuple[list[dict], int]:
     return out, gone
 
 
-__all__ = ["Meeting", "Memo", "decision_rows", "decisions", "dedupe_rows", "drop",
+__all__ = ["Meeting", "Memo", "borrowed_next", "decision_rows", "decisions", "dedupe_rows", "drop",
            "false_absences", "false_dues", "fill_head", "of_request", "overview_day", "read",
            "relative_dues"]
