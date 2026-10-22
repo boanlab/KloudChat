@@ -2736,10 +2736,13 @@ def minutes_unsourced(doc: Doc) -> list[Finding]:
         return stated_meeting.is_next_part(str(doc.sections[index].get("heading") or ""))
 
     held = stated_meeting.open_rows(doc.sections)
+    # an agenda table's row is judged whole (`w`)
     return rows + [Finding(i, piece, "minutes_unsourced",
                            stated_meeting.why(said, piece, material, held), rank=1,
-                           still=lambda s, m=material, n=next_part(i): bool(
-                               stated_meeting.untraced(s, m, next_part=n, rows=held)))
+                           still=lambda s, m=material, n=next_part(i),
+                           w=piece.startswith("|") and said == [piece.strip()]: bool(
+                               stated_meeting.untraced(s, m, next_part=n, rows=held)
+                               or (w and stated_meeting.unset_agenda(s, m, listed=True))))
                    for i, piece, said in stated_meeting.findings(
                        doc.sections, material, _reference_heading())]
 

@@ -651,17 +651,25 @@ def skill_tokens(skill: Skill) -> int:
 async def agent_skill_rows(db: AsyncSession, user_id: str, agent: Agent | None,
                            kind: str | None = None) -> list[Skill]:
     """The agent's always-on skills (`Agent.active_skill_ids`) this person may run: the
-    agent owner's, the person's own, or shared ones; disabled or other-surface ones skipped."""
+    agent owner's, the person's own, or shared ones; disabled or other-surface ones skipped.
+    On a document surface (`kind` not chat) the agent's 「필요할 때」 skills made for that surface
+    alone join them: a document writer has no tool to pick a skill with, and such a skill is
+    never offered in chat."""
     ids = [str(x) for x in (agent.active_skill_ids or [])] if agent is not None else []
-    if not ids:
+    loose = [str(x) for x in (agent.skill_ids or []) if str(x) not in ids] \
+        if agent is not None and kind and kind != "chat" else []
+    if not ids and not loose:
         return []
     owners = {agent.owner_id, user_id}
     if agent.origin_id:
         origin = await db.get(Agent, agent.origin_id)
         if origin is not None:
             owners.add(origin.owner_id)
-    rows = (await db.exec(select(Skill).where(col(Skill.id).in_(ids)))).all()
+    rows = (await db.exec(select(Skill).where(col(Skill.id).in_([*ids, *loose])))).all()
     by_id = {row.id: row for row in rows}
+    # a loose skill counts only when it names this surface and not chat
+    ids += [i for i in loose if (row := by_id.get(i)) is not None and row.kinds
+            and kind in row.kinds and "chat" not in row.kinds]
     out: list[Skill] = []
     spent = 0
     for skill_id in ids[:MAX_AGENT_SKILLS]:
