@@ -8,7 +8,7 @@ import shlex
 import time
 from typing import Any
 
-from app.services import settings_store, tools_gateway
+from app.services import netguard, settings_store, tools_gateway
 
 log = logging.getLogger(__name__)
 
@@ -172,9 +172,39 @@ class NotRunnable(RuntimeError):
     pass
 
 
+#: Member's own remote connector aimed at the deployment's network.
+INTERNAL_ENDPOINT = "내부 네트워크 주소의 커넥터는 관리자만 등록할 수 있습니다."
+
+
+def public_only(connector: Any, *, owner_is_admin: bool) -> bool:
+    """Whether a remote connector may reach only public addresses: a member's own; catalogue
+    entries and an administrator's own may name internal hosts."""
+    transport = str(getattr(connector.transport, "value", connector.transport))
+    return transport != "stdio" and not getattr(connector, "official", False) \
+        and not owner_is_admin
+
+
+async def endpoint_refusal(endpoint: str) -> str | None:
+    """Why a member's remote endpoint is refused (internal, a tool-address placeholder, or not
+    http(s)), or None; a name that does not resolve now is left to the connect-time check."""
+    if "${" in endpoint:
+        return INTERNAL_ENDPOINT
+    reason = await netguard.refusal(endpoint)
+    if reason == netguard.UNRESOLVED:
+        return None
+    return INTERNAL_ENDPOINT if reason == netguard.INTERNAL else reason
+
+
 async def check_runnable(connector: Any, *, owner_is_admin: bool) -> None:
     """A stdio command runs only as a catalogue entry's, an administrator's own, or an allowed
-    command line without env of its own; rows saved before the rule are refused here too."""
+    command line without env of its own; a member's remote one only to a public address; rows
+    saved before the rules are refused here too."""
+    if public_only(connector, owner_is_admin=owner_is_admin):
+        if "${" in (getattr(connector, "endpoint", None) or ""):
+            raise NotRunnable(INTERNAL_ENDPOINT)
+        if reason := await endpoint_refusal(await effective_endpoint(connector)):
+            raise NotRunnable(reason)
+        return
     if str(getattr(connector.transport, "value", connector.transport)) != "stdio":
         return
     if getattr(connector, "official", False) or owner_is_admin:
@@ -308,7 +338,8 @@ def admin_wire(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-__all__ = ["KINDS", "TRANSPORTS", "EntryError", "NotRunnable", "admin_wire", "catalog_entry",
-           "check_runnable", "clean", "connector_env", "effective_endpoint", "entries", "entry",
-           "looks_like_write", "provided", "refresh", "resolve_env", "resolve_urls",
+__all__ = ["INTERNAL_ENDPOINT", "KINDS", "TRANSPORTS", "EntryError", "NotRunnable", "admin_wire",
+           "catalog_entry", "check_runnable", "clean", "connector_env", "effective_endpoint",
+           "endpoint_refusal", "entries", "entry", "looks_like_write", "provided",
+           "public_only", "refresh", "resolve_env", "resolve_urls",
            "stdio_allowed", "stdio_allowlist", "use"]

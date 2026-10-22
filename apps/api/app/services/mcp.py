@@ -12,7 +12,7 @@ import shlex
 from typing import Any
 
 from app.core.config import settings
-from app.services import tools_gateway
+from app.services import netguard, tools_gateway
 
 log = logging.getLogger(__name__)
 
@@ -128,11 +128,13 @@ class _StdioSession:
 
 
 async def _http_request(url: str, method: str, params: dict[str, Any] | None = None,
-                        timeout: float | None = None) -> Any:
-    """One MCP call over streamable HTTP, handshake included; keeps `Mcp-Session-Id`."""
+                        timeout: float | None = None, public_only: bool = False) -> Any:
+    """One MCP call over streamable HTTP, handshake included; keeps `Mcp-Session-Id`;
+    `public_only` dials public addresses only (no env proxy, which would dial for us)."""
+    guard = {"transport": netguard.PublicTransport(), "trust_env": False} if public_only else {}
     # gateway key only to the deep-research address
     async with tools_gateway.client(
-        timeout=timeout or settings.tool_timeout_sec, features=("research",)
+        timeout=timeout or settings.tool_timeout_sec, features=("research",), **guard
     ) as client:
         headers = {"Accept": "application/json, text/event-stream"}
 
@@ -219,13 +221,13 @@ def expand(endpoint: str, env: dict[str, str] | None) -> str:
 
 
 async def list_tools(
-    transport: str, endpoint: str, env: dict[str, str] | None = None
+    transport: str, endpoint: str, env: dict[str, str] | None = None, public_only: bool = False,
 ) -> list[dict[str, Any]]:
     if transport == "stdio":
         async with _StdioSession(expand(endpoint, env), env or {}) as session:
             result = await session._request("tools/list")
     else:
-        result = await _http_request(endpoint, "tools/list")
+        result = await _http_request(endpoint, "tools/list", public_only=public_only)
     return list((result or {}).get("tools") or [])
 
 
@@ -236,13 +238,14 @@ async def call_tool(
     arguments: dict[str, Any],
     env: dict[str, str] | None = None,
     timeout: float | None = None,
+    public_only: bool = False,
 ) -> str:
     if transport == "stdio":
         async with _StdioSession(expand(endpoint, env), env or {}) as session:
             result = await session._request("tools/call", {"name": name, "arguments": arguments})
     else:
         result = await _http_request(endpoint, "tools/call", {"name": name, "arguments": arguments},
-                                     timeout=timeout)
+                                     timeout=timeout, public_only=public_only)
     if isinstance(result, dict) and result.get("isError"):
         raise McpError(_flatten(result) or "도구가 오류를 반환했습니다.")
     return _flatten(result)

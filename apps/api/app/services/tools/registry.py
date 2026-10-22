@@ -71,9 +71,11 @@ def _make_runner(connector: Connector, tool_name: str, env: dict[str, str], *,
             await catalog.check_runnable(connector, owner_is_admin=owner_is_admin)
             endpoint = await catalog.effective_endpoint(connector)
             slow = _timeout_for(tool_name)
+            guarded = catalog.public_only(connector, owner_is_admin=owner_is_admin)
             text = await mcp.call_tool(
                 connector.transport.value, endpoint, tool_name, arguments, env,
                 **({"timeout": slow} if slow else {}),
+                **({"public_only": True} if guarded else {}),
             )
         except (mcp.McpError, catalog.NotRunnable) as exc:
             return ToolResult(content=f"오류: {exc}", failed=True)

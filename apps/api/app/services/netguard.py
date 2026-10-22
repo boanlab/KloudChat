@@ -8,6 +8,8 @@ import socket
 from collections.abc import Awaitable, Callable
 from urllib.parse import urlsplit
 
+import httpx
+
 _IP = ipaddress.IPv4Address | ipaddress.IPv6Address
 
 #: Names always meaning this machine/deployment, regardless of DNS.
@@ -58,27 +60,57 @@ async def refusal(url: str, *, resolve: Resolver | None = None) -> str | None:
         return SCHEME
     if not host or parts.username is not None or parts.password is not None:
         return SCHEME
+    return (await _judge(host, resolve))[0]
+
+
+async def _judge(host: str, resolve: Resolver | None) -> tuple[str | None, list[_IP]]:
+    """Refusal for a bare host, or None with the addresses it stands for."""
     if host in _INTERNAL_HOSTS or host.endswith(_INTERNAL_SUFFIXES):
-        return INTERNAL
+        return INTERNAL, []
 
     literal = _literal(host)
     if literal is not None:
-        return None if is_public(literal) else INTERNAL
+        return (None, [literal]) if is_public(literal) else (INTERNAL, [])
     # dotless name = service on the deployment network
     if "." not in host:
-        return INTERNAL
+        return INTERNAL, []
 
-    addresses = await (resolve or _system_resolver)(host)
-    if not addresses:
-        return UNRESOLVED
-    for text in addresses:
+    found = await (resolve or _system_resolver)(host)
+    if not found:
+        return UNRESOLVED, []
+    addresses: list[_IP] = []
+    for text in found:
         try:
             address = ipaddress.ip_address(text.split("%", 1)[0])
         except ValueError:
-            return UNRESOLVED
+            return UNRESOLVED, []
         if not is_public(address):
-            return INTERNAL
-    return None
+            return INTERNAL, []
+        addresses.append(address)
+    return None, addresses
+
+
+class PublicTransport(httpx.AsyncHTTPTransport):
+    """Dials only public addresses: each request's host is resolved and checked here, and the
+    checked address is the one connected (no second lookup, so a rebinding name or a redirect
+    to an internal host is refused too); Host header and TLS name stay the original host."""
+
+    def __init__(self, *, resolve: Resolver | None = None, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._resolve = resolve
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        if request.url.scheme not in ("http", "https"):
+            raise httpx.ConnectError(SCHEME, request=request)
+        host = request.url.host.rstrip(".").lower()
+        reason, addresses = await _judge(host, self._resolve)
+        if reason:
+            raise httpx.ConnectError(reason, request=request)
+        if _literal(host) is None:
+            request.url = request.url.copy_with(host=str(addresses[0]))
+            if request.url.scheme == "https":
+                request.extensions = {**request.extensions, "sni_hostname": host}
+        return await super().handle_async_request(request)
 
 
 def _literal(host: str) -> _IP | None:
@@ -89,4 +121,4 @@ def _literal(host: str) -> _IP | None:
         return None
 
 
-__all__ = ["INTERNAL", "SCHEME", "UNRESOLVED", "is_public", "refusal"]
+__all__ = ["INTERNAL", "SCHEME", "UNRESOLVED", "PublicTransport", "is_public", "refusal"]

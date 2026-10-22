@@ -482,7 +482,11 @@ a command (stdio) runs on the API host, so a non-administrator can register only
 a command line listed under **Commands members may register themselves** on the
 same screen (one per line, matched argument for argument, no environment
 variables); anything else, including a row saved before the list existed, is
-refused rather than run.
+refused rather than run. A non-administrator's own http/sse server must be on
+the public internet: loopback, private, link-local and metadata addresses and
+the deployment's service names are refused when saved and when called, so an
+internal MCP server is offered to members as a catalogue entry (or registered by
+an administrator for themselves).
 
 A **Built in** entry is installed for every active user: everyone at once when an
 administrator saves it with the switch on, a new user when the account becomes

@@ -169,6 +169,13 @@ async def _stdio_settable(endpoint: str | None, env: dict[str, str] | None) -> N
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="stdio_requires_admin")
 
 
+async def _remote_settable(endpoint: str | None) -> None:
+    """A member's own http/sse server: a public address only (the API would call into the
+    deployment's network for them); checked again at connect time."""
+    if reason := await catalog.endpoint_refusal(endpoint or ""):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=reason)
+
+
 def _settable_env(entry: dict | None, supplied: dict[str, str] | None, user: User) -> None:
     """A person sets only the credentials a catalogue entry asks for: any other variable reaches
     the server process (an index URL for `uvx`, a preload) and runs code on the API host."""
@@ -185,6 +192,8 @@ async def add_custom(payload: ConnectorIn, user: CurrentUser, db: DbSession):
     if payload.transport is Transport.stdio and user.role is not UserRole.admin:
         # stdio = command on API server → admin, or an allowed command line without env
         await _stdio_settable(payload.endpoint, payload.env)
+    if payload.transport is not Transport.stdio and user.role is not UserRole.admin:
+        await _remote_settable(payload.endpoint)
     connector = Connector(
         owner_id=user.id,
         name=payload.name,
@@ -213,7 +222,9 @@ async def _sync(db: DbSession, user: User, connector: Connector) -> None:
     try:
         await catalog.check_runnable(connector, owner_is_admin=user.role is UserRole.admin)
         endpoint = await catalog.effective_endpoint(connector)
-        discovered = await mcp.list_tools(connector.transport.value, endpoint, env)
+        guarded = catalog.public_only(connector, owner_is_admin=user.role is UserRole.admin)
+        discovered = await mcp.list_tools(connector.transport.value, endpoint, env,
+                                          **({"public_only": True} if guarded else {}))
     except Exception as exc:  # noqa: BLE001 — dead server is a status, not a 500
         log.info("connector %s sync failed: %s", connector.slug, exc)
         connector.status = ConnectorStatus.error
@@ -279,6 +290,9 @@ async def patch(connector_id: str, payload: ConnectorPatch, user: CurrentUser, d
             # as when adding one
             await _stdio_settable(patch_fields.get("endpoint", connector.endpoint),
                                   patch_fields.get("env"))
+        if connector.transport is not Transport.stdio and not connector.official \
+                and "endpoint" in patch_fields:
+            await _remote_settable(patch_fields["endpoint"])
         if connector.official and "endpoint" in patch_fields:
             # a catalogue connector runs the catalogue's command, not the person's
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

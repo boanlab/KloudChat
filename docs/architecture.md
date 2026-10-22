@@ -2018,6 +2018,17 @@ form only and uses a neutral domain, so its content is not repeated as fact.
   child inherits a minimal environment (`PATH`, `HOME`, locale, `TZ`), never
   the API's own secrets (`mcp._INHERITED_ENV`), and a `${VAR}` in a connector's
   env reads only those names from the API's environment.
+- A member's own `http`/`sse` connector reaches the public internet only, by
+  the same rule as page fetches (`netguard`): an endpoint on loopback,
+  link-local (metadata `169.254.169.254` included), private (RFC 1918, ULA) or
+  CGNAT addresses, a dotless or reserved-suffix service name, or a
+  `${TOOLS_*_URL}` placeholder is refused when saved (`422`) and again before
+  every call (`catalog.check_runnable`). The call itself dials through
+  `netguard.PublicTransport`, which resolves the host, checks every address and
+  connects to the checked one (Host header and TLS name unchanged), so a name
+  that turns internal after saving, or a redirect to an internal host, is not
+  dialed; environment proxies are not used for these calls. Catalogue
+  connectors and an administrator's own may name internal hosts.
 - A cached conversation summary is part of the turn's privacy scan (with the
   history) and is masked under the policy in force when it is reused, not only
   the one in force when it was written.

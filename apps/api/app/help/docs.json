@@ -564,7 +564,7 @@
 "path": "chat/connectors",
 "title": "커넥터",
 "heading": "서버 직접 추가",
-"text": "사용 중인 MCP 서버가 있으면 **서버 직접 추가**로 연결합니다. 이름, 전송 방식(stdio · http · sse), 실행 명령 또는 엔드포인트 주소, 환경 변수, 인증 방식을 입력합니다. 환경 변수와 자격증명은 저장 후 다시 표시되지 않습니다. 명령 실행(stdio)은 API 서버에서 돌기 때문에 관리자가 허용한 명령만 그대로 등록할 수 있고, 이때 환경 변수는 넣을 수 없습니다."
+"text": "사용 중인 MCP 서버가 있으면 **서버 직접 추가**로 연결합니다. 이름, 전송 방식(stdio · http · sse), 실행 명령 또는 엔드포인트 주소, 환경 변수, 인증 방식을 입력합니다. 환경 변수와 자격증명은 저장 후 다시 표시되지 않습니다. 명령 실행(stdio)은 API 서버에서 돌기 때문에 관리자가 허용한 명령만 그대로 등록할 수 있고, 이때 환경 변수는 넣을 수 없습니다. 관리자가 아닌 사람이 직접 추가하는 http · sse 서버는 인터넷에 공개된 주소여야 합니다. `localhost`·`127.0.0.1`, 사설 대역(`10.x`, `172.16~31.x`, `192.168.x`), 클라우드 메타데이터 주소, 배포 내부 서비스 이름처럼 내부 네트워크를 가리키는 주소는 저장할 때와 호출할 때 모두 거절됩니다. 사내 MCP 서버는 관리자에게 커넥터 카탈로그 등록을 요청하세요."
 },
 {
 "lang": "ko",
@@ -2020,7 +2020,7 @@
 "path": "chat/connectors",
 "title": "Connectors",
 "heading": "Adding a server directly",
-"text": "If you already use an MCP server, connect it with **Add server directly**. Enter the name, the transport (stdio, http, or sse), the run command or endpoint address, the environment variables, and the authentication method. Environment variables and credentials are not shown again after saving. A stdio server runs on the API server, so you can register only a command an administrator allows, exactly as allowed, and without environment variables."
+"text": "If you already use an MCP server, connect it with **Add server directly**. Enter the name, the transport (stdio, http, or sse), the run command or endpoint address, the environment variables, and the authentication method. Environment variables and credentials are not shown again after saving. A stdio server runs on the API server, so you can register only a command an administrator allows, exactly as allowed, and without environment variables. An http or sse server you add yourself as a non-administrator must be on the public internet: addresses that point inside the network, such as `localhost` or `127.0.0.1`, private ranges (`10.x`, `172.16-31.x`, `192.168.x`), the cloud metadata address and the deployment's own service names, are refused both when you save and when the server is called. Ask an administrator to add an in-house MCP server to the connector catalogue."
 },
 {
 "lang": "en",
