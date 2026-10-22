@@ -44,35 +44,35 @@
   }
  },
  {
-  "key": "29e95736293e7fca4e1c96c5",
+  "key": "c35d8e1ba7f0dbec59187935",
   "stage": "verify",
   "kind": "repair",
   "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
   "reply": "[\"아래 일정은 확정 날짜를 기준으로 정리합니다.\", \"참석자는 김교수(위원장), 박교수, 이교수, 학생대표 최○○, 조교 정다은입니다.\"]",
   "usage": {
-   "prompt_tokens": 707,
+   "prompt_tokens": 715,
    "completion_tokens": 20
   }
  },
  {
-  "key": "ba84375a017ad845a8a921db",
+  "key": "1c8aee7dc26d02572e1b718a",
   "stage": "verify",
   "kind": "repair",
   "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
   "reply": "[\"이 설문의 회수 결과는 강의계획서 초안 작성 시 참고 자료로 활용될 것으로 보입니다.\", \"학생 수요 설문은 최○○가 2026-10-16(금)까지 회수합니다.\"]",
   "usage": {
-   "prompt_tokens": 707,
+   "prompt_tokens": 715,
    "completion_tokens": 24
   }
  },
  {
-  "key": "a96ec436895ad30189825365",
+  "key": "4526199ccdae0d15e6131415",
   "stage": "verify",
   "kind": "repair",
   "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
   "reply": "[\"김교수의 발언으로 볼 때 다음 회의에서 이 안이 재상정될 것으로 보입니다.\"]",
   "usage": {
-   "prompt_tokens": 664,
+   "prompt_tokens": 672,
    "completion_tokens": 12
   }
  }

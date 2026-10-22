@@ -153,6 +153,32 @@ def _acceptable(old: str, new: str, finding: Finding) -> bool:
     return not (finding.still and finding.still(new))
 
 
+#: a reply that is a marker alone: 「확인 필요」, 「(미정)」
+_MARK_ONLY = re.compile(r"\(?[ \t]{0,2}(?:확인[ \t]?필요|미정|해당[ \t]?없음)[ \t]{0,2}\)?[.:]?")
+
+
+def pasted(old: str, new: str, content: str, memo: str = "") -> bool:
+    """A prose rewrite that pastes instead of writing: a marker alone where a sentence was
+    (「확인 필요」), a sentence the section already holds, a word or two left of a sentence, or
+    the memo's own line in its shorthand (`meeting_memo.copied`) where the sentence was prose."""
+    from app.services import meeting_memo
+
+    if old.lstrip().startswith("|"):
+        return False
+    if _MARK_ONLY.fullmatch(new.strip()) and not _MARK_ONLY.fullmatch(old.strip()):
+        return True
+    flat = re.sub(r"[\s,.:;·!?()「」\"']", "", new)
+    rest = re.sub(r"[\s,.:;·!?()「」\"']", "", content.replace(old, "", 1))
+    if len(flat) >= 16 and flat in rest:
+        return True
+    # a word or two left of a whole sentence (「함.」)
+    if len(flat) < 8 and len(flat) * 3 < len(re.sub(r"[\s,.:;·!?()「」\"']", "", old)):
+        return True
+    pieces = [p for p in re.split(r"(?<=[.!?])\s+", new.strip()) if p.strip()]
+    return bool(memo) and not meeting_memo.copied(old, memo) \
+        and any(meeting_memo.copied(p, memo) for p in pieces)
+
+
 #: the writer reporting its own act of writing: 「그 값을 넣지 않은 문장으로 쓰도록 했습니다」,
 #: 「회의록에 기록하지 않았습니다」, 「해당 내용을 뺐습니다」
 WROTE = re.compile(
@@ -277,7 +303,8 @@ async def repair(
             new = without_edit_notes(finding.sentence, clean(new.strip().strip("「」")))
             # a fix keeps the document's 합니다체 (no 「…대상으로 한다.」 in a notice)
             new = keep_register(finding.sentence, new) or ""
-            if new != finding.sentence and _acceptable(finding.sentence, new, finding):
+            if new != finding.sentence and _acceptable(finding.sentence, new, finding) \
+                    and not pasted(finding.sentence, new, content, doc.memo):
                 content = content.replace(finding.sentence, new, 1)
                 log.info("repaired [%s] in %r", finding.code, out[index].get("heading"))
             else:
