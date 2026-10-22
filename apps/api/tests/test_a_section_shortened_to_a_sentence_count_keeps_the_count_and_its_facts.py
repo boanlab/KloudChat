@@ -20,7 +20,7 @@ BEFORE = ("대성유통 협상은 견적서 발송(10/16 목)을 완료했으며
 ONE = ("2026년 10월 3주차에는 대성유통 협상, 한솔마트 클레임 처리, CRM 데이터 정리가 함께 "
        "진행됩니다.")
 TWO = ("대성유통은 10/16 견적서를 보냈고 5% 인하 요구와 4% 한도 사이의 폭, A사의 4% 낮은 단가 "
-       "제시가 남았습니다. 한솔마트 클레임 2건은 420만원 정산으로 마쳤습니다.")
+       "제시(확정 아님)가 남았습니다. 한솔마트 클레임 2건은 420만원 정산으로 마쳤습니다.")
 ASK = "2절을 두 문장으로 줄여줘"
 
 
@@ -37,7 +37,8 @@ def test_a_shortened_section_is_checked_for_its_count_and_facts():
     assert revise.sentence_count(BEFORE) == 3 and revise.sentence_count(ONE) == 1
     # a list row is not a sentence
     assert revise.sentence_count("5.5% 올랐다. 「확정」이다.」\n- 남은 일") == 2
-    assert revise.lost_facts(BEFORE, ONE) == ["10/16", "5%", "4%", "2건", "420만", "A사"]
+    assert revise.lost_facts(BEFORE, ONE) == ["10/16", "5%", "4%", "2건", "420만",
+                                              "A사(확정 아님)"]
     assert revise.shortening_faults(BEFORE, TWO, ASK) == []
     assert revise.shortening_faults(BEFORE, BEFORE, "2절 표현을 다듬어줘") == []
     faults = revise.shortening_faults(BEFORE, ONE, ASK)
@@ -96,19 +97,21 @@ async def test_what_still_misses_after_the_second_try_is_said(monkeypatch):
     assert save_stages.revision_reply(doc, None, is_deck=False) == (
         "2절을 고쳤습니다. 2절은 요청한 2문장이 아니라 1문장입니다. "
         "2절에 원래 없던 3주차가 들어갔습니다. 확인해 주세요. "
-        "2절에서 10/16, 5%, 4%, 2건, 420만, A사가 빠졌습니다. 필요하면 다시 넣어 달라고 해 주세요.")
+        "2절에서 10/16, 5%, 4%, 2건, 420만, A사(확정 아님)가 빠졌습니다. "
+        "필요하면 다시 넣어 달라고 해 주세요.")
     assert save_stages.revision_reply(doc, None, is_deck=False, english=True) == (
         "Revised section 2. Section 2 has 1 sentence, not the 2 asked. Section 2 now states "
         "3주차, which the section and the material did not; please check. On section 2, 10/16, 5%, "
-        "4%, 2건, 420만, A사 dropped out of the rewrite; ask again to put them back if they "
-        "belong there.")
+        "4%, 2건, 420만, A사(확정 아님) dropped out of the rewrite; ask again to put them back "
+        "if they belong there.")
 
 
 @pytest.mark.asyncio
 async def test_a_plain_shortening_is_not_sent_back_and_its_dropped_facts_are_said(monkeypatch):
     doc, notes = await _rewrite(monkeypatch, [ONE], ask="2절을 줄여줘")
     assert len(notes) == 1 and doc.sections[1]["content"] == ONE
-    assert doc.counted == [] and doc.dropped == ["2절 10/16, 5%, 4%, 2건, 420만, A사"]
+    assert doc.counted == [] and doc.dropped == [
+        "2절 10/16, 5%, 4%, 2건, 420만, A사(확정 아님)"]
 
 
 TABLED = ("목요일에는 대성유통에게 견적서를 발송했으며, 경쟁사 A사가 4% 낮은 단가를 "
@@ -302,7 +305,7 @@ async def test_a_retry_off_the_count_the_first_version_met_does_not_replace_it(m
     doc, notes = await _rewrite(monkeypatch, [thin, BEFORE])
     assert len(notes) == 2 and "Keep it to 2 sentences" in notes[1] and "A사" in notes[1]
     assert doc.sections[1]["content"] == thin
-    assert doc.counted == [] and doc.dropped == ["2절 A사"]
+    assert doc.counted == [] and doc.dropped == ["2절 A사(확정 아님)"]
 
 
 def test_a_count_still_off_is_met_by_joining_or_splitting_clauses():
@@ -352,7 +355,8 @@ DONE = ("기존 거래처 한솔마트의 재고 클레임 2건은 반품 420만
 
 def test_a_thing_said_done_that_the_shortened_section_no_longer_says_is_named():
     assert revise.lost_facts(DONE, "한솔마트 클레임 2건(반품 420만원)과 A사 단가를 정리했습니다. "
-                             "CRM은 수요일 예정입니다.") == ["이번 주", "처리 완료"]
+                             "CRM은 수요일 예정입니다.") == ["이번 주", "처리 완료",
+                                                            "A사의 「확정 아님」 표시"]
     # still said done in other words, or not done at all (확정된 값은 아닙니다, 마무리할 예정)
     assert revise.lost_facts(DONE, DONE.replace("처리를 완료했습니다", "처리했습니다")) == []
     assert revise.lost_facts(DONE, DONE.replace("처리를 완료했습니다", "모두 완료됐습니다")) == []

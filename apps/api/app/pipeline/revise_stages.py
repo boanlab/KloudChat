@@ -426,8 +426,9 @@ class Rewrite(Base):
         doc_format = bundle.spec.format_id
         #: a part whose rewrite came back empty, unparsable or as talk
         unreadable = False
-        #: slides asked to join items they do not have as a list (a table's rows): said, kept
-        unjoined: list[int] = []
+        #: slides asked to join or split items they do not have as a list (a table's rows):
+        #: said by the action asked, kept
+        unjoined: list[tuple[int, str]] = []
         today = req.today if isinstance(req.today, dt.date) else None
         #: the document as it stood: its percentages and sums are no new ones
         deck_before = "\n".join(s for p in parts for s in strings(p)) if is_deck else ""
@@ -480,7 +481,7 @@ class Rewrite(Base):
                 elif is_deck and revise.joins_items(asked) and deck_service.items_asked(
                         asked) and part.get("rows"):
                     # a table's rows are not items to join: the slide stays, the reply says so
-                    unjoined.append(index)
+                    unjoined.append((index, "나누기" if revise.splits_items(asked) else "합치기"))
                     yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
                     continue
                 elif is_deck and deck_service.asks_slide_figure(asked):
@@ -818,7 +819,7 @@ class Rewrite(Base):
             doc.unmet = [f"{i + 1}장 {what}" for i in bundle.plan.order if i < len(parts)
                          for what in deck_service.unmet_asks(
                              parts[i], revise.slide_clause(instruction, i))]
-            doc.unmet += [f"{i + 1}장 항목 합치기" for i in unjoined]
+            doc.unmet += [f"{i + 1}장 항목 {action}" for i, action in unjoined]
         if not doc.changed and doc.unmet and not doc.failed and not unreadable:
             # only another shape asked and the slide's content does not go into it: said
             yield {"type": "step", "id": "route", "label": "모양 바꾸지 못함", "status": "done"}
@@ -862,15 +863,16 @@ def _unshaped(unmet: list[str], english: bool) -> str:
     """The reply when no asked shape could be made: which slide, which shape, nothing changed."""
     from app.pipeline.save_stages import _en_item
 
-    joins = all(u.endswith("항목 합치기") for u in unmet)
+    joins = all(u.endswith(("항목 합치기", "항목 나누기")) for u in unmet)
+    splits = all(u.endswith("항목 나누기") for u in unmet)
     if english:
         said = ", ".join(map(_en_item, unmet))
-        why = ("a table's rows are not a list of items to join" if joins
-               else "they do not share the same fields")
+        why = (f"a table's rows are not a list of items to {'split' if splits else 'join'}"
+               if joins else "they do not share the same fields")
         return (f"Nothing was changed: {said} could not be made from the slide's own points "
                 f"({why}). Say what the rows and columns or the items should be, and it will "
                 "be built that way.")
-    why = ("표의 행은 합칠 항목 목록이 아니어서" if joins
+    why = (f"표의 행은 {'나눌' if splits else '합칠'} 항목 목록이 아니어서" if joins
            else "그 장의 내용이 같은 칸으로 나뉘지 않아")
     return (f"바꾼 것이 없습니다. 요청한 {', '.join(unmet)}는 {why} 하지 못했습니다. "
             "표의 행·열이나 목록 항목을 알려 주시면 그대로 만들겠습니다.")
