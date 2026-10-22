@@ -12,7 +12,7 @@ Skills the administrator shares with everyone. They show under **Official skills
 
 | Skill | Screen | What it does |
 |---|---|---|
-| Meeting minutes (회의록 작성) | Report | Keeps decisions, action items (task · owner · due date · source · note) and open items from a transcript, notes and follow-up mails. Writes in the **회의록** template. A meeting length, period or question the material does not give, and an action row nobody was given, go back for one fix; what remains is taken out or marked 「(확인 필요)」. |
+| Meeting minutes (회의록 작성) | Report | Keeps decisions, action items (task · owner · due date · source · note) and open items from a transcript, notes and follow-up mails. Writes in the **회의록** template. A meeting length, period, question, guess or next-meeting agenda the material does not give, and an action row nobody was given, go back for one fix; what remains is taken out or marked 「(확인 필요)」. The meeting held is told in the past tense, and prose calling a deadline open that the action table dates from the memo takes the table's date. |
 | Bullet-style briefing (개조식 보고) | Report | Turns notes and mails into a one-page □ ○ - ㆍ briefing a superior can decide from. **개조식 보고서** template, one page by default. |
 | Compare-and-decide report (비교·결정 보고) | Report | Weighs 2–5 options on exactly the criteria asked and recommends one. **비교·분석 보고서** template. |
 | Official document draft (공문·기안 초안) | Report | Drafts plans, result reports, approval drafts and notices. No web search; pictures only when asked. |

@@ -3690,6 +3690,10 @@ async def write(
             trace.extend(bundle.records)
 
 
+#: a picture inlined as data: its bytes are not words to revise
+_INLINE_PICTURE = re.compile(r"!\[[^\]]{0,200}\]\(data:[^)]*\)")
+
+
 async def rewrite_section(
     *,
     request: str,
@@ -3735,6 +3739,13 @@ async def rewrite_section(
         genre=genre,
     )
     prompt = _shaped(prompt, genre)
+    current = str(next((s.get("content") for s in sections if s.get("id") == target_id), "")
+                  or "").strip()
+    if current:
+        # the section's own text: what is revised, so it stays this section (not a neighbour)
+        prompt += ("\n\nThis section as it stands now (revise this text; it stays about the same "
+                   "subject, and other sections keep theirs):\n" + _INLINE_PICTURE.sub(
+                       "", current)[:4000])
     if note.strip():
         # last and labelled, else read as the original request
         prompt += (
@@ -4216,6 +4227,41 @@ Keep the sentences as they are. Answer with the body only, no section heading, i
 Korean. Do not wrap it in JSON.
 
 {body}"""
+
+
+_KOREAN_AGAIN_PROMPT = """Below is one paragraph of the report's "{heading}" section. While writing
+it you slipped into Chinese: {words}. Write the same paragraph again in Korean, each Chinese word
+replaced by the Korean word it means (「研究对象」 → 「연구 대상」, 「三名」 → 「세 명」). Change nothing
+else: keep every sentence, number, name, English term, citation mark such as [3] and Markdown mark
+as written. Answer with the paragraph only.
+
+{paragraph}"""
+
+#: a number, a citation mark, a Latin word: what a paragraph written again in Korean keeps
+_KEPT_TOKEN = re.compile(r"\d+(?:[.,]\d+)*|\[\d{1,3}(?:[,\-–] ?\d{1,3}){0,9}\]|[A-Za-z][A-Za-z0-9'-]{0,40}")
+
+
+def chinese_paragraphs(body: str, given: str = "") -> list[tuple[int, list[str]]]:
+    """(index, slips) of the plain prose paragraphs of `body` (split on blank lines) holding
+    Chinese a writer slipped into Korean; tables, fences and headings left out."""
+    out = []
+    for i, paragraph in enumerate(body.split("\n\n")):
+        if re.search(r"^\s{0,3}(?:\||```|#)", paragraph, re.M):
+            continue
+        if slips := hangul.chinese_slips(paragraph, given):
+            out.append((i, slips))
+    return out
+
+
+def korean_again(before: str, after: str, given: str = "") -> bool:
+    """Whether `after`, a paragraph written again in Korean, can stand for `before`: no
+    Chinese slip left, every number, citation mark and Latin word kept, about as long."""
+    after = after.strip()
+    if not after or hangul.chinese_slips(after, given) or "\n\n" in after:
+        return False
+    if not 0.7 <= len(after) / max(len(before.strip()), 1) <= 1.4:
+        return False
+    return sorted(_KEPT_TOKEN.findall(before)) == sorted(_KEPT_TOKEN.findall(after))
 
 
 _FILLER = re.compile(

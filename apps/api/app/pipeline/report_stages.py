@@ -37,6 +37,7 @@ from app.services import (
     internal_words,
     key_figures,
     lint,
+    meeting_tense,
     model_retry,
     pictures,
     placeholders,
@@ -1138,6 +1139,10 @@ class Sections(Base):
                     refilled = richtext.detach_tables(report.unwrap_json_prose(refilled))
                     if refilled.strip() and not report.placeholder_heavy(refilled):
                         body = refilled
+            if slipped := report.chinese_paragraphs(body, _slip_vocabulary(bundle)):
+                # Chinese slipped into Korean: those paragraphs sent back to the writer, read
+                # in Hanja only where the writer's paragraph does not hold
+                body = await _korean_again(bundle, section["heading"], body, slipped)
             section["content"] = _cleaned(bundle, index, section, body)
             material = _material_text(bundle)
             if gaps := table_integrity.problems(section["content"], material):
@@ -1215,6 +1220,50 @@ class Sections(Base):
                    "message": "보고서의 어느 절도 쓰지 못했습니다. 잠시 뒤 다시 시도해 주세요."}
             yield _usage(bundle)
             raise Stop("every section failed")
+
+
+def _slip_vocabulary(bundle: Bundle) -> str:
+    """Text whose ideographs are the person's or a page's, never a writer's slip."""
+    research = bundle.material.research
+    return "\n".join([_material_text(bundle), *bundle.request.untrusted,
+                      research.context if research is not None else ""])
+
+
+#: paragraphs of one section sent back at most
+_SLIPS_SENT_BACK = 6
+
+
+async def _korean_again(bundle: Bundle, heading: str, body: str,
+                        slipped: list[tuple[int, list[str]]]) -> str:
+    """`body` with each paragraph holding Chinese slips written again in Korean by the writer;
+    one the answer does not stand for (a number or citation lost) left as it was."""
+    report, req = _report(), bundle.request
+    paragraphs = body.split("\n\n")
+    given = _slip_vocabulary(bundle)
+
+    async def again(i: int, slips: list[str]) -> tuple[int, str]:
+        try:
+            text, spent = await report._complete(
+                req.model,
+                # the paragraph alone, no material: only its words change
+                build_document_messages(SessionKind.report, report._KOREAN_AGAIN_PROMPT.format(
+                    heading=heading, words=", ".join(f"「{w}」" for w in slips[:8]),
+                    paragraph=paragraphs[i][:4000]), request=req.text, model=req.model),
+                req.api_key,
+                min(2400, 200 + len(paragraphs[i])),
+            )
+        except _CAUGHT as exc:
+            log.info("Korean rewrite of a paragraph in %r failed: %s", heading, exc)
+            return i, paragraphs[i]
+        _count(bundle, spent)
+        text = internal_words.strip_tool_calls(text).strip()
+        return i, text if report.korean_again(paragraphs[i], text, given) else paragraphs[i]
+
+    for i, text in await asyncio.gather(*(again(i, w) for i, w in slipped[:_SLIPS_SENT_BACK])):
+        if text != paragraphs[i]:
+            log.info("paragraph %d of %r written again in Korean", i, heading)
+        paragraphs[i] = text
+    return "\n\n".join(paragraphs)
 
 
 #: what a section no call could write says, in place of a blank heading
@@ -2060,7 +2109,11 @@ class MinutesReground(Base):
         if again:
             sections, left = report_checks.minutes_grounding(sections, known)
             bundle.findings.after += left
-        bundle.document.sections = settled_sections(bundle.document.sections, sections, [known])
+        sections = settled_sections(bundle.document.sections, sections, [known])
+        # prose calling a deadline open that its action row dates from the memo
+        sections, _ = report_checks.minutes_open_due(sections, bundle.computed.prepass.dates)
+        # the meeting held told in the past; what comes next stays ahead
+        bundle.document.sections, _ = meeting_tense.held(sections, _report()._REFERENCE_HEADING)
 
 
 class FormatAmend(Base):
@@ -2454,10 +2507,11 @@ def bundle_for(*, request: str, model: str, api_key: str, **kwargs: Any) -> Bund
         # (회의록's 「미정」 owners and 확인 필요 line) would empty the asked document's cells
         req.trusted = [*req.trusted, sibling_note(doc_formats.BY_ID[bound], doc_format)]
     # 서식 settings, then the agent's own; repair stages of one format stay on it
+    governing = process_settings.governing_template(req.template_id, format_id)
     process = process_settings.only_for_format(
         process_settings.resolve(template_id=req.template_id, format_id=format_id,
-                                 own=req.process), format_id)
-    governing = process_settings.governing_template(req.template_id, format_id)
+                                 own=req.process), format_id,
+        process_settings.of_template(governing) if governing is not None else None)
     if governing is not None and governing.check_options:
         # 서식 strictness joins the agent's
         req.check_options = {**{k: True for k in governing.check_options},

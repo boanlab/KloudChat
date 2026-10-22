@@ -63,21 +63,30 @@ def korean(style: str = "gothic", *, bold: bool = False) -> str:
     return fallback
 
 
-#: reportlab's own Bitstream Vera: accented Latin (í, ü, ş) the Nanum faces lack
-_LATIN = {False: ("Latin-Vera", "Vera.ttf"), True: ("Latin-Vera-bold", "VeraBd.ttf")}
+#: accented Latin the Nanum faces lack, by preference: DejaVu Sans (fonts-dejavu-core: ř, ő,
+#: ễ), else reportlab's own Bitstream Vera (í, ü, ş)
+_LATIN = {
+    False: ("Latin-wide", ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "Vera.ttf")),
+    True: ("Latin-wide-bold",
+           ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "VeraBd.ttf")),
+}
 
 
 def latin(*, bold: bool = False) -> str | None:
     """Registered name of the accented-Latin face, or None."""
-    name, file = _LATIN[bold]
+    name, files = _LATIN[bold]
     if name in _resolved:
         return _resolved[name] or None
-    try:
-        pdfmetrics.registerFont(TTFont(name, file))
-        _resolved[name] = name
-    except Exception:  # noqa: BLE001 — a missing face leaves the letters to stand-ins
-        log.warning("could not register %s", file)
-        _resolved[name] = ""
+    _resolved[name] = ""
+    for file in files:
+        if file.startswith("/") and not Path(file).is_file():
+            continue
+        try:
+            pdfmetrics.registerFont(TTFont(name, file))
+            _resolved[name] = name
+            break
+        except Exception:  # noqa: BLE001 — a missing face leaves the letters to stand-ins
+            log.warning("could not register %s", file)
     return _resolved[name] or None
 
 

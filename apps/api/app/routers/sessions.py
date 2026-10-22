@@ -3920,6 +3920,23 @@ def _agent_web_search(agent: WorkspaceAgent | None) -> bool | str:
     return {"auto": "auto", "on": True}.get(agent.web_search_default, False)
 
 
+def _sets_card_aside(session: ChatSession, payload: SendMessage) -> bool:
+    """Whether a typed message while a card is open on a finished document is not the card's
+    answer: a question about the document (「4장 수치는 어디서 나온 거야?」), or, on a question
+    card, an edit that names its part by number (「4장을 번호 목록으로 바꿔줘」)."""
+    pending = session.pending or {}
+    if (not pending or not session.artifact_id or payload.approve
+            or payload.answers is not None or not _plans_first(session)):
+        return False
+    text = payload.content or ""
+    if revise.asks_question(text):
+        # any card (questions, a proposed outline): a question is not its answer or a note
+        return True
+    # a numbered edit leaves a question card; on a proposed outline it may be a note on it
+    return pending.get("stage") == "clarify" and bool(revise.asks_edit(text) and (
+        revise.named_slides(text) or revise.numbered_parts(text, [""] * 50)))
+
+
 def _plans_first(session: ChatSession) -> bool:
     """Whether this surface offers an outline first (report, slides)."""
     return session.kind in (SessionKind.report, SessionKind.slides)
@@ -3961,8 +3978,13 @@ async def send_message(
             }
         )
 
+    #: a question about the document, or an edit of a named part, while a card waits: not
+    #: its answer; the card stays for a question, goes for an edit
+    card_aside = _sets_card_aside(session, payload)
+    if card_aside and not revise.asks_question(payload.content):
+        session.pending = None
     # document surfaces plan first; a message while `session.pending` is a note on it
-    pending = (
+    pending = {} if card_aside else (
         dict(session.pending or {})
         if _plans_first(session) or (session.pending or {}).get("stage") == "clarify"
         else {}
@@ -7071,11 +7093,25 @@ async def _deck_carry(work: PipelineBundle) -> AsyncIterator[dict]:
     # carried slides may drop restated numbers: recheck the person's figures
     deck_service.restate_missing_facts(slides, request)
     work.document.sections = slides
+    # figures the old deck showed that the new one shows nowhere: said in the reply
+    work.document.dropped = deck_service.lost_across(old_slides, slides)
     if carried:
         yield {"type": "step", "id": "carry", "label": f"그대로 둔 장 {carried}개",
                "status": "done"}
         for slide in slides:
             yield {"type": "slide", "slide": slide, "done": True}
+
+
+def _lost_said(lost: list[str], instruction: str) -> str:
+    """「 줄이면서 4일, 3곳이 빠졌습니다. …」: figures a restructure left out of the deck."""
+    if not lost:
+        return ""
+    values = ", ".join(lost)
+    if output_language.typed_in_english(instruction):
+        return (f" {values} no longer appear anywhere in the deck; ask again to put them back "
+                "if they belong there.")
+    return (f" 고치면서 {values}{revise._particle(values, '이', '가')} 슬라이드에서 빠졌습니다. "
+            "필요하면 다시 넣어 달라고 해 주세요.")
 
 
 async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
@@ -7168,7 +7204,8 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                 message = Message(
                     session_id=session_id,
                     role=Role.assistant,
-                    content=rerun_note(turn) or f"{len(written)}장짜리 슬라이드를 만들었습니다.",
+                    content=rerun_note(turn) or f"{len(written)}장짜리 슬라이드를 만들었습니다."
+                    + _lost_said(work.document.dropped if carry_from else [], carry_note),
                     usage={**usage, "credits": credits},
                     model=model["id"],
                     steps=_prelude_steps(skills_event, context_steps) or None,

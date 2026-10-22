@@ -104,7 +104,15 @@ async def test_a_rewrite_that_still_drops_figures_and_the_asked_list_says_both(m
 
     monkeypatch.setattr(revise_stages.deck_service, "rewrite_slide", rewrite_slide)
     doc = await _rewrite(_bundle(ASK))
-    assert doc.dropped == ["4장 64%, 91%"] and doc.unmet == ["4장 번호 목록으로 바꾸기"]
+    # the table the writer kept is listed by code, row by row
+    assert doc.sections[3]["layout"] == "numbered" and doc.unmet == []
+    assert doc.sections[3]["items"][0] == ["Long context", "Local (27B): Fails >20 pg, Cloud "
+                                           "(Frontier): Sustained"]
+    assert doc.dropped == ["4장 64%, 91%"]
+    assert save_stages.revision_reply(doc, None, is_deck=True, english=True) == (
+        "Revised slide 4. On slide 4, 64%, 91% dropped out of the rewrite; ask again to put "
+        "them back if they belong there.")
+    doc.unmet, doc.touched = ["4장 번호 목록으로 바꾸기"], [3]
     assert save_stages.revision_reply(doc, None, is_deck=True, english=True) == (
         "slide 4 as a numbered list did not show in the result. Please ask again. "
         "On slide 4, 64%, 91% dropped out of the rewrite; ask again to put them back if they "

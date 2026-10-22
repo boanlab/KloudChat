@@ -268,7 +268,9 @@ async def test_a_picture_asked_away_goes_and_an_unmet_ask_is_reported(monkeypatc
     monkeypatch.setattr(revise_stages.deck_service, "rewrite_slide", rewrite_slide)
     slides = [{"id": f"s{i}", "layout": "bullets", "title": f"{i + 1}장", "bullets": ["가"]}
               for i in range(8)]
-    slides[2] = {"id": "s2", "layout": "metrics", "title": "3장", "metrics": [["128억", "매출"]]}
+    # points that share no columns: not put into a table by code
+    slides[2] = {"id": "s2", "layout": "bullets", "title": "3장",
+                 "bullets": ["매출은 128억으로 늘었다", "물류 이전이 남았다"]}
     slides[7] = {**slides[7], "image": {"src": "data:image/png;base64,AA", "caption": "다리"}}
     typed = "3장을 표로 바꿔줘. 그리고 8장 그림은 빼줘."
     bundle = revise_stages.bundle_for(
@@ -283,5 +285,5 @@ async def test_a_picture_asked_away_goes_and_an_unmet_ask_is_reported(monkeypatc
     # the picture went by hand, with no rewrite and no layout change
     assert [c["target_id"] for c in calls] == ["s2"] and calls[0]["typed"] == "3장을 표로 바꿔줘."
     assert "image" not in parts[7] and parts[7]["layout"] == "bullets"
-    # 3장 still draws tiles: said, not passed off
-    assert bundle.document.unmet == ["3장 표로 바꾸기"]
+    # 3장 still draws bullets: said, not passed off, the slide as it was
+    assert bundle.document.unmet == ["3장 표로 바꾸기"] and "notes" not in parts[2]

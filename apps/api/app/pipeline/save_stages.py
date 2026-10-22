@@ -89,6 +89,9 @@ def _en_item(item: str) -> str:
     3-line summary」, 「3장 표로 바꾸기」 → 「slide 3 as a table」."""
     import re
 
+    if m := re.fullmatch(r"(\d{1,3})(장|절)의 (「[^」]{1,80}」) 상자", item):
+        return f"the box {m.group(3)} from {'slide' if m.group(2) == '장' else 'section'} " \
+            f"{m.group(1)}"
     if m := re.fullmatch(r"(\d{1,3})(장|절)의 (.+)", item):
         where = f"{'slide' if m.group(2) == '장' else 'section'} {m.group(1)}"
         return f"{_en_item(m.group(3))} from {where}" if m.group(3)[:1] in "표그" and re.search(
@@ -99,6 +102,8 @@ def _en_item(item: str) -> str:
         return f"the {m.group(1)}-line summary"
     if m := re.fullmatch(r"(\d{1,3})장 (.+?)(?:으로|로) 바꾸기", item):
         return f"slide {m.group(1)} as a {_EN_THINGS.get(m.group(2), m.group(2))}"
+    if m := re.fullmatch(r"(\d{1,3})장 항목 합치기", item):
+        return f"joining the items on slide {m.group(1)}"
     if m := re.fullmatch(r"(\d{1,3})장 (그림|차트) 빼기", item):
         return f"removing the {_EN_THINGS[m.group(2)]} on slide {m.group(1)}"
     return item
@@ -126,9 +131,17 @@ def _english_reply(document: Any, summary: int, touched: list[int], is_deck: boo
     if document.unmet:
         said.append(f"{'However, ' if said else ''}{', '.join(map(_en_item, document.unmet))} "
                     "did not show in the result. Please ask again.")
+    for part, asked, got in getattr(document, "counted", []):
+        said.append(f"Section {part} has {got} sentence{'s' if got != 1 else ''}, not the "
+                    f"{asked} asked.")
+    for added in getattr(document, "added", []):
+        at, _, values = added.partition(" ")
+        said.append(f"Section {at[:-1]} now states {values}, which the section and the "
+                    "material did not; please check.")
     for lost in document.dropped:
-        at, _, values = lost.partition("장 ")
-        said.append(f"On slide {at}, {values} dropped out of the rewrite; ask again to put them "
+        at, _, values = lost.partition(" ")
+        where = f"{'slide' if at.endswith('장') else 'section'} {at[:-1]}"
+        said.append(f"On {where}, {values} dropped out of the rewrite; ask again to put them "
                     "back if they belong there.")
     return " ".join(said)
 
@@ -170,6 +183,12 @@ def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = F
         said.append(f"다만 요청한 {', '.join(unmet)}는 반영되지 않았습니다. 다시 요청해 주세요."
                     if said else f"요청한 {', '.join(unmet)}는 반영하지 못했습니다. "
                     "다시 요청해 주세요.")
+    for part, asked, got in getattr(document, "counted", []):
+        said.append(f"{part}절은 요청한 {asked}문장이 아니라 {got}문장입니다.")
+    for added in getattr(document, "added", []):
+        at, _, values = added.partition(" ")
+        said.append(f"{at}에 원래 없던 {values}{revise._particle(values, '이', '가')} "
+                    "들어갔습니다. 확인해 주세요.")
     for lost in document.dropped:
         # figures the slide showed that its rewrite left out: said, not passed over
         at, _, values = lost.partition(" ")

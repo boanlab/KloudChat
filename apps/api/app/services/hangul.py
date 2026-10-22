@@ -79,6 +79,19 @@ def read_back(text: str) -> tuple[str, list[str]]:
     return "".join(out), replaced
 
 
+def chinese_slips(text: str, given: str = "") -> list[str]:
+    """Ideograph runs in Korean prose, outside glosses and code, that `given` (the request and
+    material) does not have: Chinese words a writer slipped into Korean, once each."""
+    if not text or not _HANJA.search(text):
+        return []
+    if len(re.findall(r"[가-힣]", text)) <= len(re.findall(r"[\u4e00-\u9fff]", text)):
+        return []
+    keep = _protected(text)
+    found = [m.group(0) for m in _HANJA.finditer(text)
+             if not any(start <= m.start() < end for start, end in keep)]
+    return list(dict.fromkeys(run for run in found if run not in given))
+
+
 #: digit+space+counter; 1-syllable counter joins only before non-Hangul/particle (3 일반인 stays)
 _COUNTER_LONG = re.compile(
     r"(?<![0-9])([0-9][0-9,.]{0,20}) "
@@ -106,7 +119,7 @@ def tidy_spacing(text: str) -> str:
     return _PARTICLE.sub(r"\1\2", text)
 
 
-__all__ = ["read_back", "tidy_spacing"]
+__all__ = ["chinese_slips", "read_back", "tidy_spacing"]
 
 
 #: Cyrillic inside a Korean word: sampling slip

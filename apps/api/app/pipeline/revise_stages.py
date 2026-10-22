@@ -408,6 +408,8 @@ class Rewrite(Base):
         doc_format = bundle.spec.format_id
         #: a part whose rewrite came back empty, unparsable or as talk
         unreadable = False
+        #: slides asked to join items they do not have as a list (a table's rows): said, kept
+        unjoined: list[int] = []
         for index in bundle.plan.order:
             part = parts[index]
             label = names[index] or f"{index + 1}"
@@ -437,7 +439,29 @@ class Rewrite(Base):
                         yield {"type": "step", "id": f"r{index}", "label": label,
                                "status": "done"}
                         continue
-                if is_deck and deck_service.asks_slide_figure(asked):
+                #: a change of form only (「4장을 번호 목록으로」): the slide's own content
+                form = (deck_service.requested_layout(asked)
+                        if is_deck and deck_service.form_only(asked) else None)
+                if form and deck_service.shown_layout(part) != form and (
+                        shaped := deck_service.reshaped(part, form)) is not None:
+                    # put into the shape by code: no item rewritten, none invented
+                    written, spent = shaped, {"inputTokens": 0, "outputTokens": 0}
+                    parts[index] = written
+                    yield {"type": "slide", "slide": written, "done": True}
+                elif is_deck and revise.joins_items(asked) and (
+                        joined := deck_service.joined_items(
+                            part, deck_service.items_asked(asked))) is not None:
+                    # the slide's items joined into the count asked by code, every fact kept
+                    written, spent = joined, {"inputTokens": 0, "outputTokens": 0}
+                    parts[index] = written
+                    yield {"type": "slide", "slide": written, "done": True}
+                elif is_deck and revise.joins_items(asked) and deck_service.items_asked(
+                        asked) and part.get("rows"):
+                    # a table's rows are not items to join: the slide stays, the reply says so
+                    unjoined.append(index)
+                    yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
+                    continue
+                elif is_deck and deck_service.asks_slide_figure(asked):
                     # 「구조도로 바꿔 줘」: the slide drawn as that diagram, not rewritten as words
                     written, spent = await deck_service.figure_slide(
                         request=request,
@@ -456,14 +480,23 @@ class Rewrite(Base):
                         target_id=str(part.get("id") or ""),
                         model=req.model,
                         api_key=req.api_key,
-                        note=plan.note if asked == instruction else asked,
+                        note=(plan.note if asked == instruction else asked) + (
+                            _OWN_POINTS if deck_service.requested_layout(asked) else ""),
                         material=material,
                         typed=asked,
                         notes_only=revise.notes_only(asked),
                     )
                     if revise.meta_talk(" ".join(strings(written))):
                         raise ValueError("본문 대신 대화 답이 나옴")
-                    if lost := deck_service.lost_figures(part, written, asked):
+                    if (joined := deck_service.merged_points(
+                            part, written, deck_service.items_asked(asked))) is not None:
+                        # 「항목을 하나로」 answered with none: the items joined, not dropped
+                        written = joined
+                    lost = deck_service.lost_figures(part, written, asked)
+                    if not lost and (gone := deck_service.lost_figures(part, written)):
+                        # an ask that may take figures away: not asked again, said
+                        doc.dropped.append(f"{index + 1}장 {', '.join(gone)}")
+                    if lost:
                         # figures the slide showed, left out: asked once more to keep them
                         try:
                             again, more = await deck_service.rewrite_slide(
@@ -489,6 +522,23 @@ class Rewrite(Base):
                         # shows said to be absent
                         written["notes"] = deck_service.notes_agree(
                             written, internal_words.strip_work_sentences(written["notes"]))
+                    asked_layout = deck_service.requested_layout(asked)
+                    if asked_layout and deck_service.unmet_asks(written, asked) and (
+                            lined := deck_service.reshaped(written, asked_layout,
+                                                          unnamed=True)) is not None:
+                        # the asked shape written out as lines (「Local 27B – $4 – 9s」): put
+                        # into it by code
+                        written = lined
+                    if form and deck_service.unmet_asks(written, asked):
+                        # only another shape asked and it did not come: the slide stays as it
+                        # was, the reply says so
+                        doc.dropped = [d for d in doc.dropped
+                                       if not d.startswith(f"{index + 1}장 ")]
+                        bundle.usage["inputTokens"] += spent["inputTokens"]
+                        bundle.usage["outputTokens"] += spent["outputTokens"]
+                        yield {"type": "step", "id": f"r{index}", "label": label,
+                               "status": "done"}
+                        continue
                     parts[index] = written
                     yield {"type": "slide", "slide": written, "done": True}
                 else:
@@ -510,6 +560,10 @@ class Rewrite(Base):
                     if emptied:
                         note += (f"\nThe person had {', '.join(emptied)} taken out of this "
                                  "section: add no table or figure in its place.")
+                    #: a first version that passed the checks but missed a shortening ask
+                    passed = ""
+                    #: what the section may state besides itself: the request and material
+                    given = "\n".join([request, *material])
                     for _attempt in range(2):
                         body, used = await report.rewrite_section(
                             request=request,
@@ -576,14 +630,49 @@ class Rewrite(Base):
                                                                 document=True)
                         if noted.strip() and re.sub(r"\s", "", noted) != re.sub(r"\s", "", body):
                             body = noted
-                        # a P0 the rewrite brought in: sent back once, then the part stays
+                        asked_of = " / ".join(asks) or _typed(bundle)
+                        # a line to the person about the rewrite (「다음은 요청하신 대로 …」)
+                        body = revise.without_preamble(body)
+                        shortening = revise.shortening_asked(asked_of)
+                        if shortening:
+                            # the ask restated as a sentence of the part: not its content
+                            body = revise.without_ask_echo(body)
+                        # a P0 the rewrite brought in, or a shortened part that became another
+                        # part: sent back once, then the part stays
                         faults = revise.new_faults(before, body, heading=label,
                                                    instruction=instruction)
+                        if shortening:
+                            faults += revise.drift_faults(before, body, [
+                                str(p.get("content") or "") for i, p in enumerate(parts)
+                                if i != index])
                         if not faults:
+                            short = revise.shortening_faults(before, body, asked_of, given)
+                            if short and not passed and revise.sentences_asked(asked_of)[0]:
+                                # a sentence count asked and missed: sent back once
+                                passed, rejected = body, " / ".join(short)[:600]
+                                continue
                             break
                         rejected = " / ".join(faults)[:400]
                         log.warning("revision of %r failed the checks: %s", logs.safe(label),
                                     logs.safe(rejected))
+                    asked_of = " / ".join(asks) or _typed(bundle)
+                    if passed and (faults or revise.shortening_misses(before, body, asked_of, given)
+                                   > revise.shortening_misses(before, passed, asked_of, given)):
+                        # the version sent back came out worse: the first one stands
+                        body, faults = passed, []
+                    if not faults and revise.shortening_asked(asked_of):
+                        # figures and boxes the shortening took out: said, not passed over
+                        doc.removed += revise.removed_blocks(before, body, index + 1)
+                    if not faults and revise.shortening_faults(before, body, asked_of, given):
+                        # what the shortened part misses or brought in: said in the reply
+                        want, most = revise.sentences_asked(asked_of)
+                        got = revise.sentence_count(body)
+                        if want and (got > want if most else got != want):
+                            doc.counted.append((index + 1, want, got))
+                        if lost := revise.lost_facts(before, body):
+                            doc.dropped.append(f"{index + 1}절 {', '.join(lost)}")
+                        if added := revise.added_facts(before, body, given):
+                            doc.added.append(f"{index + 1}절 {', '.join(added)}")
                     if faults:
                         bundle.usage["inputTokens"] += spent["inputTokens"]
                         bundle.usage["outputTokens"] += spent["outputTokens"]
@@ -646,6 +735,14 @@ class Rewrite(Base):
             doc.unmet = [f"{i + 1}장 {what}" for i in bundle.plan.order if i < len(parts)
                          for what in deck_service.unmet_asks(
                              parts[i], revise.slide_clause(instruction, i))]
+            doc.unmet += [f"{i + 1}장 항목 합치기" for i in unjoined]
+        if not doc.changed and doc.unmet and not doc.failed and not unreadable:
+            # only another shape asked and the slide's content does not go into it: said
+            yield {"type": "step", "id": "route", "label": "모양 바꾸지 못함", "status": "done"}
+            for event in _stopped(bundle, _unshaped(doc.unmet, output_language.typed_in_english(
+                    instruction))):
+                yield event
+            raise Stop("shape not made")
         if not doc.changed:
             said = ("고친 글이 검사를 통과하지 못해 이전 버전을 그대로 두었습니다. "
                     "다시 요청해 주세요." if doc.failed
@@ -662,6 +759,30 @@ class Rewrite(Base):
                 _typed(bundle), [str(p.get("content") or "") for p in doc.sections])
             if plan.summary and not _summary_made(doc.sections):
                 doc.missed.append(f"{plan.summary}줄 요약")
+
+
+#: a slide put into another shape: its items come from what is stated, not to fill a count
+_OWN_POINTS = ("\nThe new shape holds only points this slide, the other slides or the material "
+               "state, the slide's title kept. When they hold fewer items than the request "
+               "counts, write fewer: make up no item to reach a number.")
+
+
+def _unshaped(unmet: list[str], english: bool) -> str:
+    """The reply when no asked shape could be made: which slide, which shape, nothing changed."""
+    from app.pipeline.save_stages import _en_item
+
+    joins = all(u.endswith("항목 합치기") for u in unmet)
+    if english:
+        said = ", ".join(map(_en_item, unmet))
+        why = ("a table's rows are not a list of items to join" if joins
+               else "they do not share the same fields")
+        return (f"Nothing was changed: {said} could not be made from the slide's own points "
+                f"({why}). Say what the rows and columns or the items should be, and it will "
+                "be built that way.")
+    why = ("표의 행은 합칠 항목 목록이 아니어서" if joins
+           else "그 장의 내용이 같은 칸으로 나뉘지 않아")
+    return (f"바꾼 것이 없습니다. 요청한 {', '.join(unmet)}는 {why} 하지 못했습니다. "
+            "표의 행·열이나 목록 항목을 알려 주시면 그대로 만들겠습니다.")
 
 
 def _summary_made(parts: list[dict]) -> bool:
