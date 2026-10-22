@@ -880,6 +880,19 @@ def keep_figure(old: str, new: str, instruction: str) -> str:
     return f"{body.rstrip()}\n\n{fence.group(0).strip()}"
 
 
+def on_new_lines(old: str, new: str, fix) -> str:
+    """`fix` applied to the rewrite, every line kept from the old part left as it was."""
+    new = re.sub(r"\n{3,}", "\n\n", new)
+    fixed = fix(new)
+    lines, mended = new.split("\n"), fixed.split("\n")
+    if len(lines) != len(mended):
+        # lines merged or split: no line-by-line reading, the rewrite stands
+        return new
+    kept = set(old.split("\n"))
+    return "\n".join(line if line in kept else got
+                     for line, got in zip(lines, mended, strict=True))
+
+
 def keep_pictures(old: str, new: str, instruction: str) -> str:
     """Rewrite with the part's pictures (「![그림 2. …](…)」, not shown to the writer) put back
     where it names them, else at its end, unless a figure's removal was asked."""

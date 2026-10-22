@@ -21,6 +21,7 @@ from app.services import (
     revise,
     revised_tables,
     richtext,
+    units,
     weekdays,
 )
 from app.services import deck as deck_service
@@ -623,6 +624,10 @@ class Rewrite(Base):
                                                  revise.without_numbered_removals(
                                                      " ".join(asks) or _typed(bundle)))
                         body = richtext.detach_tables(body)
+                        # written sums and rate results on the rewritten lines only
+                        body = revise.on_new_lines(
+                            before, body, lambda t, given=given: units.fix_rate_results(
+                                units.fix_written_sums(units.fix_written_arithmetic(t)), given))
                         # arithmetic checked, not trusted
                         body = report.drop_kpi(
                             report.fix_point_units(

@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from app.pipeline import report_stages
 from app.pipeline.bundle import Bundle, Request
 from app.services import units
@@ -91,3 +93,54 @@ def test_rate_results_finish_quickly_on_long_runs():
         start = time.monotonic()
         units.fix_rate_results(text, WEEKLY_REQUEST)
         assert time.monotonic() - start < 0.5
+
+
+# ── a section edit: the rewritten lines are checked, the lines it kept stay ──
+
+KEPT = "| 기존 | 3,200만원 × (1 - 5%) = 1억 2,800만원 | 이전 판 |"
+EDITED_BEFORE = (
+    "단가 인하 폭을 결정해 주십시오(표 3).\n\n**표 3. 대성유통 단가 인하 안 비교**\n\n"
+    "| 안 | 금액 | 조건 |\n|---|---|---|\n" + KEPT + "\n")
+EDITED_AFTER = (
+    "단가 인하 폭을 결정해 주십시오(표 3). 월 발주 3,200만원에서 4% 인하하면 9,600만원이 "
+    "됩니다.\n\n**표 3. 대성유통 단가 인하 안 비교**\n\n| 안 | 금액 | 조건 |\n|---|---|---|\n"
+    + KEPT + "\n| 2안 (4% 인하) | 3,200만원 × (1 - 4%) = 9,600만원 | 내부 상한 내 |\n")
+
+
+def test_an_edit_s_rewritten_lines_are_recomputed_and_its_kept_lines_left():
+    from app.services import revise
+    fixed = revise.on_new_lines(
+        EDITED_BEFORE, EDITED_AFTER,
+        lambda t: units.fix_rate_results(units.fix_written_sums(t), WEEKLY_REQUEST))
+    assert "4% 인하하면 3,072만원이 됩니다" in fixed
+    assert "= 3,072만원 | 내부 상한 내 |" in fixed
+    assert KEPT in fixed
+
+
+@pytest.mark.asyncio
+async def test_the_section_edit_checks_the_arithmetic_it_wrote(monkeypatch):
+    from app.pipeline import revise_stages
+    from app.pipeline.stage import Context
+    from app.services import revise
+
+    async def rewrite_section(**kwargs):
+        return EDITED_AFTER, {"inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(revise_stages._report(), "rewrite_section", rewrite_section)
+    parts = [{"id": "s0", "heading": "이슈 및 요청 사항", "content": EDITED_BEFORE,
+              "format": "markdown"}]
+    bundle = revise_stages.bundle_for(
+        request=WEEKLY_REQUEST, instruction="1절에 2안을 더해줘", model={"id": L27},
+        planner=None, api_key="k", is_deck=False, title="주간 보고", data={}, parts=parts,
+        material=[], plan=revise.Plan(scope="parts", targets=[0], note="1절에 2안을 더해줘",
+                                      clauses={0: ["1절에 2안을 더해줘"]}),
+        format_id="", usage={"inputTokens": 0, "outputTokens": 0})
+    bundle.plan.order = [0]
+    try:
+        async for _ in revise_stages.Rewrite().run(bundle, Context()):
+            pass
+    except revise_stages.Stop:
+        pass
+    content = bundle.document.sections[0]["content"]
+    assert "3,072만원" in content and "9,600만원" not in content
+    assert KEPT in content
