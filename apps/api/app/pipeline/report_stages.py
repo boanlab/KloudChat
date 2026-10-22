@@ -37,6 +37,7 @@ from app.services import (
     internal_words,
     key_figures,
     lint,
+    meeting_memo,
     meeting_tense,
     model_retry,
     pictures,
@@ -1725,6 +1726,9 @@ class TitleBlock(Base):
             bundle.findings.client_problem = client_problem
             block = head_fixed or block
         block = report_checks.minutes_head(block, prepass, report.local_today()) or block
+        if prepass is not None and "meeting-date" in prepass.settings.head:
+            # an empty 회의명·장소·참석자 or a clockless 일시 the memo gives, by code
+            block = meeting_memo.fill_head(block, _meeting_given(bundle)) or block
         bundle.document.head_block = block
         yield {"type": "titleBlock", "titleBlock": block}
 
@@ -2115,7 +2119,7 @@ class MinutesReground(Base):
     name = "minutes-reground"
     kind = "check"
     reads = ("request", "material.given", "material.parts", "computed.prepass",
-             "document.sections")
+             "document.sections", "document.head_block")
     writes = ("document.sections", "findings.after")
 
     def skip(self, bundle: Bundle) -> str:
@@ -2139,6 +2143,12 @@ class MinutesReground(Base):
             # what the memo never says, written again by a repair after the verify settle
             sections = report_checks.settle_unsourced(sections, _meeting_given(bundle),
                                                       strong=bundle.request.strong)
+        # a day, clock or place called missing that the memo gives, the next meeting's day
+        # in this one's overview, and a memo decision no decision row holds
+        memo = _meeting_given(bundle)
+        sections = meeting_memo.overview_day(sections, bundle.document.head_block, memo)
+        sections, _ = meeting_memo.false_absences(sections, memo)
+        sections, _ = meeting_memo.decision_rows(sections, memo)
         # the meeting held told in the past; what comes next stays ahead
         bundle.document.sections, _ = meeting_tense.held(sections, _report()._REFERENCE_HEADING)
 
