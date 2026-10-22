@@ -1344,6 +1344,8 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
             units.fix_written_arithmetic(clean), printed=[bundle.computed.values])),
         given_text,
     )
+    # 「A에서 r% 인하하면 C」: base and rate give the result
+    clean = units.fix_rate_results(clean, given_text)
     # a formula a unit off and a profit its own figures do not leave: marked
     clean = units.mark_profit_contradictions(units.mark_slipped_formulas(clean))
     clean = report._grounded_figures(

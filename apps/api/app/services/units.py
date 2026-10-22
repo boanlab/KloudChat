@@ -487,9 +487,12 @@ def _evaluate(lhs: str) -> float | None:
             break
         if m.group("num") is not None:
             try:
-                tokens.append(_ko_number(m.group("num")))
+                number = _ko_number(m.group("num"))
             except ValueError:
                 return None
+            # a rate is a hundredth: 「× (1 - 5%)」
+            tokens.append(number / 100 if m.group(0)[m.end("num") - m.start():].lstrip()
+                          .startswith("%") else number)
         else:
             tokens.append({"x": "×", "*": "×", "−": "-"}.get(m.group("op"), m.group("op")))
         pos = m.end()
@@ -891,6 +894,144 @@ def mark_slipped_formulas(text: str) -> str:
         if m.group(0) in slipped and not inside_longer_expression(text, m.start()):
             text = _mark_after(text, m.end())
     return text
+
+
+#: a won amount in a rate statement: 「3,200만원」, 「1억 2,800만 원」, 「32,000,000원」
+_RATE_AMOUNT = re.compile(
+    r"(?<![\d.,])(\d[\d,]{0,15}(?:\.\d{1,6})?\s{0,2}(?:조|억|천만|만)"
+    r"(?:\s{0,2}\d[\d,]{0,15}(?:\.\d{1,6})?\s{0,2}(?:억|천만|만))?|\d{1,3}(?:,\d{3}){1,5})\s{0,2}원")
+#: a rate and the change it names: 「5% 인하」, 「4%를 할인」, bare 「5%」
+_RATE_CHANGE = re.compile(
+    r"(?<![\d.])(\d{1,3}(?:\.\d{1,3})?)\s{0,2}%(?!\s{0,2}p)(?:\s{0,2}(?:를|을)?\s{0,2}"
+    r"(?P<word>인하|할인|감액|절감|감소|삭감|인상|증액|증가|할증))?")
+_RAISE = ("인상", "증액", "증가", "할증")
+#: what leads from a changed rate to its result: 「인하하면 월 」, 「인하 시 」, 「할인된 」
+_CHANGE_TO_RESULT = re.compile(r"면|시\s|후|경우|된|한\s|→|:|=")
+#: what leads from a bare rate to its part: 「의 5%인 」, 「5%는 」
+_RATE_TO_PART = re.compile(r"^\s{0,2}(?:인|은|는|이면|에 해당하는|=|:|→)\s{0,2}$")
+#: a table column holding the changed amount
+_AFTER_COLUMN = re.compile(r"후|적용|변경|최종|인하가|할인가|결과")
+
+
+def _rate_result(base: float, rate: float, word: str | None) -> tuple[float, tuple[float, ...]]:
+    """The amount a base under a rate comes to, and every reading that stands (the changed
+    amount, the change itself)."""
+    if not word:
+        return base * rate, (base * rate,)
+    after = base * (1 + rate) if word in _RAISE else base * (1 - rate)
+    return after, (after, base * rate)
+
+
+def _stands(stated: float, readings: tuple[float, ...]) -> bool:
+    return any(abs(stated - r) <= 5e-3 * max(abs(r), 1.0) for r in readings)
+
+
+def _amount_value(m: re.Match) -> float | None:
+    try:
+        return _ko_number(m.group(1))
+    except ValueError:
+        return None
+
+
+def fix_rate_results(text: str, material: str) -> str:
+    """A base, a rate and the result they come to stated in one sentence (「3,200만원에서 5%
+    인하하면 3,040만원」, 「3,200만원의 5%인 160만원」) or one table row (a 「…원 기준」 header
+    amount or the row's first amount, then the changed amount) checked: a result the base and
+    rate do not give is recomputed when the material states both, marked 「(확인 필요)」
+    otherwise. Written formulas are `fix_written_sums`'s."""
+    if not text or "%" not in text:
+        return text
+    rates_given = {float(r) for r in re.findall(r"(?<![\d.])(\d{1,3}(?:\.\d{1,3})?)\s{0,2}%",
+                                                 material or "")}
+    amounts_given = _given(material or "")
+
+    def settle(unit: str, base: float, rate_m: re.Match, result_m: re.Match) -> str | None:
+        """`unit` with its result mended, or `None` when it stands."""
+        stated = _amount_value(result_m)
+        rate = float(rate_m.group(1))
+        if not stated or not base or stated == base:
+            return None
+        right, readings = _rate_result(base, rate / 100, rate_m.group("word"))
+        if _stands(stated, readings) or _power_off(right, stated):
+            return None
+        if round(base, 2) in amounts_given and rate in rates_given:
+            written = _ko_written(right, result_m.group(1))
+            return unit[: result_m.start(1)] + written + unit[result_m.end(1):]
+        return _mark_after(unit, result_m.end())
+
+    def sentence(unit: str) -> str:
+        if "=" in unit or "×" in unit:
+            return unit
+        rates = list(_RATE_CHANGE.finditer(unit))
+        if len(rates) != 1:
+            return unit
+        rate_m = rates[0]
+        amounts = list(_RATE_AMOUNT.finditer(unit))
+        before = [a for a in amounts if a.end() <= rate_m.start()]
+        after = [a for a in amounts if a.start() >= rate_m.end()]
+        if not before or not after:
+            return unit
+        base_m, result_m = before[-1], after[0]
+        lead, tail = unit[base_m.end():rate_m.start()], unit[rate_m.end():result_m.start()]
+        if len(lead) > 12 or len(tail) > 15 or re.search(r"[\d%|]", lead + tail):
+            return unit
+        if rate_m.group("word"):
+            if not _CHANGE_TO_RESULT.search(tail + " "):
+                return unit
+        elif not (re.fullmatch(r"\s{0,2}의\s{0,2}", lead) and _RATE_TO_PART.match(tail)):
+            return unit
+        base = _amount_value(base_m)
+        return settle(unit, base, rate_m, result_m) or unit if base else unit
+
+    def table(lines: list[str]) -> list[str]:
+        header = [c for c in lines[0].strip().strip("|").split("|")]
+        header_base = [(k, m) for k, c in enumerate(header) if "기준" in c
+                       for m in _RATE_AMOUNT.finditer(c)]
+        out = lines[:2]
+        for line in lines[2:]:
+            cells = line.strip().strip("|").split("|")
+            if "=" in line or "×" in line or len(cells) != len(header):
+                out.append(line)
+                continue
+            rates = [m for c in cells for m in _RATE_CHANGE.finditer(c) if m.group("word")]
+            spots = [(k, m) for k, c in enumerate(cells) for m in _RATE_AMOUNT.finditer(c)]
+            if len(rates) != 1:
+                out.append(line)
+                continue
+            base = column = None
+            if len(spots) == 1 and len(header_base) == 1 and spots[0][0] == header_base[0][0]:
+                base, (column, result_m) = _amount_value(header_base[0][1]), spots[0]
+            elif (len(spots) == 2 and spots[0][0] != spots[1][0]
+                  and _AFTER_COLUMN.search(header[spots[1][0]])):
+                base, (column, result_m) = _amount_value(spots[0][1]), spots[1]
+            mended = settle(cells[column], base, rates[0], result_m) if base else None
+            if mended is None:
+                out.append(line)
+                continue
+            cells[column] = mended
+            out.append("|" + "|".join(cells) + "|")
+        return out
+
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].lstrip().startswith("|"):
+            j = i
+            while j < len(lines) and lines[j].lstrip().startswith("|"):
+                j += 1
+            block = lines[i:j]
+            if len(block) >= 3 and re.fullmatch(r"[\s|:\-]+", block[1]):
+                block = table(block)
+            out.extend(block)
+            i = j
+            continue
+        parts = SENTENCE_BREAK.split(lines[i])
+        seps = SENTENCE_BREAK.findall(lines[i])
+        mended = [sentence(p) for p in parts]
+        out.append("".join(p + (seps[k] if k < len(seps) else "") for k, p in enumerate(mended)))
+        i += 1
+    return "\n".join(out)
 
 
 #: words that name no quantity
