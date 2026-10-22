@@ -117,6 +117,19 @@ def _policy_marked(body: str, request: str, material: list[str], data: dict) -> 
     return body
 
 
+def _figures_marked(body: str, request: str, material: list[str], data: dict,
+                    original: list[str]) -> str:
+    """`body` with 「(확인 필요)」 on a percentage, and with no figures in the material a sum of
+    money, that neither the document before the edit nor the request, material or sources
+    give or work out."""
+    report = _report()
+    quotes = [str(src.get("quote") or "") for src in data.get("sources") or []]
+    evidence = [request, *material, *quotes, *original]
+    if not deck_service.has_numbers(request, material):
+        body = report._without_invented_money(body, evidence)
+    return report._without_invented_percents(body, evidence)
+
+
 class Route(Base):
     """Revision target: swaps and term replacements by hand; else the planner."""
 
@@ -413,6 +426,9 @@ class Rewrite(Base):
         #: slides asked to join items they do not have as a list (a table's rows): said, kept
         unjoined: list[int] = []
         today = req.today if isinstance(req.today, dt.date) else None
+        #: the document as it stood: its percentages and sums are no new ones
+        deck_before = "\n".join(s for p in parts for s in strings(p)) if is_deck else ""
+        parts_before = [] if is_deck else [str(p.get("content") or "") for p in parts]
         for index in bundle.plan.order:
             part = parts[index]
             label = names[index] or f"{index + 1}"
@@ -708,6 +724,8 @@ class Rewrite(Base):
                     body = internal_words.scrub(body)
                     # a limit, approval or rule the material only asks about: marked
                     body = _policy_marked(body, request, material, data)
+                    # a percentage or sum the edit brought in that nothing gives: marked
+                    body = _figures_marked(body, request, material, data, parts_before)
                     # a part's own rename only; the document's title was set by route
                     rename = revise.title_rename(instruction, names)
                     renamed = (rename[0] if rename is not None and index not in widened and (
@@ -757,6 +775,16 @@ class Rewrite(Base):
                 doc.changed += 1
             yield {"type": "step", "id": "summary", "label": f"{plan.summary}줄 요약",
                    "status": "done" if block is not None else "error"}
+        if is_deck and doc.touched:
+            from app.pipeline.check_stages import edited_percents
+
+            # a percentage the edit brought in that nothing gives (「82% of frontier」 →
+            # cloud 「100%」): marked, as when the deck was made
+            sources = [str(src.get("quote") or "") for src in data.get("sources") or []]
+            for n in edited_percents(parts, doc.touched, request=request,
+                                     material=[*material, *sources], before=deck_before,
+                                     strong=bool(req.strong)):
+                yield {"type": "slide", "slide": parts[n], "done": True}
         if is_deck:
             # said only when the slide as drawn shows it (a table, the picture gone)
             doc.unmet = [f"{i + 1}장 {what}" for i in bundle.plan.order if i < len(parts)

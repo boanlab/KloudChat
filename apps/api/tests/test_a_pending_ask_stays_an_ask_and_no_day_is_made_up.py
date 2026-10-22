@@ -54,7 +54,9 @@ def test_an_item_the_memo_gives_no_day_is_found_on_the_day_it_was_put():
     found = stated_days.findings(WEEKLY, MEMO)
     row, sentence = "| 금요일 | 4분기 목표 초안 작성, 물류팀 출고 SLA 협의(예정) |", (
         "물류팀과의 SLA 협의는 금요일 오후에 진행합니다")
+    # 「- 화: 한솔마트 재고 클레임」 is this week's; the visit is a next-week plan on no day
     assert [(piece, items) for _, piece, items in found] == [
+        ("| 화요일 | 한솔마트 재고 점검 방문 |", ["한솔마트 재고 점검 방문"]),
         (row, ["물류팀 출고 SLA 협의(예정)"]), (f"{sentence}.", [sentence])]
     # a day the memo gives, a cited sentence and a weekday beside a date are left alone
     assert not stated_days.untraced("| 목 | 대성유통 2차 미팅 |", MEMO)
@@ -97,7 +99,7 @@ def test_what_stands_after_the_repair_is_marked_whatever_check_found_it_first():
     assert "| 고객 요구 충족, 내부 허용 초과 (확인 필요) |" in first
     assert "| 내부 허용 상한선, 고객 재요구 가능성 (확인 필요) |" in first
     assert "| 4분기 목표 초안 작성, 물류팀 출고 SLA 협의(예정) (확인 필요) |" in plan
-    assert "| 화요일 | 한솔마트 재고 점검 방문 |" in plan
+    assert "| 화요일 | 한솔마트 재고 점검 방문 (확인 필요) |" in plan
     assert "단가 인하 폭 결재를 요청합니다." in plan
 
 
@@ -107,6 +109,7 @@ async def test_the_day_goes_back_to_the_writer_and_a_rewrite_without_it_is_kept(
         items = json.loads(messages[0]["content"].rsplit("Items:\n", 1)[1])
         return json.dumps([
             "| 금요일 | 4분기 목표 초안 작성 |" if item["sentence"].startswith("| 금요일")
+            else "| 미정 | 한솔마트 재고 점검 방문 |" if item["sentence"].startswith("| 화요일")
             else "물류팀과의 SLA 협의 일정은 아직 정해지지 않았습니다."
             for item in items], ensure_ascii=False), {}
 

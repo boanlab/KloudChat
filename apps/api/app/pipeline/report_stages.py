@@ -1362,10 +1362,12 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         bundle.material.grounded,
     )
     if not bundle.material.grounded:
-        # money the sources state stays; the rest is marked, never blanked — after the
-        # arithmetic fixes, so a mark never splits a formula they read
-        clean = report._without_invented_money(clean, [
-            given_text, *(report._source_text(row) for row in sources or [])])
+        # money and percentages the sources state or work out stay; the rest is marked, never
+        # blanked — after the arithmetic fixes, so a mark never splits a formula they read
+        evidence = [given_text, *(report._source_text(row) for row in sources or [])]
+        clean = report._without_invented_percents(
+            report._without_invented_money(clean, evidence),
+            [*evidence, bundle.computed.values or ""])
     return richtext.tidy_tables(clean)
 
 

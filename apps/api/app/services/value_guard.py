@@ -1278,5 +1278,186 @@ def _dropped_given(old: str, new: str, ev: Evidence) -> str:
     return ""
 
 
-__all__ = ["GUARD_BLANK", "MARK", "Evidence", "Settled", "ko_number", "pages_at", "same_script",
+#: words after a bare figure that name no measure (「3 out of 40」)
+_NOT_MEASURES = frozenset({
+    "out", "and", "the", "per", "for", "from", "than", "with", "above", "below", "over",
+    "under", "more", "less", "times", "are", "was", "were", "has", "had", "our", "its", "vs"})
+#: the Latin word right after a bare figure: 「40-task」, 「20 pages」, 「1,000 documents」
+_MEASURE_WORD = re.compile(r"[ -]?([A-Za-z]{3,20})")
+#: a share said in English after its figure: 「64 percent」, 「3 percentage points」
+_EN_PERCENT = re.compile(r"\s?percent(?:age\s?points?)?(?![A-Za-z])", re.I)
+
+
+@dataclass(slots=True)
+class Percents:
+    """The percentages a material backs: those it gives, and those worked from its figures
+    (a share or change of two figures of one measure, the rest of a share, the gap, ratio and
+    change of two given percentages)."""
+
+    values: list[float] = field(default_factory=list)
+    #: the percentages given as written
+    given: list[float] = field(default_factory=list)
+    #: point gaps of a worked share and a given percentage (7.5% worked, 6.8% given → 0.7%p)
+    gaps: list[float] = field(default_factory=list)
+
+    def backs(self, value: float, raw: str, line: str = "", unit: str = "%",
+              approx: bool = False) -> bool:
+        v = abs(value)
+        if v == 100 and _TOTAL_ROW.search(line or ""):
+            # a total of shares, the base of them
+            return True
+        tol = _step(raw) + 1e-9 * max(1.0, v)
+        if any(abs(g - v) <= tol for g in self.given):
+            return True
+        if approx:
+            # a worked value said as about it may be a place off (55.47 → 「약 56%」)
+            tol += _step(raw)
+        for pool in (self.values, self.gaps) if unit == "%p" else (self.values,):
+            k = bisect.bisect_left(pool, v - tol)
+            if k < len(pool) and pool[k] <= v + tol:
+                return True
+        return False
+
+
+#: a line totalling shares or setting the base others are a share of: 「| 합계 | 100% |」,
+#: 「100% (baseline)」
+_TOTAL_ROW = re.compile(r"합계|총계|총합|기준값|\b(?:total|baseline|reference|ref)\b", re.I)
+#: a figure said as about so much: 「약 56%」, 「about 56%」
+_ABOUT = re.compile(r"(?:(?<![가-힣])(?:약|대략|거의)"
+                    r"|\b(?:about|approximately|roughly|nearly|around)|~|≈)\s?$", re.I)
+ABOUT = _ABOUT
+#: what a figure in 억 or 만 may count besides money: 「1.2만 명」, 「3만 건」
+_COUNTED_AMOUNTS = ("달러", "명", "건", "개", "곳", "회", "톤")
+#: figures of one measure paired at most (a long attachment)
+_PAIRED = 300
+#: figures in a short material, whose worked shares are set against its given ones
+_SHORT = 40
+
+
+def _measure(text: str, m: re.Match) -> str:
+    """What a figure counts, as a key two figures share when one is a share of the other:
+    its unit, 「원」 for an amount in 억/만, 「달러」 after 「$」, the Latin word after it
+    (「pages」 → 「page」); "" when the text does not say."""
+    family = _family(m.group("unit"))
+    if re.search(r"[조억만천]", m.group("num")) and family not in _COUNTED_AMOUNTS:
+        # 「40억 대비」: an amount, 「대」 the start of a word
+        return "원"
+    if family:
+        return family
+    if text[max(0, m.start() - 1):m.start()] == "$":
+        return "달러"
+    word = _MEASURE_WORD.match(text, m.end())
+    if word and word.group(1).lower() not in _NOT_MEASURES:
+        return word.group(1).lower().removesuffix("s")
+    return ""
+
+
+def percent_basis(texts: Iterable[str]) -> Percents:
+    """`Percents` of `texts`: figures of a known measure pair across the texts; a bare figure
+    only with another on its line or in its table column (no share of unrelated numbers,
+    「20 pages」 and 「40 tasks」 → 100%)."""
+    given: set[float] = set()
+    groups: dict[tuple, set[float]] = {}
+    block = 0
+    for t, text in enumerate(texts):
+        if not text:
+            continue
+        # days set aside; 「9.6억」 is no 9월 6일
+        masked = _FULL_DAY.sub(lambda d: " " * len(d.group(0)), text)
+        masked = _MONTH_DAY.sub(lambda d: " " * len(d.group(0)), masked)
+        in_table = False
+        for n, line in enumerate(masked.split("\n")):
+            table = line.lstrip().startswith("|")
+            if table and not in_table:
+                block += 1
+            in_table = table
+            for m in _NUMBER.finditer(line):
+                try:
+                    value = abs(ko_number(m.group("num")))
+                except ValueError:
+                    continue
+                family = _family(m.group("unit"))
+                if not family and _EN_PERCENT.match(line, m.end()):
+                    family = "%p" if "point" in _EN_PERCENT.match(line, m.end()).group(0).lower() \
+                        else "%"
+                if family in ("%", "%p"):
+                    given.add(value)
+                    continue
+                if not value or (not family and value == int(value) and 1900 <= value <= 2100):
+                    # a year
+                    continue
+                key = _measure(line, m)
+                if key:
+                    groups.setdefault(("measure", key), set()).add(value)
+                    continue
+                groups.setdefault(("line", t, n), set()).add(value)
+                if table:
+                    groups.setdefault(("column", block, line[:m.start()].count("|")),
+                                      set()).add(value)
+    out = set(given)
+    parts: set[float] = set()
+    for group in groups.values():
+        pool = sorted(group)[:_PAIRED]
+        for i, a in enumerate(pool):
+            for b in pool[i + 1:]:
+                parts.add(a / b * 100)
+                out.update((b / a * 100, (b - a) / a * 100, (b - a) / b * 100))
+    out |= parts
+    gaps: set[float] = set()
+    if sum(len(g) for g in groups.values()) <= _SHORT and len(given) <= _SHORT:
+        # a short material: a worked share against a given one (9.6억 of 128억 = 7.5%, 0.7%p
+        # over the 6.8% given)
+        gaps.update(abs(p - v) for p in parts for v in given)
+    shares = sorted(given)[:_PAIRED]
+    out.update(100 - v for v in shares if 0 < v < 100)
+    for i, a in enumerate(shares):
+        for b in shares[i + 1:]:
+            out.update((b - a, a / b * 100, (b - a) / a * 100) if a else (b - a,))
+    return Percents(sorted(out), sorted(given), sorted(gaps))
+
+
+def percents_in(text: str) -> list[tuple[re.Match, float, str]]:
+    """Each percentage `text` writes (「55.5%」, 「0.7%p」, 「64 percent」) with its value and
+    unit, 「%」 or 「%p」."""
+    out = []
+    for m in _NUMBER.finditer(text or ""):
+        unit = _family(m.group("unit"))
+        if not unit and (said := _EN_PERCENT.match(text, m.end())):
+            unit = "%p" if "point" in said.group(0).lower() else "%"
+        if unit not in ("%", "%p"):
+            continue
+        try:
+            out.append((m, ko_number(m.group("num")), unit))
+        except ValueError:
+            continue
+    return out
+
+
+#: a mark already after a value, in either language
+_MARKED = re.compile(r"\s?[(\[]\s?(?:확인\s?필요|needs checking)\s?[)\]]")
+
+
+def mark_unbacked_percents(text: str, basis: Percents) -> tuple[str, int]:
+    """`text` with 「(확인 필요)」 after each percentage `basis` does not back; the count."""
+    pieces, at, count = [], 0, 0
+    for m, value, unit in percents_in(text):
+        end = m.end()
+        if not m.group("unit"):
+            end = _EN_PERCENT.match(text, end).end()  # type: ignore[union-attr]
+        if _MARKED.match(text, end):
+            continue
+        line, _ = _line_at(text, m.start())
+        if basis.backs(value, m.group("num"), line, unit,
+                       bool(_ABOUT.search(text[max(0, m.start() - 16):m.start()]))):
+            continue
+        pieces.append(text[at:end] + MARK)
+        at = end
+        count += 1
+    pieces.append(text[at:])
+    # 「(55.5%(확인 필요))」 read as 「(55.5%, 확인 필요)」
+    return (tidy_marks("".join(pieces)) if count else text), count
+
+
+__all__ = ["GUARD_BLANK", "MARK", "Evidence", "Percents", "Settled", "ko_number",
+           "mark_unbacked_percents", "pages_at", "percent_basis", "percents_in", "same_script",
            "settle", "supported"]
