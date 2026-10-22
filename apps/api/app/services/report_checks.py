@@ -14,7 +14,7 @@ from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from typing import Any
 
 from app.core import logs
-from app.services import key_figures, placeholders, skill_scripts, thinking, units
+from app.services import key_figures, placeholders, skill_scripts, stated_policy, thinking, units
 from app.services.verify import Check, Doc, Finding, model_check
 
 log = logging.getLogger(__name__)
@@ -2751,7 +2751,7 @@ def settle_unsourced(sections: list[dict], material: str, *, strong: bool) -> li
     """What the writer left of `minutes_unsourced` after its one repair (`stated_meeting.settle`
     for sentences): a strong writer's row is marked 「(확인 필요)」, anyone else's goes with the
     「※」 line naming its task."""
-    from app.services import stated_meeting, stated_policy
+    from app.services import stated_meeting
 
     out = [dict(sec) for sec in sections]
     for index, row, task in unassigned_rows(out, material):
@@ -4836,8 +4836,10 @@ def _owner_tasked(cell: str, task: str, people: dict[str, list[str]], material: 
                for names in named)
 
 
-def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], list[str]]:
-    """Repair owners/quantities absent from material; returns sections and repair codes."""
+def minutes_grounding(sections: list[dict], material: str, *, strong: bool = False
+                      ) -> tuple[list[dict], list[str]]:
+    """Repair owners/quantities absent from material; returns sections and repair codes. A
+    memo person on a task the memo never gives them is 「미정」, a strong writer's marked."""
     from app.services import stated_meeting
 
     flat = re.sub(r"\s+", "", material or "")
@@ -4898,9 +4900,11 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
                 codes.append("minutes_owner")
                 changed = True
             elif task is not None and len(row) > max(owner, task) \
+                    and stated_policy.MARK not in row[owner] \
                     and not _owner_tasked(row[owner], row[task], people, material):
-                # a memo person on a task no memo item gives them: the owner is open
-                row[owner] = "미정"
+                # a memo person on a task no memo item gives them: the owner is open (a strong
+                # writer's cell marked where it stands)
+                row[owner] = f"{row[owner].strip()} {stated_policy.MARK}" if strong else "미정"
                 codes.append("minutes_owner")
                 changed = True
             around = " ".join([*table.header, *row])

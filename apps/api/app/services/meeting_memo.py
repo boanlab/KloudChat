@@ -732,6 +732,94 @@ def counted(sections: list[dict]) -> tuple[list[dict], int]:
     return out, fixed
 
 
-__all__ = ["Meeting", "Memo", "borrowed_next", "counted", "decision_rows", "decisions",
-           "dedupe_rows", "drop", "false_absences", "false_dues", "fill_head", "of_request",
-           "overview_day", "read", "relative_dues"]
+# ── the writer's notes in cells, and pointers at rows gone ──
+
+#: a basis in brackets: 「(기준 2026-10-14)」, 「(2026-10-14 기준)」, 「(기준일: 10/14)」
+_BASIS = re.compile(r"[ \t]{0,2}\((?:[ \t]{0,2}기준일?[ \t]{0,2}[:：]?[ \t]{0,2}[^()\n|]{1,24}"
+                    r"|[^()\n|]{1,24}[ \t]기준)[ \t]{0,2}\)")
+#: a cell telling only where its value came from: 「회의 자료에서 명시」, 「메모에 기재됨」
+_SOURCE_CELL = re.compile(
+    r"(?:회의[ \t]?)?(?:자료|메모|원문|원본|회의록|기록|발언)"
+    r"[ \t]?(?:에서|에|상|에[ \t]?따름|에[ \t]?근거)?[ \t]?(?:명시|기재|확인|근거|언급|표기)"
+    r"(?:됨|함|되어[ \t]?있음|된[ \t]?(?:내용|값|정보))?")
+
+
+def cell_notes(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
+    """Table cells less the writer's note on its own working: a basis in brackets (「(기준
+    2026-10-14)」) goes, and a cell that only says where its value came from (「회의 자료에서
+    명시」) or how it was worked out (`stated_meeting.self_note`) reads 「-」; the first cell,
+    which names the row, stays."""
+    from app.services import report_checks, stated_meeting
+
+    out = [dict(s) for s in sections]
+    fixed = 0
+    for table in report_checks.tables(out):
+        content = str(out[table.section].get("content") or "")
+        for line, row in table.rows:
+            cells = list(row)
+            for k in range(1, len(cells)):
+                cell = _BASIS.sub("", cells[k]).strip() if len(cells[k]) <= 300 else cells[k]
+                bare = cell.strip(" *.")
+                if bare and (_SOURCE_CELL.fullmatch(bare)
+                             or stated_meeting.self_note(bare, memo_text)):
+                    cell = "-"
+                cells[k] = cell or "-"
+            if cells != list(row):
+                content = content.replace(line, "| " + " | ".join(cells) + " |", 1)
+                fixed += 1
+        out[table.section]["content"] = content
+    return out, fixed
+
+
+#: a clause pointing at the other items as open: 「나머지 항목은 확인이 필요합니다」
+_REST_OPEN = re.compile(
+    r"(?:나머지|그[ \t]?외|기타|남은)[ \t]?(?:항목|과제|업무|일|사항|안건|행)[가-힣]{0,2}[ \t]"
+    r"[^,.\n]{0,20}(?:(?:확인|확정|결정|지정)(?:이|가)?[ \t]?필요|미정|정해지지[ \t]?않)")
+#: a clause's end again once the clause after it went: 「작성하며」 → 「작성합니다」
+_RE_END = ((re.compile(r"([었았였했])(?:으며|고)$"), r"\1습니다"),
+           (re.compile(r"하(?:며|고)$"), "합니다"), (re.compile(r"되(?:며|고)$"), "됩니다"))
+
+
+def rest_open(sections: list[dict]) -> tuple[list[dict], int]:
+    """A clause calling the other items open (「…, 나머지 항목은 확인이 필요합니다(표 2)」) while
+    no table row holds an open cell (the row it pointed at went) goes; the sentence before it
+    ends again and keeps its table pointer, a sentence of that clause alone goes."""
+    from app.services import stated_meeting, stated_policy
+
+    rows = stated_meeting.open_rows(sections)
+    if rows is None or rows:
+        return sections, 0
+    out = [dict(s) for s in sections]
+    gone = 0
+    for sec in out:
+        content = str(sec.get("content") or "")
+        for piece in stated_policy.pieces(content):
+            if piece.lstrip().startswith("|") or not _REST_OPEN.search(piece[:400]):
+                continue
+            # the sentence's last clause only
+            clauses = piece.split(", ")
+            at = len(clauses) - 1
+            if not _REST_OPEN.search(clauses[at][:400]):
+                continue
+            pointer = "".join(_POINTER.findall(clauses[at]))
+            if at == 0:
+                plain = f"정리하면 다음과 같습니다{pointer}." if pointer else ""
+                content = content.replace(piece, plain, 1) if plain else drop(content, piece)
+                gone += 1
+                continue
+            last = clauses[at - 1]
+            for rx, polite in _RE_END:
+                if rx.search(last):
+                    clauses[at - 1] = rx.sub(polite, last)
+                    break
+            else:
+                continue
+            content = content.replace(piece, ", ".join(clauses[:at]) + f"{pointer}.", 1)
+            gone += 1
+        sec["content"] = content
+    return out, gone
+
+
+__all__ = ["Meeting", "Memo", "borrowed_next", "cell_notes", "counted", "decision_rows",
+           "decisions", "dedupe_rows", "drop", "false_absences", "false_dues", "fill_head",
+           "of_request", "overview_day", "read", "relative_dues", "rest_open"]

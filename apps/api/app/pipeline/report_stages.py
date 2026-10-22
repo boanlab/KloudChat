@@ -1850,7 +1850,8 @@ class MinutesRepair(Base):
             sections, undated = report_checks.minutes_undated(sections, prepass.dates, known)
             before += undated
         # owners/quantities repaired by code, rechecked after verify rewrites
-        repaired, ungrounded = report_checks.minutes_grounding(sections, known)
+        repaired, ungrounded = report_checks.minutes_grounding(
+            sections, known, strong=bundle.request.strong)
         before += ungrounded
         bundle.document.sections = settled_sections(sections, repaired, [known])
 
@@ -2154,9 +2155,10 @@ class MinutesReground(Base):
         # a due the checks blanked to 「[기한]」 gets the material's date back
         sections, _ = report_checks.minutes_due_fill(bundle.document.sections,
                                                      bundle.computed.prepass.dates, blanked=True)
-        sections, again = report_checks.minutes_grounding(sections, known)
+        strong = bundle.request.strong
+        sections, again = report_checks.minutes_grounding(sections, known, strong=strong)
         if again:
-            sections, left = report_checks.minutes_grounding(sections, known)
+            sections, left = report_checks.minutes_grounding(sections, known, strong=strong)
             bundle.findings.after += left
         sections = settled_sections(bundle.document.sections, sections, [known])
         # prose calling a deadline open that its action row dates from the memo
@@ -2178,6 +2180,9 @@ class MinutesReground(Base):
         sections, _ = meeting_memo.dedupe_rows(sections)
         # a count before a table or list that rows dropped above left behind
         sections, _ = meeting_memo.counted(sections)
+        # the writer's notes on its working in cells, and a pointer at open rows no longer there
+        sections, _ = meeting_memo.cell_notes(sections, memo)
+        sections, _ = meeting_memo.rest_open(sections)
         sections = [{**sec, "content": word_fix.twin_alternatives(str(sec.get("content") or ""))}
                     for sec in sections]
         # the meeting held told in the past; what comes next stays ahead

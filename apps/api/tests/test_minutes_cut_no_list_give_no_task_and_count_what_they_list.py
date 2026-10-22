@@ -76,6 +76,11 @@ def test_a_memo_person_on_a_task_no_memo_item_gives_them_is_no_owner():
     assert "| 간식비 50만원 집행 계획 수립 | 미정 |" in content and "minutes_owner" in codes
     assert "| 튜터링 포스터 시안 준비 | 이수연 |" in content
     assert "| 설문 도구 비교표 작성 | 최다은 |" in content
+    # a strong writer's cell is marked where it stands, once however often the check runs
+    strong, codes = report_checks.minutes_grounding(
+        [_sec("실행 계획", ACTIONS.format(owner="박민호"))], TUTOR, strong=True)
+    assert "| 간식비 50만원 집행 계획 수립 | 박민호 (확인 필요) |" in strong[0]["content"]
+    assert report_checks.minutes_grounding(strong, TUTOR, strong=True) == (strong, [])
     # with no owner, a task no memo clause gives anyone goes as unassigned
     rows = report_checks.unassigned_rows([_sec("실행 계획", ACTIONS.format(owner="미정"))], TUTOR)
     assert [task for _, _, task in rows] == [["간식비 50만원 집행 계획 수립"]]
@@ -122,6 +127,35 @@ def test_a_count_says_how_many_the_list_after_it_holds():
     assert meeting_memo.counted([_sec("행동 항목", apart)])[1] == 0
 
 
+def test_a_cell_holds_no_note_on_how_the_writer_got_its_value():
+    table = ("| 항목 | 내용 | 비고 |\n| --- | --- | --- |\n"
+             "| 포스터 시안 | 2026-10-23(금) | 회의 발언: '다음 주 금요일까지' "
+             "(기준 2026-10-14) |\n"
+             "| 장소 | 3층 회의실 | 회의 자료에서 명시 |\n"
+             "| 모집 기간 | 2026-11-03 ~ 2026-11-14 | 회의에서 확정 |")
+    out, fixed = meeting_memo.cell_notes([_sec("다음 회의", table)], TUTOR)
+    text = out[0]["content"]
+    assert fixed == 2
+    assert "| 회의 발언: '다음 주 금요일까지' |" in text and "(기준" not in text
+    assert "| 장소 | 3층 회의실 | - |" in text
+    # what the meeting did stays
+    assert "| 회의에서 확정 |" in text
+
+
+def test_a_pointer_at_open_rows_goes_once_no_row_is_open():
+    lead = ("이수연은 포스터 시안을 준비하고, 최다은은 설문 도구 비교표를 작성하며, 나머지 항목은 "
+            "확인이 필요합니다(표 2).")
+    table = ("**표 2. 행동 항목**\n\n| 항목 | 담당 | 기한 |\n|---|---|---|\n"
+             "| 포스터 시안 준비 | 이수연 | 2026-10-23(금) |\n| 비교표 작성 | 최다은 | 다음 회의 |")
+    out, gone = meeting_memo.rest_open([_sec("행동 항목", f"{lead}\n\n{table}")])
+    assert gone == 1
+    assert out[0]["content"].startswith(
+        "이수연은 포스터 시안을 준비하고, 최다은은 설문 도구 비교표를 작성합니다(표 2).\n\n")
+    # an open row still there keeps it
+    held = f"{lead}\n\n{table}\n| 공고 게시 | 미정 | 미정 |"
+    assert meeting_memo.rest_open([_sec("행동 항목", held)])[1] == 0
+
+
 def test_the_new_checks_finish_on_a_long_run_of_spaces():
     gap = " " * 50_000
     start = time.perf_counter()
@@ -130,4 +164,8 @@ def test_the_new_checks_finish_on_a_long_run_of_spaces():
     stated_meeting.consent_cut(f"합의한{gap}업무, 그리고 3건입니다.", f"합의한{gap}업무")
     hangul.tidy_spacing(f"안건{gap}2인 예산")
     meeting_memo.counted([_sec("행동", f"다음{gap}3건입니다.\n\n- a\n- b")])
+    row = f"| 항목 | 비고 |\n|---|---|\n| a | (기준{gap}2026) 회의{gap}자료에서{gap}명시 |"
+    meeting_memo.cell_notes([_sec("행동", row)], TUTOR)
+    rest = f"a하며, 나머지{gap}항목은{gap}확인이 필요합니다."
+    meeting_memo.rest_open([_sec("행동", f"{rest}\n\n{row}")])
     assert time.perf_counter() - start < 0.5
