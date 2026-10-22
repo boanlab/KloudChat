@@ -5407,10 +5407,18 @@ def lost_across(old: list[dict], new: list[dict], skip: frozenset[str] | set[str
     fewer slides), read as `lost_figures` reads one slide; in an English deck a lone count
     with what it counts too (「3 reviewers」), and each with what it counts (「40 tasks」, 「신규
     거래처 3곳」); figures written as in `skip` (said with a chart) left out."""
+    from app.services import revise
+
     shown = [f for slide in new for f in _shown_figures(slide)]
     amounts = amounts_in(" ".join(_shown_words(slide) for slide in new))
     texts = [t for slide in old for t in _counting_texts(slide)]
     english = deck_language(old) == "en"
+    # a figure the old deck showed only under the checks' mark: no fact the person lost
+    unchecked = {m.group(1) for t in texts for m in revise._MARKED_FIGURE.finditer(t)}
+    bare = " ".join(revise._MARKED_FIGURE.sub(" ", t) for t in texts)
+    unchecked = {f for f in unchecked
+                 if not re.search(rf"(?<![\w.,$]){re.escape(f)}(?![\d.,%])", bare)}
+    skip = {*skip, *unchecked}
     new_counts = {n for slide in new for t in _counting_texts(slide)
                   for n in re.findall(r"(?<![\w.,$])\d+(?![\w.,%])", t)}
     out: dict[tuple[str, str], str] = {}

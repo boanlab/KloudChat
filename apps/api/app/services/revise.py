@@ -931,9 +931,27 @@ _COUNT_MENTION = re.compile(
 )
 
 
+#: a count a finding compares against, not the document's size: 「above 20 pages」, 「20쪽 이상」
+_COMPARED_BEFORE = re.compile(
+    r"\b(?:above|over|under|below|past|beyond|than|exceeding|per)\s{0,3}$",
+    re.I)
+_COMPARED_AFTER = re.compile(r"\s{0,3}(?:이상|이하|초과|미만|넘)")
+
+
 def without_counts(request: str) -> str:
-    """Request minus part counts; planner reads the note's count."""
-    return " ".join(_COUNT_MENTION.sub(" ", " ".join((request or "").split())).split())
+    """Request minus part counts; planner reads the note's count. A count a finding is stated
+    against stays (「failed more above 20 pages」)."""
+    text = " ".join((request or "").split())
+
+    def drop(m: re.Match) -> str:
+        unit = re.search(r"\d\s{0,8}(?:장|쪽|페이지|슬라이드|절)", m.group(0))
+        after = m.start() + unit.end() if unit else m.end()
+        if _COMPARED_BEFORE.search(text[max(0, m.start() - 16):m.start()]) or \
+                _COMPARED_AFTER.match(text, after):
+            return m.group(0)
+        return " "
+
+    return " ".join(_COUNT_MENTION.sub(drop, text).split())
 
 
 _TARGET_COUNT = re.compile(
@@ -1292,6 +1310,71 @@ def absorb_rows(new: list[dict], old: list[dict], *, mentioned: str) -> list[dic
                 cells = [str(c) for c in row][:width]
                 host["rows"].append(cells + [""] * (width - len(cells)))
     return _dedupe_tables(new)
+
+
+#: the parts of one item's value: 「40 prompts, three raters」
+_VALUE_PARTS = re.compile(r"\s{0,2}[,;·]\s{0,2}")
+#: words a cell or a part is said in
+_CELL_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{3,}")
+
+
+def _labelled_items(slide: dict) -> list[tuple[str, str]]:
+    """`(label, value)` for each labelled item the slide shows: bands, cards, metrics, a
+    「label: value」 point."""
+    out = []
+    for key in ("bands", "cards", "tiles", "metrics", "steps"):
+        for pair in slide.get(key) or []:
+            if isinstance(pair, list) and len(pair) >= 2:
+                out.append((str(pair[0]), str(pair[1])))
+    for point in slide.get("bullets") or []:
+        label, colon, value = str(point).partition(":")
+        if colon and 0 < len(label) <= 30 and value.strip():
+            out.append((label, value))
+    return out
+
+
+def _label_key(label: str) -> str:
+    key = re.sub(r"[^가-힣a-z0-9]", "", label.lower())
+    return key[:-1] if len(key) > 3 and key.endswith("s") else key
+
+
+def spread_rows(new: list[dict], old: list[dict]) -> list[dict]:
+    """A comparison row whose cells are the parts of one old item's value (「Tasks: 40 prompts,
+    three raters」 → 「40 prompts」 under one column, 「3 raters」 under the other): one value
+    for every column, the parts kept together in each."""
+    items: dict[str, list[list[str]]] = {}
+    for slide in old:
+        for label, value in _labelled_items(slide):
+            parts = [p for p in _VALUE_PARTS.split(value.strip()) if p.strip()]
+            if len(parts) >= 2:
+                items.setdefault(_label_key(label), []).append(parts)
+    if not items:
+        return new
+    for slide in new:
+        rows = slide.get("rows")
+        if not isinstance(rows, list) or len(rows) < 2 or not isinstance(rows[0], list):
+            continue
+        heads = {w.lower() for c in rows[0][1:] for w in _CELL_WORD.findall(str(c))}
+        for r, row in enumerate(rows[1:], 1):
+            cells = [str(c).strip() for c in row[1:]] if isinstance(row, list) else []
+            if len(cells) < 2 or not all(cells) or len(set(cells)) < len(cells):
+                continue
+            for parts in items.get(_label_key(str(row[0])), []):
+                lowered = [p.lower() for p in parts]
+                if any(w in p for p in lowered for w in heads):
+                    # a part naming a column: the cells are that column's
+                    continue
+                homes = []
+                for cell in cells:
+                    words = [w.lower() for w in _CELL_WORD.findall(cell)]
+                    home = [k for k, p in enumerate(lowered)
+                            if words and all(w in p for w in words)]
+                    homes.append(home[0] if len(home) == 1 else None)
+                if None not in homes and len(set(homes)) == len(homes):
+                    joined = ", ".join(cells)
+                    rows[r] = [row[0], *([joined] * len(cells))]
+                    break
+    return new
 
 
 def carry_by_content(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
@@ -2291,10 +2374,14 @@ def _hedged(text: str) -> list[tuple[list[tuple[str, str, str]], list[str], str]
     out: dict[tuple, tuple] = {}
     clauses = _clauses(text)
     for i, clause in enumerate(clauses):
-        words = [m.group(0) for m in _HEDGE.finditer(clause)]
-        if not words:
+        hedges = list(_HEDGE.finditer(clause))
+        if not hedges:
             continue
-        figures, names = _subjects(clause)
+        words = [m.group(0) for m in hedges]
+        # a hedge qualifies what its own stretch says, never what a later one names
+        # (「물류팀 확인이 필요한 상태로, CRM 병합은 다음 주」)
+        joint = clause.find(", ", hedges[-1].end())
+        figures, names = _subjects(clause if joint < 0 else clause[:joint])
         if not figures and not names and i and _REFERS_BACK.match(clause.strip()[:12]):
             figures, names = _subjects(clauses[i - 1])
         if not figures and not names:

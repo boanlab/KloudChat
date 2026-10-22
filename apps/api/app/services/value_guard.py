@@ -33,11 +33,11 @@ _FULL_DAY = re.compile(
 _MONTH_DAY = re.compile(
     r"(?<![\d.])(?P<m>\d{1,2})\s{0,2}월\s{0,2}(?P<d>\d{1,2})\s{0,2}일"
     rf"(?:\s{{0,2}}\(\s?[{_WD}](?:요일)?\s?\))?")
-#: 「11/4」, 「11. 4.」, 「11.4(수)」; not a version (「3.4.1」), a fraction run nor a share
-#: (「3.5%」, 「3.2~3.5%」)
+#: 「11/4」, 「11. 4.」, 「11.4(수)」; not a version (「3.4.1」), a fraction run, a share nor a
+#: multiplier (「3.5%」, 「3.2~3.5%」, 「9.5x」)
 _SHORT_DAY = re.compile(
     rf"(?<![\d./])(?P<m>\d{{1,2}})\s{{0,1}}(?:/|\.\s{{0,1}})(?P<d>\d{{1,2}})(?![\d/]|\.\d)"
-    r"(?!\s?(?:%|퍼센트)|\s?[~∼〜–-]\s?\d{1,2}\.\d{1,2}\s?(?:%|퍼센트))\.?"
+    r"(?!\s?(?:%|퍼센트)|[x×](?![A-Za-z\d])|배|\s?[~∼〜–-]\s?\d{1,2}\.\d{1,2}\s?(?:%|퍼센트))\.?"
     rf"(?:\s{{0,2}}\(\s?[{_WD}](?:요일)?\s?\))?")
 #: 「2026. 11.」, 「2026년 11월」: a month of a year
 _YEAR_MONTH = re.compile(
@@ -65,10 +65,14 @@ _UNITS = ("%p", "%", "퍼센트", "원", "달러", "명", "건", "개월", "개"
 #: measures written in Latin letters; a mark never goes between one and its number
 #: (no 「2.5(확인 필요)cm」)
 _LATIN_UNITS = ("kcal", "km", "cm", "mm", "kg", "mg", "mL", "ml", "g", "L")
+#: a multiplier glued to its number (「94x」, 「3×」), not a size or a product (「1920x1080」)
+_TIMES = r"(?<=\d)[x×](?![A-Za-z\d]|\s?\d)"
 _UNIT = "|".join([*map(re.escape, _UNITS),
-                  *(f"{re.escape(u)}(?![A-Za-z])" for u in _LATIN_UNITS)])
+                  *(f"{re.escape(u)}(?![A-Za-z])" for u in _LATIN_UNITS), _TIMES])
 _NUMBER = re.compile(rf"(?<![A-Za-z\d.,_/#-])(?P<num>{_TERM})(?![\d])\s?(?P<unit>{_UNIT})?")
-_FAMILY = {"퍼센트": "%", "가지": "개"}
+_FAMILY = {"퍼센트": "%", "가지": "개", "x": "배", "×": "배"}
+#: a currency sign before a figure: its measure
+_CURRENCY = {"$": "달러", "₩": "원", "€": "유로", "£": "파운드", "¥": "엔"}
 
 #: order and structure after a number: 「1차」, 「2번째」, 「3단계」, 「4절」
 _ORDINAL_AFTER = re.compile(
@@ -235,6 +239,9 @@ class Evidence:
     #: periods the evidence gives (「기간 11/1~11/30」): a day in one is the writer's schedule
     periods: list[tuple[tuple[int, int], tuple[int, int]]] = field(default_factory=list)
 
+    #: multipliers the evidence works out: the ratio of two figures of one measure
+    ratios: list[float] = field(default_factory=list)
+
     #: the whole document the answer is a part of: its worked formulas count
     worked: str = ""
 
@@ -293,6 +300,7 @@ class Evidence:
                 self.spans.add(-n if unit in ("개월", "달") else n * weeks)
         self.values = [*_values(joined), *_converted(joined)]
         self.sorted_values = sorted({abs(v) for v, _ in self.values if v})
+        self.ratios = _ratios(joined)
         own_rows = [x for r in self.rows for x in r[1]]
         tables = [*_table_sums(joined), *(_table_sums(self.answer) if own_rows else [])]
         self.vat = bool(_VAT.search(joined))
@@ -340,7 +348,10 @@ class Evidence:
             k = bisect.bisect_left(self.chained, v - tol)
             if k < len(self.chained) and self.chained[k] <= v + tol:
                 return True
-        strict = family in ("%", "%p", "원", "달러")
+        if family == "배" and any(abs(r - v) <= tol for r in self.ratios):
+            # 「$38」 and 「$4」 → 「9.5x」
+            return True
+        strict = family in ("%", "%p", "원", "달러", "배")
         lo = bisect.bisect_left(self.sorted_values, v - tol)
         hi = bisect.bisect_right(self.sorted_values, v + tol)
         if lo < hi:
@@ -355,6 +366,9 @@ class Evidence:
             if any(abs(abs(k) - v) <= tol and (
                     not strict or not f or _family(f) == family) for k, f in values):
                 return True
+        if family == "배":
+            # a multiplier is a ratio, never a sum or a gap of the figures
+            return False
         if v >= 10 or "." in raw or family in ("%", "%p"):
             # a table cell from the given figures only; prose from those and the tables too
             derived = self.derived if own.startswith("|") else self.derived_rows
@@ -642,6 +656,22 @@ def _values(text: str) -> list[tuple[float, str]]:
         if re.search(rf"(?<![가-힣]){word}\s?(?:명|개|곳|건|가지|팀)", text):
             out.append((float(n), ""))
     return out
+
+
+def _ratios(text: str) -> list[float]:
+    """Ratios of two figures of one measure (a unit, or a currency sign before them)."""
+    kin: dict[str, set[float]] = {}
+    for m in _NUMBER.finditer(text):
+        try:
+            value = ko_number(m.group("num"))
+        except ValueError:
+            continue
+        sign = text[max(0, m.start() - 1):m.start()]
+        measure = _family(m.group("unit")) or _CURRENCY.get(sign, "")
+        if measure and measure != "배" and value:
+            kin.setdefault(measure, set()).add(abs(value))
+    return sorted({b / a for values in kin.values() if len(values) <= 40
+                   for a in values for b in values if b > a})
 
 
 def _structure_count(text: str) -> int:

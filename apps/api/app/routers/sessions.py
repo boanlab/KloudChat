@@ -7118,6 +7118,8 @@ async def _deck_carry(work: PipelineBundle) -> AsyncIterator[dict]:
     # merged slides lend their rows; carried agenda reflects the current deck
     slides = revise.absorb_rows(slides, old_slides, mentioned=carry_note)
     slides = revise.unmix_rows(slides, old_slides, mentioned=carry_note)
+    # one old item's parts spread over the columns: one value for every column
+    slides = revise.spread_rows(slides, old_slides)
     slides = revise.carry_by_content(slides, old_slides, mentioned=carry_note)
     slides = revise.keep_timeline_layout(
         slides, old_slides, mentioned=carry_note, request=request
