@@ -67,6 +67,21 @@ class Memo:
     next: Meeting
 
 
+#: the block of card answers and server rules the request carries after the memo
+_CONDITIONS = "\n\n덧붙인 조건:"
+#: a rule line of that block, in the server's 한다체 (「…지어내지 않는다: …」, 「…쓴다(…).」)
+_RULE = re.compile(r"(?:는|[한쓴둔힌진킨긴])다(?=[\s.(:,)」]|$)")
+
+
+def of_request(request: str) -> str:
+    """The meeting as a request gives it: the memo before the 「덧붙인 조건」 block and the
+    block's answer lines (「회의 일시: 10월 7일」), none of its rule lines."""
+    memo, _, block = (request or "").partition(_CONDITIONS)
+    answers = [ln.strip()[1:].strip() for ln in block.split("\n")
+               if ln.strip().startswith("-") and not _RULE.search(ln)]
+    return "\n".join([memo.strip(), *answers]).strip()
+
+
 def _stretches(text: str) -> list[str]:
     return [p.strip() for p in re.split(r"(?<!\d)\.(?!\d)|[\n;。]", text or "") if p.strip()]
 
@@ -398,8 +413,15 @@ def decisions(memo_text: str) -> list[tuple[str, str]]:
     return out
 
 
+def _days(text: str) -> set[tuple[int, int]]:
+    return {d for m in _DAY.finditer(text or "") if (d := _month_day(m.group(0)))}
+
+
 def _covers(row: str, clause: str) -> bool:
     figures = [_flat(f) for f in _FIGURE.findall(clause)]
+    if (days := _days(clause)) and days <= _days(row):
+        # 「11/3~11/14」 in a row written 「2026년 11월 3일~2026년 11월 14일」
+        return True
     if figures:
         return figures[-1] in _flat(row)
     words = {w[:2] for w in _words(clause)} - {"확정", "합의", "결정"}
@@ -462,5 +484,120 @@ def _decision_row(table, number: int, label: str, text: str) -> str:
     return "| " + " | ".join(cells) + " |"
 
 
-__all__ = ["Meeting", "Memo", "decision_rows", "decisions", "drop", "false_absences",
-           "fill_head", "overview_day", "read"]
+# ── deadlines given by the meeting or the week ──
+
+#: a deadline the memo gives without a date: 「다음 회의에서」, 「다음 주까지」, 「이번 주 내」
+_RELATIVE_DUE = re.compile(
+    r"다음\s{0,2}(?:회의|미팅|모임)(?:\s{0,2}(?:에서|까지|전|때))?"
+    r"|(?:다음|이번)\s{0,2}주\s{0,2}(?:[월화수목금토일]요일\s{0,2})?(?:까지|내|안|중)"
+    r"|차주(?:\s{0,2}(?:까지|중))?")
+_DUE_HEAD = re.compile(r"기한|마감|완료\s{0,2}일|언제")
+#: a deadline called missing: 「비교표의 기한은 자료에 명시된 기한이 없으므로」
+_DUE_ABSENT = re.compile(
+    r"(?:기한|마감|제출\s{0,2}일|날짜)[^\n.]{0,40}?"
+    r"(?:없|명시되지|명시되어\s{0,2}있지|나와\s{0,2}있지|적혀\s{0,2}있지|정해지지|미정|알\s{0,2}수\s{0,2}없)")
+
+
+def relative_dues(memo_text: str) -> list[tuple[str, set[str]]]:
+    """(deadline as the memo words it, the task's words) for each task the memo ties to the
+    next meeting or a week; the next meeting's own dated clause and the people's names aside."""
+    met = read(memo_text)
+    names = re.findall(r"[가-힣A-Za-z]{2,12}", f"{met.this.attendees} {met.next.attendees}")
+    out = []
+    for stretch in _stretches(memo_text):
+        for clause in re.split(r",\s{1,3}|，", stretch.partition(":")[2] or stretch):
+            # 「다음 회의 10/21 화 10시」 is the meeting itself, no task's deadline
+            if not (due := _RELATIVE_DUE.search(clause)) or _DAY.search(clause) \
+                    or _CLOCK.search(clause):
+                continue
+            rest = clause[:due.start()] + " " + clause[due.end():]
+            for name in names:
+                rest = rest.replace(name, " ")
+            words = _words(rest)
+            phrase = re.sub(r"\s{0,2}(?:에서|때)$", "", due.group(0)).strip()
+            if words:
+                out.append((phrase, words))
+    return out
+
+
+def _task_of(text: str, dues: list[tuple[str, set[str]]]) -> str:
+    flat = _flat(text)
+    return next((phrase for phrase, words in dues if any(w in flat for w in words)), "")
+
+
+def false_dues(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
+    """A task the memo ties to the next meeting or a week (「다음 회의에서 최다은이 비교표
+    가져오기」) called without a deadline: a blank 기한 cell takes the memo's words (「다음
+    회의」), and a sentence calling its deadline missing goes (its table pointer kept)."""
+    from app.services import report_checks
+
+    dues = relative_dues(memo_text)
+    if not dues:
+        return sections, 0
+    out = [dict(s) for s in sections]
+    fixed = 0
+    for table in report_checks.tables(out):
+        due = next((k for k, h in enumerate(table.header) if _DUE_HEAD.search(h)), None)
+        if due is None:
+            continue
+        content = str(out[table.section].get("content") or "")
+        for line, row in table.rows:
+            if len(row) <= due or not _BLANK_CELL.fullmatch(row[due]):
+                continue
+            if phrase := _task_of(" ".join(c for k, c in enumerate(row) if k != due), dues):
+                row = [*row[:due], phrase, *row[due + 1:]]
+                content = content.replace(line, "| " + " | ".join(row) + " |", 1)
+                fixed += 1
+        out[table.section]["content"] = content
+    for sec in out:
+        content = str(sec.get("content") or "")
+        gone = [p for line in content.split("\n") for p in _sentences(line)
+                if _DUE_ABSENT.search(p) and _task_of(p, dues)]
+        for piece in gone:
+            content = drop(content, piece)
+        fixed += len(gone)
+        sec["content"] = content
+    return out, fixed
+
+
+def _same(a: str, b: str) -> bool:
+    return a == b or bool(a and b and (a in b or b in a))
+
+
+def dedupe_rows(sections: list[dict]) -> tuple[list[dict], int]:
+    """A table row that repeats one above it (the same first cell, every other cell the same
+    but one that holds the other's words: 「「다음 회의에서」」 and 「회의 발언「다음 회의에서」」)
+    goes; the fuller row stays."""
+    from app.services import report_checks
+
+    out = [dict(s) for s in sections]
+    gone = 0
+    for table in report_checks.tables(out):
+        content = str(out[table.section].get("content") or "")
+        kept: list[tuple[str, list[str]]] = []
+        for line, row in table.rows:
+            flat = [re.sub(r"[\s「」『』\"'*]", "", c) for c in row]
+            twin = next((k for k, (_, prev) in enumerate(kept)
+                         if len(prev) == len(flat) and len(flat) >= 2 and prev[0] == flat[0]
+                         and sum(p != c for p, c in zip(prev, flat, strict=True)) <= 1
+                         and all(_same(p, c) for p, c in zip(prev, flat, strict=True))), None)
+            if twin is None:
+                kept.append((line, flat))
+                continue
+            first, prev = kept[twin]
+            if sum(map(len, flat)) > sum(map(len, prev)):
+                # the fuller row in the first one's place
+                content = content.replace(first, line, 1)
+                kept[twin] = (line, flat)
+                first = line
+            at = content.find(line, content.find(first) + len(first))
+            if at > 0 and content[at - 1] == "\n":
+                content = content[:at - 1] + content[at + len(line):]
+                gone += 1
+        out[table.section]["content"] = content
+    return out, gone
+
+
+__all__ = ["Meeting", "Memo", "decision_rows", "decisions", "dedupe_rows", "drop",
+           "false_absences", "false_dues", "fill_head", "of_request", "overview_day", "read",
+           "relative_dues"]

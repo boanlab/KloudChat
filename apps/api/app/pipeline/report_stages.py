@@ -1866,8 +1866,12 @@ def _person_given(bundle: Bundle) -> str:
     """What the person gave: request, files, pasted text, card answers, agent instructions;
     none of the pipeline's own blocks (settled figures under model-made names, notes, pages)."""
     mat = bundle.material
+    # minutes: the memo typed as the request, though its amounts alone made the material
+    asked = (meeting_memo.of_request(bundle.request.text)
+             if bundle.spec.settings.date_base == "meeting" else "")
     return "\n".join([
-        mat.given or bundle.request.text,
+        *([asked] if asked and asked not in (mat.given or "") else []),
+        mat.given or ("" if asked else bundle.request.text),
         *(p.text for p in mat.parts if p.origin in ("attachment", "pasted", "answer")),
         *(p.text for p in mat.trusted if p.origin == "trusted"),
     ])
@@ -1879,8 +1883,11 @@ def _meeting_given(bundle: Bundle) -> str:
     「다음 회의 (일시·장소·예정 안건)」 are no memo's)."""
     mat = bundle.material
     standing = workspace_context.standing_of([p.text for p in mat.trusted])
+    # a memo typed as the request is the meeting even when its amounts alone made the material
+    asked = meeting_memo.of_request(bundle.request.text)
     return "\n".join([
-        mat.given or bundle.request.text,
+        *([asked] if asked and asked not in (mat.given or "") else []),
+        *([mat.given] if mat.given and mat.given not in asked else []),
         *(p.text for p in mat.parts if p.origin in ("attachment", "pasted", "answer")),
         *stated_meeting.mail_lines(standing),
     ])
@@ -2151,12 +2158,15 @@ class MinutesReground(Base):
             # what the memo never says, written again by a repair after the verify settle
             sections = report_checks.settle_unsourced(sections, _meeting_given(bundle),
                                                       strong=bundle.request.strong)
-        # a day, clock or place called missing that the memo gives, the next meeting's day
-        # in this one's overview, and a memo decision no decision row holds
+        # a day, clock, place or 「다음 회의」 deadline called missing that the memo gives, the
+        # next meeting's day in this one's overview, a memo decision no decision row holds, and
+        # a row written twice
         memo = _meeting_given(bundle)
         sections = meeting_memo.overview_day(sections, bundle.document.head_block, memo)
         sections, _ = meeting_memo.false_absences(sections, memo)
+        sections, _ = meeting_memo.false_dues(sections, memo)
         sections, _ = meeting_memo.decision_rows(sections, memo)
+        sections, _ = meeting_memo.dedupe_rows(sections)
         # the meeting held told in the past; what comes next stays ahead
         bundle.document.sections, _ = meeting_tense.held(sections, _report()._REFERENCE_HEADING)
 

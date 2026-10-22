@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 
-from app.services import meeting_memo, stated_policy
+from app.services import meeting_memo, stated_policy, verify
 from app.services.stated_days import _PARTICLE, _words
 
 #: a length of time: 「약 20분 만에」, 「1시간 동안」, 「30분간」, 「2시간이 소요」
@@ -63,7 +63,7 @@ def _novel(sentence: str, flat: str) -> tuple[int, int]:
 _RIEUL = "".join(chr(c) for c in range(0xAC00 + 8, 0xD7A4, 28) if chr(c) != "할")
 #: a guess, not a record: 「가능성이 높습니다」, 「포함될 것으로 보입니다」, 「달라질 수 있습니다」
 _GUESS = re.compile(
-    r"가능성이\s?(?:높|크|있)|것으로\s?(?:보입니다|보인다|보여|예상|전망|예측|추정)"
+    r"가능성이\s?(?:높|크|있)|것으로\s?(?:보입니다|보인다|보여|보이며|보이고|예상|전망|예측|추정)"
     rf"|[{_RIEUL}]\s?수(?:도)?\s?있(?:으나|지만|습니다|다(?![가-힣]))|수\s?있을\s?것"
     # what someone may do (「사용할 수 있습니다」) is no guess; 「포함할 수 있으나」 is
     r"|할\s?수\s?있(?:으나|지만)|할\s?수도\s?있"
@@ -75,7 +75,8 @@ _ADVICE = re.compile(
 #: what follows a task left undone: 「미제출 시 … 지연되어」, 「제출하지 않으면」
 _IF_NOT = re.compile(
     r"(?:하|되)?지\s?않(?:으면|을\s?경우)|(?:안|못)\s?(?:하|되|내)면"
-    r"|(?:미(?!팅)[가-힣]{1,3}|누락|지연|불참)\s?시(?=[\s,])")
+    r"|(?:미(?!팅)[가-힣]{1,3}|누락|지연|불참)\s?시(?=[\s,])"
+    r"|(?:지연|누락|미제출|불참|연기)(?:될|되는|할|하는)\s?경우")
 #: the memo's own doubt (「들음」, 「다음 주쯤」): a guess near it is the memo's
 _MEMO_DOUBT = re.compile(r"쯤|들음|들었|듯|같음|아마|추정|예상|가능|수\s?있")
 #: a part about the next meeting, and a memo stretch that speaks of it
@@ -99,7 +100,7 @@ _PROMISE = re.compile(
 _PROMISE_SAID = re.compile(r"안내|공지|대로|알려")
 #: something called left open: 「담당자가 회의에서 지정되지 않았습니다」, 「확정 날짜가 없습니다」
 _UNSET = re.compile(
-    r"(?:지정|배정|확정|결정|정해|정하|합의|논의|언급|제시|명시)(?:되|하)?지\s?(?:않|못)"
+    r"(?:지정|배정|확정|결정|정해|정해지|정하|합의|논의|언급|제시|명시)(?:되|하)?지\s?(?:않|못)"
     r"|(?:날짜|기한|담당자?|일정|금액)(?:가|이|은|는)?\s?(?:없|미정)")
 #: the writer's own flag on something but an owner or a deadline (those the skill's 「※」 line
 #: flags): 「배포 방법은 확인 필요합니다」, 「확인 필요: 포스터 배포 방법」
@@ -125,7 +126,15 @@ _MAIL_ASKED = re.compile(r"메일|이메일|공지|안내문|제목|본문")
 #: the writer's note on its own method: 「상대 날짜를 해석하는 기준일은」, 「그대로 반영합니다」
 _SELF_NOTE = re.compile(
     r"해석(?:하여|해서|하는|했|한|합니다)|기준일|상대\s?날짜|각\s?해당\s?(?:섹션|항목|절|장)"
-    r"|그대로\s?(?:반영|옮겨|적)")
+    r"|그대로\s?(?:반영|옮겨|적)"
+    # 「2026-10-14 기준 '다음 주 금요일'에 해당하는 … 산출되었습니다」, 「모두 자료에 근거한 정보」
+    r"|\d\)?\s?기준(?:으로)?\s|산출(?:되었|됐|했|하였|합니다|된다)|환산(?:하여|해|했|한)"
+    r"|자료에\s?근거(?:한|하여|해)|자료를\s?(?:바탕|근거|토대)으로")
+#: the note inside a sentence that says more: 「기준일인 2026년 10월 14일을 바탕으로 」,
+#: 「(…으로) 해석하여 」
+_NOTE_PHRASE = re.compile(
+    r"기준일(?:인|은|이|로|을)?\s?[^,.\n]{0,24}?(?:을|를)?\s?(?:바탕으로|기준으로|토대로)\s?,?\s?"
+    r"|(?<=로)\s?해석(?:하여|해서|해)(?=\s)")
 #: a verdict that something cannot be told: 「… 알 수 없습니다」, 「판단하기 어렵습니다」
 _UNKNOWABLE = re.compile(
     r"알\s?수\s?없|(?:판단|단정|가늠)(?:하기|할\s?수)\s?(?:어렵|없)")
@@ -209,9 +218,25 @@ def mail_lines(standing: list[str]) -> list[str]:
 def self_note(piece: str, material: str) -> bool:
     """The writer's note on how it wrote the minutes (「상대 날짜를 해석하는 기준일은 …」,
     「담당자와 기한은 … 그대로 반영합니다」) in minutes of a memo that says no such thing."""
-    if piece.lstrip().startswith("|") or stated_policy.MARK in piece:
+    if piece.lstrip().startswith("|"):
         return False
+    # a mark another check put on it (a weekday, a rule) hides no note
+    piece = piece.replace(stated_policy.MARK, "")
+    if verify.edit_note(piece, material):
+        # the writer's account of what it wrote (「회의록에 기록하지 않았습니다」)
+        return True
     return bool(_SELF_NOTE.search(piece)) and not _SELF_NOTE.search(material or "")
+
+
+def note_cut(piece: str, material: str) -> str:
+    """`piece` without the note on how it was written when the rest says something of the
+    meeting (「기준일인 10월 14일을 바탕으로 기한을 23일로 해석하여 확정」 → 「기한을 23일로
+    확정」); "" when the note is the sentence."""
+    plain = re.sub(r" {2,}", " ", _NOTE_PHRASE.sub(" ", piece)).strip(" ,")
+    plain = re.sub(r"\s+,", ",", plain)
+    if plain == piece.strip() or self_note(plain, material) or len(_words(plain)) < 3:
+        return ""
+    return plain
 
 
 def unknowable(piece: str, material: str) -> bool:
@@ -245,6 +270,79 @@ def reasons(piece: str, material: str) -> list[str]:
         if novel >= 2 and novel * 2 >= words:
             out.append(phrase)
     return out
+
+
+#: agreement stated: 「참석자들이 동의」, 「전원 동의」, 「이의 없이」, 「만장일치」, 「합의」
+_CONSENT = re.compile(r"동의|찬성|이의\s?(?:가\s?)?없|만장\s?일치|합의")
+#: a memo item: an agenda's stretch (「안건2 예산: … 합의」) or a sentence
+_ITEM_BREAK = re.compile(r"(?=안건\s?\d)|(?<!\d)\.(?!\d)|[\n;。]")
+
+
+def _item_agreed(piece: str, material: str) -> bool:
+    """Whether the memo item `piece` speaks of (the items sharing most of its words, any item
+    when it shares none) states an agreement."""
+    # the head's attendance (「참석 김지훈(팀장), …」) is no item anyone agrees on
+    items = [i for i in _ITEM_BREAK.split(material or "") if i.strip()
+             and not re.search(r"참석|불참", i)]
+    words = {w for w in _words(_CONSENT.sub(" ", piece)) if not w.endswith(("다", "며", "고"))}
+    scored = [(sum(1 for w in words if w[:2] in _flat(i)), i) for i in items]
+    best = max((n for n, _ in scored), default=0)
+    return any(_CONSENT.search(i) for n, i in scored if n == best)
+
+
+def consents(piece: str, material: str) -> list[str]:
+    """Statements of agreement (「참석자들이 이에 동의하였습니다」, 「전원 동의」) on an item the
+    memo states none for: the clause (a cell's part) that holds it, or the sentence whole."""
+    if not _CONSENT.search(piece) or _item_agreed(piece, material):
+        return []
+    if piece.lstrip().startswith("|"):
+        return [part.strip() for cell in piece.strip().strip("|").split("|")
+                for part in re.split(r"[,，·/]", cell)
+                if _CONSENT.search(part) and stated_policy.MARK not in part]
+    clauses = [c for c in piece.split(", ") if c.strip()]
+    said = [c.strip().rstrip(".!?。") for c in clauses
+            if _CONSENT.search(c) and stated_policy.MARK not in c]
+    if len(clauses) == 1 or len(said) == len(clauses):
+        return [piece.strip().rstrip(".!?。")] if said else []
+    return said
+
+
+#: a clause's end once the clause after it went: 「거론되었으며」 → 「거론되었습니다」
+_CLAUSE_END = ((re.compile(r"([었았였했])(?:으며|고)$"), r"\1습니다"),
+               (re.compile(r"하(?:며|고)$"), "합니다"), (re.compile(r"되(?:며|고)$"), "됩니다"),
+               (re.compile(r"(?:이)?며$"), "입니다"))
+
+
+def consent_cut(piece: str, phrase: str) -> str:
+    """`piece` without the agreement `phrase` (a clause, a cell's part), its sentence ended
+    again when the clause was the last; "" when it cannot be."""
+    if piece.lstrip().startswith("|"):
+        cells = []
+        for cell in piece.strip().strip("|").split("|"):
+            if phrase in cell:
+                parts = [p.strip() for p in re.split(r"[,，·/]", cell) if p.strip() != phrase]
+                cell = ", ".join(p for p in parts if p) or "-"
+            cells.append(cell.strip())
+        return "| " + " | ".join(cells) + " |"
+    clauses = piece.strip().split(", ")
+    bare = [c.rstrip(".!?。") for c in clauses]
+    if phrase not in bare:
+        return ""
+    at = bare.index(phrase)
+    phrase = clauses[at]
+    rest = clauses[:at] + clauses[at + 1:]
+    if at == len(clauses) - 1:
+        # the sentence's own ending went with its last clause
+        end = re.search(r"[.!?。]+$", phrase)
+        last = rest[-1]
+        for rx, polite in _CLAUSE_END:
+            if rx.search(last):
+                rest[-1] = rx.sub(polite, last) + (end.group(0) if end else ".")
+                break
+        else:
+            return ""
+    plain = ", ".join(rest)
+    return plain if len(_words(plain)) >= 3 else ""
 
 
 def promised(piece: str, material: str) -> bool:
@@ -371,6 +469,7 @@ def _goes_whole(piece: str, material: str, next_part: bool,
             or promised(piece, material) or unraised(piece, material, rows)
             or all_set(piece, rows) or advised(piece, material) or if_not(piece, material)
             or self_note(piece, material) or unknowable(piece, material)
+            or (not row and consents(piece, material) == [piece.strip().rstrip(".!?。")])
             or ((next_part or (not row and bool(_NEXT_SAID.search(piece))))
                 and unset_agenda(piece, material)))
 
@@ -386,8 +485,11 @@ def untraced(piece: str, material: str, *, next_part: bool = False,
     if not piece or not (material or "").strip():
         return []
     out = values(piece, material) + reasons(piece, material)
-    if asks_anew(piece, material) or _goes_whole(piece, material, next_part, rows):
-        out.append(piece.strip().rstrip(".!?。"))
+    out += [c for c in consents(piece, material) if c not in out]
+    whole = piece.strip().rstrip(".!?。")
+    if whole not in out and (asks_anew(piece, material)
+                             or _goes_whole(piece, material, next_part, rows)):
+        out.append(whole)
     return out
 
 
@@ -435,6 +537,18 @@ def settle(content: str, piece: str, phrases: list[str], *, strong: bool,
             phrases = [p for p in phrases if p not in cut]
             if not phrases:
                 return content
+    agreed = [p for p in phrases if p not in whole and _CONSENT.search(p)
+              and not _REASON.search(p)]
+    if agreed and not strong:
+        # an agreement the memo never states, cut by code from anyone's but a strong writer's
+        plain = piece
+        for p in agreed:
+            plain = consent_cut(plain, p) or plain
+        if plain != piece:
+            content, piece = content.replace(piece, plain, 1), plain
+            phrases = [p for p in phrases if p not in agreed]
+            if not phrases:
+                return content
     lengthy = bool(_OWN_LENGTH.search(piece) and phrases and not whole
                    and not any(_MONTH_PART.fullmatch(p) for p in phrases))
     kept = any(_memo_words(piece, _flat(material)))
@@ -444,6 +558,9 @@ def settle(content: str, piece: str, phrases: list[str], *, strong: bool,
     note = bool(whole) and self_note(piece, material)
     if kept and whole and _goes_whole(piece, material, next_part, rows):
         kept = not _said_elsewhere(piece, material, elsewhere)
+    if note and (plain := note_cut(piece, material)):
+        # a note within a sentence about the meeting goes; the meeting's part stays
+        return content.replace(piece, plain, 1)
     if (not strong or mail or note) and (whole or lengthy) and (not kept or note) \
             and not piece.lstrip().startswith("|"):
         # a table pointer the sentence held stays on the sentence before
@@ -525,11 +642,13 @@ def why(phrases: list[str], piece: str = "", material: str = "",
           if self_note(piece, material) else []),
         *(["자료가 판단하지 않은 것을 「알 수 없다」고 덧붙이지 마라."]
           if unknowable(piece, material) else []),
+        *(["자료가 이 안건에 동의·합의를 적지 않았으니 누가 동의했다고 쓰지 마라."]
+          if consents(piece, material) else []),
     ]
     return " ".join([told, *more])
 
 
-__all__ = ["advised", "all_set", "asks_anew", "findings", "gap_note", "guessed", "if_not",
-           "is_next_part", "mail_line", "mail_lines", "open_rows", "promised", "reasons",
-           "self_note", "settle", "unknowable", "unraised", "unset_agenda", "untraced", "values",
-           "why"]
+__all__ = ["advised", "all_set", "asks_anew", "consent_cut", "consents", "findings",
+           "gap_note", "guessed", "if_not", "is_next_part", "mail_line", "mail_lines", "note_cut",
+           "open_rows", "promised", "reasons", "self_note", "settle", "unknowable", "unraised",
+           "unset_agenda", "untraced", "values", "why"]
