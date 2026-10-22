@@ -1105,8 +1105,46 @@ def count_change(plan: Plan, parts: list[str], message: str) -> Plan:
     if wanted <= 0 or wanted == len(parts):
         return plan
     # One count only, word-led so 「- 6장으로」 isn't a range.
-    note = f"장수는 {wanted}장으로 맞춘다. {without_counts(plan.note)}".strip()
-    return Plan(scope="outline", note=note[:600], usage=plan.usage)
+    lead = f"장수는 {wanted}장으로 맞춘다."
+    note = f"{lead} {note_without_totals(plan.note)}".strip()[:600]
+    from app.services import outline as plan_rules
+
+    units = ("장", "슬라이드", "페이지", "쪽", "절")
+    if plan_rules.requested_count(note, units, maximum=99) != wanted or plan_rules.requested_range(
+            note, units, maximum=99):
+        # a count the planner put otherwise would outweigh the asked one
+        note = lead
+    return Plan(scope="outline", note=note, usage=plan.usage)
+
+
+#: a part count or part number in a planner's note: 「전체 8개 장을」, 「1-2장」, 「3장과」
+_NOTE_COUNT = re.compile(
+    r"(?<![\d.])(?P<a>\d{1,3})\s{0,3}[-~–～]\s{0,3}(?P<b>\d{1,3})\s{0,3}(?:번째\s{0,2})?"
+    r"(?P<ru>장|슬라이드|절|쪽|페이지)"
+    r"|(?P<pre>(?:총|전체|모두|현재|기존|원래)\s{0,3})?(?<![\d.])(?P<n>\d{1,3})\s{0,3}"
+    r"(?P<many>개\s{0,3})?(?P<u>장|슬라이드|절|쪽|페이지)(?!점|단|면|소|비|기)"
+    r"(?P<tail>\s{0,3}(?:짜리|안팎|내외|정도|으로|로|을|를|이|가|은|는|에서|의)?)"
+)
+
+
+def _note_count(match: re.Match[str]) -> str:
+    if match.group("a"):
+        # a span of parts named: 「1-2번 장」, not a range of totals
+        return f"{match.group('a')}~{match.group('b')}번 {match.group('ru')}"
+    tail = match.group("tail") or ""
+    total = match.group("pre") or match.group("many") or tail.strip() in (
+        "짜리", "안팎", "내외", "정도", "으로", "로")
+    if total:
+        return " "
+    # one part named: 「3번 장과」
+    return f"{match.group('n')}번 {match.group('u')}{tail}"
+
+
+def note_without_totals(note: str) -> str:
+    """A planner's note minus the part counts it states (the code states the one asked), the
+    parts it names by number kept as numbers that are not counts (「1-2장」 → 「1~2번 장」)."""
+    text = " ".join((note or "").split())
+    return " ".join(_NOTE_COUNT.sub(_note_count, text).split())
 
 
 #: Part text chars shown to restructure planner/writer.

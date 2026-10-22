@@ -495,7 +495,8 @@ captions and list rows are not), a figure is a number with its unit or counter (
 items (「2장 항목을 하나로 합쳐줘」, 「4장 항목을 하나로」 with no verb, "Merge the items on slide 4
 into one") is that slide's edit,
 done by code (`deck.joined_items`, which also splits joined items into the count asked,
-「두 개로 나눠줘」), not a restructure; "Shrink to 3 slides" is read like 「3장으로 줄여줘」: the
+「두 개로 나눠줘」; a chart is not one of the items, so the points beside it are joined and the
+chart stays), not a restructure; "Shrink to 3 slides" is read like 「3장으로 줄여줘」: the
 count is put in the outline note even when the planner already chose a new outline
 (`revise.count_change`), English counts in the original request ("an 8-slide talk") are taken
 out, and an English deck is not judged Korean by the conditions the code adds. A table slide
@@ -564,7 +565,9 @@ to itself — 「Slides: 5 to 12. (6 is fine)」, repeated section names, an Eng
 plan for a Korean request. `deck.sane_outline` refuses it so the outline is
 asked for once more. A restructure strips the original request's part counts
 (`revise.without_counts`) so the note's count is the only one the planner
-reads. A section rewrite that drops the section's mermaid
+reads; the planner's own note loses the totals it states (「전체 8개 장」, 「총 10개 슬라이드」)
+and keeps slides it names by number as numbers that are not counts (「1-2장」 → 「1~2번 장」,
+`revise.note_without_totals`), and a note that still reads as another count is left out. A section rewrite that drops the section's mermaid
 figure, or redraws it as ASCII boxes, gets the figure back (`revise.keep_figure`)
 unless the person asked for it to go.
 

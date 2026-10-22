@@ -5350,6 +5350,9 @@ def joined_items(slide: dict, count: int) -> dict | None:
     points = _points(slide)
     if count and 0 < len(points) < count:
         return _split_points(rest, points, count)
+    if count and len(points) > count and chart_of(slide) and not slide.get("rows"):
+        # the chart is not one of the items: the points beside it joined, the chart kept
+        return _joined_points(rest, points, count)
     return merged_points(slide, rest, count)
 
 
@@ -5384,6 +5387,11 @@ def merged_points(old: dict, new: dict, count: int) -> dict | None:
     points = _points(old)
     if not count or have >= count or len(points) <= count:
         return None
+    return _joined_points(new, points, count)
+
+
+def _joined_points(new: dict, points: list[str], count: int) -> dict:
+    """`new` with `points` joined in order into `count` bullets."""
     size = -(-len(points) // count)
     merged = [" · ".join(points[i:i + size]) for i in range(0, len(points), size)]
     out = {k: v for k, v in new.items() if k not in ("items", "metrics")}

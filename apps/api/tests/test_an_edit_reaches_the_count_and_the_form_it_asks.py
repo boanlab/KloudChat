@@ -255,3 +255,65 @@ def test_the_new_patterns_take_linear_time_on_long_blank_input():
     deck.joined_items({"bullets": ["a" + spaces + "· b"]}, 3)
     deck.figures_in("Cost" + spaces + "/" + spaces + "1k")
     assert time.monotonic() - started < 0.5
+
+
+#: the request a deck was first made from, with its own count (reverify-t kd1, kd2)
+KO_REQUEST = ("사업부장이 임원회의에 보고할 슬라이드 8장 안팎으로 만들어줘. 주제: 2026년 3분기 "
+              "사업 실적과 4분기 계획. 수치: 매출 128억(전년 동기 114억, +12%), 지역별 매출 수도권 "
+              "71억·영남 33억·호남 14억·기타 10억. 요청 사항: 영남 물류 안정화 예산 1.5억 승인.")
+
+
+def _shrunk(note: str, parts: int) -> str:
+    plan = revise.count_change(revise.Plan(scope="outline", note=note), ["a"] * parts,
+                               "슬라이드를 6장으로 줄여줘")
+    return revise.without_counts(KO_REQUEST) + "\n\n덧붙인 조건:\n- " + plan.note
+
+
+def test_a_shrink_of_an_edited_deck_keeps_the_asked_count_over_the_planners_total():
+    # the planner's note says the deck's current total (「전체 8개 장」, 「총 10개 슬라이드」)
+    kd1 = _shrunk("전체 8개 장을 줄이기 위해 중복되거나 세분화된 내용을 병합한다. 구체적으로 "
+                  "'3. 3분기 핵심 지표 요약'과 '4. 매출 및 이익률 추이 분석'을 통합한다.", 8)
+    assert deck.requested_slides(kd1) == 6 and deck.slide_range(kd1) is None
+    assert "'3. 3분기 핵심 지표 요약'" in kd1 and "8개" not in kd1
+    kd2 = _shrunk("총 10개 슬라이드를 6개로 줄이되, 도입부(1-2장)와 마무리(9-10장)는 유지하고, "
+                  "3장과 4장을 병합한다.", 10)
+    assert deck.requested_slides(kd2) == 6 and deck.slide_range(kd2) is None
+    # parts named by number stay named, not counted
+    assert "1~2번 장" in kd2 and "3번 장과 4번 장을 병합" in kd2 and "10개" not in kd2
+    assert revise.note_without_totals("현재 9장을 6장으로 줄인다") == "줄인다"
+
+
+def test_a_planner_count_the_code_cannot_read_away_leaves_only_the_asked_one():
+    plan = revise.count_change(revise.Plan(scope="outline", note="전체 열 장을 줄인다"),
+                               ["a"] * 9, "6장으로 줄여줘")
+    assert plan.note == "장수는 6장으로 맞춘다."
+
+
+#: a chart slide with points beside it (reverify-t kd1 5장)
+CHART_SLIDE = {
+    "id": "sl4", "title": "지역별 매출 구성", "layout": "bullets",
+    "chart": {"kind": "pie", "unit": "억원", "categories": ["수도권", "영남", "호남", "기타"],
+              "series": [{"name": "매출", "values": [71.0, 33.0, 14.0, 10.0]}]},
+    "bullets": ["수도권 매출 71억 원: 비중 55.5%로 최대 시장", "영남 지역 매출 33억 원: 비중 25.8%",
+                "호남 지역 매출 14억 원: 비중 10.9%", "기타 지역 매출 10억 원: 비중 7.8%"],
+}
+
+
+def test_the_points_beside_a_chart_join_into_one_and_the_chart_stays():
+    joined = deck.joined_items(CHART_SLIDE, deck.items_asked("5장 항목을 하나로"))
+    assert joined is not None and joined["chart"] == CHART_SLIDE["chart"]
+    assert joined["bullets"] == [" · ".join(CHART_SLIDE["bullets"])]
+    assert deck.lost_figures(CHART_SLIDE, joined) == []
+    # two asked of four: two, every point kept
+    assert len(deck.joined_items(CHART_SLIDE, 2)["bullets"]) == 2
+    # a rewrite that kept the chart and all the points: joined by code too
+    assert deck.joined_items({**CHART_SLIDE, "bullets": CHART_SLIDE["bullets"][:3]}, 1)[
+        "bullets"] == [" · ".join(CHART_SLIDE["bullets"][:3])]
+
+
+def test_the_note_count_pattern_takes_linear_time_on_long_blank_input():
+    spaces = " " * 50000
+    started = time.monotonic()
+    revise.note_without_totals("총" + spaces + "8" + spaces + "장")
+    revise.note_without_totals("1" + spaces + "-" + spaces + "2" + spaces + "장")
+    assert time.monotonic() - started < 0.5
