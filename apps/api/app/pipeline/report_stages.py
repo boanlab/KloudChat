@@ -53,6 +53,7 @@ from app.services import (
     units,
     value_guard,
     verify,
+    word_fix,
     workspace_context,
 )
 from app.services import deck as deck_rules
@@ -1143,6 +1144,12 @@ class Sections(Base):
                 # Chinese slipped into Korean: those paragraphs sent back to the writer, read
                 # in Hanja only where the writer's paragraph does not hold
                 body = await _korean_again(bundle, section["heading"], body, slipped)
+            if word_fix.wanted(req.group, body):
+                # a self-hosted writer's odd words: the judge names them, code swaps the safe ones
+                body, more = await word_fix.fix(
+                    body, model=word_fix.checker(req.model, req.judge), complete=report._complete,
+                    api_key=req.api_key, given=f"{section['heading']}\n{_slip_vocabulary(bundle)}")
+                _count(bundle, more, planner=True)
             section["content"] = _cleaned(bundle, index, section, body)
             material = _material_text(bundle)
             if gaps := table_integrity.problems(section["content"], material):
