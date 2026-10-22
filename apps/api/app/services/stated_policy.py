@@ -49,6 +49,8 @@ _ASKS = re.compile(
     r"여부|(?:할|될|인|는|은)지\s|\?|결정(?:이|을|해|하여|해\s?주)|정해\s?주|확인\s?필요"
     r"|\(확인 필요\)|(?:라|이라|다|된다|한다)면\s|(?:되|하)면\s"
     r"|검토(?:가|를)?\s?(?:요청|필요|부탁)|요청(?:합니다|드립니다|드림|함)")
+#: where one clause of a sentence ends: an ask in the next clause leaves this one settled
+_CLAUSE_END = re.compile(r"[,;]")
 #: whole-line forms that hold no sentence
 _SKIP_LINE = re.compile(r"^\s*(?:```|!\[|#|<)")
 
@@ -60,15 +62,34 @@ _CITES = re.compile(r"\[\d{1,3}(?:\s?[,\-–]\s?\d{1,3})*\]")
 def untraced(sentence: str, material: str, quotes: str = "") -> list[str]:
     """Phrases of `sentence` stating a limit, an approval or a rule the material never states.
     Source `quotes` count for a sentence citing one (a page's rule is no internal one)."""
-    if not sentence or _ASKS.search(sentence):
+    if not sentence or MARK in sentence:
         return []
     if quotes and _CITES.search(sentence):
         material = f"{material}\n{quotes}"
     out = []
     for _, said, given in KINDS:
         if not given.search(material or ""):
-            out += [m.group(0).strip() for m in said.finditer(sentence)]
+            out += [m.group(0).strip() for m in said.finditer(sentence)
+                    if not _asked(sentence, m.start())]
     return list(dict.fromkeys(out))
+
+
+def _clauses(sentence: str) -> list[tuple[int, int]]:
+    """(start, end) of each clause of a sentence."""
+    out, start = [], 0
+    for m in _CLAUSE_END.finditer(sentence):
+        out.append((start, m.end()))
+        start = m.end()
+    return [*out, (start, len(sentence))]
+
+
+def _asked(sentence: str, at: int) -> bool:
+    """The clause holding `at` asks about the point: 「…허용 한도를 둘지」, not 「현재 허용 한도인
+    최대 4% 사이에 차이가 있으므로, 어느 범위까지 승인할지」 (the ask is the next clause's)."""
+    if sentence.lstrip().startswith("|"):
+        return bool(_ASKS.search(sentence))
+    start, end = next((s, e) for s, e in _clauses(sentence) if s <= at < e)
+    return bool(_ASKS.search(sentence[start:end].rstrip(",; ") + " "))
 
 
 def pieces(content: str) -> list[str]:

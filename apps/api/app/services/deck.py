@@ -2971,6 +2971,20 @@ def _short_category(label: str) -> str:
     return " ".join(words)
 
 
+#: chart unit length: an axis label's room
+_UNIT_CHARS = 24
+
+
+def _chart_unit(unit: str) -> str:
+    """A chart's unit whole (「$ per 1,000 docs」); past its room only its first word (「$」),
+    never a cut inside it (「$ per 1,」)."""
+    unit = " ".join(unit.split())
+    if len(unit) <= _UNIT_CHARS:
+        return unit
+    head = unit.split(" ")[0]
+    return head if len(head) <= _UNIT_CHARS else ""
+
+
 def _clean_chart(value: Any) -> dict[str, Any] | None:
     """Drawable chart or `None`; series cut to the shortest paired length."""
     if not isinstance(value, dict):
@@ -3009,7 +3023,7 @@ def _clean_chart(value: Any) -> dict[str, Any] | None:
         return None
     return {
         "kind": kind,
-        "unit": str(value.get("unit") or "").strip()[:8],
+        "unit": _chart_unit(str(value.get("unit") or "")),
         "categories": categories[:width],
         "series": [{"name": s["name"], "values": s["values"][:width]} for s in series],
     }
