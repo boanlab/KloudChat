@@ -1146,6 +1146,19 @@ _COUNTED = re.compile(
 )
 
 
+def repeats_table(rows: list[list[str]], earlier: list[Any]) -> bool:
+    """Whether the body rows of `rows` (two or more) are all rows of a table shown before:
+    the same table again under another title or header."""
+    def body(table: Any) -> set[tuple[str, ...]]:
+        if not isinstance(table, list):
+            return set()
+        return {tuple(" ".join(str(c).split()).lower() for c in row)
+                for row in table[1:] if isinstance(row, list)}
+
+    mine = body(rows)
+    return len(mine) >= 2 and any(mine <= body(table) for table in earlier)
+
+
 def dedupe_rows(rows: list[list[str]]) -> list[list[str]]:
     """Drops later table rows repeating an earlier row (same numbers + 2 shared words)."""
     if len(rows) < 3:
@@ -1731,7 +1744,9 @@ def sane_outline(plan: list[dict], request: str) -> bool:
     lowered = [t.lower() for t in titles if t]
     if len(lowered) - len(set(lowered)) >= 2:
         return False
-    if re.search(r"[가-힣]", request or ""):
+    # the request as asked, not conditions the code added in Korean (「장수는 3장으로 맞춘다」)
+    asked = (request or "").split("\n\n덧붙인 조건:", 1)[0]
+    if re.search(r"[가-힣]", asked or request or ""):
         korean = sum(1 for t in titles if re.search(r"[가-힣]", t))
         if len(titles) >= 3 and korean * 2 < len(titles):
             return False
@@ -3502,7 +3517,12 @@ async def _write_slides(
         elif slide["layout"] in slide_patterns.BY_NAME:
             _fill_pattern(slide, data)
         elif slide["layout"] == "table":
-            if rows := _rows_any(data, str(data.get("body") or "")):
+            rows = _rows_any(data, str(data.get("body") or ""))
+            if rows and repeats_table(rows, [s.get("rows") for s in slides[:index]]):
+                # the table an earlier slide shows: this slide says its own points instead
+                log.info("deck slide %r repeated an earlier table", slide["title"])
+                rows = []
+            if rows:
                 given = "\n".join([request, *(untrusted_context or []), *given_extra])
                 slide["rows"] = dedupe_rows(ground_cells(rows, _facts_set(given), given))
             else:
@@ -5106,7 +5126,7 @@ _NOT_SHOWN = frozenset({"id", "notes", "accent", "layout", "image", "diagram", "
 #: a figure as shown: currency, number, unit (「$4」, 「64 percent」, 「27 point」, 「420만」); a
 #: Korean word after the number is read whole (「3분기」 is not 「3분」)
 _SHOWN_FIGURE = re.compile(
-    r"(?<![\dA-Za-z.,/])([$€₩£]\s?)?(\d{1,2}/\d{1,2}(?![\d/])|\d{1,3}(?:,\d{3})*(?:\.\d{1,3})?)"
+    r"(?<![\dA-Za-z.,])(?<![\d.,]/)([$€₩£]\s?)?(\d{1,2}/\d{1,2}(?![\d/])|\d{1,3}(?:,\d{3})*(?:\.\d{1,3})?)"
     r"(?![\d,])( ?(?:%p?|percent|per\s?cent|points?|pts?|pp)"
     r"|(?:[bkmxsh]|ms|gb|tb|pg)\b| ?[가-힣]{1,6})?", re.I)
 #: Korean units a number carries, longest first (「분기」 before 「분」)
@@ -5274,7 +5294,7 @@ def lost_across(old: list[dict], new: list[dict]) -> list[str]:
 #: an item count asked of a slide: 「항목을 하나로」, 「두 개로」, 「two bullets」
 _ITEMS_ASK = re.compile(
     r"(?P<n>하나|한\s?개|두\s?개|세\s?개|네\s?개|\d{1,2}\s?개)\s?(?:의\s?)?(?:항목|요점|글머리)?\s?"
-    r"(?:로|으로)\s?(?:줄|합|묶|정리)"
+    r"(?:로|으로)\s?(?:줄|합|묶|정리|나눠|나누|분리|쪼개)"
     r"|\b(?P<m>one|two|three|four|\d{1,2})\s{1,3}(?:items?|points?|bullets?)\b"
     # 「Merge the items on slide 4 into one」
     r"|\binto\s{1,3}(?P<k>one|two|three|four|a\s{1,3}single)\b", re.I)
@@ -5305,11 +5325,44 @@ def _points(slide: dict) -> list[str]:
     return [f"{m[1]} {m[0]}" for m in slide.get("metrics") or [] if len(m) > 1]
 
 
+def points_of(slide: dict) -> list[str]:
+    """The slide's items as lines (bullets, pattern items, metrics)."""
+    return _points(slide)
+
+
 def joined_items(slide: dict, count: int) -> dict | None:
-    """`slide` with its items joined into `count` (「2장 항목을 하나로 합쳐줘」): every point
-    kept, nothing rewritten; None when it has no more items than that."""
-    return merged_points(slide, {k: v for k, v in slide.items()
-                                 if k not in ("bullets", "items", "metrics")}, count)
+    """`slide` with its items joined or split into `count` (「2장 항목을 하나로 합쳐줘」,
+    「3장 항목을 두 개로 나눠줘」): every point kept, nothing rewritten; None when it has that
+    many already or its points do not come apart into that many."""
+    rest = {k: v for k, v in slide.items() if k not in ("bullets", "items", "metrics")}
+    points = _points(slide)
+    if count and 0 < len(points) < count:
+        return _split_points(rest, points, count)
+    return merged_points(slide, rest, count)
+
+
+#: where one joined point ends and the next begins: 「매출 128억 · 영업이익 9.6억」
+_POINT_JOINS = re.compile(r"\s(?:·|•|\||/)\s|;\s")
+
+
+def _split_points(rest: dict, points: list[str], count: int) -> dict | None:
+    """`rest` with `points` taken apart where they were joined and laid out as `count`
+    bullets in order; None when they do not come apart into that many."""
+    pieces = [p.strip() for point in points for p in _POINT_JOINS.split(point) if p.strip()]
+    if len(pieces) < count:
+        return None
+    size, extra = divmod(len(pieces), count)
+    bullets, at = [], 0
+    for i in range(count):
+        take = size + (1 if i < extra else 0)
+        bullets.append(" · ".join(pieces[at:at + take]))
+        at += take
+    out = dict(rest)
+    if out.get("layout") in slide_patterns.BY_NAME or out.get("layout") in (
+            "metrics", "big-number"):
+        out["layout"] = "bullets"
+    out["bullets"] = bullets
+    return out
 
 
 def merged_points(old: dict, new: dict, count: int) -> dict | None:
