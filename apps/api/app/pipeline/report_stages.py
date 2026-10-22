@@ -55,6 +55,7 @@ from app.services import (
     units,
     value_guard,
     verify,
+    weekdays,
     word_fix,
     workspace_context,
 )
@@ -1306,6 +1307,8 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         log.info("trimmed %d sentence(s) from %r: %s", len(trimmed), section["heading"],
                  trimmed[0][:80])
     clean, _ = hangul.read_back(report._without_own_heading(body, section["heading"]))
+    # a script neither Korean nor the material's left after the writer's second try: the run goes
+    clean = hangul.drop_foreign_runs(clean, _slip_vocabulary(bundle))[0]
     # a written-out picture that does not open is the writer's invention; a fence around
     # it (or around a table) taken off first, never left holding the table
     clean = pictures.drop_broken(richtext.unquote_tables(report.unfence_pictures(clean)))
@@ -2186,6 +2189,9 @@ class MinutesReground(Base):
         # the memo's lines pasted as they stand, a phrase said over and over, a marker alone
         sections, _ = meeting_memo.settle_copies(sections, memo, strong=bundle.request.strong)
         sections, _ = meeting_memo.bare_marks(sections)
+        # a date's weekday flag said once, and a 「확인 필요:」 line a marked row already holds
+        sections, _ = meeting_memo.restated_checks(sections)
+        sections, _ = weekdays.flag_once(sections)
         sections = [{**sec, "content": word_fix.twin_alternatives(str(sec.get("content") or ""))}
                     for sec in sections]
         # the meeting held told in the past; what comes next stays ahead

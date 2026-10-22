@@ -750,12 +750,32 @@ _QUOTE_IN = re.compile(r"「([^」\n]{1,40})」")
 _CHECK = re.compile(r"확인[ \t]?필요")
 
 
+#: the memo's words quoted as the writer's working: 「원문 표현: "다음 주 금요일"」,
+#: 「회의 발언: 「다음 회의에서」」, 「원문 「모레」」
+_WORDING = re.compile(
+    r"(?:원문|원본|메모|회의[ \t]?발언|발언)(?:[ \t]?(?:표현|문구|표기|기재))?[ \t]?[:：]?[ \t]?"
+    r"(?:「[^」\n]{1,60}」|\"[^\"\n]{1,60}\"|“[^”\n]{1,60}”|'[^'\n]{1,60}')")
+#: a written date: 「2026-10-23」, 「10/23」, 「10월 23일」
+_A_DATE = re.compile(r"\d{4}-\d{1,2}-\d{1,2}|(?<!\d)\d{1,2}/\d{1,2}(?!\d)|\d{1,2}월[ \t]?\d{1,2}일")
+
+
+def _unquoted(cell: str) -> str:
+    """`cell` less the memo words it quotes as the original, its separators closed."""
+    cut = _WORDING.sub("", cell)
+    if cut == cell:
+        return cell
+    cut = re.sub(r"[ \t]{0,2}[,;·][ \t]{0,2}(?=[,;·]|$)", "", cut)
+    return re.sub(r" {2,}", " ", cut).strip(" ,;·—-")
+
+
 def cell_notes(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
     """Table cells less the writer's note on its own working: a basis or a note in brackets
     (「(기준 2026-10-14)」, 「2026-10-14 (기준일: … 해석)」) goes, its 「확인 필요」 kept, and a
     cell that only says where its value came from (「회의 자료에서 명시」) or how it was worked
-    out (`stated_meeting.self_note`) reads 「-」, or the memo words it quotes as the original
-    wording (「원문 「다음 주 금요일」」); the first cell, which names the row, stays."""
+    out (`stated_meeting.self_note`) reads 「-」. The memo words a cell quotes as the original
+    (「원문 표현: "다음 주 금요일"」) go from a row whose due is a date; a row with no date
+    keeps them as its only due (「원문 「다음 주 금요일」」). The first cell, which names the
+    row, stays."""
     from app.services import report_checks, stated_meeting
 
     def note(text: str) -> bool:
@@ -775,17 +795,21 @@ def cell_notes(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
     fixed = 0
     for table in report_checks.tables(out):
         content = str(out[table.section].get("content") or "")
+        _, due = report_checks._owner_due(table.header)
         for line, row in table.rows:
             cells = list(row)
+            dated = due is not None and due < len(cells) and bool(_A_DATE.search(cells[due]))
             for k in range(1, len(cells)):
                 cell = cells[k]
                 if len(cell) <= 300:
                     cell = unbracketed(_BASIS.sub("", cell).strip())
+                if dated and k != due:
+                    cell = _unquoted(cell)
                 bare = cell.strip(" *.")
                 if bare and note(bare):
-                    # the memo's own words it quotes stay as the original wording
+                    # the memo's own words it quotes stay as the due a dateless row has
                     said = [q for q in _QUOTE_IN.findall(bare) if squash(q) in memo_flat]
-                    cell = " ".join(f"원문 「{q}」" for q in said) if said else "-"
+                    cell = " ".join(f"원문 「{q}」" for q in said) if said and not dated else "-"
                 cells[k] = cell or "-"
             if cells != list(row):
                 content = content.replace(line, "| " + " | ".join(cells) + " |", 1)
@@ -1047,6 +1071,45 @@ def settle_copies(sections: list[dict], memo: str, *, strong: bool) -> tuple[lis
     return out, gone
 
 
+#: a 「확인 필요: …」 label line: 「확인 필요: 회의 장소는 자료에 나타나지 않아 …」
+_CHECK_LINE = re.compile(
+    r"[ \t]{0,4}(?:[-*•※][ \t]{0,2})?\*{0,2}확인[ \t]?필요\*{0,2}[ \t]{0,2}[:：]\*{0,2}[ \t]{0,2}"
+    r"(?P<what>[^\n|]{2,160})")
+#: a table cell marking its value open
+_OPEN_CELL = re.compile(r"확인[ \t]?필요|미정|자료에[ \t]?없|달력상|\[[가-힣 ·]{1,10}\]")
+#: a label line's words that name no row
+_CHECK_GENERIC = frozenset({"회의", "자료", "확인", "필요", "내용", "사항", "항목", "이번", "해당"})
+
+
+def restated_checks(sections: list[dict]) -> tuple[list[dict], int]:
+    """A 「확인 필요: …」 label line goes when a table row its first word names already
+    marks the value open (「| 장소 | 자료에 없음 (미정) |」, a flagged date)."""
+    from app.services import report_checks
+    from app.services.stated_days import _PARTICLE
+
+    marked = [squash(line) for table in report_checks.tables(sections) for line, row in table.rows
+              if any(_OPEN_CELL.search(cell) for cell in row[1:])]
+    if not marked:
+        return sections, 0
+    out = [dict(s) for s in sections]
+    gone = 0
+    for sec in out:
+        lines = str(sec.get("content") or "").split("\n")
+        kept = []
+        for ln in lines:
+            m = _CHECK_LINE.fullmatch(ln)
+            tokens = re.findall(r"[가-힣A-Za-z]{2,20}", m.group("what")) if m else []
+            words = [w for t in tokens
+                     if len(w := _PARTICLE.sub("", t)) >= 2 and w not in _CHECK_GENERIC]
+            if words and any(squash(words[0]) in row for row in marked):
+                gone += 1
+                continue
+            kept.append(ln)
+        if len(kept) != len(lines):
+            sec["content"] = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip("\n")
+    return out, gone
+
+
 #: a line of a marker alone, its sentence gone: 「확인 필요」, 「(확인 필요)」
 _MARK_ALONE = re.compile(
     r"[ \t]{0,4}\(?[ \t]{0,2}(?:확인[ \t]?필요|미정)[ \t]{0,2}\)?[ \t]{0,2}[.:]?[ \t]{0,4}")
@@ -1068,4 +1131,5 @@ def bare_marks(sections: list[dict]) -> tuple[list[dict], int]:
 __all__ = ["COPY_WHY", "Meeting", "Memo", "bare_marks", "borrowed_next", "cell_notes", "copied",
            "copies", "counted", "decision_rows", "decisions", "dedupe_rows", "drop",
            "false_absences", "false_dues", "fill_head", "of_request", "overview_day", "read",
-           "relative_dues", "repeat_why", "repeats", "rest_open", "settle_copies", "squash"]
+           "relative_dues", "repeat_why", "repeats", "rest_open", "restated_checks",
+           "settle_copies", "squash"]

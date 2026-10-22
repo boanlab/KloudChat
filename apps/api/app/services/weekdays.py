@@ -454,5 +454,56 @@ def _fix_weekday_columns(text: str, year: int | None, today: dt.date,
     return "\n".join(lines), fixes
 
 
-__all__ = ["WEEKDAYS_RX", "Fix", "context_year", "context_years", "fix_weekdays"]
+#: a date and the flag on the person's weekday the calendar disagrees with:
+#: 「2026-10-21(화, 확인 필요: 달력상 수요일)」, 「10월 21일 화요일(확인 필요: 달력상 수요일)」
+_FLAGGED = re.compile(
+    rf"(?<![\d.])(?:20\d{{2}}\s{{0,2}}(?:년|[-./])\s{{0,2}})?(?P<m>\d{{1,2}})\s{{0,2}}(?:월|[-./])\s{{0,2}}"
+    rf"(?P<d>\d{{1,2}})(?!\d)(?:\s{{0,2}}일)?"
+    rf"(?P<flag>\(\s{{0,2}}[{WEEKDAYS}](?:요일)?\s{{0,2}},\s{{0,2}}확인\s?필요\s{{0,2}}:\s{{0,2}}달력상"
+    rf"\s{{0,2}}[{WEEKDAYS}]요일\s{{0,2}}\)"
+    rf"|\s{{0,2}}[{WEEKDAYS}]요일\(\s{{0,2}}확인\s?필요\s{{0,2}}:\s{{0,2}}달력상\s{{0,2}}[{WEEKDAYS}]요일\s{{0,2}}\))")
+#: another 「확인 필요」 beside a flagged date: 「(확인 필요)」, 「, 확인 필요: 요일 불명)」
+_EXTRA_CHECK = re.compile(
+    r"[ \t]{0,2}\([ \t]{0,2}확인[ \t]?필요[ \t]{0,2}\)"
+    r"|,[ \t]{0,2}확인[ \t]?필요"
+    r"(?:[ \t]{0,2}:[ \t]{0,2}(?![ \t]|달력상)[^(),\n]{1,20})?(?=[ \t]{0,2}\))")
+#: a sentence's end in prose
+_PIECE_END = re.compile(r"(?<=[.!?])(?=\s)")
+
+
+def flag_once(sections: list[dict]) -> tuple[list[dict], int]:
+    """A date's weekday flag said once, at its first mention over the document: later
+    mentions read the bare date (「2026-10-21」), and a sentence or cell holding the flag drops
+    the other 「확인 필요」 stacked beside it (「… 열립니다 (확인 필요).」)."""
+    seen: set[tuple[int, int]] = set()
+    out = [dict(s) for s in sections]
+    changed = 0
+    for sec in out:
+        content = str(sec.get("content") or "")
+        if "달력상" not in content:
+            continue
+        lines = []
+        for line in content.split("\n"):
+            row = line.lstrip().startswith("|")
+            pieces = re.split(r"(\|)", line) if row else _PIECE_END.split(line)
+            for i, piece in enumerate(pieces):
+                if "달력상" not in piece or not _FLAGGED.search(piece):
+                    continue
+
+                def once(m: re.Match) -> str:
+                    key = (int(m.group("m")), int(m.group("d")))
+                    if key in seen:
+                        return m.group(0)[:m.start("flag") - m.start()]
+                    seen.add(key)
+                    return m.group(0)
+
+                pieces[i] = _EXTRA_CHECK.sub("", _FLAGGED.sub(once, piece))
+            fixed = "".join(pieces)
+            changed += fixed != line
+            lines.append(fixed)
+        sec["content"] = "\n".join(lines)
+    return out, changed
+
+
+__all__ = ["WEEKDAYS_RX", "Fix", "context_year", "context_years", "fix_weekdays", "flag_once"]
 
