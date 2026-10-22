@@ -220,9 +220,11 @@ async def test_items_asked_into_one_and_answered_with_none_are_joined(monkeypatc
 def test_a_deck_cut_to_fewer_slides_says_the_figures_it_no_longer_shows():
     from app.routers import sessions
 
-    assert deck.lost_across([TREND, DELAY], [TREND]) == ["4일", "3곳"]
+    # a count with what it counts (「신규 거래처 3곳」), not a bare 「3곳」
+    assert deck.lost_across([TREND, DELAY], [TREND]) == ["4일", "신규 거래처 3곳"]
     assert sessions._restructured_said([TREND, DELAY], [TREND], english=False) == (
-        "1장짜리 슬라이드를 만들었습니다. 고치면서 4일, 3곳이 슬라이드에서 빠졌습니다. "
+        "1장짜리 슬라이드를 만들었습니다. 고치면서 4일, 신규 거래처 3곳이 슬라이드에서 "
+        "빠졌습니다. "
         "필요하면 다시 넣어 달라고 해 주세요.")
     assert sessions._restructured_said([], [TREND], english=False) == (
         "1장짜리 슬라이드를 만들었습니다.")

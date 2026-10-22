@@ -137,6 +137,8 @@ def _english_reply(document: Any, summary: int, touched: list[int], is_deck: boo
                     f"{asked} asked.")
     if already := getattr(document, "already", []):
         said.append(already_said(already, english=True))
+    if unlisted := getattr(document, "unlisted", []):
+        said.append(unlisted_said(unlisted, english=True))
     for added in getattr(document, "added", []):
         at, _, values = added.partition(" ")
         said.append(f"Section {at[:-1]} now states {values}, which the section and the "
@@ -156,6 +158,19 @@ def already_said(already: list[tuple[int, int]], *, english: bool = False) -> st
                         ", so it was kept as it was." for part, asked in already)
     return " ".join(f"{part}절은 이미 {asked}문장이어서 그대로 두었습니다."
                     for part, asked in already)
+
+
+def unlisted_said(unlisted: list[tuple[int, int, int]], *, english: bool = False) -> str:
+    """「5장에는 합치거나 나눌 항목 목록이 없어 그대로 두었습니다.」 / 「7장은 이미 항목이 2개여서
+    …」 for slides asked to join or split items kept as they were."""
+    if english:
+        return " ".join(
+            f"Slide {n} has no list of items to join or split, so it was kept as it was."
+            if not held else f"Slide {n} already has {held} item{'s' if held != 1 else ''}, "
+            "so it was kept as it was." for n, held, _ in unlisted)
+    return " ".join(f"{n}장에는 합치거나 나눌 항목 목록이 없어 그대로 두었습니다." if not held
+                    else f"{n}장은 이미 항목이 {held}개여서 그대로 두었습니다."
+                    for n, held, _ in unlisted)
 
 
 def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = False) -> str:
@@ -199,15 +214,22 @@ def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = F
         said.append(f"{part}절은 요청한 {asked}문장이 아니라 {got}문장입니다.")
     if already := getattr(document, "already", []):
         said.append(already_said(already))
+    if unlisted := getattr(document, "unlisted", []):
+        said.append(unlisted_said(unlisted))
     for added in getattr(document, "added", []):
         at, _, values = added.partition(" ")
         said.append(f"{at}에 원래 없던 {values}{revise._particle(values, '이', '가')} "
                     "들어갔습니다. 확인해 주세요.")
     for lost in document.dropped:
-        # figures the slide showed that its rewrite left out: said, not passed over
+        # figures the slide showed that its rewrite left out: said, not passed over; a mark
+        # left off a figure still there said in its own clause
         at, _, values = lost.partition(" ")
-        said.append(f"{at}에서 {values}{revise._particle(values, '이', '가')} 빠졌습니다. "
-                    "필요하면 다시 넣어 달라고 해 주세요.")
+        items = values.split(", ")
+        marks = ", ".join(x for x in items if x.endswith("」 표시"))
+        plain = ", ".join(x for x in items if not x.endswith("」 표시"))
+        gone = (f"{plain}{revise._particle(plain, '이', '가')} 빠졌고, {marks}도" if plain and marks
+                else f"{plain or marks}{revise._particle(plain or marks, '이', '가')}")
+        said.append(f"{at}에서 {gone} 빠졌습니다. 필요하면 다시 넣어 달라고 해 주세요.")
     return " ".join(said)
 
 

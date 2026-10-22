@@ -5157,12 +5157,33 @@ def _listed(name: str, pairs: list[list[str]]) -> list[list[str]] | None:
     out = []
     for point, detail in pairs:
         if slide_patterns.fit(point, pattern.left_max) != point:
-            head = slide_patterns.fit(point, pattern.left_max)
+            head = _outside_brackets(slide_patterns.fit(point, pattern.left_max))
+            if not head:
+                return None
             rest = point[len(head):].strip(" ,;:–—-")
-            point, detail = head, f"{rest} — {detail}" if detail else rest
+            # a bracket moved whole reads as the detail's aside: 「9.6억 (이익률 7.5%, …)」
+            point, detail = head, (f"{detail} {rest}" if rest[:1] in _OPENERS
+                                   else f"{rest} — {detail}") if detail else rest
         out.append([point, detail])
     items = slide_patterns.clean_pairs(name, out)
     return items if items == out else None
+
+
+#: brackets a point's cut may not fall inside, opener to closer
+_BRACKETS = {"(": ")", "[": "]", "「": "」", "『": "』", "“": "”", "（": "）"}
+_OPENERS = tuple(_BRACKETS)
+
+
+def _outside_brackets(head: str) -> str:
+    """`head` cut back before the first bracket it opens and does not close (「영업이익 (이익률
+    7.5%, 전분기」 → 「영업이익」)."""
+    stack: list[int] = []
+    for i, ch in enumerate(head):
+        if ch in _BRACKETS:
+            stack.append(i)
+        elif stack and ch == _BRACKETS[head[stack[-1]]]:
+            stack.pop()
+    return head[:stack[0]].rstrip(" ,;:–—-") if stack else head
 
 
 #: list patterns a slide's own points go into one to one
@@ -5380,10 +5401,12 @@ def lost_figures(old: dict, new: dict, asked: str = "") -> list[str]:
     return [f[2] for f in _shown_figures(old) if not figure_kept(f, shown, amounts)]
 
 
-def lost_across(old: list[dict], new: list[dict]) -> list[str]:
+def lost_across(old: list[dict], new: list[dict], skip: frozenset[str] | set[str] = frozenset()
+                ) -> list[str]:
     """Figures the deck `old` showed anywhere that the deck `new` shows nowhere (a deck cut to
     fewer slides), read as `lost_figures` reads one slide; in an English deck a lone count
-    with what it counts too (「3 reviewers」), and each with what it counts (「40 tasks」)."""
+    with what it counts too (「3 reviewers」), and each with what it counts (「40 tasks」, 「신규
+    거래처 3곳」); figures written as in `skip` (said with a chart) left out."""
     shown = [f for slide in new for f in _shown_figures(slide)]
     amounts = amounts_in(" ".join(_shown_words(slide) for slide in new))
     texts = [t for slide in old for t in _counting_texts(slide)]
@@ -5393,7 +5416,7 @@ def lost_across(old: list[dict], new: list[dict]) -> list[str]:
     out: dict[tuple[str, str], str] = {}
     for slide in old:
         for figure in _shown_figures(slide):
-            if not figure_kept(figure, shown, amounts):
+            if not figure_kept(figure, shown, amounts) and figure[2] not in skip:
                 out.setdefault(figure[:2], _whole_figure(figure, texts, english))
         if english:
             for text in _counting_texts(slide):
@@ -5458,7 +5481,9 @@ def _whole_figure(figure: tuple[str, str, str], texts: list[str], english: bool)
     shortest phrase it counts anywhere in the deck (「40 tasks」, 「1k docs」, 「20+ page
     threshold」), else as written."""
     number, unit, said = figure
-    if unit not in ("", "k", "m", "b") or not english:
+    if not english:
+        return _korean_whole(said, unit, texts)
+    if unit not in ("", "k", "m", "b"):
         return said
     best = ""
     for text in texts:
@@ -5467,6 +5492,39 @@ def _whole_figure(figure: tuple[str, str, str], texts: list[str], english: bool)
             if noun := _counted_noun(text, m.end()):
                 found = f"{said}{'+' if plus else ''} {noun}"
                 if not best or len(found.split()) < len(best.split()):
+                    best = found
+    return best or said
+
+
+#: Korean units that say no thing counted: sums, periods, rates
+_NOT_COUNTERS = frozenset(("억", "만", "천", "원", "분기", "반기", "년", "월", "%", "pt", "배",
+                           "퍼센트", "포인트", "위"))
+#: a Korean word before a count: 「신규 거래처 3곳」
+_WORD_BEFORE = re.compile(r"([가-힣A-Za-z]{1,10}) {1,2}$")
+
+
+def _korean_whole(said: str, unit: str, texts: list[str]) -> str:
+    """A Korean count as the reply names it: with the one or two words before it that say
+    what it counts, the shortest found anywhere in the deck (「신규 거래처 3곳」), else as
+    written; sums, periods and rates as written."""
+    if not unit or unit in _NOT_COUNTERS or unit.isascii():
+        return said
+    best = ""
+    for text in texts:
+        for m in re.finditer(rf"(?<![\d.,]){re.escape(said)}(?![\d,.])", text):
+            words: list[str] = []
+            at = m.start()
+            while len(words) < 2 and (w := _WORD_BEFORE.search(text[max(0, at - 12):at])):
+                start = max(0, at - 12) + w.start()
+                if start and re.match(r"[가-힣A-Za-z]", text[start - 1]):
+                    break  # a word longer than the room: not named by half
+                if _without_particle(w.group(1)) != w.group(1):
+                    break  # 「…를」, 「…에서」: a word of the sentence, not of the name
+                words.insert(0, w.group(1))
+                at -= len(w.group(0))
+            if words:
+                found = f"{' '.join(words)} {said}"
+                if not best or len(found) < len(best):
                     best = found
     return best or said
 
@@ -5609,6 +5667,9 @@ def joined_items(slide: dict, count: int) -> dict | None:
     """`slide` with its items joined or split into `count` (「2장 항목을 하나로 합쳐줘」,
     「3장 항목을 두 개로 나눠줘」): every point kept, nothing rewritten; None when it has that
     many already or its points do not come apart into that many."""
+    paired = _paired_of(slide)
+    if paired and count and not slide.get("bullets"):
+        return _regrouped(slide, paired, count)
     rest = {k: v for k, v in slide.items() if k not in ("bullets", "items", "metrics")}
     points = _points(slide)
     if count and 0 < len(points) < count:
@@ -5640,6 +5701,49 @@ def _split_points(rest: dict, points: list[str], count: int) -> dict | None:
             "metrics", "big-number"):
         out["layout"] = "bullets"
     out["bullets"] = bullets
+    return out
+
+
+def _paired_of(slide: dict) -> str:
+    """The paired field the slide lays its items out in (「steps」, 「cards」), else empty."""
+    return next((k for k in _PAIRED if isinstance(slide.get(k), list) and any(
+        isinstance(p, list) and len(p) >= 2 for p in slide[k])), "")
+
+
+def items_held(slide: dict) -> int:
+    """Items the slide holds as a list: bullets, pattern items, metrics or paired entries."""
+    if paired := _paired_of(slide):
+        return sum(isinstance(p, list) and len(p) >= 2 for p in slide[paired])
+    return len(_points(slide))
+
+
+def _regrouped(slide: dict, key: str, count: int) -> dict | None:
+    """`slide` with its paired entries (steps, cards) put in order into `count` groups, each
+    group's names and contents joined: the same layout when the groups fit it, else bullets;
+    every entry kept, none written anew. Fewer entries than asked come apart where they were
+    joined; None when they do not, or the slide has that many already."""
+    pairs = [[str(p[0]).strip(), str(p[1]).strip()] for p in slide[key]
+             if isinstance(p, list) and len(p) >= 2]
+    rest = {k: v for k, v in slide.items() if k != key}
+    lines = [f"{name}: {body}" if name else body for name, body in pairs]
+    if count == len(pairs) or not count:
+        return None
+    if count > len(pairs):
+        out = _split_points(rest, lines, count)
+        if out is not None:
+            out["layout"] = "bullets"
+        return out
+    size, extra = divmod(len(pairs), count)
+    groups, at = [], 0
+    for i in range(count):
+        take = size + (1 if i < extra else 0)
+        groups.append(pairs[at:at + take])
+        at += take
+    joined = [[" · ".join(n for n, _ in g if n), " · ".join(b for _, b in g)] for g in groups]
+    if count >= 2 and slide.get("layout") == key and _clean_pairs(joined, key) == joined:
+        return {**rest, key: joined}
+    out = {**rest, "layout": "bullets"}
+    out["bullets"] = [" · ".join(f"{n}: {b}" if n else b for n, b in g) for g in groups]
     return out
 
 

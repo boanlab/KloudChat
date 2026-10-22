@@ -2234,13 +2234,18 @@ def lost_facts(old: str, new: str) -> list[str]:
 #: a word that says a figure is not settled: 「확정된 사실이 아닙니다」, 「추정」, 「(확인 필요)」
 _HEDGE = re.compile(
     r"미확정|확정(?:된|되지|이)?\s?(?:[가-힣]{1,4}(?:은|는|이)\s?)?(?:아니|아닙|아님|아닌|않)"
-    r"|미확인|확인(?:되지|이)?\s?(?:않|필요)|추정|추산|잠정|예상|전망|가능성"
+    r"|확정(?:되기)?\s?전(?:[이에까인입]|(?![가-힣]))|미정(?![산리])|미결(?![제산재])"
+    r"|(?:결정|정해)(?:되|지)지\s?않"
+    r"|미확인|확인(?:되지|이)?\s?(?:않|필요)|확인(?:해야|할\s?필요|요망)"
+    r"|추정|추산|잠정|예상|전망|가능성"
     r"|것으로\s?(?:파악|알려|보이|보입|전해)"
     r"|\b(?:unconfirmed|not\s(?:yet\s)?confirmed|unverified|estimated?|projected|expected"
     r"|tentative|preliminary|reportedly|needs\s(?:checking|confirmation)|to\sbe\sconfirmed)\b",
     re.I)
 #: the label a hedge is named by, the strongest first
-_HEDGE_LABELS = (("확정", "확정 아님"), ("미확인", "미확인"), ("확인되지", "미확인"),
+_HEDGE_LABELS = (("확정", "확정 아님"), ("미정", "확정 아님"), ("미결", "확정 아님"),
+                 ("결정", "확정 아님"), ("정해", "확정 아님"), ("미확인", "미확인"),
+                 ("확인되지", "미확인"),
                  ("확인", "확인 필요"), ("추", "추정"), ("잠정", "잠정"), ("예상", "예상"),
                  ("전망", "예상"), ("가능성", "가능성"), ("것으로 파", "파악됨"),
                  ("것으로파", "파악됨"), ("것으로", "추정"))
@@ -2248,7 +2253,7 @@ _HEDGE_LABELS = (("확정", "확정 아님"), ("미확인", "미확인"), ("확�
 _REFERS_BACK = re.compile(
     r"(?:다만|단,|하지만|그러나|이는|이\s|그\s|해당|\b(?:however|but|this|these|that)\b)", re.I)
 #: where one clause ends and the next begins: a sentence's end, 「…했으며, 」, 「…있고, 」
-_CLAUSE_END = re.compile(r"(?<=[.!?。])\s|(?<=며),\s|(?<=고),\s")
+_CLAUSE_END = re.compile(r"(?<=[.!?。])\s|(?<=며),\s|(?<=고),\s|(?<=나),\s|(?<=지만),\s")
 
 
 def _hedge_label(word: str) -> str:

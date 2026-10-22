@@ -484,6 +484,15 @@ class Rewrite(Base):
                     unjoined.append((index, "나누기" if revise.splits_items(asked) else "합치기"))
                     yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
                     continue
+                elif is_deck and revise.joins_items(asked) and (
+                        want := deck_service.items_asked(asked)) and (
+                        (held := deck_service.items_held(part)) == want or not held and not (
+                            revise.splits_items(asked) and part.get("body"))):
+                    # no list to join (a chart alone) or the count already there: the slide
+                    # stays, no rewrite passed off as the edit
+                    doc.unlisted.append((index + 1, held, want))
+                    yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
+                    continue
                 elif is_deck and deck_service.asks_slide_figure(asked):
                     # 「구조도로 바꿔 줘」: the slide drawn as that diagram, not rewritten as words
                     written, spent = await deck_service.figure_slide(
@@ -827,6 +836,14 @@ class Rewrite(Base):
                     instruction))):
                 yield event
             raise Stop("shape not made")
+        if not doc.changed and doc.unlisted and not doc.failed and not unreadable:
+            # every slide asked had nothing to join or the count already: said, no new version
+            from app.pipeline.save_stages import unlisted_said
+
+            for event in _stopped(bundle, unlisted_said(
+                    doc.unlisted, english=output_language.typed_in_english(instruction))):
+                yield event
+            raise Stop("items already as asked")
         if not doc.changed and doc.already and not doc.failed and not unreadable:
             # every part asked already had the sentence count: nothing to change, said
             from app.pipeline.save_stages import already_said

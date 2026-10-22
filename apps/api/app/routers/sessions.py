@@ -7148,7 +7148,7 @@ def _restructured_said(before: list[dict], slides: list[dict], *, english: bool)
     deck's or the request's language."""
     count = len(deck_service.filled(slides))
     plotted = deck_service.charted_only(before, slides)
-    lost = [f for f in deck_service.lost_across(before, slides) if f not in plotted]
+    lost = [f for f in deck_service.lost_across(before, slides, plotted) if f not in plotted]
     blocks = deck_service.lost_blocks(before, slides, english=english) if before else []
     if english:
         made = f"Made a {count}-slide deck."

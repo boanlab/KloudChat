@@ -489,15 +489,18 @@ rewrites miss it, which the reply says. A slide cut to fewer items
 (「항목을 하나로」, `deck.items_asked`) that came back with none gets its old items joined
 (`deck.merged_points`), figures such a cut drops are said, and a deck cut to fewer slides says,
 at save after grounding, the figures (notes not counted; in an English deck lone counts too and
-each value with the shortest phrase it counts, 「40 tasks」, 「3 reviewers」) and the charts and
+each value with the shortest phrase it counts, 「40 tasks」, 「3 reviewers」; in a Korean deck a
+count with the words before it, 「신규 거래처 3곳」) and the charts and
 tables it shows nowhere any more (`deck.lost_across`, `deck.lost_blocks`), in English for an
 English deck; a shortened section's lost facts include days named without a date (「다음 주
 수요일」, `revise.lost_facts`) and things it said were done or settled (「처리를 완료했습니다」 →
 「처리 완료」, `revise._lost_done`; not 「확정되는 대로」 nor 「마무리할 예정」) and the caveat
 it put on a figure or name (「확정된 사실이 아닙니다」, 「추정」, 「(확인 필요)」, 「것으로 파악됩니다」,
 unconfirmed; in the clause or a following clause that points back, 「다만 해당 단가는 …」,
-`revise._with_caveats`): a figure still stated without it is named with its mark (「A사 4%의
-「확정 아님」 표시」), a name gone with it carries the mark (「A사(확정 아님)」), both sent to the
+`revise._with_caveats`; any form of it keeps it, 「확정되지 않은」, 「확정 전」, 「미확정」, 「미정」,
+「확인해야」, and a clause after 「…으나,」 is its own): a figure still stated without it is named
+with its mark (「A사 4%의 「확정 아님」 표시」, said in its own clause of the reply), a name gone
+with it carries the mark (「A사(확정 아님)」), both sent to the
 writer once like any lost fact (a bare figure is not re-marked by code: it may be another
 figure with the same number); a figure written another way still counts as shown (「1,000」 as
 「1000」 or 「1k」, `deck.figure_kept`); after a cut to
@@ -526,8 +529,11 @@ captions and list rows are not), a figure is a number with its unit or counter (
 items (「2장 항목을 하나로 합쳐줘」, 「4장 항목을 하나로」 with no verb, "Merge the items on slide 4
 into one") is that slide's edit,
 done by code (`deck.joined_items`, which also splits joined items into the count asked,
-「두 개로 나눠줘」; a chart is not one of the items, so the points beside it are joined and the
-chart stays), not a restructure; "Shrink to 3 slides" is read like 「3장으로 줄여줘」: the
+「두 개로 나눠줘」; steps, cards and other paired entries are regrouped in order into that many,
+the layout kept when the groups fit it; a chart is not one of the items, so the points beside it
+are joined and the chart stays; a slide with no list of items, a chart alone, or with the count
+already is kept and the reply says so, with no new version), not a restructure; a label put
+into a numbered list is never cut inside its brackets (「영업이익」 / 「9.6억 (이익률 7.5%, …)」); "Shrink to 3 slides" is read like 「3장으로 줄여줘」: the
 count is put in the outline note even when the planner already chose a new outline
 (`revise.count_change`), English counts in the original request ("an 8-slide talk") are taken
 out, and an English deck is not judged Korean by the conditions the code adds. A table slide
