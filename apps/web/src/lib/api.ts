@@ -48,6 +48,7 @@ import type {
   UserListQuery,
   UserPage,
 } from '@/types'
+import type { GraphStep, GraphVerdict, PipelineEdge } from '@/types/pipelineGraph'
 
 import { objectParticle, topicParticle } from './formCheck'
 import { currentLang, currentLocale, translate } from './i18n'
@@ -1935,6 +1936,27 @@ export const userPipelinesApi = {
   adminList: (review = 'pending') => call<UserPipeline[]>(`/admin/user-pipelines?review=${review}`),
   approve: (id: string) => call<UserPipeline>(`/admin/user-pipelines/${id}/approve`, { method: 'POST' }),
   reject: (id: string, note: string) => call<UserPipeline>(`/admin/user-pipelines/${id}/reject`, body({ note })),
+}
+
+/** The pipeline canvas: an agent's 직접 구성 as a graph, and its runs; the paths it reads, in one place. */
+const GRAPH = {
+  validate: '/user-pipelines/validate',
+  process: (agentId: string) => `/agents/${agentId}/process`,
+  runs: (pipelineId: string) => `/user-pipelines/${pipelineId}/runs`,
+  run: (runId: string) => `/user-pipelines/runs/${runId}`,
+}
+
+export const pipelineGraphApi = {
+  validate: (payload: { stages: GraphStep[]; edges: PipelineEdge[] | null; agentId: string }) =>
+    call<GraphVerdict>(GRAPH.validate, body(payload)),
+  save: (agentId: string, payload: { base: string | null; stages: GraphStep[]; edges: PipelineEdge[] | null }) =>
+    call<AgentProcess & { edges?: PipelineEdge[] | null; agent: Partial<AgentRow> }>(GRAPH.process(agentId), {
+      method: 'PUT',
+      body: JSON.stringify({ mode: 'custom', ...payload }),
+    }),
+  /** Raw rows; `readRun` reads either casing. */
+  runs: (pipelineId: string) => call<Record<string, unknown>[]>(GRAPH.runs(pipelineId)),
+  run: (runId: string) => call<Record<string, unknown>>(GRAPH.run(runId)),
 }
 
 /** An agent's 진행 과정 and the 묶음 it ticks. */

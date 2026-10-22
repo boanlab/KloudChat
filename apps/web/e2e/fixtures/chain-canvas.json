@@ -1,0 +1,304 @@
+{
+  "catalogue": {
+    "maxSteps": 12,
+    "skills": [
+      {
+        "ref": "date-calc",
+        "name": "날짜 계산",
+        "description": "「다음 주 금요일」「이번 달 말」「2주 뒤」 같은 상대 날짜를 회의일·메일 발신일 기준으로 풀고, 경력 기간(겹침 제외)·영업일·납기를 셉니다.",
+        "summary": "상대 날짜를 기준일로 풀고 기간을 셉니다."
+      },
+      {
+        "ref": "quote-calc",
+        "name": "견적 계산",
+        "description": "견적 항목(수량×단가, MM×월 단가)을 원 단위로 합쳐 공급가액(VAT 별도)·부가세·합계(VAT 포함)·할인·예산 대비 여유·1인당 금액·시나리오를 계산하고, 금액을 한글로도 적습니다.",
+        "summary": "견적 항목을 원 단위로 합치고 부가세·합계를 계산합니다."
+      }
+    ],
+    "checks": [
+      {
+        "ref": "grounding-check",
+        "name": "근거 대조",
+        "description": "다 쓴 문서·답의 수치·날짜·시각·이름·기관·직함·제품명이 요청·자료·사용자 답·코드 계산값에 있는지 대조하고, 근거 없는 값은 대괄호 빈칸으로 바꿉니다.",
+        "needs": [
+          "document",
+          "answer"
+        ]
+      },
+      {
+        "ref": "copy-check",
+        "name": "카피 점검",
+        "description": "광고·홍보 문구를 채널 글자 수 한도(네이버·카카오·메타·구글·유튜브·인스타그램·링크드인)로 재고, 근거가 필요한 표현(최상급·비교·보장·질병 효능·후기·긴급성)과 자료에 없는 숫자를 찾아 줍니다.",
+        "needs": [
+          "answer"
+        ]
+      },
+      {
+        "ref": "generic-language-killer",
+        "name": "상투어 걷어내기",
+        "description": "글에서 「~하는 것이 중요합니다」「다양한」「효과적으로」「혁신적인」「~라고 할 수 있습니다」 같은 상투어·군더더기·번역투·AI 투를 찾아, 자료에 있는 구체적인 말로 바꾸거나 지웁니다. 자료에 없는 사실은 지어내지 않고 [구체적 수치] 같은 빈칸으로 남깁니다.",
+        "needs": [
+          "document",
+          "answer"
+        ]
+      }
+    ],
+    "human": [
+      {
+        "ref": "gaps",
+        "name": "확인 질문",
+        "description": "쓰기 전에 자료에 없는 필수 정보를 한 번에 묻습니다."
+      },
+      {
+        "ref": "outline",
+        "name": "개요 확인",
+        "description": "뒤 에이전트가 잡은 개요를 확인받고 씁니다."
+      }
+    ],
+    "exportFormats": [
+      "docx",
+      "pdf",
+      "hwpx",
+      "md"
+    ],
+    "conditionModes": [
+      "rule",
+      "ai"
+    ],
+    "ruleOps": [
+      "gt",
+      "eq",
+      "empty",
+      "contains"
+    ],
+    "maxBranches": 4,
+    "condition_values": [
+      {
+        "step_kind": "request",
+        "key": "attachments",
+        "label": "첨부 수",
+        "type": "number"
+      },
+      {
+        "step_kind": "request",
+        "key": "attachment_types",
+        "label": "첨부 형식",
+        "type": "text"
+      },
+      {
+        "step_kind": "request",
+        "key": "text",
+        "label": "요청 글",
+        "type": "text"
+      },
+      {
+        "step_kind": "agent",
+        "key": "kind",
+        "label": "결과 종류(문서·답)",
+        "type": "text"
+      },
+      {
+        "step_kind": "agent",
+        "key": "sections",
+        "label": "쓴 장 수",
+        "type": "number"
+      },
+      {
+        "step_kind": "agent",
+        "key": "chars",
+        "label": "결과 글자 수",
+        "type": "number"
+      },
+      {
+        "step_kind": "agent",
+        "key": "text",
+        "label": "결과 글",
+        "type": "text"
+      },
+      {
+        "step_kind": "skill",
+        "key": "computed",
+        "label": "계산 결과",
+        "type": "text"
+      },
+      {
+        "step_kind": "check",
+        "key": "found",
+        "label": "찾은 곳 수",
+        "type": "number"
+      },
+      {
+        "step_kind": "check",
+        "key": "left",
+        "label": "고치지 못하고 남은 곳 수",
+        "type": "number"
+      },
+      {
+        "step_kind": "review",
+        "key": "found",
+        "label": "지적 수",
+        "type": "number"
+      },
+      {
+        "step_kind": "review",
+        "key": "fixed",
+        "label": "고친 수",
+        "type": "number"
+      },
+      {
+        "step_kind": "review",
+        "key": "left",
+        "label": "남은 지적 수",
+        "type": "number"
+      },
+      {
+        "step_kind": "human",
+        "ref": "gaps",
+        "key": "gaps",
+        "label": "빈칸 수",
+        "type": "number"
+      },
+      {
+        "step_kind": "human",
+        "ref": "gaps",
+        "key": "answers",
+        "label": "받은 답 수",
+        "type": "number"
+      },
+      {
+        "step_kind": "human",
+        "ref": "outline",
+        "key": "sections",
+        "label": "개요 장 수",
+        "type": "number"
+      }
+    ]
+  },
+  "kindWords": {
+    "agent": "에이전트",
+    "skill": "스킬",
+    "check": "검사",
+    "review": "검토",
+    "human": "사람 확인",
+    "export": "내보내기",
+    "condition": "조건"
+  },
+  "messages": {
+    "unreachable_step": "{at}: 첫 단계에서 이어지지 않아 실행되지 않는 단계입니다.",
+    "branch_dead_end": "{at}: 「{label}」 갈래 뒤에 이어질 단계가 없습니다.",
+    "condition_incomplete": "{at}: {what}",
+    "parallel_next": "{at}: 조건 단계가 아니면 다음 단계는 하나만 이을 수 있습니다.",
+    "cycle": "{at}: 앞 단계로 되돌아가는 선이 있습니다. 반복은 둘 수 없습니다.",
+    "needs_agent_after": "{at}: 뒤에 에이전트 단계가 있어야 합니다. 받은 답으로 쓸 에이전트를 이 단계 뒤에 이으세요.",
+    "needs_product": "{at}: 앞 단계에서 만든 {word} 있어야 합니다. {fix}"
+  },
+  "productFixes": {
+    "문서가": "이 단계 앞에 보고서(문서)를 쓰는 에이전트를 두세요.",
+    "답이": "이 단계 앞에 대화(답)를 하는 에이전트를 두세요.",
+    "문서나 답이": "이 단계 앞에 에이전트 단계를 두세요."
+  },
+  "runs": [
+    {
+      "id": "r2",
+      "number": 2,
+      "status": "waiting",
+      "pipeline_id": "p1",
+      "request_text": "주간회의 메모로 회의록을 정리하고 후속 메일까지 써 줘",
+      "attachments": 1,
+      "session_id": "a5555555555555555555555555555555",
+      "parent_id": null,
+      "from_stage": null,
+      "started_at": "2026-10-20T05:00:00+00:00",
+      "ended_at": null,
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "agent",
+          "title": "회의록 정리",
+          "status": "done",
+          "started_at": "2026-10-20T05:00:00+00:00",
+          "ended_at": "2026-10-20T05:00:00+00:00",
+          "input_summary": "요청과 첨부 1개",
+          "output_summary": "회의록 1부",
+          "note": "",
+          "branch_taken": null
+        },
+        {
+          "step_id": "s2",
+          "kind": "check",
+          "title": "근거 확인",
+          "status": "done",
+          "started_at": "2026-10-20T05:00:00+00:00",
+          "ended_at": "2026-10-20T05:00:00+00:00",
+          "input_summary": "「회의록 정리」 회의록 1부",
+          "output_summary": "메모에 없는 문장 2곳 표시",
+          "note": "",
+          "branch_taken": null
+        },
+        {
+          "step_id": "s3",
+          "kind": "agent",
+          "title": "후속 메일 초안",
+          "status": "waiting",
+          "started_at": "2026-10-20T05:00:00+00:00",
+          "ended_at": "2026-10-20T05:00:00+00:00",
+          "input_summary": "「근거 확인」 메모에 없는 문장 2곳 표시",
+          "output_summary": "",
+          "note": "앞 단계를 기다림",
+          "branch_taken": null
+        }
+      ]
+    },
+    {
+      "id": "r1",
+      "number": 1,
+      "status": "failed",
+      "pipeline_id": "p1",
+      "request_text": "기획회의 메모 정리",
+      "attachments": 1,
+      "session_id": "a5555555555555555555555555555555",
+      "parent_id": null,
+      "from_stage": null,
+      "started_at": "2026-10-20T05:00:00+00:00",
+      "ended_at": "2026-10-20T05:00:00+00:00",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "agent",
+          "title": "회의록 정리",
+          "status": "done",
+          "started_at": "2026-10-20T05:00:00+00:00",
+          "ended_at": "2026-10-20T05:00:00+00:00",
+          "input_summary": "요청과 첨부 1개",
+          "output_summary": "회의록 1부",
+          "note": "",
+          "branch_taken": null
+        },
+        {
+          "step_id": "s2",
+          "kind": "check",
+          "title": "근거 확인",
+          "status": "failed",
+          "started_at": "2026-10-20T05:00:00+00:00",
+          "ended_at": "2026-10-20T05:00:00+00:00",
+          "input_summary": "「회의록 정리」 회의록 1부",
+          "output_summary": "",
+          "note": "이 단계에서 멈췄습니다",
+          "branch_taken": null
+        },
+        {
+          "step_id": "s3",
+          "kind": "agent",
+          "title": "에이전트",
+          "status": "skipped",
+          "started_at": null,
+          "ended_at": null,
+          "input_summary": "",
+          "output_summary": "",
+          "note": "",
+          "branch_taken": null
+        }
+      ]
+    }
+  ]
+}

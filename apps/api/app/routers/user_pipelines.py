@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi import Request as HttpRequest
 from fastapi.responses import StreamingResponse
 from pydantic import Field
-from sqlmodel import col, select
+from sqlmodel import col, func, select
 
 from app.core.deps import AdminUser, CurrentUser, DbSession, client_ip
 from app.models.chat import ChatSession, Message, PipelineRun, Role, SessionKind
@@ -43,6 +43,8 @@ _REVIEWS = ("", "pending", "approved", "rejected")
 
 class ValidateIn(Wire):
     stages: list[dict[str, Any]] = Field(default_factory=list)
+    #: `[{from, to, branch?}]`; None = in order
+    edges: list[dict[str, Any]] | None = None
     id: str | None = Field(default=None, max_length=64)
     #: owning agent of this 진행 과정 (`@self`)
     agent_id: str | None = Field(default=None, max_length=64)
@@ -64,8 +66,9 @@ class ProcessIn(Wire):
     base: str | None = Field(default=None, max_length=60)
     #: ticked 묶음 `[{bundle, items}]`; None with base = base's own
     bundles: list[dict[str, Any]] | None = Field(default=None, max_length=12)
-    #: 직접 구성 steps, or `import_id` source
+    #: 직접 구성 steps and their edges (None = in order), or `import_id` source
     stages: list[dict[str, Any]] | None = None
+    edges: list[dict[str, Any]] | None = None
     import_id: str | None = Field(default=None, max_length=64)
 
 
@@ -197,11 +200,16 @@ async def _graph(db: DbSession, user: User,
 
 async def _verdict(db: DbSession, user: User, steps: list[dict], *, self_id: str | None,
                    agents: dict[str, compose.AgentInfo] | None = None,
-                   sharing: bool = False) -> compose.Verdict:
+                   sharing: bool = False, edges: list[dict] | None = None) -> compose.Verdict:
     agents = agents if agents is not None else await agents_for(db, user)
     allowed = {m["id"] for m in await review_models(user)}
     return compose.validate(steps, agents=agents, allowed_models=allowed, self_id=self_id,
-                            graph=await _graph(db, user, agents), sharing=sharing)
+                            graph=await _graph(db, user, agents), sharing=sharing, edges=edges)
+
+
+def edges_of(row: UserPipeline) -> list[dict] | None:
+    """Stored edges over the stored steps (None: in order)."""
+    return compose.normalize_edges(row.edges, compose.normalize(row.stages))
 
 
 def _remap(steps: list[dict], agents: dict[str, compose.AgentInfo]) -> list[dict]:
@@ -249,6 +257,7 @@ def _out(row: UserPipeline, agents: dict[str, compose.AgentInfo], *,
         "stages": [{**s, "title": compose.step_title(s, agents),
                     **({"output": agents[s["ref"]].output}
                        if s["kind"] == "agent" and s["ref"] in agents else {})} for s in steps],
+        "edges": compose.normalize_edges(row.edges, steps),
         "visibility": row.visibility, "review": row.review, "reviewNote": row.review_note,
         "reviewedAt": row.reviewed_at.isoformat() if row.reviewed_at else None,
         "version": row.version, "installs": row.installs, "ownerId": row.owner_id,
@@ -290,7 +299,7 @@ async def list_mine(user: CurrentUser, db: DbSession):
     out = []
     for row in rows:
         verdict = await _verdict(db, user, compose.normalize(row.stages), self_id=row.id,
-                                 agents=agents)
+                                 agents=agents, edges=edges_of(row))
         out.append(_out(row, agents, verdict=verdict, bound=await _bound(db, user, row.id)))
     return out
 
@@ -323,8 +332,119 @@ async def validate_draft(payload: ValidateIn, user: CurrentUser, db: DbSession):
             template_id=me.template_id if me.output == "document" else None,
             doc_format=me.doc_format or None) if me.self_of != "new" else drafted
         agents = {**agents, compose.SELF: dataclasses.replace(me, questions=tuple(asked))}
-    verdict = await _verdict(db, user, steps, self_id=payload.id, agents=agents)
+    verdict = await _verdict(db, user, steps, self_id=payload.id, agents=agents,
+                             edges=compose.normalize_edges(payload.edges, steps))
     return {**verdict.wire(), "titles": [compose.step_title(s, agents) for s in steps]}
+
+
+#: run record status → step status on the wire
+_STEP_STATUS = {"done": "done", "waiting": "waiting", "skipped": "skipped", "running": "running",
+                "failed": "failed", "cancelled": "failed", "stopped": "failed"}
+_MAX_RUNS = 30
+
+
+def _clip(text: Any, limit: int = 200) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def run_out(run: PipelineRun, number: int = 0) -> dict[str, Any]:
+    """A user-pipeline run per step: status, what it got and handed on, branch taken. Built
+    from the stored records only (labels and summaries, never the text the steps read); the
+    request's opening words and `number` (its place among the owner's runs) tell runs apart."""
+    request = (run.params or {}).get("request") or {}
+    turn = pipeline_runs.decode((request.get("f") or {}).get("turn")) or {}
+    asked = pipeline_runs.decode((request.get("f") or {}).get("text"))
+    steps = compose.normalize((turn.get("compose") or {}).get("stages"))
+    records = [r for r in run.stages or [] if isinstance(r, dict)]
+    open_run = run.status in ("running", "waiting")
+
+    def step_of(name: str) -> dict | None:
+        number, _, kind = name.partition(":")
+        if not number.isdigit() or not 0 < int(number) <= len(steps):
+            return None
+        step = steps[int(number) - 1]
+        return step if step["kind"] == kind else None
+
+    attached = len(turn.get("attachments") or [])
+    handed = "요청" + (f"과 첨부 {attached}개" if attached else "")
+    out: list[dict[str, Any]] = []
+    shown: set[str] = set()
+    for record in records:
+        step = step_of(str(record.get("stage") or ""))
+        if step is None or step["id"] in shown:
+            continue
+        shown.add(step["id"])
+        reason = str(record.get("reason") or "")
+        status = _STEP_STATUS.get(str(record.get("status") or ""), "failed")
+        if status == "skipped" and reason.startswith("stopped at"):
+            status = "waiting" if open_run else "skipped"
+        branch = (record.get("evidence") or {}).get("branch") or {}
+        summary = _clip(record.get("summary"))
+        title = str(record.get("label") or "") or compose.step_title(step, {})
+        if status == "skipped":
+            note = "다른 갈래라 건너뜀" if reason == compose.OTHER_BRANCH else "해당 없음"
+        elif status == "failed":
+            note = "이 단계에서 멈췄습니다"
+        elif status == "waiting":
+            note = summary or "앞 단계를 기다림"
+        else:
+            note = _clip(branch.get("reason")) if branch else ""
+        ran = status in ("done", "waiting") and record.get("startedAt")
+        out.append({
+            "step_id": step["id"], "kind": step["kind"], "title": title, "status": status,
+            "started_at": record.get("startedAt") or None,
+            "ended_at": record.get("finishedAt") or None,
+            "input_summary": handed if ran or status == "failed" else "",
+            "output_summary": summary if status == "done" else "",
+            "note": note,
+            "branch_taken": branch.get("key") or None,
+            **({"branch_label": branch.get("label") or ""} if branch else {}),
+        })
+        if status == "done":
+            handed = _clip(f"「{title}」 {summary}".strip())
+    for step in steps:
+        if step["id"] not in shown:
+            out.append({"step_id": step["id"], "kind": step["kind"],
+                        "title": compose.step_title(step, {}),
+                        "status": "waiting" if open_run else "skipped",
+                        "started_at": None, "ended_at": None, "input_summary": "",
+                        "output_summary": "", "note": "", "branch_taken": None})
+    return {"id": run.id, "number": number, "status": run.status,
+            "pipeline_id": run.pipeline[len(compose.PREFIX):],
+            "request_text": _clip(asked if isinstance(asked, str) else "", 60),
+            "attachments": attached,
+            "session_id": run.session_id, "parent_id": run.parent_id,
+            "from_stage": run.from_stage,
+            "started_at": run.created_at.isoformat() if run.created_at else None,
+            "ended_at": (run.updated_at.isoformat()
+                         if run.updated_at and not open_run else None),
+            "steps": out}
+
+
+@router.get("/user-pipelines/runs/{run_id}")
+async def get_run(run_id: str, user: CurrentUser, db: DbSession):
+    """One run of the person's user pipeline, per step."""
+    run = await db.get(PipelineRun, run_id)
+    if run is None or run.user_id != user.id or not run.pipeline.startswith(compose.PREFIX):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run_not_found")
+    number = (await db.exec(select(func.count()).select_from(PipelineRun).where(
+        PipelineRun.user_id == user.id, PipelineRun.pipeline == run.pipeline,
+        col(PipelineRun.created_at) <= run.created_at))).one()
+    return run_out(run, int(number))
+
+
+@router.get("/user-pipelines/{pipeline_id}/runs")
+async def list_runs(pipeline_id: str, user: CurrentUser, db: DbSession):
+    """The owner's own runs of a pipeline, newest first."""
+    row = await db.get(UserPipeline, pipeline_id)
+    if row is None or row.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pipeline_not_found")
+    mine = (PipelineRun.user_id == user.id, PipelineRun.pipeline == f"{compose.PREFIX}{row.id}")
+    runs = (await db.exec(select(PipelineRun).where(*mine)
+                          .order_by(col(PipelineRun.created_at).desc()).limit(_MAX_RUNS))).all()
+    total = int((await db.exec(select(func.count()).select_from(PipelineRun).where(*mine))).one())
+    return [run_out(r, total - i) for i, r in enumerate(runs)]
 
 
 def _usable(row: UserPipeline, user: User) -> bool:
@@ -484,6 +604,7 @@ async def apply_process(db: DbSession, user: User, agent: Agent,
     fixed = agent.catalog_key
     base: bases.Base | None = None
     steps: list[dict] | None = None
+    edges: list[dict] | None = None
     custom = payload.mode == "custom"
     if payload.mode == "direct":
         if fixed:
@@ -539,12 +660,14 @@ async def apply_process(db: DbSession, user: User, agent: Agent,
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                                     detail="pipeline_not_found")
             steps = _remap(compose.normalize(source.stages), agents)
+            edges = edges_of(source)
         else:
             steps = compose.normalize(payload.stages or [])
+            edges = compose.normalize_edges(payload.edges, steps)
     warnings: list[dict] = []
     if steps is not None:
         verdict = await _verdict(db, user, steps, self_id=own.id if own else None,
-                                 agents=agents)
+                                 agents=agents, edges=edges)
         if not verdict.ok:
             raise _invalid(verdict)
         want = {"report": "document", "chat": "answer"}.get(verdict.surface, "")
@@ -562,18 +685,19 @@ async def apply_process(db: DbSession, user: User, agent: Agent,
         if own is None:
             own = UserPipeline(owner_id=user.id, name=f"{agent.name} 진행 과정"[:80],
                                agent_id=agent.id, base=base.key if base else None,
-                               stages=stored)
+                               stages=stored, edges=edges)
         else:
-            if compose.normalize(own.stages) != compose.normalize(stored):
+            if compose.normalize(own.stages) != compose.normalize(stored) or \
+                    edges_of(own) != edges:
                 own.version += 1
                 # approval void after edit
                 own.review, own.visibility, own.review_note = "", "private", ""
-            own.stages, own.base = stored, base.key if base else None
+            own.stages, own.base, own.edges = stored, base.key if base else None, edges
             own.updated_at = utcnow()
         if custom and bases.needs_review(steps):
             if agent.visibility is Visibility.org and own.review in ("", "rejected"):
                 verdict = await _verdict(db, user, steps, self_id=own.id, agents=agents,
-                                         sharing=True)
+                                         sharing=True, edges=edges)
                 if verdict.ok:
                     own.review, own.review_note = "pending", ""
                 else:
@@ -611,7 +735,8 @@ async def submit_shared_process(db: DbSession, user: User, agent: Agent) -> None
     if not bases.needs_review(steps):
         return
     agents = with_self(await agents_for(db, user), agent.id)
-    if (await _verdict(db, user, steps, self_id=row.id, agents=agents, sharing=True)).ok:
+    if (await _verdict(db, user, steps, self_id=row.id, agents=agents, sharing=True,
+                       edges=edges_of(row))).ok:
         row.review, row.review_note, row.updated_at = "pending", "", utcnow()
         db.add(row)
 
@@ -629,7 +754,7 @@ async def clone_process(db: DbSession, origin: Agent, copy: Agent, user: User) -
     agents = with_self(await agents_for(db, user), copy.id)
     clone = UserPipeline(owner_id=user.id, name=f"{copy.name} 진행 과정"[:80],
                          agent_id=copy.id, base=row.base, origin_id=row.id,
-                         stages=_with_keys(_remap(steps, agents), agents))
+                         stages=_with_keys(_remap(steps, agents), agents), edges=edges_of(row))
     db.add(clone)
     await db.flush()
     copy.pipeline_id = clone.id
@@ -685,6 +810,8 @@ def _bundle_problems(steps: list[dict], agents: dict[str, compose.AgentInfo],
             say(n, f"{n}번: 쓸 수 없는 에이전트입니다.")
         elif kind == "review" and (m := step["settings"].get("model")) and m not in allowed:
             say(n, f"{n}번: 쓸 수 없는 검토 모델입니다.")
+        elif kind == "condition":
+            say(n, f"{n}번: 묶음에는 조건 단계를 넣을 수 없습니다.")
         elif kind not in compose.STEP_KINDS:
             say(n, f"{n}번: 묶음에 넣을 수 없는 종류입니다.")
     return problems
@@ -888,7 +1015,8 @@ async def _refused(message: str, code: str, *, session_id: str, chat: bool):
 
 
 def _definition(row: UserPipeline, steps: list[dict]) -> dict[str, Any]:
-    return {"id": row.id, "name": row.name, "version": row.version, "stages": steps}
+    return {"id": row.id, "name": row.name, "version": row.version, "stages": steps,
+            "edges": compose.normalize_edges(row.edges, steps)}
 
 
 async def turn_response(
@@ -917,7 +1045,8 @@ async def turn_response(
     else:
         definition = _definition(row, _steps_for(row, user, agents))
         steps = definition["stages"]
-    verdict = compose.validate(steps, agents=agents, self_id=row.id)
+    edges = compose.normalize_edges(definition.get("edges"), steps)
+    verdict = compose.validate(steps, agents=agents, self_id=row.id, edges=edges)
     if not verdict.ok:
         said = f"진행 과정 「{row.name}」을 돌릴 수 없습니다: {verdict.problems[0].message}"
         return _stream(_refused(said,
@@ -961,7 +1090,7 @@ async def turn_response(
         work.answers = {} if proceed_as_is else {
             str(k): str(v) for k, v in (pending.get("answers") or {}).items()}
         carried = pipeline_runs.carried(parent.snapshots, before=start)
-        names = [s.name for s in compose.compile_steps(steps, agents)]
+        names = [s.name for s in compose.compile_steps(steps, agents, edges)]
         earlier = {str(r.get("stage")): int(r.get("attempt") or 1) for r in parent.stages or []}
         attempts = {n: earlier.get(n, 1) for n in names}
         await _close_wait(parent.id, approved=bool(approved_plan))
@@ -974,7 +1103,7 @@ async def turn_response(
             turn={**turn, "run_id": recorder.run_id}))
         work.material.given = "\n".join([request, *untrusted])
     return _stream(compose_pass(
-        work, steps, agents, recorder, session_id=session.id, user_id=user.id,
+        work, steps, agents, recorder, edges=edges, session_id=session.id, user_id=user.id,
         pipeline=f"{compose.PREFIX}{row.id}", chat=chat, start=start, carried=carried,
         attempts=attempts, parent=parent, opening=None if parent is not None else {
             "routing": routing, "skills_event": skills_event, "context_steps": context_steps}))
@@ -1002,6 +1131,7 @@ async def _close_wait(run_id: str, *, approved: bool) -> None:
 
 async def compose_pass(work: Bundle, steps: list[dict], agents: dict[str, compose.AgentInfo],
                        recorder: pipeline_runs.Recorder, *, session_id: str, user_id: str,
+                       edges: list[dict] | None = None,
                        pipeline: str, chat: bool, start: str | None = None,
                        carried: dict | None = None, attempts: dict | None = None,
                        parent: PipelineRun | None = None, opening: dict | None = None):
@@ -1009,8 +1139,8 @@ async def compose_pass(work: Bundle, steps: list[dict], agents: dict[str, compos
     from app.routers import sessions
 
     try:
-        runner = Runner(compose.compile_steps(steps, agents), name=f"{pipeline}.{compose.FLOW}",
-                        recorder=recorder)
+        runner = Runner(compose.compile_steps(steps, agents, edges),
+                        name=f"{pipeline}.{compose.FLOW}", recorder=recorder)
         if attempts is not None:
             names = [s.name for s in runner.stages]
             again = names[names.index(start):] if start in names else []
@@ -1127,12 +1257,13 @@ async def rerun(session: ChatSession, run: PipelineRun, *, start: str,
     stored = pipeline_runs.decode((run.params["request"].get("f") or {}).get("turn")) or {}
     definition = dict(stored.get("compose") or {})
     steps = compose.normalize(definition.get("stages"))
+    edges = compose.normalize_edges(definition.get("edges"), steps)
     me = (stored.get("agents") or {}).get(compose.SELF) or {}
     agents = with_self(await agents_for(db, user), str(me.get("selfOf") or "") or None)
     if any(s["kind"] == "agent" and s["ref"] not in agents for s in steps) or \
-            not compose.validate(steps, agents=agents).ok:
+            not compose.validate(steps, agents=agents, edges=edges).ok:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="run_not_rerunnable")
-    names = [s.name for s in compose.compile_steps(steps, agents)]
+    names = [s.name for s in compose.compile_steps(steps, agents, edges)]
     if start not in names:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stage_not_rerunnable")
     try:
@@ -1143,7 +1274,8 @@ async def rerun(session: ChatSession, run: PipelineRun, *, start: str,
                             detail="stage_not_rerunnable") from None
     recorder = pipeline_runs.Recorder(run_id=uuid4().hex)
     work.usage = {"inputTokens": 0, "outputTokens": 0}
-    titles = {s.name: getattr(s, "title", "") for s in compose.compile_steps(steps, agents)}
+    titles = {s.name: getattr(s, "title", "")
+              for s in compose.compile_steps(steps, agents, edges)}
     work.request.turn = {**stored, "user_id": user.id, "model": model,
                          "run_id": recorder.run_id, "rerun_from": start,
                          "rerun_label": titles.get(start, ""),
@@ -1153,8 +1285,8 @@ async def rerun(session: ChatSession, run: PipelineRun, *, start: str,
     if answers:
         work.answers = {**work.answers, **answers}
     earlier = {str(r.get("stage")): int(r.get("attempt") or 1) for r in run.stages or []}
-    return compose_pass(work, steps, agents, recorder, session_id=session.id, user_id=user.id,
-                        pipeline=run.pipeline, chat=False, start=start,
+    return compose_pass(work, steps, agents, recorder, edges=edges, session_id=session.id,
+                        user_id=user.id, pipeline=run.pipeline, chat=False, start=start,
                         carried=pipeline_runs.carried(run.snapshots, before=start),
                         attempts={n: earlier.get(n, 1) for n in names}, parent=run)
 

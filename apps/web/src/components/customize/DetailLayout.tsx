@@ -72,6 +72,7 @@ export function DetailLayout({
   tabLabel,
   onTry,
   primary,
+  secondary,
   menu,
   aside,
   children,
@@ -82,6 +83,8 @@ export function DetailLayout({
   onTry: () => Promise<void>
   /** 「추가」 or 「편집」. */
   primary?: { label: string; run: () => void | Promise<void>; added?: boolean }
+  /** Beside 「바로 쓰기」: one more action, as 「이 스킬로 에이전트 만들기」. */
+  secondary?: { label: string; icon?: ReactNode; run: () => void }
   menu: MenuAction[]
   /** Beside the buttons: on/off switch. */
   aside?: ReactNode
@@ -107,6 +110,12 @@ export function DetailLayout({
         {busy ? <Loader2 size={15} className="animate-spin" /> : <MessageCircle size={15} />}
         {t('바로 쓰기')}
       </Button>
+      {secondary && (
+        <Button variant="secondary" className={phone ? 'flex-1' : ''} onClick={secondary.run}>
+          {secondary.icon}
+          {t(secondary.label)}
+        </Button>
+      )}
       {primary && (
         <Button
           variant="primary"

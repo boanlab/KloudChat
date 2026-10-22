@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { processApi, userPipelinesApi } from '@/lib/api'
 import { useResource, type Resource } from '@/lib/useResource'
 import type { Agent, BundleSelection, GapQuestion, PipelineStep, PipelineVerdict, ProcessCatalogue, ProcessMode } from '@/types'
+import type { PipelineEdge } from '@/types/pipelineGraph'
 
 /** The agent's own step in its 직접 구성 or a 묶음: it runs that agent's own flow. */
 export const SELF = '@self'
@@ -17,13 +18,16 @@ export interface ProcessDraft {
   base: string | null
   bundles: BundleSelection[]
   steps: PipelineStep[]
+  /** Lines of a 직접 구성 with conditions (set on the canvas); none: linear in `steps` order. */
+  edges?: PipelineEdge[] | null
 }
 
 /** The agent's 진행 과정 as the form starts it. */
 export function processOf(agent: Agent): ProcessDraft {
   const p = agent.process
   if (!p) return { mode: agent.baseKey || agent.catalogKey ? 'base' : 'direct', base: agent.baseKey ?? agent.catalogKey ?? null, bundles: agent.bundles ?? [], steps: [] }
-  return { mode: p.mode, base: p.base, bundles: p.bundles ?? [], steps: bareSteps(p.steps ?? []) }
+  const edges = (p as { edges?: PipelineEdge[] | null }).edges ?? null
+  return { mode: p.mode, base: p.base, bundles: p.bundles ?? [], steps: bareSteps(p.steps ?? []), ...(edges ? { edges } : {}) }
 }
 
 /** The bases and the 묶음 a person may tick, fetched once per page; a failure is not kept. */
@@ -93,6 +97,6 @@ export function useStepVerdict(
 /** The payload `PUT /agents/{id}/process` takes for a draft. */
 export function processPayload(value: ProcessDraft) {
   return value.mode === 'custom'
-    ? { mode: value.mode, base: value.base, stages: value.steps }
+    ? { mode: value.mode, base: value.base, stages: value.steps, ...(value.edges ? { edges: value.edges } : {}) }
     : { mode: value.mode, base: value.mode === 'base' ? value.base : null, bundles: value.bundles }
 }

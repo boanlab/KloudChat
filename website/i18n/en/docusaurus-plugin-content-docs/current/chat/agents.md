@@ -46,8 +46,28 @@ The enable toggle pauses an agent. Deleting it also deletes its sources, index a
 Pick one of three under **How it works** in the create-agent form. A new agent and its process are saved together: if the process is refused, no agent is made and the form stays as it was.
 
 - **Answer directly**: answers the request right away. An agent that answers in the chat makes no file (DOCX, HWPX, PDF).
-- **Start from a base process**: follows the working order of a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …). When no base process can be picked this option is hidden; it shows only on an agent that already started from one (which keeps it). A new agent does the same job with **Answer directly** plus **Skills kept on** and bundles. To get a file, set **Advanced** › first screen to **Report** and tick **Export a file when done** under Finish.
+- **Start from a base process**: follows the working order of a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …). When no base process can be picked this option is hidden; it shows only on an agent that already started from one (which keeps it). A new agent does the same job with **Answer directly** plus skills set to **Always** and bundles. To get a file, set **Advanced** › first screen to **Report** and tick **Export a file when done** under Finish.
 - **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one "This agent" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order.
+
+## Condition steps and run records
+
+A **condition** step in a custom order looks at what earlier steps produced and goes on along one branch only. Steps are joined by lines; a condition has one line per branch.
+
+- **Rule**: compares a value an earlier step left (greater than · equals · is empty · contains). No model is called; the branches are **Yes** and **No**. Values: the request (attachments · attachment types · text), an agent (result kind · sections · characters · text), a calculation (result), a check (found · left), a review (findings · fixed · left), the question card (blanks · answers), the outline approval (sections).
+- **AI judgement**: the judge model answers your question by picking one of 2–4 branches, and its reason goes into the run record. A strict-local conversation uses only models that stay inside; the tokens count toward that turn's credits.
+- **No value**: when the step a rule reads did not run or left no value, the rule takes **No**; when the judgement names no branch, the last branch is taken. The record says why.
+- **Checked before saving**: a line back to an earlier step (a loop), a branch with nothing after it, a step the first step never reaches, an unfinished condition, or two lines out of a step that is not a condition stop the save. Every branch's last agent must make the same thing (a document or an answer), and no condition may sit between the question card and its agent. Bundles hold no conditions.
+- **Run records**: steps on a branch not taken are recorded as skipped. Each run shows every step's status, a short summary of what it got and handed on, and the branch taken; only the person who ran it sees it.
+
+## Pipeline canvas
+
+An agent of yours that works in a custom order opens its steps as a picture with **Edit on the pipeline canvas** on its page (or **Edit on the canvas** under the custom order). The tabs are **Edit** · **Runs** · **List view**; either way the same order is saved.
+
+- **Adding steps**: click an item on the left to add it after the selected step, or drag it onto the canvas to place it there. Draw a line from the dot on a step's right to the next step, or pick it under **Next step** in the side panel (this works from the keyboard too). A step that is not a condition leads to one next step, and the step joined to **Request** is saved as the first step. An item that would not save where it would go (an export after a chat agent, a question card with no agent after it) is shown dashed in the list with the reason and the fix.
+- **Skills**: dropping a skill opens an agent draft made from it; once saved, the new agent comes in as a step. The chips under an agent are its skills (filled = always, dashed = when needed). The side panel changes the name, instructions, model and how each skill applies.
+- **What to check**: a step the pre-save checks flag carries a 「!」 and a notice appears on top.
+- **Runs**: the last 30 runs by number (#N), status and the start of the request, each step's status (done · waiting · failed · skipped) and what it got, did and handed on. **Refresh** reads them again.
+- An order with branches is read-only in the list view and the agent form; edit it on the canvas. On a phone, **Add step** under the canvas opens the step list.
 
 ## Bundles
 
@@ -72,7 +92,7 @@ These sit under **More settings** in the create-agent form.
 - **Template & theme**: pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **New template** under the template makes your own; **Manage themes** under the theme opens Settings › Themes. An agent started from a base process uses the base's template when the template is left empty ("The base's template"), and that template sets the document format. The **Document format** field shows only for a report-writing agent on Answer directly or Set it up yourself.
 - **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).
 - **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.
-- **Skills and tools** and **Advanced** (screens, first screen, model, output language, web search default, variety, colour, use memory). Adding a screen while no first screen is chosen makes it the first screen. Keeping on a skill that works only on reports or slides (회의록 작성, 개조식 보고, …) sets the first screen to that screen when none is chosen, and a line under the skills says where each one works. **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**.
+- **Skills and tools** and **Advanced** (screens, first screen, model, output language, web search default, variety, colour, use memory). Adding a screen while no first screen is chosen makes it the first screen. Setting a skill that works only on reports or slides to **Always** (회의록 작성, 개조식 보고, …) sets the first screen to that screen when none is chosen, and a line under the skills says where each one works. **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**.
 
 ## Output language, web search and memory
 
@@ -95,6 +115,25 @@ An agent that writes reports can turn on **Set for this agent** under **Detailed
 
 Make your own document template with **New template** under **Template & theme** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX sample document is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker.
 
+## An agent's skills
+
+**Skills and tools** › **Skills** lists the skills the agent uses, one per row, each with how it applies.
+
+- **Always**: added to the instructions on every turn of every conversation with this agent, the same way as a skill picked in the composer; one in both goes in once. Up to six, about 8,000 tokens together. If a skill later grows past that, they go in in order and only what no longer fits is left out of that turn.
+- **When needed**: not added every turn; on the Chat screen a tool-calling model reads the skill's description and pulls it in when it needs it.
+- Each row shows **Preview the body** and its rough token count, and the **Always** total is shown.
+- **Use defaults**: all your skills are available when needed, and any skill can be picked in the composer. Add only the ones to use every turn and set them to **Always**.
+- **Choose**: only the skills in the list are used, and only these can be picked in the composer. With none listed the agent uses no skills, not even ones picked in the composer; the form says so.
+- **+ Add a skill (store included)** lists your skills and the store's (official skills and ones colleagues shared). **Install and add** on a store skill copies it into your skills and lists it.
+
+## Make an agent from a skill
+
+**Make an agent from this skill** on a skill's page (or the agent button on a skill card) opens the create-agent screen filled in. Check the name and press **Create**.
+
+- The name and one-line description come from the skill; the instructions from its description and when-to-use. The skill's body goes in every turn as an **Always** skill, so it is not copied into the instructions.
+- The skill is set to **Always**; the screens follow the skill's, and the tools its required tools (none required: **Use defaults**).
+- A store skill is installed into your skills when you press **Create**. One already installed is used as it is, not installed again.
+
 ## Save as agent
 
 Keep a conversation that went well as an agent. **Save as agent** in the **⋯** menu of an artifact card, or of the report or slides panel, opens the create-agent screen filled in. Nothing is made until you press **Save**.
@@ -113,15 +152,21 @@ Keep a conversation that went well as an agent. **Save as agent** in the **⋯**
 
 ## Skills
 
-A skill is a working method kept on in a conversation: select up to three from **+** → **Skills** (again to turn one off). An **official skill** is added to your skills when picked. A skill brings its template, checks and questions.
+A skill is a working method kept on in a conversation: select up to three from **+** → **Skills** (again to turn one off). Unpicked skills are used too (see "Skills used when needed"). An **official skill** is added to your skills when picked. A skill brings its template, checks and questions.
 
 ![The Skills screen](/img/guide/skills.png)
 
 - Use **Customize** → **Skills** to install a skill, stop using one, or build your own with a name, description, when to use it, steps, required tools, and visibility. A published skill is listed in the store, and other users import it as a copy.
 - **Customize › Skills › Add › Upload skill** takes a SKILL.md (.md) or a .zip/.skill file containing one, several at a time. A .md file needs YAML front matter with `name` and `description`; .md and .txt files under `resources/` are appended to the body under 「참고 자료」 (References). Before anything is saved, each file shows a preview and its security-scan findings (blocked or warning). Python scripts under `scripts/` are stored with the skill and run only in the code execution sandbox; other scripts (.sh, .js and the like) are left out. A published skill with scripts can be copied by others only after an administrator approves it under **Skill review**. The checks are heuristic and will not catch every risk. **Upload as draft** saves the skill switched off.
 - A skill's **⋯ → Export (SKILL.md)** downloads your skill as a SKILL.md file. Sharing is refused while a skill contains key- or token-like strings or invisible direction-control characters.
-- A skill that requires tools is enabled only when all of these hold: you are on the Chat screen, the model supports tool calling, and that tool is connected. When a condition is not met, the reason is shown.
+- A skill that requires tools works only on the Chat screen, with a tool-calling model and that tool connected. When a condition is not met, the reason is shown.
 - Skills you pick with **Choose skills** on a project's **Skills** tab appear first in that project's composer.
+
+## Skills used when needed
+
+A skill does not have to be picked to be used. On the Chat screen with a tool-calling model, the model sees the descriptions of your switched-on skills that this turn does not already apply (store copies you installed included, up to twelve) and pulls one in when the request needs it. In a conversation with an agent set to **Choose**, only the skills in its list are offered. To have a skill used on every turn, pick it in the composer or set it to **Always** in an agent.
+
+A skill's own Python scripts (the `scripts/` of an uploaded skill) are stored with it. On a chat turn that uses the skill, the model runs them with the skill-script tool, only in the code execution sandbox and never on the server itself.
 
 ## Tool skills on reports and slides
 

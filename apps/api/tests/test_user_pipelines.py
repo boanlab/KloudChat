@@ -85,9 +85,11 @@ def test_a_step_that_needs_a_product_is_refused_before_one_exists():
     assert _codes(verdict) == [(1, "needs_product"), (5, "needs_product"), (6, "no_formats")]
     # The message says which step and what it needs, in Korean.
     assert verdict.problems[0].message == (
-        "1번 검사(근거 대조): 앞 단계에서 만든 문서나 답이 있어야 합니다.")
+        "1번 검사(근거 대조): 앞 단계에서 만든 문서나 답이 있어야 합니다. "
+        "이 단계 앞에 에이전트 단계를 두세요.")
     assert verdict.problems[1].message == (
-        "5번 검사(카피 점검): 앞 단계에서 만든 답이 있어야 합니다.")
+        "5번 검사(카피 점검): 앞 단계에서 만든 답이 있어야 합니다. "
+        "이 단계 앞에 대화(답)를 하는 에이전트를 두세요.")
 
 
 def test_order_rules_for_exports_outlines_and_cards():
@@ -566,8 +568,9 @@ def test_the_migration_adds_and_drops_user_pipelines_on_sqlite():
         with Operations.context(MigrationContext.configure(conn)):
             migration.upgrade()
         columns = {c["name"] for c in sa.inspect(conn).get_columns("user_pipelines")}
-        # `agent_id` and `kind` came later (0060).
-        assert {c.name for c in UserPipeline.__table__.columns} - {"agent_id", "kind"} == columns
+        # `agent_id` and `kind` came later (0060), `edges` with branches (0077).
+        assert {c.name for c in UserPipeline.__table__.columns} - {
+            "agent_id", "kind", "edges"} == columns
         assert "pipeline_id" in {c["name"] for c in sa.inspect(conn).get_columns("agents")}
         assert "pipeline_id" in {c["name"] for c in sa.inspect(conn).get_columns("sessions")}
         with Operations.context(MigrationContext.configure(conn)):
@@ -604,11 +607,13 @@ def test_product_messages_take_the_right_particle():
     said = [p.message for p in validate([
         {"kind": "agent", "ref": "c", "settings": {}},
         {"kind": "export", "ref": "", "settings": {"formats": ["hwpx"]}}], agents=agents).problems]
-    assert said == ["2번 내보내기(내보내기): 앞 단계에서 만든 문서가 있어야 합니다."]
+    assert said == ["2번 내보내기(내보내기): 앞 단계에서 만든 문서가 있어야 합니다. "
+                    "이 단계 앞에 보고서(문서)를 쓰는 에이전트를 두세요."]
     said = [p.message for p in validate([
         {"kind": "check", "ref": "grounding-check", "settings": {}},
         {"kind": "agent", "ref": "d", "settings": {}}], agents=agents).problems]
-    assert said == ["1번 검사(근거 대조): 앞 단계에서 만든 문서나 답이 있어야 합니다."]
+    assert said == ["1번 검사(근거 대조): 앞 단계에서 만든 문서나 답이 있어야 합니다. "
+                    "이 단계 앞에 에이전트 단계를 두세요."]
 
 
 async def test_a_review_fix_with_a_figure_no_one_gave_is_not_applied(monkeypatch):

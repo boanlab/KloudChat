@@ -10,6 +10,10 @@ const AGENT_SAVE_ERRORS: Record<string, { message: string; place?: AgentErrorPla
   agent_retired: { message: '더 이상 제공하지 않는 에이전트라 바꿀 수 없습니다.' },
   duplicate_skill_ids: { message: '스킬과 도구 › 스킬에 같은 스킬이 두 번 들어 있습니다.', place: 'tools' },
   invalid_skill_ids: { message: '스킬과 도구 › 스킬에 쓸 수 없는 스킬이 있습니다. 다시 고르세요.', place: 'tools' },
+  active_skills_too_long: {
+    message: '항상 적용할 스킬이 너무 깁니다(합계 약 8,000 토큰까지). 하나를 「필요할 때」로 바꾸세요.',
+    place: 'tools',
+  },
   duplicate_tool_names: { message: '스킬과 도구 › 도구에 같은 도구가 두 번 들어 있습니다.', place: 'tools' },
   unknown_tools: { message: '스킬과 도구 › 도구에 지금 쓸 수 없는 도구가 있습니다. 빼고 저장하세요.', place: 'tools' },
   check_skill_unknown: { message: '검사 스킬을 찾을 수 없습니다. 추가로 할 일의 검사를 확인하세요.', place: 'process' },

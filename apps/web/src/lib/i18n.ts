@@ -3,6 +3,45 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // Pipeline canvas
+  '여기에 넣으면': 'If added here',
+  '단계 목록을 불러오는 중…': 'Loading the step list…',
+  '단계 목록을 불러오지 못했습니다.': 'Could not load the step list.',
+  '보내면 파이프라인 {n}단계가 차례로 돕니다: {chain}. 단계마다 한 일은 에이전트의 실행 기록에 남습니다.': "Sending runs the pipeline's {n} steps in turn: {chain}. What each step did is kept in the agent's run records.",
+  '첨부 {n}개': '{n} attachments',
+  '마쳤습니다': 'Finished',
+  '건너뛰었습니다': 'Skipped',
+  '기다리는 중입니다': 'Waiting',
+  '파이프라인': 'Pipeline',
+  '파이프라인 캔버스에서 편집': 'Edit on the pipeline canvas',
+  '캔버스에서 편집': 'Edit on the canvas',
+  '갈래(조건)는 캔버스에서 넣습니다. 여기서 바꾼 것은 먼저 저장하세요.': 'Branches (conditions) are added on the canvas. Save changes made here first.',
+  '이 순서에는 갈래(조건)가 있어 캔버스에서만 고칩니다.': 'This order has branches (conditions), so it is edited on the canvas only.',
+  '실행 기록': 'Runs',
+  '목록으로 보기': 'List view',
+  '시험 실행': 'Try it',
+  '저장 안 됨': 'Not saved',
+  '단계 목록': 'Step list',
+  '단계 찾기': 'Find a step',
+  '선택한 단계': 'Selected step',
+  '다음 단계': 'Next step',
+  '이어지지 않음': 'Not joined',
+  '요청 받기': 'Request',
+  '받는 것': 'Gets',
+  '넘기는 것': 'Hands on',
+  '받은 것': 'Got',
+  '한 일': 'Did',
+  '넘긴 것': 'Handed on',
+  '규칙으로': 'By a rule',
+  'AI 판단으로': 'By AI judgement',
+  '판단 방식': 'How it decides',
+  '갈래': 'Branches',
+  '이어지는 단계': 'Leads to',
+  '에이전트 전체 설정 열기': 'Open all agent settings',
+  '이 단계 설정 고치기': 'Edit this step',
+  '화면에 맞추기': 'Fit to screen',
+  '확대': 'Zoom in',
+  '축소': 'Zoom out',
   // Agent output language, web search default, memory; fallback-model notes
   '출력 언어': 'Output language',
   '모든 답과 문서를 이 언어로 씁니다. 사용자가 그 턴에 다른 언어를 직접 요청하면 그 요청을 따릅니다.':
@@ -24,6 +63,39 @@ const EN: Record<string, string> = {
   '요청한 모델 {asked}이(가) 응답하지 못해 대체 모델 {served}이(가) 답했습니다.':
     'The requested model {asked} did not answer, so the fallback model {served} did.',
   '대체 모델이 답함': 'Fallback model answered',
+  // 항상 적용 / 필요할 때, agents made from a skill
+  '항상 적용할 스킬로 에이전트를 짜고, 필요할 때 쓸 스킬과 도구를 좁힙니다':
+    'Build the agent from skills applied every turn, and narrow the skills and tools it uses when needed',
+  '항상 적용': 'Always',
+  '필요할 때': 'When needed',
+  '{name} 적용 방식': 'How {name} applies',
+  '+ 스킬 추가 (스토어 포함)': '+ Add a skill (store included)',
+  '스킬 추가': 'Add a skill',
+  '스토어 · 설치하면 내 스킬에 복사됩니다': 'Store · installing copies it into your skills',
+  '설치하는 중…': 'Installing…',
+  '설치하고 추가': 'Install and add',
+  '항상 적용은 {n}개까지입니다.': 'Up to {n} skills can apply every turn.',
+  '항상 적용 스킬은 합계 약 {n} 토큰까지입니다.': 'Skills applied every turn may take about {n} tokens together.',
+  '항상 적용: 매 턴 지시에 넣습니다. 필요할 때: 모델이 설명을 보고 고릅니다.':
+    'Always: added to the instructions every turn. When needed: the model picks it from its description.',
+  '내 스킬은 모두 「필요할 때」로 쓸 수 있습니다. 늘 쓸 스킬만 더해 「항상 적용」으로 두세요.':
+    'All your skills are available when needed. Add only the ones to use every turn and set them to Always.',
+  '「직접 고르기」에서 아무 스킬도 두지 않으면 이 에이전트는 스킬을 쓰지 않습니다. 입력창에서 골라도 쓰이지 않습니다.':
+    'With Choose and no skills listed, this agent uses no skills, not even ones picked in the composer.',
+  '이 목록의 스킬만 씁니다. 입력창에서도 이 스킬만 고를 수 있습니다.':
+    'Only the skills in this list are used, and only these can be picked in the composer.',
+  '저장하면 내 스킬에 설치됩니다.': 'Installed into your skills on save.',
+  '본문 미리 보기': 'Preview the body',
+  '항상 적용 {n}/{max}개 · 약 {tokens} / {limit} 토큰': 'Always: {n}/{max} · about {tokens} / {limit} tokens',
+  '「{name}」 스킬로 채워 두었습니다. 이름을 확인하고 저장하세요.': 'Filled in from the skill “{name}”. Check the name and save.',
+  '저장하면 이 스킬이 내 스킬에 설치됩니다.': 'Saving installs this skill into your skills.',
+  '이 스킬을 찾을 수 없습니다. 빈 에이전트로 시작합니다.': 'This skill was not found. Starting from a blank agent.',
+  '스킬을 읽는 중입니다': 'Reading the skill',
+  '이 스킬로 에이전트 만들기': 'Make an agent from this skill',
+  '{name} 스킬로 에이전트 만들기': 'Make an agent from {name}',
+  '에이전트로': 'As agent',
+  '항상 적용할 스킬이 너무 깁니다(합계 약 8,000 토큰까지). 하나를 「필요할 때」로 바꾸세요.':
+    'The skills applied every turn are too long (about 8,000 tokens together at most). Set one to When needed.',
   // Skill-built agents, official skills, connector tools
   '켜 둔 스킬이 없습니다.': 'No skills kept on.',
   '최대 6개까지 켜 둘 수 있습니다.': 'You can keep up to six on.',
@@ -1932,8 +2004,6 @@ const EN: Record<string, string> = {
   '되돌릴 수 없습니다. 이 대화들이 만든 아티팩트(보고서·슬라이드·이미지·오디오·동영상)도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.': 'This cannot be undone. What these conversations produced (reports, decks, images, audio, video) is deleted with them and their share links stop working. Projects and memory stay.',
   '대화 {n}개가 있습니다. 삭제한 대화는 되돌릴 수 없고, 그 대화에서 만든 아티팩트도 함께 지워집니다.': 'You have {n} conversations. Deleting one cannot be undone, and what it produced is deleted with it.',
   '확대/축소': 'Zoom',
-  '축소': 'Zoom out',
-  '확대': 'Zoom in',
   '폭에 맞춤': 'Fit to width',
   '대화 {n}개를 삭제할까요?': 'Delete {n} conversation(s)?',
 
@@ -2529,7 +2599,7 @@ const EN: Record<string, string> = {
   '강조색 고르기': 'Choose the accent colour',
   '제목 밑줄, 표 머리, 번호, 표지에 쓰는 색': 'Used for title rules, table heads, numbers and the cover',
   '직접 고른 색': 'Custom colour',
-  '직접 고르기': 'Pick a colour',
+  '직접 고르기': 'Choose',
   '파스텔': 'Pastel',
   '숲': 'Forest',
   '강철': 'Slate',
@@ -4413,6 +4483,7 @@ export function translate(lang: Lang, text: string): string {
 const EN_IN: Record<string, string> = {
   'hub|탐색': 'Explore',
   'hub|개요': 'Overview',
+  'colour|직접 고르기': 'Pick a colour',
 }
 
 export function translateIn(lang: Lang, context: string, text: string): string {

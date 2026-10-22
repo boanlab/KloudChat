@@ -21,7 +21,7 @@ import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind, Skill, WebSearchMode } from '@/types'
 import { slugify } from './formModel'
 import { isListed } from '@/lib/listed'
-import { ActiveSkillPicker, OffSurfaceNote, SkillPicker, StartSurfaceNote, ToolPicker } from './Pickers'
+import { AgentSkillList, OffSurfaceNote, StartSurfaceNote, ToolPicker } from './Pickers'
 
 /** Draft with `kinds`, minus bindings those kinds don't offer. */
 function withinKinds(draft: Agent, kinds: SessionKind[]): Agent {
@@ -309,6 +309,8 @@ export function AgentForm({
   // 빠진 정보 질문 fields a save stopped on, by question id.
   const [gapErrors, setGapErrors] = useState<Record<string, GapProblem>>({})
   const formRef = useRef<HTMLFormElement>(null)
+  // Opened once, from the skills it starts with; a toggle inside never closes it.
+  const [skillsOpen] = useState(() => initial.activeSkillIds.length > 0 || undefined)
   const [baseline, setBaseline] = useState<ProcessDraft>(() => initialProcess ?? processOf(initial))
   const [process, setProcess] = useState<ProcessDraft>(baseline)
   const [processSaved, setProcessSaved] = useState(!creating)
@@ -402,7 +404,7 @@ export function AgentForm({
       await Promise.allSettled([...adding.current])
       setSaving(false)
     }
-    const draft = draftRef.current
+    let draft = draftRef.current
     const draftSlug = slugify(draft.slug || draft.name)
     if (!draft.name.trim()) {
       setNameError(t('이름을 입력하세요.'))
@@ -421,6 +423,20 @@ export function AgentForm({
     setSaving(true)
     setError(null)
     try {
+      // Store skills in the draft (「이 스킬로 에이전트 만들기」) installed now, their copies kept.
+      const pending = [...new Set([...draft.activeSkillIds, ...(draft.skillIds ?? [])])].filter(
+        (id) => !useStore.getState().skills.some((mine) => mine.id === id),
+      )
+      for (const id of pending.filter((x) => useStore.getState().skillStore.some((row) => row.id === x))) {
+        const copy = await addOfficial(id)
+        if (!copy) return null
+        const swap = (ids: string[]) => [...new Set(ids.map((x) => (x === id ? copy : x)))]
+        draft = { ...draft, activeSkillIds: swap(draft.activeSkillIds), skillIds: draft.skillIds && swap(draft.skillIds) }
+      }
+      if (pending.length > 0) {
+        draftRef.current = draft
+        setDraft(draft)
+      }
       // On/off switch lives in the detail header; never overridden here.
       const live = useStore.getState().agents.find((a) => a.id === draft.id)
       // First save carries the 진행 과정: a refused one leaves no half-made agent.
@@ -457,7 +473,7 @@ export function AgentForm({
     } finally {
       setSaving(false)
     }
-  }, [upsertAgent, t, reveal, creating, savedId, loadWorkspace, processDirty, process])
+  }, [upsertAgent, t, reveal, creating, savedId, loadWorkspace, processDirty, process, addOfficial])
 
   const save = async () => {
     // Saved with the agent on its first save (`persist`).
@@ -824,37 +840,25 @@ export function AgentForm({
 
         <Group
           title={t('스킬과 도구')}
-          hint={t('켜 둘 스킬로 에이전트를 짜고, 쓸 수 있는 스킬과 도구를 좁힙니다')}
+          hint={t('항상 적용할 스킬로 에이전트를 짜고, 필요할 때 쓸 스킬과 도구를 좁힙니다')}
           testId="agent-tools-group"
-          open={draft.activeSkillIds.length > 0 || undefined}
+          open={skillsOpen}
         >
-          <Block
-            label={t('켜 둘 스킬')}
-            hint={t('이 에이전트의 모든 대화에서 늘 켜집니다. 스킬의 템플릿·검사·빠진 정보 질문도 함께 따라옵니다.')}
-          >
-            <ActiveSkillPicker
-              value={draft.activeSkillIds}
-              onChange={(activeSkillIds) => edit(withSkillSurface(draftRef.current, activeSkillIds, useStore.getState().skills))}
+          <Block label={t('스킬')}>
+            <AgentSkillList
+              skillIds={draft.skillIds}
+              activeSkillIds={draft.activeSkillIds}
+              onChange={({ skillIds, activeSkillIds }) => {
+                const store = useStore.getState()
+                const known = [...store.skills, ...store.skillStore]
+                edit(withSkillSurface({ ...draftRef.current, skillIds }, activeSkillIds, known))
+              }}
               skills={skills}
               store={skillStore}
-              onAddOfficial={addOfficial}
+              onInstall={addOfficial}
             />
-            <OffSurfaceNote ids={draft.activeSkillIds} skills={skills} surfaces={offered} />
+            <OffSurfaceNote ids={[...new Set([...draft.activeSkillIds, ...(draft.skillIds ?? [])])]} skills={skills} surfaces={offered} />
             <StartSurfaceNote ids={draft.activeSkillIds} skills={skills} surfaces={offered} start={surface} />
-          </Block>
-          <Block label={t('입력창에서 고를 수 있는 스킬')}>
-            <SkillPicker
-              value={draft.skillIds}
-              onChange={(skillIds) => edit({ ...draftRef.current, skillIds })}
-              skills={skills}
-              store={skillStore}
-              onAddOfficial={addOfficial}
-            />
-            <OffSurfaceNote
-              ids={(draft.skillIds ?? []).filter((id) => !draft.activeSkillIds.includes(id))}
-              skills={skills}
-              surfaces={offered}
-            />
           </Block>
           <Block label={t('도구')}>
             <ToolPicker

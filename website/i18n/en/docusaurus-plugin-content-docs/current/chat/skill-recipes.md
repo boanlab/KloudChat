@@ -55,7 +55,7 @@ The **회의 안건** (Meeting agenda) template is the minutes' counterpart. On 
 
 ## Building an agent from skills
 
-In **Customize** → **Agents** → **Add** → **Create an agent**, the skills you choose under **Skills and tools** › **Skills kept on** are on in every conversation with that agent (up to six). The list shows your skills and the **official skills** you have not added yet; picking one adds it to your skills. Picking a skill that works only on reports or slides sets the agent's first screen to that screen. Each skill's template, checks and missing-information questions come with it; a template or detailed settings set on the agent itself come first. **Skills you can pick in the composer** narrows what can be turned on during a conversation.
+In **Customize** → **Agents** → **Add** → **Create an agent**, skills you add with **+ Add a skill (store included)** under **Skills and tools** › **Skills** and set to **Always** are on in every conversation with that agent (up to six). The list shows your skills and the store's; **Install and add** copies a store skill into your skills. To start from one skill, press **Make an agent from this skill** on its page. Setting a skill that works only on reports or slides to **Always** sets the agent's first screen to that screen. Each skill's template, checks and missing-information questions come with it; a template or detailed settings set on the agent itself come first. A skill set to **When needed** is not added every turn; the model pulls it in when it needs it. With **Choose** only the listed skills are used, and only these can be picked in the composer ([An agent's skills](agents#an-agents-skills)).
 
 ## A minutes agent
 
@@ -63,34 +63,34 @@ In **Customize** → **Agents** → **Add** → **Create an agent**, the skills 
 |---|---|
 | Name | Our team's minutes |
 | Instructions | 작성자는 「기획팀 [이름]」으로 적는다. 실행 항목은 담당 팀 순서로 정렬한다. (Only your team's specifics; the skill knows how to write minutes) |
-| Skills kept on | 회의록 작성 |
+| Always | 회의록 작성 |
 | Extra work | Prepare before writing · Review after writing · Finish (export a file when done: HWPX) |
 | Template & theme › Theme | 문서용 명조 |
 | Advanced › Screens | Report |
 
 ## A briefing agent
 
-Skills kept on **개조식 보고**, theme **문서용 명조**, screen **Report**. Put only what never changes in the instructions, such as the addressee (「시설과장님」) and the approval line.
+**개조식 보고** set to Always, theme **문서용 명조**, screen **Report**. Put only what never changes in the instructions, such as the addressee (「시설과장님」) and the approval line.
 
 ## A purchase review agent
 
-Skills kept on **비교·결정 보고** + **견적 계산**, screen **Report**. Write your organization's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them.
+**비교·결정 보고** + **견적 계산** set to Always, screen **Report**. Write your organization's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them.
 
 ## A tally agent
 
-Skills kept on **자료 추출·집계**; under Skills and tools › Tools, **파일 작업**, **차트 그리기** and **수치 계산**; screen **Chat**. Upload a spreadsheet and ask 「부서별 합계와 비율을 표로」; it first asks for the deadline, period or denominator basis when the material does not give it.
+**자료 추출·집계** set to Always; under Skills and tools › Tools, **파일 작업**, **차트 그리기** and **수치 계산**; screen **Chat**. Upload a spreadsheet and ask 「부서별 합계와 비율을 표로」; it first asks for the deadline, period or denominator basis when the material does not give it.
 
 ## A regulations chatbot
 
-1. Create an agent with **규정 근거 답변** + **날짜 계산** kept on.
+1. Create an agent with **규정 근거 답변** + **날짜 계산** set to Always.
 2. Upload the regulation files under **Sources** and fill in **Department and contact**.
 3. Under **Extra work**, tick **공개 전 점검** (the pre-publication check: hold answers without grounds · point to the department · mask personal information).
 4. Try it, then [publish it as a chatbot](bots.md). The bot answers with the skills' instructions frozen into the published version.
 
 ## Video and research agents
 
-- **Lecture video notes**: **YouTube 영상 전사·요약** kept on, screen **Chat**. Write the shape you want in the instructions (「핵심 다섯 줄과 용어 풀이 표」). The **YouTube 전사** connector must be on.
-- **Trend research**: **심층 조사** + **근거 대조** kept on, screen **Chat**. The **심층 리서치** connector must be on, and one run takes a few minutes.
+- **Lecture video notes**: **YouTube 영상 전사·요약** set to Always, screen **Chat**. Write the shape you want in the instructions (「핵심 다섯 줄과 용어 풀이 표」). The **YouTube 전사** connector must be on.
+- **Trend research**: **심층 조사** + **근거 대조** set to Always, screen **Chat**. The **심층 리서치** connector must be on, and one run takes a few minutes.
 
 ## Making the same as your own skill
 

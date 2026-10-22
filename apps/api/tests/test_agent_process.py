@@ -674,7 +674,7 @@ async def test_a_refused_process_leaves_no_half_made_agent(wired):
 
 
 async def test_the_guides_minutes_agent_exports_hwpx_without_a_base(wired):
-    """사용 안내의 회의록 에이전트: 켜 둘 스킬 회의록 작성, 사용할 화면 보고서, 마무리하기 HWPX."""
+    """사용 안내의 회의록 에이전트: 항상 적용 회의록 작성, 사용할 화면 보고서, 마무리하기 HWPX."""
     me, _, _ = await _people(wired.local)
     assert bases.bases() == []
     async with wired.local() as db:

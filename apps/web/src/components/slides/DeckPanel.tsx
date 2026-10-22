@@ -60,7 +60,7 @@ import { SlideChart } from '@/components/slides/SlideChart'
 import { PatternView } from '@/components/slides/PatternView'
 import { BASE_LAYOUTS, PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
 import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, STEPS, TYPE, columnShares, lines, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
-import { useT } from '@/lib/useT'
+import { useT, useTIn } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
 import { ArtifactRibbon, QuickAccess, RibbonGroup } from '@/components/artifacts/ArtifactRibbon'
 import { copyText } from '@/lib/clipboard'
@@ -2049,6 +2049,7 @@ export function DeckPanel({
   onDirtyChange?: (dirty: boolean) => void
 }) {
   const t = useT()
+  const tColour = useTIn('colour')
   const width = usePanelWidth(onModeChange)
 
   // Rewrites the slide a finding names; a deck-wide finding has nowhere to go.
@@ -3435,8 +3436,8 @@ export function DeckPanel({
             </MenuItem>
           ))}
           <label className="mt-1 flex cursor-pointer items-center gap-2 border-t border-line px-3 py-2 text-sm text-fg hover:bg-elevated">
-            <input type="color" value={bulkAccent} onChange={(event) => void saveDeckAccent(event.target.value)} className="size-4 cursor-pointer border-0 bg-transparent p-0" aria-label={t('직접 고르기')} />
-            {t('직접 고르기')}
+            <input type="color" value={bulkAccent} onChange={(event) => void saveDeckAccent(event.target.value)} className="size-4 cursor-pointer border-0 bg-transparent p-0" aria-label={tColour('직접 고르기')} />
+            {tColour('직접 고르기')}
           </label>
         </Dropdown></RibbonGroup>}
         {ribbon === 'design' && editing && <RibbonGroup label={t('테마')}>

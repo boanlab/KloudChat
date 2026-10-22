@@ -91,6 +91,7 @@ const groups: Record<string, Group> = {
     files: ['pipeline-stages.spec.ts', 'user-pipelines.spec.ts'],
     projects: { desktop, phone: pixelNative },
   },
+  chain: { files: ['chain-canvas.spec.ts'], projects: { desktop, phone: pixelNative } },
   issues: { files: ['issue-reports.spec.ts'], projects: { desktop } },
   customize: {
     files: [
@@ -111,6 +112,7 @@ const groups: Record<string, Group> = {
       'save-as-agent.spec.ts',
       'restructure-shots.spec.ts',
       'agent-skill-surface.spec.ts',
+      'agent-from-skill.spec.ts',
       'agent-default-model.spec.ts',
     ],
     projects: { desktop },

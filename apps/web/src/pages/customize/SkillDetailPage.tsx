@@ -1,4 +1,4 @@
-import { Copy, Download, FileCode2, Share2, Sparkles, Trash2 } from 'lucide-react'
+import { Bot, Copy, Download, FileCode2, Share2, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Markdown } from '@/components/chat/Markdown'
@@ -107,6 +107,11 @@ export function SkillDetailPage() {
         tab="skills"
         tabLabel="스킬"
         onTry={() => tryItem(item)}
+        secondary={{
+          label: '이 스킬로 에이전트 만들기',
+          icon: <Bot size={15} />,
+          run: () => navigate(`/customize/agents/new?from=skill:${skill.id}`),
+        }}
         primary={
           own
             ? editable
