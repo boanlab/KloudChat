@@ -2759,9 +2759,9 @@ def unfence_pictures(body: str) -> str:
         inner = lines[i + 1:j]
         if (opening.group(1).lower() in _PROSE_FENCES
                 or any(_FIGURE_LINE.match(x.strip()) or "](data:image/" in x for x in inner)
-                or (not opening.group(1) and _fenced_table(inner))):
-            # a picture, prose wrapped as 「```markdown」, or a table with its caption in a
-            # bare fence: the body itself
+                or (not opening.group(1) and (_fenced_table(inner) or _fenced_prose(inner)))):
+            # a picture, prose wrapped as 「```markdown」 or in a bare fence, or a table with
+            # its caption in a bare fence: the body itself
             out.extend(inner)
         else:
             out.extend(lines[i:j + 1])
@@ -2801,6 +2801,21 @@ def _fenced_table(inner: list[str]) -> bool:
     rows = [x.strip() for x in inner if x.strip()]
     return (any(_TABLE_RULE.match(x) for x in rows)
             and all(x.startswith("|") or _CAPTION_LINE.match(x) for x in rows))
+
+
+#: code's marks, which no sentence of the document carries: braces, semicolons, calls
+_CODE_MARK = re.compile(
+    r"[{};=<>$\\]|[A-Za-z_][A-Za-z0-9_]{0,40}\(|^\s{0,8}(?:def|class|import|return|from)\s")
+
+
+def _fenced_prose(inner: list[str]) -> bool:
+    """Lines of a bare fence that are only Korean sentences (「… 열었습니다.」): the document's
+    own paragraph."""
+    lines = [x.strip() for x in inner if x.strip()]
+    return bool(lines) and all(
+        x.rstrip(")」] ").rstrip(".!?")[-1:] in ("다", "요", "음", "함")
+        and len(re.findall(r"[가-힣]", x)) >= len(x) // 3 and not _CODE_MARK.search(x)
+        for x in lines)
 
 
 #: fence language that only wraps document prose: 「```markdown」

@@ -100,6 +100,37 @@ def _contested(figure: Figure, material: str) -> bool:
     return False
 
 
+#: a value set in place of another: 「… 50만원으로 줄이자고 했고」, 「… 3명으로 조정」
+_CHANGED_TO = re.compile(
+    r"\s?(?:으로|로)\s?(?:[가-힣]{1,6}\s){0,2}"
+    r"(?:줄|조정|변경|감액|증액|늘|낮|올|인하|인상|삭감|축소|확대|수정|하향|상향|바꾸|바꿔|바꿨"
+    r"|합의|확정|결정)")
+
+
+def changes(text: str) -> list[tuple[str, float, float, str, str]]:
+    """`(unit, before, after, before as written, after as written)` of each value a stretch of
+    `text` sets in place of an earlier one of the same unit: 「간식비 80만원을 요청했으나 팀장이
+    50만원으로 줄이자고 했고 합의」 → 80만원 → 50만원."""
+    out = []
+    for stretch in re.split(r"(?<!\d)\.(?!\d)|[\n;。]", text or ""):
+        found = []
+        for m in _VALUE.finditer(stretch):
+            try:
+                found.append((m, units._ko_number(m.group("amount"))))
+            except ValueError:
+                continue
+        for k, (m, after) in enumerate(found):
+            if not _CHANGED_TO.match(stretch, m.end()):
+                continue
+            before = next(((b, v) for b, v in reversed(found[:k])
+                           if b.group("unit") == m.group("unit")
+                           and abs(v - after) > 1e-6 * max(1.0, after)), None)
+            if before:
+                out.append((m.group("unit"), before[1], after, before[0].group(0).strip(),
+                            m.group(0).strip()))
+    return out
+
+
 def _stated_after(name: str, text: str, unit: str) -> list[float]:
     """Values in `unit` right after `name`: 「판매가는 20,000원」."""
     # whole-word name; value not a formula operand
@@ -239,7 +270,21 @@ def parse_all(text: str, material: str) -> tuple[list[Figure], list[Conflict]]:
                 conflicts.append(found)
             continue
         figures.append(figure)
+    changed = changes(material)
+    for figure in figures:
+        # an item the material gives a new value (「80만원 요청 → 50만원으로 줄이자고 합의」) or
+        # another one contests: only the figure's full name holds its value, not the bare item
+        if any(u == figure.unit and figure.number is not None
+               and min(abs(a - figure.number), abs(b - figure.number))
+               <= 1e-6 * max(1.0, figure.number) for u, a, b, _, _ in changed):
+            figure.aliases = []
+        figure.aliases = [a for a in figure.aliases
+                          if not any(_flat_name(a) in _flat_name(c.name) for c in conflicts)]
     return figures[:MAX_FIGURES], conflicts[:MAX_CONFLICTS]
+
+
+def _flat_name(text: str) -> str:
+    return re.sub(r"\s+", "", text or "")
 
 
 def parse(text: str, material: str) -> list[Figure]:

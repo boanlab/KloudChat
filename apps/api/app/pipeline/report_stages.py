@@ -1824,7 +1824,8 @@ class MinutesRepair(Base):
     """Minutes repair: 출처/비고 on action rows, bound dues, no dates without a meeting date, owners/quantities."""
 
     name = "minutes-repair"
-    reads = ("request", "material.given", "computed.prepass", "document.sections")
+    reads = ("request", "material.given", "material.parts", "computed.prepass",
+             "document.sections")
     writes = ("document.sections", "findings.before")
 
     def skip(self, bundle: Bundle) -> str:
@@ -1852,6 +1853,8 @@ class MinutesRepair(Base):
             # no meeting date: nothing dated as the meeting's
             sections, undated = report_checks.minutes_undated(sections, prepass.dates, known)
             before += undated
+        # 「오전 10시」 for the memo's bare 「10시」: the 오전 off by code, the clock kept
+        sections, _ = stated_meeting.bare_clocks(sections, _meeting_given(bundle))
         # owners/quantities repaired by code, rechecked after verify rewrites
         repaired, ungrounded = report_checks.minutes_grounding(
             sections, known, strong=bundle.request.strong)
@@ -2172,14 +2175,15 @@ class MinutesReground(Base):
                                                       strong=bundle.request.strong)
         # a day, clock, place or 「다음 회의」 deadline called missing that the memo gives, the
         # next meeting's day, room or clock in this one's overview, a memo decision no decision
-        # row holds, a row written twice, a count its list no longer has, and a value offered
-        # as its own alternative
+        # row holds, a decision given the value the meeting changed, a row written twice, a
+        # count its list no longer has, and a value offered as its own alternative
         memo = _meeting_given(bundle)
         sections = meeting_memo.overview_day(sections, bundle.document.head_block, memo)
         sections, _ = meeting_memo.borrowed_next(sections, memo)
         sections, _ = meeting_memo.false_absences(sections, memo)
         sections, _ = meeting_memo.false_dues(sections, memo)
         sections, _ = meeting_memo.decision_rows(sections, memo)
+        sections, _ = meeting_memo.decided_values(sections, memo)
         sections, _ = meeting_memo.dedupe_rows(sections)
         # a count before a table or list that rows dropped above left behind
         sections, _ = meeting_memo.counted(sections)

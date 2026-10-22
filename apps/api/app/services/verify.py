@@ -159,7 +159,8 @@ _MARK_ONLY = re.compile(r"\(?[ \t]{0,2}(?:확인[ \t]?필요|미정|해당[ \t]?
 
 def pasted(old: str, new: str, content: str, memo: str = "") -> bool:
     """A prose rewrite that pastes instead of writing: a marker alone where a sentence was
-    (「확인 필요」), a sentence the section already holds, a word or two left of a sentence, or
+    (「확인 필요」), a sentence the section already holds or one keeping nothing of the old that
+    only says the section's words again (`restates`), a word or two left of a sentence, or
     the memo's own line in its shorthand (`meeting_memo.copied`) where the sentence was prose."""
     from app.services import meeting_memo
 
@@ -171,12 +172,62 @@ def pasted(old: str, new: str, content: str, memo: str = "") -> bool:
     rest = re.sub(r"[\s,.:;·!?()「」\"']", "", content.replace(old, "", 1))
     if len(flat) >= 16 and flat in rest:
         return True
+    if restates(new, old, content.replace(old, "", 1)):
+        return True
     # a word or two left of a whole sentence (「함.」)
     if len(flat) < 8 and len(flat) * 3 < len(re.sub(r"[\s,.:;·!?()「」\"']", "", old)):
         return True
     pieces = [p for p in re.split(r"(?<=[.!?])\s+", new.strip()) if p.strip()]
     return bool(memo) and not meeting_memo.copied(old, memo) \
         and any(meeting_memo.copied(p, memo) for p in pieces)
+
+
+#: a blank for the person to fill: 「[회의 일자]」, 「[담당자]」
+_BLANK = re.compile(r"\[[^\[\]\n\d]{1,20}\]")
+
+
+def restates(new: str, old: str, rest: str) -> bool:
+    """A repair that keeps no word of the sentence it fixes and says only what the rest of the
+    section says (「자료에 명시된 예정 안건은 없고, 일정·장소만 기재합니다」 → 「다음 회의는 10/21
+    화 10시 3층 회의실입니다」 beside 「10/21 10시, 3층 회의실에서 열립니다」)."""
+    said = {w[:2] for w in _stems(new)}
+    return len(said) >= 3 and not said & {w[:2] for w in _stems(old)} \
+        and said <= {w[:2] for w in _stems(rest)}
+
+
+_PARTICLE_HEAD = re.compile(r"^(?:에서|에는|에|은|는|이|가|을|를|의|으로|로|와|과)")
+
+
+def filled_twin(new: str, content: str) -> str | None:
+    """The sentence of `content` that `new` restates with a blank filled: 「[회의 일자]에 3층
+    회의실에서 … 열었습니다.」 for 「2026년 10월 14일 3층 회의실에서 … 열었습니다.」; the
+    words around each blank the same, a value of at most 30 letters in its place."""
+    from app.services import units
+
+    target = re.sub(r"\s+", "", new or "").rstrip(".!?")
+    if not target or _BLANK.search(new):
+        return None
+    for sentence in units.SENTENCE_BREAK.split(content or ""):
+        sentence = sentence.strip()
+        if sentence.startswith("|") or not _BLANK.search(sentence):
+            continue
+        parts = [re.sub(r"\s+", "", p) for p in _BLANK.split(sentence.rstrip(".!? "))]
+        # a blank's particle may go with it: 「[회의 일자]에 3층 …」 → 「… 14일 3층 …」
+        parts = parts[:1] + [p if target.find(p) > 0 else _PARTICLE_HEAD.sub("", p, count=1)
+                             for p in parts[1:]]
+        if sum(len(p) for p in parts) < 12 or not target.startswith(parts[0]) \
+                or not target.endswith(parts[-1]):
+            continue
+        at, end, ok = len(parts[0]), len(target) - len(parts[-1]), True
+        for k, part in enumerate(parts[1:], start=1):
+            found = end if k == len(parts) - 1 else target.find(part, at + 1)
+            if found < 0 or found > end or not 0 < found - at <= 30:
+                ok = False
+                break
+            at = found + len(part)
+        if ok:
+            return sentence
+    return None
 
 
 #: the writer reporting its own act of writing: 「그 값을 넣지 않은 문장으로 쓰도록 했습니다」,
@@ -303,7 +354,15 @@ async def repair(
             new = without_edit_notes(finding.sentence, clean(new.strip().strip("「」")))
             # a fix keeps the document's 합니다체 (no 「…대상으로 한다.」 in a notice)
             new = keep_register(finding.sentence, new) or ""
-            if new != finding.sentence and _acceptable(finding.sentence, new, finding) \
+            if new and _acceptable(finding.sentence, new, finding) \
+                    and (twin := filled_twin(new, content.replace(finding.sentence, "", 1))):
+                # the fix fills another sentence's blank (「[회의 일자]에 …」 → 「2026년 10월
+                # 14일 …」): that sentence takes it, and this one stands unrepaired
+                content = content.replace(twin, new, 1)
+                left.append(finding)
+                log.info("repair of [%s] filled the blank it restates in %r", finding.code,
+                         out[index].get("heading"))
+            elif new != finding.sentence and _acceptable(finding.sentence, new, finding) \
                     and not pasted(finding.sentence, new, content, doc.memo):
                 content = content.replace(finding.sentence, new, 1)
                 log.info("repaired [%s] in %r", finding.code, out[index].get("heading"))

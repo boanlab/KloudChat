@@ -562,6 +562,70 @@ def _decision_row(table, number: int, label: str, text: str) -> str:
     return "| " + " | ".join(cells) + " |"
 
 
+#: a value given as what was decided: 「80만원으로 합의했습니다」, 「50만원으로 확정」
+_DECIDED_AS = re.compile(
+    r"\s?(?:으로|로)\s?(?:[가-힣]{1,6}\s){0,2}(?:합의|확정|결정|정했|정하였|채택|의결|가결)")
+
+
+def decided_values(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
+    """A sentence or decision row giving the value a memo decision changed (「80만원을 요청했으나
+    50만원으로 줄이자고 했고 합의」) as the one decided: 「간식비를 80만원으로 합의했습니다」 takes
+    50만원, a decision row holding 80만원 and not 50만원 too."""
+    from app.services import key_figures, report_checks, units
+
+    changed = [(clause, c) for _, clause in decisions(memo_text)
+               for c in key_figures.changes(clause)]
+    if not changed:
+        return sections, 0
+
+    def same(m: re.Match, unit: str, value: float) -> bool:
+        try:
+            got = units._ko_number(m.group("amount"))
+        except ValueError:
+            return False
+        return m.group("unit") == unit and abs(got - value) <= 1e-6 * max(1.0, value)
+
+    def holds(text: str, unit: str, value: float) -> bool:
+        return any(same(m, unit, value) for m in key_figures._VALUE.finditer(text))
+
+    rows = {line for t in report_checks.tables(sections)
+            if _DECISION_TABLE.search(" ".join(t.header))
+            or _DECISION_TABLE.search(str(sections[t.section].get("heading") or ""))
+            for line, _ in t.rows}
+    out, fixed = [], 0
+    for sec in sections:
+        lines = str(sec.get("content") or "").split("\n")
+        for i, line in enumerate(lines):
+            table_row = line.lstrip().startswith("|")
+            if table_row and line not in rows:
+                continue
+            pieces = [line] if table_row else _sentences(line)
+            for piece in pieces:
+                new = piece
+                for clause, (unit, before, after, _, written) in changed:
+                    # the same item: a word of the memo's clause (「간식비」) in the sentence
+                    if holds(new, unit, after) or not _about(new, clause):
+                        continue
+                    for m in reversed(list(key_figures._VALUE.finditer(new))):
+                        if same(m, unit, before) and (table_row or _DECIDED_AS.match(new, m.end())):
+                            new = new[:m.start()] + written + new[m.end():]
+                if new != piece:
+                    lines[i] = lines[i].replace(piece, new, 1)
+                    fixed += 1
+        content = "\n".join(lines)
+        out.append({**sec, "content": content} if content != sec.get("content") else sec)
+    return out, fixed
+
+
+def _about(piece: str, clause: str) -> bool:
+    from app.services import key_figures
+
+    def stems(text: str) -> set[str]:
+        return {w[:2] for w in _words(key_figures._VALUE.sub(" ", text))} - {"합의", "확정", "결정"}
+
+    return bool(stems(clause) & stems(piece))
+
+
 # ── deadlines given by the meeting or the week ──
 
 #: a deadline the memo gives without a date: 「다음 회의에서」, 「다음 주까지」, 「이번 주 내」
