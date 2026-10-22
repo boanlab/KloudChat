@@ -492,7 +492,9 @@ at save after grounding, the figures (notes not counted; in an English deck lone
 each value with the shortest phrase it counts, 「40 tasks」, 「3 reviewers」; in a Korean deck a
 count with the words before it, 「신규 거래처 3곳」) and the charts and
 tables it shows nowhere any more (`deck.lost_across`, `deck.lost_blocks`), in English for an
-English deck; a shortened section's lost facts include days named without a date (「다음 주
+English deck (a bare table cell counts with the unit its row or column header states, 「출고
+지연(일)」 「4」 is 4일; a gone chart some of whose values the new deck still shows has the rest
+named by category, 「기타 10억」); a shortened section's lost facts include days named without a date (「다음 주
 수요일」, `revise.lost_facts`) and things it said were done or settled (「처리를 완료했습니다」 →
 「처리 완료」, `revise._lost_done`; not 「확정되는 대로」 nor 「마무리할 예정」) and the caveat
 it put on a figure or name (「확정된 사실이 아닙니다」, 「추정」, 「(확인 필요)」, 「것으로 파악됩니다」,
@@ -526,13 +528,14 @@ pictures, which the writer is not shown, are put back (`revise.keep_pictures`). 
 captions and list rows are not), a figure is a number with its unit or counter (「3곳」, not
 「표 1의」), money is compared as won (「38.5억」 = 「38억 5천만」 = 「3,850,000,000원」,
 `deck.amounts_in`), and a drawn diagram's labels count as shown. Joining one named slide's
-items (「2장 항목을 하나로 합쳐줘」, 「4장 항목을 하나로」 with no verb, "Merge the items on slide 4
-into one") is that slide's edit,
+items, named or counted in things rather than slides (「2장 항목을 하나로 합쳐줘」, 「4장 항목을
+하나로」 with no verb, 「6장 단계를 두 개로 나눠줘」, "Merge the items on slide 4 into one") is that slide's edit, never the deck made anew,
 done by code (`deck.joined_items`, which also splits joined items into the count asked,
 「두 개로 나눠줘」; steps, cards and other paired entries are regrouped in order into that many,
 the layout kept when the groups fit it; a chart is not one of the items, so the points beside it
 are joined and the chart stays; a slide with no list of items, a chart alone, or with the count
-already is kept and the reply says so, with no new version), not a restructure; a label put
+already is kept and the reply says so, with no new version; steps drawn only as a flow are said
+as such, 「6장은 항목 목록 없이 흐름도만 있어 …」), not a restructure; a label put
 into a numbered list is never cut inside its brackets (「영업이익」 / 「9.6억 (이익률 7.5%, …)」); "Shrink to 3 slides" is read like 「3장으로 줄여줘」: the
 count is put in the outline note even when the planner already chose a new outline
 (`revise.count_change`), English counts in the original request ("an 8-slide talk") are taken

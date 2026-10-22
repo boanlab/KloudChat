@@ -1025,16 +1025,25 @@ _RESTRUCTURE = re.compile(
 _JOINS = re.compile(r"합쳐|합치|병합|나눠|분리|묶어|묶|\b(?:merge|split|combine|join)\b", re.I)
 #: a part's own items: 「항목」, 「bullets」
 _ITEM_WORD = re.compile(r"항목|요점|글머리|불릿|\b(?:items?|bullets?|points?)\b", re.I)
+#: a count of things, not of parts: 「하나로」, 「두 개로」 (「두 장으로」 is a part count)
+_ITEM_COUNT = r"(?:하나|한\s?개|두\s?개|세\s?개|네\s?개|\d{1,2}\s?개)\s?(?:로|으로)"
 #: a count the items are made into, the verb left out: 「항목을 하나로」, 「두 개로 해줘」
-_COUNT_INTO = re.compile(r"(?:하나|한\s?개|두\s?개|세\s?개|네\s?개|\d{1,2}\s?개)\s?(?:로|으로)"
-                         r"(?:\s?(?:만들|해|정리)|[\s.!~]{0,3}$)")
+_COUNT_INTO = re.compile(_ITEM_COUNT + r"(?:\s?(?:만들|해|정리)|[\s.!~]{0,3}$)")
+_ITEM_COUNT_ANY = re.compile(_ITEM_COUNT)
+
+
+def _names_items(text: str) -> bool:
+    """Whether the words are about a part's items: named (「항목」), or counted in things
+    (「6장 단계를 두 개로 나눠줘」, not in parts) as one part is joined or split."""
+    return bool(_ITEM_WORD.search(text) or _ITEM_COUNT_ANY.search(text) and _JOINS.search(
+        text) and len(named_slides(text) | {int(n) for n in _SECTION_REF.findall(text)}) <= 1)
 
 
 def joins_items(message: str) -> bool:
     """Whether the words join or split a part's items (「항목을 하나로 합쳐줘」, 「merge the
-    bullets」, 「4장 항목을 하나로」)."""
+    bullets」, 「4장 항목을 하나로」, 「6장 단계를 두 개로 나눠줘」)."""
     text = message or ""
-    return bool((_JOINS.search(text) or _COUNT_INTO.search(text)) and _ITEM_WORD.search(text))
+    return bool((_JOINS.search(text) or _COUNT_INTO.search(text)) and _names_items(text))
 
 
 #: words that take a part's items apart: 「나눠」, 「쪼개」, 「split」
@@ -1053,7 +1062,7 @@ def asks_restructure(message: str) -> bool:
     (「2장 항목을 하나로 합쳐줘」, 「Merge the items on slide 4 into one」) are that part's edit."""
     text = " ".join((message or "").split())
     found = [m.group(0) for m in _RESTRUCTURE.finditer(text)]
-    if found and all(_JOINS.fullmatch(f) for f in found) and _ITEM_WORD.search(text) and len(
+    if found and all(_JOINS.fullmatch(f) for f in found) and _names_items(text) and len(
             named_slides(text) | {int(n) for n in _SECTION_REF.findall(text)}) == 1:
         return False
     return bool(found)

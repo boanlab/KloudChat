@@ -160,17 +160,22 @@ def already_said(already: list[tuple[int, int]], *, english: bool = False) -> st
                     for part, asked in already)
 
 
-def unlisted_said(unlisted: list[tuple[int, int, int]], *, english: bool = False) -> str:
-    """「5장에는 합치거나 나눌 항목 목록이 없어 그대로 두었습니다.」 / 「7장은 이미 항목이 2개여서
-    …」 for slides asked to join or split items kept as they were."""
+def unlisted_said(unlisted: list[tuple[int, int, str]], *, english: bool = False) -> str:
+    """「5장에는 합치거나 나눌 항목 목록이 없어 그대로 두었습니다.」 / 「6장은 항목 목록 없이
+    흐름도만 있어 …」 / 「7장은 이미 항목이 2개여서 …」 for slides asked to join or split items
+    kept as they were."""
     if english:
         return " ".join(
+            f"Slide {n} shows only a figure, no list of items to join or split, so it was kept "
+            "as it was." if not held and drawn else
             f"Slide {n} has no list of items to join or split, so it was kept as it was."
             if not held else f"Slide {n} already has {held} item{'s' if held != 1 else ''}, "
-            "so it was kept as it was." for n, held, _ in unlisted)
-    return " ".join(f"{n}장에는 합치거나 나눌 항목 목록이 없어 그대로 두었습니다." if not held
+            "so it was kept as it was." for n, held, drawn in unlisted)
+    return " ".join(f"{n}장은 항목 목록 없이 {drawn}만 있어 그대로 두었습니다."
+                    if not held and drawn else
+                    f"{n}장에는 합치거나 나눌 항목 목록이 없어 그대로 두었습니다." if not held
                     else f"{n}장은 이미 항목이 {held}개여서 그대로 두었습니다."
-                    for n, held, _ in unlisted)
+                    for n, held, drawn in unlisted)
 
 
 def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = False) -> str:

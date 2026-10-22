@@ -5386,7 +5386,38 @@ def _shown_words(slide: dict) -> str:
     labels = [str(d.get("source") or "") + " " + str(d.get("caption") or "")
               for d in drawn if isinstance(d, dict)]
     return " ".join([*(t for k, v in slide.items() if k not in _NOT_SHOWN
-                       for t in _strings(v)), *_chart_figures(slide), *labels])
+                       for t in _strings(_cells_with_units(v) if k == "rows" else v)),
+                     *_chart_figures(slide), *labels])
+
+
+#: a unit a table row or column states once for its cells: 「출고 지연(일)」, 「매출 (억 원)」
+_HEAD_UNIT = re.compile(
+    r"[(（]\s{0,2}([^()（）\d\s]{1,3}(?: [^()（）\d\s]{1,2})?)\s{0,2}[)）]\s{0,2}$")
+#: a table cell that is a number alone: 「4」, 「71」, 「-12.5」
+_BARE_CELL = re.compile(r"[-+]?\d{1,3}(?:,\d{3})*(?:\.\d{1,3})?")
+
+
+def _cells_with_units(rows: Any) -> Any:
+    """Table rows with each bare number cell carrying the unit its row label or column header
+    states (「출고 지연(일)」 row, 「4」 → 「4일」): the figure the cell shows, read as written."""
+    if not isinstance(rows, list) or not rows or not isinstance(rows[0], list):
+        return rows
+    heads = [str(c) for c in rows[0]]
+    out = [rows[0]]
+    for row in rows[1:]:
+        if not isinstance(row, list) or not row:
+            out.append(row)
+            continue
+        side = _HEAD_UNIT.search(str(row[0]))
+        cells = [row[0]]
+        for j, cell in enumerate(row[1:], start=1):
+            text = str(cell).strip()
+            top = _HEAD_UNIT.search(heads[j]) if j < len(heads) else None
+            unit = (side or top).group(1) if (side or top) and _BARE_CELL.fullmatch(text) \
+                else ""
+            cells.append(f"{text}{unit}" if unit else cell)
+        out.append(cells)
+    return out
 
 
 def _shown_figures(slide: dict) -> list[tuple[str, str, str]]:
@@ -5437,9 +5468,15 @@ def lost_across(old: list[dict], new: list[dict], skip: frozenset[str] | set[str
                   for n in re.findall(r"(?<![\w.,$])\d+(?![\w.,%])", t)}
     out: dict[tuple[str, str], str] = {}
     for slide in old:
+        # a value only the chart plots: named by its category (「기타 10억원」)
+        labels = _chart_labels(slide)
+        written = {f[:2] for f in figures_in(" ".join(
+            t for k, v in slide.items() if k not in (*_NOT_SHOWN, "chart")
+            for t in _strings(_cells_with_units(v) if k == "rows" else v)))}
         for figure in _shown_figures(slide):
             if not figure_kept(figure, shown, amounts) and figure[2] not in skip:
-                out.setdefault(figure[:2], _whole_figure(figure, texts, english))
+                named = labels.get(figure[:2]) if figure[:2] not in written else None
+                out.setdefault(figure[:2], named or _whole_figure(figure, texts, english))
         if english:
             for text in _counting_texts(slide):
                 for m in _LONE_COUNT.finditer(text):
@@ -5575,11 +5612,38 @@ def _chart_gone(slide: dict, new: list[dict]) -> bool:
         values and values <= _chart_values(other) for other in new if chart_of(other))
 
 
+def _plotted(slide: dict) -> list[tuple[str, str, str]]:
+    return figures_in(" ".join(_chart_figures(slide)))
+
+
+def _chart_labels(slide: dict) -> dict[tuple[str, str], str]:
+    """Each value a chart plots, named with its category (and series when there are more):
+    「기타 10억원」."""
+    chart = slide.get("chart") if isinstance(slide.get("chart"), dict) else {}
+    unit = str(chart.get("unit") or "")
+    categories = [str(c) for c in chart.get("categories") or []]
+    series = [s for s in chart.get("series") or [] if isinstance(s, dict)]
+    out: dict[tuple[str, str], str] = {}
+    for one in series:
+        for i, value in enumerate(one.get("values") or []):
+            if not isinstance(value, (int, float)) or i >= len(categories):
+                continue
+            name = categories[i] if len(series) == 1 else f"{categories[i]} {one.get('name') or ''}"
+            for figure in figures_in(_chart_value(value, unit)):
+                out.setdefault(figure[:2], f"{' '.join(name.split())} {figure[2]}")
+    return out
+
+
 def charted_only(old: list[dict], new: list[dict]) -> set[str]:
     """Figures of `old` that only a chart `new` no longer draws plotted (said with the chart,
-    not again one by one)."""
+    not again one by one), unless the new deck still shows some of that chart's values."""
+    shown = [f for slide in new for f in _shown_figures(slide)]
+    amounts = amounts_in(" ".join(_shown_words(slide) for slide in new))
     gone = [s for s in old if _chart_gone(s, new)]
-    plotted = {f[2] for s in gone for f in figures_in(" ".join(_chart_figures(s)))}
+    # a chart some of whose values the new deck still shows: the rest named one by one
+    plotted = {f[2] for s in gone
+               if not any(figure_kept(f, shown, amounts) for f in _plotted(s))
+               for f in _plotted(s)}
     written = {f[2] for s in old for f in figures_in(" ".join(
         t for k, v in s.items() if k not in (*_NOT_SHOWN, "chart") for t in _strings(v)))}
     return plotted - written

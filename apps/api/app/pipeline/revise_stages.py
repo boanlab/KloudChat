@@ -490,7 +490,7 @@ class Rewrite(Base):
                             revise.splits_items(asked) and part.get("body"))):
                     # no list to join (a chart alone) or the count already there: the slide
                     # stays, no rewrite passed off as the edit
-                    doc.unlisted.append((index + 1, held, want))
+                    doc.unlisted.append((index + 1, held, deck_service.picture_of(part)))
                     yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
                     continue
                 elif is_deck and deck_service.asks_slide_figure(asked):
