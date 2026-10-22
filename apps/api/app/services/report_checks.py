@@ -2747,6 +2747,23 @@ def minutes_unsourced(doc: Doc) -> list[Finding]:
                        doc.sections, material, _reference_heading())]
 
 
+def minutes_pasted(doc: Doc) -> list[Finding]:
+    """Prose that pastes the memo's lines as they stand, or says a phrase over and over, sent
+    back to the writer once; what stands is settled by `meeting_memo.settle_copies`."""
+    from app.services import meeting_memo
+
+    memo = doc.memo or doc.given
+    refs = _reference_heading()
+    copies = [Finding(i, piece, "minutes_copy", meeting_memo.COPY_WHY, rank=2,
+                      still=lambda s, m=memo: meeting_memo.copied(s, m))
+              for i, piece in meeting_memo.copies(doc.sections, memo, refs)]
+    seen = {(f.section, f.sentence) for f in copies}
+    return copies + [
+        Finding(i, piece, "minutes_copy", meeting_memo.repeat_why(phrase), rank=2,
+                still=lambda s, p=meeting_memo.squash(phrase): p in meeting_memo.squash(s))
+        for i, piece, phrase in meeting_memo.repeats(doc.sections) if (i, piece) not in seen]
+
+
 def settle_unsourced(sections: list[dict], material: str, *, strong: bool) -> list[dict]:
     """What the writer left of `minutes_unsourced` after its one repair (`stated_meeting.settle`
     for sentences): a strong writer's row is marked 「(확인 필요)」, anyone else's goes with the
@@ -3208,7 +3225,7 @@ def _minutes_rows_check(pre: Prepass) -> Check:
     async def minutes_check(doc: Doc):
         table_rows, _ = await minutes_rows(doc, dates)
         list_rows, _ = await minutes_list_rows(doc, dates)
-        return table_rows + list_rows + minutes_unsourced(doc), {}
+        return table_rows + list_rows + minutes_unsourced(doc) + minutes_pasted(doc), {}
 
     return minutes_check
 
@@ -5980,6 +5997,7 @@ LABELS = {
     "minutes_owner": "자료에 없는 담당",
     "minutes_spec": "자료에 없는 수치",
     "minutes_unsourced": "자료에 없는 회의 내용·실행 항목",
+    "minutes_copy": "메모 줄을 그대로 옮기거나 되풀이한 문장",
     "minutes_blank_column": "자료에 없는 빈 열",
     "recommend_mismatch": "권고가 필수 조건·점수와 어긋남",
     "status_missing": "탈락·조건 미확인 표시 없음",

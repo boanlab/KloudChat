@@ -2183,6 +2183,9 @@ class MinutesReground(Base):
         # the writer's notes on its working in cells, and a pointer at open rows no longer there
         sections, _ = meeting_memo.cell_notes(sections, memo)
         sections, _ = meeting_memo.rest_open(sections)
+        # the memo's lines pasted as they stand, a phrase said over and over, a marker alone
+        sections, _ = meeting_memo.settle_copies(sections, memo, strong=bundle.request.strong)
+        sections, _ = meeting_memo.bare_marks(sections)
         sections = [{**sec, "content": word_fix.twin_alternatives(str(sec.get("content") or ""))}
                     for sec in sections]
         # the meeting held told in the past; what comes next stays ahead

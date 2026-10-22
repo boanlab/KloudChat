@@ -744,13 +744,33 @@ _SOURCE_CELL = re.compile(
     r"(?:됨|함|되어[ \t]?있음|된[ \t]?(?:내용|값|정보))?")
 
 
+#: a bracketed part of a cell, and the memo words it may quote
+_BRACKET = re.compile(r"[ \t]{0,2}\(([^()\n|]{2,160})\)")
+_QUOTE_IN = re.compile(r"「([^」\n]{1,40})」")
+_CHECK = re.compile(r"확인[ \t]?필요")
+
+
 def cell_notes(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
-    """Table cells less the writer's note on its own working: a basis in brackets (「(기준
-    2026-10-14)」) goes, and a cell that only says where its value came from (「회의 자료에서
-    명시」) or how it was worked out (`stated_meeting.self_note`) reads 「-」; the first cell,
-    which names the row, stays."""
+    """Table cells less the writer's note on its own working: a basis or a note in brackets
+    (「(기준 2026-10-14)」, 「2026-10-14 (기준일: … 해석)」) goes, its 「확인 필요」 kept, and a
+    cell that only says where its value came from (「회의 자료에서 명시」) or how it was worked
+    out (`stated_meeting.self_note`) reads 「-」, or the memo words it quotes as the original
+    wording (「원문 「다음 주 금요일」」); the first cell, which names the row, stays."""
     from app.services import report_checks, stated_meeting
 
+    def note(text: str) -> bool:
+        return bool(_SOURCE_CELL.fullmatch(text) or stated_meeting.self_note(text, memo_text))
+
+    def unbracketed(cell: str) -> str:
+        # a value with the note on its working in brackets: the value, a 「확인 필요」 kept
+        def cut(m: re.Match) -> str:
+            inner = m.group(1).strip()
+            if not note(inner):
+                return m.group(0)
+            return " (확인 필요)" if _CHECK.search(inner) else ""
+        return re.sub(r" {2,}", " ", _BRACKET.sub(cut, cell)).strip()
+
+    memo_flat = squash(memo_text)
     out = [dict(s) for s in sections]
     fixed = 0
     for table in report_checks.tables(out):
@@ -758,11 +778,14 @@ def cell_notes(sections: list[dict], memo_text: str) -> tuple[list[dict], int]:
         for line, row in table.rows:
             cells = list(row)
             for k in range(1, len(cells)):
-                cell = _BASIS.sub("", cells[k]).strip() if len(cells[k]) <= 300 else cells[k]
+                cell = cells[k]
+                if len(cell) <= 300:
+                    cell = unbracketed(_BASIS.sub("", cell).strip())
                 bare = cell.strip(" *.")
-                if bare and (_SOURCE_CELL.fullmatch(bare)
-                             or stated_meeting.self_note(bare, memo_text)):
-                    cell = "-"
+                if bare and note(bare):
+                    # the memo's own words it quotes stay as the original wording
+                    said = [q for q in _QUOTE_IN.findall(bare) if squash(q) in memo_flat]
+                    cell = " ".join(f"원문 「{q}」" for q in said) if said else "-"
                 cells[k] = cell or "-"
             if cells != list(row):
                 content = content.replace(line, "| " + " | ".join(cells) + " |", 1)
@@ -820,6 +843,229 @@ def rest_open(sections: list[dict]) -> tuple[list[dict], int]:
     return out, gone
 
 
-__all__ = ["Meeting", "Memo", "borrowed_next", "cell_notes", "counted", "decision_rows",
-           "decisions", "dedupe_rows", "drop", "false_absences", "false_dues", "fill_head",
-           "of_request", "overview_day", "read", "relative_dues", "rest_open"]
+# ── memo lines copied as they stand, and a phrase said over and over ──
+
+#: a sentence finished as prose: 「…했습니다.」, 「…한다.」, 「…인가요?」, a pointer after it
+_FINISHED = re.compile(
+    r"(?:다|요|까|죠|오)[.!?]?[」』\"')]{0,2}(?:[ \t]?\([^()\n]{1,12}\))?[.!?]?$")
+#: a memo's noun-form end inside a sentence: 「…하기로 함 회의록상…」, 「…있었음, …」
+_NOUN_END = re.compile(r"(?:기로|못|안)[ \t]?함(?=[ \t,])|[었았였했있됐]음(?=[ \t,])")
+#: the memo's signs: 「A vs B」, 「→」
+_SIGN = re.compile(r"(?<![A-Za-z])vs\.?(?![A-Za-z])|[→⇒]")
+_QUOTED = re.compile(r"「[^」\n]{0,80}」|『[^』\n]{0,80}』|\"[^\"\n]{0,80}\"")
+_LIST_MARK = re.compile(r"^[ \t]{0,4}(?:[-*•]|\d{1,2}[.)])[ \t]")
+#: the memo's agenda label before its line: 「안건2 예산:」
+_AGENDA_LABEL = re.compile(r"(?:안건|의제)[ \t]?\d{1,2}[ \t]?[^:：\n]{0,12}[:：]")
+_SHINGLE = 6
+
+
+def squash(text: str) -> str:
+    return re.sub(r"[\s,.:;·!?()「」『』\"'*]", "", text or "").lower()
+
+
+def _covered(piece: str, memo: str) -> float:
+    """The part of `piece` (spaces and marks out) lying in runs it shares with the memo."""
+    flat, source = squash(piece), squash(memo)
+    if len(flat) < _SHINGLE + 2:
+        return 0.0
+    grams = {source[k:k + _SHINGLE] for k in range(len(source) - _SHINGLE + 1)}
+    hit = [False] * len(flat)
+    for k in range(len(flat) - _SHINGLE + 1):
+        if flat[k:k + _SHINGLE] in grams:
+            hit[k:k + _SHINGLE] = [True] * _SHINGLE
+    return sum(hit) / len(flat)
+
+
+def copied(piece: str, memo: str) -> bool:
+    """A prose sentence that is the memo's own line in its shorthand (「안건2 예산: … 합의.」,
+    「점심 메뉴 얘기 … 있었음.」): most of it the memo's words in a row, its end no finished
+    sentence or a 「vs」, an arrow or a noun-form end inside it; quotes aside. A sentence with a
+    shorthand end inside (「…하기로 함 회의록상…」) is one too, the memo's or not."""
+    body = (piece or "").strip()
+    if not body or not memo or len(body) > 400 or body.startswith(("|", "#")) \
+            or _LIST_MARK.match(body):
+        return False
+    bare = _QUOTED.sub("", body)
+    finished = bool(_FINISHED.search(bare))
+    if finished and _NOUN_END.search(bare):
+        return True
+    if finished and not (_SIGN.search(bare) or _AGENDA_LABEL.search(bare)):
+        return False
+    return _covered(bare, memo) >= 0.6
+
+
+def copies(sections: list[dict], memo: str, skip_heading: re.Pattern | None = None
+           ) -> list[tuple[int, str]]:
+    """(section, sentence) of every prose sentence `copied` from the memo."""
+    from app.services import stated_policy
+
+    out = []
+    for index, sec in enumerate(sections):
+        if skip_heading is not None and skip_heading.search(str(sec.get("heading") or "")):
+            continue
+        for piece in stated_policy.pieces(str(sec.get("content") or "")):
+            if copied(piece, memo):
+                out.append((index, piece))
+    return out
+
+
+COPY_WHY = ("메모 줄을 그대로 옮겼다(메모의 줄임말 「…함」·「…있었음」·「A vs B」·안건 라벨). 이 "
+            "문장을 회의록 문장(합니다체)으로 고쳐 써라: 메모의 이름·수치·결정은 그대로 두고 "
+            "새 내용은 보태지 마라. 앞뒤 문장이 이미 같은 말을 하면 원래 문장을 그대로 돌려줘라.")
+
+#: a clause long enough to count as a phrase said again
+_PHRASE = 8
+#: a phrase said this often in one document reads as pasted
+_TIMES = 3
+#: a cell saying the item is still open
+_UNDECIDED = re.compile(r"결정[ \t]?(?:못|안|하지[ \t]?못)|미정|미결|보류|결론을[ \t]?(?:내리지|못)"
+                        r"|정하지[ \t]?못")
+
+
+def _clauses(piece: str) -> list[str]:
+    return [c for c in re.split(r"[,.;]", piece) if len(squash(c)) >= _PHRASE]
+
+
+def _said_over(sections: list[dict]) -> set[str]:
+    """Phrases (squashed clauses) that `_TIMES` or more sentences, list items or cells say."""
+    from app.services import report_checks, stated_policy
+
+    seen: dict[str, int] = {}
+    for sec in sections:
+        for piece in stated_policy.pieces(str(sec.get("content") or "")):
+            if piece.startswith("|"):
+                continue
+            for flat in {squash(c) for c in _clauses(piece)}:
+                seen[flat] = seen.get(flat, 0) + 1
+    for table in report_checks.tables(sections):
+        for _, row in table.rows:
+            for cell in row[1:]:
+                for flat in {squash(c) for c in _clauses(cell)}:
+                    seen[flat] = seen.get(flat, 0) + 1
+    return {flat for flat, n in seen.items() if n >= _TIMES}
+
+
+def repeats(sections: list[dict]) -> list[tuple[int, str, str]]:
+    """(section, sentence, phrase) for each sentence after the first one saying a phrase the
+    document says `_TIMES` or more times (「구글폼 vs 네이버폼 논의, 결정 못 함」 four times)."""
+    from app.services import stated_policy
+
+    over = _said_over(sections)
+    if not over:
+        return []
+    out, first = [], set()
+    for index, sec in enumerate(sections):
+        for piece in stated_policy.pieces(str(sec.get("content") or "")):
+            if piece.startswith("|"):
+                continue
+            for clause in _clauses(piece):
+                flat = squash(clause)
+                if flat not in over:
+                    continue
+                if flat in first:
+                    out.append((index, piece, clause.strip()))
+                    break
+                first.add(flat)
+    return out
+
+
+def repeat_why(phrase: str) -> str:
+    return (f"「{phrase[:60]}」를 문서에서 이미 여러 번 썼다. 이 문장에서는 그 말을 되풀이하지 "
+            "말고 빼라(남는 내용이 없으면 문장째 빼고 빈 문자열로 답하지 말고 원래 문장을 "
+            "그대로 돌려줘라).")
+
+
+def _facts(piece: str, memo: str) -> set[str]:
+    """What a sentence holds that the reader needs: its numbers and the memo's people."""
+    from app.services import stated_meeting
+
+    found = {m.group(0).replace(",", "")
+             for m in re.finditer(r"\d[\d,.]{0,12}", _AGENDA_LABEL.sub("", piece))}
+    found |= {name for name in stated_meeting.people(memo) if name in piece}
+    return found
+
+
+def settle_copies(sections: list[dict], memo: str, *, strong: bool) -> tuple[list[dict], int]:
+    """What the writer left pasted after its one repair: a sentence said again word for word
+    goes; for a writer not strong, a memo line copied or a sentence repeating a phrase said
+    over and over goes when the rest of the document holds its numbers and people (the
+    first saying stays), and a cell repeating an open item's phrase reads 「미정」."""
+    from app.services import report_checks, stated_policy
+
+    out = [dict(s) for s in sections]
+    gone = 0
+    # the same sentence twice, word for word
+    seen: set[str] = set()
+    for sec in out:
+        content = str(sec.get("content") or "")
+        for piece in stated_policy.pieces(content):
+            flat = squash(piece)
+            if piece.startswith("|") or len(flat) < _PHRASE + 2:
+                continue
+            if flat in seen:
+                content = drop(content, piece)
+                gone += 1
+            seen.add(flat)
+        sec["content"] = content
+    if strong:
+        return out, gone
+    pasted = copies(out, memo) + [(i, p) for i, p, _ in repeats(out)]
+    for index, piece in pasted:
+        content = str(out[index].get("content") or "")
+        if piece not in content:
+            continue
+        rest = "\n".join(str(s.get("content") or "") for s in out).replace(piece, "", 1)
+        if all(fact in rest.replace(",", "") for fact in _facts(piece, memo)):
+            out[index]["content"] = drop(content, piece)
+            gone += 1
+    # a cell repeating an open item's words said over and over, in cells or sentences
+    prose = squash("\n".join(ln for s in out for ln in str(s.get("content") or "").split("\n")
+                              if not ln.lstrip().startswith("|")))
+    tables = report_checks.tables(out)
+    said: dict[str, int] = {}
+    for table in tables:
+        for _, row in table.rows:
+            for cell in row[1:]:
+                flat = squash(cell)
+                said[flat] = said.get(flat, 0) + 1
+    over = {flat for flat, n in said.items() if len(flat) >= _PHRASE and _UNDECIDED.search(flat)
+            and n + prose.count(flat) >= _TIMES}
+    kept: set[str] = set()
+    for table in tables:
+        content = str(out[table.section].get("content") or "")
+        for line, row in table.rows:
+            cells = list(row)
+            for k in range(1, len(cells)):
+                flat = squash(cells[k])
+                if flat in over and (flat in kept or flat in prose):
+                    cells[k] = "미정"
+                kept.add(flat)
+            if cells != list(row):
+                content = content.replace(line, "| " + " | ".join(cells) + " |", 1)
+                gone += 1
+        out[table.section]["content"] = content
+    return out, gone
+
+
+#: a line of a marker alone, its sentence gone: 「확인 필요」, 「(확인 필요)」
+_MARK_ALONE = re.compile(
+    r"[ \t]{0,4}\(?[ \t]{0,2}(?:확인[ \t]?필요|미정)[ \t]{0,2}\)?[ \t]{0,2}[.:]?[ \t]{0,4}")
+
+
+def bare_marks(sections: list[dict]) -> tuple[list[dict], int]:
+    """A paragraph line holding only a marker (「확인 필요」 where a sentence was) goes."""
+    out = [dict(s) for s in sections]
+    gone = 0
+    for sec in out:
+        lines = str(sec.get("content") or "").split("\n")
+        kept = [ln for ln in lines if not (ln.strip() and _MARK_ALONE.fullmatch(ln))]
+        if len(kept) != len(lines):
+            gone += len(lines) - len(kept)
+            sec["content"] = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip("\n")
+    return out, gone
+
+
+__all__ = ["COPY_WHY", "Meeting", "Memo", "bare_marks", "borrowed_next", "cell_notes", "copied",
+           "copies", "counted", "decision_rows", "decisions", "dedupe_rows", "drop",
+           "false_absences", "false_dues", "fill_head", "of_request", "overview_day", "read",
+           "relative_dues", "repeat_why", "repeats", "rest_open", "settle_copies", "squash"]
