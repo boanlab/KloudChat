@@ -42,7 +42,7 @@ _WEIGHTS = re.compile(
 _FULL_DATE = re.compile(
     r"(20\d{2})\s{0,2}(?:[-./]|년)\s{0,2}(\d{1,2})\s{0,2}(?:[-./]|월)\s{0,2}(\d{1,2})"
 )
-_MEETING = re.compile(r"회의|미팅|모임|위원회|간담회|녹음|전사")
+_MEETING = re.compile(r"회의|미팅|모임|위원회|간담회|녹음|전사|\b(?:[Mm]eeting|[Ss]ync)\b")
 _REQ_ID = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{2,4}-\d{2,3})(?![\d])")
 _VALIDITY = re.compile(r"(?:견적\s{0,2})?유효\s{0,2}기간\s{0,2}(?:은|는|:|：)?\s{0,2}([^\n,.;]{2,30})")
 _TABLE_RULE = re.compile(r"^\s{0,8}\|?\s{0,8}:?-{2,}")
@@ -220,6 +220,8 @@ def meeting_date(request: str, material: str, today: dt.date | None = None) -> d
         for line in (text or "").splitlines():
             if not _MEETING.search(line):
                 continue
+            # the next meeting's day is no day of this one
+            line = _NEXT_MEETING.sub(" ", line)
             if m := _DAY_WITH_WEEKDAY.search(line):
                 month, day, weekday = int(m.group(1)), int(m.group(2)), m.group(3)
             elif m := _WEEKDAY_WITH_DAY.search(line):
@@ -272,7 +274,10 @@ def meeting_base(request: str, material: str, today: dt.date | None,
                  nearest: bool = False) -> tuple[dt.date | None, str]:
     """Relative-date base and source: text, file name, or 'today/yesterday' (KST); never handover
     day. With `nearest` (the year question already asked or skipped), a yearless meeting day takes
-    the year nearest today when that is clear."""
+    the year nearest today when that is clear. English days (「Oct 19」) read as numbers."""
+    from app.services import weekdays
+
+    request, material = weekdays.english_days(request), weekdays.english_days(material)
     if found := meeting_date(request, material, today):
         return found, "text"
     if found := file_date(material):
@@ -304,7 +309,8 @@ def meeting_base(request: str, material: str, today: dt.date | None,
 
 #: the next meeting's clause: 「다음 회의 10/21 화 10시 3층 회의실.」
 _NEXT_MEETING = re.compile(
-    r"(?:다음|차기)\s{0,2}(?:회의|모임|미팅)[^\n;]*?(?=(?<!\d)\.(?!\s{0,2}\d)|[\n;]|$)")
+    r"(?:(?:다음|차기)\s{0,2}(?:회의|모임|미팅)|[Nn]ext\s{1,2}(?:meeting|sync))[^\n;]*?"
+    r"(?=(?<!\d)\.(?!\s{0,2}\d)|[\n;]|$)")
 
 
 def _nearest_meeting_day(request: str, material: str, today: dt.date) -> dt.date | None:
@@ -4019,12 +4025,14 @@ UNDATED_NOTE = "회의 일자 미기재로 날짜 미확정"
 
 
 def _day_known(day: str, known: str) -> bool:
-    """Whether material or request writes this month and day."""
-    found = _cell_dates(day)
+    """Whether material or request writes this month and day (「Oct 28」 too)."""
+    from app.services import weekdays
+
+    found = _cell_dates(weekdays.english_days(day))
     if not found:
         return False
     _, month, date = found[0]
-    flat = re.sub(r"\s+", "", known or "")
+    flat = re.sub(r"\s+", "", weekdays.english_days(known or ""))
     return any(sp in flat for sp in (f"{month}월{date}일", f"{month}/{date}", f"{month}.{date}",
                                      f"-{month:02d}-{date:02d}", f"{month:02d}.{date:02d}"))
 

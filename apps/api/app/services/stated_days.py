@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 
-from app.services import stated_policy
+from app.services import stated_policy, weekdays
 
 _DAYS = "월화수목금토일"
 #: a weekday in the material: 「금요일」, 「(금)」
@@ -177,6 +177,8 @@ def untraced(piece: str, material: str, context: str = "") -> list[str]:
     `context`: the section heading, a table's caption), the material never gives them."""
     if not piece or _CITES.search(piece) or not (material or "").strip():
         return []
+    # an English memo's 「Oct 26 (Mon)」 is a Monday too
+    material = weekdays.english_days(material)
     days = _stretches(material)
     around = week_of(context, material)
     out: list[str] = []
