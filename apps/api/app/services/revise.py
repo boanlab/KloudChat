@@ -2014,7 +2014,42 @@ def lost_facts(old: str, new: str) -> list[str]:
     lost = [f[2] for f in deck.figures_in(_whole_text(old))
             if not deck.figure_kept(f, shown, amounts)]
     old_names = dict.fromkeys(_NAME.findall(_whole_text(old)))
-    return lost + [n for n in old_names if n not in names]
+    # a weekday written short counts too: 「| 목 |」, 「(목)」
+    days = [*_named_days(plain), *(("", d) for d in _SHORT_DAY.findall(plain))]
+    gone = [said for key, said in _named_days(_whole_text(old)).items()
+            if not any(_same_day(key, have) for have in days)]
+    return lost + [n for n in old_names if n not in names] + gone
+
+
+#: a day named without a date: 「다음 주 수요일」, 「이번 주」, 「내일」, 「next Wednesday」
+_NAMED_DAY = re.compile(
+    r"(?<![가-힣])(?:(다음|이번|지난|다다음)\s?주|(차|금)주)(?:\s{0,2}([월화수목금토일])요일)?"
+    r"|(?<![가-힣])([월화수목금토일])요일|(?<![가-힣])(내일|모레)"
+    r"|\b(?:(next|this|last)\s{1,2})?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"
+    r"|\b(next|this|last)\s{1,2}(week|month)\b|\b(tomorrow)\b", re.I)
+_WEEK_SAME = {"차": "다음", "금": "이번"}
+_SHORT_DAY = re.compile(r"(?<![가-힣])([월화수목금토일])(?![가-힣])")
+
+
+def _named_days(text: str) -> dict[tuple[str, str], str]:
+    """`(week, day)` of each day `text` names without a date, as written: 「다음 주 수요일」 →
+    `("다음", "수")`, 「수요일」 → `("", "수")`, 「next week」 → `("next", "week")`."""
+    out: dict[tuple[str, str], str] = {}
+    for m in _NAMED_DAY.finditer(text or ""):
+        g = m.groups()
+        week = (g[0] or _WEEK_SAME.get(g[1] or "", "") or g[5] or g[7] or "").lower()
+        day = (g[2] or g[3] or g[4] or g[6] or g[8] or g[9] or "").lower()
+        out.setdefault((week, day), m.group(0))
+    return out
+
+
+def _same_day(said: tuple[str, str], have: tuple[str, str]) -> bool:
+    """Whether a day the part named is still named: the same day, its week the same or left
+    unsaid (「수요일」 for 「다음 주 수요일」)."""
+    week, day = said
+    if day:
+        return have[1] == day and have[0] in (week, "")
+    return have[0] == week
 
 
 def added_facts(old: str, new: str, given: str = "") -> list[str]:

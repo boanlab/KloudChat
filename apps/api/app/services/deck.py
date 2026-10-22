@@ -870,6 +870,23 @@ def fill_csv_categories(slides: list[dict], material: list[str], request: str) -
     return changed
 
 
+def _add_to_label(slide: dict, clause: str, words: set[str]) -> bool:
+    """`clause` put beside the label (not the value) of the slide's metric or item it is about
+    (「영업이익 (이익률 7.5%)」); False when no label shares a word."""
+    for key in ("metrics", "items"):
+        for pair in slide.get(key) or []:
+            if not isinstance(pair, list):
+                continue
+            for j, cell in enumerate(pair):
+                cell = str(cell)
+                if re.match(r"\s{0,2}[-+$€₩£]?\d", cell) or not words & set(
+                        re.findall(r"[가-힣A-Za-z]{2,}", cell)):
+                    continue
+                pair[j] = f"{cell[:-1]}, {clause})" if cell.endswith(")") else f"{cell} ({clause})"
+                return True
+    return False
+
+
 def restate_missing_facts(slides: list[dict], request: str) -> list[int]:
     """Adds stated-but-missing quantities to the most related slide; returns changed indices."""
     # planner conditions and pasted material are not facts: instruction figures only
@@ -925,10 +942,18 @@ def restate_missing_facts(slides: list[dict], request: str) -> list[int]:
         if not clause or _ASK_WORDS.search(clause) or len(clause) < len(quantity) + 2:
             continue
         words = {w for w in re.findall(r"[가-힣A-Za-z]{2,}", clause)}
+        # what the clause is about when it names nothing itself: 「영업이익 9.6억(이익률 7.5%」
+        owner = set(re.findall(r"[가-힣A-Za-z]{2,}", text[max(0, match.start() - 24):
+                                                         match.start()])) | words
+
+        def shared(i: int, said: set[str]) -> int:
+            return len(said & set(re.findall(r"[가-힣A-Za-z]{2,}", _slide_words(slides[i]))))
+
         scored = sorted(
             bodies,
             key=lambda i: (
-                -len(words & set(re.findall(r"[가-힣A-Za-z]{2,}", _slide_words(slides[i])))),
+                -shared(i, words),
+                -shared(i, owner),
                 0 if isinstance(slides[i].get("bullets"), list) else 1,
                 i,
             ),
@@ -941,6 +966,8 @@ def restate_missing_facts(slides: list[dict], request: str) -> list[int]:
             continue
         if isinstance(slide.get("bullets"), list):
             slide["bullets"].append(clause)
+        elif _add_to_label(slide, clause, owner):
+            pass  # beside the metric it belongs to
         elif slide.get("body"):
             slide["body"] = f"{str(slide['body']).rstrip()} {clause}."
         else:
@@ -1180,8 +1207,42 @@ def repeats_table(rows: list[list[str]], earlier: list[Any]) -> bool:
     return len(mine) >= 2 and any(mine <= body(table) for table in earlier)
 
 
+def _same_word(a: str, b: str) -> bool:
+    """One label word however shortened: 「Avg」 for 「Average」, 「Qty」 for 「Quantity」."""
+    if a == b:
+        return True
+    short, long = sorted((a, b), key=len)
+    if re.search(r"\d", a + b) or not short.isascii() or len(short) < 2 or short[0] != long[0]:
+        return False
+    rest = iter(long)
+    return all(ch in rest for ch in short)
+
+
+def _same_row(a: list, b: list) -> bool:
+    """Two table rows of one label (its words alike, 「Avg Latency」 and 「Average Latency」)
+    whose values never differ where both have one."""
+    if len(a) != len(b) or not a:
+        return False
+    la, lb = (re.findall(r"[가-힣A-Za-z0-9]+", str(r[0]).lower()) for r in (a, b))
+    if not la or len(la) != len(lb) or not all(map(_same_word, la, lb)):
+        return False
+    pairs = [(" ".join(str(x).split()), " ".join(str(y).split()))
+             for x, y in zip(a[1:], b[1:], strict=True)]
+    return all(x == y or not x or not y for x, y in pairs)
+
+
+def _joined_row(a: list, b: list) -> list:
+    """The row of `a` and `b` with more values, the other's values filling its blanks."""
+    def filled(row: list) -> int:
+        return sum(bool(str(c).strip()) for c in row)
+
+    first, other = (a, b) if filled(a) >= filled(b) else (b, a)
+    return [x if str(x).strip() else y for x, y in zip(first, other, strict=True)]
+
+
 def dedupe_rows(rows: list[list[str]]) -> list[list[str]]:
-    """Drops later table rows repeating an earlier row (same numbers + 2 shared words)."""
+    """Drops later table rows repeating an earlier row (same numbers + 2 shared words, or the
+    same label with no value differing)."""
     if len(rows) < 3:
         return rows
 
@@ -1194,6 +1255,11 @@ def dedupe_rows(rows: list[list[str]]) -> list[list[str]]:
 
     kept = [rows[0]]
     for row in rows[1:]:
+        twin = next((i for i, prev in enumerate(kept[1:], 1) if _same_row(prev, row)), 0)
+        if twin:
+            # one row under two spellings of its label: one row, every value kept
+            kept[twin] = _joined_row(kept[twin], row)
+            continue
         mine_n, mine_w = numbers(row), words(row)
         same = any(
             (mine_n and mine_n <= numbers(prev) and len(mine_w & words(prev)) >= 2)
@@ -5307,32 +5373,93 @@ def lost_figures(old: dict, new: dict, asked: str = "") -> list[str]:
 
 def lost_across(old: list[dict], new: list[dict]) -> list[str]:
     """Figures the deck `old` showed anywhere that the deck `new` shows nowhere (a deck cut to
-    fewer slides), read as `lost_figures` reads one slide."""
+    fewer slides), read as `lost_figures` reads one slide; in an English deck a lone count
+    with what it counts too (「3 reviewers」), and each with what it counts (「40 tasks」)."""
     shown = [f for slide in new for f in _shown_figures(slide)]
     amounts = amounts_in(" ".join(_shown_words(slide) for slide in new))
+    texts = [t for slide in old for t in _counting_texts(slide)]
+    english = deck_language(old) == "en"
+    new_counts = {n for slide in new for t in _counting_texts(slide)
+                  for n in re.findall(r"(?<![\w.,$])\d+(?![\w.,%])", t)}
     out: dict[tuple[str, str], str] = {}
     for slide in old:
-        words = _shown_words(slide)
         for figure in _shown_figures(slide):
             if not figure_kept(figure, shown, amounts):
-                out.setdefault(figure[:2], _whole_figure(figure, words))
+                out.setdefault(figure[:2], _whole_figure(figure, texts, english))
+        if english:
+            for text in _counting_texts(slide):
+                for m in _LONE_COUNT.finditer(text):
+                    if m.group(1) not in new_counts and _counted_noun(text, m.end()):
+                        out.setdefault((m.group(1), ""), _whole_figure(
+                            (m.group(1), "", m.group(1)), texts, english))
     return list(dict.fromkeys(out.values()))
 
 
-#: what an English figure counts, right after it: 「1k docs」, 「20+ pg」
-_COUNTED_NOUN = re.compile(r"\+?\s?[A-Za-z]{1,12}\b")
+#: a one-digit count before an English word: 「3 reviewers」 (not 「slide 3」 nor 「3.5」)
+_LONE_COUNT = re.compile(r"(?<![\w.,$/+-])(\d)(?= [A-Za-z])")
+#: English words that end the phrase a number counts: 「40 tasks per run」 → 「40 tasks」
+_PHRASE_END = frozenset((
+    "a", "an", "the", "and", "or", "but", "of", "per", "for", "in", "on", "at", "by", "to",
+    "from", "with", "without", "vs", "versus", "than", "over", "under", "above", "below", "into",
+    "across", "each", "is", "are", "was", "were", "be", "been", "has", "have", "had", "will",
+    "can", "may", "that", "which", "who", "as", "after", "before", "during", "within",
+))
 
 
-def _whole_figure(figure: tuple[str, str, str], words: str) -> str:
-    """A figure as the reply names it: a bare or scaled English number with what it counts
-    (「1k docs」, not 「1k」), else as written."""
+def _counting_texts(slide: dict) -> list[str]:
+    """The slide's shown strings one by one, a metric's value with its label (「20+ Page
+    threshold」), and its diagram's labels."""
+    out = []
+    for key, value in slide.items():
+        if key in _NOT_SHOWN:
+            continue
+        if key == "metrics" and isinstance(value, list):
+            out += [" ".join(map(str, pair)) for pair in value if isinstance(pair, list)]
+            continue
+        out += _strings(value)
+    drawn = [slide.get("diagram"), (slide.get("image") or {}).get("diagram")
+             if isinstance(slide.get("image"), dict) else None]
+    out += [str(d.get(k) or "") for d in drawn if isinstance(d, dict) for k in ("source",
+                                                                               "caption")]
+    return out
+
+
+def _counted_noun(text: str, at: int) -> str:
+    """The words a number ending at `text[at]` counts, up to the next break or linking word,
+    lower case unless written in capitals: 「document drafting tasks」, 「page threshold」;
+    empty when none or more than three."""
+    words: list[str] = []
+    at += text[at:at + 1] == "+"
+    while m := _NEXT_WORD.match(text, at):
+        if m.group(1).lower() in _PHRASE_END:
+            break
+        words.append(m.group(1))
+        if len(words) > 3:
+            return ""
+        at = m.end()
+    return " ".join(w.lower() if w[1:] == w[1:].lower() else w for w in words)
+
+
+#: the next English word after a space: 「 tasks」
+_NEXT_WORD = re.compile(r" {1,2}([A-Za-z][A-Za-z-]{0,15})(?![A-Za-z-])")
+
+
+def _whole_figure(figure: tuple[str, str, str], texts: list[str], english: bool) -> str:
+    """A figure as the reply names it: in an English deck a bare or scaled number with the
+    shortest phrase it counts anywhere in the deck (「40 tasks」, 「1k docs」, 「20+ page
+    threshold」), else as written."""
     number, unit, said = figure
-    if unit not in ("", "k", "m", "b") or re.search(r"[가-힣]", words):
+    if unit not in ("", "k", "m", "b") or not english:
         return said
-    for m in re.finditer(rf"(?<![\w.,$]){re.escape(said)}(?![\d,.])", words):
-        if counted := _COUNTED_NOUN.match(words, m.end()):
-            return f"{said}{counted.group(0)}"
-    return said
+    best = ""
+    for text in texts:
+        for m in re.finditer(rf"(?<![\w.,$]){re.escape(said)}(?![\d,.])", text):
+            plus = text[m.end():m.end() + 1] == "+" and not said.endswith("+")
+            if noun := _counted_noun(text, m.end()):
+                found = f"{said}{'+' if plus else ''} {noun}"
+                if not best or len(found.split()) < len(best.split()):
+                    best = found
+    return best or said
 
 
 #: a chart's kind as the reply names it

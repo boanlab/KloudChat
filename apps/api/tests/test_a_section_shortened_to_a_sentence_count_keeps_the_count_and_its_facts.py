@@ -123,7 +123,7 @@ ECHOED = "2절을 두 문장만 유지해야 합니다.\n\n10월 13일 기준 " 
 
 def test_facts_still_in_the_sections_table_are_not_called_dropped():
     assert revise.lost_facts(TABLED, CUT) == []
-    assert revise.lost_facts(TABLED, CUT.split("\n\n")[0]) == ["4%", "A사"]
+    assert revise.lost_facts(TABLED, CUT.split("\n\n")[0]) == ["4%", "A사", "목요일"]
 
 
 def test_the_ask_restated_in_the_section_is_taken_out_before_counting():
@@ -324,4 +324,21 @@ def test_a_count_still_off_is_met_by_joining_or_splitting_clauses():
     started = time.monotonic()
     revise.fit_count("하며, " * 10000, 2)
     revise.fit_count("합니다. " * 2000, 1)
+    assert time.monotonic() - started < 0.5
+
+
+def test_a_day_the_shortening_took_out_is_named_with_the_figures():
+    """reverify-v t1: 「병합 완료 목표 일자는 다음 주 수요일」 went with the shortening, unnamed."""
+    before = ("CRM 중복 거래처 37건 병합을 60%까지 진행했습니다. 병합 완료 목표 일자는 다음 주 "
+              "수요일입니다. 금요일에는 물류팀과 점검합니다.")
+    after = "CRM 중복 거래처 37건 병합을 60%까지 진행했고, 금요일에 물류팀과 점검합니다."
+    assert revise.lost_facts(before, after) == ["다음 주 수요일"]
+    # the day kept, its week left unsaid, is not lost; nor is a day said another way
+    assert revise.lost_facts(before, after + " 병합은 수요일에 마칩니다.") == []
+    assert revise.lost_facts("차주 화요일 회의", "다음주 화요일 회의") == []
+    assert revise.lost_facts("Due next Wednesday.", "Due soon.") == ["next Wednesday"]
+    assert revise.lost_facts("Paid per week.", "Paid.") == []
+    started = time.monotonic()
+    revise.lost_facts("다음" + " " * 50000 + "주", "x")
+    revise.lost_facts("next" + " " * 50000 + "week", "x")
     assert time.monotonic() - started < 0.5
