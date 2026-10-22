@@ -2728,16 +2728,18 @@ def minutes_unsourced(doc: Doc) -> list[Finding]:
     """Findings sent back to the writer once; what stands is settled by `settle_unsourced`."""
     from app.services import stated_meeting
 
-    material = doc.given or doc.material
+    material = doc.memo or doc.given or doc.material
     rows = [Finding(i, row, "minutes_unsourced", UNASSIGNED_WHY, rank=1,
                     still=lambda s, t=task[0]: t in s)
             for i, row, task in unassigned_rows(doc.sections, material)]
     def next_part(index: int) -> bool:
         return stated_meeting.is_next_part(str(doc.sections[index].get("heading") or ""))
 
-    return rows + [Finding(i, piece, "minutes_unsourced", stated_meeting.why(said), rank=1,
+    held = stated_meeting.open_rows(doc.sections)
+    return rows + [Finding(i, piece, "minutes_unsourced",
+                           stated_meeting.why(said, piece, material, held), rank=1,
                            still=lambda s, m=material, n=next_part(i): bool(
-                               stated_meeting.untraced(s, m, next_part=n)))
+                               stated_meeting.untraced(s, m, next_part=n, rows=held)))
                    for i, piece, said in stated_meeting.findings(
                        doc.sections, material, _reference_heading())]
 
@@ -2759,11 +2761,12 @@ def settle_unsourced(sections: list[dict], material: str, *, strong: bool) -> li
         out[index]["content"] = "\n".join(
             ln for ln in content.split("\n") if ln.strip() != row.strip()
             and not (short and ln.lstrip().startswith("※") and short in ln))
+    held = stated_meeting.open_rows(out)
     for index, piece, said in stated_meeting.findings(out, material, _reference_heading()):
         whole = "\n".join(str(sec.get("content") or "") for sec in out).replace(piece, "", 1)
         out[index]["content"] = stated_meeting.settle(
             str(out[index].get("content") or ""), piece, said, strong=strong, material=material,
-            elsewhere=whole,
+            elsewhere=whole, rows=held,
             next_part=stated_meeting.is_next_part(str(out[index].get("heading") or "")))
     return out
 
