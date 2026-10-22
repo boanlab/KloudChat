@@ -737,6 +737,27 @@ _EMPTY_FENCE = re.compile(
 _OWN_LENGTH = re.compile(r"회의|미팅|모임")
 
 
+def bare_clocks(sections: list[dict], material: str) -> tuple[list[dict], int]:
+    """The memo's bare clock back wherever the minutes put 오전·오후 before it (「오전 10시」 →
+    「10시」), by code before any repair: a writer told to drop the 오전 drops the clock too."""
+    flat = _flat(material)
+
+    def bare(m: re.Match) -> str:
+        hour = m.group(2)
+        if re.search(rf"(?<!\d)(?<!오전)(?<!오후){hour}시", flat) \
+                and f"{m.group(1)}{hour}시" not in flat:
+            return m.group(0)[len(m.group(1)):].lstrip()
+        return m.group(0)
+
+    out, fixed = [], 0
+    for sec in sections:
+        content = str(sec.get("content") or "")
+        new = _CLOCK_PART.sub(bare, content)
+        fixed += new != content
+        out.append({**sec, "content": new} if new != content else sec)
+    return out, fixed
+
+
 def settle(content: str, piece: str, phrases: list[str], *, strong: bool,
            material: str = "", elsewhere: str = "", next_part: bool = False,
            rows: list[tuple[str, set[str]]] | None = None) -> str:
