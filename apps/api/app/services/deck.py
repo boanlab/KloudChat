@@ -3403,8 +3403,7 @@ async def _write_slides(
             draft_text, more = await word_fix.fix(
                 draft_text, model=word_fix.checker(model, checker or model), complete=_complete,
                 api_key=api_key, given="\n".join(
-                    [request, *(trusted_context or []), *(untrusted_context or [])]),
-                writer=model)
+                    [request, *(trusted_context or []), *(untrusted_context or [])]))
             plan_rules.count(usage, more, planned_apart=bool(checker))
         # numbers a slide may use
         given = "\n".join([request, *(untrusted_context or []), *given_extra])

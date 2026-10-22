@@ -2747,23 +2747,6 @@ def minutes_unsourced(doc: Doc) -> list[Finding]:
                        doc.sections, material, _reference_heading())]
 
 
-def minutes_pasted(doc: Doc) -> list[Finding]:
-    """Prose that pastes the memo's lines as they stand, or says a phrase over and over, sent
-    back to the writer once; what stands is settled by `meeting_memo.settle_copies`."""
-    from app.services import meeting_memo
-
-    memo = doc.memo or doc.given
-    refs = _reference_heading()
-    copies = [Finding(i, piece, "minutes_copy", meeting_memo.COPY_WHY, rank=2,
-                      still=lambda s, m=memo: meeting_memo.copied(s, m))
-              for i, piece in meeting_memo.copies(doc.sections, memo, refs)]
-    seen = {(f.section, f.sentence) for f in copies}
-    return copies + [
-        Finding(i, piece, "minutes_copy", meeting_memo.repeat_why(phrase), rank=2,
-                still=lambda s, p=meeting_memo.squash(phrase): p in meeting_memo.squash(s))
-        for i, piece, phrase in meeting_memo.repeats(doc.sections) if (i, piece) not in seen]
-
-
 def settle_unsourced(sections: list[dict], material: str, *, strong: bool) -> list[dict]:
     """What the writer left of `minutes_unsourced` after its one repair (`stated_meeting.settle`
     for sentences): a strong writer's row is marked 「(확인 필요)」, anyone else's goes with the
@@ -3229,7 +3212,7 @@ def _minutes_rows_check(pre: Prepass) -> Check:
     async def minutes_check(doc: Doc):
         table_rows, _ = await minutes_rows(doc, dates)
         list_rows, _ = await minutes_list_rows(doc, dates)
-        return table_rows + list_rows + minutes_unsourced(doc) + minutes_pasted(doc), {}
+        return table_rows + list_rows + minutes_unsourced(doc), {}
 
     return minutes_check
 
@@ -3571,8 +3554,6 @@ async def count_labels(doc: Doc) -> tuple[list[Finding], dict]:
                     evidence="\n".join(f"자료: 「{lb}」 {n}{u}" for lb, n, u in counts), rank=1,
                     still=lambda s, c=counts: bool(count_label_problems(s, [s], 0, c))))
     return found, {}
-
-
 
 
 # ── after writing: add missing, never rewrite ──
@@ -4848,23 +4829,8 @@ def _skip_line(line: str) -> bool:
             or bool(re.match(r"^\*\*(?:표|그림)\s{0,2}\d", stripped)))
 
 
-def _owner_tasked(cell: str, task: str, people: dict[str, list[str]], material: str) -> bool:
-    """Whether every memo person named in an owner cell has the row's task from a memo item
-    naming them (「박민호」 on 「간식비 집행 계획 수립」 from 「박민호가 간식비 80만원을 요청」:
-    no)."""
-    from app.services import stated_meeting
-
-    named = [names for name, names in people.items() if name in cell]
-    return all(stated_meeting.task_given(task, stated_meeting.items_of(material, names))
-               for names in named)
-
-
-def minutes_grounding(sections: list[dict], material: str, *, strong: bool = False
-                      ) -> tuple[list[dict], list[str]]:
-    """Repair owners/quantities absent from material; returns sections and repair codes. A
-    memo person on a task the memo never gives them is 「미정」, a strong writer's marked."""
-    from app.services import stated_meeting
-
+def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], list[str]]:
+    """Repair owners/quantities absent from material; returns sections and repair codes."""
     flat = re.sub(r"\s+", "", material or "")
     numbers = _material_numbers(material)
     given = {(v, u) for v, u, _ in _quantities(_digits(material))}
@@ -4907,27 +4873,16 @@ def minutes_grounding(sections: list[dict], material: str, *, strong: bool = Fal
         last = blank(clauses[-1]) if bad[-1] else clauses[-1]
         return " ".join([*kept, last])
 
-    people = stated_meeting.people(material)
     for table in tables(out):
         owner, due = _owner_due(table.header, r"기한|마감|완료일|due|일시|시점")
         # one 「담당·기한」 column: its row is a sentence, kept whole
         combined = owner is None and _column(table.header, r"담당|책임|owner") is not None
-        task = None if owner is None else _task_column(
-            table.header, (owner, due, _column(table.header, r"비고|사유|메모|원문")))
         content = str(out[table.section].get("content") or "")
         for line, row in table.rows:
             row = list(row)
             changed = False
             if owner is not None and len(row) > owner and not _owner_known(row[owner], flat):
                 row[owner] = placeholders.for_header(table.header[owner])
-                codes.append("minutes_owner")
-                changed = True
-            elif task is not None and len(row) > max(owner, task) \
-                    and stated_policy.MARK not in row[owner] \
-                    and not _owner_tasked(row[owner], row[task], people, material):
-                # a memo person on a task no memo item gives them: the owner is open (a strong
-                # writer's cell marked where it stands)
-                row[owner] = f"{row[owner].strip()} {stated_policy.MARK}" if strong else "미정"
                 codes.append("minutes_owner")
                 changed = True
             around = " ".join([*table.header, *row])
@@ -6003,7 +5958,6 @@ LABELS = {
     "minutes_owner": "자료에 없는 담당",
     "minutes_spec": "자료에 없는 수치",
     "minutes_unsourced": "자료에 없는 회의 내용·실행 항목",
-    "minutes_copy": "메모 줄을 그대로 옮기거나 되풀이한 문장",
     "minutes_blank_column": "자료에 없는 빈 열",
     "recommend_mismatch": "권고가 필수 조건·점수와 어긋남",
     "status_missing": "탈락·조건 미확인 표시 없음",

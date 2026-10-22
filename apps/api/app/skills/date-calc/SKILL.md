@@ -32,7 +32,7 @@ the 우주항공청 「2026년 월력요항」「2027년 월력요항」 (publis
    The reference day is the meeting day for remarks, and that mail's sending date for a mail. If the meeting day is unknown, ask first.
 3. In the result, `weekend` and `holiday` are display marks; `unresolved` and `unclear` are the dates rule 2 leaves as 「미정」 and 「[기한]」.
 
-After the answer is written, the server runs `dates` over it (`post_check`): a date the person's relative words resolve to (「개강 2027-03-02, 30일 전」 → 2027-01-31) that the answer missed by a few days, or left as a blank, is set to the worked-out date with its weekday. Every chat answer gets the same check for offsets counted from a date the person gave, with or without this skill. Days the question counts from today (「다음 주 월요일이 며칠이야?」) are worked out before every chat answer and given to you; the date the answer gives for them is set to that day.
+After the answer is written, the server runs `dates` over it (`post_check`): a date the person's relative words resolve to (「개강 2027-03-02, 30일 전」 → 2027-01-31) that the answer missed by a few days, or left as a blank, is set to the worked-out date with its weekday. Every chat answer gets the same check for offsets counted from a date the person gave, with or without this skill. Days the question counts from today (「다음 주 월요일이 며칠이야?」) are worked out before every chat answer and given to you.
 
 [보고서에서]
 The server resolves the material's relative dates, lead times and periods before you write and gives them in the 「확정 날짜(코드 계산)」 block. Copy every date and weekday from that block; never count one yourself. A date the block does not give stays in the material's own words, or 「미정」 where the report needs a date.

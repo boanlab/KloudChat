@@ -1,8 +1,7 @@
-"""Minutes keep this meeting apart from the next one and from the writer's handling of the
-text: a sentence saying what the writer kept out of the document or which year it took as its
-basis goes, the next meeting's room or clock is no value of this meeting's overview or head,
-and an agreement told of an item by pointing back (「이는 … 동의한 최종 합의 사항입니다」) is
-judged by the sentence it points to. Shapes from the round 16 re-verify (tc, tc2)."""
+"""Minutes keep apart from the writer's handling of the text: a sentence saying what the writer
+kept out of the document or which year it took as its basis goes, and an agreement told of an
+item by pointing back (「이는 … 동의한 최종 합의 사항입니다」) is judged by the sentence it
+points to. Shapes from the round 16 re-verify (tc, tc2)."""
 
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ OVERVIEW = ("참석자는 김지훈(팀장), 이수연, 박민호, 최다은입�
             "**표 1. 회의 개요**\n\n| 항목 | 내용 |\n| :--- | :--- |\n| 일시 | 2026-10-14(수) |\n"
             "| 장소 | 3층 회의실 |\n\n확인 필요: 회의 장소는 자료에 기재되어 있지 않아 확인이 "
             "필요합니다.")
-NEXT = "**표 4. 다음 회의**\n\n| 항목 | 내용 |\n| :--- | :--- |\n| 장소 | 3층 회의실 |"
 DECIDED = ("안건 1의 2학기 튜터링 모집 기간에 대해 논의한 결과, 모집 기간을 11/3~11/14로 "
            "확정했습니다. 이는 모든 참석자가 동의한 최종 합의 사항입니다.\n\n"
            "안건 2의 간식비 예산은 팀장의 의견에 따라 50만원으로 합의했습니다. 참석자 전원이 "
@@ -51,27 +49,6 @@ def test_what_the_writer_kept_out_of_the_text_and_the_year_it_took_go():
     assert "설문 도구 논의를 다뤘습니다(표 1)." in text
 
 
-def test_the_next_meeting_s_room_is_no_value_of_this_meeting():
-    sections = [_sec("회의 개요", OVERVIEW), _sec("다음 회의", NEXT)]
-    out, fixed = meeting_memo.borrowed_next(sections, TUTOR)
-    assert fixed == 1
-    assert "| 장소 | 미정 |" in out[0]["content"]
-    # the line saying the place is not given now agrees with the cell
-    assert "확인 필요: 회의 장소는" in out[0]["content"]
-    assert out[1] == sections[1]
-    held = [_sec("회의 개요", "회의는 3층 회의실에서 열렸습니다. 참석자는 네 명입니다.")]
-    assert meeting_memo.borrowed_next(held, TUTOR)[0][0]["content"] == "참석자는 네 명입니다."
-    # a memo that gives this meeting's room keeps it
-    own = TUTOR.replace("주간회의.", "주간회의, 장소 3층 회의실.", 1)
-    assert meeting_memo.borrowed_next(sections, own) == (sections, 0)
-
-
-def test_the_head_takes_no_room_or_clock_of_the_next_meeting():
-    block = {"fields": [["일시", "2026-10-14(수) 10:00"], ["장소", "3층 회의실"]]}
-    fields = dict(map(tuple, meeting_memo.fill_head(block, TUTOR)["fields"]))
-    assert fields == {"일시": "2026-10-14(수)", "장소": "[장소]"}
-
-
 def test_an_agreement_pointing_back_is_judged_by_the_sentence_it_points_to():
     found = stated_meeting.findings([_sec("결정 사항", DECIDED)], TUTOR)
     said = [p for _, _, phrases in found for p in phrases]
@@ -87,7 +64,5 @@ def test_the_checks_finish_on_a_long_run_of_spaces():
     text = "본문에" + " " * 50_000 + "반영하지 않았습니다."
     start = time.perf_counter()
     stated_meeting.self_note(text, TUTOR)
-    row = "| 장소 |" + " " * 50_000 + "3층 회의실 |"
-    meeting_memo.borrowed_next([_sec("회의 개요", row)], TUTOR)
     meeting_memo.fill_head({"fields": [["장소", " " * 50_000 + "3층 회의실"]]}, TUTOR)
     assert time.perf_counter() - start < 0.5

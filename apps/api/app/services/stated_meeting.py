@@ -15,9 +15,8 @@ only when the memo leaves it open or a 미정 cell of the minutes' own tables ho
 sentence calls every owner and deadline set while a cell says 미정. Nor does a memo give the
 writer's advice (「… 작성하는 것이 좋습니다」), what follows if a task is not done (「미제출 시 …
 지연되어」), an 오전·오후 it never puts before its own 「10시」, or the next meeting's agenda in a
-table or in any sentence that speaks of the next meeting. Nor does it hold a reason it never
-gives (「비용 절감 차원에서」, 「두 도구의 특성 차이로 인해」), a verdict that something cannot be
-told (「논의 결과만으로는 … 알 수 없습니다」) or the writer's note on how it wrote the minutes
+table or in any sentence that speaks of the next meeting. Nor does it hold the writer's note on
+how it wrote the minutes
 (「상대 날짜를 해석하는 기준일은 …」, 「… 그대로 반영합니다」).
 """
 
@@ -187,14 +186,6 @@ _LEFT_OUT = re.compile(
 _NOTE_PHRASE = re.compile(
     r"기준일(?:인|은|이|로|을)?\s?[^,.\n]{0,24}?(?:을|를)?\s?(?:바탕으로|기준으로|토대로)\s?,?\s?"
     r"|(?<=로)\s?해석(?:하여|해서|해)(?=\s)")
-#: a verdict that something cannot be told: 「… 알 수 없습니다」, 「판단하기 어렵습니다」
-_UNKNOWABLE = re.compile(
-    r"알\s?수\s?없|(?:판단|단정|가늠)(?:하기|할\s?수)\s?(?:어렵|없)")
-#: a reason: 「… 차이로 인해」, 「비용 절감 차원에서」, 「… 조치로」, 「… 하므로」
-_REASON = re.compile(
-    r"(?:로|으로)\s?인(?:해|하여)|때문에|차원에서|위한\s?조치로|(?:하|이|되|으)므로")
-#: a word ending as a subject or topic, where a reason before 「차원에서」 begins
-_SUBJECT = re.compile(r"[가-힣A-Za-z0-9)]{1,20}(?:은|는|이|가)(?=\s)")
 
 
 def _stretches(material: str) -> list[str]:
@@ -309,39 +300,6 @@ def note_cut(piece: str, material: str) -> str:
     if plain == piece.strip() or self_note(plain, material) or len(_words(plain)) < 3:
         return ""
     return plain
-
-
-def unknowable(piece: str, material: str) -> bool:
-    """A verdict that something cannot be told (「논의 결과만으로는 … 알 수 없습니다」) the memo
-    never gives; a part of the minutes called missing is `meeting_memo`'s to judge."""
-    if piece.lstrip().startswith("|") or stated_policy.MARK in piece or _FIELD.search(piece):
-        return False
-    return bool(_UNKNOWABLE.search(piece)) and not _UNKNOWABLE.search(material or "")
-
-
-def reasons(piece: str, material: str) -> list[str]:
-    """Reasons in `piece` the memo never gives, as written: a clause up to 「로 인해」,
-    「때문에」, 「위한 조치로」 or 「…므로」 from the sentence's start or a comma, a phrase up to
-    「차원에서」 from its subject; most of its words not the memo's."""
-    if piece.lstrip().startswith("|") or stated_policy.MARK in piece \
-            or _REASON.search(material or ""):
-        return []
-    flat, out = _flat(material), []
-    for m in _REASON.finditer(piece):
-        start = piece.rfind(", ", 0, m.start())
-        start = start + 2 if start >= 0 else 0
-        if m.group(0) == "차원에서":
-            subjects = [s.end() for s in _SUBJECT.finditer(piece, start, m.start())]
-            start = subjects[-1] + 1 if subjects else start
-        phrase = piece[start:m.end()].strip()
-        # a reason about the minutes' own parts (「「이번 주 안에」라는 표현으로 인해」) is no
-        # reason given for the meeting
-        if not phrase or len(phrase) > 50 or "「" in phrase or _FIELD.search(phrase):
-            continue
-        novel, words = _novel(phrase, flat)
-        if novel >= 2 and novel * 2 >= words:
-            out.append(phrase)
-    return out
 
 
 #: agreement stated: 「참석자들이 동의」, 「전원 동의」, 「이의 없이」, 「만장일치」, 「합의」
@@ -689,8 +647,7 @@ def _goes_whole(piece: str, material: str, next_part: bool,
     return (guessed(piece, material) or gap_note(piece, material) or mail_line(piece, material)
             or promised(piece, material) or unraised(piece, material, rows)
             or all_set(piece, rows) or advised(piece, material) or if_not(piece, material)
-            or self_note(piece, material) or unknowable(piece, material)
-            or unowned_task(piece, material)
+            or self_note(piece, material) or unowned_task(piece, material)
             or (not row and consents(piece, material, before) == [piece.strip().rstrip(".!?。")])
             or ((next_part or (not row and bool(_NEXT_SAID.search(piece))))
                 and unset_agenda(piece, material)))
@@ -719,7 +676,7 @@ def untraced(piece: str, material: str, *, next_part: bool = False,
         whole = plain.strip().rstrip(".!?。")
         return [piece.strip().rstrip(".!?。") if p == whole else p
                 for p in untraced(plain, material, next_part=next_part, rows=rows, before=before)]
-    out = values(piece, material) + reasons(piece, material)
+    out = values(piece, material)
     out += [c for c in consents(piece, material, before) if c not in out]
     whole = piece.strip().rstrip(".!?。")
     if whole not in out and (asks_anew(piece, material)
@@ -781,20 +738,7 @@ def settle(content: str, piece: str, phrases: list[str], *, strong: bool,
         if not phrases:
             return content
     whole = [p for p in phrases if p == piece.strip().rstrip(".!?。")]
-    # a reason the memo never gives cut by code from anyone's but a strong writer's sentence
-    cut = [p for p in phrases if p not in whole and _REASON.search(p)]
-    if cut and not strong and not whole:
-        plain = piece
-        for p in cut:
-            plain = plain.replace(p, "", 1)
-        plain = re.sub(r" {2,}", " ", plain).strip(" ,")
-        if len(_words(plain)) >= 2:
-            content, piece = content.replace(piece, plain, 1), plain
-            phrases = [p for p in phrases if p not in cut]
-            if not phrases:
-                return content
-    agreed = [p for p in phrases if p not in whole and _CONSENT.search(p)
-              and not _REASON.search(p)]
+    agreed = [p for p in phrases if p not in whole and _CONSENT.search(p)]
     if agreed and not strong:
         # an agreement the memo never states, cut by code from anyone's but a strong writer's
         plain = piece
@@ -900,11 +844,8 @@ def why(phrases: list[str], piece: str = "", material: str = "",
         *(["회의록은 권고하지 않는다(「…하는 것이 좋습니다」)."]
           if advised(piece, material) else []),
         *(["하지 않으면 어떻게 되는지는 자료에 없다."] if if_not(piece, material) else []),
-        *(["자료가 주지 않은 까닭·이유를 붙이지 마라."] if reasons(piece, material) else []),
         *(["회의록을 어떻게 썼는지(날짜 해석 기준, 반영 방식)는 적지 않는다."]
           if self_note(piece, material) else []),
-        *(["자료가 판단하지 않은 것을 「알 수 없다」고 덧붙이지 마라."]
-          if unknowable(piece, material) else []),
         *(["자료가 이 안건에 동의·합의를 적지 않았으니 누가 동의했다고 쓰지 마라."]
           if consents(piece, material) else []),
         *(["자료가 이 사람에게 맡기지 않은 일, 아무도 맡지 않은 일을 실행 계획처럼 쓰지 마라 — "
@@ -916,6 +857,6 @@ def why(phrases: list[str], piece: str = "", material: str = "",
 
 __all__ = ["advised", "all_set", "asks_anew", "consent_cut", "consents", "findings",
            "gap_note", "guessed", "if_not", "is_next_part", "items_of", "mail_line",
-           "mail_lines", "note_cut", "open_rows", "people", "promised", "reasons", "self_note",
-           "settle", "task_given", "unknowable", "unowned_task", "unraised", "unset_agenda",
+           "mail_lines", "note_cut", "open_rows", "people", "promised", "self_note",
+           "settle", "task_given", "unowned_task", "unraised", "unset_agenda",
            "untraced", "values", "why"]

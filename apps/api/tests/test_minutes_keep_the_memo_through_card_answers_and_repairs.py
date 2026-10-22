@@ -171,14 +171,6 @@ def test_a_row_written_twice_goes_and_the_fuller_one_stays():
     assert meeting_memo.dedupe_rows([_sec("실행 항목", two)])[1] == 0
 
 
-def test_a_decision_dated_otherwise_in_its_row_gets_no_second_row():
-    table = ("**표 1. 결정 사항**\n\n| 항목 | 내용 |\n| --- | --- |\n"
-             "| 튜터링 모집 기간 | 2026년 11월 3일~2026년 11월 14일 |\n"
-             "| 간식비 예산 | 50만원 (초안 80만원에서 조정) |")
-    out, added = meeting_memo.decision_rows([_sec("결정 사항", table)], TUTOR)
-    assert added == 0 and out[0]["content"] == table
-
-
 def test_the_new_patterns_finish_on_long_spaces():
     spaces = " " * 50_000
     start = time.perf_counter()

@@ -153,35 +153,6 @@ def _acceptable(old: str, new: str, finding: Finding) -> bool:
     return not (finding.still and finding.still(new))
 
 
-#: a reply that is a marker alone: 「확인 필요」, 「(미정)」
-_MARK_ONLY = re.compile(r"\(?[ \t]{0,2}(?:확인[ \t]?필요|미정|해당[ \t]?없음)[ \t]{0,2}\)?[.:]?")
-
-
-def pasted(old: str, new: str, content: str, memo: str = "") -> bool:
-    """A prose rewrite that pastes instead of writing: a marker alone where a sentence was
-    (「확인 필요」), a sentence the section already holds or one keeping nothing of the old that
-    only says the section's words again (`restates`), a word or two left of a sentence, or
-    the memo's own line in its shorthand (`meeting_memo.copied`) where the sentence was prose."""
-    from app.services import meeting_memo
-
-    if old.lstrip().startswith("|"):
-        return False
-    if _MARK_ONLY.fullmatch(new.strip()) and not _MARK_ONLY.fullmatch(old.strip()):
-        return True
-    flat = re.sub(r"[\s,.:;·!?()「」\"']", "", new)
-    rest = re.sub(r"[\s,.:;·!?()「」\"']", "", content.replace(old, "", 1))
-    if len(flat) >= 16 and flat in rest:
-        return True
-    if restates(new, old, content.replace(old, "", 1)):
-        return True
-    # a word or two left of a whole sentence (「함.」)
-    if len(flat) < 8 and len(flat) * 3 < len(re.sub(r"[\s,.:;·!?()「」\"']", "", old)):
-        return True
-    pieces = [p for p in re.split(r"(?<=[.!?])\s+", new.strip()) if p.strip()]
-    return bool(memo) and not meeting_memo.copied(old, memo) \
-        and any(meeting_memo.copied(p, memo) for p in pieces)
-
-
 #: a blank for the person to fill: 「[회의 일자]」, 「[담당자]」
 _BLANK = re.compile(r"\[[^\[\]\n\d]{1,20}\]")
 
@@ -363,7 +334,8 @@ async def repair(
                 log.info("repair of [%s] filled the blank it restates in %r", finding.code,
                          out[index].get("heading"))
             elif new != finding.sentence and _acceptable(finding.sentence, new, finding) \
-                    and not pasted(finding.sentence, new, content, doc.memo):
+                    and not restates(new, finding.sentence,
+                                     content.replace(finding.sentence, "", 1)):
                 content = content.replace(finding.sentence, new, 1)
                 log.info("repaired [%s] in %r", finding.code, out[index].get("heading"))
             else:
