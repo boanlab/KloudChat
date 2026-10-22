@@ -925,6 +925,7 @@ const EN: Record<string, string> = {
   '진행 과정에 에이전트 단계가 하나는 있어야 합니다.': 'The process needs at least one agent step.',
   '진행 과정 승인': 'Process approved',
   '커넥터 카탈로그 저장': 'Connector catalogue saved',
+  '허용 실행 명령 저장': 'Allowed commands saved',
   '커넥터 카탈로그 삭제': 'Connector catalogue entry removed',
   '진행 과정 반려': 'Process rejected',
   '이 대화에서 정한 것:': 'Settled in this conversation:',
@@ -2038,7 +2039,7 @@ const EN: Record<string, string> = {
   '1. 입력 자료와 판단 기준을 확인한다\n2. 결과와 근거, 미확인 항목을 구분한다':
     '1. Check the inputs and decision criteria\n2. Separate results, evidence, and unverified items',
   '1k당 {in} / {out}': '{in} / {out} per 1k',
-  'API 서버와 같은 호스트에서 실행됩니다.': 'Runs on the same host as the API server.',
+  'API 서버에서 실행되므로 관리자가 허용한 명령만 그대로 등록할 수 있습니다.': 'Runs on the API server, so only a command an administrator allows can be registered, exactly as allowed.',
   'LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).':
     'LiteLLM gets a {limit} ceiling to match ({pct}% headroom).',
   'MCP 서버 추가': 'Add MCP server',
@@ -4439,6 +4440,8 @@ const EN: Record<string, string> = {
   '고르세요': 'Choose',
   '쓸 화면': 'Surfaces',
   '카탈로그를 불러오지 못했습니다.': 'Could not load the catalogue.',
+  '사용자가 직접 등록할 수 있는 실행 명령': 'Commands members may register themselves',
+  '한 줄에 명령 하나. 사용자가 적은 명령이 인자까지 똑같은 줄만 실행되고, 환경 변수는 넣을 수 없습니다.': 'One command per line. A member\'s command runs only when it matches a line argument for argument, and it cannot take environment variables.',
   '게이트웨이 키': 'Gateway key',
   '숨김': 'Hidden',
   '카탈로그에서 빠져 새로 설치할 수 없습니다. 이미 설치한 사람의 커넥터는 남지만 게이트웨이 키는 더 이상 들어가지 않습니다.': 'It leaves the catalogue and can no longer be installed. Installed copies stay but no longer get the gateway key.',

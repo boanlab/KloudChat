@@ -3017,6 +3017,8 @@ export interface CatalogAdmin {
   transports: string[]
   features: string[]
   placeholders: string[]
+  /** stdio command lines members may register as their own */
+  stdioAllow: string[]
 }
 export const connectorCatalogApi = {
   list: () => call<CatalogAdmin>('/admin/connector-catalog'),
@@ -3024,4 +3026,6 @@ export const connectorCatalogApi = {
   edit: (id: string, entry: CatalogEntryIn) =>
     call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(entry) }),
   remove: (id: string) => call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  stdioAllow: (commands: string[]) =>
+    call<{ stdioAllow: string[] }>('/admin/connector-catalog/stdio-allow', { method: 'PUT', body: JSON.stringify({ commands }) }),
 }

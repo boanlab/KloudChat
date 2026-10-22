@@ -48,7 +48,7 @@ Personal data is masked in every request, and **the conversation history is also
 
 When the administrator turns on this policy, a request that carries attachments, project files or memory is answered by the strict-local twin of the chosen model instead, and that conversation never moves to an external model afterwards. Without a twin, the strict-local safe model set by the administrator answers. Without that either, the request is refused.
 
-Pictures, charts and figures follow the same rule. In a project conversation, a conversation that had attachments, or a strict-local conversation, they are made only on a strict-local model whatever model was picked, and are not made when no strict-local model is available. When the picked picture model is external, the **strict-local picture model** in Settings → Preferences draws it.
+Pictures, charts, figures and videos follow the same rule. In a project conversation, a conversation that had attachments, or a strict-local conversation, they are made only on a strict-local model whatever model was picked, and are not made when no strict-local model is available. When the picked picture model is external, the **strict-local picture model** in Settings → Preferences draws it.
 
 Document edits (rewriting a section, slide or block, a review, reading a theme from a file) follow the same rule. A document made in such a conversation is edited only on a strict-local model, and so is a document holding personal data: it is not masked, because masking would leave placeholders in the document. When no strict-local model is available, the edit is not made. A web fact-check sends the claims to outside search engines, so it is not run on such a document.
 

@@ -44,6 +44,7 @@ ACTIONS: frozenset[str] = frozenset(
         "pipeline.approve",
         "connector.catalog.save",
         "connector.catalog.delete",
+        "connector.stdio_allow.save",
         "pipeline.reject",
         "issue.update",
         "issue.snapshot_view",

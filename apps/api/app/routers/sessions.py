@@ -639,8 +639,29 @@ def _refuse_outside_boundary(boundary: _MediaBoundary, kind: str) -> HTTPExcepti
         )
     return HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="no_image_models" if kind == "image" else "no_chat_models",
+        detail={"image": "no_image_models", "av": "no_video_models"}.get(kind, "no_chat_models"),
     )
+
+
+async def _refuse_blocked(user: User, request: Request, policy, text: str) -> None:
+    """Forbidden categories, before any write, key or model call."""
+    if policy.intent_filter and (hit := governance.blocked_by(text, policy.blocked_categories)):
+        await _audit_policy(user, request, "filter.blocked", hit)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"blocked_category:{hit}",
+        )
+
+
+async def _media_gate(
+    db: DbSession, user: User, request: Request, session: ChatSession, catalogue: list[dict],
+    text: str, *, asked: str | None = None,
+) -> _MediaBoundary:
+    """A media call's pre-call policy, as a chat turn's: forbidden categories, an asked model
+    on the allowlist, then the data boundary (strict-local or masked text)."""
+    await _refuse_blocked(user, request, await _require_egress_policy(), text)
+    _refuse_unallowed(user, catalogue, asked)
+    return await _media_boundary(db, session, catalogue, text)
 
 
 async def _audit_media_boundary(
@@ -1153,10 +1174,13 @@ def _privacy_sources(
     content: str,
     history: list[Message],
     blocks: tuple[ContextBlock, ...] | list[ContextBlock] | None = None,
+    summary: str | None = None,
 ) -> dict[str, str | list[str]]:
     sources: dict[str, str | list[str]] = {
         "current_input": content,
-        "conversation_history": [message.content for message in history],
+        # the cached summary goes out with the turn: scanned under today's policy
+        "conversation_history": [message.content for message in history]
+        + ([summary] if summary else []),
     }
     source_kinds = {
         "user.instructions": "user_instructions",
@@ -2839,8 +2863,8 @@ async def generate_images(
     """Makes pictures as artifacts, charged from reported usage."""
     session = await _owned(db, user, session_id)
     catalogue = await model_service.list_models()
-    _refuse_unallowed(user, catalogue["models"], payload.model)
-    boundary = await _media_boundary(db, session, catalogue["models"], payload.prompt)
+    boundary = await _media_gate(db, user, request, session, catalogue["models"],
+                                 payload.prompt, asked=payload.model)
     if payload.style == "차트":
         # chart drawn from code: see `chart_code`
         return await _draw_chart(session, payload, user, db, catalogue, boundary, request)
@@ -4088,12 +4112,7 @@ async def send_message(
     # policy before any write, billing, key issue or model call
     policy = await _require_egress_policy()
     content = payload.content
-    if policy.intent_filter and (hit := governance.blocked_by(content, policy.blocked_categories)):
-        await _audit_policy(user, request, "filter.blocked", hit)
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"blocked_category:{hit}",
-        )
+    await _refuse_blocked(user, request, policy, content)
     catalogue = await model_service.list_models_for_egress()
     catalogue_models = catalogue["models"]
     usable = _allowed_models(user, catalogue_models, kind=session.kind.value)
@@ -4485,7 +4504,10 @@ async def send_message(
 
     protected_values: frozenset[str] = frozenset()
     if session.kind is SessionKind.chat:
-        privacy_sources = _privacy_sources(content, history, workspace.blocks)
+        privacy_sources = _privacy_sources(
+            content, history, workspace.blocks,
+            summary=str((session.summary or {}).get("text") or "") or None,
+        )
         if requested_tools:
             privacy_sources["tool_definitions"] = _tool_definition_source(requested_tools)
         # Auto scans the full envelope before any classifier, key or model call

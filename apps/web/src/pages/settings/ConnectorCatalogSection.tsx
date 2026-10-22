@@ -1,6 +1,6 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button, ConfirmDialog, Field, Input, Modal, Select } from '@/components/ui'
+import { Badge, Button, ConfirmDialog, Field, Input, Modal, Select, Textarea } from '@/components/ui'
 import { connectorCatalogApi, errorCode, errorMessage, type CatalogAdmin, type CatalogEntryIn } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import type { CatalogEntryAdmin } from '@/types'
@@ -174,6 +174,41 @@ function EntryForm({
   )
 }
 
+/** Command lines members may run as stdio connectors of their own, matched whole. */
+function StdioAllowForm({ initial, onSaved }: { initial: string[]; onSaved: (lines: string[]) => void }) {
+  const t = useT()
+  const [text, setText] = useState(initial.join('\n'))
+  const [note, setNote] = useState<string | null>(null)
+  return (
+    <div className="space-y-2" data-testid="stdio-allow">
+      <Field
+        label={t('사용자가 직접 등록할 수 있는 실행 명령')}
+        hint={t('한 줄에 명령 하나. 사용자가 적은 명령이 인자까지 똑같은 줄만 실행되고, 환경 변수는 넣을 수 없습니다.')}
+      >
+        <Textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} className="font-mono" />
+      </Field>
+      <div className="flex items-center justify-end gap-2">
+        {note && <span className="text-sm text-muted">{note}</span>}
+        <Button
+          size="sm"
+          onClick={async () => {
+            try {
+              const out = await connectorCatalogApi.stdioAllow(text.split('\n'))
+              setText(out.stdioAllow.join('\n'))
+              onSaved(out.stdioAllow)
+              setNote(t('저장했습니다.'))
+            } catch (err) {
+              setNote(errorMessage(err, t('저장하지 못했습니다.')))
+            }
+          }}
+        >
+          {t('저장')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 /** What members can install; stored values never come back. */
 export function ConnectorCatalogSection() {
   const t = useT()
@@ -224,6 +259,7 @@ export function ConnectorCatalogSection() {
           </li>
         ))}
       </ul>
+      <StdioAllowForm initial={meta.stdioAllow ?? []} onSaved={(stdioAllow) => setMeta({ ...meta, stdioAllow })} />
       {editing && (
         <EntryForm
           initial={editing === 'new' ? null : editing}

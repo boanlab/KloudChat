@@ -25,10 +25,13 @@ class McpError(RuntimeError):
 
 
 _ENV_REF = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
+#: env keys a stdio server inherits; never DB URL, master key, …
+_INHERITED_ENV = frozenset({"PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR", "PYTHONIOENCODING"})
 
 
 def substitute(env: dict[str, str] | None, *, user_id: str, user_email: str) -> dict[str, str]:
-    """Connector env for one caller: identity placeholders, `${VAR}` from API env."""
+    """Connector env for one caller: identity placeholders, `${VAR}` from the API env's
+    harmless part (`_INHERITED_ENV`): a typed value never pulls out the API's secrets."""
     values = {
         "{{USER_ID}}": user_id,
         "{{USER_EMAIL}}": user_email,
@@ -39,13 +42,10 @@ def substitute(env: dict[str, str] | None, *, user_id: str, user_email: str) -> 
         for token, value in values.items():
             text = text.replace(token, value)
         # unset → empty, not literal
-        text = _ENV_REF.sub(lambda m: os.environ.get(m.group(1), ""), text)
+        text = _ENV_REF.sub(lambda m: os.environ.get(m.group(1), "")
+                            if m.group(1) in _INHERITED_ENV else "", text)
         out[key] = text
     return out
-
-
-#: env keys a stdio server inherits; never DB URL, master key, …
-_INHERITED_ENV = frozenset({"PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR", "PYTHONIOENCODING"})
 
 
 class _StdioSession:

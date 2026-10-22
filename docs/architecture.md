@@ -1997,11 +1997,19 @@ form only and uses a neutral domain, so its content is not repeated as fact.
 
 ### Other boundaries
 
-- A `stdio` connector is a command the API server runs: only an administrator
-  may register one, and the child inherits a minimal environment (`PATH`,
-  `HOME`, locale, `TZ`), never the API's own secrets (`mcp._INHERITED_ENV`).
-- A cached conversation summary is masked under the policy in force when it is
-  reused, not only the one in force when it was written.
+- A `stdio` connector is a command the API server runs. An administrator may
+  register any; a member only a command line on the administrator's allowlist
+  (**System › Connector catalogue › Commands members may register themselves**,
+  setting `connectors.stdio_allow`), matched argument for argument, and with no
+  environment variables of its own. The rule is checked again before every
+  spawn (`catalog.check_runnable`), so a row saved before it is refused with an
+  error instead of run; catalogue connectors run the catalogue's command. The
+  child inherits a minimal environment (`PATH`, `HOME`, locale, `TZ`), never
+  the API's own secrets (`mcp._INHERITED_ENV`), and a `${VAR}` in a connector's
+  env reads only those names from the API's environment.
+- A cached conversation summary is part of the turn's privacy scan (with the
+  history) and is masked under the policy in force when it is reused, not only
+  the one in force when it was written.
 - Report sections reach storage sanitised on every path — create, update and
   restore alike (`_clean_report_data`).
 - A document edit — fact-check, review, a section, slide or block rewrite, a
@@ -2013,8 +2021,12 @@ form only and uses a neutral domain, so its content is not repeated as fact.
   the document also keeps it strict-local rather than masked, because the mask
   would be written back into the document. A web fact-check inside the
   boundary is refused (`factcheck_needs_web`). The account's allowlist holds.
-- A video job passes the same gate as a chat turn: egress policy, the intent
-  filter, and this account's model allowlist, before the prompt leaves.
+- A video job passes the media gate pictures use (`sessions._media_gate`): the
+  intent filter the chat turn applies, the account's model allowlist (a named
+  model is refused, never swapped), then the conversation's boundary — inside
+  it the job is refused (`409 internal_data_requires_strict_local`) unless a
+  strict-local video model exists, outside it personal data in the prompt is
+  masked before it leaves.
 - An index delete that fails leaves the file's record saying where its vectors
   are, for the next attempt; a vector hit for a document no longer on the shelf
   is dropped before it can become evidence.
