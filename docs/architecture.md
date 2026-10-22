@@ -566,6 +566,11 @@ content.
 (`carryFrom`) and, after the approved rewrite, every new part whose name
 survived and which the instruction never named gets its words back from the
 old part (`revise.carry_parts`): same position, new id and accent, old content.
+A new part that shows a value its namesake did not and a part gone from the new plan did
+(the 「$1.2M」 ask of a merged-away slide) took that part in and keeps its new words.
+The outline of a restructure asks no questions (the open deck is its material), and an
+outline still over the count after its size retry is fitted by code: dividers and agenda go,
+then adjacent content slides are merged into one 「A · B」 slide (`deck.merge_to_count`).
 A part the instruction names — 「지표와 진척은 한 장으로」 ("metrics and progress on one slide") — is written fresh;
 "named" is judged against the restructure instruction (`carryNote`), never
 against the merged request, which names every part of the original. A quoted

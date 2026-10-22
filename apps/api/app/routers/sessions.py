@@ -6948,7 +6948,10 @@ async def _run_deck(
             "web_search": web_search, "figures_plan": figures_plan, "image_model": image_model,
             "auto_image_model": auto_image_model,
             "code_calc": code_calc,
-            "request": request, "approved_plan": approved_plan, "may_ask": may_ask,
+            "request": request, "approved_plan": approved_plan,
+            # a reshape of the open deck has its material: no questions
+            "may_ask": may_ask and not carry_from,
+            "reshape": bool(carry_from),
             "model": model["id"], "outline_model": (outline_model or {}).get("id", ""),
             "trusted_context": list(trusted_context or []),
             "untrusted_context": list(untrusted_context or []), "tokens": design_tokens,

@@ -4456,6 +4456,8 @@ async def write(
     web_search: bool = True,
     #: a calculation skill is on: derived values by code even when the request names none
     code_calc: bool = False,
+    #: reshapes the open deck (a shrink): an outline still over the count is merged to it
+    reshape: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `title`, `slide`, `deck`, `usage`; planning pass emits `proposal` only."""
     # outline usage apart (may be another model)
@@ -4803,6 +4805,8 @@ async def write(
         plan = keep_enumerated(plan, request, wanted)
         if len(plan) != wanted:
             plan = fit_count(plan, wanted)
+        if len(plan) > wanted and reshape:
+            plan = merge_to_count(plan, wanted)
         if len(plan) != wanted:
             yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
             yield {
@@ -7165,6 +7169,32 @@ def fit_count(plan: list[dict], wanted: int) -> list[dict]:
                 break
             del out[idx]
     return out if len(out) == wanted else plan
+
+
+def merge_to_count(plan: list[dict], wanted: int) -> list[dict]:
+    """Dividers and agenda dropped, then adjacent content slides merged, shortest pair first
+    (the last slide, often the ask, last), until the plan is `wanted` long; cover kept.
+    Too few content slides: unchanged."""
+    out = list(plan)
+    for layout in ("section", "agenda"):
+        while len(out) > wanted:
+            idx = next((i for i, item in enumerate(out) if item.get("layout") == layout), None)
+            if idx is None:
+                break
+            del out[idx]
+    while len(out) > wanted:
+        pairs = [i for i in range(1, len(out) - 1)
+                 if all(out[j].get("layout") not in ("title", "closing") for j in (i, i + 1))]
+        if not pairs:
+            return plan
+        i = min(pairs, key=lambda i: (i + 1 == len(out) - 1,
+                                      len(str(out[i].get("title") or ""))
+                                      + len(str(out[i + 1].get("title") or ""))))
+        first, second = out[i], out[i + 1]
+        layout = first.get("layout") if first.get("layout") == second.get("layout") else "bullets"
+        out[i:i + 2] = [{"title": f"{first.get('title') or ''} · {second.get('title') or ''}",
+                         "layout": layout}]
+    return out
 
 
 def ensure_agenda(plan: list[dict]) -> list[dict]:

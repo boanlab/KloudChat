@@ -510,11 +510,17 @@ def carry_parts(
         name = _part_name(part, is_deck)
         if name and _has_content(part, is_deck) and name not in by_name:
             by_name[name] = part
+    names = {_part_name(part, is_deck) for part in new}
+    # old parts no new part is named after: what a merge takes in
+    gone = [part for part in old if _part_name(part, is_deck) not in names]
     out: list[dict] = []
     carried = 0
     for part in new:
         name = _part_name(part, is_deck)
         previous = by_name.get(name)
+        if previous is not None and _takes_in(part, previous, gone, is_deck):
+            # merged part: the old one alone would drop what it took in
+            previous = None
         # Named parts rewritten; generic words ignored.
         tokens = [t for t in name.split() if len(t) >= 2 and t.lower() not in _GENERIC_TITLE_WORDS]
         named = name.lower() in said or (
@@ -531,6 +537,18 @@ def carry_parts(
         out.append(merged)
         carried += 1
     return out, carried
+
+
+def _part_values(part: dict, is_deck: bool) -> set[tuple[str, str]]:
+    text = " ".join(_shown_texts(part)) if is_deck else str(part.get("content") or "")
+    return _values_of(text)
+
+
+def _takes_in(part: dict, previous: dict, gone: list[dict], is_deck: bool) -> bool:
+    """`part` shows a value its same-named old part did not and an old part gone from the new
+    plan did: content merged in."""
+    added = _part_values(part, is_deck) - _part_values(previous, is_deck)
+    return bool(added) and any(added & _part_values(g, is_deck) for g in gone)
 
 
 _TITLE_ASK = re.compile(
