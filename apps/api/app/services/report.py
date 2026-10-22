@@ -3624,10 +3624,13 @@ def _kpi_or_nothing(match: re.Match[str]) -> str:
 
 
 def _pasted_without_marker(request: str) -> str:
-    """Unmarked pasted material (120+ chars) after the first paragraph, or `""`."""
-    head, _, rest = (request or "").strip().partition("\n\n")
+    """Unmarked pasted material (120+ chars) after the first paragraph, with the 「덧붙인
+    조건」 block that follows it, or `""`; that block alone (card answers, the server's rules) is
+    none."""
+    asked, marker, conditions = (request or "").partition("\n\n덧붙인 조건:")
+    head, _, rest = asked.strip().partition("\n\n")
     rest = rest.strip()
-    return rest if head and len(rest) >= 120 else ""
+    return rest + (marker + conditions).rstrip() if head and len(rest) >= 120 else ""
 
 
 def _request_material(request: str) -> str:

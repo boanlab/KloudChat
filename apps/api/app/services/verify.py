@@ -153,6 +153,50 @@ def _acceptable(old: str, new: str, finding: Finding) -> bool:
     return not (finding.still and finding.still(new))
 
 
+#: the writer reporting its own act of writing: 「그 값을 넣지 않은 문장으로 쓰도록 했습니다」,
+#: 「회의록에 기록하지 않았습니다」, 「해당 내용을 뺐습니다」
+WROTE = re.compile(
+    r"(?:쓰|적|기록하|기재하|넣|표기하|표시하|반영하|작성하|싣|담|남기|제외하|삭제하|수정하|고치|바꾸)"
+    r"(?:도록\s?(?:했|하였)|지\s?(?:않았|않도록\s?했)|었|았|였)습니다"
+    r"|(?:썼|적었|뺐|넣었|고쳤|바꿨|실었|담았|남겼)습니다")
+#: what a writer's note names of the document itself, which ties it to no sentence
+_DOC_WORDS = frozenset(("회의록", "보고서", "문서", "문장", "내용", "자료", "항목", "부분",
+                        "참고로", "해당"))
+_SENTENCE_END = re.compile(r"(?<=[다요][.!?])\s+")
+
+
+def _stems(text: str) -> set[str]:
+    out = set()
+    for word in re.findall(r"[가-힣A-Za-z0-9]{2,}", text or ""):
+        word = re.sub(r"(?:으로|에서|에게|까지|부터|은|는|이|가|을|를|에|의|과|와|로|도|만)$", "",
+                      word)
+        if len(word) >= 2:
+            out.add(word.lower())
+    return out
+
+
+def edit_note(sentence: str, near: str = "") -> bool:
+    """A sentence reporting how the text was written (「그 값을 넣지 않은 문장으로 쓰도록
+    했습니다」): an act of writing, no figure, and no word of `near` (the sentence it stands
+    for) but the document's own (「회의록」, 「문장」)."""
+    body = (sentence or "").strip()
+    # the act is the sentence's predicate, at its end
+    if not body or body.startswith("|") or not WROTE.search(body[-40:]) \
+            or re.search(r"\d", body):
+        return False
+    return not (_stems(body) & _stems(near)) - _DOC_WORDS
+
+
+def without_edit_notes(old: str, new: str) -> str:
+    """A repair reply less the sentences that only report the edit; "" when nothing else is
+    left (the reply then repairs nothing)."""
+    if not new or new.lstrip().startswith("|"):
+        return new
+    parts = [p for p in _SENTENCE_END.split(new.strip()) if p.strip()]
+    kept = [p for p in parts if not edit_note(p, old)]
+    return new if len(kept) == len(parts) else " ".join(kept)
+
+
 #: keys a repair reply puts its fixed sentence under when it answers objects, not strings
 _SENTENCE_KEYS = ("sentence", "fixed", "revised", "new", "text", "corrected")
 
@@ -229,7 +273,8 @@ async def repair(
                 # an unparsable reply item (e.g. `{'sentence': …}`) never goes into the text
                 left.append(finding)
                 continue
-            new = clean(new.strip().strip("「」"))
+            # the writer's account of the fix (「…쓰도록 했습니다」) is no sentence of the text
+            new = without_edit_notes(finding.sentence, clean(new.strip().strip("「」")))
             # a fix keeps the document's 합니다체 (no 「…대상으로 한다.」 in a notice)
             new = keep_register(finding.sentence, new) or ""
             if new != finding.sentence and _acceptable(finding.sentence, new, finding):
