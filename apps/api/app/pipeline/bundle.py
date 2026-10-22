@@ -225,8 +225,8 @@ class Document:
     #: (part number, asked)
     already: list[tuple[int, int]] = field(default_factory=list)
     #: revision: slides asked to join or split items kept as they were, holding no list of
-    #: items or already the count asked (slide number, items held, asked)
-    unlisted: list[tuple[int, int, int]] = field(default_factory=list)
+    #: items or already the count asked (slide number, items held, the figure drawn instead)
+    unlisted: list[tuple[int, int, str]] = field(default_factory=list)
     #: revision: figures a shortened part states that neither it nor the material did
     #: (「2절 13일」)
     added: list[str] = field(default_factory=list)
