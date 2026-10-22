@@ -3957,13 +3957,15 @@ def _sets_card_aside(session: ChatSession, payload: SendMessage) -> bool:
     if revise.asks_question(text):
         # any card (questions, a proposed outline): a question is not its answer or a note
         return True
-    if not revise.asks_edit(text):
-        return False
     #: one named part changed in place, the structure kept
     part_edit = bool(revise.numbered_parts(text, [""] * 50))
     if pending.get("stage") == "clarify":
-        return bool(revise.named_slides(text)) or part_edit
-    return part_edit
+        # a question card asks no shape: a named part put into one, the verb left out
+        # (「3장을 번호 목록으로」, 「4장 항목을 하나로」), is an edit too
+        shaped = bool(deck_service.requested_layout(text) or revise.joins_items(text))
+        return (revise.asks_edit(text) or shaped) and (
+            bool(revise.named_slides(text)) or part_edit)
+    return revise.asks_edit(text) and part_edit
 
 
 def _plans_first(session: ChatSession) -> bool:

@@ -492,15 +492,20 @@ the figures it shows nowhere any more (`deck.lost_across`). Only prose sentences
 captions and list rows are not), a figure is a number with its unit or counter (「3곳」, not
 「표 1의」), money is compared as won (「38.5억」 = 「38억 5천만」 = 「3,850,000,000원」,
 `deck.amounts_in`), and a drawn diagram's labels count as shown. Joining one named slide's
-items (「2장 항목을 하나로 합쳐줘」, "Merge the items on slide 4 into one") is that slide's edit,
+items (「2장 항목을 하나로 합쳐줘」, 「4장 항목을 하나로」 with no verb, "Merge the items on slide 4
+into one") is that slide's edit,
 done by code (`deck.joined_items`, which also splits joined items into the count asked,
 「두 개로 나눠줘」), not a restructure; "Shrink to 3 slides" is read like 「3장으로 줄여줘」: the
 count is put in the outline note even when the planner already chose a new outline
 (`revise.count_change`), English counts in the original request ("an 8-slide talk") are taken
 out, and an English deck is not judged Korean by the conditions the code adds. A table slide
 that repeats an earlier slide's rows is written as points (`deck.repeats_table`). A question or a numbered edit typed while a question card is open is not
-the card's answer (`sessions._sets_card_aside`), nor is a numbered edit that keeps the
-structure on a proposed outline; a question leaves any open card as it was.
+the card's answer (`sessions._sets_card_aside`; on a question card a numbered part put into a
+shape or an item count with no verb, 「3장을 번호 목록으로」, counts too), nor is a numbered edit
+that keeps the structure on a proposed outline; a question leaves any open card as it was.
+The sentence count is read after internal block names are scrubbed, a part number or sentence
+count in the ask (「2절을 두 문장으로」) is not a changed fact that sends the edit through the
+consistency repair, and a repair that undoes the count asked is said in the reply.
 A section rewrite is shown the section's own current text, so a shortened section stays
 itself; a line to the person about the rewrite is dropped (`revise.without_preamble`), and a
 shortened section that reads as another section or points at a table or figure it lacks is

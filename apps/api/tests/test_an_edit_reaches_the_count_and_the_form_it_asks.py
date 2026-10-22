@@ -151,6 +151,83 @@ def test_a_numbered_edit_leaves_an_open_outline_card():
     # a change of the proposed structure is still a note on it
     assert not sessions._sets_card_aside(session("plan"), payload("4장은 빼고 진행해 줘"))
     assert not sessions._sets_card_aside(session("plan"), payload("투자자용으로 바꿔줘"))
+    # a question card: a named part put into a shape, the verb left out, is an edit
+    assert sessions._sets_card_aside(session("clarify"), payload("3장을 번호 목록으로"))
+    assert sessions._sets_card_aside(session("clarify"), payload("4장 항목을 하나로"))
+    assert sessions._sets_card_aside(session("clarify"), payload("3장 수치는 어디서 나온 거야?"))
+    # the card's own answer, naming no part, stays its answer
+    assert not sessions._sets_card_aside(session("clarify"), payload("투자자 대상 10장으로"))
+    assert not sessions._sets_card_aside(session("clarify"), payload("표로 정리해서"))
+
+
+#: reverify-s kd2 slides asked 「N장 항목을 하나로」 with no verb
+KD2_SLIDES = [
+    {"id": "sl1", "layout": "agenda", "title": "발표 순서",
+     "bullets": ["3분기 주요 성과 요약", "매출 및 이익률 전년 동기 비교", "지역별 매출 구성 분석",
+                 "영업 이슈: 출고 지연 원인", "4분기 목표 및 개선 계획",
+                 "핵심 요청: 영남 물류 안정화 예산"]},
+    {"id": "sl3", "layout": "bullets", "title": "매출 및 이익률 전년 동기 비교",
+     "bullets": ["3분기 매출 128억 원: 전년 동기 114억 원 대비 14억 원 증가",
+                 "매출 성장률 +12% 달성", "이익률 6.8% → 7.5%로 0.7%p 상승"]},
+    {"id": "sl3b", "layout": "bullets", "title": "매출 및 이익률 전년 동기 비교",
+     "bullets": ["매출 128억 원 (전년 동기 +12%) · 영업이익 9.6억 원 (이익률 7.5%)",
+                 "전분기 이익률 6.8% 대비 0.7%p 상승"]},
+    {"id": "sl8", "layout": "closing", "title": "경영 의사결정 요약", "body": "질의 환영합니다",
+     "bullets": ["3분기 매출 128억 원 달성", "4분기 목표 매출 140억 원",
+                 "영남 물류 안정화 예산 1.5억 원"]},
+]
+
+
+@pytest.mark.parametrize("ask", ["4장 항목을 하나로", "9장 항목을 하나로.",
+                                 "2장 항목을 하나로 해줘", "4장 항목을 하나로 합쳐줘"])
+def test_items_into_one_without_a_verb_join_by_code(ask):
+    assert revise.joins_items(ask) and deck.items_asked(ask) == 1
+    for slide in KD2_SLIDES:
+        joined = deck.joined_items(slide, deck.items_asked(ask))
+        assert joined is not None and len(deck.points_of(joined)) == 1, slide["id"]
+        assert deck.lost_figures(slide, joined) == []
+    # 「두 개로 나눠줘」 still splits; two slides made one is not an item ask
+    assert deck.items_asked("3장 항목을 두 개로 나눠줘") == 2
+    assert not revise.joins_items("4장과 5장을 하나로")
+
+
+def test_a_shortening_that_names_its_part_changes_no_fact():
+    from app.services import consistency
+
+    assert not consistency.changes_content("2절을 두 문장으로 줄여줘")
+    assert not consistency.changes_content("2절을 줄여줘")
+    assert consistency.changes_content("2절 매출을 42억으로 고쳐줘")
+    assert consistency.changes_content("3절의 마감을 10월 30일로 바꿔줘")
+
+
+@pytest.mark.asyncio
+async def test_the_count_is_read_after_internal_notes_go(monkeypatch):
+    # the second sentence names an internal block: scrubbed, so the part has one sentence
+    noted = ONE + " 확정 수치 기준입니다."
+    doc, notes, events = await _two_sentences(monkeypatch, [noted, noted], before=TWO + " " + ONE)
+    assert len(notes) == 2 and "the last version had 1" in notes[1]
+    assert doc.counted == [(2, 2, 1)]
+
+
+@pytest.mark.asyncio
+async def test_a_repair_that_undoes_the_count_is_said(monkeypatch):
+    bundle = SimpleNamespace(
+        plan=SimpleNamespace(order=[1], revision=revise.Plan(
+            scope="parts", targets=[1], clauses={1: ["2절을 두 문장으로 줄여줘"]})),
+        request=SimpleNamespace(is_deck=False, instruction="2절을 두 문장으로 줄여줘", text="",
+                                model="m", api_key="k"),
+        document=SimpleNamespace(sections=[{"id": "s0", "content": "가."},
+                                           {"id": "s1", "content": TWO}], counted=[]),
+        material=SimpleNamespace(document=[]), computed=SimpleNamespace(prepass=None),
+        findings=SimpleNamespace(aligned=None))
+
+    async def align(parts, **kwargs):
+        return [parts[0], {**parts[1], "content": ONE}], {"type": "step"}, {}
+
+    monkeypatch.setattr(revise_stages.consistency, "align", align)
+    monkeypatch.setattr(revise_stages, "_tidy_tables", lambda bundle: [])
+    [e async for e in revise_stages.Consistency().run(bundle, Context())]
+    assert bundle.document.counted == [(2, 2, 1)]
 
 
 def test_a_figure_after_a_slash_is_read_and_a_table_twice_is_found():
@@ -173,6 +250,8 @@ def test_the_new_patterns_take_linear_time_on_long_blank_input():
     revise.without_added_dates("목요일", "10월 16일" + spaces + "목요일")
     revise.fold_table_pointers("가나다." + spaces + "표" + spaces + "같습니다.", 0)
     deck.items_asked("두" + spaces + "개로 나눠")
+    deck.items_asked("하나로" + spaces + "x")
+    revise.joins_items("항목 하나로" + spaces + "x")
     deck.joined_items({"bullets": ["a" + spaces + "· b"]}, 3)
     deck.figures_in("Cost" + spaces + "/" + spaces + "1k")
     assert time.monotonic() - started < 0.5

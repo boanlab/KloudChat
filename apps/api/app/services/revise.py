@@ -965,12 +965,16 @@ _RESTRUCTURE = re.compile(
 _JOINS = re.compile(r"합쳐|합치|병합|나눠|분리|묶어|묶|\b(?:merge|split|combine|join)\b", re.I)
 #: a part's own items: 「항목」, 「bullets」
 _ITEM_WORD = re.compile(r"항목|요점|글머리|불릿|\b(?:items?|bullets?|points?)\b", re.I)
+#: a count the items are made into, the verb left out: 「항목을 하나로」, 「두 개로 해줘」
+_COUNT_INTO = re.compile(r"(?:하나|한\s?개|두\s?개|세\s?개|네\s?개|\d{1,2}\s?개)\s?(?:로|으로)"
+                         r"(?:\s?(?:만들|해|정리)|[\s.!~]{0,3}$)")
 
 
 def joins_items(message: str) -> bool:
     """Whether the words join or split a part's items (「항목을 하나로 합쳐줘」, 「merge the
-    bullets」)."""
-    return bool(_JOINS.search(message or "") and _ITEM_WORD.search(message or ""))
+    bullets」, 「4장 항목을 하나로」)."""
+    text = message or ""
+    return bool((_JOINS.search(text) or _COUNT_INTO.search(text)) and _ITEM_WORD.search(text))
 
 
 def asks_restructure(message: str) -> bool:
