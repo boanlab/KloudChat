@@ -2900,7 +2900,12 @@ const EN: Record<string, string> = {
   '보안을 위해 저장한 키는 표시하지 않습니다. 그대로 두면 현재 키를 유지합니다.':
     'A stored key is never shown back. Leave this blank to keep the current one.',
   '비밀번호 변경': 'Change password',
-  '사내 서버나 직접 만든 서버를 등록합니다.': 'Register an internal server or one you built yourself.',
+  '공개 주소의 MCP 서버를 등록합니다. 사내 서버는 관리자가 카탈로그에 올립니다.':
+    'Register an MCP server at a public address. An administrator adds in-house servers to the catalogue.',
+  '명령으로 실행하는 서버는 관리자가 허용한 명령만 등록할 수 있습니다.':
+    'A server run as a command can use only a command an administrator allowed.',
+  '이 서버에는 환경 변수를 넣을 수 없습니다.': 'This server cannot take environment variables.',
+  '서버를 추가하지 못했습니다.': 'Could not add the server.',
   '사용자가 의사결정 자료를 붙여넣고 리스크 검토를 요청할 때':
     'When someone pastes decision material and asks for a risk review',
   '사이드바 닫기': 'Close sidebar',

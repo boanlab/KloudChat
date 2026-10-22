@@ -112,3 +112,23 @@ test('an administrator makes a catalogue entry 기본 제공', async ({ page }) 
     slug: 'youtube', byDefault: true, listed: false })
   expect(state.problems).toEqual([])
 })
+
+test('a connector the API refuses keeps the add dialog open with the reason', async ({ page }, testInfo) => {
+  await hubFixture(page, testInfo)
+  await page.route('**/api/connectors', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    await route.fulfill({
+      status: 422,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: '내부 네트워크 주소의 커넥터는 관리자만 등록할 수 있습니다.' }),
+    })
+  })
+  await page.goto('/connectors')
+  await page.getByRole('button', { name: /직접 추가|서버 추가|커스텀/ }).first().click()
+  const form = page.getByRole('dialog')
+  await form.getByRole('textbox', { name: '이름' }).fill('사내 도구')
+  await form.getByPlaceholder('https://mcp.example.com').fill('http://127.0.0.1:9/mcp')
+  await form.getByRole('button', { name: '추가', exact: true }).click()
+  await expect(form.getByText('내부 네트워크 주소의 커넥터는 관리자만 등록할 수 있습니다.')).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+})

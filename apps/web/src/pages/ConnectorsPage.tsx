@@ -1,4 +1,4 @@
-import { errorMessage } from '@/lib/api'
+import { ApiError, errorMessage } from '@/lib/api'
 import {
   CircleAlert,
   Lock,
@@ -433,6 +433,15 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   const [credentialsFor, setCredentialsFor] = useState<CatalogEntry | null>(null)
   const [reCredential, setReCredential] = useState<Connector | null>(null)
   const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState('')
+  const addRefusal = (err: unknown) => {
+    const detail = err instanceof ApiError ? err.detail : ''
+    if (detail === 'stdio_requires_admin') {
+      return t('명령으로 실행하는 서버는 관리자가 허용한 명령만 등록할 수 있습니다.')
+    }
+    if (detail.startsWith('env_not_allowed:')) return t('이 서버에는 환경 변수를 넣을 수 없습니다.')
+    return errorMessage(err, t('서버를 추가하지 못했습니다.'))
+  }
   const [draft, setDraft] = useState({
     name: '',
     transport: 'http' as Connector['transport'],
@@ -636,18 +645,27 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
 
       <Modal
         open={adding}
-        onClose={() => setAdding(false)}
+        onClose={() => {
+          setAdding(false)
+          setAddError('')
+        }}
         title={t('MCP 서버 추가')}
-        description={t('사내 서버나 직접 만든 서버를 등록합니다.')}
+        description={t('공개 주소의 MCP 서버를 등록합니다. 사내 서버는 관리자가 카탈로그에 올립니다.')}
         footer={
           <>
             <Button onClick={() => setAdding(false)}>{t('취소')}</Button>
             <Button
               variant="primary"
               disabled={!draft.name.trim() || !draft.endpoint.trim()}
-              onClick={() => {
-                addCustomConnector({ ...draft, env: parseEnv(draft.envText) })
+              onClick={async () => {
+                try {
+                  await addCustomConnector({ ...draft, env: parseEnv(draft.envText) })
+                } catch (err) {
+                  setAddError(addRefusal(err))
+                  return
+                }
                 setAdding(false)
+                setAddError('')
                 setDraft({ name: '', transport: 'http', endpoint: '', auth: 'none', envText: '' })
               }}
             >
@@ -656,6 +674,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
           </>
         }
       >
+        {addError && <p className="text-base text-danger">{addError}</p>}
         <Field label={t('이름')}>
           <Input
             value={draft.name}
