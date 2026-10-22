@@ -83,7 +83,7 @@ test('an administrator adds a catalogue entry; stored values never come back', a
   await dialog.getByRole('textbox', { name: '변수 이름' }).fill('API_TOKEN')
   await dialog.getByRole('textbox', { name: '값' }).fill('s3cret')
   await shot(page, testInfo, 'connector-catalog-entry')
-  await page.getByRole('button', { name: '저장' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '저장' }).click()
   await expect(admin.getByTestId('catalog-entry')).toHaveCount(3)
   expect(state.calls.find((c) => c.method === 'POST' && c.path === '/admin/connector-catalog')?.body).toMatchObject({
     slug: 'wiki', transport: 'http', endpoint: 'https://wiki.example.com/mcp', env: { API_TOKEN: 's3cret' }, listed: true })
@@ -106,7 +106,7 @@ test('an administrator makes a catalogue entry 기본 제공', async ({ page }) 
   const box = page.getByTestId('catalog-entry-default')
   await expect(box).not.toBeChecked()
   await box.check()
-  await page.getByRole('button', { name: '저장' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '저장' }).click()
   await expect(youtube).toContainText('기본 제공')
   expect(state.calls.find((c) => c.method === 'PUT' && c.path === '/admin/connector-catalog/e2')?.body).toMatchObject({
     slug: 'youtube', byDefault: true, listed: false })
