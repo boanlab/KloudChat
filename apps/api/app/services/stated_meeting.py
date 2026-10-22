@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 
 from app.services import meeting_memo, stated_policy, verify
-from app.services.stated_days import _PARTICLE, _words
+from app.services.stated_days import _GENERIC, _PARTICLE, _words
 
 #: a length of time: 「약 20분 만에」, 「1시간 동안」, 「30분간」, 「2시간이 소요」
 _DURATION = re.compile(
@@ -131,7 +131,15 @@ _SELF_NOTE = re.compile(
     r"|\d\)?\s?기준(?:으로)?\s|산출(?:되었|됐|했|하였|합니다|된다)|환산(?:하여|해|했|한)"
     r"|자료에\s?근거(?:한|하여|해)|자료를\s?(?:바탕|근거|토대)으로"
     # a day or year the writer took as its basis: 「2026년을 기준으로 확정했습니다」
-    r"|(?:년|일|시점|날짜|연도|날)(?:을|를|이|로)?\s?기준(?:으로|삼아|을\s?삼)")
+    r"|(?:년|일|시점|날짜|연도|날)(?:을|를|이|로)?\s?기준(?:으로|삼아|을\s?삼)"
+    # a value the writer worked out: 「… 2026-10-21로 계산되었습니다」
+    r"|계산(?:되었|됐|했|하였|한\s?결과|된\s?결과)"
+    # the document's own earlier parts: 「실행 계획 단계에서 확인한 바와 같이」
+    r"|(?:확인|살펴|정리|언급)한\s?바와\s?같이"
+    r"|(?:앞서|위에서|앞에서)\s?(?:살펴본|정리한|확인한|언급한)"
+    # the memo as a written source: 「원본 회의 기록에서는 '화'요일로 명시되어」
+    r"|(?:원본|원문|메모)[가-힣 ]{0,8}(?:상|에서는|에서|에는|에)\s"
+    r"[^.\n]{0,24}(?:명시|기재|표기|적혀|적힌|쓰여)(?!되지|하지|지\s?않)")
 #: the document itself as a place: 「본문에」, 「회의록에는」, 「표 1에」
 _DOC_PLACE = re.compile(
     r"(?:본문|회의록|문서|보고서|본\s?자료|(?:위|아래|이|본)\s?표|표\s?\d{1,2})"
@@ -345,6 +353,14 @@ _CLAUSE_END = ((re.compile(r"([었았였했])(?:으며|고)$"), r"\1습니다"),
                (re.compile(r"(?:이)?며$"), "입니다"))
 
 
+#: a clause's own end before a comma: 「…요청했으며」, 「…했고」, 「…했지만」
+_CLAUSE_TAIL = re.compile(
+    r"(?:[하되이으]며|[하했되됐었았였이않]고|지만|는데|으나|[어아여해]서|므로)$")
+#: an agreement word modifying a noun: 「합의한 업무」, 「합의된 사항」, 「동의한 일정」
+_AGREED_NOUN = re.compile(r"(?:합의|동의|찬성)(한|된|하신)(?=\s[가-힣])")
+_NEUTRAL = {"한": "정한", "하신": "정한", "된": "정해진"}
+
+
 def consent_cut(piece: str, phrase: str) -> str:
     """`piece` without the agreement `phrase` (a clause, a cell's part), its sentence ended
     again when the clause was the last; "" when it cannot be."""
@@ -361,6 +377,11 @@ def consent_cut(piece: str, phrase: str) -> str:
     if phrase not in bare:
         return ""
     at = bare.index(phrase)
+    if at < len(clauses) - 1 and not _CLAUSE_TAIL.search(phrase):
+        # a list's part, not a clause (「합의한 업무는 A와 B, 그리고 C 3건입니다」): only the
+        # agreement word modifying a noun goes
+        plain = _AGREED_NOUN.sub(lambda m: _NEUTRAL[m.group(1)], piece, count=1)
+        return plain if plain != piece else ""
     phrase = clauses[at]
     rest = clauses[:at] + clauses[at + 1:]
     if at == len(clauses) - 1:
@@ -375,6 +396,137 @@ def consent_cut(piece: str, phrase: str) -> str:
             return ""
     plain = ", ".join(rest)
     return plain if len(_words(plain)) >= 3 else ""
+
+
+#: a sentence's clauses: at commas and after a clause's own end (「…세우고 」, 「…요청했으나 」)
+_CLAUSE_SPLIT = re.compile(
+    r",\s{1,2}|(?<=[하되이으]며)\s|(?<=[하했되됐었았였이않우]고)\s|(?<=으나)\s"
+    r"|(?<=지만)\s|(?<=는데)\s")
+#: a person as the doer of a clause: 「박민호가 」, 「이수연은 」, 「팀장이 」
+_DOER = r"(?:이|가|은|는|께서)(?=\s)"
+#: a memo clause giving someone a task: 「…준비하기로 함」, 「…비교표 가져오기」, 「…맡음」
+_ASSIGNED = re.compile(r"기로|키로|맡|담당|가져오|해야|하도록|할\s?것")
+#: a task given ahead at a sentence's end: 「…하기로 했습니다」, 「… 예정입니다」
+_SET_AHEAD = re.compile(r"(?:기로\s?(?:했|하였|정했)|예정|할\s?것)[가-힣]{0,4}$")
+#: a state, no act: 「확인이 필요합니다」, 「…에 해당합니다」
+_STATE_END = re.compile(r"(?:필요|해당|가능|중요|의미|동일|유사)합니다$")
+
+
+def _ahead(sentence: str) -> bool:
+    """Whether a sentence's predicate is an act still to come (「…집행합니다」, 「…가져옵니다」,
+    「…하기로 했습니다」), not the meeting told (「…제시했습니다」) or a state (「…입니다」)."""
+    tail = re.sub(r"\s{0,2}\([^()]{0,20}\)\s{0,2}$", "", sentence.strip().rstrip(".!?。 "))
+    if _SET_AHEAD.search(tail):
+        return True
+    if not tail.endswith("니다") or _STATE_END.search(tail):
+        return False
+    before = tail[-4:-3] if tail.endswith("습니다") else tail[-3:-2]
+    if not re.fullmatch(r"[가-힣]", before) or before in "입됩않":
+        return False
+    # a past or 있다·없다 stem ends in ㅆ or ㅄ (「끝났습니다」, 「있습니다」); 「않습니다」 is none
+    return (ord(before) - 0xAC00) % 28 not in (18, 20)
+
+
+#: what an absentee's bracket gives that names no one: 「정우성(출장)」
+_NOT_ROLE = re.compile(r"출장|휴가|병가|외근|연차|교육|사정|불참|미정")
+
+
+def people(material: str) -> dict[str, list[str]]:
+    """The memo's attendees and absentees, each with the words that name them (「김지훈(팀장)」:
+    김지훈, 팀장)."""
+    out: dict[str, list[str]] = {}
+    for m in re.finditer(r"(?<![가-힣])([가-힣]{3,4})(?:\(([가-힣]{1,6})\))?(?=[\s,，、)]|$)",
+                         " ".join(re.findall(r"(?:참석|불참)[^.\n;]{0,120}", material or ""))):
+        name, role = m.group(1), m.group(2)
+        if name.startswith(("참석", "불참")):
+            continue
+        role = role if role and not _NOT_ROLE.fullmatch(role) else ""
+        out[name] = [name, *([role] if role else [])]
+    return out
+
+
+#: acts of making a thing, one act for a task's wording: 「시안 제작」 for 「시안을 준비」
+_MAKING = ("제작", "작성", "준비", "마련", "만들", "가져", "정리", "수립")
+
+
+def task_given(task: str, texts: list[str]) -> bool:
+    """Whether one of `texts` (memo clauses, flattened) gives `task`: it holds a word of the
+    task and the task's act (its last word, unless a generic one like 「준비」), or most of the
+    task's words."""
+    words = _words(task)
+    if not words:
+        return True
+    tokens = re.findall(r"[가-힣A-Za-z0-9]{2,}", re.sub(r"\([^()]{0,40}\)", " ", task))
+    act = _PARTICLE.sub("", tokens[-1]).lower() if tokens else ""
+    act = act if act in words else ""
+    making = act[:2] in _MAKING
+    for text in texts:
+        hit = sum(1 for w in words if w in text)
+        if hit * 2 > len(words) or (hit and (not act or act[:2] in text or (
+                making and any(m in text for m in _MAKING)))):
+            return True
+    return False
+
+
+def items_of(material: str, names: list[str]) -> list[str]:
+    """The memo's items (an agenda's stretch, a sentence) naming any of `names`, flattened."""
+    return [_flat(i) for i in _ITEM_BREAK.split(material or "")
+            if i.strip() and any(n in i for n in names)]
+
+
+#: the document's own table or figure, which no one does anything to: 「표 3은 … 보여줍니다」
+_PART_NAMED = re.compile(r"(?:표|그림)\s?\d")
+#: a verb's ending on a word: 「처리하기로」 → 「처리」, 「포함해」 → 「포함」
+_VERB_TAIL = re.compile(r"(?:하기|하는|하여|해서|하며|했|한|할|합|해)$")
+
+
+def _things(clause: str) -> set[str]:
+    """A clause's words less its verbs (「…합니다」, 「…세우고」) and verb endings."""
+    out = set()
+    for w in _words(clause):
+        if w.endswith(("다", "며", "고", "서")):
+            continue
+        w = _VERB_TAIL.sub("", w)
+        if len(w) >= 2 and w not in _GENERIC:
+            out.add(w)
+    return out
+
+
+def unowned_task(piece: str, material: str) -> bool:
+    """A clause giving a memo person a task (「박민호가 50만원 범위 내에서 지출 계획을 세우고
+    집행합니다」), or an act ahead for no one (「포스터에 해당 일정을 포함해 제작합니다」), most of
+    whose words no memo item (one naming that person) holds."""
+    if piece.lstrip().startswith("|") or stated_policy.MARK in piece or not _ahead(piece):
+        return False
+    from app.services import report_checks
+
+    named = people(material)
+    tasks = [_flat(c) for c in report_checks._MEMO_CLAUSE.split(material or "")
+             if _ASSIGNED.search(c)]
+    clauses = [c.strip() for c in _CLAUSE_SPLIT.split(piece.strip()) if c.strip()]
+    for k, clause in enumerate(clauses):
+        # a person the clause names (「박민호가」, 「최다은 위원이」, 「팀장이」)
+        doers = [names for names in named.values()
+                 if names[0] in clause
+                 or any(re.search(rf"(?<![가-힣]){re.escape(n)}{_DOER}", clause) for n in names)]
+        if doers:
+            names = [n for d in doers for n in d]
+            texts = items_of(material, names)
+        elif k == len(clauses) - 1:
+            # an act for no one on a memo task's thing (「포스터에 … 제작합니다」 by 「이수연이
+            # 포스터 시안을 … 준비하기로 함」)
+            names, texts = [], tasks
+            if _NEXT_SAID.search(clause) or _PART_NAMED.search(clause) or not any(
+                    w in t for w in _things(clause) if len(w) >= 3 and not re.search(r"\d", w)
+                    for t in texts):
+                continue
+        else:
+            continue
+        words = {w for w in _things(clause) if w not in names}
+        novel = min((sum(1 for w in words if w[:2] not in t) for t in texts), default=len(words))
+        if len(words) >= 3 and novel >= 2 and novel * 2 > len(words):
+            return True
+    return False
 
 
 def promised(piece: str, material: str) -> bool:
@@ -501,6 +653,7 @@ def _goes_whole(piece: str, material: str, next_part: bool,
             or promised(piece, material) or unraised(piece, material, rows)
             or all_set(piece, rows) or advised(piece, material) or if_not(piece, material)
             or self_note(piece, material) or unknowable(piece, material)
+            or unowned_task(piece, material)
             or (not row and consents(piece, material, before) == [piece.strip().rstrip(".!?。")])
             or ((next_part or (not row and bool(_NEXT_SAID.search(piece))))
                 and unset_agenda(piece, material)))
@@ -692,11 +845,15 @@ def why(phrases: list[str], piece: str = "", material: str = "",
           if unknowable(piece, material) else []),
         *(["자료가 이 안건에 동의·합의를 적지 않았으니 누가 동의했다고 쓰지 마라."]
           if consents(piece, material) else []),
+        *(["자료가 이 사람에게 맡기지 않은 일, 아무도 맡지 않은 일을 실행 계획처럼 쓰지 마라 — "
+           "자료에 있는 할 일만 자료의 담당자와 함께 쓴다."]
+          if unowned_task(piece, material) else []),
     ]
     return " ".join([told, *more])
 
 
 __all__ = ["advised", "all_set", "asks_anew", "consent_cut", "consents", "findings",
-           "gap_note", "guessed", "if_not", "is_next_part", "mail_line", "mail_lines", "note_cut",
-           "open_rows", "promised", "reasons", "self_note", "settle", "unknowable", "unraised",
-           "unset_agenda", "untraced", "values", "why"]
+           "gap_note", "guessed", "if_not", "is_next_part", "items_of", "mail_line",
+           "mail_lines", "note_cut", "open_rows", "people", "promised", "reasons", "self_note",
+           "settle", "task_given", "unknowable", "unowned_task", "unraised", "unset_agenda",
+           "untraced", "values", "why"]

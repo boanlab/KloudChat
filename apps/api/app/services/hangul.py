@@ -137,12 +137,25 @@ _PARTICLE = re.compile(
 )
 
 
+#: a numbered item named by a copula on its number: 「안건 2인 예산 안건」 (read 「2명」)
+_NUMBERED_COPULA = re.compile(r"(?<![가-힣])(안건|의제|항목)\s?([1-9]\d?)인(?=\s[가-힣])")
+_ORDINAL_WORDS = ("첫", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉", "열")
+
+
+def _ordinal_item(m: re.Match) -> str:
+    n = int(m.group(2))
+    word = _ORDINAL_WORDS[n - 1] if n <= len(_ORDINAL_WORDS) else str(n)
+    return f"{word} 번째 {m.group(1)}인"
+
+
 def tidy_spacing(text: str) -> str:
-    """Close spaces before counters and particles."""
+    """Close spaces before counters and particles; a numbered item's copula said as its
+    ordinal (「안건 2인 예산 안건」 → 「두 번째 안건인 예산 안건」)."""
     if not text:
         return text
     text = _COUNTER_LONG.sub(r"\1\2", text)
     text = _COUNTER_SHORT.sub(r"\1\2", text)
+    text = _NUMBERED_COPULA.sub(_ordinal_item, text)
     return _PARTICLE.sub(r"\1\2", text)
 
 
