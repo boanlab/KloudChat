@@ -126,3 +126,36 @@ test('a new account keeps on an official skill without adding it first', async (
   await expect(dialog.getByRole('group', { name: '공식 스킬' }).getByRole('checkbox', { name: /견적 계산/ })).toBeChecked()
   expect(state.problems).toEqual([])
 })
+
+test('an agent saved while an official skill is still being added keeps that skill', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  await page.route('**/api/skills', (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ json: [] }) : route.fallback(),
+  )
+  // A slow add: the person saves before it answers.
+  let release = () => {}
+  const held = new Promise<void>((done) => (release = done))
+  await page.route('**/api/skills/*/install', async (route) => {
+    await held
+    await route.fallback()
+  })
+  await page.goto('/customize/agents/new')
+  const form = page.getByTestId('agent-form')
+  await expect(form).toBeVisible({ timeout: 15_000 })
+  await form.getByRole('textbox', { name: '이름' }).fill('견적 도우미')
+  await page.getByText('스킬과 도구', { exact: true }).click()
+  await page.getByTestId('active-skill-picker').getByRole('button', { name: '켜 둘 스킬 고르기' }).click()
+  await page.getByRole('dialog', { name: '켜 둘 스킬 고르기' }).getByRole('checkbox', { name: /견적 계산/ }).check()
+  await page.keyboard.press('Escape')
+  // Typed while the add is pending: kept too.
+  await form.getByRole('textbox', { name: '이름' }).fill('견적 도우미 2')
+  await form.getByRole('button', { name: '만들기' }).click()
+  await page.waitForTimeout(300)
+  release()
+
+  await expect(page).toHaveURL(/\/customize\/agents\/a9999/)
+  const made = state.calls.filter((c) => c.method === 'POST' && c.path === '/agents')
+  expect(made).toHaveLength(1)
+  expect(made[0].body).toMatchObject({ name: '견적 도우미 2', activeSkillIds: [`copy-${storeSkills[0].id}`.slice(0, 32)] })
+  expect(state.problems).toEqual([])
+})

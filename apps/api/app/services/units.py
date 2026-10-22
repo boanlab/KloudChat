@@ -401,6 +401,14 @@ def _fix_products(text: str) -> tuple[str, dict[str, str]]:
         # plain-digit left side under 1만 beside 만/억 result: other scale, not wrong
         if re.search(r"[조억만]", rhs) and not re.search(r"[조억만천]", lhs) and abs(value) < 1e4:
             return m.group(0)
+        if len(parts) == 3 and parts[1] == "÷" and value and abs(1 / value - stated) \
+                / max(abs(stated), 1e-9) < 0.005:
+            # 「80만원 ÷ 30만원 = 0.375」: the operands swapped, the result right
+            whole, start = m.group(0), m.start()
+            lead = whole[: m.start("lhs") - start]
+            body = whole[m.start("lhs") - start: m.end("lhs") - start]
+            turned = re.sub(r"^(.*?)(\s?÷\s?)(.*)$", r"\3\2\1", body, flags=re.S)
+            return lead + turned + whole[m.end("lhs") - start:]
         right = _ko_written(value, rhs)
         # never 「0만」
         if not re.search(r"[1-9]", right):

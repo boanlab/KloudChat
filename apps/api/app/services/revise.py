@@ -197,6 +197,7 @@ async def plan(
     }
     decided = within_named_parts(decided, parts, message)
     decided = named_target(into_existing_part(decided, parts, message), parts, message)
+    decided = numbered_target(decided, parts, message)
     decided = count_change(decided, parts, message)
     decided = notes_everywhere(decided, parts, message)
     return place_insert(decided, parts, message)
@@ -210,6 +211,62 @@ _START_OVER = re.compile(
 
 def obviously_new(message: str) -> bool:
     return bool(_START_OVER.search(message))
+
+
+#: a question, not an ask: 「몇 장이야?」, 「발표자는 누구인가요」, 「무슨 뜻이야」
+_QUESTION_WORD = re.compile(
+    r"몇|얼마|무엇|뭐|무슨|어디|언제|누가|누구|왜|어떻게|어떤|인가요|나요|니까")
+_QUESTION_END = re.compile(r"(?:\?|？|까|니|나|냐|지|야|요)$")
+_ASK_VERB = re.compile(
+    r"줘|주세요|주십시오|주실|줄\s?수|줄래|바랍니다|부탁|고쳐|고치|바꿔|바꾸|넣어|넣을|빼|지워|지우|"
+    r"없애|삭제|추가|줄여|줄이|늘려|늘리|정리해|다듬|붙여|채워|그려|나눠|합쳐|옮겨|맞춰|만들어|"
+    r"써\s?(?:줘|주)|해\s?(?:줘|주|줄|봐)|(?:로|으로)\s?(?:해|하|할)")
+
+
+#: an edit asked in English: 「Make slide 3 a table」, 「Can you shorten slide 2?」
+_ASK_VERB_EN = re.compile(
+    r"\b(?:change|make|turn|rewrite|reword|shorten|lengthen|add|remove|delete|drop|convert|"
+    r"replace|fix|update|move|merge|split|put|insert|simplify|expand|cut|trim|swap|rename|"
+    r"translate|tighten|condense)\b", re.I)
+#: no change wanted, said outright: 「설명만 해줘」, 「don't change anything」
+_NO_CHANGE = re.compile(
+    r"설명만|알려만|답만|대답만|말만\s?해|아무것도\s?(?:바꾸|고치|건드리)지|"
+    r"\b(?:do\s?n[o']?t|do\s+not)\s+(?:change|edit|touch|modify)\s+anything\b|"
+    r"\bwithout\s+changing\b|\bno\s+changes?\b|"
+    r"\bjust\s+(?:answer|explain|tell)\b|\bonly\s+(?:answer|explain)\b", re.I)
+#: no change wanted, beside a question: 「바꾸지 말고 …뭐야?」, 「don't change it, why …?」
+_KEEP_AS_IS = re.compile(
+    r"바꾸지\s?(?:마|말)|고치지\s?(?:마|말)|그대로\s?두|"
+    r"\b(?:do\s?n[o']?t|do\s+not)\s+(?:change|edit|touch)\b|\bleave\s+it\b", re.I)
+#: a question in English: 「What is …?」, 「Why does slide 3 …?」
+_QUESTION_EN = re.compile(
+    r"(?:^|[.!?]\s{1,4})(?:what|why|where|which|who|whose|when|how|is|are|does|do|did)\b",
+    re.I)
+
+
+def asks_question(message: str) -> bool:
+    """Whether the words ask something rather than ask for a change (「지금 슬라이드가 몇
+    장이야?」, 「핵심이 뭐야? 설명만 해줘」, 「What is …? Don't change anything.」); a polite
+    ask (「바꿔 줄 수 있나요?」, 「Can you make slide 3 a table?」) is not one."""
+    text = (message or "").strip()[-400:].rstrip(" .!")
+    if not text:
+        return False
+    if _NO_CHANGE.search(text):
+        return True
+    shaped = "?" in text or "？" in text or bool(
+        _QUESTION_WORD.search(text) and _QUESTION_END.search(text))
+    if _KEEP_AS_IS.search(text) and shaped:
+        return True
+    if _ASK_VERB.search(text) or _ASK_VERB_EN.search(text):
+        return False
+    return text.endswith(("?", "？")) or bool(
+        _QUESTION_WORD.search(text) and _QUESTION_END.search(text)) or bool(
+        "?" in text and _QUESTION_EN.search(text))
+
+
+def asks_edit(message: str) -> bool:
+    """Whether the words carry a concrete edit verb (Korean or English)."""
+    return bool(_ASK_VERB.search(message or "") or _ASK_VERB_EN.search(message or ""))
 
 
 #: Export format words; 「한글」 counts only beside a file word or hand-over verb.
@@ -860,9 +917,72 @@ _ASK_BREAK = re.compile(
     r"|,\s*(?=\d{1,2}\s?(?:번째\s?)?(?:장|슬라이드))")
 
 
+#: a slide or section named by number in English: 「slide 4」, 「slides 2-3」, 「the 4th slide」
+_EN_PART_REF = re.compile(
+    r"\b(?:slides?|sections?|pages?)\s{1,3}(\d{1,2})"
+    r"(?:\s{0,3}(?:-|–|to|and|&)\s{0,3}(\d{1,2}))?(?!\d)"
+    r"|\bthe\s{1,3}(\d{1,2}|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)"
+    r"(?:st|nd|rd|th)?\s{1,3}(?:slide|section|page)\b", re.I)
+_ORDINAL = {w: i + 1 for i, w in enumerate(
+    "first second third fourth fifth sixth seventh eighth ninth tenth".split())}
+
+
+def _english_refs(text: str) -> set[int]:
+    out: set[int] = set()
+    for first, last, nth in _EN_PART_REF.findall(text or ""):
+        if nth:
+            out.add(_ORDINAL.get(nth.lower()) or int(nth))
+        elif last and int(first) < int(last) <= int(first) + 9:
+            out.update(range(int(first), int(last) + 1))
+        else:
+            out.update({int(first), *([int(last)] if last else [])})
+    return out
+
+
 def named_slides(text: str) -> set[int]:
-    """Slide numbers (one-based) the words name."""
-    return {int(a or b) for a, b in _SLIDE_REF.findall(text or "")}
+    """Slide numbers (one-based) the words name, in Korean or English."""
+    return {int(a or b) for a, b in _SLIDE_REF.findall(text or "")} | _english_refs(text)
+
+
+#: a change of the document's structure or a rewrite of it all: parts added, cut, merged, split,
+#: moved or counted again, the outline or the whole document
+_RESTRUCTURE = re.compile(
+    r"추가|삭제|빼\s{0,8}줘|빼고|없애|합쳐|합치|병합|나눠|분리|순서|옮겨|옮기|구성|목차|개요|"
+    r"\d{1,3}\s{0,4}(?:장|절|쪽|페이지|슬라이드)\s{0,4}(?:으로|로|더|짜리|만)|장\s?수|"
+    r"늘려|늘리|처음부터|새로\s{0,4}(?:써|작성|만들)|다시\s{0,4}(?:써|짜|만들)|전체|전부|모든|"
+    r"\b(?:add|insert|remove|delete|drop|merge|split|reorder|restructure|outline|more|fewer|"
+    r"whole|entire|all\s{1,4}slides|start\s{1,4}over|from\s{1,4}scratch)\b", re.I)
+
+
+def asks_restructure(message: str) -> bool:
+    """Whether the words ask for a new structure or the whole document anew, not one part's
+    change: only these may re-plan the outline."""
+    return bool(_RESTRUCTURE.search(" ".join((message or "").split())))
+
+
+def numbered_parts(message: str, parts: list[str]) -> list[int] | None:
+    """Zero-based parts the words name by number (「4장」, 「2절」, 「slide 4」) when that is
+    where the ask goes: all within the document, at most `MAX_TARGETS`, no structure change."""
+    if asks_restructure(message):
+        return None
+    numbers = named_slides(message) | {int(n) for n in _SECTION_REF.findall(message or "")}
+    targets = sorted(n - 1 for n in numbers if 1 <= n <= len(parts))
+    if not targets or len(targets) != len(numbers) or len(targets) > MAX_TARGETS:
+        return None
+    return targets
+
+
+def numbered_target(plan: Plan, parts: list[str], message: str) -> Plan:
+    """The parts the words name by number (「4장」, 「2절」, 「slide 4」) as the targets, whatever
+    the planner picked; a structure change is left to it."""
+    if plan.scope not in ("parts", "whole", "outline"):
+        return plan
+    targets = numbered_parts(message, parts)
+    if targets is None:
+        return plan
+    if plan.scope == "parts" and plan.targets == targets:
+        return plan
+    return Plan(scope="parts", targets=targets, note=plan.note, usage=plan.usage)
 
 
 def slide_clause(instruction: str, index: int) -> str:
@@ -870,7 +990,7 @@ def slide_clause(instruction: str, index: int) -> str:
     바꿔줘. 그리고 8장 그림은 빼줘.」 → 「8장 그림은 빼줘.」 for the eighth. An instruction naming
     no slide number is meant whole for every target."""
     clauses = [c.strip() for c in _ASK_BREAK.split(instruction or "") if c and c.strip()]
-    named = [(c, {int(a or b) for a, b in _SLIDE_REF.findall(c)}) for c in clauses]
+    named = [(c, named_slides(c)) for c in clauses]
     if not any(numbers for _, numbers in named):
         return instruction
     mine = [c for c, numbers in named if index + 1 in numbers]
@@ -1310,7 +1430,8 @@ def section_asks(instruction: str, parts: list[str], texts: list[str]
     out: dict[int, list[str]] = {}
     summary = 0
     for clause in clauses:
-        numbered = {int(n) - 1 for n in _SECTION_REF.findall(clause)}
+        numbered = {int(n) - 1 for n in _SECTION_REF.findall(clause)} | {
+            n - 1 for n in _english_refs(clause)}
         if any(not 0 <= n < len(parts) for n in numbered):
             return None
         named = {i for i, name in enumerate(parts)
@@ -1370,6 +1491,17 @@ def numbered_removals(instruction: str) -> list[tuple[str, int]]:
                 if (kind, int(n)) not in out:
                     out.append((kind, int(n)))
     return out
+
+
+def settled_by_code(instruction: str, parts: list[str], texts: list[str]) -> bool:
+    """Whether a report edit is numbered removals plus asks that each name their part (「표 2와
+    그림 1은 빼고, 맨 앞에 3줄 요약을 넣어줘」): routed and done without the planner, whose reading
+    may turn it into a new outline."""
+    if not numbered_removals(instruction):
+        return False
+    rest = without_numbered_removals(instruction)
+    return not rest or (not _STRUCTURAL_ASK.search(rest)
+                        and section_asks(rest, parts, texts) is not None)
 
 
 def without_numbered_removals(instruction: str) -> str:
@@ -1485,6 +1617,25 @@ def _drop_references(text: str, name: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
 
 
+#: a sentence pointing at a table or figure by place: 「아래 표와 같습니다」, 「위 그림처럼」
+_POINTER = {kind: re.compile(rf"(?:아래|위|다음|하단|상단)(?:의)?\s?{kind}(?!{not_it})")
+            for kind, not_it in (("표", "현|준|시|정|본|기|명|지|면"), ("그림", "자"))}
+
+
+def _drop_pointers(text: str, kind: str) -> str:
+    """`text` without its short sentences pointing at a `kind` by place (none is left)."""
+    out = []
+    for line in text.split("\n"):
+        if line.lstrip().startswith(("|", "![", "```")) or not _POINTER[kind].search(line):
+            out.append(line)
+            continue
+        kept = [x for x in _SENTENCE_SPLIT.split(line)
+                if not (_POINTER[kind].search(x) and len(x) <= 80)]
+        if kept:
+            out.append(" ".join(kept))
+    return "\n".join(out)
+
+
 def drop_numbered(parts: list[dict], asked: list[tuple[str, int]]
                   ) -> tuple[list[dict], list[str], list[str]]:
     """`(parts, taken, absent)`: the asked tables and figures removed by hand, with their
@@ -1522,6 +1673,11 @@ def drop_numbered(parts: list[dict], asked: list[tuple[str, int]]
             for start, end in sorted(spans[index], reverse=True):
                 del lines[start:end]
             text = "\n".join(lines)
+            for kind in ("표", "그림"):
+                if any(t.startswith(f"{index + 1}절의 {kind} ") for t in taken) and not any(
+                        b[0] == kind for b in _blocks_in(text)):
+                    # 「아래 표와 같습니다」 with no table left under it
+                    text = _drop_pointers(text, kind)
         for name in (t.split("의 ", 1)[1] for t in taken):
             text = _drop_references(text, name)
         text = re.sub(r"\n{3,}", "\n\n", text).strip("\n")
@@ -1530,6 +1686,56 @@ def drop_numbered(parts: list[dict], asked: list[tuple[str, int]]
             part.pop("factCheck", None)
         out.append(part)
     return out, taken, absent
+
+
+#: an ask for a new table or figure in the same edit: 「표로 정리해」, 「흐름도를 넣어」
+_ASKS_BLOCK = {
+    kind: re.compile(
+        rf"(?:{words})\s?(?:으로|로|을|를|도|하나)?\s?(?:넣|추가|그려|그리|만들|바꿔|정리)")
+    for kind, words in (("표", "표"), ("그림", "그림|도식|도해|구조도|흐름도|개념도|다이어그램"))}
+
+
+def _block_rows(text: str, start: int, end: int) -> set[str]:
+    """A table's or figure's lines without its caption, spacing evened."""
+    return {" ".join(line.split()) for line in text.split("\n")[start:end]
+            if line.strip() and not _CAPTION_OF["표"].match(line)
+            and not _CAPTION_OF["그림"].match(line)}
+
+
+def drop_added(old: str, new: str, removed: list[str], asked: str = "") -> str:
+    """`new` without the tables or figures its rewrite added to a part a numbered one was just
+    taken out of (`removed`: 「표 2」): the removal holds through the same edit's rewrite, unless
+    `asked` asks for a new one."""
+    kinds = {name.split(" ", 1)[0] for name in removed}
+    kinds = {k for k in kinds if k in _ASKS_BLOCK and not _ASKS_BLOCK[k].search(asked or "")}
+    if not kinds:
+        return new
+    had = [b for b in _blocks_in(old) if b[0] in kinds]
+    has = [b for b in _blocks_in(new) if b[0] in kinds]
+    old_rows = [_block_rows(old, b[1], b[2]) for b in had]
+
+    def kinship(block: tuple[str, int, int, int | None]) -> int:
+        rows = _block_rows(new, block[1], block[2])
+        return max((len(rows & seen) for seen in old_rows), default=0)
+
+    gone: list[tuple[str, int, int, int | None]] = []
+    for kind in kinds:
+        mine = [b for b in has if b[0] == kind]
+        extra = len(mine) - sum(1 for b in had if b[0] == kind)
+        if extra > 0:
+            # the least like any block the part kept
+            gone += sorted(mine, key=kinship)[:extra]
+    if not gone:
+        return new
+    lines = new.split("\n")
+    for _, start, end, _ in sorted(gone, key=lambda b: b[1], reverse=True):
+        del lines[start:end]
+    text = "\n".join(lines)
+    kept = {(b[0], b[3]) for b in has if b not in gone}
+    for kind, _, _, number in gone:
+        if number is not None and (kind, number) not in kept:
+            text = _drop_references(text, f"{kind} {number}")
+    return re.sub(r"\n{3,}", "\n\n", text).strip("\n")
 
 
 #: summary the person asked for at the document's start; code builds the block
@@ -1573,6 +1779,10 @@ def summary_block(text: str, n: int, title: str, fields: list[str]) -> str | Non
             continue
         if not _title_line(line, heads):
             kept.append(line)
+    if len(kept) < n:
+        # the lines run together as one paragraph: one sentence a line
+        kept = [x.strip() for line in kept for x in _SENTENCE_SPLIT.split(line)
+                if x.strip() and not _title_line(x.strip(), heads)]
     if len(kept) < n:
         return None
     return "```callout\n핵심\n" + "\n".join(kept[:n]) + "\n```"

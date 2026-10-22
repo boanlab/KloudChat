@@ -109,6 +109,12 @@ def reads_english(text: str) -> bool:
     return latin >= 40 and len(_HANGUL.findall(body)) * 10 < latin
 
 
+def typed_in_english(text: str) -> bool:
+    """Whether a short ask is typed in English: Latin words and no Hangul (「Make slide 3 a
+    table.」 is too short for `reads_english`)."""
+    return not _HANGUL.search(text or "") and len(re.findall(r"[A-Za-z]{2,}", text or "")) >= 3
+
+
 def localize_marks(text: str) -> str:
     """An answer in English with the checks' 「(확인 필요)」 as 「(needs checking)」; a Korean
     answer as it is."""

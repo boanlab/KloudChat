@@ -78,4 +78,37 @@ def summary(texts: Iterable[str], block: dict | None = None) -> tuple[int, str]:
     return total, shown
 
 
-__all__ = ["PLACEHOLDER", "blank", "for_header", "found", "head_blanks", "is_blank", "summary"]
+#: a blank standing for a date: 「[회의 일자]」, 「[기한]」
+_DATE_BLANK = re.compile(r"\[(?:[가-힣]{1,4} ?)?(?:일자|일시|날짜|기한|마감일?)\]")
+#: a written date (weekday, time) ending right before the blank
+_DATE_BEFORE = re.compile(
+    r"(?:\d{1,2} ?일|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/.]\d{1,2}\.?)"
+    r"(?: ?\([월화수목금토일][^()\n]{0,24}\))?"
+    r"(?: ?(?:오전|오후)? ?\d{1,2}(?:시|:\d{2})(?: ?\d{1,2}분)?)?"
+    r"[ \t]{1,3}$")
+#: a written date starting right after it
+_DATE_AFTER = re.compile(
+    r"^[ \t]{1,3}(?:(?:20\d{2} ?년 ?)?\d{1,2} ?월 ?\d{1,2} ?일"
+    r"|20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2})")
+
+
+def drop_beside_values(text: str) -> str:
+    """A date blank right next to the date it stands for taken out: 「일시: 2026-10-14(수)
+    [회의 일자]」 → 「일시: 2026-10-14(수)」."""
+    if "[" not in (text or ""):
+        return text
+    out, at = [], 0
+    for m in _DATE_BLANK.finditer(text):
+        before, after = text[max(at, m.start() - 60):m.start()], text[m.end():m.end() + 40]
+        if _DATE_BEFORE.search(before):
+            out.append(text[at:m.start()].rstrip(" \t"))
+            at = m.end()
+        elif _DATE_AFTER.match(after):
+            out.append(text[at:m.start()])
+            at = m.end() + (len(after) - len(after.lstrip(" \t")))
+    out.append(text[at:])
+    return "".join(out)
+
+
+__all__ = ["PLACEHOLDER", "blank", "drop_beside_values", "for_header", "found", "head_blanks",
+           "is_blank", "summary"]

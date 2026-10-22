@@ -2456,7 +2456,7 @@ def _clean_bullets(value: Any) -> list[str]:
         if text.count("|") >= 2:
             continue
         if text:
-            out.append(_cut_at_word(text, _BULLET_HARD))
+            out.append(_within_sentences(text, _BULLET_HARD))
     return out[:6]
 
 
@@ -4094,10 +4094,12 @@ async def figure_slide(
     own = _part_names(target)
     # the slide's points say what its subject does: the subject's parts are the boxes
     roles = bool(members) and not any(group in own for group in members)
+    #: what the figure shows, kept with it (the ask is the drawing's, not the figure's)
+    about = f"{title}: {' / '.join(words.splitlines())}"[:1200]
     planned = diagrams.Planned(
         index=0,
         figure="method" if kind == "relation" else kind,
-        description=f"{instruction.strip()[:400]}\n{title}: {' / '.join(words.splitlines())}"[
+        description=f"{instruction.strip()[:400]}\n{about}"[
             :1200] + (f"\nDraw every one of these parts inside its group:\n{held}"
                       if held else "") + (
             f"\nThe slide's points ({' / '.join(own)}) say what the group does, not its parts:"
@@ -4156,6 +4158,7 @@ async def figure_slide(
     result = {k: v for k, v in target.items() if k not in ("image", "diagram", "textScale")}
     if result.get("layout") in _NO_FIGURE_LAYOUTS:
         result["layout"] = "bullets"
+    made = {**made, "description": about}
     await _place_figure(result, made, png, accent)
     result.pop("factCheck", None)
     return auto_fit(result), usage
@@ -4791,6 +4794,10 @@ _LAYOUT_WORDS: tuple[tuple[str, str], ...] = (
     (r"(?<![A-Za-z])swot(?![A-Za-z])", "swot"),
     (r"장단점|장점과\s{0,3}단점|pros\s{0,3}(?:and|&)?\s{0,3}cons", "pros-cons"),
     (r"체크\s{0,3}리스트|점검표|(?<![A-Za-z])checklist(?![A-Za-z])", "checklist"),
+    (r"번호\s{0,3}(?:목록|리스트)|번호를?\s{0,3}매긴\s{0,3}목록"
+     r"|(?<![A-Za-z])numbered\s{1,3}(?:list|points|items)(?![A-Za-z])", "numbered"),
+    (r"글머리\s{0,3}(?:기호|표)?|목록|리스트|(?<![A-Za-z])bullet(?:ed)?s?(?:\s{1,3}(?:list|points))?"
+     r"(?![A-Za-z])|(?<![A-Za-z])list(?![A-Za-z])", "bullets"),
     (r"(?<![A-Za-z])faq(?![A-Za-z])|질의\s{0,3}응답|문답|Q\s{0,2}&\s{0,2}A", "faq"),
     (r"용어\s{0,3}(?:정리|풀이|사전)|(?<![A-Za-z])glossary(?![A-Za-z])", "glossary"),
     (r"피라미드|(?<![A-Za-z])pyramid(?![A-Za-z])", "pyramid"),
@@ -4829,6 +4836,15 @@ _LAYOUT_ASK = re.compile(
 )
 
 
+#: 「as a numbered list」, 「into a table」, 「to a timeline」: the ask in front of the word
+_LAYOUT_ASK_BEFORE = re.compile(
+    r"(?:\b(?:(?:as|into)\s{1,4}(?:an?\s{1,4}|the\s{1,4})?|to\s{1,4}an?\s{1,4})"
+    # 「Make slide 3 a table」, 「turn it into a chart」, 「show slide 4 as bullets」
+    r"|\b(?:make|turn|change|convert|show|redo|recast|rewrite|reformat|present|display|put)"
+    r"(?:\s{1,4}[A-Za-z0-9-]{1,15}){0,4}\s{1,4}(?:in\s{1,4})?an?\s{1,4})"
+    r"(?:[A-Za-z0-9-]{1,15}\s{1,4}){0,2}$", re.I)
+
+
 def requested_layout(text: str) -> str | None:
     """Layout the words ask for (「연표로 바꿔 줘」), or None; requires a 「…로」 construction."""
     text = text or ""
@@ -4836,6 +4852,9 @@ def requested_layout(text: str) -> str | None:
         for match in re.finditer(pattern, text, re.I):
             tail = text[match.end() : match.end() + 12]
             asked = re.match(r"\s{0,8}(?:로|으로)(?:\b|[\s,.]|$)", tail) or _LAYOUT_ASK.match(tail)
+            # English puts the ask before the word: 「as a numbered list」, 「into a table」
+            asked = asked or _LAYOUT_ASK_BEFORE.search(text[max(0, match.start() - 60):
+                                                            match.start()])
             if asked:
                 return layout
     return None
@@ -4862,7 +4881,11 @@ def shown_layout(slide: dict) -> str:
 
 #: what an unmet shape is called in the reply
 _SHAPE_WORDS = {"table": "표", "chart": "차트", "metrics": "지표", "big-number": "큰 숫자",
-                "bullets": "글머리표", "timeline": "연표", "steps": "단계", "cards": "카드"}
+                "bullets": "글머리표", "timeline": "연표", "steps": "단계", "cards": "카드",
+                "numbered": "번호 목록"}
+#: drawn shapes that show an asked one (a numbered list is a list)
+_SHOWS = {"bullets": {"numbered", "checklist", "takeaways", "objectives"},
+          "numbered": {"steps", "process"}}
 
 
 def unmet_asks(slide: dict, words: str) -> list[str]:
@@ -4870,13 +4893,68 @@ def unmet_asks(slide: dict, words: str) -> list[str]:
     out = []
     asked = requested_layout(words)
     drawn = shown_layout(slide)
-    if asked and drawn != asked and not (asked == "chart" and drawn.startswith("chart")):
-        out.append(f"{_SHAPE_WORDS.get(asked, asked)}로 바꾸기")
+    if asked and drawn != asked and drawn not in _SHOWS.get(asked, ()) and not (
+            asked == "chart" and drawn.startswith("chart")):
+        shape = _SHAPE_WORDS.get(asked, asked)
+        out.append(f"{shape}{revise._particle(shape, '으로', '로')} 바꾸기")
     if revise.removes_picture(words) and picture_of(slide):
         out.append("그림 빼기")
     if revise.removes_chart(words) and chart_of(slide):
         out.append("차트 빼기")
     return out
+
+
+#: slide fields the audience does not read as its figures
+_NOT_SHOWN = frozenset({"id", "notes", "accent", "layout", "image", "diagram", "factCheck",
+                        "textScale"})
+#: a figure as shown: currency, number, unit (「$4」, 「64 percent」, 「27 point」, 「420만」)
+_SHOWN_FIGURE = re.compile(
+    r"(?<![\d.,])([$€₩£]\s?)?(\d{1,3}(?:,\d{3})*(?:\.\d{1,3})?)(?![\d,])"
+    r"(\s?(?:%p?|퍼센트|포인트|percent|per\s?cent|points?|pts?|pp|"
+    r"억|만|천|원|명|건|개월|개|배|점|초|분|시간|일|주|년|월|위|회|쪽)"
+    r"|(?:[bkmxsh]|ms|gb|tb|pg)\b)?", re.I)
+#: one unit however it is written
+_UNIT_SAME = {"퍼센트": "%", "percent": "%", "per cent": "%",
+              "%p": "pt", "포인트": "pt", "point": "pt", "points": "pt", "pts": "pt", "pp": "pt"}
+#: an ask that may take figures away: 「줄여」, 「빼」, 「remove」, 「shorten」
+_DROPS_FIGURES = re.compile(
+    r"빼|지워|지우|삭제|없애|줄여|줄이|간단|짧게|요약|수치\s?없이|"
+    r"\b(?:remove|delete|drop|shorten|cut|fewer|simplif\w{0,4}|summari[sz]\w{0,3})\b", re.I)
+
+
+def _shown_figures(slide: dict) -> list[tuple[str, str, str]]:
+    """`(number, unit, as written)` for each figure the slide shows."""
+    words = " ".join(t for k, v in slide.items() if k not in _NOT_SHOWN
+                     for t in _strings(v))
+    out: dict[tuple[str, str], str] = {}
+    for m in _SHOWN_FIGURE.finditer(words):
+        number, unit = m.group(2).replace(",", ""), " ".join((m.group(3) or "").split()).lower()
+        unit = "$" if m.group(1) else _UNIT_SAME.get(unit, unit)
+        if len(number) == 1 and not unit:
+            continue  # a lone digit is a list number or slide count, not a figure
+        out.setdefault((number, unit), m.group(0).strip())
+    return [(number, unit, said) for (number, unit), said in out.items()]
+
+
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+def lost_figures(old: dict, new: dict, asked: str = "") -> list[str]:
+    """Figures `old` showed that its rewrite `new` no longer shows (「64%」, 「91%」), unless the
+    ask may take some away."""
+    if _DROPS_FIGURES.search(asked or ""):
+        return []
+    shown = _shown_figures(new)
+    # kept when the number stays with its unit, or one side writes no unit (「64」 in a cell)
+    return [said for number, unit, said in _shown_figures(old)
+            if not any(n == number and (u == unit or not u or not unit) for n, u, _ in shown)]
 
 
 def picture_of(slide: dict) -> str:
@@ -5803,8 +5881,10 @@ def _fill_pattern(slide: dict, data: dict) -> None:
     if pattern.shape == "pairs":
         raw = data.get("items")
         if raw is None:
-            # field named after the layout or an older paired layout
+            # field named after the layout or an older paired layout, or pairs under bullets
             raw = next((data[k] for k in (slide["layout"], *_PAIRED) if data.get(k)), None)
+        if raw is None and any(isinstance(b, (list, dict)) for b in data.get("bullets") or []):
+            raw = data["bullets"]
         if items := slide_patterns.clean_pairs(pattern.name, raw):
             slide["items"] = items
             return
@@ -5846,12 +5926,18 @@ def _pairs_from_bullets(name: str, bullets: list[str]) -> list[list[str]]:
     if not bullets:
         return []
     matches = [_HEAD_LINE.match(b) for b in bullets]
+    dashed = [b.split(" – ", 1) for b in bullets]
     if all(matches):
         pairs = [[m.group("head").strip(), m.group("body").strip()] for m in matches if m]
+    elif all(len(d) == 2 for d in dashed):
+        # 「headline – detail」, a pair joined into a line
+        pairs = [[d[0].strip().rstrip("."), d[1].strip()] for d in dashed]
     else:
         pairs = [[b, ""] for b in bullets]
     items = slide_patterns.clean_pairs(name, pairs)
-    return items if items == pairs else []
+    # cut at a word or a sentence's end is still the item; a half-gone one is not
+    return items if len(items) == len(pairs) and all(
+        len(new[0]) >= len(old[0]) // 2 for new, old in zip(items, pairs, strict=True)) else []
 
 
 def _pattern_need(slide: dict, scale: float, width: float) -> float:

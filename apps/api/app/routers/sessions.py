@@ -7259,6 +7259,9 @@ async def _revision_plan(
     skeleton = _skeleton(artifact)
     if not skeleton:
         return None, []
+    if revise.asks_question(instruction):
+        # a question is no edit: not planned (nor re-planned as a new outline)
+        return revise.Plan(scope="parts", targets=[], note=instruction), skeleton
     rename = (revise.title_rename(instruction, skeleton)
               if getattr(artifact, "kind", None) != ArtifactKind.deck else None)
     if rename is not None and rename[1] is None:
@@ -7276,11 +7279,15 @@ async def _revision_plan(
         # 「위험 장을 하나 추가해 줘」 is an insert; a new-document reading would refuse it
         return added, skeleton
     deck = getattr(artifact, "kind", None) == ArtifactKind.deck
-    if (not deck and revise.numbered_removals(instruction)
-            and not revise.without_numbered_removals(instruction)) or deck and (
-            revise.only_removes_picture(instruction) or revise.only_removes_chart(instruction)):
-        # taken away by hand in the revise route: nothing for the planner to read
+    by_code = (revise.only_removes_picture(instruction) or revise.only_removes_chart(instruction)
+               if deck else revise.settled_by_code(instruction, skeleton, _part_texts(artifact)))
+    if by_code:
+        # taken away by hand in the revise route, the rest asked of the parts it names: nothing
+        # for the planner to read (nor to read as a new outline)
         return revise.Plan(scope="parts", targets=[], note=instruction), skeleton
+    if (named := revise.numbered_parts(instruction, skeleton)) is not None:
+        # 「4장을 번호 목록으로」: the part named by number, as asked; no outline reading
+        return revise.Plan(scope="parts", targets=named, note=instruction), skeleton
     plan = await revise.plan(
         message=instruction,
         title=artifact.title or "",
@@ -7288,6 +7295,12 @@ async def _revision_plan(
         model=model["id"],
         api_key=api_key,
     )
+    if plan.restructures and not revise.asks_restructure(instruction):
+        # an outline reading of words asking no new structure: never the document written
+        # anew; every part edited in place only for a concrete edit, else asked what to change
+        plan = (revise.Plan(scope="whole", targets=list(range(len(skeleton))), note=plan.note,
+                            usage=plan.usage) if revise.asks_edit(instruction)
+                else revise.Plan(scope="ask", note=plan.note, usage=plan.usage))
     return plan, skeleton
 
 

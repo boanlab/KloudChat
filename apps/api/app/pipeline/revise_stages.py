@@ -16,6 +16,7 @@ from app.services import (
     consistency,
     doc_formats,
     internal_words,
+    output_language,
     revise,
     revised_tables,
     richtext,
@@ -80,7 +81,8 @@ def _tidy_tables(bundle: Bundle) -> list[dict]:
     unfenced = [p if str(p.get("format") or "markdown") != "markdown"
                 else {**p, "content": report.unfence_pictures(str(p.get("content") or ""))}
                 for p in parts]
-    tidied = report.caption_figures_and_tables(revised_tables.tidy(unfenced, rank))
+    tidied = report.caption_figures_and_tables(revised_tables.tidy(
+        unfenced, rank, bundle.document.original))
     if [str(p.get("content") or "") for p in tidied] == before:
         return []
     bundle.document.sections = tidied
@@ -127,6 +129,24 @@ class Route(Base):
         is_deck, instruction, parts = req.is_deck, req.instruction, doc.sections
         names = _names(bundle)
         plan = bundle.plan.revision
+        # the document as loaded: tables it had are no copies this edit made
+        doc.original = [str(p.get("content") or "") for p in parts]
+        if revise.asks_question(instruction):
+            # a question about the document, whatever the planner read: nothing rewritten;
+            # this screen only edits, so said how to ask it
+            yield {"type": "step", "id": "route", "label": "질문", "status": "done"}
+            example = "3장을 표로 바꿔줘" if is_deck else "2절을 두 문장으로 줄여줘"
+            sample = "Make slide 3 a table" if is_deck else "Shorten section 2"
+            for event in _stopped(bundle, (
+                    "This reads as a question, so nothing was changed. On this screen, say "
+                    f"what to change (「{sample}」). To ask about the content, attach the "
+                    "downloaded file in Chat."
+                    if output_language.typed_in_english(instruction) else
+                    "질문으로 보여 바꾼 것이 없습니다. 이 화면에서는 "
+                    f"「{example}」처럼 고칠 곳을 알려 주시면 고칩니다. 내용을 물어보려면 "
+                    "내려받은 파일을 챗에 첨부해 물어보세요.")):
+                yield event
+            raise Stop("a question")
         changed = 0
         typed = instruction
         rename = None if is_deck else revise.title_rename(instruction, names)
@@ -185,6 +205,11 @@ class Route(Base):
             parts, taken, absent = revise.drop_numbered(parts, removals)
             doc.removed += taken
             doc.missed += absent
+            for name in taken:
+                # 「2절의 표 2」: the part it left, for the rewrite of the same edit
+                at, _, what = name.partition("절의 ")
+                part_id = str(parts[int(at) - 1].get("id") or "")
+                doc.emptied.setdefault(part_id, []).append(what)
             changed += len(taken)
             rest = revise.without_numbered_removals(typed)
             yield {"type": "step", "id": "route", "status": "done" if taken else "error",
@@ -292,6 +317,19 @@ class Route(Base):
         doc.sections = parts
         by_hand = swap is not None or reorder is not None or not typed
         doc.by_hand, bundle.plan.revision = by_hand, plan
+        if not by_hand and plan.scope == "ask":
+            # an outline reading of words that ask no change: nothing done, asked what to change
+            yield {"type": "step", "id": "route", "label": "고칠 곳 묻기", "status": "done"}
+            english = output_language.typed_in_english(instruction)
+            example = "3장을 표로 바꿔줘" if is_deck else "2절을 두 문장으로 줄여줘"
+            sample = "Make slide 3 a table" if is_deck else "Shorten section 2"
+            for event in _stopped(bundle, (
+                    "Nothing was changed. Say which part to change and how, for example "
+                    f"「{sample}」."
+                    if english else "바꾼 것이 없습니다. 어디를 어떻게 고칠지 알려 주세요. "
+                    f"예: 「{example}」")):
+                yield event
+            raise Stop("what to change")
         if not by_hand and not plan.revises:
             # new-document request: said, not acted on
             yield {"type": "step", "id": "route", "label": "새 문서 요청", "status": "done"}
@@ -425,6 +463,27 @@ class Rewrite(Base):
                     )
                     if revise.meta_talk(" ".join(strings(written))):
                         raise ValueError("본문 대신 대화 답이 나옴")
+                    if lost := deck_service.lost_figures(part, written, asked):
+                        # figures the slide showed, left out: asked once more to keep them
+                        try:
+                            again, more = await deck_service.rewrite_slide(
+                                request=request, slides=parts,
+                                target_id=str(part.get("id") or ""), model=req.model,
+                                api_key=req.api_key,
+                                note=(plan.note if asked == instruction else asked)
+                                + f"\nKeep every figure the slide shows now: {', '.join(lost)}.",
+                                material=material, typed=asked)
+                        except Exception as exc:  # noqa: BLE001 — the first rewrite stands
+                            log.info("slide rewrite to keep figures failed: %s", logs.safe(exc))
+                        else:
+                            spent = {k: spent.get(k, 0) + more.get(k, 0)
+                                     for k in ("inputTokens", "outputTokens")}
+                            still = deck_service.lost_figures(part, again, asked)
+                            if len(still) < len(lost) and not revise.meta_talk(
+                                    " ".join(strings(again))):
+                                written, lost = again, still
+                        if lost:
+                            doc.dropped.append(f"{index + 1}장 {', '.join(lost)}")
                     if isinstance(written.get("notes"), str):
                         # what the speaker says, not how the writer made it; nothing the slide
                         # shows said to be absent
@@ -446,6 +505,11 @@ class Rewrite(Base):
                         else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
                         f"{(plan.typed or instruction).strip()[:400]}"
                     )
+                    #: numbered tables and figures this edit took out of the part
+                    emptied = doc.emptied.get(str(part.get("id") or ""), [])
+                    if emptied:
+                        note += (f"\nThe person had {', '.join(emptied)} taken out of this "
+                                 "section: add no table or figure in its place.")
                     for _attempt in range(2):
                         body, used = await report.rewrite_section(
                             request=request,
@@ -473,6 +537,10 @@ class Rewrite(Base):
                             raise ValueError("본문 대신 대화 답이 나옴")
                         # existing figure kept unless redrawn or removal asked
                         body = revise.keep_figure(before, body, instruction)
+                        # a table or figure asked away stays away
+                        body = revise.drop_added(before, body, emptied,
+                                                 revise.without_numbered_removals(
+                                                     " ".join(asks) or _typed(bundle)))
                         body = richtext.detach_tables(body)
                         # arithmetic checked, not trusted
                         body = report.trim_table_echo(
