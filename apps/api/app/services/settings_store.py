@@ -117,6 +117,9 @@ SIGNUP_MODE = "signup.mode"
 SIGNUP_DOMAINS = "signup.domains"
 SIGNUP_VERIFY_EMAIL = "signup.verify_email"
 
+#: stdio commands members may register as their own connectors, one per line
+CONNECTOR_STDIO_ALLOW = "connectors.stdio_allow"
+
 #: encrypted at rest; API returns only set flag and last four chars
 SECRET_KEYS = {LITELLM_MASTER_KEY, SMTP_PASSWORD}
 

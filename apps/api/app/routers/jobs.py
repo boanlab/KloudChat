@@ -6,7 +6,7 @@ import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlmodel import col, select, update
 
 from app.core.config import settings
@@ -15,12 +15,13 @@ from app.core.deps import CurrentUser, DbSession
 from app.models.chat import ChatSession
 from app.models.user import User
 from app.models.workspace import Artifact, ArtifactKind, Job, JobStatus, StoredFile
+from app.routers import sessions as chat_router
 from app.schemas.chat import JobOut, VideoJobRequest
 from app.services import chat as chat_service
 from app.services import files as file_service
-from app.services import governance, settings_store, videogen
 from app.services import litellm as litellm_service
 from app.services import models as model_service
+from app.services import settings_store, videogen
 from app.services.credits import settle
 
 log = logging.getLogger(__name__)
@@ -217,29 +218,29 @@ def _now():
 
 
 @router.post("/sessions/{session_id}/jobs", response_model=JobOut)
-async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUser, db: DbSession):
+async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUser, db: DbSession,
+                     request: Request):
     """Start video; row committed before poll loop."""
     session = await db.get(ChatSession, session_id)
     if session is None or session.user_id != user.id or session.publication_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
-    # same egress gate: policy, filter, model allowlist
-    policy = await settings_store.egress_policy()
-    hit = (
-        governance.blocked_by(payload.prompt, policy.blocked_categories)
-        if policy.intent_filter
-        else None
-    )
-    if hit:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"blocked_category:{hit}"
-        )
+    # a chat turn's pre-call policy: filter, allowlist, strict-local or masked prompt
     catalogue = await model_service.list_models()
-    model = model_service.find(catalogue["models"], payload.model or "")
-    model_id = (model or {}).get("id") or payload.model or ""
-    allowed = set(user.allowed_models or [])
-    if allowed and model_id not in allowed:
+    boundary = await chat_router._media_gate(db, user, request, session, catalogue["models"],
+                                             payload.prompt, asked=payload.model)
+    model = chat_router._media_model(
+        user, catalogue["models"], kind="av", boundary=boundary, asked=payload.model or "",
+        default=(catalogue.get("defaultModelByKind") or {}).get("av"),
+    )
+    if model is None:
+        await chat_router._audit_media_boundary(user, request, session, boundary, refused=True)
+        raise chat_router._refuse_outside_boundary(boundary, "av")
+    if payload.model and model["id"] != payload.model and not boundary.strict:
+        # an asked video model outside the account's models is refused, never swapped
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="model_not_allowed")
+    await chat_router._audit_media_boundary(user, request, session, boundary)
+    model_id = str(model["id"])
     cost = videogen.price_usd(
         model_id,
         resolution=payload.resolution,
@@ -268,7 +269,7 @@ async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUse
             api_key=api_key,
             user_id=user.id,
             model=model_id,
-            prompt=payload.prompt,
+            prompt=boundary.text,
             resolution=payload.resolution,
             seconds=payload.seconds,
             audio=payload.audio,

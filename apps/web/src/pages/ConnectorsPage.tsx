@@ -685,7 +685,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
           label={draft.transport === 'stdio' ? t('실행 명령') : t('엔드포인트 URL')}
           hint={
             draft.transport === 'stdio'
-              ? t('API 서버와 같은 호스트에서 실행됩니다.')
+              ? t('API 서버에서 실행되므로 관리자가 허용한 명령만 그대로 등록할 수 있습니다.')
               : 'https:// 로 시작하는 MCP 엔드포인트'
           }
         >

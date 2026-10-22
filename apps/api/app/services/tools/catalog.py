@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shlex
 import time
 from typing import Any
 
@@ -148,6 +149,40 @@ async def resolve_env(env: dict[str, str] | None) -> dict[str, str]:
     return out
 
 
+async def stdio_allowlist() -> list[str]:
+    """Commands an administrator lets members run as stdio connectors of their own."""
+    raw = (await settings_store.all_values()).get(settings_store.CONNECTOR_STDIO_ALLOW, "")
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
+def _argv(command: str) -> list[str]:
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return []
+
+
+async def stdio_allowed(command: str) -> bool:
+    """The whole command line on the allowlist (argument for argument), not only its program."""
+    argv = _argv(command)
+    return bool(argv) and any(_argv(line) == argv for line in await stdio_allowlist())
+
+
+class NotRunnable(RuntimeError):
+    pass
+
+
+async def check_runnable(connector: Any, *, owner_is_admin: bool) -> None:
+    """A stdio command runs only as a catalogue entry's, an administrator's own, or an allowed
+    command line without env of its own; rows saved before the rule are refused here too."""
+    if str(getattr(connector.transport, "value", connector.transport)) != "stdio":
+        return
+    if getattr(connector, "official", False) or owner_is_admin:
+        return
+    if connector.env or not await stdio_allowed(connector.endpoint or ""):
+        raise NotRunnable("관리자가 허용하지 않은 실행 명령이라 실행하지 않았습니다.")
+
+
 #: Tool-name words that mark a write tool (off until opted in).
 _WRITE_HINTS = (
     "create",
@@ -273,6 +308,7 @@ def admin_wire(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-__all__ = ["KINDS", "TRANSPORTS", "EntryError", "admin_wire", "catalog_entry", "clean",
-           "connector_env", "effective_endpoint", "entries", "entry", "looks_like_write",
-           "provided", "refresh", "resolve_env", "resolve_urls", "use"]
+__all__ = ["KINDS", "TRANSPORTS", "EntryError", "NotRunnable", "admin_wire", "catalog_entry",
+           "check_runnable", "clean", "connector_env", "effective_endpoint", "entries", "entry",
+           "looks_like_write", "provided", "refresh", "resolve_env", "resolve_urls",
+           "stdio_allowed", "stdio_allowlist", "use"]

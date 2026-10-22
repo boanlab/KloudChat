@@ -34,6 +34,7 @@ export const ACTION_LABEL: Record<string, string> = {
   'pipeline.approve': '진행 과정 승인',
   'connector.catalog.save': '커넥터 카탈로그 저장',
   'connector.catalog.delete': '커넥터 카탈로그 삭제',
+  'connector.stdio_allow.save': '허용 실행 명령 저장',
   'pipeline.reject': '진행 과정 반려',
   'issue.update': '문제 신고 처리 변경',
   'issue.snapshot_view': '신고된 대화 열람',

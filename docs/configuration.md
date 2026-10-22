@@ -477,7 +477,12 @@ Why this split:
 The MCP connectors users can install from **Customize › Connectors**: name,
 address or stdio command, whether the entry is listed, and whether it is
 **Built in** (`by_default`). An installed connector keeps its entry's slug.
-Users can also register their own MCP server by address.
+Users can also register their own MCP server by address. A server that runs as
+a command (stdio) runs on the API host, so a non-administrator can register only
+a command line listed under **Commands members may register themselves** on the
+same screen (one per line, matched argument for argument, no environment
+variables); anything else, including a row saved before the list existed, is
+refused rather than run.
 
 A **Built in** entry is installed for every active user: everyone at once when an
 administrator saves it with the switch on, a new user when the account becomes
