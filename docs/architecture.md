@@ -488,9 +488,15 @@ that only points at the section's table is folded into the one before it as its 
 rewrites miss it, which the reply says. A slide cut to fewer items
 (「항목을 하나로」, `deck.items_asked`) that came back with none gets its old items joined
 (`deck.merged_points`), figures such a cut drops are said, and a deck cut to fewer slides says,
-at save after grounding, the figures (notes not counted, English values with what they count,
-「1k docs」) and the charts and tables it shows nowhere any more (`deck.lost_across`,
-`deck.lost_blocks`), in English for an English deck; a timeline put back takes no slide whose
+at save after grounding, the figures (notes not counted; in an English deck lone counts too and
+each value with the shortest phrase it counts, 「40 tasks」, 「3 reviewers」) and the charts and
+tables it shows nowhere any more (`deck.lost_across`, `deck.lost_blocks`), in English for an
+English deck; a shortened section's lost facts include days named without a date (「다음 주
+수요일」, `revise.lost_facts`); table rows of one label spelled two ways (「Avg Latency」,
+「Average Latency」) with no differing value become one row (`deck.dedupe_rows`); a figure the
+request states that the deck left out goes beside the metric or item it belongs to
+(「영업이익 (이익률 7.5%)」), else onto the slide sharing its words or its owner's
+(`deck.restate_missing_facts`); a timeline put back takes no slide whose
 chart or figures it would drop (`revise.keep_timeline_layout`), and a closing with no points gets
 a plain title (`deck.fill_closing`). A sentence count still off after the retry is met by code at
 clause joints (「…필요하며,」 ↔ 「…필요합니다.」, `revise.fit_count`), the retry that misses a count

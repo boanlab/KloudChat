@@ -272,7 +272,7 @@ def test_an_english_shrink_is_said_in_english_with_whole_values_and_the_table_na
         "table on 'Performance and Cost Comparison'. Ask again to put them back if they belong "
         "there.")
     started = time.monotonic()
-    deck._whole_figure(("1", "k", "1k"), "1k" + " " * 50000 + "docs")
+    deck._whole_figure(("1", "k", "1k"), ["1k" + " " * 50000 + "docs"], True)
     assert time.monotonic() - started < 0.5
 
 
@@ -295,3 +295,71 @@ def test_a_closing_with_no_points_names_none():
     slide = {"layout": "closing", "title": "핵심 요약 및 승인 요청 사항"}
     deck.fill_closing(slide, {"bullets": ["3분기 매출 128억 원", "1.5억 예산 승인"]})
     assert slide["title"] == "핵심 요약 및 승인 요청 사항" and len(slide["bullets"]) == 2
+
+
+#: reverify-v ed1: an English 8-slide deck cut to three
+EN_METHOD = {"id": "b", "layout": "bullets", "title": "Benchmark Design and Evaluation Method",
+             "bullets": ["Workload: 40 document drafting tasks",
+                         "Reviewers: 3 human evaluators per task"],
+             "diagram": {"figure": "flow", "caption": "Evaluation Flow",
+                         "source": 'flowchart LR\n  l0s0("40 Tasks") --> l0s1("27B Model")'
+                                   ' --> l0s2("3 Reviewers")'}}
+EN_GAP = {"id": "g", "layout": "metrics", "title": "The Long-Context Quality Gap",
+          "metrics": [["64%", "Local success rate"], ["91%", "Cloud success rate"],
+                      ["20+", "Page threshold"]]}
+EN_AGENDA = {"id": "a", "layout": "agenda", "title": "목차", "bullets": ["Benchmark design"]}
+EN_RESULTS = {"id": "r", "layout": "table", "title": "Benchmark Results",
+              "rows": [["Metric", "27B Local", "Frontier Cloud"], ["Average Latency", "9s", "14s"],
+                       ["Long-Context Quality", "64%", "91%"], ["Avg Latency", "9s", "14s"]]}
+
+
+def test_an_english_shrink_names_each_lost_value_with_what_it_counts():
+    from app.routers import sessions
+
+    assert deck.lost_across([EN_AGENDA, EN_METHOD, EN_GAP], [EN_RESULTS]) == [
+        "40 tasks", "3 reviewers", "20+ page threshold"]
+    assert sessions._restructured_said([EN_METHOD, EN_GAP], [EN_RESULTS], english=True) == (
+        "Made a 1-slide deck. No slide shows these any more: 40 tasks, 3 reviewers, 20+ page "
+        "threshold. Ask again to put them back if they belong there.")
+    # a lone count the new deck still shows is not lost; a slide number is no count
+    kept = {**EN_RESULTS, "bullets": ["Rated by 3 reviewers"]}
+    assert "3 reviewers" not in deck.lost_across([EN_METHOD], [kept])
+    assert deck.lost_across([{"layout": "bullets", "title": "Plan", "bullets": ["See slide 3"]}],
+                            [EN_RESULTS]) == []
+    started = time.monotonic()
+    deck.lost_across([{"layout": "bullets", "title": "Plan",
+                       "bullets": ["3" + " " * 50000 + "x", "3 a" + " " * 50000]}], [EN_RESULTS])
+    deck._counted_noun("3" + " a" * 25000, 1)
+    assert time.monotonic() - started < 0.5
+
+
+def test_one_row_under_two_spellings_of_its_label_becomes_one_row_with_every_value():
+    rows = deck.dedupe_rows(EN_RESULTS["rows"])
+    assert rows == EN_RESULTS["rows"][:3]
+    # the row with more values stands, the other's values fill its blanks
+    assert deck.dedupe_rows([["항목", "3분기", "4분기"], ["매출", "128억", ""],
+                             ["매출", "", "140억"], ["출고 지연", "4일", "0일"]]) == [
+        ["항목", "3분기", "4분기"], ["매출", "128억", "140억"], ["출고 지연", "4일", "0일"]]
+    # values that differ are two rows, not one
+    differ = [["Metric", "A", "B"], ["Latency", "9s", "14s"], ["Latency", "10s", "15s"],
+              ["Cost", "$4", "$38"]]
+    assert deck.dedupe_rows(differ) == differ
+    assert not deck._same_word("cost", "cast") and deck._same_word("qty", "quantity")
+
+
+def test_a_restated_figure_goes_beside_the_figure_it_belongs_to_not_onto_an_unrelated_slide():
+    """reverify-v kd2: 「영업이익 9.6억(이익률 7.5%, 전분기 6.8%)」 the deck left out landed as
+    bullets on 「영남 물류 지연 원인 및 현황」."""
+    request = ("임원회의 보고 슬라이드. 수치: 매출 128억(전년 동기 114억, +12%), 영업이익 9.6억"
+               "(이익률 7.5%, 전분기 6.8%), 출고 지연 4일(영남 물류센터 이전 탓).")
+    slides = [
+        {"layout": "title", "title": "3분기 실적"},
+        {"layout": "metrics", "title": "3분기 핵심 지표",
+         "metrics": [["128억", "매출"], ["114억", "전년 동기"], ["12%", "매출 성장률"],
+                     ["9.6억", "영업이익"]]},
+        {"layout": "bullets", "title": "영남 물류 지연 원인 및 현황",
+         "bullets": ["물류센터 이전으로 출고 지연 4일"]},
+    ]
+    assert deck.restate_missing_facts(slides, request) == [1]
+    assert slides[1]["metrics"][3] == ["9.6억", "영업이익 (이익률 7.5%, 전분기 6.8%)"]
+    assert slides[2]["bullets"] == ["물류센터 이전으로 출고 지연 4일"]
