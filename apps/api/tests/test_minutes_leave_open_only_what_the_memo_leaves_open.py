@@ -80,7 +80,7 @@ def test_a_hedge_a_promise_and_a_part_of_the_day_the_memo_never_gives_are_found(
     assert stated_meeting.untraced("회의는 오전 시간대에 진행되었습니다.", TUTOR) == ["오전"]
     # the memo's own: its agenda, its 10시, its 오후, what someone may do
     for own in ("예정 안건은 최다은의 구글폼·네이버폼 비교표 검토입니다.",
-                "다음 회의는 10월 21일 오전 10시에 3층 회의실에서 열립니다."):
+                "다음 회의는 10월 21일 10시에 3층 회의실에서 열립니다."):
         assert not stated_meeting.untraced(own, TUTOR, next_part=True)
     assert not stated_meeting.untraced("회의는 오후 2시에 열렸습니다.", SALES)
     assert not stated_meeting.untraced("새 양식은 팀장 승인 후 사용할 수 있습니다.", SALES)
