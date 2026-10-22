@@ -567,6 +567,8 @@ class Rewrite(Base):
                         yield {"type": "step", "id": f"r{index}", "label": label,
                                "status": "done"}
                         continue
+                    # a guard blank or a dangling unit the slide carried: not kept
+                    deck_service.settle_blanks([written])
                     parts[index] = written
                     yield {"type": "slide", "slide": written, "done": True}
                 else:

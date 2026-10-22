@@ -342,3 +342,20 @@ def test_a_day_the_shortening_took_out_is_named_with_the_figures():
     revise.lost_facts("다음" + " " * 50000 + "주", "x")
     revise.lost_facts("next" + " " * 50000 + "week", "x")
     assert time.monotonic() - started < 0.5
+
+
+#: reverify-w t1: the claims said done, gone from the two-sentence rewrite
+DONE = ("기존 거래처 한솔마트의 재고 클레임 2건은 반품 420만원 건으로, 이번 주 처리를 "
+        "완료했습니다. 경쟁사 A사 단가는 파악했으나 확정된 값은 아닙니다. CRM 병합은 수요일까지 "
+        "마무리할 예정입니다.")
+
+
+def test_a_thing_said_done_that_the_shortened_section_no_longer_says_is_named():
+    assert revise.lost_facts(DONE, "한솔마트 클레임 2건(반품 420만원)과 A사 단가를 정리했습니다. "
+                             "CRM은 수요일 예정입니다.") == ["이번 주", "처리 완료"]
+    # still said done in other words, or not done at all (확정된 값은 아닙니다, 마무리할 예정)
+    assert revise.lost_facts(DONE, DONE.replace("처리를 완료했습니다", "처리했습니다")) == []
+    assert revise.lost_facts(DONE, DONE.replace("처리를 완료했습니다", "모두 완료됐습니다")) == []
+    started = time.monotonic()
+    revise._lost_done("가나" + " " * 50000 + "완료했", "")
+    assert time.monotonic() - started < 0.5

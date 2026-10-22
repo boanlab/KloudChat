@@ -7118,9 +7118,16 @@ async def _deck_carry(work: PipelineBundle) -> AsyncIterator[dict]:
     slides = revise.keep_timeline_layout(
         slides, old_slides, mentioned=carry_note, request=request
     )
+    # the old deck's wording of a figure pair, its ask and its order kept
+    slides = revise.keep_phrasing(slides, old_slides)
+    slides = revise.keep_ask(slides, old_slides, mentioned=carry_note)
+    slides = revise.keep_order(slides, old_slides, mentioned=carry_note)
     slides = revise.refresh_agenda(slides)
     # carried slides may drop restated numbers: recheck the person's figures
     deck_service.restate_missing_facts(slides, request)
+    # a figure the old deck marked keeps its mark; no guard blank or dangling unit carried
+    slides = revise.carry_marks(slides, old_slides)
+    deck_service.settle_blanks(slides)
     work.document.sections = slides
     # what the old deck showed that the new one shows nowhere: read at save, said in the reply
     work.document.before = old_slides

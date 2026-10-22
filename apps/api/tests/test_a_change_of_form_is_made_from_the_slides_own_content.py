@@ -5,6 +5,7 @@ read whole on both sides (「3분기」, not 「3분」)."""
 
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
@@ -363,3 +364,127 @@ def test_a_restated_figure_goes_beside_the_figure_it_belongs_to_not_onto_an_unre
     assert deck.restate_missing_facts(slides, request) == [1]
     assert slides[1]["metrics"][3] == ["9.6억", "영업이익 (이익률 7.5%, 전분기 6.8%)"]
     assert slides[2]["bullets"] == ["물류센터 이전으로 출고 지연 4일"]
+
+
+#: reverify-w kd2: the ask slide before the shrink and the statement that took its place
+ASK_SLIDE = {"id": "a", "layout": "cards-3", "title": "결재 요청: 영남 물류 안정화 예산 1.5억 승인",
+             "items": [["대상", "영남 물류센터 안정화 작업"], ["목적", "출고 지연 0일 달성 지원"]]}
+BUDGET = {"id": "b", "layout": "statement", "title": "1.5억 원 예산",
+          "body": "영남 물류를 정상화해 4분기 출고 지연을 제로로 만든다"}
+COVER = {"id": "c", "layout": "title", "title": "2026년 3분기 사업 실적 및 4분기 계획"}
+
+
+def test_a_shrink_that_lost_the_deck_s_ask_puts_it_back_on_the_slide_with_its_figure():
+    out = revise.keep_ask([dict(COVER), dict(TREND), dict(BUDGET)], [COVER, TREND, ASK_SLIDE],
+                          mentioned="슬라이드를 6장으로 줄여줘")
+    assert out[2]["title"] == ASK_SLIDE["title"] and out[2]["body"] == BUDGET["body"]
+    assert out[1] == TREND
+    # a slide with points takes it as a point; a deck still asking, or an ask the person spoke
+    # of, stays as written
+    closing = {"id": "z", "layout": "closing", "title": "4분기 목표", "bullets": ["매출 140억 원"]}
+    out = revise.keep_ask([dict(COVER), dict(closing)], [COVER, ASK_SLIDE], mentioned="")
+    assert out[1]["bullets"] == ["매출 140억 원", ASK_SLIDE["title"]]
+    asked = {**BUDGET, "body": "예산 1.5억 원 승인을 요청드립니다"}
+    assert revise.keep_ask([dict(COVER), dict(asked)], [COVER, ASK_SLIDE], mentioned="") == [
+        COVER, asked]
+    assert revise.keep_ask([dict(COVER), dict(BUDGET)], [COVER, ASK_SLIDE],
+                           mentioned="승인 요청 장은 빼줘")[1] == BUDGET
+    started = time.monotonic()
+    revise._DECK_ASK.search("요청" + " " * 50000 + "x")
+    revise._ORDER_ASK.search("맨" + " " * 50000 + "x")
+    assert time.monotonic() - started < 0.5
+
+
+#: reverify-w kd1: the shrink put the Q3 summary after the Q4 plan
+OLD_KD1 = [
+    COVER,
+    {"id": "1", "layout": "numbered", "title": "3분기 주요 성과 지표",
+     "items": [["매출", "128억 원"], ["영업이익", "9.6억 원"], ["영업이익률", "7.5%"]]},
+    {"id": "2", "layout": "table", "title": "분기별 재무 실적 비교",
+     "rows": [["구분", "Q3 실적", "전년 동기", "YoY"], ["매출", "128억", "114억", "+12%"],
+              ["영업이익", "9.6억", "-", "-"], ["영업이익률", "7.5%", "-", "-"]]},
+    {"id": "3", "layout": "bands", "title": "3분기 운영 이슈 및 대응",
+     "bands": [["현황", "출고 지연 4일, 영남 매출 33억 원 차질"], ["대응", "출고 지연 0일 목표"]]},
+    {"id": "4", "layout": "two-column", "title": "4분기 목표 및 영남 물류 안정화",
+     "bullets": ["출고 지연 0일 달성", "예산 1.5억 원 승인 요청", "신규 거래처 3곳 유지 관리"]},
+    {"id": "5", "layout": "closing", "title": "3분기 핵심 요약 및 4분기 목표",
+     "bullets": ["매출 128억, 영업이익률 7.5%", "4분기 매출 140억 목표"]},
+]
+NEW_KD1 = [
+    COVER, OLD_KD1[3],
+    {"id": "p", "layout": "bullets", "title": "4분기 목표 및 물류 안정화",
+     "bullets": ["출고 지연 0일 기준 운영", "신규 거래처 3곳 유지", "안정화 예산 1.5억 원"]},
+    {"id": "s", "layout": "metrics", "title": "3분기 핵심 요약",
+     "metrics": [["128억", "3분기 총 매출"], ["9.6억", "영업이익 (이익률 7.5%)"], ["+12%", "YoY"]]},
+    {"id": "z", "layout": "closing", "title": "4분기 목표 및 승인 요청",
+     "bullets": ["4분기 매출 목표 140억 원", "물류 안정화 예산 1.5억 원 승인"]},
+]
+
+
+def test_a_summary_the_shrink_put_after_later_slides_moves_up_to_where_its_figures_were():
+    out = revise.keep_order(list(NEW_KD1), OLD_KD1, mentioned="6장으로 줄여줘")
+    assert [s["id"] for s in out] == ["c" if s is COVER else s["id"] for s in [
+        COVER, NEW_KD1[3], NEW_KD1[1], NEW_KD1[2], NEW_KD1[4]]]
+    # an order the person asked for, or a summary already ahead, stays
+    assert revise.keep_order(list(NEW_KD1), OLD_KD1, mentioned="요약을 맨 뒤로 옮겨줘") == NEW_KD1
+    ahead = [COVER, NEW_KD1[3], NEW_KD1[1], NEW_KD1[2], NEW_KD1[4]]
+    assert revise.keep_order(list(ahead), OLD_KD1, mentioned="") == ahead
+
+
+#: reverify-w ed1: the shrink dropped the mark on 95% and wrote a cost point anew
+EN_OLD = [
+    {"id": "t", "layout": "table", "title": "Quality and Cost Head-to-Head",
+     "rows": [["Metric", "27B Local", "Frontier Cloud"], ["Drafting score", "82%",
+              "95% (needs checking)"], ["Cost per 1,000", "$4", "$38"]]},
+    {"id": "k", "layout": "takeaways", "title": "Recommendation and Key Takeaways",
+     "items": [["Local wins on cost: $4 vs $38 per 1,000", ""],
+               ["Hybrid routing is the optimal path", ""]]},
+]
+EN_NEW = [
+    {"id": "t", "layout": "table", "title": "Benchmark Results",
+     "rows": [["Metric", "27B Local", "Cloud API"], ["Drafting score", "82%", "95%"],
+              ["Cost / 1,000 docs", "$4", "$38"]]},
+    {"id": "h", "layout": "bullets", "title": "Hybrid Routing Recommendation",
+     "bullets": ["Route short drafts locally", "Blend $4 and $38 costs"]},
+]
+
+
+def test_a_shrink_keeps_the_old_deck_s_marks_and_its_wording_of_a_figure_pair():
+    out = revise.carry_marks(json.loads(json.dumps(EN_NEW)), EN_OLD)
+    assert out[0]["rows"][1] == ["Drafting score", "82%", "95% (needs checking)"]
+    assert out[0]["rows"][2] == EN_NEW[0]["rows"][2]
+    # marked once is enough: a mark already there is not doubled, a figure shown bare in the
+    # old deck too is left alone
+    assert revise.carry_marks(out, EN_OLD) == out
+    bare = [*EN_OLD, {"id": "x", "layout": "bullets", "title": "x", "bullets": ["95% cloud"]}]
+    assert revise.carry_marks(json.loads(json.dumps(EN_NEW)), bare) == EN_NEW
+    ko = [{"id": "m", "layout": "bullets", "title": "x", "bullets": ["예산 1.5억 (확인 필요)"]}]
+    got = revise.carry_marks([{"id": "m", "layout": "bullets", "title": "x",
+                               "bullets": ["예산 1.5억 원 집행"]}], ko)
+    assert got[0]["bullets"] == ["예산 1.5억 원 (확인 필요) 집행"]
+    out = revise.keep_phrasing(json.loads(json.dumps(EN_NEW)), EN_OLD)
+    assert out[1]["bullets"] == ["Route short drafts locally",
+                                 "Local wins on cost: $4 vs $38 per 1,000"]
+    # the old words kept, or a long sentence of the writer's own: stays
+    same = [{**EN_NEW[1], "bullets": ["Cost: $4 vs $38 per 1,000 docs"]}]
+    assert revise.keep_phrasing(json.loads(json.dumps(same)), EN_OLD) == same
+    started = time.monotonic()
+    revise._MARKED_FIGURE.search("1" + " " * 50000 + "(x")
+    revise.carry_marks([{"bullets": ["95%" + " " * 50000]}], EN_OLD)
+    assert time.monotonic() - started < 0.5
+
+
+def test_a_guard_blank_left_as_a_point_s_value_and_a_dangling_unit_are_not_kept():
+    slide = {"id": "b", "layout": "bullets", "title": "분기별 매출 및 이익률 추이",
+             "bullets": ["매출 실적: 128억원/%", "이익률 실적: [수치]", "이익률 7.5%"]}
+    assert deck.settle_blanks([slide]) == 2
+    assert slide["bullets"] == ["매출 실적: 128억원", "이익률 7.5%"]
+    # a fill-in field, a blank inside a sentence, or a list of nothing else stays
+    kept = {"id": "k", "layout": "bullets", "title": "x",
+            "bullets": ["담당: [담당자]", "매출 [수치] 증가 전망", "3%/년 성장"]}
+    alone = {"id": "a", "layout": "metrics", "title": "x", "metrics": [["[수치]", "이익률"]]}
+    assert deck.settle_blanks([kept, alone]) == 0
+    started = time.monotonic()
+    deck._DANGLING_UNIT.sub("", "1" + " " * 50000 + "/")
+    deck.settle_blanks([{"bullets": ["가" * 50000 + "[수치]", "x"]}])
+    assert time.monotonic() - started < 0.5

@@ -5514,6 +5514,49 @@ def lost_blocks(old: list[dict], new: list[dict], *, english: bool = False) -> l
     return out
 
 
+#: a value's unit left over from a chart's mixed one: 「128억원/%」
+_DANGLING_UNIT = re.compile(r"(\d[\d,.]{0,15} ?[가-힣A-Za-z]{1,3}) ?/ ?%p?(?![\w%])")
+#: an item that is a label and nothing more: 「이익률 실적:」
+_LABEL_ONLY = re.compile(r"[^:：\d]{1,40}[:：]?")
+
+
+def settle_blanks(slides: list[dict]) -> int:
+    """Slides with no guard blank standing as a point's whole value (「이익률 실적: [수치]」
+    left out while its list keeps another point) and no unit left dangling from a mixed one
+    (「128억원/%」 → 「128억원」); fill-in fields (「[담당자]」) stay. The count changed."""
+    from app.services import value_guard
+
+    def empty(point: object) -> bool:
+        if isinstance(point, list):
+            cells = [str(c).strip() for c in point]
+            label = " ".join(c for c in cells if not value_guard.GUARD_BLANK.fullmatch(c))
+            blanked = len(label) < len(" ".join(cells))
+        else:
+            text = str(point).rstrip()
+            ends = [m for m in value_guard.GUARD_BLANK.finditer(text) if m.end() == len(text)]
+            label, blanked = (text[:ends[0].start()] if ends else text), bool(ends)
+        return blanked and bool(_LABEL_ONLY.fullmatch(label.strip() or ":"))
+
+    changed = 0
+    for slide in slides:
+        for key in ("bullets", "items", "metrics"):
+            points = slide.get(key)
+            if not isinstance(points, list):
+                continue
+            kept = [p for p in points if not empty(p)]
+            if kept and len(kept) < len(points):
+                changed += len(points) - len(kept)
+                slide[key] = kept
+        for key, value in list(slide.items()):
+            if key in _NOT_SHOWN or key == "chart":
+                continue
+            fixed = json.loads(_DANGLING_UNIT.sub(r"\1", json.dumps(value, ensure_ascii=False)))
+            if fixed != value:
+                changed += 1
+                slide[key] = fixed
+    return changed
+
+
 #: an item count asked of a slide: 「항목을 하나로」, 「두 개로」, 「two bullets」
 _ITEMS_ASK = re.compile(
     r"(?P<n>하나|한\s?개|두\s?개|세\s?개|네\s?개|\d{1,2}\s?개)\s?(?:의\s?)?(?:항목|요점|글머리)?\s?"

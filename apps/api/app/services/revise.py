@@ -1471,6 +1471,192 @@ def refresh_agenda(slides: list[dict]) -> list[dict]:
     return slides
 
 
+#: layouts that frame a deck rather than carry its points
+_FRAME_LAYOUTS = ("title", "agenda", "section", "closing")
+#: an ask of the deck: an approval, a sign-off or a decision requested
+_DECK_ASK = re.compile(
+    r"승인|결재|재가|품의|요청\s?(?:사항|드립니다|합니다|:)|요청$|결정\s?요청"
+    r"|\b(?:approv\w{0,5}|sign-?off|decision\s(?:needed|requested))\b", re.I)
+#: an order asked of the restructure: 「순서를 바꿔」, 「맨 앞으로」, 「move」
+_ORDER_ASK = re.compile(
+    r"순서|앞으로|뒤로|맨\s?(?:앞|뒤|끝|처음|마지막)|먼저|나중에|옮겨|옮기|이동"
+    r"|\b(?:order|move|first|last)\b", re.I)
+
+
+def _shown_texts(slide: dict) -> list[str]:
+    from app.services import deck
+
+    return [t for k, v in slide.items() if k not in deck._NOT_SHOWN for t in deck._strings(v)]
+
+
+def _figure_keys(text: str) -> set[tuple[str, str]]:
+    from app.services import deck
+
+    return {(n, u) for n, u, _ in deck.figures_in(text)}
+
+
+def keep_ask(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
+    """The old deck's ask (「결재 요청: … 1.5억 승인」) put back when no slide of the new one asks
+    any more: as the title of the slide holding its figures when it was a title, else as a
+    point on that slide or the last one; left alone when the person spoke of it."""
+    if _DECK_ASK.search(mentioned or "") or not new or any(
+            _DECK_ASK.search(t.strip()) for s in new for t in _shown_texts(s)):
+        return new
+    ask, titled = "", False
+    for slide in reversed(old):
+        title = " ".join(str(slide.get("title") or "").split())
+        if _DECK_ASK.search(title):
+            ask, titled = title, True
+            break
+        said = next((" ".join(t.split()) for t in _shown_texts(slide)
+                     if _DECK_ASK.search(t.strip())), "")
+        if said:
+            ask = said
+            break
+    if not ask or len(ask) > 80:
+        return new
+    figures = _figure_keys(ask)
+    body = [s for i, s in enumerate(new) if i and s.get("layout") not in ("title", "agenda")]
+    if not body:
+        return new
+    shared = [len(figures & _figure_keys(" ".join(_shown_texts(s)))) for s in body]
+    # the last slide holding most of its figures, else the last slide
+    host = body[max(range(len(body)), key=lambda i: (shared[i], i))] if any(shared) \
+        else body[-1]
+    if isinstance(host.get("bullets"), list) or host.get("layout") in ("bullets", "closing"):
+        host["bullets"] = [*(host.get("bullets") or []), ask]
+    elif titled or not str(host.get("body") or "").strip():
+        host["title"] = ask
+    else:
+        host["body"] = f"{str(host['body']).rstrip()} {ask}"
+    return new
+
+
+#: a slide that sums the deck up: 「3분기 핵심 요약」, 「Key takeaways」
+_SUMMARY_TITLE = re.compile(r"요약|정리|\b(?:summary|recap|takeaways?|key\s+points)\b", re.I)
+
+
+def keep_order(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
+    """A summary slide the new deck put after slides whose figures the old deck showed later
+    than its own (「3분기 핵심 요약」 after the 4분기 plan) moved up before them, each placed by
+    the old body slide it shares the most figures with (two at least); left as written when
+    the person asked for an order."""
+    from app.services import deck
+
+    if _ORDER_ASK.search(mentioned or ""):
+        return new
+    olds = [(i, {(n, u) for n, u, _ in deck._shown_figures(s)}) for i, s in enumerate(old)
+            if i and s.get("layout") not in _FRAME_LAYOUTS]
+
+    def place(slide: dict) -> int | None:
+        mine = {(n, u) for n, u, _ in deck._shown_figures(slide)}
+        best = max(olds, key=lambda o: (len(mine & o[1]), -o[0]), default=None)
+        return best[0] if best is not None and len(mine & best[1]) >= 2 else None
+
+    out = list(new)
+    body = [j for j, s in enumerate(out) if j and s.get("layout") not in _FRAME_LAYOUTS]
+    for j in body:
+        if not _SUMMARY_TITLE.search(str(out[j].get("title") or "")):
+            continue
+        mine = place(out[j])
+        later = [i for i in body if i < j and mine is not None
+                 and (at := place(out[i])) is not None and at > mine]
+        if later:
+            out.insert(later[0], out.pop(j))
+            break
+    return out
+
+
+#: a figure with the checks' mark after it: 「95% (needs checking)」, 「1.5억 (확인 필요)」
+_MARKED_FIGURE = re.compile(
+    r"(\$?\d[\d,]{0,15}(?:\.\d{1,6})?(?:%p|%|[가-힣]{1,3}|[A-Za-z]{1,3})?)"
+    r" ?\((확인 필요|needs checking)\)")
+
+
+def _map_shown(slide: dict, fix) -> dict:
+    """`slide` with `fix` applied to every string the audience reads."""
+    from app.services import deck
+
+    def walk(value):
+        if isinstance(value, str):
+            return fix(value)
+        if isinstance(value, list):
+            return [walk(v) for v in value]
+        if isinstance(value, dict):
+            return {k: walk(v) for k, v in value.items()}
+        return value
+
+    return {k: v if k in deck._NOT_SHOWN or k == "chart" else walk(v)
+            for k, v in slide.items()}
+
+
+def carry_marks(new: list[dict], old: list[dict]) -> list[dict]:
+    """A figure the old deck showed only with the checks' mark (「95% (needs checking)」) keeps
+    the mark wherever the new deck still shows it."""
+    marked: dict[str, str] = {}
+    texts = [t for s in old for t in _shown_texts(s)]
+    for text in texts:
+        for m in _MARKED_FIGURE.finditer(text):
+            marked.setdefault(m.group(1), m.group(2))
+    bare = " ".join(_MARKED_FIGURE.sub(" ", t) for t in texts)
+    for figure in list(marked):
+        if re.search(rf"(?<![\w.,$]){re.escape(figure)}(?![\d.,%])", bare):
+            # shown without the mark too: which one stays is not known
+            del marked[figure]
+    if not marked:
+        return new
+    patterns = [(re.compile(rf"(?<![\w.,$]){re.escape(figure)}(?: ?원)?(?![\d.,%가-힣])"
+                            rf"(?! ?\((?:확인 필요|needs checking)\))"), mark)
+                for figure, mark in marked.items()]
+
+    def fix(text: str) -> str:
+        for pattern, mark in patterns:
+            text = pattern.sub(lambda m, mark=mark: f"{m.group(0)} ({mark})", text)
+        return text
+
+    return [_map_shown(s, fix) for s in new]
+
+
+#: words a point is said in, numbers aside
+_POINT_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{2,}")
+#: a period a figure names, not a value (「4분기」, 「2026년」)
+_PERIOD_UNITS = frozenset(("분기", "반기", "년", "월", "주차"))
+#: a short point, as a merge writes it
+_SHORT_POINT = 40
+
+
+def _values_of(text: str) -> set[tuple[str, str]]:
+    return {f for f in _figure_keys(text) if f[1] not in _PERIOD_UNITS}
+
+
+def keep_phrasing(new: list[dict], old: list[dict]) -> list[dict]:
+    """A short new point restating two or more values that one old point alone gave (with at
+    most one more), in words that point does not use (「Blend $4 and $38 costs」 for 「Local
+    wins on cost: $4 vs $38 per 1,000」), takes the old point back as written."""
+    from app.services import deck
+
+    points = list(dict.fromkeys(p for s in old for p in deck.points_of(s)))
+    for slide in new:
+        bullets = slide.get("bullets")
+        if not isinstance(bullets, list):
+            continue
+        for b, bullet in enumerate(bullets):
+            if not isinstance(bullet, str) or len(bullet) > _SHORT_POINT:
+                continue
+            mine = _values_of(bullet)
+            if len(mine) < 2:
+                continue
+            given = [p for p in points if mine <= (theirs := _values_of(p))
+                     and len(theirs - mine) <= 1]
+            if len(given) != 1 or given[0] == bullet or len(given[0]) > 80:
+                continue
+            words = {w.lower() for w in _POINT_WORD.findall(given[0])}
+            shared = words & {w.lower() for w in _POINT_WORD.findall(bullet)}
+            if len(shared) * 2 < len(words):
+                bullets[b] = given[0]
+    return new
+
+
 def document_block(parts: list[str], texts: list[str]) -> str:
     """Current document text as restructure source."""
 
@@ -2031,7 +2217,24 @@ def lost_facts(old: str, new: str) -> list[str]:
     days = [*_named_days(plain), *(("", d) for d in _SHORT_DAY.findall(plain))]
     gone = [said for key, said in _named_days(_whole_text(old)).items()
             if not any(_same_day(key, have) for have in days)]
-    return lost + [n for n in old_names if n not in names] + gone
+    return lost + [n for n in old_names if n not in names] + gone + _lost_done(old, plain)
+
+
+#: a thing said done or settled: 「처리를 완료했습니다」, 「일정이 확정되었습니다」; not one still
+#: to come (「확정되는 대로」, 「마무리할 예정」)
+_DONE = re.compile(r"(?<![\d.,])([가-힣]{2,8}) ?(완료|마무리|확정|결정|합의|승인|체결|타결)"
+                   r"(?=했|하였|됐|되었)")
+
+
+def _lost_done(old: str, new: str) -> list[str]:
+    """What `old` says was done or settled (「처리 완료」) that `new` says nowhere, neither the
+    thing nor its being done."""
+    out = []
+    for m in _DONE.finditer(_whole_text(old)):
+        noun = _PARTICLE.sub("", m.group(1))
+        if len(noun) >= 2 and m.group(2) not in new and noun not in new:
+            out.append(f"{noun} {m.group(2)}")
+    return list(dict.fromkeys(out))
 
 
 #: a day named without a date: 「다음 주 수요일」, 「이번 주」, 「내일」, 「next Wednesday」
