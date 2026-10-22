@@ -307,7 +307,7 @@ def _spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
         return out
     if kind == "house":
         goal = _text(data.get("goal"), 40)
-        pillars = [t for v in (data.get("pillars") or [])[:5] if (t := _text(v, 24))]
+        pillars = [n["name"] for v in (data.get("pillars") or [])[:5] if (n := _named(v, 24))]
         base = []
         for row in (data.get("base") or [])[:3]:
             named = _named(row, 24)

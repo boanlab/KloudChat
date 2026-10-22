@@ -291,15 +291,6 @@ def test_a_timeline_put_back_takes_no_slide_whose_figures_it_would_drop():
     assert out[1]["layout"] == "timeline"
 
 
-def test_a_closing_with_no_points_names_none():
-    slide = {"layout": "closing", "title": "핵심 요약 및 승인 요청 사항"}
-    deck.fill_closing(slide, {"bullets": [], "body": ""})
-    assert slide["title"] == "마무리" and slide["body"] == "감사합니다"
-    slide = {"layout": "closing", "title": "핵심 요약 및 승인 요청 사항"}
-    deck.fill_closing(slide, {"bullets": ["3분기 매출 128억 원", "1.5억 예산 승인"]})
-    assert slide["title"] == "핵심 요약 및 승인 요청 사항" and len(slide["bullets"]) == 2
-
-
 #: reverify-v ed1: an English 8-slide deck cut to three
 EN_METHOD = {"id": "b", "layout": "bullets", "title": "Benchmark Design and Evaluation Method",
              "bullets": ["Workload: 40 document drafting tasks",
@@ -336,18 +327,21 @@ def test_an_english_shrink_names_each_lost_value_with_what_it_counts():
     assert time.monotonic() - started < 0.5
 
 
-def test_one_row_under_two_spellings_of_its_label_becomes_one_row_with_every_value():
-    rows = deck.dedupe_rows(EN_RESULTS["rows"])
-    assert rows == EN_RESULTS["rows"][:3]
-    # the row with more values stands, the other's values fill its blanks
-    assert deck.dedupe_rows([["항목", "3분기", "4분기"], ["매출", "128억", ""],
-                             ["매출", "", "140억"], ["출고 지연", "4일", "0일"]]) == [
-        ["항목", "3분기", "4분기"], ["매출", "128억", "140억"], ["출고 지연", "4일", "0일"]]
-    # values that differ are two rows, not one
-    differ = [["Metric", "A", "B"], ["Latency", "9s", "14s"], ["Latency", "10s", "15s"],
-              ["Cost", "$4", "$38"]]
-    assert deck.dedupe_rows(differ) == differ
-    assert not deck._same_word("cost", "cast") and deck._same_word("qty", "quantity")
+def test_an_amount_written_in_two_parts_is_one_figure_lost_or_kept_whole():
+    """audit-g H4 A: 「연간 발급 4만 8천 건」 gone from the cut deck was said lost as
+    「4만, 8천」."""
+    old = [{"layout": "bullets", "title": "핵심 운영 지표",
+            "bullets": ["연간 발급 4만 8천 건", "전체 증명서 발급의 31% 차지"]},
+           {"layout": "bullets", "title": "예산", "bullets": ["확대 설치 예산 1억 2천만원"]}]
+    new = [{"layout": "bullets", "title": "성과", "bullets": ["전체 증명서 발급의 31% 차지",
+                                                          "예산 120,000,000원"]}]
+    assert deck.lost_across(old, new) == ["발급 4만 8천 건"]
+    assert deck.lost_across(old, [*new, {"layout": "bullets", "title": "발급",
+                                         "bullets": ["48,000건 발급"]}]) == []
+    assert deck.figures_in("38억 5천만 원") == [("3850000000", "원", "38억 5천만 원")]
+    started = time.monotonic()
+    deck.figures_in("4만" + " " * 50000 + "8천")
+    assert time.monotonic() - started < 0.5
 
 
 def test_a_restated_figure_goes_beside_the_figure_it_belongs_to_not_onto_an_unrelated_slide():
@@ -366,6 +360,29 @@ def test_a_restated_figure_goes_beside_the_figure_it_belongs_to_not_onto_an_unre
     assert deck.restate_missing_facts(slides, request) == [1]
     assert slides[1]["metrics"][3] == ["9.6억", "영업이익 (이익률 7.5%, 전분기 6.8%)"]
     assert slides[2]["bullets"] == ["물류센터 이전으로 출고 지연 4일"]
+
+
+def test_a_restated_figure_from_a_parenthesis_keeps_the_term_it_qualifies():
+    """audit-g H5s: 「93% of target」 from 「revenue $9.8M (target $10.5M, 93% of target)」 went
+    alone onto the permit-delay slide, which shares only 「target」."""
+    request = ("Create a 6-slide English presentation. Numbers: revenue $9.8M (target $10.5M, "
+               "93% of target), gross margin 21%, permit delays in two counties added 11 days "
+               "on average.")
+    kpis = {"layout": "kpi-grid", "title": "Q3 KPIs",
+            "metrics": [["412", "residential installs"], ["9.8", "revenue ($M)"],
+                        ["21%", "gross margin"]]}
+    delays = {"layout": "bullets", "title": "Permit Delays",
+              "bullets": ["Two counties added 11 days on average",
+                          "Permit delay hit the 10.5 install target"]}
+    slides = [{"layout": "title", "title": "Q3 2026"}, kpis, delays]
+    assert deck.restate_missing_facts(slides, request) == [1]
+    assert kpis["metrics"][1] == ["9.8", "revenue ($M, target $10.5M, 93% of target)"]
+    assert len(delays["bullets"]) == 2
+    slides = [{"layout": "title", "title": "Q3 2026"},
+              {"layout": "bullets", "title": "Revenue",
+               "bullets": ["Revenue landed at $9.8M", "Gross margin 21%"]}]
+    deck.restate_missing_facts(slides, request)
+    assert slides[1]["bullets"][-1] == "revenue $9.8M (target $10.5M, 93% of target)"
 
 
 #: reverify-w kd2: the ask slide before the shrink and the statement that took its place
@@ -470,23 +487,26 @@ def test_a_shrink_keeps_the_old_deck_s_marks_and_its_wording_of_a_figure_pair():
     # the old words kept, or a long sentence of the writer's own: stays
     same = [{**EN_NEW[1], "bullets": ["Cost: $4 vs $38 per 1,000 docs"]}]
     assert revise.keep_phrasing(json.loads(json.dumps(same)), EN_OLD) == same
+    # audit-g H4 B: the writer's cut of the old point stays
+    old_point = [{"id": "o", "layout": "bullets", "title": "과제",
+                  "bullets": ["고령층 이용률: 65세 이상 이용률이 12%로 낮아 안내와 "
+                              "접근성 보완이 필요함"]}]
+    cut = [{"id": "o", "layout": "bullets", "title": "과제",
+            "bullets": ["65세 이상 이용률 12%로 낮음"]}]
+    assert revise.keep_phrasing(json.loads(json.dumps(cut)), old_point) == cut
     started = time.monotonic()
     revise._MARKED_FIGURE.search("1" + " " * 50000 + "(x")
     revise.carry_marks([{"bullets": ["95%" + " " * 50000]}], EN_OLD)
     assert time.monotonic() - started < 0.5
 
 
-def test_a_guard_blank_left_as_a_point_s_value_and_a_dangling_unit_are_not_kept():
+def test_a_dangling_unit_is_cut_and_a_guard_blank_stays_in_sight():
     slide = {"id": "b", "layout": "bullets", "title": "분기별 매출 및 이익률 추이",
              "bullets": ["매출 실적: 128억원/%", "이익률 실적: [수치]", "이익률 7.5%"]}
-    assert deck.settle_blanks([slide]) == 2
-    assert slide["bullets"] == ["매출 실적: 128억원", "이익률 7.5%"]
-    # a fill-in field, a blank inside a sentence, or a list of nothing else stays
-    kept = {"id": "k", "layout": "bullets", "title": "x",
-            "bullets": ["담당: [담당자]", "매출 [수치] 증가 전망", "3%/년 성장"]}
-    alone = {"id": "a", "layout": "metrics", "title": "x", "metrics": [["[수치]", "이익률"]]}
-    assert deck.settle_blanks([kept, alone]) == 0
+    assert deck.settle_blanks([slide]) == 1
+    assert slide["bullets"] == ["매출 실적: 128억원", "이익률 실적: [수치]", "이익률 7.5%"]
+    kept = {"id": "k", "layout": "bullets", "title": "x", "bullets": ["3%/년 성장"]}
+    assert deck.settle_blanks([kept]) == 0
     started = time.monotonic()
     deck._DANGLING_UNIT.sub("", "1" + " " * 50000 + "/")
-    deck.settle_blanks([{"bullets": ["가" * 50000 + "[수치]", "x"]}])
     assert time.monotonic() - started < 0.5

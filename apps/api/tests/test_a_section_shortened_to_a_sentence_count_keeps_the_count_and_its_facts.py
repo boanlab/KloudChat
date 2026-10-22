@@ -173,7 +173,18 @@ def test_only_prose_sentences_are_counted():
     started = time.monotonic()
     revise.sentence_count("**" + "a" * 50000)
     revise.sentence_count("표 1" + " " * 50000)
+    revise.sentence_count("-" + " " * 50000 + "x")
     assert time.monotonic() - started < 0.5
+
+
+def test_a_section_written_as_a_list_only_counts_its_top_level_rows():
+    """audit-g H6s: two 개조식 rows asked as 「두 문장」 were said to be 0문장."""
+    rows = ("- 업무 만족도가 3.4점에서 4.1점으로 상승하는 등 성과가 확인됨.\n"
+            "- 다만 개인 기기 접속 시도 3건이 차단된 점은 개선 과제로 남음\n"
+            "  - VPN 라이선스 추가 검토\n\n**표 3. 문제점**\n\n"
+            "| 문제 | 개선 |\n|---|---|\n| a | b |")
+    assert revise.sentence_count(rows) == 2
+    assert revise.count_met(rows, 2)
 
 
 def test_figures_are_real_figures_and_money_is_compared_as_money():
@@ -246,16 +257,6 @@ async def test_a_section_with_a_table_and_a_picture_shortens_to_the_count_asked(
     # numbered anew with the document; the picture is the one the part had
     assert "영남 출고 지연" in content and "단가 인하 옵션 대비](data:image/png;base64," in content
     assert save_stages.revision_reply(bundle.document, None, is_deck=False) == "2절을 고쳤습니다."
-
-
-def test_a_box_a_shortening_brought_in_is_taken_out_and_one_the_part_had_stays():
-    box = "```callout\n협상 일정\n목요일 2차 미팅 전 확정\n```"
-    assert revise.without_added_boxes(BEFORE, f"{box}\n\n{TWO}") == TWO
-    assert revise.without_added_boxes(f"{BEFORE}\n\n{box}", f"{TWO}\n\n{box}") == (
-        f"{TWO}\n\n{box}")
-    started = time.monotonic()
-    revise.without_added_boxes("", "```callout\nx\n" + " " * 50000)
-    assert time.monotonic() - started < 0.5
 
 
 @pytest.mark.asyncio

@@ -1,12 +1,12 @@
 [
  {
-  "key": "212290c760e963b878d4886b",
+  "key": "18d03a2ed31db42678326465",
   "stage": "revise-route",
   "kind": "revise_plan",
   "head": "The user typed the sentence below while looking at a finished document.\nDecide what they are asking to change.\n\n문서 제목: LMS 도입 대안 비교 및 선정\n\n문서의 구성:\n1. 요약 및 권고\n2. ",
   "reply": "{\"scope\": \"parts\", \"targets\": [4], \"note\": \"비용, 모바일 앱, HR 연동 항목의 가중치를 각각 50, 30, 20으로 반영하여 비교 분석을 수정한다.\"}",
   "usage": {
-   "prompt_tokens": 577,
+   "prompt_tokens": 605,
    "completion_tokens": 27
   }
  },

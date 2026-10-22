@@ -4398,8 +4398,9 @@ _LEANS_BACK = re.compile(
     r"따라서|그러므로|그래서|그러나|하지만|다만|또한|즉|한편|반면|둘째|셋째|넷째|다섯째|"
     r"마지막으로|나머지)(?=[\s,])"
 )
-#: a decision and who made or asked it: 「…의 제안과 …의 승인으로 결정되었습니다」
-_DECIDED = re.compile(r"결정|승인|합의|제안|요청|지시|확정|하기로|않기로|보류")
+#: a decision, who made or asked it, or the sign-off it waits on: 「…의 승인으로 결정되었습니다」,
+#: 「… 연장 여부에 대한 실장님 결재가 필요합니다」
+_DECIDED = re.compile(r"결정|승인|결재|합의|제안|요청|지시|확정|하기로|않기로|보류")
 #: one item of a counted run (「첫째, …」 … 「셋째, …」): cutting one breaks the run
 _ENUMERATED = re.compile(r"^(?:[-*+]\s+)?(?:첫째|둘째|셋째|넷째|다섯째|여섯째|마지막으로)(?=[\s,])")
 #: section heading asking a question: 「Q7. 신청 기간과 방법은?」

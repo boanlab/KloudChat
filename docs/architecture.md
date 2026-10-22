@@ -512,20 +512,20 @@ placed after slides whose figures the old deck showed later moves up before them
 was asked (`revise.keep_order`), a figure the old deck showed only marked (「95% (needs
 checking)」) keeps the mark (`revise.carry_marks`; the restructure's grounding reads the old deck
 as material and cannot mark it again), a short point restating two values one old point gave in
-other words takes that point back (`revise.keep_phrasing`), and a point that is only a label and
-a guard blank (「이익률 실적: [수치]」) or a unit dangling from a mixed one (「128억원/%」) is not
-kept, here and on a rewritten slide (`deck.settle_blanks`); table rows of one label spelled two ways (「Avg Latency」,
-「Average Latency」) with no differing value become one row (`deck.dedupe_rows`); a figure the
+mostly other words takes that point back, not over a strong writer and not when the point is a cut
+of the old one's own words (`revise.keep_phrasing`), and a unit dangling from a mixed one
+(「128억원/%」) is cut, here and on a rewritten slide, while a guard blank (「이익률 실적: [수치]」)
+stays in sight (`deck.settle_blanks`); a figure the
 request states that the deck left out goes beside the metric or item it belongs to
-(「영업이익 (이익률 7.5%)」), else onto the slide sharing its words or its owner's
-(`deck.restate_missing_facts`); a timeline put back takes no slide whose
-chart or figures it would drop (`revise.keep_timeline_layout`), and a closing with no points gets
-a plain title (`deck.fill_closing`). A sentence count still off after the retry is met by code at
+(「영업이익 (이익률 7.5%)」), else onto the slide sharing its words; a figure the request gives
+in parentheses is restated with the term it qualifies (「revenue $9.8M (93% of target)」, never
+「93% of target」 alone; `deck.restate_missing_facts`); a timeline put back takes no slide whose
+chart or figures it would drop (`revise.keep_timeline_layout`). A sentence count still off after the retry is met by code at
 clause joints (「…필요하며,」 ↔ 「…필요합니다.」, `revise.fit_count`), the retry that misses a count
 the first version met does not replace it (`revise.better_shortening`), no sentence is cut as a
-table echo below the count asked, a box a shortening adds is taken out, and the part's inline
+table echo below the count asked, and the part's inline
 pictures, which the writer is not shown, are put back (`revise.keep_pictures`). Only prose sentences are counted (tables,
-captions and list rows are not), a figure is a number with its unit or counter (「3곳」, not
+captions and list rows are not; a part written as a list only counts its top-level rows), a figure is a number with its unit or counter (「3곳」, not
 「표 1의」), money is compared as won (「38.5억」 = 「38억 5천만」 = 「3,850,000,000원」,
 `deck.amounts_in`), and a drawn diagram's labels count as shown. Joining one named slide's
 items, named or counted in things rather than slides (「2장 항목을 하나로 합쳐줘」, 「4장 항목을
@@ -1014,7 +1014,6 @@ changes what a group gets, and test both a self-hosted and a strong external wri
 | Odd Korean words in a report section or deck draft (`word_fix`, `report_stages`, `deck._write_slides`) | after the section is written (the deck draft once), the judge model (its `strict-local/` twin, else the writer, on a strict-local turn) lists `{from, to}` pairs for wrong words, misspellings and English or Chinese fused into Korean, with the fused words, lowercase English and glossed words code finds named first; code swaps a pair only where it stands verbatim outside code, links and figure markers, and refuses one that touches a digit, a citation or Markdown mark, an acronym or capitalized name, a negation, a word of the request or material, drops a word, or swaps a whole Korean word (one letter only, unless an English gloss beside it pins the meaning); any failure keeps the text | off | off |
 | Calculation time limit (`calc.DEADLINE`, `Calc.run`) | 240 s; a finished run is handed over unchecked; with none, the writer marks its own figures 「(추정)」; after any run short of a checked one (timeout, one run, none), code also gives 「(추정)」 to each worked amount in the document that is neither the material's nor code's (`report_stages._figures_marked`, `units.label_estimates`) | same | same |
 | Written sums and chains (`units.fix_written_sums`, `fix_table_totals`, `fix_written_arithmetic`) | recomputed from the answer's own figures (a rate as a hundredth: 「A × (1 - 5%)」): 「A + B = C」 (a bold C too), a sum after its listed amounts (「A원 + B원으로 합계 N원」), a table's total row over plain rows of one unit, a wrong step of a chain and the steps that start from it; marked 「(확인 필요)」, not rewritten: a result a tool or the calculation printed, a total over subtotals, blanks or a second total that matches no reading, a sum off by 1000× or more; rates, averages, unit prices and rows of other units are not added | same | same |
-| Rate results in words (`units.fix_rate_results`, report sections; on a section edit with `fix_written_sums`, the rewritten lines only via `revise.on_new_lines`) | a base, a rate and its result in one sentence (「A원에서 5% 인하하면 C원」, 「A원의 5%인 C원」) or one table row (a 「…원 기준」 header amount, or the row's first amount and an 「…후」 column) where C is neither the changed amount nor the change: recomputed when the material states the base and the rate, else marked 「(확인 필요)」 | same | same |
 | Figures code finds off but cannot settle (`units.mark_slipped_formulas`, `mark_scaled_restatements`, `mark_profit_contradictions`) | marked where they stand, never rewritten: a product a unit off, an amount with a worked result's digits a power of ten off under the same name, a profit above what its paragraph's revenue less its named costs leaves (the arithmetic shown in the mark) | same | same |
 | Company-assumption labels (`units.label_assumptions`) | a report table row labelled 「가정(사내)」 whose figures the person never gave reads 「가정(본 검토 설정)」 | same | same |
 | Weekdays beside dates (`weekdays.fix_weekdays`; chat `answer-weekdays`, report `save_stages.last_pass`, composed `compose._last_pass`) | set to the calendar again after every stage that may rewrite; the year the task names, else the one nearest today (within 120 days), else left as written; a weekday the person gave that the calendar contradicts (「10/21 화」 on a Wednesday) is kept and flagged 「(화, 확인 필요: 달력상 수요일)」, never picked for them | same | same |

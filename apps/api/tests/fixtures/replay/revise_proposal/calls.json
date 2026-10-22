@@ -1,12 +1,12 @@
 [
  {
-  "key": "be20db2b2fe0a59cc45d4a7f",
+  "key": "3d42ea0bcd32d54b72ca0273",
   "stage": "revise-route",
   "kind": "revise_plan",
   "head": "The user typed the sentence below while looking at a finished document.\nDecide what they are asking to change.\n\n문서 제목: 도담푸드 매장 POS 데이터 통합 대시보드 구축 범위 조정 제안\n\n문서의 ",
   "reply": "{\"scope\": \"parts\", \"targets\": [7], \"note\": \"단가를 고정하고 예산 범위 내로 조정 가능한 방안 (예: 범위 축소, 일정 조정, 인력 구성 변경 등) 을 구체적으로 제시한다.\"}",
   "usage": {
-   "prompt_tokens": 586,
+   "prompt_tokens": 615,
    "completion_tokens": 30
   }
  },
