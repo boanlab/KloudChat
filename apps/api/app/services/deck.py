@@ -33,6 +33,7 @@ from app.services import (
     internal_words,
     key_figures,
     model_retry,
+    model_tier,
     output_language,
     pictures,
     placeholders,
@@ -45,6 +46,7 @@ from app.services import (
     slide_patterns,
     thinking,
     units,
+    word_fix,
 )
 from app.services import outline as plan_rules
 from app.services.context import build_document_messages, pasted_material, prompt_request
@@ -3213,8 +3215,10 @@ async def _write_slides(
     frame: bool = False,
     settled: list | None = None,
     computed: str = "",
+    checker: str = "",
 ) -> AsyncIterator[dict[str, Any]]:
-    """Writes slide bodies: one draft call, then per-slide gaps; numbers checked vs `computed`."""
+    """Writes slide bodies: one draft call, then per-slide gaps; numbers checked vs `computed`.
+    `checker` proofreads a self-hosted writer's draft for odd words (`word_fix`)."""
     #: Approved pictures by slide index.
     wanted_figures = {int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")}
     yield {
@@ -3280,6 +3284,13 @@ async def _write_slides(
         )
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
+        if word_fix.wanted(model_tier.group(model), draft_text):
+            # a self-hosted writer's odd words: the judge names them, code swaps the safe ones
+            draft_text, more = await word_fix.fix(
+                draft_text, model=word_fix.checker(model, checker or model), complete=_complete,
+                api_key=api_key, given="\n".join(
+                    [request, *(trusted_context or []), *(untrusted_context or [])]))
+            plan_rules.count(usage, more, planned_apart=bool(checker))
         # numbers a slide may use
         given = "\n".join([request, *(untrusted_context or []), *given_extra])
         drafted = _split_deck_draft(draft_text, slides, _facts_set(given), given)
@@ -4498,6 +4509,7 @@ async def write(
             auto_image_model=auto_image_model,
             density=str(approved_plan.get("density") or "speaker"),
             frame=bool(approved_plan.get("frame")),
+            checker=outline_model,
         ):
             yield event
         return

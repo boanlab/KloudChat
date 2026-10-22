@@ -54,6 +54,10 @@ def _completion(reply: str, usage: dict) -> dict:
     }
 
 
+#: the odd-word pass's prompt (`word_fix.PROMPT`), newer than the recorded turns
+_UNRECORDED_PROOFREAD = "You proofread Korean prose a writer model produced."
+
+
 class Gateway:
     """Answers model calls from a responder (recording) or from recorded calls (replay)."""
 
@@ -87,6 +91,10 @@ class Gateway:
                               "reply": reply, "usage": usage})
         else:
             queue = self.replies.get(key)
+            if not queue and prompt.startswith(_UNRECORDED_PROOFREAD):
+                # the odd-word pass came after the records: it finds nothing to swap, and is
+                # no recorded call
+                return httpx.Response(200, json=_completion('{"fixes": []}', {}), request=request)
             if not queue:
                 self.misses.append(prompt[:300])
                 raise httpx.ConnectError("replay: no recorded reply", request=request)
