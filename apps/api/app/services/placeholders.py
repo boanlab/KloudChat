@@ -25,13 +25,18 @@ _FIELD_NAMES: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 #: short Hangul head label kept as its own blank
 _OWN_NAME = re.compile(r"[가-힣](?:[가-힣 ·]{0,8}[가-힣])?")
+#: an English head field's blank, one to three words: 「[Location]」, 「[Prepared by]」
+EN_HEAD_BLANK = re.compile(r"\[[A-Z][A-Za-z]{1,15}(?: [A-Za-z]{2,12}){0,2}\]")
 
 
 def blank(name: str) -> str:
-    """「[name]」 for a field name: 「보고자(부서)」 → 「[보고자·부서]」."""
+    """「[name]」 for a field name: 「보고자(부서)」 → 「[보고자·부서]」, 「Location」 →
+    「[Location]」."""
     text = re.sub(r"\s{0,4}\(([^()]{1,20})\)", r"·\1", " ".join(str(name or "").split()))
     text = text.strip(" ·")
-    return f"[{text}]" if _OWN_NAME.fullmatch(text or "") else "[내용]"
+    if _OWN_NAME.fullmatch(text or "") or EN_HEAD_BLANK.fullmatch(f"[{text}]"):
+        return f"[{text}]"
+    return "[내용]"
 
 
 def for_header(header: str, default: str = "내용") -> str:
@@ -44,8 +49,9 @@ def for_header(header: str, default: str = "내용") -> str:
 
 
 def is_blank(text: str) -> bool:
-    """Whether a value is only a placeholder."""
-    return bool(PLACEHOLDER.fullmatch(str(text or "").strip(" *_`")))
+    """Whether a value is only a placeholder; an English head field's own blank counts too."""
+    text = str(text or "").strip(" *_`")
+    return bool(PLACEHOLDER.fullmatch(text) or EN_HEAD_BLANK.fullmatch(text))
 
 
 def found(texts: Iterable[str]) -> Counter[str]:
@@ -110,5 +116,5 @@ def drop_beside_values(text: str) -> str:
     return "".join(out)
 
 
-__all__ = ["PLACEHOLDER", "blank", "drop_beside_values", "for_header", "found", "head_blanks",
-           "is_blank", "summary"]
+__all__ = ["EN_HEAD_BLANK", "PLACEHOLDER", "blank", "drop_beside_values", "for_header", "found",
+           "head_blanks", "is_blank", "summary"]

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { ReportTitleBlock } from '@/types'
-import { blankFor, draftRows, fieldRows, onePage, paperLineLabelled, titleBlockClass } from '@/components/report/docFormats'
+import { blankFor, draftRows, fieldRows, onePage, paperLineLabelled, titleBlockClass, titleKey } from '@/components/report/docFormats'
 import { useT } from '@/lib/useT'
 import { isBlank } from '@/lib/placeholders'
 
@@ -70,7 +70,7 @@ export function TitleBlock({
     )
   } else if (block.head === 'cover') inner = <>{label}{heading}{subtitle}{fieldsTable(1)}</>
   else if (block.head === 'memo') {
-    inner = <>{fieldsTable(1)}<div className="tb-memo-title"><span className="tb-key">제목</span>{heading}</div></>
+    inner = <>{fieldsTable(1)}<div className="tb-memo-title"><span className="tb-key">{titleKey(block)}</span>{heading}</div></>
   } else if (block.head === 'draft') {
     inner = (
       <>
@@ -89,7 +89,7 @@ export function TitleBlock({
             ))}
           </tbody>
         </table>
-        <div className="tb-memo-title"><span className="tb-key">제목</span>{heading}</div>
+        <div className="tb-memo-title"><span className="tb-key">{titleKey(block)}</span>{heading}</div>
       </>
     )
   } else if (block.head === 'press') {

@@ -40,6 +40,7 @@ from app.services import (
     meeting_memo,
     meeting_tense,
     model_retry,
+    output_language,
     pictures,
     placeholders,
     process_settings,
@@ -1738,6 +1739,10 @@ class TitleBlock(Base):
             bundle.findings.head_fixed = head_fixed
             bundle.findings.client_problem = client_problem
             block = head_fixed or block
+        if output_language.reads_english("\n".join(
+                str(s.get("content") or "") for s in bundle.document.sections)):
+            # an English document's head in English: 「Date」, 「Location」, 「[Location]」
+            block = doc_formats.in_english(block) or block
         block = report_checks.minutes_head(block, prepass, report.local_today()) or block
         if prepass is not None and "meeting-date" in prepass.settings.head:
             # an empty 회의명·장소·참석자 or a clockless 일시 the memo gives, by code
