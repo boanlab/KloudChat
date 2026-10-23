@@ -68,6 +68,7 @@ export function cleanTitleBlock(block: unknown): ReportTitleBlock | null {
     fields,
     lists: raw.lists === 'gaejo' ? 'gaejo' : undefined,
     closing: raw.closing === true ? true : undefined,
+    language: raw.language === 'en' ? 'en' : undefined,
   }
 }
 
@@ -243,6 +244,9 @@ export const onePage = (block: Pick<ReportTitleBlock, 'format'> | null | undefin
 export const titleBlockClass = (block: ReportTitleBlock, paged: boolean) =>
   `tb tb-${block.head}${block.head === 'cover' && paged ? ' cover' : ''}${onePage(block) ? ' tb-onepage' : ''}`
 
+/** The memo head's title label: 「제목」, in an English head 「Title」 (`report_export._title_key`). */
+export const titleKey = (block: ReportTitleBlock) => (block.language === 'en' ? 'Title' : '제목')
+
 /** HTML string for Paged.js. */
 export function titleBlockHtml(block: ReportTitleBlock, title: string): string {
   const fieldsTable = (perRow: number) => block.fields.length
@@ -257,7 +261,7 @@ export function titleBlockHtml(block: ReportTitleBlock, title: string): string {
     const line = block.fields.map(([key, value]) => `<span><b>${escapeHtml(key)}</b> ${shown(value, key)}</span>`).join('')
     inner = `<div class="tb-box">${heading}</div>${line ? `<p class="tb-fieldline">${line}</p>` : ''}`
   } else if (block.head === 'cover') inner = `${label}${heading}${subtitle}${fieldsTable(1)}`
-  else if (block.head === 'memo') inner = `${fieldsTable(1)}<div class="tb-memo-title"><span class="tb-key">제목</span>${heading}</div>`
+  else if (block.head === 'memo') inner = `${fieldsTable(1)}<div class="tb-memo-title"><span class="tb-key">${titleKey(block)}</span>${heading}</div>`
   else if (block.head === 'draft') {
     const rows = draftRows(block.fields).map((row) => `<tr>${row.map((cell) => {
       const signer = cell.kind === 'approver' || cell.kind === 'sign' || cell.kind === 'signer'
@@ -267,7 +271,7 @@ export function titleBlockHtml(block: ReportTitleBlock, title: string): string {
       if (cell.kind === 'value' || cell.kind === 'signer') return `<td${attrs}>${shown(block.fields[cell.field ?? -1]?.[1] ?? '', block.fields[cell.field ?? -1]?.[0] ?? '')}</td>`
       return `<td${attrs}></td>`
     }).join('')}</tr>`).join('')
-    inner = `<table class="tb-fields" aria-label="결재란"><tbody>${rows}</tbody></table><div class="tb-memo-title"><span class="tb-key">제목</span>${heading}</div>`
+    inner = `<table class="tb-fields" aria-label="결재란"><tbody>${rows}</tbody></table><div class="tb-memo-title"><span class="tb-key">${titleKey(block)}</span>${heading}</div>`
   }
   else if (block.head === 'press') {
     inner = `<p class="tb-kicker">보도자료</p>${heading}${subtitle}<p class="tb-dateline">${block.fields.map(([key, value]) => `<span><b>${escapeHtml(key)}</b>${shown(value, key)}</span>`).join('')}</p>`

@@ -1711,7 +1711,13 @@ def _title_block(block: Any) -> dict | None:
         "lists": "gaejo" if block.get("lists") == "gaejo" else "",
         "closing": block.get("closing") is True,
         "format": str(block.get("format") or ""),
+        "language": "en" if block.get("language") == "en" else "",
     }
+
+
+def _title_key(block: dict) -> str:
+    """The memo head's title label: 「제목」, in an English head 「Title」."""
+    return "Title" if block.get("language") == "en" else "제목"
 
 
 def _draft_grid(fields: list[tuple[str, str]]) -> richtext.Grid:
@@ -1885,11 +1891,11 @@ def _docx_title_block(
     elif head == "memo":
         table(fields, 1, (3.5, 12.5))
         line(after=2)
-        heading("제목  ")
+        heading(f"{_title_key(block)}  ")
     elif head == "draft":
         _docx_draft_grid(document, fields, value_run)
         line(after=2)
-        heading("제목  ")
+        heading(f"{_title_key(block)}  ")
     elif head == "press":
         line("보도자료", size=doc_type.TYPE["h1"], bold=True, after=6)
         heading()
@@ -2837,7 +2843,7 @@ def _pdf_title_block(
         story.append(Spacer(1, 5 * mm))
         story.append(
             Paragraph(
-                f'<font size="{T["h1"]}">제목</font>&nbsp;&nbsp;{_escape(title)}', title_style
+                f'<font size="{T["h1"]}">{_title_key(block)}</font>&nbsp;&nbsp;{_escape(title)}', title_style
             )
         )
         story.append(Spacer(1, 4 * mm))
@@ -2846,7 +2852,7 @@ def _pdf_title_block(
         story.append(Spacer(1, 5 * mm))
         story.append(
             Paragraph(
-                f'<font size="{T["h1"]}">제목</font>&nbsp;&nbsp;{_escape(title)}', title_style
+                f'<font size="{T["h1"]}">{_title_key(block)}</font>&nbsp;&nbsp;{_escape(title)}', title_style
             )
         )
         story.append(Spacer(1, 4 * mm))
@@ -4219,7 +4225,7 @@ def _hwpx_title_block(
     elif head == "memo":
         para("", 3)
         table(1, [1, 4])
-        para(f"제목  {title}", 0, 2)
+        para(f"{_title_key(block)}  {title}", 0, 2)
     elif head == "draft":
         para("", 3)
         try:
@@ -4236,7 +4242,7 @@ def _hwpx_title_block(
             out.extend(
                 _hwpx_para(" · ".join(row), 3) for row in _draft_grid(block["fields"]).flat()
             )
-        para(f"제목  {title}", 0, 2)
+        para(f"{_title_key(block)}  {title}", 0, 2)
     elif head == "press":
         para("보도자료", 1, 3)
         para(title, 0, 2)

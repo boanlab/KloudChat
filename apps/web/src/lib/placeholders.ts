@@ -3,15 +3,19 @@ const PLACEHOLDER = /(?<!\[)\[(?!(?:미정|참고|붙임|별첨|첨부|예시|�
 
 const OWN_NAME = /^[가-힣](?:[가-힣 ·]{0,8}[가-힣])?$/
 
-/** What a blank head field shows: its own name in brackets, 「보고자(부서)」 → 「[보고자·부서]」. */
+/** An English head field's blank, one to three words (「[Location]」); mirrors `placeholders.EN_HEAD_BLANK`. */
+const EN_HEAD_BLANK = /^\[[A-Z][A-Za-z]{1,15}(?: [A-Za-z]{2,12}){0,2}\]$/
+
+/** What a blank head field shows: its own name in brackets, 「보고자(부서)」 → 「[보고자·부서]」, 「Location」 → 「[Location]」. */
 export function blankFor(label: string): string {
   const name = label.split(/\s+/).join(' ').replace(/\s{0,4}\(([^()]{1,20})\)/g, '·$1').replace(/^[ ·]+|[ ·]+$/g, '')
-  return OWN_NAME.test(name) ? `[${name}]` : '[내용]'
+  return OWN_NAME.test(name) || EN_HEAD_BLANK.test(`[${name}]`) ? `[${name}]` : '[내용]'
 }
 
-/** Whether a value is a placeholder and nothing else. */
+/** Whether a value is a placeholder and nothing else; an English head field's own blank counts too. */
 export const isBlank = (value: string) => {
   const text = value.trim()
+  if (EN_HEAD_BLANK.test(text)) return true
   const found = [...text.matchAll(PLACEHOLDER)]
   return found.length === 1 && found[0][0] === text
 }

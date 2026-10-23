@@ -13,7 +13,7 @@ from __future__ import annotations
 import dataclasses
 import re
 
-from app.services.doc_formats import _NEXT_MEETING
+from app.services.doc_formats import _NEXT_MEETING, blank, head_key
 from app.services.stated_days import _words
 
 #: a day: 「2026년 10월 21일(수)」, 「2026-10-21」, 「10/14」, 「10월 14일」
@@ -336,13 +336,16 @@ def fill_head(block: dict | None, memo_text: str) -> dict | None:
     this = read(memo_text).this
     fields = [list(f) for f in block.get("fields") or []]
     changed = False
+    english = block.get("language") == "en"
     for f in fields:
         if len(f) < 2:
             continue
-        name, value = str(f[0]), str(f[1] or "").strip()
+        # an English head (「Location」) by its Korean field name
+        name, value = head_key(str(f[0])), str(f[1] or "").strip()
         attr = next((a for n, a in _HEAD if name == n or name == f"회의 {n}"), None)
         if attr and not value:
-            f[1] = getattr(this, attr) or _HEAD_BLANK[name.removeprefix("회의 ")]
+            f[1] = getattr(this, attr) or (
+                blank(str(f[0])) if english else _HEAD_BLANK[name.removeprefix("회의 ")])
             changed = True
         elif name in ("일시", "회의 일시") and value and this.clock \
                 and not _CLOCK.search(value) and "[" not in value:

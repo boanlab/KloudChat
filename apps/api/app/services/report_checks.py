@@ -14,7 +14,15 @@ from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from typing import Any
 
 from app.core import logs
-from app.services import key_figures, placeholders, skill_scripts, stated_policy, thinking, units
+from app.services import (
+    doc_formats,
+    key_figures,
+    placeholders,
+    skill_scripts,
+    stated_policy,
+    thinking,
+    units,
+)
 from app.services.verify import Check, Doc, Finding, model_check
 
 log = logging.getLogger(__name__)
@@ -4072,18 +4080,27 @@ def _day_known(day: str, known: str) -> bool:
 
 
 #: a body line giving the meeting day as a blank: 「| 일시 | [회의 일자] |」, 「일시: [회의 일자]」
+#: the English head label of a field, for a body row written in English (`doc_formats.EN_LABELS`)
+_EN_DAY, _EN_PLACE = (re.escape(doc_formats.EN_LABELS[k]) for k in ("일시", "장소"))
 _BLANK_DAY_ROW = re.compile(
-    r"^(?P<lead>\s{0,4}(?:\|\s{0,3}|[-*>]\s{0,3})?(?:\*\*)?(?:회의\s{0,2})?(?:일시|일자|날짜)(?:\*\*)?"
+    r"^(?P<lead>\s{0,4}(?:\|\s{0,3}|[-*>]\s{0,3})?(?:\*\*)?"
+    rf"(?:(?:회의\s{{0,2}})?(?:일시|일자|날짜)|(?:Meeting\s{{1,2}})?{_EN_DAY})(?:\*\*)?"
     r"\s{0,3}(?:\||[:：])\s{0,3})(?P<blank>\[[^\[\]\n]{0,12}\])(?P<tail>\s{0,3}\|?\s{0,3})$", re.M)
 
 
 #: a body line giving the meeting place as nothing: 「- 장소: 미정」, 「| 장소 | [장소] |」
 _BLANK_PLACE_ROW = re.compile(
-    r"^(?P<lead>\s{0,4}(?:\|\s{0,3}|[-*>]\s{0,3})?(?:\*\*)?(?:회의\s{0,2})?장소(?:\*\*)?"
-    r"\s{0,3}(?:\||[:：])\s{0,3})(?P<blank>미정|\[[^\[\]\n]{0,12}\]|-|—)(?P<tail>\s{0,3}\|?\s{0,3})$",
+    r"^(?P<lead>\s{0,4}(?:\|\s{0,3}|[-*>]\s{0,3})?(?:\*\*)?"
+    rf"(?:(?:회의\s{{0,2}})?장소|(?:Meeting\s{{1,2}})?{_EN_PLACE})(?:\*\*)?"
+    r"\s{0,3}(?:\||[:：])\s{0,3})(?P<blank>미정|TBD|\[[^\[\]\n]{0,12}\]|-|—)"
+    r"(?P<tail>\s{0,3}\|?\s{0,3})$",
     re.M)
 #: a section about the next meeting, whose place is another one
-_NEXT_HEADING = re.compile(r"다음|차기|향후")
+_NEXT_HEADING = re.compile(r"다음|차기|향후|[Nn]ext")
+
+
+#: head labels of the meeting's day
+_DAY_FIELDS = ("일시", "회의 일시", "일자")
 
 
 def minutes_head_place(sections: list[dict], head: dict | None) -> list[dict]:
@@ -4091,7 +4108,7 @@ def minutes_head_place(sections: list[dict], head: dict | None) -> list[dict]:
     head blank too, the line goes (「[장소]」 in the head and 「미정」 in the overview read as two
     answers; the head is where the person fills it)."""
     place = next((str(f[1] if len(f) > 1 else "").strip() for f in (head or {}).get("fields") or []
-                  if f and str(f[0]) in ("장소", "회의 장소")), None)
+                  if f and doc_formats.head_key(f[0]) in ("장소", "회의 장소")), None)
     if place is None:
         return sections
     known = place if place and not placeholders.is_blank(place) else ""
@@ -4117,7 +4134,7 @@ def minutes_head_day(sections: list[dict], head: dict | None, pre: Prepass | Non
     if not head or pre is None or not pre.base_date:
         return sections
     day = next((str(f[1]) for f in head.get("fields") or []
-                if len(f) >= 2 and str(f[0]) in ("일시", "회의 일시", "일자")), "")
+                if len(f) >= 2 and doc_formats.head_key(f[0]) in _DAY_FIELDS), "")
     if not day.startswith(pre.base_date):
         return sections
     return [{**sec, "content": _BLANK_DAY_ROW.sub(
@@ -4193,7 +4210,18 @@ _HEAD_DAY = re.compile(
     rf"(?:\s{{0,2}}\(\s{{0,2}}(?P<wd>[{_WD}])(?:요일)?\s{{0,2}}\)|\s{{1,2}}(?P<wd2>[{_WD}])(?:요일)?(?![가-힣]))?")
 
 
-def _head_year(written: str, pre: Prepass, today: dt.date | None) -> str:
+#: weekday names of an English head, Monday first as `_WD`
+_WD_EN = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_EN_WEEKDAY = re.compile(r"\(?(mon|tue|wed|thu|fri|sat|sun)[a-z]{0,6}\.?\)?(?![A-Za-z])", re.I)
+
+
+def _head_day(day: dt.date, english: bool) -> str:
+    """「2026-10-14(수)」, in an English head 「2026-10-14 (Wed)」."""
+    return (f"{day.isoformat()} ({_WD_EN[day.weekday()]})" if english
+            else f"{day.isoformat()}({_WD[day.weekday()]})")
+
+
+def _head_year(written: str, pre: Prepass, today: dt.date | None, english: bool = False) -> str:
     """「10/14」 → 「2026-10-14(수)」: the read meeting date, else the year nearest today when
     clear, else 「[연도]」; a weekday the person wrote is kept, flagged when the calendar differs."""
     from app.services import weekdays
@@ -4224,8 +4252,17 @@ def _head_year(written: str, pre: Prepass, today: dt.date | None) -> str:
     rest = written[m.end():].strip()
     said = m.group("wd") or m.group("wd2")
     if day is None:
+        if english:
+            return " ".join(filter(None, [f"[Year] {month}/{dom}", rest]))
         return " ".join(filter(None, [f"[연도] {month}월 {dom}일" + (f"({said})" if said else ""), rest]))
     real = _WD[day.weekday()]
+    if english:
+        # 「10/14 Tue 10am」: the weekday the person wrote, in English
+        if said is None and (w := _EN_WEEKDAY.match(rest)):
+            said, rest = _WD[_WD_EN.index(w.group(1).title())], rest[w.end():].strip()
+        mark = "" if not said or said == real else (
+            f" (needs checking: the calendar gives {_WD_EN[day.weekday()]})")
+        return " ".join(filter(None, [_head_day(day, True) + mark, rest]))
     mark = real if not said or said == real else f"{said}, 확인 필요: 달력상 {real}요일"
     return " ".join(filter(None, [f"{day.isoformat()}({mark})", rest]))
 
@@ -4237,24 +4274,25 @@ def minutes_head(block: dict | None, pre: Prepass | None,
     if not block or pre is None or "meeting-date" not in pre.settings.head:
         return None
     fields = [list(f) for f in block.get("fields") or []]
-    at = next((i for i, f in enumerate(fields) if f and str(f[0]) in ("일시", "회의 일시", "일자")), None)
+    at = next((i for i, f in enumerate(fields) if f and doc_formats.head_key(f[0]) in _DAY_FIELDS),
+              None)
     if at is None or len(fields[at]) < 2:
         return None
     written = str(fields[at][1] or "").strip()
+    english = block.get("language") == "en"
     if written and not placeholders.is_blank(written):
-        dated = _head_year(written, pre, today)
+        dated = _head_year(written, pre, today, english)
         if dated == written:
             return None
         fields[at][1] = dated
         return {**block, "fields": fields}
     if pre.base_source and pre.base_date:
         try:
-            day = dt.date.fromisoformat(pre.base_date)
-            fields[at][1] = f"{pre.base_date}({_WD[day.weekday()]})"
+            fields[at][1] = _head_day(dt.date.fromisoformat(pre.base_date), english)
         except ValueError:
             return None
     elif not pre.base_source:
-        fields[at][1] = "[회의 일자]"
+        fields[at][1] = placeholders.blank(str(fields[at][0])) if english else "[회의 일자]"
     return {**block, "fields": fields}
 
 
