@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 
-from app.services import meeting_memo, stated_policy
+from app.services import captions, meeting_memo, stated_policy
 from app.services.stated_days import _GENERIC, _PARTICLE, _words
 
 #: a length of time: 「약 20분 만에」, 「1시간 동안」, 「30분간」, 「2시간이 소요」
@@ -224,7 +224,8 @@ def _left_out(text: str) -> bool:
 
 
 #: a table pointer at a sentence's end: 「(표 1)」
-_POINTER_TAIL = re.compile(r"\(\s{0,2}(?:표|그림)\s{0,2}\d{1,3}\s{0,2}\)\s{0,2}[.!?]?$")
+_POINTER_TAIL = re.compile(
+    r"\(\s{0,2}" + captions.EITHER + r"\s{0,2}\d{1,3}\s{0,2}\)\s{0,2}[.!?]?$")
 
 
 #: agreement stated: 「참석자들이 동의」, 「전원 동의」, 「이의 없이」, 「만장일치」, 「합의」
@@ -414,7 +415,7 @@ def items_of(material: str, names: list[str]) -> list[str]:
 
 
 #: the document's own table or figure, which no one does anything to: 「표 3은 … 보여줍니다」
-_PART_NAMED = re.compile(r"(?:표|그림)\s?\d")
+_PART_NAMED = re.compile(r"(?:표|그림)\s?\d|(?<![A-Za-z])(?:Table|Figure)\s?\d")
 #: a verb's ending on a word: 「처리하기로」 → 「처리」, 「포함해」 → 「포함」
 _VERB_TAIL = re.compile(r"(?:하기|하는|하여|해서|하며|했|한|할|합|해)$")
 

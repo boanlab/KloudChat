@@ -741,7 +741,7 @@ def _typed_markers(lines: list[str]) -> bool:
 _ITEM_ROW = re.compile(r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}(\|.*\|)\s*$")
 #: List item that is a table caption.
 _ITEM_CAPTION = re.compile(
-    r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}((?:\*\*)?표\s{0,2}(?:\d{1,3}\.|:).*)$")
+    r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}((?:\*\*)?(?:표|Table)\s{0,2}(?:\d{1,3}\.|:).*)$")
 
 
 def _tables_out_of_items(lines: list[str]) -> list[str]:

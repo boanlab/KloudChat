@@ -4915,7 +4915,7 @@ def _owner_known(cell: str, flat: str) -> bool:
 def _skip_line(line: str) -> bool:
     stripped = line.strip()
     return (not stripped or stripped.startswith(("#", "![", "```", "|"))
-            or bool(re.match(r"^\*\*(?:표|그림)\s{0,2}\d", stripped)))
+            or bool(re.match(r"^\*\*(?:표|그림|Table|Figure)\s{0,2}\d", stripped)))
 
 
 def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], list[str]]:
