@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import calendar
 import datetime as dt
 import json
 import logging
@@ -843,7 +844,12 @@ def _cell_sourced(
             f"{month}.{day}",
             f"-{month:02d}-{day:02d}",
         )
-        if any(sp in compact for sp in spellings):
+        # an English memo's 「Oct 28」, 「October 28th」, 「28 Oct」
+        names = (calendar.month_abbr[month].lower(), calendar.month_name[month].lower())
+        lowered = compact.lower()
+        if any(sp in compact for sp in spellings) or any(
+                re.search(rf"{n}\.?{day}(?!\d)|(?<!\d){day}(?:st|nd|rd|th)?{n}", lowered)
+                for n in names):
             return True
     if days:
         return False

@@ -204,3 +204,18 @@ def test_english_memo_patterns_stay_linear_on_long_spaces():
     started = time.monotonic()
     meeting_memo.read("Oct" + " " * 50_000 + "19 sync Room" + " " * 50_000 + "4B 3" + " " * 50_000)
     assert time.monotonic() - started < 0.5
+
+
+def test_a_due_day_an_english_memo_gives_stays_in_the_table():
+    # audit-x2 H2/A: 「2026-10-28」 for 「by Oct 28」 was blanked to 「[기한]」
+    from app.services import report
+
+    memo = ("Arjun will finish the event tracking spec by Oct 28. "
+            "Lena will deliver 40 icons by October 30th.")
+    table = ("| Task | Owner | Due |\n| --- | --- | --- |\n"
+             "| Event tracking spec | Arjun | 2026-10-28 |\n| 40 icons | Lena | 10/30 |\n"
+             "| Mockups | Tom | 2026-10-26 |")
+    out = report._unsourced_owner_dates(table, memo)
+    assert "2026-10-28" in out and "10/30" in out
+    # a day the memo never gave is still blanked
+    assert "2026-10-26" not in out
