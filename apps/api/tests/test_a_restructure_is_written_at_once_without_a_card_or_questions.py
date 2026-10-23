@@ -1,4 +1,4 @@
-"""A restructure of the open report or deck is written as re-planned: no outline card, no questions."""
+"""A restructure of the open report or deck is written as re-planned: no card, no questions."""
 
 from __future__ import annotations
 
