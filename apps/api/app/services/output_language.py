@@ -115,6 +115,49 @@ def typed_in_english(text: str) -> bool:
     return not _HANGUL.search(text or "") and len(re.findall(r"[A-Za-z]{2,}", text or "")) >= 3
 
 
+#: a pasted memo line: a list item, a numbered point, a table row
+_MEMO_ITEM = re.compile(r"[-*•·□○◦▪]\s|\d{1,2}[.)]\s|\|")
+#: words before a colon: a memo's label (「Next meeting:」) or an ask (「회의록 만들어줘:」)
+_LABEL = re.compile(r"([가-힣A-Za-z][^:：\n]{0,24})[:：]\s?\S")
+#: where a sentence or line ends
+_SENTENCE_END = re.compile(r"(?<=[.!?。])\s|\n")
+
+
+def _language_of(text: str) -> str:
+    if reads_english(text) or typed_in_english(text):
+        return "en"
+    return "ko" if _HANGUL.search(text or "") else ""
+
+
+def asked(typed: str) -> str:
+    """The language the person asked in (``en``, ``ko``, or ``""``), from what they typed: its
+    first and last sentence that is no memo item, and when these differ the shorter one, the
+    ask put before or after pasted material. 「아래 메모로 회의록을 만들어줘.」 over an English
+    memo is Korean; an English memo sent alone is English."""
+    text = (typed or "").split("\n\n덧붙인 조건:", 1)[0]
+    pieces = [p.strip() for p in _SENTENCE_END.split(text) if p.strip()]
+    if not pieces:
+        return ""
+    # a memo item (「- 화: …」) is material, not the ask; a line opening with 「…:」 reads by
+    # the words before its colon
+    asks = [m.group(1) if (m := _LABEL.match(p)) else p
+            for p in (pieces[0], pieces[-1]) if not _MEMO_ITEM.match(p)] or [pieces[0]]
+    first, last = asks[0], asks[-1]
+    ends = {_language_of(first), _language_of(last)} - {""}
+    if len(ends) == 1:
+        return ends.pop()
+    if not ends:
+        return _language_of(text)
+    return _language_of(min(first, last, key=len))
+
+
+def asked_condition(code: str) -> str:
+    """Request condition for a document in the language the person asked in; empty for none."""
+    name = LANGUAGES.get(code, "")
+    return (f"Write the whole document in {name}, the language the person asked in (질문 언어), "
+            "whatever language the material is in.") if name else ""
+
+
 def localize_marks(text: str) -> str:
     """An answer in English with the checks' 「(확인 필요)」 as 「(needs checking)」; a Korean
     answer as it is."""
@@ -134,5 +177,6 @@ def english_marks(value: Any) -> Any:
     return value
 
 
-__all__ = ["AUTO", "EN_MARK", "HEADING", "LANGUAGES", "asks_language", "condition",
+__all__ = ["AUTO", "EN_MARK", "HEADING", "LANGUAGES", "asked", "asked_condition",
+           "asks_language", "condition",
            "english_marks", "localize_marks", "name_of", "normalize", "reads_english", "rule"]
