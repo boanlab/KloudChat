@@ -416,7 +416,21 @@ def _value_text(value: object, unit: str) -> str:
         number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return str(value)
-    return f"{number:g}{unit}"
+    # a word unit stands apart: 「3.2 days」, 「82%」, 「128억원」
+    apart = unit[:1].isascii() and unit[:1].isalpha()
+    return f"{number:g} {unit}" if apart else f"{number:g}{unit}"
+
+
+#: a measure named with its unit: 「Success Rate (%)」, 「매출(억원)」
+_NAMED_UNIT = re.compile(r"[(（]\s{0,2}([^()（）]{1,8}?)\s{0,2}[)）]\s{0,2}$")
+
+
+def _chart_unit(chart: dict) -> str:
+    """The chart's unit for its values: the bracketed unit of a measure name, else the unit
+    with its spaces closed (「억 원」 → 「억원」)."""
+    unit = str(chart.get("unit") or "")
+    named = _NAMED_UNIT.search(unit)
+    return (named.group(1) if named else unit).replace(" ", "")
 
 
 def _point_unit(unit: str, category: int, series: int, chart: dict) -> str:
@@ -452,7 +466,7 @@ def _slide_tables(slide: dict) -> list[tuple[str, list[list[str]]]]:
                              for row in rows]))
     chart = slide.get("chart")
     if isinstance(chart, dict) and chart.get("series"):
-        unit = str(chart.get("unit") or "").replace(" ", "")
+        unit = _chart_unit(chart)
         series = [s for s in chart.get("series") or [] if isinstance(s, dict)]
         table = [["구분", *(str(s.get("name") or "") for s in series)]]
         for c, category in enumerate(chart.get("categories") or []):
@@ -507,7 +521,7 @@ def _chart_fixed(slide: dict, gone: set[tuple[int, int]], strong: bool) -> None:
         chart["series"] = series
         slide["chart"] = chart
         return
-    unit = str(chart.get("unit") or "").replace(" ", "")
+    unit = _chart_unit(chart)
     bullets = []
     for c, label in enumerate(categories):
         for k, s in enumerate(series):
@@ -648,7 +662,7 @@ def mark_unbacked_percents(slides: list[dict], texts: list[str], *,
                         number = float(value)
                     except (TypeError, ValueError):
                         continue
-                    unit = _point_unit(str(chart.get("unit")).replace(" ", ""), c, k, chart)
+                    unit = _point_unit(_chart_unit(chart), c, k, chart)
                     if "%" in unit and not basis.backs(number, f"{number:g}"):
                         gone.add((c, k))
             if gone:

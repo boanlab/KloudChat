@@ -318,3 +318,20 @@ async def test_a_picture_asked_away_goes_and_an_unmet_ask_is_reported(monkeypatc
     assert "image" not in parts[7] and parts[7]["layout"] == "bullets"
     # 3장 still draws bullets: said, not passed off, the slide as it was
     assert bundle.document.unmet == ["3장 표로 바꾸기"] and "notes" not in parts[2]
+
+
+def test_a_chart_turned_into_points_writes_the_bracketed_unit_of_its_measure():
+    # audit-x T8/C: 「Success Rate (%)」 came out as 「82SuccessRate(%)」
+    from app.pipeline import check_stages
+
+    slide = {"layout": "chart", "title": "Capability Gap", "chart": {
+        "kind": "bar", "unit": "Success Rate (%)",
+        "series": [{"name": "Task Completion", "values": [82.0, 100.0]}],
+        "categories": ["Local Model", "Cloud Model"]}}
+    check_stages._chart_fixed(slide, {(1, 0)}, False)
+    assert slide["bullets"][0] == "Local Model Task Completion: 82%"
+    assert slide["bullets"][1].startswith("Cloud Model Task Completion: 100%")
+    # a word unit stands apart from its number; a Korean one stays closed up
+    assert check_stages._value_text(3.2, "days") == "3.2 days"
+    assert check_stages._value_text(128, "억원") == "128억원"
+    assert check_stages._chart_unit({"unit": "억 원"}) == "억원"
