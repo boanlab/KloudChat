@@ -294,6 +294,7 @@ EN_FORMAT_LABELS: dict[str, str] = {"minutes": "Minutes", "agenda": "Agenda"}
 _KO_LABELS = {en.lower(): ko for ko, en in EN_LABELS.items()}
 #: English material labels per head field, besides the English head label
 _EN_ALIASES: dict[str, tuple[str, ...]] = {
+    "일시": ("Meeting date", "Meeting Date"),
     "장소": ("Place", "Venue"),
     "참석자": ("Present",),
     "작성자": ("Minutes by", "Recorded by"),
@@ -370,7 +371,9 @@ def _segments(text: str) -> list[str]:
 def _labelled(line: str, labels: dict[str, str]) -> dict[str, str]:
     """One-line `label: value` pairs."""
     names = sorted(labels, key=len, reverse=True)
-    rx = re.compile(r"(?:^|(?<=[\s\[(,/·—-]))(" + "|".join(re.escape(n) for n in names)
+    # an English label is no label after another English word: 「Due Date:」 is no 일시
+    rx = re.compile(r"(?:^|(?<=[\s\[(,/·—-]))(" + "|".join(
+        (r"(?<![A-Za-z]\s)" if n.isascii() else "") + re.escape(n) for n in names)
                     + r")\s{0,2}[:：]\s{0,3}")
     hits = list(rx.finditer(line))
     out: dict[str, str] = {}

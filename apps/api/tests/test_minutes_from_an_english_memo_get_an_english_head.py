@@ -163,3 +163,13 @@ def test_a_korean_dotted_date_keeps_its_last_dot():
     minutes = doc_formats.BY_ID["minutes"]
     read = doc_formats.head_values(minutes, "일시: 2026. 10. 14.\n장소: 본관 302호")
     assert read["일시"] == "2026. 10. 14." and read["장소"] == "본관 302호"
+
+
+def test_a_due_date_is_no_meeting_date_but_a_meeting_date_label_is():
+    from app.services import doc_formats
+
+    fmt = doc_formats.BY_ID["minutes"]
+    due = doc_formats.head_values(fmt, "Weekly sync. Location: Room 3A. Due Date: 2026-10-30.")
+    assert not any("10-30" in v for v in due.values())
+    said = doc_formats.head_values(fmt, "Meeting date: 2026-10-19. Location: Room 3A.")
+    assert any("10-19" in v for v in said.values())
