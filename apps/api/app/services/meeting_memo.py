@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 import re
 
+from app.services import captions
 from app.services.doc_formats import _NEXT_MEETING, blank, head_key
 from app.services.stated_days import _words
 
@@ -165,8 +166,8 @@ _BLANK_CELL = re.compile(
     r"\**\s{0,2}(?:미정|확인\s{0,2}필요|해당\s{0,2}없음|\[[^\]\n]{1,20}\]|-|—|)\s{0,2}\**")
 #: a note in a cell that a part is missing: 「(시간은 자료에 없음)」
 _ABSENT_NOTE = re.compile(r"\s{0,2}\(([^()\n]{1,30})\)")
-#: a table pointer a dropped sentence may hold: 「(표 5)」
-_POINTER = re.compile(r"\(\s{0,2}(?:표|그림)\s{0,2}\d{1,3}\s{0,2}\)")
+#: a table pointer a dropped sentence may hold: 「(표 5)」, 「(Table 5)」
+_POINTER = re.compile(r"\(\s{0,2}" + captions.EITHER + r"\s{0,2}\d{1,3}\s{0,2}\)")
 
 
 def _claimed(piece: str) -> set[str]:
@@ -284,7 +285,7 @@ def _points_next(rest: str, tag: str) -> bool:
     line = next((ln for ln in rest.split("\n")[1:] if ln.strip()), "")
     number = re.search(r"\d{1,3}", tag)
     return bool(number) and bool(re.match(
-        rf"\s{{0,4}}\*{{0,2}}\s{{0,2}}(?:표|그림)\s{{0,2}}{number.group(0)}(?!\d)", line))
+        rf"\s{{0,4}}\*{{0,2}}\s{{0,2}}{captions.EITHER}\s{{0,2}}{number.group(0)}(?!\d)", line))
 
 
 def drop(content: str, piece: str) -> str:
@@ -298,23 +299,29 @@ def drop(content: str, piece: str) -> str:
     before = content[start:at].rstrip()
     rest = content[at + len(piece):]
     tag = "".join(pointers)
+    # an English sentence's 「 (Table 5)」 after a space
+    english = bool(tag) and captions.in_english(tag[1:].lstrip())
+    gap = " " if english else ""
     head = content[:start]
     if tag and not before:
         # the sentence before, on an earlier prose line
         lines = head.rstrip("\n").split("\n") if head.strip() else []
         k = next((k for k in range(len(lines) - 1, -1, -1) if lines[k].strip()), None)
-        if k is not None and not lines[k].lstrip().startswith(("|", "#", "**표", "**그림", "```")) \
+        if k is not None and not lines[k].lstrip().startswith(
+                ("|", "#", "**표", "**그림", "**Table", "**Figure", "```")) \
                 and lines[k].rstrip()[-1:] in ".!?。":
-            lines[k] = f"{lines[k].rstrip()[:-1]}{tag}{lines[k].rstrip()[-1]}"
+            lines[k] = f"{lines[k].rstrip()[:-1]}{gap}{tag}{lines[k].rstrip()[-1]}"
             head = "\n".join(lines) + "\n" * (len(head) - len(head.rstrip("\n")))
             tag = ""
         elif _points_next(rest, tag):
-            before = f"정리하면 다음과 같습니다{tag}."
+            before = captions.lead(tag.strip("()"), "") if english \
+                else f"정리하면 다음과 같습니다{tag}."
             tag = ""
         else:
             tag = ""
     if tag:
-        before = f"{before[:-1]}{tag}{before[-1]}" if before[-1:] in ".!?。" else f"{before} {tag}"
+        before = f"{before[:-1]}{gap}{tag}{before[-1]}" if before[-1:] in ".!?。" \
+            else f"{before} {tag}"
     line_rest, nl, after = rest.partition("\n")
     line = re.sub(r" {2,}", " ", f"{before} {line_rest.strip()}").strip()
     text = head + line + nl + after if line else head.rstrip("\n") + ("\n" + after if nl else "")
@@ -568,7 +575,7 @@ _ANNOUNCED = re.compile(
     r"(?=입니다|이다|이며|이고|로\s정리|를\s정리|은\s(?:다음|아래)|는\s(?:다음|아래))"
     r"|(?<=다음\s)(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|[1-9]\d?)\s?(가지|건|개)(?![가-힣])")
 _LIST_ITEM = re.compile(r"^\s{0,4}(?:[-*•]|\d{1,2}[.)])\s")
-_CAPTION_START = re.compile(r"\s{0,4}\*{0,2}\s{0,2}(?:표|그림)\s?\d")
+_CAPTION_START = re.compile(r"\s{0,4}\*{0,2}\s{0,2}" + captions.EITHER + r"\s?\d")
 _RULE_LINE = re.compile(r"^\s{0,4}\|?[\s|:-]{3,}$")
 
 
@@ -596,7 +603,8 @@ def counted(sections: list[dict]) -> tuple[list[dict], int]:
             block = parts[k]
             found = list(_ANNOUNCED.finditer(block))
             if len(found) != 1 or _LIST_ITEM.match(block) \
-                    or block.lstrip().startswith(("|", "#", "```", "**표", "**그림")):
+                    or block.lstrip().startswith(
+                        ("|", "#", "```", "**표", "**그림", "**Table", "**Figure")):
                 continue
             nxt = blocks[at + 1]
             if _CAPTION_START.match(parts[nxt]) and at + 2 < len(blocks):

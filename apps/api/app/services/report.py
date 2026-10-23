@@ -20,6 +20,7 @@ from app.models.chat import SessionKind
 from app.services import (
     asked_form,
     block_fences,
+    captions,
     design_templates,
     diagram_render,
     diagrams,
@@ -1435,14 +1436,15 @@ def _long_form(request: str) -> bool:
 
 _FIGURE_LINE = re.compile(r"^!\[(?P<alt>[^\]]{0,200})\]\((?P<src>[^)\s]{1,8000000})\)\s*$")
 _CAPTION_LINE = re.compile(
-    r"^\s{0,3}[*_]{0,2}\s{0,2}(?P<kind>그림|표|Figure|Table)\s{0,2}\d{0,3}\s{0,2}[.:．：]?\s{0,2}"
+    r"^\s{0,3}[*_]{0,2}\s{0,2}(?P<kind>그림|표|Figure|Table)\s{0,2}\d{0,3}\s{0,2}(?P<sep>[.:．：]?)\s{0,2}"
     r"(?P<text>.{1,160}?)\s{0,2}[*_]{0,2}\s*$",
     re.I,
 )
 
 
 _TRAILING_TABLE_CAPTION = re.compile(
-    r"(?<=[.!?。\]])\s{1,4}[*_]{0,2}표\s{0,2}\d{0,3}\s{0,2}[.:：]\s{0,2}(?P<text>[^.!?\n]{2,80}?)[*_]{0,2}\s*$"
+    r"(?<=[.!?。\]])\s{1,4}[*_]{0,2}" + captions.TABLE
+    + r"\s{0,2}\d{0,3}\s{0,2}[.:：]\s{0,2}(?P<text>[^.!?\n]{2,80}?)[*_]{0,2}\s*$"
 )
 
 
@@ -1544,6 +1546,8 @@ def _caption_text(line: str, kind: str) -> str | None:
     m = _CAPTION_LINE.match(line or "")
     if not m or m.group("kind").lower() not in (kind, {"그림": "figure", "표": "table"}[kind]):
         return None
+    if not m.group("sep") and re.match(r"[a-z]", m.group("text")):
+        return None  # a sentence about it: 「Table 1 lists the action items.」
     return m.group("text").strip(" *_.:")
 
 
@@ -1596,7 +1600,8 @@ def collapse_repeated_citations(body: str) -> str:
         if (
             not stripped
             or "\n" in stripped
-            or re.match(r"^(?:\||#|>|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s|```|!\[|\*\*표|\*그림)", stripped)
+            or re.match(r"^(?:\||#|>|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s|```|!\[|\*\*"
+                        + captions.TABLE + r"|\*" + captions.FIGURE + ")", stripped)
         ):
             out.append(block)
             continue
@@ -1621,6 +1626,8 @@ _FIGURE_MARK = re.compile(r"\[\[\s*그림\s*[:：]\s*(?P<body>(?:[^\]\n]|\](?!\]
 #: a mark left open to the line's end: taken out, never shown
 _FIGURE_OPEN = re.compile(r"[ \t]*\[\[\s*그림\s*[:：][^\n]*")
 _FIGURE_REF, _TABLE_REF = "〔그림〕", "〔표〕"
+#: an English document's bracket around a reference to an undrawable figure: 「(see 〔그림〕)」
+_DANGLING_BRACKET = re.compile(r"[ \t]?\((?:[A-Za-z]{1,12}[ \t]){0,3}〔(?:그림|표)〕\)")
 #: phrase around a reference to an undrawable figure
 _DANGLING_REF = re.compile(
     r"(?:위|아래|다음)?\s?〔(?:그림|표)〕(?:과|와|에서|에|은|는|을|를|의|처럼)?\s*"
@@ -1746,7 +1753,7 @@ def metric_conflicts(sections: list[dict]) -> list[list[tuple[int, str]]]:
         if _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
             continue
         for line in str(sec.get("content") or "").split("\n"):
-            if line.lstrip().startswith(("|", "```", "!", "#", "**표")):
+            if line.lstrip().startswith(("|", "```", "!", "#", "**표", "**Table")):
                 continue
             for m in _SENTENCE.finditer(line):
                 sentence = m.group(0).strip()
@@ -2149,7 +2156,8 @@ def drop_repeated_tables(sections: list[dict]) -> list[dict]:
                 cap = start - 1
                 while cap >= 0 and not lines[cap].strip():
                     cap -= 1
-                if cap >= 0 and re.match(r"^\s*(?:\*\*)?표\s?\d{0,3}\s?[.:：]", lines[cap]):
+                if cap >= 0 and re.match(r"^\s*(?:\*\*)?" + captions.TABLE + r"\s?\d{0,3}\s?[.:：]",
+                                         lines[cap]):
                     start = cap
                     cap -= 1
                     while cap >= 0 and not lines[cap].strip():
@@ -2700,7 +2708,7 @@ def drop_writer_notes(body: str) -> str:
     out = re.sub(r"[ \t]+\n", "\n", out)
     return re.sub(r"\n{3,}", "\n\n", out).strip("\n") + ("\n" if body.endswith("\n") else "")
 _LONE_LANGUAGE = re.compile(r"(?m)^```[ \t]*\n(callout|kpi|cards|diagram|mermaid|chart)[ \t]*$")
-_TABLE_CAPTION_LINE = re.compile(r"^\s*(?:\*\*)?표\s?(?:\d{1,3})?[.:]")
+_TABLE_CAPTION_LINE = re.compile(r"^\s*(?:\*\*)?" + captions.TABLE + r"\s?(?:\d{1,3})?[.:]")
 
 
 def _cells(line: str) -> list[str]:
@@ -2968,8 +2976,10 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
     return tidied
 
 
-def _renumber_references(sections: list[dict]) -> tuple[list[dict], set[str]]:
-    """Captions renumbered in document order; returns sections and names already cited."""
+def _renumber_references(sections: list[dict], lang: str = captions.KO
+                          ) -> tuple[list[dict], set[str]]:
+    """Captions renumbered in document order; returns sections and names already cited (in
+    `lang`'s words: 「표 1」, 「Table 1」)."""
     rule = re.compile(r"^\s{0,3}\|?\s{0,3}:?-{2,}")
     moved = {"표": {}, "그림": {}}
     counts = {"표": 0, "그림": 0}
@@ -2980,20 +2990,28 @@ def _renumber_references(sections: list[dict]) -> tuple[list[dict], set[str]]:
         for i, line in enumerate(lines):
             if (figure := _FIGURE_LINE.match(line.strip())) or line.strip().startswith("```mermaid"):
                 counts["그림"] += 1
-                old = re.match(r"\s{0,16}그림\s?(\d{1,3})", figure.group("alt")) if figure else None
+                old = re.match(r"\s{0,16}" + captions.FIGURE + r"\s?(\d{1,3})",
+                               figure.group("alt")) if figure else None
                 if old:
                     moved["그림"].setdefault(old.group(1), counts["그림"])
             elif (line.strip().startswith("|") and i + 1 < len(lines) and rule.match(lines[i + 1])
                   and not (i and lines[i - 1].strip().startswith("|"))):
                 counts["표"] += 1
                 above = next((x for x in reversed(lines[:i]) if x.strip()), "")
-                old = re.match(r"^\s*(?:\*\*)?표\s?(\d{1,3})[.:]", above)
+                old = re.match(r"^\s*(?:\*\*)?" + captions.TABLE + r"\s?(\d{1,3})[.:]", above)
                 if old:
                     moved["표"].setdefault(old.group(1), counts["표"])
-    renames = {f"{kind} {old}": f"{kind} {new}" for kind, table in moved.items()
+    renames = {f"{kind} {old}": str(new) for kind, table in moved.items()
                for old, new in table.items() if str(new) != old}
-    caption = re.compile(r"^\s*(?:\*\*표\s?\d|!\[그림\s?\d|\*그림\s?\d)")
-    pointer = re.compile(r"(표|그림)\s?(\d{1,3})(?![\d.])")
+    caption = re.compile(r"^\s*(?:\*\*" + captions.TABLE + r"\s?\d|!\[" + captions.FIGURE
+                         + r"\s?\d|\*" + captions.FIGURE + r"\s?\d)")
+    # prose names its tables in the document's own words; an English 「Table 2.」 ends a sentence
+    pointer = re.compile(r"(표|그림)\s?(\d{1,3})(?![\d.])" if lang != captions.EN
+                         else r"(?<![A-Za-z])([Tt]able|[Ff]igure)\s?(\d{1,3})(?!\d|\.\d)")
+
+    def renamed(m: re.Match[str]) -> str:
+        new = renames.get(f"{captions.kind(m.group(1))} {m.group(2)}")
+        return f"{m.group(1)} {new}" if new else m.group(0)
     out, mentioned = [], set()
     for sec in sections:
         if _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
@@ -3003,19 +3021,44 @@ def _renumber_references(sections: list[dict]) -> tuple[list[dict], set[str]]:
         for i, line in enumerate(lines):
             if caption.match(line) or line.lstrip().startswith("|"):
                 continue
-            line = pointer.sub(lambda m: renames.get(f"{m.group(1)} {m.group(2)}", m.group(0)), line)
-            mentioned |= {f"{m.group(1)} {m.group(2)}" for m in pointer.finditer(line)}
+            line = pointer.sub(renamed, _english_references(line) if lang == captions.EN else line)
+            mentioned |= {captions.name(m.group(1), m.group(2), lang)
+                          for m in pointer.finditer(line)}
             lines[i] = line
         out.append({**sec, "content": "\n".join(lines)})
     return out, mentioned
+
+
+#: code's own Korean lead into a table or figure (`table_mend.cite`): 「Action Items은(는) 표 1과
+#: 같습니다.」, 「표 1에 정리했습니다.」, 「표 1 참조」
+_KO_LEAD = re.compile(
+    r"^(?P<pad>\s{0,8})(?:(?P<title>[^\n]{1,120}?)(?:은\(는\)|은|는)\s)?(?P<kind>표|그림)\s(?P<n>\d{1,3})"
+    r"(?:(?:과|와)\s같(?:습니다|음)|에\s정리했습니다|\s참조)\.?\s{0,4}$")
+#: code's own Korean bracket after a sentence: 「…the session(표 1).」
+_KO_BRACKET = re.compile(r"\s?\(((?:표|그림) \d{1,3}(?:, (?:표|그림) \d{1,3}){0,20})\)")
+
+
+def _english_references(line: str) -> str:
+    """An English document's line with the Korean references code wrote into it earlier in
+    English: 「Action Items은(는) 표 1과 같습니다.」 → 「See Table 1 for Action Items.」,
+    「…the session(표 1).」 → 「…the session (Table 1).」."""
+    if not re.search(r"표|그림", line):
+        return line
+    if m := _KO_LEAD.match(line):
+        label = captions.name(m.group("kind"), m.group("n"), captions.EN)
+        return m.group("pad") + captions.lead(label, (m.group("title") or "").strip())
+    return _KO_BRACKET.sub(lambda m: " (" + re.sub(
+        r"(표|그림) ", lambda k: captions.word(k.group(1), captions.EN) + " ", m.group(1)) + ")",
+        line)
 
 
 #: a section named only for where it sits: its name is no table's caption
 _GENERIC_SECTION = re.compile(r"(?:붙임|별첨|첨부|참고|부록|기타|비고)(?:\s?(?:자료|\d{1,2}))?")
 #: a line titling the table under it: 「- 표: 교체 방식 비교」, 「[표] …」, 「<표 2> …」
 _TABLE_TITLE = re.compile(
-    r"^\s{0,8}(?:[-*•·]\s{1,3})?[*_]{0,2}\s{0,2}(?:\[\s?표\s?\d{0,3}\s?\]|[<〈《【]\s?표\s?\d{0,3}\s?[>〉》】]"
-    r"|표\s?\d{0,3}\s?[.:：])\s{0,2}(?P<text>[^\n|]{1,80}?)\s{0,2}[*_]{0,2}\s*$")
+    r"^\s{0,8}(?:[-*•·]\s{1,3})?[*_]{0,2}\s{0,2}(?:\[\s?" + captions.TABLE + r"\s?\d{0,3}\s?\]"
+    r"|[<〈《【]\s?" + captions.TABLE + r"\s?\d{0,3}\s?[>〉》】]"
+    r"|" + captions.TABLE + r"\s?\d{0,3}\s?[.:：])\s{0,2}(?P<text>[^\n|]{1,80}?)\s{0,2}[*_]{0,2}\s*$")
 #: a label or heading that leads into a table: 「## 교체 일정」, 「**예산 내역**」, 「차수별 일정:」
 _LEAD_LABEL = re.compile(
     r"^\s{0,8}(?:#{1,6}\s+(?P<h>[^\n]{1,60}?)|(?:[-*•·]\s{1,3})?\*\*(?P<b>[^*\n]{1,40})\*\*\s{0,2}[:：]?"
@@ -3033,7 +3076,8 @@ def _lead_caption(result: list[str]) -> str:
     while k >= 0 and not result[k].strip():
         k -= 1
     if k >= 0 and (m := _LEAD_LABEL.match(result[k])) \
-            and not re.match(r"\s*(?:\||\*\*표\s?\d|\*그림\s?\d|!\[)", result[k]):
+            and not re.match(r"\s*(?:\||\*\*" + captions.TABLE + r"\s?\d|\*" + captions.FIGURE
+                             + r"\s?\d|!\[)", result[k]):
         return (m.group("h") or m.group("b") or m.group("c") or "").strip(" *_.:")
     for line in reversed(result[:max(k, 0)]):
         if (m := re.match(r"^\s{0,3}#{1,6}\s+(.{1,60}?)\s*$", line)):
@@ -3042,8 +3086,10 @@ def _lead_caption(result: list[str]) -> str:
 
 
 def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
-    """Figures captioned below, tables above, numbered in order."""
-    sections, mentioned = _renumber_references(sections)
+    """Figures captioned below, tables above, numbered in order; an English document's
+    captions and references in English (「**Table 1. …**」, 「(Table 1)」)."""
+    lang = captions.of_sections(sections)
+    sections, mentioned = _renumber_references(sections, lang)
     figure_no = table_no = 0
     previous_table: tuple[list[str], str] | None = None
     out = []
@@ -3062,7 +3108,7 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
         # 「−」 lacks a PDF glyph; empty 「[]」; title-less 「표 4」 line
         content = content.replace("\u2212", "-")
         content = re.sub(r"\s?\[\s*\]", "", content)
-        content = re.sub(r"(?m)^\s*표\s?\d{1,3}\s*\n", "", content)
+        content = re.sub(r"(?m)^\s*" + captions.TABLE + r"\s?\d{1,3}\s*\n", "", content)
         lines = content.split("\n")
         result: list[str] = []
         i = 0
@@ -3078,11 +3124,12 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 if j < len(lines) and (text := _caption_text(lines[j], "그림")):
                     title = title or text
                     lines[j] = ""
-                if not _resolve_reference(
-                    result, lines, i, _FIGURE_REF, f"그림 {figure_no}"
-                ) and f"그림 {figure_no}" not in mentioned:
-                    _point_from_paragraph_before(result, f"그림 {figure_no}")
-                result.append(f"![그림 {figure_no}. {title or '그림'}]({figure.group('src')})")
+                label = captions.name("그림", figure_no, lang)
+                if not _resolve_reference(result, lines, i, _FIGURE_REF, label) \
+                        and label not in mentioned:
+                    _point_from_paragraph_before(result, label)
+                alt = captions.picture_alt(figure_no, title or captions.untitled("그림", lang), lang)
+                result.append(f"![{alt}]({figure.group('src')})")
                 i += 1
                 continue
             if line.strip().startswith("```mermaid"):
@@ -3098,8 +3145,10 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 if title is not None:
                     lines[j] = ""
                 result.append("")
-                result.append(f"*그림 {figure_no}. {title or '도식'}*")
-                _resolve_reference(result, lines, i, _FIGURE_REF, f"그림 {figure_no}")
+                result.append(captions.figure_caption(
+                    figure_no, title or captions.untitled("도식", lang), lang))
+                _resolve_reference(result, lines, i, _FIGURE_REF,
+                                   captions.name("그림", figure_no, lang))
                 i = end + 1
                 continue
             if line.strip().startswith("|") and i + 1 < len(lines) and re.match(
@@ -3109,7 +3158,8 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 k = len(result) - 1
                 while k >= 0 and not result[k].strip():
                     k -= 1
-                if k >= 0 and re.fullmatch(r"\s{0,3}\*\*표\s?\d{1,3}\.?\*\*\s*", result[k]):
+                if k >= 0 and re.fullmatch(r"\s{0,3}\*\*" + captions.TABLE + r"\s?\d{1,3}\.?\*\*\s*",
+                                           result[k]):
                     # a bare number caption from an earlier pass: numbered again below
                     del result[k:]
                     k = len(result) - 1
@@ -3153,12 +3203,11 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                         title = (previous_table[1][: step.start(1)] + str(int(step.group(1)) + 1)
                                  + previous_table[1][step.end(1):])
                 previous_table = (header, title)
-                if not _resolve_reference(
-                    result, lines, i, _TABLE_REF, f"표 {table_no}"
-                ) and f"표 {table_no}" not in mentioned:
-                    _point_from_paragraph_before(result, f"표 {table_no}")
-                result.extend(["", f"**표 {table_no}. {title}**" if title
-                               else f"**표 {table_no}**", ""])
+                label = captions.name("표", table_no, lang)
+                if not _resolve_reference(result, lines, i, _TABLE_REF, label) \
+                        and label not in mentioned:
+                    _point_from_paragraph_before(result, label)
+                result.extend(["", captions.table_caption(table_no, title, lang), ""])
                 result.extend(lines[i:end])
                 i = end
                 continue
@@ -3167,6 +3216,8 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
         text = re.sub(r"\n{3,}", "\n\n", "\n".join(result)).strip("\n")
         # dangling reference removed with its phrase
         if _FIGURE_REF in text or _TABLE_REF in text:
+            # an English 「(see 〔표〕)」 goes whole
+            text = _DANGLING_BRACKET.sub("", text) if lang == captions.EN else text
             text = re.sub(r"[ \t]{2,}", " ", _DANGLING_REF.sub(" ", text))
             text = re.sub(r" ([.,)])", r"\1", text)
         text = fix_number_particles(_FIGURE_OPEN.sub("", _FIGURE_MARK.sub("", text)))
@@ -3196,18 +3247,21 @@ def _point_from_paragraph_before(result: list[str], name: str) -> None:
             continue
         if re.match(r"^\s*#", line):
             return
-        if re.match(r"^\s*(?:\||>|!\[|\*\*표|\*그림|```|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s)", line):
+        if re.match(r"^\s*(?:\||>|!\[|\*\*" + captions.TABLE + r"|\*" + captions.FIGURE
+                    + r"|```|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s)", line):
             continue
         m = re.search(r"(\s?(?:\[\d{1,3}\])+)?([.!?。])$", line)
         if m:
             head = line[: m.start()]
             # merge into an existing bracket
-            if (prior := re.search(r"\(((?:그림|표) \d{1,3}(?:, (?:그림|표) \d{1,3})*)\)$", head)):
+            if (prior := re.search(r"\((" + captions.EITHER + r" \d{1,3}(?:, " + captions.EITHER
+                                   + r" \d{1,3}){0,20})\)$", head)):
                 if name in prior.group(1).split(", "):
                     return
                 head = head[: prior.start()] + f"({prior.group(1)}, {name})"
             else:
-                head = head + f"({name})"
+                head = (head.rstrip() if captions.in_english(name) else head) \
+                    + captions.pointer(name)
             result[k] = head + (m.group(1) or "") + m.group(2)
         return
 
@@ -3888,7 +3942,7 @@ def _without_borrowed_tables(body: str, before: str, others: list[str], note: st
 
 
 _DROPS_TABLE = re.compile(r"표[^.\n]{0,12}(?:빼|없애|삭제|지워|제외|말고|대신|합쳐|합치|통합|병합)")
-_CAPTION = re.compile(r"^\s{0,3}\**\s{0,2}(?:<표|표)\s{0,2}(\d{1,3})\b[^\n]{0,120}$")
+_CAPTION = re.compile(r"^\s{0,3}\**\s{0,2}<?" + captions.TABLE + r"\s{0,2}(\d{1,3})\b[^\n]{0,120}$")
 
 
 def _keeps_its_tables(body: str, before: str, note: str) -> str:
@@ -3921,7 +3975,7 @@ def _keeps_its_tables(body: str, before: str, note: str) -> str:
             continue
         block = f"{caption}\n\n{table}" if caption else table
         at = next((i for i, p in enumerate(paragraphs)
-                   if number and re.search(rf"표\s{{0,2}}{number}(?!\d)", p)), None)
+                   if number and re.search(rf"{captions.TABLE}\s{{0,2}}{number}(?!\d)", p)), None)
         if at is None:
             paragraphs.append(block)
         else:

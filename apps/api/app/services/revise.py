@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from app.services import settings_store
+from app.services import captions, settings_store
 
 log = logging.getLogger(__name__)
 
@@ -867,7 +867,7 @@ def within_named_parts(plan: Plan, parts: list[str], message: str) -> Plan:
     return plan
 
 
-_FENCE = re.compile(r"```mermaid\n.*?```(?:\n+\*그림[^*\n]*\*)?", re.S)
+_FENCE = re.compile(r"```mermaid\n.*?```(?:\n+\*" + captions.FIGURE + r"[^*\n]*\*)?", re.S)
 _REMOVE_FIGURE = re.compile(
     r"(?:그림|도식|도해|다이어그램|흐름도|구조도|비교도|개념도)\s{0,8}(?:은|을|는|를)?\s{0,8}"
     r"(?:빼|지워|삭제|없이|제거)"
@@ -928,13 +928,13 @@ def keep_pictures(old: str, new: str, instruction: str) -> str:
         paragraphs = out.split("\n\n")
         at = next((i for i, p in enumerate(paragraphs) if number is not None and not
                    p.lstrip().startswith(("|", "!", "```"))
-                   and re.search(rf"그림\s?{number}(?!\d)", p)), None)
+                   and re.search(rf"{captions.FIGURE}\s?{number}(?!\d)", p)), None)
         if at is None:
             paragraphs.append(block)
         else:
             # after the table that follows the paragraph naming it, as the part had it
             while (at + 1 < len(paragraphs) and paragraphs[at + 1].lstrip().startswith(("|", "**"))
-                   and not re.search(r"그림", paragraphs[at + 1].split("\n")[0])):
+                   and not re.search(captions.FIGURE, paragraphs[at + 1].split("\n")[0])):
                 at += 1
             paragraphs.insert(at + 1, block)
         out = "\n\n".join(paragraphs)
@@ -1903,17 +1903,25 @@ _NUMBERED_REMOVAL = re.compile(
     r"(?:빼|지워|지우|삭제|없애|제거)\S{0,6}"
     r"(?:\s{0,4}(?:줘|주세요|주십시오|해\s?줘|해\s?주세요|바랍니다))?")
 _NUMBERED_ITEM = re.compile(r"(표|그림)\s?(\d{1,3})(?![\d.])")
+#: the same asked in English: 「remove Table 2」, 「delete tables 2 and 3 and figure 1」
+_EN_NUMBERED = r"(?:[Tt]able|[Ff]igure)s?\s?\d{1,3}(?!\d|\.\d)"
+_EN_NUMBERED_REMOVAL = re.compile(
+    r"\b(?:remove|delete|drop|cut|take\s{1,3}out|get\s{1,3}rid\s{1,3}of)\s{1,3}(?:the\s{1,3})?"
+    rf"{_EN_NUMBERED}(?:\s{{0,3}}(?:,|and|&)\s{{1,3}}(?:the\s{{1,3}})?"
+    rf"(?:{_EN_NUMBERED}|\d{{1,3}}(?!\d|\.\d)))*", re.I)
+#: an English item; a bare number takes the word before it (「tables 2 and 3」)
+_EN_NUMBERED_ITEM = re.compile(r"(?:([Tt]able|[Ff]igure)s?\s?)?(\d{1,3})(?!\d|\.\d)")
 _REMOVAL_FILLER = frozenset({*_FILLER, "모두", "전부", "부탁드립니다", "해주세요", "주십시오",
-                             "바랍니다"})
+                             "바랍니다", "please", "also", "and", "the", "both", "all"})
 
 
 def _only_removal(clause: str) -> bool:
     """Whether taking numbered tables or figures away is all the clause asks (「표 2는 빼고
     그 내용은 글로 풀어 줘」 asks more: that is a rewrite's)."""
-    if not _NUMBERED_REMOVAL.search(clause):
+    if not _NUMBERED_REMOVAL.search(clause) and not _EN_NUMBERED_REMOVAL.search(clause):
         return False
-    rest = _SECTION_REF.sub(" ", _NUMBERED_REMOVAL.sub(" ", clause))
-    words = [_PARTICLE.sub("", w) for w in re.findall(r"[가-힣A-Za-z]{2,}", rest)]
+    rest = _SECTION_REF.sub(" ", _EN_NUMBERED_REMOVAL.sub(" ", _NUMBERED_REMOVAL.sub(" ", clause)))
+    words = [_PARTICLE.sub("", w).lower() for w in re.findall(r"[가-힣A-Za-z]{2,}", rest)]
     return not [w for w in words if len(w) > 1 and w not in _REMOVAL_FILLER]
 
 
@@ -1936,6 +1944,12 @@ def numbered_removals(instruction: str) -> list[tuple[str, int]]:
             for kind, n in _NUMBERED_ITEM.findall(m.group(0)):
                 if (kind, int(n)) not in out:
                     out.append((kind, int(n)))
+        for m in _EN_NUMBERED_REMOVAL.finditer(clause):
+            kind = ""
+            for written, n in _EN_NUMBERED_ITEM.findall(m.group(0)):
+                kind = captions.kind(written) if written else kind
+                if kind and (kind, int(n)) not in out:
+                    out.append((kind, int(n)))
     return out
 
 
@@ -1957,8 +1971,10 @@ def without_numbered_removals(instruction: str) -> str:
 
 _TABLE_RULE = re.compile(r"^\s{0,3}\|?\s{0,3}:?-{2,}")
 _PICTURE_LINE = re.compile(r"^\s*!\[(?P<alt>[^\]]{0,200})\]\([^)\s]+\)\s*$")
-_CAPTION_OF = {"표": re.compile(r"^\s{0,12}(?:\*\*)?\s?<?\s?표\s?(\d{1,3})\s?[.:：>*]"),
-               "그림": re.compile(r"^\s{0,12}[*_]{0,2}\s?그림\s?(\d{1,3})\s?[.:：*]")}
+_CAPTION_OF = {"표": re.compile(r"^\s{0,12}(?:\*\*)?\s?<?\s?" + captions.TABLE
+                               + r"\s?(\d{1,3})\s?[.:：>*]"),
+               "그림": re.compile(r"^\s{0,12}[*_]{0,2}\s?" + captions.FIGURE
+                                + r"\s?(\d{1,3})\s?[.:：*]")}
 _REFERENCE_PART = re.compile(r"참고\s?문헌|참고\s?자료|references|bibliography", re.I)
 
 
@@ -2027,8 +2043,10 @@ _SENTENCE_SPLIT = re.compile(r"(?<=[.!?。])\s+")
 
 def _drop_references(text: str, name: str) -> str:
     """Prose citing `name` (a table or figure taken away) without the citation: 「(표 2)」
-    goes, a sentence that is about it goes, 「표 2와 같이」 goes from its sentence."""
+    goes, a sentence that is about it goes, 「표 2와 같이」 goes from its sentence; in English
+    「(Table 2)」, 「See Table 2 for …」, 「as shown in Table 2」 likewise."""
     kind, n = name.split(" ", 1)
+    text = _drop_english_references(text, kind, n)
     num = rf"{kind}\s?{n}"
     if not re.search(rf"{num}(?![\d.])", text):
         return text
@@ -2054,6 +2072,41 @@ def _drop_references(text: str, name: str) -> str:
                 rf"(?:위|아래|다음)?\s?{num}(?:과|와|에서|에|을|를|의|처럼|로|으로)?\s?"
                 r"(?:같이|처럼|보듯이|보듯|나타낸 것처럼|정리한 것처럼|나타냈듯이)?\s?,?\s?", "",
                 sentence)
+            if sentence.strip():
+                kept.append(sentence.strip())
+        if kept:
+            out.append(lead + " ".join(kept))
+        elif not line.strip():
+            out.append(line)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
+
+
+def _drop_english_references(text: str, kind: str, n: str) -> str:
+    """`_drop_references` for an English document's 「Table 2」: the bracket goes, a sentence
+    that starts with it (「Table 2 lists …」, 「See Table 2 …」) goes, a phrase leading to it
+    (「, as shown in Table 2,」) goes from its sentence."""
+    num = rf"(?<![A-Za-z])(?i:{captions.word(kind, captions.EN)})\s?{n}(?!\d|\.\d)"
+    if not re.search(num, text):
+        return text
+    out = []
+    for line in text.split("\n"):
+        if line.lstrip().startswith(("|", "![", "```")) or _CAPTION_OF["표"].match(line) \
+                or _CAPTION_OF["그림"].match(line) or not re.search(num, line):
+            out.append(line)
+            continue
+        line = re.sub(rf"\s?\((?:see\s)?{num}\)", "", line, flags=re.I)
+        line = re.sub(rf"(\((?:[^()]{{0,40}}?))(?:,\s?){num}", r"\1", line)
+        line = re.sub(rf"\({num},\s?", "(", line)
+        lead = re.match(r"\s{0,24}(?:[-*+]\s{1,4})?", line).group(0)
+        kept = []
+        for sentence in _SENTENCE_SPLIT.split(line[len(lead):]):
+            if not re.search(num, sentence):
+                kept.append(sentence)
+                continue
+            if re.match(rf"\s{{0,2}}(?:(?i:see)\s{{1,2}}(?:also\s{{1,2}})?)?{num}", sentence):
+                continue  # about the gone table or figure
+            sentence = re.sub(rf",?\s?(?:(?:as\s)?[a-z]{{2,12}}\s)?(?:in|see|from|by)\s{num},?",
+                              "", sentence)
             if sentence.strip():
                 kept.append(sentence.strip())
         if kept:
@@ -2590,9 +2643,10 @@ def without_added_dates(old: str, new: str) -> str:
 
 #: a sentence that points at the part's table or figure: 「표와 같습니다(표 1).」
 _TABLE_POINTER = re.compile(r"(?<![가-힣])(?:표|그림)\s?(\d{1,2})(?!\d)"
-                      r"|(?:위|아래|다음)\s?(?:의\s?)?(?:표|그림)|(?<![가-힣])(?:표|그림)(?:와|과)\s?같")
-#: the caption of a part's table or figure: 「**표 1. 주요 업무」
-_CAPTION_NUMBER = re.compile(r"(?m)^\s{0,3}\*{0,2}(표|그림)\s?(\d{1,2})\s?[.:]")
+                      r"|(?:위|아래|다음)\s?(?:의\s?)?(?:표|그림)|(?<![가-힣])(?:표|그림)(?:와|과)\s?같"
+                      r"|(?<![A-Za-z])(?:Table|Figure)\s?\d{1,2}(?!\d)")
+#: the caption of a part's table or figure: 「**표 1. 주요 업무」, 「**Table 1. Tasks」
+_CAPTION_NUMBER = re.compile(r"(?m)^\s{0,3}\*{0,2}(표|그림|Table|Figure)\s?(\d{1,2})\s?[.:]")
 #: the end of a sentence, citations before it: 「 [1].」
 _SENTENCE_TAIL = re.compile(r"(?:\s?\[\d{1,3}(?:[,\-–]\s?\d{1,3})*\])*[.!?。]$")
 
@@ -2639,7 +2693,8 @@ def fold_table_pointers(text: str, want: int) -> str:
                 end = len(last) - 40 if len(last) > 40 else 0
                 if ref and ref not in last and (tail := _SENTENCE_TAIL.search(last[end:])):
                     cut = end + tail.start()
-                    target[j] = f"{last[:cut]}({ref}){last[cut:]}"
+                    head = last[:cut].rstrip() if captions.in_english(ref) else last[:cut]
+                    target[j] = f"{head}{captions.pointer(ref)}{last[cut:]}"
                 over -= 1
                 continue
             kept.append(sent)
@@ -2801,7 +2856,8 @@ _PREAMBLE = re.compile(
     r"절입니다|내용입니다)|[^\n]{0,80}?요청하신\s?대로[^\n]{0,80}?(?:입니다|습니다)[.:]?\s{0,2}$"
     r"|(?:here\s+is|below\s+is)\b[^\n]{0,120}?\b(?:shortened|revised|rewritten|version|section)"
     r")", re.I)
-_NUMBERED_REF = re.compile(r"(?<![가-힣])(표|그림)\s?(\d{1,2})(?!\d)")
+_NUMBERED_REF = re.compile(
+    r"((?<![가-힣])(?:표|그림)|(?<![A-Za-z])(?:Table|Figure))\s?(\d{1,2})(?!\d)")
 
 
 def without_preamble(text: str) -> str:
@@ -2847,7 +2903,7 @@ def drift_faults(old: str, new: str, others: list[str]) -> list[str]:
     numbered = {(kind, n) for text in (new, *others) for kind, _, _, n in _blocks_in(text)
                 if n is not None}
     if missing := sorted({f"{k} {n}" for k, n in _NUMBERED_REF.findall(new)
-                          if (k, int(n)) not in numbered}):
+                          if (captions.kind(k), int(n)) not in numbered}):
         faults.append("It cites " + ", ".join(missing) + ", which the document does not have")
     return faults
 

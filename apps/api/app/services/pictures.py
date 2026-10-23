@@ -53,8 +53,8 @@ def decode(src: str) -> tuple[str, bytes] | None:
 
 #: `![alt](data:image/…)` to its `)` or, unclosed, to the end of the line
 _EMBED = re.compile(r"!\[([^\]\n]*)\]\((data:image/[^)\n]*)\)?[ \t]*")
-#: 「(그림 1)」, 「(그림 1 참조)」 pointing at a picture
-_MENTION = r"\s?[(（]\s*그림\s*{n}(?:\s*참조)?\s*[)）]"
+#: 「(그림 1)」, 「(그림 1 참조)」, 「(Figure 1)」, 「(see Figure 1)」 pointing at a picture
+_MENTION = r"\s?[(（]\s*(?:(?:[Ss]ee\s)?[Ff]igure|그림)\s*{n}(?:\s*참조)?\s*[)）]"
 
 
 def opens(src: str) -> bool:
@@ -77,7 +77,7 @@ def drop_broken(markdown: str) -> str:
     def keep(match: re.Match) -> str:
         if match.group(0).rstrip().endswith(")") and opens(match.group(2)):
             return match.group(0)
-        if number := re.search(r"그림\s*(\d+)", match.group(1)):
+        if number := re.search(r"(?:그림|[Ff]igure)\s*(\d+)", match.group(1)):
             gone.append(number.group(1))
         return ""
 
