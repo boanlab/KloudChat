@@ -4674,6 +4674,10 @@ async def send_message(
     ):
         # the agent's language as a condition the document writers read with the request
         content = _with_condition(content, output_language.condition(agent_row.output_language))
+    elif session.kind is not SessionKind.chat and not revising and not pending and (
+            code := output_language.asked(typed_content)):
+        # a new document in the language the person asked in, not the material's
+        content = _with_condition(content, output_language.asked_condition(code))
     turn_options = {
         "webSearch": payload.web_search,
         "activatedSkillIds": active_skill_ids,
@@ -7273,9 +7277,9 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                     role=Role.assistant,
                     content=rerun_note(turn) or _restructured_said(
                         work.document.before if carry_from else [], slides,
-                        english=bool(carry_from) and (
-                            deck_service.deck_language(slides) == "en"
-                            or output_language.typed_in_english(carry_note))),
+                        # in the deck's language, or the language the reshape was asked in
+                        english=deck_service.deck_language(slides) == "en" or bool(
+                            carry_from) and output_language.typed_in_english(carry_note)),
                     usage={**usage, "credits": credits},
                     model=model["id"],
                     steps=_prelude_steps(skills_event, context_steps) or None,

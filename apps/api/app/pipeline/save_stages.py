@@ -10,7 +10,7 @@ from app.pipeline import marks as doc_marks
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle
 from app.pipeline.stage import Base, Context
-from app.services import output_language
+from app.services import captions, output_language
 
 log = logging.getLogger("app.routers.sessions")
 
@@ -383,7 +383,9 @@ class ReportSave(Base):
                         session_id=session_id,
                         role=Role.assistant,
                         content=(rerun_note(turn)
-                                 or _written_note(len(written), title_block)),
+                                 or _written_note(len(written), title_block,
+                                                  english=captions.of_sections(written)
+                                                  == captions.EN)),
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=host._prelude_steps(turn.get("skills_event"),
@@ -581,12 +583,16 @@ for _stage in (ReportSave(), ReviseLoad(), ReviseSave()):
     registry.register(_stage)
 
 
-def _written_note(count: int, title_block: dict | None) -> str:
-    """Finish line in the document's genre word (「5개 절로 회의록 작성을 마쳤습니다.」)."""
+def _written_note(count: int, title_block: dict | None, *, english: bool = False) -> str:
+    """Finish line in the document's genre word (「5개 절로 회의록 작성을 마쳤습니다.」), in
+    English for a document written in English."""
     from app.services import doc_formats
 
     found = doc_formats.BY_ID.get(str((title_block or {}).get("format") or ""))
     genre = found.label if found else ""
+    if english:
+        named = doc_formats.EN_FORMAT_LABELS.get(found.id if found else "", "report").lower()
+        return f"Wrote the {named} in {count} section{'s' if count != 1 else ''}."
     if not genre or genre == "보고서":
         return f"{count}개 섹션으로 보고서를 작성했습니다."
     return f"{count}개 절로 {genre} 작성을 마쳤습니다."
