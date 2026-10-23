@@ -87,3 +87,20 @@ async def test_a_deck_restructure_writes_its_new_outline_at_once(monkeypatch):
     assert "proposal" not in [e["type"] for e in events]
     assert store.plans == []
     assert any(c.get("approved_plan") for c in calls)
+
+
+MEMO_REQUEST = (
+    "아래 이번 주 메모로 팀장님께 올릴 주간 업무 보고서를 3절로 만들어줘.\n\n"
+    "[이번 주 메모]\n- 목: 경쟁사 A사가 동일 품목 4% 낮은 단가 제시한 것으로 파악됨.\n"
+    "- 금: 중복 거래처 37건 발견, 병합 작업 60% 진행.\n")
+
+
+def test_a_restructured_memo_report_keeps_its_lines_and_searches_nothing():
+    from app.services import grounding, report, revise
+
+    merged = grounding.merge_answers(revise.without_counts(MEMO_REQUEST),
+                                     {"_note": "구성을 세 절로 다시 짠다"})
+    assert "3절" not in merged and "\n- 금: 중복 거래처 37건" in merged
+    # a memo line naming a competitor is no ask for outside facts
+    assert not report.asks_public_sources(merged)
+    assert report.material_complete(merged, "report")

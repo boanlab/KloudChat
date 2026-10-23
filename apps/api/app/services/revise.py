@@ -960,7 +960,8 @@ _COMPARED_AFTER = re.compile(r"\s{0,3}(?:이상|이하|초과|미만|넘)")
 def without_counts(request: str) -> str:
     """Request minus part counts; planner reads the note's count. A count a finding is stated
     against stays (「failed more above 20 pages」)."""
-    text = " ".join((request or "").split())
+    # lines and paragraphs stay: the request's first paragraph is its instruction
+    text = "\n".join(" ".join(line.split()) for line in (request or "").strip().splitlines())
 
     def drop(m: re.Match) -> str:
         unit = re.search(r"\d\s{0,8}(?:장|쪽|페이지|슬라이드|절)", m.group(0))
@@ -970,7 +971,7 @@ def without_counts(request: str) -> str:
             return m.group(0)
         return " "
 
-    return " ".join(_COUNT_MENTION.sub(drop, text).split())
+    return "\n".join(" ".join(line.split()) for line in _COUNT_MENTION.sub(drop, text).splitlines())
 
 
 _TARGET_COUNT = re.compile(
