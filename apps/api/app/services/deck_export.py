@@ -3478,6 +3478,10 @@ def to_pptx(
                 table.first_row = False
                 table.horz_banding = False
                 for r, row in enumerate(rows):
+                    # one value shared by every column: one cell across them, as in the panel
+                    shared = r > 0 and deck_type.shared_value(row, len(table.columns)) is not None
+                    if shared:
+                        table.cell(r, 1).merge(table.cell(r, len(table.columns) - 1))
                     for c, text in enumerate(row):
                         if c >= len(table.columns):
                             continue
@@ -3494,6 +3498,8 @@ def to_pptx(
                             pass
                         elif r < len(rows) - 1:
                             _cell_rule(cell, muted, 0.5)
+                        if shared and c > 1:
+                            continue
                         cell.text = ""
                         cell.margin_left = cell.margin_right = Emu(int(9 * _K * _EMU_PER_PT))
                         cell.margin_top = cell.margin_bottom = Emu(int(cell_pad * _EMU_PER_PT))
@@ -4503,15 +4509,19 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 pad_x = 9 * _K
                 row_top = y
                 for row_index, row in enumerate(rows):
+                    # one value shared by every column: one cell across them, as in the panel
+                    spans = list(widths)
+                    if row_index and deck_type.shared_value(row, len(widths)) is not None:
+                        row, spans = row[:2], [widths[0], sum(widths[1:])]
                     wrapped = [
                         _wrap(
                             cell,
                             bold if row_index == 0 or c == 0 else font,
                             cell_size,
-                            widths[c] - 2 * pad_x,
+                            spans[c] - 2 * pad_x,
                         )[:2]
                         for c, cell in enumerate(row)
-                        if c < len(widths)
+                        if c < len(spans)
                     ]
                     step = max(1, *(len(w) for w in wrapped)) * line_height + 2 * cell_pad
                     if row_top - step < _H - _BODY_BOTTOM - 2:
@@ -4533,7 +4543,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                         baseline = row_top - cell_pad - cell_size * 0.85
                         for offset, line in enumerate(lines):
                             pdf.drawString(x + pad_x, baseline - offset * line_height, line)
-                        x += widths[c]
+                        x += spans[c]
                     row_top -= step
             elif bullets and layout == "agenda":
                 columns = _split_columns(bullets) if len(bullets) > 4 else [bullets]

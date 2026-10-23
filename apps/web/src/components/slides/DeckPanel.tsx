@@ -59,7 +59,7 @@ import { useStore } from '@/store/useStore'
 import { SlideChart } from '@/components/slides/SlideChart'
 import { PatternView } from '@/components/slides/PatternView'
 import { BASE_LAYOUTS, PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
-import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, STEPS, TYPE, columnShares, lines, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
+import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, STEPS, TYPE, columnShares, lines, sharedValue, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
 import { useT, useTIn } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
 import { ArtifactRibbon, QuickAccess, RibbonGroup } from '@/components/artifacts/ArtifactRibbon'
@@ -1156,9 +1156,10 @@ export function SlideView({
                           borderBottom: r === 0 ? 'none' : `1px solid ${hair}`,
                         }}
                       >
-                        {row.map((cell, c) => (
+                        {(r > 0 && sharedValue(row, dense.shares.length) !== null ? row.slice(0, 2) : row).map((cell, c, shown) => (
                           <td
                             key={c}
+                            colSpan={shown.length < row.length && c === 1 ? row.length - 1 : undefined}
                             style={{
                               padding: `${px(dense.pad)} ${px(9)}`,
                               verticalAlign: 'top',
@@ -1167,8 +1168,9 @@ export function SlideView({
                               color: r === 0 ? (visualStyle === 'mono' ? look.bg : '#fff') : look.ink,
                             }}
                             {...typed(`rows.${r}.${c}`, (text) => ({
+                              // a spanned value writes every cell it covers
                               rows: (working.current.rows ?? []).map((row2, ri) =>
-                                ri === r ? row2.map((cell2, ci) => (ci === c ? text : cell2)) : row2,
+                                ri === r ? row2.map((cell2, ci) => (ci === c || (c === 1 && ci > 1 && shown.length < row.length) ? text : cell2)) : row2,
                               ),
                             }))}
                           >

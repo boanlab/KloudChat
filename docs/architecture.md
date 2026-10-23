@@ -439,7 +439,11 @@ so a reference carries its authors, year, venue and DOI.
 
 Slide layouts are listed in `services/deck.py` (`title`, `agenda`, `section`,
 `bullets`, `quote`, `two-column`, `table`, `metrics`, `chart`, …), each
-implemented in all three renderers (preview, `.pptx`, `.pdf`). The outline
+implemented in all three renderers (preview, `.pptx`, `.pdf`). A table body row whose
+value columns (two or more) all hold the same text of at least `deck_type.SHARED_MIN`
+characters is drawn as one cell across them (`deck_type.shared_value` / `typeScale.sharedValue`;
+a merged cell in `.pptx`); the data keeps every cell, and short shared marks (✓, Yes, N/A)
+keep their own cells so check-mark tables look the same. The outline
 also picks the deck's accent from a fixed palette — unless the project wears a
 theme, in which case the palette rule is dropped from the prompt
 entirely and the accent arrives from the project. A slide count stated in the

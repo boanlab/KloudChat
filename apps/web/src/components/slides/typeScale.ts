@@ -128,12 +128,24 @@ export function em(text: string): number {
   return width
 }
 
-/** Each column's share of the table width, from its widest cell (3–22 ems, plus padding). */
+/** Shortest value drawn once across its row; a shorter shared mark (✓, Yes, N/A, —) keeps its cells. `deck_type.SHARED_MIN`. */
+export const SHARED_MIN = 4
+
+/** A body row's one value under every value column (2+), drawn once across them; `deck_type.shared_value`. */
+export function sharedValue(row: string[], columns: number): string | null {
+  if (row.length !== columns || columns < 3) return null
+  const text = String(row[1] ?? '').trim()
+  if ([...text].length < SHARED_MIN || row.slice(2).some((cell) => String(cell ?? '').trim() !== text)) return null
+  return text
+}
+
+/** Each column's share of the table width, from its widest cell (3–22 ems, plus padding); a shared value counts a share of itself in each column it spans. */
 export function columnShares(rows: string[][]): number[] {
   const count = Math.max(0, ...rows.map((row) => row.length))
   if (!count) return []
+  const spread = rows.map((row, r) => r > 0 && sharedValue(row, count) !== null)
   const weights = Array.from({ length: count }, (_, column) => {
-    const widest = Math.max(0, ...rows.map((row) => (column < row.length ? em(row[column]) : 0)))
+    const widest = Math.max(0, ...rows.map((row, r) => (column < row.length ? em(row[column]) / (spread[r] && column ? count - 1 : 1) : 0)))
     return Math.max(3, Math.min(22, widest)) + 2
   })
   const total = weights.reduce((sum, weight) => sum + weight, 0)
