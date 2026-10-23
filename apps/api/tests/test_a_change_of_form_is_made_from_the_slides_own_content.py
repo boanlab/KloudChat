@@ -510,3 +510,16 @@ def test_a_dangling_unit_is_cut_and_a_guard_blank_stays_in_sight():
     started = time.monotonic()
     deck._DANGLING_UNIT.sub("", "1" + " " * 50000 + "/")
     assert time.monotonic() - started < 0.5
+
+
+def test_a_restored_ask_names_what_is_asked_when_the_ask_title_has_no_figure():
+    # audit-x H5/B: the shrink dropped the plan and the 「Seek Resource Approval」 slide
+    old = [COVER,
+           {"id": "c", "layout": "bullets", "title": "Key Constraints",
+            "bullets": ["Two counties saw 11 days delay avg"]},
+           {"id": "p", "layout": "bullets", "title": "Q4 Plan & Resource Request",
+            "bullets": ["Target 480 installs for Q4", "Resource Need: Approve $1.2M"]},
+           {"id": "s", "layout": "statement", "title": "Seek Resource Approval"}]
+    new = [dict(COVER), {**old[1], "bullets": list(old[1]["bullets"])}]
+    out = revise.keep_ask(new, old, mentioned="Shrink to 4 slides")
+    assert out[1]["bullets"][-1] == "Resource Need: Approve $1.2M"

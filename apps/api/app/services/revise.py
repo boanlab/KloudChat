@@ -1624,19 +1624,19 @@ def keep_ask(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
     if _DECK_ASK.search(mentioned or "") or not new or any(
             _DECK_ASK.search(t.strip()) for s in new for t in _shown_texts(s)):
         return new
-    ask, titled = "", False
+    # the last ask, the last one with its figure first: a 「Seek approval」 title falls back
+    # to the 「Approve $1.2M」 point that names what is asked
+    asks: list[tuple[str, bool]] = []
     for slide in reversed(old):
         title = " ".join(str(slide.get("title") or "").split())
         if _DECK_ASK.search(title):
-            ask, titled = title, True
-            break
-        said = next((" ".join(t.split()) for t in _shown_texts(slide)
-                     if _DECK_ASK.search(t.strip())), "")
-        if said:
-            ask = said
-            break
-    if not ask or len(ask) > 80:
+            asks.append((title, True))
+        asks += [(" ".join(t.split()), False) for t in _shown_texts(slide)
+                 if t.strip() != title and _DECK_ASK.search(t.strip())]
+    asks = [(t, titled) for t, titled in asks if len(t) <= 80]
+    if not asks:
         return new
+    ask, titled = next(((t, titled) for t, titled in asks if _figure_keys(t)), asks[0])
     figures = _figure_keys(ask)
     body = [s for i, s in enumerate(new) if i and s.get("layout") not in ("title", "agenda")]
     if not body:
