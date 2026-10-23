@@ -5050,7 +5050,7 @@ async def send_message(
             db, session, instruction=content, model=planner or model, api_key=api_key
         )
         if revision is not None and revision.restructures:
-            # skeleton change re-planned via outline-and-confirm; absolute terms (「9장」)
+            # skeleton change re-planned and written at once; absolute terms (「9장」)
             content = grounding.merge_answers(
                 revise.without_counts(await _original_request(db, session) or content),
                 {"_note": revision.note},
@@ -6966,8 +6966,11 @@ async def _run_deck(
         template_id=template.id if template else None, design_tokens=design_tokens,
         session_id=session_id, turn=turn))
     work.usage = {"inputTokens": 0, "outputTokens": 0}
-    straight = approved_plan is None and (lambda plan: outline_rules.nothing_to_approve(
-        plan, request, has_material=traced or any(t.strip() for t in untrusted_context or ())))
+    # a reshape of the open deck is written as re-planned, with no outline card
+    straight = approved_plan is None and (
+        lambda plan: _reshaped_plan(plan, carry_from) or outline_rules.nothing_to_approve(
+            plan, request,
+            has_material=traced or any(t.strip() for t in untrusted_context or ())))
     async for chunk in _make_pass(work, pipeline_registry.pipeline("deck"),
                                   crashed="슬라이드를 만들지 못했습니다.",
                                   attachments=attachments, answers=answers,
@@ -7644,6 +7647,11 @@ async def _hand_over_document(
     yield chat_service.sse({"type": "done"})
 
 
+def _reshaped_plan(plan: dict | None, carry_from: str | None) -> bool:
+    """A restructure of the open document with parts planned: written with no outline card."""
+    return bool(carry_from) and bool((plan or {}).get("slides") or (plan or {}).get("sections"))
+
+
 async def _run_report(
     *,
     template: design_templates.DesignTemplate | None = None,
@@ -7728,7 +7736,8 @@ async def _run_report(
             auto_image_model=auto_image_model,
             request=request,
             approved_plan=approved_plan,
-            may_ask=may_ask,
+            # a restructure of the open report has its material: no questions
+            may_ask=may_ask and not carry_from,
             model=model["id"],
             outline_model=(outline_model or {}).get("id", ""),
             api_key=api_key,
@@ -7756,10 +7765,12 @@ async def _run_report(
                 # stopped on purpose: stored below, no artifact
                 if event["type"] == "proposal":
                     proposal = event["plan"]
-                    straight = writing is False and outline_rules.nothing_to_approve(
-                        proposal, request,
-                        has_material=any(t.strip() for t in untrusted_context or ()),
-                    )
+                    # a restructure of the open report is written as re-planned, as a deck's
+                    straight = writing is False and (
+                        _reshaped_plan(proposal, carry_from) or outline_rules.nothing_to_approve(
+                            proposal, request,
+                            has_material=any(t.strip() for t in untrusted_context or ()),
+                        ))
                     if straight:
                         continue
                     # the carried findings stay with the stored plan

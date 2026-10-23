@@ -12,7 +12,7 @@ Type what you want changed into the input box at the bottom of a finished report
 | "Drop the table in section 2 and put a 3-line summary at the top" | Writes again only the parts each ask points at. The summary goes at the top of the first section as a 「핵심」 box with exactly the lines asked, without repeating the title or author line. |
 | "Remove table 2 and figure 1" | Takes out the numbered tables and figures as they are, without rewriting. Sentences that pointed at them are tidied, and the numbers of later tables and figures, and the references to them, close up. Rewriting that section in the same request puts no new table or figure in their place. A number that is not in the document is reported as not found. |
 | "Make the whole thing more concise", "change the tone to polite form" | Writes every part again. |
-| "Extend it to 20 slides", "add 3 slides", "merge 2 and 3", "change the order" | Proposes the structure again, waits for your approval, and then writes. Parts that are kept reuse their existing titles. |
+| "Extend it to 20 slides", "add 3 slides", "merge 2 and 3", "change the order" | Plans the structure again and writes it at once, with no questions or approval step: the open document is the material. Parts that are kept reuse their existing titles and content. |
 | A question about the document, such as "how many slides are there?" | Not answered on this screen and nothing is changed. The reply asks you to name what to change, and to ask about the content in Chat with the downloaded file attached. |
 | "Write it again", "start over", "with a different topic" | Keeps the existing document and writes a new one. |
 
