@@ -20,27 +20,37 @@ from app.services.stated_days import _words
 _DAY = re.compile(
     r"(?:20\d{2}\s{0,2}년\s{0,2})?\d{1,2}\s{0,2}월\s{0,2}\d{1,2}\s{0,2}일"
     r"|20\d{2}\s{0,2}[-./]\s{0,2}\d{1,2}\s{0,2}[-./]\s{0,2}\d{1,2}"
-    r"|(?<![\d/])\d{1,2}\s{0,2}/\s{0,2}\d{1,2}(?![\d/])")
+    r"|(?<![\d/])\d{1,2}\s{0,2}/\s{0,2}\d{1,2}(?![\d/])"
+    # 「Oct 19」, 「October 19, 2026」
+    r"|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]{0,6}\.?\s{1,2}\d{1,2}"
+    r"(?:st|nd|rd|th)?\b(?:,\s{0,2}20\d{2})?")
 _WEEKDAY = re.compile(
     r"\s{0,2}(?:\(\s{0,2}[월화수목금토일](?:요일)?\s{0,2}\)"
-    r"|(?<![가-힣\d])[월화수목금토일](?:요일)?(?![가-힣]))")
+    r"|(?<![가-힣\d])[월화수목금토일](?:요일)?(?![가-힣])"
+    r"|\(\s{0,2}(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]{0,6}\.?\s{0,2}\))")
 #: a clock: 「10시」, 「오후 2시 30분」, 「14:00」 (not 「1시간」)
 _CLOCK = re.compile(
     r"(?:(?:오전|오후)\s{0,2})?\d{1,2}\s{0,2}시(?![간작각])(?:\s{0,2}\d{1,2}\s{0,2}분|\s{0,2}반)?"
-    r"|(?<![\d:])\d{1,2}:\d{2}(?![\d:])")
+    r"|(?<![\d:])\d{1,2}:\d{2}(?![\d:])(?:\s{0,2}[ap]m\b)?"
+    r"|\b\d{1,2}\s{0,2}[ap]m\b")
 #: a place said with its label: 「장소 본사 5층 대회의실」, 「장소: 3층」
 _PLACE_SAID = re.compile(r"장소\s{0,2}[:：]?\s{0,2}(?:는|은)?\s{0,2}([^,.;\n()]{2,30})")
 #: a place by its kind: 「3층 회의실」, 「본관 302호」, 「온라인」
 _PLACE = re.compile(
     r"(?:[가-힣A-Za-z0-9]{1,12} ){0,2}[가-힣A-Za-z0-9]{0,12}"
     r"(?:회의실|강의실|세미나실|강당|교실|라운지|사무실|접견실|\d{2,4}\s{0,2}호(?![가-힣]))"
-    r"|온라인|화상\s{0,2}회의|비대면|Zoom|줌|Teams|팀즈")
-_ATTENDED = re.compile(r"참석(?:자|인원)?\s{0,2}[:：]?\s{0,2}([^.\n;]{2,80})")
-_MEETING_WORD = re.compile(r"회의|위원회|미팅|모임|세미나|워크숍|간담회|협의회")
+    r"|온라인|화상\s{0,2}회의|비대면|Zoom|줌|Teams|팀즈"
+    r"|\b(?:Room|Conference\s{1,2}[Rr]oom|Meeting\s{1,2}[Rr]oom)\s{1,2}[A-Z0-9][A-Za-z0-9-]{0,6}\b")
+_ATTENDED = re.compile(
+    r"(?:참석(?:자|인원)?|\b(?:Attendees|Present)\b)\s{0,2}[:：]?\s{0,2}([^.\n;]{2,80})")
+#: a meeting's kind, Korean or English
+_KINDS = (r"회의|위원회|미팅|모임|세미나|워크숍|간담회|협의회"
+          r"|(?i:\b(?:meeting|sync|stand-?up|review|workshop|seminar|committee|retro))")
+_MEETING_WORD = re.compile(_KINDS)
 #: a meeting's name ends in its kind: 「교육혁신팀 주간회의」, not 「… 회의록을 만들어줘」
-_NAMED = re.compile(r"(?:회의|위원회|미팅|모임|세미나|워크숍|간담회|협의회)$")
+_NAMED = re.compile(r"(?:" + _KINDS + r")$")
 #: where the memo turns from the meeting's head to its agenda
-_AGENDA_START = re.compile(r"안건|의제|논의|결정|^\s{0,2}\d{1,2}[.)]")
+_AGENDA_START = re.compile(r"안건|의제|논의|결정|(?i:\bagenda\b)|^\s{0,2}\d{1,2}[.)]")
 
 
 @dataclasses.dataclass

@@ -173,3 +173,34 @@ def test_a_due_date_is_no_meeting_date_but_a_meeting_date_label_is():
     assert not any("10-30" in v for v in due.values())
     said = doc_formats.head_values(fmt, "Meeting date: 2026-10-19. Location: Room 3A.")
     assert any("10-19" in v for v in said.values())
+
+
+ENGLISH_MEMO = (
+    "Oct 19 Product Design weekly sync. Attendees: Maya Chen (lead), Arjun Patel, Tom Okafor. "
+    "Absent: Sofia Reyes (sick). 1) Onboarding: we moved the launch to Nov 11. "
+    "Next meeting: Oct 26 (Mon) 3pm, Room 4B.")
+
+
+def test_an_english_memo_gives_its_meeting_name_and_keeps_the_next_meetings_room_apart():
+    from app.services import meeting_memo
+
+    memo = meeting_memo.read(ENGLISH_MEMO)
+    assert memo.this.name == "Product Design weekly sync"
+    assert memo.this.day == "Oct 19" and memo.this.place == ""
+    assert memo.this.attendees == "Maya Chen (lead), Arjun Patel, Tom Okafor"
+    assert (memo.next.day, memo.next.clock, memo.next.place) == ("Oct 26 (Mon)", "3pm", "Room 4B")
+    head = {"head": "memo", "language": "en", "fields": [
+        ["Meeting", ""], ["Date", "Oct 19"], ["Location", ""], ["Attendees", ""]]}
+    filled = dict(meeting_memo.fill_head(head, ENGLISH_MEMO)["fields"])
+    assert filled["Meeting"] == "Product Design weekly sync"
+    assert filled["Location"] == "[Location]"
+
+
+def test_english_memo_patterns_stay_linear_on_long_spaces():
+    import time
+
+    from app.services import meeting_memo
+
+    started = time.monotonic()
+    meeting_memo.read("Oct" + " " * 50_000 + "19 sync Room" + " " * 50_000 + "4B 3" + " " * 50_000)
+    assert time.monotonic() - started < 0.5
