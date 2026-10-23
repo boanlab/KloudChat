@@ -4,7 +4,7 @@ title: Writing reports
 
 # Writing reports
 
-On the home screen, select **Report** and enter the topic of the report you want to write. If you have supporting material, attach it from **+** → **Attach files or photos** in the composer. When you attach material, KloudChat fills the figures in from that material instead of estimating them. Where a search server is connected, it searches the web before writing and cites the sources. A request about domestic research trends or one that names KCI also finds KCI, DBpia and RISS papers through the same search and cites their authors, year, journal and DOI.
+On the home screen, select **Report** and enter the topic of the report you want to write. If you have supporting material, attach it from **+** → **Attach files or photos** in the composer. When you attach material, KloudChat fills the figures in from that material instead of estimating them. The document is written in the language you asked in: an English memo pasted on its own gives an English document, and a Korean ask over English material ("아래 메모로 회의록을 만들어줘") a Korean one; the reply when it is done is in the document's language. An agent with an output language set writes in that language. Where a search server is connected, it searches the web before writing and cites the sources. A request about domestic research trends or one that names KCI also finds KCI, DBpia and RISS papers through the same search and cites their authors, year, journal and DOI.
 
 ## Step 1: Confirming the structure
 

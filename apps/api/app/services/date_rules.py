@@ -91,4 +91,39 @@ def block(request: str, material: str, today: dt.date | None = None) -> str:
     )
 
 
-__all__ = ["Settled", "block", "expected", "settled"]
+def _from_today(day: dt.date, today: dt.date) -> str:
+    gap = (day - today).days
+    return f"오늘 빼고 그날까지 {gap}일" if gap > 0 else f"{-gap}일 전"
+
+
+def today_block(request: str, today: dt.date | None = None,
+                earlier: list[str] | None = None) -> str:
+    """The days the request (and the person's `earlier` turns it may lean on: 「그날까지」)
+    counts from today (「다음 주 월요일」, 「모레」) with the days between, for a chat writer,
+    or ''."""
+    today = today or dt.date.today()
+    rows: list[dict] = []
+    # the earlier turns only when this one names no day of its own
+    for text in [request, *(earlier or [])]:
+        if rows:
+            break
+        try:
+            rows = [r for r in skill_scripts.dates().from_today(text or "", today)
+                    if r["date"] != today.isoformat()]
+        except Exception:  # noqa: BLE001 — no block; the answer is still checked after writing
+            log.exception("days from today could not be read")
+            return ""
+    days = [(r["text"], dt.date.fromisoformat(r["date"])) for r in rows]
+    lines = list(dict.fromkeys(
+        f"- 「{text}」: {_shown(day)} ({_from_today(day, today)})" for text, day in days))
+    if not lines:
+        return ""
+    return (
+        "# 오늘 기준 날짜(코드 계산)\nThe code counted these days in the person's words from "
+        f"today, {_shown(today)}; a week runs Monday to Sunday, so 「다음 주」 is the week "
+        "after this one, and a month's first week is the one holding its first Thursday. Use "
+        "these dates and day counts as they are; do not count them again.\n" + "\n".join(lines)
+    )
+
+
+__all__ = ["Settled", "block", "expected", "settled", "today_block"]

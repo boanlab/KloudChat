@@ -45,8 +45,13 @@ UNIT_WORDS = (
     "대", "가구", "세트", "박스", "km", "cm", "mm", "kg", "ms", "m", "V", "kW", "W", "GB", "TB",
     "MB", "L", "권", "줄", "부", "장",
 )
-FAMILY = {"퍼센트": "%", "USD": "달러", "인분": "명분", "가지": "개", "종": "개", "M/M": "MM"}
-_UNIT = "|".join(re.escape(u) for u in UNIT_WORDS)
+FAMILY = {"퍼센트": "%", "USD": "달러", "인분": "명분", "가지": "개", "종": "개", "M/M": "MM",
+          "x": "배", "×": "배"}
+#: A multiplier glued to its number (「94x」, 「3×」), not a dimension or a product (「1920x1080」, 「3 × 4」).
+_TIMES = r"(?<=\d)[x×](?!\s?\d)"
+_UNIT = "|".join(re.escape(u) for u in UNIT_WORDS) + "|" + _TIMES
+#: A currency sign before a figure: its measure
+_CURRENCY = {"$": "달러", "₩": "원", "€": "유로", "£": "파운드", "¥": "엔"}
 #: A unit syllable that begins another word: 「62, 주의 45」, 「1일부」, 「3대비」.
 _NOT_UNIT = ("(?<=주)[의요]|(?<=일)[부반]|(?<=분)[석야기의]|(?<=초)[과기]|(?<=회)[의사]|(?<=대)[비상학]"
              "|(?<=점)검|(?<=부)서|(?<=장)[소비]|(?<=행)사|(?<=팀)장|(?<=종)류|(?<=배)송|(?<=개)[발선]"
@@ -440,6 +445,9 @@ def arith(pool: list[tuple[float, str]], family: str) -> list[float]:
                 out.update((a + b, b - a))
             if not percent and (mine or money) and (not family or fa != fb or not fa):
                 out.update((a * b, b / a, a / b))
+            if family == "배" and fa == fb and fa != "배":
+                # a multiplier of two figures of one measure: 「$38 vs $4: 9.5x」
+                out.update((b / a, a / b))
     return sorted(out)
 
 
@@ -650,6 +658,8 @@ class Sources:
         rows = number_text.splitlines()
         heads = column_units(rows)
         noted = line_units(rows)
+        #: per measure, the figures a multiplier may be the ratio of
+        by_family: dict[str, set[float]] = {}
         for k, line in enumerate(rows):
             line = FULL_DAY.sub(lambda m: " " * len(m.group(0)), LIST_MARKER.sub(lambda m: " " * len(m.group(0)), line))
             for m in NUMBER.finditer(line):
@@ -657,6 +667,9 @@ class Sources:
                     value, unit, scale = ko_number(m.group("num")), _family(m.group("unit")), 1.0
                 except ValueError:
                     continue
+                measure = unit or _CURRENCY.get(line[max(0, m.start() - 1):m.start()], "")
+                if measure and measure != "배" and value:
+                    by_family.setdefault(measure, set()).add(abs(value))
                 if not unit and k in heads and 0 <= (col := _column_of(line, m.start())) < len(heads[k]):
                     unit, scale = heads[k][col]
                 if not unit and k in noted:
@@ -664,6 +677,10 @@ class Sources:
                     self.values.append((value * noted[k][1], noted[k][0], _decimals(m.group("num"))))
                 self.values.append((value * scale, unit, _decimals(m.group("num"))))
         pool = [v for v, _, _ in self.values]
+        #: A multiplier the sources work out: the ratio of two figures of one measure
+        #: (「$38」 and 「$4」 → 9.5배)
+        self.ratios = sorted({b / a for kin in by_family.values() if len(kin) <= 40
+                              for a in kin for b in kin if b > a})
         self.derived = _table_columns(number_text)
         figures = sorted({abs(v) for v in pool if abs(v) >= 10})
         if numbers == "all" and len(figures) <= 25:
@@ -745,6 +762,8 @@ class Sources:
             if (not known_unit or not family or known_unit == family) and near(value, known, places, kp):
                 return known
         if round(abs(value), 6) in self.priced:
+            return value
+        if family == "배" and any(near(value, r, places) for r in self.ratios):
             return value
         if value >= 10 and self._near_derived(value, places):
             return value

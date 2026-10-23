@@ -67,7 +67,8 @@ def test_an_open_flag_the_memo_never_raises_goes_and_a_deadline_flag_stays():
                      "확인 필요합니다(표 1).", "확인 필요: 포스터 배포 방법(그림 2)."]
     weak = report_checks.settle_unsourced(sections, TUTOR, strong=False)
     assert "배포" not in weak[0]["content"]
-    assert "이수연이 준비하기로 했습니다." in weak[0]["content"]
+    # the dropped sentence's table pointer stays on the sentence before
+    assert "이수연이 준비하기로 했습니다(표 1)." in weak[0]["content"]
     assert "| 모집 기간 |" in weak[0]["content"]
     # the skill's 「※」 line on a vague deadline is no invented question
     note = "※ 3번 과제의 기한은 회의에서 「이번 주 안」으로만 언급되어 확인이 필요합니다."

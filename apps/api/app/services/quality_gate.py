@@ -5,11 +5,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.services import units
+from app.services import captions, units
 
 _IMAGE = re.compile(r"!\[[^\]]{0,2000}\]\(data:[^)]{0,9000000}\)")
 _FENCE_GLUED = re.compile(r"(?m)^(?!\s*```).*\S[ \t]*```")
-_STRAY_CAPTION = re.compile(r"(?m)^\s*표\s?\d{0,3}\s?[:：]|^\s*표\s?\d{1,3}\s*$")
+_STRAY_CAPTION = re.compile(r"(?m)^\s*" + captions.TABLE + r"\s?\d{0,3}\s?[:：]|^\s*"
+                            + captions.TABLE + r"\s?\d{1,3}\s*$")
 #: a date or a clock time in a table cell
 _WHEN = re.compile(r"\d{4}\s?[-./년]\s?\d{1,2}\s?[-./월]\s?\d{1,2}"
                    r"|(?<![\d.])\d{1,2}/\d{1,2}\s?\([월화수목금토일]\)"
@@ -57,21 +58,24 @@ def report_findings(
         add("scaled_metric", name, f"{written:,.0f} — 다른 곳은 모두 {usual:,.0f}: {sentence[:80]}")
     for first, total, minutes in lesson_time_gaps(whole):
         add("lesson_time_gap", first[:60], f"활동 시간 합 {total}분, 차시는 {minutes}분")
-    figures = re.findall(r"!\[(그림 (\d+))\.", whole)
-    figures += re.findall(r"^\*(그림 (\d+))\.", whole, re.M)
-    # 「**표 3. 제목**」 or a bare 「**표 3**」: the same table either way
-    tables = re.findall(r"\*\*(표 (\d+))(?:\.|\*\*)", whole)
+    figures = re.findall(r"!\[((?:그림|Figure) (\d+))\.", whole)
+    figures += re.findall(r"^\*((?:그림|Figure) (\d+))\.", whole, re.M)
+    # 「**표 3. 제목**」 or a bare 「**표 3**」: the same table either way; 「**Table 3. …**」 too
+    tables = re.findall(r"\*\*((?:표|Table) (\d+))(?:\.|\*\*)", whole)
     for kind, found in (("figure", figures), ("table", tables)):
         numbers = [int(n) for _, n in found]
         if numbers != list(range(1, len(numbers) + 1)):
             add(f"{kind}_numbering", "document", str(numbers))
     labels = (
         r"!\[[^\]]{0,2000}\]\([^)]{0,9000000}\)"
-        r"|\*\*표 \d{1,3}(?:\.[^*\n]{0,2000})?\*\*|^\*그림 \d{1,3}\.[^\n]{0,2000}\*$"
+        r"|\*\*(?:표|Table) \d{1,3}(?:\.[^*\n]{0,2000})?\*\*"
+        r"|^\*(?:그림|Figure) \d{1,3}\.[^\n]{0,2000}\*$"
     )
     body_only = re.sub(labels, "", whole, flags=re.M)
     for name, _ in figures + tables:
-        if not re.search(re.escape(name) + r"(?![.\d])", body_only):
+        # an English 「See Table 1.」 names it at a sentence's end
+        after = r"(?!\d|\.\d)" if captions.in_english(name) else r"(?![.\d])"
+        if not re.search(re.escape(name) + after, body_only):
             add("unmentioned", name)
     particle = r"(?:그림|표) (\d{1,3})(으로|로|은|는|이|가|을|를|과|와)(?=[\s,.)])"
     for m in re.finditer(particle, body_only):
@@ -102,7 +106,7 @@ def report_findings(
                 if not row.rstrip().endswith("|") and len(report._cells(row)) < width:
                     add("cut_table_row", heading, row)
             above = [line for line in lines[max(0, start - 3):start] if line.strip()]
-            if not above or not above[-1].strip().startswith("**표 "):
+            if not above or not above[-1].strip().startswith(("**표 ", "**Table ")):
                 add("table_without_caption", heading, lines[start])
         for code, pattern in (("fence_glued", _FENCE_GLUED), ("stray_caption", _STRAY_CAPTION),
                               ("pipe_rows_not_a_table", _PIPE_ROW), ("leftover_mark", _LEFTOVER),
@@ -122,7 +126,7 @@ def report_findings(
                     and not re.match(
                         r"^(?:\||#|>|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s|```|!\[)", text)):
                 add("long_paragraph", heading, f"{len(text)}자")
-        heads = ("|", "!", "```", "#", "**표", "*그림")
+        heads = ("|", "!", "```", "#", "**표", "*그림", "**Table", "*Figure")
         prose = [b for b in re.split(r"\n\s*\n", body)
                  if b.strip() and "\n" not in b.strip() and not b.strip().startswith(heads)]
         for block in prose:

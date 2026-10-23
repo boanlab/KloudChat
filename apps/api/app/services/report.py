@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import calendar
 import datetime as dt
 import json
 import logging
@@ -20,6 +21,7 @@ from app.models.chat import SessionKind
 from app.services import (
     asked_form,
     block_fences,
+    captions,
     design_templates,
     diagram_render,
     diagrams,
@@ -724,6 +726,50 @@ def _without_invented_money(text: str, evidence: list[str] | None = None) -> str
     return "".join(out)
 
 
+def _without_invented_percents(text: str, evidence: list[str] | None = None) -> str:
+    """Percentages no source gives nor works out from its figures marked 「(확인 필요)」, never
+    blanked; a share of two given figures of one measure (71억 of 128억 → 55.5%) stays."""
+    from app.services import value_guard
+
+    if not value_guard.percents_in(text or ""):
+        return text
+    return value_guard.mark_unbacked_percents(
+        text, value_guard.percent_basis(list(evidence or [])))[0]
+
+
+#: a count of whole things written with a fraction: 「14.8건」, 「2.5곳」 (not 「3.5개월」)
+_FRACTION_COUNT = re.compile(
+    r"(?<![\d,.])\d{1,6}\.\d{1,3}\s?(?:가지|건|개|곳|명|팀|장|대|회)(?!월|년|국|소|사|체|화|선|수)")
+#: a rate or average, where a fraction of a count stands: 「일평균 14.8건」, 「1인당 2.5개」
+_RATE = re.compile(r"평균|(?:인|건|명|개|회|곳|대|일|시간)\s?당|마다|하루|매일|매주|매월|per\b|"
+                   r"average|/\s?[일주월년]", re.I)
+
+
+def _without_fractional_counts(text: str, evidence: list[str] | None = None) -> str:
+    """Counts of whole things with a fraction no source states (「잔여 14.8건」 of 37건 × 40%)
+    marked 「(확인 필요)」; an average or rate (「일평균 2.5건」) stays."""
+    from app.services import value_guard
+
+    found = list(_FRACTION_COUNT.finditer(text or ""))
+    if not found:
+        return text
+    given = re.sub(r"\s+", "", "\n".join(evidence or [])).replace(",", "")
+    out, at = [], 0
+    for m in found:
+        line, base = _line_of(text, m.start())
+        out.append(text[at:m.end()])
+        at = m.end()
+        if text[at:at + len(value_guard.MARK) + 1].lstrip().startswith(value_guard.MARK):
+            continue
+        clause = re.split(r"[,.;|]\s", line[:m.start() - base])[-1]
+        if re.sub(r"\s+", "", m.group(0)) in given or _RATE.search(clause) \
+                or _RATE.search(line[m.end() - base:m.end() - base + 4]):
+            continue
+        out.append(value_guard.MARK)
+    out.append(text[at:])
+    return "".join(out)
+
+
 def unmark_worked(sections: list[dict], evidence: list[str]) -> list[dict]:
     """Money marked unsupported in one section, unmarked where another section works it out
     from the material (「(1,480,000 × 30 × 0.95 + 5,000 × 30) × 1.1 = 46,563,000원」)."""
@@ -768,6 +814,22 @@ _ISO_DAY = re.compile(r"\d{4}-(\d{2})-(\d{2})")
 _BLANK_CELLS = {"", "미정", "(미정)", "-", "—", "tbd", "n/a", "없음"}
 
 
+#: an English month-day: 「Oct 28」, 「October 28th」, 「28 Oct」
+_EN_MONTH = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]{0,6}\.?"
+_EN_DAY = re.compile(rf"\b{_EN_MONTH}\s{{0,2}}(\d{{1,2}})(?:st|nd|rd|th)?\b"
+                     rf"|\b(\d{{1,2}})(?:st|nd|rd|th)?\s{{0,2}}{_EN_MONTH}\b")
+_EN_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+
+
+def _english_days(text: str) -> list[tuple[int, int]]:
+    """(month, day) of each English month-day in `text`."""
+    out = []
+    for m in _EN_DAY.finditer((text or "").lower()):
+        month, day = (m.group(1), m.group(2)) if m.group(1) else (m.group(4), m.group(3))
+        out.append((_EN_MONTHS.index(month[:3]) + 1, int(day)))
+    return out
+
+
 def _cell_sourced(
     cell: str, compact: str, row: str = "", dates: list[dict] | None = None
 ) -> bool:
@@ -779,7 +841,7 @@ def _cell_sourced(
         return True
     days = [(int(m), int(d)) for m, d in _MONTH_DAY.findall(flat)] + [
         (int(m), int(d)) for m, d in _ISO_DAY.findall(flat)
-    ]
+    ] + _english_days(cell)
     if dates is not None and days:
         entries = report_checks.bound_rows(row, dates)
         if entries:
@@ -798,7 +860,12 @@ def _cell_sourced(
             f"{month}.{day}",
             f"-{month:02d}-{day:02d}",
         )
-        if any(sp in compact for sp in spellings):
+        # an English memo's 「Oct 28」, 「October 28th」, 「28 Oct」
+        names = (calendar.month_abbr[month].lower(), calendar.month_name[month].lower())
+        lowered = compact.lower()
+        if any(sp in compact for sp in spellings) or any(
+                re.search(rf"{n}\.?{day}(?!\d)|(?<!\d){day}(?:st|nd|rd|th)?{n}", lowered)
+                for n in names):
             return True
     if days:
         return False
@@ -1391,14 +1458,15 @@ def _long_form(request: str) -> bool:
 
 _FIGURE_LINE = re.compile(r"^!\[(?P<alt>[^\]]{0,200})\]\((?P<src>[^)\s]{1,8000000})\)\s*$")
 _CAPTION_LINE = re.compile(
-    r"^\s{0,3}[*_]{0,2}\s{0,2}(?P<kind>그림|표|Figure|Table)\s{0,2}\d{0,3}\s{0,2}[.:．：]?\s{0,2}"
+    r"^\s{0,3}[*_]{0,2}\s{0,2}(?P<kind>그림|표|Figure|Table)\s{0,2}\d{0,3}\s{0,2}(?P<sep>[.:．：]?)\s{0,2}"
     r"(?P<text>.{1,160}?)\s{0,2}[*_]{0,2}\s*$",
     re.I,
 )
 
 
 _TRAILING_TABLE_CAPTION = re.compile(
-    r"(?<=[.!?。\]])\s{1,4}[*_]{0,2}표\s{0,2}\d{0,3}\s{0,2}[.:：]\s{0,2}(?P<text>[^.!?\n]{2,80}?)[*_]{0,2}\s*$"
+    r"(?<=[.!?。\]])\s{1,4}[*_]{0,2}" + captions.TABLE
+    + r"\s{0,2}\d{0,3}\s{0,2}[.:：]\s{0,2}(?P<text>[^.!?\n]{2,80}?)[*_]{0,2}\s*$"
 )
 
 
@@ -1500,6 +1568,8 @@ def _caption_text(line: str, kind: str) -> str | None:
     m = _CAPTION_LINE.match(line or "")
     if not m or m.group("kind").lower() not in (kind, {"그림": "figure", "표": "table"}[kind]):
         return None
+    if not m.group("sep") and re.match(r"[a-z]", m.group("text")):
+        return None  # a sentence about it: 「Table 1 lists the action items.」
     return m.group("text").strip(" *_.:")
 
 
@@ -1552,7 +1622,8 @@ def collapse_repeated_citations(body: str) -> str:
         if (
             not stripped
             or "\n" in stripped
-            or re.match(r"^(?:\||#|>|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s|```|!\[|\*\*표|\*그림)", stripped)
+            or re.match(r"^(?:\||#|>|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s|```|!\[|\*\*"
+                        + captions.TABLE + r"|\*" + captions.FIGURE + ")", stripped)
         ):
             out.append(block)
             continue
@@ -1577,6 +1648,8 @@ _FIGURE_MARK = re.compile(r"\[\[\s*그림\s*[:：]\s*(?P<body>(?:[^\]\n]|\](?!\]
 #: a mark left open to the line's end: taken out, never shown
 _FIGURE_OPEN = re.compile(r"[ \t]*\[\[\s*그림\s*[:：][^\n]*")
 _FIGURE_REF, _TABLE_REF = "〔그림〕", "〔표〕"
+#: an English document's bracket around a reference to an undrawable figure: 「(see 〔그림〕)」
+_DANGLING_BRACKET = re.compile(r"[ \t]?\((?:[A-Za-z]{1,12}[ \t]){0,3}〔(?:그림|표)〕\)")
 #: phrase around a reference to an undrawable figure
 _DANGLING_REF = re.compile(
     r"(?:위|아래|다음)?\s?〔(?:그림|표)〕(?:과|와|에서|에|은|는|을|를|의|처럼)?\s*"
@@ -1702,7 +1775,7 @@ def metric_conflicts(sections: list[dict]) -> list[list[tuple[int, str]]]:
         if _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
             continue
         for line in str(sec.get("content") or "").split("\n"):
-            if line.lstrip().startswith(("|", "```", "!", "#", "**표")):
+            if line.lstrip().startswith(("|", "```", "!", "#", "**표", "**Table")):
                 continue
             for m in _SENTENCE.finditer(line):
                 sentence = m.group(0).strip()
@@ -2065,6 +2138,19 @@ def fill_undecided_cells(sections: list[dict]) -> list[dict]:
     return out
 
 
+#: prose pointing at the table that follows: 「아래 표는」, 「다음 표와 같이」
+_TABLE_BELOW = re.compile(r"(?:아래|다음)\s?표(?=[에의와를로는가이은도]|\s|$)")
+
+
+def _without_pointer(line: str) -> str:
+    """A prose line less its sentences pointing at the table below (「〔표〕는 …」, 「아래 표는 …」)."""
+    if not line.strip() or re.match(r"^\s{0,8}(?:\||#)", line):
+        return line
+    parts = re.split(r"(?<=[.!?。])\s{1,8}", line.strip())
+    kept = [p for p in parts if _TABLE_REF not in p and not _TABLE_BELOW.search(p)]
+    return " ".join(kept) if len(kept) < len(parts) else line
+
+
 def drop_repeated_tables(sections: list[dict]) -> list[dict]:
     """Duplicate table removed with its caption."""
     seen: dict[str, str] = {}
@@ -2092,8 +2178,15 @@ def drop_repeated_tables(sections: list[dict]) -> list[dict]:
                 cap = start - 1
                 while cap >= 0 and not lines[cap].strip():
                     cap -= 1
-                if cap >= 0 and re.match(r"^\s*(?:\*\*)?표\s?\d{0,3}\s?[.:：]", lines[cap]):
+                if cap >= 0 and re.match(r"^\s*(?:\*\*)?" + captions.TABLE + r"\s?\d{0,3}\s?[.:：]",
+                                         lines[cap]):
                     start = cap
+                    cap -= 1
+                    while cap >= 0 and not lines[cap].strip():
+                        cap -= 1
+                if cap >= 0 and (kept := _without_pointer(lines[cap])) != lines[cap]:
+                    # the sentence introducing the dropped table goes with it
+                    lines[cap] = kept
                 drop.append((start, end))
             else:
                 for label, value, _, _ in rows:
@@ -2434,6 +2527,8 @@ def normalize_document(
     # calendar weekdays override the writer's
     out = [{**sec, "content": weekdays.fix_weekdays(
         str(sec.get("content") or ""), context=f"{request}\n{context}")[0]} for sec in out]
+    # a date's flag on the person's weekday said once over the document
+    out = weekdays.flag_once(out)[0]
     out = [
         sec if _REFERENCE_HEADING.search(str(sec.get("heading") or ""))
         else {**sec, "content": collapse_repeated_citations(str(sec.get("content") or ""))}
@@ -2635,7 +2730,7 @@ def drop_writer_notes(body: str) -> str:
     out = re.sub(r"[ \t]+\n", "\n", out)
     return re.sub(r"\n{3,}", "\n\n", out).strip("\n") + ("\n" if body.endswith("\n") else "")
 _LONE_LANGUAGE = re.compile(r"(?m)^```[ \t]*\n(callout|kpi|cards|diagram|mermaid|chart)[ \t]*$")
-_TABLE_CAPTION_LINE = re.compile(r"^\s*(?:\*\*)?표\s?(?:\d{1,3})?[.:]")
+_TABLE_CAPTION_LINE = re.compile(r"^\s*(?:\*\*)?" + captions.TABLE + r"\s?(?:\d{1,3})?[.:]")
 
 
 def _cells(line: str) -> list[str]:
@@ -2713,9 +2808,9 @@ def unfence_pictures(body: str) -> str:
         inner = lines[i + 1:j]
         if (opening.group(1).lower() in _PROSE_FENCES
                 or any(_FIGURE_LINE.match(x.strip()) or "](data:image/" in x for x in inner)
-                or (not opening.group(1) and _fenced_table(inner))):
-            # a picture, prose wrapped as 「```markdown」, or a table with its caption in a
-            # bare fence: the body itself
+                or (not opening.group(1) and (_fenced_table(inner) or _fenced_prose(inner)))):
+            # a picture, prose wrapped as 「```markdown」 or in a bare fence, or a table with
+            # its caption in a bare fence: the body itself
             out.extend(inner)
         else:
             out.extend(lines[i:j + 1])
@@ -2755,6 +2850,21 @@ def _fenced_table(inner: list[str]) -> bool:
     rows = [x.strip() for x in inner if x.strip()]
     return (any(_TABLE_RULE.match(x) for x in rows)
             and all(x.startswith("|") or _CAPTION_LINE.match(x) for x in rows))
+
+
+#: code's marks, which no sentence of the document carries: braces, semicolons, calls
+_CODE_MARK = re.compile(
+    r"[{};=<>$\\]|[A-Za-z_][A-Za-z0-9_]{0,40}\(|^\s{0,8}(?:def|class|import|return|from)\s")
+
+
+def _fenced_prose(inner: list[str]) -> bool:
+    """Lines of a bare fence that are only Korean sentences (「… 열었습니다.」): the document's
+    own paragraph."""
+    lines = [x.strip() for x in inner if x.strip()]
+    return bool(lines) and all(
+        x.rstrip(")」] ").rstrip(".!?")[-1:] in ("다", "요", "음", "함")
+        and len(re.findall(r"[가-힣]", x)) >= len(x) // 3 and not _CODE_MARK.search(x)
+        for x in lines)
 
 
 #: fence language that only wraps document prose: 「```markdown」
@@ -2888,8 +2998,10 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
     return tidied
 
 
-def _renumber_references(sections: list[dict]) -> tuple[list[dict], set[str]]:
-    """Captions renumbered in document order; returns sections and names already cited."""
+def _renumber_references(sections: list[dict], lang: str = captions.KO
+                          ) -> tuple[list[dict], set[str]]:
+    """Captions renumbered in document order; returns sections and names already cited (in
+    `lang`'s words: 「표 1」, 「Table 1」)."""
     rule = re.compile(r"^\s{0,3}\|?\s{0,3}:?-{2,}")
     moved = {"표": {}, "그림": {}}
     counts = {"표": 0, "그림": 0}
@@ -2900,20 +3012,28 @@ def _renumber_references(sections: list[dict]) -> tuple[list[dict], set[str]]:
         for i, line in enumerate(lines):
             if (figure := _FIGURE_LINE.match(line.strip())) or line.strip().startswith("```mermaid"):
                 counts["그림"] += 1
-                old = re.match(r"\s{0,16}그림\s?(\d{1,3})", figure.group("alt")) if figure else None
+                old = re.match(r"\s{0,16}" + captions.FIGURE + r"\s?(\d{1,3})",
+                               figure.group("alt")) if figure else None
                 if old:
                     moved["그림"].setdefault(old.group(1), counts["그림"])
             elif (line.strip().startswith("|") and i + 1 < len(lines) and rule.match(lines[i + 1])
                   and not (i and lines[i - 1].strip().startswith("|"))):
                 counts["표"] += 1
                 above = next((x for x in reversed(lines[:i]) if x.strip()), "")
-                old = re.match(r"^\s*(?:\*\*)?표\s?(\d{1,3})[.:]", above)
+                old = re.match(r"^\s*(?:\*\*)?" + captions.TABLE + r"\s?(\d{1,3})[.:]", above)
                 if old:
                     moved["표"].setdefault(old.group(1), counts["표"])
-    renames = {f"{kind} {old}": f"{kind} {new}" for kind, table in moved.items()
+    renames = {f"{kind} {old}": str(new) for kind, table in moved.items()
                for old, new in table.items() if str(new) != old}
-    caption = re.compile(r"^\s*(?:\*\*표\s?\d|!\[그림\s?\d|\*그림\s?\d)")
-    pointer = re.compile(r"(표|그림)\s?(\d{1,3})(?![\d.])")
+    caption = re.compile(r"^\s*(?:\*\*" + captions.TABLE + r"\s?\d|!\[" + captions.FIGURE
+                         + r"\s?\d|\*" + captions.FIGURE + r"\s?\d)")
+    # prose names its tables in the document's own words; an English 「Table 2.」 ends a sentence
+    pointer = re.compile(r"(표|그림)\s?(\d{1,3})(?![\d.])" if lang != captions.EN
+                         else r"(?<![A-Za-z])([Tt]able|[Ff]igure)\s?(\d{1,3})(?!\d|\.\d)")
+
+    def renamed(m: re.Match[str]) -> str:
+        new = renames.get(f"{captions.kind(m.group(1))} {m.group(2)}")
+        return f"{m.group(1)} {new}" if new else m.group(0)
     out, mentioned = [], set()
     for sec in sections:
         if _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
@@ -2923,19 +3043,44 @@ def _renumber_references(sections: list[dict]) -> tuple[list[dict], set[str]]:
         for i, line in enumerate(lines):
             if caption.match(line) or line.lstrip().startswith("|"):
                 continue
-            line = pointer.sub(lambda m: renames.get(f"{m.group(1)} {m.group(2)}", m.group(0)), line)
-            mentioned |= {f"{m.group(1)} {m.group(2)}" for m in pointer.finditer(line)}
+            line = pointer.sub(renamed, _english_references(line) if lang == captions.EN else line)
+            mentioned |= {captions.name(m.group(1), m.group(2), lang)
+                          for m in pointer.finditer(line)}
             lines[i] = line
         out.append({**sec, "content": "\n".join(lines)})
     return out, mentioned
+
+
+#: code's own Korean lead into a table or figure (`table_mend.cite`): 「Action Items은(는) 표 1과
+#: 같습니다.」, 「표 1에 정리했습니다.」, 「표 1 참조」
+_KO_LEAD = re.compile(
+    r"^(?P<pad>\s{0,8})(?:(?P<title>[^\n]{1,120}?)(?:은\(는\)|은|는)\s)?(?P<kind>표|그림)\s(?P<n>\d{1,3})"
+    r"(?:(?:과|와)\s같(?:습니다|음)|에\s정리했습니다|\s참조)\.?\s{0,4}$")
+#: code's own Korean bracket after a sentence: 「…the session(표 1).」
+_KO_BRACKET = re.compile(r"\s?\(((?:표|그림) \d{1,3}(?:, (?:표|그림) \d{1,3}){0,20})\)")
+
+
+def _english_references(line: str) -> str:
+    """An English document's line with the Korean references code wrote into it earlier in
+    English: 「Action Items은(는) 표 1과 같습니다.」 → 「See Table 1 for Action Items.」,
+    「…the session(표 1).」 → 「…the session (Table 1).」."""
+    if not re.search(r"표|그림", line):
+        return line
+    if m := _KO_LEAD.match(line):
+        label = captions.name(m.group("kind"), m.group("n"), captions.EN)
+        return m.group("pad") + captions.lead(label, (m.group("title") or "").strip())
+    return _KO_BRACKET.sub(lambda m: " (" + re.sub(
+        r"(표|그림) ", lambda k: captions.word(k.group(1), captions.EN) + " ", m.group(1)) + ")",
+        line)
 
 
 #: a section named only for where it sits: its name is no table's caption
 _GENERIC_SECTION = re.compile(r"(?:붙임|별첨|첨부|참고|부록|기타|비고)(?:\s?(?:자료|\d{1,2}))?")
 #: a line titling the table under it: 「- 표: 교체 방식 비교」, 「[표] …」, 「<표 2> …」
 _TABLE_TITLE = re.compile(
-    r"^\s{0,8}(?:[-*•·]\s{1,3})?[*_]{0,2}\s{0,2}(?:\[\s?표\s?\d{0,3}\s?\]|[<〈《【]\s?표\s?\d{0,3}\s?[>〉》】]"
-    r"|표\s?\d{0,3}\s?[.:：])\s{0,2}(?P<text>[^\n|]{1,80}?)\s{0,2}[*_]{0,2}\s*$")
+    r"^\s{0,8}(?:[-*•·]\s{1,3})?[*_]{0,2}\s{0,2}(?:\[\s?" + captions.TABLE + r"\s?\d{0,3}\s?\]"
+    r"|[<〈《【]\s?" + captions.TABLE + r"\s?\d{0,3}\s?[>〉》】]"
+    r"|" + captions.TABLE + r"\s?\d{0,3}\s?[.:：])\s{0,2}(?P<text>[^\n|]{1,80}?)\s{0,2}[*_]{0,2}\s*$")
 #: a label or heading that leads into a table: 「## 교체 일정」, 「**예산 내역**」, 「차수별 일정:」
 _LEAD_LABEL = re.compile(
     r"^\s{0,8}(?:#{1,6}\s+(?P<h>[^\n]{1,60}?)|(?:[-*•·]\s{1,3})?\*\*(?P<b>[^*\n]{1,40})\*\*\s{0,2}[:：]?"
@@ -2953,7 +3098,8 @@ def _lead_caption(result: list[str]) -> str:
     while k >= 0 and not result[k].strip():
         k -= 1
     if k >= 0 and (m := _LEAD_LABEL.match(result[k])) \
-            and not re.match(r"\s*(?:\||\*\*표\s?\d|\*그림\s?\d|!\[)", result[k]):
+            and not re.match(r"\s*(?:\||\*\*" + captions.TABLE + r"\s?\d|\*" + captions.FIGURE
+                             + r"\s?\d|!\[)", result[k]):
         return (m.group("h") or m.group("b") or m.group("c") or "").strip(" *_.:")
     for line in reversed(result[:max(k, 0)]):
         if (m := re.match(r"^\s{0,3}#{1,6}\s+(.{1,60}?)\s*$", line)):
@@ -2962,8 +3108,10 @@ def _lead_caption(result: list[str]) -> str:
 
 
 def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
-    """Figures captioned below, tables above, numbered in order."""
-    sections, mentioned = _renumber_references(sections)
+    """Figures captioned below, tables above, numbered in order; an English document's
+    captions and references in English (「**Table 1. …**」, 「(Table 1)」)."""
+    lang = captions.of_sections(sections)
+    sections, mentioned = _renumber_references(sections, lang)
     figure_no = table_no = 0
     previous_table: tuple[list[str], str] | None = None
     out = []
@@ -2982,7 +3130,7 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
         # 「−」 lacks a PDF glyph; empty 「[]」; title-less 「표 4」 line
         content = content.replace("\u2212", "-")
         content = re.sub(r"\s?\[\s*\]", "", content)
-        content = re.sub(r"(?m)^\s*표\s?\d{1,3}\s*\n", "", content)
+        content = re.sub(r"(?m)^\s*" + captions.TABLE + r"\s?\d{1,3}\s*\n", "", content)
         lines = content.split("\n")
         result: list[str] = []
         i = 0
@@ -2998,11 +3146,12 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 if j < len(lines) and (text := _caption_text(lines[j], "그림")):
                     title = title or text
                     lines[j] = ""
-                if not _resolve_reference(
-                    result, lines, i, _FIGURE_REF, f"그림 {figure_no}"
-                ) and f"그림 {figure_no}" not in mentioned:
-                    _point_from_paragraph_before(result, f"그림 {figure_no}")
-                result.append(f"![그림 {figure_no}. {title or '그림'}]({figure.group('src')})")
+                label = captions.name("그림", figure_no, lang)
+                if not _resolve_reference(result, lines, i, _FIGURE_REF, label) \
+                        and label not in mentioned:
+                    _point_from_paragraph_before(result, label)
+                alt = captions.picture_alt(figure_no, title or captions.untitled("그림", lang), lang)
+                result.append(f"![{alt}]({figure.group('src')})")
                 i += 1
                 continue
             if line.strip().startswith("```mermaid"):
@@ -3018,8 +3167,10 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 if title is not None:
                     lines[j] = ""
                 result.append("")
-                result.append(f"*그림 {figure_no}. {title or '도식'}*")
-                _resolve_reference(result, lines, i, _FIGURE_REF, f"그림 {figure_no}")
+                result.append(captions.figure_caption(
+                    figure_no, title or captions.untitled("도식", lang), lang))
+                _resolve_reference(result, lines, i, _FIGURE_REF,
+                                   captions.name("그림", figure_no, lang))
                 i = end + 1
                 continue
             if line.strip().startswith("|") and i + 1 < len(lines) and re.match(
@@ -3029,7 +3180,8 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 k = len(result) - 1
                 while k >= 0 and not result[k].strip():
                     k -= 1
-                if k >= 0 and re.fullmatch(r"\s{0,3}\*\*표\s?\d{1,3}\.?\*\*\s*", result[k]):
+                if k >= 0 and re.fullmatch(r"\s{0,3}\*\*" + captions.TABLE + r"\s?\d{1,3}\.?\*\*\s*",
+                                           result[k]):
                     # a bare number caption from an earlier pass: numbered again below
                     del result[k:]
                     k = len(result) - 1
@@ -3073,12 +3225,11 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                         title = (previous_table[1][: step.start(1)] + str(int(step.group(1)) + 1)
                                  + previous_table[1][step.end(1):])
                 previous_table = (header, title)
-                if not _resolve_reference(
-                    result, lines, i, _TABLE_REF, f"표 {table_no}"
-                ) and f"표 {table_no}" not in mentioned:
-                    _point_from_paragraph_before(result, f"표 {table_no}")
-                result.extend(["", f"**표 {table_no}. {title}**" if title
-                               else f"**표 {table_no}**", ""])
+                label = captions.name("표", table_no, lang)
+                if not _resolve_reference(result, lines, i, _TABLE_REF, label) \
+                        and label not in mentioned:
+                    _point_from_paragraph_before(result, label)
+                result.extend(["", captions.table_caption(table_no, title, lang), ""])
                 result.extend(lines[i:end])
                 i = end
                 continue
@@ -3087,6 +3238,8 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
         text = re.sub(r"\n{3,}", "\n\n", "\n".join(result)).strip("\n")
         # dangling reference removed with its phrase
         if _FIGURE_REF in text or _TABLE_REF in text:
+            # an English 「(see 〔표〕)」 goes whole
+            text = _DANGLING_BRACKET.sub("", text) if lang == captions.EN else text
             text = re.sub(r"[ \t]{2,}", " ", _DANGLING_REF.sub(" ", text))
             text = re.sub(r" ([.,)])", r"\1", text)
         text = fix_number_particles(_FIGURE_OPEN.sub("", _FIGURE_MARK.sub("", text)))
@@ -3116,18 +3269,21 @@ def _point_from_paragraph_before(result: list[str], name: str) -> None:
             continue
         if re.match(r"^\s*#", line):
             return
-        if re.match(r"^\s*(?:\||>|!\[|\*\*표|\*그림|```|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s)", line):
+        if re.match(r"^\s*(?:\||>|!\[|\*\*" + captions.TABLE + r"|\*" + captions.FIGURE
+                    + r"|```|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s)", line):
             continue
         m = re.search(r"(\s?(?:\[\d{1,3}\])+)?([.!?。])$", line)
         if m:
             head = line[: m.start()]
             # merge into an existing bracket
-            if (prior := re.search(r"\(((?:그림|표) \d{1,3}(?:, (?:그림|표) \d{1,3})*)\)$", head)):
+            if (prior := re.search(r"\((" + captions.EITHER + r" \d{1,3}(?:, " + captions.EITHER
+                                   + r" \d{1,3}){0,20})\)$", head)):
                 if name in prior.group(1).split(", "):
                     return
                 head = head[: prior.start()] + f"({prior.group(1)}, {name})"
             else:
-                head = head + f"({name})"
+                head = (head.rstrip() if captions.in_english(name) else head) \
+                    + captions.pointer(name)
             result[k] = head + (m.group(1) or "") + m.group(2)
         return
 
@@ -3580,10 +3736,13 @@ def _kpi_or_nothing(match: re.Match[str]) -> str:
 
 
 def _pasted_without_marker(request: str) -> str:
-    """Unmarked pasted material (120+ chars) after the first paragraph, or `""`."""
-    head, _, rest = (request or "").strip().partition("\n\n")
+    """Unmarked pasted material (120+ chars) after the first paragraph, with the 「덧붙인
+    조건」 block that follows it, or `""`; that block alone (card answers, the server's rules) is
+    none."""
+    asked, marker, conditions = (request or "").partition("\n\n덧붙인 조건:")
+    head, _, rest = asked.strip().partition("\n\n")
     rest = rest.strip()
-    return rest if head and len(rest) >= 120 else ""
+    return rest + (marker + conditions).rstrip() if head and len(rest) >= 120 else ""
 
 
 def _request_material(request: str) -> str:
@@ -3711,7 +3870,8 @@ async def rewrite_section(
     """Rewrites one section in document context; `material` is the request's own data."""
     outline = "\n".join(f"{i + 1}. {s.get('heading') or ''}" for i, s in enumerate(sections))
     written = "\n\n".join(
-        f"## {s.get('heading')}\n{s.get('content') or ''}"
+        # a picture's bytes are no words of the section
+        f"## {s.get('heading')}\n{_INLINE_PICTURE.sub('', s.get('content') or '')}"
         for s in sections
         if s.get("id") != target_id and (s.get("content") or "").strip()
     )
@@ -3766,6 +3926,8 @@ async def rewrite_section(
     # same normalisation as `write`
     body = hangul.tidy_spacing(hangul.read_back(_without_own_heading(
         internal_words.strip_tool_calls(body), heading))[0])
+    # a script neither Korean nor the material's (「결정이 نشده 미결된」): the run goes
+    body = hangul.drop_foreign_runs(body, "\n".join([request, *(material or [])]))[0]
     target = next((s for s in sections if s.get("id") == target_id), {})
     others = [str(s.get("content") or "") for s in sections if s.get("id") != target_id]
     body = _without_borrowed_tables(body, target.get("content") or "", others, note)
@@ -3802,7 +3964,7 @@ def _without_borrowed_tables(body: str, before: str, others: list[str], note: st
 
 
 _DROPS_TABLE = re.compile(r"표[^.\n]{0,12}(?:빼|없애|삭제|지워|제외|말고|대신|합쳐|합치|통합|병합)")
-_CAPTION = re.compile(r"^\s{0,3}\**\s{0,2}(?:<표|표)\s{0,2}(\d{1,3})\b[^\n]{0,120}$")
+_CAPTION = re.compile(r"^\s{0,3}\**\s{0,2}<?" + captions.TABLE + r"\s{0,2}(\d{1,3})\b[^\n]{0,120}$")
 
 
 def _keeps_its_tables(body: str, before: str, note: str) -> str:
@@ -3835,7 +3997,7 @@ def _keeps_its_tables(body: str, before: str, note: str) -> str:
             continue
         block = f"{caption}\n\n{table}" if caption else table
         at = next((i for i, p in enumerate(paragraphs)
-                   if number and re.search(rf"표\s{{0,2}}{number}(?!\d)", p)), None)
+                   if number and re.search(rf"{captions.TABLE}\s{{0,2}}{number}(?!\d)", p)), None)
         if at is None:
             paragraphs.append(block)
         else:
@@ -3958,6 +4120,19 @@ def _collapse_arithmetic(body: str) -> str:
     return "\n".join(out)
 
 
+#: where a sentence's clauses part: 「…하며, …」
+_CLAUSE_BREAK = re.compile(r",\s")
+
+
+def _says_more(sentence: str) -> bool:
+    """Whether a sentence has a clause of its own with no figure (「…4% 허용 여부를 결재받아야
+    하며, 영남 출고 SLA 협의 자리가 필요합니다」): more than the row's figures read back."""
+    clauses = _CLAUSE_BREAK.split(sentence)
+    return len(clauses) > 1 and any(
+        not _NUMBER_TOKEN.search(c) and len(re.findall(r"[가-힣A-Za-z]", c)) >= 8
+        for c in clauses)
+
+
 def trim_table_echo(body: str) -> str:
     """Sentences only echoing same-section table cells dropped; last prose sentence kept."""
     lines = body.split("\n")
@@ -3985,7 +4160,8 @@ def trim_table_echo(body: str) -> str:
         for sentence in sentences:
             numbers = _number_keys(sentence)
             # an echo: the row's figures and nothing more; who decided what stays (회의록)
-            echo = len(numbers) >= 2 and numbers <= table_cells and not _DECIDED.search(sentence)
+            echo = (len(numbers) >= 2 and numbers <= table_cells and not _DECIDED.search(sentence)
+                    and not _says_more(sentence))
             keep.append(not echo or bool(_ENUMERATED.match(sentence)))
         # a cut sentence the next kept one leans on comes back
         for i in range(len(sentences) - 2, -1, -1):
@@ -4230,8 +4406,9 @@ Korean. Do not wrap it in JSON.
 
 
 _KOREAN_AGAIN_PROMPT = """Below is one paragraph of the report's "{heading}" section. While writing
-it you slipped into Chinese: {words}. Write the same paragraph again in Korean, each Chinese word
-replaced by the Korean word it means (「研究对象」 → 「연구 대상」, 「三名」 → 「세 명」). Change nothing
+it you slipped out of Korean: {words}. Write the same paragraph again in Korean, each such word
+replaced by the Korean word it means (「研究对象」 → 「연구 대상」, 「三名」 → 「세 명」, 「결정이 نشده」 →
+「결정되지 않은」), the sentence around it put in natural Korean. Change nothing
 else: keep every sentence, number, name, English term, citation mark such as [3] and Markdown mark
 as written. Answer with the paragraph only.
 
@@ -4243,12 +4420,14 @@ _KEPT_TOKEN = re.compile(r"\d+(?:[.,]\d+)*|\[\d{1,3}(?:[,\-–] ?\d{1,3}){0,9}\]
 
 def chinese_paragraphs(body: str, given: str = "") -> list[tuple[int, list[str]]]:
     """(index, slips) of the plain prose paragraphs of `body` (split on blank lines) holding
-    Chinese a writer slipped into Korean; tables, fences and headings left out."""
+    Chinese, or a script neither Korean nor the material's (Arabic, Thai, ...), a writer slipped
+    into Korean; tables, fences and headings left out."""
     out = []
     for i, paragraph in enumerate(body.split("\n\n")):
         if re.search(r"^\s{0,3}(?:\||```|#)", paragraph, re.M):
             continue
-        if slips := hangul.chinese_slips(paragraph, given):
+        if slips := [*hangul.chinese_slips(paragraph, given),
+                     *hangul.foreign_slips(paragraph, given)]:
             out.append((i, slips))
     return out
 
@@ -4257,7 +4436,8 @@ def korean_again(before: str, after: str, given: str = "") -> bool:
     """Whether `after`, a paragraph written again in Korean, can stand for `before`: no
     Chinese slip left, every number, citation mark and Latin word kept, about as long."""
     after = after.strip()
-    if not after or hangul.chinese_slips(after, given) or "\n\n" in after:
+    if not after or hangul.chinese_slips(after, given) or hangul.foreign_slips(after, given) \
+            or "\n\n" in after:
         return False
     if not 0.7 <= len(after) / max(len(before.strip()), 1) <= 1.4:
         return False
@@ -4313,8 +4493,9 @@ _LEANS_BACK = re.compile(
     r"따라서|그러므로|그래서|그러나|하지만|다만|또한|즉|한편|반면|둘째|셋째|넷째|다섯째|"
     r"마지막으로|나머지)(?=[\s,])"
 )
-#: a decision and who made or asked it: 「…의 제안과 …의 승인으로 결정되었습니다」
-_DECIDED = re.compile(r"결정|승인|합의|제안|요청|지시|확정|하기로|않기로|보류")
+#: a decision, who made or asked it, or the sign-off it waits on: 「…의 승인으로 결정되었습니다」,
+#: 「… 연장 여부에 대한 실장님 결재가 필요합니다」
+_DECIDED = re.compile(r"결정|승인|결재|합의|제안|요청|지시|확정|하기로|않기로|보류")
 #: one item of a counted run (「첫째, …」 … 「셋째, …」): cutting one breaks the run
 _ENUMERATED = re.compile(r"^(?:[-*+]\s+)?(?:첫째|둘째|셋째|넷째|다섯째|여섯째|마지막으로)(?=[\s,])")
 #: section heading asking a question: 「Q7. 신청 기간과 방법은?」

@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import re
 
+from app.services import captions
+
 #: table, also one indented under a list item
 TABLE = re.compile(
     r"(?m)^[ \t]{0,12}\|.+\|[ \t]*\n[ \t]{0,12}\|[\s:|-]+\|[ \t]*\n"
     r"(?:^[ \t]{0,12}\|.+\|[ \t]*(?:\n|$))+"
 )
-#: caption line: 「표: …」, 「**표 3. …**」, 「- 표: …」, 「<표 2> …」
-CAPTION = re.compile(r"^\s{0,12}(?:[-*+]\s{1,4})?(?:\*\*)?\s?<?\s?표\s?\d{0,3}\s?[.:：>]")
+#: caption line: 「표: …」, 「**표 3. …**」, 「- 표: …」, 「<표 2> …」, 「**Table 3. …**」
+CAPTION = re.compile(r"^\s{0,12}(?:[-*+]\s{1,4})?(?:\*\*)?\s?<?\s?" + captions.TABLE
+                     + r"\s?\d{0,3}\s?[.:：>]")
 #: block token the reader cannot resolve: 〔kpi〕, 〔cards〕, 〔callout〕
 _BLOCK_TOKEN = re.compile(r"〔\s?[A-Za-z][A-Za-z ]{0,15}\s?〕")
 #: drawn figure in a part: picture, mermaid, figure mark
@@ -169,7 +172,8 @@ def drop_block_tokens(body: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
 
 
-_ITEM_CAPTION = re.compile(r"^\s{0,24}[-*+]\s{1,4}((?:\*\*)?\s?표\s?\d{0,3}\s?[.:：].*)$")
+_ITEM_CAPTION = re.compile(r"^\s{0,24}[-*+]\s{1,4}((?:\*\*)?\s?" + captions.TABLE
+                           + r"\s?\d{0,3}\s?[.:：].*)$")
 
 
 def outdent_tables(body: str) -> str:

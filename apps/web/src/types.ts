@@ -721,6 +721,8 @@ export interface ReportTitleBlock {
   lists?: 'gaejo'
   /** The renderers end the body with 「끝.」. */
   closing?: boolean
+  /** `en`: the head of an English document, its labels and blanks in English (「Location」, 「[Location]」). */
+  language?: 'en'
 }
 
 export interface ChartArtifact extends ArtifactBase {

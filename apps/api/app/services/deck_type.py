@@ -149,14 +149,37 @@ def table_row_height(rows: int) -> float:
     return table_size(rows) * LEADING["table"] + 2 * table_pad(rows)
 
 
+#: Shortest value drawn once across its row; a shorter shared mark (✓, Yes, N/A, —) keeps its cells
+SHARED_MIN = 4
+
+
+def shared_value(row: list[str], columns: int) -> str | None:
+    """A body row's one value under every value column (2+), drawn once across them."""
+    if len(row) != columns or columns < 3:
+        return None
+    text = str(row[1]).strip()
+    if len(text) < SHARED_MIN or any(str(cell).strip() != text for cell in row[2:]):
+        return None
+    return text
+
+
 def column_shares(rows: list[list[str]]) -> list[float]:
-    """Column width shares by widest cell (3–22 ems, plus 2 padding)."""
+    """Column width shares by widest cell (3–22 ems, plus 2 padding); a shared value counts
+    a share of itself in each column it spans."""
     count = max((len(row) for row in rows), default=0)
     if not count:
         return []
+    spread = [r > 0 and shared_value(row, count) is not None for r, row in enumerate(rows)]
     weights = []
     for column in range(count):
-        widest = max((em(row[column]) for row in rows if column < len(row)), default=0.0)
+        widest = max(
+            (
+                em(row[column]) / (count - 1 if spread[r] and column else 1)
+                for r, row in enumerate(rows)
+                if column < len(row)
+            ),
+            default=0.0,
+        )
         weights.append(max(3.0, min(22.0, widest)) + 2.0)
     total = sum(weights)
     return [weight / total for weight in weights]
@@ -169,6 +192,7 @@ __all__ = [
     "FLOOR_PT",
     "K",
     "SCALES",
+    "SHARED_MIN",
     "STEPS",
     "LEADING",
     "PAD_X",
@@ -179,6 +203,7 @@ __all__ = [
     "em",
     "lines",
     "pt",
+    "shared_value",
     "table_pad",
     "table_row_height",
     "table_size",

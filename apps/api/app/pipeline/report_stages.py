@@ -37,8 +37,10 @@ from app.services import (
     internal_words,
     key_figures,
     lint,
+    meeting_memo,
     meeting_tense,
     model_retry,
+    output_language,
     pictures,
     placeholders,
     process_settings,
@@ -54,6 +56,7 @@ from app.services import (
     units,
     value_guard,
     verify,
+    weekdays,
     word_fix,
     workspace_context,
 )
@@ -1302,6 +1305,8 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         log.info("trimmed %d sentence(s) from %r: %s", len(trimmed), section["heading"],
                  trimmed[0][:80])
     clean, _ = hangul.read_back(report._without_own_heading(body, section["heading"]))
+    # a script neither Korean nor the material's left after the writer's second try: the run goes
+    clean = hangul.drop_foreign_runs(clean, _slip_vocabulary(bundle))[0]
     # a written-out picture that does not open is the writer's invention; a fence around
     # it (or around a table) taken off first, never left holding the table
     clean = pictures.drop_broken(richtext.unquote_tables(report.unfence_pictures(clean)))
@@ -1360,12 +1365,22 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         ),
         bundle.material.grounded,
     )
-    if not bundle.material.grounded:
-        # money the sources state stays; the rest is marked, never blanked — after the
-        # arithmetic fixes, so a mark never splits a formula they read
-        clean = report._without_invented_money(clean, [
-            given_text, *(report._source_text(row) for row in sources or [])])
+    # after the arithmetic fixes, so a mark never splits a formula they read
+    clean = _unbacked_marked(
+        clean, [given_text, *(report._source_text(row) for row in sources or [])],
+        computed=bundle.computed.values or "", grounded=bundle.material.grounded)
     return richtext.tidy_tables(clean)
+
+
+def _unbacked_marked(text: str, evidence: list[str], *, computed: str, grounded: bool) -> str:
+    """Percentages the sources state or work out stay, the rest marked, never blanked; money
+    likewise when the material has no figures (with figures the trace settles it); a count of
+    whole things with a fraction no source states is marked."""
+    report = _report()
+    if not grounded:
+        text = report._without_invented_money(text, evidence)
+    text = report._without_fractional_counts(text, evidence)
+    return report._without_invented_percents(text, [*evidence, computed])
 
 
 def _figure_says_more(made: dict, sections: list[dict], asked: bool) -> bool:
@@ -1724,7 +1739,14 @@ class TitleBlock(Base):
             bundle.findings.head_fixed = head_fixed
             bundle.findings.client_problem = client_problem
             block = head_fixed or block
+        if output_language.reads_english("\n".join(
+                str(s.get("content") or "") for s in bundle.document.sections)):
+            # an English document's head in English: 「Date」, 「Location」, 「[Location]」
+            block = doc_formats.in_english(block) or block
         block = report_checks.minutes_head(block, prepass, report.local_today()) or block
+        if prepass is not None and "meeting-date" in prepass.settings.head:
+            # an empty 회의명·장소·참석자 or a clockless 일시 the memo gives, by code
+            block = meeting_memo.fill_head(block, _meeting_given(bundle)) or block
         bundle.document.head_block = block
         yield {"type": "titleBlock", "titleBlock": block}
 
@@ -1802,7 +1824,8 @@ class MinutesRepair(Base):
     """Minutes repair: 출처/비고 on action rows, bound dues, no dates without a meeting date, owners/quantities."""
 
     name = "minutes-repair"
-    reads = ("request", "material.given", "computed.prepass", "document.sections")
+    reads = ("request", "material.given", "material.parts", "computed.prepass",
+             "document.sections")
     writes = ("document.sections", "findings.before")
 
     def skip(self, bundle: Bundle) -> str:
@@ -1830,6 +1853,8 @@ class MinutesRepair(Base):
             # no meeting date: nothing dated as the meeting's
             sections, undated = report_checks.minutes_undated(sections, prepass.dates, known)
             before += undated
+        # 「오전 10시」 for the memo's bare 「10시」: the 오전 off by code, the clock kept
+        sections, _ = stated_meeting.bare_clocks(sections, _meeting_given(bundle))
         # owners/quantities repaired by code, rechecked after verify rewrites
         repaired, ungrounded = report_checks.minutes_grounding(sections, known)
         before += ungrounded
@@ -1854,8 +1879,12 @@ def _person_given(bundle: Bundle) -> str:
     """What the person gave: request, files, pasted text, card answers, agent instructions;
     none of the pipeline's own blocks (settled figures under model-made names, notes, pages)."""
     mat = bundle.material
+    # minutes: the memo typed as the request, though its amounts alone made the material
+    asked = (meeting_memo.of_request(bundle.request.text)
+             if bundle.spec.settings.date_base == "meeting" else "")
     return "\n".join([
-        mat.given or bundle.request.text,
+        *([asked] if asked and asked not in (mat.given or "") else []),
+        mat.given or ("" if asked else bundle.request.text),
         *(p.text for p in mat.parts if p.origin in ("attachment", "pasted", "answer")),
         *(p.text for p in mat.trusted if p.origin == "trusted"),
     ])
@@ -1867,8 +1896,11 @@ def _meeting_given(bundle: Bundle) -> str:
     「다음 회의 (일시·장소·예정 안건)」 are no memo's)."""
     mat = bundle.material
     standing = workspace_context.standing_of([p.text for p in mat.trusted])
+    # a memo typed as the request is the meeting even when its amounts alone made the material
+    asked = meeting_memo.of_request(bundle.request.text)
     return "\n".join([
-        mat.given or bundle.request.text,
+        *([asked] if asked and asked not in (mat.given or "") else []),
+        *([mat.given] if mat.given and mat.given not in asked else []),
         *(p.text for p in mat.parts if p.origin in ("attachment", "pasted", "answer")),
         *stated_meeting.mail_lines(standing),
     ])
@@ -2115,7 +2147,7 @@ class MinutesReground(Base):
     name = "minutes-reground"
     kind = "check"
     reads = ("request", "material.given", "material.parts", "computed.prepass",
-             "document.sections")
+             "document.sections", "document.head_block")
     writes = ("document.sections", "findings.after")
 
     def skip(self, bundle: Bundle) -> str:
@@ -2139,6 +2171,22 @@ class MinutesReground(Base):
             # what the memo never says, written again by a repair after the verify settle
             sections = report_checks.settle_unsourced(sections, _meeting_given(bundle),
                                                       strong=bundle.request.strong)
+        # a day, clock, place or 「다음 회의」 deadline called missing that the memo gives, a
+        # decision given the value the meeting changed, a row written twice, and a count its
+        # list no longer has
+        memo = _meeting_given(bundle)
+        sections, _ = meeting_memo.false_absences(sections, memo)
+        sections, _ = meeting_memo.false_dues(sections, memo)
+        sections, _ = meeting_memo.decided_values(sections, memo)
+        sections, _ = meeting_memo.dedupe_rows(sections)
+        # a count before a table or list that rows dropped above left behind
+        sections, _ = meeting_memo.counted(sections)
+        # the memo's lines pasted as they stand, a phrase said over and over, a marker alone
+        sections, _ = meeting_memo.settle_copies(sections, memo, strong=bundle.request.strong)
+        sections, _ = meeting_memo.bare_marks(sections)
+        # a date's weekday flag said once, and a 「확인 필요:」 line a marked row already holds
+        sections, _ = meeting_memo.restated_checks(sections)
+        sections, _ = weekdays.flag_once(sections)
         # the meeting held told in the past; what comes next stays ahead
         bundle.document.sections, _ = meeting_tense.held(sections, _report()._REFERENCE_HEADING)
 

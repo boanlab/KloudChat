@@ -8,11 +8,20 @@ const NOUN =
   /(공문|공지문|안내문|보고서|기획서|제안서|계획서|회의록|보도자료|결과\s?보고|주간\s?보고|월간\s?보고|출장\s?보고|사후\s?분석|품의서|기안문|협조문|시말서|경위서|사유서|추천서|자기소개서|자소서|경력\s?기술서|백서|매뉴얼|지침서|규정|약관|계약서|의견서|건의문|성명서|설문지|term paper|white paper|proposal|report|memo|minutes)/i
 
 const VERB =
-  /(작성|써\s?줘|써\s?주|써줄|써\s?볼|만들어|만들\s?줘|초안|draft|write|compose|prepare|뽑아|작업해)/i
+  /(작성|써\s?줘|써\s?주|써줄|써\s?볼|만들어|만들\s?줘|제작|짜\s?줘|준비해\s?줘|초안|draft|write|compose|prepare|\b(?:create|make|build|generate|produce|put together)\b|뽑아|작업해)/i
 
 /** Questions *about* documents: stay in the chat wherever they appear. */
 const ASKING =
-  /(방법|요령|팁|어떻게|왜\s|무엇|뭐야|뭔가|뭐가|차이|예시|어떤\s?(식|것|게)|how to|what is|explain)/i
+  /(방법|요령|팁|어떻게|왜\s|무엇|뭐야|뭔가|뭐가|차이|예시|어떤\s?(식|것|게)|how to|what is|explain|(?:^|[.!?]\s)(?:how|what|why|which|should|is|are|does)\b)/i
+
+/** Where pasted material starts inside the instruction: a list line, or a labelled run (「자료: …」, 「Numbers: …」) opening a line or a sentence. */
+const MATERIAL_START = /(?:\n|[.!?。]['"’”)]?[ \t]{1,3})(?:[ \t]{0,8}(?:[-*•·□○]\s|\d{1,2}[.)]\s)|[가-힣A-Za-z][^:：.!?\n]{0,19}[:：])/
+
+/** The person's own words: the instruction before any material pasted into it, where a question would be asked. */
+function ownWords(s: string): string {
+  const start = MATERIAL_START.exec(s)
+  return start ? s.slice(0, start.index) : s
+}
 
 /** Edits to an existing document, judged on the sentence end where Korean puts its verb. */
 const EDITING =
@@ -32,7 +41,7 @@ const SHORT_GENRE = /(보도\s?자료|press\s?release|공지문|안내문)/i
 const DECK = /(슬라이드|발표\s?자료|발표\s?장표|장표|피피티|ppt|pptx|프레젠테이션|presentation|slide deck|slides)/i
 
 function isOrder(s: string, noun: RegExp): boolean {
-  return noun.test(s) && VERB.test(s) && !ASKING.test(s) && !EDITING.test(s) && !CODING.test(s)
+  return noun.test(s) && VERB.test(s) && !ASKING.test(ownWords(s)) && !EDITING.test(s) && !CODING.test(s)
 }
 
 /** The person's own instruction without pasted text (first paragraph; same cut as `context.instruction_part`). */

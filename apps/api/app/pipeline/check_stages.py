@@ -416,7 +416,44 @@ def _value_text(value: object, unit: str) -> str:
         number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return str(value)
-    return f"{number:g}{unit}"
+    # a word unit stands apart: 「3.2 days」, 「82%」, 「128억원」
+    apart = unit[:1].isascii() and unit[:1].isalpha()
+    return f"{number:g} {unit}" if apart else f"{number:g}{unit}"
+
+
+#: a measure named with its unit: 「Success Rate (%)」, 「매출(억원)」
+_NAMED_UNIT = re.compile(r"[(（]\s{0,2}([^()（）]{1,8}?)\s{0,2}[)）]\s{0,2}$")
+
+
+def _chart_unit(chart: dict) -> str:
+    """The chart's unit for its values: the bracketed unit of a measure name, else the unit
+    with its spaces closed (「억 원」 → 「억원」)."""
+    unit = str(chart.get("unit") or "")
+    named = _NAMED_UNIT.search(unit)
+    return (named.group(1) if named else unit).replace(" ", "")
+
+
+def _point_unit(unit: str, category: int, series: int, chart: dict) -> str:
+    """A point's own unit under a chart's mixed one: 「억원/%」 over the categories 매출 and
+    이익률 is 억원 for the first, % for the second (per series when the series count matches);
+    「분·점」 over the series 「대기 시간(분)」 and 「만족도(점)」 is the one each names."""
+    parts = [p for p in re.split(r"[/·]", unit) if p]
+    if len(parts) < 2 or ("·" not in unit and not {"%", "%p"} & set(parts)):
+        return unit
+    categories = list(chart.get("categories") or [])
+    series_list = [s for s in chart.get("series") or [] if isinstance(s, dict)]
+    # the unit a series or category names: 「만족도(점)」
+    for names, at in ((series_list, series), (categories, category)):
+        name = names[at] if at < len(names) else ""
+        name = str(name.get("name") or "") if isinstance(name, dict) else str(name)
+        named = re.search(r"[(（]([^()（）]{1,4})[)）]\s{0,2}$", name)
+        if named and named.group(1) in parts:
+            return named.group(1)
+    if len(parts) == len(categories):
+        return parts[category]
+    if len(parts) == len(series_list):
+        return parts[series]
+    return ""
 
 
 def _slide_tables(slide: dict) -> list[tuple[str, list[list[str]]]]:
@@ -429,13 +466,14 @@ def _slide_tables(slide: dict) -> list[tuple[str, list[list[str]]]]:
                              for row in rows]))
     chart = slide.get("chart")
     if isinstance(chart, dict) and chart.get("series"):
-        unit = str(chart.get("unit") or "").replace(" ", "")
+        unit = _chart_unit(chart)
         series = [s for s in chart.get("series") or [] if isinstance(s, dict)]
         table = [["구분", *(str(s.get("name") or "") for s in series)]]
         for c, category in enumerate(chart.get("categories") or []):
             table.append([str(category), *(
-                _value_text(values[c], unit) if c < len(values := list(s.get("values") or []))
-                else "" for s in series)])
+                _value_text(values[c], _point_unit(unit, c, k, chart))
+                if c < len(values := list(s.get("values") or [])) else ""
+                for k, s in enumerate(series))])
         out.append(("chart", table))
     return out
 
@@ -464,7 +502,7 @@ def _set(slide: dict, path: tuple, value: object) -> None:
 def _chart_fixed(slide: dict, gone: set[tuple[int, int]], strong: bool) -> None:
     """A chart plotting only traced values: a category holding an untraced value left out
     (a strong writer's kept, its label marked); a chart left with under two points becomes
-    the traced values as bullets, the rest as blanks for the person."""
+    the values as bullets, an untraced one marked as `value_guard.settle` marks it."""
     chart = dict(slide["chart"])
     categories = list(chart.get("categories") or [])
     bad = {c for c, _ in gone}
@@ -483,12 +521,16 @@ def _chart_fixed(slide: dict, gone: set[tuple[int, int]], strong: bool) -> None:
         chart["series"] = series
         slide["chart"] = chart
         return
-    unit = str(chart.get("unit") or "").replace(" ", "")
+    unit = _chart_unit(chart)
     bullets = []
     for c, label in enumerate(categories):
         for k, s in enumerate(series):
             values = list(s.get("values") or [])
-            value = "[수치]" if (c, k) in gone or c >= len(values) else _value_text(values[c], unit)
+            if c >= len(values):
+                continue
+            value = _value_text(values[c], _point_unit(unit, c, k, chart))
+            if (c, k) in gone:
+                value = f"{value} {value_guard.MARK}"
             bullets.append(f"{label} {s.get('name') or ''}: {value}".replace("  ", " "))
     slide.pop("chart", None)
     slide["layout"] = "bullets"
@@ -579,6 +621,76 @@ def mark_misplaced(slides: list[dict], material: str) -> tuple[list[dict], int]:
             slide = {**slide, "rows": rows}
         out.append(slide)
     return out, count
+
+
+def _marked(cell: str) -> bool:
+    return value_guard.MARK in cell or output_language.EN_MARK in cell
+
+
+def mark_unbacked_percents(slides: list[dict], texts: list[str], *,
+                           strong: bool = False) -> tuple[list[dict], int]:
+    """Slides with each percentage `texts` neither give nor work out marked in its words and
+    table cells, a chart's such point handled as an untraced one; the count marked."""
+    basis = value_guard.percent_basis(texts)
+    out, count = [], 0
+    for slide in slides:
+        slide = dict(slide)
+        for path, text in _slide_leaves(slide):
+            fixed, n = value_guard.mark_unbacked_percents(text, basis)
+            if n:
+                _set(slide, path, fixed)
+                count += n
+        rows = slide.get("rows")
+        if isinstance(rows, list):
+            for r, row in enumerate(rows):
+                for j, cell in enumerate(row if isinstance(row, list) else []):
+                    line = " | ".join(str(c) for c in row)
+                    for m, value, unit in value_guard.percents_in(str(cell)):
+                        about = bool(value_guard.ABOUT.search(str(cell)[:m.start()]))
+                        if not _marked(str(cell)) and not basis.backs(
+                                value, m.group("num"), line, unit, about):
+                            _set(slide, ("rows", r, j), f"{cell} {value_guard.MARK}")
+                            count += 1
+                            break
+        chart = slide.get("chart")
+        if isinstance(chart, dict) and "%" in str(chart.get("unit") or ""):
+            gone = set()
+            for k, series in enumerate(chart.get("series") or []):
+                for c, value in enumerate(series.get("values") or []
+                                          if isinstance(series, dict) else []):
+                    try:
+                        number = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    unit = _point_unit(_chart_unit(chart), c, k, chart)
+                    if "%" in unit and not basis.backs(number, f"{number:g}"):
+                        gone.add((c, k))
+            if gone:
+                _chart_fixed(slide, gone, strong)
+                count += len(gone)
+        out.append(slide)
+    return out, count
+
+
+def edited_percents(slides: list[dict], edited: list[int], *, request: str,
+                    material: list[str], before: str, strong: bool = False) -> list[int]:
+    """The edited slides with percentages marked that neither the deck before the edit nor the
+    person's material gives or works out, in place; the slides changed. A deck made from no
+    figures of the person's is not checked, as when it was made."""
+    if _given_figures(request) < _GIVEN_DATA and not any(t.strip() for t in material):
+        return []
+    texts = [request, *material, before]
+    changed = []
+    for n in edited:
+        if not 0 <= n < len(slides):
+            continue
+        marked, count = mark_unbacked_percents([slides[n]], texts, strong=strong)
+        if count:
+            slide = marked[0]
+            slides[n] = (output_language.english_marks(slide)
+                         if deck_rules.deck_language(slides) == "en" else slide)
+            changed.append(n)
+    return changed
 
 
 def _traced(slides: list[dict], *, material: str, computed: list[str], options: dict):
@@ -771,6 +883,11 @@ class DeckGrounding(Base):
         slides, found = ground_slides(
             current, material=material, computed=computed, options=options)
         slides, placed = mark_misplaced(slides, "\n".join([material, *computed]))
+        # a percentage the material neither gives nor works out (「82% of frontier」 → cloud
+        # 「100%」): marked, whatever the trace's arithmetic found for it
+        slides, unbacked = mark_unbacked_percents(slides, [material, *computed],
+                                                  strong=bool(bundle.request.strong))
+        placed += unbacked
         if deck_rules.deck_language(slides) == "en":
             # an English deck's marks in English
             slides = output_language.english_marks(slides)

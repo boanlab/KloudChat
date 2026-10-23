@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import re
 
-from app.services import units
+from app.services import captions, units
 
 _RULE = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*\|?\s*$")
-_CAPTION = re.compile(r"^\s*(?:\*\*)?\s*표\s{0,2}(?:\d{1,3}\s{0,2}[.:]|[:：])")
+_CAPTION = re.compile(r"^\s*(?:\*\*)?\s*" + captions.TABLE + r"\s{0,2}(?:\d{1,3}\s{0,2}[.:]|[:：])")
 _POINTER = re.compile(r"^\s*(?:아래|다음)\s{0,2}표(?:는|에서|에)")
 _TOTAL = re.compile(r"^(?:합계|총계|총액|총\s?예산|계)$")
 #: 「강사비 4,200만」 at the end of a 「/」-separated piece

@@ -14,7 +14,15 @@ from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from typing import Any
 
 from app.core import logs
-from app.services import key_figures, placeholders, skill_scripts, thinking, units
+from app.services import (
+    doc_formats,
+    key_figures,
+    placeholders,
+    skill_scripts,
+    stated_policy,
+    thinking,
+    units,
+)
 from app.services.verify import Check, Doc, Finding, model_check
 
 log = logging.getLogger(__name__)
@@ -42,7 +50,7 @@ _WEIGHTS = re.compile(
 _FULL_DATE = re.compile(
     r"(20\d{2})\s{0,2}(?:[-./]|년)\s{0,2}(\d{1,2})\s{0,2}(?:[-./]|월)\s{0,2}(\d{1,2})"
 )
-_MEETING = re.compile(r"회의|미팅|모임|위원회|간담회|녹음|전사")
+_MEETING = re.compile(r"회의|미팅|모임|위원회|간담회|녹음|전사|\b(?:[Mm]eeting|[Ss]ync)\b")
 _REQ_ID = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{2,4}-\d{2,3})(?![\d])")
 _VALIDITY = re.compile(r"(?:견적\s{0,2})?유효\s{0,2}기간\s{0,2}(?:은|는|:|：)?\s{0,2}([^\n,.;]{2,30})")
 _TABLE_RULE = re.compile(r"^\s{0,8}\|?\s{0,8}:?-{2,}")
@@ -205,9 +213,39 @@ def _upcoming_day(month: int, day: int, today: dt.date) -> dt.date | None:
     return None
 
 
+#: a deadline or start day, not a meeting's: 「10/23(금)까지」, 「11/2(월)부터」
+_DUE_TAIL = re.compile(r"\s{0,2}(?:\([월화수목금토일]\))?\s{0,2}(?:까지|마감|부터|이전|전에|내로)")
+#: clause end in a one-line memo: 「…주간회의. 참석 …」, not 「10. 8.」
+_CLAUSE_END = re.compile(r"(?<!\d)\.(?!\s{0,2}\d)|[;。]")
+
+
+def _meeting_clauses(line: str) -> list[str]:
+    """Clauses of a line that name a meeting, the next meeting's clause aside."""
+    return [c for c in _CLAUSE_END.split(_NEXT_MEETING.sub(" ", line)) if _MEETING.search(c)]
+
+
+def _own_days(pattern: re.Pattern, clause: str) -> list[re.Match]:
+    """Day matches in a meeting clause, deadlines (「10/23(금)까지」) aside."""
+    return [m for m in pattern.finditer(clause) if not _DUE_TAIL.match(clause, m.end())]
+
+
+def _weekday_year(text: str, today: dt.date) -> int | None:
+    """The one year every weekday-marked day in the text agrees on (「10/23(금)」, 「11/2(월)」)."""
+    years: set[int | None] = set()
+    for m in _DAY_WITH_WEEKDAY.finditer(text or ""):
+        day = _year_of(int(m.group(1)), int(m.group(2)), m.group(3), today)
+        years.add(day.year if day else None)
+    for m in _WEEKDAY_WITH_DAY.finditer(text or ""):
+        day = _year_of(int(m.group(2)), int(m.group(3)), m.group(1), today)
+        years.add(day.year if day else None)
+    return years.pop() if len(years) == 1 and None not in years else None
+
+
 def meeting_date(request: str, material: str, today: dt.date | None = None) -> dt.date | None:
-    """Meeting date from the person or material header; yearless day resolved by weekday,
-    or, for a meeting the request says is still to come, by the next such day."""
+    """Meeting date from the person or material header: the day in the clause naming the meeting
+    (not a deadline's or the next meeting's); yearless day resolved by its weekday or the year the
+    text's other weekdays fix, or, for a meeting the request says is still to come, by the next
+    such day."""
     for text in (request, material):
         for line in (text or "").splitlines():
             if (m := _FULL_DATE.search(line)) and _MEETING.search(line):
@@ -217,17 +255,24 @@ def meeting_date(request: str, material: str, today: dt.date | None = None) -> d
                     continue
     today = today or dt.date.today()
     for text in (request, material):
+        year = _weekday_year(text, today)
         for line in (text or "").splitlines():
-            if not _MEETING.search(line):
-                continue
-            if m := _DAY_WITH_WEEKDAY.search(line):
-                month, day, weekday = int(m.group(1)), int(m.group(2)), m.group(3)
-            elif m := _WEEKDAY_WITH_DAY.search(line):
-                month, day, weekday = int(m.group(2)), int(m.group(3)), m.group(1)
-            else:
-                continue
-            if found := _year_of(month, day, weekday, today):
-                return found
+            for clause in _meeting_clauses(line):
+                if days := _own_days(_DAY_WITH_WEEKDAY, clause):
+                    m = days[0]
+                    month, day, weekday = int(m.group(1)), int(m.group(2)), m.group(3)
+                elif days := _own_days(_WEEKDAY_WITH_DAY, clause):
+                    m = days[0]
+                    month, day, weekday = int(m.group(2)), int(m.group(3)), m.group(1)
+                elif year and (days := _own_days(_YEARLESS_DAY, clause)):
+                    try:
+                        return dt.date(year, int(days[0].group(1)), int(days[0].group(2)))
+                    except ValueError:
+                        continue
+                else:
+                    continue
+                if found := _year_of(month, day, weekday, today):
+                    return found
     for line in (request or "").splitlines():
         # 「다음 주 목요일(10/15) 14시 주간회의」: a meeting to come is this year's next one
         if _MEETING.search(line) and _UPCOMING.search(line) and (
@@ -272,7 +317,10 @@ def meeting_base(request: str, material: str, today: dt.date | None,
                  nearest: bool = False) -> tuple[dt.date | None, str]:
     """Relative-date base and source: text, file name, or 'today/yesterday' (KST); never handover
     day. With `nearest` (the year question already asked or skipped), a yearless meeting day takes
-    the year nearest today when that is clear."""
+    the year nearest today when that is clear. English days (「Oct 19」) read as numbers."""
+    from app.services import weekdays
+
+    request, material = weekdays.english_days(request), weekdays.english_days(material)
     if found := meeting_date(request, material, today):
         return found, "text"
     if found := file_date(material):
@@ -304,7 +352,8 @@ def meeting_base(request: str, material: str, today: dt.date | None,
 
 #: the next meeting's clause: 「다음 회의 10/21 화 10시 3층 회의실.」
 _NEXT_MEETING = re.compile(
-    r"(?:다음|차기)\s{0,2}(?:회의|모임|미팅)[^\n;]*?(?=(?<!\d)\.(?!\s{0,2}\d)|[\n;]|$)")
+    r"(?:(?:다음|차기)\s{0,2}(?:회의|모임|미팅)|[Nn]ext\s{1,2}(?:meeting|sync))[^\n;]*?"
+    r"(?=(?<!\d)\.(?!\s{0,2}\d)|[\n;]|$)")
 
 
 def _nearest_meeting_day(request: str, material: str, today: dt.date) -> dt.date | None:
@@ -314,11 +363,10 @@ def _nearest_meeting_day(request: str, material: str, today: dt.date) -> dt.date
 
     for text in (request, material):
         for line in (text or "").splitlines():
-            if not _MEETING.search(line):
-                continue
-            if m := _YEARLESS_DAY.search(_NEXT_MEETING.sub(" ", line)):
-                near = weekdays._nearest(int(m.group(1)), int(m.group(2)), today)
-                return near[0] if near and near[1] else None
+            for clause in _meeting_clauses(line):
+                if days := _own_days(_YEARLESS_DAY, clause):
+                    near = weekdays._nearest(int(days[0].group(1)), int(days[0].group(2)), today)
+                    return near[0] if near and near[1] else None
     return None
 
 
@@ -377,7 +425,7 @@ _UNDATED_HEAD = (
 )
 
 
-def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bool = False) -> str:
+def _date_block(rows: list[dict], base: str, *, undated: bool = False) -> str:
     relative = [r for r in rows if r.get("kind") not in ("full_date", "month_day", "weekday")
                 or r.get("status") in ("unclear", "unresolved", _NO_BASE)]
     if not relative and not undated:
@@ -388,8 +436,12 @@ def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bo
             lines.append(f"- 「{r['text']}」 → not resolved (no meeting date): 기한 「[기한]」, in 비고 "
                          f"원문 「{r['text']}」 — 출처: 「{r['source_line'][:120]}」")
             continue
-        where = f" — 출처: 「{r['source_line'][:120]}」(기준 {r['base_date']}"
-        where += ", 메일 발신일)" if r.get("base_kind") == "mail" else ")"
+        where = f" — 출처: 「{r['source_line'][:120]}」"
+        if r.get("base_kind") == "mail":
+            where += f"(기준 {r['base_date']}, 메일 발신일)"
+        elif r.get("base_date") != base:
+            # a base other than the block's head
+            where += f"(기준 {r['base_date']})"
         if r["status"] == "ok":
             note = " (주말)" if r.get("weekend") else ""
             note += f" ({r['holiday']})" if r.get("holiday") else ""
@@ -402,15 +454,13 @@ def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bo
         else:
             lines.append(f"- 「{r['text']}」 → not one definite date: 기한 「미정」, the original wording in 비고{where}")
     head = f"기준일 {base}." if base else ""
-    if base and base_note:
-        head = f"기준일 {base}({base_note} — state this basis in the minutes)."
     if undated and not any(r["status"] in ("ok", "repeat") for r in relative):
         return "# 확정 날짜(코드 계산)\n" + _UNDATED_HEAD + ("\n" + "\n".join(lines) if lines else "")
     if undated:
         head = _UNDATED_HEAD + f" Only lines that carry a date, such as mails, were resolved from that date ({base})."
     return (
         "# 확정 날짜(코드 계산)\n" + head + " The code resolved the material's relative dates. In the "
-        "기한 cell write the dates below like 「2026-10-23(금)」 and put the original wording in 비고. "
+        "기한 cell write the dates below like 「2026-10-23(금)」, the date alone. "
         "Do not recalculate. Do not move a date that falls on a weekend unless the material says "
         "to.\n" + "\n".join(lines)
     )
@@ -1897,7 +1947,7 @@ async def _date_calc(pre: Prepass, job: PrepassJob) -> None:
     pre.base_date = first
     pre.base_source = source if base else ""
     undated = meeting and base is None
-    if block := _date_block(rows, first, _base_words(pre.base_source), undated=undated):
+    if block := _date_block(rows, first, undated=undated):
         pre.blocks.append(block)
     # 「발주 후 8주」: from material's absolute date regardless of meeting date
     lead = skill_scripts.dates().lead_times(material)
@@ -2661,7 +2711,7 @@ async def minutes_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict
                 problems.append(EMPTY_DUE)
             elif not _DUE_CELL_OK.match(when):
                 if _RELATIVE_WORDS.search(when) or len(when) > 16:
-                    problems.append("기한 칸에는 값만 쓴다(날짜(요일)·미정·[기한]) — 원문 표현은 비고로")
+                    problems.append("기한 칸에는 값만 쓴다(날짜(요일)·미정·[기한])")
             if note is not None and len(row) > note and not row[note].strip(" -—*"):
                 if "미정" in (who + when):
                     problems.append("「미정」이면 비고에 사유(회의에서 정하지 않음 등)를 적는다")
@@ -2689,22 +2739,28 @@ async def minutes_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict
 #: a memo clause that gives someone a task or leaves one open: 「…하기로 함」, 「검토」
 _ACTION_SAID = re.compile(r"기로|가져오|맡|담당|검토|예정|해야|필요|정하지|미정|추후|나중에|요청")
 _UNOWNED = re.compile(r"^(?:미정|확인\s{0,2}필요|\[[가-힣 ·]{1,10}\])")
-_MEMO_CLAUSE = re.compile(r"[\n.,:;。]|(?<=[함음됨임])\s")
+#: a memo's clauses: at stops and commas, after 「…함」「…됨」「…했음」 (not 「다음」「모임」)
+_MEMO_CLAUSE = re.compile(r"[\n.,:;。]|(?<=[함됨])\s|(?<=[었았였했있없]음)\s")
 UNASSIGNED_WHY = ("이 행의 할 일은 자료에서 누구에게도 맡겨지지 않았다(결정이나 안건일 뿐이다). "
                   "실행 항목 표에서 이 행을 빼라 — 결정이면 결정 사항에만 둔다.")
 
 
 def unassigned_rows(sections: list[dict], material: str) -> list[tuple[int, str, list[str]]]:
     """(section, row, [task]) for action rows with no owner whose task no memo clause gives
-    anyone or leaves open: 「2학기 튜터링 모집 시행 | 미정」 from 「모집 기간은 11/3~11/14로 확정」."""
-    from app.services import stated_days
+    anyone or leaves open: 「2학기 튜터링 모집 시행 | 미정」 from 「모집 기간은 11/3~11/14로 확정」.
+    A task sharing a word with a memo clause giving one of its people a task is that person's
+    (the writer left the owner out), and a decision table's rows are no action rows."""
+    from app.services import stated_days, stated_meeting
 
     clauses = [re.sub(r"\s+", "", c).lower() for c in _MEMO_CLAUSE.split(material or "")
                if _ACTION_SAID.search(c)]
+    named = [c for c in clauses if stated_meeting._ASSIGNED.search(c)
+             and any(n in c for n in stated_meeting.people(material))]
     out = []
     for table in tables(sections):
         owner, due = _owner_due(table.header)
-        if owner is None or due is None:
+        if owner is None or due is None or _DECIDED_TABLE.search(
+                " ".join([*table.header, str(sections[table.section].get("heading") or "")])):
             continue
         task = _task_column(table.header, (owner, due, _column(table.header, r"비고|사유|메모|원문")))
         for line, row in table.rows:
@@ -2712,10 +2768,14 @@ def unassigned_rows(sections: list[dict], material: str) -> list[tuple[int, str,
                 continue
             if not _UNOWNED.match(row[owner].strip(" *")):
                 continue
-            words = stated_days._words(row[task])
-            if words and not any(w in c for w in words for c in clauses):
+            if not stated_meeting.task_given(row[task], clauses) and not any(
+                    w in c for w in stated_days._words(row[task]) for c in named):
                 out.append((table.section, line, [row[task].strip(" *")]))
     return out
+
+
+#: a table of what was decided, whose rows no one is to do
+_DECIDED_TABLE = re.compile(r"결정|합의|의결")
 
 
 def _reference_heading() -> re.Pattern:
@@ -2751,7 +2811,7 @@ def settle_unsourced(sections: list[dict], material: str, *, strong: bool) -> li
     """What the writer left of `minutes_unsourced` after its one repair (`stated_meeting.settle`
     for sentences): a strong writer's row is marked 「(확인 필요)」, anyone else's goes with the
     「※」 line naming its task."""
-    from app.services import stated_meeting, stated_policy
+    from app.services import stated_meeting
 
     out = [dict(sec) for sec in sections]
     for index, row, task in unassigned_rows(out, material):
@@ -2759,11 +2819,15 @@ def settle_unsourced(sections: list[dict], material: str, *, strong: bool) -> li
         if strong:
             out[index]["content"] = stated_policy.mark(content, row, task)
             continue
-        # the 「※」 line may name it short: 「3번(튜터링 모집 시행)」
+        # the 「※」 line may name it short: 「3번(튜터링 모집 시행)」, or by its number alone
         short = " ".join(task[0].split()[-2:])
+        number = re.match(r"\|\s{0,4}(\d{1,2})\s{0,4}\|", row.strip())
+        by_number = re.compile(rf"※\s{{0,2}}{number.group(1)}\s{{0,2}}번(?!\d)") if number else None
+
         out[index]["content"] = "\n".join(
             ln for ln in content.split("\n") if ln.strip() != row.strip()
-            and not (short and ln.lstrip().startswith("※") and short in ln))
+            and not (ln.lstrip().startswith("※") and (
+                (short and short in ln) or (by_number and by_number.match(ln.lstrip())))))
     held = stated_meeting.open_rows(out)
     for index, piece, said in stated_meeting.findings(out, material, _reference_heading()):
         whole = "\n".join(str(sec.get("content") or "") for sec in out).replace(piece, "", 1)
@@ -3552,8 +3616,6 @@ async def count_labels(doc: Doc) -> tuple[list[Finding], dict]:
     return found, {}
 
 
-
-
 # ── after writing: add missing, never rewrite ──
 
 
@@ -4005,29 +4067,40 @@ UNDATED_NOTE = "회의 일자 미기재로 날짜 미확정"
 
 
 def _day_known(day: str, known: str) -> bool:
-    """Whether material or request writes this month and day."""
-    found = _cell_dates(day)
+    """Whether material or request writes this month and day (「Oct 28」 too)."""
+    from app.services import weekdays
+
+    found = _cell_dates(weekdays.english_days(day))
     if not found:
         return False
     _, month, date = found[0]
-    flat = re.sub(r"\s+", "", known or "")
+    flat = re.sub(r"\s+", "", weekdays.english_days(known or ""))
     return any(sp in flat for sp in (f"{month}월{date}일", f"{month}/{date}", f"{month}.{date}",
                                      f"-{month:02d}-{date:02d}", f"{month:02d}.{date:02d}"))
 
 
 #: a body line giving the meeting day as a blank: 「| 일시 | [회의 일자] |」, 「일시: [회의 일자]」
+#: the English head label of a field, for a body row written in English (`doc_formats.EN_LABELS`)
+_EN_DAY, _EN_PLACE = (re.escape(doc_formats.EN_LABELS[k]) for k in ("일시", "장소"))
 _BLANK_DAY_ROW = re.compile(
-    r"^(?P<lead>\s{0,4}(?:\|\s{0,3}|[-*>]\s{0,3})?(?:\*\*)?(?:회의\s{0,2})?(?:일시|일자|날짜)(?:\*\*)?"
+    r"^(?P<lead>\s{0,4}(?:\|\s{0,3}|[-*>]\s{0,3})?(?:\*\*)?"
+    rf"(?:(?:회의\s{{0,2}})?(?:일시|일자|날짜)|(?:Meeting\s{{1,2}})?{_EN_DAY})(?:\*\*)?"
     r"\s{0,3}(?:\||[:：])\s{0,3})(?P<blank>\[[^\[\]\n]{0,12}\])(?P<tail>\s{0,3}\|?\s{0,3})$", re.M)
 
 
 #: a body line giving the meeting place as nothing: 「- 장소: 미정」, 「| 장소 | [장소] |」
 _BLANK_PLACE_ROW = re.compile(
-    r"^(?P<lead>\s{0,4}(?:\|\s{0,3}|[-*>]\s{0,3})?(?:\*\*)?(?:회의\s{0,2})?장소(?:\*\*)?"
-    r"\s{0,3}(?:\||[:：])\s{0,3})(?P<blank>미정|\[[^\[\]\n]{0,12}\]|-|—)(?P<tail>\s{0,3}\|?\s{0,3})$",
+    r"^(?P<lead>\s{0,4}(?:\|\s{0,3}|[-*>]\s{0,3})?(?:\*\*)?"
+    rf"(?:(?:회의\s{{0,2}})?장소|(?:Meeting\s{{1,2}})?{_EN_PLACE})(?:\*\*)?"
+    r"\s{0,3}(?:\||[:：])\s{0,3})(?P<blank>미정|TBD|\[[^\[\]\n]{0,12}\]|-|—)"
+    r"(?P<tail>\s{0,3}\|?\s{0,3})$",
     re.M)
 #: a section about the next meeting, whose place is another one
-_NEXT_HEADING = re.compile(r"다음|차기|향후")
+_NEXT_HEADING = re.compile(r"다음|차기|향후|[Nn]ext")
+
+
+#: head labels of the meeting's day
+_DAY_FIELDS = ("일시", "회의 일시", "일자")
 
 
 def minutes_head_place(sections: list[dict], head: dict | None) -> list[dict]:
@@ -4035,7 +4108,7 @@ def minutes_head_place(sections: list[dict], head: dict | None) -> list[dict]:
     head blank too, the line goes (「[장소]」 in the head and 「미정」 in the overview read as two
     answers; the head is where the person fills it)."""
     place = next((str(f[1] if len(f) > 1 else "").strip() for f in (head or {}).get("fields") or []
-                  if f and str(f[0]) in ("장소", "회의 장소")), None)
+                  if f and doc_formats.head_key(f[0]) in ("장소", "회의 장소")), None)
     if place is None:
         return sections
     known = place if place and not placeholders.is_blank(place) else ""
@@ -4061,7 +4134,7 @@ def minutes_head_day(sections: list[dict], head: dict | None, pre: Prepass | Non
     if not head or pre is None or not pre.base_date:
         return sections
     day = next((str(f[1]) for f in head.get("fields") or []
-                if len(f) >= 2 and str(f[0]) in ("일시", "회의 일시", "일자")), "")
+                if len(f) >= 2 and doc_formats.head_key(f[0]) in _DAY_FIELDS), "")
     if not day.startswith(pre.base_date):
         return sections
     return [{**sec, "content": _BLANK_DAY_ROW.sub(
@@ -4137,7 +4210,18 @@ _HEAD_DAY = re.compile(
     rf"(?:\s{{0,2}}\(\s{{0,2}}(?P<wd>[{_WD}])(?:요일)?\s{{0,2}}\)|\s{{1,2}}(?P<wd2>[{_WD}])(?:요일)?(?![가-힣]))?")
 
 
-def _head_year(written: str, pre: Prepass, today: dt.date | None) -> str:
+#: weekday names of an English head, Monday first as `_WD`
+_WD_EN = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_EN_WEEKDAY = re.compile(r"\(?(mon|tue|wed|thu|fri|sat|sun)[a-z]{0,6}\.?\)?(?![A-Za-z])", re.I)
+
+
+def _head_day(day: dt.date, english: bool) -> str:
+    """「2026-10-14(수)」, in an English head 「2026-10-14 (Wed)」."""
+    return (f"{day.isoformat()} ({_WD_EN[day.weekday()]})" if english
+            else f"{day.isoformat()}({_WD[day.weekday()]})")
+
+
+def _head_year(written: str, pre: Prepass, today: dt.date | None, english: bool = False) -> str:
     """「10/14」 → 「2026-10-14(수)」: the read meeting date, else the year nearest today when
     clear, else 「[연도]」; a weekday the person wrote is kept, flagged when the calendar differs."""
     from app.services import weekdays
@@ -4168,8 +4252,17 @@ def _head_year(written: str, pre: Prepass, today: dt.date | None) -> str:
     rest = written[m.end():].strip()
     said = m.group("wd") or m.group("wd2")
     if day is None:
+        if english:
+            return " ".join(filter(None, [f"[Year] {month}/{dom}", rest]))
         return " ".join(filter(None, [f"[연도] {month}월 {dom}일" + (f"({said})" if said else ""), rest]))
     real = _WD[day.weekday()]
+    if english:
+        # 「10/14 Tue 10am」: the weekday the person wrote, in English
+        if said is None and (w := _EN_WEEKDAY.match(rest)):
+            said, rest = _WD[_WD_EN.index(w.group(1).title())], rest[w.end():].strip()
+        mark = "" if not said or said == real else (
+            f" (needs checking: the calendar gives {_WD_EN[day.weekday()]})")
+        return " ".join(filter(None, [_head_day(day, True) + mark, rest]))
     mark = real if not said or said == real else f"{said}, 확인 필요: 달력상 {real}요일"
     return " ".join(filter(None, [f"{day.isoformat()}({mark})", rest]))
 
@@ -4181,24 +4274,25 @@ def minutes_head(block: dict | None, pre: Prepass | None,
     if not block or pre is None or "meeting-date" not in pre.settings.head:
         return None
     fields = [list(f) for f in block.get("fields") or []]
-    at = next((i for i, f in enumerate(fields) if f and str(f[0]) in ("일시", "회의 일시", "일자")), None)
+    at = next((i for i, f in enumerate(fields) if f and doc_formats.head_key(f[0]) in _DAY_FIELDS),
+              None)
     if at is None or len(fields[at]) < 2:
         return None
     written = str(fields[at][1] or "").strip()
+    english = block.get("language") == "en"
     if written and not placeholders.is_blank(written):
-        dated = _head_year(written, pre, today)
+        dated = _head_year(written, pre, today, english)
         if dated == written:
             return None
         fields[at][1] = dated
         return {**block, "fields": fields}
     if pre.base_source and pre.base_date:
         try:
-            day = dt.date.fromisoformat(pre.base_date)
-            fields[at][1] = f"{pre.base_date}({_WD[day.weekday()]})"
+            fields[at][1] = _head_day(dt.date.fromisoformat(pre.base_date), english)
         except ValueError:
             return None
     elif not pre.base_source:
-        fields[at][1] = "[회의 일자]"
+        fields[at][1] = placeholders.blank(str(fields[at][0])) if english else "[회의 일자]"
     return {**block, "fields": fields}
 
 
@@ -4637,10 +4731,12 @@ def minutes_deferred(sections: list[dict]) -> tuple[list[dict], int]:
 
 
 def _task_column(header: list[str], others: tuple[int | None, ...]) -> int | None:
-    """Task column: 「할 일」, else first non-owner·due·note column."""
-    found = _column(header, r"할\s{0,2}일|내용|항목|조치|과제|업무|실행")
-    if found is not None and found not in others:
-        return found
+    """Task column: 「할 일」, else 「조치」·「과제」…, 「내용」, 「항목」 (a number column before a
+    「할 일」 one is no task), else first non-owner·due·note column."""
+    for pattern in (r"할\s{0,2}일", r"조치|과제|업무|실행", r"내용", r"항목"):
+        found = _column(header, pattern)
+        if found is not None and found not in others:
+            return found
     return next((k for k in range(len(header)) if k not in others), None)
 
 
@@ -4675,7 +4771,7 @@ def _in_date_sentence(action: str, entry: dict) -> bool:
 
 def minutes_due_fill(sections: list[dict], dates: list[dict], *,
                      blanked: bool = False) -> tuple[list[dict], int]:
-    """Fill 「미정」/「[기한]」 action rows with date-calc's resolved date; original words to 비고.
+    """Fill 「미정」/「[기한]」 action rows with date-calc's resolved date.
     `blanked`: after the checks, only 「[기한]」 cells, and the material's own written dates too."""
     # meeting date only: lines re-dated by later header or mail left to writer
     base = next((d.get("base_date") for d in dates), "")
@@ -4713,9 +4809,6 @@ def minutes_due_fill(sections: list[dict], dates: list[dict], *,
                 continue
             row = list(row)
             row[due] = _due_value(entries[0])
-            if note is not None and len(row) > note and entries[0]["text"] not in row[note]:
-                said = f"원문 「{entries[0]['text']}」"
-                row[note] = f"{row[note].strip(' -—')}, {said}" if row[note].strip(" -—") else said
             content = content.replace(line, "| " + " | ".join(row) + " |", 1)
             filled += 1
         out[table.section] = {**out[table.section], "content": content}
@@ -4822,7 +4915,7 @@ def _owner_known(cell: str, flat: str) -> bool:
 def _skip_line(line: str) -> bool:
     stripped = line.strip()
     return (not stripped or stripped.startswith(("#", "![", "```", "|"))
-            or bool(re.match(r"^\*\*(?:표|그림)\s{0,2}\d", stripped)))
+            or bool(re.match(r"^\*\*(?:표|그림|Table|Figure)\s{0,2}\d", stripped)))
 
 
 def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], list[str]]:

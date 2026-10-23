@@ -22,7 +22,7 @@
   }
  },
  {
-  "key": "3ea42e22da1f04ea55d405a2",
+  "key": "b9d1ebe9defd6e2903c09839",
   "stage": "draft",
   "kind": "draft",
   "head": "Write the whole report in one pass, following the outline below.\n\nOutline (write these headings in this order, each as a `## 제목` line):\n## 회의 개요\n## 2027 학년도 전공선",
@@ -33,7 +33,7 @@
   }
  },
  {
-  "key": "18f371b1f7d4dfc0d80f3776",
+  "key": "6c7e07c95fc711f23524baa5",
   "stage": "verify",
   "kind": "judge",
   "head": "Below are the meeting material and the action items of the minutes. Among the items whose owner the material\nchanged (○○ 대신 △△, changed by mail) or newly assign",
@@ -44,36 +44,36 @@
   }
  },
  {
-  "key": "ba84375a017ad845a8a921db",
+  "key": "b53e12760d077709022ee6f1",
   "stage": "verify",
   "kind": "repair",
   "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
   "reply": "[\"이 설문의 회수 결과는 강의계획서 초안 작성 시 참고 자료로 활용될 것으로 보입니다.\", \"학생 수요 설문은 최○○가 2026-10-16(금)까지 회수합니다.\"]",
   "usage": {
-   "prompt_tokens": 707,
+   "prompt_tokens": 715,
    "completion_tokens": 24
   }
  },
  {
-  "key": "a96ec436895ad30189825365",
+  "key": "ff64b42348a8f083d55a3f40",
   "stage": "verify",
   "kind": "repair",
   "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
   "reply": "[\"김교수의 발언으로 볼 때 다음 회의에서 이 안이 재상정될 것으로 보입니다.\"]",
   "usage": {
-   "prompt_tokens": 664,
+   "prompt_tokens": 672,
    "completion_tokens": 12
   }
  },
  {
-  "key": "bc2b6a1f21887cc30f7f8ddd",
+  "key": "58471e6167b982e3894ae5bd",
   "stage": "verify",
   "kind": "repair",
   "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",
   "reply": "[\"참석자는 김교수(위원장), 박교수, 이교수, 학생대표 최○○, 조교 정다은입니다.\"]",
   "usage": {
-   "prompt_tokens": 630,
-   "completion_tokens": 13
+   "prompt_tokens": 715,
+   "completion_tokens": 20
   }
  }
 ]

@@ -85,3 +85,20 @@ def test_a_figure_alone_fills_the_body_without_a_caption_repeating_the_title():
     # and a figure that carries its own words is not a finding
     codes = [f["code"] for f in quality_gate.deck_findings([slide])]
     assert "figure_without_words" not in codes
+
+
+def test_lines_about_parts_a_figure_draws_by_name_only_stay_under_it():
+    """audit-g H4 C: a house figure's pillars came as {name, note}, were drawn as 「{'name': …」
+    and the plan lines naming them went to the notes, leaving the slide empty."""
+    house = figure_kinds.spec({"kind": "house", "goal": "2027년 확대 계획",
+                               "pillars": [{"name": "추가 설치", "note": "4대, 1억 2천만원"},
+                                           {"name": "고령층 지원"}],
+                               "base": [{"name": "승인 요청"}]})
+    assert house["pillars"] == ["추가 설치", "고령층 지원"]
+    plan = ["추가 설치: 무인발급기 4대 추가 설치, 예산 1억 2천만원",
+            "고령층 지원: 안내 도우미 배치로 65세 이상 이용률 개선"]
+    slide = {"layout": "bullets", "title": "2027년 확대 계획", "bullets": list(plan), "notes": "",
+             "diagram": {"source": "flowchart TB\n  g(\"2027년 확대 계획\")\n" + figure_kinds.MARK
+                         + json.dumps(house, ensure_ascii=False)}}
+    deck._words_under_figure(slide)
+    assert slide["bullets"] == plan

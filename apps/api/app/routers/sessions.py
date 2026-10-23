@@ -104,6 +104,7 @@ from app.services import (
     chart_code,
     check_skills,
     conversation_summary,
+    date_rules,
     design_templates,
     exact_facts,
     fallback_watch,
@@ -4673,6 +4674,10 @@ async def send_message(
     ):
         # the agent's language as a condition the document writers read with the request
         content = _with_condition(content, output_language.condition(agent_row.output_language))
+    elif session.kind is not SessionKind.chat and not revising and not pending and (
+            code := output_language.asked(typed_content)):
+        # a new document in the language the person asked in, not the material's
+        content = _with_condition(content, output_language.asked_condition(code))
     turn_options = {
         "webSearch": payload.web_search,
         "activatedSkillIds": active_skill_ids,
@@ -4724,6 +4729,13 @@ async def send_message(
         if privacy_resolution and privacy_resolution.mask_outbound:
             brief = _mask_list([brief], legacy=policy.pii_masking)[0]
         trusted_context = [*trusted_context, brief]
+    # 「다음 주 월요일」 counted from today by code, not by the writer; 「그날까지」 leans on
+    # the person's last turn
+    asked_before = [body for message, body in zip(history, outbound_history, strict=False)
+                    if message.role is Role.user][-1:]
+    if session.kind is SessionKind.chat and (
+            dated := date_rules.today_block(content, _today(), asked_before)):
+        trusted_context = [*trusted_context, dated]
     calculation_required = (
         session.kind is SessionKind.chat and not tables and (
             calculation_policy.requires_calculation(content)
@@ -5042,7 +5054,7 @@ async def send_message(
             db, session, instruction=content, model=planner or model, api_key=api_key
         )
         if revision is not None and revision.restructures:
-            # skeleton change re-planned via outline-and-confirm; absolute terms (「9장」)
+            # skeleton change re-planned and written at once; absolute terms (「9장」)
             content = grounding.merge_answers(
                 revise.without_counts(await _original_request(db, session) or content),
                 {"_note": revision.note},
@@ -6944,7 +6956,10 @@ async def _run_deck(
             "web_search": web_search, "figures_plan": figures_plan, "image_model": image_model,
             "auto_image_model": auto_image_model,
             "code_calc": code_calc,
-            "request": request, "approved_plan": approved_plan, "may_ask": may_ask,
+            "request": request, "approved_plan": approved_plan,
+            # a reshape of the open deck has its material: no questions
+            "may_ask": may_ask and not carry_from,
+            "reshape": bool(carry_from),
             "model": model["id"], "outline_model": (outline_model or {}).get("id", ""),
             "trusted_context": list(trusted_context or []),
             "untrusted_context": list(untrusted_context or []), "tokens": design_tokens,
@@ -6955,8 +6970,11 @@ async def _run_deck(
         template_id=template.id if template else None, design_tokens=design_tokens,
         session_id=session_id, turn=turn))
     work.usage = {"inputTokens": 0, "outputTokens": 0}
-    straight = approved_plan is None and (lambda plan: outline_rules.nothing_to_approve(
-        plan, request, has_material=traced or any(t.strip() for t in untrusted_context or ())))
+    # a reshape of the open deck is written as re-planned, with no outline card
+    straight = approved_plan is None and (
+        lambda plan: _reshaped_plan(plan, carry_from) or outline_rules.nothing_to_approve(
+            plan, request,
+            has_material=traced or any(t.strip() for t in untrusted_context or ())))
     async for chunk in _make_pass(work, pipeline_registry.pipeline("deck"),
                                   crashed="슬라이드를 만들지 못했습니다.",
                                   attachments=attachments, answers=answers,
@@ -7114,16 +7132,26 @@ async def _deck_carry(work: PipelineBundle) -> AsyncIterator[dict]:
     # merged slides lend their rows; carried agenda reflects the current deck
     slides = revise.absorb_rows(slides, old_slides, mentioned=carry_note)
     slides = revise.unmix_rows(slides, old_slides, mentioned=carry_note)
+    # one old item's parts spread over the columns: one value for every column
+    slides = revise.spread_rows(slides, old_slides)
     slides = revise.carry_by_content(slides, old_slides, mentioned=carry_note)
     slides = revise.keep_timeline_layout(
         slides, old_slides, mentioned=carry_note, request=request
     )
+    # the old deck's wording of a figure pair (never over a strong writer's), its ask and order
+    if not model_tier.strong(work.request.model):
+        slides = revise.keep_phrasing(slides, old_slides)
+    slides = revise.keep_ask(slides, old_slides, mentioned=carry_note)
+    slides = revise.keep_order(slides, old_slides, mentioned=carry_note)
     slides = revise.refresh_agenda(slides)
     # carried slides may drop restated numbers: recheck the person's figures
     deck_service.restate_missing_facts(slides, request)
+    # a figure the old deck marked keeps its mark; no guard blank or dangling unit carried
+    slides = revise.carry_marks(slides, old_slides)
+    deck_service.settle_blanks(slides)
     work.document.sections = slides
-    # figures the old deck showed that the new one shows nowhere: said in the reply
-    work.document.dropped = deck_service.lost_across(old_slides, slides)
+    # what the old deck showed that the new one shows nowhere: read at save, said in the reply
+    work.document.before = old_slides
     if carried:
         yield {"type": "step", "id": "carry", "label": f"그대로 둔 장 {carried}개",
                "status": "done"}
@@ -7131,16 +7159,30 @@ async def _deck_carry(work: PipelineBundle) -> AsyncIterator[dict]:
             yield {"type": "slide", "slide": slide, "done": True}
 
 
-def _lost_said(lost: list[str], instruction: str) -> str:
-    """「 줄이면서 4일, 3곳이 빠졌습니다. …」: figures a restructure left out of the deck."""
-    if not lost:
-        return ""
-    values = ", ".join(lost)
-    if output_language.typed_in_english(instruction):
-        return (f" {values} no longer appear anywhere in the deck; ask again to put them back "
+def _restructured_said(before: list[dict], slides: list[dict], *, english: bool) -> str:
+    """「6장짜리 슬라이드를 만들었습니다. 고치면서 4일, 3곳과 「…」 차트가 빠졌습니다. …」: the
+    deck made and what of the old deck its slides no longer show (notes do not count), in the
+    deck's or the request's language."""
+    count = len(deck_service.filled(slides))
+    plotted = deck_service.charted_only(before, slides)
+    lost = [f for f in deck_service.lost_across(before, slides, plotted) if f not in plotted]
+    blocks = deck_service.lost_blocks(before, slides, english=english) if before else []
+    if english:
+        made = f"Made a {count}-slide deck."
+        if not lost and not blocks:
+            return made
+        what = "; ".join(x for x in (", ".join(lost), ", ".join(blocks)) if x)
+        return (f"{made} No slide shows these any more: {what}. Ask again to put them back "
                 "if they belong there.")
-    return (f" 고치면서 {values}{revise._particle(values, '이', '가')} 슬라이드에서 빠졌습니다. "
-            "필요하면 다시 넣어 달라고 해 주세요.")
+    made = f"{count}장짜리 슬라이드를 만들었습니다."
+    if not lost and not blocks:
+        return made
+    what = ", ".join(lost)
+    if blocks:
+        what = f"{what}{revise._particle(what, '과', '와')} " if what else ""
+        what += ", ".join(blocks)
+    return (f"{made} 고치면서 {what}{revise._particle(what, '이', '가')} 슬라이드에서 "
+            "빠졌습니다. 필요하면 다시 넣어 달라고 해 주세요.")
 
 
 async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
@@ -7233,8 +7275,11 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                 message = Message(
                     session_id=session_id,
                     role=Role.assistant,
-                    content=rerun_note(turn) or f"{len(written)}장짜리 슬라이드를 만들었습니다."
-                    + _lost_said(work.document.dropped if carry_from else [], carry_note),
+                    content=rerun_note(turn) or _restructured_said(
+                        work.document.before if carry_from else [], slides,
+                        # in the deck's language, or the language the reshape was asked in
+                        english=deck_service.deck_language(slides) == "en" or bool(
+                            carry_from) and output_language.typed_in_english(carry_note)),
                     usage={**usage, "credits": credits},
                     model=model["id"],
                     steps=_prelude_steps(skills_event, context_steps) or None,
@@ -7606,6 +7651,11 @@ async def _hand_over_document(
     yield chat_service.sse({"type": "done"})
 
 
+def _reshaped_plan(plan: dict | None, carry_from: str | None) -> bool:
+    """A restructure of the open document with parts planned: written with no outline card."""
+    return bool(carry_from) and bool((plan or {}).get("slides") or (plan or {}).get("sections"))
+
+
 async def _run_report(
     *,
     template: design_templates.DesignTemplate | None = None,
@@ -7690,7 +7740,8 @@ async def _run_report(
             auto_image_model=auto_image_model,
             request=request,
             approved_plan=approved_plan,
-            may_ask=may_ask,
+            # a restructure of the open report has its material: no questions
+            may_ask=may_ask and not carry_from,
             model=model["id"],
             outline_model=(outline_model or {}).get("id", ""),
             api_key=api_key,
@@ -7718,10 +7769,12 @@ async def _run_report(
                 # stopped on purpose: stored below, no artifact
                 if event["type"] == "proposal":
                     proposal = event["plan"]
-                    straight = writing is False and outline_rules.nothing_to_approve(
-                        proposal, request,
-                        has_material=any(t.strip() for t in untrusted_context or ()),
-                    )
+                    # a restructure of the open report is written as re-planned, as a deck's
+                    straight = writing is False and (
+                        _reshaped_plan(proposal, carry_from) or outline_rules.nothing_to_approve(
+                            proposal, request,
+                            has_material=any(t.strip() for t in untrusted_context or ()),
+                        ))
                     if straight:
                         continue
                     # the carried findings stay with the stored plan

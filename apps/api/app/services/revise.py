@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from app.services import settings_store
+from app.services import captions, settings_store
 
 log = logging.getLogger(__name__)
 
@@ -51,7 +51,8 @@ Rules:
   document replaces wholesale the text the user was looking at.
 
 note: one or two sentences on how to change that part. Do not copy the user's words; state the
-change to make. Write note in Korean.
+change to make. Write note in Korean; a part title it names, kept or new, is in the outline's
+own language (an English outline's titles stay English).
 
 Reply with a JSON object only.
 예: {{"scope": "parts", "targets": [3], "note": "분량을 절반으로 줄이고 표는 남긴다"}}
@@ -509,11 +510,17 @@ def carry_parts(
         name = _part_name(part, is_deck)
         if name and _has_content(part, is_deck) and name not in by_name:
             by_name[name] = part
+    names = {_part_name(part, is_deck) for part in new}
+    # old parts no new part is named after: what a merge takes in
+    gone = [part for part in old if _part_name(part, is_deck) not in names]
     out: list[dict] = []
     carried = 0
     for part in new:
         name = _part_name(part, is_deck)
         previous = by_name.get(name)
+        if previous is not None and _takes_in(part, previous, gone, is_deck):
+            # merged part: the old one alone would drop what it took in
+            previous = None
         # Named parts rewritten; generic words ignored.
         tokens = [t for t in name.split() if len(t) >= 2 and t.lower() not in _GENERIC_TITLE_WORDS]
         named = name.lower() in said or (
@@ -530,6 +537,18 @@ def carry_parts(
         out.append(merged)
         carried += 1
     return out, carried
+
+
+def _part_values(part: dict, is_deck: bool) -> set[tuple[str, str]]:
+    text = " ".join(_shown_texts(part)) if is_deck else str(part.get("content") or "")
+    return _values_of(text)
+
+
+def _takes_in(part: dict, previous: dict, gone: list[dict], is_deck: bool) -> bool:
+    """`part` shows a value its same-named old part did not and an old part gone from the new
+    plan did: content merged in."""
+    added = _part_values(part, is_deck) - _part_values(previous, is_deck)
+    return bool(added) and any(added & _part_values(g, is_deck) for g in gone)
 
 
 _TITLE_ASK = re.compile(
@@ -848,7 +867,7 @@ def within_named_parts(plan: Plan, parts: list[str], message: str) -> Plan:
     return plan
 
 
-_FENCE = re.compile(r"```mermaid\n.*?```(?:\n+\*그림[^*\n]*\*)?", re.S)
+_FENCE = re.compile(r"```mermaid\n.*?```(?:\n+\*" + captions.FIGURE + r"[^*\n]*\*)?", re.S)
 _REMOVE_FIGURE = re.compile(
     r"(?:그림|도식|도해|다이어그램|흐름도|구조도|비교도|개념도)\s{0,8}(?:은|을|는|를)?\s{0,8}"
     r"(?:빼|지워|삭제|없이|제거)"
@@ -880,6 +899,48 @@ def keep_figure(old: str, new: str, instruction: str) -> str:
     return f"{body.rstrip()}\n\n{fence.group(0).strip()}"
 
 
+def on_new_lines(old: str, new: str, fix) -> str:
+    """`fix` applied to the rewrite, every line kept from the old part left as it was."""
+    new = re.sub(r"\n{3,}", "\n\n", new)
+    fixed = fix(new)
+    lines, mended = new.split("\n"), fixed.split("\n")
+    if len(lines) != len(mended):
+        # lines merged or split: no line-by-line reading, the rewrite stands
+        return new
+    kept = set(old.split("\n"))
+    return "\n".join(line if line in kept else got
+                     for line, got in zip(lines, mended, strict=True))
+
+
+def keep_pictures(old: str, new: str, instruction: str) -> str:
+    """Rewrite with the part's pictures (「![그림 2. …](…)」, not shown to the writer) put back
+    where it names them, else at its end, unless a figure's removal was asked."""
+    if _REMOVE_FIGURE.search(instruction or ""):
+        return new
+    lines = (old or "").split("\n")
+    blocks = [("\n".join(lines[start:end]).strip(), number)
+              for kind, start, end, number in _blocks_in(old or "")
+              if kind == "그림" and _PICTURE_LINE.match(lines[start])]
+    out = (new or "").rstrip()
+    for block, number in blocks:
+        if _PICTURE_LINE.match(block.split("\n")[0]).group(0).strip() in out:
+            continue
+        paragraphs = out.split("\n\n")
+        at = next((i for i, p in enumerate(paragraphs) if number is not None and not
+                   p.lstrip().startswith(("|", "!", "```"))
+                   and re.search(rf"{captions.FIGURE}\s?{number}(?!\d)", p)), None)
+        if at is None:
+            paragraphs.append(block)
+        else:
+            # after the table that follows the paragraph naming it, as the part had it
+            while (at + 1 < len(paragraphs) and paragraphs[at + 1].lstrip().startswith(("|", "**"))
+                   and not re.search(captions.FIGURE, paragraphs[at + 1].split("\n")[0])):
+                at += 1
+            paragraphs.insert(at + 1, block)
+        out = "\n\n".join(paragraphs)
+    return out
+
+
 _COUNT_MENTION = re.compile(
     r"(?:장수|분량|길이)?\s{0,8}[:：]?\s{0,8}(?:총|전체)?\s{0,8}\d{1,3}\s{0,8}(?:장|쪽|페이지|슬라이드|절)\s{0,8}"
     r"(?:안팎|내외|정도|으로|로|을|를|이|가|은|는)?"
@@ -889,9 +950,28 @@ _COUNT_MENTION = re.compile(
 )
 
 
+#: a count a finding compares against, not the document's size: 「above 20 pages」, 「20쪽 이상」
+_COMPARED_BEFORE = re.compile(
+    r"\b(?:above|over|under|below|past|beyond|than|exceeding|per)\s{0,3}$",
+    re.I)
+_COMPARED_AFTER = re.compile(r"\s{0,3}(?:이상|이하|초과|미만|넘)")
+
+
 def without_counts(request: str) -> str:
-    """Request minus part counts; planner reads the note's count."""
-    return " ".join(_COUNT_MENTION.sub(" ", " ".join((request or "").split())).split())
+    """Request minus part counts; planner reads the note's count. A count a finding is stated
+    against stays (「failed more above 20 pages」)."""
+    # lines and paragraphs stay: the request's first paragraph is its instruction
+    text = "\n".join(" ".join(line.split()) for line in (request or "").strip().splitlines())
+
+    def drop(m: re.Match) -> str:
+        unit = re.search(r"\d\s{0,8}(?:장|쪽|페이지|슬라이드|절)", m.group(0))
+        after = m.start() + unit.end() if unit else m.end()
+        if _COMPARED_BEFORE.search(text[max(0, m.start() - 16):m.start()]) or \
+                _COMPARED_AFTER.match(text, after):
+            return m.group(0)
+        return " "
+
+    return "\n".join(" ".join(line.split()) for line in _COUNT_MENTION.sub(drop, text).splitlines())
 
 
 _TARGET_COUNT = re.compile(
@@ -965,16 +1045,35 @@ _RESTRUCTURE = re.compile(
 _JOINS = re.compile(r"합쳐|합치|병합|나눠|분리|묶어|묶|\b(?:merge|split|combine|join)\b", re.I)
 #: a part's own items: 「항목」, 「bullets」
 _ITEM_WORD = re.compile(r"항목|요점|글머리|불릿|\b(?:items?|bullets?|points?)\b", re.I)
+#: a count of things, not of parts: 「하나로」, 「두 개로」 (「두 장으로」 is a part count)
+_ITEM_COUNT = r"(?:하나|한\s?개|두\s?개|세\s?개|네\s?개|\d{1,2}\s?개)\s?(?:로|으로)"
 #: a count the items are made into, the verb left out: 「항목을 하나로」, 「두 개로 해줘」
-_COUNT_INTO = re.compile(r"(?:하나|한\s?개|두\s?개|세\s?개|네\s?개|\d{1,2}\s?개)\s?(?:로|으로)"
-                         r"(?:\s?(?:만들|해|정리)|[\s.!~]{0,3}$)")
+_COUNT_INTO = re.compile(_ITEM_COUNT + r"(?:\s?(?:만들|해|정리)|[\s.!~]{0,3}$)")
+_ITEM_COUNT_ANY = re.compile(_ITEM_COUNT)
+
+
+def _names_items(text: str) -> bool:
+    """Whether the words are about a part's items: named (「항목」), or counted in things
+    (「6장 단계를 두 개로 나눠줘」, not in parts) as one part is joined or split."""
+    return bool(_ITEM_WORD.search(text) or _ITEM_COUNT_ANY.search(text) and _JOINS.search(
+        text) and len(named_slides(text) | {int(n) for n in _SECTION_REF.findall(text)}) <= 1)
 
 
 def joins_items(message: str) -> bool:
     """Whether the words join or split a part's items (「항목을 하나로 합쳐줘」, 「merge the
-    bullets」, 「4장 항목을 하나로」)."""
+    bullets」, 「4장 항목을 하나로」, 「6장 단계를 두 개로 나눠줘」)."""
     text = message or ""
-    return bool((_JOINS.search(text) or _COUNT_INTO.search(text)) and _ITEM_WORD.search(text))
+    return bool((_JOINS.search(text) or _COUNT_INTO.search(text)) and _names_items(text))
+
+
+#: words that take a part's items apart: 「나눠」, 「쪼개」, 「split」
+_SPLITS = re.compile(r"나눠|나누|분리|쪼개|\b(?:split|break\s{1,3}up|separate)\b", re.I)
+
+
+def splits_items(message: str) -> bool:
+    """Whether the words take a part's items apart (「7장 항목을 두 개로 나눠줘」) rather than
+    join them (「하나로 합쳐줘」)."""
+    return bool(_SPLITS.search(message or ""))
 
 
 def asks_restructure(message: str) -> bool:
@@ -983,7 +1082,7 @@ def asks_restructure(message: str) -> bool:
     (「2장 항목을 하나로 합쳐줘」, 「Merge the items on slide 4 into one」) are that part's edit."""
     text = " ".join((message or "").split())
     found = [m.group(0) for m in _RESTRUCTURE.finditer(text)]
-    if found and all(_JOINS.fullmatch(f) for f in found) and _ITEM_WORD.search(text) and len(
+    if found and all(_JOINS.fullmatch(f) for f in found) and _names_items(text) and len(
             named_slides(text) | {int(n) for n in _SECTION_REF.findall(text)}) == 1:
         return False
     return bool(found)
@@ -1114,7 +1213,14 @@ def count_change(plan: Plan, parts: list[str], message: str) -> Plan:
             note, units, maximum=99):
         # a count the planner put otherwise would outweigh the asked one
         note = lead
+    if wanted < len(parts):
+        note = f"{note} {_MERGED_KEEP}"
     return Plan(scope="outline", note=note, usage=plan.usage)
+
+
+#: a deck cut to fewer slides: the slides merged keep their figures
+_MERGED_KEEP = ("Slides merged keep their figures: each cost, time, rate or count the deck "
+                "shows now goes on the slide that takes its subject, as a point or a table row.")
 
 
 #: a part count or part number in a planner's note: 「전체 8개 장을」, 「1-2장」, 「3장과」
@@ -1235,6 +1341,71 @@ def absorb_rows(new: list[dict], old: list[dict], *, mentioned: str) -> list[dic
     return _dedupe_tables(new)
 
 
+#: the parts of one item's value: 「40 prompts, three raters」
+_VALUE_PARTS = re.compile(r"\s{0,2}[,;·]\s{0,2}")
+#: words a cell or a part is said in
+_CELL_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{3,}")
+
+
+def _labelled_items(slide: dict) -> list[tuple[str, str]]:
+    """`(label, value)` for each labelled item the slide shows: bands, cards, metrics, a
+    「label: value」 point."""
+    out = []
+    for key in ("bands", "cards", "tiles", "metrics", "steps"):
+        for pair in slide.get(key) or []:
+            if isinstance(pair, list) and len(pair) >= 2:
+                out.append((str(pair[0]), str(pair[1])))
+    for point in slide.get("bullets") or []:
+        label, colon, value = str(point).partition(":")
+        if colon and 0 < len(label) <= 30 and value.strip():
+            out.append((label, value))
+    return out
+
+
+def _label_key(label: str) -> str:
+    key = re.sub(r"[^가-힣a-z0-9]", "", label.lower())
+    return key[:-1] if len(key) > 3 and key.endswith("s") else key
+
+
+def spread_rows(new: list[dict], old: list[dict]) -> list[dict]:
+    """A comparison row whose cells are the parts of one old item's value (「Tasks: 40 prompts,
+    three raters」 → 「40 prompts」 under one column, 「3 raters」 under the other): one value
+    for every column, the parts kept together in each."""
+    items: dict[str, list[list[str]]] = {}
+    for slide in old:
+        for label, value in _labelled_items(slide):
+            parts = [p for p in _VALUE_PARTS.split(value.strip()) if p.strip()]
+            if len(parts) >= 2:
+                items.setdefault(_label_key(label), []).append(parts)
+    if not items:
+        return new
+    for slide in new:
+        rows = slide.get("rows")
+        if not isinstance(rows, list) or len(rows) < 2 or not isinstance(rows[0], list):
+            continue
+        heads = {w.lower() for c in rows[0][1:] for w in _CELL_WORD.findall(str(c))}
+        for r, row in enumerate(rows[1:], 1):
+            cells = [str(c).strip() for c in row[1:]] if isinstance(row, list) else []
+            if len(cells) < 2 or not all(cells) or len(set(cells)) < len(cells):
+                continue
+            for parts in items.get(_label_key(str(row[0])), []):
+                lowered = [p.lower() for p in parts]
+                if any(w in p for p in lowered for w in heads):
+                    # a part naming a column: the cells are that column's
+                    continue
+                homes = []
+                for cell in cells:
+                    words = [w.lower() for w in _CELL_WORD.findall(cell)]
+                    home = [k for k, p in enumerate(lowered)
+                            if words and all(w in p for w in words)]
+                    homes.append(home[0] if len(home) == 1 else None)
+                if None not in homes and len(set(homes)) == len(homes):
+                    joined = ", ".join(cells)
+                    rows[r] = [row[0], *([joined] * len(cells))]
+                    break
+    return new
+
+
 def carry_by_content(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
     """New timelines sharing a date with a longer old one take back old pairs."""
 
@@ -1327,6 +1498,24 @@ def _timeline_keys(slide: dict) -> set[str]:
 _TIMELINE_WORDS = ("단계", "일정", "로드맵", "타임라인", "계획", "마일스톤", "스케줄")
 
 
+#: layouts that already set things out in order
+_SEQUENCE_LAYOUTS = ("steps", "roadmap", "timeline")
+
+
+def _timeline_takes(host: dict, timeline: dict, slides: list[dict]) -> bool:
+    """Whether drawing `timeline` on `host` would take a chart or a figure off the deck: what
+    the host shows that no other slide and not the timeline does."""
+    from app.services import deck
+
+    if deck.chart_of(host):
+        return True
+    if host.get("layout") in _SEQUENCE_LAYOUTS:
+        # steps in order: what a timeline redraws
+        return False
+    rest = [s for s in slides if s is not host] + [{"timeline": timeline.get("timeline")}]
+    return bool(deck.lost_across([host], rest))
+
+
 def keep_timeline_layout(
     new: list[dict], old: list[dict], *, mentioned: str, request: str = ""
 ) -> list[dict]:
@@ -1349,6 +1538,8 @@ def keep_timeline_layout(
                     _title_tokens(str(s.get("title") or "")) & tokens
                     or any(w in str(s.get("title") or "") for w in _TIMELINE_WORDS)
                 )
+                # a slide whose chart or figures the timeline would take off the deck stays
+                and not _timeline_takes(s, gone, new)
             ),
             None,
         )
@@ -1400,6 +1591,193 @@ def refresh_agenda(slides: list[dict]) -> list[dict]:
         if slide.get("layout") == "agenda" and body_titles:
             slide["bullets"] = body_titles[:8]
     return slides
+
+
+#: layouts that frame a deck rather than carry its points
+_FRAME_LAYOUTS = ("title", "agenda", "section", "closing")
+#: an ask of the deck: an approval, a sign-off or a decision requested
+_DECK_ASK = re.compile(
+    r"승인|결재|재가|품의|요청\s?(?:사항|드립니다|합니다|:)|요청$|결정\s?요청"
+    r"|\b(?:approv\w{0,5}|sign-?off|decision\s(?:needed|requested))\b", re.I)
+#: an order asked of the restructure: 「순서를 바꿔」, 「맨 앞으로」, 「move」
+_ORDER_ASK = re.compile(
+    r"순서|앞으로|뒤로|맨\s?(?:앞|뒤|끝|처음|마지막)|먼저|나중에|옮겨|옮기|이동"
+    r"|\b(?:order|move|first|last)\b", re.I)
+
+
+def _shown_texts(slide: dict) -> list[str]:
+    from app.services import deck
+
+    return [t for k, v in slide.items() if k not in deck._NOT_SHOWN for t in deck._strings(v)]
+
+
+def _figure_keys(text: str) -> set[tuple[str, str]]:
+    from app.services import deck
+
+    return {(n, u) for n, u, _ in deck.figures_in(text)}
+
+
+def keep_ask(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
+    """The old deck's ask (「결재 요청: … 1.5억 승인」) put back when no slide of the new one asks
+    any more: as the title of the slide holding its figures when it was a title, else as a
+    point on that slide or the last one; left alone when the person spoke of it."""
+    if _DECK_ASK.search(mentioned or "") or not new or any(
+            _DECK_ASK.search(t.strip()) for s in new for t in _shown_texts(s)):
+        return new
+    # the last ask, the last one with its figure first: a 「Seek approval」 title falls back
+    # to the 「Approve $1.2M」 point that names what is asked
+    asks: list[tuple[str, bool]] = []
+    for slide in reversed(old):
+        title = " ".join(str(slide.get("title") or "").split())
+        if _DECK_ASK.search(title):
+            asks.append((title, True))
+        asks += [(" ".join(t.split()), False) for t in _shown_texts(slide)
+                 if t.strip() != title and _DECK_ASK.search(t.strip())]
+    asks = [(t, titled) for t, titled in asks if len(t) <= 80]
+    if not asks:
+        return new
+    ask, titled = next(((t, titled) for t, titled in asks if _figure_keys(t)), asks[0])
+    figures = _figure_keys(ask)
+    body = [s for i, s in enumerate(new) if i and s.get("layout") not in ("title", "agenda")]
+    if not body:
+        return new
+    shared = [len(figures & _figure_keys(" ".join(_shown_texts(s)))) for s in body]
+    # the last slide holding most of its figures, else the last slide
+    host = body[max(range(len(body)), key=lambda i: (shared[i], i))] if any(shared) \
+        else body[-1]
+    if isinstance(host.get("bullets"), list) or host.get("layout") in ("bullets", "closing"):
+        host["bullets"] = [*(host.get("bullets") or []), ask]
+    elif titled or not str(host.get("body") or "").strip():
+        host["title"] = ask
+    else:
+        host["body"] = f"{str(host['body']).rstrip()} {ask}"
+    return new
+
+
+#: a slide that sums the deck up: 「3분기 핵심 요약」, 「Key takeaways」
+_SUMMARY_TITLE = re.compile(r"요약|정리|\b(?:summary|recap|takeaways?|key\s+points)\b", re.I)
+
+
+def keep_order(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
+    """A summary slide the new deck put after slides whose figures the old deck showed later
+    than its own (「3분기 핵심 요약」 after the 4분기 plan) moved up before them, each placed by
+    the old body slide it shares the most figures with (two at least); left as written when
+    the person asked for an order."""
+    from app.services import deck
+
+    if _ORDER_ASK.search(mentioned or ""):
+        return new
+    olds = [(i, {(n, u) for n, u, _ in deck._shown_figures(s)}) for i, s in enumerate(old)
+            if i and s.get("layout") not in _FRAME_LAYOUTS]
+
+    def place(slide: dict) -> int | None:
+        mine = {(n, u) for n, u, _ in deck._shown_figures(slide)}
+        best = max(olds, key=lambda o: (len(mine & o[1]), -o[0]), default=None)
+        return best[0] if best is not None and len(mine & best[1]) >= 2 else None
+
+    out = list(new)
+    body = [j for j, s in enumerate(out) if j and s.get("layout") not in _FRAME_LAYOUTS]
+    for j in body:
+        if not _SUMMARY_TITLE.search(str(out[j].get("title") or "")):
+            continue
+        mine = place(out[j])
+        later = [i for i in body if i < j and mine is not None
+                 and (at := place(out[i])) is not None and at > mine]
+        if later:
+            out.insert(later[0], out.pop(j))
+            break
+    return out
+
+
+#: a figure with the checks' mark after it: 「95% (needs checking)」, 「1.5억 (확인 필요)」
+_MARKED_FIGURE = re.compile(
+    r"(\$?\d[\d,]{0,15}(?:\.\d{1,6})?(?:%p|%|[가-힣]{1,3}|[A-Za-z]{1,3})?)"
+    r" ?\((확인 필요|needs checking)\)")
+
+
+def _map_shown(slide: dict, fix) -> dict:
+    """`slide` with `fix` applied to every string the audience reads."""
+    from app.services import deck
+
+    def walk(value):
+        if isinstance(value, str):
+            return fix(value)
+        if isinstance(value, list):
+            return [walk(v) for v in value]
+        if isinstance(value, dict):
+            return {k: walk(v) for k, v in value.items()}
+        return value
+
+    return {k: v if k in deck._NOT_SHOWN or k == "chart" else walk(v)
+            for k, v in slide.items()}
+
+
+def carry_marks(new: list[dict], old: list[dict]) -> list[dict]:
+    """A figure the old deck showed only with the checks' mark (「95% (needs checking)」) keeps
+    the mark wherever the new deck still shows it."""
+    marked: dict[str, str] = {}
+    texts = [t for s in old for t in _shown_texts(s)]
+    for text in texts:
+        for m in _MARKED_FIGURE.finditer(text):
+            marked.setdefault(m.group(1), m.group(2))
+    bare = " ".join(_MARKED_FIGURE.sub(" ", t) for t in texts)
+    for figure in list(marked):
+        if re.search(rf"(?<![\w.,$]){re.escape(figure)}(?![\d.,%])", bare):
+            # shown without the mark too: which one stays is not known
+            del marked[figure]
+    if not marked:
+        return new
+    patterns = [(re.compile(rf"(?<![\w.,$]){re.escape(figure)}(?: ?원)?(?![\d.,%가-힣])"
+                            rf"(?! ?\((?:확인 필요|needs checking)\))"), mark)
+                for figure, mark in marked.items()]
+
+    def fix(text: str) -> str:
+        for pattern, mark in patterns:
+            text = pattern.sub(lambda m, mark=mark: f"{m.group(0)} ({mark})", text)
+        return text
+
+    return [_map_shown(s, fix) for s in new]
+
+
+#: words a point is said in, numbers aside
+_POINT_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{2,}")
+#: a period a figure names, not a value (「4분기」, 「2026년」)
+_PERIOD_UNITS = frozenset(("분기", "반기", "년", "월", "주차"))
+#: a short point, as a merge writes it
+_SHORT_POINT = 40
+
+
+def _values_of(text: str) -> set[tuple[str, str]]:
+    return {f for f in _figure_keys(text) if f[1] not in _PERIOD_UNITS}
+
+
+def keep_phrasing(new: list[dict], old: list[dict]) -> list[dict]:
+    """A short new point restating two or more values that one old point alone gave (with at
+    most one more), mostly in words that point does not use (「Blend $4 and $38 costs」 for
+    「Local wins on cost: $4 vs $38 per 1,000」), takes the old point back as written; a cut of
+    the old point's own words stays."""
+    from app.services import deck
+
+    points = list(dict.fromkeys(p for s in old for p in deck.points_of(s)))
+    for slide in new:
+        bullets = slide.get("bullets")
+        if not isinstance(bullets, list):
+            continue
+        for b, bullet in enumerate(bullets):
+            if not isinstance(bullet, str) or len(bullet) > _SHORT_POINT:
+                continue
+            mine = _values_of(bullet)
+            if len(mine) < 2:
+                continue
+            given = [p for p in points if mine <= (theirs := _values_of(p))
+                     and len(theirs - mine) <= 1]
+            if len(given) != 1 or given[0] == bullet or len(given[0]) > 80:
+                continue
+            mine_words = {w.lower() for w in _POINT_WORD.findall(bullet)}
+            shared = mine_words & {w.lower() for w in _POINT_WORD.findall(given[0])}
+            if len(shared) * 2 < len(mine_words):
+                bullets[b] = given[0]
+    return new
 
 
 def document_block(parts: list[str], texts: list[str]) -> str:
@@ -1525,17 +1903,25 @@ _NUMBERED_REMOVAL = re.compile(
     r"(?:빼|지워|지우|삭제|없애|제거)\S{0,6}"
     r"(?:\s{0,4}(?:줘|주세요|주십시오|해\s?줘|해\s?주세요|바랍니다))?")
 _NUMBERED_ITEM = re.compile(r"(표|그림)\s?(\d{1,3})(?![\d.])")
+#: the same asked in English: 「remove Table 2」, 「delete tables 2 and 3 and figure 1」
+_EN_NUMBERED = r"(?:[Tt]able|[Ff]igure)s?\s?\d{1,3}(?!\d|\.\d)"
+_EN_NUMBERED_REMOVAL = re.compile(
+    r"\b(?:remove|delete|drop|cut|take\s{1,3}out|get\s{1,3}rid\s{1,3}of)\s{1,3}(?:the\s{1,3})?"
+    rf"{_EN_NUMBERED}(?:\s{{0,3}}(?:,|and|&)\s{{1,3}}(?:the\s{{1,3}})?"
+    rf"(?:{_EN_NUMBERED}|\d{{1,3}}(?!\d|\.\d)))*", re.I)
+#: an English item; a bare number takes the word before it (「tables 2 and 3」)
+_EN_NUMBERED_ITEM = re.compile(r"(?:([Tt]able|[Ff]igure)s?\s?)?(\d{1,3})(?!\d|\.\d)")
 _REMOVAL_FILLER = frozenset({*_FILLER, "모두", "전부", "부탁드립니다", "해주세요", "주십시오",
-                             "바랍니다"})
+                             "바랍니다", "please", "also", "and", "the", "both", "all"})
 
 
 def _only_removal(clause: str) -> bool:
     """Whether taking numbered tables or figures away is all the clause asks (「표 2는 빼고
     그 내용은 글로 풀어 줘」 asks more: that is a rewrite's)."""
-    if not _NUMBERED_REMOVAL.search(clause):
+    if not _NUMBERED_REMOVAL.search(clause) and not _EN_NUMBERED_REMOVAL.search(clause):
         return False
-    rest = _SECTION_REF.sub(" ", _NUMBERED_REMOVAL.sub(" ", clause))
-    words = [_PARTICLE.sub("", w) for w in re.findall(r"[가-힣A-Za-z]{2,}", rest)]
+    rest = _SECTION_REF.sub(" ", _EN_NUMBERED_REMOVAL.sub(" ", _NUMBERED_REMOVAL.sub(" ", clause)))
+    words = [_PARTICLE.sub("", w).lower() for w in re.findall(r"[가-힣A-Za-z]{2,}", rest)]
     return not [w for w in words if len(w) > 1 and w not in _REMOVAL_FILLER]
 
 
@@ -1558,6 +1944,12 @@ def numbered_removals(instruction: str) -> list[tuple[str, int]]:
             for kind, n in _NUMBERED_ITEM.findall(m.group(0)):
                 if (kind, int(n)) not in out:
                     out.append((kind, int(n)))
+        for m in _EN_NUMBERED_REMOVAL.finditer(clause):
+            kind = ""
+            for written, n in _EN_NUMBERED_ITEM.findall(m.group(0)):
+                kind = captions.kind(written) if written else kind
+                if kind and (kind, int(n)) not in out:
+                    out.append((kind, int(n)))
     return out
 
 
@@ -1579,8 +1971,10 @@ def without_numbered_removals(instruction: str) -> str:
 
 _TABLE_RULE = re.compile(r"^\s{0,3}\|?\s{0,3}:?-{2,}")
 _PICTURE_LINE = re.compile(r"^\s*!\[(?P<alt>[^\]]{0,200})\]\([^)\s]+\)\s*$")
-_CAPTION_OF = {"표": re.compile(r"^\s{0,12}(?:\*\*)?\s?<?\s?표\s?(\d{1,3})\s?[.:：>*]"),
-               "그림": re.compile(r"^\s{0,12}[*_]{0,2}\s?그림\s?(\d{1,3})\s?[.:：*]")}
+_CAPTION_OF = {"표": re.compile(r"^\s{0,12}(?:\*\*)?\s?<?\s?" + captions.TABLE
+                               + r"\s?(\d{1,3})\s?[.:：>*]"),
+               "그림": re.compile(r"^\s{0,12}[*_]{0,2}\s?" + captions.FIGURE
+                                + r"\s?(\d{1,3})\s?[.:：*]")}
 _REFERENCE_PART = re.compile(r"참고\s?문헌|참고\s?자료|references|bibliography", re.I)
 
 
@@ -1649,8 +2043,10 @@ _SENTENCE_SPLIT = re.compile(r"(?<=[.!?。])\s+")
 
 def _drop_references(text: str, name: str) -> str:
     """Prose citing `name` (a table or figure taken away) without the citation: 「(표 2)」
-    goes, a sentence that is about it goes, 「표 2와 같이」 goes from its sentence."""
+    goes, a sentence that is about it goes, 「표 2와 같이」 goes from its sentence; in English
+    「(Table 2)」, 「See Table 2 for …」, 「as shown in Table 2」 likewise."""
     kind, n = name.split(" ", 1)
+    text = _drop_english_references(text, kind, n)
     num = rf"{kind}\s?{n}"
     if not re.search(rf"{num}(?![\d.])", text):
         return text
@@ -1676,6 +2072,41 @@ def _drop_references(text: str, name: str) -> str:
                 rf"(?:위|아래|다음)?\s?{num}(?:과|와|에서|에|을|를|의|처럼|로|으로)?\s?"
                 r"(?:같이|처럼|보듯이|보듯|나타낸 것처럼|정리한 것처럼|나타냈듯이)?\s?,?\s?", "",
                 sentence)
+            if sentence.strip():
+                kept.append(sentence.strip())
+        if kept:
+            out.append(lead + " ".join(kept))
+        elif not line.strip():
+            out.append(line)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
+
+
+def _drop_english_references(text: str, kind: str, n: str) -> str:
+    """`_drop_references` for an English document's 「Table 2」: the bracket goes, a sentence
+    that starts with it (「Table 2 lists …」, 「See Table 2 …」) goes, a phrase leading to it
+    (「, as shown in Table 2,」) goes from its sentence."""
+    num = rf"(?<![A-Za-z])(?i:{captions.word(kind, captions.EN)})\s?{n}(?!\d|\.\d)"
+    if not re.search(num, text):
+        return text
+    out = []
+    for line in text.split("\n"):
+        if line.lstrip().startswith(("|", "![", "```")) or _CAPTION_OF["표"].match(line) \
+                or _CAPTION_OF["그림"].match(line) or not re.search(num, line):
+            out.append(line)
+            continue
+        line = re.sub(rf"\s?\((?:see\s)?{num}\)", "", line, flags=re.I)
+        line = re.sub(rf"(\((?:[^()]{{0,40}}?))(?:,\s?){num}", r"\1", line)
+        line = re.sub(rf"\({num},\s?", "(", line)
+        lead = re.match(r"\s{0,24}(?:[-*+]\s{1,4})?", line).group(0)
+        kept = []
+        for sentence in _SENTENCE_SPLIT.split(line[len(lead):]):
+            if not re.search(num, sentence):
+                kept.append(sentence)
+                continue
+            if re.match(rf"\s{{0,2}}(?:(?i:see)\s{{1,2}}(?:also\s{{1,2}})?)?{num}", sentence):
+                continue  # about the gone table or figure
+            sentence = re.sub(rf",?\s?(?:(?:as\s)?[a-z]{{2,12}}\s)?(?:in|see|from|by)\s{num},?",
+                              "", sentence)
             if sentence.strip():
                 kept.append(sentence.strip())
         if kept:
@@ -1893,7 +2324,7 @@ _SHORTENS = re.compile(r"줄여|줄이|짧게|간추|요약|압축|\b(?:shorten|
 _NAME = re.compile(r"(?<![A-Za-z0-9])(?:[A-Z]{1,3}사|[A-Z][A-Z0-9&]{1,15}(?:-\d{1,3})?)"
                    r"(?![A-Za-z0-9])")
 #: a sentence's end: 「다.」, 「?」 (not the point in 「5.5%」)
-_SENTENCE_END = re.compile(r"[.!?。](?=[\s\"'」』”’)\]]|$)")
+_SENTENCE_END = re.compile(r"(?<![^A-Za-z][Vv][Ss])[.!?。](?=[\s\"'」』”’)\]]|$)")
 
 
 def sentences_asked(clause: str) -> tuple[int, bool]:
@@ -1909,6 +2340,8 @@ def sentences_asked(clause: str) -> tuple[int, bool]:
     return count, bool(m.group("most"))
 
 
+#: a list row's marker: 「- 」, 「1. 」
+_LIST_ROW = re.compile(r"\s{0,8}(?:[-*•·]|\d{1,2}[.)])\s")
 #: a line that is not prose: a caption (「표 2. 진행 사항」), a bold label, a list row
 _NOT_PROSE = re.compile(r"(?:표|그림|table|figure)\s?\d{1,3}\s?[.:)]|\*\*[^*\n]{1,200}\*\*$"
                         r"|(?:[-*•·]|\d{1,2}[.)])\s", re.I)
@@ -1916,17 +2349,26 @@ _NOT_PROSE = re.compile(r"(?:표|그림|table|figure)\s?\d{1,3}\s?[.:)]|\*\*[^*\
 
 def sentence_count(text: str) -> int:
     """Sentences of a part's prose: each end mark, and a line that stops without one; tables,
-    captions, list rows and blocks are not sentences."""
+    captions, list rows and blocks are not sentences. A part written as a list only (개조식)
+    counts its top-level rows that way instead."""
     text = re.sub(r"```[\s\S]*?(?:```|\Z)|<[^<>]{0,2000}>|!\[[^\]]*\]\([^)]*\)", " ", text or "")
-    count = 0
-    for line in (raw.strip() for raw in text.splitlines()):
-        if not line or line.startswith(("|", "#")) or _NOT_PROSE.match(line):
-            continue
+
+    def said(line: str) -> int:
         line = line.replace("**", "")
-        ends = _SENTENCE_END.findall(line)
         last = line.rstrip("\"'」』”’)] ")[-1:]
-        count += len(ends) + (0 if last in ".!?。" else 1)
-    return count
+        return len(_SENTENCE_END.findall(line)) + (0 if last in ".!?。" else 1)
+
+    prose = rows = 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("|", "#")):
+            continue
+        row = _LIST_ROW.match(raw)
+        if row:
+            rows += said(raw[row.end():]) if raw[:1] not in " \t" else 0
+        elif not _NOT_PROSE.match(line):
+            prose += said(line)
+    return prose or rows
 
 
 def _whole_text(text: str) -> str:
@@ -1958,7 +2400,189 @@ def lost_facts(old: str, new: str) -> list[str]:
     lost = [f[2] for f in deck.figures_in(_whole_text(old))
             if not deck.figure_kept(f, shown, amounts)]
     old_names = dict.fromkeys(_NAME.findall(_whole_text(old)))
-    return lost + [n for n in old_names if n not in names]
+    # a weekday written short counts too: 「| 목 |」, 「(목)」
+    days = [*_named_days(plain), *(("", d) for d in _SHORT_DAY.findall(plain))]
+    gone = [said for key, said in _named_days(_whole_text(old)).items()
+            if not any(_same_day(key, have) for have in days)]
+    out = lost + [n for n in old_names if n not in names] + gone + _lost_done(old, plain)
+    return _with_caveats(out, old, new)
+
+
+#: a word that says a figure is not settled: 「확정된 사실이 아닙니다」, 「추정」, 「(확인 필요)」
+_HEDGE = re.compile(
+    r"미확정|확정(?:된|되지|이)?\s?(?:[가-힣]{1,4}(?:은|는|이)\s?)?(?:아니|아닙|아님|아닌|않)"
+    r"|확정(?:되기)?\s?전(?:[이에까인입]|(?![가-힣]))|미정(?![산리])|미결(?![제산재])"
+    r"|(?:결정|정해)(?:되|지)지\s?않"
+    r"|미확인|확인(?:되지|이)?\s?(?:않|필요)|확인(?:해야|할\s?필요|요망)"
+    r"|추정|추산|잠정|예상|전망|가능성"
+    r"|것으로\s?(?:파악|알려|보이|보입|전해)"
+    r"|\b(?:unconfirmed|not\s(?:yet\s)?confirmed|unverified|estimated?|projected|expected"
+    r"|tentative|preliminary|reportedly|needs\s(?:checking|confirmation)|to\sbe\sconfirmed)\b",
+    re.I)
+#: the label a hedge is named by, the strongest first
+_HEDGE_LABELS = (("확정", "확정 아님"), ("미정", "확정 아님"), ("미결", "확정 아님"),
+                 ("결정", "확정 아님"), ("정해", "확정 아님"), ("미확인", "미확인"),
+                 ("확인되지", "미확인"),
+                 ("확인", "확인 필요"), ("추", "추정"), ("잠정", "잠정"), ("예상", "예상"),
+                 ("전망", "예상"), ("가능성", "가능성"), ("것으로 파", "파악됨"),
+                 ("것으로파", "파악됨"), ("것으로", "추정"))
+#: a clause that speaks of the one before: 「다만 해당 단가는 …」, 「This is …」
+_REFERS_BACK = re.compile(
+    r"(?:다만|단,|하지만|그러나|이는|이\s|그\s|해당|\b(?:however|but|this|these|that)\b)", re.I)
+#: where one clause ends and the next begins: a sentence's end, 「…했으며, 」, 「…있고, 」
+_CLAUSE_END = re.compile(r"(?<=[.!?。])\s|(?<=며),\s|(?<=고),\s|(?<=나),\s|(?<=지만),\s")
+
+
+def _hedge_label(word: str) -> str:
+    if word.isascii():
+        return " ".join(word.lower().split())
+    return next((label for start, label in _HEDGE_LABELS if start in word[:6]), word)
+
+
+def _clauses(text: str) -> list[str]:
+    """A part's clauses in order: each table row, list item and caption, its prose split at
+    sentence ends and clause joints; blocks and pictures out."""
+    text = re.sub(r"```[\s\S]*?(?:```|\Z)|<[^<>]{0,2000}>|!\[[^\]]*\]\([^)]*\)", " ", text or "")
+    out = []
+    for line in text.splitlines():
+        line = line.strip().replace("**", "")
+        if not line or re.fullmatch(r"[|:\- ]{3,}", line):
+            continue
+        if line.startswith("|"):
+            out.append(line.replace("|", " "))
+            continue
+        out += [c for c in _CLAUSE_END.split(line) if c.strip()]
+    return out
+
+
+def _subjects(clause: str) -> tuple[list[tuple[str, str, str]], list[str]]:
+    from app.services import deck
+
+    return deck.figures_in(clause), list(dict.fromkeys(_NAME.findall(clause)))
+
+
+def _hedged(text: str) -> list[tuple[list[tuple[str, str, str]], list[str], str]]:
+    """`(figures, names, label)` for each hedge in `text` and what it qualifies: the figures
+    and names of its clause, or of the clause before when its own has none (「A사가 4% 낮은
+    단가를 제시했습니다. 다만 확정된 사실은 아닙니다.」)."""
+    out: dict[tuple, tuple] = {}
+    clauses = _clauses(text)
+    for i, clause in enumerate(clauses):
+        hedges = list(_HEDGE.finditer(clause))
+        if not hedges:
+            continue
+        words = [m.group(0) for m in hedges]
+        # a hedge qualifies what its own stretch says, never what a later one names
+        # (「물류팀 확인이 필요한 상태로, CRM 병합은 다음 주」)
+        joint = clause.find(", ", hedges[-1].end())
+        figures, names = _subjects(clause if joint < 0 else clause[:joint])
+        if not figures and not names and i and _REFERS_BACK.match(clause.strip()[:12]):
+            figures, names = _subjects(clauses[i - 1])
+        if not figures and not names:
+            continue
+        key = (tuple(f[:2] for f in figures), tuple(names))
+        labels = [_hedge_label(w) for w in words]
+        if key in out:
+            labels = [out[key][2], *labels]
+        order = [label for _, label in _HEDGE_LABELS]
+        best = min(labels, key=lambda x: order.index(x) if x in order else len(order))
+        out[key] = (figures, names, best)
+    return list(out.values())
+
+
+def _states(figures: list[tuple[str, str, str]], names: list[str], text: str) -> bool:
+    """Whether `text` states what a hedge qualifies: its names when it has any (「A사」 says
+    more than a 「4%」 found elsewhere), else one of its figures."""
+    from app.services import deck
+
+    if names:
+        return all(n in _NAME.findall(text) for n in names)
+    shown, amounts = deck.figures_in(text), deck.amounts_in(text)
+    return any(deck.figure_kept(f, shown, amounts) for f in figures)
+
+
+def _still_hedged(figures: list[tuple[str, str, str]], names: list[str], new: str) -> bool:
+    """Whether a clause of `new` that states one of the figures or names is still hedged, in
+    itself or by the clause after it."""
+    clauses = _clauses(new)
+    for i, clause in enumerate(clauses):
+        if not _states(figures, names, clause):
+            continue
+        after = clauses[i + 1] if i + 1 < len(clauses) else ""
+        if _HEDGE.search(clause) or _HEDGE.search(after) and not any(_subjects(after)):
+            return True
+    return False
+
+
+def _with_caveats(lost: list[str], old: str, new: str) -> list[str]:
+    """`lost` with the hedges `old` puts on a figure or name (「A사 4%는 확정 아님」) that `new`
+    drops: a figure still stated without it is named with its mark (「A사 4%의 「확정 아님」
+    표시」), one gone altogether carries the mark in the list (「A사(확정 아님)」)."""
+    plain = _whole_text(new)
+    out = list(lost)
+    for figures, names, label in _hedged(old):
+        if _still_hedged(figures, names, new):
+            continue
+        said = [*names, *(f[2] for f in figures)][:4]
+        english = label.isascii()
+        if _states(figures, names, plain):
+            item = (f"the '{label}' mark on {' '.join(said)}" if english
+                    else f"{' '.join(said)}의 「{label}」 표시")
+            out = [x for x in out if x not in said] + [item]
+        else:
+            # the name carries the mark when there is one: a bare 「4%」 may be another 4%
+            marked = names or said
+            out = [f"{x} ({label})" if english and x in marked else f"{x}({label})"
+                   if x in marked else x for x in out]
+    return list(dict.fromkeys(out))
+
+
+#: a thing said done or settled: 「처리를 완료했습니다」, 「일정이 확정되었습니다」; not one still
+#: to come (「확정되는 대로」, 「마무리할 예정」)
+_DONE = re.compile(r"(?<![\d.,])([가-힣]{2,8}) ?(완료|마무리|확정|결정|합의|승인|체결|타결)"
+                   r"(?=했|하였|됐|되었)")
+
+
+def _lost_done(old: str, new: str) -> list[str]:
+    """What `old` says was done or settled (「처리 완료」) that `new` says nowhere, neither the
+    thing nor its being done."""
+    out = []
+    for m in _DONE.finditer(_whole_text(old)):
+        noun = _PARTICLE.sub("", m.group(1))
+        if len(noun) >= 2 and m.group(2) not in new and noun not in new:
+            out.append(f"{noun} {m.group(2)}")
+    return list(dict.fromkeys(out))
+
+
+#: a day named without a date: 「다음 주 수요일」, 「이번 주」, 「내일」, 「next Wednesday」
+_NAMED_DAY = re.compile(
+    r"(?<![가-힣])(?:(다음|이번|지난|다다음)\s?주|(차|금)주)(?:\s{0,2}([월화수목금토일])요일)?"
+    r"|(?<![가-힣])([월화수목금토일])요일|(?<![가-힣])(내일|모레)"
+    r"|\b(?:(next|this|last)\s{1,2})?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"
+    r"|\b(next|this|last)\s{1,2}(week|month)\b|\b(tomorrow)\b", re.I)
+_WEEK_SAME = {"차": "다음", "금": "이번"}
+_SHORT_DAY = re.compile(r"(?<![가-힣])([월화수목금토일])(?![가-힣])")
+
+
+def _named_days(text: str) -> dict[tuple[str, str], str]:
+    """`(week, day)` of each day `text` names without a date, as written: 「다음 주 수요일」 →
+    `("다음", "수")`, 「수요일」 → `("", "수")`, 「next week」 → `("next", "week")`."""
+    out: dict[tuple[str, str], str] = {}
+    for m in _NAMED_DAY.finditer(text or ""):
+        g = m.groups()
+        week = (g[0] or _WEEK_SAME.get(g[1] or "", "") or g[5] or g[7] or "").lower()
+        day = (g[2] or g[3] or g[4] or g[6] or g[8] or g[9] or "").lower()
+        out.setdefault((week, day), m.group(0))
+    return out
+
+
+def _same_day(said: tuple[str, str], have: tuple[str, str]) -> bool:
+    """Whether a day the part named is still named: the same day, its week the same or left
+    unsaid (「수요일」 for 「다음 주 수요일」)."""
+    week, day = said
+    if day:
+        return have[1] == day and have[0] in (week, "")
+    return have[0] == week
 
 
 def added_facts(old: str, new: str, given: str = "") -> list[str]:
@@ -2019,9 +2643,10 @@ def without_added_dates(old: str, new: str) -> str:
 
 #: a sentence that points at the part's table or figure: 「표와 같습니다(표 1).」
 _TABLE_POINTER = re.compile(r"(?<![가-힣])(?:표|그림)\s?(\d{1,2})(?!\d)"
-                      r"|(?:위|아래|다음)\s?(?:의\s?)?(?:표|그림)|(?<![가-힣])(?:표|그림)(?:와|과)\s?같")
-#: the caption of a part's table or figure: 「**표 1. 주요 업무」
-_CAPTION_NUMBER = re.compile(r"(?m)^\s{0,3}\*{0,2}(표|그림)\s?(\d{1,2})\s?[.:]")
+                      r"|(?:위|아래|다음)\s?(?:의\s?)?(?:표|그림)|(?<![가-힣])(?:표|그림)(?:와|과)\s?같"
+                      r"|(?<![A-Za-z])(?:Table|Figure)\s?\d{1,2}(?!\d)")
+#: the caption of a part's table or figure: 「**표 1. 주요 업무」, 「**Table 1. Tasks」
+_CAPTION_NUMBER = re.compile(r"(?m)^\s{0,3}\*{0,2}(표|그림|Table|Figure)\s?(\d{1,2})\s?[.:]")
 #: the end of a sentence, citations before it: 「 [1].」
 _SENTENCE_TAIL = re.compile(r"(?:\s?\[\d{1,3}(?:[,\-–]\s?\d{1,3})*\])*[.!?。]$")
 
@@ -2054,7 +2679,7 @@ def fold_table_pointers(text: str, want: int) -> str:
             block = not block
             continue
         if (block or not stripped or stripped.startswith(("|", "#"))
-                or _NOT_PROSE.match(stripped)):
+                or _NOT_PROSE.match(stripped) or _PICTURE_LINE.match(stripped)):
             continue
         sentences[i] = re.split(r"(?<=[.!?。])\s+", stripped)
         kept: list[str] = []
@@ -2068,7 +2693,8 @@ def fold_table_pointers(text: str, want: int) -> str:
                 end = len(last) - 40 if len(last) > 40 else 0
                 if ref and ref not in last and (tail := _SENTENCE_TAIL.search(last[end:])):
                     cut = end + tail.start()
-                    target[j] = f"{last[:cut]}({ref}){last[cut:]}"
+                    head = last[:cut].rstrip() if captions.in_english(ref) else last[:cut]
+                    target[j] = f"{head}{captions.pointer(ref)}{last[cut:]}"
                 over -= 1
                 continue
             kept.append(sent)
@@ -2123,10 +2749,96 @@ def shortening_faults(old: str, new: str, asked: str, given: str = "") -> list[s
     return faults
 
 
+#: a polite sentence ending and the joining form of the same verb: 「필요합니다.」 ↔ 「필요하며,」
+_JOINED_FORM = (("했습니다", "했으며"), ("였습니다", "였으며"), ("었습니다", "었으며"),
+                ("았습니다", "았으며"), ("있습니다", "있으며"), ("없습니다", "없으며"),
+                ("합니다", "하며"), ("입니다", "이며"), ("됩니다", "되며"))
+#: a clause joined in the middle of a sentence: 「…필요하며, 」, 「…있고, 」
+_JOINED_AT = re.compile(r"(했|였|었|았|있|없|하|이|되)(?:으며|며|고), ")
+_JOINED_STEM = {"했": "했습니다", "였": "였습니다", "었": "었습니다", "았": "았습니다",
+                "있": "있습니다", "없": "없습니다", "하": "합니다", "이": "입니다", "되": "됩니다"}
+
+
+def _join_two(first: str, second: str) -> str | None:
+    """「A합니다.」 and 「B」 as 「A하며, B」; None when `first` does not end so."""
+    for ending, joined in _JOINED_FORM:
+        if first.endswith(f"{ending}."):
+            return f"{first[:-len(ending) - 1]}{joined}, {second}"
+    return None
+
+
+def _split_one(sentence: str) -> str | None:
+    """「A하며, B」 as 「A합니다. B」 at the joint nearest its middle; None when it has none."""
+    joints = [m for m in _JOINED_AT.finditer(sentence)
+              if m.start() > 8 and len(sentence) - m.end() > 8]
+    if not joints:
+        return None
+    m = min(joints, key=lambda j: abs(j.end() - len(sentence) / 2))
+    return f"{sentence[:m.start()]}{_JOINED_STEM[m.group(1)]}. {sentence[m.end():]}"
+
+
+def _prose_line(line: str) -> bool:
+    stripped = line.strip()
+    return bool(stripped) and not (stripped.startswith(("|", "#", "!", "```", "**"))
+                                   or _NOT_PROSE.match(stripped))
+
+
+def fit_count(text: str, want: int) -> str:
+    """`text` brought to `want` sentences by joining or splitting at a clause joint (「…필요하며,
+    …」 ↔ 「…필요합니다. …」), nothing reworded; as it was when that does not get there."""
+    lines = (text or "").split("\n")
+    split = re.compile(r"(?<=[.!?。])\s+")
+    for _ in range(4):
+        got = sentence_count("\n".join(lines))
+        if not want or got == want:
+            break
+        prose = [i for i, line in enumerate(lines) if _prose_line(line)]
+        said = {i: split.split(lines[i].strip()) for i in prose}
+        if got > want:
+            # the shortest neighbouring pair: in one paragraph, or two with only blanks between
+            pairs = [(len(a) + len(b), i, k, i) for i in prose
+                     for k, (a, b) in enumerate(zip(said[i], said[i][1:], strict=False))
+                     if _join_two(a, b)]
+            pairs += [(len(said[i][-1]) + len(said[j][0]), i, len(said[i]) - 1, j)
+                      for i, j in zip(prose, prose[1:], strict=False)
+                      if not any(x.strip() for x in lines[i + 1:j])
+                      and _join_two(said[i][-1], said[j][0])]
+            if not pairs:
+                break
+            _, i, k, j = min(pairs)
+            if i == j:
+                said[i][k:k + 2] = [_join_two(said[i][k], said[i][k + 1])]
+                lines[i] = " ".join(said[i])
+            else:
+                said[i][-1] = _join_two(said[i][-1], said[j][0])
+                lines[i] = " ".join(said[i] + said[j][1:])
+                del lines[i + 1:j + 1]
+        else:
+            longest = max(((len(sent), i, k) for i in prose for k, sent in enumerate(said[i])),
+                          default=None)
+            if longest is None or (cut := _split_one(said[longest[1]][longest[2]])) is None:
+                break
+            _, i, k = longest
+            said[i][k] = cut
+            lines[i] = " ".join(said[i])
+    out = "\n".join(lines)
+    return out if sentence_count(out) == want else text
+
+
 def count_met(text: str, want: int, most: bool = False) -> bool:
     """Whether the part has the sentence count asked (at most `want` for 「이내」)."""
     got = sentence_count(text)
     return got <= want if most else got == want
+
+
+def better_shortening(old: str, first: str, second: str, asked: str, given: str = "") -> bool:
+    """Whether the `first` shortening of `old` answers the ask better than the `second`: the
+    sentence count asked first (a fact it leaves out is said in the reply), then fewer misses."""
+    want, most = sentences_asked(asked)
+    if want and count_met(first, want, most) != count_met(second, want, most):
+        return count_met(first, want, most)
+    return shortening_misses(old, second, asked, given) > shortening_misses(old, first, asked,
+                                                                             given)
 
 
 def shortening_misses(old: str, new: str, asked: str, given: str = "") -> int:
@@ -2144,7 +2856,8 @@ _PREAMBLE = re.compile(
     r"절입니다|내용입니다)|[^\n]{0,80}?요청하신\s?대로[^\n]{0,80}?(?:입니다|습니다)[.:]?\s{0,2}$"
     r"|(?:here\s+is|below\s+is)\b[^\n]{0,120}?\b(?:shortened|revised|rewritten|version|section)"
     r")", re.I)
-_NUMBERED_REF = re.compile(r"(?<![가-힣])(표|그림)\s?(\d{1,2})(?!\d)")
+_NUMBERED_REF = re.compile(
+    r"((?<![가-힣])(?:표|그림)|(?<![A-Za-z])(?:Table|Figure))\s?(\d{1,2})(?!\d)")
 
 
 def without_preamble(text: str) -> str:
@@ -2190,7 +2903,7 @@ def drift_faults(old: str, new: str, others: list[str]) -> list[str]:
     numbered = {(kind, n) for text in (new, *others) for kind, _, _, n in _blocks_in(text)
                 if n is not None}
     if missing := sorted({f"{k} {n}" for k, n in _NUMBERED_REF.findall(new)
-                          if (k, int(n)) not in numbered}):
+                          if (captions.kind(k), int(n)) not in numbered}):
         faults.append("It cites " + ", ".join(missing) + ", which the document does not have")
     return faults
 

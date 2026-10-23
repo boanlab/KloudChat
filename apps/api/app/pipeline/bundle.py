@@ -216,12 +216,17 @@ class Document:
     original: list[str] = field(default_factory=list)
     #: revision: figures a slide showed that its rewrite left out (「4장 64%, 91%」)
     dropped: list[str] = field(default_factory=list)
+    #: restructure: the deck's slides before it, for what the new deck no longer shows
+    before: list[dict[str, Any]] = field(default_factory=list)
     #: revision: parts shortened to another sentence count than asked (part number, asked,
     #: written)
     counted: list[tuple[int, int, int]] = field(default_factory=list)
     #: revision: parts kept as they were because they already had the sentence count asked
     #: (part number, asked)
     already: list[tuple[int, int]] = field(default_factory=list)
+    #: revision: slides asked to join or split items kept as they were, holding no list of
+    #: items or already the count asked (slide number, items held, the figure drawn instead)
+    unlisted: list[tuple[int, int, str]] = field(default_factory=list)
     #: revision: figures a shortened part states that neither it nor the material did
     #: (「2절 13일」)
     added: list[str] = field(default_factory=list)

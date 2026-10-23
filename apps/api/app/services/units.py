@@ -13,8 +13,9 @@ _LABEL_SPOT = re.compile(
 )
 _CELL_NUMBER = re.compile(r"^\**\s{0,2}(-?\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}\**$")
 
-#: zero-width after sentence marks, never inside dotted dates/number runs
-NO_NUMBER_DOT_BREAK = r"(?!(?<=\d\.)\s{0,8}[\d(])(?<!\d\.\s\d\.)(?<!\d\.\s\d\d\.)"
+#: zero-width after sentence marks, never inside dotted dates/number runs nor after 「vs.」
+NO_NUMBER_DOT_BREAK = (r"(?!(?<=\d\.)\s{0,8}[\d(])(?<!\d\.\s\d\.)(?<!\d\.\s\d\d\.)"
+                       r"(?<![^A-Za-z][Vv][Ss]\.)")
 #: sentence-ending whitespace outside dotted runs
 SENTENCE_BREAK = re.compile(r"(?<=[.!?。])" + NO_NUMBER_DOT_BREAK + r"\s+")
 
@@ -486,9 +487,12 @@ def _evaluate(lhs: str) -> float | None:
             break
         if m.group("num") is not None:
             try:
-                tokens.append(_ko_number(m.group("num")))
+                number = _ko_number(m.group("num"))
             except ValueError:
                 return None
+            # a rate is a hundredth: 「× (1 - 5%)」
+            tokens.append(number / 100 if m.group(0)[m.end("num") - m.start():].lstrip()
+                          .startswith("%") else number)
         else:
             tokens.append({"x": "×", "*": "×", "−": "-"}.get(m.group("op"), m.group("op")))
         pos = m.end()

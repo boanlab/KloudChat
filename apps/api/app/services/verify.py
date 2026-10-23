@@ -29,6 +29,8 @@ Rules:
 - Do not make up names, dates, amounts or figures that are not in the material; rewrite the
   sentence so it holds without them (a table cell: 「미정」). Keep existing bracket blanks
   as they are.
+- Answer each item with the fixed sentence alone, as it will stand in the document: no
+  note on what you changed, left out or why.
 - If you judge the finding wrong (e.g. the sentence is about a different case), answer
   with the original sentence unchanged.
 
@@ -153,6 +155,64 @@ def _acceptable(old: str, new: str, finding: Finding) -> bool:
     return not (finding.still and finding.still(new))
 
 
+#: a blank for the person to fill: 「[회의 일자]」, 「[담당자]」
+_BLANK = re.compile(r"\[[^\[\]\n\d]{1,20}\]")
+
+
+def restates(new: str, old: str, rest: str) -> bool:
+    """A repair that keeps no word of the sentence it fixes and says only what the rest of the
+    section says (「자료에 명시된 예정 안건은 없고, 일정·장소만 기재합니다」 → 「다음 회의는 10/21
+    화 10시 3층 회의실입니다」 beside 「10/21 10시, 3층 회의실에서 열립니다」)."""
+    said = {w[:2] for w in _stems(new)}
+    return len(said) >= 3 and not said & {w[:2] for w in _stems(old)} \
+        and said <= {w[:2] for w in _stems(rest)}
+
+
+_PARTICLE_HEAD = re.compile(r"^(?:에서|에는|에|은|는|이|가|을|를|의|으로|로|와|과)")
+
+
+def filled_twin(new: str, content: str) -> str | None:
+    """The sentence of `content` that `new` restates with a blank filled: 「[회의 일자]에 3층
+    회의실에서 … 열었습니다.」 for 「2026년 10월 14일 3층 회의실에서 … 열었습니다.」; the
+    words around each blank the same, a value of at most 30 letters in its place."""
+    from app.services import units
+
+    target = re.sub(r"\s+", "", new or "").rstrip(".!?")
+    if not target or _BLANK.search(new):
+        return None
+    for sentence in units.SENTENCE_BREAK.split(content or ""):
+        sentence = sentence.strip()
+        if sentence.startswith("|") or not _BLANK.search(sentence):
+            continue
+        parts = [re.sub(r"\s+", "", p) for p in _BLANK.split(sentence.rstrip(".!? "))]
+        # a blank's particle may go with it: 「[회의 일자]에 3층 …」 → 「… 14일 3층 …」
+        parts = parts[:1] + [p if target.find(p) > 0 else _PARTICLE_HEAD.sub("", p, count=1)
+                             for p in parts[1:]]
+        if sum(len(p) for p in parts) < 12 or not target.startswith(parts[0]) \
+                or not target.endswith(parts[-1]):
+            continue
+        at, end, ok = len(parts[0]), len(target) - len(parts[-1]), True
+        for k, part in enumerate(parts[1:], start=1):
+            found = end if k == len(parts) - 1 else target.find(part, at + 1)
+            if found < 0 or found > end or not 0 < found - at <= 30:
+                ok = False
+                break
+            at = found + len(part)
+        if ok:
+            return sentence
+    return None
+
+
+def _stems(text: str) -> set[str]:
+    out = set()
+    for word in re.findall(r"[가-힣A-Za-z0-9]{2,}", text or ""):
+        word = re.sub(r"(?:으로|에서|에게|까지|부터|은|는|이|가|을|를|에|의|과|와|로|도|만)$", "",
+                      word)
+        if len(word) >= 2:
+            out.add(word.lower())
+    return out
+
+
 #: keys a repair reply puts its fixed sentence under when it answers objects, not strings
 _SENTENCE_KEYS = ("sentence", "fixed", "revised", "new", "text", "corrected")
 
@@ -232,7 +292,17 @@ async def repair(
             new = clean(new.strip().strip("「」"))
             # a fix keeps the document's 합니다체 (no 「…대상으로 한다.」 in a notice)
             new = keep_register(finding.sentence, new) or ""
-            if new != finding.sentence and _acceptable(finding.sentence, new, finding):
+            if new and _acceptable(finding.sentence, new, finding) \
+                    and (twin := filled_twin(new, content.replace(finding.sentence, "", 1))):
+                # the fix fills another sentence's blank (「[회의 일자]에 …」 → 「2026년 10월
+                # 14일 …」): that sentence takes it, and this one stands unrepaired
+                content = content.replace(twin, new, 1)
+                left.append(finding)
+                log.info("repair of [%s] filled the blank it restates in %r", finding.code,
+                         out[index].get("heading"))
+            elif new != finding.sentence and _acceptable(finding.sentence, new, finding) \
+                    and not restates(new, finding.sentence,
+                                     content.replace(finding.sentence, "", 1)):
                 content = content.replace(finding.sentence, new, 1)
                 log.info("repaired [%s] in %r", finding.code, out[index].get("heading"))
             else:

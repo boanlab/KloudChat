@@ -13,11 +13,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from app.services import captions
+
 _RULE = re.compile(r"^\s{0,8}\|?\s{0,8}:?-{2,}:?\s{0,8}(?:\|\s{0,8}:?-{2,}:?\s{0,8})*\|?\s*$")
-_CAPTION = re.compile(r"^\s{0,3}\*\*표\s?\d{1,3}(?:\.[^*\n]{0,200})?\*\*\s*$")
+_CAPTION = re.compile(r"^\s{0,3}\*\*" + captions.TABLE + r"\s?\d{1,3}(?:\.[^*\n]{0,200})?\*\*\s*$")
 #: a stray 「표: …」 / 「표 2: …」 label line
-_LABEL = re.compile(r"^\s{0,3}표\s?\d{0,3}\s?[:：]\s?\S")
-_NOT_ROW = ("#", ">", "!", "```", "**표", "*그림")
+_LABEL = re.compile(r"^\s{0,3}" + captions.TABLE + r"\s?\d{0,3}\s?[:：]\s?\S")
+_NOT_ROW = ("#", ">", "!", "```", "**표", "*그림", "**Table", "*Figure")
 _LIST = re.compile(r"^(?:[-*•·]|\d{1,2}[.)])\s+")
 
 
@@ -266,10 +268,10 @@ def _anchor(lines: list[str], name: str) -> tuple[int, str] | None:
 
 
 def cite(body: str, name: str, heading: str = "", *, gaejo: bool = False) -> str:
-    """`body` naming `name` (「표 2」, 「그림 1」): 「(표 2)」 at the end of the line right above
-    the block when that is a sentence or list item, else a short lead line before it
-    (「할 일 목록은 표 2와 같습니다.」; 「…같음」 in a 개조식 document). Unchanged when the block
-    is not in `body`."""
+    """`body` naming `name` (「표 2」, 「그림 1」, 「Table 2」): 「(표 2)」 at the end of the line
+    right above the block when that is a sentence or list item, else a short lead line before
+    it (「할 일 목록은 표 2와 같습니다.」; 「…같음」 in a 개조식 document; 「See Table 2 for Action
+    Items.」 for an English name). Unchanged when the block is not in `body`."""
     lines = (body or "").split("\n")
     found = _anchor(lines, name)
     if found is None:
@@ -279,14 +281,20 @@ def cite(body: str, name: str, heading: str = "", *, gaejo: bool = False) -> str
     while k >= 0 and not lines[k].strip():
         k -= 1
     above = lines[k].rstrip() if k >= 0 else ""
-    if above and not re.match(r"^\s*(?:\||#|>|!\[|\*\*표|\*그림|```|※)", above) \
+    if above and not re.match(r"^\s*(?:\||#|>|!\[|\*\*" + captions.TABLE + r"|\*"
+                              + captions.FIGURE + r"|```|※)", above) \
             and not _RULE.match(above) and not above.endswith((":", "：")):
         m = re.search(r"([.!?。])$", above)
-        lines[k] = f"{above[:m.start()]}({name}){m.group(1)}" if m else f"{above}({name})"
+        head = above[:m.start()] if m else above
+        cited = (head.rstrip() if captions.in_english(name) else head) + captions.pointer(name)
+        lines[k] = cited + (m.group(1) if m else "")
         return "\n".join(lines)
     title = re.sub(r"\s?[(（][^)）]{0,40}[)）]\s*$", "", title).strip(" .:")
     title = title or re.sub(r"^\s*(?:[\dⅠ-Ⅻ]{1,3}[.)]|[가-하][.)])\s*", "",
                             heading or "").strip(" *#")
+    if captions.in_english(name):
+        lines[at:at] = [captions.lead(name, title), ""]
+        return "\n".join(lines)
     with_ = "과" if name[-1] in _CLOSED_DIGITS else "와"
     closed = _closed(title)
     topic = f"{title}{'은' if closed else '는'}" if closed is not None else f"{title}은(는)"

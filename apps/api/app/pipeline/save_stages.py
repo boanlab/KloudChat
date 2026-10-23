@@ -10,7 +10,7 @@ from app.pipeline import marks as doc_marks
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle
 from app.pipeline.stage import Base, Context
-from app.services import output_language
+from app.services import captions, output_language
 
 log = logging.getLogger("app.routers.sessions")
 
@@ -102,8 +102,9 @@ def _en_item(item: str) -> str:
         return f"the {m.group(1)}-line summary"
     if m := re.fullmatch(r"(\d{1,3})장 (.+?)(?:으로|로) 바꾸기", item):
         return f"slide {m.group(1)} as a {_EN_THINGS.get(m.group(2), m.group(2))}"
-    if m := re.fullmatch(r"(\d{1,3})장 항목 합치기", item):
-        return f"joining the items on slide {m.group(1)}"
+    if m := re.fullmatch(r"(\d{1,3})장 항목 (합치기|나누기)", item):
+        return f"{'joining' if m.group(2) == '합치기' else 'splitting'} the items on slide " \
+            f"{m.group(1)}"
     if m := re.fullmatch(r"(\d{1,3})장 (그림|차트) 빼기", item):
         return f"removing the {_EN_THINGS[m.group(2)]} on slide {m.group(1)}"
     return item
@@ -136,6 +137,8 @@ def _english_reply(document: Any, summary: int, touched: list[int], is_deck: boo
                     f"{asked} asked.")
     if already := getattr(document, "already", []):
         said.append(already_said(already, english=True))
+    if unlisted := getattr(document, "unlisted", []):
+        said.append(unlisted_said(unlisted, english=True))
     for added in getattr(document, "added", []):
         at, _, values = added.partition(" ")
         said.append(f"Section {at[:-1]} now states {values}, which the section and the "
@@ -155,6 +158,24 @@ def already_said(already: list[tuple[int, int]], *, english: bool = False) -> st
                         ", so it was kept as it was." for part, asked in already)
     return " ".join(f"{part}절은 이미 {asked}문장이어서 그대로 두었습니다."
                     for part, asked in already)
+
+
+def unlisted_said(unlisted: list[tuple[int, int, str]], *, english: bool = False) -> str:
+    """「5장에는 합치거나 나눌 항목 목록이 없어 그대로 두었습니다.」 / 「6장은 항목 목록 없이
+    흐름도만 있어 …」 / 「7장은 이미 항목이 2개여서 …」 for slides asked to join or split items
+    kept as they were."""
+    if english:
+        return " ".join(
+            f"Slide {n} shows only a figure, no list of items to join or split, so it was kept "
+            "as it was." if not held and drawn else
+            f"Slide {n} has no list of items to join or split, so it was kept as it was."
+            if not held else f"Slide {n} already has {held} item{'s' if held != 1 else ''}, "
+            "so it was kept as it was." for n, held, drawn in unlisted)
+    return " ".join(f"{n}장은 항목 목록 없이 {drawn}만 있어 그대로 두었습니다."
+                    if not held and drawn else
+                    f"{n}장에는 합치거나 나눌 항목 목록이 없어 그대로 두었습니다." if not held
+                    else f"{n}장은 이미 항목이 {held}개여서 그대로 두었습니다."
+                    for n, held, drawn in unlisted)
 
 
 def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = False) -> str:
@@ -198,15 +219,22 @@ def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = F
         said.append(f"{part}절은 요청한 {asked}문장이 아니라 {got}문장입니다.")
     if already := getattr(document, "already", []):
         said.append(already_said(already))
+    if unlisted := getattr(document, "unlisted", []):
+        said.append(unlisted_said(unlisted))
     for added in getattr(document, "added", []):
         at, _, values = added.partition(" ")
         said.append(f"{at}에 원래 없던 {values}{revise._particle(values, '이', '가')} "
                     "들어갔습니다. 확인해 주세요.")
     for lost in document.dropped:
-        # figures the slide showed that its rewrite left out: said, not passed over
+        # figures the slide showed that its rewrite left out: said, not passed over; a mark
+        # left off a figure still there said in its own clause
         at, _, values = lost.partition(" ")
-        said.append(f"{at}에서 {values}{revise._particle(values, '이', '가')} 빠졌습니다. "
-                    "필요하면 다시 넣어 달라고 해 주세요.")
+        items = values.split(", ")
+        marks = ", ".join(x for x in items if x.endswith("」 표시"))
+        plain = ", ".join(x for x in items if not x.endswith("」 표시"))
+        gone = (f"{plain}{revise._particle(plain, '이', '가')} 빠졌고, {marks}도" if plain and marks
+                else f"{plain or marks}{revise._particle(plain or marks, '이', '가')}")
+        said.append(f"{at}에서 {gone} 빠졌습니다. 필요하면 다시 넣어 달라고 해 주세요.")
     return " ".join(said)
 
 
@@ -355,7 +383,9 @@ class ReportSave(Base):
                         session_id=session_id,
                         role=Role.assistant,
                         content=(rerun_note(turn)
-                                 or _written_note(len(written), title_block)),
+                                 or _written_note(len(written), title_block,
+                                                  english=captions.of_sections(written)
+                                                  == captions.EN)),
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=host._prelude_steps(turn.get("skills_event"),
@@ -553,12 +583,16 @@ for _stage in (ReportSave(), ReviseLoad(), ReviseSave()):
     registry.register(_stage)
 
 
-def _written_note(count: int, title_block: dict | None) -> str:
-    """Finish line in the document's genre word (「5개 절로 회의록 작성을 마쳤습니다.」)."""
+def _written_note(count: int, title_block: dict | None, *, english: bool = False) -> str:
+    """Finish line in the document's genre word (「5개 절로 회의록 작성을 마쳤습니다.」), in
+    English for a document written in English."""
     from app.services import doc_formats
 
     found = doc_formats.BY_ID.get(str((title_block or {}).get("format") or ""))
     genre = found.label if found else ""
+    if english:
+        named = doc_formats.EN_FORMAT_LABELS.get(found.id if found else "", "report").lower()
+        return f"Wrote the {named} in {count} section{'s' if count != 1 else ''}."
     if not genre or genre == "보고서":
         return f"{count}개 섹션으로 보고서를 작성했습니다."
     return f"{count}개 절로 {genre} 작성을 마쳤습니다."

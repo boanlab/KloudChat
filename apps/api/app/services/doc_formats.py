@@ -280,6 +280,51 @@ _HEAD_ALIASES: dict[str, tuple[str, ...]] = {
     "신청 기관": ("신청 기관", "신청기관", "주관 기관", "수행 기관"),
     "사업 기간": ("사업 기간", "사업기간"),
 }
+#: English head labels by field, for a document written in English; a format is set in English
+#: only when every field of it has one.
+EN_LABELS: dict[str, str] = {
+    "회의명": "Meeting",
+    "일시": "Date",
+    "장소": "Location",
+    "참석자": "Attendees",
+    "작성자": "Prepared by",
+}
+#: English name of the format itself (the block's `label`)
+EN_FORMAT_LABELS: dict[str, str] = {"minutes": "Minutes", "agenda": "Agenda"}
+_KO_LABELS = {en.lower(): ko for ko, en in EN_LABELS.items()}
+#: English material labels per head field, besides the English head label
+_EN_ALIASES: dict[str, tuple[str, ...]] = {
+    "일시": ("Meeting date", "Meeting Date"),
+    "장소": ("Place", "Venue"),
+    "참석자": ("Present",),
+    "작성자": ("Minutes by", "Recorded by"),
+}
+
+
+def head_key(label: str) -> str:
+    """The Korean field name of a head label in either language: 「Location」 → 「장소」."""
+    text = " ".join(str(label or "").split())
+    return _KO_LABELS.get(text.lower(), text)
+
+
+def in_english(block: dict[str, Any] | None) -> dict[str, Any] | None:
+    """`block` with English labels, blanks named in English, and ``language: en``; None when
+    a field has no English label."""
+    if not block or block.get("language") == "en":
+        return None
+    fields = [list(f) for f in block.get("fields") or [] if f]
+    if not fields or any(_base(str(f[0])) not in EN_LABELS for f in fields):
+        return None
+    for f in fields:
+        label = EN_LABELS[_base(str(f[0]))]
+        value = str(f[1] if len(f) > 1 else "")
+        f[:] = [label, blank(label) if placeholders.is_blank(value) else value]
+    out = {**block, "fields": fields, "language": "en"}
+    if english_label := EN_FORMAT_LABELS.get(str(block.get("format") or "")):
+        out["label"] = english_label
+    return out
+
+
 #: Labels naming a person in a sentence.
 _SAID_LABELS = ("작성자", "보고자", "이름", "보고일", "작성일", "보고 대상")
 _DASH = re.compile(r"\s{1,3}[—–-]\s{1,3}")
@@ -299,6 +344,11 @@ _SAID_VALUE = (r"(?:\s{0,2}(?:는|은)\s{0,2}|\s{1,2})([가-힣A-Za-z0-9○][^,.
                r"(?:(?:으로|로)\s{0,2}(?:해|써|적어|넣어|부탁)|이야|입니다|이고|예요|[.\n]|$)")
 _PROFILE = re.compile(r"경력|이력|자기소개|지원서|프로필|포트폴리오")
 _PERSON = re.compile(r"[가-힣]{2,4}(?:○{1,2})?")
+
+
+def _english_aliases(base: str) -> tuple[str, ...]:
+    """A field's English material labels: 「Location: Room 3A」 fills 장소."""
+    return (EN_LABELS[base], *_EN_ALIASES.get(base, ())) if base in EN_LABELS else ()
 
 
 def _base(field: str) -> str:
@@ -321,13 +371,18 @@ def _segments(text: str) -> list[str]:
 def _labelled(line: str, labels: dict[str, str]) -> dict[str, str]:
     """One-line `label: value` pairs."""
     names = sorted(labels, key=len, reverse=True)
-    rx = re.compile(r"(?:^|(?<=[\s\[(,/·—-]))(" + "|".join(re.escape(n) for n in names)
+    # an English label is no label after another English word: 「Due Date:」 is no 일시
+    rx = re.compile(r"(?:^|(?<=[\s\[(,/·—-]))(" + "|".join(
+        (r"(?<![A-Za-z]\s)" if n.isascii() else "") + re.escape(n) for n in names)
                     + r")\s{0,2}[:：]\s{0,3}")
     hits = list(rx.finditer(line))
     out: dict[str, str] = {}
     for k, m in enumerate(hits):
         end = hits[k + 1].start() if k + 1 < len(hits) else len(line)
-        value = re.split(r"\]|\s/\s", line[m.end():end], maxsplit=1)[0]
+        # an English memo runs on in sentences: 「Attendees: A, B. Absent: C」
+        # (a Korean 「2026. 10. 14.」 keeps its dots)
+        value = re.split(r"\]|\s/\s|(?<=[A-Za-z0-9)])\.\s{1,3}(?=[A-Z])|(?<=[A-Za-z])\.\s{0,3}\Z",
+                         line[m.end():end], maxsplit=1)[0]
         value = " ".join(value.split()).strip(" ,;·")[:80]
         field_name = labels[m.group(1)]
         if value and field_name not in out:
@@ -357,7 +412,7 @@ def head_values(fmt: DocFormat, text: str) -> dict[str, str]:
     wanted = {_base(f): f for f in fmt.fields}
     labels: dict[str, str] = {}
     for base, field_name in wanted.items():
-        for alias in (base, *_HEAD_ALIASES.get(base, ())):
+        for alias in (base, *_HEAD_ALIASES.get(base, ()), *_english_aliases(base)):
             labels.setdefault(alias, field_name)
     out: dict[str, str] = {}
 
@@ -485,9 +540,10 @@ def _issue_day(name: str, value: str, request: str) -> str:
     return value
 
 
-#: the next meeting's clause: 「다음 회의 10/21 화 10시 3층 회의실.」
+#: the next meeting's clause: 「다음 회의 10/21 화 10시 3층 회의실.」, 「Next meeting: Oct 26 3pm.」
 _NEXT_MEETING = re.compile(
-    r"(?:다음|차기)\s{0,2}(?:회의|모임|미팅|일정)[^\n;]*?(?=(?<!\d)\.(?!\s{0,2}\d)|[\n;]|$)")
+    r"(?:(?:다음|차기)\s{0,2}(?:회의|모임|미팅|일정)|(?<![A-Za-z])[Nn]ext\s{1,2}(?:meeting|sync))"
+    r"[^\n;]*?(?=(?<!\d)\.(?!\s{0,2}\d)|[\n;]|$)")
 #: head fields naming the meeting's own day and place
 _MEETING_FIELD = re.compile(r"일시|일자|날짜|장소")
 
@@ -685,7 +741,7 @@ def _typed_markers(lines: list[str]) -> bool:
 _ITEM_ROW = re.compile(r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}(\|.*\|)\s*$")
 #: List item that is a table caption.
 _ITEM_CAPTION = re.compile(
-    r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}((?:\*\*)?표\s{0,2}(?:\d{1,3}\.|:).*)$")
+    r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}((?:\*\*)?(?:표|Table)\s{0,2}(?:\d{1,3}\.|:).*)$")
 
 
 def _tables_out_of_items(lines: list[str]) -> list[str]:

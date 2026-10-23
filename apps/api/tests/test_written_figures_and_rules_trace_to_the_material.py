@@ -83,13 +83,44 @@ def test_a_strong_writer_s_chart_is_marked_not_cut_or_retitled():
     assert slides[0]["title"] == "매출 및 영업이익 추이"
 
 
-def test_a_chart_left_with_one_given_point_becomes_its_values_with_blanks():
+def test_a_chart_left_with_one_given_point_becomes_its_values_the_other_marked():
     one = [{"id": "c", "layout": "chart", "title": "이익률",
             "chart": {"kind": "bar", "unit": "%", "categories": ["2025 3분기", "2026 3분기"],
                       "series": [{"name": "이익률", "values": [7.1, 7.5]}]}}]
     slides, _ = ground_slides(one, material=EXEC, computed=[], options=_options(EXEC))
     assert "chart" not in slides[0] and slides[0]["layout"] == "bullets"
-    assert slides[0]["bullets"] == ["2025 3분기 이익률: [수치]", "2026 3분기 이익률: 7.5%"]
+    assert slides[0]["bullets"] == ["2025 3분기 이익률: 7.1% (확인 필요)",
+                                    "2026 3분기 이익률: 7.5%"]
+
+
+def test_a_chart_under_a_mixed_unit_reads_each_point_in_its_own_unit():
+    mixed = {"id": "c", "layout": "chart", "title": "분기별 매출 및 이익률 추이",
+             "chart": {"kind": "bar", "unit": "억원/%", "categories": ["매출", "이익률"],
+                       "series": [{"name": "실적", "values": [128, 7.5]}]}}
+    # 7.5 is the given margin, not 7.5억원: the chart stands, nothing blanked
+    slides, found = ground_slides(_copy([mixed]), material=EXEC, computed=[],
+                                  options=_options(EXEC))
+    assert slides[0]["chart"] == mixed["chart"] and not found
+    slides, _ = check_stages.mark_unbacked_percents(_copy([mixed]), [EXEC])
+    assert slides[0]["chart"] == mixed["chart"]
+    # an untraced one among them: its own unit and the mark, no blank nor 「억원/%」
+    mixed["chart"]["series"][0]["values"] = [128, 7.1]
+    slides, _ = ground_slides(_copy([mixed]), material=EXEC, computed=[],
+                              options=_options(EXEC))
+    assert slides[0]["bullets"] == ["매출 실적: 128억원", "이익률 실적: 7.1% (확인 필요)"]
+
+
+def test_a_chart_whose_series_name_their_units_reads_each_point_in_the_unit_named():
+    """audit-g H4 C: 「분·점」 over 「평균 대기 시간(분)」 and 「민원인 만족도(점)」 read 78 as
+    78분·점, so the given 78점 was marked and the chart broken into 「78분·점 (확인 필요)」."""
+    memo = "무인발급기 도입 1년. 평균 대기 시간 14분에서 9분, 민원인 만족도 78점에서 86점."
+    chart = {"kind": "line", "unit": "분·점", "categories": ["도입 전", "1년 후"],
+             "series": [{"name": "평균 대기 시간(분)", "values": [14.0, 9.0]},
+                        {"name": "민원인 만족도(점)", "values": [78.0, 86.0]}]}
+    slide = {"id": "c", "layout": "chart", "title": "대기 시간과 만족도", "chart": chart}
+    slides, found = ground_slides(_copy([slide]), material=memo, computed=[],
+                                  options=_options(memo))
+    assert slides[0]["chart"] == chart and not found
 
 
 def test_every_invented_figure_on_a_no_figures_proposal_is_marked():
@@ -287,3 +318,20 @@ async def test_a_picture_asked_away_goes_and_an_unmet_ask_is_reported(monkeypatc
     assert "image" not in parts[7] and parts[7]["layout"] == "bullets"
     # 3장 still draws bullets: said, not passed off, the slide as it was
     assert bundle.document.unmet == ["3장 표로 바꾸기"] and "notes" not in parts[2]
+
+
+def test_a_chart_turned_into_points_writes_the_bracketed_unit_of_its_measure():
+    # audit-x T8/C: 「Success Rate (%)」 came out as 「82SuccessRate(%)」
+    from app.pipeline import check_stages
+
+    slide = {"layout": "chart", "title": "Capability Gap", "chart": {
+        "kind": "bar", "unit": "Success Rate (%)",
+        "series": [{"name": "Task Completion", "values": [82.0, 100.0]}],
+        "categories": ["Local Model", "Cloud Model"]}}
+    check_stages._chart_fixed(slide, {(1, 0)}, False)
+    assert slide["bullets"][0] == "Local Model Task Completion: 82%"
+    assert slide["bullets"][1].startswith("Cloud Model Task Completion: 100%")
+    # a word unit stands apart from its number; a Korean one stays closed up
+    assert check_stages._value_text(3.2, "days") == "3.2 days"
+    assert check_stages._value_text(128, "억원") == "128억원"
+    assert check_stages._chart_unit({"unit": "억 원"}) == "억원"

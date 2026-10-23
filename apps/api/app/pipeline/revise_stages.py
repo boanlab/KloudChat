@@ -21,6 +21,7 @@ from app.services import (
     revise,
     revised_tables,
     richtext,
+    units,
     weekdays,
 )
 from app.services import deck as deck_service
@@ -112,9 +113,24 @@ def _policy_marked(body: str, request: str, material: list[str], data: dict) -> 
     quotes = "\n".join(str(src.get("quote") or "") for src in data.get("sources") or [])
     for piece in stated_policy.pieces(body):
         if said := (stated_policy.untraced(piece, given, quotes)
-                    or stated_days.untraced(piece, given)):
+                    or stated_days.untraced(piece, given,
+                                            stated_days.context_of("", body, piece))):
             body = stated_policy.mark(body, piece, said)
     return body
+
+
+def _figures_marked(body: str, request: str, material: list[str], data: dict,
+                    original: list[str]) -> str:
+    """`body` with 「(확인 필요)」 on a percentage, and with no figures in the material a sum of
+    money, that neither the document before the edit nor the request, material or sources
+    give or work out, and on a count of whole things with a fraction none states."""
+    report = _report()
+    quotes = [str(src.get("quote") or "") for src in data.get("sources") or []]
+    evidence = [request, *material, *quotes, *original]
+    if not deck_service.has_numbers(request, material):
+        body = report._without_invented_money(body, evidence)
+    body = report._without_fractional_counts(body, evidence)
+    return report._without_invented_percents(body, evidence)
 
 
 class Route(Base):
@@ -410,9 +426,13 @@ class Rewrite(Base):
         doc_format = bundle.spec.format_id
         #: a part whose rewrite came back empty, unparsable or as talk
         unreadable = False
-        #: slides asked to join items they do not have as a list (a table's rows): said, kept
-        unjoined: list[int] = []
+        #: slides asked to join or split items they do not have as a list (a table's rows):
+        #: said by the action asked, kept
+        unjoined: list[tuple[int, str]] = []
         today = req.today if isinstance(req.today, dt.date) else None
+        #: the document as it stood: its percentages and sums are no new ones
+        deck_before = "\n".join(s for p in parts for s in strings(p)) if is_deck else ""
+        parts_before = [] if is_deck else [str(p.get("content") or "") for p in parts]
         for index in bundle.plan.order:
             part = parts[index]
             label = names[index] or f"{index + 1}"
@@ -461,7 +481,16 @@ class Rewrite(Base):
                 elif is_deck and revise.joins_items(asked) and deck_service.items_asked(
                         asked) and part.get("rows"):
                     # a table's rows are not items to join: the slide stays, the reply says so
-                    unjoined.append(index)
+                    unjoined.append((index, "나누기" if revise.splits_items(asked) else "합치기"))
+                    yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
+                    continue
+                elif is_deck and revise.joins_items(asked) and (
+                        want := deck_service.items_asked(asked)) and (
+                        (held := deck_service.items_held(part)) == want or not held and not (
+                            revise.splits_items(asked) and part.get("body"))):
+                    # no list to join (a chart alone) or the count already there: the slide
+                    # stays, no rewrite passed off as the edit
+                    doc.unlisted.append((index + 1, held, deck_service.picture_of(part)))
                     yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
                     continue
                 elif is_deck and deck_service.asks_slide_figure(asked):
@@ -548,6 +577,8 @@ class Rewrite(Base):
                         yield {"type": "step", "id": f"r{index}", "label": label,
                                "status": "done"}
                         continue
+                    # a guard blank or a dangling unit the slide carried: not kept
+                    deck_service.settle_blanks([written])
                     parts[index] = written
                     yield {"type": "slide", "slide": written, "done": True}
                 else:
@@ -605,20 +636,25 @@ class Rewrite(Base):
                                                  revise.without_numbered_removals(
                                                      " ".join(asks) or _typed(bundle)))
                         body = richtext.detach_tables(body)
+                        # written sums on the rewritten lines only
+                        body = revise.on_new_lines(
+                            before, body,
+                            lambda t: units.fix_written_sums(units.fix_written_arithmetic(t)))
                         # arithmetic checked, not trusted
-                        body = report.trim_table_echo(
-                            report.drop_kpi(
-                                report.fix_point_units(
-                                    report.undouble_words(
-                                        report.fix_percent_formulas(
-                                            report.fix_ledger_magnitudes(
-                                                report.fix_products(body), request
-                                            )
+                        body = report.drop_kpi(
+                            report.fix_point_units(
+                                report.undouble_words(
+                                    report.fix_percent_formulas(
+                                        report.fix_ledger_magnitudes(
+                                            report.fix_products(body), request
                                         )
                                     )
                                 )
                             )
                         )
+                        #: the sentences as written, before echoes and repeats are cut
+                        uncut = body
+                        body = report.trim_table_echo(body)
                         # no repeats of earlier sections, except requested additions
                         if not re.search(r"추가|넣어|덧붙|더\s*써|보태", instruction):
                             earlier = [
@@ -634,6 +670,11 @@ class Rewrite(Base):
                             body = report.trim_restatements(
                                 body, earlier, keep_items=gaejo,
                                 question=bool(report.QUESTION_HEADING.search(label)))[0]
+                        counted = revise.sentences_asked(" / ".join(asks) or _typed(bundle))
+                        if counted[0] and revise.count_met(uncut, *counted) and not (
+                                revise.count_met(body, *counted)):
+                            # the sentences counted out as asked: none cut as an echo
+                            body = uncut
                         # the writer's plan and notes, not the text; spacing as written
                         noted = internal_words.strip_work_notes(body, request=request,
                                                                 document=True)
@@ -655,6 +696,8 @@ class Rewrite(Base):
                                 body = revise.fold_table_pointers(body, want)
                         # a weekday beside a date: the calendar's
                         body = weekdays.fix_weekdays(body, context=given, today=today)[0]
+                        # the part's pictures, which the writer is not shown, kept like its figure
+                        body = revise.keep_pictures(before, body, instruction)
                         # a P0 the rewrite brought in, or a shortened part that became another
                         # part: sent back once, then the part stays
                         faults = revise.new_faults(before, body, heading=label,
@@ -665,8 +708,14 @@ class Rewrite(Base):
                                 if i != index])
                         if not faults:
                             short = revise.shortening_faults(before, body, asked_of, given)
-                            if short and not passed and revise.sentences_asked(asked_of)[0]:
+                            want, most = revise.sentences_asked(asked_of)
+                            if short and not passed and want:
                                 # a sentence count asked and missed: sent back once
+                                if revise.count_met(body, want, most):
+                                    # the count met, facts missed: the count holds
+                                    short.insert(0, f"Keep it to {want} sentence"
+                                                 f"{'s' if want > 1 else ''}: put the facts "
+                                                 "below into them")
                                 passed, rejected = body, " / ".join(short)[:600]
                                 continue
                             break
@@ -674,11 +723,14 @@ class Rewrite(Base):
                         log.warning("revision of %r failed the checks: %s", logs.safe(label),
                                     logs.safe(rejected))
                     asked_of = " / ".join(asks) or _typed(bundle)
-                    if passed and (faults or revise.shortening_misses(before, body, asked_of, given)
-                                   > revise.shortening_misses(before, passed, asked_of, given)):
+                    want, most = revise.sentences_asked(asked_of)
+                    if passed and (faults or revise.better_shortening(
+                            before, passed, body, asked_of, given)):
                         # the version sent back came out worse: the first one stands
                         body, faults = passed, []
-                    want, most = revise.sentences_asked(asked_of)
+                    if want and not faults and not revise.count_met(body, want, most):
+                        # still off the count: clauses joined or split where they meet, by code
+                        body = revise.fit_count(body, want)
                     if (want and not faults and revise.count_met(before, want, most)
                             and not revise.count_met(body, want, most)):
                         # the part already has the count asked and the rewrites missed it:
@@ -708,6 +760,8 @@ class Rewrite(Base):
                     body = internal_words.scrub(body)
                     # a limit, approval or rule the material only asks about: marked
                     body = _policy_marked(body, request, material, data)
+                    # a percentage or sum the edit brought in that nothing gives: marked
+                    body = _figures_marked(body, request, material, data, parts_before)
                     # a part's own rename only; the document's title was set by route
                     rename = revise.title_rename(instruction, names)
                     renamed = (rename[0] if rename is not None and index not in widened and (
@@ -757,12 +811,22 @@ class Rewrite(Base):
                 doc.changed += 1
             yield {"type": "step", "id": "summary", "label": f"{plan.summary}줄 요약",
                    "status": "done" if block is not None else "error"}
+        if is_deck and doc.touched:
+            from app.pipeline.check_stages import edited_percents
+
+            # a percentage the edit brought in that nothing gives (「82% of frontier」 →
+            # cloud 「100%」): marked, as when the deck was made
+            sources = [str(src.get("quote") or "") for src in data.get("sources") or []]
+            for n in edited_percents(parts, doc.touched, request=request,
+                                     material=[*material, *sources], before=deck_before,
+                                     strong=bool(req.strong)):
+                yield {"type": "slide", "slide": parts[n], "done": True}
         if is_deck:
             # said only when the slide as drawn shows it (a table, the picture gone)
             doc.unmet = [f"{i + 1}장 {what}" for i in bundle.plan.order if i < len(parts)
                          for what in deck_service.unmet_asks(
                              parts[i], revise.slide_clause(instruction, i))]
-            doc.unmet += [f"{i + 1}장 항목 합치기" for i in unjoined]
+            doc.unmet += [f"{i + 1}장 항목 {action}" for i, action in unjoined]
         if not doc.changed and doc.unmet and not doc.failed and not unreadable:
             # only another shape asked and the slide's content does not go into it: said
             yield {"type": "step", "id": "route", "label": "모양 바꾸지 못함", "status": "done"}
@@ -770,6 +834,14 @@ class Rewrite(Base):
                     instruction))):
                 yield event
             raise Stop("shape not made")
+        if not doc.changed and doc.unlisted and not doc.failed and not unreadable:
+            # every slide asked had nothing to join or the count already: said, no new version
+            from app.pipeline.save_stages import unlisted_said
+
+            for event in _stopped(bundle, unlisted_said(
+                    doc.unlisted, english=output_language.typed_in_english(instruction))):
+                yield event
+            raise Stop("items already as asked")
         if not doc.changed and doc.already and not doc.failed and not unreadable:
             # every part asked already had the sentence count: nothing to change, said
             from app.pipeline.save_stages import already_said
@@ -806,15 +878,16 @@ def _unshaped(unmet: list[str], english: bool) -> str:
     """The reply when no asked shape could be made: which slide, which shape, nothing changed."""
     from app.pipeline.save_stages import _en_item
 
-    joins = all(u.endswith("항목 합치기") for u in unmet)
+    joins = all(u.endswith(("항목 합치기", "항목 나누기")) for u in unmet)
+    splits = all(u.endswith("항목 나누기") for u in unmet)
     if english:
         said = ", ".join(map(_en_item, unmet))
-        why = ("a table's rows are not a list of items to join" if joins
-               else "they do not share the same fields")
+        why = (f"a table's rows are not a list of items to {'split' if splits else 'join'}"
+               if joins else "they do not share the same fields")
         return (f"Nothing was changed: {said} could not be made from the slide's own points "
                 f"({why}). Say what the rows and columns or the items should be, and it will "
                 "be built that way.")
-    why = ("표의 행은 합칠 항목 목록이 아니어서" if joins
+    why = (f"표의 행은 {'나눌' if splits else '합칠'} 항목 목록이 아니어서" if joins
            else "그 장의 내용이 같은 칸으로 나뉘지 않아")
     return (f"바꾼 것이 없습니다. 요청한 {', '.join(unmet)}는 {why} 하지 못했습니다. "
             "표의 행·열이나 목록 항목을 알려 주시면 그대로 만들겠습니다.")

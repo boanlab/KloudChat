@@ -105,11 +105,13 @@ async def test_a_shortening_that_became_another_section_is_sent_back_then_kept_o
 
 
 @pytest.mark.asyncio
-async def test_a_dropped_figure_and_box_are_said(monkeypatch):
+async def test_a_dropped_box_is_said_and_the_picture_stays(monkeypatch):
     doc, _, _ = await _shorten(monkeypatch, [SHORT], before=BOXED)
-    assert doc.removed == ["2절의 그림 1", "2절의 「단가 승인 지연 시 협상 교착」 상자"]
+    # the picture, not shown to the writer, is put back; the box it left out is said
+    assert "![그림 1. 단가 협상 범위](data:image/png;base64,AAAA)" in doc.sections[1]["content"]
+    assert doc.removed == ["2절의 「단가 승인 지연 시 협상 교착」 상자"]
     assert save_stages.revision_reply(doc, None, is_deck=False).startswith(
-        "2절의 그림 1, 2절의 「단가 승인 지연 시 협상 교착」 상자를 뺐습니다. 2절을 고쳤습니다.")
+        "2절의 「단가 승인 지연 시 협상 교착」 상자를 뺐습니다. 2절을 고쳤습니다.")
 
 
 @pytest.mark.asyncio
@@ -151,7 +153,17 @@ def test_a_question_while_any_card_is_open_leaves_the_card():
 
 
 @pytest.mark.asyncio
-async def test_a_tables_rows_are_not_joined_and_that_is_said(monkeypatch):
+@pytest.mark.parametrize("ask, said_as", [
+    ("2장 항목을 하나로 합쳐줘",
+     "바꾼 것이 없습니다. 요청한 2장 항목 합치기는 표의 행은 합칠 항목 목록이"),
+    # a split asked is said as a split (reverify-x kd2)
+    ("2장 항목을 두 개로 나눠줘",
+     "바꾼 것이 없습니다. 요청한 2장 항목 나누기는 표의 행은 나눌 항목 목록이"),
+    ("Split the items on slide 2 into two", "Nothing was changed: splitting the items on slide 2 "
+     "could not be made from the slide's own points (a table's rows are not a list of items to "
+     "split)"),
+])
+async def test_a_tables_rows_are_not_joined_and_that_is_said(monkeypatch, ask, said_as):
     async def rewrite_slide(**_kwargs):
         raise AssertionError("a table is not rewritten for a join")
 
@@ -159,7 +171,7 @@ async def test_a_tables_rows_are_not_joined_and_that_is_said(monkeypatch):
     table = {"id": "x", "layout": "table", "title": "실적 vs 목표",
              "rows": [["항목", "3분기", "4분기"], ["매출", "128억", "140억"]]}
     bundle = revise_stages.bundle_for(
-        request="보고", instruction="2장 항목을 하나로 합쳐줘", model={"id": "m"}, planner=None,
+        request="보고", instruction=ask, model={"id": "m"}, planner=None,
         api_key="k", is_deck=True, title="보고", data={},
         parts=[{"id": "t", "layout": "title", "title": "보고"}, dict(table)], material=[],
         plan=revise.Plan(scope="parts", targets=[1], note="합치기"), format_id="",
@@ -171,5 +183,47 @@ async def test_a_tables_rows_are_not_joined_and_that_is_said(monkeypatch):
             events.append(event)
     assert bundle.document.sections[1] == table
     said = "".join(e.get("text", "") for e in events if e["type"] == "delta")
-    assert said.startswith("바꾼 것이 없습니다. 요청한 2장 항목 합치기는 "
-                           "표의 행은 합칠 항목 목록이")
+    assert said.startswith(said_as)
+
+
+def test_a_figure_written_without_its_comma_is_still_shown():
+    # 「Per 1,000 docs」 cut to 「Cost per 1000」 on another slide (reverify-x EN deck)
+    old = [{"layout": "bullets", "title": "Cost", "bullets": ["Per 1,000 docs", "$4 vs $38"]}]
+    new = [{"layout": "table", "title": "Core", "rows": [["Criteria", "Local", "Cloud"],
+                                                          ["Cost per 1000", "$4", "$38"]]}]
+    assert deck.lost_across(old, new) == []
+    assert deck.lost_across(old, [{"layout": "bullets",
+                                   "bullets": ["Cost per 1k: $4 / $38"]}]) == []
+    assert deck.lost_across(old, [{"layout": "bullets", "bullets": ["$4 vs $38"]}]) == ["1,000"]
+    started = time.monotonic()
+    deck.amounts_in("1" * 50000 + " " * 50000)
+    assert time.monotonic() - started < 0.5
+
+
+#: a figure and the caveat the next sentence puts on it (reverify-x T1)
+HEDGED = ("대성유통은 5% 인하를 요구했으며, 경쟁사 A사가 동일 품목에 4% 낮은 단가를 제시한 것으로 "
+          "파악됩니다. 다만 해당 경쟁사 단가는 확정된 사실이 아닙니다.")
+
+
+def test_a_shortening_that_drops_a_figures_caveat_names_it():
+    # the caveat kept beside its figure: nothing lost
+    assert revise.lost_facts(HEDGED, "대성유통은 5% 인하를 요구했고, A사의 4% 낮은 단가는 확정되지 "
+                             "않았습니다.") == []
+    assert revise.lost_facts(HEDGED, "대성유통은 5% 인하를 요구했습니다. A사가 4% 낮은 단가를 "
+                             "제시했습니다. 이는 미확인 정보입니다.") == []
+    # the figure kept, its caveat gone: the mark is named
+    assert revise.lost_facts(
+        HEDGED, "대성유통은 5% 인하를, A사는 4% 낮은 단가를 제시했습니다.") == [
+        "A사 4%의 「확정 아님」 표시"]
+    # the name gone with its caveat: the loss says it was the unconfirmed one
+    assert revise.lost_facts(HEDGED, "대성유통은 5% 인하를 요구했고 상한선은 4%입니다.") == [
+        "A사(확정 아님)"]
+    faults = revise.shortening_faults(HEDGED, "대성유통은 5%, A사는 4% 낮은 단가를 냈습니다.",
+                                      "2절을 줄여줘")
+    assert "A사 4%의 「확정 아님」 표시" in faults[0]
+    # a hedge that follows a sentence with nothing of its own to point back at is no caveat
+    assert revise.lost_facts("A사가 4%를 제시했습니다. 물류팀 확인이 필요합니다.",
+                             "A사가 4%를 제시했습니다.") == []
+    started = time.monotonic()
+    revise.lost_facts("확정" + " " * 50000 + "아님", "확정" + " " * 50000)
+    assert time.monotonic() - started < 0.5
