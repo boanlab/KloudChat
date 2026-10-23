@@ -219,3 +219,28 @@ def test_a_due_day_an_english_memo_gives_stays_in_the_table():
     assert "2026-10-28" in out and "10/30" in out
     # a day the memo never gave is still blanked
     assert "2026-10-26" not in out
+
+
+def test_a_due_written_in_english_words_is_read_as_its_day():
+    # audit-x2 H2/C: 「October 28th」 in the cell was blanked
+    from app.services import report
+
+    memo = "Arjun will finish the spec by Oct 28. Lena delivers icons by 30 Oct."
+    table = ("| Task | Owner | Due |\n| --- | --- | --- |\n"
+             "| Spec | Arjun | October 28th |\n| Icons | Lena | Oct. 30 |\n"
+             "| Mockups | Lena | Nov 2 |")
+    out = report._unsourced_owner_dates(table, memo)
+    assert "October 28th" in out and "Oct. 30" in out and "Nov 2" not in out
+    assert report._english_days("by 28th October and Sept 3") == [(10, 28), (9, 3)]
+
+
+def test_a_caption_split_at_its_number_is_no_sentence_said_twice():
+    # audit-x2 H2/A: 「**Table 1. Decisions Made**」 lost 「Decisions Made**」
+    from app.services import meeting_memo
+
+    sections = [{"heading": "Decisions Made", "content": (
+        "The launch moved to Nov 11 (Table 1).\n\n**Table 1. Decisions Made**\n\n"
+        "| Item | Decision |\n| --- | --- |\n| Launch | Nov 11 |")},
+        {"heading": "Notes", "content": "Decisions Made. Decisions Made."}]
+    out, _ = meeting_memo.settle_copies(sections, ENGLISH_MEMO, strong=False)
+    assert "**Table 1. Decisions Made**" in out[0]["content"]

@@ -773,6 +773,16 @@ def _facts(piece: str, memo: str) -> set[str]:
                     or (len(w) >= 3 and not w.endswith(("다", "며", "고", "서", "나", "면", "지")))}
 
 
+#: a table's or figure's caption line, in either language
+_CAPTION_LINE = re.compile(r"\s{0,3}[*_]{1,2}\s{0,2}" + captions.EITHER + r"\s?\d{1,3}\b")
+
+
+def _in_caption(piece: str, content: str) -> bool:
+    """Whether `piece` is part of a caption line, no sentence: 「**Table 1. Decisions Made**」
+    splits at its number."""
+    return any(piece.strip() in line for line in content.split("\n") if _CAPTION_LINE.match(line))
+
+
 def settle_copies(sections: list[dict], memo: str, *, strong: bool) -> tuple[list[dict], int]:
     """What the writer left pasted after its one repair: a sentence said again word for word
     goes; for a writer not strong, a memo line copied or a sentence repeating a phrase said
@@ -786,9 +796,10 @@ def settle_copies(sections: list[dict], memo: str, *, strong: bool) -> tuple[lis
     seen: set[str] = set()
     for sec in out:
         content = str(sec.get("content") or "")
+        # a caption is no sentence: 「**Table 1. Decisions Made**」 splits at its number
         for piece in stated_policy.pieces(content):
             flat = squash(piece)
-            if piece.startswith("|") or len(flat) < _PHRASE + 2:
+            if piece.startswith("|") or len(flat) < _PHRASE + 2 or _in_caption(piece, content):
                 continue
             if flat in seen:
                 content = drop(content, piece)
@@ -800,7 +811,7 @@ def settle_copies(sections: list[dict], memo: str, *, strong: bool) -> tuple[lis
     pasted = copies(out, memo) + [(i, p) for i, p, _ in repeats(out)]
     for index, piece in pasted:
         content = str(out[index].get("content") or "")
-        if piece not in content:
+        if piece not in content or _in_caption(piece, content):
             continue
         rest = squash("\n".join(str(s.get("content") or "") for s in out).replace(piece, "", 1))
         if all(squash(fact) in rest for fact in _facts(piece, memo)):

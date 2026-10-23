@@ -814,6 +814,22 @@ _ISO_DAY = re.compile(r"\d{4}-(\d{2})-(\d{2})")
 _BLANK_CELLS = {"", "미정", "(미정)", "-", "—", "tbd", "n/a", "없음"}
 
 
+#: an English month-day: 「Oct 28」, 「October 28th」, 「28 Oct」
+_EN_MONTH = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]{0,6}\.?"
+_EN_DAY = re.compile(rf"\b{_EN_MONTH}\s{{0,2}}(\d{{1,2}})(?:st|nd|rd|th)?\b"
+                     rf"|\b(\d{{1,2}})(?:st|nd|rd|th)?\s{{0,2}}{_EN_MONTH}\b")
+_EN_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+
+
+def _english_days(text: str) -> list[tuple[int, int]]:
+    """(month, day) of each English month-day in `text`."""
+    out = []
+    for m in _EN_DAY.finditer((text or "").lower()):
+        month, day = (m.group(1), m.group(2)) if m.group(1) else (m.group(4), m.group(3))
+        out.append((_EN_MONTHS.index(month[:3]) + 1, int(day)))
+    return out
+
+
 def _cell_sourced(
     cell: str, compact: str, row: str = "", dates: list[dict] | None = None
 ) -> bool:
@@ -825,7 +841,7 @@ def _cell_sourced(
         return True
     days = [(int(m), int(d)) for m, d in _MONTH_DAY.findall(flat)] + [
         (int(m), int(d)) for m, d in _ISO_DAY.findall(flat)
-    ]
+    ] + _english_days(cell)
     if dates is not None and days:
         entries = report_checks.bound_rows(row, dates)
         if entries:
