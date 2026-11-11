@@ -7,6 +7,7 @@ import {
   Copy,
   Download,
   FilePenLine,
+  FileType,
   Flag,
   Loader2,
   Paperclip,
@@ -23,7 +24,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Button } from '@/components/ui'
 import { MediaResult } from '@/components/media/MediaResult'
 import { ResultCard } from './ResultCard'
-import { downloadFile, errorMessage, filesApi, templateText } from '@/lib/api'
+import { artifactsApi, downloadFile, errorMessage, filesApi, templateText } from '@/lib/api'
 import { useIssues } from '@/lib/issues'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL, maskingCategories, requestMaskingLabel } from '@/lib/privacy'
@@ -289,6 +290,23 @@ function MessageItemInner({
     }
   }
 
+  const refreshArtifact = useStore((s) => s.refreshArtifact)
+  const openArtifact = useStore((s) => s.openArtifact)
+  /** Opens an attached `.hwp`/`.hwpx` in the HWP editor beside this chat, as it is. */
+  const openInEditor = async (id: string) => {
+    setFileError(null)
+    setOpening(`hwp:${id}`)
+    try {
+      const made = await artifactsApi.createHwp({ sessionId, fileId: id })
+      await refreshArtifact(made.id)
+      openArtifact(made.id)
+    } catch (err) {
+      setFileError(errorMessage(err, t('이 파일을 한글 편집기로 열지 못했습니다.')))
+    } finally {
+      setOpening(null)
+    }
+  }
+
   const take = async (id: string, name: string) => {
     setFileError(null)
     try {
@@ -390,8 +408,24 @@ function MessageItemInner({
             const shell =
               'ml-auto flex w-fit max-w-full items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base'
             const hangul = Boolean(a.id) && /\.hwpx$/i.test(a.name)
+            const editable = Boolean(a.id) && /\.hwpx?$/i.test(a.name) && sessionKind === 'chat'
             return a.id ? (
               <span key={a.id} className="ml-auto flex w-fit max-w-full items-center gap-1.5">
+                {editable && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={opening === `hwp:${a.id}`}
+                    onClick={() => void openInEditor(a.id!)}
+                  >
+                    {opening === `hwp:${a.id}` ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <FileType size={13} />
+                    )}
+                    {t('HWP로 열기')}
+                  </Button>
+                )}
                 {hangul && (
                   <Button
                     size="sm"

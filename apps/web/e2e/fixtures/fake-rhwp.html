@@ -1,0 +1,77 @@
+<!doctype html>
+<!--
+  A stand-in for rhwp-studio at /rhwp/ in the fixture suite: it speaks the @rhwp/editor
+  embed protocol (v1 over a MessageChannel) and keeps the file it was given, so a spec can
+  check what the panel loads, saves and asks without the 75 MB editor. The spec drives it
+  through `window.fakeStudio` (an edit, a failure) and reads `window.fakeStudio.calls`.
+-->
+<html>
+  <head><meta charset="utf-8"><title>fake rhwp-studio</title></head>
+  <body style="margin:0;font:14px sans-serif">
+    <p id="doc">(no document)</p>
+    <script>
+      const sha = 'a'.repeat(64)
+      const state = { bytes: new Uint8Array(), name: '', dirty: false, epoch: 1, seq: 0 }
+      const calls = []
+      window.fakeStudio = {
+        calls,
+        state,
+        edit(text) {
+          // a zip's first bytes, as an HWPX export starts
+          state.bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, ...new TextEncoder().encode(text)])
+          state.dirty = true
+          state.seq += 1
+          document.getElementById('doc').textContent = text
+        },
+      }
+      const methods = {
+        ready: () => true,
+        loadFile: ({ data, fileName }) => {
+          state.bytes = new Uint8Array(data)
+          state.name = fileName
+          state.dirty = false
+          state.epoch += 1
+          document.getElementById('doc').textContent = `${fileName} ${state.bytes.length}`
+          return { pageCount: 1 }
+        },
+        pageCount: () => 1,
+        exportHwpx: () => state.bytes.slice(),
+        exportHwp: () => new TextEncoder().encode('HWP5'),
+        notifySaved: () => {
+          const wasDirty = state.dirty
+          state.dirty = false
+          return { ok: true, wasDirty }
+        },
+        getDocumentState: () => ({
+          schemaVersion: 1, format: 'hwpx', documentEpoch: state.epoch, changeSeq: state.seq,
+          dirty: state.dirty, pageCount: 1, documentSha256: sha,
+        }),
+      }
+      window.addEventListener('message', (event) => {
+        const message = event.data
+        if (message?.type !== 'rhwp-connect' || !event.ports[0]) return
+        const port = event.ports[0]
+        const { sessionId } = message
+        port.onmessage = ({ data }) => {
+          if (data?.type !== 'rhwp-request') return
+          if (data.method !== 'getDocumentState' && data.method !== 'ready') {
+            calls.push({ method: data.method, size: data.params?.data?.byteLength ?? null,
+              name: data.params?.fileName ?? null })
+          }
+          const handler = methods[data.method]
+          const reply = { type: 'rhwp-response', version: 1, sessionId, id: data.id }
+          if (!handler) {
+            port.postMessage({ ...reply, error: { code: 'UNKNOWN', message: data.method } })
+            return
+          }
+          port.postMessage({ ...reply, result: handler(data.params || {}) })
+        }
+        port.start()
+        port.postMessage({
+          type: 'rhwp-connected', version: 1, sessionId,
+          capabilities: ['transferable-array-buffer', 'notify-saved-v1', 'document-state-v1'],
+        })
+      })
+    </script>
+  </body>
+</html>

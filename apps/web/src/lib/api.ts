@@ -1433,6 +1433,43 @@ export const artifactsApi = {
   /** Puts a superseded revision back. Itself an edit, so it adds a version. */
   restore: (id: string, version: number) =>
     call<ArtifactRow>(`/artifacts/${id}/restore`, body({ version })),
+  /** A new HWP document in a conversation: blank, or the uploaded `.hwp`/`.hwpx` `fileId`. */
+  createHwp: (payload: {
+    sessionId?: string | null
+    projectId?: string | null
+    fileId?: string
+    title?: string
+  }) => call<ArtifactRow>('/artifacts/hwp', body(payload)),
+  /** A version's file (the current one by default), for the editor. */
+  hwpFile: async (id: string, version?: number) => {
+    const query = version === undefined ? '' : `?version=${version}`
+    const res = await authedFetch(`${BASE_URL}/artifacts/${id}/hwp${query}`)
+    if (!res.ok) {
+      const detail = await readDetail(res)
+      if (res.status === 401) throw new UnauthorizedError(detail)
+      throw new ApiError(res.status, detail)
+    }
+    return {
+      bytes: await res.arrayBuffer(),
+      version: Number(res.headers.get('X-Artifact-Version') ?? version ?? 0),
+    }
+  },
+  /** The editor's HWPX as the next version; 409 when anyone saved since `expectedVersion`. */
+  saveHwp: async (id: string, bytes: Uint8Array, expectedVersion: number, summary = '') => {
+    const query = new URLSearchParams({ expectedVersion: String(expectedVersion) })
+    if (summary) query.set('summary', summary)
+    const res = await authedFetch(`${BASE_URL}/artifacts/${id}/hwp?${query}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/hwp+zip' },
+      body: bytes as BodyInit,
+    })
+    if (!res.ok) {
+      const detail = await readDetail(res)
+      if (res.status === 401) throw new UnauthorizedError(detail)
+      throw new ApiError(res.status, detail)
+    }
+    return (await res.json()) as ArtifactRow
+  },
 }
 
 export interface ArtifactVersionRow {
@@ -2114,6 +2151,9 @@ export type StreamEvent =
       category?: string
       /** The rich stage record; absent on older servers and on tool steps. */
       stage?: PipelineStage
+      /** An HWP tool saved this artifact's version: the open editor loads it. */
+      artifactId?: string
+      artifactVersion?: number
     }
   /** A pipeline run announcing itself before its first stage record. */
   | {

@@ -1,5 +1,5 @@
 import { sectionText } from '@/components/report/SectionBody'
-import { downloadArtifact, fileUrl } from '@/lib/api'
+import { artifactsApi, downloadArtifact, fileUrl } from '@/lib/api'
 import type { Artifact, ChartArtifact, DeckArtifact, ReportArtifact, ReportSection, Slide } from '@/types'
 
 /** Export formats; mirrors server `export_formats`. */
@@ -57,6 +57,9 @@ export function exportChoices(artifact: Artifact, templateKind?: string): Export
     case 'audio':
     case 'video':
       return artifact.src ? [{ format: 'file', label: '원본 파일', hint: '' }] : []
+    case 'hwp':
+      // the saved file as it is; the open editor also offers .hwp (HwpPanel)
+      return [{ format: 'file', label: '한글 문서', hint: artifact.format.toUpperCase() }]
   }
 }
 
@@ -170,7 +173,7 @@ function stem(title: string): string {
   return title.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'download'
 }
 
-function saveBlob(blob: Blob, name: string) {
+export function saveBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
@@ -184,6 +187,11 @@ export async function takeArtifact(artifact: Artifact, format: ExportFormat): Pr
   const title = artifact.title || 'document'
   if (format === 'csv' && artifact.kind === 'chart') {
     saveBlob(new Blob([csvSource(artifact)], { type: 'text/csv;charset=utf-8' }), `${stem(title)}.csv`)
+    return
+  }
+  if (format === 'file' && artifact.kind === 'hwp') {
+    const { bytes } = await artifactsApi.hwpFile(artifact.id)
+    saveBlob(new Blob([bytes], { type: 'application/hwp+zip' }), `${stem(title)}.${artifact.format}`)
     return
   }
   if (format === 'file') {

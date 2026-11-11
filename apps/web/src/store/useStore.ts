@@ -3737,6 +3737,11 @@ async function streamTurn(
             patch((m) => withStage(m, stage))
             break
           }
+          if (event.artifactId && event.status === 'done') {
+            // an HWP tool saved a version mid-turn: the editor beside the chat shows it now
+            const artifactId = event.artifactId
+            void get().refreshArtifact(artifactId).then(() => set({ openArtifactId: artifactId }))
+          }
           patch((m) => {
             const step = toStep(event as unknown as Record<string, unknown>)
             const steps = m.steps ?? []
