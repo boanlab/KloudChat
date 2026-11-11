@@ -44,7 +44,9 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
   let artifact = {
     id: artifactId, title: options.title, kind, version: 1, partial: false,
     sessionId, projectId: null, createdAt: at, updatedAt: at,
-    data: { format: kind === 'hwp' ? 'hwpx' : 'docx', size: options.file.length, text: options.title },
+    data: {
+      format: kind === 'hwp' ? 'hwpx' : 'docx', size: options.file.length, text: options.title,
+    },
   }
   let file: Buffer = options.file
   let messages: Record<string, unknown>[] = options.attachment
@@ -85,7 +87,9 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
       }],
       autoRouting: { enabled: false, available: false },
     })
-    if (path === '/credits') return json({ monthlyCredits: 1000, creditsUsed: 0, creditsRemaining: 1000 })
+    if (path === '/credits') {
+      return json({ monthlyCredits: 1000, creditsUsed: 0, creditsRemaining: 1000 })
+    }
     if (path === '/sessions' && method === 'POST') {
       // the conversation the home screen's document button starts, under the id the client chose
       const body = request.postDataJSON()

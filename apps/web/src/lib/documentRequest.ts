@@ -61,8 +61,11 @@ export const NAMES_HWP = /(?<![A-Za-z])hwpx?(?![A-Za-z])|한글\s{0,2}(?:파일|
 
 /** 「Word로」, 「docx 파일」, 「워드 문서」 (not 「키워드로」): written in the Word editor beside the
  *  chat. Mirrors the server's `_ASKS_DOCX` (routers/sessions.py). */
-export const NAMES_DOCX =
-  /(?<![A-Za-z])docx(?![A-Za-z])|(?<![A-Za-z])(?:ms\s?)?word\s{0,2}(?:로|으로|문서|파일|documents?|files?|format)|(?<![가-힣])워드\s{0,2}(?:로|문서|파일)/i
+export const NAMES_DOCX = new RegExp([
+  '(?<![A-Za-z])docx(?![A-Za-z])',
+  '(?<![A-Za-z])(?:ms\\s?)?word\\s{0,2}(?:로|으로|문서|파일|documents?|files?|format)',
+  '(?<![가-힣])워드\\s{0,2}(?:로|문서|파일)',
+].join('|'), 'i')
 
 /** The surface a chat sentence really belongs to, or null to answer it here. */
 export function handoffSurface(text: string): 'report' | 'slides' | null {

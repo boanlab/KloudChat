@@ -48,8 +48,9 @@ const rhwpHeaders = (): Plugin => ({
  *  imports) cut to what this app reads: the latin and latin-ext faces of its metric
  *  stand-ins for Calibri, Arial, Times and the rest, as woff2 only; the cyrillic, greek,
  *  hebrew and vietnamese cuts, the Arabic family and the `.woff` copies for headless
- *  measuring are not shipped. Korean serif text (바탕, 궁서) falls back to `Noto Serif KR` in the editor; that
- *  name is given the app's own Nanum Myeongjo cuts, so no other Korean files ship. */
+ *  measuring are not shipped. Korean serif text (바탕, 궁서) falls back to `Noto Serif KR`
+ *  in the editor; that name is given the app's own Nanum Myeongjo cuts, so no other Korean
+ *  files ship. */
 const folioFonts = (): Plugin => ({
   name: 'kchat-folio-fonts',
   enforce: 'pre',

@@ -5,9 +5,10 @@ import { useEffect, useRef, useState } from 'react'
 import { IntlProvider } from 'use-intl'
 import { saveBlob } from '@/components/artifacts/artifactExport'
 import type { PanelMode } from '@/components/artifacts/PanelControls'
+import { OfficePanel } from '@/components/office/OfficePanel'
 import {
-  fileStem, OfficePanel, useOfficeDocument, type OfficeEditor,
-} from '@/components/office/OfficePanel'
+  fileStem, useOfficeDocument, type OfficeEditor,
+} from '@/components/office/useOfficeDocument'
 import { MenuItem } from '@/components/ui'
 import { errorMessage, OFFICE_MIME } from '@/lib/api'
 import { useMediaQuery } from '@/lib/useMediaQuery'
@@ -69,7 +70,8 @@ export function DocxPanel({
   const download = async () => {
     try {
       const bytes = await office.current!.export()
-      saveBlob(new Blob([bytes as BlobPart], { type: OFFICE_MIME.docx }), `${fileStem(doc.title)}.docx`)
+      const blob = new Blob([bytes as BlobPart], { type: OFFICE_MIME.docx })
+      saveBlob(blob, `${fileStem(doc.title)}.docx`)
     } catch (err) {
       setError(errorMessage(err, t('내려받지 못했습니다.')))
     }

@@ -141,7 +141,8 @@ def test_a_blank_split_across_runs_is_filled_in_the_format_it_started_in():
     to = paragraph_with(done.data, "수신")
     assert to.text == "수신  각 부서장"
     # the label keeps its bold; the value keeps the run the blank began in
-    assert [(r.text, r.bold) for r in to.runs if r.text][:2] == [("수신  ", True), ("각 부서장", None)]
+    runs = [(r.text, r.bold) for r in to.runs if r.text]
+    assert runs[:2] == [("수신  ", True), ("각 부서장", None)]
     assert all(r.font.name == "바탕" for r in to.runs[1:])
     # the particle after a blank agrees with what fills it
     assert paragraph_with(done.data, "2.").text == "2. 교원연수를 아래와 같이 실시합니다."

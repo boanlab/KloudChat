@@ -2,9 +2,10 @@ import { createEditor, type RhwpEditor } from '@rhwp/editor'
 import { useEffect, useRef, useState } from 'react'
 import { saveBlob } from '@/components/artifacts/artifactExport'
 import type { PanelMode } from '@/components/artifacts/PanelControls'
+import { OfficePanel } from '@/components/office/OfficePanel'
 import {
-  fileStem, OfficePanel, useOfficeDocument, type OfficeEditor,
-} from '@/components/office/OfficePanel'
+  fileStem, useOfficeDocument, type OfficeEditor,
+} from '@/components/office/useOfficeDocument'
 import { MenuItem } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
 import { useMediaQuery } from '@/lib/useMediaQuery'
