@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
-import { shellRead } from './shell-mocks'
+import { officeFixture } from './office-fixture'
 
 /**
  * The HWP panel beside a chat, against a stand-in editor (`fixtures/fake-rhwp.html`): it
@@ -10,142 +10,18 @@ import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
-const sessionId = '77777777777777777777777777777777'
-const artifactId = '88888888888888888888888888888888'
-const at = '2026-11-11T00:00:00.000Z'
 const hwpx = readFileSync(new URL('./fixtures/hwp-official.hwpx', import.meta.url))
 const studio = readFileSync(new URL('./fixtures/fake-rhwp.html', import.meta.url), 'utf8')
 
 type Options = { conflict?: boolean; holdTurn?: Promise<void>; fromHome?: boolean }
 
 async function fixture(page: Page, options: Options = {}) {
-  const unexpected: string[] = []
-  const problems: string[] = []
-  const saves: { expected: string | null; size: number }[] = []
-  const sent: Record<string, unknown>[] = []
-  const created: Record<string, unknown>[] = []
-  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
-  let artifact = {
-    id: artifactId, title: '직원 연수 참석 요청', kind: 'hwp', version: 1, partial: false,
-    sessionId, projectId: null, createdAt: at, updatedAt: at,
-    data: { format: 'hwpx', size: hwpx.length, text: '직원 연수 참석 요청' },
-  }
-  let file: Buffer = hwpx
-  let messages: Record<string, unknown>[] = []
-  const session = {
-    id: sessionId, title: '연수 공문', kind: 'chat', model: 'fixture/base', routingMode: 'manual',
-    projectId: null, agentId: null, artifactId: null, pinned: false,
-    messages: [] as Record<string, unknown>[],
-    messageCount: 0, made: null, createdAt: at, updatedAt: at,
-  }
   await page.route('**/rhwp/**', (route) =>
     route.fulfill({ contentType: 'text/html', body: studio }))
-  await page.route('**/api/**', async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
-    const path = url.pathname.replace(/^\/api/, '')
-    const method = request.method()
-    const json = (value: unknown) => route.fulfill({ json: value })
-    if (path === '/auth/refresh') return json({
-      accessToken: 'fixture-only', expiresIn: 3600,
-      user: {
-        id: 'fixture-user', email: 'fixture@example.test', name: 'HWP', role: 'user',
-        status: 'active', monthlyCredits: 1000, creditsUsed: 0, avatarColor: '#168267',
-        allowedModels: [], createdAt: at,
-        preferences: { autoMemory: false, showUsage: false, streamResponses: true },
-      },
-    })
-    if (path === '/auth/config') return json({
-      brand: { name: 'KloudChat', logo: '' }, enabledKinds: ['chat'],
-      privacy: { externalDataGuard: false }, passwordResetEnabled: false, dictationEnabled: false,
-    })
-    if (path === '/models') return json({
-      litellmAvailable: true, defaultChatModel: 'fixture/base',
-      models: [{
-        id: 'fixture/base', label: 'Fixture', name: 'Fixture', vendor: 'Fixture',
-        provider: 'fixture', kinds: ['chat'], modality: 'chat', dataBoundary: 'external',
-        creditCost: 1, inputCreditCost: 1, supportsTools: true, contextWindow: 64000,
-      }],
-      autoRouting: { enabled: false, available: false },
-    })
-    if (path === '/credits') return json({ monthlyCredits: 1000, creditsUsed: 0, creditsRemaining: 1000 })
-    if (path === '/sessions' && method === 'POST') {
-      // the conversation the home screen's 「한글 문서」 starts, under the id the client chose
-      const body = request.postDataJSON()
-      Object.assign(session, { id: body.id, title: '새 작업' })
-      return json(session)
-    }
-    if (path === '/artifacts/hwp' && method === 'POST') {
-      created.push(request.postDataJSON())
-      artifact = { ...artifact, sessionId: session.id, title: '새 한글 문서' }
-      return route.fulfill({ status: 201, json: artifact })
-    }
-    if (path === '/sessions' && method === 'GET') return json([session])
-    if (path === `/sessions/${session.id}` && method === 'GET') return json(session)
-    if (path === `/sessions/${session.id}/messages` && method === 'GET') return json(messages)
-    if (path === `/sessions/${session.id}/messages` && method === 'POST') {
-      sent.push(request.postDataJSON())
-      if (options.holdTurn) await options.holdTurn
-      // what the server keeps of the turn, read back when the stream ends
-      messages = [
-        { id: 'q1', role: 'user', content: String(sent.at(-1)?.content ?? ''), attachments: [],
-          createdAt: at },
-        { id: 'a1', role: 'assistant', content: '연수명·일시·장소·대상을 채웠습니다.',
-          attachments: [], model: 'fixture/base', createdAt: at,
-          steps: ['문서 확인', '문서 편집', '문서 확인', '문서 편집'].map((label, i) => (
-            { id: `h${i + 1}_0`, type: 'tool', label, status: 'done' })) },
-      ]
-      Object.assign(session, { messages, messageCount: messages.length })
-      // the tools saved two versions on the server meanwhile
-      artifact = { ...artifact, version: artifact.version + 1 }
-      file = Buffer.concat([hwpx, Buffer.from('agent')])
-      return route.fulfill({
-        status: 200,
-        headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' },
-        body: [
-          { type: 'step', id: 'h1_0', label: '문서 확인', status: 'done' },
-          { type: 'step', id: 'h2_0', label: '문서 편집', status: 'done', detail: '4건',
-            artifactId, artifactVersion: artifact.version },
-          { type: 'step', id: 'h3_0', label: '문서 확인', status: 'done' },
-          { type: 'step', id: 'h4_0', label: '문서 편집', status: 'done', detail: '1건',
-            artifactId, artifactVersion: artifact.version },
-          { type: 'delta', text: '연수명·일시·장소·대상을 채웠습니다.' },
-          { type: 'artifact', artifactId, deliberate: true },
-          { type: 'usage', inputTokens: 10, outputTokens: 5, credits: 1 },
-          { type: 'done' },
-        ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
-      })
-    }
-    if (path === '/artifacts' && method === 'GET') return json([artifact])
-    if (path === `/artifacts/${artifactId}` && method === 'GET') return json(artifact)
-    if (path === `/artifacts/${artifactId}/versions`) return json([])
-    if (path === `/artifacts/${artifactId}/hwp` && method === 'GET') {
-      return route.fulfill({
-        body: file, contentType: 'application/hwp+zip',
-        headers: { 'X-Artifact-Version': String(artifact.version) },
-      })
-    }
-    if (path === `/artifacts/${artifactId}/hwp` && method === 'PUT') {
-      const expected = url.searchParams.get('expectedVersion')
-      saves.push({ expected, size: request.postDataBuffer()?.length ?? 0 })
-      if (options.conflict || expected !== String(artifact.version)) {
-        return route.fulfill({ status: 409, json: { detail: '이 문서는 다른 곳에서 이미 저장되었습니다.' } })
-      }
-      file = request.postDataBuffer() ?? file
-      artifact = { ...artifact, version: artifact.version + 1 }
-      return json(artifact)
-    }
-    if (path === '/artifacts/counts') return json({ counts: { hwp: 1 }, total: 1 })
-    const shell = shellRead(method, path)
-    if (shell) return route.fulfill(shell)
-    if (method === 'GET' && [`/sessions/${session.id}/jobs`, '/projects', '/skills', '/memory',
-      '/agents', '/tools', '/connectors', '/connectors/catalog', '/jobs', '/designs',
-      '/design-templates', '/shares'].includes(path)) return json([])
-    unexpected.push(`${method} ${path}`)
-    return route.fulfill({ status: 404, json: { detail: 'not_found' } })
+  return officeFixture(page, {
+    kind: 'hwp', file: hwpx, agentFile: Buffer.concat([hwpx, Buffer.from('agent')]),
+    title: '직원 연수 참석 요청', ...options,
   })
-  await page.goto(options.fromHome ? '/' : `/s/${sessionId}?artifact=${artifactId}`)
-  return { unexpected, problems, saves, sent, created }
 }
 
 const panel = (page: Page) => page.locator('[data-panel="artifact"]')

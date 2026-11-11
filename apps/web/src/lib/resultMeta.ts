@@ -13,6 +13,7 @@ export const artifactIcon: Record<ArtifactKind, typeof FileText> = {
   code: Code2,
   html: FileText,
   hwp: FileType,
+  docx: FileType,
 }
 
 export const artifactLabel: Record<ArtifactKind, string> = {
@@ -25,6 +26,7 @@ export const artifactLabel: Record<ArtifactKind, string> = {
   code: '코드',
   html: 'HTML',
   hwp: '한글 문서',
+  docx: 'Word 문서',
 }
 
 /** The measure that tells one result from another: sections, slides, rows, seconds. */
@@ -58,6 +60,7 @@ export function sizeLine(
       return content ? t('{n}줄').replace('{n}', String(content.split('\n').length)) : ''
     }
     case 'hwp':
+    case 'docx':
       return typeof data?.size === 'number' ? `${Math.max(1, Math.round(data.size / 1024))} KB` : ''
     default:
       return ''

@@ -79,3 +79,29 @@ test('the HWP editor at /rhwp/ gets its own policy and the app keeps its own', a
   const dockerfile = await readFile(join(webRoot, 'Dockerfile'), 'utf8')
   assert.match(dockerfile, /COPY rhwp-security-headers\.conf \/etc\/nginx\/snippets\//)
 })
+
+test('the Word editor ships its latin font cuts and Nanum Myeongjo for Korean serif only', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const { existsSync } = await import('node:fs')
+  const { createRequire } = await import('node:module')
+  const loaded = await loadConfigFromFile(
+    { command: 'build', mode: 'production' }, join(webRoot, 'vite.config.ts'),
+  )
+  const plugin = loaded.config.plugins.flat().find((p) => p && p.name === 'kchat-folio-fonts')
+  assert.ok(plugin)
+  const sheet = createRequire(join(webRoot, 'package.json')).resolve(
+    '@stll/folio-react/editor.css',
+  )
+  const css = plugin.transform(await readFile(sheet, 'utf8'), sheet)
+  assert.ok(!css.includes('@import "@stll/folio-fonts'))
+  const urls = [...css.matchAll(/url\(([^)]+)\)/g)].map((m) => m[1])
+  const fonts = urls.filter((url) => /\.woff2?$/.test(url))
+  assert.ok(fonts.length > 0)
+  // woff2 only, and every one is a file Vite can bundle
+  assert.ok(fonts.every((url) => url.endsWith('.woff2')))
+  for (const url of fonts) assert.ok(existsSync(join(dirname(sheet), url)), url)
+  assert.ok(!/cyrillic|greek|hebrew|vietnamese|arabic/.test(fonts.join(' ')))
+  assert.ok(fonts.some((url) => url.includes('carlito-latin-400-normal')))
+  assert.match(css, /font-family: 'Noto Serif KR'/)
+  assert.ok(fonts.some((url) => url.includes('@fontsource/nanum-myeongjo/files/')))
+})

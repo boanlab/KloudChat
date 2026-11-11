@@ -55,11 +55,16 @@ function instructionPart(text: string): string {
   return kept.join('\n')
 }
 
-/** The surface a chat sentence really belongs to, or null to answer it here. */
 /** 「한글 문서로」, 「hwp 파일」: written in the HWP editor beside the chat, not handed to the
  *  report surface. Mirrors the server's `_ASKS_HWP` (routers/sessions.py). */
 export const NAMES_HWP = /(?<![A-Za-z])hwpx?(?![A-Za-z])|한글\s{0,2}(?:파일|문서)|아래아\s{0,2}한글/i
 
+/** 「Word로」, 「docx 파일」, 「워드 문서」 (not 「키워드로」): written in the Word editor beside the
+ *  chat. Mirrors the server's `_ASKS_DOCX` (routers/sessions.py). */
+export const NAMES_DOCX =
+  /(?<![A-Za-z])docx(?![A-Za-z])|(?<![A-Za-z])(?:ms\s?)?word\s{0,2}(?:로|으로|문서|파일|documents?|files?|format)|(?<![가-힣])워드\s{0,2}(?:로|문서|파일)/i
+
+/** The surface a chat sentence really belongs to, or null to answer it here. */
 export function handoffSurface(text: string): 'report' | 'slides' | null {
   const s = instructionPart(text).trim()
   if (s.length < 6 || s.length > 1200) return null

@@ -5,7 +5,7 @@ import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer, fillComposer } from '@/components/chat/Composer'
-import { artifactsApi, errorMessage } from '@/lib/api'
+import { artifactsApi, errorMessage, type OfficeKind } from '@/lib/api'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -47,6 +47,20 @@ const EXAMPLES: Record<SessionKind, string[]> = {
 }
 
 /** Also the `/new/:kind` entry. */
+/** Beside the surfaces: a chat that opens with a blank office document in its editor. */
+const OFFICE_STARTS = [
+  {
+    kind: 'hwp', label: '한글 문서', title: '새 한글 문서', color: '#2b6cb0',
+    hint: '빈 한글 문서를 열고, 챗으로 쓰고 고칩니다', failed: '한글 문서를 열지 못했습니다.',
+  },
+  {
+    kind: 'docx', label: 'Word 문서', title: '새 Word 문서', color: '#185abd',
+    hint: '빈 Word 문서를 열고, 챗으로 쓰고 고칩니다', failed: 'Word 문서를 열지 못했습니다.',
+  },
+] as const satisfies readonly {
+  kind: OfficeKind; label: string; title: string; color: string; hint: string; failed: string
+}[]
+
 export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
   const navigate = useNavigate()
@@ -61,19 +75,22 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const newSession = useStore((s) => s.newSession)
   const ensureSession = useStore((s) => s.ensureSession)
   const setNotice = useStore((s) => s.setNotice)
-  const [openingHwp, setOpeningHwp] = useState(false)
-  /** A chat with a blank HWP document open beside it. */
-  const startHwp = async () => {
-    if (openingHwp) return
-    setOpeningHwp(true)
+  const [openingDocument, setOpeningDocument] = useState<OfficeKind | null>(null)
+  /** A chat with a blank HWP or Word document open beside it. */
+  const startDocument = async (start: (typeof OFFICE_STARTS)[number]) => {
+    if (openingDocument) return
+    setOpeningDocument(start.kind)
     try {
       const id = await ensureSession(await newSession('chat'))
-      const row = await artifactsApi.createHwp({ sessionId: id, title: t('새 한글 문서') })
+      const row = await artifactsApi.createDocument(start.kind, {
+        sessionId: id,
+        title: t(start.title),
+      })
       navigate(`/s/${id}?artifact=${row.id}`)
     } catch (err) {
-      setNotice(errorMessage(err, t('한글 문서를 열지 못했습니다.')))
+      setNotice(errorMessage(err, t(start.failed)))
     } finally {
-      setOpeningHwp(false)
+      setOpeningDocument(null)
     }
   }
 
@@ -201,7 +218,8 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
 
       <div className="shrink-0 pt-2" data-testid="home-dock">
         <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none]">
-          {/* The surfaces; the HWP document beside them is a chat with a file, not a surface. */}
+          {/* The surfaces; an HWP or Word document beside them is a chat with a file, not a
+              surface. */}
           <div role="group" aria-label={t('만들 것')} className="contents">
             {surfaces.map((k) => {
               const meta = kindMeta[k]
@@ -226,22 +244,23 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
               )
             })}
           </div>
-            {surfaces.includes('chat') && (
-              <button
-                type="button"
-                onClick={() => void startHwp()}
-                disabled={openingHwp}
-                title={t('빈 한글 문서를 열고, 챗으로 쓰고 고칩니다')}
-                className="flex shrink-0 items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-base text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-60"
-              >
-                {openingHwp ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <FileType size={14} style={{ color: '#2b6cb0' }} />
-                )}
-                {t('한글 문서')}
-              </button>
-            )}
+          {surfaces.includes('chat') && OFFICE_STARTS.map((start) => (
+            <button
+              key={start.kind}
+              type="button"
+              onClick={() => void startDocument(start)}
+              disabled={openingDocument !== null}
+              title={t(start.hint)}
+              className="flex shrink-0 items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-base text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-60"
+            >
+              {openingDocument === start.kind ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <FileType size={14} style={{ color: start.color }} />
+              )}
+              {t(start.label)}
+            </button>
+          ))}
         </div>
         {/* `key` remount per surface: draft, attachments, skill pick are per surface. */}
         <Composer key={active} sessionId={null} kind={active} autoFocus />

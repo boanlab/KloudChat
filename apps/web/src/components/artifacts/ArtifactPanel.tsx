@@ -5,12 +5,13 @@ import {
   Download,
   Eye,
   ImagePlus,
+  Loader2,
   Play,
   RefreshCw,
   Share2,
 } from 'lucide-react'
 import { SlideView } from '@/components/slides/DeckPanel'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
 import { HwpPanel } from '@/components/hwp/HwpPanel'
@@ -36,6 +37,23 @@ import { useStore } from '@/store/useStore'
 import type { Artifact, CodeArtifact } from '@/types'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
+
+/** The Word editor and its fonts are a chunk of their own, fetched when a Word document opens. */
+const DocxPanel = lazy(() =>
+  import('@/components/docx/DocxPanel').then((module) => ({ default: module.DocxPanel })),
+)
+
+function PanelLoading() {
+  const t = useT()
+  return (
+    <div className="grid h-full place-items-center text-sm text-muted">
+      <span className="flex items-center gap-2">
+        <Loader2 size={15} className="animate-spin" />
+        {t('문서를 여는 중…')}
+      </span>
+    </div>
+  )
+}
 
 const aspectClass: Record<string, string> = {
   '1:1': 'aspect-square',
@@ -154,11 +172,14 @@ export function ArtifactPreview({
     case 'chart':
       return <ChartThumb chart={artifact} />
     case 'hwp':
+    case 'docx':
       // The file's text on a white page; the editor itself opens in the panel.
       return (
         <div className="size-full overflow-hidden bg-white px-5 py-4 text-[#1a1a1a]">
           <p className="mb-0.5 truncate text-lg font-semibold">{artifact.title}</p>
-          <p className="mb-3 text-xs text-[#6b6b6b]">{t('한글 문서')}</p>
+          <p className="mb-3 text-xs text-[#6b6b6b]">
+            {t(artifact.kind === 'hwp' ? '한글 문서' : 'Word 문서')}
+          </p>
           <p className="line-clamp-6 whitespace-pre-line text-xs leading-relaxed text-[#595959]">
             {(artifact.text ?? '').slice(0, 600)}
           </p>
@@ -794,7 +815,8 @@ export function ArtifactPanel() {
     artifact.kind === 'report' ||
     artifact.kind === 'deck' ||
     artifact.kind === 'chart' ||
-    artifact.kind === 'hwp'
+    artifact.kind === 'hwp' ||
+    artifact.kind === 'docx'
   // Reports, decks, charts own their chrome; the rest share a header.
   const selfChrome = selfWide
 
@@ -926,6 +948,15 @@ export function ArtifactPanel() {
               onClose={() => openArtifact(null)}
               onModeChange={changeMode}
             />
+          ) : artifact.kind === 'docx' ? (
+            <Suspense fallback={<PanelLoading />}>
+              <DocxPanel
+                key={artifact.id}
+                doc={artifact}
+                onClose={() => openArtifact(null)}
+                onModeChange={changeMode}
+              />
+            </Suspense>
           ) : null}
         </div>
       )}

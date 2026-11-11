@@ -586,6 +586,7 @@ export type ArtifactKind =
   | 'code'
   | 'html'
   | 'hwp'
+  | 'docx'
 
 interface ArtifactBase {
   id: string
@@ -913,11 +914,20 @@ export interface CodeArtifact extends ArtifactBase {
   blocks?: { title: string; layout: string }[]
 }
 
-/** An HWP document: the file itself is fetched per version (`artifactsApi.hwpFile`). */
+/** An HWP document: the file itself is fetched per version (`artifactsApi.documentFile`). */
 export interface HwpArtifact extends ArtifactBase {
   kind: 'hwp'
   /** `hwp` until the editor first saves it as HWPX. */
   format: 'hwpx' | 'hwp'
+  size: number
+  /** Body text, for search and cards. */
+  text?: string
+}
+
+/** A Word document: the file itself is fetched per version (`artifactsApi.documentFile`). */
+export interface DocxArtifact extends ArtifactBase {
+  kind: 'docx'
+  format: 'docx'
   size: number
   /** Body text, for search and cards. */
   text?: string
@@ -932,6 +942,7 @@ export type Artifact =
   | VideoArtifact
   | CodeArtifact
   | HwpArtifact
+  | DocxArtifact
 
 /* ── workspace ──────────────────────────────────────────────────────── */
 

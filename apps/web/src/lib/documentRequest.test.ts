@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentHandoffSurface, handoffSurface, NAMES_HWP } from '@/lib/documentRequest'
+import { agentHandoffSurface, handoffSurface, NAMES_DOCX, NAMES_HWP } from '@/lib/documentRequest'
 
 describe('handoffSurface', () => {
   it('hands an English request to create, make or build a deck to the slides screen', () => {
@@ -62,5 +62,25 @@ describe('NAMES_HWP', () => {
     for (const text of ['한글로 번역해 줘', 'whwpx', '한글날 행사 공문을 작성해 줘']) {
       expect(NAMES_HWP.test(text)).toBe(false)
     }
+  })
+})
+
+describe('NAMES_DOCX', () => {
+  it('names a Word document as the server does, and not words that end in 워드', () => {
+    for (const text of [
+      '공문을 Word로 작성해 주세요', '워드 문서로 써 줘', 'docx 파일로', 'MS Word 파일',
+      'a Word document please', '워드로 만들어 줘',
+    ]) {
+      expect(NAMES_DOCX.test(text)).toBe(true)
+    }
+    for (const text of ['키워드로 검색해 줘', '패스워드 파일', 'in a word, no', '한글 문서로', 'docxy']) {
+      expect(NAMES_DOCX.test(text)).toBe(false)
+    }
+  })
+
+  it('keeps a Word request off the report screen', () => {
+    // the composer checks NAMES_DOCX before handing a document order over
+    expect(handoffSurface('직원 연수 참석을 요청하는 공문을 Word로 작성해 주세요')).not.toBeNull()
+    expect(NAMES_DOCX.test('직원 연수 참석을 요청하는 공문을 Word로 작성해 주세요')).toBe(true)
   })
 })

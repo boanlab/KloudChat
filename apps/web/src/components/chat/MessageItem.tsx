@@ -24,7 +24,9 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Button } from '@/components/ui'
 import { MediaResult } from '@/components/media/MediaResult'
 import { ResultCard } from './ResultCard'
-import { artifactsApi, downloadFile, errorMessage, filesApi, templateText } from '@/lib/api'
+import {
+  artifactsApi, downloadFile, errorMessage, filesApi, templateText, type OfficeKind,
+} from '@/lib/api'
 import { useIssues } from '@/lib/issues'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL, maskingCategories, requestMaskingLabel } from '@/lib/privacy'
@@ -292,16 +294,19 @@ function MessageItemInner({
 
   const refreshArtifact = useStore((s) => s.refreshArtifact)
   const openArtifact = useStore((s) => s.openArtifact)
-  /** Opens an attached `.hwp`/`.hwpx` in the HWP editor beside this chat, as it is. */
-  const openInEditor = async (id: string) => {
+  /** Opens an attached `.hwp`/`.hwpx` or `.docx` in its editor beside this chat, as it is. */
+  const openInEditor = async (kind: OfficeKind, id: string) => {
     setFileError(null)
-    setOpening(`hwp:${id}`)
+    setOpening(`${kind}:${id}`)
     try {
-      const made = await artifactsApi.createHwp({ sessionId, fileId: id })
+      const made = await artifactsApi.createDocument(kind, { sessionId, fileId: id })
       await refreshArtifact(made.id)
       openArtifact(made.id)
     } catch (err) {
-      setFileError(errorMessage(err, t('이 파일을 한글 편집기로 열지 못했습니다.')))
+      const failed = kind === 'hwp'
+        ? '이 파일을 한글 편집기로 열지 못했습니다.'
+        : '이 파일을 Word 편집기로 열지 못했습니다.'
+      setFileError(errorMessage(err, t(failed)))
     } finally {
       setOpening(null)
     }
@@ -408,22 +413,25 @@ function MessageItemInner({
             const shell =
               'ml-auto flex w-fit max-w-full items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base'
             const hangul = Boolean(a.id) && /\.hwpx$/i.test(a.name)
-            const editable = Boolean(a.id) && /\.hwpx?$/i.test(a.name) && sessionKind === 'chat'
+            // the office editor this file opens in beside the chat
+            const editable: OfficeKind | null = !a.id || sessionKind !== 'chat' ? null
+              : /\.hwpx?$/i.test(a.name) ? 'hwp'
+                : /\.docx$/i.test(a.name) ? 'docx' : null
             return a.id ? (
               <span key={a.id} className="ml-auto flex w-fit max-w-full items-center gap-1.5">
                 {editable && (
                   <Button
                     size="sm"
                     variant="secondary"
-                    disabled={opening === `hwp:${a.id}`}
-                    onClick={() => void openInEditor(a.id!)}
+                    disabled={opening === `${editable}:${a.id}`}
+                    onClick={() => void openInEditor(editable, a.id!)}
                   >
-                    {opening === `hwp:${a.id}` ? (
+                    {opening === `${editable}:${a.id}` ? (
                       <Loader2 size={13} className="animate-spin" />
                     ) : (
                       <FileType size={13} />
                     )}
-                    {t('HWP로 열기')}
+                    {t(editable === 'hwp' ? 'HWP로 열기' : 'Word로 열기')}
                   </Button>
                 )}
                 {hangul && (

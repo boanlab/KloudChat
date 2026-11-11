@@ -1433,17 +1433,18 @@ export const artifactsApi = {
   /** Puts a superseded revision back. Itself an edit, so it adds a version. */
   restore: (id: string, version: number) =>
     call<ArtifactRow>(`/artifacts/${id}/restore`, body({ version })),
-  /** A new HWP document in a conversation: blank, or the uploaded `.hwp`/`.hwpx` `fileId`. */
-  createHwp: (payload: {
+  /** A new office document (HWP, Word) in a conversation: blank, or the uploaded `fileId`
+   *  (`.hwp`/`.hwpx`, `.docx`). */
+  createDocument: (kind: OfficeKind, payload: {
     sessionId?: string | null
     projectId?: string | null
     fileId?: string
     title?: string
-  }) => call<ArtifactRow>('/artifacts/hwp', body(payload)),
+  }) => call<ArtifactRow>(`/artifacts/${kind}`, body(payload)),
   /** A version's file (the current one by default), for the editor. */
-  hwpFile: async (id: string, version?: number) => {
+  documentFile: async (kind: OfficeKind, id: string, version?: number) => {
     const query = version === undefined ? '' : `?version=${version}`
-    const res = await authedFetch(`${BASE_URL}/artifacts/${id}/hwp${query}`)
+    const res = await authedFetch(`${BASE_URL}/artifacts/${id}/${kind}${query}`)
     if (!res.ok) {
       const detail = await readDetail(res)
       if (res.status === 401) throw new UnauthorizedError(detail)
@@ -1454,13 +1455,20 @@ export const artifactsApi = {
       version: Number(res.headers.get('X-Artifact-Version') ?? version ?? 0),
     }
   },
-  /** The editor's HWPX as the next version; 409 when anyone saved since `expectedVersion`. */
-  saveHwp: async (id: string, bytes: Uint8Array, expectedVersion: number, summary = '') => {
+  /** The editor's file (HWPX, DOCX) as the next version; 409 when anyone saved since
+   *  `expectedVersion`. */
+  saveDocument: async (
+    kind: OfficeKind,
+    id: string,
+    bytes: Uint8Array,
+    expectedVersion: number,
+    summary = '',
+  ) => {
     const query = new URLSearchParams({ expectedVersion: String(expectedVersion) })
     if (summary) query.set('summary', summary)
-    const res = await authedFetch(`${BASE_URL}/artifacts/${id}/hwp?${query}`, {
+    const res = await authedFetch(`${BASE_URL}/artifacts/${id}/${kind}?${query}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/hwp+zip' },
+      headers: { 'Content-Type': OFFICE_MIME[kind] },
       body: bytes as BodyInit,
     })
     if (!res.ok) {
@@ -1470,6 +1478,15 @@ export const artifactsApi = {
     }
     return (await res.json()) as ArtifactRow
   },
+}
+
+/** Office documents edited beside a chat; each is also its file route (`/artifacts/{id}/hwp`). */
+export type OfficeKind = 'hwp' | 'docx'
+
+/** The editable format each kind is saved in. */
+export const OFFICE_MIME: Record<OfficeKind, string> = {
+  hwp: 'application/hwp+zip',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 }
 
 export interface ArtifactVersionRow {
