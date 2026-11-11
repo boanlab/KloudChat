@@ -25,6 +25,8 @@ Copy and rating (👍 · 👎) buttons sit below the answer.
 
 While an answer is being generated, the send button changes to ■ **Stop**. If you stop, the content generated so far is saved and usage is recorded as an estimate. Generation continues on the server even if you close or refresh the browser tab, so you can return later and see the finished answer.
 
+Reports and slides work the same way. If you stop one while it is being written, the half-written document is not saved, only the usage so far is recorded, and the outline you approved comes back so you can generate it again or change it. If the connection drops while it is being written, the screen says the server is still writing and opens the finished document when it is done. A conversation writes one answer or document at a time, so a message sent to the same conversation from another tab is refused until the earlier one finishes.
+
 ## When generation fails
 
 The answer area shows **Retry** and **Another model** buttons. **Another model** applies a different model to that request only.

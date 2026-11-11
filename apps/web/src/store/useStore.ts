@@ -2980,6 +2980,8 @@ function settleRun(m: Message): Message {
 
 /** Every turn ends with `usage` or `error`; a stream that ends with neither was cut off. */
 const CUT_OFF = '연결이 끊겨 답변이 중간에 멈췄습니다. 다시 시도해 주세요.'
+/** A report or deck whose response dropped while the server still writes it. */
+const STILL_WRITING = '연결이 끊겼지만 서버에서 계속 쓰고 있습니다. 다 쓰면 여기에 엽니다.'
 
 /** Why the turn failed, in a sentence somebody can act on. */
 function turnFailure(err: unknown): string {
@@ -3901,6 +3903,11 @@ async function streamReport(
     wordCount: 0,
   }
 
+  // What was open before, back on screen when a stop leaves nothing stored.
+  const before = {
+    artifactId: get().sessions.find((c) => c.id === sessionId)?.artifactId ?? null,
+    open: get().openArtifactId,
+  }
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
   // Approved outline spent; a new proposal arrives as its own event.
@@ -3936,6 +3943,9 @@ async function streamReport(
   beginRun(set, sessionId, () => controller.abort())
   // Whether the turn ended with `usage`/`error`/`proposal`/`needs`. See CUT_OFF.
   let settled = false
+  // The server took the turn: a dropped response leaves it writing there.
+  let accepted = false
+  let followDetachedTurn = false
 
   try {
     for await (const e of gate.rerun ? streamRerun(
@@ -3959,6 +3969,7 @@ async function streamReport(
       },
       controller.signal,
     )) {
+      accepted = true
       switch (e.type) {
         // The turn planned or asked; nothing was written.
         case 'proposal':
@@ -4090,7 +4101,24 @@ async function streamReport(
       }))
       throw err
     }
-    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      // Stopped: the server stores no half-written document, so the draft goes too.
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, failure: 'stopped' }))
+      if (willWrite) {
+        set((s) => ({
+          artifacts: s.artifacts.filter((a) => a.id !== draftId),
+          openArtifactId: s.openArtifactId === draftId ? before.open : s.openArtifactId,
+          sessions: s.sessions.map((c) =>
+            c.id === sessionId && c.artifactId === draftId
+              ? { ...c, artifactId: before.artifactId }
+              : c,
+          ),
+        }))
+      }
+    } else if (accepted && !isClientRefusal(err)) {
+      // The response dropped, not the turn: it is still being written on the server.
+      followDetachedTurn = true
+    } else {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
         error: errorMessage(err, tr('보고서를 만들지 못했습니다.')),
@@ -4098,7 +4126,13 @@ async function streamReport(
     }
     if (isClientRefusal(err)) throw err
   } finally {
-    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    if (!settled && accepted) followDetachedTurn = true
+    else if (!settled) {
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    }
+    if (followDetachedTurn) {
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: tr(STILL_WRITING) }))
+    }
     patchMessage(set, sessionId, assistantId, (m) => {
       const settledRun = settleRun(m)
       // The server words the rerun's message the same way; shown until the transcript reloads.
@@ -4107,6 +4141,7 @@ async function streamReport(
         : settledRun
     })
     endRun(set, sessionId)
+    if (followDetachedTurn) void watchForDetachedDocument(set, get, sessionId, draftId)
     void get().loadSessions()
   }
 }
@@ -4152,6 +4187,11 @@ async function streamDeck(
     draft: true,
   }
 
+  // What was open before, back on screen when a stop leaves nothing stored.
+  const before = {
+    artifactId: get().sessions.find((c) => c.id === sessionId)?.artifactId ?? null,
+    open: get().openArtifactId,
+  }
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
   // Approved outline spent; a new proposal arrives as its own event.
@@ -4185,6 +4225,9 @@ async function streamDeck(
   beginRun(set, sessionId, () => controller.abort())
   // Whether the turn ended with `usage`/`error`/`proposal`/`needs`. See CUT_OFF.
   let settled = false
+  // The server took the turn: a dropped response leaves it writing there.
+  let accepted = false
+  let followDetachedTurn = false
 
   try {
     for await (const e of gate.rerun ? streamRerun(
@@ -4208,6 +4251,7 @@ async function streamDeck(
       },
       controller.signal,
     )) {
+      accepted = true
       switch (e.type) {
         // The turn planned or asked; nothing was written.
         case 'proposal':
@@ -4319,7 +4363,24 @@ async function streamDeck(
       }))
       throw err
     }
-    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      // Stopped: the server stores no half-written document, so the draft goes too.
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, failure: 'stopped' }))
+      if (willWrite) {
+        set((s) => ({
+          artifacts: s.artifacts.filter((a) => a.id !== draftId),
+          openArtifactId: s.openArtifactId === draftId ? before.open : s.openArtifactId,
+          sessions: s.sessions.map((c) =>
+            c.id === sessionId && c.artifactId === draftId
+              ? { ...c, artifactId: before.artifactId }
+              : c,
+          ),
+        }))
+      }
+    } else if (accepted && !isClientRefusal(err)) {
+      // The response dropped, not the turn: it is still being written on the server.
+      followDetachedTurn = true
+    } else {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
         error: errorMessage(err, tr('슬라이드를 만들지 못했습니다.')),
@@ -4327,7 +4388,13 @@ async function streamDeck(
     }
     if (isClientRefusal(err)) throw err
   } finally {
-    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    if (!settled && accepted) followDetachedTurn = true
+    else if (!settled) {
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    }
+    if (followDetachedTurn) {
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: tr(STILL_WRITING) }))
+    }
     patchMessage(set, sessionId, assistantId, (m) => {
       const settledRun = settleRun(m)
       // The server words the rerun's message the same way; shown until the transcript reloads.
@@ -4336,6 +4403,7 @@ async function streamDeck(
         : settledRun
     })
     endRun(set, sessionId)
+    if (followDetachedTurn) void watchForDetachedDocument(set, get, sessionId, draftId)
     void get().loadSessions()
   }
 }
@@ -4491,6 +4559,36 @@ async function watchForDetachedAnswer(set: Set, get: Get, sessionId: string) {
       sessions: state.sessions.map((session) => session.id === sessionId ? fresh : session),
     }))
     return
+  }
+}
+
+/** A report/deck response dropped while the turn writes on: shown running, polled, then opened. */
+async function watchForDetachedDocument(set: Set, get: Get, sessionId: string, draftId: string) {
+  let cancelled = false
+  // The stop button stays: it stops the turn on the server (`stopStreaming`) and ends the watch.
+  beginRun(set, sessionId, () => { cancelled = true })
+  try {
+    // Documents take longer than answers; the server's claim on the turn is kept while it writes.
+    for (let waited = 0; waited < 1_800_000; waited += 3_000) {
+      await new Promise((done) => setTimeout(done, 3_000))
+      if (cancelled || get().activeSessionId !== sessionId) return
+      const row = await sessionsApi.get(sessionId).catch(() => null)
+      if (!row) continue
+      const fresh = toSession(row)
+      const last = fresh.messages[fresh.messages.length - 1]
+      // An approved outline stays pending while it is written: only the transcript says it ended.
+      if (last?.role === 'user' && !last.failure) continue
+      const made = fresh.artifactId
+      if (made) await Promise.all([get().loadArtifacts(), get().refreshArtifact(made)])
+      set((state) => ({
+        sessions: state.sessions.map((session) => session.id === sessionId ? fresh : session),
+        artifacts: state.artifacts.filter((a) => a.id !== draftId),
+        openArtifactId: state.openArtifactId === draftId ? made : state.openArtifactId,
+      }))
+      return
+    }
+  } finally {
+    endRun(set, sessionId)
   }
 }
 

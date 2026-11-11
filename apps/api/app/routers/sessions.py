@@ -10,7 +10,7 @@ import logging
 import re
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, timedelta
@@ -356,10 +356,14 @@ async def _skill_shelf(
     return shelf
 
 
-#: Claim older than this = crash leftover.
+#: Claim not renewed for this long = crash leftover.
 _CLAIM_TTL_SEC = 600
+#: How often a running turn renews its claim (`_keep_claim`); well inside the TTL.
+_CLAIM_REFRESH_SEC = 60.0
 #: Claim tokens by session, request → releasing turn.
 _CLAIMS: dict[str, str] = {}
+#: This request's claim `(session id, token)` until a turn stream takes it over.
+_TURN_CLAIM: ContextVar[tuple[str, str] | None] = ContextVar("turn_claim", default=None)
 
 
 async def _claim_turn(db: AsyncSession, session: ChatSession) -> bool:
@@ -378,25 +382,50 @@ async def _claim_turn(db: AsyncSession, session: ChatSession) -> bool:
                 ),
             )
             .values(running_turn=token, running_since=utcnow())
+            # decided by the database alone; loaded rows are not compared in Python
+            .execution_options(synchronize_session=False)
         )
-    except Exception as exc:  # noqa: BLE001 — the in-process guard still stands
-        log.warning("turn claim for %s skipped: %s", session.id, exc)
-        return True
+    except Exception as exc:  # noqa: BLE001 — refused as busy: an unchecked turn may run twice
+        log.warning("turn claim for %s failed: %s", logs.safe(session.id), logs.safe(exc))
+        return False
     rowcount = getattr(result, "rowcount", None)
     if isinstance(rowcount, int) and rowcount >= 0 and rowcount != 1:
         return False
     _CLAIMS[session.id] = token
+    _TURN_CLAIM.set((session.id, token))
     return True
 
 
+async def _keep_claim(session_id: str, token: str) -> None:
+    """Renews `running_since` while this turn still owns the claim; a dead replica stops."""
+    while True:
+        await asyncio.sleep(_CLAIM_REFRESH_SEC)
+        try:
+            async with SessionLocal() as db:
+                result = await db.exec(
+                    update(ChatSession)
+                    .where(ChatSession.id == session_id, ChatSession.running_turn == token)
+                    .values(running_since=utcnow())
+                )
+                await db.commit()
+        except Exception as exc:  # noqa: BLE001 — tried again next round; the TTL still bounds
+            log.warning("turn claim for %s not renewed: %s", logs.safe(session_id),
+                        logs.safe(exc))
+            continue
+        if getattr(result, "rowcount", None) == 0:
+            # stopped or released: no longer ours to keep
+            return
+
+
 async def _release_turn(session_id: str, token: str | None = None) -> None:
-    """Releases the session's turn — only ours, unless `token` is None (stop)."""
+    """Releases the session's turn: `token`'s claim, this process's (None), or any ("": stop)."""
     if token is None:
         token = _CLAIMS.pop(session_id, None)
         if token is None:
-            # unclaimed turn (retry harness, non-chat surface)
+            # unclaimed turn (retry harness, rerun)
             return
-    else:
+    elif not token or _CLAIMS.get(session_id) == token:
+        # a newer turn's token stays
         _CLAIMS.pop(session_id, None)
     try:
         async with SessionLocal() as db:
@@ -3978,6 +4007,22 @@ def _plans_first(session: ChatSession) -> bool:
 async def send_message(
     session_id: str, payload: SendMessage, request: Request, user: CurrentUser, db: DbSession
 ):
+    """One turn; a claim no turn stream took over (refused, failed early) is given back."""
+    held = _TURN_CLAIM.set(None)
+    try:
+        return await _send_message(session_id, payload, request, user, db)
+    finally:
+        if (left := _TURN_CLAIM.get()) is not None:
+            # after the request's own transaction ends: an uncommitted claim holds the row
+            task = asyncio.create_task(_release_turn(*left))
+            _DETACHED.add(task)
+            task.add_done_callback(_DETACHED.discard)
+        _TURN_CLAIM.reset(held)
+
+
+async def _send_message(
+    session_id: str, payload: SendMessage, request: Request, user: User, db: AsyncSession
+):
     # published-bot visitor: publisher's account, fixed agent, strict-local, nothing else
     published = _PUBLISHED.get()
     if published is not None:
@@ -4111,10 +4156,9 @@ async def send_message(
             payload.render_template_id, session.kind, keep=session.render_template_id)
     await user_templates.load(db, user.id, [session.render_template_id])
 
-    # one answer at a time per process (else Q,Q,A,A); a stopped turn lets the next through
-    if session.kind is SessionKind.chat and any(
-        not signal.is_set() for signal in _STOPPING.get(session.id, set())
-    ):
+    # one answer or document at a time per process (else Q,Q,A,A); a stopped turn lets the
+    # next through
+    if any(not signal.is_set() for signal in _STOPPING.get(session.id, set())):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_busy")
 
     # policy before any write, billing, key issue or model call
@@ -4879,8 +4923,8 @@ async def send_message(
             attachments=attachment_meta,
             routing=privacy_resolution.routing if privacy_resolution else document_routing,
         )
-    if session.kind is SessionKind.chat and not await _claim_turn(db, session):
-        # another replica holds the turn; claim shares the question's transaction
+    if not await _claim_turn(db, session):
+        # another tab or replica holds the turn; claim shares the question's transaction
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_busy")
     db.add(user_message)
     if session.kind is SessionKind.chat and pending:
@@ -5112,10 +5156,15 @@ async def send_message(
             agent=agent_row,
         )
 
+    #: the stop button's signal for this report or deck (`_stoppable`)
+    stopping = asyncio.Event()
     if session.kind is SessionKind.report:
         return StreamingResponse(
-            _survive_disconnect(
+            _survive_disconnect(_stoppable(
+                session.id,
+                stopping,
                 _run_report(
+                    stopping=stopping,
                     # run the card waited on, if any
                     parent_run_id=str(pending.get("runId") or "") or None,
                     may_ask=not (proceed_as_is or asked_once) and not _brings_material(content),
@@ -5164,8 +5213,8 @@ async def send_message(
                     ],
                     # no network on strict-local
                     web_search=effective_web_search and not strict_local,
-                )
-            ),
+                ),
+            )),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -5176,8 +5225,11 @@ async def send_message(
 
     if session.kind is SessionKind.slides:
         return StreamingResponse(
-            _survive_disconnect(
+            _survive_disconnect(_stoppable(
+                session.id,
+                stopping,
                 _run_deck(
+                    stopping=stopping,
                     template=render_template,
                     traced=material_turn,
                     # turned-on check skills run as the server's checks, as on a report
@@ -5214,8 +5266,8 @@ async def send_message(
                         payload.web_search == "auto"
                         and report_service.given_material_suffices(
                             content, has_files=_grounded_in_files(workspace))),
-                )
-            ),
+                ),
+            )),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -5580,10 +5632,14 @@ async def _until_stopped(
 ) -> AsyncIterator[dict[str, Any]]:
     """Races stream delivery against cancellation and closes the upstream generator."""
     iterator = events.__aiter__()
+    loop = asyncio.get_running_loop()
+    # one context for every step and the close: a stage's context-variable token is reset
+    # in the context it was set in (a pipeline runner's stage name)
+    steps = copy_context()
     waiting = asyncio.ensure_future(stopping.wait())
     try:
         while not stopping.is_set():
-            nxt = asyncio.ensure_future(anext(iterator))
+            nxt = loop.create_task(anext(iterator), context=steps)
             done, _ = await asyncio.wait({nxt, waiting}, return_when=asyncio.FIRST_COMPLETED)
             if nxt not in done:
                 # cancel+await pending read before `aclose()`, else it raises on a running generator
@@ -5598,7 +5654,53 @@ async def _until_stopped(
             yield event
     finally:
         waiting.cancel()
-        await iterator.aclose()
+        await loop.create_task(iterator.aclose(), context=steps)
+
+
+async def _stoppable(session_id: str, stopping: asyncio.Event,
+                     events: AsyncIterator[str]) -> AsyncIterator[str]:
+    """A report or deck turn the stop button reaches, here or on another replica (`_STOPPING`)."""
+    _STOPPING.setdefault(session_id, set()).add(stopping)
+    try:
+        async for chunk in events:
+            yield chunk
+    finally:
+        # only this turn's signal; a newer turn may own the set
+        live = _STOPPING.get(session_id)
+        if live is not None:
+            live.discard(stopping)
+            if not live:
+                del _STOPPING[session_id]
+
+
+async def _settle_stopped_document(*, session_id: str, user_id: str, model: dict,
+                                   outline_model: dict | None, usage: dict,
+                                   reason: str) -> AsyncIterator[str]:
+    """A report or deck stopped before it was stored: no artifact, the question marked stopped
+    (like a chat turn stopped before its first word), the tokens spent so far billed."""
+    # each model's tokens at its price; a part that spent nothing costs nothing
+    spent = [(model, usage.get("inputTokens", 0), usage.get("outputTokens", 0)),
+             (outline_model or model, usage.get("outlineInputTokens", 0),
+              usage.get("outlineOutputTokens", 0))]
+    credits = sum(charge_for_tokens(row, i, o) for row, i, o in spent if i or o)
+    try:
+        async with SessionLocal() as db:
+            user = await db.get(User, user_id)
+            last = (await db.exec(
+                select(Message).where(Message.session_id == session_id)
+                .order_by(col(Message.created_at).desc()).limit(1)
+            )).first()
+            if last is not None and last.role is Role.user and last.failure is None:
+                last.failure = TurnFailure.stopped
+                db.add(last)
+            if user is not None:
+                settle(db, user, credits, reason=reason, session_id=session_id,
+                       model=model["id"])
+            await db.commit()
+    except Exception:  # noqa: BLE001 — the stream has already ended for the person
+        log.exception("stopped document turn in session %s not settled", session_id)
+    yield chat_service.sse({"type": "usage", **usage, "credits": credits})
+    yield chat_service.sse({"type": "done"})
 
 
 #: Strong refs; reader-less tasks are otherwise collectible mid-turn.
@@ -5633,25 +5735,38 @@ async def _heartbeat(events: AsyncIterator[str]) -> AsyncIterator[str]:
 
 
 def _survive_disconnect(events: AsyncIterator[str]) -> AsyncIterator[str]:
-    """Turn response: survives a departed reader, heartbeats while silent, route record first."""
+    """Turn response: survives a departed reader, heartbeats while silent, route record first;
+    owns the request's turn claim from here (kept fresh, released at the end)."""
     if (record := _ROUTE.get()) is not None:
         _ROUTE.set(None)
         events = _routed(record, events)
-    return _heartbeat(_detached(events))
+    claim = _TURN_CLAIM.get()
+    _TURN_CLAIM.set(None)
+    return _heartbeat(_detached(events, claim))
 
 
-async def _detached(events: AsyncIterator[str]) -> AsyncIterator[str]:
+async def _detached(events: AsyncIterator[str],
+                    claim: tuple[str, str] | None = None) -> AsyncIterator[str]:
     """Lets a turn finish unread: work in its own task, this relays its queue."""
     queue: asyncio.Queue[str | None] = asyncio.Queue()
 
     async def pump() -> None:
+        keeper = asyncio.create_task(_keep_claim(*claim)) if claim else None
         try:
             async for event in events:
                 await queue.put(event)
         except Exception:  # noqa: BLE001 — nobody is left to receive a raise
             log.exception("detached turn failed")
         finally:
-            await queue.put(None)
+            try:
+                if keeper is not None:
+                    keeper.cancel()
+                if claim is not None:
+                    # every way out, read or not: the next send is let through
+                    await _release_turn(*claim)
+            finally:
+                # the reader is never left waiting
+                await queue.put(None)
 
     task = asyncio.create_task(pump())
     _DETACHED.add(task)
@@ -6931,6 +7046,8 @@ async def _run_deck(
     #: restructure source; untouched parts carried over
     carry_from: str | None = None,
     carry_note: str = "",
+    #: set by the stop button (`_stoppable`): the writer is closed, nothing stored as finished
+    stopping: asyncio.Event | None = None,
 ) -> AsyncIterator[str]:
     """Drives one deck to completion (`deck` pipeline `make`); deck is an artifact."""
     #: this call's arguments, for writing a plan with nothing to decide straight away
@@ -6978,8 +7095,10 @@ async def _run_deck(
     async for chunk in _make_pass(work, pipeline_registry.pipeline("deck"),
                                   crashed="슬라이드를 만들지 못했습니다.",
                                   attachments=attachments, answers=answers,
-                                  straight=straight or None):
+                                  straight=straight or None, stopping=stopping):
         yield chunk
+    if stopping is not None and stopping.is_set():
+        return
     if straight and work.plan.proposal is not None and not work.findings.questions \
             and straight(work.plan.proposal):
         # nothing to decide in the outline: written as planned (pictures declined: none offered)
@@ -6995,7 +7114,8 @@ async def _make_pass(work: PipelineBundle, pipe: Any, *, crashed: str,
                      start: str | None = None, recorder: pipeline_runs.Recorder | None = None,
                      carried: dict | None = None, attempts: dict | None = None,
                      parent: Any = None,
-                     straight: Callable[[dict], bool] | None = None) -> AsyncIterator[str]:
+                     straight: Callable[[dict], bool] | None = None,
+                     stopping: asyncio.Event | None = None) -> AsyncIterator[str]:
     """One-pass writer's `make` flow (deck, page): plan turn, or write approved outline and save.
 
     A plan `straight` accepts is neither shown nor stored: the caller writes it at once.
@@ -7013,10 +7133,12 @@ async def _make_pass(work: PipelineBundle, pipe: Any, *, crashed: str,
         recorder.begin(work, carried=carried)
         if start is None and (event := _run_event(recorder.run_id, pipe.name, "make")):
             yield chat_service.sse(event)
+    events = runner.run(work, PipelineContext(
+        options=dict(pipe.options), run_id=recorder.run_id if recorder else ""), start=start)
+    if stopping is not None:
+        events = _until_stopped(events, stopping)
     try:
-        async for event in runner.run(work, PipelineContext(
-                options=dict(pipe.options), run_id=recorder.run_id if recorder else ""),
-                start=start):
+        async for event in events:
             if straight is not None and event.get("type") == "proposal" and straight(
                     event.get("plan") or {}):
                 continue
@@ -7027,6 +7149,14 @@ async def _make_pass(work: PipelineBundle, pipe: Any, *, crashed: str,
     finally:
         if parent is not None:
             _carry_records(work, parent, start)
+    if stopping is not None and stopping.is_set() and not (work.document.saved or {}).get(
+            "artifactId"):
+        # stopped before the save: the slides so far are no finished deck
+        async for chunk in _settle_stopped_document(
+                session_id=session_id, user_id=user_id, model=model,
+                outline_model=outline_model, usage=work.usage, reason=f"{pipe.name}.generate"):
+            yield chunk
+        return
     proposal, questions = work.plan.proposal, work.findings.questions or None
     if straight is not None and proposal is not None and questions is None \
             and straight(proposal):
@@ -7703,6 +7833,8 @@ async def _run_report(
     process: dict | None = None,
     #: run this pass follows (the waiting card)
     parent_run_id: str | None = None,
+    #: set by the stop button (`_stoppable`): the writer is closed, nothing stored as finished
+    stopping: asyncio.Event | None = None,
 ) -> AsyncIterator[str]:
     """Drives one report to completion (`write` → `report-save`); run kept for reruns."""
     #: this call's arguments, for writing a one-part plan straight away
@@ -7760,6 +7892,8 @@ async def _run_report(
             recorder=recorder,
             bundle_out=built,
         )
+        if stopping is not None:
+            stream = _until_stopped(stream, stopping)
         async for event in stream:
             if not announced and built and recorder is not None:
                 announced = True
@@ -7798,6 +7932,15 @@ async def _run_report(
         yield chat_service.sse(_error_event("보고서를 만들지 못했습니다.", exc))
 
     work = built[0][0] if built else None
+    if stopping is not None and stopping.is_set() and not (
+            work is not None and (work.document.saved or {}).get("artifactId")):
+        # stopped before the save: what streamed is no finished report
+        async for chunk in _settle_stopped_document(
+                session_id=session_id, user_id=user_id, model=model,
+                outline_model=outline_model, usage=work.usage if work is not None else usage,
+                reason="report.generate"):
+            yield chunk
+        return
     if straight and proposal is not None and questions is None:
         # nothing to decide in the outline (one part, or a specific request): written as planned
         planned = {k: v for k, v in proposal.items() if k != "figures"}

@@ -11,7 +11,7 @@ from app.services import design, design_templates
 
 
 def test_a_slides_turn_with_a_deck_form_goes_to_the_deck_writer() -> None:
-    source = inspect.getsource(sessions.send_message)
+    source = inspect.getsource(sessions._send_message)
     assert 'render_template.kind not in ("document", "deck")' in source
     at = source.find("_run_deck(")
     assert at > 0

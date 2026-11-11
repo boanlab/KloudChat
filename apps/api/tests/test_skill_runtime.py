@@ -9,6 +9,7 @@ from conftest import both_passes
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy.sql.dml import Update
 from test_shared_catalog import _matches
 
 from app.core.config import settings
@@ -197,6 +198,9 @@ class _RouteDb:
         return None
 
     async def exec(self, query):
+        if isinstance(query, Update):
+            # the turn claim (`sessions._claim_turn`): this fake session is free
+            return SimpleNamespace(rowcount=1)
         table = _query_table(query)
         if table == "skills":
             return _Result(rows=self.skills)

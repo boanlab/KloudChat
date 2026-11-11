@@ -445,7 +445,7 @@
 "path": "chat/basics",
 "title": "대화 기본",
 "heading": "생성 중지와 이어받기",
-"text": "답변이 생성되는 동안 전송 버튼이 ■ **중지**로 바뀝니다. 중지하면 그 시점까지 생성된 내용이 저장되고 사용량은 추정치로 기록됩니다. 브라우저 탭을 닫거나 새로 고쳐도 생성은 서버에서 계속되므로, 다시 접속하면 완성된 답변을 확인할 수 있습니다."
+"text": "답변이 생성되는 동안 전송 버튼이 ■ **중지**로 바뀝니다. 중지하면 그 시점까지 생성된 내용이 저장되고 사용량은 추정치로 기록됩니다. 브라우저 탭을 닫거나 새로 고쳐도 생성은 서버에서 계속되므로, 다시 접속하면 완성된 답변을 확인할 수 있습니다.\n\n보고서와 슬라이드도 같습니다. 쓰는 중에 **중지**하면 반쯤 쓴 문서는 저장되지 않고, 그때까지 쓴 사용량만 기록되며, 승인했던 개요가 다시 나타나 그대로 다시 생성하거나 고칠 수 있습니다. 쓰는 중에 연결이 끊기면 화면에 \"서버에서 계속 쓰고 있습니다\"가 표시되고, 다 쓰면 완성된 문서가 열립니다. 한 대화에서는 한 번에 하나의 답변이나 문서만 쓰므로, 다른 탭에서 같은 대화로 보내면 앞선 작업이 끝날 때까지 받지 않습니다."
 },
 {
 "lang": "ko",
@@ -1915,7 +1915,7 @@
 "path": "chat/basics",
 "title": "Conversation basics",
 "heading": "Stopping and resuming generation",
-"text": "While an answer is being generated, the send button changes to ■ **Stop**. If you stop, the content generated so far is saved and usage is recorded as an estimate. Generation continues on the server even if you close or refresh the browser tab, so you can return later and see the finished answer."
+"text": "While an answer is being generated, the send button changes to ■ **Stop**. If you stop, the content generated so far is saved and usage is recorded as an estimate. Generation continues on the server even if you close or refresh the browser tab, so you can return later and see the finished answer.\n\nReports and slides work the same way. If you stop one while it is being written, the half-written document is not saved, only the usage so far is recorded, and the outline you approved comes back so you can generate it again or change it. If the connection drops while it is being written, the screen says the server is still writing and opens the finished document when it is done. A conversation writes one answer or document at a time, so a message sent to the same conversation from another tab is refused until the earlier one finishes."
 },
 {
 "lang": "en",

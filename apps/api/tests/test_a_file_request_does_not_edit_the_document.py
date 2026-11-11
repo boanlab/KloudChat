@@ -80,7 +80,7 @@ def test_the_revision_rejects_a_reply_in_place_of_the_part():
 
 
 def test_the_file_turn_is_routed_before_revision():
-    source = inspect.getsource(sessions.send_message)
+    source = inspect.getsource(sessions._send_message)
     assert source.find("_hand_over_document(") < source.find("_revise_document(")
     assert "revise.export_request(typed_content)" in source
 
