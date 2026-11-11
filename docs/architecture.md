@@ -1432,7 +1432,7 @@ An `hwp` artifact is a file, not JSON: each version's HWPX sits in a blob
 format, size and body text for search. `routers/hwp.py` creates one (blank, or
 from an uploaded `.hwp`/`.hwpx`), serves a version's bytes, and takes the
 editor's bytes as the next version. Every writer names the version it read:
-`services/hwp_doc.save` moves the row with one conditional UPDATE
+`services/office_doc.save` moves the row with one conditional UPDATE
 (`version = expected`), so a hand save and an agent edit cannot both land on
 the same version — the loser gets 409 (the editor) or a "read again" (a tool).
 
@@ -1465,7 +1465,56 @@ controls, and loses its stored line layout so the viewer lays it out again.
 `hwp_write` builds a new document through `report_export.to_hwpx` with a
 `doc_formats` head (공문 by default). Each tool step carries the artifact id,
 so the open editor loads the new version mid-turn; before a turn is sent, the
-panel asks to save or drop unsaved hand edits (`lib/hwpGuard.ts`).
+panel asks to save or drop unsaved hand edits (`lib/officeGuard.ts`).
+
+### Word documents, and what they share with HWP
+
+A `docx` artifact is the same kind of thing as an `hwp` one, and the parts that
+do not depend on the file format are written once. The office layer is:
+`services/office_doc.py` (versioned blobs, the conditional-UPDATE save, the
+`doc_formats` head of a new document), `services/office_edit.py` (bracket
+blanks, the particle that agrees with a filled value, op arguments, the numbered
+outline), `routers/office_docs.py` (create, fetch a version, save; mounted by
+`routers/hwp.py` and `routers/docx.py`), and `services/tools/office.py` (the
+read, edit and write tools for one kind; `tools/hwp.py` and `tools/docx.py`
+each make a set). `services/hwp_doc.py` and `services/docx_doc.py` only say what
+their files are and how a new one is written (`report_export.to_hwpx`,
+`report_export.to_docx`). In a chat, `routers/sessions.py` looks up each kind's
+document (`_OFFICE`): its tools join the turn when the chat has one or the
+request names it (「한글 문서로」, 「Word로」, 「docx 파일」, not 「키워드로」), and
+the newest document with text is read by the server before the first hop.
+
+`services/docx_edit.py` reads a `.docx` with python-docx and lxml. Ids are body
+paragraphs `p1…` and body tables `t1…` in reading order (paragraphs inside a
+content control count as body); headings, the title and list paragraphs are
+marked in the outline, a table with merged cells names each cell by its grid
+column (`c2~3: …`, the lower half of a vertical merge said as such), and header
+and footer text follows the body. Word splits a line across runs freely, so a
+blank is matched on the paragraph's text and spliced back into the runs: the
+value goes into the run the blank starts in, keeping its `rPr`, and the rest of
+the span is cut from the runs after it. A replaced paragraph keeps its `pPr`
+(style, numbering) and its first text run's `rPr`; runs holding fields,
+pictures or note marks stay, and a written marker such as 「1.<tab>」 keeps its
+tab. A new paragraph copies its neighbour's `pPr` without section or page-break
+settings; a new table row copies the row above without its heading flag; rows of
+a table with vertical merges are not added or removed. Ops resolve against the
+version read before anything changes, so a bad op changes nothing. Zip limits
+are checked before python-docx unpacks a file. A legacy `.doc` is refused.
+
+The editor is folio (`@stll/folio-react`, Apache-2.0), a React component, not
+a frame: `DocxPanel` is loaded with `React.lazy`, so folio and its stylesheet are
+a chunk of their own fetched when a Word document opens. It runs under the app's
+CSP as it is (no eval, no WebAssembly, no outside requests). Its stylesheet
+imports `@stll/folio-fonts/fonts.css`, every cut of eight families; the
+`kchat-folio-fonts` Vite plugin replaces that import with the latin and
+latin-ext woff2 faces only, and gives `Noto Serif KR`, folio's fallback for
+바탕 and 궁서, the app's own Nanum Myeongjo cuts, so no further Korean files
+ship. folio's `fonts` prop is not used for Korean: it fetches each face whole
+when the editor mounts and takes no `unicode-range`. Korean UI strings are
+`components/docx/folioKo.ts` (folio ships none), English is folio's own. Both
+panels are `components/office/OfficePanel.tsx` (`useOfficeDocument` holds the
+load, save, 409, reload-on-new-version and ask-before-send logic) around their
+editor; on a phone the Word editor is read only.
 
 ### Sharing
 

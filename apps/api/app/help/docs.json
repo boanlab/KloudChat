@@ -1261,6 +1261,41 @@
 },
 {
 "lang": "ko",
+"path": "write/docx",
+"title": "Word 문서",
+"heading": "",
+"text": "대화 옆에 Word 편집기를 띄우고, 공문이나 보고서 같은 Word 문서(`.docx`)를 챗으로 쓰고 고칩니다. 같은 문서를 편집기에서 직접 고칠 수도 있습니다."
+},
+{
+"lang": "ko",
+"path": "write/docx",
+"title": "Word 문서",
+"heading": "시작하기",
+"text": "- 홈의 **Word 문서**를 누르면 빈 문서가 열린 대화가 시작됩니다. 왼쪽은 대화, 오른쪽은 도구 모음(글꼴·굵게·맞춤·목록·표 등)이 있는 Word 편집기입니다.\n- 대화에 첨부한 `.docx` 파일은 **Word로 열기**로 편집기에 엽니다.\n- 챗에서 \"Word로\", \"워드 문서로\", \"docx 파일로\"처럼 요청하면 보고서 화면으로 넘어가지 않고 이 대화의 Word 문서에 씁니다.\n- 예전 형식인 `.doc` 파일은 열 수 없습니다. Word에서 `.docx`로 저장한 뒤 첨부하세요."
+},
+{
+"lang": "ko",
+"path": "write/docx",
+"title": "Word 문서",
+"heading": "챗으로 쓰고 고치기",
+"text": "- \"직원 연수 참석을 요청하는 공문을 Word로 작성해 주세요\"처럼 요청하면 공문 형식(수신·발신·시행일 표, 제목, 1. 가. 항목, 끝.)의 문서가 편집기에 나타납니다.\n- 요청에 없는 기관명, 날짜, 장소 같은 사실은 지어내지 않고 `[기관명]`, `[YYYY. MM. DD.]`처럼 대괄호 빈칸으로 남깁니다.\n- 사실을 알려 주면 에이전트가 문서를 읽고 빈칸과 해당 줄을 채웁니다. 문단 스타일, 번호 매기기, 글자 모양, 표 칸의 서식은 그대로 유지됩니다. Word가 한 줄을 여러 조각으로 나눠 저장한 경우에도 빈칸을 찾아 채웁니다.\n- 머리글·바닥글에 있는 빈칸도 채웁니다. 쪽 번호 같은 필드는 그대로 둡니다.\n- 답변 위의 처리 과정에는 \"문서 확인 2회 · 문서 편집 2회\"처럼 문서를 읽고 고친 횟수가 표시됩니다.\n- 에이전트가 문서를 고치는 동안 편집기는 잠기고, 고친 판이 저장되면 편집기가 그 판을 불러옵니다."
+},
+{
+"lang": "ko",
+"path": "write/docx",
+"title": "Word 문서",
+"heading": "직접 고치기와 저장",
+"text": "- 편집기에서 고치면 머리에 **저장 안 됨**이 표시됩니다. **저장**을 누르면 새 판으로 저장됩니다.\n- 저장하지 않은 편집이 있는 채로 챗을 보내면 먼저 **저장하고 보내기**, **버리고 보내기**, **취소** 중에서 고릅니다. 에이전트는 항상 저장된 문서에서 시작합니다.\n- 그사이 다른 판이 저장되었으면 저장하지 않고 알려 줍니다. **내 편집 내려받기**로 지금 편집을 파일로 받거나 **최신 판 불러오기**를 선택합니다.\n- 판은 ⋯ 메뉴의 **버전 기록**에서 보고 되돌립니다."
+},
+{
+"lang": "ko",
+"path": "write/docx",
+"title": "Word 문서",
+"heading": "내려받기와 제한",
+"text": "- **내려받기**의 **Word 문서**로 지금 편집기의 내용을 `.docx` 파일로 받습니다.\n- 편집기는 이 사이트 안에서 동작하며, 문서는 외부로 전송되지 않습니다. Calibri·Arial·Times New Roman 같은 글꼴은 너비가 같은 공개 글꼴로, 바탕체는 나눔명조로 표시합니다. 맑은 고딕은 컴퓨터에 설치된 글꼴로 표시되므로 Word와 줄 바꿈 위치가 조금 다를 수 있습니다.\n- 에이전트가 고칠 수 있는 것은 본문 문단, 표의 칸과 줄, 머리글·바닥글의 빈칸입니다. 그림, 글상자, 세로로 병합된 칸이 있는 표의 줄 추가·삭제는 편집기에서 직접 고칩니다.\n- 휴대폰 너비에서는 문서를 읽기만 하고 내려받을 수 있으며, 고치기와 저장은 넓은 화면에서 합니다."
+},
+{
+"lang": "ko",
 "path": "write/editor",
 "title": "아티팩트 편집기",
 "heading": "",
@@ -2763,6 +2798,41 @@
 "title": "Artifacts",
 "heading": "Gallery",
 "text": "See the full list under **Artifacts** in the sidebar. It provides tabs by type (all, code, HTML, report, slides, chart, image, audio, video) and a title search. Selecting a card opens it as a panel inside the gallery. To go to the conversation that generated it, use **Open the original conversation** on the card. Deleting from the gallery deletes the version history as well, but the conversation is kept."
+},
+{
+"lang": "en",
+"path": "write/docx",
+"title": "Word documents",
+"heading": "",
+"text": "Open a Word editor beside the conversation and write or edit a Word document (`.docx`), such as an official letter or a report, by chat. You can also edit the same document directly in the editor."
+},
+{
+"lang": "en",
+"path": "write/docx",
+"title": "Word documents",
+"heading": "Getting started",
+"text": "- On Home, **Word 문서** (Word document) starts a conversation with a blank document open. The conversation is on the left; on the right is the Word editor with its toolbar (font, bold, alignment, lists, tables and more).\n- A `.docx` file attached in the conversation opens in the editor with **Open in Word editor**.\n- Asking in chat for something \"in Word\", \"as a Word document\" or \"as a docx file\" writes it in this conversation's Word document instead of moving to the report screen.\n- Legacy `.doc` files cannot be opened. Save them as `.docx` in Word and attach that."
+},
+{
+"lang": "en",
+"path": "write/docx",
+"title": "Word documents",
+"heading": "Writing and editing by chat",
+"text": "- Ask, for example, \"Write an official letter in Word asking staff to attend a training\", and a document in the official-letter layout (recipient/sender/date table, title, numbered items, 끝.) appears in the editor.\n- Facts you did not give, such as the organisation, dates or place, are not invented: they stay as bracket blanks like `[기관명]` or `[YYYY. MM. DD.]`.\n- When you give the facts, the agent reads the document and fills those blanks and lines. Paragraph styles, numbering, character formatting and table cell formatting stay as they were. A blank is found even when Word stored the line in several pieces.\n- Blanks in headers and footers are filled too; fields such as page numbers are left as they are.\n- The steps above the answer show how often the document was read and edited, for example \"Check document 2 calls · Edit document 2 calls\".\n- While the agent edits, the editor is locked; when it saves a version, the editor loads it."
+},
+{
+"lang": "en",
+"path": "write/docx",
+"title": "Word documents",
+"heading": "Editing by hand and saving",
+"text": "- After an edit in the editor, the header shows **Not saved**. **Save** stores it as a new version.\n- If you send a message with unsaved edits, you first choose **Save and send**, **Discard and send** or **Cancel**. The agent always starts from the saved document.\n- If another version was saved in the meantime, your save is refused and you are told so. Choose **Download my edits** to keep your edits as a file, or **Load the latest version**.\n- Versions are listed and restored under ⋯ → **Version history**."
+},
+{
+"lang": "en",
+"path": "write/docx",
+"title": "Word documents",
+"heading": "Downloads and limits",
+"text": "- **Download** → **Word document** saves what the editor shows as a `.docx` file.\n- The editor runs inside this site; documents are not sent anywhere else. Calibri, Arial, Times New Roman and similar fonts are shown in open fonts of the same widths, and Batang in Nanum Myeongjo. Malgun Gothic is shown in the font installed on your computer, so line breaks can differ slightly from Word.\n- The agent can change body paragraphs, table cells and rows, and blanks in headers and footers. Pictures, text boxes, and adding or removing rows in tables with vertically merged cells are edited in the editor.\n- At phone width the document can be read and downloaded; edit and save on a wider screen."
 },
 {
 "lang": "en",
