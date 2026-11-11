@@ -168,11 +168,25 @@ def outline(data: bytes) -> str:
         tables_at.setdefault(table.paragraph, []).append(table)
     lines: list[str] = []
     places: dict[str, list[str]] = {}
+    #: a run of empty lines, said once: 「p4~p14: (빈 줄 11개)」
+    empty: list[int] = []
+
+    def said() -> None:
+        if len(empty) == 1:
+            lines.append(f"p{empty[0]}: (빈 줄)")
+        elif empty:
+            lines.append(f"p{empty[0]}~p{empty[-1]}: (빈 줄 {len(empty)}개)")
+        empty.clear()
+
     for index, paragraph in enumerate(doc.paragraphs, start=1):
         pid = f"p{index}"
         text = _own_text(paragraph)
-        if text.strip() or pid not in tables_at:
-            lines.append(f"{pid}: {text}" if text.strip() else f"{pid}: (빈 줄)")
+        if not text.strip() and pid not in tables_at:
+            empty.append(index)
+            continue
+        said()
+        if text.strip():
+            lines.append(f"{pid}: {text}")
         for found in BLANK.finditer(text):
             places.setdefault(found.group(0), []).append(pid)
         for table in tables_at.get(pid, []):
@@ -187,6 +201,7 @@ def outline(data: bytes) -> str:
                     places.setdefault(found.group(0), []).append(f"{table.id} r{r}c{c}")
             for r in sorted(by_row):
                 lines.append(f"  r{r}: " + " | ".join(t for _, t in sorted(by_row[r])))
+    said()
     if places:
         lines.append("빈칸: " + ", ".join(f"{b} ({', '.join(at)})" for b, at in places.items()))
     else:
