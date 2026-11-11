@@ -103,6 +103,16 @@ export function streamFailureSentence(
   return event.reason ? `${text} — ${event.reason}` : text
 }
 
+/** A refusal's sentence, with when to try again if the server said (`Retry-After`). */
+export function withRetryWait(sentence: string, err: unknown, t: T): string {
+  const wait = err instanceof ApiError ? err.retryAfter : undefined
+  if (!wait) return sentence
+  const when = wait < 120
+    ? t('{n}초 뒤에 다시 보낼 수 있습니다.').replace('{n}', String(wait))
+    : t('{n}분 뒤에 다시 보낼 수 있습니다.').replace('{n}', String(Math.ceil(wait / 60)))
+  return `${sentence} ${when}`
+}
+
 /** A conversation that could not be started from a card or a menu. */
 export function startFailure(err: unknown, t: T): string {
   return refusalSentence(errorCode(err), t) ?? errorMessage(err, t('대화를 시작하지 못했습니다.'))
