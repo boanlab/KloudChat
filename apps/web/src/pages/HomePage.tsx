@@ -217,9 +217,9 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
       </div>
 
       <div className="shrink-0 pt-2" data-testid="home-dock">
-        <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none]">
+        <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none] [@media(max-height:30rem)]:flex-nowrap [@media(max-height:30rem)]:justify-start [@media(max-height:30rem)]:overflow-x-auto [@media(max-height:30rem)]:[scrollbar-width:none]">
           {/* The surfaces; an HWP or Word document beside them is a chat with a file, not a
-              surface. */}
+              surface. One scrolling row on a short screen too, so the examples keep their place. */}
           <div role="group" aria-label={t('만들 것')} className="contents">
             {surfaces.map((k) => {
               const meta = kindMeta[k]
