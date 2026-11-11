@@ -27,6 +27,7 @@ from app.services.tools.builtin import (
     knowledge_tool,
     skill_tool,
 )
+from app.services.tools.docx import TOOLS as DOCX_TOOLS
 from app.services.tools.hwp import TOOLS as HWP_TOOLS
 
 log = logging.getLogger(__name__)
@@ -155,9 +156,10 @@ async def build_tools(
     strict_local: bool = False,
     skills: list[tuple[str, str, str]] | None = None,
     hwp: bool = False,
+    docx: bool = False,
 ) -> list[Tool]:
-    """Turn tool list; `allowed`: None = all, [] = none, list = hard filter; `hwp`: the
-    conversation has an HWP document, or the request asks for one."""
+    """Turn tool list; `allowed`: None = all, [] = none, list = hard filter; `hwp`, `docx`:
+    the conversation has an HWP or Word document, or the request asks for one."""
     if strict_local:
         # In-process built-ins only; `share_note` excluded (notes reach later external-model turns).
         tools = [CALCULATE, CREATE_ARTIFACT, CREATE_CHART]
@@ -186,9 +188,10 @@ async def build_tools(
         tools.append(knowledge_tool(knowledge, knowledge_collection))
     if skills and (allowed is None or "use_skill" in allowed):
         tools.append(skill_tool(skills))
-    if hwp:
-        # in-process, no network: strict-local turns get them too
-        tools += [t for t in HWP_TOOLS if allowed is None or t.name in allowed]
+    for wanted, kit in ((hwp, HWP_TOOLS), (docx, DOCX_TOOLS)):
+        if wanted:
+            # in-process, no network: strict-local turns get them too
+            tools += [t for t in kit if allowed is None or t.name in allowed]
     return tools
 
 

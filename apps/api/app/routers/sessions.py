@@ -106,6 +106,7 @@ from app.services import (
     conversation_summary,
     date_rules,
     design_templates,
+    docx_doc,
     exact_facts,
     fallback_watch,
     figures,
@@ -230,24 +231,40 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
         # self-hosted sandbox, networking off; offered only when `sandbox_in_boundary`
         "run_skill_script",
         "run_code",
-        # the conversation's own HWP file, edited in process
+        # the conversation's own HWP or Word file, edited in process
         "hwp_read",
         "hwp_edit",
         "hwp_write",
+        "docx_read",
+        "docx_edit",
+        "docx_write",
     }
 )
 
-def _hwp_preset(document: Artifact | None, tool_names: set[str]) -> tuple[str, dict] | None:
-    """A written HWP document beside the chat is read first, by the server: the model answers
-    from what the file says now (a hand save included) and edits by those numbers."""
-    if document is None or "hwp_read" not in tool_names:
+def _document_preset(
+    document: Artifact | None, tool_names: set[str]
+) -> tuple[str, dict] | None:
+    """A written HWP or Word document beside the chat is read first, by the server: the model
+    answers from what the file says now (a hand save included) and edits by those numbers."""
+    if document is None:
         return None
-    return ("hwp_read", {}) if str((document.data or {}).get("text") or "").strip() else None
+    tool = f"{document.kind.value}_read"
+    if tool not in tool_names:
+        return None
+    return (tool, {}) if str((document.data or {}).get("text") or "").strip() else None
 
 
 #: 「한글 문서로」, 「hwp 파일」, 「아래아한글」: a request for an HWP document.
 _ASKS_HWP = re.compile(r"(?<![A-Za-z])hwpx?(?![A-Za-z])|한글\s{0,2}(?:파일|문서)|아래아\s{0,2}한글",
                        re.I)
+#: 「Word로」, 「docx 파일」, 「워드 문서」: a request for a Word document (not 「키워드로」).
+_ASKS_DOCX = re.compile(
+    r"(?<![A-Za-z])docx(?![A-Za-z])|(?<![A-Za-z])(?:ms\s?)?word\s{0,2}(?:로|으로|문서|파일|"
+    r"documents?|files?|format)|(?<![가-힣])워드\s{0,2}(?:로|문서|파일)",
+    re.I,
+)
+#: office documents a chat works on beside it: tool prefix, service, what asks for one
+_OFFICE = (("hwp", hwp_doc, _ASKS_HWP), ("docx", docx_doc, _ASKS_DOCX))
 
 
 async def _knowledge_shelf(
@@ -4379,16 +4396,17 @@ async def _send_message(
     # agent allowlist without web_search is deliberate: no 「웹 검색 없이」 noise
     if session.agent_id and agent_tools is not None and "web_search" not in agent_tools:
         effective_web_search = False
-    #: this chat's HWP document; its tools join the turn, as they do when one is asked for
-    hwp_document = None
+    #: this chat's HWP and Word documents; their tools join the turn, as they do when one
+    #: is asked for
+    office_documents: dict[str, Artifact] = {}
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
-        hwp_document = (
-            await hwp_doc.session_document(db, user.id, session.id) if published is None
-            else None
-        )
-        hwp_open = published is None and (
-            bool(_ASKS_HWP.search(content)) or hwp_document is not None
-        )
+        for name, service, _ in _OFFICE if published is None else ():
+            if found := await service.session_document(db, user.id, session.id):
+                office_documents[name] = found
+        office_open = {
+            name: published is None and (bool(asks.search(content)) or name in office_documents)
+            for name, _, asks in _OFFICE
+        }
         skill_shelf = [] if published is not None else await _skill_shelf(
             db, user, agent=agent_row,
             exclude={*active_skill_ids, *((agent_row.active_skill_ids or []) if agent_row else [])}
@@ -4403,7 +4421,7 @@ async def _send_message(
                     knowledge=shelf,
                     knowledge_collection=shelf_key,
                     skills=skill_shelf,
-                    hwp=hwp_open,
+                    **office_open,
                 ),
                 key=lambda tool: (tool.name, tool.source),
             )
@@ -4420,7 +4438,7 @@ async def _send_message(
                         include_connectors=False,
                         strict_local=True,
                         skills=skill_shelf,
-                        hwp=hwp_open,
+                        **office_open,
                     )
                 ),
                 key=lambda tool: (tool.name, tool.source),
@@ -5429,7 +5447,10 @@ async def _send_message(
             publishing.MATERIAL_ONLY_RULE if published is not None else _MATERIAL_FIRST_RULE,
         )
     if preset_call is None and forced_tool is None and not preflight_tool:
-        preset_call = _hwp_preset(hwp_document, tool_names)
+        # the newest of them, when the chat has both
+        preset_call = _document_preset(
+            max(office_documents.values(), key=lambda a: a.updated_at, default=None), tool_names
+        )
     # substantial chat request: short plan beside it; not on economy/calculator turns
     if (
         session.kind is SessionKind.chat
@@ -6429,11 +6450,12 @@ async def _answer_turn(
                     "deliberate": bool(ctx.pending_artifacts),
                 }
             )
-    if ctx.hwp.get("changed") and ctx.hwp.get("id") != new_artifact:
-        # the HWP tools saved a version: the editor opens on it
-        yield chat_service.sse(
-            {"type": "artifact", "artifactId": ctx.hwp["id"], "deliberate": True}
-        )
+    for saved in (ctx.hwp, ctx.docx):
+        if saved.get("changed") and saved.get("id") != new_artifact:
+            # the HWP or Word tools saved a version: the editor opens on it
+            yield chat_service.sse(
+                {"type": "artifact", "artifactId": saved["id"], "deliberate": True}
+            )
 
     title: str | None = None
     title_credits = 0

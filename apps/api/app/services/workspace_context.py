@@ -62,17 +62,20 @@ def reads_pictures(model: dict | None) -> bool:
     return bool(model and model.get("supportsVision") and model.get("strictLocal"))
 
 
-#: With the HWP tools: the document is worked in the editor, not pasted into the answer.
-HWP_NOTE = """# HWP document beside this chat
-The person has an HWP editor open on the right of this chat. Requests to write or change a
-document are done in that document with the HWP tools, not written out in the answer.
-- A new document, or the editor is empty: hwp_write.
-- Changing the open document: hwp_read first, then hwp_edit with the numbers it gave;
+#: With an office document's tools: the document is worked in the editor, not pasted into the
+#: answer. One note per kind: HWP, Word.
+_DOCUMENT_NOTE = """# {kind} document beside this chat
+The person has {a} {kind} editor open on the right of this chat. Requests to write or change a
+document are done in that document with the {kind} tools, not written out in the answer.
+- A new document, or the editor is empty: {p}_write.
+- Changing the open document: {p}_read first, then {p}_edit with the numbers it gave;
   fill bracket blanks with fill_blank, table cells with set_cell.
 - Never invent a fact the person did not give (기관명, 날짜, 시간, 장소, 대상, 인원, 금액,
   이름, 연락처): leave a bracket blank such as 「[기관명]」 or 「[YYYY. MM. DD.]」.
 - Then answer in two to four short Korean lines: what was written or changed, and which
   blanks remain for the person. Do not paste the document text into the answer."""
+HWP_NOTE = _DOCUMENT_NOTE.format(a="an", kind="HWP", p="hwp")
+DOCX_NOTE = _DOCUMENT_NOTE.format(a="a", kind="Word", p="docx")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1001,8 +1004,9 @@ async def assemble(
         # the agent's language, unless this turn names one; last trusted rule so it wins
         if text := output_language.rule(agent.output_language):
             blocks.append(ContextBlock("agent.language", text, True))
-    if "hwp_read" in (available_tool_names or set()):
-        blocks.append(ContextBlock("hwp.document", HWP_NOTE, True))
+    for tool, key, note in (("hwp_read", "hwp", HWP_NOTE), ("docx_read", "docx", DOCX_NOTE)):
+        if tool in (available_tool_names or set()):
+            blocks.append(ContextBlock(f"{key}.document", note, True))
     if memories:
         blocks.append(ContextBlock("memory", memories, False))
 

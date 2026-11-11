@@ -17,20 +17,16 @@ from dataclasses import dataclass, field
 
 from lxml import etree
 
+from app.services import office_edit
+from app.services.office_edit import BLANK, Result, short
+
 HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
 _P, _RUN, _T, _TBL = f"{{{HP}}}p", f"{{{HP}}}run", f"{{{HP}}}t", f"{{{HP}}}tbl"
 _TR, _TC, _SUBLIST = f"{{{HP}}}tr", f"{{{HP}}}tc", f"{{{HP}}}subList"
 _LINESEG = f"{{{HP}}}linesegarray"
 _LINEBREAK = f"{{{HP}}}lineBreak"
 
-#: A blank left for the person: 「[기관명]」, 「[YYYY. MM. DD.]」; not 「[1]」 citations.
-BLANK = re.compile(r"\[(?!\d{1,3}\])[^\[\]\n]{1,40}\]")
 _SECTION = re.compile(r"Contents/section(\d{1,3})\.xml")
-
-#: Outline cap, so a long file does not drown a small model.
-MAX_OUTLINE = 12000
-MAX_OPS = 60
-MAX_TEXT = 4000
 
 _PARSER = etree.XMLParser(
     resolve_entities=False, no_network=True, remove_blank_text=False, huge_tree=False
@@ -166,50 +162,18 @@ def outline(data: bytes) -> str:
     tables_at: dict[str, list[_Table]] = {}
     for table in doc.tables:
         tables_at.setdefault(table.paragraph, []).append(table)
-    lines: list[str] = []
-    places: dict[str, list[str]] = {}
-    #: a run of empty lines, said once: 「p4~p14: (빈 줄 11개)」
-    empty: list[int] = []
-
-    def said() -> None:
-        if len(empty) == 1:
-            lines.append(f"p{empty[0]}: (빈 줄)")
-        elif empty:
-            lines.append(f"p{empty[0]}~p{empty[-1]}: (빈 줄 {len(empty)}개)")
-        empty.clear()
-
+    out = office_edit.Outline()
     for index, paragraph in enumerate(doc.paragraphs, start=1):
         pid = f"p{index}"
         text = _own_text(paragraph)
         if not text.strip() and pid not in tables_at:
-            empty.append(index)
+            out.empty(index)
             continue
-        said()
-        if text.strip():
-            lines.append(f"{pid}: {text}")
-        for found in BLANK.finditer(text):
-            places.setdefault(found.group(0), []).append(pid)
+        out.paragraph(index, text)
         for table in tables_at.get(pid, []):
-            rows, cols = _shape(table.element)
-            note = ", 병합 셀 있음" if _merged(table.element) else ""
-            lines.append(f"{table.id} (표 {rows}×{cols}{note}, {pid} 안)")
-            by_row: dict[int, list[tuple[int, str]]] = {}
-            for r, c, cell in _cells(table.element):
-                text = _cell_text(cell).replace("\n", " / ")
-                by_row.setdefault(r, []).append((c, text))
-                for found in BLANK.finditer(text):
-                    places.setdefault(found.group(0), []).append(f"{table.id} r{r}c{c}")
-            for r in sorted(by_row):
-                lines.append(f"  r{r}: " + " | ".join(t for _, t in sorted(by_row[r])))
-    said()
-    if places:
-        lines.append("빈칸: " + ", ".join(f"{b} ({', '.join(at)})" for b, at in places.items()))
-    else:
-        lines.append("빈칸: 없음")
-    text = "\n".join(lines)
-    if len(text) > MAX_OUTLINE:
-        text = text[:MAX_OUTLINE] + "\n…(이하 생략)"
-    return text
+            cells = [(r, c, _cell_text(cell)) for r, c, cell in _cells(table.element)]
+            out.table(table.id, _shape(table.element), _merged(table.element), cells, pid)
+    return out.render()
 
 
 def plain_text(data: bytes) -> str:
@@ -260,33 +224,8 @@ def _relayout(paragraph: etree._Element) -> None:
         paragraph.remove(stale)
 
 
-#: particle pairs: after a final consonant, after a vowel
-_PARTICLES = {"을": ("을", "를"), "를": ("을", "를"), "이": ("이", "가"), "가": ("이", "가"),
-              "은": ("은", "는"), "는": ("은", "는"), "과": ("과", "와"), "와": ("과", "와")}
-
-
-def _closed(word: str) -> bool | None:
-    """The last syllable has a final consonant; None when it is not Hangul."""
-    if not word or not "가" <= word[-1] <= "힣":
-        return None
-    return (ord(word[-1]) - 0xAC00) % 28 != 0
-
-
 def _filled(text: str, old: str, new: str) -> tuple[str, int]:
-    """`old` replaced by `new`, a particle right after it agreeing with `new`
-    (「[연수명]을」 → 「교원연수를」)."""
-
-    def put(found: re.Match[str]) -> str:
-        particle = found.group(1) or ""
-        closed = _closed(new)
-        if not particle or closed is None:
-            return new + particle
-        if particle in ("으로", "로"):
-            final = (ord(new[-1]) - 0xAC00) % 28
-            return new + ("으로" if closed and final != 8 else "로")
-        return new + _PARTICLES[particle][0 if closed else 1]
-
-    return re.subn(re.escape(old) + r"(으로|로|을|를|이|가|은|는|과|와)?", put, text)
+    return office_edit.filled(text, old, new)
 
 
 def _replace_in(paragraph: etree._Element, old: str, new: str) -> int:
@@ -429,27 +368,12 @@ def _row(table: etree._Element, at: object) -> tuple[int, list[etree._Element]]:
 
 
 def _text_arg(op: dict, name: str = "text") -> str:
-    value = op.get(name)
-    if not isinstance(value, str):
-        raise HwpxError(f"{op.get('op')}: {name}은 글자여야 합니다.")
-    if len(value) > MAX_TEXT:
-        raise HwpxError(f"{op.get('op')}: {name}이 {MAX_TEXT}자를 넘습니다.")
-    return value.replace("\r\n", "\n").replace("\r", "\n")
-
-
-@dataclass
-class Result:
-    data: bytes
-    #: one Korean line per applied op
-    changes: list[str]
+    return office_edit.text_arg(op, name, HwpxError)
 
 
 def apply(data: bytes, ops: list[dict]) -> Result:
     """Every op or none: targets resolve against `data` before anything changes."""
-    if not isinstance(ops, list) or not ops:
-        raise HwpxError("ops가 비었습니다.")
-    if len(ops) > MAX_OPS:
-        raise HwpxError(f"한 번에 {MAX_OPS}개까지 고칠 수 있습니다.")
+    office_edit.check_ops(ops, HwpxError)
     archive, doc = _load(data)
     # resolve first: ids name the version the model read
     plan: list[tuple[dict, object]] = []
@@ -491,10 +415,7 @@ def apply(data: bytes, ops: list[dict]) -> Result:
                 raise HwpxError("줄이 하나뿐인 표의 줄은 지울 수 없습니다.")
             plan.append((op, (table, rows[index])))
         else:
-            raise HwpxError(
-                f"모르는 op {kind!r}: replace_text, fill_blank, set_cell, insert_paragraph, "
-                "delete_paragraph, insert_table_row, delete_table_row 중 하나."
-            )
+            raise office_edit.unknown_op(kind, HwpxError)
 
     changes: list[str] = []
     for op, target in plan:
@@ -502,24 +423,24 @@ def apply(data: bytes, ops: list[dict]) -> Result:
         if kind == "replace_text":
             before = _own_text(target)
             _set_text(target, _text_arg(op))
-            changes.append(f"{op['id']}: 「{_short(before)}」 → 「{_short(op['text'])}」")
+            changes.append(f"{op['id']}: 「{short(before)}」 → 「{short(op['text'])}」")
         elif kind == "fill_blank":
             blank, value = op["blank"].strip(), _text_arg(op, "value")
             count = sum(_replace_in(p, blank, value) for p in target)
             where = f"{op['at']}: " if op.get("at") else ""
-            changes.append(f"{where}{blank} → 「{_short(value)}」 ({count}곳)")
+            changes.append(f"{where}{blank} → 「{short(value)}」 ({count}곳)")
         elif kind == "set_cell":
             _set_cell(target, _text_arg(op))
-            changes.append(f"{op['table']} r{op['row']}c{op['col']} → 「{_short(op['text'])}」")
+            changes.append(f"{op['table']} r{op['row']}c{op['col']} → 「{short(op['text'])}」")
         elif kind == "insert_paragraph":
             index, anchor = target
             like = _text_like(doc, index)
             anchor.addnext(_new_paragraph(like, _text_arg(op)))
-            changes.append(f"{op['after']} 뒤에 문단 추가: 「{_short(op['text'])}」")
+            changes.append(f"{op['after']} 뒤에 문단 추가: 「{short(op['text'])}」")
         elif kind == "delete_paragraph":
             before = _own_text(target)
             target.getparent().remove(target)
-            changes.append(f"{op['id']} 삭제: 「{_short(before)}」")
+            changes.append(f"{op['id']} 삭제: 「{short(before)}」")
         elif kind == "insert_table_row":
             table, row = target
             fresh = copy.deepcopy(row)
@@ -537,11 +458,6 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             _renumber_rows(table)
             changes.append(f"{op['table']} r{op['row']} 줄 삭제")
     return Result(_write(archive, doc), changes)
-
-
-def _short(text: str, limit: int = 40) -> str:
-    text = " ".join(text.split())
-    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def _write(archive: zipfile.ZipFile, doc: _Doc) -> bytes:

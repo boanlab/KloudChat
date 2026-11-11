@@ -90,6 +90,8 @@ class ToolContext:
     own_scripts: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: HWP tools: `id`/`version` last read or written, `changed` once a version was saved.
     hwp: dict[str, Any] = field(default_factory=dict)
+    #: Word tools: the same, for the conversation's `.docx`.
+    docx: dict[str, Any] = field(default_factory=dict)
 
 
 def to_openai(tools: list[Tool]) -> list[dict[str, Any]]:

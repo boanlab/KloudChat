@@ -196,13 +196,13 @@ def test_a_document_format_head_shows_blanks_for_fields_not_given():
 
 def test_a_written_document_is_read_by_the_server_before_the_model_answers():
     from app.models.workspace import Artifact, ArtifactKind
-    from app.routers.sessions import _hwp_preset
+    from app.routers.sessions import _document_preset
 
     tools = {"hwp_read", "hwp_edit", "hwp_write"}
     written = Artifact(user_id=USER.id, kind=ArtifactKind.hwp, data={"text": "제목  공문"})
     blank = Artifact(user_id=USER.id, kind=ArtifactKind.hwp, data={"text": ""})
-    assert _hwp_preset(written, tools) == ("hwp_read", {})
+    assert _document_preset(written, tools) == ("hwp_read", {})
     # nothing to read yet: the model writes with hwp_write
-    assert _hwp_preset(blank, tools) is None
-    assert _hwp_preset(None, tools) is None
-    assert _hwp_preset(written, {"calculate"}) is None
+    assert _document_preset(blank, tools) is None
+    assert _document_preset(None, tools) is None
+    assert _document_preset(written, {"calculate"}) is None

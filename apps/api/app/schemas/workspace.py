@@ -167,7 +167,7 @@ def _card_data(kind: ArtifactKind, data: dict[str, Any] | None) -> dict[str, Any
                 for section in (data.get("sections") or [])[:_CARD_PARTS]
             ],
         }
-    if kind is ArtifactKind.hwp:
+    if kind in (ArtifactKind.hwp, ArtifactKind.docx):
         # the file is fetched apart; a card shows the top of its text
         return {**data, "text": str(data.get("text") or "")[:_CARD_CHARS]}
     return data
