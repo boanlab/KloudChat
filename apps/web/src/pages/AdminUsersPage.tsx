@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Search,
   Shield,
+  ShieldOff,
   Trash2,
   UserX,
   X,
@@ -31,7 +32,7 @@ import {
   PageHeader,
   Tabs,
 } from '@/components/ui'
-import { adminApi, errorMessage, type AdminKeys } from '@/lib/api'
+import { adminApi, ApiError, errorMessage, type AdminKeys } from '@/lib/api'
 import { cn, formatDate, relativeTime } from '@/lib/utils'
 import { Pager } from '@/components/ui/Pager'
 import { useStore } from '@/store/useStore'
@@ -177,6 +178,7 @@ export function AdminUsersPage() {
     setUserModels,
     models,
     setUserCredits,
+    setUserRole,
     updateUser,
     resetUserPassword,
     replaceLitellmKey,
@@ -225,6 +227,8 @@ export function AdminUsersPage() {
   const [deleting, setDeleting] = useState<User | null>(null)
   // 정지 asks first: signs the person out, stops their bots.
   const [suspending, setSuspending] = useState<User | null>(null)
+  // 관리자 지정·해제 asks first: it changes what the account can see and do.
+  const [promoting, setPromoting] = useState<User | null>(null)
   const [purgeFiles, setPurgeFiles] = useState(true)
   const [restricting, setRestricting] = useState<User | null>(null)
   const [draftCredits, setDraftCredits] = useState('')
@@ -526,6 +530,30 @@ export function AdminUsersPage() {
                         onClick={() => openKeys(u)}
                       >
                         <KeyRound size={14} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={(u.role === 'admin'
+                          ? t('{name} 관리자 해제')
+                          : t('{name} 관리자로 지정')
+                        ).replace('{name}', u.name)}
+                        title={
+                          u.id === user?.id
+                            ? t('자기 계정의 관리자 권한은 해제할 수 없습니다')
+                            : u.role === 'admin'
+                              ? t('관리자 권한을 거둡니다')
+                              : t('관리자 권한을 줍니다')
+                        }
+                        disabled={
+                          busy.includes(u.id) ||
+                          u.id === user?.id ||
+                          // Only an active account is made an admin; any admin can be revoked.
+                          (u.role !== 'admin' && u.status !== 'active')
+                        }
+                        onClick={() => setPromoting(u)}
+                      >
+                        {u.role === 'admin' ? <ShieldOff size={14} /> : <Shield size={14} />}
                       </Button>
                       {u.status !== 'suspended' ? (
                         <Button
@@ -865,6 +893,34 @@ export function AdminUsersPage() {
         )}
       </Modal>
 
+      <ConfirmDialog
+        open={!!promoting}
+        onClose={() => setPromoting(null)}
+        onConfirm={() => {
+          const target = promoting
+          setPromoting(null)
+          if (!target) return
+          const role = target.role === 'admin' ? 'user' : 'admin'
+          void run(target.id, async () => {
+            try {
+              await setUserRole(target.id, role)
+            } catch (err) {
+              if (!(err instanceof ApiError) || err.detail !== 'last_admin') throw err
+              setError(t('마지막 관리자는 해제할 수 없습니다. 다른 사람을 먼저 관리자로 지정하세요.'))
+            }
+          })
+        }}
+        title={(promoting?.role === 'admin'
+          ? t('{name}님의 관리자 권한을 해제할까요?')
+          : t('{name}님을 관리자로 지정할까요?')
+        ).replace('{name}', promoting?.name ?? '')}
+        description={
+          promoting?.role === 'admin'
+            ? t('사용자 관리·설정·감사 기록 화면에 더는 들어갈 수 없게 됩니다. 변경은 감사 기록에 남습니다.')
+            : t('모든 사용자의 계정·크레딧·키와 서비스 설정을 바꿀 수 있게 됩니다. 변경은 감사 기록에 남습니다.')
+        }
+        confirmLabel={promoting?.role === 'admin' ? t('관리자 해제') : t('관리자로 지정')}
+      />
       <ConfirmDialog
         open={!!suspending}
         onClose={() => setSuspending(null)}

@@ -23,9 +23,13 @@ After creation, the status is shown as **Account required** or **Opens without a
 
 ## What is shared
 
-- The conversation and the artifacts generated in it are made public. The artifact is shown first, and the conversation follows. For some types, a message says that the share screen does not support them yet.
+- The conversation and the artifacts generated in it are made public. The artifact is shown first, and the conversation follows. Reports, slides, charts, pictures, audio, video and HTML look as they do in the app; HTML opens in an isolated frame, like the app's preview. Picture and video files open to the same people the link does.
 - **Project files and memory are not shared.** Files attached to the conversation are exposed only to the extent that the answer quotes them.
 - **Conversation that continues after sharing keeps appearing in the link as well.** To make only part of it public up to a certain point, revoke the link and create a new one.
+
+## Sharing only an artifact
+
+To share one artifact without its conversation, press **Share only this artifact** in the artifact panel. For reports and slides it is in the **⋯** menu of the header; for charts, pictures, audio, video and code it is the share icon in the header. Scope, view history and revocation work as for a conversation. Changes made after sharing also appear in the link.
 
 ## View history and revocation
 

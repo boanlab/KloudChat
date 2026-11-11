@@ -949,6 +949,8 @@ export interface ProjectFile {
   sourceUrl?: string | null
   preview: string
   error?: string | null
+  /** False when the vector index does not cover this document yet. */
+  indexed?: boolean
   ocrState?: 'queued' | 'running' | 'done' | 'failed' | null
   ocrTotal?: number
   ocrDone?: number

@@ -27,7 +27,8 @@ function people(): Row[] {
     status: i % 10 === 5 ? 'pending' : i % 15 === 7 ? 'suspended' : 'active',
     monthlyCredits: 500_000,
     creditsUsed: ((i * 37) % 100) * 1000,
-    cycleResetsAt: '2099-01-01T00:00:00.000Z',
+    // Far off: a reset already past makes the app re-read the account (`/auth/me`).
+    cycleResetsAt: '2099-11-01T00:00:00.000Z',
     avatarColor: '#64748b',
     litellmKeyPreview: '…abcd',
     litellmKeyIssuedAt: null,
@@ -63,6 +64,8 @@ async function fixture(page: Page, info: TestInfo) {
   const rows = people()
   const unexpected: string[] = []
   const asked: URLSearchParams[] = []
+  const roles: string[] = []
+  const state = { lastAdmin: false }
   page.on('pageerror', (error) => unexpected.push(`pageerror: ${error.message}`))
   await page.context().routeWebSocket('**/*', (socket) => socket.close())
   await page.context().route('**/*', async (route) => {
@@ -95,9 +98,24 @@ async function fixture(page: Page, info: TestInfo) {
         summary: {
           users: rows.length, pending: rows.filter((r) => r.status === 'pending').length,
           creditsGranted: rows.reduce((s, r) => s + r.monthlyCredits, 0),
-          creditsUsed: rows.reduce((s, r) => s + r.creditsUsed, 0), nextReset: '2099-01-01T00:00:00.000Z',
+          creditsUsed: rows.reduce((s, r) => s + r.creditsUsed, 0), nextReset: '2026-11-01T00:00:00.000Z',
         },
       })
+    }
+    const role = /^\/admin\/users\/([^/]+)\/role$/.exec(path)
+    if (method === 'POST' && role) {
+      const row = rows.find((r) => r.id === role[1])!
+      const next = (request.postDataJSON() as { role: Row['role'] }).role
+      roles.push(`${row.id}=${next}`)
+      // The server's last-admin guard; `lastAdmin` stands for another admin demoted meanwhile.
+      const others = rows.filter(
+        (r) => r.role === 'admin' && r.status === 'active' && r.id !== row.id,
+      )
+      if (next === 'user' && (state.lastAdmin || others.length === 0)) {
+        return json({ detail: 'last_admin' }, 400)
+      }
+      row.role = next
+      return json(row)
     }
     if (method === 'GET' && path === '/admin/models') return json([])
     if (method === 'GET' && path === '/admin/settings') return json({ credits: { perUsd: 100000, budgetHeadroom: 0.2 } })
@@ -115,7 +133,7 @@ async function fixture(page: Page, info: TestInfo) {
     unexpected.push(`${method} ${path}`)
     return json({ detail: 'Unmocked fixture request' }, 501)
   })
-  return { rows, unexpected, asked }
+  return { rows, unexpected, asked, roles, state }
 }
 
 const table = (page: Page) => page.getByRole('table')
@@ -262,3 +280,39 @@ test('the pager fits a phone width', { tag: '@phone' }, async ({ page }, info) =
   expect(unexpected).toEqual([])
 })
 
+
+test('admin is granted and revoked after a confirmation; a last-admin refusal is shown', async ({
+  page,
+}, info) => {
+  const { rows, unexpected, roles, state } = await fixture(page, info)
+  const target = rows.find((r) => r.status === 'active' && r.role === 'user')!
+  await page.goto(`/admin/users?q=${target.email}`)
+  await expect(range(page)).toHaveText('1–1 / 총 1명', { timeout: 15_000 })
+  // One's own row cannot be demoted from here.
+  await page.goto(`/admin/users?q=${admin.email}`)
+  await expect(page.getByRole('button', { name: `${admin.name} 관리자 해제` })).toBeDisabled()
+
+  await page.goto(`/admin/users?q=${target.email}`)
+  await page.getByRole('button', { name: `${target.name} 관리자로 지정` }).click()
+  const grant = page.getByRole('dialog', { name: `${target.name}님을 관리자로 지정할까요?` })
+  await grant.getByRole('button', { name: '취소' }).click()
+  expect(roles).toEqual([])
+  await page.getByRole('button', { name: `${target.name} 관리자로 지정` }).click()
+  await grant.getByRole('button', { name: '관리자로 지정' }).click()
+  await expect(table(page).getByText('관리자', { exact: true })).toBeVisible()
+  expect(roles).toEqual([`${target.id}=admin`])
+
+  // Revoking while another admin was demoted meanwhile: the server refuses, the reason shows.
+  state.lastAdmin = true
+  await page.getByRole('button', { name: `${target.name} 관리자 해제` }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '관리자 해제' }).click()
+  await expect(page.getByRole('alert')).toContainText('마지막 관리자는 해제할 수 없습니다')
+  expect(roles).toEqual([`${target.id}=admin`, `${target.id}=user`])
+  await expect(table(page).getByText('관리자', { exact: true })).toBeVisible()
+
+  state.lastAdmin = false
+  await page.getByRole('button', { name: `${target.name} 관리자 해제` }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '관리자 해제' }).click()
+  await expect(table(page).getByText('관리자', { exact: true })).toHaveCount(0)
+  expect(unexpected).toEqual([])
+})

@@ -1,4 +1,14 @@
-import { AudioLines, Code2, Copy, Download, Eye, ImagePlus, Play, RefreshCw } from 'lucide-react'
+import {
+  AudioLines,
+  Code2,
+  Copy,
+  Download,
+  Eye,
+  ImagePlus,
+  Play,
+  RefreshCw,
+  Share2,
+} from 'lucide-react'
 import { SlideView } from '@/components/slides/DeckPanel'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -11,6 +21,7 @@ import {
   type PanelMode,
 } from '@/components/artifacts/PanelControls'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
+import { ShareButton } from '@/components/share/ShareButton'
 import { htmlPreviewDocument } from '@/components/artifacts/htmlPreview'
 import { DeckPanel, PresentStage } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
@@ -761,6 +772,7 @@ export function ArtifactPanel() {
   const narrow = useMediaQuery('(max-width: 1359px)')
   // Hooks stay above the early return below.
   const [mode, setMode] = useState<PanelMode>('wide')
+  const [sharing, setSharing] = useState(false)
   const split = useSplit(!narrow)
   const { artifacts, openArtifactId, openArtifact } = useStore()
   const artifact = artifacts.find((a) => a.id === openArtifactId)
@@ -853,6 +865,16 @@ export function ArtifactPanel() {
               <Download size={15} />
             </ButtonLink>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t('이 아티팩트만 공유')}
+            title={t('이 아티팩트만 공유')}
+            onClick={() => setSharing(true)}
+          >
+            <Share2 size={15} />
+          </Button>
+          <ShareButton artifact={artifact} open={sharing} onClose={() => setSharing(false)} />
           <PanelControls
             mode={mode}
             onCycle={narrow ? undefined : () => changeMode(nextMode(mode))}

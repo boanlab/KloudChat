@@ -7,7 +7,7 @@ import { Badge, Button, Card, PageHeader } from '@/components/ui'
 import type { PerfLevel, PerfOverview, PerfPoint, PerfRange } from '@/lib/api'
 import { currentLocale } from '@/lib/i18n'
 import { useT } from '@/lib/useT'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 import { type Column, type Line, type PerfData, LEVEL_TONE, colorsOf, levelLabel, seriesOf, toLines } from './data'
 import { PERF_HOME, RANGES, SERIES, type Unit, clock, fmt, num } from './format'
 
@@ -186,7 +186,7 @@ export function LineChart({
           className="pointer-events-none absolute top-1 z-10 max-w-64 rounded-control border border-line bg-panel px-2.5 py-1.5 text-xs shadow-sm"
           style={x(hovered) > width / 2 ? { right: width - x(hovered) + 8 } : { left: x(hovered) + 8 }}
         >
-          <p className="mb-0.5 text-faint">{new Date(hovered).toLocaleString(currentLocale())}</p>
+          <p className="mb-0.5 text-faint">{formatDateTime(new Date(hovered).toISOString())}</p>
           {rows.map(({ l, p }) =>
             p ? (
               <p key={l.name} className="flex items-center gap-1.5">

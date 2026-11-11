@@ -2,7 +2,7 @@ import { Check, Copy, Globe, Link2, Loader2, MapPin, Share2, Trash2, Users } fro
 import { useEffect, useState } from 'react'
 import { Badge, Button, Field, Input, Modal } from '@/components/ui'
 import { errorMessage, sharesApi, type ShareRow, type ShareViewRow } from '@/lib/api'
-import { browserName, cn } from '@/lib/utils'
+import { browserName, cn, serviceTimeZone } from '@/lib/utils'
 import type { Session } from '@/types'
 import { copyText } from '@/lib/clipboard'
 import { currentLocale } from '@/lib/i18n'
@@ -39,10 +39,27 @@ const sharedState: Record<Scope, { label: string; title: string; tone: 'accent' 
   },
 }
 
-/** Read-only session sharing; shared state shown beside the button. */
-export function ShareButton({ session }: { session: Session }) {
+/**
+ * Read-only session sharing; shared state shown beside the button. With `artifact`, one
+ * result alone (「이 아티팩트만 공유」): no button, the caller's menu opens it with `open`.
+ */
+export function ShareButton({
+  session,
+  artifact,
+  open: asked,
+  onClose,
+}: {
+  session?: Session
+  artifact?: { id: string; title: string }
+  open?: boolean
+  onClose?: () => void
+}) {
   const t = useT()
-  const [open, setOpen] = useState(false)
+  const [shown, setOpen] = useState(false)
+  const open = artifact ? !!asked : shown
+  const close = () => (artifact ? onClose?.() : setOpen(false))
+  const mine = (r: ShareRow) =>
+    artifact ? r.artifactId === artifact.id : r.sessionId === session?.id
   const [scope, setScope] = useState<Scope>('workspace')
   const [share, setShare] = useState<ShareRow | null>(null)
   const [busy, setBusy] = useState(false)
@@ -51,37 +68,49 @@ export function ShareButton({ session }: { session: Session }) {
 
   const url = share ? `${window.location.origin}/share/${share.token}` : ''
 
-  // Fetched on mount: badge right before the dialog opens.
+  // Fetched on mount: badge right before the dialog opens. An artifact's has no badge.
   useEffect(() => {
+    if (artifact) return
     let live = true
     setShare(null)
     void sharesApi
       .list()
       .then((rows) => {
-        if (live) setShare(rows.find((r) => r.sessionId === session.id) ?? null)
+        if (live) setShare(rows.find(mine) ?? null)
       })
       .catch(() => undefined)
     return () => {
       live = false
     }
-  }, [session.id])
+    // `mine` follows the target's id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id, artifact?.id])
 
   const load = async () => {
     setOpen(true)
     setError(null)
     try {
       const rows = await sharesApi.list()
-      setShare(rows.find((r) => r.sessionId === session.id) ?? null)
+      setShare(rows.find(mine) ?? null)
     } catch {
       // Offline: keep last known state.
     }
   }
 
+  // The menu opened the artifact's dialog: the current link, as the button's click reads it.
+  useEffect(() => {
+    if (!artifact || !asked) return
+    setShare(null)
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artifact?.id, asked])
+
   const create = async () => {
     setBusy(true)
     setError(null)
     try {
-      setShare(await sharesApi.create({ sessionId: session.id, scope }))
+      const target = artifact ? { artifactId: artifact.id } : { sessionId: session?.id }
+      setShare(await sharesApi.create({ ...target, scope }))
     } catch (err) {
       setError(errorMessage(err, t('링크를 만들지 못했습니다.')))
     } finally {
@@ -102,26 +131,30 @@ export function ShareButton({ session }: { session: Session }) {
 
   return (
     <>
-      {share && (
+      {!artifact && share && (
         <Badge tone={sharedState[share.scope].tone} title={t(sharedState[share.scope].title)}>
           {share.scope === 'link' ? <Globe size={10} /> : <Users size={10} />}
           {t(sharedState[share.scope].label)}
         </Badge>
       )}
-      <Button size="sm" onClick={() => void load()} aria-label={t('공유')}>
-        <Share2 size={14} />
-        {t('공유')}
-      </Button>
+      {!artifact && (
+        <Button size="sm" onClick={() => void load()} aria-label={t('공유')}>
+          <Share2 size={14} />
+          {t('공유')}
+        </Button>
+      )}
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
-        title={t('공유')}
-        description={session.title}
-        footer={<Button variant="primary" onClick={() => setOpen(false)}>{t('완료')}</Button>}
+        onClose={close}
+        title={artifact ? t('이 아티팩트만 공유') : t('공유')}
+        description={artifact?.title ?? session?.title}
+        footer={<Button variant="primary" onClick={close}>{t('완료')}</Button>}
       >
         <p className="text-sm text-muted">
-          {t('공유한 뒤에 오가는 대화도 링크에 그대로 나타납니다. 지금까지만 보이게 하려면 링크를 철회하세요.')}
+          {artifact
+            ? t('대화는 빼고 이 아티팩트만 보입니다. 공유한 뒤에 고친 내용도 링크에 나타납니다.')
+            : t('공유한 뒤에 오가는 대화도 링크에 그대로 나타납니다. 지금까지만 보이게 하려면 링크를 철회하세요.')}
         </p>
         {share ? (
           <>
@@ -146,7 +179,11 @@ export function ShareButton({ session }: { session: Session }) {
                 {share.scope === 'link' ? t('계정 없이 열림') : t('계정 필요')}
               </Badge>
               <span>{t('{n}회 열람').replace('{n}', String(share.views))}</span>
-              <span className="text-faint">{t('대화와 아티팩트만 보입니다 — 프로젝트 파일·메모리는 포함되지 않습니다.')}</span>
+              <span className="text-faint">
+                {artifact
+                  ? t('이 아티팩트만 보입니다 — 대화·프로젝트 파일·메모리는 포함되지 않습니다.')
+                  : t('대화와 아티팩트만 보입니다 — 프로젝트 파일·메모리는 포함되지 않습니다.')}
+              </span>
             </div>
             <ShareViews shareId={share.id} />
             <Button variant="danger" size="sm" disabled={busy} onClick={() => void revoke()}>
@@ -223,6 +260,7 @@ function ShareViews({ shareId }: { shareId: string }) {
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: serviceTimeZone(),
     })
 
   return (

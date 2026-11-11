@@ -87,6 +87,7 @@ import type {
   User,
   UserListQuery,
   UserPage,
+  UserRole,
 } from '@/types'
 import { fileSize, uid } from '@/lib/utils'
 import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
@@ -559,6 +560,8 @@ interface State {
   uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
   /** A fresher copy of a project file (its scanned pages were read meanwhile). */
   refreshProjectFile: (row: FileRow) => void
+  /** Indexes the project's unindexed documents, then reloads its rows; returns the counts. */
+  reindexProject: (projectId: string) => Promise<{ attempted: number; indexed: number }>
   addProjectUrl: (projectId: string, url: string) => Promise<FileRow>
   deleteFile: (id: string) => Promise<void>
   /** Fetches the template list only if it is not already held. */
@@ -625,6 +628,7 @@ interface State {
   /** Empty means the whole catalogue. */
   setUserModels: (id: string, models: string[]) => Promise<void>
   setUserCredits: (id: string, monthlyCredits: number) => Promise<void>
+  setUserRole: (id: string, role: UserRole) => Promise<void>
   updateUser: (id: string, patch: { name?: string; email?: string }) => Promise<void>
   resetUserPassword: (id: string, password: string) => Promise<void>
   replaceLitellmKey: (id: string, key: string) => Promise<void>
@@ -2455,6 +2459,12 @@ export const useStore = create<State>((set, get) => ({
           : p,
       ),
     })),
+  reindexProject: async (projectId) => {
+    const counts = await projectsApi.reindex(projectId)
+    const row = await projectsApi.get(projectId)
+    set((s) => ({ projects: s.projects.map((p) => (p.id === projectId ? toProject(row) : p)) }))
+    return counts
+  },
   addProjectUrl: async (projectId, url) => {
     touchWorkspace()
     const row = await filesApi.addProjectUrl(projectId, url)
@@ -2812,6 +2822,7 @@ export const useStore = create<State>((set, get) => ({
   },
   setUserCredits: (id, monthlyCredits) =>
     applyUserChange(set, get, adminApi.setCredits(id, monthlyCredits), true),
+  setUserRole: (id, role) => applyUserChange(set, get, adminApi.setRole(id, role)),
   updateUser: (id, patch) => applyUserChange(set, get, adminApi.updateUser(id, patch), true),
   resetUserPassword: (id, password) =>
     applyUserChange(set, get, adminApi.resetPassword(id, password)),
@@ -3223,6 +3234,7 @@ function toProjectFile(f: FileRow): ProjectFile {
     sourceUrl: f.sourceUrl,
     preview: f.preview,
     error: f.error,
+    indexed: f.indexed,
     ocrState: f.ocrState,
     ocrTotal: f.ocrTotal,
     ocrDone: f.ocrDone,

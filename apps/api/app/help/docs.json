@@ -172,7 +172,7 @@
 "path": "admin/users",
 "title": "사용자와 크레딧",
 "heading": "사용자별 관리 항목",
-"text": "| 버튼 | 하는 일 |\n|---|---|\n| 크레딧 | 월 한도 변경. 게이트웨이 예산에도 여유분만큼 반영 |\n| 모델 제한 | 이 계정이 쓸 수 있는 모델. 비우면 전체. API 키에도 적용 |\n| 정보 수정 | 이름·이메일, **비밀번호 초기화**(임의 생성, 저장하면 모든 로그인 해제) |\n| 키 관리 | 게이트웨이 키 재발급(기존 키 즉시 폐기)·교체, 사용자가 만든 API 키 목록·삭제 |\n| 정지 / 정지 해제 | 되돌릴 수 있고 기록이 남음 |\n| 삭제 | 대화·프로젝트·아티팩트·메모리·크레딧 기록·게이트웨이 키 삭제. 업로드한 파일과 생성된 이미지·영상 파일을 디스크에서 삭제할지 선택 |"
+"text": "| 버튼 | 하는 일 |\n|---|---|\n| 크레딧 | 월 한도 변경. 게이트웨이 예산에도 여유분만큼 반영 |\n| 모델 제한 | 이 계정이 쓸 수 있는 모델. 비우면 전체. API 키에도 적용 |\n| 정보 수정 | 이름·이메일, **비밀번호 초기화**(임의 생성, 저장하면 모든 로그인 해제) |\n| 키 관리 | 게이트웨이 키 재발급(기존 키 즉시 폐기)·교체, 사용자가 만든 API 키 목록·삭제 |\n| 관리자로 지정 / 관리자 해제 | 확인 후 관리자 권한을 주거나 거둠. 감사 기록에 남음. 자기 계정과 마지막 관리자는 해제할 수 없음 |\n| 정지 / 정지 해제 | 되돌릴 수 있고 기록이 남음 |\n| 삭제 | 대화·프로젝트·아티팩트·메모리·크레딧 기록·게이트웨이 키 삭제. 업로드한 파일과 생성된 이미지·영상 파일을 디스크에서 삭제할지 선택 |"
 },
 {
 "lang": "ko",
@@ -942,7 +942,7 @@
 "path": "personal/projects",
 "title": "프로젝트",
 "heading": "탭 구성",
-"text": "| 탭 | 기능 |\n|---|---|\n| 작업 | 이 프로젝트에서 새 작업을 시작하고, 기존 대화를 프로젝트에 편입하거나 제외합니다. |\n| 지식 | 파일을 추가하고 **웹 자료**로 주소를 등록합니다. 웹 자료는 등록 시점의 내용을 저장합니다. 파일별 토큰 수와 컨텍스트 점유 비율을 표시하며, 인식된 내용 확인과 원본 다운로드, 삭제를 지원합니다. |\n| 스킬 | **스킬 고르기**로 고른 스킬이 이 프로젝트의 입력창에서 먼저 보입니다. |\n| 메모리 | 프로젝트 단위로 공유하는 메모리입니다. 에이전트가 **노트 공유**로 남긴 결론도 이곳에 축적됩니다. |"
+"text": "| 탭 | 기능 |\n|---|---|\n| 작업 | 이 프로젝트에서 새 작업을 시작하고, 기존 대화를 프로젝트에 편입하거나 제외합니다. |\n| 지식 | 파일을 추가하고 **웹 자료**로 주소를 등록합니다. 웹 자료는 등록 시점의 내용을 저장합니다. 파일별 토큰 수와 컨텍스트 점유 비율을 표시하며, 인식된 내용 확인과 원본 다운로드, 삭제를 지원합니다. 뜻으로 찾는 검색에 아직 들어가지 않은 파일에는 **색인 안 됨**이 붙고, **색인하기**로 다시 보냅니다. |\n| 스킬 | **스킬 고르기**로 고른 스킬이 이 프로젝트의 입력창에서 먼저 보입니다. |\n| 메모리 | 프로젝트 단위로 공유하는 메모리입니다. 에이전트가 **노트 공유**로 남긴 결론도 이곳에 축적됩니다. |"
 },
 {
 "lang": "ko",
@@ -1397,7 +1397,14 @@
 "path": "write/share",
 "title": "공유",
 "heading": "공유되는 범위",
-"text": "- 해당 대화와 그 대화에서 생성된 아티팩트가 공개됩니다. 아티팩트가 먼저 표시되고 대화가 이어집니다. 일부 종류는 공유 화면에서 아직 지원하지 않는다고 안내합니다.\n- **프로젝트 파일과 메모리는 공유되지 않습니다.** 대화에 첨부한 파일은 답변에 인용된 범위까지 노출됩니다.\n- **공유 이후에 이어지는 대화도 링크에 계속 반영됩니다.** 특정 시점까지만 공개하려면 링크를 철회하고 새로 생성하십시오."
+"text": "- 해당 대화와 그 대화에서 생성된 아티팩트가 공개됩니다. 아티팩트가 먼저 표시되고 대화가 이어집니다. 보고서·슬라이드·차트·그림·음성·영상·HTML이 앱에서와 같은 모양으로 보이며, HTML은 앱의 미리보기처럼 격리된 창 안에서 열립니다. 그림과 영상 파일도 링크의 공개 범위대로 열립니다.\n- **프로젝트 파일과 메모리는 공유되지 않습니다.** 대화에 첨부한 파일은 답변에 인용된 범위까지 노출됩니다.\n- **공유 이후에 이어지는 대화도 링크에 계속 반영됩니다.** 특정 시점까지만 공개하려면 링크를 철회하고 새로 생성하십시오."
+},
+{
+"lang": "ko",
+"path": "write/share",
+"title": "공유",
+"heading": "아티팩트만 공유",
+"text": "대화는 빼고 아티팩트 하나만 공유하려면 아티팩트 창에서 **이 아티팩트만 공유**를 누릅니다. 보고서와 슬라이드는 머리의 **⋯** 메뉴에, 차트·그림·음성·영상·코드는 머리의 공유 아이콘에 있습니다. 공개 범위, 열람 기록, 철회는 대화 공유와 같습니다. 공유한 뒤에 고친 내용도 링크에 나타납니다."
 },
 {
 "lang": "ko",
@@ -1635,7 +1642,7 @@
 "path": "admin/users",
 "title": "Users and credits",
 "heading": "Management items per user",
-"text": "| Button | What it does |\n|---|---|\n| Credits | Change the monthly limit. The gateway budget is adjusted by the same amount |\n| Model restriction | The models this account can use. Leave it empty for all of them. It applies to API keys too |\n| Edit details | Name and email, **Reset password** (a random password; saving it signs out all of the user's sessions) |\n| Key management | Reissue the gateway key (the existing key is discarded at once) or replace it. List and delete the API keys the user created |\n| Suspend / Unsuspend | Reversible, and a record is kept |\n| Delete | Deletes conversations, projects, artifacts, memory, credit records, and the gateway key. You choose whether to delete the uploaded files and the generated image and video files from disk |"
+"text": "| Button | What it does |\n|---|---|\n| Credits | Change the monthly limit. The gateway budget is adjusted by the same amount |\n| Model restriction | The models this account can use. Leave it empty for all of them. It applies to API keys too |\n| Edit details | Name and email, **Reset password** (a random password; saving it signs out all of the user's sessions) |\n| Key management | Reissue the gateway key (the existing key is discarded at once) or replace it. List and delete the API keys the user created |\n| Make admin / Remove admin | Grants or removes admin rights after a confirmation. Kept in the audit log. Your own account and the last admin cannot be removed |\n| Suspend / Unsuspend | Reversible, and a record is kept |\n| Delete | Deletes conversations, projects, artifacts, memory, credit records, and the gateway key. You choose whether to delete the uploaded files and the generated image and video files from disk |"
 },
 {
 "lang": "en",
@@ -2405,7 +2412,7 @@
 "path": "personal/projects",
 "title": "Projects",
 "heading": "Tabs",
-"text": "| Tab | Function |\n|---|---|\n| Conversations | Start a new conversation in this project, and add existing conversations to the project or remove them from it. |\n| Knowledge | Add files and register addresses as **web material**. Web material stores the content as it was at registration time. It shows how many tokens each file uses and how much of the context it takes up. You can check the recognized content, download the original, and delete it. |\n| Skills | Skills you pick with **Choose skills** appear first in this project's composer. |\n| Memory | Memory shared at the project level. Conclusions that an agent leaves through **Share note** also accumulate here. |"
+"text": "| Tab | Function |\n|---|---|\n| Conversations | Start a new conversation in this project, and add existing conversations to the project or remove them from it. |\n| Knowledge | Add files and register addresses as **web material**. Web material stores the content as it was at registration time. It shows how many tokens each file uses and how much of the context it takes up. You can check the recognized content, download the original, and delete it. A file that meaning-based search does not cover yet is marked **Not indexed**; **Index now** sends it again. |\n| Skills | Skills you pick with **Choose skills** appear first in this project's composer. |\n| Memory | Memory shared at the project level. Conclusions that an agent leaves through **Share note** also accumulate here. |"
 },
 {
 "lang": "en",
@@ -2860,7 +2867,14 @@
 "path": "write/share",
 "title": "Sharing",
 "heading": "What is shared",
-"text": "- The conversation and the artifacts generated in it are made public. The artifact is shown first, and the conversation follows. For some types, a message says that the share screen does not support them yet.\n- **Project files and memory are not shared.** Files attached to the conversation are exposed only to the extent that the answer quotes them.\n- **Conversation that continues after sharing keeps appearing in the link as well.** To make only part of it public up to a certain point, revoke the link and create a new one."
+"text": "- The conversation and the artifacts generated in it are made public. The artifact is shown first, and the conversation follows. Reports, slides, charts, pictures, audio, video and HTML look as they do in the app; HTML opens in an isolated frame, like the app's preview. Picture and video files open to the same people the link does.\n- **Project files and memory are not shared.** Files attached to the conversation are exposed only to the extent that the answer quotes them.\n- **Conversation that continues after sharing keeps appearing in the link as well.** To make only part of it public up to a certain point, revoke the link and create a new one."
+},
+{
+"lang": "en",
+"path": "write/share",
+"title": "Sharing",
+"heading": "Sharing only an artifact",
+"text": "To share one artifact without its conversation, press **Share only this artifact** in the artifact panel. For reports and slides it is in the **⋯** menu of the header; for charts, pictures, audio, video and code it is the share icon in the header. Scope, view history and revocation work as for a conversation. Changes made after sharing also appear in the link."
 },
 {
 "lang": "en",

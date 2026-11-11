@@ -4,7 +4,7 @@ import { Badge, Button, Textarea } from '@/components/ui'
 import { errorCode, type IssueReply, type IssueStatus } from '@/lib/api'
 import { CREATE_ERROR, STATUS_LABEL, STATUS_TONE } from '@/lib/issues'
 import { useT } from '@/lib/useT'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 
 export function StatusBadge({ status }: { status: IssueStatus }) {
   const t = useT()
@@ -54,7 +54,9 @@ export function IssueThread({
                 <span>{t('상태를 바꿈')}</span>
                 <StatusBadge status={entry.status} />
                 {entry.body && <span className="min-w-0 [overflow-wrap:anywhere]">· {entry.body}</span>}
-                <span className="ml-auto text-xs tabular-nums text-faint">{new Date(entry.createdAt).toLocaleString()}</span>
+                <span className="ml-auto text-xs tabular-nums text-faint">
+                  {formatDateTime(entry.createdAt)}
+                </span>
               </li>
             )
           }
@@ -69,7 +71,7 @@ export function IssueThread({
                 <p className="mb-0.5 text-xs text-faint">
                   {entry.authorRole === 'admin' ? `${t('관리자')} · ${entry.authorName}` : entry.authorName}
                   {' · '}
-                  {new Date(entry.createdAt).toLocaleString()}
+                  {formatDateTime(entry.createdAt)}
                 </p>
                 <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{entry.body}</p>
               </div>

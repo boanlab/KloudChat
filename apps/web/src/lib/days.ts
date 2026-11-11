@@ -1,21 +1,21 @@
-/** Calendar-day helpers for grouping conversations. */
+/** Calendar-day helpers for grouping conversations, in the service time zone. */
+import { formatDate, serviceDate, shiftDate } from './utils'
 
-/** Local calendar day of a timestamp, as `YYYY-M-D`. */
+/** Service-zone calendar day of a timestamp, as `YYYY-MM-DD`. */
 export function dayOf(iso: string | null | undefined): string {
-  const d = iso ? new Date(iso) : null
-  if (!d || Number.isNaN(d.getTime())) return ''
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+  return serviceDate(iso)
 }
 
-/** 오늘, 어제, or the full date. */
-export function dayLabel(iso: string | null | undefined, t: (s: string) => string): string {
-  const d = iso ? new Date(iso) : null
-  if (!d || Number.isNaN(d.getTime())) return t('날짜 없음')
-  const today = new Date()
-  const same = (a: Date, b: Date) => dayOf(a.toISOString()) === dayOf(b.toISOString())
-  if (same(d, today)) return t('오늘')
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-  if (same(d, yesterday)) return t('어제')
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+/** 오늘, 어제, or the full date; compared as calendar dates, never as 24-hour spans. */
+export function dayLabel(
+  iso: string | null | undefined,
+  t: (s: string) => string,
+  now: Date = new Date(),
+): string {
+  const day = dayOf(iso)
+  if (!day) return t('날짜 없음')
+  const today = serviceDate(now)
+  if (day === today) return t('오늘')
+  if (day === shiftDate(today, -1)) return t('어제')
+  return formatDate(iso)
 }

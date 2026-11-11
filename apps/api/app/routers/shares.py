@@ -2,18 +2,29 @@
 
 from __future__ import annotations
 
+import json
+import re
 import secrets
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlmodel import col, select
 
-from app.core.deps import CurrentUser, DbSession, client_ip, current_user
+from app.core.deps import CurrentUser, DbSession, client_ip, current_user, current_viewer
 from app.models.chat import ChatSession, Message
 from app.models.user import utcnow
-from app.models.workspace import Agent, Artifact, Project, Share, ShareScope, ShareView
+from app.models.workspace import (
+    Agent,
+    Artifact,
+    Project,
+    Share,
+    ShareScope,
+    ShareView,
+    StoredFile,
+)
 from app.schemas.workspace import ShareIn, ShareOut, ShareViewOut
 from app.services import design_templates, message_links
+from app.services import files as file_service
 
 router = APIRouter(tags=["shares"])
 
@@ -22,6 +33,21 @@ _TOKEN_BYTES = 32
 
 #: repeat opens within window = one visit
 _VISIT_WINDOW = timedelta(hours=1)
+
+#: a stored file an artifact body points at (`src`, `posterSrc`, pictures in sections)
+_FILE_REF = re.compile(r"/files/([0-9a-f]{32})/content")
+
+
+def _file_ids(artifact: Artifact) -> set[str]:
+    return set(_FILE_REF.findall(json.dumps(artifact.data or {})))
+
+
+def _shared_data(token: str, artifact: Artifact):
+    """Body with its stored-file links on the share's own media route (no account needed)."""
+    if not artifact.data:
+        return artifact.data
+    wire = json.dumps(artifact.data, ensure_ascii=False)
+    return json.loads(_FILE_REF.sub(lambda m: f"/shared/{token}/files/{m.group(1)}", wire))
 
 
 async def _record_view(db: DbSession, share: Share, request: Request, viewer) -> None:
@@ -175,7 +201,7 @@ async def read_shared(token: str, request: Request, db: DbSession):
             "kind": "artifact",
             "title": artifact.title,
             "artifactKind": artifact.kind.value,
-            "data": artifact.data,
+            "data": _shared_data(token, artifact),
             "updatedAt": artifact.updated_at,
         }
 
@@ -218,7 +244,7 @@ async def read_shared(token: str, request: Request, db: DbSession):
             {
                 "title": artifact.title,
                 "artifactKind": artifact.kind.value,
-                "data": artifact.data,
+                "data": _shared_data(token, artifact),
                 "updatedAt": artifact.updated_at,
             }
             if artifact is not None
@@ -226,6 +252,48 @@ async def read_shared(token: str, request: Request, db: DbSession):
         ),
         "updatedAt": session.updated_at,
     }
+
+
+@router.get("/shared/{token}/files/{file_id}")
+async def read_shared_file(token: str, file_id: str, request: Request, db: DbSession):
+    """A picture or clip the shared artifact shows; same reach as the share, not counted."""
+    share = (await db.exec(select(Share).where(Share.token == token))).first()
+    if share is None or share.revoked_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if share.scope is ShareScope.workspace:
+        # `<img>`/`<video>` send no header: the page adds `?t=` as for the owner's own media
+        try:
+            await current_viewer(request, db)
+        except HTTPException:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="sign_in_required"
+            ) from None
+
+    artifact = None
+    if share.artifact_id:
+        artifact = await db.get(Artifact, share.artifact_id)
+    elif share.session_id:
+        session = await db.get(ChatSession, share.session_id)
+        if session is not None and session.artifact_id:
+            artifact = await db.get(Artifact, session.artifact_id)
+            if artifact is not None and artifact.user_id != session.user_id:
+                artifact = None
+    # only files the shared body names, and only its owner's
+    if artifact is None or file_id not in _file_ids(artifact):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    stored = await db.get(StoredFile, file_id)
+    if stored is None or stored.user_id != artifact.user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    try:
+        data = file_service.read_blob(stored.storage_key)
+    except OSError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
+    media, inline = file_service.served_as(stored.name, stored.mime, data)
+    return Response(
+        content=data,
+        media_type=media,
+        headers=file_service.download_headers(media, inline, stored.name),
+    )
 
 
 async def _identity(request: Request, db: DbSession):

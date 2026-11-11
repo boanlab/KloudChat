@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { Badge, Card } from '@/components/ui'
 import { currentLocale } from '@/lib/i18n'
 import { useT } from '@/lib/useT'
-import { cn } from '@/lib/utils'
+import { cn, serviceTimeZone } from '@/lib/utils'
 import {
   type Column,
   type GpuRow,
@@ -150,7 +150,9 @@ export function AdminPerformancePage() {
           </span>
           {data?.collector.lastSampleAt && (
             <span className="ml-auto text-xs text-faint">
-              {t('마지막 표본')} {new Date(data.collector.lastSampleAt).toLocaleTimeString(currentLocale())}
+              {t('마지막 표본')} {new Date(data.collector.lastSampleAt).toLocaleTimeString(currentLocale(), {
+                timeZone: serviceTimeZone(),
+              })}
             </span>
           )}
         </div>

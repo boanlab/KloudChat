@@ -6,6 +6,7 @@ import type {
   VideoArtifact,
 } from '@/types'
 import { currentLang, currentLocale } from './i18n'
+import { serviceTimeZone } from './serviceTime'
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs)
@@ -35,11 +36,21 @@ export function relativeTime(iso: string | null | undefined) {
   if (hours < 24) return en ? `${hours}h ago` : `${hours}시간 전`
   const days = Math.round(hours / 24)
   if (days < 7) return en ? `${days}d ago` : `${days}일 전`
-  return new Date(iso).toLocaleDateString(currentLocale(), { month: 'short', day: 'numeric' })
+  return new Date(iso).toLocaleDateString(currentLocale(), {
+    month: 'short',
+    day: 'numeric',
+    timeZone: serviceTimeZone(),
+  })
 }
 
-/** Service time zone (API `TIMEZONE`): refills turn at its midnight, not the browser's. */
-const SERVICE_TIME_ZONE = 'Asia/Seoul'
+// Every date on screen is in the service time zone (`./serviceTime`).
+export {
+  serviceDate,
+  serviceMidnight,
+  serviceTimeZone,
+  setServiceTimeZone,
+  shiftDate,
+} from './serviceTime'
 
 export function formatDate(iso: string | null | undefined) {
   if (!iso) return '—'
@@ -49,7 +60,7 @@ export function formatDate(iso: string | null | undefined) {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-    timeZone: SERVICE_TIME_ZONE,
+    timeZone: serviceTimeZone(),
   })
 }
 
@@ -58,7 +69,7 @@ export function formatDateTime(iso: string | null | undefined) {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString(currentLocale())
+  return d.toLocaleString(currentLocale(), { timeZone: serviceTimeZone() })
 }
 
 /** Image, audio and video artifacts render inline in the turn; reports and decks are offered as chips. */
