@@ -23,10 +23,21 @@ ENV KCHAT_BUILD_VERSION=${KCHAT_BUILD_VERSION}
 RUN node node_modules/typescript/bin/tsc -b \
     && node node_modules/vite/bin/vite.js build
 
+# The HWP editor (rhwp-studio), pinned in rhwp/build-studio.sh and built from its source
+# and the published wasm, so it is served from this origin. Its own stage: it changes only
+# when that script does.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS rhwp
+RUN apk add --no-cache git
+WORKDIR /rhwp
+COPY rhwp/build-studio.sh ./
+RUN ./build-studio.sh /rhwp/studio
+
 FROM nginx:1.31-alpine
 COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=rhwp /rhwp/studio /usr/share/nginx/html/rhwp
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY security-headers.conf /etc/nginx/snippets/kchat-security-headers.conf
+COPY rhwp-security-headers.conf /etc/nginx/snippets/rhwp-security-headers.conf
 # Run by the image's entrypoint (`*.envsh` is sourced) before the template is filled in.
 COPY --chmod=755 kchat-body-size.envsh /docker-entrypoint.d/15-kchat-body-size.envsh
 

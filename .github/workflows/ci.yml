@@ -96,6 +96,37 @@ jobs:
           path: apps/web/playwright-report/
           retention-days: 7
 
+  # The HWP editor itself (rhwp-studio), built as the web image builds it and served under
+  # its own CSP: one spec opens a document in it, edits and saves it back. The sharded
+  # suite skips that spec (no studio in its bundle).
+  web-hwp:
+    name: Web · HWP editor
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Build the app and the editor
+        run: npx vite build && ./rhwp/build-studio.sh dist/rhwp
+
+      - name: Install test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Test
+        env:
+          E2E_PREBUILT: '1'
+        run: npx playwright test -c playwright.ci.config.ts --project 'hwp-studio/*'
+
   api:
     name: API · lint, tests
     runs-on: ubuntu-latest

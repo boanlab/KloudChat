@@ -53,3 +53,29 @@ for (const [label, directory] of directories) {
     ))
   })
 }
+
+test('the HWP editor at /rhwp/ gets its own policy and the app keeps its own', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const policy = async (name) => {
+    const text = await readFile(join(webRoot, name), 'utf8')
+    return text.match(/^add_header Content-Security-Policy "([^"]*)" always;$/m)[1]
+  }
+  const app = await policy('security-headers.conf')
+  const editor = await policy('rhwp-security-headers.conf')
+  const scripts = (csp) => csp.split(';').map((part) => part.trim())
+    .find((part) => part.startsWith('script-src'))
+  // the editor compiles WebAssembly; the app never needs to
+  assert.ok(!app.includes('wasm-unsafe-eval'))
+  assert.equal(scripts(editor), "script-src 'self' 'wasm-unsafe-eval'")
+  // nothing the editor shows or sends leaves this site
+  assert.ok(!/https:|\*/.test(editor))
+  assert.ok(editor.includes("frame-ancestors 'self'"))
+  // the app may frame it
+  assert.match(app, /frame-src 'self'/)
+
+  const nginx = await readFile(join(webRoot, 'nginx.conf'), 'utf8')
+  const block = nginx.slice(nginx.indexOf('location ^~ /rhwp/'))
+  assert.match(block, /include \/etc\/nginx\/snippets\/rhwp-security-headers\.conf;/)
+  const dockerfile = await readFile(join(webRoot, 'Dockerfile'), 'utf8')
+  assert.match(dockerfile, /COPY rhwp-security-headers\.conf \/etc\/nginx\/snippets\//)
+})

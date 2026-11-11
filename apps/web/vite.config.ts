@@ -16,15 +16,34 @@ const versionFile = (): Plugin => ({
 })
 
 /** nginx's shared headers (`security-headers.conf`), served by `vite preview` as well. */
-function securityHeaders(): Record<string, string> {
-  const file = fileURLToPath(new URL('./security-headers.conf', import.meta.url))
+function securityHeaders(name = './security-headers.conf'): Record<string, string> {
+  const file = fileURLToPath(new URL(name, import.meta.url))
   if (!existsSync(file)) return {}
   const lines = readFileSync(file, 'utf8').matchAll(/^add_header ([\w-]+) "([^"]*)" always;$/gm)
   return Object.fromEntries([...lines].map((line) => [line[1], line[2]]))
 }
 
+/** `/rhwp/` (the HWP editor) under its own headers, as nginx serves it: the app's would
+ *  block its WebAssembly. Preview only; the dev server sets no headers. */
+const rhwpHeaders = (): Plugin => ({
+  name: 'kchat-rhwp-headers',
+  configurePreviewServer(server) {
+    const own = securityHeaders('./rhwp-security-headers.conf')
+    const byName = new Map(Object.entries(own).map(([name, value]) => [name.toLowerCase(), value]))
+    server.middlewares.use((req, res, next) => {
+      if (req.url?.startsWith('/rhwp/')) {
+        // preview sets the app's headers after this runs: the editor's win by name
+        const setHeader = res.setHeader.bind(res)
+        res.setHeader = (name, value) => setHeader(name, byName.get(name.toLowerCase()) ?? value)
+        for (const [name, value] of Object.entries(own)) setHeader(name, value)
+      }
+      next()
+    })
+  },
+})
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), versionFile()],
+  plugins: [react(), tailwindcss(), versionFile(), rhwpHeaders()],
   define: {
     'import.meta.env.VITE_KCHAT_VERSION': JSON.stringify(version),
   },
