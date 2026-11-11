@@ -98,7 +98,7 @@ async function fixture(page: Page, info: TestInfo) {
         summary: {
           users: rows.length, pending: rows.filter((r) => r.status === 'pending').length,
           creditsGranted: rows.reduce((s, r) => s + r.monthlyCredits, 0),
-          creditsUsed: rows.reduce((s, r) => s + r.creditsUsed, 0), nextReset: '2026-11-01T00:00:00.000Z',
+          creditsUsed: rows.reduce((s, r) => s + r.creditsUsed, 0), nextReset: '2099-11-01T00:00:00.000Z',
         },
       })
     }
