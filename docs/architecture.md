@@ -1451,9 +1451,15 @@ The agent works on the saved file, never the browser's copy. In a chat that
 has an HWP document (or a request that names one), `hwp_read`, `hwp_edit` and
 `hwp_write` join the turn's tools (strict-local too: they make no call out),
 with a context block telling the model to work in the document and leave
-unknown facts as bracket blanks. `services/hwpx_edit.py` reads the section XML
+unknown facts as bracket blanks. When the document already has text, the server
+runs `hwp_read` itself before the model's first hop (a preset call), so even a
+small model starts from the saved file and its numbers; a request that only puts
+the person's own values into it ("…로 채워 주세요") is own work and forces no web
+search. `services/hwpx_edit.py` reads the section XML
 into a numbered outline (`p3`, `t1 r0: a | b`, the blanks left) and applies
-edit ops all-or-nothing against the version the model read; a replaced
+edit ops all-or-nothing against the version the model read (a blank can be
+filled everywhere or `at` one paragraph or cell, and a particle after it is made
+to agree: 「[연수명]을」 → 「교원연수를」); a replaced
 paragraph keeps its `paraPrIDRef`, its first text run's `charPrIDRef`, and any
 controls, and loses its stored line layout so the viewer lays it out again.
 `hwp_write` builds a new document through `report_export.to_hwpx` with a
