@@ -1303,6 +1303,41 @@
 },
 {
 "lang": "ko",
+"path": "write/hwp",
+"title": "한글(HWP) 문서",
+"heading": "",
+"text": "대화 옆에 한글 편집기를 띄우고, 공문 같은 한글 문서를 챗으로 쓰고 고칩니다. 같은 문서를 편집기에서 직접 고칠 수도 있습니다."
+},
+{
+"lang": "ko",
+"path": "write/hwp",
+"title": "한글(HWP) 문서",
+"heading": "시작하기",
+"text": "- 홈의 **한글 문서**를 누르면 빈 문서가 열린 대화가 시작됩니다. 왼쪽은 대화, 오른쪽은 메뉴(파일·편집·보기·입력·서식·쪽·표·도구)와 도구 모음이 있는 한글 편집기입니다.\n- 대화에 첨부한 `.hwp`, `.hwpx` 파일은 **HWP로 열기**로 편집기에 엽니다. `.hwp` 파일은 처음 열 때 HWPX로 바뀌어 저장됩니다.\n- 챗에서 \"한글 문서로\", \"hwp 파일로\"처럼 요청해도 문서가 만들어집니다."
+},
+{
+"lang": "ko",
+"path": "write/hwp",
+"title": "한글(HWP) 문서",
+"heading": "챗으로 쓰고 고치기",
+"text": "- \"직원 연수 참석을 요청하는 공문을 작성해 주세요\"처럼 요청하면 공문 형식(수신·발신·시행일 표, 제목, 1. 가. 항목, 끝.)의 문서가 편집기에 나타납니다.\n- 요청에 없는 기관명, 날짜, 장소 같은 사실은 지어내지 않고 `[기관명]`, `[YYYY. MM. DD.]`처럼 대괄호 빈칸으로 남깁니다.\n- \"연수명은 교원연수, 일시는 2027년 2월 11일 10:00-12:00…\"처럼 알려 주면 에이전트가 문서를 읽고 빈칸과 해당 줄을 채웁니다. 문단과 글자 모양은 그대로 유지됩니다.\n- 답변 위의 처리 과정에는 \"문서 확인 2회 · 문서 편집 2회\"처럼 문서를 읽고 고친 횟수가 표시됩니다.\n- 에이전트가 문서를 고치는 동안 편집기는 잠기고, 고친 판이 저장되면 편집기가 그 판을 불러옵니다."
+},
+{
+"lang": "ko",
+"path": "write/hwp",
+"title": "한글(HWP) 문서",
+"heading": "직접 고치기와 저장",
+"text": "- 편집기에서 고치면 머리에 **저장 안 됨**이 표시됩니다. **저장**을 누르면 새 판으로 저장됩니다.\n- 저장하지 않은 편집이 있는 채로 챗을 보내면 먼저 **저장하고 보내기**, **버리고 보내기**, **취소** 중에서 고릅니다. 에이전트는 항상 저장된 문서에서 시작합니다.\n- 그사이 다른 판이 저장되었으면 저장하지 않고 알려 줍니다. **내 편집 내려받기**로 지금 편집을 파일로 받거나 **최신 판 불러오기**를 선택합니다.\n- 판은 ⋯ 메뉴의 **버전 기록**에서 보고 되돌립니다."
+},
+{
+"lang": "ko",
+"path": "write/hwp",
+"title": "한글(HWP) 문서",
+"heading": "내려받기와 제한",
+"text": "- **내려받기**에서 HWPX(한글 문서) 또는 HWP(한글 97~2022 문서)를 고릅니다.\n- 편집기는 이 서버에서 제공되며, 문서는 외부로 전송되지 않습니다. 글꼴은 함초롬체 대신 공개 글꼴로 표시되므로 한컴오피스와 줄 바꿈 위치가 다를 수 있습니다.\n- 에이전트가 고칠 수 있는 것은 본문 문단과 표의 칸·줄입니다. 그림, 글상자, 머리말·꼬리말, 병합된 칸이 있는 표의 줄 추가·삭제는 편집기에서 직접 고칩니다.\n- 휴대폰 너비에서는 문서를 보고 내려받을 수 있으며, 저장은 넓은 화면에서 합니다."
+},
+{
+"lang": "ko",
 "path": "write/media",
 "title": "이미지와 오디오/동영상",
 "heading": "",
@@ -2770,6 +2805,41 @@
 "title": "Artifact editor",
 "heading": "Editing limits on documents with a template applied",
 "text": "Reports and slides with a template applied support block-level rewriting only, and Markdown source editing is not provided. The export formats are PDF, DOCX/PPTX, HWPX, HTML, and text."
+},
+{
+"lang": "en",
+"path": "write/hwp",
+"title": "HWP documents",
+"heading": "",
+"text": "Open a Hangul (HWP) editor beside the conversation and write or edit an HWP document, such as an official letter, by chat. You can also edit the same document directly in the editor."
+},
+{
+"lang": "en",
+"path": "write/hwp",
+"title": "HWP documents",
+"heading": "Getting started",
+"text": "- On Home, **한글 문서** (HWP document) starts a conversation with a blank document open. The conversation is on the left; on the right is the HWP editor with its menus (File, Edit, View, Insert, Format, Page, Table, Tools) and toolbar.\n- A `.hwp` or `.hwpx` file attached in the conversation opens in the editor with **Open as HWP**. A `.hwp` file is saved as HWPX the first time it opens.\n- Asking in chat for \"an HWP document\" or \"an hwp file\" also creates one."
+},
+{
+"lang": "en",
+"path": "write/hwp",
+"title": "HWP documents",
+"heading": "Writing and editing by chat",
+"text": "- Ask, for example, \"Write an official letter asking staff to attend a training\", and a document in the official-letter layout (recipient/sender/date table, title, numbered items, 끝.) appears in the editor.\n- Facts you did not give, such as the organisation, dates or place, are not invented: they stay as bracket blanks like `[기관명]` or `[YYYY. MM. DD.]`.\n- When you give the facts (\"the training is 교원연수, on 11 Feb 2027 10:00-12:00, …\"), the agent reads the document and fills those blanks and lines. Paragraph and character formatting stay as they were.\n- The steps above the answer show how often the document was read and edited, for example \"Check document 2 calls · Edit document 2 calls\".\n- While the agent edits, the editor is locked; when it saves a version, the editor loads it."
+},
+{
+"lang": "en",
+"path": "write/hwp",
+"title": "HWP documents",
+"heading": "Editing by hand and saving",
+"text": "- After an edit in the editor, the header shows **Not saved**. **Save** stores it as a new version.\n- If you send a message with unsaved edits, you first choose **Save and send**, **Discard and send** or **Cancel**. The agent always starts from the saved document.\n- If another version was saved in the meantime, your save is refused and you are told so. Choose **Download my edits** to keep your edits as a file, or **Load the latest version**.\n- Versions are listed and restored under ⋯ → **Version history**."
+},
+{
+"lang": "en",
+"path": "write/hwp",
+"title": "HWP documents",
+"heading": "Downloads and limits",
+"text": "- **Download** offers HWPX or HWP (Hangul 97–2022).\n- The editor is served from this server; documents are not sent anywhere else. Open fonts stand in for the Hamchorom fonts, so line breaks can differ from Hancom Office.\n- The agent can change body paragraphs and table cells and rows. Pictures, text boxes, headers and footers, and adding or removing rows in tables with merged cells are edited in the editor.\n- At phone width the document can be read and downloaded; save on a wider screen."
 },
 {
 "lang": "en",

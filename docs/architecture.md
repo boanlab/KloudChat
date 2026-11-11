@@ -1425,6 +1425,42 @@ HTML thumbnails hydrate on approach: an `IntersectionObserver` a screen ahead
 fetches the document for a card about to be seen, so the picture is there when
 it arrives and the ninety cards below it cost nothing.
 
+### HWP documents
+
+An `hwp` artifact is a file, not JSON: each version's HWPX sits in a blob
+(`storage_key`, on `ArtifactVersion` rows too), and `data` holds only the
+format, size and body text for search. `routers/hwp.py` creates one (blank, or
+from an uploaded `.hwp`/`.hwpx`), serves a version's bytes, and takes the
+editor's bytes as the next version. Every writer names the version it read:
+`services/hwp_doc.save` moves the row with one conditional UPDATE
+(`version = expected`), so a hand save and an agent edit cannot both land on
+the same version — the loser gets 409 (the editor) or a "read again" (a tool).
+
+The editor is rhwp-studio (MIT), framed from `/rhwp/` on this origin; the
+document never goes to the upstream demo site. `apps/web/rhwp/build-studio.sh`
+builds it in the web image's own stage from a pinned source commit and the
+published `@rhwp/core` wasm (checked against its npm integrity), with the AI
+panel, the hwpctrl plugin, CDN web fonts and the service worker left out.
+nginx serves `/rhwp/` under `rhwp-security-headers.conf`: the app's CSP would
+block its WebAssembly, so it gets its own, which adds `'wasm-unsafe-eval'` and
+otherwise allows nothing outside this origin. The panel mounts the iframe once
+per document (`HwpPanel`, keyed by id); width and full-screen changes restyle
+its container and never move it, since a moved iframe reloads.
+
+The agent works on the saved file, never the browser's copy. In a chat that
+has an HWP document (or a request that names one), `hwp_read`, `hwp_edit` and
+`hwp_write` join the turn's tools (strict-local too: they make no call out),
+with a context block telling the model to work in the document and leave
+unknown facts as bracket blanks. `services/hwpx_edit.py` reads the section XML
+into a numbered outline (`p3`, `t1 r0: a | b`, the blanks left) and applies
+edit ops all-or-nothing against the version the model read; a replaced
+paragraph keeps its `paraPrIDRef`, its first text run's `charPrIDRef`, and any
+controls, and loses its stored line layout so the viewer lays it out again.
+`hwp_write` builds a new document through `report_export.to_hwpx` with a
+`doc_formats` head (공문 by default). Each tool step carries the artifact id,
+so the open editor loads the new version mid-turn; before a turn is sent, the
+panel asks to save or drop unsaved hand edits (`lib/hwpGuard.ts`).
+
 ### Sharing
 
 In the `shares` table **the token is the permission**: 43 random characters,
