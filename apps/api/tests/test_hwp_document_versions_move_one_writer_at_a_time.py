@@ -181,7 +181,7 @@ async def test_hwp_tools_join_the_turn_only_when_asked_for(stack):
 def test_a_request_names_hwp_in_its_usual_spellings():
     from app.routers.sessions import _ASKS_HWP, _STRICT_LOCAL_TOOL_NAMES
 
-    for text in ("공문을 hwp로 만들어 줘", "한글 문서로 써 줘", "HWPX 파일로", "아래아한글 양식"):
+    for text in ("공문을 hwp로 만들어 줘", "한글 문서로 써 줘", "HWPX 파일로", "아래아한글 파일로"):
         assert _ASKS_HWP.search(text), text
     for text in ("한글로 번역해 줘", "whwpx", "한글날 행사"):
         assert not _ASKS_HWP.search(text), text

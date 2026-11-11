@@ -56,7 +56,7 @@ describe('agentHandoffSurface', () => {
 
 describe('NAMES_HWP', () => {
   it('names an HWP document in its usual spellings and nothing else', () => {
-    for (const text of ['공문을 hwp로 만들어 줘', '한글 문서로 써 줘', 'HWPX 파일로', '아래아한글 양식']) {
+    for (const text of ['공문을 hwp로 만들어 줘', '한글 문서로 써 줘', 'HWPX 파일로', '아래아한글 파일로']) {
       expect(NAMES_HWP.test(text)).toBe(true)
     }
     for (const text of ['한글로 번역해 줘', 'whwpx', '한글날 행사 공문을 작성해 줘']) {
