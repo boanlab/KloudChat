@@ -11,11 +11,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.core.request_id import RequestIdMiddleware, tag_log_lines
 from app.routers import (
     admin,
     auth,
     bot_api,
     branding,
+    client_errors,
     connectors,
     issues,
     jobs,
@@ -52,6 +54,8 @@ from app.services.perf import collector as perf_collector
 from app.services.perf import live as perf_live
 
 logging.basicConfig(level=logging.INFO)
+# warnings and errors raised while serving a request carry its X-Request-ID
+tag_log_lines()
 log = logging.getLogger("kchat")
 
 
@@ -131,9 +135,12 @@ app.add_middleware(
     allow_credentials=True,  # required for the refresh cookie
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 # per-replica open streams and request durations
 app.add_middleware(perf_live.LoadMiddleware)
+# outermost: every answer, a 500 included, carries the id
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(branding.router, prefix=settings.api_prefix)
@@ -162,6 +169,7 @@ app.include_router(publications.router, prefix=settings.api_prefix)
 app.include_router(bot_api.router, prefix=settings.api_prefix)
 app.include_router(issues.router, prefix=settings.api_prefix)
 app.include_router(perf.router, prefix=settings.api_prefix)
+app.include_router(client_errors.router, prefix=settings.api_prefix)
 
 
 @app.get(f"{settings.api_prefix}/health")

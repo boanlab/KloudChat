@@ -194,6 +194,11 @@ const EN: Record<string, string> = {
   '새 버전으로 다시 불러와야 합니다': 'Reload to get the new version',
   '그사이 KloudChat이 새로 배포되었습니다. 새로고침하면 이어서 쓸 수 있고, 대화 내용은 서버에 그대로 있습니다.': 'KloudChat was updated in the meantime. Reload to carry on; your conversations are kept on the server.',
   '새로고침': 'Reload',
+  // New build notice, error screen details, upload limit
+  '새 버전이 있습니다': 'A new version is available',
+  '요청 ID': 'Request ID',
+  '화면 버전': 'App version',
+  '파일이 너무 큽니다. 한 파일에 {n}MB까지 올릴 수 있습니다.': 'The file is too large. Each file can be up to {n} MB.',
   // Terms, sidebar, model picker, chatbots
   '사용자가 누구인지 — 역할, 전문성, 선호': 'Who you are — role, expertise, preferences',
   '작업 방식에 대한 지시 — 왜 그런지 함께': 'How to work — with the reason why',

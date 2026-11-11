@@ -520,6 +520,22 @@ async def get_file(file_id: str, user: CurrentUser, db: DbSession):
     return FileOut.of(await _own(db, StoredFile, "user_id", user, file_id))
 
 
+async def upload_bytes(file: UploadFile) -> bytes:
+    """The upload's bytes; one over `max_upload_mb` refused by its spooled size, before
+    it is read into memory."""
+    limit = settings.max_upload_mb * 1024 * 1024
+    too_large = HTTPException(
+        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        detail=f"file_too_large_{settings.max_upload_mb}mb",
+    )
+    if (file.size or 0) > limit:
+        raise too_large
+    data = await file.read()
+    if len(data) > limit:
+        raise too_large
+    return data
+
+
 @router.post("/files", response_model=FileOut, status_code=status.HTTP_201_CREATED)
 async def upload_file(
     user: CurrentUser,
@@ -528,12 +544,7 @@ async def upload_file(
     project_id: str | None = Form(None),
     session_id: str | None = Form(None),
 ):
-    data = await file.read()
-    if len(data) > settings.max_upload_mb * 1024 * 1024:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"file_too_large_{settings.max_upload_mb}mb",
-        )
+    data = await upload_bytes(file)
     if project_id:
         await _own(db, Project, "user_id", user, project_id)
 
@@ -3288,12 +3299,7 @@ async def add_agent_file(
 ):
     """Uploaded document, extracted and shelved."""
     agent = await _own(db, Agent, "owner_id", user, agent_id)
-    data = await file.read()
-    if len(data) > settings.max_upload_mb * 1024 * 1024:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"file_too_large_{settings.max_upload_mb}mb",
-        )
+    data = await upload_bytes(file)
     stored = StoredFile(
         user_id=user.id,
         agent_id=agent_id,

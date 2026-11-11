@@ -1281,10 +1281,13 @@ export function Composer({
         const row = await uploadFile(file, {
           projectId: editing ? undefined : projectId ?? undefined,
           sessionId: editing ? undefined : uploadSession ?? undefined,
-        }).catch(() => {
+        }).catch((err) => {
           // Said where the chips are: a file that never arrived must not look attached.
-          if (movedOn()) failLate(uploadSession!, file.name)
-          else setUploadFailed((current) => [...current, file.name])
+          // Too large (a proxy's 413 too) says the limit; anything else names the file only.
+          const label =
+            err instanceof ApiError && err.status === 413 ? `${file.name} — ${err.detail}` : file.name
+          if (movedOn()) failLate(uploadSession!, label)
+          else setUploadFailed((current) => [...current, label])
           return null
         })
         if (!row || editContext.current !== editScope) continue
