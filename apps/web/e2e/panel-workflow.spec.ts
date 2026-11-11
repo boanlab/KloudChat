@@ -366,7 +366,7 @@ test.describe('슬라이드 패널', () => {
 
   test('이전 슬라이드를 확인 후 복원하고 바로 다시 편집한다', async ({ page }) => {
     await signIn(page)
-    const before = await page.evaluate(async ([fn, id]) => await eval(fn as string)(`/api/artifacts/${id}`), [AS_USER, deckId] as const) as { version: number; data: { slides: typeof SLIDES } }
+    const before = await page.evaluate(async ([fn, id]) => await eval(fn as string)(`/api/artifacts/${id}`), [AS_USER, deckId] as const) as { version: number; data: { slides: Array<Record<string, unknown> & { title: string; body?: string }> } }
     const changed = structuredClone(before.data)
     changed.slides[0].body = '복원하면 사라질 슬라이드 문장'
     ;[changed.slides[0], changed.slides[1]] = [changed.slides[1], changed.slides[0]]
