@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import DateTime, String, case, cast, false, func, literal, or_, union_all
@@ -50,14 +51,25 @@ SEARCH_REASON = credits_service.SEARCH_REASON
 _cycle_start = credits_service.cycle_start
 
 
+def _zone() -> ZoneInfo:
+    """Service time zone (`TIMEZONE`): days and months turn at its midnight, as credits do."""
+    return ZoneInfo(settings.timezone)
+
+
 def _since(days: int) -> datetime:
-    """Midnight `days-1` days ago (whole days)."""
-    start = datetime.now(UTC) - timedelta(days=days - 1)
-    return start.replace(hour=0, minute=0, second=0, microsecond=0)
+    """Service-zone midnight `days-1` calendar days ago (whole local days), as UTC."""
+    first = datetime.now(_zone()).date() - timedelta(days=days - 1)
+    return datetime.combine(first, time(), tzinfo=_zone()).astimezone(UTC)
+
+
+def _local_day(column):
+    """Service-zone calendar day of a stored instant (wall-clock midnight, no zone)."""
+    return func.date_trunc("day", func.timezone(settings.timezone, column), type_=DateTime())
 
 
 def _every_day(since: datetime, days: int, rows) -> list[dict]:
-    """One zero-filled entry per window day."""
+    """One zero-filled entry per window day; `since` from `_since`, rows keyed by local day."""
+    first = since.astimezone(_zone()).date()
     by_date = {day.date().isoformat(): (int(c), int(n), int(s)) for day, c, n, s in rows}
     return [
         {
@@ -66,7 +78,7 @@ def _every_day(since: datetime, days: int, rows) -> list[dict]:
             "requests": by_date.get(date, (0, 0, 0))[1],
             "searches": by_date.get(date, (0, 0, 0))[2],
         }
-        for date in ((since + timedelta(days=i)).date().isoformat() for i in range(days))
+        for date in ((first + timedelta(days=i)).isoformat() for i in range(days))
     ]
 
 
@@ -97,9 +109,7 @@ def _events(since: datetime, user_id: str | None = None):
     """Turns ∪ ledger spend as (day, model, kind, user_id, credits, requests, units, searches)."""
     turns = (
         select(
-            func.date_trunc("day", col(Message.created_at), type_=DateTime(timezone=True)).label(
-                "day"
-            ),
+            _local_day(col(Message.created_at)).label("day"),
             col(Message.model).label("model"),
             # enum → text for union; bot turns apart
             case(
@@ -119,9 +129,7 @@ def _events(since: datetime, user_id: str | None = None):
     )
     spend = (
         select(
-            func.date_trunc(
-                "day", col(CreditLedger.created_at), type_=DateTime(timezone=True)
-            ).label("day"),
+            _local_day(col(CreditLedger.created_at)).label("day"),
             _SPEND_MODEL.label("model"),
             _SPEND_SURFACE.label("kind"),
             col(CreditLedger.user_id).label("user_id"),

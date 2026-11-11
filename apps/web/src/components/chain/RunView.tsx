@@ -6,7 +6,7 @@ import { Button, EmptyState, LoadingState } from '@/components/ui'
 import { pipelineGraphApi } from '@/lib/api'
 import { START, canvasEdges, isCondition, readRun, runIsOpen } from '@/lib/pipelineGraph'
 import { useT } from '@/lib/useT'
-import { cn } from '@/lib/utils'
+import { cn, serviceTimeZone } from '@/lib/utils'
 import type { Agent } from '@/types'
 import type { PipelineRunRecord, PipelineRunStep, RunStepStatus } from '@/types/pipelineGraph'
 import { ChainCanvas } from './ChainCanvas'
@@ -32,7 +32,15 @@ function didOf(record: PipelineRunStep | undefined): string {
 }
 
 const when = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+  iso
+    ? new Date(iso).toLocaleString('ko-KR', {
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: serviceTimeZone(),
+      })
+    : ''
 
 /** 실행 기록: the runs of this agent's pipeline, each step's status on the canvas and what it took and gave. */
 export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: string) => void }) {

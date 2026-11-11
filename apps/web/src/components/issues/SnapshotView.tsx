@@ -8,7 +8,7 @@ import { ACTION_LABEL } from '@/lib/auditLabels'
 import { CUT_LABEL } from '@/lib/issues'
 import { kindMeta } from '@/lib/kinds'
 import { useT } from '@/lib/useT'
-import { cn, fileSize } from '@/lib/utils'
+import { cn, fileSize, formatDateTime } from '@/lib/utils'
 import { SharedArtifact } from '@/pages/SharedPage'
 import type { PipelineRun, SessionKind } from '@/types'
 
@@ -195,7 +195,7 @@ function SnapshotMessage({
         {failure && <Badge tone="danger">{t(FAILURE_LABEL[failure] ?? failure)}</Badge>}
         {(message as { rating?: string | null }).rating === 'down' && <Badge tone="warn">👎</Badge>}
         {pinned && <Badge tone="accent"><Pin size={11} />{t('신고한 답변')}</Badge>}
-        <span className="ml-auto tabular-nums">{new Date(message.createdAt).toLocaleString()}</span>
+        <span className="ml-auto tabular-nums">{formatDateTime(message.createdAt)}</span>
       </div>
       {message.content ? (
         <div className="min-w-0 text-base [overflow-wrap:anywhere]">

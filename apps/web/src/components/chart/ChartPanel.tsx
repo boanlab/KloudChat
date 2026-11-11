@@ -1,6 +1,7 @@
-import { BarChart3, Download, Table2 } from 'lucide-react'
+import { BarChart3, Download, Share2, Table2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel } from '@/components/ui'
+import { ShareButton } from '@/components/share/ShareButton'
 import { cn } from '@/lib/utils'
 import type { ChartArtifact } from '@/types'
 import {
@@ -384,6 +385,22 @@ function svgSource(node: SVGSVGElement): string {
   return new XMLSerializer().serializeToString(clone)
 }
 
+/** The chart and its notes, read-only (the shared page). */
+export function ChartView({ chart }: { chart: ChartArtifact }) {
+  const t = useT()
+  return (
+    <div>
+      <Plot chart={chart} />
+      {chart.caption && <p className="mt-3 text-base text-muted">{chart.caption}</p>}
+      {chart.sourceFile && (
+        <p className="mt-2 text-xs text-faint">
+          {t('출처')} {chart.sourceFile}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function ChartPanel({
   chart,
   onClose,
@@ -396,6 +413,7 @@ export function ChartPanel({
   const t = useT()
   const width = usePanelWidth(onModeChange)
   const [tab, setTab] = useState<'chart' | 'table'>('chart')
+  const [sharing, setSharing] = useState(false)
   const plot = useRef<HTMLDivElement>(null)
 
   const svg = () => plot.current?.querySelector('svg') ?? null
@@ -456,6 +474,16 @@ export function ChartPanel({
             {t('데이터')}
           </MenuItem>
         </Dropdown>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t('이 아티팩트만 공유')}
+          title={t('이 아티팩트만 공유')}
+          onClick={() => setSharing(true)}
+        >
+          <Share2 size={15} />
+        </Button>
+        <ShareButton artifact={chart} open={sharing} onClose={() => setSharing(false)} />
         <PanelControls mode={width.mode} onCycle={width.cycle} onClose={onClose} />
       </header>
 

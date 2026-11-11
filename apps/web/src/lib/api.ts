@@ -47,11 +47,13 @@ import type {
   User,
   UserListQuery,
   UserPage,
+  UserRole,
 } from '@/types'
 import type { GraphStep, GraphVerdict, PipelineEdge } from '@/types/pipelineGraph'
 
 import { objectParticle, topicParticle } from './formCheck'
 import { currentLang, currentLocale, translate } from './i18n'
+import { setServiceTimeZone } from './serviceTime'
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -454,7 +456,13 @@ export const authConfig = {
       password?: { minLength: number }
       /** Wrong passwords in a row that lock an address, and for how long. */
       login?: { maxFailures: number; lockoutMinutes: number }
-    }>('/auth/config'),
+      /** Service time zone (IANA); absent from older servers. */
+      timeZone?: string
+    }>('/auth/config').then((config) => {
+      // Every date on screen follows it, whichever screen asked first.
+      setServiceTimeZone(config.timeZone)
+      return config
+    }),
   forgotPassword: (email: string) => call<void>('/auth/password/forgot', body({ email })),
   resetPassword: (token: string, newPassword: string) =>
     call<void>('/auth/password/reset', body({ token, newPassword })),
@@ -594,6 +602,8 @@ export const adminApi = {
   /** Sets the monthly allowance. Takes effect now and at every refill. */
   setCredits: (id: string, monthlyCredits: number) =>
     call<User>(`/admin/users/${id}/credits`, body({ monthlyCredits })),
+  /** Grants or revokes admin; the server refuses the caller's own and the last admin. */
+  setRole: (id: string, role: UserRole) => call<User>(`/admin/users/${id}/role`, body({ role })),
   /** Corrects a name or address; a field left out is left alone. */
   updateUser: (id: string, patch: { name?: string; email?: string }) =>
     call<User>(`/admin/users/${id}`, { ...body(patch), method: 'PATCH' }),
@@ -826,7 +836,9 @@ export async function downloadArtifact(
 /** `src` for media elements: token in the query string, since they cannot send a header. */
 export function fileUrl(src: string | null | undefined): string | undefined {
   if (!src) return undefined
-  if (!accessToken || !src.startsWith(`${BASE_URL}/files/`)) return src
+  // A members-only share's media asks for the reader's account like the owner's own files do.
+  const media = src.startsWith(`${BASE_URL}/files/`) || src.startsWith(`${BASE_URL}/shared/`)
+  if (!accessToken || !media) return src
   return `${src}${src.includes('?') ? '&' : '?'}t=${encodeURIComponent(accessToken)}`
 }
 
@@ -1229,6 +1241,12 @@ export const projectsApi = {
   update: (id: string, patch: Partial<ProjectRow>) =>
     call<ProjectRow>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/projects/${id}`, { method: 'DELETE' }),
+  /** Sends the documents the vector index does not cover yet (`force`: all of them). */
+  reindex: (id: string, force = false) =>
+    call<{ total: number; attempted: number; indexed: number }>(
+      `/projects/${id}/knowledge/reindex${force ? '?force=true' : ''}`,
+      { method: 'POST' },
+    ),
 }
 
 function artifactParams(params: ArtifactQuery = {}) {

@@ -1,5 +1,6 @@
 import type { PerfRange } from '@/lib/api'
 import { currentLocale } from '@/lib/i18n'
+import { serviceTimeZone } from '@/lib/utils'
 
 export const RANGES: PerfRange[] = ['1h', '24h', '7d', '30d']
 
@@ -49,7 +50,7 @@ export function clock(ms: number, range: PerfRange): string {
     range === '1h' || range === '24h'
       ? { hour: '2-digit', minute: '2-digit' }
       : { month: 'numeric', day: 'numeric', hour: '2-digit' }
-  return d.toLocaleString(currentLocale(), opts)
+  return d.toLocaleString(currentLocale(), { ...opts, timeZone: serviceTimeZone() })
 }
 
 /** Node part of a subject: `model · node` → `node`; a bare node name stays as is. */

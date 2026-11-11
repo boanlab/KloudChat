@@ -15,18 +15,19 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.config import settings
 from app.models.user import CreditLedger, User, UserStatus, utcnow
 
-KST = ZoneInfo("Asia/Seoul")
+#: service time zone (`TIMEZONE`): cycles turn at its midnight
+KST = ZoneInfo(settings.timezone)
 
 
 def next_cycle_reset(after: datetime | None = None) -> datetime:
-    """Next month's first day 00:00 KST, as UTC."""
+    """Next month's first day 00:00 in the service zone, as UTC."""
     now = (after or utcnow()).astimezone(KST)
     year, month = (now.year + 1, 1) if now.month == 12 else (now.year, now.month + 1)
     return datetime(year, month, 1, tzinfo=KST).astimezone(UTC)
 
 
 def cycle_start(at: datetime | None = None) -> datetime:
-    """Current month's first day 00:00 KST, as UTC; the usage screens' only month boundary."""
+    """Current month's first day 00:00 in the service zone, as UTC; usage's month boundary."""
     now = (at or utcnow()).astimezone(KST)
     return datetime(now.year, now.month, 1, tzinfo=KST).astimezone(UTC)
 

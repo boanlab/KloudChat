@@ -16,6 +16,7 @@ import {
   Plug,
   FileType2,
   History,
+  Share2,
   MoreHorizontal,
   Printer,
   Quote,
@@ -53,6 +54,7 @@ import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindi
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { citationNumbers, numericEvidenceGaps, type ExportFormat } from '@/components/artifacts/artifactExport'
 import { DownloadMenu, ReuseItems } from '@/components/artifacts/ResultActions'
+import { ShareButton } from '@/components/share/ShareButton'
 import { RunStagesButton } from '@/components/artifacts/RunStages'
 import { DocMarksLayer } from './DocMarks'
 import { fillBlank, useDocMarks } from '@/lib/docMarks'
@@ -569,6 +571,8 @@ export function ReportPanel({
   // Below this width the header folds into ⋯.
   const head = usePanelNarrow<HTMLDivElement>(540)
   const [historyRequest, setHistoryRequest] = useState<{ nonce: number; version?: number } | null>(null)
+  // 「이 아티팩트만 공유」 from ⋯: the share dialog for this artifact alone.
+  const [sharing, setSharing] = useState(false)
   const [documentLayout, setDocumentLayout] = useState<'pages' | 'edit'>('pages')
   const [pageSettingsOpen, setPageSettingsOpen] = useState(false)
   const [pane, setPane] = useState<'document' | 'sources'>('document')
@@ -1685,9 +1689,17 @@ export function ReportPanel({
                 <MenuItem icon={<History size={14} />} onClick={() => setHistoryRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1 }))}>
                   {t('버전 기록')}
                 </MenuItem>
+                <MenuItem
+                  icon={<Share2 size={14} />}
+                  disabled={writing}
+                  onClick={() => setSharing(true)}
+                >
+                  {t('이 아티팩트만 공유')}
+                </MenuItem>
                 <MenuSeparator />
                 <ReuseItems artifact={report} />
               </Dropdown>
+              <ShareButton artifact={report} open={sharing} onClose={() => setSharing(false)} />
               <span className="max-sm:hidden">
                 <PanelControls mode={mode} onCycle={onModeChange && cycleMode} />
               </span>

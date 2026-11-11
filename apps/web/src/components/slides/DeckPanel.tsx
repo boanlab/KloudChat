@@ -8,6 +8,7 @@ import {
   Eraser,
   Grid2x2,
   History,
+  Share2,
   ImagePlus,
   Italic,
   LayoutTemplate,
@@ -45,6 +46,7 @@ import {
 import { usePanelNarrow } from '@/lib/usePanelNarrow'
 import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, MenuSeparator, Modal, Textarea } from '@/components/ui'
 import { DownloadMenu, ReuseItems } from '@/components/artifacts/ResultActions'
+import { ShareButton } from '@/components/share/ShareButton'
 import { artifactsApi, errorMessage } from '@/lib/api'
 import { mediaFailure } from '@/lib/failures'
 import { FRAMES, drawIntoFitting, frameElement, paperStyles, rasterise, slideTheme } from '@/lib/mermaid'
@@ -2113,6 +2115,8 @@ export function DeckPanel({
   // The header folds its labels and the slide list into ⋯ below this width.
   const head = usePanelNarrow<HTMLDivElement>(540)
   const [historyRequest, setHistoryRequest] = useState<{ nonce: number; version?: number } | null>(null)
+  // 「이 아티팩트만 공유」 from ⋯: the share dialog for this artifact alone.
+  const [sharing, setSharing] = useState(false)
   const [editing, setEditing] = useState(false)
   // Ribbon slot for the edit tools; without it they render in place.
   const [editToolbarSlot, setEditToolbarSlot] = useState<HTMLElement | null>(null)
@@ -3330,9 +3334,17 @@ export function DeckPanel({
               <MenuItem icon={<History size={14} />} onClick={() => setHistoryRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1 }))}>
                 {t('버전 기록')}
               </MenuItem>
+              <MenuItem
+                icon={<Share2 size={14} />}
+                disabled={writing}
+                onClick={() => setSharing(true)}
+              >
+                {t('이 아티팩트만 공유')}
+              </MenuItem>
               <MenuSeparator />
               <ReuseItems artifact={deck} />
             </Dropdown>
+            <ShareButton artifact={deck} open={sharing} onClose={() => setSharing(false)} />
             <span className="max-sm:hidden">
               <PanelControls mode={width.mode} onCycle={width.cycle} />
             </span>

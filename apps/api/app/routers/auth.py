@@ -732,6 +732,8 @@ async def auth_config(db: DbSession):
             "maxFailures": max(1, settings.login_max_failures),
             "lockoutMinutes": settings.login_lockout_min,
         },
+        # every date the web prints, and every day it groups by, is in this zone
+        "timeZone": settings.timezone,
     }
 
 

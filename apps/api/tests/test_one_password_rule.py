@@ -70,11 +70,14 @@ async def test_config_hands_the_rule_and_the_lockout_to_the_screens(monkeypatch)
     monkeypatch.setattr(auth.transcribe_service, "available", _false)
     monkeypatch.setattr(auth.settings, "login_max_failures", 5)
     monkeypatch.setattr(auth.settings, "login_lockout_min", 15)
+    monkeypatch.setattr(auth.settings, "timezone", "Europe/Berlin")
 
     body = await auth.auth_config(db=None)
 
     assert body["password"] == {"minLength": PASSWORD_MIN_LENGTH}
     assert body["login"] == {"maxFailures": 5, "lockoutMinutes": 15}
+    # The web prints every date and groups every day in the service's zone.
+    assert body["timeZone"] == "Europe/Berlin"
     assert body["signup"]["mode"] == "open"
 
 

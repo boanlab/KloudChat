@@ -842,6 +842,21 @@ async def set_role(
     user = await _load(db, user_id)
     if user.id == admin.id and payload.role is not UserRole.admin:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot_demote_self")
+    if user.role is UserRole.admin and payload.role is not UserRole.admin:
+        # Two admins demoting each other at once must still leave one who can sign in.
+        others = (
+            await db.exec(
+                select(func.count())
+                .select_from(User)
+                .where(
+                    col(User.role) == UserRole.admin,
+                    col(User.status) == UserStatus.active,
+                    col(User.id) != user.id,
+                )
+            )
+        ).one()
+        if not others:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="last_admin")
 
     old_role = user.role.value
     user.role = payload.role

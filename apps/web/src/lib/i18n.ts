@@ -3,6 +3,24 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // Admin role, project reindex, single-artifact share
+  '{name} 관리자 해제': '{name}: remove admin',
+  '{name} 관리자로 지정': '{name}: make admin',
+  '자기 계정의 관리자 권한은 해제할 수 없습니다': 'You cannot remove admin rights from your own account',
+  '관리자 권한을 거둡니다': 'Removes admin rights',
+  '관리자 권한을 줍니다': 'Grants admin rights',
+  '마지막 관리자는 해제할 수 없습니다. 다른 사람을 먼저 관리자로 지정하세요.': 'The last admin cannot be removed. Make someone else an admin first.',
+  '{name}님의 관리자 권한을 해제할까요?': "Remove {name}'s admin rights?",
+  '{name}님을 관리자로 지정할까요?': 'Make {name} an admin?',
+  '사용자 관리·설정·감사 기록 화면에 더는 들어갈 수 없게 됩니다. 변경은 감사 기록에 남습니다.': 'They will no longer reach user management, settings or the audit log. The change is kept in the audit log.',
+  '모든 사용자의 계정·크레딧·키와 서비스 설정을 바꿀 수 있게 됩니다. 변경은 감사 기록에 남습니다.': "They will be able to change every user's account, credits and keys, and the service settings. The change is kept in the audit log.",
+  '관리자 해제': 'Remove admin',
+  '관리자로 지정': 'Make admin',
+  '{indexed}/{attempted}개 문서를 색인했습니다.': 'Indexed {indexed} of {attempted} documents.',
+  '검색 색인 서비스에 연결할 수 없습니다. 잠시 후 다시 시도하세요.': 'Cannot reach the search index service. Try again shortly.',
+  '이 아티팩트만 공유': 'Share only this artifact',
+  '대화는 빼고 이 아티팩트만 보입니다. 공유한 뒤에 고친 내용도 링크에 나타납니다.': 'Only this artifact is shown, not the conversation. Changes made after sharing also appear in the link.',
+  '이 아티팩트만 보입니다 — 대화·프로젝트 파일·메모리는 포함되지 않습니다.': 'Only this artifact is shown — the conversation, project files and memory are not included.',
   // Pipeline canvas
   '여기에 넣으면': 'If added here',
   '단계 목록을 불러오는 중…': 'Loading the step list…',

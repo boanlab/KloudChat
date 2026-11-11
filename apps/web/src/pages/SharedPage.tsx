@@ -14,7 +14,9 @@ import { SharedResultCard } from '@/components/chat/ResultCard'
 import { currentLang, translate } from '@/lib/i18n'
 import { useT } from '@/lib/useT'
 import { SlideView } from '@/components/slides/DeckPanel'
-import type { DesignTokens, Slide } from '@/types'
+import { ArtifactPreview, MediaPanel } from '@/components/artifacts/ArtifactPanel'
+import { ChartView } from '@/components/chart/ChartPanel'
+import type { Artifact, ChartArtifact, DesignTokens, Slide } from '@/types'
 
 /** Starting agent, project, format; wording matches SessionPage's `StartingFrom`. */
 function StartedWithPanel({ context }: { context: SharedContext }) {
@@ -204,15 +206,56 @@ function SharedSlide({ slide, design, index, total, title }: { slide: Slide; des
   return <div ref={ref} className="aspect-video w-full overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10"><SlideView slide={slide} scale={scale} writing={false} deckTitle={title} brand={design ?? undefined} index={index} total={total} /></div>
 }
 
-export function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: string }; title: string }) {
+export function SharedArtifact({
+  payload,
+  title,
+}: {
+  payload: { data: unknown; title?: string; artifactKind?: string }
+  title: string
+}) {
   const data = (payload.data ?? {}) as {
     sections?: { heading: string; content: string; level?: 1 | 2; format?: 'markdown' | 'html' }[]
     titleBlock?: unknown
     slides?: Slide[]
     design?: DesignTokens | null
     content?: string
+    src?: string
+    series?: unknown[]
   }
   const artifactTitle = payload.title || title
+  // Named by the share only: an issue snapshot (no kind given) keeps its plain view.
+  const kind = payload.artifactKind
+  // The in-app renderers, read-only: the same frame and sandbox as the app's own preview.
+  const artifact = { ...data, id: 'shared', title: artifactTitle, version: 1, kind } as Artifact
+  if ((kind === 'image' || kind === 'audio' || kind === 'video') && data.src) {
+    const media = artifact as Extract<Artifact, { kind: 'image' | 'audio' | 'video' }>
+    return (
+      <div className="overflow-hidden rounded-card border border-line" data-shared-kind={kind}>
+        <MediaPanel artifact={media} />
+      </div>
+    )
+  }
+  if (kind === 'chart' && Array.isArray(data.series)) {
+    return (
+      <div className="rounded-card border border-line p-4" data-shared-kind={kind}>
+        <ChartView chart={artifact as ChartArtifact} />
+      </div>
+    )
+  }
+  if (kind === 'html' && data.content) {
+    const deck = data.content.includes('class="slide')
+    return (
+      <div
+        data-shared-kind={kind}
+        className={cn(
+          'overflow-hidden rounded-card border border-line',
+          deck ? 'aspect-video w-full' : 'h-[75vh]',
+        )}
+      >
+        <ArtifactPreview artifact={artifact} interactive />
+      </div>
+    )
+  }
   if (data.slides) {
     return <div className="space-y-6">{data.slides.map((slide, index) => <SharedSlide key={slide.id || index} slide={slide} design={data.design} index={index} total={data.slides!.length} title={artifactTitle} />)}</div>
   }

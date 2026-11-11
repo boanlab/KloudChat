@@ -1,4 +1,4 @@
-import { ArrowLeft, Brain, ExternalLink, FileText, Link2, Loader2, MoreHorizontal, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Brain, CircleAlert, ExternalLink, FileText, Link2, Loader2, MoreHorizontal, Pencil, Plus, RefreshCw, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
@@ -25,7 +25,7 @@ import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
 import { memoryTypeLabel } from '@/lib/memoryTypes'
 import { cn, formatTokens, relativeTime } from '@/lib/utils'
-import { ocrNote, useOcrProgress } from '@/lib/ocr'
+import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import {
   MemoryEditor,
   emptyMemory,
@@ -89,6 +89,7 @@ export function ProjectDetailPage() {
     moveSessionToProject,
     deleteMemory,
     refreshProjectFile,
+    reindexProject,
   } = useStore()
   const project = projects.find((p) => p.id === projectId)
   // Scanned files read in the background; rows follow the pages.
@@ -111,6 +112,9 @@ export function ProjectDetailPage() {
   const [urlDraft, setUrlDraft] = useState('')
   const [urlBusy, setUrlBusy] = useState(false)
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
+  // 색인하기: documents the meaning search does not cover yet.
+  const [reindexing, setReindexing] = useState(false)
+  const [reindexNote, setReindexNote] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   // Hook above the early return; uploader defined after.
   const addKnowledgeRef = useRef<(files: File[]) => void>(() => {})
@@ -155,6 +159,29 @@ export function ProjectDetailPage() {
   const formats = designTemplates.filter((row) => row.kind === 'deck' || row.kind === 'document')
   const formatSurfaces = kindOrder.filter((kind) => formats.some((row) => row.surface === kind))
   const totalTokens = project.files.reduce((sum, f) => sum + f.tokens, 0)
+
+  const unindexed = project.files.some((f) => f.indexed === false && !f.error && !isReading(f))
+  const reindex = async () => {
+    setReindexing(true)
+    setReindexNote(null)
+    setFileError(null)
+    try {
+      const { attempted, indexed } = await reindexProject(project.id)
+      setReindexNote(
+        t('{indexed}/{attempted}개 문서를 색인했습니다.')
+          .replace('{indexed}', String(indexed))
+          .replace('{attempted}', String(attempted)),
+      )
+    } catch (err) {
+      setFileError(
+        err instanceof ApiError && err.detail === 'index_unavailable'
+          ? t('검색 색인 서비스에 연결할 수 없습니다. 잠시 후 다시 시도하세요.')
+          : errorMessage(err, t('색인하지 못했습니다.')),
+      )
+    } finally {
+      setReindexing(false)
+    }
+  }
 
   const addKnowledgeFiles = async (picked: File[]) => {
     if (!picked.length) return
@@ -692,6 +719,16 @@ export function ProjectDetailPage() {
                         ) : null
                       })()}
                     </span>
+                    {/* Un-indexed rows: word search only. */}
+                    {f.indexed === false && !f.error && !isReading(f) && (
+                      <span
+                        title={t('낱말 검색으로는 찾지만, 뜻으로 찾는 검색에는 아직 안 들어갔습니다')}
+                        className="flex shrink-0 items-center gap-1 text-xs text-faint"
+                      >
+                        <CircleAlert size={11} />
+                        {t('색인 안 됨')}
+                      </span>
+                    )}
                     {f.preview && (
                       <Button variant="ghost" size="sm" onClick={() => setExpandedFile((id) => id === f.id ? null : f.id)}>
                         {expandedFile === f.id ? t('미리보기 닫기') : t('읽은 내용 확인')}
@@ -714,6 +751,23 @@ export function ProjectDetailPage() {
                     )}
                   </Card>
                 ))
+              )}
+              {(unindexed || reindexing) && (
+                <div className="flex justify-end">
+                  <Button size="sm" disabled={reindexing} onClick={() => void reindex()}>
+                    {reindexing ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <RefreshCw size={13} />
+                    )}
+                    {t('색인하기')}
+                  </Button>
+                </div>
+              )}
+              {reindexNote && (
+                <p role="status" className="text-base text-muted">
+                  {reindexNote}
+                </p>
               )}
               {fileError && <p role="alert" className="text-base text-danger">{fileError}</p>}
             </div>

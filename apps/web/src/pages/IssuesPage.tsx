@@ -8,7 +8,7 @@ import { Badge, Button, EmptyState, LoadingState, ReloadNotice } from '@/compone
 import { issuesApi, type IssueDetail, type IssueRow } from '@/lib/api'
 import { KIND_LABEL, useIssues } from '@/lib/issues'
 import { useT } from '@/lib/useT'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 
 /** 「문의·신고」: sent items, status, replies; the account menu passes the originating conversation as router state. */
 export function IssuesPage() {
@@ -147,7 +147,7 @@ function IssueItem({
           </span>
           <span className="mt-1 block truncate text-base">{row.body}</span>
           <span className="mt-0.5 block text-xs text-faint">
-            {new Date(row.createdAt).toLocaleString()}
+            {formatDateTime(row.createdAt)}
             {row.replies ? ` · ${t('답변 {n}개').replace('{n}', String(row.replies))}` : ''}
           </span>
         </span>
