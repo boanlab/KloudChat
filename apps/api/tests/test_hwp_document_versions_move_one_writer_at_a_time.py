@@ -164,7 +164,8 @@ async def test_the_agent_writes_reads_then_edits_and_a_hand_save_makes_it_read_a
 async def test_hwp_tools_join_the_turn_only_when_asked_for(stack):
     _, local = stack
     async with local() as db:
-        plain = {t.name for t in await build_tools(db, USER, web_search=False, include_connectors=False)}
+        plain = {t.name for t in await build_tools(db, USER, web_search=False,
+                                                   include_connectors=False)}
         with_doc = {t.name for t in await build_tools(db, USER, web_search=False, hwp=True,
                                                       include_connectors=False)}
         strict = {t.name for t in await build_tools(db, USER, web_search=False, hwp=True,
@@ -191,3 +192,17 @@ def test_a_document_format_head_shows_blanks_for_fields_not_given():
     data = hwp_doc.official("제목", "1. 본문", {"수신": "각 부서장"})
     outline = hwpx_edit.outline(data)
     assert "수신 | 각 부서장" in outline and "[발신]" in outline and "[시행일]" in outline
+
+
+def test_a_written_document_is_read_by_the_server_before_the_model_answers():
+    from app.models.workspace import Artifact, ArtifactKind
+    from app.routers.sessions import _hwp_preset
+
+    tools = {"hwp_read", "hwp_edit", "hwp_write"}
+    written = Artifact(user_id=USER.id, kind=ArtifactKind.hwp, data={"text": "제목  공문"})
+    blank = Artifact(user_id=USER.id, kind=ArtifactKind.hwp, data={"text": ""})
+    assert _hwp_preset(written, tools) == ("hwp_read", {})
+    # nothing to read yet: the model writes with hwp_write
+    assert _hwp_preset(blank, tools) is None
+    assert _hwp_preset(None, tools) is None
+    assert _hwp_preset(written, {"calculate"}) is None
