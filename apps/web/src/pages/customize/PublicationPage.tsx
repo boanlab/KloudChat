@@ -7,7 +7,7 @@ import { PageBody } from '@/components/layout/AppShell'
 import { AdminReadsCard, ApiTab, ChannelsCard } from '@/components/publishing/BotChannels'
 import { PublicationSettingsForm } from '@/components/publishing/PublicationSettingsForm'
 import { ScopePicker } from '@/components/publishing/ScopePicker'
-import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, LoadingState, Select, Tabs } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, LoadingState, ResourceStatus, Select, Tabs } from '@/components/ui'
 import {
   ApiError,
   errorMessage,
@@ -34,6 +34,7 @@ import {
   VISIBILITY_LABEL,
   type SettingsDraft,
 } from '@/lib/publishing'
+import { useResource } from '@/lib/useResource'
 import { useT } from '@/lib/useT'
 import { cn, formatDate } from '@/lib/utils'
 
@@ -346,16 +347,27 @@ function ScopeCard({
 function StatsTab({ id }: { id: string }) {
   const t = useT()
   const [days, setDays] = useState(30)
-  const [stats, setStats] = useState<PublicationStats | null>(null)
-  useEffect(() => {
-    let live = true
-    publicationsApi.stats(id, days).then((s) => live && setStats(s)).catch(() => undefined)
-    return () => {
-      live = false
-    }
-  }, [id, days])
+  // Another period never shows the last one's numbers: loading, or 다시 시도 when it failed.
+  const loaded = useResource(() => publicationsApi.stats(id, days), [id, days])
+  const stats: PublicationStats | null = loaded.status === 'ok' ? loaded.data : null
   const max = useMemo(() => Math.max(1, ...(stats?.daily ?? []).map((d) => d.turns)), [stats])
-  if (!stats) return <LoadingState />
+  const period = (
+    <Select value={String(days)} onChange={(e) => setDays(Number(e.target.value))} aria-label={t('기간')} className="w-32">
+      {[7, 30, 90].map((d) => (
+        <option key={d} value={d}>
+          {t('최근 {n}일').replace('{n}', String(d))}
+        </option>
+      ))}
+    </Select>
+  )
+  if (!stats) {
+    return (
+      <div className="space-y-5">
+        <div className="flex justify-end">{period}</div>
+        <ResourceStatus resource={loaded} failed={t('통계를 불러오지 못했습니다.')} />
+      </div>
+    )
+  }
   const cards: [string, number][] = [
     ['질문', stats.totals.turns],
     ['대화', stats.totals.conversations],
@@ -368,13 +380,7 @@ function StatsTab({ id }: { id: string }) {
     <div className="space-y-5" data-testid="publication-stats">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted">{t('개별 대화는 보이지 않고, 아래 통계만 보입니다. 질문 문장은 개인정보를 가려서 보여 줍니다.')}</p>
-        <Select value={String(days)} onChange={(e) => setDays(Number(e.target.value))} aria-label={t('기간')} className="w-32">
-          {[7, 30, 90].map((d) => (
-            <option key={d} value={d}>
-              {t('최근 {n}일').replace('{n}', String(d))}
-            </option>
-          ))}
-        </Select>
+        {period}
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {cards.map(([label, value]) => (

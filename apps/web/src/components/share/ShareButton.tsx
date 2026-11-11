@@ -48,6 +48,8 @@ export function ShareButton({ session }: { session: Session }) {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The list did not load: whether a link exists is unknown, so none is made until it does.
+  const [listFailed, setListFailed] = useState(false)
 
   const url = share ? `${window.location.origin}/share/${share.token}` : ''
 
@@ -58,9 +60,11 @@ export function ShareButton({ session }: { session: Session }) {
     void sharesApi
       .list()
       .then((rows) => {
-        if (live) setShare(rows.find((r) => r.sessionId === session.id) ?? null)
+        if (!live) return
+        setShare(rows.find((r) => r.sessionId === session.id) ?? null)
+        setListFailed(false)
       })
-      .catch(() => undefined)
+      .catch(() => live && setListFailed(true))
     return () => {
       live = false
     }
@@ -72,8 +76,10 @@ export function ShareButton({ session }: { session: Session }) {
     try {
       const rows = await sharesApi.list()
       setShare(rows.find((r) => r.sessionId === session.id) ?? null)
+      setListFailed(false)
     } catch {
-      // Offline: keep last known state.
+      // Last known state stays; the dialog says it may be out of date.
+      setListFailed(true)
     }
   }
 
@@ -92,9 +98,12 @@ export function ShareButton({ session }: { session: Session }) {
   const revoke = async () => {
     if (!share) return
     setBusy(true)
+    setError(null)
     try {
       await sharesApi.revoke(share.id)
       setShare(null)
+    } catch (err) {
+      setError(errorMessage(err, t('링크를 철회하지 못했습니다. 다시 시도해 주세요.')))
     } finally {
       setBusy(false)
     }
@@ -123,6 +132,22 @@ export function ShareButton({ session }: { session: Session }) {
         <p className="text-sm text-muted">
           {t('공유한 뒤에 오가는 대화도 링크에 그대로 나타납니다. 지금까지만 보이게 하려면 링크를 철회하세요.')}
         </p>
+        {listFailed && (
+          <p
+            role="alert"
+            className="flex flex-wrap items-center gap-x-2 text-sm text-danger"
+            data-testid="share-list-failed"
+          >
+            {t('공유 상태를 불러오지 못했습니다.')}
+            <button
+              type="button"
+              className="text-accent underline hover:no-underline"
+              onClick={() => void load()}
+            >
+              {t('다시 시도')}
+            </button>
+          </p>
+        )}
         {share ? (
           <>
             <Field label={t('공유 링크')}>
@@ -149,6 +174,7 @@ export function ShareButton({ session }: { session: Session }) {
               <span className="text-faint">{t('대화와 아티팩트만 보입니다 — 프로젝트 파일·메모리는 포함되지 않습니다.')}</span>
             </div>
             <ShareViews shareId={share.id} />
+            {error && <p role="alert" className="text-sm text-danger">{error}</p>}
             <Button variant="danger" size="sm" disabled={busy} onClick={() => void revoke()}>
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
               {t('링크 철회')}
@@ -173,15 +199,15 @@ export function ShareButton({ session }: { session: Session }) {
                   >
                     <Icon size={15} className={cn('mt-0.5 shrink-0', active && 'text-accent')} />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-base font-medium">{o.label}</span>
-                      <span className="block text-sm text-muted">{o.description}</span>
+                      <span className="block text-base font-medium">{t(o.label)}</span>
+                      <span className="block text-sm text-muted">{t(o.description)}</span>
                     </span>
                   </button>
                 )
               })}
             </div>
-            {error && <p className="text-sm text-danger">{error}</p>}
-            <Button variant="primary" disabled={busy} onClick={() => void create()}>
+            {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+            <Button variant="primary" disabled={busy || listFailed} onClick={() => void create()}>
               {busy && <Loader2 size={13} className="animate-spin" />}
               {t('링크 만들기')}
             </Button>

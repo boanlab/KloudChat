@@ -847,6 +847,8 @@ export function ReportPanel({
   const [saveError, setSaveError] = useState<string | null>(null)
   const [recoveryCopied, setRecoveryCopied] = useState(false)
   const [restructuring, setRestructuring] = useState(false)
+  // A section's whole text goes with it, saved at once: asked first.
+  const [removingSection, setRemovingSection] = useState<number | null>(null)
   // Sections mutate in place; structural edits need a re-render nudge.
   const [, setTick] = useState(0)
   // Locked while the model streams.
@@ -2106,7 +2108,7 @@ export function ReportPanel({
                       >
                         {t('아래로 옮기기')}
                       </MenuItem>
-                      <MenuItem onClick={() => void removeSection(sectionIndex)}>
+                      <MenuItem onClick={() => setRemovingSection(sectionIndex)}>
                         {t('이 절 지우기')}
                       </MenuItem>
                       {s.status === 'done' && (
@@ -2242,6 +2244,17 @@ export function ReportPanel({
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={removingSection !== null}
+        onClose={() => setRemovingSection(null)}
+        title={t('이 절 지우기')}
+        description={t('「{name}」 절과 그 내용이 보고서에서 빠집니다. 이전 내용은 버전 기록에서 되돌릴 수 있습니다.').replace(
+          '{name}',
+          (removingSection !== null && report.sections[removingSection]?.heading) || t('제목 없음'),
+        )}
+        confirmLabel={t('지우기')}
+        onConfirm={() => removingSection !== null && void removeSection(removingSection)}
+      />
       <ConfirmDialog
         open={discardAction !== null}
         onClose={() => setDiscardAction(null)}

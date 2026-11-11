@@ -28,8 +28,10 @@ import {
   Textarea,
 } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
-import { cn, relativeTime } from '@/lib/utils'
+import { cn, matchesQuery, relativeTime } from '@/lib/utils'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
+import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
+import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
 import type { CatalogEntry } from '@/lib/api'
 import type { Connector, ConnectorStatus } from '@/types'
@@ -450,9 +452,11 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
     envText: '',
   })
 
+  const [query, setQuery] = useState('')
+  // Names and descriptions as shown, in either language.
+  const found = <T extends { name: string; description: string }>(items: T[]) =>
+    items.filter((c) => matchesQuery(query, c.name, t(c.name), c.description, t(c.description)))
   const installed = connectors.filter((c) => c.installed)
-  // 기본 제공 copies cannot be removed, so they cannot be picked.
-  const pick = useBulkSelect(installed.filter((c) => !c.byDefault))
   // Installed entries stay in the catalogue, marked.
   const catalog = connectorCatalog
   const current = detail ? (connectors.find((c) => c.id === detail.id) ?? detail) : null
@@ -460,9 +464,13 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   // Official first, then by name.
   const ordered = <T extends { name: string; official?: boolean }>(items: T[]) =>
     [...items].sort((a, b) => Number(!!b.official) - Number(!!a.official) || t(a.name).localeCompare(t(b.name), 'ko'))
-  const installedList = ordered(installed)
-  const catalogList = ordered(catalog)
+  const installedList = ordered(found(installed))
+  const catalogList = ordered(found(catalog))
   const empty = tab === 'installed' ? installed.length === 0 : catalog.length === 0
+  // 기본 제공 copies cannot be removed, so they cannot be picked.
+  const pick = useBulkSelect(installedList.filter((c) => !c.byDefault))
+  const installedPage = usePaged(installedList, [query])
+  const catalogPage = usePaged(catalogList, [query])
 
   return (
     <>
@@ -490,6 +498,10 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
 
         {workspaceFailed && <ReloadNotice onRetry={() => void loadWorkspace()} />}
 
+        {!empty && (
+          <ListSearch value={query} onChange={setQuery} label={t('커넥터 검색')} className="mt-4" />
+        )}
+
         <div className="space-y-6 pt-4">
           {workspaceLoading && empty ? (
             <LoadingState />
@@ -514,7 +526,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
               }}
             />
             <div className="grid gap-3 sm:grid-cols-2" data-testid="connector-list">
-                  {installedList.map((c) => (
+                  {installedPage.visible.map((c) => (
                     <ConnectorCard
                       key={c.id}
                       connector={c}
@@ -530,13 +542,19 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
                     />
                   ))}
             </div>
+            {installedList.length === 0 && <NoMatch />}
+            <ShowMore hidden={installedPage.hidden} onMore={installedPage.more} />
             </>
           ) : (
+            <>
             <div className="grid gap-3 sm:grid-cols-2" data-testid="connector-catalog">
-              {catalogList.map((e) => (
+              {catalogPage.visible.map((e) => (
                 <CatalogCard key={e.slug} entry={e} onNeedsCredentials={setCredentialsFor} />
               ))}
             </div>
+            {catalogList.length === 0 && <NoMatch />}
+            <ShowMore hidden={catalogPage.hidden} onMore={catalogPage.more} />
+            </>
           )}
         </div>
       </PageFrame>
@@ -705,7 +723,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
           hint={
             draft.transport === 'stdio'
               ? t('API 서버에서 실행되므로 관리자가 허용한 명령만 그대로 등록할 수 있습니다.')
-              : 'https:// 로 시작하는 MCP 엔드포인트'
+              : t('https:// 로 시작하는 MCP 엔드포인트')
           }
         >
           <Input

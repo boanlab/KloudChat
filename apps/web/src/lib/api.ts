@@ -1174,7 +1174,8 @@ export const filesApi = {
   /** Reads an uploaded `.hwpx` into a new report session; nothing generated or charged. Returns the session id. */
   openAsDocument: (id: string) =>
     call<{ id: string }>(`/files/${id}/open-as-document`, { method: 'POST' }),
-  remove: (id: string) => call<void>(`/files/${id}`, { method: 'DELETE' }),
+  // `keepalive`: a held delete flushed as the page closes still reaches the server.
+  remove: (id: string) => call<void>(`/files/${id}`, { method: 'DELETE', keepalive: true }),
 }
 
 /** A stored file's bytes, typed as the server serves them. Fetch + blob so the token travels in a header, not the URL. */
@@ -1700,7 +1701,7 @@ export const agentsApi = {
     fromFiles: (agentId: string, ids: string[]) =>
       call<FileRow[]>(`/agents/${agentId}/knowledge/from-files`, body({ ids })),
     remove: (agentId: string, fileId: string) =>
-      call<void>(`/agents/${agentId}/knowledge/${fileId}`, { method: 'DELETE' }),
+      call<void>(`/agents/${agentId}/knowledge/${fileId}`, { method: 'DELETE', keepalive: true }),
     /** `force` re-sends everything — what an embedding-model change needs. */
     reindex: (agentId: string, force = false) =>
       call<{ total: number; attempted: number; indexed: number }>(
@@ -2485,7 +2486,11 @@ export const botsApi = {
   page: (slug: string) => call<BotPage>(`/b/${encodeURIComponent(slug)}`),
   consent: (slug: string, version: number) =>
     call<void>(`/b/${encodeURIComponent(slug)}/consent`, body({ version })),
-  conversations: (slug: string) => call<BotConversationRow[]>(`/b/${encodeURIComponent(slug)}/conversations`),
+  /** Newest first, 50 at a time; `offset` skips the rows already shown. */
+  conversations: (slug: string, offset = 0) =>
+    call<BotConversationRow[]>(
+      `/b/${encodeURIComponent(slug)}/conversations${offset ? `?offset=${offset}` : ''}`,
+    ),
   start: (slug: string) => call<BotConversationRow>(`/b/${encodeURIComponent(slug)}/conversations`, { method: 'POST' }),
   conversation: (slug: string, id: string) =>
     call<BotConversationRow & { messages: BotTranscriptMessage[] }>(`/b/${encodeURIComponent(slug)}/conversations/${id}`),

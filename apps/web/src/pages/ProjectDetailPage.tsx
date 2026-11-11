@@ -96,6 +96,7 @@ export function ProjectDetailPage() {
   const [tab, setTab] = useState<Tab>('sessions')
   const [instructions, setInstructions] = useState(project?.instructions ?? '')
   const [dirty, setDirty] = useState(false)
+  const [savingInstructions, setSavingInstructions] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editing, setEditing] = useState<{
     name: string
@@ -407,18 +408,24 @@ export function ProjectDetailPage() {
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => {
-                  updateProject(project.id, { instructions })
-                  setDirty(false)
+                disabled={savingInstructions}
+                onClick={async () => {
+                  // Unsaved until the server has it: a refusal leaves the text and 저장 in place.
+                  setSavingInstructions(true)
+                  const saved = await updateProject(project.id, { instructions })
+                  setSavingInstructions(false)
+                  if (saved) setDirty(false)
                 }}
               >
-                {t('저장')}
+                {savingInstructions ? t('저장 중…') : t('저장')}
               </Button>
             )}
           </div>
           <Textarea
             rows={5}
             value={instructions}
+            aria-label={t('프로젝트 지침')}
+            readOnly={savingInstructions}
             onChange={(e) => {
               setInstructions(e.target.value)
               setDirty(true)

@@ -7,6 +7,7 @@ import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, ConfirmDialog, EmptyState, LoadingState, PageHeader, ReloadNotice } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
+import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { downloadFile, errorMessage, filesApi, type FileRow } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
@@ -21,6 +22,7 @@ export function FilesPage() {
   const [error, setError] = useState<string | null>(null)
   const shown = useMemo(() => shownFiles(box.rows, origin, query), [box.rows, origin, query])
   const pick = useBulkSelect(shown)
+  const { visible, hidden, more } = usePaged(shown, [origin, query])
 
   const remove = async (ids: string[]) => {
     setError(null)
@@ -78,7 +80,7 @@ export function FilesPage() {
                 }}
               />
               <Card className="px-3 py-1">
-                {shown.map((row) => (
+                {visible.map((row) => (
                   <FileLine
                     key={row.id}
                     row={row}
@@ -124,6 +126,7 @@ export function FilesPage() {
                   />
                 ))}
               </Card>
+              <ShowMore hidden={hidden} onMore={more} />
             </>
           )}
         </div>

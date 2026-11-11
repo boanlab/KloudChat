@@ -1,6 +1,6 @@
 import { Bot, Code2, Copy, Eye, KeyRound, Loader2, PanelsTopLeft, Plug, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Badge, Button, Card, ConfirmDialog, Field, Input, LoadingState, Switch, Textarea } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, Field, Input, LoadingState, ResourceStatus, Switch, Textarea } from '@/components/ui'
 import {
   ApiError,
   errorMessage,
@@ -215,10 +215,16 @@ export function ApiTab({ pub }: { pub: Publication }) {
   const [revoking, setRevoking] = useState<BotKey | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [stats, setStats] = useState<PublicationStats | null>(null)
+  // A list that did not load says so (with 다시 시도) instead of 「만든 키가 없습니다」.
+  const [failed, setFailed] = useState({ keys: false, stats: false })
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
-    publicationsApi.keys(pub.id).then(setKeys).catch(() => setKeys([]))
-    publicationsApi.stats(pub.id, 30).then(setStats).catch(() => undefined)
-  }, [pub.id])
+    setFailed({ keys: false, stats: false })
+    const failing = (what: 'keys' | 'stats') => () => setFailed((f) => ({ ...f, [what]: true }))
+    publicationsApi.keys(pub.id).then(setKeys).catch(failing('keys'))
+    publicationsApi.stats(pub.id, 30).then(setStats).catch(failing('stats'))
+  }, [pub.id, attempt])
+  const retry = { status: 'error' as const, slow: false, reload: () => setAttempt((n) => n + 1) }
 
   const create = async () => {
     setError(null)
@@ -302,7 +308,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
           </p>
         )}
         {keys === null ? (
-          <LoadingState />
+          failed.keys ? <ResourceStatus resource={retry} compact /> : <LoadingState />
         ) : keys.length === 0 ? (
           <p className="text-sm text-faint">{t('만든 키가 없습니다.')}</p>
         ) : (
@@ -364,6 +370,8 @@ export function ApiTab({ pub }: { pub: Publication }) {
               </li>
             ))}
           </ul>
+        ) : failed.stats ? (
+          <ResourceStatus resource={retry} compact />
         ) : (
           <LoadingState />
         )}

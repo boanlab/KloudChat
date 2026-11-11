@@ -73,9 +73,11 @@ export function SharedPage({ onSignIn }: { onSignIn?: () => void } = {}) {
   const [error, setError] = useState<'gone' | 'signin' | 'failed' | null>(null)
   // Member-only link: asked again once sign-in (or refresh cookie) lands.
   const authenticated = useStore((s) => s.authenticated)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let live = true
+    setError(null)
     sharesApi
       .read(token)
       .then((p) => {
@@ -92,21 +94,32 @@ export function SharedPage({ onSignIn }: { onSignIn?: () => void } = {}) {
     return () => {
       live = false
     }
-  }, [token, authenticated])
+  }, [token, authenticated, attempt])
 
   if (error) {
     return (
       <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 text-center">
         <Lock size={22} className="mx-auto mb-3 text-faint" />
         <h1 className="text-lg font-semibold">
-          {error === 'signin' ? t('로그인이 필요한 링크입니다') : t('열 수 없는 링크입니다')}
+          {error === 'signin'
+            ? t('로그인이 필요한 링크입니다')
+            : error === 'failed'
+              ? t('지금은 열지 못했습니다')
+              : t('열 수 없는 링크입니다')}
         </h1>
-        <p className="mt-1.5 text-base text-muted">
+        <p className="mt-1.5 text-base text-muted" data-testid="shared-error">
           {error === 'signin'
             ? t('로그인해야 열 수 있는 자료입니다. 로그인하면 이 화면에서 바로 열립니다.')
-            : /* Expired, revoked and mistyped are not distinguished: that would confirm a link existed. */
-              t('링크가 철회되었거나 주소가 올바르지 않습니다.')}
+            : error === 'failed'
+              ? t('서버에 닿지 못했거나 오류가 났습니다. 링크는 그대로일 수 있으니 잠시 뒤 다시 시도해 주세요.')
+              : /* Expired, revoked and mistyped are not distinguished: that would confirm a link existed. */
+                t('링크가 철회되었거나 주소가 올바르지 않습니다.')}
         </p>
+        {error === 'failed' && (
+          <Button className="mx-auto mt-4" onClick={() => setAttempt((n) => n + 1)}>
+            {t('다시 시도')}
+          </Button>
+        )}
         {error === 'signin' && onSignIn && (
           <Button className="mx-auto mt-4" onClick={onSignIn}>
             <LogIn size={14} />

@@ -528,6 +528,8 @@ interface State {
   openArtifact: (id: string | null) => void
   /** A delete waiting out its undo window. */
   pendingDelete: { label: string; undo: () => void } | null
+  /** A component's own delete, held for the same undo window: `restore` puts the row back. */
+  deleteLater: (held: HeldDelete) => Promise<void>
   /** Conversations gone in this tab: deleted here (the page leaves them) or not on the server (the page says so). */
   goneSessions: Record<string, 'deleted' | 'missing'>
   mediaError: string | null
@@ -547,7 +549,8 @@ interface State {
   createProject: (
     p: Pick<Project, 'name' | 'description' | 'instructions'> & Partial<Pick<Project, 'emoji'>>,
   ) => Promise<string>
-  updateProject: (id: string, patch: Partial<Project>) => Promise<void>
+  /** False when the server refused: the change is taken back and the shell says why. */
+  updateProject: (id: string, patch: Partial<Project>) => Promise<boolean>
   deleteProject: (id: string) => Promise<void>
   /** Bulk delete behind a confirm; no undo window. */
   deleteMany: (
@@ -576,7 +579,7 @@ interface State {
   connectors: Connector[]
   connectorCatalog: CatalogEntry[]
   toggleConnector: (id: string) => Promise<void>
-  /** Credential values are write-only server-side. */
+  /** Credential values are write-only server-side. Throws when not saved; then nothing is synced. */
   updateConnectorEnv: (id: string, env: Record<string, string>) => Promise<void>
   toggleConnectorTool: (id: string, tool: string) => Promise<void>
   installConnector: (slug: string, env?: Record<string, string>) => Promise<void>
@@ -923,6 +926,14 @@ export const useStore = create<State>((set, get) => ({
   user: null,
   accountEpoch: 0,
   pendingDelete: null,
+  deleteLater: (held) =>
+    holdDelete(set, get, {
+      ...held,
+      restore: () => {
+        held.restore()
+        set({ pendingDelete: null })
+      },
+    }),
   goneSessions: {},
   mediaError: null,
   authenticated: false,
@@ -1935,7 +1946,7 @@ export const useStore = create<State>((set, get) => ({
       id = await get().ensureSession(sessionId ?? fresh!)
     } catch (err) {
       if (fresh) void get().deleteSession(fresh)
-      set({ mediaError: errorMessage(err, '영상 작업을 시작하지 못했습니다.') })
+      set({ mediaError: errorMessage(err, tr('영상 작업을 시작하지 못했습니다.')) })
       return
     }
     if (fresh) opts.onSession?.(id)
@@ -2040,7 +2051,7 @@ export const useStore = create<State>((set, get) => ({
       id = await get().ensureSession(sessionId ?? fresh!)
     } catch (err) {
       if (fresh) void get().deleteSession(fresh)
-      set({ mediaError: errorMessage(err, '이미지를 만들지 못했습니다.') })
+      set({ mediaError: errorMessage(err, tr('이미지를 만들지 못했습니다.')) })
       return
     }
     if (fresh) opts.onSession?.(id)
@@ -2275,7 +2286,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       set((s) => ({
         jobs: s.jobs.map((j) => (j.id === id ? before : j)),
-        mediaError: errorMessage(err, '작업을 취소하지 못했습니다.'),
+        mediaError: errorMessage(err, tr('작업을 취소하지 못했습니다.')),
       }))
     }
   },
@@ -2312,9 +2323,23 @@ export const useStore = create<State>((set, get) => ({
   },
   updateProject: async (id, patch) => {
     touchWorkspace()
+    const before = get().projects.find((p) => p.id === id)
     set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, ...patch } : p)) }))
-    const row = await projectsApi.update(id, patch as never).catch(() => null)
-    if (row) set((s) => ({ projects: s.projects.map((p) => (p.id === id ? toProject(row) : p)) }))
+    try {
+      const row = await projectsApi.update(id, patch as never)
+      set((s) => ({ projects: s.projects.map((p) => (p.id === id ? toProject(row) : p)) }))
+      return true
+    } catch (err) {
+      // The fields this change touched go back to what the server still has.
+      if (before) {
+        const back = Object.fromEntries(
+          Object.keys(patch).map((key) => [key, before[key as keyof Project]]),
+        )
+        set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, ...back } : p)) }))
+      }
+      set({ notice: errorMessage(err, tr('저장하지 못했습니다.')) })
+      return false
+    }
   },
   deleteMany: async (kind, ids) => {
     if (ids.length === 0) return 0
@@ -2396,10 +2421,34 @@ export const useStore = create<State>((set, get) => ({
   },
   deleteFile: async (id) => {
     touchWorkspace()
+    const project = get().projects.find((p) => p.files.some((f) => f.id === id))
+    const removed = project?.files.find((f) => f.id === id)
     set((s) => ({
       projects: s.projects.map((p) => ({ ...p, files: p.files.filter((f) => f.id !== id) })),
     }))
-    await filesApi.remove(id).catch(() => get().loadWorkspace())
+    if (!project || !removed) return
+    const at = project.files.indexOf(removed)
+    const putBack = () =>
+      set((s) => ({
+        projects: s.projects.map((p) =>
+          p.id !== project.id || p.files.some((f) => f.id === id)
+            ? p
+            : { ...p, files: [...p.files.slice(0, at), removed, ...p.files.slice(at)] },
+        ),
+      }))
+    await holdDelete(set, get, {
+      label: removed.name,
+      restore: () => {
+        putBack()
+        set({ pendingDelete: null })
+      },
+      commit: () =>
+        filesApi.remove(id).catch((err: unknown) => {
+          putBack()
+          const failed = tr('{name}을(를) 지우지 못했습니다.').replace('{name}', removed.name)
+          set({ notice: errorMessage(err, failed) })
+        }),
+    })
   },
 
   ensureDesignTemplates: async () => {
@@ -2480,16 +2529,24 @@ export const useStore = create<State>((set, get) => ({
   connectors: [],
   updateConnectorEnv: async (id, env) => {
     touchWorkspace()
-    const row = await connectorsApi.update(id, { env }).catch(() => null)
-    if (row) set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
+    // A refused save throws to the form: syncing would only test the old values.
+    const row = await connectorsApi.update(id, { env })
+    set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
     await get().syncConnector(id)
   },
   toggleConnector: async (id) => {
     touchWorkspace()
     const enabled = !get().connectors.find((c) => c.id === id)?.enabled
     set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? { ...c, enabled } : c)) }))
-    const row = await connectorsApi.update(id, { enabled }).catch(() => null)
-    if (row) set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
+    try {
+      const row = await connectorsApi.update(id, { enabled })
+      set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
+    } catch (err) {
+      set((s) => ({
+        connectors: s.connectors.map((c) => (c.id === id ? { ...c, enabled: !enabled } : c)),
+        notice: errorMessage(err, enabled ? tr('커넥터를 켜지 못했습니다.') : tr('커넥터를 끄지 못했습니다.')),
+      }))
+    }
   },
   toggleConnectorTool: async (id, tool) => {
     touchWorkspace()
@@ -2897,7 +2954,7 @@ function nameOf(row: { title?: string; name?: string }): string {
   return row.title ?? row.name ?? ''
 }
 
-type HeldDelete = { label: string; restore: () => void; commit: () => Promise<unknown> }
+export type HeldDelete = { label: string; restore: () => void; commit: () => Promise<unknown> }
 
 /** Removes the row from the screen now and sends the request after the undo window. */
 async function holdDelete(
@@ -3949,7 +4006,7 @@ async function streamReport(
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
-        error: errorMessage(err, '보고서를 만들지 못했습니다.'),
+        error: errorMessage(err, tr('보고서를 만들지 못했습니다.')),
       }))
     }
     if (isClientRefusal(err)) throw err
@@ -4178,7 +4235,7 @@ async function streamDeck(
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
-        error: errorMessage(err, '슬라이드를 만들지 못했습니다.'),
+        error: errorMessage(err, tr('슬라이드를 만들지 못했습니다.')),
       }))
     }
     if (isClientRefusal(err)) throw err
