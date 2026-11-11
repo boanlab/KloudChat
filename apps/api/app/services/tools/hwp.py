@@ -193,12 +193,15 @@ HWP_EDIT = Tool(
         "Edit the open HWP document in place; its paragraph and character formatting stay. "
         "All ops apply together or none do, against the numbers of the last hwp_read. "
         "Ops: replace_text {id:'p5', text} replaces a whole paragraph; fill_blank "
-        "{blank:'[연수명]', value:'교원연수'} fills every place that blank appears; "
-        "set_cell {table:'t1', row, col, text}; insert_paragraph {after:'p7', text} (takes "
-        "p7's format); delete_paragraph {id}; insert_table_row {table, after}; "
-        "delete_table_row {table, row}. Prefer fill_blank and set_cell when a blank or "
-        "cell is what changes. Put only facts the person gave; anything still unknown stays a "
-        "bracket blank like 「[담당자]」."
+        "{blank:'[연수명]', value:'교원연수'} fills every place that blank appears, or only "
+        "one place with at:'p6' or at:'t1 r3c1' (hwp_read lists where each blank stands: "
+        "give `at` when the same blank means different things, such as a date in the head "
+        "and another in the body); set_cell {table:'t1', row, col, text}; insert_paragraph "
+        "{after:'p7', text} (takes p7's format); delete_paragraph {id}; insert_table_row "
+        "{table, after}; delete_table_row {table, row}. When one line holds several blanks "
+        "that one fact fills (「[YYYY. MM. DD.] [HH:MM] ~ [HH:MM]」), rewrite that line with "
+        "replace_text instead. Put only facts the person gave; anything still unknown stays "
+        "a bracket blank like 「[담당자]」."
     ),
     parameters={
         "type": "object",
@@ -220,6 +223,7 @@ HWP_EDIT = Tool(
                         "text": {"type": "string"},
                         "blank": {"type": "string"},
                         "value": {"type": "string"},
+                        "at": {"type": "string"},
                         "table": {"type": "string"},
                         "row": {"type": "integer"},
                         "col": {"type": "integer"},
@@ -251,8 +255,9 @@ HWP_WRITE = Tool(
         "write items as lines like `1. 관련: …`, `2. …`, `  가. 일시: …`, and attachments as an "
         "unnumbered last line `붙임  1. 연수 일정표 1부.` (more on following lines); 「끝.」 is "
         "added for you. Never "
-        "invent names, dates, places or numbers: write a bracket blank such as 「[기관명]」, "
-        "「[YYYY. MM. DD.]」, 「[장소]」 instead."
+        "invent names, dates, places or numbers: write a bracket blank named for what goes "
+        "there, such as 「[기관명]」, 「[연수 일시]」, 「[장소]」, instead; and add no items "
+        "the request does not call for (costs, penalties, procedures)."
     ),
     parameters={
         "type": "object",

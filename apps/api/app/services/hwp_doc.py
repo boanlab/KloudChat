@@ -69,6 +69,9 @@ def official(
     bracket blank such as 「[수신]」, never a guess."""
     fmt = doc_formats.BY_ID.get(fmt_id) or doc_formats.BY_ID["official"]
     given = {k: " ".join(str(v or "").split()) for k, v in (fields or {}).items()}
+    # a value that is itself a blank (「[YYYY. MM. DD.]」) is not given: the field keeps its
+    # own named blank, so 시행일 and a date in the body never share one
+    given = {k: v for k, v in given.items() if not hwpx_edit.BLANK.fullmatch(v)}
     block: dict[str, Any] = {
         "format": fmt.id,
         "label": fmt.label,

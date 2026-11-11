@@ -349,6 +349,29 @@ def _cell(table: etree._Element, row: object, col: object) -> etree._Element:
     raise HwpxError(f"r{r}c{c} 칸이 없습니다 (표 {rows}×{cols}, 0부터).")
 
 
+def _cell_paragraphs(cell: etree._Element) -> list[etree._Element]:
+    sub = cell.find(_SUBLIST)
+    return list(sub.iterchildren(_P)) if sub is not None else []
+
+
+def _everywhere(doc: _Doc) -> list[etree._Element]:
+    """Every paragraph a blank can stand in: body, then the cells of each table."""
+    out = list(doc.paragraphs)
+    for table in doc.tables:
+        for cell in table.element.iter(_TC):
+            out += _cell_paragraphs(cell)
+    return out
+
+
+def _places(doc: _Doc, at: object) -> list[etree._Element]:
+    """`p6` or `t1 r2c1`: the paragraphs one fill is kept to."""
+    text = str(at or "").strip()
+    if found := re.fullmatch(r"(t\d{1,4})\s{0,2}r(\d{1,4})c(\d{1,4})", text):
+        table = _table(doc, found.group(1))
+        return _cell_paragraphs(_cell(table, found.group(2), found.group(3)))
+    return [_paragraph(doc, text)[1]]
+
+
 def _set_cell(cell: etree._Element, text: str) -> None:
     sub = cell.find(_SUBLIST)
     paragraphs = list(sub.iterchildren(_P)) if sub is not None else []
@@ -427,9 +450,11 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             if not BLANK.fullmatch(blank):
                 raise HwpxError(f"fill_blank: {blank!r}은 「[이름]」 꼴 빈칸이 아닙니다.")
             _text_arg(op, "value")
-            if not any(blank in text for text in _texts(doc)):
-                raise HwpxError(f"fill_blank: 문서에 {blank}이 없습니다.")
-            plan.append((op, None))
+            places = _places(doc, op.get("at")) if op.get("at") else _everywhere(doc)
+            if not any(blank in _own_text(p) for p in places):
+                where = f" {op.get('at')}에" if op.get("at") else ""
+                raise HwpxError(f"fill_blank:{where} {blank}이 없습니다.")
+            plan.append((op, places))
         elif kind == "set_cell":
             table = _table(doc, op.get("table"))
             plan.append((op, _cell(table, op.get("row"), op.get("col"))))
@@ -465,13 +490,9 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             changes.append(f"{op['id']}: 「{_short(before)}」 → 「{_short(op['text'])}」")
         elif kind == "fill_blank":
             blank, value = op["blank"].strip(), _text_arg(op, "value")
-            count = sum(_replace_in(p, blank, value) for p in doc.paragraphs)
-            for table in doc.tables:
-                for cell in table.element.iter(_TC):
-                    sub = cell.find(_SUBLIST)
-                    for p in sub.iterchildren(_P) if sub is not None else []:
-                        count += _replace_in(p, blank, value)
-            changes.append(f"{blank} → 「{_short(value)}」 ({count}곳)")
+            count = sum(_replace_in(p, blank, value) for p in target)
+            where = f"{op['at']}: " if op.get("at") else ""
+            changes.append(f"{where}{blank} → 「{_short(value)}」 ({count}곳)")
         elif kind == "set_cell":
             _set_cell(target, _text_arg(op))
             changes.append(f"{op['table']} r{op['row']}c{op['col']} → 「{_short(op['text'])}」")

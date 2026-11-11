@@ -152,3 +152,23 @@ def test_a_filled_blank_takes_the_particle_its_value_needs(line, value, after):
     blank = line[: line.index("]") + 1]
     result = hwpx_edit.apply(data, [{"op": "fill_blank", "blank": blank, "value": value}])
     assert after in hwpx_edit.plain_text(result.data)
+
+
+def test_a_blank_that_stands_for_two_things_is_filled_in_one_place():
+    data = hwp_doc.official("연수", "1. 일시: [YYYY. MM. DD.]", {"시행일": "[YYYY. MM. DD.]"})
+    outline = hwpx_edit.outline(data)
+    # a blank given as a head value is not a value: the head keeps its own named blank
+    assert "r2: 시행일 | [시행일]" in outline
+    data = hwp_doc.official("연수", "1. 일시: [YYYY. MM. DD.]\n2. 회신: [YYYY. MM. DD.]까지")
+    pid = next(line.split(":")[0] for line in hwpx_edit.outline(data).splitlines()
+               if "1. 일시" in line)
+    result = hwpx_edit.apply(data, [{"op": "fill_blank", "blank": "[YYYY. MM. DD.]",
+                                     "value": "2027. 2. 11.", "at": pid}])
+    text = hwpx_edit.plain_text(result.data)
+    assert "1. 일시: 2027. 2. 11." in text and "2. 회신: [YYYY. MM. DD.]까지" in text
+    assert result.changes == [f"{pid}: [YYYY. MM. DD.] → 「2027. 2. 11.」 (1곳)"]
+    in_cell = hwpx_edit.apply(data, [{"op": "fill_blank", "blank": "[수신]", "value": "각 부서",
+                                      "at": "t1 r0c1"}])
+    assert "수신 | 각 부서" in hwpx_edit.outline(in_cell.data)
+    with pytest.raises(hwpx_edit.HwpxError):
+        hwpx_edit.apply(data, [{"op": "fill_blank", "blank": "[수신]", "value": "x", "at": pid}])
