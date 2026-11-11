@@ -1493,9 +1493,12 @@ and footer text follows the body. Word splits a line across runs freely, so a
 blank is matched on the paragraph's text and spliced back into the runs: the
 value goes into the run the blank starts in, keeping its `rPr`, and the rest of
 the span is cut from the runs after it. A replaced paragraph keeps its `pPr`
-(style, numbering) and its first text run's `rPr`; runs holding fields,
-pictures or note marks stay, and a written marker such as 「1.<tab>」 keeps its
-tab. A new paragraph copies its neighbour's `pPr` without section or page-break
+(style, numbering); only what changed is rewritten — the text the old and new
+lines share at the start and the end stays in its own runs (a bold 「수신」 label
+stays bold), and the changed middle takes the run it begins in — and a line
+with nothing in common becomes one run in its first text run's `rPr`. Runs
+holding fields, pictures or note marks stay, and a written marker such as
+「1.<tab>」 keeps its tab. A new paragraph copies its neighbour's `pPr` without section or page-break
 settings; a new table row copies the row above without its heading flag; rows of
 a table with vertical merges are not added or removed. Ops resolve against the
 version read before anything changes, so a bad op changes nothing. Zip limits

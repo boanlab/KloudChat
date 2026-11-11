@@ -164,6 +164,24 @@ def test_replacing_a_line_keeps_its_style_numbering_and_first_runs_format():
     assert "[인원]" in docx_edit.blanks(done.data)
 
 
+def test_rewriting_a_line_changes_only_what_differs_and_a_new_line_takes_the_first_run():
+    data = gongmun()
+    done = docx_edit.apply(data, [
+        {"op": "replace_text", "id": "p2", "text": "수신  각 학과장"},
+        {"op": "replace_text", "id": "p3", "text": "제목  교원연수 참석 요청(재안내)"},
+        {"op": "replace_text", "id": "p1", "text": "단국대학교"},
+    ])
+    to = paragraph_with(done.data, "수신")
+    # the bold label stays bold; the value is written as the value was
+    assert [(r.text, r.bold) for r in to.runs if r.text] == [("수신  ", True), ("각 학과장", None)]
+    subject = paragraph_with(done.data, "제목")
+    assert subject.text == "제목  교원연수 참석 요청(재안내)"
+    assert subject.runs[0].bold and not subject.runs[1].bold
+    # nothing shared: the paragraph is one run in its first run's format
+    head = paragraph_with(done.data, "단국대학교")
+    assert [(r.text, r.bold, r.font.size) for r in head.runs] == [("단국대학교", True, Pt(20))]
+
+
 def test_a_written_marker_keeps_its_tab_when_the_line_is_rewritten():
     data = docx_doc.official("연수 참석 요청", "1. 관련: [관련 근거]\n2. 참석 바랍니다.")
     outline = docx_edit.outline(data)

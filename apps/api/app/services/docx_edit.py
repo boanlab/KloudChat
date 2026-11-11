@@ -212,6 +212,50 @@ def _keep_marker(before: str, text: str) -> str:
     return text
 
 
+def _rewrite(paragraph: etree._Element, text: str) -> None:
+    """The paragraph's text made `text`, touching only what changed: the text both share at
+    the start and at the end stays in its own runs (a bold 「수신」 label stays bold), and the
+    changed middle takes the format of the run it begins in. A change with nowhere to sit
+    (or with its own tabs or line breaks) rewrites the paragraph (`_set_text`)."""
+    pieces = _pieces(paragraph)
+    old = "".join(t for _, t in pieces)
+    if old == text:
+        return
+    pre = 0
+    while pre < min(len(old), len(text)) and old[pre] == text[pre]:
+        pre += 1
+    suf = 0
+    while (suf < min(len(old), len(text)) - pre
+           and old[len(old) - 1 - suf] == text[len(text) - 1 - suf]):
+        suf += 1
+    start, end, value = pre, len(old) - suf, text[pre:len(text) - suf]
+    starts, at = [], 0
+    for _, piece in pieces:
+        starts.append(at)
+        at += len(piece)
+    if start == end:
+        # a pure insertion: into the text the character before it is in
+        holder = next((
+            (leaf, at) for (leaf, piece), at in zip(pieces, starts, strict=True)
+            if leaf.tag == _T and at < start <= at + len(piece)
+        ), None)
+    else:
+        holder = next((
+            (leaf, at) for (leaf, piece), at in zip(pieces, starts, strict=True)
+            if leaf.tag == _T and at < end and start < at + len(piece)
+        ), None)
+    if (not pre and not suf) or holder is None or "\n" in value or "\t" in value:
+        _set_text(paragraph, text)
+        return
+    if start == end:
+        leaf, at = holder
+        body = leaf.text or ""
+        leaf.text = body[: start - at] + value + body[start - at:]
+        leaf.set(XML_SPACE, "preserve")
+        return
+    _splice(pieces, starts, start, end, value)
+
+
 def _splice(pieces: list[tuple[etree._Element, str]], starts: list[int],
             start: int, end: int, value: str) -> None:
     """Characters `start:end` of the paragraph replaced by `value`, written into the piece
@@ -566,7 +610,7 @@ def apply(data: bytes, ops: list[dict]) -> Result:
         kind = op["op"]
         if kind == "replace_text":
             before = _own_text(target)
-            _set_text(target, _keep_marker(before, _text_arg(op)))
+            _rewrite(target, _keep_marker(before, _text_arg(op)))
             changes.append(f"{op['id']}: 「{short(before)}」 → 「{short(op['text'])}」")
         elif kind == "fill_blank":
             blank, value = op["blank"].strip(), _text_arg(op, "value")

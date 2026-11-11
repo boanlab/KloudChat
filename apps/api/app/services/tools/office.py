@@ -113,6 +113,8 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                     kit.doc.read(artifact), ops if isinstance(ops, list) else []
                 )
             except kit.error as exc:
+                # what the model got wrong, for tuning the tool's description
+                log.info("%s_edit refused: %s", p, exc)
                 return ToolResult(
                     content=f"고치지 않았습니다: {exc}\n쓸 수 있는 op: {_OP_HELP}", failed=True
                 )
