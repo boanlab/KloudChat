@@ -27,7 +27,7 @@ function people(): Row[] {
     status: i % 10 === 5 ? 'pending' : i % 15 === 7 ? 'suspended' : 'active',
     monthlyCredits: 500_000,
     creditsUsed: ((i * 37) % 100) * 1000,
-    cycleResetsAt: '2026-11-01T00:00:00.000Z',
+    cycleResetsAt: '2099-01-01T00:00:00.000Z',
     avatarColor: '#64748b',
     litellmKeyPreview: '…abcd',
     litellmKeyIssuedAt: null,
@@ -95,7 +95,7 @@ async function fixture(page: Page, info: TestInfo) {
         summary: {
           users: rows.length, pending: rows.filter((r) => r.status === 'pending').length,
           creditsGranted: rows.reduce((s, r) => s + r.monthlyCredits, 0),
-          creditsUsed: rows.reduce((s, r) => s + r.creditsUsed, 0), nextReset: '2026-11-01T00:00:00.000Z',
+          creditsUsed: rows.reduce((s, r) => s + r.creditsUsed, 0), nextReset: '2099-01-01T00:00:00.000Z',
         },
       })
     }
