@@ -134,6 +134,9 @@ async def setup(
     monkeypatch.setattr(sessions.litellm_service, "ensure_key", ensure_key)
     monkeypatch.setattr(sessions.litellm_service, "credentials_for", credentials)
     monkeypatch.setattr(sessions, "build_tools", build_tools)
+    # the turn's claim is given back to this database
+    monkeypatch.setattr(sessions, "SessionLocal",
+                        lambda: AsyncSession(engine, expire_on_commit=False))
     for name in ("_run_turn", "_run_report", "_run_deck"):
         monkeypatch.setattr(sessions, name, run)
 

@@ -3745,6 +3745,7 @@ const EN: Record<string, string> = {
   '장 목록': 'Slides',
   '장 목록 닫기': 'Hide the slide list',
   '연결이 끊겨 답변이 중간에 멈췄습니다. 다시 시도해 주세요.': 'The connection dropped and the answer stopped partway. Please try again.',
+  '연결이 끊겼지만 서버에서 계속 쓰고 있습니다. 다 쓰면 여기에 엽니다.': 'The connection dropped, but the server is still writing. It opens here when it is done.',
   '목록을 새로 불러오지 못했습니다. 화면에 보이는 것은 마지막으로 받은 내용입니다.': 'Could not refresh this list. What you see is the last copy that arrived.',
   '이 보고서는 다른 곳에서 이미 수정되었습니다. 새로고침해 최신 내용을 받은 뒤 다시 저장하세요.': 'This report was changed elsewhere. Reload for the current version, then save again.',
   '이 덱은 다른 곳에서 이미 수정되었습니다. 새로고침해 최신 내용을 받은 뒤 다시 저장하세요.': 'This deck was changed elsewhere. Reload for the current version, then save again.',

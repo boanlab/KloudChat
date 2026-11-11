@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import Request
+from sqlalchemy.sql.dml import Update
 
 from app.models.chat import ChatSession
 from app.models.governance import Governance
@@ -20,6 +21,10 @@ class _Result:
 
     def first(self):
         return self._rows[0] if self._rows else None
+
+
+class _Claimed:
+    rowcount = 1
 
 
 class _Db:
@@ -44,6 +49,9 @@ class _Db:
         return None
 
     async def exec(self, query):
+        if isinstance(query, Update):
+            # the turn claim (`sessions._claim_turn`): this fake session is free
+            return _Claimed()
         table = query.get_final_froms()[0].name
         if table == "skills":
             return _Result(self.skills)
