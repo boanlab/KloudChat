@@ -54,6 +54,7 @@ import type { GraphStep, GraphVerdict, PipelineEdge } from '@/types/pipelineGrap
 import { objectParticle, topicParticle } from './formCheck'
 import { currentLang, currentLocale, translate } from './i18n'
 import { setServiceTimeZone } from './serviceTime'
+import { overUploadLimit, tooLargeMessage } from './uploadLimit'
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -79,12 +80,17 @@ let renewer: (() => Promise<boolean>) | null = null
 export function setSessionRenewer(renew: (() => Promise<boolean>) | null) {
   renewer = renew
 }
+/** Set by `readDetail`, taken by the next `ApiError`. */
+let failedRequestId = ''
+
 /** Carries the backend's `detail` code so callers can branch without parsing prose. */
 export class ApiError extends Error {
   readonly status: number
   readonly detail: string
   /** Seconds the server asked to wait (`Retry-After` on a 429 or 423), when it said. */
   readonly retryAfter?: number
+  /** The failed answer's `X-Request-ID`, for the error screen's 기술 정보 and the server log. */
+  readonly requestId?: string
 
   constructor(status: number, detail: string, retryAfter?: number) {
     super(detail)
@@ -92,6 +98,9 @@ export class ApiError extends Error {
     this.status = status
     this.detail = detail
     this.retryAfter = retryAfter
+    // Every failed answer passes `readDetail` just before its error is made.
+    this.requestId = failedRequestId || undefined
+    failedRequestId = ''
   }
 }
 
@@ -223,11 +232,20 @@ function validationMessage(problems: FieldProblem[]): string {
   return translate(lang, '입력한 값을 확인하세요.')
 }
 
+/** A 413 from the API (`file_too_large_<n>mb`) or from nginx (an HTML page) names the limit. */
+function tooLargeDetail(status: number, detail: string): string {
+  if (status !== 413) return detail
+  const named = /^file_too_large_(\d+)mb$/.exec(detail)
+  if (named) return tooLargeMessage(Number(named[1]))
+  return detail === 'http_413' ? tooLargeMessage() : detail
+}
+
 async function readDetail(res: Response): Promise<string> {
+  failedRequestId = res.headers?.get('X-Request-ID') ?? ''
   try {
     const body = await res.json()
     // FastAPI: string `detail` for raises, array for validation.
-    if (typeof body?.detail === 'string') return body.detail
+    if (typeof body?.detail === 'string') return tooLargeDetail(res.status, body.detail)
     if (Array.isArray(body?.detail)) return validationMessage(body.detail as FieldProblem[])
     // A refused order of steps (`invalid_pipeline`): its first problem, already a sentence.
     const problem = body?.detail?.problems?.[0]?.message
@@ -237,7 +255,7 @@ async function readDetail(res: Response): Promise<string> {
   } catch {
     /* non-JSON error body */
   }
-  return `http_${res.status}`
+  return tooLargeDetail(res.status, `http_${res.status}`)
 }
 
 /** Framed on another site: bot calls go out accountless, keeping the frame's visitor cookie. */
@@ -555,6 +573,8 @@ export const authConfig = {
       login?: { maxFailures: number; lockoutMinutes: number }
       /** Service time zone (IANA); absent from older servers. */
       timeZone?: string
+      /** One file's upload ceiling; absent from older servers. */
+      upload?: { maxMb: number }
     }>('/auth/config').then((config) => {
       // Every date on screen follows it, whichever screen asked first.
       setServiceTimeZone(config.timeZone)
@@ -1252,6 +1272,7 @@ export const filesApi = {
     return call<FileRow[]>(`/files${query ? `?${query}` : ''}`)
   },
   upload: async (file: File, opts?: { projectId?: string; sessionId?: string }) => {
+    if (overUploadLimit(file)) throw new ApiError(413, tooLargeMessage())
     const form = new FormData()
     form.append('file', file)
     if (opts?.projectId) form.append('project_id', opts.projectId)
@@ -1784,6 +1805,7 @@ export const agentsApi = {
   knowledge: {
     list: (agentId: string) => call<FileRow[]>(`/agents/${agentId}/knowledge`),
     upload: async (agentId: string, file: File) => {
+      if (overUploadLimit(file)) throw new ApiError(413, tooLargeMessage())
       const form = new FormData()
       form.append('file', file)
       const res = await authedFetch(`${BASE_URL}/agents/${agentId}/knowledge`, {
@@ -3127,4 +3149,16 @@ export const connectorCatalogApi = {
   remove: (id: string) => call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   stdioAllow: (commands: string[]) =>
     call<{ stdioAllow: string[] }>('/admin/connector-catalog/stdio-allow', { method: 'PUT', body: JSON.stringify({ commands }) }),
+}
+
+/** An uncaught browser error, for the server log only (`lib/clientErrors.ts`). */
+export const clientErrorsApi = {
+  report: (report: {
+    kind: 'error' | 'unhandledrejection' | 'boundary'
+    message: string
+    stack: string
+    route: string
+    version: string
+    requestId: string
+  }) => call<void>('/client-errors', body(report)),
 }

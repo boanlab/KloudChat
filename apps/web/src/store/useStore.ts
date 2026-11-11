@@ -93,6 +93,7 @@ import { fileSize, uid } from '@/lib/utils'
 import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
 import { currentLang, translate, type Lang } from '@/lib/i18n'
 import { counters } from '@/lib/usage'
+import { setMaxUploadMb } from '@/lib/uploadLimit'
 
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = (text: string) => translate(currentLang(), text)
@@ -1066,6 +1067,7 @@ export const useStore = create<State>((set, get) => ({
           .get()
           .then((c) => {
             applyBrand(c.brand)
+            setMaxUploadMb(c.upload?.maxMb)
             set({
               brand: c.brand,
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
@@ -2310,6 +2312,7 @@ export const useStore = create<State>((set, get) => ({
     const c = await authConfig.get().catch(() => null)
     if (!c) return
     applyBrand(c.brand)
+    setMaxUploadMb(c.upload?.maxMb)
     set({
       brand: c.brand,
       enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],

@@ -1,7 +1,10 @@
 import { RefreshCw, TriangleAlert } from 'lucide-react'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Button } from '@/components/ui'
+import { ApiError } from '@/lib/api'
+import { reportClientError } from '@/lib/clientErrors'
 import { currentLang, translate } from '@/lib/i18n'
+import { BUILD_VERSION } from '@/lib/version'
 
 // Class component: no hooks, language read directly.
 const tr = (text: string) => translate(currentLang(), text)
@@ -23,6 +26,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[KloudChat] render failed', error, info.componentStack)
+    reportClientError('boundary', error)
   }
 
   render() {
@@ -30,6 +34,8 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     if (!error) return this.props.children
     // Chunk gone from the server after a deploy.
     const stale = STALE_CHUNK.test(error.message)
+    // What an administrator needs to find the failure in the server log.
+    const requestId = error instanceof ApiError ? error.requestId : undefined
 
     return (
       <div className="grid h-full place-items-center bg-bg p-6 text-fg">
@@ -51,6 +57,8 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
               <summary className="cursor-pointer text-sm text-faint">{tr('기술 정보')}</summary>
               <pre className="mt-2 max-h-40 overflow-auto rounded-control border border-line bg-elevated px-3 py-2 font-mono text-xs break-all whitespace-pre-wrap text-muted">
                 {error.message}
+                {requestId && `\n${tr('요청 ID')}: ${requestId}`}
+                {`\n${tr('화면 버전')}: ${BUILD_VERSION}`}
               </pre>
             </details>
           )}

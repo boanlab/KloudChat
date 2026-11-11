@@ -10,7 +10,7 @@ This page describes the limits the service allows and what to do for each error 
 
 | Item | Limit |
 |---|---|
-| A single file | 200MB |
+| A single file | 200MB (an administrator can change it) |
 | Images | PNG, JPG, GIF, WebP, up to 4MB, on a strict-local model that supports image recognition |
 | Audio and video files | 25MB, when speech transcription is connected |
 | Number of slides | Up to 50 slides (5 to 12 if you do not specify a number) |
@@ -58,6 +58,8 @@ Search for the message exactly as it appears on the screen.
 | The microphone is unavailable. Check the microphone permission in your browser | No microphone or no permission | Browser permission |
 | No text could be read from this file | An unsupported format, or a scan while text from scans (OCR) is not connected | Use a file that contains text, or ask the administrator to connect text from scans |
 | The text could not be read. Upload it again in a moment | The text-from-scans service did not answer | Upload it again later |
+| The file is too large. Each file can be up to 200 MB. | The file is over the per-file limit; it is stopped before uploading | Split or shrink the file |
+| A new version is available · Reload | KloudChat was updated while you were using it | Finish what you are doing, then select **Reload**. Your conversations stay on the server |
 | Too many failed sign-ins, so this address is locked for a while | Five failures in a row within 15 minutes | Try again after the time shown, or have an administrator reset the password |
 | Sign-ups are not being accepted right now | The administrator has blocked sign-up | Ask your administrator for an account |
 

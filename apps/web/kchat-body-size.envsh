@@ -1,0 +1,8 @@
+#!/bin/sh
+# Sourced by the nginx entrypoint before it fills in the config template: the request body
+# limit is the API's upload limit plus 16 MB for the multipart wrapping and form fields.
+# A value that is not a whole number falls back to the API's default, 200.
+case "${KCHAT_MAX_UPLOAD_MB:-}" in
+  ''|*[!0-9]*) KCHAT_MAX_UPLOAD_MB=200 ;;
+esac
+export KCHAT_CLIENT_MAX_BODY_MB=$((KCHAT_MAX_UPLOAD_MB + 16))

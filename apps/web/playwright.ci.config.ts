@@ -94,6 +94,7 @@ const groups: Record<string, Group> = {
   chain: { files: ['chain-canvas.spec.ts'], projects: { desktop, phone: pixelNative } },
   issues: { files: ['issue-reports.spec.ts'], projects: { desktop } },
   session: { files: ['session-renewal.spec.ts'], projects: { desktop } },
+  'serving-guards': { files: ['serving-guards.spec.ts'], projects: { desktop } },
   customize: {
     files: [
       'customize-hub.spec.ts',
