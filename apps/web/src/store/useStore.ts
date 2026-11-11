@@ -8,7 +8,7 @@ import {
   errorMessage,
 } from '@/lib/api'
 import { servedAspect } from '@/lib/aspects'
-import { mediaFailure, refusalSentence, streamFailureSentence } from '@/lib/failures'
+import { mediaFailure, refusalSentence, streamFailureSentence, withRetryWait } from '@/lib/failures'
 import {
   ApiError,
   PrivacyDecisionError,
@@ -30,9 +30,11 @@ import {
   projectsApi,
   sessionsApi,
   setAccessToken,
+  setSessionRenewer,
   skillsApi,
   streamRerun,
   streamSession,
+  tokenStale,
   toolsApi,
   usageApi,
 } from '@/lib/api'
@@ -769,16 +771,41 @@ let refreshTimer: ReturnType<typeof setTimeout> | null = null
 /** Collapses concurrent refreshes: presenting the refresh cookie twice reads as token reuse. */
 let inFlight: Promise<void> | null = null
 
+/** Waits after a refresh the network or server dropped: 2 s, 5 s, 15 s, then every 30 s. */
+const RENEW_BACKOFF_S = [2, 5, 15, 30]
+let renewFailures = 0
+/** The retry waiting on the backoff, run early when the browser comes back online. */
+let pendingRenewal: (() => void) | null = null
+
 function scheduleRefresh(expiresIn: number, run: () => void) {
-  if (refreshTimer) clearTimeout(refreshTimer)
+  cancelRefresh()
   // 60s of headroom, and never busier than once a minute.
   const delayMs = Math.max(30, expiresIn - 60) * 1000
   refreshTimer = setTimeout(run, delayMs)
 }
 
+function retryRefreshLater(run: () => void) {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  const delay = RENEW_BACKOFF_S[Math.min(renewFailures, RENEW_BACKOFF_S.length - 1)]
+  renewFailures += 1
+  pendingRenewal = run
+  refreshTimer = setTimeout(() => {
+    pendingRenewal = null
+    run()
+  }, delay * 1000)
+}
+
 function cancelRefresh() {
   if (refreshTimer) clearTimeout(refreshTimer)
   refreshTimer = null
+  renewFailures = 0
+  pendingRenewal = null
+}
+
+/** The server refused the refresh cookie, or there is none; a dropped or 5xx call is not that. */
+function refusedRefresh(err: unknown): boolean {
+  return (err instanceof Error && err.message === 'signed_out') ||
+    (err instanceof ApiError && (err.status === 401 || err.status === 403))
 }
 
 // Idle sign-out, else the silent refresh keeps a session alive forever; pointerdown/keydown/scroll count, mousemove does not.
@@ -919,6 +946,77 @@ function rememberSignedOut(out: boolean) {
   }
 }
 
+/** The refresh cookie was refused: signed out here, unsent work kept for the same person. */
+function endSession(set: Set) {
+  cancelRefresh()
+  disarmIdleWatch()
+  setAccessToken(null)
+  rememberSignedOut(true)
+  set({ authenticated: false, user: null, authLoading: false })
+}
+
+/** First half of signing out: half-typed questions must not outlive the account on a shared PC. */
+function forgetDrafts(set: Set, get: Get) {
+  purgeStoredDrafts(get().user?.id)
+  purgeUnsent(get().user?.id)
+  set((state) => ({ accountEpoch: state.accountEpoch + 1,
+    messageEdit: null, messageEditBusy: false, composerRestore: null,
+    pendingAttachment: null, pendingAttachmentTo: null, draft: '', draftTo: null }))
+}
+
+/** Second half of signing out: no token, no timers, and nothing of the account left on screen. */
+function clearAccount(set: Set, reason?: 'idle') {
+  cancelRefresh()
+  disarmIdleWatch()
+  setAccessToken(null)
+  rememberSignedOut(true)
+  // Invalidates any workspace load still in flight for the previous account.
+  touchWorkspace()
+  set({
+    authenticated: false,
+    user: null,
+    activeSessionId: null,
+    authError: null,
+    signedOutReason: reason ?? null,
+    // Never leave one account's work on screen for the next.
+    sessions: [],
+    users: [],
+    usersPage: null,
+    usersQuery: null,
+    projects: [],
+    artifacts: [],
+    skills: [],
+    skillStore: [],
+    skillStoreLoaded: false,
+    designs: [],
+    designTemplates: [],
+    availableTools: [],
+    memories: [],
+    agents: [],
+    connectors: [],
+    connectorCatalog: [],
+  })
+}
+
+/** Signing in or out in one tab is said to the others, so none keeps a session that ended. */
+type AuthSignal = { type: 'signed-out'; reason?: 'idle' } | { type: 'signed-in'; userId: string }
+const AUTH_SIGNAL_KEY = 'kchat-auth-signal'
+const authChannel =
+  typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('kchat-auth')
+
+function announce(signal: AuthSignal) {
+  if (authChannel) {
+    authChannel.postMessage(signal)
+    return
+  }
+  try {
+    // `at` makes every signal a change, so the `storage` event fires for a repeat too.
+    localStorage.setItem(AUTH_SIGNAL_KEY, JSON.stringify({ ...signal, at: Date.now() }))
+  } catch {
+    // No storage: other tabs find out at their next refresh.
+  }
+}
+
 export const useStore = create<State>((set, get) => ({
   user: null,
   accountEpoch: 0,
@@ -947,7 +1045,7 @@ export const useStore = create<State>((set, get) => ({
         // No refresh cookie: signed out, said with 204 rather than a logged 401.
         if (!session) throw new Error('signed_out')
         rememberSignedOut(false)
-        setAccessToken(session.accessToken)
+        setAccessToken(session.accessToken, session.expiresIn)
         set({ authenticated: true, user: session.user, authLoading: false, authError: null })
         void authConfig
           .get()
@@ -963,7 +1061,7 @@ export const useStore = create<State>((set, get) => ({
             armIdleWatch(c.idleTimeoutMinutes ?? 0, () => void get().logout('idle'))
           })
           .catch(() => {})
-        scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+        scheduleRefresh(session.expiresIn, () => void renewSession())
         // Address-opened conversation first, before the workspace requests take the connections.
         const opened = window.location.pathname.match(/^\/s\/([^/]+)/)?.[1]
         if (opened && session.user.status === 'active' &&
@@ -974,16 +1072,19 @@ export const useStore = create<State>((set, get) => ({
         void get().loadSessions()
         void get().loadWorkspace()
       } catch (err) {
-        cancelRefresh()
-        disarmIdleWatch()
-        setAccessToken(null)
-        // Remembered only when the server said so. A refresh cut off by a reload or a
-        // network error says nothing about the cookie; remembering it would skip the
-        // refresh on the next load and show sign-in to a signed-in person.
-        if ((err instanceof Error && err.message === 'signed_out') || err instanceof UnauthorizedError) {
-          rememberSignedOut(true)
+        // Signed out only when the server said so. A refresh cut off by a reload, the
+        // network or a 5xx says nothing about the cookie: a signed-in tab keeps its session,
+        // and either way the refresh is tried again.
+        if (refusedRefresh(err)) {
+          endSession(set)
+        } else if (get().authenticated) {
+          retryRefreshLater(() => void get().bootstrap())
+        } else {
+          disarmIdleWatch()
+          setAccessToken(null)
+          set({ authenticated: false, user: null, authLoading: false })
+          retryRefreshLater(() => void get().bootstrap())
         }
-        set({ authenticated: false, user: null, authLoading: false })
       } finally {
         inFlight = null
       }
@@ -997,9 +1098,10 @@ export const useStore = create<State>((set, get) => ({
     try {
       const session = await auth.login(email, password)
       rememberSignedOut(false)
-      setAccessToken(session.accessToken)
+      setAccessToken(session.accessToken, session.expiresIn)
       set({ authenticated: true, user: session.user, authLoading: false, signedOutReason: null })
-      scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+      scheduleRefresh(session.expiresIn, () => void renewSession())
+      announce({ type: 'signed-in', userId: session.user.id })
       // Enabled kinds and the idle limit of this workspace, not the signed-out defaults.
       void get().refreshConfig().then(() => {
         if (get().authenticated) armIdleWatch(get().idleTimeoutMinutes, () => void get().logout('idle'))
@@ -1019,10 +1121,11 @@ export const useStore = create<State>((set, get) => ({
 
   /** Session handed over by a mailed signup-verification link. */
   adoptSession: (session) => {
-    setAccessToken(session.accessToken)
+    setAccessToken(session.accessToken, session.expiresIn)
     set((state) => ({ authenticated: true, user: session.user, authLoading: false, authError: null,
       accountEpoch: state.accountEpoch + 1, messageEdit: null, messageEditBusy: false }))
-    scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+    scheduleRefresh(session.expiresIn, () => void renewSession())
+    announce({ type: 'signed-in', userId: session.user.id })
     void get().refreshConfig()
     void get().loadModels()
   },
@@ -1033,9 +1136,10 @@ export const useStore = create<State>((set, get) => ({
       const { user, session } = await auth.signup(email, password, name)
       if (session) {
         // `open` signup mode, or the bootstrap admin.
-        setAccessToken(session.accessToken)
+        setAccessToken(session.accessToken, session.expiresIn)
         set({ authenticated: true, user: session.user, authLoading: false })
-        scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+        scheduleRefresh(session.expiresIn, () => void renewSession())
+        announce({ type: 'signed-in', userId: session.user.id })
         void get().refreshConfig()
         void get().loadModels()
       } else {
@@ -1050,47 +1154,14 @@ export const useStore = create<State>((set, get) => ({
   },
 
   logout: async (reason) => {
-    // Half-typed questions must not outlive the account on a shared machine.
-    purgeStoredDrafts(get().user?.id)
-    purgeUnsent(get().user?.id)
-    set((state) => ({ accountEpoch: state.accountEpoch + 1,
-      messageEdit: null, messageEditBusy: false, composerRestore: null,
-      pendingAttachment: null, pendingAttachmentTo: null, draft: '', draftTo: null }))
+    forgetDrafts(set, get)
     try {
       await auth.logout()
     } catch {
       // Already gone server-side; the local teardown is what matters.
     }
-    cancelRefresh()
-    disarmIdleWatch()
-    setAccessToken(null)
-    rememberSignedOut(true)
-    // Invalidates any workspace load still in flight for the previous account.
-    touchWorkspace()
-    set({
-      authenticated: false,
-      user: null,
-      activeSessionId: null,
-      authError: null,
-      signedOutReason: reason ?? null,
-      // Never leave one account's work on screen for the next.
-      sessions: [],
-      users: [],
-      usersPage: null,
-      usersQuery: null,
-      projects: [],
-      artifacts: [],
-      skills: [],
-      skillStore: [],
-      skillStoreLoaded: false,
-      designs: [],
-      designTemplates: [],
-      availableTools: [],
-      memories: [],
-      agents: [],
-      connectors: [],
-      connectorCatalog: [],
-    })
+    clearAccount(set, reason)
+    announce({ type: 'signed-out', reason })
   },
 
   refreshMe: async () => {
@@ -3667,17 +3738,21 @@ async function streamTurn(
         errorMessage(err, tr('요청을 처리하지 못했습니다.'))
       if (err instanceof UnauthorizedError) {
         // The access token lapsed under the send; the refresh cookie usually renews it.
-        await get().bootstrap()
-        sentence = get().authenticated
+        const renewed = await renewSession()
+        sentence = renewed
           ? tr('로그인이 갱신되었습니다. 다시 보내 주세요.')
-          : tr('로그인이 만료되었습니다. 다시 로그인한 뒤 보내 주세요.')
+          : get().authenticated
+            ? tr('로그인을 갱신하지 못했습니다. 연결을 확인한 뒤 다시 보내 주세요.')
+            : tr('로그인이 만료되었습니다. 다시 로그인한 뒤 보내 주세요.')
+      } else {
+        sentence = withRetryWait(sentence, err, tr)
       }
       patch((m) => ({ ...m, error: sentence }))
       // Rethrown so the composer restores its draft.
       throw err
     } else {
       settled = true
-      patch((m) => ({ ...m, error: tr(turnFailure(err)) }))
+      patch((m) => ({ ...m, error: withRetryWait(tr(turnFailure(err)), err, tr) }))
       // The server survives a dropped response; its answer may still land.
       followDetachedTurn = accepted
       // A stall is swallowed: the failed turn carries its own retry.
@@ -4388,4 +4463,90 @@ export async function drawFigure(
     if (err instanceof ApiError && err.detail === 'diagram_unrendered') throw new Error(tr(FIGURE_UNRENDERED))
     throw err
   }
+}
+
+/** Collapses renewals: every request that met a lapsed token waits on the same one. */
+let renewing: Promise<boolean> | null = null
+
+/** Renews the access token mid-session; true when a fresh one is in hand. */
+export function renewSession(): Promise<boolean> {
+  const { getState: get, setState: set } = useStore
+  if (!get().authenticated) return Promise.resolve(false)
+  renewing ??= (async () => {
+    try {
+      const session = await auth.refresh()
+      if (!session) throw new Error('signed_out')
+      if (session.user.id !== get().user?.id) {
+        // The cookie now belongs to another account, signed in from another tab.
+        forgetDrafts(set, get)
+        clearAccount(set)
+        rememberSignedOut(false)
+        void get().bootstrap()
+        return false
+      }
+      setAccessToken(session.accessToken, session.expiresIn)
+      set({ user: session.user })
+      scheduleRefresh(session.expiresIn, () => void renewSession())
+      return true
+    } catch (err) {
+      if (refusedRefresh(err)) endSession(set)
+      else retryRefreshLater(() => void renewSession())
+      return false
+    } finally {
+      renewing = null
+    }
+  })()
+  return renewing
+}
+
+setSessionRenewer(renewSession)
+
+/** What another tab said about signing in or out. */
+function heard(signal: AuthSignal) {
+  const { getState: get, setState: set } = useStore
+  if (window.location.pathname.startsWith('/embed/')) return
+  if (signal.type === 'signed-out') {
+    if (!get().authenticated) return
+    forgetDrafts(set, get)
+    clearAccount(set, signal.reason)
+    return
+  }
+  if (get().authenticated && signal.userId === get().user?.id) return
+  if (get().authenticated) {
+    forgetDrafts(set, get)
+    clearAccount(set)
+  }
+  rememberSignedOut(false)
+  void get().bootstrap()
+}
+
+if (typeof window !== 'undefined') {
+  if (authChannel) {
+    authChannel.onmessage = (event: MessageEvent<AuthSignal>) => heard(event.data)
+  } else {
+    window.addEventListener('storage', (event) => {
+      if (event.key !== AUTH_SIGNAL_KEY || !event.newValue) return
+      try {
+        heard(JSON.parse(event.newValue) as AuthSignal)
+      } catch {
+        // Not a signal this build wrote.
+      }
+    })
+  }
+  // Timers sleep in a background tab or a closed laptop: renew on return, before the first request.
+  const wake = () => {
+    if (document.visibilityState !== 'visible') return
+    if (!useStore.getState().authenticated || pendingRenewal) return
+    if (tokenStale(60_000)) void renewSession()
+  }
+  document.addEventListener('visibilitychange', wake)
+  window.addEventListener('focus', wake)
+  // Back online: the refresh waiting on its backoff goes now.
+  window.addEventListener('online', () => {
+    const run = pendingRenewal
+    if (!run) return wake()
+    if (refreshTimer) clearTimeout(refreshTimer)
+    pendingRenewal = null
+    run()
+  })
 }

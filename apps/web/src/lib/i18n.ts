@@ -1589,6 +1589,13 @@ const EN: Record<string, string> = {
   '답변이 실패했습니다': 'The answer failed',
   '로그인이 갱신되었습니다. 다시 보내 주세요.': 'Your sign-in was renewed. Please send again.',
   '로그인이 만료되었습니다. 다시 로그인한 뒤 보내 주세요.': 'Your sign-in expired. Sign in again, then send.',
+  '로그인을 갱신하지 못했습니다. 연결을 확인한 뒤 다시 보내 주세요.':
+    'Could not renew your sign-in. Check your connection, then send again.',
+  '{n}초 뒤에 다시 보낼 수 있습니다.': 'You can send again in {n} s.',
+  '{n}분 뒤에 다시 보낼 수 있습니다.': 'You can send again in {n} min.',
+  '응답이 늦어 요청을 멈췄습니다. 잠시 뒤 다시 시도하세요.':
+    'The server took too long, so the request was stopped. Try again shortly.',
+  '인터넷 연결이 끊겼습니다. 연결되면 다시 시도하세요.': 'You are offline. Try again once the connection is back.',
   '이 대화는 아직 답을 쓰고 있습니다. 답이 끝나거나 중지한 뒤 보내 주세요.':
     'This conversation is still writing an answer. Send again once it finishes or after you stop it.',
   '이전 답변': 'Earlier answer',
