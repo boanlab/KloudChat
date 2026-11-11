@@ -543,7 +543,7 @@
 "path": "chat/bots",
 "title": "챗봇 공개",
 "heading": "방문자 쪽에서",
-"text": "- 첫 질문 전에 이용 안내를 읽고 시작합니다. 안내에는 대화 보관 기간과 대화 열람 여부가 적혀 있습니다.\n- 로그인하지 않은 방문자는 이 브라우저의 쿠키로만 자기 대화를 이어 봅니다. 쿠키를 지우면 지난 대화를 다시 열 수 없습니다. 파일을 올리거나 아티팩트를 내려받을 수 없습니다.\n- 질문 수는 한 사람당, 같은 주소(로그인하지 않은 방문자)당, 챗봇 전체로 분·하루 단위 한도가 있습니다. 한도는 관리 화면의 **설정** → **한도**에서 낮출 수 있습니다.\n- 대화는 마지막 질문 뒤 보관 기간(기본 30일)이 지나면 지워집니다."
+"text": "- 첫 질문 전에 이용 안내를 읽고 시작합니다. 안내에는 대화 보관 기간과 대화 열람 여부가 적혀 있습니다.\n- 로그인하지 않은 방문자는 이 브라우저의 쿠키로만 자기 대화를 이어 봅니다. 쿠키를 지우면 지난 대화를 다시 열 수 없습니다. 파일을 올리거나 아티팩트를 내려받을 수 없습니다.\n- 질문 수는 한 사람당, 같은 주소(로그인하지 않은 방문자)당, 챗봇 전체로 분·하루 단위 한도가 있습니다. 한도는 관리 화면의 **설정** → **한도**에서 낮출 수 있습니다.\n- 대화는 마지막 질문 뒤 보관 기간(기본 30일)이 지나면 지워집니다.\n- 답을 쓰는 동안 **내 대화**의 다른 대화로 옮겨도 답은 계속 쓰이고, 그 대화로 돌아가면 보입니다. 연결이 끊기면 질문은 그대로 두고 서버가 마친 답을 이어 받습니다.\n- **내 대화**는 최근 50개를 먼저 보이고, 그보다 많으면 **더 보기**로 이어서 봅니다."
 },
 {
 "lang": "ko",
@@ -942,7 +942,7 @@
 "path": "personal/projects",
 "title": "프로젝트",
 "heading": "탭 구성",
-"text": "| 탭 | 기능 |\n|---|---|\n| 작업 | 이 프로젝트에서 새 작업을 시작하고, 기존 대화를 프로젝트에 편입하거나 제외합니다. |\n| 지식 | 파일을 추가하고 **웹 자료**로 주소를 등록합니다. 웹 자료는 등록 시점의 내용을 저장합니다. 파일별 토큰 수와 컨텍스트 점유 비율을 표시하며, 인식된 내용 확인과 원본 다운로드, 삭제를 지원합니다. 뜻으로 찾는 검색에 아직 들어가지 않은 파일에는 **색인 안 됨**이 붙고, **색인하기**로 다시 보냅니다. |\n| 스킬 | **스킬 고르기**로 고른 스킬이 이 프로젝트의 입력창에서 먼저 보입니다. |\n| 메모리 | 프로젝트 단위로 공유하는 메모리입니다. 에이전트가 **노트 공유**로 남긴 결론도 이곳에 축적됩니다. |"
+"text": "| 탭 | 기능 |\n|---|---|\n| 작업 | 이 프로젝트에서 새 작업을 시작하고, 기존 대화를 프로젝트에 편입하거나 제외합니다. |\n| 지식 | 파일을 추가하고 **웹 자료**로 주소를 등록합니다. 웹 자료는 등록 시점의 내용을 저장합니다. 파일별 토큰 수와 컨텍스트 점유 비율을 표시하며, 인식된 내용 확인과 원본 다운로드, 삭제를 지원합니다. 뜻으로 찾는 검색에 아직 들어가지 않은 파일에는 **색인 안 됨**이 붙고, **색인하기**로 다시 보냅니다. 삭제한 파일은 몇 초 동안 화면 아래 **실행 취소**로 되돌릴 수 있습니다. |\n| 스킬 | **스킬 고르기**로 고른 스킬이 이 프로젝트의 입력창에서 먼저 보입니다. |\n| 메모리 | 프로젝트 단위로 공유하는 메모리입니다. 에이전트가 **노트 공유**로 남긴 결론도 이곳에 축적됩니다. |"
 },
 {
 "lang": "ko",
@@ -2013,7 +2013,7 @@
 "path": "chat/bots",
 "title": "Publishing a chatbot",
 "heading": "On the visitor's side",
-"text": "- Visitors read the notice before their first question. It states how long conversations are kept and whether the publisher can read them.\n- A visitor without an account continues their conversations only through this browser's cookie. Clearing cookies loses past conversations. They cannot upload files or download artifacts.\n- Questions are limited per person, per address (visitors without an account) and per chatbot, per minute and per day. Lower the limits under **Settings** → **Limits** on the management page.\n- Conversations are deleted once the retention period (30 days by default) passes after the last question."
+"text": "- Visitors read the notice before their first question. It states how long conversations are kept and whether the publisher can read them.\n- A visitor without an account continues their conversations only through this browser's cookie. Clearing cookies loses past conversations. They cannot upload files or download artifacts.\n- Questions are limited per person, per address (visitors without an account) and per chatbot, per minute and per day. Lower the limits under **Settings** → **Limits** on the management page.\n- Conversations are deleted once the retention period (30 days by default) passes after the last question.\n- Moving to another conversation under **My conversations** while an answer is being written does not stop it; it is there when you go back. If the connection drops, the question stays and the answer the server finished is picked up.\n- **My conversations** shows the latest 50 first; **Show more** opens the rest."
 },
 {
 "lang": "en",
@@ -2412,7 +2412,7 @@
 "path": "personal/projects",
 "title": "Projects",
 "heading": "Tabs",
-"text": "| Tab | Function |\n|---|---|\n| Conversations | Start a new conversation in this project, and add existing conversations to the project or remove them from it. |\n| Knowledge | Add files and register addresses as **web material**. Web material stores the content as it was at registration time. It shows how many tokens each file uses and how much of the context it takes up. You can check the recognized content, download the original, and delete it. A file that meaning-based search does not cover yet is marked **Not indexed**; **Index now** sends it again. |\n| Skills | Skills you pick with **Choose skills** appear first in this project's composer. |\n| Memory | Memory shared at the project level. Conclusions that an agent leaves through **Share note** also accumulate here. |"
+"text": "| Tab | Function |\n|---|---|\n| Conversations | Start a new conversation in this project, and add existing conversations to the project or remove them from it. |\n| Knowledge | Add files and register addresses as **web material**. Web material stores the content as it was at registration time. It shows how many tokens each file uses and how much of the context it takes up. You can check the recognized content, download the original, and delete it. A file that meaning-based search does not cover yet is marked **Not indexed**; **Index now** sends it again. A deleted file can be brought back with **Undo** at the bottom of the screen for a few seconds. |\n| Skills | Skills you pick with **Choose skills** appear first in this project's composer. |\n| Memory | Memory shared at the project level. Conclusions that an agent leaves through **Share note** also accumulate here. |"
 },
 {
 "lang": "en",

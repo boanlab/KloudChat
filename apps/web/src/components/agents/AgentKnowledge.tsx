@@ -5,6 +5,7 @@ import { agentsApi, downloadFile, errorMessage, type FileRow } from '@/lib/api'
 import { useFileDrop } from '@/lib/useFileDrop'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import { useT } from '@/lib/useT'
+import { useStore } from '@/store/useStore'
 
 /** Documents the agent searches by tool call (project files go into every turn); needs a saved agent. */
 export function AgentKnowledge({
@@ -22,6 +23,10 @@ export function AgentKnowledge({
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState<'file' | 'url' | 'reindex' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [loadTry, setLoadTry] = useState(0)
+  const deleteLater = useStore((s) => s.deleteLater)
+  const setNotice = useStore((s) => s.setNotice)
   /** Shown once the first file saved the agent. */
   const [savedNote, setSavedNote] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -56,12 +61,16 @@ export function AgentKnowledge({
     let live = true
     void agentsApi.knowledge
       .list(agentId)
-      .then((r) => live && replaceRows(r))
-      .catch(() => undefined)
+      .then((r) => {
+        if (!live) return
+        replaceRows(r)
+        setLoadFailed(false)
+      })
+      .catch(() => live && setLoadFailed(true))
     return () => {
       live = false
     }
-  }, [agentId, replaceRows])
+  }, [agentId, replaceRows, loadTry])
 
   if (!agentId) {
     if (onNeedAgent) {
@@ -171,13 +180,26 @@ export function AgentKnowledge({
     }
   }
 
-  const remove = async (id: string) => {
-    replaceRows(rowsRef.current.filter((f) => f.id !== id))
-    try {
-      await agentsApi.knowledge.remove(agentId, id)
-    } catch {
-      replaceRows(await agentsApi.knowledge.list(agentId).catch(() => []))
+  // Gone from the list at once, sent after the undo window; a refusal puts it back.
+  const remove = (file: FileRow) => {
+    const at = rowsRef.current.findIndex((f) => f.id === file.id)
+    replaceRows(rowsRef.current.filter((f) => f.id !== file.id))
+    const putBack = () => {
+      if (rowsRef.current.some((f) => f.id === file.id)) return
+      const next = [...rowsRef.current]
+      next.splice(Math.max(0, at), 0, file)
+      replaceRows(next)
     }
+    void deleteLater({
+      label: file.name,
+      restore: putBack,
+      commit: () =>
+        agentsApi.knowledge.remove(agentId, file.id).catch((err: unknown) => {
+          putBack()
+          const failed = t('{name}을(를) 지우지 못했습니다.').replace('{name}', file.name)
+          setNotice(errorMessage(err, failed))
+        }),
+    })
   }
 
   return (
@@ -233,7 +255,22 @@ export function AgentKnowledge({
 
         {error && <p className="text-base text-danger">{error}</p>}
 
-        {rows.length === 0 ? (
+        {loadFailed && rows.length === 0 ? (
+          <p
+            role="alert"
+            className="flex flex-wrap items-center gap-x-2 text-base text-danger"
+            data-testid="agent-knowledge-failed"
+          >
+            {t('자료 목록을 불러오지 못했습니다.')}
+            <button
+              type="button"
+              className="text-accent underline hover:no-underline"
+              onClick={() => setLoadTry((n) => n + 1)}
+            >
+              {t('다시 시도')}
+            </button>
+          </p>
+        ) : rows.length === 0 ? (
           <p className="text-base text-faint">{t('아직 붙인 자료가 없습니다.')}</p>
         ) : (
           <ul className="space-y-1">
@@ -309,7 +346,7 @@ export function AgentKnowledge({
                   variant="ghost"
                   size="icon"
                   aria-label={t('{name} 삭제').replace('{name}', f.name)}
-                  onClick={() => void remove(f.id)}
+                  onClick={() => remove(f)}
                 >
                   <Trash2 size={13} />
                 </Button>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ModelPicker } from '@/components/chat/ModelPicker'
 import { Select, Switch } from '@/components/ui'
-import { authConfig } from '@/lib/api'
+import { authConfig, errorMessage } from '@/lib/api'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
 import type { Preferences } from '@/types'
@@ -21,7 +21,16 @@ export function PreferencesTab() {
     !modelsSettled || (enabledKinds.includes(kind) &&
       models.some((m) => m.kinds.includes(kind) && (!modality || m.modality === modality)))
   const [allowRawExternal, setAllowRawExternal] = useState<boolean | null>(null)
-  const set = (patch: Partial<Preferences>) => void updateProfile({ preferences: patch })
+  // A choice shows once the server keeps it; until then 저장 중…, and a refusal says so.
+  const [saving, setSaving] = useState(0)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const set = (patch: Partial<Preferences>) => {
+    setSaving((n) => n + 1)
+    setSaveError(null)
+    updateProfile({ preferences: patch })
+      .catch((err: unknown) => setSaveError(errorMessage(err, t('설정을 저장하지 못했습니다. 다시 시도해 주세요.'))))
+      .finally(() => setSaving((n) => n - 1))
+  }
   // Pictures kept inside: picked here, offered only when there is a choice.
   const strictImages = models.filter((m) => m.kinds.includes('image') && m.strictLocal)
   const strictImageDefault = useStore((s) => s.strictImageDefault)
@@ -38,6 +47,15 @@ export function PreferencesTab() {
 
   return (
     <div className="space-y-8">
+      {(saving > 0 || saveError) && (
+        <p
+          role={saveError ? 'alert' : 'status'}
+          className={saveError ? 'text-base text-danger' : 'text-base text-faint'}
+          data-testid="preferences-save"
+        >
+          {saveError ?? t('저장 중…')}
+        </p>
+      )}
       <section className="space-y-3">
         <div>
           <h2 className="text-base font-semibold">{t('기본 모델')}</h2>

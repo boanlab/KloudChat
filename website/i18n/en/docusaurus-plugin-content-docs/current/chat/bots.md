@@ -79,3 +79,5 @@ A chatbot published to members (or to the public) shows to other members as an a
 - A visitor without an account continues their conversations only through this browser's cookie. Clearing cookies loses past conversations. They cannot upload files or download artifacts.
 - Questions are limited per person, per address (visitors without an account) and per chatbot, per minute and per day. Lower the limits under **Settings** → **Limits** on the management page.
 - Conversations are deleted once the retention period (30 days by default) passes after the last question.
+- Moving to another conversation under **My conversations** while an answer is being written does not stop it; it is there when you go back. If the connection drops, the question stays and the answer the server finished is picked up.
+- **My conversations** shows the latest 50 first; **Show more** opens the rest.

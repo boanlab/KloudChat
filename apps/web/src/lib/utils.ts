@@ -121,3 +121,11 @@ export function tokenRate(model: { inputCreditCost?: number; creditCost?: number
   if (!input && !output) return t('크레딧 없음')
   return t('1천 토큰당 입력 {in} · 출력 {out}크레딧').replace('{in}', String(input)).replace('{out}', String(output))
 }
+
+/** Whether every word of `query` is in one of `texts`, ignoring case; an empty query matches. */
+export function matchesQuery(query: string, ...texts: (string | null | undefined)[]) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return true
+  const haystack = texts.filter(Boolean).join('\n').toLowerCase()
+  return words.every((word) => haystack.includes(word))
+}

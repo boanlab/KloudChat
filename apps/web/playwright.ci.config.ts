@@ -129,6 +129,7 @@ const groups: Record<string, Group> = {
     files: ['share-one-artifact.spec.ts', 'project-knowledge-reindex.spec.ts'],
     projects: { desktop },
   },
+  'failed-saves': { files: ['saves-that-fail.spec.ts'], projects: { desktop } },
 }
 
 export default defineConfig({

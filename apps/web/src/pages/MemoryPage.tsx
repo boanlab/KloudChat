@@ -14,7 +14,8 @@ import {
 } from '@/components/ui'
 import { MemoryEditor, emptyMemory, memoryTypeTone } from '@/components/memory/MemoryEditor'
 import { memoryTypeLabel } from '@/lib/memoryTypes'
-import { cn, relativeTime } from '@/lib/utils'
+import { cn, matchesQuery, relativeTime } from '@/lib/utils'
+import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
 import type { MemoryEntry, MemoryType } from '@/types'
@@ -32,9 +33,12 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [draft, setDraft] = useState<MemoryEntry | null>(null)
   const [confirming, setConfirming] = useState<MemoryEntry | null>(null)
 
-  const visible = filter === 'all' ? memories : memories.filter((m) => m.type === filter)
+  const [query, setQuery] = useState('')
+  const visible = memories
+    .filter((m) => filter === 'all' || m.type === filter)
+    .filter((m) => matchesQuery(query, m.name, m.description, m.body))
   const ordered = [...visible].sort((a, b) => Number(b.pinned) - Number(a.pinned))
-  const { visible: sorted, hidden, more } = usePaged(ordered, [filter, memories.length])
+  const { visible: sorted, hidden, more } = usePaged(ordered, [filter, query, memories.length])
 
   return (
     <>
@@ -65,9 +69,14 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
 
         {workspaceFailed && <ReloadNotice onRetry={() => void loadWorkspace()} />}
 
+        {memories.length > 0 && (
+          <ListSearch value={query} onChange={setQuery} label={t('메모리 검색')} className="mt-4" />
+        )}
+
         <div className="space-y-2 pt-4">
           {workspaceLoading && memories.length === 0 && <LoadingState />}
-          {!workspaceLoading && sorted.length === 0 && (
+          {!workspaceLoading && sorted.length === 0 && query.trim() && <NoMatch />}
+          {!workspaceLoading && sorted.length === 0 && !query.trim() && (
             <EmptyState
               icon={<Brain size={18} />}
               title={t('저장된 메모리가 없습니다')}

@@ -17,7 +17,9 @@ import {
   Textarea,
 } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
-import { relativeTime } from '@/lib/utils'
+import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
+import { ShowMore, usePaged } from '@/components/ui/ShowMore'
+import { matchesQuery, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
@@ -29,7 +31,10 @@ export function ProjectsPage() {
   const navigate = useNavigate()
   const { projects, createProject, deleteMany, loadWorkspace, ensureWorkspace, workspaceLoading, workspaceFailed } =
     useStore()
-  const pick = useBulkSelect(projects)
+  const [query, setQuery] = useState('')
+  const found = projects.filter((p) => matchesQuery(query, p.name, p.description))
+  const pick = useBulkSelect(found)
+  const { visible, hidden, more } = usePaged(found, [query])
 
   useEffect(() => {
     void ensureWorkspace()
@@ -99,6 +104,7 @@ export function ProjectsPage() {
           />
         ) : (
           <>
+          <ListSearch value={query} onChange={setQuery} label={t('프로젝트 검색')} className="mb-3" />
           <BulkBar
             count={pick.count}
             allPicked={pick.allPicked}
@@ -112,7 +118,7 @@ export function ProjectsPage() {
             }}
           />
           <div className="grid gap-3 sm:grid-cols-2">
-            {projects.map((p) => (
+            {visible.map((p) => (
               <Card
                 key={p.id}
                 onClick={() => navigate(`/projects/${p.id}`)}
@@ -147,6 +153,8 @@ export function ProjectsPage() {
               </Card>
             ))}
           </div>
+          {found.length === 0 && <NoMatch />}
+          <ShowMore hidden={hidden} onMore={more} />
           </>
         )}
       </PageBody>

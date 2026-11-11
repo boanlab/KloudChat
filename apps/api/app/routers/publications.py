@@ -1098,14 +1098,18 @@ async def _visited(db: DbSession, pub: Publication, user: User | None, request: 
 
 
 @router.get("/b/{slug}/conversations")
-async def my_conversations(slug: str, request: Request, user: BotCaller, db: DbSession):
+async def my_conversations(slug: str, request: Request, user: BotCaller, db: DbSession,
+                           limit: int = Query(50, ge=1, le=100),
+                           offset: int = Query(0, ge=0, le=100_000)):
+    """Newest first, a page at a time: `offset` skips what the list already shows."""
     pub = await _bot(db, slug, user, request)
     visitor = await _visitor(db, pub, user, request, create=False)
     if visitor is None:
         return []
     rows = (await db.exec(select(ChatSession).where(
         ChatSession.publication_id == pub.id, ChatSession.visitor_id == visitor.id)
-        .order_by(col(ChatSession.updated_at).desc()).limit(50))).all()
+        .order_by(col(ChatSession.updated_at).desc(), col(ChatSession.id).desc())
+        .offset(offset).limit(limit))).all()
     await db.commit()
     return [{"id": s.id, "title": s.title, "updatedAt": s.updated_at, "sharedAt": s.shared_at}
             for s in rows]

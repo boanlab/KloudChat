@@ -39,6 +39,21 @@ interface Turn extends BotTranscriptMessage {
   error?: string
 }
 
+/** A reply this page is still waiting for: its question and answer so far, and how to stop it. */
+interface Reply {
+  controller: AbortController | null
+  question: Turn
+  answer: Turn
+}
+
+/** 「내 대화」 comes this many at a time. */
+const LIST_PAGE = 50
+/** After a dropped stream: how often, and how many times, the stored conversation is read. */
+const FOLLOW_MS = 3000
+const FOLLOW_TRIES = 100
+
+const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
+
 /** noindex unless listed for everyone. */
 function useNoIndex(on: boolean) {
   useEffect(() => {
@@ -61,6 +76,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   const [missing, setMissing] = useState(false)
   const [rows, setRows] = useState<BotConversationRow[]>([])
   const [listFailed, setListFailed] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const [current, setCurrent] = useState<BotConversationRow | null>(null)
   const [turns, setTurns] = useState<Turn[]>([])
   const [text, setText] = useState('')
@@ -69,15 +85,36 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   const [listOpen, setListOpen] = useState(false)
   const [offerShare, setOfferShare] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const stopper = useRef<AbortController | null>(null)
   const seq = useRef(0)
+  // The conversation on screen: its id, or a key for a new one not started yet. A reply that
+  // comes back after the visitor moved on is kept for its own conversation, never shown here.
+  const shown = useRef('new-0')
+  const running = useRef(new Map<string, Reply>())
+  // How many rows 「더 보기」 opened, kept when the list reloads.
+  const wanted = useRef(LIST_PAGE)
+  const alive = useRef(true)
   const end = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const focusOnConsent = useRef(false)
 
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+    }
+  }, [])
+
   const loadList = useCallback(async () => {
     try {
-      setRows(await botsApi.conversations(slug))
+      let got = await botsApi.conversations(slug)
+      let last = got.length
+      while (last === LIST_PAGE && got.length < wanted.current) {
+        const next = await botsApi.conversations(slug, got.length)
+        last = next.length
+        got = [...got, ...next.filter((row) => !got.some((have) => have.id === row.id))]
+      }
+      setRows(got)
+      setHasMore(last === LIST_PAGE)
       setListFailed(false)
     } catch {
       // The page still works; the list says it did not load instead of looking empty.
@@ -117,20 +154,41 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
     end.current?.scrollIntoView?.({ block: 'end' })
   }, [turns])
 
+  const loadMore = async () => {
+    try {
+      const next = await botsApi.conversations(slug, rows.length)
+      wanted.current = rows.length + LIST_PAGE
+      setRows((all) => [...all, ...next.filter((row) => !all.some((have) => have.id === row.id))])
+      setHasMore(next.length === LIST_PAGE)
+    } catch {
+      setListFailed(true)
+    }
+  }
+
   const open = async (row: BotConversationRow) => {
     setListOpen(false)
     setError(null)
     setOfferShare(false)
+    shown.current = row.id
+    setBusy(running.current.has(row.id))
     try {
       const got = await botsApi.conversation(slug, row.id)
+      if (shown.current !== row.id) return
       setCurrent({ id: got.id, title: got.title, sharedAt: got.sharedAt, updatedAt: row.updatedAt })
-      setTurns(got.messages)
+      // A reply still coming: its question and the answer so far, in place of the stored question.
+      const reply = running.current.get(row.id)
+      const asked = reply && got.messages.at(-1)?.role === 'user'
+      const stored = asked ? got.messages.slice(0, -1) : got.messages
+      setTurns(reply ? [...stored, reply.question, reply.answer] : stored)
     } catch {
-      setError(t('대화를 불러오지 못했습니다.'))
+      if (shown.current === row.id) setError(t('대화를 불러오지 못했습니다.'))
     }
   }
 
   const fresh = () => {
+    seq.current += 1
+    shown.current = `new-${seq.current}`
+    setBusy(false)
     setCurrent(null)
     setTurns([])
     setError(null)
@@ -159,27 +217,55 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
     setOfferShare(false)
     setBusy(true)
     setText('')
+    let key = shown.current
+    const mine = () => shown.current === key
     let conversation = current
     let made = false
+    let dropped = false
+    const asked = turns.filter((turn) => turn.role === 'user').length
     const now = new Date().toISOString()
     seq.current += 1
     const answerId = `pending-${seq.current}`
     const questionId = `q-${seq.current}`
-    setTurns((all) => [
-      ...all,
-      { id: questionId, role: 'user', content: question, rating: null, createdAt: now },
-      { id: answerId, role: 'assistant', content: '', rating: null, createdAt: now, steps: [], live: true },
-    ])
-    const update = (fn: (turn: Turn) => Turn) =>
-      setTurns((all) => all.map((turn) => (turn.id === answerId ? fn(turn) : turn)))
+    const base = { rating: null, createdAt: now }
+    const asking: Turn = { ...base, id: questionId, role: 'user', content: question }
+    const empty: Turn = { ...base, id: answerId, role: 'assistant', content: '', live: true }
+    // Kept by conversation, so returning to it shows the answer so far.
+    running.current.set(key, { controller: null, question: asking, answer: empty })
+    const patch = (change: Partial<Reply>) => {
+      const reply = running.current.get(key)
+      if (reply) running.current.set(key, { ...reply, ...change })
+    }
+    setTurns((all) => [...all, asking, empty])
+    const update = (fn: (turn: Turn) => Turn) => {
+      const reply = running.current.get(key)
+      if (!reply) return
+      const next = fn(reply.answer)
+      patch({ answer: next })
+      if (mine()) setTurns((all) => all.map((turn) => (turn.id === reply.answer.id ? next : turn)))
+    }
+    // The question back in the box, as if never sent.
+    const giveBack = (message: string) => {
+      if (!mine()) return
+      setError(message)
+      setTurns((all) => all.filter((turn) => turn.id !== answerId && turn.id !== questionId))
+      setText(question)
+    }
     try {
       if (!conversation) {
         conversation = await botsApi.start(slug)
         made = true
-        setCurrent(conversation)
+        const reply = running.current.get(key)
+        running.current.delete(key)
+        if (mine()) {
+          shown.current = conversation.id
+          setCurrent(conversation)
+        }
+        key = conversation.id
+        if (reply) running.current.set(key, reply)
       }
       const controller = new AbortController()
-      stopper.current = controller
+      patch({ controller })
       for await (const event of streamBot(slug, conversation.id, question, controller.signal)) {
         if (event.type === 'delta') update((turn) => ({ ...turn, content: turn.content + event.text }))
         else if (event.type === 'retract') update((turn) => ({ ...turn, content: turn.content.replace(event.text, '') }))
@@ -194,7 +280,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
           })
         } else if (event.type === 'title') {
           const title = event.title
-          setCurrent((c) => (c ? { ...c, title } : c))
+          if (mine()) setCurrent((c) => (c ? { ...c, title } : c))
         } else if (event.type === 'error') {
           update((turn) => ({ ...turn, error: event.message || t('답을 받지 못했습니다. 다시 시도해 주세요.') }))
         } else if (event.type === 'done') {
@@ -204,42 +290,80 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
       }
     } catch (err) {
       const aborted = err instanceof DOMException && err.name === 'AbortError'
-      if (!aborted) {
-        setError(botErrorMessage(err, t, bot.maxInputChars))
+      if (!aborted && conversation && !(err instanceof ApiError)) {
+        // The connection dropped, not a refusal: the server may still be answering.
+        dropped = true
+        if (mine()) setError(t('연결이 끊겼습니다. 서버에서 답을 이어 받는 중입니다…'))
+      } else if (!aborted) {
         if (err instanceof ApiError && err.detail === 'consent_required') setBot({ ...bot, consented: false })
         if (err instanceof ApiError && err.detail === 'bot_paused') setBot({ ...bot, status: 'paused' })
         if (err instanceof ApiError && err.detail === 'visitor_blocked') setBot({ ...bot, blocked: true })
         // Failed question goes back in the box.
-        setTurns((all) => all.filter((turn) => turn.id !== answerId && turn.id !== questionId))
-        setText(question)
+        giveBack(botErrorMessage(err, t, bot.maxInputChars))
         if (made) {
           // A refused first question leaves no conversation behind (the server drops it too).
           conversation = null
-          setCurrent(null)
+          running.current.delete(key)
+          if (mine()) {
+            seq.current += 1
+            shown.current = key = `new-${seq.current}`
+            setCurrent(null)
+          }
         }
       }
-    } finally {
-      stopper.current = null
-      setBusy(false)
-      update((turn) => ({ ...turn, live: false }))
-      if (conversation) {
-        // Stored turn: id for 👍👎, words as kept.
-        try {
-          const got = await botsApi.conversation(slug, conversation.id)
-          setTurns(got.messages)
-          setCurrent((c) => (c ? { ...c, title: got.title, sharedAt: got.sharedAt } : c))
-        } catch {
-          /* the streamed text stays */
-        }
-      }
-      // After storing, so a first conversation appears in 「내 대화」 titled.
-      void loadList()
     }
+    patch({ controller: null })
+    let stored: Awaited<ReturnType<typeof botsApi.conversation>> | null = null
+    if (dropped && conversation) {
+      // Follow the stored conversation until the answer is in.
+      const id = conversation.id
+      for (let n = 0; n < FOLLOW_TRIES && alive.current; n += 1) {
+        await wait(n === 0 ? 1000 : FOLLOW_MS)
+        try {
+          const got = await botsApi.conversation(slug, id)
+          if (got.messages.filter((m) => m.role === 'user').length <= asked) break
+          stored = got
+          if (got.messages.at(-1)?.role === 'assistant') break
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 404) break
+        }
+      }
+      if (!stored) giveBack(t('연결이 끊겨 질문을 보내지 못했습니다. 다시 보내 주세요.'))
+      else if (mine()) {
+        const answered = stored.messages.at(-1)?.role === 'assistant'
+        setError(answered ? null : t('답이 아직 오지 않았습니다. 잠시 뒤 이 대화를 다시 열어 주세요.'))
+      }
+    } else if (conversation) {
+      // Stored turn: id for 👍👎, words as kept.
+      try {
+        stored = await botsApi.conversation(slug, conversation.id)
+      } catch {
+        /* the streamed text stays */
+      }
+    }
+    update((turn) => ({ ...turn, live: false }))
+    running.current.delete(key)
+    if (mine()) {
+      setBusy(false)
+      if (stored) {
+        const got = stored
+        setTurns(got.messages)
+        setCurrent((c) => (c ? { ...c, title: got.title, sharedAt: got.sharedAt } : c))
+      }
+    }
+    // After storing, so a first conversation appears in 「내 대화」 titled.
+    void loadList()
   }
 
   const stop = async () => {
-    stopper.current?.abort()
-    if (current) await botsApi.stop(slug, current.id).catch(() => undefined)
+    const reply = running.current.get(shown.current)
+    reply?.controller?.abort()
+    if (!current) return
+    try {
+      await botsApi.stop(slug, current.id)
+    } catch {
+      setError(t('멈추지 못했습니다. 답이 끝까지 쓰일 수 있습니다.'))
+    }
   }
 
   const rate = async (turn: Turn, rating: 'up' | 'down') => {
@@ -267,7 +391,14 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
 
   const remove = async () => {
     if (!current) return
-    await botsApi.remove(slug, current.id).catch(() => undefined)
+    try {
+      await botsApi.remove(slug, current.id)
+    } catch {
+      // The conversation stays on screen and in the list.
+      setDeleting(false)
+      setError(t('대화를 지우지 못했습니다. 다시 시도해 주세요.'))
+      return
+    }
     setDeleting(false)
     fresh()
     void loadList()
@@ -357,6 +488,20 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
             </button>
           </li>
         ))}
+        {hasMore && !listFailed && (
+          <li>
+            <button
+              type="button"
+              onClick={() => void loadMore()}
+              className={cn(
+                'w-full rounded-control px-2.5 py-1.5 text-left text-sm text-accent',
+                'hover:bg-elevated',
+              )}
+            >
+              {t('더 보기')}
+            </button>
+          </li>
+        )}
       </ul>
       <p className="px-1 text-xs text-faint">
         {t('대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.').replace('{n}', String(bot.retentionDays))}
