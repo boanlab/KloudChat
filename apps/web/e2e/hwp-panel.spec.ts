@@ -16,13 +16,14 @@ const at = '2026-11-11T00:00:00.000Z'
 const hwpx = readFileSync(new URL('./fixtures/hwp-official.hwpx', import.meta.url))
 const studio = readFileSync(new URL('./fixtures/fake-rhwp.html', import.meta.url), 'utf8')
 
-type Options = { conflict?: boolean; holdTurn?: Promise<void> }
+type Options = { conflict?: boolean; holdTurn?: Promise<void>; fromHome?: boolean }
 
 async function fixture(page: Page, options: Options = {}) {
   const unexpected: string[] = []
   const problems: string[] = []
   const saves: { expected: string | null; size: number }[] = []
   const sent: Record<string, unknown>[] = []
+  const created: Record<string, unknown>[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
   let artifact = {
     id: artifactId, title: '직원 연수 참석 요청', kind: 'hwp', version: 1, partial: false,
@@ -68,10 +69,21 @@ async function fixture(page: Page, options: Options = {}) {
       autoRouting: { enabled: false, available: false },
     })
     if (path === '/credits') return json({ monthlyCredits: 1000, creditsUsed: 0, creditsRemaining: 1000 })
+    if (path === '/sessions' && method === 'POST') {
+      // the conversation the home screen's 「한글 문서」 starts, under the id the client chose
+      const body = request.postDataJSON()
+      Object.assign(session, { id: body.id, title: '새 작업' })
+      return json(session)
+    }
+    if (path === '/artifacts/hwp' && method === 'POST') {
+      created.push(request.postDataJSON())
+      artifact = { ...artifact, sessionId: session.id, title: '새 한글 문서' }
+      return route.fulfill({ status: 201, json: artifact })
+    }
     if (path === '/sessions' && method === 'GET') return json([session])
-    if (path === `/sessions/${sessionId}` && method === 'GET') return json(session)
-    if (path === `/sessions/${sessionId}/messages` && method === 'GET') return json(messages)
-    if (path === `/sessions/${sessionId}/messages` && method === 'POST') {
+    if (path === `/sessions/${session.id}` && method === 'GET') return json(session)
+    if (path === `/sessions/${session.id}/messages` && method === 'GET') return json(messages)
+    if (path === `/sessions/${session.id}/messages` && method === 'POST') {
       sent.push(request.postDataJSON())
       if (options.holdTurn) await options.holdTurn
       // what the server keeps of the turn, read back when the stream ends
@@ -126,14 +138,14 @@ async function fixture(page: Page, options: Options = {}) {
     if (path === '/artifacts/counts') return json({ counts: { hwp: 1 }, total: 1 })
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
-    if (method === 'GET' && [`/sessions/${sessionId}/jobs`, '/projects', '/skills', '/memory',
+    if (method === 'GET' && [`/sessions/${session.id}/jobs`, '/projects', '/skills', '/memory',
       '/agents', '/tools', '/connectors', '/connectors/catalog', '/jobs', '/designs',
       '/design-templates', '/shares'].includes(path)) return json([])
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })
   })
-  await page.goto(`/s/${sessionId}?artifact=${artifactId}`)
-  return { unexpected, problems, saves, sent }
+  await page.goto(options.fromHome ? '/' : `/s/${sessionId}?artifact=${artifactId}`)
+  return { unexpected, problems, saves, sent, created }
 }
 
 const panel = (page: Page) => page.locator('[data-panel="artifact"]')
@@ -250,4 +262,16 @@ test('on a phone the document opens to read, without a save button @phone', asyn
   await expect(header.getByRole('button', { name: '내려받기' })).toBeEnabled()
   expect(state.unexpected).toEqual([])
   expect(state.problems).toEqual([])
+})
+
+test('home starts a chat with a blank HWP document open beside it', async ({ page }) => {
+  const state = await fixture(page, { fromHome: true })
+  // beside the surfaces, not one of them
+  await expect(page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '한글 문서' }))
+    .toHaveCount(0)
+  await page.getByRole('button', { name: '한글 문서', exact: true }).click()
+  await expect(page).toHaveURL(/\/s\/[0-9a-z_-]+/)
+  await expect(editor(page).locator('#doc')).toHaveText(`document.hwpx ${hwpx.length}`)
+  expect(state.created).toEqual([{ sessionId: expect.any(String), title: '새 한글 문서' }])
+  expect(state.unexpected).toEqual([])
 })

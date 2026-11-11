@@ -200,47 +200,48 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
       </div>
 
       <div className="shrink-0 pt-2" data-testid="home-dock">
-        <div role="group"
-          aria-label={t('만들 것')}
-          className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none]">
-          {surfaces.map((k) => {
-            const meta = kindMeta[k]
-            const Icon = meta.icon
-            const on = k === active
-            return (
+        <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none]">
+          {/* The surfaces; the HWP document beside them is a chat with a file, not a surface. */}
+          <div role="group" aria-label={t('만들 것')} className="contents">
+            {surfaces.map((k) => {
+              const meta = kindMeta[k]
+              const Icon = meta.icon
+              const on = k === active
+              return (
+                <button
+                  key={k}
+                  onClick={() => setKind(k)}
+                  aria-pressed={on}
+                  title={t(meta.tagline)}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
+                    on
+                      ? 'border-accent bg-accent-soft text-accent'
+                      : 'border-line text-muted hover:bg-elevated hover:text-fg',
+                  )}
+                >
+                  <Icon size={14} style={{ color: on ? undefined : meta.color }} />
+                  {t(meta.label)}
+                </button>
+              )
+            })}
+          </div>
+            {surfaces.includes('chat') && (
               <button
-                key={k}
-                onClick={() => setKind(k)}
-                aria-pressed={on}
-                title={t(meta.tagline)}
-                className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
-                  on
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-line text-muted hover:bg-elevated hover:text-fg',
-                )}
+                type="button"
+                onClick={() => void startHwp()}
+                disabled={openingHwp}
+                title={t('빈 한글 문서를 열고, 챗으로 쓰고 고칩니다')}
+                className="flex shrink-0 items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-base text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-60"
               >
-                <Icon size={14} style={{ color: on ? undefined : meta.color }} />
-                {t(meta.label)}
+                {openingHwp ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <FileType size={14} style={{ color: '#2b6cb0' }} />
+                )}
+                {t('한글 문서')}
               </button>
-            )
-          })}
-          {surfaces.includes('chat') && (
-            <button
-              type="button"
-              onClick={() => void startHwp()}
-              disabled={openingHwp}
-              title={t('빈 한글 문서를 열고, 챗으로 쓰고 고칩니다')}
-              className="flex shrink-0 items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-base text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-60"
-            >
-              {openingHwp ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <FileType size={14} style={{ color: '#2b6cb0' }} />
-              )}
-              {t('한글 문서')}
-            </button>
-          )}
+            )}
         </div>
         {/* `key` remount per surface: draft, attachments, skill pick are per surface. */}
         <Composer key={active} sessionId={null} kind={active} autoFocus />
