@@ -88,6 +88,8 @@ class ToolContext:
     searched: list[str] = field(default_factory=list)
     #: Own skill scripts by key; sandbox-only via `run_skill_script`.
     own_scripts: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: HWP tools: `id`/`version` last read or written, `changed` once a version was saved.
+    hwp: dict[str, Any] = field(default_factory=dict)
 
 
 def to_openai(tools: list[Tool]) -> list[dict[str, Any]]:
