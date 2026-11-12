@@ -54,6 +54,19 @@ def test_the_summarisers_reply_splits_into_summary_and_pinned_updates():
     assert updates == [("워크숍 장소", "성수동 D센터 지하 1층 홀"), ("인원", "52명")]
 
 
+def test_headings_written_in_korean_anyway_are_still_read():
+    reply = "요약:\n보고서 작성 중.\n고정 항목:\n- 매출: 312억 원"
+    summary, updates = conversation_summary.parse(reply)
+    assert summary == "보고서 작성 중."
+    assert updates == [("매출", "312억 원")]
+
+
+def test_the_summariser_is_asked_to_pin_every_figure_the_user_typed():
+    text = conversation_summary.prompt(None, [{"role": "user", "content": "매출 312억 원"}])
+    assert "each one, not a selection" in text
+    assert "Keep the two headings `SUMMARY:` and `PINNED:` in English" in text
+
+
 def test_a_reply_without_the_layout_is_all_summary_and_pins_nothing():
     summary, updates = conversation_summary.parse("그냥 요약 문장입니다.")
     assert summary == "그냥 요약 문장입니다."
@@ -102,7 +115,7 @@ def test_the_summariser_sees_the_users_words_apart_from_what_they_pasted():
     assert "[Pasted material, " in text and "characters left out" in text
     # the material's tail is kept too, not only its head
     assert "마지막 줄." in text
-    assert "never what is inside `[Pasted material" in text
+    assert "Do not pin what is inside `[Pasted material" in text
 
 
 def test_one_batch_pins_a_bounded_number_of_items(monkeypatch):
