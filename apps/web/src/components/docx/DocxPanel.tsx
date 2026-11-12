@@ -82,7 +82,12 @@ export function DocxPanel({
     // printed (index.css), so the pages laid out for print are copied beside it until it closes.
     // (A document of mixed page sizes prints the editor's own copies.)
     let printed: HTMLElement | null = null
+    const afterPrint = () => {
+      printed?.remove()
+      printed = null
+    }
     const beforePrint = () => {
+      afterPrint() // one copy, however often it is asked for
       const sheet = el.querySelector('.odx-page')
       if (!sheet || document.querySelector('body > .odx-print-pages')) return
       printed = document.createElement('div')
@@ -90,10 +95,6 @@ export function DocxPanel({
       printed.setAttribute('data-print-docx', '')
       printed.append(sheet.cloneNode(true))
       document.body.append(printed)
-    }
-    const afterPrint = () => {
-      printed?.remove()
-      printed = null
     }
     /** After the editor's own listeners, which lay the pages out for print: each open adds them anew. */
     const armPrint = () => {
