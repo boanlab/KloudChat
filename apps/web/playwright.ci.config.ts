@@ -72,7 +72,7 @@ const groups: Record<string, Group> = {
     projects: { desktop, phone: touchPhone },
   },
   'i18n-gates': { files: ['i18n-audit-gates.spec.ts'], projects: { default: { ...devices['Desktop Chrome'] } } },
-  'report-table': { files: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts', 'report-broken-picture.spec.ts'], projects: { default: desktop } },
+  'report-table': { files: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts', 'report-broken-picture.spec.ts', 'report-follows-a-dropped-stream.spec.ts'], projects: { default: desktop } },
   'session-hydration': {
     files: [
       'session-hydration.spec.ts',
@@ -93,6 +93,8 @@ const groups: Record<string, Group> = {
   },
   chain: { files: ['chain-canvas.spec.ts'], projects: { desktop, phone: pixelNative } },
   issues: { files: ['issue-reports.spec.ts'], projects: { desktop } },
+  session: { files: ['session-renewal.spec.ts'], projects: { desktop } },
+  'serving-guards': { files: ['serving-guards.spec.ts'], projects: { desktop } },
   customize: {
     files: [
       'customize-hub.spec.ts',
@@ -124,6 +126,11 @@ const groups: Record<string, Group> = {
   ux: { files: ['ux-keyboard-forms.spec.ts'], projects: { desktop, phone: pixel } },
   'admin-models': { files: ['admin-models.spec.ts'], projects: { desktop, phone: touchPhone } },
   'admin-users': { files: ['admin-users-paging.spec.ts'], projects: { desktop, phone: touchPhone } },
+  'share-and-index': {
+    files: ['share-one-artifact.spec.ts', 'project-knowledge-reindex.spec.ts'],
+    projects: { desktop },
+  },
+  'failed-saves': { files: ['saves-that-fail.spec.ts'], projects: { desktop } },
 }
 
 export default defineConfig({

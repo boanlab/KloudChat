@@ -47,28 +47,50 @@ import type {
   User,
   UserListQuery,
   UserPage,
+  UserRole,
 } from '@/types'
 import type { GraphStep, GraphVerdict, PipelineEdge } from '@/types/pipelineGraph'
 
 import { objectParticle, topicParticle } from './formCheck'
 import { currentLang, currentLocale, translate } from './i18n'
+import { setServiceTimeZone } from './serviceTime'
+import { overUploadLimit, tooLargeMessage } from './uploadLimit'
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
 /** In memory only; refresh token is an httpOnly cookie, recovered via `auth.refresh()`. */
 let accessToken: string | null = null
+/** When the access token lapses (epoch ms); 0 when not known. */
+let tokenExpiresAt = 0
 /** `auto`: decided from the message. */
 export type WebSearchSetting = boolean | 'auto'
 
-export const setAccessToken = (t: string | null) => {
+export const setAccessToken = (t: string | null, expiresIn?: number) => {
   accessToken = t
+  tokenExpiresAt = t && expiresIn ? Date.now() + expiresIn * 1000 : 0
 }
+
+/** Whether the access token has lapsed, or will within `marginMs`. */
+export function tokenStale(marginMs = 0): boolean {
+  return Boolean(accessToken) && tokenExpiresAt > 0 && Date.now() + marginMs >= tokenExpiresAt
+}
+
+/** Set by the store: renews the access token, true when a fresh one is in hand. */
+let renewer: (() => Promise<boolean>) | null = null
+export function setSessionRenewer(renew: (() => Promise<boolean>) | null) {
+  renewer = renew
+}
+/** Set by `readDetail`, taken by the next `ApiError`. */
+let failedRequestId = ''
+
 /** Carries the backend's `detail` code so callers can branch without parsing prose. */
 export class ApiError extends Error {
   readonly status: number
   readonly detail: string
-  /** Seconds the server asked to wait (`Retry-After` on a 429), when it said. */
+  /** Seconds the server asked to wait (`Retry-After` on a 429 or 423), when it said. */
   readonly retryAfter?: number
+  /** The failed answer's `X-Request-ID`, for the error screen's 기술 정보 and the server log. */
+  readonly requestId?: string
 
   constructor(status: number, detail: string, retryAfter?: number) {
     super(detail)
@@ -76,6 +98,9 @@ export class ApiError extends Error {
     this.status = status
     this.detail = detail
     this.retryAfter = retryAfter
+    // Every failed answer passes `readDetail` just before its error is made.
+    this.requestId = failedRequestId || undefined
+    failedRequestId = ''
   }
 }
 
@@ -104,6 +129,14 @@ export function errorMessage(err: unknown, fallback: string): string {
     return err.detail
   }
   return fallback
+}
+
+/** A read that got no answer within `READ_TIMEOUT_MS`; `detail` is the screen sentence. */
+export class RequestTimeoutError extends ApiError {
+  constructor() {
+    super(408, translate(currentLang(), '응답이 늦어 요청을 멈췄습니다. 잠시 뒤 다시 시도하세요.'))
+    this.name = 'RequestTimeoutError'
+  }
 }
 
 export class UnauthorizedError extends ApiError {
@@ -199,11 +232,20 @@ function validationMessage(problems: FieldProblem[]): string {
   return translate(lang, '입력한 값을 확인하세요.')
 }
 
+/** A 413 from the API (`file_too_large_<n>mb`) or from nginx (an HTML page) names the limit. */
+function tooLargeDetail(status: number, detail: string): string {
+  if (status !== 413) return detail
+  const named = /^file_too_large_(\d+)mb$/.exec(detail)
+  if (named) return tooLargeMessage(Number(named[1]))
+  return detail === 'http_413' ? tooLargeMessage() : detail
+}
+
 async function readDetail(res: Response): Promise<string> {
+  failedRequestId = res.headers?.get('X-Request-ID') ?? ''
   try {
     const body = await res.json()
     // FastAPI: string `detail` for raises, array for validation.
-    if (typeof body?.detail === 'string') return body.detail
+    if (typeof body?.detail === 'string') return tooLargeDetail(res.status, body.detail)
     if (Array.isArray(body?.detail)) return validationMessage(body.detail as FieldProblem[])
     // A refused order of steps (`invalid_pipeline`): its first problem, already a sentence.
     const problem = body?.detail?.problems?.[0]?.message
@@ -213,7 +255,7 @@ async function readDetail(res: Response): Promise<string> {
   } catch {
     /* non-JSON error body */
   }
-  return `http_${res.status}`
+  return tooLargeDetail(res.status, `http_${res.status}`)
 }
 
 /** Framed on another site: bot calls go out accountless, keeping the frame's visitor cookie. */
@@ -227,20 +269,89 @@ function who(path: string): Record<string, string> {
   return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
 }
 
-async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...init,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...who(path),
-      ...init.headers,
-    },
-  })
+/** Seconds a refusal asked to wait (`Retry-After`), when it said. */
+function retryAfter(res: Response): number | undefined {
+  const wait = Number(res.headers.get('Retry-After'))
+  return wait > 0 ? wait : undefined
+}
+
+/** Reads give up after this; writes may run model work for minutes, so they wait. */
+const READ_TIMEOUT_MS = 60_000
+
+/** Sign-in calls answer 401 for a wrong password, not for a lapsed token. */
+const renewable = (path: string) => !path.startsWith('/auth/') || path.startsWith('/auth/me')
+
+interface SendOptions {
+  /** 0: no limit. */
+  timeoutMs?: number
+  /** Sent again once when the network dropped it; only for requests safe to repeat. */
+  retryNetwork?: boolean
+}
+
+/** One request with this tab's credentials: a lapsed token is renewed first, and once on a 401. */
+async function send(url: string, init: RequestInit = {}, opts: SendOptions = {}) {
+  const path = url.startsWith(BASE_URL) ? url.slice(BASE_URL.length) : url
+  const tokenless = botEmbedded && path.startsWith('/b/')
+  const renew = renewer && renewable(path) && !tokenless ? renewer : null
+  if (renew && tokenStale()) await renew()
+  const attempt = async () => {
+    const controller = new AbortController()
+    const abort = () => controller.abort()
+    init.signal?.addEventListener('abort', abort, { once: true })
+    if (init.signal?.aborted) abort()
+    let timedOut = false
+    const timer = opts.timeoutMs
+      ? setTimeout(() => {
+        timedOut = true
+        abort()
+      }, opts.timeoutMs)
+      : undefined
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: controller.signal,
+        credentials: 'include',
+        headers: { ...init.headers, ...who(path) },
+      })
+    } catch (err) {
+      if (timedOut) throw new RequestTimeoutError()
+      throw err
+    } finally {
+      clearTimeout(timer)
+      init.signal?.removeEventListener('abort', abort)
+    }
+  }
+  const sent = accessToken
+  let res: Response
+  try {
+    res = await attempt()
+  } catch (err) {
+    // fetch rejects with a TypeError when the network, not the server, failed.
+    if (!opts.retryNetwork || !(err instanceof TypeError)) throw err
+    res = await attempt()
+  }
+  // Renewed already when another request met the same lapsed token first.
+  if (res.status === 401 && sent && renew && (accessToken !== sent || (await renew()))) {
+    return attempt()
+  }
+  return res
+}
+
+/** `fetch` for multipart uploads and downloads; no time limit, a large file takes long. */
+const authedFetch = (url: string, init: RequestInit = {}) => send(url, init)
+
+async function call<T>(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
+  const { timeoutMs, ...rest } = init
+  const read = !rest.method || rest.method === 'GET'
+  const res = await send(
+    `${BASE_URL}${path}`,
+    { ...rest, headers: { 'Content-Type': 'application/json', ...rest.headers } },
+    { timeoutMs: timeoutMs ?? (read ? READ_TIMEOUT_MS : 0), retryNetwork: read },
+  )
   if (!res.ok) {
     const detail = await readDetail(res)
     if (res.status === 401) throw new UnauthorizedError(detail)
-    throw new ApiError(res.status, detail)
+    throw new ApiError(res.status, detail, retryAfter(res))
   }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
 }
@@ -262,13 +373,21 @@ interface SignupResult {
   session: AuthSession | null
 }
 
+let refreshing: Promise<AuthSession | undefined> | null = null
+
 export const auth = {
   login: (email: string, password: string) =>
     call<AuthSession>('/auth/login', body({ email, password })),
   signup: (email: string, password: string, name: string) =>
     call<SignupResult>('/auth/signup', body({ email, password, name })),
   /** `undefined` (204) when the browser holds no refresh cookie: signed out. */
-  refresh: () => call<AuthSession | undefined>('/auth/refresh', { method: 'POST' }),
+  refresh: () => {
+    // One at a time: presenting the rotating cookie twice reads as token reuse.
+    const init = { method: 'POST', timeoutMs: 30_000 }
+    refreshing ??= call<AuthSession | undefined>('/auth/refresh', init)
+      .finally(() => { refreshing = null })
+    return refreshing
+  },
   logout: () => call<void>('/auth/logout', { method: 'POST' }),
   /** Reachable while `pending` — the approval-waiting screen polls it. */
   me: () => call<User>('/auth/me'),
@@ -423,11 +542,9 @@ export const transcriptionsApi = {
     // Whisper reads `prompt` as a vocabulary hint and `language` as a pin.
     if (hints.language) form.append('language', hints.language)
     if (hints.prompt) form.append('prompt', hints.prompt.slice(0, 500))
-    const res = await fetch(`${BASE_URL}/transcriptions`, {
+    const res = await authedFetch(`${BASE_URL}/transcriptions`, {
       method: 'POST',
       body: form,
-      credentials: 'include',
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
     })
     if (!res.ok) throw new ApiError(res.status, await readDetail(res))
     return (await res.json()) as { text: string; seconds: number }
@@ -454,7 +571,15 @@ export const authConfig = {
       password?: { minLength: number }
       /** Wrong passwords in a row that lock an address, and for how long. */
       login?: { maxFailures: number; lockoutMinutes: number }
-    }>('/auth/config'),
+      /** Service time zone (IANA); absent from older servers. */
+      timeZone?: string
+      /** One file's upload ceiling; absent from older servers. */
+      upload?: { maxMb: number }
+    }>('/auth/config').then((config) => {
+      // Every date on screen follows it, whichever screen asked first.
+      setServiceTimeZone(config.timeZone)
+      return config
+    }),
   forgotPassword: (email: string) => call<void>('/auth/password/forgot', body({ email })),
   resetPassword: (token: string, newPassword: string) =>
     call<void>('/auth/password/reset', body({ token, newPassword })),
@@ -543,11 +668,9 @@ export const adminApi = {
   uploadLogo: async (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch(`${BASE_URL}/admin/branding/logo`, {
+    const res = await authedFetch(`${BASE_URL}/admin/branding/logo`, {
       method: 'POST',
       body: form,
-      credentials: 'include',
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
     })
     if (!res.ok) throw new ApiError(res.status, await readDetail(res))
     return (await res.json()) as { logo: string }
@@ -594,6 +717,8 @@ export const adminApi = {
   /** Sets the monthly allowance. Takes effect now and at every refill. */
   setCredits: (id: string, monthlyCredits: number) =>
     call<User>(`/admin/users/${id}/credits`, body({ monthlyCredits })),
+  /** Grants or revokes admin; the server refuses the caller's own and the last admin. */
+  setRole: (id: string, role: UserRole) => call<User>(`/admin/users/${id}/role`, body({ role })),
   /** Corrects a name or address; a field left out is left alone. */
   updateUser: (id: string, patch: { name?: string; email?: string }) =>
     call<User>(`/admin/users/${id}`, { ...body(patch), method: 'PATCH' }),
@@ -787,10 +912,7 @@ export async function fetchArtifactExport(
   id: string,
   format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md' | 'html' | 'source',
 ): Promise<Response> {
-  const res = await fetch(`${BASE_URL}/artifacts/${id}/export?format=${format}`, {
-    credentials: 'include',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  })
+  const res = await authedFetch(`${BASE_URL}/artifacts/${id}/export?format=${format}`)
   if (!res.ok) throw new ApiError(res.status, await readDetail(res))
   return res
 }
@@ -826,7 +948,9 @@ export async function downloadArtifact(
 /** `src` for media elements: token in the query string, since they cannot send a header. */
 export function fileUrl(src: string | null | undefined): string | undefined {
   if (!src) return undefined
-  if (!accessToken || !src.startsWith(`${BASE_URL}/files/`)) return src
+  // A members-only share's media asks for the reader's account like the owner's own files do.
+  const media = src.startsWith(`${BASE_URL}/files/`) || src.startsWith(`${BASE_URL}/shared/`)
+  if (!accessToken || !media) return src
   return `${src}${src.includes('?') ? '&' : '?'}t=${encodeURIComponent(accessToken)}`
 }
 
@@ -988,12 +1112,14 @@ export interface SessionRow {
 }
 
 export const sessionsApi = {
-  /** 「에이전트로 저장」: this conversation as a draft agent. Nothing is saved. */
+  /** 「에이전트로 저장」: this conversation as a draft agent. Nothing saved; a model reads it, untimed. */
   agentDraft: (sessionId: string, distill = true) =>
-    call<AgentDraft>(`/sessions/${sessionId}/agent-draft${distill ? '' : '?distill=false'}`),
+    call<AgentDraft>(`/sessions/${sessionId}/agent-draft${distill ? '' : '?distill=false'}`, {
+      timeoutMs: 0,
+    }),
   /** 「에이전트로 저장」's 지시 alone: what the conversation settled, asked after the rest. */
   agentDraftDecided: (sessionId: string) =>
-    call<AgentDraftDecided>(`/sessions/${sessionId}/agent-draft/decided`),
+    call<AgentDraftDecided>(`/sessions/${sessionId}/agent-draft/decided`, { timeoutMs: 0 }),
   /** A report or slides session continuing this chat with its agent; the files carry the conversation. */
   handoff: (sessionId: string, kind: 'report' | 'slides') =>
     call<{ session: SessionRow; attachments: FileRow[] }>(
@@ -1146,15 +1272,13 @@ export const filesApi = {
     return call<FileRow[]>(`/files${query ? `?${query}` : ''}`)
   },
   upload: async (file: File, opts?: { projectId?: string; sessionId?: string }) => {
+    if (overUploadLimit(file)) throw new ApiError(413, tooLargeMessage())
     const form = new FormData()
     form.append('file', file)
     if (opts?.projectId) form.append('project_id', opts.projectId)
     if (opts?.sessionId) form.append('session_id', opts.sessionId)
-    const res = await fetch(`${BASE_URL}/files`, {
+    const res = await authedFetch(`${BASE_URL}/files`, {
       method: 'POST',
-      credentials: 'include',
-      // No Content-Type — the browser has to set the multipart boundary.
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       body: form,
     })
     if (!res.ok) {
@@ -1174,15 +1298,13 @@ export const filesApi = {
   /** Reads an uploaded `.hwpx` into a new report session; nothing generated or charged. Returns the session id. */
   openAsDocument: (id: string) =>
     call<{ id: string }>(`/files/${id}/open-as-document`, { method: 'POST' }),
-  remove: (id: string) => call<void>(`/files/${id}`, { method: 'DELETE' }),
+  // `keepalive`: a held delete flushed as the page closes still reaches the server.
+  remove: (id: string) => call<void>(`/files/${id}`, { method: 'DELETE', keepalive: true }),
 }
 
 /** A stored file's bytes, typed as the server serves them. Fetch + blob so the token travels in a header, not the URL. */
 export async function fileBlob(id: string): Promise<Blob> {
-  const res = await fetch(filesApi.downloadUrl(id), {
-    credentials: 'include',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  })
+  const res = await authedFetch(filesApi.downloadUrl(id))
   if (!res.ok) {
     const detail = await readDetail(res)
     if (res.status === 401) throw new UnauthorizedError(detail)
@@ -1229,6 +1351,12 @@ export const projectsApi = {
   update: (id: string, patch: Partial<ProjectRow>) =>
     call<ProjectRow>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/projects/${id}`, { method: 'DELETE' }),
+  /** Sends the documents the vector index does not cover yet (`force`: all of them). */
+  reindex: (id: string, force = false) =>
+    call<{ total: number; attempted: number; indexed: number }>(
+      `/projects/${id}/knowledge/reindex${force ? '?force=true' : ''}`,
+      { method: 'POST' },
+    ),
 }
 
 function artifactParams(params: ArtifactQuery = {}) {
@@ -1487,11 +1615,8 @@ export const skillsApi = {
     const query = new URLSearchParams()
     if (opts.dryRun) query.set('dryRun', 'true')
     if (opts.draft) query.set('draft', 'true')
-    const res = await fetch(`${BASE_URL}/skills/import${query.size ? `?${query}` : ''}`, {
+    const res = await authedFetch(`${BASE_URL}/skills/import${query.size ? `?${query}` : ''}`, {
       method: 'POST',
-      credentials: 'include',
-      // No Content-Type — the browser has to set the multipart boundary.
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       body: form,
     })
     if (!res.ok) {
@@ -1570,10 +1695,7 @@ interface SkillImportResult {
 
 /** Downloads one of your skills as SKILL.md. */
 export async function downloadSkill(id: string, name: string) {
-  const res = await fetch(`${BASE_URL}/skills/${id}/export`, {
-    credentials: 'include',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  })
+  const res = await authedFetch(`${BASE_URL}/skills/${id}/export`)
   if (!res.ok) {
     const detail = await readDetail(res)
     if (res.status === 401) throw new UnauthorizedError(detail)
@@ -1683,12 +1805,11 @@ export const agentsApi = {
   knowledge: {
     list: (agentId: string) => call<FileRow[]>(`/agents/${agentId}/knowledge`),
     upload: async (agentId: string, file: File) => {
+      if (overUploadLimit(file)) throw new ApiError(413, tooLargeMessage())
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch(`${BASE_URL}/agents/${agentId}/knowledge`, {
+      const res = await authedFetch(`${BASE_URL}/agents/${agentId}/knowledge`, {
         method: 'POST',
-        credentials: 'include',
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
         body: form,
       })
       if (!res.ok) throw new ApiError(res.status, await readDetail(res))
@@ -1700,7 +1821,7 @@ export const agentsApi = {
     fromFiles: (agentId: string, ids: string[]) =>
       call<FileRow[]>(`/agents/${agentId}/knowledge/from-files`, body({ ids })),
     remove: (agentId: string, fileId: string) =>
-      call<void>(`/agents/${agentId}/knowledge/${fileId}`, { method: 'DELETE' }),
+      call<void>(`/agents/${agentId}/knowledge/${fileId}`, { method: 'DELETE', keepalive: true }),
     /** `force` re-sends everything — what an embedding-model change needs. */
     reindex: (agentId: string, force = false) =>
       call<{ total: number; attempted: number; indexed: number }>(
@@ -2102,6 +2223,8 @@ async function* postStream(
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
   if (signal?.aborted) abort()
+  // Renewed before it starts; a turn that has started is never sent twice.
+  if (renewer && !(botEmbedded && path.startsWith('/b/')) && tokenStale()) await renewer()
 
   const res = await withStallGuard(
     fetch(`${BASE_URL}${path}`, {
@@ -2134,8 +2257,7 @@ async function* postStream(
     // The 409 body was consumed above; reading it twice loses the code.
     const resolved = detail ?? (res.status === 409 ? `http_${res.status}` : await readDetail(res))
     if (res.status === 401) throw new UnauthorizedError(resolved)
-    const wait = Number(res.headers.get('Retry-After'))
-    throw new ApiError(res.status, resolved, res.status === 429 && wait > 0 ? wait : undefined)
+    throw new ApiError(res.status, resolved, retryAfter(res))
   }
   // A turn that stopped to ask answers in JSON; translated into events here.
   if (res.headers.get('content-type')?.includes('application/json')) {
@@ -2485,7 +2607,11 @@ export const botsApi = {
   page: (slug: string) => call<BotPage>(`/b/${encodeURIComponent(slug)}`),
   consent: (slug: string, version: number) =>
     call<void>(`/b/${encodeURIComponent(slug)}/consent`, body({ version })),
-  conversations: (slug: string) => call<BotConversationRow[]>(`/b/${encodeURIComponent(slug)}/conversations`),
+  /** Newest first, 50 at a time; `offset` skips the rows already shown. */
+  conversations: (slug: string, offset = 0) =>
+    call<BotConversationRow[]>(
+      `/b/${encodeURIComponent(slug)}/conversations${offset ? `?offset=${offset}` : ''}`,
+    ),
   start: (slug: string) => call<BotConversationRow>(`/b/${encodeURIComponent(slug)}/conversations`, { method: 'POST' }),
   conversation: (slug: string, id: string) =>
     call<BotConversationRow & { messages: BotTranscriptMessage[] }>(`/b/${encodeURIComponent(slug)}/conversations/${id}`),
@@ -2716,10 +2842,7 @@ export interface AdminIssueFilters {
 }
 
 async function issueBlob(path: string): Promise<Blob> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    credentials: 'include',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  })
+  const res = await authedFetch(`${BASE_URL}${path}`)
   if (!res.ok) {
     const detail = await readDetail(res)
     if (res.status === 401) throw new UnauthorizedError(detail)
@@ -2993,10 +3116,8 @@ export const userTemplatesApi = {
   uploadForm: async (id: string, file: File) => {
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch(`${BASE_URL}/user-templates/${encodeURIComponent(id)}/form`, {
+    const res = await authedFetch(`${BASE_URL}/user-templates/${encodeURIComponent(id)}/form`, {
       method: 'POST',
-      credentials: 'include',
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       body: form,
     })
     if (!res.ok) {
@@ -3028,4 +3149,16 @@ export const connectorCatalogApi = {
   remove: (id: string) => call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   stdioAllow: (commands: string[]) =>
     call<{ stdioAllow: string[] }>('/admin/connector-catalog/stdio-allow', { method: 'PUT', body: JSON.stringify({ commands }) }),
+}
+
+/** An uncaught browser error, for the server log only (`lib/clientErrors.ts`). */
+export const clientErrorsApi = {
+  report: (report: {
+    kind: 'error' | 'unhandledrejection' | 'boundary'
+    message: string
+    stack: string
+    route: string
+    version: string
+    requestId: string
+  }) => call<void>('/client-errors', body(report)),
 }

@@ -19,6 +19,7 @@ import {
 import { KIND_LABEL, STATUS_LABEL } from '@/lib/issues'
 import { kindMeta } from '@/lib/kinds'
 import { useT } from '@/lib/useT'
+import { formatDateTime, serviceMidnight, shiftDate } from '@/lib/utils'
 import type { SessionKind } from '@/types'
 
 const STATUSES: IssueStatus[] = ['received', 'checking', 'resolved', 'on_hold']
@@ -30,11 +31,9 @@ const UPDATE_ERROR: Record<string, string> = {
   assignee_not_admin: '담당자는 관리자만 맡을 수 있습니다.',
 }
 
-/** Next local midnight after `date`: inclusive end. */
+/** Service-zone midnight after `date`: inclusive end. */
 function dayAfter(date: string): string {
-  const d = new Date(`${date}T00:00:00`)
-  d.setDate(d.getDate() + 1)
-  return d.toISOString()
+  return serviceMidnight(shiftDate(date, 1)).toISOString()
 }
 
 export function AdminIssuesPage() {
@@ -59,7 +58,7 @@ function IssueList() {
   const load = useCallback(() => {
     const filters: AdminIssueFilters = {
       kind, status, user: user.trim(), q: q.trim(), assignee, page, size: PAGE_SIZE,
-      since: since ? new Date(`${since}T00:00:00`).toISOString() : undefined,
+      since: since ? serviceMidnight(since).toISOString() : undefined,
       until: until ? dayAfter(until) : undefined,
     }
     issuesApi.adminList(filters).then(
@@ -161,7 +160,7 @@ function IssueListRow({ row, onOpen }: { row: IssueRow; onOpen: () => void }) {
           <span className="block truncate text-base">{row.body}</span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-faint">
             <span>{row.reporter ? `${row.reporter.name} · ${row.reporter.email}` : ''}</span>
-            <span>{new Date(row.createdAt).toLocaleString()}</span>
+            <span>{formatDateTime(row.createdAt)}</span>
             {row.assignee && <span>{t('담당자')}: {row.assignee.name}</span>}
             {row.replies ? <span>{t('답변 {n}개').replace('{n}', String(row.replies))}</span> : null}
           </span>
@@ -272,7 +271,7 @@ function IssueDetailView({ id }: { id: string }) {
               <div className="flex flex-wrap items-center gap-1.5">
                 <StatusBadge status={detail.status} />
                 <Badge>{t(KIND_LABEL[detail.kind])}</Badge>
-                <span className="text-sm text-faint">{new Date(detail.createdAt).toLocaleString()}</span>
+                <span className="text-sm text-faint">{formatDateTime(detail.createdAt)}</span>
               </div>
               <h1 className="text-lg font-semibold">
                 {detail.reporter ? `${detail.reporter.name} · ${detail.reporter.email}` : t('알 수 없는 사용자')}

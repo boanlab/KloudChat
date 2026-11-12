@@ -22,10 +22,13 @@ from app.routers import sessions
 )
 def test_every_streamed_turn_is_detached(runner: str) -> None:
     """Every streamed route wraps its runner in `_survive_disconnect`."""
-    source = inspect.getsource(sessions.send_message)
+    source = inspect.getsource(sessions._send_message)
     where = source.find(f"{runner}(")
     assert where > 0, f"{runner} 가 이 라우트에서 호출되지 않습니다"
-    before = source[:where]
+    before = source[:where].rstrip()
+    # A report or deck is first made stoppable, inside the survivor.
+    stoppable = "_stoppable(\n                session.id,\n                stopping,"
+    before = before.removesuffix(stoppable)
     # The wrapper opens immediately above the runner it is wrapping.
     assert before.rstrip().endswith("_survive_disconnect("), f"{runner} 가 연결이 끊기면 사라집니다"
 

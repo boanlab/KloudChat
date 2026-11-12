@@ -28,7 +28,7 @@ import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
-import { refusalSentence, startFailure } from '@/lib/failures'
+import { refusalSentence, startFailure, withRetryWait } from '@/lib/failures'
 import { agentDocumentNames, agentHandoffSurface, handoffSurface } from '@/lib/documentRequest'
 import { DICTATION_EVENT, isMac } from '@/lib/shortcuts'
 import { currentLang } from '@/lib/i18n'
@@ -1195,8 +1195,8 @@ export function Composer({
       const notice =
         errorCode(error) === 'auto_quality_model_required'
           ? t('Auto에 사용할 품질 모델을 다시 선택하세요. 초안과 첨부 파일은 그대로 보관했습니다.')
-          : (refusalSentence(errorCode(error), t) ??
-            errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.')))
+          : withRetryWait(refusalSentence(errorCode(error), t) ??
+            errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.')), error, t)
       // Via the store: the sending composer is unmounted by the time a refusal lands.
       setComposerRestore({
         sessionId: attemptedSessionId,
@@ -1281,10 +1281,13 @@ export function Composer({
         const row = await uploadFile(file, {
           projectId: editing ? undefined : projectId ?? undefined,
           sessionId: editing ? undefined : uploadSession ?? undefined,
-        }).catch(() => {
+        }).catch((err) => {
           // Said where the chips are: a file that never arrived must not look attached.
-          if (movedOn()) failLate(uploadSession!, file.name)
-          else setUploadFailed((current) => [...current, file.name])
+          // Too large (a proxy's 413 too) says the limit; anything else names the file only.
+          const label =
+            err instanceof ApiError && err.status === 413 ? `${file.name} — ${err.detail}` : file.name
+          if (movedOn()) failLate(uploadSession!, label)
+          else setUploadFailed((current) => [...current, label])
           return null
         })
         if (!row || editContext.current !== editScope) continue

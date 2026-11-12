@@ -6,6 +6,7 @@ import type {
   VideoArtifact,
 } from '@/types'
 import { currentLang, currentLocale } from './i18n'
+import { serviceTimeZone } from './serviceTime'
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs)
@@ -35,11 +36,21 @@ export function relativeTime(iso: string | null | undefined) {
   if (hours < 24) return en ? `${hours}h ago` : `${hours}시간 전`
   const days = Math.round(hours / 24)
   if (days < 7) return en ? `${days}d ago` : `${days}일 전`
-  return new Date(iso).toLocaleDateString(currentLocale(), { month: 'short', day: 'numeric' })
+  return new Date(iso).toLocaleDateString(currentLocale(), {
+    month: 'short',
+    day: 'numeric',
+    timeZone: serviceTimeZone(),
+  })
 }
 
-/** Service time zone (API `TIMEZONE`): refills turn at its midnight, not the browser's. */
-const SERVICE_TIME_ZONE = 'Asia/Seoul'
+// Every date on screen is in the service time zone (`./serviceTime`).
+export {
+  serviceDate,
+  serviceMidnight,
+  serviceTimeZone,
+  setServiceTimeZone,
+  shiftDate,
+} from './serviceTime'
 
 export function formatDate(iso: string | null | undefined) {
   if (!iso) return '—'
@@ -49,7 +60,7 @@ export function formatDate(iso: string | null | undefined) {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-    timeZone: SERVICE_TIME_ZONE,
+    timeZone: serviceTimeZone(),
   })
 }
 
@@ -58,7 +69,7 @@ export function formatDateTime(iso: string | null | undefined) {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString(currentLocale())
+  return d.toLocaleString(currentLocale(), { timeZone: serviceTimeZone() })
 }
 
 /** Image, audio and video artifacts render inline in the turn; reports and decks are offered as chips. */
@@ -109,4 +120,12 @@ export function tokenRate(model: { inputCreditCost?: number; creditCost?: number
   const output = model.creditCost ?? 0
   if (!input && !output) return t('크레딧 없음')
   return t('1천 토큰당 입력 {in} · 출력 {out}크레딧').replace('{in}', String(input)).replace('{out}', String(output))
+}
+
+/** Whether every word of `query` is in one of `texts`, ignoring case; an empty query matches. */
+export function matchesQuery(query: string, ...texts: (string | null | undefined)[]) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return true
+  const haystack = texts.filter(Boolean).join('\n').toLowerCase()
+  return words.every((word) => haystack.includes(word))
 }

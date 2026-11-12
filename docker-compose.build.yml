@@ -34,3 +34,6 @@ services:
     pull_policy: build
     build:
       context: ./apps/web
+      # Names the bundle; unset, its build time does. e.g. KCHAT_BUILD_VERSION=$(git rev-parse --short HEAD)
+      args:
+        KCHAT_BUILD_VERSION: ${KCHAT_BUILD_VERSION:-}

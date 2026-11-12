@@ -22,7 +22,7 @@ import {
 } from '@/lib/auditLabels'
 import { Badge, Card, Input, Modal, ResourceStatus, Select } from '@/components/ui'
 import { Pager } from '@/components/ui/Pager'
-import { browserName, formatDateTime } from '@/lib/utils'
+import { browserName, formatDateTime, serviceDate, serviceMidnight, shiftDate } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import { useResource } from '@/lib/useResource'
@@ -40,22 +40,17 @@ const SECRET = '••••'
 
 type Period = 'all' | 'today' | '7d' | '30d' | 'custom'
 
-/** Local-day bounds as ISO; `until` is the next day's start. */
+/** Service-zone day bounds as ISO, by calendar date; `until` is the next day's start. */
 function periodRange(period: Period, from: string, to: string): { since?: string; until?: string } {
-  const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  const today = startOf(new Date())
-  const daysBack = (n: number) => new Date(today.getTime() - n * 86_400_000).toISOString()
-  if (period === 'today') return { since: today.toISOString() }
+  const today = serviceDate(new Date())
+  const daysBack = (n: number) => serviceMidnight(shiftDate(today, -n)).toISOString()
+  if (period === 'today') return { since: daysBack(0) }
   if (period === '7d') return { since: daysBack(6) }
   if (period === '30d') return { since: daysBack(29) }
   if (period === 'custom') {
-    const day = (s: string) => {
-      const [y, m, d] = s.split('-').map(Number)
-      return new Date(y, m - 1, d)
-    }
     return {
-      since: from ? day(from).toISOString() : undefined,
-      until: to ? new Date(day(to).getTime() + 86_400_000).toISOString() : undefined,
+      since: from ? serviceMidnight(from).toISOString() : undefined,
+      until: to ? serviceMidnight(shiftDate(to, 1)).toISOString() : undefined,
     }
   }
   return {}

@@ -40,6 +40,12 @@ If the sign-in screen has a **Forgot your password?** link, you can receive a re
 
 Where the administrator has set an idle time, you are signed out automatically after that much time with no activity. When you connect again, the sign-in screen shows a notice that you were signed out automatically.
 
+## Several tabs and lost connections
+
+- Signing out in one tab signs out the other tabs of the same browser. Signing in in one tab also signs in the tabs left on the sign-in screen.
+- When the internet connection drops, a notice shows at the top of the screen and goes away once you are back online. A brief outage or a server that does not answer for a moment does not sign you out.
+- A lookup that gets no answer for more than 60 seconds is stopped, with a notice to try again.
+
 ## Interface language
 
 Use the **EN** button at the top right to switch the interface language. The language of an answer follows **the language you asked in**, regardless of the interface language.

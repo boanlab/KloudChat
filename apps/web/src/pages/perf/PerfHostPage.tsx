@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { Card } from '@/components/ui'
 import { currentLocale } from '@/lib/i18n'
 import { useT } from '@/lib/useT'
-import { cn } from '@/lib/utils'
+import { cn, serviceTimeZone } from '@/lib/utils'
 import { statusLabel, usePerfOverview } from './data'
 import { fmt, num } from './format'
 import {
@@ -54,7 +54,9 @@ export function PerfHostPage() {
           </span>
           {data?.collector.lastSampleAt && (
             <span className="ml-auto text-xs text-faint">
-              {t('마지막 표본')} {new Date(data.collector.lastSampleAt).toLocaleTimeString(currentLocale())}
+              {t('마지막 표본')} {new Date(data.collector.lastSampleAt).toLocaleTimeString(currentLocale(), {
+                timeZone: serviceTimeZone(),
+              })}
             </span>
           )}
         </div>

@@ -1,5 +1,5 @@
-import { X } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { WifiOff, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { IssueReportDialog } from '@/components/issues/IssueReportDialog'
 import { useIssueBadge } from '@/lib/issues'
@@ -72,6 +72,33 @@ function ToastBar() {
       >
         <X size={14} />
       </button>
+    </div>
+  )
+}
+
+/** Said while the browser has no network; requests fail until it is back. */
+function OfflineBar() {
+  const t = useT()
+  const [offline, setOffline] = useState(() => !navigator.onLine)
+  useEffect(() => {
+    const down = () => setOffline(true)
+    const up = () => setOffline(false)
+    window.addEventListener('offline', down)
+    window.addEventListener('online', up)
+    return () => {
+      window.removeEventListener('offline', down)
+      window.removeEventListener('online', up)
+    }
+  }, [])
+  if (!offline) return null
+  return (
+    <div
+      role="status"
+      data-testid="offline-bar"
+      className="pointer-events-none absolute top-2 left-1/2 z-50 flex max-w-[92vw] -translate-x-1/2 items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-sm text-muted shadow-float"
+    >
+      <WifiOff size={14} aria-hidden className="shrink-0" />
+      <span className="min-w-0">{t('인터넷 연결이 끊겼습니다. 연결되면 다시 시도하세요.')}</span>
     </div>
   )
 }
@@ -247,6 +274,7 @@ export function AppShell() {
         <Outlet />
       </main>
       <UndoBar />
+      <OfflineBar />
       <NoticeBar />
       <ToastBar />
       <KeyboardShortcuts />

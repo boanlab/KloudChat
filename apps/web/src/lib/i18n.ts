@@ -3,6 +3,24 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // Admin role, project reindex, single-artifact share
+  '{name} 관리자 해제': '{name}: remove admin',
+  '{name} 관리자로 지정': '{name}: make admin',
+  '자기 계정의 관리자 권한은 해제할 수 없습니다': 'You cannot remove admin rights from your own account',
+  '관리자 권한을 거둡니다': 'Removes admin rights',
+  '관리자 권한을 줍니다': 'Grants admin rights',
+  '마지막 관리자는 해제할 수 없습니다. 다른 사람을 먼저 관리자로 지정하세요.': 'The last admin cannot be removed. Make someone else an admin first.',
+  '{name}님의 관리자 권한을 해제할까요?': "Remove {name}'s admin rights?",
+  '{name}님을 관리자로 지정할까요?': 'Make {name} an admin?',
+  '사용자 관리·설정·감사 기록 화면에 더는 들어갈 수 없게 됩니다. 변경은 감사 기록에 남습니다.': 'They will no longer reach user management, settings or the audit log. The change is kept in the audit log.',
+  '모든 사용자의 계정·크레딧·키와 서비스 설정을 바꿀 수 있게 됩니다. 변경은 감사 기록에 남습니다.': "They will be able to change every user's account, credits and keys, and the service settings. The change is kept in the audit log.",
+  '관리자 해제': 'Remove admin',
+  '관리자로 지정': 'Make admin',
+  '{indexed}/{attempted}개 문서를 색인했습니다.': 'Indexed {indexed} of {attempted} documents.',
+  '검색 색인 서비스에 연결할 수 없습니다. 잠시 후 다시 시도하세요.': 'Cannot reach the search index service. Try again shortly.',
+  '이 아티팩트만 공유': 'Share only this artifact',
+  '대화는 빼고 이 아티팩트만 보입니다. 공유한 뒤에 고친 내용도 링크에 나타납니다.': 'Only this artifact is shown, not the conversation. Changes made after sharing also appear in the link.',
+  '이 아티팩트만 보입니다 — 대화·프로젝트 파일·메모리는 포함되지 않습니다.': 'Only this artifact is shown — the conversation, project files and memory are not included.',
   // Pipeline canvas
   '여기에 넣으면': 'If added here',
   '단계 목록을 불러오는 중…': 'Loading the step list…',
@@ -194,6 +212,11 @@ const EN: Record<string, string> = {
   '새 버전으로 다시 불러와야 합니다': 'Reload to get the new version',
   '그사이 KloudChat이 새로 배포되었습니다. 새로고침하면 이어서 쓸 수 있고, 대화 내용은 서버에 그대로 있습니다.': 'KloudChat was updated in the meantime. Reload to carry on; your conversations are kept on the server.',
   '새로고침': 'Reload',
+  // New build notice, error screen details, upload limit
+  '새 버전이 있습니다': 'A new version is available',
+  '요청 ID': 'Request ID',
+  '화면 버전': 'App version',
+  '파일이 너무 큽니다. 한 파일에 {n}MB까지 올릴 수 있습니다.': 'The file is too large. Each file can be up to {n} MB.',
   // Terms, sidebar, model picker, chatbots
   '사용자가 누구인지 — 역할, 전문성, 선호': 'Who you are — role, expertise, preferences',
   '작업 방식에 대한 지시 — 왜 그런지 함께': 'How to work — with the reason why',
@@ -1589,6 +1612,13 @@ const EN: Record<string, string> = {
   '답변이 실패했습니다': 'The answer failed',
   '로그인이 갱신되었습니다. 다시 보내 주세요.': 'Your sign-in was renewed. Please send again.',
   '로그인이 만료되었습니다. 다시 로그인한 뒤 보내 주세요.': 'Your sign-in expired. Sign in again, then send.',
+  '로그인을 갱신하지 못했습니다. 연결을 확인한 뒤 다시 보내 주세요.':
+    'Could not renew your sign-in. Check your connection, then send again.',
+  '{n}초 뒤에 다시 보낼 수 있습니다.': 'You can send again in {n} s.',
+  '{n}분 뒤에 다시 보낼 수 있습니다.': 'You can send again in {n} min.',
+  '응답이 늦어 요청을 멈췄습니다. 잠시 뒤 다시 시도하세요.':
+    'The server took too long, so the request was stopped. Try again shortly.',
+  '인터넷 연결이 끊겼습니다. 연결되면 다시 시도하세요.': 'You are offline. Try again once the connection is back.',
   '이 대화는 아직 답을 쓰고 있습니다. 답이 끝나거나 중지한 뒤 보내 주세요.':
     'This conversation is still writing an answer. Send again once it finishes or after you stop it.',
   '이전 답변': 'Earlier answer',
@@ -3745,6 +3775,7 @@ const EN: Record<string, string> = {
   '장 목록': 'Slides',
   '장 목록 닫기': 'Hide the slide list',
   '연결이 끊겨 답변이 중간에 멈췄습니다. 다시 시도해 주세요.': 'The connection dropped and the answer stopped partway. Please try again.',
+  '연결이 끊겼지만 서버에서 계속 쓰고 있습니다. 다 쓰면 여기에 엽니다.': 'The connection dropped, but the server is still writing. It opens here when it is done.',
   '목록을 새로 불러오지 못했습니다. 화면에 보이는 것은 마지막으로 받은 내용입니다.': 'Could not refresh this list. What you see is the last copy that arrived.',
   '이 보고서는 다른 곳에서 이미 수정되었습니다. 새로고침해 최신 내용을 받은 뒤 다시 저장하세요.': 'This report was changed elsewhere. Reload for the current version, then save again.',
   '이 덱은 다른 곳에서 이미 수정되었습니다. 새로고침해 최신 내용을 받은 뒤 다시 저장하세요.': 'This deck was changed elsewhere. Reload for the current version, then save again.',
@@ -4480,6 +4511,33 @@ const EN: Record<string, string> = {
   '가벼운 설정': 'Light setup',
   '응급 안내를 답 맨 앞에 둠': 'Emergency advice put first in the answer',
   '답 바꾸기': 'Replace the answer',
+  // Saves, deletes and loads that say when they fail
+  '연결이 끊겼습니다. 서버에서 답을 이어 받는 중입니다…': 'The connection dropped. Getting the answer from the server…',
+  '연결이 끊겨 질문을 보내지 못했습니다. 다시 보내 주세요.': 'The connection dropped before the question was sent. Please send it again.',
+  '답이 아직 오지 않았습니다. 잠시 뒤 이 대화를 다시 열어 주세요.': 'The answer has not arrived yet. Open this conversation again in a moment.',
+  '멈추지 못했습니다. 답이 끝까지 쓰일 수 있습니다.': 'Could not stop. The answer may still be written to the end.',
+  '대화를 지우지 못했습니다. 다시 시도해 주세요.': 'Could not delete the conversation. Please try again.',
+  '{name}을(를) 지우지 못했습니다.': 'Could not delete {name}.',
+  '커넥터를 켜지 못했습니다.': 'Could not turn the connector on.',
+  '커넥터를 끄지 못했습니다.': 'Could not turn the connector off.',
+  '설정을 저장하지 못했습니다. 다시 시도해 주세요.': 'Could not save the setting. Please try again.',
+  '링크가 있는 사람': 'Anyone with the link',
+  '계정 없이도 열립니다. 링크를 아는 누구나 읽을 수 있습니다.': 'Opens without an account. Anyone who knows the link can read it.',
+  '공유 상태를 불러오지 못했습니다.': 'Could not load the sharing status.',
+  '링크를 철회하지 못했습니다. 다시 시도해 주세요.': 'Could not revoke the link. Please try again.',
+  '자료 목록을 불러오지 못했습니다.': 'Could not load the materials list.',
+  '통계를 불러오지 못했습니다.': 'Could not load the statistics.',
+  '프로젝트 검색': 'Search projects',
+  '커넥터 검색': 'Search connectors',
+  '메모리 검색': 'Search memories',
+  '지금은 열지 못했습니다': 'Could not open it right now',
+  '서버에 닿지 못했거나 오류가 났습니다. 링크는 그대로일 수 있으니 잠시 뒤 다시 시도해 주세요.': 'The server could not be reached or had an error. The link may still be fine; try again in a moment.',
+  '보고서를 만들지 못했습니다.': 'Could not make the report.',
+  '슬라이드를 만들지 못했습니다.': 'Could not make the slides.',
+  '영상 작업을 시작하지 못했습니다.': 'Could not start the video job.',
+  '이미지를 만들지 못했습니다.': 'Could not make the image.',
+  'https:// 로 시작하는 MCP 엔드포인트': 'An MCP endpoint starting with https://',
+  '「{name}」 절과 그 내용이 보고서에서 빠집니다. 이전 내용은 버전 기록에서 되돌릴 수 있습니다.': 'The section “{name}” and its text leave the report. The earlier text can be brought back from the version history.',
 }
 
 export function translate(lang: Lang, text: string): string {

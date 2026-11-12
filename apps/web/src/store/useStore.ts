@@ -8,7 +8,7 @@ import {
   errorMessage,
 } from '@/lib/api'
 import { servedAspect } from '@/lib/aspects'
-import { mediaFailure, refusalSentence, streamFailureSentence } from '@/lib/failures'
+import { mediaFailure, refusalSentence, streamFailureSentence, withRetryWait } from '@/lib/failures'
 import {
   ApiError,
   PrivacyDecisionError,
@@ -30,9 +30,11 @@ import {
   projectsApi,
   sessionsApi,
   setAccessToken,
+  setSessionRenewer,
   skillsApi,
   streamRerun,
   streamSession,
+  tokenStale,
   toolsApi,
   usageApi,
 } from '@/lib/api'
@@ -85,11 +87,13 @@ import type {
   User,
   UserListQuery,
   UserPage,
+  UserRole,
 } from '@/types'
 import { fileSize, uid } from '@/lib/utils'
 import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
 import { currentLang, translate, type Lang } from '@/lib/i18n'
 import { counters } from '@/lib/usage'
+import { setMaxUploadMb } from '@/lib/uploadLimit'
 
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = (text: string) => translate(currentLang(), text)
@@ -528,6 +532,8 @@ interface State {
   openArtifact: (id: string | null) => void
   /** A delete waiting out its undo window. */
   pendingDelete: { label: string; undo: () => void } | null
+  /** A component's own delete, held for the same undo window: `restore` puts the row back. */
+  deleteLater: (held: HeldDelete) => Promise<void>
   /** Conversations gone in this tab: deleted here (the page leaves them) or not on the server (the page says so). */
   goneSessions: Record<string, 'deleted' | 'missing'>
   mediaError: string | null
@@ -547,7 +553,8 @@ interface State {
   createProject: (
     p: Pick<Project, 'name' | 'description' | 'instructions'> & Partial<Pick<Project, 'emoji'>>,
   ) => Promise<string>
-  updateProject: (id: string, patch: Partial<Project>) => Promise<void>
+  /** False when the server refused: the change is taken back and the shell says why. */
+  updateProject: (id: string, patch: Partial<Project>) => Promise<boolean>
   deleteProject: (id: string) => Promise<void>
   /** Bulk delete behind a confirm; no undo window. */
   deleteMany: (
@@ -557,6 +564,8 @@ interface State {
   uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
   /** A fresher copy of a project file (its scanned pages were read meanwhile). */
   refreshProjectFile: (row: FileRow) => void
+  /** Indexes the project's unindexed documents, then reloads its rows; returns the counts. */
+  reindexProject: (projectId: string) => Promise<{ attempted: number; indexed: number }>
   addProjectUrl: (projectId: string, url: string) => Promise<FileRow>
   deleteFile: (id: string) => Promise<void>
   /** Fetches the template list only if it is not already held. */
@@ -576,7 +585,7 @@ interface State {
   connectors: Connector[]
   connectorCatalog: CatalogEntry[]
   toggleConnector: (id: string) => Promise<void>
-  /** Credential values are write-only server-side. */
+  /** Credential values are write-only server-side. Throws when not saved; then nothing is synced. */
   updateConnectorEnv: (id: string, env: Record<string, string>) => Promise<void>
   toggleConnectorTool: (id: string, tool: string) => Promise<void>
   installConnector: (slug: string, env?: Record<string, string>) => Promise<void>
@@ -623,6 +632,7 @@ interface State {
   /** Empty means the whole catalogue. */
   setUserModels: (id: string, models: string[]) => Promise<void>
   setUserCredits: (id: string, monthlyCredits: number) => Promise<void>
+  setUserRole: (id: string, role: UserRole) => Promise<void>
   updateUser: (id: string, patch: { name?: string; email?: string }) => Promise<void>
   resetUserPassword: (id: string, password: string) => Promise<void>
   replaceLitellmKey: (id: string, key: string) => Promise<void>
@@ -769,16 +779,41 @@ let refreshTimer: ReturnType<typeof setTimeout> | null = null
 /** Collapses concurrent refreshes: presenting the refresh cookie twice reads as token reuse. */
 let inFlight: Promise<void> | null = null
 
+/** Waits after a refresh the network or server dropped: 2 s, 5 s, 15 s, then every 30 s. */
+const RENEW_BACKOFF_S = [2, 5, 15, 30]
+let renewFailures = 0
+/** The retry waiting on the backoff, run early when the browser comes back online. */
+let pendingRenewal: (() => void) | null = null
+
 function scheduleRefresh(expiresIn: number, run: () => void) {
-  if (refreshTimer) clearTimeout(refreshTimer)
+  cancelRefresh()
   // 60s of headroom, and never busier than once a minute.
   const delayMs = Math.max(30, expiresIn - 60) * 1000
   refreshTimer = setTimeout(run, delayMs)
 }
 
+function retryRefreshLater(run: () => void) {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  const delay = RENEW_BACKOFF_S[Math.min(renewFailures, RENEW_BACKOFF_S.length - 1)]
+  renewFailures += 1
+  pendingRenewal = run
+  refreshTimer = setTimeout(() => {
+    pendingRenewal = null
+    run()
+  }, delay * 1000)
+}
+
 function cancelRefresh() {
   if (refreshTimer) clearTimeout(refreshTimer)
   refreshTimer = null
+  renewFailures = 0
+  pendingRenewal = null
+}
+
+/** The server refused the refresh cookie, or there is none; a dropped or 5xx call is not that. */
+function refusedRefresh(err: unknown): boolean {
+  return (err instanceof Error && err.message === 'signed_out') ||
+    (err instanceof ApiError && (err.status === 401 || err.status === 403))
 }
 
 // Idle sign-out, else the silent refresh keeps a session alive forever; pointerdown/keydown/scroll count, mousemove does not.
@@ -919,10 +954,89 @@ function rememberSignedOut(out: boolean) {
   }
 }
 
+/** The refresh cookie was refused: signed out here, unsent work kept for the same person. */
+function endSession(set: Set) {
+  cancelRefresh()
+  disarmIdleWatch()
+  setAccessToken(null)
+  rememberSignedOut(true)
+  set({ authenticated: false, user: null, authLoading: false })
+}
+
+/** First half of signing out: half-typed questions must not outlive the account on a shared PC. */
+function forgetDrafts(set: Set, get: Get) {
+  purgeStoredDrafts(get().user?.id)
+  purgeUnsent(get().user?.id)
+  set((state) => ({ accountEpoch: state.accountEpoch + 1,
+    messageEdit: null, messageEditBusy: false, composerRestore: null,
+    pendingAttachment: null, pendingAttachmentTo: null, draft: '', draftTo: null }))
+}
+
+/** Second half of signing out: no token, no timers, and nothing of the account left on screen. */
+function clearAccount(set: Set, reason?: 'idle') {
+  cancelRefresh()
+  disarmIdleWatch()
+  setAccessToken(null)
+  rememberSignedOut(true)
+  // Invalidates any workspace load still in flight for the previous account.
+  touchWorkspace()
+  set({
+    authenticated: false,
+    user: null,
+    activeSessionId: null,
+    authError: null,
+    signedOutReason: reason ?? null,
+    // Never leave one account's work on screen for the next.
+    sessions: [],
+    users: [],
+    usersPage: null,
+    usersQuery: null,
+    projects: [],
+    artifacts: [],
+    skills: [],
+    skillStore: [],
+    skillStoreLoaded: false,
+    designs: [],
+    designTemplates: [],
+    availableTools: [],
+    memories: [],
+    agents: [],
+    connectors: [],
+    connectorCatalog: [],
+  })
+}
+
+/** Signing in or out in one tab is said to the others, so none keeps a session that ended. */
+type AuthSignal = { type: 'signed-out'; reason?: 'idle' } | { type: 'signed-in'; userId: string }
+const AUTH_SIGNAL_KEY = 'kchat-auth-signal'
+const authChannel =
+  typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('kchat-auth')
+
+function announce(signal: AuthSignal) {
+  if (authChannel) {
+    authChannel.postMessage(signal)
+    return
+  }
+  try {
+    // `at` makes every signal a change, so the `storage` event fires for a repeat too.
+    localStorage.setItem(AUTH_SIGNAL_KEY, JSON.stringify({ ...signal, at: Date.now() }))
+  } catch {
+    // No storage: other tabs find out at their next refresh.
+  }
+}
+
 export const useStore = create<State>((set, get) => ({
   user: null,
   accountEpoch: 0,
   pendingDelete: null,
+  deleteLater: (held) =>
+    holdDelete(set, get, {
+      ...held,
+      restore: () => {
+        held.restore()
+        set({ pendingDelete: null })
+      },
+    }),
   goneSessions: {},
   mediaError: null,
   authenticated: false,
@@ -947,12 +1061,13 @@ export const useStore = create<State>((set, get) => ({
         // No refresh cookie: signed out, said with 204 rather than a logged 401.
         if (!session) throw new Error('signed_out')
         rememberSignedOut(false)
-        setAccessToken(session.accessToken)
+        setAccessToken(session.accessToken, session.expiresIn)
         set({ authenticated: true, user: session.user, authLoading: false, authError: null })
         void authConfig
           .get()
           .then((c) => {
             applyBrand(c.brand)
+            setMaxUploadMb(c.upload?.maxMb)
             set({
               brand: c.brand,
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
@@ -963,7 +1078,7 @@ export const useStore = create<State>((set, get) => ({
             armIdleWatch(c.idleTimeoutMinutes ?? 0, () => void get().logout('idle'))
           })
           .catch(() => {})
-        scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+        scheduleRefresh(session.expiresIn, () => void renewSession())
         // Address-opened conversation first, before the workspace requests take the connections.
         const opened = window.location.pathname.match(/^\/s\/([^/]+)/)?.[1]
         if (opened && session.user.status === 'active' &&
@@ -974,16 +1089,19 @@ export const useStore = create<State>((set, get) => ({
         void get().loadSessions()
         void get().loadWorkspace()
       } catch (err) {
-        cancelRefresh()
-        disarmIdleWatch()
-        setAccessToken(null)
-        // Remembered only when the server said so. A refresh cut off by a reload or a
-        // network error says nothing about the cookie; remembering it would skip the
-        // refresh on the next load and show sign-in to a signed-in person.
-        if ((err instanceof Error && err.message === 'signed_out') || err instanceof UnauthorizedError) {
-          rememberSignedOut(true)
+        // Signed out only when the server said so. A refresh cut off by a reload, the
+        // network or a 5xx says nothing about the cookie: a signed-in tab keeps its session,
+        // and either way the refresh is tried again.
+        if (refusedRefresh(err)) {
+          endSession(set)
+        } else if (get().authenticated) {
+          retryRefreshLater(() => void get().bootstrap())
+        } else {
+          disarmIdleWatch()
+          setAccessToken(null)
+          set({ authenticated: false, user: null, authLoading: false })
+          retryRefreshLater(() => void get().bootstrap())
         }
-        set({ authenticated: false, user: null, authLoading: false })
       } finally {
         inFlight = null
       }
@@ -997,9 +1115,10 @@ export const useStore = create<State>((set, get) => ({
     try {
       const session = await auth.login(email, password)
       rememberSignedOut(false)
-      setAccessToken(session.accessToken)
+      setAccessToken(session.accessToken, session.expiresIn)
       set({ authenticated: true, user: session.user, authLoading: false, signedOutReason: null })
-      scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+      scheduleRefresh(session.expiresIn, () => void renewSession())
+      announce({ type: 'signed-in', userId: session.user.id })
       // Enabled kinds and the idle limit of this workspace, not the signed-out defaults.
       void get().refreshConfig().then(() => {
         if (get().authenticated) armIdleWatch(get().idleTimeoutMinutes, () => void get().logout('idle'))
@@ -1019,10 +1138,11 @@ export const useStore = create<State>((set, get) => ({
 
   /** Session handed over by a mailed signup-verification link. */
   adoptSession: (session) => {
-    setAccessToken(session.accessToken)
+    setAccessToken(session.accessToken, session.expiresIn)
     set((state) => ({ authenticated: true, user: session.user, authLoading: false, authError: null,
       accountEpoch: state.accountEpoch + 1, messageEdit: null, messageEditBusy: false }))
-    scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+    scheduleRefresh(session.expiresIn, () => void renewSession())
+    announce({ type: 'signed-in', userId: session.user.id })
     void get().refreshConfig()
     void get().loadModels()
   },
@@ -1033,9 +1153,10 @@ export const useStore = create<State>((set, get) => ({
       const { user, session } = await auth.signup(email, password, name)
       if (session) {
         // `open` signup mode, or the bootstrap admin.
-        setAccessToken(session.accessToken)
+        setAccessToken(session.accessToken, session.expiresIn)
         set({ authenticated: true, user: session.user, authLoading: false })
-        scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+        scheduleRefresh(session.expiresIn, () => void renewSession())
+        announce({ type: 'signed-in', userId: session.user.id })
         void get().refreshConfig()
         void get().loadModels()
       } else {
@@ -1050,47 +1171,14 @@ export const useStore = create<State>((set, get) => ({
   },
 
   logout: async (reason) => {
-    // Half-typed questions must not outlive the account on a shared machine.
-    purgeStoredDrafts(get().user?.id)
-    purgeUnsent(get().user?.id)
-    set((state) => ({ accountEpoch: state.accountEpoch + 1,
-      messageEdit: null, messageEditBusy: false, composerRestore: null,
-      pendingAttachment: null, pendingAttachmentTo: null, draft: '', draftTo: null }))
+    forgetDrafts(set, get)
     try {
       await auth.logout()
     } catch {
       // Already gone server-side; the local teardown is what matters.
     }
-    cancelRefresh()
-    disarmIdleWatch()
-    setAccessToken(null)
-    rememberSignedOut(true)
-    // Invalidates any workspace load still in flight for the previous account.
-    touchWorkspace()
-    set({
-      authenticated: false,
-      user: null,
-      activeSessionId: null,
-      authError: null,
-      signedOutReason: reason ?? null,
-      // Never leave one account's work on screen for the next.
-      sessions: [],
-      users: [],
-      usersPage: null,
-      usersQuery: null,
-      projects: [],
-      artifacts: [],
-      skills: [],
-      skillStore: [],
-      skillStoreLoaded: false,
-      designs: [],
-      designTemplates: [],
-      availableTools: [],
-      memories: [],
-      agents: [],
-      connectors: [],
-      connectorCatalog: [],
-    })
+    clearAccount(set, reason)
+    announce({ type: 'signed-out', reason })
   },
 
   refreshMe: async () => {
@@ -1935,7 +2023,7 @@ export const useStore = create<State>((set, get) => ({
       id = await get().ensureSession(sessionId ?? fresh!)
     } catch (err) {
       if (fresh) void get().deleteSession(fresh)
-      set({ mediaError: errorMessage(err, '영상 작업을 시작하지 못했습니다.') })
+      set({ mediaError: errorMessage(err, tr('영상 작업을 시작하지 못했습니다.')) })
       return
     }
     if (fresh) opts.onSession?.(id)
@@ -2040,7 +2128,7 @@ export const useStore = create<State>((set, get) => ({
       id = await get().ensureSession(sessionId ?? fresh!)
     } catch (err) {
       if (fresh) void get().deleteSession(fresh)
-      set({ mediaError: errorMessage(err, '이미지를 만들지 못했습니다.') })
+      set({ mediaError: errorMessage(err, tr('이미지를 만들지 못했습니다.')) })
       return
     }
     if (fresh) opts.onSession?.(id)
@@ -2224,6 +2312,7 @@ export const useStore = create<State>((set, get) => ({
     const c = await authConfig.get().catch(() => null)
     if (!c) return
     applyBrand(c.brand)
+    setMaxUploadMb(c.upload?.maxMb)
     set({
       brand: c.brand,
       enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
@@ -2275,7 +2364,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       set((s) => ({
         jobs: s.jobs.map((j) => (j.id === id ? before : j)),
-        mediaError: errorMessage(err, '작업을 취소하지 못했습니다.'),
+        mediaError: errorMessage(err, tr('작업을 취소하지 못했습니다.')),
       }))
     }
   },
@@ -2312,9 +2401,23 @@ export const useStore = create<State>((set, get) => ({
   },
   updateProject: async (id, patch) => {
     touchWorkspace()
+    const before = get().projects.find((p) => p.id === id)
     set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, ...patch } : p)) }))
-    const row = await projectsApi.update(id, patch as never).catch(() => null)
-    if (row) set((s) => ({ projects: s.projects.map((p) => (p.id === id ? toProject(row) : p)) }))
+    try {
+      const row = await projectsApi.update(id, patch as never)
+      set((s) => ({ projects: s.projects.map((p) => (p.id === id ? toProject(row) : p)) }))
+      return true
+    } catch (err) {
+      // The fields this change touched go back to what the server still has.
+      if (before) {
+        const back = Object.fromEntries(
+          Object.keys(patch).map((key) => [key, before[key as keyof Project]]),
+        )
+        set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, ...back } : p)) }))
+      }
+      set({ notice: errorMessage(err, tr('저장하지 못했습니다.')) })
+      return false
+    }
   },
   deleteMany: async (kind, ids) => {
     if (ids.length === 0) return 0
@@ -2384,6 +2487,12 @@ export const useStore = create<State>((set, get) => ({
           : p,
       ),
     })),
+  reindexProject: async (projectId) => {
+    const counts = await projectsApi.reindex(projectId)
+    const row = await projectsApi.get(projectId)
+    set((s) => ({ projects: s.projects.map((p) => (p.id === projectId ? toProject(row) : p)) }))
+    return counts
+  },
   addProjectUrl: async (projectId, url) => {
     touchWorkspace()
     const row = await filesApi.addProjectUrl(projectId, url)
@@ -2396,10 +2505,34 @@ export const useStore = create<State>((set, get) => ({
   },
   deleteFile: async (id) => {
     touchWorkspace()
+    const project = get().projects.find((p) => p.files.some((f) => f.id === id))
+    const removed = project?.files.find((f) => f.id === id)
     set((s) => ({
       projects: s.projects.map((p) => ({ ...p, files: p.files.filter((f) => f.id !== id) })),
     }))
-    await filesApi.remove(id).catch(() => get().loadWorkspace())
+    if (!project || !removed) return
+    const at = project.files.indexOf(removed)
+    const putBack = () =>
+      set((s) => ({
+        projects: s.projects.map((p) =>
+          p.id !== project.id || p.files.some((f) => f.id === id)
+            ? p
+            : { ...p, files: [...p.files.slice(0, at), removed, ...p.files.slice(at)] },
+        ),
+      }))
+    await holdDelete(set, get, {
+      label: removed.name,
+      restore: () => {
+        putBack()
+        set({ pendingDelete: null })
+      },
+      commit: () =>
+        filesApi.remove(id).catch((err: unknown) => {
+          putBack()
+          const failed = tr('{name}을(를) 지우지 못했습니다.').replace('{name}', removed.name)
+          set({ notice: errorMessage(err, failed) })
+        }),
+    })
   },
 
   ensureDesignTemplates: async () => {
@@ -2480,16 +2613,24 @@ export const useStore = create<State>((set, get) => ({
   connectors: [],
   updateConnectorEnv: async (id, env) => {
     touchWorkspace()
-    const row = await connectorsApi.update(id, { env }).catch(() => null)
-    if (row) set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
+    // A refused save throws to the form: syncing would only test the old values.
+    const row = await connectorsApi.update(id, { env })
+    set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
     await get().syncConnector(id)
   },
   toggleConnector: async (id) => {
     touchWorkspace()
     const enabled = !get().connectors.find((c) => c.id === id)?.enabled
     set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? { ...c, enabled } : c)) }))
-    const row = await connectorsApi.update(id, { enabled }).catch(() => null)
-    if (row) set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
+    try {
+      const row = await connectorsApi.update(id, { enabled })
+      set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
+    } catch (err) {
+      set((s) => ({
+        connectors: s.connectors.map((c) => (c.id === id ? { ...c, enabled: !enabled } : c)),
+        notice: errorMessage(err, enabled ? tr('커넥터를 켜지 못했습니다.') : tr('커넥터를 끄지 못했습니다.')),
+      }))
+    }
   },
   toggleConnectorTool: async (id, tool) => {
     touchWorkspace()
@@ -2741,6 +2882,7 @@ export const useStore = create<State>((set, get) => ({
   },
   setUserCredits: (id, monthlyCredits) =>
     applyUserChange(set, get, adminApi.setCredits(id, monthlyCredits), true),
+  setUserRole: (id, role) => applyUserChange(set, get, adminApi.setRole(id, role)),
   updateUser: (id, patch) => applyUserChange(set, get, adminApi.updateUser(id, patch), true),
   resetUserPassword: (id, password) =>
     applyUserChange(set, get, adminApi.resetPassword(id, password)),
@@ -2841,6 +2983,8 @@ function settleRun(m: Message): Message {
 
 /** Every turn ends with `usage` or `error`; a stream that ends with neither was cut off. */
 const CUT_OFF = '연결이 끊겨 답변이 중간에 멈췄습니다. 다시 시도해 주세요.'
+/** A report or deck whose response dropped while the server still writes it. */
+const STILL_WRITING = '연결이 끊겼지만 서버에서 계속 쓰고 있습니다. 다 쓰면 여기에 엽니다.'
 
 /** Why the turn failed, in a sentence somebody can act on. */
 function turnFailure(err: unknown): string {
@@ -2897,7 +3041,7 @@ function nameOf(row: { title?: string; name?: string }): string {
   return row.title ?? row.name ?? ''
 }
 
-type HeldDelete = { label: string; restore: () => void; commit: () => Promise<unknown> }
+export type HeldDelete = { label: string; restore: () => void; commit: () => Promise<unknown> }
 
 /** Removes the row from the screen now and sends the request after the undo window. */
 async function holdDelete(
@@ -3152,6 +3296,7 @@ function toProjectFile(f: FileRow): ProjectFile {
     sourceUrl: f.sourceUrl,
     preview: f.preview,
     error: f.error,
+    indexed: f.indexed,
     ocrState: f.ocrState,
     ocrTotal: f.ocrTotal,
     ocrDone: f.ocrDone,
@@ -3667,17 +3812,21 @@ async function streamTurn(
         errorMessage(err, tr('요청을 처리하지 못했습니다.'))
       if (err instanceof UnauthorizedError) {
         // The access token lapsed under the send; the refresh cookie usually renews it.
-        await get().bootstrap()
-        sentence = get().authenticated
+        const renewed = await renewSession()
+        sentence = renewed
           ? tr('로그인이 갱신되었습니다. 다시 보내 주세요.')
-          : tr('로그인이 만료되었습니다. 다시 로그인한 뒤 보내 주세요.')
+          : get().authenticated
+            ? tr('로그인을 갱신하지 못했습니다. 연결을 확인한 뒤 다시 보내 주세요.')
+            : tr('로그인이 만료되었습니다. 다시 로그인한 뒤 보내 주세요.')
+      } else {
+        sentence = withRetryWait(sentence, err, tr)
       }
       patch((m) => ({ ...m, error: sentence }))
       // Rethrown so the composer restores its draft.
       throw err
     } else {
       settled = true
-      patch((m) => ({ ...m, error: tr(turnFailure(err)) }))
+      patch((m) => ({ ...m, error: withRetryWait(tr(turnFailure(err)), err, tr) }))
       // The server survives a dropped response; its answer may still land.
       followDetachedTurn = accepted
       // A stall is swallowed: the failed turn carries its own retry.
@@ -3757,6 +3906,11 @@ async function streamReport(
     wordCount: 0,
   }
 
+  // What was open before, back on screen when a stop leaves nothing stored.
+  const before = {
+    artifactId: get().sessions.find((c) => c.id === sessionId)?.artifactId ?? null,
+    open: get().openArtifactId,
+  }
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
   // Approved outline spent; a new proposal arrives as its own event.
@@ -3792,6 +3946,9 @@ async function streamReport(
   beginRun(set, sessionId, () => controller.abort())
   // Whether the turn ended with `usage`/`error`/`proposal`/`needs`. See CUT_OFF.
   let settled = false
+  // The server took the turn: a dropped response leaves it writing there.
+  let accepted = false
+  let followDetachedTurn = false
 
   try {
     for await (const e of gate.rerun ? streamRerun(
@@ -3815,6 +3972,7 @@ async function streamReport(
       },
       controller.signal,
     )) {
+      accepted = true
       switch (e.type) {
         // The turn planned or asked; nothing was written.
         case 'proposal':
@@ -3946,15 +4104,38 @@ async function streamReport(
       }))
       throw err
     }
-    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      // Stopped: the server stores no half-written document, so the draft goes too.
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, failure: 'stopped' }))
+      if (willWrite) {
+        set((s) => ({
+          artifacts: s.artifacts.filter((a) => a.id !== draftId),
+          openArtifactId: s.openArtifactId === draftId ? before.open : s.openArtifactId,
+          sessions: s.sessions.map((c) =>
+            c.id === sessionId && c.artifactId === draftId
+              ? { ...c, artifactId: before.artifactId }
+              : c,
+          ),
+        }))
+      }
+    } else if (accepted && !isClientRefusal(err)) {
+      // The response dropped, not the turn: it is still being written on the server.
+      followDetachedTurn = true
+    } else {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
-        error: errorMessage(err, '보고서를 만들지 못했습니다.'),
+        error: errorMessage(err, tr('보고서를 만들지 못했습니다.')),
       }))
     }
     if (isClientRefusal(err)) throw err
   } finally {
-    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    if (!settled && accepted) followDetachedTurn = true
+    else if (!settled) {
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    }
+    if (followDetachedTurn) {
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: tr(STILL_WRITING) }))
+    }
     patchMessage(set, sessionId, assistantId, (m) => {
       const settledRun = settleRun(m)
       // The server words the rerun's message the same way; shown until the transcript reloads.
@@ -3963,6 +4144,7 @@ async function streamReport(
         : settledRun
     })
     endRun(set, sessionId)
+    if (followDetachedTurn) void watchForDetachedDocument(set, get, sessionId, draftId)
     void get().loadSessions()
   }
 }
@@ -4008,6 +4190,11 @@ async function streamDeck(
     draft: true,
   }
 
+  // What was open before, back on screen when a stop leaves nothing stored.
+  const before = {
+    artifactId: get().sessions.find((c) => c.id === sessionId)?.artifactId ?? null,
+    open: get().openArtifactId,
+  }
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
   // Approved outline spent; a new proposal arrives as its own event.
@@ -4041,6 +4228,9 @@ async function streamDeck(
   beginRun(set, sessionId, () => controller.abort())
   // Whether the turn ended with `usage`/`error`/`proposal`/`needs`. See CUT_OFF.
   let settled = false
+  // The server took the turn: a dropped response leaves it writing there.
+  let accepted = false
+  let followDetachedTurn = false
 
   try {
     for await (const e of gate.rerun ? streamRerun(
@@ -4064,6 +4254,7 @@ async function streamDeck(
       },
       controller.signal,
     )) {
+      accepted = true
       switch (e.type) {
         // The turn planned or asked; nothing was written.
         case 'proposal':
@@ -4175,15 +4366,38 @@ async function streamDeck(
       }))
       throw err
     }
-    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      // Stopped: the server stores no half-written document, so the draft goes too.
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, failure: 'stopped' }))
+      if (willWrite) {
+        set((s) => ({
+          artifacts: s.artifacts.filter((a) => a.id !== draftId),
+          openArtifactId: s.openArtifactId === draftId ? before.open : s.openArtifactId,
+          sessions: s.sessions.map((c) =>
+            c.id === sessionId && c.artifactId === draftId
+              ? { ...c, artifactId: before.artifactId }
+              : c,
+          ),
+        }))
+      }
+    } else if (accepted && !isClientRefusal(err)) {
+      // The response dropped, not the turn: it is still being written on the server.
+      followDetachedTurn = true
+    } else {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
-        error: errorMessage(err, '슬라이드를 만들지 못했습니다.'),
+        error: errorMessage(err, tr('슬라이드를 만들지 못했습니다.')),
       }))
     }
     if (isClientRefusal(err)) throw err
   } finally {
-    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    if (!settled && accepted) followDetachedTurn = true
+    else if (!settled) {
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    }
+    if (followDetachedTurn) {
+      patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: tr(STILL_WRITING) }))
+    }
     patchMessage(set, sessionId, assistantId, (m) => {
       const settledRun = settleRun(m)
       // The server words the rerun's message the same way; shown until the transcript reloads.
@@ -4192,6 +4406,7 @@ async function streamDeck(
         : settledRun
     })
     endRun(set, sessionId)
+    if (followDetachedTurn) void watchForDetachedDocument(set, get, sessionId, draftId)
     void get().loadSessions()
   }
 }
@@ -4350,6 +4565,36 @@ async function watchForDetachedAnswer(set: Set, get: Get, sessionId: string) {
   }
 }
 
+/** A report/deck response dropped while the turn writes on: shown running, polled, then opened. */
+async function watchForDetachedDocument(set: Set, get: Get, sessionId: string, draftId: string) {
+  let cancelled = false
+  // The stop button stays: it stops the turn on the server (`stopStreaming`) and ends the watch.
+  beginRun(set, sessionId, () => { cancelled = true })
+  try {
+    // Documents take longer than answers; the server's claim on the turn is kept while it writes.
+    for (let waited = 0; waited < 1_800_000; waited += 3_000) {
+      await new Promise((done) => setTimeout(done, 3_000))
+      if (cancelled || get().activeSessionId !== sessionId) return
+      const row = await sessionsApi.get(sessionId).catch(() => null)
+      if (!row) continue
+      const fresh = toSession(row)
+      const last = fresh.messages[fresh.messages.length - 1]
+      // An approved outline stays pending while it is written: only the transcript says it ended.
+      if (last?.role === 'user' && !last.failure) continue
+      const made = fresh.artifactId
+      if (made) await Promise.all([get().loadArtifacts(), get().refreshArtifact(made)])
+      set((state) => ({
+        sessions: state.sessions.map((session) => session.id === sessionId ? fresh : session),
+        artifacts: state.artifacts.filter((a) => a.id !== draftId),
+        openArtifactId: state.openArtifactId === draftId ? made : state.openArtifactId,
+      }))
+      return
+    }
+  } finally {
+    endRun(set, sessionId)
+  }
+}
+
 /** Deducts on completion; nothing is held up front. */
 function chargeCredits(set: Set, credits: number) {
   set((s) => ({
@@ -4388,4 +4633,90 @@ export async function drawFigure(
     if (err instanceof ApiError && err.detail === 'diagram_unrendered') throw new Error(tr(FIGURE_UNRENDERED))
     throw err
   }
+}
+
+/** Collapses renewals: every request that met a lapsed token waits on the same one. */
+let renewing: Promise<boolean> | null = null
+
+/** Renews the access token mid-session; true when a fresh one is in hand. */
+export function renewSession(): Promise<boolean> {
+  const { getState: get, setState: set } = useStore
+  if (!get().authenticated) return Promise.resolve(false)
+  renewing ??= (async () => {
+    try {
+      const session = await auth.refresh()
+      if (!session) throw new Error('signed_out')
+      if (session.user.id !== get().user?.id) {
+        // The cookie now belongs to another account, signed in from another tab.
+        forgetDrafts(set, get)
+        clearAccount(set)
+        rememberSignedOut(false)
+        void get().bootstrap()
+        return false
+      }
+      setAccessToken(session.accessToken, session.expiresIn)
+      set({ user: session.user })
+      scheduleRefresh(session.expiresIn, () => void renewSession())
+      return true
+    } catch (err) {
+      if (refusedRefresh(err)) endSession(set)
+      else retryRefreshLater(() => void renewSession())
+      return false
+    } finally {
+      renewing = null
+    }
+  })()
+  return renewing
+}
+
+setSessionRenewer(renewSession)
+
+/** What another tab said about signing in or out. */
+function heard(signal: AuthSignal) {
+  const { getState: get, setState: set } = useStore
+  if (window.location.pathname.startsWith('/embed/')) return
+  if (signal.type === 'signed-out') {
+    if (!get().authenticated) return
+    forgetDrafts(set, get)
+    clearAccount(set, signal.reason)
+    return
+  }
+  if (get().authenticated && signal.userId === get().user?.id) return
+  if (get().authenticated) {
+    forgetDrafts(set, get)
+    clearAccount(set)
+  }
+  rememberSignedOut(false)
+  void get().bootstrap()
+}
+
+if (typeof window !== 'undefined') {
+  if (authChannel) {
+    authChannel.onmessage = (event: MessageEvent<AuthSignal>) => heard(event.data)
+  } else {
+    window.addEventListener('storage', (event) => {
+      if (event.key !== AUTH_SIGNAL_KEY || !event.newValue) return
+      try {
+        heard(JSON.parse(event.newValue) as AuthSignal)
+      } catch {
+        // Not a signal this build wrote.
+      }
+    })
+  }
+  // Timers sleep in a background tab or a closed laptop: renew on return, before the first request.
+  const wake = () => {
+    if (document.visibilityState !== 'visible') return
+    if (!useStore.getState().authenticated || pendingRenewal) return
+    if (tokenStale(60_000)) void renewSession()
+  }
+  document.addEventListener('visibilitychange', wake)
+  window.addEventListener('focus', wake)
+  // Back online: the refresh waiting on its backoff goes now.
+  window.addEventListener('online', () => {
+    const run = pendingRenewal
+    if (!run) return wake()
+    if (refreshTimer) clearTimeout(refreshTimer)
+    pendingRenewal = null
+    run()
+  })
 }

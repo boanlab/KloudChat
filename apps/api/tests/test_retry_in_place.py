@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy.sql.dml import Update
 from turn_fakes import _Db, _patch_route_services, _request, _Result, _user
 
 from app.models.chat import ChatSession, Message, Role, SessionKind, TurnFailure
@@ -24,7 +25,7 @@ class _Transcript(_Db):
         return await super().get(model, row_id)
 
     async def exec(self, query):
-        if query.get_final_froms()[0].name == "messages":
+        if not isinstance(query, Update) and query.get_final_froms()[0].name == "messages":
             return _Result(self.messages)
         return await super().exec(query)
 

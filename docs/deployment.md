@@ -174,13 +174,20 @@ server {
     proxy_cache off;
     proxy_read_timeout 1h;
 
-    client_max_body_size 200m;   # matches MAX_UPLOAD_MB
+    client_max_body_size 216m;   # KCHAT_MAX_UPLOAD_MB + 16 MB, as the web container allows
   }
 }
 ```
 
-`client_max_body_size` must be at least `MAX_UPLOAD_MB`, or large uploads fail
-at the proxy with a 413 that never reaches the application.
+`client_max_body_size` must be at least `KCHAT_MAX_UPLOAD_MB` plus the
+multipart wrapping (the web container's own nginx allows 16 MB more), or large
+uploads fail at the proxy. The app shows a 413 from any hop as "file too large"
+with the limit, but a file under the limit should never get one.
+
+The web container sends `Content-Security-Policy`, `X-Content-Type-Options`,
+`Referrer-Policy` and `Permissions-Policy` itself (`apps/web/security-headers.conf`).
+It does not send `Strict-Transport-Security`, since it speaks plain HTTP; add
+it at the TLS proxy once every service on that host name is served over HTTPS.
 
 Also make sure that:
 
@@ -287,6 +294,21 @@ curl -fsS localhost:5173/api/health
 facts, and an operator has to be able to tell which side is down.
 `"litellm":"unavailable"` with `"status":"ok"` means KloudChat is healthy and the
 backend is not — sign-in and history still work.
+
+`docker compose ps` shows each container's health: `api` probes `/api/health`,
+`web` its own `/version.json`, `print` `/health` (which starts a browser page).
+Only `db` gates another service's start; the others are reported, not waited on.
+
+Every API answer carries an `X-Request-ID` (a proxy's own plain id is kept), and
+warnings and errors logged while serving it end in `[request_id=…]`. The web app
+shows the id of a failed call under **기술 정보** on its error screen, and reports
+uncaught browser errors to `POST /api/client-errors`, which only writes a
+`kchat.client` log line (message, cut stack, page path, bundle version — never
+message content or tokens):
+
+```bash
+docker compose logs api | grep -E 'request_id=<id>|kchat.client'
+```
 
 ```bash
 docker compose logs api --tail=100

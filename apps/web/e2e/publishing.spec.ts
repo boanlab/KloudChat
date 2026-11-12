@@ -596,6 +596,128 @@ test('a question refused at the daily cap goes back in the box and leaves no 새
   expect(state.unexpected).toEqual([])
 })
 
+const OTHER = 's2222222222222222222222222222222'
+const otherRow = { id: OTHER, title: '등록금 문의', updatedAt: '2026-10-09T07:00:00.000Z', sharedAt: null }
+const otherMessages = [
+  { id: 'o1', role: 'user', content: '등록금은 언제 내나요?', rating: null, createdAt: at, steps: null },
+  { id: 'o2', role: 'assistant', content: '등록금은 학기 시작 2주 전까지 냅니다.', rating: null, createdAt: at, steps: null },
+]
+
+/** An earlier conversation in 「내 대화」 beside whatever the bot fixture holds. */
+async function withOtherConversation(page: Page) {
+  let asked = false
+  await page.route(`**/api/b/${SLUG}/conversations`, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const mine = asked ? [{ id: SID, title: '휴학 신청 기한', updatedAt: at, sharedAt: null }] : []
+    return route.fulfill({ json: [...mine, otherRow] })
+  })
+  await page.route(`**/api/b/${SLUG}/conversations/${OTHER}`, (route) =>
+    route.fulfill({ json: { id: OTHER, title: otherRow.title, sharedAt: null, messages: otherMessages } }))
+  return { answered: () => (asked = true) }
+}
+
+test('moving to another conversation while the bot answers keeps each reply in its own conversation', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  await botRoutes(page)
+  const other = await withOtherConversation(page)
+  // The answer waits until the visitor has moved on.
+  let release = () => {}
+  const held = new Promise<void>((done) => (release = done))
+  await page.route(`**/api/b/${SLUG}/conversations/${SID}/messages`, async (route) => {
+    await held
+    other.answered()
+    await route.fallback()
+  })
+  await page.goto(`/b/${SLUG}`)
+  await page.getByRole('button', { name: '확인하고 시작' }).click({ timeout: 15_000 })
+  await page.getByLabel('질문 입력').fill('휴학은 언제까지 신청하나요?')
+  await page.getByRole('button', { name: '보내기', exact: true }).click()
+  await expect(page.getByText('답을 쓰는 중…')).toBeVisible()
+
+  const list = page.getByRole('navigation', { name: '내 대화' })
+  await list.getByRole('button', { name: '등록금 문의' }).click()
+  await expect(page.getByText('등록금은 학기 시작 2주 전까지 냅니다.')).toBeVisible()
+  // This conversation is not the one being answered: it takes a question, not 중단.
+  await expect(page.getByRole('button', { name: '중단' })).toHaveCount(0)
+
+  release()
+  // The late answer stays out of the conversation on screen…
+  await expect(list.getByRole('button', { name: '휴학 신청 기한' })).toBeVisible()
+  await expect(page.getByText('휴학은 학기 개시일 전까지 신청합니다')).toHaveCount(0)
+  await expect(page.getByText('등록금은 학기 시작 2주 전까지 냅니다.')).toBeVisible()
+  // …and is there on going back.
+  await list.getByRole('button', { name: '휴학 신청 기한' }).click()
+  await expect(page.getByText('휴학은 학기 개시일 전까지 신청합니다')).toBeVisible()
+  await expect(page.getByText('등록금은 학기 시작 2주 전까지 냅니다.')).toHaveCount(0)
+  expect(state.unexpected).toEqual([])
+})
+
+test('a conversation that could not be deleted stays, and the page says so', async ({ page }, testInfo) => {
+  await hubFixture(page, testInfo)
+  await botRoutes(page)
+  await page.route(`**/api/b/${SLUG}/conversations/${SID}`, (route) =>
+    route.request().method() === 'DELETE' ? route.fulfill({ status: 500, json: { detail: 'Internal Server Error' } }) : route.fallback())
+  await page.goto(`/b/${SLUG}`)
+  await page.getByRole('button', { name: '확인하고 시작' }).click({ timeout: 15_000 })
+  await page.getByLabel('질문 입력').fill('휴학은 언제까지 신청하나요?')
+  await page.getByRole('button', { name: '보내기', exact: true }).click()
+  await expect(page.getByText('휴학은 학기 개시일 전까지 신청합니다')).toBeVisible()
+  await page.getByRole('button', { name: '이 대화 지우기' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '삭제' }).click()
+  await expect(page.getByRole('alert')).toContainText('대화를 지우지 못했습니다.')
+  await expect(page.getByText('휴학은 학기 개시일 전까지 신청합니다')).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '내 대화' }).getByRole('button', { name: '휴학 신청 기한' })).toBeVisible()
+})
+
+test('a dropped answer stream keeps the question and shows the answer the server finished', async ({ page }, testInfo) => {
+  await hubFixture(page, testInfo)
+  await botRoutes(page)
+  let dropped = false
+  await page.route(`**/api/b/${SLUG}/conversations/${SID}/messages`, (route) => {
+    dropped = true
+    return route.abort('connectionreset')
+  })
+  // The server kept the question and finished the answer.
+  await page.route(`**/api/b/${SLUG}/conversations/${SID}`, (route) =>
+    route.request().method() === 'GET' && dropped
+      ? route.fulfill({ json: { id: SID, title: '휴학 신청 기한', sharedAt: null, messages: [
+          { id: 'm1', role: 'user', content: '휴학은 언제까지 신청하나요?', rating: null, createdAt: at, steps: null },
+          { id: 'm2', role: 'assistant', content: ANSWER, rating: null, createdAt: at, steps: null },
+        ] } })
+      : route.fallback())
+  await page.goto(`/b/${SLUG}`)
+  await page.getByRole('button', { name: '확인하고 시작' }).click({ timeout: 15_000 })
+  const box = page.getByLabel('질문 입력')
+  await box.fill('휴학은 언제까지 신청하나요?')
+  await page.getByRole('button', { name: '보내기', exact: true }).click()
+  await expect(page.getByText('휴학은 학기 개시일 전까지 신청합니다')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('휴학은 언제까지 신청하나요?', { exact: true })).toBeVisible()
+  await expect(box).toHaveValue('')
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('「내 대화」 past fifty opens the rest with 더 보기', async ({ page }, testInfo) => {
+  await hubFixture(page, testInfo)
+  await botRoutes(page)
+  const rows = Array.from({ length: 55 }, (_, i) => ({ id: `r${String(i).padStart(31, '0')}`, title: `대화 ${i + 1}`, updatedAt: at, sharedAt: null }))
+  const offsets: string[] = []
+  await page.route(`**/api/b/${SLUG}/conversations?*`, (route) => {
+    const offset = Number(new URL(route.request().url()).searchParams.get('offset') ?? 0)
+    offsets.push(String(offset))
+    return route.fulfill({ json: rows.slice(offset, offset + 50) })
+  })
+  await page.route(`**/api/b/${SLUG}/conversations`, (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ json: rows.slice(0, 50) }) : route.fallback())
+  await page.goto(`/b/${SLUG}`)
+  const list = page.getByTestId('bot-conversations')
+  await expect(list.getByRole('button', { name: '대화 50', exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect(list.getByRole('button', { name: '대화 51', exact: true })).toHaveCount(0)
+  await list.getByRole('button', { name: '더 보기' }).click()
+  await expect(list.getByRole('button', { name: '대화 55', exact: true })).toBeVisible()
+  await expect(list.getByRole('button', { name: '더 보기' })).toHaveCount(0)
+  expect(offsets).toEqual(['50'])
+})
+
 test('a paused bot says so and takes no question', async ({ page }, testInfo) => {
   await hubFixture(page, testInfo)
   await botRoutes(page, { paused: true })

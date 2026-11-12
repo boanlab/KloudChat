@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { PageBody } from '@/components/layout/AppShell'
-import { Button, Card, EmptyState } from '@/components/ui'
+import { Button, Card, EmptyState, LoadingState } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { type MyUsage, meApi } from '@/lib/api'
 import { cn, formatTokens } from '@/lib/utils'
@@ -20,6 +20,9 @@ export function MyUsagePage() {
 
   useEffect(() => {
     let live = true
+    // Another period never shows the last one's numbers under its label.
+    setData(null)
+    setFailed(false)
     meApi.usage(days).then(
       (d) => {
         if (!live) return
@@ -97,7 +100,7 @@ export function MyUsagePage() {
       )}
 
       {/* Failed load said; an empty layout would read as no usage. */}
-      {failed && !data ? (
+      {failed ? (
         <div className="mt-6">
           <EmptyState
             icon={<BarChart3 size={18} />}
@@ -109,7 +112,11 @@ export function MyUsagePage() {
             }
           />
         </div>
-      ) : !data ? null : data.totals.requests === 0 ? (
+      ) : !data ? (
+        <div className="mt-6">
+          <LoadingState />
+        </div>
+      ) : data.totals.requests === 0 ? (
         <div className="mt-6">
           <EmptyState
             icon={<BarChart3 size={18} />}

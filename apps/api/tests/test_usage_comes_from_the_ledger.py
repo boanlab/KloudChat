@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 import sqlalchemy as sa
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core.config import settings
 from app.models.user import CreditLedger, User
 from app.routers import usage as usage_router
 from app.services.credits import cycle_start, next_cycle_reset, refill_if_due, settle
@@ -94,6 +96,15 @@ def _day_floor(_unit: str, value):
     return None if value is None else f"{str(value)[:10]} 00:00:00.000000"
 
 
+def _wall_clock(zone: str, value):
+    """`timezone(zone, timestamptz)` for SQLite: the instant's wall clock there, no zone."""
+    if value is None:
+        return None
+    at = datetime.fromisoformat(str(value))
+    at = at if at.tzinfo else at.replace(tzinfo=UTC)
+    return at.astimezone(ZoneInfo(zone)).replace(tzinfo=None).isoformat(sep=" ")
+
+
 @pytest.fixture
 async def db():
     engine = create_async_engine(
@@ -105,6 +116,7 @@ async def db():
         # aiosqlite's own `create_function` is a coroutine; this hook is sync.
         raw = dbapi_connection.driver_connection._conn
         raw.create_function("date_trunc", 2, _day_floor)
+        raw.create_function("timezone", 2, _wall_clock)
 
     async with engine.begin() as connection:
         for statement in _DDL:
@@ -423,7 +435,7 @@ async def test_every_day_of_the_window_is_on_the_chart(db) -> None:
     assert len(days) == 7
     dates = [row["date"] for row in days]
     assert dates == sorted(dates)
-    assert dates[-1] == datetime.now(UTC).date().isoformat()
+    assert dates[-1] == datetime.now(ZoneInfo(settings.timezone)).date().isoformat()
     assert [row["requests"] for row in days] == [0, 0, 0, 1, 0, 0, 1]
 
 
@@ -552,3 +564,28 @@ async def test_a_turn_without_a_search_writes_no_row(db) -> None:
     await db.commit()
     rows = (await db.exec(sa.text("SELECT count(*) FROM credit_ledger"))).one()
     assert rows[0] == 0
+
+
+async def test_a_turn_at_half_past_midnight_seoul_time_counts_on_that_seoul_day(
+    db, monkeypatch
+) -> None:
+    """00:30 KST is 15:30 UTC the day before; the bar is the KST day, as the credit month is."""
+    monkeypatch.setattr(settings, "timezone", "Asia/Seoul")
+    seoul = ZoneInfo("Asia/Seoul")
+    today = datetime.now(seoul).date()
+    # Yesterday 00:30 in Seoul, so it is inside a two-day window whatever the hour now.
+    when = datetime(today.year, today.month, today.day, 0, 30, tzinfo=seoul) - timedelta(days=1)
+    user = await _account(db)
+    chat = await _session_row(db, user, kind="chat", model="local/gemma-4-26b-a4b")
+    await _turn(db, chat, model="local/gemma-4-26b-a4b", when=when.astimezone(UTC))
+    await _spend(db, user, credits=70, reason="chat.completion", session_id=chat,
+                 model="local/gemma-4-26b-a4b", when=when.astimezone(UTC))
+
+    report = await usage_router.my_usage(user, db, days=2)
+
+    by_date = {row["date"]: row for row in report["daily"]}
+    assert list(by_date) == [(today - timedelta(days=1)).isoformat(), today.isoformat()]
+    yesterday = by_date[(today - timedelta(days=1)).isoformat()]
+    assert (yesterday["requests"], yesterday["credits"]) == (1, 70)
+    # The UTC calendar day of that instant is the day before, which is not on the chart.
+    assert when.astimezone(UTC).date().isoformat() not in by_date
