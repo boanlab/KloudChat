@@ -62,6 +62,8 @@ export function exportChoices(artifact: Artifact, templateKind?: string): Export
       return [{ format: 'file', label: '한글 문서', hint: artifact.format.toUpperCase() }]
     case 'docx':
       return [{ format: 'file', label: 'Word 문서', hint: 'DOCX' }]
+    case 'pptx':
+      return [{ format: 'file', label: 'PowerPoint 문서', hint: 'PPTX' }]
   }
 }
 
@@ -191,9 +193,10 @@ export async function takeArtifact(artifact: Artifact, format: ExportFormat): Pr
     saveBlob(new Blob([csvSource(artifact)], { type: 'text/csv;charset=utf-8' }), `${stem(title)}.csv`)
     return
   }
-  if (format === 'file' && (artifact.kind === 'hwp' || artifact.kind === 'docx')) {
+  if (format === 'file' &&
+    (artifact.kind === 'hwp' || artifact.kind === 'docx' || artifact.kind === 'pptx')) {
     const { bytes } = await artifactsApi.documentFile(artifact.kind, artifact.id)
-    const type = artifact.kind === 'hwp' ? 'application/hwp+zip' : OFFICE_MIME.docx
+    const type = OFFICE_MIME[artifact.kind]
     saveBlob(new Blob([bytes], { type }), `${stem(title)}.${artifact.format}`)
     return
   }

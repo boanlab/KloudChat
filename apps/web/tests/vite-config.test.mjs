@@ -96,3 +96,69 @@ test('the Word editor ships its metric fonts as woff2 latin cuts beside its shee
   assert.match(source, /import 'open-docx-editor\/fonts\.css'/)
   assert.match(source, /aliasKoreanFonts\(\)/)
 })
+
+/** A project with a stand-in pptx-react-viewer: its building blocks chunk and its sheet. */
+async function crvFixture(t, chunk, sheet) {
+  const temporary = await realpath(await mkdtemp(join(tmpdir(), 'kloudchat-crv-')))
+  t.after(() => rm(temporary, { recursive: true, force: true }))
+  const root = join(temporary, 'web')
+  const dist = join(root, 'node_modules/pptx-react-viewer/dist')
+  await mkdir(join(root, 'src'), { recursive: true })
+  await mkdir(dist, { recursive: true })
+  await copyFile(join(webRoot, 'vite.config.ts'), join(root, 'vite.config.ts'))
+  await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module' }))
+  for (const dependency of ['vite', '@vitejs/plugin-react', '@tailwindcss/vite']) {
+    const target = join(root, 'node_modules', dependency)
+    await mkdir(dirname(target), { recursive: true })
+    await symlink(join(webRoot, 'node_modules', dependency), target, 'junction')
+  }
+  await writeFile(join(root, 'node_modules/pptx-react-viewer/package.json'), JSON.stringify({
+    name: 'pptx-react-viewer', type: 'module', exports: { '.': './dist/index.mjs', './styles.css': './dist/pptx-viewer.css' },
+  }))
+  await writeFile(join(dist, 'index.mjs'), "export { useViewerBuildingBlocks } from './chunk-TEST.mjs'")
+  await writeFile(join(dist, 'chunk-TEST.mjs'), chunk)
+  await writeFile(join(dist, 'pptx-viewer.css'), sheet)
+  await writeFile(join(root, 'index.html'), '<script type="module" src="/src/main.js"></script>')
+  await writeFile(join(root, 'src/main.js'), [
+    "import { useViewerBuildingBlocks } from 'pptx-react-viewer'",
+    "import 'pptx-react-viewer/styles.css'",
+    'console.log(useViewerBuildingBlocks({}))',
+  ].join('\n'))
+  return root
+}
+
+const BLOCKS = (result) => [
+  'export function useViewerBuildingBlocks(input) {',
+  '  const state = { setIsDirty: (v) => v }',
+  '  const propertyHandlers = { handleUpdateNotes: () => 1 }',
+  '  return {',
+  result,
+  '    collaboration: null',
+  '  }',
+  '}',
+].join('\n')
+const RESULT = '    slidesPaneProps,\n    mode,\n    loading,\n    error,\n    autosaveStatus,'
+const SHEET = ':root,:host{--font-sans:x;--color-accent:red}.flex{display:flex}'
+
+test('the PowerPoint editor gets its notes writer and save mark, and its theme stays in its own box', async (t) => {
+  const root = await crvFixture(t, `const slidesPaneProps = 1, mode = 2, loading = 3, error = 4, autosaveStatus = 5\n${BLOCKS(RESULT)}`, SHEET)
+  const result = await build({ root, configFile: join(root, 'vite.config.ts'), logLevel: 'silent', build: { write: false, minify: false } })
+  const outputs = Array.isArray(result) ? result.flatMap((bundle) => bundle.output) : result.output
+  const code = outputs.filter((o) => o.type === 'chunk').map((o) => o.code).join('\n')
+  // the bundler may inline the stand-ins; the two members are there
+  assert.match(code, /updateNotes:/)
+  assert.match(code, /markClean: \(\) =>/)
+  const css = outputs.filter((o) => o.type === 'asset' && o.fileName.endsWith('.css'))
+    .map((o) => String(o.source)).join('\n')
+  assert.ok(!css.includes(':root'), css)
+  assert.match(css, /\.kc-slides,\s*\[data-pptx-viewer\],\s*\[data-pptx-scope\]\s*\{/)
+})
+
+test('a PowerPoint editor version that moved the patched spot fails the build', async (t) => {
+  const moved = `const slidesPaneProps = 1, mode = 2\n${BLOCKS('    slidesPaneProps,\n    mode,')}`
+  const root = await crvFixture(t, moved, SHEET)
+  await assert.rejects(
+    build({ root, configFile: join(root, 'vite.config.ts'), logLevel: 'silent', build: { write: false } }),
+    /useViewerBuildingBlocks result moved/,
+  )
+})

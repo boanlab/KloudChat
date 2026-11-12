@@ -42,14 +42,75 @@ const rhwpHeaders = (): Plugin => ({
   },
 })
 
+/**
+ * Build-time changes to the PowerPoint editor (pptx-react-viewer, `components/pptx`), pinned to
+ * its exact version in package.json; node_modules is untouched.
+ * - `useViewerBuildingBlocks()` hands out neither the speaker-notes writer its own
+ *   `PowerPointViewer` uses nor a way to clear its unsaved flag after a save: both are added to
+ *   its result (`updateNotes`, `markClean`).
+ * - Its stylesheet sets its theme variables (`--font-sans`, `--color-accent`, …) on `:root`,
+ *   where they would replace the app's own once a deck opens: they are set on the editor's
+ *   own elements instead.
+ * A new version that moves either spot fails the build rather than shipping without them.
+ */
+const CRV_RESULT = '    slidesPaneProps,\n    mode,\n    loading,\n    error,\n    autosaveStatus,'
+const CRV_ADDED =
+  '    updateNotes: propertyHandlers.handleUpdateNotes,\n' +
+  '    markClean: () => state.setIsDirty(false),\n'
+const CRV_ROOT = ':root,:host{'
+const CRV_SCOPE = '.kc-slides,[data-pptx-viewer],[data-pptx-scope]{'
+
+function crvPatches(): Plugin {
+  let building = false
+  const seen = { script: false, sheet: false }
+  const done = { script: false, sheet: false }
+  return {
+    name: 'kchat-crv-patches',
+    enforce: 'pre',
+    configResolved(config) {
+      building = config.command === 'build'
+    },
+    transform(code, id) {
+      if (!id.includes('/pptx-react-viewer/dist/')) return null
+      if (/\/chunk-[^/]*\.m?js$/.test(id) && code.includes('function useViewerBuildingBlocks(')) {
+        seen.script = true
+        if (!code.includes(CRV_RESULT)) return null
+        done.script = true
+        return { code: code.replace(CRV_RESULT, CRV_ADDED + CRV_RESULT), map: null }
+      }
+      if (/\/pptx-viewer\.css(\?|$)/.test(id)) {
+        seen.sheet = true
+        if (!code.includes(CRV_ROOT)) return null
+        done.sheet = true
+        return { code: code.split(CRV_ROOT).join(CRV_SCOPE), map: null }
+      }
+      return null
+    },
+    buildEnd(error) {
+      if (!building || error) return
+      if (seen.script && !done.script) {
+        this.error('pptx-react-viewer: the useViewerBuildingBlocks result moved; update CRV_RESULT')
+      }
+      if (seen.sheet && !done.sheet) {
+        this.error('pptx-react-viewer: its stylesheet no longer sets :root,:host; update CRV_ROOT')
+      }
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), versionFile(), rhwpHeaders()],
+  plugins: [crvPatches(), react(), tailwindcss(), versionFile(), rhwpHeaders()],
   define: {
     'import.meta.env.VITE_KCHAT_VERSION': JSON.stringify(version),
   },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // MPL-2.0, and only for fonts embedded as MTX/EOT in old decks: not shipped, such a font
+      // falls back to the deck's other fonts (components/pptx/mtxDecompressor.ts)
+      'mtx-decompressor': fileURLToPath(
+        new URL('./src/components/pptx/mtxDecompressor.ts', import.meta.url),
+      ),
     },
   },
   server: {

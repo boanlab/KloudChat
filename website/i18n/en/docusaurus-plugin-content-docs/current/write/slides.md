@@ -39,7 +39,7 @@ Switch to full screen from **Slide show** in the ribbon. Move between slides wit
 
 ## Export
 
-In **File → Export**, choose PowerPoint (PPTX), PDF (for presenting), or text (with notes). If there are slides at overflow risk, slides whose evidence needs checking, or unresolved review notes, it tells you before exporting. **Copy the script** copies the slide body text and the speaker notes at once. The dark impression applies to PPTX only, and PDF is output on a light background.
+In **File → Export**, choose PowerPoint (PPTX), PDF (for presenting), or text (with notes). If there are slides at overflow risk, slides whose evidence needs checking, or unresolved review notes, it tells you before exporting. **Copy the script** copies the slide body text and the speaker notes at once. The dark impression applies to PPTX only, and PDF is output on a light background. To fill and edit a received `.pptx` or a company template as it is, use [PowerPoint documents](pptx).
 
 ## Revising
 

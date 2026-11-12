@@ -1433,8 +1433,8 @@ export const artifactsApi = {
   /** Puts a superseded revision back. Itself an edit, so it adds a version. */
   restore: (id: string, version: number) =>
     call<ArtifactRow>(`/artifacts/${id}/restore`, body({ version })),
-  /** A new office document (HWP, Word) in a conversation: blank, or the uploaded `fileId`
-   *  (`.hwp`/`.hwpx`, `.docx`). */
+  /** A new office document (HWP, Word, PowerPoint) in a conversation: blank, or the uploaded
+   *  `fileId` (`.hwp`/`.hwpx`, `.docx`, `.pptx`). */
   createDocument: (kind: OfficeKind, payload: {
     sessionId?: string | null
     projectId?: string | null
@@ -1455,7 +1455,7 @@ export const artifactsApi = {
       version: Number(res.headers.get('X-Artifact-Version') ?? version ?? 0),
     }
   },
-  /** The editor's file (HWPX, DOCX) as the next version; 409 when anyone saved since
+  /** The editor's file (HWPX, DOCX, PPTX) as the next version; 409 when anyone saved since
    *  `expectedVersion`. */
   saveDocument: async (
     kind: OfficeKind,
@@ -1481,12 +1481,13 @@ export const artifactsApi = {
 }
 
 /** Office documents edited beside a chat; each is also its file route (`/artifacts/{id}/hwp`). */
-export type OfficeKind = 'hwp' | 'docx'
+export type OfficeKind = 'hwp' | 'docx' | 'pptx'
 
 /** The editable format each kind is saved in. */
 export const OFFICE_MIME: Record<OfficeKind, string> = {
   hwp: 'application/hwp+zip',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 }
 
 export interface ArtifactVersionRow {

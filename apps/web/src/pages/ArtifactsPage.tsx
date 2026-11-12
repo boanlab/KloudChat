@@ -57,6 +57,7 @@ const kindIcon: Record<ArtifactKind, typeof FileText> = {
   html: FileText,
   hwp: FileText,
   docx: FileText,
+  pptx: FileText,
 }
 
 const kindLabel: Record<ArtifactKind, string> = {
@@ -70,6 +71,7 @@ const kindLabel: Record<ArtifactKind, string> = {
   html: 'HTML',
   hwp: '한글 문서',
   docx: 'Word 문서',
+  pptx: 'PowerPoint 문서',
 }
 
 /** Unknown kinds: the artifact's icon. */

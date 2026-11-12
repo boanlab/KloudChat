@@ -67,6 +67,16 @@ export const NAMES_DOCX = new RegExp([
   '(?<![가-힣])워드\\s{0,2}(?:로|문서|파일)',
 ].join('|'), 'i')
 
+/** 「PowerPoint로」, 「pptx 파일」, 「파워포인트」, 「PPT 파일로」: written in the PowerPoint editor
+ *  beside the chat. A bare 「PPT 만들어 줘」 or 「발표 자료」 is any deck and goes to the slides
+ *  screen. Mirrors the server's `_ASKS_PPTX` (routers/sessions.py). */
+export const NAMES_PPTX = new RegExp([
+  '(?<![A-Za-z])pptx(?![A-Za-z])',
+  '(?<![A-Za-z])(?:ms\\s?)?power\\s?point(?![A-Za-z])',
+  '파워\\s?포인트',
+  '(?<![A-Za-z])ppt\\s{0,2}(?:파일|files?)',
+].join('|'), 'i')
+
 /** The surface a chat sentence really belongs to, or null to answer it here. */
 export function handoffSurface(text: string): 'report' | 'slides' | null {
   const s = instructionPart(text).trim()

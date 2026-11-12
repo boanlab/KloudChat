@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { agentHandoffSurface, handoffSurface, NAMES_DOCX, NAMES_HWP } from '@/lib/documentRequest'
+import {
+  agentHandoffSurface, handoffSurface, NAMES_DOCX, NAMES_HWP, NAMES_PPTX,
+} from '@/lib/documentRequest'
 
 describe('handoffSurface', () => {
   it('hands an English request to create, make or build a deck to the slides screen', () => {
@@ -82,5 +84,31 @@ describe('NAMES_DOCX', () => {
     // the composer checks NAMES_DOCX before handing a document order over
     expect(handoffSurface('직원 연수 참석을 요청하는 공문을 Word로 작성해 주세요')).not.toBeNull()
     expect(NAMES_DOCX.test('직원 연수 참석을 요청하는 공문을 Word로 작성해 주세요')).toBe(true)
+  })
+})
+
+describe('NAMES_PPTX', () => {
+  it('names a PowerPoint file as the server does, and not a plain deck request', () => {
+    for (const text of [
+      '사업 계획을 PowerPoint로 5장 만들어 줘', '파워포인트 파일로', 'pptx 파일로 줘',
+      'PPT 파일로 만들어 주세요', 'a Power Point deck', 'MS PowerPoint',
+    ]) {
+      expect(NAMES_PPTX.test(text)).toBe(true)
+    }
+    for (const text of [
+      '발표 자료 만들어 줘', 'PPT 만들어 줘', '사업 계획 발표 슬라이드 5장', 'pptxy', 'appt 파일',
+      'Word로 작성해 줘',
+    ]) {
+      expect(NAMES_PPTX.test(text)).toBe(false)
+    }
+  })
+
+  it('keeps a PowerPoint request off the slides screen, and a plain deck request on it', () => {
+    // the composer checks NAMES_PPTX before handing a deck order over
+    const asked = '사업 계획 발표 자료 5장을 PowerPoint로 만들어 주세요'
+    expect(handoffSurface(asked)).toBe('slides')
+    expect(NAMES_PPTX.test(asked)).toBe(true)
+    expect(handoffSurface('사업 계획 발표 자료 5장 만들어 줘')).toBe('slides')
+    expect(NAMES_PPTX.test('사업 계획 발표 자료 5장 만들어 줘')).toBe(false)
   })
 })

@@ -14,6 +14,7 @@ export const artifactIcon: Record<ArtifactKind, typeof FileText> = {
   html: FileText,
   hwp: FileType,
   docx: FileType,
+  pptx: Presentation,
 }
 
 export const artifactLabel: Record<ArtifactKind, string> = {
@@ -27,6 +28,7 @@ export const artifactLabel: Record<ArtifactKind, string> = {
   html: 'HTML',
   hwp: '한글 문서',
   docx: 'Word 문서',
+  pptx: 'PowerPoint 문서',
 }
 
 /** The measure that tells one result from another: sections, slides, rows, seconds. */
@@ -61,6 +63,7 @@ export function sizeLine(
     }
     case 'hwp':
     case 'docx':
+    case 'pptx':
       return typeof data?.size === 'number' ? `${Math.max(1, Math.round(data.size / 1024))} KB` : ''
     default:
       return ''
