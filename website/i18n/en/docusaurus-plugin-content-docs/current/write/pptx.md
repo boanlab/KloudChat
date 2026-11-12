@@ -12,7 +12,7 @@ A deck KloudChat writes from scratch is made on the [Slides](slides) screen by d
 
 - On Home, **PowerPoint** starts a conversation with a blank deck open. The conversation is on the left; on the right is an editor in the manner of Google Slides: a toolbar with undo, zoom, text box, shape, image, table, font, size, bold, italic, underline, text colour, alignment and bullets, the slide list on the left and the speaker notes below.
 - A `.pptx` file attached in the conversation opens in the editor with **Open in PowerPoint editor**.
-- Asking in chat for something "in PowerPoint", "as a PowerPoint file", "as a pptx file" or "as a PPT file" writes it in this conversation's PowerPoint document instead of moving to the slides screen. A plain "make a presentation" or "make a PPT" is made on the slides screen.
+- Asking in chat for something "in PowerPoint", "as a PowerPoint file", "as a pptx file" or "as a PPT file" writes it in this conversation's PowerPoint document instead of moving to the slides screen. A request that names no file format, such as "write a presentation" or "write a PPT", is made on the slides screen.
 - Legacy `.ppt` files cannot be opened. Save them as `.pptx` in PowerPoint and attach that.
 
 ## Writing and editing by chat
