@@ -959,6 +959,8 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             after = _slide_ref(deck, op.get("after", f"s{len(deck.slides)}"), zero=True)
             if op.get("like") not in (None, ""):
                 like = _slide_ref(deck, op.get("like"))
+                # a table or cover slide named as the model: the nearest body slide to it
+                like = like if _has_body(deck, like) else _like(deck, like)
             else:
                 like = _like(deck, after)
             title = _text_arg(op, "title") if op.get("title") is not None else ""
