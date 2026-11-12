@@ -53,4 +53,5 @@ def test_all_three_document_paths_check_it(module) -> None:
     # deck and page wrap the call in a retry (`model_retry`); the call itself is checked
     source = inspect.getsource(getattr(module, "_complete_once", module._complete))
     assert "thinking.starved" in source, module.__name__
-    assert "completion_tokens" in source
+    # both calls' usage merged, cached prompt tokens included (`usage_fields.merged_raw`)
+    assert "usage_fields.merged_raw(first," in source

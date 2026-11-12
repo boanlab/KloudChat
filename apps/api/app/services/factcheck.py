@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
-from app.services import settings_store, tools_gateway
+from app.services import settings_store, tools_gateway, usage_fields
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +82,7 @@ def _spend() -> dict[str, int]:
 def _add(total: dict[str, int], spent: dict[str, int]) -> None:
     total["inputTokens"] += spent["inputTokens"]
     total["outputTokens"] += spent["outputTokens"]
+    usage_fields.add_cached(total, spent)
 
 
 async def _complete(
@@ -104,10 +105,7 @@ async def _complete(
         response.raise_for_status()
         payload = response.json()
         raw = payload.get("usage") or {}
-        return (payload["choices"][0]["message"]["content"] or "").strip(), {
-            "inputTokens": int(raw.get("prompt_tokens") or 0),
-            "outputTokens": int(raw.get("completion_tokens") or 0),
-        }
+        return (payload["choices"][0]["message"]["content"] or "").strip(), usage_fields.spent(raw)
 
 
 async def _search(query: str) -> list[dict[str, str]]:

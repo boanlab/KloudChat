@@ -21,6 +21,7 @@ from app.services import (
     research,
     settings_store,
     thinking,
+    usage_fields,
 )
 from app.services import outline as plan_rules
 from app.services.context import build_document_messages
@@ -171,18 +172,10 @@ async def _complete_once(
             first = payload.get("usage") or {}
             # both calls charged and counted
             payload = retried
-            payload["usage"] = {
-                "prompt_tokens": int(first.get("prompt_tokens") or 0)
-                + int(spent.get("prompt_tokens") or 0),
-                "completion_tokens": int(first.get("completion_tokens") or 0)
-                + int(spent.get("completion_tokens") or 0),
-            }
+            payload["usage"] = usage_fields.merged_raw(first, spent)
 
     raw = payload.get("usage") or {}
-    return _text(payload), {
-        "inputTokens": int(raw.get("prompt_tokens") or 0),
-        "outputTokens": int(raw.get("completion_tokens") or 0),
-    }
+    return _text(payload), usage_fields.spent(raw)
 
 
 def _json_object(text: str) -> dict[str, Any]:
@@ -571,6 +564,7 @@ async def write(
 
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
+        usage_fields.add_cached(usage, spent)
         block["html"] = _fragment(text, template)
         written.append(f"{heading}: {re.sub(r'<[^>]+>', ' ', block['html'])[:200]}")
         yield {"type": "block", "block": {k: v for k, v in block.items()}, "done": True}

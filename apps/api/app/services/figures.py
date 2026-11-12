@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from app.services import settings_store
+from app.services import settings_store, usage_fields
 
 log = logging.getLogger(__name__)
 
@@ -204,10 +204,7 @@ async def propose(
         figures=figures,
         credits=estimate(image_model, len(figures)),
         model=str(image_model.get("label") or image_model.get("id") or ""),
-        usage={
-            "inputTokens": int(raw.get("prompt_tokens") or 0),
-            "outputTokens": int(raw.get("completion_tokens") or 0),
-        },
+        usage=usage_fields.spent(raw),
     )
 
 

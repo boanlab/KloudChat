@@ -12,7 +12,14 @@ from typing import Any
 
 import httpx
 
-from app.services import credibility, korean_papers, query_terms, settings_store, thinking
+from app.services import (
+    credibility,
+    korean_papers,
+    query_terms,
+    settings_store,
+    thinking,
+    usage_fields,
+)
 from app.services.tools.builtin import scrape, searxng
 
 log = logging.getLogger(__name__)
@@ -332,10 +339,7 @@ async def _planned(
         return fallback, spent, known
 
     raw = payload.get("usage") or {}
-    spent = {
-        "inputTokens": int(raw.get("prompt_tokens") or 0),
-        "outputTokens": int(raw.get("completion_tokens") or 0),
-    }
+    spent = usage_fields.spent(raw)
     text = (payload["choices"][0]["message"]["content"] or "").strip()
     if by_entity:
         queries, entities = scholar_queries(text, request)
@@ -438,10 +442,7 @@ async def _on_subject(
             response.raise_for_status()
             payload = response.json()
         raw = payload.get("usage") or {}
-        spent = {
-            "inputTokens": int(raw.get("prompt_tokens") or 0),
-            "outputTokens": int(raw.get("completion_tokens") or 0),
-        }
+        spent = usage_fields.spent(raw)
         text = payload["choices"][0]["message"]["content"] or ""
         match = re.search(r"\[[\d,\s]{0,200}\]", text)
         chosen = {int(n) for n in json.loads(match.group(0))} if match else set()
@@ -671,8 +672,7 @@ async def _ask(prompt: str, model: str, api_key: str, max_tokens: int) -> tuple[
         response.raise_for_status()
         payload = response.json()
     raw = payload.get("usage") or {}
-    spent = {"inputTokens": int(raw.get("prompt_tokens") or 0),
-             "outputTokens": int(raw.get("completion_tokens") or 0)}
+    spent = usage_fields.spent(raw)
     return (payload["choices"][0]["message"]["content"] or "").strip(), spent
 
 

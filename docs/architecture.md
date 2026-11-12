@@ -135,6 +135,18 @@ price a fraction of the real one.
 Video rates exist in one place, `services/videogen.py:_RATES`, and the
 catalogue re-exports them verbatim, so a quote and a charge cannot diverge.
 
+**Cached prompt tokens are recorded, not discounted.** Providers report the part of a
+prompt they served from their prefix cache under different names
+(`prompt_tokens_details.cached_tokens`, DeepSeek's `prompt_cache_hit_tokens`,
+`cache_read_input_tokens`); `services/usage_fields` reads all of them, and every model call
+that counts tokens (agent hops, titles, summaries, document writers, revisions, checks)
+carries the figure as `cachedInputTokens` beside `inputTokens`, of which it is a part. A
+turn's total lands on `messages.usage.cachedInputTokens` (absent when the provider
+reported none), and the agent logs each hop's prompt and cached tokens. Credits still
+charge every input token at `inputCreditCost`: the gateway's model entries carry no
+cache-read price, and through OpenRouter the discount depends on which upstream provider
+served the call.
+
 **A model whose price is unknown is dropped from the list.** Upstream returning
 0 means "price unknown", not "free"; taken at face value it bills real money
 against a zero counter. Dropped models appear in the admin screen with the

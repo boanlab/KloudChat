@@ -29,6 +29,7 @@ from app.services import (
     server_notes,
     settings_store,
     thinking,
+    usage_fields,
 )
 from app.services.chat import ChatStreamError, step_label, step_title
 from app.services.context import instruction_part, literature_request
@@ -121,6 +122,7 @@ class _Accumulator:
             u = chunk["usage"]
             self.usage["inputTokens"] += int(u.get("prompt_tokens") or 0)
             self.usage["outputTokens"] += int(u.get("completion_tokens") or 0)
+            usage_fields.add_cached(self.usage, usage_fields.spent(u))
 
         text: str | None = None
         for choice in chunk.get("choices") or []:
@@ -1969,6 +1971,11 @@ async def run_turn(
                 acc = _Accumulator()
         assert acc is not None
         last_hop = acc
+        if not running_preset:
+            # per-hop prompt size and provider cache hits (token-savings measurement)
+            log.info("hop %d %s: prompt %d cached %d output %d", hop, hop_model,
+                     acc.usage["inputTokens"], acc.usage.get(usage_fields.CACHED, 0),
+                     acc.usage["outputTokens"])
 
         if (acc.looped and not running_preset and not preflight_tool and not loop_retried
                 and hop_model == model):
@@ -1980,6 +1987,7 @@ async def run_turn(
                         model, sum(len(t) for t in hop_text))
             usage["inputTokens"] += acc.usage["inputTokens"]
             usage["outputTokens"] += acc.usage["outputTokens"]
+            usage_fields.add_cached(usage, acc.usage)
             if hop_text and not freshness_request:
                 del answer_text[len(answer_text) - len(hop_text) :]
                 yield {"type": "retract", "text": "".join(hop_text)}
@@ -2029,6 +2037,7 @@ async def run_turn(
             for key in ("inputTokens", "outputTokens"):
                 counter = f"model:{hop_model}:{key}"
                 usage[counter] = usage.get(counter, 0) + acc.usage[key]
+            usage_fields.add_cached(usage, acc.usage, f"model:{hop_model}:cachedInputTokens")
             actual = acc.actual_model or hop_model
             ran = bool(acc.actual_model or any(acc.usage.values()) or acc.calls or acc.content)
             if ran and f"handoff:{actual}" not in reported_models:
@@ -2038,6 +2047,7 @@ async def run_turn(
         else:
             usage["inputTokens"] += acc.usage["inputTokens"]
             usage["outputTokens"] += acc.usage["outputTokens"]
+            usage_fields.add_cached(usage, acc.usage)
         if hop_model == model and acc.actual_model and acc.actual_model not in reported_models:
             reported_models.add(acc.actual_model)
             yield {
@@ -2750,11 +2760,13 @@ async def run_turn(
         if retry is not None and writer == model:
             usage["inputTokens"] += retry.usage["inputTokens"]
             usage["outputTokens"] += retry.usage["outputTokens"]
+            usage_fields.add_cached(usage, retry.usage)
         elif retry is not None:
             # the other model's tokens at its own price
             for key in ("inputTokens", "outputTokens"):
                 counter = f"model:{writer}:{key}"
                 usage[counter] = usage.get(counter, 0) + retry.usage[key]
+            usage_fields.add_cached(usage, retry.usage, f"model:{writer}:cachedInputTokens")
         spoken = "".join(written)
         if (retry is None or retry.calls or retry.looped or retry.runaway
                 or not internal_words.strip_tool_calls(spoken).strip()):

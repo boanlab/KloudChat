@@ -14,7 +14,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.config import settings
 from app.models.user import User
 from app.models.workspace import Memory, MemoryType
-from app.services import settings_store
+from app.services import settings_store, usage_fields
 
 log = logging.getLogger(__name__)
 
@@ -140,10 +140,7 @@ async def extract(
         return 0, spent
 
     raw = payload.get("usage") or {}
-    spent = {
-        "inputTokens": int(raw.get("prompt_tokens") or 0),
-        "outputTokens": int(raw.get("completion_tokens") or 0),
-    }
+    spent = usage_fields.spent(raw)
 
     # small models fence JSON arbitrarily
     match = re.search(r"\[.*\]", content, re.S)

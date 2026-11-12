@@ -12,7 +12,7 @@ import httpx
 
 from app.core.config import settings
 from app.models.chat import Message, Role, TurnFailure
-from app.services import settings_store
+from app.services import settings_store, usage_fields
 
 log = logging.getLogger(__name__)
 
@@ -170,10 +170,7 @@ async def generate_title(
         return None, spent
 
     raw = data.get("usage") or {}
-    spent = {
-        "inputTokens": int(raw.get("prompt_tokens") or 0),
-        "outputTokens": int(raw.get("completion_tokens") or 0),
-    }
+    spent = usage_fields.spent(raw)
     choices = data.get("choices") or []
     if not choices:
         return None, spent

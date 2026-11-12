@@ -22,6 +22,7 @@ from app.services import (
     revised_tables,
     richtext,
     units,
+    usage_fields,
     weekdays,
 )
 from app.services import deck as deck_service
@@ -246,6 +247,7 @@ class Route(Base):
                     # the planner read the whole sentence; the rest is planned again
                     bundle.usage["inputTokens"] += plan.usage["inputTokens"]
                     bundle.usage["outputTokens"] += plan.usage["outputTokens"]
+                    usage_fields.add_cached(bundle.usage, plan.usage)
                 typed = rest
                 plan = None if typed else revise.Plan(scope="parts", targets=[], note=", ".join(
                     taken))
@@ -283,6 +285,7 @@ class Route(Base):
             if plan is not None:
                 bundle.usage["inputTokens"] += plan.usage["inputTokens"]
                 bundle.usage["outputTokens"] += plan.usage["outputTokens"]
+                usage_fields.add_cached(bundle.usage, plan.usage)
             plan = revise.Plan(scope="parts", targets=carrying, note=typed)
         plan = plan or await revise.plan(
             message=typed, title=bundle.plan.title, parts=names,
@@ -303,6 +306,7 @@ class Route(Base):
                                    summary=asks[1])
         bundle.usage["inputTokens"] += plan.usage["inputTokens"]
         bundle.usage["outputTokens"] += plan.usage["outputTokens"]
+        usage_fields.add_cached(bundle.usage, plan.usage)
         if plan.inserts:
             # new parts written one by one and slotted in
             position = plan.after + 1
@@ -574,6 +578,7 @@ class Rewrite(Base):
                                        if not d.startswith(f"{index + 1}장 ")]
                         bundle.usage["inputTokens"] += spent["inputTokens"]
                         bundle.usage["outputTokens"] += spent["outputTokens"]
+                        usage_fields.add_cached(bundle.usage, spent)
                         yield {"type": "step", "id": f"r{index}", "label": label,
                                "status": "done"}
                         continue
@@ -738,6 +743,7 @@ class Rewrite(Base):
                         doc.already.append((index + 1, want))
                         bundle.usage["inputTokens"] += spent["inputTokens"]
                         bundle.usage["outputTokens"] += spent["outputTokens"]
+                        usage_fields.add_cached(bundle.usage, spent)
                         yield {"type": "step", "id": f"r{index}", "label": label,
                                "status": "done"}
                         continue
@@ -755,6 +761,7 @@ class Rewrite(Base):
                     if faults:
                         bundle.usage["inputTokens"] += spent["inputTokens"]
                         bundle.usage["outputTokens"] += spent["outputTokens"]
+                        usage_fields.add_cached(bundle.usage, spent)
                         doc.failed.append(label)
                         raise ValueError(f"검사를 통과하지 못함: {rejected}")
                     body = internal_words.scrub(body)
@@ -791,6 +798,7 @@ class Rewrite(Base):
                 continue
             bundle.usage["inputTokens"] += spent["inputTokens"]
             bundle.usage["outputTokens"] += spent["outputTokens"]
+            usage_fields.add_cached(bundle.usage, spent)
             doc.changed += 1
             doc.touched.append(index)
             yield {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
@@ -920,6 +928,7 @@ async def _summary(bundle: Bundle, lines: int) -> str | None:
         return None
     bundle.usage["inputTokens"] += used.get("inputTokens", 0)
     bundle.usage["outputTokens"] += used.get("outputTokens", 0)
+    usage_fields.add_cached(bundle.usage, used)
     return revise.summary_block(text, lines, bundle.plan.title, fields)
 
 
@@ -949,6 +958,7 @@ class Consistency(Base):
                 pre=bundle.computed.prepass, model=req.model, api_key=req.api_key)
             bundle.usage["inputTokens"] += int(spent.get("inputTokens", 0))
             bundle.usage["outputTokens"] += int(spent.get("outputTokens", 0))
+            usage_fields.add_cached(bundle.usage, spent)
         except Exception:  # noqa: BLE001 — the revision stands; the step says it was not read
             log.exception("revision consistency check failed")
             aligned = {"type": "step", "id": "consistency", "status": "error",

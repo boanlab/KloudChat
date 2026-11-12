@@ -9,7 +9,7 @@ import re
 import httpx
 
 from app.core.config import settings
-from app.services import design, settings_store, thinking
+from app.services import design, settings_store, thinking, usage_fields
 
 log = logging.getLogger(__name__)
 
@@ -70,10 +70,7 @@ async def _complete(model: str, prompt: str, api_key: str) -> tuple[str, dict[st
         payload = response.json()
 
     raw = payload.get("usage") or {}
-    return (payload["choices"][0]["message"]["content"] or "").strip(), {
-        "inputTokens": int(raw.get("prompt_tokens") or 0),
-        "outputTokens": int(raw.get("completion_tokens") or 0),
-    }
+    return (payload["choices"][0]["message"]["content"] or "").strip(), usage_fields.spent(raw)
 
 
 def _object(text: str) -> dict:

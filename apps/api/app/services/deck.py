@@ -46,6 +46,7 @@ from app.services import (
     slide_patterns,
     thinking,
     units,
+    usage_fields,
     word_fix,
 )
 from app.services import outline as plan_rules
@@ -1640,19 +1641,11 @@ async def _complete_once(
             first = payload.get("usage") or {}
             # both calls charged and counted
             payload = retried
-            payload["usage"] = {
-                "prompt_tokens": int(first.get("prompt_tokens") or 0)
-                + int(spent.get("prompt_tokens") or 0),
-                "completion_tokens": int(first.get("completion_tokens") or 0)
-                + int(spent.get("completion_tokens") or 0),
-            }
+            payload["usage"] = usage_fields.merged_raw(first, spent)
 
     text = (payload["choices"][0]["message"]["content"] or "").strip()
     raw = payload.get("usage") or {}
-    return text, {
-        "inputTokens": int(raw.get("prompt_tokens") or 0),
-        "outputTokens": int(raw.get("completion_tokens") or 0),
-    }
+    return text, usage_fields.spent(raw)
 
 
 def _json_object(text: str) -> dict[str, Any]:
@@ -3370,6 +3363,7 @@ async def _write_slides(
         )
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
+        usage_fields.add_cached(usage, spent)
         if word_fix.wanted(model_tier.group(model), draft_text):
             # a self-hosted writer's odd words: the judge names them, code swaps the safe ones
             draft_text, more = await word_fix.fix(
@@ -3495,6 +3489,7 @@ async def _write_slides(
 
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
+        usage_fields.add_cached(usage, spent)
 
         # drawn after text: failed drawing keeps the slide
         if (drawing := wanted_figures.get(index)) is not None:
@@ -3630,6 +3625,7 @@ async def _write_slides(
                 )
                 usage["inputTokens"] += more["inputTokens"]
                 usage["outputTokens"] += more["outputTokens"]
+                usage_fields.add_cached(usage, more)
                 parsed_again = _json_object(again)
                 bullets = _clean_bullets(parsed_again.get("bullets")) or _salvaged_bullets(
                     parsed_again
@@ -3685,6 +3681,7 @@ async def _write_slides(
                 else:
                     usage["inputTokens"] += more["inputTokens"]
                     usage["outputTokens"] += more["outputTokens"]
+                    usage_fields.add_cached(usage, more)
                     plain = _plain_notes(said)
                     added = notes_only_given(notes_without_echo(plain, slide), slide, request)
                     if not added and not notes and _ONLY_GIVEN.search(request or ""):
@@ -3901,10 +3898,12 @@ async def _write_slides(
             spent = getattr(exc, "usage", None) or {}
             usage["inputTokens"] += spent.get("inputTokens", 0)
             usage["outputTokens"] += spent.get("outputTokens", 0)
+            usage_fields.add_cached(usage, spent)
             slides[index] = slide
             continue
         usage["inputTokens"] += spent.get("inputTokens", 0)
         usage["outputTokens"] += spent.get("outputTokens", 0)
+        usage_fields.add_cached(usage, spent)
         if table_ask:
             # the table or nothing: the slide as it was when no value row came back
             slides[index] = ({**fixed, "id": slide.get("id")} if table_values(fixed) else slide)
@@ -4023,6 +4022,7 @@ async def _draw_figures(
     )
     usage["inputTokens"] += spent["inputTokens"]
     usage["outputTokens"] += spent["outputTokens"]
+    usage_fields.add_cached(usage, spent)
     # a numbered procedure in the request: its flow shows every step
     steps = diagrams.given_steps(request)
     planned = [dataclasses.replace(row, steps=steps if row.figure == "flow" else row.steps,
@@ -4057,6 +4057,7 @@ async def _draw_figures(
             continue
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
+        usage_fields.add_cached(usage, spent)
         if _figure_adds_nothing(slide, made) and row.index not in marked:
             # a box per card the cards already name: the slide reads better without it
             log.info("slide figure %r dropped: it only names the slide's own entries", name)
@@ -4369,6 +4370,7 @@ async def _draw_pictures(
     )
     usage["inputTokens"] += spent["inputTokens"]
     usage["outputTokens"] += spent["outputTokens"]
+    usage_fields.add_cached(usage, spent)
     for row in planned:
         slide = slides[row.index]
         name = row.caption or "그림"
