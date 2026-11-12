@@ -1069,6 +1069,7 @@ changes what a group gets, and test both a self-hosted and a strong external wri
 | Duration must-haves (`report_checks.must_status`, `duration_limit`, `option_duration`) | a lead time or period (납기, 보증 기간) is judged in days from the material's own words, never on the reading's unitless number; the limit is the one written with its unit or a deadline counted from a written contract day, else the must is not judged and said so; a range across the limit is open; a longer period the option sells as an extension meets a minimum, said with its cost | same | same; the block is data to weigh (`_must_block(data=True)`) |
 | A 「있음」 the material never writes (`report_checks._mentions`) | a yes/no must read as met for an option whose lines say nothing of it is open (조건 미확인), not 충족 | same | same |
 | Cost readings settled from the price lines (`report_checks.price_lines_reading`, `_compare_cost`) | when the two readings differ, code reads the plainly written price lines (unit price × count, per month/year/once, 「… 시 N% 할인」, VAT basis) as the third reading instead of a thinking read; when no two agree its totals stand; a reading agreeing with it takes its scenarios; a line it cannot read (usage price, two amounts in a clause, an amount outside the options) leaves the old vote; two readings agreeing against it stand | same | same |
+| System prompt order (`context.system_prompt(cache_order=…)`, `model_tier.cache_ordered`) | the old order (date and session blocks before the tool rules and contracts) while `self_hosted_prompt_cache_order` is off, as it is while the 27B's vLLM prefix cache is off | fixed blocks first, then the search toggle, the date, the session's blocks and one line keeping the contracts above them | as small external, on the light prompt |
 
 ### Pipelines
 
@@ -2282,6 +2283,22 @@ the privacy dialog.
 The selectable guard covers chat. Reports, slides, media
 generation and the `/llm` compatibility API always mask and present no
 decision flow.
+
+### Prompt caching
+
+Every agent hop resends the system turn, the tool schemas and the conversation, and a
+provider (DeepSeek, GLM and others behind OpenRouter) or the vLLM prefix cache reuses the
+longest prompt prefix it has seen. `context.system_prompt(cache_order=True)` therefore puts
+what is the same for every turn of the deployment first: the surface, accuracy, language and
+writing rules, the tool rules, the chat task contract and the grounding instruction; then the
+web-search toggle, today's date, and the session's own blocks (agent, project, theme,
+memories, skills, the turn's language rule). Nothing that changes per day, person or session
+sits before the date. Those contracts used to come last so that nothing after them could
+override them; in this order a closing line says they still apply over the blocks after the
+date. The answer policy `freshness.with_answer_policy` appends per turn stays at the end.
+Tool schemas follow the system turn in the chat templates, so a change anywhere in the system
+turn ends the reusable prefix before them; within a turn every hop after the first reuses the
+whole prefix. Who gets this order is in § Mechanisms by model group.
 
 ### Auto routing
 

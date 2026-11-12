@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     research_timeout_sec: float = 1800.0
     max_tool_hops: int = 8
     chat_stall_sec: int = 180
+    #: Self-hosted writers get the cache-ordered system prompt too (`model_tier.cache_ordered`);
+    #: off while the 27B's vLLM prefix cache is off, where the order buys nothing.
+    self_hosted_prompt_cache_order: bool = False
 
     file_storage_dir: str = "/srv/data/files"
     max_upload_mb: int = 200

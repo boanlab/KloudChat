@@ -59,3 +59,15 @@ def strong(model: str | None) -> bool:
     if any(s in name for s in _SMALL_SUFFIXES):
         return False
     return any(name == m or name.startswith(m) for m in STRONG_MODELS)
+
+
+def cache_ordered(model: str | None) -> bool:
+    """True when the system prompt puts the deployment's fixed blocks first
+    (`context.system_prompt(cache_order=…)`): external models, whose providers cache a
+    repeated prompt prefix; self-hosted ones only when `self_hosted_prompt_cache_order` says
+    their server caches prefixes."""
+    from app.core.config import settings
+
+    if self_hosted(model):
+        return settings.self_hosted_prompt_cache_order
+    return True
