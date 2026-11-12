@@ -1,4 +1,4 @@
-"""Office document tools, one set per kind (`hwp.py`, `docx.py`): read the conversation's
+"""Office document tools, one set per kind (`hwp.py`, `docx.py`, `pptx.py`): read the conversation's
 document, edit it in place, or write a new one. They run on the server against the saved
 file; the editor beside the chat reloads each version they save. No network: strict-local
 safe.
@@ -39,6 +39,19 @@ class Toolset:
     read_note: str = ""
     #: said when the stored file is not yet in the editable format
     unconverted: str = ""
+    #: A kind whose file is not paragraphs and tables (PowerPoint) says its own: the ops,
+    #: their one-line help, the three tools' descriptions and parameters, the ops after
+    #: which the ids moved, and how `*_write` makes its file from the arguments (a
+    #: `ValueError` goes back to the model). None: the paragraph kinds' own.
+    ops: tuple[str, ...] = OPS
+    op_help: str = ""
+    read_text: str = ""
+    edit_text: str = ""
+    edit_items: dict[str, Any] | None = None
+    renumbers: frozenset[str] = frozenset({"insert_paragraph", "delete_paragraph"})
+    write_text: str = ""
+    write_params: dict[str, Any] | None = None
+    build: Callable[[dict[str, Any]], tuple[str, bytes]] | None = None
 
 
 def _trace(artifact_id: str, version: int) -> dict[str, Any]:
@@ -57,8 +70,26 @@ _HEADS = ", ".join(
 )
 
 
+def _paragraph_write(kit: Toolset, args: dict[str, Any]) -> tuple[str, bytes]:
+    """A paragraph kind's new document: a `doc_formats` head over a markdown body."""
+    title = " ".join(str(args.get("title") or "").split())[:120]
+    body = str(args.get("body") or "").strip()
+    fmt = str(args.get("format") or "official")
+    raw = args.get("fields") if isinstance(args.get("fields"), dict) else {}
+    if not title or not body:
+        raise ValueError("title과 body가 모두 있어야 합니다.")
+    if fmt not in FORMATS:
+        raise ValueError(f"format은 {', '.join(FORMATS)} 중 하나입니다.")
+    fields = {str(k): str(v) for k, v in raw.items() if str(v or "").strip()}
+    data = (
+        kit.doc.plain(title, body) if fmt == "plain" else kit.doc.official(title, body, fields, fmt)
+    )
+    return title, data
+
+
 def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
     p, editable = kit.prefix, kit.doc.KIND.editable
+    op_help = kit.op_help or _OP_HELP
 
     def state(ctx: ToolContext) -> dict[str, Any]:
         return getattr(ctx, p)
@@ -116,7 +147,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                 # what the model got wrong, for tuning the tool's description
                 log.info("%s_edit refused: %s", p, exc)
                 return ToolResult(
-                    content=f"고치지 않았습니다: {exc}\n쓸 수 있는 op: {_OP_HELP}", failed=True
+                    content=f"고치지 않았습니다: {exc}\n쓸 수 있는 op: {op_help}", failed=True
                 )
             try:
                 saved = await kit.doc.save(
@@ -131,7 +162,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
         state(ctx).update(id=saved.id, version=saved.version, changed=True)
         lines = "\n".join(f"- {line}" for line in result.changes)
         content = f"v{saved.version}로 저장했습니다. 바뀐 곳:\n{lines}"
-        if any(op.get("op") in ("insert_paragraph", "delete_paragraph") for op in ops):
+        if any(isinstance(op, dict) and op.get("op") in kit.renumbers for op in ops):
             # numbering moved; the next edit needs the new ids
             content += "\n\n번호가 바뀌었습니다. 지금 문서:\n" + kit.edit.outline(result.data)
         else:
@@ -144,21 +175,10 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
         )
 
     async def write(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
-        title = " ".join(str(args.get("title") or "").split())[:120]
-        body = str(args.get("body") or "").strip()
-        fmt = str(args.get("format") or "official")
-        raw = args.get("fields") if isinstance(args.get("fields"), dict) else {}
-        if not title or not body:
-            return ToolResult(content="title과 body가 모두 있어야 합니다.", failed=True)
-        if fmt not in FORMATS:
-            return ToolResult(content=f"format은 {', '.join(FORMATS)} 중 하나입니다.", failed=True)
-        fields = {str(k): str(v) for k, v in raw.items() if str(v or "").strip()}
         try:
-            data = (
-                kit.doc.plain(title, body)
-                if fmt == "plain"
-                else kit.doc.official(title, body, fields, fmt)
-            )
+            title, data = (kit.build or (lambda a: _paragraph_write(kit, a)))(args)
+        except ValueError as exc:
+            return ToolResult(content=str(exc), failed=True)
         except Exception as exc:  # noqa: BLE001 — a writer failure goes back to the model
             log.warning("%s_write failed: %s", p, exc, exc_info=True)
             return ToolResult(content=f"문서를 만들지 못했습니다: {exc}", failed=True)
@@ -195,7 +215,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
     label = kit.label
     read_tool = Tool(
         name=f"{p}_read",
-        description=(
+        description=kit.read_text or (
             f"Read the {label} document open beside this chat, as the person last saved it in "
             "the editor. Returns numbered paragraphs (p1, p2 …), tables (t1 …) with rows "
             "`r0: a | b` (row and column count from 0), and the bracket blanks still to fill "
@@ -210,7 +230,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
     )
     edit_tool = Tool(
         name=f"{p}_edit",
-        description=(
+        description=kit.edit_text or (
             f"Edit the open {label} document in place; its paragraph and character formatting "
             f"stay. All ops apply together or none do, against the numbers of the last {p}_read. "
             "Ops: replace_text {id:'p5', text} replaces a whole paragraph; fill_blank "
@@ -229,10 +249,10 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
             "properties": {
                 "ops": {
                     "type": "array",
-                    "items": {
+                    "items": kit.edit_items or {
                         "type": "object",
                         "properties": {
-                            "op": {"type": "string", "enum": list(OPS)},
+                            "op": {"type": "string", "enum": list(kit.ops)},
                             "id": {"type": "string"},
                             "after": {"type": ["string", "integer"]},
                             "text": {"type": "string"},
@@ -258,7 +278,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
     )
     write_tool = Tool(
         name=f"{p}_write",
-        description=(
+        description=kit.write_text or (
             f"Write a new {label} document into the editor beside the chat (replacing what is "
             "there, as a new version). Use it when the person asks for a new document; to "
             f"change the open one use {p}_read and {p}_edit. format: 'official' is a 공문 "
@@ -273,7 +293,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
             "goes there, such as 「[기관명]」, 「[연수 일시]」, 「[장소]」, instead; and add no "
             "items the request does not call for (costs, penalties, procedures)."
         ),
-        parameters={
+        parameters=kit.write_params or {
             "type": "object",
             "properties": {
                 "title": {"type": "string"},

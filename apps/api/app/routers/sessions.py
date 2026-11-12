@@ -123,6 +123,7 @@ from app.services import (
     message_links,
     model_tier,
     output_language,
+    pptx_doc,
     prompt_tier,
     publishing,
     red_flags,
@@ -231,21 +232,25 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
         # self-hosted sandbox, networking off; offered only when `sandbox_in_boundary`
         "run_skill_script",
         "run_code",
-        # the conversation's own HWP or Word file, edited in process
+        # the conversation's own HWP, Word or PowerPoint file, edited in process
         "hwp_read",
         "hwp_edit",
         "hwp_write",
         "docx_read",
         "docx_edit",
         "docx_write",
+        "pptx_read",
+        "pptx_edit",
+        "pptx_write",
     }
 )
 
 def _document_preset(
     document: Artifact | None, tool_names: set[str]
 ) -> tuple[str, dict] | None:
-    """A written HWP or Word document beside the chat is read first, by the server: the model
-    answers from what the file says now (a hand save included) and edits by those numbers."""
+    """A written HWP, Word or PowerPoint document beside the chat is read first, by the
+    server: the model answers from what the file says now (a hand save included) and edits by
+    those numbers."""
     if document is None:
         return None
     tool = f"{document.kind.value}_read"
@@ -263,8 +268,17 @@ _ASKS_DOCX = re.compile(
     r"documents?|files?|format)|(?<![가-힣])워드\s{0,2}(?:로|문서|파일)",
     re.I,
 )
+#: 「PowerPoint로」, 「pptx 파일」, 「파워포인트」, 「PPT 파일로」: a request for a PowerPoint file.
+#: A bare 「PPT 만들어 줘」 or 「발표 자료」 is any deck: it stays with the slides surface.
+_ASKS_PPTX = re.compile(
+    r"(?<![A-Za-z])pptx(?![A-Za-z])|(?<![A-Za-z])(?:ms\s?)?power\s?point(?![A-Za-z])|"
+    r"파워\s?포인트|(?<![A-Za-z])ppt\s{0,2}(?:파일|files?)",
+    re.I,
+)
 #: office documents a chat works on beside it: tool prefix, service, what asks for one
-_OFFICE = (("hwp", hwp_doc, _ASKS_HWP), ("docx", docx_doc, _ASKS_DOCX))
+_OFFICE = (
+    ("hwp", hwp_doc, _ASKS_HWP), ("docx", docx_doc, _ASKS_DOCX), ("pptx", pptx_doc, _ASKS_PPTX),
+)
 
 
 async def _knowledge_shelf(
@@ -4396,8 +4410,8 @@ async def _send_message(
     # agent allowlist without web_search is deliberate: no 「웹 검색 없이」 noise
     if session.agent_id and agent_tools is not None and "web_search" not in agent_tools:
         effective_web_search = False
-    #: this chat's HWP and Word documents; their tools join the turn, as they do when one
-    #: is asked for
+    #: this chat's HWP, Word and PowerPoint documents; their tools join the turn, as they do
+    #: when one is asked for
     office_documents: dict[str, Artifact] = {}
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
         for name, service, _ in _OFFICE if published is None else ():
@@ -6450,9 +6464,9 @@ async def _answer_turn(
                     "deliberate": bool(ctx.pending_artifacts),
                 }
             )
-    for saved in (ctx.hwp, ctx.docx):
+    for saved in (ctx.hwp, ctx.docx, ctx.pptx):
         if saved.get("changed") and saved.get("id") != new_artifact:
-            # the HWP or Word tools saved a version: the editor opens on it
+            # the HWP, Word or PowerPoint tools saved a version: the editor opens on it
             yield chat_service.sse(
                 {"type": "artifact", "artifactId": saved["id"], "deliberate": True}
             )

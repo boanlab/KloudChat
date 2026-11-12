@@ -76,6 +76,13 @@ document are done in that document with the {kind} tools, not written out in the
   blanks remain for the person. Do not paste the document text into the answer."""
 HWP_NOTE = _DOCUMENT_NOTE.format(a="an", kind="HWP", p="hwp")
 DOCX_NOTE = _DOCUMENT_NOTE.format(a="a", kind="Word", p="docx")
+PPTX_NOTE = _DOCUMENT_NOTE.format(a="a", kind="PowerPoint", p="pptx").replace(
+    "fill bracket blanks with fill_blank, table cells with set_cell.",
+    "fill bracket blanks with fill_blank, table cells with set_cell, notes with set_notes;\n"
+    "  slides are added, copied, moved or deleted with the slide ops. A deck that is already\n"
+    "  there (an upload, a company template) is filled with pptx_edit, whose add_slide keeps\n"
+    "  its look; pptx_write replaces it with a new deck.",
+).replace("Requests to write or change a\ndocument", "Requests to write or change a\ndeck")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1004,7 +1011,10 @@ async def assemble(
         # the agent's language, unless this turn names one; last trusted rule so it wins
         if text := output_language.rule(agent.output_language):
             blocks.append(ContextBlock("agent.language", text, True))
-    for tool, key, note in (("hwp_read", "hwp", HWP_NOTE), ("docx_read", "docx", DOCX_NOTE)):
+    for tool, key, note in (
+        ("hwp_read", "hwp", HWP_NOTE), ("docx_read", "docx", DOCX_NOTE),
+        ("pptx_read", "pptx", PPTX_NOTE),
+    ):
         if tool in (available_tool_names or set()):
             blocks.append(ContextBlock(f"{key}.document", note, True))
     if memories:

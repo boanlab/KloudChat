@@ -916,8 +916,8 @@ async def artifact_counts(user: CurrentUser, db: DbSession, q: str | None = None
 
 @router.post("/artifacts", response_model=ArtifactOut, status_code=status.HTTP_201_CREATED)
 async def create_artifact(payload: ArtifactIn, user: CurrentUser, db: DbSession):
-    if payload.kind in (ArtifactKind.hwp, ArtifactKind.docx):
-        # its file comes with it: `POST /artifacts/hwp`, `POST /artifacts/docx`
+    if payload.kind in (ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx):
+        # its file comes with it: `POST /artifacts/hwp`, `/artifacts/docx`, `/artifacts/pptx`
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"{payload.kind.value}_needs_its_file",

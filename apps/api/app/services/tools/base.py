@@ -92,6 +92,8 @@ class ToolContext:
     hwp: dict[str, Any] = field(default_factory=dict)
     #: Word tools: the same, for the conversation's `.docx`.
     docx: dict[str, Any] = field(default_factory=dict)
+    #: PowerPoint tools: the same, for the conversation's `.pptx`.
+    pptx: dict[str, Any] = field(default_factory=dict)
 
 
 def to_openai(tools: list[Tool]) -> list[dict[str, Any]]:
