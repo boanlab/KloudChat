@@ -33,7 +33,11 @@ export function PptxPanel({
   const slides = useRef<SlidesApi | null>(null)
   const office = useRef<OfficeEditor | null>(null)
   /** The file the editor shows, and a number that changes with each one. */
-  const [file, setFile] = useState<{ bytes: Uint8Array; version: number } | null>(null)
+  const [file, setFile] = useState<{ bytes: Uint8Array; version: number; slide: number } | null>(
+    null,
+  )
+  /** The slide the person is on: a new version opens there. */
+  const slideAt = useRef(0)
   const [failed, setFailed] = useState('')
   /** Settles the load in progress once the editor has drawn the deck (or failed to). */
   const opened = useRef<{ resolve: () => void; reject: (error: Error) => void } | null>(null)
@@ -56,7 +60,7 @@ export function PptxPanel({
         })
         loads += 1
         setFailed('')
-        setFile({ bytes: new Uint8Array(bytes), version: loads })
+        setFile({ bytes: new Uint8Array(bytes), version: loads, slide: slideAt.current })
         await done
         if (focused instanceof HTMLElement && focused.isConnected &&
           !host.current?.contains(focused)) {
@@ -122,6 +126,10 @@ export function PptxPanel({
           <SlidesEditor
             content={file.bytes}
             version={file.version}
+            initialSlide={file.slide}
+            onSlide={(index) => {
+              slideAt.current = index
+            }}
             canEdit={!phone}
             label={t('PowerPoint 편집기')}
             apiRef={slides}

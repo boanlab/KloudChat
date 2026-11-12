@@ -126,6 +126,8 @@ test('the editor locks while the agent works, then shows its version', async ({ 
   const holdTurn = new Promise<void>((resolve) => (release = resolve))
   const state = await fixture(page, { holdTurn })
   await opened(page)
+  // the person is on slide 2 when the agent's version comes in: it opens there
+  await thumbs(page).nth(1).click()
 
   // a PowerPoint order stays here, in the editor, rather than going to the slides screen
   await page.getByRole('textbox', { name: '프롬프트 입력' }).first()
@@ -136,10 +138,9 @@ test('the editor locks while the agent works, then shows its version', async ({ 
 
   await expect(page.getByTestId('pptx-agent-lock')).toBeHidden()
   await expect(panel(page).locator('header').getByText('v2', { exact: true })).toBeVisible()
-  await expect(canvas(page).getByText('경영기획본부', { exact: false }).first()).toBeVisible()
-  // the version loaded in place: the caret stays in the chat
+  // the version loaded in place: the caret stays in the chat, the slide where it was
   await expect(page.getByRole('textbox', { name: '프롬프트 입력' }).first()).toBeFocused()
-  await thumbs(page).nth(1).click()
+  await expect(thumbs(page).nth(1)).toHaveClass(/\bon\b/)
   await expect(canvas(page).getByText('추진 배경과 목표').first()).toBeVisible()
   expect(state.sent).toHaveLength(1)
   expect(state.unexpected).toEqual([])

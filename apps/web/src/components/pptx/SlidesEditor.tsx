@@ -609,21 +609,24 @@ interface Inserts {
 // ── the editor ──
 
 function Editor({
-  content, canEdit, label, apiRef, onDirty, onReady, onError,
+  content, initialSlide, canEdit, label, apiRef, onDirty, onReady, onError, onSlide,
 }: {
   content: Uint8Array
+  initialSlide: number
   canEdit: boolean
   label: string
   apiRef: RefObject<SlidesApi | null>
   onDirty: (dirty: boolean) => void
   onReady: () => void
   onError: (message: string) => void
+  onSlide: (index: number) => void
 }) {
   const t = useT()
   const handle = useRef<PowerPointViewerHandle | null>(null)
   const blocks = useViewerBuildingBlocks({
     content, canEdit, handle, googleFonts: false, allowExternalContent: false,
-    autosaveEnabled: false, fitPadding: 16, onDirtyChange: onDirty,
+    autosaveEnabled: false, fitPadding: 16, onDirtyChange: onDirty, initialSlide,
+    onActiveSlideChange: onSlide,
   } as Parameters<typeof useViewerBuildingBlocks>[0])
   const { toolbarProps: tp, canvasProps, slidesPaneProps: sp } = blocks
   const added = blocks as typeof blocks & Added
@@ -887,26 +890,31 @@ function Editor({
  * `content` is a new editor (its undo history belongs to the version it opened).
  */
 export function SlidesEditor({
-  content, version, canEdit, label, apiRef, onDirty, onReady, onError,
+  content, version, initialSlide = 0, canEdit, label, apiRef, onDirty, onReady, onError, onSlide,
 }: {
   content: Uint8Array
   /** Changes with each file loaded. */
   version: number
+  /** The slide shown first: a new version opens where the person was. */
+  initialSlide?: number
   canEdit: boolean
   label: string
   apiRef: RefObject<SlidesApi | null>
   onDirty: (dirty: boolean) => void
   onReady: () => void
   onError: (message: string) => void
+  onSlide?: (index: number) => void
 }) {
   const lang = useStore((s) => s.lang)
   return (
     <PptxI18nProvider locale={lang === 'en' ? 'en' : 'ko'} translate={lang === 'en' ? english : translateKo}>
-      <Editor key={version} content={content} canEdit={canEdit} label={label} apiRef={apiRef}
-        onDirty={onDirty} onReady={onReady} onError={onError} />
+      <Editor key={version} content={content} initialSlide={initialSlide} canEdit={canEdit}
+        label={label} apiRef={apiRef} onDirty={onDirty} onReady={onReady} onError={onError}
+        onSlide={onSlide ?? noop} />
     </PptxI18nProvider>
   )
 }
 
 /** English: the editor's own words. */
 const english = () => undefined
+const noop = () => undefined
