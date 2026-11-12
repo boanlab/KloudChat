@@ -180,12 +180,12 @@ def test_the_summariser_sees_the_previous_summary_and_clipped_turns():
         {"role": "system", "content": ""},
     ]
     text = conversation_summary.prompt("앞선 요약", turns)
-    assert "## 이전 요약\n앞선 요약" in text
-    assert "사용자: " in text and "어시스턴트: 짧은 답" in text
-    assert "이하 생략" in text
+    assert "## Previous summary\n앞선 요약" in text
+    assert "User: " in text and "Assistant: 짧은 답" in text
+    assert "more characters)" in text
     # An empty turn adds no line.
-    assert "시스템:" not in text
-    assert "반드시 남길 것" in text
+    assert "System:" not in text
+    assert "SUMMARY:" in text and "PINNED:" in text
 
 
 class _Db:
@@ -218,7 +218,10 @@ def _patch_summariser(monkeypatch, calls: list[tuple[str | None, list[dict]]]):
 
     async def summarize(_model, previous, turns, _key, **_kwargs):
         calls.append((previous, turns))
-        return f"요약({len(turns)}개 추가)", {"inputTokens": 100, "outputTokens": 20}
+        return (
+            conversation_summary.Memory(f"요약({len(turns)}개 추가)"),
+            {"inputTokens": 100, "outputTokens": 20},
+        )
 
     monkeypatch.setattr(sessions_router, "_enrichment_model", enrichment)
     monkeypatch.setattr(sessions_router.conversation_summary, "summarize", summarize)
@@ -249,20 +252,20 @@ async def test_the_summary_is_written_once_and_then_grown_not_rewritten(monkeypa
     rows = _rows(4)
 
     # First overflow: everything dropped is summarised, and cached by its last message.
-    text, credits = await _summarise(db, session, rows[:4])
+    text, _pinned, credits = await _summarise(db, session, rows[:4])
     assert text == "요약(4개 추가)"
     assert credits > 0
-    assert session.summary == {"through": "a1", "text": "요약(4개 추가)", "turns": 4}
+    assert session.summary == {"through": "a1", "text": "요약(4개 추가)", "turns": 4, "pinned": []}
     assert db.commits == 1
     assert [len(turns) for _, turns in calls] == [4]
 
     # Same cut again (the next turn still fits): nothing is called.
-    text, credits = await _summarise(db, session, rows[:4])
+    text, _pinned, credits = await _summarise(db, session, rows[:4])
     assert (text, credits) == ("요약(4개 추가)", 0)
     assert len(calls) == 1
 
     # The cut moves down two more messages: only those two join the previous summary.
-    text, _credits = await _summarise(db, session, rows[:6])
+    text, _pinned, _credits = await _summarise(db, session, rows[:6])
     assert len(calls) == 2
     previous, turns = calls[-1]
     assert previous == "요약(4개 추가)"
@@ -283,7 +286,7 @@ async def test_a_summary_that_could_not_be_written_is_not_cached(monkeypatch):
     db = _Db()
     session = ChatSession(id="s1", user_id="u1", kind=SessionKind.chat)
 
-    text, credits = await _summarise(db, session, _rows(2))
+    text, _pinned, credits = await _summarise(db, session, _rows(2))
 
     assert text is None
     # The tokens were still spent.
@@ -561,13 +564,14 @@ def test_a_recent_unanswered_question_counts_as_busy_on_any_replica():
 
 
 def test_a_large_drop_is_summarised_in_batches_from_the_start():
-    turns = [{"role": "user", "content": "가" * 3_000} for _ in range(12)]
+    turns = [{"role": "user", "content": "가" * 3_000} for _ in range(24)]
     batches = conversation_summary._batches(turns)
     assert len(batches) >= 3
-    assert sum(len(b) for b in batches) == 12
+    assert sum(len(b) for b in batches) == 24
     # The first batch opens on the first turn: nothing is clipped off the front.
     assert batches[0][0] is turns[0]
-    assert all(len(conversation_summary._transcript(b)) <= 14_000 + 200 for b in batches)
+    limit = conversation_summary._TURNS_CHARS + 200
+    assert all(len(conversation_summary._transcript(b)) <= limit for b in batches)
 
 
 # ── a stop broadcast does not come back to bite its sender ───────────────

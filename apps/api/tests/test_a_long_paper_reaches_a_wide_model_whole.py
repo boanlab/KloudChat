@@ -4,10 +4,17 @@ from app.core.config import settings
 from app.services.workspace_context import file_budget
 
 
-def test_an_unknown_window_keeps_the_floor() -> None:
+def test_no_model_keeps_the_floor() -> None:
     assert file_budget(None) == settings.file_context_chars
-    assert file_budget({"contextWindow": None}) == settings.file_context_chars
-    assert file_budget({"contextWindow": 0}) == settings.file_context_chars
+
+
+def test_an_unknown_window_is_budgeted_by_the_default_window_not_the_floor() -> None:
+    # A hosted model whose window nobody stated gets the default window's share, the same
+    # one its conversation is fitted to — not the 24k-character floor.
+    default = file_budget({"contextWindow": settings.default_context_window})
+    assert file_budget({"contextWindow": None}) == default
+    assert file_budget({"contextWindow": 0}) == default
+    assert default > settings.file_context_chars * 3
 
 
 def test_a_wide_window_carries_a_sixteen_page_paper() -> None:

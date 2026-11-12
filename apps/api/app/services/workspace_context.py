@@ -468,9 +468,12 @@ _FILE_BUDGET_CAP = 150_000
 
 
 def file_budget(model: dict | None) -> int:
-    """Attached-text char budget: window share, `FILE_CONTEXT_CHARS` floor."""
+    """Attached-text char budget: share of the window the chat is fitted to
+    (`context.effective_window`), `FILE_CONTEXT_CHARS` floor; no model, the floor."""
+    from app.services.context import effective_window
+
     floor = settings.file_context_chars
-    window = int((model or {}).get("contextWindow") or 0)
+    window = effective_window(model) if model else 0
     if window <= 0:
         return floor
     return max(floor, min(int(window * _FILE_WINDOW_SHARE * _CHARS_PER_TOKEN), _FILE_BUDGET_CAP))

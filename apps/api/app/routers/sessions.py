@@ -156,7 +156,9 @@ from app.services import report as report_service
 from app.services import research as research_service
 from app.services.context import (
     build_messages,
+    conversation_language,
     declines_web_search,
+    effective_window,
     envelope_tokens,
     fit_history,
     history_budget,
@@ -168,6 +170,7 @@ from app.services.context import (
     search_plan,
     search_query,
     search_subject,
+    standing_directives,
     summary_block,
     weather_location,
     with_pictures,
@@ -1924,6 +1927,26 @@ def _summary_context_step(dropped: int, *, summarised: bool) -> dict:
     }
 
 
+def _memory_text(summary: dict | None) -> str | None:
+    """The cached running memory as one text — pinned items and summary — for the privacy
+    scan; None when there is none."""
+    cached = summary or {}
+    parts = [*conversation_summary.pinned_lines(cached.get("pinned")),
+             str(cached.get("text") or "")]
+    text = "\n".join(part for part in parts if part.strip())
+    return text or None
+
+
+def _summary_anchor(summary: dict | None, history: list[Message]) -> int | None:
+    """Where the kept part of the conversation started on the last cut: just after the last
+    message the cached summary covers; None when there is no usable cache."""
+    cached = summary or {}
+    through = str(cached.get("through") or "")
+    if not through or not str(cached.get("text") or "").strip():
+        return None
+    return next((i + 1 for i, row in enumerate(history) if row.id == through), None)
+
+
 async def _conversation_summary(
     db: AsyncSession,
     session: ChatSession,
@@ -1937,42 +1960,67 @@ async def _conversation_summary(
     masker,
     mask_at_rest: bool,
     redact_logging: bool,
-) -> tuple[str | None, int]:
-    """`(summary, credits)` for rows past the window, cached on the session; `None` on failure."""
+    language: str = "ko",
+) -> tuple[str | None, list[str], int]:
+    """`(summary, pinned lines, credits)` for rows past the window, cached on the session;
+    summary `None` on failure. Whatever comes from the cache passes today's `masker`."""
     if not rows or len(rows) != len(turns):
-        return None, 0
+        return None, [], 0
     cached = dict(session.summary or {})
     through = str(cached.get("through") or "")
     previous = str(cached.get("text") or "") or None
-    if previous and through == rows[-1].id:
+    pinned = [item for item in cached.get("pinned") or [] if isinstance(item, dict)]
+
+    def masked(lines: list[str]) -> list[str]:
         # cache may predate policy; apply current masking
-        return (masker(previous)[0] if masker else previous), 0
+        return [masker(line)[0] for line in lines] if masker else lines
+
+    if previous and through == rows[-1].id:
+        return (
+            masker(previous)[0] if masker else previous,
+            masked(conversation_summary.pinned_lines(pinned)),
+            0,
+        )
     covered = next((i for i, row in enumerate(rows) if row.id == through), None)
     if previous is None or covered is None:
-        previous, fresh = None, turns
+        # nothing usable, or its anchor was edited away: the memory starts over
+        previous, fresh, pinned = None, turns, []
     else:
         fresh = turns[covered + 1 :]
     enrichment = await _enrichment_model(
         writer, strict_local=strict_local, disable_fallbacks=disable_fallbacks
     )
-    text, usage = await conversation_summary.summarize(
+    memory, usage = await conversation_summary.summarize(
         enrichment["id"],
         previous,
         fresh,
         api_key,
+        pinned=pinned,
+        language=language,
         masker=masker,
         strict_local=strict_local,
         disable_fallbacks=disable_fallbacks,
         redact_logging=redact_logging,
     )
     credits = charge_for_tokens(enrichment, usage["inputTokens"], usage["outputTokens"])
-    if text is None:
-        return None, credits
-    stored = masker(text)[0] if mask_at_rest and masker is not None else text
-    session.summary = {"through": rows[-1].id, "text": stored, "turns": len(rows)}
+    if memory is None:
+        # the pinned items still hold for the turns they came from
+        return None, masked(conversation_summary.pinned_lines(pinned)), credits
+    at_rest = mask_at_rest and masker is not None
+    session.summary = {
+        "through": rows[-1].id,
+        "text": masker(memory.summary)[0] if at_rest else memory.summary,
+        "turns": len(rows),
+        "pinned": [
+            {"label": masker(item["label"])[0], "value": masker(item["value"])[0]}
+            if at_rest else item
+            for item in memory.pinned
+        ],
+    }
     db.add(session)
     await db.commit()
-    return text, credits
+    # kept items written under an earlier policy reach the prompt under today's masker
+    return memory.summary, masked(conversation_summary.pinned_lines(memory.pinned)), credits
 
 
 def _memory_saved_step(written: int) -> dict:
@@ -4618,7 +4666,7 @@ async def _send_message(
     if session.kind is SessionKind.chat:
         privacy_sources = _privacy_sources(
             content, history, workspace.blocks,
-            summary=str((session.summary or {}).get("text") or "") or None,
+            summary=_memory_text(session.summary),
         )
         if requested_tools:
             privacy_sources["tool_definitions"] = _tool_definition_source(requested_tools)
@@ -4858,6 +4906,10 @@ async def _send_message(
         for message, body in zip(history, outbound_history, strict=True)
     ]
     wire_history.append({"role": "user", "content": content})
+    #: rules the person set anywhere in the conversation, also once their turn is cut
+    standing_rules = (
+        standing_directives(wire_history) if session.kind is SessionKind.chat else []
+    )
 
     def envelope(wire: list[dict], *, economy: bool = False) -> list[dict]:
         """Request for `wire`; reads `trusted_context` at call time; `economy` = tool-free shape."""
@@ -4873,6 +4925,7 @@ async def _send_message(
             untrusted_context=untrusted_context,
             turn_context=turn_context,
             remind_standing=session.kind is SessionKind.chat,
+            standing=standing_rules,
             # the writer at call time: an auto route may change it (`model_tier`)
             light=model_tier.strong(model["id"]),
         )
@@ -5336,19 +5389,24 @@ async def _send_message(
             },
         )
 
-    # fit history to the final model's window; overflow → running summary
+    # fit history to the final model's window (a stated one, else the default); overflow →
+    # running memory. The cut stays where the cached summary ends while the rest still fits.
     summary_credits = 0
-    window = int(model.get("contextWindow") or 0)
+    window = effective_window(model)
     if window > 0 and len(wire_history) > 1:
         question = wire_history[-1]
         fixed = envelope_tokens(
             envelope([question], economy=routed_down),
             None if routed_down else tool_definitions,
         )
-        kept, dropped = fit_history(wire_history[:-1], history_budget(window, fixed))
+        kept, dropped = fit_history(
+            wire_history[:-1],
+            history_budget(window, fixed),
+            keep_from=_summary_anchor(session.summary, history),
+        )
         if dropped:
             routed = bool(cost_route and cost_route.get("decision") == "routed")
-            summary_text, summary_credits = await _conversation_summary(
+            summary_text, pinned_memory, summary_credits = await _conversation_summary(
                 db,
                 session,
                 rows=history[: len(dropped)],
@@ -5366,8 +5424,11 @@ async def _send_message(
                     policy.pii_masking or (privacy_resolution and privacy_resolution.findings)
                 ),
                 redact_logging=policy.pii_masking or policy.external_data_guard,
+                language=conversation_language(wire_history),
             )
-            trusted_context = [*trusted_context, summary_block(summary_text, len(dropped))]
+            trusted_context = [
+                *trusted_context, summary_block(summary_text, len(dropped), pinned_memory)
+            ]
             messages = envelope([*kept, question], economy=routed_down)
             context_steps = [
                 *context_steps,
