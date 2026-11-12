@@ -251,17 +251,19 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                     "type": "array",
                     "items": kit.edit_items or {
                         "type": "object",
+                        # where, then what: a model that writes keys in this order ends
+                        # a set_cell at `col` when `text` comes first
                         "properties": {
                             "op": {"type": "string", "enum": list(kit.ops)},
                             "id": {"type": "string"},
-                            "after": {"type": ["string", "integer"]},
-                            "text": {"type": "string"},
-                            "blank": {"type": "string"},
-                            "value": {"type": "string"},
-                            "at": {"type": "string"},
                             "table": {"type": "string"},
                             "row": {"type": "integer"},
                             "col": {"type": "integer"},
+                            "after": {"type": ["string", "integer"]},
+                            "at": {"type": "string"},
+                            "blank": {"type": "string"},
+                            "text": {"type": "string"},
+                            "value": {"type": "string"},
                         },
                         "required": ["op"],
                     },

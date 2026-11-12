@@ -218,3 +218,12 @@ def test_the_note_names_the_powerpoint_tools_and_keeps_a_template():
 
     assert "pptx_read first, then pptx_edit" in PPTX_NOTE and "a PowerPoint editor" in PPTX_NOTE
     assert "company template" in PPTX_NOTE and "set_notes" in PPTX_NOTE
+
+
+def test_the_edit_schema_names_where_before_what():
+    """A model that writes the keys in schema order (DeepSeek) ended a set_cell at `col`."""
+    from app.services.tools.docx import TOOLS as DOCX
+
+    for tool in (pptx_tools.PPTX_EDIT, DOCX[1]):
+        keys = list(tool.parameters["properties"]["ops"]["items"]["properties"])
+        assert keys.index("col") < keys.index("text") and keys.index("at") < keys.index("value")

@@ -859,7 +859,11 @@ def _lines_arg(op: dict, name: str = "text") -> str:
         # a model that fills cells as it fills blanks: 「value」 for 「text」
         value = op.get("value")
     if value is None:
-        raise PptxError(f"{op.get('op')}: {name}이 없습니다 (넣을 글).")
+        given = ", ".join(str(k) for k in op if k != "op") or "없음"
+        raise PptxError(
+            f"{op.get('op')}: {name}이 없습니다 (넣을 글; 받은 키: {given}). "
+            f"{op.get('op')} 객체 안에 \"{name}\": \"…\"로 주세요."
+        )
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         value = str(value)
     if isinstance(value, list) and all(isinstance(v, (str, int, float)) for v in value):
