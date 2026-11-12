@@ -1504,20 +1504,27 @@ a table with vertical merges are not added or removed. Ops resolve against the
 version read before anything changes, so a bad op changes nothing. Zip limits
 are checked before python-docx unpacks a file. A legacy `.doc` is refused.
 
-The editor is folio (`@stll/folio-react`, Apache-2.0), a React component, not
-a frame: `DocxPanel` is loaded with `React.lazy`, so folio and its stylesheet are
-a chunk of their own fetched when a Word document opens. It runs under the app's
-CSP as it is (no eval, no WebAssembly, no outside requests). Its stylesheet
-imports `@stll/folio-fonts/fonts.css`, every cut of eight families; the
-`kchat-folio-fonts` Vite plugin replaces that import with the latin and
-latin-ext woff2 faces only, and gives `Noto Serif KR`, folio's fallback for
-바탕 and 궁서, the app's own Nanum Myeongjo cuts, so no further Korean files
-ship. folio's `fonts` prop is not used for Korean: it fetches each face whole
-when the editor mounts and takes no `unicode-range`. Korean UI strings are
-`components/docx/folioKo.ts` (folio ships none), English is folio's own. Both
+The editor is open-docx-editor (`open-docx-editor`, MIT, pinned), plain
+JavaScript on ProseMirror with Word's ribbon (File, Home, Insert, Layout,
+References, Review, View); `DocxPanel` mounts it with `mountDocxEditor` and is
+loaded with `React.lazy`, so the editor and its stylesheet are a chunk of their
+own fetched when a Word document opens, and its PDF exporter (pdf-lib) is a
+further chunk fetched only by File > Export. It runs under the app's CSP as it
+is (no eval, no WebAssembly, no outside requests; its inline styles are allowed
+by `style-src 'unsafe-inline'`). File > New and Open are off (one artifact per
+panel), File > Create a Copy downloads, and Ctrl+S in the editor is the
+header's 저장. `open-docx-editor/fonts.css` gives the metric stand-ins for
+Calibri, Cambria, Arial, Times New Roman and Courier New (latin and latin-ext
+woff2, fetched by `unicode-range` only when used). The editor sets a run in the
+font its file names and falls back to sans-serif for a name it does not know, so
+`components/docx/koreanFonts.ts` copies the app's own Nanum Myeongjo
+`@font-face` rules under the Korean serif names (바탕, 궁서, 함초롬바탕…) with
+the FontFace API; no further Korean files ship, and Korean sans names (맑은
+고딕, 돋움, 굴림) are the computer's sans-serif. The ribbon has no translations:
+its labels are English in both UI languages. Both
 panels are `components/office/OfficePanel.tsx` (`useOfficeDocument` holds the
 load, save, 409, reload-on-new-version and ask-before-send logic) around their
-editor; on a phone the Word editor is read only.
+editor; on a phone the Word editor is read only, without its ribbon.
 
 ### Sharing
 
