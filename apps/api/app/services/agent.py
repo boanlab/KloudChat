@@ -33,7 +33,7 @@ from app.services import (
 )
 from app.services.chat import ChatStreamError, step_label, step_title
 from app.services.context import instruction_part, literature_request
-from app.services.tools import arithmetic
+from app.services.tools import arithmetic, deferred
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult, to_openai
 
 log = logging.getLogger(__name__)
@@ -1719,6 +1719,12 @@ async def run_turn(
         or settings.max_tool_hops < 1
     ):
         raise ChatStreamError("preflight_tool_unavailable")
+    #: large connectors sent by name until the model loads them (`tools/deferred`)
+    deferral = deferred.plan(model, tools, tool_definitions, eager={
+        name for name in (force_tool, preflight_tool, preset_call[0] if preset_call else None,
+                          *source_tools) if name})
+    if deferral is not None and deferral.loader is not None:
+        by_name[deferral.loader.name] = deferral.loader
     conversation = list(messages)
     #: a strong writer gets the light loop notes (`model_tier`); the person's fixed form
     #: (「조언만」, 「다른 건 쓰지 마」) gets no grounding paragraphs or source list
@@ -1896,6 +1902,10 @@ async def run_turn(
                     definition for definition in hop_definitions
                     if definition.get("function", {}).get("name") in gate_names
                 ]
+        if deferral is not None and not closing and not (
+            preflight_tool and not preflight_completed
+        ):
+            hop_tools, hop_definitions = deferral.narrow(hop_tools, hop_definitions)
         if disable_fallbacks:
             stream_kwargs["disable_fallbacks"] = True
         # Without `tool_definitions`, `_stream_once` converts `tools`.
@@ -2424,10 +2434,14 @@ async def run_turn(
             _, call, tool = item
             if tool is None:
                 return ToolResult(content=f"오류: 알 수 없는 도구 {call['name']}", failed=True)
-            if ctx.allowed and tool.name not in ctx.allowed:
+            loading = deferral is not None and tool is deferral.loader
+            if ctx.allowed and tool.name not in ctx.allowed and not loading:
                 return ToolResult(
                     content=f"오류: {tool.name} 도구가 허용되지 않았습니다.", failed=True
                 )
+            if deferral is not None:
+                # a deferred tool called by name runs, and is offered whole from now on
+                deferral.mark_called(tool.name)
             key = (tool.name, call["arguments"])
             reuse_arithmetic = bool(
                 arithmetic_gate_pending
@@ -2479,6 +2493,15 @@ async def run_turn(
         arithmetic_results: list[bool] = []
 
         for (index, call, tool), result in zip(planned, results, strict=True):
+            if deferral is not None and tool is not None and tool is deferral.loader:
+                # schemas, not material: no source numbers, no number sources
+                yield {"type": "step", "id": f"h{hop}_{index}",
+                       "label": visible_label(tool, call["name"], done=True),
+                       "status": "error" if result.failed else "done",
+                       **({"detail": result.detail} if result.detail else {})}
+                conversation.append({"role": "tool", "tool_call_id": call["id"] or f"call_{index}",
+                                     "name": call["name"], "content": result.content})
+                continue
             if prerequisite_batch:
                 if result.failed or result.empty or not result.content.strip():
                     result.failed = True

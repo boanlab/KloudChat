@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     #: Self-hosted writers get the cache-ordered system prompt too (`model_tier.cache_ordered`);
     #: off while the 27B's vLLM prefix cache is off, where the order buys nothing.
     self_hosted_prompt_cache_order: bool = False
+    #: A connector with more enabled tools than this sends them by name until the model asks
+    #: for their schemas (`tools/deferred`); fewer go out whole.
+    connector_tools_eager_max: int = 6
+    #: Self-hosted writers defer large connectors too; off until measured on the 27B.
+    self_hosted_defer_connector_tools: bool = False
 
     file_storage_dir: str = "/srv/data/files"
     max_upload_mb: int = 200

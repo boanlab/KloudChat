@@ -1070,6 +1070,7 @@ changes what a group gets, and test both a self-hosted and a strong external wri
 | A 「있음」 the material never writes (`report_checks._mentions`) | a yes/no must read as met for an option whose lines say nothing of it is open (조건 미확인), not 충족 | same | same |
 | Cost readings settled from the price lines (`report_checks.price_lines_reading`, `_compare_cost`) | when the two readings differ, code reads the plainly written price lines (unit price × count, per month/year/once, 「… 시 N% 할인」, VAT basis) as the third reading instead of a thinking read; when no two agree its totals stand; a reading agreeing with it takes its scenarios; a line it cannot read (usage price, two amounts in a clause, an amount outside the options) leaves the old vote; two readings agreeing against it stand | same | same |
 | System prompt order (`context.system_prompt(cache_order=…)`, `model_tier.cache_ordered`) | the old order (date and session blocks before the tool rules and contracts) while `self_hosted_prompt_cache_order` is off, as it is while the 27B's vLLM prefix cache is off | fixed blocks first, then the search toggle, the date, the session's blocks and one line keeping the contracts above them | as small external, on the light prompt |
+| Large connectors by name (`tools/deferred`, `connector_tools_eager_max`) | every schema sent, while `self_hosted_defer_connector_tools` is off (the 27B's choice with an extra load step is unmeasured) | tools of a connector over the limit sent by name; `load_tools` brings their schemas | as small external |
 
 ### Pipelines
 
@@ -2299,6 +2300,18 @@ date. The answer policy `freshness.with_answer_policy` appends per turn stays at
 Tool schemas follow the system turn in the chat templates, so a change anywhere in the system
 turn ends the reusable prefix before them; within a turn every hop after the first reuses the
 whole prefix. Who gets this order is in § Mechanisms by model group.
+
+The tool schemas are the other fixed cost of every hop. Built-in descriptions carry the rules
+a model needs before it calls a tool; what it needs only after a call comes back in the
+result (`run_skill_script` names its scripts, and a wrong name returns what each does). A
+connector with more enabled tools than `connector_tools_eager_max` goes out by name
+(`tools/deferred`): its tools are listed with one line each in the description of a
+`load_tools` tool, the model loads the ones it needs, and their full definitions come back
+as that tool's result and are offered from the next hop. Smaller connectors, built-ins and
+the tools a turn must call at once (a forced or preset tool, a skill's source tool) go out
+whole, a direct call to a deferred tool still runs, and the loader's text comes from the
+same tool-definition snapshot the privacy scan read. A `load_tools` result is not material:
+it gets no source number and adds no number sources.
 
 ### Auto routing
 
