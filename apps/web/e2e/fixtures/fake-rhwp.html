@@ -48,6 +48,7 @@
         }),
       }
       window.addEventListener('message', (event) => {
+        if (event.origin !== window.location.origin) return
         const message = event.data
         if (message?.type !== 'rhwp-connect' || !event.ports[0]) return
         const port = event.ports[0]

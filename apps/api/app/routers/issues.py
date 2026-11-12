@@ -200,7 +200,7 @@ async def _take_screenshot(db: DbSession, user: User, file_id: str,
         if size > MAX_SCREENSHOT_BYTES:
             raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                                 detail="screenshot_too_large")
-        with (file_service.storage_root() / stored.storage_key).open("rb") as blob:
+        with file_service.blob_path(stored.storage_key).open("rb") as blob:
             head = blob.read(64)
     except OSError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,

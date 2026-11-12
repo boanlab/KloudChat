@@ -49,32 +49,40 @@ def safe_name(name: str) -> str:
     return cleaned[:200]
 
 
+def blob_path(key: str) -> Path:
+    """The file for a storage key; refuses a key that resolves outside the storage root."""
+    root = os.path.realpath(storage_root())
+    path = os.path.realpath(os.path.join(root, key))
+    if not path.startswith(root + os.sep):
+        raise ValueError("storage key outside the storage root")
+    return Path(path)
+
+
 def write_blob(user_id: str, file_id: str, name: str, data: bytes) -> str:
     """Write the blob; returns <user_id>/<file_id>_<name>."""
-    directory = storage_root() / user_id
-    directory.mkdir(parents=True, exist_ok=True)
     key = f"{user_id}/{file_id}_{safe_name(name)}"
-    (storage_root() / key).write_bytes(data)
+    path = blob_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
     return key
 
 
 def read_blob(key: str) -> bytes:
-    return (storage_root() / key).read_bytes()
+    return blob_path(key).read_bytes()
 
 
 def blob_size(key: str) -> int:
     """Size on disk."""
-    return (storage_root() / key).stat().st_size
+    return blob_path(key).stat().st_size
 
 
 def copy_blob(user_id: str, file_id: str, name: str, source_key: str) -> str:
     """Copy a blob to a new key without loading it."""
-    root = storage_root()
     key = f"{user_id}/{file_id}_{safe_name(name)}"
-    destination = root / key
+    destination = blob_path(key)
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:
-        shutil.copyfile(root / source_key, destination)
+        shutil.copyfile(blob_path(source_key), destination)
     except BaseException:
         destination.unlink(missing_ok=True)
         raise
@@ -83,9 +91,9 @@ def copy_blob(user_id: str, file_id: str, name: str, source_key: str) -> str:
 
 def delete_blob(key: str) -> None:
     try:
-        (storage_root() / key).unlink(missing_ok=True)
-    except OSError as exc:
-        log.warning("could not remove blob %s: %s", key, exc)
+        blob_path(key).unlink(missing_ok=True)
+    except (OSError, ValueError) as exc:
+        log.warning("could not remove blob %s: %s", key.replace("\n", " ").replace("\r", " "), exc)
 
 
 #: inline-renderable types; never SVG/HTML (script on the API origin)
