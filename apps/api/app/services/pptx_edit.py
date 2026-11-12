@@ -1009,6 +1009,38 @@ def apply(data: bytes, ops: list[dict]) -> Result:
     return Result(_save(deck.prs), changes)
 
 
+def written_bullets_only(data: bytes) -> bytes:
+    """No automatic bullet under a written one. The house exporter marks a slide's body box
+    as the body placeholder (for the outline view) and writes its own 「• 」 runs; on its blank
+    layout the placeholder falls back to the master's bulleted body style, so PowerPoint and
+    the editor would draw a second bullet. Each paragraph of a body placeholder that sets no
+    bullet of its own gets `a:buNone`."""
+    prs = _load(data)
+    changed = False
+    for slide in prs.slides:
+        for shape, _, _ in _walk(slide.shapes):
+            if _placeholder_type(shape) not in _BODIES or not shape.has_text_frame:
+                continue
+            for paragraph in _paragraphs(shape.text_frame._txBody):
+                props = paragraph.find(_A_PPR)
+                if props is None:
+                    props = etree.Element(_A_PPR)
+                    paragraph.insert(0, props)
+                if any(props.find(qn(f"a:{tag}")) is not None
+                       for tag in ("buNone", "buChar", "buAutoNum", "buBlip")):
+                    continue
+                none = etree.Element(qn("a:buNone"))
+                # schema order: spacing, then bullet colour/size/font, then the bullet
+                anchor = next((c for c in props if c.tag in (
+                    qn("a:tabLst"), qn("a:defRPr"), qn("a:extLst"))), None)
+                if anchor is not None:
+                    anchor.addprevious(none)
+                else:
+                    props.append(none)
+                changed = True
+    return _save(prs) if changed else data
+
+
 # ── a blank deck ──
 
 

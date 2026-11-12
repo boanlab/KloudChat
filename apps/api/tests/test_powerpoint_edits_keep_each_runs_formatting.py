@@ -13,6 +13,7 @@ from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE
+from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 
 from app.services import deck_export, pptx_doc, pptx_edit
@@ -285,3 +286,25 @@ def test_a_cell_given_as_a_value_or_a_number_is_still_written():
     assert prs.slides[1].shapes.title.text_frame.text == "추진 배경\n(초안)"
     with pytest.raises(pptx_edit.PptxError, match="text이 없습니다"):
         pptx_edit.apply(company(), [{"op": "set_cell", "table": "s3.2", "row": 1, "col": 1}])
+
+
+def test_a_written_deck_has_no_automatic_bullet_under_its_written_ones():
+    data = pptx_doc.deck("보고", "", [{"title": "배경", "bullets": ["하나", "둘"]}])
+    body = next(
+        shape for shape in _prs(data).slides[1].shapes
+        if shape.has_text_frame and "하나" in shape.text_frame.text
+    )
+    for paragraph in body.text_frame.paragraphs:
+        assert paragraph._p.find(qn("a:pPr")).find(qn("a:buNone")) is not None
+    # a line added later copies its neighbour, bullet setting and all
+    added = pptx_edit.apply(data, [
+        {"op": "replace_text", "id": "s2.2", "text": "• 하나\n• 둘\n• 셋"},
+    ])
+    body = next(
+        s for s in _prs(added.data).slides[1].shapes
+        if s.has_text_frame and "셋" in s.text_frame.text
+    )
+    assert all(
+        p._p.find(qn("a:pPr")).find(qn("a:buNone")) is not None
+        for p in body.text_frame.paragraphs
+    )

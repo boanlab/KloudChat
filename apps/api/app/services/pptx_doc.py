@@ -68,7 +68,7 @@ def deck(title: str, subtitle: str, slides: list[dict[str, Any]], closing: str =
         made.append(entry)
     if closing.strip():
         made.append({"layout": "closing", "title": closing.strip(), "body": ""})
-    return deck_export.to_pptx(title, made)
+    return pptx_edit.written_bullets_only(deck_export.to_pptx(title, made))
 
 
 async def session_document(db: AsyncSession, user_id: str, session_id: str) -> Artifact | None:
