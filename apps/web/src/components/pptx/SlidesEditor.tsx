@@ -812,6 +812,32 @@ function Editor({
     }
   }, [])
 
+  // Empty title and body places show what goes there, as PowerPoint and Google Slides do; the
+  // editor itself draws an empty placeholder as nothing at all.
+  const prompts = useMemo(() => {
+    if (!canEdit) return ''
+    const said: Record<string, string> = {
+      title: t('제목을 입력하세요'), ctrtitle: t('제목을 입력하세요'),
+      subtitle: t('부제목을 입력하세요'), body: t('텍스트를 입력하세요'),
+      obj: t('텍스트를 입력하세요'),
+    }
+    const size = (kind: string) => Math.round((kind.includes('title') && kind !== 'subtitle' ? 28 : 16)
+      * (tp.scale || 1))
+    return (tp.activeSlide?.elements ?? []).flatMap((element) => {
+      const kind = (element as { placeholderType?: string }).placeholderType ?? ''
+      const text = (element as { text?: string }).text ?? ''
+      if (!said[kind] || text.trim()) return []
+      const at = `.kc-canvas [data-element-id=${JSON.stringify(element.id)}]`
+      return [
+        // an empty box has no text to take a click: the box itself takes it
+        `${at}{outline:1px dashed #9aa0a6;outline-offset:-1px;pointer-events:auto}`,
+        `${at}:not(:has([data-inline-editor]))::after{content:${JSON.stringify(said[kind])};` +
+        'position:absolute;inset:0;display:flex;align-items:center;padding:0 12px;' +
+        `color:#80868b;font-size:${size(kind)}px;pointer-events:none}`,
+      ]
+    }).join('\n')
+  }, [tp.activeSlide, tp.scale, canEdit, t])
+
   const loaded = !blocks.loading && !blocks.error && sp.slides.length > 0
   useEffect(() => {
     if (loaded) onReady()
@@ -880,6 +906,7 @@ function Editor({
         </div>
       </div>
       {menu && <ElementMenu menu={menu} tp={tp} onClose={closeMenu} />}
+      {prompts && <style>{prompts}</style>}
     </div>
   )
 }

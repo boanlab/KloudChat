@@ -13,6 +13,7 @@ test.use({ serviceWorkers: 'block' })
 
 const deck = readFileSync(new URL('./fixtures/pptx-plan.pptx', import.meta.url))
 const filled = readFileSync(new URL('./fixtures/pptx-plan-filled.pptx', import.meta.url))
+const blank = readFileSync(new URL('./fixtures/pptx-blank.pptx', import.meta.url))
 
 function fixture(page: Page, options: Partial<OfficeOptions> = {}) {
   return officeFixture(page, {
@@ -181,13 +182,25 @@ test('on a phone the deck opens to read, without a save button or a toolbar @pho
 
 test('home starts a chat with a blank PowerPoint deck beside 「한글 문서」 and 「Word 문서」', async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
-  const state = await fixture(page, { fromHome: true })
+  const state = await fixture(page, { fromHome: true, file: blank })
   await expect(page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: 'PowerPoint' }))
     .toHaveCount(0)
   await page.getByRole('button', { name: 'PowerPoint', exact: true }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-z_-]+/)
   await expect(pptxPanel(page)).toBeVisible()
   expect(state.created).toEqual([{ sessionId: expect.any(String), title: '새 PowerPoint 문서' }])
+  // the blank title slide says where its title and subtitle go
+  await expect(thumbs(page)).toHaveCount(1, { timeout: 30_000 })
+  const prompts = await pptxPanel(page).locator('style').innerText()
+  expect(prompts).toContain('제목을 입력하세요')
+  expect(prompts).toContain('부제목을 입력하세요')
+  // and an empty title place takes a double click, though it has no text to click on
+  const title = canvas(page).locator('[data-element-id]').first()
+  await title.dblclick()
+  await page.keyboard.type('2027년 사업 계획')
+  await page.keyboard.press('Escape')
+  await expect(canvas(page)).toContainText('2027년 사업 계획')
+  await expect(panel(page).locator('header').getByText('저장 안 됨')).toBeVisible()
   expect(state.unexpected).toEqual([])
 })
 
