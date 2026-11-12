@@ -936,12 +936,8 @@ WEB_SEARCH = Tool(
             "kind": {
                 "type": "string",
                 "enum": ["web", "news", "papers", "korean_papers", "code"],
-                "description": (
-                    "검색 종류. web: 일반(기본). news: 뉴스·시사. papers: 논문·학술 "
-                    "(Google Scholar, OpenAlex, arXiv 등). korean_papers: 국내 학술 논문 "
-                    "(KCI·DBpia·RISS 등). "
-                    "code: 개발 (GitHub, Stack Overflow 등)."
-                ),
+                # what each kind is for is in the tool's description; said once per hop
+                "description": "검색 종류. 생략하면 web(일반).",
             },
             "site": {
                 "type": "string",

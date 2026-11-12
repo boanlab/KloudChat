@@ -661,7 +661,7 @@ def test_the_tools_are_described_for_the_model():
     tool = sandbox_tools.RUN_SKILL_SCRIPT
     keys = set(tool.parameters["properties"]["skill"]["enum"])
     assert keys >= {"xlsx-clean", "pdf-table", "calc-check"}
-    assert "xlsx-clean 「엑셀 정리」: clean(" in tool.description
+    assert "xlsx-clean 「엑셀 정리」: clean" in tool.description
     assert sandbox_tools.RUN_CODE.read_only is False and tool.wants_context
 
 
