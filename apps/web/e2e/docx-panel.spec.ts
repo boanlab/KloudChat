@@ -3,9 +3,10 @@ import { expect, test, type Page } from '@playwright/test'
 import { officeFixture, type OfficeOptions } from './office-fixture'
 
 /**
- * The Word panel beside a chat, with the real folio editor: it loads the saved version,
- * saves a `.docx` from the version it loaded, gives way to the agent's versions, locks while
- * a turn runs, asks about unsaved edits before one starts, and runs under the app's CSP.
+ * The Word panel beside a chat, with the real open-docx-editor: it loads the saved version,
+ * saves a `.docx` from the version it loaded (the header's 저장 or Ctrl+S), gives way to the
+ * agent's versions, locks while a turn runs, asks about unsaved edits before one starts, and
+ * runs under the app's CSP.
  */
 
 test.use({ serviceWorkers: 'block' })
@@ -21,8 +22,9 @@ function fixture(page: Page, options: Partial<OfficeOptions> = {}) {
 
 const panel = (page: Page) => page.locator('[data-panel="artifact"]')
 const docxPanel = (page: Page) => page.locator('[data-docx-panel]')
-/** A line of the document as folio paints it. */
-const line = (page: Page, text: string) => docxPanel(page).getByText(text).first()
+/** A line of the document's body as the editor lays it out. */
+const line = (page: Page, text: string) =>
+  docxPanel(page).locator('.odx-content').getByText(text).first()
 
 async function handEdit(page: Page, at: string, typed: string) {
   const box = (await line(page, at).boundingBox())!
@@ -31,14 +33,20 @@ async function handEdit(page: Page, at: string, typed: string) {
   await page.keyboard.insertText(typed)
 }
 
-test('the saved file opens in folio and a hand edit saves a .docx as the next version', async ({ page }) => {
+test('the saved file opens in the editor and a hand edit saves a .docx as the next version', async ({ page }) => {
   const state = await fixture(page)
   await expect(line(page, '붙임  1. 연수 일정표 1부.')).toBeVisible({ timeout: 30_000 })
   const header = panel(page).locator('header')
   await expect(header.getByText('v1', { exact: true })).toBeVisible()
   await expect(header.getByRole('button', { name: '저장' })).toBeDisabled()
-  // its own toolbar, in Korean
-  await expect(docxPanel(page).getByRole('button', { name: /굵게/ }).first()).toBeVisible()
+  // Word's ribbon: its tabs, and Home's font, size and bold in the side panel's width
+  const ribbon = docxPanel(page).locator('.odx-toolbar')
+  for (const tab of ['File', 'Home', 'Insert', 'Layout', 'References', 'Review', 'View']) {
+    await expect(ribbon.getByRole('tab', { name: tab, exact: true })).toBeVisible()
+  }
+  await expect(ribbon.getByRole('combobox', { name: 'Font', exact: true })).toBeVisible()
+  await expect(ribbon.getByRole('combobox', { name: 'Font size' })).toBeVisible()
+  await expect(ribbon.getByRole('button', { name: /^Bold/ })).toBeVisible()
 
   await handEdit(page, '붙임  1. 연수 일정표 1부.', ' 손으로 고침')
   await expect(header.getByText('저장 안 됨')).toBeVisible()
@@ -65,6 +73,18 @@ test('a save that lost to a newer version says so and loads the latest on reques
   await expect(notice).toBeHidden()
   await expect(docxPanel(page).getByText('늦은 편집')).toHaveCount(0)
   await expect(header.getByText('저장 안 됨')).toBeHidden()
+})
+
+test('Ctrl+S in the editor saves as the header 저장 does', async ({ page }) => {
+  const state = await fixture(page)
+  await expect(line(page, '붙임  1. 연수 일정표 1부.')).toBeVisible({ timeout: 30_000 })
+  await handEdit(page, '붙임  1. 연수 일정표 1부.', ' 단축키')
+  const header = panel(page).locator('header')
+  await expect(header.getByText('저장 안 됨')).toBeVisible()
+  await page.keyboard.press('Control+S')
+  await expect(header.getByText('v2', { exact: true })).toBeVisible()
+  await expect(header.getByText('저장 안 됨')).toBeHidden()
+  expect(state.saves).toEqual([{ expected: '1', size: expect.any(Number) }])
 })
 
 test('the editor locks while the agent works, then shows its version', async ({ page }) => {
@@ -112,7 +132,8 @@ test('on a phone the document opens to read, without a save button or a toolbar 
   const header = panel(page).locator('header')
   await expect(header.getByRole('button', { name: '저장' })).toHaveCount(0)
   await expect(header.getByRole('button', { name: '내려받기' })).toBeEnabled()
-  await expect(docxPanel(page).getByRole('button', { name: /굵게/ })).toHaveCount(0)
+  await expect(docxPanel(page).locator('.odx-toolbar')).toBeHidden()
+  await expect(docxPanel(page).locator('.odx-content')).toHaveAttribute('contenteditable', 'false')
   expect(state.problems).toEqual([])
 })
 

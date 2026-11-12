@@ -1,6 +1,4 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -44,43 +42,8 @@ const rhwpHeaders = (): Plugin => ({
   },
 })
 
-/** The Word editor's document fonts (`@stll/folio-fonts/fonts.css`, which its stylesheet
- *  imports) cut to what this app reads: the latin and latin-ext faces of its metric
- *  stand-ins for Calibri, Arial, Times and the rest, as woff2 only; the cyrillic, greek,
- *  hebrew and vietnamese cuts, the Arabic family and the `.woff` copies for headless
- *  measuring are not shipped. Korean serif text (바탕, 궁서) falls back to `Noto Serif KR`
- *  in the editor; that name is given the app's own Nanum Myeongjo cuts, so no other Korean
- *  files ship. */
-const folioFonts = (): Plugin => ({
-  name: 'kchat-folio-fonts',
-  enforce: 'pre',
-  transform(code, id) {
-    const sheet = id.split('?')[0]
-    if (!sheet.replaceAll('\\', '/').endsWith('/@stll/folio-react/dist/editor.css')) return null
-    const require = createRequire(sheet)
-    const faces = (file: string) => {
-      // each face is written as `url(./…)` beside its own sheet; here they move into this one
-      const from = relative(dirname(sheet), dirname(file)).replaceAll('\\', '/')
-      const css = readFileSync(file, 'utf8')
-      return (css.match(/\/\* [\w[\]-]{1,80} \*\/\s{0,4}@font-face \{[^}]{0,2000}\}/g) ?? [])
-        .map((face) => face
-          .replace(/(format\('woff2'\)),[^;]{0,400};/, '$1;')
-          .replaceAll('url(./', `url(./${from}/`))
-    }
-    const latin = faces(require.resolve('@stll/folio-fonts/fonts.css')).filter((face) =>
-      /^\/\* (?!noto-sans-arabic)[a-z0-9-]{1,40}-latin(?:-ext)?-\d00-(?:normal|italic) \*\//
-        .test(face))
-    const serif = ['400', '700'].flatMap((weight) =>
-      faces(require.resolve(`@fontsource/nanum-myeongjo/${weight}.css`)).map((face) =>
-        face.replace("font-family: 'Nanum Myeongjo'", "font-family: 'Noto Serif KR'")))
-    const imported = '@import "@stll/folio-fonts/fonts.css";'
-    if (!code.includes(imported)) this.error(`${sheet} no longer imports its fonts as expected`)
-    return code.replace(imported, [...latin, ...serif].join('\n'))
-  },
-})
-
 export default defineConfig({
-  plugins: [react(), tailwindcss(), versionFile(), rhwpHeaders(), folioFonts()],
+  plugins: [react(), tailwindcss(), versionFile(), rhwpHeaders()],
   define: {
     'import.meta.env.VITE_KCHAT_VERSION': JSON.stringify(version),
   },

@@ -1,8 +1,7 @@
-import { DocxEditor, type DocxEditorRef } from '@stll/folio-react'
-import { messages as FOLIO_EN } from '@stll/folio-react/messages/en'
-import '@stll/folio-react/editor.css'
+import { mountDocxEditor, type DocxEditorApi } from 'open-docx-editor'
+import 'open-docx-editor/style.css'
+import 'open-docx-editor/fonts.css'
 import { useEffect, useRef, useState } from 'react'
-import { IntlProvider } from 'use-intl'
 import { saveBlob } from '@/components/artifacts/artifactExport'
 import type { PanelMode } from '@/components/artifacts/PanelControls'
 import { OfficePanel } from '@/components/office/OfficePanel'
@@ -15,15 +14,13 @@ import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { DocxArtifact } from '@/types'
-import { FOLIO_KO } from './folioKo'
-
-const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
+import { aliasKoreanFonts } from './koreanFonts'
 
 /**
- * A Word document in the folio editor (pages, toolbar, tables, headers and footers), beside
- * the chat; versions, saves and the agent's turns as every office document has them
- * (`OfficePanel`). Its own chunk: the editor loads only when a Word document opens. On a
- * phone it is read only.
+ * A Word document in open-docx-editor (pages under Word's ribbon: File, Home, Insert, Layout,
+ * References, Review, View), beside the chat; versions, saves and the agent's turns as every
+ * office document has them (`OfficePanel`). Its own chunk: the editor loads only when a Word
+ * document opens. Ctrl+S is the header's 저장. On a phone it is read only.
  */
 export function DocxPanel({
   doc,
@@ -35,43 +32,90 @@ export function DocxPanel({
   onModeChange?: (mode: PanelMode) => void
 }) {
   const t = useT()
-  const lang = useStore((s) => s.lang)
   const author = useStore((s) => s.user?.name ?? '')
   const phone = useMediaQuery('(max-width: 40rem)')
-  const editor = useRef<DocxEditorRef>(null)
+  const host = useRef<HTMLDivElement>(null)
+  const editor = useRef<DocxEditorApi | null>(null)
   const office = useRef<OfficeEditor | null>(null)
   const [ready, setReady] = useState(false)
   const state = useOfficeDocument('docx', doc, office, ready)
-  const { busy, markDirty, setError } = state
+  const { busy, dirtyRef, markDirty, setError } = state
+  const fileName = `${fileStem(doc.title)}.docx`
+  // the editor's callbacks are set once; this keeps what they read current
+  const latest = useRef({ save: state.save, agentWorking: state.agentWorking, phone, t })
+  useEffect(() => {
+    latest.current = { save: state.save, agentWorking: state.agentWorking, phone, t }
+  })
 
   useEffect(() => {
-    const instance = editor.current
-    if (!instance) return
+    const el = host.current
+    if (!el) return
+    aliasKoreanFonts()
+    const api = mountDocxEditor(el, {
+      author,
+      fileName,
+      readOnly: phone,
+      // one artifact per panel: no File > New or Open
+      features: { newDocument: false, openFile: false },
+      onChange: () => {
+        // a load is not an edit
+        if (!busy.current) markDirty(true)
+      },
+      // File > Create a Copy: a download, as the header's menu gives
+      onSave: (bytes, name) =>
+        saveBlob(new Blob([bytes as BlobPart], { type: OFFICE_MIME.docx }), name),
+      pdf: (instance, options) =>
+        import('open-docx-editor/pdf').then((module) => module.exportPdf(instance, options)),
+      onSavePdf: (bytes, name) =>
+        saveBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), name),
+      onError: (err) =>
+        setError(errorMessage(err, latest.current.t('문서를 불러오지 못했습니다.'))),
+    })
+    api.setZoom('pageWidth')
+    editor.current = api
+    // Ctrl+S in the editor is the header's 저장, not the browser's 「save page」
+    const saveKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 's') return
+      event.preventDefault()
+      const now = latest.current
+      if (!now.phone && !now.agentWorking && dirtyRef.current) void now.save()
+    }
+    el.addEventListener('keydown', saveKey)
     office.current = {
       load: async (bytes) => {
-        await instance.loadDocumentBuffer(bytes)
+        // the agent's version comes in while the person is in the chat: keep their focus there
+        const focused = document.activeElement
+        await api.open(new Uint8Array(bytes), fileName)
+        api.markSaved()
+        if (focused instanceof HTMLElement && focused.isConnected && !el.contains(focused)) {
+          focused.focus()
+        }
         return false
       },
-      export: async () => {
-        const bytes = await instance.save()
-        if (!bytes) throw new Error(t('문서를 만들지 못했습니다.'))
-        return new Uint8Array(bytes)
-      },
-      saved: async () => undefined,
+      export: async () => api.save(),
+      saved: async () => api.markSaved(),
     }
     setReady(true)
     return () => {
+      el.removeEventListener('keydown', saveKey)
       office.current = null
+      editor.current = null
+      api.destroy()
     }
     // One editor per document; the panel is keyed by it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    const api = editor.current
+    if (api && api.readOnly !== phone) api.setReadOnly(phone)
+  }, [phone, ready])
+
   const download = async () => {
     try {
       const bytes = await office.current!.export()
       const blob = new Blob([bytes as BlobPart], { type: OFFICE_MIME.docx })
-      saveBlob(blob, `${fileStem(doc.title)}.docx`)
+      saveBlob(blob, fileName)
     } catch (err) {
       setError(errorMessage(err, t('내려받지 못했습니다.')))
     }
@@ -94,27 +138,14 @@ export function DocxPanel({
         </MenuItem>
       }
     >
-      <div className="absolute inset-0 bg-white">
-        <IntlProvider
-          locale={lang}
-          messages={lang === 'en' ? FOLIO_EN : FOLIO_KO}
-          timeZone={TIME_ZONE}
-        >
-          <DocxEditor
-            ref={editor}
-            accessibleName={t('Word 문서 편집기')}
-            author={author}
-            readOnly={phone}
-            initialZoom="fit-width"
-            style={{ height: '100%' }}
-            onChange={() => {
-              // a load is not an edit
-              if (!busy.current) markDirty(true)
-            }}
-            onError={(err) => setError(errorMessage(err, t('문서를 불러오지 못했습니다.')))}
-          />
-        </IntlProvider>
-      </div>
+      {/* the ribbon on top, the pages scrolling under it */}
+      <div
+        ref={host}
+        role="region"
+        aria-label={t('Word 문서 편집기')}
+        data-docx-editor=""
+        className="absolute inset-0 flex flex-col bg-white [&>.odx-canvas]:min-h-0 [&>.odx-canvas]:flex-1"
+      />
     </OfficePanel>
   )
 }

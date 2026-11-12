@@ -135,7 +135,7 @@ const groups: Record<string, Group> = {
   // dist/rhwp) only where it was built, else that spec skips.
   'hwp-panel': { files: ['hwp-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
   'hwp-studio': { files: ['hwp-studio.spec.ts'], projects: { desktop } },
-  // the real Word editor (folio), a chunk of the bundle, against a mocked API
+  // the real Word editor (open-docx-editor), a chunk of the bundle, against a mocked API
   'docx-panel': { files: ['docx-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
 }
 
