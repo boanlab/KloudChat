@@ -308,3 +308,31 @@ def test_a_written_deck_has_no_automatic_bullet_under_its_written_ones():
         p._p.find(qn("a:pPr")).find(qn("a:buNone")) is not None
         for p in body.text_frame.paragraphs
     )
+
+
+def test_a_slide_added_after_a_table_slide_takes_a_bullet_slide_and_leaves_the_footer():
+    data = pptx_doc.deck("사업 계획", "", [
+        {"title": "배경", "bullets": ["하나", "둘"]},
+        {"title": "일정", "rows": [["단계", "기간"], ["1단계", "[기간]"]]},
+    ])
+    result = pptx_edit.apply(data, [
+        {"op": "add_slide", "after": "s3", "title": "위험 요인", "body": "인력 부족\n일정 지연"},
+    ])
+    text = pptx_edit.outline(result.data)
+    assert "s4.1 (제목): 위험 요인" in text
+    assert "s4.2 (본문), 2줄:\n    • 인력 부족\n    • 일정 지연" in text
+    # the footer is still the deck's title, as on every other slide
+    assert "s4.3: 사업 계획" in text
+
+
+def test_a_slide_shaped_like_a_table_slide_gets_its_lines_where_the_table_was():
+    data = pptx_doc.deck("사업 계획", "", [
+        {"title": "일정", "rows": [["단계", "기간"], ["1단계", "[기간]"]]},
+    ])
+    result = pptx_edit.apply(data, [
+        {"op": "add_slide", "after": "s2", "like": "s2", "title": "위험", "body": "인력 부족"},
+    ])
+    slide = _prs(result.data).slides[2]
+    assert not any(getattr(s, "has_table", False) and s.has_table for s in slide.shapes)
+    lines = [s for s in slide.shapes if s.has_text_frame and s.text_frame.text == "인력 부족"]
+    assert len(lines) == 1 and lines[0].height > _prs(result.data).slide_height * 0.12

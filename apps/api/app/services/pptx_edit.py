@@ -27,7 +27,7 @@ from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.oxml.ns import qn
-from pptx.util import Emu
+from pptx.util import Emu, Pt
 
 from app.services import office_edit
 from app.services.files import _open_zip
@@ -689,8 +689,12 @@ def _place(deck: _Deck, slide, after: etree._Element | None) -> etree._Element:
     return entry
 
 
-def _title_and_body(slide) -> tuple[object | None, object | None, list[object]]:
-    """The slide's visible title shape, its main text shape, and its hidden text shapes."""
+def _title_and_body(
+    deck: _Deck, slide, own
+) -> tuple[object | None, object | None, list[object]]:
+    """The slide's visible title shape, its main text shape, and its hidden text shapes. The
+    main text is the body placeholder, else the largest text box of its own (not a page
+    number, not text that stands on other slides too, such as a footer, not a sliver)."""
     shown, hidden = [], []
     for shape, gone, _ in _walk(slide.shapes):
         if shape.has_text_frame:
@@ -704,10 +708,33 @@ def _title_and_body(slide) -> tuple[object | None, object | None, list[object]]:
         title = min(texts, key=lambda s: (s.top or 0, s.left or 0), default=None)
     body = next((s for s in shown if s != title and _placeholder_type(s) in _BODIES), None)
     if body is None:
-        rest = [s for s in shown if s != title and _shape_text(s).strip()
-                and not _shape_text(s).strip().isdigit()]
+        tall = (deck.prs.slide_height or 0) * 0.12
+        rest = [
+            s for s in shown
+            if s != title and _shape_text(s).strip() and not _shape_text(s).strip().isdigit()
+            and not _repeated(deck, _shape_text(s), own) and (s.height or 0) >= tall
+        ]
         body = max(rest, key=lambda s: (s.width or 0) * (s.height or 0), default=None)
     return title, body, hidden
+
+
+def _has_body(deck: _Deck, index: int) -> bool:
+    """Slide `index` has a place for a new slide's lines: a layout with title and body
+    places, or a body of its own."""
+    slide = deck.slides[index].slide
+    kinds = {_placeholder_type(p) for p in slide.slide_layout.placeholders}
+    if kinds & set(_TITLES) and kinds & set(_BODIES):
+        return True
+    return _title_and_body(deck, slide, slide)[1] is not None
+
+
+def _like(deck: _Deck, after: int) -> int:
+    """The slide a new one after `after` is shaped like: the nearest body slide before it,
+    else after it (a cover or a table slide gives no place for lines); else the one before."""
+    count = len(deck.slides)
+    order = [*range(after, 0, -1), *range(after + 1, count), 0]
+    return next((i for i in order if 0 <= i < count and _has_body(deck, i)),
+                max(0, min(after, count - 1)))
 
 
 def _set_shape(shape, text: str, hidden: list[object]) -> None:
@@ -756,13 +783,16 @@ def _add_slide(deck: _Deck, like: int, title: str, body: str):
                 body_shape._element.getparent().remove(body_shape._element)
         return made
     made = _duplicate(deck, like)
-    title_shape, body_shape, hidden = _title_and_body(made)
+    title_shape, body_shape, hidden = _title_and_body(deck, made, source)
+    #: where a dropped table or chart stood: a body with nowhere else to go goes there
+    room: tuple[int, int, int, int] | None = None
     for shape, gone, _ in list(_walk(made.shapes)):
         if gone:
             continue
         if (getattr(shape, "has_table", False) and shape.has_table) or (
             getattr(shape, "has_chart", False) and shape.has_chart
         ):
+            room = room or (shape.left, shape.top, shape.width, shape.height)
             shape._element.getparent().remove(shape._element)
         elif shape.has_text_frame and shape != title_shape and shape != body_shape:
             text = _shape_text(shape).strip()
@@ -772,6 +802,18 @@ def _add_slide(deck: _Deck, like: int, title: str, body: str):
         _set_shape(title_shape, title, hidden)
     if body_shape is not None:
         _set_shape(body_shape, body, hidden)
+    elif body.strip():
+        if room is None:
+            width, height = deck.prs.slide_width or 0, deck.prs.slide_height or 0
+            top = (title_shape.top + title_shape.height) if title_shape is not None else 0
+            room = (int(width * 0.08), int(top + height * 0.05), int(width * 0.84),
+                    int(height * 0.55))
+        box = made.shapes.add_textbox(*(Emu(v) for v in room))
+        box.text_frame.word_wrap = True
+        box.text_frame.text = body.replace("\r", "")
+        for paragraph in box.text_frame.paragraphs:
+            for run in paragraph.runs:
+                run.font.size = Pt(18)
     notes = _notes_body(made)
     if notes is not None:
         _set_lines(notes, "")
@@ -918,8 +960,7 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             if op.get("like") not in (None, ""):
                 like = _slide_ref(deck, op.get("like"))
             else:
-                # a body slide to copy the look of: the one before, unless that is the cover
-                like = after if after > 0 else min(1, len(deck.slides) - 1)
+                like = _like(deck, after)
             title = _text_arg(op, "title") if op.get("title") is not None else ""
             body = _lines_arg(op, "body") if op.get("body") is not None else ""
             plan.append((op, (entries[after] if after >= 0 else None, like, title, body)))
