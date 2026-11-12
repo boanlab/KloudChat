@@ -2318,9 +2318,11 @@ only its rule sentences, and pasted material never sets a rule. A later rule rep
 earlier one on the same aspect (a new answer language replaces the old one), up to five are
 kept, and a withdrawal such as 「원래대로」 ("back to normal") clears them. The rules are read off
 the **whole** conversation, not only the turns that still fit the window, so a rule set in a
-turn the window has cut still travels with every question; a standing English rule also sets
-the answer language when the question is in Korean. The replay is where a small model
-attends. A skill fetched through
+turn the window has cut still travels with every question. A standing English rule also sets
+the answer language when the question is in Korean: the system turn says so, the replay adds it
+as a plain line of its own, and the acknowledgements the envelope writes for the assistant
+(after the replay and after this turn's attachment) are in English too — a Korean 「네, …」 right
+before the question pulled answers back to Korean. The replay is where a small model attends. A skill fetched through
 `use_skill` is told that such rules take precedence over its own instructions.
 
 **The auto toggle's forced search asks about the world.** `needs_web_search`

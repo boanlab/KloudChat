@@ -495,18 +495,18 @@ def build_messages(
     #: an English answer was asked for: the acknowledgements the envelope puts in the
     #: assistant's mouth speak it too — a Korean 「네, …」 right before the question pulls an
     #: English-only conversation back to Korean
-    english = False
+    english = standing_english = False
     if _agent_language(rules):
         # the agent's language holds; a standing request for another one still wins
         if rule := standing_language_rule(standing, asked if isinstance(asked, str) else ""):
             rules.append(rule)
-            english = True
+            english = standing_english = True
     elif rule := language_rule(asked if isinstance(asked, str) else ""):
         rules.append(rule.replace("write the entire output", "write the entire answer"))
         english = True
     elif rule := standing_language_rule(standing, asked if isinstance(asked, str) else ""):
         rules.append(rule)
-        english = True
+        english = standing_english = True
     prompt = system_prompt(
         kind,
         with_tools=with_tools,
@@ -550,7 +550,9 @@ def build_messages(
             ack = TURN_CONTEXT_ACK_EN if english else TURN_CONTEXT_ACK
             messages.append({"role": "assistant", "content": ack})
         if standing:
-            messages.append({"role": "user", "content": standing_block(standing)})
+            messages.append(
+                {"role": "user", "content": standing_block(standing, english=standing_english)}
+            )
             messages.append(
                 {"role": "assistant", "content": STANDING_ACK_EN if english else STANDING_ACK}
             )
@@ -715,11 +717,15 @@ def conversation_language(history: list[dict]) -> str:
     return "en" if latin >= 40 and hangul * 4 <= latin else "ko"
 
 
-def standing_block(directives: list[str]) -> str:
+def standing_block(directives: list[str], *, english: bool = False) -> str:
+    """The rules replayed in the user's voice; a standing English rule is also said plainly,
+    since a rule sentence buried in a longer message loses to a question in Korean."""
+    lines = [f"- {line}" for line in directives]
+    if english:
+        lines.append("- Answer in English, even when my question is in Korean.")
     return (
         "These are rules I set earlier in this conversation. I have not changed them, so "
-        "keep following them in the next answer too:\n"
-        + "\n".join(f"- {line}" for line in directives)
+        "keep following them in the next answer too:\n" + "\n".join(lines)
     )
 
 

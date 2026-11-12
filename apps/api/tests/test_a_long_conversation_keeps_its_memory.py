@@ -523,6 +523,8 @@ def test_a_rule_from_a_turn_the_window_cut_is_still_replayed_with_its_language()
     out = build_messages(SessionKind.chat, kept, remind_standing=True, standing=standing)
     # the acknowledgement is in English too: a Korean one would pull the answer to Korean
     assert out[-2]["content"] == STANDING_ACK_EN and rule in out[-3]["content"]
+    # the rule is also said plainly, not only inside the longer message that set it
+    assert "- Answer in English, even when my question is in Korean." in out[-3]["content"]
     assert "Write the entire answer in English" in out[0]["content"]
     # read off the kept part alone, it would be gone
     alone = build_messages(SessionKind.chat, kept, remind_standing=True)
@@ -538,6 +540,7 @@ def test_the_envelopes_acknowledgements_speak_the_answers_language():
                          turn_context=["# 첨부\n본문"])
     assert TURN_CONTEXT_ACK in [m["content"] for m in out]
     assert out[-2]["content"] == STANDING_ACK
+    assert "Answer in English" not in out[-3]["content"]
     english = [{"role": "user", "content": "Please summarise the attached quarterly report "
                                            "and list the three biggest risks for the team."}]
     out = build_messages(SessionKind.chat, english, turn_context=["# Attached\nbody"])
