@@ -1477,9 +1477,9 @@ blanks, the particle that agrees with a filled value, op arguments, the numbered
 outline), `routers/office_docs.py` (create, fetch a version, save; mounted by
 `routers/hwp.py` and `routers/docx.py`), and `services/tools/office.py` (the
 read, edit and write tools for one kind; `tools/hwp.py` and `tools/docx.py`
-each make a set). `services/hwp_doc.py` and `services/docx_doc.py` only say what
-their files are and how a new one is written (`report_export.to_hwpx`,
-`report_export.to_docx`). In a chat, `routers/sessions.py` looks up each kind's
+each make a set; `tools/pptx.py` too). `services/hwp_doc.py`, `services/docx_doc.py`
+and `services/pptx_doc.py` only say what their files are and how a new one is written
+(`report_export.to_hwpx`, `report_export.to_docx`, `deck_export.to_pptx`). In a chat, `routers/sessions.py` looks up each kind's
 document (`_OFFICE`): its tools join the turn when the chat has one or the
 request names it (「한글 문서로」, 「Word로」, 「docx 파일」, not 「키워드로」), and
 the newest document with text is read by the server before the first hop.
@@ -1586,6 +1586,85 @@ Both
 panels are `components/office/OfficePanel.tsx` (`useOfficeDocument` holds the
 load, save, 409, reload-on-new-version and ask-before-send logic) around their
 editor; on a phone the Word editor is read only, without its ribbon.
+
+### PowerPoint documents
+
+A `pptx` artifact is a third office kind on the same layer (`office_doc`,
+`office_docs` routes, `tools/office.py`), for a deck that has to stay a
+PowerPoint file: an uploaded `.pptx`, a company template, or a request that
+names PowerPoint (「PowerPoint로」, 「pptx 파일」, 「파워포인트」, 「PPT 파일로」).
+A bare 「PPT 만들어 줘」 or 「발표 자료」 is any deck and still goes to the
+slides surface (the `deck` kind, whose own export is `.pptx` too): the web
+composer keeps a request on the chat only when `NAMES_PPTX`
+(`lib/documentRequest.ts`) matches, mirroring the server's `_ASKS_PPTX`.
+Migration 0080 adds `pptx` to the Postgres enum.
+
+`services/pptx_edit.py` reads and edits the file with python-pptx (MIT) and
+lxml. Ids are slides `s1…` and, per slide, the shapes worth naming in drawing
+order (`s2.1`, `s2.2`; a group's shapes where the group stands): text, tables,
+charts, pictures and SmartArt (the last three read only). Placeholders are
+marked (제목, 부제목, 본문, 날짜, 바닥글, 쪽 번호), notes are `s2 메모`. Hidden
+shapes are not listed: KloudChat's own exported decks carry a cover title twice,
+in a visible box and in a 1 pt hidden title placeholder for the outline view, and
+python-pptx would take the hidden one for the title; the visible box is named
+the title instead, and an edit of it carries the hidden twin along. A shape's
+text is one line per paragraph; a rewrite diffs the lines (`difflib`), so lines
+that stay keep their paragraphs, a changed line keeps the text it shares at the
+start and the end in its own runs (a bold 「담당:」 label stays bold) and takes the
+format of the run its change starts in, a new line copies its neighbour's `pPr`
+(level, bullets) and run format, and a written bullet run (「• 」 in the accent
+colour, as the house exporter writes bullets) stays in its own run. Blanks are
+filled across runs with the agreeing particle (`office_edit`). Slide ops: an
+added slide takes its layout when that layout has title and body places (a real
+template), else it is a copy of the slide it is shaped like with its title and
+main text replaced, its other own text cleared (page numbers and text repeated on
+other slides stay) and tables and charts dropped; a duplicated slide copies its
+shapes, background, transition and notes, relates the same images and copies
+each chart part (with its workbook) so the two charts stay apart; delete and
+move edit `sldIdLst`. All ops resolve against the version read, so a bad op
+changes nothing. `pptx_write` writes a new deck in the house look through
+`deck_export.to_pptx` (cover, a slide per entry as bullets or a table, an
+optional closing line) with bracket blanks for what was not given; the context
+note tells the model to fill an upload or template with `pptx_edit` instead,
+whose `add_slide` keeps its look. A blank deck (`pptx_edit.blank_deck`) is
+python-pptx's default template stretched from 4:3 to 16:9 (masters and layouts
+too) with 맑은 고딕 as the theme's East Asian font. A legacy `.ppt` is refused.
+
+The editor is pptx-react-viewer (crv, Apache-2.0, pinned to 4.74.0, with
+`ooxml-core` and `ooxml-ui` pinned as it resolves them), used through its
+building blocks (`useViewerBuildingBlocks`, `SlideCanvas`, `SlideThumbnail`)
+under the app's own Google-Slides-like chrome in `components/pptx/`: one toolbar
+row (undo, zoom, text box, shape, image, table, font, size, B/I/U, colour,
+alignment and lists folded into ⋮ when narrow), a thumbnail rail with a slide
+menu and drag to reorder, the speaker notes, and a right-click menu on the canvas
+(cut, copy, paste, duplicate, layer order, delete). Keys outside the inline text
+editor (undo, redo, copy, cut, paste, duplicate, delete, B/I/U) count only after
+a press inside the editor, so copying text in the chat is left alone. Inserted
+elements are made by the chrome in one undo step each, moved off the spot of an
+element already there; a new table's header row is 「항목 1…」 in Korean.
+`PptxPanel` is loaded with `React.lazy`: crv and its dependencies are a chunk of
+several MB fetched when a deck opens, never part of the main bundle.
+
+The `kchat-crv-patches` Vite plugin changes crv at build time, node_modules
+untouched: `useViewerBuildingBlocks()` hands out neither the notes writer its own
+viewer uses nor a way to clear its unsaved flag after a save, so both are added
+to its result (`updateNotes`, `markClean`); and crv's stylesheet sets its theme
+variables (`--font-sans`, `--color-accent`, …) on `:root`, where they would
+replace the app's own once a deck opens, so they are set on the editor's own
+elements instead. A new crv version that moves either spot fails the build
+(`tests/vite-config.test.mjs`). `mtx-decompressor` (MPL-2.0; unpacks fonts
+embedded as MTX/EOT in old decks) is aliased to a stub that returns nothing, so
+no MPL code ships; such a font falls back to the deck's other fonts. crv's
+inline editor shows text that was typed and then formatted twice (「수정됨
+수정됨」): when its DOM text differs from the model's at a format change, the
+chrome mounts the canvas anew in the same render and puts the selection back; a
+format pressed while a Korean syllable is being composed waits for the
+composition to end and applies to the composed syllables; a caret formats the
+word it stands in. It runs under the app's CSP as it is (no eval, no WebAssembly,
+no outside requests: Google Fonts and linked content are off). Korean labels are
+the app's i18n; crv's own few canvas words get Korean through
+`PptxI18nProvider`. On a phone the deck is read only, its thumbnails a row under
+the slide.
 
 ### Sharing
 
