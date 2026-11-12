@@ -16,6 +16,9 @@ from app.schemas.chat import SendMessage
 from app.services import conversation_summary, governance
 from app.services.context import (
     STANDING_ACK,
+    STANDING_ACK_EN,
+    TURN_CONTEXT_ACK,
+    TURN_CONTEXT_ACK_EN,
     build_messages,
     carried_pastes,
     conversation_language,
@@ -505,12 +508,27 @@ def test_a_rule_from_a_turn_the_window_cut_is_still_replayed_with_its_language()
     # only the newest exchanges are sent, but the rule still travels with the question
     kept = history[-3:]
     out = build_messages(SessionKind.chat, kept, remind_standing=True, standing=standing)
-    assert out[-2]["content"] == STANDING_ACK and rule in out[-3]["content"]
+    # the acknowledgement is in English too: a Korean one would pull the answer to Korean
+    assert out[-2]["content"] == STANDING_ACK_EN and rule in out[-3]["content"]
     assert "Write the entire answer in English" in out[0]["content"]
     # read off the kept part alone, it would be gone
     alone = build_messages(SessionKind.chat, kept, remind_standing=True)
-    assert all(m["content"] != STANDING_ACK for m in alone)
+    assert all(m["content"] not in (STANDING_ACK, STANDING_ACK_EN) for m in alone)
     assert "Write the entire answer in English" not in alone[0]["content"]
+
+
+def test_the_envelopes_acknowledgements_speak_the_answers_language():
+    korean = [{"role": "user", "content": "앞으로 표로 답해 줘."},
+              {"role": "assistant", "content": "네."},
+              {"role": "user", "content": "이 파일 요약해 줘"}]
+    out = build_messages(SessionKind.chat, korean, remind_standing=True,
+                         turn_context=["# 첨부\n본문"])
+    assert TURN_CONTEXT_ACK in [m["content"] for m in out]
+    assert out[-2]["content"] == STANDING_ACK
+    english = [{"role": "user", "content": "Please summarise the attached quarterly report "
+                                           "and list the three biggest risks for the team."}]
+    out = build_messages(SessionKind.chat, english, turn_context=["# Attached\nbody"])
+    assert out[-2]["content"] == TURN_CONTEXT_ACK_EN
 
 
 def test_every_prompt_lets_a_conversation_wide_language_outlast_the_questions_language():

@@ -492,14 +492,21 @@ def build_messages(
         standing = []
     elif standing is None:
         standing = standing_directives(history)
+    #: an English answer was asked for: the acknowledgements the envelope puts in the
+    #: assistant's mouth speak it too — a Korean 「네, …」 right before the question pulls an
+    #: English-only conversation back to Korean
+    english = False
     if _agent_language(rules):
         # the agent's language holds; a standing request for another one still wins
         if rule := standing_language_rule(standing, asked if isinstance(asked, str) else ""):
             rules.append(rule)
+            english = True
     elif rule := language_rule(asked if isinstance(asked, str) else ""):
         rules.append(rule.replace("write the entire output", "write the entire answer"))
+        english = True
     elif rule := standing_language_rule(standing, asked if isinstance(asked, str) else ""):
         rules.append(rule)
+        english = True
     prompt = system_prompt(
         kind,
         with_tools=with_tools,
@@ -540,10 +547,13 @@ def build_messages(
                     ),
                 }
             )
-            messages.append({"role": "assistant", "content": TURN_CONTEXT_ACK})
+            ack = TURN_CONTEXT_ACK_EN if english else TURN_CONTEXT_ACK
+            messages.append({"role": "assistant", "content": ack})
         if standing:
             messages.append({"role": "user", "content": standing_block(standing)})
-            messages.append({"role": "assistant", "content": STANDING_ACK})
+            messages.append(
+                {"role": "assistant", "content": STANDING_ACK_EN if english else STANDING_ACK}
+            )
         messages.extend(history[last_user:])
     else:
         messages.extend(history)
@@ -610,6 +620,7 @@ _WITHDRAW_RE = re.compile(
 #: replayed whole (its facts frame the rule), a longer one by its directive sentences.
 _STANDING_MAX, _STANDING_CHARS, _WHOLE_MESSAGE = 5, 240, 400
 STANDING_ACK = "네, 그 규칙을 계속 지키겠습니다."
+STANDING_ACK_EN = "Understood. I will keep following those rules."
 
 
 def directive_aspects(text: str) -> frozenset[str] | None:
@@ -714,6 +725,7 @@ def standing_block(directives: list[str]) -> str:
 
 #: Ack between attachments and question.
 TURN_CONTEXT_ACK = "첨부 파일을 확인했습니다. 이어지는 질문에 그 내용을 바탕으로 답하겠습니다."
+TURN_CONTEXT_ACK_EN = "I have read the attached files and will answer the next question from them."
 
 
 # ── context window ──────────────────────────────────────────────────────
