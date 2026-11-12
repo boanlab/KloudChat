@@ -42,6 +42,12 @@ import { useT } from '@/lib/useT'
 const DocxPanel = lazy(() =>
   import('@/components/docx/DocxPanel').then((module) => ({ default: module.DocxPanel })),
 )
+/** The PowerPoint editor (several MB) likewise, fetched when a deck opens. */
+const PptxPanel = lazy(() =>
+  import('@/components/pptx/PptxPanel').then((module) => ({ default: module.PptxPanel })),
+)
+
+const OFFICE_LABEL = { hwp: '한글 문서', docx: 'Word 문서', pptx: 'PowerPoint 문서' } as const
 
 function PanelLoading() {
   const t = useT()
@@ -173,12 +179,13 @@ export function ArtifactPreview({
       return <ChartThumb chart={artifact} />
     case 'hwp':
     case 'docx':
+    case 'pptx':
       // The file's text on a white page; the editor itself opens in the panel.
       return (
         <div className="size-full overflow-hidden bg-white px-5 py-4 text-[#1a1a1a]">
           <p className="mb-0.5 truncate text-lg font-semibold">{artifact.title}</p>
           <p className="mb-3 text-xs text-[#6b6b6b]">
-            {t(artifact.kind === 'hwp' ? '한글 문서' : 'Word 문서')}
+            {t(OFFICE_LABEL[artifact.kind])}
           </p>
           <p className="line-clamp-6 whitespace-pre-line text-xs leading-relaxed text-[#595959]">
             {(artifact.text ?? '').slice(0, 600)}
@@ -816,7 +823,8 @@ export function ArtifactPanel() {
     artifact.kind === 'deck' ||
     artifact.kind === 'chart' ||
     artifact.kind === 'hwp' ||
-    artifact.kind === 'docx'
+    artifact.kind === 'docx' ||
+    artifact.kind === 'pptx'
   // Reports, decks, charts own their chrome; the rest share a header.
   const selfChrome = selfWide
 
@@ -951,6 +959,15 @@ export function ArtifactPanel() {
           ) : artifact.kind === 'docx' ? (
             <Suspense fallback={<PanelLoading />}>
               <DocxPanel
+                key={artifact.id}
+                doc={artifact}
+                onClose={() => openArtifact(null)}
+                onModeChange={changeMode}
+              />
+            </Suspense>
+          ) : artifact.kind === 'pptx' ? (
+            <Suspense fallback={<PanelLoading />}>
+              <PptxPanel
                 key={artifact.id}
                 doc={artifact}
                 onClose={() => openArtifact(null)}

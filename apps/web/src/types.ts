@@ -587,6 +587,7 @@ export type ArtifactKind =
   | 'html'
   | 'hwp'
   | 'docx'
+  | 'pptx'
 
 interface ArtifactBase {
   id: string
@@ -933,6 +934,16 @@ export interface DocxArtifact extends ArtifactBase {
   text?: string
 }
 
+/** A PowerPoint deck: the file itself is fetched per version (`artifactsApi.documentFile`). */
+export interface PptxArtifact extends ArtifactBase {
+  kind: 'pptx'
+  format: 'pptx'
+  size: number
+  slides?: number
+  /** Slide text and notes, for search and cards. */
+  text?: string
+}
+
 export type Artifact =
   | ReportArtifact
   | DeckArtifact
@@ -943,6 +954,7 @@ export type Artifact =
   | CodeArtifact
   | HwpArtifact
   | DocxArtifact
+  | PptxArtifact
 
 /* ── workspace ──────────────────────────────────────────────────────── */
 

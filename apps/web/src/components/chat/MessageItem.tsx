@@ -218,6 +218,11 @@ function LengthLine({ check }: { check: LengthCheck }) {
   )
 }
 
+/** The button that opens an attached office file in its editor beside the chat. */
+const OPEN_IN: Record<OfficeKind, string> = {
+  hwp: 'HWP로 열기', docx: 'Word로 열기', pptx: 'PowerPoint로 열기',
+}
+
 function MessageItemInner({
   message,
   sessionId,
@@ -303,9 +308,11 @@ function MessageItemInner({
       await refreshArtifact(made.id)
       openArtifact(made.id)
     } catch (err) {
-      const failed = kind === 'hwp'
-        ? '이 파일을 한글 편집기로 열지 못했습니다.'
-        : '이 파일을 Word 편집기로 열지 못했습니다.'
+      const failed = {
+        hwp: '이 파일을 한글 편집기로 열지 못했습니다.',
+        docx: '이 파일을 Word 편집기로 열지 못했습니다.',
+        pptx: '이 파일을 PowerPoint 편집기로 열지 못했습니다.',
+      }[kind]
       setFileError(errorMessage(err, t(failed)))
     } finally {
       setOpening(null)
@@ -416,7 +423,8 @@ function MessageItemInner({
             // the office editor this file opens in beside the chat
             const editable: OfficeKind | null = !a.id || sessionKind !== 'chat' ? null
               : /\.hwpx?$/i.test(a.name) ? 'hwp'
-                : /\.docx$/i.test(a.name) ? 'docx' : null
+                : /\.docx$/i.test(a.name) ? 'docx'
+                  : /\.pptx$/i.test(a.name) ? 'pptx' : null
             return a.id ? (
               <span key={a.id} className="ml-auto flex w-fit max-w-full items-center gap-1.5">
                 {editable && (
@@ -431,7 +439,7 @@ function MessageItemInner({
                     ) : (
                       <FileType size={13} />
                     )}
-                    {t(editable === 'hwp' ? 'HWP로 열기' : 'Word로 열기')}
+                    {t(OPEN_IN[editable])}
                   </Button>
                 )}
                 {hangul && (

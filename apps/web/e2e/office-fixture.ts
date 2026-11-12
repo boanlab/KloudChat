@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
 /**
- * A chat with an office document (HWP, Word) beside it, the API mocked: the document's file
+ * A chat with an office document (HWP, Word, PowerPoint) beside it, the API mocked: the document's file
  * per version, saves that move one version at a time (409 otherwise), and an agent turn whose
  * tools save a version of their own (`agentFile`) on the server.
  */
@@ -12,7 +12,7 @@ export const artifactId = '88888888888888888888888888888888'
 const at = '2026-11-11T00:00:00.000Z'
 
 export type OfficeOptions = {
-  kind: 'hwp' | 'docx'
+  kind: 'hwp' | 'docx' | 'pptx'
   file: Buffer
   /** The file the agent's turn leaves on the server. */
   agentFile: Buffer
@@ -40,14 +40,16 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
     if (/Content Security Policy/i.test(message.text())) csp.push(message.text())
   })
   const { kind } = options
-  const mime = kind === 'hwp'
-    ? 'application/hwp+zip'
-    : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  const mime = {
+    hwp: 'application/hwp+zip',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  }[kind]
   let artifact = {
     id: artifactId, title: options.title, kind, version: 1, partial: false,
     sessionId, projectId: null, createdAt: at, updatedAt: at,
     data: {
-      format: kind === 'hwp' ? 'hwpx' : 'docx', size: options.file.length, text: options.title,
+      format: kind === 'hwp' ? 'hwpx' : kind, size: options.file.length, text: options.title,
     },
   }
   let file: Buffer = options.file

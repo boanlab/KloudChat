@@ -57,6 +57,11 @@ const OFFICE_STARTS = [
     kind: 'docx', label: 'Word 문서', title: '새 Word 문서', color: '#185abd',
     hint: '빈 Word 문서를 열고, 챗으로 쓰고 고칩니다', failed: 'Word 문서를 열지 못했습니다.',
   },
+  {
+    kind: 'pptx', label: 'PowerPoint', title: '새 PowerPoint 문서', color: '#c43e1c',
+    hint: '빈 PowerPoint 문서를 열고, 챗으로 쓰고 고칩니다',
+    failed: 'PowerPoint 문서를 열지 못했습니다.',
+  },
 ] as const satisfies readonly {
   kind: OfficeKind; label: string; title: string; color: string; hint: string; failed: string
 }[]
@@ -76,7 +81,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const ensureSession = useStore((s) => s.ensureSession)
   const setNotice = useStore((s) => s.setNotice)
   const [openingDocument, setOpeningDocument] = useState<OfficeKind | null>(null)
-  /** A chat with a blank HWP or Word document open beside it. */
+  /** A chat with a blank HWP, Word or PowerPoint document open beside it. */
   const startDocument = async (start: (typeof OFFICE_STARTS)[number]) => {
     if (openingDocument) return
     setOpeningDocument(start.kind)
@@ -218,8 +223,8 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
 
       <div className="shrink-0 pt-2" data-testid="home-dock">
         <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none] [@media(max-height:30rem)]:flex-nowrap [@media(max-height:30rem)]:justify-start [@media(max-height:30rem)]:overflow-x-auto [@media(max-height:30rem)]:[scrollbar-width:none]">
-          {/* The surfaces; an HWP or Word document beside them is a chat with a file, not a
-              surface. One scrolling row on a short screen too, so the examples keep their
+          {/* The surfaces; an HWP, Word or PowerPoint document beside them is a chat with a
+              file, not a surface. One scrolling row on a short screen too, so the examples keep their
               place. */}
           <div role="group" aria-label={t('만들 것')} className="contents">
             {surfaces.map((k) => {

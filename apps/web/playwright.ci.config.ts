@@ -137,6 +137,11 @@ const groups: Record<string, Group> = {
   'hwp-studio': { files: ['hwp-studio.spec.ts'], projects: { desktop } },
   // the real Word editor (open-docx-editor), a chunk of the bundle, against a mocked API
   'docx-panel': { files: ['docx-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
+  // the real PowerPoint editor (pptx-react-viewer under our chrome), a chunk of its own
+  'pptx-panel': { files: ['pptx-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
+  // every toolbar, rail, notes and menu action against the saved file; a manual check
+  // (PPTX_ACTIONS=1), as it was when the editor was chosen
+  'pptx-actions': { files: ['pptx-actions.spec.ts'], projects: { desktop } },
 }
 
 export default defineConfig({
