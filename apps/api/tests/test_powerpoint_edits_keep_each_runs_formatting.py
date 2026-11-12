@@ -271,3 +271,17 @@ def test_a_new_deck_is_written_in_the_house_look_with_blanks_left_as_brackets():
     ]
     described = pptx_doc.describe(data, "pptx")
     assert described["slides"] == 4 and "추진 배경" in described["text"]
+
+
+def test_a_cell_given_as_a_value_or_a_number_is_still_written():
+    result = pptx_edit.apply(company(), [
+        {"op": "set_cell", "table": "s3.2", "row": 2, "col": 1, "value": "2027. 4.~9."},
+        {"op": "set_cell", "table": "s3.2", "row": 2, "col": 2, "text": 300},
+        {"op": "replace_text", "id": "s2.1", "text": ["추진 배경", "(초안)"]},
+    ])
+    prs = _prs(result.data)
+    table = prs.slides[2].shapes[1].table
+    assert (table.cell(2, 1).text, table.cell(2, 2).text) == ("2027. 4.~9.", "300")
+    assert prs.slides[1].shapes.title.text_frame.text == "추진 배경\n(초안)"
+    with pytest.raises(pptx_edit.PptxError, match="text이 없습니다"):
+        pptx_edit.apply(company(), [{"op": "set_cell", "table": "s3.2", "row": 1, "col": 1}])

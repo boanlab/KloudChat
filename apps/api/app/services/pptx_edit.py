@@ -855,9 +855,16 @@ def _text_arg(op: dict, name: str = "text") -> str:
 def _lines_arg(op: dict, name: str = "text") -> str:
     """Text as lines: a list of lines is taken as given."""
     value = op.get(name)
-    if isinstance(value, list) and all(isinstance(v, str) for v in value):
-        op = {**op, name: "\n".join(value)}
-    return office_edit.text_arg(op, name, PptxError)
+    if value is None and name == "text":
+        # a model that fills cells as it fills blanks: 「value」 for 「text」
+        value = op.get("value")
+    if value is None:
+        raise PptxError(f"{op.get('op')}: {name}이 없습니다 (넣을 글).")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        value = str(value)
+    if isinstance(value, list) and all(isinstance(v, (str, int, float)) for v in value):
+        value = "\n".join(str(v) for v in value)
+    return office_edit.text_arg({**op, name: value}, name, PptxError)
 
 
 def apply(data: bytes, ops: list[dict]) -> Result:
