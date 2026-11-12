@@ -13,6 +13,7 @@ import { SlideView } from '@/components/slides/DeckPanel'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
+import { HwpPanel } from '@/components/hwp/HwpPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
 import {
@@ -152,6 +153,17 @@ export function ArtifactPreview({
       )
     case 'chart':
       return <ChartThumb chart={artifact} />
+    case 'hwp':
+      // The file's text on a white page; the editor itself opens in the panel.
+      return (
+        <div className="size-full overflow-hidden bg-white px-5 py-4 text-[#1a1a1a]">
+          <p className="mb-0.5 truncate text-lg font-semibold">{artifact.title}</p>
+          <p className="mb-3 text-xs text-[#6b6b6b]">{t('한글 문서')}</p>
+          <p className="line-clamp-6 whitespace-pre-line text-xs leading-relaxed text-[#595959]">
+            {(artifact.text ?? '').slice(0, 600)}
+          </p>
+        </div>
+      )
     default:
       return (
         <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">
@@ -779,7 +791,10 @@ export function ArtifactPanel() {
   if (!artifact) return null
 
   const selfWide =
-    artifact.kind === 'report' || artifact.kind === 'deck' || artifact.kind === 'chart'
+    artifact.kind === 'report' ||
+    artifact.kind === 'deck' ||
+    artifact.kind === 'chart' ||
+    artifact.kind === 'hwp'
   // Reports, decks, charts own their chrome; the rest share a header.
   const selfChrome = selfWide
 
@@ -900,6 +915,14 @@ export function ArtifactPanel() {
           ) : artifact.kind === 'chart' ? (
             <ChartPanel
               chart={artifact}
+              onClose={() => openArtifact(null)}
+              onModeChange={changeMode}
+            />
+          ) : artifact.kind === 'hwp' ? (
+            // one editor per document: another document mounts a fresh one
+            <HwpPanel
+              key={artifact.id}
+              doc={artifact}
               onClose={() => openArtifact(null)}
               onModeChange={changeMode}
             />

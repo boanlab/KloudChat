@@ -916,6 +916,11 @@ async def artifact_counts(user: CurrentUser, db: DbSession, q: str | None = None
 
 @router.post("/artifacts", response_model=ArtifactOut, status_code=status.HTTP_201_CREATED)
 async def create_artifact(payload: ArtifactIn, user: CurrentUser, db: DbSession):
+    if payload.kind is ArtifactKind.hwp:
+        # its file comes with it: `POST /artifacts/hwp`
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="hwp_needs_its_file"
+        )
     fields = payload.model_dump()
     # no unsanitised HTML reaches storage
     fields["data"] = _clean_report_data(fields.get("data"))

@@ -36,6 +36,9 @@ MINIMUM_WAGE = ("지금 기준으로 한국 최저임금(2026년 적용분)이 �
 @pytest.mark.parametrize("ask", [
     AGENDA, BUG_FIX, PROOFREAD,
     "팀 송년회 공지 메일 초안 써줘. 12월 19일 금요일 저녁 7시, 회사 앞 식당이야.",
+    # the person's own values put into their document
+    "문의 담당자는 교무과 김민지, 연락처는 031-8005-0000으로 채워 주세요",
+    "장소를 본관 3층 회의실로 바꿔 줘",
 ])
 def test_a_draft_an_edit_or_a_code_fix_of_given_facts_is_own_work(ask):
     assert exact_facts.own_work(ask)
@@ -49,6 +52,7 @@ def test_a_draft_an_edit_or_a_code_fix_of_given_facts_is_own_work(ask):
     "요즘 잠이 부족해서 하루에 커피를 4~5잔 마시는데 괜찮은 건가요?",
     "친구 결혼식 축의금을 얼마 해야 할지 고민이에요.",
     "두통 증상이 계속돼서 병가 메일 써줘.",
+    "이 칸에 최신 최저임금을 넣어 줘",
 ])
 def test_a_lookup_a_world_value_or_advice_is_not_own_work(ask):
     assert not exact_facts.own_work(ask)

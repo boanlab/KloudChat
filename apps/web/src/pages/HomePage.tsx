@@ -1,10 +1,11 @@
-import { Loader2 } from 'lucide-react'
+import { FileType, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer, fillComposer } from '@/components/chat/Composer'
+import { artifactsApi, errorMessage } from '@/lib/api'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -56,6 +57,25 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   useEffect(() => {
     if (initialKind) setKind(initialKind)
   }, [initialKind])
+
+  const newSession = useStore((s) => s.newSession)
+  const ensureSession = useStore((s) => s.ensureSession)
+  const setNotice = useStore((s) => s.setNotice)
+  const [openingHwp, setOpeningHwp] = useState(false)
+  /** A chat with a blank HWP document open beside it. */
+  const startHwp = async () => {
+    if (openingHwp) return
+    setOpeningHwp(true)
+    try {
+      const id = await ensureSession(await newSession('chat'))
+      const row = await artifactsApi.createHwp({ sessionId: id, title: t('새 한글 문서') })
+      navigate(`/s/${id}?artifact=${row.id}`)
+    } catch (err) {
+      setNotice(errorMessage(err, t('한글 문서를 열지 못했습니다.')))
+    } finally {
+      setOpeningHwp(false)
+    }
+  }
 
   const openArtifact = useStore((s) => s.openArtifact)
   useEffect(() => {
@@ -180,31 +200,48 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
       </div>
 
       <div className="shrink-0 pt-2" data-testid="home-dock">
-        <div role="group"
-          aria-label={t('만들 것')}
-          className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none]">
-          {surfaces.map((k) => {
-            const meta = kindMeta[k]
-            const Icon = meta.icon
-            const on = k === active
-            return (
+        <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none]">
+          {/* The surfaces; the HWP document beside them is a chat with a file, not a surface. */}
+          <div role="group" aria-label={t('만들 것')} className="contents">
+            {surfaces.map((k) => {
+              const meta = kindMeta[k]
+              const Icon = meta.icon
+              const on = k === active
+              return (
+                <button
+                  key={k}
+                  onClick={() => setKind(k)}
+                  aria-pressed={on}
+                  title={t(meta.tagline)}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
+                    on
+                      ? 'border-accent bg-accent-soft text-accent'
+                      : 'border-line text-muted hover:bg-elevated hover:text-fg',
+                  )}
+                >
+                  <Icon size={14} style={{ color: on ? undefined : meta.color }} />
+                  {t(meta.label)}
+                </button>
+              )
+            })}
+          </div>
+            {surfaces.includes('chat') && (
               <button
-                key={k}
-                onClick={() => setKind(k)}
-                aria-pressed={on}
-                title={t(meta.tagline)}
-                className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
-                  on
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-line text-muted hover:bg-elevated hover:text-fg',
-                )}
+                type="button"
+                onClick={() => void startHwp()}
+                disabled={openingHwp}
+                title={t('빈 한글 문서를 열고, 챗으로 쓰고 고칩니다')}
+                className="flex shrink-0 items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-base text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-60"
               >
-                <Icon size={14} style={{ color: on ? undefined : meta.color }} />
-                {t(meta.label)}
+                {openingHwp ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <FileType size={14} style={{ color: '#2b6cb0' }} />
+                )}
+                {t('한글 문서')}
               </button>
-            )
-          })}
+            )}
         </div>
         {/* `key` remount per surface: draft, attachments, skill pick are per surface. */}
         <Composer key={active} sessionId={null} kind={active} autoFocus />

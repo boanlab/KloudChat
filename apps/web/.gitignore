@@ -11,3 +11,5 @@ audit/
 shots/
 qa-shots/
 work-findings/
+# rhwp/build-studio.sh output
+rhwp/studio

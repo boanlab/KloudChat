@@ -55,6 +55,7 @@ const kindIcon: Record<ArtifactKind, typeof FileText> = {
   video: Video,
   code: FileText,
   html: FileText,
+  hwp: FileText,
 }
 
 const kindLabel: Record<ArtifactKind, string> = {
@@ -66,6 +67,7 @@ const kindLabel: Record<ArtifactKind, string> = {
   video: '동영상',
   code: '코드',
   html: 'HTML',
+  hwp: '한글 문서',
 }
 
 /** Unknown kinds: the artifact's icon. */

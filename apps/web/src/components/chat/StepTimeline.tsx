@@ -17,6 +17,7 @@ import { StageList, TraceBlock } from './StageList'
 import { doingPhrase, donePhrase, failedPhrase, runSeconds, stageLabel, stageTone, waitingPhrase } from '@/lib/stages'
 import { useT } from '@/lib/useT'
 import { downloadFile } from '@/lib/api'
+import { collapsedStepNames } from '@/lib/stepNames'
 
 /** A step label in the screen's language; a stage's 「이름 · 결과」 label part by part. */
 function stepLabel(t: (text: string) => string, label: string): string {
@@ -277,9 +278,7 @@ export function StepTimeline({
         {/* Collapsed, what it did is named after the outcome. */}
         {!expanded && !live && (
           <span className="min-w-0 truncate text-faint">
-            · {steps.slice(0, COLLAPSED_NAMES).map((s) => t(s.label)).join(' · ')}
-            {steps.length > COLLAPSED_NAMES &&
-              ` · ${t('외 {n}개').replace('{n}', String(steps.length - COLLAPSED_NAMES))}`}
+            · {collapsedStepNames(steps.map((s) => s.label), t, COLLAPSED_NAMES)}
           </span>
         )}
         {live && elapsed && (
@@ -368,6 +367,12 @@ function StageGroup({
         </span>
         {live && current && !expanded && (
           <span className="min-w-0 truncate text-faint">· {t(current.label)}</span>
+        )}
+        {/* Folded, the tools it used are named, a repeat counted (「문서 편집 2회」). */}
+        {!live && !expanded && steps.length > 0 && (
+          <span className="min-w-0 truncate text-faint">
+            · {collapsedStepNames(steps.map((s) => s.label), t, COLLAPSED_NAMES)}
+          </span>
         )}
         <span className="ml-auto shrink-0 whitespace-nowrap text-sm text-faint tabular-nums">
           {live ? elapsed : phase === 'done' && <Flagged run={run} />}

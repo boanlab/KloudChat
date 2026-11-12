@@ -585,6 +585,7 @@ export type ArtifactKind =
   | 'video'
   | 'code'
   | 'html'
+  | 'hwp'
 
 interface ArtifactBase {
   id: string
@@ -912,6 +913,16 @@ export interface CodeArtifact extends ArtifactBase {
   blocks?: { title: string; layout: string }[]
 }
 
+/** An HWP document: the file itself is fetched per version (`artifactsApi.hwpFile`). */
+export interface HwpArtifact extends ArtifactBase {
+  kind: 'hwp'
+  /** `hwp` until the editor first saves it as HWPX. */
+  format: 'hwpx' | 'hwp'
+  size: number
+  /** Body text, for search and cards. */
+  text?: string
+}
+
 export type Artifact =
   | ReportArtifact
   | DeckArtifact
@@ -920,6 +931,7 @@ export type Artifact =
   | AudioArtifact
   | VideoArtifact
   | CodeArtifact
+  | HwpArtifact
 
 /* ── workspace ──────────────────────────────────────────────────────── */
 

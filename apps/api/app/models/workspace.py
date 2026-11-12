@@ -143,6 +143,8 @@ class ArtifactKind(StrEnum):
     video = "video"
     code = "code"
     html = "html"
+    #: HWPX file per version in `storage_key` (services/hwpx_edit.py)
+    hwp = "hwp"
 
 
 class Artifact(SQLModel, table=True):

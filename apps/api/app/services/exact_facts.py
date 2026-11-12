@@ -70,6 +70,8 @@ _PLAN_DRAFT = re.compile(
     r"\b(?:write|plan|draw\s+up|prepare)\s+(?:an?\s+|the\s+)?(?:meeting\s+)?agenda\b",
     re.I,
 )
+#: Values the person gives put into their document: 「담당자는 김민지로 채워 주세요」.
+_FILL_IN = re.compile(r"(?:채워|넣어|바꿔|고쳐|반영해|적어)\s{0,2}(?:주|줘|넣|놔|둬)")
 _EXPLAIN = re.compile(
     r"개념|원리|정의(?:가|는|를)|뜻(?:이|은|을)|어원|비유로|차이(?:가|는|점)|소크라테스|퀴즈|"
     r"문제(?:를)?\s*(?:내|출제)|\b(?:concept|etymology|analogy|quiz|socratic)\b",
@@ -237,6 +239,7 @@ def own_work(request: str) -> bool:
     def task(sentence: str) -> bool:
         return bool(_TRANSLATE.search(sentence) or _CODE.search(sentence)
                     or _DRAFT.search(sentence) or _PLAN_DRAFT.search(sentence)
+                    or _FILL_IN.search(sentence)
                     or (code and _CODE_FIX.search(sentence)))
 
     sentences = [part for part in _SENTENCE.split(text) if part.strip()]

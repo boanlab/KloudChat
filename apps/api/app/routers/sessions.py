@@ -114,6 +114,7 @@ from app.services import (
     gap_questions,
     governance,
     grounding,
+    hwp_doc,
     illustrations,
     imagegen,
     index_client,
@@ -229,8 +230,24 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
         # self-hosted sandbox, networking off; offered only when `sandbox_in_boundary`
         "run_skill_script",
         "run_code",
+        # the conversation's own HWP file, edited in process
+        "hwp_read",
+        "hwp_edit",
+        "hwp_write",
     }
 )
+
+def _hwp_preset(document: Artifact | None, tool_names: set[str]) -> tuple[str, dict] | None:
+    """A written HWP document beside the chat is read first, by the server: the model answers
+    from what the file says now (a hand save included) and edits by those numbers."""
+    if document is None or "hwp_read" not in tool_names:
+        return None
+    return ("hwp_read", {}) if str((document.data or {}).get("text") or "").strip() else None
+
+
+#: 「한글 문서로」, 「hwp 파일」, 「아래아한글」: a request for an HWP document.
+_ASKS_HWP = re.compile(r"(?<![A-Za-z])hwpx?(?![A-Za-z])|한글\s{0,2}(?:파일|문서)|아래아\s{0,2}한글",
+                       re.I)
 
 
 async def _knowledge_shelf(
@@ -4362,7 +4379,16 @@ async def _send_message(
     # agent allowlist without web_search is deliberate: no 「웹 검색 없이」 noise
     if session.agent_id and agent_tools is not None and "web_search" not in agent_tools:
         effective_web_search = False
+    #: this chat's HWP document; its tools join the turn, as they do when one is asked for
+    hwp_document = None
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
+        hwp_document = (
+            await hwp_doc.session_document(db, user.id, session.id) if published is None
+            else None
+        )
+        hwp_open = published is None and (
+            bool(_ASKS_HWP.search(content)) or hwp_document is not None
+        )
         skill_shelf = [] if published is not None else await _skill_shelf(
             db, user, agent=agent_row,
             exclude={*active_skill_ids, *((agent_row.active_skill_ids or []) if agent_row else [])}
@@ -4377,6 +4403,7 @@ async def _send_message(
                     knowledge=shelf,
                     knowledge_collection=shelf_key,
                     skills=skill_shelf,
+                    hwp=hwp_open,
                 ),
                 key=lambda tool: (tool.name, tool.source),
             )
@@ -4393,6 +4420,7 @@ async def _send_message(
                         include_connectors=False,
                         strict_local=True,
                         skills=skill_shelf,
+                        hwp=hwp_open,
                     )
                 ),
                 key=lambda tool: (tool.name, tool.source),
@@ -5400,6 +5428,8 @@ async def _send_message(
             messages,
             publishing.MATERIAL_ONLY_RULE if published is not None else _MATERIAL_FIRST_RULE,
         )
+    if preset_call is None and forced_tool is None and not preflight_tool:
+        preset_call = _hwp_preset(hwp_document, tool_names)
     # substantial chat request: short plan beside it; not on economy/calculator turns
     if (
         session.kind is SessionKind.chat
@@ -6399,6 +6429,11 @@ async def _answer_turn(
                     "deliberate": bool(ctx.pending_artifacts),
                 }
             )
+    if ctx.hwp.get("changed") and ctx.hwp.get("id") != new_artifact:
+        # the HWP tools saved a version: the editor opens on it
+        yield chat_service.sse(
+            {"type": "artifact", "artifactId": ctx.hwp["id"], "deliberate": True}
+        )
 
     title: str | None = None
     title_credits = 0

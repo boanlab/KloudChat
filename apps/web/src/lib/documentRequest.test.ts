@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentHandoffSurface, handoffSurface } from '@/lib/documentRequest'
+import { agentHandoffSurface, handoffSurface, NAMES_HWP } from '@/lib/documentRequest'
 
 describe('handoffSurface', () => {
   it('hands an English request to create, make or build a deck to the slides screen', () => {
@@ -51,5 +51,16 @@ describe('agentHandoffSurface', () => {
     expect(
       agentHandoffSurface('결과 보고서를 만들어줘. 자료: 납기 88% → 90%(차이 작음).', ['report'], {}),
     ).toBe('report')
+  })
+})
+
+describe('NAMES_HWP', () => {
+  it('names an HWP document in its usual spellings and nothing else', () => {
+    for (const text of ['공문을 hwp로 만들어 줘', '한글 문서로 써 줘', 'HWPX 파일로', '아래아한글 파일로']) {
+      expect(NAMES_HWP.test(text)).toBe(true)
+    }
+    for (const text of ['한글로 번역해 줘', 'whwpx', '한글날 행사 공문을 작성해 줘']) {
+      expect(NAMES_HWP.test(text)).toBe(false)
+    }
   })
 })

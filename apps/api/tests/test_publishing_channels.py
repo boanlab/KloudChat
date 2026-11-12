@@ -210,7 +210,11 @@ def test_only_the_embed_page_drops_the_frame_header_elsewhere_it_stays_self():
     assert "add_header Content-Security-Policy \"frame-ancestors 'self'\" always;" in head
     assert 'add_header X-Frame-Options "SAMEORIGIN" always;' in head
     blocks = re.findall(r"location\s+([^{]+)\{([^}]*)\}", server)
+    # the HWP editor's own headers come from its snippet: framed by this app only, too
+    editor = (Path(__file__).resolve().parents[2] / "web" / "rhwp-security-headers.conf")
     for where, body in blocks:
+        if "rhwp-security-headers.conf" in body:
+            body = body + editor.read_text()
         if "add_header" not in body:
             continue  # inherits the server's two headers
         if where.strip() == "^~ /embed/b/":

@@ -3424,6 +3424,34 @@ const EN: Record<string, string> = {
   '사용량 조회 중': 'Looking up usage',
   '추론': 'Reasoning',
   '도구 사용': 'Using a tool',
+  '문서 확인하는 중': 'Checking the document',
+  '문서 확인': 'Check document',
+  '문서 고치는 중': 'Editing the document',
+  '문서 쓰는 중': 'Writing the document',
+
+  // ── HWP documents ───────────────────────────────────────────────────
+  '한글 문서 편집기': 'HWP document editor',
+  '문서를 불러오지 못했습니다.': 'Could not load the document.',
+  '한글 97~2022 문서': 'Hangul 97–2022 document',
+  '편집기를 띄우지 못했습니다: {reason}': 'Could not start the editor: {reason}',
+  '그사이 다른 판이 저장되어 저장하지 않았습니다.':
+    'Not saved: a newer version was saved in the meantime.',
+  '에이전트가 새 판을 저장했습니다. 지금 편집은 아직 저장되지 않았습니다.':
+    'The agent saved a new version. Your edits here are not saved yet.',
+  '내 편집 내려받기': 'Download my edits',
+  '최신 판 불러오기': 'Load the latest version',
+  '문서를 여는 중…': 'Opening the document…',
+  '에이전트가 문서를 고치는 중…': 'The agent is editing the document…',
+  '저장하지 않은 편집이 있습니다': 'You have unsaved edits',
+  '에이전트는 저장된 문서를 고칩니다. 지금 편집을 저장할까요, 버릴까요?':
+    'The agent edits the saved document. Save your edits first, or discard them?',
+  '버리고 보내기': 'Discard and send',
+  '저장하고 보내기': 'Save and send',
+  '새 한글 문서': 'New HWP document',
+  '한글 문서를 열지 못했습니다.': 'Could not open an HWP document.',
+  '빈 한글 문서를 열고, 챗으로 쓰고 고칩니다': 'Open a blank HWP document and write or edit it by chat',
+  '이 파일을 한글 편집기로 열지 못했습니다.': 'Could not open this file in the HWP editor.',
+  'HWP로 열기': 'Open as HWP',
 
   // ── reports ─────────────────────────────────────────────────────────
   '저장 시점': 'Versions',

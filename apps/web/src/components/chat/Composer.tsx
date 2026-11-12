@@ -29,7 +29,7 @@ import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGal
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure, withRetryWait } from '@/lib/failures'
-import { agentDocumentNames, agentHandoffSurface, handoffSurface } from '@/lib/documentRequest'
+import { agentDocumentNames, agentHandoffSurface, handoffSurface, NAMES_HWP } from '@/lib/documentRequest'
 import { DICTATION_EVENT, isMac } from '@/lib/shortcuts'
 import { currentLang } from '@/lib/i18n'
 import { readStoredDraft, writeStoredDraft } from '@/lib/drafts'
@@ -46,6 +46,7 @@ import { ModelPicker } from './ModelPicker'
 import { SharedBotItems } from './SharedBotItems'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
+import { askAboutHwpEdits, hasHwpEdits } from '@/lib/hwpGuard'
 import { isListed } from '@/lib/listed'
 import { runsOnServer } from '@/lib/serverSkills'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
@@ -1371,6 +1372,13 @@ export function Composer({
       return
     }
     if (startPending || !text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
+    if (!editing && kind === 'chat' && hasHwpEdits(sessionId)) {
+      // the agent edits the saved file: unsaved hand edits are saved or dropped first
+      void askAboutHwpEdits(sessionId!).then((go) => {
+        if (go) submit(spoken)
+      })
+      return
+    }
     if (editing && editContext.current) {
       if (sessionId && useStore.getState().running[sessionId]) return
       const context = editContext.current
@@ -1506,7 +1514,11 @@ export function Composer({
       return
     }
     // Document request in chat starts a report/slides conversation; an agent chat moves only to a surface it names; a pipeline conversation answers here.
-    const movable = kind === 'chat' && !session?.pipelineId && !sessionAgent?.pipelineId
+    // A chat with an HWP document open, or one asked for, writes in the editor beside it.
+    const hwpHere = NAMES_HWP.test(text) || useStore.getState().artifacts.some(
+      (a) => a.kind === 'hwp' && !!sessionId && a.sessionId === sessionId)
+    const movable =
+      kind === 'chat' && !session?.pipelineId && !sessionAgent?.pipelineId && !hwpHere
     const detected = movable ? handoffSurface(text) : null
     const agentHandoff =
       movable && sessionId && sessionAgent

@@ -131,6 +131,10 @@ const groups: Record<string, Group> = {
     projects: { desktop },
   },
   'failed-saves': { files: ['saves-that-fail.spec.ts'], projects: { desktop } },
+  // HWP panel against a stand-in editor; the real studio (built by rhwp/build-studio.sh into
+  // dist/rhwp) only where it was built, else that spec skips.
+  'hwp-panel': { files: ['hwp-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
+  'hwp-studio': { files: ['hwp-studio.spec.ts'], projects: { desktop } },
 }
 
 export default defineConfig({
