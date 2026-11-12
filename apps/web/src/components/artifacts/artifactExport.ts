@@ -1,5 +1,5 @@
 import { sectionText } from '@/components/report/SectionBody'
-import { artifactsApi, downloadArtifact, fileUrl } from '@/lib/api'
+import { artifactsApi, downloadArtifact, fileUrl, OFFICE_MIME } from '@/lib/api'
 import type { Artifact, ChartArtifact, DeckArtifact, ReportArtifact, ReportSection, Slide } from '@/types'
 
 /** Export formats; mirrors server `export_formats`. */
@@ -60,6 +60,8 @@ export function exportChoices(artifact: Artifact, templateKind?: string): Export
     case 'hwp':
       // the saved file as it is; the open editor also offers .hwp (HwpPanel)
       return [{ format: 'file', label: '한글 문서', hint: artifact.format.toUpperCase() }]
+    case 'docx':
+      return [{ format: 'file', label: 'Word 문서', hint: 'DOCX' }]
   }
 }
 
@@ -189,9 +191,10 @@ export async function takeArtifact(artifact: Artifact, format: ExportFormat): Pr
     saveBlob(new Blob([csvSource(artifact)], { type: 'text/csv;charset=utf-8' }), `${stem(title)}.csv`)
     return
   }
-  if (format === 'file' && artifact.kind === 'hwp') {
-    const { bytes } = await artifactsApi.hwpFile(artifact.id)
-    saveBlob(new Blob([bytes], { type: 'application/hwp+zip' }), `${stem(title)}.${artifact.format}`)
+  if (format === 'file' && (artifact.kind === 'hwp' || artifact.kind === 'docx')) {
+    const { bytes } = await artifactsApi.documentFile(artifact.kind, artifact.id)
+    const type = artifact.kind === 'hwp' ? 'application/hwp+zip' : OFFICE_MIME.docx
+    saveBlob(new Blob([bytes], { type }), `${stem(title)}.${artifact.format}`)
     return
   }
   if (format === 'file') {

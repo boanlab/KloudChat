@@ -3453,6 +3453,14 @@ const EN: Record<string, string> = {
   '이 파일을 한글 편집기로 열지 못했습니다.': 'Could not open this file in the HWP editor.',
   'HWP로 열기': 'Open as HWP',
 
+  // ── Word documents ──────────────────────────────────────────────────
+  'Word 문서 편집기': 'Word document editor',
+  '새 Word 문서': 'New Word document',
+  'Word 문서를 열지 못했습니다.': 'Could not open a Word document.',
+  '빈 Word 문서를 열고, 챗으로 쓰고 고칩니다': 'Open a blank Word document and write or edit it by chat',
+  '이 파일을 Word 편집기로 열지 못했습니다.': 'Could not open this file in the Word editor.',
+  'Word로 열기': 'Open in Word editor',
+
   // ── reports ─────────────────────────────────────────────────────────
   '저장 시점': 'Versions',
   '넓게 보기': 'Widen',

@@ -1432,7 +1432,7 @@ An `hwp` artifact is a file, not JSON: each version's HWPX sits in a blob
 format, size and body text for search. `routers/hwp.py` creates one (blank, or
 from an uploaded `.hwp`/`.hwpx`), serves a version's bytes, and takes the
 editor's bytes as the next version. Every writer names the version it read:
-`services/hwp_doc.save` moves the row with one conditional UPDATE
+`services/office_doc.save` moves the row with one conditional UPDATE
 (`version = expected`), so a hand save and an agent edit cannot both land on
 the same version — the loser gets 409 (the editor) or a "read again" (a tool).
 
@@ -1465,7 +1465,127 @@ controls, and loses its stored line layout so the viewer lays it out again.
 `hwp_write` builds a new document through `report_export.to_hwpx` with a
 `doc_formats` head (공문 by default). Each tool step carries the artifact id,
 so the open editor loads the new version mid-turn; before a turn is sent, the
-panel asks to save or drop unsaved hand edits (`lib/hwpGuard.ts`).
+panel asks to save or drop unsaved hand edits (`lib/officeGuard.ts`).
+
+### Word documents, and what they share with HWP
+
+A `docx` artifact is the same kind of thing as an `hwp` one, and the parts that
+do not depend on the file format are written once. The office layer is:
+`services/office_doc.py` (versioned blobs, the conditional-UPDATE save, the
+`doc_formats` head of a new document), `services/office_edit.py` (bracket
+blanks, the particle that agrees with a filled value, op arguments, the numbered
+outline), `routers/office_docs.py` (create, fetch a version, save; mounted by
+`routers/hwp.py` and `routers/docx.py`), and `services/tools/office.py` (the
+read, edit and write tools for one kind; `tools/hwp.py` and `tools/docx.py`
+each make a set). `services/hwp_doc.py` and `services/docx_doc.py` only say what
+their files are and how a new one is written (`report_export.to_hwpx`,
+`report_export.to_docx`). In a chat, `routers/sessions.py` looks up each kind's
+document (`_OFFICE`): its tools join the turn when the chat has one or the
+request names it (「한글 문서로」, 「Word로」, 「docx 파일」, not 「키워드로」), and
+the newest document with text is read by the server before the first hop.
+
+`services/docx_edit.py` reads a `.docx` with python-docx and lxml. Ids are body
+paragraphs `p1…` and body tables `t1…` in reading order (paragraphs inside a
+content control count as body); headings, the title and list paragraphs are
+marked in the outline, a table with merged cells names each cell by its grid
+column (`c2~3: …`, the lower half of a vertical merge said as such), and header
+and footer text follows the body. Word splits a line across runs freely, so a
+blank is matched on the paragraph's text and spliced back into the runs: the
+value goes into the run the blank starts in, keeping its `rPr`, and the rest of
+the span is cut from the runs after it. A replaced paragraph keeps its `pPr`
+(style, numbering); only what changed is rewritten — the text the old and new
+lines share at the start and the end stays in its own runs (a bold 「수신」 label
+stays bold), and the changed middle takes the run it begins in — and a line
+with nothing in common becomes one run in its first text run's `rPr`. Runs
+holding fields, pictures or note marks stay, and a written marker such as
+「1.<tab>」 keeps its tab. A new paragraph copies its neighbour's `pPr` without section or page-break
+settings; a new table row copies the row above without its heading flag; rows of
+a table with vertical merges are not added or removed. Ops resolve against the
+version read before anything changes, so a bad op changes nothing. Zip limits
+are checked before python-docx unpacks a file. A legacy `.doc` is refused.
+
+The editor is open-docx-editor (`open-docx-editor`, MIT, pinned to 0.7.6), plain
+JavaScript on ProseMirror with Word's ribbon (File, Home, Insert, Layout,
+References, Review, View); `DocxPanel` mounts it with `mountDocxEditor` and is
+loaded with `React.lazy`, so the editor and its stylesheet are a chunk of their
+own fetched when a Word document opens. Its PDF exporter is not used: it embeds
+only fonts the document carries or the computer lends through Local Font Access,
+so Korean text came out as 「?」; File > Export and Print open the print dialog
+instead, and since the app tree is not printed (`index.css`), `DocxPanel` copies
+the pages the editor laid out for print into `body > [data-print-docx]` on
+`beforeprint` and drops them on `afterprint`. It runs under the app's CSP as it
+is (no eval, no WebAssembly, no outside requests; its inline styles are allowed
+by `style-src 'unsafe-inline'`). File > New and Open are off (one artifact per
+panel), File > Create a Copy downloads, and Ctrl+S in the editor is the
+header's 저장. `open-docx-editor/fonts.css` gives the metric stand-ins for
+Calibri, Cambria, Arial, Times New Roman and Courier New (latin and latin-ext
+woff2, fetched by `unicode-range` only when used).
+
+**Our patch of the editor.** We ship open-docx-editor with a patch of our own,
+`apps/web/patches/open-docx-editor+0.7.6.patch` (not sent upstream; the package's
+MIT notice stays in `node_modules/open-docx-editor/LICENSE`). `npm ci` applies it
+through patch-package (the `postinstall` script, `--error-on-fail`), so it is in
+place for local development, the web image (`Dockerfile` copies `patches/` before
+`npm ci`) and CI; `src/components/docx/odxKorean.test.ts` fails when the patched
+source lacks its `kloudchat-odx-patch` marker. The app imports the package's
+`src/` (its `dist/` bundle is not used and is not patched). Moving to another
+version means re-making the patch: edit `node_modules/open-docx-editor`, then
+`npx patch-package open-docx-editor`. What it changes:
+
+- **East Asian fonts.** A run's `w:eastAsia` font (or `w:eastAsiaTheme`, the
+  theme's `a:ea` or, when that is empty, its `a:font` for the script of the
+  document's East Asian language: `w:themeFontLang`, else the defaults'
+  `w:lang`) is read in runs, styles and document defaults. It is drawn first,
+  under the alias `odx-ea:<name>`, a FontFace limited to Hangul, kana and Han
+  (`EA_RANGE`), so Hangul takes the East Asian font and Latin text skips it to
+  the run's ascii font, as in Word. The CSS is two custom properties,
+  `--odx-fea` (East Asian list) and `--odx-fa` (the run's own), so each level
+  of styles can set either. The alias is the installed font (`local()`) unless
+  the app adds faces for it; `odx-ea-sans` / `odx-ea-serif` follow it.
+- **Home > Font** merges the choice into the run's `w:rFonts`
+  (`mergeRFonts`): a Korean font sets ascii, hAnsi and eastAsia with
+  `w:hint="eastAsia"`, as Korean Word does; a Latin font sets ascii, hAnsi and
+  cs and keeps the East Asian font; an `rFonts` kept raw (a theme font, an
+  East-Asian-only one) is folded in, theme references dropped where a font is
+  now named (they outrank it in Word and LibreOffice). A run is written with
+  one `w:rFonts`. The font list starts with 맑은 고딕, 나눔고딕, 나눔명조, 바탕,
+  돋움, 굴림, 궁서, 함초롬바탕, 함초롬돋움 and Pretendard; at Hangul the box shows
+  the East Asian font.
+- **Korean documents** (Hangul text in a document whose East Asian language
+  is ko-KR, or text that is mostly Hangul; `DocxSession.korean`) get the class
+  `odx-ko`: lines break between words (`word-break: keep-all`, a word longer
+  than the line still breaks), `w:wordWrap="0"` breaks anywhere, and Hangul
+  beside Latin letters or digits gets Word's extra space (`text-autospace`,
+  turned off by `w:autoSpaceDE` / `w:autoSpaceDN`). A line is as tall as the
+  taller of the run's font and its East Asian font. The editor measures the
+  laid-out text, so pages and print follow. Other documents lay out as before.
+- **Line heights** of Korean fonts: 맑은 고딕 1.3301 em (its hhea ascent and
+  descent, 2229 + 495 of 2048, the value published with Word layout
+  measurements), Nanum Gothic, Nanum Myeongjo and Nanum Barun Gothic 1.15 and
+  Noto Sans KR 1.448 (read from the font files). 굴림, 돋움, 바탕 and 궁서 are
+  measured in the browser (the installed font or its stand-in): we have no
+  published values for them.
+- **Whole-word find**, Format Painter's word and a comment's word use Unicode
+  letters (`\p{L}`), so 어절 count as words.
+- **Words of the UI.** `mountDocxEditor(el, { locale, labels })`: the ribbon,
+  menus, find bar, dialogs, margin comments and screen-reader messages go
+  through `t()` (`editor/i18n.js`, built-in Korean in `editor/locales/ko.js`,
+  in Korean Word's terms). `DocxPanel` passes the app's language when the
+  editor mounts.
+
+`components/docx/koreanFonts.ts` gives Korean font names their stand-ins: serif
+names (바탕, 궁서, 함초롬바탕, 나눔명조, 본명조…) the app's Nanum Myeongjo, sans
+names (맑은 고딕, 굴림, 돋움, 함초롬돋움, 나눔고딕…) Nanum Gothic
+(`@fontsource/nanum-gothic`, OFL, imported by `DocxPanel`). Each name gets
+copies of the stand-in's `@font-face` rules with the installed font first
+(`local()` by its Korean and English names), so a computer with 바탕 or 맑은 고딕
+uses the real font, and an `odx-ea:<name>` copy limited to Hangul, kana and
+Han. A name's faces are added the first time the editor draws it
+(`setFontProvider`); each name has some 180 faces and a document uses a few.
+Both
+panels are `components/office/OfficePanel.tsx` (`useOfficeDocument` holds the
+load, save, 409, reload-on-new-version and ask-before-send logic) around their
+editor; on a phone the Word editor is read only, without its ribbon.
 
 ### Sharing
 

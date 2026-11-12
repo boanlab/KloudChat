@@ -145,6 +145,8 @@ class ArtifactKind(StrEnum):
     html = "html"
     #: HWPX file per version in `storage_key` (services/hwpx_edit.py)
     hwp = "hwp"
+    #: `.docx` file per version in `storage_key` (services/docx_edit.py)
+    docx = "docx"
 
 
 class Artifact(SQLModel, table=True):

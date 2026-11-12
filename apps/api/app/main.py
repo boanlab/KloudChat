@@ -19,6 +19,7 @@ from app.routers import (
     branding,
     client_errors,
     connectors,
+    docx,
     hwp,
     issues,
     jobs,
@@ -156,6 +157,7 @@ app.include_router(pipelines.router, prefix=settings.api_prefix)
 app.include_router(user_pipelines.router, prefix=settings.api_prefix)
 app.include_router(user_templates.router, prefix=settings.api_prefix)
 app.include_router(hwp.router, prefix=settings.api_prefix)
+app.include_router(docx.router, prefix=settings.api_prefix)
 app.include_router(workspace.router, prefix=settings.api_prefix)
 app.include_router(skill_files.router, prefix=settings.api_prefix)
 app.include_router(connectors.router, prefix=settings.api_prefix)

@@ -9,8 +9,10 @@
 FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 
-# Dependency layer separate from source, so a source-only rebuild skips it.
+# Dependency layer separate from source, so a source-only rebuild skips it. `npm ci` applies patches/ (patch-package,
+# the postinstall script: our Korean patch of open-docx-editor) and fails if a patch no longer applies.
 COPY package.json package-lock.json* ./
+COPY patches ./patches
 RUN npm ci --no-audit --no-fund
 
 COPY . .
