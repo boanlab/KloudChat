@@ -252,6 +252,16 @@ body {
   display: none;
 }
 
+/* Print: a copy of the Word editor's pages ([data-print-docx], DocxPanel) likewise. */
+[data-print-docx] {
+  display: none;
+}
+@media print {
+  [data-print-docx] {
+    display: block;
+  }
+}
+
 .paged-report-preview .pagedjs_pages {
   display: flex;
   flex-direction: column;

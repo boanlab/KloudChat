@@ -1508,8 +1508,12 @@ The editor is open-docx-editor (`open-docx-editor`, MIT, pinned), plain
 JavaScript on ProseMirror with Word's ribbon (File, Home, Insert, Layout,
 References, Review, View); `DocxPanel` mounts it with `mountDocxEditor` and is
 loaded with `React.lazy`, so the editor and its stylesheet are a chunk of their
-own fetched when a Word document opens, and its PDF exporter (pdf-lib) is a
-further chunk fetched only by File > Export. It runs under the app's CSP as it
+own fetched when a Word document opens. Its PDF exporter is not used: it embeds
+only fonts the document carries or the computer lends through Local Font Access,
+so Korean text came out as 「?」; File > Export and Print open the print dialog
+instead, and since the app tree is not printed (`index.css`), `DocxPanel` copies
+the pages the editor laid out for print into `body > [data-print-docx]` on
+`beforeprint` and drops them on `afterprint`. It runs under the app's CSP as it
 is (no eval, no WebAssembly, no outside requests; its inline styles are allowed
 by `style-src 'unsafe-inline'`). File > New and Open are off (one artifact per
 panel), File > Create a Copy downloads, and Ctrl+S in the editor is the

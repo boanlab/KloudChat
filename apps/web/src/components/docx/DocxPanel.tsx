@@ -20,7 +20,8 @@ import { aliasKoreanFonts } from './koreanFonts'
  * A Word document in open-docx-editor (pages under Word's ribbon: File, Home, Insert, Layout,
  * References, Review, View), beside the chat; versions, saves and the agent's turns as every
  * office document has them (`OfficePanel`). Its own chunk: the editor loads only when a Word
- * document opens. Ctrl+S is the header's 저장. On a phone it is read only.
+ * document opens. Ctrl+S is the header's 저장; File > Export and Print print the pages (a PDF
+ * through the print dialog). On a phone it is read only.
  */
 export function DocxPanel({
   doc,
@@ -64,10 +65,6 @@ export function DocxPanel({
       // File > Create a Copy: a download, as the header's menu gives
       onSave: (bytes, name) =>
         saveBlob(new Blob([bytes as BlobPart], { type: OFFICE_MIME.docx }), name),
-      pdf: (instance, options) =>
-        import('open-docx-editor/pdf').then((module) => module.exportPdf(instance, options)),
-      onSavePdf: (bytes, name) =>
-        saveBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), name),
       onError: (err) =>
         setError(errorMessage(err, latest.current.t('문서를 불러오지 못했습니다.'))),
     })
@@ -81,15 +78,47 @@ export function DocxPanel({
       if (!now.phone && !now.agentWorking && dirtyRef.current) void now.save()
     }
     el.addEventListener('keydown', saveKey)
+    // File > Export and Print open the print dialog, which prints the pages: the app tree is not
+    // printed (index.css), so the pages laid out for print are copied beside it until it closes.
+    // (A document of mixed page sizes prints the editor's own copies.)
+    let printed: HTMLElement | null = null
+    const beforePrint = () => {
+      const sheet = el.querySelector('.odx-page')
+      if (!sheet || document.querySelector('body > .odx-print-pages')) return
+      printed = document.createElement('div')
+      printed.className = 'odx-canvas'
+      printed.setAttribute('data-print-docx', '')
+      printed.append(sheet.cloneNode(true))
+      document.body.append(printed)
+    }
+    const afterPrint = () => {
+      printed?.remove()
+      printed = null
+    }
+    /** After the editor's own listeners, which lay the pages out for print: each open adds them anew. */
+    const armPrint = () => {
+      window.removeEventListener('beforeprint', beforePrint)
+      window.addEventListener('beforeprint', beforePrint)
+    }
+    armPrint()
+    window.addEventListener('afterprint', afterPrint)
+    let opened = false
     office.current = {
       load: async (bytes) => {
-        // the agent's version comes in while the person is in the chat: keep their focus there
         const focused = document.activeElement
         await api.open(new Uint8Array(bytes), fileName)
+        armPrint()
         api.markSaved()
         if (focused instanceof HTMLElement && focused.isConnected && !el.contains(focused)) {
+          // the agent's version came in while the person was in the chat: keep their focus there
           focused.focus()
+        } else if (opened) {
+          // a new version replaced the one the person was in: the editor puts the caret at the
+          // top, where keys still being typed would land; they click where they mean to go on
+          const active = document.activeElement
+          if (active instanceof HTMLElement && el.contains(active)) active.blur()
         }
+        opened = true
         return false
       },
       export: async () => api.save(),
@@ -98,6 +127,9 @@ export function DocxPanel({
     setReady(true)
     return () => {
       el.removeEventListener('keydown', saveKey)
+      window.removeEventListener('beforeprint', beforePrint)
+      window.removeEventListener('afterprint', afterPrint)
+      afterPrint()
       office.current = null
       editor.current = null
       api.destroy()

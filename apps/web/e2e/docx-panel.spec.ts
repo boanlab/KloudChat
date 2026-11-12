@@ -87,6 +87,21 @@ test('Ctrl+S in the editor saves as the header 저장 does', async ({ page }) =>
   expect(state.saves).toEqual([{ expected: '1', size: expect.any(Number) }])
 })
 
+test('printing copies the pages laid out for print out of the app tree, then drops them', async ({ page }) => {
+  await fixture(page)
+  await expect(line(page, '붙임  1. 연수 일정표 1부.')).toBeVisible({ timeout: 30_000 })
+  // File > Export and Print open the print dialog; the app tree itself is not printed
+  await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')))
+  const copy = page.locator('body > [data-print-docx]')
+  await expect(copy).toContainText('붙임  1. 연수 일정표 1부.')
+  await page.emulateMedia({ media: 'print' })
+  await expect(copy).toBeVisible()
+  await expect(page.locator('#root')).toBeHidden()
+  await page.emulateMedia({ media: 'screen' })
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')))
+  await expect(copy).toHaveCount(0)
+})
+
 test('the editor locks while the agent works, then shows its version', async ({ page }) => {
   let release!: () => void
   const holdTurn = new Promise<void>((resolve) => (release = resolve))
@@ -103,6 +118,8 @@ test('the editor locks while the agent works, then shows its version', async ({ 
   await expect(page.getByTestId('docx-agent-lock')).toBeHidden()
   await expect(panel(page).locator('header').getByText('v2', { exact: true })).toBeVisible()
   await expect(line(page, '제목  교원 직무연수 참석 요청')).toBeVisible()
+  // the version loaded in place: the caret stays in the chat
+  await expect(docxPanel(page).locator('.odx-content')).not.toBeFocused()
   await expect(page.getByText('· 문서 확인 2회 · 문서 편집 2회')).toBeVisible()
   expect(state.sent).toHaveLength(1)
   expect(state.unexpected).toEqual([])

@@ -31,7 +31,7 @@ Open a Word editor beside the conversation and write or edit a Word document (`.
 
 ## Downloads and limits
 
-- **Download** → **Word document** saves what the editor shows as a `.docx` file. **File → Export** on the ribbon saves a PDF.
+- **Download** → **Word document** saves what the editor shows as a `.docx` file. For a PDF, **File → Export** (or **Print**) on the ribbon opens the print dialog; choose **Save as PDF** there.
 - The editor runs inside this site; documents are not sent anywhere else. Calibri, Arial, Times New Roman and similar fonts are shown in open fonts of the same widths, and serif Korean fonts such as Batang and Gungsuh in Nanum Myeongjo. Malgun Gothic is shown in the font installed on your computer, so line breaks can differ slightly from Word.
 - The agent can change body paragraphs, table cells and rows, and blanks in headers and footers. Pictures, text boxes, and adding or removing rows in tables with vertically merged cells are edited in the editor.
 - At phone width the document can be read and downloaded; edit and save on a wider screen.
