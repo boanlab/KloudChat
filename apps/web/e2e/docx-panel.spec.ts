@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
+import { strFromU8, unzipSync } from 'fflate'
 import { officeFixture, type OfficeOptions } from './office-fixture'
 
 /**
@@ -39,14 +40,14 @@ test('the saved file opens in the editor and a hand edit saves a .docx as the ne
   const header = panel(page).locator('header')
   await expect(header.getByText('v1', { exact: true })).toBeVisible()
   await expect(header.getByRole('button', { name: '저장' })).toBeDisabled()
-  // Word's ribbon: its tabs, and Home's font, size and bold in the side panel's width
+  // Word's ribbon, in the app's language: its tabs, and Home's font, size and bold in the side panel's width
   const ribbon = docxPanel(page).locator('.odx-toolbar')
-  for (const tab of ['File', 'Home', 'Insert', 'Layout', 'References', 'Review', 'View']) {
+  for (const tab of ['파일', '홈', '삽입', '레이아웃', '참조', '검토', '보기']) {
     await expect(ribbon.getByRole('tab', { name: tab, exact: true })).toBeVisible()
   }
-  await expect(ribbon.getByRole('combobox', { name: 'Font', exact: true })).toBeVisible()
-  await expect(ribbon.getByRole('combobox', { name: 'Font size' })).toBeVisible()
-  await expect(ribbon.getByRole('button', { name: /^Bold/ })).toBeVisible()
+  await expect(ribbon.getByRole('combobox', { name: '글꼴', exact: true })).toBeVisible()
+  await expect(ribbon.getByRole('combobox', { name: '글꼴 크기' })).toBeVisible()
+  await expect(ribbon.getByRole('button', { name: /^굵게/ })).toBeVisible()
 
   await handEdit(page, '붙임  1. 연수 일정표 1부.', ' 손으로 고침')
   await expect(header.getByText('저장 안 됨')).toBeVisible()
@@ -173,4 +174,89 @@ test('an attached .docx opens in the Word editor beside the chat', async ({ page
   await expect(line(page, '붙임  1. 연수 일정표 1부.')).toBeVisible({ timeout: 30_000 })
   expect(state.created).toEqual([{ sessionId: expect.any(String), fileId: 'file-1' }])
   expect(state.csp).toEqual([])
+})
+
+test('the ribbon speaks the app language: its tabs, groups and find bar in Korean', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
+  await fixture(page)
+  await expect(line(page, '붙임  1. 연수 일정표 1부.')).toBeVisible({ timeout: 30_000 })
+  const ribbon = docxPanel(page).locator('.odx-toolbar')
+  await expect(ribbon.getByRole('tablist', { name: '리본 탭' })).toBeVisible()
+  await expect(ribbon.getByRole('button', { name: /^기울임꼴/ })).toBeVisible()
+  // Ctrl+F opens the find bar with its own words (Find itself is behind 「명령 더 보기」 at this width)
+  await line(page, '붙임  1. 연수 일정표 1부.').click()
+  await page.keyboard.press('Control+f')
+  await expect(ribbon.getByPlaceholder('찾기')).toBeVisible()
+  await expect(ribbon.getByText('단어 단위로')).toBeVisible()
+  await ribbon.getByRole('tab', { name: '검토', exact: true }).click()
+  await expect(ribbon.getByRole('button', { name: /새 메모/ }).first()).toBeVisible()
+})
+
+test('with the app in English the ribbon is in English', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
+  await page.addInitScript(() => localStorage.setItem('kchat-lang', 'en'))
+  await fixture(page)
+  await expect(line(page, '붙임  1. 연수 일정표 1부.')).toBeVisible({ timeout: 30_000 })
+  const ribbon = docxPanel(page).locator('.odx-toolbar')
+  await expect(ribbon.getByRole('tab', { name: 'Home', exact: true })).toBeVisible()
+  await expect(ribbon.getByRole('combobox', { name: 'Font', exact: true })).toBeVisible()
+  await expect(ribbon.getByRole('button', { name: /^Bold/ })).toBeVisible()
+})
+
+test('Korean: typed through an input method, broken between words, set in a Korean font saved as its East Asian font', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
+  const state = await fixture(page)
+  const at = '3. 장소는 [장소]으로 합니다.'
+  await expect(line(page, at)).toBeVisible({ timeout: 30_000 })
+  // a Korean document: its lines break between words (어절), as Word's do
+  await expect(docxPanel(page).locator('.odx-page').first()).toHaveClass(/odx-ko/)
+  const box = (await line(page, at).boundingBox())!
+  await page.mouse.click(box.x + box.width - 2, box.y + box.height / 2)
+  await page.keyboard.press('End')
+  // an input method composing syllable by syllable, as a Korean keyboard does
+  const cdp = await page.context().newCDPSession(page)
+  for (const syllable of ['대', '한', '민', '국']) {
+    await cdp.send('Input.imeSetComposition', { text: syllable, selectionStart: 1, selectionEnd: 1 })
+    await cdp.send('Input.insertText', { text: syllable })
+  }
+  await expect(line(page, '합니다.대한민국')).toBeVisible()
+  await page.keyboard.insertText(` ${'대한민국의 주권은 국민에게 있고 모든 권력은 국민으로부터 나온다. '.repeat(4)}`)
+  const para = docxPanel(page).locator('.odx-content p').filter({ hasText: '대한민국의 주권은' })
+  const lines = await para.evaluate((p) => {
+    // where each laid-out line starts, as the character before it
+    const before: string[] = []
+    let text = ''
+    let top: number | null = null
+    const walk = document.createTreeWalker(p, NodeFilter.SHOW_TEXT)
+    for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+      for (let i = 0; i < n.data.length; i += 1) {
+        const r = document.createRange()
+        r.setStart(n, i)
+        r.setEnd(n, i + 1)
+        const rect = r.getClientRects()[0]
+        if (rect && n.data[i].trim()) {
+          if (top !== null && rect.top > top + 4) before.push(text.slice(-1))
+          top = rect.top
+        }
+        text += n.data[i]
+      }
+    }
+    return before
+  })
+  expect(lines.length).toBeGreaterThan(1)
+  expect(lines.filter((c) => c.trim() !== '')).toEqual([]) // every line starts after a space
+  // Home > 글꼴: a Korean font is saved as the text's East Asian font too, one w:rFonts per run
+  await para.click({ clickCount: 3 })
+  await docxPanel(page).locator('.odx-toolbar').getByRole('combobox', { name: '글꼴', exact: true }).selectOption('굴림')
+  await panel(page).locator('header').getByRole('button', { name: '저장' }).click()
+  await expect.poll(() => state.files.length).toBe(1)
+  const xml = strFromU8(unzipSync(new Uint8Array(state.files[0]))['word/document.xml'])
+  const saved = xml.split('</w:p>').find((p) => p.includes('대한민국의 주권은'))!
+  const runs = saved.match(/<w:r(?: [^>]*)?><w:rPr>[\s\S]*?<\/w:rPr>/g) ?? [] // (the runs', not the paragraph mark's)
+  expect(runs.length).toBeGreaterThan(0)
+  for (const rPr of runs) {
+    expect(rPr.match(/<w:rFonts\b/g)).toHaveLength(1)
+    expect(rPr).toMatch(/<w:rFonts w:hint="eastAsia" w:ascii="굴림" w:hAnsi="굴림" w:eastAsia="굴림"/)
+  }
+  expect(state.problems).toEqual([])
 })

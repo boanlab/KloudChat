@@ -30,6 +30,8 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
   const saves: { expected: string | null; size: number }[] = []
   /** The first bytes of each saved file: 「PK」 for a zip package. */
   const heads: string[] = []
+  /** Each saved file as it was sent. */
+  const files: Buffer[] = []
   const csp: string[] = []
   const sent: Record<string, unknown>[] = []
   const created: Record<string, unknown>[] = []
@@ -153,6 +155,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
       const body = request.postDataBuffer()
       saves.push({ expected, size: body?.length ?? 0 })
       heads.push(body?.subarray(0, 2).toString('latin1') ?? '')
+      if (body) files.push(body)
       if (options.conflict || expected !== String(artifact.version)) {
         return route.fulfill({ status: 409, json: { detail: '이 문서는 다른 곳에서 이미 저장되었습니다.' } })
       }
@@ -172,5 +175,5 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
   const opened = options.fromHome ? '/'
     : options.attachment ? `/s/${sessionId}` : `/s/${sessionId}?artifact=${artifactId}`
   await page.goto(opened)
-  return { unexpected, problems, saves, heads, sent, created, csp }
+  return { unexpected, problems, saves, heads, files, sent, created, csp }
 }

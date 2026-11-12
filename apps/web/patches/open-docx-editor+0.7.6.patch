@@ -1,0 +1,1512 @@
+diff --git a/node_modules/open-docx-editor/src/editor/a11y.js b/node_modules/open-docx-editor/src/editor/a11y.js
+index 7ce7921..57ee5cd 100644
+--- a/node_modules/open-docx-editor/src/editor/a11y.js
++++ b/node_modules/open-docx-editor/src/editor/a11y.js
+@@ -1,6 +1,7 @@
+ // Review > Check Accessibility: the problems Word's checker reports most often.
+ import { schema } from './schema.js';
+ import { outlineLevel } from './commands.js';
++import { t } from './i18n.js';
+ 
+ /** [{ kind: 'error'|'warning'|'tip', title, detail, pos }] */
+ export function checkAccessibility(view) {
+@@ -24,12 +25,12 @@ export function checkAccessibility(view) {
+       const lvl = outlineLevel(session, node);
+       if (lvl != null) {
+         if (!node.textContent.trim()) out.push({ kind: 'warning', title: 'Empty heading', detail: 'Remove it or add text.', pos });
+-        else if (lvl > lastLevel + 1) out.push({ kind: 'tip', title: 'Skipped heading level', detail: `Heading ${lvl + 1} follows ${lastLevel < 0 ? 'no heading' : `Heading ${lastLevel + 1}`}.`, pos });
++        else if (lvl > lastLevel + 1) out.push({ kind: 'tip', title: 'Skipped heading level', detail: t('Heading {a} follows {b}.', { a: lvl + 1, b: lastLevel < 0 ? t('no heading') : t('Heading {n}', { n: lastLevel + 1 }) }), pos });
+         lastLevel = lvl;
+       }
+       node.forEach((c) => {
+         const link = c.marks.find((m) => m.type === schema.marks.link);
+-        if (link && c.isText && /^(https?:\/\/|www\.)\S+$/.test(c.text.trim())) out.push({ kind: 'tip', title: 'Unclear link text', detail: `"${c.text.trim().slice(0, 40)}" reads as an address; use words that say where it goes.`, pos });
++        if (link && c.isText && /^(https?:\/\/|www\.)\S+$/.test(c.text.trim())) out.push({ kind: 'tip', title: 'Unclear link text', detail: t('"{text}" reads as an address; use words that say where it goes.', { text: c.text.trim().slice(0, 40) }), pos });
+       });
+       return false;
+     }
+diff --git a/node_modules/open-docx-editor/src/editor/balloons.js b/node_modules/open-docx-editor/src/editor/balloons.js
+index 68c1314..936b6b1 100644
+--- a/node_modules/open-docx-editor/src/editor/balloons.js
++++ b/node_modules/open-docx-editor/src/editor/balloons.js
+@@ -5,6 +5,7 @@ import { paragraphAttrsFromPPr } from '../ooxml/reader.js';
+ import { commentMarkers, orderedThreads, setActive, setText, replyTo, setResolved, deleteComment } from './comments.js';
+ import { announce } from './live.js';
+ import { wordDate } from './util.js';
++import { t } from './i18n.js';
+ 
+ export const MARKUP_WIDTH = 280;
+ 
+@@ -27,7 +28,7 @@ function describePara(now, before, session) {
+     else out.push(PPR_LABELS[k]);
+   }
+   if (now.numId !== before.numId) out.push(now.numId ? 'Numbered + Level: ' + (now.ilvl + 1) : 'No bullets or numbering');
+-  return out.join(', ');
++  return out.map((s) => t(s)).join(', ');
+ }
+ 
+ /** The balloons for the document, top to bottom: { el, author, label, text, kind }. */
+@@ -97,10 +98,10 @@ export function drawBalloons(view, session, sheet, height) {
+     const b = document.createElement('div');
+     b.className = `odx-balloon odx-balloon-${it.kind}`;
+     const who = document.createElement('b');
+-    who.textContent = it.author || 'Unknown';
++    who.textContent = it.author || t('Unknown');
+     const what = document.createElement('div');
+     const lab = document.createElement('b');
+-    lab.textContent = `${it.label}${it.text ? ':' : ''} `;
++    lab.textContent = `${t(it.label)}${it.text ? ':' : ''} `;
+     what.append(lab, it.text || '');
+     b.append(who, what);
+     return b;
+@@ -153,7 +154,7 @@ function composer(key, placeholder, initial, onPost, onCancel, findSel = null) {
+   const wrap = h('div', 'odx-cmt-compose');
+   const ta = h('textarea');
+   ta.dataset.odxBox = key;
+-  ta.placeholder = placeholder;
++  ta.placeholder = t(placeholder);
+   ta.value = drafts.has(key) ? drafts.get(key) : initial || '';
+   ta.oninput = () => { drafts.set(key, ta.value); findSel?.clear(); };
+   ta.addEventListener('mousedown', () => findSel?.clear());
+@@ -162,8 +163,8 @@ function composer(key, placeholder, initial, onPost, onCancel, findSel = null) {
+   const post0 = onPost;
+   onPost = (t) => { drafts.delete(key); focused.delete(key); post0(t); };
+   ta.rows = 2;
+-  const post = h('button', 'odx-cmt-post', 'Post');
+-  const cancel = h('button', '', 'Cancel');
++  const post = h('button', 'odx-cmt-post', t('Post'));
++  const cancel = h('button', '', t('Cancel'));
+   post.type = cancel.type = 'button';
+   post.onclick = () => ta.value.trim() && onPost(ta.value.trim());
+   cancel.onclick = onCancel;
+@@ -202,12 +203,12 @@ function commentBalloon(view, c) {
+   b.onmousedown = (e) => { if (!active && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); setActive(view, c.id); } };
+   b.tabIndex = 0;
+   b.setAttribute('role', 'group');
+-  b.setAttribute('aria-label', 'Comment');
++  b.setAttribute('aria-label', t('Comment'));
+   b.onkeydown = (e) => { if (e.key === 'Enter' && e.target === b && !active) { e.preventDefault(); setActive(view, c.id); } };
+   const entry = (x) => {
+     const e = h('div', 'odx-cmt-entry');
+     const head = h('div', 'odx-cmt-head');
+-    head.append(h('span', 'odx-cmt-avatar', x.initials || (x.author || '?')[0]), h('b', '', x.author || 'Unknown'), h('small', '', when(x.date, x.dateUtc)));
++    head.append(h('span', 'odx-cmt-avatar', x.initials || (x.author || '?')[0]), h('b', '', x.author || t('Unknown')), h('small', '', when(x.date, x.dateUtc)));
+     e.append(head);
+     if (session.editingComment === x.id) {
+       // (Kept on the session: the column can be drawn again, a new box in this one's place.)
+@@ -215,13 +216,13 @@ function commentBalloon(view, c) {
+       e.append(composer('e' + x.id, 'Add a comment', x.text, (t) => { session.editingComment = null; setText(view, x.id, t); announce('Comment posted'); back(view); },
+         () => { session.editingComment = null; if (!x.text) deleteComment(view, x.id); else setActive(view, x.id); back(view); }, findSel));
+     } else e.append(h('div', 'odx-cmt-text', x.text));
+-    if (x.rich) e.append(h('div', 'odx-cmt-note', 'Has a picture or table: edit it in Word'));
++    if (x.rich) e.append(h('div', 'odx-cmt-note', t('Has a picture or table: edit it in Word')));
+     return e;
+   };
+   b.append(entry(c));
+   const replies = session.comments.filter((x) => x.parentId === c.id);
+   if (c.done && !active) {
+-    b.append(h('div', 'odx-cmt-note', `Resolved${replies.length ? ` · ${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}` : ''}`));
++    b.append(h('div', 'odx-cmt-note', replies.length ? t(`Resolved · {n} ${replies.length === 1 ? 'reply' : 'replies'}`, { n: replies.length }) : t('Resolved')));
+     return b;
+   }
+   for (const r of replies) b.append(entry(r));
+@@ -230,7 +231,7 @@ function commentBalloon(view, c) {
+       b.append(composer('r' + c.id, 'Reply', '', (t) => { session.replying = null; replyTo(view, c.id, t); back(view); }, () => { session.replying = null; setActive(view, c.id); back(view); }));
+     } else {
+       const row = h('div', 'odx-cmt-actions');
+-      const btn = (label, fn) => { const x = h('button', '', label); x.type = 'button'; x.onmousedown = (e) => { e.preventDefault(); e.stopPropagation(); fn(); }; x.onclick = (e) => { if (e.detail === 0) fn(); /* Enter or Space */ }; row.append(x); };
++      const btn = (label, fn) => { const x = h('button', '', t(label)); x.type = 'button'; x.onmousedown = (e) => { e.preventDefault(); e.stopPropagation(); fn(); }; x.onclick = (e) => { if (e.detail === 0) fn(); /* Enter or Space */ }; row.append(x); };
+       if (!c.done) btn('Reply', () => { session.replying = c.id; setActive(view, c.id); });
+       btn(c.done ? 'Reopen' : 'Resolve', () => setResolved(view, c.id, !c.done));
+       if (!c.rich) btn('Edit', () => { session.editingComment = c.id; setActive(view, c.id); });
+diff --git a/node_modules/open-docx-editor/src/editor/charts.js b/node_modules/open-docx-editor/src/editor/charts.js
+index d737b8c..3f7bd23 100644
+--- a/node_modules/open-docx-editor/src/editor/charts.js
++++ b/node_modules/open-docx-editor/src/editor/charts.js
+@@ -5,6 +5,7 @@
+ import { Plugin } from 'prosemirror-state';
+ import { readChart, writeChart } from '../ooxml/chartedit.js';
+ import { announce } from './live.js';
++import { t } from './i18n.js';
+ 
+ const LABEL = { column: 'Column', bar: 'Bar', line: 'Line', area: 'Area', pie: 'Pie', doughnut: 'Doughnut' };
+ 
+@@ -19,9 +20,9 @@ const h = (tag, props = {}, ...kids) => {
+   for (const [k, v] of Object.entries(props)) {
+     if (k === 'class') e.className = v;
+     else if (k.startsWith('on')) e[k] = v;
+-    else if (v != null && v !== false) e.setAttribute(k, v === true ? '' : v);
++    else if (v != null && v !== false) e.setAttribute(k, v === true ? '' : k === 'aria-label' || k === 'placeholder' ? t(v) : v);
+   }
+-  for (const k of kids) if (k != null) e.append(k);
++  for (const k of kids) if (k != null) e.append(typeof k === 'string' ? t(k) : k);
+   return e;
+ };
+ 
+@@ -37,7 +38,7 @@ export function editChart(view, pos) {
+   const dlg = h('div', { class: 'odx-chartdlg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'odx-chartdlg-h' });
+   const title = h('input', { type: 'text', value: data.title, 'aria-label': 'Chart title', placeholder: 'No title' });
+   const type = h('select', { 'aria-label': 'Chart type', disabled: data.types.length < 2 });
+-  for (const t of data.types) type.append(h('option', { value: t, selected: t === data.type }, LABEL[t] || t));
++  for (const k of data.types) type.append(h('option', { value: k, selected: k === data.type }, LABEL[k] || k));
+   const grid = h('table', { class: 'odx-chartdlg-grid' });
+   let cats = [...data.cats];
+   let series = data.series.map((s) => ({ name: s.name, vals: [...s.vals] }));
+@@ -46,11 +47,11 @@ export function editChart(view, pos) {
+   const draw = (focus) => {
+     grid.replaceChildren();
+     const head = h('tr', {}, h('th', { scope: 'col' }, 'Category'));
+-    series.forEach((s, i) => head.append(h('th', { scope: 'col' }, h('input', { type: 'text', value: s.name, 'aria-label': `Series ${i + 1} name`, oninput: (e) => { s.name = e.target.value; relabel(); } }))));
++    series.forEach((s, i) => head.append(h('th', { scope: 'col' }, h('input', { type: 'text', value: s.name, 'aria-label': t('Series {n} name', { n: i + 1 }), oninput: (e) => { s.name = e.target.value; relabel(); } }))));
+     grid.append(h('thead', {}, head));
+     const body = h('tbody');
+     cats.forEach((c, r) => {
+-      const tr = h('tr', {}, h('th', { scope: 'row' }, h('input', { type: 'text', value: c, 'aria-label': `Category ${r + 1}`, oninput: (e) => { cats[r] = e.target.value; relabel(); } })));
++      const tr = h('tr', {}, h('th', { scope: 'row' }, h('input', { type: 'text', value: c, 'aria-label': t('Category {n}', { n: r + 1 }), oninput: (e) => { cats[r] = e.target.value; relabel(); } })));
+       series.forEach((s, i) => tr.append(h('td', {}, h('input', {
+         type: 'text', inputmode: 'decimal', value: num(s.vals[r]), 'data-cell': `${r},${i}`,
+         oninput: (e) => { const t = e.target.value.trim().replace(',', '.'); s.vals[r] = t === '' ? null : Number(t); e.target.setAttribute('aria-invalid', t !== '' && Number.isNaN(Number(t)) ? 'true' : 'false'); },
+@@ -65,7 +66,7 @@ export function editChart(view, pos) {
+   function relabel() {
+     for (const input of grid.querySelectorAll('input[data-cell]')) {
+       const [r, i] = input.dataset.cell.split(',').map(Number);
+-      input.setAttribute('aria-label', `${series[i].name || `Series ${i + 1}`}, ${cats[r] || `category ${r + 1}`}`);
++      input.setAttribute('aria-label', `${series[i].name || t('Series {n}', { n: i + 1 })}, ${cats[r] || t('category {n}', { n: r + 1 })}`);
+     }
+   }
+   draw();
+diff --git a/node_modules/open-docx-editor/src/editor/commands.js b/node_modules/open-docx-editor/src/editor/commands.js
+index 451b17d..c6f5e3c 100644
+--- a/node_modules/open-docx-editor/src/editor/commands.js
++++ b/node_modules/open-docx-editor/src/editor/commands.js
+@@ -7,6 +7,7 @@ import { resolveStyle } from '../ooxml/styles.js';
+ import { pPrXml } from '../ooxml/writer.js';
+ import { paragraphAttrsFromPPr } from '../ooxml/reader.js';
+ import { unescapeXml } from '../ooxml/xml.js';
++import { mergeRFonts, unionRFonts } from '../ooxml/props.js'; // kloudchat-odx-patch
+ 
+ const { paragraph } = schema.nodes;
+ 
+@@ -158,6 +159,43 @@ export const setMark = (name, attrs) => (state, dispatch) => {
+   return true;
+ };
+ 
++/**
++ * kloudchat-odx-patch: Home > Font. The font is merged into each run's own w:rFonts (mergeRFonts): a Korean font sets
++ * the East Asian font too, a Latin one keeps the run's East Asian font, and a w:rFonts kept raw (a theme font, an East
++ * Asian font alone) is folded in, so a run keeps one w:rFonts and the font chosen shows in Word and LibreOffice too.
++ */
++export const setFont = (name) => (state, dispatch) => {
++  if (!name) return setMark('font', null)(state, dispatch);
++  if (!dispatch) return true;
++  const { font, rextra } = schema.marks;
++  const restyle = (marks) => {
++    const own = marks.find((m) => m.type === font);
++    const extra = marks.find((m) => m.type === rextra);
++    const raw = extra ? extra.attrs.items.filter((it) => it[0] === 'rFonts').map((it) => it[1]) : [];
++    const base = [...raw, own ? own.attrs.xml || mergeRFonts('', own.attrs.val) : ''].reduce((u, x) => (x ? unionRFonts(u, x) : u), '');
++    const out = marks.filter((m) => m.type !== font && m.type !== rextra);
++    const items = extra ? extra.attrs.items.filter((it) => it[0] !== 'rFonts') : [];
++    if (items.length) out.push(rextra.create({ ...extra.attrs, items }));
++    return font.create({ val: name, xml: mergeRFonts(base, name) }).addToSet(out);
++  };
++  const { from, to, empty } = state.selection;
++  if (empty) {
++    dispatch(state.tr.setStoredMarks(restyle(state.storedMarks || state.selection.$from.marks())));
++    return true;
++  }
++  const tr = state.tr;
++  state.doc.nodesBetween(from, to, (node, pos) => {
++    if (!node.isText) return;
++    const a = Math.max(from, pos);
++    const b = Math.min(to, pos + node.nodeSize);
++    const next = restyle(node.marks);
++    tr.removeMark(a, b, font).removeMark(a, b, rextra);
++    for (const m of next) if (m.type === font || m.type === rextra) tr.addMark(a, b, m);
++  });
++  dispatch(tr.scrollIntoView());
++  return true;
++};
++
+ export function setLink(href) {
+   return (state, dispatch) => {
+     const { from, to, empty } = state.selection;
+@@ -282,6 +320,7 @@ export function formatAt(state) {
+ }
+ 
+ // Paragraph formatting Format Painter copies (not the content control, section or tracked-change records).
++const WORD = /[\p{L}\p{N}\p{M}_]/u;
+ const PAINT_SKIP_EXTRA = new Set(['sectPr', 'pPrChange', 'rPr']);
+ 
+ /** Replace the selection's character formatting with `marks` (Format Painter's paste). */
+@@ -292,8 +331,8 @@ export const applyFormat = (fmt) => (state, dispatch) => {
+     // No selection: paint the word at the caret, as Word does.
+     const text = $from.parent.textBetween(0, $from.parent.content.size, '\ufffc', '\ufffc');
+     let a = $from.parentOffset, b = a;
+-    while (a > 0 && /\w/.test(text[a - 1])) a--;
+-    while (b < text.length && /\w/.test(text[b])) b++;
++    while (a > 0 && WORD.test(text[a - 1])) a--; // kloudchat-odx-patch: any script's letters (Hangul too), not ASCII \w
++    while (b < text.length && WORD.test(text[b])) b++;
+     from = $from.start() + a;
+     to = $from.start() + b;
+   }
+diff --git a/node_modules/open-docx-editor/src/editor/comments.js b/node_modules/open-docx-editor/src/editor/comments.js
+index dde5154..6995991 100644
+--- a/node_modules/open-docx-editor/src/editor/comments.js
++++ b/node_modules/open-docx-editor/src/editor/comments.js
+@@ -115,8 +115,8 @@ export function addComment(view) {
+     const $p = state.selection.$from;
+     const text = $p.parent.textBetween(0, $p.parent.content.size, '￼', '￼');
+     let a = $p.parentOffset, b = a;
+-    while (a > 0 && /\w/.test(text[a - 1])) a--;
+-    while (b < text.length && /\w/.test(text[b])) b++;
++    while (a > 0 && /[\p{L}\p{N}\p{M}_]/u.test(text[a - 1])) a--; // kloudchat-odx-patch: any script's letters, not ASCII \w
++    while (b < text.length && /[\p{L}\p{N}\p{M}_]/u.test(text[b])) b++;
+     from = $p.start() + a;
+     to = $p.start() + b;
+   }
+diff --git a/node_modules/open-docx-editor/src/editor/ctxmenu.js b/node_modules/open-docx-editor/src/editor/ctxmenu.js
+index 704f46e..6b4894d 100644
+--- a/node_modules/open-docx-editor/src/editor/ctxmenu.js
++++ b/node_modules/open-docx-editor/src/editor/ctxmenu.js
+@@ -1,5 +1,6 @@
+ // Right-click: Word's mini toolbar over its context menu (also Shift+F10 and the Menu key).
+ import { el, iconize } from './ribbonkit.js';
++import { t } from './i18n.js';
+ import { editChart, chartXmlAt } from './charts.js';
+ import * as cm from './comments.js';
+ import * as cmd from './commands.js';
+@@ -27,7 +28,7 @@ export function createContextMenu(container, getView, kit, ribbon) {
+     closeMenu();
+     const { state } = v;
+     const empty = state.selection.empty;
+-    const fsel = pick('Font', 'odx-font', [el('option', { value: '' }, ''), ...fonts.map((f) => el('option', { value: f }, f))], (val, w) => cmd.setMark('font', val ? { val } : null)(w.state, w.dispatch));
++    const fsel = pick('Font', 'odx-font', [el('option', { value: '' }, ''), ...fonts.map((f) => el('option', { value: f }, f))], (val, w) => cmd.setFont(val || null)(w.state, w.dispatch)); // kloudchat-odx-patch: setFont
+     fsel.append(...[...fontSel.options].filter((o) => ![...fsel.options].some((x) => x.value === o.value)).map((o) => el('option', { value: o.value }, o.textContent)));
+     fsel.value = fontSel.value;
+     const ssel = pick('Font size', 'odx-size', [el('option', { value: '' }, ''), ...sizes.map((x) => el('option', { value: x }, String(x)))], (val, w) => cmd.setMark('size', val ? { val: Math.round(Number(val) * 2) } : null)(w.state, w.dispatch));
+@@ -45,7 +46,7 @@ export function createContextMenu(container, getView, kit, ribbon) {
+       tb('•≡', 'Bullets', bullets),
+       tb('Aa', 'Styles', withView(() => { showTab('Home'); setTimeout(() => container.querySelector('.odx-stile')?.focus()); return true; })),
+       !comments() ? null : tb('💬', 'New comment', withView(cm.addComment)));
+-    mini.querySelectorAll('[title="Font color: red"]').forEach((b) => b.classList.add('odx-redline'));
++    mini.querySelectorAll(`[title="${t('Font color: red')}"]`).forEach((b) => b.classList.add('odx-redline'));
+     // (A chart that's selected: its data, as double-clicking it does.)
+     const selView = getView();
+     const chartAt = selView && state.selection.node && chartXmlAt(selView, state.selection.node) ? state.selection.from : null;
+diff --git a/node_modules/open-docx-editor/src/editor/editor.css b/node_modules/open-docx-editor/src/editor/editor.css
+index f354ce6..2e28d80 100644
+--- a/node_modules/open-docx-editor/src/editor/editor.css
++++ b/node_modules/open-docx-editor/src/editor/editor.css
+@@ -69,6 +69,10 @@
+ .odx-hf p:empty::after, .odx-hf p:has(> img[style*="position: absolute"]:only-child)::after { content: "\200b"; }
+ .odx-content { position: relative; box-sizing: border-box; outline: none; white-space: pre-wrap; word-wrap: break-word; min-height: 1em; }
+ :where(.odx-content, .odx-hf) p { min-height: 1.15em; --odx-lhv: var(--odx-lh, 1.17); } /* lowest priority: the document's own paragraph styles win */
++/* kloudchat-odx-patch: a Korean document breaks lines between words (어절), not between syllables, as Word and Hangul do;
++   a word longer than the line still breaks (overflow-wrap). w:wordWrap off (--odx-wb: normal) breaks anywhere. Hangul
++   beside Latin letters or digits gets Word's extra space (w:autoSpaceDE / w:autoSpaceDN, on unless turned off). */
++.odx-ko :where(.odx-content, .odx-hf) p, .odx-ko:where(.odx-content, .odx-hf) p { word-break: var(--odx-wb, keep-all); overflow-wrap: anywhere; text-autospace: var(--odx-tas, normal); }
+ /* Lines as tall as the text on them, as in Word (textspans.js): a paragraph's line height is carried in --odx-lhv, which
+    inherits as line-height does; the paragraph and the elements around its text have line-height 0 (no strut of their
+    own on each line), and the text (odx-t), content drawn as it is (fields, labels) and an empty paragraph's line take
+diff --git a/node_modules/open-docx-editor/src/editor/editor.js b/node_modules/open-docx-editor/src/editor/editor.js
+index 4d9aedd..23cab3d 100644
+--- a/node_modules/open-docx-editor/src/editor/editor.js
++++ b/node_modules/open-docx-editor/src/editor/editor.js
+@@ -48,6 +48,7 @@ import { pastePictures, pictureLinks } from './pastepics.js';
+ import { trackPlugin, trackTransaction, tracking, trackedDelete } from './track.js';
+ import { twipsToPx } from '../ooxml/units.js';
+ import { protectPlugin, tabLeaves } from './protect.js';
++import { t } from './i18n.js'; // kloudchat-odx-patch
+ 
+ let scopeSeq = 0;
+ 
+@@ -432,6 +433,7 @@ export function createEditor(mount, session, { onChange, author = 'Author', coll
+   const sheet = document.createElement('div');
+   sheet.className = `odx-page ${scope}`;
+   if (session.doc.childCount > 1500) sheet.classList.add('odx-large');
++  if (session.korean) sheet.classList.add('odx-ko'); // kloudchat-odx-patch: Korean line breaking and spacing (editor.css)
+   sheet.style.width = `${page.width}px`;
+   styleEl.textContent += `\n@page{size:${page.width}px ${page.height}px;margin:0}`; // print one sheet per page, no browser header/footer
+   styleEl.textContent += `\n.${scope} > .odx-content{padding:${page.firstTop ?? page.top}px ${page.right}px 0 ${page.left}px;--odx-page-left:${page.left}px;--odx-page-right:${page.right}px}`;
+@@ -442,7 +444,7 @@ export function createEditor(mount, session, { onChange, author = 'Author', coll
+   let ime = null; // the text an input method is composing with Track Changes on, { from, to }
+   const view = new EditorView(sheet, {
+     state,
+-    attributes: { spellcheck: 'true', class: 'odx-content', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Document', lang: session.lang || 'en-US' },
++    attributes: { spellcheck: 'true', class: 'odx-content', role: 'textbox', 'aria-multiline': 'true', 'aria-label': t('Document'), lang: session.korean ? 'ko-KR' : session.lang || 'en-US' },
+     dispatchTransaction(tr) {
+       // (`this`, the view: a shared document's binding dispatches while the view is still being made, and, its updates
+       // deferred, after the view was destroyed for another document: nothing to do then.)
+diff --git a/node_modules/open-docx-editor/src/editor/fields.js b/node_modules/open-docx-editor/src/editor/fields.js
+index d6473d5..94ba009 100644
+--- a/node_modules/open-docx-editor/src/editor/fields.js
++++ b/node_modules/open-docx-editor/src/editor/fields.js
+@@ -9,6 +9,7 @@ import { fieldInfo } from '../ooxml/reader.js';
+ import { legacyInfo } from '../ooxml/ffdata.js';
+ import { unescapeXml } from '../ooxml/xml.js';
+ import { openSectionAt } from './protect.js';
++import { t as i18n } from './i18n.js';
+ 
+ 
+ /** Every field in document order: [{ key, tag, alias, kind, from, to, block, value, checked?, items? }] */
+@@ -423,7 +424,7 @@ function pickFromList(view, f, event, done) {
+   const sel = document.createElement('select');
+   sel.className = 'odx-fieldpick';
+   sel.size = Math.min(8, f.items.length);
+-  sel.setAttribute('aria-label', f.alias || f.tag || 'Choose an item');
++  sel.setAttribute('aria-label', f.alias || f.tag || i18n('Choose an item'));
+   for (const it of f.items) {
+     const o = document.createElement('option');
+     o.value = it.value ?? it.text;
+@@ -468,7 +469,7 @@ function pickDate(view, f, event, done) {
+   const inp = document.createElement('input');
+   inp.type = 'date';
+   inp.className = 'odx-fieldpick';
+-  inp.setAttribute('aria-label', `Choose a date for ${f.alias || f.tag || 'this field'}`);
++  inp.setAttribute('aria-label', i18n('Choose a date for {name}', { name: f.alias || f.tag || i18n('this field') }));
+   const cur = (/w:fullDate="(\d{4}-\d\d-\d\d)/.exec(f.pr) || [])[1];
+   if (cur && f.value) inp.value = cur;
+   inp.style.left = `${event.clientX}px`;
+diff --git a/node_modules/open-docx-editor/src/editor/find.js b/node_modules/open-docx-editor/src/editor/find.js
+index 5bf26e2..41c7f86 100644
+--- a/node_modules/open-docx-editor/src/editor/find.js
++++ b/node_modules/open-docx-editor/src/editor/find.js
+@@ -31,7 +31,8 @@ function blocks(doc) {
+  */
+ export function searchPattern(query, { matchCase = false, wholeWord = false, regex = false } = {}) {
+   const body = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+-  return new RegExp(wholeWord ? `\\b(?:${body})\\b` : body, matchCase ? 'gu' : 'giu');
++  // kloudchat-odx-patch: a whole word by Unicode letters and digits (Hangul too), not ASCII \b.
++  return new RegExp(wholeWord ? `(?<![\\p{L}\\p{N}\\p{M}_])(?:${body})(?![\\p{L}\\p{N}\\p{M}_])` : body, matchCase ? 'gu' : 'giu');
+ }
+ 
+ /**
+diff --git a/node_modules/open-docx-editor/src/editor/findbar.js b/node_modules/open-docx-editor/src/editor/findbar.js
+index c4ffa27..59917c3 100644
+--- a/node_modules/open-docx-editor/src/editor/findbar.js
++++ b/node_modules/open-docx-editor/src/editor/findbar.js
+@@ -1,6 +1,7 @@
+ // Find and Replace: the bar under the ribbon (Ctrl+F, Ctrl+H), through the main text, text boxes, headers, footers
+ // and notes (findstories.js).
+ import { el } from './ribbonkit.js';
++import { t } from './i18n.js';
+ import { findNextAll, replaceOneAll, replaceAllStories, findPosition } from './findstories.js';
+ import { refresh as refreshComments } from './comments.js';
+ 
+@@ -39,12 +40,12 @@ export function createFindBar(getView, withView) {
+     let n;
+     try { n = fn(v); } catch (err) {
+       if (!(err instanceof SyntaxError)) throw err;
+-      findInfo.textContent = `Not a valid pattern: ${err.message.replace(/^Invalid regular expression: /, '')}`;
++      findInfo.textContent = t('Not a valid pattern: {why}', { why: err.message.replace(/^Invalid regular expression: /, '') });
+       return;
+     }
+     // Which match it went to, and where (said by screen readers each time: the status's text changes).
+     const at = n ? findPosition() : null;
+-    findInfo.textContent = n == null ? '' : at ? `${at.index} of ${n}${at.part ? `, ${at.part}` : ''}` : n ? `${n} result${n === 1 ? '' : 's'}` : 'No results';
++    findInfo.textContent = t(n == null ? '' : at ? `${at.index} of ${n}${at.part ? `, ${at.part}` : ''}` : n ? `${n} result${n === 1 ? '' : 's'}` : 'No results');
+   };
+   const replRow = el('span', { class: 'odx-replrow' }, replBox,
+     el('button', { type: 'button', onmousedown: fdo((v) => replaceOneAll(v, findBox.value, replBox.value, fOpts())) }, 'Replace'),
+diff --git a/node_modules/open-docx-editor/src/editor/hfedit.js b/node_modules/open-docx-editor/src/editor/hfedit.js
+index bf136de..995d9fb 100644
+--- a/node_modules/open-docx-editor/src/editor/hfedit.js
++++ b/node_modules/open-docx-editor/src/editor/hfedit.js
+@@ -10,6 +10,7 @@ import { baseKeymap } from 'prosemirror-commands';
+ import { schema } from './schema.js';
+ import * as cmd from './commands.js';
+ import { csFormatPlugin } from './csformat.js';
++import { t } from './i18n.js';
+ import { zoomOf } from './zoom.js';
+ 
+ const FIELD = (instr, shown) => schema.nodes.opaque_inline.create({
+@@ -150,10 +151,10 @@ export function editStory(main, kind, p = null) {
+   else el.style.bottom = `${sheet.scrollHeight - (at.top + page.height - hfDist)}px`;
+   const tag = document.createElement('div');
+   tag.className = 'odx-hfedit-tag';
+-  const label = { first: 'First Page ', even: 'Even Page ', default: '' }[at.type] + (kind === 'header' ? 'Header' : 'Footer') + (at.sect > 0 ? ` - Section ${at.sect + 1}` : '') + (linked ? ' (Same as Previous)' : '');
++  const label = t({ first: 'First Page ', even: 'Even Page ', default: '' }[at.type] + (kind === 'header' ? 'Header' : 'Footer')) + (at.sect > 0 ? t(' - Section {n}', { n: at.sect + 1 }) : '') + (linked ? t(' (Same as Previous)') : '');
+   const close = document.createElement('button');
+   close.type = 'button';
+-  close.textContent = 'Close Header and Footer';
++  close.textContent = t('Close Header and Footer');
+   close.onmousedown = (e) => { e.preventDefault(); closeStory(); };
+   close.onclick = (e) => { if (e.detail === 0) closeStory(); };
+   // Word's Header & Footer options, for this section (first page) and the whole document (odd and even).
+@@ -170,7 +171,7 @@ export function editStory(main, kind, p = null) {
+       // Reopen on the same page once the pages show the new arrangement.
+       setTimeout(() => editStory(main, kind, p), 300);
+     };
+-    lab.append(box, ` ${text}`);
++    lab.append(box, ` ${t(text)}`);
+     return lab;
+   };
+   const firstOn = /<w:titlePg(?![^>]*w:val="(?:0|false|off)")/.test(section(main, at.sect).xml);
+diff --git a/node_modules/open-docx-editor/src/editor/hfstory.js b/node_modules/open-docx-editor/src/editor/hfstory.js
+index d320c95..5476b11 100644
+--- a/node_modules/open-docx-editor/src/editor/hfstory.js
++++ b/node_modules/open-docx-editor/src/editor/hfstory.js
+@@ -5,7 +5,7 @@ import { TableMap } from 'prosemirror-tables';
+ import { schema } from './schema.js';
+ import { tableCellCss, tablePlacementCss } from '../ooxml/styles.js';
+ import { parseXml } from '../ooxml/xml.js';
+-import { fontStack, lineFactor } from '../ooxml/props.js';
++import { fontStack, lhFor } from '../ooxml/props.js'; // (kloudchat-odx-patch: lhFor, --odx-fa)
+ import { deletedWhole } from './pararules.js';
+ import { wrapText } from './textspans.js';
+ import { uniformRun } from './runs.js';
+@@ -77,13 +77,13 @@ export function storyDrawer(session) {
+       const sz = empty && /<w:sz w:val="(\d+)"/.exec(mark);
+       if (p && sz) p.style.fontSize = `${sz[1] / 2}pt`;
+       const font = empty && /<w:rFonts\b[^>]*w:(?:ascii|hAnsi)="([^"]+)"/.exec(mark);
+-      if (p && font) { p.style.fontFamily = fontStack(font[1]); p.style.setProperty('--odx-lh', lineFactor(font[1])); }
++      if (p && font) { p.style.setProperty('--odx-fa', fontStack(font[1])); p.style.fontFamily = 'var(--odx-fea,) var(--odx-fa)'; p.style.setProperty('--odx-lh', lhFor(font[1])); }
+       // With text, as in the body: when every run shares a size or font, the line is sized from it.
+       const run = !empty && p && uniformRun(node, (id) => session.charStyle?.(id), session.theme);
+       if (run && run.size) p.style.fontSize = `${run.size / 2}pt`;
+       else if (run && run.strut && run.raised && node.attrs.numId == null && !node.content.content.some((c) => c.type.name === 'hard_break')) p.style.fontSize = '0';
+       else if (run && run.strut && Number(run.strut) < Number(session.styleRunProp(node.attrs.styleId, 'size') || 20)) p.style.fontSize = `${run.strut / 2}pt`;
+-      if (run && run.font) { p.style.fontFamily = fontStack(run.font); p.style.setProperty('--odx-lh', lineFactor(run.font)); }
++      if (run && run.font) { p.style.setProperty('--odx-fa', fontStack(run.font)); p.style.fontFamily = 'var(--odx-fea,) var(--odx-fa)'; p.style.setProperty('--odx-lh', lhFor(run.font)); }
+       return false;
+     });
+     // Paragraphs in a row with the same borders are one bordered group in Word: one bottom border, under the last.
+diff --git a/node_modules/open-docx-editor/src/editor/i18n.d.ts b/node_modules/open-docx-editor/src/editor/i18n.d.ts
+new file mode 100644
+index 0000000..f7c26de
+--- /dev/null
++++ b/node_modules/open-docx-editor/src/editor/i18n.d.ts
+@@ -0,0 +1,7 @@
++// kloudchat-odx-patch: i18n
++/** The editor's own words in the current language ({name} placeholders filled from vars); English when there is no entry. */
++export function t(text: string, vars?: Record<string, string | number>): string;
++/** Picks a built-in dictionary: 'ko' (or 'ko-KR') for Korean; anything else is English. */
++export function setLocale(locale: string | null | undefined): void;
++/** Adds entries to, or overrides entries of, the current dictionary. */
++export function setLabels(labels: Record<string, string> | null | undefined): void;
+diff --git a/node_modules/open-docx-editor/src/editor/i18n.js b/node_modules/open-docx-editor/src/editor/i18n.js
+new file mode 100644
+index 0000000..ff348d5
+--- /dev/null
++++ b/node_modules/open-docx-editor/src/editor/i18n.js
+@@ -0,0 +1,45 @@
++// kloudchat-odx-patch: i18n
++// The editor's own words (ribbon, menus, find bar, dialogs, screen-reader messages) in the host's language. Each is
++// looked up by its English text; one with no entry stays in English. `setLocale('ko')` picks a built-in dictionary,
++// `setLabels({...})` adds to or overrides it. A locale's `patterns` ([RegExp, replacement]) translate messages made
++// from parts ("3 fields updated"); a "Label: detail" text with no entry of its own is translated part by part.
++import { KO, KO_PATTERNS } from './locales/ko.js';
++
++const LOCALES = { ko: [KO, KO_PATTERNS] };
++let dict = {};
++let patterns = [];
++
++/** The built-in dictionary for `locale` ('ko', 'ko-KR'; anything else is English). */
++export function setLocale(locale) {
++  const [words, pats] = LOCALES[String(locale || '').toLowerCase().split('-')[0]] || [{}, []];
++  dict = { ...words };
++  patterns = pats;
++}
++
++/** Entries that add to or override the current dictionary. */
++export function setLabels(labels) { Object.assign(dict, labels || {}); }
++
++const fill = (s, vars) => (vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s);
++
++function lookup(text) {
++  if (Object.prototype.hasOwnProperty.call(dict, text)) return dict[text];
++  // (Spaces around a label, "Left " before its field: kept, the label translated.)
++  const m = /^(\s*)(.*?)(\s*)$/s.exec(text);
++  if ((m[1] || m[3]) && m[2] && Object.prototype.hasOwnProperty.call(dict, m[2])) return m[1] + dict[m[2]] + m[3];
++  for (const [re, to] of patterns) {
++    if (re.test(text)) return text.replace(re, typeof to === 'function' ? (...a) => to(t, ...a) : to);
++  }
++  const i = text.indexOf(': ');
++  if (i > 0) {
++    const a = text.slice(0, i), b = text.slice(i + 2);
++    const ta = lookup(a), tb = lookup(b);
++    if (ta != null || tb != null) return `${ta ?? a}: ${tb ?? b}`;
++  }
++  return null;
++}
++
++/** `text` in the current language (its `{name}` placeholders filled from `vars`), or as it is when there is no entry. */
++export function t(text, vars) {
++  if (typeof text !== 'string' || !text) return text;
++  return fill(lookup(text) ?? text, vars);
++}
+diff --git a/node_modules/open-docx-editor/src/editor/live.js b/node_modules/open-docx-editor/src/editor/live.js
+index efcf329..7073090 100644
+--- a/node_modules/open-docx-editor/src/editor/live.js
++++ b/node_modules/open-docx-editor/src/editor/live.js
+@@ -1,4 +1,5 @@
+ // Screen-reader announcements (WCAG 4.1.3 status messages): one visually hidden live region for the page.
++import { t } from './i18n.js';
+ 
+ export function liveRegion() {
+   if (typeof document === 'undefined') return null;
+@@ -18,7 +19,7 @@ export function announce(msg) {
+   setTimeout(() => {
+     const a = document.createElement('div');
+     a.setAttribute('role', 'alert');
+-    a.textContent = msg;
++    a.textContent = t(msg);
+     live.replaceChildren(a);
+   }, 150);
+ }
+diff --git a/node_modules/open-docx-editor/src/editor/locales/ko.js b/node_modules/open-docx-editor/src/editor/locales/ko.js
+new file mode 100644
+index 0000000..70441e0
+--- /dev/null
++++ b/node_modules/open-docx-editor/src/editor/locales/ko.js
+@@ -0,0 +1,188 @@
++// Korean labels for the editor (i18n.js), in the words Microsoft Word for Korean uses where it has the same command.
++export const KO = {
++  // Ribbon tabs
++  'Ribbon tabs': '리본 탭', File: '파일', Home: '홈', Insert: '삽입', Layout: '레이아웃', References: '참조', Review: '검토', View: '보기',
++  'More commands': '명령 더 보기', 'Classic ribbon': '클래식 리본', 'Simplified ribbon': '간단한 리본', 'Close Reading View': '읽기 모드 닫기',
++  // File menu
++  New: '새로 만들기', Open: '열기', 'Create a Copy': '사본 만들기', 'Download a copy as .docx': '사본을 .docx로 내려받기',
++  'Export as PDF': 'PDF로 내보내기', 'Download a PDF of the pages': '페이지를 PDF로 내려받기', Export: '내보내기',
++  'Save as PDF from the print dialog': '인쇄 대화 상자에서 PDF로 저장', Print: '인쇄', Info: '정보', 'Word count and document details': '단어 개수와 문서 정보',
++  // Home
++  Undo: '실행 취소', 'Undo (Ctrl+Z)': '실행 취소 (Ctrl+Z)', 'Redo (Ctrl+Y)': '다시 실행 (Ctrl+Y)',
++  Clipboard: '클립보드', Paste: '붙여넣기', 'Paste (Ctrl+V)': '붙여넣기 (Ctrl+V)', Cut: '잘라내기', 'Cut (Ctrl+X)': '잘라내기 (Ctrl+X)',
++  Copy: '복사', 'Copy (Ctrl+C)': '복사 (Ctrl+C)', 'Format Painter': '서식 복사',
++  'Format Painter: copy the formatting here, then select text to paint it (double-click to paint several places)': '서식 복사: 여기 서식을 복사한 뒤 적용할 텍스트를 선택합니다(두 번 클릭하면 여러 곳에 적용)',
++  Font: '글꼴', 'Font size': '글꼴 크기', 'Font color': '글꼴 색', 'Increase font size': '글꼴 크기 크게', 'Decrease font size': '글꼴 크기 작게',
++  'Clear formatting': '모든 서식 지우기', 'Bold (Ctrl+B)': '굵게 (Ctrl+B)', 'Italic (Ctrl+I)': '기울임꼴 (Ctrl+I)', 'Underline (Ctrl+U)': '밑줄 (Ctrl+U)',
++  Bold: '굵게', Italic: '기울임꼴', Underline: '밑줄', Strikethrough: '취소선', Subscript: '아래 첨자', Superscript: '위 첨자',
++  'Text highlight color': '텍스트 강조 색', 'No Color': '색 없음', 'No color': '색 없음',
++  Paragraph: '단락', Bullets: '글머리 기호', 'Bullet library': '글머리 기호 라이브러리', Numbering: '번호 매기기', 'Numbering library': '번호 매기기 라이브러리',
++  'Multilevel list': '다단계 목록', 'Decrease indent': '내어쓰기', 'Increase indent': '들여쓰기', None: '없음',
++  'Align left (Ctrl+L)': '왼쪽 맞춤 (Ctrl+L)', 'Center (Ctrl+E)': '가운데 맞춤 (Ctrl+E)', 'Align right (Ctrl+R)': '오른쪽 맞춤 (Ctrl+R)', 'Justify (Ctrl+J)': '양쪽 맞춤 (Ctrl+J)',
++  'Left-to-right text direction': '왼쪽에서 오른쪽 텍스트 방향', 'Right-to-left text direction': '오른쪽에서 왼쪽 텍스트 방향',
++  'Show/Hide ¶ (Ctrl+Shift+8)': '편집 기호 표시/숨기기 ¶ (Ctrl+Shift+8)', 'Show/Hide': '표시/숨기기',
++  Shading: '음영', Borders: '테두리', 'Bottom border': '아래쪽 테두리', 'Top border': '위쪽 테두리', 'Left border': '왼쪽 테두리', 'Right border': '오른쪽 테두리',
++  'No border': '테두리 없음', 'All borders': '모든 테두리', 'Outside borders': '바깥쪽 테두리',
++  'Line and paragraph spacing': '줄 및 단락 간격', 'Remove space before paragraph': '단락 앞 공백 제거', 'Add space before paragraph': '단락 앞에 공백 추가',
++  'Remove space after paragraph': '단락 뒤 공백 제거', 'Add space after paragraph': '단락 뒤에 공백 추가',
++  Styles: '스타일', 'More styles': '스타일 더 보기', Editing: '편집', Find: '찾기', 'Find (Ctrl+F)': '찾기 (Ctrl+F)', Replace: '바꾸기', 'Replace (Ctrl+H)': '바꾸기 (Ctrl+H)',
++  'Select all': '모두 선택', 'Select all (Ctrl+A)': '모두 선택 (Ctrl+A)',
++  // Table tools
++  Table: '표', 'Insert row above': '위에 행 삽입', 'Insert row below': '아래에 행 삽입', 'Insert column left': '왼쪽에 열 삽입', 'Insert column right': '오른쪽에 열 삽입',
++  'Delete row': '행 삭제', 'Delete column': '열 삭제', 'Merge cells': '셀 병합', 'Split cell': '셀 분할', 'Delete table': '표 삭제',
++  // Insert
++  Pages: '페이지', 'Page break (Ctrl+Enter)': '페이지 나누기 (Ctrl+Enter)', 'Page Break': '페이지 나누기', Tables: '표', 'Insert table': '표 삽입',
++  Illustrations: '일러스트레이션', 'Insert a picture from this device': '이 디바이스에서 그림 삽입', Picture: '그림', Text: '텍스트',
++  'Insert a text box': '텍스트 상자 삽입', 'Text Box': '텍스트 상자', 'Table of Contents': '목차', 'Insert table of contents': '목차 삽입',
++  Bookmarks: '책갈피', Bookmark: '책갈피', 'Bookmark name': '책갈피 이름', Add: '추가', 'Go To': '이동', Delete: '삭제',
++  Links: '링크', Link: '링크', 'Insert or edit link (Ctrl+K)': '링크 삽입 또는 편집 (Ctrl+K)',
++  Comments: '메모', 'New Comment': '새 메모', 'New comment': '새 메모', 'New comment (Ctrl+Alt+M)': '새 메모 (Ctrl+Alt+M)',
++  'Header & Footer': '머리글/바닥글', 'Edit header and footer (or double-click the top of a page)': '머리글/바닥글 편집(또는 페이지 위쪽을 두 번 클릭)',
++  'Edit header and footer': '머리글/바닥글 편집', 'Page numbers': '페이지 번호', 'Page Numbers': '페이지 번호',
++  'Top of page, left': '페이지 위쪽, 왼쪽', 'Top of page, center': '페이지 위쪽, 가운데', 'Top of page, right': '페이지 위쪽, 오른쪽',
++  'Bottom of page, left': '페이지 아래쪽, 왼쪽', 'Bottom of page, center': '페이지 아래쪽, 가운데', 'Bottom of page, right': '페이지 아래쪽, 오른쪽',
++  'Bottom of page, "Page X of Y"': '페이지 아래쪽, "X / Y 페이지"', 'Current position': '현재 위치',
++  Symbols: '기호', Symbol: '기호', 'Insert symbol': '기호 삽입',
++  '{c} × {r} table': '{c} × {r} 표',
++  // Layout
++  'Page Setup': '페이지 설정', Margins: '여백', Normal: '보통', Narrow: '좁게', Moderate: '중간', Wide: '넓게',
++  'Top {t}" Bottom {b}" Left {l}" Right {r}"': '위쪽 {t}" 아래쪽 {b}" 왼쪽 {l}" 오른쪽 {r}"',
++  Orientation: '용지 방향', Portrait: '세로', Landscape: '가로', 'Page size': '용지 크기', Size: '크기',
++  Columns: '단', One: '하나', Two: '둘', Three: '셋', Breaks: '나누기', 'Page break': '페이지 나누기', 'Column break': '단 나누기',
++  'Text wrapping break': '텍스트 줄 바꿈', 'Section break: next page': '구역 나누기: 다음 페이지부터', 'New section on the next page': '다음 페이지에서 새 구역 시작',
++  'Section break: continuous': '구역 나누기: 이어서', 'New section on the same page': '같은 페이지에서 새 구역 시작',
++  'Page Setup: margins, paper and orientation, for this section or the whole document': '페이지 설정: 이 구역이나 문서 전체의 여백, 용지, 방향',
++  Arrange: '정렬', 'Wrap Text': '텍스트 줄 바꿈', 'Wrap Text: how the text goes round the selected picture or shape': '텍스트 줄 바꿈: 선택한 그림이나 도형 주위로 텍스트를 배치하는 방법',
++  'In Line with Text': '텍스트 줄 안', Square: '정사각형', Tight: '빽빽하게', Through: '투과', 'Top and Bottom': '위/아래', 'Behind Text': '텍스트 뒤', 'In Front of Text': '텍스트 앞',
++  'Page Background': '페이지 배경', 'Page color': '페이지 색', 'Page Color': '페이지 색', 'Page borders': '페이지 테두리', 'Page Borders': '페이지 테두리',
++  Box: '상자', Double: '이중', Thick: '두껍게', Shadow: '그림자',
++  Indent: '들여쓰기', Left: '왼쪽', Right: '오른쪽', Center: '가운데', Spacing: '간격', Before: '앞', After: '뒤',
++  'Indent left (inches)': '왼쪽 들여쓰기(인치)', 'Indent right (inches)': '오른쪽 들여쓰기(인치)', 'Spacing before (pt)': '단락 앞 간격(pt)', 'Spacing after (pt)': '단락 뒤 간격(pt)',
++  Top: '위쪽', Bottom: '아래쪽', Gutter: '제본용 여백', Header: '머리글', Footer: '바닥글', 'Paper size': '용지 크기', 'Custom size': '사용자 지정 크기',
++  Width: '너비', Height: '높이', 'Apply to': '적용 대상', 'This section': '현재 구역', 'Whole document': '문서 전체', Paper: '용지', 'From edge': '가장자리로부터',
++  'Enter each measurement in inches.': '각 치수를 인치로 입력하세요.', 'The margins leave no room for the text.': '여백이 커서 텍스트를 넣을 공간이 없습니다.',
++  // References
++  'Table of contents': '목차', 'Automatic table': '자동 목차', 'Headings 1-3, with page numbers': '제목 1~3, 페이지 번호 포함', 'Update table': '목차 업데이트',
++  'Update fields: page numbers, cross-references and the table of contents, from the pages as they are now (F9)': '필드 업데이트: 현재 페이지에 맞춰 페이지 번호, 상호 참조, 목차를 업데이트합니다(F9)',
++  'Update Fields': '필드 업데이트', Footnotes: '각주', 'Insert footnote (Ctrl+Alt+F)': '각주 삽입 (Ctrl+Alt+F)', 'Insert Footnote': '각주 삽입',
++  'Insert endnote (Ctrl+Alt+D)': '미주 삽입 (Ctrl+Alt+D)', 'Insert Endnote': '미주 삽입', 'Next footnote': '다음 각주', 'Next endnote': '다음 미주', 'Next Footnote': '다음 각주',
++  'No table of contents entries found.': '목차 항목을 찾을 수 없습니다.',
++  // Review
++  Proofing: '언어 교정', 'Word Count': '단어 개수', Words: '단어', 'Characters (no spaces)': '문자(공백 제외)', 'Characters (with spaces)': '문자(공백 포함)', Paragraphs: '단락',
++  'Check accessibility': '접근성 검사', 'Check Accessibility': '접근성 검사', '✓ No accessibility issues found.': '✓ 접근성 문제가 없습니다.', '{n} issues': '문제 {n}개',
++  'Missing alternative text': '대체 텍스트 없음', 'Describe this picture for people using screen readers.': '화면 읽기 프로그램 사용자를 위해 이 그림을 설명하세요.',
++  'No header row': '머리글 행 없음', 'Mark the first row as a header row so it repeats and is read as headings.': '첫 행을 머리글 행으로 지정하면 반복되고 제목으로 읽힙니다.',
++  'Empty heading': '빈 제목', 'Remove it or add text.': '제목을 지우거나 텍스트를 넣으세요.', 'Skipped heading level': '건너뛴 제목 수준',
++  'Heading {a} follows {b}.': '제목 {a}이(가) {b} 뒤에 옵니다.', 'no heading': '제목 없음', 'Unclear link text': '불분명한 링크 텍스트',
++  '"{text}" reads as an address; use words that say where it goes.': '"{text}"은(는) 주소로 읽힙니다. 연결되는 곳을 알려 주는 말을 쓰세요.',
++  'No document title': '문서 제목 없음', 'Add a title in the file properties.': '파일 속성에 제목을 넣으세요.',
++  'Delete comment': '메모 삭제', 'Previous comment': '이전 메모', Previous: '이전', 'Next comment': '다음 메모', Next: '다음',
++  Markup: '변경 내용 표시', 'Markup view': '변경 내용 표시 방식', 'Markup view:': '표시 방식:', 'Simple Markup': '간단히 표시', 'All Markup': '모두 표시',
++  'No Markup': '표시 안 함', Original: '원본', Protect: '보호', 'Restrict editing': '편집 제한', 'Restrict Editing': '편집 제한',
++  Tracking: '추적', 'Track Changes': '변경 내용 추적', 'Track Changes:': '변경 내용 추적:', Off: '끄기', 'For Everyone': '모든 사용자',
++  Accept: '적용', 'Accept this change': '이 변경 내용 적용', 'Accept all changes': '모든 변경 내용 적용', Reject: '거부', 'Reject this change': '이 변경 내용 거부',
++  'Reject all changes': '모든 변경 내용 거부', 'Previous change': '이전 변경 내용', 'Next change': '다음 변경 내용',
++  // Restrict Editing panel
++  'No changes (read only)': '변경 불가(읽기 전용)', 'Tracked changes': '변경 내용 추적', 'Filling in forms': '양식 채우기',
++  'Formatting: only the allowed styles': '서식: 허용된 스타일만', Password: '암호', 'Protection stopped': '보호가 해제되었습니다',
++  'The password is incorrect.': '암호가 올바르지 않습니다.', 'This document is protected.': '이 문서는 보호되어 있습니다.', 'Stop Protection': '보호 중지',
++  'Editing restrictions: allow only this type of editing': '편집 제한: 이 유형의 편집만 허용', 'No editing restrictions': '편집 제한 없음',
++  'New password (optional)': '새 암호(선택)', 'Reenter password to confirm': '확인을 위해 암호 다시 입력', 'Choose a restriction first.': '먼저 제한을 고르세요.',
++  'The passwords don’t match.': '암호가 일치하지 않습니다.', 'Protecting…': '보호하는 중…', 'Protection started': '보호가 시작되었습니다',
++  'Allow only this type of editing:': '이 유형의 편집만 허용:', ' Limit formatting to the allowed styles': ' 허용된 스타일로 서식 제한',
++  'Limit formatting to the allowed styles': '허용된 스타일로 서식 제한', 'A password (optional) is needed to stop the protection:': '보호를 중지하려면 암호(선택)가 필요합니다:',
++  'Yes, Start Enforcing Protection': '예, 보호를 시작합니다', 'Editing: {what}': '편집: {what}',
++  // View
++  Views: '보기', 'Reading View': '읽기 모드', 'Reading view: read without editing (Esc to leave)': '읽기 모드: 편집하지 않고 읽기(Esc로 나가기)',
++  'Dark Mode': '어두운 모드', 'Dark mode for the page': '페이지 어두운 모드', Zoom: '확대/축소', 'Zoom:': '확대/축소:', 'Zoom out': '축소', 'Zoom in': '확대',
++  'Zoom to 100%': '100%로 확대/축소', 'One Page': '한 페이지', 'One page: fit a whole page in the window': '한 페이지: 페이지 전체를 창에 맞춤',
++  'Page Width': '페이지 너비', "Page width: fit the page to the window's width": '페이지 너비: 페이지를 창 너비에 맞춤', Show: '표시', Ruler: '눈금자',
++  Navigation: '탐색', 'Navigation pane': '탐색 창', 'No headings. Use the Heading styles to list them here.': '제목이 없습니다. 제목 스타일을 쓰면 여기에 나옵니다.',
++  'Print, or Save as PDF from the print dialog': '인쇄하거나 인쇄 대화 상자에서 PDF로 저장',
++  'To paste here, use Ctrl+V (the browser blocked access to the clipboard).': '여기에 붙여넣으려면 Ctrl+V를 누르세요(브라우저가 클립보드 접근을 막았습니다).',
++  // Find bar
++  'Replace with': '바꿀 내용', 'Match case': '대/소문자 구분', 'Whole words only': '단어 단위로', 'Whole words': '단어 단위로', Patterns: '패턴',
++  'Use patterns (regular expressions): \\d for a digit, . for any character, (…) to reuse as $1 in the replacement': '패턴(정규식) 사용: \\d는 숫자, .은 아무 문자, (…)는 바꿀 내용에서 $1로 다시 사용',
++  'No results': '결과 없음', 'Replace all': '모두 바꾸기', 'Previous result': '이전 결과', 'Next result': '다음 결과', Close: '닫기',
++  'Not a valid pattern: {why}': '올바른 패턴이 아닙니다: {why}',
++  // Context menu
++  'Mini toolbar': '미니 도구 모음', 'Context menu': '바로 가기 메뉴', 'Font color: red': '글꼴 색: 빨강', 'Highlight: yellow': '강조: 노랑',
++  'Paste Text Only': '텍스트만 유지', 'Paragraph Options': '단락 옵션', 'Edit Chart Data...': '차트 데이터 편집...',
++  // Comments and tracked changes in the margin
++  Comment: '메모', 'Add a comment': '메모 추가', Post: '게시', Cancel: '취소', Reply: '회신', Reopen: '다시 열기', Resolve: '해결', Edit: '편집',
++  // Tracked changes' tooltips (schema.js revTitle)
++  '{what} by {who}{when}': '{what}: {who}{when}', ' on {date}': ', {date}', unknown: '알 수 없음',
++  Inserted: '삽입됨',
++  'Moved here': '여기로 이동됨',
++  'Moved from here': '여기에서 이동됨',
++  Unknown: '알 수 없음', Formatted: '서식 있음', Deleted: '삭제됨', 'Comment posted': '메모를 게시했습니다', 'Has a picture or table: edit it in Word': '그림이나 표가 있습니다: Word에서 편집하세요',
++  Resolved: '해결됨', 'Resolved · {n} reply': '해결됨 · 회신 {n}개', 'Resolved · {n} replies': '해결됨 · 회신 {n}개',
++  'Comment added. Type it in the comment box': '메모를 추가했습니다. 메모 상자에 입력하세요', 'Reply posted': '회신을 게시했습니다', 'Comment resolved': '메모를 해결했습니다',
++  'Comment reopened': '메모를 다시 열었습니다', 'Comment and its replies deleted': '메모와 회신을 삭제했습니다', 'Comment deleted': '메모를 삭제했습니다',
++  'This document is protected: it can only be read': '이 문서는 보호되어 있습니다: 읽기만 할 수 있습니다',
++  'Space Before': '단락 앞', 'Space After': '단락 뒤', 'Line spacing': '줄 간격', 'Indent: Left': '들여쓰기: 왼쪽', 'Indent: Right': '들여쓰기: 오른쪽',
++  'First line': '첫 줄', 'Keep with next': '다음 단락과 함께', 'Keep lines together': '현재 단락을 나누지 않음', Border: '테두리', Pattern: '무늬', 'Tab stops': '탭 정지',
++  'Page break before': '현재 단락 앞에서 페이지 나누기', "Don't add space between paragraphs of the same style": '같은 스타일의 단락 사이에 공백 삽입 안 함',
++  Centered: '가운데', Justified: '양쪽', single: '1줄', double: '2줄', 'Numbered + Level': '번호 매기기 + 수준', 'No bullets or numbering': '글머리 기호 또는 번호 매기기 없음',
++  // Header and footer, text box
++  'Close Header and Footer': '머리글/바닥글 닫기', 'Different First Page': '첫 페이지를 다르게 지정', 'Different Odd & Even Pages': '홀수/짝수 페이지를 다르게 지정',
++  'Link to Previous': '이전 머리글에 연결', 'First Page Header': '첫 페이지 머리글', 'First Page Footer': '첫 페이지 바닥글', 'Even Page Header': '짝수 페이지 머리글',
++  'Even Page Footer': '짝수 페이지 바닥글', ' - Section {n}': ' - 구역 {n}', ' (Same as Previous)': ' (이전과 동일)', Done: '완료',
++  // Charts
++  Column: '세로 막대형', Bar: '가로 막대형', Line: '꺾은선형', Area: '영역형', Pie: '원형', Doughnut: '도넛형',
++  "This kind of chart can't be edited here yet": '이 종류의 차트는 아직 여기서 편집할 수 없습니다', 'Chart title': '차트 제목', 'No title': '제목 없음', 'Chart type': '차트 종류',
++  Category: '항목', 'Series {n} name': '계열 {n} 이름', 'Category {n}': '항목 {n}', 'Series {n}': '계열 {n}', 'category {n}': '항목 {n}',
++  "Some values aren't numbers": '숫자가 아닌 값이 있습니다', 'Chart updated': '차트를 업데이트했습니다', 'Add category': '항목 추가', 'Remove last category': '마지막 항목 제거',
++  'Add series': '계열 추가', 'Remove last series': '마지막 계열 제거', 'Edit chart': '차트 편집', Title: '제목', Type: '종류', Apply: '적용',
++  // Forms
++  'Choose an item': '항목 선택', 'Choose a date for {name}': '{name}의 날짜 선택', 'this field': '이 필드',
++  // Ruler
++  'First Line Indent': '첫 줄 들여쓰기', 'Hanging Indent': '내어쓰기', 'Left Indent': '왼쪽 들여쓰기', 'Right Indent': '오른쪽 들여쓰기',
++  // Messages
++  'Bookmark names start with a letter and use only letters, numbers and _ (up to 40).': '책갈피 이름은 문자로 시작하고 문자, 숫자, _만 쓸 수 있습니다(40자까지).',
++  'This document is protected: it can only be read. The highlighted parts can be changed.': '이 문서는 보호되어 있습니다: 읽기만 할 수 있습니다. 강조된 부분은 바꿀 수 있습니다.',
++  'This document is protected: only comments can be added. The highlighted parts can be changed.': '이 문서는 보호되어 있습니다: 메모만 추가할 수 있습니다. 강조된 부분은 바꿀 수 있습니다.',
++  'That formatting is locked in this document.': '이 문서에서는 해당 서식이 잠겨 있습니다.',
++  'Track Changes stays on: this document is protected for tracked changes.': '변경 내용 추적이 켜진 채로 유지됩니다: 이 문서는 변경 내용 추적으로 보호되어 있습니다.',
++  "Changes can't be accepted or rejected: this document is protected for tracked changes.": '변경 내용을 적용하거나 취소할 수 없습니다: 이 문서는 변경 내용 추적으로 보호되어 있습니다.',
++  "Changes can't be accepted or rejected: this document is protected for tracked changes": '변경 내용을 적용하거나 취소할 수 없습니다: 이 문서는 변경 내용 추적으로 보호되어 있습니다',
++  'Change accepted': '변경 내용을 적용했습니다', 'Change rejected': '변경 내용을 거부했습니다',
++  'Change accepted. No more changes': '변경 내용을 적용했습니다. 남은 변경 내용이 없습니다', 'Change rejected. No more changes': '변경 내용을 거부했습니다. 남은 변경 내용이 없습니다',
++  'All changes accepted': '모든 변경 내용을 적용했습니다', 'All changes rejected': '모든 변경 내용을 거부했습니다', 'No fields to update': '업데이트할 필드가 없습니다',
++  // Notices above the ribbon
++  'No document is open.': '열린 문서가 없습니다.', Restore: '복원', Discard: '버리기',
++  'Unsaved changes to {name} from {when} were kept in this browser.': '{when}에 저장하지 않은 {name}의 변경 내용이 이 브라우저에 남아 있습니다.',
++  '{text} Restore or Discard are above the ribbon.': '{text} 복원과 버리기는 리본 위에 있습니다.',
++  'An author has marked this document as final to discourage editing.': '작성자가 편집을 막으려고 이 문서를 최종본으로 표시했습니다.',
++  'The author would like you to open this document as read-only, unless you need to make changes.': '변경할 필요가 없다면 이 문서를 읽기 전용으로 열어 달라고 작성자가 요청했습니다.',
++  '{name} is reserved: enter the password to modify it, or read it as it is.': '{name}은(는) 보호되어 있습니다: 수정하려면 암호를 입력하거나 그대로 읽으세요.',
++  'Restricted editing: only some styles can be used.': '편집 제한: 일부 스타일만 쓸 수 있습니다.',
++  'Restricted editing: this document can only be read, apart from any highlighted parts.': '편집 제한: 강조된 부분 말고는 읽기만 할 수 있습니다.',
++  'Restricted editing: only comments can be added, apart from any highlighted parts.': '편집 제한: 강조된 부분 말고는 메모만 추가할 수 있습니다.',
++  'Restricted editing: every change is tracked.': '편집 제한: 모든 변경 내용이 추적됩니다.',
++  'Restricted editing: only the form fields can be filled in.': '편집 제한: 양식 필드만 채울 수 있습니다.',
++  '{say} The password box is above the ribbon.': '{say} 암호 상자는 리본 위에 있습니다.', '{say} Edit Anyway is above the ribbon.': '{say} 편집 계속은 리본 위에 있습니다.',
++  'Password to modify': '수정 암호', Modify: '수정', 'Edit Anyway': '편집 계속',
++  'That password isn’t right. Try again, or read the document as it is.': '암호가 맞지 않습니다. 다시 입력하거나 문서를 그대로 읽으세요.',
++  Document: '문서', OK: '확인', 'Heading {n}': '제목 {n}',
++  'in a text box': '텍스트 상자', 'in the header': '머리글', 'in the footer': '바닥글', 'in a comment': '메모', 'in an endnote': '미주', 'in a footnote': '각주',
++  // Built-in style names as Korean Word shows them (style pickers only; the document keeps its own names)
++  'style|Normal': '표준', 'style|No Spacing': '간격 없음', 'style|Title': '제목', 'style|Subtitle': '부제', 'style|Heading 1': '제목 1', 'style|Heading 2': '제목 2',
++  'style|Heading 3': '제목 3', 'style|Heading 4': '제목 4', 'style|Heading 5': '제목 5', 'style|Heading 6': '제목 6', 'style|Heading 7': '제목 7', 'style|Heading 8': '제목 8',
++  'style|Heading 9': '제목 9', 'style|List Paragraph': '목록 단락', 'style|Quote': '인용', 'style|Intense Quote': '강한 인용', 'style|Caption': '캡션',
++  'style|Strong': '강함', 'style|Emphasis': '강조', 'style|TOC Heading': '목차 제목', 'style|Footnote Text': '각주 텍스트', 'style|Header': '머리글', 'style|Footer': '바닥글',
++};
++
++/** Messages made from parts: [pattern, replacement (a string, or a function of t and the match)]. */
++export const KO_PATTERNS = [
++  [/^(\d+) results?$/, '결과 $1개'],
++  [/^(\d+) of (\d+)(?:, (.+))?$/, (t, _m, i, n, part) => `${n}개 중 ${i}번째${part ? `, ${t(part)}` : ''}`],
++  [/^(\d+) fields? updated$/, '필드 $1개를 업데이트했습니다'],
++  [/^Zoom (\d+)%$/, '확대/축소 $1%'],
++  [/^AutoCorrect: (.*)$/s, '자동 고침: $1'],
++  [/^(Bold|Italic|Underline|Strikethrough) (on|off)$/, (t, _m, what, on) => `${t(what)} ${on === 'on' ? '켜짐' : '꺼짐'}`],
++  [/^(\d+) issues?$/, '문제 $1개'],
++  [/^(.+) \(inches\)$/, (t, _m, what) => `${t(what)}(인치)`],
++  [/^Line spacing: Multiple ([\d.]+) li$/, '줄 간격: 배수 $1'],
++  [/^Line spacing: (exact|atLeast) ([\d.]+) pt$/, (t, _m, rule, pt) => `줄 간격: ${rule === 'exact' ? '고정' : '최소'} ${pt} pt`],
++];
+diff --git a/node_modules/open-docx-editor/src/editor/pagesetup.js b/node_modules/open-docx-editor/src/editor/pagesetup.js
+index aa0f2b5..21bae55 100644
+--- a/node_modules/open-docx-editor/src/editor/pagesetup.js
++++ b/node_modules/open-docx-editor/src/editor/pagesetup.js
+@@ -2,6 +2,7 @@
+ // size, applied to the section the cursor is in or to the whole document. Layout's Margins, Orientation, Size and Columns
+ // menus change the section the cursor is in too, as Word's do.
+ import { el } from './ribbonkit.js';
++import { t } from './i18n.js';
+ import { sectionEnd } from './sections.js';
+ import * as sp from '../ooxml/sectpr.js';
+ 
+@@ -75,8 +76,8 @@ export function pageSetupPanel(view, sizes, typed, apply, close) {
+   const ok = (e) => {
+     e.preventDefault();
+     const vals = [top, bottom, left, right, gutter, header, footer, ...(paper.value === 'custom' ? [width, height] : [])];
+-    if (vals.some((i) => i.value === '' || !(Number(i.value) >= 0))) { msg.textContent = 'Enter each measurement in inches.'; return; }
+-    if (tw(left) + tw(right) + tw(gutter) >= (paper.value === 'custom' ? tw(width) : sizes.find((s) => s[0] === paper.value)[2]) - 720) { msg.textContent = 'The margins leave no room for the text.'; return; }
++    if (vals.some((i) => i.value === '' || !(Number(i.value) >= 0))) { msg.textContent = t('Enter each measurement in inches.'); return; }
++    if (tw(left) + tw(right) + tw(gutter) >= (paper.value === 'custom' ? tw(width) : sizes.find((s) => s[0] === paper.value)[2]) - 720) { msg.textContent = t('The margins leave no room for the text.'); return; }
+     const size = paper.value === 'custom' ? [tw(width), tw(height)] : sizes.find((s) => s[0] === paper.value).slice(2);
+     const fn = (x) => {
+       let out = sp.setAttrs(x, 'pgMar', { top: tw(top), bottom: tw(bottom), left: tw(left), right: tw(right), gutter: tw(gutter), header: tw(header), footer: tw(footer) });
+diff --git a/node_modules/open-docx-editor/src/editor/ribbonkit.js b/node_modules/open-docx-editor/src/editor/ribbonkit.js
+index d465953..b557ac1 100644
+--- a/node_modules/open-docx-editor/src/editor/ribbonkit.js
++++ b/node_modules/open-docx-editor/src/editor/ribbonkit.js
+@@ -1,5 +1,6 @@
+ // The ribbon's building blocks: elements, buttons, groups, the one drop-down menu, select fields. The toolbar, the
+ // find bar and the context menu are made from these.
++import { t } from './i18n.js';
+ 
+ // Line icons drawn in the text color, so they show in light and dark mode (color emoji can be near-black).
+ const ICON_PATHS = {
+@@ -28,6 +29,7 @@ export function iconize(root) {
+   });
+ }
+ 
++const TRANSLATED = new Set(['title', 'aria-label', 'placeholder']);
+ export function el(tag, attrs = {}, ...children) {
+   const e = document.createElement(tag);
+   for (const [k, v] of Object.entries(attrs)) {
+@@ -47,9 +49,10 @@ export function el(tag, attrs = {}, ...children) {
+       v({ preventDefault() {}, stopPropagation() {}, target: e, currentTarget: e, clientX: r.left, clientY: r.bottom, button: 0, detail: 1, viaKeyboard: true });
+     });
+     if (k === 'onmousedown' && v) e.addEventListener('mousedown', () => { e.odxDownAt = performance.now(); }, true);
+-    else if (v != null && v !== false) e.setAttribute(k, v === true ? '' : v);
++    else if (v != null && v !== false) e.setAttribute(k, v === true ? '' : TRANSLATED.has(k) ? t(v) : v);
+   }
+-  e.append(...children.filter((c) => c != null && c !== false));
++  // (Words given as strings are the editor's own, in the host's language (i18n.js); a document's text is given as a text node.)
++  e.append(...children.filter((c) => c != null && c !== false).map((c) => (typeof c === 'string' ? t(c) : c)));
+   return e;
+ }
+ 
+diff --git a/node_modules/open-docx-editor/src/editor/ruler.js b/node_modules/open-docx-editor/src/editor/ruler.js
+index 2316f2f..56e71ed 100644
+--- a/node_modules/open-docx-editor/src/editor/ruler.js
++++ b/node_modules/open-docx-editor/src/editor/ruler.js
+@@ -3,6 +3,7 @@
+ import * as cmd from './commands.js';
+ import { TWIPS_PER_PX } from '../ooxml/units.js';
+ import { zoomOf } from './zoom.js';
++import { t } from './i18n.js';
+ 
+ const TW = 1 / TWIPS_PER_PX; // px per twip (96 dpi)
+ 
+@@ -11,7 +12,7 @@ export function createRuler(getMain) {
+   bar.className = 'odx-ruler';
+   const scale = document.createElement('div');
+   scale.className = 'odx-ruler-scale';
+-  const mk = (cls, title) => { const m = document.createElement('div'); m.className = `odx-rm ${cls}`; m.title = title; scale.append(m); return m; };
++  const mk = (cls, title) => { const m = document.createElement('div'); m.className = `odx-rm ${cls}`; m.title = t(title); scale.append(m); return m; };
+   const first = mk('odx-rm-first', 'First Line Indent');
+   const hang = mk('odx-rm-hang', 'Hanging Indent');
+   const left = mk('odx-rm-left', 'Left Indent');
+diff --git a/node_modules/open-docx-editor/src/editor/schema.js b/node_modules/open-docx-editor/src/editor/schema.js
+index 1fd5907..a611c57 100644
+--- a/node_modules/open-docx-editor/src/editor/schema.js
++++ b/node_modules/open-docx-editor/src/editor/schema.js
+@@ -6,7 +6,8 @@ import { Schema } from 'prosemirror-model';
+ import { tableNodes } from 'prosemirror-tables';
+ import { legacyInfo } from '../ooxml/ffdata.js';
+ import { ommlToMathML } from '../ooxml/omml.js';
+-import { pPrToCss, scaleCss, sizeCss, highlightColor, hexColor, fontStack, lineFactor } from '../ooxml/props.js';
++import { t } from './i18n.js'; // kloudchat-odx-patch
++import { pPrToCss, scaleCss, sizeCss, highlightColor, hexColor, fontStack, lineFactor, eaCss } from '../ooxml/props.js';
+ import { TWIPS_PER_PX } from '../ooxml/units.js';
+ import { wordDate } from './util.js';
+ 
+@@ -257,7 +258,7 @@ export const schema = new Schema({
+   marks: {
+     // Order here is the w:rPr child order used when writing.
+     cstyle: { attrs: { val: {} }, toDOM: (m) => ['span', { 'data-cstyle': m.attrs.val }, 0] },
+-    font: { attrs: { val: {}, xml: { default: null } }, parseDOM: [{ style: 'font-family', getAttrs: pastedFont }], toDOM: (m) => ['span', { style: `font-family:${fontStack(m.attrs.val)}${/w:cs="([^"]+)"/.test(m.attrs.xml || '') ? `;--odx-fcs:${fontStack(/w:cs="([^"]+)"/.exec(m.attrs.xml)[1])}` : ''}${/^cambria math$/i.test(m.attrs.val) ? ';--odx-lhv:1.02' : (lineFactor(m.attrs.val) > 1.25 ? `;--odx-lhv:calc(${lineFactor(m.attrs.val)} * var(--odx-runmult, 1));--odx-flh:${lineFactor(m.attrs.val)}` : '')}` }, 0] }, // a tall font (symbols, Segoe UI) makes its line taller, as in Word, // Word doesn't let Cambria Math's tall metrics raise a text line, only its descent (0.222em, below Arial's 0.212): a 1.02 box adds about what Word does (fitted on sample S044, Arial 10pt: +0.26px a line)
++    font: { attrs: { val: {}, xml: { default: null } }, parseDOM: [{ style: 'font-family', getAttrs: pastedFont }, { style: '--odx-fa', getAttrs: pastedFont }], toDOM: (m) => ['span', { style: `--odx-fa:${fontStack(m.attrs.val)};font-family:var(--odx-fea,) var(--odx-fa)${rFontsEa(m.attrs.xml, m.attrs.val)}${/w:cs="([^"]+)"/.test(m.attrs.xml || '') ? `;--odx-fcs:${fontStack(/w:cs="([^"]+)"/.exec(m.attrs.xml)[1])}` : ''}${/^cambria math$/i.test(m.attrs.val) ? ';--odx-lhv:1.02' : (lineFactor(m.attrs.val) > 1.25 ? `;--odx-lhv:calc(${lineFactor(m.attrs.val)} * var(--odx-runmult, 1));--odx-flh:${lineFactor(m.attrs.val)}` : '')}` }, 0] }, // a tall font (symbols, Segoe UI) makes its line taller, as in Word, // Word doesn't let Cambria Math's tall metrics raise a text line, only its descent (0.222em, below Arial's 0.212): a 1.02 box adds about what Word does (fitted on sample S044, Arial 10pt: +0.26px a line)
+     bold: {
+       attrs: { on: { default: true } },
+       parseDOM: [{ tag: 'strong' }, { tag: 'b' }, { style: 'font-weight', getAttrs: (v) => (/^(bold|[6-9]\d\d)$/.test(v) ? {} : false) }],
+@@ -340,6 +341,16 @@ export const schema = new Schema({
+   },
+ });
+ 
++// kloudchat-odx-patch: a w:rFonts element's East Asian font (w:eastAsia, or the theme's with w:eastAsiaTheme) as CSS
++// to add to a run's style (';'-led), or ''.
++function rFontsEa(xml, ascii = null) {
++  const ea = /w:eastAsia="([^"]+)"/.exec(xml || '');
++  if (ea) return `;${eaCss(unescapeXml(ea[1]), ascii)}`;
++  const theme = /w:eastAsiaTheme="(major|minor)/.exec(xml || '');
++  return theme ? `;--odx-fea:var(--odx-fea-${theme[1]});font-family:var(--odx-fea,) var(--odx-fa)` : '';
++}
++const unescapeXml = (s) => s.replace(/&(lt|gt|quot|apos|amp);/g, (_, e) => ({ lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' })[e]);
++
+ const EMPHASIS = { dot: 'filled dot', comma: 'filled sesame', circle: 'open circle', underDot: 'filled dot' };
+ 
+ /** Display-only CSS for run properties we carry as raw XML (character spacing, caps, shading...). */
+@@ -350,11 +361,12 @@ function rextraCss(items) {
+   const on = (xml) => !/w:val="(0|false|off)"/.test(xml);
+   for (const [name, xml] of items) {
+     if (name === 'rFonts' && /w:cs="([^"]+)"/.test(xml)) css.push(`--odx-fcs:${fontStack(/w:cs="([^"]+)"/.exec(xml)[1])}`);
++    if (name === 'rFonts' && rFontsEa(xml)) css.push(rFontsEa(xml).slice(1)); // (kloudchat-odx-patch: its East Asian font)
+     if (name === 'spacing') css.push(`letter-spacing:${Number(val(xml)) / 20}pt`);
+     else if (name === 'rFonts' && /w:(?:ascii|hAnsi)Theme="(major|minor)/.test(xml)) {
+       // A theme font on a run: the theme's body or heading font (variables set with the document's styles).
+       const t = /w:(?:ascii|hAnsi)Theme="(major|minor)/.exec(xml)[1];
+-      css.push(`font-family:var(--odx-font-${t})`, `--odx-lh:var(--odx-lh-${t})`);
++      css.push(`--odx-fa:var(--odx-font-${t})`, 'font-family:var(--odx-fea,) var(--odx-fa)', `--odx-lh:var(--odx-lh-${t})`); // (kloudchat-odx-patch: --odx-fa)
+     }
+     // Complex-script formatting (editor.css: a run marked w:rtl or w:cs takes it instead of the Latin members).
+     else if (name === 'bCs') css.push(`--odx-bcs:${on(xml) ? 'bold' : 'normal'}`);
+@@ -429,8 +441,8 @@ function pastedFont(v) {
+ 
+ function revTitle(what, { author, date, dateUtc }) {
+   const d = wordDate(date, dateUtc);
+-  const when = d ? ' on ' + d.toLocaleString() : '';
+-  return `${what} by ${author || 'unknown'}${when}`;
++  const when = d ? t(' on {date}', { date: d.toLocaleString() }) : '';
++  return t('{what} by {who}{when}', { what: t(what), who: author || t('unknown'), when }); // kloudchat-odx-patch: t()
+ }
+ 
+ function alignFromCss(v) {
+diff --git a/node_modules/open-docx-editor/src/editor/toolbar.js b/node_modules/open-docx-editor/src/editor/toolbar.js
+index b1bd0ab..45feaee 100644
+--- a/node_modules/open-docx-editor/src/editor/toolbar.js
++++ b/node_modules/open-docx-editor/src/editor/toolbar.js
+@@ -28,9 +28,15 @@ import * as sp from '../ooxml/sectpr.js';
+ import { WRAPS } from '../ooxml/wrap.js';
+ import { setWrapText, currentWrap } from './wraptext.js';
+ import { sectionsTr, pageSetupPanel } from './pagesetup.js';
++import { t as L } from './i18n.js';
++
++/** A style's name as Word for the host's language shows it ('Heading 1' is 제목 1 in Korean); others as they are. */
++const styleName = (n) => { const k = `style|${n}`; const v = L(k); return v === k ? n : v; };
+ 
+ const SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
+-const FONTS = ['Aptos', 'Arial', 'Calibri', 'Cambria', 'Courier New', 'Georgia', 'Segoe UI', 'Tahoma', 'Times New Roman', 'Verdana'];
++// kloudchat-odx-patch: Korean fonts first (Korean Word's list), then the Latin ones.
++const FONTS = ['맑은 고딕', '나눔고딕', '나눔명조', '바탕', '돋움', '굴림', '궁서', '함초롬바탕', '함초롬돋움', 'Pretendard',
++  'Aptos', 'Arial', 'Calibri', 'Cambria', 'Courier New', 'Georgia', 'Segoe UI', 'Tahoma', 'Times New Roman', 'Verdana'];
+ const PAGE_COLORS = ['FFFFFF', 'F2F2F2', 'FFF2CC', 'FBE5D6', 'E2EFDA', 'DDEBF7', 'EDE2F6', 'FCE4EC', 'FFFDE7', 'E0F7FA', 'F1F8E9', 'ECEFF1', '1E1E1E', '262626', '0D2137', '2B1B3D'];
+ const SHADES = ['FFFFFF', 'F2F2F2', 'D9D9D9', 'BFBFBF', 'FFF2CC', 'FFE699', 'FBE5D6', 'F8CBAD', 'E2EFDA', 'C6E0B4', 'DDEBF7', 'BDD7EE', 'D9E1F2', 'B4C6E7', 'EDE2F6', 'D5C4E8'];
+ const HIGHLIGHTS = [['yellow', '#ffff00'], ['green', '#00ff00'], ['cyan', '#00ffff'], ['magenta', '#ff00ff'], ['blue', '#0000ff'], ['red', '#ff0000'], ['darkBlue', '#000080'], ['darkCyan', '#008080'], ['darkGreen', '#008000'], ['darkMagenta', '#800080'], ['darkRed', '#800000'], ['darkYellow', '#808000'], ['darkGray', '#808080'], ['lightGray', '#c0c0c0'], ['black', '#000000']];
+@@ -76,11 +82,11 @@ export function createToolbar(container, getView, { onOpen, onNew, onSave, onReo
+     const msg = el('div', { class: 'odx-cap', role: 'status' });
+     const box = (...kids) => [el('div', { class: 'odx-protect' }, ...kids, msg)];
+     if (p.enforced && (p.edit || p.formatting)) {
+-      const what = [p.edit && `Editing: ${EDITS.find((x) => x[0] === p.edit)[1].toLowerCase()}`, p.formatting && 'Formatting: only the allowed styles'].filter(Boolean).join('. ');
++      const what = [p.edit && L('Editing: {what}', { what: L(EDITS.find((x) => x[0] === p.edit)[1]).toLowerCase() }), p.formatting && L('Formatting: only the allowed styles')].filter(Boolean).join('. ');
+       const pw = p.password ? typed({ type: 'password', class: 'odx-num', 'aria-label': 'Password', placeholder: 'Password', autocomplete: 'off' }) : null;
+       const stop = async (e) => {
+         e.preventDefault();
+-        if (await protection.unprotect(pw ? pw.value : '')) { closeMenu(); announce('Protection stopped'); getView()?.focus(); } else { msg.textContent = 'The password is incorrect.'; pw?.focus(); }
++        if (await protection.unprotect(pw ? pw.value : '')) { closeMenu(); announce('Protection stopped'); getView()?.focus(); } else { msg.textContent = L('The password is incorrect.'); pw?.focus(); }
+       };
+       pw?.addEventListener('keydown', (e) => { if (e.key === 'Enter') stop(e); });
+       setTimeout(() => pw?.focus(), 0);
+@@ -94,9 +100,9 @@ export function createToolbar(container, getView, { onOpen, onNew, onSave, onReo
+     const pw2 = typed({ type: 'password', class: 'odx-num', 'aria-label': 'Reenter password to confirm', placeholder: 'Reenter password to confirm', autocomplete: 'new-password' });
+     const start = async (e) => {
+       e.preventDefault();
+-      if (!edit.value && !fmt.checked) { msg.textContent = 'Choose a restriction first.'; return edit.focus(); }
+-      if (pw1.value !== pw2.value) { msg.textContent = 'The passwords don’t match.'; return pw2.focus(); }
+-      msg.textContent = 'Protecting…';
++      if (!edit.value && !fmt.checked) { msg.textContent = L('Choose a restriction first.'); return edit.focus(); }
++      if (pw1.value !== pw2.value) { msg.textContent = L('The passwords don’t match.'); return pw2.focus(); }
++      msg.textContent = L('Protecting…');
+       await protection.protect({ edit: edit.value || null, formatting: fmt.checked, password: pw1.value });
+       closeMenu();
+       announce('Protection started');
+@@ -111,13 +117,13 @@ export function createToolbar(container, getView, { onOpen, onNew, onSave, onReo
+   const styleTiles = el('div', { class: 'odx-stiles' });
+   let styleList = [];
+   let docScope = '';
+-  const tile = (st) => el('button', { type: 'button', class: 'odx-stile', title: st.name, 'data-id': st.id || '', onmousedown: run((s, d) => cmd.setStyle(st.id || null)(s, d)) },
+-    el('p', st.id ? { 'data-style': st.id } : {}, st.name));
++  const tile = (st) => el('button', { type: 'button', class: 'odx-stile', title: styleName(st.name), 'data-id': st.id || '', onmousedown: run((s, d) => cmd.setStyle(st.id || null)(s, d)) },
++    el('p', st.id ? { 'data-style': st.id } : {}, document.createTextNode(styleName(st.name))));
+   const styleGal = el('div', { class: 'odx-stylegal' }, styleTiles,
+     menu('', 'More styles', () => [el('div', { class: `odx-stylepop ${docScope}` }, ...styleList.map(tile))]));
+   const styleSel = pick('Styles', 'odx-style', [], (val, v) => cmd.setStyle(val || null)(v.state, v.dispatch));
+   const fontSel = pick('Font', 'odx-font', [el('option', { value: '' }, ''), ...FONTS.map((f) => el('option', { value: f, style: `font-family:'${f}'` }, f))],
+-    (val, v) => cmd.setMark('font', val ? { val } : null)(v.state, v.dispatch));
++    (val, v) => cmd.setFont(val || null)(v.state, v.dispatch)); // kloudchat-odx-patch: merged into the run's w:rFonts
+   const sizeSel = pick('Font size', 'odx-size', [el('option', { value: '' }, ''), ...SIZES.map((s) => el('option', { value: s }, String(s)))],
+     (val, v) => cmd.setMark('size', val ? { val: Math.round(Number(val) * 2) } : null)(v.state, v.dispatch));
+   const color = el('input', { type: 'color', title: 'Font color', 'aria-label': 'Font color', value: '#c00000', class: 'odx-color', onchange: (e) => { const v = getView(); cmd.setMark('color', { val: e.target.value.slice(1).toUpperCase() })(v.state, v.dispatch); v.focus(); } });
+@@ -280,7 +286,7 @@ export function createToolbar(container, getView, { onOpen, onNew, onSave, onReo
+         v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, pos + 1)));
+         v.nodeDOM(pos)?.scrollIntoView({ block: 'start' });
+         v.focus();
+-      } }, node.textContent.slice(0, 80)));
++      } }, document.createTextNode(node.textContent.slice(0, 80))));
+     });
+     navPane.replaceChildren(el('div', { class: 'odx-navhead' }, 'Navigation'), ...(items.length ? items : [el('div', { class: 'odx-navnone' }, 'No headings. Use the Heading styles to list them here.')]));
+   }
+@@ -378,7 +384,7 @@ export function createToolbar(container, getView, { onOpen, onNew, onSave, onReo
+     ],
+     Insert: [
+       grp('Pages', btn('⤓', 'Page break (Ctrl+Enter)', cmd.insertBreak('page'), { label: 'Page Break', big: true })),
+-      grp('Tables', menu('▦', 'Insert table', () => [2, 3, 4, 5, 6].flatMap((r) => [2, 3, 4].map((c) => item(`${c} × ${r} table`, insertTable(r, c))).slice(r === 3 ? 0 : 1, r === 3 ? 3 : 2)), { label: 'Table', big: true })),
++      grp('Tables', menu('▦', 'Insert table', () => [2, 3, 4, 5, 6].flatMap((r) => [2, 3, 4].map((c) => item(L('{c} × {r} table', { c, r }), insertTable(r, c))).slice(r === 3 ? 0 : 1, r === 3 ? 3 : 2)), { label: 'Table', big: true })),
+       grp('Illustrations', btn('🖼', 'Insert a picture from this device', () => picInput.click(), { label: 'Picture', big: true }), picInput),
+       grp('Text', btn('▭', 'Insert a text box', () => (insertTextBox(), true), { label: 'Text Box', big: true })),
+       grp('Table of Contents', btn('☰', 'Insert table of contents', withView(toc.insertToc), { label: 'Table of Contents', big: true })),
+@@ -386,11 +392,11 @@ export function createToolbar(container, getView, { onOpen, onNew, onSave, onReo
+         const v = getView();
+         const input = el('input', { type: 'text', class: 'odx-num odx-bmname', placeholder: 'Bookmark name' });
+         const msg = el('div', { class: 'odx-cap' });
+-        const doAdd = (e) => { e.preventDefault(); const err = bm.addBookmark(getView(), input.value.trim()); if (err) msg.textContent = err; else closeMenu(); };
++        const doAdd = (e) => { e.preventDefault(); const err = bm.addBookmark(getView(), input.value.trim()); if (err) msg.textContent = L(err); else closeMenu(); };
+         const add = el('button', { type: 'button', class: 'odx-item', onmousedown: doAdd }, 'Add');
+         input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(e); e.stopPropagation(); });
+         setTimeout(() => input.focus(), 0);
+-        const list = bm.listBookmarks(v.state.doc).map((x) => el('div', { class: 'odx-bmrow' }, el('span', {}, x.name),
++        const list = bm.listBookmarks(v.state.doc).map((x) => el('div', { class: 'odx-bmrow' }, el('span', {}, document.createTextNode(x.name)),
+           el('button', { type: 'button', onmousedown: (e) => { e.preventDefault(); closeMenu(); bm.goToBookmark(getView(), x.name); } }, 'Go To'),
+           el('button', { type: 'button', onmousedown: (e) => { e.preventDefault(); closeMenu(); bm.deleteBookmark(getView(), x.name); } }, 'Delete')));
+         return [el('div', { class: 'odx-bm' }, el('div', { class: 'odx-line' }, input, add), msg, ...list)];
+@@ -408,7 +414,7 @@ export function createToolbar(container, getView, { onOpen, onNew, onSave, onReo
+     ],
+     Layout: [
+       grp('Page Setup',
+-        menu('▯', 'Margins', () => MARGINS.map(([n, t, r, bm, l]) => item(n, setMargins(t, r, bm, l), { hint: `Top ${t / 1440}" Bottom ${bm / 1440}" Left ${l / 1440}" Right ${r / 1440}"` })), { label: 'Margins', big: true }),
++        menu('▯', 'Margins', () => MARGINS.map(([n, t, r, bm, l]) => item(n, setMargins(t, r, bm, l), { hint: L('Top {t}" Bottom {b}" Left {l}" Right {r}"', { t: t / 1440, b: bm / 1440, l: l / 1440, r: r / 1440 }) })), { label: 'Margins', big: true }),
+         menu('⟲', 'Orientation', () => [item('Portrait', setOrientation(false)), item('Landscape', setOrientation(true))], { label: 'Orientation', big: true }),
+         menu('▤', 'Page size', () => PAGE_SIZES.map(([n, hint, w, h]) => item(n, setSize(w, h), { hint })), { label: 'Size', big: true }),
+         menu('▥', 'Columns', () => [['One', 1], ['Two', 2], ['Three', 3]].map(([n, k]) => item(n, setColumns(k), { on: !!getView() && sp.columnCount(getView().state.doc.attrs.sectPr) === k })), { label: 'Columns', big: true }),
+@@ -557,7 +563,7 @@ export function createToolbar(container, getView, { onOpen, onNew, onSave, onReo
+     simple = on;
+     container.classList.toggle('odx-simple', on);
+     layoutBtn.textContent = on ? '⌄' : '⌃';
+-    layoutBtn.title = on ? 'Classic ribbon' : 'Simplified ribbon';
++    layoutBtn.title = L(on ? 'Classic ribbon' : 'Simplified ribbon');
+     layoutBtn.setAttribute('aria-label', layoutBtn.title);
+     try { localStorage.setItem('odx-ribbon', on ? 'simple' : 'classic'); } catch { /* storage blocked */ }
+     fitRibbon();
+@@ -630,7 +636,7 @@ export function createToolbar(container, getView, { onOpen, onNew, onSave, onReo
+       for (const c of [...styleGal.classList]) if (c.startsWith('odx-doc-')) styleGal.classList.remove(c);
+       if (scope) styleGal.classList.add(scope);
+       docScope = scope || '';
+-      styleSel.replaceChildren(el('option', { value: '' }, 'Normal'), ...session.styleMenu().filter((s) => s.id !== session.styles.defaultParagraph && allowed(s)).map((s) => el('option', { value: s.id }, s.name)));
++      styleSel.replaceChildren(el('option', { value: '' }, document.createTextNode(styleName('Normal'))), ...session.styleMenu().filter((s) => s.id !== session.styles.defaultParagraph && allowed(s)).map((s) => el('option', { value: s.id }, document.createTextNode(styleName(s.name)))));
+       placeNav();
+       fillNav();
+     },
+@@ -655,7 +661,11 @@ export function createToolbar(container, getView, { onOpen, onNew, onSave, onReo
+       const size = cmd.markValue(s, 'size') || (shown ? Math.round(parseFloat(shown.fontSize) * 0.75 * 2) : null);
+       if (size && ![...sizeSel.options].some((o) => o.value === String(size / 2))) sizeSel.append(el('option', { value: size / 2 }, String(size / 2)));
+       sizeSel.value = size ? String(size / 2) : '';
+-      const font = cmd.markValue(s, 'font') || (shown ? shown.fontFamily.split(',')[0].replace(/["']/g, '').trim() : null);
++      // kloudchat-odx-patch: at Hangul (or Han, kana) the run's East Asian font, as Word shows; the aliases left out.
++      const families = shown ? shown.fontFamily.split(',').map((f) => f.replace(/["']/g, '').trim()) : [];
++      const eaAt = /[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u9fff\uac00-\ud7af]/.test(s.doc.textBetween(Math.max(0, s.selection.from - 1), Math.min(s.doc.content.size, s.selection.from + 1), '', ''));
++      const eaShown = eaAt && (families.find((f) => f.startsWith('odx-ea:')) || '').slice(7);
++      const font = eaShown || cmd.markValue(s, 'font') || families.find((f) => !f.startsWith('odx-ea')) || null;
+       if (font && ![...fontSel.options].some((o) => o.value === font)) fontSel.append(el('option', { value: font }, font));
+       fontSel.value = font || '';
+       const sid = p ? p.styleId || '' : null;
+diff --git a/node_modules/open-docx-editor/src/editor/txbxedit.js b/node_modules/open-docx-editor/src/editor/txbxedit.js
+index 3702822..a7f7bdf 100644
+--- a/node_modules/open-docx-editor/src/editor/txbxedit.js
++++ b/node_modules/open-docx-editor/src/editor/txbxedit.js
+@@ -10,6 +10,7 @@ import { baseKeymap } from 'prosemirror-commands';
+ import * as cmd from './commands.js';
+ import { csFormatPlugin } from './csformat.js';
+ import { zoomOf } from './zoom.js';
++import { t as i18n } from './i18n.js';
+ 
+ let open = null; // { main, tv, el, pos, node, k, doc0, outside }
+ 
+@@ -65,10 +66,10 @@ export function editTextBox(main, pos, x = null, y = null, k0 = null) {
+   tag.className = 'odx-hfedit-tag';
+   const done = document.createElement('button');
+   done.type = 'button';
+-  done.textContent = 'Done';
++  done.textContent = i18n('Done');
+   done.onmousedown = (e) => { e.preventDefault(); closeTextBox(); };
+   done.onclick = (e) => { if (e.detail === 0) closeTextBox(); };
+-  tag.append('Text Box', done);
++  tag.append(i18n('Text Box'), done);
+   el.append(tag);
+   host.append(el);
+ 
+diff --git a/node_modules/open-docx-editor/src/index.d.ts b/node_modules/open-docx-editor/src/index.d.ts
+index a3b65dc..03c9c61 100644
+--- a/node_modules/open-docx-editor/src/index.d.ts
++++ b/node_modules/open-docx-editor/src/index.d.ts
+@@ -39,6 +39,10 @@ export interface MountOptions {
+    *  document's editable parts. `features.protection: false` ignores Restrict Editing, Mark as Final and Always open
+    *  read-only (for a host that enforces its own rights). */
+   editors?: string[];
++  /** The language of the editor's own words: 'ko' for Korean; anything else is English. */
++  locale?: 'ko' | 'en' | string | null;
++  /** { English text: translation } entries added to (or overriding) the locale's. */
++  labels?: Record<string, string> | null;
+ }
+ 
+ /** A document's Restrict Editing (Word's Review > Restrict Editing, Mark as Final, Always open read-only). */
+@@ -118,6 +122,10 @@ export class DocxSession {
+   static blank(options?: Record<string, unknown>): DocxSession;
+   doc: unknown;
+   save(doc?: unknown): Uint8Array;
++  /** kloudchat-odx-patch: a Korean document (Hangul text; .odx-ko lines). */
++  korean: boolean;
++  /** kloudchat-odx-patch: the document's style rules under `scope`. */
++  css(scope: string): string;
+ }
+ 
+ export function blankDocxBytes(): Uint8Array;
+@@ -135,3 +143,12 @@ export function listFields(...args: unknown[]): unknown;
+ export function fieldValues(...args: unknown[]): unknown;
+ export function setFieldValues(...args: unknown[]): unknown;
+ export function setForms(...args: unknown[]): unknown;
++/** kloudchat-odx-patch: the family a run's East Asian font is drawn under ("odx-ea:<name>"), limited to EA_RANGE. */
++export function eaFamily(name: string): string;
++/** kloudchat-odx-patch: Hangul, kana, Han and their punctuation, as a CSS unicode-range. */
++export const EA_RANGE: string;
++export function isEastAsianFont(name: string): boolean;
++/** kloudchat-odx-patch: called once per font name as it is first drawn, to add the app's own faces for it. */
++export function setFontProvider(provider: ((name: string) => void) | null): void;
++/** kloudchat-odx-patch: a font chosen for a run merged into its w:rFonts XML. */
++export function mergeRFonts(xml: string | null, name: string, eastAsian?: boolean): string;
+diff --git a/node_modules/open-docx-editor/src/index.js b/node_modules/open-docx-editor/src/index.js
+index 6636aa5..90c4404 100644
+--- a/node_modules/open-docx-editor/src/index.js
++++ b/node_modules/open-docx-editor/src/index.js
+@@ -9,6 +9,8 @@ export * as commands from './editor/commands.js';
+ export * as track from './editor/track.js';
+ export { listFields, fieldValues, setFieldValues, setForms } from './editor/fields.js';
+ export { readFieldValues, fillFields } from './fieldsNode.js';
++// kloudchat-odx-patch: East Asian font aliases (props.js), for an app's own stand-in fonts.
++export { eaFamily, EA_RANGE, isEastAsianFont, mergeRFonts, setFontProvider } from './ooxml/props.js';
+ 
+ /**
+  * One-call setup: toolbar + editor in `container`.
+@@ -26,6 +28,7 @@ import { updateFields } from './editor/refs.js';
+ import { editorAgent } from './agent.js';
+ import { setProtection } from './editor/protect.js';
+ import { announce } from './editor/live.js';
++import { t, setLocale, setLabels } from './editor/i18n.js';
+ 
+ const DRAFT_DAYS = 14;
+ /** A fingerprint of a file's bytes (FNV-1a and the length): which file a draft was made from. */
+@@ -62,9 +65,13 @@ function printOf(bytes) {
+  * - `editors`: this user's names (besides `author`) as Word names editors in a protected document's editable parts
+  *   (an e-mail address, DOMAIN\name): those parts stay editable for them. `features.protection: false` ignores
+  *   Restrict Editing (and Mark as Final, Always open read-only) for a host that enforces its own rights.
++ * - `locale`: the language of the editor's own words (ribbon, menus, dialogs, messages): 'ko' for Korean, else English.
++ *   `labels`: { English text: translation } entries that add to or override it (editor/i18n.js).
+  * Change them later with `api.setReadOnly(on)` and `api.setFeatures({...})`.
+  */
+-export function mountDocxEditor(container, { onChange, onSave, onOpened, onError, fileName = 'document.docx', author = 'Author', readOnly = false, features = {}, toolbar: showToolbar = true, forms = false, pdf = null, onSavePdf, collab = null, onMissingFonts, drafts = false, onDraft, editors = [] } = {}) {
++export function mountDocxEditor(container, { onChange, onSave, onOpened, onError, fileName = 'document.docx', author = 'Author', readOnly = false, features = {}, toolbar: showToolbar = true, forms = false, pdf = null, onSavePdf, collab = null, onMissingFonts, drafts = false, onDraft, editors = [], locale = null, labels = null } = {}) {
++  setLocale(locale);
++  setLabels(labels);
+   const bar = document.createElement('div');
+   const host = document.createElement('div');
+   container.replaceChildren(bar, host);
+@@ -316,10 +323,10 @@ export function mountDocxEditor(container, { onChange, onSave, onOpened, onError
+     draftNote = document.createElement('div');
+     draftNote.className = 'odx-draftnote';
+     draftNote.setAttribute('role', 'status');
+-    setTimeout(() => announce(`${text.textContent} Restore or Discard are above the ribbon.`), 600);
++    setTimeout(() => announce(t('{text} Restore or Discard are above the ribbon.', { text: text.textContent })), 600);
+     const text = document.createElement('span');
+-    text.textContent = `Unsaved changes to ${draft.name || name} from ${new Date(draft.savedAt).toLocaleString()} were kept in this browser.`;
+-    const button = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.addEventListener('click', () => fn().catch(fail)); return b; };
++    text.textContent = t('Unsaved changes to {name} from {when} were kept in this browser.', { name: draft.name || name, when: new Date(draft.savedAt).toLocaleString() });
++    const button = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t(label); b.addEventListener('click', () => fn().catch(fail)); return b; };
+     draftNote.append(text, button('Restore', restore), button('Discard', discard));
+     container.prepend(draftNote);
+   }
+@@ -347,25 +354,25 @@ export function mountDocxEditor(container, { onChange, onSave, onOpened, onError
+     const say = readOnly ? null
+       : softLock === 'final' ? 'An author has marked this document as final to discourage editing.'
+         : softLock === 'recommended' ? 'The author would like you to open this document as read-only, unless you need to make changes.'
+-          : softLock === 'password' ? `${name} is reserved: enter the password to modify it, or read it as it is.`
++          : softLock === 'password' ? t('{name} is reserved: enter the password to modify it, or read it as it is.', { name })
+             : !on ? null
+               : NOTE[p.edit] || (formatting ? 'Restricted editing: only some styles can be used.' : null);
+     if (!say) { saidNote = ''; return; }
+     // (Said once as it appears: a status region added with its text isn't read by screen readers on its own.)
+-    if (say !== saidNote) { saidNote = say; setTimeout(() => announce(softLock === 'password' ? `${say} The password box is above the ribbon.` : softLock ? `${say} Edit Anyway is above the ribbon.` : say), 600); }
++    if (say !== saidNote) { saidNote = say; setTimeout(() => announce(softLock === 'password' ? t('{say} The password box is above the ribbon.', { say: t(say) }) : softLock ? t('{say} Edit Anyway is above the ribbon.', { say: t(say) }) : say), 600); }
+     protectNote = document.createElement('div');
+     protectNote.className = 'odx-protectnote';
+     protectNote.setAttribute('role', 'status');
+     const text = document.createElement('span');
+-    text.textContent = say;
++    text.textContent = t(say);
+     protectNote.append(text);
+     if (softLock) {
+       const pw = softLock === 'password' ? Object.assign(document.createElement('input'), { type: 'password', autocomplete: 'off' }) : null;
+-      if (pw) { pw.setAttribute('aria-label', 'Password to modify'); protectNote.append(pw); }
++      if (pw) { pw.setAttribute('aria-label', t('Password to modify')); protectNote.append(pw); }
+       const b = document.createElement('button');
+       b.type = 'button';
+-      b.textContent = pw ? 'Modify' : 'Edit Anyway';
+-      const go = () => api.editAnyway(pw ? pw.value : '').then((ok) => { if (!ok) { text.textContent = 'That password isn’t right. Try again, or read the document as it is.'; pw?.focus(); } else view?.focus(); }).catch(fail);
++      b.textContent = t(pw ? 'Modify' : 'Edit Anyway');
++      const go = () => api.editAnyway(pw ? pw.value : '').then((ok) => { if (!ok) { text.textContent = t('That password isn’t right. Try again, or read the document as it is.'); pw?.focus(); } else view?.focus(); }).catch(fail);
+       b.addEventListener('click', go);
+       pw?.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+       protectNote.append(b);
+diff --git a/node_modules/open-docx-editor/src/ooxml/docx.js b/node_modules/open-docx-editor/src/ooxml/docx.js
+index 44c8d68..fae220c 100644
+--- a/node_modules/open-docx-editor/src/ooxml/docx.js
++++ b/node_modules/open-docx-editor/src/ooxml/docx.js
+@@ -6,14 +6,14 @@ import { REL_TYPES, NS, kids, parseXml, serializeXml } from './xml.js';
+ import { readDocument, readStory } from './reader.js';
+ import { writeDocument, writeStory, writeBlocks, rootPrefixes, chunkSig } from './writer.js';
+ import { chunkKind } from './altchunk.js';
+-import { readStyles, readTheme, readNumbering, stylesToCss, styleMenu, listLevel, resolveStyle } from './styles.js';
++import { readStyles, readTheme, readNumbering, stylesToCss, styleMenu, listLevel, resolveStyle, eaLang } from './styles.js';
+ import { readComments, writeComments } from './comments.js';
+ import { loadNotes, saveNotes } from './notes.js';
+ import { chartSvg } from './chart.js';
+ import { readChart, workbookRel, updateWorkbook } from './chartedit.js';
+ import { shapesSvg } from './shapes.js';
+ import { fontAlts } from './fonts.js';
+-import { setFontAlts } from './props.js';
++import { setFontAlts, setEastAsia, lineFactor } from './props.js';
+ import { isEmf, emfToSvg } from './emf.js';
+ import { isTiff, tiffToPng } from './tiff.js';
+ import { readProtection, withProtection, withoutEnforcement, checkPassword, lockedStyles, markedFinal, withoutFinal } from './protect.js';
+@@ -35,6 +35,18 @@ export class DocxSession {
+     setFontAlts(fontAlts(this.pkg)); // (before the styles: their fonts' stacks and line heights use the stand-ins)
+     this.theme = readTheme(this.pkg);
+     this.styles = readStyles(this.pkg);
++    // kloudchat-odx-patch: a Korean document (Hangul in a ko-KR document, or mostly Hangul text): its lines take its
++    // East Asian font's height and break between words (어절), as Word's do (editor.css .odx-ko).
++    {
++      const text = (this.pkg.text(this.pkg.mainPath) || '').replace(/<[^>]*>/g, '');
++      const hangul = (text.match(/[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]/g) || []).length;
++      const latin = (text.match(/[A-Za-z]/g) || []).length;
++      const d = this.styles.defaults.rPr;
++      const ea = d.fontEa || (d.themeFontEa ? this.theme[d.themeFontEa.startsWith('major') ? 'majorEa' : 'minorEa'] : null);
++      const ascii = d.font || (d.themeFont ? this.theme[d.themeFont.startsWith('major') ? 'major' : 'minor'] : 'Times New Roman');
++      this.korean = (hangul > 0 && /^ko/i.test(eaLang(this.pkg) || '')) || (hangul >= 20 && hangul >= latin / 2);
++      setEastAsia({ korean: this.korean, ea, asciiLh: lineFactor(ascii || 'Calibri') });
++    }
+     // The document language (styles.xml docDefaults), so screen readers pronounce it correctly.
+     this.lang = (/<w:rPrDefault>[\s\S]*?<w:lang\b[^>]*w:val="([^"]+)"/.exec(this.pkg.text("word/styles.xml") || "") || [])[1] || null;
+     // Word version the layout follows (15 = Word 2013+); older modes lay some things out differently.
+diff --git a/node_modules/open-docx-editor/src/ooxml/props.js b/node_modules/open-docx-editor/src/ooxml/props.js
+index dc69ead..2ea68f3 100644
+--- a/node_modules/open-docx-editor/src/ooxml/props.js
++++ b/node_modules/open-docx-editor/src/ooxml/props.js
+@@ -35,6 +35,9 @@ export function readRPr(rPr) {
+   flag('iCs', 'italicCs');
+   const szCs = kid(rPr, 'szCs');
+   if (szCs) p.sizeCs = Number(attr(szCs, 'val'));
++  // kloudchat-odx-patch: east-asian fonts (w:eastAsia / w:eastAsiaTheme), which Word uses for Hangul, kana and Han.
++  if (fonts && attr(fonts, 'eastAsia')) p.fontEa = attr(fonts, 'eastAsia');
++  else if (fonts && attr(fonts, 'eastAsiaTheme')) p.themeFontEa = attr(fonts, 'eastAsiaTheme');
+   if (fonts && attr(fonts, 'cs')) p.fontCs = attr(fonts, 'cs');
+   else if (fonts && attr(fonts, 'cstheme')) p.themeFontCs = attr(fonts, 'cstheme');
+   const va = kid(rPr, 'vertAlign');
+@@ -140,6 +143,12 @@ export function readPPr(pPr) {
+   if (tabs) p.tabs = kids(tabs).filter((t) => t.localName === 'tab').map((t) => ({ val: attr(t, 'val'), pos: Number(attr(t, 'pos')), leader: attr(t, 'leader') || null }));
+   const cs = onOff(kid(pPr, 'contextualSpacing'));
+   if (cs != null) p.contextualSpacing = cs;
++  // kloudchat-odx-patch: East Asian line breaking and spacing (w:wordWrap off: break anywhere; w:autoSpaceDE/DN off: no
++  // space between East Asian text and Latin text or digits).
++  for (const k of ['wordWrap', 'autoSpaceDE', 'autoSpaceDN']) {
++    const v = onOff(kid(pPr, k));
++    if (v != null) p[k] = v;
++  }
+   return p;
+ }
+ 
+@@ -191,7 +200,109 @@ const ALTS = new Map();
+ // from its own font table entry, so one name rarely has two).
+ export function setFontAlts(map) { for (const [k, v] of map || []) ALTS.set(k, v); }
+ 
++// --- kloudchat-odx-patch: East Asian fonts -----------------------------------------------------------------------
++// Word sets Hangul, kana and Han in a run's East Asian font (w:eastAsia), Latin text in its ascii/hAnsi font. CSS has
++// one family list per element, so the East Asian font goes first under an alias that only covers those scripts
++// ("odx-ea:<name>", a FontFace with a unicode-range): Latin text skips it and takes the run's own font. The alias is
++// the installed font (local()); an app can add its own faces under the same alias (a bundled stand-in) before mount.
++// "odx-ea-sans" / "odx-ea-serif" follow it: the app's stand-ins for a Korean font the computer lacks.
++export const EA_RANGE = 'U+1100-11FF,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+3100-312F,U+3130-318F,U+3190-31FF,U+3200-33FF,U+3400-4DBF,U+4E00-9FFF,U+A960-A97F,U+AC00-D7AF,U+D7B0-D7FF,U+F900-FAFF,U+FE30-FE4F,U+FF00-FFEF';
++export const eaFamily = (name) => `odx-ea:${String(name).replace(/["\\\r\n\f{}<>]/g, '')}`;
++// Korean font names and their English names (Word writes either), so local() finds the installed font by both.
++export const KO_NAMES = [
++  ['맑은 고딕', 'Malgun Gothic'], ['바탕', 'Batang'], ['바탕체', 'BatangChe'], ['굴림', 'Gulim'], ['굴림체', 'GulimChe'],
++  ['돋움', 'Dotum'], ['돋움체', 'DotumChe'], ['궁서', 'Gungsuh'], ['궁서체', 'GungsuhChe'], ['새굴림', 'New Gulim'],
++  ['나눔고딕', 'NanumGothic'], ['나눔명조', 'NanumMyeongjo'], ['나눔바른고딕', 'NanumBarunGothic'], ['함초롬바탕', 'HCR Batang'],
++  ['함초롬돋움', 'HCR Dotum'], ['본고딕', 'Source Han Sans K'], ['본명조', 'Source Han Serif K'],
++];
++const twinName = (name) => { const k = KO_NAMES.find((n) => n.includes(name)); return k ? k.find((n) => n !== name) : null; };
++const EA_NAME = /[ᄀ-ᇿ぀-ヿ㄰-㆏㐀-鿿가-힯]|^(malgun|batang|gulim|dotum|gungsuh|new gulim|nanum|noto (sans|serif) (cjk )?(kr|jp|sc|tc)|source han (sans|serif)|apple ?sd ?gothic|applemyungjo|pretendard|spoqa|kopub|hcr |hancom|hy[a-z]+-(medium|extra)|ms (p?gothic|p?mincho)|yu (gothic|mincho)|meiryo|n?simsun|simhei|dengxian|microsoft (yahei|jhenghei)|p?mingliu|dfkai)/i;
++/** Whether a font is an East Asian one (its name, Korean or English): a choice of it sets w:eastAsia too. */
++export const isEastAsianFont = (name) => EA_NAME.test(String(name || '').trim());
++/** A Korean (or other East Asian) font's kind for its stand-in: serif (명조, 바탕) or sans (고딕, 돋움). */
++export const eaKind = (name) => (/바탕|명조|궁서|batang|myeong|myung|gungsuh|mincho|song|ming|serif|신명|견명/i.test(name || '') && !/sans|고딕|gothic|돋움|dotum|굴림|gulim/i.test(name || '') ? 'serif' : 'sans');
++// An app's own fonts for a family name (a bundled stand-in for a Korean font the computer lacks): asked once per name,
++// as the name is first drawn, so it adds faces for the names a document uses only.
++let PROVIDER = null;
++const provided = new Set();
++export function setFontProvider(fn) { PROVIDER = fn || null; provided.clear(); }
++function provide(name) {
++  if (!PROVIDER || !name || provided.has(name)) return;
++  provided.add(name);
++  try { PROVIDER(String(name)); } catch { /* the app's */ }
++}
++const eaMade = new Set();
++/** The alias for `name` (installed font only) unless one exists: once per name per page. */
++export function ensureEaFace(name) {
++  if (!name || eaMade.has(name) || typeof document === 'undefined' || typeof FontFace === 'undefined' || !document.fonts) return;
++  provide(name);
++  eaMade.add(name);
++  const family = eaFamily(name);
++  try {
++    for (const f of document.fonts) if (f.family === family || f.family === `"${family}"`) return; // the app's own
++    const names = [name, twinName(name)].filter(Boolean).map((n) => n.replace(/["\\\r\n\f{}<>]/g, ''));
++    const src = (suffix) => names.flatMap((n) => (suffix ? [`local("${n} ${suffix}")`, `local("${n}")`] : [`local("${n}")`])).join(', ');
++    document.fonts.add(new FontFace(family, src(''), { unicodeRange: EA_RANGE }));
++    document.fonts.add(new FontFace(family, src('Bold'), { unicodeRange: EA_RANGE, weight: '700' }));
++  } catch { /* no font loading here */ }
++}
++/** The family list that goes before a run's own fonts for its East Asian font: ends in a comma (or is empty). */
++export function eaStack(name) {
++  if (!name) return '';
++  ensureEaFace(name);
++  return `${quoted(eaFamily(name))}, "odx-ea-${eaKind(name)}",`;
++}
++/** CSS for an East Asian font: the custom property the font-family below prepends, and that family list again. */
++export const eaCss = (name, ascii = null) => `--odx-fea:${eaStack(name)};font-family:var(--odx-fea,) var(--odx-fa, sans-serif)`
++  + (EA && EA.korean ? `;--odx-lh:${Math.max(lineFactor(name), ascii ? lineFactor(ascii) : EA.asciiLh || 0)}` : '');
++// The open document's East Asian state (docx.js): { korean: Hangul text in a Korean document, ea: its default East Asian
++// font, asciiLh: its default font's line factor }. In a Korean document a line is as tall as the taller of a run's two
++// fonts, as Word's lines with Hangul are.
++let EA = null;
++export function setEastAsia(v) { EA = v || null; }
++export const eastAsia = () => EA;
++// One w:rFonts element: its attributes, in the schema's order, theme references dropped where an explicit font is given
++// (a theme reference outranks an explicit font in Word and LibreOffice, so a font chosen over one would not show).
++const RFONTS_ORDER = ['w:hint', 'w:ascii', 'w:hAnsi', 'w:eastAsia', 'w:cs', 'w:asciiTheme', 'w:hAnsiTheme', 'w:eastAsiaTheme', 'w:cstheme'];
++const THEME_OF = { 'w:ascii': 'w:asciiTheme', 'w:hAnsi': 'w:hAnsiTheme', 'w:eastAsia': 'w:eastAsiaTheme', 'w:cs': 'w:cstheme' };
++const escAttr = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
++export function rFontsAttrs(xml) {
++  const out = new Map();
++  const open = /<w:rFonts\b([^>]*?)\/?>/.exec(xml || '');
++  if (open) for (const [, k, v] of open[1].matchAll(/([\w:]+)="([^"]*)"/g)) out.set(k, v);
++  return out;
++}
++export function rFontsXml(attrs) {
++  for (const [k, t] of Object.entries(THEME_OF)) if (attrs.has(k)) attrs.delete(t);
++  const keys = [...attrs.keys()].sort((a, b) => (RFONTS_ORDER.indexOf(a) + 1 || 99) - (RFONTS_ORDER.indexOf(b) + 1 || 99));
++  return keys.length ? `<w:rFonts ${keys.map((k) => `${k}="${attrs.get(k)}"`).join(' ')}/>` : '';
++}
++/**
++ * kloudchat-odx-patch: a font chosen for a run, merged into the run's w:rFonts (`xml`, raw, '' or null) as Word does: an
++ * East Asian font (맑은 고딕, 바탕…) sets the ascii, hAnsi and eastAsia fonts with w:hint="eastAsia"; a Latin font sets
++ * ascii, hAnsi and cs and keeps the run's East Asian font. Other attributes stay.
++ */
++export function mergeRFonts(xml, name, ea = isEastAsianFont(name)) {
++  const a = rFontsAttrs(xml);
++  const v = escAttr(name);
++  if (ea) {
++    a.set('w:ascii', v); a.set('w:hAnsi', v); a.set('w:eastAsia', v); a.set('w:hint', 'eastAsia');
++  } else {
++    a.set('w:ascii', v); a.set('w:hAnsi', v); a.set('w:cs', v);
++  }
++  return rFontsXml(a);
++}
++/** Two w:rFonts elements of one run as one (`over`'s attributes win). */
++export function unionRFonts(under, over) {
++  const a = rFontsAttrs(under);
++  for (const [k, v] of rFontsAttrs(over)) a.set(k, v);
++  return rFontsXml(a);
++}
++/** A font's line factor, in a Korean document the taller of it and the document's East Asian font. */
++export const lhFor = (name) => (EA && EA.korean && EA.ea ? Math.max(lineFactor(name), lineFactor(EA.ea)) : lineFactor(name));
++
+ export function fontStack(name) {
++  provide(name); // kloudchat-odx-patch
+   if (listed(name)) return '"Segoe UI", sans-serif';
+   if (twin(name)) return fontStack(twin(name));
+   if (!LINE[(name || '').toLowerCase()] && face(name)) return [quoted(name), ...fontStack(face(name)).split(', ')].join(', ');
+@@ -211,6 +322,12 @@ const LINE = {
+   georgia: 1.1362, aptos: 1.2207, 'aptos display': 1.2207, 'century schoolbook': 1.2021, century: 1.2021, 'aptos narrow': 1.2207, 'open sans': 1.3618, 'noto sans': 1.362, 'noto serif': 1.362,
+   ubuntu: 1.149, 'arial unicode ms': 1.3398, roboto: 1.1719, lato: 1.2, candara: 1.2207, corbel: 1.2207, constantia: 1.2207,
+   'trebuchet ms': 1.1621, 'comic sans ms': 1.3936, impact: 1.2197, 'arial black': 1.4097,
++  // kloudchat-odx-patch: Korean fonts. Malgun Gothic: hhea 1.0884 + 0.2417 em (2229 + 495 of 2048; Segoe UI's, whose
++  // companion it is), as published with Word layout measurements; the Nanum fonts and Noto Sans KR from their font files
++  // (hhea / win ascent + descent). 굴림, 돋움, 바탕 and 궁서 are measured where installed (or their stand-in's).
++  'malgun gothic': 1.3301, '맑은 고딕': 1.3301, nanumgothic: 1.15, '나눔고딕': 1.15, 'nanum gothic': 1.15,
++  nanummyeongjo: 1.1504, '나눔명조': 1.1504, 'nanum myeongjo': 1.1504, nanumbarungothic: 1.15, '나눔바른고딕': 1.15,
++  'noto sans kr': 1.448,
+   'ms gothic': 1.3, // (not its 1.0em ascent + descent: Word's own layout gives a checkbox line 1.30em, 15.6pt over sample S072's 12pt Times and 13.0pt over the contingency plan's 10pt Calibri)
+ };
+ const measured = new Map();
+@@ -244,7 +361,8 @@ export const lineFactor = (name) => {
+   return LINE[key] || (key && typeof document !== 'undefined' && measure(key)) || LINE[(SUBST[name] || '').toLowerCase()] || (ALTS.get(name) && ALTS.get(name) !== name ? lineFactor(ALTS.get(name)) : 0) || 1.17;
+ };
+ /** CSS for a font: the family stack plus the custom property paragraph line heights scale. */
+-export const fontCss = (name) => `font-family:${fontStack(name)};--odx-lh:${lineFactor(name)}`;
++// kloudchat-odx-patch: the run's East Asian fonts (--odx-fea, eaCss) go before its own.
++export const fontCss = (name) => `--odx-fa:${fontStack(name)};font-family:var(--odx-fea,) var(--odx-fa);--odx-lh:${lhFor(name)}`;
+ 
+ export function rPrToCss(p, theme) {
+   const css = [];
+@@ -259,6 +377,8 @@ export function rPrToCss(p, theme) {
+   if (p.highlight) css.push(`background-color:${highlightColor(p.highlight)}`);
+   const font = p.font || (p.themeFont && theme && theme[p.themeFont.startsWith('major') ? 'major' : 'minor']);
+   if (font) css.push(fontCss(font));
++  const ea = p.fontEa || (p.themeFontEa && theme && theme[p.themeFontEa.startsWith('major') ? 'majorEa' : 'minorEa']);
++  if (ea) css.push(eaCss(ea, font || null));
+   if (p.caps) css.push('text-transform:uppercase');
+   if (p.smallCaps) css.push('font-variant:small-caps');
+   // w:kern is a threshold (half-points): Word kerns text of that size or larger (a heading style's kern 28 leaves its
+@@ -318,6 +438,13 @@ export function pPrToCss(p) {
+     }
+   }
+   if (p.shading) css.push(`background-color:${p.shading}`);
++  // kloudchat-odx-patch: (editor.css applies these in a Korean document, .odx-ko)
++  if (p.wordWrap != null) css.push(`--odx-wb:${p.wordWrap ? 'keep-all' : 'normal'}`);
++  if (p.autoSpaceDE != null || p.autoSpaceDN != null) {
++    const de = p.autoSpaceDE !== false;
++    const dn = p.autoSpaceDN !== false;
++    css.push(`--odx-tas:${de && dn ? 'normal' : de ? 'ideograph-alpha' : dn ? 'ideograph-numeric' : 'no-autospace'}`);
++  }
+   return css.join(';');
+ }
+ 
+diff --git a/node_modules/open-docx-editor/src/ooxml/reader.js b/node_modules/open-docx-editor/src/ooxml/reader.js
+index 0890610..29e74a2 100644
+--- a/node_modules/open-docx-editor/src/ooxml/reader.js
++++ b/node_modules/open-docx-editor/src/ooxml/reader.js
+@@ -193,7 +193,7 @@ function readParagraph(p, ctx) {
+       attrs.ilvl = props.ilvl;
+     }
+     for (const c of kids(pPr)) if (!(c.namespaceURI === NS.w && PPR_MODELLED.has(c.localName))) attrs.extra.push([c.localName, ctx.xml(c)]);
+-    for (const k of ['before', 'beforeAuto', 'after', 'afterAuto', 'line', 'lineRule', 'indLeft', 'indRight', 'indFirst', 'contextualSpacing', 'keepNext', 'keepLines', 'widowControl', 'pageBreakBefore', 'borders', 'shading', 'tabs', 'bidi']) if (props[k] != null) attrs.view[k] = props[k];
++    for (const k of ['before', 'beforeAuto', 'after', 'afterAuto', 'line', 'lineRule', 'indLeft', 'indRight', 'indFirst', 'contextualSpacing', 'keepNext', 'keepLines', 'widowControl', 'pageBreakBefore', 'borders', 'shading', 'tabs', 'bidi', 'wordWrap', 'autoSpaceDE', 'autoSpaceDN']) if (props[k] != null) attrs.view[k] = props[k]; // (kloudchat-odx-patch: the last three)
+   }
+   // Word's paragraph identities (w14:paraId, w14:textId) and revision-save ids (w:rsid*), written back as they were.
+   const own = [...p.attributes].filter((a) => a.prefix !== 'xmlns' && a.name !== 'xmlns').map((a) => [a.name, a.value]);
+diff --git a/node_modules/open-docx-editor/src/ooxml/styles.js b/node_modules/open-docx-editor/src/ooxml/styles.js
+index 79d354e..447f92c 100644
+--- a/node_modules/open-docx-editor/src/ooxml/styles.js
++++ b/node_modules/open-docx-editor/src/ooxml/styles.js
+@@ -1,9 +1,21 @@
+ // styles.xml, theme fonts and numbering.xml: read once per document, turned
+ // into a CSS stylesheet for the editor and a list-label resolver.
+ import { kids, kid, attr, onOff, NS, REL_TYPES } from './xml.js';
+-import { readRPr, readPPr, rPrToCss, pPrToCss, fontStack, fontCss, lineFactor, sizeCss, mergeTabs, readBorders, shdFill, borderCss } from './props.js';
++import { readRPr, readPPr, rPrToCss, pPrToCss, fontStack, fontCss, lineFactor, lhFor, eaStack, sizeCss, mergeTabs, readBorders, shdFill, borderCss } from './props.js';
+ import { twipsToPx } from './units.js';
+ 
++// kloudchat-odx-patch: an East Asian language's script in a theme's a:font list.
++const SCRIPTS = { 'ko-KR': 'Hang', 'ja-JP': 'Jpan', 'zh-CN': 'Hans', 'zh-SG': 'Hans', 'zh-TW': 'Hant', 'zh-HK': 'Hant', 'zh-MO': 'Hant' };
++/** The document's East Asian language: settings.xml w:themeFontLang, else the document defaults' w:lang. */
++export function eaLang(pkg) {
++  const settings = pkg.partByType(REL_TYPES.settings);
++  const t = settings && /<w:themeFontLang\b[^>]*\bw:eastAsia="([^"]+)"/.exec(pkg.text(settings) || '');
++  if (t) return t[1];
++  const styles = pkg.partByType(REL_TYPES.styles);
++  const d = styles && /<w:rPrDefault>[\s\S]*?<w:lang\b[^>]*\bw:eastAsia="([^"]+)"/.exec(pkg.text(styles) || '');
++  return d ? d[1] : null;
++}
++
+ export function readTheme(pkg) {
+   const path = pkg.partByType(REL_TYPES.theme);
+   const doc = path && pkg.xml(path);
+@@ -15,6 +27,13 @@ export function readTheme(pkg) {
+     if (latin) theme[kind] = latin.getAttribute('typeface');
+     const cs = f && kid(f, 'cs', NS.a);
+     if (cs && cs.getAttribute('typeface')) theme[kind + 'Cs'] = cs.getAttribute('typeface');
++    // kloudchat-odx-patch: the East Asian font (w:eastAsiaTheme): a:ea, or when that is empty the font for the script of
++    // the document's East Asian language (w:themeFontLang in settings.xml, else the default run's w:lang), as Word picks.
++    const ea = f && kid(f, 'ea', NS.a);
++    const script = SCRIPTS[eaLang(pkg)];
++    const byScript = f && script && kids(f, 'font', NS.a).find((x) => x.getAttribute('script') === script);
++    const face = (ea && ea.getAttribute('typeface')) || (byScript && byScript.getAttribute('typeface'));
++    if (face) theme[kind + 'Ea'] = face;
+   }
+   theme.colors = {};
+   const scheme = doc.getElementsByTagNameNS(NS.a, 'clrScheme')[0];
+@@ -85,7 +104,7 @@ export function stylesToCss(scope, info, theme) {
+   // With no w:sz in the document defaults Word uses 10pt.
+   rules.push(
+     // The theme's fonts, for runs that name them (w:asciiTheme): as variables, with their line heights.
+-    `${scope}{--odx-font-minor:${fontStack(theme.minor || 'Calibri')};--odx-lh-minor:${lineFactor(theme.minor || 'Calibri')};--odx-font-major:${fontStack(theme.major || theme.minor || 'Calibri')};--odx-lh-major:${lineFactor(theme.major || theme.minor || 'Calibri')}}`,
++    `${scope}{--odx-font-minor:${fontStack(theme.minor || 'Calibri')};--odx-lh-minor:${lhFor(theme.minor || 'Calibri')};--odx-font-major:${fontStack(theme.major || theme.minor || 'Calibri')};--odx-lh-major:${lhFor(theme.major || theme.minor || 'Calibri')}${theme.minorEa ? `;--odx-fea-minor:${eaStack(theme.minorEa)}` : ''}${theme.majorEa ? `;--odx-fea-major:${eaStack(theme.majorEa)}` : ''}}`,
+     `${scope}{${fontCss(baseFont || 'Calibri')};${sizeCss((defaults.rPr.size || 20) / 2)};${rPrToCss({ ...defaults.rPr, font: null, themeFont: null, size: null }, theme)}}`,
+   );
+   rules.push(`${scope} p{margin:0;margin-inline-start:calc(0pt - var(--odx-bdl, 0pt));margin-inline-end:calc(0pt - var(--odx-bdr, 0pt));direction:ltr;${pPrToCss(defaults.pPr)}}`); // (left-to-right unless it says otherwise, also in a right-to-left table)
+@@ -100,7 +119,7 @@ export function stylesToCss(scope, info, theme) {
+   }
+   // Built-in headings a document uses without defining them (python-docx's add_heading in a bare template): drawn as
+   // Word's own Heading 1 to 9 and Title, which Word applies to them.
+-  const major = `font-family:var(--odx-font-major);--odx-lh:var(--odx-lh-major)`;
++  const major = `--odx-fa:var(--odx-font-major);font-family:var(--odx-fea,) var(--odx-fa);--odx-lh:var(--odx-lh-major)`; // (kloudchat-odx-patch: --odx-fa)
+   const BUILT_IN = {
+     Heading1: 'font-size:16pt;color:#2F5496;margin-top:12pt', Heading2: 'font-size:13pt;color:#2F5496;margin-top:2pt',
+     Heading3: 'font-size:12pt;color:#1F3763;margin-top:2pt', Heading4: 'font-style:italic;color:#2F5496;margin-top:2pt',
+diff --git a/node_modules/open-docx-editor/src/ooxml/writer.js b/node_modules/open-docx-editor/src/ooxml/writer.js
+index 5425232..a9a4e6e 100644
+--- a/node_modules/open-docx-editor/src/ooxml/writer.js
++++ b/node_modules/open-docx-editor/src/ooxml/writer.js
+@@ -3,6 +3,7 @@
+ // for everything that was carried through untouched.
+ import { TableMap } from 'prosemirror-tables';
+ import { esc } from './xml.js';
++import { mergeRFonts, unionRFonts } from './props.js'; // kloudchat-odx-patch
+ import { EMU_PER_PX, pxToEmu } from './units.js';
+ 
+ // Child order required by the WordprocessingML schema (ECMA-376 Part 1, §17).
+@@ -276,7 +277,10 @@ export function rPr(marks) {
+       case 'cstyle': items.push(['rStyle', val('rStyle', a.val)]); break;
+       case 'font': {
+         const keep = a.xml && new RegExp(`w:(ascii|hAnsi)="${a.val.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`).test(a.xml);
+-        items.push(['rFonts', keep ? a.xml : `<w:rFonts w:ascii="${esc(a.val)}" w:hAnsi="${esc(a.val)}" w:cs="${esc(a.val)}"/>`]);
++        // kloudchat-odx-patch: a new font merged into the run's w:rFonts (its East Asian font and hint kept), not replacing it.
++        const it = ['rFonts', keep ? a.xml : mergeRFonts(a.xml, a.val)];
++        it.odxFont = true;
++        items.push(it);
+         break;
+       }
+       case 'bold': items.push(['b', onOff('b', a.on)]); break;
+@@ -295,6 +299,17 @@ export function rPr(marks) {
+       case 'rextra': items.push(...a.items); break;
+     }
+   }
++  // kloudchat-odx-patch: one w:rFonts per run: a font set over a run whose w:rFonts was kept raw (a theme font, an East
++  // Asian font alone) is merged with it, the font chosen winning.
++  const fonts = items.filter((it) => it[0] === 'rFonts');
++  if (fonts.length > 1) {
++    const own = fonts.find((it) => it.odxFont);
++    const raw = fonts.filter((it) => it !== own).reduce((u, it) => unionRFonts(u, it[1]), '');
++    const merged = own ? unionRFonts(raw, own[1]) : raw;
++    const rest = items.filter((it) => it[0] !== 'rFonts');
++    items.length = 0;
++    items.push(['rFonts', merged], ...rest);
++  }
+   return items.length ? `<w:rPr>${ordered(RPR_ORDER, items)}</w:rPr>` : '';
+ }
+ 

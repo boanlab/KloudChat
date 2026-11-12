@@ -1,6 +1,9 @@
 import { mountDocxEditor, type DocxEditorApi } from 'open-docx-editor'
 import 'open-docx-editor/style.css'
 import 'open-docx-editor/fonts.css'
+// Nanum Gothic, the stand-in for Korean sans fonts the computer lacks (koreanFonts.ts); Nanum Myeongjo comes with index.css
+import '@fontsource/nanum-gothic/400.css'
+import '@fontsource/nanum-gothic/700.css'
 import { useEffect, useRef, useState } from 'react'
 import { saveBlob } from '@/components/artifacts/artifactExport'
 import type { PanelMode } from '@/components/artifacts/PanelControls'
@@ -34,6 +37,8 @@ export function DocxPanel({
 }) {
   const t = useT()
   const author = useStore((s) => s.user?.name ?? '')
+  // The ribbon's own words in the app's language (open-docx-editor's `locale`, our patch); set as the editor mounts.
+  const lang = useStore((s) => s.lang)
   const phone = useMediaQuery('(max-width: 40rem)')
   const host = useRef<HTMLDivElement>(null)
   const editor = useRef<DocxEditorApi | null>(null)
@@ -56,6 +61,7 @@ export function DocxPanel({
       author,
       fileName,
       readOnly: phone,
+      locale: lang === 'en' ? 'en' : 'ko',
       // one artifact per panel: no File > New or Open
       features: { newDocument: false, openFile: false },
       onChange: () => {
