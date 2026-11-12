@@ -37,7 +37,9 @@ _DOCUMENT_LANGUAGE = (
 # English rules; editorial rules keep Korean examples.
 _CORE_ACCURACY = (
     "Core accuracy contract:\n"
-    "- Write the answer in the language of the user's latest request. Never let the "
+    "- Write the answer in the language of the user's latest request, unless the user set "
+    "one answer language for the whole conversation — that holds until they change it, "
+    "whatever language a later question is in. Never let the "
     "language of these instructions choose the answer language.\n"
     "- Keep actors and actions separate: state who requests, drafts, approves, issues, "
     "pays, or receives. Do not swap legal or operational roles. A platform or government "
@@ -177,8 +179,10 @@ _CHAT_TASK_CONTRACT = (
 _SURFACE_DEFAULTS: dict[SessionKind, str] = {
     SessionKind.chat: (
         "You are KloudChat's assistant. Answer in Korean, but if the user asks in another "
-        "language, answer **in that language** — English for an English question; keep "
-        "the writing rules below and change only the language. Say you do not know what "
+        "language, answer **in that language** — English for an English question; when the "
+        "user set an answer language for the whole conversation, keep to it even for a "
+        "question in another language. Keep the writing rules below and change only the "
+        "language. Say you do not know what "
         "you do not know, and never claim to have verified a tool result you did not "
         "actually check. "
         "Every earlier turn of this conversation is live context: keep following the "
@@ -323,7 +327,8 @@ _WEB_SEARCH_BLOCKED = (
 _LIGHT_SURFACE: dict[SessionKind, str] = {
     SessionKind.chat: (
         "You are KloudChat's assistant. Answer in the language of the user's latest message "
-        "(Korean when unclear). Earlier turns are live context: instructions and material the "
+        "(Korean when unclear), or in the one the user set for the whole conversation until "
+        "they change it. Earlier turns are live context: instructions and material the "
         "user gave earlier hold until they change them."
     ),
     SessionKind.report: (

@@ -88,6 +88,53 @@ def test_the_summariser_writes_in_the_conversations_language_and_sees_the_pinned
     assert "in Korean" in korean
 
 
+def test_the_summariser_sees_the_users_words_apart_from_what_they_pasted():
+    request = "아래 회의록에서 결정 사항 정리해 줘.\n---\n" + "회의 내용 문장. " * 900 + "마지막 줄."
+    text = conversation_summary.prompt(None, [{"role": "user", "content": request}])
+    line = next(x for x in text.splitlines() if x.startswith("User: "))
+    assert line == "User: 아래 회의록에서 결정 사항 정리해 줘."
+    assert "[Pasted material, " in text and "characters left out" in text
+    # the material's tail is kept too, not only its head
+    assert "마지막 줄." in text
+    assert "never what is inside `[Pasted material" in text
+
+
+def test_one_batch_pins_a_bounded_number_of_items(monkeypatch):
+    import asyncio
+
+    reply = "SUMMARY:\n요약\nPINNED:\n" + "\n".join(f"- 항목 {i}: 값" for i in range(60))
+
+    class _Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"choices": [{"message": {"content": reply}}], "usage": {}}
+
+    class _Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, *_args, **_kwargs):
+            return _Response()
+
+    async def litellm_config():
+        return "http://gateway.invalid", "key"
+
+    monkeypatch.setattr(conversation_summary.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr(conversation_summary.settings_store, "litellm_config", litellm_config)
+    memory, _usage = asyncio.run(conversation_summary.summarize(
+        "model", None, [{"role": "user", "content": "질문"}], "key"))
+    assert memory.summary == "요약"
+    assert len(memory.pinned) == conversation_summary._PINNED_PER_BATCH
+
+
 def test_the_conversation_language_follows_a_standing_rule_then_the_users_words():
     english_rule = [
         {"role": "user", "content": "Please keep this whole conversation in English."},
@@ -416,6 +463,14 @@ def test_a_rule_from_a_turn_the_window_cut_is_still_replayed_with_its_language()
     alone = build_messages(SessionKind.chat, kept, remind_standing=True)
     assert all(m["content"] != STANDING_ACK for m in alone)
     assert "Write the entire answer in English" not in alone[0]["content"]
+
+
+def test_every_prompt_lets_a_conversation_wide_language_outlast_the_questions_language():
+    from app.services.context import system_prompt
+
+    for light in (False, True):
+        prompt = system_prompt(SessionKind.chat, light=light)
+        assert "for the whole conversation" in prompt
 
 
 # ── one turn through the route: per model group ──────────────────────────
