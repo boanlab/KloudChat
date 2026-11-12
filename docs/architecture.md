@@ -1504,7 +1504,7 @@ a table with vertical merges are not added or removed. Ops resolve against the
 version read before anything changes, so a bad op changes nothing. Zip limits
 are checked before python-docx unpacks a file. A legacy `.doc` is refused.
 
-The editor is open-docx-editor (`open-docx-editor`, MIT, pinned), plain
+The editor is open-docx-editor (`open-docx-editor`, MIT, pinned to 0.7.6), plain
 JavaScript on ProseMirror with Word's ribbon (File, Home, Insert, Layout,
 References, Review, View); `DocxPanel` mounts it with `mountDocxEditor` and is
 loaded with `React.lazy`, so the editor and its stylesheet are a chunk of their
@@ -1519,13 +1519,70 @@ by `style-src 'unsafe-inline'`). File > New and Open are off (one artifact per
 panel), File > Create a Copy downloads, and Ctrl+S in the editor is the
 header's 저장. `open-docx-editor/fonts.css` gives the metric stand-ins for
 Calibri, Cambria, Arial, Times New Roman and Courier New (latin and latin-ext
-woff2, fetched by `unicode-range` only when used). The editor sets a run in the
-font its file names and falls back to sans-serif for a name it does not know, so
-`components/docx/koreanFonts.ts` copies the app's own Nanum Myeongjo
-`@font-face` rules under the Korean serif names (바탕, 궁서, 함초롬바탕…) with
-the FontFace API; no further Korean files ship, and Korean sans names (맑은
-고딕, 돋움, 굴림) are the computer's sans-serif. The ribbon has no translations:
-its labels are English in both UI languages. Both
+woff2, fetched by `unicode-range` only when used).
+
+**Our patch of the editor.** We ship open-docx-editor with a patch of our own,
+`apps/web/patches/open-docx-editor+0.7.6.patch` (not sent upstream; the package's
+MIT notice stays in `node_modules/open-docx-editor/LICENSE`). `npm ci` applies it
+through patch-package (the `postinstall` script, `--error-on-fail`), so it is in
+place for local development, the web image (`Dockerfile` copies `patches/` before
+`npm ci`) and CI; `src/components/docx/odxKorean.test.ts` fails when the patched
+source lacks its `kloudchat-odx-patch` marker. The app imports the package's
+`src/` (its `dist/` bundle is not used and is not patched). Moving to another
+version means re-making the patch: edit `node_modules/open-docx-editor`, then
+`npx patch-package open-docx-editor`. What it changes:
+
+- **East Asian fonts.** A run's `w:eastAsia` font (or `w:eastAsiaTheme`, the
+  theme's `a:ea` or, when that is empty, its `a:font` for the script of the
+  document's East Asian language: `w:themeFontLang`, else the defaults'
+  `w:lang`) is read in runs, styles and document defaults. It is drawn first,
+  under the alias `odx-ea:<name>`, a FontFace limited to Hangul, kana and Han
+  (`EA_RANGE`), so Hangul takes the East Asian font and Latin text skips it to
+  the run's ascii font, as in Word. The CSS is two custom properties,
+  `--odx-fea` (East Asian list) and `--odx-fa` (the run's own), so each level
+  of styles can set either. The alias is the installed font (`local()`) unless
+  the app adds faces for it; `odx-ea-sans` / `odx-ea-serif` follow it.
+- **Home > Font** merges the choice into the run's `w:rFonts`
+  (`mergeRFonts`): a Korean font sets ascii, hAnsi and eastAsia with
+  `w:hint="eastAsia"`, as Korean Word does; a Latin font sets ascii, hAnsi and
+  cs and keeps the East Asian font; an `rFonts` kept raw (a theme font, an
+  East-Asian-only one) is folded in, theme references dropped where a font is
+  now named (they outrank it in Word and LibreOffice). A run is written with
+  one `w:rFonts`. The font list starts with 맑은 고딕, 나눔고딕, 나눔명조, 바탕,
+  돋움, 굴림, 궁서, 함초롬바탕, 함초롬돋움 and Pretendard; at Hangul the box shows
+  the East Asian font.
+- **Korean documents** (Hangul text in a document whose East Asian language
+  is ko-KR, or text that is mostly Hangul; `DocxSession.korean`) get the class
+  `odx-ko`: lines break between words (`word-break: keep-all`, a word longer
+  than the line still breaks), `w:wordWrap="0"` breaks anywhere, and Hangul
+  beside Latin letters or digits gets Word's extra space (`text-autospace`,
+  turned off by `w:autoSpaceDE` / `w:autoSpaceDN`). A line is as tall as the
+  taller of the run's font and its East Asian font. The editor measures the
+  laid-out text, so pages and print follow. Other documents lay out as before.
+- **Line heights** of Korean fonts: 맑은 고딕 1.3301 em (its hhea ascent and
+  descent, 2229 + 495 of 2048, the value published with Word layout
+  measurements), Nanum Gothic, Nanum Myeongjo and Nanum Barun Gothic 1.15 and
+  Noto Sans KR 1.448 (read from the font files). 굴림, 돋움, 바탕 and 궁서 are
+  measured in the browser (the installed font or its stand-in): we have no
+  published values for them.
+- **Whole-word find**, Format Painter's word and a comment's word use Unicode
+  letters (`\p{L}`), so 어절 count as words.
+- **Words of the UI.** `mountDocxEditor(el, { locale, labels })`: the ribbon,
+  menus, find bar, dialogs, margin comments and screen-reader messages go
+  through `t()` (`editor/i18n.js`, built-in Korean in `editor/locales/ko.js`,
+  in Korean Word's terms). `DocxPanel` passes the app's language when the
+  editor mounts.
+
+`components/docx/koreanFonts.ts` gives Korean font names their stand-ins: serif
+names (바탕, 궁서, 함초롬바탕, 나눔명조, 본명조…) the app's Nanum Myeongjo, sans
+names (맑은 고딕, 굴림, 돋움, 함초롬돋움, 나눔고딕…) Nanum Gothic
+(`@fontsource/nanum-gothic`, OFL, imported by `DocxPanel`). Each name gets
+copies of the stand-in's `@font-face` rules with the installed font first
+(`local()` by its Korean and English names), so a computer with 바탕 or 맑은 고딕
+uses the real font, and an `odx-ea:<name>` copy limited to Hangul, kana and
+Han. A name's faces are added the first time the editor draws it
+(`setFontProvider`); each name has some 180 faces and a document uses a few.
+Both
 panels are `components/office/OfficePanel.tsx` (`useOfficeDocument` holds the
 load, save, 409, reload-on-new-version and ask-before-send logic) around their
 editor; on a phone the Word editor is read only, without its ribbon.
