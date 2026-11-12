@@ -156,10 +156,12 @@ from app.services import report as report_service
 from app.services import research as research_service
 from app.services.context import (
     build_messages,
+    carried_pastes,
     conversation_language,
     declines_web_search,
     effective_window,
     envelope_tokens,
+    estimate_tokens,
     fit_history,
     history_budget,
     is_small_talk,
@@ -1925,6 +1927,10 @@ def _summary_context_step(dropped: int, *, summarised: bool) -> dict:
         "summarisedTurns": dropped,
         "summarised": summarised,
     }
+
+
+#: share of the history budget the excerpts of cut pastes may take (`carried_pastes`)
+_CARRIED_SHARE = 0.25
 
 
 def _memory_text(summary: dict | None) -> str | None:
@@ -5399,11 +5405,18 @@ async def _send_message(
             envelope([question], economy=routed_down),
             None if routed_down else tool_definitions,
         )
-        kept, dropped = fit_history(
-            wire_history[:-1],
-            history_budget(window, fixed),
-            keep_from=_summary_anchor(session.summary, history),
-        )
+        budget = history_budget(window, fixed)
+        anchor = _summary_anchor(session.summary, history)
+        kept, dropped = fit_history(wire_history[:-1], budget, keep_from=anchor)
+        # material pasted into the cut requests is carried, excerpted, like an earlier file
+        carried = carried_pastes(
+            dropped, str(question.get("content") or ""), int(budget * _CARRIED_SHARE * 1.4)
+        ) if dropped else ""
+        if carried:
+            untrusted_context = [*untrusted_context, carried]
+            kept, dropped = fit_history(
+                wire_history[:-1], max(0, budget - estimate_tokens(carried)), keep_from=anchor
+            )
         if dropped:
             routed = bool(cost_route and cost_route.get("decision") == "routed")
             summary_text, pinned_memory, summary_credits = await _conversation_summary(

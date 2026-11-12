@@ -2146,7 +2146,10 @@ once the model is final. Every model has one (`context.effective_window`): the
 window its catalogue row states (LiteLLM metadata or a `MODEL_OVERRIDES`
 `context_window`), else `DEFAULT_CONTEXT_WINDOW` (128k tokens) — most hosted
 models state none, and without it they were sent the whole conversation every
-turn. The attached-text budget follows the same window (`file_budget`). The fixed
+turn. The estimate below is calibrated on the self-hosted Qwen tokenizer; another
+model may count the same Korean text up to 1.4× higher (GLM), so outside the
+self-hosted group the window is read 1.5× smaller in the estimate's units. The
+attached-text budget follows the same window (`file_budget`). The fixed
 parts of the request — system turn, reference block, this turn's attachment and
 question, tool schemas — are counted with a deliberately high token estimate
 (`context.estimate_tokens`, about 1.2× the gateway's count on Qwen), an answer
@@ -2175,9 +2178,13 @@ rest — what was done, decided and left open — in the conversation's language
 user's own words). Both are cached on `sessions.summary` by the id of the last message
 they cover. A memory that could not be written is said so, never invented (the pinned
 items already kept still go); the turn's timeline shows how many messages were
-summarised; the cost settles as `chat.summary`. A prompt the provider still refuses
-for length is reported as `context_length_exceeded` with a sentence that says what to
-do.
+summarised; the cost settles as `chat.summary`. Material pasted into a request the cut
+dropped (2,000 characters or more, the newest three) is carried like an earlier upload
+(`context.carried_pastes`): excerpted around the current question with its end kept, in
+the reference block, within a quarter of the history budget — so a question about a long
+paste one turn later still reads the paste, not only its summary. A prompt the provider
+still refuses for length is reported as `context_length_exceeded` with a sentence that
+says what to do.
 
 The design block sits after the project's own instructions and before the
 skills: the look is a property of the project, and a skill switched on for this
