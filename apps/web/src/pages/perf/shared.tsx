@@ -1,11 +1,13 @@
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, OctagonAlert, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, OctagonAlert, RefreshCw } from 'lucide-react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Badge, Button, Card, PageHeader } from '@/components/ui'
+import { DataTable, SortHeader, useTableSort, type DataColumn } from '@/components/ui/DataTable'
 import type { PerfLevel, PerfOverview, PerfPoint, PerfRange } from '@/lib/api'
 import { currentLocale } from '@/lib/i18n'
+import { sortRows } from '@/lib/tableSort'
 import { useT } from '@/lib/useT'
 import { cn, formatDateTime } from '@/lib/utils'
 import { type Column, type Line, type PerfData, LEVEL_TONE, colorsOf, levelLabel, seriesOf, toLines } from './data'
@@ -347,33 +349,41 @@ export function Section({
   )
 }
 
-export function Table({ head, rows, empty }: { head: string[]; rows: React.ReactNode[][]; empty: string }) {
+/** Every heading sorts by the cell's figure (units understood); the first column by name. */
+export function Table({
+  head,
+  rows,
+  empty,
+  id,
+}: {
+  head: string[]
+  rows: React.ReactNode[][]
+  empty: string
+  /** Remembers the sort per table; defaults to the headings. */
+  id?: string
+}) {
+  const keyed = useMemo(() => rows.map((cells, i) => ({ cells, i })), [rows])
+  const columns = useMemo<DataColumn<{ cells: React.ReactNode[]; i: number }>[]>(
+    () =>
+      head.map((h, j) => ({
+        key: String(j),
+        label: h,
+        cell: (r) => r.cells[j],
+        align: j > 0 ? 'right' : 'left',
+        className: j === 0 ? 'break-all' : undefined,
+      })),
+    [head],
+  )
   if (rows.length === 0) return <p className="text-sm text-faint">{empty}</p>
   return (
-    <div className="overflow-x-auto rounded-card border border-line">
-      <table className="w-full min-w-[36rem] text-sm">
-        <thead className="bg-elevated text-left text-xs text-muted">
-          <tr>
-            {head.map((h, i) => (
-              <th key={`${h}-${i}`} className={cn('px-3 py-2 font-medium whitespace-nowrap', i > 0 && 'text-right')}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i} className="border-t border-line">
-              {r.map((c, j) => (
-                <td key={j} className={cn('px-3 py-2', j > 0 ? 'text-right tabular-nums whitespace-nowrap' : 'break-all')}>
-                  {c}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      id={id ?? `perf.${head.join('|')}`}
+      rows={keyed}
+      columns={columns}
+      rowKey={(r) => String(r.i)}
+      label={head[0]}
+      tableClassName="min-w-[36rem]"
+    />
   )
 }
 
@@ -395,19 +405,11 @@ export function SortableTable<R>({
   empty: string
   label: string
 }) {
-  const t = useT()
-  const [sort, setSort] = useState(defaultSort)
+  const [sort, onSort] = useTableSort(`perf.${label}`, { keys: columns.map((c) => c.key), initial: defaultSort })
   const sorted = useMemo(() => {
+    if (!sort) return rows
     const col = columns.find((c) => c.key === sort.key) ?? columns[0]
-    const sign = sort.dir === 'asc' ? 1 : -1
-    return [...rows].sort((a, b) => {
-      const x = col.sort(a)
-      const y = col.sort(b)
-      // Missing values last either way.
-      if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1
-      if (typeof x === 'number' && typeof y === 'number') return (x - y) * sign
-      return String(x).localeCompare(String(y), currentLocale()) * sign
-    })
+    return sortRows(rows, col.sort, sort.dir, currentLocale())
   }, [rows, columns, sort])
 
   if (rows.length === 0) return <p className="text-sm text-faint">{empty}</p>
@@ -416,38 +418,18 @@ export function SortableTable<R>({
       <table className="w-full text-sm" aria-label={label}>
         <thead className="bg-elevated text-left text-xs text-muted">
           <tr>
-            {columns.map((c, i) => {
-              const active = sort.key === c.key
-              return (
-                <th
-                  key={c.key}
-                  scope="col"
-                  aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-                  className={cn('font-medium whitespace-nowrap', i > 0 && 'text-right', i > 0 && !c.primary && 'max-sm:hidden')}
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSort(
-                        active
-                          ? { key: c.key, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
-                          : { key: c.key, dir: i === 0 ? 'asc' : 'desc' },
-                      )
-                    }
-                    title={t('정렬')}
-                    className={cn(
-                      'inline-flex min-h-9 items-center gap-1 px-3 py-2 hover:text-fg',
-                      i > 0 && 'flex-row-reverse',
-                      active && 'text-fg',
-                    )}
-                  >
-                    {c.label}
-                    {active &&
-                      (sort.dir === 'asc' ? <ArrowUp size={12} aria-hidden /> : <ArrowDown size={12} aria-hidden />)}
-                  </button>
-                </th>
-              )
-            })}
+            {columns.map((c, i) => (
+              <SortHeader
+                key={c.key}
+                label={c.label}
+                columnKey={c.key}
+                sort={sort}
+                onSort={onSort}
+                first={i === 0 ? 'asc' : 'desc'}
+                align={i > 0 ? 'right' : 'left'}
+                className={cn('px-3 py-2', i > 0 && !c.primary && 'max-sm:hidden')}
+              />
+            ))}
           </tr>
         </thead>
         <tbody>

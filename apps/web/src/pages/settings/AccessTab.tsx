@@ -2,6 +2,7 @@ import { Loader2, LogOut, MapPin, Monitor, ShieldAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge, Button, Card, ConfirmDialog } from '@/components/ui'
 import { Pager } from '@/components/ui/Pager'
+import { DataTable } from '@/components/ui/DataTable'
 import {
   accessApi,
   errorMessage,
@@ -211,7 +212,9 @@ function ActiveSessions() {
   )
 }
 
-/** Twenty a page, newest first. */
+const accessFailed = (e: AccessEventRow) => e.detail === 'failed' || e.severity === 'warn'
+
+/** Twenty a page, newest first; a heading sorts the page shown. */
 function AccessLog() {
   const t = useT()
   const [page, setPage] = useState(1)
@@ -249,57 +252,66 @@ function AccessLog() {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-base">
-              <thead className="border-b border-line text-left text-xs tracking-wide text-faint uppercase">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">{t('시각')}</th>
-                  <th className="px-4 py-2.5 font-medium">{t('행위')}</th>
-                  <th className="px-4 py-2.5 font-medium">{t('접속 위치')}</th>
-                  <th className="px-4 py-2.5 font-medium">{t('브라우저')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {rows.map((e) => {
-                  const failed = e.detail === 'failed' || e.severity === 'warn'
-                  return (
-                    <tr key={e.id} className="hover:bg-elevated">
-                      <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-muted">
-                        {formatDateTime(e.at)}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        {failed ? (
-                          <Badge tone="warn">
-                            <ShieldAlert size={10} />
-                            {t('로그인 실패')}
-                          </Badge>
-                        ) : (
-                          t(ACTION_LABEL[e.action] ?? e.action)
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 text-sm whitespace-nowrap">
-                        <span className="font-mono text-xs tabular-nums text-faint">
-                          {e.ip || t('주소 없음')}
-                        </span>
-                        {e.region && (
-                          <span className="ml-2 inline-flex items-center gap-1 text-muted">
-                            <MapPin size={11} className="text-faint" />
-                            {t(e.region)}
-                          </span>
-                        )}
-                      </td>
-                      <td
-                        className="px-4 py-2.5 text-sm whitespace-nowrap text-muted"
-                        title={e.userAgent}
-                      >
-                        {browserName(e.userAgent) || t('알 수 없음')}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            id="settings.access"
+            rows={rows}
+            rowKey={(e) => e.id}
+            label={t('접속 기록')}
+            className="rounded-none border-0"
+            tableClassName="text-base"
+            headClassName="border-b border-line text-xs tracking-wide text-faint uppercase bg-panel"
+            cellClassName="px-4 py-2.5"
+            rowClassName={() => 'hover:bg-elevated'}
+            columns={[
+              {
+                key: 'at',
+                label: t('시각'),
+                first: 'desc',
+                value: (e) => e.at,
+                className: 'whitespace-nowrap tabular-nums text-muted',
+                cell: (e) => formatDateTime(e.at),
+              },
+              {
+                key: 'action',
+                label: t('행위'),
+                value: (e) => (accessFailed(e) ? t('로그인 실패') : t(ACTION_LABEL[e.action] ?? e.action)),
+                className: 'whitespace-nowrap',
+                cell: (e) =>
+                  accessFailed(e) ? (
+                    <Badge tone="warn">
+                      <ShieldAlert size={10} />
+                      {t('로그인 실패')}
+                    </Badge>
+                  ) : (
+                    t(ACTION_LABEL[e.action] ?? e.action)
+                  ),
+              },
+              {
+                key: 'ip',
+                label: t('접속 위치'),
+                value: (e) => e.ip || null,
+                className: 'text-sm whitespace-nowrap',
+                cell: (e) => (
+                  <>
+                    <span className="font-mono text-xs tabular-nums text-faint">{e.ip || t('주소 없음')}</span>
+                    {e.region && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-muted">
+                        <MapPin size={11} className="text-faint" />
+                        {t(e.region)}
+                      </span>
+                    )}
+                  </>
+                ),
+              },
+              {
+                key: 'browser',
+                label: t('브라우저'),
+                value: (e) => browserName(e.userAgent) || null,
+                className: 'text-sm whitespace-nowrap text-muted',
+                cell: (e) => <span title={e.userAgent}>{browserName(e.userAgent) || t('알 수 없음')}</span>,
+              },
+            ]}
+          />
         </Card>
       )}
       {data && data.total > EVENTS_PER_PAGE && (

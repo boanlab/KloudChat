@@ -1,8 +1,10 @@
 /** Dictionary keyed on the Korean source string; missing entries render the Korean. */
+import { EN_UI } from './i18nUi'
 
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  ...EN_UI,
   // Unsaved changes, admin system status
   '이 화면을 떠나면 바꾼 내용이 사라집니다.': 'Leaving this screen drops the changes made here.',
   '설정을 불러오지 못했습니다. 잠시 후 다시 시도하세요.': 'Could not load the settings. Try again shortly.',
