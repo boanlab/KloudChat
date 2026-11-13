@@ -1,6 +1,7 @@
-"""Office document artifacts (HWP, Word) over HTTP: create one (blank, or from an uploaded
-file), fetch a version's file for the editor, and save the editor's file as a new version.
-`hwp.py` and `docx.py` each mount one set."""
+"""Office document artifacts (HWP, Word, PowerPoint) over HTTP: create one (blank, or from an
+uploaded file), fetch a version's file for the editor, save the editor's file as a new
+version, and give a document with no conversation one to be edited beside. `hwp.py`,
+`docx.py` and `pptx.py` each mount one set."""
 
 from __future__ import annotations
 
@@ -28,6 +29,10 @@ class DocumentCreate(Wire):
     project_id: str | None = None
     #: an uploaded file to open; none = a blank page
     file_id: str | None = None
+
+
+class DocumentSession(Wire):
+    session_id: str
 
 
 @dataclass(frozen=True)
@@ -150,9 +155,10 @@ def router_for(spec: Routes) -> APIRouter:
             if len(body) > limit:
                 raise _too_large()
         try:
+            # the editor names its saves in the person's language; this only when it sent none
             artifact = await office_doc.save(
                 db, kind, artifact, bytes(body), expected=expected_version,
-                summary=summary or "편집기에서 저장",
+                summary=summary or office_doc.EDITOR_SAVE,
             )
         except office_doc.Conflict:
             raise _conflict() from None
@@ -161,6 +167,28 @@ def router_for(spec: Routes) -> APIRouter:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"not_a_{kind.editable}_file",
             ) from None
+        return ArtifactOut.of(artifact)
+
+    @router.post(f"/artifacts/{{artifact_id}}/{spec.slug}/session", response_model=ArtifactOut)
+    async def attach_session(
+        artifact_id: str, payload: DocumentSession, user: CurrentUser, db: DbSession
+    ):
+        """A document with no conversation (made outside one, or its conversation is gone)
+        joins `sessionId`, a new chat to edit it beside; one already in a conversation stays
+        there (409), as its agent's turns and history belong to it."""
+        artifact = await document(db, user, artifact_id)
+        session = await _own(db, ChatSession, "user_id", user, payload.session_id)
+        if artifact.session_id and artifact.session_id != session.id:
+            current = await db.get(ChatSession, artifact.session_id)
+            if current is not None and current.user_id == user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, detail="already_in_a_conversation"
+                )
+        artifact.session_id = session.id
+        artifact.project_id = artifact.project_id or session.project_id
+        db.add(artifact)
+        await db.commit()
+        await db.refresh(artifact)
         return ArtifactOut.of(artifact)
 
     return router
