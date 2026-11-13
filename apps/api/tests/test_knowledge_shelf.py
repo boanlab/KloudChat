@@ -543,3 +543,21 @@ def test_a_glossary_keeps_only_the_sources_own_terms():
     doc = studio_kinds.document("glossary", data, 1, "ko", sources)
     body = doc["sections"][0]["content"]
     assert "맵리듀스" in body and "벡터 시계" in body and "인수 일관성" not in body
+
+
+def test_project_files_given_whole_are_numbered_for_citation():
+    from app.services import agent
+
+    sources = ["https://example.com/a"]  # an earlier answer's [1]
+    messages = [{"role": "system", "content": "프로젝트 지식 …"},
+                {"role": "user", "content": "벡터 시계는?"}]
+    names = ["03강 논리 시계.pdf", "래프트 강의.mp4", "03강 논리 시계.pdf"]
+    numbered = agent._with_material_numbers(messages, sources, names)
+    note = numbered[1]
+    assert note["role"] == "system" and numbered[2]["role"] == "user"
+    assert "[2] 03강 논리 시계.pdf" in note["content"] and "[3] 래프트 강의.mp4" in note["content"]
+    assert sources[1:] == [agent.MATERIAL_SOURCE + "03강 논리 시계.pdf",
+                           agent.MATERIAL_SOURCE + "래프트 강의.mp4"]
+    # a material citation keeps its plain number, which the source list names
+    linked, cited = agent._link_citations("동시성을 판단한다 [2].", sources)
+    assert linked == "동시성을 판단한다 [2]." and cited == [2]

@@ -637,8 +637,9 @@ async def test_project_files_join_the_search_shelf_and_a_shared_agents_vectors_s
         async def exec(self, _query):
             return Result(self.rows)
 
-        async def get(self, _model, _row_id):
-            return self.project
+        async def get(self, model, _row_id):
+            # the conversation's source switches (지식 서가): none stored, all sources on
+            return None if model.__name__ == "SourceSelection" else self.project
 
     me = User(
         id="me", email="me@example.com", password_hash="x", name="Me",

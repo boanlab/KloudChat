@@ -2760,7 +2760,11 @@ holds a summary, key topics and suggested questions, written in the background b
 strict-local guide model (`KNOWLEDGE_GUIDE_MODEL`) the first time someone opens one and kept
 until the material's signature (ids and text lengths) changes; a per-file digest
 (`files.digest`, when present) fills the summary meanwhile. A chat answer that cites project
-material ends with a source list of names (`agent._number_sources`); the web links its
+material ends with a source list of names: the project files a turn was given are numbered
+as material sources before any search (`agent._with_material_numbers`, from the context's
+`knowledge` fates, after the numbers earlier answers used), a system note tells the writer
+which number is which file, and search passages (`agent._number_sources`) number on after
+them; material citations keep their plain `[n]` and the server lists them by name. The web links its
 inline `[n]` to the source viewer, which asks `GET /projects/{id}/shelf/locate` for the
 passage closest to the citing sentence (`shelf_sources.locate`: lexical chunk score, then
 the best sentence), its page from `[페이지 n]` marks and, for a transcript, its

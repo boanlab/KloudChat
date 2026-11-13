@@ -1248,6 +1248,30 @@ _LISTED_SOURCE = re.compile(r"^\s{0,3}[-*]\s{1,3}\[(\d{1,2})\]\s{1,3}(?:\[([^\]\
 _MEMORY_NOTES = ("기억으로 적은", "written from memory")
 
 
+_MATERIAL_NOTE = (
+    "# Citing project files\n"
+    "The project files above are numbered for citation:\n{listed}\n"
+    "After a statement taken from one of them, put its number in square brackets, like "
+    "{example}. Use only these numbers for these files.\n"
+    "예: 「벡터 시계로 동시성을 판단할 수 있습니다 {example}.」"
+)
+
+
+def _with_material_numbers(messages: list[dict[str, Any]], sources: list[str],
+                           names: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:
+    """`messages` with the turn's project files numbered as material sources (after the numbers
+    earlier answers used) and a system note saying which number is which file."""
+    numbered = [(_source_number(MATERIAL_SOURCE + name, sources), name)
+                for name in dict.fromkeys(n for n in names if n)]
+    if not numbered:
+        return messages
+    note = _MATERIAL_NOTE.format(
+        listed="\n".join(f"[{n}] {name}" for n, name in numbered),
+        example=f"[{numbered[0][0]}]")
+    at = next((i for i, m in enumerate(messages) if m.get("role") != "system"), len(messages))
+    return [*messages[:at], {"role": "system", "content": note}, *messages[at:]]
+
+
 def _earlier_sources(messages: list[dict[str, Any]]) -> tuple[list[str], dict[str, str]]:
     """`(sources, titles)` as earlier answers numbered them (their 「### 출처」 lists and
     `[[n]](url)` links, a later answer's number winning), "" for a number not known; so this
@@ -1664,6 +1688,9 @@ async def run_turn(
     #: A turned-on skill searches deep (`process.deep_search`): twice the searches, as a
     #: document's research does.
     deep_search: bool = False,
+    #: Project files the context gave whole or in part, by name: numbered as material sources
+    #: before any search, so the answer cites them 「[n]」 and lists them by name under it.
+    cited_material: list[str] | tuple[str, ...] = (),
 ) -> AsyncIterator[dict[str, Any]]:
     """One assistant turn to a final answer; exactly one `usage`, `done` left to caller."""
     search_scale = 2 if deep_search else 1
@@ -1811,6 +1838,8 @@ async def run_turn(
     #: turn that cites 「[6]」 again means the same source); "" where an
     #: earlier number is unknown.
     sources, source_titles = _earlier_sources(messages)
+    if cited_material:
+        messages = _with_material_numbers(messages, sources, cited_material)
     #: what the writer read under each URL this turn (title, snippet, excerpt)
     source_seen: dict[str, str] = {}
     #: URLs earlier answers gave (not those they already flagged): found then, not written
