@@ -3831,7 +3831,6 @@ const EN: Record<string, string> = {
 
 
   '검토': 'Review',
-  '{n}쪽 즈음': 'around page {n}',
   '그림을 넣을까요?': 'Add figures?',
   '이 대목 고치기': 'Fix this',
   '검색으로 뒷받침되지 않았습니다': 'search did not support it',

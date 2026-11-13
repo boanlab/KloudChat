@@ -29,7 +29,7 @@ import { docToMarkdown, docToSections, markdownToDoc, sectionOutline, sectionsTo
 import {
   A4_HEIGHT_PX,
   A4_WIDTH_PX,
-  usePagination,
+  useSheet,
 } from '@/components/report/usePagination'
 import {
   designTemplatesApi,
@@ -43,28 +43,6 @@ import { useT } from '@/lib/useT'
 import { scopePagedStyles } from '@/components/report/scopePagedStyles'
 import { DEFAULT_PAGE_SETTINGS, pagedSheetCss, type PageSettings } from '@/components/report/pagedSheet'
 import { PLACEHOLDER_CSS, markPlaceholders } from '@/lib/placeholders'
-
-/** Estimated page-break guides over the continuous sheet. */
-function PageGuides({ breaks }: { breaks: number[] }) {
-  const t = useT()
-  if (!breaks.length) return null
-  return (
-    <div aria-hidden className="pointer-events-none absolute inset-0">
-      {breaks.map((top, i) => (
-        <div
-          key={i}
-          data-page-break={i + 2}
-          className="absolute inset-x-0 border-t border-dashed border-line/80"
-          style={{ top }}
-        >
-          <span className="absolute -top-4 right-3 rounded bg-panel/90 px-1.5 text-[10px] text-faint">
-            {t('{n}쪽 즈음').replace('{n}', String(i + 2))}
-          </span>
-        </div>
-      ))}
-    </div>
-  )
-}
 
 const escapePagedText = (text: string) => text
   .replace(/&/g, '&amp;')
@@ -322,7 +300,7 @@ export function DocumentEditor({
   const [draft, setDraft] = useState<ReportSection[] | null>(null)
   const [revision, setRevision] = useState(0)
   const sections = draft ?? report.sections
-  const { usable, height, breaks } = usePagination(page, `${style?.css.length ?? 0}:${revision}:${sourceMode}`)
+  const { usable, height } = useSheet(page, `${style?.css.length ?? 0}:${revision}:${sourceMode}`)
   const viewport = useRef<HTMLDivElement>(null)
   // Viewport mounts after loading returns: observer armed from a callback ref.
   const [viewportNode, setViewportNode] = useState<HTMLDivElement | null>(null)
@@ -743,7 +721,6 @@ export function DocumentEditor({
               </div>
             </DocumentShell>
           </div>
-          <PageGuides breaks={breaks} />
           </div>
         </div>
         </div>

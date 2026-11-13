@@ -698,6 +698,9 @@ drawn fences (mermaid, chart, kpi, steps, cards, callout; shown drawn, edited as
 text), rules, page breaks (`<!-- pagebreak -->`), and `[n]` citations and `[빈칸]`
 blanks as plain text. Selecting, deleting and merging across a section boundary
 works because it is one document; typing a new `##` heading starts a section.
+The edit view does not guess where pages break: the only page marks there are the
+person's own breaks, drawn as a labelled 「쪽 나누기」 line. Exact pages and page
+counts are the page view's (Paged.js) and the exported files'.
 
 On save the document is serialised (`blocksToMarkdown`, minimal escaping so `[1]`
 and `[담당자]` stay as typed) and split at its section headings (`docToSections`).
