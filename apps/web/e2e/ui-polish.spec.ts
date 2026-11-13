@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
-import { composerFixture } from './composer-fixture'
+import { chatId, composerFixture } from './composer-fixture'
 import { shellRead } from './shell-mocks'
 
 /**
@@ -363,4 +363,22 @@ test('pending sign-ups are approved together from a selection', async ({ page },
   expect(fx.decided).toEqual(['approve p1', 'approve p2'])
   await expect(bar).toBeHidden()
   expect(fx.unexpected).toEqual([])
+})
+
+test('a table in an answer sorts by its headings and goes back to the written order', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info, { skills: false, agents: false, connectors: false })
+  await page.goto(`/s/${chatId}`)
+  const table = page.getByRole('table').filter({ hasText: '지원 규모' })
+  await expect(table).toBeVisible({ timeout: 15_000 })
+  const first = () => table.locator('tbody tr').first().locator('td').first()
+  await expect(first()).toHaveText('지원 규모')
+  const heading = table.getByRole('columnheader', { name: '항목' })
+  await heading.getByRole('button').click()
+  await expect(heading).toHaveAttribute('aria-sort', 'ascending')
+  await expect(first()).toHaveText('수행 기간')
+  await heading.getByRole('button').click()
+  await heading.getByRole('button').click()
+  await expect(heading).toHaveAttribute('aria-sort', 'none')
+  await expect(first()).toHaveText('지원 규모')
+  expect(unexpected).toEqual([])
 })
