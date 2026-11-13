@@ -144,10 +144,15 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
         fileWrites.push(`${method} ${path}`)
         return route.fulfill({ status: 405, json: { detail: 'not here' } })
       }
-      if (path === '/files') return json([{
+      const row = {
         id: box.id, name: box.name, size: (box.boxFile ?? options.file).length, mime, tokens: 10,
         projectId: null, sessionId: null, preview: '', error: null, origin: 'upload', createdAt: at,
-      }])
+      }
+      if (path === '/files') return json([row])
+      // the file box pages on the server
+      if (path === '/files/page') {
+        return json({ items: [row], total: 1, next: null, counts: { upload: 1, generated: 0 } })
+      }
       if (path === `/files/${box.id}/content`) {
         return route.fulfill({ body: box.boxFile ?? options.file, contentType: 'application/octet-stream' })
       }

@@ -13,8 +13,6 @@ export const useUnsaved = create<{ dirty: Record<string, boolean>; mark: (key: s
 /** Office documents mark themselves `office:<id>`; their own guard asks about them. */
 const isOffice = (key: string) => key.startsWith('office:')
 
-/** Anything marked unsaved right now; read outside render (click handlers). */
-export const anyUnsaved = () => Object.values(useUnsaved.getState().dirty).some(Boolean)
 
 /** Unsaved forms other than office documents, right now. */
 export const formsUnsaved = () =>

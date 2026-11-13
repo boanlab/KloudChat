@@ -1720,9 +1720,11 @@ Hand edits in an office editor live only in the browser until 저장, so nothing
 that would drop them does so unasked. `lib/officeGuard.ts` holds every open
 document's guard (its unsaved state, a fresh read of it, the question, a plain
 save). Closing the panel or opening another artifact (`openArtifact`), a new
-conversation from the chat (`newSession`), another page (`OfficeLeaveGuard` in
-`App.tsx`, a `useBlocker` on a data router whose one catch-all route renders
-the old `<Routes>`), the new-version bar's reload and the automatic reload after
+conversation from the chat (`newSession`), another page (`UnsavedLinkGuard`,
+a `useBlocker` on a data router whose one catch-all route renders the old
+`<Routes>`; it covers links, router moves and browser Back, and after the office
+question asks 머물기 / 버리고 옮기기 for any other unsaved form, so one move asks
+each once), the new-version bar's reload and the automatic reload after
 a deploy's missing chunk (`vite:preloadError` in `main.tsx`) all ask first:
 저장, 버리기 or 취소, and the move waits for the answer. A tab close or reload
 gets the browser's own prompt (`useMarkUnsaved`, which reads the state as the
