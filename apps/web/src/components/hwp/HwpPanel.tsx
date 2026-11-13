@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { saveBlob } from '@/components/artifacts/artifactExport'
 import type { PanelMode } from '@/components/artifacts/PanelControls'
 import { safePage } from '@/components/files/officePreview'
+import { lazyPages, type LazyPages } from '@/components/hwp/lazyPages'
 import { OfficePanel } from '@/components/office/OfficePanel'
 import {
   fileStem, readOnlyAt, useOfficeDocument, type OfficeEditor,
@@ -22,8 +23,6 @@ const DIRTY_POLL_MS = 1500
 const DIRTY_AFTER_INPUT_MS = 200
 /** Longer than this, and the editor is taken as not starting (said so, with a retry). */
 export const START_TIMEOUT_MS = 60_000
-/** Pages drawn to read on a phone; the rest are in the download. */
-const MAX_PAGES = 30
 
 const ZIP = [0x50, 0x4b, 0x03, 0x04]
 
@@ -56,49 +55,37 @@ function startEditor(host: HTMLElement, ms: number, late: string): Promise<RhwpE
 
 /**
  * The document's pages as the editor draws them, to read on a phone: the editor itself stays
- * mounted (loads, downloads and the agent's versions go through it) but takes no input.
+ * mounted (loads, downloads and the agent's versions go through it) but takes no input. Every
+ * page is there, each drawn as the reader scrolls to it (`lazyPages`).
  */
 function HwpPages({ editor, version }: { editor: RhwpEditor; version: number }) {
   const t = useT()
   const pages = useRef<HTMLDivElement>(null)
-  const [more, setMore] = useState(0)
+  const scroller = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const sheets = pages.current!
     let gone = false
+    let laid: LazyPages | null = null
     const draw = async () => {
       const count = await editor.pageCount()
-      const shown = Math.min(count, MAX_PAGES)
-      const drawn: HTMLElement[] = []
-      for (let page = 0; page < shown; page += 1) {
-        const svg = safePage(await editor.getPageSvg(page, { profile: 'screen' }))
-        if (gone) return
-        if (!svg) continue
-        svg.removeAttribute('width')
-        svg.removeAttribute('height')
-        svg.setAttribute('role', 'img')
-        svg.setAttribute('aria-label', t('{n}쪽').replace('{n}', String(page + 1)))
-        const sheet = document.createElement('div')
-        sheet.className = 'w-full max-w-[800px] bg-white shadow-sm ring-1 ring-black/10 [&>svg]:block [&>svg]:h-auto [&>svg]:w-full'
-        sheet.dataset.hwpPage = String(page + 1)
-        sheet.append(svg)
-        drawn.push(sheet)
-      }
-      sheets.replaceChildren(...drawn)
-      setMore(count - shown)
+      if (gone) return
+      laid = lazyPages(
+        sheets,
+        scroller.current,
+        count,
+        async (page) => safePage(await editor.getPageSvg(page, { profile: 'screen' })),
+        (n) => t('{n}쪽').replace('{n}', String(n)),
+      )
     }
     draw().catch(() => undefined)
     return () => {
       gone = true
+      laid?.stop()
     }
   }, [editor, version, t])
   return (
-    <div className="absolute inset-0 z-[1] overflow-auto bg-elevated" data-hwp-pages="">
+    <div ref={scroller} className="absolute inset-0 z-[1] overflow-auto bg-elevated" data-hwp-pages="">
       <div ref={pages} className="flex flex-col items-center gap-3 p-2" />
-      {more > 0 && (
-        <p className="pb-4 text-center text-sm text-faint">
-          {t('앞 {n}쪽만 보여 줍니다. 나머지는 편집기나 내려받은 파일에서 보세요.').replace('{n}', String(MAX_PAGES))}
-        </p>
-      )}
     </div>
   )
 }
