@@ -443,3 +443,32 @@ test('an empty slides session reopened later (an agent\'s start) offers the same
   await expect(page.getByRole('button', { name: '빈 문서로 시작' })).toBeVisible()
   expect(unexpected).toEqual([])
 })
+
+test('the outline card shows the report\'s file and sends a changed one with the approval', async ({ page }, info) => {
+  const { unexpected, sends } = await composerFixture(page, info, { skills: false, agents: false, connectors: false })
+  const id = 'c0000000000000000000000000000079'
+  const waiting = {
+    id, kind: 'report', title: '실적 보고서', model: 'fixture/model', routingMode: 'manual', projectId: null, agentId: null,
+    artifactId: null, skillIds: [], renderTemplateId: null, pinned: false, messageCount: 1,
+    createdAt: '2026-10-09T07:00:00.000Z', updatedAt: '2026-10-09T07:00:00.000Z', preview: null, made: null,
+    messages: [{ id: 'm0000000000000000000000000000079', role: 'user', content: '3분기 실적 보고서', attachments: [],
+      createdAt: '2026-10-09T07:00:00.000Z' }],
+    pending: { stage: 'outline', request: '3분기 실적 보고서', attachments: [], answers: {}, output: 'hwp',
+      plan: { title: '3분기 실적', sections: ['개요', '실적', '전망'] } },
+  }
+  await page.route('**/api/sessions', (route) => route.request().method() === 'GET' ? route.fulfill({ json: [waiting] }) : route.fallback())
+  await page.route(`**/api/sessions/${id}`, (route) => route.request().method() === 'GET' ? route.fulfill({ json: waiting }) : route.fallback())
+  await page.route(`**/api/sessions/${id}/messages`, (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: waiting.messages })
+    sends.push({ path: `/sessions/${id}/messages`, body: route.request().postDataJSON() })
+    return route.fulfill({ contentType: 'text/event-stream', body: 'data: {"type":"done"}\n\n' })
+  })
+  await page.goto(`/s/${id}`)
+  const format = page.getByRole('combobox', { name: '형식' })
+  await expect(format).toHaveValue('hwp', { timeout: 15_000 })
+  await format.selectOption('docx')
+  await page.getByRole('button', { name: '이대로 생성' }).click()
+  await expect.poll(() => sends.at(-1)?.body.outputFormat).toBe('docx')
+  expect(sends.at(-1)?.body.approve).toBe(true)
+  expect(unexpected).toEqual([])
+})
