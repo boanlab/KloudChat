@@ -45,6 +45,9 @@ class Kind:
     describe: Callable[[bytes, str], dict[str, Any]]
 
 
+#: a hand save's version summary when the editor sent none (it sends one in the UI language)
+EDITOR_SAVE = "편집기에서 저장"
+
 #: `Artifact.data` key naming the file-box file a document was opened from (its copy's origin)
 SOURCE_KEY = "sourceFileId"
 

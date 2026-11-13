@@ -299,14 +299,30 @@ function MessageItemInner({
 
   const refreshArtifact = useStore((s) => s.refreshArtifact)
   const openArtifact = useStore((s) => s.openArtifact)
-  /** Opens an attached `.hwp`/`.hwpx` or `.docx` in its editor beside this chat, as it is. */
-  const openInEditor = async (kind: OfficeKind, id: string) => {
+  /** The copy opened in this chat earlier, reopened from the attachment: a new one only on request. */
+  const [reopened, setReopened] = useState<{ kind: OfficeKind; id: string } | null>(null)
+  /**
+   * Opens an attached `.hwp`/`.hwpx`, `.docx` or `.pptx` in its editor beside this chat: the
+   * copy already opened in this chat when there is one (`fresh`: a new copy regardless).
+   */
+  const openInEditor = async (kind: OfficeKind, id: string, fresh = false) => {
     setFileError(null)
     setOpening(`${kind}:${id}`)
     try {
+      if (!fresh) {
+        const copies = await filesApi.documents(id).catch(() => [])
+        const earlier = copies.find((doc) => doc.kind === kind && doc.sessionId === sessionId)
+        if (earlier) {
+          await refreshArtifact(earlier.id)
+          openArtifact(earlier.id)
+          setReopened({ kind, id })
+          return
+        }
+      }
       const made = await artifactsApi.createDocument(kind, { sessionId, fileId: id })
       await refreshArtifact(made.id)
       openArtifact(made.id)
+      setReopened(null)
     } catch (err) {
       const failed = {
         hwp: '이 파일을 한글 편집기로 열지 못했습니다.',
@@ -440,6 +456,17 @@ function MessageItemInner({
                       <FileType size={13} />
                     )}
                     {t(OPEN_IN[editable])}
+                  </Button>
+                )}
+                {editable && reopened?.id === a.id && reopened.kind === editable && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    title={t('이 대화에서 연 사본을 다시 열었습니다. 새 사본을 따로 만듭니다.')}
+                    disabled={opening === `${editable}:${a.id}`}
+                    onClick={() => void openInEditor(editable, a.id!, true)}
+                  >
+                    {t('새 사본으로 열기')}
                   </Button>
                 )}
                 {hangul && (

@@ -1,10 +1,13 @@
 import { Loader2 } from 'lucide-react'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
-import { Navigate, Route, BrowserRouter as Router, Routes, useLocation, useNavigate } from 'react-router-dom'
+import {
+  createBrowserRouter, Navigate, Route, RouterProvider, Routes, useBlocker, useLocation, useNavigate,
+} from 'react-router-dom'
 import { RoleRoute } from '@/components/auth/RoleRoute'
 import { AppShell } from '@/components/layout/AppShell'
 import { NewVersionBar } from '@/components/layout/NewVersionBar'
 import { setBotEmbedded } from '@/lib/api'
+import { leaveOffice, officeDirty } from '@/lib/officeGuard'
 import { SHARED_AGENTS_PATH } from '@/lib/publishing'
 import { kindOrder } from '@/lib/kinds'
 import { HomePage } from '@/pages/HomePage'
@@ -255,16 +258,38 @@ function Authenticated() {
   )
 }
 
-export default function App() {
-  const bootstrap = useStore((s) => s.bootstrap)
-
-  // Access token is memory-only: a reload asks the refresh cookie (not in an embed frame).
+/**
+ * Another page while an office document beside the chat holds unsaved edits (a link, the
+ * sidebar, the browser's back): the document asks to save or drop them first, and the move
+ * waits for the answer.
+ */
+function OfficeLeaveGuard() {
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      currentLocation.pathname !== nextLocation.pathname && officeDirty(),
+  )
+  const asking = useRef(false)
+  const latest = useRef(blocker)
   useEffect(() => {
-    if (!window.location.pathname.startsWith('/embed/')) void bootstrap()
-  }, [bootstrap])
+    latest.current = blocker
+  })
+  useEffect(() => {
+    if (blocker.state !== 'blocked' || asking.current) return
+    asking.current = true
+    void leaveOffice().then((go) => {
+      asking.current = false
+      const now = latest.current
+      if (now.state !== 'blocked') return
+      if (go) now.proceed()
+      else now.reset()
+    })
+  }, [blocker.state])
+  return null
+}
 
+function Root() {
   return (
-    <Router>
+    <>
       <Suspense fallback={<Spinner />}>
         <Routes>
           {/* Share links and bots opened outside need no account, so these sit outside the auth gate. */}
@@ -276,6 +301,21 @@ export default function App() {
         </Routes>
       </Suspense>
       <NewVersionBar />
-    </Router>
+      <OfficeLeaveGuard />
+    </>
   )
+}
+
+// A data router, for `useBlocker`; the screens keep their own `<Routes>` under one catch-all.
+const router = createBrowserRouter([{ path: '*', element: <Root /> }])
+
+export default function App() {
+  const bootstrap = useStore((s) => s.bootstrap)
+
+  // Access token is memory-only: a reload asks the refresh cookie (not in an embed frame).
+  useEffect(() => {
+    if (!window.location.pathname.startsWith('/embed/')) void bootstrap()
+  }, [bootstrap])
+
+  return <RouterProvider router={router} />
 }

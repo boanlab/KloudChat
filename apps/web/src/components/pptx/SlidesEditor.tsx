@@ -609,7 +609,7 @@ interface Inserts {
 // ── the editor ──
 
 function Editor({
-  content, initialSlide, canEdit, label, apiRef, onDirty, onReady, onError, onSlide,
+  content, initialSlide, canEdit, label, apiRef, onDirty, onEdit, onReady, onError, onSlide,
 }: {
   content: Uint8Array
   initialSlide: number
@@ -617,6 +617,7 @@ function Editor({
   label: string
   apiRef: RefObject<SlidesApi | null>
   onDirty: (dirty: boolean) => void
+  onEdit: () => void
   onReady: () => void
   onError: (message: string) => void
   onSlide: (index: number) => void
@@ -846,6 +847,17 @@ function Editor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, blocks.error])
 
+  // Each change to the deck after it opened: the editor tells only when its unsaved flag
+  // flips, and a save must know of an edit made while it ran.
+  const seenSlides = useRef<unknown>(null)
+  useEffect(() => {
+    if (!loaded) return
+    if (seenSlides.current !== null && seenSlides.current !== sp.slides) onEdit()
+    seenSlides.current = sp.slides
+    // the deck's own changes only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, sp.slides])
+
   // Keys outside the inline editor: undo, redo, copy, cut, paste, duplicate, delete, B/I/U.
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
@@ -917,7 +929,8 @@ function Editor({
  * `content` is a new editor (its undo history belongs to the version it opened).
  */
 export function SlidesEditor({
-  content, version, initialSlide = 0, canEdit, label, apiRef, onDirty, onReady, onError, onSlide,
+  content, version, initialSlide = 0, canEdit, label, apiRef, onDirty, onEdit, onReady, onError,
+  onSlide,
 }: {
   content: Uint8Array
   /** Changes with each file loaded. */
@@ -928,6 +941,8 @@ export function SlidesEditor({
   label: string
   apiRef: RefObject<SlidesApi | null>
   onDirty: (dirty: boolean) => void
+  /** A change to the deck, however small (`onDirty` tells only when the unsaved flag flips). */
+  onEdit?: () => void
   onReady: () => void
   onError: (message: string) => void
   onSlide?: (index: number) => void
@@ -936,8 +951,8 @@ export function SlidesEditor({
   return (
     <PptxI18nProvider locale={lang === 'en' ? 'en' : 'ko'} translate={lang === 'en' ? english : translateKo}>
       <Editor key={version} content={content} initialSlide={initialSlide} canEdit={canEdit}
-        label={label} apiRef={apiRef} onDirty={onDirty} onReady={onReady} onError={onError}
-        onSlide={onSlide ?? noop} />
+        label={label} apiRef={apiRef} onDirty={onDirty} onEdit={onEdit ?? noop} onReady={onReady}
+        onError={onError} onSlide={onSlide ?? noop} />
     </PptxI18nProvider>
   )
 }

@@ -1711,6 +1711,52 @@ first, and the preview offers the newest whose chat still exists
 preview, like the editors, only reads. The `.hwpx` 「문서로 열기」 in a chat
 (`POST /files/{id}/open-as-document`, an HTML report session) is unchanged.
 
+### Unsaved office edits, phones, sharing
+
+Hand edits in an office editor live only in the browser until 저장, so nothing
+that would drop them does so unasked. `lib/officeGuard.ts` holds every open
+document's guard (its unsaved state, a fresh read of it, the question, a plain
+save). Closing the panel or opening another artifact (`openArtifact`), a new
+conversation from the chat (`newSession`), another page (`OfficeLeaveGuard` in
+`App.tsx`, a `useBlocker` on a data router whose one catch-all route renders
+the old `<Routes>`), the new-version bar's reload and the automatic reload after
+a deploy's missing chunk (`vite:preloadError` in `main.tsx`) all ask first:
+저장, 버리기 or 취소, and the move waits for the answer. A tab close or reload
+gets the browser's own prompt (`useMarkUnsaved`, which reads the state as the
+page goes, so an answer just given is not asked again). The idle sign-out asks
+nobody: it saves the open documents as a version first (bounded to 15 s), then
+signs out. Before an agent turn the question is as before, but "discard" sends
+only once the saved file is loaded back.
+
+A save clears the unsaved mark only for what it exported. The panel counts the
+edits the editor reports (`noteEdit`: Word's `onChange`, every change to the
+deck in PowerPoint), and HWP has its own count (`getDocumentState().changeSeq`);
+if the count moved while the save ran, the new version is saved but the mark
+stays. HWP's unsaved state is polled, so a send or a leave asks the studio
+anew, and a key or click inside the studio's frame (same origin) asks soon
+after, counts as activity for the idle sign-out (`noteActivity`), and Ctrl+S
+there is the header's 저장.
+
+At phone width every office editor reads only; HWP shows the studio's pages as
+SVG (as the file-box preview does) over the studio, which stays mounted but
+`inert`. A window narrowed over unsaved edits keeps the editor and 저장 until
+they are saved or dropped. A studio that does not start within 60 s, or a
+first load that failed, is offered again (다시 시도).
+
+Office panels share like the other artifacts (「이 아티팩트만 공유」). The shared
+page draws the document with the same read-only views as the file box
+(`components/files/OfficeView.tsx`), from `GET /shared/{token}/document` — the
+current version's file, under the same rules as the share's media route, not
+counted as a visit — with a download of that file; if it cannot be drawn, its
+extracted text. The shared body leaves out `sourceFileId` (an id of the
+owner's). The artifacts page draws an office document the same way, filters by
+한글/Word/PowerPoint, and opens it in the editor beside its chat; a document
+with no chat joins a new one (`POST /artifacts/{id}/{kind}/session`, refused
+with 409 for a document whose chat exists). An attachment's 「Word로 열기」 (and
+the HWP and PowerPoint ones) reopens the copy made from it in the same chat
+(`GET /files/{id}/documents`) and offers 「새 사본으로 열기」 for another. The
+version summary of a hand save is in the UI language.
+
 ### Sharing
 
 In the `shares` table **the token is the permission**: 43 random characters,

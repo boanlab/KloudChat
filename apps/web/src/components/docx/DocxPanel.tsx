@@ -9,7 +9,7 @@ import { saveBlob } from '@/components/artifacts/artifactExport'
 import type { PanelMode } from '@/components/artifacts/PanelControls'
 import { OfficePanel } from '@/components/office/OfficePanel'
 import {
-  fileStem, useOfficeDocument, type OfficeEditor,
+  fileStem, readOnlyAt, useOfficeDocument, type OfficeEditor,
 } from '@/components/office/useOfficeDocument'
 import { MenuItem } from '@/components/ui'
 import { errorMessage, OFFICE_MIME } from '@/lib/api'
@@ -24,7 +24,8 @@ import { aliasKoreanFonts } from './koreanFonts'
  * References, Review, View), beside the chat; versions, saves and the agent's turns as every
  * office document has them (`OfficePanel`). Its own chunk: the editor loads only when a Word
  * document opens. Ctrl+S is the header's 저장; File > Export and Print print the pages (a PDF
- * through the print dialog). On a phone it is read only.
+ * through the print dialog). On a phone it is read only (unless edits made at a wider width are
+ * still unsaved: they stay editable until saved or dropped).
  */
 export function DocxPanel({
   doc,
@@ -45,12 +46,13 @@ export function DocxPanel({
   const office = useRef<OfficeEditor | null>(null)
   const [ready, setReady] = useState(false)
   const state = useOfficeDocument('docx', doc, office, ready)
-  const { busy, dirtyRef, markDirty, setError } = state
+  const { dirtyRef, noteEdit, setError } = state
+  const readOnly = readOnlyAt(phone, state.dirty)
   const fileName = `${fileStem(doc.title)}.docx`
   // the editor's callbacks are set once; this keeps what they read current
-  const latest = useRef({ save: state.save, agentWorking: state.agentWorking, phone, t })
+  const latest = useRef({ save: state.save, agentWorking: state.agentWorking, readOnly, t })
   useEffect(() => {
-    latest.current = { save: state.save, agentWorking: state.agentWorking, phone, t }
+    latest.current = { save: state.save, agentWorking: state.agentWorking, readOnly, t }
   })
 
   useEffect(() => {
@@ -60,14 +62,12 @@ export function DocxPanel({
     const api = mountDocxEditor(el, {
       author,
       fileName,
-      readOnly: phone,
+      readOnly,
       locale: lang === 'en' ? 'en' : 'ko',
       // one artifact per panel: no File > New or Open
       features: { newDocument: false, openFile: false },
-      onChange: () => {
-        // a load is not an edit
-        if (!busy.current) markDirty(true)
-      },
+      // a load is not an edit (`noteEdit` knows); one made while a save runs stays unsaved
+      onChange: () => noteEdit(),
       // File > Create a Copy: a download, as the header's menu gives
       onSave: (bytes, name) =>
         saveBlob(new Blob([bytes as BlobPart], { type: OFFICE_MIME.docx }), name),
@@ -81,7 +81,7 @@ export function DocxPanel({
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 's') return
       event.preventDefault()
       const now = latest.current
-      if (!now.phone && !now.agentWorking && dirtyRef.current) void now.save()
+      if (!now.readOnly && !now.agentWorking && dirtyRef.current) void now.save()
     }
     el.addEventListener('keydown', saveKey)
     // File > Export and Print open the print dialog, which prints the pages: the app tree is not
@@ -147,8 +147,8 @@ export function DocxPanel({
 
   useEffect(() => {
     const api = editor.current
-    if (api && api.readOnly !== phone) api.setReadOnly(phone)
-  }, [phone, ready])
+    if (api && api.readOnly !== readOnly) api.setReadOnly(readOnly)
+  }, [readOnly, ready])
 
   const download = async () => {
     try {

@@ -1,16 +1,37 @@
-import { Download, FileType, History, Loader2, MoreHorizontal, Save } from 'lucide-react'
+import { Download, Eye, FileType, History, Loader2, MoreHorizontal, RotateCcw, Save, Share2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { PanelControls, usePanelWidth, type PanelMode } from '@/components/artifacts/PanelControls'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
+import { ShareButton } from '@/components/share/ShareButton'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, Modal } from '@/components/ui'
 import type { OfficeKind } from '@/lib/api'
 import { useT } from '@/lib/useT'
-import type { Doc, OfficeDocument } from './useOfficeDocument'
+import { readOnlyAt, type Doc, type OfficeDocument } from './useOfficeDocument'
+
+/** What the unsaved-edits question says, by why it is asked. */
+const ASK = {
+  send: {
+    description: '에이전트는 저장된 문서를 고칩니다. 지금 편집을 저장할까요, 버릴까요?',
+    discard: '버리고 보내기',
+    save: '저장하고 보내기',
+  },
+  leave: {
+    description: '이 문서를 떠나면 저장하지 않은 편집이 사라집니다. 저장할까요?',
+    discard: '버리기',
+    save: '저장',
+  },
+  reload: {
+    description: '새 버전을 쓰려면 페이지를 새로 고쳐야 합니다. 그 전에 지금 편집을 저장할까요?',
+    discard: '버리기',
+    save: '저장',
+  },
+} as const
 
 /**
- * The panel around an office editor: title, version, unsaved mark, 저장, the download menu
- * and version history, the notices, the lock while the agent works, and the question before
- * a turn is sent over unsaved edits. `children` is the editor's area.
+ * The panel around an office editor: title, version, unsaved mark, 저장, the download menu,
+ * sharing and version history, the notices (with a retry when the editor or the file did not
+ * open), the lock while the agent works, and the question over unsaved edits before a turn
+ * is sent or the document is left. `children` is the editor's area.
  */
 export function OfficePanel({
   kind,
@@ -19,6 +40,7 @@ export function OfficePanel({
   ready,
   failed,
   phone,
+  onRetry,
   downloads,
   onDownloadEdits,
   onClose,
@@ -31,6 +53,8 @@ export function OfficePanel({
   ready: boolean
   failed: string
   phone: boolean
+  /** Starts the editor again after it failed to (`failed`). */
+  onRetry?: () => void
   /** The download menu's items. */
   downloads: ReactNode
   /** The editor's current file, kept when a save lost or a newer version came in. */
@@ -42,25 +66,32 @@ export function OfficePanel({
   const t = useT()
   const width = usePanelWidth(onModeChange)
   const [history, setHistory] = useState<{ nonce: number } | null>(null)
+  const [sharing, setSharing] = useState(false)
   const { dirty, saving, agentWorking, loaded, loading, notice, error, asking, answer } = state
   const shown = loaded ?? doc.version
+  const readOnly = readOnlyAt(phone, dirty)
+  // the first load failed: nothing is shown, so it is offered again
+  const reload = !failed && !notice && !!error && loaded === null
+  const ask = ASK[asking?.reason ?? 'send']
   const panel = { [`data-${kind}-panel`]: doc.id }
   return (
-    <div className="flex h-full min-h-0 flex-col" {...panel}>
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" {...panel}>
       <header className="flex items-center gap-2 border-b border-line px-4 py-2.5">
         <FileType size={15} className="shrink-0 text-accent" />
         <p className="min-w-0 flex-1 truncate text-base font-medium">{doc.title}</p>
         <Badge>v{shown}</Badge>
-        {dirty && <span className="shrink-0 text-xs text-warn">{t('저장 안 됨')}</span>}
-        {!phone && (
+        {/* at phone width the line under the header says so */}
+        {dirty && !phone && <span className="shrink-0 text-xs text-warn">{t('저장 안 됨')}</span>}
+        {!readOnly && (
           <Button
             size="sm"
             variant={dirty ? 'primary' : 'secondary'}
             disabled={!dirty || saving || agentWorking || !ready}
+            aria-label={t('저장')}
             onClick={() => void state.save()}
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {t('저장')}
+            {!phone && t('저장')}
           </Button>
         )}
         <Dropdown
@@ -75,6 +106,23 @@ export function OfficePanel({
           <MenuLabel>{t('형식 선택')}</MenuLabel>
           {downloads}
         </Dropdown>
+        {/* at phone width the header is full: sharing is in the 더보기 menu */}
+        {!phone && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t('이 아티팩트만 공유')}
+            title={t('이 아티팩트만 공유')}
+            onClick={() => setSharing(true)}
+          >
+            <Share2 size={15} />
+          </Button>
+        )}
+        <ShareButton
+          artifact={{ id: doc.id, title: doc.title }}
+          open={sharing}
+          onClose={() => setSharing(false)}
+        />
         <Dropdown
           align="right"
           trigger={() => (
@@ -83,6 +131,12 @@ export function OfficePanel({
             </Button>
           )}
         >
+          {phone && (
+            <MenuItem onClick={() => setSharing(true)}>
+              <Share2 size={14} />
+              {t('이 아티팩트만 공유')}
+            </MenuItem>
+          )}
           <MenuItem onClick={() => setHistory({ nonce: Date.now() })}>
             <History size={14} />
             {t('버전 기록')}
@@ -109,6 +163,18 @@ export function OfficePanel({
                   ? t('에이전트가 새 판을 저장했습니다. 지금 편집은 아직 저장되지 않았습니다.')
                   : error}
           </span>
+          {failed && onRetry && (
+            <Button size="sm" variant="primary" onClick={onRetry}>
+              <RotateCcw size={14} />
+              {t('다시 시도')}
+            </Button>
+          )}
+          {reload && (
+            <Button size="sm" variant="primary" onClick={() => void state.load()}>
+              <RotateCcw size={14} />
+              {t('다시 시도')}
+            </Button>
+          )}
           {notice && (
             <>
               <Button size="sm" onClick={onDownloadEdits}>
@@ -120,6 +186,18 @@ export function OfficePanel({
             </>
           )}
         </div>
+      )}
+
+      {phone && (
+        <p
+          className="flex items-center gap-2 border-b border-line bg-elevated px-4 py-1.5 text-xs text-muted"
+          data-testid="office-read-only"
+        >
+          <Eye size={13} className="shrink-0" />
+          {readOnly
+            ? t('휴대폰에서는 읽기만 합니다. 고칠 내용은 대화에서 에이전트에게 부탁하세요.')
+            : t('이 폭에서는 읽기만 합니다. 저장하지 않은 편집을 먼저 저장하거나 버리세요.')}
+        </p>
       )}
 
       <div className="relative min-h-0 flex-1 bg-elevated">
@@ -149,14 +227,14 @@ export function OfficePanel({
         open={asking !== null}
         onClose={() => void answer('cancel')}
         title={t('저장하지 않은 편집이 있습니다')}
-        description={t('에이전트는 저장된 문서를 고칩니다. 지금 편집을 저장할까요, 버릴까요?')}
+        description={t(ask.description)}
         width="max-w-md"
         footer={
           <div className="flex justify-end gap-2">
             <Button onClick={() => void answer('cancel')}>{t('취소')}</Button>
-            <Button onClick={() => void answer('discard')}>{t('버리고 보내기')}</Button>
+            <Button onClick={() => void answer('discard')}>{t(ask.discard)}</Button>
             <Button variant="primary" onClick={() => void answer('save')}>
-              {t('저장하고 보내기')}
+              {t(ask.save)}
             </Button>
           </div>
         }

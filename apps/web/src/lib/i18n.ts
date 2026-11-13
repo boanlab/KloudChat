@@ -3463,6 +3463,30 @@ const EN: Record<string, string> = {
   '이 파일을 한글 편집기로 열지 못했습니다.': 'Could not open this file in the HWP editor.',
   'HWP로 열기': 'Open as HWP',
 
+  // ── Office documents: leaving, saving, reading only ─────────────────
+  '편집기에서 저장': 'Saved in the editor',
+  'HWPX로 변환': 'Converted to HWPX',
+  '이 문서를 떠나면 저장하지 않은 편집이 사라집니다. 저장할까요?':
+    'Leaving this document drops your unsaved edits. Save them?',
+  '버리기': 'Discard',
+  '새 버전을 쓰려면 페이지를 새로 고쳐야 합니다. 그 전에 지금 편집을 저장할까요?':
+    'Using the new version needs a page reload. Save your edits first?',
+  '휴대폰에서는 읽기만 합니다. 고칠 내용은 대화에서 에이전트에게 부탁하세요.':
+    'Read only on a phone. Ask the agent in the chat for changes.',
+  '이 폭에서는 읽기만 합니다. 저장하지 않은 편집을 먼저 저장하거나 버리세요.':
+    'Read only at this width. Save or discard your unsaved edits first.',
+  '편집기가 {n}초 안에 열리지 않았습니다.': 'The editor did not open within {n} seconds.',
+  '이 대화에서 연 사본을 다시 열었습니다. 새 사본을 따로 만듭니다.':
+    'The copy opened in this chat was reopened. This makes a separate new copy.',
+  '새 사본으로 열기': 'Open a new copy',
+  '편집기에서 열기': 'Open in the editor',
+  '편집기에서 열지 못했습니다.': 'Could not open it in the editor.',
+  '편집하면 이 문서를 만든 대화 옆 편집기에서 엽니다.':
+    'Editing opens it in the editor beside the chat it was made in.',
+  '이 문서의 대화가 없습니다. 편집하면 새 대화 옆 편집기에서 엽니다.':
+    'This document has no chat. Editing opens it in the editor beside a new chat.',
+  '한글': 'HWP',
+
   // ── Word documents ──────────────────────────────────────────────────
   'Word 문서 편집기': 'Word document editor',
   '새 Word 문서': 'New Word document',

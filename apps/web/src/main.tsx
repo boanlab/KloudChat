@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { reportUncaughtErrors } from './lib/clientErrors'
+import { leaveOffice, officeDirty } from './lib/officeGuard'
 import { BUILD_VERSION } from './lib/version'
 import './index.css'
 
@@ -10,6 +11,8 @@ import './index.css'
  * second deploy inside the window still recovers, while one broken build cannot loop. */
 const RELOADED = 'kchat-chunk-reload'
 const reloadedHere = `${RELOADED}:${BUILD_VERSION}`
+/** The reload waits on the unsaved-edits question: one at a time. */
+let asking = false
 try {
   // Marks left by earlier builds' pages, which reloaded before they could clear them.
   for (const key of Object.keys(sessionStorage)) {
@@ -21,12 +24,26 @@ try {
 window.addEventListener('vite:preloadError', (event) => {
   try {
     if (sessionStorage.getItem(reloadedHere)) return
-    sessionStorage.setItem(reloadedHere, '1')
   } catch {
     return
   }
   event.preventDefault()
-  window.location.reload()
+  // an office document's unsaved edits are asked about first; the reload waits for the answer
+  const reload = () => {
+    try {
+      sessionStorage.setItem(reloadedHere, '1')
+    } catch {
+      return
+    }
+    window.location.reload()
+  }
+  if (!officeDirty()) return reload()
+  if (asking) return
+  asking = true
+  void leaveOffice('reload').then((go) => {
+    asking = false
+    if (go) reload()
+  })
 })
 window.setTimeout(() => {
   try {

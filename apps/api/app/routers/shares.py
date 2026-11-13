@@ -6,6 +6,7 @@ import json
 import re
 import secrets
 from datetime import timedelta
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlmodel import col, select
@@ -16,6 +17,7 @@ from app.models.user import utcnow
 from app.models.workspace import (
     Agent,
     Artifact,
+    ArtifactKind,
     Project,
     Share,
     ShareScope,
@@ -23,7 +25,7 @@ from app.models.workspace import (
     StoredFile,
 )
 from app.schemas.workspace import ShareIn, ShareOut, ShareViewOut
-from app.services import design_templates, message_links
+from app.services import design_templates, docx_doc, hwp_doc, message_links, office_doc, pptx_doc
 from app.services import files as file_service
 
 router = APIRouter(tags=["shares"])
@@ -42,11 +44,29 @@ def _file_ids(artifact: Artifact) -> set[str]:
     return set(_FILE_REF.findall(json.dumps(artifact.data or {})))
 
 
+#: office documents: the file itself is the body, served by `/shared/{token}/document`
+_OFFICE = {
+    ArtifactKind.hwp: hwp_doc.KIND,
+    ArtifactKind.docx: docx_doc.KIND,
+    ArtifactKind.pptx: pptx_doc.KIND,
+}
+
+
+def _office_mime(kind: ArtifactKind, fmt: str) -> str:
+    if kind is ArtifactKind.hwp:
+        return hwp_doc.HWPX_MIME if fmt == "hwpx" else "application/x-hwp"
+    return docx_doc.DOCX_MIME if kind is ArtifactKind.docx else pptx_doc.PPTX_MIME
+
+
 def _shared_data(token: str, artifact: Artifact):
     """Body with its stored-file links on the share's own media route (no account needed)."""
     if not artifact.data:
         return artifact.data
-    wire = json.dumps(artifact.data, ensure_ascii=False)
+    data = artifact.data
+    if artifact.kind in _OFFICE:
+        # the owner's file-box file it was copied from: an id of theirs, not the reader's
+        data = {k: v for k, v in data.items() if k != office_doc.SOURCE_KEY}
+    wire = json.dumps(data, ensure_ascii=False)
     return json.loads(_FILE_REF.sub(lambda m: f"/shared/{token}/files/{m.group(1)}", wire))
 
 
@@ -254,9 +274,9 @@ async def read_shared(token: str, request: Request, db: DbSession):
     }
 
 
-@router.get("/shared/{token}/files/{file_id}")
-async def read_shared_file(token: str, file_id: str, request: Request, db: DbSession):
-    """A picture or clip the shared artifact shows; same reach as the share, not counted."""
+async def _shared_artifact(token: str, request: Request, db: DbSession) -> Artifact | None:
+    """The artifact a live share shows (its own, or its conversation's), for the share's
+    readers only; not counted as a visit."""
     share = (await db.exec(select(Share).where(Share.token == token))).first()
     if share is None or share.revoked_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -278,6 +298,38 @@ async def read_shared_file(token: str, file_id: str, request: Request, db: DbSes
             artifact = await db.get(Artifact, session.artifact_id)
             if artifact is not None and artifact.user_id != session.user_id:
                 artifact = None
+    return artifact
+
+
+@router.get("/shared/{token}/document")
+async def read_shared_document(token: str, request: Request, db: DbSession):
+    """A shared office document's current file (HWP, Word, PowerPoint), to draw read only or
+    download; same reach as the share, not counted."""
+    artifact = await _shared_artifact(token, request, db)
+    if artifact is None or artifact.kind not in _OFFICE:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    try:
+        data = office_doc.read(artifact)
+    except (OSError, FileNotFoundError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
+    kind = _OFFICE[artifact.kind]
+    fmt = kind.file_format(data) or kind.editable
+    name = office_doc.download_name(artifact.title, fmt)
+    return Response(
+        content=data,
+        media_type=_office_mime(artifact.kind, fmt),
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/shared/{token}/files/{file_id}")
+async def read_shared_file(token: str, file_id: str, request: Request, db: DbSession):
+    """A picture or clip the shared artifact shows; same reach as the share, not counted."""
+    artifact = await _shared_artifact(token, request, db)
     # only files the shared body names, and only its owner's
     if artifact is None or file_id not in _file_ids(artifact):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")

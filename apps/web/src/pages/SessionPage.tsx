@@ -17,6 +17,7 @@ import { directionParticle } from '@/lib/formCheck'
 import { templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { startFailure } from '@/lib/failures'
+import { LeaveCancelled } from '@/lib/officeGuard'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
@@ -210,7 +211,8 @@ function AgentSurfaces({
               if (k === kind) return
               void newSession(k, { agentId: agent.id, projectId })
                 .then((id) => navigate(`/s/${id}`, { replace: true }))
-                .catch((err: unknown) => setNotice(startFailure(err, t)))
+                // kept to save an office document's edits: nothing went wrong
+                .catch((err: unknown) => !(err instanceof LeaveCancelled) && setNotice(startFailure(err, t)))
             }}
           >
             <Icon size={13} />

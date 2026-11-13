@@ -1014,6 +1014,12 @@ export const sharesApi = {
   views: (id: string) => call<ShareViewRow[]>(`/shares/${id}/views`),
   /** The public read. No token of ours — the URL is the whole permission. */
   read: (token: string) => call<SharedPayload>(`/shared/${token}`),
+  /** A shared office document's file (HWP, Word, PowerPoint), to draw read only or download. */
+  document: async (token: string) => {
+    const res = await authedFetch(`${BASE_URL}/shared/${token}/document`)
+    if (!res.ok) throw new ApiError(res.status, await readDetail(res))
+    return res.blob()
+  },
 }
 
 export interface StorageReport {
@@ -1443,6 +1449,9 @@ export const artifactsApi = {
     fileId?: string
     title?: string
   }) => call<ArtifactRow>(`/artifacts/${kind}`, body(payload)),
+  /** A document with no conversation joins `sessionId` (a new chat) to be edited beside it. */
+  attachDocument: (kind: OfficeKind, id: string, sessionId: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/${kind}/session`, body({ sessionId })),
   /** A version's file (the current one by default), for the editor. */
   documentFile: async (kind: OfficeKind, id: string, version?: number) => {
     const query = version === undefined ? '' : `?version=${version}`

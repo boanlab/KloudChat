@@ -1,5 +1,6 @@
 import { RefreshCw, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { leaveOffice } from '@/lib/officeGuard'
 import { useT } from '@/lib/useT'
 import { watchForNewVersion } from '@/lib/version'
 
@@ -18,7 +19,10 @@ export function NewVersionBar() {
     >
       <span className="min-w-0">{t('새 버전이 있습니다')}</span>
       <button
-        onClick={() => window.location.reload()}
+        onClick={() => {
+          // an office document's unsaved edits are asked about first
+          void leaveOffice('reload').then((go) => go && window.location.reload())
+        }}
         className="inline-flex shrink-0 items-center gap-1 font-medium text-accent hover:underline"
       >
         <RefreshCw size={14} />

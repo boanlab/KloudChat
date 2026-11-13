@@ -1,5 +1,5 @@
 import { Download, FilePenLine, Loader2 } from 'lucide-react'
-import { lazy, Suspense, useEffect, useState, type ComponentType, type LazyExoticComponent } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, LoadingState, Modal } from '@/components/ui'
 import {
@@ -11,20 +11,13 @@ import { useT } from '@/lib/useT'
 import { relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { fileSize, officeKindOf } from './fileBox'
-import type { OfficePreviewProps } from './officePreview'
-
-// Each editor is its own chunk, loaded only when a file of its kind is previewed.
-const PREVIEWS: Record<OfficeKind, LazyExoticComponent<ComponentType<OfficePreviewProps>>> = {
-  hwp: lazy(() => import('./HwpPreview')),
-  docx: lazy(() => import('./DocxPreview')),
-  pptx: lazy(() => import('./PptxPreview')),
-}
+import { PREVIEW_LABEL, PREVIEWS } from './OfficeView'
 
 /** What each kind's preview is called, and what is said when its editor cannot open a copy. */
 const EDITOR: Record<OfficeKind, { label: string; failed: string }> = {
-  hwp: { label: '한글 문서 미리보기', failed: '이 파일을 한글 편집기로 열지 못했습니다.' },
-  docx: { label: 'Word 문서 미리보기', failed: '이 파일을 Word 편집기로 열지 못했습니다.' },
-  pptx: { label: 'PowerPoint 미리보기', failed: '이 파일을 PowerPoint 편집기로 열지 못했습니다.' },
+  hwp: { label: PREVIEW_LABEL.hwp, failed: '이 파일을 한글 편집기로 열지 못했습니다.' },
+  docx: { label: PREVIEW_LABEL.docx, failed: '이 파일을 Word 편집기로 열지 못했습니다.' },
+  pptx: { label: PREVIEW_LABEL.pptx, failed: '이 파일을 PowerPoint 편집기로 열지 못했습니다.' },
 }
 
 type Shown =
