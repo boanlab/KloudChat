@@ -121,7 +121,7 @@ from app.services import (
     hwp_doc,
     illustrations,
     imagegen,
-    index_client,
+    index_cleanup,
     lint,
     message_links,
     model_tier,
@@ -2218,26 +2218,53 @@ def _worth_listing(rows: list[ChatSession], empty: set[str]) -> list[ChatSession
     ]
 
 
+def _listed(user_id: str):
+    """`_worth_listing` in SQL: own, and with messages, an artifact, a pin or just made."""
+    fresh = utcnow() - timedelta(minutes=1)
+    return and_(
+        owned_by(user_id),
+        or_(
+            exists().where(col(Message.session_id) == col(ChatSession.id)),
+            col(ChatSession.artifact_id).is_not(None),
+            col(ChatSession.pinned).is_(True),
+            col(ChatSession.created_at) > fresh,
+        ),
+    )
+
+
 @router.get("", response_model=list[SessionOut])
 async def list_sessions(
     user: CurrentUser,
     db: DbSession,
     kind: SessionKind | None = None,
     project_id: str | None = None,
+    limit: int | None = Query(None, ge=1, le=500),
 ):
+    """Pinned first, then most recently touched; `limit`: every pinned row plus at most that
+    many others, the listing rule applied in SQL first so the cut is never short."""
     query = select(ChatSession).where(owned_by(user.id))
     if kind is not None:
         query = query.where(ChatSession.kind == kind)
     if project_id is not None:
         query = query.where(ChatSession.project_id == project_id)
-    # pinned first, then most recently touched
-    query = query.order_by(col(ChatSession.pinned).desc(), col(ChatSession.updated_at).desc())
-    rows = (await db.exec(query)).all()
-
-    ids = [s.id for s in rows]
-    previews = await _previews(db, ids)
-    # absent from `_previews` = no messages
-    rows = _worth_listing(rows, {sid for sid in ids if sid not in previews})
+    if limit is not None:
+        query = query.where(_listed(user.id))
+        recent = (col(ChatSession.updated_at).desc(), col(ChatSession.id).desc())
+        pinned = (await db.exec(
+            query.where(col(ChatSession.pinned).is_(True)).order_by(*recent))).all()
+        rest = (await db.exec(
+            query.where(col(ChatSession.pinned).is_(False)).order_by(*recent).limit(limit)
+        )).all()
+        rows = [*pinned, *rest]
+        previews = await _previews(db, [s.id for s in rows])
+    else:
+        # pinned first, then most recently touched
+        query = query.order_by(col(ChatSession.pinned).desc(), col(ChatSession.updated_at).desc())
+        rows = (await db.exec(query)).all()
+        ids = [s.id for s in rows]
+        previews = await _previews(db, ids)
+        # absent from `_previews` = no messages
+        rows = _worth_listing(rows, {sid for sid in ids if sid not in previews})
     ids = [s.id for s in rows]
     # media answer: artifact, empty body
     made = await _made(db, [sid for sid in ids if not previews.get(sid, (None, 0))[0]])
@@ -2264,16 +2291,7 @@ async def page_sessions(
     size: int = Query(HISTORY_PAGE, ge=1, le=200),
 ):
     """대화 기록 page, newest first; `_worth_listing` rule in SQL for the count."""
-    fresh = utcnow() - timedelta(minutes=1)
-    listed = and_(
-        owned_by(user.id),
-        or_(
-            exists().where(col(Message.session_id) == col(ChatSession.id)),
-            col(ChatSession.artifact_id).is_not(None),
-            col(ChatSession.pinned).is_(True),
-            col(ChatSession.created_at) > fresh,
-        ),
-    )
+    listed = _listed(user.id)
     total = int((await db.exec(select(func.count()).select_from(ChatSession).where(listed))).one())
     last = max(1, -(-total // size))
     page = min(page, last)
@@ -2972,7 +2990,7 @@ async def delete_session(
     gone = await delete_session_files(db, [session.id]) if files else 0
     await forget_session_files(db, [session.id])
     if session.index_key:
-        await index_client.forget_collection(collection=session.index_key)
+        await index_cleanup.forget_collection(db, collection=session.index_key)
     await db.delete(session)
     db.add(audit_service.deletion(
         user, request, action="conversation.delete", ids=[session.id], counts=counts,
@@ -3661,7 +3679,7 @@ async def delete_sessions(
     await forget_session_files(db, ids)
     for row in rows:
         if row.index_key:
-            await index_client.forget_collection(collection=row.index_key)
+            await index_cleanup.forget_collection(db, collection=row.index_key)
 
     await db.exec(delete(ChatSession).where(col(ChatSession.id).in_(ids)))
     db.add(audit_service.deletion(

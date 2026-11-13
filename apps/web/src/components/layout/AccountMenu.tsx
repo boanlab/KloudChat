@@ -60,7 +60,8 @@ function AccountItems() {
       </MenuItem>
       <MenuItem
         icon={<Flag size={14} />}
-        onClick={() => navigate('/issues', { state: sessionId ? { sessionId } : null })}
+        // New answers open on them: older ones may sit past the first page.
+        onClick={() => navigate(unreadIssues > 0 ? '/issues?unread=1' : '/issues', { state: sessionId ? { sessionId } : null })}
         hint={unreadIssues > 0 ? `${t('새 답변')} ${unreadIssues}` : undefined}
       >
         {t('문의·신고')}

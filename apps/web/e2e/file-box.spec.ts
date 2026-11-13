@@ -102,3 +102,42 @@ test('deleting a conversation keeps its files unless the choice is ticked', asyn
   await expect.poll(() => deletes, { timeout: 15_000 }).toEqual([`DELETE /sessions/${chatId}?files=true`])
   expect(unexpected).toEqual([])
 })
+
+test('파일함 pages through a long box and searches every file on the server', async ({ page }, info) => {
+  const many = Array.from({ length: 60 }, (_, i) => file(`p${String(i).padStart(2, '0')}`, `보고서_${String(i).padStart(2, '0')}.txt`))
+  const { unexpected } = await composerFixture(page, info, { files: many })
+  const asked: string[] = []
+  page.on('request', (r) => new URL(r.url()).pathname === '/api/files/page' && asked.push(new URL(r.url()).search))
+  await page.goto('/files')
+  const rows = page.getByTestId('file-row')
+  await expect(page.getByRole('tab', { name: /올린 파일\s*60/ })).toBeVisible()
+  await expect(rows).toHaveCount(50)
+  await page.getByRole('button', { name: '10개 더 보기' }).click()
+  await expect(rows).toHaveCount(60)
+  // A name past the first page is found: the search runs on the server.
+  await page.getByLabel('파일 검색').fill('보고서_59')
+  await expect(rows).toHaveCount(1)
+  await expect(rows).toContainText('보고서_59.txt')
+  expect(asked.some((q) => q.includes('q=') && q.includes('box=true'))).toBe(true)
+  expect(unexpected).toEqual([])
+})
+
+test('파일함 on a phone keeps the name readable and every control a 24px target @phone', async ({ page }, info) => {
+  const long = file('l1', 'quarterly_security_audit_findings_appendix_final.pdf', { sessionId: chatId })
+  const { unexpected } = await composerFixture(page, info, { files: [long] })
+  // Phone width on every project: the desktop project runs @phone tests too.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/files')
+  const name = page.getByRole('button', { name: long.name, exact: true })
+  await expect(name).toBeVisible()
+  // The controls sit under the name, so it has most of the row (it was ~5 characters).
+  const width = (await name.boundingBox())!.width
+  expect(width).toBeGreaterThan(200)
+  const small = await page.locator('main').evaluate((main) =>
+    [...main.querySelectorAll<HTMLElement>('a[href], button, input, [role=tab]')]
+      .map((el) => ({ el, box: el.getBoundingClientRect() }))
+      .filter(({ box }) => box.width > 0 && (box.width < 24 || box.height < 24))
+      .map(({ el, box }) => `${el.tagName} ${Math.round(box.width)}x${Math.round(box.height)} ${el.textContent?.trim().slice(0, 20)}`))
+  expect(small).toEqual([])
+  expect(unexpected).toEqual([])
+})

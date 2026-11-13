@@ -439,7 +439,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
               className="size-4 shrink-0 rounded-full border border-line"
               style={{ background: row.tokens.accent }}
             />
-            <span className="min-w-0 flex-1 truncate">{row.name}</span>
+            <span className="min-w-0 flex-1 truncate">{t(row.name)}</span>
             {!isListed(row) && <Badge>{t('숨김')}</Badge>}
             {row.shared && <Badge>{t('공용')}</Badge>}
             {row.mine ? (

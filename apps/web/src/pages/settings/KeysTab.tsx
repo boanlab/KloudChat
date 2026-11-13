@@ -2,7 +2,7 @@ import { errorMessage } from '@/lib/api'
 import { Copy, KeyRound, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useResource } from '@/lib/useResource'
-import { Badge, Button, Card, Field, Input, Modal, ResourceStatus } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, Field, Input, Modal, ResourceStatus } from '@/components/ui'
 import { relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { copyText } from '@/lib/clipboard'
@@ -18,6 +18,23 @@ export function KeysTab() {
   const [issued, setIssued] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Revoking asks first; a refusal is said next to the list, the key kept.
+  const [revoking, setRevoking] = useState<{ id: string; name: string } | null>(null)
+  const [revokingId, setRevokingId] = useState<string | null>(null)
+  const [revokeError, setRevokeError] = useState<string | null>(null)
+  const revoke = async (key: { id: string; name: string }) => {
+    setRevokingId(key.id)
+    setRevokeError(null)
+    try {
+      await revokeApiKey(key.id)
+    } catch (err) {
+      setRevokeError(
+        errorMessage(err, t('{name} 키를 폐기하지 못했습니다. 키는 아직 쓸 수 있습니다.').replace('{name}', key.name)),
+      )
+    } finally {
+      setRevokingId(null)
+    }
+  }
 
   const listing = useResource(loadApiKeys, [loadApiKeys])
 
@@ -67,6 +84,11 @@ export function KeysTab() {
         </Card>
       ) : (
         <div className="space-y-2">
+          {revokeError && (
+            <p role="alert" className="rounded-control border border-danger/25 bg-danger/5 px-3 py-2 text-base text-danger">
+              {revokeError}
+            </p>
+          )}
           {apiKeys.map((k) => (
             <Card key={k.id} className="flex items-center gap-3 p-3.5">
               <span className="grid size-8 shrink-0 place-items-center rounded-control bg-elevated text-muted">
@@ -84,7 +106,9 @@ export function KeysTab() {
                 variant="ghost"
                 size="icon"
                 aria-label={t('{name} 폐기').replace('{name}', k.name)}
-                onClick={() => void revokeApiKey(k.id)}
+                title={t('폐기')}
+                disabled={revokingId === k.id}
+                onClick={() => setRevoking({ id: k.id, name: k.name })}
               >
                 <Trash2 size={14} />
               </Button>
@@ -92,6 +116,15 @@ export function KeysTab() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={revoking !== null}
+        onClose={() => setRevoking(null)}
+        onConfirm={() => revoking && void revoke(revoking)}
+        title={t('{name} 키를 폐기할까요?').replace('{name}', revoking?.name ?? '')}
+        description={t('이 키로 호출하는 코드는 곧바로 거절됩니다. 되돌릴 수 없습니다.')}
+        confirmLabel={t('폐기')}
+      />
 
       <Modal
         open={creating}

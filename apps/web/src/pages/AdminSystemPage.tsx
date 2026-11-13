@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { Button, Modal, PageHeader } from '@/components/ui'
-import { adminApi, type SystemSettings } from '@/lib/api'
-import { useUnsaved } from '@/lib/unsaved'
+import { PageHeader } from '@/components/ui'
+import { adminApi, errorMessage, type SystemSettings } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { AutoRoutingSection } from './settings/AutoRoutingSection'
@@ -18,6 +17,7 @@ import { ProxySection } from './settings/ProxySection'
 import { SignupSection } from './settings/SignupSection'
 import { ToolsSection } from './settings/ToolsSection'
 import { OcrSection } from './settings/OcrSection'
+import { SettingsFetchNotice, type SettingsFetch } from './settings/SettingsFetch'
 
 const tabs = [
   { to: '/admin/system', label: '프록시', end: true },
@@ -52,21 +52,26 @@ export function AdminSystemPage() {
   const t = useT()
   // Shared by tabs; a save in one refreshes the others.
   const [settings, setSettings] = useState<SystemSettings | null>(null)
+  // Our own API's answer, not LiteLLM's: a failed fetch is said, never left as 「확인하는 중」.
+  const [status, setStatus] = useState<SettingsFetch>({ loading: true, error: null, checkedAt: null })
   const reload = useCallback(async () => {
-    const data = await adminApi.settings().catch(() => null)
-    if (data) setSettings(data)
-  }, [])
+    setStatus((f) => ({ ...f, loading: true }))
+    try {
+      const data = await adminApi.settings()
+      setSettings(data)
+      setStatus({ loading: false, error: null, checkedAt: new Date().toISOString() })
+    } catch (err) {
+      setStatus((f) => ({ ...f, loading: false, error: errorMessage(err, t('설정을 불러오지 못했습니다. 잠시 후 다시 시도하세요.')) }))
+    }
+  }, [t])
 
   useEffect(() => {
     void reload()
   }, [reload])
 
-  // Unsaved section on tab change: asked first.
-  const unsaved = useUnsaved((s) => Object.values(s.dirty).some(Boolean))
-  const clearUnsaved = useUnsaved((s) => s.clear)
-  const navigate = useNavigate()
   const here = useLocation().pathname.replace(/\/$/, '')
-  const [leavingTo, setLeavingTo] = useState<string | null>(null)
+  // Proxy says it in its status card; routing and the catalogue do not read these settings.
+  const notice = status.error && !['/admin/system', '/admin/system/routing', '/admin/system/connectors'].includes(here)
 
   return (
     <>
@@ -84,11 +89,6 @@ export function AdminSystemPage() {
               key={tab.to}
               to={tab.to}
               end={tab.end}
-              onClick={(event) => {
-                if (!unsaved || tab.to === here) return
-                event.preventDefault()
-                setLeavingTo(tab.to)
-              }}
               className={({ isActive }) =>
                 cn(
                   '-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-base font-medium transition-colors',
@@ -103,8 +103,10 @@ export function AdminSystemPage() {
           ))}
         </nav>
 
+        {notice && <SettingsFetchNotice status={status} settings={settings} onRetry={() => void reload()} />}
+
         <Routes>
-          <Route index element={<ProxySection settings={settings} reload={reload} />} />
+          <Route index element={<ProxySection settings={settings} status={status} reload={reload} />} />
           <Route
             path="models"
             element={
@@ -112,7 +114,7 @@ export function AdminSystemPage() {
                 title={t('모델')}
                 description={t('어떤 모델이 어떤 일을 맡을지 정합니다. 서버 설정 파일(.env)의 값은 처음 설치할 때 한 번만 쓰이고, 여기서 저장한 값이 우선합니다.')}
               >
-                <ModelRolesSection settings={settings} onSaved={reload} />
+                <ModelRolesSection settings={settings} onSaved={reload} failed={!!status.error} />
               </Group>
             }
           />
@@ -192,28 +194,6 @@ export function AdminSystemPage() {
           <Route path="*" element={<Navigate to="/admin/system" replace />} />
         </Routes>
       </PageBody>
-      <Modal
-        open={leavingTo !== null}
-        onClose={() => setLeavingTo(null)}
-        title={t('저장하지 않은 변경 내용이 있습니다')}
-        description={t('다른 탭으로 옮기면 이 탭에서 바꾼 내용이 사라집니다.')}
-        footer={
-          <>
-            <Button onClick={() => setLeavingTo(null)}>{t('머물기')}</Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                const to = leavingTo
-                setLeavingTo(null)
-                clearUnsaved()
-                if (to) navigate(to)
-              }}
-            >
-              {t('버리고 옮기기')}
-            </Button>
-          </>
-        }
-      />
     </>
   )
 }

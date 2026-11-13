@@ -127,6 +127,10 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
       return route.fulfill({ status: 201, json: row })
     }
     if (method === 'GET' && path === '/issues') return route.fulfill({ json: mine })
+    if (method === 'GET' && path === '/issues/page') {
+      const items = url.searchParams.get('unread') === 'true' ? mine.filter((r) => r.unread) : mine
+      return route.fulfill({ json: { items, total: items.length, next: null, unread: mine.filter((r) => r.unread).length } })
+    }
     if (method === 'GET' && path === '/issues/unread') return route.fulfill({ json: { count: mine.filter((r) => r.unread).length } })
     // The shell's bot badges (`useBotAttentionBadge`).
     if (method === 'GET' && path === '/publications/attention') return route.fulfill({ json: { bots: 0, reviews: 0 } })
@@ -185,6 +189,9 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
   })
   return {
     unexpected, problems, created, calls,
+    seed: (rows: ReturnType<typeof reportRow>[]) => {
+      mine = rows
+    },
     giveReply: () => {
       mine = mine.map((r) => ({ ...r, unread: true, status: 'checking', replies: 1, adminUpdatedAt: at }))
       thread = [{ id: 't0', authorRole: 'admin', authorName: '관리자', body: '재현했습니다. 다음 배포에서 고칩니다.', status: null, createdAt: at }]
@@ -350,6 +357,37 @@ test('admin: queue, status flow with a hold reason, reply, read-only session cop
   await expect(copy.getByRole('button', { name: /단계 메뉴|좋아요|싫어요|편집/ })).toHaveCount(0)
   await shot('detail-snapshot', true)
   expect(state.calls).toEqual(['PATCH /admin/issues/i1', 'POST /admin/issues/i1/replies'])
+  expect(state.unexpected).toEqual([])
+  expect(state.problems).toEqual([])
+})
+
+test('reporter: a reply that cannot be fetched says so with 다시 시도 and stays unread until shown', async ({ page }, testInfo) => {
+  const state = await fixture(page, testInfo)
+  // The admin's thread; then only i1 carries a new answer.
+  state.giveReply()
+  state.seed([
+    reportRow({ id: 'i1', unread: true, status: 'checking', replies: 1, hasScreenshot: false, adminUpdatedAt: at }),
+    reportRow({ id: 'i2', kind: 'feature', body: '다크 모드에서 표 테두리를 진하게', hasScreenshot: false }),
+  ])
+  let failing = true
+  await page.route('**/api/issues/i1', (route) =>
+    failing ? route.fulfill({ status: 503, json: { detail: 'unavailable' } }) : route.fallback())
+  // The account menu's badge opens on the new answers, which may sit past the first page.
+  await page.goto('/issues?unread=1')
+  await expect(page.getByRole('tab', { name: /새 답변\s*1/ })).toHaveAttribute('aria-selected', 'true')
+  const items = page.getByTestId('my-issue')
+  await expect(items).toHaveCount(1)
+  await items.first().getByRole('button').first().click()
+  const alert = items.first().getByRole('alert')
+  await expect(alert).toContainText('답변을 불러오지 못했습니다.')
+  // Not marked read while the answer is not on screen.
+  expect(state.calls).not.toContain('POST /issues/i1/read')
+  failing = false
+  await alert.getByRole('button', { name: '다시 시도' }).click()
+  await expect(items.first().getByText('재현했습니다. 다음 배포에서 고칩니다.')).toBeVisible()
+  await expect.poll(() => state.calls.includes('POST /issues/i1/read')).toBe(true)
+  await page.getByRole('tab', { name: /전체/ }).click()
+  await expect(items).toHaveCount(2)
   expect(state.unexpected).toEqual([])
   expect(state.problems).toEqual([])
 })

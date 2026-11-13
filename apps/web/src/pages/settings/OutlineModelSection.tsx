@@ -4,6 +4,7 @@ import { Button, Card, Field, Select } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { useUnsavedMark } from '@/lib/unsaved'
 import { tokenRate } from '@/lib/utils'
 
 /** Single outline call that plans a document; per-block calls keep the surface model. */
@@ -15,6 +16,12 @@ export function OutlineModelSection() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const dirty = useRef(false)
+  // Also kept as state: in-app links and tab close ask while set.
+  const markUnsaved = useUnsavedMark('system.outlinemodel')
+  const markDirty = (on: boolean) => {
+    dirty.current = on
+    markUnsaved(on)
+  }
 
   useEffect(() => {
     void loadGovernance()
@@ -35,7 +42,7 @@ export function OutlineModelSection() {
     setError(null)
     try {
       await saveGovernance({ outlineModelId: modelId || null })
-      dirty.current = false
+      markDirty(false)
       setSaved(true)
     } catch (err) {
       setError(errorMessage(err, t('저장하지 못했습니다.')))
@@ -68,7 +75,7 @@ export function OutlineModelSection() {
             value={modelId}
             onChange={(event) => {
               setModelId(event.target.value)
-              dirty.current = true
+              markDirty(true)
               setSaved(false)
               setError(null)
             }}

@@ -328,6 +328,8 @@ facts, and an operator has to be able to tell which side is down.
 `"litellm":"unavailable"` with `"status":"ok"` means KloudChat is healthy and the
 backend is not — sign-in and history still work.
 
+`/api/health` answers `HEAD` too, for uptime probes that send it.
+
 `docker compose ps` shows each container's health: `api` probes `/api/health`,
 `web` its own `/version.json`, `print` `/health` (which starts a browser page).
 Only `db` gates another service's start; the others are reported, not waited on.

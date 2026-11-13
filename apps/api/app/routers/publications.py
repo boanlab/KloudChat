@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_, tuple_
 from sqlmodel import col, delete, select
 
 from app.core import logs
@@ -50,7 +50,7 @@ from app.schemas.publishing import (
     VisitorRating,
     WithdrawIn,
 )
-from app.services import governance, publishing, skill_packages, stop_signal
+from app.services import governance, paging, publishing, skill_packages, stop_signal
 from app.services import models as model_service
 
 log = logging.getLogger(__name__)
@@ -692,6 +692,45 @@ async def owner_conversations(publication_id: str, user: CurrentUser, db: DbSess
     visitors = await _visitors_of(db, rows)
     return [_conversation_row(s, int(counts.get(s.id, 0)), visitors.get(s.visitor_id or ""))
             for s in rows]
+
+
+def _readable(pub: Publication):
+    """`publishing.owner_may_read` in SQL."""
+    sent = col(ChatSession.shared_at).is_not(None)
+    return and_(ChatSession.publication_id == pub.id,
+                or_(sent, col(ChatSession.viewable).is_(True))
+                if pub.conversation_view == "on" else sent)
+
+
+async def _conversation_page(db: DbSession, conds: list, cursor: str | None,
+                             limit: int) -> dict[str, Any]:
+    """`{items, total, next}`, most recently active first."""
+    total = int((await db.exec(
+        select(func.count()).select_from(ChatSession).where(*conds))).one())
+    if cursor:
+        at, last_id = paging.decode(cursor, 2)
+        conds = [*conds, tuple_(col(ChatSession.updated_at), col(ChatSession.id))
+                 < tuple_(paging.when(at), last_id)]
+    rows = list((await db.exec(
+        select(ChatSession).where(*conds)
+        .order_by(col(ChatSession.updated_at).desc(), col(ChatSession.id).desc())
+        .limit(limit + 1)
+    )).all())
+    rows, after = paging.after(rows, limit, lambda s: (paging.stamp(s.updated_at), s.id))
+    counts = await _turn_counts(db, [s.id for s in rows])
+    visitors = await _visitors_of(db, rows)
+    return {"items": [_conversation_row(s, int(counts.get(s.id, 0)),
+                                        visitors.get(s.visitor_id or "")) for s in rows],
+            "total": total, "next": after}
+
+
+@router.get("/publications/{publication_id}/conversations/page")
+async def owner_conversation_page(publication_id: str, user: CurrentUser, db: DbSession,
+                                  cursor: str | None = paging.Cursor,
+                                  limit: int = paging.Limit):
+    """`…/conversations` a page at a time, every readable one reachable, with the total."""
+    pub = await _mine(db, user, publication_id)
+    return await _conversation_page(db, [_readable(pub)], cursor, limit)
 
 
 @router.get("/publications/{publication_id}/conversations/{session_id}")
@@ -1662,6 +1701,36 @@ async def admin_conversations(publication_id: str, request: Request, admin: Admi
     await db.commit()
     return [_conversation_row(s, int(counts.get(s.id, 0)), visitors.get(s.visitor_id or ""))
             for s in rows]
+
+
+@router.get("/admin/publications/{publication_id}/conversations/page")
+async def admin_conversation_page(publication_id: str, request: Request, admin: AdminUser,
+                                  db: DbSession, reason: str = Query("", max_length=300),
+                                  date_from: date | None = None, date_to: date | None = None,
+                                  cursor: str | None = paging.Cursor,
+                                  limit: int = paging.Limit):
+    """`…/conversations` a page at a time; reason recorded per page. `date_from`/`date_to`
+    (YYYY-MM-DD, both inclusive, UTC days) bound the last activity (`updatedAt`, the list's
+    order), so an old conversation is reached by its date."""
+    why = _reason(reason)
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="bad_date_range")
+    pub = await db.get(Publication, publication_id)
+    if pub is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    conds: list = [ChatSession.publication_id == pub.id]
+    if date_from:
+        conds.append(col(ChatSession.updated_at)
+                     >= datetime.combine(date_from, time.min, tzinfo=UTC))
+    if date_to:
+        conds.append(col(ChatSession.updated_at)
+                     < datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=UTC))
+    out = await _conversation_page(db, conds, cursor, limit)
+    _audit(db, admin, "publication.admin_list", pub, request, severity="warn", reason=why,
+           dateFrom=date_from.isoformat() if date_from else None,
+           dateTo=date_to.isoformat() if date_to else None, paged=bool(cursor))
+    await db.commit()
+    return out
 
 
 @router.get("/admin/publications/{publication_id}/conversations/{session_id}")

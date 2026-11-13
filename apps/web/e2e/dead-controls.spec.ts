@@ -53,7 +53,7 @@ const answer = (rating: 'up' | 'down' | null) => ({
 })
 
 /** Answers one GET with fixed JSON, leaving every other method alone. */
-async function stubGet(page: Page, pattern: string, payload: unknown) {
+async function stubGet(page: Page, pattern: string | RegExp, payload: unknown) {
   await page.route(pattern, async (route) => {
     if (route.request().method() !== 'GET') {
       await route.continue()
@@ -73,7 +73,7 @@ test('싫어요는 서버에 남고, 다시 열었을 때 눌린 채로 보인�
   await signIn(page)
 
   let stored: 'up' | 'down' | null = null
-  await stubGet(page, '**/api/sessions', [session()])
+  await stubGet(page, /\/api\/sessions(\?|$)/, [session()])
   await page.route('**/api/sessions/session-1', async (route) => {
     if (route.request().method() !== 'GET') {
       await route.continue()
@@ -136,7 +136,7 @@ test('싫어요는 서버에 남고, 다시 열었을 때 눌린 채로 보인�
 test('원본 작업 열기는 눌린 아티팩트를 연다, 그 대화의 최신 아티팩트가 아니라', async ({ page }) => {
   await signIn(page)
 
-  await stubGet(page, '**/api/sessions', [session()])
+  await stubGet(page, /\/api\/sessions(\?|$)/, [session()])
   await stubGet(page, '**/api/sessions/session-1', session({ messages: [answer(null)] }))
   await stubGet(page, '**/api/artifacts?**', [
     artifact('artifact-clicked', '3월 점검 결과'),
@@ -173,7 +173,7 @@ test('원본 작업 열기는 눌린 아티팩트를 연다, 그 대화의 최�
 test('웹 검색은 켠 대화에만 남고 다음 대화로 따라오지 않는다', async ({ page }) => {
   await signIn(page)
 
-  await stubGet(page, '**/api/sessions', [session()])
+  await stubGet(page, /\/api\/sessions(\?|$)/, [session()])
   await stubGet(page, '**/api/sessions/session-1', session({ messages: [answer(null)] }))
 
   await page.goto('/new/chat')

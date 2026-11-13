@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, Field, Input } from '@/components/ui'
 import { ApiError, adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
+import { useUnsavedMark } from '@/lib/unsaved'
 
 const MODES: { value: 'open' | 'approval' | 'closed'; label: string; note: string }[] = [
   {
@@ -38,6 +39,12 @@ export function SignupSection({
   const [error, setError] = useState<string | null>(null)
   // Typing wins over a late fetch.
   const dirty = useRef(false)
+  // Also kept as state: in-app links and tab close ask while set.
+  const markUnsaved = useUnsavedMark('system.signup')
+  const markDirty = (on: boolean) => {
+    dirty.current = on
+    markUnsaved(on)
+  }
 
   useEffect(() => {
     if (!settings || dirty.current) return
@@ -68,7 +75,7 @@ export function SignupSection({
         signupVerifyEmail: verify ? 'on' : '',
         ...(settings.modelRoles ? { defaultMonthlyCredits: credits.trim() } : {}),
       })
-      dirty.current = false
+      markDirty(false)
       await onSaved()
     } catch (err) {
       setError(
@@ -95,7 +102,7 @@ export function SignupSection({
                 name="signup-mode"
                 checked={mode === row.value}
                 onChange={() => {
-                  dirty.current = true
+                  markDirty(true)
                   setMode(row.value)
                 }}
                 className="mt-1 size-4 accent-[var(--accent)]"
@@ -123,7 +130,7 @@ export function SignupSection({
         <Input
           value={domains}
           onChange={(e) => {
-            dirty.current = true
+            markDirty(true)
             setDomains(e.target.value)
           }}
           placeholder="dankook.ac.kr, kloud.zone"
@@ -137,7 +144,7 @@ export function SignupSection({
             type="checkbox"
             checked={verify}
             onChange={(e) => {
-              dirty.current = true
+              markDirty(true)
               setVerify(e.target.checked)
             }}
             className="mt-1 size-4 accent-[var(--accent)]"
@@ -174,7 +181,7 @@ export function SignupSection({
             step={1000}
             value={credits}
             onChange={(e) => {
-              dirty.current = true
+              markDirty(true)
               setCredits(e.target.value)
             }}
             className="font-mono text-base"

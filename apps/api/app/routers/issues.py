@@ -10,7 +10,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from pydantic import Field
-from sqlalchemy import false, func, or_
+from sqlalchemy import false, func, or_, tuple_
 from sqlmodel import col, select
 
 from app.core import logs
@@ -22,7 +22,7 @@ from app.models.workspace import Artifact, StoredFile
 from app.schemas.auth import Wire
 from app.services import audit as audit_service
 from app.services import files as file_service
-from app.services import issue_snapshot
+from app.services import issue_snapshot, paging
 
 log = logging.getLogger(__name__)
 
@@ -294,18 +294,49 @@ async def list_issues(user: CurrentUser, db: DbSession):
     return [_out(r, replies=counts.get(r.id, 0)) for r in rows]
 
 
+def _unread_conds(user_id: str) -> list:
+    """`_unread` in SQL, over my reports."""
+    return [
+        IssueReport.user_id == user_id,
+        col(IssueReport.admin_updated_at).is_not(None),
+        or_(col(IssueReport.user_seen_at).is_(None),
+            col(IssueReport.admin_updated_at) > col(IssueReport.user_seen_at)),
+    ]
+
+
+async def _unread_count(db: DbSession, user_id: str) -> int:
+    return int((await db.exec(
+        select(func.count()).select_from(IssueReport).where(*_unread_conds(user_id))
+    )).one())
+
+
 @router.get("/issues/unread")
 async def unread_issues(user: CurrentUser, db: DbSession):
     """Count of my reports with unread admin activity."""
-    count = (await db.exec(
-        select(func.count()).where(
-            IssueReport.user_id == user.id,
-            col(IssueReport.admin_updated_at).is_not(None),
-            or_(col(IssueReport.user_seen_at).is_(None),
-                col(IssueReport.admin_updated_at) > col(IssueReport.user_seen_at)),
-        )
-    )).one()
-    return {"count": int(count)}
+    return {"count": await _unread_count(db, user.id)}
+
+
+@router.get("/issues/page")
+async def page_issues(user: CurrentUser, db: DbSession, unread: bool = False,
+                      cursor: str | None = paging.Cursor, limit: int = paging.Limit):
+    """`/issues` a page at a time, newest first; `unread`: only those `/issues/unread` counts.
+    `unread` in the answer is that count."""
+    conds = _unread_conds(user.id) if unread else [IssueReport.user_id == user.id]
+    total = int((await db.exec(
+        select(func.count()).select_from(IssueReport).where(*conds))).one())
+    if cursor:
+        at, last_id = paging.decode(cursor, 2)
+        conds = [*conds, tuple_(col(IssueReport.created_at), col(IssueReport.id))
+                 < tuple_(paging.when(at), last_id)]
+    rows = list((await db.exec(
+        select(IssueReport).where(*conds)
+        .order_by(col(IssueReport.created_at).desc(), col(IssueReport.id).desc())
+        .limit(limit + 1)
+    )).all())
+    rows, after = paging.after(rows, limit, lambda r: (paging.stamp(r.created_at), r.id))
+    counts = await _reply_counts(db, [r.id for r in rows])
+    return {"items": [_out(r, replies=counts.get(r.id, 0)) for r in rows], "total": total,
+            "next": after, "unread": total if unread else await _unread_count(db, user.id)}
 
 
 @router.get("/issues/{report_id}")

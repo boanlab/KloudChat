@@ -2,6 +2,7 @@ import { CircleCheck, Plug, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge, Button, Card, Field, Input } from '@/components/ui'
 import { adminApi, type SystemSettings } from '@/lib/api'
+import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 
 type Feature = SystemSettings['tools']['features'][number]
@@ -48,6 +49,15 @@ export function ToolsSection({
       ),
     )
   }, [settings])
+
+  useMarkUnsaved(
+    'system.tools',
+    !!settings &&
+      (backendUrl !== settings.tools.backendBaseUrl ||
+        settings.tools.features.some(
+          (f) => (overrides[f.key] ?? '') !== (f.source === 'database' ? f.url : ''),
+        )),
+  )
 
   if (!settings) return null
 

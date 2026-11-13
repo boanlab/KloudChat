@@ -8,13 +8,23 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote, unquote
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import HTMLResponse
-from sqlalchemy import func, or_, tuple_
+from sqlalchemy import and_, func, or_, tuple_
 from sqlmodel import col, delete, select, update
 
 from app.core.config import settings
@@ -57,6 +67,7 @@ from app.schemas.workspace import (
     DesignTemplateOut,
     DesignTemplateUsageOut,
     DiagramPicture,
+    FileListPage,
     FileOut,
     FileTextOut,
     KnowledgeUrl,
@@ -91,12 +102,14 @@ from app.services import (
     factcheck,
     hangul,
     hwpx_import,
+    index_cleanup,
     index_client,
     lint,
     netguard,
     ocr_jobs,
     office_doc,
     page_export,
+    paging,
     pictures,
     printing,
     report_export,
@@ -458,7 +471,7 @@ async def _remove_project(db: DbSession, project: Project) -> int:
         await db.delete(stored)
     if project.index_key:
         # docs and conversation uploads share the collection
-        await index_client.forget_collection(collection=project.index_key)
+        await index_cleanup.forget_collection(db, collection=project.index_key)
     for session in (
         await db.exec(select(ChatSession).where(ChatSession.project_id == project.id))
     ).all():
@@ -513,6 +526,58 @@ async def list_files(
         query = query.where(StoredFile.session_id == session_id)
     rows = (await db.exec(query.order_by(col(StoredFile.created_at).desc()))).all()
     return [FileOut.of(f) for f in rows]
+
+
+def _like(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+@router.get("/files/page", response_model=FileListPage)
+async def page_files(
+    user: CurrentUser,
+    db: DbSession,
+    box: bool = False,
+    origin: Literal["upload", "generated"] | None = None,
+    q: str | None = Query(None, max_length=200),
+    project_id: str | None = None,
+    session_id: str | None = None,
+    cursor: str | None = paging.Cursor,
+    limit: int = paging.Limit,
+):
+    """`/files` a page at a time, newest first; `box` leaves agents' knowledge out (the file
+    box), `q` matches the name. `total` counts the whole filter, `counts` each origin."""
+    copies = select(Agent.id).where(col(Agent.snapshot_of).is_not(None),
+                                    Agent.owner_id == user.id)
+    conds = [
+        StoredFile.user_id == user.id,
+        col(StoredFile.agent_id).is_(None) if box
+        else or_(col(StoredFile.agent_id).is_(None), col(StoredFile.agent_id).not_in(copies)),
+    ]
+    if project_id:
+        conds.append(StoredFile.project_id == project_id)
+    if session_id:
+        conds.append(StoredFile.session_id == session_id)
+    if q and q.strip():
+        conds.append(col(StoredFile.name).ilike(f"%{_like(q.strip()[:80])}%", escape="\\"))
+    by_origin = dict((await db.exec(
+        select(StoredFile.origin, func.count()).where(*conds).group_by(col(StoredFile.origin))
+    )).all())
+    counts = {"upload": int(by_origin.get("upload", 0)),
+              "generated": int(by_origin.get("generated", 0))}
+    if origin:
+        conds.append(StoredFile.origin == origin)
+    total = int((await db.exec(select(func.count()).select_from(StoredFile).where(*conds))).one())
+    if cursor:
+        at, last_id = paging.decode(cursor, 2)
+        conds.append(tuple_(col(StoredFile.created_at), col(StoredFile.id))
+                     < tuple_(paging.when(at), last_id))
+    rows = list((await db.exec(
+        select(StoredFile).where(and_(*conds))
+        .order_by(col(StoredFile.created_at).desc(), col(StoredFile.id).desc()).limit(limit + 1)
+    )).all())
+    rows, after = paging.after(rows, limit, lambda f: (paging.stamp(f.created_at), f.id))
+    return FileListPage(items=[FileOut.of(f) for f in rows], total=total, next=after,
+                        counts=counts)
 
 
 @router.get("/files/{file_id}", response_model=FileOut)
@@ -624,15 +689,16 @@ async def forget_session_files(db: DbSession, session_ids: list[str]) -> int:
     gone = 0
     for stored in rows:
         if stored.indexed_at and stored.index_collection:
-            if not await index_client.forget_document(
-                collection=stored.index_collection, doc_id=stored.id
+            if await index_cleanup.forget_document(
+                db, collection=stored.index_collection, doc_id=stored.id
             ):
-                # still indexed: record kept for retry
+                gone += 1
+            else:
+                # pending row retries it
                 log.warning(
-                    "file %s stays in %s: index delete failed", stored.id, stored.index_collection
+                    "file %s stays in %s for now: index delete failed",
+                    stored.id, stored.index_collection,
                 )
-                continue
-            gone += 1
         stored.indexed_at = None
         stored.index_collection = None
         db.add(stored)
@@ -842,7 +908,7 @@ async def _drop_file(db: DbSession, stored: StoredFile, shelf: str | None = None
     file_service.delete_blob(stored.storage_key)
     if shelf and not stored.indexed_at:
         # read pages may be heading into the shelf
-        await index_client.forget_document(collection=shelf, doc_id=stored.id)
+        await index_cleanup.forget_document(db, collection=shelf, doc_id=stored.id)
     if stored.indexed_at:
         # recorded collection, else every candidate (project's or conversation's)
         collections: list[str] = [stored.index_collection] if stored.index_collection else []
@@ -860,8 +926,10 @@ async def _drop_file(db: DbSession, stored: StoredFile, shelf: str | None = None
                 if session.index_key:
                     collections.append(session.index_key)
         for collection in collections:
-            if not await index_client.forget_document(collection=collection, doc_id=stored.id):
-                log.warning("file %s: index delete from %s failed", stored.id, collection)
+            if not await index_cleanup.forget_document(db, collection=collection,
+                                                       doc_id=stored.id):
+                log.warning("file %s: index delete from %s failed; retried later",
+                            stored.id, collection)
     await db.delete(stored)
 
 
@@ -2698,7 +2766,7 @@ async def delete_agent(agent_id: str, user: CurrentUser, db: DbSession,
                           counts={"agents": 1}))
     await db.commit()
     if key:
-        await index_client.forget_collection(collection=key)
+        await index_cleanup.forget_collection(db, collection=key, commit=True)
 
 
 @router.post("/agents/delete")
@@ -2718,7 +2786,7 @@ async def delete_agents(payload: BulkDelete, user: CurrentUser, db: DbSession,
     await db.commit()
     for key in keys:
         try:
-            await index_client.forget_collection(collection=key)
+            await index_cleanup.forget_collection(db, collection=key, commit=True)
         except Exception:  # noqa: BLE001 — rows already gone
             log.exception("index collection %s outlived its agent", key)
     return {"deleted": len(rows)}
@@ -3540,7 +3608,8 @@ async def delete_agent_knowledge(agent_id: str, file_id: str, user: CurrentUser,
                           counts={"files": 1}, extra={"agentId": agent_id, "bytes": stored.size}))
     await db.commit()
     if agent.index_key:
-        await index_client.forget_document(collection=agent.index_key, doc_id=file_id)
+        await index_cleanup.forget_document(db, collection=agent.index_key, doc_id=file_id,
+                                            commit=True)
 
 
 # ══ message rating ══

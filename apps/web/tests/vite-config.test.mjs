@@ -74,8 +74,22 @@ test('the HWP editor at /rhwp/ gets its own policy and the app keeps its own', a
   assert.match(app, /frame-src 'self'/)
 
   const nginx = await readFile(join(webRoot, 'nginx.conf'), 'utf8')
-  const block = nginx.slice(nginx.indexOf('location ^~ /rhwp/'))
-  assert.match(block, /include \/etc\/nginx\/snippets\/rhwp-security-headers\.conf;/)
+  const location = (prefix) => {
+    const start = nginx.indexOf(`location ${prefix} {`)
+    assert.ok(start >= 0, prefix)
+    return nginx.slice(start, nginx.indexOf('\n  }', start))
+  }
+  const editorPage = location('^~ /rhwp/')
+  const editorAssets = location('^~ /rhwp/assets/')
+  for (const block of [editorPage, editorAssets]) {
+    // a location's own add_header drops the inherited ones: the policy comes along
+    assert.match(block, /include \/etc\/nginx\/snippets\/rhwp-security-headers\.conf;/)
+  }
+  // the page and its unhashed glue revalidate, so an image update reaches open tabs
+  assert.match(editorPage, /add_header Cache-Control "no-cache";/)
+  assert.doesNotMatch(editorPage, /immutable|expires/)
+  // only content-hashed assets are kept for a year
+  assert.match(editorAssets, /add_header Cache-Control "public, immutable";/)
   const dockerfile = await readFile(join(webRoot, 'Dockerfile'), 'utf8')
   assert.match(dockerfile, /COPY rhwp-security-headers\.conf \/etc\/nginx\/snippets\//)
 })

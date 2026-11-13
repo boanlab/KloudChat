@@ -3,6 +3,7 @@ import { Button, Field, Input, RequiredNote, Switch, Textarea } from '@/componen
 import { errorMessage } from '@/lib/api'
 import { missingMessage } from '@/lib/formCheck'
 import { NAME_LIMIT } from '@/lib/limits'
+import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -106,8 +107,12 @@ export function SkillForm({
   const nameRef = useRef<HTMLInputElement>(null)
   const [nameError, setNameError] = useState<string | null>(null)
   const stepsId = useId()
+  // Typed since the last save: in-app links and tab close ask first.
+  const [touched, setTouched] = useState(false)
+  useMarkUnsaved('skill-form', touched || serverDirty)
   const edit = (patch: Partial<SkillDraft>) => {
     setDone(false)
+    setTouched(true)
     setDraft((d) => ({ ...d, ...patch }))
   }
 
@@ -138,6 +143,7 @@ export function SkillForm({
         ...(serverDirty ? { server } : {}),
       })
       setServerDirty(false)
+      setTouched(false)
       setDone(true)
       onSaved(saved)
     } catch (err) {

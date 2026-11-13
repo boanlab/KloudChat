@@ -4,7 +4,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Markdown } from '@/components/chat/Markdown'
-import { Badge, Button, Card, EmptyState, Field, LoadingState, Modal, PageHeader, ReloadNotice, Tabs, Textarea } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, Field, Input, LoadingState, Modal, PageHeader, ReloadNotice, Tabs, Textarea } from '@/components/ui'
+import { LoadMore } from '@/components/ui/ShowMore'
 import {
   adminPublicationsApi,
   errorMessage,
@@ -488,17 +489,45 @@ function ConversationsCard({ id }: { id: string }) {
   const [reason, setReason] = useState('')
   const [given, setGiven] = useState('')
   const [rows, setRows] = useState<BotConversationRow[] | null>(null)
+  const [total, setTotal] = useState(0)
+  const [next, setNext] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [moreFailed, setMoreFailed] = useState(false)
+  // Old conversations by date: inclusive days, the bot's own record kept whole.
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [open, setOpen] = useState<(BotConversationRow & { messages: BotTranscriptMessage[] }) | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const start = async () => {
+  const firstPage = async (why: string) => {
     setError(null)
     try {
-      setRows(await adminPublicationsApi.conversations(id, reason.trim()))
-      setGiven(reason.trim())
+      const page = await adminPublicationsApi.conversationsPage(id, why, { limit: 50, dateFrom, dateTo })
+      setRows(page.items)
+      setTotal(page.total)
+      setNext(page.next)
+      setMoreFailed(false)
+      setGiven(why)
       setAsking(false)
     } catch (err) {
       setError(errorMessage(err, t('대화를 열지 못했습니다.')))
+    }
+  }
+  const start = () => firstPage(reason.trim())
+
+  const loadMore = async () => {
+    if (!next || loadingMore) return
+    setLoadingMore(true)
+    setMoreFailed(false)
+    try {
+      const page = await adminPublicationsApi.conversationsPage(id, given, { limit: 50, cursor: next, dateFrom, dateTo })
+      setRows((held) => [...(held ?? []), ...page.items.filter((row) => !held?.some((h) => h.id === row.id))])
+      setTotal(page.total)
+      setNext(page.next)
+    } catch {
+      setMoreFailed(true)
+    } finally {
+      setLoadingMore(false)
     }
   }
 
@@ -516,6 +545,28 @@ function ConversationsCard({ id }: { id: string }) {
       <p className="text-sm text-muted">
         {t('남용 신고를 확인할 때만 엽니다. 사유와 열람한 날은 감사 기록과 만든 사람의 화면에 남고, 개인정보는 가려서 보입니다.')}
       </p>
+      {rows !== null && (
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void firstPage(given)
+          }}
+        >
+          <Field label={t('시작일')}>
+            <Input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} className="w-40" />
+          </Field>
+          <Field label={t('종료일')}>
+            <Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="w-40" />
+          </Field>
+          <Button type="submit" size="sm">
+            {t('날짜로 찾기')}
+          </Button>
+          <p className="basis-full text-xs text-faint">
+            {t('마지막 대화 날짜 기준 · 대화 {n}개').replace('{n}', total.toLocaleString())}
+          </p>
+        </form>
+      )}
       {rows !== null &&
         (rows.length === 0 ? (
           <p className="text-sm text-faint">{t('대화가 없습니다.')}</p>
@@ -544,6 +595,17 @@ function ConversationsCard({ id }: { id: string }) {
                   </button>
                 </li>
               ))}
+              {next && (
+                <li>
+                  <LoadMore
+                    remaining={total - rows.length}
+                    loading={loadingMore}
+                    failed={moreFailed}
+                    failedText={t('다음 대화를 불러오지 못했습니다.')}
+                    onMore={() => void loadMore()}
+                  />
+                </li>
+              )}
             </ul>
             <div className="min-w-0 space-y-3" data-testid="admin-conversation-transcript">
               {open ? (

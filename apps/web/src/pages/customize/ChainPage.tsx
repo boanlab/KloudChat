@@ -39,6 +39,7 @@ import {
   wouldCycle,
   type CanvasEdge,
 } from '@/lib/pipelineGraph'
+import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -134,6 +135,7 @@ export function ChainPage() {
   const [patches, setPatches] = useState<Record<string, Partial<Agent>>>({})
   const [selected, setSelected] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
+  useMarkUnsaved('chain', dirty)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [verdict, setVerdict] = useState<{ problems: GraphProblem[]; warnings: GraphProblem[] } | null>(null)

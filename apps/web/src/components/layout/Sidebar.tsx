@@ -186,6 +186,8 @@ export function Sidebar() {
     togglePinSession,
     moveSessionToProject,
     user,
+    sessionsFailed,
+    loadSessions,
   } = useStore()
 
   const filtered = useMemo(
@@ -322,6 +324,18 @@ export function Sidebar() {
       {/* `min-h-0`: a short window shrinks the list, not the footer. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="border-t border-line px-3 py-2">
+          {sessionsFailed && (
+            <p role="alert" className="mb-2 flex flex-wrap items-center gap-x-2 px-2.5 text-sm text-danger">
+              {t('대화 목록을 불러오지 못했습니다.')}
+              <button
+                type="button"
+                onClick={() => void loadSessions()}
+                className="min-h-8 rounded-control font-medium underline underline-offset-2 hover:text-fg"
+              >
+                {t('다시 시도')}
+              </button>
+            </p>
+          )}
           {pinned.length > 0 && (
             <section className="mb-3">
               <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
@@ -348,7 +362,7 @@ export function Sidebar() {
               <ArrowRight size={13} aria-hidden />
             </NavLink>
           )}
-          {filtered.length === 0 && (
+          {filtered.length === 0 && !sessionsFailed && (
             <p className="px-2.5 py-6 text-center text-base text-faint">
               {t('아직 대화가 없습니다')}
             </p>

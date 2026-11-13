@@ -663,7 +663,7 @@ test('a post-send session list from account A cannot replace account B workspace
     await page.locator('form').getByRole('button', { name: '로그인', exact: true }).click()
     await openSidebarControl(page, '다른 대화')
     await expect(page).toHaveURL(new RegExp(`/s/${otherId}$`))
-    const response = page.waitForResponse((res) => res.request().method() === 'GET' && res.url().endsWith('/sessions'))
+    const response = page.waitForResponse((res) => res.request().method() === 'GET' && new URL(res.url()).pathname.endsWith('/sessions'))
     state.listGate.release()
     await response
     await settleUi(page)

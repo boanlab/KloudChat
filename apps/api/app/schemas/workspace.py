@@ -80,6 +80,16 @@ class FileOut(Wire):
         return out
 
 
+class FileListPage(Wire):
+    """`GET /files/page`: newest first; `counts` per origin over the same filter, origin aside."""
+
+    items: list[FileOut]
+    total: int
+    #: cursor for the next page; null on the last
+    next: str | None = None
+    counts: dict[str, int] = Field(default_factory=dict)
+
+
 class ProjectOut(Wire):
     id: str
     name: str

@@ -63,7 +63,7 @@ test('웹 검색은 strict-local 모델에서 켜진 척하지 않는다', async
   await signIn(page)
 
   const payloads: Record<string, unknown>[] = []
-  await page.route('**/api/sessions', async (route) => {
+  await page.route(/\/api\/sessions(\?|$)/, async (route) => {
     if (route.request().method() !== 'POST') {
       await route.continue()
       return

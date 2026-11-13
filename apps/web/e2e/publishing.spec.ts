@@ -245,6 +245,10 @@ async function botRoutes(
     if (path === `/publications/${PUB}/conversations` && method === 'GET') {
       return json([{ id: SID, title: english ? 'Leave deadline' : '휴학 신청 기한', sharedAt: at, viewable: false, updatedAt: at, turns: 1 }])
     }
+    if (path === `/publications/${PUB}/conversations/page` && method === 'GET') {
+      return json({ items: [{ id: SID, title: english ? 'Leave deadline' : '휴학 신청 기한', sharedAt: at, viewable: false, updatedAt: at, turns: 1 }],
+        total: 1, next: null })
+    }
     if (path === `/publications/${PUB}/conversations/${SID}`) {
       return json({ id: SID, title: '휴학 신청 기한', sharedAt: at, updatedAt: at, turns: 1,
         visitor: { id: 'vis1', label: 'VIS1AB', member: false, blocked, blockedAt: blocked ? at : null }, messages: [
@@ -273,6 +277,15 @@ async function botRoutes(
     if (path === `/publications/${PUB}/keys/k1` && method === 'DELETE') {
       keys = keys.filter((k) => k.id !== 'k1')
       return route.fulfill({ status: 204 })
+    }
+    if (path === `/admin/publications/${PUB}/conversations/page` && method === 'GET') {
+      // Two pages; a date range keeps only the old one.
+      const row = (id: string, title: string, updatedAt: string) => ({ id, title, sharedAt: null, viewable: false, updatedAt, turns: 1,
+        visitor: { id: 'vk', label: 'VK1234', member: false, blocked: false, blockedAt: null, byKey: true } })
+      const old = row('s'.padEnd(32, '9'), '지난해 주차 문의', '2025-03-02T01:00:00.000Z')
+      if (url.searchParams.get('date_to') === '2025-03-31') return json({ items: [old], total: 1, next: null })
+      if (url.searchParams.get('cursor') === 'p2') return json({ items: [old], total: 2, next: null })
+      return json({ items: [row(SID, '휴학 신청 기한', at)], total: 2, next: 'p2' })
     }
     if (path === `/admin/publications/${PUB}/conversations` && method === 'GET') {
       return json([{ id: SID, title: '휴학 신청 기한', sharedAt: null, viewable: false, updatedAt: at, turns: 1,
@@ -1062,6 +1075,15 @@ test('an administrator reads conversations only after giving a reason', async ({
   await expect(page.getByTestId('admin-conversation-transcript')).toContainText('[전화번호]')
   await shot(page, 'admin-read', viewport(testInfo))
   expect(asked.length).toBe(2)
+  // Past the first page, and by date: an old conversation is reachable.
+  const list = page.getByTestId('admin-conversation-list')
+  await list.getByRole('button', { name: '1개 더 보기' }).click()
+  await expect(list).toContainText('지난해 주차 문의')
+  await card.getByLabel('종료일').fill('2025-03-31')
+  await card.getByRole('button', { name: '날짜로 찾기' }).click()
+  await expect(list.getByRole('button')).toHaveCount(1)
+  await expect(list).toContainText('지난해 주차 문의')
+  expect(asked.length).toBe(4)
   expect(asked.every((u) => new URL(u).searchParams.get('reason') === '남용 신고 확인')).toBe(true)
   expect(state.unexpected).toEqual([])
 })

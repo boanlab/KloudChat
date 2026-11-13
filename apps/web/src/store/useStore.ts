@@ -361,8 +361,12 @@ interface State {
   /** Auto is stored as a session mode, never as a synthetic model id. */
   setSessionRoutingMode: (sessionId: string, mode: Session['routingMode']) => Promise<void>
   setActiveSession: (id: string | null) => void
-  /** Titles only; transcripts arrive with `openSession`. */
+  /** Titles only, the most recent page; transcripts arrive with `openSession`. */
   loadSessions: () => Promise<void>
+  /** The last `loadSessions` failed: the sidebar says so with 다시 시도. */
+  sessionsFailed: boolean
+  /** Every conversation of one project, merged into the held list. */
+  loadProjectSessions: (projectId: string) => Promise<void>
   /** Fetches the transcript; false when it could not be fetched (never throws). */
   openSession: (id: string) => Promise<boolean>
   /** `openSession` without the sharing of a request already in flight. */
@@ -578,6 +582,8 @@ interface State {
   artifactFilter: ArtifactFilter
   artifactsHasMore: boolean
   artifactsLoadingMore: boolean
+  /** The last `loadMoreArtifacts` failed: the gallery offers 다시 시도. */
+  artifactsMoreFailed: boolean
   /** Per-kind totals for this filter, from a separate count query. */
   artifactCounts: Record<string, number> | null
   deleteArtifact: (id: string) => Promise<void>
@@ -655,6 +661,8 @@ const WORKSPACE_FRESH_MS = 5_000
 
 /** Matches the server's page size. */
 const ARTIFACT_PAGE = 60
+/** Unpinned conversations the sidebar asks for; 모든 대화 보기 pages through the rest. */
+const SIDEBAR_SESSIONS = 100
 
 type ArtifactFilter = { kind?: string; q?: string }
 
@@ -1263,6 +1271,8 @@ export const useStore = create<State>((set, get) => ({
   workspaceLoading: true,
   artifactsLoading: true,
   artifactsLoadingMore: false,
+  artifactsMoreFailed: false,
+  sessionsFailed: false,
   artifactsHasMore: false,
   artifactFilter: {},
   artifactCounts: null,
@@ -1548,21 +1558,44 @@ export const useStore = create<State>((set, get) => ({
     // A row fetched on its own after the list was asked for is newer than the list's snapshot.
     const asked = rowsFetched
     try {
-      const rows = await sessionsApi.list()
+      const rows = await sessionsApi.list({ limit: SIDEBAR_SESSIONS })
       if (!ownsAccount()) return
+      // A full page leaves older conversations unlisted: rows held from elsewhere (a project, an
+      // opened link) older than the page's last are kept, not taken for deleted.
+      const unpinned = rows.filter((row) => !row.pinned)
+      const oldest = unpinned.length >= SIDEBAR_SESSIONS ? unpinned.at(-1)?.updatedAt : undefined
+      const beyondPage = (c: Session) => !!oldest && !c.pinned && +new Date(c.updatedAt) < +new Date(oldest)
       set((s) => ({
+        sessionsFailed: false,
         // The list carries no transcripts, so held messages are kept; unsent ones are the browser's.
         sessions: [
           ...s.sessions.filter((c) => !rows.some((row) => row.id === c.id) &&
-            (c.unsent || (rowFetchedAt.get(c.id) ?? 0) > asked)),
+            (c.unsent || beyondPage(c) || (rowFetchedAt.get(c.id) ?? 0) > asked)),
           // Deleted here and still in the undo window: the server lists it until the request goes.
           ...rows.filter((row) => s.goneSessions[row.id] !== 'deleted')
             .map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
         ],
       }))
     } catch {
-      // The held list stays.
+      // The held list stays; the sidebar offers 다시 시도.
+      if (ownsAccount()) set({ sessionsFailed: true })
     }
+  },
+
+  loadProjectSessions: async (projectId) => {
+    const owner = get().user?.id
+    const epoch = get().accountEpoch
+    const rows = await sessionsApi.list({ projectId })
+    if (owner !== get().user?.id || epoch !== get().accountEpoch) return
+    set((s) => ({
+      sessions: [
+        // Held rows of this project the server no longer lists have left it or gone.
+        ...s.sessions.filter((c) => !rows.some((row) => row.id === c.id) &&
+          (c.projectId !== projectId || c.unsent)),
+        ...rows.filter((row) => s.goneSessions[row.id] !== 'deleted')
+          .map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
+      ],
+    }))
   },
 
   openSession: (id) => {
@@ -2494,7 +2527,14 @@ export const useStore = create<State>((set, get) => ({
       // The server detaches sessions rather than deleting them.
       sessions: s.sessions.map((c) => (c.projectId === id ? { ...c, projectId: null } : c)),
     }))
-    await projectsApi.remove(id).catch(() => get().loadWorkspace())
+    await projectsApi.remove(id).catch(async (err) => {
+      // The project comes back from the server; say why instead of letting it reappear silently.
+      await get().loadWorkspace()
+      get().setToast({
+        text: errorMessage(err, tr('프로젝트를 삭제하지 못했습니다.')),
+        action: { label: tr('다시 시도'), run: () => void get().deleteProject(id) },
+      })
+    })
   },
 
   uploadFile: async (file, opts) => {
@@ -2595,6 +2635,7 @@ export const useStore = create<State>((set, get) => ({
       artifactCounts: counts ? counts.counts : s.artifactCounts,
       artifactsLoading: false,
       artifactsFailed: rows === null,
+      artifactsMoreFailed: false,
     }))
   },
   /** Keyset paging: the order key moves on edit, so an offset would skip or repeat rows. */
@@ -2602,7 +2643,7 @@ export const useStore = create<State>((set, get) => ({
     const held = get().artifacts
     const last = held.at(-1)
     if (!last || get().artifactsLoadingMore) return
-    set({ artifactsLoadingMore: true })
+    set({ artifactsLoadingMore: true, artifactsMoreFailed: false })
     const rows = await artifactsApi
       .list({
         ...get().artifactFilter,
@@ -2622,6 +2663,8 @@ export const useStore = create<State>((set, get) => ({
         : s.artifacts,
       artifactsHasMore: rows ? rows.length === ARTIFACT_PAGE : s.artifactsHasMore,
       artifactsLoadingMore: false,
+      // Shown by the gallery under the cards, with 다시 시도.
+      artifactsMoreFailed: rows === null,
     }))
   },
   deleteArtifact: async (id) => {

@@ -45,8 +45,8 @@ export function SharedDesigns({ query }: { query: string }) {
           <li key={row.id} className="flex items-center gap-3 rounded-card border border-line bg-panel p-4">
             <span aria-hidden className="size-9 shrink-0 rounded-card border border-line" style={{ background: row.tokens.accent }} />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-base font-medium">{row.name}</span>
-              {row.description && <span className="block truncate text-sm text-muted">{row.description}</span>}
+              <span className="block truncate text-base font-medium">{t(row.name)}</span>
+              {row.description && <span className="block truncate text-sm text-muted">{t(row.description)}</span>}
               <span className="block text-sm text-faint">{t('프로젝트와 에이전트에서 고를 수 있습니다.')}</span>
             </span>
           </li>

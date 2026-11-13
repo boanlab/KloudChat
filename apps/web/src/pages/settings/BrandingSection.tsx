@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Brand } from '@/components/layout/Brand'
 import { Button, Field, Input } from '@/components/ui'
 import { adminApi, type SystemSettings } from '@/lib/api'
+import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
@@ -28,6 +29,13 @@ export function BrandingSection({
       setContact(settings.contact.source === 'database' ? settings.contact.email : '')
     }
   }, [settings])
+
+  useMarkUnsaved(
+    'system.branding',
+    !!settings &&
+      (name !== settings.brand.name ||
+        contact !== (settings.contact.source === 'database' ? settings.contact.email : '')),
+  )
 
   if (!settings) return null
 

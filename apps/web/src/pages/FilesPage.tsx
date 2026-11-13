@@ -1,28 +1,28 @@
 import { Download, Eye, FolderOpen, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { FileBoxFilter, FileLine } from '@/components/files/FileBoxList'
 import { FilePreview } from '@/components/files/FilePreview'
-import { shownFiles, useFileBox, type FileOrigin } from '@/components/files/fileBox'
+import { useFileBox, type FileOrigin } from '@/components/files/fileBox'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, ConfirmDialog, EmptyState, LoadingState, PageHeader, ReloadNotice } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
-import { ShowMore, usePaged } from '@/components/ui/ShowMore'
+import { LoadMore } from '@/components/ui/ShowMore'
 import { downloadFile, errorMessage, filesApi, type FileRow } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
 /** 파일함: every file of the account, those the person gave apart from those made in conversations. */
 export function FilesPage() {
   const t = useT()
-  const box = useFileBox()
   const [origin, setOrigin] = useState<FileOrigin>('upload')
   const [query, setQuery] = useState('')
+  // The server pages, filters by origin and searches names over every file of the account.
+  const box = useFileBox(true, origin, query)
   const [confirming, setConfirming] = useState<FileRow | null>(null)
   const [previewing, setPreviewing] = useState<FileRow | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const shown = useMemo(() => shownFiles(box.rows, origin, query), [box.rows, origin, query])
+  const shown = box.rows
   const pick = useBulkSelect(shown)
-  const { visible, hidden, more } = usePaged(shown, [origin, query])
 
   const remove = async (ids: string[]) => {
     setError(null)
@@ -35,7 +35,7 @@ export function FilesPage() {
     } catch (err) {
       setError(errorMessage(err, t('삭제하지 못했습니다.')))
     } finally {
-      box.setRows((rows) => rows.filter((row) => !gone.includes(row.id)))
+      box.removeRows(gone)
     }
   }
 
@@ -47,7 +47,7 @@ export function FilesPage() {
           title={t('파일함')}
           description={t('올린 파일과 대화에서 만든 파일이 모두 여기 모입니다. 새 대화·보고서·슬라이드에서 「파일함에서 고르기」로 다시 붙일 수 있습니다.')}
         />
-        <FileBoxFilter rows={box.rows} origin={origin} onOrigin={(next) => { setOrigin(next); pick.clear() }} query={query} onQuery={setQuery} />
+        <FileBoxFilter counts={box.counts} origin={origin} onOrigin={(next) => { setOrigin(next); pick.clear() }} query={query} onQuery={setQuery} />
         {box.failed && <ReloadNotice onRetry={() => void box.load()} />}
         {error && <p className="pt-3 text-base text-danger">{error}</p>}
         <div className="pt-4">
@@ -80,7 +80,7 @@ export function FilesPage() {
                 }}
               />
               <Card className="px-3 py-1">
-                {visible.map((row) => (
+                {shown.map((row) => (
                   <FileLine
                     key={row.id}
                     row={row}
@@ -126,7 +126,15 @@ export function FilesPage() {
                   />
                 ))}
               </Card>
-              <ShowMore hidden={hidden} onMore={more} />
+              {box.hasMore && (
+                <LoadMore
+                  remaining={box.total - shown.length}
+                  loading={box.loadingMore}
+                  failed={box.moreFailed}
+                  failedText={t('다음 파일을 불러오지 못했습니다.')}
+                  onMore={() => void box.loadMore()}
+                />
+              )}
             </>
           )}
         </div>

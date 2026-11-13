@@ -134,6 +134,20 @@ class FilePage(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 
+class IndexDeletion(SQLModel, table=True):
+    """Index entry whose delete failed; retried by `index_cleanup.retry` until it goes."""
+
+    __tablename__ = "index_deletions"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    collection: str = Field(max_length=64)
+    #: null = the whole collection
+    doc_id: str | None = Field(default=None, max_length=64)
+    attempts: int = Field(default=1)
+    tried_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
 class ArtifactKind(StrEnum):
     report = "report"
     deck = "deck"

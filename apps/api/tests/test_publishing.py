@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -444,7 +444,9 @@ async def test_side_calls_stay_local_and_the_spend_is_the_owners_marked_as_the_b
 # ── limits ─────────────────────────────────────────────────────────────
 
 
-async def test_the_limits_refuse_with_429_and_say_when_to_come_back(world):
+async def test_the_limits_refuse_with_429_and_say_when_to_come_back(world, monkeypatch):
+    # Mid-minute, so the two questions fall in the same per-minute window.
+    monkeypatch.setattr(publishing, "utcnow", lambda: datetime(2026, 11, 13, 9, 30, 20, tzinfo=UTC))
     pub = await _publish(world, limits={"perVisitorPerMinute": 1, "maxInputChars": 20})
     slug = pub["slug"]
     sid, _ = await _ask(world, slug, "휴학 기한")

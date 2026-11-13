@@ -188,3 +188,97 @@ test('a new account’s monthly credits are set with signup', async ({ page }, i
   expect(puts.at(-1)).toMatchObject({ signupMode: 'approval', defaultMonthlyCredits: '1000000' })
   expect(unexpected).toEqual([])
 })
+
+test('a settings fetch that fails says so on every tab, and 다시 시도 reads it again', async ({ page }, info) => {
+  const { unexpected } = await adminFixture(page, info)
+  let fail = true
+  await page.route('**/api/admin/settings', async (route) => {
+    if (fail && route.request().method() === 'GET') return route.fulfill({ status: 503, json: { detail: 'unavailable' } })
+    await route.fallback()
+  })
+  await page.goto('/admin/system')
+  // Our API unreached: neither 「확인하는 중」 forever nor a LiteLLM verdict.
+  const status = page.getByTestId('proxy-status')
+  await expect(status).toHaveText('설정을 불러오지 못해 LiteLLM 연결 상태를 알 수 없습니다', { timeout: 15_000 })
+  await expect(page.getByText('설정을 불러오지 못했습니다. 잠시 후 다시 시도하세요.')).toBeVisible()
+  await expect(page.getByTestId('proxy-checked-at')).toHaveCount(0)
+
+  // Another tab: the same notice, no endless loader.
+  const menu = page.getByRole('navigation', { name: '시스템 메뉴' })
+  await menu.getByRole('link', { name: '모델', exact: true }).click()
+  const notice = page.getByTestId('settings-fetch-failed')
+  await expect(notice).toContainText('설정을 불러오지 못해 이 화면을 채울 수 없습니다.')
+  await expect(page.getByText('불러오는 중…')).toHaveCount(0)
+
+  fail = false
+  await notice.getByRole('button', { name: '다시 시도' }).click()
+  await expect(page.locator('[data-section="model-roles"]')).toBeVisible()
+  await expect(notice).toHaveCount(0)
+  await menu.getByRole('link', { name: '프록시', exact: true }).click()
+  await expect(status).toHaveText('LiteLLM 에 연결되어 있습니다')
+  await expect(page.getByTestId('proxy-checked-at')).toContainText('마지막 확인')
+  expect(unexpected).toEqual([])
+})
+
+test('a refused settings retry on the proxy tab keeps the error and the retry', { tag: '@phone' }, async ({ page }, info) => {
+  const { unexpected } = await adminFixture(page, info)
+  await page.route('**/api/admin/settings', (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ status: 503, json: { detail: 'unavailable' } }) : route.fallback())
+  await page.goto('/admin/system')
+  const retry = page.getByRole('button', { name: '다시 시도' })
+  await expect(retry).toBeVisible({ timeout: 15_000 })
+  await retry.click()
+  await expect(page.getByTestId('proxy-status')).toHaveText('설정을 불러오지 못해 LiteLLM 연결 상태를 알 수 없습니다')
+  await expect(retry).toBeEnabled()
+  // Fits a phone width.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width)
+  expect(unexpected).toEqual([])
+})
+
+test('a failed connection test and a failed revert are said, not dropped', async ({ page }, info) => {
+  const { unexpected } = await adminFixture(page, info)
+  await page.route('**/api/admin/settings/test', (route) => route.fulfill({ status: 500, json: { detail: 'boom' } }))
+  await page.goto('/admin/system')
+  await expect(page.getByTestId('proxy-status')).toHaveText('LiteLLM 에 연결되어 있습니다', { timeout: 15_000 })
+  await expect(page.getByTestId('proxy-checked-at')).toContainText('마지막 확인')
+
+  await page.getByRole('button', { name: '연결 테스트' }).click()
+  await expect(page.getByText('연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.')).toBeVisible()
+  await expect(page.getByRole('button', { name: '연결 테스트' })).toBeEnabled()
+
+  await page.route('**/api/admin/settings', (route) =>
+    route.request().method() === 'PUT' ? route.fulfill({ status: 500, json: { detail: 'boom' } }) : route.fallback())
+  await page.getByRole('button', { name: '환경변수로 되돌리기' }).click()
+  await expect(page.getByText('환경변수로 되돌리지 못했습니다.')).toBeVisible()
+  expect(unexpected).toEqual([])
+})
+
+test('an unsaved proxy address asks before a link leaves it: 머물기 keeps it, 버리고 옮기기 leaves', async ({ page }, info) => {
+  const { unexpected } = await adminFixture(page, info)
+  await page.goto('/admin/system')
+  const address = page.getByRole('textbox', { name: /^LiteLLM 주소/ })
+  await expect(address).toHaveValue('http://litellm', { timeout: 15_000 })
+  await address.fill('http://elsewhere:4000')
+
+  const menu = page.getByRole('navigation', { name: '시스템 메뉴' })
+  const confirm = page.getByRole('dialog', { name: '저장하지 않은 변경 내용이 있습니다' })
+  await menu.getByRole('link', { name: '메일', exact: true }).click()
+  // One question, not the tab's and the app's both.
+  await expect(confirm).toHaveCount(1)
+  await confirm.getByRole('button', { name: '머물기' }).click()
+  await expect(page).toHaveURL(/\/admin\/system$/)
+  await expect(address).toHaveValue('http://elsewhere:4000')
+
+  await menu.getByRole('link', { name: '메일', exact: true }).click()
+  await confirm.getByRole('button', { name: '버리고 옮기기' }).click()
+  await expect(page).toHaveURL(/\/admin\/system\/mail$/)
+  await expect(confirm).toHaveCount(0)
+
+  // Back with nothing typed: a link leaves without asking.
+  await menu.getByRole('link', { name: '프록시', exact: true }).click()
+  await expect(address).toHaveValue('http://litellm')
+  await menu.getByRole('link', { name: '메일', exact: true }).click()
+  await expect(page).toHaveURL(/\/admin\/system\/mail$/)
+  await expect(confirm).toHaveCount(0)
+  expect(unexpected).toEqual([])
+})

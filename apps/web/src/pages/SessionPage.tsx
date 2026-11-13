@@ -113,10 +113,10 @@ function StartingFrom({
             </span>
             <div className="min-w-0">
               <p className="text-base">
-                <span className="font-medium">{row.name}</span>
+                <span className="font-medium">{t(row.name)}</span>
                 <span className="ml-1.5 text-sm text-faint">{row.label}</span>
               </p>
-              {row.says && <p className="mt-0.5 text-sm text-muted">{row.says}</p>}
+              {row.says && <p className="mt-0.5 text-sm text-muted">{t(row.says)}</p>}
             </div>
           </div>
         ))}

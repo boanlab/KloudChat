@@ -2,6 +2,7 @@ import { CircleCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button, Field, Textarea } from '@/components/ui'
 import { useStore } from '@/store/useStore'
+import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 
 const LIMIT = 1500
@@ -23,6 +24,7 @@ export function PersonalizationTab() {
 
   const dirty =
     aboutMe !== (prefs?.aboutMe ?? '') || responseStyle !== (prefs?.responseStyle ?? '')
+  useMarkUnsaved('personalization', dirty)
 
   const save = async () => {
     setBusy(true)

@@ -479,7 +479,7 @@ test('a transcript that fails to load shows the failure and loads on its own ret
     await route.fallback()
   })
   // The list carries no transcripts, as the server's does: only the count says there is one.
-  await page.route('**/api/sessions', async (route) => {
+  await page.route(/\/api\/sessions(\?|$)/, async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
     await route.fulfill({ json: [{
       id: chatId, kind: 'chat', title: '지원 사업 공고 정리', model: 'fixture/model', routingMode: 'manual',
@@ -496,5 +496,25 @@ test('a transcript that fails to load shows the failure and loads on its own ret
   await expect(page.getByText(answer.split('\n')[0])).toBeVisible({ timeout: 10_000 })
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
   expect(detailCalls).toBeGreaterThanOrEqual(2)
+  expect(unexpected).toEqual([])
+})
+
+test('a conversation list that fails to load says so in the sidebar and retries on request', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info)
+  let lists = 0
+  await page.route(/\/api\/sessions(\?|$)/, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    lists += 1
+    // The sidebar asks for the recent page only; 모든 대화 보기 pages through the rest.
+    expect(new URL(route.request().url()).searchParams.get('limit')).toBe('100')
+    if (lists === 1) return route.fulfill({ status: 503, json: { detail: 'busy' } })
+    await route.fallback()
+  })
+  await page.goto('/')
+  const aside = page.locator('aside')
+  await expect(aside.getByText('대화 목록을 불러오지 못했습니다.')).toBeVisible()
+  await aside.getByRole('button', { name: '다시 시도' }).click()
+  await expect(aside.getByText('지원 사업 공고 정리')).toBeVisible()
+  await expect(aside.getByText('대화 목록을 불러오지 못했습니다.')).toHaveCount(0)
   expect(unexpected).toEqual([])
 })
