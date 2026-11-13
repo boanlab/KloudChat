@@ -1,8 +1,9 @@
 import { CircleCheck, Mail, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button, Field, Input } from '@/components/ui'
-import { ApiError, adminApi, type SystemSettings } from '@/lib/api'
+import { ApiError, adminApi, errorMessage, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
+import { useUnsavedMark } from '@/lib/unsaved'
 
 /** Own save and test. */
 export function MailSection({
@@ -27,6 +28,12 @@ export function MailSection({
   const [mailProbe, setMailProbe] = useState<{ ok: boolean; detail: string } | null>(null)
   // Typing wins over a late fetch.
   const dirty = useRef(false)
+  // Also kept as state: in-app links and tab close ask while set.
+  const markUnsaved = useUnsavedMark('system.mail')
+  const markDirty = (on: boolean) => {
+    dirty.current = on
+    markUnsaved(on)
+  }
 
   const save = async () => {
     await adminApi.updateSettings({
@@ -38,7 +45,7 @@ export function MailSection({
       smtpFrom: smtp.from,
       appBaseUrl: smtp.appBaseUrl,
     })
-    dirty.current = false
+    markDirty(false)
     setSmtp((v) => ({ ...v, password: '' }))
     await reload()
   }
@@ -86,6 +93,8 @@ export function MailSection({
                 ok: result.ok,
                 detail: result.detail ?? (result.ok ? t('보냈습니다.') : t('보내지 못했습니다.')),
               })
+            } catch (err) {
+              setMailProbe({ ok: false, detail: errorMessage(err, t('보내지 못했습니다.')) })
             } finally {
               setBusy(false)
             }
@@ -119,7 +128,7 @@ export function MailSection({
               value={smtp.host}
               onChange={(e) => {
                 setSmtp((v) => ({ ...v, host: e.target.value }))
-                dirty.current = true
+                markDirty(true)
               }}
               placeholder="smtp.example.com"
               className="font-mono text-base"
@@ -130,7 +139,7 @@ export function MailSection({
               value={smtp.port}
               onChange={(e) => {
                 setSmtp((v) => ({ ...v, port: e.target.value }))
-                dirty.current = true
+                markDirty(true)
               }}
               placeholder="587"
               inputMode="numeric"
@@ -142,7 +151,7 @@ export function MailSection({
               value={smtp.security}
               onChange={(e) => {
                 setSmtp((v) => ({ ...v, security: e.target.value }))
-                dirty.current = true
+                markDirty(true)
               }}
               className="w-full rounded-control border border-line bg-panel px-3 py-2 text-base outline-none focus:border-accent"
             >
@@ -159,7 +168,7 @@ export function MailSection({
               value={smtp.username}
               onChange={(e) => {
                 setSmtp((v) => ({ ...v, username: e.target.value }))
-                dirty.current = true
+                markDirty(true)
               }}
               autoComplete="off"
               className="font-mono text-base"
@@ -171,7 +180,7 @@ export function MailSection({
               value={smtp.password}
               onChange={(e) => {
                 setSmtp((v) => ({ ...v, password: e.target.value }))
-                dirty.current = true
+                markDirty(true)
               }}
               placeholder={
                 settings?.smtp.passwordSet
@@ -189,7 +198,7 @@ export function MailSection({
             value={smtp.from}
             onChange={(e) => {
               setSmtp((v) => ({ ...v, from: e.target.value }))
-              dirty.current = true
+              markDirty(true)
             }}
             placeholder="KloudChat <no-reply@example.com>"
             className="font-mono text-base"
@@ -205,7 +214,7 @@ export function MailSection({
               value={smtp.appBaseUrl}
               onChange={(e) => {
                 setSmtp((v) => ({ ...v, appBaseUrl: e.target.value }))
-                dirty.current = true
+                markDirty(true)
               }}
               placeholder={window.location.origin}
               className="font-mono text-base"
@@ -217,7 +226,7 @@ export function MailSection({
                 title={t('지금 이 화면을 연 주소를 넣습니다')}
                 onClick={() => {
                   setSmtp((v) => ({ ...v, appBaseUrl: window.location.origin }))
-                  dirty.current = true
+                  markDirty(true)
                 }}
               >
                 {t('현재 주소 넣기')}

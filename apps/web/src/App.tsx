@@ -1,13 +1,13 @@
 import { Loader2 } from 'lucide-react'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import {
-  createBrowserRouter, Navigate, Route, RouterProvider, Routes, useBlocker, useLocation, useNavigate,
+  createBrowserRouter, Navigate, Route, RouterProvider, Routes, useLocation, useNavigate,
 } from 'react-router-dom'
 import { RoleRoute } from '@/components/auth/RoleRoute'
 import { AppShell } from '@/components/layout/AppShell'
+import { UnsavedLinkGuard } from '@/components/layout/UnsavedLinkGuard'
 import { NewVersionBar } from '@/components/layout/NewVersionBar'
 import { setBotEmbedded } from '@/lib/api'
-import { leaveOffice, officeDirty } from '@/lib/officeGuard'
 import { SHARED_AGENTS_PATH } from '@/lib/publishing'
 import { kindOrder } from '@/lib/kinds'
 import { HomePage } from '@/pages/HomePage'
@@ -258,35 +258,6 @@ function Authenticated() {
   )
 }
 
-/**
- * Another page while an office document beside the chat holds unsaved edits (a link, the
- * sidebar, the browser's back): the document asks to save or drop them first, and the move
- * waits for the answer.
- */
-function OfficeLeaveGuard() {
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      currentLocation.pathname !== nextLocation.pathname && officeDirty(),
-  )
-  const asking = useRef(false)
-  const latest = useRef(blocker)
-  useEffect(() => {
-    latest.current = blocker
-  })
-  useEffect(() => {
-    if (blocker.state !== 'blocked' || asking.current) return
-    asking.current = true
-    void leaveOffice().then((go) => {
-      asking.current = false
-      const now = latest.current
-      if (now.state !== 'blocked') return
-      if (go) now.proceed()
-      else now.reset()
-    })
-  }, [blocker.state])
-  return null
-}
-
 function Root() {
   return (
     <>
@@ -301,12 +272,12 @@ function Root() {
         </Routes>
       </Suspense>
       <NewVersionBar />
-      <OfficeLeaveGuard />
+      <UnsavedLinkGuard />
     </>
   )
 }
 
-// A data router, for `useBlocker`; the screens keep their own `<Routes>` under one catch-all.
+// A data router, for `useBlocker` (UnsavedLinkGuard); the screens keep their own `<Routes>` under one catch-all.
 const router = createBrowserRouter([{ path: '*', element: <Root /> }])
 
 export default function App() {

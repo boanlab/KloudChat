@@ -15,6 +15,7 @@ import { processOf, processPayload, useProcessCatalogue, type ProcessDraft } fro
 import { agentKinds, kindMeta, kindOrder, skillsOffSurface } from '@/lib/kinds'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useTemplateCatalogue } from '@/lib/templates'
+import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -340,8 +341,12 @@ export function AgentForm({
   const surfaceDefault = models.find((m) => m.id === modelByKind[surface])
   // Retired format stays where set; not newly pickable.
   const formats = DOC_FORMATS.filter((f) => !RETIRED_FORMATS.includes(f.id) || f.id === initial.docFormat)
+  // Typed since the last save (a suggested 진행 과정 alone is not): links and tab close ask first.
+  const [touched, setTouched] = useState(false)
+  useMarkUnsaved('agent-form', touched || JSON.stringify(process) !== JSON.stringify(baseline))
   const edit = (next: Agent) => {
     setDone(false)
+    setTouched(true)
     draftRef.current = next
     setDraft(next)
   }
@@ -507,6 +512,7 @@ export function AgentForm({
     } finally {
       setSaving(false)
     }
+    setTouched(false)
     setDone(true)
     onSaved(useStore.getState().agents.find((a) => a.id === saved.id) ?? saved)
   }
@@ -754,7 +760,7 @@ export function AgentForm({
                   <option value="">{t('정하지 않음')}</option>
                   {pickableDesigns.map((d) => (
                     <option key={d.id} value={d.id}>
-                      {d.name}
+                      {t(d.name)}
                     </option>
                   ))}
                   {draft.designSystemId && !designs.some((d) => d.id === draft.designSystemId) && (

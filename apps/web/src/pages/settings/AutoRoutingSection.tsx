@@ -4,6 +4,7 @@ import { Badge, Button, Card, Field, Select, Switch } from '@/components/ui'
 import { errorCode, errorMessage } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { useUnsavedMark } from '@/lib/unsaved'
 import { tokenRate } from '@/lib/utils'
 
 /** Routing-policy refusal codes. */
@@ -41,6 +42,12 @@ export function AutoRoutingSection() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const dirty = useRef(false)
+  // Also kept as state: in-app links and tab close ask while set.
+  const markUnsaved = useUnsavedMark('system.autorouting')
+  const markDirty = (on: boolean) => {
+    dirty.current = on
+    markUnsaved(on)
+  }
 
   useEffect(() => {
     void loadGovernance()
@@ -91,7 +98,7 @@ export function AutoRoutingSection() {
       next[to] = moved
       return next
     })
-    dirty.current = true
+    markDirty(true)
     setSaved(false)
     setError(null)
   }
@@ -99,7 +106,7 @@ export function AutoRoutingSection() {
     moveWithin(setEconomyModelIds, id, offset)
 
   const touched = () => {
-    dirty.current = true
+    markDirty(true)
     setSaved(false)
     setError(null)
   }
@@ -120,7 +127,7 @@ export function AutoRoutingSection() {
           checked={enabled}
           onChange={(value) => {
             setEnabled(value)
-            dirty.current = true
+            markDirty(true)
             setSaved(false)
             setError(null)
           }}
@@ -137,7 +144,7 @@ export function AutoRoutingSection() {
             value={classifierModelId}
             onChange={(event) => {
               setClassifierModelId(event.target.value)
-              dirty.current = true
+              markDirty(true)
               setSaved(false)
               setError(null)
             }}
@@ -171,7 +178,7 @@ export function AutoRoutingSection() {
               const id = event.target.value
               if (!id || economyModelIds.includes(id)) return
               setEconomyModelIds((current) => [...current, id].slice(0, 3))
-              dirty.current = true
+              markDirty(true)
               setSaved(false)
               setError(null)
             }}
@@ -256,7 +263,7 @@ export function AutoRoutingSection() {
                     title={t('이 모델을 절약 목록에서 뺍니다')}
                     onClick={() => {
                       setEconomyModelIds((current) => current.filter((candidate) => candidate !== id))
-                      dirty.current = true
+                      markDirty(true)
                       setSaved(false)
                       setError(null)
                     }}
@@ -440,7 +447,7 @@ export function AutoRoutingSection() {
                 ...(enabled ? { adaptiveEconomyModelIds: economyModelIds } : {}),
                 ...(qualityEnabled ? { adaptiveQualityModelIds: qualityModelIds } : {}),
               })
-              dirty.current = false
+              markDirty(false)
               await loadModels()
               setSaved(true)
             } catch (saveError) {

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Card, Field, LoadingState, Select, Switch } from '@/components/ui'
 import { ApiError, adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
+import { useUnsavedMark } from '@/lib/unsaved'
 
 type Roles = NonNullable<SystemSettings['modelRoles']>
 type Choice = Roles['choices']['chat'][number]
@@ -109,9 +110,12 @@ function ModelSelect({
 export function ModelRolesSection({
   settings,
   onSaved,
+  failed = false,
 }: {
   settings: SystemSettings | null
   onSaved: () => Promise<void>
+  /** The settings fetch failed: the page says so, so no endless loader here. */
+  failed?: boolean
 }) {
   const t = useT()
   const [models, setModels] = useState<Record<ModelKey, string> | null>(null)
@@ -122,6 +126,12 @@ export function ModelRolesSection({
   const [error, setError] = useState<string | null>(null)
   // Choosing wins over a late fetch.
   const dirty = useRef(false)
+  // Also kept as state: in-app links and tab close ask while set.
+  const markUnsaved = useUnsavedMark('system.modelroles')
+  const markDirty = (on: boolean) => {
+    dirty.current = on
+    markUnsaved(on)
+  }
   const roles = settings?.modelRoles
 
   useEffect(() => {
@@ -142,10 +152,10 @@ export function ModelRolesSection({
   }, [roles])
 
   // Until the settings answer: a loader, not a blank tab.
-  if (!roles || !models) return settings ? null : <LoadingState />
+  if (!roles || !models) return settings || failed ? null : <LoadingState />
 
   const touch = () => {
-    dirty.current = true
+    markDirty(true)
     setSaved(false)
     setError(null)
   }
@@ -164,7 +174,7 @@ export function ModelRolesSection({
       }
       for (const key of Object.keys(FIELD) as ModelKey[]) patch[FIELD[key]] = models[key]
       await adminApi.updateSettings(patch)
-      dirty.current = false
+      markDirty(false)
       await onSaved()
       setSaved(true)
     } catch (err) {

@@ -2,6 +2,7 @@ import { ScanText } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button, Card, Field, Input, Select, Switch } from '@/components/ui'
 import { adminApi, errorMessage, type SystemSettings } from '@/lib/api'
+import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 
 type Ocr = SystemSettings['ocr']
@@ -36,6 +37,15 @@ export function OcrSection({
     setVisionModel(settings.ocr.visionModel)
     setMaxPages(String(settings.ocr.maxPages))
   }, [settings])
+
+  useMarkUnsaved(
+    'system.ocr',
+    !!settings &&
+      (enabled !== settings.ocr.enabled ||
+        mode !== settings.ocr.mode ||
+        visionModel !== settings.ocr.visionModel ||
+        maxPages !== String(settings.ocr.maxPages)),
+  )
 
   if (!settings) return null
   const ocr = settings.ocr

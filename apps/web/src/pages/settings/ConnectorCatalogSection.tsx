@@ -2,6 +2,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Badge, Button, ConfirmDialog, Field, Input, Modal, Select, Textarea } from '@/components/ui'
 import { connectorCatalogApi, errorCode, errorMessage, type CatalogAdmin, type CatalogEntryIn } from '@/lib/api'
+import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import type { CatalogEntryAdmin } from '@/types'
 
@@ -179,6 +180,7 @@ function StdioAllowForm({ initial, onSaved }: { initial: string[]; onSaved: (lin
   const t = useT()
   const [text, setText] = useState(initial.join('\n'))
   const [note, setNote] = useState<string | null>(null)
+  useMarkUnsaved('system.stdio-allow', text !== initial.join('\n'))
   return (
     <div className="space-y-2" data-testid="stdio-allow">
       <Field

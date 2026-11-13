@@ -1,16 +1,22 @@
 import { CircleCheck, RefreshCw, Server, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, Card, Field, Input } from '@/components/ui'
-import { ApiError, adminApi, modelsApi, type SystemSettings } from '@/lib/api'
+import { ApiError, adminApi, errorMessage, modelsApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
+import { useUnsavedMark } from '@/lib/unsaved'
+import { formatDateTime } from '@/lib/utils'
+import type { SettingsFetch } from './SettingsFetch'
 import { useStore } from '@/store/useStore'
 
 /** Master key never shown again (blank keeps it); cleared base URL falls back to the environment. */
 export function ProxySection({
   settings,
+  status,
   reload,
 }: {
   settings: SystemSettings | null
+  /** Our API's answer: a failed fetch is not 「확인하는 중」 and not 「연결되지 않음」. */
+  status: SettingsFetch
   reload: () => Promise<void>
 }) {
   const t = useT()
@@ -23,6 +29,12 @@ export function ProxySection({
   const [refreshing, setRefreshing] = useState(false)
   // Typing wins over a late fetch.
   const dirty = useRef(false)
+  // Also kept as state: in-app links and tab close ask while set.
+  const markUnsaved = useUnsavedMark('system.proxy')
+  const markDirty = (on: boolean) => {
+    dirty.current = on
+    markUnsaved(on)
+  }
 
   useEffect(() => {
     if (!settings || dirty.current) return
@@ -31,11 +43,13 @@ export function ProxySection({
   }, [settings])
 
   const resetForm = async () => {
-    dirty.current = false
+    markDirty(false)
     await reload()
   }
 
   const connected = settings?.status === 'ok'
+  // Unreached API, not a LiteLLM verdict: nothing on screen says what LiteLLM is doing.
+  const unknown = !settings && !!status.error
 
   return (
     <div className="space-y-5">
@@ -43,21 +57,42 @@ export function ProxySection({
         {/* Null: not fetched yet, not disconnected. */}
         <Server
           size={18}
-          className={!settings ? 'text-muted' : connected ? 'text-success' : 'text-danger'}
+          className={unknown ? 'text-danger' : !settings ? 'text-muted' : connected ? 'text-success' : 'text-danger'}
         />
         {/* A basis, so a phone wraps the buttons below instead of squeezing this text. */}
         <div className="min-w-0 flex-1 max-sm:basis-32">
-          <p className="text-base font-medium">
-            {!settings
-              ? t('LiteLLM 연결 상태를 확인하는 중입니다')
-              : connected
-                ? t('LiteLLM 에 연결되어 있습니다')
-                : t('LiteLLM 에 연결되지 않았습니다')}
+          <p className="text-base font-medium" data-testid="proxy-status">
+            {unknown
+              ? t('설정을 불러오지 못해 LiteLLM 연결 상태를 알 수 없습니다')
+              : !settings
+                ? t('LiteLLM 연결 상태를 확인하는 중입니다')
+                : connected
+                  ? t('LiteLLM 에 연결되어 있습니다')
+                  : t('LiteLLM 에 연결되지 않았습니다')}
           </p>
           <p className="break-all text-base text-muted">
             {settings ? settings.litellm.baseUrl || t('주소가 설정되지 않았습니다') : ' '}
           </p>
+          {status.error && (
+            <p className="break-words text-base text-danger" role="alert">
+              {settings
+                ? t('설정을 새로 불러오지 못했습니다. 화면에 보이는 것은 마지막으로 받은 내용입니다.')
+                : null}{' '}
+              {status.error}
+            </p>
+          )}
+          {status.checkedAt && (
+            <p className="text-sm text-faint" data-testid="proxy-checked-at">
+              {t('마지막 확인 {time}').replace('{time}', formatDateTime(status.checkedAt))}
+            </p>
+          )}
         </div>
+        {status.error && (
+          <Button disabled={status.loading} onClick={() => void reload()}>
+            <RefreshCw size={14} className={status.loading ? 'animate-spin' : undefined} />
+            {t('다시 시도')}
+          </Button>
+        )}
         <Button
           disabled={busy}
           title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
@@ -73,6 +108,8 @@ export function ProxySection({
                   : (result.detail ?? t('연결하지 못했습니다.')),
               })
               await reload()
+            } catch (err) {
+              setProbe({ ok: false, detail: errorMessage(err, t('연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.')) })
             } finally {
               setBusy(false)
             }
@@ -142,7 +179,7 @@ export function ProxySection({
             value={baseUrl}
             onChange={(e) => {
               setBaseUrl(e.target.value)
-              dirty.current = true
+              markDirty(true)
             }}
             placeholder="http://litellm:4000"
             className="font-mono text-base"
@@ -188,7 +225,7 @@ export function ProxySection({
             value={masterKey}
             onChange={(e) => {
               setMasterKey(e.target.value)
-              dirty.current = true
+              markDirty(true)
             }}
             placeholder={
               settings?.litellm.masterKeySet
@@ -248,11 +285,15 @@ export function ProxySection({
           title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
           onClick={async () => {
             setBusy(true)
+            setError(null)
+            setProbe(null)
             try {
               // Empty base URL clears the override; key untouched.
               await adminApi.updateSettings({ baseUrl: '' })
               await resetForm()
               await loadModels()
+            } catch (err) {
+              setError(errorMessage(err, t('환경변수로 되돌리지 못했습니다.')))
             } finally {
               setBusy(false)
             }
