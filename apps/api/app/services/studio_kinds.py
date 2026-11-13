@@ -255,8 +255,13 @@ def _cell(text: str) -> str:
 _MERMAID_UNSAFE = re.compile(r"[()\[\]{}<>\"`#:;]")
 
 
+#: comparison signs keep their meaning in a label (「W + R > N」) as full-width forms
+_SIGNS = str.maketrans({">": "＞", "<": "＜"})
+
+
 def _node(label: str) -> str:
-    return _MERMAID_UNSAFE.sub(" ", shelf_jobs.clip(label, 40)).strip() or "·"
+    text = shelf_jobs.clip(label, 40).translate(_SIGNS)
+    return _MERMAID_UNSAFE.sub(" ", text).strip() or "·"
 
 
 def mindmap_source(root: str, branches: list[dict]) -> str:

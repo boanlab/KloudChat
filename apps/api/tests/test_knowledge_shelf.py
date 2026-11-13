@@ -499,6 +499,7 @@ def test_a_mind_map_label_cannot_break_the_mermaid_block():
     assert "root((분산  시스템))" in source
     assert "[" not in source.split("root", 1)[1].replace("root((", "")
     assert "램포트  정수" in source
+    assert "W + R ＞ N" in studio_kinds.mindmap_source("복제", [{"label": "W + R > N"}])
 
 
 def test_mc_answers_follow_their_choice_through_the_shuffle():
