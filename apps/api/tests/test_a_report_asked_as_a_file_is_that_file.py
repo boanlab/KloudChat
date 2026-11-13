@@ -113,10 +113,11 @@ def test_the_file_is_the_report_with_its_sources_pictures_and_contents():
     text = docx_edit.plain_text(docx)
     assert "참고문헌" in text and "[1]" in text and "**" not in text
     names = zipfile.ZipFile(io.BytesIO(docx)).namelist()
-    # the chart as its picture, as in the HWP file; no chart part the web editor cannot draw
+    # the chart a native, editable chart for Word, its picture with it for the web editor
+    # (which draws no chart): both are in the file
     assert any(name.startswith("word/media/") for name in names)
-    assert not any(name.startswith("word/charts/") for name in names)
-    # a 목차 the editor can show: the headings, no field asking for F9
+    assert any(name.startswith("word/charts/") for name in names)
+    # a 목차 the editor can show: the headings (the result of a TOC field), no F9 asked for
     assert "F9" not in text and "목차" in text and "8장" in text
 
 
