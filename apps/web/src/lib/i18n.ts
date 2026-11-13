@@ -2376,8 +2376,6 @@ const EN: Record<string, string> = {
   '바다 위로 해가 뜨는 6초 영상': 'A 6-second video of sunrise over the sea',
   '처리 내역 {n}건': '{n} handling notes',
   '처리 내역 접기': 'Hide handling notes',
-  '이 파일을 문서로 열지 못했습니다.': 'Could not open this file as a document.',
-  '문서로 열기': 'Open as a document',
   '{n}번째 그림 내려받기': 'Download image {n}',
   '그림 내려받기': 'Download the image',
   '내려받기': 'Download',
@@ -4853,6 +4851,7 @@ const EN_IN: Record<string, string> = {
   'hub|탐색': 'Explore',
   'hub|개요': 'Overview',
   'colour|직접 고르기': 'Pick a colour',
+  'period|직접 지정': 'Custom range',
 }
 
 export function translateIn(lang: Lang, context: string, text: string): string {
