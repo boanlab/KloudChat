@@ -20,6 +20,7 @@ import { LeaveCancelled } from '@/lib/officeGuard'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind, TurnOutput } from '@/types'
 import { useT } from '@/lib/useT'
+import { StartExamples, StartHeading } from '@/components/chat/EmptyStart'
 
 /** Automatic transcript retries before asking the reader. */
 const LOAD_RETRIES = 3
@@ -309,20 +310,22 @@ function Intro({
         >
           {agent ? <Bot size={20} /> : <Icon size={20} />}
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {agent
-            ? agent.name
-            : kind === 'chat'
-              ? t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')
-              : t(meta.label)}
-        </h1>
-        <p className="mt-1.5 text-base text-muted">
-          {agent
-            ? agent.description || t('이 에이전트로 대화를 시작합니다.')
-            : kind === 'chat'
-              ? t('무엇을 도와드릴까요?')
-              : t(meta.tagline)}
-        </p>
+        <StartHeading
+          title={
+            agent
+              ? agent.name
+              : kind === 'chat'
+                ? t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')
+                : t(meta.label)
+          }
+          subtitle={
+            agent
+              ? agent.description || t('이 에이전트로 대화를 시작합니다.')
+              : kind === 'chat'
+                ? t('무엇을 도와드릴까요?')
+                : t(meta.tagline)
+          }
+        />
         {agent?.process?.mode === 'custom' && agent.process.chain.length > 0 && (
           <p className="mt-2 text-sm text-muted" data-testid="chain-start-note">
             {t('보내면 파이프라인 {n}단계가 차례로 돕니다: {chain}. 단계마다 한 일은 에이전트의 실행 기록에 남습니다.')
@@ -338,6 +341,8 @@ function Intro({
       </div>
       {agent && <AgentGuide agent={agent} sessionId={sessionId ?? null} kind={kind} />}
       <StartingFrom sessionId={sessionId} kind={kind} withoutAgent={Boolean(agent)} />
+      {/* The same examples as the home screen, unless an agent brings its own starters. */}
+      {!agent && <StartExamples kind={kind} className="mt-2" />}
     </div>
   )
 }
