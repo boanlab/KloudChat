@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MessageSquare, Search, Trash2, TriangleAlert } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MessageSquare, Plus, Search, Trash2, TriangleAlert } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -344,6 +344,16 @@ export function HistoryPage() {
           <EmptyState
             icon={<MessageSquare size={18} />}
             title={urlQuery ? t('검색 결과가 없습니다') : t('아직 대화가 없습니다')}
+            action={
+              urlQuery ? (
+                <Button onClick={() => setQuery('')}>{t('검색 지우기')}</Button>
+              ) : (
+                <Button variant="primary" onClick={() => navigate('/')}>
+                  <Plus size={14} />
+                  {t('새 대화 시작')}
+                </Button>
+              )
+            }
           />
         ) : (
           <div className="overflow-hidden rounded-card border border-line bg-panel">

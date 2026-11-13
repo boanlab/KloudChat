@@ -3,7 +3,7 @@ import { Copy, KeyRound, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useResource } from '@/lib/useResource'
 import { Badge, Button, Card, ConfirmDialog, Field, Input, Modal, ResourceStatus } from '@/components/ui'
-import { relativeTime } from '@/lib/utils'
+import { formatDateTime, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
@@ -96,7 +96,15 @@ export function KeysTab() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-base font-medium">{k.name}</p>
-                <p className="text-xs text-faint">
+                <p
+                  className="text-xs text-faint"
+                  title={[
+                    t('{when} 발급').replace('{when}', formatDateTime(k.createdAt)),
+                    k.lastUsedAt ? t('{when} 사용').replace('{when}', formatDateTime(k.lastUsedAt)) : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                >
                   <span className="font-mono">{k.preview}</span> ·{' '}
                     {t('{when} 발급').replace('{when}', relativeTime(k.createdAt))}
                   {k.lastUsedAt && ` · ${t('{when} 사용').replace('{when}', relativeTime(k.lastUsedAt))}`}

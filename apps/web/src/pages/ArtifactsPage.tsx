@@ -341,6 +341,13 @@ export function ArtifactsPage() {
                   ? t('제목의 다른 부분으로 찾아보세요.')
                   : t('챗·보고서·슬라이드·이미지·오디오/동영상에서 만든 아티팩트가 여기에 저장됩니다.')
               }
+              action={
+                query ? undefined : (
+                  <Button variant="primary" onClick={() => navigate('/')}>
+                    {t('새 대화 시작')}
+                  </Button>
+                )
+              }
             />
           ) : (
             <>

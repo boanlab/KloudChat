@@ -11,6 +11,7 @@ import { kindMeta, kindOrder } from '@/lib/kinds'
 import type { SessionKind } from '@/types'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 
 type FieldKey = 'name' | 'email' | 'password'
 
@@ -327,9 +328,8 @@ export function LoginPage() {
                 error={errorFor('password')}
                 hint={<PasswordRule value={password} minLength={passwordMin} />}
               >
-                <Input
+                <PasswordInput
                   ref={passwordRef}
-                  type="password"
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value)
@@ -498,9 +498,8 @@ export function LoginPage() {
               error={errorFor('password')}
               hint={mode === 'signup' ? <PasswordRule value={password} minLength={passwordMin} /> : undefined}
             >
-              <Input
+              <PasswordInput
                 ref={passwordRef}
-                type="password"
                 aria-required
                 value={password}
                 onChange={(e) => {

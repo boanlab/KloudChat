@@ -40,6 +40,27 @@ export const EN_UI: Record<string, string> = {
   '전환할 로컬 모델': 'Local model to switch to',
   '정책을 저장하지 못했습니다. 화면은 저장된 값으로 돌아갑니다.':
     'Could not save the policy. The screen shows the saved values again.',
+  // Password boxes (no 「비밀번호」 in the toggle's name: the box keeps that label to itself)
+  '입력한 글자 보기': 'Show characters',
+  '입력한 글자 숨기기': 'Hide characters',
+  'Caps Lock이 켜져 있습니다': 'Caps Lock is on',
+  // Bulk approval of sign-ups
+  '{n}명 선택': '{n} selected',
+  '승인 대기 {n}명': '{n} awaiting approval',
+  '고른 계정 중 승인 대기인 계정이 없습니다': 'None of the selected accounts is awaiting approval',
+  '선택 승인': 'Approve selected',
+  '선택 반려': 'Reject selected',
+  '{n}명을 승인할까요?': 'Approve {n} accounts?',
+  '{n}명의 가입을 반려할까요?': 'Reject {n} sign-ups?',
+  '기본 플랜 크레딧으로 승인하고 각 계정의 게이트웨이 키를 만듭니다. 승인 대기가 아닌 계정은 건너뜁니다.':
+    'Approves them with the basic plan credits and creates each account\'s gateway key. Accounts not awaiting approval are skipped.',
+  '반려한 계정은 정지 상태가 되어 로그인할 수 없습니다. 승인 대기가 아닌 계정은 건너뜁니다.':
+    'Rejected accounts are suspended and cannot sign in. Accounts not awaiting approval are skipped.',
+  '{n}명을 승인했습니다.': 'Approved {n} accounts.',
+  '{n}명의 가입을 반려했습니다.': 'Rejected {n} sign-ups.',
+  // Empty states
+  '새 대화 시작': 'Start a conversation',
+  '검색 지우기': 'Clear search',
   // Session, 404, tab titles
   '로그인이 만료되었습니다. 다시 로그인하면 하던 화면으로 돌아갑니다.':
     'Your sign-in expired. Sign in again to return to where you were.',
