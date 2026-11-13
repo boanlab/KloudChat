@@ -332,6 +332,32 @@ test('the deck locks while the agent works, then shows its version where the per
   expect(recorded.problems).toEqual([])
 })
 
+test('in the artifacts page preview the keys work as in the panel', async ({ page }, testInfo) => {
+  test.skip(viewport(testInfo) === 'phone', 'desktop width')
+  await resultsFixture(page, testInfo)
+  await page.goto('/artifacts')
+  await page.getByRole('button', { name: `${deckFixture.title} 열기` }).click()
+  const preview = page.getByRole('dialog').filter({ has: page.getByRole('region', { name: '웹 슬라이드 편집기' }) })
+  const rail = preview.locator('.kc-thumb')
+  await expect(rail).toHaveCount(4)
+  // a press on the slide's background, then the keys of the editor
+  await preview.locator('.kc-canvas').click({ position: { x: 4, y: 4 } })
+  await page.keyboard.press('ArrowDown')
+  await expect(rail.nth(1)).toHaveAttribute('aria-current', 'true')
+  await page.keyboard.press('Control+d')
+  await expect(rail).toHaveCount(5)
+  await expect(preview.getByText('저장 안 됨')).toBeVisible()
+  await page.keyboard.press('Control+z')
+  await expect(rail).toHaveCount(4)
+  await page.keyboard.press('Control+y')
+  await expect(rail).toHaveCount(5)
+  // the toolbar does the same
+  await preview.getByRole('toolbar', { name: '슬라이드 도구' }).getByRole('button', { name: '실행 취소' }).click()
+  await expect(rail).toHaveCount(4)
+  await page.keyboard.press('End')
+  await expect(rail.nth(3)).toHaveAttribute('aria-current', 'true')
+})
+
 test('a phone reads only, with the same note as the PowerPoint editor', { tag: '@phone' }, async ({ page }, testInfo) => {
   test.skip(viewport(testInfo) !== 'phone', 'phone width')
   await resultsFixture(page, testInfo)

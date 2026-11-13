@@ -2461,7 +2461,11 @@ export function DeckPanel({
       }
       const typing = target?.closest('input, textarea, select, [contenteditable="true"]')
       if (typing) return
-      if (target?.closest('[role="menu"], [role="dialog"]') || document.querySelector('[role="dialog"][aria-modal="true"]')) return
+      // a menu, or a dialog over the deck (not one the panel itself sits in, as the artifacts
+      // page's preview), has the keys
+      const over = (el: Element | null) => !!el && !el.contains(panel)
+      if (target?.closest('[role="menu"]') || over(target?.closest('[role="dialog"]') ?? null)) return
+      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some(over)) return
       if (mod && now.canEdit && (key === 'z' || key === 'y')) {
         event.preventDefault()
         if (key === 'y' || event.shiftKey) now.redo()
