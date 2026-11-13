@@ -23,7 +23,7 @@ const markdown = `# ${title}\n\n## 개요\n\n첫 절 본문 [1].\n\n### 소제�
 
 type Section = (typeof sections)[number] & { format?: string }
 
-async function fixture(page: Page, testInfo: TestInfo) {
+async function fixture(page: Page, testInfo: TestInfo, extra: Record<string, unknown> = {}) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
   const unexpected: string[] = []
   const writes: { data: { sections: Section[] }; title?: string; expectedVersion: number }[] = []
@@ -31,7 +31,7 @@ async function fixture(page: Page, testInfo: TestInfo) {
     id: artifactId, title, kind: 'report', version: 1, partial: false,
     sessionId, projectId: null, createdAt: at, updatedAt: at,
     data: { kind: 'report', title, citationStyle: 'APA', sections: structuredClone(sections) as Section[],
-      sources: [{ id: 'src1', ordinal: 1, title: '점검 기준', url: 'https://example.test/a', origin: 'web' }] },
+      sources: [{ id: 'src1', ordinal: 1, title: '점검 기준', url: 'https://example.test/a', origin: 'web' }], ...extra },
   }
   let messages: { id: string; role: string; content: string; createdAt: string }[] = []
   const session = () => ({ id: sessionId, title, kind: 'report', model: 'fixture/base', routingMode: 'manual',
@@ -308,6 +308,45 @@ test('a chat turn over unsaved edits asks first, then saves and sends', async ({
   // saved first (v2), then the agent's version (v3) reloads the editor
   await expect(editor(page).getByText('2억')).toBeVisible({ timeout: 15_000 })
   await expect(editor(page).getByText('담당: [담당자] 확인')).toBeVisible()
+  expect(state.writes).toHaveLength(1)
+  expect(state.writes[0].data.sections[2].content).toBe('담당: [담당자] 확인')
+  expect(state.unexpected).toEqual([])
+})
+
+test('a hand save writes the Markdown typed, never the closing 「끝.」 the page draws', async ({ page }, testInfo) => {
+  // 개조식 with a closing mark: the page view adds 「끝.」 and its gap; the stored text has neither.
+  const state = await fixture(page, testInfo, {
+    titleBlock: { format: 'official', head: 'header', numbering: 'none', lists: 'gaejo', closing: true, fields: [] },
+  })
+  await enterEditor(page)
+  await editor(page).getByText('담당:').click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' 완료')
+  await save(page)
+  const saved = state.writes[0].data.sections
+  expect(saved[2].content).toBe('담당: [담당자] 완료')
+  for (const row of saved) {
+    expect(row.content).not.toContain('끝.')
+    expect(row.content).not.toMatch(/\u00a0|&nbsp;/)
+  }
+  expect(state.unexpected).toEqual([])
+})
+
+test('leaving for a new conversation over unsaved edits asks first', async ({ page }, testInfo) => {
+  const state = await fixture(page, testInfo)
+  await enterEditor(page)
+  await editor(page).getByText('담당:').click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' 확인')
+  await page.getByRole('link', { name: '새 대화' }).click()
+  const ask = page.getByRole('dialog', { name: '저장하지 않은 편집이 있습니다' })
+  await expect(ask).toBeVisible()
+  await ask.getByRole('button', { name: '취소' }).click()
+  // stayed, edits kept
+  await expect(editor(page).getByText('담당: [담당자] 확인')).toBeVisible()
+  await page.getByRole('link', { name: '새 대화' }).click()
+  await ask.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page).not.toHaveURL(new RegExp(sessionId))
   expect(state.writes).toHaveLength(1)
   expect(state.writes[0].data.sections[2].content).toBe('담당: [담당자] 확인')
   expect(state.unexpected).toEqual([])
