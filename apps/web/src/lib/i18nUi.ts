@@ -41,6 +41,8 @@ export const EN_UI: Record<string, string> = {
   '프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 화살표나 끌어서 순서를 바꿉니다.':
     'Only models the proxy declares self-hosted with no external fallback can be chosen. Reorder with the arrows or by dragging.',
   '전환할 로컬 모델': 'Local model to switch to',
+  '첨부 파일·프로젝트 파일·메모리가 들어간 턴은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 세션은 이후에도 외부 모델로 승격되지 않습니다. 쌍이 없으면 아래 안전 모델 목록의 첫 번째 모델이 맡고, 목록이 비어 있으면 전송을 거절합니다.':
+    'A turn that includes attachments, project files or memory is answered by the strict-local version of the chosen model instead, and the conversation never moves to an external model afterwards. Without that version, the first model of the safe model list below answers; with an empty list, the request is refused.',
   '정책을 저장하지 못했습니다. 화면은 저장된 값으로 돌아갑니다.':
     'Could not save the policy. The screen shows the saved values again.',
   // Password boxes (no 「비밀번호」 in the toggle's name: the box keeps that label to itself)

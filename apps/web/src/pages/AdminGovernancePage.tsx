@@ -247,7 +247,7 @@ export function AdminGovernancePage() {
                       <p className="text-base font-medium">{t('내부 자료는 strict-local로만')}</p>
                       <p className="text-base text-muted">
                         {t(
-                          '첨부 파일·프로젝트 파일·메모리가 들어간 턴은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 세션은 이후에도 외부 모델로 승격되지 않습니다. 쌍이 없으면 strict-local 안전 모델이 맡고, 그것도 없으면 전송을 거절합니다.',
+                          '첨부 파일·프로젝트 파일·메모리가 들어간 턴은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 세션은 이후에도 외부 모델로 승격되지 않습니다. 쌍이 없으면 아래 안전 모델 목록의 첫 번째 모델이 맡고, 목록이 비어 있으면 전송을 거절합니다.',
                         )}
                       </p>
                     </div>
