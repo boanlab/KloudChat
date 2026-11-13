@@ -1374,8 +1374,6 @@ export const filesApi = {
   /** The office documents (HWP, Word, PowerPoint) opened from this file, newest first. */
   documents: (id: string) => call<ArtifactRow[]>(`/files/${id}/documents`),
   /** Reads an uploaded `.hwpx` into a new report session; nothing generated or charged. Returns the session id. */
-  openAsDocument: (id: string) =>
-    call<{ id: string }>(`/files/${id}/open-as-document`, { method: 'POST' }),
   // `keepalive`: a held delete flushed as the page closes still reaches the server.
   remove: (id: string) => call<void>(`/files/${id}`, { method: 'DELETE', keepalive: true }),
 }

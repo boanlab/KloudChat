@@ -22,6 +22,8 @@ export type OfficeOptions = {
   fromHome?: boolean
   /** A file attached to an earlier question in the chat. */
   attachment?: { id: string; name: string }
+  /** The conversation's own kind (a report's or deck's screen); a chat when left out. */
+  sessionKind?: 'chat' | 'report' | 'slides'
   /** A file in the file box (`/files`, where the page opens): its bytes are `boxFile`, else `file`. */
   box?: { id: string; name: string; boxFile?: Buffer; text?: string }
   /** The document was opened from the file box file (or the attachment) before: it is offered again. */
@@ -85,7 +87,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
         attachments: [{ id: options.attachment.id, name: options.attachment.name, size: 38000 }] }]
     : []
   const session = {
-    id: sessionId, title: '연수 공문', kind: 'chat', model: 'fixture/base', routingMode: 'manual',
+    id: sessionId, title: '연수 공문', kind: options.sessionKind ?? 'chat', model: 'fixture/base', routingMode: 'manual',
     projectId: null, agentId: null, artifactId: null, pinned: false,
     messages,
     messageCount: messages.length, made: null, createdAt: at, updatedAt: at,
@@ -126,7 +128,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
     if (path === '/sessions' && method === 'POST') {
       // the conversation the home screen's document button starts, under the id the client chose
       const body = request.postDataJSON()
-      Object.assign(session, { id: body.id, title: '새 작업' })
+      Object.assign(session, { id: body.id, title: '새 작업', kind: body.kind ?? 'chat', messages: [], messageCount: 0 })
       return json(session)
     }
     if (path === `/artifacts/${kind}` && method === 'POST') {
