@@ -117,9 +117,29 @@ async def shelf(monkeypatch, tmp_path):
     async def models_for_egress():
         return catalogue
 
+    garbled: list[int] = []
+    redo: list[str] = []
+    answerable: list[list[int]] = []
+
     async def complete(user, model, system, prompt, max_tokens):
+        usage = {"inputTokens": 1000, "outputTokens": 200}
+        # the checks' calls answer from their own queues (none queued: nothing to report)
+        if system.startswith("You proofread"):
+            calls.append({"model": model["id"], "system": system, "prompt": prompt,
+                          "check": "proofread"})
+            return json.dumps({str(n): "garbled: 어색함" for n in garbled}), usage
+        if system.startswith("You fix sentences"):
+            calls.append({"model": model["id"], "system": system, "prompt": prompt,
+                          "check": "redo"})
+            return (redo.pop(0) if redo else '{"items": []}'), usage
+        if system.startswith("You check suggested questions"):
+            calls.append({"model": model["id"], "system": system, "prompt": prompt,
+                          "check": "answerable"})
+            marked = answerable.pop(0) if answerable else list(range(1, 9))
+            return json.dumps({str(n): "yes" if n in marked else "no: 자료에 없음"
+                               for n in range(1, 9)}), usage
         calls.append({"model": model["id"], "system": system, "prompt": prompt})
-        return answers.pop(0), {"inputTokens": 1000, "outputTokens": 200}
+        return answers.pop(0), usage
 
     monkeypatch.setattr(shelf_calls, "policy", policy)
     monkeypatch.setattr(shelf_calls.model_service, "list_models_for_egress", models_for_egress)
@@ -144,7 +164,8 @@ async def shelf(monkeypatch, tmp_path):
     app.dependency_overrides[current_user] = lambda: me
     async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
         yield SimpleNamespace(client=client, ids=ids, maker=maker, rules=rules, calls=calls,
-                              answers=answers, catalogue=catalogue, me=me)
+                              answers=answers, catalogue=catalogue, me=me, garbled=garbled,
+                              redo=redo, answerable=answerable)
     await shelf_jobs.drain()
 
 
@@ -211,7 +232,10 @@ async def test_the_shelf_lists_each_source_with_its_kind_and_pasted_text_joins_i
 async def test_a_guide_is_written_by_the_strict_local_model_and_kept(shelf):
     shelf.answers.append(json.dumps({
         "summary": "논리 시계로 사건 순서를 정하는 법.", "topics": ["램포트 시계", "벡터 시계"],
-        "questions": ["벡터 시계로 동시성을 어떻게 판단하나요?", "짧음"]}, ensure_ascii=False))
+        "questions": ["벡터 시계로 동시성을 어떻게 판단하나요?", "짧음",
+                      "램포트 시계와 CAP 정리는 어떻게 이어지나요?"]}, ensure_ascii=False))
+    # the guide model finds the CAP question unanswerable from the sources
+    shelf.answerable.append([1])
     url = f"/projects/{shelf.ids.project}/shelf/guide/{shelf.ids.lecture}"
     assert (await shelf.client.get(url)).json()["state"] == "none"
     started = await shelf.client.post(url)
@@ -223,15 +247,16 @@ async def test_a_guide_is_written_by_the_strict_local_model_and_kept(shelf):
     # a one-word "question" is dropped
     assert guide["questions"] == ["벡터 시계로 동시성을 어떻게 판단하나요?"]
     assert shelf.calls[0]["model"] == STRICT["id"]
-    # the material is fenced as data
+    # the material is fenced as data; the question check reads each question's passages
     assert "<material>" in shelf.calls[0]["prompt"]
+    assert shelf.calls[1]["check"] == "answerable" and "Passages:" in shelf.calls[1]["prompt"]
     # asked again: the kept guide, no new call
     await shelf.client.post(url)
     await shelf_jobs.drain()
-    assert len(shelf.calls) == 1
+    assert len(shelf.calls) == 2
     async with shelf.maker() as db:
         ledger = (await db.exec(select(CreditLedger))).all()
-    assert [row.reason for row in ledger] == ["knowledge.guide"]
+    assert [row.reason for row in ledger] == ["knowledge.guide", "knowledge.guide"]
 
 
 async def test_the_viewer_finds_the_cited_passage_its_page_and_time(shelf):
@@ -272,8 +297,9 @@ async def test_a_study_guide_cites_only_listed_sources_and_opens_as_a_report(she
     assert session.artifact_id == artifact.id and session.project_id == shelf.ids.project
     assert [s["title"] for s in artifact.data["sources"]] == [
         "03강 논리 시계.pdf", "래프트 강의.mp4"]
-    # strict-local by default, sources numbered as the prompt lists them
+    # strict-local by default, sources numbered as the prompt lists them; then proofread
     assert shelf.calls[0]["model"] == STRICT["id"]
+    assert shelf.calls[1]["check"] == "proofread" and shelf.calls[1]["model"] == STRICT["id"]
     assert "[1] 03강 논리 시계.pdf" in shelf.calls[0]["prompt"]
 
 
@@ -351,22 +377,31 @@ async def test_a_quiz_keeps_only_sound_questions_and_exports(shelf):
     assert "① " in artifact.data["sections"][0]["content"]
 
 
-async def test_speech_stays_off_where_internal_data_must_stay_inside(shelf):
-    shelf.answers.append(json.dumps({"title": "개요", "lines": [
-        {"speaker": "A", "text": "오늘은 논리 시계 이야기예요."},
-        {"speaker": "B", "text": "전역 시계가 없어서 순서를 따로 정해야 해요 [1]."},
-        {"speaker": "A", "text": "램포트 시계는 어떻게 하나요?"},
-        {"speaker": "B", "text": "**사건마다** 정수를 붙여요."},
-    ]}, ensure_ascii=False))
+async def test_speech_stays_off_where_internal_data_must_stay_inside(shelf, monkeypatch):
+    monkeypatch.setattr(studio_kinds, "AUDIO_SHORT", 0)
+    shelf.answers.append(json.dumps({"title": "개요", "sections": [
+        {"topic": "시계", "points": ["전역 시계"], "sources": [1]},
+        {"topic": "램포트", "points": ["정수"], "sources": [1]},
+        {"topic": "정리", "points": ["요약"], "sources": [1]}]}, ensure_ascii=False))
+    for lines in (
+        [{"speaker": "A", "text": "오늘은 논리 시계 이야기예요."},
+         {"speaker": "B", "text": "전역 시계가 없어서 순서를 따로 정해야 해요 [1]."}],
+        [{"speaker": "A", "text": "램포트 시계는 어떻게 하나요?"},
+         {"speaker": "B", "text": "**사건마다** 정수를 붙여요."}],
+        [{"speaker": "A", "text": "정리해 볼까요?"}, {"speaker": "B", "text": "네, 좋아요."}],
+    ):
+        shelf.answers.append(json.dumps({"lines": lines}, ensure_ascii=False))
     started = await shelf.client.post(f"/projects/{shelf.ids.project}/studio", json={
         "kind": "audio", "sourceIds": [shelf.ids.lecture], "options": {"length": "short"}})
     await shelf_jobs.drain()
     item = (await shelf.client.get(f"/studio/{started.json()['id']}")).json()
     lines = item["content"]["lines"]
-    assert [line["speaker"] for line in lines] == ["A", "B", "A", "B"]
+    assert [line["speaker"] for line in lines] == ["A", "B", "A", "B", "A", "B"]
     # no citations or markdown in what is read aloud
     assert lines[1]["text"].endswith("정해야 해요.") and "**" not in lines[3]["text"]
     assert item["speech"]["state"] == "idle"
+    # a later section is told how the conversation so far ends
+    assert "The conversation so far ends with" in shelf.calls[2]["system"]
 
     refused = await shelf.client.post(f"/studio/{item['id']}/speech", json={"consent": True})
     assert refused.status_code == 409 and refused.json()["detail"] == "strict_local_no_tts"
@@ -514,23 +549,104 @@ def test_the_migration_makes_the_tables_the_models_read():
 
 
 async def test_a_document_without_citations_is_asked_again_and_chinese_slips_are_mended(shelf):
-    uncited = {"title": "브리핑", "summary": "분散 시스템은 여러 컴퓨터로 동작한다.",
+    uncited = {"title": "브리핑", "summary": "분散 시스템에는 전역 시계가 없다.",
                "sections": [{"heading": "핵심 내용", "content": "- 전역 시계가 없다."}]}
-    cited = {"title": "브리핑", "summary": "분散 시스템은 여러 컴퓨터로 동작한다 [1].",
+    cited = {"title": "브리핑", "summary": "분散 시스템에는 전역 시계가 없다 [1].",
              "sections": [{"heading": "핵심 내용", "content": "- 전역 시계가 없다 [1]."}]}
     shelf.answers.extend([json.dumps(uncited, ensure_ascii=False),
-                          json.dumps(cited, ensure_ascii=False),
-                          json.dumps(["분산 시스템은 여러 컴퓨터로 동작한다 [1]."],
-                                     ensure_ascii=False)])
+                          json.dumps(cited, ensure_ascii=False)])
+    shelf.redo.append(json.dumps({"items": [
+        {"id": 0, "text": "분산 시스템에는 전역 시계가 없다 [1]."}]}, ensure_ascii=False))
     started = await shelf.client.post(f"/projects/{shelf.ids.project}/studio", json={
         "kind": "briefing", "sourceIds": [shelf.ids.lecture]})
     await shelf_jobs.drain()
     item = (await shelf.client.get(f"/studio/{started.json()['id']}")).json()
     assert item["state"] == "done", item
     body = "\n".join(s["content"] for s in item["content"]["sections"])
-    assert "[1]" in body and "散" not in body and "분산 시스템은" in body
-    # first answer, the re-ask, and the Korean rewrite
-    assert len(shelf.calls) == 3 and "cited no sources" in shelf.calls[1]["system"]
+    assert "[1]" in body and "散" not in body and "분산 시스템에는" in body
+    assert "cited no sources" in shelf.calls[1]["system"]
+    redo = next(c for c in shelf.calls if c.get("check") == "redo")
+    assert "Chinese characters" in redo["prompt"] and "[1]" in redo["prompt"]
+    assert item["content"]["checks"]["fixed"] == 1
+
+
+async def test_unbacked_items_are_redone_once_then_dropped_and_garbled_stems_reworded(shelf):
+    good = {"type": "mc", "question": "벡터 시계로 판단할 수 있는 것은?",
+            "choices": ["동시성", "물리 시각", "네트워크 지연", "메모리 크기"], "answer": 0,
+            "explanation": "벡터 시계로는 두 사건이 동시에 일어났는지 판단할 수 있다 [1].",
+            "cite": [1]}
+    shelf.answers.append(json.dumps({"title": "퀴즈", "questions": [
+        good,
+        {**good, "question": "벡터 시계를 보아야 하는 칸의 총 개수는?",
+         "choices": ["프로세스 수", "1", "2", "사건 수"],
+         "explanation": "벡터 시계는 프로세스 수만큼의 칸을 가진다 [1]."},
+        {**good, "question": "램포트 시계를 만든 회사는?",
+         "choices": ["구글", "아마존", "IBM", "MS"],
+         "explanation": "구글이 2010년에 클라우드 서비스로 만들었다 [1]."},
+        {"type": "short", "question": "같은 프로세스 뒤 사건의 값은?", "answer": "더 큰 값",
+         "explanation": "뒤의 사건은 더 큰 값을 받는다 [1].", "cite": [1]},
+    ]}, ensure_ascii=False))
+    # the proofreader marks the second stem (stems are listed first, then explanations)
+    shelf.garbled.append(2)
+    shelf.redo.append(json.dumps({"items": [
+        {"id": 0, "text": "벡터 시계는 칸을 몇 개 가지나요?"},
+        {"id": 1, "text": "구글이 만들었다 [1]."}]}, ensure_ascii=False))
+    started = await shelf.client.post(f"/projects/{shelf.ids.project}/studio", json={
+        "kind": "quiz", "sourceIds": [shelf.ids.lecture]})
+    await shelf_jobs.drain()
+    item = (await shelf.client.get(f"/studio/{started.json()['id']}")).json()
+    assert item["state"] == "done", item
+    stems = [q["question"] for q in item["content"]["questions"]]
+    assert stems == [good["question"], "벡터 시계는 칸을 몇 개 가지나요?",
+                     "같은 프로세스 뒤 사건의 값은?"]
+    checks = item["content"]["checks"]
+    assert checks["garbled"] == 1 and checks["unbacked"] == 1 and checks["dropped"] == 1
+
+
+def test_script_slips_are_found_and_mended():
+    from app.services import shelf_checks
+
+    sources = "Raft는 리더를 뽑는다. 협의(協議)"
+    assert shelf_checks.script_problems("사용します", sources) == ["contains Japanese kana"]
+    assert "a Korean word is glued to English letters" in shelf_checks.script_problems(
+        "분산system 설계", sources)
+    assert shelf_checks.script_problems("나중에 formally 증명되었다", sources)[0].startswith(
+        "English words")
+    # what the sources write is not a slip
+    assert shelf_checks.script_problems("Raft는 협의(協議)로 리더를 뽑는다", sources) == []
+    assert shelf_checks.mend_script("사용します 분散", sources) == "사용 분산"
+    # a source term one letter off is flagged for the writer to check
+    assert shelf_checks.misspelt("람포트의 규칙", LECTURE) == [("람포트", "램포트")]
+    assert shelf_checks.misspelt("트레이드오프를 고려한다", LECTURE) == []
+
+
+def test_a_cited_sentence_needs_its_sources_words_and_figures():
+    from app.services import claim_support
+
+    assert claim_support.backed("벡터 시계로는 동시성을 판단할 수 있습니다 [2]", LECTURE)
+    assert not claim_support.backed("오래된 캐시 데이터만 읽게 되는 문제가 생깁니다 [10]", LECTURE)
+    # a figure the source does not hold
+    assert claim_support.support("램포트 시계는 1979년에 나왔다", LECTURE).missing_numbers == (
+        "1979",)
+
+
+async def test_a_short_audio_section_is_asked_to_be_longer(shelf, monkeypatch):
+    monkeypatch.setattr(studio_kinds, "AUDIO_SECTIONS", {"short": 1})
+    shelf.answers.append(json.dumps({"title": "개요", "sections": [
+        {"topic": "시계", "points": ["전역 시계"], "sources": [1]}]}, ensure_ascii=False))
+    short = [{"speaker": "A", "text": "시작해요."}, {"speaker": "B", "text": "네."},
+             {"speaker": "A", "text": "끝."}, {"speaker": "B", "text": "네."}]
+    longer = [{"speaker": "A" if i % 2 == 0 else "B",
+               "text": "분산 시스템에는 전역 시계가 없어서 사건마다 정수를 붙여 순서를 정합니다."}
+              for i in range(24)]
+    shelf.answers.extend([json.dumps({"lines": short}, ensure_ascii=False),
+                          json.dumps({"lines": longer}, ensure_ascii=False)])
+    started = await shelf.client.post(f"/projects/{shelf.ids.project}/studio", json={
+        "kind": "audio", "sourceIds": [shelf.ids.lecture], "options": {"length": "short"}})
+    await shelf_jobs.drain()
+    item = (await shelf.client.get(f"/studio/{started.json()['id']}")).json()
+    assert len(item["content"]["lines"]) == 24
+    assert "had only" in shelf.calls[2]["system"]
 
 
 def test_a_glossary_keeps_only_the_sources_own_terms():
@@ -561,3 +677,36 @@ def test_project_files_given_whole_are_numbered_for_citation():
     # a material citation keeps its plain number, which the source list names
     linked, cited = agent._link_citations("동시성을 판단한다 [2].", sources)
     assert linked == "동시성을 판단한다 [2]." and cited == [2]
+
+
+def test_a_chat_citation_of_a_file_that_does_not_say_it_is_taken_out():
+    from app.services import agent
+
+    sources: list[str] = []
+    texts = {"02강.md": LECTURE, "10강.md": "맵리듀스는 맵과 리듀스 단계로 데이터를 처리한다."}
+    agent._with_material_numbers([{"role": "user", "content": "?"}], sources, list(texts))
+    seen = {agent.MATERIAL_SOURCE + name: text for name, text in texts.items()}
+    answer = ("벡터 시계로는 두 사건이 동시에 일어났는지 판단할 수 있습니다 [1]. "
+              "충족되지 않으면 오래된 캐시만 읽게 됩니다 [2].")
+    linked, cited = agent._link_citations(answer, sources, seen)
+    assert cited == [1] and "[2]" not in linked and "읽게 됩니다." in linked
+
+
+def test_an_answer_with_a_trailing_comma_is_still_read():
+    assert shelf_jobs.parse_json('```json\n{"terms": [{"term": "a",},],}\n```') == {
+        "terms": [{"term": "a"}]}
+
+
+def test_a_name_glossed_like_the_sources_but_spelt_otherwise_is_mended():
+    from app.services import shelf_checks
+
+    sources = "래프트(Raft)는 2014년에 발표되었다. 불리(Bully) 알고리즘은 1982년에 나왔다."
+    assert shelf_checks.renamed("레이트(Raft)와 부울리(Bully)", sources) == [
+        ("레이트", "래프트"), ("부울리", "불리")]
+    # another word before the gloss is not a spelling of the name
+    assert shelf_checks.renamed("리더 선출(Raft)", sources) == []
+    assert shelf_checks.mend_script("레이트(Raft)는 쉽다", sources) == "래프트(Raft)는 쉽다"
+    assert shelf_checks.renamed("래프트(Raft)", sources) == []
+    # a question or card front carries no citation
+    made = studio_kinds.cards({"cards": [{"front": "벡터 시계란? [2]", "back": "칸 [1]"}]}, 2)
+    assert made[0]["front"] == "벡터 시계란?"

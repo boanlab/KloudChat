@@ -57,12 +57,14 @@ def parse_json(answer: str) -> dict[str, Any] | None:
     if "{" in text:
         candidates.append(text[text.find("{"): text.rfind("}") + 1])
     for block in candidates:
-        try:
-            data = json.loads(block)
-        except ValueError:
-            continue
-        if isinstance(data, dict):
-            return data
+        # a trailing comma before a closing bracket is the commonest slip
+        for text in (block, re.sub(r",\s*([}\]])", r"\1", block)):
+            try:
+                data = json.loads(text)
+            except ValueError:
+                continue
+            if isinstance(data, dict):
+                return data
     return None
 
 

@@ -26,7 +26,7 @@ Click a source's name, or **Source guide** in the Knowledge tab, for its summary
 
 ## From a citation to the source
 
-An answer grounded in project sources ends its statements with numbers such as **[1]** and lists the source names under the answer. Clicking a number opens the source viewer.
+An answer grounded in project sources ends its statements with numbers such as **[1]** and lists the source names under the answer. A number is taken out when the sentence citing it is not in that source. Clicking a number opens the source viewer.
 
 | Source | Source viewer |
 |---|---|
@@ -52,7 +52,7 @@ In the project's **Studio** tab, pick the sources to use, then what to make.
 
 Before anything is made you see how many sources are read, the model, the tokens read and written, and the expected credits. Models running inside cost no credits. Sources too long to read whole are read in parts spread across them, and you are told which. You can choose the format (web report, Hangul, Word), the language and a focus (e.g. “focus on lectures 5–8”).
 
-Documents cite a source number for each statement; numbers not in the source list are removed. A document is saved as an artifact in a conversation of its own, so **Open as a document** edits and exports it in the editor. Reading it in the studio, a source number opens the source too. **Make again** makes it anew with the same sources and settings.
+Documents cite a source number for each statement; numbers not in the source list are removed. Afterwards every sentence, question and card is checked: are its content and figures in the sources it cites, and is it free of foreign script, misspelt terms and garbled wording? What fails is rewritten once, and left out if the sources still do not back it. Suggested questions in source guides are kept only when the sources answer them. A document is saved as an artifact in a conversation of its own, so **Open as a document** edits and exports it in the editor. Reading it in the studio, a source number opens the source too. **Make again** makes it anew with the same sources and settings.
 
 ## Learning tools
 

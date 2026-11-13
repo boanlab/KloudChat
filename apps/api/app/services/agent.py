@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.services import (
     answer_plan,
     calc_check,
+    claim_support,
     current_evidence,
     fallback_watch,
     internal_words,
@@ -1176,8 +1177,11 @@ def _link_citations(answer: str, sources: list[str],
             return match.group(0)
         if seen:
             claim = _claim_at(piece, match.start())
-            kept = [n for n in wanted if sources[n - 1].startswith(MATERIAL_SOURCE)
-                    or not _unrelated(claim, seen.get(sources[n - 1], ""))]
+            kept = [n for n in wanted if (
+                claim_support.backed(claim, seen[sources[n - 1]])
+                if sources[n - 1].startswith(MATERIAL_SOURCE) and sources[n - 1] in seen
+                else sources[n - 1].startswith(MATERIAL_SOURCE)
+                or not _unrelated(claim, seen.get(sources[n - 1], "")))]
             if not kept:
                 return "\x00"
             wanted = kept
@@ -1688,9 +1692,10 @@ async def run_turn(
     #: A turned-on skill searches deep (`process.deep_search`): twice the searches, as a
     #: document's research does.
     deep_search: bool = False,
-    #: Project files the context gave whole or in part, by name: numbered as material sources
-    #: before any search, so the answer cites them 「[n]」 and lists them by name under it.
-    cited_material: list[str] | tuple[str, ...] = (),
+    #: Project files the context gave whole or in part, name → text: numbered as material
+    #: sources before any search, so the answer cites them 「[n]」 and lists them by name
+    #: under it; a citation of one the claim's words are not in is taken out.
+    cited_material: dict[str, str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """One assistant turn to a final answer; exactly one `usage`, `done` left to caller."""
     search_scale = 2 if deep_search else 1
@@ -1839,9 +1844,11 @@ async def run_turn(
     #: earlier number is unknown.
     sources, source_titles = _earlier_sources(messages)
     if cited_material:
-        messages = _with_material_numbers(messages, sources, cited_material)
-    #: what the writer read under each URL this turn (title, snippet, excerpt)
-    source_seen: dict[str, str] = {}
+        messages = _with_material_numbers(messages, sources, list(cited_material))
+    #: what the writer read under each URL this turn (title, snippet, excerpt); a project
+    #: file given whole is read under its material number
+    source_seen: dict[str, str] = {MATERIAL_SOURCE + name: text
+                                   for name, text in (cited_material or {}).items()}
     #: URLs earlier answers gave (not those they already flagged): found then, not written
     #: from memory now.
     earlier_urls = {u for m in messages if m.get("role") == "assistant"

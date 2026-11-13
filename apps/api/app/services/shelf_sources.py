@@ -212,5 +212,21 @@ def locate(text: str, quote: str = "", page: int | None = None) -> dict[str, Any
     }
 
 
-__all__ = ["Bundle", "Numbered", "bundle", "digest_of", "kind_of", "locate",
+async def given_texts(db: Any, items: Any) -> dict[str, str]:
+    """Name → text of the project files a turn's context gave (whole or in part), for the
+    answer to cite them and for its citations to be checked against them."""
+    from sqlmodel import col, select
+
+    from app.models.workspace import StoredFile
+
+    ids = [item.id for item in items or () if item.state != "omitted" and item.id]
+    if not ids:
+        return {}
+    rows = (await db.exec(select(StoredFile.id, StoredFile.name, StoredFile.text)
+                          .where(col(StoredFile.id).in_(ids)))).all()
+    by_id = {row[0]: (row[1], row[2] or "") for row in rows}
+    return {by_id[i][0]: by_id[i][1] for i in ids if i in by_id}
+
+
+__all__ = ["Bundle", "given_texts", "Numbered", "bundle", "digest_of", "kind_of", "locate",
            "seconds_of", "signature"]

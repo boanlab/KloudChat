@@ -25,7 +25,14 @@ from app.models.chat import ChatSession, SessionKind
 from app.models.shelf import StudioItem
 from app.models.user import User, utcnow
 from app.models.workspace import Artifact, ArtifactKind, Project, StoredFile
-from app.services import audiogen, shelf_calls, shelf_jobs, shelf_sources, studio_kinds
+from app.services import (
+    audiogen,
+    shelf_calls,
+    shelf_checks,
+    shelf_jobs,
+    shelf_sources,
+    studio_kinds,
+)
 from app.services import models as model_service
 from app.services.credits import charge_for_tokens, settle
 from app.services.shelf_names import kind_name
@@ -102,6 +109,13 @@ async def estimate(db, user: User, project: Project, kind: str, ids: list[str] |
     system = studio_kinds.system_prompt(kind, "ko", options)
     input_tokens = shelf_calls.tokens_of(system) + shelf_calls.tokens_of(made.text)
     output_tokens = int(studio_kinds.MAX_TOKENS[kind] * studio_kinds.TYPICAL_SHARE)
+    if kind == "audio":
+        # a plan, then one call per section, each reading the sources
+        calls = 1 + studio_kinds.AUDIO_SECTIONS.get(str(options.get("length") or "standard"), 5)
+        input_tokens *= calls
+    # the checks' re-ask: what failed, with its passages, rewritten once
+    input_tokens += output_tokens
+    output_tokens += output_tokens // 3
     out = {
         "kind": kind,
         "sources": len(files),
@@ -150,21 +164,19 @@ async def regenerate(db, user: User, item: StudioItem) -> StudioItem:
 
 
 async def _complete_json(user: User, how: shelf_calls.Route, system: str, prompt: str,
-                         max_tokens: int, db) -> tuple[dict[str, Any] | None, int, int, int]:
-    """Ask once, and once more when the answer is not readable JSON; both billed."""
-    credits = spent_in = spent_out = 0
+                         max_tokens: int, db, item: StudioItem) -> dict[str, Any] | None:
+    """Ask once, and once more when the answer is not readable JSON; both billed on `item`."""
     for attempt in range(2):
         extra = "" if attempt == 0 else (
             "\n\nYour previous answer was not a readable JSON object. Answer again with the "
             "JSON object only.")
         answer, usage = await shelf_calls.complete(user, how.model, system + extra, prompt,
                                                    max_tokens)
-        c, i, o = shelf_calls.bill(db, user, how.model, usage, REASON)
-        credits, spent_in, spent_out = credits + c, spent_in + i, spent_out + o
+        _add_usage(item, shelf_calls.bill(db, user, how.model, usage, REASON))
         data = shelf_jobs.parse_json(answer)
         if data is not None:
-            return data, credits, spent_in, spent_out
-    return None, credits, spent_in, spent_out
+            return data
+    return None
 
 
 async def _run(item_id: str) -> None:
@@ -204,117 +216,153 @@ async def _write(db, user: User, item: StudioItem) -> None:
     system = studio_kinds.system_prompt(item.kind, language, options)
     prompt = shelf_calls.outgoing(
         studio_kinds.user_prompt(made.text, [s.name for s in made.sources]), how)
-    data, credits, spent_in, spent_out = await _complete_json(
-        user, how, system, prompt, studio_kinds.MAX_TOKENS[item.kind], db)
     item.model = str(how.model["id"])
-    item.credits, item.input_tokens, item.output_tokens = credits, spent_in, spent_out
+    item.credits = item.input_tokens = item.output_tokens = 0
+    count = len(made.sources)
+    if item.kind == "audio":
+        data = await _audio_script(db, user, how, item, made, prompt, language, options)
+    else:
+        data = await _complete_json(user, how, system, prompt,
+                                    studio_kinds.MAX_TOKENS[item.kind], db, item)
     if data is None:
         raise ValueError("answer unreadable")
-    count = len(made.sources)
-    sources = made.wire()
-    title = shelf_jobs.clip(data.get("title"), 160) or kind_name(item.kind, language)
-    item.title = title[:200]
-    content: dict[str, Any] = {"language": language, "sources": sources,
-                               "partial": made.partial, "strict": how.strict}
     if item.kind in studio_kinds.DOCUMENTS:
         doc = studio_kinds.document(item.kind, data, count, language, made.text)
         if doc is not None and studio_kinds.cites_nothing(item.kind, doc):
             # the writer left out the source numbers: asked once more, the better one kept
-            again, c, i, o = await _complete_json(
-                user, how, system + _CITE_AGAIN, prompt, studio_kinds.MAX_TOKENS[item.kind], db)
-            item.credits += c
-            item.input_tokens += i
-            item.output_tokens += o
+            again = await _complete_json(user, how, system + _CITE_AGAIN, prompt,
+                                         studio_kinds.MAX_TOKENS[item.kind], db, item)
             redo = (studio_kinds.document(item.kind, again, count, language, made.text)
                     if again else None)
             if redo is not None and not studio_kinds.cites_nothing(item.kind, redo):
-                doc = redo
+                data = again
+    checked = await _checked(db, user, how, item, data, made, language)
+    item.content = {"language": language, "sources": made.wire(), "partial": made.partial,
+                    "strict": how.strict, "checks": checked}
+    title = shelf_jobs.clip(data.get("title"), 160) or kind_name(item.kind, language)
+    if language == "ko":
+        title = shelf_checks.mend_script(title, made.text) or kind_name(item.kind, language)
+    item.title = title[:200]
+    content = item.content
+    if item.kind in studio_kinds.DOCUMENTS:
+        doc = studio_kinds.document(item.kind, data, count, language, made.text)
         if doc is None:
             raise ValueError("empty document")
+        doc["title"] = item.title
         content.update(doc)
-        if language == "ko":
-            content = await _korean_only(user, how, content, db, item)
-            doc = {"title": content["title"], "sections": content["sections"]}
         item.content = content
-        await _save_document(db, user, item, doc, sources, str(options.get("format") or "web"))
-        return
+        await _save_document(db, user, item, doc, made.wire(),
+                             str(options.get("format") or "web"))
     elif item.kind == "quiz":
         questions = studio_kinds.quiz(data, count, random.Random())
         if len(questions) < 3:
             raise ValueError("too few usable questions")
-        content["questions"] = questions
-        item.content = content
+        item.content = {**content, "questions": questions}
     elif item.kind == "flashcards":
         found = studio_kinds.cards(data, count)
         if len(found) < 3:
             raise ValueError("too few usable cards")
-        content["cards"] = found
-        item.content = content
+        item.content = {**content, "cards": found}
     elif item.kind == "audio":
         lines = studio_kinds.script(data)
         if len(lines) < 4:
             raise ValueError("script too short")
-        content["lines"] = lines
-        item.content = content
+        item.content = {**content, "lines": lines}
         item.speech_state = "idle"
         item.speech_total = len(lines)
-    if language == "ko" and item.content:
-        item.content = await _korean_only(user, how, item.content, db, item)
+
+
+def _add_usage(item: StudioItem, spent: tuple[int, int, int]) -> None:
+    item.credits += spent[0]
+    item.input_tokens += spent[1]
+    item.output_tokens += spent[2]
+
+
+async def _checked(db, user: User, how: shelf_calls.Route, item: StudioItem,
+                   data: dict[str, Any], made: shelf_sources.Bundle,
+                   language: str) -> dict[str, Any]:
+    """`shelf_checks` over the writer's JSON (in place): script, grounding and fluency, one
+    re-ask of what failed by the writer, the rest mended or dropped. Both calls billed."""
+    texts = {f.id: f.text for f in await sources_for(db, user, item.project_id,
+                                                     [s.file_id for s in made.sources])}
+    by_number = {s.number: texts.get(s.file_id, "") for s in made.sources}
+    names = {s.number: s.name for s in made.sources}
+    try:
+        reader = await shelf_calls.route(user, role="guide")
+    except shelf_calls.ShelfError:
+        reader = None
+
+    async def write(system: str, prompt: str, most: int) -> tuple[str, dict]:
+        return await shelf_calls.complete(user, how.model, system,
+                                          shelf_calls.outgoing(prompt, how), most)
+
+    async def proofread(system: str, prompt: str, most: int) -> tuple[str, dict]:
+        assert reader is not None
+        return await shelf_calls.complete(user, reader.model, system,
+                                          shelf_calls.outgoing(prompt, reader), most)
+
+    # the writer and the guide model proofread side by side: each misses what the other sees
+    readers = [write] + ([proofread] if reader is not None
+                         and reader.model["id"] != how.model["id"] else [])
+    report = await shelf_checks.check(
+        item.kind, data, language=language, by_number=by_number, names=names, write=write,
+        proofread=readers)
+    for role, usage in report.usage:
+        model = reader.model if role == "proofread:1" and reader is not None else how.model
+        _add_usage(item, shelf_calls.bill(db, user, model, usage, REASON))
+    return {"script": report.script, "unbacked": report.unbacked, "garbled": report.garbled,
+            "fixed": report.fixed, "mended": report.mended, "dropped": report.dropped,
+            "details": report.details}
+
+
+async def _audio_script(db, user: User, how: shelf_calls.Route, item: StudioItem,
+                        made: shelf_sources.Bundle, prompt: str, language: str,
+                        options: dict[str, Any]) -> dict[str, Any] | None:
+    """The overview planned in sections, each written to its share of the length and asked
+    to be longer once when it falls short; each line keeps its section's sources (`cite`)."""
+    length = str(options.get("length") or "standard")
+    chars, _ = studio_kinds.AUDIO_LENGTH.get(length, studio_kinds.AUDIO_LENGTH["standard"])
+    count = studio_kinds.AUDIO_SECTIONS.get(length, 5)
+    lang = "Korean" if language == "ko" else "English"
+    plan = await _complete_json(user, how, studio_kinds.AUDIO_PLAN.format(
+        count=count, language=lang), prompt, 1500, db, item)
+    sections = [s for s in (plan or {}).get("sections") or [] if isinstance(s, dict)
+                and str(s.get("topic") or "").strip()][:count + 1]
+    if not sections:
+        return None
+    numbers = {s.number for s in made.sources}
+    each_chars = max(300, chars // len(sections))
+    asked = int(each_chars * studio_kinds.AUDIO_ASK)
+    # a line of talk runs about 45 letters: the line count follows the length asked
+    each_lines = max(6, round(asked / 45))
+    out: list[dict[str, Any]] = []
+    for k, section in enumerate(sections, 1):
+        cites = [int(n) for n in section.get("sources") or [] if str(n).isdigit()
+                 and int(n) in numbers] or sorted(numbers)
+        system = studio_kinds.AUDIO_SECTION.format(
+            number=k, count=len(sections), topic=shelf_jobs.clip(section["topic"], 120),
+            points="; ".join(shelf_jobs.strings(section.get("points"), 6, 160)) or "-",
+            chars=asked, lines=each_lines, language=lang,
+            place=studio_kinds.audio_place(k, len(sections)))
+        if out:
+            # the last lines so far, so the section carries the conversation on
+            system += "\n\nThe conversation so far ends with:\n" + "\n".join(
+                f"{line['speaker']}: {line['text']}" for line in out[-3:])
+        written = studio_kinds.script(await _complete_json(
+            user, how, system, prompt, 1800, db, item) or {})
+        had = sum(len(line["text"]) for line in written)
+        if had < each_chars * studio_kinds.AUDIO_SHORT:
+            longer = studio_kinds.script(await _complete_json(
+                user, how, system + studio_kinds.AUDIO_LONGER.format(had=had, chars=each_chars),
+                prompt, 2400, db, item) or {})
+            if sum(len(line["text"]) for line in longer) > had:
+                written = longer
+        out.extend({**line, "cite": cites} for line in written)
+    return {"title": (plan or {}).get("title") or "", "lines": out}
 
 
 _CITE_AGAIN = ("\n\nYour previous answer cited no sources. Every statement taken from a source "
                "must end with its source number in square brackets, like [2].")
-
-#: joins the texts of one mend call; a line of its own, never inside a sentence
-_SEP = "\n\u241e\n"
-#: the fields of an output that are prose a reader sees
-_PROSE = ("title", "content", "question", "explanation", "front", "back", "text", "answer")
-
-
-def _prose_slots(content: dict[str, Any]) -> list[tuple[dict, str]]:
-    slots: list[tuple[dict, str]] = []
-    if isinstance(content.get("title"), str):
-        slots.append((content, "title"))
-    for group in ("sections", "questions", "cards", "lines"):
-        for row in content.get(group) or []:
-            for key in _PROSE:
-                if isinstance(row, dict) and isinstance(row.get(key), str):
-                    slots.append((row, key))
-            for i, choice in enumerate(row.get("choices") or [] if isinstance(row, dict) else []):
-                if isinstance(choice, str):
-                    slots.append((row["choices"], i))  # type: ignore[arg-type]
-    return slots
-
-
-async def _korean_only(user: User, how: shelf_calls.Route, content: dict[str, Any], db,
-                       item: StudioItem) -> dict[str, Any]:
-    """Chinese words slipped into Korean output (a self-hosted writer's habit) said in Korean:
-    the sentences holding them rewritten in one call, else read in Hangul (`stray_han`)."""
-    from app.services import stray_han
-
-    slots = _prose_slots(content)
-    joined = _SEP.join(str(holder[key]) for holder, key in slots)
-    if not stray_han.strays(joined):
-        return content
-    spent: dict = {}
-
-    async def complete(model, messages, api_key, max_tokens):
-        return await shelf_calls.complete(user, how.model, "You correct Korean text.",
-                                          messages[0]["content"], max_tokens)
-
-    mended, _ = await stray_han.mend(joined, complete=complete, model=str(how.model["id"]),
-                                     usage=spent)
-    if spent:
-        c, i, o = shelf_calls.bill(db, user, how.model, spent, REASON)
-        item.credits += c
-        item.input_tokens += i
-        item.output_tokens += o
-    parts = mended.split(_SEP)
-    if len(parts) == len(slots):
-        for (holder, key), text in zip(slots, parts, strict=True):
-            holder[key] = text
-    return content
-
 
 async def _save_document(db, user: User, item: StudioItem, doc: dict[str, Any],
                          sources: list[dict], fmt: str) -> None:

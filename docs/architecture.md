@@ -2764,7 +2764,9 @@ material ends with a source list of names: the project files a turn was given ar
 as material sources before any search (`agent._with_material_numbers`, from the context's
 `knowledge` fates, after the numbers earlier answers used), a system note tells the writer
 which number is which file, and search passages (`agent._number_sources`) number on after
-them; material citations keep their plain `[n]` and the server lists them by name. The web links its
+them; material citations keep their plain `[n]` and the server lists them by name. A
+citation of a project file the citing sentence is not backed by (`claim_support`) is taken
+out before the answer is linked. The web links its
 inline `[n]` to the source viewer, which asks `GET /projects/{id}/shelf/locate` for the
 passage closest to the citing sentence (`shelf_sources.locate`: lexical chunk score, then
 the best sentence), its page from `[페이지 n]` marks and, for a transcript, its
@@ -2779,9 +2781,22 @@ writer's window (`shelf_sources.bundle`: small ones whole, long ones read in win
 to their end), the model answers one JSON object per kind (`studio_kinds`), and code then
 holds the output to its sources: citations of numbers outside the list are removed, a
 document with no citation at all is asked for once more, a glossary keeps only terms
-written in the sources, quiz items need a valid key, distinct choices (shuffled so the key's
-place carries no pattern) and an explanation, and Chinese slipped into Korean output is
-rewritten once or read in Hangul (`stray_han`). Documents are saved as a report artifact
+written in the sources, and quiz items need a valid key, distinct choices (shuffled so the
+key's place carries no pattern) and an explanation. `shelf_checks` then reads every
+sentence, question and card: its script (Japanese kana, Chinese outside a gloss, other
+scripts, a Hangul word glued to Latin letters, an English word the sources never use, a
+source term misspelt by one letter), its grounding (`claim_support`: the numbers of a cited
+sentence must be in its cited sources and at least 35% of its content words, matched with
+up to two letters of particle or ending), and its fluency (the writer and the guide model
+each give a verdict per sentence; a verdict naming the sources' own wording is ignored).
+What fails goes back to the writer once, in one call, with its problem and its cited
+passages; what still fails is mended in code (a script slip) or dropped (an unbacked or
+garbled sentence, or an item left without its question or answer). An audio overview is
+planned in sections (3, 5 or 7 by length), each written to its share of the length (asked
+50% long, as writers fall short) and asked once to be longer when it lands under 80%; each
+line keeps its section's sources, and the explainer's lines are grounded against them.
+Guide questions are kept only when the writer and the guide model both find every part of
+the answer in the question's best passages. Documents are saved as a report artifact
 (or an HWP/Word file through `report_office`) in a conversation of their own, so they open,
 edit and export in the document panel; quiz sheets take the same path. `project_notes` is
 the 메모함: notes pinned from an answer or a selection or written by hand, saved explicitly

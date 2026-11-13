@@ -138,6 +138,7 @@ from app.services import (
     revise,
     server_notes,
     settings_store,
+    shelf_sources,
     skill_specs,
     skill_turn,
     source_selection,
@@ -5892,8 +5893,7 @@ async def _send_message(
                     else [])]),
                 carries_material=material_turn,
                 # project files read this turn, numbered for citation (지식 서가 jumps to them)
-                cited_material=[item.name for item in workspace.knowledge
-                                if item.state != "omitted"],
+                cited_material=await shelf_sources.given_texts(db, workspace.knowledge),
                 agent_key=agent_key or "",
                 calculation_required=calculation_required,
                 # calculator-skipping writer hands off to the outline model
@@ -6402,8 +6402,8 @@ async def _answer_turn(
     check_material: str = "",
     #: turn reads files, project knowledge or pasted material: the answer is traced to them
     carries_material: bool = False,
-    #: project file names given this turn; numbered so the answer can cite them
-    cited_material: list[str] | None = None,
+    #: project files given this turn, name → text; numbered so the answer can cite them
+    cited_material: dict[str, str] | None = None,
     #: catalogue agent key: which pipeline finishes the answer
     agent_key: str = "",
     #: `exact_facts.advice_domain` of the turn: writer rule and grounding check
