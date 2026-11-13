@@ -8,7 +8,7 @@ Open a Hangul (HWP) editor beside the conversation and write or edit an HWP docu
 
 ## Getting started
 
-- On Home, **한글 문서** (HWP document) starts a conversation with a blank document open. The conversation is on the left; on the right is the HWP editor with its menus (File, Edit, View, Insert, Format, Page, Table, Tools) and toolbar.
+- On Home or in an empty report conversation, choose **Report → Format → HWP** and press **Start blank** to start a conversation with a blank document open. Send a topic to have the HWP document written. The conversation is on the left; on the right is the HWP editor with its menus (File, Edit, View, Insert, Format, Page, Table, Tools) and toolbar.
 - A `.hwp` or `.hwpx` file attached in the conversation opens in the editor with **Open as HWP**. A `.hwp` file is saved as HWPX the first time it opens.
 - Asking in chat for "an HWP document" or "an hwp file" also creates one.
 

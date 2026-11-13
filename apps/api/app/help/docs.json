@@ -67,14 +67,14 @@
 "path": "admin/policy",
 "title": "정책과 라우팅",
 "heading": "정책 설정",
-"text": "| 항목 | 뜻 |\n|---|---|\n| 개인정보 마스킹 | 모든 요청에서 주민번호·카드·전화·이메일을 항상 가리고, 가려진 채 저장. 원문 전송 불가 |\n| 외부 모델 개인정보 보호 | 챗에서 외부로 나갈 수 있는 모델에 개인정보가 감지되면 사용자에게 선택을 물음 |\n| strict-local 안전 모델 | \"안전한 로컬 모델로 전환\"이 보낼 모델. 게이트웨이가 strict-local로 선언한 챗 모델만 후보. **비워 두면** 사용자에게 안전 모델이 없다는 안내가 뜸 |\n| 내부 자료는 strict-local로만 | 첨부 파일·프로젝트 파일·메모리가 들어간 요청은 같은 모델의 strict-local 판으로 답하고, 그 대화는 이후 외부 모델로 넘어가지 않음. 쌍이 없으면 안전 모델, 그것도 없으면 전송 거절 |\n| 원문 외부 전송 허용 | 사용자가 경고를 무시하고 보낼 수 있게 할지. 마스킹 정책이 켜져 있으면 불가 |\n| 의도 기반 필터 + 차단할 주제 | 해당 요청을 크레딧 없이 거절하고 감사 로그에 남김 |\n| 유휴 자동 로그아웃 | 분 단위. 0이면 끔 |\n| 대화 보존 기간 | 일 단위. 지나면 본문 삭제(소급 적용, 지운 건수 표시). 기록·사용량은 남음 |\n\n서버가 정책을 조회하지 못하면 안전을 위해 챗, 보고서, 슬라이드의 전송을 차단합니다(503).\n\n모든 모델을 기관 서버에서 운영하는 환경에서는 **외부 모델 개인정보 보호**의 실효성이 낮습니다. strict-local로 선언되지 않은 기관 모델은 외부 전송 가능 모델로 취급되어 경고가 표시되므로, 게이트웨이에서 strict-local을 선언해 안전 모델로 지정하거나 보호 기능을 비활성화하십시오."
+"text": "| 항목 | 뜻 |\n|---|---|\n| 개인정보 마스킹 | 모든 요청에서 주민번호·카드·전화·이메일을 항상 가리고, 가려진 채 저장. 원문 전송 불가 |\n| 외부 모델 개인정보 보호 | 챗에서 외부로 나갈 수 있는 모델에 개인정보가 감지되면 사용자에게 선택을 물음 |\n| strict-local 안전 모델 | 우선순위 목록. 화살표나 끌어서 순서를 정함. 내부 자료 때문에 strict-local로 옮길 때는 고른 모델의 strict-local 판을 먼저, 없으면 이 목록의 첫 번째 모델을 씀. 개인정보 확인 창의 \"안전한 로컬 모델로 전환\"은 체크된 모델 중 하나를 사용자가 고르게 함(처음엔 첫 번째). 게이트웨이가 strict-local로 선언한 챗 모델만 후보. **비워 두면** 사용자에게 안전 모델이 없다는 안내가 뜸 |\n| 내부 자료는 strict-local로만 | 첨부 파일·프로젝트 파일·메모리가 들어간 요청은 같은 모델의 strict-local 판으로 답하고, 그 대화는 이후 외부 모델로 넘어가지 않음. 쌍이 없으면 안전 모델, 그것도 없으면 전송 거절 |\n| 원문 외부 전송 허용 | 사용자가 경고를 무시하고 보낼 수 있게 할지. 마스킹 정책이 켜져 있으면 불가 |\n| 의도 기반 필터 + 차단할 주제 | 해당 요청을 크레딧 없이 거절하고 감사 로그에 남김 |\n| 유휴 자동 로그아웃 | 분 단위. 0이면 끔 |\n| 대화 보존 기간 | 일 단위. 지나면 본문 삭제(소급 적용, 지운 건수 표시). 기록·사용량은 남음 |\n\n서버가 정책을 조회하지 못하면 안전을 위해 챗, 보고서, 슬라이드의 전송을 차단합니다(503).\n\n모든 모델을 기관 서버에서 운영하는 환경에서는 **외부 모델 개인정보 보호**의 실효성이 낮습니다. strict-local로 선언되지 않은 기관 모델은 외부 전송 가능 모델로 취급되어 경고가 표시되므로, 게이트웨이에서 strict-local을 선언해 안전 모델로 지정하거나 보호 기능을 비활성화하십시오."
 },
 {
 "lang": "ko",
 "path": "admin/policy",
 "title": "정책과 라우팅",
 "heading": "감사 로그",
-"text": "시각·계정·행위·대상·접속 위치. 로그인·실패·승인·정지·권한 변경·설정 변경·키 발급·폐기·비밀번호 재설정·토큰 재사용 감지 등을 계정·행위·IP로 검색합니다. 화면에서 수정·삭제할 수 없습니다."
+"text": "시각·계정·행위·대상·접속 위치. 로그인·실패·승인·정지·권한 변경·설정 변경·키 발급·폐기·비밀번호 재설정·토큰 재사용 감지 등을 계정·행위·IP로 검색합니다. 시각·행위·대상·접속 위치 머리글을 누르면 서버에서 그 순서로 정렬합니다. **CSV 내보내기**는 지금 조건과 정렬로 모든 쪽을 받으며(최대 5만 건), 내보낸 일 자체도 감사 로그에 남습니다. 화면에서 수정·삭제할 수 없습니다."
 },
 {
 "lang": "ko",
@@ -158,14 +158,14 @@
 "path": "admin/users",
 "title": "사용자와 크레딧",
 "heading": "",
-"text": "관리 메뉴의 **사용자 · 크레딧** 화면입니다. 상단에 전체 사용자 수, 승인 대기 건수, 이번 달 사용량과 배정량, 다음 리필 일자가 요약되며, 하단에 상태별 탭(전체, 승인 대기, 활성, 정지)과 이름·이메일 검색이 제공됩니다."
+"text": "관리 메뉴의 **사용자 · 크레딧** 화면입니다. 상단에 전체 사용자 수, 승인 대기 건수, 이번 달 사용량과 배정량, 다음 리필 일자가 요약되며, 하단에 상태별 탭(전체, 승인 대기, 활성, 정지)과 이름·이메일 검색이 제공됩니다. 열 머리글을 누르면 그 열로 정렬하고, **CSV 내보내기**는 지금 탭·검색·정렬로 모든 쪽을 이번 달 크레딧과 함께 받습니다(내보낸 일은 감사 로그에 남음)."
 },
 {
 "lang": "ko",
 "path": "admin/users",
 "title": "사용자와 크레딧",
 "heading": "가입 승인",
-"text": "가입 방식이 **승인 후 사용**이면 새 계정이 승인 대기로 쌓이고 계정 메뉴에 \"승인 대기 N건\"이 뜹니다. 행의 **승인**을 누르면 기본 플랜 크레딧으로 바로 승인되고, 이때 모델 게이트웨이 사용자와 키가 만들어집니다. 승인하지 않을 계정은 **반려**로 처리합니다. 메일 인증을 완료하지 않은 계정에는 **메일 미확인** 배지가 표시되며, 승인하면 인증을 완료한 것으로 처리합니다. 일괄 선택은 지원하지 않으므로 계정마다 개별 승인해야 합니다."
+"text": "가입 방식이 **승인 후 사용**이면 새 계정이 승인 대기로 쌓이고 계정 메뉴에 \"승인 대기 N건\"이 뜹니다. 행의 **승인**을 누르면 기본 플랜 크레딧으로 바로 승인되고, 이때 모델 게이트웨이 사용자와 키가 만들어집니다. 승인하지 않을 계정은 **반려**로 처리합니다. 메일 인증을 완료하지 않은 계정에는 **메일 미확인** 배지가 표시되며, 승인하면 인증을 완료한 것으로 처리합니다. 여러 계정을 한 번에 처리하려면 행 앞의 체크 상자로 고른 뒤 위에 뜨는 **선택 승인**·**선택 반려**를 누릅니다(고른 계정 중 승인 대기인 계정만 처리)."
 },
 {
 "lang": "ko",
@@ -606,7 +606,7 @@
 "path": "chat/files",
 "title": "파일 첨부",
 "heading": "인식 정확도 향상 요령",
-"text": "- 찾으려는 내용을 구체적으로 지정하십시오. \"이 파일을 요약해 주세요\"보다 \"이 파일에서 재택근무 신청 절차만 정리해 주세요\"가 정확합니다.\n- 표가 많은 자료는 PDF보다 Excel이나 CSV 형식으로 첨부해야 정확하게 인식됩니다.\n- 첨부한 한글 파일(.hwpx)은 파일 칩의 **문서로 열기**를 누르면 편집 가능한 보고서로 바로 변환됩니다. 변환할 때 모델을 호출하지 않으므로 크레딧도 소모되지 않습니다."
+"text": "- 찾으려는 내용을 구체적으로 지정하십시오. \"이 파일을 요약해 주세요\"보다 \"이 파일에서 재택근무 신청 절차만 정리해 주세요\"가 정확합니다.\n- 표가 많은 자료는 PDF보다 Excel이나 CSV 형식으로 첨부해야 정확하게 인식됩니다.\n- 첨부한 한글(.hwp, .hwpx)·Word(.docx)·PowerPoint(.pptx) 파일은 파일 칩의 **HWP로 열기**·**Word로 열기**·**PowerPoint로 열기**로 그 파일 그대로 편집기에 엽니다(원래 형식 유지). 파일함의 같은 파일은 **편집**으로 사본을 엽니다. 웹 보고서·웹 슬라이드로 만든 문서를 한글·Word·PowerPoint 파일로 받으려면 그 화면의 **내려받기**(내보내기)를 씁니다."
 },
 {
 "lang": "ko",
@@ -1271,7 +1271,7 @@
 "path": "write/docx",
 "title": "Word 문서",
 "heading": "시작하기",
-"text": "- 홈의 **Word 문서**를 누르면 빈 문서가 열린 대화가 시작됩니다. 왼쪽은 대화, 오른쪽은 Word처럼 리본(파일·홈·삽입·레이아웃·참조·검토·보기 탭)이 있는 편집기입니다. 글꼴·크기·굵게·색·맞춤·목록·들여쓰기는 **홈** 탭에, 표는 **삽입** 탭에 있습니다. 리본과 메뉴는 앱의 언어(한국어 또는 영어)로 표시됩니다.\n- **홈**의 글꼴 목록 맨 앞에 맑은 고딕·나눔고딕·나눔명조·바탕·돋움·굴림·궁서·함초롬바탕·함초롬돋움·Pretendard가 있습니다. 한글 글꼴을 고르면 Word처럼 한글 글꼴로 저장되어 Word와 한글 오피스에서도 같은 글꼴로 보이고, 영문 글꼴을 고르면 영문에만 적용되고 한글 글꼴은 그대로 남습니다.\n- 대화에 첨부한 `.docx` 파일은 **Word로 열기**로 편집기에 엽니다.\n- 챗에서 \"Word로\", \"워드 문서로\", \"docx 파일로\"처럼 요청하면 보고서 화면으로 넘어가지 않고 이 대화의 Word 문서에 씁니다.\n- 예전 형식인 `.doc` 파일은 열 수 없습니다. Word에서 `.docx`로 저장한 뒤 첨부하세요."
+"text": "- 홈이나 빈 보고서 대화에서 **보고서 → 형식 → Word**를 고르고 **빈 문서로 시작**을 누르면 빈 문서가 열린 대화가 시작됩니다. 주제를 적어 보내면 그 내용으로 Word 문서를 씁니다. 왼쪽은 대화, 오른쪽은 Word처럼 리본(파일·홈·삽입·레이아웃·참조·검토·보기 탭)이 있는 편집기입니다. 글꼴·크기·굵게·색·맞춤·목록·들여쓰기는 **홈** 탭에, 표는 **삽입** 탭에 있습니다. 리본과 메뉴는 앱의 언어(한국어 또는 영어)로 표시됩니다.\n- **홈**의 글꼴 목록 맨 앞에 맑은 고딕·나눔고딕·나눔명조·바탕·돋움·굴림·궁서·함초롬바탕·함초롬돋움·Pretendard가 있습니다. 한글 글꼴을 고르면 Word처럼 한글 글꼴로 저장되어 Word와 한글 오피스에서도 같은 글꼴로 보이고, 영문 글꼴을 고르면 영문에만 적용되고 한글 글꼴은 그대로 남습니다.\n- 대화에 첨부한 `.docx` 파일은 **Word로 열기**로 편집기에 엽니다.\n- 챗에서 \"Word로\", \"워드 문서로\", \"docx 파일로\"처럼 요청하면 보고서 화면으로 넘어가지 않고 이 대화의 Word 문서에 씁니다.\n- 예전 형식인 `.doc` 파일은 열 수 없습니다. Word에서 `.docx`로 저장한 뒤 첨부하세요."
 },
 {
 "lang": "ko",
@@ -1348,7 +1348,7 @@
 "path": "write/hwp",
 "title": "한글(HWP) 문서",
 "heading": "시작하기",
-"text": "- 홈의 **한글 문서**를 누르면 빈 문서가 열린 대화가 시작됩니다. 왼쪽은 대화, 오른쪽은 메뉴(파일·편집·보기·입력·서식·쪽·표·도구)와 도구 모음이 있는 한글 편집기입니다.\n- 대화에 첨부한 `.hwp`, `.hwpx` 파일은 **HWP로 열기**로 편집기에 엽니다. `.hwp` 파일은 처음 열 때 HWPX로 바뀌어 저장됩니다.\n- 챗에서 \"한글 문서로\", \"hwp 파일로\"처럼 요청해도 문서가 만들어집니다."
+"text": "- 홈이나 빈 보고서 대화에서 **보고서 → 형식 → 한글**을 고르고 **빈 문서로 시작**을 누르면 빈 문서가 열린 대화가 시작됩니다. 주제를 적어 보내면 그 내용으로 한글 문서를 씁니다. 왼쪽은 대화, 오른쪽은 메뉴(파일·편집·보기·입력·서식·쪽·표·도구)와 도구 모음이 있는 한글 편집기입니다.\n- 대화에 첨부한 `.hwp`, `.hwpx` 파일은 **HWP로 열기**로 편집기에 엽니다. `.hwp` 파일은 처음 열 때 HWPX로 바뀌어 저장됩니다.\n- 챗에서 \"한글 문서로\", \"hwp 파일로\"처럼 요청해도 문서가 만들어집니다."
 },
 {
 "lang": "ko",
@@ -1411,7 +1411,7 @@
 "path": "write/pptx",
 "title": "PowerPoint 문서",
 "heading": "시작하기",
-"text": "- 홈의 **PowerPoint**를 누르면 빈 발표 파일이 열린 대화가 시작됩니다. 왼쪽은 대화, 오른쪽은 Google 슬라이드와 비슷한 편집기입니다. 위쪽 도구 막대에 실행 취소·확대/축소·텍스트 상자·도형·이미지·표·글꼴·크기·굵게·기울임꼴·밑줄·글자 색·정렬·글머리 기호가 있고, 왼쪽에 슬라이드 목록, 아래에 발표자 노트가 있습니다.\n- 대화에 첨부한 `.pptx` 파일은 **PowerPoint로 열기**로 편집기에 엽니다.\n- 챗에서 \"PowerPoint로\", \"파워포인트 파일로\", \"pptx 파일로\", \"PPT 파일로\"처럼 요청하면 슬라이드 화면으로 넘어가지 않고 이 대화의 PowerPoint 문서에 씁니다. 파일 형식을 말하지 않은 \"발표 자료를 써 줘\", \"PPT 하나 써 줘\" 같은 요청은 슬라이드 화면에서 씁니다.\n- 예전 형식인 `.ppt` 파일은 열 수 없습니다. PowerPoint에서 `.pptx`로 저장한 뒤 첨부하세요."
+"text": "- 홈이나 빈 슬라이드 대화에서 **슬라이드 → 형식 → PowerPoint**를 고르고 **빈 문서로 시작**을 누르면 빈 발표 파일이 열린 대화가 시작됩니다. 주제를 적어 보내면 그 내용으로 발표 파일을 채웁니다. 왼쪽은 대화, 오른쪽은 Google 슬라이드와 비슷한 편집기입니다. 위쪽 도구 막대에 실행 취소·확대/축소·텍스트 상자·도형·이미지·표·글꼴·크기·굵게·기울임꼴·밑줄·글자 색·정렬·글머리 기호가 있고, 왼쪽에 슬라이드 목록, 아래에 발표자 노트가 있습니다.\n- 대화에 첨부한 `.pptx` 파일은 **PowerPoint로 열기**로 편집기에 엽니다.\n- 챗에서 \"PowerPoint로\", \"파워포인트 파일로\", \"pptx 파일로\", \"PPT 파일로\"처럼 요청하면 슬라이드 화면으로 넘어가지 않고 이 대화의 PowerPoint 문서에 씁니다. 파일 형식을 말하지 않은 \"발표 자료를 써 줘\", \"PPT 하나 써 줘\" 같은 요청은 슬라이드 화면에서 씁니다.\n- 예전 형식인 `.ppt` 파일은 열 수 없습니다. PowerPoint에서 `.pptx`로 저장한 뒤 첨부하세요."
 },
 {
 "lang": "ko",
@@ -1642,14 +1642,14 @@
 "path": "admin/policy",
 "title": "Policy and routing",
 "heading": "Policy settings",
-"text": "| Item | Meaning |\n|---|---|\n| Personal data masking | Always masks national ID numbers, card numbers, phone numbers, and email addresses in every request, and stores them masked. The original cannot be sent |\n| Personal data protection for external models | In Chat, asks the user to choose when personal data is detected for a model that may switch to an external provider |\n| strict-local safe model | The model that \"Switch to a safe local model\" sends to. Only chat models the gateway declares as strict-local are candidates. **If you leave it empty**, users see a notice that there is no safe model |\n| Internal material stays strict-local | A request carrying attachments, project files or memory is answered by the strict-local twin of the same model, and the conversation never moves to an external model afterwards. Without a twin, the safe model answers. Without that, the request is refused |\n| Allow sending the original outside | Whether users may ignore the warning and send. Not possible while the masking policy is on |\n| Intent-based filter + topics to block | Refuses the request without using credits and records it in the audit log |\n| Automatic sign-out when idle | In minutes. 0 turns it off |\n| Conversation retention period | In days. Once the period is up, the conversation body is deleted (applied retroactively, with the number deleted shown). Records and usage remain |\n\nIf the server cannot read the policy, it blocks sending in Chat, reports, and slide decks for safety (503).\n\nIn an environment where every model runs on organization servers, **Personal data protection for external models** has little effect. An organization model that is not declared strict-local is treated as a model that may switch to an external provider, so a warning appears. Declare strict-l"
+"text": "| Item | Meaning |\n|---|---|\n| Personal data masking | Always masks national ID numbers, card numbers, phone numbers, and email addresses in every request, and stores them masked. The original cannot be sent |\n| Personal data protection for external models | In Chat, asks the user to choose when personal data is detected for a model that may switch to an external provider |\n| strict-local safe model | A priority list, ordered with the arrow buttons or by dragging. When internal material moves a turn to strict-local, the chosen model's strict-local version is used first, else the first model of this list. On the privacy card, \"Switch to a safe local model\" lets the person pick any checked model (the first is preselected). Only chat models the gateway declares as strict-local are candidates. **If you leave it empty**, users see a notice that there is no safe model |\n| Internal material stays strict-local | A request carrying attachments, project files or memory is answered by the strict-local twin of the same model, and the conversation never moves to an external model afterwards. Without a twin, the safe model answers. Without that, the request is refused |\n| Allow sending the original outside | Whether users may ignore the warning and send. Not possible while the masking policy is on |\n| Intent-based filter + topics to block | Refuses the request without using credits and records it in the audit log |\n| Automatic sign-out when idle | In minutes. 0 turns it off |\n| Conversation retention period | In days. Once the period is up, the conversation body is deleted (applied retroactively, with the number deleted shown). Records and usage remain |\n\nIf the server cannot read the policy, it blocks sending in Chat, reports, and slide decks for safety (503).\n\nIn an environment whe"
 },
 {
 "lang": "en",
 "path": "admin/policy",
 "title": "Policy and routing",
 "heading": "Audit log",
-"text": "Time, account, action, target, and access location. The log covers sign-ins, failures, approvals, suspensions, permission changes, setting changes, key issuance, discards, password resets, token reuse detection, and more. Search by account, action, or IP. It cannot be edited or deleted from the screen."
+"text": "Time, account, action, target, and access location. The log covers sign-ins, failures, approvals, suspensions, permission changes, setting changes, key issuance, discards, password resets, token reuse detection, and more. Search by account, action, or IP. The Time, Action, Target and Access location headings sort the log on the server. **Export CSV** downloads every page under the current filters and order (up to 50,000 rows), and the export itself is recorded in the audit log. It cannot be edited or deleted from the screen."
 },
 {
 "lang": "en",
@@ -1733,14 +1733,14 @@
 "path": "admin/users",
 "title": "Users and credits",
 "heading": "",
-"text": "This is the **Users · Credits** screen in the Manage menu. The top of the screen summarizes the total number of users, the number waiting for approval, this month's usage and allocation, and the next refill date. Below it are tabs by status (All, Waiting for approval, Active, Suspended) and a search by name and email."
+"text": "This is the **Users · Credits** screen in the Manage menu. The top of the screen summarizes the total number of users, the number waiting for approval, this month's usage and allocation, and the next refill date. Below it are tabs by status (All, Waiting for approval, Active, Suspended) and a search by name and email. A column heading sorts by that column, and **Export CSV** downloads every page under the current tab, search and order with this month's credits (the export is recorded in the audit log)."
 },
 {
 "lang": "en",
 "path": "admin/users",
 "title": "Users and credits",
 "heading": "Approving sign-ups",
-"text": "If the sign-up method is **Use after approval**, new accounts build up as waiting for approval and the account menu shows \"N waiting for approval\". Press **Approve** on a row to approve the account immediately with the default plan credits. The model gateway user and key are created at that point. Handle accounts you will not approve with **Reject**. An account that has not completed email verification shows a **Mail not verified** badge. Approving the account counts the verification as complete. Selecting several at once is not supported, so you have to approve each account individually."
+"text": "If the sign-up method is **Use after approval**, new accounts build up as waiting for approval and the account menu shows \"N waiting for approval\". Press **Approve** on a row to approve the account immediately with the default plan credits. The model gateway user and key are created at that point. Handle accounts you will not approve with **Reject**. An account that has not completed email verification shows a **Mail not verified** badge. Approving the account counts the verification as complete. To handle several accounts at once, tick them with the checkboxes at the start of the rows and press **Approve selected** or **Reject selected** in the bar that appears (only the selected accounts awaiting approval are handled)."
 },
 {
 "lang": "en",
@@ -2181,7 +2181,7 @@
 "path": "chat/files",
 "title": "Attaching files",
 "heading": "Improving recognition accuracy",
-"text": "- State exactly what you are looking for. \"Summarize this file\" is less accurate than \"List only the remote work application steps from this file\".\n- Attach table-heavy material as Excel or CSV rather than PDF. It is read far more accurately that way.\n- For an attached Hangul file (.hwpx), select **Open as document** on the file chip to convert it straight into an editable report. The conversion calls no model, so it uses no credits."
+"text": "- State exactly what you are looking for. \"Summarize this file\" is less accurate than \"List only the remote work application steps from this file\".\n- Attach table-heavy material as Excel or CSV rather than PDF. It is read far more accurately that way.\n- An attached HWP (.hwp, .hwpx), Word (.docx) or PowerPoint (.pptx) file opens as that same file in its editor with **Open as HWP**, **Open in Word editor** or **Open in PowerPoint editor** on the file chip (the format is kept). The same file in the file box opens as a copy with **Edit**. To get a web report or web slides as an HWP, Word or PowerPoint file, use **Download** (export) on that screen."
 },
 {
 "lang": "en",
@@ -2846,7 +2846,7 @@
 "path": "write/docx",
 "title": "Word documents",
 "heading": "Getting started",
-"text": "- On Home, **Word 문서** (Word document) starts a conversation with a blank document open. The conversation is on the left; on the right is the editor with a Word-style ribbon (File, Home, Insert, Layout, References, Review and View tabs). Font, size, bold, colour, alignment, lists and indents are on **Home**; tables are on **Insert**. The ribbon and its menus are in the app's language (Korean or English).\n- The font list on **Home** starts with Korean fonts: Malgun Gothic (맑은 고딕), Nanum Gothic, Nanum Myeongjo, Batang, Dotum, Gulim, Gungsuh, HCR Batang, HCR Dotum and Pretendard. Choosing a Korean font saves it as the text's Korean font, as Word does, so Word and Hancom Office show it too; choosing a Latin font applies to Latin text and keeps the Korean font.\n- A `.docx` file attached in the conversation opens in the editor with **Open in Word editor**.\n- Asking in chat for something \"in Word\", \"as a Word document\" or \"as a docx file\" writes it in this conversation's Word document instead of moving to the report screen.\n- Legacy `.doc` files cannot be opened. Save them as `.docx` in Word and attach that."
+"text": "- On Home or in an empty report conversation, choose **Report → Format → Word** and press **Start blank** to start a conversation with a blank document open. Send a topic to have the Word document written. The conversation is on the left; on the right is the editor with a Word-style ribbon (File, Home, Insert, Layout, References, Review and View tabs). Font, size, bold, colour, alignment, lists and indents are on **Home**; tables are on **Insert**. The ribbon and its menus are in the app's language (Korean or English).\n- The font list on **Home** starts with Korean fonts: Malgun Gothic (맑은 고딕), Nanum Gothic, Nanum Myeongjo, Batang, Dotum, Gulim, Gungsuh, HCR Batang, HCR Dotum and Pretendard. Choosing a Korean font saves it as the text's Korean font, as Word does, so Word and Hancom Office show it too; choosing a Latin font applies to Latin text and keeps the Korean font.\n- A `.docx` file attached in the conversation opens in the editor with **Open in Word editor**.\n- Asking in chat for something \"in Word\", \"as a Word document\" or \"as a docx file\" writes it in this conversation's Word document instead of moving to the report screen.\n- Legacy `.doc` files cannot be opened. Save them as `.docx` in Word and attach that."
 },
 {
 "lang": "en",
@@ -2923,7 +2923,7 @@
 "path": "write/hwp",
 "title": "HWP documents",
 "heading": "Getting started",
-"text": "- On Home, **한글 문서** (HWP document) starts a conversation with a blank document open. The conversation is on the left; on the right is the HWP editor with its menus (File, Edit, View, Insert, Format, Page, Table, Tools) and toolbar.\n- A `.hwp` or `.hwpx` file attached in the conversation opens in the editor with **Open as HWP**. A `.hwp` file is saved as HWPX the first time it opens.\n- Asking in chat for \"an HWP document\" or \"an hwp file\" also creates one."
+"text": "- On Home or in an empty report conversation, choose **Report → Format → HWP** and press **Start blank** to start a conversation with a blank document open. Send a topic to have the HWP document written. The conversation is on the left; on the right is the HWP editor with its menus (File, Edit, View, Insert, Format, Page, Table, Tools) and toolbar.\n- A `.hwp` or `.hwpx` file attached in the conversation opens in the editor with **Open as HWP**. A `.hwp` file is saved as HWPX the first time it opens.\n- Asking in chat for \"an HWP document\" or \"an hwp file\" also creates one."
 },
 {
 "lang": "en",
@@ -2986,7 +2986,7 @@
 "path": "write/pptx",
 "title": "PowerPoint documents",
 "heading": "Getting started",
-"text": "- On Home, **PowerPoint** starts a conversation with a blank deck open. The conversation is on the left; on the right is an editor in the manner of Google Slides: a toolbar with undo, zoom, text box, shape, image, table, font, size, bold, italic, underline, text colour, alignment and bullets, the slide list on the left and the speaker notes below.\n- A `.pptx` file attached in the conversation opens in the editor with **Open in PowerPoint editor**.\n- Asking in chat for something \"in PowerPoint\", \"as a PowerPoint file\", \"as a pptx file\" or \"as a PPT file\" writes it in this conversation's PowerPoint document instead of moving to the slides screen. A request that names no file format, such as \"write a presentation\" or \"write a PPT\", is made on the slides screen.\n- Legacy `.ppt` files cannot be opened. Save them as `.pptx` in PowerPoint and attach that."
+"text": "- On Home or in an empty slides conversation, choose **Slides → Format → PowerPoint** and press **Start blank** to start a conversation with a blank deck open. Send a topic to have the deck filled. The conversation is on the left; on the right is an editor in the manner of Google Slides: a toolbar with undo, zoom, text box, shape, image, table, font, size, bold, italic, underline, text colour, alignment and bullets, the slide list on the left and the speaker notes below.\n- A `.pptx` file attached in the conversation opens in the editor with **Open in PowerPoint editor**.\n- Asking in chat for something \"in PowerPoint\", \"as a PowerPoint file\", \"as a pptx file\" or \"as a PPT file\" writes it in this conversation's PowerPoint document instead of moving to the slides screen. A request that names no file format, such as \"write a presentation\" or \"write a PPT\", is made on the slides screen.\n- Legacy `.ppt` files cannot be opened. Save them as `.pptx` in PowerPoint and attach that."
 },
 {
 "lang": "en",
