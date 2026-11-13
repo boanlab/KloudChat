@@ -217,7 +217,7 @@ async def _write(db, user: User, item: StudioItem) -> None:
     content: dict[str, Any] = {"language": language, "sources": sources,
                                "partial": made.partial, "strict": how.strict}
     if item.kind in studio_kinds.DOCUMENTS:
-        doc = studio_kinds.document(item.kind, data, count, language)
+        doc = studio_kinds.document(item.kind, data, count, language, made.text)
         if doc is not None and studio_kinds.cites_nothing(item.kind, doc):
             # the writer left out the source numbers: asked once more, the better one kept
             again, c, i, o = await _complete_json(
@@ -225,7 +225,8 @@ async def _write(db, user: User, item: StudioItem) -> None:
             item.credits += c
             item.input_tokens += i
             item.output_tokens += o
-            redo = studio_kinds.document(item.kind, again, count, language) if again else None
+            redo = (studio_kinds.document(item.kind, again, count, language, made.text)
+                    if again else None)
             if redo is not None and not studio_kinds.cites_nothing(item.kind, redo):
                 doc = redo
         if doc is None:

@@ -531,3 +531,15 @@ async def test_a_document_without_citations_is_asked_again_and_chinese_slips_are
     assert "[1]" in body and "散" not in body and "분산 시스템은" in body
     # first answer, the re-ask, and the Korean rewrite
     assert len(shelf.calls) == 3 and "cited no sources" in shelf.calls[1]["system"]
+
+
+def test_a_glossary_keeps_only_the_sources_own_terms():
+    data = {"terms": [
+        {"term": "맵리듀스(MapReduce)", "definition": "맵과 리듀스 [1]."},
+        {"term": "벡터 시계", "definition": "칸이 프로세스 수 [1]."},
+        {"term": "인수 일관성", "definition": "지어낸 낱말 [1]."},
+    ]}
+    sources = "MapReduce는 2004년에 발표되었다. 벡터시계는 칸을 가진다."
+    doc = studio_kinds.document("glossary", data, 1, "ko", sources)
+    body = doc["sections"][0]["content"]
+    assert "맵리듀스" in body and "벡터 시계" in body and "인수 일관성" not in body

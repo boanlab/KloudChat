@@ -83,8 +83,10 @@ _SPECS: dict[str, tuple[str, str]] = {
         '{"title": "...", "events": [{"when": "...", "what": "..."}], '
         '"people": [{"name": "...", "role": "..."}]}'),
     "glossary": (
-        """- 10-30 terms the sources use and a reader must know, each defined in one or two
-  sentences in the sources' own sense, with citation. Alphabetical (가나다) order.
+        """- Up to 30 subject terms the sources use and a reader must know (named concepts,
+  methods, systems, laws), each defined in one or two sentences in the sources' own sense,
+  with citation. Fewer is better than padding: no everyday words (「알고리즘」, 「이슈」), no
+  words about the document itself (「1강 범위」, 「역사적 사실」). Alphabetical (가나다) order.
 """,
         '{"title": "...", "terms": [{"term": "...", "definition": "..."}]}'),
     "mindmap": (
@@ -244,8 +246,23 @@ def _outline(branches: list, depth: int = 0) -> list[str]:
     return out
 
 
-def document(kind: str, data: dict[str, Any], count: int, language: str) -> dict[str, Any] | None:
-    """The answer as `{title, sections}`; None when it holds nothing usable."""
+def _squeezed(text: str) -> str:
+    return re.sub(r"\s+", "", text or "").lower()
+
+
+def term_in(term: str, sources: str) -> bool:
+    """Whether a glossary term is the sources' own word: the term, or a part of it in or out
+    of brackets (「맵리듀스(MapReduce)」), appears in their text."""
+    parts = [term, *re.split(r"[()（）\[\]/·,]", term)]
+    flat = _squeezed(sources)
+    return any(len(_squeezed(p)) >= 2 and _squeezed(p) in flat for p in parts)
+
+
+def document(kind: str, data: dict[str, Any], count: int, language: str,
+             sources: str = "") -> dict[str, Any] | None:
+    """The answer as `{title, sections}`; None when it holds nothing usable. `sources`: the
+    text the writer read; a glossary term not written in it is left out (a misspelt or made-up
+    term is no entry for the reader to learn)."""
     ko = language != "en"
     title = shelf_jobs.clip(data.get("title"), 160) or kind_name(kind, language)
     sections: list[dict[str, Any]] = []
@@ -284,7 +301,8 @@ def document(kind: str, data: dict[str, Any], count: int, language: str) -> dict
                                      body))
     elif kind == "glossary":
         terms = [t for t in data.get("terms") or [] if isinstance(t, dict)
-                 and str(t.get("term") or "").strip() and str(t.get("definition") or "").strip()]
+                 and str(t.get("term") or "").strip() and str(t.get("definition") or "").strip()
+                 and (not sources or term_in(str(t["term"]), sources))]
         if terms:
             head = "| 용어 | 뜻 |\n|---|---|" if ko else "| Term | Definition |\n|---|---|"
             rows = "\n".join(
@@ -505,4 +523,4 @@ __all__ = ["AUDIO_LENGTH", "DOCUMENTS", "KINDS", "MAX_TOKENS", "SETS", "cards", 
            "cites_nothing",
            "clean_citations", "document", "export_anki", "export_csv", "language_of",
            "mindmap_source", "quiz", "report_data", "script", "script_text", "sheet_sections",
-           "system_prompt", "user_prompt"]
+           "system_prompt", "term_in", "user_prompt"]

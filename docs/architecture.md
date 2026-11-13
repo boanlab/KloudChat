@@ -2742,6 +2742,60 @@ everything, which an embedding-model change needs).
 urlsafe randomness, minted on first use and never derived from `agent_id`,
 which travels in URLs and API responses. Deleting an agent drops its collection.
 
+### Knowledge shelf (지식 서가)
+
+The project's sources — its `files` rows: uploads, web snapshots, pasted text, notes made
+into sources, video/recording transcripts — get three things on top of §7's injection and
+the `search_knowledge` shelf. User-facing names live in `apps/web/src/lib/shelfNames.ts`
+(server titles in `services/shelf_names.py`), so the working name can change in one place.
+
+**Per-conversation selection.** `source_selections` keeps, per conversation, the source ids
+switched *off* (no row = all on; a source added later starts on). `source_selection.keep`
+drops them in both places a turn reads project material: `workspace_context._project_knowledge`
+(injection) and `sessions._knowledge_shelf` (the lexical shelf, and through `_living_hits`
+the vector hits too, which are kept only for documents still on the shelf).
+
+**Guides and citations.** `source_guides` (one row per source, plus `subject = "project"`)
+holds a summary, key topics and suggested questions, written in the background by the
+strict-local guide model (`KNOWLEDGE_GUIDE_MODEL`) the first time someone opens one and kept
+until the material's signature (ids and text lengths) changes; a per-file digest
+(`files.digest`, when present) fills the summary meanwhile. A chat answer that cites project
+material ends with a source list of names (`agent._number_sources`); the web links its
+inline `[n]` to the source viewer, which asks `GET /projects/{id}/shelf/locate` for the
+passage closest to the citing sentence (`shelf_sources.locate`: lexical chunk score, then
+the best sentence), its page from `[페이지 n]` marks and, for a transcript, its
+`[HH:MM:SS]` time code; a video plays from there in the file box (`/files?open=<id>&t=<s>`).
+
+**Studio and notes.** `studio_items` are one-click outputs grounded in the sources the person
+picks: documents (study guide, FAQ, briefing, timeline, glossary, mind map), quiz and
+flashcard sets, and two-voice audio overview scripts. `studio.start` writes a `running` row
+and returns; the work runs on its own DB session (`shelf_jobs.spawn`; a row older than 20
+minutes in `running` reads as failed). The sources are numbered `[n] name` within the
+writer's window (`shelf_sources.bundle`: small ones whole, long ones read in windows spread
+to their end), the model answers one JSON object per kind (`studio_kinds`), and code then
+holds the output to its sources: citations of numbers outside the list are removed, a
+document with no citation at all is asked for once more, a glossary keeps only terms
+written in the sources, quiz items need a valid key, distinct choices (shuffled so the key's
+place carries no pattern) and an explanation, and Chinese slipped into Korean output is
+rewritten once or read in Hangul (`stray_han`). Documents are saved as a report artifact
+(or an HWP/Word file through `report_office`) in a conversation of their own, so they open,
+edit and export in the document panel; quiz sheets take the same path. `project_notes` is
+the 메모함: notes pinned from an answer or a selection or written by hand, saved explicitly
+with a version check (`expected` → `note_conflict`), and made into a source (a `.md` file,
+indexed like an upload; later edits update it).
+
+**Boundaries and billing.** Project sources are internal material: while
+`governance.internal_data_strict_local` holds, guides and studio outputs use a strict-local
+model only (`shelf_calls.route`; asking for another is refused with
+`internal_data_requires_strict_local`); otherwise the strict-local model is still the default
+and an outside one sees the text masked for personal data. Every call is a side call billed
+at the full rate with no cache discount, or a zero-credit token row on a self-hosted model;
+`POST /projects/{id}/studio/estimate` shows tokens and credits before anything runs. Speech
+for an audio overview uses a strict-local speech model when the catalogue lists one; the
+only speech models on the current LLM stack are outside ones (`gpt-audio`), so speech is
+offered only where internal data may leave, after the person consents to the script
+(masked) going out; otherwise the script alone, with the reason.
+
 ---
 
 ## 9. Frontend structure
