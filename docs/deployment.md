@@ -15,7 +15,7 @@ This guide covers running KloudChat for real users. For a laptop trial, the
 
 ## What you are deploying
 
-Four long-running services, two one-shot containers, and bind-mounted data
+Five long-running services, two one-shot containers, and bind-mounted data
 directories:
 
 | Container | Port | Holds |
@@ -24,6 +24,7 @@ directories:
 | `api` (`KCHAT_API_REPLICAS`, default 1) | internal only | All application logic; **the only process with the LiteLLM master key** |
 | `kloudchat-db` | 5433 → 5432 | Postgres 16 |
 | `kloudchat-print` | internal | Headless Chromium, HTML to PDF; reachable from the API only |
+| `kloudchat-media` | internal | Stock ffmpeg/ffprobe for audio/video understanding; reachable from the API only, reads uploads read-only |
 | `kloudchat-init` | — | One-shot: hands the data directories to uid 1000 |
 | `kloudchat-migrate` | — | One-shot: `alembic upgrade head` before any `api` replica starts |
 
@@ -97,6 +98,8 @@ every push to main; a deployment wants a version tag:
     image: boanlab/kloudchat-api:1.0.0
   print:
     image: boanlab/kloudchat-print:1.0.0
+  media:
+    image: boanlab/kloudchat-media:1.0.0
   web:
     image: boanlab/kloudchat-web:1.0.0
 ```
@@ -195,6 +198,30 @@ Also make sure that:
   path to it, authenticated with per-user API keys.
 - **Postgres is not published** beyond the compose network in production.
   Remove the `ports:` mapping on `db` if the host is exposed.
+
+## Video understanding
+
+The `media` service runs ffmpeg for the API's video jobs (architecture: *Understanding videos
+and recordings*). It needs nothing beyond `docker compose up -d`; what to know when deploying:
+
+- **Licence.** ffmpeg is LGPL/GPL. The image installs Debian's unmodified `ffmpeg` package and
+  runs it as a separate program; no KloudChat code links or ships it (see `NOTICE`). Do not
+  copy ffmpeg into the `api` image.
+- **Isolation.** It joins only the `media` network (`internal: true`: no route out), mounts
+  `./data/files` read-only, holds no secrets, and runs with a read-only root and `/tmp` in
+  memory. Compose caps it at `KCHAT_MEDIA_CPUS` (4) and `KCHAT_MEDIA_MEMORY` (2 GB).
+- **Models.** Speech goes to the Whisper behind `/tools/stt`, pictures to the strict-local
+  vision model chosen under System › Features › Text from scans (OCR). Without a vision model
+  videos are read for their speech only; without the worker (`KCHAT_MEDIA_URL=`) audio and
+  video are transcribed whole at upload as before (up to Whisper's 25 MB), with no frames.
+- **Size and proxies.** Audio and video go up in 8 MB pieces (`KCHAT_UPLOAD_PIECE_MB`) to
+  `KCHAT_MAX_VIDEO_UPLOAD_MB` (500), so neither the web container's nginx nor a proxy in front
+  needs a body limit above `KCHAT_MAX_UPLOAD_MB`; the player streams the original with HTTP
+  Range, which a proxy passes through unchanged. Keep the disk in mind: a video stays on disk
+  at its full size, with up to 120 keyframes (about 15 MB) beside it.
+- **Load.** One ten-minute lecture took about 2 minutes end to end on the self-hosted Whisper
+  and flash (see the architecture section for the steps). The job loop runs on every API
+  replica and takes one video at a time per replica.
 
 ## Published images
 

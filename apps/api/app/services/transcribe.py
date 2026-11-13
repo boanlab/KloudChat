@@ -85,18 +85,53 @@ async def _transcribe_locally(
     return text
 
 
+async def segments_of(
+    data: bytes, filename: str = "piece.flac", language: str | None = None
+) -> tuple[list[dict], str]:
+    """A piece of a longer recording (`video_jobs`): Whisper's timed segments `{start, end,
+    text}`, seconds from the piece's start, and the language heard. Silence gives no segments,
+    not an error; any detected language stands (a whole piece is long enough to tell)."""
+    if len(data) > MAX_BYTES:
+        raise TranscribeError("녹음 조각이 너무 큽니다.")
+    stt_url = (await settings_store.tools_config()).stt
+    if not stt_url:
+        raise TranscribeError("내부 음성 인식(Whisper) 서버가 연결되지 않았습니다.")
+    body = await _whisper(stt_url, data, filename, language, segments=True)
+    heard = str(body.get("language") or language or "").lower()[:8]
+    raw = body.get("segments")
+    found: list[dict] = []
+    if isinstance(raw, list):
+        for segment in raw:
+            if not isinstance(segment, dict):
+                continue
+            text = " ".join(str(segment.get("text") or "").split())
+            if text:
+                found.append({"start": segment.get("start") or 0.0,
+                              "end": segment.get("end") or segment.get("start") or 0.0,
+                              "text": text})
+    if not found and (text := " ".join(str(body.get("text") or "").split())):
+        # no timings from this server: the piece's text at the piece's start
+        found = [{"start": 0.0, "end": float(body.get("duration") or 0.0), "text": text,
+                  "whole": True}]
+    return found, heard
+
+
 async def _whisper(
-    stt_url: str, data: bytes, filename: str, language: str | None, prompt: str = ""
+    stt_url: str, data: bytes, filename: str, language: str | None, prompt: str = "",
+    *, segments: bool = False,
 ) -> dict:
     """One Whisper pass; `verbose_json` for the detected language."""
     url = f"{stt_url.rstrip('/')}/v1/audio/transcriptions"
     form: dict[str, str] = {"response_format": "verbose_json"}
+    if segments:
+        form["timestamp_granularities[]"] = "segment"
     if language:
         form["language"] = language
     if prompt.strip():
         form["prompt"] = prompt.strip()[:500]
     try:
-        async with tools_gateway.client(timeout=_TIMEOUT) as client:
+        # a ten-minute piece of a long recording takes longer than a dictation
+        async with tools_gateway.client(timeout=600.0 if segments else _TIMEOUT) as client:
             response = await client.post(
                 url, files={"file": (filename, data, "application/octet-stream")}, data=form
             )
@@ -113,4 +148,4 @@ async def _whisper(
     return body if isinstance(body, dict) else {}
 
 
-__all__ = ["MAX_BYTES", "TranscribeError", "available", "transcribe"]
+__all__ = ["MAX_BYTES", "TranscribeError", "available", "segments_of", "transcribe"]

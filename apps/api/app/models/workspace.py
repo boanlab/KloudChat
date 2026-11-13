@@ -109,7 +109,58 @@ class StoredFile(SQLModel, table=True):
     ocr_claimed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     #: claim token; stale workers can't write after takeover
     ocr_claim: str | None = Field(default=None, max_length=32)
+    #: video/audio understanding (`video_jobs`): null (not media) | queued | running | done |
+    #: failed; `text` becomes the time-coded document when done
+    media_state: str | None = Field(default=None, max_length=16)
+    #: step in progress: probe | audio | frames | vision | writing
+    media_stage: str | None = Field(default=None, max_length=16)
+    media_done: int = Field(default=0)
+    media_total: int = Field(default=0)
+    media_attempts: int = Field(default=0)
+    media_claimed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    media_claim: str | None = Field(default=None, max_length=32)
+    #: probe facts, kept frames, timings and the structured segments (`video_doc.segments`)
+    media: dict | None = Field(default=None, sa_column=_json(nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
+class MediaPart(SQLModel, table=True):
+    """One finished step of a media job — an audio piece's segments or a frame's reading — so
+    a job taken over after a restart resumes where it stopped."""
+
+    __tablename__ = "media_parts"
+    __table_args__ = (
+        UniqueConstraint("file_id", "kind", "idx", name="uq_media_parts_file_kind_idx"),
+    )
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    file_id: str = Field(foreign_key="files.id", ondelete="CASCADE", index=True)
+    #: "audio" (a transcribed piece) | "frame" (a read keyframe)
+    kind: str = Field(max_length=8)
+    idx: int
+    start: float = Field(default=0.0)
+    data: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
+class FileUpload(SQLModel, table=True):
+    """A large upload sent in pieces (`routers/uploads.py`); the bytes so far sit in a partial
+    file under the storage root until `finish` turns it into a `StoredFile`."""
+
+    __tablename__ = "file_uploads"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    name: str
+    size: int
+    #: Content-Type the browser claimed; the bytes decide at `finish`
+    mime: str = Field(default="")
+    project_id: str | None = Field(default=None)
+    session_id: str | None = Field(default=None)
+    received: int = Field(default=0)
+    storage_key: str = Field(default="")
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 
 class FilePage(SQLModel, table=True):

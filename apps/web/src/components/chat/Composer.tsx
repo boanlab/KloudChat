@@ -54,6 +54,7 @@ import { useT } from '@/lib/useT'
 import { askAboutEdits, hasOfficeEditor, LeaveCancelled } from '@/lib/officeGuard'
 import { isListed } from '@/lib/listed'
 import { runsOnServer } from '@/lib/serverSkills'
+import { isWatching, mediaPreflight } from '@/lib/media'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import { ATTACH_ACCEPT, attachRefusal } from '@/lib/attachable'
 import { isImeKey } from '@/lib/ime'
@@ -698,6 +699,10 @@ export function Composer({
   }, [composerRestore, sessionId, setComposerRestore])
 
   const [ownUploading, setUploading] = useState(false)
+  /** The file going up now, bytes the server holds of it (audio/video goes in pieces). */
+  const [uploadProgress, setUploadProgress] = useState<{ name: string; sent: number; total: number } | null>(null)
+  /** What reading a long video picked now will take, shown while it goes up. */
+  const [mediaNotes, setMediaNotes] = useState<string[]>([])
   /** Names of files whose upload failed, shown until the next upload attempt. */
   const [uploadFailed, setUploadFailed] = useState<string[]>([])
   // File picked while an agent's conversation opened: uploaded by the picking composer; shown here with its failure.
@@ -1349,10 +1354,24 @@ export function Composer({
       const reason = attachRefusal(file, t)
       return reason ? [`${file.name} — ${reason}`] : []
     })
-    const picked = offered.filter((file) => !attachRefusal(file, t))
+    const allowed = offered.filter((file) => !attachRefusal(file, t))
     setUploadFailed(refused)
-    if (!picked.length) return
+    if (!allowed.length) return
     setUploading(true)
+    // a long video says what reading it takes before it goes up; one that cannot be read stays
+    const notes: string[] = []
+    const picked: File[] = []
+    for (const file of allowed) {
+      const { note, refusal } = await mediaPreflight(file, t).catch(() => ({ note: null, refusal: null }))
+      if (refusal) setUploadFailed((current) => [...current, `${file.name} — ${refusal}`])
+      else picked.push(file)
+      if (note) notes.push(note)
+    }
+    setMediaNotes(notes)
+    if (!picked.length) {
+      setUploading(false)
+      return
+    }
     // A file picked while an agent's conversation is being opened belongs to that conversation.
     const starting = agentStart.current
     let carriedTo: string | null = null
@@ -1365,9 +1384,13 @@ export function Composer({
       const movedOn = () =>
         !!uploadSession && (!composerMounted.current || liveSessionId.current !== uploadSession)
       for (const file of picked) {
+        setUploadProgress(null)
         const row = await uploadFile(file, {
           projectId: editing ? undefined : projectId ?? undefined,
           sessionId: editing ? undefined : uploadSession ?? undefined,
+          onProgress: (sent, total) => {
+            if (composerMounted.current) setUploadProgress({ name: file.name, sent, total })
+          },
         }).catch((err) => {
           // Said where the chips are: a file that never arrived must not look attached.
           // Too large (a proxy's 413 too) says the limit; anything else names the file only.
@@ -1394,7 +1417,10 @@ export function Composer({
       }
     } finally {
       if (carriedTo) countLateUpload(carriedTo, -1)
-      if (composerMounted.current) setUploading(false)
+      if (composerMounted.current) {
+        setUploading(false)
+        setUploadProgress(null)
+      }
     }
   }
 
@@ -2418,6 +2444,7 @@ export function Composer({
               <span
                 key={f.id}
                 data-ocr={f.ocrState ?? undefined}
+                data-media={f.mediaState ?? undefined}
                 className={cn(
                   'flex items-center gap-1.5 rounded-control border px-1.5 py-0.5 text-xs',
                   f.error
@@ -2431,7 +2458,7 @@ export function Composer({
                     : t('{n} 토큰').replace('{n}', f.tokens.toLocaleString()))
                 }
               >
-                {isReading(f) ? (
+                {isReading(f) || isWatching(f) ? (
                   <Loader2 size={10} className="animate-spin text-faint" />
                 ) : (
                   <Paperclip size={10} className={f.error ? '' : 'text-faint'} />
@@ -2498,11 +2525,21 @@ export function Composer({
               </span>
             ))}
             {uploading && (
-              <span className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs text-faint">
+              <span
+                data-testid="upload-progress"
+                className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs text-faint"
+              >
                 <Loader2 size={10} className="animate-spin" />
-                {t('업로드 중')}
+                {uploadProgress && uploadProgress.total > 0
+                  ? t('{name} 올리는 중 {percent}%')
+                    .replace('{name}', uploadProgress.name)
+                    .replace('{percent}', String(Math.floor((uploadProgress.sent / uploadProgress.total) * 100)))
+                  : t('업로드 중')}
               </span>
             )}
+            {uploading && mediaNotes.map((note) => (
+              <p key={note} role="status" data-testid="media-estimate" className="w-full text-xs text-muted">{note}</p>
+            ))}
             {attachments.some((f) => f.error) && (
               <p
                 role="status"

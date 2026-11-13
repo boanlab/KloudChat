@@ -1,5 +1,6 @@
 import { Download, Eye, FolderOpen, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { FileBoxFilter, FileLine } from '@/components/files/FileBoxList'
 import { FilePreview } from '@/components/files/FilePreview'
 import { useFileBox, type FileOrigin } from '@/components/files/fileBox'
@@ -21,6 +22,25 @@ export function FilesPage() {
   const [confirming, setConfirming] = useState<FileRow | null>(null)
   const [previewing, setPreviewing] = useState<FileRow | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // 「/files?open=<id>&t=<seconds>」: a link into a file (a video at a moment) opens its preview
+  const [params, setParams] = useSearchParams()
+  const opening = params.get('open')
+  const at = Number(params.get('t'))
+  const start = opening && Number.isFinite(at) && at > 0 ? at : undefined
+  useEffect(() => {
+    if (!opening) return
+    let live = true
+    filesApi.get(opening)
+      .then((row) => live && setPreviewing(row))
+      .catch((err) => live && setError(errorMessage(err, t('파일을 열지 못했습니다.'))))
+    return () => {
+      live = false
+    }
+  }, [opening, t])
+  const closePreview = () => {
+    setPreviewing(null)
+    if (opening) setParams({}, { replace: true })
+  }
   const shown = box.rows
   const pick = useBulkSelect(shown)
 
@@ -138,7 +158,7 @@ export function FilesPage() {
             </>
           )}
         </div>
-        <FilePreview row={previewing} onClose={() => setPreviewing(null)} />
+        <FilePreview row={previewing} onClose={closePreview} start={previewing?.id === opening ? start : undefined} />
         <ConfirmDialog
           open={!!confirming}
           onClose={() => setConfirming(null)}

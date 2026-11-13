@@ -29,6 +29,13 @@ services:
       context: ./apps/print
       dockerfile: Dockerfile
 
+  media:
+    image: boanlab/kloudchat-media:local
+    pull_policy: build
+    build:
+      context: ./apps/media
+      dockerfile: Dockerfile
+
   web:
     image: boanlab/kloudchat-web:local
     pull_policy: build

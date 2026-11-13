@@ -109,6 +109,20 @@ class Settings(BaseSettings):
 
     file_storage_dir: str = "/srv/data/files"
     max_upload_mb: int = 200
+    #: One audio/video file's ceiling. Such files come in pieces (`routers/uploads.py`), each
+    #: under `upload_piece_mb`, so nginx's body limit stays at MAX_UPLOAD_MB.
+    max_video_upload_mb: int = 500
+    upload_piece_mb: int = 8
+    #: The media worker (stock ffmpeg in its own container, `apps/media`); empty: audio/video
+    #: is transcribed whole in the upload request as before (Whisper's 25 MB limit), no frames.
+    media_url: str = ""
+    #: Longest audio/video read, minutes; longer ones are refused before any work.
+    video_max_minutes: int = 240
+    #: Keyframes read per minute of video, and per video at most (long videos are sampled).
+    video_frames_per_minute: float = 4.0
+    video_max_frames: int = 120
+    #: Frames read at once by the vision model.
+    video_vision_parallel: int = 4
     # Disk fill ratio triggering removal of deleted accounts' files, oldest first; 0 disables.
     storage_reclaim_at: float = 0.8
     file_context_chars: int = 24_000

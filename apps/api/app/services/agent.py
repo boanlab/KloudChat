@@ -1014,6 +1014,19 @@ _NUMBERED = re.compile(r"^\[(\d+)\] (.*)$")
 _MATERIAL = re.compile(r"^\[(\d{1,3})\] 자료: (.{1,300})$")
 #: Source marker for material (no URL).
 MATERIAL_SOURCE = "material:"
+#: A video passage's player link under its label (`knowledge.render`): 「영상: /files?open=…&t=…」.
+_PLAYER = re.compile(r"^영상: (/files\?open=[A-Za-z0-9-]{1,64}&t=\d{1,6})$")
+#: Separates a material label from its player link inside one source entry.
+_LINK_SEP = "\t"
+
+
+def material_link(source: str) -> tuple[str, str | None]:
+    """A material source's label and its player link, if it is a video passage."""
+    label = source.removeprefix(MATERIAL_SOURCE)
+    if _LINK_SEP in label:
+        label, link = label.split(_LINK_SEP, 1)
+        return label, link
+    return label, None
 
 
 def _number_sources(
@@ -1028,7 +1041,9 @@ def _number_sources(
         for i, line in enumerate(lines):
             if match := _MATERIAL.match(line):
                 label = match.group(2).strip()
-                lines[i] = f"[{_source_number(MATERIAL_SOURCE + label, sources)}] 자료: {label}"
+                player = _PLAYER.match(lines[i + 1]) if i + 1 < len(lines) else None
+                key = label + (_LINK_SEP + player.group(1) if player else "")
+                lines[i] = f"[{_source_number(MATERIAL_SOURCE + key, sources)}] 자료: {label}"
         return "\n".join(lines)
     entries: list[tuple[int, str]] = []
     for i, line in enumerate(lines[:-1]):
@@ -1152,6 +1167,17 @@ def _fetched_url(call: dict) -> str:
         return ""
 
 
+def _material_citation(n: int, source: str) -> str:
+    _, link = material_link(source)
+    return f"[[{n}]]({link})" if link else f"[{n}]"
+
+
+def _material_entry(n: int, source: str) -> str:
+    """「- [n] label」 in the list under an answer; a video passage links to its moment."""
+    label, link = material_link(source)
+    return f"- [{n}] [{label}]({link})" if link else f"- [{n}] {label}"
+
+
 def _link_citations(answer: str, sources: list[str],
                     seen: dict[str, str] | None = None) -> tuple[str, list[int]]:
     """Link `[n]` citations to sources (code blocks untouched); returns answer and cited numbers.
@@ -1184,8 +1210,9 @@ def _link_citations(answer: str, sources: list[str],
         for n in wanted:
             if n not in cited:
                 cited.append(n)
-        # Material passages keep plain numbers.
-        return "".join(f"[{n}]" if sources[n - 1].startswith(MATERIAL_SOURCE)
+        # Material passages keep plain numbers; a video passage links to its moment.
+        return "".join(_material_citation(n, sources[n - 1])
+                       if sources[n - 1].startswith(MATERIAL_SOURCE)
                        else f"[[{n}]]({sources[n - 1]})" for n in wanted)
 
     pieces = answer.split("```")
@@ -3088,7 +3115,7 @@ async def run_turn(
     if cited and not own_list and not form_fixed:
         # a form the person fixed (「조언만, 다른 건 쓰지 마」) keeps the inline links only
         appendix = ("\n\n### 출처\n" if reply_korean else "\n\n### Sources\n") + "\n".join(
-            f"- [{n}] {sources[n - 1].removeprefix(MATERIAL_SOURCE)}"
+            _material_entry(n, sources[n - 1])
             if sources[n - 1].startswith(MATERIAL_SOURCE)
             else f"- [{n}] [{_labelled(sources[n - 1])}]"
             f"({sources[n - 1]}){_dated(sources[n - 1])}"

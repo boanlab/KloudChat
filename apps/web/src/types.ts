@@ -999,6 +999,11 @@ export interface ProjectFile {
   ocrTotal?: number
   ocrDone?: number
   ocrReview?: number
+  mediaState?: 'queued' | 'running' | 'done' | 'failed' | null
+  mediaStage?: string | null
+  mediaDone?: number
+  mediaTotal?: number
+  mediaDuration?: number
 }
 
 /** A skill's server fields (`services/skill_specs.py`): each names shipped scripts only. */

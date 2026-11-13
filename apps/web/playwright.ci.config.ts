@@ -123,6 +123,7 @@ const groups: Record<string, Group> = {
   search: { files: ['search-dialog.spec.ts'], projects: { desktop, phone: pixel } },
   publishing: { files: ['publishing.spec.ts'], projects: { desktop, phone: pixel } },
   ocr: { files: ['ocr.spec.ts'], projects: { desktop, phone: touchPhone } },
+  video: { files: ['video-moments.spec.ts'], projects: { desktop, phone: touchPhone } },
   ux: { files: ['ux-keyboard-forms.spec.ts'], projects: { desktop, phone: pixel } },
   'admin-models': { files: ['admin-models.spec.ts'], projects: { desktop, phone: touchPhone } },
   'admin-users': { files: ['admin-users-paging.spec.ts'], projects: { desktop, phone: touchPhone } },
