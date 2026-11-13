@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextvars
 import io
 import logging
 import re
@@ -1152,44 +1153,15 @@ class _List:
     leading: float
 
 
-#: the least size a `.pptx` writes overflowing text at before it asks PowerPoint to shrink
-_LEAST_PT = 8.0
-
-
-def _fit_whole(
-    paragraphs: list[str], face: str, size: float, width: float, height: float, leading: float,
-    gap: float = 0.0,
-) -> tuple[float, float]:
-    """`(size, scale)` writing every paragraph whole in the box: the largest size from `size`
-    down to `_LEAST_PT` that fits, and when even that does not, the `normAutofit` font scale
-    (0–1) PowerPoint is to draw it at."""
-    measure = max(1.0, width * 0.94)
-
-    def need(at: float) -> float:
-        lines = sum(len(_wrap(p, face, at, measure) or [""]) for p in paragraphs)
-        return lines * at * leading + max(0, len(paragraphs) - 1) * at * gap
-
-    current = size
-    while need(current) > height + 0.5 and current > _LEAST_PT:
-        current = max(_LEAST_PT, current - 0.5)
-    used = need(current)
-    if used <= height + 0.5:
-        return current, 1.0
-    # area goes with the square of the size
-    return current, max(0.25, (height / used) ** 0.5 * 0.95)
-
-
-def _autofit(frame, scale: float) -> None:
-    """`a:normAutofit` on the frame: PowerPoint and LibreOffice shrink the text to the box,
-    from `scale` (1 = as written) until it is next laid out."""
+def _autofit(frame) -> None:
+    """`a:normAutofit` on the frame: text written whole at its floor that still overflows
+    its box is shrunk by PowerPoint as a last resort (the deck reports it,
+    `overflowing_slides`, for the editor to move or split)."""
     body = frame._txBody.find(qn("a:bodyPr"))
     for child in list(body):
         if child.tag in (qn("a:noAutofit"), qn("a:spAutoFit"), qn("a:normAutofit")):
             body.remove(child)
     fit = body.makeelement(qn("a:normAutofit"), {})
-    if scale < 1.0:
-        fit.set("fontScale", str(int(round(scale * 100000))))
-        fit.set("lnSpcReduction", "10000")
     # schema: prstTxWarp, then the autofit, then scene3d / sp3d / flatTx / extLst
     later = next((c for c in body if c.tag in (
         qn("a:scene3d"), qn("a:sp3d"), qn("a:flatTx"), qn("a:extLst"))), None)
@@ -1197,6 +1169,18 @@ def _autofit(frame, scale: float) -> None:
         later.addprevious(fit)
     else:
         body.append(fit)
+
+
+#: per export, each scene's text that did not fit at its floor (`overflowing_slides`)
+_OVERFLOW: contextvars.ContextVar[list[str] | None] = contextvars.ContextVar(
+    "deck_export_overflow", default=None
+)
+
+
+def _overflowed(text: str) -> None:
+    found = _OVERFLOW.get()
+    if found is not None:
+        found.append(text)
 
 
 class _Scene:
@@ -1260,6 +1244,8 @@ class _Scene:
         least = min(start, float(deck_type.FLOOR_PT) if floor is None else floor)
         face = self.bold_face if bold else self.font
         fitted, lines, cut = _fit_text(text, face, start, w, h, leading, least)
+        if cut:
+            _overflowed(text)
         # the ellipsis is the `.pdf`'s, in `lines`; the text itself stays whole
         self.items.append(
             (
@@ -1294,6 +1280,7 @@ class _Scene:
             current = max(least, current - (2 if current > 16 else 1))
         whole = total <= h + 0.5
         if not whole:
+            _overflowed("\n".join(items))
             # the `.pptx` writes them all (`_List`); what follows is the `.pdf`'s alone
             self.items.append(
                 ("list", _List(x, y, w, h, list(items), current, colour, dot, leading))
@@ -2001,7 +1988,8 @@ def _pattern_scene(
                     valign="middle",
                 )
             if position < count - 1:
-                sc.rect(L, y + step - 3, W, 0.75, fill=hair)
+                # halfway between this row's text (ends at `inner`) and the next row's
+                sc.rect(L, y + step - 5, W, 0.75, fill=hair)
         return sc
 
     if render == "flow":
@@ -2363,10 +2351,8 @@ def _pptx_scene(slide, scene: _Scene, faces: tuple[str, str]) -> None:
             continue
         if kind == "list":
             listed: _List = item[1]
-            size, scale = _fit_whole(
-                listed.items, scene.font, listed.size, listed.w - 18, listed.h, listed.leading,
-                gap=0.55,
-            )
+            # at the floor the scene reached, never smaller (`_autofit` is PowerPoint's)
+            size = listed.size
             frame = _textbox(slide, left=listed.x, top=listed.y, width=listed.w, height=listed.h)
             frame.margin_left = frame.margin_right = 0
             frame.margin_top = frame.margin_bottom = 0
@@ -2380,7 +2366,7 @@ def _pptx_scene(slide, scene: _Scene, faces: tuple[str, str]) -> None:
                 run = paragraph.add_run()
                 run.text = words
                 _font(run, size=round(size * 2) / 2, colour=_rgb_of(listed.colour), faces=faces)
-            _autofit(frame, scale)
+            _autofit(frame)
             continue
         if kind == "rect":
             _, x, y, w, h, fill, line, width, radius = item
@@ -2420,18 +2406,10 @@ def _pptx_scene(slide, scene: _Scene, faces: tuple[str, str]) -> None:
             paragraph.alignment = {"center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}.get(
                 text.align, PP_ALIGN.LEFT
             )
-            size, scale = text.size, 1.0
+            size = text.size
             if text.cut:
-                # whole, never the `.pdf`'s ellipsis: smaller, and PowerPoint told to fit it
-                size, scale = _fit_whole(
-                    [text.text],
-                    scene.bold_face if text.bold else scene.font,
-                    text.size,
-                    text.w,
-                    text.h,
-                    text.leading,
-                )
-                _autofit(frame, scale)
+                # whole at its floor, never the `.pdf`'s ellipsis; PowerPoint fits the rest
+                _autofit(frame)
             paragraph.line_spacing = Pt(size * text.leading)
             run = paragraph.add_run()
             run.text = text.text
@@ -2932,8 +2910,50 @@ def to_pptx(
     tokens: dict[str, str] | None = None,
     dark: bool = False,
     template: str = "",
+    overflow: list[dict] | None = None,
 ) -> bytes:
-    """Deck as .pptx on the blank layout; `template` supplies master and theme."""
+    """Deck as .pptx on the blank layout; `template` supplies master and theme. A body
+    placeholder's plain paragraph takes no master bullet (`pptx_edit.written_bullets_only`).
+    `overflow`, when given, gets each slide whose text did not fit at its floor
+    (`overflowing_slides`)."""
+    found: list[tuple[int, dict, list[str]]] = []
+    token = _OVERFLOW.set(None)
+    try:
+        data = _build_pptx(
+            title, slides, tokens=tokens, dark=dark, template=template, found=found
+        )
+    finally:
+        _OVERFLOW.reset(token)
+    if overflow is not None:
+        overflow += [
+            {"slideId": str(slide.get("id") or ""), "index": index, "what": cut}
+            for index, slide, cut in found
+            if cut
+        ]
+    return pptx_edit.written_bullets_only(data)
+
+
+def overflowing_slides(
+    title: str, slides: list[dict], *, tokens: dict[str, str] | None = None, template: str = ""
+) -> list[dict]:
+    """The slides whose text does not fit its place even at the type scale's floor, as the
+    `.pptx` export lays them out: `[{slideId, index, what: [the texts]}]`, `index` counting the
+    written slides from 0. The export writes such text whole at the floor and leaves the rest
+    to PowerPoint's shrink-on-overflow; the editor is to hold, move or split these slides."""
+    overflow: list[dict] = []
+    to_pptx(title, slides, tokens=tokens, template=template, overflow=overflow)
+    return overflow
+
+
+def _build_pptx(
+    title: str,
+    slides: list[dict],
+    *,
+    tokens: dict[str, str] | None,
+    dark: bool,
+    template: str,
+    found: list[tuple[int, dict, list[str]]],
+) -> bytes:
     slides = _without_written_numbers(slides)
     style = design.normalise_tokens(tokens) if tokens else None
     faces = _FACES[style["font"]] if style else _FACES["gothic"]
@@ -3036,6 +3056,9 @@ def to_pptx(
     visual_style = (style or {}).get("visualStyle") or "editorial"
 
     for index, data in enumerate(_written(slides)):
+        cut: list[str] = []
+        _OVERFLOW.set(cut)
+        found.append((index, data, cut))
         slide = presentation.slides.add_slide(blank)
         typescale[0] = _typescale(data)
         if dark:

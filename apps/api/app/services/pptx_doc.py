@@ -51,10 +51,8 @@ def blank(*, tokens: dict[str, str] | None = None, template: str = "") -> bytes:
     cover in that look (`deck_export.to_pptx`), as a web deck made there would have."""
     if not tokens and not template:
         return pptx_edit.blank_deck()
-    return pptx_edit.written_bullets_only(
-        deck_export.to_pptx(
-            "", [{"layout": "title", "title": "", "body": ""}], tokens=tokens, template=template
-        )
+    return deck_export.to_pptx(
+        "", [{"layout": "title", "title": "", "body": ""}], tokens=tokens, template=template
     )
 
 
@@ -89,9 +87,8 @@ def deck(
         made.append(entry)
     if closing.strip():
         made.append({"layout": "closing", "title": closing.strip(), "body": ""})
-    return pptx_edit.written_bullets_only(
-        deck_export.to_pptx(title, made, tokens=tokens, template=template)
-    )
+    # `to_pptx` leaves no master bullet under a plain line (`written_bullets_only`)
+    return deck_export.to_pptx(title, made, tokens=tokens, template=template)
 
 
 async def project_look(

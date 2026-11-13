@@ -373,3 +373,102 @@ async def test_a_blank_deck_made_in_a_project_wears_its_theme_and_the_picked_tem
     assert {layout.name for layout in prs.slide_layouts} == names
     # outside a project the blank deck is the plain one
     assert len(_prs(pptx_doc.blank()).slides) == 1
+
+
+def _long_patterns() -> list[dict]:
+    slides = []
+    for pattern in slide_patterns.PATTERNS:
+        if pattern.shape == "chart":
+            continue
+        example = json.loads(pattern.example.replace("{{", "{").replace("}}", "}"))
+        slide = {"id": pattern.name, "title": pattern.label, "layout": pattern.name,
+                 "accent": "#3b5bdb"}
+        for key in ("items", "columns", "body"):
+            if key in example:
+                slide[key] = _long(example[key])
+        for key, value in example.items():
+            slide.setdefault(key, value)
+        slides.append(slide)
+    return slides
+
+
+def test_overflowing_text_stays_at_the_floor_and_its_slides_are_reported():
+    from app.services import deck_type
+
+    slides = _long_patterns()
+    data = deck_export.to_pptx("패턴", slides)
+    floor = deck_type.FLOOR_PT * 100
+    for slide in _prs(data).slides:
+        for props in slide._element.iter(qn("a:rPr")):
+            assert int(props.get("sz") or floor) >= floor
+        # PowerPoint's own shrink only, never a written scale under the floor
+        for fit in slide._element.iter(qn("a:normAutofit")):
+            assert fit.get("fontScale") is None
+    over = deck_export.overflowing_slides("패턴", slides)
+    named = {entry["slideId"] for entry in over}
+    assert {"swot", "checklist", "cards-3"} <= named
+    for entry in over:
+        assert slides[entry["index"]]["id"] == entry["slideId"]
+        assert entry["what"] and any(LONG in what for what in entry["what"])
+    # the examples as written fit
+    examples = [
+        {"id": p.name, "title": p.label, "layout": p.name,
+         **json.loads(p.example.replace("{{", "{").replace("}}", "}"))}
+        for p in slide_patterns.PATTERNS if p.shape != "chart"
+    ]
+    assert deck_export.overflowing_slides("패턴", examples) == []
+
+
+def test_a_list_rule_keeps_clear_of_the_rows_text():
+    data = deck_export.to_pptx("목록", [
+        slide for slide in _long_patterns() if slide["layout"] == "checklist"
+    ])
+    shapes = list(_prs(data).slides[0].shapes)
+    pt = 12700
+    rules = [s for s in shapes if not s.has_text_frame or not s.text_frame.text.strip()]
+    rules = [s for s in rules if s.height < pt * 1.5 and s.width > pt * 200]
+    boxes = [s for s in shapes if s.has_text_frame and LONG in s.text_frame.text]
+    assert rules and boxes
+    for rule in rules:
+        for box in boxes:
+            above = rule.top - (box.top + box.height)
+            below = box.top - (rule.top + rule.height)
+            assert max(above, below) >= 4 * pt, (rule.top / pt, box.top / pt)
+
+
+def test_a_web_deck_on_a_template_has_no_master_bullet_under_a_plain_line():
+    from app.services import design_templates
+
+    template = design_templates.rendering("deck-editorial").pptx_template
+    master = Presentation(template).slide_masters[0]._element
+    # the template's body style is bulleted
+    assert master.find(".//" + qn("p:bodyStyle")).find(".//" + qn("a:buChar")) is not None
+    data = deck_export.to_pptx("덱", [
+        {"layout": "bullets", "title": "글", "body": "그냥 한 문단"},
+        {"layout": "bullets", "title": "목록", "bullets": ["하나", "둘"]},
+    ], template=template)
+    plain = _paragraphs_with(data, "그냥 한 문단")[0]._p.find(qn("a:pPr"))
+    assert plain.find(qn("a:buNone")) is not None and plain.find(qn("a:buChar")) is None
+    for words in ("하나", "둘"):
+        props = _paragraphs_with(data, words)[0]._p.find(qn("a:pPr"))
+        assert props.find(qn("a:buChar")) is not None and props.find(qn("a:buNone")) is None
+
+
+async def test_the_deck_overflow_route_reports_the_editors_slides(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.models.workspace import ArtifactKind
+    from app.routers import workspace
+
+    artifact = SimpleNamespace(kind=ArtifactKind.deck, title="덱", data={"slides": []})
+
+    async def own(*_args):
+        return artifact
+
+    monkeypatch.setattr(workspace, "_own", own)
+    long = "아주 긴 설명 " * 80
+    slides = [{"id": "s1", "layout": "swot", "title": "분석",
+               "items": [["강점", long], ["약점", long], ["기회", long], ["위협", long]]}]
+    found = await workspace.deck_overflow("a1", workspace.DeckOverflowIn(slides=slides), None, None)
+    assert [row["slideId"] for row in found] == ["s1"]
+    assert await workspace.deck_overflow("a1", workspace.DeckOverflowIn(), None, None) == []
