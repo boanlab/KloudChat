@@ -63,6 +63,15 @@ export const EN_UI: Record<string, string> = {
     'Rejected accounts are suspended and cannot sign in. Accounts not awaiting approval are skipped.',
   '{n}명을 승인했습니다.': 'Approved {n} accounts.',
   '{n}명의 가입을 반려했습니다.': 'Rejected {n} sign-ups.',
+  // Project theme and default template
+  '말투·색·서체는 모든 보고서 형식(웹 보고서·한글·Word)과 모든 슬라이드 형식(웹 슬라이드·PowerPoint)에 적용되고, 말투는 대화에도 적용됩니다. 이미지에는 스타일이 적용되고, 오디오·동영상에는 적용되지 않습니다.':
+    'Tone, colours and fonts apply to every report format (web report, HWP, Word) and every slide format (web slides, PowerPoint); the tone also applies to chat. Images get the style; audio and video get nothing.',
+  '이 프로젝트에서 새로 시작하는 보고서(웹 보고서·한글·Word)와 슬라이드(웹 슬라이드·PowerPoint)가 어떤 템플릿으로 나올지 정합니다. 어느 형식으로 내보내도 같은 템플릿을 따르며, 대화마다 다시 고를 수 있습니다.':
+    'Sets the template new reports (web report, HWP, Word) and slides (web slides, PowerPoint) in this project start from. Every format follows the same template, and each conversation can pick again.',
+  '보고서 (웹·한글·Word)': 'Report (web · HWP · Word)',
+  '슬라이드 (웹·PowerPoint)': 'Slides (web · PowerPoint)',
+  '명조 계열 서체': 'Serif typeface',
+  '고딕 계열 서체': 'Sans-serif typeface',
   // Empty states
   '새 대화 시작': 'Start a conversation',
   '검색 지우기': 'Clear search',

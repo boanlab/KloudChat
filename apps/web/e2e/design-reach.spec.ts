@@ -25,7 +25,7 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
   const projectId = page.url().split('/projects/')[1]
 
   // The card's sentence names 대화 whether or not a design is attached.
-  await expect(page.getByText(/말투는 대화·보고서·슬라이드에/)).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText(/말투는 대화에도 적용됩니다/)).toBeVisible({ timeout: 20_000 })
 
   const saved = page.waitForResponse(
     (r) =>
