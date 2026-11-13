@@ -1732,6 +1732,20 @@ whose `add_slide` keeps its look. A blank deck (`pptx_edit.blank_deck`) is
 python-pptx's default template stretched from 4:3 to 16:9 (masters and layouts
 too) with 맑은 고딕 as the theme's East Asian font. A legacy `.ppt` is refused.
 
+Written decks (`deck_export.to_pptx`, for `pptx_write` and the web slides' download)
+use real bullets: `a:buChar` in the accent (`a:buClr`) with a hanging indent
+(`marL` and a negative `indent`, `pptx_edit.set_bullet`), the item's own run in
+the body colour; a line break inside an item is `a:br`, never a raw newline in a
+run (the editor would split it into a paragraph that borrows the bullet's
+style); the corner page number is a `slidenum` field, renumbered on every save.
+Text a pattern layout cannot fit is written whole and shrunk (`a:normAutofit`);
+only the PDF draws an ellipsis. Decks written before this heal as they are read
+(`pptx_edit.healed`: on load for the agent's edits and when the editor fetches
+the file): a lone marker run with `buNone` becomes a real bullet, newlines in runs
+become breaks, a static corner number becomes the field. `pptx_doc.deck` takes the
+project's design tokens and slides template like the web slides' export
+(`pptx_doc.project_look` finds them from the conversation's project).
+
 The editor is pptx-react-viewer (crv, Apache-2.0, pinned to 4.74.0, with
 `ooxml-core` and `ooxml-ui` pinned as it resolves them), used through its
 building blocks (`useViewerBuildingBlocks`, `SlideCanvas`, `SlideThumbnail`)
