@@ -1768,6 +1768,47 @@ the app's i18n; crv's own few canvas words get Korean through
 `PptxI18nProvider`. On a phone the deck is read only, its thumbnails a row under
 the slide.
 
+### Web slides editor
+
+The web slides (`DeckPanel`, a deck artifact's JSON) work the way the PowerPoint
+editor does, so the two read as one family. The header is the document panels'
+(`OfficePanel`): title, version, 저장 안 됨, 저장 (and Ctrl+S), 내려받기, 공유, 더보기
+(버전 기록, 검토, 발표, 이 장 다시 만들기, 이 장 팩트체크, reuse), width, close; it
+mirrors `OfficePanel` until the shared header is extracted. Under it is the
+chrome the two editors share (`components/pptx/chrome.tsx`, no editor library
+with it): one toolbar row (`DeckToolbar`) in the PowerPoint editor's order and
+icons (실행 취소, 다시 실행, 확대/축소 | 레이아웃, 이미지, 표, 차트 | 글꼴, 크기 | 굵게,
+기울임꼴, 밑줄, 텍스트 색상, 서식 지우기 | 디자인, then 검토 and 발표), where the layout,
+table and chart stand in the place of the text box and shape (a web slide places
+its content by layout) and 디자인 holds the deck's look, accent colours, this
+slide's accent and several slides at once; the numbered thumbnail rail with the
+slide menu (새 슬라이드, 슬라이드 복제, 위로 이동, 아래로 이동, 슬라이드 삭제), drag to
+reorder and 「+ 새 슬라이드」; the speaker notes under the slide. A selected table,
+chart, metric set or picture opens its data editor between the slide and the
+notes. Keys: Ctrl+S, Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z), Ctrl+D (duplicate the
+slide), Delete (the slide in the rail, a selected picture), arrows and
+Page/Home/End to step; text boxes keep the browser's own keys.
+
+Hand edits stay in the browser until 저장 (`useDeckDocument`): the deck (slides
+and design) is one working copy, so moving between slides never drops an edit,
+and undo covers the whole deck (100 steps; typing in one field within a moment
+is one step) and starts afresh when another version comes in or one is
+restored. 저장 writes the whole deck once, conditional on the version the edits
+started from; a lost race shows the conflict notice with 「내 편집 내려받기」 (the
+edited deck as text) and 「최신 판 불러오기」. The deck registers with
+`lib/officeGuard.ts` like an office document, so closing, opening another
+artifact, navigating, reloading and an agent turn in the deck's conversation ask
+저장 / 버리기 / 취소 first; steps that change the saved deck on the server (rewrite
+a slide, fact check, fix a finding, put in a picture) ask the same. While the
+agent works the editor is locked; its version shows when nothing is unsaved.
+Review notes are notes on the deck and save at once. A layout change converts
+the content into the new layout's fields without cutting it (`relayout.ts`);
+what the new layout cannot show (a chart on a text layout, text the conversion
+left out) is kept on the slide as `held`, said under the slide with
+「다음 장으로 옮기기」, and taken back by a later layout change. On a phone the
+deck reads only, with the PowerPoint editor's note and layout (thumbnails in a
+row under the slide).
+
 ### Office files in the file box
 
 The file box (`FilesPage`, `components/files/FilePreview.tsx`) previews an
