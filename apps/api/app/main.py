@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -69,6 +70,24 @@ async def _provide_defaults() -> None:
         log.warning("default connectors not installed at startup: %s", exc)
 
 
+def _note_stop_signal() -> None:
+    """Chains uvicorn's SIGTERM/SIGINT handler so the turn drain counts from the signal, not
+    from when uvicorn has finished waiting on open connections."""
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            previous = signal.getsignal(signum)
+            if not callable(previous):
+                continue
+
+            def noted(sig, frame, previous=previous):
+                sessions.shutdown_started()
+                previous(sig, frame)
+
+            signal.signal(signum, noted)
+        except (ValueError, OSError):  # not the main thread (tests): counted from the drain
+            return
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("KloudChat api starting (env=%s, signup_mode=%s)", settings.env, settings.signup_mode)
@@ -112,7 +131,12 @@ async def lifespan(app: FastAPI):
     )
     # one replica also samples host and GPUs
     perf_task = asyncio.create_task(perf_collector.run()) if settings.perf_monitoring else None
+    # a crash of this container left its turns claimed; free them now, not after the TTL
+    await sessions.free_claims_of_earlier_boots()
+    _note_stop_signal()
     yield
+    # running answers finish (or are stored as interrupted) before anything else stops
+    await sessions.drain_turns(settings.turn_drain_sec)
     defaults.cancel()
     sweeper.cancel()
     bots.cancel()

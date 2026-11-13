@@ -57,4 +57,6 @@ RUN mkdir -p /srv/data/files /srv/data/uv-cache /srv/data/npm-cache \
 USER kchat
 
 EXPOSE 8100
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100"]
+# --timeout-graceful-shutdown: answers in progress get a bounded time on SIGTERM; give the
+# container a stop timeout above it (compose: stop_grace_period).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100", "--timeout-graceful-shutdown", "120"]

@@ -157,7 +157,13 @@ services:
       - /proc:/host/proc:ro
       - /sys/fs/cgroup:/host/cgroup:ro
     # Migrations run in `migrate`, above, once for every replica.
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100"]
+    # On SIGTERM uvicorn stops accepting, open answers get up to 120 s (TURN_DRAIN_SEC, from
+    # the signal) to finish, the rest are stored as interrupted and their turns freed.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100",
+              "--timeout-graceful-shutdown", "120"]
+    # Above the 120 s drain plus the stop-and-store step; Docker's default 10 s would kill
+    # answers mid-sentence and leave their conversations claimed.
+    stop_grace_period: 150s
     # Answers 200 while the process serves, LiteLLM up or not; the probe inside it can
     # take LITELLM_TIMEOUT_SEC (20 s) when LiteLLM hangs, hence the timeout.
     healthcheck:
