@@ -1,10 +1,11 @@
 import { Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer, fillComposer } from '@/components/chat/Composer'
+import { warmStudio } from '@/components/hwp/warmStudio'
 import { artifactsApi, errorMessage, type OfficeKind } from '@/lib/api'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
@@ -70,12 +71,21 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const ensureSession = useStore((s) => s.ensureSession)
   const setNotice = useStore((s) => s.setNotice)
   const [openingDocument, setOpeningDocument] = useState<OfficeKind | null>(null)
+  /** What the opening is doing now, said beside the button. */
+  const [openingStage, setOpeningStage] = useState('')
+  /** Held as well as in state: a second click before the re-render does nothing. */
+  const opening = useRef(false)
   /** A chat with a blank HWP, Word or PowerPoint document open beside it. */
   const startDocument = async (kind: OfficeKind) => {
-    if (openingDocument) return
+    if (opening.current) return
+    opening.current = true
     setOpeningDocument(kind)
+    // the HWP editor's files download meanwhile: the panel's editor finds them in the cache
+    if (kind === 'hwp') void warmStudio()
     try {
+      setOpeningStage(t('대화를 만드는 중…'))
       const id = await ensureSession(await newSession('chat'))
+      setOpeningStage(t('빈 문서를 만드는 중…'))
       const row = await artifactsApi.createDocument(kind, {
         sessionId: id,
         title: t(BLANK_START[kind].title),
@@ -84,7 +94,9 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
     } catch (err) {
       setNotice(errorMessage(err, t(BLANK_START[kind].failed)))
     } finally {
+      opening.current = false
       setOpeningDocument(null)
+      setOpeningStage('')
     }
   }
   /** The file picked per surface (null: the request decides). */
@@ -255,6 +267,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             : undefined}
           onBlankDocument={surfaces.includes('chat') ? (kind) => void startDocument(kind) : undefined}
           openingDocument={openingDocument}
+          openingStage={openingStage}
         />
       </div>
     </>

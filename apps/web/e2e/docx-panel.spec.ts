@@ -159,6 +159,47 @@ test('on a phone the document opens to read, without a save button or a toolbar 
   expect(state.problems).toEqual([])
 })
 
+test('on a phone a Word chat reopened by its address opens its document to read and takes the agent\'s version @phone', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) > 640, 'phone width only')
+  const state = await fixture(page, { reopen: true })
+  // a reload or a link: no ?artifact=, and the list's row names no document; the chat's own opens
+  await expect(line(page, '제목  [연수명] 참석 요청')).toBeVisible({ timeout: 30_000 })
+  const header = panel(page).locator('header')
+  await expect(panel(page).getByTestId('office-read-only'))
+    .toHaveText('휴대폰에서는 읽기만 합니다. 고칠 내용은 대화에서 에이전트에게 부탁하세요.')
+  await expect(header.getByRole('button', { name: '저장' })).toHaveCount(0)
+  await expect(docxPanel(page).locator('.odx-toolbar')).toBeHidden()
+  // the document fills the phone's width beside nothing: the page is there to read
+  const box = (await docxPanel(page).boundingBox())!
+  expect(box.width).toBeGreaterThan(380)
+
+  // back to the chat to ask the agent; its version opens the read view again, reloaded
+  await header.getByRole('button', { name: '닫기' }).click()
+  await page.getByRole('textbox', { name: '프롬프트 입력' }).first().fill('연수명을 채워 주세요')
+  await page.keyboard.press('Enter')
+  await expect(header.getByText('v2', { exact: true })).toBeVisible()
+  await expect(line(page, '제목  교원 직무연수 참석 요청')).toBeVisible()
+  await expect(panel(page).getByTestId('office-read-only')).toBeVisible()
+  await expect(docxPanel(page).locator('.odx-content')).toHaveAttribute('contenteditable', 'false')
+  expect(state.sent).toHaveLength(1)
+  expect(state.saves).toEqual([])
+  expect(state.unexpected).toEqual([])
+  expect(state.problems).toEqual([])
+})
+
+test('a Word chat reopened by its address opens its document beside it', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
+  const state = await fixture(page, { reopen: true })
+  await expect(line(page, '제목  [연수명] 참석 요청')).toBeVisible({ timeout: 30_000 })
+  await expect(docxPanel(page).locator('.odx-toolbar')).toBeVisible()
+  // closed, it stays closed; the top bar offers it again
+  await panel(page).locator('header').getByRole('button', { name: '닫기' }).click()
+  await expect(panel(page)).toBeHidden()
+  await page.getByRole('button', { name: '아티팩트 열기' }).click()
+  await expect(line(page, '제목  [연수명] 참석 요청')).toBeVisible({ timeout: 30_000 })
+  expect(state.unexpected).toEqual([])
+})
+
 test('home opens a blank Word document from the report surface\'s Word pick', async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
   const state = await fixture(page, { fromHome: true })

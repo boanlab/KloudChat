@@ -90,6 +90,40 @@ function HwpPages({ editor, version }: { editor: RhwpEditor; version: number }) 
   )
 }
 
+/** The seconds after which the note says a first start can take a while. */
+const SLOW_START_S = 10
+
+/**
+ * Under the panel's 「문서를 여는 중…」 while the editor starts: what it waits on and for how long,
+ * since a first start downloads the editor (tens of MB) and can take most of a minute.
+ */
+function StartingNote({ attempt }: { attempt: number }) {
+  const t = useT()
+  const [waited, setWaited] = useState({ attempt, s: 0 })
+  useEffect(() => {
+    const start = Date.now()
+    const timer = window.setInterval(
+      () => setWaited({ attempt, s: Math.floor((Date.now() - start) / 1000) }),
+      1000,
+    )
+    return () => window.clearInterval(timer)
+  }, [attempt])
+  const s = waited.attempt === attempt ? waited.s : 0
+  return (
+    <p
+      role="status"
+      className="pointer-events-none absolute inset-x-0 top-1/2 z-[2] mt-6 px-4 text-center text-xs text-muted"
+      data-testid="hwp-starting"
+    >
+      {t('한글 편집기를 불러오는 중…')}
+      {s >= 3 && ` ${t('{n}초').replace('{n}', String(s))}`}
+      {s >= SLOW_START_S && (
+        <span className="mt-1 block">{t('처음 열 때는 1분 가까이 걸릴 수 있습니다.')}</span>
+      )}
+    </p>
+  )
+}
+
 /**
  * An HWP document in the rhwp editor (menus, toolbar and all), beside the chat; versions,
  * saves and the agent's turns as every office document has them (`OfficePanel`). The iframe
@@ -300,9 +334,14 @@ export function HwpPanel({
     >
       {/* The SDK appends its iframe here; nothing else may render inside this node. */}
       <div ref={host} key={attempt} className="absolute inset-0" />
-      {readOnly && ready && loaded !== null && editor.current && (
-        <HwpPages editor={editor.current} version={loaded} />
-      )}
+      {readOnly &&
+        (ready && loaded !== null && editor.current ? (
+          <HwpPages editor={editor.current} version={loaded} />
+        ) : (
+          // read only from the start: the editor's menus and ribbon are never seen while it starts
+          <div className="absolute inset-0 bg-elevated" data-hwp-cover="" />
+        ))}
+      {!ready && !failed && <StartingNote attempt={attempt} />}
     </OfficePanel>
   )
 }

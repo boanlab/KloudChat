@@ -1577,7 +1577,7 @@ export const useStore = create<State>((set, get) => ({
             (c.unsent || beyondPage(c) || (rowFetchedAt.get(c.id) ?? 0) > asked)),
           // Deleted here and still in the undo window: the server lists it until the request goes.
           ...rows.filter((row) => s.goneSessions[row.id] !== 'deleted')
-            .map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
+            .map((row) => listedSession(row, s.sessions.find((c) => c.id === row.id))),
         ],
       }))
     } catch {
@@ -1597,7 +1597,7 @@ export const useStore = create<State>((set, get) => ({
         ...s.sessions.filter((c) => !rows.some((row) => row.id === c.id) &&
           (c.projectId !== projectId || c.unsent)),
         ...rows.filter((row) => s.goneSessions[row.id] !== 'deleted')
-          .map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
+          .map((row) => listedSession(row, s.sessions.find((c) => c.id === row.id))),
       ],
     }))
   },
@@ -3346,6 +3346,16 @@ function toMessage(raw: MessageRow): Message {
     liked: raw.rating ?? null,
     superseded: raw.superseded ?? undefined,
   }
+}
+
+/**
+ * A listed row over the one held: the list carries no transcript (held messages are kept), and
+ * it names no document a chat's own fetch found (a Word or HWP file made in the chat, which the
+ * server finds for the conversation itself): that document stays the chat's.
+ */
+function listedSession(raw: SessionRow, held: Session | undefined): Session {
+  const fresh = toSession(raw, held?.messages)
+  return fresh.artifactId === null && held?.artifactId ? { ...fresh, artifactId: held.artifactId } : fresh
 }
 
 function toSession(raw: SessionRow, keepMessages?: Message[]): Session {

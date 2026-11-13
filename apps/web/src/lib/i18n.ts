@@ -3508,6 +3508,13 @@ const EN: Record<string, string> = {
   '이 폭에서는 읽기만 합니다. 저장하지 않은 편집을 먼저 저장하거나 버리세요.':
     'Read only at this width. Save or discard your unsaved edits first.',
   '편집기가 {n}초 안에 열리지 않았습니다.': 'The editor did not open within {n} seconds.',
+  '한글 편집기를 불러오는 중…': 'Loading the HWP editor…',
+  '처음 열 때는 1분 가까이 걸릴 수 있습니다.': 'The first time it can take up to a minute.',
+  '한글 편집기를 여는 중…': 'Opening the HWP editor…',
+  'Word 편집기를 여는 중…': 'Opening the Word editor…',
+  'PowerPoint 편집기를 여는 중…': 'Opening the PowerPoint editor…',
+  '대화를 만드는 중…': 'Creating the chat…',
+  '빈 문서를 만드는 중…': 'Creating the blank document…',
   '이 대화에서 연 사본을 다시 열었습니다. 새 사본을 따로 만듭니다.':
     'The copy opened in this chat was reopened. This makes a separate new copy.',
   '새 사본으로 열기': 'Open a new copy',

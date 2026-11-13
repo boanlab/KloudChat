@@ -27,6 +27,7 @@ import { ApiError, artifactsApi, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
+import { warmStudio } from '@/components/hwp/warmStudio'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure, withRetryWait } from '@/lib/failures'
 import {
@@ -186,6 +187,13 @@ const OUTPUTS = {
   ],
 } as const satisfies Record<'report' | 'slides', readonly { value: ReportOutput | SlidesOutput; label: string }[]>
 
+/** What 「빈 문서로 시작」 says while its document opens. */
+const OPENING_EDITOR = {
+  hwp: '한글 편집기를 여는 중…',
+  docx: 'Word 편집기를 여는 중…',
+  pptx: 'PowerPoint 편집기를 여는 중…',
+} as const satisfies Record<OfficeKind, string>
+
 /** The 형식 chip of a new report or deck, as the picture options are chips; a picked file also
  *  offers 「빈 문서로 시작」. */
 function OutputOptions({
@@ -194,15 +202,22 @@ function OutputOptions({
   onPick,
   onBlank,
   opening,
+  stage,
 }: {
   surface: 'report' | 'slides'
   shown: ReportOutput | SlidesOutput
   onPick: (value: ReportOutput | SlidesOutput) => void
   onBlank?: (kind: OfficeKind) => void
   opening: OfficeKind | null
+  /** What the opening is doing now (made the conversation, the document…). */
+  stage?: string
 }) {
   const t = useT()
   const file = shown === 'hwp' || shown === 'docx' || shown === 'pptx' ? shown : null
+  // 한글 picked: its editor's files (tens of MB) start downloading now, not after the document is made
+  useEffect(() => {
+    if (file === 'hwp') void warmStudio()
+  }, [file])
   const label = (value: ReportOutput | SlidesOutput) =>
     t(OUTPUTS[surface].find((option) => option.value === value)?.label ?? value)
   return (
@@ -219,12 +234,18 @@ function OutputOptions({
           type="button"
           onClick={() => onBlank(file)}
           disabled={opening !== null}
+          aria-busy={opening === file}
           title={t('입력 없이 빈 문서를 편집기에 엽니다')}
           className="flex h-8 items-center gap-1.5 rounded-control border border-line px-2.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-60"
         >
           {opening === file ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
-          {t('빈 문서로 시작')}
+          {opening === file ? t(OPENING_EDITOR[file]) : t('빈 문서로 시작')}
         </button>
+      )}
+      {file && opening === file && stage && (
+        <span role="status" className="flex h-8 items-center text-xs text-muted" data-testid="blank-document-stage">
+          {stage}
+        </span>
       )}
     </>
   )
@@ -506,6 +527,7 @@ export function Composer({
   onPickOutput,
   onBlankDocument,
   openingDocument = null,
+  openingStage,
 }: {
   sessionId: string | null
   kind: SessionKind
@@ -520,6 +542,8 @@ export function Composer({
   /** 「빈 문서로 시작」 beside a picked file: that file blank in its editor beside a chat. */
   onBlankDocument?: (kind: OfficeKind) => void
   openingDocument?: OfficeKind | null
+  /** What the blank document's opening is doing now. */
+  openingStage?: string
 }) {
   const t = useT()
   const isMedia = kind === 'image' || kind === 'av'
@@ -2531,6 +2555,7 @@ export function Composer({
               onPick={onPickOutput}
               onBlank={onBlankDocument}
               opening={openingDocument}
+              stage={openingStage}
             />
           </div>
         )}
