@@ -42,7 +42,7 @@ function SafeModelPriority({
     next.splice(to, 0, id)
     save(next)
     setSaid(
-      t('{name}: {n}번째로 옮겼습니다')
+      t('{name} · {n}번째')
         .replace('{name}', byId.get(id)?.label ?? id)
         .replace('{n}', String(to + 1)),
     )

@@ -35,7 +35,7 @@ export const EN_UI: Record<string, string> = {
   '{name} 아래로': 'Move {name} down',
   '이미 첫 번째입니다': 'Already first',
   '이미 마지막입니다': 'Already last',
-  '{name}: {n}번째로 옮겼습니다': '{name}: moved to position {n}',
+  '{name} · {n}번째': '{name}, position {n}',
   '내부 자료 때문에 strict-local로 옮길 때는 사용자가 고른 모델의 strict-local 판을 먼저 쓰고, 그것이 없으면 이 목록의 첫 번째 모델을 씁니다. 개인정보 확인 창에서는 체크된 모델 중 하나를 사용자가 고를 수 있으며, 처음에는 첫 번째 모델이 골라져 있습니다.':
     "When internal material moves a turn to strict-local, the chosen model's strict-local version is used first, else the first model of this list. On the privacy card the person can pick any checked model; the first is preselected.",
   '프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 화살표나 끌어서 순서를 바꿉니다.':
