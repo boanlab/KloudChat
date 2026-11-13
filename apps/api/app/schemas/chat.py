@@ -343,6 +343,9 @@ class SendMessage(Wire):
         None
     )
     privacy_decision_token: str | None = Field(default=None, max_length=4000)
+    #: a report's file picked on the screen (`web` the HTML report, `hwp`, `docx`); wins over a
+    #: file the request names (`report_office.asked_file`); None: the request decides
+    output_format: Literal["web", "hwp", "docx"] | None = None
 
 
 class Transcription(Wire):

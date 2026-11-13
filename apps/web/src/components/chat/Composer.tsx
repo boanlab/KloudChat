@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { FileRow, PrivacyDecision, WebSearchSetting } from '@/lib/api'
-import { ApiError, transcriptionsApi } from '@/lib/api'
+import { ApiError, artifactsApi, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
@@ -31,7 +31,7 @@ import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/l
 import { refusalSentence, startFailure, withRetryWait } from '@/lib/failures'
 import {
   agentDocumentNames, agentHandoffSurface, handoffSurface, NAMES_DOCX, NAMES_HWP, NAMES_PPTX,
-  officeReportRequest,
+  officeReportRequest, reportFileKind,
 } from '@/lib/documentRequest'
 import { DICTATION_EVENT, isMac } from '@/lib/shortcuts'
 import { currentLang } from '@/lib/i18n'
@@ -43,7 +43,9 @@ import { agentStartKind, distinctAgents, kindMeta } from '@/lib/kinds'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { ChatSendRecoveryError, FIGURE_STYLES, composerKey, effectiveModelId, useStore } from '@/store/useStore'
-import type { ModelInfo, PrivacyAction, SessionKind, Skill, WebSearchMode } from '@/types'
+import type {
+  ModelInfo, PrivacyAction, ReportOutput, SessionKind, Skill, SlidesOutput, WebSearchMode,
+} from '@/types'
 import { servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
 import { SharedBotItems } from './SharedBotItems'
@@ -441,11 +443,17 @@ export function Composer({
   kind,
   projectId,
   autoFocus,
+  output,
+  onDetectOutput,
 }: {
   sessionId: string | null
   kind: SessionKind
   projectId?: string | null
   autoFocus?: boolean
+  /** A new report's or deck's file picked beside the surface chips; wins over the request. */
+  output?: ReportOutput | SlidesOutput | null
+  /** The file the typed request names (「한글 문서로」, 「PowerPoint로」), for that pick's default. */
+  onDetectOutput?: (detected: ReportOutput | SlidesOutput | null) => void
 }) {
   const t = useT()
   const isMedia = kind === 'image' || kind === 'av'
@@ -868,6 +876,13 @@ export function Composer({
 
   const project = projects.find((p) => p.id === projectId)
   const effectiveSessionId = sessionId ?? reusableSessionId
+  // the file the request names, shown as the pick's default until one is picked
+  const detectedOutput: ReportOutput | SlidesOutput | null = sessionId ? null
+    : kind === 'report' ? reportFileKind(value)
+      : kind === 'slides' && NAMES_PPTX.test(value) ? 'pptx' : null
+  useEffect(() => {
+    onDetectOutput?.(detectedOutput)
+  }, [detectedOutput, onDetectOutput])
   const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
   // A generation awaiting an answer or approval (document surfaces only).
   const pending = session?.pending ?? null
@@ -1515,6 +1530,29 @@ export function Composer({
       }).finally(startSettled)
       return
     }
+    // 「PowerPoint」 picked (or named) on the slides screen: today's PowerPoint path, a chat
+    // with a blank deck in its editor whose tools write the request into it
+    if (kind === 'slides' && !sessionId && (output ?? detectedOutput) === 'pptx') {
+      void (async () => {
+        const id = await useStore.getState().ensureSession(
+          await newSession('chat', { projectId: projectId ?? null }))
+        const row = await artifactsApi.createDocument('pptx', {
+          sessionId: id, title: t('새 PowerPoint 문서'),
+        })
+        releaseStart()
+        navigate(`/s/${id}?artifact=${row.id}`, { replace: true })
+        await deliverChat(id, text, sentAttachments, sentWebSearch, sentSkillIds)
+      })().finally(startSettled).catch((error: unknown) => {
+        setComposerRestore({
+          sessionId: null,
+          value: text,
+          attachments: sentAttachments,
+          activatedSkillIds: sentSkillIds,
+          error: errorMessage(error, t('PowerPoint 문서를 열지 못했습니다.')),
+        })
+      })
+      return
+    }
     if (kind === 'image') {
       // Not streamed: `generateImages` writes both halves from one call.
       void generateImages(sessionId, text, {
@@ -1633,6 +1671,8 @@ export function Composer({
       attachmentNames: attachmentLabels,
       activatedSkillIds: sentSkillIds,
       renderTemplateId: shownTemplate ? shownTemplate.id : undefined,
+      // a file picked beside the surface chips; else the server reads the request
+      outputFormat: kind === 'report' && !sessionId && output ? output as ReportOutput : undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         landedSessionId = id

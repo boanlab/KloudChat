@@ -3804,6 +3804,16 @@ async def _store_document(
     return artifact.id
 
 
+def _report_output(picked: str, request: str) -> str:
+    """`hwp`, `docx` or `` (the HTML report): a pick wins over the file the request names."""
+    if picked in ("hwp", "docx"):
+        return picked
+    if picked == "web":
+        return ""
+    asked = report_office.asked_file(request)
+    return asked.value if asked is not None else ""
+
+
 async def _office_target(
     db: AsyncSession, session: ChatSession, turn: dict[str, Any]
 ) -> ArtifactKind | None:
@@ -3865,6 +3875,8 @@ async def _settle_plan_turn(
     run: dict | None = None,
     #: run a card waited on, carried to the writing pass
     run_parent: str | None = None,
+    #: a report's decided file (`web`, `hwp`, `docx`), kept for the writing pass
+    output: str = "",
 ) -> None:
     """Stores a planning/asking turn and charges for it; no artifact."""
     credits = charge_for_tokens(model, usage.get("inputTokens", 0), usage.get("outputTokens", 0))
@@ -3889,6 +3901,7 @@ async def _settle_plan_turn(
             **(figures or {}),
             **({"carryFrom": carry_from, "carryNote": carry_note} if carry_from else {}),
             **({"runId": run_parent} if run_parent and not questions else {}),
+            **({"output": output} if output else {}),
         }
         db.add(
             Message(
@@ -5494,10 +5507,12 @@ async def _send_message(
     #: the stop button's signal for this report or deck (`_stoppable`)
     stopping = asyncio.Event()
     if kind is SessionKind.report:
-        # 「한글 문서로」, 「Word 파일로」 on a new report: stored as that file (`report_office`)
-        asked_file = None if session.artifact_id else report_office.asked_file(
+        # the file picked on the screen, else the one decided when the outline was offered,
+        # else 「한글 문서로」, 「Word 파일로」 in the request (`report_office`); a conversation
+        # that already has its document keeps it
+        office_file = "" if session.artifact_id else _report_output(
+            payload.output_format or str(pending.get("output") or ""),
             str(pending.get("request") or "") or typed_content)
-        office_file = asked_file.value if asked_file is not None else ""
         return StreamingResponse(
             _survive_disconnect(_stoppable(
                 session.id,
@@ -8342,6 +8357,7 @@ async def _run_report(
             carry_note=carry_note,
             run=_run_summary(work, built[0][1], built[0][2]) if work is not None else None,
             run_parent=parent_run_id,
+            output=office or "web",
         )
         yield chat_service.sse({"type": "usage", **usage, "credits": 0})
         yield chat_service.sse({"type": "done"})

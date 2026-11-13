@@ -9,7 +9,7 @@ import { artifactsApi, errorMessage, type OfficeKind } from '@/lib/api'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { SessionKind } from '@/types'
+import type { ReportOutput, SessionKind, SlidesOutput } from '@/types'
 import { useT } from '@/lib/useT'
 
 /** Per-surface examples under the greeting; click fills the composer. */
@@ -47,24 +47,28 @@ const EXAMPLES: Record<SessionKind, string[]> = {
 }
 
 /** Also the `/new/:kind` entry. */
-/** Beside the surfaces: a chat that opens with a blank office document in its editor. */
-const OFFICE_STARTS = [
-  {
-    kind: 'hwp', label: '한글 문서', title: '새 한글 문서', color: '#2b6cb0',
-    hint: '빈 한글 문서를 열고, 챗으로 쓰고 고칩니다', failed: '한글 문서를 열지 못했습니다.',
-  },
-  {
-    kind: 'docx', label: 'Word 문서', title: '새 Word 문서', color: '#185abd',
-    hint: '빈 Word 문서를 열고, 챗으로 쓰고 고칩니다', failed: 'Word 문서를 열지 못했습니다.',
-  },
-  {
-    kind: 'pptx', label: 'PowerPoint', title: '새 PowerPoint 문서', color: '#c43e1c',
-    hint: '빈 PowerPoint 문서를 열고, 챗으로 쓰고 고칩니다',
-    failed: 'PowerPoint 문서를 열지 못했습니다.',
-  },
-] as const satisfies readonly {
-  kind: OfficeKind; label: string; title: string; color: string; hint: string; failed: string
-}[]
+/** A report's or deck's file, picked beside the surface chips (the surfaces themselves stay
+ *  chat, report, slides…): the web report or an HWP or Word file the report screen writes; the
+ *  deck screen's deck or a PowerPoint file in its editor beside a chat. */
+const OUTPUTS = {
+  report: [
+    { value: 'web', label: '웹 보고서' },
+    { value: 'hwp', label: '한글' },
+    { value: 'docx', label: 'Word' },
+  ],
+  slides: [
+    { value: 'deck', label: '기본 슬라이드' },
+    { value: 'pptx', label: 'PowerPoint' },
+  ],
+} as const satisfies Record<'report' | 'slides', readonly { value: ReportOutput | SlidesOutput; label: string }[]>
+
+/** A file picked with nothing typed opens blank in its editor beside a chat, as the home
+ *  screen's document cards did. */
+const BLANK_START = {
+  hwp: { title: '새 한글 문서', failed: '한글 문서를 열지 못했습니다.' },
+  docx: { title: '새 Word 문서', failed: 'Word 문서를 열지 못했습니다.' },
+  pptx: { title: '새 PowerPoint 문서', failed: 'PowerPoint 문서를 열지 못했습니다.' },
+} as const satisfies Record<OfficeKind, { title: string; failed: string }>
 
 export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
@@ -82,22 +86,26 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const setNotice = useStore((s) => s.setNotice)
   const [openingDocument, setOpeningDocument] = useState<OfficeKind | null>(null)
   /** A chat with a blank HWP, Word or PowerPoint document open beside it. */
-  const startDocument = async (start: (typeof OFFICE_STARTS)[number]) => {
+  const startDocument = async (kind: OfficeKind) => {
     if (openingDocument) return
-    setOpeningDocument(start.kind)
+    setOpeningDocument(kind)
     try {
       const id = await ensureSession(await newSession('chat'))
-      const row = await artifactsApi.createDocument(start.kind, {
+      const row = await artifactsApi.createDocument(kind, {
         sessionId: id,
-        title: t(start.title),
+        title: t(BLANK_START[kind].title),
       })
       navigate(`/s/${id}?artifact=${row.id}`)
     } catch (err) {
-      setNotice(errorMessage(err, t(start.failed)))
+      setNotice(errorMessage(err, t(BLANK_START[kind].failed)))
     } finally {
       setOpeningDocument(null)
     }
   }
+  /** The file picked per surface (null: the request decides), and the one the request names. */
+  const [picked, setPicked] = useState<{ report: ReportOutput | null; slides: SlidesOutput | null }>(
+    { report: null, slides: null })
+  const [detected, setDetected] = useState<ReportOutput | SlidesOutput | null>(null)
 
   const openArtifact = useStore((s) => s.openArtifact)
   useEffect(() => {
@@ -250,27 +258,77 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
               )
             })}
           </div>
-          {surfaces.includes('chat') && OFFICE_STARTS.map((start) => (
-            <button
-              key={start.kind}
-              type="button"
-              onClick={() => void startDocument(start)}
-              disabled={openingDocument !== null}
-              title={t(start.hint)}
-              className="flex shrink-0 items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-base text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-60"
-            >
-              {openingDocument === start.kind ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <FileType size={14} style={{ color: start.color }} />
-              )}
-              {t(start.label)}
-            </button>
-          ))}
         </div>
+        {(active === 'report' || active === 'slides') && (
+          <OutputPick
+            surface={active}
+            shown={picked[active] ?? detected ?? (active === 'report' ? 'web' : 'deck')}
+            onPick={(value) => setPicked((now) => ({ ...now, [active]: value }))}
+            onBlank={surfaces.includes('chat') ? (kind) => void startDocument(kind) : undefined}
+            opening={openingDocument}
+          />
+        )}
         {/* `key` remount per surface: draft, attachments, skill pick are per surface. */}
-        <Composer key={active} sessionId={null} kind={active} autoFocus />
+        <Composer
+          key={active}
+          sessionId={null}
+          kind={active}
+          autoFocus
+          output={active === 'report' || active === 'slides' ? picked[active] : null}
+          onDetectOutput={setDetected}
+        />
       </div>
     </>
+  )
+}
+
+/** The file a new report or deck is made as; 「빈 문서로 시작」 beside a file opens it blank. */
+function OutputPick({
+  surface,
+  shown,
+  onPick,
+  onBlank,
+  opening,
+}: {
+  surface: 'report' | 'slides'
+  shown: ReportOutput | SlidesOutput
+  onPick: (value: ReportOutput | SlidesOutput) => void
+  onBlank?: (kind: OfficeKind) => void
+  opening: OfficeKind | null
+}) {
+  const t = useT()
+  const file = shown === 'hwp' || shown === 'docx' || shown === 'pptx' ? shown : null
+  return (
+    <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 px-4 text-sm">
+      <span className="text-faint">{t('결과 형식')}</span>
+      <div role="group" aria-label={t('결과 형식')} className="flex rounded-control border border-line p-0.5">
+        {OUTPUTS[surface].map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={shown === option.value}
+            onClick={() => onPick(option.value)}
+            className={cn(
+              'rounded-control px-2 py-0.5 transition-colors',
+              shown === option.value ? 'bg-accent-soft text-accent' : 'text-muted hover:text-fg',
+            )}
+          >
+            {t(option.label)}
+          </button>
+        ))}
+      </div>
+      {file && onBlank && (
+        <button
+          type="button"
+          onClick={() => onBlank(file)}
+          disabled={opening !== null}
+          title={t('입력 없이 빈 문서를 편집기에 엽니다')}
+          className="flex items-center gap-1 rounded-control px-1.5 py-0.5 text-muted hover:bg-elevated hover:text-fg disabled:opacity-60"
+        >
+          {opening === file ? <Loader2 size={13} className="animate-spin" /> : <FileType size={13} />}
+          {t('빈 문서로 시작')}
+        </button>
+      )}
+    </div>
   )
 }

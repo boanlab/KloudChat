@@ -3468,7 +3468,6 @@ const EN: Record<string, string> = {
   '저장하고 보내기': 'Save and send',
   '새 한글 문서': 'New HWP document',
   '한글 문서를 열지 못했습니다.': 'Could not open an HWP document.',
-  '빈 한글 문서를 열고, 챗으로 쓰고 고칩니다': 'Open a blank HWP document and write or edit it by chat',
   '이 파일을 한글 편집기로 열지 못했습니다.': 'Could not open this file in the HWP editor.',
   'HWP로 열기': 'Open as HWP',
 
@@ -3496,11 +3495,17 @@ const EN: Record<string, string> = {
     'This document has no chat. Editing opens it in the editor beside a new chat.',
   '한글': 'HWP',
 
+  // ── A report's or deck's file (home screen) ──────────────────────────
+  '결과 형식': 'Output',
+  '웹 보고서': 'Web report',
+  '기본 슬라이드': 'Slides',
+  '빈 문서로 시작': 'Start blank',
+  '입력 없이 빈 문서를 편집기에 엽니다': 'Open a blank document in the editor, without a prompt',
+
   // ── Word documents ──────────────────────────────────────────────────
   'Word 문서 편집기': 'Word document editor',
   '새 Word 문서': 'New Word document',
   'Word 문서를 열지 못했습니다.': 'Could not open a Word document.',
-  '빈 Word 문서를 열고, 챗으로 쓰고 고칩니다': 'Open a blank Word document and write or edit it by chat',
   '이 파일을 Word 편집기로 열지 못했습니다.': 'Could not open this file in the Word editor.',
   'Word로 열기': 'Open in Word editor',
 
@@ -3509,8 +3514,6 @@ const EN: Record<string, string> = {
   'PowerPoint 편집기': 'PowerPoint editor',
   '새 PowerPoint 문서': 'New PowerPoint document',
   'PowerPoint 문서를 열지 못했습니다.': 'Could not open a PowerPoint document.',
-  '빈 PowerPoint 문서를 열고, 챗으로 쓰고 고칩니다':
-    'Open a blank PowerPoint deck and write or edit it by chat',
   '이 파일을 PowerPoint 편집기로 열지 못했습니다.': 'Could not open this file in the PowerPoint editor.',
   'PowerPoint로 열기': 'Open in PowerPoint editor',
   '편집기가 아직 열리지 않았습니다.': 'The editor is not open yet.',

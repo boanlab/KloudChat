@@ -232,7 +232,21 @@ def test_its_follow_ups_run_as_chat_turns_with_the_office_tools_and_the_pre_read
     assert "_document_preset(" in source
     assert "session.kind is SessionKind.chat" not in source
     # the format reaches the report run from the request (or its waiting outline)
-    assert "report_office.asked_file(" in source and "office=office_file" in source
+    assert "_report_output(" in source and "office=office_file" in source
+
+
+def test_a_pick_on_the_screen_wins_over_the_words():
+    asks_hwp = "한글 문서로 2027 사업계획 보고서 써 줘"
+    assert sessions._report_output("", asks_hwp) == "hwp"
+    assert sessions._report_output("docx", asks_hwp) == "docx"
+    # 웹 보고서 picked: the HTML report, though the words name a file
+    assert sessions._report_output("web", asks_hwp) == ""
+    assert sessions._report_output("", "2027 사업계획 보고서 써 줘") == ""
+    # the decided file waits on the outline card for the approval that writes it
+    source = inspect.getsource(sessions._send_message)
+    assert 'payload.output_format or str(pending.get("output") or "")' in source
+    assert '**({"output": output} if output else {})' in inspect.getsource(
+        sessions._settle_plan_turn)
 
 
 @pytest.mark.parametrize("kind", [ArtifactKind.hwp, ArtifactKind.docx])

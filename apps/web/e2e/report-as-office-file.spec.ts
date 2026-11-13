@@ -19,10 +19,11 @@ const artifactId = 'cccccccccccccccccccccccccccccccc'
 
 type Kind = 'hwp' | 'docx'
 
-async function fixture(page: Page, kind: Kind) {
+async function fixture(page: Page, kind: Kind, start = '/new/chat') {
   const unexpected: string[] = []
   const created: Record<string, unknown>[] = []
   const sent: Record<string, unknown>[] = []
+  const documents: Record<string, unknown>[] = []
   const file = kind === 'hwp' ? hwpx : docx
   const mime = kind === 'hwp' ? 'application/hwp+zip'
     : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -46,14 +47,15 @@ async function fixture(page: Page, kind: Kind) {
       },
     })
     if (path === '/auth/config') return json({
-      brand: { name: 'KloudChat', logo: '' }, enabledKinds: ['chat', 'report'],
+      brand: { name: 'KloudChat', logo: '' }, enabledKinds: ['chat', 'report', 'slides'],
       privacy: { externalDataGuard: false }, passwordResetEnabled: false, dictationEnabled: false,
     })
     if (path === '/models') return json({
       litellmAvailable: true, defaultChatModel: 'fixture/base',
       models: [{
         id: 'fixture/base', label: 'Fixture', name: 'Fixture', vendor: 'Fixture',
-        provider: 'fixture', kinds: ['chat', 'report'], modality: 'chat', dataBoundary: 'external',
+        provider: 'fixture', kinds: ['chat', 'report', 'slides'], modality: 'chat',
+        dataBoundary: 'external',
         creditCost: 1, inputCreditCost: 1, supportsTools: true, contextWindow: 64000,
       }],
       autoRouting: { enabled: false, available: false },
@@ -114,6 +116,15 @@ async function fixture(page: Page, kind: Kind) {
         body: events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
       })
     }
+    if (path === '/artifacts/pptx' && method === 'POST') {
+      // a blank deck beside a chat (the slides screen's PowerPoint pick)
+      documents.push(request.postDataJSON())
+      return route.fulfill({ status: 201, json: {
+        id: artifactId, title: '새 PowerPoint 문서', kind: 'pptx', version: 1, partial: false,
+        sessionId: session?.id, projectId: null, createdAt: at, updatedAt: at,
+        data: { format: 'pptx', size: 0, text: '' },
+      } })
+    }
     if (path === '/artifacts' && method === 'GET') return json(artifact ? [artifact] : [])
     if (path === `/artifacts/${artifactId}` && method === 'GET') return json(artifact)
     if (path === `/artifacts/${artifactId}/versions`) return json([])
@@ -134,8 +145,8 @@ async function fixture(page: Page, kind: Kind) {
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })
   })
-  await page.goto('/new/chat')
-  return { unexpected, created, sent }
+  await page.goto(start)
+  return { unexpected, created, sent, documents }
 }
 
 const panel = (page: Page) => page.locator('[data-panel="artifact"]')
@@ -182,4 +193,31 @@ test('a short document asked for as a file stays with the editor beside the chat
   const state = await fixture(page, 'hwp')
   await ask(page, '직원 연수 참석을 요청하는 공문을 한글 문서로 작성해 줘')
   await expect.poll(() => state.created.map((body) => body.kind)).toEqual(['chat'])
+})
+
+test('the report screen\'s pick goes with the request and wins over its words', async ({ page }) => {
+  const state = await fixture(page, 'hwp', '/new/report')
+  const output = page.getByRole('group', { name: '결과 형식' })
+  // a request naming Word shows Word picked, until a pick of the person's own
+  await page.getByLabel('프롬프트 입력').fill('Word 파일로 2027 사업계획 보고서 써 줘')
+  await expect(output.getByRole('button', { name: 'Word', exact: true }))
+    .toHaveAttribute('aria-pressed', 'true')
+  await output.getByRole('button', { name: '한글', exact: true }).click()
+  await expect(output.getByRole('button', { name: '한글', exact: true }))
+    .toHaveAttribute('aria-pressed', 'true')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => state.sent.map((body) => body.outputFormat)).toEqual(['hwp'])
+  expect(state.created.map((body) => body.kind)).toEqual(['report'])
+  await expect(page.locator('[data-hwp-panel]')).toBeVisible({ timeout: 30_000 })
+})
+
+test('PowerPoint on the slides screen is a chat that writes into a blank deck', async ({ page }) => {
+  const state = await fixture(page, 'hwp', '/new/slides')
+  const output = page.getByRole('group', { name: '결과 형식' })
+  await expect(output.getByRole('button', { name: '기본 슬라이드' })).toHaveAttribute('aria-pressed', 'true')
+  await output.getByRole('button', { name: 'PowerPoint', exact: true }).click()
+  await ask(page, 'AI 도입 효과를 발표할 자료 만들어 줘')
+  await expect.poll(() => state.created.map((body) => body.kind)).toEqual(['chat'])
+  await expect.poll(() => state.documents.length).toBe(1)
+  await expect.poll(() => state.sent.map((body) => body.content)).toEqual(['AI 도입 효과를 발표할 자료 만들어 줘'])
 })

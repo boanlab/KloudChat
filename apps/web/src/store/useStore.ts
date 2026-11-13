@@ -72,6 +72,7 @@ import type {
   Project,
   ProjectFile,
   PendingPlan,
+  ReportOutput,
   Session,
   Preferences,
   PrivacyAction,
@@ -244,6 +245,8 @@ type SendOptions = {
   approve?: boolean
   /** The figure card's answer; absent means it was not asked. */
   includeFigures?: boolean
+  /** A report's file picked on the screen (`ReportOutput`). */
+  outputFormat?: ReportOutput
   /** The outline as edited on the proposal card. */
   plan?: Record<string, unknown>
   /** Answers to a stopped turn's questions, keyed by question id. */
@@ -1863,6 +1866,7 @@ export const useStore = create<State>((set, get) => ({
       renderTemplateId: opts.renderTemplateId,
       approve: opts.approve,
       includeFigures: opts.includeFigures,
+      outputFormat: opts.outputFormat,
       plan: opts.plan,
       answers: opts.answers,
     })
@@ -1915,6 +1919,7 @@ export const useStore = create<State>((set, get) => ({
             answers: opts.answers,
             webSearch: opts.webSearch,
             includeFigures: opts.includeFigures,
+            outputFormat: opts.outputFormat,
             attachments: opts.attachments,
             plan: opts.plan,
             renderTemplateId: opts.renderTemplateId,
@@ -3969,6 +3974,8 @@ async function streamReport(
     answers?: Record<string, string>
     webSearch?: WebSearchSetting
     includeFigures?: boolean
+    /** A report's file picked on the screen; kept on the waiting card. */
+    outputFormat?: ReportOutput
     plan?: Record<string, unknown>
     /** Resent with the approval: the server assembles context fresh per request. */
     attachments?: string[]
@@ -4004,9 +4011,11 @@ async function streamReport(
     open: get().openArtifactId,
   }
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
-  // A report asked for as an HWP or Word file shows no HTML draft: the file opens when written.
-  const asked = get().sessions.find((c) => c.id === sessionId)?.pending?.request ?? text
-  const willWrite = gate.approve === true && !gate.rerun && !reportFileKind(asked)
+  // A report written as an HWP or Word file shows no HTML draft: the file opens when written.
+  const waiting = get().sessions.find((c) => c.id === sessionId)?.pending
+  const picked = gate.outputFormat ?? waiting?.output
+  const asFile = picked ? picked !== 'web' : !!reportFileKind(waiting?.request ?? text)
+  const willWrite = gate.approve === true && !gate.rerun && !asFile
   // Approved outline spent; a new proposal arrives as its own event.
   if (gate.approve === true) setPending(set, sessionId, () => null)
   const targetId = gate.rerun
@@ -4061,6 +4070,7 @@ async function streamReport(
         answers: gate.answers,
         webSearch: gate.webSearch,
         includeFigures: gate.includeFigures,
+        outputFormat: gate.outputFormat,
         attachments: gate.attachments,
         plan: gate.plan,
       },
@@ -4077,6 +4087,7 @@ async function streamReport(
             attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             plan: e.plan,
+            output: gate.outputFormat ?? p?.output,
           }))
           break
         case 'needs':
@@ -4087,6 +4098,7 @@ async function streamReport(
             attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             questions: e.questions,
+            output: gate.outputFormat ?? p?.output,
           }))
           break
         case 'skills_applied':

@@ -202,12 +202,15 @@ test('on a phone the deck opens to read, without a save button or a toolbar @pho
   expect(state.csp).toEqual([])
 })
 
-test('home starts a chat with a blank PowerPoint deck beside 「한글 문서」 and 「Word 문서」', async ({ page }) => {
+test('home opens a blank PowerPoint deck from the slides surface\'s PowerPoint pick', async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
   const state = await fixture(page, { fromHome: true, file: blank })
-  await expect(page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: 'PowerPoint' }))
-    .toHaveCount(0)
-  await page.getByRole('button', { name: 'PowerPoint', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'PowerPoint', exact: true })).toHaveCount(0)
+  await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '슬라이드' }).click()
+  const output = page.getByRole('group', { name: '결과 형식' })
+  await expect(output.getByRole('button', { name: '기본 슬라이드' })).toHaveAttribute('aria-pressed', 'true')
+  await output.getByRole('button', { name: 'PowerPoint', exact: true }).click()
+  await page.getByRole('button', { name: '빈 문서로 시작' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-z_-]+/)
   await expect(pptxPanel(page)).toBeVisible()
   expect(state.created).toEqual([{ sessionId: expect.any(String), title: '새 PowerPoint 문서' }])

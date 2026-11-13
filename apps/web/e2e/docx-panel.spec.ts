@@ -155,12 +155,13 @@ test('on a phone the document opens to read, without a save button or a toolbar 
   expect(state.problems).toEqual([])
 })
 
-test('home starts a chat with a blank Word document beside 「한글 문서」', async ({ page }) => {
+test('home opens a blank Word document from the report surface\'s Word pick', async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
   const state = await fixture(page, { fromHome: true })
-  await expect(page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: 'Word 문서' }))
-    .toHaveCount(0)
-  await page.getByRole('button', { name: 'Word 문서', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Word 문서', exact: true })).toHaveCount(0)
+  await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '보고서' }).click()
+  await page.getByRole('group', { name: '결과 형식' }).getByRole('button', { name: 'Word', exact: true }).click()
+  await page.getByRole('button', { name: '빈 문서로 시작' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-z_-]+/)
   await expect(docxPanel(page)).toBeVisible()
   expect(state.created).toEqual([{ sessionId: expect.any(String), title: '새 Word 문서' }])

@@ -140,12 +140,16 @@ test('on a phone the document opens to read, without a save button @phone', asyn
   expect(state.problems).toEqual([])
 })
 
-test('home starts a chat with a blank HWP document open beside it', async ({ page }) => {
+test('home opens a blank HWP document from the report surface\'s 한글 pick', async ({ page }) => {
   const state = await fixture(page, { fromHome: true })
-  // beside the surfaces, not one of them
-  await expect(page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '한글 문서' }))
-    .toHaveCount(0)
-  await page.getByRole('button', { name: '한글 문서', exact: true }).click()
+  // no document card beside the surfaces: the file is the report's
+  await expect(page.getByRole('button', { name: '한글 문서', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '빈 문서로 시작' })).toHaveCount(0)
+  await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '보고서' }).click()
+  const output = page.getByRole('group', { name: '결과 형식' })
+  await expect(output.getByRole('button', { name: '웹 보고서' })).toHaveAttribute('aria-pressed', 'true')
+  await output.getByRole('button', { name: '한글', exact: true }).click()
+  await page.getByRole('button', { name: '빈 문서로 시작' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-z_-]+/)
   await expect(editor(page).locator('#doc')).toHaveText(`document.hwpx ${hwpx.length}`)
   expect(state.created).toEqual([{ sessionId: expect.any(String), title: '새 한글 문서' }])

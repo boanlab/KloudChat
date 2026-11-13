@@ -1623,7 +1623,23 @@ the report screen when it orders a long-form document (보고서, 기획서, 제
 letter, 「한 장짜리」); those, an edit, a question about documents, and any sentence in a
 chat that already has an office document open stay with the editor beside the chat and
 its `hwp_write`/`docx_write`. On the report screen any request naming a file is written as
-that file. Nothing new is stored on the session: `_send_message` passes the format
+that file.
+
+Picking the file. The home screen has no document cards beside its surfaces; the formats
+are the surfaces' own. With 보고서 chosen, a 결과 형식 switch offers 웹 보고서 (the default),
+한글 and Word; with 슬라이드, 기본 슬라이드 and PowerPoint (`HomePage` `OutputPick`). The
+switch shows the file the typed request names (`Composer` reports `reportFileKind`, or
+`NAMES_PPTX` for a deck) until one is picked, and a pick wins: the report request carries
+it as `outputFormat` (`SendMessage.output_format`: `web`, `hwp`, `docx`), and
+`sessions._report_output` prefers it to the request's words. The decided file is kept on the
+waiting card (`pending.output`), so the approval that writes the outline writes that file
+and the browser opens no HTML draft for it. PowerPoint on the slides screen is today's
+PowerPoint path, not the deck pipeline: the request goes to a chat that opens with a blank
+deck in the editor (`createDocument`), where the `pptx_*` tools write it. With a file picked,
+「빈 문서로 시작」 opens it blank in its editor beside a chat without a prompt, as the
+document cards did.
+
+Nothing new is stored on the session row: `_send_message` passes the format
 (`office`) into `_run_report` and the pass's `Request.turn`, and `report-save`
 (`ReportSave` → `sessions._office_target`, `_store_office_report`) builds the file and
 creates the `hwp`/`docx` artifact through `office_doc.create` (a rerun of the run writes the

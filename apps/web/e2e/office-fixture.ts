@@ -106,7 +106,9 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
       },
     })
     if (path === '/auth/config') return json({
-      brand: { name: 'KloudChat', logo: '' }, enabledKinds: ['chat'],
+      // from home: the report and slides surfaces too, where a file is picked
+      brand: { name: 'KloudChat', logo: '' },
+      enabledKinds: options.fromHome ? ['chat', 'report', 'slides'] : ['chat'],
       privacy: { externalDataGuard: false }, passwordResetEnabled: false, dictationEnabled: false,
     })
     if (path === '/models') return json({
