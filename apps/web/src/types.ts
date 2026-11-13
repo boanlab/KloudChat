@@ -138,6 +138,11 @@ export interface PendingQuestion {
 }
 
 /** A generation waiting on the person who asked for it. */
+/** What a report is written as: the HTML report, or an HWP or Word file. */
+export type ReportOutput = 'web' | 'hwp' | 'docx'
+/** What a deck is made as: the deck screen's own, or a PowerPoint file beside a chat. */
+export type SlidesOutput = 'deck' | 'pptx'
+
 export interface PendingPlan {
   /** `clarify` holds a question, `outline` the plan, `figures` the offer to draw the planned pictures. */
   stage: 'clarify' | 'outline' | 'figures'
@@ -152,6 +157,8 @@ export interface PendingPlan {
   answers: Record<string, string>
   /** The waiting pipeline run this card belongs to. */
   runId?: string
+  /** The report's file, decided when the card was offered (`sessions._report_output`). */
+  output?: ReportOutput
   questions?: PendingQuestion[]
   plan?: {
     title?: string

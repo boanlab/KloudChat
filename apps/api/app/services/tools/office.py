@@ -48,7 +48,8 @@ class Toolset:
     read_text: str = ""
     edit_text: str = ""
     edit_items: dict[str, Any] | None = None
-    renumbers: frozenset[str] = frozenset({"insert_paragraph", "delete_paragraph"})
+    renumbers: frozenset[str] = frozenset({"insert_paragraph", "delete_paragraph",
+                                           "insert_table"})
     write_text: str = ""
     write_params: dict[str, Any] | None = None
     build: Callable[[dict[str, Any]], tuple[str, bytes]] | None = None
@@ -62,7 +63,7 @@ def _trace(artifact_id: str, version: int) -> dict[str, Any]:
 _OP_HELP = (
     "replace_text {id, text} · fill_blank {blank, value} · set_cell {table, row, col, text} · "
     "insert_paragraph {after, text} · delete_paragraph {id} · insert_table_row {table, after} · "
-    "delete_table_row {table, row}"
+    "delete_table_row {table, row} · insert_table {after, rows}"
 )
 
 _HEADS = ", ".join(
@@ -239,7 +240,9 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
             "give `at` when the same blank means different things, such as a date in the head "
             "and another in the body); set_cell {table:'t1', row, col, text}; insert_paragraph "
             "{after:'p7', text} (takes p7's format); delete_paragraph {id}; insert_table_row "
-            "{table, after}; delete_table_row {table, row}. When one line holds several blanks "
+            "{table, after}; delete_table_row {table, row}; insert_table {after:'p7', rows: "
+            "[['구분','내용'], ['…','…']]} adds a new table after p7, its first row the head "
+            "(a caption is an insert_paragraph before it). When one line holds several blanks "
             "that one fact fills (「[YYYY. MM. DD.] [HH:MM] ~ [HH:MM]」), rewrite that line with "
             "replace_text instead. Put only facts the person gave; anything still unknown stays "
             "a bracket blank like 「[담당자]」."
@@ -264,6 +267,8 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                             "blank": {"type": "string"},
                             "text": {"type": "string"},
                             "value": {"type": "string"},
+                            "rows": {"type": "array",
+                                     "items": {"type": "array", "items": {"type": "string"}}},
                         },
                         "required": ["op"],
                     },

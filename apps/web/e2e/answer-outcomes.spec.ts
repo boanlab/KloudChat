@@ -79,10 +79,15 @@ test('끊긴 답은 끊겼다고 붙이고, 아래 오류와 함께 보인다', 
 })
 
 test('재시작으로 끊긴 질문은 중단됨이라고 말하고 다시 보내기를 준다', async ({ page }, testInfo) => {
-  await sessionFixture(page, testInfo, [{ ...question, failure: 'interrupted' }])
+  const session = await sessionFixture(page, testInfo, [{ ...question, failure: 'interrupted' }])
   const sent: Row[] = []
   await page.route(`**/api/sessions/${id}/messages`, async (route) => {
     sent.push(route.request().postDataJSON() as Row)
+    // what the server keeps once the resent turn is answered, for the reload after `done`
+    session.messages = [question, {
+      id: 'm2', role: 'assistant', content: '분석했습니다.', createdAt: at, model: 'fixture/model', steps: [],
+    }]
+    session.messageCount = 2
     await route.fulfill({
       headers: { 'content-type': 'text/event-stream' },
       body: `data: ${JSON.stringify({ type: 'delta', text: '분석했습니다.' })}\n\n`

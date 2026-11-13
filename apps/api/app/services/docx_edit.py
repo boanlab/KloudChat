@@ -602,6 +602,9 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             if kind == "delete_table_row" and len(rows) < 2:
                 raise DocxError("줄이 하나뿐인 표의 줄은 지울 수 없습니다.")
             plan.append((op, (table, rows[index])))
+        elif kind == "insert_table":
+            rows = office_edit.table_arg(op, DocxError)
+            plan.append((op, (_paragraph(doc, op.get("after"))[1], rows)))
         else:
             raise office_edit.unknown_op(kind, DocxError)
 
@@ -643,9 +646,42 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             table, row = target
             table.remove(row)
             changes.append(f"{op['table']} r{op['row']} 줄 삭제")
+        elif kind == "insert_table":
+            anchor, rows = target
+            for made in reversed(_new_table(doc, rows)):
+                anchor.addnext(made)
+            changes.append(f"{op['after']} 뒤에 표 추가 ({len(rows)}줄 × {len(rows[0])}칸)")
     out = io.BytesIO()
     doc.document.save(out)
     return Result(out.getvalue(), changes)
+
+
+def _new_table(doc: _Doc, rows: list[list[str]]) -> list[etree._Element]:
+    """A table as the Word export draws one (head row repeated, width shares), made at the end
+    of the body and handed back to be moved; plain bordered cells in a file whose styles lack
+    the table style."""
+    from app.services import report_export
+
+    body = doc.document.element.body
+    # kept so lxml hands back the same proxies: `is` tells the new children apart
+    before = list(body)
+    try:
+        report_export._docx_table(doc.document, rows)
+    except Exception:  # noqa: BLE001 — a style the file lacks: drop the half-made table
+        for child in [c for c in body if not any(c is b for b in before)]:
+            body.remove(child)
+        table = doc.document.add_table(rows=len(rows), cols=len(rows[0]))
+        for r, row in enumerate(rows):
+            for c, text in enumerate(row):
+                cell = table.cell(r, c)
+                cell.text = text
+                if r == 0:
+                    for run in cell.paragraphs[0].runs:
+                        run.bold = True
+    made = [c for c in body if not any(c is b for b in before)]
+    for element in made:
+        body.remove(element)
+    return made
 
 
 def restyle_first(data: bytes, style: str) -> bytes:

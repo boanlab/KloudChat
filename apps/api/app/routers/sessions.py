@@ -110,6 +110,7 @@ from app.services import (
     date_rules,
     design_templates,
     docx_doc,
+    docx_edit,
     exact_facts,
     fallback_watch,
     figures,
@@ -119,17 +120,21 @@ from app.services import (
     governance,
     grounding,
     hwp_doc,
+    hwpx_edit,
     illustrations,
     imagegen,
     index_cleanup,
     lint,
     message_links,
     model_tier,
+    office_doc,
+    office_edit,
     output_language,
     pptx_doc,
     prompt_tier,
     publishing,
     red_flags,
+    report_office,
     revise,
     server_notes,
     settings_store,
@@ -253,6 +258,43 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
     }
 )
 
+async def _office_report(db: AsyncSession, session: ChatSession) -> Artifact | None:
+    """The HWP or Word file a report conversation wrote (`report_office`), or None."""
+    if session.kind is not SessionKind.report or not session.artifact_id:
+        return None
+    found = await db.get(Artifact, session.artifact_id)
+    return found if found is not None and found.kind in report_office.FORMATS else None
+
+
+_CHAPTER = re.compile(r"^(p(\d+)) \(heading 1\): (.+)$")
+
+
+def _named_parts(document: Artifact, ask: str) -> str:
+    """Where 「3장」, 「2절」 of the ask stand in an HWP or Word file: its `(heading 1)` lines in
+    order (`revise.numbered_parts`, as a report's revision counts them), with the paragraphs
+    each runs over; `` when the ask names none or the file has no such headings."""
+    edit = {ArtifactKind.hwp: hwpx_edit, ArtifactKind.docx: docx_edit}.get(document.kind)
+    if edit is None or not re.search(r"\d", ask or ""):
+        return ""
+    try:
+        lines = edit.outline(office_doc.read(document)).splitlines()
+    except (OSError, ValueError):
+        return ""
+    chapters = [(m.group(1), int(m.group(2)), m.group(3)) for line in lines
+                if (m := _CHAPTER.match(line))]
+    targets = revise.numbered_parts(ask, [name for _, _, name in chapters]) or []
+    said = []
+    for index in targets:
+        pid, at, name = chapters[index]
+        end = chapters[index + 1][1] - 1 if index + 1 < len(chapters) else None
+        span = f"{pid}~p{end}" if end and end > at else pid
+        said.append(f"- {index + 1}장: {span} 「{office_edit.short(name, 60)}」 (제목 {pid})")
+    if not said:
+        return ""
+    return ("# 메시지의 장 번호가 가리키는 곳 (문서의 장 제목을 차례로 센 것)\n"
+            + "\n".join(said))
+
+
 def _document_preset(
     document: Artifact | None, tool_names: set[str]
 ) -> tuple[str, dict] | None:
@@ -267,15 +309,8 @@ def _document_preset(
     return (tool, {}) if str((document.data or {}).get("text") or "").strip() else None
 
 
-#: 「한글 문서로」, 「hwp 파일」, 「아래아한글」: a request for an HWP document.
-_ASKS_HWP = re.compile(r"(?<![A-Za-z])hwpx?(?![A-Za-z])|한글\s{0,2}(?:파일|문서)|아래아\s{0,2}한글",
-                       re.I)
-#: 「Word로」, 「docx 파일」, 「워드 문서」: a request for a Word document (not 「키워드로」).
-_ASKS_DOCX = re.compile(
-    r"(?<![A-Za-z])docx(?![A-Za-z])|(?<![A-Za-z])(?:ms\s?)?word\s{0,2}(?:로|으로|문서|파일|"
-    r"documents?|files?|format)|(?<![가-힣])워드\s{0,2}(?:로|문서|파일)",
-    re.I,
-)
+#: 「한글 문서로」, 「Word로」: a request for an HWP or Word document (`report_office`)
+_ASKS_HWP, _ASKS_DOCX = report_office.ASKS_HWP, report_office.ASKS_DOCX
 #: 「PowerPoint로」, 「pptx 파일」, 「파워포인트」, 「PPT 파일로」: a request for a PowerPoint file.
 #: A bare 「PPT 만들어 줘」 or 「발표 자료」 is any deck: it stays with the slides surface.
 _ASKS_PPTX = re.compile(
@@ -1977,11 +2012,12 @@ def _advice_checks(keys: tuple[str, ...], advice: str | None) -> tuple[str, ...]
 
 
 def _material_only_turn(session: ChatSession, payload: Any, forced_tool: str | None,
-                        content: str, workspace: WorkspaceContext, *, published: bool) -> bool:
+                        content: str, workspace: WorkspaceContext, *, published: bool,
+                        kind: SessionKind | None = None) -> bool:
     """A chat turn on 「auto」 search whose material the person gives and whose ask names
     nothing to look up (`report.given_material_suffices`): the search tool is not offered.
     A forced first search (a current fact, a hotline, advice) stays."""
-    return (session.kind is SessionKind.chat and payload.web_search == "auto"
+    return ((kind or session.kind) is SessionKind.chat and payload.web_search == "auto"
             and forced_tool is None and not published
             and report_service.given_material_suffices(
                 content, has_files=_grounded_in_files(workspace)))
@@ -3768,6 +3804,55 @@ async def _store_document(
     return artifact.id
 
 
+def _report_output(picked: str, request: str) -> str:
+    """`hwp`, `docx` or `` (the HTML report): a pick wins over the file the request names."""
+    if picked in ("hwp", "docx"):
+        return picked
+    if picked == "web":
+        return ""
+    asked = report_office.asked_file(request)
+    return asked.value if asked is not None else ""
+
+
+async def _office_target(
+    db: AsyncSession, session: ChatSession, turn: dict[str, Any]
+) -> ArtifactKind | None:
+    """The office file a report pass is stored as: the file the conversation already wrote
+    (a rerun), else the one its request named (`report_office.asked_file`); an HTML report the
+    conversation already has stays one."""
+    current = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
+    if current is not None and current.session_id == session.id:
+        return current.kind if current.kind in report_office.FORMATS else None
+    asked = str(turn.get("office") or "")
+    return ArtifactKind(asked) if asked in {k.value for k in report_office.FORMATS} else None
+
+
+async def _store_office_report(
+    db: AsyncSession,
+    session: ChatSession,
+    kind: ArtifactKind,
+    *,
+    user_id: str,
+    project_id: str | None,
+    title: str,
+    summary: str,
+    data: dict,
+) -> str:
+    """The report's sections as an HWP or Word file: a new office artifact, or the next
+    version of the one this conversation has (its hand edits kept in the history)."""
+    service = hwp_doc if kind is ArtifactKind.hwp else docx_doc
+    blob = await report_office.write(kind, title, data)
+    follow_document_title(session, title)
+    current = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
+    if current is not None and current.kind is kind and current.session_id == session.id:
+        saved = await service.save(db, current, blob, expected=current.version,
+                                   summary=summary, title=title)
+        return saved.id
+    made = await service.create(db, user_id=user_id, title=title, data=blob,
+                                session_id=session.id, project_id=project_id)
+    return made.id
+
+
 async def _settle_plan_turn(
     *,
     session_id: str,
@@ -3790,6 +3875,8 @@ async def _settle_plan_turn(
     run: dict | None = None,
     #: run a card waited on, carried to the writing pass
     run_parent: str | None = None,
+    #: a report's decided file (`web`, `hwp`, `docx`), kept for the writing pass
+    output: str = "",
 ) -> None:
     """Stores a planning/asking turn and charges for it; no artifact."""
     credits = charge_for_tokens(model, usage.get("inputTokens", 0), usage.get("outputTokens", 0))
@@ -3814,6 +3901,7 @@ async def _settle_plan_turn(
             **(figures or {}),
             **({"carryFrom": carry_from, "carryNote": carry_note} if carry_from else {}),
             **({"runId": run_parent} if run_parent and not questions else {}),
+            **({"output": output} if output else {}),
         }
         db.add(
             Message(
@@ -4202,14 +4290,15 @@ def _agent_web_search(agent: WorkspaceAgent | None) -> bool | str:
     return {"auto": "auto", "on": True}.get(agent.web_search_default, False)
 
 
-def _sets_card_aside(session: ChatSession, payload: SendMessage) -> bool:
+def _sets_card_aside(session: ChatSession, payload: SendMessage,
+                     kind: SessionKind | None = None) -> bool:
     """Whether a typed message while a card is open on a finished document is not the card's
     answer: a question about the document (「4장 수치는 어디서 나온 거야?」), or an edit that
     names its part by number (「4장을 번호 목록으로 바꿔줘」) — on a proposed outline only one
     that leaves the structure as it is (「4장은 빼고 진행해 줘」 is a note on the outline)."""
     pending = session.pending or {}
     if (not pending or not session.artifact_id or payload.approve
-            or payload.answers is not None or not _plans_first(session)):
+            or payload.answers is not None or not _plans_first(kind or session.kind)):
         return False
     text = payload.content or ""
     if revise.asks_question(text):
@@ -4226,9 +4315,9 @@ def _sets_card_aside(session: ChatSession, payload: SendMessage) -> bool:
     return revise.asks_edit(text) and part_edit
 
 
-def _plans_first(session: ChatSession) -> bool:
+def _plans_first(kind: SessionKind) -> bool:
     """Whether this surface offers an outline first (report, slides)."""
-    return session.kind in (SessionKind.report, SessionKind.slides)
+    return kind in (SessionKind.report, SessionKind.slides)
 
 
 @router.post("/{session_id}/messages")
@@ -4259,6 +4348,9 @@ async def _send_message(
         payload = SendMessage(content=payload.content, retry_of=payload.retry_of)
     else:
         session = await _owned(db, user, session_id)
+    #: the surface this turn runs as: a report written as an HWP or Word file is worked on from
+    #: here like a chat's office document, its tools and pre-read included
+    kind = SessionKind.chat if await _office_report(db, session) else session.kind
 
     #: user message being rerun; stored words/attachments replace the client's
     retry_of: Message | None = None
@@ -4285,13 +4377,13 @@ async def _send_message(
 
     #: a question about the document, or an edit of a named part, while a card waits: not
     #: its answer; the card stays for a question, goes for an edit
-    card_aside = _sets_card_aside(session, payload)
+    card_aside = _sets_card_aside(session, payload, kind)
     if card_aside and not revise.asks_question(payload.content):
         session.pending = None
     # document surfaces plan first; a message while `session.pending` is a note on it
     pending = {} if card_aside else (
         dict(session.pending or {})
-        if _plans_first(session) or (session.pending or {}).get("stage") == "clarify"
+        if _plans_first(kind) or (session.pending or {}).get("stage") == "clarify"
         else {}
     )
     #: set only via approval
@@ -4300,7 +4392,7 @@ async def _send_message(
     approved_figures: list[dict] | None = None
     #: message working on the finished document (`services.revise` decides the target)
     revising = bool(
-        _plans_first(session)
+        _plans_first(kind)
         and session.artifact_id
         and not pending
         and not payload.approve
@@ -4364,13 +4456,13 @@ async def _send_message(
             }
         )
 
-    if session.kind not in (SessionKind.chat, SessionKind.report, SessionKind.slides):
+    if kind not in (SessionKind.chat, SessionKind.report, SessionKind.slides):
         # image and a/v: own job endpoints
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="surface_not_implemented"
         )
     auto_turn = bool(
-        session.kind is SessionKind.chat
+        kind is SessionKind.chat
         and session.routing_mode in _AUTO_MODES
         and payload.model is None
     )
@@ -4381,7 +4473,7 @@ async def _send_message(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                                 detail="design_template_not_found")
         session.render_template_id = _resolved_template_id(
-            payload.render_template_id, session.kind, keep=session.render_template_id)
+            payload.render_template_id, kind, keep=session.render_template_id)
     await user_templates.load(db, user.id, [session.render_template_id])
 
     # one answer or document at a time per process (else Q,Q,A,A); a stopped turn lets the
@@ -4395,7 +4487,7 @@ async def _send_message(
     await _refuse_blocked(user, request, policy, content)
     catalogue = await model_service.list_models_for_egress()
     catalogue_models = catalogue["models"]
-    usable = _allowed_models(user, catalogue_models, kind=session.kind.value)
+    usable = _allowed_models(user, catalogue_models, kind=kind.value)
     # model precedence: turn override, session, agent
     try:
         agent_model, agent_tools, agent_temperature = await agent_settings(db, user, session)
@@ -4414,7 +4506,7 @@ async def _send_message(
                                 detail="published_model_unavailable")
         agent_tools = [t for t in (agent_tools or []) if t in publishing.PUBLISHABLE_TOOLS]
     model = model_service.find(catalogue_models, model_id) if model_id else None
-    if payload.model and (model is None or session.kind.value not in model.get("kinds", [])):
+    if payload.model and (model is None or kind.value not in model.get("kinds", [])):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="model_unavailable",
@@ -4437,7 +4529,7 @@ async def _send_message(
         model = None
     if model is None:
         # the admin's default for the surface; fallback stays inside the allowlist
-        model = model_service.pick_default(usable, catalogue, session.kind.value)
+        model = model_service.pick_default(usable, catalogue, kind.value)
         if model is None:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
@@ -4447,7 +4539,7 @@ async def _send_message(
     history = await _history(db, session_id)
     # multi-replica: the shared transcript says if a fresh question is answered elsewhere
     if (
-        session.kind is SessionKind.chat
+        kind is SessionKind.chat
         and retry_of is None
         and stop_signal.needed()
         and history
@@ -4498,7 +4590,7 @@ async def _send_message(
     specs, own_scripts = await _skill_specs(db, user, agent_row)
     if published is not None:
         active_skill_ids = []
-    elif not active_skill_ids and session.kind in _STANDING_KINDS:
+    elif not active_skill_ids and kind in _STANDING_KINDS:
         # standing set, pruned of since-removed or barred skills (a plan's approval too)
         active_skill_ids = await _standing_skill_ids(db, user, session, agent_row)
     # what the turn's skills bring besides their words (template, checks, questions, settings)
@@ -4506,7 +4598,7 @@ async def _send_message(
         db, user, session, agent_row, active_skill_ids)
     if (picked_template := await skill_turn.template_for(db, user, session, skills_bring)):
         session.render_template_id = picked_template
-    if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
+    if kind is SessionKind.chat and requested_model.get("supportsTools"):
         shelf, shelf_key = await _knowledge_shelf(db, user, session, agent_row)
         agent_material = bool(shelf) and await _has_agent_material(db, user, session)
 
@@ -4527,7 +4619,7 @@ async def _send_message(
         effective_web_search, forced_tool = False, None
     fresh_followup_index = (
         _freshness_followup_index(history, session.id, content)
-        if session.kind is SessionKind.chat and not payload.attachments and published is None
+        if kind is SessionKind.chat and not payload.attachments and published is None
         else None
     )
     if (
@@ -4541,7 +4633,7 @@ async def _send_message(
     #: a draft, edit, translation or code fix of the person's own facts on 「auto」: no
     #: search forced or offered, every model alike; a named lookup or world value still searches
     own_work = (
-        session.kind is SessionKind.chat and payload.web_search == "auto"
+        kind is SessionKind.chat and payload.web_search == "auto"
         and published is None and fresh_followup_index is None
         and forced_tool != "weather" and not requests_web_search(content)
         and exact_facts.own_work(_ask_of(content))
@@ -4568,7 +4660,7 @@ async def _send_message(
     #: (a hotline, a tax rule, a rate, advice): `exact_facts`, every model alike
     exact_reason = (
         exact_facts.search_reason(asked, earlier_asks)
-        if session.kind is SessionKind.chat and published is None and not fresh_fact
+        if kind is SessionKind.chat and published is None and not fresh_fact
         and not own_work and effective_web_search and forced_tool is None
         and not is_small_talk(content)
         else None
@@ -4579,12 +4671,12 @@ async def _send_message(
     #: legal, tax, financial or medical advice: the answer's concrete claims are traced
     advice = (
         exact_facts.advice_domain(asked, earlier_asks)
-        if session.kind is SessionKind.chat and published is None
+        if kind is SessionKind.chat and published is None
         else None
     )
     #: stroke signs, chest pain, anaphylaxis, suicidal intent…: the answer opens with 119/109
     urgent = (
-        red_flags.detect(content, earlier_asks) if session.kind is SessionKind.chat else None
+        red_flags.detect(content, earlier_asks) if kind is SessionKind.chat else None
     )
     web_search_auto = payload.web_search == "auto" and forced_tool is None
     # agent allowlist without web_search is deliberate: no 「웹 검색 없이」 noise
@@ -4593,7 +4685,7 @@ async def _send_message(
     #: this chat's HWP, Word and PowerPoint documents; their tools join the turn, as they do
     #: when one is asked for
     office_documents: dict[str, Artifact] = {}
-    if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
+    if kind is SessionKind.chat and requested_model.get("supportsTools"):
         for name, service, _ in _OFFICE if published is None else ():
             if found := await service.session_document(db, user.id, session.id):
                 office_documents[name] = found
@@ -4648,7 +4740,7 @@ async def _send_message(
 
     requested_tools = strict_tools if requested_is_strict else candidate_tools
     # app how-to: guide only; memories and 개인 맞춤 설정 kept out
-    how_to = session.kind is SessionKind.chat and app_help.about_app(content) and published is None
+    how_to = kind is SessionKind.chat and app_help.about_app(content) and published is None
     try:
         workspace = await assemble(
             db,
@@ -4661,13 +4753,14 @@ async def _send_message(
             file_budget=file_budget(requested_model),
             activated_skill_ids=active_skill_ids,
             # empty focus = head of file
-            focus=focus or (content if session.kind is not SessionKind.chat else ""),
+            focus=focus or (content if kind is not SessionKind.chat else ""),
             question=_asked_about(content, history),
             how_to=how_to,
+            kind=kind,
             # report/deck writers: no chat tool loop
             available_tool_names=(
                 {tool.name for tool in requested_tools}
-                if session.kind is SessionKind.chat
+                if kind is SessionKind.chat
                 else set()
             ),
         )
@@ -4676,7 +4769,7 @@ async def _send_message(
 
     if (
         (fresh_fact or exact_reason)
-        and session.kind is SessionKind.chat
+        and kind is SessionKind.chat
         and (
             (_grounded_in_files(workspace) and not freshness.names_the_present(content))
             or _reads_pasted_material(content)
@@ -4690,7 +4783,7 @@ async def _send_message(
             web_search_auto = payload.web_search == "auto"
 
     if own_work or _material_only_turn(session, payload, forced_tool, content, workspace,
-                                       published=published is not None):
+                                       published=published is not None, kind=kind):
         # the person gave the material (pasted, attached or marked made up) and asked for
         # nothing to be looked up: no automatic search, every model alike
         effective_web_search = web_search_auto = False
@@ -4699,7 +4792,7 @@ async def _send_message(
 
     if (
         forced_tool == "web_search"
-        and session.kind is SessionKind.chat
+        and kind is SessionKind.chat
         and payload.web_search == "auto"
         and _answers_from_files(content, workspace)
     ):
@@ -4708,13 +4801,13 @@ async def _send_message(
         web_search_auto = True
 
     requested_tools = strict_tools if requested_is_strict else candidate_tools
-    if session.kind is SessionKind.chat and published is None and (
+    if kind is SessionKind.chat and published is None and (
             deep := _deep_research_tool(content, requested_tools)):
         # 「심층 리서치로」 named: the deep mode runs, not a quick search the model picks
         forced_tool = deep
 
     # attachment shortfalls asked before planning; pending replies: new files only
-    short = grounding.file_shortfalls(workspace.attachments) if _plans_first(session) else []
+    short = grounding.file_shortfalls(workspace.attachments) if _plans_first(kind) else []
     # gap check: same card, once, before the first draft; never on revisions or follow-ups
     agent_key = await _agent_catalog_key(db, agent_row)
     # agent's own checks and strictness from its row
@@ -4722,7 +4815,7 @@ async def _send_message(
         agent_checks=skills_bring.checks_with(
             agent_row.check_skills if agent_row is not None else None),
         template_checks=render_template_checks(session), specs=specs)
-    if session.kind is not SessionKind.chat:
+    if kind is not SessionKind.chat:
         # document writers run no tools: a turned-on check skill runs as the server's check
         check_keys = tuple(dict.fromkeys((*check_keys, *check_skills.attached(
             agent_checks=list(_skill_keys(workspace.applied_skills, specs)), specs=specs))))
@@ -4744,7 +4837,7 @@ async def _send_message(
     # 빠진 정보 질문: 서식's and agent's own, else its base's
     asking = skills_bring.questions_with(gap_questions.resolve(
         own=agent_row.gap_questions if agent_row is not None else None, base_key=agent_key,
-        template_id=session.render_template_id if session.kind is SessionKind.report else None,
+        template_id=session.render_template_id if kind is SessionKind.report else None,
         doc_format=workspace.doc_format)) if check_skills.of_stage(check_keys, "pre", specs) \
         else []
     judge_model, judge_key = "", ""
@@ -4753,7 +4846,7 @@ async def _send_message(
         judge_model = _gap_judge_model(user, catalogue_models, requested_model,
                                        policy.outline_model_id)
         judge_key = (await litellm_service.credentials_for(user))[1] if judge_model else ""
-    first_draft = not revising and not approved_plan and (_plans_first(session) or not any(
+    first_draft = not revising and not approved_plan and (_plans_first(kind) or not any(
         m.role is Role.assistant and not (m.routing or {}).get("askedCard") for m in history))
     # card's file questions: missing files, or the attachment the request names
     file_questions = grounding.questions_for(short)
@@ -4766,7 +4859,7 @@ async def _send_message(
                       material="\n".join([*workspace.untrusted, *workspace.standing]),
                       first_draft=first_draft,
                       doc_format=workspace.doc_format, agent_key=agent_key, specs=specs, card={
-                          "plans_first": _plans_first(session),
+                          "plans_first": _plans_first(kind),
                           "may_ask": not pending or reply_brings_files,
                           "files": [q.wire() for q in file_questions],
                           # just-answered card not repeated
@@ -4795,7 +4888,7 @@ async def _send_message(
         )
 
     protected_values: frozenset[str] = frozenset()
-    if session.kind is SessionKind.chat:
+    if kind is SessionKind.chat:
         privacy_sources = _privacy_sources(
             content, history, workspace.blocks,
             summary=_memory_text(session.summary),
@@ -4891,7 +4984,7 @@ async def _send_message(
             await _audit_policy(user, request, "pii.masked", f"{masked}건")
 
     # re-resolve skills against the final tool snapshot
-    if session.kind is SessionKind.chat:
+    if kind is SessionKind.chat:
         try:
             workspace = await assemble(
                 db,
@@ -4905,6 +4998,7 @@ async def _send_message(
                 question=_asked_about(content, history),
                 available_tool_names={tool.name for tool in tools},
                 how_to=how_to,
+                kind=kind,
             )
         except WorkspaceContextError as exc:
             _raise_workspace_error(exc)
@@ -4913,11 +5007,15 @@ async def _send_message(
     untrusted_context = workspace.untrusted
     #: this request's attachments (beside the question in chat; with the rest for documents)
     turn_context: list[str] = []
-    if session.kind is SessionKind.chat:
+    if kind is SessionKind.chat:
         turn_context = [b.text for b in workspace.blocks if b.source == "attachment"]
         untrusted_context = [
             b.text for b in workspace.blocks if not b.trusted and b.source != "attachment"
         ]
+        newest = max(office_documents.values(), key=lambda a: a.updated_at, default=None)
+        if newest is not None and (located := _named_parts(newest, _ask_of(content))):
+            # 「3장」 counted by the server on the file's chapter headings, every model alike
+            untrusted_context = [*untrusted_context, located]
     if privacy_resolution and privacy_resolution.mask_outbound:
         trusted_context = _mask_list(trusted_context, legacy=policy.pii_masking)
         untrusted_context = _mask_list(untrusted_context, legacy=policy.pii_masking)
@@ -4929,7 +5027,7 @@ async def _send_message(
         turn_context = _mask_text_tree(turn_context, governance.mask_legacy)
     skills_event = workspace.skills_event()
     template_blocks, skills_event = await _template_skills(
-        db, design_templates.get(session.render_template_id), session.kind, skills_event
+        db, design_templates.get(session.render_template_id), kind, skills_event
     )
     if template_blocks:
         trusted_context = list(trusted_context) + template_blocks
@@ -4952,13 +5050,13 @@ async def _send_message(
         else None
     )
     if (
-        session.kind is not SessionKind.chat
+        kind is not SessionKind.chat
         and any(block.source == "agent.language" for block in workspace.blocks)
         and agent_row is not None
     ):
         # the agent's language as a condition the document writers read with the request
         content = _with_condition(content, output_language.condition(agent_row.output_language))
-    elif session.kind is not SessionKind.chat and not revising and not pending and (
+    elif kind is not SessionKind.chat and not revising and not pending and (
             code := output_language.asked(typed_content)):
         # a new document in the language the person asked in, not the material's
         content = _with_condition(content, output_language.asked_condition(code))
@@ -4977,7 +5075,7 @@ async def _send_message(
             document_routing = {**(document_routing or {}), "turnOptions": turn_options}
 
     strict_local = bool(privacy_resolution and privacy_resolution.strict_local)
-    if session.kind in (SessionKind.report, SessionKind.slides):
+    if kind in (SessionKind.report, SessionKind.slides):
         # document route settled here: internal → strict-local; Auto may move the writer
         decided = await _document_route(
             db=db, user=user, session=session, policy=policy, catalogue=catalogue_models,
@@ -4991,7 +5089,7 @@ async def _send_message(
         if note:
             document_routing = {**(document_routing or {}), **note}
     # missing verification qualifies the answer, doesn't block it
-    if session.kind is not SessionKind.chat:
+    if kind is not SessionKind.chat:
         # document planners/writers expose no full actual-model trace
         trusted_context = [
             *trusted_context,
@@ -5001,7 +5099,7 @@ async def _send_message(
     # attached-table figures come from code on the file: first hop forced to run_code
     tables = (
         _table_attachments(rows)
-        if session.kind is SessionKind.chat
+        if kind is SessionKind.chat
         and forced_tool is None
         and any(tool.name == "run_code" for tool in tools)
         and calculation_policy.asks_table_analysis(content)
@@ -5017,11 +5115,11 @@ async def _send_message(
     # the person's last turn
     asked_before = [body for message, body in zip(history, outbound_history, strict=False)
                     if message.role is Role.user][-1:]
-    if session.kind is SessionKind.chat and (
+    if kind is SessionKind.chat and (
             dated := date_rules.today_block(content, _today(), asked_before)):
         trusted_context = [*trusted_context, dated]
     calculation_required = (
-        session.kind is SessionKind.chat and not tables and (
+        kind is SessionKind.chat and not tables and (
             calculation_policy.requires_calculation(content)
             or (
                 not payload.attachments
@@ -5040,13 +5138,13 @@ async def _send_message(
     wire_history.append({"role": "user", "content": content})
     #: rules the person set anywhere in the conversation, also once their turn is cut
     standing_rules = (
-        standing_directives(wire_history) if session.kind is SessionKind.chat else []
+        standing_directives(wire_history) if kind is SessionKind.chat else []
     )
 
     def envelope(wire: list[dict], *, economy: bool = False) -> list[dict]:
         """Request for `wire`; reads `trusted_context` at call time; `economy` = tool-free shape."""
         built = build_messages(
-            session.kind,
+            kind,
             wire,
             with_tools=False if economy else bool(tools),
             web_search=False if economy else effective_web_search,
@@ -5056,7 +5154,7 @@ async def _send_message(
             extra=trusted_context,
             untrusted_context=untrusted_context,
             turn_context=turn_context,
-            remind_standing=session.kind is SessionKind.chat,
+            remind_standing=kind is SessionKind.chat,
             standing=standing_rules,
             # the writer at call time: an auto route may change it (`model_tier`)
             light=model_tier.strong(model["id"]),
@@ -5133,7 +5231,7 @@ async def _send_message(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
         )
-    if session.kind is SessionKind.chat and (
+    if kind is SessionKind.chat and (
         model_tier.strong(model["id"]) != built_light
         or model_tier.cache_ordered(model["id"]) != built_cache_order
     ):
@@ -5177,7 +5275,7 @@ async def _send_message(
         # another tab or replica holds the turn; claim shares the question's transaction
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_busy")
     db.add(user_message)
-    if session.kind is SessionKind.chat and pending:
+    if kind is SessionKind.chat and pending:
         # turn answers (or skips) the chat agent's gap card
         session.pending = None
     # request models are turn-only; lasting choices via session settings API
@@ -5186,7 +5284,7 @@ async def _send_message(
         if revoked_model is None:
             session.model = requested_model["id"]
     session.updated_at = utcnow()
-    if session.kind in _STANDING_KINDS and payload.activated_skill_ids:
+    if kind in _STANDING_KINDS and payload.activated_skill_ids:
         # picked for this turn, kept for later
         session.skill_ids = list(payload.activated_skill_ids)
     if not session.title:
@@ -5249,7 +5347,7 @@ async def _send_message(
         policy.outline_model_id or _document_role(await settings_store.model_roles()),
         user=user,
         catalogue=catalogue_models,
-        kind=session.kind.value,
+        kind=kind.value,
         writer=model,
         strict_local=strict_local,
     )
@@ -5266,7 +5364,7 @@ async def _send_message(
     asked_files = revise.export_request(typed_content) if revising else None
     # `route` stage: page, file hand-over, revision, report, deck or chat
     route, route_record = await _route_turn({
-        "kind": session.kind.value,
+        "kind": kind.value,
         # document/deck templates use the report/deck writers; others the block writer
         "page_template": bool(
             render_template is not None and render_template.kind not in ("document", "deck")),
@@ -5341,7 +5439,7 @@ async def _send_message(
     if route == "revise":
         # local planner judges the instruction, not the external writer
         planner = outline_model or _local_planner(
-            user=user, catalogue=catalogue_models, kind=session.kind.value, writer=model,
+            user=user, catalogue=catalogue_models, kind=kind.value, writer=model,
             strict_local=strict_local,
         )
         revision, skeleton = await _revision_plan(
@@ -5408,7 +5506,13 @@ async def _send_message(
 
     #: the stop button's signal for this report or deck (`_stoppable`)
     stopping = asyncio.Event()
-    if session.kind is SessionKind.report:
+    if kind is SessionKind.report:
+        # the file picked on the screen, else the one decided when the outline was offered,
+        # else 「한글 문서로」, 「Word 파일로」 in the request (`report_office`); a conversation
+        # that already has its document keeps it
+        office_file = "" if session.artifact_id else _report_output(
+            payload.output_format or str(pending.get("output") or ""),
+            str(pending.get("request") or "") or typed_content)
         return StreamingResponse(
             _survive_disconnect(_stoppable(
                 session.id,
@@ -5463,6 +5567,7 @@ async def _send_message(
                     ],
                     # no network on strict-local
                     web_search=effective_web_search and not strict_local,
+                    office=office_file,
                 ),
             )),
             media_type="text/event-stream",
@@ -5473,7 +5578,7 @@ async def _send_message(
             },
         )
 
-    if session.kind is SessionKind.slides:
+    if kind is SessionKind.slides:
         return StreamingResponse(
             _survive_disconnect(_stoppable(
                 session.id,
@@ -5584,7 +5689,7 @@ async def _send_message(
     # links the person gave in this message are read before anything is said about them
     given_links = (
         given_links_in(content)
-        if session.kind is SessionKind.chat and "fetch_url" in tool_names
+        if kind is SessionKind.chat and "fetch_url" in tool_names
         and not preflight_tool and not calculation_required
         and published is None and not agent_material and not declines_web_search(content)
         else []
@@ -5632,7 +5737,7 @@ async def _send_message(
     # answer is made of that result or says it could not get it
     source_fetch = (
         _source_call(workspace.applied_skills, tools, content)
-        if session.kind is SessionKind.chat and not preflight_tool and not calculation_required
+        if kind is SessionKind.chat and not preflight_tool and not calculation_required
         else None
     )
     if source_fetch is not None and preset_call is None and (
@@ -5672,7 +5777,7 @@ async def _send_message(
         )
     # substantial chat request: short plan beside it; not on economy/calculator turns
     if (
-        session.kind is SessionKind.chat
+        kind is SessionKind.chat
         and not routed_down
         and not calculation_required
         and not tables
@@ -8116,6 +8221,8 @@ async def _run_report(
     parent_run_id: str | None = None,
     #: set by the stop button (`_stoppable`): the writer is closed, nothing stored as finished
     stopping: asyncio.Event | None = None,
+    #: the office file the report is stored as (`hwp`, `docx`); `` for the HTML report
+    office: str = "",
 ) -> AsyncIterator[str]:
     """Drives one report to completion (`write` → `report-save`); run kept for reruns."""
     #: this call's arguments, for writing a one-part plan straight away
@@ -8133,7 +8240,7 @@ async def _run_report(
         user_id=user_id, model=model, outline_model=outline_model, project_id=project_id,
         routing=routing, skills_event=skills_event, context_steps=context_steps,
         carry_from=carry_from, carry_note=carry_note,
-        run_id=recorder.run_id if recorder else "",
+        run_id=recorder.run_id if recorder else "", office=office,
     )
     #: stream output, for writers that don't store their own result
     told: dict[str, Any] = {}
@@ -8250,6 +8357,7 @@ async def _run_report(
             carry_note=carry_note,
             run=_run_summary(work, built[0][1], built[0][2]) if work is not None else None,
             run_parent=parent_run_id,
+            output=office or "web",
         )
         yield chat_service.sse({"type": "usage", **usage, "credits": 0})
         yield chat_service.sse({"type": "done"})
@@ -8364,14 +8472,16 @@ async def _persist_run(work: PipelineBundle, recorder: pipeline_runs.Recorder, *
 def _report_turn(*, user_id: str, model: dict, outline_model: dict | None,
                  project_id: str | None, routing: dict | None, skills_event: dict | None,
                  context_steps: list[dict] | None, carry_from: str | None, carry_note: str,
-                 run_id: str = "", rerun_from: str = "") -> dict[str, Any]:
-    """`Request.turn` of a report's writing pass, for `report-save`."""
+                 run_id: str = "", rerun_from: str = "", office: str = "") -> dict[str, Any]:
+    """`Request.turn` of a report's writing pass, for `report-save`; `office` is the file
+    kind (`hwp`, `docx`) the request asked the report to be."""
     return {
         "user_id": user_id, "model": model, "outline_model": outline_model,
         "project_id": project_id, "routing": routing, "skills_event": skills_event,
         "context_steps": list(context_steps or []), "carry_from": carry_from,
         "carry_note": carry_note, "run_id": run_id,
         **({"rerun_from": rerun_from} if rerun_from else {}),
+        **({"office": office} if office else {}),
     }
 
 

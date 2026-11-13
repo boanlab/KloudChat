@@ -366,16 +366,26 @@ class ReportSave(Base):
                     }
                     if marks := doc_marks.for_sections(bundle, data["sections"]):
                         data["marks"] = marks
-                    artifact_id = await host._store_document(
-                        db,
-                        session,
-                        user_id=user_id,
-                        project_id=turn.get("project_id"),
-                        kind=ArtifactKind.report,
-                        title=title,
-                        summary=(rerun_note(turn) or host._regeneration_summary(request))[:80],
-                        data=data,
-                    )
+                    summary = (rerun_note(turn) or host._regeneration_summary(request))[:80]
+                    office = await host._office_target(db, session, turn)
+                    if office is not None:
+                        # asked for as an HWP or Word file: that file is the document
+                        artifact_id = await host._store_office_report(
+                            db, session, office, user_id=user_id,
+                            project_id=turn.get("project_id"), title=title, summary=summary,
+                            data=data,
+                        )
+                    else:
+                        artifact_id = await host._store_document(
+                            db,
+                            session,
+                            user_id=user_id,
+                            project_id=turn.get("project_id"),
+                            kind=ArtifactKind.report,
+                            title=title,
+                            summary=summary,
+                            data=data,
+                        )
                     session.artifact_id = artifact_id
                     # proposal became the document
                     session.pending = None
@@ -385,7 +395,7 @@ class ReportSave(Base):
                         content=(rerun_note(turn)
                                  or _written_note(len(written), title_block,
                                                   english=captions.of_sections(written)
-                                                  == captions.EN)),
+                                                  == captions.EN, office=office)),
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=host._prelude_steps(turn.get("skills_event"),
@@ -583,16 +593,31 @@ for _stage in (ReportSave(), ReviseLoad(), ReviseSave()):
     registry.register(_stage)
 
 
-def _written_note(count: int, title_block: dict | None, *, english: bool = False) -> str:
+def _written_note(count: int, title_block: dict | None, *, english: bool = False,
+                  office: Any = None) -> str:
     """Finish line in the document's genre word (「5개 절로 회의록 작성을 마쳤습니다.」), in
-    English for a document written in English."""
+    English for a document written in English; an office file says which file it is and that
+    it is edited beside the chat."""
+    from app.models.workspace import ArtifactKind
     from app.services import doc_formats
 
     found = doc_formats.BY_ID.get(str((title_block or {}).get("format") or ""))
     genre = found.label if found else ""
     if english:
         named = doc_formats.EN_FORMAT_LABELS.get(found.id if found else "", "report").lower()
-        return f"Wrote the {named} in {count} section{'s' if count != 1 else ''}."
+        said = f"Wrote the {named} in {count} section{'s' if count != 1 else ''}."
+        if office is not None:
+            name = "HWP" if office is ArtifactKind.hwp else "Word"
+            said = (f"{said[:-1]} as a {name} file. Edit it in the editor beside the chat, or "
+                    "say what to change.")
+        return said
+    if office is not None:
+        from app.services.revise import _particle
+
+        name = "한글 문서" if office is ArtifactKind.hwp else "Word 문서"
+        genre = genre or "보고서"
+        return (f"{count}개 섹션의 {genre}{_particle(genre, '을', '를')} {name}로 "
+                "만들었습니다. 옆 편집기에서 바로 고치거나, 고칠 곳을 말해 주세요.")
     if not genre or genre == "보고서":
         return f"{count}개 섹션으로 보고서를 작성했습니다."
     return f"{count}개 절로 {genre} 작성을 마쳤습니다."

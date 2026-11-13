@@ -33,6 +33,7 @@ import type {
   PrivacyAction,
   PrivacyRouting,
   ReportArtifact,
+  ReportOutput,
   Session,
   SessionKind,
   SessionMade,
@@ -2324,6 +2325,8 @@ export async function* streamSession(
     plan?: Record<string, unknown>
     /** The figure card's answer — the second of the two questions. */
     includeFigures?: boolean
+    /** A report's file picked on the screen; wins over a file the request names. */
+    outputFormat?: ReportOutput
     /** Answers to a stopped turn's questions, keyed by question id. */
     answers?: Record<string, string>
     /** The failed question to run again in place, by message id; the server reuses that row. */
