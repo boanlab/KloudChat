@@ -8,12 +8,12 @@ A template is the structure of an artifact; a theme is its look. Work you do oft
 
 | Feature | Role | Where to pick it | Scope |
 |---|---|---|---|
-| **Template** | The structure of the artifact (structure rules, typesetting, check items). There are built-in templates and your own. | **+** → **Pick a template** in the composer; **Template & theme** › **Template** in the agent settings | That conversation (clear it with × on the chip), or the conversations that agent opens |
+| **Template** | The structure of the artifact (structure rules, typesetting, check items). There are built-in templates and your own. | The **Template** chip above the prompt box (in a conversation that already has messages, **+** → **Pick a template**); **Template & theme** › **Template** in the agent settings | That conversation (clear it with × on the chip), or the conversations that agent opens |
 | **Theme** | A setting that bundles colors, typefaces, and writing style. | **Template & theme** › **Theme** in the agent settings, **Edit › Theme** in the report or slides panel, the project settings | That agent's or project's artifacts |
 
 ## Templates
 
-A template defines the structure rules and the typesetting of reports and slides. Select one and the **What this template checks** list appears. You edit a document in a template by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Create your own document template with **New template** in the template picker or the agent settings ([Agents and skills](agents.md)). Images, audio and video have no templates.
+A template defines the structure rules and the typesetting of reports and slides. Select one and the **What this template checks** list appears. You edit a document in a template by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Create your own document template with **New template** in the template gallery or the agent settings ([Agents and skills](agents.md)). The **Template** chip on Home shows the name of the chosen template (or **Default**) and opens this gallery; press × to start without a template. The project's default template is preselected. Images, audio and video have no templates.
 
 The built-in templates in the picker are seven documents (**Internal approval draft (간이기안문)**, **Implementation plan (draft)**, **Results report**, **Bullet-style briefing (개조식)**, **Comparison report**, **Meeting minutes**, **Meeting agenda**) and the **Briefing deck**. They write straight into the organization's format and show that format's check results when done. Conversations and agents that use a hidden template keep writing and exporting with it.
 
@@ -25,7 +25,7 @@ Manage them in **Settings** → **Themes** (also opened by **Manage themes** in 
 
 - Set the name, the accent color, the body color, the secondary color, the typeface (sans-serif or serif), the writing style rules, the image style, and the rules to apply alongside them.
 - **Import from a document** extracts a draft from an existing hwpx, docx, or pdf file, or from a web address. It calls the model once, and you can review the content before saving.
-- The writing style applies to conversations, reports, and slides. Colors and typefaces apply to slides and report covers. The image style applies to images. Nothing applies to audio and video.
+- The writing style applies to conversations too. The writing style, colors and typefaces apply to every report format (web, HWP, Word) and every slides format (web, PowerPoint). The image style applies to images. Nothing applies to audio and video.
 - Theme settings are copied into an artifact when it is generated. Changing the theme later does not change artifacts that already exist.
 - An administrator can distribute a read-only shared theme with **Provide to all users**.
 - Of the built-in themes, the pickers show **Default** (기본) and **Document serif** (문서용 명조).

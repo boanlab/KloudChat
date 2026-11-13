@@ -16,6 +16,8 @@ Field-by-field examples are in [Agent and template examples](agent-examples).
 
 Jobs such as minutes or a bullet-point report are **official skills**. For minutes, on the report screen choose **+** → **Skills** → **회의록 작성** (Meeting minutes) in the composer, attach or paste the recording transcript or notes, and send 「회의록으로 정리해 주세요」. Work you do often becomes an agent of your own with that skill kept on ([Working with skills and building agents](skill-recipes)).
 
+The buttons that create a report or slides in an agent conversation (**보고서 만들기** and **슬라이드 만들기**) open a menu to pick the format (Web report, HWP or Word for a report; Web slides or PowerPoint for slides).
+
 - The first screen of the conversation shows the agent's **How to use** text and its **opening prompts**, up to six of them. Select an opening prompt to send it as it is.
 - An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.
 - Within the same project, other conversations reference the conclusions that the agent left through **Shared notes**.
@@ -113,7 +115,7 @@ An agent that writes reports can turn on **Set for this agent** under **Detailed
 - **Calculation checks**, **Judged checks**, **Value fixes**, **Fill in what is missing**: built-in checks and repair steps attached by name.
 - **When the material disagrees**: left empty, the writing says which value it used and why.
 
-Make your own document template with **New template** under **Template & theme** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX sample document is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker.
+Make your own document template with **New template** under **Template & theme** › Template (or in the template gallery). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX sample document is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template gallery.
 
 ## An agent's skills
 
